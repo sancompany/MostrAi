@@ -21,13 +21,15 @@ removendo `.env` e `node_modules/` de **todos** os commits, com force-push em
 substitui a rotação, porque quem tenha clonado antes continua com os valores.
 Rotação registrada em `docs/PENDENCIAS.md` (A.0), adiada por decisão do dono.
 
-**O que a reescrita NÃO resolveu.** Verificado na hora: o GitHub continua
-servindo os commits antigos por SHA direto (`/commit/<sha>` e a API), porque
-objeto órfão só some quando o GitHub roda a coleta de lixo dele. Force-push não
-dispara isso. Para apagar de verdade só há dois caminhos: abrir chamado no
-Suporte do GitHub pedindo a limpeza dos commits órfãos (citando os SHAs), ou
-apagar e recriar o repositório com o histórico já limpo. Enquanto isso não for
-feito, o `.env` antigo continua acessível a quem tiver o SHA.
+**A reescrita sozinha não bastou.** Verificado na hora: mesmo depois do
+force-push, o GitHub continuava servindo os commits antigos por SHA direto
+(`/commit/<sha>` e a API), porque objeto órfão só some quando o GitHub roda a
+coleta de lixo dele — e force-push não dispara isso. O repositório foi então
+**apagado e recriado** do zero (13/09/2026), com o histórico limpo empurrado em
+seguida. Conferido depois: a URL do commit antigo responde 404 e um clone novo
+não tem `.env` em commit nenhum. Lição: em repositório público, reescrever
+histórico é meia correção; o rastro só sai de verdade apagando o repositório ou
+abrindo chamado no Suporte do GitHub.
 
 **Guarda.** `git ls-files | grep -E '^\.env'` tem que voltar só
 `.env.example`. Ligar Push Protection e Secret Scanning no GitHub

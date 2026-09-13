@@ -1,10 +1,10 @@
 # Mostraí — pendências (atualizado 13/09/2026, após o primeiro push)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
-`github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`).
-O código está no git desde 13/09/2026; **só isso foi feito** — todo o resto
-desta lista continua em aberto. **Ordem sugerida: A.0 AGORA, depois o resto da
-seção A, depois B.**
+`github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`),
+repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
+o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
+**Ordem sugerida: terminar A.0, depois A.3 em diante, depois B.**
 
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
@@ -15,17 +15,11 @@ Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
 do versionamento, **histórico reescrito** (`filter-branch`) e force-push em
 `main` e na branch — nenhum commit alcançável contém mais os arquivos.
 
-**O que ainda não sumiu:** o GitHub continua servindo os commits antigos por
-SHA direto; force-push não faz a coleta de lixo do lado deles. Some por um dos
-dois caminhos abaixo — enquanto nenhum for feito, o `.env` antigo está
-acessível a quem tiver o SHA.
-
-0. [ ] **Apagar o rastro que sobrou no GitHub**, escolhendo um:
-   - **Suporte do GitHub** (https://support.github.com/) — pedir a remoção dos
-     commits órfãos do repositório, citando os SHAs antigos. Mantém o
-     repositório, o endereço e o histórico de issues.
-   - **Apagar e recriar o repositório** com o histórico já limpo. Resolve na
-     hora, mas perde estrelas, issues e qualquer configuração do repo.
+**Rastro público apagado (13/09/2026).** A reescrita sozinha não bastou: o
+GitHub continuava servindo os commits antigos por SHA direto, porque force-push
+não dispara a coleta de lixo do lado deles. O repositório foi então **apagado e
+recriado** do zero, já com o histórico limpo. Verificado: a URL do commit antigo
+responde 404, e um clone novo não tem `.env` em commit nenhum.
 
 **Decisão do dono:** o repositório **continua público** (a organização usa
 vários recursos que só são gratuitos assim) e a rotação das credenciais fica
