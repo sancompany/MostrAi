@@ -1,5 +1,3 @@
-# Mova para .github/workflows/seguranca-semanal.yml. Varredura pesada roda
-# por agendamento (minutos do plano gratuito são limitados), não a cada push.
 name: seguranca-semanal
 on:
   schedule:

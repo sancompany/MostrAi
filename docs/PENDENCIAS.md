@@ -53,7 +53,11 @@ em qualquer cópia feita antes da reescrita.
    entrou junto (o `.gitignore` não cobria `.env.*`, ao contrário do que esta
    linha afirmava); o histórico foi reescrito no mesmo dia. O repositório é
    público de propósito. O que sobrou está na seção A.0 acima.
-2. [ ] **Mover os workflows** (ainda em `infra/github/`, não rodam de lá): `infra/github/ci.yml` → `.github/workflows/ci.yml` e `infra/github/seguranca-semanal.yml` → `.github/workflows/seguranca-semanal.yml` (a ferramenta não consegue gravar em `.github/`).
+2. [x] **Mover os workflows** — FEITO em 13/09/2026. `ci.yml` e
+   `seguranca-semanal.yml` estão em `.github/workflows/` e `infra/github/` foi
+   removido. O `ci` roda em push e PR na `main`: sintaxe, migrations num
+   Postgres limpo, testes unitários, e uma checagem que **falha se um `.env`
+   for versionado** — a guarda que faltava.
 3. [ ] **`npm install`** (entrou `connect-pg-simple`).
 4. [ ] **`.env` local**: use `.env.example` como guia. **Atenção:** o `.env` que
    está na pasta (o que vazou) NÃO é o de teste que esta linha supunha — ele

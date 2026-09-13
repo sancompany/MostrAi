@@ -35,7 +35,7 @@ src/lib/           senha (scrypt), aparelho (chave da tela), pacing, limite de t
 src/db/migrations  SQL numerado, aplicado por src/db/migrate.js
 tests/             node:test (pacing, segurança, senha)
 scripts/backup.sh  pg_dump — exceção Lei 6 enquanto o Supabase for Free
-infra/github/      workflows pra mover pra .github/workflows/
+.github/workflows/ ci (push e PR na main) e auditoria semanal de dependências
 docs/              api, spec, precificação, inventário de dados, erros registrados
 ```
 
