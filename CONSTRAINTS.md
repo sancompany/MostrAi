@@ -48,6 +48,14 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   está em **exceção registrada**. Sai da exceção no dia em que o primeiro
   anunciante pagar e o plano subir para Pro. Até lá, `scripts/backup.sh`
   existe para dump manual e o dono roda antes de qualquer migration.
+- **O repositório é público, por decisão do dono** (a organização depende de
+  recursos que só são gratuitos assim). Nada aqui pode supor leitor confiável:
+  sem segredo, sem dado de cliente, sem host ou identificador de infraestrutura
+  em arquivo versionado. Em 13/09/2026 o `.env` real chegou a ser publicado; o
+  histórico foi reescrito no mesmo dia, e até a rotação registrada em
+  `docs/PENDENCIAS.md` (A.0) estar marcada como feita, considere em risco a
+  senha do Postgres, o `SESSION_SECRET` e o `ADMIN_PASSWORD`.
+
 - **Ponto único de falha:** um serviço no Northflank e um banco no Supabase.
   Aceito para este porte.
 - **PIN da tela tem 4 dígitos (10 mil combinações).** Protege o painel

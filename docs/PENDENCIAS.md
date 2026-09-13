@@ -1,13 +1,55 @@
-# Mostraí — pendências (atualizado 13/09/2026, fim do bloco de aceleração v2/v2.1)
+# Mostraí — pendências (atualizado 13/09/2026, após o primeiro push)
 
-Projeto em `D:\SanCo\MostrAi`. Tudo abaixo está na pasta; nada foi commitado em git porque o repositório ainda não existe. **Ordem sugerida: seção A inteira, depois B, depois o resto.**
+Projeto em `D:\SanCo\MostrAi`, espelhado em
+`github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`).
+O código está no git desde 13/09/2026; **só isso foi feito** — todo o resto
+desta lista continua em aberto. **Ordem sugerida: A.0 AGORA, depois o resto da
+seção A, depois B.**
+
+## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
+
+O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
+Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
+
+**Feito em 13/09/2026:** `.gitignore` corrigido, `.env` e `node_modules/` fora
+do versionamento, e **histórico reescrito** — nenhum commit publicado contém
+mais os arquivos.
+
+**Decisão do dono:** o repositório **continua público** (a organização usa
+vários recursos que só são gratuitos assim) e a rotação das credenciais fica
+para depois. Enquanto ela não for feita, os valores antigos continuam válidos
+em qualquer cópia feita antes da reescrita.
+
+1. [ ] **Rotacionar a senha do Postgres do Supabase**: Supabase → Settings →
+   Database → Reset database password. Atualizar `DATABASE_URL` no `.env` local
+   e no painel do Northflank.
+2. [ ] **Trocar `ADMIN_PASSWORD`** (e o `ADMIN_USER`, se quiser) e
+   **`SESSION_SECRET`** — trocar o `SESSION_SECRET` derruba todas as sessões
+   abertas, que é o efeito desejado.
+3. [ ] **Conferir o Supabase**: Settings → API → rotacionar a `service_role
+   key` por precaução, e olhar Logs por acesso vindo de fora do seu IP desde
+   13/09/2026.
+4. [ ] **Ligar as proteções**: GitHub → Settings → Code security → Secret
+   scanning + Push protection. Em repositório público é de graça, e é a rede
+   de segurança que faltou aqui.
+5. [ ] Depois de rotacionar tudo, marcar aqui a data e conferir
+   `git ls-files | grep -E '^\.env'` → só pode aparecer `.env.example`.
 
 ## A. Passo a passo pra sair do zero (faça na ordem)
 
-1. [ ] **`git init` + primeiro commit** na pasta `D:\SanCo\MostrAi`. Antes, confira que `.env` NÃO entra: `git status` não pode listar `.env`, `.env.real.bak` nem `.env.teste` (o `.gitignore` já cobre `.env.*`). Depois crie o repositório privado no GitHub e ligue a proteção de push com segredo (Settings → Code security → Secret scanning / Push protection).
-2. [ ] **Mover os workflows**: `infra/github/ci.yml` → `.github/workflows/ci.yml` e `infra/github/seguranca-semanal.yml` → `.github/workflows/seguranca-semanal.yml` (a ferramenta não consegue gravar em `.github/`).
+1. [x] **`git init` + primeiro commit** — FEITO em 13/09/2026. O `.env` real
+   entrou junto (o `.gitignore` não cobria `.env.*`, ao contrário do que esta
+   linha afirmava); o histórico foi reescrito no mesmo dia. O repositório é
+   público de propósito. O que sobrou está na seção A.0 acima.
+2. [ ] **Mover os workflows** (ainda em `infra/github/`, não rodam de lá): `infra/github/ci.yml` → `.github/workflows/ci.yml` e `infra/github/seguranca-semanal.yml` → `.github/workflows/seguranca-semanal.yml` (a ferramenta não consegue gravar em `.github/`).
 3. [ ] **`npm install`** (entrou `connect-pg-simple`).
-4. [ ] **`.env` local**: use `.env.example` como guia. Novas: `SITE_URL`, `PROGRAMA_FUNDADOR_ATIVO=false`, `MOSTRAI_EMAIL_FROM`/`MOSTRAI_EMAIL_CONTATO` (o antigo `VITRINA_EMAIL_FROM` ainda funciona). O `.env` que estava na pasta era o de TESTE da sessão; o real está em `.env.real.bak` — renomeie de volta pra `.env` e confira as variáveis novas.
+4. [ ] **`.env` local**: use `.env.example` como guia. **Atenção:** o `.env` que
+   está na pasta (o que vazou) NÃO é o de teste que esta linha supunha — ele
+   aponta para o projeto real do Supabase, e não existe `.env.real.bak` nem
+   `.env.teste` na pasta. Trate-o como real e rotacione (A.0). Variáveis novas
+   a conferir: `SITE_URL`, `PROGRAMA_FUNDADOR_ATIVO=false`,
+   `MOSTRAI_EMAIL_FROM`/`MOSTRAI_EMAIL_CONTATO` (o antigo `VITRINA_EMAIL_FROM`
+   ainda funciona).
 5. [ ] **`npm run migrate`** — aplica 019 (contas com papéis, dispositivos, convites, candidaturas, planos modulares, custos fixos, sessão em Postgres) e 020 (modos da conta, módulos cruzados de plano). São aditivas; nada é apagado.
 6. [ ] **`npm test`** (14 unitários) e, se quiser, o roteiro de `tests/e2e/README.md` num Postgres local.
 7. [ ] **Suba local (`npm run dev`) e faça a malha fina** — roteiro na seção C.
