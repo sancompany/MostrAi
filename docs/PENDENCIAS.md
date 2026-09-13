@@ -1,10 +1,13 @@
-# Mostraí — pendências (atualizado 13/09/2026, após o primeiro push)
+# Mostraí — pendências (atualizado 13/09/2026, após a recriação do repositório)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
 `github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`),
 repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
 o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
-**Ordem sugerida: terminar A.0, depois A.3 em diante, depois B.**
+
+**Próximo passo real: a seção A.0.1**, que precisa do PC — alinhar a pasta
+local e rotacionar as chaves. Só depois disso vale seguir para A.3 em diante
+(Northflank incluso) e para a seção B.
 
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
@@ -21,32 +24,59 @@ não dispara a coleta de lixo do lado deles. O repositório foi então **apagado
 recriado** do zero, já com o histórico limpo. Verificado: a URL do commit antigo
 responde 404, e um clone novo não tem `.env` em commit nenhum.
 
-**Decisão do dono:** o repositório **continua público** (a organização usa
-vários recursos que só são gratuitos assim) e a rotação das credenciais fica
-para depois. Enquanto ela não for feita, os valores antigos continuam válidos
-em qualquer cópia feita antes da reescrita.
+**Decisão do dono (13/09/2026):** o repositório **continua público** (a
+organização usa vários recursos que só são gratuitos assim), e a rotação das
+credenciais fica para quando ele estiver no PC. Enquanto ela não for feita, os
+valores antigos continuam válidos em qualquer cópia feita antes da reescrita.
 
-1. [ ] **Rotacionar a senha do Postgres do Supabase**: Supabase → Settings →
-   Database → Reset database password. Atualizar `DATABASE_URL` no `.env` local
-   e no painel do Northflank.
-2. [ ] **Trocar `ADMIN_PASSWORD`** (e o `ADMIN_USER`, se quiser) e
-   **`SESSION_SECRET`** — trocar o `SESSION_SECRET` derruba todas as sessões
-   abertas, que é o efeito desejado.
-3. [ ] **Conferir o Supabase**: Settings → API → rotacionar a `service_role
-   key` por precaução, e olhar Logs por acesso vindo de fora do seu IP desde
+### A.0.1 — Na volta ao PC, NESTA ordem (nada aqui roda sem o PC)
+
+**Faça o passo 1 antes de qualquer `git push` da sua máquina.** A pasta
+`D:\SanCo\MostrAi` ainda tem o histórico antigo, com o `.env` dentro. Um push de
+lá republica tudo e desfaz a limpeza inteira.
+
+1. [ ] **Alinhar a pasta local ao repositório novo.** Na pasta do projeto:
+
+   ```
+   git remote set-url origin https://github.com/sancompany/MostrAi.git
+   git fetch origin
+   git checkout main
+   git reset --hard origin/main
+   git branch -D claude/epic-newton-sc30uz
+   git reflog expire --expire=now --all
+   git gc --prune=now
+   ```
+
+   O seu `.env` continua na pasta, intacto — ele passa a ser ignorado, não
+   apagado. Confira no fim: `git log --all --oneline -- .env` tem que vir vazio.
+
+2. [ ] **Rotacionar a senha do Postgres do Supabase**: Supabase → Settings →
+   Database → Reset database password.
+3. [ ] **Gerar `SESSION_SECRET` novo** e **trocar `ADMIN_PASSWORD`** (e o
+   `ADMIN_USER`, se quiser). Trocar o `SESSION_SECRET` derruba todas as sessões
+   abertas — é o efeito desejado.
+4. [ ] **Supabase → Settings → API**: rotacionar a `service_role key` por
+   precaução, e olhar os Logs por acesso vindo de fora do seu IP desde
    13/09/2026.
-4. [ ] **Ligar as proteções**: GitHub → Settings → Code security → Secret
-   scanning + Push protection. Em repositório público é de graça, e é a rede
-   de segurança que faltou aqui.
-5. [ ] Depois de rotacionar tudo, marcar aqui a data e conferir
+5. [ ] **Atualizar o `.env` local** com tudo que foi rotacionado, e conferir
+   `npm test` + `node src/server.js` subindo com as chaves novas.
+6. [ ] **GitHub → Settings → Code security**: ligar Secret scanning e Push
+   protection. Em repositório público é de graça, e é a rede de segurança que
+   faltou aqui.
+7. [ ] Marcar a data da rotação nesta seção e conferir
    `git ls-files | grep -E '^\.env'` → só pode aparecer `.env.example`.
+
+Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
+**só as novas** — nenhuma das antigas volta a ser usada em lugar nenhum.
 
 ## A. Passo a passo pra sair do zero (faça na ordem)
 
 1. [x] **`git init` + primeiro commit** — FEITO em 13/09/2026. O `.env` real
    entrou junto (o `.gitignore` não cobria `.env.*`, ao contrário do que esta
-   linha afirmava); o histórico foi reescrito no mesmo dia. O repositório é
-   público de propósito. O que sobrou está na seção A.0 acima.
+   linha afirmava); o histórico foi reescrito e o repositório apagado e
+   recriado no mesmo dia. O repositório é público de propósito. O que sobrou
+   está na seção A.0 acima — inclusive alinhar a pasta do PC, que ainda tem o
+   histórico antigo.
 2. [x] **Mover os workflows** — FEITO em 13/09/2026. `ci.yml` e
    `seguranca-semanal.yml` estão em `.github/workflows/` e `infra/github/` foi
    removido. O `ci` roda em push e PR na `main`: sintaxe, migrations num
@@ -64,7 +94,7 @@ em qualquer cópia feita antes da reescrita.
 6. [ ] **`npm test`** (14 unitários) e, se quiser, o roteiro de `tests/e2e/README.md` num Postgres local.
 7. [ ] **Suba local (`npm run dev`) e faça a malha fina** — roteiro na seção C.
 8. [ ] **Supabase**: projeto próprio do Mostraí (se ainda for o da Vitrina, renomeie), região **sul-americana**. Bucket `criativos`. Anote `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
-9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`.
+9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`. **Use só as chaves rotacionadas em A.0.1** — nenhuma das antigas. As variáveis vivem no painel do Northflank; nunca num arquivo do repositório.
 10. [ ] **Cloudflare**: DNS `mostrai.sancocore.com.br` → Northflank (proxy ligado). **Access na frente de `/admin`** (Zero Trust → Access → Application, path `/admin*`, política: seu e-mail). Fechar a origem pra que só o Cloudflare alcance o serviço.
 11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), e combinar `SAN_CHECKOUT_WEBHOOK_SECRET` dos dois lados. Auditar a última estação do Checkout (você disse que falta). **Confirmar se o webhook manda `eventoId`/`cobrancaId`** — sem id, a deduplicação usa hash do corpo + dia (renovação meses depois passa; reentrega no mesmo dia não).
 12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
