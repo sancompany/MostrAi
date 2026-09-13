@@ -12,8 +12,20 @@ O primeiro commit levou o `.env` **real** para o repositório, que é **público
 Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
 
 **Feito em 13/09/2026:** `.gitignore` corrigido, `.env` e `node_modules/` fora
-do versionamento, e **histórico reescrito** — nenhum commit publicado contém
-mais os arquivos.
+do versionamento, **histórico reescrito** (`filter-branch`) e force-push em
+`main` e na branch — nenhum commit alcançável contém mais os arquivos.
+
+**O que ainda não sumiu:** o GitHub continua servindo os commits antigos por
+SHA direto; force-push não faz a coleta de lixo do lado deles. Some por um dos
+dois caminhos abaixo — enquanto nenhum for feito, o `.env` antigo está
+acessível a quem tiver o SHA.
+
+0. [ ] **Apagar o rastro que sobrou no GitHub**, escolhendo um:
+   - **Suporte do GitHub** (https://support.github.com/) — pedir a remoção dos
+     commits órfãos do repositório, citando os SHAs antigos. Mantém o
+     repositório, o endereço e o histórico de issues.
+   - **Apagar e recriar o repositório** com o histórico já limpo. Resolve na
+     hora, mas perde estrelas, issues e qualquer configuração do repo.
 
 **Decisão do dono:** o repositório **continua público** (a organização usa
 vários recursos que só são gratuitos assim) e a rotação das credenciais fica
