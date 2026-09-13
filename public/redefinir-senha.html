@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Nova senha — Mostraí</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Defina uma nova senha para sua conta Mostraí.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Nova senha — Mostraí">
+  <meta property="og:description" content="Defina uma nova senha para sua conta Mostraí.">
+  <meta property="og:image" content="/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="minimo" data-layout-botao="Voltar ao site|/">
+
+  <main>
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <p class="eyebrow">Acesso</p>
+        <h1 style="font-size:2.2rem">Crie sua senha nova</h1>
+        <p class="lead" style="margin:0 auto">Escolha uma senha de no mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo. Depois disso é só entrar normalmente.</p>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <form class="card" id="formSenha">
+          <div>
+            <label for="senha">Nova senha</label>
+            <input id="senha" type="password" data-senha data-senha required>
+          </div>
+          <div>
+            <label for="senha_confirma">Confirmar nova senha</label>
+            <input id="senha_confirma" type="password" data-senha data-senha-confirma required>
+          </div>
+          <button class="btn primary block" type="submit">Salvar senha</button>
+          <p class="form-msg" id="msg"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/formulario.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    const form = document.getElementById('formSenha');
+    const msg = document.getElementById('msg');
+
+    if (!token) {
+      msg.textContent = 'Link inválido. Peça um novo em "Esqueci minha senha".';
+      msg.className = 'form-msg err';
+      form.querySelector('button').disabled = true;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'Salvando...';
+      msg.className = 'form-msg';
+      try {
+        const r = await fetch(`${API_BASE_URL}/redefinir-senha`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, senha: document.getElementById('senha').value }),
+        });
+        const corpo = await r.json();
+        if (!r.ok) {
+          msg.textContent = corpo.erro || 'Não foi possível salvar.';
+          msg.className = 'form-msg err';
+          return;
+        }
+        msg.textContent = 'Senha alterada! Redirecionando pro login...';
+        msg.className = 'form-msg ok';
+        setTimeout(() => { window.location.href = corpo.login; }, 1200);
+      } catch {
+        msg.textContent = 'Não foi possível salvar agora. Tente novamente.';
+        msg.className = 'form-msg err';
+      }
+    });
+  </script>
+</body>
+</html>

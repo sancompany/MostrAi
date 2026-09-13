@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Esqueci minha senha — Mostraí</title>
+  <meta name="description" content="Recupere o acesso à sua conta Mostraí.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Esqueci minha senha — Mostraí">
+  <meta property="og:description" content="Recupere o acesso à sua conta Mostraí.">
+  <meta property="og:image" content="/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="minimo" data-layout-botao="Voltar ao site|/">
+
+  <main>
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <p class="eyebrow">Acesso</p>
+        <h1 style="font-size:2.2rem">Vamos recuperar sua conta</h1>
+        <p class="lead" style="margin:0 auto">Informe o e-mail cadastrado e a gente manda um link pra você criar uma senha nova. O link vale por uma hora.</p>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <form class="card" id="formEsqueci">
+          <div>
+            <label for="email">E-mail</label>
+            <input id="email" name="email" type="email" required>
+          </div>
+          <button class="btn primary block" type="submit">Enviar link de recuperação</button>
+          <p class="form-msg" id="msg"></p>
+          <p style="text-align:center; margin:12px 0 0"><a class="link-secundario" id="voltarLogin" href="/anunciante/login.html">Voltar ao login</a></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script>
+    // v2: uma conta só (anunciante, ponto e vendedor no mesmo login) — o
+    // ?tipo=afiliado dos links antigos cai no mesmo fluxo.
+    document.getElementById('voltarLogin').href = '/anunciante/login.html';
+
+    const form = document.getElementById('formEsqueci');
+    const msg = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'Enviando...';
+      msg.className = 'form-msg';
+      try {
+        await fetch(`${API_BASE_URL}/anunciantes/esqueci-senha`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('email').value }),
+        });
+        // Resposta é sempre a mesma, com ou sem conta nesse e-mail.
+        msg.textContent = 'Se existir uma conta com esse e-mail, o link já está a caminho. Confira também o spam.';
+        msg.className = 'form-msg ok';
+        form.reset();
+      } catch {
+        msg.textContent = 'Não foi possível enviar agora. Tente novamente em instantes.';
+        msg.className = 'form-msg err';
+      }
+    });
+  </script>
+</body>
+</html>

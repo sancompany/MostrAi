@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Entrar — Mostraí</title>
+  <meta name="description" content="Entre na sua conta de anunciante da Mostraí.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Entrar — Mostraí">
+  <meta property="og:description" content="Entre na sua conta de anunciante da Mostraí.">
+  <meta property="og:image" content="/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="minimo" data-layout-botao="Criar conta|/anunciante/cadastro.html">
+
+  <main>
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <p class="eyebrow">Anunciante</p>
+        <h1 style="font-size:2.2rem">Entrar na sua conta</h1>
+        <p class="lead" style="margin:0 auto">Acesse seu painel pra acompanhar as exibições do seu anúncio e trocar o criativo quando quiser.</p>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <form class="card" id="formLogin">
+          <div>
+            <label for="email">E-mail</label>
+            <input id="email" name="email" type="email" autocomplete="username" required>
+          </div>
+          <div>
+            <label for="senha">Senha</label>
+            <input id="senha" name="senha" type="password" autocomplete="current-password" required>
+          </div>
+          <button class="btn primary block" type="submit">Entrar</button>
+          <p style="text-align:center; margin:0"><a class="link-secundario" href="/esqueci-senha.html?tipo=anunciante">Esqueci minha senha</a></p>
+          <p class="form-msg" id="msg"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/formulario.js"></script>
+  <script>
+    const form = document.getElementById('formLogin');
+    const msg = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'Entrando...';
+      msg.className = 'form-msg';
+      const dados = Object.fromEntries(new FormData(form));
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/login`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados),
+        });
+        if (!r.ok) {
+          msg.textContent = 'E-mail ou senha inválidos.';
+          msg.className = 'form-msg err';
+          return;
+        }
+        const plano = new URLSearchParams(window.location.search).get('plano');
+        window.location.href = plano ? `/anunciante/painel.html?plano=${plano}` : '/anunciante/painel.html';
+      } catch {
+        msg.textContent = 'Não foi possível entrar agora. Tente novamente.';
+        msg.className = 'form-msg err';
+      }
+    });
+  </script>
+</body>
+</html>

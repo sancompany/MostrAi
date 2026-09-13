@@ -1,0 +1,46 @@
+# Mova este arquivo para .github/workflows/ci.yml (a ferramenta não consegue
+# gravar em .github/ — pendência do dono). Roda em todo push e PR na main:
+# sintaxe, testes unitários e as migrations num Postgres limpo.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mostrai
+          POSTGRES_PASSWORD: mostrai
+          POSTGRES_DB: mostrai
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U mostrai"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://mostrai:mostrai@localhost:5432/mostrai
+      SESSION_SECRET: ci-nao-e-segredo
+      ADMIN_USER: admin
+      ADMIN_PASSWORD: Admin12@ci
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: sintaxe de todo .js
+        run: for f in $(git ls-files 'src/**/*.js' 'public/**/*.js' 'tests/*.js'); do node --check "$f"; done
+      - name: migrations num banco limpo
+        run: npm run migrate
+      - name: testes unitários
+        run: npm test
+      - name: segredo no repositório? (falha se achar .env versionado)
+        run: |
+          if git ls-files | grep -E '^\.env($|\.)' | grep -v '\.env\.example$'; then
+            echo "arquivo .env versionado — remova e revogue os segredos"; exit 1; fi

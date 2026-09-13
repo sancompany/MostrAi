@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Cadastro de anunciante — Mostraí</title>
+  <meta name="description" content="Crie sua conta de anunciante na Mostraí e coloque sua marca nas telas de Matão-SP.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Cadastro de anunciante — Mostraí">
+  <meta property="og:description" content="Crie sua conta de anunciante na Mostraí e coloque sua marca nas telas de Matão-SP.">
+  <meta property="og:image" content="/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="minimo" data-layout-botao="Já tenho conta|/anunciante/login.html">
+
+  <main>
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <p class="eyebrow">Anunciante</p>
+        <h1 style="font-size:2.2rem">Sua marca na rotina da cidade começa aqui</h1>
+        <p class="lead" style="margin:0 auto">Preencha uma vez e pronto: você escolhe o plano, sobe seu anúncio pelo celular e acompanha tudo pelo seu painel. Sem agência, sem contrato complicado, sem espera.</p>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <form class="card wide" id="formCadastro">
+          <p class="form-sep-titulo">Seu negócio</p>
+          <div>
+            <label for="nome_empresa">Nome da empresa</label>
+            <input id="nome_empresa" name="nome_empresa" required>
+          </div>
+          <div class="field-row">
+            <div style="flex:1">
+              <label for="cpf_cnpj">CPF ou CNPJ</label>
+              <input id="cpf_cnpj" name="cpf_cnpj" required>
+            </div>
+            <div style="flex:1">
+              <label for="categoria_id">Ramo de atividade</label>
+              <select id="categoria_id" name="categoria_id" data-categorias required></select>
+            </div>
+          </div>
+          <div data-categoria-livre hidden>
+            <label for="categoria_livre">Qual é o ramo?</label>
+            <input id="categoria_livre" name="categoria_livre" placeholder="descreva em poucas palavras">
+          </div>
+          <p class="form-hint">O ramo garante que você não divida a tela com um concorrente direto.</p>
+
+          <hr class="form-sep">
+          <p class="form-sep-titulo">Endereço</p>
+          <div class="field-row">
+            <div style="flex:1">
+              <label for="cep">CEP</label>
+              <input id="cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required>
+            </div>
+            <div style="flex:2">
+              <label for="endereco">Rua e bairro</label>
+              <input id="endereco" name="endereco" required>
+            </div>
+            <div style="flex:1">
+              <label for="numero">Número</label>
+              <input id="numero" name="numero" required>
+            </div>
+          </div>
+          <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido — só o número é com você.</p>
+          <div class="field-row">
+            <div style="flex:2">
+              <label for="cidade">Cidade</label>
+              <input id="cidade" name="cidade" required>
+            </div>
+            <div style="flex:1">
+              <label for="uf">UF</label>
+              <input id="uf" name="uf" maxlength="2" required>
+            </div>
+          </div>
+
+          <hr class="form-sep">
+          <p class="form-sep-titulo">Acesso</p>
+          <div class="field-row">
+            <div style="flex:2">
+              <label for="contato_email">E-mail</label>
+              <input id="contato_email" name="contato_email" type="email" autocomplete="email" required>
+            </div>
+            <div style="flex:1">
+              <label for="contato_telefone">WhatsApp</label>
+              <input id="contato_telefone" name="contato_telefone" autocomplete="tel" required>
+            </div>
+          </div>
+          <div class="field-row">
+            <div style="flex:1">
+              <label for="senha">Senha</label>
+              <input id="senha" name="senha" type="password" autocomplete="new-password" data-senha required>
+            </div>
+            <div style="flex:1">
+              <label for="senha_confirma">Confirmar senha</label>
+              <input id="senha_confirma" type="password" autocomplete="new-password" data-senha-confirma required>
+            </div>
+          </div>
+
+          <hr class="form-sep">
+          <p class="form-sep-titulo">Responsável <span style="text-transform:none; font-weight:500; letter-spacing:0">*opcional</span></p>
+          <div>
+            <label for="responsavel_nome">Nome do responsável</label>
+            <input id="responsavel_nome" name="responsavel_nome">
+          </div>
+          <div class="field-row">
+            <div style="flex:1">
+              <label for="responsavel_cpf">CPF</label>
+              <input id="responsavel_cpf" name="responsavel_cpf">
+            </div>
+            <div style="flex:1">
+              <label for="responsavel_telefone">WhatsApp</label>
+              <input id="responsavel_telefone" name="responsavel_telefone" autocomplete="tel">
+            </div>
+          </div>
+          <div>
+            <label for="responsavel_email">E-mail do responsável</label>
+            <input id="responsavel_email" name="responsavel_email" type="email">
+          </div>
+
+          <hr class="form-sep">
+          <div class="check-row">
+            <input type="checkbox" id="aceitou_termos" name="aceitou_termos" required>
+            <label for="aceitou_termos">Li e aceito os <a href="/termos-de-uso.html" target="_blank">Termos de Uso</a>, a <a href="/politica-de-privacidade.html" target="_blank">Política de Privacidade</a> e o <a href="/contrato-anunciante.html" target="_blank">Contrato de Prestação de Serviços</a>.</label>
+          </div>
+          <button class="btn primary block" type="submit">Criar minha conta</button>
+          <p class="form-hint" style="text-align:center">Depois do cadastro a gente confere seus documentos e libera a conta. Você recebe o aviso no WhatsApp.</p>
+          <p class="form-msg" id="msg"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/formulario.js"></script>
+  <script>
+    const form = document.getElementById('formCadastro');
+    const msg = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = 'Enviando...';
+      msg.className = 'form-msg';
+      const dados = Object.fromEntries(new FormData(form));
+      dados.aceitou_termos = form.aceitou_termos.checked;
+      // O número é campo separado só pra facilitar o preenchimento por CEP —
+      // no banco o endereço continua sendo uma linha só.
+      dados.endereco = `${dados.endereco}, ${dados.numero}`;
+      delete dados.numero;
+      const ref = new URLSearchParams(window.location.search).get('ref');
+      if (ref) dados.indicado_por_cupom = ref;
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados),
+        });
+        if (r.status === 409) {
+          msg.textContent = 'Esse e-mail já tem cadastro. Tente entrar.';
+          msg.className = 'form-msg err';
+          return;
+        }
+        if (!r.ok) throw new Error();
+        msg.textContent = 'Conta criada!';
+        msg.className = 'form-msg ok';
+        // Cadastro já loga a sessão (ver POST /anunciantes/cadastro) — direto
+        // pro painel, sem passar pela tela de login de novo.
+        const plano = new URLSearchParams(window.location.search).get('plano');
+        window.location.href = plano ? `/anunciante/painel.html?plano=${plano}` : '/anunciante/painel.html';
+      } catch {
+        msg.textContent = 'Não foi possível criar a conta agora. Tente novamente.';
+        msg.className = 'form-msg err';
+      }
+    });
+  </script>
+</body>
+</html>

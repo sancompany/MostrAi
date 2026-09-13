@@ -1,0 +1,20 @@
+# Mova para .github/workflows/seguranca-semanal.yml. Varredura pesada roda
+# por agendamento (minutos do plano gratuito são limitados), não a cada push.
+name: seguranca-semanal
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # segunda, 09:00 UTC
+  workflow_dispatch:
+jobs:
+  auditoria:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: dependências com vulnerabilidade conhecida
+        run: npm audit --audit-level=high
+      - name: dependências desatualizadas (só informa)
+        run: npm outdated || true

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Meu painel — Mostraí</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="conta">
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="dash-status" id="statusBanner">Carregando...</div>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap" id="bonusAnuncios"></div>
+      <div class="wrap dashboard-grid" id="dashboardAnuncios">
+        <div>
+          <div class="kpi-grid" id="kpiGrid">
+            <div class="kpi-card"><span class="kpi-label">Exibições confirmadas</span><b>—</b><span class="delta" data-delta></span></div>
+            <div class="kpi-card"><span class="kpi-label">Entrega</span><b>—</b><span class="kpi-caption">confirmado / programado</span></div>
+            <div class="kpi-card"><span class="kpi-label">Custo por exibição</span><b>—</b><span class="kpi-caption">plano ÷ exibições</span></div>
+            <div class="kpi-card"><span class="kpi-label">Criativos ativos</span><b>—</b><span class="kpi-caption">não reprovados</span></div>
+            <div class="kpi-card" id="kpiPontos"><span class="kpi-label">Meus pontos</span><b>—</b></div>
+          </div>
+
+          <div class="panel" id="painelDia" style="margin-bottom:20px" hidden>
+            <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
+            <div class="bar-chart" id="graficoDia"></div>
+          </div>
+
+          <div class="panel" id="painelDetalhe" style="margin-bottom:20px" hidden>
+            <div class="panel-head"><h3>Exibições por ponto</h3></div>
+            <div class="bar-chart-h" id="graficoPonto"></div>
+            <div id="exibicoesDetalhe" style="margin-top:20px"></div>
+          </div>
+
+          <div class="panel" id="painelCobrancas" hidden>
+            <div class="panel-head"><h3>Meus pagamentos</h3></div>
+            <div id="listaCobrancas"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel">
+            <div class="panel-head"><h3>Meus criativos</h3></div>
+            <p class="form-hint" style="margin:0 0 12px">O criativo roda mudo nas telas — pode subir com ou sem áudio, ele não é reproduzido.</p>
+            <label class="btn primary upload-label">
+              Enviar criativo
+              <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
+            </label>
+            <p class="form-msg" id="uploadMsg"></p>
+            <div id="listaCriativos" style="margin-top:16px">Carregando...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/perfil.js"></script>
+  <script src="/formulario.js"></script>
+  <script src="/modos.js"></script>
+  <script>
+
+    const fmt = fmtBRL; // config.js
+
+    let ANUNCIANTE = null;
+    let ANUNCIANTE_ID = null;
+
+    async function carregar() {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
+      if (r.status === 401) {
+        window.location.href = '/anunciante/login.html';
+        return;
+      }
+      // Sem isso, um 500 caía no .json(), ANUNCIANTE_ID virava undefined e o
+      // painel montava vazio e funcional — o cliente via "0 exibições" em vez
+      // de "não deu pra carregar".
+      if (!r.ok) throw new Error();
+      ANUNCIANTE = await r.json();
+      ANUNCIANTE_ID = ANUNCIANTE.id;
+      // Popup de perfil, avatar e sair vêm de /perfil.js — a mesma tela que o
+      // painel do ponto usa, em vez de duas cópias que divergem.
+      montarPerfil(ANUNCIANTE, (nova) => { ANUNCIANTE = nova; preencherStatusBanner(); });
+
+      // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
+      // lugar ao card de ativação. Com o papel, segue o fluxo normal.
+      const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async (estado) => {
+        preencherStatusBanner();
+        document.getElementById('bonusAnuncios').innerHTML = cardBonus(estado, 'ponto');
+        const planoUrl = new URLSearchParams(window.location.search).get('plano');
+        if (planoUrl && !ANUNCIANTE.plano_id) confirmarPlano(planoUrl);
+        carregarExibicoes();
+        carregarCriativos();
+        carregarKpiPontos();
+      });
+      if (estado && !estado.modos.anunciante.liberado) {
+        document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
+        // Veio da vitrine querendo um plano: guarda pra depois de ativar.
+        const planoUrl = new URLSearchParams(window.location.search).get('plano');
+        if (planoUrl) history.replaceState(null, '', `/anunciante/painel.html?plano=${encodeURIComponent(planoUrl)}`);
+      }
+    }
+
+    function preencherStatusBanner() {
+      const el = document.getElementById('statusBanner');
+      const statusTxt = ROTULOS.anunciante[ANUNCIANTE.status] || ANUNCIANTE.status;
+      const pendentes = Number(ANUNCIANTE.meses_cobertura_pendentes) || 0;
+      let planoTxt = 'Sem plano ainda';
+      if (ANUNCIANTE.plano_id && ANUNCIANTE.status === 'aguardando_ponto') {
+        planoTxt = `Pago${pendentes ? ` — ${pendentes} ${pendentes > 1 ? 'meses' : 'mês'} de cobertura guardados` : ''}, começa a contar quando a rede entrar no ar`;
+      } else if (ANUNCIANTE.plano_id) {
+        planoTxt = `Plano ativo${ANUNCIANTE.data_expiracao ? ' até ' + new Date(ANUNCIANTE.data_expiracao).toLocaleDateString('pt-BR') : ''}`;
+      }
+      const travado = ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+      el.innerHTML = `
+        <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · ${statusTxt} · ${planoTxt}${travado}</span>
+        ${!ANUNCIANTE.plano_id ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
+      `;
+    }
+
+    // Ponto usa a mesma conta de anunciante (ver migration 016) — o card só
+    // mostra a contagem e manda pro dashboard próprio do ponto; sem ponto
+    // ainda, manda pro cadastro. Nada disso mora mais no menu do topo.
+    async function carregarKpiPontos() {
+      const el = document.getElementById('kpiPontos');
+      // v2.1: sem o papel "ponto", o atalho leva ao modo "Meu ponto" (card
+      // de ativação); com o papel, mostra a contagem.
+      if (!(ANUNCIANTE.papeis || []).includes('ponto')) {
+        el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>0</b><a class="link-secundario" href="/anunciante/ponto.html">Quero uma tela no meu comércio</a>`;
+        return;
+      }
+      try {
+        const pontos = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/pontos`, { credentials: 'include' })).json();
+        el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>${pontos.length}</b><a class="link-secundario" href="/anunciante/ponto.html">Ver meu ponto →</a>`;
+      } catch {
+        el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>—</b>';
+      }
+    }
+
+    // Confirmação antes de gerar cobrança. Antes, chegar no painel com
+    // ?plano=X já criava a cobrança e jogava o anunciante no checkout sem ele
+    // nunca ver quanto ia pagar — e um F5 nessa URL gerava outra cobrança.
+    async function confirmarPlano(planoId) {
+      const box = document.getElementById('statusBanner');
+      let plano = null;
+      try {
+        plano = (await (await fetch(`${API_BASE_URL}/planos`)).json()).find((p) => p.id === planoId);
+      } catch { /* mostra o resumo sem valor */ }
+      if (!plano) {
+        box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>');
+        return;
+      }
+      const total = Number(plano.valor_mensal) * plano.compromisso_meses;
+      const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
+      const gratis = Number(plano.meses_gratis) || 0;
+      const minimo = Number(plano.minimo_telas_ativas) || 1;
+      const extras = [
+        plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '',
+        gratis ? `Você ganha ${gratis} ${gratis > 1 ? 'meses grátis' : 'mês grátis'} na primeira cobrança.` : '',
+        minimo > 1 ? `A cobertura começa a contar quando a rede tiver ${minimo} telas no ar — o que pagar antes fica guardado como crédito.` : '',
+      ].filter(Boolean).join(' ');
+      box.insertAdjacentHTML('beforeend', `
+        <div class="panel" style="margin-top:14px">
+          <h3 style="margin:0 0 6px">Confirmar assinatura</h3>
+          <p style="margin:0 0 4px"><b>${esc(plano.nome)}</b> — ${plano.frequencia_dia}x por dia em cada tela</p>
+          <p style="margin:0 0 ${extras ? '4px' : '12px'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
+          ${extras ? `<p class="form-hint" style="margin:0 0 12px">${extras}</p>` : ''}
+          <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
+          <a class="btn ghost" href="/planos.html">Escolher outro</a>
+        </div>`);
+      document.getElementById('btnConfirmarPlano').addEventListener('click', (e) => {
+        e.target.disabled = true;
+        // Tira o ?plano= da URL pra que um F5 não caia aqui de novo.
+        history.replaceState(null, '', '/anunciante/painel.html');
+        assinar(ANUNCIANTE.id, planoId);
+      });
+    }
+
+    // Assinatura de plano — a escolha em si acontece em /planos.html (mesma
+    // página pública, linkando pra cá com ?plano=X quando já logado); aqui só
+    // sobra gerar a cobrança e mandar pro checkout.
+    async function assinar(anuncianteId, planoId) {
+      const box = document.getElementById('statusBanner');
+      box.insertAdjacentHTML('beforeend', '<p class="soon">Gerando cobrança...</p>');
+      const r = await fetch(`${API_BASE_URL}/anunciantes/${anuncianteId}/assinar`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planoId }),
+      });
+      if (!r.ok) {
+        const erro = (await r.json().catch(() => ({}))).erro;
+        box.insertAdjacentHTML('beforeend', `<p class="form-msg err">${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a></p>`);
+        return;
+      }
+      const { checkoutUrl } = await r.json();
+      // Se o San Checkout não estiver configurado (.env sem
+      // SAN_CHECKOUT_BASE_URL/CONTRATANTE_ID), checkoutUrl vira um caminho
+      // relativo tipo "/index.html?..." e o navegador cairia na home sem
+      // avisar nada — melhor mostrar o erro do que redirecionar pra lugar
+      // nenhum.
+      if (!/^https?:\/\//.test(checkoutUrl)) {
+        box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env) — fale com o suporte técnico.</p>');
+        return;
+      }
+      window.location.href = checkoutUrl;
+    }
+
+    // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
+    // (transparência de entrega: programado vs. confirmado, custo por exibição).
+    async function carregarExibicoes() {
+      try {
+        const dados = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })).json();
+        const [kConfirmadas, kEntrega, kCusto] = document.querySelectorAll('#kpiGrid .kpi-card:nth-child(-n+3) b');
+        const entrega = dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
+        kConfirmadas.textContent = dados.totalConfirmadas;
+        kEntrega.textContent = dados.totalProgramadas ? `${entrega}%` : '—';
+        kCusto.textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '—';
+
+        desenharPorDia(dados.porDia || []);
+        desenharPorPonto(dados.porPonto || []);
+        desenharCobrancas(dados.cobrancas || []);
+      } catch {
+        // Antes o catch era vazio: falha de API e conta nova produziam a mesma
+        // tela de "—", e quem paga não conseguia distinguir "meu anúncio não
+        // rodou" de "o painel quebrou".
+        document.getElementById('statusBanner').insertAdjacentHTML('beforeend',
+          '<p class="form-msg err">Não foi possível carregar seus números agora. Tente atualizar a página.</p>');
+      }
+    }
+
+    // Barras verticais dos últimos 14 dias. O endpoint devolve DESC (mais novo
+    // primeiro) e só os dias com registro — inverte e mostra como vem, sem
+    // preencher buraco de dia sem exibição.
+    function desenharPorDia(porDia) {
+      if (!porDia.length) return;
+      const dias = porDia.slice(0, 14).reverse();
+      const max = Math.max(...dias.map((d) => Number(d.confirmadas))) || 1;
+      document.getElementById('painelDia').hidden = false;
+      document.getElementById('graficoDia').innerHTML = dias.map((d) => {
+        const v = Number(d.confirmadas);
+        const dia = new Date(d.dia);
+        return `<div class="bar-col" title="${dia.toLocaleDateString('pt-BR')}: ${v} exibições">
+          <div class="bar" style="height:${Math.max(2, (v / max) * 100)}%"></div>
+          <span class="bar-label">${String(dia.getDate()).padStart(2, '0')}/${String(dia.getMonth() + 1).padStart(2, '0')}</span>
+        </div>`;
+      }).join('');
+      document.getElementById('legendaDia').textContent = `últimos ${dias.length} dias com exibição`;
+
+      // Delta 7 dias x 7 anteriores — no card de confirmadas.
+      const soma = (arr) => arr.reduce((t, d) => t + Number(d.confirmadas), 0);
+      const atual = soma(porDia.slice(0, 7));
+      const anterior = soma(porDia.slice(7, 14));
+      const el = document.querySelector('#kpiGrid [data-delta]');
+      if (!anterior) return;
+      const pct = Math.round(((atual - anterior) / anterior) * 100);
+      el.textContent = `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs. 7 dias antes`;
+      el.className = `delta ${pct >= 0 ? 'up' : 'down'}`;
+    }
+
+    function desenharPorPonto(porPonto) {
+      if (!porPonto.length) return;
+      const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
+      document.getElementById('painelDetalhe').hidden = false;
+      document.getElementById('graficoPonto').innerHTML = porPonto.map((p) => `
+        <div class="row">
+          <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+          <span class="track"><span class="fill" style="width:${(Number(p.confirmadas) / max) * 100}%"></span></span>
+          <span class="valor">${p.confirmadas}</span>
+        </div>`).join('');
+      document.getElementById('exibicoesDetalhe').innerHTML = `<div style="overflow-x:auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
+        ${porPonto.map((p) => {
+          const prog = Number(p.programadas) || 0;
+          const conf = Number(p.confirmadas) || 0;
+          return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '—'}</td></tr>`;
+        }).join('')}
+      </tbody></table></div>`;
+    }
+
+    // Cobranças já vêm no mesmo endpoint e não eram mostradas em lugar nenhum.
+    function desenharCobrancas(cobrancas) {
+      if (!cobrancas.length) return;
+      document.getElementById('painelCobrancas').hidden = false;
+      document.getElementById('listaCobrancas').innerHTML = `<div style="overflow-x:auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
+        ${cobrancas.map((c) => `<tr>
+          <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
+          <td>${fmt(c.valor)}</td>
+          <td>${c.nota_fiscal_url ? `<a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">Baixar</a>` : esc(c.nota_fiscal_status || '—')}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+    }
+
+    function ehVideo(url) { return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || ''); }
+
+    async function carregarCriativos() {
+      const el = document.getElementById('listaCriativos');
+      try {
+        const criativos = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })).json();
+        const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
+        document.querySelectorAll('#kpiGrid .kpi-card')[3].querySelector('b').textContent = ativos;
+        el.innerHTML = criativos.length ? `<div class="criativos-lista">
+          ${criativos.map((c) => {
+            const video = c.arquivo_normalizado_url && ehVideo(c.arquivo_normalizado_url);
+            return `<div class="criativo-card" data-id="${c.id}">
+              ${c.arquivo_normalizado_url
+                ? (video
+                  ? `<video src="${esc(c.arquivo_normalizado_url)}" muted loop playsinline poster="${esc(c.thumbnail_url || '')}"></video>
+                     <button type="button" class="criativo-play" aria-label="Reproduzir"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></button>`
+                  : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`)
+                : '<div class="criativo-placeholder">processando...</div>'}
+              <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
+              <span class="badge ${ROTULOS.criativoClasse[c.status]}">${CRIATIVO_ROTULOS.anunciante[c.status]}</span>
+            </div>`;
+          }).join('')}
+        </div>` : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
+      } catch {
+        el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus criativos agora.</p>';
+      }
+    }
+
+    // Play/excluir por delegação — a lista é re-renderizada a cada carregamento,
+    // então não dá pra prender listener em cada card.
+    document.getElementById('listaCriativos').addEventListener('click', async (e) => {
+      const card = e.target.closest('.criativo-card');
+      if (!card) return;
+
+      if (e.target.closest('.criativo-play')) {
+        const video = card.querySelector('video');
+        video.play();
+        card.classList.add('tocando');
+        video.addEventListener('pause', () => card.classList.remove('tocando'), { once: true });
+        return;
+      }
+      if (e.target.closest('video')) {
+        const video = card.querySelector('video');
+        video.pause();
+        card.classList.remove('tocando');
+        return;
+      }
+      if (e.target.closest('.criativo-excluir')) {
+        if (!confirm('Excluir este criativo? Pra trocar por outro, é só enviar um novo depois.')) return;
+        const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos/${card.dataset.id}`, {
+          method: 'DELETE', credentials: 'include',
+        });
+        const msg = document.getElementById('uploadMsg');
+        if (r.ok) {
+          msg.textContent = 'Criativo excluído.';
+          msg.className = 'form-msg ok';
+          carregarCriativos();
+        } else {
+          msg.textContent = 'Não foi possível excluir agora. Tente de novo.';
+          msg.className = 'form-msg err';
+        }
+      }
+    });
+
+    // Um controle só: escolher o arquivo já envia — sem botão "Enviar" à parte.
+    document.getElementById('arquivoCriativo').addEventListener('change', async (e) => {
+      const input = e.target;
+      const msg = document.getElementById('uploadMsg');
+      if (!input.files[0]) return;
+
+      msg.textContent = 'Enviando e processando o vídeo — pode levar um minuto...';
+      msg.className = 'form-msg';
+      // Sem travar o input, escolher outro arquivo durante o envio disparava
+      // um segundo POST concorrente e duas listas fora de ordem.
+      input.disabled = true;
+      const form = new FormData();
+      form.append('arquivo', input.files[0]);
+
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, {
+          method: 'POST',
+          credentials: 'include',
+          body: form,
+        });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || '');
+        msg.textContent = 'Criativo enviado! Ele entra em análise antes de ir pro ar.';
+        msg.className = 'form-msg ok';
+        input.value = '';
+        carregarCriativos();
+      } catch (err) {
+        msg.textContent = err.message || 'Não foi possível enviar o criativo agora. Tente de novo.';
+        msg.className = 'form-msg err';
+      } finally {
+        input.disabled = false;
+      }
+    });
+
+    carregar().catch(() => {
+      document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
+    });
+  </script>
+</body>
+</html>

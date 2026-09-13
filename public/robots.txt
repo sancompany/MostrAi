@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /anunciante/painel.html
+Disallow: /anunciante/ponto.html
+Disallow: /anunciante/perfil.html
+Disallow: /afiliado/painel.html
+Disallow: /player.html
+Disallow: /redefinir-senha.html
+Allow: /

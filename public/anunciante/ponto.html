@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Meu ponto — Mostraí</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="conta">
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="dash-status" id="statusBanner">Carregando...</div>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap" id="dashboardPonto">
+        <div id="bonusPonto"></div>
+        <div class="kpi-grid" id="kpis"></div>
+
+        <div class="panel-head" style="margin-bottom:14px">
+          <h3 style="margin:0">Minhas telas</h3>
+          <span class="form-hint" style="margin:0">O que rodou nos últimos 30 dias, tela por tela.</span>
+        </div>
+        <div class="telas-grid" id="telasLista">Carregando...</div>
+
+        <div class="panel-head" style="margin:28px 0 14px">
+          <h3 style="margin:0">Meus endereços</h3>
+          <button type="button" class="btn ghost" id="btnNovoEndereco">+ Cadastrar outro endereço</button>
+        </div>
+        <div class="pontos-lista" id="pontosLista">Carregando...</div>
+
+        <form class="card wide" id="formEndereco" hidden style="margin-top:16px">
+          <p class="form-sep-titulo">Novo endereço</p>
+          <p class="form-hint" style="margin:0">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
+          <div>
+            <label for="nome">Nome do estabelecimento</label>
+            <input id="nome" name="nome" required>
+          </div>
+          <div class="field-row">
+            <div style="flex:1">
+              <label for="cep">CEP</label>
+              <input id="cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required>
+            </div>
+            <div style="flex:2">
+              <label for="endereco">Rua e bairro</label>
+              <input id="endereco" name="endereco" required>
+            </div>
+            <div style="flex:1">
+              <label for="numero">Número</label>
+              <input id="numero" name="numero" required>
+            </div>
+          </div>
+          <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
+          <div class="field-row">
+            <div style="flex:2">
+              <label for="cidade">Cidade</label>
+              <input id="cidade" name="cidade" value="Matão" required>
+            </div>
+            <div style="flex:1">
+              <label for="uf">UF</label>
+              <input id="uf" name="uf" maxlength="2" value="SP" required>
+            </div>
+          </div>
+          <div>
+            <label for="categoria_id">Segmento</label>
+            <select id="categoria_id" name="categoria_id" data-categorias></select>
+          </div>
+          <div data-categoria-livre hidden>
+            <label for="categoria_livre">Qual é o segmento?</label>
+            <input id="categoria_livre" name="categoria_livre">
+          </div>
+          <div class="field-row">
+            <button class="btn primary" type="submit">Enviar pedido</button>
+            <button class="btn ghost" type="button" id="btnCancelarEndereco">Cancelar</button>
+          </div>
+          <p class="form-msg" id="msgEndereco" role="status"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Painel de uma tela: quem rodou, quantas vezes, por dia (dialog nativo,
+         mesmo padrão do popup de perfil) -->
+    <dialog id="modalTela" class="dlg-tela">
+      <div class="dlg-head">
+        <h3 id="modalTelaTitulo">Tela</h3>
+        <button type="button" class="dlg-close" id="fecharModalTela" aria-label="Fechar">×</button>
+      </div>
+      <div id="modalTelaCorpo">Carregando...</div>
+    </dialog>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/perfil.js"></script>
+  <script src="/formulario.js"></script>
+  <script src="/modos.js"></script>
+  <script>
+    let CONTA = null;
+    let TELAS = [];
+
+    async function carregar() {
+      CONTA = await carregarConta();
+      if (!CONTA) { window.location.href = '/anunciante/login.html'; return; }
+      montarPerfil(CONTA, (nova) => { CONTA = nova; });
+      // Painel único (modos.js): sem o papel "ponto", card de ativação.
+      const estado = await montarModo('ponto', document.getElementById('dashboardPonto'), async (estado) => {
+        document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · meu ponto</span>`;
+        document.getElementById('bonusPonto').innerHTML = cardBonus(estado, 'anuncio');
+        ligarResgateAnuncio(document.getElementById('bonusPonto'));
+        await Promise.all([carregarTelas(), carregarPontos()]);
+      });
+      if (estado && !estado.modos.ponto.liberado) {
+        document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · modo meu ponto ainda não ativado</span>`;
+      }
+    }
+
+    function tempoDesde(iso) {
+      if (!iso) return 'nunca ligou';
+      const min = Math.round((Date.now() - new Date(iso)) / 60000);
+      if (min < 3) return 'online agora';
+      if (min < 60) return `há ${min} min`;
+      if (min < 48 * 60) return `há ${Math.round(min / 60)} h`;
+      return `há ${Math.round(min / 1440)} dias`;
+    }
+    const online = (iso) => iso && (Date.now() - new Date(iso)) < 3 * 60000;
+
+    async function carregarTelas() {
+      const el = document.getElementById('telasLista');
+      try {
+        TELAS = await (await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/dispositivos`, { credentials: 'include' })).json();
+        const ativas = TELAS.filter((t) => t.status === 'ativo').length;
+        const exib = TELAS.reduce((s, t) => s + (t.exibicoes_30d || 0), 0);
+        const anunciantes = Math.max(0, ...TELAS.map((t) => t.anunciantes_30d || 0));
+        document.getElementById('kpis').innerHTML = `
+          <div class="kpi-card"><span class="kpi-label">Telas</span><b>${TELAS.length}</b><span>${ativas} no ar</span></div>
+          <div class="kpi-card"><span class="kpi-label">Exibições em 30 dias</span><b>${exib.toLocaleString('pt-BR')}</b><span>somando todas as telas</span></div>
+          <div class="kpi-card"><span class="kpi-label">Anunciantes na sua tela</span><b>${anunciantes}</b><span>nos últimos 30 dias</span></div>`;
+        if (!TELAS.length) {
+          el.innerHTML = '<p class="empty-state">Nenhuma tela instalada ainda — assim que a gente instalar, ela aparece aqui.</p>';
+          return;
+        }
+        el.innerHTML = TELAS.map((t) => `
+          <div class="tela-card">
+            <div class="tela-topo">
+              <b>${esc(t.apelido)}</b>
+              <span class="online ${online(t.ultima_vez_online) ? 'on' : ''}">${tempoDesde(t.ultima_vez_online)}</span>
+            </div>
+            <div class="tela-meta">${esc(t.ponto_nome)}<br>${esc(t.endereco)}</div>
+            ${t.ponto_status !== 'ativo'
+              ? `<span class="badge ${ROTULOS.pontoClasse[t.ponto_status] || 'badge-pendente'}">${esc(ROTULOS.ponto[t.ponto_status] || t.ponto_status)}</span>`
+              : `<span class="badge ${ROTULOS.pontoClasse[t.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[t.status] || t.status)}</span>`}
+            <div class="tela-meta"><b>${(t.exibicoes_30d || 0).toLocaleString('pt-BR')}</b> exibições · <b>${t.anunciantes_30d || 0}</b> anunciantes (30 dias)</div>
+            <div class="tela-acoes"><button type="button" class="btn ghost" data-painel="${t.id}">Ver o que rodou</button></div>
+          </div>`).join('');
+        el.querySelectorAll('[data-painel]').forEach((b) => b.addEventListener('click', () => abrirPainel(Number(b.dataset.painel))));
+      } catch {
+        el.innerHTML = '<p class="form-msg err">Não foi possível carregar suas telas agora.</p>';
+      }
+    }
+
+    async function abrirPainel(id) {
+      const tela = TELAS.find((t) => t.id === id);
+      document.getElementById('modalTelaTitulo').textContent = `${tela.apelido} — ${tela.ponto_nome}`;
+      const corpo = document.getElementById('modalTelaCorpo');
+      corpo.textContent = 'Carregando...';
+      document.getElementById('modalTela').showModal();
+      try {
+        const d = await (await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/dispositivos/${id}/painel`, { credentials: 'include' })).json();
+        const total = d.porAnunciante.reduce((s, a) => s + a.confirmadas, 0);
+        const max = Math.max(...d.porDia.map((y) => y.confirmadas), 1);
+        corpo.innerHTML = `
+          <p class="form-hint">Últimos 30 dias · ${total.toLocaleString('pt-BR')} exibições confirmadas pela própria tela.</p>
+          ${d.porAnunciante.length ? `<table class="mini-table"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
+            ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}
+          </tbody></table>` : '<p class="empty-state">Nada rodou nessa tela ainda.</p>'}
+          ${d.porDia.length ? `<p class="form-sep-titulo" style="margin-top:14px">Por dia</p><div class="bar-chart-h">
+            ${d.porDia.slice(0, 14).reverse().map((x) => `<div class="row"><span class="nome">${new Date(x.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span><span class="track"><span class="fill" style="width:${Math.round(x.confirmadas / max * 100)}%"></span></span><span class="valor">${x.confirmadas}</span></div>`).join('')}
+          </div>` : ''}`;
+      } catch {
+        corpo.innerHTML = '<p class="form-msg err">Não deu pra carregar o painel dessa tela.</p>';
+      }
+    }
+    document.getElementById('fecharModalTela').addEventListener('click', () => document.getElementById('modalTela').close());
+    document.getElementById('modalTela').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+    async function carregarPontos() {
+      const el = document.getElementById('pontosLista');
+      try {
+        const pontos = await (await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/pontos`, { credentials: 'include' })).json();
+        if (!pontos.length) {
+          el.innerHTML = '<p class="empty-state">Nenhum endereço cadastrado ainda.</p>';
+          return;
+        }
+        el.innerHTML = pontos.map((p) => `
+          <div class="ponto-endereco-card">
+            <span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>
+            <strong>${esc(p.nome || '')}</strong>
+            <span>${esc(p.endereco)}</span>
+            <span style="color:var(--text-dim); font-size:.88rem">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</span>
+            ${Number(p.valor_pago_mensal) > 0 ? `<span style="font-size:.85rem">Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></span>` : ''}
+            ${p.cota_autoanuncio_slots_hora ? `<span style="font-size:.85rem; color:var(--text-dim)">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</span>` : ''}
+          </div>`).join('');
+      } catch {
+        el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus endereços agora.</p>';
+      }
+    }
+
+    const formEnd = document.getElementById('formEndereco');
+    document.getElementById('btnNovoEndereco').addEventListener('click', () => { formEnd.hidden = false; formEnd.scrollIntoView({ behavior: 'smooth' }); });
+    document.getElementById('btnCancelarEndereco').addEventListener('click', () => { formEnd.hidden = true; });
+    formEnd.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msgEndereco');
+      msg.textContent = 'Enviando...'; msg.className = 'form-msg';
+      const opcao = formEnd.categoria_id.options[formEnd.categoria_id.selectedIndex];
+      const usouLivre = !formEnd.querySelector('[data-categoria-livre]').hidden;
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({
+            nome: formEnd.nome.value.trim(),
+            endereco: `${formEnd.endereco.value.trim()}, ${formEnd.numero.value.trim()}`,
+            cidade: formEnd.cidade.value.trim(), uf: formEnd.uf.value.trim().toUpperCase(), cep: formEnd.cep.value.trim(),
+            segmento: usouLivre ? formEnd.categoria_livre.value.trim() : (opcao ? opcao.dataset.nome : ''),
+          }),
+        });
+        const corpo = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(corpo.erro || 'falha');
+        msg.textContent = 'Pedido enviado — a gente chama no WhatsApp pra combinar.'; msg.className = 'form-msg ok';
+        formEnd.reset(); formEnd.hidden = true;
+        carregarPontos();
+      } catch (err) {
+        msg.textContent = err.message === 'falha' ? 'Não foi possível enviar agora.' : err.message; msg.className = 'form-msg err';
+      }
+    });
+
+    carregar().catch(() => {
+      document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
+    });
+  </script>
+</body>
+</html>

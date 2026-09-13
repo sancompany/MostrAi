@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-sanco.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Onde estamos — Mostraí</title>
+  <meta name="description" content="Veja onde ficam as telas da Mostraí em Matão-SP — endereço, segmento e situação de cada ponto da rede.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Onde estamos — Mostraí">
+  <meta property="og:description" content="Veja onde ficam as telas da Mostraí em Matão-SP — endereço, segmento e situação de cada ponto da rede.">
+  <meta property="og:image" content="/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-layout="publico">
+
+  <main>
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <p class="eyebrow">Rede ativa</p>
+        <h1 style="font-size:2.2rem">Onde a Mostraí está hoje</h1>
+        <p class="lead" style="margin:0 auto">Cada ponto é um lugar onde alguém está esperando: a cadeira do salão, a espera da academia, a mesa do restaurante. Quando você anuncia na Mostraí, sua marca aparece em todos eles — e a rede só cresce. Pontos em instalação entram na sua cobertura assim que forem ligados, sem você pagar nada a mais por isso.</p>
+        <div class="stat-row" id="statRow" style="margin-top:28px"></div>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <div class="mapa-e-exemplo">
+          <div class="map-embed">
+            <iframe src="https://www.google.com/maps?q=Mat%C3%A3o,SP&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa da região de Matão-SP"></iframe>
+          </div>
+          <figure class="exemplo-ponto">
+            <img src="/img/exemplo-ponto-completo.jpg" alt="Exemplo de um ponto Mostraí com o molde de acabamento instalado">
+            <figcaption>Assim fica um ponto completo — a moldura cobre a TV e só a marca do anunciante aparece.</figcaption>
+          </figure>
+        </div>
+        <p class="lead" style="margin:0 auto 24px; text-align:center; font-size:1rem">Todo ponto roda com tela vertical e player próprio — sem pendrive, sem fio aparente. Clique em "ver no mapa" pra conferir a localização exata de cada um.</p>
+        <div id="pontosGrid" class="pontos-grid">
+          <p class="empty-state">Carregando pontos...</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <div class="razoes" style="max-width:860px; margin:0 auto">
+          <div class="razao">
+            <b>Tela vertical, imagem limpa</b>
+            <span>Formato 9:16, o mesmo do celular. Seu anúncio aparece inteiro, nítido, sem borda preta e sem corte.</span>
+          </div>
+          <div class="razao">
+            <b>Player conectado o tempo todo</b>
+            <span>A gente sabe se a tela está no ar. Se algum ponto cai, ele sai da conta — você não paga por exibição que não aconteceu.</span>
+          </div>
+          <div class="razao">
+            <b>Sem concorrente na mesma tela</b>
+            <span>Cada ponto tem um segmento. Anúncio de concorrente direto do estabelecimento não entra ali.</span>
+          </div>
+          <div class="razao">
+            <b>A rede cresce, sua cobertura também</b>
+            <span>Ponto novo instalado já entra na rotação de quem é assinante, sem mudança de plano nem cobrança extra.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tight" style="text-align:center">
+      <div class="wrap">
+        <h2>Seu comércio pode ser o próximo</h2>
+        <p class="lead" style="margin:0 auto 28px">Tela instalada de graça, sem mensalidade — e você ainda escolhe entre ajuda de custo todo mês ou mais espaço pro seu próprio negócio.</p>
+        <a class="btn primary" href="/seja-um-ponto.html">Quero uma tela no meu comércio</a>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/formulario.js"></script>
+  <script>
+    fetch(`${API_BASE_URL}/pontos`)
+      .then((r) => r.json())
+      .then((pontos) => {
+        const grid = document.getElementById('pontosGrid');
+        const ativos = pontos.filter((p) => p.status === 'ativo').length;
+        const emConstrucao = pontos.filter((p) => p.status === 'aguardando_instalacao').length;
+        const cidades = new Set(pontos.map((p) => p.cidade)).size;
+        document.getElementById('statRow').innerHTML = `
+          <div class="stat"><b>${ativos}</b><span>Pontos ativos</span></div>
+          <div class="stat"><b>${emConstrucao}</b><span>Em instalação</span></div>
+          <div class="stat"><b>${cidades || 1}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
+        `;
+        // Soma de fluxo só aparece com 1.000+ pessoas somadas (ver
+        // GET /pontos/fluxo) — número pequeno demais não vira prova social.
+        fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMes }) => {
+          if (!pessoasPorMes) return;
+          document.getElementById('statRow').insertAdjacentHTML('afterbegin',
+            `<div class="stat"><b>${pessoasPorMes.toLocaleString('pt-BR')}</b><span>Pessoas alcançadas por mês</span></div>`);
+        }).catch(() => {});
+        if (!pontos.length) {
+          grid.innerHTML = '<p class="empty-state">Nenhum ponto ativo ainda — em breve.</p>';
+          return;
+        }
+        const STATUS_LABEL = {
+          ativo: { texto: 'Ativo', classe: 'badge-ok' },
+          aguardando_instalacao: { texto: 'Em construção', classe: 'badge-pendente' },
+          reparo: { texto: 'Em reparo', classe: 'badge-err' },
+        };
+        grid.innerHTML = pontos.map((p) => {
+          const enderecoCompleto = `${p.endereco ? p.endereco + ', ' : ''}${p.cidade}`;
+          const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
+          const st = STATUS_LABEL[p.status] || STATUS_LABEL.ativo;
+          return `
+          <div class="ponto-card">
+            <span class="badge ${st.classe}">${st.texto}</span>
+            <h4>${esc(p.nome)}</h4>
+            <p>${esc(p.cidade)}${p.endereco ? ' — ' + esc(p.endereco) : ''}</p>
+            <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
+          </div>
+        `;
+        }).join('');
+      })
+      .catch(() => {
+        document.getElementById('pontosGrid').innerHTML =
+          '<p class="empty-state">Não foi possível carregar os pontos agora.</p>';
+      });
+  </script>
+</body>
+</html>
