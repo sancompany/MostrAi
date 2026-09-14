@@ -97,7 +97,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | abas Anúncios / Meu ponto / Vendas | assinar, subir criativo, ver exibições, **baixar o comprovante de veiculação** (CSV, por período) | perfil, ponto, vendedor |
+| Painel | `/anunciante/painel.html` | conta logada | abas Anúncios / Meu ponto / Vendas | assinar, subir criativo, ver exibições, baixar o comprovante de veiculação (CSV), e **pedir a arte pelo WhatsApp** (anúncio simples incluído, ou gravação orçada à parte) | perfil, ponto, vendedor |
 | Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | telas do ponto, cota, **sinal de cada tela**, e o **extrato** do que já foi pago e do que está em aberto | definir PIN, acompanhar | — |
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
@@ -231,6 +231,28 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
 login, admin e redefinição. Reinício do servidor zera (é em memória).
 *Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
+
+**RN-22 — A peça é feita fora do site e sobe direto na conta do cliente.** Não
+existe editor de anúncio no sistema. Quem não tem arte pede pelo WhatsApp, a
+partir do painel: **anúncio simples é incluído no plano**; **gravação de vídeo é
+serviço de produtora parceira, orçada à parte**. Nos dois casos a reunião e o
+fechamento acontecem na conversa, e o resultado sobe pelo admin. Criativo que o
+operador sobe entra **já aprovado** (quem aprovaria é quem acabou de subir) e
+fica marcado em `editado_pelo_operador`, para ninguém cobrar do anunciante um
+vídeo que o Mostraí montou. *Violada:* conta inexistente responde 404; o teto de
+criativos do plano continua valendo nas contas de cliente. *Quem vê:* o
+administrador.
+
+**RN-23 — O admin pode liberar um plano de graça (cortesia).** Põe a conta no
+ar sem criar assinatura nem cobrança: o San Checkout não fica sabendo, nada é
+cobrado agora nem na renovação, e a cobertura simplesmente vence na data. A
+conta em cortesia **não trava preço** — acabada a cortesia, ela assina pelo
+valor da vitrine. O resumo do admin separa `anunciantesAtivosPagantes` de
+`anunciantesEmCortesia`, porque "5 ativos" com três liberados de graça é a
+leitura errada do número que mais importa. *Violada:* liberar cortesia por cima
+de plano pago ativo responde 409 — cancele a assinatura antes, senão a
+cobertura comprada seria apagada e pareceria um upgrade. *Quem vê:* o
+administrador, com o motivo registrado na própria linha.
 
 **RN-21 — O Mostraí tem uma conta de anunciante própria, e só uma.** Ela vive
 no admin, em "Meus anúncios": anuncia a rede nas telas da rede. Difere de uma

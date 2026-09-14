@@ -74,6 +74,22 @@
               <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
             </label>
             <p class="form-msg" id="uploadMsg"></p>
+
+            <!-- Não tem arte? Duas saídas, e as duas são conversa, não tela: a
+                 peça é feita fora do site e sobe direto na conta. O passo do
+                 criativo é onde o mercado põe essa oferta (Blip, Canva/Meta) —
+                 no momento exato em que a pessoa trava. -->
+            <div class="ajuda-arte">
+              <p><b>Não tem a arte ainda?</b></p>
+              <p>
+                <a id="linkArteSimples" href="#" target="_blank" rel="noopener">Pedir um anúncio simples</a>
+                — incluído no seu plano. A gente combina no WhatsApp, monta a peça e sobe aqui pra você.
+              </p>
+              <p>
+                <a id="linkGravacao" href="#" target="_blank" rel="noopener">Quero um vídeo gravado</a>
+                — filmagem é feita por uma produtora parceira, orçada à parte. Também pelo WhatsApp.
+              </p>
+            </div>
             <div id="listaCriativos" style="margin-top:16px">Carregando...</div>
           </div>
         </div>
@@ -93,6 +109,28 @@
     let ANUNCIANTE = null;
     let ANUNCIANTE_ID = null;
 
+    // As duas portas de quem não tem arte. Não há o que construir aqui além do
+    // caminho certo pra fora: a peça é feita fora do site, e a gravação é
+    // serviço de terceiro com preço caso a caso — as duas coisas se resolvem
+    // conversando. A mensagem já vai com o nome da empresa pra conversa não
+    // começar com "oi".
+    function montarPortasDeArte() {
+      if (!window.linkWhatsApp) return;
+      const nome = (ANUNCIANTE && ANUNCIANTE.nome_empresa) || 'anunciante';
+      const simples = document.getElementById('linkArteSimples');
+      const gravacao = document.getElementById('linkGravacao');
+      if (simples) {
+        simples.href = window.linkWhatsApp(
+          `Olá! Sou ${nome}, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.`
+        );
+      }
+      if (gravacao) {
+        gravacao.href = window.linkWhatsApp(
+          `Olá! Sou ${nome}, do Mostraí, e quero orçar a gravação de um vídeo para o meu anúncio.`
+        );
+      }
+    }
+
     async function carregar() {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
       if (r.status === 401) {
@@ -108,6 +146,7 @@
       // Popup de perfil, avatar e sair vêm de /perfil.js — a mesma tela que o
       // painel do ponto usa, em vez de duas cópias que divergem.
       montarPerfil(ANUNCIANTE, (nova) => { ANUNCIANTE = nova; preencherStatusBanner(); });
+      montarPortasDeArte();
 
       // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
       // lugar ao card de ativação. Com o papel, segue o fluxo normal.

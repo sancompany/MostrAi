@@ -75,7 +75,12 @@ router.get('/admin/resumo', async (req, res) => {
         (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas`
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
-    pool.query('SELECT status, COUNT(*)::int AS qtd FROM anunciantes WHERE excluido_em IS NULL GROUP BY status'),
+    // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
+    // "5 anunciantes ativos" com três liberados de graça — e a leitura do
+    // negócio saía errada justamente no número que mais importa.
+    pool.query(`SELECT status, plano_cortesia, COUNT(*)::int AS qtd
+                FROM anunciantes WHERE excluido_em IS NULL
+                GROUP BY status, plano_cortesia`),
     pool.query(
       `SELECT COUNT(*)::int AS qtd FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
        WHERE d.status = 'ativo' AND p.status = 'ativo'
@@ -129,7 +134,21 @@ router.get('/admin/resumo', async (req, res) => {
       telasAtivas: amortizacao.rows[0].telas,
       fluxoMensal: Number(pontosAtivos.rows[0].fluxo),
       pontosPorStatus: pontosPorStatus.rows,
-      anunciantesPorStatus: anunciantesPorStatus.rows,
+      // Mantém a forma antiga (status + qtd, somando os dois tipos) pra não
+      // quebrar quem já lê isso, e acrescenta a contagem de cortesia separada.
+      anunciantesPorStatus: Object.values(
+        anunciantesPorStatus.rows.reduce((acc, r) => {
+          acc[r.status] = acc[r.status] || { status: r.status, qtd: 0 };
+          acc[r.status].qtd += r.qtd;
+          return acc;
+        }, {})
+      ),
+      anunciantesAtivosPagantes: anunciantesPorStatus.rows
+        .filter((r) => r.status === 'ativo' && !r.plano_cortesia)
+        .reduce((soma, r) => soma + r.qtd, 0),
+      anunciantesEmCortesia: anunciantesPorStatus.rows
+        .filter((r) => r.plano_cortesia)
+        .reduce((soma, r) => soma + r.qtd, 0),
       exibicoes30d: exibicoes.rows[0].confirmadas,
       programadas30d: exibicoes.rows[0].programadas,
       novosAnunciantes30d: Number(novos.rows[0].anunciantes),

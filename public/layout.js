@@ -10,6 +10,17 @@
 //   minimo    — só o logo e, opcionalmente, data-layout-botao="Texto|/destino"
 //   nenhum    — não desenha nada (player, admin)
 // Requer /config.js antes.
+// Todo link de WhatsApp escrito no HTML carrega `data-wa` com a mensagem. O
+// href literal fica no markup pra funcionar sem JS; aqui ele é reescrito a
+// partir da constante única de `config.js`, pra que trocar de número seja uma
+// edição só. Antes o número estava à mão em 6 arquivos.
+(function ajustarWhatsApp() {
+  if (!window.linkWhatsApp) return;
+  document.querySelectorAll('a[data-wa]').forEach((a) => {
+    a.href = window.linkWhatsApp(a.dataset.wa);
+  });
+})();
+
 (function () {
   const layout = document.body.dataset.layout;
   if (!layout || layout === 'nenhum') return;
@@ -88,7 +99,7 @@
         <span><a href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a></span>
       </div>
     </footer>
-    <a class="whatsapp-fab" href="https://wa.me/5516994635946?text=Ol%C3%A1!%20Vim%20pelo%20site%20da%20Mostra%C3%AD%20e%20quero%20saber%20mais." target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+    <a class="whatsapp-fab" href="${window.linkWhatsApp('Olá! Vim pelo site da Mostraí e quero saber mais.')}" target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.48 1.32 5.03L2 22l5.25-1.38a9.88 9.88 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm5.8 14.13c-.24.68-1.4 1.32-1.93 1.4-.5.08-1.12.11-1.8-.11-.42-.13-.96-.31-1.65-.6-2.9-1.25-4.79-4.17-4.94-4.36-.14-.2-1.18-1.57-1.18-3 0-1.42.75-2.12 1.02-2.41.27-.29.58-.36.78-.36.2 0 .39 0 .56.01.18.01.42-.07.65.5.24.58.82 2 .89 2.15.07.14.11.31.02.5-.09.19-.14.31-.27.47-.14.16-.29.36-.41.48-.14.14-.28.28-.12.56.16.28.71 1.17 1.53 1.89 1.05.94 1.94 1.23 2.22 1.37.28.14.44.12.6-.07.16-.19.68-.79.87-1.06.19-.28.37-.23.62-.14.26.09 1.65.78 1.93.92.28.14.47.21.53.33.07.11.07.65-.17 1.33z"/></svg>
     </a>`);
 

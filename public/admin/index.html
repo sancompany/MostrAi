@@ -307,7 +307,7 @@
       convites: 'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
       pontos: 'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
       telas: 'Cada TV/dispositivo: chave do aparelho, PIN do painel, custo e último sinal. Uma tela = uma playlist.',
-      anunciantes: 'Todas as contas — os papéis (anunciante, ponto, vendedor) vêm do convite.',
+      anunciantes: 'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
       vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
       planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine; o plano fundador fica fora dessa conta.',
       beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
@@ -904,11 +904,14 @@
             <option value="">${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : '—'}</option>
             ${categorias.map((c) => `<option value="${c.id}" ${c.id === a.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
           </select></td>
-          <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span style="color:var(--text-dim)">sem plano</span>'}</td>
+          <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span style="color:var(--text-dim)">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
           <td>${data(a.data_expiracao)}</td>
           <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
           <td>${data(a.created_at)}</td>
-          <td>${a.excluido_em ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>` : ''}</td>
+          <td>${a.excluido_em
+            ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
+            : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
+               <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>`}</td>
         </tr>`).join('')}
       </tbody></table>`;
 
@@ -951,6 +954,35 @@
 
       // Exclusão de conta é soft-delete (migration 017): o anunciante pede,
       // o suporte desfaz aqui dentro de 60 dias zerando excluido_em.
+      // A peça é feita FORA do site (combinada no WhatsApp) e sobe direto na
+      // conta do cliente. Multipart, então não passa pelo `api()`, que manda JSON.
+      // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
+      // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
+      el.querySelectorAll('[data-liberar]').forEach((b) => b.addEventListener('click', async () => {
+        const opcoes = planos.map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`).join('\n');
+        const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
+        if (!plano_id) return;
+        const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
+        const r = await api(`/admin/anunciantes/${b.dataset.liberar}/liberar-plano`, {
+          method: 'POST', body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
+        });
+        if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
+        toast('plano liberado — a conta está no ar, sem cobrança');
+        renderAnunciantes(el);
+      }));
+      el.querySelectorAll('[data-subir]').forEach((input) => input.addEventListener('change', async () => {
+        const arquivo = input.files[0];
+        if (!arquivo) return;
+        input.disabled = true;
+        toast('enviando e normalizando o vídeo...');
+        const dados = new FormData(); dados.append('arquivo', arquivo);
+        const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${input.dataset.subir}/criativos`, {
+          method: 'POST', body: dados, credentials: 'include',
+        });
+        input.disabled = false; input.value = '';
+        if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
+        toast('anúncio no ar na conta do cliente');
+      }));
       el.querySelectorAll('[data-restaurar]').forEach((btn) => btn.addEventListener('click', async () => {
         if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
         if (await salvar(`/admin/anunciantes/${btn.dataset.restaurar}`, { excluido_em: null })) renderAnunciantes(el);

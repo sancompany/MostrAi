@@ -535,3 +535,14 @@ header.site nav.main a.modo-aba.bloqueado { opacity: .55; }
 header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size: .75em; }
 .modo-card h3 { margin: 4px 0 6px; font-size: 1.3rem; }
 .modo-card .eyebrow { margin: 0; }
+
+/* Quem não tem arte: as duas saídas são conversa, não tela. Ficam depois do
+   botão de enviar e visualmente abaixo dele — é oferta de ajuda para quem
+   travou, não a ação principal de quem já tem o vídeo pronto. */
+.ajuda-arte {
+  margin-top: 14px; padding: 12px 14px;
+  background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.ajuda-arte p { margin: 0 0 6px; font-size: .88rem; color: var(--text-dim); line-height: 1.5; }
+.ajuda-arte p:last-child { margin-bottom: 0; }
+.ajuda-arte b { color: var(--text); }

@@ -199,6 +199,45 @@ router.post('/webhook/san-checkout', (req, res) => {
 });
 
 // Admin aciona cancelamento (Vitrina → San Checkout, nunca o pagador direto)
+// Liberar plano de graça. Uma ação só, em vez de o dono editar `plano_id` e
+// `data_expiracao` à mão em dois campos e esquecer de anotar que era cortesia.
+//
+// Não cria assinatura nem cobrança: o San Checkout não fica sabendo, e por isso
+// nada é cobrado nem agora nem na renovação. A cobertura simplesmente vence na
+// data, e o dono decide se estende.
+router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
+  const { plano_id, meses, motivo } = req.body;
+  if (!plano_id) return res.status(400).json({ erro: 'escolha o plano' });
+
+  const plano = await planosRepo.buscarPorId(plano_id);
+  if (!plano) return res.status(404).json({ erro: 'plano não encontrado' });
+
+  const anunciante = await anunciantesRepo.buscarPorId(req.params.id);
+  if (!anunciante) return res.status(404).json({ erro: 'conta não encontrada' });
+
+  // Liberar de graça por cima de quem PAGA apagaria a cobertura comprada e
+  // pareceria um upgrade. Quem já paga, cancela primeiro.
+  if (anunciante.plano_id && !anunciante.plano_cortesia
+      && anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()) {
+    return res.status(409).json({ erro: 'essa conta tem plano pago ativo — cancele a assinatura antes de liberar cortesia' });
+  }
+
+  const duracao = Number(meses) > 0 ? Number(meses) : plano.compromisso_meses;
+  const atualizado = await anunciantesRepo.atualizar(anunciante.id, {
+    plano_id,
+    status: 'ativo',
+    data_inicio_cobertura: anunciante.data_inicio_cobertura || new Date(),
+    data_expiracao: new Date(Date.now() + duracao * 30 * 24 * 60 * 60 * 1000),
+    plano_cortesia: true,
+    cortesia_motivo: motivo || null,
+    // Cortesia não trava preço: quando ela acabar e a pessoa assinar, ela
+    // assina pelo valor da vitrine, não por um valor "herdado" de um plano
+    // que nunca foi pago.
+    valor_mensal_travado: null,
+  });
+  res.json(atualizado);
+});
+
 router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
   const anunciante = await anunciantesRepo.buscarPorId(req.params.id);
   if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });

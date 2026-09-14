@@ -76,7 +76,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
 verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
-**As 59 rotas estão listadas uma a uma de propósito** — contrato que só existe
+**As 60 rotas estão listadas uma a uma de propósito** — contrato que só existe
 em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
 pede.
 
@@ -107,7 +107,8 @@ pede.
 | GET | `/admin/anunciantes` | lista |
 | POST | `/admin/anunciantes` | cria conta pelo admin. Com `conta_propria: true` dispensa endereço (a rede não recebe nota de si mesma) e recusa a segunda com 409 |
 | PATCH | `/admin/anunciantes/:id` | status, papéis, dados, e `conta_propria`/`frequencia_dia_propria` |
-| POST | `/admin/anunciantes/:id/criativos` | sobe criativo **só da conta própria** — sem teto. Em conta de cliente responde 403: o admin não põe no ar vídeo que o dono da marca não mandou |
+| POST | `/admin/anunciantes/:id/criativos` | sobe a peça direto na conta do cliente, **já aprovada** e marcada em `editado_pelo_operador`. A peça é feita fora do site. Teto: o do plano na conta de cliente, nenhum na conta própria |
+| POST | `/admin/anunciantes/:id/liberar-plano` | `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo |
 | POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. **Único caminho de cancelamento** — o pagador nunca cancela sozinho |
 
 ### Pontos e telas

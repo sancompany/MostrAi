@@ -240,7 +240,7 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // quem autoriza e qual é o teto — então a rotina mora aqui uma vez, e as duas
 // rotas abaixo a chamam. Duplicar isso significaria manter dois lugares que
 // lidam com ffmpeg, arquivo temporário e limpeza de /tmp.
-async function subirCriativo(req, res, { contaId, limite }) {
+async function subirCriativo(req, res, { contaId, limite, peloOperador = false }) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
@@ -263,7 +263,13 @@ async function subirCriativo(req, res, { contaId, limite }) {
 
     try {
       const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id);
-      const criativo = await criativosRepo.atualizar(criativoTemp.id, normalizado);
+      // Peça que o operador subiu já entra aprovada: quem aprovaria é quem
+      // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
+      // sem decisão nenhuma por trás.
+      const criativo = await criativosRepo.atualizar(criativoTemp.id, {
+        ...normalizado,
+        ...(peloOperador ? { editado_pelo_operador: true, status: 'aprovado' } : {}),
+      });
       res.status(201).json(criativo);
     } catch (err) {
       // Se o ffmpeg falhar (arquivo corrompido, vídeo mais curto que 1s), a
@@ -292,16 +298,32 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   });
 });
 
-// Admin subindo criativo da CONTA PRÓPRIA do Mostraí. Sem teto: o inventário
-// é da casa. Só a conta própria — o admin não sobe criativo em nome de
-// cliente, que seria pôr no ar um vídeo que o dono da marca não mandou.
+// Admin subindo criativo na conta de um anunciante.
+//
+// É o caminho normal do Mostraí, não uma exceção: a peça é feita FORA do site
+// — por quem o dono combinar, na reunião de WhatsApp — e depois entra direto
+// na conta do cliente. O anunciante também pode subir a dele, e os dois
+// caminhos convivem.
+//
+// A conta própria do Mostraí não tem teto (o inventário é da casa); nas contas
+// de cliente vale o limite do plano, senão o teto vendido deixaria de valer
+// justamente quando é o operador que sobe.
+//
+// `editado_pelo_operador` marca a origem. A coluna já existia desde a
+// migration 003 — é o registro de que aquela peça não veio do anunciante, e
+// serve pra ninguém cobrar dele um vídeo que o Mostraí montou.
 router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async (req, res) => {
   const conta = await repo.buscarPorId(req.params.id);
-  if (!conta || !conta.conta_propria) {
+  if (!conta) {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(403).json({ erro: 'o admin só sobe criativo da conta própria do Mostraí' });
+    return res.status(404).json({ erro: 'conta não encontrada' });
   }
-  return subirCriativo(req, res, { contaId: conta.id, limite: Infinity });
+  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  return subirCriativo(req, res, {
+    contaId: conta.id,
+    limite: conta.conta_propria ? Infinity : (plano ? plano.limite_criativos : 1),
+    peloOperador: true,
+  });
 });
 
 router.get('/anunciantes/:id/criativos', exigirAnuncianteLogado, async (req, res) => {

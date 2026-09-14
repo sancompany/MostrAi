@@ -32,6 +32,19 @@ window.esc = function esc(v) {
   return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ESCAPES_HTML[c]);
 };
 
+// WhatsApp do Mostraí, num lugar só. Estava escrito à mão em 6 arquivos: mudar
+// de número significava caçar string, e a mensagem pré-preenchida já tinha
+// divergido entre as páginas. O formato é o oficial (wa.me): país + DDD +
+// número, só dígitos — `+`, zeros e parênteses quebram no WhatsApp Web.
+window.WHATSAPP = '5516994635946';
+
+// Monta o link com a mensagem pronta. Mensagem por página é recomendação da
+// referência de mercado: a conversa começa sabendo de onde a pessoa veio, em
+// vez de um "oi" solto que o dono precisa decifrar.
+window.linkWhatsApp = function linkWhatsApp(mensagem) {
+  return `https://wa.me/${window.WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
+};
+
 window.fmtBRL = function fmtBRL(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
