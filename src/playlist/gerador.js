@@ -6,27 +6,50 @@ const { calcularPlaylist, contarPorAnunciante, dividirCota } = require('../lib/p
 // funcionamento e a cota de autoanúncio do dono, dividida entre as telas
 // daquele ponto.
 
+// Quantos criativos da conta entram na rotação.
+//
+// Conta própria não tem teto: o inventário é da casa, e limitar a si mesmo não
+// protege ninguém. Quem paga plano fica no que o plano vende, e nunca acima de
+// 3 — o teto duro existe porque `limite_criativos` é editável no admin e um
+// zero a mais ali encheria a playlist de uma conta só.
+function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
+  if (contaPropria) return disponiveis;
+  return Math.min(3, Math.max(1, Number(limitePlano) || 1));
+}
+
 // Todo plano cobre 100% da rede nesta fase. "Elegível pra esta tela" é:
 // conta ativa + criativo aprovado + dentro da validade + não ser do mesmo
 // ramo do comércio onde a tela está.
+//
+// O LEFT JOIN em `planos` existe por causa da CONTA PRÓPRIA do Mostraí
+// (migration 023), que anuncia a rede sem assinar plano. O guarda no WHERE é
+// o que impede o efeito colateral óbvio de trocar JOIN por LEFT JOIN: conta
+// ativa e sem plano nenhum entrando na playlist de graça. Ou tem plano, ou é
+// própria com frequência definida — não existe terceiro caso.
 async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
   const { rows } = await pool.query(`
-    SELECT a.id, p.frequencia_dia, p.limite_criativos,
+    SELECT a.id, a.conta_propria,
+           COALESCE(p.frequencia_dia, a.frequencia_dia_propria) AS frequencia_dia,
+           p.limite_criativos,
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes
     FROM anunciantes a
-    JOIN planos p ON p.id = a.plano_id
+    LEFT JOIN planos p ON p.id = a.plano_id
     JOIN criativos c ON c.anunciante_id = a.id AND c.status = 'aprovado'
     WHERE a.status = 'ativo'
       AND a.excluido_em IS NULL
+      AND (
+        (a.conta_propria AND COALESCE(a.frequencia_dia_propria, 0) > 0)
+        OR (NOT a.conta_propria AND p.id IS NOT NULL)
+      )
       AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
-    GROUP BY a.id, p.frequencia_dia, p.limite_criativos
+    GROUP BY a.id, a.conta_propria, p.frequencia_dia, a.frequencia_dia_propria, p.limite_criativos
   `, [categoriaDoPonto || null, excluirContaId || null]);
 
   return rows.map((r) => {
-    const limite = Math.min(3, Math.max(1, Number(r.limite_criativos) || 1));
+    const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
     return { ...r, criativos: r.urls.slice(0, limite).map((url, i) => ({ url, duracaoSegundos: r.duracoes[i] })) };
   });
 }
@@ -137,4 +160,4 @@ async function confirmarExibicao(dispositivoId, anuncianteId, hora) {
   return rowCount > 0;
 }
 
-module.exports = { gerarPlaylistDaHora, confirmarExibicao, horasAbertoPorDia };
+module.exports = { gerarPlaylistDaHora, confirmarExibicao, horasAbertoPorDia, limiteDeCriativos };

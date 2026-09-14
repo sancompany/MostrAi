@@ -280,6 +280,7 @@
       ] },
       { grupo: 'Operação', itens: [
         { id: 'criativos', nome: 'Fila de criativos', fila: 'criativos' },
+        { id: 'meusanuncios', nome: 'Meus anúncios' },
         { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
         { id: 'telas', nome: 'Telas', fila: 'offline' },
         { id: 'anunciantes', nome: 'Anunciantes', fila: 'anunciantes' },
@@ -316,6 +317,7 @@
       comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
       custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
       eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
+      meusanuncios: 'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
     };
 
     let RESUMO = null;
@@ -358,6 +360,7 @@
         anunciantes: renderAnunciantes, vendedores: renderVendedores, planos: renderPlanos,
         beneficios: renderBeneficios, categorias: renderCategorias, comodato: renderComodato,
         cobrancas: renderCobrancas, comissoes: renderComissoes, custos: renderCustos, eventos: renderEventos,
+        meusanuncios: renderMeusAnuncios,
       };
       try {
         await telas[alvo](el);
@@ -539,6 +542,127 @@
           pintarContadores();
           renderCriativos(el, status);
         }
+      }));
+    }
+
+    // ---------- meus anúncios (conta própria do Mostraí) ----------
+    // A rede anunciando a si mesma. É uma conta comum em `anunciantes` com a
+    // marca `conta_propria` (migration 023): entra na mesma playlist e gera os
+    // mesmos contadores, mas dispensa plano e nunca gera cobrança — por isso
+    // não aparece na receita nem na margem. Só pode existir uma; o índice
+    // único do banco garante isso mesmo com dois cliques.
+    async function renderMeusAnuncios(el) {
+      const contas = await pegar('/admin/anunciantes');
+      const conta = contas.find((c) => c.conta_propria);
+
+      if (!conta) {
+        el.innerHTML = `
+          <div class="tabela-caixa">
+            <div class="tabela-topo"><b>Nenhuma conta própria ainda</b></div>
+            <div style="padding:14px">
+              <p class="sub" style="margin-top:0">Crie a conta do Mostraí para anunciar a própria rede nas telas. Ela não assina plano, não é cobrada e não entra na receita.</p>
+              <form id="formContaPropria" class="card" style="max-width:420px">
+                <label for="cpNome">Nome que aparece</label>
+                <input id="cpNome" value="Mostraí" required>
+                <label for="cpDoc">CNPJ do Mostraí</label>
+                <input id="cpDoc" placeholder="00.000.000/0000-00" required>
+                <label for="cpFreq">Vezes por dia, por tela</label>
+                <input id="cpFreq" type="number" min="1" max="240" value="12" required>
+                <button class="btn primary" type="submit">Criar conta própria</button>
+              </form>
+            </div>
+          </div>`;
+        document.getElementById('formContaPropria').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const r = await api('/admin/anunciantes', { method: 'POST', body: JSON.stringify({
+            nome_empresa: document.getElementById('cpNome').value,
+            cpf_cnpj: document.getElementById('cpDoc').value,
+            contato_email: 'rede+propria@mostrai.local',
+            contato_telefone: '+5516000000000', status: 'ativo',
+            conta_propria: true, frequencia_dia_propria: Number(document.getElementById('cpFreq').value),
+          }) });
+          if (!r.ok) return toast((await r.json()).erro || 'não deu pra criar', 'err');
+          toast('conta própria criada'); renderMeusAnuncios(el);
+        });
+        return;
+      }
+
+      const criativos = await pegar(`/admin/criativos`);
+      const meus = criativos.filter((c) => c.anunciante_id === conta.id);
+      const aprovados = meus.filter((c) => c.status === 'aprovado').length;
+
+      el.innerHTML = `
+        <div class="tabela-caixa">
+          <div class="tabela-topo">
+            <b>${esc(conta.nome_empresa)}</b>
+            <span class="sub" style="margin:0">${aprovados} no ar · ${meus.length} no total · sem teto de criativos</span>
+          </div>
+          <div style="padding:14px">
+            <form id="formFreq" class="card" style="max-width:420px;margin-bottom:14px">
+              <label for="cpFreq2">Vezes por dia, por tela</label>
+              <input id="cpFreq2" type="number" min="1" max="240" value="${conta.frequencia_dia_propria || 12}">
+              <label for="cpStatus">Situação</label>
+              <select id="cpStatus">
+                <option value="ativo"${conta.status === 'ativo' ? ' selected' : ''}>No ar</option>
+                <option value="suspenso"${conta.status === 'suspenso' ? ' selected' : ''}>Pausada</option>
+              </select>
+              <button class="btn ghost" type="submit">Salvar</button>
+            </form>
+
+            <form id="formSubir" class="card" style="max-width:420px">
+              <label for="cpArquivo">Novo anúncio (vídeo ou imagem)</label>
+              <input id="cpArquivo" type="file" accept="video/*,image/*" required>
+              <button class="btn primary" type="submit">Subir</button>
+            </form>
+            <p class="sub" id="cpMsg" style="margin:8px 0 0"></p>
+          </div>
+        </div>
+
+        <div class="tabela-caixa">
+          <table>
+            <thead><tr><th>Anúncio</th><th>Duração</th><th>Situação</th><th></th></tr></thead>
+            <tbody>${meus.map((c) => `
+              <tr>
+                <td>${esc(c.arquivo_original_url || '—')}</td>
+                <td>${c.duracao_segundos ? c.duracao_segundos + 's' : '—'}</td>
+                <td>${c.status === 'aprovado' ? 'No ar' : esc(c.status)}</td>
+                <td>${c.status === 'aprovado'
+                  ? `<button class="btn ghost mini" data-tirar="${c.id}">Tirar do ar</button>`
+                  : `<button class="btn ghost mini" data-por="${c.id}">Pôr no ar</button>`}</td>
+              </tr>`).join('') || '<tr><td colspan="4">Nenhum anúncio ainda.</td></tr>'}</tbody>
+          </table>
+        </div>`;
+
+      document.getElementById('formFreq').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const r = await api(`/admin/anunciantes/${conta.id}`, { method: 'PATCH', body: JSON.stringify({
+          frequencia_dia_propria: Number(document.getElementById('cpFreq2').value),
+          status: document.getElementById('cpStatus').value,
+        }) });
+        toast(r.ok ? 'salvo' : 'não deu pra salvar', r.ok ? 'ok' : 'err');
+      });
+
+      // Upload vai em multipart, então não passa pelo `api()`, que manda JSON.
+      document.getElementById('formSubir').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const arquivo = document.getElementById('cpArquivo').files[0];
+        if (!arquivo) return;
+        const msg = document.getElementById('cpMsg');
+        msg.textContent = 'Enviando e normalizando o vídeo... isso leva alguns segundos.';
+        const dados = new FormData(); dados.append('arquivo', arquivo);
+        const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${conta.id}/criativos`, {
+          method: 'POST', body: dados, credentials: 'include',
+        });
+        if (!r.ok) { msg.textContent = ''; return toast((await r.json()).erro || 'falhou', 'err'); }
+        toast('anúncio enviado'); renderMeusAnuncios(el);
+      });
+
+      el.querySelectorAll('[data-tirar],[data-por]').forEach((b) => b.addEventListener('click', async () => {
+        const id = b.dataset.tirar || b.dataset.por;
+        const status = b.dataset.tirar ? 'reprovado' : 'aprovado';
+        const r = await api(`/admin/criativos/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+        if (!r.ok) return toast('não deu pra mudar', 'err');
+        renderMeusAnuncios(el);
       }));
     }
 

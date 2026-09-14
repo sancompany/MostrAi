@@ -235,28 +235,26 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // Upload de criativo — autenticado como o próprio anunciante. Dispara a
 // normalização (ffmpeg) na hora; se o ffmpeg falhar, o upload falha (não fica
 // registro de criativo quebrado no banco).
-router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single('arquivo'), async (req, res) => {
+// Subir criativo é o mesmo trabalho pedido de dois lugares: pelo anunciante,
+// na conta dele, e pelo admin, na conta própria do Mostraí. A diferença é só
+// quem autoriza e qual é o teto — então a rotina mora aqui uma vez, e as duas
+// rotas abaixo a chamam. Duplicar isso significaria manter dois lugares que
+// lidam com ffmpeg, arquivo temporário e limpeza de /tmp.
+async function subirCriativo(req, res, { contaId, limite }) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
   // até 200 MB de lixo em /tmp por request recusada.
   try {
-    if (Number(req.params.id) !== req.session.anuncianteId) {
-      return res.status(403).json({ erro: 'só pode subir criativo pra própria conta' });
-    }
-
-    // Limite de criativos simultâneos vem do plano (ver migration 014) — sem
-    // plano ainda, libera 1 só pra não travar quem está no meio do cadastro.
-    const anunciante = await repo.buscarPorId(req.session.anuncianteId);
-    const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
-    const limite = plano ? plano.limite_criativos : 1;
-    const emUso = await criativosRepo.contarNaoReprovados(req.session.anuncianteId);
-    if (emUso >= limite) {
-      return res.status(400).json({ erro: `seu plano permite até ${limite} criativo(s) ativo(s) — exclua um pra subir outro` });
+    if (Number.isFinite(limite)) {
+      const emUso = await criativosRepo.contarNaoReprovados(contaId);
+      if (emUso >= limite) {
+        return res.status(400).json({ erro: `seu plano permite até ${limite} criativo(s) ativo(s) — exclua um pra subir outro` });
+      }
     }
 
     const criativoTemp = await criativosRepo.criar({
-      anunciante_id: req.session.anuncianteId,
+      anunciante_id: contaId,
       arquivo_original_url: req.file.originalname,
       arquivo_normalizado_url: null,
       thumbnail_url: null,
@@ -277,6 +275,33 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   } finally {
     fs.unlink(req.file.path, () => {});
   }
+}
+
+router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single('arquivo'), async (req, res) => {
+  if (Number(req.params.id) !== req.session.anuncianteId) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ erro: 'só pode subir criativo pra própria conta' });
+  }
+  // Limite de criativos simultâneos vem do plano (ver migration 014) — sem
+  // plano ainda, libera 1 só pra não travar quem está no meio do cadastro.
+  const anunciante = await repo.buscarPorId(req.session.anuncianteId);
+  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  return subirCriativo(req, res, {
+    contaId: req.session.anuncianteId,
+    limite: plano ? plano.limite_criativos : 1,
+  });
+});
+
+// Admin subindo criativo da CONTA PRÓPRIA do Mostraí. Sem teto: o inventário
+// é da casa. Só a conta própria — o admin não sobe criativo em nome de
+// cliente, que seria pôr no ar um vídeo que o dono da marca não mandou.
+router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async (req, res) => {
+  const conta = await repo.buscarPorId(req.params.id);
+  if (!conta || !conta.conta_propria) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(403).json({ erro: 'o admin só sobe criativo da conta própria do Mostraí' });
+  }
+  return subirCriativo(req, res, { contaId: conta.id, limite: Infinity });
 });
 
 router.get('/anunciantes/:id/criativos', exigirAnuncianteLogado, async (req, res) => {
@@ -416,10 +441,16 @@ router.post('/admin/anunciantes', async (req, res) => {
     contato_email, contato_telefone,
   } = req.body;
 
-  if (!nome_empresa || !cpf_cnpj || !endereco || !cidade || !uf || !cep
-    || !contato_email || !contato_telefone) {
+  // Endereço é exigido de quem vai receber nota — a CONTA PRÓPRIA do Mostraí
+  // não recebe nota nenhuma: ela é a própria rede anunciando. Pedir endereço
+  // dela só produziria endereço de mentira no cadastro.
+  const ehPropria = req.body.conta_propria === true;
+  if (!nome_empresa || !cpf_cnpj || !contato_email || !contato_telefone
+    || (!ehPropria && (!endereco || !cidade || !uf || !cep))) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
+  const docInvalido = validarCpfOuCnpj(cpf_cnpj);
+  if (docInvalido) return res.status(400).json({ erro: docInvalido, campo: 'cpf_cnpj' });
   // Senha informada precisa seguir a regra; sem senha, gera uma forte.
   const senhaFraca = req.body.senha ? conferirSenha(req.body.senha) : null;
   if (senhaFraca) return res.status(400).json({ erro: senhaFraca });
@@ -427,8 +458,28 @@ router.post('/admin/anunciantes', async (req, res) => {
   const existente = await repo.buscarPorEmailComSenha(contato_email);
   if (existente) return res.status(409).json({ erro: 'e-mail já cadastrado' });
 
+  // Conferir ANTES de criar. O índice único do banco recusaria a segunda
+  // conta própria de qualquer jeito, mas a essa altura a conta já teria sido
+  // inserida e sobraria uma linha órfã sem a marca — meio criada, que é pior
+  // que não criada. O índice segue sendo a última linha de defesa.
+  if (ehPropria && await repo.existeContaPropria()) {
+    return res.status(409).json({ erro: 'já existe uma conta própria do Mostraí — edite a que existe em "Meus anúncios"' });
+  }
+
   const senhaGerada = req.body.senha || `${require('crypto').randomBytes(9).toString('base64url')}A1@`;
-  const anunciante = await repo.criar({ ...req.body, senha: senhaGerada });
+  let anunciante = await repo.criar({ ...req.body, senha: senhaGerada });
+
+  // `conta_propria` dá anúncio ilimitado e de graça na rede inteira, então ela
+  // NÃO entra no INSERT do repository: assim nenhum caminho de cadastro —
+  // público, por convite ou por bônus — consegue marcá-la, nem por engano nem
+  // por corpo forjado. Só este ponto, atrás da sessão de admin, e passando
+  // pela allowlist de `atualizar`.
+  if (ehPropria) {
+    anunciante = await repo.atualizar(anunciante.id, {
+      conta_propria: true,
+      frequencia_dia_propria: Number(req.body.frequencia_dia_propria) || 12,
+    });
+  }
   res.status(201).json({ ...anunciante, senhaGerada });
 });
 

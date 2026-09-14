@@ -102,7 +102,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | `/player.html?tela=ID` | a TV, com chave | o vídeo da vez | tocar; 5 toques abrem o painel por PIN | — |
-| Admin | `/admin/` | administrador | tudo: resumo, contas, candidaturas, convites, pontos, telas, planos, benefícios, cobranças, comissões, vendedores, custos fixos, eventos pendentes | operar a rede inteira | — |
+| Admin | `/admin/` | administrador | tudo: resumo, contas, candidaturas, convites, pontos, telas, planos, benefícios, cobranças, comissões, vendedores, custos fixos, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí) | operar a rede inteira | — |
 | Termos de uso | `/termos-de-uso.html` | público | o contrato | ler | — |
 | Política de privacidade | `/politica-de-privacidade.html` | público | uso de dados | ler | — |
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
@@ -231,6 +231,17 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 **RN-16 — Limite de 10 tentativas por 15 minutos, por IP e rota.** Vale para
 login, admin e redefinição. Reinício do servidor zera (é em memória).
 *Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
+
+**RN-21 — O Mostraí tem uma conta de anunciante própria, e só uma.** Ela vive
+no admin, em "Meus anúncios": anuncia a rede nas telas da rede. Difere de uma
+conta comum em três pontos e só neles — não assina plano (a frequência vem de
+`frequencia_dia_propria`), não tem teto de criativos, e nunca gera cobrança,
+então não entra na receita nem na margem. Difere também da cota de autoanúncio
+do ponto, que só roda nas telas daquele comércio: a conta própria roda na rede
+inteira. *Violada:* tentar criar a segunda recebe 409 antes de qualquer
+inserção, e o índice único do banco é a última defesa. Conta comum **não pode**
+se marcar como própria — a marca não existe no caminho de cadastro, só na
+rota do admin. *Quem vê:* o administrador.
 
 **RN-18 — O anunciante é avisado quando o vídeo entra no ar.** Na transição do
 criativo para `aprovado` — e só na transição —, sai um e-mail dizendo que ele

@@ -108,7 +108,12 @@ app.use(require('./conta/modos').router);
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador
 // manda `Accept: text/html` e merece uma tela; `fetch` do painel espera JSON e
 // quebraria recebendo HTML.
-const querHtml = (req) => req.accepts(['html', 'json']) === 'html';
+//
+// A checagem é pelo cabeçalho CRU, não por `req.accepts`: com `Accept: */*` —
+// que é o que curl e `fetch` sem header mandam — o `accepts` devolve o
+// primeiro tipo oferecido, ou seja 'html', e todo cliente de API receberia uma
+// página. Página só para quem pediu `text/html` com todas as letras.
+const querHtml = (req) => String(req.headers.accept || '').includes('text/html');
 const paginaDeErro = (arquivo) => path.join(__dirname, '..', 'public', arquivo);
 
 // 404 — rota que não existe. Sem isto, endereço errado morria no handler
@@ -126,6 +131,12 @@ app.use((err, req, res, next) => {
   // nosso — 400 em vez de 500 (e sem poluir o log com stack trace).
   if (err.type === 'entity.parse.failed') return res.status(400).json({ erro: 'JSON inválido' });
   if (err.type === 'entity.too.large') return res.status(413).json({ erro: 'corpo grande demais' });
+  // Arquivo recusado pelo filtro do multer é escolha do cliente, não falha
+  // nossa: 400 com a mensagem do filtro, em vez de 500 genérico.
+  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ erro: 'arquivo grande demais' });
+  if (err.storageErrors || /tipo de arquivo/i.test(err.message || '')) {
+    return res.status(400).json({ erro: err.message || 'arquivo não aceito' });
+  }
   console.error(err);
   // A 500.html não depende de nada da aplicação — é justamente quando ela
   // falhou que a página precisa abrir.
