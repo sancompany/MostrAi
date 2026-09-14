@@ -1,15 +1,17 @@
-# Mostraí — pendências (atualizado 14/09/2026, após o fecho da Estação 1)
+# Mostraí — pendências (atualizado 14/09/2026, após o fecho da Estação 2)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
 `github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`),
 repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
 o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
 
-**A Estação 1 (Escopo) fechou em 14/09/2026** — a spec foi validada pelo dono e
-o escopo passou de sete para nove itens. O registro está em
-`docs/specs/2026-09-12-mostrai.md`, seção "Validação do dono". A esteira está na
-Estação 2 (Fronteiras), que entra como auditoria do que a Fase 2 da spec já
-decidiu.
+**Estações 1 (Escopo) e 2 (Fronteiras) fechadas em 14/09/2026.** A spec foi
+validada pelo dono (escopo de sete para nove itens), e a auditoria de
+fronteiras confirmou a classificação (projeto, não estrutura) e a hospedagem
+já decidida na Fase 2 — nada mudou. Registro em
+`docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Estação 2 —
+Fronteiras". A esteira está na Estação 3 (Fundação, Sonnet médio) — ainda não
+aberta.
 
 **Próximo passo real: a seção A.0.1**, que precisa do PC — alinhar a pasta
 local e rotacionar as chaves. Só depois disso vale seguir para A.3 em diante

@@ -18,16 +18,19 @@ documento · Vida útil: anos → **rigor no topo da escala**. Nenhuma lei
 dispensada por proporcionalidade.
 
 ## Estado na esteira
-Estação atual: **2 — Fronteiras**, aberta em 14/09/2026.
+Estação atual: **3 — Fundação**, não aberta ainda — Estação 2 fechou nesta data.
 Fechadas:
-- 1 Escopo — validada, **reaberta e refechada em 14/09/2026** quando o contrato
-  do San Checkout foi lido pela primeira vez · evidência:
+- 1 Escopo — validada, reaberta e refechada em 14/09/2026 quando o contrato do
+  San Checkout foi lido pela primeira vez · evidência:
   `docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Reabertura e
   novo fecho da Estação 1"
-Falta para fechar a atual: confirmar a classificação da skill `classificar` e
-registrar as capacidades consumidas do ecossistema — boa parte já está escrita
-na Fase 2 da spec; a Estação 2 entra como auditoria do que já foi decidido.
-Próxima estação: 3 — Fundação, pede Sonnet com esforço médio.
+- 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura —
+  os quatro testes) e a hospedagem da Fase 2 (Northflank + Supabase próprio,
+  mesma região; Cloudflare Access pendente, exceção registrada); nada mudou ·
+  evidência: `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
+Próxima estação: 3 — Fundação, pede Sonnet com esforço médio (repositório e
+árvore já existem; falta confirmar CI verde num push real e criar o
+`RUNBOOK.md`).
 
 ## Mapa de caminhos
 - Entrada da aplicação: `src/server.js` · rotas e regras: `src/<domínio>/`
