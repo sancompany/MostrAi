@@ -9,6 +9,8 @@ const ffmpeg = require('../lib/ffmpeg');
 const pool = require('../db/pool');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
+const { validarCpfOuCnpj } = require('../br/documento');
+const { cepValido, telefoneE164 } = require('../br/formato');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
@@ -75,6 +77,20 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   if (papeis.includes('vendedor') && !chave_pix) {
     return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
   }
+  // O documento vai daqui pro San Checkout e de lá pra Asaas como documento do
+  // pagador. Documento inválido só quebra na hora de cobrar — depois que a
+  // pessoa já foi embora. Conferir aqui é o único momento barato.
+  const docInvalido = validarCpfOuCnpj(cpf_cnpj);
+  if (docInvalido) return res.status(400).json({ erro: docInvalido, campo: 'cpf_cnpj' });
+  if (responsavel_cpf && validarCpfOuCnpj(responsavel_cpf)) {
+    return res.status(400).json({ erro: 'CPF do responsável inválido — confira os números.', campo: 'responsavel_cpf' });
+  }
+  if (ehAnunciante && !cepValido(cep)) {
+    return res.status(400).json({ erro: 'CEP inválido — use 8 dígitos.', campo: 'cep' });
+  }
+  const telefone = telefoneE164(contato_telefone);
+  if (!telefone) return res.status(400).json({ erro: 'Telefone inválido — informe DDD e número.', campo: 'contato_telefone' });
+
   const senhaFraca = conferirSenha(senha);
   if (senhaFraca) return res.status(400).json({ erro: senhaFraca });
 
@@ -82,7 +98,7 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   if (existente) return res.status(409).json({ erro: 'e-mail já cadastrado' });
 
   const dadosConta = {
-    nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone, senha,
+    nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone: telefone, senha,
     indicado_por_cupom, responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone,
     categoria_id: req.body.categoria_id, categoria_livre: req.body.categoria_livre,
     papeis,

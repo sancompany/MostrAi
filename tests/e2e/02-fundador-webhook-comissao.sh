@@ -47,7 +47,7 @@ ASS2=$($PG -c "select count(*) from assinaturas where anunciante_id=$ANA and sta
 esperar "clique duplo não duplica assinatura" '^1$' "$ASS2"
 
 echo "== vagas esgotam =="
-r=$(curl -s -c beto.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"Beto Lanches","cpf_cnpj":"333","endereco":"R","cidade":"Matão","uf":"SP","cep":"1","contato_email":"beto@x.com","contato_telefone":"16","senha":"Senha12@","aceitou_termos":true}')
+r=$(curl -s -c beto.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"Beto Lanches","cpf_cnpj":"12.ABC.345/01DE-35","endereco":"R","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"beto@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true}')
 BETO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b beto.txt -X POST $B/anunciantes/$BETO/assinar -H "$J" -d '{"planoId":"fundador-12m"}')
 esperar "segunda conta não entra: vagas acabaram" 'vagas desse plano acabaram' "$r"
@@ -74,7 +74,7 @@ echo "== webhook: primeira cobrança paga (evento criada) =="
 # Desde a migration 021 não existe mínimo de telas nem cobertura adiada: quem
 # pagou fica ativo na hora, e a cobertura é `compromisso_meses` cheio a partir
 # do pagamento. Benefício comercial se dá no preço, nunca no tempo.
-r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
+r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
 st=$($PG -c "select status||'|'||coalesce(valor_mensal_travado::text,'')||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
 esperar "conta fica ativa na primeira cobrança" '^ativo\|' "$st"
@@ -86,19 +86,19 @@ com=$($PG -c "select count(*)||'|'||comissao_valor from comissoes where anuncian
 esperar "comissão do vendedor gerada (12% de 1788 = 214.56)" '^1\|214.56' "$com"
 
 echo "== webhook: reentrega idêntica não duplica =="
-enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "só 1 cobrança" '^1$' "$cob"
 com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA"); esperar "só 1 comissão" '^1$' "$com"
 exp1=$($PG -c "select data_expiracao::date from anunciantes where id=$ANA")
 
 echo "== renovação (cobranca_confirmada) estende a cobertura =="
-enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_confirmada\",\"eventoId\":\"ev-2\"}" >/dev/null; sleep 1
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"cobranca_confirmada\",\"eventoId\":\"ev-2\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "renovação é uma 2ª cobrança" '^2$' "$cob"
 exp2=$($PG -c "select data_expiracao::date from anunciantes where id=$ANA")
 if [ "$exp2" \> "$exp1" ]; then ok "renovação empurrou a data de expiração"; else falha "renovação empurrou a data de expiração" "$exp1 -> $exp2"; fi
 
 echo "== evento sem ação automática vira pendência, não derruba conta =="
-enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_falhou\",\"eventoId\":\"ev-3\"}" >/dev/null; sleep 1
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"cobranca_falhou\",\"eventoId\":\"ev-3\"}" >/dev/null; sleep 1
 st=$($PG -c "select status from anunciantes where id=$ANA"); esperar "conta segue ativa depois de cobranca_falhou" '^ativo$' "$st"
 pend=$($PG -c "select count(*) from eventos_assinatura_pendentes"); esperar "cobranca_falhou virou pendência pro admin" '^[1-9]' "$pend"
 

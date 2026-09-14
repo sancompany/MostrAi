@@ -28,9 +28,9 @@ r=$(curl -s $B/convites/$TOK); esperar "convite público diz os papéis" '"papei
 r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "candidatura virou aprovada" '"status":"aprovada"' "$r"
 
 echo "== cadastro por convite (sem endereço comercial, com pix) =="
-r=$(curl -s -c joao.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"João\",\"cpf_cnpj\":\"111\",\"contato_email\":\"joao@x.com\",\"contato_telefone\":\"16\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"chave_pix\":\"joao@pix\"}")
+r=$(curl -s -c joao.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"João\",\"cpf_cnpj\":\"111.444.777-35\",\"contato_email\":\"joao@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"chave_pix\":\"joao@pix\"}")
 esperar "conta criada com papéis do convite" '"papeis":\["ponto","vendedor"\]' "$r"; JOAO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
-r=$(curl -s -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"X\",\"cpf_cnpj\":\"1\",\"contato_email\":\"outro@x.com\",\"contato_telefone\":\"1\",\"senha\":\"Senha12@\",\"aceitou_termos\":true}")
+r=$(curl -s -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"X\",\"cpf_cnpj\":\"111.444.777-35\",\"contato_email\":\"outro@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true}")
 esperar "convite é de uso único" 'usado|inválido' "$r"
 r=$(curl -s -b joao.txt $B/anunciantes/me); esperar "me traz perfil de vendedor com cupom" '"codigo_cupom":"' "$r"
 CUPOM=$(echo $r | sed 's/.*"codigo_cupom":"\([^"]*\)".*/\1/')
@@ -58,7 +58,7 @@ r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d
 r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"1234"}'); esperar "PIN certo abre painel da tela" 'porAnunciante' "$r"
 
 echo "== anunciante: cadastro aberto, plano fundador, vagas =="
-r=$(curl -s -c ana.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"nome_empresa\":\"Padaria Ana\",\"cpf_cnpj\":\"222\",\"endereco\":\"R\",\"cidade\":\"Matão\",\"uf\":\"SP\",\"cep\":\"1\",\"contato_email\":\"ana@x.com\",\"contato_telefone\":\"16\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"indicado_por_cupom\":\"$CUPOM\"}")
+r=$(curl -s -c ana.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"nome_empresa\":\"Padaria Ana\",\"cpf_cnpj\":\"11.222.333/0001-81\",\"endereco\":\"R\",\"cidade\":\"Matão\",\"uf\":\"SP\",\"cep\":\"15990-000\",\"contato_email\":\"ana@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"indicado_por_cupom\":\"$CUPOM\"}")
 esperar "anunciante cadastro aberto, papel anunciante" '"papeis":\["anunciante"\]' "$r"; ANA=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"fundador-12m"}'); esperar "fundador desligado recusa" 'inválido|não está aberto' "$r"
 curl -s -b adm.txt -X PATCH $B/admin/planos/fundador-12m -H "$J" -d '{"ativo":true,"vagas":1}' >/dev/null

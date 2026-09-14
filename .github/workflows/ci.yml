@@ -31,12 +31,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: sintaxe de todo .js
-        run: for f in $(git ls-files 'src/**/*.js' 'public/**/*.js' 'tests/*.js'); do node --check "$f"; done
       - name: migrations num banco limpo
         run: npm run migrate
-      - name: testes unitários
-        run: npm test
+      # Mesmo comando que roda na máquina de quem desenvolve. CI e local
+      # divergirem é como um `console.log` esquecido passa pelo verde.
+      - name: sintaxe e testes (npm run check)
+        run: npm run check
       - name: segredo no repositório? (falha se achar .env versionado)
         run: |
           if git ls-files | grep -E '^\.env($|\.)' | grep -v '\.env\.example$'; then

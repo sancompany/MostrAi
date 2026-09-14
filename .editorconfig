@@ -1,0 +1,18 @@
+# Mantém indentação e fim de linha iguais em qualquer editor. Sem isto, um
+# commit feito no Windows troca a linha inteira de todo arquivo tocado e o
+# diff deixa de mostrar o que mudou de verdade.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.sql]
+indent_size = 2

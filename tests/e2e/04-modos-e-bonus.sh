@@ -20,7 +20,7 @@ curl -s -c adm.txt -X POST $B/admin/login -H "$J" -d '{"usuario":"admin","senha"
 echo "== conta nasce só vendedor (convite) =="
 r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["vendedor"],"nome_sugerido":"Lia"}')
 TOK=$(echo $r | sed 's/.*"token":"\([^"]*\)".*/\1/')
-r=$(curl -s -c lia.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"Lia Vendas\",\"cpf_cnpj\":\"444\",\"contato_email\":\"lia@x.com\",\"contato_telefone\":\"16\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"chave_pix\":\"lia@pix\"}")
+r=$(curl -s -c lia.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"Lia Vendas\",\"cpf_cnpj\":\"529.982.247-25\",\"contato_email\":\"lia@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"chave_pix\":\"lia@pix\"}")
 esperar "conta criada só com vendedor" '"papeis":\["vendedor"\]' "$r"; LIA=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b lia.txt $B/conta/modos)
 esperar "modos: anúncios bloqueado e precisa endereço" '"anunciante":\{"liberado":false,"precisaEndereco":true' "$r"
@@ -47,7 +47,7 @@ r=$(curl -s -b lia.txt $B/anunciantes/$LIA/dispositivos); esperar "Tela 1 criada
 echo "== convite aceito por conta logada =="
 r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["ponto"],"nome_sugerido":"Beto"}')
 TOK2=$(echo $r | sed 's/.*"token":"\([^"]*\)".*/\1/')
-r=$(curl -s -c beto.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"Beto","cpf_cnpj":"555","endereco":"R","cidade":"Matão","uf":"SP","cep":"1","contato_email":"beto2@x.com","contato_telefone":"16","senha":"Senha12@","aceitou_termos":true}')
+r=$(curl -s -c beto.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"Beto","cpf_cnpj":"04.252.011/0001-10","endereco":"R","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"beto2@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true}')
 BETO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b beto.txt -X POST $B/convites/$TOK2/aceitar -H "$J" -d '{}'); esperar "conta logada aceita convite e ganha o papel" '"papeis":\["anunciante","ponto"\]' "$r"
 r=$(curl -s $B/convites/$TOK2); esperar "convite ficou usado" 'inválido' "$r"
@@ -61,7 +61,7 @@ $PG -c "UPDATE anunciantes SET plano_id='essencial-3m', status='ativo', data_ini
 r=$(curl -s -b beto.txt $B/conta/modos); esperar "quem já é ponto não vê bônus disponível" '"ja_e_ponto":true' "$r"
 $PG -c "UPDATE anunciantes SET papeis = array_remove(papeis, 'ponto') WHERE id=$BETO" >/dev/null
 r=$(curl -s -b beto.txt $B/conta/modos); esperar "4 meses de plano com módulo de 3 → bônus disponível" '"meses_cobertos":4,"disponivel":true' "$r"
-r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome_comercio":"Bar do Beto","endereco":"Rua D, 4","cidade":"Matão","uf":"SP","cep":"1"}')
+r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome_comercio":"Bar do Beto","endereco":"Rua D, 4","cidade":"Matão","uf":"SP","cep":"15990-000"}')
 esperar "resgate cria candidatura" '"ok":true' "$r"
 r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "admin vê candidatura de bônus" '"origem":"bonus_plano"' "$r"
 r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome_comercio":"x","endereco":"y"}'); esperar "não resgata duas vezes" 'não está disponível' "$r"
