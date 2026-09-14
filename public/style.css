@@ -12,6 +12,25 @@
   --blue-dim: #3b63e8;
   --ok: #15803d; /* #16a34a dava 3.3:1 no branco — abaixo do mínimo de 4.5:1 do WCAG AA */
   --err: #dc2626;
+
+  /* Superfície escura: o painel que o PIN abre na própria TV, num comércio, a
+     metros de distância. É a única parte do sistema que não é sobre fundo
+     claro — tinha paleta própria escrita à mão em 9 lugares. */
+  --escuro-fundo: #14171c;
+  --escuro-card: #111;
+  --escuro-borda: #262a31;
+  --escuro-texto: #fff;
+  --escuro-texto-dim: var(--escuro-texto-dim);
+  --escuro-campo: var(--escuro-campo);
+  --escuro-err: var(--escuro-err);
+
+  /* Texto sobre a cor de ação. Preto puro vibra sobre laranja; este é o
+     marrom quase preto que dá contraste sem vibrar. */
+  --sobre-brand: #1a0f00;
+
+  /* Cor de marca de terceiro — fixa por definição do WhatsApp, não é nossa. */
+  --whatsapp: #25D366;
+
   --radius: 14px;
   --max: 1120px;
 }
@@ -65,7 +84,7 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
   padding: 11px 20px; border-radius: 999px; font-weight: 600; font-size: .95rem;
   text-decoration: none; border: 1px solid transparent; cursor: pointer;
 }
-.btn.primary { background: var(--brand); color: #1a0f00; }
+.btn.primary { background: var(--brand); color: var(--sobre-brand); }
 .btn.primary:hover { background: var(--brand-dim); }
 .btn.ghost { border-color: var(--border); color: var(--text); background: transparent; }
 .btn.ghost:hover { border-color: var(--text-dim); }
@@ -132,7 +151,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
 .step { position: relative; padding-left: 4px; }
 .step .n {
-  width: 36px; height: 36px; border-radius: 999px; background: var(--text); color: #fff;
+  width: 36px; height: 36px; border-radius: 999px; background: var(--text); color: var(--escuro-texto);
   display: flex; align-items: center; justify-content: center; font-weight: 800; margin-bottom: 12px;
 }
 .step h4 { margin: 0 0 6px; }
@@ -147,7 +166,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .plan-card.popular { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
 .plan-card .badge {
   position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
-  background: var(--blue); color: #fff; font-size: .75rem; font-weight: 800;
+  background: var(--blue); color: var(--escuro-texto); font-size: .75rem; font-weight: 800;
   padding: 4px 12px; border-radius: 999px;
 }
 .plan-card .rotulo { color: var(--brand-text); font-size: .78rem; font-weight: 700; margin-top: 4px; }
@@ -167,7 +186,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
   padding: 9px 16px; border-radius: 999px; font-size: .88rem; cursor: pointer; font-weight: 600;
 }
-.cycle-toggle button.active { background: var(--brand); border-color: var(--brand); color: #1a0f00; }
+.cycle-toggle button.active { background: var(--brand); border-color: var(--brand); color: var(--sobre-brand); }
 .cycle-toggle button[disabled] { opacity: .4; cursor: not-allowed; }
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
 
@@ -374,12 +393,12 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .criativo-play {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 46px; height: 46px; border-radius: 999px; background: rgba(20,23,31,.55);
-  border: none; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  border: none; color: var(--escuro-texto); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .criativo-card.tocando .criativo-play { display: none; }
 .criativo-excluir {
   position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 999px;
-  background: rgba(20,23,31,.55); border: none; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: rgba(20,23,31,.55); border: none; color: var(--escuro-texto); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .criativo-excluir:hover { background: rgba(220,38,38,.85); }
 
@@ -388,7 +407,7 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .dlg-foto-wrap { position: relative; flex-shrink: 0; }
 .dlg-foto-cam {
   position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px; border-radius: 999px;
-  background: var(--brand); border: 2px solid var(--card); color: #1a0f00; display: flex; align-items: center;
+  background: var(--brand); border: 2px solid var(--card); color: var(--sobre-brand); display: flex; align-items: center;
   justify-content: center; cursor: pointer; padding: 0;
 }
 .dlg-foto-cam:hover { background: var(--brand-dim); }
@@ -422,10 +441,10 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .whatsapp-fab {
   position: fixed; bottom: 20px; right: 20px; z-index: 50;
   width: 56px; height: 56px; border-radius: 999px;
-  background: #25D366; display: flex; align-items: center; justify-content: center;
+  background: var(--whatsapp); display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.35); text-decoration: none;
 }
-.whatsapp-fab svg { width: 28px; height: 28px; fill: #fff; }
+.whatsapp-fab svg { width: 28px; height: 28px; fill: var(--escuro-texto); }
 .whatsapp-fab:hover { filter: brightness(1.08); }
 @media (max-width: 640px) {
   .whatsapp-fab { width: 50px; height: 50px; bottom: 16px; right: 16px; }
@@ -433,7 +452,7 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 }
 
 .whatsapp-note { text-align: center; font-size: .88rem; color: var(--text-dim); }
-.whatsapp-note a { color: #25D366; font-weight: 600; text-decoration: none; }
+.whatsapp-note a { color: var(--whatsapp); font-weight: 600; text-decoration: none; }
 .whatsapp-note a:hover { text-decoration: underline; }
 
 .map-embed { max-width: 860px; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -480,22 +499,22 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .plan-card .vagas { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
 
 /* Painel da tela (player: PIN abre, mostra o que rodou e a saúde da tela) */
-.painel-tela { position: fixed; inset: 0; background: rgba(8,10,14,.96); color: #fff; z-index: 50; overflow: auto; padding: 32px 24px; font-family: system-ui, sans-serif; }
+.painel-tela { position: fixed; inset: 0; background: rgba(8,10,14,.96); color: var(--escuro-texto); z-index: 50; overflow: auto; padding: 32px 24px; font-family: system-ui, sans-serif; }
 .painel-tela h2 { margin: 0 0 4px; font-size: 1.4rem; }
-.painel-tela .sub { color: #9aa3ad; margin: 0 0 18px; font-size: .9rem; }
+.painel-tela .sub { color: var(--escuro-texto-dim); margin: 0 0 18px; font-size: .9rem; }
 .painel-tela .pin-form[hidden] { display: none; }
 .painel-tela .pin-form { display: flex; gap: 10px; align-items: center; margin: 24px 0; }
-.painel-tela .pin-form input { font-size: 1.6rem; letter-spacing: .4em; text-align: center; width: 160px; padding: 10px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; }
-.painel-tela .pin-form button, .painel-tela .fechar { background: #ff7a1a; color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 1rem; }
-.painel-tela .fechar { position: absolute; top: 18px; right: 18px; background: #222; }
+.painel-tela .pin-form input { font-size: 1.6rem; letter-spacing: .4em; text-align: center; width: 160px; padding: 10px; border-radius: 10px; border: 1px solid var(--escuro-campo); background: var(--escuro-card); color: var(--escuro-texto); }
+.painel-tela .pin-form button, .painel-tela .fechar { background: var(--brand); color: var(--escuro-texto); border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 1rem; }
+.painel-tela .fechar { position: absolute; top: 18px; right: 18px; background: var(--escuro-campo); }
 .painel-tela .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
-.painel-tela .caixa { background: #14171c; border: 1px solid #262a31; border-radius: 12px; padding: 14px 16px; }
-.painel-tela .caixa small { color: #9aa3ad; display: block; font-size: .78rem; }
+.painel-tela .caixa { background: var(--escuro-fundo); border: 1px solid var(--escuro-borda); border-radius: 12px; padding: 14px 16px; }
+.painel-tela .caixa small { color: var(--escuro-texto-dim); display: block; font-size: .78rem; }
 .painel-tela .caixa b { font-size: 1.4rem; }
 .painel-tela table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-.painel-tela th, .painel-tela td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #262a31; }
-.painel-tela th { color: #9aa3ad; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
-.painel-tela .erro { color: #ff6b6b; margin: 8px 0 0; }
+.painel-tela th, .painel-tela td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--escuro-borda); }
+.painel-tela th { color: var(--escuro-texto-dim); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+.painel-tela .erro { color: var(--escuro-err); margin: 8px 0 0; }
 @media (max-width: 640px) { .escolha-grid, .razoes { grid-template-columns: 1fr; } }
 
 dialog.dlg-tela { border: none; border-radius: var(--radius); padding: 24px; max-width: 560px; width: 94vw; background: var(--card); color: var(--text); }

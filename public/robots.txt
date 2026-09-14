@@ -1,9 +1,10 @@
+# O que não é público leva `noindex` no próprio HTML — e por isso NÃO pode ser
+# bloqueado aqui: página bloqueada no robots.txt nunca é lida, então o Google
+# nunca vê o noindex e pode indexar a URL mesmo assim, só sem o conteúdo.
+# Bloqueio aqui fica só para o que não deve nem ser visitado por robô.
 User-agent: *
 Disallow: /admin/
-Disallow: /anunciante/painel.html
-Disallow: /anunciante/ponto.html
-Disallow: /anunciante/perfil.html
-Disallow: /afiliado/painel.html
 Disallow: /player.html
-Disallow: /redefinir-senha.html
 Allow: /
+
+Sitemap: https://mostrai.sancocore.com.br/sitemap.xml

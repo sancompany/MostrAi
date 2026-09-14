@@ -105,6 +105,19 @@ app.use(convitesRoutes);
 app.use(candidaturasRoutes);
 app.use(require('./conta/modos').router);
 
+// Quem pediu página e quem pediu dado recebem coisas diferentes: navegador
+// manda `Accept: text/html` e merece uma tela; `fetch` do painel espera JSON e
+// quebraria recebendo HTML.
+const querHtml = (req) => req.accepts(['html', 'json']) === 'html';
+const paginaDeErro = (arquivo) => path.join(__dirname, '..', 'public', arquivo);
+
+// 404 — rota que não existe. Sem isto, endereço errado morria no handler
+// padrão do Express, que devolve uma página em inglês com o caminho dentro.
+app.use((req, res) => {
+  if (querHtml(req)) return res.status(404).sendFile(paginaDeErro('404.html'));
+  res.status(404).json({ erro: 'não encontrado' });
+});
+
 // Error handler global — qualquer erro (agora inclusive de rota async, via
 // express-async-errors acima) cai aqui em vez de derrubar o servidor.
 app.use((err, req, res, next) => {
@@ -114,6 +127,9 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ erro: 'JSON inválido' });
   if (err.type === 'entity.too.large') return res.status(413).json({ erro: 'corpo grande demais' });
   console.error(err);
+  // A 500.html não depende de nada da aplicação — é justamente quando ela
+  // falhou que a página precisa abrir.
+  if (querHtml(req)) return res.status(500).sendFile(paginaDeErro('500.html'));
   res.status(500).json({ erro: 'erro interno' });
 });
 

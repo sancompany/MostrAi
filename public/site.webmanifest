@@ -1,0 +1,14 @@
+{
+  "name": "Mostraí",
+  "short_name": "Mostraí",
+  "description": "Rede de telas de anúncio em comércios de Matão-SP.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fa",
+  "theme_color": "#ff7a1a",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/img/favicon-sanco.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
