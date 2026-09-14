@@ -7,6 +7,9 @@
 *.key
 credenciais*.json
 service-account*.json
+google.json
+google-*.json
+*-service-account.json
 
 # Dependências e build
 node_modules/
