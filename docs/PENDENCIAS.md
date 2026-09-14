@@ -104,21 +104,17 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 8. [ ] **Supabase**: projeto próprio do Mostraí (se ainda for o da Vitrina, renomeie), região **sul-americana**. Bucket `criativos`. Anote `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`. **Use só as chaves rotacionadas em A.0.1** — nenhuma das antigas. As variáveis vivem no painel do Northflank; nunca num arquivo do repositório.
 10. [ ] **Cloudflare**: DNS `mostrai.sancocore.com.br` → Northflank (proxy ligado). **Access na frente de `/admin`** (Zero Trust → Access → Application, path `/admin*`, política: seu e-mail). Fechar a origem pra que só o Cloudflare alcance o serviço.
-11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), e combinar `SAN_CHECKOUT_WEBHOOK_SECRET` dos dois lados. Auditar a última estação do Checkout (você disse que falta). ~~Confirmar se o webhook manda `eventoId`/`cobrancaId`~~ — **RESPONDIDO em
+11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), **Não existe `SAN_CHECKOUT_WEBHOOK_SECRET` pra combinar** — o webhook é assinado com a própria chave do contratante (corrigido em 14/09/2026, `docs/erros/2026-09-14-webhook-autenticado-por-header-inventado.md`). Auditar a última estação do Checkout (você disse que falta). ~~Confirmar se o webhook manda `eventoId`/`cobrancaId`~~ — **RESPONDIDO em
     14/09/2026, lendo o `API.md` do Checkout (commit `63495d2`): não manda.** O
     payload de assinatura tem cinco campos e nenhum id (seção 4.3.4). A dedupe
     passou a buscar o `chargeId` na rota de conciliação 5.3, e a conciliação
     diária virou `npm run conciliar` — **precisa de um cron job no Northflank**,
     junto com o do backup (A.12). Combinar também o `SAN_CHECKOUT_API_URL`
     (endereço da API, diferente do da tela — `API.md` 2.1).
-    **Trazer o `API.md` e o `INTEGRACAO.md` do Checkout junto** — ficaram duas
-    perguntas do mês grátis esperando por eles, deixadas em aberto de propósito
-    no fecho da Estação 1: (a) hoje o mês grátis é creditado **uma vez na vida da
-    conta** (`anunciantes.meses_gratis_creditados`); é isso mesmo, ou é a cada
-    ciclo? (b) o código estende a cobertura em `compromisso_meses + meses_gratis`,
-    mas quem define quando a Asaas cobra é o ciclo da assinatura no Checkout —
-    então não dá pra garantir daqui que a pessoa **não seja cobrada** no mês que
-    era pra ser grátis. Verificado só do lado do Mostraí.
+    ~~As duas perguntas do mês grátis~~ — **PREJUDICADAS**: a migration 021
+    removeu `meses_gratis` e a regra "benefício no preço, nunca no tempo" do
+    `CONSTRAINTS.md` fechou o assunto. O `INTEGRACAO.md` do Checkout é só um
+    redirecionamento hoje; a fonte é o `API.md`.
 12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
 
@@ -179,6 +175,17 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    existindo e a conta lê por `plano_id`. O admin já tem também o formulário
    "+ Novo plano (novo preço/promoção — não mexe no que já existe)". Metade do
    item 9 já está desenhada na interface.
+
+4. [ ] **Reescrever `tests/e2e/02-fundador-webhook-comissao.sh` pro mundo
+   pós-021.** *(achado em 14/09/2026, ao corrigir a assinatura do webhook.)* A
+   autenticação do script já foi corrigida (assina HMAC como o Checkout
+   assina), mas as **asserções** dele ainda são da máquina que a migration 021
+   removeu: `aguardando_ponto`, `meses_gratis_creditados`,
+   `meses_cobertura_pendentes` e "cobertura liga quando a segunda tela volta"
+   não existem mais. O script não passa hoje, e não passava antes desta
+   correção — ele ficou para trás no fecho da Estação 1 e ninguém rodou desde
+   então. Precisa decidir o que ele afirma agora: a primeira cobrança (`criada`)
+   ativa a conta direto, sem mínimo de telas.
 
 ## C. Malha fina — roteiro do que testar junto comigo
 

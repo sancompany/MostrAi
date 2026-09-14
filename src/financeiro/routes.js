@@ -185,8 +185,9 @@ router.get('/plano/:assinaturaId', sanCheckout.exigirChaveCheckout, async (req, 
   res.json(resposta);
 });
 
-// Confirmação/eventos de assinatura (INTEGRACAO.md 4 e 6.1) — responde 200
-// rápido, processa depois, exatamente como o contrato permite.
+// Confirmação/eventos de assinatura (API.md do Checkout, 4.3) — responde 200
+// rápido, processa depois, exatamente como o contrato permite. A autorização
+// é a assinatura HMAC dos headers, conferida em `webhookAutorizado`.
 router.post('/webhook/san-checkout', (req, res) => {
   if (!sanCheckout.webhookAutorizado(req)) {
     return res.status(401).json({ erro: 'não autorizado' });

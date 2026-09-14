@@ -40,7 +40,10 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
-app.use(express.json());
+// O `verify` guarda os bytes CRUS do corpo. A assinatura HMAC do webhook do
+// San Checkout é calculada sobre exatamente o que chegou, e reserializar o
+// JSON muda a ordem das chaves (API.md do Checkout, 4.3.1, passo 2).
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 // Sessão no Postgres (tabela `session`, migration 019). Com o MemoryStore
 // padrão todo deploy deslogava todo mundo — docs/erros/2026-09-sessao-em-memoria.md
 app.use(session({

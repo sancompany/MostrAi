@@ -26,13 +26,43 @@ function exigirChaveCheckout(req, res, next) {
   next();
 }
 
-// Webhook agora falha FECHADO. Antes, sem SAN_CHECKOUT_WEBHOOK_SECRET
-// configurado, ele aceitava qualquer POST — e como o corpo é só
-// { tipo, planoId, evento }, bastava ter o id da assinatura (que aparece na
-// própria URL de checkout do anunciante) pra ativar uma conta sem pagar.
-// Configure SAN_CHECKOUT_WEBHOOK_SECRET nos dois lados antes de subir.
+// O Checkout assina TODO webhook com HMAC-SHA256 e manda dois headers
+// (API.md dele, 4.3 e 4.3.1): `X-Checkout-Signature: sha256=<hex>` sobre a
+// string "{timestamp}.{corpo cru}", e `X-Checkout-Timestamp` em segundos.
+// Não existe segredo separado de webhook: o segredo é a MESMA
+// SAN_CHECKOUT_KEY que usamos nas chamadas de saída.
+//
+// O que havia aqui era um header `X-Webhook-Secret` comparado com uma
+// SAN_CHECKOUT_WEBHOOK_SECRET — esquema que o Checkout nunca mandou e que
+// nenhuma versão do contrato descreveu (o comentário citava o INTEGRACAO.md,
+// que hoje é só um redirecionamento pro API.md). O fail-closed segurava o
+// dinheiro, mas TODO webhook real tomava 401: nenhum pagamento era creditado
+// e a conta só seria ativada pela conciliação diária.
+const JANELA_ASSINATURA_S = 300;
+
 function webhookAutorizado(req) {
-  return chaveConfere(req.headers['x-webhook-secret'], process.env.SAN_CHECKOUT_WEBHOOK_SECRET);
+  const chave = process.env.SAN_CHECKOUT_KEY;
+  const recebida = req.headers && req.headers['x-checkout-signature'];
+  const timestamp = String((req.headers && req.headers['x-checkout-timestamp']) || '');
+  if (!chave || !recebida || !/^[0-9]{1,15}$/.test(timestamp)) return false;
+
+  // Janela de 300s: impede que alguém capture um webhook legítimo e reenvie
+  // depois (API.md 4.3.1, passo 1).
+  const agora = Math.floor(Date.now() / 1000);
+  if (Math.abs(agora - Number(timestamp)) > JANELA_ASSINATURA_S) return false;
+
+  // Corpo CRU, nunca o JSON reparseado: reserializar muda a ordem das chaves
+  // e a assinatura não fecha (API.md 4.3.1, passo 2). Quem guarda os bytes
+  // originais é o `verify` do express.json, em src/server.js.
+  const corpoCru = req.rawBody;
+  if (!Buffer.isBuffer(corpoCru)) return false;
+
+  const esperada = 'sha256=' + crypto
+    .createHmac('sha256', chave)
+    .update(Buffer.concat([Buffer.from(timestamp + '.', 'utf8'), corpoCru]))
+    .digest('hex');
+
+  return chaveConfere(recebida, esperada);
 }
 
 // O checkout mora em DOIS endereços e eles fazem coisas diferentes (API.md do
@@ -140,12 +170,21 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 }
 
 // Handler do POST /webhook/san-checkout pro evento de assinatura
-// (INTEGRACAO.md 6.1): { tipo: "assinatura", planoId, documento, evento }.
+// (API.md do Checkout, 4.3.4): { versao, tipo, planoId, documento, evento }.
 // Aqui `planoId` é o id da nossa linha em `assinaturas` (ver montarRespostaPlano).
-// Só 'cobranca_confirmada' ativa automaticamente — os outros eventos
-// (falhou/estornada/cancelada exceto cancelamento, criada) só ficam
-// registrados pro admin revisar, pra nunca derrubar o acesso de alguém sem
-// intervenção humana.
+//
+// A PRIMEIRA cobrança paga de uma assinatura chega como 'criada'; só as
+// RENOVAÇÕES chegam como 'cobranca_confirmada'. Está na tabela do API.md
+// 4.3.4 ("Assinatura criada e primeira cobrança paga") e no código do
+// Checkout, que cai no default `confirmado ? 'criada' : null` quando o
+// evento não é de ciclo recorrente. Tratar só 'cobranca_confirmada' deixava
+// justamente a entrada de todo assinante novo sem ativação automática — o
+// caso que mais importa.
+//
+// Os demais eventos (falhou/estornada/contestada, e cancelada fora do ramo
+// abaixo) só ficam registrados pro admin revisar, pra nunca derrubar o
+// acesso de alguém sem intervenção humana.
+const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
 // Chave de deduplicação do evento. O contrato manda tratar o processamento
 // como idempotente pela chave natural `chargeId` + `status` (API.md do
 // Checkout, 4.3.6) — só que o payload de assinatura NÃO carrega chargeId
@@ -157,13 +196,14 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 // retentativa que cruza a meia-noite muda de dia, passa pela dedupe e credita
 // um ciclo que ninguém pagou; e duas cobranças reais no mesmo dia viram uma.
 //
-// Então, no único evento que mexe em saldo, o chargeId é buscado na rota de
-// conciliação (5.3) e a chave é a que o contrato pede. Os outros eventos só
-// gravam pendência, não movem dinheiro, e seguem com o hash do corpo + dia.
+// Então, nos eventos que mexem em saldo ('criada' e 'cobranca_confirmada'),
+// o chargeId é buscado na rota de conciliação (5.3) e a chave é a que o
+// contrato pede. Os outros eventos só gravam pendência, não movem dinheiro,
+// e seguem com o hash do corpo + dia.
 async function chaveDoEvento(payload) {
   if (payload.eventoId || payload.cobrancaId) return String(payload.eventoId || payload.cobrancaId);
 
-  if (payload.evento === 'cobranca_confirmada') {
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     const estado = await consultarAssinatura(payload.planoId, payload.documento);
     const ultima = estado && estado.ultimaCobranca;
     if (!ultima || !ultima.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
@@ -208,7 +248,7 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
-  if (payload.evento !== 'cobranca_confirmada') {
+  if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 

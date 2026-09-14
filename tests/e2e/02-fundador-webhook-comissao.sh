@@ -8,7 +8,19 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
 cd "$ROOT/tests/e2e/saida"
 J='Content-Type: application/json'
-SECRET=$(grep '^SAN_CHECKOUT_WEBHOOK_SECRET=' "$ROOT/.env" | cut -d= -f2-)
+KEY=$(grep '^SAN_CHECKOUT_KEY=' "$ROOT/.env" | cut -d= -f2-)
+
+# Assina como o San Checkout assina (API.md dele, 4.3.1): X-Checkout-Signature
+# = "sha256=" + HMAC-SHA256 hex de "{timestamp}.{corpo cru}", com a
+# X-Checkout-Key como segredo, e X-Checkout-Timestamp em segundos. NÃO existe
+# header de segredo compartilhado — o X-Webhook-Secret que estava aqui era
+# invenção nossa e nenhuma versão do contrato descreveu.
+assinar(){ printf 'sha256=%s' "$(printf '%s.%s' "$1" "$2" | openssl dgst -sha256 -hmac "$KEY" -r | cut -d' ' -f1)"; }
+enviar_webhook(){
+  local corpo="$1" ts; ts=$(date +%s)
+  curl -s -X POST "$B/webhook/san-checkout" -H "$J" \
+    -H "X-Checkout-Signature: $(assinar "$ts" "$corpo")" -H "X-Checkout-Timestamp: $ts" -d "$corpo"
+}
 PG="psql -h localhost -U mostrai -d mostrai -tA"
 export PGPASSWORD=mostrai
 falhas=0
@@ -41,16 +53,25 @@ esperar "segunda conta não entra: vagas acabaram" 'vagas desse plano acabaram' 
 r=$(curl -s $B/planos); if echo "$r" | grep -q fundador-12m; then falha "vitrine esconde fundador sem vaga" "ainda aparece"; else ok "vitrine esconde fundador sem vaga"; fi
 
 echo "== webhook: fail-closed =="
-r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$J" -d '{"tipo":"assinatura"}')
-esperar "webhook sem segredo é 401" '^401$' "$r"
-r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$J" -H "X-Webhook-Secret: errado" -d '{"tipo":"assinatura"}')
-esperar "webhook com segredo errado é 401" '^401$' "$r"
+CORPO_FC='{"tipo":"assinatura"}'
+TS=$(date +%s)
+r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$J" -d "$CORPO_FC")
+esperar "webhook sem assinatura é 401" '^401$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$J" -H "X-Checkout-Signature: sha256=naoconfere" -H "X-Checkout-Timestamp: $TS" -d "$CORPO_FC")
+esperar "webhook com assinatura errada é 401" '^401$' "$r"
+# Replay: assinatura legítima, timestamp fora da janela de 300s (API.md 4.3.1, passo 1)
+VELHO=$((TS-400))
+r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$J" -H "X-Checkout-Signature: $(assinar "$VELHO" "$CORPO_FC")" -H "X-Checkout-Timestamp: $VELHO" -d "$CORPO_FC")
+esperar "webhook reenviado fora da janela de 300s é 401" '^401$' "$r"
 
-echo "== webhook: cobrança confirmada com rede abaixo do mínimo (2 telas, 1 ativa) =="
+echo "== webhook: primeira cobrança paga (evento criada) =="
 # deixa só uma tela ativa: o plano fundador pede 2
 DISP2=$($PG -c "select id from dispositivos where apelido='Tela 2'")
 curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP2 -H "$J" -d '{"status":"reparo"}' >/dev/null
-r=$(curl -s -X POST $B/webhook/san-checkout -H "$J" -H "X-Webhook-Secret: $SECRET" -d "{\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_confirmada\",\"eventoId\":\"ev-1\"}")
+# 'criada' é o evento da PRIMEIRA cobrança paga (API.md 4.3.4) — era este o
+# caso que o Mostraí ignorava. O `eventoId` é atalho só do teste: com ele a
+# dedupe não precisa consultar a rota 5.3 do Checkout, que não está no ar aqui.
+r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
 st=$($PG -c "select status||'|'||coalesce(valor_mensal_travado::text,'')||'|'||meses_gratis_creditados||'|'||meses_cobertura_pendentes||'|'||coalesce(data_expiracao::date::text,'') from anunciantes where id=$ANA")
 esperar "conta fica aguardando_ponto (1 tela < mínimo 2)" '^aguardando_ponto\|' "$st"
@@ -63,7 +84,7 @@ com=$($PG -c "select count(*)||'|'||comissao_valor from comissoes where anuncian
 esperar "comissão do vendedor gerada (12% de 1788 = 214.56)" '^1\|214.56' "$com"
 
 echo "== webhook: reentrega idêntica não duplica =="
-curl -s -X POST $B/webhook/san-checkout -H "$J" -H "X-Webhook-Secret: $SECRET" -d "{\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_confirmada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "só 1 cobrança" '^1$' "$cob"
 com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA"); esperar "só 1 comissão" '^1$' "$com"
 mg=$($PG -c "select meses_gratis_creditados from anunciantes where id=$ANA"); esperar "meses grátis não repetem" '^1$' "$mg"

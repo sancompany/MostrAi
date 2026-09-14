@@ -58,6 +58,19 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   é a que o nosso servidor chama, sob `/api/checkout/<rota>`. Endereço nunca é
   montado à mão fora de `chamarApiCheckout`. Usar um só para os dois deixa um
   dos lados quebrado — foi o que aconteceu até 14/09/2026.
+- **O webhook do Checkout é autenticado por assinatura HMAC, não por header
+  de segredo.** Ele manda `X-Checkout-Signature: sha256=<hex>` sobre
+  `"{timestamp}.{corpo cru}"` e `X-Checkout-Timestamp` em segundos, assinados
+  com a **mesma `SAN_CHECKOUT_KEY`** das chamadas de saída — não existe
+  `SAN_CHECKOUT_WEBHOOK_SECRET` (API.md 4.3.1). A verificação recusa timestamp
+  fora de 300s, usa o corpo **cru** (reserializar o JSON muda a ordem das
+  chaves e a assinatura não fecha) e compara em tempo constante. Até
+  14/09/2026 conferíamos um `X-Webhook-Secret` que o Checkout nunca mandou:
+  todo webhook real tomava 401 (`docs/erros/2026-09-14-webhook-autenticado-por-header-inventado.md`).
+- **A primeira cobrança paga chega como `criada`, não `cobranca_confirmada`.**
+  Só as renovações usam `cobranca_confirmada` (API.md 4.3.4). Os dois eventos
+  creditam um ciclo e passam pela mesma dedupe; tratar só o segundo deixa todo
+  assinante novo sem ativação automática.
 - **Webhook de assinatura deduplica por `chargeId`, nunca pelo corpo.** O
   payload não carrega id (API.md do Checkout, 4.3.4) e o corpo de uma renovação
   é idêntico ao da anterior; o `chargeId` vem da rota de conciliação 5.3. Sem
