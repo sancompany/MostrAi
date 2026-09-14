@@ -153,6 +153,25 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    comodato — o desconto incide sobre o travado, ou o travado vence? Decidir
    antes de construir.
 
+3. [ ] **Ligar/desligar plano: aviso e confirmação visual.** *(pedido em
+   14/09/2026.)* O toggle **já existe** — coluna "Ativo" da tabela de planos,
+   `public/admin/index.html:1092`, e `ativo` já está em `CAMPOS_ATUALIZAVEIS`.
+   Falta só o acabamento que o dono pediu: um aviso antes de virar a chave, e a
+   linha desativada aparecendo **apagada** na lista, marcada "Desativado", em vez
+   de só um checkbox mudando de estado. O padrão visual já existe na mesma tela
+   (a lista de benefícios usa `opacity:.55` + "(indisponível)") — reaproveitar,
+   não inventar. **Em aberto, pergunta do dono:** o plano desativado aparece
+   apagado também em `/planos.html` para o cliente, ou some da vitrine como hoje?
+   Mostrar ao cliente um plano que ele não pode assinar é decisão de produto, não
+   de código.
+
+   *Nota que encolhe o item 1 acima:* `ativo=false` é exatamente a alavanca que o
+   item 9 precisa — "a linha antiga sai da vitrine e continua servindo quem está
+   nela" é isso, e desativar não quebra assinante, porque a linha continua
+   existindo e a conta lê por `plano_id`. O admin já tem também o formulário
+   "+ Novo plano (novo preço/promoção — não mexe no que já existe)". Metade do
+   item 9 já está desenhada na interface.
+
 ## C. Malha fina — roteiro do que testar junto comigo
 
 1. Site público: `/`, `/planos.html` (com e sem `PROGRAMA_FUNDADOR_ATIVO`), `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).
