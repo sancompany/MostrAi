@@ -265,19 +265,19 @@ Legenda: ✅ existe com evidência · ⚠️ existe pela metade · ❌ não exis
 | # | Item | Estado | O que falta |
 |---|---|---|---|
 | 1 | Mapa de páginas antes de tela | ✅ | `docs/funcional.md` §3, 23 telas com URL |
-| 2 | Design system de uma pessoa | ❌ | não existem `src/tokens/`, `src/ui/` nem `src/constantes/`. 24 cores literais soltas em `public/style.css`. Trocar a cor de ação hoje encosta em vários lugares |
+| 2 | Design system de uma pessoa | ⚠️ | **cor fechada em 14/09**: 24 literais → 0 fora do `:root`. Falta extrair componentes (`src/ui/`) e os **267 estilos inline** nos HTML, que também barram a CSP |
 | 3 | Tipografia web | ⚠️ | conferir se usa pilha do sistema e se o corpo é 1 rem em campo de formulário (zoom do Safari) |
-| 4 | `<head>` completo | ⚠️ | **`canonical` em 0 de 14 páginas**; `theme-color` e `manifest` em 0; `og:image`/`description` em 12 de 14 |
-| 5 | SEO técnico | ⚠️ | **`sitemap.xml` não existe**; `robots.txt` existe; `noindex` em 5 páginas de área logada |
-| 6 | Páginas que ninguém desenha | ❌ | **`404.html` e `500.html` não existem**. Rota inexistente hoje não tem tela |
-| 7 | Formato brasileiro | ❌ | **sem validação de CPF/CNPJ por módulo 11** — e o CNPJ é alfanumérico desde julho/2026, então validador só numérico recusa empresa nova. Sem `src/br/`. Fuso `America/Sao_Paulo` não é passado explicitamente em lugar nenhum |
+| 4 | `<head>` completo | ✅ | **fechado em 14/09**: canonical, theme-color e manifest em 26 de 26; `og:image`/`og:url` absolutos; `site.webmanifest` criado |
+| 5 | SEO técnico | ⚠️ | **`sitemap.xml` criado** (11 URLs) e `robots.txt` corrigido — ele bloqueava as páginas que levam `noindex`, então o Google nunca leria o `noindex`. Falta JSON-LD (item 7 do tipo institucional) |
+| 6 | Páginas que ninguém desenha | ✅ | **fechado em 14/09**: 404 e 500 criadas, servidas com o status certo e ramificando por `Accept` (tela pro navegador, JSON pro `fetch`). A 500 não depende da aplicação |
+| 7 | Formato brasileiro | ✅ | **fechado em 14/09**: `src/br/documento.js` (módulo 11, CNPJ alfanumérico) e `src/br/formato.js` (Intl, fuso explícito, E.164), ligados no cadastro, com 8 testes |
 | 8 | Imagens e mídia | ⚠️ | conferir `<picture>`, `srcset`, `width`/`height` e `fetchpriority` na imagem principal |
 | 9 | Formulários | ⚠️ | `label for`, `autocomplete` e `inputmode` existem em 7-10 páginas. **Turnstile não existe** — formulário público sem anti-bot |
 | 10 | Os seis estados de cada tela | ⚠️ | escritos no `docs/funcional.md` §4; falta conferir tela a tela com conta nova, rede lenta e 500 |
 | 11 | E-mail transacional | ⚠️ | **não existe `src/emails/` com template base**. Só 3 e-mails: pagamento, redefinição e contato |
 | 12 | Segurança de construção | ❌ | **CSP não existe**, nem em report-only. 8 usos de `innerHTML` a justificar |
 | 13 | Performance na construção | ❌ | sem orçamento no `CONSTRAINTS.md`; sem hash no nome dos assets |
-| 14 | Ambiente e build | ❌ | **sem `.editorconfig`, sem `.nvmrc`, sem `npm run check`** (lint e formatter não existem) |
+| 14 | Ambiente e build | ⚠️ | **`.editorconfig`, `.nvmrc`, `engines` e `npm run check` criados em 14/09**, e o CI passou a chamar o mesmo comando. Falta lint/formatter (Biome) |
 
 ### Tipo SaaS — conta, painel, assinatura
 
