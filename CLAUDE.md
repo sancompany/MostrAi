@@ -19,7 +19,7 @@ documento · Vida útil: anos → **rigor no topo da escala**. Nenhuma lei
 dispensada por proporcionalidade.
 
 ## Estado na esteira
-Estação atual: **4 — Contratos**, aberta em 14/09/2026.
+Estação atual: **5 — Construção**, aberta em 14/09/2026.
 Fechadas:
 - 1 Escopo — validada, reaberta e refechada em 14/09/2026 quando o contrato do
   San Checkout foi lido pela primeira vez · evidência:
@@ -28,15 +28,20 @@ Fechadas:
 - 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura) e
   a hospedagem (Northflank + Supabase próprio, mesma região) · evidência:
   `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
-- 3 Fundação — repositório e árvore de pastas conformes à Lei 1; `.env` fora do
+- 3 Fundação — repositório e árvore conformes à Lei 1; `.env` fora do
   versionamento com guarda no CI; **CI verde num push real** (`ci` run #9,
-  commit `3c98465`, `success`, em `main`); `RUNBOOK.md` iniciado; `CLAUDE.md`
-  verdadeiro · evidência: este arquivo, `RUNBOOK.md` e a execução do CI
-Falta para fechar a atual: `docs/funcional.md` respondendo às quatro perguntas
-de prontidão; inventário de dados revisado; contrato de API conferido contra o
-código.
-Próxima estação: 5 — Construção, pede Sonnet com esforço médio a alto (Opus nas
-partes difíceis: itens 8 e 9 da spec).
+  commit `3c98465`, `success`, em `main`); `RUNBOOK.md` iniciado · evidência:
+  `RUNBOOK.md` e a execução do CI
+- 4 Contratos — modelo de dados e 20 migrations aplicando num Postgres limpo;
+  **contrato de API conferido rota a rota** (as 55 de `/admin` viraram tabela
+  explícita, conferíveis mecanicamente contra o código); integração de pagamento
+  fechada contra o `API.md` do Checkout; inventário de dados revisado;
+  `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
+  evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
+Falta para fechar a atual: itens 8 e 9 da spec; direitos do titular
+(exportar dados, revogar consentimento, arrependimento com estorno); tabela de
+eventos da métrica; **a versão inicial no ar** — que é o que fecha a estação.
+Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 
 ## Mapa de caminhos
 - Entrada da aplicação: `src/server.js` · rotas e regras: `src/<domínio>/`

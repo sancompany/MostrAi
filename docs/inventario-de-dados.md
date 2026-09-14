@@ -5,7 +5,9 @@ como é apagado. Atualizado na mesma tarefa que cria o dado. É daqui que saem
 os Termos de Uso e a Política de Privacidade (skill `legal`).
 
 Onde fica: banco Postgres no Supabase (projeto próprio do Mostraí, São Paulo);
-arquivos no Supabase Storage (bucket público para criativos e avatares);
+arquivos no Supabase Storage (bucket `criativos`, que guarda criativo, avatar e
+foto de ponto — **precisa ser público**, porque o código serve por
+`getPublicUrl`; hoje está privado e isso é pendência do dono);
 notas fiscais no Google Drive da San & Co. (pasta do Mostraí).
 
 | Dado | De quem | Para quê | Tabela/coluna | Quem mais recebe | Retenção | Apagamento |

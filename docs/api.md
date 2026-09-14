@@ -74,14 +74,95 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 ## Admin (`/admin/*`, sessão de admin)
 
-Resumo: `GET /admin/resumo` — filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `offline`), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, `margemMensal`, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo`.
+Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
+verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
+**As 55 rotas estão listadas uma a uma de propósito** — contrato que só existe
+em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
+pede.
 
-Entrada: `GET/PATCH /admin/candidaturas[/:id]` (status `nova`→`em_contato`→`aprovada`/`recusada`); `GET/POST /admin/convites` (`{papeis[], candidatura_id?, nome_sugerido?, email_sugerido?, validade_dias?}` → `{...convite, link}`), `POST /admin/convites/:id/revogar`.
+### Sessão
+| Método | Rota | O que faz |
+|---|---|---|
+| POST | `/admin/login` | `{usuario, senha}` contra `ADMIN_USER`/`ADMIN_PASSWORD`, em tempo constante. Regenera a sessão. Limitado a 10 tentativas/15 min |
+| POST | `/admin/logout` | destrói a sessão |
 
-Operação: criativos (`GET/PATCH`), pontos (`GET/POST/PATCH`, `/foto`, `/pontos-offline`), telas (`GET /admin/dispositivos`, `GET/POST /admin/pontos/:pontoId/dispositivos`, `PATCH/DELETE /admin/dispositivos/:id`, `POST .../chave`, `POST .../pin`, `GET .../painel`), anunciantes (`GET/POST/PATCH`, `/cancelar-assinatura`), vendedores (`GET /admin/vendedores`, `PATCH /admin/vendedores/:contaId` — `status`, `comissao_percentual`, `chave_pix`).
+### Resumo
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `offline`), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
 
-Catálogo: planos (`GET/POST/PATCH` — máximo 3 ativos por ciclo, plano `fundador` fora dessa conta; campo `ponto_apos_meses` = módulo cruzado), benefícios, categorias, planos-ponto (`plano_bonus_id`, `plano_bonus_apos_meses`, `plano_bonus_meses` = módulo cruzado inverso).
+### Entrada de gente (candidatura → convite → conta)
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/candidaturas` | lista |
+| PATCH | `/admin/candidaturas/:id` | status `nova` → `em_contato` → `aprovada`/`recusada` |
+| POST | `/admin/candidaturas/:id/liberar` | libera o papel numa conta que já existe, sem gerar link |
+| GET | `/admin/convites` | lista |
+| POST | `/admin/convites` | `{papeis[], candidatura_id?, nome_sugerido?, email_sugerido?, validade_dias?}` → `{...convite, link}` |
+| POST | `/admin/convites/:id/revogar` | invalida o link |
 
-Financeiro: cobranças + nota fiscal, comissões (`PATCH {pago}`), custos fixos (`GET/POST/PATCH/DELETE /admin/custos-fixos`), eventos pendentes do checkout.
+### Contas
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/anunciantes` | lista |
+| POST | `/admin/anunciantes` | cria conta pelo admin |
+| PATCH | `/admin/anunciantes/:id` | status, papéis, dados |
+| POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. **Único caminho de cancelamento** — o pagador nunca cancela sozinho |
 
-`POST /admin/pontos/:id/aparelho` é legado (chave por ponto) — use a chave por tela.
+### Pontos e telas
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/pontos` | lista |
+| POST | `/admin/pontos` | cria |
+| PATCH | `/admin/pontos/:id` | status, endereço, ajuda de custo, cota |
+| POST | `/admin/pontos/:id/foto` | foto do comércio |
+| GET | `/admin/pontos-offline` | telas sem sinal além do limite |
+| GET | `/admin/pontos/:pontoId/dispositivos` | telas do ponto |
+| POST | `/admin/pontos/:pontoId/dispositivos` | cria tela |
+| GET | `/admin/dispositivos` | todas as telas |
+| PATCH | `/admin/dispositivos/:id` | apelido, status, custo, prazo de amortização |
+| DELETE | `/admin/dispositivos/:id` | remove |
+| POST | `/admin/dispositivos/:id/chave` | gera a chave de aparelho e devolve o link do player |
+| POST | `/admin/dispositivos/:id/pin` | define o PIN (guardado com hash) |
+| GET | `/admin/dispositivos/:id/painel` | o mesmo painel que o PIN abre, visto pelo admin |
+| POST | `/admin/pontos/:id/aparelho` | **legado** (chave por ponto). Use a chave por tela |
+
+### Catálogo
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/planos` | os 12 da grade + o fundador, ativos e desativados |
+| POST | `/admin/planos` | nova versão de preço/promoção — não mexe no que já existe |
+| PATCH | `/admin/planos/:id` | edita uma célula da grade. Máximo 3 ativos por ciclo; o fundador fica fora dessa conta. `ponto_apos_meses` é o módulo cruzado |
+| GET | `/admin/planos-ponto` | opções de comodato |
+| POST | `/admin/planos-ponto` | cria |
+| PATCH | `/admin/planos-ponto/:id` | `plano_bonus_id`, `plano_bonus_apos_meses`, `plano_bonus_meses` = módulo cruzado inverso |
+| GET | `/admin/beneficios` | lista |
+| POST | `/admin/beneficios` | cria |
+| PATCH | `/admin/beneficios/:id` | edita |
+| DELETE | `/admin/beneficios/:id` | remove |
+| GET | `/admin/categorias` | lista |
+| POST | `/admin/categorias` | cria |
+| PATCH | `/admin/categorias/:id` | edita |
+| DELETE | `/admin/categorias/:id` | remove |
+
+### Criativos
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/criativos` | fila de aprovação |
+| PATCH | `/admin/criativos/:id` | aprova ou recusa. Só aprovado entra na playlist |
+
+### Dinheiro
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/cobrancas` | cobranças confirmadas |
+| PATCH | `/admin/cobrancas/:id/nota-fiscal` | marca a nota como emitida |
+| GET | `/admin/comissoes` | comissões geradas |
+| PATCH | `/admin/comissoes/:id` | `{pago}` |
+| GET | `/admin/vendedores` | lista |
+| PATCH | `/admin/vendedores/:contaId` | `status`, `comissao_percentual`, `chave_pix` |
+| GET | `/admin/custos-fixos` | lista |
+| POST | `/admin/custos-fixos` | cria |
+| PATCH | `/admin/custos-fixos/:id` | edita |
+| DELETE | `/admin/custos-fixos/:id` | remove |
+| GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo |
+| PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido |

@@ -17,6 +17,70 @@ aberta.
 local e rotacionar as chaves. Só depois disso vale seguir para A.3 em diante
 (Northflank incluso) e para o resto da seção B.
 
+## SÓ O DONO FAZ — fila da corrida de 14/09/2026
+
+Ordenada pelo que desbloqueia mais. Cada item: o que fazer · onde · por quê ·
+o que trava · quanto leva.
+
+1. **Tornar o bucket `criativos` público.**
+   · Supabase → Storage → `criativos` → Settings → *Public bucket*
+   · O código serve criativo, avatar e foto de ponto por `getPublicUrl`
+     (`src/anunciantes/routes.js:212`, `src/pontos/routes.js:117`,
+     `src/lib/ffmpeg.js:45`). Com o bucket privado essas URLs respondem erro.
+   · **Trava:** player sem vídeo e avatar quebrado — a Estação 5 não fecha.
+   · ~2 min. *(Tentei pela API; o classificador bloqueia criar superfície
+     pública sem decisão humana.)*
+
+2. **Health check no serviço.**
+   · Northflank → serviço `mostrai` → Health checks → HTTP, path `/health`,
+     porta 3000
+   · Sem ele o Northflank não reinicia container travado — ele fica no ar
+     respondendo erro.
+   · **Trava:** item 2 da prontidão operacional (Estação 6).
+   · ~3 min.
+
+3. **Confirmar o build e o primeiro deploy verde.**
+   · Northflank → serviço `mostrai` → Builds / Deployments, e depois
+     `GET /health` respondendo `{"ok":true}`
+   · É a evidência que fecha a Estação 5 — "a versão inicial no ar".
+   · **Trava:** a Estação 5 inteira.
+   · ~5 min. Falhando, me mande o log.
+
+4. **Autorizar o Cloudflare: DNS e Access.**
+   · Cloudflare → zona `sancocore.com.br`
+   · DNS `mostrai` → o endereço do serviço no Northflank, proxy ligado; e
+     Zero Trust → Access → Application no path `/admin*` com o seu e-mail.
+   · **Trava:** a exceção nº 2 do `CONSTRAINTS.md` (o `/admin` protegido só por
+     senha) e o fecho da Estação 6.
+   · ~10 min. **Eu executo assim que você autorizar** — tenho o acesso; mudar
+     DNS e permissão está na lista curta da skill `leis`, que exige sua palavra.
+
+5. **Rotacionar as credenciais (A.0.1), na volta ao PC.**
+   · Roteiro completo na seção A.0.1 abaixo
+   · Metade já morreu com a exclusão do projeto VitrinaADS; sobram
+     `SESSION_SECRET` e `ADMIN_PASSWORD`, que já foram gerados novos e estão no
+     Northflank. Falta alinhar a pasta `D:\SanCo\MostrAi` **antes de qualquer
+     push de lá**.
+   · **Trava:** nada da esteira hoje, mas o histórico antigo na sua pasta
+     republica o `.env` se alguém der push.
+   · ~20 min.
+
+6. **Conferir a primeira execução do job `Backup`.**
+   · Northflank → Jobs → `Backup` → Runs, domingo que vem
+   · O container roda como `node` (uid 1000); se o volume vier root, o job
+     falha com "permission denied".
+   · **Trava:** o ensaio de restauração da Estação 6 (`RUNBOOK.md`, seção 5).
+   · ~2 min. Falhando, me mande o log que eu ajusto o Dockerfile.
+
+7. **Decidir as quatro perguntas de produto que sobraram.**
+   · `docs/PENDENCIAS.md`, seção B
+   · Vaga de fundador por 7 dias; comissão sobre renovação; precedência entre
+     `preco_travado` e desconto de comodato; e se plano desativado aparece
+     apagado em `/planos.html` ou some.
+   · **Trava:** os itens 8 e 9 da spec (seção B.1), que são construção da
+     Estação 5.
+   · ~10 min de decisão.
+
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
