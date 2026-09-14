@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const pool = require('../db/pool');
 const { multiplicar, percentual } = require('../lib/dinheiro');
+const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
@@ -12,12 +13,7 @@ const { enviarConfirmacaoPagamento } = require('./email');
 // `!==` de antes deixava a rota aberta se a env var sumisse do ambiente
 // (undefined !== undefined é falso), e o tempo de resposta do === vaza
 // prefixo da chave pra quem mede.
-function chaveConfere(enviada, esperada) {
-  if (!esperada || !enviada) return false;
-  const a = Buffer.from(String(enviada));
-  const b = Buffer.from(String(esperada));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
+const chaveConfere = segredoConfere;
 
 function exigirChaveCheckout(req, res, next) {
   if (!chaveConfere(req.headers['x-checkout-key'], process.env.SAN_CHECKOUT_KEY)) {

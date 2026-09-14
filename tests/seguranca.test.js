@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { conferirSenha } = require('../src/lib/senha');
 const { limiteTentativas } = require('../src/lib/limite-tentativas');
 const { webhookAutorizado } = require('../src/financeiro/san-checkout');
+const { segredoConfere } = require('../src/lib/segredo');
 
 test('regra de senha é a mesma em todo lugar', () => {
   assert.ok(conferirSenha('1'), 'senha de 1 caractere tem que ser recusada');
@@ -80,4 +81,17 @@ test('limite de tentativas bloqueia depois de 10 na mesma janela', () => {
   }
   assert.strictEqual(passou, 10);
   assert.strictEqual(bloqueado, 3);
+});
+
+// O login do admin comparava com `===`, que devolve mais rápido quanto mais
+// cedo os bytes divergem — entrega usuário e senha prefixo a prefixo pra quem
+// mede o tempo. A regra já valia pro webhook do Checkout; o admin ficou de fora
+// até 14/09/2026.
+test('segredo do admin confere em tempo constante e nunca passa vazio', () => {
+  assert.strictEqual(segredoConfere('Admin12@', 'Admin12@'), true);
+  assert.strictEqual(segredoConfere('Admin12@', 'Admin12#'), false, 'byte diferente no fim');
+  assert.strictEqual(segredoConfere('Admin12', 'Admin12@'), false, 'tamanho diferente não estoura');
+  assert.strictEqual(segredoConfere('', 'Admin12@'), false);
+  assert.strictEqual(segredoConfere('qualquer', undefined), false, 'variável ausente nunca abre a porta');
+  assert.strictEqual(segredoConfere(undefined, undefined), false);
 });

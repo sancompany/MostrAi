@@ -7,6 +7,7 @@ const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const pool = require('./db/pool');
 const { limiteTentativas } = require('./lib/limite-tentativas');
+const { segredoConfere } = require('./lib/segredo');
 
 const pontosRoutes = require('./pontos/routes');
 const anunciantesRoutes = require('./anunciantes/routes');
@@ -65,8 +66,11 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // do requireAdminSession abaixo pra não cair na exigência de estar logado.
 app.post('/admin/login', limiteTentativas, (req, res) => {
   const { usuario, senha } = req.body;
-  const ok = usuario === process.env.ADMIN_USER
-    && !!process.env.ADMIN_PASSWORD && senha === process.env.ADMIN_PASSWORD;
+  // Tempo constante nos dois campos: o `===` de antes devolvia mais rápido
+  // quanto mais cedo os bytes divergiam, o que entrega usuário e senha prefixo
+  // a prefixo pra quem mede. Mesma regra que o webhook do Checkout já segue.
+  const ok = segredoConfere(usuario, process.env.ADMIN_USER)
+    && segredoConfere(senha, process.env.ADMIN_PASSWORD);
   if (!ok) return res.status(401).json({ erro: 'usuário ou senha inválidos' });
   // Sessão nova a cada login: sem isso, quem conseguisse plantar um cookie de
   // sessão na vítima ficava com uma sessão de admin válida assim que ela logasse.
