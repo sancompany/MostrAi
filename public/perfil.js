@@ -57,6 +57,34 @@
       <p class="form-msg" id="msgPerfil"></p>
     </form>
 
+    <details class="bloco-titular">
+      <summary>Seus dados e seus direitos</summary>
+
+      <p class="form-hint">Baixe tudo o que a Mostraí guarda sobre você, num arquivo só.
+        Serve pra conferir e pra levar pra outro fornecedor (LGPD, art. 18).</p>
+      <a class="btn ghost block" id="btnBaixarDados" href="#" download>Baixar meus dados</a>
+
+      <div class="check-row u-mt-16">
+        <input type="checkbox" id="chkComunicacoes">
+        <label for="chkComunicacoes">Quero receber novidades e ofertas da Mostraí por e-mail.
+          Avisos do seu plano, pagamento e anúncio continuam chegando de qualquer jeito —
+          eles fazem parte do serviço.</label>
+      </div>
+
+      <p class="form-hint u-mt-16">Apagar os dados que você deu por vontade própria e que o
+        serviço não precisa: contato do responsável e foto. Nome, documento, endereço e
+        histórico de pagamento não saem daqui — eles sustentam o contrato e a nota fiscal,
+        e só somem junto com a conta.</p>
+      <button type="button" class="btn ghost block" id="btnApagarOpcionais">Apagar dados opcionais</button>
+
+      <div id="blocoArrependimento" hidden>
+        <p class="form-hint u-mt-16" id="textoArrependimento"></p>
+        <button type="button" class="btn ghost block" id="btnArrependimento">Desistir da contratação</button>
+      </div>
+
+      <p class="form-msg" id="msgTitular"></p>
+    </details>
+
     <button type="button" class="btn-sair" id="btnLogout">Sair</button>
     <button type="button" class="btn-excluir" id="btnExcluirConta">Excluir minha conta</button>
   </dialog>`;
@@ -169,6 +197,83 @@
       if (!r.ok) return alert('Não foi possível excluir a conta agora. Fale com o suporte.');
       window.location.href = '/';
     });
+
+    // --- Direitos do titular -------------------------------------------------
+    const msgTitular = $('msgTitular');
+    const dizer = (texto, classe) => {
+      msgTitular.textContent = texto;
+      msgTitular.className = `form-msg ${classe || ''}`.trim();
+    };
+
+    // O download é um <a href> pra rota, e não um fetch + blob: o navegador
+    // salva o arquivo com o nome que o Content-Disposition manda, e o link
+    // funciona mesmo com a CSP bloqueando o que a página fabrica sozinha.
+    $('btnBaixarDados').href = `${API_BASE_URL}/titular/meus-dados`;
+
+    const chk = $('chkComunicacoes');
+    chk.checked = !conta.comunicacoes_revogado_em;
+    chk.addEventListener('change', async () => {
+      const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ escopo: 'comunicacoes', aceita: chk.checked }),
+      });
+      if (!r.ok) { chk.checked = !chk.checked; return dizer('Não deu pra salvar agora.', 'err'); }
+      const d = await r.json();
+      conta.comunicacoes_revogado_em = d.comunicacoes_revogado_em;
+      dizer(chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado — não mandamos mais novidades.', 'ok');
+    });
+
+    $('btnApagarOpcionais').addEventListener('click', async () => {
+      if (!confirm('Apagar o contato do responsável e a foto da conta? Não dá pra desfazer.')) return;
+      const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ escopo: 'opcionais' }),
+      });
+      if (!r.ok) return dizer('Não deu pra apagar agora.', 'err');
+      dizer('Dados opcionais apagados.', 'ok');
+      const novo = await (await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' })).json();
+      Object.assign(conta, novo);
+      preencher();
+      pintarAvatar();
+      if (aoAtualizar) aoAtualizar(conta);
+    });
+
+    // O botão de desistir só existe enquanto o prazo existe — mostrar um botão
+    // que vai responder "prazo vencido" é pior do que não mostrar.
+    (async function montarArrependimento() {
+      let d;
+      try {
+        d = await (await fetch(`${API_BASE_URL}/titular/arrependimento`, { credentials: 'include' })).json();
+      } catch { return; }
+      const bloco = $('blocoArrependimento');
+      if (d.pedido) {
+        bloco.hidden = false;
+        $('btnArrependimento').hidden = true;
+        $('textoArrependimento').textContent = d.pedido.status === 'estornado'
+          ? `Desistência registrada e valor devolvido (protocolo ${d.pedido.id}).`
+          : `Desistência registrada (protocolo ${d.pedido.id}). A devolução de `
+            + `${fmtBRL(d.pedido.valor_a_estornar)} está em andamento.`;
+        return;
+      }
+      if (!d.disponivel) return;
+      bloco.hidden = false;
+      const ate = new Date(d.prazo_ate).toLocaleDateString('pt-BR');
+      $('textoArrependimento').textContent = `Você tem até ${ate} pra desistir da contratação `
+        + `e receber ${fmtBRL(d.valor_a_estornar)} de volta (7 dias, art. 49 do Código de Defesa `
+        + `do Consumidor). O anúncio sai do ar na hora.`;
+      $('btnArrependimento').addEventListener('click', async () => {
+        if (!confirm(`Desistir da contratação e pedir ${fmtBRL(d.valor_a_estornar)} de volta? Seu anúncio sai do ar agora.`)) return;
+        const r = await fetch(`${API_BASE_URL}/titular/arrependimento`, {
+          method: 'POST', credentials: 'include',
+        });
+        const corpo = await r.json().catch(() => ({}));
+        if (!r.ok) return dizer(corpo.erro || 'Não deu pra registrar agora.', 'err');
+        dizer('Desistência registrada. Você recebe a confirmação por e-mail.', 'ok');
+        $('btnArrependimento').hidden = true;
+      });
+    })();
 
     return { abrir, preencher };
   };

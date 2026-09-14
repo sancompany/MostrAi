@@ -152,6 +152,7 @@ const NAV = [
   { grupo: 'Financeiro', itens: [
     { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
     { id: 'comissoes', nome: 'Comissões' },
+    { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
     { id: 'custos', nome: 'Custos fixos' },
     { id: 'eventos', nome: 'Eventos pendentes', fila: 'eventos' },
   ] },
@@ -174,6 +175,7 @@ const SUBTITULOS = {
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
   custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
+  arrependimentos: 'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar — falta devolver o dinheiro no painel do Checkout e registrar aqui.',
   meusanuncios: 'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
 };
 
@@ -218,6 +220,7 @@ async function irPara(aba, forcarResumo) {
     beneficios: renderBeneficios, categorias: renderCategorias, comodato: renderComodato,
     cobrancas: renderCobrancas, comissoes: renderComissoes, custos: renderCustos, eventos: renderEventos,
     meusanuncios: renderMeusAnuncios,
+    arrependimentos: renderArrependimentos,
   };
   try {
     await telas[alvo](el);
@@ -292,6 +295,7 @@ const ALERTAS = [
   { fila: 'anunciantes', aba: 'anunciantes', texto: 'anunciante(s) pendente(s) de aprovação' },
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   { fila: 'notas', aba: 'cobrancas', texto: 'nota(s) fiscal(is) por emitir' },
+  { fila: 'arrependimentos', aba: 'arrependimentos', texto: 'devolução(ões) por arrependimento a pagar', urgente: true },
 ];
 
 function barrasHorizontais(linhas, mapa) {
@@ -1420,6 +1424,56 @@ async function renderComissoes(el) {
   turbinarTabela(el.querySelector('.tabela-caixa'));
   el.querySelectorAll('[data-pago]').forEach((btn) => btn.addEventListener('click', async () => {
     if (await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: btn.dataset.valor === '1' })) renderComissoes(el);
+  }));
+}
+
+// ---------- devoluções por arrependimento ----------
+// O estorno acontece FORA daqui: a API do San Checkout não expõe estorno, quem
+// devolve é uma pessoa no painel do Checkout/Asaas. Esta tela existe pra que o
+// pedido não vire um e-mail que alguém esquece — é dinheiro que a lei manda
+// devolver, com prazo.
+async function renderArrependimentos(el) {
+  const pedidos = await pegar('/admin/arrependimentos');
+  const abertos = pedidos.filter((p) => p.status === 'pendente');
+  const totalAberto = abertos.reduce((t, p) => t + Number(p.valor_a_estornar), 0);
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Protocolo</th><th data-ord>Anunciante</th><th>CPF/CNPJ</th><th data-ord>Valor</th>
+      <th data-ord>Pedido em</th><th data-ord>Situação</th><th></th>
+    </tr></thead><tbody>
+    ${pedidos.map((p) => `<tr data-filtro="${p.status}">
+      <td><b>${p.id}</b></td>
+      <td>${esc(p.nome_empresa)}<div class="u-dim u-fs-72">${esc(p.contato_email)}</div></td>
+      <td>${esc(p.cpf_cnpj)}</td>
+      <td><b>${fmt(p.valor_a_estornar)}</b></td>
+      <td>${data(p.pedido_em)}</td>
+      <td>${p.status === 'estornado'
+        ? `<span class="badge badge-ok">devolvido ${data(p.estornado_em)}</span>`
+        : '<span class="badge badge-pendente">a devolver</span>'}</td>
+      <td>${p.status === 'estornado'
+        ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '—')}</span>`
+        : `<input class="u-w-160" placeholder="id do estorno" data-comp="${p.id}">
+           <button class="btn primary mini" data-estornado="${p.id}">Registrar devolução</button>`}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+
+  el.innerHTML = pedidos.length ? `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">A devolver</span><b>${fmt(totalAberto)}</b><span class="kpi-caption">${abertos.length} pedido(s) em aberto</span></div>
+    </div>
+    ${caixaTabela({
+      chips: [{ valor: 'pendente', nome: 'A devolver' }, { valor: 'estornado', nome: 'Devolvidas' }, { valor: '', nome: 'Todas' }],
+      html: corpo,
+      dica: 'A devolução é feita no painel do San Checkout/Asaas. Aqui você registra o comprovante pra fechar o pedido.',
+    })}` : '<p class="empty-state">Ninguém desistiu de uma contratação até agora.</p>';
+
+  if (!pedidos.length) return;
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+  el.querySelectorAll('[data-estornado]').forEach((btn) => btn.addEventListener('click', async () => {
+    const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
+    if (await salvar(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, { comprovante: campo.value.trim() })) {
+      renderArrependimentos(el);
+    }
   }));
 }
 

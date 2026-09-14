@@ -72,7 +72,8 @@ router.get('/admin/resumo', async (req, res) => {
         (SELECT COUNT(*) FROM anunciantes WHERE status = 'pendente_aprovacao' AND excluido_em IS NULL) AS anunciantes,
         (SELECT COUNT(*) FROM pontos WHERE status = 'lead') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
-        (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas`
+        (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
+        (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos`
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -119,6 +120,9 @@ router.get('/admin/resumo', async (req, res) => {
       pontos: Number(filas.rows[0].pontos),
       notas: Number(filas.rows[0].notas),
       candidaturas: Number(filas.rows[0].candidaturas),
+      // Dinheiro que a lei manda devolver e ainda não voltou. É a única fila
+      // com prazo legal correndo, por isso entra como urgente na visão geral.
+      arrependimentos: Number(filas.rows[0].arrependimentos),
       offline: offline.rows[0].qtd,
     },
     financeiro: {

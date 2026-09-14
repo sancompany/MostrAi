@@ -38,9 +38,10 @@ Fechadas:
   fechada contra o `API.md` do Checkout; inventário de dados revisado;
   `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
   evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
-Falta para fechar a atual: itens 8 e 9 da spec; direitos do titular
-(exportar dados, revogar consentimento, arrependimento com estorno); tabela de
-eventos da métrica; **a versão inicial no ar** — que é o que fecha a estação.
+Falta para fechar a atual: itens 8 e 9 da spec; tabela de eventos da métrica;
+**a versão inicial no ar** — que é o que fecha a estação. Direitos do titular
+construídos em 14/09 (RN-24, RN-25, RN-26): exportar dados, revogar
+consentimento e arrependimento em 7 dias com devolução na fila do admin.
 Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 
 ## Mapa de caminhos

@@ -49,6 +49,15 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | GET | `/vendedor/painel` | Papel `vendedor`: `{vendedor, comissoes, totalComissionado, totalPago, totalAReceber}`. |
 | PATCH | `/vendedor/me` | `{chave_pix}` — vendedor completa/troca a própria chave. |
 
+### Direitos do titular (LGPD / CDC)
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/titular/meus-dados` | Baixa a conta e tudo que ela gerou em JSON (`Content-Disposition: attachment`). Não inclui senha nem chave/PIN de aparelho. RN-24. |
+| POST | `/titular/consentimento` | `{escopo:'comunicacoes', aceita}` liga/desliga divulgação; `{escopo:'opcionais'}` apaga contato do responsável e foto. Outro escopo → 400. RN-25. |
+| GET | `/titular/arrependimento` | `{disponivel, motivo, prazo_ate, valor_a_estornar}` — ou `{pedido}` se já houver um. RN-26. |
+| POST | `/titular/arrependimento` | Cancela no Checkout, suspende a conta e abre a devolução. 400 fora do prazo ou sem cobrança, 409 com pedido aberto, 502 se o Checkout não responder. RN-26. |
+
 ### Painel único — modos da conta (v2.1)
 
 | Método | Rota | O que faz |
@@ -175,3 +184,5 @@ pede.
 | DELETE | `/admin/custos-fixos/:id` | remove |
 | GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo |
 | PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido |
+| GET | `/admin/arrependimentos` | devoluções por arrependimento, pendentes primeiro |
+| POST | `/admin/arrependimentos/:id/estornado` | `{comprovante}` — fecha o pedido depois de devolver no Checkout/Asaas. 404 se já estornado |

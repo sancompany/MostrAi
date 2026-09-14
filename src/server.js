@@ -20,6 +20,7 @@ const contaRoutes = require('./conta/routes');
 const dispositivosRoutes = require('./dispositivos/routes');
 const convitesRoutes = require('./convites/routes');
 const candidaturasRoutes = require('./candidaturas/routes');
+const titularRoutes = require('./titular/routes');
 
 const app = express();
 
@@ -161,6 +162,7 @@ app.use(contaRoutes);
 app.use(dispositivosRoutes);
 app.use(convitesRoutes);
 app.use(candidaturasRoutes);
+app.use(titularRoutes);
 app.use(require('./conta/modos').router);
 
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador

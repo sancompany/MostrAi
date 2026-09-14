@@ -419,6 +419,24 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 }
 .btn-excluir:hover { color: var(--err); text-decoration: underline; }
 
+/* Direitos do titular dentro do popup de perfil. Fica num <details> fechado
+   porque é coisa que se usa uma vez e não pode roubar a tela de quem só veio
+   corrigir o telefone — mas tem que estar AQUI, junto de "excluir conta", e
+   não escondido numa página de política que ninguém abre. */
+.bloco-titular { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.bloco-titular > summary {
+  cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--text-dim); padding: 4px 0;
+}
+.bloco-titular > summary:hover { color: var(--text); }
+.bloco-titular .btn { margin-top: 8px; text-align: center; text-decoration: none; }
+/* O checkbox do consentimento está fora do form.card, então a regra de lá não
+   o alcança e ele herdaria o width:100% dos campos do diálogo — virava barra. */
+.bloco-titular .check-row input[type="checkbox"] {
+  width: 17px; height: 17px; min-width: 17px; flex: 0 0 17px;
+  margin: 2px 0 0; padding: 0; border-radius: 4px; accent-color: var(--brand); cursor: pointer;
+}
+.bloco-titular .check-row label { display: inline; margin: 0; line-height: 1.6; cursor: pointer; }
+
 /* Cards de endereço no dashboard do ponto. */
 .ponto-endereco-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);

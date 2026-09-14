@@ -283,6 +283,37 @@ duas vezes por duplo clique no admin. Enquanto `pago_em` é nulo, a linha está
 em aberto. *Violada:* o banco recusa pela chave única. *Quem vê:* o dono do
 ponto, no extrato; o administrador, na lista do ponto.
 
+**RN-24 — O titular baixa os próprios dados sem pedir a ninguém.**
+`GET /titular/meus-dados` devolve, num JSON só, a conta e tudo que ela gerou —
+pontos, telas, criativos, assinaturas, cobranças, comissões nas duas pontas,
+exibições, pagamentos recebidos como ponto, candidaturas. Não inclui senha nem
+chave/PIN de aparelho: isso é credencial, não dado do titular, e exportar hash
+só ajuda quem roubar o arquivo. *Violada:* não há caminho automático — a rota é
+uma leitura. *Quem vê:* o próprio titular, no perfil.
+
+**RN-25 — Só se revoga o que é consentimento.** Comunicação de novidade e
+oferta depende de consentimento e se desliga a qualquer tempo; o contato do
+responsável e a foto são opcionais e se apagam na hora. Nome, documento,
+endereço e histórico de cobrança têm outra base legal — execução de contrato e
+obrigação fiscal — e não se revogam isoladamente: saem junto com a conta. A
+trava da comunicação mora no remetente (`enviarNovidade`), não em quem chama.
+*Violada:* uma mensagem de divulgação que não passe por `enviarNovidade`.
+*Quem vê:* o titular, no perfil; o administrador, na coluna
+`comunicacoes_revogado_em`.
+
+**RN-26 — Arrependimento em 7 dias devolve tudo, e o prazo conta da primeira
+cobrança confirmada.** É o art. 49 do CDC, e a venda é a consumidor à
+distância. O botão só existe dentro do prazo. Ao pedir: a assinatura é
+cancelada no San Checkout **antes** de qualquer mudança aqui (se falhar, nada
+muda e a pessoa tenta de novo), a conta é suspensa e o anúncio sai do ar na
+hora, e o valor **integral** já pago vira um pedido de devolução na fila do
+admin — não há pró-rata pelos dias em que o anúncio rodou, o direito não é
+proporcional. O estorno em si é executado no painel do Checkout/Asaas, porque a
+API dele não expõe estorno; o admin registra o comprovante pra fechar o pedido.
+*Violada:* o índice único barra um segundo pedido em aberto por conta.
+*Quem vê:* o titular, no perfil; o administrador, na aba Devoluções e no alerta
+da visão geral.
+
 **RN-17 — Migrations são aditivas.** Drop de coluna ou tabela só com permissão
 nominal do dono, em migration própria. Migration aplicada nunca é editada.
 *Violada:* não há caminho automático. *Quem vê:* administrador.
@@ -334,14 +365,20 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 
 ## 8. Direitos e obrigações que viram tela
 
-- **Exportar dados da conta** — *não existe ainda.* Pendência da Estação 5.
-- **Excluir conta** — existe, em `/anunciante/perfil.html` (RN-15).
-- **Revogar consentimento** — *não existe ainda.* Pendência da Estação 5.
+Todos ficam no mesmo lugar: o bloco "Seus dados e seus direitos", dentro do
+popup de perfil do painel — junto de "excluir conta", e não escondido numa
+página de política que ninguém abre.
+
+- **Exportar dados da conta** — `GET /titular/meus-dados`, baixa um JSON com
+  tudo (RN-24).
+- **Excluir conta** — existe, no popup de perfil do painel (RN-15).
+- **Revogar consentimento** — `POST /titular/consentimento`: desliga as
+  comunicações de divulgação, ou apaga os dados opcionais (RN-25).
 - **Canal do titular** — `/contato.html`, que grava a mensagem e avisa por e-mail.
 - **Confirmação da contratação** — e-mail de pagamento confirmado (seção 6).
-- **Direito de arrependimento (7 dias)** — *não existe ainda como fluxo com
-  estorno.* Pendência da Estação 5, e é obrigação legal por ser venda a
-  consumidor à distância.
+- **Direito de arrependimento (7 dias)** — `POST /titular/arrependimento`
+  (RN-26): cancela a cobrança, tira o anúncio do ar e abre a devolução na fila
+  do admin.
 - **Termos de uso e Política de privacidade** — as páginas existem; o conteúdo
   é revisado na Estação 7 (skill `legal`).
 

@@ -77,5 +77,43 @@ async function enviarCriativoNoAr(anunciante, criativo) {
   });
 }
 
+// Mensagem que NÃO é operacional — novidade, oferta, convite a um recurso
+// novo. Diferente das de cima, esta depende de consentimento, e consentimento
+// se revoga a qualquer tempo (LGPD art. 8 §5): quem revogou não recebe, e a
+// checagem mora aqui e não em quem chama, senão o primeiro esquecimento vira
+// o primeiro e-mail indevido. Hoje nada usa esta função — ela existe pra que
+// a primeira divulgação nasça tendo de passar por ela.
+async function enviarNovidade(anunciante, { assunto, texto }) {
+  if (anunciante.comunicacoes_revogado_em) return { enviado: false, motivo: 'consentimento revogado' };
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: assunto,
+    text: `${texto}\n\nVocê recebe este aviso porque aceitou receber novidades da Mostraí. `
+      + `Pra parar, abra seu perfil no painel e desmarque "receber novidades".`,
+  });
+  return { enviado: true };
+}
+
+// Confirmação de que o pedido de arrependimento entrou (CDC art. 49). Sai pro
+// titular e pra caixa da Mostraí: o estorno é executado por uma pessoa no
+// painel do Checkout, e sem aviso ninguém fica sabendo que há um a pagar.
+async function enviarArrependimentoRecebido(anunciante, pedido) {
+  const valor = `R$ ${Number(pedido.valor_a_estornar).toFixed(2)}`;
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    cc: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
+    subject: 'Desistência registrada — Mostraí',
+    text: `Olá, ${anunciante.nome_empresa}!\n\n`
+      + `Registramos sua desistência da contratação dentro do prazo de 7 dias. `
+      + `A cobrança recorrente foi cancelada e seu anúncio saiu do ar.\n\n`
+      + `Valor a devolver: ${valor}. A devolução é feita pelo mesmo meio do pagamento `
+      + `e pode levar alguns dias úteis pra aparecer no seu extrato.\n\n`
+      + `Protocolo: ${pedido.id}.\n\nEquipe Mostraí.`,
+  });
+}
+
 module.exports = {
-  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarMensagemContato };
+  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha,
+  enviarMensagemContato, enviarNovidade, enviarArrependimentoRecebido };
