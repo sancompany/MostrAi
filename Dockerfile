@@ -23,12 +23,24 @@ RUN npm ci --omit=dev
 # ---------- estágio 2: imagem final ----------
 FROM node:22-slim
 
-# ffmpeg            → normaliza o criativo e gera a thumb (src/lib/ffmpeg.js)
-# postgresql-client → pg_dump, usado por `npm run backup` (Lei 6, exceção
-#                     registrada enquanto o Supabase for Free)
-# ca-certificates   → TLS para Supabase e San Checkout
+# ffmpeg               → normaliza o criativo e gera a thumb (src/lib/ffmpeg.js)
+# postgresql-client-17 → pg_dump, usado por `npm run backup`. TEM que ser a 17:
+#                        o Supabase roda Postgres 17 e o pg_dump recusa servidor
+#                        mais novo que ele ("aborting because of server version
+#                        mismatch"). O `postgresql-client` do Debian bookworm é
+#                        a 15, então vem do repositório oficial do PostgreSQL.
+# ca-certificates      → TLS para Supabase e San Checkout
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg postgresql-client ca-certificates \
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl gnupg \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-17 \
+ && apt-get purge -y curl gnupg && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
