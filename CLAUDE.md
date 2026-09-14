@@ -20,9 +20,10 @@ dispensada por proporcionalidade.
 ## Estado na esteira
 Estação atual: **2 — Fronteiras**, aberta em 14/09/2026.
 Fechadas:
-- 1 Escopo — spec validada pelo dono, veredito da Fase 3 confirmado sobre nove
-  itens · evidência: `docs/specs/2026-09-12-mostrai.md`, seção
-  "Validação do dono (14/09/2026)"
+- 1 Escopo — validada, **reaberta e refechada em 14/09/2026** quando o contrato
+  do San Checkout foi lido pela primeira vez · evidência:
+  `docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Reabertura e
+  novo fecho da Estação 1"
 Falta para fechar a atual: confirmar a classificação da skill `classificar` e
 registrar as capacidades consumidas do ecossistema — boa parte já está escrita
 na Fase 2 da spec; a Estação 2 entra como auditoria do que já foi decidido.
@@ -49,5 +50,8 @@ conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
   antigos seguem válidos. Nenhum push da pasta `D:\SanCo\MostrAi` antes do passo 1.
 - **Itens 8 e 9 da spec não construídos** — o 9 (plano imutável para quem já
   assinou) tem que estar de pé antes da primeira assinatura paga.
-- **Mês grátis: comportamento não confirmado do lado do Checkout** — resolve na
-  Estação 4, com o `API.md` e o `INTEGRACAO.md` do San Checkout em mãos.
+- **`SAN_CHECKOUT_API_URL` é variável nova** e precisa ser combinada com quem
+  administra o Checkout antes do deploy — é o endereço da API, diferente do da
+  tela de pagamento.
+- **`npm run conciliar` precisa de cron diário no Northflank.** Sem ele, um
+  webhook perdido vira cliente pagante sem cobertura.
