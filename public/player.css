@@ -1,0 +1,15 @@
+html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100vw; height: 100vh; }
+/* Painel físico fica 1920x1080 (deitado), giramos 90° via CSS pra ficar
+   vertical — sem mexer em hardware. ?orientacao=paisagem desliga o giro. */
+#stage { position: fixed; top: 50%; left: 50%; width: 100vh; height: 100vw; transform: translate(-50%, -50%) rotate(90deg); }
+body.paisagem #stage { width: 100vw; height: 100vh; transform: translate(-50%, -50%); }
+#stage video, #stage img { width: 100%; height: 100%; object-fit: cover; display: none; }
+#stage video.ativo, #stage img.ativo { display: block; }
+#msg { position: fixed; bottom: 8px; left: 8px; color: #444; font: 12px monospace; z-index: 2; }
+/* Marca d'água discreta quando não há nada pra tocar */
+#vazio { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; }
+#vazio img { width: 28vmin; opacity: .5; }
+body.sem-playlist #vazio { display: flex; }
+/* Alvo invisível pra abrir o painel da tela: 5 toques no canto em 3s, ou a
+   tecla P no controle/teclado. Nada visível pra quem passa na frente. */
+#alvoPainel { position: fixed; top: 0; right: 0; width: 18vmin; height: 18vmin; z-index: 3; }

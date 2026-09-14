@@ -84,53 +84,6 @@
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
   <script src="/formulario.js"></script>
-  <script>
-    fetch(`${API_BASE_URL}/pontos`)
-      .then((r) => r.json())
-      .then((pontos) => {
-        const grid = document.getElementById('pontosGrid');
-        const ativos = pontos.filter((p) => p.status === 'ativo').length;
-        const emConstrucao = pontos.filter((p) => p.status === 'aguardando_instalacao').length;
-        const cidades = new Set(pontos.map((p) => p.cidade)).size;
-        document.getElementById('statRow').innerHTML = `
-          <div class="stat"><b>${ativos}</b><span>Pontos ativos</span></div>
-          <div class="stat"><b>${emConstrucao}</b><span>Em instalação</span></div>
-          <div class="stat"><b>${cidades || 1}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
-        `;
-        // Soma de fluxo só aparece com 1.000+ pessoas somadas (ver
-        // GET /pontos/fluxo) — número pequeno demais não vira prova social.
-        fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMes }) => {
-          if (!pessoasPorMes) return;
-          document.getElementById('statRow').insertAdjacentHTML('afterbegin',
-            `<div class="stat"><b>${pessoasPorMes.toLocaleString('pt-BR')}</b><span>Pessoas alcançadas por mês</span></div>`);
-        }).catch(() => {});
-        if (!pontos.length) {
-          grid.innerHTML = '<p class="empty-state">Nenhum ponto ativo ainda — em breve.</p>';
-          return;
-        }
-        const STATUS_LABEL = {
-          ativo: { texto: 'Ativo', classe: 'badge-ok' },
-          aguardando_instalacao: { texto: 'Em construção', classe: 'badge-pendente' },
-          reparo: { texto: 'Em reparo', classe: 'badge-err' },
-        };
-        grid.innerHTML = pontos.map((p) => {
-          const enderecoCompleto = `${p.endereco ? p.endereco + ', ' : ''}${p.cidade}`;
-          const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-          const st = STATUS_LABEL[p.status] || STATUS_LABEL.ativo;
-          return `
-          <div class="ponto-card">
-            <span class="badge ${st.classe}">${st.texto}</span>
-            <h4>${esc(p.nome)}</h4>
-            <p>${esc(p.cidade)}${p.endereco ? ' — ' + esc(p.endereco) : ''}</p>
-            <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
-          </div>
-        `;
-        }).join('');
-      })
-      .catch(() => {
-        document.getElementById('pontosGrid').innerHTML =
-          '<p class="empty-state">Não foi possível carregar os pontos agora.</p>';
-      });
-  </script>
+  <script src="/pontos.page.js"></script>
 </body>
 </html>

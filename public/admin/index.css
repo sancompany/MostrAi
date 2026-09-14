@@ -1,0 +1,84 @@
+/* Painel administrativo: casca própria (menu lateral + área de conteúdo)
+   em vez do cabeçalho do site — são 12 seções, uma fileira de abas não
+   cabe mais e não dá pra agrupar por assunto. */
+.admin-shell[hidden] { display: none; }
+.admin-shell { display: grid; grid-template-columns: 224px 1fr; min-height: 100vh; width: 100%; }
+.admin-side { background: var(--card); border-right: 1px solid var(--border); padding: 18px 0 24px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.admin-side .marca { padding: 0 18px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin-side .marca img { height: 22px; display: block; }
+.nav-grupo { color: var(--text-dim); font-size: .66rem; text-transform: uppercase; letter-spacing: .07em; padding: 16px 18px 6px; font-weight: 700; }
+.nav-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: none; border-left: 3px solid transparent; color: var(--text-dim); padding: 9px 18px; font-size: .86rem; cursor: pointer; font-family: inherit; }
+.nav-item:hover { background: var(--bg-alt); color: var(--text); }
+.nav-item.active { background: var(--bg-alt); border-left-color: var(--brand); color: var(--text); font-weight: 600; }
+.nav-item .cont { background: var(--err); color: #fff; border-radius: 999px; font-size: .68rem; font-weight: 700; padding: 1px 7px; line-height: 1.5; }
+.admin-main { padding: 24px 28px 60px; min-width: 0; }
+.admin-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.admin-topo h2 { margin: 0; font-size: 1.35rem; }
+.admin-topo .sub { margin: 3px 0 0; color: var(--text-dim); font-size: .85rem; max-width: 620px; }
+
+/* Alertas da visão geral: só aparece o que tem fila > 0, e cada um leva
+   direto pra seção que resolve. */
+.alertas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.alerta { display: flex; flex-direction: column; gap: 1px; text-align: left; background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: 12px; padding: 13px 16px; cursor: pointer; font-family: inherit; color: var(--text); }
+.alerta:hover { border-color: var(--brand); }
+.alerta b { font-size: 1.5rem; line-height: 1.2; }
+.alerta span { color: var(--text-dim); font-size: .79rem; }
+.alerta.urgente { border-left-color: var(--err); }
+.alerta.urgente b { color: var(--err); }
+.tudo-em-dia { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; font-size: .88rem; }
+
+/* Tabelas: caixa com busca, filtros por status e contagem. Ordenação por
+   clique no cabeçalho é client-side — são dezenas de linhas, não milhares. */
+.tabela-caixa { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+.tabela-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+.busca { flex: 1; min-width: 170px; background: var(--bg-alt); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 11px; font-size: .83rem; font-family: inherit; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--border); background: var(--bg-alt); border-radius: 999px; padding: 4px 11px; font-size: .76rem; color: var(--text-dim); cursor: pointer; font-family: inherit; }
+.chip.active { background: var(--text); color: var(--card); border-color: var(--text); font-weight: 600; }
+.rolagem { overflow-x: auto; }
+.tabela-caixa table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.tabela-caixa th, .tabela-caixa td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
+.tabela-caixa thead th { position: sticky; top: 0; background: var(--bg-alt); z-index: 1; color: var(--text-dim); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
+.tabela-caixa tbody tr:hover { background: var(--bg-alt); }
+.tabela-caixa tbody tr:last-child td { border-bottom: none; }
+th[data-ord] { cursor: pointer; user-select: none; }
+th[data-ord]::after { content: '↕'; opacity: .35; margin-left: 5px; font-size: .72rem; }
+th[data-ord].asc::after { content: '↑'; opacity: 1; }
+th[data-ord].desc::after { content: '↓'; opacity: 1; }
+.tabela-pe { padding: 9px 14px; color: var(--text-dim); font-size: .76rem; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+select.mini, input.mini, textarea.mini { background: var(--bg-alt); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 8px; font-size: .8rem; font-family: inherit; }
+input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid var(--blue); outline-offset: 0; }
+.btn.mini { padding: 5px 12px; font-size: .78rem; }
+
+/* Toda edição inline agora avisa que salvou (ou que falhou) — antes o
+   campo mudava em silêncio e não dava pra saber se pegou. */
+@keyframes flashOk { 0% { box-shadow: 0 0 0 3px rgba(22,163,74,.5); } 100% { box-shadow: 0 0 0 3px rgba(22,163,74,0); } }
+.flash-ok { animation: flashOk 1.1s ease-out; }
+.toast { position: fixed; right: 18px; bottom: 18px; background: var(--text); color: var(--card); padding: 10px 16px; border-radius: 10px; font-size: .85rem; z-index: 99; box-shadow: 0 8px 24px rgba(0,0,0,.18); max-width: 340px; }
+.toast.err { background: var(--err); color: #fff; }
+
+.criativo-fila { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.criativo-fila .item { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.criativo-fila .midia { width: 100%; aspect-ratio: 9/16; max-height: 300px; object-fit: cover; background: var(--bg-alt); display: block; }
+.criativo-fila .dados { padding: 12px 14px; }
+.criativo-fila .dados b { display: block; font-size: .9rem; }
+.criativo-fila .dados small { color: var(--text-dim); font-size: .74rem; }
+.criativo-fila .acoes { display: flex; gap: 8px; padding: 0 14px 14px; }
+
+.gate { max-width: 360px; margin: 90px auto; }
+.benef-lista { display: flex; flex-direction: column; gap: 3px; max-height: 132px; overflow-y: auto; padding-right: 4px; }
+.benef-check { display: flex; align-items: flex-start; gap: 6px; font-size: .78rem; color: var(--text-dim); cursor: pointer; white-space: normal; }
+.benef-check input { margin: 2px 0 0; accent-color: var(--brand); }
+.bloco-novo { margin-bottom: 18px; }
+.bloco-novo > summary { display: inline-flex; cursor: pointer; }
+
+@media (max-width: 900px) {
+  .admin-shell { grid-template-columns: 1fr; }
+  .admin-side { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .nav-grupo { display: none; }
+  .nav-lista { display: flex; overflow-x: auto; gap: 2px; padding: 0 12px 6px; }
+  .nav-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 8px 12px; }
+  .nav-item.active { border-left: none; border-bottom-color: var(--brand); }
+  .admin-main { padding: 18px 14px 48px; }
+}

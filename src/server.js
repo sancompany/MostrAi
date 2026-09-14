@@ -28,12 +28,55 @@ const app = express();
 // produção sem nenhuma mensagem de erro.
 app.set('trust proxy', 1);
 
-// Cabeçalhos de segurança básicos. São os quatro que valem a pena aqui, sem
-// puxar o helmet só pra isso.
+// Content-Security-Policy. É o que sobrou de pé depois de zerar os 301
+// atributos style= e tirar os 16 <script> inline dos HTML: sem eles, a
+// política não precisa de 'unsafe-inline' em lugar nenhum, que é o único
+// jeito de a CSP realmente valer contra XSS. Um cadastro público alimenta
+// telas de outras pessoas (o vendedor vê o nome que o anunciante digitou),
+// então isto é a segunda camada atrás do `esc()` do config.js.
+//
+// A origem do Storage sai do ambiente, nunca escrita aqui: o repositório é
+// público e endereço de infraestrutura não entra em arquivo versionado.
+function origemDe(url) {
+  try { return new URL(url).origin; } catch { return null; }
+}
+const ORIGEM_STORAGE = origemDe(process.env.SUPABASE_URL);
+const MIDIA = ["'self'", ORIGEM_STORAGE].filter(Boolean);
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "font-src 'self'",
+  // data: para as imagens embutidas; o Storage serve os criativos.
+  `img-src 'self' data: ${MIDIA.slice(1).join(' ')}`.trim(),
+  // blob: é o player tocando do cache offline (URL.createObjectURL).
+  `media-src ${MIDIA.join(' ')} blob:`,
+  // viacep preenche endereço no cadastro; o player busca o criativo pra cachear.
+  `connect-src ${MIDIA.join(' ')} https://viacep.com.br`,
+  // o mapa de Matão na página de pontos.
+  "frame-src https://www.google.com",
+  "worker-src 'self' blob:",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "object-src 'none'",
+].join('; ');
+
+// CSP_REPORT_ONLY=1 sobe a política sem bloquear nada — a saída de emergência
+// se algum navegador reclamar de algo que não apareceu nos testes.
+const CABECALHO_CSP = process.env.CSP_REPORT_ONLY === '1'
+  ? 'Content-Security-Policy-Report-Only'
+  : 'Content-Security-Policy';
+
+// Cabeçalhos de segurança. Sem puxar o helmet só pra isso.
 app.use((req, res, next) => {
+  res.setHeader(CABECALHO_CSP, CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Nada aqui precisa de câmera, microfone ou localização.
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), interest-cohort=()');
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   }
@@ -59,6 +102,21 @@ app.use(session({
 // precisar de Live Server ou outro serviço separado na 8080. Tem que vir
 // antes do requireAdminSession abaixo, senão até o admin/index.html (a
 // própria tela de login) fica bloqueado por exigir sessão pra carregar.
+// URLs antigas que mudaram de nome. Eram quatro arquivos HTML cuja única
+// função era um window.location.replace — um redirecionamento que só acontece
+// depois que o navegador baixa a página e roda script, e que buscador nenhum
+// lê como mudança de endereço. 301 diz a mesma coisa antes do download, e sem
+// script — o que também é o que permite a CSP não liberar script inline.
+const MUDARAM_DE_ENDERECO = {
+  '/afiliado/cadastro.html': '/seja-um-vendedor.html',
+  '/afiliado/login.html': '/anunciante/login.html',
+  '/afiliado/painel.html': '/anunciante/vendedor.html',
+  '/anunciante/perfil.html': '/anunciante/painel.html',
+};
+Object.entries(MUDARAM_DE_ENDERECO).forEach(([de, para]) => {
+  app.get(de, (_req, res) => res.redirect(301, para));
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Login do admin por usuário/senha (env ADMIN_USER/ADMIN_PASSWORD) + sessão
