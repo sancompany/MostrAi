@@ -97,8 +97,8 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | abas Anúncios / Meu ponto / Vendas | assinar, subir criativo, ver exibições | perfil, ponto, vendedor |
-| Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | telas do ponto, cota, sinal | definir PIN, acompanhar | — |
+| Painel | `/anunciante/painel.html` | conta logada | abas Anúncios / Meu ponto / Vendas | assinar, subir criativo, ver exibições, **baixar o comprovante de veiculação** (CSV, por período) | perfil, ponto, vendedor |
+| Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | telas do ponto, cota, **sinal de cada tela**, e o **extrato** do que já foi pago e do que está em aberto | definir PIN, acompanhar | — |
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | `/player.html?tela=ID` | a TV, com chave | o vídeo da vez | tocar; 5 toques abrem o painel por PIN | — |
@@ -232,6 +232,24 @@ na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 login, admin e redefinição. Reinício do servidor zera (é em memória).
 *Violada:* "muitas tentativas, tente mais tarde". *Quem vê:* quem tentou.
 
+**RN-18 — O anunciante é avisado quando o vídeo entra no ar.** Na transição do
+criativo para `aprovado` — e só na transição —, sai um e-mail dizendo que ele
+está na playlist. Salvar de novo um criativo já aprovado não reenvia.
+*Violada:* nada acontece; a aprovação não depende do e-mail. *Quem vê:* o
+anunciante, na caixa de entrada.
+
+**RN-19 — O comprovante de veiculação respeita o período escolhido.** O CSV
+sai com `;` e BOM UTF-8, porque o Excel em português com vírgula junta tudo
+numa coluna e come os acentos. Período aceito: de 1 a 365 dias; fora disso é
+limitado, não recusado. *Violada:* conta diferente da própria recebe 403.
+*Quem vê:* o anunciante.
+
+**RN-20 — O pagamento ao ponto é um lançamento por ponto por mês.** Lançar o
+mesmo mês de novo atualiza o valor em vez de criar outro — é o que impede pagar
+duas vezes por duplo clique no admin. Enquanto `pago_em` é nulo, a linha está
+em aberto. *Violada:* o banco recusa pela chave única. *Quem vê:* o dono do
+ponto, no extrato; o administrador, na lista do ponto.
+
 **RN-17 — Migrations são aditivas.** Drop de coluna ou tabela só com permissão
 nominal do dono, em migration própria. Migration aplicada nunca é editada.
 *Violada:* não há caminho automático. *Quem vê:* administrador.
@@ -256,6 +274,8 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |
 | E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o valor e até quando a cobertura vale. |
+| E-mail de anúncio no ar | Assunto: **Seu anúncio está no ar — Mostraí**. Corpo: o vídeo foi aprovado e entrou na playlist, com o link do painel para acompanhar as exibições. |
+| Extrato vazio | Nenhum pagamento lançado ainda. Assim que o primeiro mês for fechado, ele aparece aqui. |
 | Exclusão de conta | Sua conta foi excluída. Você tem 60 dias para pedir a volta pelo nosso contato. |
 
 ---
@@ -310,11 +330,12 @@ Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 | `conta:aprovacao_recebe` | servidor | `papel_liberado`, `horas_ate_aprovar` | quanto tempo a fila de aprovação leva? |
 | `plano:assinatura_inicia` | servidor | `plano_id`, `plano_ciclo`, `valor_cobrado` | quantos chegam ao checkout? |
 | `pagamento:cobranca_confirma` | **servidor (webhook)** | `plano_id`, `valor_confirmado`, `ciclo_numero` | quantos pagaram ontem? — é a receita |
-| `criativo:video_aprova` | servidor | `horas_ate_aprovar` | o vídeo entra no ar rápido? |
+| `criativo:video_aprova` | servidor | `horas_ate_aprovar` | o vídeo entra no ar rápido? (é o mesmo gatilho do e-mail da RN-18) |
 | `exibicao:video_toca` | **servidor (`/played`)** | `dispositivo_id`, `anunciante_id` | a entrega prometida aconteceu? |
 | `tela:dispositivo_ativa` | servidor | `ponto_id`, `custo_aparelho` | a rede cresceu quanto? |
 | `ponto:candidatura_aprova` | servidor | `bairro`, `ramo` | de onde vêm os pontos? |
 | `comissao:vendedor_gera` | servidor | `vendedor_id`, `comissao_valor` | quanto a indicação custa? |
+| `ponto:pagamento_quita` | servidor | `ponto_id`, `valor`, `competencia` | quanto a rede custou em ajuda de custo? |
 | `conta:exclusao_pede` | servidor | `dias_de_vida`, `tinha_plano_ativo` | quem sai, e quando? |
 
 Os três críticos — cadastro, exibição e pagamento confirmado — são **de

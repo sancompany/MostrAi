@@ -428,7 +428,13 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 
 .mini-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: 4px; }
 .mini-table th, .mini-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.mini-table th { color: var(--text-dim); font-weight: 600; }
+/* Cabeçalho que fica à vista enquanto a lista rola: sem isto, na décima linha
+   ninguém lembra de qual coluna é qual. O `position: sticky` só vale dentro de
+   um contêiner com rolagem — quem usa envolve a tabela num overflow-x:auto. */
+.mini-table th { color: var(--text-dim); font-weight: 600; position: sticky; top: 0; background: var(--card); z-index: 1; }
+/* Número alinhado à direita compara de relance; à esquerda, não. */
+.mini-table td.num, .mini-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mini-table tbody tr:last-child td { border-bottom: none; }
 
 .legal-doc { max-width: 760px; margin: 0 auto; }
 .legal-doc h2 { font-size: 1.15rem; margin: 32px 0 10px; }

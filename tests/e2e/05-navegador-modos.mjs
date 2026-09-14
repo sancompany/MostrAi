@@ -33,7 +33,7 @@ console.log('== cadastro só-vendedor pelo convite ==');
 {
   const p = await pagina(link);
   await p.waitForSelector('#formConvite:not([hidden])');
-  await p.fill('#cpf_cnpj', '777'); await p.fill('#contato_telefone', '16 9'); await p.fill('#chave_pix', 'nina@pix');
+  await p.fill('#cpf_cnpj', '111.444.777-35'); await p.fill('#contato_telefone', '16 99463-5946'); await p.fill('#chave_pix', 'nina@pix');
   await p.fill('#contato_email', 'nina@x.com'); await p.fill('#senha', 'Senha12@'); await p.fill('#senha_confirma', 'Senha12@');
   await p.check('#aceitou_termos'); await p.click('button[type=submit]');
   await p.waitForURL('**/anunciante/vendedor.html', { timeout: 8000 }).catch(() => {});

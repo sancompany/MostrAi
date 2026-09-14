@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
+const anunciantesRepo = require('../anunciantes/repository');
+const { enviarCriativoNoAr } = require('../financeiro/email');
 
 const HORAS_OFFLINE_ALERTA = 2;
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
@@ -14,8 +16,19 @@ router.get('/admin/criativos', async (req, res) => {
 
 router.patch('/admin/criativos/:id', async (req, res) => {
   try {
+    const antes = await criativosRepo.buscarPorId(req.params.id);
     const criativo = await criativosRepo.atualizar(req.params.id, req.body);
     if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
+
+    // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
+    // salvamento do admin reenviaria o aviso e o anunciante receberia
+    // "seu anúncio está no ar" várias vezes pelo mesmo vídeo.
+    if (criativo.status === 'aprovado' && (!antes || antes.status !== 'aprovado')) {
+      const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
+      // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
+      // o que coloca o vídeo no ar.
+      if (dono) enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
+    }
     res.json(criativo);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });

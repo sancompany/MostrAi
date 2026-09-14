@@ -117,7 +117,7 @@
         document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · meu ponto</span>`;
         document.getElementById('bonusPonto').innerHTML = cardBonus(estado, 'anuncio');
         ligarResgateAnuncio(document.getElementById('bonusPonto'));
-        await Promise.all([carregarTelas(), carregarPontos()]);
+        await Promise.all([carregarTelas(), carregarPontos(), carregarExtrato()]);
       });
       if (estado && !estado.modos.ponto.liberado) {
         document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · modo meu ponto ainda não ativado</span>`;

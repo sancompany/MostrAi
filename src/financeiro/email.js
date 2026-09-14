@@ -53,4 +53,29 @@ async function enviarMensagemContato({ nome, email, telefone, mensagem }) {
   });
 }
 
-module.exports = { enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarMensagemContato };
+// Disparado quando o admin aprova o criativo. Era o buraco mais sentido do
+// fluxo: a pessoa pagava, subia o vídeo e ficava sem saber quando entrou no
+// ar — a plataforma decidia sozinha e não contava. Todo self-service de mídia
+// avisa nessa hora; é a confirmação de que o dinheiro virou entrega.
+async function enviarCriativoNoAr(anunciante, criativo) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Seu anúncio está no ar — Mostraí',
+    text: [
+      `Olá, ${anunciante.nome_empresa}!`,
+      '',
+      'Seu vídeo foi aprovado e já entrou na playlist das telas da rede.',
+      criativo && criativo.duracao_segundos ? `Duração do vídeo: ${criativo.duracao_segundos} segundos.` : '',
+      '',
+      'Você acompanha quantas vezes ele apareceu, e em quais pontos, na aba',
+      `Anúncios do seu painel: ${process.env.SITE_URL}/anunciante/painel.html`,
+      '',
+      'Qualquer dúvida, é só responder este e-mail.',
+      'Mostraí',
+    ].filter(Boolean).join('\n'),
+  });
+}
+
+module.exports = {
+  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarMensagemContato };

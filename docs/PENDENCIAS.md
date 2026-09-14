@@ -312,7 +312,22 @@ Legenda: ✅ existe com evidência · ⚠️ existe pela metade · ❌ não exis
 | 10 | Desempenho de landing | ⚠️ | conferir imagem hero e terceiros antes da primeira interação |
 | 11 | Manutenção pós-lançamento | ⚠️ | a lista do que envelhece entra no `RUNBOOK.md` |
 
-### O que a referência de mercado mostrou que falta
+### O que a referência de mercado mostrou que falta — **construído em 14/09**
+
+> **Os quatro foram tratados.** O item 4 não existia como falta: o
+> `ponto.html` já mostrava sinal e exibições por tela, e minha auditoria errou
+> ao marcá-lo. Os outros três foram construídos e verificados contra servidor
+> rodando. O registro do que cada um é está em `docs/funcional.md`
+> (RN-18, RN-19, RN-20).
+
+| # | O que era | Estado |
+|---|---|---|
+| 1 | Aviso de "seu anúncio está no ar" | ✅ e-mail na **transição** para aprovado; salvar de novo não reenvia |
+| 2 | Extrato do ponto | ✅ migration 022, lançamento por mês, extrato no painel do ponto |
+| 3 | Comprovante de veiculação | ✅ CSV por período (`;` + BOM), 403 para conta alheia |
+| 4 | Estado da tela para quem cedeu a parede | ✅ **já existia** — auditoria errada |
+
+### O diagnóstico original, para referência
 
 Comparado com **AdQuick** e **Blip** (self-serve DOOH), **Aqui Ads** da
 Eletromidia (o equivalente brasileiro, 76 mil telas para PME), **Trillboards**

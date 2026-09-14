@@ -76,7 +76,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
 verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
-**As 55 rotas estão listadas uma a uma de propósito** — contrato que só existe
+**As 58 rotas estão listadas uma a uma de propósito** — contrato que só existe
 em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
 pede.
 
@@ -150,6 +150,13 @@ pede.
 |---|---|---|
 | GET | `/admin/criativos` | fila de aprovação |
 | PATCH | `/admin/criativos/:id` | aprova ou recusa. Só aprovado entra na playlist |
+
+### Pagamento ao ponto (extrato)
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/pontos/:pontoId/pagamentos` | lançamentos daquele ponto |
+| POST | `/admin/pontos/:pontoId/pagamentos` | lança `{competencia:'AAAA-MM', valor, forma?, observacao?, pago_em?}`. Mesmo mês de novo **atualiza**, não duplica (UNIQUE da migration 022) |
+| PATCH | `/admin/pagamentos-ponto/:id` | `{pago}` quita ou reabre o lançamento |
 
 ### Dinheiro
 | Método | Rota | O que faz |

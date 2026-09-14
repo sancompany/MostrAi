@@ -40,7 +40,21 @@
           </div>
 
           <div class="panel" id="painelDetalhe" style="margin-bottom:20px" hidden>
-            <div class="panel-head"><h3>Exibições por ponto</h3></div>
+            <div class="panel-head">
+              <h3>Exibições por ponto</h3>
+              <!-- Comprovante de veiculação: o que o setor chama de
+                   proof-of-play. O dado já existia; faltava a forma que o
+                   anunciante guarda, imprime ou manda pro contador. -->
+              <span>
+                <label for="periodoComprovante" class="form-hint" style="margin:0">Período</label>
+                <select id="periodoComprovante" style="margin:0 8px">
+                  <option value="30">últimos 30 dias</option>
+                  <option value="90">últimos 90 dias</option>
+                  <option value="365">últimos 12 meses</option>
+                </select>
+                <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
+              </span>
+            </div>
             <div class="bar-chart-h" id="graficoPonto"></div>
             <div id="exibicoesDetalhe" style="margin-top:20px"></div>
           </div>
@@ -211,6 +225,19 @@
       }
       window.location.href = checkoutUrl;
     }
+
+    // O link do comprovante carrega o período escolhido, como a referência de
+    // mercado faz: exportação respeita o mesmo recorte que está na tela.
+    (function comprovante() {
+      const sel = document.getElementById('periodoComprovante');
+      const link = document.getElementById('btnComprovante');
+      if (!sel || !link) return;
+      const atualizar = () => {
+        link.href = `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${sel.value}`;
+      };
+      sel.addEventListener('change', atualizar);
+      atualizar();
+    })();
 
     // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
     // (transparência de entrega: programado vs. confirmado, custo por exibição).

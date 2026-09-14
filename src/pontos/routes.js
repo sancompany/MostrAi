@@ -7,6 +7,7 @@ const { conferirSenha } = require('../lib/senha');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 const repo = require('./repository');
 const planosPontoRepo = require('./planos-ponto-repository');
+const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
@@ -69,6 +70,14 @@ router.get('/planos-ponto', async (req, res) => {
 // tiver o endpoint antigo salvo recebe o motivo.
 router.post('/seja-um-ponto', (req, res) => {
   res.status(410).json({ erro: 'o cadastro de ponto agora é por convite — envie sua candidatura em /seja-um-ponto.html' });
+});
+
+// Extrato do ponto — o que ele recebeu e o que está em aberto. Quem cede a
+// parede precisa saber se o mês passado foi pago sem ter que perguntar; é o
+// padrão de todo portal de quem hospeda tela de anúncio.
+router.get('/anunciantes/me/pontos/extrato', exigirAnuncianteLogado, async (req, res) => {
+  const linhas = await pagamentosRepo.extratoDaConta(req.session.anuncianteId);
+  res.json({ linhas, resumo: pagamentosRepo.resumir(linhas) });
 });
 
 // Admin — protegido por requireAdminSession, montado em server.js
@@ -156,3 +165,27 @@ router.patch('/admin/planos-ponto/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+// Admin lança e quita o pagamento do ponto. `competencia` chega 'AAAA-MM'.
+// O UNIQUE (ponto_id, competencia) da migration 022 é o que impede pagar o
+// mesmo mês duas vezes por duplo clique — aqui o conflito vira atualização.
+router.get('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
+  res.json(await pagamentosRepo.listarPorPonto(req.params.pontoId));
+});
+
+router.post('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
+  const { competencia, valor, forma, observacao, pago_em } = req.body;
+  if (!competencia || valor === undefined || valor === null) {
+    return res.status(400).json({ erro: 'competência e valor são obrigatórios' });
+  }
+  if (Number(valor) < 0) return res.status(400).json({ erro: 'valor não pode ser negativo' });
+  res.status(201).json(await pagamentosRepo.lancar({
+    ponto_id: req.params.pontoId, competencia, valor, forma, observacao, pago_em,
+  }));
+});
+
+router.patch('/admin/pagamentos-ponto/:id', async (req, res) => {
+  const linha = await pagamentosRepo.marcarPago(req.params.id, Boolean(req.body.pago));
+  if (!linha) return res.status(404).json({ erro: 'lançamento não encontrado' });
+  res.json(linha);
+});

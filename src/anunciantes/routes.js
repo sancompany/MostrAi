@@ -10,7 +10,7 @@ const pool = require('../db/pool');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
-const { cepValido, telefoneE164 } = require('../br/formato');
+const { cepValido, telefoneE164, data } = require('../br/formato');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
@@ -310,6 +310,47 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
 // Dashboard de exibições (SPEC.md módulo 7) — tudo leitura agregada de
 // exibicoes_contador (módulo 3) + cobrancas_confirmadas (módulo 6), sem
 // tabela nova.
+// Comprovante de veiculação em CSV — o que o setor chama de proof-of-play.
+// O dado já existia em `exibicoes_contador`; faltava a forma que o anunciante
+// consegue guardar, imprimir ou mandar pro contador dele.
+//
+// `;` e BOM porque o Excel em português com vírgula junta tudo numa coluna só
+// e come os acentos. O `?desde=` respeita o mesmo recorte da tela.
+router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req, res) => {
+  if (Number(req.params.id) !== req.session.anuncianteId) {
+    return res.status(403).json({ erro: 'só pode ver exibições da própria conta' });
+  }
+  const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 365);
+  const { rows } = await pool.query(
+    `SELECT date_trunc('day', e.janela_hora) AS dia, p.nome AS ponto, p.cidade,
+            d.apelido AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
+     FROM exibicoes_contador e
+     JOIN pontos p ON p.id = e.ponto_id
+     LEFT JOIN dispositivos d ON d.id = e.dispositivo_id
+     WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
+     GROUP BY dia, p.nome, p.cidade, d.apelido
+     HAVING SUM(e.vezes_confirmadas) > 0
+     ORDER BY dia DESC, p.nome`,
+    [req.params.id, dias]
+  );
+
+  const campo = (v) => {
+    const t = String(v ?? '');
+    return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const linhas = [['Data', 'Ponto', 'Cidade', 'Tela', 'Exibições'].join(';')];
+  for (const r of rows) {
+    linhas.push([data(r.dia), r.ponto, r.cidade, r.tela || '—', r.exibicoes].map(campo).join(';'));
+  }
+  const total = rows.reduce((soma, r) => soma + r.exibicoes, 0);
+  linhas.push(['', '', '', 'Total', total].join(';'));
+
+  const arquivo = `mostrai-exibicoes-${dias}dias.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`);
+  res.send('\uFEFF' + linhas.join('\r\n') + '\r\n');
+});
+
 router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
     return res.status(403).json({ erro: 'só pode ver exibições da própria conta' });
