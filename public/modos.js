@@ -26,14 +26,14 @@
 
   const CAMPOS_ENDERECO = (prefixo) => `
     <div class="field-row">
-      <div style="flex:1"><label for="${prefixo}cep">CEP</label><input id="${prefixo}cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required></div>
-      <div style="flex:2"><label for="${prefixo}endereco">Rua e bairro</label><input id="${prefixo}endereco" name="endereco" required></div>
-      <div style="flex:1"><label for="${prefixo}numero">Número</label><input id="${prefixo}numero" name="numero" required></div>
+      <div class="u-col"><label for="${prefixo}cep">CEP</label><input id="${prefixo}cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required></div>
+      <div class="u-col-2"><label for="${prefixo}endereco">Rua e bairro</label><input id="${prefixo}endereco" name="endereco" required></div>
+      <div class="u-col"><label for="${prefixo}numero">Número</label><input id="${prefixo}numero" name="numero" required></div>
     </div>
     <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
     <div class="field-row">
-      <div style="flex:2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" value="Matão" required></div>
-      <div style="flex:1"><label for="${prefixo}uf">UF</label><input id="${prefixo}uf" name="uf" maxlength="2" value="SP" required></div>
+      <div class="u-col-2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" value="Matão" required></div>
+      <div class="u-col"><label for="${prefixo}uf">UF</label><input id="${prefixo}uf" name="uf" maxlength="2" value="SP" required></div>
     </div>`;
 
   const CAMPO_SEGMENTO = (prefixo, rotulo) => `
@@ -61,7 +61,7 @@
         <form class="card wide modo-card" id="formModo">
           <p class="eyebrow">Modo anúncios</p>
           <h3>Coloque a sua marca nas telas da cidade</h3>
-          <p class="form-hint" style="margin:0 0 6px">Sua conta já existe — pra anunciar só falta o endereço da empresa (vai na nota fiscal). Depois é escolher um plano e subir o vídeo.</p>
+          <p class="form-hint u-m-0 u-mb-6">Sua conta já existe — pra anunciar só falta o endereço da empresa (vai na nota fiscal). Depois é escolher um plano e subir o vídeo.</p>
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Ramo de atividade')}
           <p class="form-hint">O ramo garante que você não divida a tela com um concorrente direto.</p>
@@ -74,7 +74,7 @@
       const bonus = estado.bonus && estado.bonus.ponto;
       if (pedido) {
         return `
-          <div class="card wide modo-card" style="text-align:center">
+          <div class="card wide modo-card u-ta-c">
             <p class="eyebrow">Modo meu ponto</p>
             <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
             <p class="form-hint">${pedido.origem === 'bonus_plano' ? 'É o bônus do seu plano — ' : ''}A gente chama no WhatsApp pra combinar a visita e a instalação. Assim que liberar, esse modo abre aqui.</p>
@@ -85,14 +85,14 @@
         <form class="card wide modo-card" id="formModo" data-bonus="${ganhou ? '1' : ''}">
           <p class="eyebrow">Modo meu ponto</p>
           <h3>${ganhou ? 'Você ganhou uma tela no seu comércio!' : 'Quero uma tela no meu comércio'}</h3>
-          <p class="form-hint" style="margin:0 0 6px">${ganhou
+          <p class="form-hint u-m-0 u-mb-6">${ganhou
             ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
             : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'}</p>
           <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Segmento')}
           <div><label for="m_fluxo">Média de pessoas que passam por mês (opcional)</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
-          <p class="form-sep-titulo" style="margin-top:8px">Como você quer ser recompensado</p>
+          <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
           <div class="escolha-grid" id="modoEscolhaPlano"></div>
           <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2"></textarea></div>
           <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
@@ -103,7 +103,7 @@
       const pedido = estado.modos.vendedor.pedido;
       if (pedido) {
         return `
-          <div class="card wide modo-card" style="text-align:center">
+          <div class="card wide modo-card u-ta-c">
             <p class="eyebrow">Modo vendas</p>
             <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
             <p class="form-hint">A gente chama no WhatsApp pra explicar o produto e a comissão. Assim que liberar, seu cupom aparece aqui.</p>
@@ -113,7 +113,7 @@
         <form class="card wide modo-card" id="formModo">
           <p class="eyebrow">Modo vendas</p>
           <h3>Indique comerciantes e receba comissão no Pix</h3>
-          <p class="form-hint" style="margin:0 0 6px">Você ganha um cupom próprio; toda assinatura fechada com ele rende comissão em cada cobrança. Conta como você pretende vender e a gente libera.</p>
+          <p class="form-hint u-m-0 u-mb-6">Você ganha um cupom próprio; toda assinatura fechada com ele rende comissão em cada cobrança. Conta como você pretende vender e a gente libera.</p>
           <div><label for="m_cidade_v">Cidade onde você atua</label><input id="m_cidade_v" name="cidade" value="Matão" required></div>
           <div><label for="m_pix">Chave Pix pra receber (pode preencher depois)</label><input id="m_pix" name="chave_pix"></div>
           <div><label for="m_mensagem_v">Com o que você trabalha? Por que quer vender a Mostraí?</label><textarea id="m_mensagem_v" name="mensagem" rows="3"></textarea></div>
@@ -219,7 +219,7 @@
       if (b.resgatado_em) return `<div class="aviso-fundador"><b>Bônus resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}: ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}. Veja em "Anúncios".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_ativo);
       return b.disponivel
-        ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary" id="btnResgatarAnuncio" style="margin-left:8px">Ativar meu anúncio grátis</button><span id="msgResgate" class="form-hint"></span></div>`
+        ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary u-ml-8" id="btnResgatarAnuncio">Ativar meu anúncio grátis</button><span id="msgResgate" class="form-hint"></span></div>`
         : `<div class="aviso-fundador"><b>Bônus da opção ${esc(b.opcao)}:</b> com ${b.apos_meses} meses de ponto no ar você ganha ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)} — ${b.meses_ativo} de ${b.apos_meses} (faltam ${falta}).</div>`;
     }
     return '';

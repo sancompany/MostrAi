@@ -27,46 +27,46 @@
         <div id="bonusPonto"></div>
         <div class="kpi-grid" id="kpis"></div>
 
-        <div class="panel-head" style="margin-bottom:14px">
-          <h3 style="margin:0">Minhas telas</h3>
-          <span class="form-hint" style="margin:0">O que rodou nos últimos 30 dias, tela por tela.</span>
+        <div class="panel-head u-mb-14">
+          <h3 class="u-m-0">Minhas telas</h3>
+          <span class="form-hint u-m-0">O que rodou nos últimos 30 dias, tela por tela.</span>
         </div>
         <div class="telas-grid" id="telasLista">Carregando...</div>
 
-        <div class="panel-head" style="margin:28px 0 14px">
-          <h3 style="margin:0">Meus endereços</h3>
+        <div class="panel-head u-m-0 u-mt-28 u-mb-14">
+          <h3 class="u-m-0">Meus endereços</h3>
           <button type="button" class="btn ghost" id="btnNovoEndereco">+ Cadastrar outro endereço</button>
         </div>
         <div class="pontos-lista" id="pontosLista">Carregando...</div>
 
-        <form class="card wide" id="formEndereco" hidden style="margin-top:16px">
+        <form class="card wide u-mt-16" id="formEndereco" hidden>
           <p class="form-sep-titulo">Novo endereço</p>
-          <p class="form-hint" style="margin:0">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
+          <p class="form-hint u-m-0">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
           <div>
             <label for="nome">Nome do estabelecimento</label>
             <input id="nome" name="nome" required>
           </div>
           <div class="field-row">
-            <div style="flex:1">
+            <div class="u-col">
               <label for="cep">CEP</label>
               <input id="cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required>
             </div>
-            <div style="flex:2">
+            <div class="u-col-2">
               <label for="endereco">Rua e bairro</label>
               <input id="endereco" name="endereco" required>
             </div>
-            <div style="flex:1">
+            <div class="u-col">
               <label for="numero">Número</label>
               <input id="numero" name="numero" required>
             </div>
           </div>
           <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
           <div class="field-row">
-            <div style="flex:2">
+            <div class="u-col-2">
               <label for="cidade">Cidade</label>
               <input id="cidade" name="cidade" value="Matão" required>
             </div>
-            <div style="flex:1">
+            <div class="u-col">
               <label for="uf">UF</label>
               <input id="uf" name="uf" maxlength="2" value="SP" required>
             </div>
@@ -183,8 +183,8 @@
           ${d.porAnunciante.length ? `<table class="mini-table"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
             ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}
           </tbody></table>` : '<p class="empty-state">Nada rodou nessa tela ainda.</p>'}
-          ${d.porDia.length ? `<p class="form-sep-titulo" style="margin-top:14px">Por dia</p><div class="bar-chart-h">
-            ${d.porDia.slice(0, 14).reverse().map((x) => `<div class="row"><span class="nome">${new Date(x.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span><span class="track"><span class="fill" style="width:${Math.round(x.confirmadas / max * 100)}%"></span></span><span class="valor">${x.confirmadas}</span></div>`).join('')}
+          ${d.porDia.length ? `<p class="form-sep-titulo u-mt-14">Por dia</p><div class="bar-chart-h">
+            ${d.porDia.slice(0, 14).reverse().map((x) => `<div class="row"><span class="nome">${new Date(x.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span><span class="track"><span class="fill" data-pct="${Math.round(x.confirmadas / max * 100)}"></span></span><span class="valor">${x.confirmadas}</span></div>`).join('')}
           </div>` : ''}`;
       } catch {
         corpo.innerHTML = '<p class="form-msg err">Não deu pra carregar o painel dessa tela.</p>';
@@ -206,9 +206,9 @@
             <span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>
             <strong>${esc(p.nome || '')}</strong>
             <span>${esc(p.endereco)}</span>
-            <span style="color:var(--text-dim); font-size:.88rem">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</span>
-            ${Number(p.valor_pago_mensal) > 0 ? `<span style="font-size:.85rem">Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></span>` : ''}
-            ${p.cota_autoanuncio_slots_hora ? `<span style="font-size:.85rem; color:var(--text-dim)">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</span>` : ''}
+            <span class="u-dim u-fs-88">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</span>
+            ${Number(p.valor_pago_mensal) > 0 ? `<span class="u-fs-85">Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></span>` : ''}
+            ${p.cota_autoanuncio_slots_hora ? `<span class="u-fs-85 u-dim">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</span>` : ''}
           </div>`).join('');
       } catch {
         el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus endereços agora.</p>';

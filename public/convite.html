@@ -16,17 +16,17 @@
 <body data-layout="minimo" data-layout-botao="Já tenho conta|/anunciante/login.html">
 
   <main>
-    <section class="tight" style="text-align:center">
+    <section class="tight u-ta-c">
       <div class="wrap">
         <p class="eyebrow">Convite</p>
-        <h1 style="font-size:2.2rem" id="titulo">Conferindo seu convite...</h1>
-        <p class="lead" style="margin:0 auto" id="subtitulo"></p>
+        <h1 class="u-fs-220" id="titulo">Conferindo seu convite...</h1>
+        <p class="lead u-m-0 u-centro" id="subtitulo"></p>
       </div>
     </section>
 
     <section class="tight">
       <div class="wrap">
-        <div class="card wide" id="invalido" hidden style="text-align:center">
+        <div class="card wide u-ta-c" id="invalido" hidden>
           <h3>Esse convite não está mais válido</h3>
           <p id="invalidoMsg">O link pode ter expirado, já ter sido usado ou estar incompleto.</p>
           <p class="form-hint">Fale com quem te enviou pra receber um link novo, ou <a href="https://wa.me/5516994635946?text=Ol%C3%A1!%20Meu%20link%20de%20convite%20da%20Mostra%C3%AD%20n%C3%A3o%20abriu." data-wa="Olá! Meu link de convite da Mostraí não abriu." target="_blank" rel="noopener">chame no WhatsApp</a>.</p>
@@ -34,13 +34,13 @@
 
         <div class="card wide" id="jaLogado" hidden>
           <div class="convite-papeis" id="papeisLogado"></div>
-          <h3 style="margin:8px 0 4px">Você já está logado como <span id="logadoNome"></span></h3>
-          <p class="form-hint" style="margin:0 0 10px">Dá pra liberar esses modos direto na sua conta atual — sem criar outra.</p>
+          <h3 class="u-m-0 u-mt-8 u-mb-4">Você já está logado como <span id="logadoNome"></span></h3>
+          <p class="form-hint u-m-0 u-mb-10">Dá pra liberar esses modos direto na sua conta atual — sem criar outra.</p>
           <div id="logadoPix" hidden>
             <label for="logado_chave_pix">Chave Pix pra receber comissão</label>
             <input id="logado_chave_pix" placeholder="CPF, e-mail, telefone ou chave aleatória">
           </div>
-          <div class="field-row" style="margin-top:10px">
+          <div class="field-row u-mt-10">
             <button type="button" class="btn primary" id="btnAceitar">Liberar na minha conta</button>
             <button type="button" class="btn ghost" id="btnOutraConta">Criar outra conta</button>
           </div>
@@ -56,11 +56,11 @@
             <input id="nome_empresa" name="nome_empresa" required>
           </div>
           <div class="field-row">
-            <div style="flex:1">
+            <div class="u-col">
               <label for="cpf_cnpj">CPF ou CNPJ</label>
               <input id="cpf_cnpj" name="cpf_cnpj" inputmode="numeric" required>
             </div>
-            <div style="flex:1">
+            <div class="u-col">
               <label for="contato_telefone">WhatsApp</label>
               <input id="contato_telefone" name="contato_telefone" autocomplete="tel" inputmode="tel" required>
             </div>
@@ -69,7 +69,7 @@
           <div id="secaoPix" hidden>
             <hr class="form-sep">
             <p class="form-sep-titulo">Comissão</p>
-            <p class="form-hint" style="margin:0">Sua comissão de vendedor é paga nessa chave. Pode ser CPF, e-mail, telefone ou chave aleatória.</p>
+            <p class="form-hint u-m-0">Sua comissão de vendedor é paga nessa chave. Pode ser CPF, e-mail, telefone ou chave aleatória.</p>
             <div>
               <label for="chave_pix">Chave Pix</label>
               <input id="chave_pix" name="chave_pix">
@@ -79,7 +79,7 @@
           <div id="secaoPlanoPonto" hidden>
             <hr class="form-sep">
             <p class="form-sep-titulo">Como você quer ser recompensado pelo ponto</p>
-            <p class="form-hint" style="margin:0">Duas formas, você escolhe a que faz mais sentido pro seu negócio. Dá pra mudar depois, combinando com a gente.</p>
+            <p class="form-hint u-m-0">Duas formas, você escolhe a que faz mais sentido pro seu negócio. Dá pra mudar depois, combinando com a gente.</p>
             <div class="escolha-grid" id="escolhaPlano"></div>
           </div>
 
@@ -87,26 +87,26 @@
             <hr class="form-sep">
             <p class="form-sep-titulo">Endereço do seu negócio</p>
             <div class="field-row">
-              <div style="flex:1">
+              <div class="u-col">
                 <label for="cep">CEP</label>
                 <input id="cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000">
               </div>
-              <div style="flex:2">
+              <div class="u-col-2">
                 <label for="endereco">Rua e bairro</label>
                 <input id="endereco" name="endereco">
               </div>
-              <div style="flex:1">
+              <div class="u-col">
                 <label for="numero">Número</label>
                 <input id="numero" name="numero">
               </div>
             </div>
             <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido — só o número é com você.</p>
             <div class="field-row">
-              <div style="flex:2">
+              <div class="u-col-2">
                 <label for="cidade">Cidade</label>
                 <input id="cidade" name="cidade" value="Matão">
               </div>
-              <div style="flex:1">
+              <div class="u-col">
                 <label for="uf">UF</label>
                 <input id="uf" name="uf" maxlength="2" value="SP">
               </div>
@@ -120,11 +120,11 @@
             <input id="contato_email" name="contato_email" type="email" autocomplete="email" required>
           </div>
           <div class="field-row">
-            <div style="flex:1">
+            <div class="u-col">
               <label for="senha">Senha</label>
               <input id="senha" name="senha" type="password" autocomplete="new-password" data-senha required>
             </div>
-            <div style="flex:1">
+            <div class="u-col">
               <label for="senha_confirma">Confirmar senha</label>
               <input id="senha_confirma" type="password" autocomplete="new-password" data-senha-confirma required>
             </div>
@@ -136,7 +136,7 @@
             <label for="aceitou_termos" id="rotuloTermos">Li e aceito os <a href="/termos-de-uso.html" target="_blank">Termos de Uso</a> e a <a href="/politica-de-privacidade.html" target="_blank">Política de Privacidade</a>.</label>
           </div>
           <button class="btn primary block" type="submit">Criar minha conta</button>
-          <p class="form-hint" style="text-align:center">Esse link é de uso único e vale até <b id="validade"></b>.</p>
+          <p class="form-hint u-ta-c">Esse link é de uso único e vale até <b id="validade"></b>.</p>
           <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
         </form>
       </div>

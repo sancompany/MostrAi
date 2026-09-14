@@ -25,30 +25,30 @@
     <section class="tight">
       <div class="wrap" id="dashboardVendas">
         <div class="aviso-fundador" id="avisoPix" hidden><b>Falta a sua chave Pix</b> — é nela que a comissão é paga.
-          <form id="formPix" class="field-row" style="margin-top:8px; align-items:center"><input name="chave_pix" placeholder="CPF, e-mail, telefone ou chave aleatória" required style="flex:1"><button class="btn primary" type="submit">Salvar</button></form>
+          <form id="formPix" class="field-row u-mt-8 u-ai-c"><input class="u-col" name="chave_pix" placeholder="CPF, e-mail, telefone ou chave aleatória" required><button class="btn primary" type="submit">Salvar</button></form>
           <p class="form-msg" id="msgPix"></p></div>
         <div class="kpi-grid" id="kpis"></div>
 
         <div class="card wide" id="cupomCard" hidden>
           <p class="form-sep-titulo">Seu cupom</p>
-          <div class="field-row" style="align-items:center">
-            <div class="chave-box" id="cupom" style="font-size:1.3rem; letter-spacing:.08em; flex:1"></div>
+          <div class="field-row u-ai-c">
+            <div class="chave-box u-fs-130 u-ls-wide u-col" id="cupom"></div>
             <button type="button" class="btn ghost" id="btnCopiarCupom">Copiar</button>
           </div>
-          <p class="form-hint" style="margin:0">O anunciante digita esse cupom no cadastro — ou usa o seu link, que já preenche sozinho:</p>
-          <div class="field-row" style="align-items:center">
-            <div class="chave-box" id="linkCupom" style="flex:1"></div>
+          <p class="form-hint u-m-0">O anunciante digita esse cupom no cadastro — ou usa o seu link, que já preenche sozinho:</p>
+          <div class="field-row u-ai-c">
+            <div class="chave-box u-col" id="linkCupom"></div>
             <button type="button" class="btn ghost" id="btnCopiarLink">Copiar link</button>
           </div>
-          <div class="field-row" style="gap:8px; flex-wrap:wrap">
+          <div class="field-row u-gap-8 u-flex-wrap">
             <a class="btn primary" id="btnWhats" href="#" target="_blank" rel="noopener">Mandar no WhatsApp</a>
           </div>
-          <p class="form-hint" style="margin:0">Comissão: <b id="pct"></b> de cada cobrança confirmada dos seus indicados, paga no Pix <b id="pix"></b>.</p>
+          <p class="form-hint u-m-0">Comissão: <b id="pct"></b> de cada cobrança confirmada dos seus indicados, paga no Pix <b id="pix"></b>.</p>
         </div>
 
-        <div class="panel-head" style="margin:24px 0 10px">
-          <h3 style="margin:0">Comissões</h3>
-          <span class="form-hint" style="margin:0">Uma linha por cobrança confirmada de indicado seu.</span>
+        <div class="panel-head u-m-0 u-mt-24 u-mb-10">
+          <h3 class="u-m-0">Comissões</h3>
+          <span class="form-hint u-m-0">Uma linha por cobrança confirmada de indicado seu.</span>
         </div>
         <div id="comissoes">Carregando...</div>
       </div>

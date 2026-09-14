@@ -79,3 +79,24 @@ window.fmtBRL = function fmtBRL(v) {
     setTimeout(liberar, 15000);
   }, true);
 })();
+
+// Barras de gráfico: a altura/largura é proporcional ao dado, então não cabe
+// numa classe. Antes ia como style="width:${...}%" dentro do innerHTML — e é
+// exatamente isso que obriga a CSP a liberar style-src 'unsafe-inline', porque
+// atributo style vindo de markup é bloqueado, enquanto atribuir via CSSOM não
+// é. O template escreve data-pct; quem aplica é este observador, que pega
+// também o que for renderizado depois (todo painel monta a tela por innerHTML).
+window.aplicarBarras = function aplicarBarras(raiz) {
+  const alvos = (raiz || document).querySelectorAll('[data-pct]:not([data-pct-ok])');
+  alvos.forEach((el) => {
+    const pct = Math.max(0, Math.min(100, Number(el.dataset.pct) || 0));
+    // .bar cresce de baixo pra cima (altura); .fill cresce pro lado (largura).
+    el.style[el.classList.contains('bar') ? 'height' : 'width'] = pct + '%';
+    el.setAttribute('data-pct-ok', '');
+  });
+};
+
+new MutationObserver(() => window.aplicarBarras(document)).observe(
+  document.documentElement, { childList: true, subtree: true },
+);
+document.addEventListener('DOMContentLoaded', () => window.aplicarBarras(document));

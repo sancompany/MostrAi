@@ -227,7 +227,7 @@
           ${d.porAnunciante.length ? `<table><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
             ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${Number(a.programadas) || 0}</td><td>${Number(a.confirmadas) || 0}</td></tr>`).join('')}
           </tbody></table>` : '<p class="sub">Nada rodou nessa tela ainda.</p>'}
-          <p class="sub" style="margin-top:16px">Chave do aparelho: ${esc(chaveAparelho ? chaveAparelho.slice(0, 6) + '…' : '(sem chave)')} · API: ${esc(API_BASE_URL)}</p>`;
+          <p class="sub u-mt-16">Chave do aparelho: ${esc(chaveAparelho ? chaveAparelho.slice(0, 6) + '…' : '(sem chave)')} · API: ${esc(API_BASE_URL)}</p>`;
       } catch {
         erro.textContent = 'sem conexão com o servidor';
       }

@@ -34,20 +34,20 @@
             <div class="kpi-card" id="kpiPontos"><span class="kpi-label">Meus pontos</span><b>—</b></div>
           </div>
 
-          <div class="panel" id="painelDia" style="margin-bottom:20px" hidden>
+          <div class="panel u-mb-20" id="painelDia" hidden>
             <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
             <div class="bar-chart" id="graficoDia"></div>
           </div>
 
-          <div class="panel" id="painelDetalhe" style="margin-bottom:20px" hidden>
+          <div class="panel u-mb-20" id="painelDetalhe" hidden>
             <div class="panel-head">
               <h3>Exibições por ponto</h3>
               <!-- Comprovante de veiculação: o que o setor chama de
                    proof-of-play. O dado já existia; faltava a forma que o
                    anunciante guarda, imprime ou manda pro contador. -->
               <span>
-                <label for="periodoComprovante" class="form-hint" style="margin:0">Período</label>
-                <select id="periodoComprovante" style="margin:0 8px">
+                <label for="periodoComprovante" class="form-hint u-m-0">Período</label>
+                <select class="u-m-0 u-mx-8" id="periodoComprovante">
                   <option value="30">últimos 30 dias</option>
                   <option value="90">últimos 90 dias</option>
                   <option value="365">últimos 12 meses</option>
@@ -56,7 +56,7 @@
               </span>
             </div>
             <div class="bar-chart-h" id="graficoPonto"></div>
-            <div id="exibicoesDetalhe" style="margin-top:20px"></div>
+            <div class="u-mt-20" id="exibicoesDetalhe"></div>
           </div>
 
           <div class="panel" id="painelCobrancas" hidden>
@@ -68,7 +68,7 @@
         <div>
           <div class="panel">
             <div class="panel-head"><h3>Meus criativos</h3></div>
-            <p class="form-hint" style="margin:0 0 12px">O criativo roda mudo nas telas — pode subir com ou sem áudio, ele não é reproduzido.</p>
+            <p class="form-hint u-m-0 u-mb-12">O criativo roda mudo nas telas — pode subir com ou sem áudio, ele não é reproduzido.</p>
             <label class="btn primary upload-label">
               Enviar criativo
               <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
@@ -90,7 +90,7 @@
                 — filmagem é feita por uma produtora parceira, orçada à parte. Também pelo WhatsApp.
               </p>
             </div>
-            <div id="listaCriativos" style="margin-top:16px">Carregando...</div>
+            <div class="u-mt-16" id="listaCriativos">Carregando...</div>
           </div>
         </div>
       </div>
@@ -219,11 +219,11 @@
         plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '',
       ].filter(Boolean).join(' ');
       box.insertAdjacentHTML('beforeend', `
-        <div class="panel" style="margin-top:14px">
-          <h3 style="margin:0 0 6px">Confirmar assinatura</h3>
-          <p style="margin:0 0 4px"><b>${esc(plano.nome)}</b> — ${plano.frequencia_dia}x por dia em cada tela</p>
-          <p style="margin:0 0 ${extras ? '4px' : '12px'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
-          ${extras ? `<p class="form-hint" style="margin:0 0 12px">${extras}</p>` : ''}
+        <div class="panel u-mt-14">
+          <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
+          <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b> — ${plano.frequencia_dia}x por dia em cada tela</p>
+          <p class="u-m-0 ${extras ? 'u-mb-4' : 'u-mb-12'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
+          ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
           <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
           <a class="btn ghost" href="/planos.html">Escolher outro</a>
         </div>`);
@@ -313,7 +313,7 @@
         const v = Number(d.confirmadas);
         const dia = new Date(d.dia);
         return `<div class="bar-col" title="${dia.toLocaleDateString('pt-BR')}: ${v} exibições">
-          <div class="bar" style="height:${Math.max(2, (v / max) * 100)}%"></div>
+          <div class="bar" data-pct="${Math.max(2, (v / max) * 100)}"></div>
           <span class="bar-label">${String(dia.getDate()).padStart(2, '0')}/${String(dia.getMonth() + 1).padStart(2, '0')}</span>
         </div>`;
       }).join('');
@@ -337,10 +337,10 @@
       document.getElementById('graficoPonto').innerHTML = porPonto.map((p) => `
         <div class="row">
           <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
-          <span class="track"><span class="fill" style="width:${(Number(p.confirmadas) / max) * 100}%"></span></span>
+          <span class="track"><span class="fill" data-pct="${(Number(p.confirmadas) / max) * 100}"></span></span>
           <span class="valor">${p.confirmadas}</span>
         </div>`).join('');
-      document.getElementById('exibicoesDetalhe').innerHTML = `<div style="overflow-x:auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
+      document.getElementById('exibicoesDetalhe').innerHTML = `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
         ${porPonto.map((p) => {
           const prog = Number(p.programadas) || 0;
           const conf = Number(p.confirmadas) || 0;
@@ -353,7 +353,7 @@
     function desenharCobrancas(cobrancas) {
       if (!cobrancas.length) return;
       document.getElementById('painelCobrancas').hidden = false;
-      document.getElementById('listaCobrancas').innerHTML = `<div style="overflow-x:auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
+      document.getElementById('listaCobrancas').innerHTML = `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
         ${cobrancas.map((c) => `<tr>
           <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
           <td>${fmt(c.valor)}</td>

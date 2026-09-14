@@ -101,9 +101,9 @@
 </head>
 <body>
   <div id="gate" class="wrap gate">
-    <div style="text-align:center; margin-bottom:18px">
-      <img src="/img/logo-mostrai-wordmark.png" alt="Mostraí" style="height:30px">
-      <p class="eyebrow" style="margin:8px 0 0">Painel administrativo</p>
+    <div class="u-ta-c u-mb-18">
+      <img class="u-h-30" src="/img/logo-mostrai-wordmark.png" alt="Mostraí">
+      <p class="eyebrow u-m-0 u-mt-8">Painel administrativo</p>
     </div>
     <form class="card" id="formLogin">
       <div>
@@ -438,12 +438,12 @@
     ];
 
     function barrasHorizontais(linhas, mapa) {
-      if (!linhas.length) return '<p class="empty-state" style="padding:8px 0">Nada cadastrado ainda.</p>';
+      if (!linhas.length) return '<p class="empty-state u-py-8">Nada cadastrado ainda.</p>';
       const max = Math.max(...linhas.map((l) => l.qtd)) || 1;
       return `<div class="bar-chart-h">${linhas.map((l) => `
         <div class="row">
           <span class="nome">${esc(mapa[l.status] || l.status)}</span>
-          <span class="track"><span class="fill" style="width:${(l.qtd / max) * 100}%"></span></span>
+          <span class="track"><span class="fill" data-pct="${(l.qtd / max) * 100}"></span></span>
           <span class="valor">${l.qtd}</span>
         </div>`).join('')}</div>`;
     }
@@ -472,7 +472,7 @@
           <div class="kpi-card"><span class="kpi-label">Margem</span><b>${fmt(financeiro.margemMensal)}</b><span class="delta ${margemOk ? 'up' : 'down'}">${margemOk ? 'no azul' : 'no vermelho'}</span></div>
         </div>
 
-        <div class="kpi-grid" style="margin-bottom:20px">
+        <div class="kpi-grid u-mb-20">
           <div class="kpi-card"><span class="kpi-label">Pontos ativos</span><b>${rede.pontosAtivos}</b><span class="kpi-caption">${rede.telasAtivas} tela(s) no ar · +${rede.novosPontos30d} pontos em 30 dias</span></div>
           <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
           <div class="kpi-card"><span class="kpi-label">Exibições (30 dias)</span><b>${num(rede.exibicoes30d)}</b><span class="kpi-caption">${entrega === null ? 'sem programação ainda' : `${entrega}% do programado`}</span></div>
@@ -485,15 +485,15 @@
             ${meses.length ? `<div class="bar-chart">${meses.map((m) => {
               const [ano, mes] = m.mes.split('-');
               return `<div class="bar-col" title="${m.mes}: ${fmt(m.total)}">
-                <div class="bar" style="height:${Math.max(2, (Number(m.total) / maxFat) * 100)}%"></div>
+                <div class="bar" data-pct="${Math.max(2, (Number(m.total) / maxFat) * 100)}"></div>
                 <span class="bar-label">${mes}/${ano.slice(2)}</span>
               </div>`;
-            }).join('')}</div>` : '<p class="empty-state" style="padding:14px 0">Nenhuma cobrança confirmada ainda.</p>'}
+            }).join('')}</div>` : '<p class="empty-state u-py-14">Nenhuma cobrança confirmada ainda.</p>'}
           </div>
           <div class="panel">
             <div class="panel-head"><h3>Pontos por status</h3></div>
             ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS)}
-            <div class="panel-head" style="margin-top:22px"><h3>Anunciantes por status</h3></div>
+            <div class="panel-head u-mt-22"><h3>Anunciantes por status</h3></div>
             ${barrasHorizontais(rede.anunciantesPorStatus, ANUNCIANTE_STATUS)}
           </div>
         </div>`;
@@ -513,7 +513,7 @@
       const ehVideo = (u) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u || '');
 
       el.innerHTML = `
-        <div class="chips" style="margin-bottom:16px">
+        <div class="chips u-mb-16">
           ${Object.entries(CRIATIVO_STATUS).map(([v, nome]) => `<button type="button" class="chip ${v === status ? 'active' : ''}" data-status="${v}">${nome}</button>`).join('')}
         </div>
         ${criativos.length ? `<div class="criativo-fila">${criativos.map((c) => {
@@ -559,9 +559,9 @@
         el.innerHTML = `
           <div class="tabela-caixa">
             <div class="tabela-topo"><b>Nenhuma conta própria ainda</b></div>
-            <div style="padding:14px">
-              <p class="sub" style="margin-top:0">Crie a conta do Mostraí para anunciar a própria rede nas telas. Ela não assina plano, não é cobrada e não entra na receita.</p>
-              <form id="formContaPropria" class="card" style="max-width:420px">
+            <div class="u-p-14">
+              <p class="sub u-mt-0">Crie a conta do Mostraí para anunciar a própria rede nas telas. Ela não assina plano, não é cobrada e não entra na receita.</p>
+              <form id="formContaPropria" class="card u-mw-420">
                 <label for="cpNome">Nome que aparece</label>
                 <input id="cpNome" value="Mostraí" required>
                 <label for="cpDoc">CNPJ do Mostraí</label>
@@ -595,10 +595,10 @@
         <div class="tabela-caixa">
           <div class="tabela-topo">
             <b>${esc(conta.nome_empresa)}</b>
-            <span class="sub" style="margin:0">${aprovados} no ar · ${meus.length} no total · sem teto de criativos</span>
+            <span class="sub u-m-0">${aprovados} no ar · ${meus.length} no total · sem teto de criativos</span>
           </div>
-          <div style="padding:14px">
-            <form id="formFreq" class="card" style="max-width:420px;margin-bottom:14px">
+          <div class="u-p-14">
+            <form id="formFreq" class="card u-mw-420 u-mb-14">
               <label for="cpFreq2">Vezes por dia, por tela</label>
               <input id="cpFreq2" type="number" min="1" max="240" value="${conta.frequencia_dia_propria || 12}">
               <label for="cpStatus">Situação</label>
@@ -609,12 +609,12 @@
               <button class="btn ghost" type="submit">Salvar</button>
             </form>
 
-            <form id="formSubir" class="card" style="max-width:420px">
+            <form id="formSubir" class="card u-mw-420">
               <label for="cpArquivo">Novo anúncio (vídeo ou imagem)</label>
               <input id="cpArquivo" type="file" accept="video/*,image/*" required>
               <button class="btn primary" type="submit">Subir</button>
             </form>
-            <p class="sub" id="cpMsg" style="margin:8px 0 0"></p>
+            <p class="sub u-m-0 u-mt-8" id="cpMsg"></p>
           </div>
         </div>
 
@@ -680,8 +680,8 @@
         </tr></thead><tbody>
         ${pontos.map((p) => `<tr data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
           <td>${p.id}</td>
-          <td><b>${esc(p.nome)}</b><div style="color:var(--text-dim);font-size:.72rem">${esc(p.responsavel_nome)} · ${esc(p.responsavel_contato)}</div></td>
-          <td>${p.dono_nome ? esc(p.dono_nome) : '<span style="color:var(--text-dim)">sem conta</span>'}</td>
+          <td><b>${esc(p.nome)}</b><div class="u-dim u-fs-72">${esc(p.responsavel_nome)} · ${esc(p.responsavel_contato)}</div></td>
+          <td>${p.dono_nome ? esc(p.dono_nome) : '<span class="u-dim">sem conta</span>'}</td>
           <td>${esc(p.cidade)}/${esc(p.uf)}</td>
           <td><select class="mini" data-ponto="categoria_id" data-id="${p.id}" title="Define de qual segmento NÃO entra anúncio nessa tela">
             <option value="">—</option>
@@ -691,16 +691,16 @@
             <option value="">—</option>
             ${opcoesComodato.map((o) => `<option value="${o.id}" ${o.id === p.plano_ponto_id ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}
           </select></td>
-          <td><input class="mini" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" data-id="${p.id}" value="${p.valor_pago_mensal}" style="width:76px"></td>
-          <td><input class="mini" type="number" min="0" data-ponto="cota_autoanuncio_slots_hora" data-id="${p.id}" value="${p.cota_autoanuncio_slots_hora}" style="width:56px"></td>
+          <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" data-id="${p.id}" value="${p.valor_pago_mensal}"></td>
+          <td><input class="mini u-w-60" type="number" min="0" data-ponto="cota_autoanuncio_slots_hora" data-id="${p.id}" value="${p.cota_autoanuncio_slots_hora}"></td>
           <td>${selectStatus(PONTO_STATUS, p.status, `data-ponto="status" data-id="${p.id}"`)}</td>
-          <td><input class="mini" type="number" min="0" data-ponto="fluxo_estimado_mensal" data-id="${p.id}" value="${p.fluxo_estimado_mensal ?? ''}" style="width:80px" title="Só entra na soma pública se o ponto estiver ativo"></td>
-          <td style="text-align:center"><input type="checkbox" data-ponto="acabamento_completo" data-id="${p.id}" ${p.acabamento_completo ? 'checked' : ''} title="Molde de ACM já instalado"></td>
+          <td><input class="mini u-w-80" type="number" min="0" data-ponto="fluxo_estimado_mensal" data-id="${p.id}" value="${p.fluxo_estimado_mensal ?? ''}" title="Só entra na soma pública se o ponto estiver ativo"></td>
+          <td class="u-ta-c"><input type="checkbox" data-ponto="acabamento_completo" data-id="${p.id}" ${p.acabamento_completo ? 'checked' : ''} title="Molde de ACM já instalado"></td>
           <td><a href="#telas" data-ver-telas="${p.id}"><b>${p.telas_ativas ?? 0}</b>/${p.telas ?? 0} no ar</a>
             <button class="btn ghost mini" data-nova-tela="${p.id}" title="Adiciona mais uma TV nesse endereço">+ tela</button></td>
           <td>
-            <input type="file" accept="image/*" class="mini" data-foto-ponto="${p.id}" style="width:104px">
-            ${p.foto_instalacao_url ? `<a href="${esc(p.foto_instalacao_url)}" target="_blank" rel="noopener" style="display:block; font-size:.72rem">ver foto</a>` : ''}
+            <input type="file" accept="image/*" class="mini u-w-100" data-foto-ponto="${p.id}">
+            ${p.foto_instalacao_url ? `<a class="u-d-block u-fs-72" href="${esc(p.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto</a>` : ''}
           </td>
         </tr>`).join('')}
       </tbody></table>`;
@@ -708,14 +708,14 @@
       el.innerHTML = `
         <details class="bloco-novo">
           <summary class="btn ghost mini">+ Novo ponto (cadastro manual)</summary>
-          <form class="card" id="formNovoPonto" style="margin-top:12px; max-width:420px">
+          <form class="card u-mt-12 u-mw-420" id="formNovoPonto">
             <div><label>Nome</label><input class="mini" name="nome" required></div>
             <div><label>Segmento</label><input class="mini" name="segmento" required></div>
             <div><label>Endereço</label><input class="mini" name="endereco" required></div>
             <div class="field-row">
-              <div style="flex:2"><label>Cidade</label><input class="mini" name="cidade" required value="Matão"></div>
-              <div style="flex:1"><label>UF</label><input class="mini" name="uf" maxlength="2" required value="SP"></div>
-              <div style="flex:1"><label>CEP</label><input class="mini" name="cep" required></div>
+              <div class="u-col-2"><label>Cidade</label><input class="mini" name="cidade" required value="Matão"></div>
+              <div class="u-col"><label>UF</label><input class="mini" name="uf" maxlength="2" required value="SP"></div>
+              <div class="u-col"><label>CEP</label><input class="mini" name="cep" required></div>
             </div>
             <div><label>Responsável</label><input class="mini" name="responsavel_nome" required></div>
             <div><label>WhatsApp</label><input class="mini" name="responsavel_contato" required></div>
@@ -729,7 +729,7 @@
           html: corpo,
           dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
         })}
-        <p class="empty-state" style="text-align:left; padding:4px 0 0">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto — trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
+        <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto — trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
 
       turbinarTabela(el.querySelector('.tabela-caixa'));
 
@@ -794,8 +794,8 @@
         </tr></thead><tbody>
         ${lista.map((t) => `<tr data-filtro="${t.status}${estaOffline(t) ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
           <td>${t.id}</td>
-          <td><b>${esc(t.ponto_nome)}</b><div style="color:var(--text-dim);font-size:.72rem">${esc(t.ponto_cidade || '')} · ponto ${esc(PONTO_STATUS[t.ponto_status] || t.ponto_status)}</div></td>
-          <td><input class="mini" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}" style="width:120px"></td>
+          <td><b>${esc(t.ponto_nome)}</b><div class="u-dim u-fs-72">${esc(t.ponto_cidade || '')} · ponto ${esc(PONTO_STATUS[t.ponto_status] || t.ponto_status)}</div></td>
+          <td><input class="mini u-w-120" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}"></td>
           <td>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</td>
           <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '—'}</td>
           <td>${t.aparelho_id
@@ -804,24 +804,24 @@
             : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`}</td>
           <td>${t.tem_pin ? '<span class="badge badge-ok">definido</span> ' : '<span class="badge badge-pendente">sem PIN</span> '}
             <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></td>
-          <td><input class="mini" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}" style="width:84px"></td>
-          <td><input class="mini" type="number" min="1" data-tela="meses_amortizacao" data-id="${t.id}" value="${t.meses_amortizacao ?? 36}" style="width:56px"></td>
+          <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}"></td>
+          <td><input class="mini u-w-60" type="number" min="1" data-tela="meses_amortizacao" data-id="${t.id}" value="${t.meses_amortizacao ?? 36}"></td>
           <td>${amort(t) ? fmt(amort(t)) : '—'}</td>
-          <td><input class="mini" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}" style="width:130px"></td>
+          <td><input class="mini u-w-120" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}"></td>
           <td><button class="btn ghost mini" data-painel-tela="${t.id}" title="O que rodou nessa tela">Painel</button>
-              <button class="btn ghost mini" data-excluir-tela="${t.id}" title="Só se nunca rodou nada" style="color:var(--err)">×</button></td>
+              <button class="btn ghost mini u-txt-erro" data-excluir-tela="${t.id}" title="Só se nunca rodou nada">×</button></td>
         </tr>`).join('')}
       </tbody></table>`;
 
       el.innerHTML = `
-        ${filtroPonto ? `<p class="form-hint" style="margin:0 0 10px">Mostrando só as telas do ponto #${filtroPonto}. <a href="#telas" data-limpar-filtro>Ver todas</a></p>` : ''}
+        ${filtroPonto ? `<p class="form-hint u-m-0 u-mb-10">Mostrando só as telas do ponto #${filtroPonto}. <a href="#telas" data-limpar-filtro>Ver todas</a></p>` : ''}
         ${lista.length ? caixaTabela({
           chips: [{ valor: '', nome: 'Todas' }, { valor: 'offline', nome: 'Sem sinal' }, { valor: 'semchave', nome: 'Sem chave' },
             ...Object.entries(TELA_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
           html: corpo,
           dica: 'Uma tela = um link do player + uma playlist. Custo e prazo alimentam a amortização da visão geral.',
         }) : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" na aba Pontos.</p>'}
-        <p class="empty-state" style="text-align:left; padding:4px 0 0">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P) — só mostra o que rodou nela, nada mais.</p>`;
+        <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P) — só mostra o que rodou nela, nada mais.</p>`;
 
       if (!lista.length) return;
       turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -865,10 +865,10 @@
         const linha = btn.closest('tr');
         const existente = linha.nextElementSibling;
         if (existente && existente.dataset.painelDe === btn.dataset.painelTela) { existente.remove(); return; }
-        linha.insertAdjacentHTML('afterend', `<tr data-painel-de="${btn.dataset.painelTela}"><td colspan="12" style="background:var(--bg)">
+        linha.insertAdjacentHTML('afterend', `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="12">
           <b>Últimos 30 dias: ${num(total)} exibições confirmadas</b>
-          ${d.porAnunciante.length ? `<table class="mini-table" style="margin-top:6px"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
-            ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state" style="padding:6px 0">Nada rodou nessa tela ainda.</p>'}
+          ${d.porAnunciante.length ? `<table class="mini-table u-mt-6"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
+            ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state u-py-6">Nada rodou nessa tela ainda.</p>'}
         </td></tr>`);
       }));
 
@@ -895,16 +895,16 @@
           <th data-ord>ID</th><th data-ord>Empresa</th><th data-ord>Documento</th><th>Contato</th>
           <th>Ramo</th><th data-ord>Plano</th><th data-ord>Expira</th><th data-ord>Status</th><th data-ord>Entrou</th><th></th>
         </tr></thead><tbody>
-        ${anunciantes.map((a) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" ${a.excluido_em ? 'style="opacity:.6"' : ''}>
+        ${anunciantes.map((a) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="${a.excluido_em ? 'u-op-60' : ''}">
           <td>${a.id}</td>
           <td><b>${esc(a.nome_empresa)}</b> ${(a.papeis || ['anunciante']).filter((x) => x !== 'anunciante').map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado (fundador)">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
           <td>${esc(a.cpf_cnpj)}</td>
-          <td><div style="font-size:.78rem">${esc(a.contato_email)}</div><div style="color:var(--text-dim);font-size:.74rem">${esc(a.contato_telefone)}</div></td>
+          <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
           <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante — não entra em ponto do mesmo ramo">
             <option value="">${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : '—'}</option>
             ${categorias.map((c) => `<option value="${c.id}" ${c.id === a.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
           </select></td>
-          <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span style="color:var(--text-dim)">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
+          <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
           <td>${data(a.data_expiracao)}</td>
           <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
           <td>${data(a.created_at)}</td>
@@ -918,14 +918,14 @@
       el.innerHTML = `
         <details class="bloco-novo">
           <summary class="btn ghost mini">+ Novo anunciante (cadastro manual)</summary>
-          <form class="card" id="formNovoAnunciante" style="margin-top:12px; max-width:420px">
+          <form class="card u-mt-12 u-mw-420" id="formNovoAnunciante">
             <div><label>Nome da empresa</label><input class="mini" name="nome_empresa" required></div>
             <div><label>CNPJ/CPF</label><input class="mini" name="cpf_cnpj" required></div>
             <div><label>Endereço</label><input class="mini" name="endereco" required></div>
             <div class="field-row">
-              <div style="flex:2"><label>Cidade</label><input class="mini" name="cidade" required></div>
-              <div style="flex:1"><label>UF</label><input class="mini" name="uf" maxlength="2" required></div>
-              <div style="flex:1"><label>CEP</label><input class="mini" name="cep" required></div>
+              <div class="u-col-2"><label>Cidade</label><input class="mini" name="cidade" required></div>
+              <div class="u-col"><label>UF</label><input class="mini" name="uf" maxlength="2" required></div>
+              <div class="u-col"><label>CEP</label><input class="mini" name="cep" required></div>
             </div>
             <div><label>E-mail de acesso</label><input class="mini" type="email" name="contato_email" required></div>
             <div><label>WhatsApp</label><input class="mini" name="contato_telefone" required></div>
@@ -1008,10 +1008,10 @@
         ${vendedores.map((v) => `<tr data-filtro="${v.status}">
           <td>${v.conta_id}</td>
           <td><b>${esc(v.nome)}</b></td>
-          <td><div style="font-size:.78rem">${esc(v.email || '')}</div><div style="color:var(--text-dim);font-size:.74rem">${esc(v.telefone || '')}</div></td>
-          <td><input class="mini" data-vendedor="chave_pix" data-id="${v.conta_id}" value="${esc(v.chave_pix || '')}" style="width:160px"></td>
+          <td><div class="u-fs-78">${esc(v.email || '')}</div><div class="u-dim u-fs-74">${esc(v.telefone || '')}</div></td>
+          <td><input class="mini u-w-160" data-vendedor="chave_pix" data-id="${v.conta_id}" value="${esc(v.chave_pix || '')}"></td>
           <td><code>${esc(v.codigo_cupom)}</code> <button class="btn ghost mini" data-copiar-cupom="${esc(v.codigo_cupom)}">copiar link</button></td>
-          <td><input class="mini" type="number" step="0.01" min="0" max="100" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}" style="width:70px"></td>
+          <td><input class="mini u-w-60" type="number" step="0.01" min="0" max="100" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}"></td>
           <td>${selectStatus(VENDEDOR_STATUS, v.status, `data-vendedor="status" data-id="${v.conta_id}"`)}</td>
           <td>${data(v.created_at)}</td>
         </tr>`).join('')}
@@ -1044,11 +1044,11 @@
         ${lista.map((c) => `<tr data-filtro="${c.status} ${c.tipo}">
           <td>${data(c.criado_em)}</td>
           <td><span class="badge ${c.tipo === 'ponto' ? 'badge-ok' : 'badge-pendente'}">${c.tipo === 'ponto' ? 'Ponto' : 'Vendedor'}</span>
-            ${c.origem === 'painel' ? '<div style="font-size:.7rem;color:var(--text-dim)">pedido do painel</div>' : c.origem === 'bonus_plano' ? '<div style="font-size:.7rem;color:var(--brand-text)"><b>bônus do plano</b></div>' : ''}</td>
-          <td><b>${esc(c.nome)}</b>${c.conta_id ? `<div style="font-size:.72rem;color:var(--text-dim)">conta #${c.conta_id} · ${esc(c.conta_nome || '')}</div>` : ''}</td>
-          <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div style="font-size:.76rem">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div style="color:var(--text-dim);font-size:.72rem">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span style="color:var(--text-dim)">${esc(c.cidade || '')}</span>`}</td>
-          <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div style="color:var(--text-dim);font-size:.72rem">${esc(c.contato_email || '')}</div></td>
-          <td style="max-width:240px; font-size:.78rem; white-space:normal">${esc(c.mensagem || '—')}</td>
+            ${c.origem === 'painel' ? '<div class="u-fs-70 u-dim">pedido do painel</div>' : c.origem === 'bonus_plano' ? '<div class="u-fs-70 u-txt-marca"><b>bônus do plano</b></div>' : ''}</td>
+          <td><b>${esc(c.nome)}</b>${c.conta_id ? `<div class="u-fs-72 u-dim">conta #${c.conta_id} · ${esc(c.conta_nome || '')}</div>` : ''}</td>
+          <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
+          <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div class="u-dim u-fs-72">${esc(c.contato_email || '')}</div></td>
+          <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '—')}</td>
           <td>${c.status === 'aprovada'
             ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
             : selectStatus({ nova: 'Nova', em_contato: 'Em contato', recusada: 'Recusada' }, c.status, `data-cand="status" data-id="${c.id}"`)}</td>
@@ -1108,26 +1108,26 @@
         ${convites.map((c) => `<tr data-filtro="${c.situacao}">
           <td>${data(c.criado_em)}</td>
           <td>${(c.papeis || []).map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}</td>
-          <td>${esc(c.nome_sugerido || '—')}<div style="color:var(--text-dim);font-size:.72rem">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
+          <td>${esc(c.nome_sugerido || '—')}<div class="u-dim u-fs-72">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
           <td>${data(c.expira_em)}</td>
           <td>${c.situacao === 'aberto' ? '<span class="badge badge-pendente">aberto</span>' : c.situacao === 'usado' ? `<span class="badge badge-ok">usado ${data(c.usado_em)}</span>` : '<span class="badge badge-err">expirado/revogado</span>'}</td>
           <td>${c.conta_nome ? esc(c.conta_nome) : '—'}</td>
-          <td>${c.situacao === 'aberto' ? `<button class="btn ghost mini" data-copiar-link="${esc(c.link)}">Copiar link</button> <button class="btn ghost mini" data-revogar="${c.id}" style="color:var(--err)">Revogar</button>` : ''}</td>
+          <td>${c.situacao === 'aberto' ? `<button class="btn ghost mini" data-copiar-link="${esc(c.link)}">Copiar link</button> <button class="btn ghost mini u-txt-erro" data-revogar="${c.id}">Revogar</button>` : ''}</td>
         </tr>`).join('')}
       </tbody></table>`;
 
       el.innerHTML = `
         <details class="bloco-novo" open>
           <summary class="btn ghost mini">+ Novo convite (sem candidatura)</summary>
-          <form class="card" id="formNovoConvite" style="margin-top:12px; max-width:520px">
+          <form class="card u-mt-12 u-mw-520" id="formNovoConvite">
             <div><label>Papéis da conta que vai nascer</label>
               <div class="benef-lista">
                 ${Object.entries(PAPEIS).map(([v, n]) => `<label class="benef-check"><input type="checkbox" name="papeis" value="${v}" ${v === 'ponto' ? 'checked' : ''}><span>${n}</span></label>`).join('')}
               </div></div>
             <div class="field-row">
-              <div style="flex:1"><label>Nome (sugestão, opcional)</label><input class="mini" name="nome_sugerido"></div>
-              <div style="flex:1"><label>E-mail (sugestão, opcional)</label><input class="mini" type="email" name="email_sugerido"></div>
-              <div style="flex:0 0 90px"><label>Validade (dias)</label><input class="mini" type="number" name="validade_dias" value="7" min="1" max="60"></div>
+              <div class="u-col"><label>Nome (sugestão, opcional)</label><input class="mini" name="nome_sugerido"></div>
+              <div class="u-col"><label>E-mail (sugestão, opcional)</label><input class="mini" type="email" name="email_sugerido"></div>
+              <div class="u-col-fixa-90"><label>Validade (dias)</label><input class="mini" type="number" name="validade_dias" value="7" min="1" max="60"></div>
             </div>
             <button class="btn primary" type="submit">Gerar link</button>
             <p class="form-msg" id="msgNovoConvite"></p>
@@ -1172,11 +1172,11 @@
       const total = custos.filter((c) => c.ativo).reduce((t, c) => t + Number(c.valor_mensal), 0);
       const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>R$/mês</th><th>Observação</th><th data-ord>Entra na margem</th><th></th></tr></thead><tbody>
         ${custos.map((c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
-          <td><input class="mini" data-custo="nome" data-id="${c.id}" value="${esc(c.nome)}" style="width:200px"></td>
-          <td><input class="mini" type="number" step="0.01" min="0" data-custo="valor_mensal" data-id="${c.id}" value="${c.valor_mensal}" style="width:100px"></td>
-          <td><input class="mini" data-custo="observacao" data-id="${c.id}" value="${esc(c.observacao || '')}" style="width:280px"></td>
-          <td style="text-align:center"><input type="checkbox" data-custo="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
-          <td><button class="btn ghost mini" data-excluir-custo="${c.id}" style="color:var(--err)">×</button></td>
+          <td><input class="mini u-w-200" data-custo="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
+          <td><input class="mini u-w-100" type="number" step="0.01" min="0" data-custo="valor_mensal" data-id="${c.id}" value="${c.valor_mensal}"></td>
+          <td><input class="mini u-w-280" data-custo="observacao" data-id="${c.id}" value="${esc(c.observacao || '')}"></td>
+          <td class="u-ta-c"><input type="checkbox" data-custo="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
+          <td><button class="btn ghost mini u-txt-erro" data-excluir-custo="${c.id}">×</button></td>
         </tr>`).join('')}
       </tbody></table>`;
 
@@ -1188,7 +1188,7 @@
         </div>
         <details class="bloco-novo">
           <summary class="btn ghost mini">+ Novo custo fixo</summary>
-          <form class="card" id="formNovoCusto" style="margin-top:12px; max-width:420px">
+          <form class="card u-mt-12 u-mw-420" id="formNovoCusto">
             <div><label>Nome (ex.: DAS MEI, Contador, Domínio, Deslocamento)</label><input class="mini" name="nome" required></div>
             <div><label>Valor por mês (R$)</label><input class="mini" type="number" step="0.01" min="0" name="valor_mensal" required></div>
             <div><label>Observação</label><input class="mini" name="observacao"></div>
@@ -1228,7 +1228,7 @@
       const opcoesBeneficio = (marcadosIds) => beneficios.map((b) => `
         <label class="benef-check">
           <input type="checkbox" value="${b.id}" ${marcadosIds.includes(b.id) ? 'checked' : ''}>
-          <span${b.ativo ? '' : ' style="opacity:.55"'}>${esc(b.texto)}${b.ativo ? '' : ' <i>(indisponível)</i>'}</span>
+          <span class="u-op-55"${b.ativo ? '' : ''}>${esc(b.texto)}${b.ativo ? '' : ' <i>(indisponível)</i>'}</span>
         </label>`).join('');
 
       const porCiclo = {};
@@ -1236,47 +1236,47 @@
       const fundadores = planos.filter((p) => p.fundador);
 
       const linhaPlano = (p) => `<tr>
-              <td><input class="mini" data-campo="nome" data-id="${p.id}" value="${esc(p.nome)}" style="width:120px">
-                <div style="color:var(--text-dim); font-size:.72rem; margin-top:2px">${esc(p.id)}${p.fundador ? '' : ` · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`}</div></td>
-              <td><input class="mini" type="number" step="0.01" min="0" data-campo="valor_mensal" data-id="${p.id}" value="${p.valor_mensal}" style="width:90px"></td>
+              <td><input class="mini u-w-120" data-campo="nome" data-id="${p.id}" value="${esc(p.nome)}">
+                <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)}${p.fundador ? '' : ` · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`}</div></td>
+              <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-campo="valor_mensal" data-id="${p.id}" value="${p.valor_mensal}"></td>
               <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
-              <td><input class="mini" type="number" min="1" max="3" data-campo="limite_criativos" data-id="${p.id}" value="${p.limite_criativos}" style="width:52px"></td>
-              <td><input class="mini" type="number" min="1" data-campo="vagas" data-id="${p.id}" value="${p.vagas ?? ''}" placeholder="∞" style="width:56px"></td>
-              <td><input class="mini" type="number" min="1" data-campo="ponto_apos_meses" data-id="${p.id}" value="${p.ponto_apos_meses ?? ''}" placeholder="—" style="width:56px" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
-              <td style="text-align:center"><input type="checkbox" data-campo="preco_travado" data-id="${p.id}" ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
-              <td><input class="mini" data-campo="rotulo" data-id="${p.id}" value="${esc(p.rotulo)}" style="width:140px"></td>
+              <td><input class="mini u-w-60" type="number" min="1" max="3" data-campo="limite_criativos" data-id="${p.id}" value="${p.limite_criativos}"></td>
+              <td><input class="mini u-w-60" type="number" min="1" data-campo="vagas" data-id="${p.id}" value="${p.vagas ?? ''}" placeholder="∞"></td>
+              <td><input class="mini u-w-60" type="number" min="1" data-campo="ponto_apos_meses" data-id="${p.id}" value="${p.ponto_apos_meses ?? ''}" placeholder="—" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
+              <td class="u-ta-c"><input type="checkbox" data-campo="preco_travado" data-id="${p.id}" ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
+              <td><input class="mini u-w-140" data-campo="rotulo" data-id="${p.id}" value="${esc(p.rotulo)}"></td>
               <td><div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div></td>
-              <td style="text-align:center"><input type="checkbox" data-campo="destaque_no_site" data-id="${p.id}" ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
-              <td style="text-align:center"><input type="checkbox" data-campo="ativo" data-id="${p.id}" ${p.ativo ? 'checked' : ''}></td>
+              <td class="u-ta-c"><input type="checkbox" data-campo="destaque_no_site" data-id="${p.id}" ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
+              <td class="u-ta-c"><input type="checkbox" data-campo="ativo" data-id="${p.id}" ${p.ativo ? 'checked' : ''}></td>
             </tr>`;
       const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th></tr>`;
 
       el.innerHTML = `
         <details class="bloco-novo">
           <summary class="btn ghost mini">+ Novo plano (novo preço/promoção — não mexe no que já existe)</summary>
-          <form class="card" id="formNovoPlano" style="margin-top:12px; max-width:520px">
+          <form class="card u-mt-12 u-mw-520" id="formNovoPlano">
             <div><label>ID único (ex.: destaque-black-friday)</label><input class="mini" name="id" required></div>
             <div><label>Tier</label><select class="mini" name="tier" required>
               <option value="essencial">Essencial</option><option value="destaque">Destaque</option><option value="maximo">Máximo</option>
             </select></div>
             <div><label>Nome exibido</label><input class="mini" name="nome" required></div>
             <div class="field-row">
-              <div style="flex:1"><label>Compromisso</label><select class="mini" name="compromisso_meses" required>
+              <div class="u-col"><label>Compromisso</label><select class="mini" name="compromisso_meses" required>
                 ${Object.entries(CICLOS).map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`).join('')}
               </select></div>
-              <div style="flex:1"><label>Frequência/dia</label><input class="mini" type="number" name="frequencia_dia" value="72" required></div>
+              <div class="u-col"><label>Frequência/dia</label><input class="mini" type="number" name="frequencia_dia" value="72" required></div>
             </div>
             <div class="field-row">
-              <div style="flex:1"><label>Valor mensal (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal" required></div>
-              <div style="flex:1"><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
+              <div class="u-col"><label>Valor mensal (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal" required></div>
+              <div class="u-col"><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
             </div>
             <div><label>Cobertura</label><select class="mini" name="cobertura" required>
               <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
             </select></div>
             <div><label>Rótulo (ex.: "Preço fundador — travado por 12 meses")</label><input class="mini" name="rotulo"></div>
             <div class="field-row">
-              <div style="flex:1"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
-              <div style="flex:1"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
+              <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
+              <div class="u-col"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
             </div>
             <div class="field-row">
               <label class="benef-check"><input type="checkbox" name="preco_travado" value="1"><span>Preço travado pelo compromisso</span></label>
@@ -1288,23 +1288,23 @@
           </form>
         </details>
 
-        <div class="panel-head" style="margin:24px 0 10px">
-          <h3>Programa fundador <span class="badge ${RESUMO.programaFundadorAtivo ? 'badge-ok' : 'badge-pendente'}" style="margin-left:6px">${RESUMO.programaFundadorAtivo ? 'ABERTO no site' : 'fechado (PROGRAMA_FUNDADOR_ATIVO≠true)'}</span></h3>
+        <div class="panel-head u-m-0 u-mt-24 u-mb-10">
+          <h3>Programa fundador <span class="badge ${RESUMO.programaFundadorAtivo ? 'badge-ok' : 'badge-pendente'} u-ml-6">${RESUMO.programaFundadorAtivo ? 'ABERTO no site' : 'fechado (PROGRAMA_FUNDADOR_ATIVO≠true)'}</span></h3>
         </div>
-        <p class="form-hint" style="margin:0 0 8px">Plano fundador fica fora da grade de 3 por modalidade. Ele só aparece no site quando a variável de ambiente PROGRAMA_FUNDADOR_ATIVO está em <code>true</code> <b>e</b> ainda há vaga. Preço travado, meses grátis e mínimo de telas são do próprio plano — dá pra usar em qualquer plano, não só no fundador.</p>
-        ${fundadores.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${fundadores.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state" style="padding:6px 0">Nenhum plano fundador. Crie um acima marcando "Plano fundador".</p>'}
+        <p class="form-hint u-m-0 u-mb-8">Plano fundador fica fora da grade de 3 por modalidade. Ele só aparece no site quando a variável de ambiente PROGRAMA_FUNDADOR_ATIVO está em <code>true</code> <b>e</b> ainda há vaga. Preço travado, meses grátis e mínimo de telas são do próprio plano — dá pra usar em qualquer plano, não só no fundador.</p>
+        ${fundadores.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${fundadores.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano fundador. Crie um acima marcando "Plano fundador".</p>'}
 
         ${Object.keys(CICLOS).map((meses) => {
           const doCiclo = porCiclo[meses] || [];
           const ativos = doCiclo.filter((p) => p.ativo).length;
           return `
-          <div class="panel-head" style="margin:24px 0 10px">
-            <h3>${CICLOS[meses]} <span class="badge ${ativos >= 3 ? 'badge-err' : 'badge-ok'}" style="margin-left:6px">${ativos}/3 na vitrine</span></h3>
+          <div class="panel-head u-m-0 u-mt-24 u-mb-10">
+            <h3>${CICLOS[meses]} <span class="badge ${ativos >= 3 ? 'badge-err' : 'badge-ok'} u-ml-6">${ativos}/3 na vitrine</span></h3>
           </div>
-          ${doCiclo.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${doCiclo.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state" style="padding:6px 0">Nenhum plano nessa modalidade.</p>'}`;
+          ${doCiclo.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${doCiclo.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano nessa modalidade.</p>'}`;
         }).join('')}
 
-        <p class="empty-state" style="text-align:left; padding:16px 0 0">
+        <p class="empty-state u-ta-l u-p-0 u-pt-16">
           Desativar um plano só tira ele do site — quem já assinou continua pagando o mesmo valor até cancelar.
           Pra lançar preço novo sem mexer no de quem já é cliente, crie um plano novo em vez de editar o existente.
           "Mín. telas": abaixo desse número de telas no ar, o que o anunciante pagar fica guardado (meses pendentes) e a cobertura liga sozinha quando a tela entrar.
@@ -1347,15 +1347,15 @@
       const beneficios = await pegar('/admin/beneficios');
       const corpo = `<table><thead><tr><th data-ord>Texto</th><th data-ord>Ordem</th><th data-ord>Disponível</th><th></th></tr></thead><tbody>
         ${beneficios.map((b) => `<tr data-filtro="${b.ativo ? 'ativo' : 'inativo'}">
-          <td><input class="mini" data-benef="texto" data-id="${b.id}" value="${esc(b.texto)}" style="width:360px"></td>
-          <td><input class="mini" type="number" data-benef="ordem" data-id="${b.id}" value="${b.ordem}" style="width:62px"></td>
-          <td style="text-align:center"><input type="checkbox" data-benef="ativo" data-id="${b.id}" ${b.ativo ? 'checked' : ''} title="Desmarcado some da lista dos planos sem apagar nada"></td>
+          <td><input class="mini u-w-360" data-benef="texto" data-id="${b.id}" value="${esc(b.texto)}"></td>
+          <td><input class="mini u-w-60" type="number" data-benef="ordem" data-id="${b.id}" value="${b.ordem}"></td>
+          <td class="u-ta-c"><input type="checkbox" data-benef="ativo" data-id="${b.id}" ${b.ativo ? 'checked' : ''} title="Desmarcado some da lista dos planos sem apagar nada"></td>
           <td><button class="btn ghost mini" data-excluir="${b.id}">Excluir</button></td>
         </tr>`).join('')}
       </tbody></table>`;
 
       el.innerHTML = `
-        <form class="card bloco-novo" id="formNovoBeneficio" style="max-width:520px">
+        <form class="card bloco-novo u-mw-520" id="formNovoBeneficio">
           <div><label>Novo benefício</label><input class="mini" name="texto" placeholder="ex.: Até 3 criativos ativos, revezando entre si" required></div>
           <div><label>Ordem (menor aparece primeiro)</label><input class="mini" type="number" name="ordem" value="0"></div>
           <button class="btn primary" type="submit">Criar benefício</button>
@@ -1395,14 +1395,14 @@
       const categorias = await pegar('/admin/categorias');
       const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>Aparece no cadastro</th><th></th></tr></thead><tbody>
         ${categorias.map((c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
-          <td><input class="mini" data-cat="nome" data-id="${c.id}" value="${esc(c.nome)}" style="width:300px"></td>
-          <td style="text-align:center"><input type="checkbox" data-cat="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
+          <td><input class="mini u-w-300" data-cat="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
+          <td class="u-ta-c"><input type="checkbox" data-cat="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
           <td><button class="btn ghost mini" data-excluir="${c.id}">Excluir</button></td>
         </tr>`).join('')}
       </tbody></table>`;
 
       el.innerHTML = `
-        <form class="card bloco-novo" id="formNovaCategoria" style="max-width:420px">
+        <form class="card bloco-novo u-mw-420" id="formNovaCategoria">
           <div><label>Nova categoria</label><input class="mini" name="nome" placeholder="ex.: Tatuagem / piercing" required></div>
           <button class="btn primary" type="submit">Criar categoria</button>
           <p class="form-msg" id="msgNovaCategoria"></p>
@@ -1438,7 +1438,7 @@
     // ---------- opções de comodato ----------
     async function renderComodato(el) {
       const [opcoes, planos] = await Promise.all([pegar('/admin/planos-ponto'), pegar('/admin/planos')]);
-      const selectPlano = (o) => `<select class="mini" data-pp="plano_bonus_id" data-id="${o.id}" style="width:150px">
+      const selectPlano = (o) => `<select class="mini u-w-140" data-pp="plano_bonus_id" data-id="${o.id}">
           <option value="">— sem bônus —</option>
           ${planos.map((p) => `<option value="${esc(p.id)}" ${p.id === o.plano_bonus_id ? 'selected' : ''}>${esc(p.nome)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</option>`).join('')}
         </select>`;
@@ -1447,20 +1447,20 @@
           <th>Bônus: plano de anúncio</th><th>após (meses)</th><th>por (meses)</th><th>Ordem</th><th>Ativa</th>
         </tr></thead><tbody>
           ${opcoes.map((o) => `<tr>
-            <td style="white-space:normal"><input class="mini" data-pp="nome" data-id="${o.id}" value="${esc(o.nome)}" style="width:130px">
-              <div style="color:var(--text-dim); font-size:.72rem; margin-top:2px">${esc(o.id)}</div></td>
-            <td><input class="mini" type="number" step="0.01" min="0" data-pp="ajuda_custo_mensal" data-id="${o.id}" value="${o.ajuda_custo_mensal}" style="width:84px"></td>
-            <td><input class="mini" type="number" min="0" data-pp="cota_slots_hora" data-id="${o.id}" value="${o.cota_slots_hora}" style="width:62px"></td>
-            <td><textarea class="mini" data-pp="chamada" data-id="${o.id}" rows="3" style="width:260px; resize:vertical">${esc(o.chamada)}</textarea></td>
-            <td><textarea class="mini" data-pp="beneficios" data-id="${o.id}" rows="4" style="width:240px; resize:vertical">${esc((o.beneficios || []).join('\n'))}</textarea></td>
+            <td class="u-ws-normal"><input class="mini u-w-120" data-pp="nome" data-id="${o.id}" value="${esc(o.nome)}">
+              <div class="u-dim u-fs-72 u-mt-2">${esc(o.id)}</div></td>
+            <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-pp="ajuda_custo_mensal" data-id="${o.id}" value="${o.ajuda_custo_mensal}"></td>
+            <td><input class="mini u-w-60" type="number" min="0" data-pp="cota_slots_hora" data-id="${o.id}" value="${o.cota_slots_hora}"></td>
+            <td><textarea class="mini u-w-260 u-resize-v" data-pp="chamada" data-id="${o.id}" rows="3">${esc(o.chamada)}</textarea></td>
+            <td><textarea class="mini u-w-240 u-resize-v" data-pp="beneficios" data-id="${o.id}" rows="4">${esc((o.beneficios || []).join('\n'))}</textarea></td>
             <td>${selectPlano(o)}</td>
-            <td><input class="mini" type="number" min="1" data-pp="plano_bonus_apos_meses" data-id="${o.id}" value="${o.plano_bonus_apos_meses ?? ''}" placeholder="—" style="width:56px"></td>
-            <td><input class="mini" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="—" style="width:56px"></td>
-            <td><input class="mini" type="number" data-pp="ordem" data-id="${o.id}" value="${o.ordem}" style="width:56px"></td>
-            <td style="text-align:center"><input type="checkbox" data-pp="ativo" data-id="${o.id}" ${o.ativo ? 'checked' : ''}></td>
+            <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_apos_meses" data-id="${o.id}" value="${o.plano_bonus_apos_meses ?? ''}" placeholder="—"></td>
+            <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="—"></td>
+            <td><input class="mini u-w-60" type="number" data-pp="ordem" data-id="${o.id}" value="${o.ordem}"></td>
+            <td class="u-ta-c"><input type="checkbox" data-pp="ativo" data-id="${o.id}" ${o.ativo ? 'checked' : ''}></td>
           </tr>`).join('')}
         </tbody></table></div></div>
-        <p class="empty-state" style="text-align:left; padding:12px 0 0">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra — mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado — ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
+        <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra — mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado — ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
 
       el.querySelectorAll('[data-pp]').forEach((inp) => inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'blur', () => {
         let valor;
@@ -1489,7 +1489,7 @@
           <td>${data(c.criado_em)}</td>
           <td>${c.nota_fiscal_status === 'emitida'
             ? `<span class="badge badge-ok">emitida</span> <a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">ver PDF</a>`
-            : `<input type="file" accept="application/pdf" class="mini" data-cobranca="${c.id}" style="width:150px">`}</td>
+            : `<input type="file" accept="application/pdf" class="mini u-w-140" data-cobranca="${c.id}">`}</td>
         </tr>`).join('')}
       </tbody></table>`;
 
@@ -1576,8 +1576,8 @@
           <td>${e.id}</td>
           <td><b>${esc(e.motivo)}</b></td>
           <td>${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
-          <td style="white-space:normal"><details><summary style="cursor:pointer; color:var(--blue)">ver payload</summary>
-            <pre style="font-size:.72rem; background:var(--bg-alt); padding:8px; border-radius:6px; overflow:auto; max-width:460px">${esc(JSON.stringify(e.payload, null, 2))}</pre></details></td>
+          <td class="u-ws-normal"><details><summary class="u-pointer u-txt-link">ver payload</summary>
+            <pre class="u-fs-72 u-bg-alt u-p-8 u-r-6 u-o-auto u-mw-460">${esc(JSON.stringify(e.payload, null, 2))}</pre></details></td>
           <td><button class="btn ghost mini" data-resolver="${e.id}">Marcar resolvido</button></td>
         </tr>`).join('')}
       </tbody></table></div></div>` : '<p class="empty-state">Nenhum evento pendente de revisão.</p>';

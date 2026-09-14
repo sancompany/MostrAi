@@ -20,9 +20,10 @@
   --escuro-card: #111;
   --escuro-borda: #262a31;
   --escuro-texto: #fff;
-  --escuro-texto-dim: var(--escuro-texto-dim);
-  --escuro-campo: var(--escuro-campo);
-  --escuro-err: var(--escuro-err);
+  --escuro-texto-dim: #9aa3ad;
+  --escuro-campo: #333;      /* borda de campo sobre o escuro */
+  --escuro-campo-fundo: #222; /* fundo de botao secundario sobre o escuro */
+  --escuro-err: #ff6b6b;     /* o --err vermelho nao alcanca 4.5:1 no escuro */
 
   /* Texto sobre a cor de ação. Preto puro vibra sobre laranja; este é o
      marrom quase preto que dá contraste sem vibrar. */
@@ -512,7 +513,7 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .painel-tela .pin-form { display: flex; gap: 10px; align-items: center; margin: 24px 0; }
 .painel-tela .pin-form input { font-size: 1.6rem; letter-spacing: .4em; text-align: center; width: 160px; padding: 10px; border-radius: 10px; border: 1px solid var(--escuro-campo); background: var(--escuro-card); color: var(--escuro-texto); }
 .painel-tela .pin-form button, .painel-tela .fechar { background: var(--brand); color: var(--escuro-texto); border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 1rem; }
-.painel-tela .fechar { position: absolute; top: 18px; right: 18px; background: var(--escuro-campo); }
+.painel-tela .fechar { position: absolute; top: 18px; right: 18px; background: var(--escuro-campo-fundo); }
 .painel-tela .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
 .painel-tela .caixa { background: var(--escuro-fundo); border: 1px solid var(--escuro-borda); border-radius: 12px; padding: 14px 16px; }
 .painel-tela .caixa small { color: var(--escuro-texto-dim); display: block; font-size: .78rem; }
@@ -546,3 +547,133 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .ajuda-arte p { margin: 0 0 6px; font-size: .88rem; color: var(--text-dim); line-height: 1.5; }
 .ajuda-arte p:last-child { margin-bottom: 0; }
 .ajuda-arte b { color: var(--text); }
+
+/* ===================================================================
+   Utilitários (prefixo u-)
+   Existiam 301 atributos style= espalhados pelas telas. Cada um deles
+   era uma decisão de layout fora do design system e, junto, eram o que
+   obrigava a CSP a liberar style-src 'unsafe-inline'. Viraram estas
+   classes. O prefixo u- evita colidir com as classes de componente
+   (.wrap já existe, por exemplo).
+   Larguras de campo foram encaixadas numa grade de 20px — a maior
+   mudança visual é de 10px, e o que se ganha é uma escala em vez de
+   vinte números escolhidos um a um.
+   =================================================================== */
+
+/* Colunas de uma linha flex */
+.u-col { flex: 1; min-width: 0; }
+.u-col-2 { flex: 2; min-width: 0; }
+.u-col-fixa-90 { flex: 0 0 90px; }
+.u-flex-wrap { flex-wrap: wrap; }
+.u-ai-c { align-items: center; }
+.u-gap-8 { gap: 8px; }
+.u-gtc-1 { grid-template-columns: 1fr; }
+
+/* Texto */
+.u-ta-c { text-align: center; }
+.u-ta-l { text-align: left; }
+.u-tt-none { text-transform: none; }
+.u-ls-0 { letter-spacing: 0; }
+.u-ls-wide { letter-spacing: .08em; }
+.u-dim { color: var(--text-dim); }
+.u-txt-erro { color: var(--err); }
+.u-txt-link { color: var(--blue); }
+.u-txt-marca { color: var(--brand-text); }
+.u-fw-400 { font-weight: 400; }
+.u-fw-500 { font-weight: 500; }
+.u-fs-70 { font-size: .70rem; }
+.u-fs-72 { font-size: .72rem; }
+.u-fs-74 { font-size: .74rem; }
+.u-fs-76 { font-size: .76rem; }
+.u-fs-78 { font-size: .78rem; }
+.u-fs-85 { font-size: .85rem; }
+.u-fs-88 { font-size: .88rem; }
+.u-fs-100 { font-size: 1rem; }
+.u-fs-130 { font-size: 1.3rem; }
+.u-fs-200 { font-size: 2rem; }
+.u-fs-220 { font-size: 2.2rem; }
+.u-fs-240 { font-size: 2.4rem; }
+
+/* Margem: .u-m-0 zera, os demais repõem um lado. A ordem aqui importa —
+   quem vem depois ganha, e é assim que `u-m-0 u-mt-16` funciona. */
+.u-m-0 { margin: 0; }
+.u-mx-8 { margin-left: 8px; margin-right: 8px; }
+.u-centro { margin-left: auto; margin-right: auto; }
+.u-mt-0 { margin-top: 0; }
+.u-mt-2 { margin-top: 2px; }
+.u-mt-6 { margin-top: 6px; }
+.u-mt-8 { margin-top: 8px; }
+.u-mt-10 { margin-top: 10px; }
+.u-mt-12 { margin-top: 12px; }
+.u-mt-14 { margin-top: 14px; }
+.u-mt-16 { margin-top: 16px; }
+.u-mt-20 { margin-top: 20px; }
+.u-mt-22 { margin-top: 22px; }
+.u-mt-24 { margin-top: 24px; }
+.u-mt-28 { margin-top: 28px; }
+.u-mt-32 { margin-top: 32px; }
+.u-mb-4 { margin-bottom: 4px; }
+.u-mb-6 { margin-bottom: 6px; }
+.u-mb-8 { margin-bottom: 8px; }
+.u-mb-10 { margin-bottom: 10px; }
+.u-mb-12 { margin-bottom: 12px; }
+.u-mb-14 { margin-bottom: 14px; }
+.u-mb-16 { margin-bottom: 16px; }
+.u-mb-18 { margin-bottom: 18px; }
+.u-mb-20 { margin-bottom: 20px; }
+.u-mb-24 { margin-bottom: 24px; }
+.u-mb-28 { margin-bottom: 28px; }
+.u-mb-32 { margin-bottom: 32px; }
+.u-mb-36 { margin-bottom: 36px; }
+.u-ml-6 { margin-left: 6px; }
+.u-ml-8 { margin-left: 8px; }
+
+/* Preenchimento */
+.u-p-0 { padding: 0; }
+.u-p-8 { padding: 8px; }
+.u-p-14 { padding: 14px; }
+.u-py-6 { padding-top: 6px; padding-bottom: 6px; }
+.u-py-8 { padding-top: 8px; padding-bottom: 8px; }
+.u-py-14 { padding-top: 14px; padding-bottom: 14px; }
+.u-pt-4 { padding-top: 4px; }
+.u-pt-12 { padding-top: 12px; }
+.u-pt-16 { padding-top: 16px; }
+
+/* Larguras de campo, em grade de 20px */
+.u-w-60 { width: 60px; }
+.u-w-80 { width: 80px; }
+.u-w-100 { width: 100px; }
+.u-w-120 { width: 120px; }
+.u-w-140 { width: 140px; }
+.u-w-160 { width: 160px; }
+.u-w-200 { width: 200px; }
+.u-w-240 { width: 240px; }
+.u-w-260 { width: 260px; }
+.u-w-280 { width: 280px; }
+.u-w-300 { width: 300px; }
+.u-w-360 { width: 360px; }
+.u-h-30 { height: 30px; }
+
+/* Largura máxima de bloco de conteúdo */
+.u-mw-240 { max-width: 240px; }
+.u-mw-420 { max-width: 420px; }
+.u-mw-440 { max-width: 440px; }
+.u-mw-460 { max-width: 460px; }
+.u-mw-520 { max-width: 520px; }
+.u-mw-820 { max-width: 820px; }
+.u-mw-860 { max-width: 860px; }
+.u-mw-texto { max-width: 44rem; }
+.u-mw-livre { max-width: none; }
+
+/* Superfície e comportamento */
+.u-bg { background: var(--bg); }
+.u-bg-alt { background: var(--bg-alt); }
+.u-r-6 { border-radius: 6px; }
+.u-ws-normal { white-space: normal; }
+.u-resize-v { resize: vertical; }
+.u-o-auto { overflow: auto; }
+.u-ox-auto { overflow-x: auto; }
+.u-op-55 { opacity: .55; }
+.u-op-60 { opacity: .6; }
+.u-d-block { display: block; }
+.u-pointer { cursor: pointer; }

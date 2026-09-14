@@ -265,7 +265,7 @@ Legenda: ✅ existe com evidência · ⚠️ existe pela metade · ❌ não exis
 | # | Item | Estado | O que falta |
 |---|---|---|---|
 | 1 | Mapa de páginas antes de tela | ✅ | `docs/funcional.md` §3, 23 telas com URL |
-| 2 | Design system de uma pessoa | ⚠️ | **cor fechada em 14/09**: 24 literais → 0 fora do `:root`. Falta extrair componentes (`src/ui/`) e os **267 estilos inline** nos HTML, que também barram a CSP |
+| 2 | Design system de uma pessoa | ⚠️ | **cor fechada em 14/09**: 24 literais → 0 fora do `:root`. **Estilo inline fechado em 14/09**: 301 atributos `style=` → 0, viraram utilitários `u-*` em `style.css`; as barras de gráfico passaram a `data-pct` aplicado por CSSOM. Falta extrair componentes (`src/ui/`) |
 | 3 | Tipografia web | ⚠️ | conferir se usa pilha do sistema e se o corpo é 1 rem em campo de formulário (zoom do Safari) |
 | 4 | `<head>` completo | ✅ | **fechado em 14/09**: canonical, theme-color e manifest em 26 de 26; `og:image`/`og:url` absolutos; `site.webmanifest` criado |
 | 5 | SEO técnico | ⚠️ | **`sitemap.xml` criado** (11 URLs) e `robots.txt` corrigido — ele bloqueava as páginas que levam `noindex`, então o Google nunca leria o `noindex`. Falta JSON-LD (item 7 do tipo institucional) |

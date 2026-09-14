@@ -37,16 +37,16 @@
       <div><label for="nome_empresa">Nome da empresa</label><input id="nome_empresa" name="nome_empresa" disabled required></div>
       <div><label for="endereco">Endereço completo</label><input id="endereco" name="endereco" disabled required></div>
       <div class="field-row">
-        <div style="flex:2"><label for="cidade">Cidade</label><input id="cidade" name="cidade" disabled required></div>
-        <div style="flex:1"><label for="uf">UF</label><input id="uf" name="uf" maxlength="2" disabled required></div>
-        <div style="flex:1"><label for="cep">CEP</label><input id="cep" name="cep" disabled required></div>
+        <div class="u-col-2"><label for="cidade">Cidade</label><input id="cidade" name="cidade" disabled required></div>
+        <div class="u-col"><label for="uf">UF</label><input id="uf" name="uf" maxlength="2" disabled required></div>
+        <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" disabled required></div>
       </div>
       <div><label for="contato_telefone">WhatsApp</label><input id="contato_telefone" name="contato_telefone" autocomplete="tel" disabled required></div>
-      <p class="eyebrow" style="margin-top:8px">Responsável (opcional)</p>
+      <p class="eyebrow u-mt-8">Responsável (opcional)</p>
       <div><label for="responsavel_nome">Nome do responsável</label><input id="responsavel_nome" name="responsavel_nome" disabled></div>
       <div class="field-row">
-        <div style="flex:1"><label for="responsavel_cpf">CPF</label><input id="responsavel_cpf" name="responsavel_cpf" disabled></div>
-        <div style="flex:1"><label for="responsavel_telefone">WhatsApp</label><input id="responsavel_telefone" name="responsavel_telefone" autocomplete="tel" disabled></div>
+        <div class="u-col"><label for="responsavel_cpf">CPF</label><input id="responsavel_cpf" name="responsavel_cpf" disabled></div>
+        <div class="u-col"><label for="responsavel_telefone">WhatsApp</label><input id="responsavel_telefone" name="responsavel_telefone" autocomplete="tel" disabled></div>
       </div>
       <div><label for="responsavel_email">E-mail do responsável</label><input id="responsavel_email" name="responsavel_email" type="email" disabled></div>
 
