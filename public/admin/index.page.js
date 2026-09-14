@@ -144,6 +144,7 @@ const NAV = [
   ] },
   { grupo: 'Catálogo', itens: [
     { id: 'planos', nome: 'Planos' },
+    { id: 'planosarquivados', nome: 'Planos arquivados' },
     { id: 'beneficios', nome: 'Benefícios' },
     { id: 'categorias', nome: 'Categorias' },
     { id: 'comodato', nome: 'Opções de comodato' },
@@ -167,6 +168,7 @@ const SUBTITULOS = {
   anunciantes: 'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
   planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine; o plano fundador fica fora dessa conta.',
+  planosarquivados: 'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas — é por isso que não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
   beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
   categorias: 'Segmentos usados no cadastro — é o que impede concorrente direto na mesma tela.',
   comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
@@ -220,6 +222,7 @@ async function irPara(aba, forcarResumo) {
     cobrancas: renderCobrancas, comissoes: renderComissoes, custos: renderCustos, eventos: renderEventos,
     meusanuncios: renderMeusAnuncios,
     arrependimentos: renderArrependimentos,
+    planosarquivados: renderPlanosArquivados,
   };
   try {
     await telas[alvo](el);
@@ -1098,21 +1101,29 @@ async function renderPlanos(el) {
   });
   const fundadores = planos.filter((p) => p.fundador);
 
-  const linhaPlano = (p) => `<tr>
-          <td><input class="mini u-w-120" data-campo="nome" data-id="${p.id}" value="${esc(p.nome)}">
+  // Item 9 da spec: os campos se dividem em dois. `data-grupo="vitrine"` salva
+  // na hora, porque não alcança quem já assinou. `data-grupo="contrato"` não
+  // salva sozinho: acende o botão da linha, e sair de lá é publicar uma versão
+  // nova. Um input que parece salvar e devolve 409 seria pior que não ter.
+  const contrato = (campo, p) => `data-campo="${campo}" data-grupo="contrato" data-id="${p.id}"`;
+  const vitrine = (campo, p) => `data-campo="${campo}" data-grupo="vitrine" data-id="${p.id}"`;
+
+  const linhaPlano = (p) => `<tr data-linha="${p.id}">
+          <td><input class="mini u-w-120" ${contrato('nome', p)} value="${esc(p.nome)}">
             <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)}${p.fundador ? '' : ` · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`}</div></td>
-          <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-campo="valor_mensal" data-id="${p.id}" value="${p.valor_mensal}"></td>
+          <td><input class="mini u-w-80" type="number" step="0.01" min="0" ${contrato('valor_mensal', p)} value="${p.valor_mensal}"></td>
           <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
-          <td><input class="mini u-w-60" type="number" min="1" max="3" data-campo="limite_criativos" data-id="${p.id}" value="${p.limite_criativos}"></td>
-          <td><input class="mini u-w-60" type="number" min="1" data-campo="vagas" data-id="${p.id}" value="${p.vagas ?? ''}" placeholder="∞"></td>
-          <td><input class="mini u-w-60" type="number" min="1" data-campo="ponto_apos_meses" data-id="${p.id}" value="${p.ponto_apos_meses ?? ''}" placeholder="—" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
-          <td class="u-ta-c"><input type="checkbox" data-campo="preco_travado" data-id="${p.id}" ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
-          <td><input class="mini u-w-140" data-campo="rotulo" data-id="${p.id}" value="${esc(p.rotulo)}"></td>
+          <td><input class="mini u-w-60" type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></td>
+          <td><input class="mini u-w-60" type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></td>
+          <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="—" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
+          <td class="u-ta-c"><input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
+          <td><input class="mini u-w-140" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}"></td>
           <td><div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div></td>
-          <td class="u-ta-c"><input type="checkbox" data-campo="destaque_no_site" data-id="${p.id}" ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
-          <td class="u-ta-c"><input type="checkbox" data-campo="ativo" data-id="${p.id}" ${p.ativo ? 'checked' : ''}></td>
+          <td class="u-ta-c"><input type="checkbox" ${vitrine('destaque_no_site', p)} ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
+          <td class="u-ta-c"><input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}></td>
+          <td><button class="btn primary mini" data-nova-versao="${p.id}" hidden>Publicar nova versão</button></td>
         </tr>`;
-  const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th></tr>`;
+  const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
 
   el.innerHTML = `
     <details class="bloco-novo">
@@ -1168,26 +1179,60 @@ async function renderPlanos(el) {
     }).join('')}
 
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      Desativar um plano só tira ele do site — quem já assinou continua pagando o mesmo valor até cancelar.
-      Pra lançar preço novo sem mexer no de quem já é cliente, crie um plano novo em vez de editar o existente.
+      <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após" e benefícios mudam o contrato:
+      editar um deles acende "Publicar nova versão", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
+      Vagas, rótulo, destaque e Ativo são só vitrine — salvam na hora e não alcançam ninguém que já é cliente.
+      Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
       "Mín. telas": abaixo desse número de telas no ar, o que o anunciante pagar fica guardado (meses pendentes) e a cobertura liga sozinha quando a tela entrar.
       "Tela após": módulo cruzado — ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
     </p>`;
 
-  el.querySelectorAll('[data-campo]').forEach((inp) => {
+  const valorDo = (inp) => {
+    if (inp.type === 'checkbox') return inp.checked;
+    if (inp.dataset.campo === 'nome' || inp.dataset.campo === 'rotulo') return inp.value || null;
+    return inp.value === '' ? null : Number(inp.value);
+  };
+  const acenderBotao = (id) => {
+    const btn = el.querySelector(`[data-nova-versao="${id}"]`);
+    if (btn) btn.hidden = false;
+  };
+
+  el.querySelectorAll('[data-grupo="vitrine"]').forEach((inp) => {
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', async () => {
-      let valor;
-      if (inp.type === 'checkbox') valor = inp.checked;
-      else if (inp.dataset.campo === 'nome' || inp.dataset.campo === 'rotulo') valor = inp.value || null;
-      else valor = inp.value === '' ? null : Number(inp.value);
-      if (!await salvar(`/admin/planos/${inp.dataset.id}`, { [inp.dataset.campo]: valor }, inp)) renderPlanos(el);
+      if (!await salvar(`/admin/planos/${inp.dataset.id}`, { [inp.dataset.campo]: valorDo(inp) }, inp)) renderPlanos(el);
     });
   });
 
-  el.querySelectorAll('[data-beneficios-de]').forEach((caixa) => caixa.addEventListener('change', () => {
-    const ids = [...caixa.querySelectorAll('input:checked')].map((i) => Number(i.value));
-    salvar(`/admin/planos/${caixa.dataset.beneficiosDe}`, { beneficio_ids: ids }, caixa);
-  }));
+  el.querySelectorAll('[data-grupo="contrato"]').forEach((inp) => {
+    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => acenderBotao(inp.dataset.id));
+  });
+
+  el.querySelectorAll('[data-beneficios-de]').forEach((caixa) => {
+    caixa.addEventListener('change', () => acenderBotao(caixa.dataset.beneficiosDe));
+  });
+
+  el.querySelectorAll('[data-nova-versao]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.novaVersao;
+      const linha = el.querySelector(`[data-linha="${id}"]`);
+      const mudancas = {};
+      linha.querySelectorAll('[data-grupo="contrato"]').forEach((inp) => {
+        mudancas[inp.dataset.campo] = valorDo(inp);
+      });
+      const caixa = linha.querySelector('[data-beneficios-de]');
+      if (caixa) mudancas.beneficio_ids = [...caixa.querySelectorAll('input:checked')].map((i) => Number(i.value));
+
+      if (!confirm(`Publicar uma versão nova de "${id}"?\n\n`
+        + 'A versão atual é aposentada e vai pra "Planos arquivados". '
+        + 'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios — nada muda pra essas contas. '
+        + 'A versão nova vale só pra quem assinar daqui pra frente, e nasce com um id novo.')) return;
+
+      const r = await api(`/admin/planos/${id}/nova-versao`, { method: 'POST', body: JSON.stringify(mudancas) });
+      if (!r.ok) { toast((await r.json().catch(() => ({}))).erro || 'Não deu pra publicar.', true); return; }
+      toast(`Versão nova publicada: ${(await r.json()).id}`);
+      renderPlanos(el);
+    });
+  });
 
   document.getElementById('formNovoPlano').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1203,6 +1248,50 @@ async function renderPlanos(el) {
     toast('Plano criado.');
     renderPlanos(el);
   });
+}
+
+// ---------- planos arquivados ----------
+// Versão aposentada não some: quem assinou nela continua pagando o que
+// contratou, e é essa tela que responde "quantas contas ainda dependem desta
+// versão" — a pergunta que precede qualquer limpeza.
+async function renderPlanosArquivados(el) {
+  const planos = await pegar('/admin/planos-arquivados');
+  if (!planos.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma versão aposentada ainda. Quando você publicar uma versão nova de um plano, a anterior aparece aqui.</p>';
+    return;
+  }
+  const emUso = planos.filter((p) => p.contas_ativas > 0).length;
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Versões aposentadas</span><b>${planos.length}</b><span class="kpi-caption">${emUso} ainda com conta ativa</span></div>
+    </div>
+    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Ciclo</th><th data-ord>Valor mensal</th>
+      <th data-ord>Criativos</th><th data-ord>Freq./dia</th><th>Cobertura</th><th>Benefícios</th>
+      <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
+    </tr></thead><tbody>
+    ${planos.map((p) => `<tr>
+      <td><b>${esc(p.id)}</b></td>
+      <td>${esc(p.nome)}</td>
+      <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
+      <td>${fmt(p.valor_mensal)}</td>
+      <td class="num">${p.limite_criativos}</td>
+      <td class="num">${p.frequencia_dia}</td>
+      <td>${esc(p.cobertura)}</td>
+      <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '—'}</td>
+      <td>${data(p.arquivado_em)}</td>
+      <td>${esc(p.substituido_por || '—')}</td>
+      <td class="num">${p.contas_ativas > 0
+        ? `<span class="badge badge-ok">${p.contas_ativas}</span>`
+        : '<span class="u-dim">0</span>'}</td>
+      <td class="num">${p.cobrancas}</td>
+    </tr>`).join('')}
+    </tbody></table></div></div>
+    <p class="empty-state u-ta-l u-p-0 u-pt-16">
+      Zero contas ativas não quer dizer "pode apagar já": cobrança confirmada guarda o <code>plano_id</code> por obrigação fiscal,
+      e apagar a versão levaria junto a referência da nota. Drop de linha aqui é decisão do dono, em migration própria (Lei das migrations aditivas).
+    </p>`;
+  turbinarTabela(el.querySelector('.tabela-caixa'));
 }
 
 // ---------- benefícios ----------

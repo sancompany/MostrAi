@@ -143,7 +143,9 @@ pede.
 |---|---|---|
 | GET | `/admin/planos` | os 12 da grade + o fundador, ativos e desativados |
 | POST | `/admin/planos` | nova versão de preço/promoção — não mexe no que já existe |
-| PATCH | `/admin/planos/:id` | edita uma célula da grade. Máximo 3 ativos por ciclo; o fundador fica fora dessa conta. `ponto_apos_meses` é o módulo cruzado |
+| PATCH | `/admin/planos/:id` | **só campo de vitrine** (`ativo`, `vagas`, `rotulo`, `destaque_no_site`) — não alcança quem já assinou. Campo de contrato responde 409 apontando a rota abaixo. Máximo 3 ativos por ciclo; o fundador fica fora dessa conta |
+| POST | `/admin/planos/:id/nova-versao` | RN-27: cria a versão nova (id `-vN`) com os campos de contrato mudados e aposenta a atual, numa transação. 400 sem mudança nenhuma, 409 partindo de versão aposentada ou sem vaga no ciclo novo |
+| GET | `/admin/planos-arquivados` | versões aposentadas, com `contas_ativas` e `cobrancas` de cada uma |
 | GET | `/admin/planos-ponto` | opções de comodato |
 | POST | `/admin/planos-ponto` | cria |
 | PATCH | `/admin/planos-ponto/:id` | `plano_bonus_id`, `plano_bonus_apos_meses`, `plano_bonus_meses` = módulo cruzado inverso |

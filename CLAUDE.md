@@ -38,7 +38,8 @@ Fechadas:
   fechada contra o `API.md` do Checkout; inventário de dados revisado;
   `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
   evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
-Falta para fechar a atual: itens 8 e 9 da spec; tabela de eventos da métrica;
+Falta para fechar a atual: item 8 da spec (desconto de comodato por linha
+da grade); tabela de eventos da métrica;
 **a versão inicial no ar** — que é o que fecha a estação. Direitos do titular
 construídos em 14/09 (RN-24, RN-25, RN-26): exportar dados, revogar
 consentimento e arrependimento em 7 dias com devolução na fila do admin.
@@ -64,8 +65,8 @@ conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
 - **Rotação das credenciais vazadas em 13/09/2026** (`docs/PENDENCIAS.md`, A.0.1)
   — precisa do PC; até lá senha do Postgres, `SESSION_SECRET` e `ADMIN_PASSWORD`
   antigos seguem válidos. Nenhum push da pasta `D:\SanCo\MostrAi` antes do passo 1.
-- **Itens 8 e 9 da spec não construídos** — o 9 (plano imutável para quem já
-  assinou) tem que estar de pé antes da primeira assinatura paga.
+- **Item 8 da spec não construído** — desconto de comodato por linha da grade.
+  O item 9 (plano imutável) foi construído em 14/09.
 - **`SAN_CHECKOUT_API_URL` é variável nova** e precisa ser combinada com quem
   administra o Checkout antes do deploy — é o endereço da API, diferente do da
   tela de pagamento.

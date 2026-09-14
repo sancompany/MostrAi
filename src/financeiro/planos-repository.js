@@ -65,8 +65,13 @@ async function contarVagasOcupadas(planoId, ignorarAnuncianteId) {
   return rows[0].total;
 }
 
+// A grade do admin. Versão aposentada sai daqui e vai pra `listarArquivados()`
+// — misturada, a tela mostraria dois "Essencial anual" e o dono editaria o
+// errado.
 async function listarTodos() {
-  const { rows } = await pool.query(`${SELECT_PLANO} GROUP BY p.id ORDER BY p.compromisso_meses, p.tier`);
+  const { rows } = await pool.query(
+    `${SELECT_PLANO} WHERE p.arquivado_em IS NULL GROUP BY p.id ORDER BY p.compromisso_meses, p.tier`,
+  );
   return rows;
 }
 
@@ -98,8 +103,22 @@ async function vagaOcupada(compromissoMeses, ignorarId, ehFundador) {
   return (await contarAtivosDoCiclo(compromissoMeses, ignorarId)) >= MAX_ATIVOS_POR_CICLO;
 }
 
-const CAMPOS_ATUALIZAVEIS = ['nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses', 'ativo', 'destaque_no_site', 'rotulo', 'limite_criativos',
-  'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
+// Os dois grupos de campo, e a linha entre eles é o item 9 da spec.
+//
+// VITRINE: mexer neles não alcança quem já assinou. `ativo` tira o plano da
+// vitrine sem cancelar ninguém; `vagas` só limita quem ainda vai entrar;
+// `destaque_no_site` e `rotulo` são marketing da página pública.
+const CAMPOS_VITRINE = ['ativo', 'destaque_no_site', 'rotulo', 'vagas'];
+
+// CONTRATO: cada um destes o Mostraí lê AO VIVO pra quem já está pagando —
+// `limite_criativos` no upload, `frequencia_dia` e `cobertura` na playlist,
+// `nome` e benefícios no painel. Editar no lugar mudaria o contrato de quem
+// já assinou. Só entram por versão nova.
+const CAMPOS_CONTRATO = ['tier', 'nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses',
+  'frequencia_dia', 'cobertura', 'limite_criativos', 'preco_travado', 'fundador',
+  'ponto_apos_meses', 'beneficio_ids'];
+
+const CAMPOS_ATUALIZAVEIS = CAMPOS_VITRINE;
 
 async function atualizar(id, dados) {
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
@@ -124,7 +143,93 @@ async function definirBeneficios(planoId, beneficioIds) {
   return buscarPorId(planoId);
 }
 
+// Id da versão seguinte: `essencial-12m` vira `essencial-12m-v2`, e `-v2` vira
+// `-v3`. Conta a partir do que existe no banco, não do id recebido, senão duas
+// edições seguidas da mesma base colidiriam.
+async function proximoId(idAtual) {
+  const base = String(idAtual).replace(/-v\d+$/, '');
+  const { rows } = await pool.query(
+    "SELECT id FROM planos WHERE id = $1 OR id LIKE $1 || '-v%'", [base],
+  );
+  let maior = 1;
+  for (const r of rows) {
+    const m = /-v(\d+)$/.exec(r.id);
+    if (m) maior = Math.max(maior, Number(m[1]));
+  }
+  return `${base}-v${maior + 1}`;
+}
+
+// Cria a versão nova e aposenta a atual, numa transação só. Insere primeiro:
+// `substituido_por` é chave estrangeira pra `planos`, então apontar pra uma
+// linha que ainda não existe é recusado pelo banco. O instante em que há
+// quatro planos ativos no ciclo não escapa da transação — leitura de fora vê
+// o estado commitado, nunca o de dentro.
+async function novaVersao(idAtual, mudancas) {
+  const atual = await buscarPorId(idAtual);
+  if (!atual) return null;
+
+  const novo = { ...atual };
+  delete novo.beneficios;
+  for (const campo of [...CAMPOS_CONTRATO, ...CAMPOS_VITRINE]) {
+    if (campo in mudancas && mudancas[campo] !== undefined) novo[campo] = mudancas[campo];
+  }
+  const beneficios = (mudancas.beneficio_ids || atual.beneficio_ids || []).map(Number);
+  novo.id = await proximoId(idAtual);
+  novo.ativo = true;
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const campos = CAMPOS_CRIACAO.filter((c) => novo[c] !== undefined && novo[c] !== null);
+    await cliente.query(
+      `INSERT INTO planos (${campos.join(', ')})
+       VALUES (${campos.map((_, i) => `$${i + 1}`).join(', ')})`,
+      campos.map((c) => novo[c]),
+    );
+    await cliente.query(
+      'UPDATE planos SET ativo = false, arquivado_em = now(), substituido_por = $2 WHERE id = $1',
+      [idAtual, novo.id],
+    );
+    if (beneficios.length) {
+      await cliente.query(
+        'INSERT INTO planos_beneficios (plano_id, beneficio_id) SELECT $1, unnest($2::int[])',
+        [novo.id, beneficios],
+      );
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return buscarPorId(novo.id);
+}
+
+// Versões aposentadas, com quantos assinantes ativos cada uma ainda tem — é
+// esse número que um dia torna seguro apagar uma versão antiga. Zero não
+// significa "pode apagar já": cobrança confirmada guarda `plano_id` por
+// obrigação fiscal.
+async function listarArquivados() {
+  const { rows } = await pool.query(`
+    ${SELECT_PLANO}
+    WHERE p.arquivado_em IS NOT NULL
+    GROUP BY p.id
+    ORDER BY p.arquivado_em DESC`);
+  for (const p of rows) {
+    const { rows: c } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM anunciantes
+          WHERE plano_id = $1 AND status = 'ativo' AND excluido_em IS NULL) AS contas_ativas,
+        (SELECT COUNT(*)::int FROM cobrancas_confirmadas WHERE plano_id = $1) AS cobrancas`, [p.id]);
+    p.contas_ativas = c[0].contas_ativas;
+    p.cobrancas = c[0].cobrancas;
+  }
+  return rows;
+}
+
 module.exports = {
-  criar, listarAtivos, listarTodos, buscarPorId, atualizar,
-  definirBeneficios, vagaOcupada, contarVagasOcupadas, MAX_ATIVOS_POR_CICLO,
+  criar, listarAtivos, listarTodos, buscarPorId, atualizar, novaVersao,
+  listarArquivados, proximoId, definirBeneficios, vagaOcupada, contarVagasOcupadas,
+  MAX_ATIVOS_POR_CICLO, CAMPOS_VITRINE, CAMPOS_CONTRATO,
 };

@@ -41,6 +41,9 @@
 .tabela-caixa thead th { position: sticky; top: 0; background: var(--bg-alt); z-index: 1; color: var(--text-dim); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
 .tabela-caixa tbody tr:hover { background: var(--bg-alt); }
 .tabela-caixa tbody tr:last-child td { border-bottom: none; }
+/* Número alinhado à direita compara de relance; à esquerda, não. Mesma
+   regra que a .mini-table já tinha — faltava valer nas tabelas do admin. */
+.tabela-caixa td.num, .tabela-caixa th.num { text-align: right; font-variant-numeric: tabular-nums; }
 th[data-ord] { cursor: pointer; user-select: none; }
 th[data-ord]::after { content: '↕'; opacity: .35; margin-left: 5px; font-size: .72rem; }
 th[data-ord].asc::after { content: '↑'; opacity: 1; }

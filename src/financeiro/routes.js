@@ -66,36 +66,80 @@ router.post('/admin/planos', async (req, res) => {
   }
 });
 
+// Edição no lugar, só do que NÃO alcança quem já assinou: tirar da vitrine,
+// mexer em vagas, destaque e rótulo. Campo de contrato aqui é recusado com o
+// caminho certo na mensagem — silenciar e ignorar seria pior, o dono acharia
+// que salvou.
 router.patch('/admin/planos/:id', async (req, res) => {
   const atual = await planosRepo.buscarPorId(req.params.id);
   if (!atual) return res.status(404).json({ erro: 'plano não encontrado' });
+  if (atual.arquivado_em) {
+    return res.status(409).json({ erro: 'essa versão está aposentada — edite a versão em uso' });
+  }
+
+  const deContrato = planosRepo.CAMPOS_CONTRATO.filter((c) => c in req.body);
+  if (deContrato.length) {
+    return res.status(409).json({
+      erro: `${deContrato.join(', ')} muda o contrato de quem já assinou — use "nova versão" (POST /admin/planos/${req.params.id}/nova-versao)`,
+      campos: deContrato,
+    });
+  }
+
+  // Reativar só passa se ainda houver vaga na vitrine daquela modalidade.
+  // Desativar nunca é barrado.
+  if (req.body.ativo === true
+      && await planosRepo.vagaOcupada(Number(atual.compromisso_meses), req.params.id, !!atual.fundador)) {
+    return res.status(409).json({
+      erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
+    });
+  }
+
+  res.json(await planosRepo.atualizar(req.params.id, req.body));
+});
+
+// Item 9 da spec: editar campo de contrato não altera o plano — cria uma
+// versão nova, com id novo, e aposenta a atual. Quem já assinou continua na
+// versão antiga, com o preço, a frequência, a cobertura, o limite de
+// criativos e os benefícios que contratou.
+router.post('/admin/planos/:id/nova-versao', async (req, res) => {
+  const atual = await planosRepo.buscarPorId(req.params.id);
+  if (!atual) return res.status(404).json({ erro: 'plano não encontrado' });
+  if (atual.arquivado_em) {
+    return res.status(409).json({ erro: 'essa versão já está aposentada — parta da versão em uso' });
+  }
 
   if (limiteCriativosInvalido(req.body.limite_criativos)) {
     return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
   }
-
   // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
   // constraint do banco — devolve o motivo em vez do erro genérico.
   const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos']
     .find((c) => c in req.body && (req.body[c] === null || req.body[c] === ''));
   if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });
 
-  // Reativar/mover de ciclo só passa se ainda houver vaga na vitrine daquela
-  // modalidade. Desativar nunca é barrado.
-  if (req.body.ativo === true || (atual.ativo && req.body.compromisso_meses)) {
-    const ciclo = Number(req.body.compromisso_meses || atual.compromisso_meses);
-    const ehFundador = 'fundador' in req.body ? !!req.body.fundador : !!atual.fundador;
-    if (await planosRepo.vagaOcupada(ciclo, req.params.id, ehFundador)) {
-      return res.status(409).json({
-        erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
-      });
-    }
+  const mudou = [...planosRepo.CAMPOS_CONTRATO, ...planosRepo.CAMPOS_VITRINE]
+    .some((c) => c in req.body);
+  if (!mudou) return res.status(400).json({ erro: 'nada mudou — não faz versão nova à toa' });
+
+  // A versão nova nasce ativa e a antiga sai da vitrine na mesma transação,
+  // então o total do ciclo não muda. Só precisa conferir se o ciclo MUDOU:
+  // aí ela entra num ciclo onde talvez já haja três.
+  const cicloNovo = Number(req.body.compromisso_meses || atual.compromisso_meses);
+  const ehFundador = 'fundador' in req.body ? !!req.body.fundador : !!atual.fundador;
+  if (cicloNovo !== Number(atual.compromisso_meses)
+      && await planosRepo.vagaOcupada(cicloNovo, req.params.id, ehFundador)) {
+    return res.status(409).json({
+      erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
+    });
   }
 
-  if (Array.isArray(req.body.beneficio_ids)) {
-    await planosRepo.definirBeneficios(req.params.id, req.body.beneficio_ids.map(Number));
-  }
-  res.json(await planosRepo.atualizar(req.params.id, req.body));
+  const novo = await planosRepo.novaVersao(req.params.id, req.body);
+  res.status(201).json(novo);
+});
+
+// Versões aposentadas, com quantos assinantes ativos cada uma ainda tem.
+router.get('/admin/planos-arquivados', async (_req, res) => {
+  res.json(await planosRepo.listarArquivados());
 });
 
 // Catálogo de benefícios — criado/editado uma vez, marcado por plano.

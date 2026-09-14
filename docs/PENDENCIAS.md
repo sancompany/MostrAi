@@ -77,7 +77,7 @@ o que trava · quanto leva.
    · Vaga de fundador por 7 dias; comissão sobre renovação; precedência entre
      `preco_travado` e desconto de comodato; e se plano desativado aparece
      apagado em `/planos.html` ou some.
-   · **Trava:** os itens 8 e 9 da spec (seção B.1), que são construção da
+   · **Trava:** o item 8 da spec (seção B.1), que é construção da
      Estação 5.
    · ~10 min de decisão.
 
@@ -201,17 +201,18 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 ## B.1 Construir — decidido em 14/09/2026, ainda não feito
 
 Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: o
-9 é pré-requisito do 8.
+9 é pré-requisito do 8 — e o 9 está feito.
 
-1. [ ] **Item 9 — plano imutável para quem já assinou.** Editar um plano no
-   admin não pode alcançar quem já paga por ele. Hoje a conta guarda só
-   `valor_mensal_travado`; nome, benefícios, `limite_criativos`,
-   `frequencia_dia` e `cobertura` são lidos ao vivo da linha do plano
-   (`src/financeiro/planos-repository.js`, `CAMPOS_ATUALIZAVEIS`). O desenho
-   proposto é versionar a linha: editar cria linha nova, a antiga sai da vitrine
-   (`ativo=false`) e continua servindo quem está nela — encaixa no `plano_id`
-   `text` que já existe. **Condição de entrada: antes da primeira assinatura
-   paga.** Com zero assinantes, editar plano ainda é inofensivo.
+1. [x] **Item 9 — plano imutável para quem já assinou.** FEITO em 14/09/2026,
+   antes da primeira assinatura paga, que era a condição de entrada.
+   `CAMPOS_ATUALIZAVEIS` virou dois grupos: vitrine (`ativo`, `vagas`,
+   `rotulo`, `destaque_no_site`) salva no lugar; contrato (nome, valor,
+   ciclo, frequência, cobertura, limite de criativos, preço travado, fundador,
+   tela-após, benefícios) só entra por `POST /admin/planos/:id/nova-versao`,
+   que cria a versão com id `-vN` e aposenta a anterior na mesma transação.
+   Migration 026 traz `arquivado_em`, `substituido_por` e a trava de que
+   aposentado nunca é ativo. Aba "Planos arquivados" mostra contas ativas e
+   cobranças por versão. RN-27 em `docs/funcional.md`.
 2. [ ] **Item 8 — desconto de comodato sobre os planos de anunciante.** Um
    desconto por linha da grade (12 valores no admin, livres entre si), separado
    do desconto de ciclo que o anunciante comum já tem. Vale a partir da
@@ -233,12 +234,12 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    Mostrar ao cliente um plano que ele não pode assinar é decisão de produto, não
    de código.
 
-   *Nota que encolhe o item 1 acima:* `ativo=false` é exatamente a alavanca que o
-   item 9 precisa — "a linha antiga sai da vitrine e continua servindo quem está
-   nela" é isso, e desativar não quebra assinante, porque a linha continua
-   existindo e a conta lê por `plano_id`. O admin já tem também o formulário
-   "+ Novo plano (novo preço/promoção — não mexe no que já existe)". Metade do
-   item 9 já está desenhada na interface.
+   *Foi por aqui que o item 1 saiu:* `ativo=false` era mesmo a alavanca — "a
+   linha antiga sai da vitrine e continua servindo quem está nela". O que
+   faltava era impedir a edição no lugar e registrar a linhagem, que é o que a
+   migration 026 e a rota de nova versão fazem. O aviso visual pedido aqui
+   continua de pé: a confirmação antes de publicar versão nova já existe, a
+   linha apagada com "Desativado" não.
 
 4. [x] **`tests/e2e/02` reescrito pro mundo pós-021** — FEITO em 14/09/2026.
    Assina o webhook como o Checkout assina (HMAC), afirma que a 1ª cobrança

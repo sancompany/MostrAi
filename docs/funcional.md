@@ -314,6 +314,24 @@ API dele não expõe estorno; o admin registra o comprovante pra fechar o pedido
 *Quem vê:* o titular, no perfil; o administrador, na aba Devoluções e no alerta
 da visão geral.
 
+**RN-27 — Plano assinado é imutável para quem assinou.** Os campos do plano
+se dividem em dois. **Vitrine** (`ativo`, `vagas`, `rotulo`,
+`destaque_no_site`) muda na hora: não alcança ninguém que já é cliente.
+**Contrato** (`nome`, `valor_mensal`, `compromisso_meses`, `frequencia_dia`,
+`cobertura`, `limite_criativos`, `preco_travado`, `fundador`,
+`ponto_apos_meses`, benefícios) não se edita: publica-se uma **versão nova**,
+com id novo, e a anterior é aposentada. Quem já assinou fica na versão
+antiga — mesmo preço, mesma frequência, mesmos benefícios, mesmo limite de
+criativos. Id novo é obrigatório porque o San Checkout guarda a assinatura
+pela chave `planoId` + `documento` (`API.md` 4.2): duas versões com o mesmo
+id tornariam cancelamento e conciliação ambíguos. O Checkout já congela
+`valor` e `ciclo` na criação e nunca reconsulta o plano — o que faltava era o
+que o Mostraí lê ao vivo. *Violada:* `PATCH` com campo de contrato responde
+409 dizendo qual campo e qual é o caminho; o banco recusa plano aposentado e
+ativo ao mesmo tempo. *Quem vê:* o administrador, na aba Planos (o botão
+"Publicar nova versão" só acende quando um campo de contrato muda) e na aba
+Planos arquivados, que mostra quantas contas ativas cada versão ainda tem.
+
 **RN-17 — Migrations são aditivas.** Drop de coluna ou tabela só com permissão
 nominal do dono, em migration própria. Migration aplicada nunca é editada.
 *Violada:* não há caminho automático. *Quem vê:* administrador.
