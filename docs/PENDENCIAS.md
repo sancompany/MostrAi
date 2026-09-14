@@ -187,6 +187,25 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    então. Precisa decidir o que ele afirma agora: a primeira cobrança (`criada`)
    ativa a conta direto, sem mínimo de telas.
 
+5. [ ] **Apagar os três resumos de contrato órfãos da raiz.** *(achado em
+   14/09/2026, ao rastrear a causa dos defeitos do webhook.)* São arquivos
+   versionados num repositório **público** que descrevem um contrato que não
+   vale mais, e um deles é a causa provada de quatro defeitos no caminho do
+   dinheiro:
+
+   - `claude/vitrina-san-checkout-requisitos.md` — resumo do San Checkout
+     escrito à mão, herdado da Vitrina. Cala sobre autenticação do webhook
+     (de onde saiu o `X-Webhook-Secret` inventado), classifica `criada` como
+     "sem ação automática", e manda cancelar em
+     `{SAN_CHECKOUT_BASE_URL}/cancelar-assinatura` — base errada e sem o
+     prefixo `/api/checkout`. A fonte é o `API.md` do Checkout.
+   - `SPEC.md` e `Claude outputs/SPEC.md` — cópias quase idênticas da spec
+     antiga; ainda descrevem `aguardando_ponto` e a máquina removida pela
+     migration 021. A spec válida é `docs/specs/2026-09-12-mostrai.md`.
+
+   Pede sua permissão porque é remoção. Se quiser guardar rastro, o histórico
+   do git já guarda — não precisa do arquivo no working tree.
+
 ## C. Malha fina — roteiro do que testar junto comigo
 
 1. Site público: `/`, `/planos.html` (com e sem `PROGRAMA_FUNDADOR_ATIVO`), `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).

@@ -14,13 +14,31 @@ dependendo da conciliação diária, que ainda não tem cron. O fail-closed
 funcionou (ninguém seria ativado sem pagar), mas a porta ficou fechada dos dois
 lados.
 
-**Causa.** O comentário do código citava `INTEGRACAO.md seção 6/6.1`. Esse
-documento foi aposentado e hoje é só um redirecionamento pro `API.md` — que
-existe, está no repositório do Checkout e descreve o esquema certo com exemplo
-em três linguagens. É a lição de
-`2026-09-14-contrato-do-checkout-suposto-em-vez-de-lido.md` repetindo: a
-sessão de 14/09 leu o contrato e corrigiu endereçamento, rota e dedupe, mas não
-reabriu a autenticação nem o vocabulário de eventos, porque nada ali estava
+**Causa.** A integração inteira foi escrita a partir de
+`claude/vitrina-san-checkout-requisitos.md` — um resumo do contrato escrito à
+mão dentro deste repositório, herdado da Vitrina, nunca conferido contra a
+fonte. Esse arquivo é a origem dos quatro defeitos já achados no caminho do
+dinheiro, e é possível apontar a linha de cada um:
+
+- **Autenticação:** o documento não diz **nada** sobre como o webhook é
+  autenticado. A única pista é a seção 5, "`X-Checkout-Key` compartilhada
+  (mesma chave nos dois sentidos)". Isso está certo — o segredo do HMAC é a
+  própria `X-Checkout-Key` — mas sem o mecanismo, e o buraco foi preenchido
+  inventando um header `X-Webhook-Secret`.
+- **Vocabulário de eventos:** a tabela da seção 3 classifica `criada`
+  explicitamente como "só registrado, sem ação automática". Não foi descuido;
+  foi uma decisão errada escrita como se fosse o contrato.
+- **Endereçamento e prefixo da rota** (corrigidos em 14/09): a seção 4 manda
+  `POST {SAN_CHECKOUT_BASE_URL}/cancelar-assinatura` — base errada e sem o
+  prefixo `/api/checkout`.
+
+O comentário que citava `INTEGRACAO.md seção 6/6.1` veio depois e deu ao
+esquema inventado uma aparência de fundamentação: um leitor seguinte vê uma
+citação de documento e seção e não reabre. Mas ele é agravante, não causa —
+o `INTEGRACAO.md` nunca descreveu esse esquema.
+
+A sessão de 14/09 leu o `API.md` pela primeira vez e corrigiu endereçamento,
+rota e dedupe, sem reabrir autenticação nem eventos, porque nada ali estava
 falhando de forma visível. Os testes fixavam o esquema inventado, então
 estavam verdes medindo a coisa errada.
 
@@ -32,9 +50,15 @@ mesma dedupe; `SAN_CHECKOUT_WEBHOOK_SECRET` deixou de existir. Cinco testes
 novos exercitam assinatura válida, chave errada, replay fora da janela, corpo
 adulterado e ausência do corpo cru.
 
-**Como não repetir.** Teste de integração que o próprio projeto escreve e
-assina dos dois lados só prova que ele concorda consigo mesmo. Quando o outro
-lado do contrato está num repositório que dá pra ler, a asserção tem que ser
-derivada **de lá** — no mínimo, conferindo que o header que o teste manda é o
-mesmo que o outro lado emite. E comentário que cita documento por nome e seção
-envelhece: quando o documento é aposentado, o comentário vira armadilha.
+**Como não repetir.** Resumo de contrato escrito à mão dentro do projeto que
+consome o contrato é a armadilha, não o atalho. Ele parece documentação, é
+versionado junto com o código, e cala justamente onde o autor não sabia —
+silêncio que o leitor seguinte preenche inventando. Enquanto o outro lado do
+contrato estiver num repositório que dá pra ler, a fonte é ele; um resumo
+local, se existir, diz em que commit da fonte foi conferido, ou não existe.
+
+Dois corolários: teste de integração que o próprio projeto escreve e assina
+dos dois lados só prova que ele concorda consigo mesmo — quando a fonte é
+legível, a asserção sai **de lá**. E comentário que cita documento por nome e
+seção envelhece: aposentado o documento, o comentário vira fundamentação
+falsa.
