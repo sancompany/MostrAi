@@ -100,8 +100,8 @@ async function marcarOnline(id) {
   await pool.query('UPDATE dispositivos SET ultima_vez_online = now() WHERE id = $1', [id]);
 }
 
-// Telas ativas na rede inteira — é o que decide se a cobertura de um plano
-// com minimo_telas_ativas começa a contar.
+// Telas ativas na rede inteira. Já foi o gatilho de minimo_telas_ativas, que
+// saiu na migration 021; hoje é número de operação (quanta rede está no ar).
 async function contarAtivas() {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id

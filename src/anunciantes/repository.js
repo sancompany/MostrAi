@@ -1,14 +1,14 @@
 const { gerarHash, conferirHash } = require('../lib/senha');
 const pool = require('../db/pool');
 
-const STATUS = ['pendente_aprovacao', 'aprovado', 'aguardando_ponto', 'ativo', 'suspenso'];
+const STATUS = ['pendente_aprovacao', 'aprovado', 'ativo', 'suspenso'];
 
 const CAMPOS_ATUALIZAVEIS = [
   'nome_empresa', 'cpf_cnpj', 'endereco', 'cidade', 'uf', 'cep',
   'contato_email', 'contato_telefone', 'status', 'plano_id',
   'data_inicio_cobertura', 'data_expiracao', 'categoria_id', 'categoria_livre',
   'responsavel_nome', 'responsavel_cpf', 'responsavel_email', 'responsavel_telefone', 'foto_url',
-  'excluido_em', 'papeis', 'valor_mensal_travado', 'meses_gratis_creditados', 'meses_cobertura_pendentes',
+  'excluido_em', 'papeis', 'valor_mensal_travado',
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
@@ -17,7 +17,7 @@ const CAMPOS_PUBLICOS = `
   contato_email, contato_telefone, status, plano_id,
   data_inicio_cobertura, data_expiracao, indicado_por_cupom, categoria_id, categoria_livre,
   responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone, foto_url, created_at, excluido_em,
-  papeis, valor_mensal_travado, meses_gratis_creditados, meses_cobertura_pendentes,
+  papeis, valor_mensal_travado,
   ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em
 `;
 

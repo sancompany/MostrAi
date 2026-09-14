@@ -3,7 +3,6 @@ const pool = require('../db/pool');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
-const dispositivosRepo = require('../dispositivos/repository');
 const { enviarConfirmacaoPagamento } = require('./email');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
@@ -167,22 +166,14 @@ async function processarWebhookAssinatura(payload) {
   const valorCiclo = valorMensal * plano.compromisso_meses;
   const mesmoPlano = anunciante.plano_id === plano.id;
 
-  // Cobertura só conta com a rede no tamanho mínimo que o plano promete
-  // (migration 019: minimo_telas_ativas). Abaixo disso a conta fica
-  // 'aguardando_ponto' e coberturas.js liga quando a tela entrar.
-  const telasAtivas = await dispositivosRepo.contarAtivas();
-  const temPontoAtivo = telasAtivas >= Math.max(1, Number(plano.minimo_telas_ativas) || 1);
-
-  // Meses grátis são creditados uma vez só, na primeira cobrança confirmada
-  // dessa conta — a coluna meses_gratis_creditados impede repetir.
-  const mesesGratis = (Number(plano.meses_gratis) || 0) > 0 && !(Number(anunciante.meses_gratis_creditados) > 0)
-    ? Number(plano.meses_gratis) : 0;
-
-  // Todo 'cobranca_confirmada' é uma cobrança real (a Asaas cobra o ciclo
-  // inteiro de uma vez). Com a rede no mínimo, estende a expiração agora;
-  // sem o mínimo, os meses ficam como crédito pendente e viram cobertura no
-  // dia em que a tela que faltava entrar (coberturas.js). Nada pago se perde.
-  const mesesDoCiclo = plano.compromisso_meses + mesesGratis;
+  // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho
+  // que o motor de pagamento suporta: o San Checkout cobra no ato da
+  // assinatura e a cada `ciclo` a partir dali — sem carência, sem mês grátis
+  // e sem pular ciclo (API.md do Checkout, seção 7.5). Qualquer coisa que
+  // fizesse a cobertura começar num dia diferente do da cobrança era promessa
+  // que o motor não cumpre, e saiu na migration 021. Benefício se dá no
+  // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
+  const mesesDoCiclo = plano.compromisso_meses;
   const baseExpiracao = anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
     ? new Date(anunciante.data_expiracao)
     : new Date();
@@ -196,24 +187,20 @@ async function processarWebhookAssinatura(payload) {
   let cobrancaRows;
   try {
     await cliente.query('BEGIN');
-    // Com a rede no mínimo, a expiração é estendida a cada ciclo pago (quem
-    // paga dois ciclos esperando recebe os dois); sem o mínimo, os meses vão
-    // pra meses_cobertura_pendentes e coberturas.js converte depois.
-    // Trava de preço: mantém a da conta se for o mesmo plano; plano novo
-    // trava no preço dele (se for travado) ou solta.
+    // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
+    // seguidos recebe os dois. Trava de preço: mantém a da conta se for o
+    // mesmo plano; plano novo trava no preço dele (se for travado) ou solta.
     await cliente.query(
       `UPDATE anunciantes
-       SET plano_id = $2, status = $3,
-           data_inicio_cobertura = CASE WHEN $8::boolean THEN COALESCE(data_inicio_cobertura, now()) ELSE data_inicio_cobertura END,
-           data_expiracao = CASE WHEN $8::boolean THEN $4::timestamptz ELSE data_expiracao END,
-           meses_cobertura_pendentes = meses_cobertura_pendentes + CASE WHEN $8::boolean THEN 0 ELSE $9::int END,
-           valor_mensal_travado = CASE WHEN NOT $5::boolean THEN NULL
-                                       WHEN $10::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
-                                       ELSE $6::numeric END,
-           meses_gratis_creditados = meses_gratis_creditados + $7
+       SET plano_id = $2, status = 'ativo',
+           data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
+           data_expiracao = $3::timestamptz,
+           valor_mensal_travado = CASE WHEN NOT $4::boolean THEN NULL
+                                       WHEN $5::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
+                                       ELSE $6::numeric END
        WHERE id = $1`,
-      [anunciante.id, plano.id, temPontoAtivo ? 'ativo' : 'aguardando_ponto', novaExpiracao,
-        !!plano.preco_travado, plano.valor_mensal, mesesGratis, temPontoAtivo, mesesDoCiclo, mesmoPlano]
+      [anunciante.id, plano.id, novaExpiracao,
+        !!plano.preco_travado, mesmoPlano, plano.valor_mensal]
     );
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)

@@ -93,8 +93,6 @@
         const porMes = Number(p.valor_mensal);
         const cheio = Number(p.valor_mensal_cheio) || mensalDoTier(p.tier);
         const porHora = Math.round(p.frequencia_dia / 12);
-        const gratis = Number(p.meses_gratis) || 0;
-        const minimo = Number(p.minimo_telas_ativas) || 1;
         return `
         <div class="plan-card fundador">
           <span class="badge">Fundador</span>
@@ -106,11 +104,9 @@
           <div class="price-sub">
             ${meses > 1 ? `${fmt(porMes * meses)} ${LABEL_CICLO[meses] || `a cada ${meses} meses`}` : 'cobrado mensalmente'}
             ${p.preco_travado ? `<b>Preço travado por ${meses} meses</b>` : ''}
-            ${gratis ? `<b>+ ${gratis} ${gratis > 1 ? 'meses grátis' : 'mês grátis'} na primeira cobrança</b>` : ''}
           </div>
           <ul>
             ${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-            ${minimo > 1 ? `<li>Sua cobertura começa a contar quando a rede tiver ${minimo} telas no ar — o que pagar antes vira crédito, nada se perde</li>` : ''}
             ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}
             ${p.vagas_restantes != null ? `<li class="vagas">${p.vagas_restantes} vaga${p.vagas_restantes > 1 ? 's' : ''} restante${p.vagas_restantes > 1 ? 's' : ''}</li>` : ''}
           </ul>

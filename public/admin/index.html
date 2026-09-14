@@ -253,7 +253,7 @@
 
     // ---------- rótulos ----------
     const PONTO_STATUS = { lead: 'Novo lead', aguardando_instalacao: 'A instalar', ativo: 'Ativo', reparo: 'Em reparo', inativo: 'Inativo' };
-    const ANUNCIANTE_STATUS = { pendente_aprovacao: 'Pendente', aprovado: 'Aprovado', aguardando_ponto: 'Aguardando ponto', ativo: 'Ativo', suspenso: 'Suspenso' };
+    const ANUNCIANTE_STATUS = { pendente_aprovacao: 'Pendente', aprovado: 'Aprovado', ativo: 'Ativo', suspenso: 'Suspenso' };
     const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
     const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
     const CANDIDATURA_STATUS = { nova: 'Nova', em_contato: 'Em contato', aprovada: 'Aprovada (convite gerado)', recusada: 'Recusada' };
@@ -777,7 +777,7 @@
             ${categorias.map((c) => `<option value="${c.id}" ${c.id === a.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
           </select></td>
           <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span style="color:var(--text-dim)">sem plano</span>'}</td>
-          <td>${data(a.data_expiracao)}${Number(a.meses_cobertura_pendentes) > 0 ? `<div style="color:var(--text-dim);font-size:.72rem">+${a.meses_cobertura_pendentes} mês(es) guardados</div>` : ''}</td>
+          <td>${data(a.data_expiracao)}</td>
           <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
           <td>${data(a.created_at)}</td>
           <td>${a.excluido_em ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>` : ''}</td>
@@ -1081,8 +1081,6 @@
               <td><input class="mini" type="number" step="0.01" min="0" data-campo="valor_mensal" data-id="${p.id}" value="${p.valor_mensal}" style="width:90px"></td>
               <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
               <td><input class="mini" type="number" min="1" max="3" data-campo="limite_criativos" data-id="${p.id}" value="${p.limite_criativos}" style="width:52px"></td>
-              <td><input class="mini" type="number" min="0" data-campo="meses_gratis" data-id="${p.id}" value="${p.meses_gratis ?? 0}" style="width:52px" title="Meses grátis creditados na primeira cobrança confirmada"></td>
-              <td><input class="mini" type="number" min="1" data-campo="minimo_telas_ativas" data-id="${p.id}" value="${p.minimo_telas_ativas ?? 1}" style="width:52px" title="Cobertura só começa a contar com esse nº de telas no ar"></td>
               <td><input class="mini" type="number" min="1" data-campo="vagas" data-id="${p.id}" value="${p.vagas ?? ''}" placeholder="∞" style="width:56px"></td>
               <td><input class="mini" type="number" min="1" data-campo="ponto_apos_meses" data-id="${p.id}" value="${p.ponto_apos_meses ?? ''}" placeholder="—" style="width:56px" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
               <td style="text-align:center"><input type="checkbox" data-campo="preco_travado" data-id="${p.id}" ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
@@ -1091,7 +1089,7 @@
               <td style="text-align:center"><input type="checkbox" data-campo="destaque_no_site" data-id="${p.id}" ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
               <td style="text-align:center"><input type="checkbox" data-campo="ativo" data-id="${p.id}" ${p.ativo ? 'checked' : ''}></td>
             </tr>`;
-      const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Grátis</th><th>Mín. telas</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th></tr>`;
+      const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th></tr>`;
 
       el.innerHTML = `
         <details class="bloco-novo">
@@ -1117,8 +1115,6 @@
             </select></div>
             <div><label>Rótulo (ex.: "Preço fundador — travado por 12 meses")</label><input class="mini" name="rotulo"></div>
             <div class="field-row">
-              <div style="flex:1"><label>Meses grátis (1ª cobrança)</label><input class="mini" type="number" name="meses_gratis" value="0" min="0"></div>
-              <div style="flex:1"><label>Mín. de telas no ar</label><input class="mini" type="number" name="minimo_telas_ativas" value="1" min="1" title="A cobertura só começa a contar com esse nº de telas ativas na rede; o que for pago antes vira crédito"></div>
               <div style="flex:1"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
               <div style="flex:1"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
             </div>
