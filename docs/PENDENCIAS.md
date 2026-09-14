@@ -251,6 +251,91 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    defeitos no caminho do dinheiro), `SPEC.md` e `Claude outputs/SPEC.md`. As
    fontes válidas são o `API.md` do Checkout e `docs/specs/2026-09-12-mostrai.md`.
 
+## E5. Estação 5 — o mapa da construção, item a item
+
+Auditoria de 14/09/2026 contra as três listas da skill `construir`:
+`desenvolvimento-web.md` (14 itens), `tipo-saas.md` (12) e
+`tipo-institucional.md` (11). O Mostraí é dos dois tipos: site público que
+converte, e app com conta, painel e assinatura.
+
+Legenda: ✅ existe com evidência · ⚠️ existe pela metade · ❌ não existe.
+
+### Referência-mãe — o que todo site tem
+
+| # | Item | Estado | O que falta |
+|---|---|---|---|
+| 1 | Mapa de páginas antes de tela | ✅ | `docs/funcional.md` §3, 23 telas com URL |
+| 2 | Design system de uma pessoa | ❌ | não existem `src/tokens/`, `src/ui/` nem `src/constantes/`. 24 cores literais soltas em `public/style.css`. Trocar a cor de ação hoje encosta em vários lugares |
+| 3 | Tipografia web | ⚠️ | conferir se usa pilha do sistema e se o corpo é 1 rem em campo de formulário (zoom do Safari) |
+| 4 | `<head>` completo | ⚠️ | **`canonical` em 0 de 14 páginas**; `theme-color` e `manifest` em 0; `og:image`/`description` em 12 de 14 |
+| 5 | SEO técnico | ⚠️ | **`sitemap.xml` não existe**; `robots.txt` existe; `noindex` em 5 páginas de área logada |
+| 6 | Páginas que ninguém desenha | ❌ | **`404.html` e `500.html` não existem**. Rota inexistente hoje não tem tela |
+| 7 | Formato brasileiro | ❌ | **sem validação de CPF/CNPJ por módulo 11** — e o CNPJ é alfanumérico desde julho/2026, então validador só numérico recusa empresa nova. Sem `src/br/`. Fuso `America/Sao_Paulo` não é passado explicitamente em lugar nenhum |
+| 8 | Imagens e mídia | ⚠️ | conferir `<picture>`, `srcset`, `width`/`height` e `fetchpriority` na imagem principal |
+| 9 | Formulários | ⚠️ | `label for`, `autocomplete` e `inputmode` existem em 7-10 páginas. **Turnstile não existe** — formulário público sem anti-bot |
+| 10 | Os seis estados de cada tela | ⚠️ | escritos no `docs/funcional.md` §4; falta conferir tela a tela com conta nova, rede lenta e 500 |
+| 11 | E-mail transacional | ⚠️ | **não existe `src/emails/` com template base**. Só 3 e-mails: pagamento, redefinição e contato |
+| 12 | Segurança de construção | ❌ | **CSP não existe**, nem em report-only. 8 usos de `innerHTML` a justificar |
+| 13 | Performance na construção | ❌ | sem orçamento no `CONSTRAINTS.md`; sem hash no nome dos assets |
+| 14 | Ambiente e build | ❌ | **sem `.editorconfig`, sem `.nvmrc`, sem `npm run check`** (lint e formatter não existem) |
+
+### Tipo SaaS — conta, painel, assinatura
+
+| # | Item | Estado | O que falta |
+|---|---|---|---|
+| 1 | Conta de ponta a ponta | ⚠️ | cadastro, login, recuperação e exclusão existem. Faltam: confirmação de e-mail, troca de e-mail com link nos dois endereços, "mostrar senha" |
+| 2 | Sessão | ⚠️ | sessão em Postgres, 7 dias. Falta "sair de todos os dispositivos" e o `<dialog>` de reautenticação que preserva o formulário |
+| 3 | Primeira sessão | ⚠️ | os cards de ativação de `modos.js` fazem o papel. Falta o checklist de 3-5 passos |
+| 4 | Navegação do painel | ✅ | três abas fixas com card de ativação |
+| 5 | Tabelas e listas | ❌ | **sem filtro na URL, sem ordenação por coluna, sem paginação, sem exportar CSV**. Com 500 registros a tela não serve |
+| 6 | Criar e editar | ⚠️ | falta o "desfazer" no lugar da confirmação |
+| 7 | Papéis e convite | ✅ | três papéis, convite com token opaco e validade |
+| 8 | Conta e cobrança | ⚠️ | o painel lista cobranças. **Falta a tela "Plano e cobrança"** com próximo vencimento, forma de pagamento, trocar plano e cancelar |
+| 9 | Notificações | ❌ | **o criativo aprovado não avisa ninguém** — o anunciante não sabe que entrou no ar. Faltam também: conta aprovada, convite, cobrança recusada, e os de segurança |
+| 10 | Painel do dono | ⚠️ | `/admin` existe. Falta o Cloudflare Access (fila do dono, item 4) |
+| 11 | Trilha de auditoria | ❌ | **tabela `auditoria` não existe**. "Quem mudou o preço?" não tem resposta |
+| 12 | Multi-inquilino / RLS | ⚠️ | autorização só na aplicação — exceção já registrada no `CONSTRAINTS.md` |
+
+### Tipo institucional — a página que converte
+
+| # | Item | Estado | O que falta |
+|---|---|---|---|
+| 1 | Anatomia da página que converte | ⚠️ | conferir a 360 px: o que é, para quem, um CTA, uma prova, sem rolar |
+| 2 | Estrutura mínima de páginas | ✅ | home, planos, pontos, comodato, contato, termos, privacidade |
+| 3 | Copy em F | ⚠️ | rodar o `grep` de jargão |
+| 4 | Prova social honesta | ❌ | **`docs/provas.md` não existe**. Todo depoimento e número no site precisa de linha com data e autorização (CONAR, Anexo Q) |
+| 5 | CTA, formulário e destino do lead | ⚠️ | `/contato` grava e manda e-mail. Falta a resposta automática ao remetente e o prazo escrito na tela |
+| 6 | WhatsApp como canal | ✅ | `wa.me` no formato oficial, com mensagem pré-preenchida por página |
+| 7 | SEO local | ❌ | **sem JSON-LD `LocalBusiness` nem `Organization`**; Google Business Profile é do dono |
+| 8 | Rastreamento com consentimento | ⚠️ | não há GA4 nem pixel hoje — então não precisa de banner. Vale registrar a decisão |
+| 9 | Hospedagem | ✅ | Northflank, não Pages. Item não se aplica na forma escrita |
+| 10 | Desempenho de landing | ⚠️ | conferir imagem hero e terceiros antes da primeira interação |
+| 11 | Manutenção pós-lançamento | ⚠️ | a lista do que envelhece entra no `RUNBOOK.md` |
+
+### O que a referência de mercado mostrou que falta
+
+Comparado com **AdQuick** e **Blip** (self-serve DOOH), **Aqui Ads** da
+Eletromidia (o equivalente brasileiro, 76 mil telas para PME), **Trillboards**
+(portal do dono da tela, que é o nosso "ponto") e **Yodeck/OptiSigns/ScreenCloud**
+(gestão de tela e playlist):
+
+1. **Aviso de "seu anúncio está no ar".** No AdQuick, aprovado o criativo, o
+   anunciante é notificado. Aqui ele não é — a pessoa paga e fica sem saber
+   quando entrou. É o item de notificação mais barato e o mais sentido.
+2. **Extrato do ponto.** O Trillboards paga o dono da tela mensalmente e mostra
+   o que ele ganhou. Aqui o ponto vê o valor do plano de comodato, mas **não
+   existe registro do que foi pago a ele**, nem tela de extrato.
+3. **Comprovante de veiculação por tela.** Yodeck e Trillboards chamam de
+   *proof-of-play*. Temos `exibicoes_contador`, que é a matéria-prima; falta a
+   tela que transforma isso em comprovante para o anunciante.
+4. **Estado da tela visível para quem cedeu a parede.** O padrão do setor é o
+   dono do ponto ver se a tela dele está no ar. Temos `heartbeat` e
+   `pontos-offline` no admin — falta expor no painel do ponto.
+
+Nada disso muda o escopo dos nove itens da spec: são acabamentos do que já foi
+decidido. O que for construir vira fatia própria; o que ficar para depois vai
+para `docs/proximas-versoes.md` com condição de entrada.
+
 ## C. Malha fina — roteiro do que testar junto comigo
 
 1. Site público: `/`, `/planos.html` (com e sem `PROGRAMA_FUNDADOR_ATIVO`), `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).
