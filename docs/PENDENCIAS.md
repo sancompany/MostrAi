@@ -1,7 +1,7 @@
 # Mostraí — pendências (atualizado 14/09/2026, após o fecho da Estação 2)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
-`github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`),
+`github.com/sancompany/MostrAi` (branch `main` + `claude/mostrai-estacao-1-pipeline-y2vgr5`),
 repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
 o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
 
@@ -98,8 +98,8 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
    a conferir: `SITE_URL`, `PROGRAMA_FUNDADOR_ATIVO=false`,
    `MOSTRAI_EMAIL_FROM`/`MOSTRAI_EMAIL_CONTATO` (o antigo `VITRINA_EMAIL_FROM`
    ainda funciona).
-5. [ ] **`npm run migrate`** — aplica 019 (contas com papéis, dispositivos, convites, candidaturas, planos modulares, custos fixos, sessão em Postgres) e 020 (modos da conta, módulos cruzados de plano). São aditivas; nada é apagado.
-6. [ ] **`npm test`** (14 unitários) e, se quiser, o roteiro de `tests/e2e/README.md` num Postgres local.
+5. [ ] **`npm run migrate`** — aplica as 20 migrations em ordem, até a 021 (que remove a máquina de cobertura adiada, com autorização do dono).
+6. [x] **`npm test`** (27 unitários) e as **5 suítes e2e** — FEITO em 14/09/2026, primeira rodada desde a migration 021: 27/27 unitários, e 01/02/03/04/05 com zero falhas num Postgres limpo, seguindo a ordem do `tests/e2e/README.md` (as suítes não são idempotentes: sem `reset-db.sh` + `restart.sh` entre elas, sobra dado e o limitador de tentativas em memória derruba asserções).
 7. [ ] **Suba local (`npm run dev`) e faça a malha fina** — roteiro na seção C.
 8. [ ] **Supabase**: projeto próprio do Mostraí (se ainda for o da Vitrina, renomeie), região **sul-americana**. Bucket `criativos`. Anote `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`. **Use só as chaves rotacionadas em A.0.1** — nenhuma das antigas. As variáveis vivem no painel do Northflank; nunca num arquivo do repositório.
@@ -125,7 +125,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
   painel único é a forma do item 2 e os módulos cruzados são o item 4, ambos
   escritos estreito demais na primeira redação. Detalhe em
   `docs/specs/2026-09-12-mostrai.md`, seção "Validação do dono (14/09/2026)".
-- [ ] **Programa fundador**: ligar `PROGRAMA_FUNDADOR_ATIVO=true` só quando quiser vender. Revisar o plano seed `fundador-12m` (R$149 travado 12m, 1 mês grátis, mínimo 2 telas, 10 vagas) no admin → Planos → Programa fundador. Os planos normais vieram com o rótulo antigo "Preço fundador — nunca muda" — troque no admin (agora é confuso ao lado do plano fundador de verdade).
+- [ ] **Programa fundador**: ligar `PROGRAMA_FUNDADOR_ATIVO=true` só quando quiser vender. Revisar o plano seed `fundador-12m` (R$149 travado 12m, 10 vagas) no admin → Planos → Programa fundador. Os planos normais vieram com o rótulo antigo "Preço fundador — nunca muda" — troque no admin (agora é confuso ao lado do plano fundador de verdade).
 - [ ] **Módulos cruzados**: decidir quais planos ganham "tela após N meses" (admin → Planos → coluna "Tela após") e quais opções de comodato ganham "anúncio grátis após N meses" (admin → Opções de comodato → Bônus). Estão desligados (vazios) até você preencher.
 - [ ] **Vaga de fundador**: hoje uma assinatura criada e não paga segura a vaga por 7 dias. Ok?
 - [ ] **Troca de plano de quem já paga**: o sistema recusa (evita cobrança dupla na Asaas) e manda falar com você. O caminho é: admin → Anunciantes → "cancelar assinatura" (chama o Checkout) → a pessoa assina o novo. Confirmar que é assim que você quer.
@@ -176,35 +176,16 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    "+ Novo plano (novo preço/promoção — não mexe no que já existe)". Metade do
    item 9 já está desenhada na interface.
 
-4. [ ] **Reescrever `tests/e2e/02-fundador-webhook-comissao.sh` pro mundo
-   pós-021.** *(achado em 14/09/2026, ao corrigir a assinatura do webhook.)* A
-   autenticação do script já foi corrigida (assina HMAC como o Checkout
-   assina), mas as **asserções** dele ainda são da máquina que a migration 021
-   removeu: `aguardando_ponto`, `meses_gratis_creditados`,
-   `meses_cobertura_pendentes` e "cobertura liga quando a segunda tela volta"
-   não existem mais. O script não passa hoje, e não passava antes desta
-   correção — ele ficou para trás no fecho da Estação 1 e ninguém rodou desde
-   então. Precisa decidir o que ele afirma agora: a primeira cobrança (`criada`)
-   ativa a conta direto, sem mínimo de telas.
-
-5. [ ] **Apagar os três resumos de contrato órfãos da raiz.** *(achado em
-   14/09/2026, ao rastrear a causa dos defeitos do webhook.)* São arquivos
-   versionados num repositório **público** que descrevem um contrato que não
-   vale mais, e um deles é a causa provada de quatro defeitos no caminho do
-   dinheiro:
-
-   - `claude/vitrina-san-checkout-requisitos.md` — resumo do San Checkout
-     escrito à mão, herdado da Vitrina. Cala sobre autenticação do webhook
-     (de onde saiu o `X-Webhook-Secret` inventado), classifica `criada` como
-     "sem ação automática", e manda cancelar em
-     `{SAN_CHECKOUT_BASE_URL}/cancelar-assinatura` — base errada e sem o
-     prefixo `/api/checkout`. A fonte é o `API.md` do Checkout.
-   - `SPEC.md` e `Claude outputs/SPEC.md` — cópias quase idênticas da spec
-     antiga; ainda descrevem `aguardando_ponto` e a máquina removida pela
-     migration 021. A spec válida é `docs/specs/2026-09-12-mostrai.md`.
-
-   Pede sua permissão porque é remoção. Se quiser guardar rastro, o histórico
-   do git já guarda — não precisa do arquivo no working tree.
+4. [x] **`tests/e2e/02` reescrito pro mundo pós-021** — FEITO em 14/09/2026.
+   Assina o webhook como o Checkout assina (HMAC), afirma que a 1ª cobrança
+   (`criada`) ativa a conta na hora, que a renovação (`cobranca_confirmada`)
+   estende a cobertura, e que evento sem ação vira pendência sem derrubar
+   ninguém. As asserções de `aguardando_ponto`, mês grátis e mínimo de telas
+   saíram.
+5. [x] **Resumos de contrato órfãos apagados** — FEITO em 14/09/2026.
+   `claude/vitrina-san-checkout-requisitos.md` (causa provada de quatro
+   defeitos no caminho do dinheiro), `SPEC.md` e `Claude outputs/SPEC.md`. As
+   fontes válidas são o `API.md` do Checkout e `docs/specs/2026-09-12-mostrai.md`.
 
 ## C. Malha fina — roteiro do que testar junto comigo
 
@@ -212,7 +193,7 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
 2. Admin → Candidaturas → "Gerar convite" (site) ou "Liberar na conta" (pedido do painel). Copiar link → abrir em outro navegador → `convite.html` → conta nasce com os papéis.
 3. Painel único: abas Anúncios / Meu ponto / Vendas sempre visíveis; a bloqueada mostra o card de ativação. Anunciante ativa sozinho (endereço); ponto e vendedor viram pedido que você libera.
 4. Admin → Telas: gerar chave, PIN, custo/prazo; player na TV; painel da tela por PIN (5 toques no canto superior direito ou tecla P).
-5. Assinar plano → checkout (precisa do Checkout configurado) → webhook → conta ativa ou "aguardando ponto" (mínimo de telas) → cobertura liga sozinha quando a tela entra.
+5. Assinar plano → checkout (precisa do Checkout configurado) → webhook `criada` (1ª cobrança) → conta ativa na hora.
 6. Vendedor: cupom, link `cadastro.html?ref=CUPOM`, comissão aparece em Vendas e em admin → Comissões.
 7. Bônus: plano com "tela após N meses" mostra progresso em Anúncios e vira pedido em Candidaturas; opção de comodato com bônus mostra progresso em Meu ponto e ativa o plano ao resgatar.
 

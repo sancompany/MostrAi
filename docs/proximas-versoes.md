@@ -3,7 +3,7 @@
 Ideias guardadas para a próxima volta da esteira. Nada aqui está autorizado;
 quem autoriza é a Estação 1 da versão seguinte. Cinco linhas por entrada.
 Fonte principal: pesquisa de mercado de 11/09/2026
-(`claude/mostrai-lacunas-de-produto.md` no projeto) e a de custos de 12/09
+e a de custos de 12/09
 (`docs/precificacao.md`).
 
 ## Primeiro mês sem cobrança como benefício de primeira compra

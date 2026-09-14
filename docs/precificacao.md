@@ -161,5 +161,5 @@ Sebrae/Conselho Digital · Propmark/IAB (DOOH R$ 4,4 bi) · Progic MDOOH
 (preços e taxas; cotação) · Balancinho (MEI 2026) · Meu Contador Online ·
 HostGator (domínio) · BuildMVPFast (e-mail API) · Notaas (NFS-e) · Rio Rubio
 (seguro) · Guia Franquias / Keep Charged / BA de Valor (franquias) · IBGE.
-Links completos em `claude/mostrai-lacunas-de-produto.md` e no histórico da
+Links completos no histórico da
 sessão de 12/09/2026.

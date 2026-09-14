@@ -25,7 +25,7 @@ ponta está em `tests/e2e/README.md` e na seção de verificação de
 
 - **Uma conta, três modos, um painel.** A tabela `anunciantes` é a tabela de contas (nome histórico). `papeis` ∈ {anunciante, ponto, vendedor}. O painel tem sempre as abas Anúncios / Meu ponto / Vendas; só as que a conta tem papel estão liberadas — as outras mostram um card de ativação (`public/modos.js`). Anunciante se cadastra sozinho ou ativa o modo pelo card (só falta o endereço); **dono de ponto e vendedor só entram com liberação do dono**: convite (link de cadastro, ou aceito por conta logada) ou "Liberar na conta" no admin a partir de um pedido feito de dentro do painel.
 - **Ponto ≠ tela.** `pontos` é o comércio/endereço; `dispositivos` é cada TV. Cada tela tem chave de aparelho (autentica o player), PIN (abre um painel só daquela tela na própria TV), playlist própria, custo e prazo de amortização. A cota de autoanúncio é do ponto e é dividida entre as telas dele.
-- **Planos modulares no banco.** Além de preço/frequência/ciclo: `meses_gratis` (creditados na 1ª cobrança), `minimo_telas_ativas` (cobertura só começa a contar com a rede nesse tamanho; o pago antes vira crédito), `preco_travado` (a conta paga o valor de quando entrou), `fundador` + `vagas` (plano especial fora da grade, ligado por `PROGRAMA_FUNDADOR_ATIVO=true` — a única regra de plano em variável de ambiente). **Módulos cruzados** entre os dois catálogos: plano de anunciante com `ponto_apos_meses` ("ao completar N meses ganhe uma tela no seu comércio" — o resgate vira candidatura de ponto) e opção de comodato com `plano_bonus_*` ("ponto ativo há N meses ganha M meses do plano X" — o resgate ativa o plano na conta).
+- **Planos modulares no banco.** Além de preço/frequência/ciclo: `preco_travado` (a conta paga o valor de quando entrou), `fundador` + `vagas` (plano especial fora da grade, ligado por `PROGRAMA_FUNDADOR_ATIVO=true` — a única regra de plano em variável de ambiente). **Benefício comercial se dá no preço, nunca no tempo**: a assinatura do San Checkout não tem carência, mês grátis nem pular ciclo (migration 021, `CONSTRAINTS.md`). **Módulos cruzados** entre os dois catálogos: plano de anunciante com `ponto_apos_meses` ("ao completar N meses ganhe uma tela no seu comércio" — o resgate vira candidatura de ponto) e opção de comodato com `plano_bonus_*` ("ponto ativo há N meses ganha M meses do plano X" — o resgate ativa o plano na conta).
 - **Pagamento pelo San Checkout.** Webhook fail-closed, idempotente, transacional. Nada de cartão passa por aqui.
 - **Margem real no admin.** Receita − ajuda de custo aos pontos − amortização (custo de cada tela ÷ prazo) − custos fixos lançados pelo dono.
 
@@ -46,6 +46,6 @@ scripts/backup.sh  pg_dump — exceção Lei 6 enquanto o Supabase for Free
 docs/              api, spec, precificação, inventário de dados, erros registrados
 ```
 
-## Produção (resumo — passo a passo em `claude/mostrai-pendencias.md` do projeto)
+## Produção (resumo — passo a passo em `docs/PENDENCIAS.md`)
 
 Northflank (região sul-americana, deploy da `main`) + Supabase (projeto próprio, mesma região) + Cloudflare (DNS, proxy, **Access na frente de `/admin`**). Variáveis do `.env.example` no painel do Northflank. TV: navegador/kiosk abrindo o link do player gerado na aba Telas do admin.

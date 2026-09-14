@@ -2,8 +2,9 @@
 # Continuação do e2e.sh — assume cookies adm.txt / ana.txt / joao.txt no cwd e
 # o servidor reiniciado com PROGRAMA_FUNDADOR_ATIVO=true.
 # Cobre: vitrine mostra fundador com vagas, assinar fundador, vagas esgotam,
-# webhook (fail-closed, idempotente, preço travado, meses grátis, mínimo de
-# telas), cobertura ligando quando a tela entra, comissão do vendedor.
+# webhook (assinatura HMAC, fail-closed, replay, idempotência, preço travado),
+# 1ª cobrança (`criada`) ativando a conta, renovação estendendo a cobertura,
+# evento sem ação virando pendência, comissão do vendedor.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
 cd "$ROOT/tests/e2e/saida"
@@ -65,19 +66,20 @@ r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/webhook/san-checkout -H "$
 esperar "webhook reenviado fora da janela de 300s é 401" '^401$' "$r"
 
 echo "== webhook: primeira cobrança paga (evento criada) =="
-# deixa só uma tela ativa: o plano fundador pede 2
-DISP2=$($PG -c "select id from dispositivos where apelido='Tela 2'")
-curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP2 -H "$J" -d '{"status":"reparo"}' >/dev/null
-# 'criada' é o evento da PRIMEIRA cobrança paga (API.md 4.3.4) — era este o
-# caso que o Mostraí ignorava. O `eventoId` é atalho só do teste: com ele a
-# dedupe não precisa consultar a rota 5.3 do Checkout, que não está no ar aqui.
+# 'criada' é o evento da PRIMEIRA cobrança paga; 'cobranca_confirmada' é a
+# renovação (API.md 4.3.4). Era 'criada' que o Mostraí ignorava. O `eventoId`
+# é atalho só do teste: com ele a dedupe não precisa consultar a rota 5.3 do
+# Checkout, que não está no ar aqui.
+#
+# Desde a migration 021 não existe mínimo de telas nem cobertura adiada: quem
+# pagou fica ativo na hora, e a cobertura é `compromisso_meses` cheio a partir
+# do pagamento. Benefício comercial se dá no preço, nunca no tempo.
 r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
-st=$($PG -c "select status||'|'||coalesce(valor_mensal_travado::text,'')||'|'||meses_gratis_creditados||'|'||meses_cobertura_pendentes||'|'||coalesce(data_expiracao::date::text,'') from anunciantes where id=$ANA")
-esperar "conta fica aguardando_ponto (1 tela < mínimo 2)" '^aguardando_ponto\|' "$st"
+st=$($PG -c "select status||'|'||coalesce(valor_mensal_travado::text,'')||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
+esperar "conta fica ativa na primeira cobrança" '^ativo\|' "$st"
 esperar "preço travado em 149" '\|149(\.0+)?\|' "$st"
-esperar "1 mês grátis creditado" '\|149(\.0+)?\|1\|' "$st"
-esperar "13 meses pendentes (12 pagos + 1 grátis)" '\|13\|' "$st"
+esperar "expiração ≈ 12 meses à frente (>= 360 dias)" '\|(3[6-9][0-9]|4[0-9][0-9])$' "$st"
 cob=$($PG -c "select count(*)||'|'||sum(valor) from cobrancas_confirmadas where anunciante_id=$ANA")
 esperar "cobrança registrada (149 x 12 = 1788)" '^1\|1788' "$cob"
 com=$($PG -c "select count(*)||'|'||comissao_valor from comissoes where anunciante_id=$ANA group by comissao_valor")
@@ -87,17 +89,23 @@ echo "== webhook: reentrega idêntica não duplica =="
 enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "só 1 cobrança" '^1$' "$cob"
 com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA"); esperar "só 1 comissão" '^1$' "$com"
-mg=$($PG -c "select meses_gratis_creditados from anunciantes where id=$ANA"); esperar "meses grátis não repetem" '^1$' "$mg"
+exp1=$($PG -c "select data_expiracao::date from anunciantes where id=$ANA")
 
-echo "== cobertura liga quando a segunda tela volta =="
-curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP2 -H "$J" -d '{"status":"ativo"}' >/dev/null; sleep 1
-st=$($PG -c "select status||'|'||meses_cobertura_pendentes||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
-esperar "conta ativa" '^ativo\|' "$st"
-esperar "pendentes zerados" '\|0\|' "$st"
-esperar "expiração ≈ 13 meses à frente (>= 390 dias)" '\|(39[0-9]|4[0-9][0-9])$' "$st"
+echo "== renovação (cobranca_confirmada) estende a cobertura =="
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_confirmada\",\"eventoId\":\"ev-2\"}" >/dev/null; sleep 1
+cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "renovação é uma 2ª cobrança" '^2$' "$cob"
+exp2=$($PG -c "select data_expiracao::date from anunciantes where id=$ANA")
+if [ "$exp2" \> "$exp1" ]; then ok "renovação empurrou a data de expiração"; else falha "renovação empurrou a data de expiração" "$exp1 -> $exp2"; fi
+
+echo "== evento sem ação automática vira pendência, não derruba conta =="
+enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"222\",\"evento\":\"cobranca_falhou\",\"eventoId\":\"ev-3\"}" >/dev/null; sleep 1
+st=$($PG -c "select status from anunciantes where id=$ANA"); esperar "conta segue ativa depois de cobranca_falhou" '^ativo$' "$st"
+pend=$($PG -c "select count(*) from eventos_assinatura_pendentes"); esperar "cobranca_falhou virou pendência pro admin" '^[1-9]' "$pend"
 
 echo "== vendedor vê a comissão =="
-r=$(curl -s -b joao.txt $B/vendedor/painel); esperar "painel do vendedor soma a receber" '"totalAReceber":"?214' "$r"
+# Duas comissões: a da 1ª cobrança e a da renovação. Comissão sobre renovação
+# é o comportamento de hoje e é decisão de produto em aberto (PENDENCIAS, B).
+r=$(curl -s -b joao.txt $B/vendedor/painel); esperar "painel do vendedor soma as duas comissões" '"totalAReceber":"?429' "$r"
 r=$(curl -s -b adm.txt $B/admin/comissoes); esperar "admin lista comissão com nome do vendedor" 'João' "$r"
 r=$(curl -s -b adm.txt $B/admin/vendedores); esperar "admin lista vendedores" '"codigo_cupom"' "$r"
 

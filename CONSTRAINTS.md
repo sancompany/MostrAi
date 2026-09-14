@@ -9,8 +9,8 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   O equilíbrio entre quantidade de pontos e de anunciantes é julgamento do
   dono na aprovação de cada candidatura. Regra fixa substituiria uma decisão
   que depende de olhar bairro e ramo. (Decisão de 12/09/2026.)
-- **Regras de plano em variável de ambiente.** Meses grátis, mínimo de telas,
-  preço travado e vagas são campos do plano, editáveis no admin sem deploy.
+- **Regras de plano em variável de ambiente.** Preço travado, vagas e desconto
+  são campos do plano, editáveis no admin sem deploy.
   A única variável de ambiente é a chave liga/desliga do programa de fundador
   como um todo (`PROGRAMA_FUNDADOR_ATIVO`).
 - **Usuário e senha na TV.** A tela se autentica por chave de aparelho,
