@@ -1,5 +1,5 @@
-const crypto = require('crypto');
-const { promisify } = require('util');
+const crypto = require('node:crypto');
+const { promisify } = require('node:util');
 
 const scrypt = promisify(crypto.scrypt);
 

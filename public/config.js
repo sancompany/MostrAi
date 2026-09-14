@@ -8,6 +8,10 @@
 // dizer o porquê. Como o próprio Express serve o site, mesma origem resolve
 // os dois casos (e leva a porta junto).
 const REDE_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+// Sem build step, `const` no topo de um <script> clássico vai pro escopo global
+// e é assim que as outras páginas leem esta constante. O lint só enxerga este
+// arquivo e não vê uso nenhum — daí a supressão, que é sobre isso e nada mais.
+// biome-ignore lint/correctness/noUnusedVariables: lida pelos scripts das páginas, não por este arquivo
 const API_BASE_URL = REDE_LOCAL.test(window.location.hostname)
   ? window.location.origin
   // Produção: a API é servida pelo mesmo serviço que serve o site (Northflank),

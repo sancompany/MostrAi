@@ -73,7 +73,7 @@ const HORAS_ABERTO_PADRAO = 12;
 // O plano define "quantas vezes por dia"; a taxa por hora é recalculada pro
 // horário real de cada ponto — mesma meta diária em todo lugar.
 function horasAbertoPorDia(ponto) {
-  if (!ponto || !ponto.horario_abertura || !ponto.horario_fechamento) return HORAS_ABERTO_PADRAO;
+  if (!ponto?.horario_abertura || !ponto.horario_fechamento) return HORAS_ABERTO_PADRAO;
   const [hA, mA] = String(ponto.horario_abertura).split(':').map(Number);
   const [hF, mF] = String(ponto.horario_fechamento).split(':').map(Number);
   const minutos = (hF * 60 + mF) - (hA * 60 + mA);
@@ -136,8 +136,8 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const usados = {};
   return itensIds.map((id) => {
     const { criativos } = porId[id];
-    const vez = usados[id] = (usados[id] || 0);
-    usados[id] += 1;
+    const vez = usados[id] || 0;
+    usados[id] = vez + 1;
     const criativo = criativos[vez % criativos.length];
     return {
       anuncianteId: id === 'dono' ? null : id,

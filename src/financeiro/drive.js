@@ -1,4 +1,4 @@
-const fs = require('fs');
+const fs = require('node:fs');
 const { google } = require('googleapis');
 
 // Sobe o PDF de nota fiscal (emitida manualmente pelo admin, ver
@@ -23,7 +23,7 @@ function autenticacao() {
     let credenciais;
     try {
       credenciais = JSON.parse(inline);
-    } catch (err) {
+    } catch {
       throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY não é um JSON válido');
     }
     return new google.auth.GoogleAuth({ credentials: credenciais, scopes: escopos });

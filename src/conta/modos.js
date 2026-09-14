@@ -35,7 +35,7 @@ async function adicionarPapel(contaId, papel, db = pool) {
 async function liberarPapelNaConta(conta, papel, cand, db) {
   await adicionarPapel(conta.id, papel, db);
   if (papel === 'vendedor' && !(await vendedoresRepo.buscarPorConta(conta.id))) {
-    await vendedoresRepo.criar(conta.id, { chave_pix: (cand && cand.chave_pix) || null, nome: conta.nome_empresa }, db);
+    await vendedoresRepo.criar(conta.id, { chave_pix: (cand?.chave_pix) || null, nome: conta.nome_empresa }, db);
   }
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
     const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
@@ -214,7 +214,7 @@ function mesesEntre(inicio, fim) {
 async function bonusPontoDaConta(conta) {
   if (!conta.plano_id) return null;
   const plano = await planosRepo.buscarPorId(conta.plano_id);
-  if (!plano || !plano.ponto_apos_meses) return null;
+  if (!plano?.ponto_apos_meses) return null;
   const inicio = conta.data_inicio_cobertura;
   const fim = conta.data_expiracao && new Date(conta.data_expiracao) < new Date() ? conta.data_expiracao : new Date();
   const cobertos = inicio ? Math.max(0, mesesEntre(inicio, fim)) : 0;
@@ -230,7 +230,7 @@ async function bonusPontoDaConta(conta) {
 router.post('/conta/bonus/ponto/resgatar', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   const bonus = conta && await bonusPontoDaConta(conta);
-  if (!bonus || !bonus.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
+  if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
   if (!req.body.nome_comercio || !req.body.endereco) return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
     return res.status(400).json({ erro: 'opção de comodato inválida' });
@@ -277,7 +277,7 @@ async function bonusAnuncioDaConta(conta) {
 router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   const bonus = conta && await bonusAnuncioDaConta(conta);
-  if (!bonus || !bonus.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
+  if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
   if (conta.status === 'suspenso' || conta.excluido_em) return res.status(403).json({ erro: 'conta indisponível — fale com o suporte' });
   if (conta.status === 'ativo' && conta.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date()) {
     return res.status(409).json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });

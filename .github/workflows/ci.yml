@@ -35,7 +35,7 @@ jobs:
         run: npm run migrate
       # Mesmo comando que roda na máquina de quem desenvolve. CI e local
       # divergirem é como um `console.log` esquecido passa pelo verde.
-      - name: sintaxe e testes (npm run check)
+      - name: sintaxe, lint e testes (npm run check)
         run: npm run check
       - name: segredo no repositório? (falha se achar .env versionado)
         run: |

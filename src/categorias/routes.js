@@ -8,12 +8,12 @@ const pool = require('../db/pool');
 // dentro de concorrente (src/playlist/gerador.js).
 
 // Pública — alimenta os selects dos 3 cadastros.
-router.get('/categorias', async (req, res) => {
+router.get('/categorias', async (_req, res) => {
   const { rows } = await pool.query('SELECT id, nome FROM categorias WHERE ativo ORDER BY nome');
   res.json(rows);
 });
 
-router.get('/admin/categorias', async (req, res) => {
+router.get('/admin/categorias', async (_req, res) => {
   const { rows } = await pool.query('SELECT * FROM categorias ORDER BY nome');
   res.json(rows);
 });

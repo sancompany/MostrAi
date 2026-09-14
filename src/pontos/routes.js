@@ -1,10 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const os = require('os');
-const fs = require('fs');
+const os = require('node:os');
+const fs = require('node:fs');
 const router = express.Router();
-const { conferirSenha } = require('../lib/senha');
-const { limiteTentativas } = require('../lib/limite-tentativas');
 const repo = require('./repository');
 const planosPontoRepo = require('./planos-ponto-repository');
 const pagamentosRepo = require('./pagamentos-repository');
@@ -14,7 +12,7 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // Pública — "onde estamos" (módulo 7)
-router.get('/pontos', async (req, res) => {
+router.get('/pontos', async (_req, res) => {
   const pontos = await repo.listarPublicos();
   res.json(pontos);
 });
@@ -22,7 +20,7 @@ router.get('/pontos', async (req, res) => {
 // Pública — soma de fluxo estimado dos pontos ativos, pra home/planos (prova
 // social). Só a soma, nunca por ponto — e só aparece com 1.000+ pessoas
 // somadas (ver repository).
-router.get('/pontos/fluxo', async (req, res) => {
+router.get('/pontos/fluxo', async (_req, res) => {
   res.json({ pessoasPorMes: await repo.somaFluxoMensal() });
 });
 
@@ -57,7 +55,7 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
 
 // Pública — as duas opções de comodato que o estabelecimento escolhe no
 // cadastro (ajuda de custo em dinheiro x mais cota de tela pro negócio dele)
-router.get('/planos-ponto', async (req, res) => {
+router.get('/planos-ponto', async (_req, res) => {
   res.json(await planosPontoRepo.listarAtivos());
 });
 
@@ -68,7 +66,7 @@ router.get('/planos-ponto', async (req, res) => {
 // v2: ponto não tem mais cadastro aberto. A página "Seja um ponto" virou
 // candidatura (POST /candidaturas); o dono aprova e gera um convite. Quem
 // tiver o endpoint antigo salvo recebe o motivo.
-router.post('/seja-um-ponto', (req, res) => {
+router.post('/seja-um-ponto', (_req, res) => {
   res.status(410).json({ erro: 'o cadastro de ponto agora é por convite — envie sua candidatura em /seja-um-ponto.html' });
 });
 
@@ -91,7 +89,7 @@ router.post('/admin/pontos', async (req, res) => {
   res.status(201).json(ponto);
 });
 
-router.get('/admin/pontos', async (req, res) => {
+router.get('/admin/pontos', async (_req, res) => {
   const pontos = await repo.listar();
   res.json(pontos);
 });
@@ -136,14 +134,14 @@ router.post('/admin/pontos/:id/foto', upload.single('arquivo'), async (req, res)
 // ver src/lib/aparelho.js. Trocar a chave derruba o aparelho antigo na hora,
 // que é o que se quer quando um tablet é roubado ou trocado.
 router.post('/admin/pontos/:id/aparelho', async (req, res) => {
-  const chave = require('crypto').randomBytes(16).toString('base64url');
+  const chave = require('node:crypto').randomBytes(16).toString('base64url');
   const ponto = await repo.atualizar(req.params.id, { aparelho_id: chave });
   if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
   res.json({ aparelho_id: chave });
 });
 
 // Admin — controla o que cada opção de comodato oferece
-router.get('/admin/planos-ponto', async (req, res) => {
+router.get('/admin/planos-ponto', async (_req, res) => {
   res.json(await planosPontoRepo.listarTodos());
 });
 

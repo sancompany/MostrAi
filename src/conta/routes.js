@@ -1,5 +1,5 @@
 const express = require('express');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const router = express.Router();
 const { conferirSenha, gerarHash } = require('../lib/senha');
 const { limiteTentativas } = require('../lib/limite-tentativas');

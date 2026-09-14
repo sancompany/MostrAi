@@ -1,0 +1,44 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["src/**/*.js", "public/**/*.js", "tests/**/*.js", "scripts/**/*.js"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    },
+    "globals": [
+      "API_BASE_URL", "esc", "fmtBRL", "linkWhatsApp", "montarPerfil", "montarLayout",
+      "ROTULOS", "WHATSAPP", "aplicarBarras", "montarNavAuth", "montarModos"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": { "useTemplate": "off" },
+      "complexity": { "useArrowFunction": "off" }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["public/**/*.js"],
+      "linter": {
+        "rules": {
+          "suspicious": { "useIterableCallbackReturn": "off" }
+        }
+      }
+    }
+  ]
+}

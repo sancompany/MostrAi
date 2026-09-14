@@ -47,7 +47,7 @@ async function salvar(caminho, corpo, campo) {
 // de repetir em cada seção.
 function turbinarTabela(caixa) {
   const tabela = caixa.querySelector('table');
-  if (!tabela || !tabela.tBodies[0]) return;
+  if (!tabela?.tBodies[0]) return;
   const busca = caixa.querySelector('.busca');
   const contagem = caixa.querySelector('[data-contagem]');
   const linhas = () => [...tabela.tBodies[0].rows];
@@ -92,7 +92,7 @@ function turbinarTabela(caixa) {
       const x = valorDe(a); const y = valorDe(b);
       const nx = parseFloat(x.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
       const ny = parseFloat(y.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
-      const cmp = (x !== '' && y !== '' && !isNaN(nx) && !isNaN(ny)) ? nx - ny : x.localeCompare(y, 'pt-BR');
+      const cmp = (x !== '' && y !== '' && !Number.isNaN(nx) && !Number.isNaN(ny)) ? nx - ny : x.localeCompare(y, 'pt-BR');
       return desc ? -cmp : cmp;
     }).forEach((tr) => corpo.appendChild(tr));
   }));
@@ -117,7 +117,6 @@ const PONTO_STATUS = { lead: 'Novo lead', aguardando_instalacao: 'A instalar', a
 const ANUNCIANTE_STATUS = { pendente_aprovacao: 'Pendente', aprovado: 'Aprovado', ativo: 'Ativo', suspenso: 'Suspenso' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
-const CANDIDATURA_STATUS = { nova: 'Nova', em_contato: 'Em contato', aprovada: 'Aprovada (convite gerado)', recusada: 'Recusada' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
@@ -603,7 +602,7 @@ async function renderPontos(el) {
 
   el.querySelectorAll('[data-ver-telas]').forEach((a) => a.addEventListener('click', () => { FILTRO_TELAS_PONTO = Number(a.dataset.verTelas); }));
   el.querySelectorAll('[data-nova-tela]').forEach((btn) => btn.addEventListener('click', async () => {
-    const apelido = prompt('Nome da tela (ex.: Tela 2 — balcão):', `Tela ${(pontos.find((p) => p.id === Number(btn.dataset.novaTela)) || {}).telas + 1 || 2}`);
+    const apelido = prompt('Nome da tela (ex.: Tela 2 — balcão):', `Tela ${pontos.find((p) => p.id === Number(btn.dataset.novaTela))?.telas + 1 || 2}`);
     if (apelido === null) return;
     const custo = prompt('Custo do equipamento dessa tela (R$), pra amortização — pode deixar 0 e preencher depois:', '0');
     const r = await api(`/admin/pontos/${btn.dataset.novaTela}/dispositivos`, { method: 'POST', body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }) });
@@ -1093,7 +1092,10 @@ async function renderPlanos(el) {
     </label>`).join('');
 
   const porCiclo = {};
-  planos.filter((p) => !p.fundador).forEach((p) => { (porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || []).push(p); });
+  planos.filter((p) => !p.fundador).forEach((p) => {
+    porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
+    porCiclo[p.compromisso_meses].push(p);
+  });
   const fundadores = planos.filter((p) => p.fundador);
 
   const linhaPlano = (p) => `<tr>

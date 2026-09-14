@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const pool = require('../db/pool');
 
 // Convite = link com token, papéis, validade e uso único, gerado pelo dono.

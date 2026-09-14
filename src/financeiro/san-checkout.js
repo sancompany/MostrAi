@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const { multiplicar, percentual } = require('../lib/dinheiro');
 const { segredoConfere } = require('../lib/segredo');
@@ -38,8 +38,8 @@ const JANELA_ASSINATURA_S = 300;
 
 function webhookAutorizado(req) {
   const chave = process.env.SAN_CHECKOUT_KEY;
-  const recebida = req.headers && req.headers['x-checkout-signature'];
-  const timestamp = String((req.headers && req.headers['x-checkout-timestamp']) || '');
+  const recebida = req.headers?.['x-checkout-signature'];
+  const timestamp = String((req.headers?.['x-checkout-timestamp']) || '');
   if (!chave || !recebida || !/^[0-9]{1,15}$/.test(timestamp)) return false;
 
   // Janela de 300s: impede que alguém capture um webhook legítimo e reenvie
@@ -108,7 +108,7 @@ const CICLO_ASAAS = { 1: 'MONTHLY', 3: 'QUARTERLY', 6: 'SEMIANNUALLY', 12: 'YEAR
 // ciclo nesse momento e cobra sozinha dali em diante.
 async function montarRespostaPlano(assinaturaId) {
   const assinatura = await assinaturasRepo.buscarPorId(assinaturaId);
-  if (!assinatura || assinatura.status !== 'ativa') return null;
+  if (assinatura?.status !== 'ativa') return null;
 
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
@@ -201,8 +201,8 @@ async function chaveDoEvento(payload) {
 
   if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     const estado = await consultarAssinatura(payload.planoId, payload.documento);
-    const ultima = estado && estado.ultimaCobranca;
-    if (!ultima || !ultima.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
+    const ultima = estado?.ultimaCobranca;
+    if (!ultima?.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
     return `${ultima.chargeId}|${ultima.status}`;
   }
 

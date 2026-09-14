@@ -17,7 +17,7 @@ router.get('/convites/:token', async (req, res) => {
 });
 
 // Admin
-router.get('/admin/convites', async (req, res) => {
+router.get('/admin/convites', async (_req, res) => {
   const lista = await repo.listar();
   res.json(lista.map((c) => ({ ...c, link: c.situacao === 'aberto' ? linkDoConvite(c.token) : null })));
 });

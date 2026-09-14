@@ -29,8 +29,8 @@ async function conciliarAssinaturas() {
     relato.verificadas += 1;
     try {
       const estado = await consultarAssinatura(assinatura.id, assinatura.cpf_cnpj);
-      const ultima = estado && estado.ultimaCobranca;
-      if (!ultima || ultima.status !== 'confirmado' || !ultima.chargeId) {
+      const ultima = estado?.ultimaCobranca;
+      if (ultima?.status !== 'confirmado' || !ultima.chargeId) {
         relato.semCobranca += 1;
         continue;
       }

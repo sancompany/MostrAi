@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const { gerarHash, conferirHash } = require('../lib/senha');
 
@@ -92,7 +92,7 @@ async function definirPin(id, pin) {
 
 async function conferirPin(id, pin) {
   const { rows } = await pool.query('SELECT pin_hash FROM dispositivos WHERE id = $1', [id]);
-  if (!rows[0] || !rows[0].pin_hash) return false;
+  if (!rows[0]?.pin_hash) return false;
   return (await conferirHash(String(pin), rows[0].pin_hash)).ok;
 }
 

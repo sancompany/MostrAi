@@ -1,6 +1,6 @@
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const pool = require('./pool');
 
 // Runner de migração mínimo: aplica os .sql de migrations/ em ordem, uma vez

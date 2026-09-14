@@ -21,7 +21,7 @@ test('dois hashes da mesma senha são diferentes (salt por senha)', async () => 
 
 test('hash com parâmetro antigo confere e pede migração', async () => {
   // Hash gerado com N=2^14 (abaixo do piso) — mesmo formato, custo menor.
-  const crypto = require('crypto');
+  const crypto = require('node:crypto');
   const salt = crypto.randomBytes(16);
   const derivada = crypto.scryptSync('Senha12@', salt, 64, { N: 2 ** 14, r: 8, p: 1 });
   const antigo = `scrypt$16384$8$1$${salt.toString('base64')}$${derivada.toString('base64')}`;

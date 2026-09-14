@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 // Compara segredo recebido com o esperado em TEMPO CONSTANTE, e nunca passa
 // com segredo vazio.

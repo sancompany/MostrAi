@@ -1,6 +1,6 @@
 require('dotenv').config();
 require('express-async-errors'); // faz rota async que rejeitar cair no error handler abaixo em vez de derrubar o processo
-const path = require('path');
+const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -71,7 +71,7 @@ const CABECALHO_CSP = process.env.CSP_REPORT_ONLY === '1'
   : 'Content-Security-Policy';
 
 // Cabeçalhos de segurança. Sem puxar o helmet só pra isso.
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader(CABECALHO_CSP, CSP);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -149,7 +149,7 @@ function requireAdminSession(req, res, next) {
 }
 app.use('/admin', requireAdminSession);
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use(pontosRoutes);
 app.use(anunciantesRoutes.router);

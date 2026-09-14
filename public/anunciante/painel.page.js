@@ -10,7 +10,7 @@ let ANUNCIANTE_ID = null;
 // começar com "oi".
 function montarPortasDeArte() {
   if (!window.linkWhatsApp) return;
-  const nome = (ANUNCIANTE && ANUNCIANTE.nome_empresa) || 'anunciante';
+  const nome = (ANUNCIANTE?.nome_empresa) || 'anunciante';
   const simples = document.getElementById('linkArteSimples');
   const gravacao = document.getElementById('linkGravacao');
   if (simples) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
-const os = require('os');
-const fs = require('fs');
+const os = require('node:os');
+const fs = require('node:fs');
 const router = express.Router();
 const planosRepo = require('./planos-repository');
 const beneficiosRepo = require('./beneficios-repository');
@@ -19,13 +19,13 @@ const uploadNota = multer({ dest: os.tmpdir() });
 // Plano fundador só aparece pro público enquanto o programa está aberto
 // (PROGRAMA_FUNDADOR_ATIVO=true) e ainda tem vaga — fora disso some da
 // vitrine sem o admin precisar desativar o plano.
-router.get('/planos', async (req, res) => {
+router.get('/planos', async (_req, res) => {
   const programaAberto = process.env.PROGRAMA_FUNDADOR_ATIVO === 'true';
   const planos = await planosRepo.listarAtivos({ incluirFundador: programaAberto });
   res.json(planos.filter((p) => !p.fundador || p.vagas_restantes == null || p.vagas_restantes > 0));
 });
 
-router.get('/admin/planos', async (req, res) => {
+router.get('/admin/planos', async (_req, res) => {
   res.json(await planosRepo.listarTodos());
 });
 
@@ -99,7 +99,7 @@ router.patch('/admin/planos/:id', async (req, res) => {
 });
 
 // Catálogo de benefícios — criado/editado uma vez, marcado por plano.
-router.get('/admin/beneficios', async (req, res) => {
+router.get('/admin/beneficios', async (_req, res) => {
   res.json(await beneficiosRepo.listar());
 });
 
@@ -135,7 +135,7 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     return res.status(403).json({ erro: 'só pode assinar plano na própria conta' });
   }
   const plano = await planosRepo.buscarPorId(req.body.planoId);
-  if (!plano || !plano.ativo) return res.status(400).json({ erro: 'plano inválido' });
+  if (!plano?.ativo) return res.status(400).json({ erro: 'plano inválido' });
   if (plano.fundador && process.env.PROGRAMA_FUNDADOR_ATIVO !== 'true') {
     return res.status(400).json({ erro: 'o programa de fundador não está aberto' });
   }
@@ -249,14 +249,14 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
     await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
     await assinaturasRepo.marcarCancelada(assinatura.id);
     res.json({ ok: true });
-  } catch (err) {
+  } catch {
     res.status(502).json({ erro: 'falha ao cancelar no San Checkout' });
   }
 });
 
 // Fila de reconciliação manual (webhooks que não deram pra correlacionar
 // automaticamente ou eventos sem ação automática — ver san-checkout.js)
-router.get('/admin/eventos-pendentes', async (req, res) => {
+router.get('/admin/eventos-pendentes', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT * FROM eventos_assinatura_pendentes WHERE resolvido = false ORDER BY criado_em DESC`
   );
@@ -271,7 +271,7 @@ router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
   res.json(rows[0] || null);
 });
 
-router.get('/admin/cobrancas', async (req, res) => {
+router.get('/admin/cobrancas', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT c.*, a.nome_empresa FROM cobrancas_confirmadas c
      JOIN anunciantes a ON a.id = c.anunciante_id ORDER BY c.criado_em DESC`
@@ -312,7 +312,7 @@ function exigirVendedorLogado(req, res, next) {
 }
 
 ['/afiliados/cadastro', '/afiliados/login', '/afiliados/logout'].forEach((rota) => {
-  router.post(rota, (req, res) => res.status(410).json({ erro: 'vendedor agora usa a conta única — entre em /anunciante/login.html' }));
+  router.post(rota, (_req, res) => res.status(410).json({ erro: 'vendedor agora usa a conta única — entre em /anunciante/login.html' }));
 });
 
 router.get('/vendedor/painel', exigirVendedorLogado, async (req, res) => {
@@ -328,7 +328,7 @@ router.get('/vendedor/painel', exigirVendedorLogado, async (req, res) => {
 });
 
 // Admin — quanto se deve a cada vendedor, e marcar como pago.
-router.get('/admin/comissoes', async (req, res) => {
+router.get('/admin/comissoes', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT c.*, va.nome_empresa AS vendedor_nome, v.chave_pix, an.nome_empresa
      FROM comissoes c
@@ -349,7 +349,7 @@ router.patch('/admin/comissoes/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
-router.get('/admin/vendedores', async (req, res) => res.json(await vendedoresRepo.listar()));
+router.get('/admin/vendedores', async (_req, res) => res.json(await vendedoresRepo.listar()));
 
 router.patch('/admin/vendedores/:contaId', async (req, res) => {
   try {

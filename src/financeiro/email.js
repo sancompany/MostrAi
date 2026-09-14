@@ -66,7 +66,7 @@ async function enviarCriativoNoAr(anunciante, criativo) {
       `Olá, ${anunciante.nome_empresa}!`,
       '',
       'Seu vídeo foi aprovado e já entrou na playlist das telas da rede.',
-      criativo && criativo.duracao_segundos ? `Duração do vídeo: ${criativo.duracao_segundos} segundos.` : '',
+      criativo?.duracao_segundos ? `Duração do vídeo: ${criativo.duracao_segundos} segundos.` : '',
       '',
       'Você acompanha quantas vezes ele apareceu, e em quais pontos, na aba',
       `Anúncios do seu painel: ${process.env.SITE_URL}/anunciante/painel.html`,

@@ -112,7 +112,7 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     try {
       await checkout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
       await pool.query("UPDATE assinaturas SET status = 'cancelada' WHERE id = $1", [assinatura.id]);
-    } catch (err) {
+    } catch {
       return res.status(502).json({
         erro: 'não conseguimos cancelar a cobrança agora — tente de novo em alguns minutos',
       });
@@ -148,7 +148,7 @@ router.get('/admin/arrependimentos', async (_req, res) => {
 });
 
 router.post('/admin/arrependimentos/:id/estornado', async (req, res) => {
-  const pedido = await repo.marcarEstornado(req.params.id, req.body && req.body.comprovante);
+  const pedido = await repo.marcarEstornado(req.params.id, req.body?.comprovante);
   if (!pedido) return res.status(404).json({ erro: 'pedido não encontrado ou já estornado' });
   res.json(pedido);
 });

@@ -53,7 +53,8 @@ Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 - Site estático, sem build: `public/` · componentes mínimos: `public/layout.js`,
   `public/perfil.js`, `public/modos.js` · player: `public/player.html`
 - Integração com o San Checkout: `src/financeiro/san-checkout.js`
-- Testes: `tests/` (`npm test`) · CI: `.github/workflows/`
+- Testes: `tests/` (`npm test`) · lint: `npm run lint` (Biome; motivo das regras em
+  `docs/lint.md`) · tudo junto: `npm run check` · CI: `.github/workflows/`
 
 ## Conformidade
 Violação segue o ciclo da skill `leis`. Não existe estado final fora de

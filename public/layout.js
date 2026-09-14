@@ -69,7 +69,7 @@
   }
 
   window.aplicarPapeisNoMenu = function aplicarPapeisNoMenu(conta) {
-    const papeis = (conta && conta.papeis) || ['anunciante'];
+    const papeis = (conta?.papeis) || ['anunciante'];
     const marcar = (id, liberado) => {
       const el = document.getElementById(id);
       if (!el) return;

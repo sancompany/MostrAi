@@ -1,8 +1,8 @@
-const { execFile } = require('child_process');
-const util = require('util');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const { execFile } = require('node:child_process');
+const util = require('node:util');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 const supabase = require('./supabase');
 
 const execFileAsync = util.promisify(execFile);

@@ -109,7 +109,7 @@ async function tocarProximo() {
   document.body.classList.remove('sem-playlist');
   const item = playlist[indice];
   indice = (indice + 1) % playlist.length;
-  if (!item || !item.url) { setTimeout(tocarProximo, 1000); return; }
+  if (!item?.url) { setTimeout(tocarProximo, 1000); return; }
   trocarFonte(await fonteDe(item.url));
   videoEl.classList.add('ativo');
   videoEl.play().catch(() => {});

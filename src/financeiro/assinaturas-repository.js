@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+const { randomUUID } = require('node:crypto');
 const pool = require('../db/pool');
 
 async function criar({ anuncianteId, planoId }) {

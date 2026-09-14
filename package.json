@@ -11,11 +11,16 @@
     "backup": "bash scripts/backup.sh",
     "conciliar": "node scripts/conciliar.js",
     "sintaxe": "for f in $(git ls-files 'src/**/*.js' 'public/**/*.js' 'tests/*.js'); do node --check \"$f\" || exit 1; done",
-    "check": "npm run sintaxe && npm test"
+    "lint": "biome lint .",
+    "lint:corrigir": "biome lint --write .",
+    "formato": "biome format .",
+    "formato:corrigir": "biome format --write .",
+    "check": "npm run sintaxe && npm run lint && npm test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -24,10 +29,10 @@
     "googleapis": "^140.0.1",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.14",
-    "pg": "^8.12.0",
-    "connect-pg-simple": "^10.0.0"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "nodemon": "^3.1.4"
   },
   "engines": {

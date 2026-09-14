@@ -42,7 +42,7 @@ async function criar(dados, db = pool) {
       dados.categoria_id || null, dados.categoria_livre || null,
       dados.responsavel_nome || null, dados.responsavel_cpf || null, dados.responsavel_email || null,
       dados.responsavel_telefone || null, new Date(),
-      dados.papeis && dados.papeis.length ? dados.papeis : ['anunciante'],
+      dados.papeis?.length ? dados.papeis : ['anunciante'],
       // Conta que nasce por convite já foi aprovada pelo dono ao gerar o link.
       dados.status || 'pendente_aprovacao']
   );

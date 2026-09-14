@@ -42,7 +42,7 @@
 
   function segmentoDe(form) {
     const sel = form.categoria_id;
-    const opcao = sel && sel.options[sel.selectedIndex];
+    const opcao = sel?.options[sel.selectedIndex];
     const livre = form.querySelector('[data-categoria-livre]');
     return livre && !livre.hidden ? form.categoria_livre.value.trim() : (opcao ? opcao.dataset.nome || '' : '');
   }
@@ -56,7 +56,7 @@
 
   // ---- cards de ativação, um por modo ----
   const CARDS = {
-    anunciante(estado) {
+    anunciante(_estado) {
       return `
         <form class="card wide modo-card" id="formModo">
           <p class="eyebrow">Modo anúncios</p>
@@ -71,7 +71,7 @@
     },
     ponto(estado) {
       const pedido = estado.modos.ponto.pedido;
-      const bonus = estado.bonus && estado.bonus.ponto;
+      const bonus = estado.bonus?.ponto;
       if (pedido) {
         return `
           <div class="card wide modo-card u-ta-c">
@@ -80,7 +80,7 @@
             <p class="form-hint">${pedido.origem === 'bonus_plano' ? 'É o bônus do seu plano — ' : ''}A gente chama no WhatsApp pra combinar a visita e a instalação. Assim que liberar, esse modo abre aqui.</p>
           </div>`;
       }
-      const ganhou = bonus && bonus.disponivel;
+      const ganhou = bonus?.disponivel;
       return `
         <form class="card wide modo-card" id="formModo" data-bonus="${ganhou ? '1' : ''}">
           <p class="eyebrow">Modo meu ponto</p>
@@ -142,7 +142,7 @@
     }
   }
 
-  async function submeter(modo, form, estado) {
+  async function submeter(modo, form, _estado) {
     const msg = $('#modoMsg', form);
     msg.textContent = 'Enviando...'; msg.className = 'form-msg';
     try {
@@ -205,7 +205,7 @@
   // Card de bônus de plano (anúncios → tela; ponto → anúncio grátis), pra
   // mostrar dentro dos dashboards liberados.
   window.cardBonus = function cardBonus(estado, qual) {
-    const b = estado.bonus && estado.bonus[qual];
+    const b = estado.bonus?.[qual];
     if (!b) return '';
     if (qual === 'ponto') {
       if (b.ja_e_ponto) return '';

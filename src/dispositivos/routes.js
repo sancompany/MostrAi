@@ -9,7 +9,7 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 // ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------
-router.get('/admin/dispositivos', async (req, res) => {
+router.get('/admin/dispositivos', async (_req, res) => {
   res.json(await repo.listarTodos());
 });
 
@@ -120,7 +120,7 @@ router.get('/admin/dispositivos/:id/painel', async (req, res) => {
 router.post('/player/:dispositivoId/painel', limiteTentativas, async (req, res) => {
   const dispositivo = await repo.buscarComPonto(req.params.dispositivoId);
   const chave = req.headers['x-aparelho-id'];
-  if (!dispositivo || !dispositivo.aparelho_id || chave !== dispositivo.aparelho_id) {
+  if (!dispositivo?.aparelho_id || chave !== dispositivo.aparelho_id) {
     return res.status(401).json({ erro: 'aparelho não autorizado' });
   }
   if (!(await repo.conferirPin(dispositivo.id, req.body.pin))) {

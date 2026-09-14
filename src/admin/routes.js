@@ -23,7 +23,7 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia
     // "seu anúncio está no ar" várias vezes pelo mesmo vídeo.
-    if (criativo.status === 'aprovado' && (!antes || antes.status !== 'aprovado')) {
+    if (criativo.status === 'aprovado' && (antes?.status !== 'aprovado')) {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
       // o que coloca o vídeo no ar.
@@ -40,7 +40,7 @@ router.patch('/admin/criativos/:id', async (req, res) => {
 // pedem ação, o resultado do mês e a fotografia da rede. Antes eram 4 abas
 // separadas (margem, offline, eventos, fila) que ninguém abria junto — e o
 // admin não tinha como saber o que estava pendente sem clicar em todas.
-router.get('/admin/resumo', async (req, res) => {
+router.get('/admin/resumo', async (_req, res) => {
   const limiteOffline = new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000);
 
   const [
@@ -168,7 +168,7 @@ router.get('/admin/resumo', async (req, res) => {
 // Alerta de ponto offline — a aba "Pontos" filtra pela mesma regra usando
 // ultima_vez_online + horasOfflineAlerta do /admin/resumo; isso aqui fica
 // como a lista pronta, pra quando alguém quiser só ela.
-router.get('/admin/pontos-offline', async (req, res) => {
+router.get('/admin/pontos-offline', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT d.id, d.apelido, d.ultima_vez_online, p.id AS ponto_id, p.nome AS ponto_nome
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
@@ -181,7 +181,7 @@ router.get('/admin/pontos-offline', async (req, res) => {
 });
 
 // Custos fixos da operação — entram na margem do resumo.
-router.get('/admin/custos-fixos', async (req, res) => {
+router.get('/admin/custos-fixos', async (_req, res) => {
   const { rows } = await pool.query('SELECT * FROM custos_fixos ORDER BY ativo DESC, nome');
   res.json(rows);
 });

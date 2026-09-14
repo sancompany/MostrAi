@@ -1,7 +1,7 @@
 const express = require('express');
 const multer = require('multer');
-const os = require('os');
-const fs = require('fs');
+const os = require('node:os');
+const fs = require('node:fs');
 const router = express.Router();
 const repo = require('./repository');
 const criativosRepo = require('./criativos-repository');
@@ -24,7 +24,7 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const upload = multer({
   dest: os.tmpdir(),
   limits: { fileSize: 200 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const ok = /^(image|video)\//.test(file.mimetype || '');
     cb(ok ? null : new Error('tipo de arquivo não aceito — envie imagem ou vídeo'), ok);
   },
@@ -271,7 +271,7 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
         ...(peloOperador ? { editado_pelo_operador: true, status: 'aprovado' } : {}),
       });
       res.status(201).json(criativo);
-    } catch (err) {
+    } catch {
       // Se o ffmpeg falhar (arquivo corrompido, vídeo mais curto que 1s), a
       // linha já criada ficava no banco como "pendente" e ocupava a cota do
       // plano pra sempre — três arquivos ruins e o cliente nunca mais subia nada.
@@ -447,7 +447,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
 });
 
 // Admin — protegido por requireAdminToken, montado em server.js
-router.get('/admin/anunciantes', async (req, res) => {
+router.get('/admin/anunciantes', async (_req, res) => {
   const anunciantes = await repo.listar();
   res.json(anunciantes);
 });
@@ -488,7 +488,7 @@ router.post('/admin/anunciantes', async (req, res) => {
     return res.status(409).json({ erro: 'já existe uma conta própria do Mostraí — edite a que existe em "Meus anúncios"' });
   }
 
-  const senhaGerada = req.body.senha || `${require('crypto').randomBytes(9).toString('base64url')}A1@`;
+  const senhaGerada = req.body.senha || `${require('node:crypto').randomBytes(9).toString('base64url')}A1@`;
   let anunciante = await repo.criar({ ...req.body, senha: senhaGerada });
 
   // `conta_propria` dá anúncio ilimitado e de graça na rede inteira, então ela
