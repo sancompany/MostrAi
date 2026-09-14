@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const pool = require('../db/pool');
+const { multiplicar, percentual } = require('../lib/dinheiro');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
@@ -91,7 +92,7 @@ async function montarRespostaPlano(assinaturaId) {
     planoId: assinatura.id,
     nome: plano.nome,
     descricao: `Mostraí — ${plano.nome}, ciclo de ${plano.compromisso_meses} ${plano.compromisso_meses === 1 ? 'mês' : 'meses'}`,
-    valor: valorMensalDaConta(anunciante, plano) * plano.compromisso_meses,
+    valor: multiplicar(valorMensalDaConta(anunciante, plano), plano.compromisso_meses),
     ciclo: CICLO_ASAAS[plano.compromisso_meses] || 'MONTHLY',
     pagador: {
       nome: anunciante.nome_empresa,
@@ -130,7 +131,7 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
   const vendedor = rows[0];
   if (!vendedor || vendedor.conta_id === anunciante.id) return; // ninguém ganha comissão de si mesmo
 
-  const comissaoValor = Number(valor) * (Number(vendedor.comissao_percentual) / 100);
+  const comissaoValor = percentual(valor, vendedor.comissao_percentual);
   await db.query(
     `INSERT INTO comissoes (vendedor_conta_id, anunciante_id, valor_confirmado, comissao_valor)
      VALUES ($1,$2,$3,$4)`,
@@ -231,7 +232,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   // O que a conta paga é o que estava travado na primeira cobrança deste
   // plano (preco_travado) — senão, o valor atual do plano.
   const valorMensal = valorMensalDaConta(anunciante, plano);
-  const valorCiclo = valorMensal * plano.compromisso_meses;
+  const valorCiclo = multiplicar(valorMensal, plano.compromisso_meses);
   const mesmoPlano = anunciante.plano_id === plano.id;
 
   // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho

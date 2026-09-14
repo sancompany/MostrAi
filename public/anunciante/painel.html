@@ -156,7 +156,7 @@
         box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>');
         return;
       }
-      const total = Number(plano.valor_mensal) * plano.compromisso_meses;
+      const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
       const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
       const extras = [
         plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '',
