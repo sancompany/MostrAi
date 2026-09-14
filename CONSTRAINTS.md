@@ -34,6 +34,29 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   processo; Edge Function não tem processo vivo (lição de ecossistema nº 4).
 - **Cobrança própria.** Pagamento é sempre pelo San Checkout (estrutura).
 
+## Regras duras
+
+Vieram do `CLAUDE.md` em 14/09/2026, quando ele foi reduzido ao índice que a
+Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
+
+- **`anunciantes` é a tabela de contas.** Papéis em `papeis text[]`. O veto ao
+  rename está acima.
+- **Tela ≠ ponto.** Playlist, chave de aparelho, PIN, sinal e custo vivem em
+  `dispositivos`. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota
+  é dividida entre as telas dele (`dividirCota`).
+- **Webhook do San Checkout: fail-closed, idempotente (`webhooks_processados`)
+  e transacional.** Não afrouxar nenhuma das três. O erro que originou a regra
+  está em `docs/erros/2026-09-webhook-falhava-aberto.md`.
+- **Migrations são aditivas.** Drop de coluna ou tabela só com permissão
+  explícita do dono, em migration própria. Migration aplicada nunca é editada;
+  corrige-se com migration nova.
+- **`.env` nunca entra no git.** `.env.example` documenta as chaves com valores
+  fictícios. Segredo que vazou se revoga — apagar do histórico não basta, como
+  13/09/2026 provou (`docs/erros/2026-09-13-env-real-em-repositorio-publico.md`).
+- **Plano assinado é imutável para quem assinou** *(decidido em 14/09/2026,
+  ainda não construído — item 9 da spec)*. Edição de plano no admin vale só
+  para novos assinantes. Precisa estar de pé antes da primeira assinatura paga.
+
 ## Limites assumidos
 
 - **Escala declarada:** até ~30 telas e ~60 contas, só Matão-SP. Nenhuma

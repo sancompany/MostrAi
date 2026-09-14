@@ -1,13 +1,19 @@
-# Mostraí — pendências (atualizado 13/09/2026, após a recriação do repositório)
+# Mostraí — pendências (atualizado 14/09/2026, após o fecho da Estação 1)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
 `github.com/sancompany/MostrAi` (branch `main` + `claude/epic-newton-sc30uz`),
 repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
 o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
 
+**A Estação 1 (Escopo) fechou em 14/09/2026** — a spec foi validada pelo dono e
+o escopo passou de sete para nove itens. O registro está em
+`docs/specs/2026-09-12-mostrai.md`, seção "Validação do dono". A esteira está na
+Estação 2 (Fronteiras), que entra como auditoria do que a Fase 2 da spec já
+decidiu.
+
 **Próximo passo real: a seção A.0.1**, que precisa do PC — alinhar a pasta
 local e rotacionar as chaves. Só depois disso vale seguir para A.3 em diante
-(Northflank incluso) e para a seção B.
+(Northflank incluso) e para o resto da seção B.
 
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
@@ -97,12 +103,24 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`. **Use só as chaves rotacionadas em A.0.1** — nenhuma das antigas. As variáveis vivem no painel do Northflank; nunca num arquivo do repositório.
 10. [ ] **Cloudflare**: DNS `mostrai.sancocore.com.br` → Northflank (proxy ligado). **Access na frente de `/admin`** (Zero Trust → Access → Application, path `/admin*`, política: seu e-mail). Fechar a origem pra que só o Cloudflare alcance o serviço.
 11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), e combinar `SAN_CHECKOUT_WEBHOOK_SECRET` dos dois lados. Auditar a última estação do Checkout (você disse que falta). **Confirmar se o webhook manda `eventoId`/`cobrancaId`** — sem id, a deduplicação usa hash do corpo + dia (renovação meses depois passa; reentrega no mesmo dia não).
+    **Trazer o `API.md` e o `INTEGRACAO.md` do Checkout junto** — ficaram duas
+    perguntas do mês grátis esperando por eles, deixadas em aberto de propósito
+    no fecho da Estação 1: (a) hoje o mês grátis é creditado **uma vez na vida da
+    conta** (`anunciantes.meses_gratis_creditados`); é isso mesmo, ou é a cada
+    ciclo? (b) o código estende a cobertura em `compromisso_meses + meses_gratis`,
+    mas quem define quando a Asaas cobra é o ciclo da assinatura no Checkout —
+    então não dá pra garantir daqui que a pessoa **não seja cobrada** no mês que
+    era pra ser grátis. Verificado só do lado do Mostraí.
 12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
 
-- [ ] **Validar o veredito da Fase 3 da spec** (`docs/specs/2026-09-12-mostrai.md`): "sobrevive, reduzido". E o registro do que foi construído na aceleração (fim do arquivo) — se algo ali não está autorizado, sai.
+- [x] **Validar o veredito da Fase 3 da spec** — FEITO em 14/09/2026. Veredito
+  confirmado, agora sobre nove itens. Nada do que a aceleração construiu saiu: o
+  painel único é a forma do item 2 e os módulos cruzados são o item 4, ambos
+  escritos estreito demais na primeira redação. Detalhe em
+  `docs/specs/2026-09-12-mostrai.md`, seção "Validação do dono (14/09/2026)".
 - [ ] **Programa fundador**: ligar `PROGRAMA_FUNDADOR_ATIVO=true` só quando quiser vender. Revisar o plano seed `fundador-12m` (R$149 travado 12m, 1 mês grátis, mínimo 2 telas, 10 vagas) no admin → Planos → Programa fundador. Os planos normais vieram com o rótulo antigo "Preço fundador — nunca muda" — troque no admin (agora é confuso ao lado do plano fundador de verdade).
 - [ ] **Módulos cruzados**: decidir quais planos ganham "tela após N meses" (admin → Planos → coluna "Tela após") e quais opções de comodato ganham "anúncio grátis após N meses" (admin → Opções de comodato → Bônus). Estão desligados (vazios) até você preencher.
 - [ ] **Vaga de fundador**: hoje uma assinatura criada e não paga segura a vaga por 7 dias. Ok?
@@ -111,6 +129,29 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 - [ ] **Drop do legado** (pede migration própria, com sua permissão): tabela `afiliados`, `pontos.aparelho_id`/`ultima_vez_online`, `exibicoes_contador.ponto_id`, `comissoes.afiliado_id`, `src/financeiro/afiliados-repository.js`, `public/nav-auth.js`, `public/afiliado/*` (hoje são redirects), `src/financeiro/san-checkout-1.js` (cópia antiga que só existe na sua pasta).
 - [ ] **Custos fixos**: os seeds (DAS MEI 86,05; Contador 100; Domínio 3,33; Supabase Pro 0; Deslocamento 50) são chute meu — corrija no admin → Custos fixos. Amortização é por tela: preencha custo e prazo de cada TV na aba Telas.
 - [ ] **Sessão única por navegador**: cadastrar uma conta no mesmo navegador em que o admin está logado derruba o admin (é o comportamento seguro). Use dois perfis/navegadores pra testar.
+
+## B.1 Construir — decidido em 14/09/2026, ainda não feito
+
+Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: o
+9 é pré-requisito do 8.
+
+1. [ ] **Item 9 — plano imutável para quem já assinou.** Editar um plano no
+   admin não pode alcançar quem já paga por ele. Hoje a conta guarda só
+   `valor_mensal_travado`; nome, benefícios, `limite_criativos`,
+   `frequencia_dia` e `cobertura` são lidos ao vivo da linha do plano
+   (`src/financeiro/planos-repository.js`, `CAMPOS_ATUALIZAVEIS`). O desenho
+   proposto é versionar a linha: editar cria linha nova, a antiga sai da vitrine
+   (`ativo=false`) e continua servindo quem está nela — encaixa no `plano_id`
+   `text` que já existe. **Condição de entrada: antes da primeira assinatura
+   paga.** Com zero assinantes, editar plano ainda é inofensivo.
+2. [ ] **Item 8 — desconto de comodato sobre os planos de anunciante.** Um
+   desconto por linha da grade (12 valores no admin, livres entre si), separado
+   do desconto de ciclo que o anunciante comum já tem. Vale a partir da
+   aprovação da conta e nunca é revogado. Aparece pro comodatário como "quando
+   sua conta for aprovada você recebe X% em todos os planos". **Fica pendente
+   uma regra de precedência**: quem tem `preco_travado` e ganha o desconto de
+   comodato — o desconto incide sobre o travado, ou o travado vence? Decidir
+   antes de construir.
 
 ## C. Malha fina — roteiro do que testar junto comigo
 

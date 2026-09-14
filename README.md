@@ -14,6 +14,12 @@ npm test                      # testes unitários (node:test)
 
 Precisa de Node 22+ e um Postgres (local ou o projeto Supabase do Mostraí). `ffmpeg` no PATH pra normalizar criativos.
 
+Detalhes de teste que costumam faltar: o admin exige sessão (`POST /admin/login`
+com `ADMIN_USER`/`ADMIN_PASSWORD`); o limitador de tentativas é em memória
+(10 por 15 min, por IP e rota — reiniciar o servidor zera); e o roteiro ponta a
+ponta está em `tests/e2e/README.md` e na seção de verificação de
+`docs/specs/2026-09-12-mostrai.md`.
+
 ## Como o sistema é
 
 - **Uma conta, três modos, um painel.** A tabela `anunciantes` é a tabela de contas (nome histórico). `papeis` ∈ {anunciante, ponto, vendedor}. O painel tem sempre as abas Anúncios / Meu ponto / Vendas; só as que a conta tem papel estão liberadas — as outras mostram um card de ativação (`public/modos.js`). Anunciante se cadastra sozinho ou ativa o modo pelo card (só falta o endereço); **dono de ponto e vendedor só entram com liberação do dono**: convite (link de cadastro, ou aceito por conta logada) ou "Liberar na conta" no admin a partir de um pedido feito de dentro do painel.
