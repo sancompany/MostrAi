@@ -2,7 +2,8 @@
 
 Pré-requisitos: Postgres local com o banco `mostrai` (usuário/senha `mostrai`),
 `.env` apontando pra ele (`NODE_ENV=test`, `PORT=3999`, `ADMIN_USER=admin`,
-`ADMIN_PASSWORD=Admin12@teste`, `SAN_CHECKOUT_WEBHOOK_SECRET` qualquer),
+`ADMIN_PASSWORD=Admin12@teste`, `SAN_CHECKOUT_KEY` qualquer — é com ela que
+os testes assinam o webhook, como o Checkout assina), `openssl` no PATH,
 `npm run migrate` aplicado, e `psql`/`curl` no PATH. Pro teste de navegador,
 `npm i -D playwright` e um Chromium (`PW_CHROME=/caminho/do/chrome`).
 

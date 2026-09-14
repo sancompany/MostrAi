@@ -27,7 +27,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/esqueci-senha` / `/redefinir-senha` | Fluxo de token por e-mail. `/afiliados/esqueci-senha` é alias legado. |
 | POST | `/contato` | Formulário de contato → e-mail. |
 | POST | `/seja-um-ponto` | **410** — cadastro aberto de ponto foi substituído por candidatura + convite. |
-| POST | `/webhook/san-checkout` | Só com `X-Webhook-Secret` correto (fail-closed). Idempotente por `eventoId`/`cobrancaId`/hash. `cobranca_confirmada` ativa a conta, trava preço (`preco_travado`), credita `meses_gratis` uma vez, registra cobrança e comissão numa transação; abaixo de `minimo_telas_ativas` a conta fica `aguardando_ponto` com os meses guardados em `meses_cobertura_pendentes`. |
+| POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Idempotente pela chave natural `chargeId|status`, buscada na rota de conciliação 5.3. `criada` (1ª cobrança) e `cobranca_confirmada` (renovação) creditam o ciclo: ativam a conta, travam o preço (`preco_travado`), registram cobrança e comissão numa transação. `cancelada` marca a assinatura; os demais eventos viram pendência pro admin. |
 | GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). |
 
 ## Conta logada (`credentials: 'include'`)

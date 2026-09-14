@@ -3,8 +3,15 @@
 Ideias guardadas para a próxima volta da esteira. Nada aqui está autorizado;
 quem autoriza é a Estação 1 da versão seguinte. Cinco linhas por entrada.
 Fonte principal: pesquisa de mercado de 11/09/2026
-(`claude/mostrai-lacunas-de-produto.md` no projeto) e a de custos de 12/09
+e a de custos de 12/09
 (`docs/precificacao.md`).
+
+## Primeiro mês sem cobrança como benefício de primeira compra
+- **O que:** "assine e o primeiro mês é por nossa conta" — benefício só na primeira compra, não recorrente.
+- **Por que:** é o gancho de venda mais direto para quem nunca anunciou; recorrente ("pague 3, leve 4") já se resolve embutindo 25% no valor do ciclo, mas o de primeira compra não fecha por preço.
+- **De onde veio:** ideia do dono, 14/09/2026, na leitura do contrato do San Checkout.
+- **O que toca:** o motor de pagamento, não o Mostraí. Hoje não há caminho limpo: não existe carência nem data de início (`API.md` do Checkout, 7.5), e pausar/retomar na data certa é comando manual sobre caminho de dinheiro — se ninguém executar no dia, o assinante é cobrado e a correção é estorno.
+- **Quando vale a pena:** quando o San Checkout ganhar um campo de primeira cobrança (`primeiraCobrancaEm` alimentando o `nextDueDate`, que já está no caminho dele). Enquanto isso não existir, não se promete.
 
 ## Impactos estimados e CPM no painel e na página de planos
 - **O que:** mostrar ao anunciante impactos/mês e CPM, além do custo por exibição.

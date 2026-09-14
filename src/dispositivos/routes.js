@@ -4,7 +4,6 @@ const repo = require('./repository');
 const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
-const { ativarCoberturaDosAnunciantes } = require('../financeiro/coberturas');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 
 // ---------------------------------------------------------------------------
@@ -28,8 +27,6 @@ router.patch('/admin/dispositivos/:id', async (req, res) => {
   try {
     const dispositivo = await repo.atualizar(req.params.id, req.body);
     if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });
-    // Tela que ficou ativa pode completar o mínimo de telas de algum plano.
-    if (dispositivo.status === 'ativo') await ativarCoberturaDosAnunciantes();
     res.json(dispositivo);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'valor inválido' });

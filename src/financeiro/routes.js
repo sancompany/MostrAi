@@ -76,7 +76,7 @@ router.patch('/admin/planos/:id', async (req, res) => {
 
   // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
   // constraint do banco — devolve o motivo em vez do erro genérico.
-  const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos', 'meses_gratis', 'minimo_telas_ativas']
+  const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos']
     .find((c) => c in req.body && (req.body[c] === null || req.body[c] === ''));
   if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });
 
@@ -164,7 +164,7 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // criar outra viraria cobrança dupla. Troca de plano pago é pelo admin
     // (cancela no Checkout e assina de novo). Se nunca foi paga, é só um
     // clique antigo: cancela localmente e segue.
-    const pagou = ['ativo', 'aguardando_ponto'].includes(conta.status) && conta.plano_id === assinatura.plano_id;
+    const pagou = conta.status === 'ativo' && conta.plano_id === assinatura.plano_id;
     if (pagou) return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
     await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
@@ -185,8 +185,9 @@ router.get('/plano/:assinaturaId', sanCheckout.exigirChaveCheckout, async (req, 
   res.json(resposta);
 });
 
-// Confirmação/eventos de assinatura (INTEGRACAO.md 4 e 6.1) — responde 200
-// rápido, processa depois, exatamente como o contrato permite.
+// Confirmação/eventos de assinatura (API.md do Checkout, 4.3) — responde 200
+// rápido, processa depois, exatamente como o contrato permite. A autorização
+// é a assinatura HMAC dos headers, conferida em `webhookAutorizado`.
 router.post('/webhook/san-checkout', (req, res) => {
   if (!sanCheckout.webhookAutorizado(req)) {
     return res.status(401).json({ erro: 'não autorizado' });

@@ -139,7 +139,6 @@ window.ROTULOS = {
   anunciante: {
     pendente_aprovacao: 'Pendente de aprovação',
     aprovado: 'Aprovado — escolha um plano',
-    aguardando_ponto: 'Pago — aguardando ponto entrar no ar',
     ativo: 'Ativo',
     suspenso: 'Suspenso',
   },

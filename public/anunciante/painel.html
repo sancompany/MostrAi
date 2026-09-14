@@ -113,11 +113,8 @@
     function preencherStatusBanner() {
       const el = document.getElementById('statusBanner');
       const statusTxt = ROTULOS.anunciante[ANUNCIANTE.status] || ANUNCIANTE.status;
-      const pendentes = Number(ANUNCIANTE.meses_cobertura_pendentes) || 0;
       let planoTxt = 'Sem plano ainda';
-      if (ANUNCIANTE.plano_id && ANUNCIANTE.status === 'aguardando_ponto') {
-        planoTxt = `Pago${pendentes ? ` — ${pendentes} ${pendentes > 1 ? 'meses' : 'mês'} de cobertura guardados` : ''}, começa a contar quando a rede entrar no ar`;
-      } else if (ANUNCIANTE.plano_id) {
+      if (ANUNCIANTE.plano_id) {
         planoTxt = `Plano ativo${ANUNCIANTE.data_expiracao ? ' até ' + new Date(ANUNCIANTE.data_expiracao).toLocaleDateString('pt-BR') : ''}`;
       }
       const travado = ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
@@ -159,14 +156,10 @@
         box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>');
         return;
       }
-      const total = Number(plano.valor_mensal) * plano.compromisso_meses;
+      const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
       const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
-      const gratis = Number(plano.meses_gratis) || 0;
-      const minimo = Number(plano.minimo_telas_ativas) || 1;
       const extras = [
         plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '',
-        gratis ? `Você ganha ${gratis} ${gratis > 1 ? 'meses grátis' : 'mês grátis'} na primeira cobrança.` : '',
-        minimo > 1 ? `A cobertura começa a contar quando a rede tiver ${minimo} telas no ar — o que pagar antes fica guardado como crédito.` : '',
       ].filter(Boolean).join(' ');
       box.insertAdjacentHTML('beforeend', `
         <div class="panel" style="margin-top:14px">

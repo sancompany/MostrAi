@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const pool = require('../db/pool');
+const { multiplicar, percentual } = require('../lib/dinheiro');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
-const dispositivosRepo = require('../dispositivos/repository');
 const { enviarConfirmacaoPagamento } = require('./email');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
@@ -26,17 +26,75 @@ function exigirChaveCheckout(req, res, next) {
   next();
 }
 
-// Webhook agora falha FECHADO. Antes, sem SAN_CHECKOUT_WEBHOOK_SECRET
-// configurado, ele aceitava qualquer POST — e como o corpo é só
-// { tipo, planoId, evento }, bastava ter o id da assinatura (que aparece na
-// própria URL de checkout do anunciante) pra ativar uma conta sem pagar.
-// Configure SAN_CHECKOUT_WEBHOOK_SECRET nos dois lados antes de subir.
+// O Checkout assina TODO webhook com HMAC-SHA256 e manda dois headers
+// (API.md dele, 4.3 e 4.3.1): `X-Checkout-Signature: sha256=<hex>` sobre a
+// string "{timestamp}.{corpo cru}", e `X-Checkout-Timestamp` em segundos.
+// Não existe segredo separado de webhook: o segredo é a MESMA
+// SAN_CHECKOUT_KEY que usamos nas chamadas de saída.
+//
+// O que havia aqui era um header `X-Webhook-Secret` comparado com uma
+// SAN_CHECKOUT_WEBHOOK_SECRET — esquema que o Checkout nunca mandou e que
+// nenhuma versão do contrato descreveu (o comentário citava o INTEGRACAO.md,
+// que hoje é só um redirecionamento pro API.md). O fail-closed segurava o
+// dinheiro, mas TODO webhook real tomava 401: nenhum pagamento era creditado
+// e a conta só seria ativada pela conciliação diária.
+const JANELA_ASSINATURA_S = 300;
+
 function webhookAutorizado(req) {
-  return chaveConfere(req.headers['x-webhook-secret'], process.env.SAN_CHECKOUT_WEBHOOK_SECRET);
+  const chave = process.env.SAN_CHECKOUT_KEY;
+  const recebida = req.headers && req.headers['x-checkout-signature'];
+  const timestamp = String((req.headers && req.headers['x-checkout-timestamp']) || '');
+  if (!chave || !recebida || !/^[0-9]{1,15}$/.test(timestamp)) return false;
+
+  // Janela de 300s: impede que alguém capture um webhook legítimo e reenvie
+  // depois (API.md 4.3.1, passo 1).
+  const agora = Math.floor(Date.now() / 1000);
+  if (Math.abs(agora - Number(timestamp)) > JANELA_ASSINATURA_S) return false;
+
+  // Corpo CRU, nunca o JSON reparseado: reserializar muda a ordem das chaves
+  // e a assinatura não fecha (API.md 4.3.1, passo 2). Quem guarda os bytes
+  // originais é o `verify` do express.json, em src/server.js.
+  const corpoCru = req.rawBody;
+  if (!Buffer.isBuffer(corpoCru)) return false;
+
+  const esperada = 'sha256=' + crypto
+    .createHmac('sha256', chave)
+    .update(Buffer.concat([Buffer.from(timestamp + '.', 'utf8'), corpoCru]))
+    .digest('hex');
+
+  return chaveConfere(recebida, esperada);
 }
 
+// O checkout mora em DOIS endereços e eles fazem coisas diferentes (API.md do
+// Checkout, seção 2.1): a tela de pagamento, que o comprador abre no
+// navegador, e a API, que o nosso servidor chama. Usar um só para os dois
+// deixa necessariamente um dos lados errado — era o que acontecia aqui até
+// 14/09/2026. SAN_CHECKOUT_BASE_URL é a TELA; SAN_CHECKOUT_API_URL é a API.
 function linkCheckoutAssinatura(assinaturaId) {
   return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}`;
+}
+
+// Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
+// O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
+// uma troca de endereço não propagada que quebrou a integração antes.
+async function chamarApiCheckout(rota, corpo) {
+  return fetch(`${process.env.SAN_CHECKOUT_API_URL}/api/checkout/${rota}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Checkout-Key': process.env.SAN_CHECKOUT_KEY },
+    body: JSON.stringify(corpo),
+  });
+}
+
+// Conciliação de assinatura (API.md seção 5.3). É a única fonte do `chargeId`
+// — o payload do webhook de assinatura não carrega nenhum id (seção 4.3.4) —
+// e ela reconsulta a Asaas quando a última cobrança parece pendente, então
+// enxerga pagamento que o webhook perdeu. Devolve null se nunca houve
+// assinatura nem tentativa de cobrança (404 estreito, de propósito).
+async function consultarAssinatura(planoId, documento) {
+  const r = await chamarApiCheckout('consultar-assinatura', { planoId, documento });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`consultar-assinatura respondeu ${r.status}`);
+  return r.json();
 }
 
 // Compromisso em meses → ciclo nativo da Asaas (repassado direto pelo San
@@ -64,7 +122,7 @@ async function montarRespostaPlano(assinaturaId) {
     planoId: assinatura.id,
     nome: plano.nome,
     descricao: `Mostraí — ${plano.nome}, ciclo de ${plano.compromisso_meses} ${plano.compromisso_meses === 1 ? 'mês' : 'meses'}`,
-    valor: valorMensalDaConta(anunciante, plano) * plano.compromisso_meses,
+    valor: multiplicar(valorMensalDaConta(anunciante, plano), plano.compromisso_meses),
     ciclo: CICLO_ASAAS[plano.compromisso_meses] || 'MONTHLY',
     pagador: {
       nome: anunciante.nome_empresa,
@@ -103,7 +161,7 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
   const vendedor = rows[0];
   if (!vendedor || vendedor.conta_id === anunciante.id) return; // ninguém ganha comissão de si mesmo
 
-  const comissaoValor = Number(valor) * (Number(vendedor.comissao_percentual) / 100);
+  const comissaoValor = percentual(valor, vendedor.comissao_percentual);
   await db.query(
     `INSERT INTO comissoes (vendedor_conta_id, anunciante_id, valor_confirmado, comissao_valor)
      VALUES ($1,$2,$3,$4)`,
@@ -112,20 +170,46 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 }
 
 // Handler do POST /webhook/san-checkout pro evento de assinatura
-// (INTEGRACAO.md 6.1): { tipo: "assinatura", planoId, documento, evento }.
+// (API.md do Checkout, 4.3.4): { versao, tipo, planoId, documento, evento }.
 // Aqui `planoId` é o id da nossa linha em `assinaturas` (ver montarRespostaPlano).
-// Só 'cobranca_confirmada' ativa automaticamente — os outros eventos
-// (falhou/estornada/cancelada exceto cancelamento, criada) só ficam
-// registrados pro admin revisar, pra nunca derrubar o acesso de alguém sem
-// intervenção humana.
-// Chave de deduplicação do evento. Se o San Checkout mandar um id próprio,
-// usa ele; senão, o hash do corpo — que já barra a reentrega idêntica, que é
-// o caso real (retry por timeout).
-// Sem id, entra o dia na chave: reentrega por timeout chega em minutos e
-// dedupa; a renovação do ciclo seguinte chega meses depois com o mesmo corpo
-// e precisa passar. (Confirmar na auditoria do Checkout se ele manda id.)
-function chaveDoEvento(payload) {
+//
+// A PRIMEIRA cobrança paga de uma assinatura chega como 'criada'; só as
+// RENOVAÇÕES chegam como 'cobranca_confirmada'. Está na tabela do API.md
+// 4.3.4 ("Assinatura criada e primeira cobrança paga") e no código do
+// Checkout, que cai no default `confirmado ? 'criada' : null` quando o
+// evento não é de ciclo recorrente. Tratar só 'cobranca_confirmada' deixava
+// justamente a entrada de todo assinante novo sem ativação automática — o
+// caso que mais importa.
+//
+// Os demais eventos (falhou/estornada/contestada, e cancelada fora do ramo
+// abaixo) só ficam registrados pro admin revisar, pra nunca derrubar o
+// acesso de alguém sem intervenção humana.
+const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
+// Chave de deduplicação do evento. O contrato manda tratar o processamento
+// como idempotente pela chave natural `chargeId` + `status` (API.md do
+// Checkout, 4.3.6) — só que o payload de assinatura NÃO carrega chargeId
+// nenhum: ele tem cinco campos, versao, tipo, planoId, documento e evento
+// (4.3.4). Sem id, o corpo de uma renovação é byte a byte idêntico ao da
+// anterior.
+//
+// O que havia aqui era hash(dia|corpo), e ele erra nas duas pontas: a
+// retentativa que cruza a meia-noite muda de dia, passa pela dedupe e credita
+// um ciclo que ninguém pagou; e duas cobranças reais no mesmo dia viram uma.
+//
+// Então, nos eventos que mexem em saldo ('criada' e 'cobranca_confirmada'),
+// o chargeId é buscado na rota de conciliação (5.3) e a chave é a que o
+// contrato pede. Os outros eventos só gravam pendência, não movem dinheiro,
+// e seguem com o hash do corpo + dia.
+async function chaveDoEvento(payload) {
   if (payload.eventoId || payload.cobrancaId) return String(payload.eventoId || payload.cobrancaId);
+
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
+    const estado = await consultarAssinatura(payload.planoId, payload.documento);
+    const ultima = estado && estado.ultimaCobranca;
+    if (!ultima || !ultima.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
+    return `${ultima.chargeId}|${ultima.status}`;
+  }
+
   const dia = new Date().toISOString().slice(0, 10);
   return crypto.createHash('sha256').update(`${dia}|${JSON.stringify(payload)}`).digest('hex');
 }
@@ -135,11 +219,22 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, 'formato de webhook não reconhecido (esperava tipo=assinatura)');
   }
 
+  let chave;
+  try {
+    chave = await chaveDoEvento(payload);
+  } catch (err) {
+    // Sem a chave natural não há como garantir idempotência, e creditar sem
+    // garantia é dar cobertura que talvez já tenha sido dada. Fica pendente:
+    // a conciliação diária (`npm run conciliar`) enxerga a cobrança e aplica.
+    // É o papel que o próprio contrato dá a ela (4.3.6).
+    return registrarPendencia(payload, `sem chargeId pra deduplicar: ${err.message}`);
+  }
+
   // Reentrega do mesmo evento não pode estender cobertura, gravar outra
   // cobrança nem pagar a comissão do vendedor de novo (migration 018).
   const { rowCount } = await pool.query(
     'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-    [chaveDoEvento(payload)]
+    [chave]
   );
   if (!rowCount) return;
 
@@ -153,36 +248,41 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
-  if (payload.evento !== 'cobranca_confirmada') {
+  if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 
+  return aplicarCicloPago(assinatura, chave, payload);
+}
+
+// Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
+// a comissão. Chamado pelo webhook e pela conciliação diária — as duas rotas
+// passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
+// venha o aviso por webhook ou pela varredura.
+async function aplicarCicloPago(assinatura, chave, payload = null) {
+  const contexto = payload || { tipo: 'assinatura', planoId: assinatura.id, evento: 'cobranca_confirmada', origem: 'conciliacao' };
+
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
-  if (!plano || !anunciante) return registrarPendencia(payload, 'plano ou anunciante não encontrado pra essa assinatura');
+  if (!plano || !anunciante) {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+    return registrarPendencia(contexto, 'plano ou anunciante não encontrado pra essa assinatura');
+  }
 
   // O que a conta paga é o que estava travado na primeira cobrança deste
   // plano (preco_travado) — senão, o valor atual do plano.
   const valorMensal = valorMensalDaConta(anunciante, plano);
-  const valorCiclo = valorMensal * plano.compromisso_meses;
+  const valorCiclo = multiplicar(valorMensal, plano.compromisso_meses);
   const mesmoPlano = anunciante.plano_id === plano.id;
 
-  // Cobertura só conta com a rede no tamanho mínimo que o plano promete
-  // (migration 019: minimo_telas_ativas). Abaixo disso a conta fica
-  // 'aguardando_ponto' e coberturas.js liga quando a tela entrar.
-  const telasAtivas = await dispositivosRepo.contarAtivas();
-  const temPontoAtivo = telasAtivas >= Math.max(1, Number(plano.minimo_telas_ativas) || 1);
-
-  // Meses grátis são creditados uma vez só, na primeira cobrança confirmada
-  // dessa conta — a coluna meses_gratis_creditados impede repetir.
-  const mesesGratis = (Number(plano.meses_gratis) || 0) > 0 && !(Number(anunciante.meses_gratis_creditados) > 0)
-    ? Number(plano.meses_gratis) : 0;
-
-  // Todo 'cobranca_confirmada' é uma cobrança real (a Asaas cobra o ciclo
-  // inteiro de uma vez). Com a rede no mínimo, estende a expiração agora;
-  // sem o mínimo, os meses ficam como crédito pendente e viram cobertura no
-  // dia em que a tela que faltava entrar (coberturas.js). Nada pago se perde.
-  const mesesDoCiclo = plano.compromisso_meses + mesesGratis;
+  // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho
+  // que o motor de pagamento suporta: o San Checkout cobra no ato da
+  // assinatura e a cada `ciclo` a partir dali — sem carência, sem mês grátis
+  // e sem pular ciclo (API.md do Checkout, seção 7.5). Qualquer coisa que
+  // fizesse a cobertura começar num dia diferente do da cobrança era promessa
+  // que o motor não cumpre, e saiu na migration 021. Benefício se dá no
+  // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
+  const mesesDoCiclo = plano.compromisso_meses;
   const baseExpiracao = anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
     ? new Date(anunciante.data_expiracao)
     : new Date();
@@ -196,24 +296,20 @@ async function processarWebhookAssinatura(payload) {
   let cobrancaRows;
   try {
     await cliente.query('BEGIN');
-    // Com a rede no mínimo, a expiração é estendida a cada ciclo pago (quem
-    // paga dois ciclos esperando recebe os dois); sem o mínimo, os meses vão
-    // pra meses_cobertura_pendentes e coberturas.js converte depois.
-    // Trava de preço: mantém a da conta se for o mesmo plano; plano novo
-    // trava no preço dele (se for travado) ou solta.
+    // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
+    // seguidos recebe os dois. Trava de preço: mantém a da conta se for o
+    // mesmo plano; plano novo trava no preço dele (se for travado) ou solta.
     await cliente.query(
       `UPDATE anunciantes
-       SET plano_id = $2, status = $3,
-           data_inicio_cobertura = CASE WHEN $8::boolean THEN COALESCE(data_inicio_cobertura, now()) ELSE data_inicio_cobertura END,
-           data_expiracao = CASE WHEN $8::boolean THEN $4::timestamptz ELSE data_expiracao END,
-           meses_cobertura_pendentes = meses_cobertura_pendentes + CASE WHEN $8::boolean THEN 0 ELSE $9::int END,
-           valor_mensal_travado = CASE WHEN NOT $5::boolean THEN NULL
-                                       WHEN $10::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
-                                       ELSE $6::numeric END,
-           meses_gratis_creditados = meses_gratis_creditados + $7
+       SET plano_id = $2, status = 'ativo',
+           data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
+           data_expiracao = $3::timestamptz,
+           valor_mensal_travado = CASE WHEN NOT $4::boolean THEN NULL
+                                       WHEN $5::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
+                                       ELSE $6::numeric END
        WHERE id = $1`,
-      [anunciante.id, plano.id, temPontoAtivo ? 'ativo' : 'aguardando_ponto', novaExpiracao,
-        !!plano.preco_travado, plano.valor_mensal, mesesGratis, temPontoAtivo, mesesDoCiclo, mesmoPlano]
+      [anunciante.id, plano.id, novaExpiracao,
+        !!plano.preco_travado, mesmoPlano, plano.valor_mensal]
     );
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
@@ -226,7 +322,7 @@ async function processarWebhookAssinatura(payload) {
     await cliente.query('ROLLBACK');
     // Sem isso, o retry do San Checkout cairia na dedupe acima e o evento
     // seria perdido de vez.
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDoEvento(payload)]);
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
     throw err;
   } finally {
     cliente.release();
@@ -243,16 +339,13 @@ async function processarWebhookAssinatura(payload) {
 // checkout — INTEGRACAO.md 6.1). Formato do corpo confirmado com quem
 // administra o San Checkout (v2, campo `documento` — CPF ou CNPJ).
 async function cancelarAssinatura(assinaturaId, documento) {
-  const r = await fetch(`${process.env.SAN_CHECKOUT_BASE_URL}/cancelar-assinatura`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Checkout-Key': process.env.SAN_CHECKOUT_KEY },
-    body: JSON.stringify({ planoId: assinaturaId, documento }),
-  });
+  const r = await chamarApiCheckout('cancelar-assinatura', { planoId: assinaturaId, documento });
   if (!r.ok) throw new Error('falha ao cancelar assinatura no San Checkout');
   return r.json();
 }
 
 module.exports = {
   exigirChaveCheckout, webhookAutorizado, linkCheckoutAssinatura, montarRespostaPlano,
-  processarWebhookAssinatura, cancelarAssinatura,
+  processarWebhookAssinatura, cancelarAssinatura, consultarAssinatura,
+  chaveDoEvento, aplicarCicloPago,
 };

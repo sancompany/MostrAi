@@ -9,7 +9,6 @@ const repo = require('./repository');
 const planosPontoRepo = require('./planos-ponto-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
-const { ativarCoberturaDosAnunciantes } = require('../financeiro/coberturas');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -92,10 +91,6 @@ router.patch('/admin/pontos/:id', async (req, res) => {
   try {
     const ponto = await repo.atualizar(req.params.id, req.body);
     if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
-
-    if (ponto.status === 'ativo') {
-      await ativarCoberturaDosAnunciantes();
-    }
 
     res.json(ponto);
   } catch (err) {

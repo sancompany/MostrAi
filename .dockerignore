@@ -1,0 +1,15 @@
+# Nunca entram na imagem
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+node_modules
+npm-debug.log
+
+# Não servem em produção
+tests
+docs
+.github
+*.md
+!README.md

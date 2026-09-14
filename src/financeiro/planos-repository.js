@@ -17,7 +17,7 @@ const SELECT_PLANO = `
 const CAMPOS_CRIACAO = [
   'id', 'tier', 'nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses',
   'frequencia_dia', 'cobertura', 'ativo', 'destaque_no_site', 'rotulo', 'limite_criativos',
-  'meses_gratis', 'minimo_telas_ativas', 'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
+  'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
 
 // Preço "fundador": criar um plano novo (id novo) em vez de editar um
 // existente é o jeito de mudar preço pra clientes futuros sem mexer no que
@@ -99,7 +99,7 @@ async function vagaOcupada(compromissoMeses, ignorarId, ehFundador) {
 }
 
 const CAMPOS_ATUALIZAVEIS = ['nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses', 'ativo', 'destaque_no_site', 'rotulo', 'limite_criativos',
-  'meses_gratis', 'minimo_telas_ativas', 'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
+  'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
 
 async function atualizar(id, dados) {
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));

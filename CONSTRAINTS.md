@@ -9,8 +9,8 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   O equilíbrio entre quantidade de pontos e de anunciantes é julgamento do
   dono na aprovação de cada candidatura. Regra fixa substituiria uma decisão
   que depende de olhar bairro e ramo. (Decisão de 12/09/2026.)
-- **Regras de plano em variável de ambiente.** Meses grátis, mínimo de telas,
-  preço travado e vagas são campos do plano, editáveis no admin sem deploy.
+- **Regras de plano em variável de ambiente.** Preço travado, vagas e desconto
+  são campos do plano, editáveis no admin sem deploy.
   A única variável de ambiente é a chave liga/desliga do programa de fundador
   como um todo (`PROGRAMA_FUNDADOR_ATIVO`).
 - **Usuário e senha na TV.** A tela se autentica por chave de aparelho,
@@ -33,6 +33,55 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
 - **Playlist gerada em Edge Function.** O gerador usa cache em memória por
   processo; Edge Function não tem processo vivo (lição de ecossistema nº 4).
 - **Cobrança própria.** Pagamento é sempre pelo San Checkout (estrutura).
+
+## Regras duras
+
+Vieram do `CLAUDE.md` em 14/09/2026, quando ele foi reduzido ao índice que a
+Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
+
+- **`anunciantes` é a tabela de contas.** Papéis em `papeis text[]`. O veto ao
+  rename está acima.
+- **Tela ≠ ponto.** Playlist, chave de aparelho, PIN, sinal e custo vivem em
+  `dispositivos`. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota
+  é dividida entre as telas dele (`dividirCota`).
+- **Webhook do San Checkout: fail-closed, idempotente (`webhooks_processados`)
+  e transacional.** Não afrouxar nenhuma das três. O erro que originou a regra
+  está em `docs/erros/2026-09-webhook-falhava-aberto.md`.
+- **Migrations são aditivas.** Drop de coluna ou tabela só com permissão
+  explícita do dono, em migration própria. Migration aplicada nunca é editada;
+  corrige-se com migration nova.
+- **`.env` nunca entra no git.** `.env.example` documenta as chaves com valores
+  fictícios. Segredo que vazou se revoga — apagar do histórico não basta, como
+  13/09/2026 provou (`docs/erros/2026-09-13-env-real-em-repositorio-publico.md`).
+- **O San Checkout tem dois endereços e eles não são intercambiáveis.**
+  `SAN_CHECKOUT_BASE_URL` é a tela que o comprador abre; `SAN_CHECKOUT_API_URL`
+  é a que o nosso servidor chama, sob `/api/checkout/<rota>`. Endereço nunca é
+  montado à mão fora de `chamarApiCheckout`. Usar um só para os dois deixa um
+  dos lados quebrado — foi o que aconteceu até 14/09/2026.
+- **O webhook do Checkout é autenticado por assinatura HMAC, não por header
+  de segredo.** Ele manda `X-Checkout-Signature: sha256=<hex>` sobre
+  `"{timestamp}.{corpo cru}"` e `X-Checkout-Timestamp` em segundos, assinados
+  com a **mesma `SAN_CHECKOUT_KEY`** das chamadas de saída — não existe
+  `SAN_CHECKOUT_WEBHOOK_SECRET` (API.md 4.3.1). A verificação recusa timestamp
+  fora de 300s, usa o corpo **cru** (reserializar o JSON muda a ordem das
+  chaves e a assinatura não fecha) e compara em tempo constante. Até
+  14/09/2026 conferíamos um `X-Webhook-Secret` que o Checkout nunca mandou:
+  todo webhook real tomava 401 (`docs/erros/2026-09-14-webhook-autenticado-por-header-inventado.md`).
+- **A primeira cobrança paga chega como `criada`, não `cobranca_confirmada`.**
+  Só as renovações usam `cobranca_confirmada` (API.md 4.3.4). Os dois eventos
+  creditam um ciclo e passam pela mesma dedupe; tratar só o segundo deixa todo
+  assinante novo sem ativação automática.
+- **Webhook de assinatura deduplica por `chargeId`, nunca pelo corpo.** O
+  payload não carrega id (API.md do Checkout, 4.3.4) e o corpo de uma renovação
+  é idêntico ao da anterior; o `chargeId` vem da rota de conciliação 5.3. Sem
+  ele, o evento vira pendência e espera a conciliação — nunca é creditado "no
+  escuro".
+- **Benefício comercial se dá no preço, nunca no tempo.** A assinatura não tem
+  carência, mês grátis, pular ciclo nem desconto (API.md 7.5). Desconto e
+  promoção entram no `valor` que o nosso `GET /plano/{id}` devolve.
+- **Plano assinado é imutável para quem assinou** *(decidido em 14/09/2026,
+  ainda não construído — item 9 da spec)*. Edição de plano no admin vale só
+  para novos assinantes. Precisa estar de pé antes da primeira assinatura paga.
 
 ## Limites assumidos
 

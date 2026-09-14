@@ -1,31 +1,60 @@
-# Mostraí — guia pra quem trabalha neste repositório com IA
+# Mostraí
 
-Projeto da San & Co. Siga o plugin `san-co` (Leis, estações, `construir`, `revisar`, `seguranca-san`, `checkout`). Este arquivo é o que é específico daqui.
+Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
+`construir`, `revisar`, `seguranca-san`, `checkout`, `classificar`, `legal`).
 
-## O que este projeto é
-Rede DOOH em Matão-SP: anunciante paga plano → vídeo roda nas telas; ponto cede a parede; vendedor indica. Node 22 + Express 4 + Postgres (`pg` cru) + site estático sem build. Leia `README.md` (mapa), `docs/api.md` (rotas), `CONSTRAINTS.md` (vetos e limites) antes de mudar qualquer coisa.
+## Antes de propor ou escrever qualquer coisa, leia
+- `CONSTRAINTS.md` — o que este projeto NÃO faz, e os limites assumidos
+- `docs/specs/2026-09-12-mostrai.md` — por que existe, e o escopo validado
+- `docs/erros/` — o que já deu errado aqui; não repita
+- `docs/PENDENCIAS.md` — o que falta, e o que só o dono faz
+- `docs/api.md` — o mapa das rotas
+- `README.md` — como rodar e testar
+- `docs/funcional.md` e `RUNBOOK.md` — **não existem ainda** (Estações 4 e 6)
 
-## Regras locais que não estão nas Leis
-- **`anunciantes` é a tabela de contas.** Não renomear (CONSTRAINTS.md). Papéis em `papeis text[]`.
-- **Dono de ponto e vendedor só nascem por convite.** Nunca reabrir cadastro público pra esses papéis. `POST /seja-um-ponto` responde 410 de propósito.
-- **Regra de plano mora no banco, não em env var.** A única exceção é `PROGRAMA_FUNDADOR_ATIVO`. Não criar outra.
-- **Tela ≠ ponto.** Playlist, chave, PIN, sinal, custo: por `dispositivos`. Cota de autoanúncio: do ponto, dividida por `dividirCota`.
-- **Nada de usuário/senha na TV.** Chave de aparelho + PIN de 4–6 dígitos, e o PIN abre só o painel daquela tela.
-- **Webhook do San Checkout:** fail-closed, idempotente (`webhooks_processados`), transacional. Não afrouxar.
-- **Migrations são aditivas.** Drop de coluna/tabela (`afiliados`, `pontos.aparelho_id`, `comissoes.afiliado_id`…) só com permissão do dono, em migration própria.
-- **`.env` nunca entra no git.** `.env.example` documenta tudo. Segredo que vazou se revoga, não se apaga do histórico.
-- **Não prometer travar a TV em tela cheia** — isso é do app kiosk, não do player.
+## Classificação
+Porte: produto externo, com cliente pagante · Dado: financeiro, senha,
+documento · Vida útil: anos → **rigor no topo da escala**. Nenhuma lei
+dispensada por proporcionalidade.
 
-## Como testar
-- `npm test` — unitários (pacing, senha scrypt, segurança).
-- Fluxo ponta a ponta: subir Postgres local, `npm run migrate`, `node src/server.js`, e rodar candidatura → convite → cadastro → tela/chave/PIN → playlist → webhook (o roteiro está em `docs/specs/2026-09-12-mostrai.md`, seção de verificação).
-- Admin exige sessão: `POST /admin/login` com `ADMIN_USER`/`ADMIN_PASSWORD`.
-- Rate limit em memória: reiniciar o servidor zera (10 tentativas / 15 min por IP+rota).
+## Estado na esteira
+Estação atual: **3 — Fundação**, não aberta ainda — Estação 2 fechou nesta data.
+Fechadas:
+- 1 Escopo — validada, reaberta e refechada em 14/09/2026 quando o contrato do
+  San Checkout foi lido pela primeira vez · evidência:
+  `docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Reabertura e
+  novo fecho da Estação 1"
+- 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura —
+  os quatro testes) e a hospedagem da Fase 2 (Northflank + Supabase próprio,
+  mesma região; Cloudflare Access pendente, exceção registrada); nada mudou ·
+  evidência: `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
+Próxima estação: 3 — Fundação, pede Sonnet com esforço médio (repositório e
+árvore já existem; falta confirmar CI verde num push real e criar o
+`RUNBOOK.md`).
 
-## Hospedagem
-Northflank (não Render). Supabase próprio, mesma região. Cloudflare Access é a porta do `/admin`. Detalhes na skill `classificar` do plugin.
+## Mapa de caminhos
+- Entrada da aplicação: `src/server.js` · rotas e regras: `src/<domínio>/`
+  (`routes.js` + `repository.js` por assunto)
+- Dados e migrations: `src/db/migrations/` (aplicadas por `src/db/migrate.js`)
+  · variáveis: `.env.example`
+- Bibliotecas internas: `src/lib/` (senha, aparelho, pacing, limite, ffmpeg)
+- Site estático, sem build: `public/` · componentes mínimos: `public/layout.js`,
+  `public/perfil.js`, `public/modos.js` · player: `public/player.html`
+- Integração com o San Checkout: `src/financeiro/san-checkout.js`
+- Testes: `tests/` (`npm test`) · CI: `.github/workflows/`
 
-## Onde registrar
-- Decisão de produto/escopo → `docs/specs/<data>-mostrai.md` e `docs/proximas-versoes.md`.
-- Erro que custou caro → `docs/erros/<data>-<nome>.md` (5 linhas: o que, sintoma, causa, correção, como não repetir).
-- Limite ou exceção → `CONSTRAINTS.md`.
+## Conformidade
+Violação segue o ciclo da skill `leis`. Não existe estado final fora de
+conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
+
+## Pendências que bloqueiam a esteira
+- **Rotação das credenciais vazadas em 13/09/2026** (`docs/PENDENCIAS.md`, A.0.1)
+  — precisa do PC; até lá senha do Postgres, `SESSION_SECRET` e `ADMIN_PASSWORD`
+  antigos seguem válidos. Nenhum push da pasta `D:\SanCo\MostrAi` antes do passo 1.
+- **Itens 8 e 9 da spec não construídos** — o 9 (plano imutável para quem já
+  assinou) tem que estar de pé antes da primeira assinatura paga.
+- **`SAN_CHECKOUT_API_URL` é variável nova** e precisa ser combinada com quem
+  administra o Checkout antes do deploy — é o endereço da API, diferente do da
+  tela de pagamento.
+- **`npm run conciliar` precisa de cron diário no Northflank.** Sem ele, um
+  webhook perdido vira cliente pagante sem cobertura.

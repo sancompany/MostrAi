@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 
 const { conferirSenha } = require('../src/lib/senha');
 const { limiteTentativas } = require('../src/lib/limite-tentativas');
@@ -12,20 +13,63 @@ test('regra de senha é a mesma em todo lugar', () => {
   assert.strictEqual(conferirSenha('Senha12@'), null);
 });
 
-// A falha original: sem SAN_CHECKOUT_WEBHOOK_SECRET configurado, o webhook
-// aceitava qualquer POST e dava pra ativar uma conta sem pagar.
-test('webhook falha fechado quando o segredo não está configurado', () => {
-  delete process.env.SAN_CHECKOUT_WEBHOOK_SECRET;
+// O webhook do San Checkout é autenticado por assinatura HMAC, não por um
+// header de segredo compartilhado (API.md dele, 4.3.1). Estes testes assinam
+// do mesmo jeito que o Checkout assina — `sha256=` + HMAC-SHA256 hex sobre
+// "{timestamp}.{corpo cru}", com a X-Checkout-Key como segredo — e exercitam
+// os quatro passos que o contrato exige na verificação.
+const CHAVE = 'chave-do-contratante-mostrai';
+
+function assinar(corpoCru, { chave = CHAVE, timestamp } = {}) {
+  const t = timestamp === undefined ? Math.floor(Date.now() / 1000) : timestamp;
+  const hex = crypto.createHmac('sha256', chave).update(`${t}.${corpoCru}`).digest('hex');
+  return {
+    rawBody: Buffer.from(corpoCru, 'utf8'),
+    headers: { 'x-checkout-signature': `sha256=${hex}`, 'x-checkout-timestamp': String(t) },
+  };
+}
+
+const CORPO = JSON.stringify({ versao: 1, tipo: 'assinatura', planoId: 'ass-1', documento: '111', evento: 'criada' });
+
+test('webhook falha fechado quando a chave não está configurada', () => {
+  delete process.env.SAN_CHECKOUT_KEY;
   assert.strictEqual(webhookAutorizado({ headers: {} }), false);
-  assert.strictEqual(webhookAutorizado({ headers: { 'x-webhook-secret': 'chute' } }), false);
+  assert.strictEqual(webhookAutorizado(assinar(CORPO)), false, 'sem chave no ambiente nada pode passar');
 });
 
-test('webhook só aceita o segredo exato', () => {
-  process.env.SAN_CHECKOUT_WEBHOOK_SECRET = 'segredo-de-verdade';
-  assert.strictEqual(webhookAutorizado({ headers: {} }), false);
-  assert.strictEqual(webhookAutorizado({ headers: { 'x-webhook-secret': 'segredo-de-verdad' } }), false);
-  assert.strictEqual(webhookAutorizado({ headers: { 'x-webhook-secret': 'segredo-de-verdade' } }), true);
-  delete process.env.SAN_CHECKOUT_WEBHOOK_SECRET;
+test('webhook aceita a notificação assinada pelo Checkout', () => {
+  process.env.SAN_CHECKOUT_KEY = CHAVE;
+  assert.strictEqual(webhookAutorizado(assinar(CORPO)), true);
+  delete process.env.SAN_CHECKOUT_KEY;
+});
+
+test('webhook recusa assinatura feita com outra chave', () => {
+  process.env.SAN_CHECKOUT_KEY = CHAVE;
+  assert.strictEqual(webhookAutorizado(assinar(CORPO, { chave: 'chave-de-outro-contratante' })), false);
+  assert.strictEqual(webhookAutorizado({ ...assinar(CORPO), headers: { 'x-checkout-signature': 'sha256=00', 'x-checkout-timestamp': String(Math.floor(Date.now() / 1000)) } }), false);
+  delete process.env.SAN_CHECKOUT_KEY;
+});
+
+// Passo 1 do API.md 4.3.1: sem a janela, quem capturar um webhook legítimo
+// reenvia depois e credita o mesmo ciclo de novo.
+test('webhook recusa timestamp fora da janela de 300s', () => {
+  process.env.SAN_CHECKOUT_KEY = CHAVE;
+  const agora = Math.floor(Date.now() / 1000);
+  assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora - 301 })), false, 'antigo demais');
+  assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora + 301 })), false, 'futuro demais');
+  assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora - 299 })), true, 'dentro da janela passa');
+  delete process.env.SAN_CHECKOUT_KEY;
+});
+
+// Passo 2: a assinatura é sobre o corpo CRU. Se o corpo mudar depois de
+// assinado — ou se só tivermos o JSON reserializado — não fecha.
+test('webhook recusa corpo adulterado e exige o corpo cru', () => {
+  process.env.SAN_CHECKOUT_KEY = CHAVE;
+  const req = assinar(CORPO);
+  const adulterado = { ...req, rawBody: Buffer.from(CORPO.replace('criada', 'cancelada'), 'utf8') };
+  assert.strictEqual(webhookAutorizado(adulterado), false);
+  assert.strictEqual(webhookAutorizado({ headers: req.headers }), false, 'sem rawBody não dá pra verificar');
+  delete process.env.SAN_CHECKOUT_KEY;
 });
 
 test('limite de tentativas bloqueia depois de 10 na mesma janela', () => {
