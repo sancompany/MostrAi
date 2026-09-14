@@ -10,6 +10,7 @@ cp .env.example .env          # preencha DATABASE_URL, SESSION_SECRET, ADMIN_*
 npm run migrate               # aplica src/db/migrations em ordem (idempotente)
 npm run dev                   # http://localhost:3000
 npm test                      # testes unitários (node:test)
+npm run conciliar             # conciliação diária das assinaturas (cron em produção)
 ```
 
 Precisa de Node 22+ e um Postgres (local ou o projeto Supabase do Mostraí). `ffmpeg` no PATH pra normalizar criativos.

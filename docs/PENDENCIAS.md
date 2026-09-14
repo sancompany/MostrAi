@@ -102,7 +102,13 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 8. [ ] **Supabase**: projeto próprio do Mostraí (se ainda for o da Vitrina, renomeie), região **sul-americana**. Bucket `criativos`. Anote `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 9. [ ] **Northflank** (não Render): serviço Node a partir da branch `main`, região sul-americana (mesma do Supabase), variáveis do `.env.example` no painel do serviço, `npm run migrate` como comando de release (ou rode uma vez à mão), `npm start`. `/health` responde `{ok:true}`. **Use só as chaves rotacionadas em A.0.1** — nenhuma das antigas. As variáveis vivem no painel do Northflank; nunca num arquivo do repositório.
 10. [ ] **Cloudflare**: DNS `mostrai.sancocore.com.br` → Northflank (proxy ligado). **Access na frente de `/admin`** (Zero Trust → Access → Application, path `/admin*`, política: seu e-mail). Fechar a origem pra que só o Cloudflare alcance o serviço.
-11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), e combinar `SAN_CHECKOUT_WEBHOOK_SECRET` dos dois lados. Auditar a última estação do Checkout (você disse que falta). **Confirmar se o webhook manda `eventoId`/`cobrancaId`** — sem id, a deduplicação usa hash do corpo + dia (renovação meses depois passa; reentrega no mesmo dia não).
+11. [ ] **San Checkout**: cadastrar o Mostraí como contratante (URL da API, chave, walletId — manual, no banco do Checkout), e combinar `SAN_CHECKOUT_WEBHOOK_SECRET` dos dois lados. Auditar a última estação do Checkout (você disse que falta). ~~Confirmar se o webhook manda `eventoId`/`cobrancaId`~~ — **RESPONDIDO em
+    14/09/2026, lendo o `API.md` do Checkout (commit `63495d2`): não manda.** O
+    payload de assinatura tem cinco campos e nenhum id (seção 4.3.4). A dedupe
+    passou a buscar o `chargeId` na rota de conciliação 5.3, e a conciliação
+    diária virou `npm run conciliar` — **precisa de um cron job no Northflank**,
+    junto com o do backup (A.12). Combinar também o `SAN_CHECKOUT_API_URL`
+    (endereço da API, diferente do da tela — `API.md` 2.1).
     **Trazer o `API.md` e o `INTEGRACAO.md` do Checkout junto** — ficaram duas
     perguntas do mês grátis esperando por eles, deixadas em aberto de propósito
     no fecho da Estação 1: (a) hoje o mês grátis é creditado **uma vez na vida da

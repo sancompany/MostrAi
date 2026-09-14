@@ -34,8 +34,36 @@ function webhookAutorizado(req) {
   return chaveConfere(req.headers['x-webhook-secret'], process.env.SAN_CHECKOUT_WEBHOOK_SECRET);
 }
 
+// O checkout mora em DOIS endereços e eles fazem coisas diferentes (API.md do
+// Checkout, seção 2.1): a tela de pagamento, que o comprador abre no
+// navegador, e a API, que o nosso servidor chama. Usar um só para os dois
+// deixa necessariamente um dos lados errado — era o que acontecia aqui até
+// 14/09/2026. SAN_CHECKOUT_BASE_URL é a TELA; SAN_CHECKOUT_API_URL é a API.
 function linkCheckoutAssinatura(assinaturaId) {
   return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}`;
+}
+
+// Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
+// O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
+// uma troca de endereço não propagada que quebrou a integração antes.
+async function chamarApiCheckout(rota, corpo) {
+  return fetch(`${process.env.SAN_CHECKOUT_API_URL}/api/checkout/${rota}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Checkout-Key': process.env.SAN_CHECKOUT_KEY },
+    body: JSON.stringify(corpo),
+  });
+}
+
+// Conciliação de assinatura (API.md seção 5.3). É a única fonte do `chargeId`
+// — o payload do webhook de assinatura não carrega nenhum id (seção 4.3.4) —
+// e ela reconsulta a Asaas quando a última cobrança parece pendente, então
+// enxerga pagamento que o webhook perdeu. Devolve null se nunca houve
+// assinatura nem tentativa de cobrança (404 estreito, de propósito).
+async function consultarAssinatura(planoId, documento) {
+  const r = await chamarApiCheckout('consultar-assinatura', { planoId, documento });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`consultar-assinatura respondeu ${r.status}`);
+  return r.json();
 }
 
 // Compromisso em meses → ciclo nativo da Asaas (repassado direto pelo San
@@ -117,14 +145,30 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 // (falhou/estornada/cancelada exceto cancelamento, criada) só ficam
 // registrados pro admin revisar, pra nunca derrubar o acesso de alguém sem
 // intervenção humana.
-// Chave de deduplicação do evento. Se o San Checkout mandar um id próprio,
-// usa ele; senão, o hash do corpo — que já barra a reentrega idêntica, que é
-// o caso real (retry por timeout).
-// Sem id, entra o dia na chave: reentrega por timeout chega em minutos e
-// dedupa; a renovação do ciclo seguinte chega meses depois com o mesmo corpo
-// e precisa passar. (Confirmar na auditoria do Checkout se ele manda id.)
-function chaveDoEvento(payload) {
+// Chave de deduplicação do evento. O contrato manda tratar o processamento
+// como idempotente pela chave natural `chargeId` + `status` (API.md do
+// Checkout, 4.3.6) — só que o payload de assinatura NÃO carrega chargeId
+// nenhum: ele tem cinco campos, versao, tipo, planoId, documento e evento
+// (4.3.4). Sem id, o corpo de uma renovação é byte a byte idêntico ao da
+// anterior.
+//
+// O que havia aqui era hash(dia|corpo), e ele erra nas duas pontas: a
+// retentativa que cruza a meia-noite muda de dia, passa pela dedupe e credita
+// um ciclo que ninguém pagou; e duas cobranças reais no mesmo dia viram uma.
+//
+// Então, no único evento que mexe em saldo, o chargeId é buscado na rota de
+// conciliação (5.3) e a chave é a que o contrato pede. Os outros eventos só
+// gravam pendência, não movem dinheiro, e seguem com o hash do corpo + dia.
+async function chaveDoEvento(payload) {
   if (payload.eventoId || payload.cobrancaId) return String(payload.eventoId || payload.cobrancaId);
+
+  if (payload.evento === 'cobranca_confirmada') {
+    const estado = await consultarAssinatura(payload.planoId, payload.documento);
+    const ultima = estado && estado.ultimaCobranca;
+    if (!ultima || !ultima.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
+    return `${ultima.chargeId}|${ultima.status}`;
+  }
+
   const dia = new Date().toISOString().slice(0, 10);
   return crypto.createHash('sha256').update(`${dia}|${JSON.stringify(payload)}`).digest('hex');
 }
@@ -134,11 +178,22 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, 'formato de webhook não reconhecido (esperava tipo=assinatura)');
   }
 
+  let chave;
+  try {
+    chave = await chaveDoEvento(payload);
+  } catch (err) {
+    // Sem a chave natural não há como garantir idempotência, e creditar sem
+    // garantia é dar cobertura que talvez já tenha sido dada. Fica pendente:
+    // a conciliação diária (`npm run conciliar`) enxerga a cobrança e aplica.
+    // É o papel que o próprio contrato dá a ela (4.3.6).
+    return registrarPendencia(payload, `sem chargeId pra deduplicar: ${err.message}`);
+  }
+
   // Reentrega do mesmo evento não pode estender cobertura, gravar outra
   // cobrança nem pagar a comissão do vendedor de novo (migration 018).
   const { rowCount } = await pool.query(
     'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-    [chaveDoEvento(payload)]
+    [chave]
   );
   if (!rowCount) return;
 
@@ -156,9 +211,22 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 
+  return aplicarCicloPago(assinatura, chave, payload);
+}
+
+// Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
+// a comissão. Chamado pelo webhook e pela conciliação diária — as duas rotas
+// passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
+// venha o aviso por webhook ou pela varredura.
+async function aplicarCicloPago(assinatura, chave, payload = null) {
+  const contexto = payload || { tipo: 'assinatura', planoId: assinatura.id, evento: 'cobranca_confirmada', origem: 'conciliacao' };
+
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
-  if (!plano || !anunciante) return registrarPendencia(payload, 'plano ou anunciante não encontrado pra essa assinatura');
+  if (!plano || !anunciante) {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+    return registrarPendencia(contexto, 'plano ou anunciante não encontrado pra essa assinatura');
+  }
 
   // O que a conta paga é o que estava travado na primeira cobrança deste
   // plano (preco_travado) — senão, o valor atual do plano.
@@ -213,7 +281,7 @@ async function processarWebhookAssinatura(payload) {
     await cliente.query('ROLLBACK');
     // Sem isso, o retry do San Checkout cairia na dedupe acima e o evento
     // seria perdido de vez.
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDoEvento(payload)]);
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
     throw err;
   } finally {
     cliente.release();
@@ -230,16 +298,13 @@ async function processarWebhookAssinatura(payload) {
 // checkout — INTEGRACAO.md 6.1). Formato do corpo confirmado com quem
 // administra o San Checkout (v2, campo `documento` — CPF ou CNPJ).
 async function cancelarAssinatura(assinaturaId, documento) {
-  const r = await fetch(`${process.env.SAN_CHECKOUT_BASE_URL}/cancelar-assinatura`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Checkout-Key': process.env.SAN_CHECKOUT_KEY },
-    body: JSON.stringify({ planoId: assinaturaId, documento }),
-  });
+  const r = await chamarApiCheckout('cancelar-assinatura', { planoId: assinaturaId, documento });
   if (!r.ok) throw new Error('falha ao cancelar assinatura no San Checkout');
   return r.json();
 }
 
 module.exports = {
   exigirChaveCheckout, webhookAutorizado, linkCheckoutAssinatura, montarRespostaPlano,
-  processarWebhookAssinatura, cancelarAssinatura,
+  processarWebhookAssinatura, cancelarAssinatura, consultarAssinatura,
+  chaveDoEvento, aplicarCicloPago,
 };

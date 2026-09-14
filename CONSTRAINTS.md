@@ -53,6 +53,19 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 - **`.env` nunca entra no git.** `.env.example` documenta as chaves com valores
   fictícios. Segredo que vazou se revoga — apagar do histórico não basta, como
   13/09/2026 provou (`docs/erros/2026-09-13-env-real-em-repositorio-publico.md`).
+- **O San Checkout tem dois endereços e eles não são intercambiáveis.**
+  `SAN_CHECKOUT_BASE_URL` é a tela que o comprador abre; `SAN_CHECKOUT_API_URL`
+  é a que o nosso servidor chama, sob `/api/checkout/<rota>`. Endereço nunca é
+  montado à mão fora de `chamarApiCheckout`. Usar um só para os dois deixa um
+  dos lados quebrado — foi o que aconteceu até 14/09/2026.
+- **Webhook de assinatura deduplica por `chargeId`, nunca pelo corpo.** O
+  payload não carrega id (API.md do Checkout, 4.3.4) e o corpo de uma renovação
+  é idêntico ao da anterior; o `chargeId` vem da rota de conciliação 5.3. Sem
+  ele, o evento vira pendência e espera a conciliação — nunca é creditado "no
+  escuro".
+- **Benefício comercial se dá no preço, nunca no tempo.** A assinatura não tem
+  carência, mês grátis, pular ciclo nem desconto (API.md 7.5). Desconto e
+  promoção entram no `valor` que o nosso `GET /plano/{id}` devolve.
 - **Plano assinado é imutável para quem assinou** *(decidido em 14/09/2026,
   ainda não construído — item 9 da spec)*. Edição de plano no admin vale só
   para novos assinantes. Precisa estar de pé antes da primeira assinatura paga.
