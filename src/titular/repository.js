@@ -23,7 +23,7 @@ async function exportarConta(anuncianteId) {
   if (!conta) return null;
 
   const [pontos, criativos, assinaturas, cobrancas, comissoesGanhas, comissoesGeradas,
-    exibicoes, pagamentosPonto, vendedor, candidaturas, telas] = await Promise.all([
+    exibicoes, pagamentosPonto, vendedor, candidaturas, eventosDaConta, telas] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
               editado_pelo_operador, status, duracao_segundos, created_at
@@ -47,6 +47,11 @@ async function exportarConta(anuncianteId) {
     q(`SELECT * FROM candidaturas
         WHERE conta_id = $1
            OR contato_email = (SELECT contato_email FROM anunciantes WHERE id = $1)`),
+    // Eventos da métrica também são dado do titular: dizem o que a conta fez
+    // e quando. Ficar de fora da exportação seria guardar registro de alguém
+    // e não entregar quando ela pede.
+    q(`SELECT nome, propriedades, criado_em FROM eventos
+        WHERE anunciante_id = $1 ORDER BY criado_em`),
     q(`SELECT d.id, d.ponto_id, d.apelido, d.status, d.ultima_vez_online,
               d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at
          FROM dispositivos d
@@ -70,6 +75,7 @@ async function exportarConta(anuncianteId) {
     pagamentos_recebidos_como_ponto: pagamentosPonto,
     cadastro_de_vendedor: vendedor,
     candidaturas_de_ponto: candidaturas,
+    eventos_registrados: eventosDaConta,
   };
 }
 

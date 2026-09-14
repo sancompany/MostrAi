@@ -4,6 +4,8 @@ const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr } = require('../financeiro/email');
+const eventos = require('../lib/eventos');
+const metrica = require('./metrica');
 
 const HORAS_OFFLINE_ALERTA = 2;
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
@@ -28,6 +30,11 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
       // o que coloca o vídeo no ar.
       if (dono) enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
+      eventos.registrar('criativo:video_aprova', {
+        horas_ate_aprovar: eventos.horasEntre(criativo.created_at),
+        duracao_segundos: criativo.duracao_segundos,
+        pelo_operador: !!criativo.editado_pelo_operador,
+      }, dono);
     }
     res.json(criativo);
   } catch (err) {
@@ -40,6 +47,13 @@ router.patch('/admin/criativos/:id', async (req, res) => {
 // pedem ação, o resultado do mês e a fotografia da rede. Antes eram 4 abas
 // separadas (margem, offline, eventos, fila) que ninguém abria junto — e o
 // admin não tinha como saber o que estava pendente sem clicar em todas.
+// As três consultas salvas da métrica (funcional.md §9). Ficam num módulo à
+// parte porque são SQL longo e de leitura própria — misturadas no resumo,
+// ninguém acharia nem uma nem outro.
+router.get('/admin/metrica', async (_req, res) => {
+  res.json(await metrica.consultar());
+});
+
 router.get('/admin/resumo', async (_req, res) => {
   const limiteOffline = new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000);
 

@@ -419,7 +419,7 @@ Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 | `plano:assinatura_inicia` | servidor | `plano_id`, `plano_ciclo`, `valor_cobrado` | quantos chegam ao checkout? |
 | `pagamento:cobranca_confirma` | **servidor (webhook)** | `plano_id`, `valor_confirmado`, `ciclo_numero` | quantos pagaram ontem? — é a receita |
 | `criativo:video_aprova` | servidor | `horas_ate_aprovar` | o vídeo entra no ar rápido? (é o mesmo gatilho do e-mail da RN-18) |
-| `exibicao:video_toca` | **servidor (`/played`)** | `dispositivo_id`, `anunciante_id` | a entrega prometida aconteceu? |
+| `exibicao:video_toca` | **não vai para `eventos`** — ver abaixo | — | a entrega prometida aconteceu? |
 | `tela:dispositivo_ativa` | servidor | `ponto_id`, `custo_aparelho` | a rede cresceu quanto? |
 | `ponto:candidatura_aprova` | servidor | `bairro`, `ramo` | de onde vêm os pontos? |
 | `comissao:vendedor_gera` | servidor | `vendedor_id`, `comissao_valor` | quanto a indicação custa? |
@@ -429,10 +429,36 @@ Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 Os três críticos — cadastro, exibição e pagamento confirmado — são **de
 servidor**, nunca do navegador.
 
-> **Pendência da Estação 5:** a tabela `eventos(usuario_id, nome, propriedades,
-> criado_em)` e as três consultas salvas **não existem ainda**. Os nomes acima
-> estão fixados agora, antes da primeira linha de instrumentação, que é o que a
-> Estação 4 exige. O filtro de uso interno (o dono testando) entra junto.
+**Construído em 14/09/2026** (migration 027): tabela
+`eventos(id, nome, anunciante_id, propriedades, interno, criado_em)`,
+`src/lib/eventos.js` para emitir, `src/admin/metrica.js` com as três consultas
+salvas e a aba **Métrica** no admin. Três decisões que a tabela acima não
+dizia, e que precisam de motivo escrito:
+
+1. **`usuario_id` virou `anunciante_id`.** É essa a tabela de gente do sistema
+   — anunciante, dono de ponto e vendedor são papéis da mesma conta.
+2. **`exibicao:video_toca` não vira linha em `eventos`.** `exibicoes_contador`
+   já guarda isso agregado por hora, por tela e por anunciante, com
+   programadas **e** confirmadas — estritamente mais do que a linha de evento
+   carregaria. Uma linha por exibição seria a maior tabela do sistema,
+   crescendo para sempre, para responder a mesma pergunta pior. Fica registrado
+   como decisão, não como esquecimento.
+3. **`conta:cadastro_conclui` também sai do cadastro feito pelo admin.** O
+   negócio fecha por WhatsApp e o dono cadastra o cliente depois; deixar de
+   fora furaria o funil justamente no caminho que mais vende. A propriedade
+   `pelo_operador` separa os dois.
+
+**Filtro de uso interno:** a coluna `interno` é decidida na hora do evento, não
+depois — a conta própria do Mostraí (`conta_propria`) e as contas listadas em
+`EVENTOS_CONTAS_INTERNAS`. Todas as três consultas filtram `NOT interno`.
+Marcar depois seria tarde: o número já teria sido lido.
+
+**As três consultas** (`GET /admin/metrica`): a margem mês a mês, que é a
+métrica principal; o funil cadastro → aprovação → checkout aberto → pagamento,
+onde a distância entre os dois últimos é a única perda que o banco sozinho não
+mostra (assinatura abandonada não vira linha em lugar nenhum); e o tempo das
+filas do dono, em mediana e pior caso — mediana porque uma conta esquecida por
+duas semanas puxaria a média e esconderia que o resto sai no mesmo dia.
 
 ---
 

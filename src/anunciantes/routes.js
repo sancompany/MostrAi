@@ -18,6 +18,7 @@ const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
+const eventos = require('../lib/eventos');
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
 // text/html e o bucket público servia HTML executável no nosso domínio.
@@ -143,6 +144,12 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   }
   // Loga a sessão na hora — o front manda direto pro painel, sem passar pela
   // tela de login de novo (mesmo padrão do POST /seja-um-ponto).
+  eventos.registrar('conta:cadastro_conclui', {
+    papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
+    veio_de_cupom: !!anunciante.indicado_por_cupom,
+    veio_de_convite: !!req.body.convite,
+  }, anunciante);
+
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
     req.session.anuncianteId = anunciante.id;
@@ -171,7 +178,14 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
 // Soft-delete: marca a conta e derruba a sessão na hora. Recuperação é manual
 // pelo suporte dentro de 60 dias (zera excluido_em) — sem tela de undo.
 router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
   await repo.atualizar(req.session.anuncianteId, { excluido_em: new Date() });
+  if (conta) {
+    eventos.registrar('conta:exclusao_pede', {
+      dias_de_vida: eventos.diasEntre(conta.created_at),
+      tinha_plano_ativo: !!conta.plano_id && conta.status === 'ativo',
+    }, conta);
+  }
   req.session.destroy(() => res.json({ ok: true }));
 });
 
@@ -502,13 +516,36 @@ router.post('/admin/anunciantes', async (req, res) => {
       frequencia_dia_propria: Number(req.body.frequencia_dia_propria) || 12,
     });
   }
+  // Conta criada pelo dono também é aquisição: o negócio fecha por WhatsApp e
+  // o admin cadastra o cliente depois. Deixar de fora furaria o funil
+  // justamente no caminho que mais vende. A conta própria do Mostraí não
+  // conta, e não por exceção escrita aqui — `ehInterno` já a marca.
+  eventos.registrar('conta:cadastro_conclui', {
+    papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
+    veio_de_cupom: !!anunciante.indicado_por_cupom,
+    veio_de_convite: false,
+    pelo_operador: true,
+  }, anunciante);
+
   res.status(201).json({ ...anunciante, senhaGerada });
 });
 
 router.patch('/admin/anunciantes/:id', async (req, res) => {
   try {
+    const antes = await repo.buscarPorId(req.params.id);
     const anunciante = await repo.atualizar(req.params.id, req.body);
     if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });
+
+    // Só na TRANSIÇÃO de pendente pra liberado. Sem comparar com o estado
+    // anterior, todo salvamento do admin numa conta já aprovada contaria
+    // como uma aprovação nova e a fila pareceria muito mais movimentada.
+    const liberado = ['aprovado', 'ativo'];
+    if (liberado.includes(anunciante.status) && antes && !liberado.includes(antes.status)) {
+      eventos.registrar('conta:aprovacao_recebe', {
+        papel_liberado: (anunciante.papeis || [])[0] || 'anunciante',
+        horas_ate_aprovar: eventos.horasEntre(anunciante.created_at),
+      }, anunciante);
+    }
     res.json(anunciante);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });

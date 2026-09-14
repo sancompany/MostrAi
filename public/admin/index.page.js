@@ -129,7 +129,10 @@ function selectStatus(mapa, atual, attrs) {
 
 // ---------- navegação ----------
 const NAV = [
-  { grupo: 'Início', itens: [{ id: 'resumo', nome: 'Visão geral' }] },
+  { grupo: 'Início', itens: [
+    { id: 'resumo', nome: 'Visão geral' },
+    { id: 'metrica', nome: 'Métrica' },
+  ] },
   { grupo: 'Entrada', itens: [
     { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas' },
     { id: 'convites', nome: 'Convites' },
@@ -160,6 +163,7 @@ const NAV = [
 
 const SUBTITULOS = {
   resumo: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
+  metrica: 'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
   candidaturas: 'Quem pediu pra ser ponto ou vendedor pelo site. Você conversa, e se fechar, gera o convite daqui.',
   convites: 'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
@@ -223,6 +227,7 @@ async function irPara(aba, forcarResumo) {
     meusanuncios: renderMeusAnuncios,
     arrependimentos: renderArrependimentos,
     planosarquivados: renderPlanosArquivados,
+    metrica: renderMetrica,
   };
   try {
     await telas[alvo](el);
@@ -1248,6 +1253,92 @@ async function renderPlanos(el) {
     toast('Plano criado.');
     renderPlanos(el);
   });
+}
+
+// ---------- métrica ----------
+// As três consultas da seção 9 do funcional, numa tela só. O que elas
+// respondem e por que são essas três está em src/admin/metrica.js — aqui é só
+// a leitura.
+async function renderMetrica(el) {
+  const m = await pegar('/admin/metrica');
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+  const ultimo = m.margem[m.margem.length - 1] || {};
+
+  const funil = m.funil.length ? m.funil : [{ mes: '—', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
+  const totalFunil = funil.reduce((t, f) => ({
+    cadastros: t.cadastros + f.cadastros,
+    aprovacoes: t.aprovacoes + f.aprovacoes,
+    checkouts_abertos: t.checkouts_abertos + f.checkouts_abertos,
+    pagamentos: t.pagamentos + f.pagamentos,
+  }), { cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 });
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Margem deste mês</span><b>${fmt(ultimo.margem || 0)}</b>
+        <span class="delta ${Number(ultimo.margem) >= 0 ? 'up' : 'down'}">${Number(ultimo.margem) >= 0 ? 'no azul' : 'no vermelho'}</span></div>
+      <div class="kpi-card"><span class="kpi-label">Chega ao checkout e paga</span><b>${pct(totalFunil.pagamentos, totalFunil.checkouts_abertos)}</b>
+        <span class="kpi-caption">${totalFunil.pagamentos} de ${totalFunil.checkouts_abertos} em ${m.meses} meses</span></div>
+      <div class="kpi-card"><span class="kpi-label">Cadastra e paga</span><b>${pct(totalFunil.pagamentos, totalFunil.cadastros)}</b>
+        <span class="kpi-caption">${totalFunil.pagamentos} de ${totalFunil.cadastros} cadastros</span></div>
+    </div>
+
+    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Margem mês a mês</h3><span class="kpi-caption">receita confirmada − pontos − amortização − fixos</span></div>
+    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th>Mês</th><th class="num">Receita</th><th class="num">Pontos</th><th class="num">Amortização</th><th class="num">Fixos</th><th class="num">Margem</th>
+    </tr></thead><tbody>
+    ${m.margem.map((r) => `<tr>
+      <td>${esc(r.mes)}</td>
+      <td class="num">${fmt(r.receita)}</td>
+      <td class="num">${fmt(r.custo_pontos)}</td>
+      <td class="num">${fmt(r.amortizacao)}</td>
+      <td class="num">${fmt(r.custos_fixos)}</td>
+      <td class="num"><b class="${Number(r.margem) >= 0 ? 'delta up' : 'delta down'}">${fmt(r.margem)}</b></td>
+    </tr>`).join('')}
+    </tbody></table></div></div>
+    <p class="form-hint u-m-0 u-mb-20">Os três custos são os de <b>hoje</b>, repetidos em todo mês da tabela: o sistema não guarda quanto a rede custava em março. Só a receita é histórica de verdade.</p>
+
+    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Funil, mês a mês</h3><span class="kpi-caption">cadastrou → aprovado → abriu o checkout → pagou</span></div>
+    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th>Mês</th><th class="num">Cadastros</th><th class="num">Aprovações</th><th class="num">Checkouts abertos</th><th class="num">Pagamentos</th><th class="num">Checkout → pago</th>
+    </tr></thead><tbody>
+    ${m.funil.length ? m.funil.map((f) => `<tr>
+      <td>${esc(f.mes)}</td>
+      <td class="num">${f.cadastros}</td>
+      <td class="num">${f.aprovacoes}</td>
+      <td class="num">${f.checkouts_abertos}</td>
+      <td class="num"><b>${f.pagamentos}</b></td>
+      <td class="num">${pct(f.pagamentos, f.checkouts_abertos)}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="u-dim">Nenhum evento ainda.</td></tr>'}
+    </tbody></table></div></div>
+
+    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Tempo das suas filas</h3><span class="kpi-caption">últimas 90 dias, por semana</span></div>
+    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th>Semana</th><th>Fila</th><th class="num">Quantidade</th><th class="num">Mediana (h)</th><th class="num">Pior caso (h)</th>
+    </tr></thead><tbody>
+    ${m.filas.length ? m.filas.map((f) => `<tr>
+      <td>${esc(f.semana)}</td>
+      <td>${f.nome === 'conta:aprovacao_recebe' ? 'Aprovar conta' : 'Aprovar criativo'}</td>
+      <td class="num">${f.quantidade}</td>
+      <td class="num"><b>${f.mediana_horas ?? '—'}</b></td>
+      <td class="num">${f.pior_caso_horas ?? '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="u-dim">Nada aprovado nos últimos 90 dias.</td></tr>'}
+    </tbody></table></div></div>
+    <p class="form-hint u-m-0 u-mb-20">Mediana, não média: uma conta esquecida por duas semanas puxaria a média e esconderia que o resto sai no mesmo dia.</p>
+
+    <details>
+      <summary class="u-pointer u-dim u-fs-85 u-py-8">Instrumentação: o que está sendo gravado</summary>
+      <div class="tabela-caixa u-mt-8"><div class="rolagem"><table><thead><tr>
+        <th>Evento</th><th class="num">Total</th><th class="num">Internos</th><th>Último</th>
+      </tr></thead><tbody>
+      ${m.eventos.length ? m.eventos.map((e) => `<tr>
+        <td><code>${esc(e.nome)}</code></td>
+        <td class="num">${e.total}</td>
+        <td class="num">${e.internos}</td>
+        <td>${data(e.ultimo)}</td>
+      </tr>`).join('') : '<tr><td colspan="4" class="u-dim">Nenhum evento gravado ainda.</td></tr>'}
+      </tbody></table></div></div>
+      <p class="form-hint">Evento que nunca aparece aqui é evento que ninguém emite. <code>exibicao:video_toca</code> não entra nesta tabela de propósito — ele já existe agregado em "Telas", por hora e por anunciante, com programadas e confirmadas.</p>
+    </details>`;
 }
 
 // ---------- planos arquivados ----------

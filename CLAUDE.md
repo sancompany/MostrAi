@@ -38,11 +38,11 @@ Fechadas:
   fechada contra o `API.md` do Checkout; inventário de dados revisado;
   `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
   evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
-Falta para fechar a atual: item 8 da spec (desconto de comodato por linha
-da grade); tabela de eventos da métrica;
-**a versão inicial no ar** — que é o que fecha a estação. Direitos do titular
-construídos em 14/09 (RN-24, RN-25, RN-26): exportar dados, revogar
-consentimento e arrependimento em 7 dias com devolução na fila do admin.
+Falta para fechar a atual: item 8 da spec (desconto de comodato por linha da
+grade) e **a versão inicial no ar** — que é o que fecha a estação.
+Fechados em 14/09: direitos do titular (RN-24 a RN-26), plano imutável para
+quem já assinou (item 9, RN-27) e a tabela de eventos da métrica com as três
+consultas salvas (aba Métrica no admin).
 Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 
 ## Mapa de caminhos

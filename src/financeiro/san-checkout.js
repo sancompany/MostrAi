@@ -6,6 +6,7 @@ const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const { enviarConfirmacaoPagamento } = require('./email');
+const eventos = require('../lib/eventos');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -163,6 +164,14 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
      VALUES ($1,$2,$3,$4)`,
     [vendedor.conta_id, anunciante.id, valor, comissaoValor]
   );
+  // Dono do evento é o VENDEDOR, não quem comprou: a pergunta é "quanto a
+  // indicação custa", e ela se responde por vendedor.
+  eventos.registrar('comissao:vendedor_gera', {
+    anunciante_id: vendedor.conta_id,
+    vendedor_id: vendedor.conta_id,
+    comissao_valor: comissaoValor,
+    valor_confirmado: valor,
+  });
 }
 
 // Handler do POST /webhook/san-checkout pro evento de assinatura
@@ -324,6 +333,18 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     cliente.release();
   }
 
+  // Só depois do COMMIT: evento de receita que existisse sem a cobrança no
+  // banco mentiria o número mais importante do projeto.
+  const { rows: ciclos } = await pool.query(
+    'SELECT COUNT(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1 AND plano_id = $2',
+    [anunciante.id, plano.id],
+  );
+  eventos.registrar('pagamento:cobranca_confirma', {
+    plano_id: plano.id,
+    valor_confirmado: valorCiclo,
+    ciclo_numero: ciclos[0].n,
+  }, anunciante);
+
   enviarConfirmacaoPagamento(anunciante, plano, valorCiclo).catch((err) => {
     console.error('falha ao enviar e-mail de confirmação', err);
   });
@@ -341,6 +362,7 @@ async function cancelarAssinatura(assinaturaId, documento) {
 }
 
 module.exports = {
+  valorMensalDaConta,
   exigirChaveCheckout, webhookAutorizado, linkCheckoutAssinatura, montarRespostaPlano,
   processarWebhookAssinatura, cancelarAssinatura, consultarAssinatura,
   chaveDoEvento, aplicarCicloPago,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const repo = require('./repository');
+const eventos = require('../lib/eventos');
 const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
@@ -25,8 +26,18 @@ router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
 
 router.patch('/admin/dispositivos/:id', async (req, res) => {
   try {
+    const antes = await repo.buscarPorId(req.params.id);
     const dispositivo = await repo.atualizar(req.params.id, req.body);
     if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });
+
+    // Só na transição pra ativo: uma tela que volta do reparo conta como
+    // rede crescendo, uma que é salva de novo já ativa não.
+    if (dispositivo.status === 'ativo' && antes && antes.status !== 'ativo') {
+      eventos.registrar('tela:dispositivo_ativa', {
+        ponto_id: dispositivo.ponto_id,
+        custo_aparelho: dispositivo.custo_equipamento,
+      });
+    }
     res.json(dispositivo);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'valor inválido' });

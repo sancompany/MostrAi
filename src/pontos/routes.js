@@ -4,6 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const repo = require('./repository');
+const eventos = require('../lib/eventos');
 const planosPontoRepo = require('./planos-ponto-repository');
 const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
@@ -183,7 +184,15 @@ router.post('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
 });
 
 router.patch('/admin/pagamentos-ponto/:id', async (req, res) => {
-  const linha = await pagamentosRepo.marcarPago(req.params.id, Boolean(req.body.pago));
+  const pago = Boolean(req.body.pago);
+  const linha = await pagamentosRepo.marcarPago(req.params.id, pago);
   if (!linha) return res.status(404).json({ erro: 'lançamento não encontrado' });
+  // Só ao quitar. Desfazer não emite evento negativo: a pergunta é quanto a
+  // rede custou, e desfazer é correção de lançamento, não custo.
+  if (pago) {
+    eventos.registrar('ponto:pagamento_quita', {
+      ponto_id: linha.ponto_id, valor: linha.valor, competencia: linha.competencia,
+    });
+  }
   res.json(linha);
 });

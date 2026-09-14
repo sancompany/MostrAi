@@ -12,6 +12,7 @@ const drive = require('./drive');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const anunciantesRepo = require('../anunciantes/repository');
+const eventos = require('../lib/eventos');
 
 const uploadNota = multer({ dest: os.tmpdir() });
 
@@ -216,6 +217,14 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   if (!assinatura) {
     assinatura = await assinaturasRepo.criar({ anuncianteId: req.session.anuncianteId, planoId: plano.id });
   }
+
+  // Emitido ao entregar o link, não ao pagar: a distância entre este evento e
+  // `pagamento:cobranca_confirma` é exatamente quantos desistem no checkout.
+  eventos.registrar('plano:assinatura_inicia', {
+    plano_id: plano.id,
+    plano_ciclo: plano.compromisso_meses,
+    valor_cobrado: sanCheckout.valorMensalDaConta(conta, plano),
+  }, conta);
 
   res.json({ checkoutUrl: sanCheckout.linkCheckoutAssinatura(assinatura.id) });
 });

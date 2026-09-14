@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const repo = require('./repository');
+const eventos = require('../lib/eventos');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 
 // Público. Substitui o cadastro aberto de ponto e de vendedor.
@@ -20,8 +21,19 @@ router.get('/admin/candidaturas', async (_req, res) => res.json(await repo.lista
 
 router.patch('/admin/candidaturas/:id', async (req, res) => {
   if (req.body.status && !repo.STATUS.includes(req.body.status)) return res.status(400).json({ erro: 'status inválido' });
+  const antes = await repo.buscarPorId(req.params.id);
   const c = await repo.atualizar(req.params.id, req.body);
   if (!c) return res.status(404).json({ erro: 'candidatura não encontrada' });
+
+  if (c.status === 'aprovada' && antes && antes.status !== 'aprovada') {
+    eventos.registrar('ponto:candidatura_aprova', {
+      tipo: c.tipo,
+      cidade: c.cidade,
+      uf: c.uf,
+      ramo: c.segmento,
+      dias_ate_aprovar: eventos.diasEntre(c.criado_em),
+    });
+  }
   res.json(c);
 });
 
