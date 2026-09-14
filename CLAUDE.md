@@ -10,7 +10,8 @@ Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
 - `docs/PENDENCIAS.md` — o que falta, e o que só o dono faz
 - `docs/api.md` — o mapa das rotas
 - `README.md` — como rodar e testar
-- `docs/funcional.md` e `RUNBOOK.md` — **não existem ainda** (Estações 4 e 6)
+- `RUNBOOK.md` — como operar, reverter e restaurar
+- `docs/funcional.md` — o que o sistema faz, tela por tela
 
 ## Classificação
 Porte: produto externo, com cliente pagante · Dado: financeiro, senha,
@@ -18,19 +19,24 @@ documento · Vida útil: anos → **rigor no topo da escala**. Nenhuma lei
 dispensada por proporcionalidade.
 
 ## Estado na esteira
-Estação atual: **3 — Fundação**, não aberta ainda — Estação 2 fechou nesta data.
+Estação atual: **4 — Contratos**, aberta em 14/09/2026.
 Fechadas:
 - 1 Escopo — validada, reaberta e refechada em 14/09/2026 quando o contrato do
   San Checkout foi lido pela primeira vez · evidência:
   `docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Reabertura e
   novo fecho da Estação 1"
-- 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura —
-  os quatro testes) e a hospedagem da Fase 2 (Northflank + Supabase próprio,
-  mesma região; Cloudflare Access pendente, exceção registrada); nada mudou ·
-  evidência: `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
-Próxima estação: 3 — Fundação, pede Sonnet com esforço médio (repositório e
-árvore já existem; falta confirmar CI verde num push real e criar o
-`RUNBOOK.md`).
+- 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura) e
+  a hospedagem (Northflank + Supabase próprio, mesma região) · evidência:
+  `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
+- 3 Fundação — repositório e árvore de pastas conformes à Lei 1; `.env` fora do
+  versionamento com guarda no CI; **CI verde num push real** (`ci` run #9,
+  commit `3c98465`, `success`, em `main`); `RUNBOOK.md` iniciado; `CLAUDE.md`
+  verdadeiro · evidência: este arquivo, `RUNBOOK.md` e a execução do CI
+Falta para fechar a atual: `docs/funcional.md` respondendo às quatro perguntas
+de prontidão; inventário de dados revisado; contrato de API conferido contra o
+código.
+Próxima estação: 5 — Construção, pede Sonnet com esforço médio a alto (Opus nas
+partes difíceis: itens 8 e 9 da spec).
 
 ## Mapa de caminhos
 - Entrada da aplicação: `src/server.js` · rotas e regras: `src/<domínio>/`
