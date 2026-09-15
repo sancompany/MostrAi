@@ -7,8 +7,18 @@
 // Uso: montarPerfil() depois de ter a conta carregada. Requer /config.js e
 // /layout.js (avatar do cabeçalho e window.ROTULOS) antes.
 (function () {
-  const CAMPOS_EDITAVEIS = ['nome_empresa', 'endereco', 'cidade', 'uf', 'cep', 'contato_telefone',
-    'responsavel_nome', 'responsavel_cpf', 'responsavel_telefone', 'responsavel_email'];
+  const CAMPOS_EDITAVEIS = [
+    'nome_empresa',
+    'endereco',
+    'cidade',
+    'uf',
+    'cep',
+    'contato_telefone',
+    'responsavel_nome',
+    'responsavel_cpf',
+    'responsavel_telefone',
+    'responsavel_email',
+  ];
 
   const inicialDe = (nome) => (nome || '?').trim().charAt(0).toUpperCase();
 
@@ -107,11 +117,16 @@
       // duas requisicoes inuteis por pagina, e uma imagem "quebrada" no DOM.
       // Sem foto, o atributo sai.
       if (img) {
-        if (temFoto) img.src = conta.foto_url; else img.removeAttribute('src');
+        if (temFoto) img.src = conta.foto_url;
+        else img.removeAttribute('src');
         img.hidden = !temFoto;
       }
-      if (inicial) { inicial.hidden = temFoto; inicial.textContent = inicialDe(conta.nome_empresa); }
-      if (temFoto) preview.src = conta.foto_url; else preview.removeAttribute('src');
+      if (inicial) {
+        inicial.hidden = temFoto;
+        inicial.textContent = inicialDe(conta.nome_empresa);
+      }
+      if (temFoto) preview.src = conta.foto_url;
+      else preview.removeAttribute('src');
       preview.hidden = !temFoto;
       inicialDlg.hidden = temFoto;
       inicialDlg.textContent = inicialDe(conta.nome_empresa);
@@ -123,13 +138,17 @@
       $('perfilNome').textContent = conta.nome_empresa || '';
       $('perfilStatusBadge').textContent = ROTULOS.anunciante[conta.status] || conta.status || '';
       const form = $('formPerfil');
-      CAMPOS_EDITAVEIS.forEach((campo) => { if (form[campo]) form[campo].value = conta[campo] || ''; });
+      CAMPOS_EDITAVEIS.forEach((campo) => {
+        if (form[campo]) form[campo].value = conta[campo] || '';
+      });
       pintarAvatar();
     }
 
     function travarCampos(travado) {
       const form = $('formPerfil');
-      CAMPOS_EDITAVEIS.forEach((c) => { if (form[c]) form[c].disabled = travado; });
+      CAMPOS_EDITAVEIS.forEach((c) => {
+        if (form[c]) form[c].disabled = travado;
+      });
       $('btnEditarPerfil').hidden = !travado;
       $('btnSalvarPerfil').hidden = travado;
     }
@@ -139,7 +158,9 @@
     const abrir = () => dlg.showModal();
     if ($('btnPerfil')) $('btnPerfil').addEventListener('click', abrir);
     $('btnFecharPerfil').addEventListener('click', () => dlg.close());
-    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+    dlg.addEventListener('click', (e) => {
+      if (e.target === dlg) dlg.close();
+    });
     $('btnEditarPerfil').addEventListener('click', () => travarCampos(false));
 
     $('formPerfil').addEventListener('submit', async (e) => {
@@ -177,7 +198,11 @@
       const form = new FormData();
       form.append('arquivo', arquivo);
       try {
-        const r = await fetch(`${API_BASE_URL}/anunciantes/me/foto`, { method: 'POST', credentials: 'include', body: form });
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/foto`, {
+          method: 'POST',
+          credentials: 'include',
+          body: form,
+        });
         if (!r.ok) throw new Error();
         conta = await r.json();
         pintarAvatar();
@@ -199,7 +224,12 @@
     });
 
     $('btnExcluirConta').addEventListener('click', async () => {
-      if (!confirm('Tem certeza que quer excluir sua conta? Ela fica recuperável por 60 dias — depois disso é apagada de vez. Pra recuperar dentro desse prazo, fale com o suporte pelo WhatsApp.')) return;
+      if (
+        !confirm(
+          'Tem certeza que quer excluir sua conta? Ela fica recuperável por 60 dias — depois disso é apagada de vez. Pra recuperar dentro desse prazo, fale com o suporte pelo WhatsApp.',
+        )
+      )
+        return;
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/excluir`, { method: 'POST', credentials: 'include' });
       if (!r.ok) return alert('Não foi possível excluir a conta agora. Fale com o suporte.');
       window.location.href = '/';
@@ -221,20 +251,28 @@
     chk.checked = !conta.comunicacoes_revogado_em;
     chk.addEventListener('change', async () => {
       const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
-        method: 'POST', credentials: 'include',
+        method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ escopo: 'comunicacoes', aceita: chk.checked }),
       });
-      if (!r.ok) { chk.checked = !chk.checked; return dizer('Não deu pra salvar agora.', 'err'); }
+      if (!r.ok) {
+        chk.checked = !chk.checked;
+        return dizer('Não deu pra salvar agora.', 'err');
+      }
       const d = await r.json();
       conta.comunicacoes_revogado_em = d.comunicacoes_revogado_em;
-      dizer(chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado — não mandamos mais novidades.', 'ok');
+      dizer(
+        chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado — não mandamos mais novidades.',
+        'ok',
+      );
     });
 
     $('btnApagarOpcionais').addEventListener('click', async () => {
       if (!confirm('Apagar o contato do responsável e a foto da conta? Não dá pra desfazer.')) return;
       const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
-        method: 'POST', credentials: 'include',
+        method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ escopo: 'opcionais' }),
       });
@@ -253,27 +291,37 @@
       let d;
       try {
         d = await (await fetch(`${API_BASE_URL}/titular/arrependimento`, { credentials: 'include' })).json();
-      } catch { return; }
+      } catch {
+        return;
+      }
       const bloco = $('blocoArrependimento');
       if (d.pedido) {
         bloco.hidden = false;
         $('btnArrependimento').hidden = true;
-        $('textoArrependimento').textContent = d.pedido.status === 'estornado'
-          ? `Desistência registrada e valor devolvido (protocolo ${d.pedido.id}).`
-          : `Desistência registrada (protocolo ${d.pedido.id}). A devolução de `
-            + `${fmtBRL(d.pedido.valor_a_estornar)} está em andamento.`;
+        $('textoArrependimento').textContent =
+          d.pedido.status === 'estornado'
+            ? `Desistência registrada e valor devolvido (protocolo ${d.pedido.id}).`
+            : `Desistência registrada (protocolo ${d.pedido.id}). A devolução de ` +
+              `${fmtBRL(d.pedido.valor_a_estornar)} está em andamento.`;
         return;
       }
       if (!d.disponivel) return;
       bloco.hidden = false;
       const ate = new Date(d.prazo_ate).toLocaleDateString('pt-BR');
-      $('textoArrependimento').textContent = `Você tem até ${ate} pra desistir da contratação `
-        + `e receber ${fmtBRL(d.valor_a_estornar)} de volta (7 dias, art. 49 do Código de Defesa `
-        + `do Consumidor). O anúncio sai do ar na hora.`;
+      $('textoArrependimento').textContent =
+        `Você tem até ${ate} pra desistir da contratação ` +
+        `e receber ${fmtBRL(d.valor_a_estornar)} de volta (7 dias, art. 49 do Código de Defesa ` +
+        `do Consumidor). O anúncio sai do ar na hora.`;
       $('btnArrependimento').addEventListener('click', async () => {
-        if (!confirm(`Desistir da contratação e pedir ${fmtBRL(d.valor_a_estornar)} de volta? Seu anúncio sai do ar agora.`)) return;
+        if (
+          !confirm(
+            `Desistir da contratação e pedir ${fmtBRL(d.valor_a_estornar)} de volta? Seu anúncio sai do ar agora.`,
+          )
+        )
+          return;
         const r = await fetch(`${API_BASE_URL}/titular/arrependimento`, {
-          method: 'POST', credentials: 'include',
+          method: 'POST',
+          credentials: 'include',
         });
         const corpo = await r.json().catch(() => ({}));
         if (!r.ok) return dizer(corpo.erro || 'Não deu pra registrar agora.', 'err');

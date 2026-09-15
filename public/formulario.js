@@ -18,7 +18,10 @@ function ligarCep(escopo) {
       const cep = input.value.replace(/\D/g, '');
       const aviso = form.querySelector('[data-cep-msg]');
       if (cep.length !== 8) return;
-      if (aviso) { aviso.textContent = 'Buscando endereço...'; aviso.className = 'form-hint'; }
+      if (aviso) {
+        aviso.textContent = 'Buscando endereço...';
+        aviso.className = 'form-hint';
+      }
       try {
         const dados = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
         if (dados.erro) throw new Error();
@@ -31,7 +34,10 @@ function ligarCep(escopo) {
         const numero = achar('numero');
         if (numero) numero.focus();
       } catch {
-        if (aviso) { aviso.textContent = 'CEP não encontrado — pode preencher o endereço na mão.'; aviso.className = 'form-hint'; }
+        if (aviso) {
+          aviso.textContent = 'CEP não encontrado — pode preencher o endereço na mão.';
+          aviso.className = 'form-hint';
+        }
       }
     });
   });
@@ -62,8 +68,9 @@ async function ligarCategorias(escopo) {
   }
 
   selects.forEach((sel) => {
-    sel.innerHTML = '<option value="">Selecione...</option>'
-      + categorias.map((c) => `<option value="${c.id}" data-nome="${c.nome}">${c.nome}</option>`).join('');
+    sel.innerHTML =
+      '<option value="">Selecione...</option>' +
+      categorias.map((c) => `<option value="${c.id}" data-nome="${c.nome}">${c.nome}</option>`).join('');
     const form = sel.closest('form') || document;
     const livre = form.querySelector('[data-categoria-livre]');
     if (!livre) return;
@@ -106,7 +113,8 @@ function ligarMostrarSenha(escopo) {
     btn.type = 'button';
     btn.className = 'senha-olho';
     btn.setAttribute('aria-label', 'Mostrar senha');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7.5C2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 5c-5 0-9.27 3.11-11 7.5C2.73 16.89 7 20 12 20s9.27-3.11 11-7.5C21.27 8.11 17 5 12 5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
     wrap.appendChild(btn);
     btn.addEventListener('click', () => {
       const mostrando = input.type === 'text';
@@ -128,7 +136,11 @@ function ligarForcaSenha(escopo) {
     dica.textContent = 'Mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo (ex.: @, #, -).';
     (input.closest('.senha-wrap') || input).insertAdjacentElement('afterend', dica);
     const conferir = () => {
-      input.setCustomValidity(input.value && !REGRA_SENHA.test(input.value) ? 'A senha precisa ter 8+ caracteres com maiúscula, minúscula, número e símbolo.' : '');
+      input.setCustomValidity(
+        input.value && !REGRA_SENHA.test(input.value)
+          ? 'A senha precisa ter 8+ caracteres com maiúscula, minúscula, número e símbolo.'
+          : '',
+      );
     };
     input.addEventListener('input', conferir);
   });

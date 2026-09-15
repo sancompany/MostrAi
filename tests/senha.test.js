@@ -36,7 +36,11 @@ test('hash vazio ou de formato desconhecido nunca passa', async () => {
 
 test('bcrypt legado confere e pede migração', async () => {
   let bcrypt;
-  try { bcrypt = require('bcrypt'); } catch { return; } // sem bcrypt instalado, nada a migrar
+  try {
+    bcrypt = require('bcrypt');
+  } catch {
+    return;
+  } // sem bcrypt instalado, nada a migrar
   const legado = await bcrypt.hash('Senha12@', 4);
   assert.deepStrictEqual(await conferirHash('Senha12@', legado), { ok: true, precisaMigrar: true });
   assert.deepStrictEqual(await conferirHash('outra', legado), { ok: false, precisaMigrar: false });

@@ -16,10 +16,12 @@ function embaralhar(lista) {
 // anunciantes: [{ id, frequenciaBase, deficit }] → lista de ids repetidos
 // representando a playlist da hora (já embaralhada e com o teto aplicado)
 function calcularPlaylist(anunciantes) {
-  const pedidos = embaralhar(anunciantes.map((a) => ({
-    id: a.id,
-    quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
-  })));
+  const pedidos = embaralhar(
+    anunciantes.map((a) => ({
+      id: a.id,
+      quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
+    })),
+  );
   const total = pedidos.reduce((soma, p) => soma + p.quer, 0);
 
   // O teto era aplicado com um `slice` na lista já sorteada: quem ficasse pra

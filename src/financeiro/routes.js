@@ -50,7 +50,7 @@ router.post('/admin/planos', async (req, res) => {
     return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
   }
   const ativo = req.body.ativo === undefined ? true : req.body.ativo;
-  if (ativo && await planosRepo.vagaOcupada(Number(compromisso_meses), null, !!req.body.fundador)) {
+  if (ativo && (await planosRepo.vagaOcupada(Number(compromisso_meses), null, !!req.body.fundador))) {
     return res.status(409).json({
       erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes (quem já assina continua pagando igual)`,
     });
@@ -88,8 +88,10 @@ router.patch('/admin/planos/:id', async (req, res) => {
 
   // Reativar só passa se ainda houver vaga na vitrine daquela modalidade.
   // Desativar nunca é barrado.
-  if (req.body.ativo === true
-      && await planosRepo.vagaOcupada(Number(atual.compromisso_meses), req.params.id, !!atual.fundador)) {
+  if (
+    req.body.ativo === true &&
+    (await planosRepo.vagaOcupada(Number(atual.compromisso_meses), req.params.id, !!atual.fundador))
+  ) {
     return res.status(409).json({
       erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
     });
@@ -114,12 +116,12 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
   }
   // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
   // constraint do banco — devolve o motivo em vez do erro genérico.
-  const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos']
-    .find((c) => c in req.body && (req.body[c] === null || req.body[c] === ''));
+  const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos'].find(
+    (c) => c in req.body && (req.body[c] === null || req.body[c] === ''),
+  );
   if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });
 
-  const mudou = [...planosRepo.CAMPOS_CONTRATO, ...planosRepo.CAMPOS_VITRINE]
-    .some((c) => c in req.body);
+  const mudou = [...planosRepo.CAMPOS_CONTRATO, ...planosRepo.CAMPOS_VITRINE].some((c) => c in req.body);
   if (!mudou) return res.status(400).json({ erro: 'nada mudou — não faz versão nova à toa' });
 
   // A versão nova nasce ativa e a antiga sai da vitrine na mesma transação,
@@ -127,8 +129,10 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
   // aí ela entra num ciclo onde talvez já haja três.
   const cicloNovo = Number(req.body.compromisso_meses || atual.compromisso_meses);
   const ehFundador = 'fundador' in req.body ? !!req.body.fundador : !!atual.fundador;
-  if (cicloNovo !== Number(atual.compromisso_meses)
-      && await planosRepo.vagaOcupada(cicloNovo, req.params.id, ehFundador)) {
+  if (
+    cicloNovo !== Number(atual.compromisso_meses) &&
+    (await planosRepo.vagaOcupada(cicloNovo, req.params.id, ehFundador))
+  ) {
     return res.status(409).json({
       erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
     });
@@ -195,7 +199,8 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   // não pediu. Sem ele, manda completar o perfil antes.
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta || conta.excluido_em) return res.status(403).json({ erro: 'conta indisponível' });
-  if (conta.status === 'suspenso') return res.status(403).json({ erro: 'conta suspensa — fale com o suporte antes de assinar' });
+  if (conta.status === 'suspenso')
+    return res.status(403).json({ erro: 'conta suspensa — fale com o suporte antes de assinar' });
   if (!conta.endereco || !conta.cidade || !conta.uf || !conta.cep) {
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
   }
@@ -210,7 +215,8 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // (cancela no Checkout e assina de novo). Se nunca foi paga, é só um
     // clique antigo: cancela localmente e segue.
     const pagou = conta.status === 'ativo' && conta.plano_id === assinatura.plano_id;
-    if (pagou) return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
+    if (pagou)
+      return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
     await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
   }
@@ -220,11 +226,15 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
 
   // Emitido ao entregar o link, não ao pagar: a distância entre este evento e
   // `pagamento:cobranca_confirma` é exatamente quantos desistem no checkout.
-  eventos.registrar('plano:assinatura_inicia', {
-    plano_id: plano.id,
-    plano_ciclo: plano.compromisso_meses,
-    valor_cobrado: sanCheckout.valorMensalDaConta(conta, plano),
-  }, conta);
+  eventos.registrar(
+    'plano:assinatura_inicia',
+    {
+      plano_id: plano.id,
+      plano_ciclo: plano.compromisso_meses,
+      valor_cobrado: sanCheckout.valorMensalDaConta(conta, plano),
+    },
+    conta,
+  );
 
   res.json({ checkoutUrl: sanCheckout.linkCheckoutAssinatura(assinatura.id) });
 });
@@ -270,9 +280,15 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
 
   // Liberar de graça por cima de quem PAGA apagaria a cobertura comprada e
   // pareceria um upgrade. Quem já paga, cancela primeiro.
-  if (anunciante.plano_id && !anunciante.plano_cortesia
-      && anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()) {
-    return res.status(409).json({ erro: 'essa conta tem plano pago ativo — cancele a assinatura antes de liberar cortesia' });
+  if (
+    anunciante.plano_id &&
+    !anunciante.plano_cortesia &&
+    anunciante.data_expiracao &&
+    new Date(anunciante.data_expiracao) > new Date()
+  ) {
+    return res
+      .status(409)
+      .json({ erro: 'essa conta tem plano pago ativo — cancele a assinatura antes de liberar cortesia' });
   }
 
   const duracao = Number(meses) > 0 ? Number(meses) : plano.compromisso_meses;
@@ -311,7 +327,7 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
 // automaticamente ou eventos sem ação automática — ver san-checkout.js)
 router.get('/admin/eventos-pendentes', async (_req, res) => {
   const { rows } = await pool.query(
-    `SELECT * FROM eventos_assinatura_pendentes WHERE resolvido = false ORDER BY criado_em DESC`
+    `SELECT * FROM eventos_assinatura_pendentes WHERE resolvido = false ORDER BY criado_em DESC`,
   );
   res.json(rows);
 });
@@ -329,7 +345,9 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   const payload = evento.payload || {};
   const assinatura = payload.planoId ? await assinaturasRepo.buscarPorId(payload.planoId) : null;
   if (!assinatura) {
-    return res.status(400).json({ erro: 'esse evento não aponta pra nenhuma assinatura conhecida — resolva pela conta do anunciante' });
+    return res
+      .status(400)
+      .json({ erro: 'esse evento não aponta pra nenhuma assinatura conhecida — resolva pela conta do anunciante' });
   }
 
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
@@ -347,22 +365,27 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
     // Mensagem do erro vai pro log, não pra tela: ela carrega a URL da API do
     // Checkout, que é endereço de infraestrutura.
     console.error('falha ao consultar assinatura no Checkout', err);
-    return res.status(502).json({ erro: 'não deu pra conferir essa assinatura no Checkout agora — tente de novo em alguns minutos' });
+    return res
+      .status(502)
+      .json({ erro: 'não deu pra conferir essa assinatura no Checkout agora — tente de novo em alguns minutos' });
   }
   if (ultima?.status !== 'confirmado' || !ultima.chargeId) {
-    return res.status(400).json({ erro: 'o Checkout não mostra cobrança confirmada nessa assinatura — nada a creditar' });
+    return res
+      .status(400)
+      .json({ erro: 'o Checkout não mostra cobrança confirmada nessa assinatura — nada a creditar' });
   }
 
   // A chave é a mesma que o webhook e a conciliação usariam (chargeId|status):
   // assim o mesmo pagamento não vira dois ciclos, venha por onde vier.
   const chave = `${ultima.chargeId}|${ultima.status}`;
-  const { rowCount } = await pool.query(
-    'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-    [chave]
-  );
+  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    chave,
+  ]);
   if (!rowCount) {
     await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
-    return res.status(409).json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
+    return res
+      .status(409)
+      .json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
   }
 
   try {
@@ -377,7 +400,7 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
 router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
   const { rows } = await pool.query(
     `UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1 RETURNING *`,
-    [req.params.id]
+    [req.params.id],
   );
   res.json(rows[0] || null);
 });
@@ -385,7 +408,7 @@ router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
 router.get('/admin/cobrancas', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT c.*, a.nome_empresa FROM cobrancas_confirmadas c
-     JOIN anunciantes a ON a.id = c.anunciante_id ORDER BY c.criado_em DESC`
+     JOIN anunciantes a ON a.id = c.anunciante_id ORDER BY c.criado_em DESC`,
   );
   res.json(rows);
 });
@@ -399,7 +422,10 @@ router.patch('/admin/cobrancas/:id/nota-fiscal', uploadNota.single('arquivo'), a
     if (!cobranca) return res.status(404).json({ erro: 'cobrança não encontrada' });
 
     const { driveFileId, url } = await drive.subirNotaFiscal(req.file.path, `nota-fiscal-${req.params.id}.pdf`);
-    const atualizada = await cobrancasRepo.marcarNotaFiscal(req.params.id, { nota_fiscal_url: url, drive_file_id: driveFileId });
+    const atualizada = await cobrancasRepo.marcarNotaFiscal(req.params.id, {
+      nota_fiscal_url: url,
+      drive_file_id: driveFileId,
+    });
     res.json(atualizada);
   } finally {
     fs.unlink(req.file.path, () => {});
@@ -415,15 +441,20 @@ const vendedoresRepo = require('./vendedores-repository');
 
 function exigirVendedorLogado(req, res, next) {
   if (!req.session.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
-  vendedoresRepo.buscarPorConta(req.session.anuncianteId).then((v) => {
-    if (!v) return res.status(403).json({ erro: 'esta conta não é de vendedor' });
-    req.vendedor = v;
-    next();
-  }).catch(next);
+  vendedoresRepo
+    .buscarPorConta(req.session.anuncianteId)
+    .then((v) => {
+      if (!v) return res.status(403).json({ erro: 'esta conta não é de vendedor' });
+      req.vendedor = v;
+      next();
+    })
+    .catch(next);
 }
 
 ['/afiliados/cadastro', '/afiliados/login', '/afiliados/logout'].forEach((rota) => {
-  router.post(rota, (_req, res) => res.status(410).json({ erro: 'vendedor agora usa a conta única — entre em /anunciante/login.html' }));
+  router.post(rota, (_req, res) =>
+    res.status(410).json({ erro: 'vendedor agora usa a conta única — entre em /anunciante/login.html' }),
+  );
 });
 
 router.get('/vendedor/painel', exigirVendedorLogado, async (req, res) => {
@@ -431,11 +462,17 @@ router.get('/vendedor/painel', exigirVendedorLogado, async (req, res) => {
     `SELECT c.*, a.nome_empresa FROM comissoes c
      JOIN anunciantes a ON a.id = c.anunciante_id
      WHERE c.vendedor_conta_id = $1 ORDER BY c.criado_em DESC`,
-    [req.vendedor.conta_id]
+    [req.vendedor.conta_id],
   );
   const totalComissionado = comissoes.reduce((soma, c) => soma + Number(c.comissao_valor), 0);
   const totalPago = comissoes.filter((c) => c.pago_em).reduce((soma, c) => soma + Number(c.comissao_valor), 0);
-  res.json({ vendedor: req.vendedor, comissoes, totalComissionado, totalPago, totalAReceber: totalComissionado - totalPago });
+  res.json({
+    vendedor: req.vendedor,
+    comissoes,
+    totalComissionado,
+    totalPago,
+    totalAReceber: totalComissionado - totalPago,
+  });
 });
 
 // Admin — quanto se deve a cada vendedor, e marcar como pago.
@@ -446,16 +483,16 @@ router.get('/admin/comissoes', async (_req, res) => {
      LEFT JOIN vendedores v ON v.conta_id = c.vendedor_conta_id
      LEFT JOIN anunciantes va ON va.id = c.vendedor_conta_id
      JOIN anunciantes an ON an.id = c.anunciante_id
-     ORDER BY c.pago_em NULLS FIRST, c.criado_em DESC`
+     ORDER BY c.pago_em NULLS FIRST, c.criado_em DESC`,
   );
   res.json(rows);
 });
 
 router.patch('/admin/comissoes/:id', async (req, res) => {
-  const { rows } = await pool.query(
-    'UPDATE comissoes SET pago_em = $2 WHERE id = $1 RETURNING *',
-    [req.params.id, req.body.pago ? new Date() : null]
-  );
+  const { rows } = await pool.query('UPDATE comissoes SET pago_em = $2 WHERE id = $1 RETURNING *', [
+    req.params.id,
+    req.body.pago ? new Date() : null,
+  ]);
   if (!rows[0]) return res.status(404).json({ erro: 'comissão não encontrada' });
   res.json(rows[0]);
 });

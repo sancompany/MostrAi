@@ -13,7 +13,12 @@ function linkDoConvite(token) {
 router.get('/convites/:token', async (req, res) => {
   const convite = await repo.buscarValido(req.params.token);
   if (!convite) return res.status(404).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
-  res.json({ papeis: convite.papeis, nome_sugerido: convite.nome_sugerido, email_sugerido: convite.email_sugerido, expira_em: convite.expira_em });
+  res.json({
+    papeis: convite.papeis,
+    nome_sugerido: convite.nome_sugerido,
+    email_sugerido: convite.email_sugerido,
+    expira_em: convite.expira_em,
+  });
 });
 
 // Admin

@@ -40,7 +40,7 @@ const JANELA_ASSINATURA_S = 300;
 function webhookAutorizado(req) {
   const chave = process.env.SAN_CHECKOUT_KEY;
   const recebida = req.headers?.['x-checkout-signature'];
-  const timestamp = String((req.headers?.['x-checkout-timestamp']) || '');
+  const timestamp = String(req.headers?.['x-checkout-timestamp'] || '');
   if (!chave || !recebida || !/^[0-9]{1,15}$/.test(timestamp)) return false;
 
   // Janela de 300s: impede que alguém capture um webhook legítimo e reenvie
@@ -54,10 +54,12 @@ function webhookAutorizado(req) {
   const corpoCru = req.rawBody;
   if (!Buffer.isBuffer(corpoCru)) return false;
 
-  const esperada = 'sha256=' + crypto
-    .createHmac('sha256', chave)
-    .update(Buffer.concat([Buffer.from(timestamp + '.', 'utf8'), corpoCru]))
-    .digest('hex');
+  const esperada =
+    'sha256=' +
+    crypto
+      .createHmac('sha256', chave)
+      .update(Buffer.concat([Buffer.from(timestamp + '.', 'utf8'), corpoCru]))
+      .digest('hex');
 
   return chaveConfere(recebida, esperada);
 }
@@ -146,10 +148,10 @@ function valorMensalDaConta(anunciante, plano) {
 }
 
 async function registrarPendencia(payload, motivo) {
-  await pool.query(
-    `INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`,
-    [JSON.stringify(payload), motivo]
-  );
+  await pool.query(`INSERT INTO eventos_assinatura_pendentes (payload, motivo) VALUES ($1,$2)`, [
+    JSON.stringify(payload),
+    motivo,
+  ]);
 }
 
 // `db` é o pool por padrão, mas o webhook passa o client da transação pra
@@ -161,7 +163,7 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
   const { rows } = await db.query(
     `SELECT v.* FROM vendedores v JOIN anunciantes a ON a.id = v.conta_id
      WHERE v.codigo_cupom = upper($1) AND v.status = 'aprovado' AND a.excluido_em IS NULL`,
-    [anunciante.indicado_por_cupom]
+    [anunciante.indicado_por_cupom],
   );
   const vendedor = rows[0];
   if (!vendedor || vendedor.conta_id === anunciante.id) return; // ninguém ganha comissão de si mesmo
@@ -170,7 +172,7 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
   await db.query(
     `INSERT INTO comissoes (vendedor_conta_id, anunciante_id, valor_confirmado, comissao_valor)
      VALUES ($1,$2,$3,$4)`,
-    [vendedor.conta_id, anunciante.id, valor, comissaoValor]
+    [vendedor.conta_id, anunciante.id, valor, comissaoValor],
   );
   // Dono do evento é o VENDEDOR, não quem comprou: a pergunta é "quanto a
   // indicação custa", e ela se responde por vendedor.
@@ -224,7 +226,10 @@ async function chaveDoEvento(payload) {
   }
 
   const dia = new Date().toISOString().slice(0, 10);
-  return crypto.createHash('sha256').update(`${dia}|${JSON.stringify(payload)}`).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(`${dia}|${JSON.stringify(payload)}`)
+    .digest('hex');
 }
 
 async function processarWebhookAssinatura(payload) {
@@ -245,10 +250,9 @@ async function processarWebhookAssinatura(payload) {
 
   // Reentrega do mesmo evento não pode estender cobertura, gravar outra
   // cobrança nem pagar a comissão do vendedor de novo (migration 018).
-  const { rowCount } = await pool.query(
-    'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-    [chave]
-  );
+  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    chave,
+  ]);
   if (!rowCount) {
     // Reentrega do MESMO evento e normal e nao precisa de barulho. Mas quando
     // o evento credita ciclo, o descarte pode nao ser reentrega: a consulta de
@@ -257,7 +261,10 @@ async function processarWebhookAssinatura(payload) {
     // colidir com a do anterior — o ciclo pago some, sem cobertura e sem
     // rastro. Vira pendencia pra alguem olhar.
     if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
-      await registrarPendencia(payload, `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`);
+      await registrarPendencia(
+        payload,
+        `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
+      );
     }
     return;
   }
@@ -284,7 +291,12 @@ async function processarWebhookAssinatura(payload) {
 // passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
 // venha o aviso por webhook ou pela varredura.
 async function aplicarCicloPago(assinatura, chave, payload = null) {
-  const contexto = payload || { tipo: 'assinatura', planoId: assinatura.id, evento: 'cobranca_confirmada', origem: 'conciliacao' };
+  const contexto = payload || {
+    tipo: 'assinatura',
+    planoId: assinatura.id,
+    evento: 'cobranca_confirmada',
+    origem: 'conciliacao',
+  };
 
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
@@ -316,9 +328,10 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   // que o motor não cumpre, e saiu na migration 021. Benefício se dá no
   // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
   const mesesDoCiclo = plano.compromisso_meses;
-  const baseExpiracao = anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
-    ? new Date(anunciante.data_expiracao)
-    : new Date();
+  const baseExpiracao =
+    anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
+      ? new Date(anunciante.data_expiracao)
+      : new Date();
   const novaExpiracao = new Date(baseExpiracao);
   novaExpiracao.setMonth(novaExpiracao.getMonth() + mesesDoCiclo);
 
@@ -341,13 +354,12 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
                                        WHEN $5::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
                                        ELSE $6::numeric END
        WHERE id = $1`,
-      [anunciante.id, plano.id, novaExpiracao,
-        !!plano.preco_travado, mesmoPlano, plano.valor_mensal]
+      [anunciante.id, plano.id, novaExpiracao, !!plano.preco_travado, mesmoPlano, plano.valor_mensal],
     );
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
        VALUES ($1,$2,$3,'pendente') RETURNING id`,
-      [anunciante.id, plano.id, valorCiclo]
+      [anunciante.id, plano.id, valorCiclo],
     ));
     await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
     await cliente.query('COMMIT');
@@ -377,11 +389,15 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     'SELECT COUNT(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1 AND plano_id = $2',
     [anunciante.id, plano.id],
   );
-  eventos.registrar('pagamento:cobranca_confirma', {
-    plano_id: plano.id,
-    valor_confirmado: valorCiclo,
-    ciclo_numero: ciclos[0].n,
-  }, anunciante);
+  eventos.registrar(
+    'pagamento:cobranca_confirma',
+    {
+      plano_id: plano.id,
+      valor_confirmado: valorCiclo,
+      ciclo_numero: ciclos[0].n,
+    },
+    anunciante,
+  );
 
   enviarConfirmacaoPagamento(anunciante, plano, valorCiclo).catch((err) => {
     console.error('falha ao enviar e-mail de confirmação', err);
@@ -401,7 +417,13 @@ async function cancelarAssinatura(assinaturaId, documento) {
 
 module.exports = {
   valorMensalDaConta,
-  exigirChaveCheckout, webhookAutorizado, linkCheckoutAssinatura, montarRespostaPlano,
-  processarWebhookAssinatura, cancelarAssinatura, consultarAssinatura,
-  chaveDoEvento, aplicarCicloPago,
+  exigirChaveCheckout,
+  webhookAutorizado,
+  linkCheckoutAssinatura,
+  montarRespostaPlano,
+  processarWebhookAssinatura,
+  cancelarAssinatura,
+  consultarAssinatura,
+  chaveDoEvento,
+  aplicarCicloPago,
 };

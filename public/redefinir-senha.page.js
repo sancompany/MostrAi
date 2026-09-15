@@ -26,7 +26,9 @@ form.addEventListener('submit', async (e) => {
     }
     msg.textContent = 'Senha alterada! Redirecionando pro login...';
     msg.className = 'form-msg ok';
-    setTimeout(() => { window.location.href = corpo.login; }, 1200);
+    setTimeout(() => {
+      window.location.href = corpo.login;
+    }, 1200);
   } catch {
     msg.textContent = 'Não foi possível salvar agora. Tente novamente.';
     msg.className = 'form-msg err';

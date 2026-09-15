@@ -22,8 +22,20 @@ async function exportarConta(anuncianteId) {
       FROM anunciantes WHERE id = $1`);
   if (!conta) return null;
 
-  const [pontos, criativos, assinaturas, cobrancas, comissoesGanhas, comissoesGeradas,
-    exibicoes, pagamentosPonto, vendedor, candidaturas, eventosDaConta, telas] = await Promise.all([
+  const [
+    pontos,
+    criativos,
+    assinaturas,
+    cobrancas,
+    comissoesGanhas,
+    comissoesGeradas,
+    exibicoes,
+    pagamentosPonto,
+    vendedor,
+    candidaturas,
+    eventosDaConta,
+    telas,
+  ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
               editado_pelo_operador, status, duracao_segundos, created_at
@@ -61,8 +73,9 @@ async function exportarConta(anuncianteId) {
 
   return {
     gerado_em: new Date().toISOString(),
-    aviso: 'Exportação de dados pessoais da Mostraí, gerada pelo próprio titular. '
-      + 'Não inclui senha nem chave de aparelho, que são credenciais, não dados.',
+    aviso:
+      'Exportação de dados pessoais da Mostraí, gerada pelo próprio titular. ' +
+      'Não inclui senha nem chave de aparelho, que são credenciais, não dados.',
     conta,
     pontos,
     telas,
@@ -82,29 +95,37 @@ async function exportarConta(anuncianteId) {
 // Apaga o que é opcional e nulo pro serviço. Não toca em nada que a execução
 // do contrato ou a obrigação fiscal exija — isso só sai com a conta.
 async function apagarDadosOpcionais(anuncianteId) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     UPDATE anunciantes
        SET responsavel_nome = NULL, responsavel_cpf = NULL,
            responsavel_email = NULL, responsavel_telefone = NULL,
            foto_url = NULL, dados_opcionais_apagados_em = now()
-     WHERE id = $1 RETURNING dados_opcionais_apagados_em`, [anuncianteId]);
+     WHERE id = $1 RETURNING dados_opcionais_apagados_em`,
+    [anuncianteId],
+  );
   return rows[0];
 }
 
 async function definirComunicacoes(anuncianteId, aceita) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     UPDATE anunciantes SET comunicacoes_revogado_em = $2
      WHERE id = $1 RETURNING comunicacoes_revogado_em`,
-  [anuncianteId, aceita ? null : new Date()]);
+    [anuncianteId, aceita ? null : new Date()],
+  );
   return rows[0];
 }
 
 // A primeira cobrança confirmada é quando a contratação se completou — é dela
 // que os 7 dias do art. 49 do CDC contam, não do cadastro.
 async function primeiraCobranca(anuncianteId) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     SELECT id, plano_id, valor, criado_em FROM cobrancas_confirmadas
-     WHERE anunciante_id = $1 ORDER BY criado_em LIMIT 1`, [anuncianteId]);
+     WHERE anunciante_id = $1 ORDER BY criado_em LIMIT 1`,
+    [anuncianteId],
+  );
   return rows[0] || null;
 }
 
@@ -119,20 +140,22 @@ async function totalPago(anuncianteId) {
 }
 
 async function arrependimentoAberto(anuncianteId) {
-  const { rows } = await pool.query(
-    "SELECT * FROM arrependimentos WHERE anunciante_id = $1 AND status = 'pendente'",
-    [anuncianteId],
-  );
+  const { rows } = await pool.query("SELECT * FROM arrependimentos WHERE anunciante_id = $1 AND status = 'pendente'", [
+    anuncianteId,
+  ]);
   return rows[0] || null;
 }
 
 async function registrarArrependimento({ anuncianteId, assinaturaId, planoId, valor, contratadoEm }) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     INSERT INTO arrependimentos
       (anunciante_id, assinatura_id, plano_id, valor_a_estornar, contratado_em)
     VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (anunciante_id) WHERE status = 'pendente' DO NOTHING
-    RETURNING *`, [anuncianteId, assinaturaId, planoId, valor, contratadoEm]);
+    RETURNING *`,
+    [anuncianteId, assinaturaId, planoId, valor, contratadoEm],
+  );
   return rows[0] || arrependimentoAberto(anuncianteId);
 }
 
@@ -146,15 +169,24 @@ async function listarArrependimentos() {
 }
 
 async function marcarEstornado(id, comprovante) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     UPDATE arrependimentos
        SET status = 'estornado', estornado_em = now(), comprovante = $2
-     WHERE id = $1 AND status = 'pendente' RETURNING *`, [id, comprovante || null]);
+     WHERE id = $1 AND status = 'pendente' RETURNING *`,
+    [id, comprovante || null],
+  );
   return rows[0] || null;
 }
 
 module.exports = {
-  exportarConta, apagarDadosOpcionais, definirComunicacoes,
-  primeiraCobranca, totalPago, arrependimentoAberto, registrarArrependimento,
-  listarArrependimentos, marcarEstornado,
+  exportarConta,
+  apagarDadosOpcionais,
+  definirComunicacoes,
+  primeiraCobranca,
+  totalPago,
+  arrependimentoAberto,
+  registrarArrependimento,
+  listarArrependimentos,
+  marcarEstornado,
 };

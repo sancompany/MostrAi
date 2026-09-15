@@ -14,7 +14,9 @@ const pool = require('../db/pool');
 // lido.
 function contasInternasDoAmbiente() {
   return String(process.env.EVENTOS_CONTAS_INTERNAS || '')
-    .split(',').map((x) => Number(x.trim())).filter(Boolean);
+    .split(',')
+    .map((x) => Number(x.trim()))
+    .filter(Boolean);
 }
 
 function ehInterno(conta) {
@@ -29,14 +31,18 @@ function registrar(nome, propriedades = {}, conta = null) {
   const anuncianteId = conta ? conta.id : (propriedades.anunciante_id ?? null);
   const props = { ...propriedades };
   delete props.anunciante_id;
-  pool.query(
-    'INSERT INTO eventos (nome, anunciante_id, propriedades, interno) VALUES ($1, $2, $3, $4)',
-    [nome, anuncianteId, JSON.stringify(props), ehInterno(conta)],
-  ).catch((err) => {
-    // Sai no log e morre aqui. Um evento perdido é um buraco no gráfico;
-    // uma exceção aqui seria um buraco no dinheiro.
-    console.error(`evento ${nome} não registrado:`, err.message);
-  });
+  pool
+    .query('INSERT INTO eventos (nome, anunciante_id, propriedades, interno) VALUES ($1, $2, $3, $4)', [
+      nome,
+      anuncianteId,
+      JSON.stringify(props),
+      ehInterno(conta),
+    ])
+    .catch((err) => {
+      // Sai no log e morre aqui. Um evento perdido é um buraco no gráfico;
+      // uma exceção aqui seria um buraco no dinheiro.
+      console.error(`evento ${nome} não registrado:`, err.message);
+    });
 }
 
 // Horas inteiras entre dois instantes, pra `horas_ate_aprovar` e afins. Uma

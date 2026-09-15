@@ -42,8 +42,12 @@ async function conferirHash(senha, hash) {
   if (hash.startsWith('scrypt$')) {
     const [, n, r, p, saltB64, hashB64] = hash.split('$');
     const esperado = Buffer.from(hashB64, 'base64');
-    const derivada = await scrypt(String(senha), Buffer.from(saltB64, 'base64'), esperado.length,
-      { N: Number(n), r: Number(r), p: Number(p), maxmem: MAXMEM });
+    const derivada = await scrypt(String(senha), Buffer.from(saltB64, 'base64'), esperado.length, {
+      N: Number(n),
+      r: Number(r),
+      p: Number(p),
+      maxmem: MAXMEM,
+    });
     const ok = derivada.length === esperado.length && crypto.timingSafeEqual(derivada, esperado);
     // Parâmetro abaixo do atual também pede regravação.
     return { ok, precisaMigrar: ok && Number(n) < N };

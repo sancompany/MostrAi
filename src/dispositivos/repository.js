@@ -14,8 +14,13 @@ async function criar(pontoId, dados = {}, db = pool) {
   const { rows } = await db.query(
     `INSERT INTO dispositivos (ponto_id, apelido, custo_equipamento, meses_amortizacao, instalado_em)
      VALUES ($1, $2, $3, $4, $5) RETURNING ${CAMPOS_PUBLICOS}`,
-    [pontoId, dados.apelido || 'Tela', Number(dados.custo_equipamento) || 0,
-      Number(dados.meses_amortizacao) || 36, dados.instalado_em || null]
+    [
+      pontoId,
+      dados.apelido || 'Tela',
+      Number(dados.custo_equipamento) || 0,
+      Number(dados.meses_amortizacao) || 36,
+      dados.instalado_em || null,
+    ],
   );
   return rows[0];
 }
@@ -33,7 +38,7 @@ async function buscarComPonto(id) {
             p.cota_autoanuncio_slots_hora, p.anunciante_id AS dono_conta_id, p.status AS ponto_status,
             (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id WHERE d.id = $1`,
-    [id]
+    [id],
   );
   return rows[0] || null;
 }
@@ -52,7 +57,8 @@ async function listarPorPonto(pontoId) {
     `SELECT ${CAMPOS_PUBLICOS_D},
             p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.ponto_id = $1 ORDER BY d.id`, [pontoId]
+     WHERE d.ponto_id = $1 ORDER BY d.id`,
+    [pontoId],
   );
   return rows;
 }
@@ -61,7 +67,7 @@ async function listarTodos() {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS_PUBLICOS_D},
             p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status
-     FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id ORDER BY p.nome, d.id`
+     FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id ORDER BY p.nome, d.id`,
   );
   return rows;
 }
@@ -70,10 +76,10 @@ async function atualizar(id, dados) {
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (!campos.length) return buscarPorId(id);
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(
-    `UPDATE dispositivos SET ${sets} WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`,
-    [id, ...campos.map((c) => dados[c])]
-  );
+  const { rows } = await pool.query(`UPDATE dispositivos SET ${sets} WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`, [
+    id,
+    ...campos.map((c) => dados[c]),
+  ]);
   return rows[0] || null;
 }
 
@@ -82,7 +88,8 @@ async function atualizar(id, dados) {
 async function gerarChave(id) {
   const chave = crypto.randomBytes(16).toString('base64url');
   const { rows } = await pool.query(
-    `UPDATE dispositivos SET aparelho_id = $2 WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`, [id, chave]
+    `UPDATE dispositivos SET aparelho_id = $2 WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`,
+    [id, chave],
   );
   return rows[0] ? { ...rows[0], aparelho_id: chave } : null;
 }
@@ -92,7 +99,8 @@ async function gerarChave(id) {
 async function definirPin(id, pin) {
   const hash = pin ? await gerarHash(String(pin)) : null;
   const { rows } = await pool.query(
-    `UPDATE dispositivos SET pin_hash = $2 WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`, [id, hash]
+    `UPDATE dispositivos SET pin_hash = $2 WHERE id = $1 RETURNING ${CAMPOS_PUBLICOS}`,
+    [id, hash],
   );
   return rows[0] || null;
 }
@@ -112,7 +120,7 @@ async function marcarOnline(id) {
 async function contarAtivas() {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.status = 'ativo' AND p.status = 'ativo'`
+     WHERE d.status = 'ativo' AND p.status = 'ativo'`,
   );
   return rows[0].total;
 }
@@ -123,6 +131,17 @@ async function deletar(id) {
 }
 
 module.exports = {
-  criar, buscarPorId, buscarComPonto, listarPorPonto, listarTodos, atualizar,
-  gerarChave, definirPin, conferirPin, marcarOnline, contarAtivas, deletar, STATUS,
+  criar,
+  buscarPorId,
+  buscarComPonto,
+  listarPorPonto,
+  listarTodos,
+  atualizar,
+  gerarChave,
+  definirPin,
+  conferirPin,
+  marcarOnline,
+  contarAtivas,
+  deletar,
+  STATUS,
 };

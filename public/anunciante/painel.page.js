@@ -10,17 +10,17 @@ let ANUNCIANTE_ID = null;
 // começar com "oi".
 function montarPortasDeArte() {
   if (!window.linkWhatsApp) return;
-  const nome = (ANUNCIANTE?.nome_empresa) || 'anunciante';
+  const nome = ANUNCIANTE?.nome_empresa || 'anunciante';
   const simples = document.getElementById('linkArteSimples');
   const gravacao = document.getElementById('linkGravacao');
   if (simples) {
     simples.href = window.linkWhatsApp(
-      `Olá! Sou ${nome}, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.`
+      `Olá! Sou ${nome}, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.`,
     );
   }
   if (gravacao) {
     gravacao.href = window.linkWhatsApp(
-      `Olá! Sou ${nome}, do Mostraí, e quero orçar a gravação de um vídeo para o meu anúncio.`
+      `Olá! Sou ${nome}, do Mostraí, e quero orçar a gravação de um vídeo para o meu anúncio.`,
     );
   }
 }
@@ -39,7 +39,10 @@ async function carregar() {
   ANUNCIANTE_ID = ANUNCIANTE.id;
   // Popup de perfil, avatar e sair vêm de /perfil.js — a mesma tela que o
   // painel do ponto usa, em vez de duas cópias que divergem.
-  montarPerfil(ANUNCIANTE, (nova) => { ANUNCIANTE = nova; preencherStatusBanner(); });
+  montarPerfil(ANUNCIANTE, (nova) => {
+    ANUNCIANTE = nova;
+    preencherStatusBanner();
+  });
   montarPortasDeArte();
 
   // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
@@ -54,7 +57,8 @@ async function carregar() {
     carregarKpiPontos();
   });
   if (estado && !estado.modos.anunciante.liberado) {
-    document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
+    document.getElementById('statusBanner').innerHTML =
+      `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
     // Veio da vitrine querendo um plano: guarda pra depois de ativar.
     const planoUrl = new URLSearchParams(window.location.search).get('plano');
     if (planoUrl) history.replaceState(null, '', `/anunciante/painel.html?plano=${encodeURIComponent(planoUrl)}`);
@@ -74,7 +78,8 @@ function preencherStatusBanner() {
     if (ANUNCIANTE.data_expiracao) planoTxt += ` até ${window.dataBR(ANUNCIANTE.data_expiracao)}`;
     if (ANUNCIANTE.plano_cortesia) planoTxt += ' · sem cobrança';
   }
-  const travado = ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+  const travado =
+    ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
   // Dois estados precisavam de frase, e só um deles derruba o botão:
   // - suspenso: POST /anunciantes/:id/assinar recusa com 403 (financeiro/
@@ -85,10 +90,12 @@ function preencherStatusBanner() {
   //   (é o caminho normal de quem veio da vitrine), só não tinha nada na tela
   //   dizendo que a análise existe. A conferência é dos dados, não da compra.
   const EXPLICACAO = {
-    suspenso: 'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; '
-      + 'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.',
-    pendente_aprovacao: 'Sua conta está em análise: a gente confere os dados e te avisa por e-mail quando ela for aprovada. '
-      + 'Isso não trava a sua assinatura — dá pra escolher o plano e subir o vídeo desde já.',
+    suspenso:
+      'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
+      'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.',
+    pendente_aprovacao:
+      'Sua conta está em análise: a gente confere os dados e te avisa por e-mail quando ela for aprovada. ' +
+      'Isso não trava a sua assinatura — dá pra escolher o plano e subir o vídeo desde já.',
   };
   const explicacao = EXPLICACAO[ANUNCIANTE.status] || null;
   const podeAssinar = !ANUNCIANTE.plano_id && ANUNCIANTE.status !== 'suspenso';
@@ -111,7 +118,9 @@ async function carregarKpiPontos() {
     return;
   }
   try {
-    const pontos = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/pontos`, { credentials: 'include' })).json();
+    const pontos = await (
+      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/pontos`, { credentials: 'include' })
+    ).json();
     el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>${pontos.length}</b><a class="link-secundario" href="/anunciante/ponto.html">Ver meu ponto →</a>`;
   } catch {
     el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>—</b>';
@@ -126,17 +135,24 @@ async function confirmarPlano(planoId) {
   let plano = null;
   try {
     plano = (await (await fetch(`${API_BASE_URL}/planos`)).json()).find((p) => p.id === planoId);
-  } catch { /* mostra o resumo sem valor */ }
+  } catch {
+    /* mostra o resumo sem valor */
+  }
   if (!plano) {
-    box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>');
+    box.insertAdjacentHTML(
+      'beforeend',
+      '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>',
+    );
     return;
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
-  const extras = [
-    plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '',
-  ].filter(Boolean).join(' ');
-  box.insertAdjacentHTML('beforeend', `
+  const extras = [plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '']
+    .filter(Boolean)
+    .join(' ');
+  box.insertAdjacentHTML(
+    'beforeend',
+    `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
       <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b> — ${plano.frequencia_dia}x por dia em cada tela</p>
@@ -144,7 +160,8 @@ async function confirmarPlano(planoId) {
       ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
-    </div>`);
+    </div>`,
+  );
   document.getElementById('btnConfirmarPlano').addEventListener('click', (e) => {
     e.target.disabled = true;
     // Tira o ?plano= da URL pra que um F5 não caia aqui de novo.
@@ -167,7 +184,10 @@ async function assinar(anuncianteId, planoId) {
   });
   if (!r.ok) {
     const erro = (await r.json().catch(() => ({}))).erro;
-    box.insertAdjacentHTML('beforeend', `<p class="form-msg err">${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a></p>`);
+    box.insertAdjacentHTML(
+      'beforeend',
+      `<p class="form-msg err">${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a></p>`,
+    );
     return;
   }
   const { checkoutUrl } = await r.json();
@@ -177,7 +197,10 @@ async function assinar(anuncianteId, planoId) {
   // avisar nada — melhor mostrar o erro do que redirecionar pra lugar
   // nenhum.
   if (!/^https?:\/\//.test(checkoutUrl)) {
-    box.insertAdjacentHTML('beforeend', '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env) — fale com o suporte técnico.</p>');
+    box.insertAdjacentHTML(
+      'beforeend',
+      '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env) — fale com o suporte técnico.</p>',
+    );
     return;
   }
   window.location.href = checkoutUrl;
@@ -195,10 +218,15 @@ async function assinar(anuncianteId, planoId) {
   const link = document.getElementById('btnComprovante');
   if (!sel || !link) return;
   const montar = () => `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${sel.value}`;
-  const atualizar = () => { if (ANUNCIANTE_ID) link.href = montar(); };
+  const atualizar = () => {
+    if (ANUNCIANTE_ID) link.href = montar();
+  };
   sel.addEventListener('change', atualizar);
   link.addEventListener('click', (e) => {
-    if (!ANUNCIANTE_ID) { e.preventDefault(); return; }
+    if (!ANUNCIANTE_ID) {
+      e.preventDefault();
+      return;
+    }
     link.href = montar();
   });
   atualizar();
@@ -208,9 +236,12 @@ async function assinar(anuncianteId, planoId) {
 // (transparência de entrega: programado vs. confirmado, custo por exibição).
 async function carregarExibicoes() {
   try {
-    const dados = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })).json();
+    const dados = await (
+      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })
+    ).json();
     const [kConfirmadas, kEntrega, kCusto] = document.querySelectorAll('#kpiGrid .kpi-card:nth-child(-n+3) b');
-    const entrega = dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
+    const entrega =
+      dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
     kConfirmadas.textContent = dados.totalConfirmadas;
     kEntrega.textContent = dados.totalProgramadas ? `${entrega}%` : '—';
     kCusto.textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '—';
@@ -223,8 +254,12 @@ async function carregarExibicoes() {
     // Antes o catch era vazio: falha de API e conta nova produziam a mesma
     // tela de "—", e quem paga não conseguia distinguir "meu anúncio não
     // rodou" de "o painel quebrou".
-    document.getElementById('statusBanner').insertAdjacentHTML('beforeend',
-      '<p class="form-msg err">Não foi possível carregar seus números agora. Tente atualizar a página.</p>');
+    document
+      .getElementById('statusBanner')
+      .insertAdjacentHTML(
+        'beforeend',
+        '<p class="form-msg err">Não foi possível carregar seus números agora. Tente atualizar a página.</p>',
+      );
   }
 }
 
@@ -234,14 +269,17 @@ async function carregarExibicoes() {
 function explicarZero(dados) {
   const el = document.getElementById('exibicoesVazio');
   if (!el) return;
-  if (dados.totalProgramadas > 0 || dados.totalConfirmadas > 0) { el.hidden = true; return; }
+  if (dados.totalProgramadas > 0 || dados.totalConfirmadas > 0) {
+    el.hidden = true;
+    return;
+  }
   const semPlano = !ANUNCIANTE.plano_id;
   const criativoNoAr = (dados.criativosAprovados || 0) > 0;
   el.innerHTML = semPlano
     ? '<b>Seus números aparecem aqui depois que você escolher um plano.</b> Nada foi programado ainda porque a conta não tem plano ativo.'
-    : (criativoNoAr
+    : criativoNoAr
       ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia — cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
-      : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.');
+      : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
   el.hidden = false;
 }
 
@@ -253,14 +291,16 @@ function desenharPorDia(porDia) {
   const dias = porDia.slice(0, 14).reverse();
   const max = Math.max(...dias.map((d) => Number(d.confirmadas))) || 1;
   document.getElementById('painelDia').hidden = false;
-  document.getElementById('graficoDia').innerHTML = dias.map((d) => {
-    const v = Number(d.confirmadas);
-    const dia = new Date(d.dia);
-    return `<div class="bar-col" title="${dia.toLocaleDateString('pt-BR')}: ${v} exibições">
+  document.getElementById('graficoDia').innerHTML = dias
+    .map((d) => {
+      const v = Number(d.confirmadas);
+      const dia = new Date(d.dia);
+      return `<div class="bar-col" title="${dia.toLocaleDateString('pt-BR')}: ${v} exibições">
       <div class="bar" data-pct="${Math.max(2, (v / max) * 100)}"></div>
       <span class="bar-label">${String(dia.getDate()).padStart(2, '0')}/${String(dia.getMonth() + 1).padStart(2, '0')}</span>
     </div>`;
-  }).join('');
+    })
+    .join('');
   document.getElementById('legendaDia').textContent = `últimos ${dias.length} dias com exibição`;
 
   // Delta 7 dias x 7 anteriores — no card de confirmadas.
@@ -278,18 +318,25 @@ function desenharPorPonto(porPonto) {
   if (!porPonto.length) return;
   const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
   document.getElementById('painelDetalhe').hidden = false;
-  document.getElementById('graficoPonto').innerHTML = porPonto.map((p) => `
+  document.getElementById('graficoPonto').innerHTML = porPonto
+    .map(
+      (p) => `
     <div class="row">
       <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
       <span class="track"><span class="fill" data-pct="${(Number(p.confirmadas) / max) * 100}"></span></span>
       <span class="valor">${p.confirmadas}</span>
-    </div>`).join('');
-  document.getElementById('exibicoesDetalhe').innerHTML = `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
-    ${porPonto.map((p) => {
-      const prog = Number(p.programadas) || 0;
-      const conf = Number(p.confirmadas) || 0;
-      return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '—'}</td></tr>`;
-    }).join('')}
+    </div>`,
+    )
+    .join('');
+  document.getElementById('exibicoesDetalhe').innerHTML =
+    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
+    ${porPonto
+      .map((p) => {
+        const prog = Number(p.programadas) || 0;
+        const conf = Number(p.confirmadas) || 0;
+        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '—'}</td></tr>`;
+      })
+      .join('')}
   </tbody></table></div>`;
 }
 
@@ -297,39 +344,54 @@ function desenharPorPonto(porPonto) {
 function desenharCobrancas(cobrancas) {
   if (!cobrancas.length) return;
   document.getElementById('painelCobrancas').hidden = false;
-  document.getElementById('listaCobrancas').innerHTML = `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
-    ${cobrancas.map((c) => `<tr>
+  document.getElementById('listaCobrancas').innerHTML =
+    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
+    ${cobrancas
+      .map(
+        (c) => `<tr>
       <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
       <td>${fmt(c.valor)}</td>
       <td>${c.nota_fiscal_url ? `<a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">Baixar</a>` : esc(c.nota_fiscal_status || '—')}</td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table></div>`;
 }
 
-function ehVideo(url) { return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || ''); }
+function ehVideo(url) {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || '');
+}
 
 async function carregarCriativos() {
   const el = document.getElementById('listaCriativos');
   try {
-    const criativos = await (await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })).json();
+    const criativos = await (
+      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })
+    ).json();
     const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
     document.querySelectorAll('#kpiGrid .kpi-card')[3].querySelector('b').textContent = ativos;
-    el.innerHTML = criativos.length ? `<div class="criativos-lista">
-      ${criativos.map((c) => {
-        const video = c.arquivo_normalizado_url && ehVideo(c.arquivo_normalizado_url);
-        return `<div class="criativo-card" data-id="${c.id}">
-          ${c.arquivo_normalizado_url
-            ? (video
-              ? `<video src="${esc(c.arquivo_normalizado_url)}" muted loop playsinline poster="${esc(c.thumbnail_url || '')}"></video>
+    el.innerHTML = criativos.length
+      ? `<div class="criativos-lista">
+      ${criativos
+        .map((c) => {
+          const video = c.arquivo_normalizado_url && ehVideo(c.arquivo_normalizado_url);
+          return `<div class="criativo-card" data-id="${c.id}">
+          ${
+            c.arquivo_normalizado_url
+              ? video
+                ? `<video src="${esc(c.arquivo_normalizado_url)}" muted loop playsinline poster="${esc(c.thumbnail_url || '')}"></video>
                  <button type="button" class="criativo-play" aria-label="Reproduzir"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></button>`
-              : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`)
-            : '<div class="criativo-placeholder">processando...</div>'}
+                : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`
+              : '<div class="criativo-placeholder">processando...</div>'
+          }
           <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
           <span class="badge ${ROTULOS.criativoClasse[c.status]}">${ROTULOS.criativo[c.status]}</span>
           ${c.status === 'reprovado' ? `<p class="criativo-motivo">${c.motivo_reprovacao ? esc(c.motivo_reprovacao) : 'Fale com a gente pra entender o que ajustar.'}<br><b>Exclua esta peça e suba a versão corrigida.</b></p>` : ''}
         </div>`;
-      }).join('')}
-    </div>` : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
+        })
+        .join('')}
+    </div>`
+      : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
   } catch (err) {
     // O `catch` mudo daqui escondeu por semanas um ReferenceError
     // (`CRIATIVO_ROTULOS`, mapa que foi renomeado e ficou uma chamada pra
@@ -363,7 +425,8 @@ document.getElementById('listaCriativos').addEventListener('click', async (e) =>
   if (e.target.closest('.criativo-excluir')) {
     if (!confirm('Excluir este criativo? Pra trocar por outro, é só enviar um novo depois.')) return;
     const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos/${card.dataset.id}`, {
-      method: 'DELETE', credentials: 'include',
+      method: 'DELETE',
+      credentials: 'include',
     });
     const msg = document.getElementById('uploadMsg');
     if (r.ok) {
@@ -403,7 +466,9 @@ document.getElementById('arquivoCriativo').addEventListener('change', async (e) 
     input.value = '';
     carregarCriativos();
   } catch (err) {
-    msg.textContent = err.message ? window.frase(err.message) : 'Não foi possível enviar o criativo agora. Tente de novo.';
+    msg.textContent = err.message
+      ? window.frase(err.message)
+      : 'Não foi possível enviar o criativo agora. Tente de novo.';
     msg.className = 'form-msg err';
   } finally {
     input.disabled = false;

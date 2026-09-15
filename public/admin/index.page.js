@@ -8,24 +8,39 @@ function api(caminho, opts = {}) {
 }
 const pegar = async (caminho) => (await api(caminho)).json();
 
-function fmt(v) { return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
-function num(v) { return Number(v || 0).toLocaleString('pt-BR'); }
+function fmt(v) {
+  return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function num(v) {
+  return Number(v || 0).toLocaleString('pt-BR');
+}
 const data = (v) => window.dataBR(v);
 
 // Nome de ponto/empresa chega por formulário público, sem autenticação —
 // vai pra innerHTML aqui dentro da sessão do admin, então escapa sempre.
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-function esc(v) { return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ESCAPES[c]); }
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+}
 
 let toastTimer;
 function toast(texto, tipo) {
   let el = document.getElementById('toast');
-  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
   el.className = tipo === 'err' ? 'toast err' : 'toast';
   el.textContent = texto;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, tipo === 'err' ? 5000 : 1800);
+  toastTimer = setTimeout(
+    () => {
+      el.hidden = true;
+    },
+    tipo === 'err' ? 5000 : 1800,
+  );
 }
 
 // Salvar edição inline com retorno visual. Todas as telas passam por aqui —
@@ -34,7 +49,11 @@ function toast(texto, tipo) {
 async function salvar(caminho, corpo, campo) {
   const r = await api(caminho, { method: 'PATCH', body: JSON.stringify(corpo) });
   if (r.ok) {
-    if (campo) { campo.classList.remove('flash-ok'); void campo.offsetWidth; campo.classList.add('flash-ok'); }
+    if (campo) {
+      campo.classList.remove('flash-ok');
+      void campo.offsetWidth;
+      campo.classList.add('flash-ok');
+    }
     toast('Salvo.');
     return true;
   }
@@ -55,7 +74,7 @@ function turbinarTabela(caixa) {
   function aplicar() {
     const termo = (busca ? busca.value : '').toLowerCase().trim();
     const chipAtivo = caixa.querySelector('.chip.active');
-    const filtro = chipAtivo ? (chipAtivo.dataset.filtro || '') : '';
+    const filtro = chipAtivo ? chipAtivo.dataset.filtro || '' : '';
     let visiveis = 0;
     linhas().forEach((tr) => {
       const casaTermo = !termo || tr.textContent.toLowerCase().includes(termo);
@@ -73,7 +92,10 @@ function turbinarTabela(caixa) {
   // Tambem cobre a busca que nao achou nada.
   function mostrarVazio(visiveis, total, filtrando) {
     let aviso = caixa.querySelector('[data-vazio]');
-    if (visiveis > 0) { if (aviso) aviso.hidden = true; return; }
+    if (visiveis > 0) {
+      if (aviso) aviso.hidden = true;
+      return;
+    }
     if (!aviso) {
       aviso = document.createElement('p');
       aviso.className = 'empty-state';
@@ -81,42 +103,58 @@ function turbinarTabela(caixa) {
       caixa.querySelector('.rolagem').insertAdjacentElement('afterend', aviso);
     }
     aviso.hidden = false;
-    aviso.textContent = total === 0
-      ? 'Nada cadastrado aqui ainda.'
-      : 'Nenhuma linha com esse filtro ou essa busca.';
+    aviso.textContent = total === 0 ? 'Nada cadastrado aqui ainda.' : 'Nenhuma linha com esse filtro ou essa busca.';
     if (!filtrando && total === 0) aviso.textContent = 'Nada cadastrado aqui ainda.';
   }
 
   if (busca) busca.addEventListener('input', aplicar);
-  caixa.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
-    caixa.querySelectorAll('.chip').forEach((x) => x.classList.remove('active'));
-    chip.classList.add('active');
-    aplicar();
-  }));
+  caixa.querySelectorAll('.chip').forEach((chip) =>
+    chip.addEventListener('click', () => {
+      caixa.querySelectorAll('.chip').forEach((x) => x.classList.remove('active'));
+      chip.classList.add('active');
+      aplicar();
+    }),
+  );
 
-  tabela.querySelectorAll('th[data-ord]').forEach((th) => th.addEventListener('click', () => {
-    const idx = [...th.parentNode.children].indexOf(th);
-    const desc = th.classList.contains('asc');
-    tabela.querySelectorAll('th[data-ord]').forEach((x) => x.classList.remove('asc', 'desc'));
-    th.classList.add(desc ? 'desc' : 'asc');
-    // Célula com input/select ordena pelo valor do campo, não pelo texto
-    // vazio da célula.
-    const valorDe = (tr) => {
-      const celula = tr.cells[idx];
-      if (!celula) return '';
-      const campo = celula.querySelector('input, select, textarea');
-      if (!campo) return celula.textContent.trim();
-      return campo.type === 'checkbox' ? (campo.checked ? '1' : '0') : String(campo.value).trim();
-    };
-    const corpo = tabela.tBodies[0];
-    linhas().sort((a, b) => {
-      const x = valorDe(a); const y = valorDe(b);
-      const nx = parseFloat(x.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
-      const ny = parseFloat(y.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, ''));
-      const cmp = (x !== '' && y !== '' && !Number.isNaN(nx) && !Number.isNaN(ny)) ? nx - ny : x.localeCompare(y, 'pt-BR');
-      return desc ? -cmp : cmp;
-    }).forEach((tr) => corpo.appendChild(tr));
-  }));
+  tabela.querySelectorAll('th[data-ord]').forEach((th) =>
+    th.addEventListener('click', () => {
+      const idx = [...th.parentNode.children].indexOf(th);
+      const desc = th.classList.contains('asc');
+      tabela.querySelectorAll('th[data-ord]').forEach((x) => x.classList.remove('asc', 'desc'));
+      th.classList.add(desc ? 'desc' : 'asc');
+      // Célula com input/select ordena pelo valor do campo, não pelo texto
+      // vazio da célula.
+      const valorDe = (tr) => {
+        const celula = tr.cells[idx];
+        if (!celula) return '';
+        const campo = celula.querySelector('input, select, textarea');
+        if (!campo) return celula.textContent.trim();
+        return campo.type === 'checkbox' ? (campo.checked ? '1' : '0') : String(campo.value).trim();
+      };
+      const corpo = tabela.tBodies[0];
+      linhas()
+        .sort((a, b) => {
+          const x = valorDe(a);
+          const y = valorDe(b);
+          const nx = parseFloat(
+            x
+              .replace(/\./g, '')
+              .replace(',', '.')
+              .replace(/[^\d.-]/g, ''),
+          );
+          const ny = parseFloat(
+            y
+              .replace(/\./g, '')
+              .replace(',', '.')
+              .replace(/[^\d.-]/g, ''),
+          );
+          const cmp =
+            x !== '' && y !== '' && !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : x.localeCompare(y, 'pt-BR');
+          return desc ? -cmp : cmp;
+        })
+        .forEach((tr) => corpo.appendChild(tr));
+    }),
+  );
 
   aplicar();
 }
@@ -134,8 +172,19 @@ function caixaTabela({ chips = [], html, dica = '' }) {
 }
 
 // ---------- rótulos ----------
-const PONTO_STATUS = { lead: 'Novo lead', aguardando_instalacao: 'A instalar', ativo: 'Ativo', reparo: 'Em reparo', inativo: 'Inativo' };
-const ANUNCIANTE_STATUS = { pendente_aprovacao: 'Pendente', aprovado: 'Aprovado', ativo: 'Ativo', suspenso: 'Suspenso' };
+const PONTO_STATUS = {
+  lead: 'Novo lead',
+  aguardando_instalacao: 'A instalar',
+  ativo: 'Ativo',
+  reparo: 'Em reparo',
+  inativo: 'Inativo',
+};
+const ANUNCIANTE_STATUS = {
+  pendente_aprovacao: 'Pendente',
+  aprovado: 'Aprovado',
+  ativo: 'Ativo',
+  suspenso: 'Suspenso',
+};
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
@@ -144,78 +193,110 @@ const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 
 function selectStatus(mapa, atual, attrs) {
   return `<select class="mini" ${attrs}>
-    ${Object.entries(mapa).map(([v, nome]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${nome}</option>`).join('')}
+    ${Object.entries(mapa)
+      .map(([v, nome]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${nome}</option>`)
+      .join('')}
   </select>`;
 }
 
 // ---------- navegação ----------
 const NAV = [
-  { grupo: 'Início', itens: [
-    { id: 'resumo', nome: 'Visão geral' },
-    { id: 'metrica', nome: 'Métrica' },
-  ] },
-  { grupo: 'Entrada', itens: [
-    { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas' },
-    { id: 'convites', nome: 'Convites' },
-  ] },
-  { grupo: 'Operação', itens: [
-    { id: 'criativos', nome: 'Fila de criativos', fila: 'criativos' },
-    { id: 'meusanuncios', nome: 'Meus anúncios' },
-    { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
-    { id: 'telas', nome: 'Telas', fila: 'offline' },
-    { id: 'anunciantes', nome: 'Anunciantes', fila: 'anunciantes' },
-    { id: 'vendedores', nome: 'Vendedores' },
-  ] },
-  { grupo: 'Catálogo', itens: [
-    { id: 'planos', nome: 'Planos' },
-    { id: 'planosarquivados', nome: 'Planos arquivados' },
-    { id: 'beneficios', nome: 'Benefícios' },
-    { id: 'categorias', nome: 'Categorias' },
-    { id: 'comodato', nome: 'Opções de comodato' },
-  ] },
-  { grupo: 'Financeiro', itens: [
-    { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
-    { id: 'comissoes', nome: 'Comissões' },
-    { id: 'pagamentospontos', nome: 'Pagar os pontos' },
-    { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
-    { id: 'custos', nome: 'Custos fixos' },
-    { id: 'eventos', nome: 'Eventos pendentes', fila: 'eventos' },
-  ] },
+  {
+    grupo: 'Início',
+    itens: [
+      { id: 'resumo', nome: 'Visão geral' },
+      { id: 'metrica', nome: 'Métrica' },
+    ],
+  },
+  {
+    grupo: 'Entrada',
+    itens: [
+      { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas' },
+      { id: 'convites', nome: 'Convites' },
+    ],
+  },
+  {
+    grupo: 'Operação',
+    itens: [
+      { id: 'criativos', nome: 'Fila de criativos', fila: 'criativos' },
+      { id: 'meusanuncios', nome: 'Meus anúncios' },
+      { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
+      { id: 'telas', nome: 'Telas', fila: 'offline' },
+      { id: 'anunciantes', nome: 'Anunciantes', fila: 'anunciantes' },
+      { id: 'vendedores', nome: 'Vendedores' },
+    ],
+  },
+  {
+    grupo: 'Catálogo',
+    itens: [
+      { id: 'planos', nome: 'Planos' },
+      { id: 'planosarquivados', nome: 'Planos arquivados' },
+      { id: 'beneficios', nome: 'Benefícios' },
+      { id: 'categorias', nome: 'Categorias' },
+      { id: 'comodato', nome: 'Opções de comodato' },
+    ],
+  },
+  {
+    grupo: 'Financeiro',
+    itens: [
+      { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
+      { id: 'comissoes', nome: 'Comissões' },
+      { id: 'pagamentospontos', nome: 'Pagar os pontos' },
+      { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
+      { id: 'custos', nome: 'Custos fixos' },
+      { id: 'eventos', nome: 'Eventos pendentes', fila: 'eventos' },
+    ],
+  },
 ];
 
 const SUBTITULOS = {
   resumo: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
-  metrica: 'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
+  metrica:
+    'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
   candidaturas: 'Quem pediu pra ser ponto ou vendedor pelo site. Você conversa, e se fechar, gera o convite daqui.',
-  convites: 'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
-  pontos: 'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
+  convites:
+    'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
+  pontos:
+    'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
   telas: 'Cada TV/dispositivo: chave do aparelho, PIN do painel, custo e último sinal. Uma tela = uma playlist.',
-  anunciantes: 'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
+  anunciantes:
+    'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
-  planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine; o plano fundador fica fora dessa conta.',
-  planosarquivados: 'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas — é por isso que não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
+  planos:
+    'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine; o plano fundador fica fora dessa conta.',
+  planosarquivados:
+    'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas — é por isso que não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
   beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
   categorias: 'Segmentos usados no cadastro — é o que impede concorrente direto na mesma tela.',
   comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
-  pagamentospontos: 'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar — é isso que aparece no extrato do dono do ponto.',
+  pagamentospontos:
+    'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar — é isso que aparece no extrato do dono do ponto.',
   custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
-  arrependimentos: 'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar — falta devolver o dinheiro no painel do Checkout e registrar aqui.',
-  meusanuncios: 'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
+  arrependimentos:
+    'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar — falta devolver o dinheiro no painel do Checkout e registrar aqui.',
+  meusanuncios:
+    'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
 };
 
 let RESUMO = null;
 
 function montarNav() {
-  document.getElementById('nav').innerHTML = NAV.map((g) => `
+  document.getElementById('nav').innerHTML = NAV.map(
+    (g) => `
     <div class="nav-grupo">${g.grupo}</div>
-    ${g.itens.map((i) => `<button type="button" class="nav-item" data-aba="${i.id}" ${i.fila ? `data-fila="${i.fila}"` : ''}>
+    ${g.itens
+      .map(
+        (i) => `<button type="button" class="nav-item" data-aba="${i.id}" ${i.fila ? `data-fila="${i.fila}"` : ''}>
       <span>${i.nome}</span><span class="cont" hidden></span>
-    </button>`).join('')}
-  `).join('');
+    </button>`,
+      )
+      .join('')}
+  `,
+  ).join('');
 }
 
 // Contadores no menu — o admin vê o que está pendente sem abrir aba nenhuma.
@@ -239,14 +320,28 @@ async function irPara(aba, forcarResumo) {
 
   const el = document.getElementById('conteudo');
   el.textContent = 'Carregando...';
-  if (!RESUMO || forcarResumo) { RESUMO = await pegar('/admin/resumo'); pintarContadores(); }
+  if (!RESUMO || forcarResumo) {
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+  }
 
   const telas = {
-    resumo: renderResumo, candidaturas: renderCandidaturas, convites: renderConvites,
-    criativos: renderCriativos, pontos: renderPontos, telas: renderTelas,
-    anunciantes: renderAnunciantes, vendedores: renderVendedores, planos: renderPlanos,
-    beneficios: renderBeneficios, categorias: renderCategorias, comodato: renderComodato,
-    cobrancas: renderCobrancas, comissoes: renderComissoes, custos: renderCustos, eventos: renderEventos,
+    resumo: renderResumo,
+    candidaturas: renderCandidaturas,
+    convites: renderConvites,
+    criativos: renderCriativos,
+    pontos: renderPontos,
+    telas: renderTelas,
+    anunciantes: renderAnunciantes,
+    vendedores: renderVendedores,
+    planos: renderPlanos,
+    beneficios: renderBeneficios,
+    categorias: renderCategorias,
+    comodato: renderComodato,
+    cobrancas: renderCobrancas,
+    comissoes: renderComissoes,
+    custos: renderCustos,
+    eventos: renderEventos,
     meusanuncios: renderMeusAnuncios,
     arrependimentos: renderArrependimentos,
     planosarquivados: renderPlanosArquivados,
@@ -265,7 +360,9 @@ document.getElementById('nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-item');
   if (btn) irPara(btn.dataset.aba);
 });
-document.getElementById('btnRecarregar').addEventListener('click', () => irPara(location.hash.slice(1) || 'resumo', true));
+document
+  .getElementById('btnRecarregar')
+  .addEventListener('click', () => irPara(location.hash.slice(1) || 'resumo', true));
 window.addEventListener('hashchange', () => {
   const aba = location.hash.slice(1) || 'resumo';
   const ativo = document.querySelector('.nav-item.active');
@@ -291,7 +388,10 @@ document.getElementById('formLogin').addEventListener('submit', async (e) => {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usuario: document.getElementById('usuario').value, senha: document.getElementById('senha').value }),
+      body: JSON.stringify({
+        usuario: document.getElementById('usuario').value,
+        senha: document.getElementById('senha').value,
+      }),
     });
   } catch {
     // Sem isso a promessa rejeitava e a tela não mudava nada — o admin
@@ -315,7 +415,9 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 });
 
 // Sessão é cookie httpOnly — testa se já tem uma válida antes de mostrar o gate.
-api('/admin/resumo').then((r) => { if (r.ok) mostrarApp(); });
+api('/admin/resumo').then((r) => {
+  if (r.ok) mostrarApp();
+});
 
 // ---------- visão geral ----------
 const ALERTAS = [
@@ -326,18 +428,27 @@ const ALERTAS = [
   { fila: 'anunciantes', aba: 'anunciantes', texto: 'anunciante(s) pendente(s) de aprovação' },
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   { fila: 'notas', aba: 'cobrancas', texto: 'nota(s) fiscal(is) por emitir' },
-  { fila: 'arrependimentos', aba: 'arrependimentos', texto: 'devolução(ões) por arrependimento a pagar', urgente: true },
+  {
+    fila: 'arrependimentos',
+    aba: 'arrependimentos',
+    texto: 'devolução(ões) por arrependimento a pagar',
+    urgente: true,
+  },
 ];
 
 function barrasHorizontais(linhas, mapa) {
   if (!linhas.length) return '<p class="empty-state u-py-8">Nada cadastrado ainda.</p>';
   const max = Math.max(...linhas.map((l) => l.qtd)) || 1;
-  return `<div class="bar-chart-h">${linhas.map((l) => `
+  return `<div class="bar-chart-h">${linhas
+    .map(
+      (l) => `
     <div class="row">
       <span class="nome">${esc(mapa[l.status] || l.status)}</span>
       <span class="track"><span class="fill" data-pct="${(l.qtd / max) * 100}"></span></span>
       <span class="valor">${l.qtd}</span>
-    </div>`).join('')}</div>`;
+    </div>`,
+    )
+    .join('')}</div>`;
 }
 
 // Linha da conciliação diária na Visão geral. Ela é o que salva quem pagou e
@@ -351,12 +462,12 @@ function linhaConciliacao(c) {
   const horas = Math.floor((Date.now() - new Date(c.terminouEm).getTime()) / 3600000);
   const atrasada = horas >= 36;
   const problema = c.abortou || c.falhas > 0 || atrasada;
-  const quando = horas < 1 ? 'há menos de uma hora' : (horas < 48 ? `há ${horas}h` : `em ${data(c.terminouEm)}`);
+  const quando = horas < 1 ? 'há menos de uma hora' : horas < 48 ? `há ${horas}h` : `em ${data(c.terminouEm)}`;
   const detalhe = c.abortou
     ? `abortou: ${esc(c.abortou)}`
-    : `${c.verificadas} assinatura(s) verificada(s) · ${c.aplicadas} ciclo(s) aplicado(s)`
-      + `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}`
-      + `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
+    : `${c.verificadas} assinatura(s) verificada(s) · ${c.aplicadas} ciclo(s) aplicado(s)` +
+      `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}` +
+      `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
   return `<div class="${problema ? 'alertas' : 'tudo-em-dia'} u-mb-20">
     <b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}
   </div>`;
@@ -378,17 +489,23 @@ async function renderResumo(el) {
   const margemOk = financeiro.margemMensal >= 0;
 
   el.innerHTML = `
-    ${pendentes.length
-      ? `<div class="alertas">${pendentes.map((a) => `
+    ${
+      pendentes.length
+        ? `<div class="alertas">${pendentes
+            .map(
+              (a) => `
           <button type="button" class="alerta ${a.urgente ? 'urgente' : ''}" data-ir="${a.aba}">
             <b>${filas[a.fila]}</b><span>${a.texto}</span>
-          </button>`).join('')}</div>`
-      : (redeVazia(rede)
-        ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você — e nenhum ponto no ar ainda.
+          </button>`,
+            )
+            .join('')}</div>`
+        : redeVazia(rede)
+          ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você — e nenhum ponto no ar ainda.
              Os primeiros passos: <a href="#pontos">cadastrar o primeiro ponto</a>, gerar a chave da tela em
              <a href="#telas">Telas</a>, e pôr o anúncio da própria Mostraí no ar por
              <a href="#meusanuncios">Meus anúncios</a> — tela vazia é tela sem prova social.</div>`
-        : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>')}
+          : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'
+    }
 
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
@@ -410,13 +527,19 @@ async function renderResumo(el) {
     <div class="dashboard-grid">
       <div class="panel">
         <div class="panel-head"><h3>Faturamento confirmado</h3><span class="kpi-caption">últimos 6 meses</span></div>
-        ${meses.length ? `<div class="bar-chart">${meses.map((m) => {
-          const [ano, mes] = m.mes.split('-');
-          return `<div class="bar-col" title="${m.mes}: ${fmt(m.total)}">
+        ${
+          meses.length
+            ? `<div class="bar-chart">${meses
+                .map((m) => {
+                  const [ano, mes] = m.mes.split('-');
+                  return `<div class="bar-col" title="${m.mes}: ${fmt(m.total)}">
             <div class="bar" data-pct="${Math.max(2, (Number(m.total) / maxFat) * 100)}"></div>
             <span class="bar-label">${mes}/${ano.slice(2)}</span>
           </div>`;
-        }).join('')}</div>` : '<p class="empty-state u-py-14">Nenhuma cobrança confirmada ainda.</p>'}
+                })
+                .join('')}</div>`
+            : '<p class="empty-state u-py-14">Nenhuma cobrança confirmada ainda.</p>'
+        }
       </div>
       <div class="panel">
         <div class="panel-head"><h3>Pontos por status</h3></div>
@@ -442,45 +565,68 @@ async function renderCriativos(el, status = 'pendente') {
 
   el.innerHTML = `
     <div class="chips u-mb-16">
-      ${Object.entries(CRIATIVO_STATUS).map(([v, nome]) => `<button type="button" class="chip ${v === status ? 'active' : ''}" data-status="${v}">${nome}</button>`).join('')}
+      ${Object.entries(CRIATIVO_STATUS)
+        .map(
+          ([v, nome]) =>
+            `<button type="button" class="chip ${v === status ? 'active' : ''}" data-status="${v}">${nome}</button>`,
+        )
+        .join('')}
     </div>
-    ${criativos.length ? `<div class="criativo-fila">${criativos.map((c) => {
-      const url = c.arquivo_normalizado_url || c.arquivo_original_url;
-      return `<div class="item">
-        ${url && ehVideo(url)
-          ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(c.thumbnail_url || '')}"></video>`
-          : (url ? `<img class="midia" src="${esc(url)}" alt="">` : '<div class="midia"></div>')}
+    ${
+      criativos.length
+        ? `<div class="criativo-fila">${criativos
+            .map((c) => {
+              const url = c.arquivo_normalizado_url || c.arquivo_original_url;
+              return `<div class="item">
+        ${
+          url && ehVideo(url)
+            ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(c.thumbnail_url || '')}"></video>`
+            : url
+              ? `<img class="midia" src="${esc(url)}" alt="">`
+              : '<div class="midia"></div>'
+        }
         <div class="dados">
           <b>${esc(nomePor[c.anunciante_id] || `Anunciante #${c.anunciante_id}`)}</b>
           <small>#${c.id} · ${c.duracao_segundos ? `${c.duracao_segundos}s · ` : ''}enviado ${data(c.created_at)}</small>
         </div>
-        ${status === 'pendente' ? `<div class="acoes">
+        ${
+          status === 'pendente'
+            ? `<div class="acoes">
           <button class="btn primary mini" data-acao="aprovado" data-id="${c.id}">Aprovar</button>
           <button class="btn ghost mini" data-acao="reprovado" data-id="${c.id}">Reprovar</button>
-        </div>` : `<div class="acoes">
+        </div>`
+            : `<div class="acoes">
           <button class="btn ghost mini" data-acao="${status === 'aprovado' ? 'reprovado' : 'aprovado'}" data-id="${c.id}">Mudar para ${status === 'aprovado' ? 'reprovado' : 'aprovado'}</button>
-        </div>`}
+        </div>`
+        }
       </div>`;
-    }).join('')}</div>` : `<p class="empty-state">Nenhum criativo ${CRIATIVO_STATUS[status].toLowerCase()}.</p>`}`;
+            })
+            .join('')}</div>`
+        : `<p class="empty-state">Nenhum criativo ${CRIATIVO_STATUS[status].toLowerCase()}.</p>`
+    }`;
 
-  el.querySelectorAll('.chip[data-status]').forEach((chip) => chip.addEventListener('click', () => renderCriativos(el, chip.dataset.status)));
-  el.querySelectorAll('button[data-acao]').forEach((btn) => btn.addEventListener('click', async () => {
-    // Reprovar sem motivo era um beco sem saída pro anunciante: o card dele
-    // virava "Reprovado" e nenhuma tela dizia o que consertar. O motivo vai
-    // junto do status, aparece no card dele e vai no e-mail.
-    const corpo = { status: btn.dataset.acao };
-    if (btn.dataset.acao === 'reprovado') {
-      const motivo = window.prompt('Por que essa peça não entra no ar? (o anunciante lê isto no painel e no e-mail)');
-      if (motivo === null) return;
-      if (!motivo.trim()) return window.alert('Escreva o motivo — é o que diz ao anunciante o que corrigir.');
-      corpo.motivo_reprovacao = motivo.trim();
-    }
-    if (await salvar(`/admin/criativos/${btn.dataset.id}`, corpo)) {
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-      renderCriativos(el, status);
-    }
-  }));
+  el.querySelectorAll('.chip[data-status]').forEach((chip) =>
+    chip.addEventListener('click', () => renderCriativos(el, chip.dataset.status)),
+  );
+  el.querySelectorAll('button[data-acao]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      // Reprovar sem motivo era um beco sem saída pro anunciante: o card dele
+      // virava "Reprovado" e nenhuma tela dizia o que consertar. O motivo vai
+      // junto do status, aparece no card dele e vai no e-mail.
+      const corpo = { status: btn.dataset.acao };
+      if (btn.dataset.acao === 'reprovado') {
+        const motivo = window.prompt('Por que essa peça não entra no ar? (o anunciante lê isto no painel e no e-mail)');
+        if (motivo === null) return;
+        if (!motivo.trim()) return window.alert('Escreva o motivo — é o que diz ao anunciante o que corrigir.');
+        corpo.motivo_reprovacao = motivo.trim();
+      }
+      if (await salvar(`/admin/criativos/${btn.dataset.id}`, corpo)) {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+        renderCriativos(el, status);
+      }
+    }),
+  );
 }
 
 // ---------- meus anúncios (conta própria do Mostraí) ----------
@@ -512,15 +658,21 @@ async function renderMeusAnuncios(el) {
       </div>`;
     document.getElementById('formContaPropria').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      const r = await api('/admin/anunciantes', { method: 'POST', body: JSON.stringify({
-        nome_empresa: document.getElementById('cpNome').value,
-        cpf_cnpj: document.getElementById('cpDoc').value,
-        contato_email: 'rede+propria@mostrai.local',
-        contato_telefone: '+5516000000000', status: 'ativo',
-        conta_propria: true, frequencia_dia_propria: Number(document.getElementById('cpFreq').value),
-      }) });
+      const r = await api('/admin/anunciantes', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome_empresa: document.getElementById('cpNome').value,
+          cpf_cnpj: document.getElementById('cpDoc').value,
+          contato_email: 'rede+propria@mostrai.local',
+          contato_telefone: '+5516000000000',
+          status: 'ativo',
+          conta_propria: true,
+          frequencia_dia_propria: Number(document.getElementById('cpFreq').value),
+        }),
+      });
       if (!r.ok) return toast((await r.json()).erro || 'não deu pra criar', 'err');
-      toast('conta própria criada'); renderMeusAnuncios(el);
+      toast('conta própria criada');
+      renderMeusAnuncios(el);
     });
     return;
   }
@@ -559,24 +711,35 @@ async function renderMeusAnuncios(el) {
     <div class="tabela-caixa">
       <table>
         <thead><tr><th>Anúncio</th><th>Duração</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${meus.map((c) => `
+        <tbody>${
+          meus
+            .map(
+              (c) => `
           <tr>
             <td>${esc(c.arquivo_original_url || '—')}</td>
             <td>${c.duracao_segundos ? c.duracao_segundos + 's' : '—'}</td>
             <td>${c.status === 'aprovado' ? 'No ar' : esc(c.status)}</td>
-            <td>${c.status === 'aprovado'
-              ? `<button class="btn ghost mini" data-tirar="${c.id}">Tirar do ar</button>`
-              : `<button class="btn ghost mini" data-por="${c.id}">Pôr no ar</button>`}</td>
-          </tr>`).join('') || '<tr><td colspan="4">Nenhum anúncio ainda.</td></tr>'}</tbody>
+            <td>${
+              c.status === 'aprovado'
+                ? `<button class="btn ghost mini" data-tirar="${c.id}">Tirar do ar</button>`
+                : `<button class="btn ghost mini" data-por="${c.id}">Pôr no ar</button>`
+            }</td>
+          </tr>`,
+            )
+            .join('') || '<tr><td colspan="4">Nenhum anúncio ainda.</td></tr>'
+        }</tbody>
       </table>
     </div>`;
 
   document.getElementById('formFreq').addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    const r = await api(`/admin/anunciantes/${conta.id}`, { method: 'PATCH', body: JSON.stringify({
-      frequencia_dia_propria: Number(document.getElementById('cpFreq2').value),
-      status: document.getElementById('cpStatus').value,
-    }) });
+    const r = await api(`/admin/anunciantes/${conta.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        frequencia_dia_propria: Number(document.getElementById('cpFreq2').value),
+        status: document.getElementById('cpStatus').value,
+      }),
+    });
     toast(r.ok ? 'salvo' : 'não deu pra salvar', r.ok ? 'ok' : 'err');
   });
 
@@ -587,27 +750,38 @@ async function renderMeusAnuncios(el) {
     if (!arquivo) return;
     const msg = document.getElementById('cpMsg');
     msg.textContent = 'Enviando e normalizando o vídeo... isso leva alguns segundos.';
-    const dados = new FormData(); dados.append('arquivo', arquivo);
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
     const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${conta.id}/criativos`, {
-      method: 'POST', body: dados, credentials: 'include',
+      method: 'POST',
+      body: dados,
+      credentials: 'include',
     });
-    if (!r.ok) { msg.textContent = ''; return toast((await r.json()).erro || 'falhou', 'err'); }
-    toast('anúncio enviado'); renderMeusAnuncios(el);
+    if (!r.ok) {
+      msg.textContent = '';
+      return toast((await r.json()).erro || 'falhou', 'err');
+    }
+    toast('anúncio enviado');
+    renderMeusAnuncios(el);
   });
 
-  el.querySelectorAll('[data-tirar],[data-por]').forEach((b) => b.addEventListener('click', async () => {
-    const id = b.dataset.tirar || b.dataset.por;
-    const status = b.dataset.tirar ? 'reprovado' : 'aprovado';
-    const r = await api(`/admin/criativos/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    if (!r.ok) return toast('não deu pra mudar', 'err');
-    renderMeusAnuncios(el);
-  }));
+  el.querySelectorAll('[data-tirar],[data-por]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const id = b.dataset.tirar || b.dataset.por;
+      const status = b.dataset.tirar ? 'reprovado' : 'aprovado';
+      const r = await api(`/admin/criativos/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      if (!r.ok) return toast('não deu pra mudar', 'err');
+      renderMeusAnuncios(el);
+    }),
+  );
 }
 
 // ---------- pontos ----------
 async function renderPontos(el) {
   const [pontos, categorias, opcoesComodato] = await Promise.all([
-    pegar('/admin/pontos'), pegar('/admin/categorias'), pegar('/admin/planos-ponto'),
+    pegar('/admin/pontos'),
+    pegar('/admin/categorias'),
+    pegar('/admin/planos-ponto'),
   ]);
   // Sinal/chave/PIN são por TELA (migration 019) — ficam na aba "Telas".
   // Aqui o ponto mostra quantas telas tem e quem é o dono (conta).
@@ -616,7 +790,9 @@ async function renderPontos(el) {
       <th>Comodato</th><th data-ord>Ajuda R$/mês</th><th data-ord>Cota/h</th><th data-ord>Status</th>
       <th data-ord>Fluxo/mês</th><th>Molde</th><th data-ord>Telas</th><th>Foto</th>
     </tr></thead><tbody>
-    ${pontos.map((p) => `<tr data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
+    ${pontos
+      .map(
+        (p) => `<tr data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
       <td>${p.id}</td>
       <td><b>${esc(p.nome)}</b><div class="u-dim u-fs-72">${esc(p.responsavel_nome)} · ${esc(p.responsavel_contato)}</div></td>
       <td>${p.dono_nome ? esc(p.dono_nome) : '<span class="u-dim">sem conta</span>'}</td>
@@ -640,7 +816,9 @@ async function renderPontos(el) {
         <input type="file" accept="image/*" class="mini u-w-100" data-foto-ponto="${p.id}">
         ${p.foto_instalacao_url ? `<a class="u-d-block u-fs-72" href="${esc(p.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto</a>` : ''}
       </td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -662,8 +840,11 @@ async function renderPontos(el) {
       </form>
     </details>
     ${caixaTabela({
-      chips: [{ valor: '', nome: 'Todos' }, { valor: 'parcial', nome: 'Com tela fora do ar' },
-        ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
+      chips: [
+        { valor: '', nome: 'Todos' },
+        { valor: 'parcial', nome: 'Com tela fora do ar' },
+        ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+      ],
       html: corpo,
       dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
     })}
@@ -671,39 +852,75 @@ async function renderPontos(el) {
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
 
-  el.querySelectorAll('[data-ponto]').forEach((campo) => campo.addEventListener('change', () => {
-    if (campo.type === 'checkbox') return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: campo.checked }, campo);
-    const numerico = ['valor_pago_mensal', 'cota_autoanuncio_slots_hora', 'fluxo_estimado_mensal', 'categoria_id'].includes(campo.dataset.ponto);
-    const valor = campo.value === '' ? null : (numerico ? Number(campo.value) : campo.value);
-    return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: valor }, campo);
-  }));
+  el.querySelectorAll('[data-ponto]').forEach((campo) =>
+    campo.addEventListener('change', () => {
+      if (campo.type === 'checkbox')
+        return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: campo.checked }, campo);
+      const numerico = [
+        'valor_pago_mensal',
+        'cota_autoanuncio_slots_hora',
+        'fluxo_estimado_mensal',
+        'categoria_id',
+      ].includes(campo.dataset.ponto);
+      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
+      return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: valor }, campo);
+    }),
+  );
 
-  el.querySelectorAll('[data-ver-telas]').forEach((a) => a.addEventListener('click', () => { FILTRO_TELAS_PONTO = Number(a.dataset.verTelas); }));
-  el.querySelectorAll('[data-nova-tela]').forEach((btn) => btn.addEventListener('click', async () => {
-    const apelido = prompt('Nome da tela (ex.: Tela 2 — balcão):', `Tela ${pontos.find((p) => p.id === Number(btn.dataset.novaTela))?.telas + 1 || 2}`);
-    if (apelido === null) return;
-    const custo = prompt('Custo do equipamento dessa tela (R$), pra amortização — pode deixar 0 e preencher depois:', '0');
-    const r = await api(`/admin/pontos/${btn.dataset.novaTela}/dispositivos`, { method: 'POST', body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }) });
-    if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
-    toast('Tela criada — gere a chave dela na aba Telas.');
-    FILTRO_TELAS_PONTO = Number(btn.dataset.novaTela);
-    irPara('telas');
-  }));
+  el.querySelectorAll('[data-ver-telas]').forEach((a) =>
+    a.addEventListener('click', () => {
+      FILTRO_TELAS_PONTO = Number(a.dataset.verTelas);
+    }),
+  );
+  el.querySelectorAll('[data-nova-tela]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const apelido = prompt(
+        'Nome da tela (ex.: Tela 2 — balcão):',
+        `Tela ${pontos.find((p) => p.id === Number(btn.dataset.novaTela))?.telas + 1 || 2}`,
+      );
+      if (apelido === null) return;
+      const custo = prompt(
+        'Custo do equipamento dessa tela (R$), pra amortização — pode deixar 0 e preencher depois:',
+        '0',
+      );
+      const r = await api(`/admin/pontos/${btn.dataset.novaTela}/dispositivos`, {
+        method: 'POST',
+        body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }),
+      });
+      if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
+      toast('Tela criada — gere a chave dela na aba Telas.');
+      FILTRO_TELAS_PONTO = Number(btn.dataset.novaTela);
+      irPara('telas');
+    }),
+  );
 
-  el.querySelectorAll('[data-foto-ponto]').forEach((input) => input.addEventListener('change', async () => {
-    if (!input.files[0]) return;
-    const form = new FormData();
-    form.append('arquivo', input.files[0]);
-    const r = await fetch(`${API_BASE_URL}/admin/pontos/${input.dataset.fotoPonto}/foto`, { method: 'POST', credentials: 'include', body: form });
-    toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
-    if (r.ok) renderPontos(el);
-  }));
+  el.querySelectorAll('[data-foto-ponto]').forEach((input) =>
+    input.addEventListener('change', async () => {
+      if (!input.files[0]) return;
+      const form = new FormData();
+      form.append('arquivo', input.files[0]);
+      const r = await fetch(`${API_BASE_URL}/admin/pontos/${input.dataset.fotoPonto}/foto`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
+      if (r.ok) renderPontos(el);
+    }),
+  );
 
   document.getElementById('formNovoPonto').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoPonto');
-    const r = await api('/admin/pontos', { method: 'POST', body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'aguardando_instalacao' }) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    const r = await api('/admin/pontos', {
+      method: 'POST',
+      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'aguardando_instalacao' }),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     toast('Ponto criado.');
     renderPontos(el);
   });
@@ -715,7 +932,8 @@ let FILTRO_TELAS_PONTO = null;
 // A chave do aparelho é o que autentica a TV (ver src/lib/aparelho.js).
 // O link completo é o que se abre no navegador da tela — ele guarda a
 // chave e continua funcionando depois de reiniciar.
-const linkDoPlayer = (telaId, chave) => `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
+const linkDoPlayer = (telaId, chave) =>
+  `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
 
 async function renderTelas(el) {
   const filtroPonto = FILTRO_TELAS_PONTO;
@@ -732,22 +950,27 @@ async function renderTelas(el) {
   const idsOffline = new Set((semSinal || []).map((d) => d.id));
   const estaOffline = (t) => idsOffline.has(t.id);
   const lista = telas;
-  const amort = (t) => Number(t.custo_equipamento) > 0 ? Number(t.custo_equipamento) / Math.max(1, Number(t.meses_amortizacao) || 36) : 0;
+  const amort = (t) =>
+    Number(t.custo_equipamento) > 0 ? Number(t.custo_equipamento) / Math.max(1, Number(t.meses_amortizacao) || 36) : 0;
 
   const corpo = `<table><thead><tr>
       <th data-ord>ID</th><th data-ord>Ponto</th><th data-ord>Tela</th><th data-ord>Status</th><th data-ord>Último sinal</th>
       <th>Chave / link do player</th><th>PIN do painel</th><th data-ord>Custo R$</th><th data-ord>Meses</th><th data-ord>Amort./mês</th><th data-ord>Instalada em</th><th></th>
     </tr></thead><tbody>
-    ${lista.map((t) => `<tr data-filtro="${t.status}${estaOffline(t) ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
+    ${lista
+      .map(
+        (t) => `<tr data-filtro="${t.status}${estaOffline(t) ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
       <td>${t.id}</td>
       <td><b>${esc(t.ponto_nome)}</b><div class="u-dim u-fs-72">${esc(t.ponto_cidade || '')} · ponto ${esc(PONTO_STATUS[t.ponto_status] || t.ponto_status)}</div></td>
       <td><input class="mini u-w-120" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}"></td>
       <td>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</td>
       <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '—'}</td>
-      <td>${t.aparelho_id
-        ? `<button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
+      <td>${
+        t.aparelho_id
+          ? `<button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
            <button class="btn ghost mini" data-chave="${t.id}" data-trocar="1" title="Gera uma chave nova e derruba o aparelho atual">Trocar</button>`
-        : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`}</td>
+          : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`
+      }</td>
       <td>${t.tem_pin ? '<span class="badge badge-ok">definido</span> ' : '<span class="badge badge-pendente">sem PIN</span> '}
         <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></td>
       <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}"></td>
@@ -756,94 +979,160 @@ async function renderTelas(el) {
       <td><input class="mini u-w-120" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}"></td>
       <td><button class="btn ghost mini" data-painel-tela="${t.id}" title="O que rodou nessa tela">Painel</button>
           <button class="btn ghost mini u-txt-erro" data-excluir-tela="${t.id}" title="Só se nunca rodou nada">×</button></td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
     ${filtroPonto ? `<p class="form-hint u-m-0 u-mb-10">Mostrando só as telas do ponto #${filtroPonto}. <a href="#telas" data-limpar-filtro>Ver todas</a></p>` : ''}
-    ${lista.length ? caixaTabela({
-      chips: [{ valor: '', nome: 'Todas' }, { valor: 'offline', nome: 'Sem sinal' }, { valor: 'semchave', nome: 'Sem chave' },
-        ...Object.entries(TELA_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
-      html: corpo,
-      dica: 'Uma tela = um link do player + uma playlist. Custo e prazo alimentam a amortização da visão geral.',
-    }) : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" na aba Pontos.</p>'}
+    ${
+      lista.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todas' },
+              { valor: 'offline', nome: 'Sem sinal' },
+              { valor: 'semchave', nome: 'Sem chave' },
+              ...Object.entries(TELA_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+            ],
+            html: corpo,
+            dica: 'Uma tela = um link do player + uma playlist. Custo e prazo alimentam a amortização da visão geral.',
+          })
+        : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" na aba Pontos.</p>'
+    }
     <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P) — só mostra o que rodou nela, nada mais.</p>`;
 
   if (!lista.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
   el.querySelector('[data-limpar-filtro]')?.addEventListener('click', () => renderTelas(el));
 
-  el.querySelectorAll('[data-tela]').forEach((campo) => campo.addEventListener('change', async () => {
-    const numerico = ['custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela);
-    const valor = campo.value === '' ? null : (numerico ? Number(campo.value) : campo.value);
-    if (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo) && ['status', 'custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela)) {
-      RESUMO = await pegar('/admin/resumo'); pintarContadores();
-      if (campo.dataset.tela !== 'status') renderTelas(el);
-    }
-  }));
+  el.querySelectorAll('[data-tela]').forEach((campo) =>
+    campo.addEventListener('change', async () => {
+      const numerico = ['custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela);
+      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
+      if (
+        (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) &&
+        ['status', 'custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela)
+      ) {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+        if (campo.dataset.tela !== 'status') renderTelas(el);
+      }
+    }),
+  );
 
-  el.querySelectorAll('[data-chave]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (btn.dataset.trocar && !confirm('Gerar uma chave nova? A TV que está usando a chave atual para de funcionar até você abrir o link novo nela.')) return;
-    const r = await api(`/admin/dispositivos/${btn.dataset.chave}/chave`, { method: 'POST' });
-    if (!r.ok) return toast('Não foi possível gerar a chave.', 'err');
-    const { aparelho_id } = await r.json();
-    prompt('Abra este link no navegador da TV (ele guarda a chave e continua funcionando depois de reiniciar):', linkDoPlayer(btn.dataset.chave, aparelho_id));
-    renderTelas(el);
-  }));
+  el.querySelectorAll('[data-chave]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (
+        btn.dataset.trocar &&
+        !confirm(
+          'Gerar uma chave nova? A TV que está usando a chave atual para de funcionar até você abrir o link novo nela.',
+        )
+      )
+        return;
+      const r = await api(`/admin/dispositivos/${btn.dataset.chave}/chave`, { method: 'POST' });
+      if (!r.ok) return toast('Não foi possível gerar a chave.', 'err');
+      const { aparelho_id } = await r.json();
+      prompt(
+        'Abra este link no navegador da TV (ele guarda a chave e continua funcionando depois de reiniciar):',
+        linkDoPlayer(btn.dataset.chave, aparelho_id),
+      );
+      renderTelas(el);
+    }),
+  );
 
-  el.querySelectorAll('[data-copiar]').forEach((btn) => btn.addEventListener('click', () => {
-    const link = linkDoPlayer(btn.dataset.telaId, btn.dataset.copiar);
-    navigator.clipboard?.writeText(link).then(() => toast('Link copiado.'), () => prompt('Link do player:', link));
-  }));
+  el.querySelectorAll('[data-copiar]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const link = linkDoPlayer(btn.dataset.telaId, btn.dataset.copiar);
+      navigator.clipboard?.writeText(link).then(
+        () => toast('Link copiado.'),
+        () => prompt('Link do player:', link),
+      );
+    }),
+  );
 
-  el.querySelectorAll('[data-pin]').forEach((btn) => btn.addEventListener('click', async () => {
-    const pin = prompt('PIN de 4 a 6 dígitos pra abrir o painel dessa tela na TV (deixe vazio pra remover):');
-    if (pin === null) return;
-    const r = await api(`/admin/dispositivos/${btn.dataset.pin}/pin`, { method: 'POST', body: JSON.stringify({ pin: pin.trim() || null }) });
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.', 'err');
-    toast(pin.trim() ? 'PIN definido.' : 'PIN removido.');
-    renderTelas(el);
-  }));
+  el.querySelectorAll('[data-pin]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const pin = prompt('PIN de 4 a 6 dígitos pra abrir o painel dessa tela na TV (deixe vazio pra remover):');
+      if (pin === null) return;
+      const r = await api(`/admin/dispositivos/${btn.dataset.pin}/pin`, {
+        method: 'POST',
+        body: JSON.stringify({ pin: pin.trim() || null }),
+      });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.', 'err');
+      toast(pin.trim() ? 'PIN definido.' : 'PIN removido.');
+      renderTelas(el);
+    }),
+  );
 
-  el.querySelectorAll('[data-painel-tela]').forEach((btn) => btn.addEventListener('click', async () => {
-    const d = await pegar(`/admin/dispositivos/${btn.dataset.painelTela}/painel`);
-    const total = d.porAnunciante.reduce((s, a) => s + a.confirmadas, 0);
-    const linha = btn.closest('tr');
-    const existente = linha.nextElementSibling;
-    if (existente && existente.dataset.painelDe === btn.dataset.painelTela) { existente.remove(); return; }
-    linha.insertAdjacentHTML('afterend', `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="12">
+  el.querySelectorAll('[data-painel-tela]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const d = await pegar(`/admin/dispositivos/${btn.dataset.painelTela}/painel`);
+      const total = d.porAnunciante.reduce((s, a) => s + a.confirmadas, 0);
+      const linha = btn.closest('tr');
+      const existente = linha.nextElementSibling;
+      if (existente && existente.dataset.painelDe === btn.dataset.painelTela) {
+        existente.remove();
+        return;
+      }
+      linha.insertAdjacentHTML(
+        'afterend',
+        `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="12">
       <b>Últimos 30 dias: ${num(total)} exibições confirmadas</b>
-      ${d.porAnunciante.length ? `<table class="mini-table u-mt-6"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
-        ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state u-py-6">Nada rodou nessa tela ainda.</p>'}
-    </td></tr>`);
-  }));
+      ${
+        d.porAnunciante.length
+          ? `<table class="mini-table u-mt-6"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
+        ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}</tbody></table>`
+          : '<p class="empty-state u-py-6">Nada rodou nessa tela ainda.</p>'
+      }
+    </td></tr>`,
+      );
+    }),
+  );
 
-  el.querySelectorAll('[data-excluir-tela]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Excluir essa tela? Só faça isso se ela nunca rodou nada (o histórico de exibições vai junto).')) return;
-    const r = await api(`/admin/dispositivos/${btn.dataset.excluirTela}`, { method: 'DELETE' });
-    if (!r.ok) return toast('Não foi possível excluir.', 'err');
-    toast('Tela excluída.');
-    renderTelas(el);
-  }));
+  el.querySelectorAll('[data-excluir-tela]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir essa tela? Só faça isso se ela nunca rodou nada (o histórico de exibições vai junto).'))
+        return;
+      const r = await api(`/admin/dispositivos/${btn.dataset.excluirTela}`, { method: 'DELETE' });
+      if (!r.ok) return toast('Não foi possível excluir.', 'err');
+      toast('Tela excluída.');
+      renderTelas(el);
+    }),
+  );
 }
 
 // ---------- anunciantes ----------
 async function renderAnunciantes(el) {
   const [anunciantes, categorias, planos, pontos] = await Promise.all([
-    pegar('/admin/anunciantes'), pegar('/admin/categorias'), pegar('/admin/planos'), pegar('/admin/pontos'),
+    pegar('/admin/anunciantes'),
+    pegar('/admin/categorias'),
+    pegar('/admin/planos'),
+    pegar('/admin/pontos'),
   ]);
   // Plano mostrava só o id cru; e desde que ponto usa conta de anunciante
   // (migration 016), dá pra marcar aqui quem também é dono de ponto.
-  const nomePlano = Object.fromEntries(planos.map((p) => [p.id, `${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`]));
+  const nomePlano = Object.fromEntries(
+    planos.map((p) => [p.id, `${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`]),
+  );
   const temPonto = new Set(pontos.map((p) => p.anunciante_id).filter(Boolean));
 
   const corpo = `<table><thead><tr>
       <th data-ord>ID</th><th data-ord>Empresa</th><th data-ord>Documento</th><th>Contato</th>
       <th>Ramo</th><th data-ord>Plano</th><th data-ord>Expira</th><th data-ord>Status</th><th data-ord>Entrou</th><th></th>
     </tr></thead><tbody>
-    ${anunciantes.map((a) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="${a.excluido_em ? 'u-op-60' : ''}">
+    ${anunciantes
+      .map(
+        (
+          a,
+        ) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="${a.excluido_em ? 'u-op-60' : ''}">
       <td>${a.id}</td>
-      <td><b>${esc(a.nome_empresa)}</b> ${(a.papeis || ['anunciante']).filter((x) => x !== 'anunciante').map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado (fundador)">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+      <td><b>${esc(a.nome_empresa)}</b> ${(a.papeis || ['anunciante'])
+        .filter((x) => x !== 'anunciante')
+        .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
+        .join(
+          ' ',
+        )}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado (fundador)">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante — não entra em ponto do mesmo ramo">
@@ -854,14 +1143,20 @@ async function renderAnunciantes(el) {
       <td>${data(a.data_expiracao)}</td>
       <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
       <td>${data(a.created_at)}</td>
-      <td>${a.excluido_em
-        ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
-        : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
+      <td>${
+        a.excluido_em
+          ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
+          : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
            <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
-           ${a.plano_id && !a.plano_cortesia
-             ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
-             : ''}`}</td>
-    </tr>`).join('')}
+           ${
+             a.plano_id && !a.plano_cortesia
+               ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
+               : ''
+}`
+      }</td>
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -883,23 +1178,29 @@ async function renderAnunciantes(el) {
       </form>
     </details>
     ${caixaTabela({
-      chips: [{ valor: '', nome: 'Todos' },
+      chips: [
+        { valor: '', nome: 'Todos' },
         ...Object.entries(ANUNCIANTE_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-        { valor: 'comodato', nome: 'Dono de ponto' }, { valor: 'vendedor', nome: 'Vendedor' }, { valor: 'excluida', nome: 'Excluídas' }],
+        { valor: 'comodato', nome: 'Dono de ponto' },
+        { valor: 'vendedor', nome: 'Vendedor' },
+        { valor: 'excluida', nome: 'Excluídas' },
+      ],
       html: corpo,
       dica: 'Conta excluída fica recuperável por 60 dias — use Restaurar.',
     })}`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
 
-  el.querySelectorAll('[data-anunciante]').forEach((sel) => sel.addEventListener('change', async () => {
-    const campo = sel.dataset.anunciante;
-    const valor = campo === 'categoria_id' ? (sel.value === '' ? null : Number(sel.value)) : sel.value;
-    if (await salvar(`/admin/anunciantes/${sel.dataset.id}`, { [campo]: valor }, sel) && campo === 'status') {
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-    }
-  }));
+  el.querySelectorAll('[data-anunciante]').forEach((sel) =>
+    sel.addEventListener('change', async () => {
+      const campo = sel.dataset.anunciante;
+      const valor = campo === 'categoria_id' ? (sel.value === '' ? null : Number(sel.value)) : sel.value;
+      if ((await salvar(`/admin/anunciantes/${sel.dataset.id}`, { [campo]: valor }, sel)) && campo === 'status') {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+      }
+    }),
+  );
 
   // Exclusão de conta é soft-delete (migration 017): o anunciante pede,
   // o suporte desfaz aqui dentro de 60 dias zerando excluido_em.
@@ -907,60 +1208,89 @@ async function renderAnunciantes(el) {
   // conta do cliente. Multipart, então não passa pelo `api()`, que manda JSON.
   // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
   // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
-  el.querySelectorAll('[data-liberar]').forEach((b) => b.addEventListener('click', async () => {
-    const opcoes = planos.map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`).join('\n');
-    const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
-    if (!plano_id) return;
-    const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
-    const r = await api(`/admin/anunciantes/${b.dataset.liberar}/liberar-plano`, {
-      method: 'POST', body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
-    });
-    if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
-    toast('plano liberado — a conta está no ar, sem cobrança');
-    renderAnunciantes(el);
-  }));
-  el.querySelectorAll('[data-subir]').forEach((input) => input.addEventListener('change', async () => {
-    const arquivo = input.files[0];
-    if (!arquivo) return;
-    input.disabled = true;
-    toast('enviando e normalizando o vídeo...');
-    const dados = new FormData(); dados.append('arquivo', arquivo);
-    const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${input.dataset.subir}/criativos`, {
-      method: 'POST', body: dados, credentials: 'include',
-    });
-    input.disabled = false; input.value = '';
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
-    toast('anúncio no ar na conta do cliente');
-  }));
+  el.querySelectorAll('[data-liberar]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const opcoes = planos
+        .map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`)
+        .join('\n');
+      const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
+      if (!plano_id) return;
+      const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
+      const r = await api(`/admin/anunciantes/${b.dataset.liberar}/liberar-plano`, {
+        method: 'POST',
+        body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
+      });
+      if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
+      toast('plano liberado — a conta está no ar, sem cobrança');
+      renderAnunciantes(el);
+    }),
+  );
+  el.querySelectorAll('[data-subir]').forEach((input) =>
+    input.addEventListener('change', async () => {
+      const arquivo = input.files[0];
+      if (!arquivo) return;
+      input.disabled = true;
+      toast('enviando e normalizando o vídeo...');
+      const dados = new FormData();
+      dados.append('arquivo', arquivo);
+      const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${input.dataset.subir}/criativos`, {
+        method: 'POST',
+        body: dados,
+        credentials: 'include',
+      });
+      input.disabled = false;
+      input.value = '';
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
+      toast('anúncio no ar na conta do cliente');
+    }),
+  );
   // A rota de cancelar assinatura existia desde sempre e nao tinha um unico
   // botao em lugar nenhum: nao havia como parar uma cobranca recorrente pela
   // interface. Cancelar so no painel do Asaas deixaria o banco daqui achando
   // que a assinatura segue viva.
-  el.querySelectorAll('[data-cancelar]').forEach((btn) => btn.addEventListener('click', async () => {
-    const linha = btn.closest('tr');
-    const nome = linha ? linha.querySelector('b').textContent : 'esta conta';
-    if (!confirm(`Cancelar a assinatura de ${nome}?\n\n`
-      + 'A cobrança recorrente para no San Checkout e não volta sozinha. '
-      + 'A cobertura já paga continua valendo até a data de expiração — '
-      + 'o anúncio não sai do ar hoje.')) return;
-    const r = await api(`/admin/anunciantes/${btn.dataset.cancelar}/cancelar-assinatura`, { method: 'POST' });
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', true);
-    toast('Assinatura cancelada. A cobertura paga continua até expirar.');
-    renderAnunciantes(el);
-  }));
+  el.querySelectorAll('[data-cancelar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const linha = btn.closest('tr');
+      const nome = linha ? linha.querySelector('b').textContent : 'esta conta';
+      if (
+        !confirm(
+          `Cancelar a assinatura de ${nome}?\n\n` +
+            'A cobrança recorrente para no San Checkout e não volta sozinha. ' +
+            'A cobertura já paga continua valendo até a data de expiração — ' +
+            'o anúncio não sai do ar hoje.',
+        )
+      )
+        return;
+      const r = await api(`/admin/anunciantes/${btn.dataset.cancelar}/cancelar-assinatura`, { method: 'POST' });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', true);
+      toast('Assinatura cancelada. A cobertura paga continua até expirar.');
+      renderAnunciantes(el);
+    }),
+  );
 
-  el.querySelectorAll('[data-restaurar]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
-    if (await salvar(`/admin/anunciantes/${btn.dataset.restaurar}`, { excluido_em: null })) renderAnunciantes(el);
-  }));
+  el.querySelectorAll('[data-restaurar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
+      if (await salvar(`/admin/anunciantes/${btn.dataset.restaurar}`, { excluido_em: null })) renderAnunciantes(el);
+    }),
+  );
 
   document.getElementById('formNovoAnunciante').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoAnunciante');
-    const r = await api('/admin/anunciantes', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+    const r = await api('/admin/anunciantes', {
+      method: 'POST',
+      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+    });
     const corpoResp = await r.json();
-    if (!r.ok) { msg.textContent = corpoResp.erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
-    alert(`Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora — não fica salva em nenhuma tela depois desta.`);
+    if (!r.ok) {
+      msg.textContent = corpoResp.erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
+    alert(
+      `Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora — não fica salva em nenhuma tela depois desta.`,
+    );
     renderAnunciantes(el);
   });
 }
@@ -971,7 +1301,9 @@ async function renderVendedores(el) {
   const corpo = `<table><thead><tr>
       <th data-ord>Conta</th><th data-ord>Nome</th><th>Contato</th><th>Chave Pix</th><th data-ord>Cupom</th><th data-ord>Comissão %</th><th data-ord>Status</th><th data-ord>Desde</th>
     </tr></thead><tbody>
-    ${vendedores.map((v) => `<tr data-filtro="${v.status}">
+    ${vendedores
+      .map(
+        (v) => `<tr data-filtro="${v.status}">
       <td>${v.conta_id}</td>
       <td><b>${esc(v.nome)}</b></td>
       <td><div class="u-fs-78">${esc(v.email || '')}</div><div class="u-dim u-fs-74">${esc(v.telefone || '')}</div></td>
@@ -980,25 +1312,39 @@ async function renderVendedores(el) {
       <td><input class="mini u-w-60" type="number" step="0.01" min="0" max="100" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}"></td>
       <td>${selectStatus(VENDEDOR_STATUS, v.status, `data-vendedor="status" data-id="${v.conta_id}"`)}</td>
       <td>${data(v.created_at)}</td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
-  el.innerHTML = vendedores.length ? caixaTabela({
-    chips: [{ valor: '', nome: 'Todos' }, ...Object.entries(VENDEDOR_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
-    html: corpo,
-    dica: 'Comissão e Pix salvam ao sair do campo. Vendedor novo entra por convite (aba Convites) com o papel "vendedor".',
-  }) : '<p class="empty-state">Nenhum vendedor ainda. Gere um convite com o papel "vendedor" na aba Convites — a conta que entrar por ele já nasce com cupom.</p>';
+  el.innerHTML = vendedores.length
+    ? caixaTabela({
+        chips: [
+          { valor: '', nome: 'Todos' },
+          ...Object.entries(VENDEDOR_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+        ],
+        html: corpo,
+        dica: 'Comissão e Pix salvam ao sair do campo. Vendedor novo entra por convite (aba Convites) com o papel "vendedor".',
+      })
+    : '<p class="empty-state">Nenhum vendedor ainda. Gere um convite com o papel "vendedor" na aba Convites — a conta que entrar por ele já nasce com cupom.</p>';
 
   if (!vendedores.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-vendedor]').forEach((campo) => campo.addEventListener('change', () => {
-    const valor = campo.dataset.vendedor === 'comissao_percentual' ? Number(campo.value) : campo.value;
-    salvar(`/admin/vendedores/${campo.dataset.id}`, { [campo.dataset.vendedor]: valor }, campo);
-  }));
-  el.querySelectorAll('[data-copiar-cupom]').forEach((btn) => btn.addEventListener('click', () => {
-    const link = `${window.location.origin}/anunciante/cadastro.html?ref=${encodeURIComponent(btn.dataset.copiarCupom)}`;
-    navigator.clipboard?.writeText(link).then(() => toast('Link de indicação copiado.'), () => prompt('Link:', link));
-  }));
+  el.querySelectorAll('[data-vendedor]').forEach((campo) =>
+    campo.addEventListener('change', () => {
+      const valor = campo.dataset.vendedor === 'comissao_percentual' ? Number(campo.value) : campo.value;
+      salvar(`/admin/vendedores/${campo.dataset.id}`, { [campo.dataset.vendedor]: valor }, campo);
+    }),
+  );
+  el.querySelectorAll('[data-copiar-cupom]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const link = `${window.location.origin}/anunciante/cadastro.html?ref=${encodeURIComponent(btn.dataset.copiarCupom)}`;
+      navigator.clipboard?.writeText(link).then(
+        () => toast('Link de indicação copiado.'),
+        () => prompt('Link:', link),
+      );
+    }),
+  );
 }
 
 // ---------- candidaturas ----------
@@ -1007,7 +1353,9 @@ async function renderCandidaturas(el) {
   const corpo = `<table><thead><tr>
       <th data-ord>Quando</th><th data-ord>Tipo</th><th data-ord>Nome</th><th>Comércio / endereço</th><th>Contato</th><th>Mensagem</th><th data-ord>Status</th><th></th>
     </tr></thead><tbody>
-    ${lista.map((c) => `<tr data-filtro="${c.status} ${c.tipo}">
+    ${lista
+      .map(
+        (c) => `<tr data-filtro="${c.status} ${c.tipo}">
       <td>${data(c.criado_em)}</td>
       <td><span class="badge ${c.tipo === 'ponto' ? 'badge-ok' : 'badge-pendente'}">${c.tipo === 'ponto' ? 'Ponto' : 'Vendedor'}</span>
         ${c.origem === 'painel' ? '<div class="u-fs-70 u-dim">pedido do painel</div>' : c.origem === 'bonus_plano' ? '<div class="u-fs-70 u-txt-marca"><b>bônus do plano</b></div>' : ''}</td>
@@ -1015,54 +1363,108 @@ async function renderCandidaturas(el) {
       <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
       <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div class="u-dim u-fs-72">${esc(c.contato_email || '')}</div></td>
       <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '—')}</td>
-      <td>${c.status === 'aprovada'
-        ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
-        : selectStatus({ nova: 'Nova', em_contato: 'Em contato', recusada: 'Recusada' }, c.status, `data-cand="status" data-id="${c.id}"`)}</td>
-      <td>${c.conta_id && c.status !== 'aprovada' && c.status !== 'recusada'
+      <td>${
+        c.status === 'aprovada'
+          ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
+          : selectStatus(
+              { nova: 'Nova', em_contato: 'Em contato', recusada: 'Recusada' },
+              c.status,
+              `data-cand="status" data-id="${c.id}"`,
+            )
+      }</td>
+      <td>${
+        c.conta_id && c.status !== 'aprovada' && c.status !== 'recusada'
           ? `<button class="btn primary mini" data-liberar="${c.id}" data-tipo="${c.tipo}" title="Liga o modo direto na conta que pediu">Liberar na conta</button>`
-          : ''}
+          : ''
+      }
           ${!c.conta_id && c.status !== 'recusada' && !c.convite_usado_em && !c.convite_aberto ? `<button class="btn primary mini" data-convidar="${c.id}" data-tipo="${c.tipo}" data-nome="${esc(c.nome)}" data-email="${esc(c.contato_email || '')}">${c.status === 'aprovada' ? 'Gerar convite novo' : 'Gerar convite'}</button>` : ''}
           ${c.convite_aberto ? `<button class="btn ghost mini" data-copiar-convite="${esc(c.convite_token)}">Copiar link</button>` : ''}</td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
-  el.innerHTML = lista.length ? caixaTabela({
-    chips: [{ valor: 'nova', nome: 'Novas' }, { valor: 'em_contato', nome: 'Em contato' }, { valor: 'aprovada', nome: 'Aprovadas' }, { valor: 'recusada', nome: 'Recusadas' }, { valor: '', nome: 'Todas' }, { valor: 'ponto', nome: 'Só pontos' }, { valor: 'vendedor', nome: 'Só vendedores' }],
-    html: corpo,
-    dica: 'Pedido do site → "Gerar convite" (link de cadastro, uso único, 7 dias). Pedido feito de dentro do painel de uma conta → "Liberar na conta" liga o modo direto nela.',
-  }) : '<p class="empty-state">Nenhuma candidatura ainda. Os formulários "Seja um ponto" e "Seja um vendedor" do site caem aqui.</p>';
+  el.innerHTML = lista.length
+    ? caixaTabela({
+        chips: [
+          { valor: 'nova', nome: 'Novas' },
+          { valor: 'em_contato', nome: 'Em contato' },
+          { valor: 'aprovada', nome: 'Aprovadas' },
+          { valor: 'recusada', nome: 'Recusadas' },
+          { valor: '', nome: 'Todas' },
+          { valor: 'ponto', nome: 'Só pontos' },
+          { valor: 'vendedor', nome: 'Só vendedores' },
+        ],
+        html: corpo,
+        dica: 'Pedido do site → "Gerar convite" (link de cadastro, uso único, 7 dias). Pedido feito de dentro do painel de uma conta → "Liberar na conta" liga o modo direto nela.',
+      })
+    : '<p class="empty-state">Nenhuma candidatura ainda. Os formulários "Seja um ponto" e "Seja um vendedor" do site caem aqui.</p>';
 
   if (!lista.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-cand]').forEach((sel) => sel.addEventListener('change', async () => {
-    if (await salvar(`/admin/candidaturas/${sel.dataset.id}`, { status: sel.value }, sel)) { RESUMO = await pegar('/admin/resumo'); pintarContadores(); }
-  }));
-  el.querySelectorAll('[data-convidar]').forEach((btn) => btn.addEventListener('click', async () => {
-    const papeis = btn.dataset.tipo === 'ponto' ? ['ponto'] : ['vendedor'];
-    const extra = confirm(btn.dataset.tipo === 'ponto'
-      ? 'Esse dono de ponto também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só dono de ponto.'
-      : 'Esse vendedor também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só vendedor.');
-    if (extra) papeis.push('anunciante');
-    const r = await api('/admin/convites', { method: 'POST', body: JSON.stringify({ papeis, candidatura_id: Number(btn.dataset.convidar), nome_sugerido: btn.dataset.nome, email_sugerido: btn.dataset.email || null }) });
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o convite.', 'err');
-    const { link } = await r.json();
-    navigator.clipboard?.writeText(link).catch(() => {});
-    prompt('Convite gerado (já copiado). Mande esse link pra pessoa — vale 7 dias e só pode ser usado uma vez:', link);
-    RESUMO = await pegar('/admin/resumo'); pintarContadores();
-    renderCandidaturas(el);
-  }));
-  el.querySelectorAll('[data-liberar]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm(`Liberar o modo "${btn.dataset.tipo === 'ponto' ? 'Meu ponto' : 'Vendas'}" nessa conta agora?${btn.dataset.tipo === 'ponto' ? ' O ponto e a Tela 1 são criados com o endereço do pedido.' : ''}`)) return;
-    const r = await api(`/admin/candidaturas/${btn.dataset.liberar}/liberar`, { method: 'POST' });
-    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível liberar.', 'err');
-    toast('Modo liberado na conta.');
-    RESUMO = await pegar('/admin/resumo'); pintarContadores();
-    renderCandidaturas(el);
-  }));
-  el.querySelectorAll('[data-copiar-convite]').forEach((btn) => btn.addEventListener('click', () => {
-    const link = `${window.location.origin}/convite.html?t=${encodeURIComponent(btn.dataset.copiarConvite)}`;
-    navigator.clipboard?.writeText(link).then(() => toast('Link do convite copiado.'), () => prompt('Link:', link));
-  }));
+  el.querySelectorAll('[data-cand]').forEach((sel) =>
+    sel.addEventListener('change', async () => {
+      if (await salvar(`/admin/candidaturas/${sel.dataset.id}`, { status: sel.value }, sel)) {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+      }
+    }),
+  );
+  el.querySelectorAll('[data-convidar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const papeis = btn.dataset.tipo === 'ponto' ? ['ponto'] : ['vendedor'];
+      const extra = confirm(
+        btn.dataset.tipo === 'ponto'
+          ? 'Esse dono de ponto também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só dono de ponto.'
+          : 'Esse vendedor também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só vendedor.',
+      );
+      if (extra) papeis.push('anunciante');
+      const r = await api('/admin/convites', {
+        method: 'POST',
+        body: JSON.stringify({
+          papeis,
+          candidatura_id: Number(btn.dataset.convidar),
+          nome_sugerido: btn.dataset.nome,
+          email_sugerido: btn.dataset.email || null,
+        }),
+      });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o convite.', 'err');
+      const { link } = await r.json();
+      navigator.clipboard?.writeText(link).catch(() => {});
+      prompt(
+        'Convite gerado (já copiado). Mande esse link pra pessoa — vale 7 dias e só pode ser usado uma vez:',
+        link,
+      );
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderCandidaturas(el);
+    }),
+  );
+  el.querySelectorAll('[data-liberar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (
+        !confirm(
+          `Liberar o modo "${btn.dataset.tipo === 'ponto' ? 'Meu ponto' : 'Vendas'}" nessa conta agora?${btn.dataset.tipo === 'ponto' ? ' O ponto e a Tela 1 são criados com o endereço do pedido.' : ''}`,
+        )
+      )
+        return;
+      const r = await api(`/admin/candidaturas/${btn.dataset.liberar}/liberar`, { method: 'POST' });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível liberar.', 'err');
+      toast('Modo liberado na conta.');
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderCandidaturas(el);
+    }),
+  );
+  el.querySelectorAll('[data-copiar-convite]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const link = `${window.location.origin}/convite.html?t=${encodeURIComponent(btn.dataset.copiarConvite)}`;
+      navigator.clipboard?.writeText(link).then(
+        () => toast('Link do convite copiado.'),
+        () => prompt('Link:', link),
+      );
+    }),
+  );
 }
 
 // ---------- convites ----------
@@ -1071,7 +1473,9 @@ async function renderConvites(el) {
   const corpo = `<table><thead><tr>
       <th data-ord>Criado</th><th>Papéis</th><th data-ord>Pra quem</th><th data-ord>Vale até</th><th data-ord>Situação</th><th>Conta criada</th><th></th>
     </tr></thead><tbody>
-    ${convites.map((c) => `<tr data-filtro="${c.situacao}">
+    ${convites
+      .map(
+        (c) => `<tr data-filtro="${c.situacao}">
       <td>${data(c.criado_em)}</td>
       <td>${(c.papeis || []).map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}</td>
       <td>${esc(c.nome_sugerido || '—')}<div class="u-dim u-fs-72">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
@@ -1079,7 +1483,9 @@ async function renderConvites(el) {
       <td>${c.situacao === 'aberto' ? '<span class="badge badge-pendente">aberto</span>' : c.situacao === 'usado' ? `<span class="badge badge-ok">usado ${data(c.usado_em)}</span>` : '<span class="badge badge-err">expirado/revogado</span>'}</td>
       <td>${c.conta_nome ? esc(c.conta_nome) : '—'}</td>
       <td>${c.situacao === 'aberto' ? `<button class="btn ghost mini" data-copiar-link="${esc(c.link)}">Copiar link</button> <button class="btn ghost mini u-txt-erro" data-revogar="${c.id}">Revogar</button>` : ''}</td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -1088,7 +1494,12 @@ async function renderConvites(el) {
       <form class="card u-mt-12 u-mw-520" id="formNovoConvite">
         <div><label>Papéis da conta que vai nascer</label>
           <div class="benef-lista">
-            ${Object.entries(PAPEIS).map(([v, n]) => `<label class="benef-check"><input type="checkbox" name="papeis" value="${v}" ${v === 'ponto' ? 'checked' : ''}><span>${n}</span></label>`).join('')}
+            ${Object.entries(PAPEIS)
+              .map(
+                ([v, n]) =>
+                  `<label class="benef-check"><input type="checkbox" name="papeis" value="${v}" ${v === 'ponto' ? 'checked' : ''}><span>${n}</span></label>`,
+              )
+              .join('')}
           </div></div>
         <div class="field-row">
           <div class="u-col"><label>Nome (sugestão, opcional)</label><input class="mini" name="nome_sugerido"></div>
@@ -1099,37 +1510,67 @@ async function renderConvites(el) {
         <p class="form-msg" id="msgNovoConvite"></p>
       </form>
     </details>
-    ${convites.length ? caixaTabela({
-      chips: [{ valor: 'aberto', nome: 'Abertos' }, { valor: 'usado', nome: 'Usados' }, { valor: 'expirado', nome: 'Expirados' }, { valor: '', nome: 'Todos' }],
-      html: corpo,
-      dica: 'Convite é o único caminho de entrada de dono de ponto e de vendedor. Convite de ponto vindo de candidatura já cria o ponto e a Tela 1 quando a pessoa se cadastra.',
-    }) : '<p class="empty-state">Nenhum convite gerado ainda.</p>'}`;
+    ${
+      convites.length
+        ? caixaTabela({
+            chips: [
+              { valor: 'aberto', nome: 'Abertos' },
+              { valor: 'usado', nome: 'Usados' },
+              { valor: 'expirado', nome: 'Expirados' },
+              { valor: '', nome: 'Todos' },
+            ],
+            html: corpo,
+            dica: 'Convite é o único caminho de entrada de dono de ponto e de vendedor. Convite de ponto vindo de candidatura já cria o ponto e a Tela 1 quando a pessoa se cadastra.',
+          })
+        : '<p class="empty-state">Nenhum convite gerado ainda.</p>'
+    }`;
 
   if (convites.length) turbinarTabela(el.querySelector('.tabela-caixa'));
   document.getElementById('formNovoConvite').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoConvite');
     const papeis = [...e.target.querySelectorAll('input[name="papeis"]:checked')].map((i) => i.value);
-    if (!papeis.length) { msg.textContent = 'Marque ao menos um papel.'; msg.className = 'form-msg err'; return; }
-    const r = await api('/admin/convites', { method: 'POST', body: JSON.stringify({
-      papeis, nome_sugerido: e.target.nome_sugerido.value || null, email_sugerido: e.target.email_sugerido.value || null, validade_dias: Number(e.target.validade_dias.value) || 7,
-    }) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao gerar.'; msg.className = 'form-msg err'; return; }
+    if (!papeis.length) {
+      msg.textContent = 'Marque ao menos um papel.';
+      msg.className = 'form-msg err';
+      return;
+    }
+    const r = await api('/admin/convites', {
+      method: 'POST',
+      body: JSON.stringify({
+        papeis,
+        nome_sugerido: e.target.nome_sugerido.value || null,
+        email_sugerido: e.target.email_sugerido.value || null,
+        validade_dias: Number(e.target.validade_dias.value) || 7,
+      }),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao gerar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     const { link } = await r.json();
     navigator.clipboard?.writeText(link).catch(() => {});
     prompt('Convite gerado (já copiado). Mande esse link pra pessoa:', link);
     renderConvites(el);
   });
-  el.querySelectorAll('[data-copiar-link]').forEach((btn) => btn.addEventListener('click', () => {
-    navigator.clipboard?.writeText(btn.dataset.copiarLink).then(() => toast('Link copiado.'), () => prompt('Link:', btn.dataset.copiarLink));
-  }));
-  el.querySelectorAll('[data-revogar]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Revogar esse convite? O link para de funcionar na hora.')) return;
-    const r = await api(`/admin/convites/${btn.dataset.revogar}/revogar`, { method: 'POST' });
-    if (!r.ok) return toast('Não foi possível revogar.', 'err');
-    toast('Convite revogado.');
-    renderConvites(el);
-  }));
+  el.querySelectorAll('[data-copiar-link]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      navigator.clipboard?.writeText(btn.dataset.copiarLink).then(
+        () => toast('Link copiado.'),
+        () => prompt('Link:', btn.dataset.copiarLink),
+      );
+    }),
+  );
+  el.querySelectorAll('[data-revogar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Revogar esse convite? O link para de funcionar na hora.')) return;
+      const r = await api(`/admin/convites/${btn.dataset.revogar}/revogar`, { method: 'POST' });
+      if (!r.ok) return toast('Não foi possível revogar.', 'err');
+      toast('Convite revogado.');
+      renderConvites(el);
+    }),
+  );
 }
 
 // ---------- custos fixos ----------
@@ -1137,13 +1578,17 @@ async function renderCustos(el) {
   const custos = await pegar('/admin/custos-fixos');
   const total = custos.filter((c) => c.ativo).reduce((t, c) => t + Number(c.valor_mensal), 0);
   const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>R$/mês</th><th>Observação</th><th data-ord>Entra na margem</th><th></th></tr></thead><tbody>
-    ${custos.map((c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
+    ${custos
+      .map(
+        (c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
       <td><input class="mini u-w-200" data-custo="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
       <td><input class="mini u-w-100" type="number" step="0.01" min="0" data-custo="valor_mensal" data-id="${c.id}" value="${c.valor_mensal}"></td>
       <td><input class="mini u-w-280" data-custo="observacao" data-id="${c.id}" value="${esc(c.observacao || '')}"></td>
       <td class="u-ta-c"><input type="checkbox" data-custo="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
       <td><button class="btn ghost mini u-txt-erro" data-excluir-custo="${c.id}">×</button></td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -1162,23 +1607,57 @@ async function renderCustos(el) {
         <p class="form-msg" id="msgNovoCusto"></p>
       </form>
     </details>
-    ${custos.length ? caixaTabela({ chips: [{ valor: '', nome: 'Todos' }, { valor: 'ativo', nome: 'Ativos' }, { valor: 'inativo', nome: 'Desligados' }], html: corpo, dica: 'Salva ao sair do campo. Custo anual? Lance o valor ÷ 12.' }) : '<p class="empty-state">Nenhum custo lançado.</p>'}`;
+    ${
+      custos.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              { valor: 'ativo', nome: 'Ativos' },
+              { valor: 'inativo', nome: 'Desligados' },
+            ],
+            html: corpo,
+            dica: 'Salva ao sair do campo. Custo anual? Lance o valor ÷ 12.',
+          })
+        : '<p class="empty-state">Nenhum custo lançado.</p>'
+    }`;
 
   if (custos.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-custo]').forEach((campo) => campo.addEventListener('change', async () => {
-    const valor = campo.type === 'checkbox' ? campo.checked : (campo.dataset.custo === 'valor_mensal' ? Number(campo.value) : campo.value);
-    if (await salvar(`/admin/custos-fixos/${campo.dataset.id}`, { [campo.dataset.custo]: valor }, campo)) { RESUMO = await pegar('/admin/resumo'); if (campo.dataset.custo !== 'nome' && campo.dataset.custo !== 'observacao') renderCustos(el); }
-  }));
-  el.querySelectorAll('[data-excluir-custo]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Excluir esse custo?')) return;
-    const r = await api(`/admin/custos-fixos/${btn.dataset.excluirCusto}`, { method: 'DELETE' });
-    if (r.ok) { RESUMO = await pegar('/admin/resumo'); renderCustos(el); }
-  }));
+  el.querySelectorAll('[data-custo]').forEach((campo) =>
+    campo.addEventListener('change', async () => {
+      const valor =
+        campo.type === 'checkbox'
+          ? campo.checked
+          : campo.dataset.custo === 'valor_mensal'
+            ? Number(campo.value)
+            : campo.value;
+      if (await salvar(`/admin/custos-fixos/${campo.dataset.id}`, { [campo.dataset.custo]: valor }, campo)) {
+        RESUMO = await pegar('/admin/resumo');
+        if (campo.dataset.custo !== 'nome' && campo.dataset.custo !== 'observacao') renderCustos(el);
+      }
+    }),
+  );
+  el.querySelectorAll('[data-excluir-custo]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir esse custo?')) return;
+      const r = await api(`/admin/custos-fixos/${btn.dataset.excluirCusto}`, { method: 'DELETE' });
+      if (r.ok) {
+        RESUMO = await pegar('/admin/resumo');
+        renderCustos(el);
+      }
+    }),
+  );
   document.getElementById('formNovoCusto').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoCusto');
-    const r = await api('/admin/custos-fixos', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    const r = await api('/admin/custos-fixos', {
+      method: 'POST',
+      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     RESUMO = await pegar('/admin/resumo');
     renderCustos(el);
   });
@@ -1191,17 +1670,24 @@ async function renderPlanos(el) {
   // Lista todos, inclusive os indisponíveis: um benefício desativado
   // continua vinculado ao plano (só não aparece no site), e some daqui
   // significaria apagar esse vínculo no próximo clique.
-  const opcoesBeneficio = (marcadosIds) => beneficios.map((b) => `
+  const opcoesBeneficio = (marcadosIds) =>
+    beneficios
+      .map(
+        (b) => `
     <label class="benef-check">
       <input type="checkbox" value="${b.id}" ${marcadosIds.includes(b.id) ? 'checked' : ''}>
       <span class="u-op-55"${b.ativo ? '' : ''}>${esc(b.texto)}${b.ativo ? '' : ' <i>(indisponível)</i>'}</span>
-    </label>`).join('');
+    </label>`,
+      )
+      .join('');
 
   const porCiclo = {};
-  planos.filter((p) => !p.fundador).forEach((p) => {
-    porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
-    porCiclo[p.compromisso_meses].push(p);
-  });
+  planos
+    .filter((p) => !p.fundador)
+    .forEach((p) => {
+      porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
+      porCiclo[p.compromisso_meses].push(p);
+    });
   const fundadores = planos.filter((p) => p.fundador);
 
   // Item 9 da spec: os campos se dividem em dois. `data-grupo="vitrine"` salva
@@ -1239,7 +1725,9 @@ async function renderPlanos(el) {
         <div><label>Nome exibido</label><input class="mini" name="nome" required></div>
         <div class="field-row">
           <div class="u-col"><label>Compromisso</label><select class="mini" name="compromisso_meses" required>
-            ${Object.entries(CICLOS).map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`).join('')}
+            ${Object.entries(CICLOS)
+              .map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`)
+              .join('')}
           </select></div>
           <div class="u-col"><label>Frequência/dia</label><input class="mini" type="number" name="frequencia_dia" value="72" required></div>
         </div>
@@ -1271,15 +1759,17 @@ async function renderPlanos(el) {
     <p class="form-hint u-m-0 u-mb-8">Plano fundador fica fora da grade de 3 por modalidade. Ele só aparece no site quando a variável de ambiente PROGRAMA_FUNDADOR_ATIVO está em <code>true</code> <b>e</b> ainda há vaga. Preço travado, meses grátis e mínimo de telas são do próprio plano — dá pra usar em qualquer plano, não só no fundador.</p>
     ${fundadores.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${fundadores.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano fundador. Crie um acima marcando "Plano fundador".</p>'}
 
-    ${Object.keys(CICLOS).map((meses) => {
-      const doCiclo = porCiclo[meses] || [];
-      const ativos = doCiclo.filter((p) => p.ativo).length;
-      return `
+    ${Object.keys(CICLOS)
+      .map((meses) => {
+        const doCiclo = porCiclo[meses] || [];
+        const ativos = doCiclo.filter((p) => p.ativo).length;
+        return `
       <div class="panel-head u-m-0 u-mt-24 u-mb-10">
         <h3>${CICLOS[meses]} <span class="badge ${ativos >= 3 ? 'badge-err' : 'badge-ok'} u-ml-6">${ativos}/3 na vitrine</span></h3>
       </div>
       ${doCiclo.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${doCiclo.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano nessa modalidade.</p>'}`;
-    }).join('')}
+      })
+      .join('')}
 
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
       <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após" e benefícios mudam o contrato:
@@ -1302,7 +1792,8 @@ async function renderPlanos(el) {
 
   el.querySelectorAll('[data-grupo="vitrine"]').forEach((inp) => {
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', async () => {
-      if (!await salvar(`/admin/planos/${inp.dataset.id}`, { [inp.dataset.campo]: valorDo(inp) }, inp)) renderPlanos(el);
+      if (!(await salvar(`/admin/planos/${inp.dataset.id}`, { [inp.dataset.campo]: valorDo(inp) }, inp)))
+        renderPlanos(el);
     });
   });
 
@@ -1325,13 +1816,21 @@ async function renderPlanos(el) {
       const caixa = linha.querySelector('[data-beneficios-de]');
       if (caixa) mudancas.beneficio_ids = [...caixa.querySelectorAll('input:checked')].map((i) => Number(i.value));
 
-      if (!confirm(`Publicar uma versão nova de "${id}"?\n\n`
-        + 'A versão atual é aposentada e vai pra "Planos arquivados". '
-        + 'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios — nada muda pra essas contas. '
-        + 'A versão nova vale só pra quem assinar daqui pra frente, e nasce com um id novo.')) return;
+      if (
+        !confirm(
+          `Publicar uma versão nova de "${id}"?\n\n` +
+            'A versão atual é aposentada e vai pra "Planos arquivados". ' +
+            'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios — nada muda pra essas contas. ' +
+            'A versão nova vale só pra quem assinar daqui pra frente, e nasce com um id novo.',
+        )
+      )
+        return;
 
       const r = await api(`/admin/planos/${id}/nova-versao`, { method: 'POST', body: JSON.stringify(mudancas) });
-      if (!r.ok) { toast((await r.json().catch(() => ({}))).erro || 'Não deu pra publicar.', true); return; }
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não deu pra publicar.', true);
+        return;
+      }
       toast(`Versão nova publicada: ${(await r.json()).id}`);
       renderPlanos(el);
     });
@@ -1340,14 +1839,20 @@ async function renderPlanos(el) {
   document.getElementById('formNovoPlano').addEventListener('submit', async (e) => {
     e.preventDefault();
     const dados = Object.fromEntries(new FormData(e.target));
-    dados.beneficio_ids = [...document.querySelectorAll('#novoPlanoBeneficios input:checked')].map((i) => Number(i.value));
+    dados.beneficio_ids = [...document.querySelectorAll('#novoPlanoBeneficios input:checked')].map((i) =>
+      Number(i.value),
+    );
     dados.preco_travado = !!dados.preco_travado;
     dados.fundador = !!dados.fundador;
     if (dados.vagas === '') delete dados.vagas;
     if (dados.ponto_apos_meses === '') delete dados.ponto_apos_meses;
     const msg = document.getElementById('msgNovoPlano');
     const r = await api('/admin/planos', { method: 'POST', body: JSON.stringify(dados) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     toast('Plano criado.');
     renderPlanos(el);
   });
@@ -1360,7 +1865,8 @@ async function renderPlanos(el) {
 async function renderPagamentosPontos(el) {
   const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'ativo' || p.valor_pago_mensal > 0);
   if (!pontos.length) {
-    el.innerHTML = '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';
+    el.innerHTML =
+      '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';
     return;
   }
   const mesAtual = new Date().toISOString().slice(0, 7);
@@ -1376,7 +1882,9 @@ async function renderPagamentosPontos(el) {
   });
   linhas.sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)));
 
-  const semLancamento = pontos.filter((_p, i) => !(listas[i] || []).some((l) => String(l.competencia).slice(0, 7) === mesAtual));
+  const semLancamento = pontos.filter(
+    (_p, i) => !(listas[i] || []).some((l) => String(l.competencia).slice(0, 7) === mesAtual),
+  );
 
   el.innerHTML = `
     <div class="kpi-grid">
@@ -1403,10 +1911,14 @@ async function renderPagamentosPontos(el) {
     </form>
 
     <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançamentos</h3></div>
-    ${linhas.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+    ${
+      linhas.length
+        ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th data-ord>Competência</th><th data-ord>Ponto</th><th class="num">Valor</th><th data-ord>Situação</th><th>Forma</th><th>Observação</th><th></th>
     </tr></thead><tbody>
-    ${linhas.map((l) => `<tr data-filtro="${l.pago_em ? 'pago' : 'aberto'}">
+    ${linhas
+      .map(
+        (l) => `<tr data-filtro="${l.pago_em ? 'pago' : 'aberto'}">
       <td>${esc(String(l.competencia).slice(0, 7))}</td>
       <td>${esc(l.ponto_nome)}</td>
       <td class="num"><b>${fmt(l.valor)}</b></td>
@@ -1414,8 +1926,12 @@ async function renderPagamentosPontos(el) {
       <td>${esc(l.forma || '—')}</td>
       <td class="u-ws-normal u-mw-240 u-fs-72">${esc(l.observacao || '—')}</td>
       <td><button class="btn ${l.pago_em ? 'ghost' : 'primary'} mini" data-quitar="${l.id}" data-pago="${l.pago_em ? '0' : '1'}">${l.pago_em ? 'Desfazer' : 'Marcar como pago'}</button></td>
-    </tr>`).join('')}
-    </tbody></table></div></div>` : '<p class="empty-state">Nenhum lançamento ainda.</p>'}
+    </tr>`,
+      )
+      .join('')}
+    </tbody></table></div></div>`
+        : '<p class="empty-state">Nenhum lançamento ainda.</p>'
+    }
     <p class="empty-state u-ta-l u-p-0 u-pt-16">Um lançamento por ponto por mês — o banco recusa o segundo da mesma competência, então duplo clique não vira pagamento dobrado. O dono do ponto vê exatamente esta lista no painel dele, em "Meus recebimentos".</p>`;
 
   if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -1431,21 +1947,29 @@ async function renderPagamentosPontos(el) {
     };
     if (document.getElementById('pagJaPago').checked) corpo.pago_em = new Date().toISOString();
     const r = await api(`/admin/pontos/${document.getElementById('pagPonto').value}/pagamentos`, {
-      method: 'POST', body: JSON.stringify(corpo),
+      method: 'POST',
+      body: JSON.stringify(corpo),
     });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não deu pra lançar.'; msg.className = 'form-msg err'; return; }
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não deu pra lançar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     toast('Lançado.');
     renderPagamentosPontos(el);
   });
 
-  el.querySelectorAll('[data-quitar]').forEach((btn) => btn.addEventListener('click', async () => {
-    const r = await api(`/admin/pagamentos-ponto/${btn.dataset.quitar}`, {
-      method: 'PATCH', body: JSON.stringify({ pago: btn.dataset.pago === '1' }),
-    });
-    if (!r.ok) return toast('Não deu pra atualizar.', true);
-    toast(btn.dataset.pago === '1' ? 'Pagamento quitado.' : 'Quitação desfeita.');
-    renderPagamentosPontos(el);
-  }));
+  el.querySelectorAll('[data-quitar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const r = await api(`/admin/pagamentos-ponto/${btn.dataset.quitar}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pago: btn.dataset.pago === '1' }),
+      });
+      if (!r.ok) return toast('Não deu pra atualizar.', true);
+      toast(btn.dataset.pago === '1' ? 'Pagamento quitado.' : 'Quitação desfeita.');
+      renderPagamentosPontos(el);
+    }),
+  );
 }
 
 // ---------- métrica ----------
@@ -1457,13 +1981,18 @@ async function renderMetrica(el) {
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
   const ultimo = m.margem[m.margem.length - 1] || {};
 
-  const funil = m.funil.length ? m.funil : [{ mes: '—', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
-  const totalFunil = funil.reduce((t, f) => ({
-    cadastros: t.cadastros + f.cadastros,
-    aprovacoes: t.aprovacoes + f.aprovacoes,
-    checkouts_abertos: t.checkouts_abertos + f.checkouts_abertos,
-    pagamentos: t.pagamentos + f.pagamentos,
-  }), { cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 });
+  const funil = m.funil.length
+    ? m.funil
+    : [{ mes: '—', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
+  const totalFunil = funil.reduce(
+    (t, f) => ({
+      cadastros: t.cadastros + f.cadastros,
+      aprovacoes: t.aprovacoes + f.aprovacoes,
+      checkouts_abertos: t.checkouts_abertos + f.checkouts_abertos,
+      pagamentos: t.pagamentos + f.pagamentos,
+    }),
+    { cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 },
+  );
 
   el.innerHTML = `
     <div class="kpi-grid">
@@ -1479,14 +2008,18 @@ async function renderMetrica(el) {
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>Mês</th><th class="num">Receita</th><th class="num">Pontos</th><th class="num">Amortização</th><th class="num">Fixos</th><th class="num">Margem</th>
     </tr></thead><tbody>
-    ${m.margem.map((r) => `<tr>
+    ${m.margem
+      .map(
+        (r) => `<tr>
       <td>${esc(r.mes)}</td>
       <td class="num">${fmt(r.receita)}</td>
       <td class="num">${fmt(r.custo_pontos)}</td>
       <td class="num">${fmt(r.amortizacao)}</td>
       <td class="num">${fmt(r.custos_fixos)}</td>
       <td class="num"><b class="${Number(r.margem) >= 0 ? 'delta up' : 'delta down'}">${fmt(r.margem)}</b></td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
     </tbody></table></div></div>
     <p class="form-hint u-m-0 u-mb-20">Os três custos são os de <b>hoje</b>, repetidos em todo mês da tabela: o sistema não guarda quanto a rede custava em março. Só a receita é histórica de verdade.</p>
 
@@ -1494,27 +2027,43 @@ async function renderMetrica(el) {
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>Mês</th><th class="num">Cadastros</th><th class="num">Aprovações</th><th class="num">Checkouts abertos</th><th class="num">Pagamentos</th><th class="num">Checkout → pago</th>
     </tr></thead><tbody>
-    ${m.funil.length ? m.funil.map((f) => `<tr>
+    ${
+      m.funil.length
+        ? m.funil
+            .map(
+              (f) => `<tr>
       <td>${esc(f.mes)}</td>
       <td class="num">${f.cadastros}</td>
       <td class="num">${f.aprovacoes}</td>
       <td class="num">${f.checkouts_abertos}</td>
       <td class="num"><b>${f.pagamentos}</b></td>
       <td class="num">${pct(f.pagamentos, f.checkouts_abertos)}</td>
-    </tr>`).join('') : '<tr><td colspan="6" class="u-dim">Nenhum evento ainda.</td></tr>'}
+    </tr>`,
+            )
+            .join('')
+        : '<tr><td colspan="6" class="u-dim">Nenhum evento ainda.</td></tr>'
+    }
     </tbody></table></div></div>
 
     <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Tempo das suas filas</h3><span class="kpi-caption">últimas 90 dias, por semana</span></div>
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>Semana</th><th>Fila</th><th class="num">Quantidade</th><th class="num">Mediana (h)</th><th class="num">Pior caso (h)</th>
     </tr></thead><tbody>
-    ${m.filas.length ? m.filas.map((f) => `<tr>
+    ${
+      m.filas.length
+        ? m.filas
+            .map(
+              (f) => `<tr>
       <td>${esc(f.semana)}</td>
       <td>${f.nome === 'conta:aprovacao_recebe' ? 'Aprovar conta' : 'Aprovar criativo'}</td>
       <td class="num">${f.quantidade}</td>
       <td class="num"><b>${f.mediana_horas ?? '—'}</b></td>
       <td class="num">${f.pior_caso_horas ?? '—'}</td>
-    </tr>`).join('') : '<tr><td colspan="5" class="u-dim">Nada aprovado nos últimos 90 dias.</td></tr>'}
+    </tr>`,
+            )
+            .join('')
+        : '<tr><td colspan="5" class="u-dim">Nada aprovado nos últimos 90 dias.</td></tr>'
+    }
     </tbody></table></div></div>
     <p class="form-hint u-m-0 u-mb-20">Mediana, não média: uma conta esquecida por duas semanas puxaria a média e esconderia que o resto sai no mesmo dia.</p>
 
@@ -1523,12 +2072,20 @@ async function renderMetrica(el) {
       <div class="tabela-caixa u-mt-8"><div class="rolagem"><table><thead><tr>
         <th>Evento</th><th class="num">Total</th><th class="num">Internos</th><th>Último</th>
       </tr></thead><tbody>
-      ${m.eventos.length ? m.eventos.map((e) => `<tr>
+      ${
+        m.eventos.length
+          ? m.eventos
+              .map(
+                (e) => `<tr>
         <td><code>${esc(e.nome)}</code></td>
         <td class="num">${e.total}</td>
         <td class="num">${e.internos}</td>
         <td>${data(e.ultimo)}</td>
-      </tr>`).join('') : '<tr><td colspan="4" class="u-dim">Nenhum evento gravado ainda.</td></tr>'}
+      </tr>`,
+              )
+              .join('')
+          : '<tr><td colspan="4" class="u-dim">Nenhum evento gravado ainda.</td></tr>'
+      }
       </tbody></table></div></div>
       <p class="form-hint">Evento que nunca aparece aqui é evento que ninguém emite. <code>exibicao:video_toca</code> não entra nesta tabela de propósito — ele já existe agregado em "Telas", por hora e por anunciante, com programadas e confirmadas.</p>
     </details>`;
@@ -1541,7 +2098,8 @@ async function renderMetrica(el) {
 async function renderPlanosArquivados(el) {
   const planos = await pegar('/admin/planos-arquivados');
   if (!planos.length) {
-    el.innerHTML = '<p class="empty-state">Nenhuma versão aposentada ainda. Quando você publicar uma versão nova de um plano, a anterior aparece aqui.</p>';
+    el.innerHTML =
+      '<p class="empty-state">Nenhuma versão aposentada ainda. Quando você publicar uma versão nova de um plano, a anterior aparece aqui.</p>';
     return;
   }
   const emUso = planos.filter((p) => p.contas_ativas > 0).length;
@@ -1554,7 +2112,9 @@ async function renderPlanosArquivados(el) {
       <th data-ord>Criativos</th><th data-ord>Freq./dia</th><th>Cobertura</th><th>Benefícios</th>
       <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
     </tr></thead><tbody>
-    ${planos.map((p) => `<tr>
+    ${planos
+      .map(
+        (p) => `<tr>
       <td><b>${esc(p.id)}</b></td>
       <td>${esc(p.nome)}</td>
       <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
@@ -1565,11 +2125,13 @@ async function renderPlanosArquivados(el) {
       <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '—'}</td>
       <td>${data(p.arquivado_em)}</td>
       <td>${esc(p.substituido_por || '—')}</td>
-      <td class="num">${p.contas_ativas > 0
-        ? `<span class="badge badge-ok">${p.contas_ativas}</span>`
-        : '<span class="u-dim">0</span>'}</td>
+      <td class="num">${
+        p.contas_ativas > 0 ? `<span class="badge badge-ok">${p.contas_ativas}</span>` : '<span class="u-dim">0</span>'
+      }</td>
       <td class="num">${p.cobrancas}</td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
     </tbody></table></div></div>
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
       Zero contas ativas não quer dizer "pode apagar já": cobrança confirmada guarda o <code>plano_id</code> por obrigação fiscal,
@@ -1582,12 +2144,16 @@ async function renderPlanosArquivados(el) {
 async function renderBeneficios(el) {
   const beneficios = await pegar('/admin/beneficios');
   const corpo = `<table><thead><tr><th data-ord>Texto</th><th data-ord>Ordem</th><th data-ord>Disponível</th><th></th></tr></thead><tbody>
-    ${beneficios.map((b) => `<tr data-filtro="${b.ativo ? 'ativo' : 'inativo'}">
+    ${beneficios
+      .map(
+        (b) => `<tr data-filtro="${b.ativo ? 'ativo' : 'inativo'}">
       <td><input class="mini u-w-360" data-benef="texto" data-id="${b.id}" value="${esc(b.texto)}"></td>
       <td><input class="mini u-w-60" type="number" data-benef="ordem" data-id="${b.id}" value="${b.ordem}"></td>
       <td class="u-ta-c"><input type="checkbox" data-benef="ativo" data-id="${b.id}" ${b.ativo ? 'checked' : ''} title="Desmarcado some da lista dos planos sem apagar nada"></td>
       <td><button class="btn ghost mini" data-excluir="${b.id}">Excluir</button></td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -1597,31 +2163,54 @@ async function renderBeneficios(el) {
       <button class="btn primary" type="submit">Criar benefício</button>
       <p class="form-msg" id="msgNovoBeneficio"></p>
     </form>
-    ${beneficios.length ? caixaTabela({
-      chips: [{ valor: '', nome: 'Todos' }, { valor: 'ativo', nome: 'Disponíveis' }, { valor: 'inativo', nome: 'Indisponíveis' }],
-      html: corpo,
-      dica: 'Excluir tira o benefício de todos os planos que o usavam.',
-    }) : '<p class="empty-state">Nenhum benefício cadastrado.</p>'}`;
+    ${
+      beneficios.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              { valor: 'ativo', nome: 'Disponíveis' },
+              { valor: 'inativo', nome: 'Indisponíveis' },
+            ],
+            html: corpo,
+            dica: 'Excluir tira o benefício de todos os planos que o usavam.',
+          })
+        : '<p class="empty-state">Nenhum benefício cadastrado.</p>'
+    }`;
 
   if (beneficios.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
-  el.querySelectorAll('[data-benef]').forEach((inp) => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
-    const valor = inp.type === 'checkbox' ? inp.checked : (inp.dataset.benef === 'ordem' ? Number(inp.value) : inp.value);
-    salvar(`/admin/beneficios/${inp.dataset.id}`, { [inp.dataset.benef]: valor }, inp);
-  }));
+  el.querySelectorAll('[data-benef]').forEach((inp) =>
+    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
+      const valor =
+        inp.type === 'checkbox' ? inp.checked : inp.dataset.benef === 'ordem' ? Number(inp.value) : inp.value;
+      salvar(`/admin/beneficios/${inp.dataset.id}`, { [inp.dataset.benef]: valor }, inp);
+    }),
+  );
 
-  el.querySelectorAll('[data-excluir]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Excluir esse benefício de todos os planos?')) return;
-    const r = await api(`/admin/beneficios/${btn.dataset.excluir}`, { method: 'DELETE' });
-    toast(r.ok ? 'Benefício excluído.' : ((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.'), r.ok ? '' : 'err');
-    renderBeneficios(el);
-  }));
+  el.querySelectorAll('[data-excluir]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir esse benefício de todos os planos?')) return;
+      const r = await api(`/admin/beneficios/${btn.dataset.excluir}`, { method: 'DELETE' });
+      toast(
+        r.ok ? 'Benefício excluído.' : (await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.',
+        r.ok ? '' : 'err',
+      );
+      renderBeneficios(el);
+    }),
+  );
 
   document.getElementById('formNovoBeneficio').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoBeneficio');
-    const r = await api('/admin/beneficios', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    const r = await api('/admin/beneficios', {
+      method: 'POST',
+      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     renderBeneficios(el);
   });
 }
@@ -1630,11 +2219,15 @@ async function renderBeneficios(el) {
 async function renderCategorias(el) {
   const categorias = await pegar('/admin/categorias');
   const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>Aparece no cadastro</th><th></th></tr></thead><tbody>
-    ${categorias.map((c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
+    ${categorias
+      .map(
+        (c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
       <td><input class="mini u-w-300" data-cat="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
       <td class="u-ta-c"><input type="checkbox" data-cat="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
       <td><button class="btn ghost mini" data-excluir="${c.id}">Excluir</button></td>
-    </tr>`).join('')}
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
@@ -1643,30 +2236,56 @@ async function renderCategorias(el) {
       <button class="btn primary" type="submit">Criar categoria</button>
       <p class="form-msg" id="msgNovaCategoria"></p>
     </form>
-    ${categorias.length ? caixaTabela({
-      chips: [{ valor: '', nome: 'Todas' }, { valor: 'ativo', nome: 'No cadastro' }, { valor: 'inativo', nome: 'Fora do cadastro' }],
-      html: corpo,
-      dica: 'Categoria já usada por alguém cadastrado não pode ser excluída — desmarque para parar de oferecer.',
-    }) : '<p class="empty-state">Nenhuma categoria cadastrada.</p>'}`;
+    ${
+      categorias.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todas' },
+              { valor: 'ativo', nome: 'No cadastro' },
+              { valor: 'inativo', nome: 'Fora do cadastro' },
+            ],
+            html: corpo,
+            dica: 'Categoria já usada por alguém cadastrado não pode ser excluída — desmarque para parar de oferecer.',
+          })
+        : '<p class="empty-state">Nenhuma categoria cadastrada.</p>'
+    }`;
 
   if (categorias.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
-  el.querySelectorAll('[data-cat]').forEach((inp) => inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
-    salvar(`/admin/categorias/${inp.dataset.id}`, { [inp.dataset.cat]: inp.type === 'checkbox' ? inp.checked : inp.value }, inp);
-  }));
+  el.querySelectorAll('[data-cat]').forEach((inp) =>
+    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
+      salvar(
+        `/admin/categorias/${inp.dataset.id}`,
+        { [inp.dataset.cat]: inp.type === 'checkbox' ? inp.checked : inp.value },
+        inp,
+      );
+    }),
+  );
 
-  el.querySelectorAll('[data-excluir]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!confirm('Excluir essa categoria? É ela que impede concorrente do mesmo ramo na mesma tela.')) return;
-    const r = await api(`/admin/categorias/${btn.dataset.excluir}`, { method: 'DELETE' });
-    toast(r.ok ? 'Categoria excluída.' : ((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.'), r.ok ? '' : 'err');
-    renderCategorias(el);
-  }));
+  el.querySelectorAll('[data-excluir]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir essa categoria? É ela que impede concorrente do mesmo ramo na mesma tela.')) return;
+      const r = await api(`/admin/categorias/${btn.dataset.excluir}`, { method: 'DELETE' });
+      toast(
+        r.ok ? 'Categoria excluída.' : (await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.',
+        r.ok ? '' : 'err',
+      );
+      renderCategorias(el);
+    }),
+  );
 
   document.getElementById('formNovaCategoria').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovaCategoria');
-    const r = await api('/admin/categorias', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    const r = await api('/admin/categorias', {
+      method: 'POST',
+      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     renderCategorias(el);
   });
 }
@@ -1698,7 +2317,9 @@ async function renderComodato(el) {
       <th>Opção</th><th>Ajuda de custo (R$/mês)</th><th>Cota (espaços/hora)</th><th>Chamada no site</th><th>Benefícios (1 por linha)</th>
       <th>Bônus: plano de anúncio</th><th>após (meses)</th><th>por (meses)</th><th>Ordem</th><th>Ativa</th>
     </tr></thead><tbody>
-      ${opcoes.map((o) => `<tr>
+      ${opcoes
+        .map(
+          (o) => `<tr>
         <td class="u-ws-normal"><input class="mini u-w-120" data-pp="nome" data-id="${o.id}" value="${esc(o.nome)}">
           <div class="u-dim u-fs-72 u-mt-2">${esc(o.id)}</div></td>
         <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-pp="ajuda_custo_mensal" data-id="${o.id}" value="${o.ajuda_custo_mensal}"></td>
@@ -1710,7 +2331,9 @@ async function renderComodato(el) {
         <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="—"></td>
         <td><input class="mini u-w-60" type="number" data-pp="ordem" data-id="${o.id}" value="${o.ordem}"></td>
         <td class="u-ta-c"><input type="checkbox" data-pp="ativo" data-id="${o.id}" ${o.ativo ? 'checked' : ''}></td>
-      </tr>`).join('')}
+      </tr>`,
+        )
+        .join('')}
     </tbody></table></div></div>
     <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra — mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado — ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
 
@@ -1725,20 +2348,31 @@ async function renderComodato(el) {
     dados.cota_slots_hora = Number(dados.cota_slots_hora || 0);
     dados.ordem = Number(dados.ordem || 0);
     const r = await api('/admin/planos-ponto', { method: 'POST', body: JSON.stringify(dados) });
-    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     toast('Opção de comodato criada.');
     renderComodato(el);
   });
 
-  el.querySelectorAll('[data-pp]').forEach((inp) => inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'blur', () => {
-    let valor;
-    if (inp.type === 'checkbox') valor = inp.checked;
-    else if (inp.dataset.pp === 'beneficios') valor = inp.value.split('\n').map((l) => l.trim()).filter(Boolean);
-    else if (['nome', 'chamada', 'plano_bonus_id'].includes(inp.dataset.pp)) valor = inp.value || null;
-    else if (['plano_bonus_apos_meses', 'plano_bonus_meses'].includes(inp.dataset.pp)) valor = inp.value === '' ? null : Number(inp.value);
-    else valor = Number(inp.value);
-    salvar(`/admin/planos-ponto/${inp.dataset.id}`, { [inp.dataset.pp]: valor }, inp);
-  }));
+  el.querySelectorAll('[data-pp]').forEach((inp) =>
+    inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'blur', () => {
+      let valor;
+      if (inp.type === 'checkbox') valor = inp.checked;
+      else if (inp.dataset.pp === 'beneficios')
+        valor = inp.value
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean);
+      else if (['nome', 'chamada', 'plano_bonus_id'].includes(inp.dataset.pp)) valor = inp.value || null;
+      else if (['plano_bonus_apos_meses', 'plano_bonus_meses'].includes(inp.dataset.pp))
+        valor = inp.value === '' ? null : Number(inp.value);
+      else valor = Number(inp.value);
+      salvar(`/admin/planos-ponto/${inp.dataset.id}`, { [inp.dataset.pp]: valor }, inp);
+    }),
+  );
 }
 
 // ---------- cobranças ----------
@@ -1750,38 +2384,60 @@ async function renderCobrancas(el) {
   const corpo = `<table><thead><tr>
       <th data-ord>ID</th><th data-ord>Anunciante</th><th data-ord>Valor</th><th data-ord>Data</th><th>Nota fiscal</th>
     </tr></thead><tbody>
-    ${cobrancas.map((c) => `<tr data-filtro="${c.nota_fiscal_status}">
+    ${cobrancas
+      .map(
+        (c) => `<tr data-filtro="${c.nota_fiscal_status}">
       <td>${c.id}</td>
       <td><b>${esc(c.nome_empresa)}</b></td>
       <td>${fmt(c.valor)}</td>
       <td>${data(c.criado_em)}</td>
-      <td>${c.nota_fiscal_status === 'emitida'
-        ? `<span class="badge badge-ok">emitida</span> <a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">ver PDF</a>`
-        : `<input type="file" accept="application/pdf" class="mini u-w-140" data-cobranca="${c.id}">`}</td>
-    </tr>`).join('')}
+      <td>${
+        c.nota_fiscal_status === 'emitida'
+          ? `<span class="badge badge-ok">emitida</span> <a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">ver PDF</a>`
+          : `<input type="file" accept="application/pdf" class="mini u-w-140" data-cobranca="${c.id}">`
+      }</td>
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
-  el.innerHTML = cobrancas.length ? `
+  el.innerHTML = cobrancas.length
+    ? `
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Total confirmado</span><b>${fmt(total)}</b><span class="kpi-caption">${cobrancas.length} cobrança(s)</span></div>
       <div class="kpi-card"><span class="kpi-label">Notas por emitir</span><b>${pendentes}</b><span class="kpi-caption">envie o PDF na linha</span></div>
     </div>
     ${caixaTabela({
-      chips: [{ valor: '', nome: 'Todas' }, { valor: 'pendente', nome: 'Sem nota' }, { valor: 'emitida', nome: 'Com nota' }],
+      chips: [
+        { valor: '', nome: 'Todas' },
+        { valor: 'pendente', nome: 'Sem nota' },
+        { valor: 'emitida', nome: 'Com nota' },
+      ],
       html: corpo,
       dica: 'Selecionar o PDF já envia a nota.',
-    })}` : '<p class="empty-state">Nenhuma cobrança confirmada ainda.</p>';
+    })}`
+    : '<p class="empty-state">Nenhuma cobrança confirmada ainda.</p>';
 
   if (!cobrancas.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('input[data-cobranca]').forEach((input) => input.addEventListener('change', async () => {
-    if (!input.files[0]) return;
-    const form = new FormData();
-    form.append('arquivo', input.files[0]);
-    const r = await fetch(`${API_BASE_URL}/admin/cobrancas/${input.dataset.cobranca}/nota-fiscal`, { method: 'PATCH', credentials: 'include', body: form });
-    toast(r.ok ? 'Nota fiscal anexada.' : 'Não foi possível anexar a nota.', r.ok ? '' : 'err');
-    if (r.ok) { RESUMO = await pegar('/admin/resumo'); pintarContadores(); renderCobrancas(el); }
-  }));
+  el.querySelectorAll('input[data-cobranca]').forEach((input) =>
+    input.addEventListener('change', async () => {
+      if (!input.files[0]) return;
+      const form = new FormData();
+      form.append('arquivo', input.files[0]);
+      const r = await fetch(`${API_BASE_URL}/admin/cobrancas/${input.dataset.cobranca}/nota-fiscal`, {
+        method: 'PATCH',
+        credentials: 'include',
+        body: form,
+      });
+      toast(r.ok ? 'Nota fiscal anexada.' : 'Não foi possível anexar a nota.', r.ok ? '' : 'err');
+      if (r.ok) {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+        renderCobrancas(el);
+      }
+    }),
+  );
 }
 
 // ---------- comissões ----------
@@ -1802,36 +2458,56 @@ async function renderComissoes(el) {
   const corpo = `<table><thead><tr>
       <th data-ord>Vendedor</th><th data-ord>Anunciante</th><th data-ord>Venda</th><th data-ord>Comissão</th><th data-ord>Data</th><th>Chave Pix</th><th data-ord>Situação</th>
     </tr></thead><tbody>
-    ${comissoes.map((c) => `<tr data-filtro="${c.pago_em ? 'pago' : 'aberto'}">
+    ${comissoes
+      .map(
+        (c) => `<tr data-filtro="${c.pago_em ? 'pago' : 'aberto'}">
       <td><b>${esc(c.vendedor_nome)}</b></td>
       <td>${esc(c.nome_empresa)}</td>
       <td>${fmt(c.valor_confirmado)}</td>
       <td><b>${fmt(c.comissao_valor)}</b></td>
       <td>${data(c.criado_em)}</td>
       <td>${esc(c.chave_pix || '—')}</td>
-      <td>${c.pago_em
-        ? `<span class="badge badge-ok">pago ${data(c.pago_em)}</span> <button class="btn ghost mini" data-pago="${c.id}" data-valor="0">Desfazer</button>`
-        : `<button class="btn primary mini" data-pago="${c.id}" data-valor="1">Marcar como paga</button>`}</td>
-    </tr>`).join('')}
+      <td>${
+        c.pago_em
+          ? `<span class="badge badge-ok">pago ${data(c.pago_em)}</span> <button class="btn ghost mini" data-pago="${c.id}" data-valor="0">Desfazer</button>`
+          : `<button class="btn primary mini" data-pago="${c.id}" data-valor="1">Marcar como paga</button>`
+      }</td>
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
-  el.innerHTML = comissoes.length ? `
+  el.innerHTML = comissoes.length
+    ? `
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Total a pagar</span><b>${fmt(totalAPagar)}</b><span class="kpi-caption">${aReceber.length} comissão(ões) em aberto</span></div>
-      ${Object.entries(porVendedor).slice(0, 3).map(([nome, d]) => `
-        <div class="kpi-card"><span class="kpi-label">${esc(nome)}</span><b>${fmt(d.total)}</b><span class="kpi-caption">${esc(d.pix || 'sem chave Pix')}</span></div>`).join('')}
+      ${Object.entries(porVendedor)
+        .slice(0, 3)
+        .map(
+          ([nome, d]) => `
+        <div class="kpi-card"><span class="kpi-label">${esc(nome)}</span><b>${fmt(d.total)}</b><span class="kpi-caption">${esc(d.pix || 'sem chave Pix')}</span></div>`,
+        )
+        .join('')}
     </div>
     ${caixaTabela({
-      chips: [{ valor: 'aberto', nome: 'A pagar' }, { valor: 'pago', nome: 'Pagas' }, { valor: '', nome: 'Todas' }],
+      chips: [
+        { valor: 'aberto', nome: 'A pagar' },
+        { valor: 'pago', nome: 'Pagas' },
+        { valor: '', nome: 'Todas' },
+      ],
       html: corpo,
       dica: 'Marcar como paga só registra aqui — o Pix é feito por fora.',
-    })}` : '<p class="empty-state">Nenhuma comissão gerada ainda. Elas aparecem quando um anunciante indicado por um vendedor tem o pagamento confirmado.</p>';
+    })}`
+    : '<p class="empty-state">Nenhuma comissão gerada ainda. Elas aparecem quando um anunciante indicado por um vendedor tem o pagamento confirmado.</p>';
 
   if (!comissoes.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-pago]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: btn.dataset.valor === '1' })) renderComissoes(el);
-  }));
+  el.querySelectorAll('[data-pago]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: btn.dataset.valor === '1' }))
+        renderComissoes(el);
+    }),
+  );
 }
 
 // ---------- devoluções por arrependimento ----------
@@ -1848,55 +2524,78 @@ async function renderArrependimentos(el) {
       <th data-ord>Protocolo</th><th data-ord>Anunciante</th><th>CPF/CNPJ</th><th data-ord>Valor</th>
       <th data-ord>Pedido em</th><th data-ord>Situação</th><th></th>
     </tr></thead><tbody>
-    ${pedidos.map((p) => `<tr data-filtro="${p.status}">
+    ${pedidos
+      .map(
+        (p) => `<tr data-filtro="${p.status}">
       <td><b>${p.id}</b></td>
       <td>${esc(p.nome_empresa)}<div class="u-dim u-fs-72">${esc(p.contato_email)}</div></td>
       <td>${esc(p.cpf_cnpj)}</td>
       <td><b>${fmt(p.valor_a_estornar)}</b></td>
       <td>${data(p.pedido_em)}</td>
-      <td>${p.status === 'estornado'
-        ? `<span class="badge badge-ok">devolvido ${data(p.estornado_em)}</span>`
-        : '<span class="badge badge-pendente">a devolver</span>'}</td>
-      <td>${p.status === 'estornado'
-        ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '—')}</span>`
-        : `<input class="u-w-160" placeholder="id do estorno" data-comp="${p.id}">
-           <button class="btn primary mini" data-estornado="${p.id}">Registrar devolução</button>`}</td>
-    </tr>`).join('')}
+      <td>${
+        p.status === 'estornado'
+          ? `<span class="badge badge-ok">devolvido ${data(p.estornado_em)}</span>`
+          : '<span class="badge badge-pendente">a devolver</span>'
+      }</td>
+      <td>${
+        p.status === 'estornado'
+          ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '—')}</span>`
+          : `<input class="u-w-160" placeholder="id do estorno" data-comp="${p.id}">
+           <button class="btn primary mini" data-estornado="${p.id}">Registrar devolução</button>`
+      }</td>
+    </tr>`,
+      )
+      .join('')}
   </tbody></table>`;
 
-  el.innerHTML = pedidos.length ? `
+  el.innerHTML = pedidos.length
+    ? `
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">A devolver</span><b>${fmt(totalAberto)}</b><span class="kpi-caption">${abertos.length} pedido(s) em aberto</span></div>
     </div>
     ${caixaTabela({
-      chips: [{ valor: 'pendente', nome: 'A devolver' }, { valor: 'estornado', nome: 'Devolvidas' }, { valor: '', nome: 'Todas' }],
+      chips: [
+        { valor: 'pendente', nome: 'A devolver' },
+        { valor: 'estornado', nome: 'Devolvidas' },
+        { valor: '', nome: 'Todas' },
+      ],
       html: corpo,
       dica: 'A devolução é feita no painel do San Checkout/Asaas. Aqui você registra o comprovante pra fechar o pedido.',
-    })}` : '<p class="empty-state">Ninguém desistiu de uma contratação até agora.</p>';
+    })}`
+    : '<p class="empty-state">Ninguém desistiu de uma contratação até agora.</p>';
 
   if (!pedidos.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-estornado]').forEach((btn) => btn.addEventListener('click', async () => {
-    const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
-    // `salvar()` forca PATCH e esta rota e POST — a fila de devolucao nunca
-    // fechava, o pedido ficava aberto pra sempre e o dinheiro devolvido nao
-    // era registrado em lugar nenhum.
-    const r = await api(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, {
-      method: 'POST', body: JSON.stringify({ comprovante: campo.value.trim() }),
-    });
-    if (!r.ok) { toast((await r.json().catch(() => ({}))).erro || 'Nao deu pra registrar.', true); return; }
-    toast('Devolucao registrada.');
-    renderArrependimentos(el);
-  }));
+  el.querySelectorAll('[data-estornado]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
+      // `salvar()` forca PATCH e esta rota e POST — a fila de devolucao nunca
+      // fechava, o pedido ficava aberto pra sempre e o dinheiro devolvido nao
+      // era registrado em lugar nenhum.
+      const r = await api(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, {
+        method: 'POST',
+        body: JSON.stringify({ comprovante: campo.value.trim() }),
+      });
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Nao deu pra registrar.', true);
+        return;
+      }
+      toast('Devolucao registrada.');
+      renderArrependimentos(el);
+    }),
+  );
 }
 
 // ---------- eventos pendentes ----------
 async function renderEventos(el) {
   const eventos = await pegar('/admin/eventos-pendentes');
-  el.innerHTML = eventos.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+  el.innerHTML = eventos.length
+    ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>ID</th><th>Motivo</th><th>Quando</th><th>Dados recebidos</th><th></th>
     </tr></thead><tbody>
-    ${eventos.map((e) => `<tr>
+    ${eventos
+      .map(
+        (e) => `<tr>
       <td>${e.id}</td>
       <td><b>${esc(e.motivo)}</b></td>
       <td>${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
@@ -1906,27 +2605,45 @@ async function renderEventos(el) {
         ${e.payload?.planoId ? `<button class="btn primary mini" data-aplicar="${e.id}">Aplicar este ciclo</button> ` : ''}
         <button class="btn ghost mini" data-resolver="${e.id}">Só marcar resolvido</button>
       </td>
-    </tr>`).join('')}
-  </tbody></table></div></div>` : '<p class="empty-state">Nenhum evento pendente de revisão.</p>';
+    </tr>`,
+      )
+      .join('')}
+  </tbody></table></div></div>`
+    : '<p class="empty-state">Nenhum evento pendente de revisão.</p>';
 
-  el.querySelectorAll('button[data-resolver]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!window.confirm('Marcar resolvido NÃO credita ciclo nenhum: só tira o item da fila. Use isto quando já tiver resolvido por fora. Continuar?')) return;
-    if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) {
+  el.querySelectorAll('button[data-resolver]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (
+        !window.confirm(
+          'Marcar resolvido NÃO credita ciclo nenhum: só tira o item da fila. Use isto quando já tiver resolvido por fora. Continuar?',
+        )
+      )
+        return;
+      if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+        renderEventos(el);
+      }
+    }),
+  );
+
+  el.querySelectorAll('button[data-aplicar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (
+        !window.confirm(
+          'Aplicar o ciclo desta assinatura: estende a cobertura, registra a cobrança e a comissão. Continuar?',
+        )
+      )
+        return;
+      const r = await fetch(`${API_BASE_URL}/admin/eventos-pendentes/${btn.dataset.aplicar}/aplicar`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) return window.alert(corpo.erro || 'não foi possível aplicar esse ciclo agora');
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
       renderEventos(el);
-    }
-  }));
-
-  el.querySelectorAll('button[data-aplicar]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (!window.confirm('Aplicar o ciclo desta assinatura: estende a cobertura, registra a cobrança e a comissão. Continuar?')) return;
-    const r = await fetch(`${API_BASE_URL}/admin/eventos-pendentes/${btn.dataset.aplicar}/aplicar`, {
-      method: 'POST', credentials: 'include',
-    });
-    const corpo = await r.json().catch(() => ({}));
-    if (!r.ok) return window.alert(corpo.erro || 'não foi possível aplicar esse ciclo agora');
-    RESUMO = await pegar('/admin/resumo');
-    pintarContadores();
-    renderEventos(el);
-  }));
+    }),
+  );
 }

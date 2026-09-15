@@ -7,8 +7,8 @@ const { arredondar, multiplicar, percentual } = require('../src/lib/dinheiro');
 // o valor que ia gravado em cobrancas_confirmadas e enviado ao San Checkout
 // como o `valor` a cobrar na Asaas.
 test('multiplicar não acumula erro de ponto flutuante', () => {
-  assert.strictEqual(multiplicar(89.10, 3), 267.3);
-  assert.strictEqual(multiplicar(349.90, 12), 4198.8);
+  assert.strictEqual(multiplicar(89.1, 3), 267.3);
+  assert.strictEqual(multiplicar(349.9, 12), 4198.8);
   assert.strictEqual(multiplicar(0.1, 3), 0.3); // o clássico 0.1+0.1+0.1 !== 0.3
 });
 

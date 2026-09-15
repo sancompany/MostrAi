@@ -16,7 +16,9 @@
 const SO_ALFANUM = /[^0-9A-Za-z]/g;
 
 function limpar(valor) {
-  return String(valor || '').replace(SO_ALFANUM, '').toUpperCase();
+  return String(valor || '')
+    .replace(SO_ALFANUM, '')
+    .toUpperCase();
 }
 
 // Peso decrescente de 9 a 2, repetindo, da direita para a esquerda.
@@ -64,8 +66,8 @@ function validarCpfOuCnpj(valor) {
 
 function formatar(valor) {
   const v = limpar(valor);
-  if (v.length === 11) return `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
-  if (v.length === 14) return `${v.slice(0,2)}.${v.slice(2,5)}.${v.slice(5,8)}/${v.slice(8,12)}-${v.slice(12)}`;
+  if (v.length === 11) return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9)}`;
+  if (v.length === 14) return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8, 12)}-${v.slice(12)}`;
   return v;
 }
 

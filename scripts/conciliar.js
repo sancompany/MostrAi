@@ -14,8 +14,10 @@ const comecouEm = new Date();
 
 conciliarAssinaturas()
   .then((r) => {
-    console.log(`conciliação: ${r.verificadas} verificadas · ${r.aplicadas} ciclos aplicados · ` +
-      `${r.jaProcessadas} já processadas pelo webhook · ${r.semCobranca} sem cobrança confirmada`);
+    console.log(
+      `conciliação: ${r.verificadas} verificadas · ${r.aplicadas} ciclos aplicados · ` +
+        `${r.jaProcessadas} já processadas pelo webhook · ${r.semCobranca} sem cobrança confirmada`,
+    );
     for (const f of r.falhas) console.error(`  falhou ${f.assinaturaId}: ${f.erro}`);
     process.exit(r.falhas.length ? 1 : 0);
   })

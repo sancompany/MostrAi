@@ -10,7 +10,8 @@ const cache = new Map();
 
 router.get('/playlist/:dispositivoId', exigirAparelho, async (req, res) => {
   const id = req.dispositivo.id;
-  const hora = new Date(); hora.setMinutes(0, 0, 0);
+  const hora = new Date();
+  hora.setMinutes(0, 0, 0);
   const chave = `${id}-${hora.toISOString()}`;
 
   if (!cache.has(chave)) {

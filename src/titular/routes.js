@@ -26,8 +26,12 @@ function dentroDoPrazo(contratadoEm) {
 router.get('/titular/meus-dados', exigirAnuncianteLogado, async (req, res) => {
   const dados = await repo.exportarConta(req.session.anuncianteId);
   if (!dados) return res.status(401).json({ erro: 'não autenticado' });
-  const nome = String(dados.conta.nome_empresa || 'conta').toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+  const nome = String(dados.conta.nome_empresa || 'conta')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, 40);
   const dia = new Date().toISOString().slice(0, 10);
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="mostrai-${nome}-${dia}.json"`);
@@ -95,7 +99,8 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
   const { dentro, limite } = dentroDoPrazo(primeira.criado_em);
   if (!dentro) {
     return res.status(400).json({
-      erro: 'o prazo de 7 dias do arrependimento já passou', prazo_ate: limite,
+      erro: 'o prazo de 7 dias do arrependimento já passou',
+      prazo_ate: limite,
     });
   }
 
@@ -130,7 +135,10 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
   // Fora do ar na hora: o direito é desfazer a contratação, não continuar
   // exibindo até o fim do ciclo pago.
   await anunciantesRepo.atualizar(id, {
-    status: 'suspenso', plano_id: null, data_expiracao: null, valor_mensal_travado: null,
+    status: 'suspenso',
+    plano_id: null,
+    data_expiracao: null,
+    valor_mensal_travado: null,
   });
 
   // Fire-and-forget: e-mail que falha não pode desfazer um direito já

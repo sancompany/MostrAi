@@ -15,7 +15,7 @@ async function extratoDaConta(anuncianteId) {
      JOIN pontos p ON p.id = pg.ponto_id
      WHERE p.anunciante_id = $1
      ORDER BY pg.competencia DESC, p.nome`,
-    [anuncianteId]
+    [anuncianteId],
   );
   return rows;
 }
@@ -23,7 +23,7 @@ async function extratoDaConta(anuncianteId) {
 async function listarPorPonto(pontoId) {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS} FROM pagamentos_ponto WHERE ponto_id = $1 ORDER BY competencia DESC`,
-    [pontoId]
+    [pontoId],
   );
   return rows;
 }
@@ -38,16 +38,16 @@ async function lancar({ ponto_id, competencia, valor, forma, observacao, pago_em
        SET valor = EXCLUDED.valor, forma = EXCLUDED.forma,
            observacao = EXCLUDED.observacao, pago_em = EXCLUDED.pago_em
      RETURNING ${CAMPOS}`,
-    [ponto_id, mes, valor, forma || null, observacao || null, pago_em || null]
+    [ponto_id, mes, valor, forma || null, observacao || null, pago_em || null],
   );
   return rows[0];
 }
 
 async function marcarPago(id, pago) {
-  const { rows } = await pool.query(
-    `UPDATE pagamentos_ponto SET pago_em = $2 WHERE id = $1 RETURNING ${CAMPOS}`,
-    [id, pago ? new Date() : null]
-  );
+  const { rows } = await pool.query(`UPDATE pagamentos_ponto SET pago_em = $2 WHERE id = $1 RETURNING ${CAMPOS}`, [
+    id,
+    pago ? new Date() : null,
+  ]);
   return rows[0];
 }
 

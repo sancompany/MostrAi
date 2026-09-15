@@ -28,7 +28,8 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // ativa e sem plano nenhum entrando na playlist de graça. Ou tem plano, ou é
 // própria com frequência definida — não existe terceiro caso.
 async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
-  const { rows } = await pool.query(`
+  const { rows } = await pool.query(
+    `
     SELECT a.id, a.conta_propria,
            COALESCE(p.frequencia_dia, a.frequencia_dia_propria) AS frequencia_dia,
            p.limite_criativos,
@@ -52,7 +53,9 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
     GROUP BY a.id, a.conta_propria, p.frequencia_dia, a.frequencia_dia_propria, p.limite_criativos
-  `, [categoriaDoPonto || null, excluirContaId || null]);
+  `,
+    [categoriaDoPonto || null, excluirContaId || null],
+  );
 
   return rows.map((r) => {
     const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
@@ -69,7 +72,7 @@ async function criativosDoDono(contaId) {
     `SELECT arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos"
      FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
      ORDER BY created_at DESC LIMIT 3`,
-    [contaId]
+    [contaId],
   );
   return rows;
 }
@@ -82,7 +85,7 @@ function horasAbertoPorDia(ponto) {
   if (!ponto?.horario_abertura || !ponto.horario_fechamento) return HORAS_ABERTO_PADRAO;
   const [hA, mA] = String(ponto.horario_abertura).split(':').map(Number);
   const [hF, mF] = String(ponto.horario_fechamento).split(':').map(Number);
-  const minutos = (hF * 60 + mF) - (hA * 60 + mA);
+  const minutos = hF * 60 + mF - (hA * 60 + mA);
   return minutos > 0 ? minutos / 60 : HORAS_ABERTO_PADRAO;
 }
 
@@ -90,27 +93,35 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior) {
   const { rows } = await pool.query(
     `SELECT anunciante_id, GREATEST(vezes_programadas - vezes_confirmadas, 0) AS deficit
      FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2`,
-    [dispositivoId, horaAnterior]
+    [dispositivoId, horaAnterior],
   );
   const mapa = {};
-  rows.forEach((r) => { mapa[r.anunciante_id] = Number(r.deficit); });
+  rows.forEach((r) => {
+    mapa[r.anunciante_id] = Number(r.deficit);
+  });
   return mapa;
 }
 
 async function gravarProgramados(dispositivo, horaAtual, contagem) {
-  await Promise.all(Object.entries(contagem).map(([anuncianteId, vezes]) => pool.query(
-    `INSERT INTO exibicoes_contador (anunciante_id, ponto_id, dispositivo_id, janela_hora, vezes_programadas)
+  await Promise.all(
+    Object.entries(contagem).map(([anuncianteId, vezes]) =>
+      pool.query(
+        `INSERT INTO exibicoes_contador (anunciante_id, ponto_id, dispositivo_id, janela_hora, vezes_programadas)
      VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora) DO UPDATE SET vezes_programadas = $5`,
-    [anuncianteId, dispositivo.ponto_id, dispositivo.id, horaAtual, vezes]
-  )));
+        [anuncianteId, dispositivo.ponto_id, dispositivo.id, horaAtual, vezes],
+      ),
+    ),
+  );
 }
 
 // `dispositivo` é o objeto de dispositivosRepo.buscarComPonto (já traz a
 // categoria, o horário, a cota e o dono do ponto).
 async function gerarPlaylistDaHora(dispositivo, hora) {
-  const horaAtual = new Date(hora); horaAtual.setMinutes(0, 0, 0);
-  const horaAnterior = new Date(horaAtual); horaAnterior.setHours(horaAnterior.getHours() - 1);
+  const horaAtual = new Date(hora);
+  horaAtual.setMinutes(0, 0, 0);
+  const horaAnterior = new Date(horaAtual);
+  horaAnterior.setHours(horaAnterior.getHours() - 1);
 
   const [anunciantes, deficits, doDono] = await Promise.all([
     anunciantesElegiveis(dispositivo.categoria_id, dispositivo.dono_conta_id),
@@ -172,11 +183,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 // Só confirma se havia programação pra esse anunciante nesta tela nesta
 // hora — uma chave válida não pode inflar quem não estava na playlist.
 async function confirmarExibicao(dispositivoId, anuncianteId, hora) {
-  const horaAtual = new Date(hora); horaAtual.setMinutes(0, 0, 0);
+  const horaAtual = new Date(hora);
+  horaAtual.setMinutes(0, 0, 0);
   const { rowCount } = await pool.query(
     `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
      WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3`,
-    [anuncianteId, dispositivoId, horaAtual]
+    [anuncianteId, dispositivoId, horaAtual],
   );
   return rowCount > 0;
 }

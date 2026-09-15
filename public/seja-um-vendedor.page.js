@@ -25,7 +25,8 @@ form.addEventListener('submit', async (e) => {
     document.getElementById('enviado').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
-    msg.textContent = err.message === 'falha' ? 'Não foi possível enviar agora. Tente novamente em instantes.' : err.message;
+    msg.textContent =
+      err.message === 'falha' ? 'Não foi possível enviar agora. Tente novamente em instantes.' : err.message;
     msg.className = 'form-msg err';
   }
 });

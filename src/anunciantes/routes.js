@@ -43,39 +43,71 @@ const upload = multer({
 // em zero e o dono do ponto escolheu à toa).
 async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
   const opcao = planoPontoId ? await planosPontoRepo.buscarPorId(planoPontoId) : null;
-  const ponto = await pontosRepo.criar({
-    nome: cand.nome_comercio || conta.nome_empresa, endereco: cand.endereco, cidade: cand.cidade || 'Matão',
-    uf: cand.uf || 'SP', cep: cand.cep || '', segmento: cand.segmento || 'outro',
-    responsavel_nome: cand.nome, responsavel_contato: cand.contato_telefone,
-    fluxo_estimado_mensal: cand.fluxo_estimado_mensal, plano_ponto_id: opcao ? opcao.id : null,
-    valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
-    cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
-    anunciante_id: conta.id, status: 'aguardando_instalacao', aceitou_termos_em: new Date(),
-  }, db);
+  const ponto = await pontosRepo.criar(
+    {
+      nome: cand.nome_comercio || conta.nome_empresa,
+      endereco: cand.endereco,
+      cidade: cand.cidade || 'Matão',
+      uf: cand.uf || 'SP',
+      cep: cand.cep || '',
+      segmento: cand.segmento || 'outro',
+      responsavel_nome: cand.nome,
+      responsavel_contato: cand.contato_telefone,
+      fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
+      plano_ponto_id: opcao ? opcao.id : null,
+      valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
+      cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
+      anunciante_id: conta.id,
+      status: 'aguardando_instalacao',
+      aceitou_termos_em: new Date(),
+    },
+    db,
+  );
   await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
   return ponto;
 }
 
 router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const {
-    nome_empresa, cpf_cnpj, endereco, cidade, uf, cep,
-    contato_email, contato_telefone, senha, aceitou_termos, indicado_por_cupom,
-    responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone,
-    convite: tokenConvite, chave_pix,
+    nome_empresa,
+    cpf_cnpj,
+    endereco,
+    cidade,
+    uf,
+    cep,
+    contato_email,
+    contato_telefone,
+    senha,
+    aceitou_termos,
+    indicado_por_cupom,
+    responsavel_nome,
+    responsavel_cpf,
+    responsavel_email,
+    responsavel_telefone,
+    convite: tokenConvite,
+    chave_pix,
   } = req.body;
 
   let convite = null;
   if (tokenConvite) {
     convite = await convitesRepo.buscarValido(tokenConvite);
-    if (!convite) return res.status(400).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
+    if (!convite)
+      return res.status(400).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
   }
   const papeis = convite ? convite.papeis : ['anunciante'];
   const ehAnunciante = papeis.includes('anunciante');
 
   // Endereço comercial só é obrigatório pra quem anuncia; dono de ponto tem o
   // endereço no próprio ponto, vendedor não tem.
-  if (!nome_empresa || !cpf_cnpj || !contato_email || !contato_telefone || !senha || !aceitou_termos
-    || (ehAnunciante && (!endereco || !cidade || !uf || !cep))) {
+  if (
+    !nome_empresa ||
+    !cpf_cnpj ||
+    !contato_email ||
+    !contato_telefone ||
+    !senha ||
+    !aceitou_termos ||
+    (ehAnunciante && (!endereco || !cidade || !uf || !cep))
+  ) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
   // Cupom era gravado como texto livre e so conferido na hora de pagar a
@@ -87,7 +119,9 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   if (indicado_por_cupom) {
     const vendedor = await vendedoresRepo.buscarPorCupomAprovado(String(indicado_por_cupom).toUpperCase());
     if (!vendedor) {
-      return res.status(400).json({ erro: 'esse cupom de indicação não existe ou não está ativo', campo: 'indicado_por_cupom' });
+      return res
+        .status(400)
+        .json({ erro: 'esse cupom de indicação não existe ou não está ativo', campo: 'indicado_por_cupom' });
     }
   }
 
@@ -100,13 +134,16 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const docInvalido = validarCpfOuCnpj(cpf_cnpj);
   if (docInvalido) return res.status(400).json({ erro: docInvalido, campo: 'cpf_cnpj' });
   if (responsavel_cpf && validarCpfOuCnpj(responsavel_cpf)) {
-    return res.status(400).json({ erro: 'CPF do responsável inválido — confira os números.', campo: 'responsavel_cpf' });
+    return res
+      .status(400)
+      .json({ erro: 'CPF do responsável inválido — confira os números.', campo: 'responsavel_cpf' });
   }
   if (ehAnunciante && !cepValido(cep)) {
     return res.status(400).json({ erro: 'CEP inválido — use 8 dígitos.', campo: 'cep' });
   }
   const telefone = telefoneE164(contato_telefone);
-  if (!telefone) return res.status(400).json({ erro: 'Telefone inválido — informe DDD e número.', campo: 'contato_telefone' });
+  if (!telefone)
+    return res.status(400).json({ erro: 'Telefone inválido — informe DDD e número.', campo: 'contato_telefone' });
 
   const senhaFraca = conferirSenha(senha);
   if (senhaFraca) return res.status(400).json({ erro: senhaFraca });
@@ -115,9 +152,22 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   if (existente) return res.status(409).json({ erro: 'e-mail já cadastrado' });
 
   const dadosConta = {
-    nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone: telefone, senha,
-    indicado_por_cupom, responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone,
-    categoria_id: req.body.categoria_id, categoria_livre: req.body.categoria_livre,
+    nome_empresa,
+    cpf_cnpj,
+    endereco,
+    cidade,
+    uf,
+    cep,
+    contato_email,
+    contato_telefone: telefone,
+    senha,
+    indicado_por_cupom,
+    responsavel_nome,
+    responsavel_cpf,
+    responsavel_email,
+    responsavel_telefone,
+    categoria_id: req.body.categoria_id,
+    categoria_livre: req.body.categoria_livre,
     papeis,
     // Quem entrou por convite já foi aprovado pelo dono ao gerar o link.
     status: convite ? 'aprovado' : 'pendente_aprovacao',
@@ -141,7 +191,8 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       }
       anunciante = await repo.criar(dadosConta, cliente);
       await cliente.query('UPDATE convites SET conta_id = $2 WHERE id = $1', [consumido.id, anunciante.id]);
-      if (papeis.includes('vendedor')) await vendedoresRepo.criar(anunciante.id, { chave_pix, nome: nome_empresa }, cliente);
+      if (papeis.includes('vendedor'))
+        await vendedoresRepo.criar(anunciante.id, { chave_pix, nome: nome_empresa }, cliente);
       // Convite que nasceu de uma candidatura de ponto já traz o endereço: o
       // ponto é criado agora, ligado à conta nova, com a primeira tela.
       if (papeis.includes('ponto') && convite.candidatura_id) {
@@ -160,11 +211,15 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   }
   // Loga a sessão na hora — o front manda direto pro painel, sem passar pela
   // tela de login de novo (mesmo padrão do POST /seja-um-ponto).
-  eventos.registrar('conta:cadastro_conclui', {
-    papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
-    veio_de_cupom: !!anunciante.indicado_por_cupom,
-    veio_de_convite: !!req.body.convite,
-  }, anunciante);
+  eventos.registrar(
+    'conta:cadastro_conclui',
+    {
+      papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
+      veio_de_cupom: !!anunciante.indicado_por_cupom,
+      veio_de_convite: !!req.body.convite,
+    },
+    anunciante,
+  );
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -187,7 +242,12 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
     req.session.anuncianteId = anunciante.id;
-    res.json({ id: anunciante.id, nome_empresa: anunciante.nome_empresa, status: anunciante.status, papeis: anunciante.papeis });
+    res.json({
+      id: anunciante.id,
+      nome_empresa: anunciante.nome_empresa,
+      status: anunciante.status,
+      papeis: anunciante.papeis,
+    });
   });
 });
 
@@ -215,10 +275,14 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
 
   await repo.atualizar(req.session.anuncianteId, { excluido_em: new Date() });
   if (conta) {
-    eventos.registrar('conta:exclusao_pede', {
-      dias_de_vida: eventos.diasEntre(conta.created_at),
-      tinha_plano_ativo: !!conta.plano_id && conta.status === 'ativo',
-    }, conta);
+    eventos.registrar(
+      'conta:exclusao_pede',
+      {
+        dias_de_vida: eventos.diasEntre(conta.created_at),
+        tinha_plano_ativo: !!conta.plano_id && conta.status === 'ativo',
+      },
+      conta,
+    );
   }
   req.session.destroy(() => res.json({ ok: true }));
 });
@@ -241,7 +305,8 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
   const vendedor = (anunciante.papeis || []).includes('vendedor')
-    ? await vendedoresRepo.buscarPorConta(anunciante.id) : null;
+    ? await vendedoresRepo.buscarPorConta(anunciante.id)
+    : null;
   res.json({ ...anunciante, vendedor });
 });
 
@@ -250,8 +315,18 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
 // mudam via admin, ver SPEC.md). Documento e e-mail de acesso também ficam
 // de fora: mudança só via contato com o admin.
 const CAMPOS_AUTOEDITAVEIS = [
-  'nome_empresa', 'endereco', 'cidade', 'uf', 'cep', 'contato_telefone', 'categoria_id', 'categoria_livre',
-  'responsavel_nome', 'responsavel_cpf', 'responsavel_email', 'responsavel_telefone',
+  'nome_empresa',
+  'endereco',
+  'cidade',
+  'uf',
+  'cep',
+  'contato_telefone',
+  'categoria_id',
+  'categoria_livre',
+  'responsavel_nome',
+  'responsavel_cpf',
+  'responsavel_email',
+  'responsavel_telefone',
 ];
 router.patch('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const dados = {};
@@ -270,7 +345,8 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
     const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, {
       // Fixo: o mimetype vem do cliente e o bucket é público.
-      contentType: 'image/jpeg', upsert: true,
+      contentType: 'image/jpeg',
+      upsert: true,
     });
     if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
     const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
@@ -297,7 +373,9 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
     if (Number.isFinite(limite)) {
       const emUso = await criativosRepo.contarNaoReprovados(contaId);
       if (emUso >= limite) {
-        return res.status(400).json({ erro: `seu plano permite até ${limite} criativo(s) ativo(s) — exclua um pra subir outro` });
+        return res
+          .status(400)
+          .json({ erro: `seu plano permite até ${limite} criativo(s) ativo(s) — exclua um pra subir outro` });
       }
     }
 
@@ -308,7 +386,9 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
     // Imagem não entra na conta: ela vira vídeo com duração fixa nossa.
     const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
     if (!midia) {
-      return res.status(400).json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido' });
+      return res
+        .status(400)
+        .json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido' });
     }
     if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
       return res.status(400).json({
@@ -348,7 +428,9 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
           erro: 'o problema foi nosso: o armazenamento não respondeu agora. Tente de novo em alguns minutos — o seu arquivo está ok',
         });
       }
-      return res.status(400).json({ erro: 'não foi possível processar esse arquivo — confira se é um vídeo ou imagem válido' });
+      return res
+        .status(400)
+        .json({ erro: 'não foi possível processar esse arquivo — confira se é um vídeo ou imagem válido' });
     }
   } finally {
     fs.unlink(req.file.path, () => {});
@@ -393,7 +475,7 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
   const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
-    limite: conta.conta_propria ? Infinity : (plano ? plano.limite_criativos : 1),
+    limite: conta.conta_propria ? Infinity : plano ? plano.limite_criativos : 1,
     peloOperador: true,
   });
 });
@@ -422,7 +504,9 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
     const supabase = require('../lib/supabase');
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
     await supabase.storage.from(bucket).remove([`${req.params.criativoId}.mp4`, `${req.params.criativoId}-thumb.jpg`]);
-  } catch { /* ignora */ }
+  } catch {
+    /* ignora */
+  }
   res.json({ ok: true });
 });
 
@@ -450,7 +534,7 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
      GROUP BY dia, p.nome, p.cidade, d.apelido
      HAVING SUM(e.vezes_confirmadas) > 0
      ORDER BY dia DESC, p.nome`,
-    [req.params.id, dias]
+    [req.params.id, dias],
   );
 
   const campo = (v) => {
@@ -480,7 +564,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     pool.query(
       `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
-      [anuncianteId]
+      [anuncianteId],
     ),
     pool.query(
       `SELECT p.id, p.nome, p.cidade,
@@ -489,18 +573,18 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY p.id, p.nome, p.cidade
        ORDER BY confirmadas DESC`,
-      [anuncianteId]
+      [anuncianteId],
     ),
     pool.query(
       `SELECT date_trunc('day', janela_hora) AS dia, SUM(vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
-      [anuncianteId]
+      [anuncianteId],
     ),
     pool.query(
       `SELECT id, valor, criado_em, nota_fiscal_status, nota_fiscal_url
        FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
-      [anuncianteId]
+      [anuncianteId],
     ),
     repo.buscarPorId(anuncianteId),
   ]);
@@ -514,7 +598,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   const { rows: aprovados } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM criativos
       WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL`,
-    [req.params.id]
+    [req.params.id],
   );
 
   res.json({
@@ -527,9 +611,10 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     // O que a conta PAGA, nao o preco de tabela: quem entrou com preco travado
     // paga o valor congelado, e quem esta em cortesia nao paga nada — mostrar
     // "custo por exibicao" pra quem recebeu o plano de graca e numero inventado.
-    custoPorExibicao: plano && confirmadas > 0 && !anunciante.plano_cortesia
-      ? Number(anunciante.valor_mensal_travado || plano.valor_mensal) * plano.compromisso_meses / confirmadas
-      : null,
+    custoPorExibicao:
+      plano && confirmadas > 0 && !anunciante.plano_cortesia
+        ? (Number(anunciante.valor_mensal_travado || plano.valor_mensal) * plano.compromisso_meses) / confirmadas
+        : null,
   });
 });
 
@@ -545,17 +630,19 @@ router.get('/admin/anunciantes', async (_req, res) => {
 // resposta pro admin repassar por WhatsApp. Não há tela de "trocar senha"
 // ainda — fica pro anunciante pedir reset por fora, se precisar.
 router.post('/admin/anunciantes', async (req, res) => {
-  const {
-    nome_empresa, cpf_cnpj, endereco, cidade, uf, cep,
-    contato_email, contato_telefone,
-  } = req.body;
+  const { nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone } = req.body;
 
   // Endereço é exigido de quem vai receber nota — a CONTA PRÓPRIA do Mostraí
   // não recebe nota nenhuma: ela é a própria rede anunciando. Pedir endereço
   // dela só produziria endereço de mentira no cadastro.
   const ehPropria = req.body.conta_propria === true;
-  if (!nome_empresa || !cpf_cnpj || !contato_email || !contato_telefone
-    || (!ehPropria && (!endereco || !cidade || !uf || !cep))) {
+  if (
+    !nome_empresa ||
+    !cpf_cnpj ||
+    !contato_email ||
+    !contato_telefone ||
+    (!ehPropria && (!endereco || !cidade || !uf || !cep))
+  ) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
   const docInvalido = validarCpfOuCnpj(cpf_cnpj);
@@ -571,8 +658,10 @@ router.post('/admin/anunciantes', async (req, res) => {
   // conta própria de qualquer jeito, mas a essa altura a conta já teria sido
   // inserida e sobraria uma linha órfã sem a marca — meio criada, que é pior
   // que não criada. O índice segue sendo a última linha de defesa.
-  if (ehPropria && await repo.existeContaPropria()) {
-    return res.status(409).json({ erro: 'já existe uma conta própria do Mostraí — edite a que existe em "Meus anúncios"' });
+  if (ehPropria && (await repo.existeContaPropria())) {
+    return res
+      .status(409)
+      .json({ erro: 'já existe uma conta própria do Mostraí — edite a que existe em "Meus anúncios"' });
   }
 
   const senhaGerada = req.body.senha || `${require('node:crypto').randomBytes(9).toString('base64url')}A1@`;
@@ -593,12 +682,16 @@ router.post('/admin/anunciantes', async (req, res) => {
   // o admin cadastra o cliente depois. Deixar de fora furaria o funil
   // justamente no caminho que mais vende. A conta própria do Mostraí não
   // conta, e não por exceção escrita aqui — `ehInterno` já a marca.
-  eventos.registrar('conta:cadastro_conclui', {
-    papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
-    veio_de_cupom: !!anunciante.indicado_por_cupom,
-    veio_de_convite: false,
-    pelo_operador: true,
-  }, anunciante);
+  eventos.registrar(
+    'conta:cadastro_conclui',
+    {
+      papel_inicial: (anunciante.papeis || [])[0] || 'anunciante',
+      veio_de_cupom: !!anunciante.indicado_por_cupom,
+      veio_de_convite: false,
+      pelo_operador: true,
+    },
+    anunciante,
+  );
 
   res.status(201).json({ ...anunciante, senhaGerada });
 });
@@ -614,10 +707,14 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
     // como uma aprovação nova e a fila pareceria muito mais movimentada.
     const liberado = ['aprovado', 'ativo'];
     if (liberado.includes(anunciante.status) && antes && !liberado.includes(antes.status)) {
-      eventos.registrar('conta:aprovacao_recebe', {
-        papel_liberado: (anunciante.papeis || [])[0] || 'anunciante',
-        horas_ate_aprovar: eventos.horasEntre(anunciante.created_at),
-      }, anunciante);
+      eventos.registrar(
+        'conta:aprovacao_recebe',
+        {
+          papel_liberado: (anunciante.papeis || [])[0] || 'anunciante',
+          horas_ate_aprovar: eventos.horasEntre(anunciante.created_at),
+        },
+        anunciante,
+      );
       // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
       enviarContaAprovada(anunciante).catch((err) => console.error('e-mail de conta aprovada', err));
     }

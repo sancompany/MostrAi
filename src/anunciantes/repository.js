@@ -4,15 +4,34 @@ const pool = require('../db/pool');
 const STATUS = ['pendente_aprovacao', 'aprovado', 'ativo', 'suspenso'];
 
 const CAMPOS_ATUALIZAVEIS = [
-  'nome_empresa', 'cpf_cnpj', 'endereco', 'cidade', 'uf', 'cep',
-  'contato_email', 'contato_telefone', 'status', 'plano_id',
-  'data_inicio_cobertura', 'data_expiracao', 'categoria_id', 'categoria_livre',
-  'responsavel_nome', 'responsavel_cpf', 'responsavel_email', 'responsavel_telefone', 'foto_url',
-  'excluido_em', 'papeis', 'valor_mensal_travado',
+  'nome_empresa',
+  'cpf_cnpj',
+  'endereco',
+  'cidade',
+  'uf',
+  'cep',
+  'contato_email',
+  'contato_telefone',
+  'status',
+  'plano_id',
+  'data_inicio_cobertura',
+  'data_expiracao',
+  'categoria_id',
+  'categoria_livre',
+  'responsavel_nome',
+  'responsavel_cpf',
+  'responsavel_email',
+  'responsavel_telefone',
+  'foto_url',
+  'excluido_em',
+  'papeis',
+  'valor_mensal_travado',
   // Conta própria do Mostraí (migration 023) — só o admin muda os dois.
-  'conta_propria', 'frequencia_dia_propria',
+  'conta_propria',
+  'frequencia_dia_propria',
   // Plano de cortesia (migration 024) — só o admin libera.
-  'plano_cortesia', 'cortesia_motivo',
+  'plano_cortesia',
+  'cortesia_motivo',
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
@@ -41,14 +60,28 @@ async function criar(dados, db = pool) {
         responsavel_telefone, aceitou_termos_em, papeis, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING ${CAMPOS_PUBLICOS}`,
-    [dados.nome_empresa, dados.cpf_cnpj, dados.endereco || null, dados.cidade || null, dados.uf || null, dados.cep || null,
-      dados.contato_email, dados.contato_telefone, senha_hash, dados.indicado_por_cupom ? String(dados.indicado_por_cupom).toUpperCase() : null,
-      dados.categoria_id || null, dados.categoria_livre || null,
-      dados.responsavel_nome || null, dados.responsavel_cpf || null, dados.responsavel_email || null,
-      dados.responsavel_telefone || null, new Date(),
+    [
+      dados.nome_empresa,
+      dados.cpf_cnpj,
+      dados.endereco || null,
+      dados.cidade || null,
+      dados.uf || null,
+      dados.cep || null,
+      dados.contato_email,
+      dados.contato_telefone,
+      senha_hash,
+      dados.indicado_por_cupom ? String(dados.indicado_por_cupom).toUpperCase() : null,
+      dados.categoria_id || null,
+      dados.categoria_livre || null,
+      dados.responsavel_nome || null,
+      dados.responsavel_cpf || null,
+      dados.responsavel_email || null,
+      dados.responsavel_telefone || null,
+      new Date(),
       dados.papeis?.length ? dados.papeis : ['anunciante'],
       // Conta que nasce por convite já foi aprovada pelo dono ao gerar o link.
-      dados.status || 'pendente_aprovacao']
+      dados.status || 'pendente_aprovacao',
+    ],
   );
   return rows[0];
 }
@@ -60,10 +93,7 @@ async function buscarPorEmailComSenha(email) {
 }
 
 async function buscarPorId(id) {
-  const { rows } = await pool.query(
-    `SELECT ${CAMPOS_PUBLICOS} FROM anunciantes WHERE id = $1`,
-    [id]
-  );
+  const { rows } = await pool.query(`SELECT ${CAMPOS_PUBLICOS} FROM anunciantes WHERE id = $1`, [id]);
   return rows[0] || null;
 }
 
@@ -79,9 +109,7 @@ async function validarSenha(anunciante, senha) {
 }
 
 async function listar() {
-  const { rows } = await pool.query(
-    `SELECT ${CAMPOS_PUBLICOS} FROM anunciantes ORDER BY created_at DESC`
-  );
+  const { rows } = await pool.query(`SELECT ${CAMPOS_PUBLICOS} FROM anunciantes ORDER BY created_at DESC`);
   return rows;
 }
 
@@ -104,5 +132,11 @@ async function existeContaPropria() {
 
 module.exports = {
   existeContaPropria,
-  criar, buscarPorEmailComSenha, buscarPorId, validarSenha, listar, atualizar, STATUS,
+  criar,
+  buscarPorEmailComSenha,
+  buscarPorId,
+  validarSenha,
+  listar,
+  atualizar,
+  STATUS,
 };

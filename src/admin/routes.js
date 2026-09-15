@@ -26,27 +26,35 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia
     // "seu anúncio está no ar" várias vezes pelo mesmo vídeo.
-    if (criativo.status === 'aprovado' && (antes?.status !== 'aprovado')) {
+    if (criativo.status === 'aprovado' && antes?.status !== 'aprovado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
       // o que coloca o vídeo no ar.
       if (dono) enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
-      eventos.registrar('criativo:video_aprova', {
-        horas_ate_aprovar: eventos.horasEntre(criativo.created_at),
-        duracao_segundos: criativo.duracao_segundos,
-        pelo_operador: !!criativo.editado_pelo_operador,
-      }, dono);
+      eventos.registrar(
+        'criativo:video_aprova',
+        {
+          horas_ate_aprovar: eventos.horasEntre(criativo.created_at),
+          duracao_segundos: criativo.duracao_segundos,
+          pelo_operador: !!criativo.editado_pelo_operador,
+        },
+        dono,
+      );
     }
     // Mesma regra do aprovado, do outro lado: reprovar era um beco sem saída
     // — o card virava "Reprovado" e nada mais acontecia. Agora sai um aviso
     // com o motivo e o caminho de correção.
-    if (criativo.status === 'reprovado' && (antes?.status !== 'reprovado')) {
+    if (criativo.status === 'reprovado' && antes?.status !== 'reprovado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       if (dono) enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
-      eventos.registrar('criativo:video_reprova', {
-        horas_ate_reprovar: eventos.horasEntre(criativo.created_at),
-        tem_motivo: !!criativo.motivo_reprovacao,
-      }, dono);
+      eventos.registrar(
+        'criativo:video_reprova',
+        {
+          horas_ate_reprovar: eventos.horasEntre(criativo.created_at),
+          tem_motivo: !!criativo.motivo_reprovacao,
+        },
+        dono,
+      );
     }
 
     res.json(criativo);
@@ -71,8 +79,17 @@ router.get('/admin/resumo', async (_req, res) => {
   const limiteOffline = new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000);
 
   const [
-    receita, pontosAtivos, amortizacao, custosFixos, filas, pontosPorStatus, anunciantesPorStatus,
-    offline, faturamento, exibicoes, novos,
+    receita,
+    pontosAtivos,
+    amortizacao,
+    custosFixos,
+    filas,
+    pontosPorStatus,
+    anunciantesPorStatus,
+    offline,
+    faturamento,
+    exibicoes,
+    novos,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
     // `status = 'ativo'`, então somava três coisas que não pagam nada:
@@ -85,12 +102,12 @@ router.get('/admin/resumo', async (_req, res) => {
        WHERE a.status = 'ativo'
          AND NOT a.plano_cortesia
          AND a.excluido_em IS NULL
-         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`
+         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`,
     ),
     pool.query(
       `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,
               COALESCE(SUM(fluxo_estimado_mensal), 0) AS fluxo
-       FROM pontos WHERE status = 'ativo'`
+       FROM pontos WHERE status = 'ativo'`,
     ),
     // Amortização real: custo de cada tela dividido pelo prazo dela, só das
     // telas ativas; mais os custos fixos lançados pelo dono.
@@ -98,7 +115,7 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0) AS amortizacao,
               COUNT(*)::int AS telas
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-       WHERE d.status = 'ativo' AND p.status = 'ativo'`
+       WHERE d.status = 'ativo' AND p.status = 'ativo'`,
     ),
     pool.query(`SELECT COALESCE(SUM(valor_mensal), 0) AS total FROM custos_fixos WHERE ativo`),
     pool.query(
@@ -109,7 +126,7 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM pontos WHERE status = 'lead') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
         (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
-        (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos`
+        (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos`,
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -122,23 +139,23 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT COUNT(*)::int AS qtd FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
        WHERE d.status = 'ativo' AND p.status = 'ativo'
          AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)`,
-      [limiteOffline]
+      [limiteOffline],
     ),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
        FROM cobrancas_confirmadas
        WHERE criado_em > now() - interval '6 months'
-       GROUP BY mes ORDER BY mes`
+       GROUP BY mes ORDER BY mes`,
     ),
     pool.query(
       `SELECT COALESCE(SUM(vezes_confirmadas), 0)::int AS confirmadas,
               COALESCE(SUM(vezes_programadas), 0)::int AS programadas
-       FROM exibicoes_contador WHERE janela_hora > now() - interval '30 days'`
+       FROM exibicoes_contador WHERE janela_hora > now() - interval '30 days'`,
     ),
     pool.query(
       `SELECT
         (SELECT COUNT(*) FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL) AS anunciantes,
-        (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days') AS pontos`
+        (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days') AS pontos`,
     ),
   ]);
 
@@ -182,7 +199,7 @@ router.get('/admin/resumo', async (_req, res) => {
           acc[r.status] = acc[r.status] || { status: r.status, qtd: 0 };
           acc[r.status].qtd += r.qtd;
           return acc;
-        }, {})
+        }, {}),
       ),
       anunciantesAtivosPagantes: anunciantesPorStatus.rows
         .filter((r) => r.status === 'ativo' && !r.plano_cortesia)
@@ -198,15 +215,17 @@ router.get('/admin/resumo', async (_req, res) => {
     // Última conciliação: é ela que põe no ar quem pagou e cujo webhook se
     // perdeu. Rodava (ou não) sem deixar rastro em tela nenhuma — e a pergunta
     // "o cron está de pé?" não tinha onde ser respondida.
-    conciliacao: ultima ? {
-      terminouEm: ultima.terminou_em,
-      verificadas: ultima.verificadas,
-      aplicadas: ultima.aplicadas,
-      semCobranca: ultima.sem_cobranca,
-      expiradas: ultima.expiradas,
-      falhas: (ultima.falhas || []).length,
-      abortou: ultima.abortou,
-    } : null,
+    conciliacao: ultima
+      ? {
+          terminouEm: ultima.terminou_em,
+          verificadas: ultima.verificadas,
+          aplicadas: ultima.aplicadas,
+          semCobranca: ultima.sem_cobranca,
+          expiradas: ultima.expiradas,
+          falhas: (ultima.falhas || []).length,
+          abortou: ultima.abortou,
+        }
+      : null,
     horasOfflineAlerta: HORAS_OFFLINE_ALERTA,
     // Única regra de plano que mora em variável de ambiente (CONSTRAINTS.md):
     // liga/desliga a vitrine do plano fundador sem deploy.
@@ -224,7 +243,7 @@ router.get('/admin/pontos-offline', async (_req, res) => {
      WHERE d.status = 'ativo' AND p.status = 'ativo'
        AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)
      ORDER BY d.ultima_vez_online NULLS FIRST`,
-    [new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000)]
+    [new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000)],
   );
   res.json(rows);
 });
@@ -239,7 +258,7 @@ router.post('/admin/custos-fixos', async (req, res) => {
   if (!nome) return res.status(400).json({ erro: 'nome obrigatório' });
   const { rows } = await pool.query(
     'INSERT INTO custos_fixos (nome, valor_mensal, observacao) VALUES ($1,$2,$3) RETURNING *',
-    [nome, Number(valor_mensal) || 0, observacao || null]
+    [nome, Number(valor_mensal) || 0, observacao || null],
   );
   res.status(201).json(rows[0]);
 });
@@ -247,10 +266,10 @@ router.patch('/admin/custos-fixos/:id', async (req, res) => {
   const campos = ['nome', 'valor_mensal', 'ativo', 'observacao'].filter((c) => req.body[c] !== undefined);
   if (!campos.length) return res.status(400).json({ erro: 'nada pra atualizar' });
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(
-    `UPDATE custos_fixos SET ${sets} WHERE id = $1 RETURNING *`,
-    [req.params.id, ...campos.map((c) => (c === 'valor_mensal' ? Number(req.body[c]) : req.body[c]))]
-  );
+  const { rows } = await pool.query(`UPDATE custos_fixos SET ${sets} WHERE id = $1 RETURNING *`, [
+    req.params.id,
+    ...campos.map((c) => (c === 'valor_mensal' ? Number(req.body[c]) : req.body[c])),
+  ]);
   if (!rows[0]) return res.status(404).json({ erro: 'custo não encontrado' });
   res.json(rows[0]);
 });

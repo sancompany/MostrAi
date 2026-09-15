@@ -14,7 +14,7 @@ async function criar({ papeis, nomeSugerido, emailSugerido, candidaturaId, valid
   const { rows } = await pool.query(
     `INSERT INTO convites (token, papeis, nome_sugerido, email_sugerido, candidatura_id, expira_em)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [token, lista, nomeSugerido || null, emailSugerido || null, candidaturaId || null, expira]
+    [token, lista, nomeSugerido || null, emailSugerido || null, candidaturaId || null, expira],
   );
   return rows[0];
 }
@@ -22,7 +22,8 @@ async function criar({ papeis, nomeSugerido, emailSugerido, candidaturaId, valid
 // Válido = existe, não usado, não expirado.
 async function buscarValido(token) {
   const { rows } = await pool.query(
-    `SELECT * FROM convites WHERE token = $1 AND usado_em IS NULL AND expira_em > now()`, [token]
+    `SELECT * FROM convites WHERE token = $1 AND usado_em IS NULL AND expira_em > now()`,
+    [token],
   );
   return rows[0] || null;
 }
@@ -33,7 +34,7 @@ async function consumir(token, contaId, db = pool) {
   const { rows } = await db.query(
     `UPDATE convites SET usado_em = now(), conta_id = $2
      WHERE token = $1 AND usado_em IS NULL AND expira_em > now() RETURNING *`,
-    [token, contaId]
+    [token, contaId],
   );
   return rows[0] || null;
 }
@@ -43,14 +44,15 @@ async function listar() {
     `SELECT c.*, a.nome_empresa AS conta_nome,
             CASE WHEN c.usado_em IS NOT NULL THEN 'usado' WHEN c.expira_em < now() THEN 'expirado' ELSE 'aberto' END AS situacao
      FROM convites c LEFT JOIN anunciantes a ON a.id = c.conta_id
-     ORDER BY c.criado_em DESC`
+     ORDER BY c.criado_em DESC`,
   );
   return rows;
 }
 
 async function revogar(id) {
   const { rows } = await pool.query(
-    `UPDATE convites SET expira_em = now() WHERE id = $1 AND usado_em IS NULL RETURNING *`, [id]
+    `UPDATE convites SET expira_em = now() WHERE id = $1 AND usado_em IS NULL RETURNING *`,
+    [id],
   );
   return rows[0] || null;
 }

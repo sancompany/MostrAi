@@ -5,18 +5,47 @@ const STATUS = ['lead', 'aguardando_instalacao', 'ativo', 'reparo', 'inativo'];
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
 const CAMPOS_ATUALIZAVEIS = [
-  'nome', 'endereco', 'cidade', 'uf', 'cep', 'segmento', 'categoria_id',
-  'responsavel_nome', 'responsavel_contato', 'aparelho_id', 'plano_ponto_id',
-  'valor_pago_mensal', 'cota_autoanuncio_slots_hora',
-  'horario_abertura', 'horario_fechamento', 'status', 'ultima_vez_online',
-  'anunciante_id', 'acabamento_completo', 'foto_instalacao_url', 'fluxo_estimado_mensal',
+  'nome',
+  'endereco',
+  'cidade',
+  'uf',
+  'cep',
+  'segmento',
+  'categoria_id',
+  'responsavel_nome',
+  'responsavel_contato',
+  'aparelho_id',
+  'plano_ponto_id',
+  'valor_pago_mensal',
+  'cota_autoanuncio_slots_hora',
+  'horario_abertura',
+  'horario_fechamento',
+  'status',
+  'ultima_vez_online',
+  'anunciante_id',
+  'acabamento_completo',
+  'foto_instalacao_url',
+  'fluxo_estimado_mensal',
 ];
 
 async function criar(dados, db = pool) {
   const {
-    nome, endereco, cidade, uf, cep, segmento, categoria_id, plano_ponto_id,
-    responsavel_nome, responsavel_contato, anunciante_id, fluxo_estimado_mensal,
-    status, aceitou_termos_em, valor_pago_mensal, cota_autoanuncio_slots_hora,
+    nome,
+    endereco,
+    cidade,
+    uf,
+    cep,
+    segmento,
+    categoria_id,
+    plano_ponto_id,
+    responsavel_nome,
+    responsavel_contato,
+    anunciante_id,
+    fluxo_estimado_mensal,
+    status,
+    aceitou_termos_em,
+    valor_pago_mensal,
+    cota_autoanuncio_slots_hora,
   } = dados;
 
   const { rows } = await db.query(
@@ -26,10 +55,24 @@ async function criar(dados, db = pool) {
         valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING *`,
-    [nome, endereco, cidade, uf, cep, segmento, categoria_id || null, plano_ponto_id || null,
-      responsavel_nome, responsavel_contato, status || 'lead', aceitou_termos_em || null,
-      valor_pago_mensal || 0, cota_autoanuncio_slots_hora || 0,
-      anunciante_id || null, fluxo_estimado_mensal || null]
+    [
+      nome,
+      endereco,
+      cidade,
+      uf,
+      cep,
+      segmento,
+      categoria_id || null,
+      plano_ponto_id || null,
+      responsavel_nome,
+      responsavel_contato,
+      status || 'lead',
+      aceitou_termos_em || null,
+      valor_pago_mensal || 0,
+      cota_autoanuncio_slots_hora || 0,
+      anunciante_id || null,
+      fluxo_estimado_mensal || null,
+    ],
   );
   return rows[0];
 }
@@ -44,7 +87,7 @@ async function listar() {
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
-     ORDER BY p.created_at DESC`
+     ORDER BY p.created_at DESC`,
   );
   return rows;
 }
@@ -60,10 +103,7 @@ async function atualizar(id, dados) {
 
   const sets = campos.map((campo, i) => `${campo} = $${i + 2}`).join(', ');
   const valores = campos.map((c) => dados[c]);
-  const { rows } = await pool.query(
-    `UPDATE pontos SET ${sets} WHERE id = $1 RETURNING *`,
-    [id, ...valores]
-  );
+  const { rows } = await pool.query(`UPDATE pontos SET ${sets} WHERE id = $1 RETURNING *`, [id, ...valores]);
   return rows[0] || null;
 }
 
@@ -77,7 +117,7 @@ async function listarPublicos() {
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      WHERE p.status IN ('ativo', 'aguardando_instalacao', 'reparo')
-     ORDER BY (p.status = 'ativo') DESC, p.nome`
+     ORDER BY (p.status = 'ativo') DESC, p.nome`,
   );
   return rows;
 }
@@ -90,7 +130,7 @@ async function listarPorAnunciante(anuncianteId) {
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
      WHERE p.anunciante_id = $1
      ORDER BY p.created_at DESC`,
-    [anuncianteId]
+    [anuncianteId],
   );
   return rows;
 }
@@ -103,13 +143,19 @@ const FLUXO_MINIMO_PARA_EXIBIR = 1000;
 async function somaFluxoMensal() {
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM(fluxo_estimado_mensal), 0)::int AS total
-     FROM pontos WHERE status = 'ativo'`
+     FROM pontos WHERE status = 'ativo'`,
   );
   const total = rows[0].total;
   return total >= FLUXO_MINIMO_PARA_EXIBIR ? total : null;
 }
 
 module.exports = {
-  criar, listar, buscarPorId, atualizar, listarPublicos, listarPorAnunciante,
-  somaFluxoMensal, STATUS,
+  criar,
+  listar,
+  buscarPorId,
+  atualizar,
+  listarPublicos,
+  listarPorAnunciante,
+  somaFluxoMensal,
+  STATUS,
 };

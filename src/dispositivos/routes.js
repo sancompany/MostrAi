@@ -82,7 +82,7 @@ router.get('/anunciantes/:id/dispositivos', exigirAnuncianteLogado, async (req, 
      LEFT JOIN exibicoes_contador e ON e.dispositivo_id = d.id
      WHERE p.anunciante_id = $1
      GROUP BY d.id, p.id ORDER BY p.nome, d.id`,
-    [req.session.anuncianteId]
+    [req.session.anuncianteId],
   );
   res.json(rows);
 });
@@ -96,13 +96,13 @@ async function painelDaTela(dispositivoId) {
        FROM exibicoes_contador e JOIN anunciantes a ON a.id = e.anunciante_id
        WHERE e.dispositivo_id = $1 AND e.janela_hora > now() - interval '30 days'
        GROUP BY a.id ORDER BY confirmadas DESC`,
-      [dispositivoId]
+      [dispositivoId],
     ),
     pool.query(
       `SELECT date_trunc('day', janela_hora) AS dia, SUM(vezes_confirmadas)::int AS confirmadas
        FROM exibicoes_contador WHERE dispositivo_id = $1
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
-      [dispositivoId]
+      [dispositivoId],
     ),
   ]);
   return { porAnunciante: porAnunciante.rows, porDia: porDia.rows };
@@ -115,7 +115,7 @@ router.get('/anunciantes/:id/dispositivos/:dispositivoId/painel', exigirAnuncian
   const { rows } = await pool.query(
     `SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
      WHERE d.id = $1 AND p.anunciante_id = $2`,
-    [req.params.dispositivoId, req.session.anuncianteId]
+    [req.params.dispositivoId, req.session.anuncianteId],
   );
   if (!rows[0]) return res.status(404).json({ erro: 'tela não encontrada' });
   res.json(await painelDaTela(req.params.dispositivoId));
@@ -136,11 +136,12 @@ router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnunciante
     return res.status(403).json({ erro: 'só pode mexer nas próprias telas' });
   }
   const pin = req.body.pin == null ? null : String(req.body.pin);
-  if (pin !== null && !/^\d{4,6}$/.test(pin)) return res.status(400).json({ erro: 'o PIN precisa ter de 4 a 6 dígitos' });
+  if (pin !== null && !/^\d{4,6}$/.test(pin))
+    return res.status(400).json({ erro: 'o PIN precisa ter de 4 a 6 dígitos' });
   const { rows } = await pool.query(
     `SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
      WHERE d.id = $1 AND p.anunciante_id = $2`,
-    [req.params.dispositivoId, req.session.anuncianteId]
+    [req.params.dispositivoId, req.session.anuncianteId],
   );
   if (!rows[0]) return res.status(404).json({ erro: 'tela não encontrada' });
   const dispositivo = await repo.definirPin(req.params.dispositivoId, pin);

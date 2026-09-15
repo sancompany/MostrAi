@@ -8,10 +8,10 @@ async function listar() {
 }
 
 async function criar({ texto, ordem }) {
-  const { rows } = await pool.query(
-    'INSERT INTO beneficios (texto, ordem) VALUES ($1, $2) RETURNING *',
-    [texto, ordem || 0]
-  );
+  const { rows } = await pool.query('INSERT INTO beneficios (texto, ordem) VALUES ($1, $2) RETURNING *', [
+    texto,
+    ordem || 0,
+  ]);
   return rows[0];
 }
 
@@ -19,10 +19,10 @@ async function atualizar(id, dados) {
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (!campos.length) return null;
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(
-    `UPDATE beneficios SET ${sets} WHERE id = $1 RETURNING *`,
-    [id, ...campos.map((c) => dados[c])]
-  );
+  const { rows } = await pool.query(`UPDATE beneficios SET ${sets} WHERE id = $1 RETURNING *`, [
+    id,
+    ...campos.map((c) => dados[c]),
+  ]);
   return rows[0] || null;
 }
 

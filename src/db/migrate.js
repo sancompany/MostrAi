@@ -15,13 +15,13 @@ async function migrate() {
   `);
 
   const dir = path.join(__dirname, 'migrations');
-  const arquivos = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  const arquivos = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
 
   for (const arquivo of arquivos) {
-    const { rows } = await pool.query(
-      'SELECT 1 FROM schema_migrations WHERE filename = $1',
-      [arquivo]
-    );
+    const { rows } = await pool.query('SELECT 1 FROM schema_migrations WHERE filename = $1', [arquivo]);
     if (rows.length) continue;
 
     const sql = fs.readFileSync(path.join(dir, arquivo), 'utf8');

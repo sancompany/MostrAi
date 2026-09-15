@@ -11,8 +11,13 @@ const CAMPOS_PUBLICOS = `
 `;
 
 function gerarCupom(nome) {
-  const slug = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 8) || 'VITRINA';
+  const slug =
+    nome
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z]/g, '')
+      .toUpperCase()
+      .slice(0, 8) || 'VITRINA';
   return `${slug}${Math.floor(100 + Math.random() * 900)}`;
 }
 
@@ -26,8 +31,16 @@ async function criar(dados) {
         `INSERT INTO afiliados (nome, cpf, chave_pix, telefone, email, senha_hash, codigo_cupom, aceitou_termos_em)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING ${CAMPOS_PUBLICOS}`,
-        [dados.nome, dados.cpf, dados.chave_pix, dados.telefone, dados.email, senha_hash,
-          gerarCupom(dados.nome), new Date()]
+        [
+          dados.nome,
+          dados.cpf,
+          dados.chave_pix,
+          dados.telefone,
+          dados.email,
+          senha_hash,
+          gerarCupom(dados.nome),
+          new Date(),
+        ],
       );
       return rows[0];
     } catch (err) {
@@ -66,5 +79,11 @@ async function atualizar(id, dados) {
 }
 
 module.exports = {
-  criar, buscarPorEmailComSenha, buscarPorId, validarSenha, listar, atualizar, STATUS,
+  criar,
+  buscarPorEmailComSenha,
+  buscarPorId,
+  validarSenha,
+  listar,
+  atualizar,
+  STATUS,
 };

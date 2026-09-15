@@ -43,18 +43,27 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
     return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
   }
   const { nome, endereco, cidade, uf, cep, segmento, categoria_id, responsavel_nome, responsavel_contato } = req.body;
-  if (!nome || !endereco || !cidade || !uf || !cep) return res.status(400).json({ erro: 'nome e endereço completo são obrigatórios' });
+  if (!nome || !endereco || !cidade || !uf || !cep)
+    return res.status(400).json({ erro: 'nome e endereço completo são obrigatórios' });
   // Validado contra o catálogo: id inventado no corpo viraria FK quebrada, e
   // id de outra tabela viraria bloqueio de concorrente errado.
   const categoria = categoria_id ? await categoriasRepo.buscarAtivaPorId(categoria_id) : null;
   if (categoria_id && !categoria) return res.status(400).json({ erro: 'ramo inválido' });
   const ponto = await repo.criar({
-    nome, endereco, cidade, uf, cep, segmento: segmento || 'outro',
+    nome,
+    endereco,
+    cidade,
+    uf,
+    cep,
+    segmento: segmento || 'outro',
     categoria_id: categoria ? categoria.id : null,
     responsavel_nome: responsavel_nome || conta.responsavel_nome || conta.nome_empresa,
     responsavel_contato: responsavel_contato || conta.contato_telefone,
-    fluxo_estimado_mensal: req.body.fluxo_estimado_mensal, plano_ponto_id: req.body.plano_ponto_id || null,
-    anunciante_id: conta.id, status: 'lead', aceitou_termos_em: new Date(),
+    fluxo_estimado_mensal: req.body.fluxo_estimado_mensal,
+    plano_ponto_id: req.body.plano_ponto_id || null,
+    anunciante_id: conta.id,
+    status: 'lead',
+    aceitou_termos_em: new Date(),
   });
   await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' });
   res.status(201).json(ponto);
@@ -74,7 +83,9 @@ router.get('/planos-ponto', async (_req, res) => {
 // candidatura (POST /candidaturas); o dono aprova e gera um convite. Quem
 // tiver o endpoint antigo salvo recebe o motivo.
 router.post('/seja-um-ponto', (_req, res) => {
-  res.status(410).json({ erro: 'o cadastro de ponto agora é por convite — envie sua candidatura em /seja-um-ponto.html' });
+  res
+    .status(410)
+    .json({ erro: 'o cadastro de ponto agora é por convite — envie sua candidatura em /seja-um-ponto.html' });
 });
 
 // Extrato do ponto — o que ele recebeu e o que está em aberto. Quem cede a
@@ -125,7 +136,8 @@ router.post('/admin/pontos/:id/foto', upload.single('arquivo'), async (req, res)
     const nomeArquivo = `pontos/instalacao-${Number(req.params.id)}.jpg`;
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
     const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, {
-      contentType: 'image/jpeg', upsert: true,
+      contentType: 'image/jpeg',
+      upsert: true,
     });
     if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
     const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
@@ -184,9 +196,16 @@ router.post('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
     return res.status(400).json({ erro: 'competência e valor são obrigatórios' });
   }
   if (Number(valor) < 0) return res.status(400).json({ erro: 'valor não pode ser negativo' });
-  res.status(201).json(await pagamentosRepo.lancar({
-    ponto_id: req.params.pontoId, competencia, valor, forma, observacao, pago_em,
-  }));
+  res.status(201).json(
+    await pagamentosRepo.lancar({
+      ponto_id: req.params.pontoId,
+      competencia,
+      valor,
+      forma,
+      observacao,
+      pago_em,
+    }),
+  );
 });
 
 router.patch('/admin/pagamentos-ponto/:id', async (req, res) => {
@@ -197,7 +216,9 @@ router.patch('/admin/pagamentos-ponto/:id', async (req, res) => {
   // rede custou, e desfazer é correção de lançamento, não custo.
   if (pago) {
     eventos.registrar('ponto:pagamento_quita', {
-      ponto_id: linha.ponto_id, valor: linha.valor, competencia: linha.competencia,
+      ponto_id: linha.ponto_id,
+      valor: linha.valor,
+      competencia: linha.competencia,
     });
   }
   res.json(linha);

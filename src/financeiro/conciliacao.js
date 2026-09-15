@@ -21,7 +21,7 @@ async function conciliarAssinaturas() {
     `SELECT s.id, s.anunciante_id, s.plano_id, a.cpf_cnpj
        FROM assinaturas s
        JOIN anunciantes a ON a.id = s.anunciante_id
-      WHERE s.status = 'ativa' AND a.excluido_em IS NULL`
+      WHERE s.status = 'ativa' AND a.excluido_em IS NULL`,
   );
 
   const relato = { verificadas: 0, aplicadas: 0, jaProcessadas: 0, semCobranca: 0, falhas: [] };
@@ -41,7 +41,7 @@ async function conciliarAssinaturas() {
       const chave = `${ultima.chargeId}|${ultima.status}`;
       const { rowCount } = await pool.query(
         'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
-        [chave]
+        [chave],
       );
       if (!rowCount) {
         relato.jaProcessadas += 1;
@@ -71,8 +71,16 @@ async function registrarRelato(comecouEm, relato, abortou = null) {
       `INSERT INTO conciliacoes
          (comecou_em, verificadas, aplicadas, ja_processadas, sem_cobranca, expiradas, falhas, abortou)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [comecouEm, relato.verificadas || 0, relato.aplicadas || 0, relato.jaProcessadas || 0,
-        relato.semCobranca || 0, (relato.expiradas || []).length, JSON.stringify(relato.falhas || []), abortou]
+      [
+        comecouEm,
+        relato.verificadas || 0,
+        relato.aplicadas || 0,
+        relato.jaProcessadas || 0,
+        relato.semCobranca || 0,
+        (relato.expiradas || []).length,
+        JSON.stringify(relato.falhas || []),
+        abortou,
+      ],
     );
   } catch (err) {
     console.error('falha ao gravar o relato da conciliação', err);

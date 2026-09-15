@@ -26,9 +26,15 @@ const DURACAO_PADRAO_IMAGEM = 10;
 
 async function probeMidia(caminho) {
   const { stdout } = await execFileAsync('ffprobe', [
-    '-v', 'error', '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height:format=duration,format_name',
-    '-of', 'json', caminho,
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'stream=width,height:format=duration,format_name',
+    '-of',
+    'json',
+    caminho,
   ]);
   const info = JSON.parse(stdout);
   const { width, height } = info.streams[0];
@@ -62,9 +68,9 @@ async function normalizar(caminhoEntrada, criativoId) {
 
   const filtro = jaVertical
     ? `scale=${LARGURA}:${ALTURA}:force_original_aspect_ratio=decrease,pad=${LARGURA}:${ALTURA}:(ow-iw)/2:(oh-ih)/2`
-    // horizontal: fundo é o próprio vídeo ampliado e desfocado, conteúdo
-    // original centralizado por cima, sem cortar nada (vitrina-plano-completo.md 4.5)
-    : `split[bg][fg];[bg]scale=${LARGURA}:${ALTURA}:force_original_aspect_ratio=increase,crop=${LARGURA}:${ALTURA},boxblur=20:5[bg2];[fg]scale=${LARGURA}:-2[fg2];[bg2][fg2]overlay=(W-w)/2:(H-h)/2`;
+    : // horizontal: fundo é o próprio vídeo ampliado e desfocado, conteúdo
+      // original centralizado por cima, sem cortar nada (vitrina-plano-completo.md 4.5)
+      `split[bg][fg];[bg]scale=${LARGURA}:${ALTURA}:force_original_aspect_ratio=increase,crop=${LARGURA}:${ALTURA},boxblur=20:5[bg2];[fg]scale=${LARGURA}:-2[fg2];[bg2][fg2]overlay=(W-w)/2:(H-h)/2`;
 
   const saidaVideo = path.join(os.tmpdir(), `${criativoId}-normalizado.mp4`);
   const saidaThumb = path.join(os.tmpdir(), `${criativoId}-thumb.jpg`);
@@ -72,7 +78,16 @@ async function normalizar(caminhoEntrada, criativoId) {
   // imagem: -loop 1 -t <duração> transforma a foto estática num vídeo com a
   // duração certa antes de aplicar o mesmo filtro de enquadramento do vídeo.
   const entradaArgs = ehImagem ? ['-loop', '1', '-t', String(duracao_segundos)] : [];
-  await execFileAsync('ffmpeg', ['-y', ...entradaArgs, '-i', caminhoEntrada, '-vf', filtro, ...PERFIL_SAIDA, saidaVideo]);
+  await execFileAsync('ffmpeg', [
+    '-y',
+    ...entradaArgs,
+    '-i',
+    caminhoEntrada,
+    '-vf',
+    filtro,
+    ...PERFIL_SAIDA,
+    saidaVideo,
+  ]);
   await execFileAsync('ffmpeg', ['-y', '-ss', '00:00:01', '-i', saidaVideo, '-frames:v', '1', saidaThumb]);
 
   const [arquivo_normalizado_url, thumbnail_url] = await Promise.all([

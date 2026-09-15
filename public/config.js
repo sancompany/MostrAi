@@ -14,10 +14,10 @@ const REDE_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9
 // biome-ignore lint/correctness/noUnusedVariables: lida pelos scripts das páginas, não por este arquivo
 const API_BASE_URL = REDE_LOCAL.test(window.location.hostname)
   ? window.location.origin
-  // Produção: a API é servida pelo mesmo serviço que serve o site (Northflank),
-  // então mesma origem vale lá também. Se um dia a API for pra outro host,
-  // troque aqui — é o único lugar.
-  : window.location.origin;
+  : // Produção: a API é servida pelo mesmo serviço que serve o site (Northflank),
+    // então mesma origem vale lá também. Se um dia a API for pra outro host,
+    // troque aqui — é o único lugar.
+    window.location.origin;
 
 // ---------------------------------------------------------------------------
 // Utilitários compartilhados. Ficam aqui porque o config.js é o único script
@@ -90,7 +90,9 @@ window.fmtBRL = function fmtBRL(v) {
   const fetchOriginal = window.fetch;
 
   function liberar() {
-    travados.forEach((btn) => { btn.disabled = false; });
+    travados.forEach((btn) => {
+      btn.disabled = false;
+    });
     travados.clear();
   }
 
@@ -102,13 +104,17 @@ window.fmtBRL = function fmtBRL(v) {
     });
   };
 
-  document.addEventListener('submit', (e) => {
-    const btn = e.target.querySelector('button[type="submit"], button:not([type])');
-    if (!btn || btn.disabled) return;
-    btn.disabled = true;
-    travados.add(btn);
-    setTimeout(liberar, 15000);
-  }, true);
+  document.addEventListener(
+    'submit',
+    (e) => {
+      const btn = e.target.querySelector('button[type="submit"], button:not([type])');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      travados.add(btn);
+      setTimeout(liberar, 15000);
+    },
+    true,
+  );
 })();
 
 // Barras de gráfico: a altura/largura é proporcional ao dado, então não cabe
@@ -127,7 +133,8 @@ window.aplicarBarras = function aplicarBarras(raiz) {
   });
 };
 
-new MutationObserver(() => window.aplicarBarras(document)).observe(
-  document.documentElement, { childList: true, subtree: true },
-);
+new MutationObserver(() => window.aplicarBarras(document)).observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+});
 document.addEventListener('DOMContentLoaded', () => window.aplicarBarras(document));

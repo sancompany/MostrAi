@@ -21,15 +21,16 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
     from: remetente(),
     to: anunciante.contato_email,
     subject: 'Pagamento confirmado — Mostraí',
-    text: `Olá, ${anunciante.nome_empresa}!\n\n`
-      + `Seu pagamento do plano ${plano.nome} (${CICLO_TEXTO[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}) foi confirmado — `
-      + `valor cobrado: R$ ${Number(valorCobrado).toFixed(2)}.\n\n`
-      + `AGORA FALTA UMA COISA: subir o seu anúncio.\n`
-      + `Abra o painel e envie um vídeo ou imagem de 15 a 30 segundos, em pé (9:16). `
-      + `A gente ajusta o formato pra caber na tela. Depois da aprovação ele entra no ar.\n\n`
-      + `${process.env.SITE_URL}/anunciante/painel.html\n\n`
-      + `Não tem a arte pronta? Responda este e-mail ou chame no WhatsApp — a peça simples está incluída no seu plano.\n\n`
-      + `Equipe Mostraí.`,
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Seu pagamento do plano ${plano.nome} (${CICLO_TEXTO[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}) foi confirmado — ` +
+      `valor cobrado: R$ ${Number(valorCobrado).toFixed(2)}.\n\n` +
+      `AGORA FALTA UMA COISA: subir o seu anúncio.\n` +
+      `Abra o painel e envie um vídeo ou imagem de 15 a 30 segundos, em pé (9:16). ` +
+      `A gente ajusta o formato pra caber na tela. Depois da aprovação ele entra no ar.\n\n` +
+      `${process.env.SITE_URL}/anunciante/painel.html\n\n` +
+      `Não tem a arte pronta? Responda este e-mail ou chame no WhatsApp — a peça simples está incluída no seu plano.\n\n` +
+      `Equipe Mostraí.`,
   });
 }
 
@@ -42,11 +43,12 @@ async function enviarContaAprovada(anunciante) {
     from: remetente(),
     to: anunciante.contato_email,
     subject: 'Sua conta foi aprovada — Mostraí',
-    text: `Olá, ${anunciante.nome_empresa}!\n\n`
-      + `Sua conta na Mostraí foi aprovada. Já dá pra escolher um plano e colocar seu anúncio na rotina da cidade.\n\n`
-      + `${process.env.SITE_URL}/planos.html\n\n`
-      + `Depois de contratar, é só subir um vídeo ou imagem de 15 a 30 segundos, em pé (9:16) — a gente ajusta o formato.\n\n`
-      + `Equipe Mostraí.`,
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Sua conta na Mostraí foi aprovada. Já dá pra escolher um plano e colocar seu anúncio na rotina da cidade.\n\n` +
+      `${process.env.SITE_URL}/planos.html\n\n` +
+      `Depois de contratar, é só subir um vídeo ou imagem de 15 a 30 segundos, em pé (9:16) — a gente ajusta o formato.\n\n` +
+      `Equipe Mostraí.`,
   });
 }
 
@@ -55,10 +57,11 @@ async function enviarLinkRedefinicaoSenha(email, nome, link) {
     from: remetente(),
     to: email,
     subject: 'Redefinir sua senha — Mostraí',
-    text: `Olá, ${nome}!\n\n`
-      + `Recebemos um pedido pra redefinir a senha da sua conta na Mostraí. `
-      + `Abra o link abaixo pra criar uma senha nova — ele vale por 1 hora:\n\n${link}\n\n`
-      + `Se não foi você que pediu, é só ignorar este e-mail: sua senha continua a mesma.\n\nEquipe Mostraí.`,
+    text:
+      `Olá, ${nome}!\n\n` +
+      `Recebemos um pedido pra redefinir a senha da sua conta na Mostraí. ` +
+      `Abra o link abaixo pra criar uma senha nova — ele vale por 1 hora:\n\n${link}\n\n` +
+      `Se não foi você que pediu, é só ignorar este e-mail: sua senha continua a mesma.\n\nEquipe Mostraí.`,
   });
 }
 
@@ -95,7 +98,9 @@ async function enviarCriativoReprovado(anunciante, criativo) {
       '',
       'Se quiser ajuda pra ajustar, é só responder este e-mail.',
       'Mostraí',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
   });
 }
 
@@ -115,7 +120,9 @@ async function enviarCriativoNoAr(anunciante, criativo) {
       '',
       'Qualquer dúvida, é só responder este e-mail.',
       'Mostraí',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
   });
 }
 
@@ -131,8 +138,9 @@ async function enviarNovidade(anunciante, { assunto, texto }) {
     from: remetente(),
     to: anunciante.contato_email,
     subject: assunto,
-    text: `${texto}\n\nVocê recebe este aviso porque aceitou receber novidades da Mostraí. `
-      + `Pra parar, abra seu perfil no painel e desmarque "receber novidades".`,
+    text:
+      `${texto}\n\nVocê recebe este aviso porque aceitou receber novidades da Mostraí. ` +
+      `Pra parar, abra seu perfil no painel e desmarque "receber novidades".`,
   });
   return { enviado: true };
 }
@@ -147,12 +155,13 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
     to: anunciante.contato_email,
     cc: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
     subject: 'Desistência registrada — Mostraí',
-    text: `Olá, ${anunciante.nome_empresa}!\n\n`
-      + `Registramos sua desistência da contratação dentro do prazo de 7 dias. `
-      + `A cobrança recorrente foi cancelada e seu anúncio saiu do ar.\n\n`
-      + `Valor a devolver: ${valor}. A devolução é feita pelo mesmo meio do pagamento `
-      + `e pode levar alguns dias úteis pra aparecer no seu extrato.\n\n`
-      + `Protocolo: ${pedido.id}.\n\nEquipe Mostraí.`,
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Registramos sua desistência da contratação dentro do prazo de 7 dias. ` +
+      `A cobrança recorrente foi cancelada e seu anúncio saiu do ar.\n\n` +
+      `Valor a devolver: ${valor}. A devolução é feita pelo mesmo meio do pagamento ` +
+      `e pode levar alguns dias úteis pra aparecer no seu extrato.\n\n` +
+      `Protocolo: ${pedido.id}.\n\nEquipe Mostraí.`,
   });
 }
 
@@ -176,10 +185,20 @@ async function enviarCandidaturaNova(candidatura) {
       '',
       'A página prometeu retorno em até 2 dias úteis.',
       `Fila: ${process.env.SITE_URL}/admin/#candidaturas`,
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
   });
 }
 
 module.exports = {
-  enviarCandidaturaNova, enviarCriativoNoAr, enviarCriativoReprovado, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
-  enviarMensagemContato, enviarNovidade, enviarArrependimentoRecebido };
+  enviarCandidaturaNova,
+  enviarCriativoNoAr,
+  enviarCriativoReprovado,
+  enviarConfirmacaoPagamento,
+  enviarLinkRedefinicaoSenha,
+  enviarContaAprovada,
+  enviarMensagemContato,
+  enviarNovidade,
+  enviarArrependimentoRecebido,
+};

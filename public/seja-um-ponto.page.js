@@ -19,7 +19,7 @@ form.addEventListener('submit', async (e) => {
     cidade: form.cidade.value.trim(),
     uf: form.uf.value.trim().toUpperCase(),
     cep: form.cep.value.trim(),
-    segmento: usouLivre ? form.categoria_livre.value.trim() : (opcao ? opcao.dataset.nome : ''),
+    segmento: usouLivre ? form.categoria_livre.value.trim() : opcao ? opcao.dataset.nome : '',
     fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
     mensagem: form.mensagem.value.trim() || null,
   };
@@ -36,7 +36,8 @@ form.addEventListener('submit', async (e) => {
     document.getElementById('enviado').hidden = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
-    msg.textContent = err.message === 'falha' ? 'Não foi possível enviar agora. Tente novamente em instantes.' : err.message;
+    msg.textContent =
+      err.message === 'falha' ? 'Não foi possível enviar agora. Tente novamente em instantes.' : err.message;
     msg.className = 'form-msg err';
   }
 });
@@ -52,11 +53,15 @@ form.addEventListener('submit', async (e) => {
     const r = await fetch(`${API_BASE_URL}/planos-ponto`);
     const planos = await r.json();
     if (!r.ok || !Array.isArray(planos) || !planos.length) throw new Error('resposta inesperada');
-    el.innerHTML = planos.map((p) => `
+    el.innerHTML = planos
+      .map(
+        (p) => `
       <div class="razao">
         <b>${esc(p.nome)}</b>
         <span>${esc(p.chamada || '')}</span>
-      </div>`).join('');
+      </div>`,
+      )
+      .join('');
   } catch (err) {
     // Sem a lista, a página continua de pé: o bloco some e o formulário fica.
     console.error('falha ao carregar as modalidades do ponto', err);

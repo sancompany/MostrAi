@@ -47,7 +47,13 @@ test('webhook aceita a notificação assinada pelo Checkout', () => {
 test('webhook recusa assinatura feita com outra chave', () => {
   process.env.SAN_CHECKOUT_KEY = CHAVE;
   assert.strictEqual(webhookAutorizado(assinar(CORPO, { chave: 'chave-de-outro-contratante' })), false);
-  assert.strictEqual(webhookAutorizado({ ...assinar(CORPO), headers: { 'x-checkout-signature': 'sha256=00', 'x-checkout-timestamp': String(Math.floor(Date.now() / 1000)) } }), false);
+  assert.strictEqual(
+    webhookAutorizado({
+      ...assinar(CORPO),
+      headers: { 'x-checkout-signature': 'sha256=00', 'x-checkout-timestamp': String(Math.floor(Date.now() / 1000)) },
+    }),
+    false,
+  );
   delete process.env.SAN_CHECKOUT_KEY;
 });
 
@@ -74,10 +80,21 @@ test('webhook recusa corpo adulterado e exige o corpo cru', () => {
 });
 
 test('limite de tentativas bloqueia depois de 10 na mesma janela', () => {
-  let passou = 0; let bloqueado = 0;
+  let passou = 0;
+  let bloqueado = 0;
   for (let i = 0; i < 13; i += 1) {
-    const res = { setHeader() {}, status() { return this; }, json() { bloqueado += 1; } };
-    limiteTentativas({ ip: '9.9.9.9', path: '/teste-limite' }, res, () => { passou += 1; });
+    const res = {
+      setHeader() {},
+      status() {
+        return this;
+      },
+      json() {
+        bloqueado += 1;
+      },
+    };
+    limiteTentativas({ ip: '9.9.9.9', path: '/teste-limite' }, res, () => {
+      passou += 1;
+    });
   }
   assert.strictEqual(passou, 10);
   assert.strictEqual(bloqueado, 3);

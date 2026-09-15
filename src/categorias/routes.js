@@ -34,10 +34,10 @@ router.patch('/admin/categorias/:id', async (req, res) => {
   const campos = ['nome', 'ativo'].filter((c) => req.body[c] !== undefined);
   if (!campos.length) return res.status(400).json({ erro: 'nada pra atualizar' });
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(
-    `UPDATE categorias SET ${sets} WHERE id = $1 RETURNING *`,
-    [req.params.id, ...campos.map((c) => req.body[c])]
-  );
+  const { rows } = await pool.query(`UPDATE categorias SET ${sets} WHERE id = $1 RETURNING *`, [
+    req.params.id,
+    ...campos.map((c) => req.body[c]),
+  ]);
   res.json(rows[0] || null);
 });
 

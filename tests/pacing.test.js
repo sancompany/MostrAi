@@ -30,7 +30,10 @@ test('cota de autoanúncio do ponto é dividida entre as telas', () => {
 });
 
 test('dono do ponto entra na playlist como item próprio sem virar anunciante', () => {
-  const itens = calcularPlaylist([{ id: 1, frequenciaBase: 2, deficit: 0 }, { id: 'dono', frequenciaBase: 3, deficit: 0 }]);
+  const itens = calcularPlaylist([
+    { id: 1, frequenciaBase: 2, deficit: 0 },
+    { id: 'dono', frequenciaBase: 3, deficit: 0 },
+  ]);
   const contagem = contarPorAnunciante(itens);
   assert.strictEqual(contagem[1], 2);
   assert.strictEqual(contagem.dono, 3);

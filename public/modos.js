@@ -9,15 +9,20 @@
 
   async function estadoDosModos() {
     const r = await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' });
-    if (r.status === 401) { window.location.href = '/anunciante/login.html'; return null; }
+    if (r.status === 401) {
+      window.location.href = '/anunciante/login.html';
+      return null;
+    }
     if (!r.ok) throw new Error('modos');
     return r.json();
   }
 
   async function enviar(caminho, corpo, metodo = 'POST') {
     const r = await fetch(`${API_BASE_URL}${caminho}`, {
-      method: metodo, credentials: 'include',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo || {}),
+      method: metodo,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo || {}),
     });
     const dados = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(dados.erro || 'Não foi possível concluir agora.');
@@ -44,13 +49,15 @@
     const sel = form.categoria_id;
     const opcao = sel?.options[sel.selectedIndex];
     const livre = form.querySelector('[data-categoria-livre]');
-    return livre && !livre.hidden ? form.categoria_livre.value.trim() : (opcao ? opcao.dataset.nome || '' : '');
+    return livre && !livre.hidden ? form.categoria_livre.value.trim() : opcao ? opcao.dataset.nome || '' : '';
   }
 
   function enderecoDe(form) {
     return {
       endereco: `${form.endereco.value.trim()}, ${form.numero.value.trim()}`,
-      cidade: form.cidade.value.trim(), uf: form.uf.value.trim().toUpperCase(), cep: form.cep.value.trim(),
+      cidade: form.cidade.value.trim(),
+      uf: form.uf.value.trim().toUpperCase(),
+      cep: form.cep.value.trim(),
     };
   }
 
@@ -85,9 +92,11 @@
         <form class="card wide modo-card" id="formModo" data-bonus="${ganhou ? '1' : ''}">
           <p class="eyebrow">Modo meu ponto</p>
           <h3>${ganhou ? 'Você ganhou uma tela no seu comércio!' : 'Quero uma tela no meu comércio'}</h3>
-          <p class="form-hint u-m-0 u-mb-6">${ganhou
-            ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
-            : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'}</p>
+          <p class="form-hint u-m-0 u-mb-6">${
+            ganhou
+              ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
+              : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'
+          }</p>
           <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Segmento')}
@@ -127,7 +136,9 @@
     if (!caixa) return;
     try {
       const planos = await (await fetch(`${API_BASE_URL}/planos-ponto`)).json();
-      caixa.innerHTML = planos.map((p, i) => `
+      caixa.innerHTML = planos
+        .map(
+          (p, i) => `
         <label class="escolha">
           <input type="radio" name="plano_ponto_id" value="${esc(p.id)}" ${i === 0 ? 'checked' : ''}>
           <span class="box">
@@ -136,7 +147,9 @@
             <ul>${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
               ${p.plano_bonus_id ? `<li>Depois de ${p.plano_bonus_apos_meses} meses como ponto, ganhe ${p.plano_bonus_meses} ${p.plano_bonus_meses > 1 ? 'meses' : 'mês'} de anúncio grátis</li>` : ''}</ul>
           </span>
-        </label>`).join('');
+        </label>`,
+        )
+        .join('');
     } catch {
       caixa.innerHTML = '<p class="form-hint">Não deu pra carregar as opções — a gente combina no WhatsApp.</p>';
     }
@@ -144,34 +157,46 @@
 
   async function submeter(modo, form, _estado) {
     const msg = $('#modoMsg', form);
-    msg.textContent = 'Enviando...'; msg.className = 'form-msg';
+    msg.textContent = 'Enviando...';
+    msg.className = 'form-msg';
     try {
       if (modo === 'anunciante') {
         await enviar('/conta/modos/anunciante', {
-          ...enderecoDe(form), categoria_id: form.categoria_id.value || null,
-          categoria_livre: form.querySelector('[data-categoria-livre]').hidden ? null : form.categoria_livre.value.trim(),
+          ...enderecoDe(form),
+          categoria_id: form.categoria_id.value || null,
+          categoria_livre: form.querySelector('[data-categoria-livre]').hidden
+            ? null
+            : form.categoria_livre.value.trim(),
         });
-        msg.textContent = 'Modo anúncios ativado!'; msg.className = 'form-msg ok';
+        msg.textContent = 'Modo anúncios ativado!';
+        msg.className = 'form-msg ok';
         window.location.reload();
         return;
       }
       if (modo === 'ponto') {
         const escolhido = form.querySelector('input[name="plano_ponto_id"]:checked');
         const corpo = {
-          nome_comercio: form.nome_comercio.value.trim(), ...enderecoDe(form), segmento: segmentoDe(form),
+          nome_comercio: form.nome_comercio.value.trim(),
+          ...enderecoDe(form),
+          segmento: segmentoDe(form),
           fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
-          plano_ponto_id: escolhido ? escolhido.value : null, mensagem: form.mensagem.value.trim() || null,
+          plano_ponto_id: escolhido ? escolhido.value : null,
+          mensagem: form.mensagem.value.trim() || null,
         };
         await enviar(form.dataset.bonus ? '/conta/bonus/ponto/resgatar' : '/conta/modos/ponto/pedir', corpo);
       } else {
         await enviar('/conta/modos/vendedor/pedir', {
-          cidade: form.cidade.value.trim(), chave_pix: form.chave_pix.value.trim() || null, mensagem: form.mensagem.value.trim() || null,
+          cidade: form.cidade.value.trim(),
+          chave_pix: form.chave_pix.value.trim() || null,
+          mensagem: form.mensagem.value.trim() || null,
         });
       }
-      msg.textContent = 'Pedido enviado — a gente chama no WhatsApp.'; msg.className = 'form-msg ok';
+      msg.textContent = 'Pedido enviado — a gente chama no WhatsApp.';
+      msg.className = 'form-msg ok';
       setTimeout(() => window.location.reload(), 900);
     } catch (err) {
-      msg.textContent = err.message; msg.className = 'form-msg err';
+      msg.textContent = err.message;
+      msg.className = 'form-msg err';
     }
   }
 
@@ -179,7 +204,11 @@
   // `container` é o bloco do dashboard, escondido quando bloqueado.
   window.montarModo = async function montarModo(modo, container, aoLiberado) {
     let estado;
-    try { estado = await estadoDosModos(); } catch { return null; }
+    try {
+      estado = await estadoDosModos();
+    } catch {
+      return null;
+    }
     if (!estado) return null;
     if (window.aplicarPapeisNoMenu) window.aplicarPapeisNoMenu({ papeis: estado.papeis });
     if (estado.modos[modo].liberado) {
@@ -197,7 +226,10 @@
       if (window.ligarCep) window.ligarCep(card);
       if (window.ligarCategorias) window.ligarCategorias(card);
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
-      form.addEventListener('submit', (e) => { e.preventDefault(); submeter(modo, form, estado); });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        submeter(modo, form, estado);
+      });
     }
     return estado;
   };
@@ -218,14 +250,16 @@
           e você já é. Quer uma tela em outro endereço seu? <a href="/anunciante/ponto.html">Cadastre o endereço</a> ou
           <a href="/contato.html">fale com a gente</a>.</div>`;
       }
-      if (b.resgatado_em) return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')} — sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
+      if (b.resgatado_em)
+        return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')} — sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_cobertos);
       return b.disponivel
         ? `<div class="aviso-fundador"><b>Você ganhou uma tela no seu comércio!</b> Seu plano completou ${b.apos_meses} meses. <a href="/anunciante/ponto.html">Pedir minha tela →</a></div>`
         : `<div class="aviso-fundador"><b>Bônus do plano:</b> ao completar ${b.apos_meses} meses você ganha uma tela no seu comércio — ${b.meses_cobertos} de ${b.apos_meses} ${b.apos_meses > 1 ? 'meses' : 'mês'} (faltam ${falta}).</div>`;
     }
     if (qual === 'anuncio') {
-      if (b.resgatado_em) return `<div class="aviso-fundador"><b>Bônus resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}: ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}. Veja em "Anúncios".</div>`;
+      if (b.resgatado_em)
+        return `<div class="aviso-fundador"><b>Bônus resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}: ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}. Veja em "Anúncios".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_ativo);
       return b.disponivel
         ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary u-ml-8" id="btnResgatarAnuncio">Ativar meu anúncio grátis</button><span id="msgResgate" class="form-hint"></span></div>`

@@ -49,9 +49,11 @@ function telefoneE164(valor) {
 }
 
 function telefoneExibicao(valor) {
-  const d = String(valor || '').replace(/\D/g, '').replace(/^55/, '');
-  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
-  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  const d = String(valor || '')
+    .replace(/\D/g, '')
+    .replace(/^55/, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return String(valor || '');
 }
 
@@ -59,7 +61,17 @@ function telefoneExibicao(valor) {
 const cepValido = (valor) => /^\d{8}$/.test(String(valor || '').replace(/\D/g, ''));
 const cepFormatado = (valor) => {
   const d = String(valor || '').replace(/\D/g, '');
-  return d.length === 8 ? `${d.slice(0,5)}-${d.slice(5)}` : String(valor || '');
+  return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : String(valor || '');
 };
 
-module.exports = { FUSO, reais, data, dataEHora, compararTexto, telefoneE164, telefoneExibicao, cepValido, cepFormatado };
+module.exports = {
+  FUSO,
+  reais,
+  data,
+  dataEHora,
+  compararTexto,
+  telefoneE164,
+  telefoneExibicao,
+  cepValido,
+  cepFormatado,
+};

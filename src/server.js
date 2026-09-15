@@ -40,7 +40,11 @@ app.set('trust proxy', 1);
 // A origem do Storage sai do ambiente, nunca escrita aqui: o repositório é
 // público e endereço de infraestrutura não entra em arquivo versionado.
 function origemDe(url) {
-  try { return new URL(url).origin; } catch { return null; }
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 const ORIGEM_STORAGE = origemDe(process.env.SUPABASE_URL);
 const MIDIA = ["'self'", ORIGEM_STORAGE].filter(Boolean);
@@ -57,7 +61,7 @@ const CSP = [
   // viacep preenche endereço no cadastro; o player busca o criativo pra cachear.
   `connect-src ${MIDIA.join(' ')} https://viacep.com.br`,
   // o mapa de Matão na página de pontos.
-  "frame-src https://www.google.com",
+  'frame-src https://www.google.com',
   "worker-src 'self' blob:",
   "form-action 'self'",
   "frame-ancestors 'self'",
@@ -67,9 +71,8 @@ const CSP = [
 
 // CSP_REPORT_ONLY=1 sobe a política sem bloquear nada — a saída de emergência
 // se algum navegador reclamar de algo que não apareceu nos testes.
-const CABECALHO_CSP = process.env.CSP_REPORT_ONLY === '1'
-  ? 'Content-Security-Policy-Report-Only'
-  : 'Content-Security-Policy';
+const CABECALHO_CSP =
+  process.env.CSP_REPORT_ONLY === '1' ? 'Content-Security-Policy-Report-Only' : 'Content-Security-Policy';
 
 // Cabeçalhos de segurança. Sem puxar o helmet só pra isso.
 app.use((_req, res, next) => {
@@ -89,16 +92,29 @@ app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
 // O `verify` guarda os bytes CRUS do corpo. A assinatura HMAC do webhook do
 // San Checkout é calculada sobre exatamente o que chegou, e reserializar o
 // JSON muda a ordem das chaves (API.md do Checkout, 4.3.1, passo 2).
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 // Sessão no Postgres (tabela `session`, migration 019). Com o MemoryStore
 // padrão todo deploy deslogava todo mundo — docs/erros/2026-09-sessao-em-memoria.md
-app.use(session({
-  store: new PgSession({ pool, tableName: 'session', createTableIfMissing: false }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 3600 * 1000 },
-}));
+app.use(
+  session({
+    store: new PgSession({ pool, tableName: 'session', createTableIfMissing: false }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 3600 * 1000,
+    },
+  }),
+);
 
 // Serve o site (public/) no mesmo servidor da API — um terminal só, sem
 // precisar de Live Server ou outro serviço separado na 8080. Tem que vir
@@ -139,9 +155,7 @@ app.use((req, res, proximo) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return proximo();
   if (!PAGINAS_SEM_EXTENSAO.has(req.path)) return proximo();
   const destino = req.get('sec-fetch-dest');
-  const navegacao = destino
-    ? destino === 'document'
-    : (req.get('accept') || '').includes('text/html');
+  const navegacao = destino ? destino === 'document' : (req.get('accept') || '').includes('text/html');
   if (!navegacao) return proximo();
   const busca = req.originalUrl.slice(req.path.length);
   return res.redirect(301, `${req.path}.html${busca}`);
@@ -157,8 +171,7 @@ app.post('/admin/login', limiteTentativas, (req, res) => {
   // Tempo constante nos dois campos: o `===` de antes devolvia mais rápido
   // quanto mais cedo os bytes divergiam, o que entrega usuário e senha prefixo
   // a prefixo pra quem mede. Mesma regra que o webhook do Checkout já segue.
-  const ok = segredoConfere(usuario, process.env.ADMIN_USER)
-    && segredoConfere(senha, process.env.ADMIN_PASSWORD);
+  const ok = segredoConfere(usuario, process.env.ADMIN_USER) && segredoConfere(senha, process.env.ADMIN_PASSWORD);
   if (!ok) return res.status(401).json({ erro: 'usuário ou senha inválidos' });
   // Sessão nova a cada login: sem isso, quem conseguisse plantar um cookie de
   // sessão na vítima ficava com uma sessão de admin válida assim que ela logasse.
@@ -222,7 +235,8 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large') return res.status(413).json({ erro: 'corpo grande demais' });
   // Arquivo recusado pelo filtro do multer é escolha do cliente, não falha
   // nossa: 400 com a mensagem do filtro, em vez de 500 genérico.
-  if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ erro: 'arquivo grande demais — o limite é 200 MB por arquivo' });
+  if (err.code === 'LIMIT_FILE_SIZE')
+    return res.status(413).json({ erro: 'arquivo grande demais — o limite é 200 MB por arquivo' });
   if (err.storageErrors || /tipo de arquivo/i.test(err.message || '')) {
     return res.status(400).json({ erro: err.message || 'arquivo não aceito' });
   }

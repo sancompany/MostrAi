@@ -5,7 +5,9 @@ let LOGADO = false;
 // A troca do cabeçalho pelo menu da conta é do /layout.js — aqui só
 // interessa saber se está logado, pra o botão do plano ir pro painel
 // (que gera a cobrança) em vez de pedir cadastro de novo.
-const carregarLogin = carregarConta().then((a) => { LOGADO = !!a; });
+const carregarLogin = carregarConta().then((a) => {
+  LOGADO = !!a;
+});
 
 const fmt = fmtBRL; // config.js — Number(v||0), o local usava Number(v) e virava 'R$ NaN'
 
@@ -38,17 +40,19 @@ function renderFundador() {
   bloco.hidden = !fundadores.length;
   if (!fundadores.length) return;
   const vagas = fundadores.reduce((s, p) => s + (p.vagas_restantes == null ? 0 : p.vagas_restantes), 0);
-  document.getElementById('fundadorAviso').innerHTML = `<b>Programa fundador aberto.</b> Quem entra agora trava o preço de lançamento pelo tempo do plano${vagas ? ` — restam <b>${vagas} vaga${vagas > 1 ? 's' : ''}</b>` : ''}. Depois disso, valem os planos normais abaixo.`;
-  document.getElementById('fundadorGrid').innerHTML = fundadores.map((p) => {
-    const meses = p.compromisso_meses;
-    const porMes = Number(p.valor_mensal);
-    const cheio = Number(p.valor_mensal_cheio) || mensalDoTier(p.tier);
-    // 12 horas e a MESMA jornada padrao que o gerador usa quando o ponto nao
-    // declarou horario (HORAS_ABERTO_PADRAO em src/playlist/gerador.js). Quando
-    // ele declara, a conta real e sobre o horario dele — por isso o "≈" e por
-    // isso a tela agora diz de onde sai o numero.
-    const porHora = Math.round(p.frequencia_dia / 12);
-    return `
+  document.getElementById('fundadorAviso').innerHTML =
+    `<b>Programa fundador aberto.</b> Quem entra agora trava o preço de lançamento pelo tempo do plano${vagas ? ` — restam <b>${vagas} vaga${vagas > 1 ? 's' : ''}</b>` : ''}. Depois disso, valem os planos normais abaixo.`;
+  document.getElementById('fundadorGrid').innerHTML = fundadores
+    .map((p) => {
+      const meses = p.compromisso_meses;
+      const porMes = Number(p.valor_mensal);
+      const cheio = Number(p.valor_mensal_cheio) || mensalDoTier(p.tier);
+      // 12 horas e a MESMA jornada padrao que o gerador usa quando o ponto nao
+      // declarou horario (HORAS_ABERTO_PADRAO em src/playlist/gerador.js). Quando
+      // ele declara, a conta real e sobre o horario dele — por isso o "≈" e por
+      // isso a tela agora diz de onde sai o numero.
+      const porHora = Math.round(p.frequencia_dia / 12);
+      return `
     <div class="plan-card fundador">
       <span class="badge">Fundador</span>
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
@@ -67,7 +71,8 @@ function renderFundador() {
       </ul>
       <a class="btn primary block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Quero ser fundador</a>
     </div>`;
-  }).join('');
+    })
+    .join('');
 }
 
 function render(meses) {
@@ -77,18 +82,20 @@ function render(meses) {
   // Aba sem plano nenhum deixava a area em branco, sem dizer se estava
   // carregando, se deu erro ou se nao ha plano naquele ciclo.
   if (!doMes.length) {
-    grid.innerHTML = '<p class="empty-state">Nenhum plano nesse ciclo agora. Veja os outros ciclos acima ou '
-      + '<a href="/contato.html">fale com a gente</a>.</p>';
+    grid.innerHTML =
+      '<p class="empty-state">Nenhum plano nesse ciclo agora. Veja os outros ciclos acima ou ' +
+      '<a href="/contato.html">fale com a gente</a>.</p>';
     return;
   }
-  grid.innerHTML = doMes.map((p) => {
-    const porHora = Math.round(p.frequencia_dia / 12);
-    const porMes = Number(p.valor_mensal);
-    const totalCiclo = porMes * meses;
-    const referencia = mensalDoTier(p.tier) || Number(p.valor_mensal_cheio) || null;
-    const totalCheio = referencia ? referencia * meses : null;
-    const economiaMes = referencia ? referencia - porMes : 0;
-    return `
+  grid.innerHTML = doMes
+    .map((p) => {
+      const porHora = Math.round(p.frequencia_dia / 12);
+      const porMes = Number(p.valor_mensal);
+      const totalCiclo = porMes * meses;
+      const referencia = mensalDoTier(p.tier) || Number(p.valor_mensal_cheio) || null;
+      const totalCheio = referencia ? referencia * meses : null;
+      const economiaMes = referencia ? referencia - porMes : 0;
+      return `
     <div class="plan-card ${p.destaque_no_site ? 'popular' : ''}">
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
@@ -105,7 +112,8 @@ function render(meses) {
       <a class="btn ${p.destaque_no_site ? 'primary' : 'ghost'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
   `;
-  }).join('');
+    })
+    .join('');
 }
 
 document.getElementById('cycleToggle').addEventListener('click', (e) => {
@@ -123,27 +131,38 @@ function atualizarDescontos() {
     const meses = Number(btn.dataset.meses);
     const rotulo = btn.querySelector('small');
     if (!rotulo || meses === 1) return;
-    const descontos = PLANOS.filter((p) => p.compromisso_meses === meses && !p.fundador).map((p) => {
-      const base = mensalDoTier(p.tier);
-      return base ? Math.round((1 - p.valor_mensal / base) * 100) : 0;
-    }).filter((d) => d > 0);
+    const descontos = PLANOS.filter((p) => p.compromisso_meses === meses && !p.fundador)
+      .map((p) => {
+        const base = mensalDoTier(p.tier);
+        return base ? Math.round((1 - p.valor_mensal / base) * 100) : 0;
+      })
+      .filter((d) => d > 0);
     rotulo.textContent = descontos.length ? `-${Math.max(...descontos)}%` : '';
   });
 }
 
-fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMes }) => {
-  if (!pessoasPorMes) return;
-  const el = document.getElementById('planosFluxo');
-  // "alcança" era medicao; isto e estimativa de fluxo declarada por cada
-  // ponto na instalacao. A palavra mudou pra o que o numero e de verdade.
-  el.innerHTML = `Os pontos no ar estimam <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> passando na frente das telas.`;
-  el.hidden = false;
-}).catch(() => {});
+fetch(`${API_BASE_URL}/pontos/fluxo`)
+  .then((r) => r.json())
+  .then(({ pessoasPorMes }) => {
+    if (!pessoasPorMes) return;
+    const el = document.getElementById('planosFluxo');
+    // "alcança" era medicao; isto e estimativa de fluxo declarada por cada
+    // ponto na instalacao. A palavra mudou pra o que o numero e de verdade.
+    el.innerHTML = `Os pontos no ar estimam <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> passando na frente das telas.`;
+    el.hidden = false;
+  })
+  .catch(() => {});
 
 Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogin])
-  .then(([planos]) => { PLANOS = planos; atualizarDescontos(); renderFundador(); render(3); })
+  .then(([planos]) => {
+    PLANOS = planos;
+    atualizarDescontos();
+    renderFundador();
+    render(3);
+  })
   .catch(() => {
-    document.getElementById('plansGrid').innerHTML = '<p class="empty-state">Não foi possível carregar os planos agora.</p>';
+    document.getElementById('plansGrid').innerHTML =
+      '<p class="empty-state">Não foi possível carregar os planos agora.</p>';
   });
 
 // Vender cobertura numa rede sem nenhuma tela no ar era o furo mais caro da
@@ -151,14 +170,18 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
 // a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
 // tela dizer isso em lugar nenhum. Nao bloqueia a venda — quem quiser entrar
 // como fundador continua podendo —, so para de esconder.
-fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()).then((pontos) => {
-  // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
-  // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
-  if (!Array.isArray(pontos) || pontos.some((p) => p.status === 'ativo')) return;
-  const el = document.getElementById('avisoRede');
-  el.innerHTML = '<b>A rede ainda está em montagem.</b> Neste momento não há nenhuma tela no ar. '
-    + 'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. '
-    + 'Se preferir esperar, <a href="/contato.html">fale com a gente</a> — e se assinar agora e mudar de ideia, '
-    + 'você tem 7 dias para pedir a devolução integral pelo painel.';
-  el.hidden = false;
-}).catch(() => {});
+fetch(`${API_BASE_URL}/pontos`)
+  .then((r) => r.json())
+  .then((pontos) => {
+    // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
+    // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
+    if (!Array.isArray(pontos) || pontos.some((p) => p.status === 'ativo')) return;
+    const el = document.getElementById('avisoRede');
+    el.innerHTML =
+      '<b>A rede ainda está em montagem.</b> Neste momento não há nenhuma tela no ar. ' +
+      'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. ' +
+      'Se preferir esperar, <a href="/contato.html">fale com a gente</a> — e se assinar agora e mudar de ideia, ' +
+      'você tem 7 dias para pedir a devolução integral pelo painel.';
+    el.hidden = false;
+  })
+  .catch(() => {});

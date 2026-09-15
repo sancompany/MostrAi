@@ -19,8 +19,17 @@
       "arrowParentheses": "always"
     },
     "globals": [
-      "API_BASE_URL", "esc", "fmtBRL", "linkWhatsApp", "montarPerfil", "montarLayout",
-      "ROTULOS", "WHATSAPP", "aplicarBarras", "montarNavAuth", "montarModos"
+      "API_BASE_URL",
+      "esc",
+      "fmtBRL",
+      "linkWhatsApp",
+      "montarPerfil",
+      "montarLayout",
+      "ROTULOS",
+      "WHATSAPP",
+      "aplicarBarras",
+      "montarNavAuth",
+      "montarModos"
     ]
   },
   "linter": {

@@ -15,9 +15,23 @@ const SELECT_PLANO = `
 `;
 
 const CAMPOS_CRIACAO = [
-  'id', 'tier', 'nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses',
-  'frequencia_dia', 'cobertura', 'ativo', 'destaque_no_site', 'rotulo', 'limite_criativos',
-  'preco_travado', 'fundador', 'vagas', 'ponto_apos_meses'];
+  'id',
+  'tier',
+  'nome',
+  'valor_mensal',
+  'valor_mensal_cheio',
+  'compromisso_meses',
+  'frequencia_dia',
+  'cobertura',
+  'ativo',
+  'destaque_no_site',
+  'rotulo',
+  'limite_criativos',
+  'preco_travado',
+  'fundador',
+  'vagas',
+  'ponto_apos_meses',
+];
 
 // Preço "fundador": criar um plano novo (id novo) em vez de editar um
 // existente é o jeito de mudar preço pra clientes futuros sem mexer no que
@@ -27,10 +41,7 @@ async function criar(dados) {
   const colunas = campos.join(', ');
   const marcadores = campos.map((_, i) => `$${i + 1}`).join(', ');
   const valores = campos.map((c) => dados[c]);
-  const { rows } = await pool.query(
-    `INSERT INTO planos (${colunas}) VALUES (${marcadores}) RETURNING *`,
-    valores
-  );
+  const { rows } = await pool.query(`INSERT INTO planos (${colunas}) VALUES (${marcadores}) RETURNING *`, valores);
   return rows[0];
 }
 
@@ -39,10 +50,10 @@ async function criar(dados) {
 async function listarAtivos({ incluirFundador = true } = {}) {
   const { rows } = await pool.query(
     `${SELECT_PLANO} WHERE p.ativo ${incluirFundador ? '' : 'AND NOT p.fundador'}
-     GROUP BY p.id ORDER BY p.fundador DESC, p.tier, p.compromisso_meses`
+     GROUP BY p.id ORDER BY p.fundador DESC, p.tier, p.compromisso_meses`,
   );
   for (const p of rows) {
-    p.vagas_restantes = p.vagas == null ? null : Math.max(0, p.vagas - await contarVagasOcupadas(p.id));
+    p.vagas_restantes = p.vagas == null ? null : Math.max(0, p.vagas - (await contarVagasOcupadas(p.id)));
   }
   return rows;
 }
@@ -60,7 +71,7 @@ async function contarVagasOcupadas(planoId, ignorarAnuncianteId) {
        AND (s.created_at > now() - ($3 || ' days')::interval
             OR EXISTS (SELECT 1 FROM cobrancas_confirmadas c
                        WHERE c.anunciante_id = s.anunciante_id AND c.plano_id = s.plano_id))`,
-    [planoId, ignorarAnuncianteId || null, DIAS_RESERVA_VAGA]
+    [planoId, ignorarAnuncianteId || null, DIAS_RESERVA_VAGA],
   );
   return rows[0].total;
 }
@@ -93,7 +104,7 @@ async function contarAtivosDoCiclo(compromissoMeses, ignorarId) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM planos
      WHERE ativo AND NOT fundador AND compromisso_meses = $1 AND id <> COALESCE($2, '')`,
-    [compromissoMeses, ignorarId || null]
+    [compromissoMeses, ignorarId || null],
   );
   return rows[0].total;
 }
@@ -114,9 +125,20 @@ const CAMPOS_VITRINE = ['ativo', 'destaque_no_site', 'rotulo', 'vagas'];
 // `limite_criativos` no upload, `frequencia_dia` e `cobertura` na playlist,
 // `nome` e benefícios no painel. Editar no lugar mudaria o contrato de quem
 // já assinou. Só entram por versão nova.
-const CAMPOS_CONTRATO = ['tier', 'nome', 'valor_mensal', 'valor_mensal_cheio', 'compromisso_meses',
-  'frequencia_dia', 'cobertura', 'limite_criativos', 'preco_travado', 'fundador',
-  'ponto_apos_meses', 'beneficio_ids'];
+const CAMPOS_CONTRATO = [
+  'tier',
+  'nome',
+  'valor_mensal',
+  'valor_mensal_cheio',
+  'compromisso_meses',
+  'frequencia_dia',
+  'cobertura',
+  'limite_criativos',
+  'preco_travado',
+  'fundador',
+  'ponto_apos_meses',
+  'beneficio_ids',
+];
 
 const CAMPOS_ATUALIZAVEIS = CAMPOS_VITRINE;
 
@@ -137,7 +159,7 @@ async function definirBeneficios(planoId, beneficioIds) {
     await pool.query(
       `INSERT INTO planos_beneficios (plano_id, beneficio_id)
        SELECT $1, unnest($2::int[])`,
-      [planoId, beneficioIds]
+      [planoId, beneficioIds],
     );
   }
   return buscarPorId(planoId);
@@ -148,9 +170,7 @@ async function definirBeneficios(planoId, beneficioIds) {
 // edições seguidas da mesma base colidiriam.
 async function proximoId(idAtual) {
   const base = String(idAtual).replace(/-v\d+$/, '');
-  const { rows } = await pool.query(
-    "SELECT id FROM planos WHERE id = $1 OR id LIKE $1 || '-v%'", [base],
-  );
+  const { rows } = await pool.query("SELECT id FROM planos WHERE id = $1 OR id LIKE $1 || '-v%'", [base]);
   let maior = 1;
   for (const r of rows) {
     const m = /-v(\d+)$/.exec(r.id);
@@ -186,15 +206,15 @@ async function novaVersao(idAtual, mudancas) {
        VALUES (${campos.map((_, i) => `$${i + 1}`).join(', ')})`,
       campos.map((c) => novo[c]),
     );
-    await cliente.query(
-      'UPDATE planos SET ativo = false, arquivado_em = now(), substituido_por = $2 WHERE id = $1',
-      [idAtual, novo.id],
-    );
+    await cliente.query('UPDATE planos SET ativo = false, arquivado_em = now(), substituido_por = $2 WHERE id = $1', [
+      idAtual,
+      novo.id,
+    ]);
     if (beneficios.length) {
-      await cliente.query(
-        'INSERT INTO planos_beneficios (plano_id, beneficio_id) SELECT $1, unnest($2::int[])',
-        [novo.id, beneficios],
-      );
+      await cliente.query('INSERT INTO planos_beneficios (plano_id, beneficio_id) SELECT $1, unnest($2::int[])', [
+        novo.id,
+        beneficios,
+      ]);
     }
     await cliente.query('COMMIT');
   } catch (err) {
@@ -217,11 +237,14 @@ async function listarArquivados() {
     GROUP BY p.id
     ORDER BY p.arquivado_em DESC`);
   for (const p of rows) {
-    const { rows: c } = await pool.query(`
+    const { rows: c } = await pool.query(
+      `
       SELECT
         (SELECT COUNT(*)::int FROM anunciantes
           WHERE plano_id = $1 AND status = 'ativo' AND excluido_em IS NULL) AS contas_ativas,
-        (SELECT COUNT(*)::int FROM cobrancas_confirmadas WHERE plano_id = $1) AS cobrancas`, [p.id]);
+        (SELECT COUNT(*)::int FROM cobrancas_confirmadas WHERE plano_id = $1) AS cobrancas`,
+      [p.id],
+    );
     p.contas_ativas = c[0].contas_ativas;
     p.cobrancas = c[0].cobrancas;
   }
@@ -229,7 +252,18 @@ async function listarArquivados() {
 }
 
 module.exports = {
-  criar, listarAtivos, listarTodos, buscarPorId, atualizar, novaVersao,
-  listarArquivados, proximoId, definirBeneficios, vagaOcupada, contarVagasOcupadas,
-  MAX_ATIVOS_POR_CICLO, CAMPOS_VITRINE, CAMPOS_CONTRATO,
+  criar,
+  listarAtivos,
+  listarTodos,
+  buscarPorId,
+  atualizar,
+  novaVersao,
+  listarArquivados,
+  proximoId,
+  definirBeneficios,
+  vagaOcupada,
+  contarVagasOcupadas,
+  MAX_ATIVOS_POR_CICLO,
+  CAMPOS_VITRINE,
+  CAMPOS_CONTRATO,
 };

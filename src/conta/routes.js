@@ -10,8 +10,18 @@ const email = require('../financeiro/email');
 // (tabela anunciantes, papéis no convite) — o tipo 'afiliado' fica aceito
 // só pra link antigo ainda válido, e aponta pra mesma tabela.
 const TIPOS = {
-  anunciante: { tabela: 'anunciantes', colunaEmail: 'contato_email', colunaNome: 'nome_empresa', login: '/anunciante/login.html' },
-  afiliado: { tabela: 'anunciantes', colunaEmail: 'contato_email', colunaNome: 'nome_empresa', login: '/anunciante/login.html' },
+  anunciante: {
+    tabela: 'anunciantes',
+    colunaEmail: 'contato_email',
+    colunaNome: 'nome_empresa',
+    login: '/anunciante/login.html',
+  },
+  afiliado: {
+    tabela: 'anunciantes',
+    colunaEmail: 'contato_email',
+    colunaNome: 'nome_empresa',
+    login: '/anunciante/login.html',
+  },
 };
 
 const VALIDADE_MS = 60 * 60 * 1000;
@@ -24,7 +34,7 @@ async function pedirRedefinicao(req, res, tipo) {
   const { rows } = await pool.query(
     `SELECT id, ${cfg.colunaNome} AS nome, ${cfg.colunaEmail} AS email
      FROM ${cfg.tabela} WHERE ${cfg.colunaEmail} = $1`,
-    [destino]
+    [destino],
   );
 
   // Resposta é sempre a mesma, exista a conta ou não: senão a tela vira um
@@ -35,14 +45,17 @@ async function pedirRedefinicao(req, res, tipo) {
   if (!conta) return;
 
   const token = crypto.randomBytes(32).toString('hex');
-  await pool.query(
-    'INSERT INTO tokens_senha (token, tipo, usuario_id, expira_em) VALUES ($1,$2,$3,$4)',
-    [token, tipo, conta.id, new Date(Date.now() + VALIDADE_MS)]
-  );
+  await pool.query('INSERT INTO tokens_senha (token, tipo, usuario_id, expira_em) VALUES ($1,$2,$3,$4)', [
+    token,
+    tipo,
+    conta.id,
+    new Date(Date.now() + VALIDADE_MS),
+  ]);
 
   const base = process.env.SITE_URL || process.env.CORS_ORIGIN || '';
   const link = `${base}/redefinir-senha.html?token=${token}&tipo=${tipo}`;
-  email.enviarLinkRedefinicaoSenha(conta.email, conta.nome, link)
+  email
+    .enviarLinkRedefinicaoSenha(conta.email, conta.nome, link)
     .catch((err) => console.error('falha ao enviar link de redefinição', err));
 }
 
@@ -57,10 +70,7 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
   const senhaFraca = conferirSenha(senha);
   if (senhaFraca) return res.status(400).json({ erro: senhaFraca });
 
-  const { rows } = await pool.query(
-    'SELECT * FROM tokens_senha WHERE token = $1 AND expira_em > now()',
-    [token]
-  );
+  const { rows } = await pool.query('SELECT * FROM tokens_senha WHERE token = $1 AND expira_em > now()', [token]);
   const registro = rows[0];
   if (!registro) return res.status(400).json({ erro: 'link inválido ou expirado — peça um novo' });
 

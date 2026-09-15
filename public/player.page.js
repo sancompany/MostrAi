@@ -4,7 +4,10 @@
 const params = new URLSearchParams(window.location.search);
 // Só dígitos: o id vai em URL e no HTML do painel — ?tela=<img onerror=…>
 // não pode virar script na TV (nem num admin que abrir o link).
-const dispositivoId = String(params.get('tela') || params.get('dispositivo') || params.get('ponto') || '').replace(/\D/g, '');
+const dispositivoId = String(params.get('tela') || params.get('dispositivo') || params.get('ponto') || '').replace(
+  /\D/g,
+  '',
+);
 const CHAVE_CACHE = `mostrai-playlist-${dispositivoId}`;
 const CHAVE_APARELHO = `mostrai-aparelho-${dispositivoId}`;
 const NOME_CACHE_ARQUIVOS = `mostrai-midia-${dispositivoId}`;
@@ -25,13 +28,21 @@ let playlist = [];
 let indice = 0;
 let painelAberto = false;
 
-function log(t) { msgEl.textContent = t; }
+function log(t) {
+  msgEl.textContent = t;
+}
 
 function carregarCache() {
-  try { return JSON.parse(localStorage.getItem(CHAVE_CACHE)) || []; } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_CACHE)) || [];
+  } catch {
+    return [];
+  }
 }
 function salvarCache(lista) {
-  try { localStorage.setItem(CHAVE_CACHE, JSON.stringify(lista)); } catch {}
+  try {
+    localStorage.setItem(CHAVE_CACHE, JSON.stringify(lista));
+  } catch {}
 }
 
 // ---------------------------------------------------------------------
@@ -50,7 +61,9 @@ async function garantirNoCache(url) {
     if (await cache.match(url)) return;
     const r = await fetch(url, { mode: 'cors' });
     if (r.ok) await cache.put(url, r);
-  } catch { /* toca direto da rede */ }
+  } catch {
+    /* toca direto da rede */
+  }
 }
 
 async function limparCacheAntigo() {
@@ -72,7 +85,9 @@ async function fonteDe(url) {
     const resp = await cache.match(url);
     if (!resp) return url;
     return URL.createObjectURL(await resp.blob());
-  } catch { return url; }
+  } catch {
+    return url;
+  }
 }
 // Troca o src e só então libera o blob anterior.
 function trocarFonte(fonte) {
@@ -91,20 +106,28 @@ async function prepararArquivos(lista) {
 async function atualizarPlaylist() {
   try {
     const r = await fetch(`${API_BASE_URL}/playlist/${dispositivoId}`, { headers: cabecalhos });
-    if (r.status === 401) { log('chave do aparelho inválida — gere de novo no painel admin'); return; }
+    if (r.status === 401) {
+      log('chave do aparelho inválida — gere de novo no painel admin');
+      return;
+    }
     // 403 é a tela (ou o ponto) marcada fora do ar no cadastro. Não é queda de
     // rede: insistir com o cache seria exibir anúncio de uma tela que a
     // operação já tirou do ar. Melhor parar e dizer o motivo na própria TV.
     if (r.status === 403) {
       const corpo = await r.json().catch(() => ({}));
-      playlist = []; salvarCache([]);
+      playlist = [];
+      salvarCache([]);
       document.body.classList.add('sem-playlist');
       log(corpo.erro || 'esta tela está fora do ar no cadastro');
       return;
     }
-    if (!r.ok) { log('servidor indisponível — tocando playlist em cache'); return; }
+    if (!r.ok) {
+      log('servidor indisponível — tocando playlist em cache');
+      return;
+    }
     const nova = await r.json();
-    playlist = nova; salvarCache(nova);
+    playlist = nova;
+    salvarCache(nova);
     document.body.classList.toggle('sem-playlist', !nova.length);
     log(nova.length ? `playlist ok (${nova.length} itens)` : 'sem anúncios programados agora');
     prepararArquivos(nova);
@@ -114,12 +137,22 @@ async function atualizarPlaylist() {
 }
 
 async function tocarProximo() {
-  if (painelAberto) { setTimeout(tocarProximo, 2000); return; }
-  if (!playlist.length) { document.body.classList.add('sem-playlist'); setTimeout(tocarProximo, 5000); return; }
+  if (painelAberto) {
+    setTimeout(tocarProximo, 2000);
+    return;
+  }
+  if (!playlist.length) {
+    document.body.classList.add('sem-playlist');
+    setTimeout(tocarProximo, 5000);
+    return;
+  }
   document.body.classList.remove('sem-playlist');
   const item = playlist[indice];
   indice = (indice + 1) % playlist.length;
-  if (!item?.url) { setTimeout(tocarProximo, 1000); return; }
+  if (!item?.url) {
+    setTimeout(tocarProximo, 1000);
+    return;
+  }
   trocarFonte(await fonteDe(item.url));
   videoEl.classList.add('ativo');
   videoEl.play().catch(() => {});
@@ -136,8 +169,15 @@ async function tocarProximo() {
 videoEl.addEventListener('ended', tocarProximo);
 // URL 404, codec não suportado ou arquivo corrompido nunca disparam
 // 'ended' — sem isso a tela ficava parada pra sempre.
-videoEl.addEventListener('error', () => { log('item falhou — pulando'); setTimeout(tocarProximo, 500); });
-videoEl.addEventListener('stalled', () => setTimeout(() => { if (videoEl.paused && !painelAberto) tocarProximo(); }, 10000));
+videoEl.addEventListener('error', () => {
+  log('item falhou — pulando');
+  setTimeout(tocarProximo, 500);
+});
+videoEl.addEventListener('stalled', () =>
+  setTimeout(() => {
+    if (videoEl.paused && !painelAberto) tocarProximo();
+  }, 10000),
+);
 
 function heartbeat() {
   fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, { method: 'POST', headers: cabecalhos }).catch(() => {});
@@ -151,9 +191,14 @@ let toques = [];
 document.getElementById('alvoPainel').addEventListener('click', () => {
   const agora = Date.now();
   toques = toques.filter((t) => agora - t < 3000).concat(agora);
-  if (toques.length >= 5) { toques = []; abrirPainel(); }
+  if (toques.length >= 5) {
+    toques = [];
+    abrirPainel();
+  }
 });
-document.addEventListener('keydown', (e) => { if ((e.key === 'p' || e.key === 'P') && !painelAberto) abrirPainel(); });
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'p' || e.key === 'P') && !painelAberto) abrirPainel();
+});
 
 function abrirPainel() {
   painelAberto = true;
@@ -171,20 +216,33 @@ function abrirPainel() {
     <p class="erro" id="erroPin"></p>
     <div id="conteudoPainel"></div>`;
   document.body.appendChild(el);
-  const fechar = () => { el.remove(); painelAberto = false; tocarProximo(); };
+  const fechar = () => {
+    el.remove();
+    painelAberto = false;
+    tocarProximo();
+  };
   el.querySelector('#fecharPainel').addEventListener('click', fechar);
-  document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { fechar(); document.removeEventListener('keydown', esc); } });
+  document.addEventListener('keydown', function esc(e) {
+    if (e.key === 'Escape') {
+      fechar();
+      document.removeEventListener('keydown', esc);
+    }
+  });
   el.querySelector('#formPin').addEventListener('submit', async (e) => {
     e.preventDefault();
     const erro = el.querySelector('#erroPin');
     erro.textContent = '';
     try {
       const r = await fetch(`${API_BASE_URL}/player/${dispositivoId}/painel`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...cabecalhos },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...cabecalhos },
         body: JSON.stringify({ pin: el.querySelector('#pin').value }),
       });
       const d = await r.json();
-      if (!r.ok) { erro.textContent = d.erro || 'não deu pra abrir'; return; }
+      if (!r.ok) {
+        erro.textContent = d.erro || 'não deu pra abrir';
+        return;
+      }
       el.querySelector('#formPin').hidden = true;
       const total = d.porAnunciante.reduce((s, a) => s + a.confirmadas, 0);
       const hoje = d.porDia[0] ? d.porDia[0].confirmadas : 0;
@@ -195,9 +253,13 @@ function abrirPainel() {
           <div class="caixa"><small>Anunciantes</small><b>${d.porAnunciante.length}</b></div>
           <div class="caixa"><small>Itens na playlist agora</small><b>${playlist.length}</b></div>
         </div>
-        ${d.porAnunciante.length ? `<table><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
+        ${
+          d.porAnunciante.length
+            ? `<table><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
           ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${Number(a.programadas) || 0}</td><td>${Number(a.confirmadas) || 0}</td></tr>`).join('')}
-        </tbody></table>` : '<p class="sub">Nada rodou nessa tela ainda.</p>'}
+        </tbody></table>`
+            : '<p class="sub">Nada rodou nessa tela ainda.</p>'
+        }
         <p class="sub u-mt-16">Chave do aparelho: ${esc(chaveAparelho ? chaveAparelho.slice(0, 6) + '…' : '(sem chave)')} · API: ${esc(API_BASE_URL)}</p>`;
     } catch {
       erro.textContent = 'sem conexão com o servidor';
@@ -219,5 +281,11 @@ if (!dispositivoId) {
   document.documentElement.requestFullscreen?.().catch(() => {});
   // Recarrega a página uma vez por dia (de madrugada) pra pegar versão nova
   // do player sem ninguém ir até a TV.
-  setInterval(() => { const h = new Date().getHours(); if (h === 4) window.location.reload(); }, 60 * 60 * 1000);
+  setInterval(
+    () => {
+      const h = new Date().getHours();
+      if (h === 4) window.location.reload();
+    },
+    60 * 60 * 1000,
+  );
 }

@@ -24,10 +24,10 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const router = express.Router();
 
 async function adicionarPapel(contaId, papel, db = pool) {
-  await db.query(
-    `UPDATE anunciantes SET papeis = array_append(papeis, $2) WHERE id = $1 AND NOT ($2 = ANY(papeis))`,
-    [contaId, papel]
-  );
+  await db.query(`UPDATE anunciantes SET papeis = array_append(papeis, $2) WHERE id = $1 AND NOT ($2 = ANY(papeis))`, [
+    contaId,
+    papel,
+  ]);
 }
 
 // Liga um papel numa conta existente a partir de uma candidatura aprovada
@@ -36,19 +36,30 @@ async function adicionarPapel(contaId, papel, db = pool) {
 async function liberarPapelNaConta(conta, papel, cand, db) {
   await adicionarPapel(conta.id, papel, db);
   if (papel === 'vendedor' && !(await vendedoresRepo.buscarPorConta(conta.id))) {
-    await vendedoresRepo.criar(conta.id, { chave_pix: (cand?.chave_pix) || null, nome: conta.nome_empresa }, db);
+    await vendedoresRepo.criar(conta.id, { chave_pix: cand?.chave_pix || null, nome: conta.nome_empresa }, db);
   }
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
     const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
-    const ponto = await pontosRepo.criar({
-      nome: cand.nome_comercio || conta.nome_empresa, endereco: cand.endereco, cidade: cand.cidade || 'Matão',
-      uf: cand.uf || 'SP', cep: cand.cep || '', segmento: cand.segmento || 'outro',
-      responsavel_nome: cand.nome, responsavel_contato: cand.contato_telefone,
-      fluxo_estimado_mensal: cand.fluxo_estimado_mensal, plano_ponto_id: opcao ? opcao.id : null,
-      valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
-      cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
-      anunciante_id: conta.id, status: 'aguardando_instalacao', aceitou_termos_em: new Date(),
-    }, db);
+    const ponto = await pontosRepo.criar(
+      {
+        nome: cand.nome_comercio || conta.nome_empresa,
+        endereco: cand.endereco,
+        cidade: cand.cidade || 'Matão',
+        uf: cand.uf || 'SP',
+        cep: cand.cep || '',
+        segmento: cand.segmento || 'outro',
+        responsavel_nome: cand.nome,
+        responsavel_contato: cand.contato_telefone,
+        fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
+        plano_ponto_id: opcao ? opcao.id : null,
+        valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
+        cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
+        anunciante_id: conta.id,
+        status: 'aguardando_instalacao',
+        aceitou_termos_em: new Date(),
+      },
+      db,
+    );
     await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
   }
 }
@@ -79,12 +90,15 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
   const { rows: pedidos } = await pool.query(
     `SELECT tipo, status, criado_em, origem FROM candidaturas
      WHERE conta_id = $1 AND status IN ('nova', 'em_contato') ORDER BY criado_em DESC`,
-    [conta.id]
+    [conta.id],
   );
   res.json({
     papeis,
     modos: {
-      anunciante: { liberado: papeis.includes('anunciante'), precisaEndereco: !(conta.endereco && conta.cidade && conta.uf && conta.cep) },
+      anunciante: {
+        liberado: papeis.includes('anunciante'),
+        precisaEndereco: !(conta.endereco && conta.cidade && conta.uf && conta.cep),
+      },
       ponto: { liberado: papeis.includes('ponto'), pedido: pedidos.find((p) => p.tipo === 'ponto') || null },
       vendedor: { liberado: papeis.includes('vendedor'), pedido: pedidos.find((p) => p.tipo === 'vendedor') || null },
     },
@@ -103,8 +117,10 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   const { endereco, cidade, uf, cep, categoria_id, categoria_livre } = req.body;
   const dados = {
-    endereco: endereco || conta.endereco, cidade: cidade || conta.cidade,
-    uf: uf || conta.uf, cep: cep || conta.cep,
+    endereco: endereco || conta.endereco,
+    cidade: cidade || conta.cidade,
+    uf: uf || conta.uf,
+    cep: cep || conta.cep,
   };
   if (!dados.endereco || !dados.cidade || !dados.uf || !dados.cep) {
     return res.status(400).json({ erro: 'endereço completo da empresa é obrigatório pra anunciar' });
@@ -115,7 +131,9 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   // elegível pra TODO ponto — inclusive o do lado, do mesmo ramo. O cadastro
   // aberto já exige; por dentro do painel não exigia.
   if (!(categoria_id || categoria_livre || conta.categoria_id || conta.categoria_livre)) {
-    return res.status(400).json({ erro: 'diga o ramo do seu negócio — é ele que impede o seu anúncio de rodar dentro de um concorrente' });
+    return res
+      .status(400)
+      .json({ erro: 'diga o ramo do seu negócio — é ele que impede o seu anúncio de rodar dentro de um concorrente' });
   }
   if (categoria_id && !(await categoriasRepo.buscarAtivaPorId(categoria_id))) {
     return res.status(400).json({ erro: 'ramo inválido' });
@@ -125,7 +143,7 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
        categoria_id = COALESCE($6, categoria_id), categoria_livre = COALESCE($7, categoria_livre),
        papeis = CASE WHEN 'anunciante' = ANY(papeis) THEN papeis ELSE array_append(papeis, 'anunciante') END
      WHERE id = $1`,
-    [conta.id, dados.endereco, dados.cidade, dados.uf, dados.cep, categoria_id || null, categoria_livre || null]
+    [conta.id, dados.endereco, dados.cidade, dados.uf, dados.cep, categoria_id || null, categoria_livre || null],
   );
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
@@ -137,11 +155,14 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (!['ponto', 'vendedor'].includes(papel)) return res.status(400).json({ erro: 'modo inválido' });
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  if ((conta.papeis || []).includes(papel)) return res.status(409).json({ erro: 'esse modo já está liberado na sua conta' });
+  if ((conta.papeis || []).includes(papel))
+    return res.status(409).json({ erro: 'esse modo já está liberado na sua conta' });
   const { rows: abertos } = await pool.query(
-    `SELECT id FROM candidaturas WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')`, [conta.id, papel]
+    `SELECT id FROM candidaturas WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')`,
+    [conta.id, papel],
   );
-  if (abertos.length) return res.status(409).json({ erro: 'você já tem um pedido em análise — a gente chama no WhatsApp' });
+  if (abertos.length)
+    return res.status(409).json({ erro: 'você já tem um pedido em análise — a gente chama no WhatsApp' });
   if (papel === 'ponto' && (!req.body.nome_comercio || !req.body.endereco)) {
     return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   }
@@ -170,7 +191,8 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
   if (!convite) return res.status(404).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
   const novos = (convite.papeis || []).filter((p) => !(conta.papeis || []).includes(p));
   if (!novos.length) return res.status(409).json({ erro: 'sua conta já tem tudo que esse convite libera' });
-  if (novos.includes('vendedor') && !req.body.chave_pix) return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
+  if (novos.includes('vendedor') && !req.body.chave_pix)
+    return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
 
   try {
     await emTransacao(async (cliente) => {
@@ -195,7 +217,8 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
 router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
   const cand = await candidaturasRepo.buscarPorId(req.params.id);
   if (!cand) return res.status(404).json({ erro: 'candidatura não encontrada' });
-  if (!cand.conta_id) return res.status(400).json({ erro: 'essa candidatura não é de uma conta existente — gere um convite' });
+  if (!cand.conta_id)
+    return res.status(400).json({ erro: 'essa candidatura não é de uma conta existente — gere um convite' });
   if (cand.status === 'aprovada') return res.status(409).json({ erro: 'já liberada' });
   const conta = await anunciantesRepo.buscarPorId(cand.conta_id);
   if (!conta || conta.excluido_em) return res.status(400).json({ erro: 'conta não encontrada ou excluída' });
@@ -219,7 +242,8 @@ router.patch('/vendedor/me', exigirAnuncianteLogado, async (req, res) => {
 // Módulo 1 — plano de anunciante com direito a tela (planos.ponto_apos_meses)
 // ---------------------------------------------------------------------------
 function mesesEntre(inicio, fim) {
-  const a = new Date(inicio); const b = new Date(fim);
+  const a = new Date(inicio);
+  const b = new Date(fim);
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
 }
 
@@ -233,7 +257,8 @@ async function bonusPontoDaConta(conta) {
   return {
     apos_meses: plano.ponto_apos_meses,
     meses_cobertos: cobertos,
-    disponivel: cobertos >= plano.ponto_apos_meses && !conta.ponto_bonus_resgatado_em && !(conta.papeis || []).includes('ponto'),
+    disponivel:
+      cobertos >= plano.ponto_apos_meses && !conta.ponto_bonus_resgatado_em && !(conta.papeis || []).includes('ponto'),
     resgatado_em: conta.ponto_bonus_resgatado_em,
     ja_e_ponto: (conta.papeis || []).includes('ponto'),
   };
@@ -241,20 +266,31 @@ async function bonusPontoDaConta(conta) {
 
 router.post('/conta/bonus/ponto/resgatar', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
-  const bonus = conta && await bonusPontoDaConta(conta);
+  const bonus = conta && (await bonusPontoDaConta(conta));
   if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
-  if (!req.body.nome_comercio || !req.body.endereco) return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
+  if (!req.body.nome_comercio || !req.body.endereco)
+    return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
     return res.status(400).json({ erro: 'opção de comodato inválida' });
   }
   await emTransacao(async (cliente) => {
-    await cliente.query(`UPDATE anunciantes SET ponto_bonus_resgatado_em = now() WHERE id = $1 AND ponto_bonus_resgatado_em IS NULL`, [conta.id]);
-    await candidaturasRepo.criar({
-      ...req.body, tipo: 'ponto', nome: conta.responsavel_nome || conta.nome_empresa,
-      contato_telefone: req.body.contato_telefone || conta.contato_telefone, contato_email: conta.contato_email,
-      conta_id: conta.id, origem: 'bonus_plano',
-      mensagem: `Bônus do plano ${conta.plano_id}: direito a uma tela após ${bonus.apos_meses} meses.${req.body.mensagem ? ' ' + req.body.mensagem : ''}`,
-    }, cliente);
+    await cliente.query(
+      `UPDATE anunciantes SET ponto_bonus_resgatado_em = now() WHERE id = $1 AND ponto_bonus_resgatado_em IS NULL`,
+      [conta.id],
+    );
+    await candidaturasRepo.criar(
+      {
+        ...req.body,
+        tipo: 'ponto',
+        nome: conta.responsavel_nome || conta.nome_empresa,
+        contato_telefone: req.body.contato_telefone || conta.contato_telefone,
+        contato_email: conta.contato_email,
+        conta_id: conta.id,
+        origem: 'bonus_plano',
+        mensagem: `Bônus do plano ${conta.plano_id}: direito a uma tela após ${bonus.apos_meses} meses.${req.body.mensagem ? ' ' + req.body.mensagem : ''}`,
+      },
+      cliente,
+    );
   });
   res.status(201).json({ ok: true });
 });
@@ -272,15 +308,19 @@ async function bonusAnuncioDaConta(conta) {
      JOIN dispositivos d ON d.ponto_id = p.id AND d.status = 'ativo'
      WHERE p.anunciante_id = $1 AND p.status = 'ativo' AND pp.plano_bonus_id IS NOT NULL
      GROUP BY pp.id ORDER BY pp.plano_bonus_apos_meses LIMIT 1`,
-    [conta.id]
+    [conta.id],
   );
   const b = rows[0];
   if (!b) return null;
   const meses = b.desde ? Math.max(0, mesesEntre(b.desde, new Date())) : 0;
   const plano = await planosRepo.buscarPorId(b.plano_bonus_id);
   return {
-    opcao: b.opcao_nome, plano_nome: plano ? plano.nome : b.plano_bonus_id, plano_id: b.plano_bonus_id,
-    apos_meses: b.plano_bonus_apos_meses, meses_ativo: meses, meses_gratis: b.plano_bonus_meses,
+    opcao: b.opcao_nome,
+    plano_nome: plano ? plano.nome : b.plano_bonus_id,
+    plano_id: b.plano_bonus_id,
+    apos_meses: b.plano_bonus_apos_meses,
+    meses_ativo: meses,
+    meses_gratis: b.plano_bonus_meses,
     disponivel: meses >= b.plano_bonus_apos_meses && !conta.anuncio_bonus_resgatado_em,
     resgatado_em: conta.anuncio_bonus_resgatado_em,
   };
@@ -288,11 +328,19 @@ async function bonusAnuncioDaConta(conta) {
 
 router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
-  const bonus = conta && await bonusAnuncioDaConta(conta);
+  const bonus = conta && (await bonusAnuncioDaConta(conta));
   if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
-  if (conta.status === 'suspenso' || conta.excluido_em) return res.status(403).json({ erro: 'conta indisponível — fale com o suporte' });
-  if (conta.status === 'ativo' && conta.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date()) {
-    return res.status(409).json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });
+  if (conta.status === 'suspenso' || conta.excluido_em)
+    return res.status(403).json({ erro: 'conta indisponível — fale com o suporte' });
+  if (
+    conta.status === 'ativo' &&
+    conta.plano_id &&
+    conta.data_expiracao &&
+    new Date(conta.data_expiracao) > new Date()
+  ) {
+    return res
+      .status(409)
+      .json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });
   }
   await emTransacao(async (cliente) => {
     await adicionarPapel(conta.id, 'anunciante', cliente);
@@ -308,7 +356,7 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
            data_expiracao = now() + ($3 || ' months')::interval,
            anuncio_bonus_resgatado_em = now()
        WHERE id = $1 AND anuncio_bonus_resgatado_em IS NULL`,
-      [conta.id, bonus.plano_id, bonus.meses_gratis]
+      [conta.id, bonus.plano_id, bonus.meses_gratis],
     );
   });
   res.json(await anunciantesRepo.buscarPorId(conta.id));

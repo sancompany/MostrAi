@@ -26,7 +26,10 @@ form.addEventListener('submit', async (e) => {
     // recomeça sem o cupom: cadastro travado por um link de terceiro seria um
     // beco sem saída pior do que o silêncio de antes.
     if (!r.ok && ref) {
-      const corpoRef = await r.clone().json().catch(() => ({}));
+      const corpoRef = await r
+        .clone()
+        .json()
+        .catch(() => ({}));
       if (corpoRef.campo === 'indicado_por_cupom') {
         delete dados.indicado_por_cupom;
         msg.textContent = 'O cupom de indicação desse link não está mais ativo — seguimos sem ele.';
@@ -49,12 +52,18 @@ form.addEventListener('submit', async (e) => {
       // virava a mesma frase genérica, que mandava a pessoa "tentar de novo"
       // justamente quando tentar de novo era o problema.
       const corpo = await r.json().catch(() => ({}));
-      msg.textContent = r.status === 429
-        ? 'Muitas tentativas seguidas. Espere um minuto e tente de novo.'
-        : (corpo.erro ? window.frase(corpo.erro) : 'Não foi possível criar a conta agora. Tente novamente.');
+      msg.textContent =
+        r.status === 429
+          ? 'Muitas tentativas seguidas. Espere um minuto e tente de novo.'
+          : corpo.erro
+            ? window.frase(corpo.erro)
+            : 'Não foi possível criar a conta agora. Tente novamente.';
       msg.className = 'form-msg err';
       const campo = corpo.campo && form.elements[corpo.campo];
-      if (campo) { campo.classList.add('campo-err'); campo.focus(); }
+      if (campo) {
+        campo.classList.add('campo-err');
+        campo.focus();
+      }
       return;
     }
     msg.textContent = 'Conta criada!';

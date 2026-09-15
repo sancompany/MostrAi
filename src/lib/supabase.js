@@ -10,4 +10,8 @@ function getClient() {
   return client;
 }
 
-module.exports = { get storage() { return getClient().storage; } };
+module.exports = {
+  get storage() {
+    return getClient().storage;
+  },
+};
