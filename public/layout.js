@@ -83,13 +83,42 @@
 
   const NAVS = { publico: navPublico, conta: navConta, minimo: navMinimo };
 
+  // Menu de celular: hambúrguer, como o mercado inteiro faz.
+  //
+  // Antes os 7 itens do menu público ficavam soltos, quebrados em duas linhas,
+  // cada um com 20px de altura de toque — o mínimo usável é 44px. O topo
+  // inteiro do celular era menu, e nenhum item dava pra acertar com o dedo.
   document.body.insertAdjacentHTML('afterbegin', `
     <header class="site">
       <div class="wrap">
         <a class="logo" href="/"><img src="/img/logo-mostrai-wordmark.png" alt="Mostraí"></a>
-        <nav class="main">${(NAVS[layout] || navMinimo)()}</nav>
+        <button type="button" class="menu-botao" id="btnMenu" aria-expanded="false" aria-controls="navPrincipal" aria-label="Abrir menu">
+          <span></span><span></span><span></span>
+        </button>
+        <nav class="main" id="navPrincipal">${(NAVS[layout] || navMinimo)()}</nav>
       </div>
     </header>`);
+
+  (function menuDeCelular() {
+    const botao = document.getElementById('btnMenu');
+    const nav = document.getElementById('navPrincipal');
+    if (!botao || !nav) return;
+    const fechar = () => {
+      nav.classList.remove('aberto');
+      botao.setAttribute('aria-expanded', 'false');
+      botao.setAttribute('aria-label', 'Abrir menu');
+    };
+    botao.addEventListener('click', () => {
+      const abrindo = !nav.classList.contains('aberto');
+      nav.classList.toggle('aberto', abrindo);
+      botao.setAttribute('aria-expanded', String(abrindo));
+      botao.setAttribute('aria-label', abrindo ? 'Fechar menu' : 'Abrir menu');
+    });
+    // Escolher um item fecha o menu; Esc também. Sem isso o menu fica aberto
+    // por cima da página que a pessoa acabou de pedir.
+    nav.addEventListener('click', (e) => { if (e.target.closest('a')) fechar(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(); });
+  })();
 
   document.body.insertAdjacentHTML('beforeend', `
     <footer class="site">

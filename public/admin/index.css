@@ -44,6 +44,36 @@
 /* Número alinhado à direita compara de relance; à esquerda, não. Mesma
    regra que a .mini-table já tinha — faltava valer nas tabelas do admin. */
 .tabela-caixa td.num, .tabela-caixa th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Tabela no celular.
+   A tabela já rolava para o lado — só que nada dizia isso. Numa tela de 390px
+   a aba Anunciantes mostrava ID e EMPRESA, e todo o resto (status, papéis,
+   botões de ação) ficava fora da tela sem nenhum sinal de que existia. Quem
+   abria no celular concluía que o admin estava quebrado.
+   Duas correções, as duas só de CSS, valendo para as 20 abas de uma vez:
+   1. a primeira coluna gruda, então dá pra rolar sem perder de vista de quem
+      é a linha;
+   2. uma sombra na borda direita aparece enquanto há conteúdo escondido —
+      é o sinal que faltava. */
+@media (max-width: 860px) {
+  .rolagem {
+    background:
+      linear-gradient(to right, var(--card) 30%, rgba(255,255,255,0)) left center / 28px 100% no-repeat,
+      linear-gradient(to left, var(--card) 30%, rgba(255,255,255,0)) right center / 28px 100% no-repeat,
+      radial-gradient(farthest-side at 0 50%, rgba(20,23,31,.16), rgba(0,0,0,0)) left center / 12px 100% no-repeat,
+      radial-gradient(farthest-side at 100% 50%, rgba(20,23,31,.16), rgba(0,0,0,0)) right center / 12px 100% no-repeat;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .tabela-caixa th:first-child, .tabela-caixa td:first-child {
+    position: sticky; left: 0; z-index: 2; background: var(--card);
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .tabela-caixa thead th:first-child { z-index: 3; background: var(--bg-alt); }
+  .tabela-caixa tbody tr:hover td:first-child { background: var(--bg-alt); }
+  /* A fileira de abas também rola; sem isto ela aparece cortada nas duas
+     pontas ("ontos"… "Pla") como se o texto estivesse quebrado. */
+  .admin-topo { flex-wrap: wrap; row-gap: 10px; }
+}
 th[data-ord] { cursor: pointer; user-select: none; }
 th[data-ord]::after { content: '↕'; opacity: .35; margin-left: 5px; font-size: .72rem; }
 th[data-ord].asc::after { content: '↑'; opacity: 1; }

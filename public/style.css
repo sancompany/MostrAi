@@ -61,7 +61,7 @@ header.site {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
-header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; position: relative; }
 .logo { display: flex; align-items: center; text-decoration: none; }
 .logo img { height: 28px; display: block; }
 nav.main { display: flex; gap: 24px; align-items: center; }
@@ -75,10 +75,41 @@ nav.main a[aria-current="page"]::after {
 }
 nav.main a.btn[aria-current="page"]::after { display: none; }
 
-@media (max-width: 640px) {
-  header.site .wrap { flex-wrap: wrap; height: auto; padding: 12px 16px; row-gap: 10px; }
-  nav.main { width: 100%; justify-content: center; flex-wrap: wrap; gap: 8px 14px; }
-  nav.main a { font-size: .82rem; }
+/* Botão do menu de celular. Só existe abaixo de 860px — acima disso o menu
+   inteiro cabe na horizontal. 44px é o alvo de toque mínimo usável. */
+.menu-botao {
+  display: none; width: 44px; height: 44px; padding: 0; margin-left: auto;
+  background: none; border: 0; cursor: pointer; flex-direction: column;
+  align-items: center; justify-content: center; gap: 5px;
+}
+.menu-botao span { display: block; width: 22px; height: 2px; border-radius: 2px; background: var(--text); transition: transform .18s, opacity .18s; }
+.menu-botao[aria-expanded="true"] span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.menu-botao[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.menu-botao[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+@media (max-width: 860px) {
+  header.site .wrap { height: 60px; padding: 0 16px; }
+  .menu-botao { display: flex; }
+  /* Fora da tela até abrir. `hidden` não serve: o menu precisa animar e
+     precisa continuar no fluxo de foco quando aberto. */
+  nav.main {
+    position: absolute; left: 0; right: 0; top: 100%;
+    flex-direction: column; align-items: stretch; gap: 0;
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 6px 16px 14px; box-shadow: 0 12px 24px rgba(20,23,31,.08);
+    max-height: 0; overflow: hidden; visibility: hidden;
+  }
+  nav.main.aberto { max-height: 80vh; overflow-y: auto; visibility: visible; }
+  /* 48px de altura por item: alvo de dedo de verdade, não 20px. */
+  nav.main a {
+    font-size: 1rem; min-height: 48px; display: flex; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  nav.main a:last-child { border-bottom: 0; }
+  nav.main a[aria-current="page"]::after { display: none; }
+  nav.main a[aria-current="page"] { color: var(--brand-text); }
+  nav.main a.btn { justify-content: center; margin-top: 10px; min-height: 48px; }
+  header.site { position: sticky; }
 }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

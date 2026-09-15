@@ -779,7 +779,10 @@ async function renderAnunciantes(el) {
       <td>${a.excluido_em
         ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
         : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
-           <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>`}</td>
+           <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
+           ${a.plano_id && !a.plano_cortesia
+             ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
+             : ''}`}</td>
     </tr>`).join('')}
   </tbody></table>`;
 
@@ -851,6 +854,23 @@ async function renderAnunciantes(el) {
     if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
     toast('anúncio no ar na conta do cliente');
   }));
+  // A rota de cancelar assinatura existia desde sempre e nao tinha um unico
+  // botao em lugar nenhum: nao havia como parar uma cobranca recorrente pela
+  // interface. Cancelar so no painel do Asaas deixaria o banco daqui achando
+  // que a assinatura segue viva.
+  el.querySelectorAll('[data-cancelar]').forEach((btn) => btn.addEventListener('click', async () => {
+    const linha = btn.closest('tr');
+    const nome = linha ? linha.querySelector('b').textContent : 'esta conta';
+    if (!confirm(`Cancelar a assinatura de ${nome}?\n\n`
+      + 'A cobrança recorrente para no San Checkout e não volta sozinha. '
+      + 'A cobertura já paga continua valendo até a data de expiração — '
+      + 'o anúncio não sai do ar hoje.')) return;
+    const r = await api(`/admin/anunciantes/${btn.dataset.cancelar}/cancelar-assinatura`, { method: 'POST' });
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', true);
+    toast('Assinatura cancelada. A cobertura paga continua até expirar.');
+    renderAnunciantes(el);
+  }));
+
   el.querySelectorAll('[data-restaurar]').forEach((btn) => btn.addEventListener('click', async () => {
     if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
     if (await salvar(`/admin/anunciantes/${btn.dataset.restaurar}`, { excluido_em: null })) renderAnunciantes(el);
