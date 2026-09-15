@@ -49,7 +49,11 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 4. Abre `/convite.html?t=…`, define senha, e a conta nasce com o papel **ponto**.
 5. O administrador cadastra o ponto e as telas, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
 6. A TV abre o link do player uma vez; a chave fica guardada no aparelho.
-7. O dono do ponto define o **PIN** da tela e passa a acompanhar em `/anunciante/ponto.html` — ou pelo painel da própria TV.
+7. O dono do ponto define o **PIN** da tela no próprio painel
+   (`/anunciante/ponto.html` → a tela → "PIN desta tela") e passa a acompanhar
+   ali — ou pelo painel da própria TV, com 5 toques no canto e o PIN.
+8. Sobe o **próprio anúncio** na cota do comodato, em "Meu anúncio na minha
+   tela": mesma conferência de conteúdo que vale para qualquer anúncio da rede.
 
 ### 2.3 Vendedor — do convite à comissão
 
@@ -331,6 +335,33 @@ que o Mostraí lê ao vivo. *Violada:* `PATCH` com campo de contrato responde
 ativo ao mesmo tempo. *Quem vê:* o administrador, na aba Planos (o botão
 "Publicar nova versão" só acende quando um campo de contrato muda) e na aba
 Planos arquivados, que mostra quantas contas ativas cada versão ainda tem.
+
+**RN-28 — Tela fora do ar não recebe playlist nem conta exibição.** Chave de
+aparelho certa não basta: se a tela está em `reparo`/`inativo`, ou se o ponto
+dela saiu do ar, `GET /playlist/:id` responde 403 e o player para de tocar o
+cache e escreve o motivo na própria TV. Sem isso o anunciante pagava por
+exibição numa tela que a operação já sabia que não estava no ar. *Violada:*
+não há caminho — a guarda é o próprio `exigirAparelho`. *Quem vê:* o operador,
+na TV; o anunciante, no painel, porque a exibição simplesmente não é contada.
+
+**RN-29 — Reprovar criativo exige motivo, e o motivo chega ao anunciante.**
+O admin não reprova sem escrever por quê; o motivo aparece no card da peça no
+painel do anunciante, junto do que fazer (excluir e subir a versão corrigida),
+e sai por e-mail. *Violada:* a tela não deixa reprovar com o campo vazio.
+*Quem vê:* anunciante e administrador.
+
+**RN-30 — O teto de 200 slots por hora corta proporcionalmente.** Quando a
+soma das frequências contratadas passa do teto da hora, cada anunciante perde
+a mesma fração do que pediu (regra dos maiores restos, sobre a lista já
+embaralhada) — em vez de o corte ser um sorteio que zerava a hora de quem
+ficasse pra depois do item 200. O aperto vira evento `playlist:teto_corta`.
+*Violada:* não há caminho. *Quem vê:* o dono, na aba Métrica.
+
+**RN-31 — Conta excluída não recebe ciclo.** A exclusão cancela a assinatura no
+Checkout antes de marcar `excluido_em`; uma cobrança em trânsito que chegue
+depois não credita cobertura nem paga comissão — vira pendência para alguém
+devolver o dinheiro à mão. *Violada:* o webhook registra a pendência com o
+motivo. *Quem vê:* administrador, em Eventos pendentes.
 
 **RN-17 — Migrations são aditivas.** Drop de coluna ou tabela só com permissão
 nominal do dono, em migration própria. Migration aplicada nunca é editada.
