@@ -16,7 +16,7 @@
   <dialog id="dlgPerfil">
     <div class="dlg-head">
       <div class="dlg-foto-wrap">
-        <img id="fotoPreviewDlg" class="dlg-foto" src="" alt="" hidden>
+        <img id="fotoPreviewDlg" class="dlg-foto" alt="" hidden>
         <div id="fotoInicialDlg" class="dlg-foto-inicial"></div>
         <button type="button" class="dlg-foto-cam" id="btnTrocarFoto" aria-label="Trocar foto">
           <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M9 3l-1.83 2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
@@ -102,9 +102,16 @@
       const preview = $('fotoPreviewDlg');
       const inicialDlg = $('fotoInicialDlg');
       const temFoto = !!conta.foto_url;
-      if (img) { img.src = conta.foto_url || ''; img.hidden = !temFoto; }
+      // `src = ''` nao limpa a imagem: o navegador resolve string vazia como a
+      // URL da propria pagina e pede o HTML de volta como se fosse imagem —
+      // duas requisicoes inuteis por pagina, e uma imagem "quebrada" no DOM.
+      // Sem foto, o atributo sai.
+      if (img) {
+        if (temFoto) img.src = conta.foto_url; else img.removeAttribute('src');
+        img.hidden = !temFoto;
+      }
       if (inicial) { inicial.hidden = temFoto; inicial.textContent = inicialDe(conta.nome_empresa); }
-      preview.src = conta.foto_url || '';
+      if (temFoto) preview.src = conta.foto_url; else preview.removeAttribute('src');
       preview.hidden = !temFoto;
       inicialDlg.hidden = temFoto;
       inicialDlg.textContent = inicialDe(conta.nome_empresa);

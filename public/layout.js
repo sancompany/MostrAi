@@ -64,7 +64,7 @@
       ${aba('/anunciante/vendedor.html', 'navVendas', 'Vendas')}
       <a href="/planos.html" id="navPlanos"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
       <button type="button" class="avatar-btn" id="btnPerfil" aria-label="Meu perfil">
-        <img id="avatarFoto" src="" alt="" hidden><span id="avatarInicial"></span>
+        <img id="avatarFoto" alt="" hidden><span id="avatarInicial"></span>
       </button>`;
   }
 
