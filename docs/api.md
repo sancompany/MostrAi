@@ -117,7 +117,7 @@ pede.
 |---|---|---|
 | GET | `/admin/anunciantes` | lista |
 | POST | `/admin/anunciantes` | cria conta pelo admin. Com `conta_propria: true` dispensa endereço (a rede não recebe nota de si mesma) e recusa a segunda com 409 |
-| PATCH | `/admin/anunciantes/:id` | status, papéis, dados, e `conta_propria`/`frequencia_dia_propria` |
+| PATCH | `/admin/anunciantes/:id` | status, papéis, dados, e `conta_propria`/`frequencia_hora_propria` |
 | POST | `/admin/anunciantes/:id/criativos` | sobe a peça direto na conta do cliente, **já aprovada** e marcada em `editado_pelo_operador`. A peça é feita fora do site. Teto: o do plano na conta de cliente, nenhum na conta própria |
 | POST | `/admin/anunciantes/:id/liberar-plano` | `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo |
 | POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. **Único caminho de cancelamento** — o pagador nunca cancela sozinho |

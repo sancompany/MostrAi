@@ -21,7 +21,7 @@ const CAMPOS_CRIACAO = [
   'valor_mensal',
   'valor_mensal_cheio',
   'compromisso_meses',
-  'frequencia_dia',
+  'frequencia_hora',
   'cobertura',
   'ativo',
   'destaque_no_site',
@@ -125,7 +125,7 @@ async function vagaOcupada(compromissoMeses, ignorarId, ehFundador) {
 const CAMPOS_VITRINE = ['ativo', 'destaque_no_site', 'rotulo', 'vagas'];
 
 // CONTRATO: cada um destes o Mostraí lê AO VIVO pra quem já está pagando —
-// `limite_criativos` no upload, `frequencia_dia` e `cobertura` na playlist,
+// `limite_criativos` no upload, `frequencia_hora` e `cobertura` na playlist,
 // `nome` e benefícios no painel, `desconto_comodato_percentual` no cálculo
 // do valor mensal (item 8 da spec). Editar no lugar mudaria o contrato de
 // quem já assinou. Só entram por versão nova.
@@ -135,7 +135,7 @@ const CAMPOS_CONTRATO = [
   'valor_mensal',
   'valor_mensal_cheio',
   'compromisso_meses',
-  'frequencia_dia',
+  'frequencia_hora',
   'cobertura',
   'limite_criativos',
   'preco_travado',

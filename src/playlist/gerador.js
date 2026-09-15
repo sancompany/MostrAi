@@ -3,9 +3,8 @@ const { calcularPlaylist, contarPorAnunciante, dividirCota, pedidoDaHora } = req
 const eventos = require('../lib/eventos');
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
-// recebe do ponto a categoria (bloqueio de concorrente), o horário de
-// funcionamento e a cota de autoanúncio do dono, dividida entre as telas
-// daquele ponto.
+// recebe do ponto a categoria (bloqueio de concorrente) e a cota de
+// autoanúncio do dono, dividida entre as telas daquele ponto.
 
 // Quantos criativos da conta entram na rotação.
 //
@@ -31,7 +30,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
   const { rows } = await pool.query(
     `
     SELECT a.id, a.conta_propria,
-           COALESCE(p.frequencia_dia, a.frequencia_dia_propria) AS frequencia_dia,
+           COALESCE(p.frequencia_hora, a.frequencia_hora_propria) AS frequencia_hora,
            p.limite_criativos,
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes
@@ -46,13 +45,13 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     WHERE a.status = 'ativo'
       AND a.excluido_em IS NULL
       AND (
-        (a.conta_propria AND COALESCE(a.frequencia_dia_propria, 0) > 0)
+        (a.conta_propria AND COALESCE(a.frequencia_hora_propria, 0) > 0)
         OR (NOT a.conta_propria AND p.id IS NOT NULL)
       )
       AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
-    GROUP BY a.id, a.conta_propria, p.frequencia_dia, a.frequencia_dia_propria, p.limite_criativos
+    GROUP BY a.id, a.conta_propria, p.frequencia_hora, a.frequencia_hora_propria, p.limite_criativos
   `,
     [categoriaDoPonto || null, excluirContaId || null],
   );
@@ -75,18 +74,6 @@ async function criativosDoDono(contaId) {
     [contaId],
   );
   return rows;
-}
-
-const HORAS_ABERTO_PADRAO = 12;
-
-// O plano define "quantas vezes por dia"; a taxa por hora é recalculada pro
-// horário real de cada ponto — mesma meta diária em todo lugar.
-function horasAbertoPorDia(ponto) {
-  if (!ponto?.horario_abertura || !ponto.horario_fechamento) return HORAS_ABERTO_PADRAO;
-  const [hA, mA] = String(ponto.horario_abertura).split(':').map(Number);
-  const [hF, mF] = String(ponto.horario_fechamento).split(':').map(Number);
-  const minutos = hF * 60 + mF - (hA * 60 + mA);
-  return minutos > 0 ? minutos / 60 : HORAS_ABERTO_PADRAO;
 }
 
 async function deficitHoraAnterior(dispositivoId, horaAnterior) {
@@ -128,12 +115,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
   ]);
-  const horasAberto = horasAbertoPorDia(dispositivo);
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
+  // Frequência é por hora direto agora (migration 037) — sem conversão por
+  // horário do ponto. O que o plano diz é o que roda, hora a hora.
   const entrada = anunciantes.map((a) => ({
     id: a.id,
-    frequenciaBase: Math.ceil(a.frequencia_dia / horasAberto),
+    frequenciaBase: Number(a.frequencia_hora) || 0,
     deficit: deficits[a.id] || 0,
   }));
 
@@ -193,4 +181,4 @@ async function confirmarExibicao(dispositivoId, anuncianteId, hora) {
   return rowCount > 0;
 }
 
-module.exports = { gerarPlaylistDaHora, confirmarExibicao, horasAbertoPorDia, limiteDeCriativos };
+module.exports = { gerarPlaylistDaHora, confirmarExibicao, limiteDeCriativos };

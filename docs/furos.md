@@ -576,10 +576,9 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · evidência: calcularPlaylist monta a lista, chama embaralhar() e só então faz `itens = itens.slice(0, 200)` — o corte é sobre a lista já sorteada, sem proporcionalidade, então com a rede cheia um anunciante pode terminar a hora com muito menos que a frequência contratada. contarPorAnunciante roda sobre a lista já cortada, de modo…
   · conserto: Distribuir o corte proporcionalmente em src/lib/pacing.js e registrar um alerta no admin quando o teto de 200 começar a cortar.
 
-**"≈Nx por hora" da vitrine presume 12 horas de funcionamento que nunca são ditas e que o gerador não usa** *(informação faltando)*
-  · onde: public/planos.page.js (const porHora) × src/playlist/gerador.js:75-81 (horasAbertoPorDia)
-  · evidência: planos.page.js calcula `const porHora = Math.round(p.frequencia_dia / 12);` — 12 fixo. O servidor usa horasAbertoPorDia(ponto), que lê horario_abertura/horario_fechamento reais do ponto e só cai em HORAS_ABERTO_PADRAO quando faltam: `frequenciaBase = Math.ceil(a.frequencia_dia / horasAberto)`. Num ponto aberto 8h a…
-  · conserto: Trocar o "≈Nx por hora" de public/planos.page.js por "N vezes por dia, distribuídas no horário de funcionamento de cada ponto".
+**RESOLVIDO em 15/09/2026 (migration 037) — "≈Nx por hora" da vitrine presumia 12 horas de funcionamento que nunca eram ditas e que o gerador não usava** *(informação faltando)*
+  · onde era: public/planos.page.js (const porHora) × src/playlist/gerador.js:75-81 (horasAbertoPorDia)
+  · o que mudou: a frequência do plano deixou de ser "por dia" (convertida pro horário de cada ponto) e virou `frequencia_hora`, direta — pedido do dono. `horasAbertoPorDia` foi removida de `src/playlist/gerador.js`; a vitrine agora mostra "N vezes por hora" como valor real, com um "≈Nx por dia" derivado (`× 12`) e claramente rotulado como estimativa. Não há mais número escondido que diverge do que o gerador realmente faz.
 
 **Conta pendente de aprovação: sem gate no código, sem explicação na tela, e a doc diz que o gate existe** *(informação faltando)*
   · onde: src/financeiro/routes.js:178-230 (POST /anunciantes/:id/assinar) × docs/funcional.md §2.1 e linha 347 × public/layout.js:151

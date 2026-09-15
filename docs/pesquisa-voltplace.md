@@ -181,7 +181,7 @@ preço ausente.
 ### 6.4 Os três riscos estruturais de preço, com números
 
 **A. A receita da rede é travada pelo inventário, não pelo número de telas.**
-Como todo plano alcança 100% dos pontos, o inventário vendável da rede inteira é o inventário de **uma** tela. O teto é `LIMITE_SLOTS_PROGRAMADOS = 200` slots/hora (`src/lib/pacing.js:5`), e a frequência vira `ceil(frequencia_dia / horasAberto)` (`src/playlist/gerador.js:120`). Com 12 horas de funcionamento:
+Como todo plano alcança 100% dos pontos (menos concorrente direto), o inventário vendável da rede inteira é o inventário de **uma** tela. O teto é `LIMITE_SLOTS_PROGRAMADOS = 200` slots/hora (`src/lib/pacing.js:5`), e a frequência é `planos.frequencia_hora`, direta, sem conversão (migration 037). Os números por hora:
 
 - Essencial = 3 slots/hora · Destaque = 6 · Máximo = 12
 - Teto: 200 slots/hora ÷ 3 = **66 contas Essencial** → R$ 6.534/mês

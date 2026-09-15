@@ -687,7 +687,7 @@ router.post('/admin/anunciantes', async (req, res) => {
   if (ehPropria) {
     anunciante = await repo.atualizar(anunciante.id, {
       conta_propria: true,
-      frequencia_dia_propria: Number(req.body.frequencia_dia_propria) || 12,
+      frequencia_hora_propria: Number(req.body.frequencia_hora_propria) || 1,
     });
   }
   // Conta criada pelo dono também é aquisição: o negócio fecha por WhatsApp e

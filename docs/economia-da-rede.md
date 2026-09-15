@@ -24,9 +24,9 @@ do código que já roda (`src/lib/pacing.js`, `src/playlist/gerador.js`,
   `planos.cobertura` guarda a intenção (`um_ponto_dia`, `tres_pontos_dia`,
   `todos_pontos`), mas o gerador de playlist ainda não lê esse campo —
   todo anunciante ativo aparece em TODO ponto ativo, na frequência que
-  contratou (`frequencia_dia`). Isso já estava mapeado em
-  `docs/catalogo-beneficios.md`, seção 2, e é a peça que muda a resposta da
-  pergunta 2 e 4 abaixo.
+  contratou (`frequencia_hora`, por hora direto desde a migration 037). Isso
+  já estava mapeado em `docs/catalogo-beneficios.md`, seção 2, e é a peça
+  que muda a resposta da pergunta 2 e 4 abaixo.
 
 ## 1. Quantos anúncios cabem por hora, dentro de um ponto
 
@@ -40,15 +40,15 @@ telas são independentes, cada uma com sua própria lista.
 | Teto físico otimista (vídeo de 15s) | 240 | 480 | 960 |
 | Teto físico conservador (vídeo de 30s) | 120 | 240 | 480 |
 
-Quanto disso é OCUPADO de verdade depende da demanda contratada. A régua por
-plano (frequência dividida pelas horas de funcionamento do ponto —
-`horasAbertoPorDia`, padrão 12h quando o ponto não declara horário):
+Quanto disso é OCUPADO de verdade depende da demanda contratada. Desde a
+migration 037 a frequência do plano é por hora, direta — sem conversão
+nenhuma por horário do ponto (a função `horasAbertoPorDia` foi removida):
 
-| Plano | Frequência/dia | Exibições/hora (12h abertas) |
+| Plano | Frequência/hora | ≈Exibições/dia (referência, 12h abertas) |
 |---|---|---|
-| Essencial | 36 | 3/hora |
-| Destaque | 72 | 6/hora |
-| Máximo | 144 | 12/hora |
+| Essencial | 3 | ≈36/dia |
+| Destaque | 6 | ≈72/dia |
+| Máximo | 12 | ≈144/dia |
 
 Então, num ponto de 1 tela com o teto de 200/hora, cabem (por exemplo, se
 fosse só um plano por vez): até **66 Essenciais**, ou **33 Destaques**, ou
@@ -65,12 +65,12 @@ exibição de ninguém nos pontos que já existem (a demanda deles não migra
 pro ponto novo); ele soma uma cópia inteira da grade atual de anunciantes
 ativos.
 
-Concretamente: com a rede tendo, hoje, um total de `frequencia_dia` somado
-de todos os anunciantes ativos igual a **F** exibições/dia, cada ponto novo
-(de 1 tela) passa a entregar **+F exibições/dia pra rede** — desde que F
-caiba no teto diário do ponto (200/hora × horas abertas, ex. 2.400/dia com
-12h). Se F já estiver perto do teto, o ponto novo entrega até o teto e o
-resto vira corte proporcional, igual a qualquer ponto saturado.
+Concretamente: com a rede tendo, hoje, um total de `frequencia_hora` somado
+de todos os anunciantes ativos igual a **F** exibições/hora, cada ponto novo
+(de 1 tela) passa a entregar **+F exibições/hora pra rede** — desde que F
+caiba no teto de 200/hora do ponto. Se F já estiver perto do teto, o ponto
+novo entrega até o teto e o resto vira corte proporcional, igual a qualquer
+ponto saturado.
 
 **O que isso NÃO faz:** não aumenta a receita. A mensalidade do anunciante é
 pela rede inteira, não por ponto — instalar mais pontos não cobra mais dele
@@ -111,7 +111,9 @@ construído:
 
 1. **Vaga por ponto.** Uma vez por dia, calcular quanto de cada ponto já
    está comprometido pelos anunciantes `todos_pontos` (que entram sempre) e
-   quanto sobra: `vaga = 200 × horasAberto − Σ frequência dos garantidos`.
+   quanto sobra, por hora (frequência já é por hora desde a migration 037,
+   sem `horasAberto` no meio): `vaga_por_hora = 200 − Σ frequência_hora dos
+   garantidos`.
 2. **Encaixe guloso pelos restritos.** Para cada anunciante `um_ponto_dia`
    ou `tres_pontos_dia`, sortear entre os pontos elegíveis dando peso maior
    pra quem tem **mais vaga sobrando** — não sorteio puro, sorteio

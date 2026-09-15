@@ -155,7 +155,7 @@ async function confirmarPlano(planoId) {
     `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
-      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b> — ${plano.frequencia_dia}x por dia em cada tela</p>
+      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b> — ${plano.frequencia_hora}x por hora em cada tela</p>
       <p class="u-m-0 ${extras ? 'u-mb-4' : 'u-mb-12'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
       ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>

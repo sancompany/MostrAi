@@ -762,9 +762,11 @@ quiser".)*
   duas opções fixas do enum atual), e **"Teto de 3 criativos por plano
   travado no código e no banco"** (nova — achada ao procurar "outras
   funções" que também deveriam ser livres e não são).
-- A frequência por dia (`frequencia_dia`) **já é livre hoje** — campo
-  numérico, editável por plano no admin, sem teto no código. Registrado em
-  `proximas-versoes.md` só pra não sumir da lista, mas não precisa de nada.
+- A frequência (então `frequencia_dia`) **já era livre nesse momento** —
+  campo numérico, editável por plano no admin, sem teto no código.
+  Registrado em `proximas-versoes.md` só pra não sumir da lista. *(Ver item
+  10: no mesmo dia o dono pediu pra trocar a unidade de "por dia" pra "por
+  hora", e isso foi construído.)*
 - *Achado ao investigar (não fazia parte do pedido, mas é a mesma mentira já
   corrigida nesta seção, item 7):* o benefício "Alcança 100% dos pontos
   ativos" (catálogo `beneficios`, id 11), ativo e vinculado às 4 versões do
@@ -796,3 +798,41 @@ em 15/09/2026.** *(Continuação do item 8, mesmo dia, ainda fora de print.)*
   (unidade de configuração do plano vs. motor de recuperação de déficit).
   Não juntei as duas sem confirmar — fica registrado pra perguntar ao dono
   antes de construir, pra não implementar a mesma folga duas vezes.
+
+**10. [x] Construído — frequência do plano vira "por hora", direta e livre
+(sem a folga de 15 min).** **FEITO em 15/09/2026.** *(O dono simplificou o
+pedido do item 9 e mandou "construa": "eu escolho a quantidade de vezes que
+quiser que apareça por plano, aqui é N vezes por hora, a quantia que eu
+querer mesmo".)*
+
+- `planos.frequencia_dia` virou `planos.frequencia_hora`, e
+  `anunciantes.frequencia_dia_propria` virou `frequencia_hora_propria`
+  (migration 037) — sem mudar comportamento no ar: os valores existentes
+  (36/72/144 por dia, e o padrão 12 da conta própria) já eram múltiplos
+  exatos de 12, então a migration divide por 12 e preserva a entrega atual.
+  O dono edita cada plano livremente a partir de agora.
+- A conversão "por dia → por hora" que existia só pra telas com horário
+  diferente do padrão (`horasAbertoPorDia`, 12h padrão) foi **removida** de
+  `src/playlist/gerador.js` — não faz mais sentido com a frequência já
+  nativa em hora. Isso resolve de brinde um furo antigo (`docs/furos.md`,
+  `docs/teia.md`): o "≈Nx por hora" que a vitrine mostrava não batia com o
+  que o gerador realmente fazia em pontos de horário não-padrão; agora não
+  tem mais conversão escondida nenhuma — o número que aparece é o que roda.
+- **Não incluído:** a folga de "±15 minutos" que o dono mencionou no pedido
+  anterior (item 9) não apareceu neste pedido final, então não foi
+  construída. Fica anotada em `docs/proximas-versoes.md`, na entrada "Folga
+  de 15 minutos pro déficit da hora anterior", como possível pedido ainda
+  vivo — perguntar ao dono se ainda quer.
+- Telas trocadas: `src/db/migrations/037_frequencia_por_hora.sql` (nova);
+  `src/playlist/gerador.js`; `src/financeiro/planos-repository.js`;
+  `src/financeiro/routes.js`; `src/anunciantes/repository.js`;
+  `src/anunciantes/routes.js`; `public/admin/index.page.js` (form de novo
+  plano, "Meus anúncios" e "Planos arquivados"); `public/planos.page.js`;
+  `public/anunciante/painel.page.js`. Docs: `docs/api.md`, `docs/funcional.md`,
+  `docs/teia.md`, `docs/furos.md`, `docs/economia-da-rede.md`,
+  `docs/catalogo-beneficios.md`, `docs/pesquisa-voltplace.md`,
+  `docs/proximas-versoes.md` (a entrada do item 9 foi removida de lá, por
+  estar construída).
+- `docs/specs/2026-09-12-mostrai.md` **não foi tocado** — é registro
+  histórico congelado da Estação 1/2, já fechadas; ainda cita
+  `frequencia_dia` como estava decidido naquela data, o que é esperado.

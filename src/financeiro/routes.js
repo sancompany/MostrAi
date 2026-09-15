@@ -43,8 +43,8 @@ function limiteCriativosInvalido(valor) {
 // Cria um plano novo — usado pra lançar preço/promoção sem mexer no que
 // quem já assinou um plano existente está pagando (ver migration 014).
 router.post('/admin/planos', async (req, res) => {
-  const { id, tier, nome, valor_mensal, compromisso_meses, frequencia_dia, cobertura } = req.body;
-  if (!id || !tier || !nome || !valor_mensal || !compromisso_meses || !frequencia_dia || !cobertura) {
+  const { id, tier, nome, valor_mensal, compromisso_meses, frequencia_hora, cobertura } = req.body;
+  if (!id || !tier || !nome || !valor_mensal || !compromisso_meses || !frequencia_hora || !cobertura) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
   if (limiteCriativosInvalido(req.body.limite_criativos)) {
@@ -117,7 +117,7 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
   }
   // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
   // constraint do banco — devolve o motivo em vez do erro genérico.
-  const vazio = ['nome', 'valor_mensal', 'frequencia_dia', 'compromisso_meses', 'limite_criativos'].find(
+  const vazio = ['nome', 'valor_mensal', 'frequencia_hora', 'compromisso_meses', 'limite_criativos'].find(
     (c) => c in req.body && (req.body[c] === null || req.body[c] === ''),
   );
   if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });

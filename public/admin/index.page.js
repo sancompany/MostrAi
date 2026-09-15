@@ -648,8 +648,8 @@ async function renderMeusAnuncios(el) {
             <input id="cpNome" value="Mostraí" required>
             <label for="cpDoc">CNPJ do Mostraí</label>
             <input id="cpDoc" placeholder="00.000.000/0000-00" required>
-            <label for="cpFreq">Vezes por dia, por tela</label>
-            <input id="cpFreq" type="number" min="1" max="240" value="12" required>
+            <label for="cpFreq">Vezes por hora, por tela</label>
+            <input id="cpFreq" type="number" min="1" max="60" value="1" required>
             <button class="btn primary" type="submit">Criar conta própria</button>
           </form>
         </div>
@@ -665,7 +665,7 @@ async function renderMeusAnuncios(el) {
           contato_telefone: '+5516000000000',
           status: 'ativo',
           conta_propria: true,
-          frequencia_dia_propria: Number(document.getElementById('cpFreq').value),
+          frequencia_hora_propria: Number(document.getElementById('cpFreq').value),
         }),
       });
       if (!r.ok) return toast((await r.json()).erro || 'não deu pra criar', 'err');
@@ -687,8 +687,8 @@ async function renderMeusAnuncios(el) {
       </div>
       <div class="u-p-14">
         <form id="formFreq" class="card u-mw-420 u-mb-14">
-          <label for="cpFreq2">Vezes por dia, por tela</label>
-          <input id="cpFreq2" type="number" min="1" max="240" value="${conta.frequencia_dia_propria || 12}">
+          <label for="cpFreq2">Vezes por hora, por tela</label>
+          <input id="cpFreq2" type="number" min="1" max="60" value="${conta.frequencia_hora_propria || 1}">
           <label for="cpStatus">Situação</label>
           <select id="cpStatus">
             <option value="ativo"${conta.status === 'ativo' ? ' selected' : ''}>No ar</option>
@@ -734,7 +734,7 @@ async function renderMeusAnuncios(el) {
     const r = await api(`/admin/anunciantes/${conta.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        frequencia_dia_propria: Number(document.getElementById('cpFreq2').value),
+        frequencia_hora_propria: Number(document.getElementById('cpFreq2').value),
         status: document.getElementById('cpStatus').value,
       }),
     });
@@ -1764,7 +1764,7 @@ async function renderPlanos(el) {
               .map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`)
               .join('')}
           </select></div>
-          <div class="u-col"><label>Frequência/dia</label><input class="mini" type="number" name="frequencia_dia" value="72" required></div>
+          <div class="u-col"><label>Frequência/hora</label><input class="mini" type="number" name="frequencia_hora" value="6" required></div>
         </div>
         <div class="field-row">
           <div class="u-col"><label>Valor mensal (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal" required></div>
@@ -2139,7 +2139,7 @@ async function renderPlanosArquivados(el) {
     </div>
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Ciclo</th><th data-ord>Valor mensal</th>
-      <th data-ord>Criativos</th><th data-ord>Freq./dia</th><th>Cobertura</th><th>Benefícios</th>
+      <th data-ord>Criativos</th><th data-ord>Freq./hora</th><th>Cobertura</th><th>Benefícios</th>
       <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
     </tr></thead><tbody>
     ${planos
@@ -2150,7 +2150,7 @@ async function renderPlanosArquivados(el) {
       <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
       <td>${fmt(p.valor_mensal)}</td>
       <td class="num">${p.limite_criativos}</td>
-      <td class="num">${p.frequencia_dia}</td>
+      <td class="num">${p.frequencia_hora}</td>
       <td>${esc(p.cobertura)}</td>
       <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '—'}</td>
       <td>${data(p.arquivado_em)}</td>

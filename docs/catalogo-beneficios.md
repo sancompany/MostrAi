@@ -20,7 +20,7 @@ Cada benefício vem com uma classificação:
 
 | Benefício | Campo | Onde é aplicado |
 |---|---|---|
-| Frequência de exibição (N vezes por dia, por tela) | `planos.frequencia_dia` | `src/playlist/gerador.js` — divide a meta diária pelas horas de funcionamento do ponto e gera a cota por hora |
+| Frequência de exibição (N vezes por hora, por tela) | `planos.frequencia_hora` | `src/playlist/gerador.js` — é a própria cota por hora, direta (migration 037; antes dividia uma meta diária pelas horas de funcionamento do ponto, hoje não existe mais essa conversão) |
 | Quantos criativos ativos ao mesmo tempo (1 a 3) | `planos.limite_criativos` | Mesmo gerador — corta o array de criativos aprovados nesse limite |
 | Cobertura (1 ponto/dia, 3 pontos/dia, todos os pontos) | `planos.cobertura` | Hoje é só o RÓTULO — a playlist já cobre 100% dos pontos elegíveis pra qualquer plano (comentário em `gerador.js`: "Todo plano cobre 100% da rede nesta fase"). Ligar a régua de verdade (restringir quantos pontos por dia) é trabalho de código, listado na seção 2. |
 | Preço travado no valor de quando entrou | `planos.preco_travado` + `anunciantes.valor_mensal_travado` | `src/financeiro/san-checkout.js`, `valorMensalDaConta` |
@@ -31,20 +31,22 @@ Cada benefício vem com uma classificação:
 
 **Achado que vale registrar:** dos 12 textos hoje em `beneficios`, a maior
 parte só REDIZ um destes campos em português ("O dobro de frequência de
-exibição" é `frequencia_dia`, "Até 3 criativos ativos, revezando entre si" é
+exibição" é `frequencia_hora`, "Até 3 criativos ativos, revezando entre si" é
 `limite_criativos`). Duas linhas, porém, **não têm nenhum código atrás**:
 
-- **"Alcança 100% dos pontos ativos" / "Cobertura máxima da rede"** — verdade
-  hoje, mas só porque TODO plano cobre 100% (ver tabela acima). No dia em que
-  a régua de cobertura por ciclo virar código de verdade (seção 2), esse
-  texto para de ser universal e passa a precisar do campo `cobertura` sendo
-  lido de verdade, não só mostrado.
+- **"Alcança 100% dos pontos ativos"** — corrigida em 15/09/2026 (o dono
+  apontou como mentira: a playlist exclui concorrente direto por categoria,
+  então nunca é 100% pra todo mundo). Texto virou "Roda pelos pontos ativos
+  da rede". "Cobertura máxima da rede" segue como está — é comparativa entre
+  tiers, não uma promessa absoluta. No dia em que a régua de cobertura por
+  ciclo virar código de verdade (seção 2), o texto do Essencial passa a
+  precisar do campo `cobertura` sendo lido de verdade, não só mostrado.
 - **"Prioridade em horário de pico"** (id 10) — **não existe prioridade de
-  horário em lugar nenhum do gerador de playlist.** A cota é dividida em
-  partes iguais pelas horas de funcionamento do ponto (`horasAbertoPorDia` em
-  `gerador.js`), sem distinguir horário de pico de horário morto. Hoje é
-  uma promessa que ninguém confere — nem o anunciante consegue ver se ela
-  está sendo cumprida.
+  horário em lugar nenhum do gerador de playlist.** Desde a migration 037 a
+  frequência é por hora, direta — não há mais nem a divisão por horas de
+  funcionamento do ponto que existia antes (`horasAbertoPorDia`, removida de
+  `gerador.js`). Continua sendo uma promessa que ninguém confere — nem o
+  anunciante consegue ver se ela está sendo cumprida.
 
 ## 2. Precisa de código novo — a promessa dependeria de mecanismo que não existe
 
@@ -54,7 +56,7 @@ contador de exibições, e hoje não têm campo nem lógica:
 
 | Benefício proposto | O que precisaria mudar |
 |---|---|
-| **Teto/mínimo de exibições por mês** (ex.: "até 1.500 exibições/mês") | Hoje `frequencia_dia` é por dia, sem acumulado mensal. Precisaria de uma consulta agregando `exibicoes_contador.vezes_confirmadas` por mês e um corte no gerador quando o teto for atingido. |
+| **Teto/mínimo de exibições por mês** (ex.: "até 1.500 exibições/mês") | Hoje `frequencia_hora` é por hora, sem acumulado mensal. Precisaria de uma consulta agregando `exibicoes_contador.vezes_confirmadas` por mês e um corte no gerador quando o teto for atingido. |
 | **Cobertura restrita por ciclo** (ex.: plano de entrada só entra em 1 ponto por dia, sorteado ou fixo) | `planos.cobertura` já guarda a intenção (`um_ponto_dia`, `tres_pontos_dia`, `todos_pontos`) mas o gerador ignora — hoje é 100% pra todo mundo. Ligar de verdade é reescrever `anunciantesElegiveis` pra considerar quantos pontos aquele anunciante já apareceu no dia/ciclo. |
 | **Prioridade real em horário de pico** | Precisaria de uma tabela ou campo de "horário de pico" por ponto (hoje só existe `horario_abertura`/`horario_fechamento`) e o gerador dando peso maior às contas com esse benefício nas janelas de pico. |
 | **Mínimo de telas simultâneas garantido** (ex.: "garante estar em pelo menos 3 telas ao mesmo tempo na cidade") | Hoje a elegibilidade é por tela, sem visão do conjunto. Precisaria de uma consulta global por hora, algo que o pacing atual (por tela, isolado) não faz. |

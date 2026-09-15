@@ -47,7 +47,7 @@ function render(meses) {
   }
   grid.innerHTML = doMes
     .map((p) => {
-      const porHora = Math.round(p.frequencia_dia / 12);
+      const porDia = Math.round(p.frequencia_hora * 12);
       const porMes = Number(p.valor_mensal);
       const totalCiclo = porMes * meses;
       const referencia = mensalDoTier(p.tier) || Number(p.valor_mensal_cheio) || null;
@@ -58,7 +58,7 @@ function render(meses) {
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">${p.frequencia_dia}x por dia em cada ponto <small>(≈${porHora}x por hora num comércio aberto 12h)</small></div>
+      <div class="freq">${p.frequencia_hora}x por hora em cada ponto <small>(≈${porDia}x por dia num comércio aberto 12h)</small></div>
       ${totalCheio && economiaMes > 0 ? `<div class="price-riscado">${fmt(totalCheio)}</div>` : ''}
       <div class="price">${fmt(totalCiclo)}</div>
       <div class="price-sub">

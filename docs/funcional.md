@@ -291,7 +291,7 @@ administrador, com o motivo registrado na própria linha.
 **RN-21 — O Mostraí tem uma conta de anunciante própria, e só uma.** Ela vive
 no admin, em "Meus anúncios": anuncia a rede nas telas da rede. Difere de uma
 conta comum em três pontos e só neles — não assina plano (a frequência vem de
-`frequencia_dia_propria`), não tem teto de criativos, e nunca gera cobrança,
+`frequencia_hora_propria`), não tem teto de criativos, e nunca gera cobrança,
 então não entra na receita nem na margem. Difere também da cota de autoanúncio
 do ponto, que só roda nas telas daquele comércio: a conta própria roda na rede
 inteira. *Violada:* tentar criar a segunda recebe 409 antes de qualquer
@@ -351,7 +351,7 @@ da visão geral.
 **RN-27 — Plano assinado é imutável para quem assinou.** Os campos do plano
 se dividem em dois. **Vitrine** (`ativo`, `vagas`, `rotulo`,
 `destaque_no_site`) muda na hora: não alcança ninguém que já é cliente.
-**Contrato** (`nome`, `valor_mensal`, `compromisso_meses`, `frequencia_dia`,
+**Contrato** (`nome`, `valor_mensal`, `compromisso_meses`, `frequencia_hora`,
 `cobertura`, `limite_criativos`, `preco_travado`, `fundador`,
 `ponto_apos_meses`, benefícios) não se edita: publica-se uma **versão nova**,
 com id novo, e a anterior é aposentada. Quem já assinou fica na versão
