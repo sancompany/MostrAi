@@ -133,11 +133,25 @@ h1 { font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.08; letter-spacing: -.0
 h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); letter-spacing: -.02em; margin: 0 0 12px; }
 p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 
-.hero { padding: 88px 0 64px; text-align: center; }
-.hero-simbolo { width: 340px; max-width: 62vw; display: block; margin: 0 auto 28px; }
-@media (max-width: 640px) { .hero-simbolo { width: 220px; margin-bottom: 20px; } }
-.hero .wrap { max-width: 780px; }
-.hero p.lead { margin: 0 auto 32px; }
+.hero { padding: 72px 0 56px; }
+/* Texto à esquerda, símbolo à direita: o visitante lê a proposta e o preço
+   sem rolar. Empilhado no celular, com o símbolo DEPOIS do texto — imagem
+   decorativa não vai na frente da razão de a página existir. */
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 48px; align-items: center; }
+.hero-simbolo { width: 100%; max-width: 360px; justify-self: center; display: block; }
+.hero h1 { margin: 0 0 14px; }
+.hero p.lead { margin: 0 0 14px; }
+.hero-preco { font-size: 1.05rem; color: var(--text); margin: 0 0 24px; }
+.hero-preco b { color: var(--brand-text); }
+.hero-outras { font-size: .9rem; color: var(--text-dim); margin: 18px 0 0; }
+.hero-outras a { color: var(--blue); }
+@media (max-width: 860px) {
+  .hero { padding: 40px 0 44px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 28px; }
+  .hero-texto { order: 1; }
+  .hero-simbolo { order: 2; max-width: 240px; }
+  .cta-row .btn { width: 100%; }
+}
 .hero-decorated {
   position: relative; overflow: hidden;
   background:
@@ -154,7 +168,8 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   position: relative; padding: 8px 0 4px;
   background: radial-gradient(600px 260px at 50% 0%, rgba(29,78,216,.06), transparent 70%);
 }
-.cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.u-ta-c .cta-row, .hero-decorated.u-ta-c .cta-row { justify-content: center; }
 .hero-fluxo { margin: 18px 0 0; font-size: .95rem; color: var(--text-dim); }
 .hero-fluxo b { color: var(--brand-text); }
 

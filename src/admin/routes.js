@@ -61,9 +61,18 @@ router.get('/admin/resumo', async (_req, res) => {
     receita, pontosAtivos, amortizacao, custosFixos, filas, pontosPorStatus, anunciantesPorStatus,
     offline, faturamento, exibicoes, novos,
   ] = await Promise.all([
+    // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
+    // `status = 'ativo'`, então somava três coisas que não pagam nada:
+    // conta em cortesia (plano liberado de graça), conta excluída que ficou
+    // com status ativo, e conta cuja cobertura já venceu. A margem — que é a
+    // métrica principal do projeto — mentia pra cima em todas as três.
     pool.query(
       `SELECT COALESCE(SUM(COALESCE(a.valor_mensal_travado, p.valor_mensal)), 0) AS total FROM anunciantes a
-       JOIN planos p ON p.id = a.plano_id WHERE a.status = 'ativo'`
+       JOIN planos p ON p.id = a.plano_id
+       WHERE a.status = 'ativo'
+         AND NOT a.plano_cortesia
+         AND a.excluido_em IS NULL
+         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`
     ),
     pool.query(
       `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,

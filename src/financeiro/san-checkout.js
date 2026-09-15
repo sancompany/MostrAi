@@ -67,8 +67,16 @@ function webhookAutorizado(req) {
 // navegador, e a API, que o nosso servidor chama. Usar um só para os dois
 // deixa necessariamente um dos lados errado — era o que acontecia aqui até
 // 14/09/2026. SAN_CHECKOUT_BASE_URL é a TELA; SAN_CHECKOUT_API_URL é a API.
+// `returnUrl` leva o cliente de volta pra cá depois de pagar. Sem ele, a
+// pessoa sai do site num domínio que não é o nosso, paga, e fica parada numa
+// tela de outra empresa sem nenhum caminho de volta — o momento de maior
+// confiança da relação terminava num beco.
+// PENDENTE de confirmação com quem administra o San Checkout: se ele ignorar
+// o parâmetro, não quebra nada (é query string a mais), mas o retorno
+// automático só funciona quando ele o respeitar. A página de destino já existe.
 function linkCheckoutAssinatura(assinaturaId) {
-  return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}`;
+  const volta = process.env.SITE_URL ? `&returnUrl=${encodeURIComponent(`${process.env.SITE_URL}/obrigado.html`)}` : '';
+  return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}${volta}`;
 }
 
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).

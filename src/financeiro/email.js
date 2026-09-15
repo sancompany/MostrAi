@@ -24,8 +24,12 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
     text: `Olá, ${anunciante.nome_empresa}!\n\n`
       + `Seu pagamento do plano ${plano.nome} (${CICLO_TEXTO[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}) foi confirmado — `
       + `valor cobrado: R$ ${Number(valorCobrado).toFixed(2)}.\n\n`
-      + `Assim que o primeiro ponto da rede estiver no ar, seu anúncio começa a rodar automaticamente. `
-      + `Você pode acompanhar tudo no seu painel.\n\nEquipe Mostraí.`,
+      + `AGORA FALTA UMA COISA: subir o seu anúncio.\n`
+      + `Abra o painel e envie um vídeo ou imagem de 15 a 30 segundos, em pé (9:16). `
+      + `A gente ajusta o formato pra caber na tela. Depois da aprovação ele entra no ar.\n\n`
+      + `${process.env.SITE_URL}/anunciante/painel.html\n\n`
+      + `Não tem a arte pronta? Responda este e-mail ou chame no WhatsApp — a peça simples está incluída no seu plano.\n\n`
+      + `Equipe Mostraí.`,
   });
 }
 
