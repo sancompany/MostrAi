@@ -54,4 +54,14 @@ USER node
 ENV NODE_ENV=production
 EXPOSE 3000
 
-CMD ["node", "src/server.js"]
+# Migrations no arranque, antes de servir. O Northflank não tem "release
+# command" nativo (a recomendação deles é workflow com um job no meio), e o
+# resultado de não ter nada foi o banco de produção ficar NOVE migrations atrás
+# do código que estava no ar — descoberto em 15/09/2026, com o app já servindo
+# clientes contra um schema sem as colunas que ele lê.
+#
+# `&&`: se a migration falhar, o contêiner não sobe, e o Northflank mantém o
+# anterior servindo. É o comportamento que se quer — pior que deploy travado é
+# deploy pela metade. A concorrência entre instâncias está resolvida por
+# pg_advisory_lock dentro do runner.
+CMD ["sh", "-c", "node src/db/migrate.js && node src/server.js"]

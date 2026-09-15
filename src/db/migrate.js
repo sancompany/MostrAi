@@ -6,7 +6,27 @@ const pool = require('./pool');
 // Runner de migração mínimo: aplica os .sql de migrations/ em ordem, uma vez
 // cada, registrando o que já rodou em schema_migrations. Sem framework —
 // é o que um `for` com SQL cru já resolve.
+// Trava de aplicação no próprio Postgres. O runner passou a rodar no arranque
+// do contêiner (ver Dockerfile), e se um dia houver mais de uma instância as
+// duas sobem juntas: sem trava, as duas leem "não aplicada", as duas tentam
+// aplicar, e a segunda estoura no meio de um CREATE TABLE. `pg_advisory_lock`
+// é do servidor, não do processo — a segunda instância espera e depois não
+// encontra nada pra fazer. O número é arbitrário e só precisa ser estável.
+const TRAVA = 872026;
+
 async function migrate() {
+  const trava = await pool.connect();
+  await trava.query('SELECT pg_advisory_lock($1)', [TRAVA]);
+  try {
+    await aplicar();
+  } finally {
+    await trava.query('SELECT pg_advisory_unlock($1)', [TRAVA]);
+    trava.release();
+  }
+  await pool.end();
+}
+
+async function aplicar() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       filename text PRIMARY KEY,
@@ -39,8 +59,6 @@ async function migrate() {
       client.release();
     }
   }
-
-  await pool.end();
 }
 
 migrate().catch((err) => {
