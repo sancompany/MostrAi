@@ -1,0 +1,7 @@
+# Commits que só mexem em formatação. `git blame --ignore-revs-file
+# .git-blame-ignore-revs` (ou `git config blame.ignoreRevsFile
+# .git-blame-ignore-revs`, uma vez por clone) faz o blame pular estes e
+# continuar apontando quem escreveu a linha de verdade.
+
+# Formatador (biome format) aplicado em 65 dos 78 arquivos, 15/09/2026.
+00e4305c45d70cf356b160c53dec71cf09a09d40

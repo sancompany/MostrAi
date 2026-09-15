@@ -15,7 +15,7 @@
     "lint:corrigir": "biome lint --write .",
     "formato": "biome format .",
     "formato:corrigir": "biome format --write .",
-    "check": "npm run sintaxe && npm run lint && npm test"
+    "check": "npm run sintaxe && npm run lint && npm run formato && npm test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -27,7 +27,25 @@ desligada em `public/`, que é fiação de DOM.
 Se um dia aparecer em `public/` um `forEach` que devia ser `map`, esta regra
 não vai pegar. É o preço, e é conhecido.
 
-## Formatador: configurado, ainda não aplicado
+## Formatador: aplicado em 15/09/2026
+
+Os três passos abaixo foram executados, nesta ordem:
+
+1. `npm run formato:corrigir` num commit sozinho (`00e4305`), sem nenhuma
+   mudança de comportamento junto — 65 dos 78 arquivos reescritos;
+2. o hash entrou em `.git-blame-ignore-revs`. Pra o `git blame` respeitar isso
+   sem passar a flag toda vez, rode uma vez por clone:
+   `git config blame.ignoreRevsFile .git-blame-ignore-revs`;
+3. `npm run formato` entrou no `npm run check`, que é o que o CI roda — daqui
+   pra frente formatação fora do padrão **barra**.
+
+A bateria inteira rodou depois de aplicar: 42/42 unitários, lint limpo,
+sintaxe de todos os arquivos e as cinco suítes ponta a ponta sem falha.
+
+O registro do porquê do adiamento fica abaixo, porque a razão continua válida
+pra próxima vez que aparecer um commit mecânico grande.
+
+## (histórico) Formatador: configurado, ainda não aplicado
 `npm run formato` confere e `npm run formato:corrigir` aplica. Medido em
 14/09: ele reescreveria **63 dos 76 arquivos**.
 
