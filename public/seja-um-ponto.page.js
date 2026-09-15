@@ -40,3 +40,26 @@ form.addEventListener('submit', async (e) => {
     msg.className = 'form-msg err';
   }
 });
+
+// As duas modalidades de contrapartida vinham só no contrato de comodato e na
+// tela do convite — quem estava decidindo se se candidata não via nenhuma.
+// Sai da mesma rota que a tela do convite usa pra montar os radios, entao o
+// que a pessoa le aqui e o que ela vai escolher la.
+(async function modalidades() {
+  const el = document.getElementById('modalidades');
+  if (!el) return;
+  try {
+    const r = await fetch(`${API_BASE_URL}/planos-ponto`);
+    const planos = await r.json();
+    if (!r.ok || !Array.isArray(planos) || !planos.length) throw new Error('resposta inesperada');
+    el.innerHTML = planos.map((p) => `
+      <div class="razao">
+        <b>${esc(p.nome)}</b>
+        <span>${esc(p.chamada || '')}</span>
+      </div>`).join('');
+  } catch (err) {
+    // Sem a lista, a página continua de pé: o bloco some e o formulário fica.
+    console.error('falha ao carregar as modalidades do ponto', err);
+    el.closest('div').hidden = true;
+  }
+})();

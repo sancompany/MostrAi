@@ -336,6 +336,16 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     // Sem isso, o retry do San Checkout cairia na dedupe acima e o evento
     // seria perdido de vez.
     await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+    // E sem isto, a falha só existia no console: o dinheiro entrou no
+    // Checkout, a cobertura não entrou aqui, e nenhuma tela mostrava isso.
+    // Agora cai na fila de "eventos pendentes" do admin, que é onde alguém
+    // olha. Se o próprio registro da pendência falhar, o erro original é que
+    // tem que subir — por isso o catch aninhado.
+    try {
+      await registrarPendencia(contexto, `falha ao aplicar o ciclo pago: ${err.message}`);
+    } catch (err2) {
+      console.error('falha ao registrar a pendência do ciclo', err2);
+    }
     throw err;
   } finally {
     cliente.release();

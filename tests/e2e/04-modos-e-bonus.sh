@@ -29,6 +29,8 @@ esperar "modos: vendedor liberado" '"vendedor":\{"liberado":true' "$r"
 echo "== ativa modo anúncios sozinha =="
 r=$(curl -s -b lia.txt -X POST $B/conta/modos/anunciante -H "$J" -d '{"cidade":"Matão"}'); esperar "sem endereço completo recusa" 'endereço completo' "$r"
 r=$(curl -s -b lia.txt -X POST $B/conta/modos/anunciante -H "$J" -d '{"endereco":"Rua B, 2","cidade":"Matão","uf":"SP","cep":"15990-000"}')
+esperar "sem o ramo recusa (é ele que barra concorrente na mesma tela)" 'ramo do seu negócio' "$r"
+r=$(curl -s -b lia.txt -X POST $B/conta/modos/anunciante -H "$J" -d '{"endereco":"Rua B, 2","cidade":"Matão","uf":"SP","cep":"15990-000","categoria_id":1}')
 esperar "modo anúncios ativado (papel entra)" '"papeis":\["vendedor","anunciante"\]' "$r"
 r=$(curl -s -b lia.txt -X POST $B/anunciantes/$LIA/assinar -H "$J" -d '{"planoId":"essencial-3m"}'); esperar "agora consegue assinar" 'checkoutUrl' "$r"
 
@@ -75,6 +77,7 @@ r=$(curl -s -b lia.txt $B/conta/modos); esperar "7 meses como ponto com módulo 
 r=$(curl -s -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}')
 esperar "resgate ativa o plano na conta" '"plano_id":"destaque-1m","data_inicio_cobertura"' "$r"
 esperar "conta fica ativa" '"status":"ativo"' "$r"
+esperar "bônus entra como cortesia (não vira receita no resumo)" '"plano_cortesia":true' "$r"
 dias=$($PG -c "select data_expiracao::date - now()::date from anunciantes where id=$LIA"); esperar "cobertura de ~2 meses (>= 58 dias)" '^(5[8-9]|6[0-9])$' "$dias"
 r=$(curl -s -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}'); esperar "não resgata duas vezes" 'não está disponível|já tem um plano' "$r"
 

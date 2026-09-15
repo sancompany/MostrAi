@@ -108,6 +108,14 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   if (!dados.endereco || !dados.cidade || !dados.uf || !dados.cep) {
     return res.status(400).json({ erro: 'endereço completo da empresa é obrigatório pra anunciar' });
   }
+  // O ramo não é enfeite de cadastro: é ele que o gerador da playlist usa pra
+  // não pôr o anúncio dentro de um concorrente direto (src/playlist/gerador.js,
+  // `a.categoria_id IS NULL OR a.categoria_id <> $1`). Sem ramo, a conta é
+  // elegível pra TODO ponto — inclusive o do lado, do mesmo ramo. O cadastro
+  // aberto já exige; por dentro do painel não exigia.
+  if (!(categoria_id || categoria_livre || conta.categoria_id || conta.categoria_livre)) {
+    return res.status(400).json({ erro: 'diga o ramo do seu negócio — é ele que impede o seu anúncio de rodar dentro de um concorrente' });
+  }
   await pool.query(
     `UPDATE anunciantes SET endereco = $2, cidade = $3, uf = $4, cep = $5,
        categoria_id = COALESCE($6, categoria_id), categoria_livre = COALESCE($7, categoria_livre),
@@ -285,8 +293,13 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
   await emTransacao(async (cliente) => {
     await adicionarPapel(conta.id, 'anunciante', cliente);
     await cliente.query(
+      // plano_cortesia: o bônus é anúncio de graça por ser ponto, não venda.
+      // Sem isso a conta entrava na receita recorrente do resumo como cliente
+      // pagante e inflava a margem — o caminho equivalente do admin
+      // (liberar-plano) já gravava cortesia.
       `UPDATE anunciantes
        SET plano_id = $2, status = 'ativo',
+           plano_cortesia = true, cortesia_motivo = 'bônus de ponto',
            data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
            data_expiracao = now() + ($3 || ' months')::interval,
            anuncio_bonus_resgatado_em = now()

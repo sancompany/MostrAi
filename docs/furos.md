@@ -18,6 +18,39 @@ reproduzido e consertado sai desta lista e vira commit.
 
 ---
 
+## Placar em 15/09/2026 — a seção Crítica está fechada
+
+Dos 31 furos críticos: **29 consertados e verificados** (no navegador, no banco
+ou pelos testes ponta a ponta) e **2 refutados** na hora de abrir.
+
+Consertados em 14 e 15/09, nesta ordem: `carregarExtrato` escrito e a seção de
+recebimentos criada · fila de devolução (PATCH numa rota POST — o mesmo furo
+aparece quatro vezes na lista, por quatro lentes) · `Baixar comprovante`
+apontando pra `/anunciantes/null/` · página de retorno `/obrigado.html` e
+`returnUrl` no link do Checkout · aba de pagamento ao dono do ponto no admin ·
+receita recorrente somando cortesia, conta excluída e cobertura vencida ·
+e-mail de pagamento que dizia que o anúncio rodava sozinho · aviso de conta
+aprovada · custo por exibição usando preço de tabela em vez do travado ·
+`[hidden]` perdendo pro `display` do `.btn` · selo "preço fundador" sem
+`preco_travado` (migration 028) · botão de cancelar assinatura · login de conta
+excluída que dizia "senha inválida" · aba "Meus anúncios" sempre vazia ·
+cobertura vencida que nunca suspendia · vitrine prometendo cancelamento
+self-service · abatimento por tela fora do ar prometido em `pontos.html` ·
+contrato prometendo "aguardando ponto" sem cobrança · comodato descrevendo um
+formulário que não existe · ramo do negócio não exigido ao virar anunciante ·
+bônus de ponto entrando na receita como cliente pagante · falha no meio do
+ciclo pago sem virar pendência · vitrine sem resposta a "como eu cancelo"
+(FAQ) · vitrine vendendo cobertura sem dizer que a rede está vazia.
+
+Refutados, com a checagem que derrubou cada um: a aba "Mensal" da vitrine não
+é vazia (há três planos mensais ativos) e `categoria_id` **é** gravado nos
+caminhos de criação de ponto — o furo real, ao lado, era do outro lado do
+balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
+
+**O que sobra:** as seções Alta, Média e Baixa abaixo.
+
+---
+
 ## Critica
 
 **Painel do dono de ponto quebra em toda visita: carregarExtrato() não existe** *(beco sem saída)*

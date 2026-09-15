@@ -132,3 +132,20 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
   .catch(() => {
     document.getElementById('plansGrid').innerHTML = '<p class="empty-state">Não foi possível carregar os planos agora.</p>';
   });
+
+// Vender cobertura numa rede sem nenhuma tela no ar era o furo mais caro da
+// vitrine: a cobranca comeca na confirmacao do pagamento (migration 021 tirou
+// a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
+// tela dizer isso em lugar nenhum. Nao bloqueia a venda — quem quiser entrar
+// como fundador continua podendo —, so para de esconder.
+fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()).then((pontos) => {
+  // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
+  // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
+  if (!Array.isArray(pontos) || pontos.some((p) => p.status === 'ativo')) return;
+  const el = document.getElementById('avisoRede');
+  el.innerHTML = '<b>A rede ainda está em montagem.</b> Neste momento não há nenhuma tela no ar. '
+    + 'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. '
+    + 'Se preferir esperar, <a href="/contato.html">fale com a gente</a> — e se assinar agora e mudar de ideia, '
+    + 'você tem 7 dias para pedir a devolução integral pelo painel.';
+  el.hidden = false;
+}).catch(() => {});

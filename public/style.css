@@ -748,3 +748,31 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .u-op-60 { opacity: .6; }
 .u-d-block { display: block; }
 .u-pointer { cursor: pointer; }
+
+/* FAQ da vitrine. <details> nativo: abre e fecha sem uma linha de script, o
+   que tambem e o que permite a CSP nao liberar script inline. */
+.faq { max-width: 760px; margin: 0 auto; }
+.faq h2 { text-align: center; margin-bottom: 20px; }
+.faq details {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 10px;
+}
+.faq summary {
+  cursor: pointer; font-weight: 600; color: var(--text);
+  list-style: none; display: flex; align-items: center; gap: 10px;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::before {
+  content: "+"; color: var(--brand-text); font-weight: 700; font-size: 1.15rem;
+  width: 16px; flex: none; text-align: center;
+}
+.faq details[open] summary::before { content: "\2013"; }
+.faq details p { margin: 10px 0 2px; color: var(--text-dim); line-height: 1.6; }
+
+/* Aviso de rede vazia na vitrine. Mesma familia do .aviso-fundador, com a cor
+   de alerta em vez da de destaque. */
+.aviso-rede {
+  max-width: 760px; margin: 0 auto 20px; padding: 14px 18px;
+  border: 1px solid var(--brand); border-radius: 12px;
+  background: #fff6ef; color: var(--text); line-height: 1.6;
+}

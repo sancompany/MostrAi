@@ -37,7 +37,7 @@
     </div>`;
 
   const CAMPO_SEGMENTO = (prefixo, rotulo) => `
-    <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias></select></div>
+    <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias required></select></div>
     <div data-categoria-livre hidden><label for="${prefixo}categoria_livre">Qual?</label><input id="${prefixo}categoria_livre" name="categoria_livre"></div>`;
 
   function segmentoDe(form) {
