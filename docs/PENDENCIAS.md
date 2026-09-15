@@ -385,6 +385,40 @@ Nada disso muda o escopo dos nove itens da spec: são acabamentos do que já foi
 decidido. O que for construir vira fatia própria; o que ficar para depois vai
 para `docs/proximas-versoes.md` com condição de entrada.
 
+## B.4 — Pesquisa de preço médio do setor em São Paulo (pedida em 15/09/2026)
+
+**Estado: PENDENTE — não feita.** O dono pediu; entra na próxima rodada de
+pesquisa, não foi executada ainda.
+
+**O que a pesquisa tem que responder**, restrita a **Brasil, estado de São
+Paulo**, e a empresas **do mesmo porte da Mostraí** (rede local de mídia
+indoor, não veículo nacional):
+
+1. Preço médio cobrado **por faixa de plano** — entrada, intermediário e topo —
+   em rede de tela/totem dentro de comércio.
+2. **O que cada faixa inclui**: duração do spot, inserções por dia, número de
+   pontos alcançados, número de criativos, relatório, produção de arte,
+   exclusividade de segmento, prazo mínimo.
+3. **Qual o piso e o teto** praticados no interior paulista, separados dos
+   preços de capital — comparar tela de shopping em São Paulo com TV de padaria
+   em Matão sem avisar é enganar a si mesmo.
+4. **Benefício que é padrão de mercado** (todo mundo dá) versus **benefício que
+   é diferencial** (poucos dão) nessa faixa de preço.
+5. **Como cobram**: mensal, por ciclo com desconto, por inserção, por dia, por
+   ponto, CPM.
+
+**Por que importa:** a comparação com a Voltplace já está feita
+(`docs/pesquisa-voltplace.md`), mas ela é **uma** empresa, de quatro meses, sem
+cidade declarada. Uma decisão de preço não se toma contra um único concorrente.
+O que a primeira varredura já achou e serve de ponto de partida está no mesmo
+arquivo, seção "Onde nosso preço cai no mercado" — inclusive o achado de que a
+Mostraí está **acima** do comparável direto por linha de plano e **abaixo** por
+cobertura.
+
+**Entrega esperada:** um arquivo `docs/pesquisa-preco-sp.md` com tabela por
+empresa (nome, praça, formato, preço publicado, o que inclui, fonte, grau de
+confiança) e uma recomendação de grade. Preço sem fonte não entra.
+
 ## C. Malha fina — roteiro do que testar junto comigo
 
 1. Site público: `/`, `/planos.html` (com e sem `PROGRAMA_FUNDADOR_ATIVO`), `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).

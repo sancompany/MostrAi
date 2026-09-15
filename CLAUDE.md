@@ -14,6 +14,8 @@ Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
 - `docs/funcional.md` — o que o sistema faz, tela por tela
 - `docs/teia.md` — as 387 funções e como cada uma se liga às outras
 - `docs/furos.md` — os 132 furos levantados; hipóteses com endereço, não fatos
+- `docs/pesquisa-voltplace.md` — o concorrente de Matão, lado a lado, e onde
+  nosso preço cai no mercado
 
 ## Classificação
 Porte: produto externo, com cliente pagante · Dado: financeiro, senha,

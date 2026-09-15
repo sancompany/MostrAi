@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 400" role="img" aria-label="Mostraí">
+  <!-- Simbolo da Mostrai: lampada em traco, com tres copias deslocadas (preto
+       por cima, azul e laranja da marca por baixo). Mesmo efeito do PNG
+       antigo, agora vetorial: nitido em qualquer tamanho e uma fracao do peso.
+       Cores da paleta do projeto: laranja ff7a1a, azul 1d4ed8, preto 14171f. -->
+  <defs>
+    <g id="lampada" fill="none" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M170 74c-14 0-25 6-25 14"/>
+      <path d="M170 74c14 0 25 6 25 14"/>
+      <path d="M143 96h54M143 114h54M143 132h54"/>
+      <path d="M148 146c-32 12-54 43-54 79a85 85 0 0 0 152 52 84 84 0 0 0 18-52c0-36-22-67-54-79"/>
+      <path d="M160 150v56M180 150v56"/>
+      <path d="M160 206h-14a14 14 0 1 0 14 14z"/>
+      <path d="M180 206h14a14 14 0 1 1-14 14z"/>
+      <path d="M170 322v34"/>
+      <path d="M258 128l26-26M82 128L56 102"/>
+      <path d="M288 216h34M18 216h34"/>
+      <path d="M262 296l24 24M78 296l-24 24"/>
+      <path d="M222 96l16-30M118 96l-16-30"/>
+      <path d="M228 330l18 28M112 330l-18 28"/>
+    </g>
+  </defs>
+  <use href="#lampada" x="-8" y="8" stroke="#ff7a1a"/>
+  <use href="#lampada" x="6" y="-6" stroke="#1d4ed8"/>
+  <use href="#lampada" stroke="#14171f"/>
+</svg>
