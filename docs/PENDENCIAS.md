@@ -693,3 +693,21 @@ depuração visual, desktop.)*
   lê "Quer anunciar?" e clica cai na página de virar ponto, não na de
   anunciar (que já tem os dois botões principais da dobra). Dono escolheu
   manter assim mesmo.
+
+**6. [x] Home — texto genérico dos "três papéis" removido, e passo 1 do
+"Como funciona" reescrito.** **FEITO em 15/09/2026.** *(Segundo print da
+rodada de depuração visual, desktop.)*
+
+- *Removido:* o parágrafo abaixo dos três cartões (Anunciante/Ponto/Vendedor)
+  — "São três papéis, mas uma conta só: o mesmo login serve pra anunciar,
+  pra ter uma tela no seu comércio e pra indicar — os modos aparecem no seu
+  painel, e você liga o que quiser, quando quiser." — pedido do dono, texto
+  considerado genérico e sem função ali.
+- *Passo 1 do "Como funciona"* ("Crie sua conta e escolha o plano"): "Leva
+  dois minutos e é tudo pelo site. O pagamento é no San Checkout (Pix ou
+  cartão) e a sua cobertura começa quando ele confirma." →
+  **"Escolha o plano que cabe no seu orçamento e cadastre sua empresa pelo
+  próprio site, em menos de dois minutos. O pagamento é no cartão, e sua
+  cobertura começa assim que ele é aprovado."** — a pedido do dono: sem citar
+  o San Checkout (fornecedor não aparece pro público) e só cartão como forma
+  de pagamento, com o texto focado em criar conta e escolher o plano.
