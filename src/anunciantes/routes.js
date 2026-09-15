@@ -27,7 +27,14 @@ const { enviarContaAprovada } = require('../financeiro/email');
 // text/html e o bucket público servia HTML executável no nosso domínio.
 const upload = multer({
   dest: os.tmpdir(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  // 95 MB e nao 200: assim que o dominio passar pelo proxy do Cloudflare (que
+  // e o que permite pôr o Access na frente do /admin), o plano Free corta
+  // qualquer corpo de requisicao acima de 100 MB — e o corte acontece ANTES de
+  // chegar aqui, devolvendo uma pagina de erro do Cloudflare que o nosso
+  // front-end nao sabe ler. Melhor um limite nosso, dito na tela, do que um
+  // limite de terceiro que aparece como falha misteriosa. 95 MB continua muito
+  // acima do que um video vertical de 30s ocupa (30 a 60 MB).
+  limits: { fileSize: 95 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = /^(image|video)\//.test(file.mimetype || '');
     cb(ok ? null : new Error('tipo de arquivo não aceito — envie imagem ou vídeo'), ok);
@@ -368,7 +375,7 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
-  // até 200 MB de lixo em /tmp por request recusada.
+  // até 95 MB de lixo em /tmp por request recusada.
   try {
     if (Number.isFinite(limite)) {
       const emUso = await criativosRepo.contarNaoReprovados(contaId);

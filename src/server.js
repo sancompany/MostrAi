@@ -236,7 +236,7 @@ app.use((err, req, res, next) => {
   // Arquivo recusado pelo filtro do multer é escolha do cliente, não falha
   // nossa: 400 com a mensagem do filtro, em vez de 500 genérico.
   if (err.code === 'LIMIT_FILE_SIZE')
-    return res.status(413).json({ erro: 'arquivo grande demais — o limite é 200 MB por arquivo' });
+    return res.status(413).json({ erro: 'arquivo grande demais — o limite é 95 MB por arquivo' });
   if (err.storageErrors || /tipo de arquivo/i.test(err.message || '')) {
     return res.status(400).json({ erro: err.message || 'arquivo não aceito' });
   }
