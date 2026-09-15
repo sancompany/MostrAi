@@ -89,5 +89,14 @@ conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
 - **`SAN_CHECKOUT_API_URL` é variável nova** e precisa ser combinada com quem
   administra o Checkout antes do deploy — é o endereço da API, diferente do da
   tela de pagamento.
-- **`npm run conciliar` precisa de cron diário no Northflank.** Sem ele, um
-  webhook perdido vira cliente pagante sem cobertura.
+- ~~`npm run conciliar` precisa de cron diário~~ — **existe e está ativo**
+  (`0 9 * * *`, uma execução com SUCCESS). O backup roda aos domingos
+  (`0 8 * * 0`). A Visão geral do admin mostra a última conciliação.
+- **Bucket `criativos` ainda é privado no Supabase** — é o que impede o vídeo
+  de tocar na TV. Precisa do dono: Storage → `criativos` → Public bucket.
+- **Falta o Cloudflare Access na frente do `/admin`** — o proxy já está ligado
+  (feito em 15/09), então agora é só criar a aplicação. Receita exata em
+  `docs/PENDENCIAS.md`, seção A.
+- **Migrations agora rodam no arranque do contêiner** (`Dockerfile`): o banco
+  de produção chegou a ficar nove migrations atrás do código. Se uma migration
+  falhar, o contêiner não sobe e o anterior continua servindo.

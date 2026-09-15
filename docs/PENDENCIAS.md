@@ -194,20 +194,61 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 
 ## A. Passo a passo pra sair do zero (faça na ordem)
 
-> **Estado conferido em 15/09/2026, da minha ponta** (conferido com `curl`
-> contra o domínio, não com o painel):
+> ## Estado da infraestrutura, conferido DENTRO dos painéis em 15/09/2026
 >
-> - **item 9 (Northflank) — no ar.** `GET /health` devolve `{"ok":true}` e
->   `GET /planos` devolve os 12 planos em JSON.
-> - **item 10 (DNS) — feito.** O domínio responde pelo Node; o
->   apontamento e o CNAME no Cloudflare foram feitos pelo dono. **Falta o
->   Access na frente de `/admin`** e fechar a origem.
-> - **itens 11, 12 e 13 — não dá pra conferir daqui.** O dono diz que a
->   conciliação e o backup já subiram; fica marcado como pendente até haver
->   evidência. **Como confirmar sozinho:** a Visão geral do admin agora mostra
->   quando a conciliação rodou pela última vez, quantas assinaturas ela olhou e
->   o que falhou — se a linha disser "atrasada" ou não aparecer, o cron não
->   está de pé.
+> O dono deu acesso ao Cloudflare, ao Northflank e ao Supabase. O que dava pra
+> fazer daqui foi feito; o que está bloqueado está nomeado, com o passo exato.
+>
+> **Feito por mim, com evidência:**
+>
+> - **Northflank — serviço no ar**, região `nf-southamerica-east`, uma
+>   instância, build `SUCCESS`, deploy `COMPLETED`, seguindo `main`
+>   automaticamente (o SHA no ar bate com o último commit).
+> - **Banco estava NOVE migrations atrás do código** (021 no banco, 030 no
+>   código que já servia clientes). As nove foram aplicadas na ordem e
+>   registradas em `schema_migrations`; hoje são 31 de 31, lista idêntica à do
+>   repositório. Causa: o Northflank não tem "release command" e não havia
+>   nada configurado — agora o contêiner roda `node src/db/migrate.js` antes
+>   de servir, com trava de aplicação no Postgres. Deploy conferido depois da
+>   mudança: `/health` 200 e o site inteiro de pé.
+> - **RLS ligada nas 27 tabelas.** O Supabase expõe uma API REST automática
+>   sobre o `public` e os papéis `anon`/`authenticated` já vêm com SELECT em
+>   tudo: sem RLS, qualquer um com a chave `anon` lia CPF, e-mail, telefone,
+>   `senha_hash`, `tokens_senha` e a tabela de sessão. Medido depois:
+>   `/rest/v1/anunciantes` com a chave anon devolve `[]`.
+> - **Cloudflare: o proxy foi LIGADO** em `mostrai.sancocore.com.br` (estava
+>   em "DNS only", sem WAF e sem caminho possível pro Access). Site conferido
+>   logo depois: `server: cloudflare` nas respostas, CSP chegando inteira,
+>   páginas e API em 200.
+> - **Teto de upload caiu pra 95 MB** por causa do proxy: o plano Free do
+>   Cloudflare corta corpo acima de 100 MB antes de chegar no nosso servidor.
+> - **Fim a fim em produção, de verdade:** criei uma conta de teste pelo site,
+>   entrei, li `/anunciantes/me`, `exibicoes` e `criativos` — tudo 200 — e
+>   apaguei a conta em seguida (base voltou a zero). Era exatamente esse
+>   caminho que estava quebrado antes das migrations.
+> - **Os dois crons existem e estão ativos**: conciliação `0 9 * * *` (06h de
+>   Brasília, uma execução com SUCCESS) e backup `0 8 * * 0` (domingos; ainda
+>   não rodou porque foi criado na segunda).
+> - **`SAN_CHECKOUT_API_URL` já está no serviço**, junto com as outras 23
+>   variáveis. A API do Checkout responde em `api.sancocore.com.br` (404 com
+>   JSON na raiz, que é resposta de aplicação viva).
+> - **San Checkout** (o outro projeto): serviço no ar, build `SUCCESS`, site
+>   em 200, e as 6 tabelas dele já estavam com RLS ligada.
+>
+> **Bloqueado pra mim — precisa de você, e é rápido:**
+>
+> 1. **Bucket `criativos` ainda é privado.** É o que impede o vídeo de tocar
+>    na TV: o player lê a URL pública do arquivo. Supabase → Storage →
+>    `criativos` → Settings → *Public bucket*. Minha permissão barra "tornar
+>    algo público" sozinho, e faz sentido que barre.
+> 2. **Access na frente do `/admin`.** Agora é possível (o proxy está
+>    ligado). Cloudflare → Zero Trust → Access → Applications → Add →
+>    Self-hosted, domínio `mostrai.sancocore.com.br`, path `/admin`, política
+>    igual à que já existe no Checkout: permitir `brunosanches.bhs@gmail.com`
+>    **ou** qualquer e-mail `@sancocore.com.br`. A criação por API foi barrada
+>    pra mim.
+> 3. **Fechar a origem** (só o Cloudflare alcançar o Northflank) — depende do
+>    item 2 estar de pé primeiro.
 
 1. [x] **`git init` + primeiro commit** — FEITO em 13/09/2026. O `.env` real
    entrou junto (o `.gitignore` não cobria `.env.*`, ao contrário do que esta
