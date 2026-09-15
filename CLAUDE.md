@@ -26,37 +26,18 @@ dispensada por proporcionalidade.
 
 ## Estado na esteira
 Estação atual: **5 — Construção**, aberta em 14/09/2026.
-Fechadas:
-- 1 Escopo — validada, reaberta e refechada em 14/09/2026 quando o contrato do
-  San Checkout foi lido pela primeira vez · evidência:
-  `docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Reabertura e
-  novo fecho da Estação 1"
-- 2 Fronteiras — auditoria confirmou a classificação (projeto, não estrutura) e
-  a hospedagem (Northflank + Supabase próprio, mesma região) · evidência:
-  `docs/specs/2026-09-12-mostrai.md`, seção "Estação 2 — Fronteiras"
-- 3 Fundação — repositório e árvore conformes à Lei 1; `.env` fora do
-  versionamento com guarda no CI; **CI verde num push real** (`ci` run #9,
-  commit `3c98465`, `success`, em `main`); `RUNBOOK.md` iniciado · evidência:
-  `RUNBOOK.md` e a execução do CI
-- 4 Contratos — modelo de dados e 20 migrations aplicando num Postgres limpo;
-  **contrato de API conferido rota a rota** (as de `/admin` viraram tabela
-  explícita, conferíveis mecanicamente contra o código); integração de pagamento
-  fechada contra o `API.md` do Checkout; inventário de dados revisado;
-  `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
-  evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
-**A versão inicial está no ar desde 15/09/2026** — `mostrai.sancocore.com.br`
-responde pelo Node (`GET /health` → `{"ok":true}`, `GET /planos` → os 12 planos
-em JSON, as 15 páginas em 200). Era a condição principal de fecho da estação.
-Falta só o item 8 da spec (desconto de comodato por linha da grade), que
-depende de uma decisão do dono registrada em `docs/PENDENCIAS.md` B.1.2: o
-desconto incide sobre o preço travado, ou o preço travado ganha?
-Fechados em 14/09: direitos do titular (RN-24 a RN-26), plano imutável para
-quem já assinou (item 9, RN-27) e a tabela de eventos da métrica com as três
-consultas salvas (aba Métrica no admin).
-Fechados em 15/09: os 132 furos de `docs/furos.md` percorridos (só sobraram os
-dois que dependem do dono — prova social e CNPJ), RN-28 a RN-31, o formatador
-aplicado com o `check` passando a barrar, e a pesquisa de preço de mercado
-(`docs/pesquisa-preco-sp.md`).
+Fechadas — evidência completa em `docs/specs/2026-09-12-mostrai.md` (1 e 2) e
+`docs/funcional.md`/`docs/api.md` (3 e 4):
+- 1 Escopo, 2 Fronteiras, 3 Fundação (CI verde, `RUNBOOK.md`), 4 Contratos
+  (contrato de API rota a rota, integração de pagamento, `docs/funcional.md`).
+No ar desde 15/09/2026 (`mostrai.sancocore.com.br`, `/health` → `ok:true`,
+Cloudflare Access no `/admin`, origem fechada) — era a condição principal de
+fecho. Todo o escopo da v1 construído (item 8/9 da spec, fundador redesenhado,
+drop do legado, comissão travada — detalhe em `docs/PENDENCIAS.md`, seções B
+e B.1).
+**Falta só a rodada de depuração da seção F de `docs/PENDENCIAS.md`**: o dono
+revisa o site no ar e reporta o que precisa de ajuste — a estação fecha só
+com o nível que ele aceita, julgamento dele, não do código.
 Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 
 ## Mapa de caminhos
@@ -76,27 +57,7 @@ Violação segue o ciclo da skill `leis`. Não existe estado final fora de
 conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
 
 ## Pendências que bloqueiam a esteira
-- ~~O domínio não serve a aplicação~~ — **resolvida em 15/09/2026**
-  (`docs/PENDENCIAS.md`, A.0.0). `mostrai.sancocore.com.br` responde pelo Node:
-  `/health` devolve `{"ok":true}` e `/planos` devolve JSON. Endereço sem
-  extensão (`/planos`, herdado do host estático antigo) agora é redirecionado
-  301 para a página quando quem pede é navegação de documento.
-- **Rotação das credenciais vazadas em 13/09/2026** (`docs/PENDENCIAS.md`, A.0.1)
-  — precisa do PC; até lá senha do Postgres, `SESSION_SECRET` e `ADMIN_PASSWORD`
-  antigos seguem válidos. Nenhum push da pasta `D:\SanCo\MostrAi` antes do passo 1.
-- **Item 8 da spec não construído** — desconto de comodato por linha da grade.
-  O item 9 (plano imutável) foi construído em 14/09.
-- **`SAN_CHECKOUT_API_URL` é variável nova** e precisa ser combinada com quem
-  administra o Checkout antes do deploy — é o endereço da API, diferente do da
-  tela de pagamento.
-- ~~`npm run conciliar` precisa de cron diário~~ — **existe e está ativo**
-  (`0 9 * * *`, uma execução com SUCCESS). O backup roda aos domingos
-  (`0 8 * * 0`). A Visão geral do admin mostra a última conciliação.
-- **Bucket `criativos` ainda é privado no Supabase** — é o que impede o vídeo
-  de tocar na TV. Precisa do dono: Storage → `criativos` → Public bucket.
-- **Falta o Cloudflare Access na frente do `/admin`** — o proxy já está ligado
-  (feito em 15/09), então agora é só criar a aplicação. Receita exata em
-  `docs/PENDENCIAS.md`, seção A.
-- **Migrations agora rodam no arranque do contêiner** (`Dockerfile`): o banco
-  de produção chegou a ficar nove migrations atrás do código. Se uma migration
-  falhar, o contêiner não sobe e o anterior continua servindo.
+- **Rodada de depuração da Estação 5** (`docs/PENDENCIAS.md`, seção F) — o
+  dono revisa o site em produção e reporta o que precisa de ajuste; cada
+  item entra na seção F e sai corrigido. Fecha só com a lista `[x]` e o dono
+  satisfeito. Nenhuma outra pendência bloqueia hoje.

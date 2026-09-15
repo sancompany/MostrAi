@@ -1,77 +1,42 @@
-# Mostraí — pendências (atualizado 14/09/2026, após o fecho da Estação 2)
+# Mostraí — pendências (atualizado 15/09/2026, Estação 5 — Construção)
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
-`github.com/sancompany/MostrAi` (branch `main` + `claude/mostrai-estacao-1-pipeline-y2vgr5`),
-repositório **público** por decisão do dono. Do roteiro abaixo só estão feitos
-o git (A.1) e os workflows (A.2); todo o resto continua em aberto.
+`github.com/sancompany/MostrAi` (branch `main`), repositório **público** por
+decisão do dono.
 
-**Estações 1 (Escopo) e 2 (Fronteiras) fechadas em 14/09/2026.** A spec foi
-validada pelo dono (escopo de sete para nove itens), e a auditoria de
-fronteiras confirmou a classificação (projeto, não estrutura) e a hospedagem
-já decidida na Fase 2 — nada mudou. Registro em
-`docs/specs/2026-09-12-mostrai.md`, seções "Validação do dono" e "Estação 2 —
-Fronteiras". A esteira está na Estação 3 (Fundação, Sonnet médio) — ainda não
-aberta.
+**Estações 1 a 4 fechadas.** Registro em `docs/specs/2026-09-12-mostrai.md` e
+no `CLAUDE.md` ("Estado na esteira"). A esteira está na **Estação 5 —
+Construção**, aberta em 14/09/2026, com a versão inicial no ar desde
+15/09/2026 (`mostrai.sancocore.com.br`).
 
-**Próximo passo real: a seção A.0.1**, que precisa do PC — alinhar a pasta
-local e rotacionar as chaves. Só depois disso vale seguir para A.3 em diante
-(Northflank incluso) e para o resto da seção B.
+**Único bloqueio real agora: a seção F.** A Estação 5 não fecha até o dono
+revisar o site em produção e apontar o que precisa de ajuste — é o passo
+seguinte, e é o único que só ele faz.
 
 ## SÓ O DONO FAZ — fila da corrida de 14/09/2026
 
 Ordenada pelo que desbloqueia mais. Cada item: o que fazer · onde · por quê ·
-o que trava · quanto leva.
+o que trava · quanto leva. **Itens 1 a 7 estão todos FEITOS** — ficam aqui
+como evidência de fechado, não como pendência. O que ainda bloqueia a
+esteira é só o item 8.
 
-1. **Tornar o bucket `criativos` público.**
-   · Supabase → Storage → `criativos` → Settings → *Public bucket*
-   · O código serve criativo, avatar e foto de ponto por `getPublicUrl`
-     (`src/anunciantes/routes.js:212`, `src/pontos/routes.js:117`,
-     `src/lib/ffmpeg.js:45`). Com o bucket privado essas URLs respondem erro.
-   · **Trava:** player sem vídeo e avatar quebrado — a Estação 5 não fecha.
-   · ~2 min. *(Tentei pela API; o classificador bloqueia criar superfície
-     pública sem decisão humana.)*
-
-2. **Health check no serviço.**
-   · Northflank → serviço `mostrai` → Health checks → HTTP, path `/health`,
-     porta 3000
-   · Sem ele o Northflank não reinicia container travado — ele fica no ar
-     respondendo erro.
-   · **Trava:** item 2 da prontidão operacional (Estação 6).
-   · ~3 min.
-
-3. **Confirmar o build e o primeiro deploy verde.**
-   · Northflank → serviço `mostrai` → Builds / Deployments, e depois
-     `GET /health` respondendo `{"ok":true}`
-   · É a evidência que fecha a Estação 5 — "a versão inicial no ar".
-   · **Trava:** a Estação 5 inteira.
-   · ~5 min. Falhando, me mande o log.
-
-4. **Autorizar o Cloudflare: DNS e Access.**
-   · Cloudflare → zona `sancocore.com.br`
-   · DNS `mostrai` → o endereço do serviço no Northflank, proxy ligado; e
-     Zero Trust → Access → Application no path `/admin*` com o seu e-mail.
-   · **Trava:** a exceção nº 2 do `CONSTRAINTS.md` (o `/admin` protegido só por
-     senha) e o fecho da Estação 6.
-   · ~10 min. **Eu executo assim que você autorizar** — tenho o acesso; mudar
-     DNS e permissão está na lista curta da skill `leis`, que exige sua palavra.
-
-5. **Rotacionar as credenciais (A.0.1), na volta ao PC.**
-   · Roteiro completo na seção A.0.1 abaixo
-   · Metade já morreu com a exclusão do projeto VitrinaADS; sobram
-     `SESSION_SECRET` e `ADMIN_PASSWORD`, que já foram gerados novos e estão no
-     Northflank. Falta alinhar a pasta `D:\SanCo\MostrAi` **antes de qualquer
-     push de lá**.
-   · **Trava:** nada da esteira hoje, mas o histórico antigo na sua pasta
-     republica o `.env` se alguém der push.
-   · ~20 min.
-
-6. **Conferir a primeira execução do job `Backup`.**
-   · Northflank → Jobs → `Backup` → Runs, domingo que vem
-   · O container roda como `node` (uid 1000); se o volume vier root, o job
-     falha com "permission denied".
-   · **Trava:** o ensaio de restauração da Estação 6 (`RUNBOOK.md`, seção 5).
-   · ~2 min. Falhando, me mande o log que eu ajusto o Dockerfile.
-
+1. ~~Tornar o bucket `criativos` público.~~ — **FEITO** (dono confirmou em
+   15/09/2026). Player já toca vídeo servido por `getPublicUrl`.
+2. ~~Health check no serviço.~~ — **FEITO em 15/09/2026**: Northflank →
+   `mostrai` → Health checks, tipo Readiness Probe, path `/health`, porta
+   3000.
+3. ~~Confirmar o build e o primeiro deploy verde.~~ — **FEITO**:
+   `mostrai.sancocore.com.br/health` responde `{"ok":true}` desde 15/09/2026
+   — é a evidência que fechou "a versão inicial no ar" da Estação 5.
+4. ~~Autorizar o Cloudflare: DNS e Access.~~ — **FEITO em 15/09/2026**: Access
+   criado no path `/admin*` (e-mail do dono + qualquer `@sancocore.com.br`),
+   e a origem fechada (`disableNfDomain` — o domínio `.code.run` de fallback
+   do Northflank responde 404).
+5. ~~Rotacionar as credenciais (A.0.1).~~ — **FEITO** (dono confirmou em
+   15/09/2026: todas as credenciais vazadas foram rotacionadas).
+6. ~~Conferir a primeira execução do job `Backup`.~~ — **FEITO**: cron ativo
+   (`0 8 * * 0`, domingos) e o de conciliação (`0 9 * * *`) com execução
+   SUCCESS. A Visão geral do admin mostra a última conciliação.
 7. ~~Decidir as quatro perguntas de produto que sobraram.~~ — **RESPONDIDO em
    15/09/2026.** Vaga seguindo por 7 dias → **15 minutos** (construído).
    Comissão sobre renovação → **mantém**. Precedência entre `preco_travado` e
@@ -80,6 +45,18 @@ o que trava · quanto leva.
    quem assinou — a trava antiga ficou redundante desde o item 9. Plano
    desativado no site → **some**, como já era. Detalhe em `docs/funcional.md`
    (RN-14, RN-32, RN-33) e na seção B abaixo.
+
+8. **Revisar o site em produção e listar o que precisa de ajuste.**
+   · `mostrai.sancocore.com.br` — o site inteiro, como cliente, como
+     anunciante, como dono de ponto/vendedor, e o `/admin`.
+   · A Estação 5 (Construção) só fecha no que o `docs/funcional.md` descreve
+     E no nível que o dono aceita — e isso só o dono julga vendo o produto
+     no ar, não lendo código.
+   · **Trava:** a Estação 5 inteira. Nada da Estação 6 (Prontidão) abre com a
+     5 aberta.
+   · Sem prazo. A seção **F** abaixo é onde cada item que vier entra, um por
+     um, e sai daqui corrigido e reverificado — é a rodada de depuração
+     (skill `depurar`) que fecha a estação.
 
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
@@ -535,7 +512,7 @@ confiança) e uma recomendação de grade. Preço sem fonte não entra.
 
 ## C. Malha fina — roteiro do que testar junto comigo
 
-1. Site público: `/`, `/planos.html` (com e sem `PROGRAMA_FUNDADOR_ATIVO`), `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).
+1. Site público: `/`, `/planos.html`, `/seja-um-ponto.html` e `/seja-um-vendedor.html` (viram candidatura, não conta).
 2. Admin → Candidaturas → "Gerar convite" (site) ou "Liberar na conta" (pedido do painel). Copiar link → abrir em outro navegador → `convite.html` → conta nasce com os papéis.
 3. Painel único: abas Anúncios / Meu ponto / Vendas sempre visíveis; a bloqueada mostra o card de ativação. Anunciante ativa sozinho (endereço); ponto e vendedor viram pedido que você libera.
 4. Admin → Telas: gerar chave, PIN, custo/prazo; player na TV; painel da tela por PIN (5 toques no canto superior direito ou tecla P).
@@ -553,3 +530,32 @@ Impactos/CPM, comprovante PDF, alertas e dunning, arte como serviço, campanha p
 - Front: `seja-um-ponto`/`seja-um-vendedor` viraram candidatura; `convite.html`; `anunciante/ponto.html` por tela; `anunciante/vendedor.html`; `modos.js` (cards de ativação); `player.html` por tela com cache de vídeo e painel por PIN; `planos.html` com fundador e módulos; admin com Candidaturas, Convites, Telas, Vendedores, Custos fixos e campos novos de plano.
 - Docs: `README.md`, `CLAUDE.md`, `CONSTRAINTS.md`, `docs/api.md`, `docs/specs/2026-09-12-mostrai.md`, `docs/precificacao.md`, `docs/proximas-versoes.md`, `docs/inventario-de-dados.md`, `docs/erros/*`, `tests/e2e/README.md`.
 - Verificação: 14 unitários + 5 suítes e2e (136 checagens, API e navegador) verdes; revisão independente achou 13 defeitos, todos corrigidos.
+
+## F. Rodada de depuração antes de fechar a Estação 5 (aberta em 15/09/2026)
+
+**A Estação 5 não fecha só porque o código está construído e o site está no
+ar.** Ela fecha quando o dono revisa o produto em produção
+(`mostrai.sancocore.com.br`) e confirma que está no nível que ele quer — e
+isso é julgamento de quem usa, não algo que se confere lendo código ou
+rodando teste automatizado. Enquanto essa revisão não terminar, a estação
+fica aberta (skill `leis`, "bloqueio trava a esteira inteira") e nada da
+Estação 6 abre.
+
+**Como funciona esta rodada:**
+1. O dono navega o site — como visitante, como anunciante, como dono de
+   ponto/vendedor, e no `/admin` — e manda a lista do que precisa de ajuste,
+   do jeito que vier (prints, texto solto, um item por vez ou tudo junto).
+2. Cada item entra numa linha abaixo, sem inventar nem reformular o que o
+   dono relatou.
+3. Bug, comportamento errado e página quebrada são corrigidos na hora
+   (skill `depurar` — causa raiz, não o sintoma) e a linha vira `[x]` com a
+   evidência de reverificado (commit, ou o antes/depois no próprio site).
+4. Pedido que é IDEIA nova (não conserto do que já existe) não entra aqui —
+   vai para `docs/proximas-versoes.md`, e a linha aqui registra só o
+   encaminhamento.
+5. A estação fecha quando a lista abaixo estiver toda `[x]` **e** o dono
+   disser que está satisfeito com o nível — não antes.
+
+### Itens reportados
+
+*Nenhum ainda — lista pronta pra receber o que vier da revisão do dono.*
