@@ -44,11 +44,19 @@ Fechadas:
   fechada contra o `API.md` do Checkout; inventário de dados revisado;
   `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·
   evidência: `docs/funcional.md`, `docs/api.md`, `docs/inventario-de-dados.md`
-Falta para fechar a atual: item 8 da spec (desconto de comodato por linha da
-grade) e **a versão inicial no ar** — que é o que fecha a estação.
+**A versão inicial está no ar desde 15/09/2026** — `mostrai.sancocore.com.br`
+responde pelo Node (`GET /health` → `{"ok":true}`, `GET /planos` → os 12 planos
+em JSON, as 15 páginas em 200). Era a condição principal de fecho da estação.
+Falta só o item 8 da spec (desconto de comodato por linha da grade), que
+depende de uma decisão do dono registrada em `docs/PENDENCIAS.md` B.1.2: o
+desconto incide sobre o preço travado, ou o preço travado ganha?
 Fechados em 14/09: direitos do titular (RN-24 a RN-26), plano imutável para
 quem já assinou (item 9, RN-27) e a tabela de eventos da métrica com as três
 consultas salvas (aba Métrica no admin).
+Fechados em 15/09: os 132 furos de `docs/furos.md` percorridos (só sobraram os
+dois que dependem do dono — prova social e CNPJ), RN-28 a RN-31, o formatador
+aplicado com o `check` passando a barrar, e a pesquisa de preço de mercado
+(`docs/pesquisa-preco-sp.md`).
 Próxima estação: 6 — Prontidão, pede Opus com esforço alto.
 
 ## Mapa de caminhos
