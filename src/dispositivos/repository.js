@@ -38,17 +38,24 @@ async function buscarComPonto(id) {
   return rows[0] || null;
 }
 
-async function listarPorPonto(pontoId) {
-  const { rows } = await pool.query(
-    `SELECT ${CAMPOS_PUBLICOS} FROM dispositivos WHERE ponto_id = $1 ORDER BY id`, [pontoId]
-  );
-  return rows;
-}
-
 // Mesmos campos públicos, prefixados com o alias da tabela — sem isso
 // `status`/`created_at` ficam ambíguos no JOIN com pontos.
 const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status, d.ultima_vez_online,
   d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin`;
+
+// Mesmos campos de listarTodos (com nome, cidade e status do ponto): a tela de
+// telas do admin mostra essas colunas, e sem elas filtrar por ponto devolvia
+// linhas com a coluna "Ponto" em branco. Duas listagens da mesma coisa tem que
+// devolver a mesma forma.
+async function listarPorPonto(pontoId) {
+  const { rows } = await pool.query(
+    `SELECT ${CAMPOS_PUBLICOS_D},
+            p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status
+     FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+     WHERE d.ponto_id = $1 ORDER BY d.id`, [pontoId]
+  );
+  return rows;
+}
 
 async function listarTodos() {
   const { rows } = await pool.query(

@@ -153,7 +153,13 @@
       const inicial = (conta.nome_empresa || '?').trim().charAt(0).toUpperCase();
       const casa = papeis.includes('anunciante') ? '/anunciante/painel.html'
         : papeis.includes('ponto') ? '/anunciante/ponto.html' : '/anunciante/vendedor.html';
-      const aba = (href, papel, texto) => `<a href="${href}" class="modo-aba ${papeis.includes(papel) ? '' : 'bloqueado'}">${texto}</a>`;
+      // `title` junto do `bloqueado`: no menu das páginas da conta o cadeado tem
+      // explicação ("clique pra ativar") e aqui não tinha nenhuma — a mesma aba
+      // cinza dizia coisas diferentes conforme a página em que a pessoa estava.
+      const aba = (href, papel, texto) => {
+        const liberado = papeis.includes(papel);
+        return `<a href="${href}" id="nav${papel}" class="modo-aba ${liberado ? '' : 'bloqueado'}"${liberado ? '' : ' title="Modo ainda não ativado — clique pra ativar"'}>${texto}</a>`;
+      };
       document.querySelector('header.site nav.main').innerHTML = `
         ${aba('/anunciante/painel.html', 'anunciante', 'Anúncios')}
         ${aba('/anunciante/ponto.html', 'ponto', 'Meu ponto')}
@@ -195,5 +201,8 @@ window.ROTULOS = {
   },
   criativo: { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' },
   criativoClasse: { pendente: 'badge-pendente', aprovado: 'badge-ok', reprovado: 'badge-err' },
-  vendedor: { pendente_aprovacao: 'Pendente de aprovação', aprovado: 'Aprovado', inativo: 'Inativo' },
+  // So dois estados: o CHECK da migration 019 e ('aprovado','inativo'). O
+  // 'pendente_aprovacao' que estava aqui vinha do modelo antigo de afiliado e
+  // nao existe no banco — rotulo pra um estado impossivel.
+  vendedor: { aprovado: 'Aprovado', inativo: 'Inativo' },
 };

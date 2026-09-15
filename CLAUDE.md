@@ -37,7 +37,7 @@ Fechadas:
   commit `3c98465`, `success`, em `main`); `RUNBOOK.md` iniciado · evidência:
   `RUNBOOK.md` e a execução do CI
 - 4 Contratos — modelo de dados e 20 migrations aplicando num Postgres limpo;
-  **contrato de API conferido rota a rota** (as 55 de `/admin` viraram tabela
+  **contrato de API conferido rota a rota** (as de `/admin` viraram tabela
   explícita, conferíveis mecanicamente contra o código); integração de pagamento
   fechada contra o `API.md` do Checkout; inventário de dados revisado;
   `docs/funcional.md` escrito, respondendo às quatro perguntas de prontidão ·

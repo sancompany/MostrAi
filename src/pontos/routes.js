@@ -171,8 +171,6 @@ router.patch('/admin/planos-ponto/:id', async (req, res) => {
   res.json(plano);
 });
 
-module.exports = router;
-
 // Admin lança e quita o pagamento do ponto. `competencia` chega 'AAAA-MM'.
 // O UNIQUE (ponto_id, competencia) da migration 022 é o que impede pagar o
 // mesmo mês duas vezes por duplo clique — aqui o conflito vira atualização.
@@ -204,3 +202,9 @@ router.patch('/admin/pagamentos-ponto/:id', async (req, res) => {
   }
   res.json(linha);
 });
+
+// Export no fim do arquivo, depois da ultima rota: estava no meio, e as tres
+// rotas de pagamento ao ponto ficavam abaixo dele. Funcionava (o router e o
+// mesmo objeto), mas quem lesse o arquivo de cima pra baixo concluiria que
+// elas nao existem — e foi exatamente o que aconteceu numa revisao.
+module.exports = router;

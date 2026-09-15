@@ -405,7 +405,10 @@ dialog#dlgPerfil {
   background: var(--card); color: var(--text);
 }
 dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
-.dlg-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; position: relative; padding-right: 28px; }
+/* 44px, nao 28: o reservado no cabecalho foi dimensionado pro botao de
+   fechar antigo e nao acompanhou quando ele virou alvo de toque de 40px —
+   titulo longo passava por baixo do X. */
+.dlg-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; position: relative; padding-right: 44px; }
 .dlg-head h3 { margin: 0 0 4px; font-size: 1.1rem; }
 .dlg-close {
   position: absolute; right: 0; top: -4px; background: none; border: none; font-size: 1.5rem;
@@ -451,7 +454,7 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .kpi-card .delta.down { color: var(--err); }
 .kpi-card .kpi-caption { font-size: .75rem; }
 .kpi-card .link-secundario { display: inline-block; margin-top: 8px; font-size: .82rem; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .panel-head h3 { margin: 0; }
 /* No celular a linha "titulo | descricao" espremia o titulo em duas linhas e
    deixava a descricao numa coluna de 150px ao lado. Empilhado, cada um usa a
@@ -729,8 +732,12 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .u-fs-100 { font-size: 1rem; }
 .u-fs-130 { font-size: 1.3rem; }
 .u-fs-200 { font-size: 2rem; }
-.u-fs-220 { font-size: 2.2rem; }
-.u-fs-240 { font-size: 2.4rem; }
+/* clamp, nao tamanho fixo: usadas em <h1>, estas duas utilidades matavam o
+   `font-size: clamp(2rem, 4vw, 3.1rem)` do h1 e o titulo de /planos e /pontos
+   ficava do mesmo tamanho num celular de 360px e num monitor de 27". O teto
+   continua sendo o que estava escrito aqui. */
+.u-fs-220 { font-size: clamp(1.6rem, 5vw, 2.2rem); }
+.u-fs-240 { font-size: clamp(1.7rem, 5.2vw, 2.4rem); }
 
 /* Margem: .u-m-0 zera, os demais repõem um lado. A ordem aqui importa —
    quem vem depois ganha, e é assim que `u-m-0 u-mt-16` funciona. */

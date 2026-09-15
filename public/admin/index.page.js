@@ -362,6 +362,13 @@ function linhaConciliacao(c) {
   </div>`;
 }
 
+// "Tudo em dia" no primeiro dia de uso diz exatamente o contrario do que o
+// dono precisa ouvir: nao ha fila porque nao ha nada — nem ponto, nem conta.
+function redeVazia(rede) {
+  const contas = (rede.anunciantesPorStatus || []).reduce((soma, r) => soma + Number(r.qtd || 0), 0);
+  return !rede.pontosAtivos && !rede.telasAtivas && contas === 0;
+}
+
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
@@ -376,7 +383,12 @@ async function renderResumo(el) {
           <button type="button" class="alerta ${a.urgente ? 'urgente' : ''}" data-ir="${a.aba}">
             <b>${filas[a.fila]}</b><span>${a.texto}</span>
           </button>`).join('')}</div>`
-      : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'}
+      : (redeVazia(rede)
+        ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você — e nenhum ponto no ar ainda.
+             Os primeiros passos: <a href="#pontos">cadastrar o primeiro ponto</a>, gerar a chave da tela em
+             <a href="#telas">Telas</a>, e pôr o anúncio da própria Mostraí no ar por
+             <a href="#meusanuncios">Meus anúncios</a> — tela vazia é tela sem prova social.</div>`
+        : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>')}
 
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
@@ -706,12 +718,20 @@ let FILTRO_TELAS_PONTO = null;
 const linkDoPlayer = (telaId, chave) => `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
 
 async function renderTelas(el) {
-  const telas = await pegar('/admin/dispositivos');
-  const limite = Date.now() - (RESUMO.horasOfflineAlerta || 2) * 3600 * 1000;
-  const estaOffline = (t) => t.status === 'ativo' && t.ponto_status === 'ativo' && (!t.ultima_vez_online || new Date(t.ultima_vez_online).getTime() < limite);
   const filtroPonto = FILTRO_TELAS_PONTO;
   FILTRO_TELAS_PONTO = null;
-  const lista = filtroPonto ? telas.filter((t) => t.ponto_id === filtroPonto) : telas;
+  // Filtrando por ponto, pede só as telas daquele ponto (a rota existia desde
+  // sempre e ninguem chamava; o admin baixava a rede inteira pra descartar
+  // quase tudo no navegador). E a lista de telas sem sinal vem do servidor, em
+  // vez de refazer a regra das 2 horas aqui: eram duas implementacoes da mesma
+  // regra, livres pra divergir — e a do alerta do topo ja era a do servidor.
+  const [telas, semSinal] = await Promise.all([
+    pegar(filtroPonto ? `/admin/pontos/${filtroPonto}/dispositivos` : '/admin/dispositivos'),
+    pegar('/admin/pontos-offline').catch(() => []),
+  ]);
+  const idsOffline = new Set((semSinal || []).map((d) => d.id));
+  const estaOffline = (t) => idsOffline.has(t.id);
+  const lista = telas;
   const amort = (t) => Number(t.custo_equipamento) > 0 ? Number(t.custo_equipamento) / Math.max(1, Number(t.meses_amortizacao) || 36) : 0;
 
   const corpo = `<table><thead><tr>
