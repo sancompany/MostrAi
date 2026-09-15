@@ -1,5 +1,6 @@
 require('dotenv').config();
 require('express-async-errors'); // faz rota async que rejeitar cair no error handler abaixo em vez de derrubar o processo
+const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
@@ -116,6 +117,34 @@ const MUDARAM_DE_ENDERECO = {
 };
 Object.entries(MUDARAM_DE_ENDERECO).forEach(([de, para]) => {
   app.get(de, (_req, res) => res.redirect(301, para));
+});
+
+// Endereço sem extensão (/planos) é o mesmo que a página (/planos.html).
+// O site morou um tempo num servidor de arquivo estático que servia assim e
+// redirecionava a URL com extensão pra sem — então buscador, histórico e link
+// compartilhado daquele período apontam pro endereço curto. Agora que quem
+// responde é o Express, /planos e /pontos batem antes na rota da API e
+// devolvem JSON cru na cara de quem clicou. Só a navegação de documento é
+// redirecionada: fetch() manda `Sec-Fetch-Dest: empty` e um Accept que não
+// pede text/html, e continua caindo na API como sempre.
+const PAGINAS_SEM_EXTENSAO = new Set();
+(function mapearPaginas(dir, prefixo) {
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (item.isDirectory()) mapearPaginas(path.join(dir, item.name), `${prefixo}/${item.name}`);
+    else if (item.name.endsWith('.html')) PAGINAS_SEM_EXTENSAO.add(`${prefixo}/${item.name.slice(0, -5)}`);
+  }
+})(path.join(__dirname, '..', 'public'), '');
+
+app.use((req, res, proximo) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return proximo();
+  if (!PAGINAS_SEM_EXTENSAO.has(req.path)) return proximo();
+  const destino = req.get('sec-fetch-dest');
+  const navegacao = destino
+    ? destino === 'document'
+    : (req.get('accept') || '').includes('text/html');
+  if (!navegacao) return proximo();
+  const busca = req.originalUrl.slice(req.path.length);
+  return res.redirect(301, `${req.path}.html${busca}`);
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));

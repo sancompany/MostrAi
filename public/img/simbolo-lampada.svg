@@ -1,26 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 400" role="img" aria-label="Mostraí">
-  <!-- Simbolo da Mostrai: lampada em traco, com tres copias deslocadas (preto
-       por cima, azul e laranja da marca por baixo). Mesmo efeito do PNG
-       antigo, agora vetorial: nitido em qualquer tamanho e uma fracao do peso.
-       Cores da paleta do projeto: laranja ff7a1a, azul 1d4ed8, preto 14171f. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1920" width="512" height="512" role="img" aria-label="Mostraí">
+  <title>Mostraí</title>
+  <!--
+    Traco unico, desenhado uma vez e usado tres vezes: preto no lugar, azul
+    deslocado pra cima e laranja um tico maior e mais pra baixo. E o desenho
+    que o dono mandou; a caixa e quadrada e o viewBox tambem, entao o simbolo
+    nunca entorta, seja qual for o tamanho que a pagina der pra ele.
+  -->
   <defs>
-    <g id="lampada" fill="none" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M170 74c-14 0-25 6-25 14"/>
-      <path d="M170 74c14 0 25 6 25 14"/>
-      <path d="M143 96h54M143 114h54M143 132h54"/>
-      <path d="M148 146c-32 12-54 43-54 79a85 85 0 0 0 152 52 84 84 0 0 0 18-52c0-36-22-67-54-79"/>
-      <path d="M160 150v56M180 150v56"/>
-      <path d="M160 206h-14a14 14 0 1 0 14 14z"/>
-      <path d="M180 206h14a14 14 0 1 1-14 14z"/>
-      <path d="M170 322v34"/>
-      <path d="M258 128l26-26M82 128L56 102"/>
-      <path d="M288 216h34M18 216h34"/>
-      <path d="M262 296l24 24M78 296l-24 24"/>
-      <path d="M222 96l16-30M118 96l-16-30"/>
-      <path d="M228 330l18 28M112 330l-18 28"/>
+    <g id="simbolo-lampada" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="40">
+      <!-- bulbo -->
+      <path d="M782 405C770 560 560 700 560 1040c0 220 180 420 400 420s400-200 400-420c0-340-210-480-222-635"/>
+      <!-- contato de cima -->
+      <path d="M848 186v-36a112 112 0 0 1 224 0v46"/>
+      <!-- rosca: tres faixas, o azul de tras aparece nas frestas -->
+      <g stroke-width="50">
+        <path d="M790 196h340"/>
+        <path d="M790 284h340"/>
+        <path d="M790 372h340"/>
+      </g>
+      <!-- filamento: metade esquerda e a mesma espelhada em x=960 -->
+      <path d="M935 415v365c0 45-35 78-80 78s-75-32-75-74v-39c0-23 18-39 40-39h140"/>
+      <path d="M985 415v365c0 45 35 78 80 78s75-32 75-74v-39c0-23-18-39-40-39H960"/>
+      <!-- raios: nove, de 30 em 30 graus, sem os tres de cima onde fica a rosca -->
+      <path d="M1530 960h305"/>
+      <path d="M1453.6 675l264-152.5"/>
+      <path d="M466.4 675l-264-152.5"/>
+      <path d="M390 960H85"/>
+      <path d="M466.4 1245l-264 152.5"/>
+      <path d="M675 1453.6l-152.5 264"/>
+      <path d="M960 1530v305"/>
+      <path d="M1245 1453.6l152.5 264"/>
+      <path d="M1453.6 1245l264 152.5"/>
     </g>
   </defs>
-  <use href="#lampada" x="-8" y="8" stroke="#ff7a1a"/>
-  <use href="#lampada" x="6" y="-6" stroke="#1d4ed8"/>
-  <use href="#lampada" stroke="#14171f"/>
+  <use href="#simbolo-lampada" transform="translate(-33.6 -15.6) scale(1.035)" stroke="#ff7a1a"/>
+  <use href="#simbolo-lampada" transform="translate(0 -26)" stroke="#1d4ed8"/>
+  <use href="#simbolo-lampada" stroke="#14171f"/>
 </svg>

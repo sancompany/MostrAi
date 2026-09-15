@@ -101,9 +101,25 @@ organização usa vários recursos que só são gratuitos assim), e a rotação 
 credenciais fica para quando ele estiver no PC. Enquanto ela não for feita, os
 valores antigos continuam válidos em qualquer cópia feita antes da reescrita.
 
-### A.0.0 — O DOMÍNIO NÃO ESTÁ SERVINDO A APLICAÇÃO (15/09/2026)
+### A.0.0 — RESOLVIDA em 15/09/2026 — o domínio agora serve a aplicação
 
-**Isto bloqueia tudo o mais. Descoberto em 15/09 olhando o site no ar.**
+**Fechada.** O dono apontou `mostrai.sancocore.com.br` para o serviço do Node.
+Conferido com `curl` na mesma hora: `GET /health` devolve `{"ok":true}`,
+`GET /planos` devolve os 12 planos em JSON e `GET /pontos/fluxo` responde.
+A vitrine voltou a montar sozinha.
+
+Ficou um efeito colateral da troca, já corrigido no código: o host estático
+antigo servia `/planos` como se fosse `/planos.html`, então buscador, histórico
+e link compartilhado daquele período apontam para o endereço sem extensão — e
+no Express `/planos` e `/pontos` são rotas de API, que devolviam JSON cru na
+cara de quem clicava. O servidor agora redireciona 301 para a página quando
+quem pede é uma navegação de documento, e continua entregando JSON para o
+`fetch` do site.
+
+O registro abaixo fica como está, para a próxima vez que algo parecer "bug de
+código" e for endereço.
+
+<details><summary>O que era (15/09, antes do apontamento)</summary>
 
 `mostrai.sancocore.com.br` serve **só a pasta `public/`, como site estático**.
 O Node/Express não está atrás do domínio. Provas, colhidas com `curl`:
@@ -133,6 +149,8 @@ Northflank — como origem do Cloudflare ou por DNS direto. Depois disso,
 conferir `GET /health` devolvendo `{"ok":true}` e `GET /planos` devolvendo
 JSON. Enquanto isso não acontecer, nenhuma correção deste repositório muda o
 que o cliente vê.
+
+</details>
 
 ## A.0.1 — Na volta ao PC, NESTA ordem (nada aqui roda sem o PC)
 
