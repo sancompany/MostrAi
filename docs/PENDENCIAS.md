@@ -522,7 +522,7 @@ confiança) e uma recomendação de grade. Preço sem fonte não entra.
 
 ## D. Falta construir (registrado em `docs/proximas-versoes.md` com condição de entrada)
 
-Impactos/CPM, comprovante PDF, alertas e dunning, arte como serviço, campanha por período, QR rastreável, mapa com foto, uptime público, assinatura eletrônica, kit do vendedor, cupom de primeira compra, trial, sobretaxa de exclusividade, cobertura restrita por ciclo sorteada entre pontos, folga de 15 min pro déficit da hora anterior, endereço pré-preenchido no checkout (depende do Checkout aceitar endereço no `pagador`). Mais: e-mail de boas-vindas/convite (hoje o link vai por WhatsApp na mão), testes e2e no CI (precisam de Postgres no workflow — o `ci.yml` já sobe um), e Termos/Privacidade revisados pra v2 (skill `legal` — o inventário de dados está em `docs/inventario-de-dados.md`).
+Impactos/CPM, comprovante PDF, alertas e dunning, arte como serviço, campanha por período, QR rastreável, mapa com foto, uptime público, assinatura eletrônica, kit do vendedor, cupom de primeira compra, trial, sobretaxa de exclusividade, cobertura restrita por ciclo sorteada entre pontos, folga de 15 min pro déficit da hora anterior, endereço pré-preenchido no checkout (depende do Checkout aceitar endereço no `pagador`), duas instâncias do servidor (depende de tirar da memória o cache de playlist, o limite de tentativas e a fila da conciliação). Mais: e-mail de boas-vindas/convite (hoje o link vai por WhatsApp na mão), testes e2e no CI (precisam de Postgres no workflow — o `ci.yml` já sobe um), e Termos/Privacidade revisados pra v2 (skill `legal` — o inventário de dados está em `docs/inventario-de-dados.md`).
 
 ## E. O que mudou nesta aceleração (resumo pra você se situar)
 
@@ -558,4 +558,62 @@ Estação 6 abre.
 
 ### Itens reportados
 
-*Nenhum ainda — lista pronta pra receber o que vier da revisão do dono.*
+**1. [ ] CRÍTICO — pagamento confirmado não credita o ciclo; a conta nunca
+ativa.** *(Reportado em 15/09/2026, pagamento real de teste no sandbox:
+conta "San Company", plano `destaque-3m`, R$ 537,30.)*
+
+*O que acontece:* o cliente paga, a Asaas confirma, o webhook chega no
+Mostraí — e a conta fica `pendente_aprovacao` com `plano_id` nulo, sem
+cobrança registrada e sem e-mail. Em produção: 1 assinatura ativa,
+**0 cobranças**, e uma pendência com o motivo
+`"sem chargeId pra deduplicar: checkout não devolveu ultimaCobranca.chargeId"`.
+
+*Causa raiz (provada, nos payloads crus da Asaas guardados pelo Checkout):*
+a Asaas **não manda o id do pagamento no evento `CHECKOUT_PAID`** — a lista
+completa de campos daquele evento não tem `payment.id` nem
+`checkout.payment`, que são justamente os dois lugares onde
+`webhookController.js` procura. O id só chega 279 ms depois, no
+`PAYMENT_CONFIRMED` (`pay_5i4ahupi228zjoxe`), que traz também
+`payment.subscription` e `payment.checkoutSession` — o campo que liga de
+volta à sessão de checkout. Resultado no banco do Checkout: a cobrança fica
+com `charge_id = null` **e** `asaas_subscription_id = null`.
+
+*Por que não se conserta sozinho:* a conciliação diária tem a MESMA
+dependência (`src/financeiro/conciliacao.js`: `if (ultima?.status !==
+'confirmado' || !ultima.chargeId)` → conta como "sem cobrança" e não
+aplica). Não é atraso de um dia: sem o id, nunca aplica.
+
+*Consequências além do Mostraí:* sem `asaas_subscription_id`, o Checkout
+também não cria a linha em `assinaturas` (a tabela está vazia) — então
+`/cancelar-assinatura` não acha a assinatura, e os ciclos recorrentes
+seguintes ficam sem a "cobrança-modelo".
+
+*Onde fica o conserto:* **no San Checkout**, não aqui — no tratador do
+`PAYMENT_CONFIRMED`, achar a cobrança por `payment.checkoutSession` →
+`asaas_checkout_id` quando não achar por `charge_id`, e gravar
+`charge_id = payment.id` e `asaas_subscription_id = payment.subscription`.
+Ideal também: só notificar o contratante depois de ter o id em mãos.
+*Decisão do dono pendente:* se o Mostraí deve ganhar uma rede de segurança
+própria (aceitar `criadoEm|status` como chave quando o `chargeId` vier
+nulo) — é caminho de dinheiro, não mexo sem a palavra dele.
+
+**2. [ ] E-mail não chegou (nem do Mostraí, nem da Asaas).**
+*Mostraí:* é consequência do item 1 — `enviarConfirmacaoPagamento` só roda
+dentro de `aplicarCicloPago`, que nunca rodou. Não é defeito de SMTP; o SMTP
+continua **não verificado** (nenhum envio real aconteceu ainda).
+*Asaas:* sandbox; conferir na conta da Asaas se o envio de recibo está
+ligado nesse ambiente. Fecha junto com o item 1 — quando o ciclo aplicar, o
+e-mail sai e aí sim se sabe se o SMTP funciona.
+
+**3. [ ] Aprovação de conta sai; só o criativo é aprovado.** *(Decisão do
+dono em 15/09/2026, a partir da observação de que a conta consegue pagar
+antes de ser aprovada.)* A observação está certa e o código já se comporta
+assim: `assinar` só barra conta `suspenso`, e `aplicarCicloPago` põe
+`status = 'ativo'` no pagamento — ou seja, **pagar já aprova**. A fila de
+aprovação de conta nunca foi um portão de verdade. O que muda: conta nasce
+liberada, a fila de "anunciantes pendentes" sai do admin, o e-mail
+`enviarContaAprovada` perde a função, e o único portão passa a ser o do
+criativo (que já existe e já manda e-mail de aprovado/reprovado). Toca
+`src/anunciantes/repository.js` (status inicial), `src/anunciantes/routes.js`,
+`src/admin/routes.js` (fila), `docs/funcional.md` (RN de aprovação) e o
+texto das telas que prometem "aguardando aprovação".

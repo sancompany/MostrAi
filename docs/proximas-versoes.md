@@ -104,6 +104,13 @@ e a de custos de 12/09
 - **O que toca:** campo no plano ou na assinatura; motor já bloqueia.
 - **Quando vale a pena:** quando dois anunciantes do mesmo ramo disputarem a rede.
 
+## Duas instâncias do servidor no Northflank
+- **O que:** subir de 1 para 2 instâncias do serviço — tolerância a falha (uma cai, a outra serve) e folga pra picos, em vez de depender de o contêiner único reiniciar.
+- **Por que:** hoje qualquer reinício é janela de indisponibilidade, e o deploy derruba o único processo que existe. Com o player das TVs consultando a playlist de 15 em 15 minutos, uma queda longa some com anúncio no ar.
+- **De onde veio:** ideia do dono, 15/09/2026, na revisão da Estação 5.
+- **O que toca:** **três estados que hoje moram na memória do processo e quebram com duas instâncias** — o cache de playlist (`src/playlist/routes.js`, `new Map()`, já avisado no `CONSTRAINTS.md` linha 94: "Uma instância só"), o limite de tentativas de login (`src/lib/limite-tentativas.js`, `new Map()` — com duas instâncias o atacante ganha o dobro de tentativas) e a fila de retry da conciliação (`src/financeiro/conciliacao.js`). Os três precisam ir pro Postgres (ou Redis) antes de a segunda instância subir. Depois, a escala em si é um número no painel do Northflank, e o `CONSTRAINTS.md` precisa perder a linha da instância única.
+- **Quando vale a pena:** quando houver TV de terceiro no ar dependendo da playlist — aí indisponibilidade vira anúncio que não rodou e cliente que não foi entregue. Antes disso, uma instância com health check (que já existe) é proporcional.
+
 ## Endereço do anunciante pré-preenchido no checkout
 - **O que:** mandar o endereço comercial que o Mostraí já tem (rua, número, bairro, CEP, cidade, UF) junto do `pagador`, pra pessoa não redigitar na tela de pagamento.
 - **Por que:** o `POST /assinatura` do Checkout **exige** endereço completo com código IBGE (antifraude de cartão da Asaas). Hoje o anunciante digita endereço no cadastro do Mostraí — que é obrigatório pra poder assinar — e digita tudo de novo no checkout. É digitação dobrada no momento de maior desistência, o do pagamento.
