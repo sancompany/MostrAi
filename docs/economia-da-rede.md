@@ -142,6 +142,11 @@ construído:
    MESMA janela que o player já visita, só muda o que é servido dentro
    dela.
 
+Os dois desenhos desta seção (sorteio entre pontos e folga de 15 min pro
+déficit) já estão guardados em `docs/proximas-versoes.md`, prontos pra
+autorização — não precisam ser repropostos, só liberados quando você
+quiser construir.
+
 ## 5. Custo por ponto e por hora ligado
 
 Fórmula que o próprio `admin/resumo` já usa (`src/admin/routes.js`):

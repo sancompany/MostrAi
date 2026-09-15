@@ -88,4 +88,7 @@ Nenhuma linha nova foi criada na tabela `beneficios` nem em nenhum plano —
 isso é escolha sua. Pra ativar um item da seção 1 ou 3, é só usar o admin
 (Planos → Benefícios, ou os campos que já existem na grade). Um item da
 seção 2 precisa entrar como pedido de construção — me diga qual, e eu volto
-com o desenho antes de programar.
+com o desenho antes de programar. A cobertura restrita por ciclo (linha 2
+desta seção) já tem desenho pronto e guardado em `docs/proximas-versoes.md`
+("Cobertura restrita por ciclo, sorteada entre pontos") — falta só você
+autorizar a construção.

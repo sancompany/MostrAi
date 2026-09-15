@@ -103,3 +103,17 @@ e a de custos de 12/09
 - **De onde veio:** pesquisa de custos, 12/09/2026 (+40% sugerido, sem fonte pública).
 - **O que toca:** campo no plano ou na assinatura; motor já bloqueia.
 - **Quando vale a pena:** quando dois anunciantes do mesmo ramo disputarem a rede.
+
+## Cobertura restrita por ciclo, sorteada entre pontos
+- **O que:** ligar de verdade `planos.cobertura` (`um_ponto_dia`, `tres_pontos_dia`) no gerador de playlist — hoje todo plano cobre 100% da rede, o campo existe mas não é lido. Junto, um sorteio diário que escolhe EM QUAIS pontos cada anunciante restrito entra, ponderado pela vaga sobrando de cada ponto (preenche os mais vazios primeiro) e com rodízio por histórico (não fixa sempre no mesmo ponto).
+- **Por que:** sem isso, "1 ponto/dia" e "3 pontos/dia" são só rótulo na grade — não existe diferença de entrega entre um plano de entrada e o Máximo além da frequência.
+- **De onde veio:** `docs/catalogo-beneficios.md` (seção 2) e `docs/economia-da-rede.md` (seção 4), a pedido do dono em 15/09/2026.
+- **O que toca:** `anunciantesElegiveis` e `gerarPlaylistDaHora` (`src/playlist/gerador.js`), uma tabela ou coluna nova pra guardar em quais pontos cada anunciante restrito está hoje e o histórico de rodízio.
+- **Quando vale a pena:** quando o primeiro plano de entrada precisar custar visivelmente menos por entregar visivelmente menos (hoje o corte é só de frequência, não de alcance).
+
+## Folga de 15 minutos pro déficit da hora anterior
+- **O que:** reservar os primeiros ~15 minutos de cada hora só pra saldar o `deficit` (exibição programada e não confirmada) da hora anterior, em vez de ele só entrar como prioridade extra que pode ser cortada de novo se a hora nova também apertar.
+- **Por que:** hoje quem perde exibição numa hora cheia depende de a hora seguinte não estar cheia também pra recuperar — sem garantia, o déficit pode se acumular indefinidamente numa rede saturada.
+- **De onde veio:** `docs/economia-da-rede.md` (seção 4), a pedido do dono em 15/09/2026; usa a mesma janela de 15 minutos que o player já visita (cache de playlist em `src/playlist/routes.js`).
+- **O que toca:** `gerarPlaylistDaHora` e `calcularPlaylist` (`src/lib/pacing.js`) — precisa de um teto mínimo garantido pro déficit dentro da fatia de 15 min, separado do corte proporcional do resto da hora.
+- **Quando vale a pena:** quando o evento `playlist:teto_corta` começar a repetir no mesmo dispositivo em horas seguidas — sinal de que o déficit está empilhando, não só oscilando.
