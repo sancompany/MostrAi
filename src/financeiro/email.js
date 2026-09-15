@@ -34,6 +34,26 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
   });
 }
 
+// Cartão recusado ou cobrança vencida (API.md do Checkout, 7.3 e o checklist
+// de integração — item explícito: "ao receber cobranca_falhou, mandar o link
+// de renovação"). Sem isso a cobertura simplesmente vence na próxima data de
+// expiração e o anunciante nunca soube que devia trocar o cartão.
+async function enviarCobrancaFalhou(anunciante, linkRenovar) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Não conseguimos cobrar sua renovação — Mostraí',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `A cobrança deste ciclo não passou — cartão vencido, sem limite ou recusado pelo banco.\n` +
+      `Seu anúncio continua no ar até a cobertura atual acabar, mas a renovação automática não vai se repetir sozinha.\n\n` +
+      `Pra resolver, atualize o cartão aqui:\n${linkRenovar}\n\n` +
+      `A assinatura antiga só é cancelada quando a nova for confirmada — você não fica sem cobertura na troca.\n\n` +
+      `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
 // A conta nasce "pendente de aprovação" e o dono libera no admin — e ate agora
 // isso nao avisava ninguem. A pessoa se cadastrava, via "aguardando aprovacao"
 // e ia embora; quando era liberada, nada acontecia. O momento em que ela PODE
@@ -192,6 +212,7 @@ async function enviarCandidaturaNova(candidatura) {
 }
 
 module.exports = {
+  enviarCobrancaFalhou,
   enviarCandidaturaNova,
   enviarCriativoNoAr,
   enviarCriativoReprovado,

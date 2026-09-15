@@ -5,7 +5,7 @@ const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
-const { enviarConfirmacaoPagamento } = require('./email');
+const { enviarConfirmacaoPagamento, enviarCobrancaFalhou } = require('./email');
 const eventos = require('../lib/eventos');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
@@ -73,12 +73,22 @@ function webhookAutorizado(req) {
 // pessoa sai do site num domínio que não é o nosso, paga, e fica parada numa
 // tela de outra empresa sem nenhum caminho de volta — o momento de maior
 // confiança da relação terminava num beco.
-// PENDENTE de confirmação com quem administra o San Checkout: se ele ignorar
-// o parâmetro, não quebra nada (é query string a mais), mas o retorno
-// automático só funciona quando ele o respeitar. A página de destino já existe.
+// Confirmado contra o API.md do Checkout (seção 3.1, atualizado 15/09/2026):
+// a origem só precisa estar em `retornoDominios` quando vitrine e API vivem em
+// hosts diferentes. Aqui SITE_URL É a origem do apiBaseUrl (mesmo domínio serve
+// site e API), que "vale sempre, sem cadastrar nada" — nada a combinar.
 function linkCheckoutAssinatura(assinaturaId) {
   const volta = process.env.SITE_URL ? `&returnUrl=${encodeURIComponent(`${process.env.SITE_URL}/obrigado.html`)}` : '';
   return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}${volta}`;
+}
+
+// Link de RENOVAÇÃO (API.md 7.3): cartão vencido ou cobrança recusada. É o
+// mesmo link de assinar, com `&renovar=1` — o Checkout sabe que é troca de
+// cartão de uma assinatura existente, não uma nova. A assinatura antiga só é
+// cancelada quando a nova for paga, então o assinante nunca fica descoberto
+// entre uma tentativa e outra.
+function linkRenovarAssinatura(assinaturaId) {
+  return `${linkCheckoutAssinatura(assinaturaId)}&renovar=1`;
 }
 
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
@@ -279,6 +289,21 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
+  // cobranca_falhou: cartão recusado ou cobrança vencida. O contrato do
+  // Checkout (API.md 7.3, item explícito do checklist de integração) manda
+  // avisar o assinante com o link de renovação — sem isso a cobertura acaba
+  // silenciosamente na próxima data de expiração e ninguém nunca soube que
+  // deveria trocar o cartão.
+  if (payload.evento === 'cobranca_falhou') {
+    const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+    if (anunciante) {
+      enviarCobrancaFalhou(anunciante, linkRenovarAssinatura(assinatura.id)).catch((err) =>
+        console.error('e-mail de cobrança falhou', err),
+      );
+    }
+    return registrarPendencia(payload, 'cobrança falhou — link de renovação enviado por e-mail');
+  }
+
   if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
@@ -420,6 +445,7 @@ module.exports = {
   exigirChaveCheckout,
   webhookAutorizado,
   linkCheckoutAssinatura,
+  linkRenovarAssinatura,
   montarRespostaPlano,
   processarWebhookAssinatura,
   cancelarAssinatura,
