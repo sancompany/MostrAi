@@ -360,7 +360,7 @@ document.getElementById('arquivoCriativo').addEventListener('change', async (e) 
     input.value = '';
     carregarCriativos();
   } catch (err) {
-    msg.textContent = err.message || 'Não foi possível enviar o criativo agora. Tente de novo.';
+    msg.textContent = err.message ? window.frase(err.message) : 'Não foi possível enviar o criativo agora. Tente de novo.';
     msg.className = 'form-msg err';
   } finally {
     input.disabled = false;

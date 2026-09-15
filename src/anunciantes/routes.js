@@ -288,6 +288,21 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
       }
     }
 
+    // Duração: a vitrine pede "15 a 30 segundos" e nada nunca conferiu. Um
+    // vídeo de três minutos entrava inteiro e tomava, sozinho, o lugar de seis
+    // anúncios no rodízio — sem ninguém ver. O teto é 60s (o dobro do
+    // recomendado, pra não recusar quem passou um pouco) e o piso, 3s.
+    // Imagem não entra na conta: ela vira vídeo com duração fixa nossa.
+    const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
+    if (!midia) {
+      return res.status(400).json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo ou imagem válido' });
+    }
+    if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
+      return res.status(400).json({
+        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos, e o ideal são 15 a 30`,
+      });
+    }
+
     const criativoTemp = await criativosRepo.criar({
       anunciante_id: contaId,
       arquivo_original_url: req.file.originalname,
@@ -306,11 +321,20 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
         ...(peloOperador ? { editado_pelo_operador: true, status: 'aprovado' } : {}),
       });
       res.status(201).json(criativo);
-    } catch {
+    } catch (err) {
       // Se o ffmpeg falhar (arquivo corrompido, vídeo mais curto que 1s), a
       // linha já criada ficava no banco como "pendente" e ocupava a cota do
       // plano pra sempre — três arquivos ruins e o cliente nunca mais subia nada.
+      // O erro vai pro log: sem isso, falha de storage (credencial vencida,
+      // bucket errado) e arquivo ruim do cliente viravam a mesma frase, e não
+      // dava pra saber qual dos dois era sem reproduzir na mão.
+      console.error('falha ao processar criativo', err);
       await criativosRepo.deletar(criativoTemp.id);
+      if (err && err.origem === 'storage') {
+        return res.status(502).json({
+          erro: 'o problema foi nosso: o armazenamento não respondeu agora. Tente de novo em alguns minutos — o seu arquivo está ok',
+        });
+      }
       return res.status(400).json({ erro: 'não foi possível processar esse arquivo — confira se é um vídeo ou imagem válido' });
     }
   } finally {

@@ -75,8 +75,12 @@ nav.main a[aria-current="page"]::after {
 }
 nav.main a.btn[aria-current="page"]::after { display: none; }
 
-/* Botão do menu de celular. Só existe abaixo de 860px — acima disso o menu
-   inteiro cabe na horizontal. 44px é o alvo de toque mínimo usável. */
+/* Botão do menu de celular. Só existe abaixo de 960px — acima disso o menu
+   inteiro cabe na horizontal. 44px é o alvo de toque mínimo usável.
+   960 e não 860: a barra de links mede 786px e, com a marca e as margens, o
+   cabeçalho precisa de ~930px. Entre 861 e 930 (tablet deitado e janela de
+   laptop não maximizada) o menu vazava pra fora da tela e o "Entrar" ficava
+   cortado — medido em 861px, 900px e 940px. */
 .menu-botao {
   display: none; width: 44px; height: 44px; padding: 0; margin-left: auto;
   background: none; border: 0; cursor: pointer; flex-direction: column;
@@ -87,7 +91,7 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
 .menu-botao[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
 .menu-botao[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-@media (max-width: 860px) {
+@media (max-width: 960px) {
   header.site .wrap { height: 60px; padding: 0 16px; }
   .menu-botao { display: flex; }
   /* Fora da tela até abrir. `hidden` não serve: o menu precisa animar e
@@ -244,12 +248,16 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .ponto-card p { margin: 0; color: var(--text-dim); font-size: .9rem; }
 .empty-state { color: var(--text-dim); text-align: center; padding: 40px 0; }
 
-form.card {
+/* O cartao vale pra qualquer elemento, nao so pro <form>: a tela de
+   "Recebido!" de Seja um ponto e Seja um vendedor e uma <div class="card"> e
+   saia sem fundo, sem borda e sem respiro — o oposto do formulario que ela
+   acabou de substituir na mesma posicao da pagina. */
+.card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 28px; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
 }
 @media (min-width: 720px) {
-  form.card.wide { max-width: 640px; }
+  .card.wide { max-width: 640px; }
 }
 .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .field-row > div { min-width: 130px; }
@@ -339,7 +347,15 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 
 .criativos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 12px; }
 .criativo-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-alt); }
-.criativo-card img, .criativo-card video { width: 100%; aspect-ratio: 9/16; object-fit: cover; display: block; }
+/* `contain`, nao `cover`: a miniatura e a unica previa que o anunciante ve do
+   proprio anuncio e a unica que o admin ve antes de aprovar. Com `cover`, tudo
+   que nao fosse exatamente 9:16 aparecia cortado em cima e embaixo — dava pra
+   aprovar uma peca cujo texto principal estava fora do quadro sem ninguem ver.
+   O fundo escuro mostra a sobra, que e o que a TV tambem faz. */
+.criativo-card img, .criativo-card video {
+  width: 100%; aspect-ratio: 9/16; object-fit: contain; display: block;
+  background: var(--escuro-fundo);
+}
 .criativo-placeholder { width: 100%; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: .8rem; }
 .criativo-card .badge { position: absolute; bottom: 8px; left: 8px; }
 .upload-label { cursor: pointer; }
@@ -600,7 +616,7 @@ dialog.dlg-tela::backdrop { background: rgba(20,23,31,.5); }
 [hidden] { display: none !important; }
 header.site nav.main a.modo-aba { white-space: nowrap; }
 .modo-card .eyebrow { margin: 0; }
-div.card.modo-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; max-width: 640px; margin: 0 auto; }
+div.card.modo-card { max-width: 640px; }
 
 /* Painel único: aba de modo bloqueado (sem o papel ainda) */
 header.site nav.main a.modo-aba.bloqueado { opacity: .55; }

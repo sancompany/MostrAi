@@ -37,13 +37,21 @@ async function probeMidia(caminho) {
   return { width, height, duracao_segundos, ehImagem };
 }
 
+// `origem = 'storage'` nos erros daqui: quem chama precisa distinguir "o
+// arquivo do cliente e ruim" de "o nosso armazenamento esta fora do ar". As
+// duas coisas caiam na mesma frase, e a frase culpava o cliente.
 async function subirParaStorage(caminhoLocal, nomeArquivo, contentType) {
   const buffer = fs.readFileSync(caminhoLocal);
   const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-  const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, { contentType, upsert: true });
-  if (error) throw error;
-  const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-  return data.publicUrl;
+  try {
+    const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, { contentType, upsert: true });
+    if (error) throw error;
+    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
+    return data.publicUrl;
+  } catch (err) {
+    err.origem = 'storage';
+    throw err;
+  }
 }
 
 // caminhoEntrada: arquivo temporário local já salvo pelo multer.
