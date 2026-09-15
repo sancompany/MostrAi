@@ -724,6 +724,11 @@ visual, desktop.)*
   específico não entra nele. Reescrito (`public/planos.html`, e as mesmas
   três repetições em `<meta name="description">`, `og:description` e no
   JSON-LD) pra citar a exclusão de concorrente em vez de prometer 100%.
+  **Corrigido de novo em 15/09/2026:** o dono achou a menção a "concorrente"
+  ruim demais pra aparecer na frase — reescrito de novo (parágrafo e
+  JSON-LD) sem citar concorrente e sem prometer 100%: só "Sua marca roda
+  pelos pontos da rede" / "O plano define quantas vezes por dia a sua marca
+  aparece nas telas ativas".
 - *Frase final "...comece a fazer parte da rotina de quem passa por lá"* —
   trocada por "Escolha o seu ritmo e comece agora." (pedido do dono: tirar
   o "de quem passa por lá").
@@ -766,7 +771,9 @@ quiser".)*
   plano Essencial, dizia a mesma coisa falsa que o parágrafo da página —
   corrigido direto no banco pra "Roda em todos os pontos, menos no do seu
   concorrente direto". É dado (linha de tabela), não código: não precisa de
-  deploy, já está no ar.
+  deploy, já está no ar. **Corrigido de novo em 15/09/2026:** o dono achou a
+  menção a "concorrente" ruim demais — texto virou "Roda pelos pontos ativos
+  da rede", sem citar concorrente.
 
 **9. [x] Encaminhado — revisão do mesmo dia: pontos viram lista fixa, e
 frequência muda de "por dia" pra "por hora" com folga de 15 min.** **FEITO
