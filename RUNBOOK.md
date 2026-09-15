@@ -14,6 +14,24 @@ identificador de infraestrutura (`CONSTRAINTS.md`). O que este documento diz é
 
 ---
 
+## Deploy: o que acontece hoje (conferido em 15/09/2026)
+
+Push na `main` → o Northflank constrói e troca o contêiner sozinho. Não há
+comando de release: **as migrations rodam no arranque do próprio contêiner**
+(`Dockerfile`, `node src/db/migrate.js && node src/server.js`). Se a migration
+falhar, o contêiner não sobe e o anterior continua servindo.
+
+O serviço tem **uma instância** e uma sonda de prontidão em `/health`
+(readinessProbe, 10s de espera inicial). Com uma instância só, a troca ainda
+deixa uma janela de poucos segundos em que o domínio responde 503 — foi medido.
+Se um dia isso incomodar, a saída é subir para duas instâncias; é decisão de
+custo, não de código.
+
+**Como conferir que um deploy deu certo:** `curl https://mostrai.sancocore.com.br/health`
+deve devolver `{"ok":true}`; a aba Visão geral do admin mostra a última
+conciliação; e `SELECT count(*) FROM schema_migrations` tem que bater com o
+número de arquivos em `src/db/migrations/`.
+
 ## 1. Inventário de contas
 
 Uma linha por serviço. Login, segundo fator e cartão são do dono; este
