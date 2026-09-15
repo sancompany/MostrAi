@@ -78,6 +78,19 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     || (ehAnunciante && (!endereco || !cidade || !uf || !cep))) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
+  // Cupom era gravado como texto livre e so conferido na hora de pagar a
+  // comissao. Cupom errado (digitado errado, de vendedor que saiu, ou o
+  // proprio cupom de quem esta se cadastrando) passava batido: o anunciante
+  // achava que tinha indicado alguem, o vendedor achava que tinha indicado, e
+  // a comissao simplesmente nunca existia. Conferido aqui, com a mesma
+  // consulta que paga a comissao la na frente.
+  if (indicado_por_cupom) {
+    const vendedor = await vendedoresRepo.buscarPorCupomAprovado(String(indicado_por_cupom).toUpperCase());
+    if (!vendedor) {
+      return res.status(400).json({ erro: 'esse cupom de indicação não existe ou não está ativo', campo: 'indicado_por_cupom' });
+    }
+  }
+
   if (papeis.includes('vendedor') && !chave_pix) {
     return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
   }

@@ -14,11 +14,30 @@ form.addEventListener('submit', async (e) => {
   const ref = new URLSearchParams(window.location.search).get('ref');
   if (ref) dados.indicado_por_cupom = ref;
   try {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
+    let r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dados),
     });
+    // O cupom de indicação não é campo do formulário: vem no ?ref do link que
+    // o vendedor compartilha. Se ele não vale mais (vendedor saiu, link velho,
+    // letra trocada), o servidor recusa — e não haveria como a pessoa apagar o
+    // cupom pra tentar de novo, porque não existe campo. Então a tela avisa e
+    // recomeça sem o cupom: cadastro travado por um link de terceiro seria um
+    // beco sem saída pior do que o silêncio de antes.
+    if (!r.ok && ref) {
+      const corpoRef = await r.clone().json().catch(() => ({}));
+      if (corpoRef.campo === 'indicado_por_cupom') {
+        delete dados.indicado_por_cupom;
+        msg.textContent = 'O cupom de indicação desse link não está mais ativo — seguimos sem ele.';
+        msg.className = 'form-msg';
+        r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados),
+        });
+      }
+    }
     if (r.status === 409) {
       msg.textContent = 'Esse e-mail já tem cadastro. Tente entrar.';
       msg.className = 'form-msg err';

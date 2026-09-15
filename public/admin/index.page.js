@@ -319,6 +319,28 @@ function barrasHorizontais(linhas, mapa) {
     </div>`).join('')}</div>`;
 }
 
+// Linha da conciliação diária na Visão geral. Ela é o que salva quem pagou e
+// cujo webhook se perdeu; sem esta linha, não havia onde responder "ela rodou
+// hoje?" — e o cron ainda está por configurar no Northflank.
+function linhaConciliacao(c) {
+  if (!c) {
+    return `<div class="tudo-em-dia u-mb-20"><b>A conciliação nunca rodou por aqui.</b>
+      Ela é a rede de segurança de quem paga e cujo aviso do Checkout se perde. Rode <code>npm run conciliar</code> uma vez por dia.</div>`;
+  }
+  const horas = Math.floor((Date.now() - new Date(c.terminouEm).getTime()) / 3600000);
+  const atrasada = horas >= 36;
+  const problema = c.abortou || c.falhas > 0 || atrasada;
+  const quando = horas < 1 ? 'há menos de uma hora' : (horas < 48 ? `há ${horas}h` : `em ${data(c.terminouEm)}`);
+  const detalhe = c.abortou
+    ? `abortou: ${esc(c.abortou)}`
+    : `${c.verificadas} assinatura(s) verificada(s) · ${c.aplicadas} ciclo(s) aplicado(s)`
+      + `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}`
+      + `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
+  return `<div class="${problema ? 'alertas' : 'tudo-em-dia'} u-mb-20">
+    <b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}
+  </div>`;
+}
+
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
@@ -349,6 +371,8 @@ async function renderResumo(el) {
       <div class="kpi-card"><span class="kpi-label">Exibições (30 dias)</span><b>${num(rede.exibicoes30d)}</b><span class="kpi-caption">${entrega === null ? 'sem programação ainda' : `${entrega}% do programado`}</span></div>
       <div class="kpi-card"><span class="kpi-label">Anunciantes novos</span><b>${rede.novosAnunciantes30d}</b><span class="kpi-caption">nos últimos 30 dias</span></div>
     </div>
+
+    ${linhaConciliacao(RESUMO.conciliacao)}
 
     <div class="dashboard-grid">
       <div class="panel">
@@ -1805,15 +1829,31 @@ async function renderEventos(el) {
       <td>${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
       <td class="u-ws-normal"><details><summary class="u-pointer u-txt-link">ver payload</summary>
         <pre class="u-fs-72 u-bg-alt u-p-8 u-r-6 u-o-auto u-mw-460">${esc(JSON.stringify(e.payload, null, 2))}</pre></details></td>
-      <td><button class="btn ghost mini" data-resolver="${e.id}">Marcar resolvido</button></td>
+      <td class="u-ws-normal">
+        ${e.payload?.planoId ? `<button class="btn primary mini" data-aplicar="${e.id}">Aplicar este ciclo</button> ` : ''}
+        <button class="btn ghost mini" data-resolver="${e.id}">Só marcar resolvido</button>
+      </td>
     </tr>`).join('')}
   </tbody></table></div></div>` : '<p class="empty-state">Nenhum evento pendente de revisão.</p>';
 
   el.querySelectorAll('button[data-resolver]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!window.confirm('Marcar resolvido NÃO credita ciclo nenhum: só tira o item da fila. Use isto quando já tiver resolvido por fora. Continuar?')) return;
     if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) {
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
       renderEventos(el);
     }
+  }));
+
+  el.querySelectorAll('button[data-aplicar]').forEach((btn) => btn.addEventListener('click', async () => {
+    if (!window.confirm('Aplicar o ciclo desta assinatura: estende a cobertura, registra a cobrança e a comissão. Continuar?')) return;
+    const r = await fetch(`${API_BASE_URL}/admin/eventos-pendentes/${btn.dataset.aplicar}/aplicar`, {
+      method: 'POST', credentials: 'include',
+    });
+    const corpo = await r.json().catch(() => ({}));
+    if (!r.ok) return window.alert(corpo.erro || 'não foi possível aplicar esse ciclo agora');
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    renderEventos(el);
   }));
 }

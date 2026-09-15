@@ -4,6 +4,7 @@ const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado } = require('../financeiro/email');
+const { ultimaConciliacao } = require('../financeiro/conciliacao');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
 
@@ -141,6 +142,7 @@ router.get('/admin/resumo', async (_req, res) => {
     ),
   ]);
 
+  const ultima = await ultimaConciliacao();
   const receitaMensal = Number(receita.rows[0].total);
   const custoPontosMensal = Number(pontosAtivos.rows[0].total);
   const amortizacaoMensal = Number(amortizacao.rows[0].amortizacao);
@@ -193,6 +195,18 @@ router.get('/admin/resumo', async (_req, res) => {
       novosAnunciantes30d: Number(novos.rows[0].anunciantes),
       novosPontos30d: Number(novos.rows[0].pontos),
     },
+    // Última conciliação: é ela que põe no ar quem pagou e cujo webhook se
+    // perdeu. Rodava (ou não) sem deixar rastro em tela nenhuma — e a pergunta
+    // "o cron está de pé?" não tinha onde ser respondida.
+    conciliacao: ultima ? {
+      terminouEm: ultima.terminou_em,
+      verificadas: ultima.verificadas,
+      aplicadas: ultima.aplicadas,
+      semCobranca: ultima.sem_cobranca,
+      expiradas: ultima.expiradas,
+      falhas: (ultima.falhas || []).length,
+      abortou: ultima.abortou,
+    } : null,
     horasOfflineAlerta: HORAS_OFFLINE_ALERTA,
     // Única regra de plano que mora em variável de ambiente (CONSTRAINTS.md):
     // liga/desliga a vitrine do plano fundador sem deploy.

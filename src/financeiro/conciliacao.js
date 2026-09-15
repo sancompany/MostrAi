@@ -16,6 +16,7 @@ const pool = require('../db/pool');
 const { consultarAssinatura, aplicarCicloPago } = require('./san-checkout');
 
 async function conciliarAssinaturas() {
+  const comecouEm = new Date();
   const { rows: assinaturas } = await pool.query(
     `SELECT s.id, s.anunciante_id, s.plano_id, a.cpf_cnpj
        FROM assinaturas s
@@ -55,7 +56,33 @@ async function conciliarAssinaturas() {
   }
 
   relato.expiradas = await suspenderCoberturaVencida();
+  await registrarRelato(comecouEm, relato);
   return relato;
+}
+
+// O relato existia só no stdout do processo: ninguém sabia se a conciliação
+// rodou hoje, o que ela aplicou e o que falhou. Guardado aqui, vira a linha
+// que o admin mostra na Visão geral — e a resposta pra "o cron está de pé?".
+// Falha ao gravar o relato não pode derrubar a conciliação: o trabalho dela
+// (pôr no ar quem pagou) já foi feito quando chegamos nesta linha.
+async function registrarRelato(comecouEm, relato, abortou = null) {
+  try {
+    await pool.query(
+      `INSERT INTO conciliacoes
+         (comecou_em, verificadas, aplicadas, ja_processadas, sem_cobranca, expiradas, falhas, abortou)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [comecouEm, relato.verificadas || 0, relato.aplicadas || 0, relato.jaProcessadas || 0,
+        relato.semCobranca || 0, (relato.expiradas || []).length, JSON.stringify(relato.falhas || []), abortou]
+    );
+  } catch (err) {
+    console.error('falha ao gravar o relato da conciliação', err);
+  }
+}
+
+// Última execução, pra Visão geral do admin.
+async function ultimaConciliacao() {
+  const { rows } = await pool.query('SELECT * FROM conciliacoes ORDER BY id DESC LIMIT 1');
+  return rows[0] || null;
 }
 
 // Nada expirava a cobertura. Uma conta cujo `data_expiracao` passou continuava
@@ -79,4 +106,4 @@ async function suspenderCoberturaVencida() {
   return rows;
 }
 
-module.exports = { conciliarAssinaturas, suspenderCoberturaVencida };
+module.exports = { conciliarAssinaturas, suspenderCoberturaVencida, registrarRelato, ultimaConciliacao };

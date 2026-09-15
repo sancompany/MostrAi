@@ -35,7 +35,12 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes
     FROM anunciantes a
     LEFT JOIN planos p ON p.id = a.plano_id
+    -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
+    -- em processamento (ou cujo processamento morreu no meio) entrava na
+    -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
+    -- exibicao era contada. criativosDoDono, logo abaixo, ja filtrava.
     JOIN criativos c ON c.anunciante_id = a.id AND c.status = 'aprovado'
+      AND c.arquivo_normalizado_url IS NOT NULL
     WHERE a.status = 'ativo'
       AND a.excluido_em IS NULL
       AND (

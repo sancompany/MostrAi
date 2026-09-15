@@ -249,7 +249,18 @@ async function processarWebhookAssinatura(payload) {
     'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
     [chave]
   );
-  if (!rowCount) return;
+  if (!rowCount) {
+    // Reentrega do MESMO evento e normal e nao precisa de barulho. Mas quando
+    // o evento credita ciclo, o descarte pode nao ser reentrega: a consulta de
+    // conciliacao devolve a ultima cobranca, e numa renovacao a defasagem
+    // entre Asaas e Checkout faz a chave `chargeId|status` do ciclo novo
+    // colidir com a do anterior — o ciclo pago some, sem cobertura e sem
+    // rastro. Vira pendencia pra alguem olhar.
+    if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
+      await registrarPendencia(payload, `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`);
+    }
+    return;
+  }
 
   const assinatura = await assinaturasRepo.buscarPorId(payload.planoId);
   if (!assinatura) {

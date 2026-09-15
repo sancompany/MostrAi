@@ -316,6 +316,64 @@ router.get('/admin/eventos-pendentes', async (_req, res) => {
   res.json(rows);
 });
 
+// Aplicar o ciclo que ficou pendente. "Marcar resolvido" só apagava o item da
+// fila: não criava cobrança, não estendia cobertura, não pagava comissão. Ou
+// seja, o único caminho pra pôr no ar quem pagou e caiu aqui era refazer tudo
+// à mão em outra aba — e o botão que existia dava a impressão contrária.
+router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM eventos_assinatura_pendentes WHERE id = $1', [req.params.id]);
+  const evento = rows[0];
+  if (!evento) return res.status(404).json({ erro: 'evento não encontrado' });
+  if (evento.resolvido) return res.status(400).json({ erro: 'esse evento já foi resolvido' });
+
+  const payload = evento.payload || {};
+  const assinatura = payload.planoId ? await assinaturasRepo.buscarPorId(payload.planoId) : null;
+  if (!assinatura) {
+    return res.status(400).json({ erro: 'esse evento não aponta pra nenhuma assinatura conhecida — resolva pela conta do anunciante' });
+  }
+
+  const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+  if (!anunciante) return res.status(400).json({ erro: 'a conta dessa assinatura não existe mais' });
+
+  // Confere no Checkout ANTES de creditar. Sem isto, apertar o botão num
+  // evento de "cobrança falhou" — que também traz planoId — daria cobertura
+  // por dinheiro que não entrou. Quem decide se houve pagamento é o motor de
+  // pagamento, nunca a fila de revisão.
+  let ultima;
+  try {
+    const estado = await sanCheckout.consultarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+    ultima = estado?.ultimaCobranca;
+  } catch (err) {
+    // Mensagem do erro vai pro log, não pra tela: ela carrega a URL da API do
+    // Checkout, que é endereço de infraestrutura.
+    console.error('falha ao consultar assinatura no Checkout', err);
+    return res.status(502).json({ erro: 'não deu pra conferir essa assinatura no Checkout agora — tente de novo em alguns minutos' });
+  }
+  if (ultima?.status !== 'confirmado' || !ultima.chargeId) {
+    return res.status(400).json({ erro: 'o Checkout não mostra cobrança confirmada nessa assinatura — nada a creditar' });
+  }
+
+  // A chave é a mesma que o webhook e a conciliação usariam (chargeId|status):
+  // assim o mesmo pagamento não vira dois ciclos, venha por onde vier.
+  const chave = `${ultima.chargeId}|${ultima.status}`;
+  const { rowCount } = await pool.query(
+    'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
+    [chave]
+  );
+  if (!rowCount) {
+    await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
+    return res.status(409).json({ erro: 'essa cobrança já tinha sido creditada — o evento foi marcado como resolvido' });
+  }
+
+  try {
+    await sanCheckout.aplicarCicloPago(assinatura, chave, { ...payload, origem: 'admin' });
+  } catch (err) {
+    return res.status(502).json({ erro: `não deu pra aplicar o ciclo: ${err.message}` });
+  }
+  await pool.query('UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1', [evento.id]);
+  res.json({ ok: true });
+});
+
 router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
   const { rows } = await pool.query(
     `UPDATE eventos_assinatura_pendentes SET resolvido = true WHERE id = $1 RETURNING *`,
