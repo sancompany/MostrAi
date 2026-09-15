@@ -275,11 +275,17 @@ async function carregarCriativos() {
               : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`)
             : '<div class="criativo-placeholder">processando...</div>'}
           <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
-          <span class="badge ${ROTULOS.criativoClasse[c.status]}">${CRIATIVO_ROTULOS.anunciante[c.status]}</span>
+          <span class="badge ${ROTULOS.criativoClasse[c.status]}">${ROTULOS.criativo[c.status]}</span>
         </div>`;
       }).join('')}
     </div>` : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
-  } catch {
+  } catch (err) {
+    // O `catch` mudo daqui escondeu por semanas um ReferenceError
+    // (`CRIATIVO_ROTULOS`, mapa que foi renomeado e ficou uma chamada pra
+    // trás): todo anunciante COM criativo via "não foi possível carregar" e
+    // ninguém sabia por quê, porque a mensagem culpava a rede e a rede estava
+    // boa. Erro de programação tem que aparecer no console.
+    console.error('falha ao montar a lista de criativos', err);
     el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus criativos agora.</p>';
   }
 }
