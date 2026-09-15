@@ -17,6 +17,7 @@ const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const planosRepo = require('../financeiro/planos-repository');
+const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
@@ -115,6 +116,9 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   // aberto já exige; por dentro do painel não exigia.
   if (!(categoria_id || categoria_livre || conta.categoria_id || conta.categoria_livre)) {
     return res.status(400).json({ erro: 'diga o ramo do seu negócio — é ele que impede o seu anúncio de rodar dentro de um concorrente' });
+  }
+  if (categoria_id && !(await categoriasRepo.buscarAtivaPorId(categoria_id))) {
+    return res.status(400).json({ erro: 'ramo inválido' });
   }
   await pool.query(
     `UPDATE anunciantes SET endereco = $2, cidade = $3, uf = $4, cep = $5,

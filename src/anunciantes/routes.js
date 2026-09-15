@@ -19,6 +19,8 @@ const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const eventos = require('../lib/eventos');
+const assinaturasRepo = require('../financeiro/assinaturas-repository');
+const sanCheckout = require('../financeiro/san-checkout');
 const { enviarContaAprovada } = require('../financeiro/email');
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
@@ -180,6 +182,24 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
 // pelo suporte dentro de 60 dias (zera excluido_em) — sem tela de undo.
 router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) => {
   const conta = await repo.buscarPorId(req.session.anuncianteId);
+
+  // Excluir a conta sem cancelar a assinatura deixava a cobrança recorrente
+  // viva: o Checkout seguia cobrando todo ciclo uma conta que pediu pra sair,
+  // e a comissão do vendedor continuava sendo paga por ela. Cancela lá
+  // primeiro — se falhar, nada muda aqui e a pessoa tenta de novo, que é a
+  // mesma ordem do pedido de arrependimento (src/titular/routes.js).
+  const assinatura = conta ? await assinaturasRepo.buscarAtivaDoAnunciante(conta.id) : null;
+  if (assinatura) {
+    try {
+      await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
+      await assinaturasRepo.marcarCancelada(assinatura.id);
+    } catch {
+      return res.status(502).json({
+        erro: 'não conseguimos cancelar a sua cobrança agora — tente de novo em alguns minutos',
+      });
+    }
+  }
+
   await repo.atualizar(req.session.anuncianteId, { excluido_em: new Date() });
   if (conta) {
     eventos.registrar('conta:exclusao_pede', {

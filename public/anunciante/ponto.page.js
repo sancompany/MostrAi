@@ -168,6 +168,11 @@ formEnd.addEventListener('submit', async (e) => {
         endereco: `${formEnd.endereco.value.trim()}, ${formEnd.numero.value.trim()}`,
         cidade: formEnd.cidade.value.trim(), uf: formEnd.uf.value.trim().toUpperCase(), cep: formEnd.cep.value.trim(),
         segmento: usouLivre ? formEnd.categoria_livre.value.trim() : (opcao ? opcao.dataset.nome : ''),
+        // O texto sozinho nao bloqueia concorrente: quem faz isso e o
+        // categoria_id, que o gerador da playlist compara com o do anunciante.
+        // Sem ele, o ponto nascia sem bloqueio e a tela do dono podia exibir
+        // anuncio do concorrente da esquina.
+        categoria_id: usouLivre ? null : (formEnd.categoria_id.value || null),
       }),
     });
     const corpo = await r.json().catch(() => ({}));

@@ -22,6 +22,19 @@ document.getElementById('formPix').addEventListener('submit', async (e) => {
 
 async function carregarVendas() {
   const r = await fetch(`${API_BASE_URL}/vendedor/painel`, { credentials: 'include' });
+  // 403 aqui nao e erro de rede: e conta com o papel 'vendedor' ligado (pelo
+  // admin, por exemplo) sem a linha em `vendedores`. O painel inteiro caia num
+  // "nao foi possivel carregar" que mandava a pessoa tentar de novo pra
+  // sempre. Estado proprio, com o que fazer.
+  if (r.status === 403) {
+    document.getElementById('statusBanner').innerHTML = '<span><strong>Cadastro de vendedor em análise</strong></span>';
+    document.getElementById('kpis').innerHTML = '';
+    document.getElementById('comissoes').innerHTML = '<p class="empty-state">Seu cadastro de vendedor ainda não foi concluído pela Mostraí. '
+      + 'Assim que ele sair, seu cupom aparece aqui. Se estiver demorando, <a href="/contato.html">fale com a gente</a>.</p>';
+    const cartao = document.getElementById('cupomCard');
+    if (cartao) cartao.hidden = true;
+    return;
+  }
   if (!r.ok) throw new Error();
   const d = await r.json();
   const v = d.vendedor;

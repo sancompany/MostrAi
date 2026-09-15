@@ -16,6 +16,13 @@ async function exigirAparelho(req, res, next) {
   if (!dispositivo.aparelho_id || !enviada || String(enviada) !== dispositivo.aparelho_id) {
     return res.status(401).json({ erro: 'aparelho não autorizado — gere a chave da tela no painel admin' });
   }
+  // Chave certa nao basta: tela em reparo/inativa, ou de um ponto que saiu do
+  // ar, continuava recebendo playlist e confirmando exibicao — ou seja, o
+  // anunciante pagava por exibicao numa tela que a operacao ja sabe que nao
+  // esta no ar. A TV le esta mensagem na propria tela.
+  if (dispositivo.status !== 'ativo' || dispositivo.ponto_status !== 'ativo') {
+    return res.status(403).json({ erro: 'esta tela está fora do ar no cadastro — fale com a Mostraí pra reativar' });
+  }
   req.dispositivo = dispositivo;
   next();
 }

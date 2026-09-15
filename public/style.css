@@ -776,3 +776,8 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
   border: 1px solid var(--brand); border-radius: 12px;
   background: #fff6ef; color: var(--text); line-height: 1.6;
 }
+
+/* Campo que o servidor apontou como errado. A tela ja diz a frase; isto so
+   leva o olho ate o campo. Some no proximo foco. */
+.campo-err { border-color: var(--err) !important; }
+.campo-err:focus { outline-color: var(--err); }

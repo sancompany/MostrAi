@@ -19,9 +19,9 @@ form.addEventListener('submit', async (e) => {
       // A mensagem do 403 só sai DEPOIS de a senha conferir (routes.js:167),
       // então mostrá-la não entrega a existência de conta nenhuma.
       const corpo = await r.json().catch(() => ({}));
-      msg.textContent = r.status === 403 && corpo.erro
-        ? `${corpo.erro.charAt(0).toUpperCase()}${corpo.erro.slice(1)}.`
-        : 'E-mail ou senha inválidos.';
+      if (r.status === 429) msg.textContent = 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
+      else if (r.status === 403 && corpo.erro) msg.textContent = window.frase(corpo.erro);
+      else msg.textContent = 'E-mail ou senha inválidos.';
       msg.className = 'form-msg err';
       return;
     }

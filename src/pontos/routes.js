@@ -6,6 +6,7 @@ const router = express.Router();
 const repo = require('./repository');
 const eventos = require('../lib/eventos');
 const planosPontoRepo = require('./planos-ponto-repository');
+const categoriasRepo = require('../categorias/repository');
 const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
@@ -41,10 +42,15 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   if (!conta || !(conta.papeis || []).includes('ponto')) {
     return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
   }
-  const { nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato } = req.body;
+  const { nome, endereco, cidade, uf, cep, segmento, categoria_id, responsavel_nome, responsavel_contato } = req.body;
   if (!nome || !endereco || !cidade || !uf || !cep) return res.status(400).json({ erro: 'nome e endereço completo são obrigatórios' });
+  // Validado contra o catálogo: id inventado no corpo viraria FK quebrada, e
+  // id de outra tabela viraria bloqueio de concorrente errado.
+  const categoria = categoria_id ? await categoriasRepo.buscarAtivaPorId(categoria_id) : null;
+  if (categoria_id && !categoria) return res.status(400).json({ erro: 'ramo inválido' });
   const ponto = await repo.criar({
     nome, endereco, cidade, uf, cep, segmento: segmento || 'outro',
+    categoria_id: categoria ? categoria.id : null,
     responsavel_nome: responsavel_nome || conta.responsavel_nome || conta.nome_empresa,
     responsavel_contato: responsavel_contato || conta.contato_telefone,
     fluxo_estimado_mensal: req.body.fluxo_estimado_mensal, plano_ponto_id: req.body.plano_ponto_id || null,

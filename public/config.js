@@ -65,6 +65,17 @@ window.dataBR = function dataBR(valor, opcoes) {
   return new Date(valor).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', ...(opcoes || {}) });
 };
 
+// Mensagem de erro que o servidor manda vira frase de tela: maiúscula na
+// primeira letra e ponto final só se ainda não tiver um. Sem isto saía
+// "CPF inválido — confira os números.." em toda mensagem que já terminava
+// com pontuação.
+window.frase = function frase(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return '';
+  const maiuscula = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?…]$/.test(maiuscula) ? maiuscula : `${maiuscula}.`;
+};
+
 window.fmtBRL = function fmtBRL(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };

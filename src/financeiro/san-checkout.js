@@ -282,6 +282,15 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     return registrarPendencia(contexto, 'plano ou anunciante não encontrado pra essa assinatura');
   }
 
+  // Conta excluída não recebe ciclo: a exclusão cancela a assinatura no
+  // Checkout, mas uma cobrança em trânsito (ou um retry) ainda chega aqui — e
+  // sem esta guarda ela reativava a conta excluída, registrava receita e
+  // pagava comissão ao vendedor por um cliente que pediu pra sair. Vira
+  // pendência pra alguém devolver o dinheiro à mão.
+  if (anunciante.excluido_em) {
+    return registrarPendencia(contexto, 'cobrança de conta já excluída — verificar devolução no Checkout');
+  }
+
   // O que a conta paga é o que estava travado na primeira cobrança deste
   // plano (preco_travado) — senão, o valor atual do plano.
   const valorMensal = valorMensalDaConta(anunciante, plano);

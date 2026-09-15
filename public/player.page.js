@@ -92,6 +92,16 @@ async function atualizarPlaylist() {
   try {
     const r = await fetch(`${API_BASE_URL}/playlist/${dispositivoId}`, { headers: cabecalhos });
     if (r.status === 401) { log('chave do aparelho inválida — gere de novo no painel admin'); return; }
+    // 403 é a tela (ou o ponto) marcada fora do ar no cadastro. Não é queda de
+    // rede: insistir com o cache seria exibir anúncio de uma tela que a
+    // operação já tirou do ar. Melhor parar e dizer o motivo na própria TV.
+    if (r.status === 403) {
+      const corpo = await r.json().catch(() => ({}));
+      playlist = []; salvarCache([]);
+      document.body.classList.add('sem-playlist');
+      log(corpo.erro || 'esta tela está fora do ar no cadastro');
+      return;
+    }
     if (!r.ok) { log('servidor indisponível — tocando playlist em cache'); return; }
     const nova = await r.json();
     playlist = nova; salvarCache(nova);

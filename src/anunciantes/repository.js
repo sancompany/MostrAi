@@ -16,6 +16,9 @@ const CAMPOS_ATUALIZAVEIS = [
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
+// As duas ultimas sao da migration 025 (direitos do titular). Sem elas aqui,
+// a tela do perfil lia undefined e remarcava o "quero receber novidades" de
+// quem tinha acabado de revogar — a pessoa via o oposto do que estava no banco.
 const CAMPOS_PUBLICOS = `
   id, nome_empresa, cpf_cnpj, endereco, cidade, uf, cep,
   contato_email, contato_telefone, status, plano_id,
@@ -23,7 +26,8 @@ const CAMPOS_PUBLICOS = `
   responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone, foto_url, created_at, excluido_em,
   papeis, valor_mensal_travado, conta_propria, frequencia_dia_propria,
   plano_cortesia, cortesia_motivo,
-  ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em
+  ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em,
+  comunicacoes_revogado_em, dados_opcionais_apagados_em
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.
