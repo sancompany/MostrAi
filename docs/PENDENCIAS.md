@@ -194,6 +194,21 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
 
 ## A. Passo a passo pra sair do zero (faça na ordem)
 
+> **Estado conferido em 15/09/2026, da minha ponta** (conferido com `curl`
+> contra o domínio, não com o painel):
+>
+> - **item 9 (Northflank) — no ar.** `GET /health` devolve `{"ok":true}` e
+>   `GET /planos` devolve os 12 planos em JSON.
+> - **item 10 (DNS) — feito.** O domínio responde pelo Node; o
+>   apontamento e o CNAME no Cloudflare foram feitos pelo dono. **Falta o
+>   Access na frente de `/admin`** e fechar a origem.
+> - **itens 11, 12 e 13 — não dá pra conferir daqui.** O dono diz que a
+>   conciliação e o backup já subiram; fica marcado como pendente até haver
+>   evidência. **Como confirmar sozinho:** a Visão geral do admin agora mostra
+>   quando a conciliação rodou pela última vez, quantas assinaturas ela olhou e
+>   o que falhou — se a linha disser "atrasada" ou não aparecer, o cron não
+>   está de pé.
+
 1. [x] **`git init` + primeiro commit** — FEITO em 13/09/2026. O `.env` real
    entrou junto (o `.gitignore` não cobria `.env.*`, ao contrário do que esta
    linha afirmava); o histórico foi reescrito e o repositório apagado e
