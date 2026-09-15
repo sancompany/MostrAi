@@ -3,7 +3,7 @@ const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
-const { enviarCriativoNoAr } = require('../financeiro/email');
+const { enviarCriativoNoAr, enviarCriativoReprovado } = require('../financeiro/email');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
 
@@ -36,6 +36,18 @@ router.patch('/admin/criativos/:id', async (req, res) => {
         pelo_operador: !!criativo.editado_pelo_operador,
       }, dono);
     }
+    // Mesma regra do aprovado, do outro lado: reprovar era um beco sem saída
+    // — o card virava "Reprovado" e nada mais acontecia. Agora sai um aviso
+    // com o motivo e o caminho de correção.
+    if (criativo.status === 'reprovado' && (antes?.status !== 'reprovado')) {
+      const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
+      if (dono) enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
+      eventos.registrar('criativo:video_reprova', {
+        horas_ate_reprovar: eventos.horasEntre(criativo.created_at),
+        tem_motivo: !!criativo.motivo_reprovacao,
+      }, dono);
+    }
+
     res.json(criativo);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });

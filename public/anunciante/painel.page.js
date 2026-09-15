@@ -69,9 +69,27 @@ function preencherStatusBanner() {
     planoTxt = `Plano ativo${ANUNCIANTE.data_expiracao ? ' até ' + new Date(ANUNCIANTE.data_expiracao).toLocaleDateString('pt-BR') : ''}`;
   }
   const travado = ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+
+  // Dois estados precisavam de frase, e só um deles derruba o botão:
+  // - suspenso: POST /anunciantes/:id/assinar recusa com 403 (financeiro/
+  //   routes.js:198). O botão levava pra vitrine e a assinatura estourava lá
+  //   na frente, sem dizer por quê. Quem pediu devolução cai exatamente aqui,
+  //   porque o arrependimento zera o plano e suspende a conta.
+  // - pendente_aprovacao: aqui o botão FICA — a conta em análise pode assinar
+  //   (é o caminho normal de quem veio da vitrine), só não tinha nada na tela
+  //   dizendo que a análise existe. A conferência é dos dados, não da compra.
+  const EXPLICACAO = {
+    suspenso: 'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; '
+      + 'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.',
+    pendente_aprovacao: 'Sua conta está em análise: a gente confere os dados e te avisa por e-mail quando ela for aprovada. '
+      + 'Isso não trava a sua assinatura — dá pra escolher o plano e subir o vídeo desde já.',
+  };
+  const explicacao = EXPLICACAO[ANUNCIANTE.status] || null;
+  const podeAssinar = !ANUNCIANTE.plano_id && ANUNCIANTE.status !== 'suspenso';
   el.innerHTML = `
     <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · ${statusTxt} · ${planoTxt}${travado}</span>
-    ${!ANUNCIANTE.plano_id ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
+    ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
+    ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;
 }
 
@@ -284,6 +302,7 @@ async function carregarCriativos() {
             : '<div class="criativo-placeholder">processando...</div>'}
           <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
           <span class="badge ${ROTULOS.criativoClasse[c.status]}">${ROTULOS.criativo[c.status]}</span>
+          ${c.status === 'reprovado' ? `<p class="criativo-motivo">${c.motivo_reprovacao ? esc(c.motivo_reprovacao) : 'Fale com a gente pra entender o que ajustar.'}<br><b>Exclua esta peça e suba a versão corrigida.</b></p>` : ''}
         </div>`;
       }).join('')}
     </div>` : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';

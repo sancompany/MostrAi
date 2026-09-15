@@ -198,8 +198,12 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .split-card h3 { margin: 0; font-size: 1.3rem; }
 .split-card p { color: var(--text-dim); margin: 0; flex: 1; }
 
-.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; counter-reset: step; }
-@media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
+/* auto-fit em vez de 3 fixas: o "Como funciona" da home passou a ter quatro
+   passos (o terceiro, a aprovacao da peca, nao existia na tela e existia na
+   vida). Com 3 colunas fixas o quarto caia sozinho numa linha. */
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 24px; counter-reset: step; }
+@media (max-width: 860px) { .steps { grid-template-columns: repeat(2, 1fr); gap: 18px; } }
+@media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }
 .step { position: relative; padding-left: 4px; }
 .step .n {
   width: 36px; height: 36px; border-radius: 999px; background: var(--text); color: var(--escuro-texto);
@@ -340,7 +344,11 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .upload-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .upload-row input[type=file] { flex: 1; min-width: 200px; color: var(--text-dim); font-size: .85rem; }
 
-.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+/* `align-self` junto com o inline-block: dentro de um cartao em coluna
+   (flex/grid com stretch), o inline-block sozinho virava uma faixa da largura
+   inteira — a etiqueta "Ativo" saia como uma barra verde atravessando o
+   cartao da tela. */
+.badge { display: inline-block; align-self: flex-start; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
 .badge-pendente { background: rgba(255,122,26,.12); color: var(--brand-text); }
 .badge-ok { background: rgba(22,163,74,.12); color: var(--ok); }
 .badge-err { background: rgba(220,38,38,.12); color: var(--err); }
@@ -422,7 +430,10 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 @media (max-width: 460px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; } }
 .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
 .kpi-card .kpi-label { display: block; color: var(--text-dim); font-size: .8rem; margin-bottom: 6px; }
-.kpi-card b { display: block; font-size: 1.7rem; line-height: 1.2; }
+/* O numero nao quebra: "- R$ 561,71" saia com o sinal de menos sozinho numa
+   linha e o valor na outra, e a margem negativa lida assim parece outro
+   numero. Encolhe a fonte em tela estreita em vez de quebrar. */
+.kpi-card b { display: block; font-size: clamp(1.25rem, 6vw, 1.7rem); line-height: 1.2; white-space: nowrap; }
 .kpi-card span { display: block; color: var(--text-dim); font-size: .82rem; margin-top: 2px; }
 .kpi-card .delta { font-weight: 700; margin-top: 4px; }
 .kpi-card .delta.up { color: var(--ok); }
@@ -431,6 +442,13 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .kpi-card .link-secundario { display: inline-block; margin-top: 8px; font-size: .82rem; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .panel-head h3 { margin: 0; }
+/* No celular a linha "titulo | descricao" espremia o titulo em duas linhas e
+   deixava a descricao numa coluna de 150px ao lado. Empilhado, cada um usa a
+   largura inteira — que e a unica que existe ali. */
+@media (max-width: 640px) {
+  .panel-head { flex-direction: column; align-items: stretch; gap: 6px; }
+  .panel-head .btn { align-self: flex-start; }
+}
 
 /* Gráfico de barras verticais (exibições por dia) — sem lib, só divs com
    altura proporcional ao valor. */
@@ -449,9 +467,17 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 
 /* Criativos ao lado do dashboard, empilhados e maiores — sem tocar sozinho,
    só quando o anunciante clicar no play. */
-.criativos-lista { display: flex; flex-direction: column; gap: 16px; margin-top: 14px; }
+/* Grade em vez de coluna: em coluna, cada peca ocupava a largura inteira do
+   cartao e 420px de altura — duas pecas ja exigiam rolagem pra comparar, que e
+   exatamente o que se quer fazer com elas. Lado a lado, tres cabem na largura
+   de um cartao e a peca continua no formato da tela (9:16). */
+.criativos-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 190px)); gap: 16px; margin-top: 14px; }
 .criativos-lista .criativo-card { max-width: none; }
 .criativos-lista .criativo-card img, .criativos-lista .criativo-card video { aspect-ratio: 9/16; max-height: 420px; }
+/* O mesmo teto pro placeholder: sem ele, uma peca ainda em processamento
+   (ou uma cujo processamento falhou) virava um retangulo de mil pixels de
+   altura, porque so a midia real tinha limite. */
+.criativos-lista .criativo-placeholder { max-height: 420px; }
 .criativo-card { position: relative; }
 .criativo-play {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -504,7 +530,6 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
 }
-.ponto-endereco-card .badge { align-self: flex-start; }
 .pontos-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
 
 .mini-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: 4px; }
@@ -536,6 +561,10 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 @media (max-width: 640px) {
   .whatsapp-fab { width: 50px; height: 50px; bottom: 16px; right: 16px; }
   .whatsapp-fab svg { width: 25px; height: 25px; }
+  /* O botao flutuante e fixo no canto e ficava por cima do ultimo conteudo da
+     pagina — inclusive por cima do "Ativar modo anuncios", que e o botao que
+     a pessoa veio apertar. O respiro embaixo tira todo mundo de baixo dele. */
+  main { padding-bottom: 76px; }
 }
 
 .whatsapp-note { text-align: center; font-size: .88rem; color: var(--text-dim); }
@@ -797,3 +826,19 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
    leva o olho ate o campo. Some no proximo foco. */
 .campo-err { border-color: var(--err) !important; }
 .campo-err:focus { outline-color: var(--err); }
+
+/* Explicacao dentro da faixa de status do painel: substitui o botao que
+   levaria a uma acao que o servidor recusa (conta suspensa ou em analise). */
+.dash-explica { color: var(--text-dim); font-size: .9rem; line-height: 1.5; }
+.dash-explica a { color: var(--blue); }
+
+/* Motivo da reprovacao, no proprio card do criativo: e a unica tela onde o
+   anunciante descobre por que a peca dele nao entrou no ar. */
+.criativo-motivo {
+  margin: 0; padding: 8px 10px; font-size: .78rem; line-height: 1.4;
+  background: var(--card); border-top: 1px solid var(--border); color: var(--text-dim);
+}
+.criativo-motivo b { color: var(--text); font-weight: 600; }
+/* Com motivo embaixo, a etiqueta sobe: ela e posicionada no rodape do card e
+   ficaria por cima do texto que explica o que corrigir. */
+.criativo-card:has(.criativo-motivo) .badge { bottom: auto; top: 8px; }

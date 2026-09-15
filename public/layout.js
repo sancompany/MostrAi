@@ -124,7 +124,7 @@
     <footer class="site">
       <div class="wrap">
         <span>© Mostraí — Matão-SP. Parte do ecossistema San &amp; Co.</span>
-        <span class="footer-links"><a href="/termos-de-uso.html">Termos de Uso</a> · <a href="/politica-de-privacidade.html">Privacidade</a> · <a href="/comodato.html">Comodato</a> · <a href="/contrato-anunciante.html">Contrato do anunciante</a></span>
+        <span class="footer-links"><a href="/contato.html">Fale com a gente</a> · <a href="/termos-de-uso.html">Termos de Uso</a> · <a href="/politica-de-privacidade.html">Privacidade</a> · <a href="/comodato.html">Comodato</a> · <a href="/contrato-anunciante.html">Contrato do anunciante</a></span>
         <span><a href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a></span>
       </div>
     </footer>

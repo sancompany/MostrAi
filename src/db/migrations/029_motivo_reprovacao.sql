@@ -1,0 +1,11 @@
+-- Motivo da reprovação do criativo.
+--
+-- Por quê: reprovar era um beco sem saída. O admin trocava o status pra
+-- `reprovado`, o card no painel do anunciante passava a dizer "Reprovado" e
+-- ponto: nenhuma frase, nenhum e-mail, nenhum caminho de correção. O
+-- anunciante pagou, subiu o vídeo, o vídeo não entrou no ar e o site nunca
+-- disse por quê — e a peça ainda ocupava a cota do plano até ele descobrir
+-- sozinho que precisava excluir e subir outra.
+--
+-- Aditiva: coluna nova, nula pra tudo que já existe.
+ALTER TABLE criativos ADD COLUMN motivo_reprovacao text;

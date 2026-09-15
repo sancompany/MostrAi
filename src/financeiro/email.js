@@ -78,6 +78,27 @@ async function enviarMensagemContato({ nome, email, telefone, mensagem }) {
 // fluxo: a pessoa pagava, subia o vídeo e ficava sem saber quando entrou no
 // ar — a plataforma decidia sozinha e não contava. Todo self-service de mídia
 // avisa nessa hora; é a confirmação de que o dinheiro virou entrega.
+async function enviarCriativoReprovado(anunciante, criativo) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Seu anúncio precisa de um ajuste — Mostraí',
+    text: [
+      `Olá, ${anunciante.nome_empresa}!`,
+      '',
+      'A peça que você enviou não passou na conferência e não entrou no ar.',
+      criativo?.motivo_reprovacao ? `Motivo: ${criativo.motivo_reprovacao}` : '',
+      '',
+      'Dá pra resolver rápido: no seu painel, exclua a peça reprovada (ela libera',
+      'a vaga do seu plano) e suba a versão corrigida. A gente confere de novo.',
+      `${process.env.SITE_URL}/anunciante/painel.html`,
+      '',
+      'Se quiser ajuda pra ajustar, é só responder este e-mail.',
+      'Mostraí',
+    ].filter(Boolean).join('\n'),
+  });
+}
+
 async function enviarCriativoNoAr(anunciante, criativo) {
   await transportador().sendMail({
     from: remetente(),
@@ -136,5 +157,5 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
 }
 
 module.exports = {
-  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
+  enviarCriativoNoAr, enviarCriativoReprovado, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
   enviarMensagemContato, enviarNovidade, enviarArrependimentoRecebido };

@@ -53,7 +53,7 @@ const dataCurta = (d) => window.dataBR(d);
     document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · meu ponto</span>`;
     document.getElementById('bonusPonto').innerHTML = cardBonus(estado, 'anuncio');
     ligarResgateAnuncio(document.getElementById('bonusPonto'));
-    await Promise.all([carregarTelas(), carregarPontos(), carregarExtrato()]);
+    await Promise.all([carregarTelas(), carregarPontos(), carregarExtrato(), carregarAutoanuncio()]);
   });
   if (estado && !estado.modos.ponto.liberado) {
     document.getElementById('statusBanner').innerHTML = `<span><strong>${esc(CONTA.nome_empresa)}</strong> · modo meu ponto ainda não ativado</span>`;
@@ -187,4 +187,80 @@ formEnd.addEventListener('submit', async (e) => {
 
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
+});
+
+// ---------------------------------------------------------------------------
+// Autoanúncio do dono do ponto
+//
+// A cota de tela pro próprio negócio é a contrapartida do comodato — e é a
+// modalidade inteira de quem abre mão dos R$ 50. O gerador da playlist já
+// puxava os criativos aprovados desta conta (criativosDoDono, limite 3) e não
+// havia nenhuma tela pra subir o vídeo: a cota era reservada e ficava vazia.
+// A rota é a mesma do anunciante (POST /anunciantes/:id/criativos), que já
+// aceita conta sem plano com teto de 1.
+// ---------------------------------------------------------------------------
+function ehVideoArquivo(url) { return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || ''); }
+
+async function carregarAutoanuncio() {
+  const el = document.getElementById('listaAutoanuncio');
+  if (!el || !CONTA) return;
+  try {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/criativos`, { credentials: 'include' });
+    const criativos = await r.json();
+    if (!r.ok || !Array.isArray(criativos)) throw new Error('resposta inesperada');
+    el.innerHTML = criativos.length ? `<div class="criativos-lista u-mt-16">
+      ${criativos.map((c) => `<div class="criativo-card" data-id="${c.id}">
+        ${c.arquivo_normalizado_url
+          ? (ehVideoArquivo(c.arquivo_normalizado_url)
+            ? `<video src="${esc(c.arquivo_normalizado_url)}" muted loop playsinline poster="${esc(c.thumbnail_url || '')}"></video>`
+            : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`)
+          : '<div class="criativo-placeholder">processando...</div>'}
+        <button type="button" class="criativo-excluir" aria-label="Excluir anúncio">&times;</button>
+        <span class="badge ${ROTULOS.criativoClasse[c.status]}">${ROTULOS.criativo[c.status]}</span>
+        ${c.status === 'reprovado' ? `<p class="criativo-motivo">${c.motivo_reprovacao ? esc(c.motivo_reprovacao) : 'Fale com a gente pra entender o que ajustar.'}<br><b>Exclua esta peça e suba a versão corrigida.</b></p>` : ''}
+      </div>`).join('')}
+    </div>` : '<p class="empty-state">Você ainda não subiu o seu anúncio. A cota na sua tela está reservada e vazia.</p>';
+  } catch (err) {
+    console.error('falha ao montar a lista do autoanúncio', err);
+    el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus anúncios agora.</p>';
+  }
+}
+
+document.getElementById('listaAutoanuncio')?.addEventListener('click', async (e) => {
+  const card = e.target.closest('.criativo-card');
+  if (!card || !e.target.closest('.criativo-excluir')) return;
+  if (!window.confirm('Excluir esse anúncio? Ele sai da sua tela.')) return;
+  const msg = document.getElementById('msgAutoanuncio');
+  const r = await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/criativos/${card.dataset.id}`, {
+    method: 'DELETE', credentials: 'include',
+  });
+  msg.textContent = r.ok ? 'Anúncio excluído.' : 'Não foi possível excluir agora. Tente de novo.';
+  msg.className = r.ok ? 'form-msg ok' : 'form-msg err';
+  if (r.ok) carregarAutoanuncio();
+});
+
+document.getElementById('arquivoAutoanuncio')?.addEventListener('change', async (e) => {
+  const input = e.target;
+  const msg = document.getElementById('msgAutoanuncio');
+  if (!input.files[0]) return;
+  msg.textContent = 'Enviando e processando — pode levar um minuto...';
+  msg.className = 'form-msg';
+  input.disabled = true;
+  const form = new FormData();
+  form.append('arquivo', input.files[0]);
+  try {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/criativos`, {
+      method: 'POST', credentials: 'include', body: form,
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || '');
+    msg.textContent = 'Enviado! A gente confere e ele entra na sua cota.';
+    msg.className = 'form-msg ok';
+    input.value = '';
+    carregarAutoanuncio();
+  } catch (err) {
+    msg.textContent = err.message ? window.frase(err.message) : 'Não foi possível enviar agora. Tente de novo.';
+    msg.className = 'form-msg err';
+  } finally {
+    input.disabled = false;
+  }
 });

@@ -408,7 +408,17 @@ async function renderCriativos(el, status = 'pendente') {
 
   el.querySelectorAll('.chip[data-status]').forEach((chip) => chip.addEventListener('click', () => renderCriativos(el, chip.dataset.status)));
   el.querySelectorAll('button[data-acao]').forEach((btn) => btn.addEventListener('click', async () => {
-    if (await salvar(`/admin/criativos/${btn.dataset.id}`, { status: btn.dataset.acao })) {
+    // Reprovar sem motivo era um beco sem saída pro anunciante: o card dele
+    // virava "Reprovado" e nenhuma tela dizia o que consertar. O motivo vai
+    // junto do status, aparece no card dele e vai no e-mail.
+    const corpo = { status: btn.dataset.acao };
+    if (btn.dataset.acao === 'reprovado') {
+      const motivo = window.prompt('Por que essa peça não entra no ar? (o anunciante lê isto no painel e no e-mail)');
+      if (motivo === null) return;
+      if (!motivo.trim()) return window.alert('Escreva o motivo — é o que diz ao anunciante o que corrigir.');
+      corpo.motivo_reprovacao = motivo.trim();
+    }
+    if (await salvar(`/admin/criativos/${btn.dataset.id}`, corpo)) {
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
       renderCriativos(el, status);

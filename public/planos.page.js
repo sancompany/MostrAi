@@ -123,7 +123,9 @@ function atualizarDescontos() {
 fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMes }) => {
   if (!pessoasPorMes) return;
   const el = document.getElementById('planosFluxo');
-  el.innerHTML = `Hoje a rede já alcança <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> nos pontos instalados.`;
+  // "alcança" era medicao; isto e estimativa de fluxo declarada por cada
+  // ponto na instalacao. A palavra mudou pra o que o numero e de verdade.
+  el.innerHTML = `Os pontos no ar estimam <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> passando na frente das telas.`;
   el.hidden = false;
 }).catch(() => {});
 

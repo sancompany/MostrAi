@@ -5,20 +5,23 @@ fetch(`${API_BASE_URL}/pontos`)
     const ativos = pontos.filter((p) => p.status === 'ativo').length;
     const emConstrucao = pontos.filter((p) => p.status === 'aguardando_instalacao').length;
     const cidades = new Set(pontos.map((p) => p.cidade)).size;
-    document.getElementById('statRow').innerHTML = `
-      <div class="stat"><b>${ativos}</b><span>Pontos ativos</span></div>
+    // `cidades || 1` dizia "1 Cidade atendida" com a rede vazia — o numero que
+    // mais importa pra quem esta decidindo assinar, inventado. Com zero ponto a
+    // faixa some e a pagina diz o que e verdade logo abaixo.
+    document.getElementById('statRow').innerHTML = pontos.length ? `
+      <div class="stat"><b>${ativos}</b><span>${ativos === 1 ? 'Ponto ativo' : 'Pontos ativos'}</span></div>
       <div class="stat"><b>${emConstrucao}</b><span>Em instalação</span></div>
-      <div class="stat"><b>${cidades || 1}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
-    `;
+      <div class="stat"><b>${cidades}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
+    ` : '';
     // Soma de fluxo só aparece com 1.000+ pessoas somadas (ver
     // GET /pontos/fluxo) — número pequeno demais não vira prova social.
     fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMes }) => {
       if (!pessoasPorMes) return;
       document.getElementById('statRow').insertAdjacentHTML('afterbegin',
-        `<div class="stat"><b>${pessoasPorMes.toLocaleString('pt-BR')}</b><span>Pessoas alcançadas por mês</span></div>`);
+        `<div class="stat"><b>${pessoasPorMes.toLocaleString('pt-BR')}</b><span>Pessoas por mês (estimativa dos pontos)</span></div>`);
     }).catch(() => {});
     if (!pontos.length) {
-      grid.innerHTML = '<p class="empty-state">Nenhum ponto ativo ainda — em breve.</p>';
+      grid.innerHTML = '<p class="empty-state">A rede está em montagem: nenhuma tela no ar ainda. Se você tem comércio em Matão, <a href="/seja-um-ponto.html">a primeira pode ser a sua</a>.</p>';
       return;
     }
     const STATUS_LABEL = {

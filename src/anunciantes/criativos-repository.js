@@ -2,7 +2,7 @@ const pool = require('../db/pool');
 
 const STATUS = ['pendente', 'aprovado', 'reprovado'];
 
-const CAMPOS_ATUALIZAVEIS = ['status', 'arquivo_normalizado_url', 'thumbnail_url', 'editado_pelo_operador'];
+const CAMPOS_ATUALIZAVEIS = ['status', 'arquivo_normalizado_url', 'thumbnail_url', 'editado_pelo_operador', 'motivo_reprovacao'];
 
 async function criar(dados) {
   const { rows } = await pool.query(
