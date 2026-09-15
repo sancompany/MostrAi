@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" width="512" height="512" role="img" aria-label="Mostraí">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -40 2080 2080" width="512" height="512" role="img" aria-label="Mostraí">
   <title>Mostraí</title>
   <!--
     Desenho do dono (simbolo_MostrAi.svg, vetorizado por ele), usado tres vezes:
     preto no lugar, azul deslocado pra cima e laranja um tico maior e mais pra
     baixo — as tres copias da marca. O traco e o dele, so a cor e o deslocamento
     sao daqui. viewBox quadrado: o simbolo nao entorta em tamanho nenhum.
+    Margem de 40 em volta (bug reportado em 15/09/2026): a copia laranja
+    (translate -30 -21, scale 1.03) passa do limite 0/2000 do desenho original
+    e cortava a ponta de cima sem essa folga.
   -->
   <defs>
     <g id="simbolo-lampada" transform="translate(0,2000) scale(0.1,-0.1)" stroke="none">

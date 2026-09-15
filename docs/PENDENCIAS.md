@@ -671,3 +671,25 @@ primeiros itens acima precisam sair da memória do processo (Postgres ou
 Redis, que já existem no projeto). Trabalho pequeno e isolado — fica
 pendente até o dono decidir a ordem (visual → funcionalidades → depois
 instâncias, ou antes).
+
+**5. [x] Home — símbolo da lâmpada cortado no topo, e dois textos da dobra
+principal.** **FEITO em 15/09/2026.** *(Primeiro print da rodada de
+depuração visual, desktop.)*
+
+- *Símbolo cortado:* a cópia laranja de `public/img/simbolo-lampada.svg`
+  (`translate(-30 -21) scale(1.03)`) passa do limite `0/2000` do desenho
+  original e a ponta de cima saía cortada. Conserto: `viewBox` ganhou 40 de
+  folga em volta (`-40 -40 2080 2080`) — o desenho, a cor e o deslocamento do
+  dono não mudaram, só a margem que evita o corte. Conferido por captura
+  isolada do SVG antes/depois.
+- *Texto de destaque acima do título:* "Telas de anúncio dentro do comércio
+  de Matão-SP" → **"Telas de anúncio dentro do comércio local"** (pedido do
+  dono: tirar a limitação ao município).
+- *Linha abaixo do botão laranja:* "Tem um comércio? Ganhe com a parede.
+  Quer indicar? Seja vendedor parceiro." → **"Quer anunciar? Tenha um ponto.
+  Quer indicar? Seja um parceiro."** — pedido literal do dono. Ressalva
+  registrada e confirmada com ele: o link de "Tenha um ponto" continua
+  indo para `/seja-um-ponto.html` (virar ponto/estabelecimento), então quem
+  lê "Quer anunciar?" e clica cai na página de virar ponto, não na de
+  anunciar (que já tem os dois botões principais da dobra). Dono escolheu
+  manter assim mesmo.
