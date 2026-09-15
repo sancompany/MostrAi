@@ -31,11 +31,12 @@ const CAMPOS_CRIACAO = [
   'fundador',
   'vagas',
   'ponto_apos_meses',
+  'desconto_comodato_percentual',
 ];
 
-// Preço "fundador": criar um plano novo (id novo) em vez de editar um
-// existente é o jeito de mudar preço pra clientes futuros sem mexer no que
-// quem já assinou está pagando (ver migration 014).
+// Criar um plano novo (id novo) em vez de editar um existente é o jeito de
+// mudar preço pra clientes futuros sem mexer no que quem já assinou está
+// pagando (ver migration 014).
 async function criar(dados) {
   const campos = CAMPOS_CRIACAO.filter((c) => dados[c] !== undefined);
   const colunas = campos.join(', ');
@@ -61,17 +62,19 @@ async function listarAtivos({ incluirFundador = true } = {}) {
 // Uma vaga é ocupada por assinatura ativa que já teve cobrança confirmada,
 // ou que foi criada há pouco e ainda está indo pro checkout. Clique antigo
 // que nunca pagou solta a vaga sozinho depois desse prazo — sem isso um
-// curioso travaria a vaga de fundador pra sempre.
-const DIAS_RESERVA_VAGA = 7;
+// curioso travaria a vaga pra sempre. 15 minutos é o bastante pra completar
+// o pagamento; não há por que seguar por dias (decisão do dono, 15/09/2026 —
+// era 7 dias).
+const MINUTOS_RESERVA_VAGA = 15;
 
 async function contarVagasOcupadas(planoId, ignorarAnuncianteId) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM assinaturas s
      WHERE s.plano_id = $1 AND s.status = 'ativa' AND s.anunciante_id <> COALESCE($2, -1)
-       AND (s.created_at > now() - ($3 || ' days')::interval
+       AND (s.created_at > now() - ($3 || ' minutes')::interval
             OR EXISTS (SELECT 1 FROM cobrancas_confirmadas c
                        WHERE c.anunciante_id = s.anunciante_id AND c.plano_id = s.plano_id))`,
-    [planoId, ignorarAnuncianteId || null, DIAS_RESERVA_VAGA],
+    [planoId, ignorarAnuncianteId || null, MINUTOS_RESERVA_VAGA],
   );
   return rows[0].total;
 }
@@ -123,8 +126,9 @@ const CAMPOS_VITRINE = ['ativo', 'destaque_no_site', 'rotulo', 'vagas'];
 
 // CONTRATO: cada um destes o Mostraí lê AO VIVO pra quem já está pagando —
 // `limite_criativos` no upload, `frequencia_dia` e `cobertura` na playlist,
-// `nome` e benefícios no painel. Editar no lugar mudaria o contrato de quem
-// já assinou. Só entram por versão nova.
+// `nome` e benefícios no painel, `desconto_comodato_percentual` no cálculo
+// do valor mensal (item 8 da spec). Editar no lugar mudaria o contrato de
+// quem já assinou. Só entram por versão nova.
 const CAMPOS_CONTRATO = [
   'tier',
   'nome',
@@ -138,6 +142,7 @@ const CAMPOS_CONTRATO = [
   'fundador',
   'ponto_apos_meses',
   'beneficio_ids',
+  'desconto_comodato_percentual',
 ];
 
 const CAMPOS_ATUALIZAVEIS = CAMPOS_VITRINE;

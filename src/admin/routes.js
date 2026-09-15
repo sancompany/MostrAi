@@ -227,9 +227,6 @@ router.get('/admin/resumo', async (_req, res) => {
         }
       : null,
     horasOfflineAlerta: HORAS_OFFLINE_ALERTA,
-    // Única regra de plano que mora em variável de ambiente (CONSTRAINTS.md):
-    // liga/desliga a vitrine do plano fundador sem deploy.
-    programaFundadorAtivo: process.env.PROGRAMA_FUNDADOR_ATIVO === 'true',
   });
 });
 

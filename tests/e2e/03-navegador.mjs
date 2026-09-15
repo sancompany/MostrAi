@@ -1,6 +1,6 @@
 // Fluxo v2 no navegador, contra o servidor local real (porta 3999):
 // candidatura → admin gera convite → cadastro por convite → painel do ponto,
-// painel do vendedor, planos com fundador, player + PIN, abas novas do admin.
+// painel do vendedor, planos, player + PIN, abas novas do admin.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
@@ -190,22 +190,21 @@ check('convite de vendedor gerado', !!linkVend);
 await abaAdmin(adm, 'vendedores', 'Marcos');
 check('aba vendedores lista Marcos com cupom', (await adm.textContent('#conteudo')).includes('Marcos') && await adm.$eval('#conteudo input[data-vendedor="chave_pix"]', (e) => e.value === 'marcos@pix'));
 
-console.log('== planos: fundador ==');
+console.log('== planos: vitrine e admin ==');
 {
   const p = await pagina('/planos.html');
   await p.waitForTimeout(600);
-  const t = await p.textContent('body');
-  check('vitrine mostra o bloco fundador', t.includes('Programa fundador aberto') && t.includes('Quero ser fundador'), t.slice(0, 100));
   check('grade normal continua com 3 planos', (await p.$$('#plansGrid .plan-card')).length === 3);
   await shot(p, 'planos');
   await p.close();
 }
-await abaAdmin(adm, 'planos', 'Programa fundador');
+await abaAdmin(adm, 'planos', 'Desconto comodato');
 {
   const t = await adm.textContent('#conteudo');
-  check('admin planos mostra programa fundador aberto', t.includes('ABERTO no site'));
-  check('admin planos tem colunas novas', t.includes('Mín. telas') && t.includes('Vagas'));
+  check('admin planos tem coluna de desconto comodato', t.includes('Desconto comodato'));
 }
+await abaAdmin(adm, 'anunciantes', 'Marcar fundador');
+check('admin anunciantes tem ação de marcar fundador', (await adm.textContent('#conteudo')).includes('Marcar fundador'));
 await abaAdmin(adm, 'custos', 'DAS MEI');
 check('aba custos lista DAS MEI', (await adm.textContent('#conteudo')).includes('DAS MEI'));
 await shot(adm, 'admin-custos');

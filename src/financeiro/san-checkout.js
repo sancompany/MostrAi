@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
-const { multiplicar, percentual } = require('../lib/dinheiro');
+const { arredondar, multiplicar, percentual } = require('../lib/dinheiro');
 const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
@@ -150,11 +150,32 @@ async function montarRespostaPlano(assinaturaId) {
   };
 }
 
-// O preço travado é da conta NAQUELE plano: trocar de plano solta a trava
-// (senão o fundador de R$149 levaria o preço pro plano Máximo).
+// O preço travado é da conta NAQUELE plano: trocar de plano solta a trava.
+//
+// Dois descontos entram por cima do preço-base, somados (item 4 e item 8 da
+// spec, 15/09/2026):
+// - comodato: conta com papel 'ponto' ganha o `desconto_comodato_percentual`
+//   DAQUELE plano — o dono define um valor por linha da grade. Fica em
+//   CAMPOS_CONTRATO, então já não muda pra quem já assinou (só por versão
+//   nova) — não precisa de trava própria.
+// - fundador: conta marcada `fundador` pelo dono (à mão, sem concessão
+//   automática) ganha o `fundador_desconto_percentual` dela, mas só nos
+//   planos que o dono liberou pra fundador via `fundador_compromisso_minimo`
+//   (ex.: só trimestral pra cima — mensal fica de fora).
 function valorMensalDaConta(anunciante, plano) {
   const travado = anunciante.valor_mensal_travado != null && anunciante.plano_id === plano.id;
-  return travado ? Number(anunciante.valor_mensal_travado) : Number(plano.valor_mensal);
+  const base = travado ? Number(anunciante.valor_mensal_travado) : Number(plano.valor_mensal);
+
+  const descontoComodato = (anunciante.papeis || []).includes('ponto')
+    ? Number(plano.desconto_comodato_percentual || 0)
+    : 0;
+  const descontoFundador =
+    anunciante.fundador && plano.compromisso_meses >= (anunciante.fundador_compromisso_minimo || 0)
+      ? Number(anunciante.fundador_desconto_percentual || 0)
+      : 0;
+  const desconto = Math.min(100, descontoComodato + descontoFundador);
+
+  return desconto ? arredondar(base - percentual(base, desconto)) : base;
 }
 
 async function registrarPendencia(payload, motivo) {

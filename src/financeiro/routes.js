@@ -17,13 +17,14 @@ const eventos = require('../lib/eventos');
 const uploadNota = multer({ dest: os.tmpdir() });
 
 // Planos — pública (módulo 7) + admin
-// Plano fundador só aparece pro público enquanto o programa está aberto
-// (PROGRAMA_FUNDADOR_ATIVO=true) e ainda tem vaga — fora disso some da
-// vitrine sem o admin precisar desativar o plano.
+// Fundador deixou de ser plano de catálogo (item 4 da spec, 15/09/2026):
+// virou status da conta, com desconto e elegibilidade que o dono marca à
+// mão (ver valorMensalDaConta em san-checkout.js). Um plano com `vagas`
+// ainda some da vitrine quando as vagas acabam — mecanismo genérico, não
+// exclusivo de fundador.
 router.get('/planos', async (_req, res) => {
-  const programaAberto = process.env.PROGRAMA_FUNDADOR_ATIVO === 'true';
-  const planos = await planosRepo.listarAtivos({ incluirFundador: programaAberto });
-  res.json(planos.filter((p) => !p.fundador || p.vagas_restantes == null || p.vagas_restantes > 0));
+  const planos = await planosRepo.listarAtivos();
+  res.json(planos.filter((p) => p.vagas_restantes == null || p.vagas_restantes > 0));
 });
 
 router.get('/admin/planos', async (_req, res) => {
@@ -185,10 +186,8 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   }
   const plano = await planosRepo.buscarPorId(req.body.planoId);
   if (!plano?.ativo) return res.status(400).json({ erro: 'plano inválido' });
-  if (plano.fundador && process.env.PROGRAMA_FUNDADOR_ATIVO !== 'true') {
-    return res.status(400).json({ erro: 'o programa de fundador não está aberto' });
-  }
-  // Vagas do plano (fundador) — mesma conta que a vitrine usa (planos-repository).
+
+  // Vagas do plano — mesma conta que a vitrine usa (planos-repository).
   if (plano.vagas != null) {
     const ocupadas = await planosRepo.contarVagasOcupadas(plano.id, req.session.anuncianteId);
     if (ocupadas >= plano.vagas) return res.status(400).json({ erro: 'as vagas desse plano acabaram' });
@@ -203,6 +202,15 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     return res.status(403).json({ erro: 'conta suspensa — fale com o suporte antes de assinar' });
   if (!conta.endereco || !conta.cidade || !conta.uf || !conta.cep) {
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
+  }
+  // Conta fundadora só assina o que o dono liberou pra fundador — ex.: só
+  // trimestral pra cima, mensal fora (item 4 da spec, 15/09/2026).
+  if (
+    conta.fundador &&
+    conta.fundador_compromisso_minimo != null &&
+    plano.compromisso_meses < conta.fundador_compromisso_minimo
+  ) {
+    return res.status(400).json({ erro: 'esse plano não está liberado para conta fundadora' });
   }
   if (!(conta.papeis || []).includes('anunciante')) {
     await pool.query(`UPDATE anunciantes SET papeis = array_append(papeis, 'anunciante') WHERE id = $1`, [conta.id]);
@@ -505,6 +513,9 @@ router.patch('/admin/vendedores/:contaId', async (req, res) => {
     if (!v) return res.status(404).json({ erro: 'vendedor não encontrado' });
     res.json(v);
   } catch (err) {
+    if (err.constraint === 'vendedores_comissao_percentual_faixa') {
+      return res.status(400).json({ erro: 'comissão precisa ficar entre 10% e 30%' });
+    }
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });
     throw err;
   }

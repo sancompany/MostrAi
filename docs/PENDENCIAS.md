@@ -72,14 +72,14 @@ o que trava · quanto leva.
    · **Trava:** o ensaio de restauração da Estação 6 (`RUNBOOK.md`, seção 5).
    · ~2 min. Falhando, me mande o log que eu ajusto o Dockerfile.
 
-7. **Decidir as quatro perguntas de produto que sobraram.**
-   · `docs/PENDENCIAS.md`, seção B
-   · Vaga de fundador por 7 dias; comissão sobre renovação; precedência entre
-     `preco_travado` e desconto de comodato; e se plano desativado aparece
-     apagado em `/planos.html` ou some.
-   · **Trava:** o item 8 da spec (seção B.1), que é construção da
-     Estação 5.
-   · ~10 min de decisão.
+7. ~~Decidir as quatro perguntas de produto que sobraram.~~ — **RESPONDIDO em
+   15/09/2026.** Vaga seguindo por 7 dias → **15 minutos** (construído).
+   Comissão sobre renovação → **mantém**. Precedência entre `preco_travado` e
+   desconto de comodato → não precisava decidir: o desconto de comodato é
+   campo do PLANO (contrato, como o próprio preço), então já não muda pra
+   quem assinou — a trava antiga ficou redundante desde o item 9. Plano
+   desativado no site → **some**, como já era. Detalhe em `docs/funcional.md`
+   (RN-14, RN-32, RN-33) e na seção B abaixo.
 
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
@@ -296,12 +296,37 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
   painel único é a forma do item 2 e os módulos cruzados são o item 4, ambos
   escritos estreito demais na primeira redação. Detalhe em
   `docs/specs/2026-09-12-mostrai.md`, seção "Validação do dono (14/09/2026)".
-- [ ] **Programa fundador**: ligar `PROGRAMA_FUNDADOR_ATIVO=true` só quando quiser vender. Revisar o plano seed `fundador-12m` (R$149 travado 12m, 10 vagas) no admin → Planos → Programa fundador. Os planos normais vieram com o rótulo antigo "Preço fundador — nunca muda" — troque no admin (agora é confuso ao lado do plano fundador de verdade).
-- [ ] **Módulos cruzados**: decidir quais planos ganham "tela após N meses" (admin → Planos → coluna "Tela após") e quais opções de comodato ganham "anúncio grátis após N meses" (admin → Opções de comodato → Bônus). Estão desligados (vazios) até você preencher.
-- [ ] **Vaga de fundador**: hoje uma assinatura criada e não paga segura a vaga por 7 dias. Ok?
-- [ ] **Troca de plano de quem já paga**: o sistema recusa (evita cobrança dupla na Asaas) e manda falar com você. O caminho é: admin → Anunciantes → "cancelar assinatura" (chama o Checkout) → a pessoa assina o novo. Confirmar que é assim que você quer.
-- [ ] **Comissão sobre renovação**: hoje o vendedor recebe a cada `cobranca_confirmada` (inclusive renovações). Manter?
-- [ ] **Drop do legado** (pede migration própria, com sua permissão): tabela `afiliados`, `pontos.aparelho_id`/`ultima_vez_online`, `exibicoes_contador.ponto_id`, `comissoes.afiliado_id`, `src/financeiro/afiliados-repository.js`, `public/nav-auth.js`, `public/afiliado/*` (hoje são redirects), `src/financeiro/san-checkout-1.js` (cópia antiga que só existe na sua pasta).
+- [x] **Programa fundador** — **REDESENHADO em 15/09/2026, a seu pedido**: não
+  fazia mais sentido como plano de catálogo travado por variável de ambiente,
+  porque o item 9 já trava o preço de QUALQUER plano assinado. Virou status de
+  CONTA (`anunciantes.fundador`, migration 033): você marca à mão em
+  Anunciantes → "Marcar fundador", define o desconto percentual e o piso de
+  compromisso (ex.: só trimestral pra cima). O plano seed `fundador-12m` foi
+  desativado (migration 034) — não aparece mais em lugar nenhum. Depois do
+  primeiro mês, é só parar de marcar contas novas; o que já foi marcado
+  continua valendo. Ver RN-14 em `docs/funcional.md`.
+- [ ] **Módulos cruzados**: decidir quais planos ganham "tela após N meses" (admin → Planos → coluna "Tela após") e quais opções de comodato ganham "anúncio grátis após N meses" (admin → Opções de comodato → Bônus). Estão desligados (vazios) até você preencher. Mapa completo dos tipos de benefício (os que mudam código e os que são só texto) em `docs/catalogo-beneficios.md`.
+- [x] **Vaga de fundador** — **RESOLVIDO em 15/09/2026**: a vaga (mecanismo
+  genérico, campo `vagas` de qualquer plano) agora solta sozinha em **15
+  minutos** sem pagamento, não mais 7 dias.
+- [x] **Troca de plano de quem já paga** — **CONFIRMADO em 15/09/2026**: fica
+  como está (recusa e manda falar com você; caminho é cancelar no admin e
+  assinar de novo).
+- [x] **Comissão sobre renovação** — **CONFIRMADO em 15/09/2026**: mantém —
+  o vendedor recebe a cada `cobranca_confirmada`, inclusive renovação. A
+  comissão é por VENDEDOR (`vendedores.comissao_percentual`), não por plano,
+  então troca de plano do indicado nunca muda a comissão dele.
+- [x] **Drop do legado** — **AUTORIZADO e FEITO em 15/09/2026** ("manda
+  bala"), migration 036: tabela `afiliados` (e `comissoes.afiliado_id`),
+  `pontos.aparelho_id`/`ultima_vez_online`, `exibicoes_contador.ponto_id`.
+  `exibicoes_contador.ponto_id` ainda era lido de verdade em duas rotas do
+  painel do anunciante (extrato e CSV de exibições) e escrito a cada geração
+  de playlist — reescritas pra resolver o ponto por `dispositivo_id` antes do
+  drop, senão quebrava produção. `src/financeiro/afiliados-repository.js`
+  apagado (zero `require` no código — as rotas `/afiliados/*` que respondem
+  410 nunca dependeram dele). `public/nav-auth.js`, `public/afiliado/*` e
+  `src/financeiro/san-checkout-1.js` não existem neste repositório (o último
+  é a cópia que só existe na sua pasta local — nada a apagar aqui).
 - [ ] **Custos fixos**: os seeds (DAS MEI 86,05; Contador 100; Domínio 3,33; Supabase Pro 0; Deslocamento 50) são chute meu — corrija no admin → Custos fixos. Amortização é por tela: preencha custo e prazo de cada TV na aba Telas.
 - [ ] **Sessão única por navegador**: cadastrar uma conta no mesmo navegador em que o admin está logado derruba o admin (é o comportamento seguro). Use dois perfis/navegadores pra testar.
 
@@ -320,26 +345,26 @@ Nasceu do fecho da Estação 1. São os itens 8 e 9 da spec, e a ordem importa: 
    Migration 026 traz `arquivado_em`, `substituido_por` e a trava de que
    aposentado nunca é ativo. Aba "Planos arquivados" mostra contas ativas e
    cobranças por versão. RN-27 em `docs/funcional.md`.
-2. [ ] **Item 8 — desconto de comodato sobre os planos de anunciante.** Um
-   desconto por linha da grade (12 valores no admin, livres entre si), separado
-   do desconto de ciclo que o anunciante comum já tem. Vale a partir da
-   aprovação da conta e nunca é revogado. Aparece pro comodatário como "quando
-   sua conta for aprovada você recebe X% em todos os planos". **Fica pendente
-   uma regra de precedência**: quem tem `preco_travado` e ganha o desconto de
-   comodato — o desconto incide sobre o travado, ou o travado vence? Decidir
-   antes de construir.
+2. [x] **Item 8 — desconto de comodato sobre os planos de anunciante.** FEITO
+   em 15/09/2026. `planos.desconto_comodato_percentual` (migration 033) é
+   campo de CONTRATO — como o próprio `valor_mensal`, só muda por versão nova
+   — então a pergunta de precedência com `preco_travado` não existia de
+   verdade: o travado guarda o preço DO PLANO, e o desconto (comodato e/ou
+   fundador) é somado por cima, lido ao vivo a cada cobrança em
+   `valorMensalDaConta` (`src/financeiro/san-checkout.js`). Você define o
+   valor por linha da grade no admin → Planos, coluna "Desconto comodato".
+   Vale pra qualquer conta com o papel `ponto`, em qualquer plano que tenha o
+   desconto preenchido.
 
-3. [ ] **Ligar/desligar plano: aviso e confirmação visual.** *(pedido em
-   14/09/2026.)* O toggle **já existe** — coluna "Ativo" da tabela de planos,
-   `public/admin/index.html:1092`, e `ativo` já está em `CAMPOS_ATUALIZAVEIS`.
-   Falta só o acabamento que o dono pediu: um aviso antes de virar a chave, e a
-   linha desativada aparecendo **apagada** na lista, marcada "Desativado", em vez
-   de só um checkbox mudando de estado. O padrão visual já existe na mesma tela
-   (a lista de benefícios usa `opacity:.55` + "(indisponível)") — reaproveitar,
-   não inventar. **Em aberto, pergunta do dono:** o plano desativado aparece
-   apagado também em `/planos.html` para o cliente, ou some da vitrine como hoje?
-   Mostrar ao cliente um plano que ele não pode assinar é decisão de produto, não
-   de código.
+3. [x] **Ligar/desligar plano: pergunta respondida em 15/09/2026 — some.**
+   *(pedido em 14/09/2026.)* O toggle **já existe** — coluna "Ativo" da
+   tabela de planos, e `ativo` já está em `CAMPOS_ATUALIZAVEIS`. A pergunta em
+   aberto ("o plano desativado aparece apagado em `/planos.html`, ou some da
+   vitrine?") o dono respondeu: **some**, sem badge "Desativado" — que é o que
+   `GET /planos` já fazia (`WHERE p.ativo`), confirmado empiricamente em
+   15/09/2026. Nenhuma mudança de código foi necessária. O acabamento no admin
+   (aviso antes de virar a chave, linha "apagada" na tabela do admin — não do
+   site) não foi pedido de novo e continua opcional.
 
    *Foi por aqui que o item 1 saiu:* `ativo=false` era mesmo a alavanca — "a
    linha antiga sai da vitrine e continua servindo quem está nela". O que

@@ -106,10 +106,10 @@ async function gravarProgramados(dispositivo, horaAtual, contagem) {
   await Promise.all(
     Object.entries(contagem).map(([anuncianteId, vezes]) =>
       pool.query(
-        `INSERT INTO exibicoes_contador (anunciante_id, ponto_id, dispositivo_id, janela_hora, vezes_programadas)
-     VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (anunciante_id, dispositivo_id, janela_hora) DO UPDATE SET vezes_programadas = $5`,
-        [anuncianteId, dispositivo.ponto_id, dispositivo.id, horaAtual, vezes],
+        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (anunciante_id, dispositivo_id, janela_hora) DO UPDATE SET vezes_programadas = $4`,
+        [anuncianteId, dispositivo.id, horaAtual, vezes],
       ),
     ),
   );

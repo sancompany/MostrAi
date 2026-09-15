@@ -1,7 +1,8 @@
 #!/bin/bash
 # Fluxo ponta a ponta contra o servidor local: admin → candidatura → convite →
 # cadastro por convite (ponto+vendedor) → tela → chave → playlist → played →
-# anunciante → assinar (vagas/fundador) → webhook → cobertura → comissão.
+# anunciante → assinar (plano inválido) → webhook → cobertura → comissão
+# (webhook/cobertura/comissão continuam em 02-assinatura-webhook-comissao.sh).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
 cd "$ROOT/tests/e2e/saida" 2>/dev/null || { mkdir -p "$ROOT/tests/e2e/saida"; cd "$ROOT/tests/e2e/saida"; }
@@ -57,9 +58,7 @@ r=$(curl -s -X POST $B/player/$DISP/played -H "X-Aparelho-Id: $CHAVE" -H "$J" -d
 r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"0000"}'); esperar "PIN errado 401" 'PIN incorreto' "$r"
 r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"1234"}'); esperar "PIN certo abre painel da tela" 'porAnunciante' "$r"
 
-echo "== anunciante: cadastro aberto, plano fundador, vagas =="
+echo "== anunciante: cadastro aberto, plano inválido =="
 r=$(curl -s -c ana.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"nome_empresa\":\"Padaria Ana\",\"cpf_cnpj\":\"11.222.333/0001-81\",\"endereco\":\"R\",\"cidade\":\"Matão\",\"uf\":\"SP\",\"cep\":\"15990-000\",\"contato_email\":\"ana@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"indicado_por_cupom\":\"$CUPOM\"}")
 esperar "anunciante cadastro aberto, papel anunciante" '"papeis":\["anunciante"\]' "$r"; ANA=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
-r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"fundador-12m"}'); esperar "fundador desligado recusa" 'inválido|não está aberto' "$r"
-curl -s -b adm.txt -X PATCH $B/admin/planos/fundador-12m -H "$J" -d '{"ativo":true,"vagas":1}' >/dev/null
-r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"fundador-12m"}'); esperar "fundador ativo mas PROGRAMA_FUNDADOR_ATIVO=false" 'não está aberto' "$r"
+r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"nao-existe"}'); esperar "plano inexistente recusado" 'inválido' "$r"

@@ -27,58 +27,14 @@ const LABEL_CICLO = { 3: 'cobrado a cada 3 meses', 6: 'cobrado a cada 6 meses', 
 // meses custa o mensal × 3 se não houvesse desconto — esse é o valor
 // riscado, e a diferença dividida pelos meses é a economia por mês.
 function mensalDoTier(tier) {
-  const mensal = PLANOS.find((p) => p.tier === tier && p.compromisso_meses === 1 && !p.fundador);
+  const mensal = PLANOS.find((p) => p.tier === tier && p.compromisso_meses === 1);
   return mensal ? Number(mensal.valor_mensal) : null;
-}
-
-// Plano fundador: fica fora da grade de ciclos, sempre visível enquanto o
-// programa estiver aberto e houver vaga (o servidor já filtra isso — ver
-// GET /planos). Preço travado, meses grátis e vagas vêm do próprio plano.
-function renderFundador() {
-  const fundadores = PLANOS.filter((p) => p.fundador);
-  const bloco = document.getElementById('fundadorBloco');
-  bloco.hidden = !fundadores.length;
-  if (!fundadores.length) return;
-  const vagas = fundadores.reduce((s, p) => s + (p.vagas_restantes == null ? 0 : p.vagas_restantes), 0);
-  document.getElementById('fundadorAviso').innerHTML =
-    `<b>Programa fundador aberto.</b> Quem entra agora trava o preço de lançamento pelo tempo do plano${vagas ? ` — restam <b>${vagas} vaga${vagas > 1 ? 's' : ''}</b>` : ''}. Depois disso, valem os planos normais abaixo.`;
-  document.getElementById('fundadorGrid').innerHTML = fundadores
-    .map((p) => {
-      const meses = p.compromisso_meses;
-      const porMes = Number(p.valor_mensal);
-      const cheio = Number(p.valor_mensal_cheio) || mensalDoTier(p.tier);
-      // 12 horas e a MESMA jornada padrao que o gerador usa quando o ponto nao
-      // declarou horario (HORAS_ABERTO_PADRAO em src/playlist/gerador.js). Quando
-      // ele declara, a conta real e sobre o horario dele — por isso o "≈" e por
-      // isso a tela agora diz de onde sai o numero.
-      const porHora = Math.round(p.frequencia_dia / 12);
-      return `
-    <div class="plan-card fundador">
-      <span class="badge">Fundador</span>
-      ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
-      <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">${p.frequencia_dia}x por dia em cada tela <small>(≈${porHora}x por hora num comércio aberto 12h)</small></div>
-      ${cheio && cheio > porMes ? `<div class="price-riscado">${fmt(cheio)}/mês</div>` : ''}
-      <div class="price">${fmt(porMes)}<small class="u-fs-100">/mês</small></div>
-      <div class="price-sub">
-        ${meses > 1 ? `${fmt(porMes * meses)} ${LABEL_CICLO[meses] || `a cada ${meses} meses`}` : 'cobrado mensalmente'}
-        ${p.preco_travado ? `<b>Preço travado por ${meses} meses</b>` : ''}
-      </div>
-      <ul>
-        ${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-        ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}
-        ${p.vagas_restantes != null ? `<li class="vagas">${p.vagas_restantes} vaga${p.vagas_restantes > 1 ? 's' : ''} restante${p.vagas_restantes > 1 ? 's' : ''}</li>` : ''}
-      </ul>
-      <a class="btn primary block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Quero ser fundador</a>
-    </div>`;
-    })
-    .join('');
 }
 
 function render(meses) {
   const grid = document.getElementById('plansGrid');
   document.getElementById('cycleNote').textContent = NOTA_CICLO[meses] || '';
-  const doMes = PLANOS.filter((p) => p.compromisso_meses === meses && !p.fundador);
+  const doMes = PLANOS.filter((p) => p.compromisso_meses === meses);
   // Aba sem plano nenhum deixava a area em branco, sem dizer se estava
   // carregando, se deu erro ou se nao ha plano naquele ciclo.
   if (!doMes.length) {
@@ -131,7 +87,7 @@ function atualizarDescontos() {
     const meses = Number(btn.dataset.meses);
     const rotulo = btn.querySelector('small');
     if (!rotulo || meses === 1) return;
-    const descontos = PLANOS.filter((p) => p.compromisso_meses === meses && !p.fundador)
+    const descontos = PLANOS.filter((p) => p.compromisso_meses === meses)
       .map((p) => {
         const base = mensalDoTier(p.tier);
         return base ? Math.round((1 - p.valor_mensal / base) * 100) : 0;
@@ -157,7 +113,6 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
   .then(([planos]) => {
     PLANOS = planos;
     atualizarDescontos();
-    renderFundador();
     render(3);
   })
   .catch(() => {
@@ -168,8 +123,7 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
 // Vender cobertura numa rede sem nenhuma tela no ar era o furo mais caro da
 // vitrine: a cobranca comeca na confirmacao do pagamento (migration 021 tirou
 // a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
-// tela dizer isso em lugar nenhum. Nao bloqueia a venda — quem quiser entrar
-// como fundador continua podendo —, so para de esconder.
+// tela dizer isso em lugar nenhum. Nao bloqueia a venda, so para de esconder.
 fetch(`${API_BASE_URL}/pontos`)
   .then((r) => r.json())
   .then((pontos) => {

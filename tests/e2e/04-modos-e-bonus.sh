@@ -3,7 +3,7 @@
 # pede o modo ponto de dentro do painel, o admin libera na conta; convite
 # aceito por conta logada; módulos cruzados de plano (tela após N meses de
 # plano; anúncio grátis após N meses como ponto).
-# Assume: servidor com PROGRAMA_FUNDADOR_ATIVO=true, banco zerado (reset-db.sh).
+# Assume: banco zerado (reset-db.sh).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
 mkdir -p "$ROOT/tests/e2e/saida"; cd "$ROOT/tests/e2e/saida"

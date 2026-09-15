@@ -15,7 +15,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/health` | `{ok:true}` |
-| GET | `/planos` | Planos ativos pra vitrine. Plano `fundador` só vem com `PROGRAMA_FUNDADOR_ATIVO=true` e `vagas_restantes > 0`. Campos: `preco_travado`, `fundador`, `vagas`, `vagas_restantes`, `limite_criativos`, `beneficios`. (`meses_gratis` e `minimo_telas_ativas` sairam do banco na migration 021.) |
+| GET | `/planos` | Planos ativos pra vitrine, exceto os com `vagas_restantes = 0`. Campos: `preco_travado`, `vagas`, `vagas_restantes`, `desconto_comodato_percentual`, `limite_criativos`, `beneficios`. Fundador não é mais plano de catálogo (migration 033) — é status de conta, sem campo aqui. (`meses_gratis` e `minimo_telas_ativas` sairam do banco na migration 021.) |
 | GET | `/planos-ponto` | Opções de comodato (ajuda de custo × mais cota). |
 | GET | `/pontos` | Pontos ativos (nome, endereço, cidade) pra página "Onde estamos". |
 | GET | `/pontos/fluxo` | `{pessoasPorMes}` somando o fluxo estimado dos pontos ativos. |

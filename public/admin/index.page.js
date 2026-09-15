@@ -263,8 +263,7 @@ const SUBTITULOS = {
   anunciantes:
     'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
-  planos:
-    'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine; o plano fundador fica fora dessa conta.',
+  planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine.',
   planosarquivados:
     'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas — é por isso que não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
   beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
@@ -1132,7 +1131,7 @@ async function renderAnunciantes(el) {
         .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
         .join(
           ' ',
-        )}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado (fundador)">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+        )}${a.fundador ? ` <span class="badge badge-ok" title="desconto extra ${a.fundador_desconto_percentual ?? 0}%${a.fundador_compromisso_minimo ? ` · só a partir de ${a.fundador_compromisso_minimo}x` : ''}">fundador</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante — não entra em ponto do mesmo ramo">
@@ -1148,6 +1147,7 @@ async function renderAnunciantes(el) {
           ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
           : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
            <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
+           <button class="btn ghost mini" data-fundador="${a.id}" title="Marca esta conta como fundadora: desconto extra e piso de compromisso definidos por você">${a.fundador ? 'Editar fundador' : 'Marcar fundador'}</button>
            ${
              a.plano_id && !a.plano_cortesia
                ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
@@ -1223,6 +1223,44 @@ async function renderAnunciantes(el) {
       if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
       toast('plano liberado — a conta está no ar, sem cobrança');
       renderAnunciantes(el);
+    }),
+  );
+  // Fundador (item 4 da spec, 15/09/2026): status de conta que só o admin
+  // marca, com o desconto e o piso de compromisso que ele decidir — não é
+  // mais um plano de catálogo separado.
+  el.querySelectorAll('[data-fundador]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const atual = anunciantes.find((a) => a.id === Number(b.dataset.fundador));
+      const desconto = prompt(
+        'Desconto extra (%) além do preço do plano — vazio remove o status de fundador:',
+        atual?.fundador_desconto_percentual ?? '',
+      );
+      if (desconto === null) return;
+      if (desconto.trim() === '') {
+        if (!atual?.fundador || !confirm('Remover o status de fundador dessa conta?')) return;
+        if (
+          await salvar(`/admin/anunciantes/${b.dataset.fundador}`, {
+            fundador: false,
+            fundador_desconto_percentual: null,
+            fundador_compromisso_minimo: null,
+          })
+        )
+          renderAnunciantes(el);
+        return;
+      }
+      const minimo = prompt(
+        'Compromisso mínimo (em meses) pra usar o desconto — vazio libera qualquer plano:',
+        atual?.fundador_compromisso_minimo ?? '',
+      );
+      if (minimo === null) return;
+      if (
+        await salvar(`/admin/anunciantes/${b.dataset.fundador}`, {
+          fundador: true,
+          fundador_desconto_percentual: Number(desconto),
+          fundador_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
+        })
+      )
+        renderAnunciantes(el);
     }),
   );
   el.querySelectorAll('[data-subir]').forEach((input) =>
@@ -1309,7 +1347,7 @@ async function renderVendedores(el) {
       <td><div class="u-fs-78">${esc(v.email || '')}</div><div class="u-dim u-fs-74">${esc(v.telefone || '')}</div></td>
       <td><input class="mini u-w-160" data-vendedor="chave_pix" data-id="${v.conta_id}" value="${esc(v.chave_pix || '')}"></td>
       <td><code>${esc(v.codigo_cupom)}</code> <button class="btn ghost mini" data-copiar-cupom="${esc(v.codigo_cupom)}">copiar link</button></td>
-      <td><input class="mini u-w-60" type="number" step="0.01" min="0" max="100" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}"></td>
+      <td><input class="mini u-w-60" type="number" step="0.01" min="10" max="30" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}" title="Entre 10% e 30% — quem decide o percentual é você"></td>
       <td>${selectStatus(VENDEDOR_STATUS, v.status, `data-vendedor="status" data-id="${v.conta_id}"`)}</td>
       <td>${data(v.created_at)}</td>
     </tr>`,
@@ -1682,13 +1720,10 @@ async function renderPlanos(el) {
       .join('');
 
   const porCiclo = {};
-  planos
-    .filter((p) => !p.fundador)
-    .forEach((p) => {
-      porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
-      porCiclo[p.compromisso_meses].push(p);
-    });
-  const fundadores = planos.filter((p) => p.fundador);
+  planos.forEach((p) => {
+    porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
+    porCiclo[p.compromisso_meses].push(p);
+  });
 
   // Item 9 da spec: os campos se dividem em dois. `data-grupo="vitrine"` salva
   // na hora, porque não alcança quem já assinou. `data-grupo="contrato"` não
@@ -1699,12 +1734,13 @@ async function renderPlanos(el) {
 
   const linhaPlano = (p) => `<tr data-linha="${p.id}">
           <td><input class="mini u-w-120" ${contrato('nome', p)} value="${esc(p.nome)}">
-            <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)}${p.fundador ? '' : ` · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`}</div></td>
+            <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</div></td>
           <td><input class="mini u-w-80" type="number" step="0.01" min="0" ${contrato('valor_mensal', p)} value="${p.valor_mensal}"></td>
           <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
           <td><input class="mini u-w-60" type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></td>
           <td><input class="mini u-w-60" type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></td>
           <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="—" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
+          <td><input class="mini u-w-60" type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="—" title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano"></td>
           <td class="u-ta-c"><input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
           <td><input class="mini u-w-140" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}"></td>
           <td><div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div></td>
@@ -1712,7 +1748,7 @@ async function renderPlanos(el) {
           <td class="u-ta-c"><input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}></td>
           <td><button class="btn primary mini" data-nova-versao="${p.id}" hidden>Publicar nova versão</button></td>
         </tr>`;
-  const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
+  const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Desconto comodato</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
 
   el.innerHTML = `
     <details class="bloco-novo">
@@ -1738,26 +1774,20 @@ async function renderPlanos(el) {
         <div><label>Cobertura</label><select class="mini" name="cobertura" required>
           <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
         </select></div>
-        <div><label>Rótulo (ex.: "Preço fundador — travado por 12 meses")</label><input class="mini" name="rotulo"></div>
+        <div><label>Rótulo (ex.: "Preço promocional — travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
         <div class="field-row">
           <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
           <div class="u-col"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
         </div>
+        <div><label>Desconto comodato (%, vazio = nenhum)</label><input class="mini" type="number" name="desconto_comodato_percentual" min="1" max="100" title="Desconto extra pra conta que também é dona de ponto, só nesse plano"></div>
         <div class="field-row">
           <label class="benef-check"><input type="checkbox" name="preco_travado" value="1"><span>Preço travado pelo compromisso</span></label>
-          <label class="benef-check"><input type="checkbox" name="fundador" value="1"><span>Plano fundador (fora da grade de 3, só aparece com PROGRAMA_FUNDADOR_ATIVO=true)</span></label>
         </div>
         <div><label>Benefícios do plano</label><div class="benef-lista" id="novoPlanoBeneficios">${opcoesBeneficio([])}</div></div>
         <button class="btn primary" type="submit">Criar plano</button>
         <p class="form-msg" id="msgNovoPlano"></p>
       </form>
     </details>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10">
-      <h3>Programa fundador <span class="badge ${RESUMO.programaFundadorAtivo ? 'badge-ok' : 'badge-pendente'} u-ml-6">${RESUMO.programaFundadorAtivo ? 'ABERTO no site' : 'fechado (PROGRAMA_FUNDADOR_ATIVO≠true)'}</span></h3>
-    </div>
-    <p class="form-hint u-m-0 u-mb-8">Plano fundador fica fora da grade de 3 por modalidade. Ele só aparece no site quando a variável de ambiente PROGRAMA_FUNDADOR_ATIVO está em <code>true</code> <b>e</b> ainda há vaga. Preço travado, meses grátis e mínimo de telas são do próprio plano — dá pra usar em qualquer plano, não só no fundador.</p>
-    ${fundadores.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${fundadores.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano fundador. Crie um acima marcando "Plano fundador".</p>'}
 
     ${Object.keys(CICLOS)
       .map((meses) => {
@@ -1772,12 +1802,13 @@ async function renderPlanos(el) {
       .join('')}
 
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após" e benefícios mudam o contrato:
+      <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
       editar um deles acende "Publicar nova versão", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
       Vagas, rótulo, destaque e Ativo são só vitrine — salvam na hora e não alcançam ninguém que já é cliente.
       Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
-      "Mín. telas": abaixo desse número de telas no ar, o que o anunciante pagar fica guardado (meses pendentes) e a cobertura liga sozinha quando a tela entrar.
       "Tela após": módulo cruzado — ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
+      "Desconto comodato": desconto extra pra conta que também é dona de ponto, por plano — some do valor cobrado quando a conta tem o papel "ponto".
+      Fundador não é mais plano de catálogo: é status de conta, marcado à mão em Anunciantes → "Marcar fundador".
     </p>`;
 
   const valorDo = (inp) => {
@@ -1843,9 +1874,9 @@ async function renderPlanos(el) {
       Number(i.value),
     );
     dados.preco_travado = !!dados.preco_travado;
-    dados.fundador = !!dados.fundador;
     if (dados.vagas === '') delete dados.vagas;
     if (dados.ponto_apos_meses === '') delete dados.ponto_apos_meses;
+    if (dados.desconto_comodato_percentual === '') delete dados.desconto_comodato_percentual;
     const msg = document.getElementById('msgNovoPlano');
     const r = await api('/admin/planos', { method: 'POST', body: JSON.stringify(dados) });
     if (!r.ok) {

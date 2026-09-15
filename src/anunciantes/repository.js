@@ -32,6 +32,11 @@ const CAMPOS_ATUALIZAVEIS = [
   // Plano de cortesia (migration 024) — só o admin libera.
   'plano_cortesia',
   'cortesia_motivo',
+  // Fundador (migration 033, item 4 da spec) — status de conta que só o
+  // admin marca, com o desconto e o piso de compromisso que ele decidir.
+  'fundador',
+  'fundador_desconto_percentual',
+  'fundador_compromisso_minimo',
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
@@ -46,7 +51,8 @@ const CAMPOS_PUBLICOS = `
   papeis, valor_mensal_travado, conta_propria, frequencia_dia_propria,
   plano_cortesia, cortesia_motivo,
   ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em,
-  comunicacoes_revogado_em, dados_opcionais_apagados_em
+  comunicacoes_revogado_em, dados_opcionais_apagados_em,
+  fundador, fundador_desconto_percentual, fundador_compromisso_minimo
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.

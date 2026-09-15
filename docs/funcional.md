@@ -215,18 +215,36 @@ exibição recebe a mais na hora seguinte. *Violada:* não há caminho.
 caminho. *Quem vê:* o anunciante, na fatura.
 
 **RN-12 — Comissão do vendedor é gerada a cada cobrança confirmada**, inclusive
-renovação, no percentual da conta dele. *Violada:* não há caminho.
-*Quem vê:* vendedor e administrador. *(Decisão de produto em aberto —
-`docs/PENDENCIAS.md`, seção B.)*
+renovação, no percentual da conta dele — **confirmado pelo dono em
+15/09/2026: mantém**. O percentual é do VENDEDOR (`vendedores.comissao_percentual`),
+não do plano, então troca de plano de quem ele indicou nunca muda a comissão.
+O dono define o valor entre **10% e 30%** (migration 035); fora da faixa a
+rota recusa. *Violada:* não há caminho. *Quem vê:* vendedor e administrador.
 
 **RN-13 — Troca de plano de quem já paga é recusada.** O sistema manda falar
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar
 e assinar de novo. *Violada:* mensagem na tela. *Quem vê:* o anunciante.
 
-**RN-14 — Programa fundador é a única regra de plano em variável de ambiente.**
-`PROGRAMA_FUNDADOR_ATIVO` liga ou desliga; as vagas são campo do plano. Sem
-vaga, o plano some da vitrine. *Violada:* "as vagas desse plano acabaram".
-*Quem vê:* o anunciante.
+**RN-14 — Fundador é status de conta, marcado à mão pelo administrador**
+(migration 033, 15/09/2026) — não é mais plano de catálogo, nem trava por
+variável de ambiente (isso deixou de fazer sentido quando RN-27/item 9 passou
+a travar o preço de QUALQUER plano assinado). A conta marcada `fundador`
+ganha um desconto percentual — definido pelo administrador, por conta — nos
+planos que ele liberar (piso de compromisso em meses, ex.: só trimestral pra
+cima). Fora do piso, a assinatura é recusada. *Violada:* "esse plano não está
+liberado para conta fundadora". *Quem vê:* o anunciante.
+
+**RN-32 — Desconto de comodato por plano (item 8 da spec).** Conta com papel
+`ponto` (comodato) recebe o desconto que o administrador definiu pra aquele
+plano de anunciante especificamente (`planos.desconto_comodato_percentual`,
+campo de contrato — só muda por versão nova). Some com o desconto de
+fundador, se a conta tiver os dois. *Violada:* não há caminho — o desconto
+já sai no preço. *Quem vê:* o anunciante, no valor cobrado pelo San Checkout.
+
+**RN-33 — Vagas: qualquer plano pode ter teto (campo `vagas`), sem vaga o
+plano some da vitrine.** Uma assinatura sem cobrança confirmada solta a vaga
+sozinha depois de 15 minutos (decisão do dono, 15/09/2026 — era 7 dias).
+*Violada:* "as vagas desse plano acabaram". *Quem vê:* o anunciante.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

@@ -535,8 +535,8 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
     `SELECT date_trunc('day', e.janela_hora) AS dia, p.nome AS ponto, p.cidade,
             d.apelido AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
      FROM exibicoes_contador e
-     JOIN pontos p ON p.id = e.ponto_id
-     LEFT JOIN dispositivos d ON d.id = e.dispositivo_id
+     JOIN dispositivos d ON d.id = e.dispositivo_id
+     JOIN pontos p ON p.id = d.ponto_id
      WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
      GROUP BY dia, p.nome, p.cidade, d.apelido
      HAVING SUM(e.vezes_confirmadas) > 0
@@ -576,7 +576,9 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     pool.query(
       `SELECT p.id, p.nome, p.cidade,
               SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas
-       FROM exibicoes_contador e JOIN pontos p ON p.id = e.ponto_id
+       FROM exibicoes_contador e
+       JOIN dispositivos d ON d.id = e.dispositivo_id
+       JOIN pontos p ON p.id = d.ponto_id
        WHERE e.anunciante_id = $1
        GROUP BY p.id, p.nome, p.cidade
        ORDER BY confirmadas DESC`,
