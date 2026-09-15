@@ -39,7 +39,15 @@ async function listarPorAnunciante(anuncianteId) {
   return rows;
 }
 
+// `status` vazio ou 'todos' traz tudo. A aba "Meus anúncios" do admin lista os
+// criativos da conta própria do Mostraí, que a operação sobe JÁ APROVADOS —
+// e como esta função só aceitava um status e a rota mandava 'pendente' por
+// padrão, aquela tabela ficava eternamente vazia com peças no ar.
 async function listarPorStatus(status) {
+  if (!status || status === 'todos') {
+    const { rows } = await pool.query('SELECT * FROM criativos ORDER BY created_at ASC');
+    return rows;
+  }
   const { rows } = await pool.query(
     'SELECT * FROM criativos WHERE status = $1 ORDER BY created_at ASC',
     [status]

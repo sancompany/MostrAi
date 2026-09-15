@@ -458,7 +458,7 @@ async function renderMeusAnuncios(el) {
     return;
   }
 
-  const criativos = await pegar(`/admin/criativos`);
+  const criativos = await pegar('/admin/criativos?status=todos');
   const meus = criativos.filter((c) => c.anunciante_id === conta.id);
   const aprovados = meus.filter((c) => c.status === 'aprovado').length;
 

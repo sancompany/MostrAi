@@ -13,7 +13,15 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify(dados),
     });
     if (!r.ok) {
-      msg.textContent = 'E-mail ou senha inválidos.';
+      // O servidor distingue senha errada (401) de conta excluída (403), e a
+      // tela jogava as duas na mesma frase: quem teve a conta excluída ficava
+      // tentando a senha pra sempre, porque o site dizia que ela estava errada.
+      // A mensagem do 403 só sai DEPOIS de a senha conferir (routes.js:167),
+      // então mostrá-la não entrega a existência de conta nenhuma.
+      const corpo = await r.json().catch(() => ({}));
+      msg.textContent = r.status === 403 && corpo.erro
+        ? `${corpo.erro.charAt(0).toUpperCase()}${corpo.erro.slice(1)}.`
+        : 'E-mail ou senha inválidos.';
       msg.className = 'form-msg err';
       return;
     }

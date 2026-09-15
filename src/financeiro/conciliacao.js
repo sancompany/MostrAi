@@ -54,7 +54,29 @@ async function conciliarAssinaturas() {
     }
   }
 
+  relato.expiradas = await suspenderCoberturaVencida();
   return relato;
 }
 
-module.exports = { conciliarAssinaturas };
+// Nada expirava a cobertura. Uma conta cujo `data_expiracao` passou continuava
+// com `status = 'ativo'` pra sempre: aparecia ativa no admin, no painel da
+// propria pessoa e — ate 15/09 — dentro da receita recorrente. A playlist ja
+// filtrava por data, entao o anuncio parava de rodar; o que nao parava era o
+// sistema dizer que estava tudo certo.
+//
+// Suspende, nao exclui: `suspenso` e reversivel, mantem o historico e e o
+// estado que o proprio CHECK da tabela ja previa. Conta em cortesia entra na
+// regra igual — cortesia tambem tem prazo.
+async function suspenderCoberturaVencida() {
+  const { rows } = await pool.query(`
+    UPDATE anunciantes
+       SET status = 'suspenso'
+     WHERE status = 'ativo'
+       AND excluido_em IS NULL
+       AND data_expiracao IS NOT NULL
+       AND data_expiracao < current_date
+    RETURNING id, nome_empresa, data_expiracao`);
+  return rows;
+}
+
+module.exports = { conciliarAssinaturas, suspenderCoberturaVencida };
