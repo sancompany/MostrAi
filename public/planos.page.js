@@ -12,10 +12,10 @@ const carregarLogin = carregarConta().then((a) => {
 const fmt = fmtBRL; // config.js — Number(v||0), o local usava Number(v) e virava 'R$ NaN'
 
 const NOTA_CICLO = {
-  // Os Termos (§4.4) dizem que o cancelamento e pedido ao administrador e
-  // vale a partir do proximo ciclo. A vitrine dizia "cancele quando quiser",
-  // o contrario do contrato que a pessoa assina na mesma compra.
-  1: 'Sem fidelidade: você pede o cancelamento quando quiser e ele vale a partir do mês seguinte — o mês já pago continua no ar.',
+  // O aviso de "sem fidelidade" do ciclo mensal foi retirado (pedido do
+  // dono, 15/09/2026): a mesma informação já está na FAQ "Como eu cancelo?"
+  // logo abaixo, e repetir aqui duplicava o texto sem necessidade.
+  1: '',
   3: 'Você paga uma vez a cada 3 meses. O valor por mês abaixo é a referência de quanto isso representa.',
   6: 'Você paga uma vez a cada 6 meses. O valor por mês abaixo é a referência de quanto isso representa.',
   12: 'Você paga uma vez por ano. O valor por mês abaixo é a referência de quanto isso representa.',
@@ -33,7 +33,9 @@ function mensalDoTier(tier) {
 
 function render(meses) {
   const grid = document.getElementById('plansGrid');
-  document.getElementById('cycleNote').textContent = NOTA_CICLO[meses] || '';
+  const nota = document.getElementById('cycleNote');
+  nota.textContent = NOTA_CICLO[meses] || '';
+  nota.hidden = !NOTA_CICLO[meses];
   const doMes = PLANOS.filter((p) => p.compromisso_meses === meses);
   // Aba sem plano nenhum deixava a area em branco, sem dizer se estava
   // carregando, se deu erro ou se nao ha plano naquele ciclo.
@@ -124,15 +126,28 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
 // vitrine: a cobranca comeca na confirmacao do pagamento (migration 021 tirou
 // a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
 // tela dizer isso em lugar nenhum. Nao bloqueia a venda, so para de esconder.
+//
+// Limite de 5 pontos ativos (pedido do dono, 15/09/2026): com a rede ainda
+// pequena o aviso acompanha quantos pontos já estão no ar, e some sozinho
+// assim que o quinto entrar — a partir daí a cobertura já não é mais "rede
+// vazia" o bastante pra precisar do aviso.
+const PONTOS_PARA_TIRAR_AVISO = 5;
+
 fetch(`${API_BASE_URL}/pontos`)
   .then((r) => r.json())
   .then((pontos) => {
+    if (!Array.isArray(pontos)) return;
     // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
     // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
-    if (!Array.isArray(pontos) || pontos.some((p) => p.status === 'ativo')) return;
+    const ativos = pontos.filter((p) => p.status === 'ativo').length;
+    if (ativos >= PONTOS_PARA_TIRAR_AVISO) return;
+    const situacao =
+      ativos === 0
+        ? 'Neste momento não há nenhuma tela no ar.'
+        : `Hoje ${ativos === 1 ? '1 ponto está' : `${ativos} pontos estão`} no ar, e a instalação continua.`;
     const el = document.getElementById('avisoRede');
     el.innerHTML =
-      '<b>A rede ainda está em montagem.</b> Neste momento não há nenhuma tela no ar. ' +
+      `<b>A rede ainda está em montagem.</b> ${situacao} ` +
       'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. ' +
       'Se preferir esperar, <a href="/contato.html">fale com a gente</a> — e se assinar agora e mudar de ideia, ' +
       'você tem 7 dias para pedir a devolução integral pelo painel.';

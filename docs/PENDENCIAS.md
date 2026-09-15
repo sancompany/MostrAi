@@ -710,3 +710,35 @@ rodada de depuração visual, desktop.)*
   cobertura começa assim que ele é aprovado."** — a pedido do dono: sem citar
   o San Checkout (fornecedor não aparece pro público) e só cartão como forma
   de pagamento, com o texto focado em criar conta e escolher o plano.
+
+**7. [x] Planos — alegação falsa de "100% dos pontos", frase final fraca,
+descontos das abas, aviso de rede em montagem e nota redundante do ciclo
+mensal.** **FEITO em 15/09/2026.** *(Terceiro print da rodada de depuração
+visual, desktop.)*
+
+- *"Todo plano coloca a sua marca em 100% dos pontos da rede" — o dono
+  apontou como mentira, e é: `src/playlist/gerador.js` exclui da playlist
+  quem tem o mesmo `categoria_id` do ponto (bloqueio de concorrente direto,
+  a mesma regra da FAQ "Meu anúncio pode cair na tela de um concorrente?").
+  Então não é 100% pra todo mundo — quem compete com o dono de um ponto
+  específico não entra nele. Reescrito (`public/planos.html`, e as mesmas
+  três repetições em `<meta name="description">`, `og:description` e no
+  JSON-LD) pra citar a exclusão de concorrente em vez de prometer 100%.
+- *Frase final "...comece a fazer parte da rotina de quem passa por lá"* —
+  trocada por "Escolha o seu ritmo e comece agora." (pedido do dono: tirar
+  o "de quem passa por lá").
+- *Descontos das abas Trimestral/Semestral/Anual (-10%/-15%/-20%)* —
+  conferido que já são calculados ao vivo (`atualizarDescontos()` em
+  `planos.page.js`) a partir do preço real de cada plano no banco, não um
+  número fixo escrito na tela. Testado nos três tiers ativos (Essencial,
+  Destaque, Máximo): os três batem exatamente 10%/15%/20% no preço mensal
+  equivalente. Nada pra corrigir aqui — só confirmado.
+- *Aviso "A rede ainda está em montagem"* (`planos.page.js`) — antes só
+  aparecia com **zero** pontos ativos e nunca mudava de texto. Agora
+  acompanha a contagem de pontos ativos ("Hoje N pontos estão no ar, e a
+  instalação continua") e desaparece sozinho ao chegar em **5** pontos
+  ativos (`PONTOS_PARA_TIRAR_AVISO`), a pedido do dono.
+- *Nota "Sem fidelidade: ..." do ciclo mensal* — removida (`NOTA_CICLO[1]`
+  virou string vazia, e `#cycleNote` agora fica `hidden` quando não há nota
+  pro ciclo) — a mesma informação já está na FAQ "Como eu cancelo?" logo
+  abaixo, e repetir ali foi considerado desnecessário pelo dono.
