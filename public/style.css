@@ -265,16 +265,21 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 }
 .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .field-row > div { min-width: 130px; }
-form.card label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom: 5px; }
-form.card input, form.card select {
+/* `.field-row > div` (0,1,1) vencia `.u-col { min-width: 0 }` (0,1,0), entao a
+   utilidade que existe pra deixar a coluna encolher nunca se aplicava dentro
+   de uma linha de campos: no popup de perfil (460px, menos padding) a linha
+   Cidade/UF/CEP nao cabia e quebrava. Mesma especificidade, agora ela vale. */
+.field-row > .u-col { min-width: 0; }
+.card label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom: 5px; }
+.card input, .card select {
   width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); padding: 10px 12px; font-size: .95rem;
 }
-form.card textarea {
+.card textarea {
   width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
   color: var(--text); padding: 10px 12px; font-size: .95rem; font-family: inherit; resize: vertical;
 }
-form.card input:focus, form.card select:focus, form.card textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+.card input:focus, .card select:focus, .card textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
 
 .contato-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
 @media (max-width: 860px) { .contato-grid { grid-template-columns: 1fr; } }
@@ -284,11 +289,11 @@ form.card input:focus, form.card select:focus, form.card textarea:focus { outlin
    width:100% dos campos do formulário e virava uma barra), texto respirando
    ao lado e a linha inteira separada do botão de enviar. */
 .check-row { display: flex; align-items: flex-start; gap: 10px; margin: 6px 0 2px; }
-form.card .check-row input[type="checkbox"] {
+.card .check-row input[type="checkbox"] {
   width: 17px; height: 17px; min-width: 17px; flex: 0 0 17px;
   margin: 2px 0 0; padding: 0; border-radius: 4px; accent-color: var(--brand); cursor: pointer;
 }
-form.card .check-row input[type="checkbox"]:focus { outline: 2px solid var(--brand); outline-offset: 2px; }
+.card .check-row input[type="checkbox"]:focus { outline: 2px solid var(--brand); outline-offset: 2px; }
 .check-row label { margin: 0; font-size: .85rem; line-height: 1.6; color: var(--text-dim); cursor: pointer; }
 .check-row label a { color: var(--blue); text-decoration: underline; }
 .form-hint { font-size: .8rem; color: var(--text-dim); margin: -6px 0 0; }
@@ -349,9 +354,14 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
    inteira — a etiqueta "Ativo" saia como uma barra verde atravessando o
    cartao da tela. */
 .badge { display: inline-block; align-self: flex-start; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
-.badge-pendente { background: rgba(255,122,26,.12); color: var(--brand-text); }
-.badge-ok { background: rgba(22,163,74,.12); color: var(--ok); }
-.badge-err { background: rgba(220,38,38,.12); color: var(--err); }
+/* Cor propria, mais escura que a do texto corrido, porque aqui o fundo ja e
+   colorido: medido sobre o fundo composto, o par antigo dava 4,02 / 4,39 /
+   4,01 — abaixo do minimo AA de 4,5:1, e o badge e o sinal de estado de todo
+   o produto (11px em negrito nao conta como texto grande). Agora: 6,8 / 7,1 /
+   6,3. */
+.badge-pendente { background: rgba(255,122,26,.12); color: #8a3d05; }
+.badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
+.badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
 
 .criativos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 12px; }
 .criativo-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-alt); }
@@ -371,13 +381,14 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 /* Olhinho de mostrar/esconder senha — some sobre o input, sem tirar espaço
    do layout em flex (.field-row já cuida da largura). */
 .senha-wrap { position: relative; }
-form.card .senha-wrap input, #dlgPerfil .senha-wrap input { padding-right: 40px; }
+.card .senha-wrap input, #dlgPerfil .senha-wrap input { padding-right: 40px; }
 .senha-olho {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
   background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-dim);
   display: flex; align-items: center; justify-content: center;
 }
 .senha-olho.ativo { color: var(--blue); }
+.senha-olho { position: absolute; }
 
 /* Painel do anunciante/ponto: avatar no cabeçalho e popup de perfil nativo
    (<dialog>) — sem lib de modal, o navegador já cuida de backdrop e ESC. */
@@ -490,6 +501,15 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
   background: rgba(20,23,31,.55); border: none; color: var(--escuro-texto); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .criativo-excluir:hover { background: rgba(220,38,38,.85); }
+/* Area de toque de 44px sem mexer no desenho: o circulo continua com 26px e o
+   dedo acerta um quadrado de 44 ao redor dele (WCAG 2.5.5). Vale a pena
+   justamente aqui, que e o botao que APAGA a peca — errar o alvo por 3px, num
+   botao destrutivo, e o pior tipo de erro de toque. O mesmo pros outros dois
+   controles pequenos do site. */
+.criativo-excluir::after, .dlg-foto-cam::after, .senha-olho::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%);
+}
 
 /* Foto no popup de perfil — ícone de câmera sobreposto no canto, em vez de
    um botão de texto separado. */
@@ -621,7 +641,9 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .painel-tela .pin-form[hidden] { display: none; }
 .painel-tela .pin-form { display: flex; gap: 10px; align-items: center; margin: 24px 0; }
 .painel-tela .pin-form input { font-size: 1.6rem; letter-spacing: .4em; text-align: center; width: 160px; padding: 10px; border-radius: 10px; border: 1px solid var(--escuro-campo); background: var(--escuro-card); color: var(--escuro-texto); }
-.painel-tela .pin-form button, .painel-tela .fechar { background: var(--brand); color: var(--escuro-texto); border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 1rem; }
+/* --sobre-brand, nao branco: branco sobre o laranja da 2,61:1, e este botao
+   e lido de longe, numa TV, num comercio. Com o token certo, 7,24:1. */
+.painel-tela .pin-form button, .painel-tela .fechar { background: var(--brand); color: var(--sobre-brand); border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 1rem; }
 .painel-tela .fechar { position: absolute; top: 18px; right: 18px; background: var(--escuro-campo-fundo); }
 .painel-tela .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0; }
 .painel-tela .caixa { background: var(--escuro-fundo); border: 1px solid var(--escuro-borda); border-radius: 12px; padding: 14px 16px; }

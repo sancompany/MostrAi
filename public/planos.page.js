@@ -70,6 +70,13 @@ function render(meses) {
   const grid = document.getElementById('plansGrid');
   document.getElementById('cycleNote').textContent = NOTA_CICLO[meses] || '';
   const doMes = PLANOS.filter((p) => p.compromisso_meses === meses && !p.fundador);
+  // Aba sem plano nenhum deixava a area em branco, sem dizer se estava
+  // carregando, se deu erro ou se nao ha plano naquele ciclo.
+  if (!doMes.length) {
+    grid.innerHTML = '<p class="empty-state">Nenhum plano nesse ciclo agora. Veja os outros ciclos acima ou '
+      + '<a href="/contato.html">fale com a gente</a>.</p>';
+    return;
+  }
   grid.innerHTML = doMes.map((p) => {
     const porHora = Math.round(p.frequencia_dia / 12);
     const porMes = Number(p.valor_mensal);

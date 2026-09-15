@@ -62,7 +62,9 @@ async function carregarVendas() {
     lista.innerHTML = '<p class="empty-state">Nenhuma comissão ainda. Cada assinatura paga por um indicado seu aparece aqui.</p>';
     return;
   }
-  lista.innerHTML = `<table class="mini-table"><thead><tr><th>Data</th><th>Anunciante</th><th>Cobrança</th><th>Sua comissão</th><th>Situação</th></tr></thead><tbody>
+  // u-ox-auto: sem ele as cinco colunas rolavam a PAGINA inteira pro lado no
+  // celular. E o mesmo container que o painel do anunciante ja usa.
+  lista.innerHTML = `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Anunciante</th><th>Cobrança</th><th>Sua comissão</th><th>Situação</th></tr></thead><tbody>
     ${d.comissoes.map((c) => `<tr>
       <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
       <td>${esc(c.nome_empresa)}</td>
@@ -70,7 +72,7 @@ async function carregarVendas() {
       <td><b>${fmtBRL(c.comissao_valor)}</b></td>
       <td>${c.pago_em ? `<span class="badge badge-ok">Pago em ${new Date(c.pago_em).toLocaleDateString('pt-BR')}</span>` : '<span class="badge badge-pendente">A receber</span>'}</td>
     </tr>`).join('')}
-  </tbody></table>`;
+  </tbody></table></div>`;
 }
 
 function copiar(texto, btn) {
