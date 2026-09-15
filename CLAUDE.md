@@ -64,6 +64,11 @@ Violação segue o ciclo da skill `leis`. Não existe estado final fora de
 conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
 
 ## Pendências que bloqueiam a esteira
+- **O DOMÍNIO NÃO SERVE A APLICAÇÃO** (`docs/PENDENCIAS.md`, A.0.0) —
+  `mostrai.sancocore.com.br` entrega só a pasta `public/` estática; `/health`
+  e `/pontos/fluxo` dão 404 e `/planos` devolve HTML. Vitrine, cadastro,
+  login, painel, admin, player e webhook estão fora do ar. Precisa do dono:
+  apontar o domínio para o serviço do Node no Northflank.
 - **Rotação das credenciais vazadas em 13/09/2026** (`docs/PENDENCIAS.md`, A.0.1)
   — precisa do PC; até lá senha do Postgres, `SESSION_SECRET` e `ADMIN_PASSWORD`
   antigos seguem válidos. Nenhum push da pasta `D:\SanCo\MostrAi` antes do passo 1.

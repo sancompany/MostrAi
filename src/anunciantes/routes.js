@@ -19,6 +19,7 @@ const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const eventos = require('../lib/eventos');
+const { enviarContaAprovada } = require('../financeiro/email');
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
 // text/html e o bucket público servia HTML executável no nosso domínio.
@@ -456,7 +457,12 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     porPonto: porPonto.rows,
     porDia: porDia.rows,
     cobrancas: cobrancas.rows,
-    custoPorExibicao: plano && confirmadas > 0 ? Number(plano.valor_mensal) * plano.compromisso_meses / confirmadas : null,
+    // O que a conta PAGA, nao o preco de tabela: quem entrou com preco travado
+    // paga o valor congelado, e quem esta em cortesia nao paga nada — mostrar
+    // "custo por exibicao" pra quem recebeu o plano de graca e numero inventado.
+    custoPorExibicao: plano && confirmadas > 0 && !anunciante.plano_cortesia
+      ? Number(anunciante.valor_mensal_travado || plano.valor_mensal) * plano.compromisso_meses / confirmadas
+      : null,
   });
 });
 
@@ -545,6 +551,8 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         papel_liberado: (anunciante.papeis || [])[0] || 'anunciante',
         horas_ate_aprovar: eventos.horasEntre(anunciante.created_at),
       }, anunciante);
+      // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
+      enviarContaAprovada(anunciante).catch((err) => console.error('e-mail de conta aprovada', err));
     }
     res.json(anunciante);
   } catch (err) {

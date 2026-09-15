@@ -155,6 +155,7 @@ const NAV = [
   { grupo: 'Financeiro', itens: [
     { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
     { id: 'comissoes', nome: 'Comissões' },
+    { id: 'pagamentospontos', nome: 'Pagar os pontos' },
     { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
     { id: 'custos', nome: 'Custos fixos' },
     { id: 'eventos', nome: 'Eventos pendentes', fila: 'eventos' },
@@ -178,6 +179,7 @@ const SUBTITULOS = {
   comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
+  pagamentospontos: 'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar — é isso que aparece no extrato do dono do ponto.',
   custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
   arrependimentos: 'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar — falta devolver o dinheiro no painel do Checkout e registrar aqui.',
@@ -228,6 +230,7 @@ async function irPara(aba, forcarResumo) {
     arrependimentos: renderArrependimentos,
     planosarquivados: renderPlanosArquivados,
     metrica: renderMetrica,
+    pagamentospontos: renderPagamentosPontos,
   };
   try {
     await telas[alvo](el);
@@ -1273,6 +1276,101 @@ async function renderPlanos(el) {
     toast('Plano criado.');
     renderPlanos(el);
   });
+}
+
+// ---------- pagar os pontos ----------
+// As três rotas existiam desde a migration 022 e NENHUMA tinha tela: dava pra
+// lançar e quitar só por curl. O dono do ponto via o extrato dele (que também
+// não tinha tela até hoje) e o dono da rede não tinha por onde pagar.
+async function renderPagamentosPontos(el) {
+  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'ativo' || p.valor_pago_mensal > 0);
+  if (!pontos.length) {
+    el.innerHTML = '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';
+    return;
+  }
+  const mesAtual = new Date().toISOString().slice(0, 7);
+  const listas = await Promise.all(pontos.map((p) => pegar(`/admin/pontos/${p.id}/pagamentos`)));
+
+  const linhas = [];
+  let aberto = 0;
+  pontos.forEach((p, i) => {
+    (listas[i] || []).forEach((l) => {
+      if (!l.pago_em) aberto += Number(l.valor);
+      linhas.push({ ...l, ponto_nome: p.nome });
+    });
+  });
+  linhas.sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)));
+
+  const semLancamento = pontos.filter((_p, i) => !(listas[i] || []).some((l) => String(l.competencia).slice(0, 7) === mesAtual));
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Em aberto</span><b>${fmt(aberto)}</b><span class="kpi-caption">lançado e ainda não pago</span></div>
+      <div class="kpi-card"><span class="kpi-label">Sem lançamento em ${esc(mesAtual)}</span><b>${semLancamento.length}</b><span class="kpi-caption">de ${pontos.length} ponto(s) ativo(s)</span></div>
+    </div>
+
+    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançar o mês</h3></div>
+    <form class="card u-mw-520" id="formPagPonto">
+      <div><label for="pagPonto">Ponto</label><select class="mini" id="pagPonto" required>
+        ${pontos.map((p) => `<option value="${p.id}">${esc(p.nome)} — ${fmt(p.valor_pago_mensal || 0)}/mês</option>`).join('')}
+      </select></div>
+      <div class="field-row">
+        <div class="u-col"><label for="pagComp">Competência</label><input class="mini" id="pagComp" type="month" value="${mesAtual}" required></div>
+        <div class="u-col"><label for="pagValor">Valor (R$)</label><input class="mini" id="pagValor" type="number" step="0.01" min="0" required></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col"><label for="pagForma">Forma</label><input class="mini" id="pagForma" placeholder="pix, dinheiro, desconto…"></div>
+        <div class="u-col"><label for="pagObs">Observação</label><input class="mini" id="pagObs"></div>
+      </div>
+      <label class="check-row"><input type="checkbox" id="pagJaPago"><span>Já paguei — lançar direto como quitado</span></label>
+      <button class="btn primary" type="submit">Lançar</button>
+      <p class="form-msg" id="msgPagPonto"></p>
+    </form>
+
+    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançamentos</h3></div>
+    ${linhas.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th data-ord>Competência</th><th data-ord>Ponto</th><th class="num">Valor</th><th data-ord>Situação</th><th>Forma</th><th>Observação</th><th></th>
+    </tr></thead><tbody>
+    ${linhas.map((l) => `<tr data-filtro="${l.pago_em ? 'pago' : 'aberto'}">
+      <td>${esc(String(l.competencia).slice(0, 7))}</td>
+      <td>${esc(l.ponto_nome)}</td>
+      <td class="num"><b>${fmt(l.valor)}</b></td>
+      <td>${l.pago_em ? `<span class="badge badge-ok">pago ${data(l.pago_em)}</span>` : '<span class="badge badge-pendente">em aberto</span>'}</td>
+      <td>${esc(l.forma || '—')}</td>
+      <td class="u-ws-normal u-mw-240 u-fs-72">${esc(l.observacao || '—')}</td>
+      <td><button class="btn ${l.pago_em ? 'ghost' : 'primary'} mini" data-quitar="${l.id}" data-pago="${l.pago_em ? '0' : '1'}">${l.pago_em ? 'Desfazer' : 'Marcar como pago'}</button></td>
+    </tr>`).join('')}
+    </tbody></table></div></div>` : '<p class="empty-state">Nenhum lançamento ainda.</p>'}
+    <p class="empty-state u-ta-l u-p-0 u-pt-16">Um lançamento por ponto por mês — o banco recusa o segundo da mesma competência, então duplo clique não vira pagamento dobrado. O dono do ponto vê exatamente esta lista no painel dele, em "Meus recebimentos".</p>`;
+
+  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  document.getElementById('formPagPonto').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('msgPagPonto');
+    const corpo = {
+      competencia: document.getElementById('pagComp').value,
+      valor: Number(document.getElementById('pagValor').value),
+      forma: document.getElementById('pagForma').value.trim() || null,
+      observacao: document.getElementById('pagObs').value.trim() || null,
+    };
+    if (document.getElementById('pagJaPago').checked) corpo.pago_em = new Date().toISOString();
+    const r = await api(`/admin/pontos/${document.getElementById('pagPonto').value}/pagamentos`, {
+      method: 'POST', body: JSON.stringify(corpo),
+    });
+    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não deu pra lançar.'; msg.className = 'form-msg err'; return; }
+    toast('Lançado.');
+    renderPagamentosPontos(el);
+  });
+
+  el.querySelectorAll('[data-quitar]').forEach((btn) => btn.addEventListener('click', async () => {
+    const r = await api(`/admin/pagamentos-ponto/${btn.dataset.quitar}`, {
+      method: 'PATCH', body: JSON.stringify({ pago: btn.dataset.pago === '1' }),
+    });
+    if (!r.ok) return toast('Não deu pra atualizar.', true);
+    toast(btn.dataset.pago === '1' ? 'Pagamento quitado.' : 'Quitação desfeita.');
+    renderPagamentosPontos(el);
+  }));
 }
 
 // ---------- métrica ----------

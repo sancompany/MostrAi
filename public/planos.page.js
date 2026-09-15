@@ -10,7 +10,10 @@ const carregarLogin = carregarConta().then((a) => { LOGADO = !!a; });
 const fmt = fmtBRL; // config.js — Number(v||0), o local usava Number(v) e virava 'R$ NaN'
 
 const NOTA_CICLO = {
-  1: 'Sem compromisso: cobrança todo mês, cancele quando quiser.',
+  // Os Termos (§4.4) dizem que o cancelamento e pedido ao administrador e
+  // vale a partir do proximo ciclo. A vitrine dizia "cancele quando quiser",
+  // o contrario do contrato que a pessoa assina na mesma compra.
+  1: 'Sem fidelidade: você pede o cancelamento quando quiser e ele vale a partir do mês seguinte — o mês já pago continua no ar.',
   3: 'Você paga uma vez a cada 3 meses. O valor por mês abaixo é a referência de quanto isso representa.',
   6: 'Você paga uma vez a cada 6 meses. O valor por mês abaixo é a referência de quanto isso representa.',
   12: 'Você paga uma vez por ano. O valor por mês abaixo é a referência de quanto isso representa.',

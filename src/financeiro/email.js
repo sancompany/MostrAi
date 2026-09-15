@@ -33,6 +33,23 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
   });
 }
 
+// A conta nasce "pendente de aprovação" e o dono libera no admin — e ate agora
+// isso nao avisava ninguem. A pessoa se cadastrava, via "aguardando aprovacao"
+// e ia embora; quando era liberada, nada acontecia. O momento em que ela PODE
+// comprar era justamente o unico que ninguem contava pra ela.
+async function enviarContaAprovada(anunciante) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Sua conta foi aprovada — Mostraí',
+    text: `Olá, ${anunciante.nome_empresa}!\n\n`
+      + `Sua conta na Mostraí foi aprovada. Já dá pra escolher um plano e colocar seu anúncio na rotina da cidade.\n\n`
+      + `${process.env.SITE_URL}/planos.html\n\n`
+      + `Depois de contratar, é só subir um vídeo ou imagem de 15 a 30 segundos, em pé (9:16) — a gente ajusta o formato.\n\n`
+      + `Equipe Mostraí.`,
+  });
+}
+
 async function enviarLinkRedefinicaoSenha(email, nome, link) {
   await transportador().sendMail({
     from: remetente(),
@@ -119,5 +136,5 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
 }
 
 module.exports = {
-  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha,
+  enviarCriativoNoAr, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
   enviarMensagemContato, enviarNovidade, enviarArrependimentoRecebido };

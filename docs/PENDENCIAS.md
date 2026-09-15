@@ -101,7 +101,40 @@ organização usa vários recursos que só são gratuitos assim), e a rotação 
 credenciais fica para quando ele estiver no PC. Enquanto ela não for feita, os
 valores antigos continuam válidos em qualquer cópia feita antes da reescrita.
 
-### A.0.1 — Na volta ao PC, NESTA ordem (nada aqui roda sem o PC)
+### A.0.0 — O DOMÍNIO NÃO ESTÁ SERVINDO A APLICAÇÃO (15/09/2026)
+
+**Isto bloqueia tudo o mais. Descoberto em 15/09 olhando o site no ar.**
+
+`mostrai.sancocore.com.br` serve **só a pasta `public/`, como site estático**.
+O Node/Express não está atrás do domínio. Provas, colhidas com `curl`:
+
+| Caminho | Esperado (app no ar) | O que responde hoje |
+|---|---|---|
+| `GET /health` | 200 `{"ok":true}` | **404 HTML** |
+| `GET /pontos/fluxo` | 200 JSON | **404 HTML** |
+| `GET /planos` | 200 JSON com os 12 planos | **200 com o HTML de `planos.html`** |
+| `GET /obrigado.html` | 200 | **308** para `/obrigado` (rota sem extensão, típica de host estático) |
+
+O cabeçalho `content-security-policy`, que o `src/server.js` manda em toda
+resposta desde 14/09, **não vem em nenhuma**. Nenhuma resposta passa pelo
+Express.
+
+**Consequência:** a página de planos aparece vazia — `fetch('/planos')` recebe
+HTML, `.json()` estoura e a vitrine fica sem card nenhum. E não é só ela:
+cadastro, login, painel, admin, player e webhook do Checkout estão todos fora
+do ar pelo mesmo motivo. **Os 12 planos existem; ninguém consegue buscá-los.**
+
+**O que NÃO é:** não é bug de código, não é seed faltando, não é CORS. O deploy
+estático está inclusive em dia — a página `/obrigado` criada em 15/09 já está
+lá, junto com o menu de celular novo.
+
+**O que fazer (só o dono):** apontar o domínio para o serviço do Node no
+Northflank — como origem do Cloudflare ou por DNS direto. Depois disso,
+conferir `GET /health` devolvendo `{"ok":true}` e `GET /planos` devolvendo
+JSON. Enquanto isso não acontecer, nenhuma correção deste repositório muda o
+que o cliente vê.
+
+## A.0.1 — Na volta ao PC, NESTA ordem (nada aqui roda sem o PC)
 
 **Faça o passo 1 antes de qualquer `git push` da sua máquina.** A pasta
 `D:\SanCo\MostrAi` ainda tem o histórico antigo, com o `.env` dentro. Um push de

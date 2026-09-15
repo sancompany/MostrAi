@@ -43,3 +43,22 @@ recebendo só a URL pública do cupom — sem dado pessoal.
 
 **Dado de menor:** não é coletado. Cadastro exige CPF/CNPJ de empresa ou
 responsável adulto.
+
+## ViaCEP — consulta de endereço (acrescentado em 15/09/2026)
+
+**O que sai:** só o CEP digitado, em `GET https://viacep.com.br/ws/{cep}/json/`.
+Nenhum outro dado do formulário acompanha — nem nome, nem documento, nem
+contato. A chamada parte do NAVEGADOR da pessoa (`public/formulario.js`), então
+o que o ViaCEP vê é o IP dela, não o do nosso servidor.
+
+**Por que sai:** preencher endereço sozinho no cadastro de anunciante, na
+candidatura de ponto e no cadastro de endereço novo do ponto.
+
+**Base legal:** execução de contrato — o endereço é exigido para nota fiscal e
+para localizar o ponto.
+
+**Por que estava faltando aqui:** a integração entrou junto com a máscara de CEP
+e ninguém registrou. Foi achada pela varredura de 15/09 (`docs/furos.md`, lente
+"informação faltando") e entrou na Política de Privacidade, seção 4, na mesma
+correção. Terceiro que recebe dado pessoal e não está no inventário é
+exatamente o que a LGPD cobra.
