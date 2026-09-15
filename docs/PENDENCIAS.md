@@ -767,3 +767,25 @@ quiser".)*
   corrigido direto no banco pra "Roda em todos os pontos, menos no do seu
   concorrente direto". É dado (linha de tabela), não código: não precisa de
   deploy, já está no ar.
+
+**9. [x] Encaminhado — revisão do mesmo dia: pontos viram lista fixa, e
+frequência muda de "por dia" pra "por hora" com folga de 15 min.** **FEITO
+em 15/09/2026.** *(Continuação do item 8, mesmo dia, ainda fora de print.)*
+
+- O dono voltou atrás no item 8: em vez de número livre de pontos por
+  plano, quer uma **lista fixa** — `1, 2, 3, 5, 10, 15, 20, 25+` mais a
+  opção **"todos os pontos"** (que é a que ele vai usar enquanto a rede
+  tiver poucos pontos). Atualizei a entrada em `docs/proximas-versoes.md`
+  ("Cobertura restrita por ciclo, sorteada entre pontos") pra registrar essa
+  troca — ainda não está claro se "25+" é um teto exato de 25 ou "25 ou mais
+  sem teto"; fica marcado pra perguntar na hora de construir.
+- Pedido novo: trocar a unidade de frequência de "quantas vezes por dia"
+  pra "quantas vezes por hora", com liberdade de a exibição rodar até 15
+  minutos antes ou depois da hora cheia. Criei entrada nova em
+  `proximas-versoes.md` ("Trocar a unidade de frequência de 'por dia' para
+  'por hora', com folga de 15 min") — e marquei que isso pode ser a MESMA
+  ideia da entrada já existente "Folga de 15 minutos pro déficit da hora
+  anterior", só dita de outro jeito, ou pode ser duas coisas diferentes
+  (unidade de configuração do plano vs. motor de recuperação de déficit).
+  Não juntei as duas sem confirmar — fica registrado pra perguntar ao dono
+  antes de construir, pra não implementar a mesma folga duas vezes.
