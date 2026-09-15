@@ -686,13 +686,12 @@ depuração visual, desktop.)*
   de Matão-SP" → **"Telas de anúncio dentro do comércio local"** (pedido do
   dono: tirar a limitação ao município).
 - *Linha abaixo do botão laranja:* "Tem um comércio? Ganhe com a parede.
-  Quer indicar? Seja vendedor parceiro." → **"Quer anunciar? Tenha um ponto.
-  Quer indicar? Seja um parceiro."** — pedido literal do dono. Ressalva
-  registrada e confirmada com ele: o link de "Tenha um ponto" continua
-  indo para `/seja-um-ponto.html` (virar ponto/estabelecimento), então quem
-  lê "Quer anunciar?" e clica cai na página de virar ponto, não na de
-  anunciar (que já tem os dois botões principais da dobra). Dono escolheu
-  manter assim mesmo.
+  Quer indicar? Seja vendedor parceiro." → "Quer anunciar? Tenha um ponto.
+  Quer indicar? Seja um parceiro." (pedido literal do dono; ressalva sobre o
+  link "Tenha um ponto" ir pra `/seja-um-ponto.html` foi levantada e o dono
+  optou por manter assim) → **corrigido de novo em 15/09/2026: "Tem um
+  comércio? Tenha um ponto. Quer indicar? Seja um parceiro."** — o dono
+  voltou só a pergunta pro original, mantendo a resposta nova.
 
 **6. [x] Home — texto genérico dos "três papéis" removido, e passo 1 do
 "Como funciona" reescrito.** **FEITO em 15/09/2026.** *(Segundo print da
