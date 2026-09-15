@@ -137,14 +137,16 @@ router.post('/admin/pontos/:id/foto', upload.single('arquivo'), async (req, res)
   }
 });
 
-// Gera (ou troca) a chave da TV daquele ponto. É o que autentica o player —
-// ver src/lib/aparelho.js. Trocar a chave derruba o aparelho antigo na hora,
-// que é o que se quer quando um tablet é roubado ou trocado.
-router.post('/admin/pontos/:id/aparelho', async (req, res) => {
-  const chave = require('node:crypto').randomBytes(16).toString('base64url');
-  const ponto = await repo.atualizar(req.params.id, { aparelho_id: chave });
-  if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
-  res.json({ aparelho_id: chave });
+// Chave por PONTO: rota morta desde a migration 019, quando a chave passou a
+// ser por TELA (um ponto pode ter várias). Quem autentica o player lê
+// `dispositivos.aparelho_id` (src/lib/aparelho.js) — esta aqui escrevia numa
+// coluna que ninguém mais lê. Pior que inútil: gerava uma chave com cara de
+// válida, que a TV recusaria, e o admin passaria a tarde procurando o defeito
+// na tela errada. 410 como o /seja-um-ponto, dizendo qual é o caminho.
+router.post('/admin/pontos/:id/aparelho', (_req, res) => {
+  res.status(410).json({
+    erro: 'a chave agora é por tela, não por ponto — use POST /admin/dispositivos/:id/chave',
+  });
 });
 
 // Admin — controla o que cada opção de comodato oferece

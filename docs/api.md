@@ -15,7 +15,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/health` | `{ok:true}` |
-| GET | `/planos` | Planos ativos pra vitrine. Plano `fundador` só vem com `PROGRAMA_FUNDADOR_ATIVO=true` e `vagas_restantes > 0`. Campos novos: `meses_gratis`, `minimo_telas_ativas`, `preco_travado`, `fundador`, `vagas`, `vagas_restantes`. |
+| GET | `/planos` | Planos ativos pra vitrine. Plano `fundador` só vem com `PROGRAMA_FUNDADOR_ATIVO=true` e `vagas_restantes > 0`. Campos: `preco_travado`, `fundador`, `vagas`, `vagas_restantes`, `limite_criativos`, `beneficios`. (`meses_gratis` e `minimo_telas_ativas` sairam do banco na migration 021.) |
 | GET | `/planos-ponto` | Opções de comodato (ajuda de custo × mais cota). |
 | GET | `/pontos` | Pontos ativos (nome, endereço, cidade) pra página "Onde estamos". |
 | GET | `/pontos/fluxo` | `{pessoasPorMes}` somando o fluxo estimado dos pontos ativos. |
@@ -27,6 +27,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/esqueci-senha` / `/redefinir-senha` | Fluxo de token por e-mail. `/afiliados/esqueci-senha` é alias legado. |
 | POST | `/contato` | Formulário de contato → e-mail. |
 | POST | `/seja-um-ponto` | **410** — cadastro aberto de ponto foi substituído por candidatura + convite. |
+| POST | `/afiliados/cadastro` · `/afiliados/login` · `/afiliados/logout` | **410** — vendedor virou papel da conta única (migration 019). Use `/anunciantes/cadastro` e `/anunciantes/login`. |
 | POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Idempotente pela chave natural `chargeId|status`, buscada na rota de conciliação 5.3. `criada` (1ª cobrança) e `cobranca_confirmada` (renovação) creditam o ciclo: ativam a conta, travam o preço (`preco_travado`), registram cobrança e comissão numa transação. `cancelada` marca a assinatura; os demais eventos viram pendência pro admin. |
 | GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). |
 
@@ -34,7 +35,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `data_expiracao`, `valor_mensal_travado`, `meses_gratis_creditados`, `meses_cobertura_pendentes`, e `vendedor` (perfil) quando tem o papel. |
+| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `data_expiracao`, `valor_mensal_travado`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
@@ -42,6 +43,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |
 | GET/POST/DELETE | `/anunciantes/:id/criativos[/:criativoId]` | Criativos do anunciante (upload multipart, normalização por ffmpeg, fila de aprovação). |
 | GET | `/anunciantes/:id/exibicoes` | O que rodou pro anunciante, por tela e por dia. |
+| GET | `/anunciantes/:id/exibicoes.csv?dias=N` | Comprovante de veiculacao em planilha (RN-19). `dias` entre 1 e 365, padrao 30. |
 | GET | `/anunciantes/:id/pontos` | Pontos da conta (papel `ponto`). |
 | POST | `/anunciantes/me/pontos` | Dono de ponto cadastra outro endereço (entra como `lead`, com Tela 1). |
 | GET | `/anunciantes/:id/dispositivos` | Telas dos pontos da conta, com exibições/anunciantes em 30 dias e `ponto_status`. |
@@ -136,7 +138,7 @@ pede.
 | POST | `/admin/dispositivos/:id/chave` | gera a chave de aparelho e devolve o link do player |
 | POST | `/admin/dispositivos/:id/pin` | define o PIN (guardado com hash) |
 | GET | `/admin/dispositivos/:id/painel` | o mesmo painel que o PIN abre, visto pelo admin |
-| POST | `/admin/pontos/:id/aparelho` | **legado** (chave por ponto). Use a chave por tela |
+| POST | `/admin/pontos/:id/aparelho` | **410** — a chave é por TELA desde a migration 019. Use `POST /admin/dispositivos/:id/chave`. |
 
 ### Catálogo
 | Método | Rota | O que faz |
@@ -168,6 +170,7 @@ pede.
 ### Pagamento ao ponto (extrato)
 | Método | Rota | O que faz |
 |---|---|---|
+| GET | `/anunciantes/me/pontos/extrato` | **Conta logada** (papel `ponto`): o que o dono ja recebeu de comodato, mes a mes, com resumo. |
 | GET | `/admin/pontos/:pontoId/pagamentos` | lançamentos daquele ponto |
 | POST | `/admin/pontos/:pontoId/pagamentos` | lança `{competencia:'AAAA-MM', valor, forma?, observacao?, pago_em?}`. Mesmo mês de novo **atualiza**, não duplica (UNIQUE da migration 022) |
 | PATCH | `/admin/pagamentos-ponto/:id` | `{pago}` quita ou reabre o lançamento |

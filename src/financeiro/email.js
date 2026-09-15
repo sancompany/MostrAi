@@ -156,6 +156,30 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
   });
 }
 
+// Candidatura nova (ponto ou vendedor) — vai pro DONO, não pro candidato.
+// As páginas prometem contato em 2 dias úteis e nada avisava ninguém: a
+// candidatura ficava esperando alguém abrir o admin e reparar na fila.
+async function enviarCandidaturaNova(candidatura) {
+  const tipo = candidatura.tipo === 'ponto' ? 'ponto (quer uma tela no comércio)' : 'vendedor parceiro';
+  await transportador().sendMail({
+    from: remetente(),
+    to: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
+    subject: `Candidatura nova de ${tipo} — Mostraí`,
+    text: [
+      `Tipo: ${tipo}`,
+      `Nome: ${candidatura.nome}`,
+      candidatura.nome_comercio ? `Comércio: ${candidatura.nome_comercio}` : '',
+      `WhatsApp: ${candidatura.contato_telefone}`,
+      candidatura.contato_email ? `E-mail: ${candidatura.contato_email}` : '',
+      candidatura.endereco ? `Endereço: ${candidatura.endereco}` : '',
+      candidatura.observacao ? `Observação: ${candidatura.observacao}` : '',
+      '',
+      'A página prometeu retorno em até 2 dias úteis.',
+      `Fila: ${process.env.SITE_URL}/admin/#candidaturas`,
+    ].filter(Boolean).join('\n'),
+  });
+}
+
 module.exports = {
-  enviarCriativoNoAr, enviarCriativoReprovado, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
+  enviarCandidaturaNova, enviarCriativoNoAr, enviarCriativoReprovado, enviarConfirmacaoPagamento, enviarLinkRedefinicaoSenha, enviarContaAprovada,
   enviarMensagemContato, enviarNovidade, enviarArrependimentoRecebido };

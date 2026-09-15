@@ -3,6 +3,7 @@ const router = express.Router();
 const repo = require('./repository');
 const eventos = require('../lib/eventos');
 const { limiteTentativas } = require('../lib/limite-tentativas');
+const { enviarCandidaturaNova } = require('../financeiro/email');
 
 // Público. Substitui o cadastro aberto de ponto e de vendedor.
 router.post('/candidaturas', limiteTentativas, async (req, res) => {
@@ -13,6 +14,10 @@ router.post('/candidaturas', limiteTentativas, async (req, res) => {
     return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   }
   const candidatura = await repo.criar(req.body);
+  // fire-and-forget: e-mail que falha não pode derrubar a candidatura, que é a
+  // única coisa que a pessoa veio fazer. Sem isto, a promessa de "retorno em
+  // até 2 dias úteis" dependia de alguém abrir o admin por acaso.
+  enviarCandidaturaNova(candidatura).catch((err) => console.error('e-mail de candidatura nova', err));
   res.status(201).json({ ok: true, id: candidatura.id });
 });
 

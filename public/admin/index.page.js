@@ -1658,7 +1658,23 @@ async function renderComodato(el) {
       <option value="">— sem bônus —</option>
       ${planos.map((p) => `<option value="${esc(p.id)}" ${p.id === o.plano_bonus_id ? 'selected' : ''}>${esc(p.nome)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</option>`).join('')}
     </select>`;
-  el.innerHTML = `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+  el.innerHTML = `
+    <details class="bloco-novo">
+      <summary class="btn ghost mini">+ Nova opção de comodato</summary>
+      <form class="card u-mt-12 u-mw-420" id="formNovaOpcao">
+        <div><label>Id (sem espaço, ex.: ajuda-custo)</label><input class="mini" name="id" required pattern="[a-z0-9-]+"></div>
+        <div><label>Nome</label><input class="mini" name="nome" required></div>
+        <div><label>Chamada no site</label><textarea class="mini u-resize-v" name="chamada" rows="2" required></textarea></div>
+        <div class="field-row">
+          <div class="u-col"><label>Ajuda de custo (R$/mês)</label><input class="mini" type="number" step="0.01" min="0" name="ajuda_custo_mensal" value="0"></div>
+          <div class="u-col"><label>Cota (espaços/hora)</label><input class="mini" type="number" min="0" name="cota_slots_hora" value="1"></div>
+          <div class="u-col"><label>Ordem</label><input class="mini" type="number" name="ordem" value="10"></div>
+        </div>
+        <button class="btn primary" type="submit">Criar opção</button>
+        <p class="form-msg" id="msgNovaOpcao"></p>
+      </form>
+    </details>
+    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>Opção</th><th>Ajuda de custo (R$/mês)</th><th>Cota (espaços/hora)</th><th>Chamada no site</th><th>Benefícios (1 por linha)</th>
       <th>Bônus: plano de anúncio</th><th>após (meses)</th><th>por (meses)</th><th>Ordem</th><th>Ativa</th>
     </tr></thead><tbody>
@@ -1677,6 +1693,22 @@ async function renderComodato(el) {
       </tr>`).join('')}
     </tbody></table></div></div>
     <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra — mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado — ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
+
+  // A rota de criar opção de comodato existia desde sempre e não tinha
+  // formulário em lugar nenhum: dava pra editar as duas opções nascidas na
+  // migration, nunca criar uma terceira (nem recriar uma apagada).
+  document.getElementById('formNovaOpcao').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('msgNovaOpcao');
+    const dados = Object.fromEntries(new FormData(e.target));
+    dados.ajuda_custo_mensal = Number(dados.ajuda_custo_mensal || 0);
+    dados.cota_slots_hora = Number(dados.cota_slots_hora || 0);
+    dados.ordem = Number(dados.ordem || 0);
+    const r = await api('/admin/planos-ponto', { method: 'POST', body: JSON.stringify(dados) });
+    if (!r.ok) { msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.'; msg.className = 'form-msg err'; return; }
+    toast('Opção de comodato criada.');
+    renderComodato(el);
+  });
 
   el.querySelectorAll('[data-pp]').forEach((inp) => inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'blur', () => {
     let valor;
