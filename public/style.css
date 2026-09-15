@@ -544,7 +544,14 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 
 dialog.dlg-tela { border: none; border-radius: var(--radius); padding: 24px; max-width: 560px; width: 94vw; background: var(--card); color: var(--text); }
 dialog.dlg-tela::backdrop { background: rgba(20,23,31,.5); }
-form.card[hidden], .card[hidden], .dashboard-grid[hidden], .wrap[hidden] { display: none; }
+/* `hidden` tem que ganhar de TODA classe que define display. A regra do
+   navegador pra [hidden] e display:none com peso de folha do agente, entao
+   qualquer `.btn { display: inline-flex }` passa por cima e o elemento
+   "escondido" continua na tela. Era o que acontecia com o "Salvar" do popup
+   de perfil (aparecia sem ninguem estar editando) e com o "Publicar nova
+   versao" da aba de planos (aceso desde o carregamento). Uma regra so, com
+   !important, em vez de listar classe por classe — a lista nunca acompanha. */
+[hidden] { display: none !important; }
 header.site nav.main a.modo-aba { white-space: nowrap; }
 .modo-card .eyebrow { margin: 0; }
 div.card.modo-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; max-width: 640px; margin: 0 auto; }

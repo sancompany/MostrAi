@@ -49,6 +49,22 @@ window.linkWhatsApp = function linkWhatsApp(mensagem) {
   return `https://wa.me/${window.WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
 };
 
+// Data do jeito brasileiro, com a mesma regra do servidor (src/br/formato.js):
+// coluna `date` é dia de calendário, não instante, e mandá-la pelo fuso volta
+// um dia inteiro. Era o que fazia a competência 09/2026 do extrato do ponto
+// aparecer como 08/2026.
+const SO_DATA = /^(\d{4})-(\d{2})-(\d{2})$/;
+window.dataBR = function dataBR(valor, opcoes) {
+  if (!valor) return '—';
+  const so = SO_DATA.exec(String(valor));
+  if (so && !opcoes) return `${so[3]}/${so[2]}/${so[1]}`;
+  if (so) {
+    const [, a, m, d] = so;
+    return new Date(Number(a), Number(m) - 1, Number(d)).toLocaleDateString('pt-BR', opcoes);
+  }
+  return new Date(valor).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', ...(opcoes || {}) });
+};
+
 window.fmtBRL = function fmtBRL(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };

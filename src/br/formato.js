@@ -19,7 +19,21 @@ const colator = new Intl.Collator('pt-BR');
 // Number() aqui é conversão de borda, não cálculo. Cálculo é src/lib/dinheiro.js.
 const reais = (valor) => dinheiroBRL.format(Number(valor || 0));
 
-const data = (valor) => (valor ? dataCurta.format(new Date(valor)) : '—');
+// Data PURA (coluna `date` do Postgres: competência, expiração, dia de
+// exibição) não tem hora nem fuso — é um dia do calendário. Mandá-la pelo
+// Intl com fuso volta um dia sempre que o servidor roda em UTC, que é o caso
+// em produção: a competência 09/2026 do extrato do ponto saía como 08/2026, e
+// a data de expiração do plano saía um dia mais cedo. Aqui a data pura é
+// formatada como texto, sem passar por fuso nenhum; o que tem hora continua
+// indo pelo Intl, que é onde o fuso importa de verdade.
+const SO_DATA = /^(\d{4})-(\d{2})-(\d{2})$/;
+const data = (valor) => {
+  if (!valor) return '—';
+  const texto = valor instanceof Date ? null : String(valor);
+  const so = texto && SO_DATA.exec(texto);
+  if (so) return `${so[3]}/${so[2]}/${so[1]}`;
+  return dataCurta.format(new Date(valor));
+};
 const dataEHora = (valor) => (valor ? dataHora.format(new Date(valor)) : '—');
 
 // Ordena respeitando acento: sem isto "Ágata" cai depois de "Zulmira".

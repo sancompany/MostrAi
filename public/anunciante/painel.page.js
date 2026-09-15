@@ -161,14 +161,22 @@ async function assinar(anuncianteId, planoId) {
 
 // O link do comprovante carrega o período escolhido, como a referência de
 // mercado faz: exportação respeita o mesmo recorte que está na tela.
+//
+// O href se monta no CLIQUE, nao no carregamento: este bloco roda antes de
+// `carregarConta()` resolver, entao `ANUNCIANTE_ID` ainda e null e o link
+// nascia apontando pra /anunciantes/null/exibicoes.csv. Quem clicasse sem
+// antes mexer no seletor de periodo baixava um erro.
 (function comprovante() {
   const sel = document.getElementById('periodoComprovante');
   const link = document.getElementById('btnComprovante');
   if (!sel || !link) return;
-  const atualizar = () => {
-    link.href = `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${sel.value}`;
-  };
+  const montar = () => `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${sel.value}`;
+  const atualizar = () => { if (ANUNCIANTE_ID) link.href = montar(); };
   sel.addEventListener('change', atualizar);
+  link.addEventListener('click', (e) => {
+    if (!ANUNCIANTE_ID) { e.preventDefault(); return; }
+    link.href = montar();
+  });
   atualizar();
 })();
 

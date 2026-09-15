@@ -57,3 +57,19 @@ test('CEP confere o formato', () => {
   assert.strictEqual(cepValido('15990-000'), true);
   assert.strictEqual(cepValido('1599-000'), false);
 });
+
+// Data pura (coluna `date`) é dia de calendário, não instante. Passar pelo
+// fuso volta um dia inteiro sempre que o servidor roda em UTC — que é o caso
+// em produção. A competência 2026-09-01 do extrato do ponto saía como 08/2026.
+test('data pura não anda um dia pra trás no fuso', () => {
+  assert.equal(data('2026-09-01'), '01/09/2026');
+  assert.equal(data('2026-01-01'), '01/01/2026');
+  assert.equal(data('2026-12-31'), '31/12/2026');
+});
+
+test('data com hora continua respeitando o fuso de São Paulo', () => {
+  // 14:00 UTC é 11:00 em São Paulo, mesmo dia.
+  assert.equal(data('2026-09-05T14:00:00.000Z'), '05/09/2026');
+  // 02:00 UTC é 23:00 do dia anterior em São Paulo — e aqui isso é correto.
+  assert.equal(data('2026-09-05T02:00:00.000Z'), '04/09/2026');
+});

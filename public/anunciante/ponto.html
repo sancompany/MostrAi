@@ -33,6 +33,16 @@
         </div>
         <div class="telas-grid" id="telasLista">Carregando...</div>
 
+        <!-- Extrato do comodato. A rota GET /anunciantes/me/pontos/extrato
+             existia desde a migration 022 e nunca teve tela: quem cede a
+             parede via o valor combinado e nao tinha onde conferir o que ja
+             recebeu. Os dois lados dependiam da memoria. -->
+        <div class="panel-head u-mt-32 u-mb-14">
+          <h3 class="u-m-0">Meus recebimentos</h3>
+          <span class="form-hint u-m-0">A ajuda de custo do comodato, mês a mês.</span>
+        </div>
+        <div id="extratoPonto">Carregando...</div>
+
         <div class="panel-head u-m-0 u-mt-28 u-mb-14">
           <h3 class="u-m-0">Meus endereços</h3>
           <button type="button" class="btn ghost" id="btnNovoEndereco">+ Cadastrar outro endereço</button>

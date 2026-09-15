@@ -10,7 +10,7 @@ const pegar = async (caminho) => (await api(caminho)).json();
 
 function fmt(v) { return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 function num(v) { return Number(v || 0).toLocaleString('pt-BR'); }
-function data(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : '—'; }
+const data = (v) => window.dataBR(v);
 
 // Nome de ponto/empresa chega por formulário público, sem autenticação —
 // vai pra innerHTML aqui dentro da sessão do admin, então escapa sempre.
@@ -1653,9 +1653,15 @@ async function renderArrependimentos(el) {
   turbinarTabela(el.querySelector('.tabela-caixa'));
   el.querySelectorAll('[data-estornado]').forEach((btn) => btn.addEventListener('click', async () => {
     const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
-    if (await salvar(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, { comprovante: campo.value.trim() })) {
-      renderArrependimentos(el);
-    }
+    // `salvar()` forca PATCH e esta rota e POST — a fila de devolucao nunca
+    // fechava, o pedido ficava aberto pra sempre e o dinheiro devolvido nao
+    // era registrado em lugar nenhum.
+    const r = await api(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, {
+      method: 'POST', body: JSON.stringify({ comprovante: campo.value.trim() }),
+    });
+    if (!r.ok) { toast((await r.json().catch(() => ({}))).erro || 'Nao deu pra registrar.', true); return; }
+    toast('Devolucao registrada.');
+    renderArrependimentos(el);
   }));
 }
 

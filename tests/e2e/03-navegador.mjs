@@ -128,7 +128,12 @@ adm.on('dialog', async (d) => {
 const linhaFarm = adm.locator('tr', { hasText: 'Farmácia Central' }).first();
 await linhaFarm.locator('[data-chave]').click(); await adm.waitForTimeout(800);
 check('chave gerada e link do player mostrado', !!linkPlayer && /player\.html\?tela=\d+&chave=/.test(linkPlayer), linkPlayer);
-await adm.locator('tr', { hasText: 'Farmácia Central' }).first().locator('[data-pin]').click(); await adm.waitForTimeout(800);
+await adm.locator('tr', { hasText: 'Farmácia Central' }).first().locator('[data-pin]').click();
+// Espera o SELO aparecer, não um relógio. O clique dispara renderTelas(), que
+// refaz a linha inteira depois de duas chamadas de rede; com 800ms fixos o
+// teste falhava de vez em quando sem nada estar quebrado no produto.
+const seloPin = adm.locator('tr', { hasText: 'Farmácia Central' }).first().locator('.badge', { hasText: 'definido' });
+await seloPin.waitFor({ timeout: 10000 }).catch(() => {});
 check('PIN definido', (await adm.locator('tr', { hasText: 'Farmácia Central' }).first().textContent()).includes('definido'));
 await shot(adm, 'admin-telas');
 
