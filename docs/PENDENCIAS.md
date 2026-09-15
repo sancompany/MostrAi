@@ -742,3 +742,28 @@ visual, desktop.)*
   virou string vazia, e `#cycleNote` agora fica `hidden` quando não há nota
   pro ciclo) — a mesma informação já está na FAQ "Como eu cancelo?" logo
   abaixo, e repetir ali foi considerado desnecessário pelo dono.
+
+**8. [x] Encaminhado — limite de pontos e frequência configuráveis por
+plano; achado de brinde: a mesma mentira do "100%" ainda vivia num
+benefício do catálogo.** **FEITO em 15/09/2026.** *(Pedido do dono fora de
+print, sobre a página de Planos: "adicionar limite de pontos por plano e
+quantia de aparições por dia, os dois configuráveis do jeito que eu
+quiser".)*
+
+- É IDEIA nova (não conserto do que já existe), então foi só encaminhada —
+  regra 4 desta seção. Foram pra `docs/proximas-versoes.md`: **"Cobertura
+  restrita por ciclo, sorteada entre pontos"** (já existia; atualizada agora
+  pra registrar que o dono quer número livre de pontos por plano, não as
+  duas opções fixas do enum atual), e **"Teto de 3 criativos por plano
+  travado no código e no banco"** (nova — achada ao procurar "outras
+  funções" que também deveriam ser livres e não são).
+- A frequência por dia (`frequencia_dia`) **já é livre hoje** — campo
+  numérico, editável por plano no admin, sem teto no código. Registrado em
+  `proximas-versoes.md` só pra não sumir da lista, mas não precisa de nada.
+- *Achado ao investigar (não fazia parte do pedido, mas é a mesma mentira já
+  corrigida nesta seção, item 7):* o benefício "Alcança 100% dos pontos
+  ativos" (catálogo `beneficios`, id 11), ativo e vinculado às 4 versões do
+  plano Essencial, dizia a mesma coisa falsa que o parágrafo da página —
+  corrigido direto no banco pra "Roda em todos os pontos, menos no do seu
+  concorrente direto". É dado (linha de tabela), não código: não precisa de
+  deploy, já está no ar.

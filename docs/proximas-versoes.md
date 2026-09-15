@@ -119,11 +119,25 @@ e a de custos de 12/09
 - **Quando vale a pena:** quando o Checkout aceitar endereço no `pagador`; até lá é pedido pra quem administra o Checkout, não construção nossa. Se aparecer desistência no checkout antes disso, vira prioridade.
 
 ## Cobertura restrita por ciclo, sorteada entre pontos
-- **O que:** ligar de verdade `planos.cobertura` (`um_ponto_dia`, `tres_pontos_dia`) no gerador de playlist — hoje todo plano cobre 100% da rede, o campo existe mas não é lido. Junto, um sorteio diário que escolhe EM QUAIS pontos cada anunciante restrito entra, ponderado pela vaga sobrando de cada ponto (preenche os mais vazios primeiro) e com rodízio por histórico (não fixa sempre no mesmo ponto).
-- **Por que:** sem isso, "1 ponto/dia" e "3 pontos/dia" são só rótulo na grade — não existe diferença de entrega entre um plano de entrada e o Máximo além da frequência.
-- **De onde veio:** `docs/catalogo-beneficios.md` (seção 2) e `docs/economia-da-rede.md` (seção 4), a pedido do dono em 15/09/2026.
-- **O que toca:** `anunciantesElegiveis` e `gerarPlaylistDaHora` (`src/playlist/gerador.js`), uma tabela ou coluna nova pra guardar em quais pontos cada anunciante restrito está hoje e o histórico de rodízio.
+- **O que:** ligar de verdade `planos.cobertura` no gerador de playlist — hoje todo plano cobre 100% da rede (menos concorrente direto), o campo existe mas não é lido. **Atualização de 15/09/2026, pedido do dono:** em vez das duas opções fixas do enum atual (`um_ponto_dia`, `tres_pontos_dia`), ele quer um **número livre de pontos por plano**, editável por ele como qualquer outro campo do plano (tipo `limite_pontos int`, nulo = sem teto = todos os pontos) — não uma lista fechada de opções pra escolher. Junto, um sorteio diário que escolhe EM QUAIS pontos cada anunciante restrito entra, ponderado pela vaga sobrando de cada ponto (preenche os mais vazios primeiro) e com rodízio por histórico (não fixa sempre no mesmo ponto).
+- **Por que:** sem isso, "1 ponto/dia" e "3 pontos/dia" são só rótulo na grade — não existe diferença de entrega entre um plano de entrada e o Máximo além da frequência. E um enum de 2 opções não deixa o dono desenhar um plano com, por exemplo, 7 pontos — ele quer poder digitar o número que fizer sentido pra cada plano novo.
+- **De onde veio:** `docs/catalogo-beneficios.md` (seção 2) e `docs/economia-da-rede.md` (seção 4), a pedido do dono em 15/09/2026; refinamento (número livre em vez do enum) pedido de novo pelo dono no mesmo dia, na rodada de depuração da página de Planos.
+- **O que toca:** a coluna `planos.cobertura` (hoje enum) precisa virar (ou ganhar ao lado) um `limite_pontos int null` livre; `anunciantesElegiveis` e `gerarPlaylistDaHora` (`src/playlist/gerador.js`) pra aplicar o teto; o formulário de plano no admin (`public/admin/index.page.js`, `renderPlanos`) pra virar um campo numérico em vez de `<select>`; uma tabela ou coluna nova pra guardar em quais pontos cada anunciante restrito está hoje e o histórico de rodízio.
 - **Quando vale a pena:** quando o primeiro plano de entrada precisar custar visivelmente menos por entregar visivelmente menos (hoje o corte é só de frequência, não de alcance).
+
+## Frequência por dia já é livre — nada a fazer aqui
+- **O que:** registrado só pra não sumir da lista de coisas que o dono pediu: `planos.frequencia_dia` (quantas vezes por dia o anúncio roda) **já é** um campo numérico livre, editável por plano no admin (`renderPlanos` → "Frequência/dia") e já wireado de ponta a ponta no gerador de playlist (`src/playlist/gerador.js`). O dono já pode configurar do jeito que quiser hoje, sem depender de nenhuma construção nova.
+- **Por que:** o dono pediu que "os dois" (limite de pontos e frequência) ficassem configuráveis do jeito que ele quiser — um dos dois já está pronto, e vale deixar escrito pra não virar retrabalho.
+- **De onde veio:** pedido do dono, 15/09/2026, na rodada de depuração da página de Planos.
+- **O que toca:** nada — confirmado, sem gap.
+- **Quando vale a pena:** já vale hoje.
+
+## Teto de 3 criativos por plano travado no código e no banco
+- **O que:** `planos.limite_criativos` tem CHECK de 1 a 3 no banco (migration 015) **e** `limiteDeCriativos()` em `src/playlist/gerador.js` aplica `Math.min(3, ...)` por cima disso — então mesmo que o dono editasse esse campo pra um número maior num plano novo, o sistema ignora e trava em 3 de qualquer jeito.
+- **Por que:** o dono pediu, na mesma leva, "se tiver outras funções que podem ficar do jeito que eu escrever, já coloque também" — esse é o caso mais direto que existe hoje: um campo que parece livre no admin mas tem teto escondido no código e na constraint do banco.
+- **De onde veio:** pedido do dono, 15/09/2026 (levantamento por causa do pedido de limite de pontos configurável).
+- **O que toca:** `ALTER TABLE planos DROP CONSTRAINT planos_limite_criativos_check` (ou trocar o teto, numa migration nova) e trocar `Math.min(3, ...)` por um teto maior ou configurável em `limiteDeCriativos()` (`src/playlist/gerador.js`); o `max="3"` dos inputs em `public/admin/index.page.js` (`renderPlanos`) também precisa subir.
+- **Quando vale a pena:** quando o dono quiser desenhar um plano com mais de 3 criativos ativos ao mesmo tempo — até lá, os planos atuais (1/2/3) não esbarram no teto.
 
 ## Folga de 15 minutos pro déficit da hora anterior
 - **O que:** reservar os primeiros ~15 minutos de cada hora só pra saldar o `deficit` (exibição programada e não confirmada) da hora anterior, em vez de ele só entrar como prioridade extra que pode ser cortada de novo se a hora nova também apertar.
