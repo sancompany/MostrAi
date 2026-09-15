@@ -104,6 +104,13 @@ e a de custos de 12/09
 - **O que toca:** campo no plano ou na assinatura; motor já bloqueia.
 - **Quando vale a pena:** quando dois anunciantes do mesmo ramo disputarem a rede.
 
+## Endereço do anunciante pré-preenchido no checkout
+- **O que:** mandar o endereço comercial que o Mostraí já tem (rua, número, bairro, CEP, cidade, UF) junto do `pagador`, pra pessoa não redigitar na tela de pagamento.
+- **Por que:** o `POST /assinatura` do Checkout **exige** endereço completo com código IBGE (antifraude de cartão da Asaas). Hoje o anunciante digita endereço no cadastro do Mostraí — que é obrigatório pra poder assinar — e digita tudo de novo no checkout. É digitação dobrada no momento de maior desistência, o do pagamento.
+- **De onde veio:** teste do caminho de pagamento em sandbox, 15/09/2026 — a chamada real recusou sem endereço ("Endereço completo (rua, número, bairro e CEP) é obrigatório") e sem CEP existente ("O campo postalCode é inválido").
+- **O que toca:** `montarRespostaPlano` em `src/financeiro/san-checkout.js` — **mas depende do Checkout primeiro**: o contrato do `pagador` (API.md, seção 3) só aceita nome, e-mail, documento e telefone. Sem campo de endereço lá, não há onde mandar.
+- **Quando vale a pena:** quando o Checkout aceitar endereço no `pagador`; até lá é pedido pra quem administra o Checkout, não construção nossa. Se aparecer desistência no checkout antes disso, vira prioridade.
+
 ## Cobertura restrita por ciclo, sorteada entre pontos
 - **O que:** ligar de verdade `planos.cobertura` (`um_ponto_dia`, `tres_pontos_dia`) no gerador de playlist — hoje todo plano cobre 100% da rede, o campo existe mas não é lido. Junto, um sorteio diário que escolhe EM QUAIS pontos cada anunciante restrito entra, ponderado pela vaga sobrando de cada ponto (preenche os mais vazios primeiro) e com rodízio por histórico (não fixa sempre no mesmo ponto).
 - **Por que:** sem isso, "1 ponto/dia" e "3 pontos/dia" são só rótulo na grade — não existe diferença de entrega entre um plano de entrada e o Máximo além da frequência.
