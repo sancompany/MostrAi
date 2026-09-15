@@ -64,6 +64,27 @@ function turbinarTabela(caixa) {
       if (!tr.hidden) visiveis += 1;
     });
     if (contagem) contagem.textContent = `${visiveis} de ${linhas().length}`;
+    mostrarVazio(visiveis, linhas().length, termo || filtro);
+  }
+
+  // Tabela sem nenhuma linha aparecia como um cabecalho solto sobre o vazio —
+  // no admin recem-instalado (que e o estado do primeiro dia) isso acontece em
+  // quase toda aba, e nao da pra saber se e "nao tem nada" ou "quebrou".
+  // Tambem cobre a busca que nao achou nada.
+  function mostrarVazio(visiveis, total, filtrando) {
+    let aviso = caixa.querySelector('[data-vazio]');
+    if (visiveis > 0) { if (aviso) aviso.hidden = true; return; }
+    if (!aviso) {
+      aviso = document.createElement('p');
+      aviso.className = 'empty-state';
+      aviso.setAttribute('data-vazio', '');
+      caixa.querySelector('.rolagem').insertAdjacentElement('afterend', aviso);
+    }
+    aviso.hidden = false;
+    aviso.textContent = total === 0
+      ? 'Nada cadastrado aqui ainda.'
+      : 'Nenhuma linha com esse filtro ou essa busca.';
+    if (!filtrando && total === 0) aviso.textContent = 'Nada cadastrado aqui ainda.';
   }
 
   if (busca) busca.addEventListener('input', aplicar);

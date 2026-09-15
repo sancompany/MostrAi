@@ -66,7 +66,13 @@ function preencherStatusBanner() {
   const statusTxt = ROTULOS.anunciante[ANUNCIANTE.status] || ANUNCIANTE.status;
   let planoTxt = 'Sem plano ainda';
   if (ANUNCIANTE.plano_id) {
-    planoTxt = `Plano ativo${ANUNCIANTE.data_expiracao ? ' até ' + new Date(ANUNCIANTE.data_expiracao).toLocaleDateString('pt-BR') : ''}`;
+    // Cortesia chegava no navegador e nao aparecia em tela nenhuma do cliente:
+    // quem ganhou o plano (bonus de ponto ou liberacao do dono) via "Plano
+    // ativo" igualzinho a quem paga, e nao sabia que nao havia cobranca — nem
+    // que a data de expiracao nao vai renovar sozinha.
+    planoTxt = ANUNCIANTE.plano_cortesia ? 'Plano de cortesia' : 'Plano ativo';
+    if (ANUNCIANTE.data_expiracao) planoTxt += ` até ${window.dataBR(ANUNCIANTE.data_expiracao)}`;
+    if (ANUNCIANTE.plano_cortesia) planoTxt += ' · sem cobrança';
   }
   const travado = ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
@@ -212,6 +218,7 @@ async function carregarExibicoes() {
     desenharPorDia(dados.porDia || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
+    explicarZero(dados);
   } catch {
     // Antes o catch era vazio: falha de API e conta nova produziam a mesma
     // tela de "—", e quem paga não conseguia distinguir "meu anúncio não
@@ -219,6 +226,23 @@ async function carregarExibicoes() {
     document.getElementById('statusBanner').insertAdjacentHTML('beforeend',
       '<p class="form-msg err">Não foi possível carregar seus números agora. Tente atualizar a página.</p>');
   }
+}
+
+// Conta nova enxerga a mesma tela de uma conta que parou de rodar: tudo zero,
+// tres traços e nenhum grafico. Sem uma linha dizendo em que etapa a conta
+// esta, quem acabou de pagar conclui que comprou algo que nao funciona.
+function explicarZero(dados) {
+  const el = document.getElementById('exibicoesVazio');
+  if (!el) return;
+  if (dados.totalProgramadas > 0 || dados.totalConfirmadas > 0) { el.hidden = true; return; }
+  const semPlano = !ANUNCIANTE.plano_id;
+  const criativoNoAr = (dados.criativosAprovados || 0) > 0;
+  el.innerHTML = semPlano
+    ? '<b>Seus números aparecem aqui depois que você escolher um plano.</b> Nada foi programado ainda porque a conta não tem plano ativo.'
+    : (criativoNoAr
+      ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia — cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
+      : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.');
+  el.hidden = false;
 }
 
 // Barras verticais dos últimos 14 dias. O endpoint devolve DESC (mais novo

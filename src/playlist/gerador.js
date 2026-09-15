@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
-const { calcularPlaylist, contarPorAnunciante, dividirCota } = require('../lib/pacing');
+const { calcularPlaylist, contarPorAnunciante, dividirCota, pedidoDaHora } = require('../lib/pacing');
+const eventos = require('../lib/eventos');
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
 // recebe do ponto a categoria (bloqueio de concorrente), o horário de
@@ -131,6 +132,21 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   if (doDono.length && cotaDaTela > 0) {
     porId.dono = { criativos: doDono };
     entrada.push({ id: 'dono', frequenciaBase: cotaDaTela, deficit: 0 });
+  }
+
+  // Teto de 200 slots/hora: quando o pedido passa disso, todo mundo entrega
+  // menos do que contratou. O corte e proporcional (src/lib/pacing.js), mas
+  // continua sendo entrega menor — e antes nao havia sinal nenhum disso em
+  // lugar nenhum. Vira evento da metrica, que e onde o dono olha.
+  const aperto = pedidoDaHora(entrada);
+  if (aperto.cortou) {
+    eventos.registrar('playlist:teto_corta', {
+      dispositivo_id: dispositivo.id,
+      ponto_id: dispositivo.ponto_id,
+      pedido: aperto.pedido,
+      cabe: aperto.cabe,
+      anunciantes: entrada.length,
+    });
   }
 
   const itensIds = calcularPlaylist(entrada);

@@ -508,9 +508,19 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
 
+  // Quantas pecas ja estao aprovadas: e o que decide a frase que o painel
+  // mostra quando tudo esta zerado ("falta o seu video" x "ja esta no ar, os
+  // numeros comecam a aparecer").
+  const { rows: aprovados } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM criativos
+      WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL`,
+    [req.params.id]
+  );
+
   res.json({
     totalProgramadas: Number(totais.rows[0].programadas),
     totalConfirmadas: confirmadas,
+    criativosAprovados: aprovados[0].n,
     porPonto: porPonto.rows,
     porDia: porDia.rows,
     cobrancas: cobrancas.rows,

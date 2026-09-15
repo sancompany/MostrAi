@@ -16,14 +16,50 @@ function embaralhar(lista) {
 // anunciantes: [{ id, frequenciaBase, deficit }] → lista de ids repetidos
 // representando a playlist da hora (já embaralhada e com o teto aplicado)
 function calcularPlaylist(anunciantes) {
-  let itens = [];
-  for (const a of anunciantes) {
-    const repeticoes = a.frequenciaBase + (a.deficit || 0);
-    for (let i = 0; i < repeticoes; i++) itens.push(a.id);
+  const pedidos = embaralhar(anunciantes.map((a) => ({
+    id: a.id,
+    quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
+  })));
+  const total = pedidos.reduce((soma, p) => soma + p.quer, 0);
+
+  // O teto era aplicado com um `slice` na lista já sorteada: quem ficasse pra
+  // depois do item 200 simplesmente perdia as exibições daquela hora, e quem
+  // perdia era sorteio. Com a rede cheia, um anunciante podia terminar a hora
+  // com muito menos que a frequência que contratou enquanto outro ficava com
+  // tudo — e nada em lugar nenhum dizia que isso tinha acontecido.
+  //
+  // Agora o corte é proporcional: cada um perde a mesma fração do que pediu.
+  // O que sobra da divisão vai para os maiores restos (regra dos maiores
+  // restos), e a lista já vem embaralhada, então empate não favorece sempre o
+  // mesmo. `cortou` sai junto pra quem chama poder registrar o aperto.
+  const cortou = total > LIMITE_SLOTS_PROGRAMADOS;
+  if (cortou) {
+    const fator = LIMITE_SLOTS_PROGRAMADOS / total;
+    for (const p of pedidos) {
+      const exato = p.quer * fator;
+      p.cabe = Math.floor(exato);
+      p.resto = exato - p.cabe;
+    }
+    let sobra = LIMITE_SLOTS_PROGRAMADOS - pedidos.reduce((soma, p) => soma + p.cabe, 0);
+    const porResto = [...pedidos].sort((x, y) => y.resto - x.resto);
+    for (let i = 0; i < porResto.length && sobra > 0; i++, sobra--) porResto[i].cabe += 1;
+  } else {
+    for (const p of pedidos) p.cabe = p.quer;
   }
-  itens = embaralhar(itens);
-  if (itens.length > LIMITE_SLOTS_PROGRAMADOS) itens = itens.slice(0, LIMITE_SLOTS_PROGRAMADOS);
-  return itens;
+
+  const itens = [];
+  for (const p of pedidos) {
+    for (let i = 0; i < p.cabe; i++) itens.push(p.id);
+  }
+  return embaralhar(itens);
+}
+
+// Quanto do que foi pedido cabe no teto da hora. Quem chama usa pra saber que
+// a hora apertou — o corte proporcional e justo, mas continua sendo entrega
+// menor do que a contratada, e isso precisa aparecer em algum lugar.
+function pedidoDaHora(anunciantes) {
+  const pedido = anunciantes.reduce((soma, a) => soma + Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)), 0);
+  return { pedido, cabe: Math.min(pedido, LIMITE_SLOTS_PROGRAMADOS), cortou: pedido > LIMITE_SLOTS_PROGRAMADOS };
 }
 
 function contarPorAnunciante(itens) {
@@ -41,4 +77,4 @@ function dividirCota(cotaDoPonto, telasAtivas) {
   return cota === 0 ? 0 : Math.ceil(cota / telas);
 }
 
-module.exports = { calcularPlaylist, contarPorAnunciante, dividirCota, LIMITE_SLOTS_PROGRAMADOS };
+module.exports = { calcularPlaylist, contarPorAnunciante, dividirCota, pedidoDaHora, LIMITE_SLOTS_PROGRAMADOS };

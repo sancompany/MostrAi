@@ -43,13 +43,17 @@ function renderFundador() {
     const meses = p.compromisso_meses;
     const porMes = Number(p.valor_mensal);
     const cheio = Number(p.valor_mensal_cheio) || mensalDoTier(p.tier);
+    // 12 horas e a MESMA jornada padrao que o gerador usa quando o ponto nao
+    // declarou horario (HORAS_ABERTO_PADRAO em src/playlist/gerador.js). Quando
+    // ele declara, a conta real e sobre o horario dele — por isso o "≈" e por
+    // isso a tela agora diz de onde sai o numero.
     const porHora = Math.round(p.frequencia_dia / 12);
     return `
     <div class="plan-card fundador">
       <span class="badge">Fundador</span>
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">${p.frequencia_dia}x por dia em cada tela <small>(≈${porHora}x por hora)</small></div>
+      <div class="freq">${p.frequencia_dia}x por dia em cada tela <small>(≈${porHora}x por hora num comércio aberto 12h)</small></div>
       ${cheio && cheio > porMes ? `<div class="price-riscado">${fmt(cheio)}/mês</div>` : ''}
       <div class="price">${fmt(porMes)}<small class="u-fs-100">/mês</small></div>
       <div class="price-sub">
@@ -89,7 +93,7 @@ function render(meses) {
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">${p.frequencia_dia}x por dia em cada ponto <small>(≈${porHora}x por hora)</small></div>
+      <div class="freq">${p.frequencia_dia}x por dia em cada ponto <small>(≈${porHora}x por hora num comércio aberto 12h)</small></div>
       ${totalCheio && economiaMes > 0 ? `<div class="price-riscado">${fmt(totalCheio)}</div>` : ''}
       <div class="price">${fmt(totalCiclo)}</div>
       <div class="price-sub">
