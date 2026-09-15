@@ -556,6 +556,10 @@ Estação 6 abre.
 5. A estação fecha quando a lista abaixo estiver toda `[x]` **e** o dono
    disser que está satisfeito com o nível — não antes.
 
+**Ordem escolhida pelo dono (15/09/2026):** primeiro o visual, PC e celular
+lado a lado; depois as funcionalidades. Prints chegam um de cada vez, e cada
+um vira uma linha nova abaixo assim que resolvido.
+
 ### Itens reportados
 
 **1. [ ] CRÍTICO — pagamento confirmado não credita o ciclo; a conta nunca
@@ -597,6 +601,20 @@ Ideal também: só notificar o contratante depois de ter o id em mãos.
 própria (aceitar `criadoEm|status` como chave quando o `chargeId` vier
 nulo) — é caminho de dinheiro, não mexo sem a palavra dele.
 
+*Atualização em 15/09/2026 — verificado ao vivo:* o conserto foi escrito por
+uma sessão do Checkout (commit `740d6bc`, "vincular charge_id pelo
+PAYMENT_CONFIRMED, não pelo CHECKOUT_PAID", credita o achado ao Mostraí) mas
+**segue só na branch `claude/nifty-meitner-4ffp9s`, sem merge em `main` e
+sem deploy** — conferido direto no Northflank do `san-checkout`:
+`deployedSHA` continua `3e38c5b...`, o commit antigo com o bug. A cobrança
+real travada (`asaas_checkout_id = 0a000018-daa5-4fbc-acb9-4056c22ba250`)
+segue como estava: `status: confirmado`, `charge_id: null`,
+`asaas_subscription_id: null`. Fora do escopo desta sessão (é o Checkout que
+conserta o lado dele). Mesmo quando o deploy sair, **não vai creditar essa
+cobrança específica sozinho** — a Asaas já entregou o `PAYMENT_CONFIRMED`
+uma vez e não reenvia; vai precisar de reconciliação manual do lado de lá
+depois do deploy.
+
 **2. [ ] E-mail não chegou (nem do Mostraí, nem da Asaas).**
 *Mostraí:* é consequência do item 1 — `enviarConfirmacaoPagamento` só roda
 dentro de `aplicarCicloPago`, que nunca rodou. Não é defeito de SMTP; o SMTP
@@ -620,3 +638,36 @@ criativo, que já existia e já manda e-mail de aprovado/reprovado.
 `enviarContaAprovada`/`conta:aprovacao_recebe` não foram apagados — o caso
 real que sobra pra eles é reinstalar uma conta suspensa, que continua
 precisando do aviso. RN-34 em `docs/funcional.md`.
+
+*Ponto solto, não decidido:* a conta de teste do próprio dono (id 3, "San
+Company", `brunosanches.bhs@gmail.com`) segue com `status =
+pendente_aprovacao` no banco — é o valor de antes da RN-34, e a mudança só
+afeta contas criadas daqui pra frente, não reescreve retroativamente a que
+já existe. Corrigir essa linha é um `UPDATE` de uma linha só (não mexe em
+dinheiro nem em schema), mas fica pendente até o dono confirmar se quer que
+eu troque agora ou se prefere ver isso na rodada de depuração.
+
+**4. [ ] Duas instâncias do servidor no Northflank — risco se ligar antes da
+hora.** *(O dono avisou a intenção de aumentar; verificado em 15/09/2026 antes
+de ele agir.)* Hoje o serviço `mostrai` roda em 1 instância só. Três estados
+vivem em memória do processo Node; dois deles quebram de verdade com 2
+instâncias:
+- Cache de playlist por hora (`src/playlist/routes.js`, `new Map()`,
+  comentário "uma instância só") — **quebra**: cada instância cacheia
+  playlist diferente, o aparelho pode receber conteúdo desatualizado
+  dependendo de qual instância responde.
+- Limitador de tentativas de login (`src/lib/limite-tentativas.js`,
+  `new Map()`) — **quebra**: cada instância conta tentativas por conta
+  própria, na prática dobrando (ou mais) as tentativas permitidas contra
+  força bruta.
+- Fila de retry da conciliação (`src/financeiro/conciliacao.js`) — **não
+  quebra**: conferido no Northflank, conciliação roda como job separado
+  (`conciliacao`, cron), não como parte do serviço `mostrai`. Escalar o
+  serviço principal não toca nisso.
+
+Já registrado em `docs/proximas-versoes.md` com a entrada "Duas instâncias
+do servidor no Northflank". Antes de ligar a segunda instância, os dois
+primeiros itens acima precisam sair da memória do processo (Postgres ou
+Redis, que já existem no projeto). Trabalho pequeno e isolado — fica
+pendente até o dono decidir a ordem (visual → funcionalidades → depois
+instâncias, ou antes).
