@@ -222,7 +222,7 @@ const NAV = [
       { id: 'meusanuncios', nome: 'Meus anúncios' },
       { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
       { id: 'telas', nome: 'Telas', fila: 'offline' },
-      { id: 'anunciantes', nome: 'Anunciantes', fila: 'anunciantes' },
+      { id: 'anunciantes', nome: 'Anunciantes' },
       { id: 'vendedores', nome: 'Vendedores' },
     ],
   },
@@ -424,7 +424,6 @@ const ALERTAS = [
   { fila: 'offline', aba: 'telas', texto: 'tela(s) ativas sem dar sinal', urgente: true },
   { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) nova(s) pra responder' },
   { fila: 'eventos', aba: 'eventos', texto: 'evento(s) de pagamento pra revisar', urgente: true },
-  { fila: 'anunciantes', aba: 'anunciantes', texto: 'anunciante(s) pendente(s) de aprovação' },
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   { fila: 'notas', aba: 'cobrancas', texto: 'nota(s) fiscal(is) por emitir' },
   {

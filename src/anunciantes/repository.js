@@ -85,8 +85,10 @@ async function criar(dados, db = pool) {
       dados.responsavel_telefone || null,
       new Date(),
       dados.papeis?.length ? dados.papeis : ['anunciante'],
-      // Conta que nasce por convite já foi aprovada pelo dono ao gerar o link.
-      dados.status || 'pendente_aprovacao',
+      // Não existe mais aprovação de conta (decisão do dono, 15/09/2026): a
+      // conta nasce liberada, por convite ou pelo cadastro aberto. O único
+      // portão que sobra é o do criativo (src/anunciantes/criativos-repository.js).
+      dados.status || 'aprovado',
     ],
   );
   return rows[0];

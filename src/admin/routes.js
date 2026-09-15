@@ -122,7 +122,6 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT
         (SELECT COUNT(*) FROM criativos WHERE status = 'pendente') AS criativos,
         (SELECT COUNT(*) FROM eventos_assinatura_pendentes WHERE NOT resolvido) AS eventos,
-        (SELECT COUNT(*) FROM anunciantes WHERE status = 'pendente_aprovacao' AND excluido_em IS NULL) AS anunciantes,
         (SELECT COUNT(*) FROM pontos WHERE status = 'lead') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
         (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
@@ -170,7 +169,6 @@ router.get('/admin/resumo', async (_req, res) => {
     filas: {
       criativos: Number(filas.rows[0].criativos),
       eventos: Number(filas.rows[0].eventos),
-      anunciantes: Number(filas.rows[0].anunciantes),
       pontos: Number(filas.rows[0].pontos),
       notas: Number(filas.rows[0].notas),
       candidaturas: Number(filas.rows[0].candidaturas),

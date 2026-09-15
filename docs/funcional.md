@@ -32,14 +32,14 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 1. Chega em `/` ou `/planos.html` e vê a grade de planos com preço e frequência.
 2. Escolhe um plano e clica em assinar → vai para `/anunciante/cadastro.html`.
 3. Preenche empresa, CNPJ/CPF, endereço, contato e senha; aceita os termos.
-4. A conta nasce com o papel **anunciante** e status `pendente_aprovacao`.
-5. O administrador aprova (ou recusa) no admin.
-6. Aprovado, volta ao painel e assina o plano → é levado ao San Checkout.
-7. Paga. O webhook `criada` chega, a conta vira `ativo` e a cobertura começa.
-8. Sobe o vídeo na aba **Anúncios**. O sistema normaliza com ffmpeg e gera a thumb.
-9. O administrador aprova o criativo.
-10. O vídeo entra na playlist de todas as telas ativas, na frequência do plano.
-11. O anunciante acompanha exibições na própria aba.
+4. A conta nasce com o papel **anunciante** e status `aprovado` — não existe
+   mais aprovação de conta (RN-34); o painel abre na hora.
+5. Escolhe o plano e assina → é levado ao San Checkout.
+6. Paga. O webhook `criada` chega, a conta vira `ativo` e a cobertura começa.
+7. Sobe o vídeo na aba **Anúncios**. O sistema normaliza com ffmpeg e gera a thumb.
+8. O administrador aprova o criativo — esse é o único portão que existe.
+9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano.
+10. O anunciante acompanha exibições na própria aba.
 
 ### 2.2 Dono de ponto — da candidatura à tela no ar
 
@@ -246,6 +246,18 @@ plano some da vitrine.** Uma assinatura sem cobrança confirmada solta a vaga
 sozinha depois de 15 minutos (decisão do dono, 15/09/2026 — era 7 dias).
 *Violada:* "as vagas desse plano acabaram". *Quem vê:* o anunciante.
 
+**RN-34 — Não existe aprovação de conta.** *(Decisão do dono, 15/09/2026, a
+partir da observação de que uma conta conseguia pagar um plano antes de ser
+aprovada.)* A conta nasce com status `aprovado`, por convite ou pelo
+cadastro aberto — o painel abre na hora, sem esperar ninguém. O único
+portão que resta é o do **criativo**: a peça enviada precisa ser aprovada
+pelo administrador antes de entrar na playlist (RN do módulo de criativos).
+`pendente_aprovacao` continua existindo como valor válido no banco (nenhuma
+conta nova recebe esse status; uma conta antiga que ainda o tenha continua
+funcionando igual — só não tem mais fila nem alerta associado a ela no
+admin). *Violada:* não há caminho — pagar já ativa a conta, como sempre
+ativou. *Quem vê:* o anunciante, no acesso imediato ao painel.
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
@@ -392,8 +404,7 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Onde | Texto |
 |---|---|
 | Botão de assinar | **Assinar plano** |
-| Cadastro concluído | Conta criada. Avisaremos por e-mail quando ela for aprovada. |
-| Conta pendente | Sua conta está em análise. Assim que for aprovada você já pode assinar um plano. |
+| Cadastro concluído | Conta criada! |
 | Senha fraca | A senha precisa de 8 caracteres, uma maiúscula e um símbolo. |
 | E-mail já cadastrado | Já existe uma conta com esse e-mail. Tente entrar ou recuperar a senha. |
 | Convite usado | Este convite não vale mais. Fale com a gente para receber outro. |
@@ -464,7 +475,7 @@ Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 | Evento | Onde é emitido | Propriedades | Pergunta que responde |
 |---|---|---|---|
 | `conta:cadastro_conclui` | **servidor** | `papel_inicial`, `veio_de_cupom` | quantos se cadastraram ontem? |
-| `conta:aprovacao_recebe` | servidor | `papel_liberado`, `horas_ate_aprovar` | quanto tempo a fila de aprovação leva? |
+| `conta:aprovacao_recebe` | servidor | `papel_liberado`, `horas_ate_aprovar` | quanto tempo leva pra reinstalar uma conta suspensa? (não existe mais aprovação de conta nova, RN-34 — o caso real que sobra é este) |
 | `plano:assinatura_inicia` | servidor | `plano_id`, `plano_ciclo`, `valor_cobrado` | quantos chegam ao checkout? |
 | `pagamento:cobranca_confirma` | **servidor (webhook)** | `plano_id`, `valor_confirmado`, `ciclo_numero` | quantos pagaram ontem? — é a receita |
 | `criativo:video_aprova` | servidor | `horas_ate_aprovar` | o vídeo entra no ar rápido? (é o mesmo gatilho do e-mail da RN-18) |

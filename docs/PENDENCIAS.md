@@ -605,15 +605,18 @@ continua **não verificado** (nenhum envio real aconteceu ainda).
 ligado nesse ambiente. Fecha junto com o item 1 — quando o ciclo aplicar, o
 e-mail sai e aí sim se sabe se o SMTP funciona.
 
-**3. [ ] Aprovação de conta sai; só o criativo é aprovado.** *(Decisão do
-dono em 15/09/2026, a partir da observação de que a conta consegue pagar
-antes de ser aprovada.)* A observação está certa e o código já se comporta
-assim: `assinar` só barra conta `suspenso`, e `aplicarCicloPago` põe
-`status = 'ativo'` no pagamento — ou seja, **pagar já aprova**. A fila de
-aprovação de conta nunca foi um portão de verdade. O que muda: conta nasce
-liberada, a fila de "anunciantes pendentes" sai do admin, o e-mail
-`enviarContaAprovada` perde a função, e o único portão passa a ser o do
-criativo (que já existe e já manda e-mail de aprovado/reprovado). Toca
-`src/anunciantes/repository.js` (status inicial), `src/anunciantes/routes.js`,
-`src/admin/routes.js` (fila), `docs/funcional.md` (RN de aprovação) e o
-texto das telas que prometem "aguardando aprovação".
+**3. [x] Aprovação de conta sai; só o criativo é aprovado.** **FEITO em
+15/09/2026.** *(Decisão do dono, a partir da observação de que a conta
+consegue pagar antes de ser aprovada.)* A observação estava certa e o
+código já se comportava assim: `assinar` só barrava conta `suspenso`, e
+`aplicarCicloPago` põe `status = 'ativo'` no pagamento — ou seja, pagar já
+aprovava. A fila de aprovação de conta nunca foi um portão de verdade.
+Mudou: conta nova nasce com status `aprovado` (`src/anunciantes/repository.js`,
+`src/anunciantes/routes.js` — por convite ou pelo cadastro aberto, os dois
+caminhos), a fila "anunciante(s) pendente(s) de aprovação" saiu do admin
+(alerta da Visão geral e badge do menu, `public/admin/index.page.js`) e da
+consulta de filas (`src/admin/routes.js`). O único portão que resta é o do
+criativo, que já existia e já manda e-mail de aprovado/reprovado.
+`enviarContaAprovada`/`conta:aprovacao_recebe` não foram apagados — o caso
+real que sobra pra eles é reinstalar uma conta suspensa, que continua
+precisando do aviso. RN-34 em `docs/funcional.md`.

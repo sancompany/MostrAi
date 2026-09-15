@@ -176,8 +176,11 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     categoria_id: req.body.categoria_id,
     categoria_livre: req.body.categoria_livre,
     papeis,
-    // Quem entrou por convite já foi aprovado pelo dono ao gerar o link.
-    status: convite ? 'aprovado' : 'pendente_aprovacao',
+    // Não existe mais aprovação de conta — ela nasce liberada, por convite
+    // ou pelo cadastro aberto (decisão do dono, 15/09/2026: pagar já ativava
+    // a conta de qualquer forma, então a fila de aprovação nunca foi um
+    // portão de verdade). O único portão que sobra é o do criativo.
+    status: 'aprovado',
   };
 
   let anunciante;
@@ -711,9 +714,11 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
     const anunciante = await repo.atualizar(req.params.id, req.body);
     if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });
 
-    // Só na TRANSIÇÃO de pendente pra liberado. Sem comparar com o estado
+    // Só na TRANSIÇÃO de fora pra liberado. Sem comparar com o estado
     // anterior, todo salvamento do admin numa conta já aprovada contaria
-    // como uma aprovação nova e a fila pareceria muito mais movimentada.
+    // como uma aprovação nova. Conta nova já nasce liberada (não há mais
+    // aprovação de conta, 15/09/2026) — o caso real que sobra aqui é
+    // reinstalar uma conta suspensa.
     const liberado = ['aprovado', 'ativo'];
     if (liberado.includes(anunciante.status) && antes && !liberado.includes(antes.status)) {
       eventos.registrar(

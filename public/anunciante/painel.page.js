@@ -81,14 +81,14 @@ function preencherStatusBanner() {
   const travado =
     ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
-  // Dois estados precisavam de frase, e só um deles derruba o botão:
+  // Só um estado derruba o botão:
   // - suspenso: POST /anunciantes/:id/assinar recusa com 403 (financeiro/
   //   routes.js:198). O botão levava pra vitrine e a assinatura estourava lá
   //   na frente, sem dizer por quê. Quem pediu devolução cai exatamente aqui,
   //   porque o arrependimento zera o plano e suspende a conta.
-  // - pendente_aprovacao: aqui o botão FICA — a conta em análise pode assinar
-  //   (é o caminho normal de quem veio da vitrine), só não tinha nada na tela
-  //   dizendo que a análise existe. A conferência é dos dados, não da compra.
+  // - pendente_aprovacao não existe mais pra conta nova (decisão do dono,
+  //   15/09/2026: não há mais aprovação de conta, só de criativo) — a frase
+  //   abaixo fica só pra alguma conta antiga que ainda tenha esse status.
   const EXPLICACAO = {
     suspenso:
       'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
