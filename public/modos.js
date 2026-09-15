@@ -208,7 +208,16 @@
     const b = estado.bonus?.[qual];
     if (!b) return '';
     if (qual === 'ponto') {
-      if (b.ja_e_ponto) return '';
+      // Antes: `return ''` — quem ja e ponto simplesmente nao via o bonus que
+      // o plano dele vende, e ninguem dizia por que. Sumir com a informacao e
+      // pior do que dizer que ela nao se aplica: o cliente pagou por um plano
+      // que anuncia "ganhe uma tela" e nao entende se ja ganhou, se perdeu ou
+      // se o site esqueceu.
+      if (b.ja_e_ponto) {
+        return `<div class="aviso-fundador"><b>Bônus do plano:</b> ele dá uma tela no comércio de quem ainda não é ponto da rede —
+          e você já é. Quer uma tela em outro endereço seu? <a href="/anunciante/ponto.html">Cadastre o endereço</a> ou
+          <a href="/contato.html">fale com a gente</a>.</div>`;
+      }
       if (b.resgatado_em) return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')} — sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_cobertos);
       return b.disponivel

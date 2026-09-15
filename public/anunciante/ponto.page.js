@@ -119,9 +119,34 @@ async function abrirPainel(id) {
       ${d.porAnunciante.length ? `<table class="mini-table"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
         ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}
       </tbody></table>` : '<p class="empty-state">Nada rodou nessa tela ainda.</p>'}
+      <p class="form-sep-titulo u-mt-14">PIN desta tela</p>
+      <p class="form-hint u-m-0">É o número que abre este mesmo painel na própria TV: 5 toques no canto superior direito da tela e o PIN.
+        Serve pra você conferir o que rodou sem sair do balcão. Quem define é você.</p>
+      <form class="field-row u-ai-c u-mt-8" id="formPin">
+        <input class="u-col" id="pinTela" inputmode="numeric" pattern="\\d{4,6}" maxlength="6" placeholder="4 a 6 dígitos" required>
+        <button class="btn primary" type="submit">Salvar PIN</button>
+      </form>
+      <p class="form-msg" id="msgPin" role="status">${tela.tem_pin ? 'Esta tela já tem um PIN. Salvar de novo troca o número.' : 'Esta tela ainda não tem PIN.'}</p>
+
       ${d.porDia.length ? `<p class="form-sep-titulo u-mt-14">Por dia</p><div class="bar-chart-h">
         ${d.porDia.slice(0, 14).reverse().map((x) => `<div class="row"><span class="nome">${new Date(x.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span><span class="track"><span class="fill" data-pct="${Math.round(x.confirmadas / max * 100)}"></span></span><span class="valor">${x.confirmadas}</span></div>`).join('')}
       </div>` : ''}`;
+    document.getElementById('formPin').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msgPin');
+      const valor = document.getElementById('pinTela').value.trim();
+      const r = await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/dispositivos/${id}/pin`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: valor }),
+      });
+      const resposta = await r.json().catch(() => ({}));
+      msg.textContent = r.ok
+        ? 'PIN salvo. Use ele na própria TV: 5 toques no canto superior direito.'
+        : window.frase(resposta.erro || 'não foi possível salvar o PIN agora');
+      msg.className = r.ok ? 'form-msg ok' : 'form-msg err';
+      if (r.ok) document.getElementById('pinTela').value = '';
+    });
   } catch {
     corpo.innerHTML = '<p class="form-msg err">Não deu pra carregar o painel dessa tela.</p>';
   }

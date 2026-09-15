@@ -22,3 +22,16 @@ fetch(`${API_BASE_URL}/pontos/fluxo`).then((r) => r.json()).then(({ pessoasPorMe
   el.innerHTML = `<b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas</b> veem sua marca por mês nos pontos já instalados da Mostraí.`;
   el.hidden = false;
 }).catch(() => {});
+
+// O valor da ajuda de custo é editável no admin (planos_ponto) e estava
+// escrito à mão aqui: bastava o dono mudar de R$ 50 pra R$ 60 no painel e a
+// home passaria a prometer um número que não existe mais. Sai da mesma rota
+// que a página do ponto e a tela do convite usam.
+fetch(`${API_BASE_URL}/planos-ponto`).then((r) => r.json()).then((opcoes) => {
+  const alvo = document.querySelector('[data-ajuda-custo]');
+  if (!alvo || !Array.isArray(opcoes)) return;
+  const comAjuda = opcoes.filter((o) => o.ativo && Number(o.ajuda_custo_mensal) > 0);
+  if (!comAjuda.length) return;
+  const maior = comAjuda.reduce((a, b) => (Number(a.ajuda_custo_mensal) >= Number(b.ajuda_custo_mensal) ? a : b));
+  alvo.textContent = `${fmtBRL(maior.ajuda_custo_mensal)} por mês de ajuda de custo`;
+}).catch(() => {});

@@ -125,6 +125,28 @@ router.get('/admin/dispositivos/:id/painel', async (req, res) => {
   res.json(await painelDaTela(req.params.id));
 });
 
+// PIN pelo próprio dono do ponto. A documentação funcional sempre disse que é
+// ele quem define ("o dono do ponto define o PIN da tela") e a única rota que
+// existia era a do admin: na prática o lojista tinha que combinar o número por
+// WhatsApp e esperar alguém digitar por ele — para abrir um painel que só
+// mostra a tela DELE, no aparelho DELE. Mesma validação e mesmo hash da rota
+// do admin; a diferença é só quem pode chamar.
+router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnuncianteLogado, async (req, res) => {
+  if (Number(req.params.id) !== req.session.anuncianteId) {
+    return res.status(403).json({ erro: 'só pode mexer nas próprias telas' });
+  }
+  const pin = req.body.pin == null ? null : String(req.body.pin);
+  if (pin !== null && !/^\d{4,6}$/.test(pin)) return res.status(400).json({ erro: 'o PIN precisa ter de 4 a 6 dígitos' });
+  const { rows } = await pool.query(
+    `SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+     WHERE d.id = $1 AND p.anunciante_id = $2`,
+    [req.params.dispositivoId, req.session.anuncianteId]
+  );
+  if (!rows[0]) return res.status(404).json({ erro: 'tela não encontrada' });
+  const dispositivo = await repo.definirPin(req.params.dispositivoId, pin);
+  res.json({ ok: true, tem_pin: !!dispositivo.tem_pin });
+});
+
 // Painel aberto a partir da própria TV: chave do aparelho + PIN. Não dá
 // acesso a nada além desta tela (CONSTRAINTS.md).
 // limiteTentativas: PIN de 4 dígitos sem limite é força bruta em minutos.

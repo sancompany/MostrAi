@@ -1,7 +1,11 @@
 fetch(`${API_BASE_URL}/pontos`)
-  .then((r) => r.json())
+  .then((r) => {
+    if (!r.ok) throw new Error(`resposta ${r.status}`);
+    return r.json();
+  })
   .then((pontos) => {
     const grid = document.getElementById('pontosGrid');
+    if (!Array.isArray(pontos)) throw new Error('resposta inesperada');
     const ativos = pontos.filter((p) => p.status === 'ativo').length;
     const emConstrucao = pontos.filter((p) => p.status === 'aguardando_instalacao').length;
     const cidades = new Set(pontos.map((p) => p.cidade)).size;
@@ -43,7 +47,12 @@ fetch(`${API_BASE_URL}/pontos`)
     `;
     }).join('');
   })
-  .catch(() => {
+  .catch((err) => {
+    // Erro tem que ser distinguivel de "a rede esta vazia": a faixa de
+    // contadores some (nao existe numero nenhum pra mostrar) e a mensagem
+    // convida a tentar de novo, em vez de dizer que nao ha ponto.
+    console.error('falha ao carregar os pontos', err);
+    document.getElementById('statRow').innerHTML = '';
     document.getElementById('pontosGrid').innerHTML =
-      '<p class="empty-state">Não foi possível carregar os pontos agora.</p>';
+      '<p class="empty-state">Não foi possível carregar os pontos agora. Atualize a página em alguns instantes.</p>';
   });
