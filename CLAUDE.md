@@ -16,6 +16,8 @@ Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
 - `docs/furos.md` — os 132 furos levantados; hipóteses com endereço, não fatos
 - `docs/pesquisa-voltplace.md` — o concorrente de Matão, lado a lado, e onde
   nosso preço cai no mercado
+- `docs/pesquisa-preco-sp.md` — preço de mercado em São Paulo por faixa de
+  plano, com fonte e grau de confiança em cada número
 
 ## Classificação
 Porte: produto externo, com cliente pagante · Dado: financeiro, senha,

@@ -405,8 +405,23 @@ para `docs/proximas-versoes.md` com condição de entrada.
 
 ## B.4 — Pesquisa de preço médio do setor em São Paulo (pedida em 15/09/2026)
 
-**Estado: PENDENTE — não feita.** O dono pediu; entra na próxima rodada de
-pesquisa, não foi executada ainda.
+**Estado: FEITA em 15/09/2026 — `docs/pesquisa-preco-sp.md`.** Com uma
+ressalva que vale mais que o resultado: **esse setor não publica preço**. Das
+operadoras de mídia indoor que aparecem numa varredura, quase nenhuma tem
+tabela pública — o padrão é "fale com um consultor". O que deu pra apurar com
+fonte está lá, com grau de confiança item a item; o que não deu está escrito
+como não achado, e com o caminho de meia hora pra fechar a lacuna (pedir
+proposta como anunciante a três operadoras).
+
+**O que a pesquisa concluiu, em três linhas:** estamos 20% a 34% abaixo do
+único concorrente local em todas as faixas; o preço por exibição é idêntico nos
+três planos (a grade é linear, sem desconto por volume); e o nosso CPM só fica
+competitivo **a partir da quinta tela** — abaixo disso vendemos caro pra uma
+rede pequena, que é exatamente o que gera pedido de devolução.
+
+O texto original do pedido fica abaixo, porque as cinco perguntas continuam
+sendo a régua: três delas a pesquisa respondeu, duas ficaram abertas por falta
+de dado público.
 
 **O que a pesquisa tem que responder**, restrita a **Brasil, estado de São
 Paulo**, e a empresas **do mesmo porte da Mostraí** (rede local de mídia

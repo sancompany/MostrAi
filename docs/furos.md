@@ -18,6 +18,24 @@ reproduzido e consertado sai desta lista e vira commit.
 
 ---
 
+## Placar final em 15/09/2026 — as quatro seções fechadas
+
+**Os 132 furos foram percorridos.** O que sobrou depende do dono, não de
+código, e está em `docs/PENDENCIAS.md`:
+
+- **prova social** (depoimento, foto de ponto real, cliente citado): não dá pra
+  inventar — precisa do primeiro cliente e da autorização dele;
+- **CNPJ e razão social na identificação do fornecedor**: a empresa está em
+  constituição; enquanto isso o rodapé traz cidade, e-mail, WhatsApp e o canal
+  de dados pessoais, e o contrato diz que não há emissão de nota fiscal até o
+  CNPJ existir.
+
+Tudo o mais foi consertado e verificado — no navegador, no banco, ou pelos
+testes ponta a ponta. As seções abaixo ficam como registro do que era, com o
+detalhe de cada um: é o mapa de onde este projeto erra quando erra.
+
+O detalhamento da seção Crítica, que foi a primeira a fechar, segue abaixo.
+
 ## Placar em 15/09/2026 — a seção Crítica está fechada
 
 Dos 31 furos críticos: **29 consertados e verificados** (no navegador, no banco
