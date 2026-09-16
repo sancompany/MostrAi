@@ -1058,3 +1058,45 @@ não sairemos perdendo".)*
 - **Combinado com o dono, fora do código:** ele configura no San Checkout
   o que for preciso pra aceitar pedido avulso deste projeto — não é algo
   que o Mostraí resolve por dentro do próprio repositório.
+
+**16. [ ] Aviso por e-mail perto do fim do período de uma troca de plano.**
+*(Achado em 16/09/2026, construindo o item 15 — "ainda falta" de lá,
+promovido a item próprio pra não se perder.)*
+· Troca de plano (item 15) não deixa assinatura recorrente nova — a
+  cobertura vale pelo período contratado e some sozinha, sem aviso, se o
+  cliente não voltar e assinar de novo. Falta um e-mail perto do fim
+  desse período (mesmo padrão do e-mail de cobrança falhou,
+  `enviarCobrancaFalhou`), convidando a renovar.
+
+**17. [ ] Aba no admin listando pedidos avulsos (troca de plano) em lista
+própria.** *(Achado em 16/09/2026, mesma origem do item 16.)*
+· Hoje o pago já aparece em Cobranças (entra na receita) e o que falha
+  vira pendência na fila de "Eventos pendentes" de sempre — não fica sem
+  rastro. Só não tem uma tela dedicada pra ver, numa lista só, quem
+  trocou de plano, de qual pra qual, e quando.
+
+**18. [ ] `obrigado.html` mostra texto de primeira contratação pra quem
+está voltando de uma troca de plano.** *(Achado em 16/09/2026, mesma
+origem do item 16.)*
+· A página de retorno do pagamento (`public/obrigado.html`) sempre diz
+  "Agora falta o seu anúncio" e "Suba a sua peça" — certo pra quem acabou
+  de assinar o primeiro plano, errado pra quem já tem anúncio no ar e só
+  trocou de plano. O San Checkout devolve `?pedido=ID` na `returnUrl`
+  desse caso (API.md do Checkout, seção 4.1); a página não lê esse
+  parâmetro hoje pra mostrar um texto diferente.
+
+**19. [ ] Bônus "anunciante ganha tela grátis" sem menção nas páginas
+públicas.** *(Achado em 16/09/2026, na varredura de furos.md — item 13
+fechou o lado inverso, "ponto ganha anúncio grátis", em
+`seja-um-ponto.html`; este lado ficou de fora.)*
+· `planos.ponto_apos_meses`: ao completar N meses de plano pago, o
+  anunciante ganha direito a uma tela no próprio comércio. O módulo
+  existe e funciona (aparece como bônus no painel), mas nenhuma página
+  pública (`index.html`, `planos.html`) menciona esse benefício antes da
+  assinatura.
+
+---
+
+**Retomada combinada com o dono:** a próxima rodada de depuração (seção F
+continua) começa pela tela de Planos, ciclo Mensal — é onde a navegação
+parou antes desta lista de pendências.
