@@ -95,6 +95,25 @@ esteira é só o item 8.
     · Como é DROP de coluna, segue a regra do projeto: só com autorização
       explícita do dono, numa migration própria (não fiz sozinho).
 
+11. **Configurar o San Checkout para aceitar pedido avulso deste projeto.**
+    *(Achado em 16/09/2026, construindo a troca de plano — item 15 da seção F
+    abaixo. O próprio dono disse que ia resolver: "configurarei o checkout a
+    aceitar esses dois".)*
+    · O Mostraí já expõe `GET /pedido/:id` e processa o webhook de pedido
+      avulso (payload sem `tipo`, seção 4.3.3 do `API.md` do Checkout) — o
+      código está pronto e no ar desde a migration 041.
+    · **O que falta é do lado de quem administra o San Checkout:** confirmar
+      que o `contratante_id` deste projeto está habilitado pra pedido avulso
+      (não só assinatura), e que o `webhook_url` cadastrado é o mesmo que já
+      recebe os eventos de assinatura (`POST /webhook/san-checkout`) — o
+      contrato diz que os dois tipos chegam no mesmo endereço.
+    · **Trava:** sem isso, `POST /anunciantes/me/trocar-plano` gera o pedido
+      e o link de pagamento, mas o Checkout pode recusar a tela ou nunca
+      confirmar o pagamento de volta — a troca de plano fica sem efeito
+      prático até essa configuração existir.
+    · **Só o dono faz** — é configuração do lado do San Checkout, fora do
+      repositório do Mostraí.
+
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
 Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
 
@@ -918,3 +937,124 @@ criativos são aprovados quando sobem em uma aba deles próprio".)*
   `api.md`, `catalogo-beneficios.md`, `teia.md`) ajustados. Não roda
   Postgres local nesta sessão — os e2e não foram executados, só
   revisados linha a linha.
+
+**12. [x] Favicon: cruz da San & Co. vira o símbolo da lâmpada.** **FEITO em
+16/09/2026.** *(Pedido do dono: "trocar o favicon pela mesma símbolo da
+logo trocando a cruz da San & Co"; depois, ida e volta sobre a moldura
+circular — "é com esse círculo mesmo, se não o símbolo fica invisível".)*
+
+- `favicon-sanco.png` e `apple-touch-icon.png` regravados a partir de
+  `public/img/simbolo-lampada.svg` (mesmo símbolo do hero da home e do
+  estado vazio do player), com folga de escala (76%) pra sobreviver a um
+  recorte circular de lançador de app, e um círculo desenhado direto no
+  PNG (fechado, sem falha) pra o contorno fino não desaparecer em fundo
+  escuro. Nome do arquivo ficou o mesmo (`favicon-sanco.png`) — só o
+  conteúdo trocou, pra não precisar editar link em nenhuma das 23 páginas.
+- Telas trocadas: `public/img/favicon-sanco.png`, `public/img/apple-touch-icon.png`.
+
+**13. [x] Travessão fora de todo texto visível do site, e varredura completa
+de `docs/furos.md`.** **FEITO em 16/09/2026.** *(Pedido do dono: "retire os
+travessões... já retire todos travessões das páginas"; depois "passe a
+varredura em partes q poder ter ficado pra trás" sobre os 132 furos
+levantados em 15/09/2026.)*
+
+- Travessão (—) reescrito como texto corrido (vírgula, ponto quebrando em
+  duas frases, ou reformulação) em todo texto visível de `public/`
+  — títulos, parágrafos, mensagens de erro/sucesso, avisos na TV.
+  Comentário de código e CSS não foram tocados (não são visíveis ao
+  usuário). Quatro agentes em paralelo (HTML e JS, dois lotes cada) mais
+  ajustes manuais nos arquivos que sobraram (`seja-um-ponto.html`,
+  `admin/index.page.js`, `anunciante/painel.page.js`, `ponto.page.js`,
+  `planos.page.js`).
+- Varredura de `docs/furos.md` (seções Alta, Média, Baixa — a Crítica já
+  tinha sido conferida antes): de ~100 furos reverificados contra o código
+  atual (não contra a descrição do documento, que já estava desatualizada
+  em boa parte), só 5 continuavam realmente abertos, e os cinco foram
+  fechados nesta rodada:
+  - `index.html` não dizia que os três papéis (anunciante/ponto/vendedor)
+    cabem numa conta só — frase acrescentada.
+  - `POST /contato` só tentava e-mail; se o SMTP falhasse (como está
+    falhando agora, item 9 desta lista), a mensagem do titular se perdia
+    sem rastro. Migration 039 (`mensagens_contato`) grava antes de tentar
+    o e-mail.
+  - Abas Pontos e Anunciantes do admin não tinham estado vazio (tabela só
+    com cabeçalho com a rede zerada) — ganharam o mesmo padrão das outras
+    abas.
+  - `docs/api.md` dizia "60 rotas" de admin; a tabela do próprio arquivo e
+    o código já tinham 66 — corrigido.
+  - Bônus cruzado (ponto ganha anúncio grátis / anunciante ganha tela
+    grátis) sem menção nas páginas públicas — parcialmente coberto: o lado
+    ponto→anúncio já está em `seja-um-ponto.html`; o lado
+    anunciante→tela continua sem menção pública (não fechado, baixa
+    prioridade).
+- Telas trocadas: praticamente todo `public/*.html` e `public/*.page.js`
+  (travessão), `src/conta/routes.js` + `src/db/migrations/039_mensagens_de_contato.sql`
+  (contato), `public/admin/index.page.js` (estado vazio), `docs/api.md`
+  (contagem de rotas), `public/index.html` e `public/seja-um-ponto.html`
+  (texto).
+
+**14. [x] Vitrine: preço cheio + desconto por plano, card reorganizado.**
+**FEITO em 16/09/2026.** *(Pedido do dono, detalhando a estrutura do card
+e o mecanismo de preço: "1 titulo 2 subtitulo... o preço cheio é o que
+fica em cima e quando aplico o desconto ele fica cortado"; depois "coloque
+[...] o valor do desconto aplicado, ligado ao desconto que coloco lá, pode
+retirar a informação de quantas vezes aparece por dia".)*
+
+- Migration 040: `planos.desconto_percentual`. No admin, cada plano é
+  editado por preço cheio (`valor_mensal_cheio`, coluna que já existia,
+  agora exposta) + desconto % — o valor cobrado (`valor_mensal`) é sempre
+  calculado a partir dos dois, no servidor (`calcularValorMensal`), nunca
+  digitado direto. Campo de contrato: só muda publicando versão nova, como
+  já era pro valor mensal.
+- Card da vitrine: título, preço (riscado só com desconto, com o selo
+  "-N%" ligado ao `desconto_percentual` do plano, + o valor cobrado),
+  benefícios (frequência por hora entrou como primeiro item, sem
+  parêntese). Tirou a linha "R$X/mês" redundante do ciclo mensal, a
+  mensagem de economia por ciclo, e a linha "≈Nx por dia".
+- Telas trocadas: `src/db/migrations/040_desconto_percentual_do_plano.sql`
+  (nova), `src/financeiro/planos-repository.js`, `src/financeiro/routes.js`,
+  `public/admin/index.page.js`, `public/planos.page.js`, `public/style.css`,
+  `docs/api.md`.
+
+**15. [x] Cancelar assinatura pelo painel, e trocar de plano com crédito
+prorata.** **FEITO em 16/09/2026.** *(Pedido do dono: "ligue o cancelar
+plano a uma tela do cliente"; e sobre a troca: "a mudança ocorre somente
+se o plano for melhor que o atual... será cobrada a diferença entre os
+planos junto ao desconto do restante do plano anterior... de forma que
+não sairemos perdendo".)*
+
+- Cancelar: `POST /anunciantes/me/cancelar-assinatura` — mesma lógica da
+  rota de admin, agora também pelo próprio cliente. Botão "Cancelar
+  assinatura" na seção "Sua assinatura" do painel; cobertura já paga
+  continua até `data_expiracao`, igual a FAQ já prometia.
+- Trocar de plano: a assinatura recorrente do San Checkout não aceita
+  desconto (confirmado no `API.md` do Checkout, lido do repositório
+  `sancompany/san_checkout`) — a diferença é cobrada como **pedido
+  avulso** (migration 041, `pedidos_avulsos`), não como assinatura nova.
+  Crédito = dias restantes × (valor mensal do plano atual / 30); custo =
+  preço cheio do plano novo × meses do ciclo; só permite a troca quando o
+  custo é maior que o crédito (nunca cobra zero, nunca devolve dinheiro).
+  Webhook de pedido avulso (`GET /pedido/:id`, `POST /webhook/san-checkout`
+  já ramificado pelos dois tipos) aplica a troca só depois do `confirmado`:
+  cancela a assinatura antiga no Checkout e ativa o plano novo na conta.
+- **Decisão consciente, dita pelo dono:** sem assinatura recorrente nova
+  na troca — a cobertura vale pelo período do plano novo, e ao vencer
+  precisa assinar de novo, como qualquer plano. Não dá pra ter as duas
+  coisas (diferença exata **e** renovação automática) sem um crédito de
+  produto por fora, que é escopo novo, não construído.
+- **Ainda falta (não bloqueia, registrado pra não esquecer):** aviso por
+  e-mail perto do fim do período trocado, convidando a renovar (mesmo
+  padrão do e-mail de cobrança falhou) — não existe ainda, então uma
+  conta que trocou de plano e não voltar sozinha simplesmente perde a
+  cobertura na data, sem lembrete. E não há aba no admin listando
+  `pedidos_avulsos` (pendente/pago) — o pago já entra em
+  `cobrancas_confirmadas` (aparece na receita), e o que falha vira
+  pendência na mesma fila de "Eventos pendentes" de sempre; só não tem
+  uma tela dedicada pra ver trocas de plano em lista.
+- Telas trocadas: `src/db/migrations/041_pedidos_avulsos.sql` (nova),
+  `src/financeiro/pedidos-repository.js` (novo), `src/financeiro/san-checkout.js`,
+  `src/financeiro/routes.js`, `public/anunciante/painel.page.js`,
+  `public/anunciante/painel.html`, `docs/api.md`, `docs/teia.md`.
+- **Combinado com o dono, fora do código:** ele configura no San Checkout
+  o que for preciso pra aceitar pedido avulso deste projeto — não é algo
+  que o Mostraí resolve por dentro do próprio repositório.

@@ -28,8 +28,9 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/contato` | Formulário de contato → e-mail. |
 | POST | `/seja-um-ponto` | **410** — cadastro aberto de ponto foi substituído por candidatura + convite. |
 | POST | `/afiliados/cadastro` · `/afiliados/login` · `/afiliados/logout` | **410** — vendedor virou papel da conta única (migration 019). Use `/anunciantes/cadastro` e `/anunciantes/login`. |
-| POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Idempotente pela chave natural `chargeId|status`, buscada na rota de conciliação 5.3. `criada` (1ª cobrança) e `cobranca_confirmada` (renovação) creditam o ciclo: ativam a conta, travam o preço (`preco_travado`), registram cobrança e comissão numa transação. `cancelada` marca a assinatura; os demais eventos viram pendência pro admin. |
+| POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Recebe os dois formatos do Checkout, diferenciados por `tipo` (payload de pedido não tem esse campo). **Assinatura**: idempotente por `chargeId|status`, buscada na rota de conciliação 5.3; `criada` (1ª cobrança) e `cobranca_confirmada` (renovação) creditam o ciclo numa transação; `cancelada` marca a assinatura; os demais eventos viram pendência. **Pedido avulso** (migration 041, só troca de plano hoje): idempotente pelo `chargeId` do próprio corpo; `confirmado` aplica a troca (cancela a assinatura antiga, ativa o plano novo); `recusado`/`vencido`/`chargeback`/`estornado` cancela o pedido. |
 | GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). |
+| GET | `/pedido/:id` | Consulta de pedido avulso pelo San Checkout (header `X-Checkout-Key`). |
 
 ## Conta logada (`credentials: 'include'`)
 
@@ -41,6 +42,8 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
 | POST | `/anunciantes/logout` | Destrói a sessão. |
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |
+| POST | `/anunciantes/me/cancelar-assinatura` | Cliente cancela a própria assinatura (migration 041, 16/09/2026). Cobertura já paga continua até `data_expiracao`. 400 sem assinatura ativa. |
+| POST | `/anunciantes/me/trocar-plano` | `{planoNovoId}` → `{checkoutUrl, valor, credito, custoNovo}`. Gera pedido avulso (não assinatura, que não aceita desconto) pela diferença entre o preço cheio do plano novo e o crédito dos dias que restam no atual (30 dias por mês). 400 se o crédito já cobrir o plano novo — nunca cobra zero nem devolve dinheiro. Paga a diferença, o webhook cancela a assinatura antiga e aplica o plano novo; a cobertura vale pelo período do plano novo, sem assinatura recorrente nova (precisa assinar de novo ao vencer). |
 | GET/POST/DELETE | `/anunciantes/:id/criativos[/:criativoId]` | Criativos do anunciante (upload multipart, normalização por ffmpeg, fila de aprovação). |
 | GET | `/anunciantes/:id/exibicoes` | O que rodou pro anunciante, por tela e por dia. |
 | GET | `/anunciantes/:id/exibicoes.csv?dias=N` | Comprovante de veiculacao em planilha (RN-19). `dias` entre 1 e 365, padrao 30. |
@@ -120,7 +123,7 @@ pede.
 | PATCH | `/admin/anunciantes/:id` | status, papéis, dados, e `conta_propria`/`frequencia_hora_propria` |
 | POST | `/admin/anunciantes/:id/criativos` | sobe a peça direto na conta do cliente, **já aprovada** e marcada em `editado_pelo_operador`. A peça é feita fora do site. Teto: o do plano na conta de cliente, nenhum na conta própria |
 | POST | `/admin/anunciantes/:id/liberar-plano` | `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo |
-| POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. **Único caminho de cancelamento** — o pagador nunca cancela sozinho |
+| POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. Mesma ação de `POST /anunciantes/me/cancelar-assinatura`, pelo admin em nome do cliente (16/09/2026: o pagador também pode cancelar sozinho, ver Conta logada) |
 
 ### Pontos e telas
 | Método | Rota | O que faz |

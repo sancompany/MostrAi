@@ -1073,8 +1073,8 @@ Caminho do dinheiro do Mostraí, ponta a ponta: vitrine pública de planos (publ
   · **cliente sabe:** Nada. É a rede que impede um webhook perdido virar cliente pagante sem cobertura.
 
 **Cancelamento de assinatura** — `cancelarAssinatura` faz POST {SAN_CHECKOUT_API_URL}/api/checkout/cancelar-assinatura {planoId: assinaturaId, documento: cpf_cnpj}; em sucesso marca a assinatura 'cancelada' localmente. Em falha responde 502 e não muda nada local. O evento 'cancelada' vindo…
-  · `src/financeiro/san-checkout.js`, `src/financeiro/routes.js`, `src/financeiro/assinaturas-repository.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura` · papéis: admin
-  · **cliente sabe:** NADA. Não existe botão nenhum: nenhum arquivo de public/ chama essa rota (grep por 'cancelar-assinatura' em public/ não retorna nada), embora docs/api.md a chame de 'único caminho de cancelamento'.
+  · `src/financeiro/san-checkout.js`, `src/financeiro/routes.js`, `src/financeiro/assinaturas-repository.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura`, `POST /anunciantes/me/cancelar-assinatura` · papéis: admin, anunciante
+  · **cliente sabe:** RESOLVIDO em 16/09/2026 — `POST /anunciantes/me/cancelar-assinatura` deixa o próprio cliente cancelar, com botão em "Sua assinatura" no painel (`public/anunciante/painel.page.js`). A rota de admin continua existindo, pro admin cancelar em nome do cliente.
 
 **Cortesia (liberar plano de graça)** — Põe a conta no ar sem assinatura e sem cobrança: plano_id, status 'ativo', data_expiracao = agora + meses×30 dias, plano_cortesia = true, cortesia_motivo, valor_mensal_travado = null. Recusa com 409 se houver plano pago ativo (plano_id e não cortesia e…
   · `src/financeiro/routes.js`, `src/db/migrations/024_plano_cortesia.sql`, `public/admin/index.page.js` · rotas: `POST /admin/anunciantes/:id/liberar-plano` · papéis: admin
@@ -1590,9 +1590,9 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · `src/financeiro/routes.js:261`, `public/admin/index.page.js:834` · rotas: `/admin/anunciantes/:id/liberar-plano` · papéis: sessao de admin
   · ← public/admin/index.page.js:834
 
-**POST /admin/anunciantes/:id/cancelar-assinatura** — Cancela no San Checkout e marca a assinatura; 502 se o Checkout falhar. Doc diz que é o ÚNICO caminho de cancelamento.
-  · `src/financeiro/routes.js:294` · rotas: `/admin/anunciantes/:id/cancelar-assinatura` · papéis: sessao de admin
-  · ← NENHUMA TELA — zero ocorrências de 'cancelar-assinatura' em public/. O único cancelamento documentado não tem botão.
+**POST /admin/anunciantes/:id/cancelar-assinatura** — Cancela no San Checkout e marca a assinatura; 502 se o Checkout falhar. RESOLVIDO em 16/09/2026: agora existe também `POST /anunciantes/me/cancelar-assinatura`, a mesma ação pelo próprio cliente.
+  · `src/financeiro/routes.js` · rotas: `/admin/anunciantes/:id/cancelar-assinatura`, `/anunciantes/me/cancelar-assinatura` · papéis: sessao de admin, sessao de anunciante
+  · ← public/admin/index.page.js (botão do admin) e public/anunciante/painel.page.js (botão "Cancelar assinatura", em "Sua assinatura").
 
 **GET /admin/eventos-pendentes** — Webhooks não aplicados, com motivo e payload.
   · `src/financeiro/routes.js:312`, `public/admin/index.page.js:1664` · rotas: `/admin/eventos-pendentes` · papéis: sessao de admin
@@ -2002,13 +2002,11 @@ Superfície informativa pública do Mostraí: 10 páginas HTML em `/home/user/Mo
   · ← planos.html
   · **cliente sabe:** PARCIAL. Aparece como uma linha de benefício em planos.html e em lugar nenhum mais — nem na home, nem em pontos.html, nem em seja-um-ponto.html, embora seja o cruzamento entre os dois públicos.
 
-**BURACO — aprovação da conta antes de anunciar** — A conta criada por `POST /anunciantes/cadastro` sem convite nasce `pendente_aprovacao` e o dono aprova em `PATCH /admin/anunciantes/:id`. docs/funcional.md §2.1 coloca a aprovação como passo 5, antes de assinar.
-  · `src/anunciantes/routes.js`, `src/financeiro/routes.js`, `public/index.html` · rotas: `POST /anunciantes/cadastro`, `PATCH /admin/anunciantes/:id`, `POST /anunciantes/:id/assinar` · papéis: anunciante, administrador
-  · **cliente sabe:** NADA nas páginas públicas. index.html 'Como funciona' vai de 'Crie sua conta' direto a 'Suba seu criativo'. (Observação de código: `POST /anunciantes/:id/assinar` só barra `suspenso`, não…
+**RESOLVIDO em 16/09/2026 (migration 038) — aprovação da conta antes de anunciar** — Não existe mais `pendente_aprovacao`: a migration 038 (16/09/2026) reduziu `anunciantes.status` a só `comum`/`parceiro`, sem sentido operacional. Toda conta nasce liberada; quem bloqueia operação hoje é o campo `suspenso`, separado. Este buraco não existe mais.
 
-**BURACO — o que acontece quando o pagamento atrasa, e como se cancela** — Atraso: o anúncio sai do ar na virada do dia seguinte e volta sozinho quando o pagamento é identificado (contrato §5). Cancelamento: só o admin, por `POST /admin/anunciantes/:id/cancelar-assinatura` — 'o pagador nunca cancela sozinho' (docs/api.md).
-  · `public/contrato-anunciante.html`, `public/termos-de-uso.html`, `src/financeiro/routes.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura`, `POST /webhook/san-checkout` · papéis: anunciante, administrador
-  · **cliente sabe:** Só nas duas páginas legais do rodapé. E `planos.page.js` diz o contrário na aba Mensal: 'cancele quando quiser'.
+**RESOLVIDO em 16/09/2026 — o que acontece quando o pagamento atrasa, e como se cancela** — Atraso: o anúncio sai do ar na virada do dia seguinte e volta sozinho quando o pagamento é identificado (contrato §5), sem mudança. Cancelamento: agora também `POST /anunciantes/me/cancelar-assinatura`, pelo próprio cliente, com botão no painel — não é mais só o admin.
+  · `public/contrato-anunciante.html`, `public/termos-de-uso.html`, `src/financeiro/routes.js`, `public/anunciante/painel.page.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura`, `POST /anunciantes/me/cancelar-assinatura`, `POST /webhook/san-checkout` · papéis: anunciante, administrador
+  · **cliente sabe:** Agora sim — botão "Cancelar assinatura" no painel. `planos.page.js` (FAQ "Como eu cancelo?") já batia com o comportamento real desde a rodada anterior.
 
 **BURACO — nota fiscal** — Cobranças carregam `nota_fiscal_status` e `nota_fiscal_url`, marcadas manualmente por `PATCH /admin/cobrancas/:id/nota-fiscal`, e o anunciante baixa a nota no painel (`painel.page.js` linha 254). Enquanto não houver CNPJ, não há emissão (contrato §1).
   · `src/financeiro/routes.js`, `public/anunciante/painel.page.js`, `public/contrato-anunciante.html` · rotas: `PATCH /admin/cobrancas/:id/nota-fiscal` · papéis: anunciante, administrador
