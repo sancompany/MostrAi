@@ -634,7 +634,6 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .chave-box { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
 .aviso-fundador { background: linear-gradient(135deg, rgba(255,122,26,.12), rgba(255,122,26,.03)); border: 1px solid rgba(255,122,26,.35); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: .92rem; }
 .aviso-fundador b { color: var(--brand-text); }
-.plan-card.fundador { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
 .plan-card .vagas { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
 
 /* Painel da tela (player: PIN abre, mostra o que rodou e a saúde da tela) */

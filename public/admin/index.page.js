@@ -2101,7 +2101,7 @@ async function renderMetrica(el) {
             .map(
               (f) => `<tr>
       <td>${esc(f.semana)}</td>
-      <td>${f.nome === 'conta:aprovacao_recebe' ? 'Aprovar conta' : 'Aprovar criativo'}</td>
+      <td>${f.nome === 'conta:aprovacao_recebe' ? 'Reinstalar conta suspensa' : 'Aprovar criativo'}</td>
       <td class="num">${f.quantidade}</td>
       <td class="num"><b>${f.mediana_horas ?? '—'}</b></td>
       <td class="num">${f.pior_caso_horas ?? '—'}</td>

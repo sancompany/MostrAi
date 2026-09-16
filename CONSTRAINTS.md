@@ -10,10 +10,10 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
   dono na aprovação de cada candidatura. Regra fixa substituiria uma decisão
   que depende de olhar bairro e ramo. (Decisão de 12/09/2026.)
 - **Regras de plano em variável de ambiente.** Preço travado, vagas e desconto
-  são campos do plano (ou da conta, no caso do desconto de fundador —
-  migration 033), editáveis no admin sem deploy. Não há mais nenhuma
-  variável de ambiente pra regra de plano — o `PROGRAMA_FUNDADOR_ATIVO` que
-  existia aqui foi removido em 15/09/2026 junto com o plano fundador de
+  são campos do plano (ou da conta, no caso do desconto de parceiro — antes
+  "fundador", migration 033/038), editáveis no admin sem deploy. Não há mais
+  nenhuma variável de ambiente pra regra de plano — o `PROGRAMA_FUNDADOR_ATIVO`
+  que existia aqui foi removido em 15/09/2026 junto com o plano fundador de
   catálogo (ver RN-14, `docs/funcional.md`).
 - **Usuário e senha na TV.** A tela se autentica por chave de aparelho,
   revogável no admin. Credencial de conta em aparelho fisicamente acessível
