@@ -390,10 +390,15 @@ function desenharPorDia(porDia) {
   document.getElementById('graficoDia').innerHTML = dias
     .map((d) => {
       const v = Number(d.confirmadas);
-      const dia = new Date(d.dia);
-      return `<div class="bar-col" title="${dia.toLocaleDateString('pt-BR')}: ${v} exibições">
+      // `dia` vem do servidor como dia de calendário puro ('2026-09-16'), sem
+      // hora e sem fuso. `new Date('2026-09-16')` lê isso como meia-noite UTC
+      // e `getDate()` devolve 15 pra quem está no Brasil — a barra ficava com
+      // o rótulo do dia anterior. Fatiar a string não passa por fuso nenhum,
+      // que é o certo pra uma data que não tem fuso.
+      const [ano, mes, diaDoMes] = String(d.dia).slice(0, 10).split('-');
+      return `<div class="bar-col" title="${diaDoMes}/${mes}/${ano}: ${v} exibições">
       <div class="bar" data-pct="${Math.max(2, (v / max) * 100)}"></div>
-      <span class="bar-label">${String(dia.getDate()).padStart(2, '0')}/${String(dia.getMonth() + 1).padStart(2, '0')}</span>
+      <span class="bar-label">${diaDoMes}/${mes}</span>
     </div>`;
     })
     .join('');

@@ -542,7 +542,14 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
   }
   const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 365);
   const { rows } = await pool.query(
-    `SELECT date_trunc('day', e.janela_hora) AS dia, p.nome AS ponto, p.cidade,
+    // `janela_hora` é timestamptz e a sessão do Postgres roda em UTC, então
+    // `date_trunc('day', ...)` cru corta o dia em UTC, não em Matão: tudo o
+    // que rodou ANTES das 21h caía no dia anterior. Num comprovante de
+    // veiculação — o papel que prova a entrega pra quem pagou — a data é o
+    // dado principal. Convertendo pro fuso antes de cortar, e devolvendo
+    // `::date` (dia de calendário puro, que o parser do pool entrega como
+    // texto), o dia sai certo dos dois lados e sem passar por fuso de novo.
+    `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, p.nome AS ponto, p.cidade,
             d.apelido AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
      FROM exibicoes_contador e
      JOIN dispositivos d ON d.id = e.dispositivo_id
@@ -595,7 +602,9 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
       [anuncianteId],
     ),
     pool.query(
-      `SELECT date_trunc('day', janela_hora) AS dia, SUM(vezes_confirmadas) AS confirmadas
+      // Mesmo corte de dia do comprovante em CSV (ver acima): no fuso de
+      // Matão, não no do servidor.
+      `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
       [anuncianteId],

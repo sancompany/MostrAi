@@ -1228,9 +1228,109 @@ linha e ficam fora da tela".)*
 · Detalhe de cada um, com os nove falsos alarmes nomeados, na seção
   "Segunda passada, 16/09/2026" de `docs/furos.md`.
 
+**22. [x] Varredura de lógica da playlist.** **FEITO em 16/09/2026** (o que
+era conserto mecânico). *(Pedido do dono: "rode novamente o site em busca de
+qualquer erro de lógica, principalmente na playlist".)*
+· **Consertado: o comprovante de veiculação mostrava o dia errado.**
+  `janela_hora` é `timestamptz` e a sessão do Postgres roda em UTC, então
+  `date_trunc('day', ...)` cortava o dia em UTC e não em Matão. Tudo o que
+  rodava ANTES das 21h caía no dia anterior. Medido com três exibições do
+  mesmo dia (9h, 15h e 21h30 de Matão): o painel partia em dois dias, 6
+  exibições em 15/09 e 3 em 16/09. Agora sai um dia só, 16/09, com as 9.
+  Valia nos três lugares — CSV do comprovante, gráfico do painel do
+  anunciante e painel da própria TV — e no rótulo da barra, que usava
+  `new Date(dia).getDate()` e voltava um dia no navegador brasileiro.
+· Os outros achados **não viraram código**, porque mexem no que os planos
+  vendem: estão logo abaixo, como decisão do dono.
+
+**23. [ ] DECISÃO DO DONO — a frequência que o plano vende não é a que a
+tela entrega.** *(Achado em 16/09/2026, na varredura da playlist. Simulado
+com as funções reais de `src/lib/pacing.js`.)*
+· **O que acontece:** o gerador monta uma LISTA com `frequencia_hora`
+  cópias de cada anunciante, e o player (`public/player.page.js`) toca essa
+  lista em laço: `indice = (indice + 1) % playlist.length`. A lista não tem
+  relação com os 3600 segundos da hora. Então a frequência entregue é
+  "quantas voltas cabem na hora", não o número vendido.
+· **Medido**, vídeo de 20s:
+
+  | cenário | lista | voltas na hora | Essencial vende | entrega |
+  |---|---|---|---|---|
+  | 1 anunciante (o lançamento) | 3 itens = 60s | 60 | 3x/h | **180x/h** |
+  | Essencial + Destaque + Máximo | 21 itens = 420s | 8,6 | 3x/h | **25x/h** |
+  | 30 anunciantes (teto de 200) | 200 itens = 4000s | 0,9 | 12x/h | 5x/h |
+
+· **O que quebra junto:** `vezes_programadas` e `vezes_confirmadas` deixam de
+  ser comparáveis (o painel mostra "programadas 3, confirmadas 180");
+  `custoPorExibicao` divide pelas confirmadas e despenca quanto MAIS vazia a
+  rede estiver, que é o contrário da verdade; e a RN-10 (compensar déficit da
+  hora anterior) nunca dispara, porque confirmadas > programadas quase sempre.
+· **A proporção entre os planos se mantém** (25 / 49 / 106 ≈ 3 / 6 / 12), então
+  a escada de preço continua fazendo sentido como FATIA da rotação. O que não
+  se sustenta é o número absoluto que a vitrine imprime: "3x por hora em cada
+  ponto".
+· **As duas saídas, e nenhuma é código antes de o dono escolher:**
+  1. **A vitrine passa a vender fatia**, não número fixo ("no mínimo 3x por
+     hora, e o resto da hora você continua no rodízio"). O comportamento da
+     tela não muda; muda o texto e o painel passa a programar a hora inteira,
+     o que torna programadas × confirmadas comparáveis de novo.
+  2. **O player passa a respeitar o número vendido**, espaçando as exibições
+     dentro da hora. Aí é preciso decidir o que ocupa o resto do tempo numa
+     rede vazia — tela institucional do Mostraí, provavelmente (a RN já prevê
+     "playlist sem itens → tela institucional, nunca tela preta").
+  · Minha recomendação é a **1**: é a que descreve o que a tela já faz, não
+    joga tempo de tela fora numa rede vazia, e o ajuste é de texto e de
+    contagem, não do motor.
+
+**24. [ ] DECISÃO DO DONO — o teto da playlist está em slots, deveria estar
+em segundos.** *(Mesma varredura.)* A RN-09 diz "200 slots por hora, trava
+sobre os 240 slots teóricos" — e 240 só existe se todo vídeo tiver 15s. A
+vitrine aceita de 15 a 30 segundos. Com 30s, 200 slots são 6000 segundos numa
+hora de 3600: **metade do que foi programado não cabe**, e a sobra vira
+déficit permanente que a hora seguinte nunca consegue pagar (simulado: o
+déficit fica oscilando em 1 a 4 por hora, para sempre). O teto deveria contar
+a duração real dos criativos até fechar 3600s. Fica junto do item 23 porque
+as duas mudanças mexem na mesma conta e seria retrabalho fazer em separado.
+
+**25. [ ] Exibição tocada offline nunca é contada.** *(Mesma varredura.)* O
+player toca do cache quando a internet cai — está escrito na tela, "offline,
+tocando playlist em cache" — e o `POST /played` de cada exibição é
+`fire-and-forget` com `.catch(() => {})`, sem fila e sem retentativa. O
+anúncio rodou, o comerciante viu, e o painel do anunciante não conta.
+Conserto: guardar as confirmações não entregues no `localStorage` e enviá-las
+na volta da conexão, com a hora em que aconteceram. Pequeno e isolado, mas
+mexe na contagem que fatura — por isso não entrou junto do conserto de fuso.
+
+**26. [ ] Confirmação de exibição não tem teto.** *(Mesma varredura.)*
+`confirmarExibicao` faz `vezes_confirmadas = vezes_confirmadas + 1` sem
+comparar com `vezes_programadas`. A rota diz, com razão, que uma chave válida
+não pode inflar quem não estava na playlist — mas pode inflar sem limite quem
+estava. Hoje isso é até necessário, porque o laço do player confirma muito
+mais do que programou (item 23); depois que o 23 for decidido, isto vira uma
+trava de uma linha. **Não mexer antes do 23.**
+
+**27. [ ] `limiteDeCriativos` trava em 3 e o upload não sabe disso.**
+*(Mesma varredura.)* `src/playlist/gerador.js` limita a rotação a 3 criativos
+por conta, como trava de segurança contra um zero a mais no admin. Mas o
+upload (`POST /anunciantes/:id/criativos`) aceita o que `limite_criativos`
+disser. Se o dono criar um plano com 5 criativos, o cliente sobe 5, o plano
+vende 5, e a tela roda 3 — sem aviso em lugar nenhum. Hoje é latente (o maior
+plano tem 3). Ou os dois números passam a sair do mesmo lugar, ou o admin
+avisa que acima de 3 não roda.
+
+**28. [ ] Anunciante que também é dono de ponto não roda na própria tela.**
+*(Mesma varredura; é o furo "papéis cruzados" da `docs/furos.md` que nunca
+teve decisão.)* `anunciantesElegiveis` exclui `dono_conta_id` da rotação paga
+daquela tela. Quem é as duas coisas paga cobertura de "todos os pontos",
+recebe o desconto de comodato (RN-32) e fica de fora justamente da tela que
+está no próprio balcão — onde os clientes dele passam. Entra só pela cota de
+autoanúncio, que não é contada nem cobrada. Pode ser de propósito (evita
+aparecer duas vezes), mas não está escrito em regra nenhuma, e o passo 9 do
+`docs/funcional.md` promete o contrário: "o vídeo entra na playlist de todas
+as telas ativas".
+
 ---
 
-**Onde a lista está em 16/09/2026 (fim do dia).** Dos 21 itens, 18 estão
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 28 itens, 19 estão
 `[x]`. Os três que faltam **não dependem de escrever código aqui**:
 
 - **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no

@@ -99,7 +99,9 @@ async function painelDaTela(dispositivoId) {
       [dispositivoId],
     ),
     pool.query(
-      `SELECT date_trunc('day', janela_hora) AS dia, SUM(vezes_confirmadas)::int AS confirmadas
+      // Dia no fuso de Matão, não no do servidor (ver src/anunciantes/routes.js,
+      // rota do comprovante em CSV).
+      `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas)::int AS confirmadas
        FROM exibicoes_contador WHERE dispositivo_id = $1
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
       [dispositivoId],

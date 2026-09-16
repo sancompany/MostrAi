@@ -203,12 +203,31 @@ aparelho, revogável no admin. O PIN de 4 a 6 dígitos abre **apenas** o painel
 daquela tela. *Violada:* 401 no player. *Quem vê:* quem está na frente da TV.
 
 **RN-09 — A playlist tem teto de 200 slots por hora.** Trava de segurança sobre
-os 240 slots teóricos. *Violada:* o gerador corta o excedente. *Quem vê:*
-ninguém — é proteção silenciosa.
+os 240 slots teóricos. *Violada:* o gerador corta o excedente (proporcional,
+regra dos maiores restos). *Quem vê:* ninguém — é proteção silenciosa, mas o
+aperto vira o evento `playlist:teto_corta`.
+> **Ressalva levantada em 16/09/2026, sem decisão ainda** (`docs/PENDENCIAS.md`,
+> item 24): os 240 teóricos só valem com vídeo de 15s. A vitrine aceita de 15 a
+> 30 segundos, e com 30s os 200 slots são 6000 segundos numa hora de 3600 — não
+> cabem. O teto deveria contar duração, não quantidade.
 
 **RN-10 — A frequência compensa déficit da hora anterior.** Quem ficou devendo
 exibição recebe a mais na hora seguinte. *Violada:* não há caminho.
 *Quem vê:* o anunciante, na contagem de exibições.
+> **Ressalva levantada em 16/09/2026, sem decisão ainda** (`docs/PENDENCIAS.md`,
+> item 23): o player toca a playlist em LAÇO, então na prática as confirmadas
+> costumam passar as programadas e o déficit fica sempre em zero — esta regra
+> quase nunca dispara. No caso oposto (item 24) ela dispara para sempre, sem
+> conseguir quitar.
+
+**RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
+agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
+`America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro
+(`::date`), que os formatadores dos dois lados tratam sem fuso. Sem isso o
+corte acontecia em UTC e tudo o que rodava antes das 21h caía no dia anterior
+— inclusive no comprovante de veiculação em CSV, que é o papel que prova a
+entrega pra quem pagou. *Violada:* não há caminho de usuário. *Quem vê:* o
+anunciante (gráfico e CSV) e quem abre o painel na própria TV.
 
 **RN-11 — Preço travado.** A conta paga o valor de quando entrou
 (`valor_mensal_travado`), mesmo que o plano suba depois. *Violada:* não há
