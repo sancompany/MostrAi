@@ -262,22 +262,22 @@ const SUBTITULOS = {
     'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
   telas: 'Cada TV/dispositivo: chave do aparelho, PIN do painel, custo e último sinal. Uma tela = uma playlist.',
   anunciantes:
-    'Todas as contas — os papéis vêm do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
+    'Todas as contas, com os papéis vindos do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
   planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine.',
   planosarquivados:
-    'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas — é por isso que não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
+    'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas, por isso não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
   beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
-  categorias: 'Segmentos usados no cadastro — é o que impede concorrente direto na mesma tela.',
+  categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
   comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
   pagamentospontos:
-    'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar — é isso que aparece no extrato do dono do ponto.',
+    'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar, e isso aparece no extrato do dono do ponto.',
   custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
   arrependimentos:
-    'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar — falta devolver o dinheiro no painel do Checkout e registrar aqui.',
+    'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar. Falta devolver o dinheiro no painel do Checkout e registrar aqui.',
   meusanuncios:
     'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
 };
@@ -499,10 +499,10 @@ async function renderResumo(el) {
             )
             .join('')}</div>`
         : redeVazia(rede)
-          ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você — e nenhum ponto no ar ainda.
+          ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você, e nenhum ponto no ar ainda.
              Os primeiros passos: <a href="#pontos">cadastrar o primeiro ponto</a>, gerar a chave da tela em
              <a href="#telas">Telas</a>, e pôr o anúncio da própria Mostraí no ar por
-             <a href="#meusanuncios">Meus anúncios</a> — tela vazia é tela sem prova social.</div>`
+             <a href="#meusanuncios">Meus anúncios</a>. Tela vazia é tela sem prova social.</div>`
           : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'
     }
 
@@ -619,7 +619,7 @@ async function renderCriativos(el, status = 'pendente') {
       if (btn.dataset.acao === 'reprovado') {
         const motivo = window.prompt('Por que essa peça não entra no ar? (o anunciante lê isto no painel e no e-mail)');
         if (motivo === null) return;
-        if (!motivo.trim()) return window.alert('Escreva o motivo — é o que diz ao anunciante o que corrigir.');
+        if (!motivo.trim()) return window.alert('Escreva o motivo. É o que diz ao anunciante o que corrigir.');
         corpo.motivo_reprovacao = motivo.trim();
       }
       if (await salvar(`/admin/criativos/${btn.dataset.id}`, corpo)) {
@@ -718,8 +718,8 @@ async function renderMeusAnuncios(el) {
             .map(
               (c) => `
           <tr>
-            <td>${esc(c.arquivo_original_url || '—')}</td>
-            <td>${c.duracao_segundos ? c.duracao_segundos + 's' : '—'}</td>
+            <td>${esc(c.arquivo_original_url || '-')}</td>
+            <td>${c.duracao_segundos ? c.duracao_segundos + 's' : '-'}</td>
             <td>${c.status === 'aprovado' ? 'No ar' : esc(c.status)}</td>
             <td>${
               c.status === 'aprovado'
@@ -800,11 +800,11 @@ async function renderPontos(el) {
       <td>${p.dono_nome ? esc(p.dono_nome) : '<span class="u-dim">sem conta</span>'}</td>
       <td>${esc(p.cidade)}/${esc(p.uf)}</td>
       <td><select class="mini" data-ponto="categoria_id" data-id="${p.id}" title="Define de qual segmento NÃO entra anúncio nessa tela">
-        <option value="">—</option>
+        <option value="">-</option>
         ${categorias.map((c) => `<option value="${c.id}" ${c.id === p.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
       </select></td>
       <td><select class="mini" data-ponto="plano_ponto_id" data-id="${p.id}">
-        <option value="">—</option>
+        <option value="">-</option>
         ${opcoesComodato.map((o) => `<option value="${o.id}" ${o.id === p.plano_ponto_id ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}
       </select></td>
       <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" data-id="${p.id}" value="${p.valor_pago_mensal}"></td>
@@ -850,7 +850,7 @@ async function renderPontos(el) {
       html: corpo,
       dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
     })}
-    <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto — trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
+    <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
 
@@ -877,12 +877,12 @@ async function renderPontos(el) {
   el.querySelectorAll('[data-nova-tela]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const apelido = prompt(
-        'Nome da tela (ex.: Tela 2 — balcão):',
+        'Nome da tela (ex.: Tela 2, balcão):',
         `Tela ${pontos.find((p) => p.id === Number(btn.dataset.novaTela))?.telas + 1 || 2}`,
       );
       if (apelido === null) return;
       const custo = prompt(
-        'Custo do equipamento dessa tela (R$), pra amortização — pode deixar 0 e preencher depois:',
+        'Custo do equipamento dessa tela (R$), pra amortização. Pode deixar 0 e preencher depois:',
         '0',
       );
       const r = await api(`/admin/pontos/${btn.dataset.novaTela}/dispositivos`, {
@@ -890,7 +890,7 @@ async function renderPontos(el) {
         body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }),
       });
       if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
-      toast('Tela criada — gere a chave dela na aba Telas.');
+      toast('Tela criada. Gere a chave dela na aba Telas.');
       FILTRO_TELAS_PONTO = Number(btn.dataset.novaTela);
       irPara('telas');
     }),
@@ -966,7 +966,7 @@ async function renderTelas(el) {
       <td><b>${esc(t.ponto_nome)}</b><div class="u-dim u-fs-72">${esc(t.ponto_cidade || '')} · ponto ${esc(PONTO_STATUS[t.ponto_status] || t.ponto_status)}</div></td>
       <td><input class="mini u-w-120" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}"></td>
       <td>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</td>
-      <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '—'}</td>
+      <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '-'}</td>
       <td>${
         t.aparelho_id
           ? `<button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
@@ -977,7 +977,7 @@ async function renderTelas(el) {
         <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></td>
       <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}"></td>
       <td><input class="mini u-w-60" type="number" min="1" data-tela="meses_amortizacao" data-id="${t.id}" value="${t.meses_amortizacao ?? 36}"></td>
-      <td>${amort(t) ? fmt(amort(t)) : '—'}</td>
+      <td>${amort(t) ? fmt(amort(t)) : '-'}</td>
       <td><input class="mini u-w-120" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}"></td>
       <td><button class="btn ghost mini" data-painel-tela="${t.id}" title="O que rodou nessa tela">Painel</button>
           <button class="btn ghost mini u-txt-erro" data-excluir-tela="${t.id}" title="Só se nunca rodou nada">×</button></td>
@@ -1002,7 +1002,7 @@ async function renderTelas(el) {
           })
         : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" na aba Pontos.</p>'
     }
-    <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P) — só mostra o que rodou nela, nada mais.</p>`;
+    <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P). Só mostra o que rodou nela, nada mais.</p>`;
 
   if (!lista.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -1137,8 +1137,8 @@ async function renderAnunciantes(el) {
         )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
-      <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante — não entra em ponto do mesmo ramo">
-        <option value="">${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : '—'}</option>
+      <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
+        <option value="">${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : '-'}</option>
         ${categorias.map((c) => `<option value="${c.id}" ${c.id === a.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
       </select></td>
       <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
@@ -1152,7 +1152,7 @@ async function renderAnunciantes(el) {
       <td>${
         a.excluido_em
           ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
-          : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
+          : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele, já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
            <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
            <button class="btn ghost mini" data-parceiro="${a.id}" title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${a.status === 'parceiro' ? 'Editar parceiro' : 'Marcar parceiro'}</button>
            ${
@@ -1193,7 +1193,7 @@ async function renderAnunciantes(el) {
         { valor: 'excluida', nome: 'Excluídas' },
       ],
       html: corpo,
-      dica: 'Conta excluída fica recuperável por 60 dias — use Restaurar.',
+      dica: 'Conta excluída fica recuperável por 60 dias. Use Restaurar.',
     })}`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -1235,7 +1235,7 @@ async function renderAnunciantes(el) {
         body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
       });
       if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
-      toast('plano liberado — a conta está no ar, sem cobrança');
+      toast('plano liberado, a conta está no ar, sem cobrança');
       renderAnunciantes(el);
     }),
   );
@@ -1247,7 +1247,7 @@ async function renderAnunciantes(el) {
     b.addEventListener('click', async () => {
       const atual = anunciantes.find((a) => a.id === Number(b.dataset.parceiro));
       const desconto = prompt(
-        'Desconto extra (%) além do preço do plano — vazio remove o status de parceiro:',
+        'Desconto extra (%) além do preço do plano. Deixe vazio para remover o status de parceiro:',
         atual?.parceiro_desconto_percentual ?? '',
       );
       if (desconto === null) return;
@@ -1264,7 +1264,7 @@ async function renderAnunciantes(el) {
         return;
       }
       const minimo = prompt(
-        'Compromisso mínimo (em meses) pra usar o desconto — vazio libera qualquer plano:',
+        'Compromisso mínimo (em meses) pra usar o desconto. Deixe vazio para liberar qualquer plano:',
         atual?.parceiro_compromisso_minimo ?? '',
       );
       if (minimo === null) return;
@@ -1309,8 +1309,8 @@ async function renderAnunciantes(el) {
         !confirm(
           `Cancelar a assinatura de ${nome}?\n\n` +
             'A cobrança recorrente para no San Checkout e não volta sozinha. ' +
-            'A cobertura já paga continua valendo até a data de expiração — ' +
-            'o anúncio não sai do ar hoje.',
+            'A cobertura já paga continua valendo até a data de expiração, ' +
+            'e o anúncio não sai do ar hoje.',
         )
       )
         return;
@@ -1342,7 +1342,7 @@ async function renderAnunciantes(el) {
       return;
     }
     alert(
-      `Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora — não fica salva em nenhuma tela depois desta.`,
+      `Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora. Não fica salva em nenhuma tela depois desta.`,
     );
     renderAnunciantes(el);
   });
@@ -1362,7 +1362,7 @@ async function renderVendedores(el) {
       <td><div class="u-fs-78">${esc(v.email || '')}</div><div class="u-dim u-fs-74">${esc(v.telefone || '')}</div></td>
       <td><input class="mini u-w-160" data-vendedor="chave_pix" data-id="${v.conta_id}" value="${esc(v.chave_pix || '')}"></td>
       <td><code>${esc(v.codigo_cupom)}</code> <button class="btn ghost mini" data-copiar-cupom="${esc(v.codigo_cupom)}">copiar link</button></td>
-      <td><input class="mini u-w-60" type="number" step="0.01" min="10" max="30" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}" title="Entre 10% e 30% — quem decide o percentual é você"></td>
+      <td><input class="mini u-w-60" type="number" step="0.01" min="10" max="30" data-vendedor="comissao_percentual" data-id="${v.conta_id}" value="${v.comissao_percentual}" title="Entre 10% e 30%. Quem decide o percentual é você"></td>
       <td>${selectStatus(VENDEDOR_STATUS, v.status, `data-vendedor="status" data-id="${v.conta_id}"`)}</td>
       <td>${data(v.created_at)}</td>
     </tr>`,
@@ -1379,7 +1379,7 @@ async function renderVendedores(el) {
         html: corpo,
         dica: 'Comissão e Pix salvam ao sair do campo. Vendedor novo entra por convite (aba Convites) com o papel "vendedor".',
       })
-    : '<p class="empty-state">Nenhum vendedor ainda. Gere um convite com o papel "vendedor" na aba Convites — a conta que entrar por ele já nasce com cupom.</p>';
+    : '<p class="empty-state">Nenhum vendedor ainda. Gere um convite com o papel "vendedor" na aba Convites. A conta que entrar por ele já nasce com cupom.</p>';
 
   if (!vendedores.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -1415,7 +1415,7 @@ async function renderCandidaturas(el) {
       <td><b>${esc(c.nome)}</b>${c.conta_id ? `<div class="u-fs-72 u-dim">conta #${c.conta_id} · ${esc(c.conta_nome || '')}</div>` : ''}</td>
       <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
       <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div class="u-dim u-fs-72">${esc(c.contato_email || '')}</div></td>
-      <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '—')}</td>
+      <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '-')}</td>
       <td>${
         c.status === 'aprovada'
           ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
@@ -1485,7 +1485,7 @@ async function renderCandidaturas(el) {
       const { link } = await r.json();
       navigator.clipboard?.writeText(link).catch(() => {});
       prompt(
-        'Convite gerado (já copiado). Mande esse link pra pessoa — vale 7 dias e só pode ser usado uma vez:',
+        'Convite gerado (já copiado). Mande esse link pra pessoa. Vale 7 dias e só pode ser usado uma vez:',
         link,
       );
       RESUMO = await pegar('/admin/resumo');
@@ -1531,10 +1531,10 @@ async function renderConvites(el) {
         (c) => `<tr data-filtro="${c.situacao}">
       <td>${data(c.criado_em)}</td>
       <td>${(c.papeis || []).map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}</td>
-      <td>${esc(c.nome_sugerido || '—')}<div class="u-dim u-fs-72">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
+      <td>${esc(c.nome_sugerido || '-')}<div class="u-dim u-fs-72">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
       <td>${data(c.expira_em)}</td>
       <td>${c.situacao === 'aberto' ? '<span class="badge badge-pendente">aberto</span>' : c.situacao === 'usado' ? `<span class="badge badge-ok">usado ${data(c.usado_em)}</span>` : '<span class="badge badge-err">expirado/revogado</span>'}</td>
-      <td>${c.conta_nome ? esc(c.conta_nome) : '—'}</td>
+      <td>${c.conta_nome ? esc(c.conta_nome) : '-'}</td>
       <td>${c.situacao === 'aberto' ? `<button class="btn ghost mini" data-copiar-link="${esc(c.link)}">Copiar link</button> <button class="btn ghost mini u-txt-erro" data-revogar="${c.id}">Revogar</button>` : ''}</td>
     </tr>`,
       )
@@ -1754,8 +1754,8 @@ async function renderPlanos(el) {
           <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
           <td><input class="mini u-w-60" type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></td>
           <td><input class="mini u-w-60" type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></td>
-          <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="—" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
-          <td><input class="mini u-w-60" type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="—" title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano"></td>
+          <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
+          <td><input class="mini u-w-60" type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-" title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano"></td>
           <td class="u-ta-c"><input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
           <td><input class="mini u-w-140" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}"></td>
           <td><div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div></td>
@@ -1767,7 +1767,7 @@ async function renderPlanos(el) {
 
   el.innerHTML = `
     <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Novo plano (novo preço/promoção — não mexe no que já existe)</summary>
+      <summary class="btn ghost mini">+ Novo plano (novo preço/promoção, não mexe no que já existe)</summary>
       <form class="card u-mt-12 u-mw-520" id="formNovoPlano">
         <div><label>ID único (ex.: destaque-black-friday)</label><input class="mini" name="id" required></div>
         <div><label>Tier</label><select class="mini" name="tier" required>
@@ -1789,7 +1789,7 @@ async function renderPlanos(el) {
         <div><label>Cobertura</label><select class="mini" name="cobertura" required>
           <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
         </select></div>
-        <div><label>Rótulo (ex.: "Preço promocional — travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
+        <div><label>Rótulo (ex.: "Preço promocional, travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
         <div class="field-row">
           <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
           <div class="u-col"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
@@ -1819,10 +1819,10 @@ async function renderPlanos(el) {
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
       <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
       editar um deles acende "Publicar nova versão", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
-      Vagas, rótulo, destaque e Ativo são só vitrine — salvam na hora e não alcançam ninguém que já é cliente.
+      Vagas, rótulo, destaque e Ativo são só vitrine. Salvam na hora e não alcançam ninguém que já é cliente.
       Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
-      "Tela após": módulo cruzado — ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
-      "Desconto comodato": desconto extra pra conta que também é dona de ponto, por plano — some do valor cobrado quando a conta tem o papel "ponto".
+      "Tela após": módulo cruzado. Ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
+      "Desconto comodato": desconto extra pra conta que também é dona de ponto, por plano, que some do valor cobrado quando a conta tem o papel "ponto".
       Parceiro (antigo "fundador") não é plano de catálogo: é status de conta, marcado à mão em Anunciantes → "Marcar parceiro".
     </p>`;
 
@@ -1866,7 +1866,7 @@ async function renderPlanos(el) {
         !confirm(
           `Publicar uma versão nova de "${id}"?\n\n` +
             'A versão atual é aposentada e vai pra "Planos arquivados". ' +
-            'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios — nada muda pra essas contas. ' +
+            'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios. Nada muda pra essas contas. ' +
             'A versão nova vale só pra quem assinar daqui pra frente, e nasce com um id novo.',
         )
       )
@@ -1941,7 +1941,7 @@ async function renderPagamentosPontos(el) {
     <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançar o mês</h3></div>
     <form class="card u-mw-520" id="formPagPonto">
       <div><label for="pagPonto">Ponto</label><select class="mini" id="pagPonto" required>
-        ${pontos.map((p) => `<option value="${p.id}">${esc(p.nome)} — ${fmt(p.valor_pago_mensal || 0)}/mês</option>`).join('')}
+        ${pontos.map((p) => `<option value="${p.id}">${esc(p.nome)} (${fmt(p.valor_pago_mensal || 0)}/mês)</option>`).join('')}
       </select></div>
       <div class="field-row">
         <div class="u-col"><label for="pagComp">Competência</label><input class="mini" id="pagComp" type="month" value="${mesAtual}" required></div>
@@ -1951,7 +1951,7 @@ async function renderPagamentosPontos(el) {
         <div class="u-col"><label for="pagForma">Forma</label><input class="mini" id="pagForma" placeholder="pix, dinheiro, desconto…"></div>
         <div class="u-col"><label for="pagObs">Observação</label><input class="mini" id="pagObs"></div>
       </div>
-      <label class="check-row"><input type="checkbox" id="pagJaPago"><span>Já paguei — lançar direto como quitado</span></label>
+      <label class="check-row"><input type="checkbox" id="pagJaPago"><span>Já paguei, lançar direto como quitado</span></label>
       <button class="btn primary" type="submit">Lançar</button>
       <p class="form-msg" id="msgPagPonto"></p>
     </form>
@@ -1969,8 +1969,8 @@ async function renderPagamentosPontos(el) {
       <td>${esc(l.ponto_nome)}</td>
       <td class="num"><b>${fmt(l.valor)}</b></td>
       <td>${l.pago_em ? `<span class="badge badge-ok">pago ${data(l.pago_em)}</span>` : '<span class="badge badge-pendente">em aberto</span>'}</td>
-      <td>${esc(l.forma || '—')}</td>
-      <td class="u-ws-normal u-mw-240 u-fs-72">${esc(l.observacao || '—')}</td>
+      <td>${esc(l.forma || '-')}</td>
+      <td class="u-ws-normal u-mw-240 u-fs-72">${esc(l.observacao || '-')}</td>
       <td><button class="btn ${l.pago_em ? 'ghost' : 'primary'} mini" data-quitar="${l.id}" data-pago="${l.pago_em ? '0' : '1'}">${l.pago_em ? 'Desfazer' : 'Marcar como pago'}</button></td>
     </tr>`,
       )
@@ -1978,7 +1978,7 @@ async function renderPagamentosPontos(el) {
     </tbody></table></div></div>`
         : '<p class="empty-state">Nenhum lançamento ainda.</p>'
     }
-    <p class="empty-state u-ta-l u-p-0 u-pt-16">Um lançamento por ponto por mês — o banco recusa o segundo da mesma competência, então duplo clique não vira pagamento dobrado. O dono do ponto vê exatamente esta lista no painel dele, em "Meus recebimentos".</p>`;
+    <p class="empty-state u-ta-l u-p-0 u-pt-16">Um lançamento por ponto por mês. O banco recusa o segundo da mesma competência, então duplo clique não vira pagamento dobrado. O dono do ponto vê exatamente esta lista no painel dele, em "Meus recebimentos".</p>`;
 
   if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
@@ -2024,12 +2024,12 @@ async function renderPagamentosPontos(el) {
 // a leitura.
 async function renderMetrica(el) {
   const m = await pegar('/admin/metrica');
-  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-');
   const ultimo = m.margem[m.margem.length - 1] || {};
 
   const funil = m.funil.length
     ? m.funil
-    : [{ mes: '—', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
+    : [{ mes: '-', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
   const totalFunil = funil.reduce(
     (t, f) => ({
       cadastros: t.cadastros + f.cadastros,
@@ -2103,8 +2103,8 @@ async function renderMetrica(el) {
       <td>${esc(f.semana)}</td>
       <td>${f.nome === 'conta:aprovacao_recebe' ? 'Reinstalar conta suspensa' : 'Aprovar criativo'}</td>
       <td class="num">${f.quantidade}</td>
-      <td class="num"><b>${f.mediana_horas ?? '—'}</b></td>
-      <td class="num">${f.pior_caso_horas ?? '—'}</td>
+      <td class="num"><b>${f.mediana_horas ?? '-'}</b></td>
+      <td class="num">${f.pior_caso_horas ?? '-'}</td>
     </tr>`,
             )
             .join('')
@@ -2133,7 +2133,7 @@ async function renderMetrica(el) {
           : '<tr><td colspan="4" class="u-dim">Nenhum evento gravado ainda.</td></tr>'
       }
       </tbody></table></div></div>
-      <p class="form-hint">Evento que nunca aparece aqui é evento que ninguém emite. <code>exibicao:video_toca</code> não entra nesta tabela de propósito — ele já existe agregado em "Telas", por hora e por anunciante, com programadas e confirmadas.</p>
+      <p class="form-hint">Evento que nunca aparece aqui é evento que ninguém emite. <code>exibicao:video_toca</code> não entra nesta tabela de propósito. Ele já existe agregado em "Telas", por hora e por anunciante, com programadas e confirmadas.</p>
     </details>`;
 }
 
@@ -2168,9 +2168,9 @@ async function renderPlanosArquivados(el) {
       <td class="num">${p.limite_criativos}</td>
       <td class="num">${p.frequencia_hora}</td>
       <td>${esc(p.cobertura)}</td>
-      <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '—'}</td>
+      <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '-'}</td>
       <td>${data(p.arquivado_em)}</td>
-      <td>${esc(p.substituido_por || '—')}</td>
+      <td>${esc(p.substituido_por || '-')}</td>
       <td class="num">${
         p.contas_ativas > 0 ? `<span class="badge badge-ok">${p.contas_ativas}</span>` : '<span class="u-dim">0</span>'
       }</td>
@@ -2291,7 +2291,7 @@ async function renderCategorias(el) {
               { valor: 'inativo', nome: 'Fora do cadastro' },
             ],
             html: corpo,
-            dica: 'Categoria já usada por alguém cadastrado não pode ser excluída — desmarque para parar de oferecer.',
+            dica: 'Categoria já usada por alguém cadastrado não pode ser excluída. Desmarque para parar de oferecer.',
           })
         : '<p class="empty-state">Nenhuma categoria cadastrada.</p>'
     }`;
@@ -2340,7 +2340,7 @@ async function renderCategorias(el) {
 async function renderComodato(el) {
   const [opcoes, planos] = await Promise.all([pegar('/admin/planos-ponto'), pegar('/admin/planos')]);
   const selectPlano = (o) => `<select class="mini u-w-140" data-pp="plano_bonus_id" data-id="${o.id}">
-      <option value="">— sem bônus —</option>
+      <option value="">(sem bônus)</option>
       ${planos.map((p) => `<option value="${esc(p.id)}" ${p.id === o.plano_bonus_id ? 'selected' : ''}>${esc(p.nome)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</option>`).join('')}
     </select>`;
   el.innerHTML = `
@@ -2373,8 +2373,8 @@ async function renderComodato(el) {
         <td><textarea class="mini u-w-260 u-resize-v" data-pp="chamada" data-id="${o.id}" rows="3">${esc(o.chamada)}</textarea></td>
         <td><textarea class="mini u-w-240 u-resize-v" data-pp="beneficios" data-id="${o.id}" rows="4">${esc((o.beneficios || []).join('\n'))}</textarea></td>
         <td>${selectPlano(o)}</td>
-        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_apos_meses" data-id="${o.id}" value="${o.plano_bonus_apos_meses ?? ''}" placeholder="—"></td>
-        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="—"></td>
+        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_apos_meses" data-id="${o.id}" value="${o.plano_bonus_apos_meses ?? ''}" placeholder="-"></td>
+        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="-"></td>
         <td><input class="mini u-w-60" type="number" data-pp="ordem" data-id="${o.id}" value="${o.ordem}"></td>
         <td class="u-ta-c"><input type="checkbox" data-pp="ativo" data-id="${o.id}" ${o.ativo ? 'checked' : ''}></td>
       </tr>`,

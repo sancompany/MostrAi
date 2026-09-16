@@ -75,7 +75,7 @@
       const el = document.getElementById(id);
       if (!el) return;
       el.classList.toggle('bloqueado', !liberado);
-      el.title = liberado ? '' : 'Modo ainda não ativado — clique pra ativar';
+      el.title = liberado ? '' : 'Modo ainda não ativado, clique pra ativar';
     };
     marcar('navDashboard', papeis.includes('anunciante'));
     marcar('navMeuPonto', papeis.includes('ponto'));
@@ -133,7 +133,7 @@
     `
     <footer class="site">
       <div class="wrap">
-        <span>© Mostraí — Matão-SP. Parte do ecossistema San &amp; Co.</span>
+        <span>© Mostraí, Matão-SP. Parte do ecossistema San &amp; Co.</span>
         <span class="footer-links"><a href="/contato.html">Fale com a gente</a> · <a href="/termos-de-uso.html">Termos de Uso</a> · <a href="/politica-de-privacidade.html">Privacidade</a> · <a href="/comodato.html">Comodato</a> · <a href="/contrato-anunciante.html">Contrato do anunciante</a></span>
         <span><a href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a></span>
       </div>
@@ -172,7 +172,7 @@
       // cinza dizia coisas diferentes conforme a página em que a pessoa estava.
       const aba = (href, papel, texto) => {
         const liberado = papeis.includes(papel);
-        return `<a href="${href}" id="nav${papel}" class="modo-aba ${liberado ? '' : 'bloqueado'}"${liberado ? '' : ' title="Modo ainda não ativado — clique pra ativar"'}>${texto}</a>`;
+        return `<a href="${href}" id="nav${papel}" class="modo-aba ${liberado ? '' : 'bloqueado'}"${liberado ? '' : ' title="Modo ainda não ativado, clique pra ativar"'}>${texto}</a>`;
       };
       document.querySelector('header.site nav.main').innerHTML = `
         ${aba('/anunciante/painel.html', 'anunciante', 'Anúncios')}
@@ -204,7 +204,7 @@ window.ROTULOS = {
   anunciante: { comum: 'Comum', parceiro: 'Parceiro' },
   ponto: {
     lead: 'Em análise',
-    aguardando_instalacao: 'Aprovado — aguardando instalação',
+    aguardando_instalacao: 'Aprovado, aguardando instalação',
     ativo: 'Ativo',
     reparo: 'Em reparo',
     inativo: 'Inativo',

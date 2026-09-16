@@ -32,7 +32,7 @@ form.addEventListener('submit', async (e) => {
         .catch(() => ({}));
       if (corpoRef.campo === 'indicado_por_cupom') {
         delete dados.indicado_por_cupom;
-        msg.textContent = 'O cupom de indicação desse link não está mais ativo — seguimos sem ele.';
+        msg.textContent = 'O cupom de indicação desse link não está mais ativo, seguimos sem ele.';
         msg.className = 'form-msg';
         r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
           method: 'POST',

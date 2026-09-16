@@ -87,7 +87,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
 verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
-**As 60 rotas estão listadas uma a uma de propósito** — contrato que só existe
+**As 66 rotas estão listadas uma a uma de propósito** — contrato que só existe
 em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
 pede.
 

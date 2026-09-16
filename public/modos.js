@@ -68,7 +68,7 @@
         <form class="card wide modo-card" id="formModo">
           <p class="eyebrow">Modo anúncios</p>
           <h3>Coloque a sua marca nas telas da cidade</h3>
-          <p class="form-hint u-m-0 u-mb-6">Sua conta já existe — pra anunciar só falta o endereço da empresa (vai na nota fiscal). Depois é escolher um plano e subir o vídeo.</p>
+          <p class="form-hint u-m-0 u-mb-6">Sua conta já existe, pra anunciar só falta o endereço da empresa (vai na nota fiscal). Depois é escolher um plano e subir o vídeo.</p>
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Ramo de atividade')}
           <p class="form-hint">O ramo garante que você não divida a tela com um concorrente direto.</p>
@@ -84,7 +84,7 @@
           <div class="card wide modo-card u-ta-c">
             <p class="eyebrow">Modo meu ponto</p>
             <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
-            <p class="form-hint">${pedido.origem === 'bonus_plano' ? 'É o bônus do seu plano — ' : ''}A gente chama no WhatsApp pra combinar a visita e a instalação. Assim que liberar, esse modo abre aqui.</p>
+            <p class="form-hint">${pedido.origem === 'bonus_plano' ? 'É o bônus do seu plano. ' : ''}A gente chama no WhatsApp pra combinar a visita e a instalação. Assim que liberar, esse modo abre aqui.</p>
           </div>`;
       }
       const ganhou = bonus?.disponivel;
@@ -142,7 +142,7 @@
         <label class="escolha">
           <input type="radio" name="plano_ponto_id" value="${esc(p.id)}" ${i === 0 ? 'checked' : ''}>
           <span class="box">
-            <b>${esc(p.nome)}${Number(p.ajuda_custo_mensal) > 0 ? ` — ${fmtBRL(p.ajuda_custo_mensal)}/mês` : ''}</b>
+            <b>${esc(p.nome)}${Number(p.ajuda_custo_mensal) > 0 ? `, ${fmtBRL(p.ajuda_custo_mensal)}/mês` : ''}</b>
             <small>${esc(p.chamada || '')}</small>
             <ul>${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
               ${p.plano_bonus_id ? `<li>Depois de ${p.plano_bonus_apos_meses} meses como ponto, ganhe ${p.plano_bonus_meses} ${p.plano_bonus_meses > 1 ? 'meses' : 'mês'} de anúncio grátis</li>` : ''}</ul>
@@ -151,7 +151,7 @@
         )
         .join('');
     } catch {
-      caixa.innerHTML = '<p class="form-hint">Não deu pra carregar as opções — a gente combina no WhatsApp.</p>';
+      caixa.innerHTML = '<p class="form-hint">Não deu pra carregar as opções, a gente combina no WhatsApp.</p>';
     }
   }
 
@@ -191,7 +191,7 @@
           mensagem: form.mensagem.value.trim() || null,
         });
       }
-      msg.textContent = 'Pedido enviado — a gente chama no WhatsApp.';
+      msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
       msg.className = 'form-msg ok';
       setTimeout(() => window.location.reload(), 900);
     } catch (err) {
@@ -246,16 +246,16 @@
       // que anuncia "ganhe uma tela" e nao entende se ja ganhou, se perdeu ou
       // se o site esqueceu.
       if (b.ja_e_ponto) {
-        return `<div class="aviso-fundador"><b>Bônus do plano:</b> ele dá uma tela no comércio de quem ainda não é ponto da rede —
+        return `<div class="aviso-fundador"><b>Bônus do plano:</b> ele dá uma tela no comércio de quem ainda não é ponto da rede,
           e você já é. Quer uma tela em outro endereço seu? <a href="/anunciante/ponto.html">Cadastre o endereço</a> ou
           <a href="/contato.html">fale com a gente</a>.</div>`;
       }
       if (b.resgatado_em)
-        return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')} — sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
+        return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}. Sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_cobertos);
       return b.disponivel
         ? `<div class="aviso-fundador"><b>Você ganhou uma tela no seu comércio!</b> Seu plano completou ${b.apos_meses} meses. <a href="/anunciante/ponto.html">Pedir minha tela →</a></div>`
-        : `<div class="aviso-fundador"><b>Bônus do plano:</b> ao completar ${b.apos_meses} meses você ganha uma tela no seu comércio — ${b.meses_cobertos} de ${b.apos_meses} ${b.apos_meses > 1 ? 'meses' : 'mês'} (faltam ${falta}).</div>`;
+        : `<div class="aviso-fundador"><b>Bônus do plano:</b> ao completar ${b.apos_meses} meses você ganha uma tela no seu comércio, ${b.meses_cobertos} de ${b.apos_meses} ${b.apos_meses > 1 ? 'meses' : 'mês'} (faltam ${falta}).</div>`;
     }
     if (qual === 'anuncio') {
       if (b.resgatado_em)
@@ -263,7 +263,7 @@
       const falta = Math.max(0, b.apos_meses - b.meses_ativo);
       return b.disponivel
         ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary u-ml-8" id="btnResgatarAnuncio">Ativar meu anúncio grátis</button><span id="msgResgate" class="form-hint"></span></div>`
-        : `<div class="aviso-fundador"><b>Bônus da opção ${esc(b.opcao)}:</b> com ${b.apos_meses} meses de ponto no ar você ganha ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)} — ${b.meses_ativo} de ${b.apos_meses} (faltam ${falta}).</div>`;
+        : `<div class="aviso-fundador"><b>Bônus da opção ${esc(b.opcao)}:</b> com ${b.apos_meses} meses de ponto no ar você ganha ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}, ${b.meses_ativo} de ${b.apos_meses} (faltam ${falta}).</div>`;
     }
     return '';
   };

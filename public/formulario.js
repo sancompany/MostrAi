@@ -35,7 +35,7 @@ function ligarCep(escopo) {
         if (numero) numero.focus();
       } catch {
         if (aviso) {
-          aviso.textContent = 'CEP não encontrado — pode preencher o endereço na mão.';
+          aviso.textContent = 'CEP não encontrado, pode preencher o endereço na mão.';
           aviso.className = 'form-hint';
         }
       }

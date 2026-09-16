@@ -107,7 +107,7 @@ async function atualizarPlaylist() {
   try {
     const r = await fetch(`${API_BASE_URL}/playlist/${dispositivoId}`, { headers: cabecalhos });
     if (r.status === 401) {
-      log('chave do aparelho inválida — gere de novo no painel admin');
+      log('chave do aparelho inválida, gere de novo no painel admin');
       return;
     }
     // 403 é a tela (ou o ponto) marcada fora do ar no cadastro. Não é queda de
@@ -122,7 +122,7 @@ async function atualizarPlaylist() {
       return;
     }
     if (!r.ok) {
-      log('servidor indisponível — tocando playlist em cache');
+      log('servidor indisponível, tocando playlist em cache');
       return;
     }
     const nova = await r.json();
@@ -132,7 +132,7 @@ async function atualizarPlaylist() {
     log(nova.length ? `playlist ok (${nova.length} itens)` : 'sem anúncios programados agora');
     prepararArquivos(nova);
   } catch {
-    log('offline — tocando playlist em cache');
+    log('offline, tocando playlist em cache');
   }
 }
 
@@ -170,7 +170,7 @@ videoEl.addEventListener('ended', tocarProximo);
 // URL 404, codec não suportado ou arquivo corrompido nunca disparam
 // 'ended' — sem isso a tela ficava parada pra sempre.
 videoEl.addEventListener('error', () => {
-  log('item falhou — pulando');
+  log('item falhou, pulando');
   setTimeout(tocarProximo, 500);
 });
 videoEl.addEventListener('stalled', () =>
@@ -271,7 +271,7 @@ log(`api: ${API_BASE_URL}`);
 if (!dispositivoId) {
   log('faltou ?tela=ID na URL');
 } else if (!chaveAparelho) {
-  log('faltou a chave do aparelho — abra o link completo gerado no painel admin');
+  log('faltou a chave do aparelho, abra o link completo gerado no painel admin');
 } else {
   playlist = carregarCache();
   atualizarPlaylist().then(tocarProximo);

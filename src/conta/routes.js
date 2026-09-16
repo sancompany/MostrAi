@@ -82,17 +82,27 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
   res.json({ ok: true, login: cfg.login });
 });
 
-// Formulário de contato do site
+// Formulário de contato do site. Grava antes de tentar o e-mail: se o SMTP
+// falhar, a mensagem do titular não se perde sem rastro (furos.md, seção
+// Média — relevante agora que o SMTP está fora do ar por senha de app
+// expirada, ver docs/PENDENCIAS.md).
 router.post('/contato', limiteTentativas, async (req, res) => {
-  const { nome, email: remetente, mensagem } = req.body;
+  const { nome, email: remetente, telefone, mensagem } = req.body;
   if (!nome || !remetente || !mensagem) return res.status(400).json({ erro: 'campos obrigatórios faltando' });
+  const { rows } = await pool.query(
+    'INSERT INTO mensagens_contato (nome, email, telefone, mensagem) VALUES ($1,$2,$3,$4) RETURNING id',
+    [nome, remetente, telefone || null, mensagem],
+  );
   try {
     await email.enviarMensagemContato(req.body);
-    res.json({ ok: true });
+    await pool.query('UPDATE mensagens_contato SET email_enviado = true WHERE id = $1', [rows[0].id]);
   } catch (err) {
-    console.error('falha ao enviar contato', err);
-    res.status(502).json({ erro: 'não foi possível enviar agora' });
+    // A mensagem já está gravada (id acima) — o aviso por e-mail é só um
+    // extra pra quem olha a caixa de entrada primeiro. Quem escreveu não
+    // fica sabendo que o SMTP falhou, porque do lado dele nada falhou.
+    console.error('mensagem de contato gravada, mas aviso por e-mail falhou (id ' + rows[0].id + ')', err);
   }
+  res.json({ ok: true });
 });
 
 module.exports = router;

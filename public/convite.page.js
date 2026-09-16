@@ -20,7 +20,7 @@ function mostrarInvalido(texto) {
 }
 
 async function carregar() {
-  if (!token) return mostrarInvalido('O link está incompleto — copie o endereço inteiro que você recebeu.');
+  if (!token) return mostrarInvalido('O link está incompleto, copie o endereço inteiro que você recebeu.');
   let convite;
   try {
     const r = await fetch(`${API_BASE_URL}/convites/${encodeURIComponent(token)}`);
@@ -131,7 +131,7 @@ async function carregarPlanosPonto() {
       <label class="escolha">
         <input type="radio" name="plano_ponto_id" value="${p.id}" ${i === 0 ? 'checked' : ''}>
         <span class="box">
-          <b>${esc(p.nome)}${Number(p.ajuda_custo_mensal) > 0 ? ` — ${fmtBRL(p.ajuda_custo_mensal)}/mês` : ''}</b>
+          <b>${esc(p.nome)}${Number(p.ajuda_custo_mensal) > 0 ? `, ${fmtBRL(p.ajuda_custo_mensal)}/mês` : ''}</b>
           <small>${esc(p.chamada || '')}</small>
           <ul>${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
             ${p.plano_bonus_id ? `<li>Depois de ${p.plano_bonus_apos_meses} meses como ponto, ganhe ${p.plano_bonus_meses} ${p.plano_bonus_meses > 1 ? 'meses' : 'mês'} de anúncio grátis</li>` : ''}</ul>
@@ -141,7 +141,7 @@ async function carregarPlanosPonto() {
       .join('');
   } catch {
     document.getElementById('escolhaPlano').innerHTML =
-      '<p class="form-hint">Não deu pra carregar as opções agora — a gente combina no WhatsApp.</p>';
+      '<p class="form-hint">Não deu pra carregar as opções agora, a gente combina no WhatsApp.</p>';
   }
 }
 

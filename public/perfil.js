@@ -77,13 +77,13 @@
       <div class="check-row u-mt-16">
         <input type="checkbox" id="chkComunicacoes">
         <label for="chkComunicacoes">Quero receber novidades e ofertas da Mostraí por e-mail.
-          Avisos do seu plano, pagamento e anúncio continuam chegando de qualquer jeito —
+          Avisos do seu plano, pagamento e anúncio continuam chegando de qualquer jeito,
           eles fazem parte do serviço.</label>
       </div>
 
       <p class="form-hint u-mt-16">Apagar os dados que você deu por vontade própria e que o
         serviço não precisa: contato do responsável e foto. Nome, documento, endereço e
-        histórico de pagamento não saem daqui — eles sustentam o contrato e a nota fiscal,
+        histórico de pagamento não saem daqui, eles sustentam o contrato e a nota fiscal,
         e só somem junto com a conta.</p>
       <button type="button" class="btn ghost block" id="btnApagarOpcionais">Apagar dados opcionais</button>
 
@@ -233,7 +233,7 @@
     $('btnExcluirConta').addEventListener('click', async () => {
       if (
         !confirm(
-          'Tem certeza que quer excluir sua conta? Ela fica recuperável por 60 dias — depois disso é apagada de vez. Pra recuperar dentro desse prazo, fale com o suporte pelo WhatsApp.',
+          'Tem certeza que quer excluir sua conta? Ela fica recuperável por 60 dias. Depois disso é apagada de vez. Pra recuperar dentro desse prazo, fale com o suporte pelo WhatsApp.',
         )
       )
         return;
@@ -270,7 +270,7 @@
       const d = await r.json();
       conta.comunicacoes_revogado_em = d.comunicacoes_revogado_em;
       dizer(
-        chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado — não mandamos mais novidades.',
+        chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado. Não mandamos mais novidades.',
         'ok',
       );
     });

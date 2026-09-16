@@ -52,7 +52,7 @@ fetch(`${API_BASE_URL}/pontos`)
       <div class="ponto-card">
         <span class="badge ${st.classe}">${st.texto}</span>
         <h4>${esc(p.nome)}</h4>
-        <p>${esc(p.cidade)}${p.endereco ? ' — ' + esc(p.endereco) : ''}</p>
+        <p>${esc(p.cidade)}${p.endereco ? ', ' + esc(p.endereco) : ''}</p>
         <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
       </div>
     `;
