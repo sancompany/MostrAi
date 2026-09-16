@@ -1760,25 +1760,58 @@ async function renderPlanos(el) {
     const desconto = Number(p.desconto_percentual) || 0;
     return Math.round(cheio * (1 - desconto / 100) * 100) / 100;
   };
-  const linhaPlano = (p) => `<tr data-linha="${p.id}" data-ciclo="${p.compromisso_meses}">
-          <td><input class="mini u-w-120" ${contrato('nome', p)} value="${esc(p.nome)}">
-            <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</div></td>
-          <td><input class="mini u-w-80" type="number" step="0.01" min="0" ${contrato('valor_mensal_cheio', p)} data-preco-cheio="${p.id}" value="${p.valor_mensal_cheio ?? p.valor_mensal}"></td>
-          <td><input class="mini u-w-60" type="number" step="0.01" min="0" max="99" ${contrato('desconto_percentual', p)} data-desconto="${p.id}" value="${p.desconto_percentual ?? ''}" placeholder="-"></td>
-          <td><b data-valor-final="${p.id}">${fmt(valorComDesconto(p))}</b>/mês</td>
-          <td><b data-total-ciclo="${p.id}">${fmt(valorComDesconto(p) * p.compromisso_meses)}</b></td>
-          <td><input class="mini u-w-60" type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></td>
-          <td><input class="mini u-w-60" type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></td>
-          <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
-          <td><input class="mini u-w-60" type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-" title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano"></td>
-          <td class="u-ta-c"><input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''} title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço"></td>
-          <td><input class="mini u-w-140" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}"></td>
-          <td><div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div></td>
-          <td class="u-ta-c"><input type="checkbox" ${vitrine('destaque_no_site', p)} ${p.destaque_no_site ? 'checked' : ''} title="Marca como 'Mais escolhido' na página de planos"></td>
-          <td class="u-ta-c"><input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}></td>
-          <td><button class="btn primary mini" data-nova-versao="${p.id}" hidden>Publicar nova versão</button></td>
-        </tr>`;
-  const cabecalho = `<tr><th>Nome</th><th>Preço cheio</th><th>Desconto %</th><th>Valor com desconto</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Desconto comodato</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
+  // O cartão do admin é o cartão da vitrine com os campos abertos: mesma
+  // ordem (rótulo, nome, preço riscado + desconto, preço grande, lista de
+  // benefícios) e o mesmo botão embaixo, só que salvando em vez de assinar.
+  // A tabela de 15 colunas que havia aqui mostrava tudo e não parecia nada:
+  // o dono editava preço sem ver o que o cliente ia ver.
+  const cartaoPlano = (p) => `
+    <div class="plano-edit ${p.destaque_no_site ? 'popular' : ''} ${p.ativo ? '' : 'fora'}" data-linha="${p.id}" data-ciclo="${p.compromisso_meses}">
+      <div class="plano-edit-chips">
+        <label class="chip-check" title="Marca como 'Mais escolhido' na vitrine">
+          <input type="checkbox" ${vitrine('destaque_no_site', p)} ${p.destaque_no_site ? 'checked' : ''}> Mais escolhido
+        </label>
+        <label class="chip-check" title="Desmarcado, o plano some da vitrine — quem já assinou continua pagando igual">
+          <input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}> Na vitrine
+        </label>
+      </div>
+
+      <input class="ed-rotulo" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}" placeholder="Rótulo (opcional)" aria-label="Rótulo">
+      <input class="ed-nome" ${contrato('nome', p)} value="${esc(p.nome)}" aria-label="Nome do plano">
+
+      <div class="ed-precos">
+        <label class="ed-campo">Preço cheio
+          <span class="ed-moeda">R$<input type="number" step="0.01" min="0" ${contrato('valor_mensal_cheio', p)} data-preco-cheio="${p.id}" value="${p.valor_mensal_cheio ?? p.valor_mensal}"></span>
+        </label>
+        <label class="ed-campo">Desconto
+          <span class="ed-moeda"><input type="number" step="0.01" min="0" max="99" ${contrato('desconto_percentual', p)} data-desconto="${p.id}" value="${p.desconto_percentual ?? ''}" placeholder="0">%</span>
+        </label>
+      </div>
+      <div class="ed-preco-final">
+        <b data-valor-final="${p.id}">${fmt(valorComDesconto(p))}</b>/mês
+        <span class="u-dim">${p.compromisso_meses === 1 ? 'cobrado todo mês' : `· cobrado <b data-total-ciclo="${p.id}">${fmt(valorComDesconto(p) * p.compromisso_meses)}</b> a cada ${p.compromisso_meses} meses`}</span>
+      </div>
+
+      <ul class="ed-lista">
+        <li class="ed-freq">
+          <input type="number" min="1" max="60" ${contrato('frequencia_hora', p)} value="${p.frequencia_hora}" aria-label="Frequência por hora">x por hora em cada ponto
+        </li>
+      </ul>
+      <div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div>
+
+      <div class="ed-tecnicos">
+        <label>Criativos<input type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></label>
+        <label title="Vazio = sem teto de vagas">Vagas<input type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></label>
+        <label title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele">Tela após<input type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-"></label>
+        <label title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano">Comodato %<input type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-"></label>
+        <label class="chip-check" title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço">
+          <input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''}> Preço travado
+        </label>
+      </div>
+
+      <button class="btn primary block" data-nova-versao="${p.id}" disabled>Salvar novo plano</button>
+      <p class="ed-id">${esc(p.id)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</p>
+    </div>`;
 
   el.innerHTML = `
     <details class="bloco-novo">
@@ -1828,13 +1861,13 @@ async function renderPlanos(el) {
       <div class="panel-head u-m-0 u-mt-24 u-mb-10">
         <h3>${CICLOS[meses]} <span class="badge ${ativos >= 3 ? 'badge-err' : 'badge-ok'} u-ml-6">${ativos}/3 na vitrine</span></h3>
       </div>
-      ${doCiclo.length ? `<div class="tabela-caixa"><div class="rolagem"><table><thead>${cabecalho}</thead><tbody>${doCiclo.map(linhaPlano).join('')}</tbody></table></div></div>` : '<p class="empty-state u-py-6">Nenhum plano nessa modalidade.</p>'}`;
+      ${doCiclo.length ? `<div class="planos-edit-grade">${doCiclo.map(cartaoPlano).join('')}</div>` : '<p class="empty-state u-py-6">Nenhum plano nessa modalidade.</p>'}`;
       })
       .join('')}
 
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      <b>Plano assinado é imutável pra quem assinou.</b> Nome, preço cheio, desconto, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
-      editar um deles acende "Publicar nova versão", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
+      <b>Plano assinado é imutável pra quem assinou.</b> Nome, preço cheio, desconto, frequência, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
+      editar um deles acende "Salvar novo plano", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
       O valor cobrado é sempre calculado (preço cheio menos o desconto). Sem desconto, o preço cheio é o valor cobrado, e o site não mostra preço riscado.
       Vagas, rótulo, destaque e Ativo são só vitrine. Salvam na hora e não alcançam ninguém que já é cliente.
       Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
@@ -1848,9 +1881,12 @@ async function renderPlanos(el) {
     if (inp.dataset.campo === 'nome' || inp.dataset.campo === 'rotulo') return inp.value || null;
     return inp.value === '' ? null : Number(inp.value);
   };
+  // O botão fica sempre no pé do cartão (como o "Assinar" da vitrine), só
+  // que desligado até algo de contrato mudar — botão que some é botão que o
+  // dono procura, e botão sempre clicável convida a publicar versão à toa.
   const acenderBotao = (id) => {
     const btn = el.querySelector(`[data-nova-versao="${id}"]`);
-    if (btn) btn.hidden = false;
+    if (btn) btn.disabled = false;
   };
 
   el.querySelectorAll('[data-grupo="vitrine"]').forEach((inp) => {
@@ -1874,7 +1910,10 @@ async function renderPlanos(el) {
       const desconto = Number(linha.querySelector('[data-desconto]').value) || 0;
       const final = Math.round(cheio * (1 - desconto / 100) * 100) / 100;
       linha.querySelector('[data-valor-final]').textContent = fmt(final);
-      linha.querySelector('[data-total-ciclo]').textContent = fmt(final * Number(linha.dataset.ciclo));
+      // Plano mensal não imprime total do ciclo (seria o mesmo número duas
+      // vezes), então aqui o elemento pode não existir.
+      const total = linha.querySelector('[data-total-ciclo]');
+      if (total) total.textContent = fmt(final * Number(linha.dataset.ciclo));
     });
   });
 

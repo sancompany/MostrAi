@@ -134,7 +134,15 @@ function ligarForcaSenha(escopo) {
     const dica = document.createElement('p');
     dica.className = 'form-hint';
     dica.textContent = 'Mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo (ex.: @, #, -).';
-    (input.closest('.senha-wrap') || input).insertAdjacentElement('afterend', dica);
+    // A dica sai DEPOIS da linha de campos, não dentro da coluna da senha:
+    // presa na coluna, ela herdava a largura do campo (140px no celular) e
+    // a frase virava quatro linhas espremidas ao lado do "Confirmar senha".
+    // Ela vale pro par inteiro, então ocupa a largura inteira.
+    dica.dataset.dicaSenha = '';
+    const ancora = input.closest('.field-row') || input.closest('.senha-wrap') || input;
+    if (!ancora.nextElementSibling?.hasAttribute?.('data-dica-senha')) {
+      ancora.insertAdjacentElement('afterend', dica);
+    }
     const conferir = () => {
       input.setCustomValidity(
         input.value && !REGRA_SENHA.test(input.value)

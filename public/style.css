@@ -32,7 +32,13 @@
   /* Cor de marca de terceiro — fixa por definição do WhatsApp, não é nossa. */
   --whatsapp: #25D366;
 
-  --radius: 14px;
+  --radius: 12px;
+  /* Botão e campo em cantos discretos, não em pílula. Pílula em botão de
+     ação larga (e em campo de formulário) lê como app de consumo; aqui se
+     assina contrato e se digita CNPJ. Selo e chip continuam redondos: ali a
+     pílula é o que diz "isto é um rótulo, não um botão". */
+  --radius-btn: 10px;
+  --radius-campo: 8px;
   --max: 1120px;
 }
 
@@ -117,7 +123,7 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
 }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 11px 20px; border-radius: 999px; font-weight: 600; font-size: .95rem;
+  padding: 12px 20px; border-radius: var(--radius-btn); font-weight: 600; font-size: .95rem;
   text-decoration: none; border: 1px solid transparent; cursor: pointer;
 }
 .btn.primary { background: var(--brand); color: var(--sobre-brand); }
@@ -236,11 +242,20 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .plan-card li { color: var(--text-dim); font-size: .92rem; padding-left: 22px; position: relative; }
 .plan-card li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
 
-.cycle-toggle { display: flex; justify-content: center; gap: 6px; margin: 0 0 32px; flex-wrap: wrap; }
-.cycle-toggle button {
-  background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
-  padding: 9px 16px; border-radius: 999px; font-size: .88rem; cursor: pointer; font-weight: 600;
+/* Segmentado, não quatro pílulas soltas: as quatro opções são a MESMA
+   escolha, e pílula separada no celular quebrava em duas linhas
+   desalinhadas. Numa caixa só, a quebra (quando acontece) fica dentro da
+   moldura e continua lendo como um controle. */
+.cycle-toggle {
+  display: flex; justify-content: center; gap: 4px; margin: 0 auto 32px; flex-wrap: wrap;
+  background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-btn);
+  padding: 4px; width: fit-content; max-width: 100%;
 }
+.cycle-toggle button {
+  background: transparent; border: 1px solid transparent; color: var(--text-dim);
+  padding: 9px 16px; border-radius: 8px; font-size: .88rem; cursor: pointer; font-weight: 600;
+}
+.cycle-toggle button:hover:not(.active) { color: var(--text); }
 .cycle-toggle button.active { background: var(--brand); border-color: var(--brand); color: var(--sobre-brand); }
 .cycle-toggle button[disabled] { opacity: .4; cursor: not-allowed; }
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
@@ -272,14 +287,33 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .field-row > .u-col { min-width: 0; }
 .card label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom: 5px; }
 .card input, .card select {
-  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text); padding: 10px 12px; font-size: .95rem;
+  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-campo);
+  color: var(--text); padding: 11px 12px; font-size: .95rem;
 }
 .card textarea {
-  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text); padding: 10px 12px; font-size: .95rem; font-family: inherit; resize: vertical;
+  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-campo);
+  color: var(--text); padding: 11px 12px; font-size: .95rem; font-family: inherit; resize: vertical;
 }
 .card input:focus, .card select:focus, .card textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/* CELULAR: o `min-width: 0` acima deixa a coluna encolher sem limite, e era o
+   que acontecia — a linha CEP / Rua / Número cabia em 292px virando campos de
+   67px, onde nem o próprio placeholder "00000-000" aparece inteiro. Encolher
+   não é o conserto; QUEBRAR é. Piso de 140px: duas colunas por linha no
+   celular (140+12+140 = 292, a largura exata do cartão), nunca três, nunca um
+   campo menor do que o dado que ele recebe. O popup de perfil segue livre pra
+   encolher (é ele que motivou o `min-width: 0`), porque a regra é só do
+   `.card` de página. */
+@media (max-width: 560px) {
+  .card { padding: 20px; }
+  .card .field-row > * { flex: 1 1 140px; min-width: 140px; }
+  /* Link de indicação e chave de aparelho são uma linha longa: dividindo a
+     largura com o botão ao lado, viravam quatro pedaços de URL quebrados no
+     meio da palavra. Ocupam a linha inteira, e o botão desce pra próxima. */
+  .card .field-row > .chave-box { flex-basis: 100%; }
+  /* Respiro pro botão de ação não nascer embaixo do balão do WhatsApp. */
+  main { padding-bottom: 72px; }
+}
 
 .contato-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
 @media (max-width: 860px) { .contato-grid { grid-template-columns: 1fr; } }
@@ -440,7 +474,11 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 
 /* Cartões de KPI no topo dos dashboards — número grande + rótulo, o padrão
    de qualquer painel SaaS. */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+/* 200px e não 160px: com cinco cartões, a coluna do painel cabia quatro e
+   deixava o quinto sozinho numa fileira, com um vão do lado — lê como
+   "faltou alguma coisa". Em três colunas a quebra vira 3+2, que lê como
+   bloco. */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
 @media (max-width: 460px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; } }
 .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
 .kpi-card .kpi-label { display: block; color: var(--text-dim); font-size: .8rem; margin-bottom: 6px; }
@@ -816,7 +854,22 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .u-ws-normal { white-space: normal; }
 .u-resize-v { resize: vertical; }
 .u-o-auto { overflow: auto; }
-.u-ox-auto { overflow-x: auto; }
+/* Tabela larga no celular rola pro lado, e a única pista disso era a última
+   coluna cortada no meio da palavra — que lê como quebrado, não como "tem
+   mais aqui". A sombra nas bordas aparece só quando há o que rolar naquele
+   lado, e some ao chegar no fim (background-attachment: local faz isso
+   sozinho, sem JS). */
+.u-ox-auto {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--card) 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(to right, rgba(255, 255, 255, 0), var(--card) 70%) right,
+    radial-gradient(farthest-side at 0 50%, rgba(20, 23, 31, 0.14), rgba(20, 23, 31, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(20, 23, 31, 0.14), rgba(20, 23, 31, 0)) right;
+  background-repeat: no-repeat;
+  background-size: 36px 100%, 36px 100%, 12px 100%, 12px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
 .u-op-55 { opacity: .55; }
 .u-op-60 { opacity: .6; }
 .u-d-block { display: block; }

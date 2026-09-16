@@ -63,9 +63,13 @@ async function criar(dados) {
 // vagas_restantes: só faz sentido em plano com teto de vagas (fundador) —
 // nos outros vem null. Conta assinaturas ativas naquele plano.
 async function listarAtivos({ incluirFundador = true } = {}) {
+  // Ordem da vitrine é por PREÇO, não pelo nome do tier: alfabético punha
+  // "Destaque" na frente de "Essencial" e o cliente lia a grade de trás pra
+  // frente (o do meio, mais escolhido, aparecia primeiro). Do mais barato
+  // pro mais caro, o destacado cai no centro — que é onde o mercado põe.
   const { rows } = await pool.query(
     `${SELECT_PLANO} WHERE p.ativo ${incluirFundador ? '' : 'AND NOT p.fundador'}
-     GROUP BY p.id ORDER BY p.fundador DESC, p.tier, p.compromisso_meses`,
+     GROUP BY p.id ORDER BY p.fundador DESC, p.compromisso_meses, p.valor_mensal, p.tier`,
   );
   for (const p of rows) {
     p.vagas_restantes = p.vagas == null ? null : Math.max(0, p.vagas - (await contarVagasOcupadas(p.id)));
@@ -97,8 +101,10 @@ async function contarVagasOcupadas(planoId, ignorarAnuncianteId) {
 // — misturada, a tela mostraria dois "Essencial anual" e o dono editaria o
 // errado.
 async function listarTodos() {
+  // Mesma ordem da vitrine (por preço, não pelo nome do tier): o editor do
+  // admin mostra os planos na posição em que o cliente vai vê-los.
   const { rows } = await pool.query(
-    `${SELECT_PLANO} WHERE p.arquivado_em IS NULL GROUP BY p.id ORDER BY p.compromisso_meses, p.tier`,
+    `${SELECT_PLANO} WHERE p.arquivado_em IS NULL GROUP BY p.id ORDER BY p.compromisso_meses, p.valor_mensal, p.tier`,
   );
   return rows;
 }

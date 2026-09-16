@@ -106,6 +106,86 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
 .bloco-novo { margin-bottom: 18px; }
 .bloco-novo > summary { display: inline-flex; cursor: pointer; }
 
+/* Editor de plano: o mesmo cartão da vitrine pública, com os campos
+   abertos. A grade, a moldura, a ordem (rótulo, nome, preço riscado,
+   preço grande, lista de benefícios, botão no pé) são as de lá — o que
+   muda é que cada texto é um campo, e o botão do pé salva em vez de
+   assinar. Assim o dono edita vendo o que o cliente vai ver. */
+.planos-edit-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+.plano-edit {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px; display: flex; flex-direction: column; gap: 10px; position: relative;
+}
+.plano-edit.popular { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); }
+/* Fora da vitrine: o cartão continua legível e editável, só deixa de
+   competir visualmente com os que estão no ar. */
+.plano-edit.fora { opacity: .72; background: var(--bg-alt); }
+.plano-edit-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-check {
+  display: inline-flex; align-items: center; gap: 6px; font-size: .75rem; font-weight: 600;
+  color: var(--text-dim); background: var(--bg-alt); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 10px; cursor: pointer; white-space: nowrap;
+}
+.chip-check input { accent-color: var(--brand); margin: 0; }
+.chip-check:has(input:checked) { color: var(--text); border-color: var(--brand); background: rgba(255,122,26,.10); }
+
+.plano-edit .ed-rotulo, .plano-edit .ed-nome {
+  width: 100%; border: 1px dashed var(--border); background: transparent; border-radius: 8px;
+  padding: 6px 8px; color: var(--text);
+}
+.plano-edit .ed-rotulo { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
+.plano-edit .ed-nome { font-size: 1.15rem; font-weight: 800; }
+.plano-edit .ed-rotulo:focus, .plano-edit .ed-nome:focus,
+.plano-edit .ed-campo input:focus, .plano-edit .ed-freq input:focus, .plano-edit .ed-tecnicos input:focus {
+  outline: 2px solid var(--brand); outline-offset: 1px; border-style: solid;
+}
+
+.ed-precos { display: flex; gap: 10px; flex-wrap: wrap; }
+.ed-campo { display: flex; flex-direction: column; gap: 3px; font-size: .72rem; color: var(--text-dim); font-weight: 600; }
+.ed-moeda {
+  display: inline-flex; align-items: center; gap: 3px; background: var(--bg-alt);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: .85rem; color: var(--text-dim);
+}
+.ed-moeda input { width: 74px; border: none; background: transparent; color: var(--text); font-size: .95rem; font-weight: 700; padding: 0; }
+.ed-campo:last-child .ed-moeda input { width: 48px; }
+.ed-moeda input:focus { outline: none; }
+.ed-precos:has(input:focus) .ed-moeda:has(input:focus) { border-color: var(--brand); }
+.ed-preco-final { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+.ed-preco-final span { display: block; font-size: .76rem; font-weight: 500; margin-top: 2px; }
+
+.plano-edit .ed-lista { list-style: none; padding: 0; margin: 2px 0 0; }
+.plano-edit .ed-freq {
+  display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--text-dim);
+  padding-left: 20px; position: relative;
+}
+.plano-edit .ed-freq::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
+.plano-edit .ed-freq input {
+  width: 52px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 6px; font-size: .85rem; color: var(--text); font-weight: 700;
+}
+
+.ed-tecnicos {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+  border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px;
+}
+.ed-tecnicos > label { display: flex; flex-direction: column; gap: 3px; font-size: .7rem; color: var(--text-dim); font-weight: 600; }
+.ed-tecnicos > label input[type="number"] {
+  width: 62px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 6px; font-size: .8rem; color: var(--text);
+}
+/* Sem teto de altura aqui: a lista rolável cortava o último benefício ao
+   meio, e meia linha de texto dentro de um cartão de preço lê como bug. */
+.plano-edit .benef-lista { max-height: none; overflow: visible; }
+/* O `flex-direction: column` dos campos técnicos pegava também o chip e
+   empilhava caixinha em cima do texto, virando uma pílula torta. */
+.ed-tecnicos .chip-check { flex-direction: row; flex: 0 0 auto; margin-top: 4px; }
+/* Desligado não fica laranja lavado: vira botão neutro, e só ganha a cor de
+   ação quando há de fato algo novo pra salvar. */
+.plano-edit .btn[disabled] {
+  background: var(--bg-alt); color: var(--text-dim); border-color: var(--border); cursor: not-allowed;
+}
+.ed-id { margin: 0; font-size: .7rem; color: var(--text-dim); text-align: center; }
+
 @media (max-width: 900px) {
   .admin-shell { grid-template-columns: 1fr; }
   .admin-side { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 0; }
