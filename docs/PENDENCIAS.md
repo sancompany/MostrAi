@@ -78,7 +78,22 @@ esteira é só o item 8.
      trava a cobrança nem a ativação da conta (RUNBOOK.md já documenta isso).
    · **Só o dono faz** — é a conta Google dele, ninguém mais tem acesso.
 
-## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
+10. **Decidir se `pontos.horario_abertura`/`horario_fechamento` podem ser
+    dropadas.** *(Achado em 16/09/2026, na varredura pedida pelo dono depois
+    de várias funcionalidades saírem do sistema — "verifique se sobrou
+    alguma coisa delas".)*
+    · **Por que ficaram órfãs:** essas duas colunas só tinham UM consumidor —
+      `horasAbertoPorDia()`, em `src/playlist/gerador.js`, que convertia a
+      frequência "por dia" do plano pro horário real do ponto. Essa função
+      foi removida na migration 037 (frequência virou "por hora", direta,
+      sem conversão nenhuma — pedido do dono, 15/09/2026). Ninguém mais lê
+      essas duas colunas em lugar nenhum do código, e **não existe, nem
+      nunca existiu, campo no admin pra preenchê-las** — são graváveis só
+      por chamada direta à API, que nenhuma tela faz.
+    · **Não é urgente nem some nada visível** — hoje elas só ocupam espaço,
+      não confundem ninguém porque não aparecem em tela nenhuma.
+    · Como é DROP de coluna, segue a regra do projeto: só com autorização
+      explícita do dono, numa migration própria (não fiz sozinho).
 
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
 Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
