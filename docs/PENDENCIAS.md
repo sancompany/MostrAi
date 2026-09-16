@@ -1243,53 +1243,58 @@ qualquer erro de lógica, principalmente na playlist".)*
 · Os outros achados **não viraram código**, porque mexem no que os planos
   vendem: estão logo abaixo, como decisão do dono.
 
-**23. [ ] DECISÃO DO DONO — a frequência que o plano vende não é a que a
-tela entrega.** *(Achado em 16/09/2026, na varredura da playlist. Simulado
-com as funções reais de `src/lib/pacing.js`.)*
-· **O que acontece:** o gerador monta uma LISTA com `frequencia_hora`
-  cópias de cada anunciante, e o player (`public/player.page.js`) toca essa
-  lista em laço: `indice = (indice + 1) % playlist.length`. A lista não tem
-  relação com os 3600 segundos da hora. Então a frequência entregue é
-  "quantas voltas cabem na hora", não o número vendido.
-· **Medido**, vídeo de 20s:
+**23. [x] A frequência que o plano vende agora é a que a tela entrega.**
+**FEITO em 16/09/2026**, depois do "procure uma solução pra isso".
+· **O furo:** o gerador montava uma lista com `frequencia_hora` cópias de cada
+  anunciante e o player tocava a lista em LAÇO. A lista não tinha relação
+  nenhuma com os 3600 segundos da hora, então a frequência entregue era
+  "quantas voltas cabem na hora". Um anunciante na rede: vendia 3, entregava
+  **180**. Trinta anunciantes: vendia 12, entregava 5. O produto piorava 36×
+  conforme a rede desse certo.
+· **A solução: a hora virou um orçamento de 3600 segundos**, gasto nesta
+  ordem — exibição contratada, cota do dono do ponto, e o resto vira espaço
+  vago. O espaço vago é preenchido com a peça institucional que o player JÁ
+  TINHA (`#vazio`, "Este espaço pode ser do seu negócio"), então o inventário
+  não vendido passa a vender a própria rede em vez de repetir de graça o
+  anúncio de quem pagou por três.
+· **As exibições são espalhadas pela hora**, não sorteadas: três vezes por
+  hora amontoadas em cinco minutos não é três vezes por hora.
+· **Medido depois**, vídeo de 20s:
 
-  | cenário | lista | voltas na hora | Essencial vende | entrega |
-  |---|---|---|---|---|
-  | 1 anunciante (o lançamento) | 3 itens = 60s | 60 | 3x/h | **180x/h** |
-  | Essencial + Destaque + Máximo | 21 itens = 420s | 8,6 | 3x/h | **25x/h** |
-  | 30 anunciantes (teto de 200) | 200 itens = 4000s | 0,9 | 12x/h | 5x/h |
+  | cenário | vende | entregava | entrega agora |
+  |---|---|---|---|
+  | 1 anunciante | 3x/h | 180x/h | **3x/h** |
+  | Essencial + Destaque + Máximo | 3 / 6 / 12 | 25 / 49 / 106 | **3 / 6 / 12** |
+  | 30 anunciantes (rede vendida) | 12x/h | 5x/h | 6x/h, e o corte vira evento |
 
-· **O que quebra junto:** `vezes_programadas` e `vezes_confirmadas` deixam de
-  ser comparáveis (o painel mostra "programadas 3, confirmadas 180");
-  `custoPorExibicao` divide pelas confirmadas e despenca quanto MAIS vazia a
-  rede estiver, que é o contrário da verdade; e a RN-10 (compensar déficit da
-  hora anterior) nunca dispara, porque confirmadas > programadas quase sempre.
-· **A proporção entre os planos se mantém** (25 / 49 / 106 ≈ 3 / 6 / 12), então
-  a escada de preço continua fazendo sentido como FATIA da rotação. O que não
-  se sustenta é o número absoluto que a vitrine imprime: "3x por hora em cada
-  ponto".
-· **As duas saídas, e nenhuma é código antes de o dono escolher:**
-  1. **A vitrine passa a vender fatia**, não número fixo ("no mínimo 3x por
-     hora, e o resto da hora você continua no rodízio"). O comportamento da
-     tela não muda; muda o texto e o painel passa a programar a hora inteira,
-     o que torna programadas × confirmadas comparáveis de novo.
-  2. **O player passa a respeitar o número vendido**, espaçando as exibições
-     dentro da hora. Aí é preciso decidir o que ocupa o resto do tempo numa
-     rede vazia — tela institucional do Mostraí, provavelmente (a RN já prevê
-     "playlist sem itens → tela institucional, nunca tela preta").
-  · Minha recomendação é a **1**: é a que descreve o que a tela já faz, não
-    joga tempo de tela fora numa rede vazia, e o ajuste é de texto e de
-    contagem, não do motor.
+· **Efeito colateral bom:** `vezes_programadas` e `vezes_confirmadas` voltaram
+  a ser comparáveis, então o déficit da RN-10 volta a funcionar e o custo por
+  exibição para de despencar quanto mais vazia a rede estiver.
+· **A vitrine não mudou uma palavra** — ela já dizia "3x por hora em cada
+  ponto". O que mudou foi a tela passar a cumprir.
+· **O que o dono precisa saber:** no lançamento, o anunciante deixa de receber
+  180 exibições por hora e passa a receber as 3 que comprou. Hoje isso não
+  atinge ninguém (a única assinatura viva é a conta de teste do próprio dono),
+  e é por isso que este era o momento de consertar. A alternativa — entregar o
+  excedente como bônus declarado — está registrada na RN-39 com o motivo de
+  não ter sido escolhida.
+· **O player agora acorda na virada da hora**, com atraso de alguns segundos
+  derivado da chave do aparelho. Sem isso a TV tocaria até 15 minutos da hora
+  anterior enquanto o servidor já contava na hora nova, e a conta não fechava.
+  O atraso por chave evita que a rede inteira bata no servidor no mesmo
+  segundo.
+· Telas trocadas: `src/lib/pacing.js` (reescrito), `src/playlist/gerador.js`,
+  `public/player.page.js`, `public/player.css`, `tests/pacing.test.js`
+  (16 testes, dos quais 12 novos). RN-09, RN-10, RN-39 e RN-40 em
+  `docs/funcional.md`.
 
-**24. [ ] DECISÃO DO DONO — o teto da playlist está em slots, deveria estar
-em segundos.** *(Mesma varredura.)* A RN-09 diz "200 slots por hora, trava
-sobre os 240 slots teóricos" — e 240 só existe se todo vídeo tiver 15s. A
-vitrine aceita de 15 a 30 segundos. Com 30s, 200 slots são 6000 segundos numa
-hora de 3600: **metade do que foi programado não cabe**, e a sobra vira
-déficit permanente que a hora seguinte nunca consegue pagar (simulado: o
-déficit fica oscilando em 1 a 4 por hora, para sempre). O teto deveria contar
-a duração real dos criativos até fechar 3600s. Fica junto do item 23 porque
-as duas mudanças mexem na mesma conta e seria retrabalho fazer em separado.
+**24. [x] O teto da playlist passou de slots para segundos.** **FEITO junto do
+item 23** — era a mesma conta. A RN-09 antiga dizia "200 slots por hora, trava
+sobre os 240 slots teóricos", e os 240 só existiam com vídeo de 15s. Com 30s,
+200 slots davam 6000 segundos numa hora de 3600: metade do programado não
+cabia e virava déficit que a hora seguinte nunca quitava (medido: déficit
+oscilando em 1 a 4 por hora, para sempre). Agora o orçamento é 3600s e o
+déficit fica em zero nas mesmas condições.
 
 **25. [ ] Exibição tocada offline nunca é contada.** *(Mesma varredura.)* O
 player toca do cache quando a internet cai — está escrito na tela, "offline,
@@ -1330,7 +1335,7 @@ as telas ativas".
 
 ---
 
-**Onde a lista está em 16/09/2026 (fim do dia).** Dos 28 itens, 19 estão
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 28 itens, 21 estão
 `[x]`. Os três que faltam **não dependem de escrever código aqui**:
 
 - **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no

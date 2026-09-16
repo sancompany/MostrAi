@@ -14,7 +14,11 @@ body.sem-playlist #msg { color: #d3d8de; }
    vê de graça. Vive dentro do #stage pra girar junto com o vídeo (a TV fica
    deitada e o conteúdo é vertical). */
 #vazio { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #fff; }
-body.sem-playlist #vazio { display: flex; }
+/* Duas situações mostram a mesma peça: playlist vazia (nenhum anúncio
+   programado) e inventário vago no meio da hora vendida — o espaço que ainda
+   não foi comprado. Nos dois casos o que a TV mostra é o convite pra ocupar
+   aquele espaço. */
+body.sem-playlist #vazio, body.institucional #vazio { display: flex; }
 .vazio-cartao { text-align: center; padding: 6vmin; max-width: 80%; }
 #vazio img { width: 26vmin; display: block; margin: 0 auto 4vmin; }
 .vazio-marca { margin: 0 0 6vmin; font: 700 4.5vmin/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #14171f; }

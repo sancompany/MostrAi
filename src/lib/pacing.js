@@ -1,8 +1,55 @@
-// Cálculo puro de frequência/compensação — sem acesso a banco, testável
-// isolado (tests/pacing.test.js). Quem busca os dados e grava o resultado é
+// Cálculo puro da hora de uma tela — sem acesso a banco, testável isolado
+// (tests/pacing.test.js). Quem busca os dados e grava o resultado é
 // src/playlist/gerador.js.
+//
+// A UNIDADE DA HORA É O SEGUNDO, NÃO O SLOT.
+//
+// Até 16/09/2026 este arquivo contava slots: montava uma lista com
+// `frequencia_hora` cópias de cada anunciante e devolvia. A lista não tinha
+// nenhuma relação com os 3600 segundos da hora, e o player
+// (public/player.page.js) toca a lista em LAÇO — `indice = (indice + 1) %
+// playlist.length`. O resultado, medido: com um anunciante só na rede, o
+// plano Essencial vendia 3 exibições por hora e a tela entregava 180. Com a
+// rede cheia, o MESMO plano entregava 5. Ou seja, o que o cliente recebia não
+// era o que ele comprou, e piorava conforme a rede desse certo — o pior
+// desenho possível pra um produto que se vende por frequência.
+//
+// Agora a hora é um orçamento de 3600 segundos, gasto nesta ordem:
+//   1. exibição contratada (frequência do plano + déficit da hora anterior);
+//   2. cota de autoanúncio do dono do ponto (permuta do comodato);
+//   3. o que sobrar vira a peça institucional do próprio player, que já
+//      existe (#vazio em public/player.html) e já diz "este espaço pode ser
+//      do seu negócio" — inventário vago que anuncia a si mesmo.
+//
+// Com a hora cheia, a lista tem a duração da hora e o laço do player deixa de
+// inflar nada: `vezes_programadas` volta a ser comparável com
+// `vezes_confirmadas`, o déficit da RN-10 volta a fazer sentido, e o número
+// que a vitrine imprime passa a ser o número que a tela entrega, com a rede
+// vazia ou cheia.
 
-const LIMITE_SLOTS_PROGRAMADOS = 200; // trava de segurança (SPEC módulo 3, de 240 slots/hora)
+const SEGUNDOS_DA_HORA = 3600;
+
+// Duração da peça institucional que preenche o inventário vago. Não é vídeo:
+// é o cartão HTML do próprio player, então o número é escolha nossa. Dez
+// segundos é o suficiente pra ler "este espaço pode ser do seu negócio" sem
+// virar tela parada.
+const DURACAO_INSTITUCIONAL = 10;
+
+// Criativo sem duração declarada (upload que o ffmpeg não mediu) entra com um
+// valor do meio da faixa que a vitrine aceita, 15 a 30s. O piso existe porque
+// uma duração absurda (0, negativa, 1s) transformaria a hora em milhares de
+// itens.
+const DURACAO_MINIMA = 5;
+const DURACAO_PADRAO = 20;
+
+// Id reservado dos itens institucionais. Não é anunciante: não gera contador,
+// não gera cobrança, não aparece em relatório de entrega.
+const ID_INSTITUCIONAL = '__institucional';
+
+function duracaoValida(valor) {
+  const n = Number(valor);
+  return Number.isFinite(n) && n >= DURACAO_MINIMA ? n : DURACAO_PADRAO;
+}
 
 function embaralhar(lista) {
   const copia = [...lista];
@@ -13,55 +60,108 @@ function embaralhar(lista) {
   return copia;
 }
 
-// anunciantes: [{ id, frequenciaBase, deficit }] → lista de ids repetidos
-// representando a playlist da hora (já embaralhada e com o teto aplicado)
-function calcularPlaylist(anunciantes) {
+// Espalha as exibições contratadas ao longo da hora em vez de sortear a
+// ordem. Sortear era aceitável quando a lista inteira era paga e dava uma
+// volta a cada poucos minutos; agora a lista é a hora inteira, e no sorteio as
+// 3 exibições do Essencial podiam cair todas nos primeiros cinco minutos. Três
+// vezes por hora amontoadas em cinco minutos não é três vezes por hora.
+//
+// Cada anunciante recebe as posições ideais (i + 0,5) * total / n e vai pra
+// vaga livre mais próxima. Quem tem mais exibições é colocado primeiro, porque
+// é quem tem menos folga pra ser empurrado.
+function espalhar(grupos, total) {
+  const vagas = new Array(total).fill(null);
+  const porTamanho = [...grupos].sort((a, b) => b.quantidade - a.quantidade);
+
+  for (const grupo of porTamanho) {
+    for (let i = 0; i < grupo.quantidade; i++) {
+      const ideal = Math.min(total - 1, Math.floor(((i + 0.5) * total) / grupo.quantidade));
+      let posicao = -1;
+      for (let d = 0; d < total; d++) {
+        if (ideal - d >= 0 && vagas[ideal - d] === null) {
+          posicao = ideal - d;
+          break;
+        }
+        if (ideal + d < total && vagas[ideal + d] === null) {
+          posicao = ideal + d;
+          break;
+        }
+      }
+      if (posicao >= 0) vagas[posicao] = grupo.id;
+    }
+  }
+  return vagas;
+}
+
+// anunciantes: [{ id, frequenciaBase, deficit, duracaoSegundos }]
+//
+// Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
+// `programados` conta só quem ocupa inventário de verdade — o institucional
+// fica de fora de propósito, porque ele não é entrega de ninguém.
+function montarHoraDeTv(anunciantes) {
   const pedidos = embaralhar(
     anunciantes.map((a) => ({
       id: a.id,
+      duracao: duracaoValida(a.duracaoSegundos),
       quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
     })),
-  );
-  const total = pedidos.reduce((soma, p) => soma + p.quer, 0);
+  ).filter((p) => p.quer > 0);
 
-  // O teto era aplicado com um `slice` na lista já sorteada: quem ficasse pra
-  // depois do item 200 simplesmente perdia as exibições daquela hora, e quem
-  // perdia era sorteio. Com a rede cheia, um anunciante podia terminar a hora
-  // com muito menos que a frequência que contratou enquanto outro ficava com
-  // tudo — e nada em lugar nenhum dizia que isso tinha acontecido.
-  //
-  // Agora o corte é proporcional: cada um perde a mesma fração do que pediu.
-  // O que sobra da divisão vai para os maiores restos (regra dos maiores
-  // restos), e a lista já vem embaralhada, então empate não favorece sempre o
-  // mesmo. `cortou` sai junto pra quem chama poder registrar o aperto.
-  const cortou = total > LIMITE_SLOTS_PROGRAMADOS;
+  const pedidoSegundos = pedidos.reduce((soma, p) => soma + p.quer * p.duracao, 0);
+  const cortou = pedidoSegundos > SEGUNDOS_DA_HORA;
+
   if (cortou) {
-    const fator = LIMITE_SLOTS_PROGRAMADOS / total;
+    // A hora não cabe em todo mundo. O corte é proporcional (cada um perde a
+    // mesma fração do que pediu) e a sobra vai pros maiores restos, como já
+    // era — só que medida em segundos, que é o que a hora realmente tem.
+    const fator = SEGUNDOS_DA_HORA / pedidoSegundos;
     for (const p of pedidos) {
       const exato = p.quer * fator;
       p.cabe = Math.floor(exato);
       p.resto = exato - p.cabe;
     }
-    let sobra = LIMITE_SLOTS_PROGRAMADOS - pedidos.reduce((soma, p) => soma + p.cabe, 0);
-    const porResto = [...pedidos].sort((x, y) => y.resto - x.resto);
-    for (let i = 0; i < porResto.length && sobra > 0; i++, sobra--) porResto[i].cabe += 1;
+    let livres = SEGUNDOS_DA_HORA - pedidos.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
+    for (const p of [...pedidos].sort((x, y) => y.resto - x.resto)) {
+      if (p.duracao <= livres) {
+        p.cabe += 1;
+        livres -= p.duracao;
+      }
+    }
   } else {
     for (const p of pedidos) p.cabe = p.quer;
   }
 
-  const itens = [];
-  for (const p of pedidos) {
-    for (let i = 0; i < p.cabe; i++) itens.push(p.id);
-  }
-  return embaralhar(itens);
-}
+  const comExibicao = pedidos.filter((p) => p.cabe > 0);
+  const segundosContratados = comExibicao.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
+  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados);
+  const qtdInstitucional = Math.floor(segundosLivres / DURACAO_INSTITUCIONAL);
 
-// Quanto do que foi pedido cabe no teto da hora. Quem chama usa pra saber que
-// a hora apertou — o corte proporcional e justo, mas continua sendo entrega
-// menor do que a contratada, e isso precisa aparecer em algum lugar.
-function pedidoDaHora(anunciantes) {
-  const pedido = anunciantes.reduce((soma, a) => soma + Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)), 0);
-  return { pedido, cabe: Math.min(pedido, LIMITE_SLOTS_PROGRAMADOS), cortou: pedido > LIMITE_SLOTS_PROGRAMADOS };
+  const itensPagos = comExibicao.reduce((soma, p) => soma + p.cabe, 0);
+  const total = itensPagos + qtdInstitucional;
+
+  const vagas = total
+    ? espalhar(
+        comExibicao.map((p) => ({ id: p.id, quantidade: p.cabe })),
+        total,
+      )
+    : [];
+
+  const programados = {};
+  for (const p of comExibicao) programados[p.id] = p.cabe;
+
+  return {
+    itens: vagas.map((id) => id ?? ID_INSTITUCIONAL),
+    programados,
+    segundosContratados,
+    segundosInstitucionais: qtdInstitucional * DURACAO_INSTITUCIONAL,
+    qtdInstitucional,
+    pedidoSegundos,
+    cabeSegundos: Math.min(pedidoSegundos, SEGUNDOS_DA_HORA),
+    cortou,
+    // Quanto da hora está vendido. É o número que diz se a rede tem inventário
+    // pra vender ou se já está na hora de subir preço ou abrir mais ponto.
+    ocupacao: Math.round((segundosContratados / SEGUNDOS_DA_HORA) * 100),
+  };
 }
 
 function contarPorAnunciante(itens) {
@@ -79,4 +179,14 @@ function dividirCota(cotaDoPonto, telasAtivas) {
   return cota === 0 ? 0 : Math.ceil(cota / telas);
 }
 
-module.exports = { calcularPlaylist, contarPorAnunciante, dividirCota, pedidoDaHora, LIMITE_SLOTS_PROGRAMADOS };
+module.exports = {
+  montarHoraDeTv,
+  contarPorAnunciante,
+  dividirCota,
+  duracaoValida,
+  espalhar,
+  SEGUNDOS_DA_HORA,
+  DURACAO_INSTITUCIONAL,
+  DURACAO_PADRAO,
+  ID_INSTITUCIONAL,
+};

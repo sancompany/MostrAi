@@ -38,7 +38,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 6. Paga. O webhook `criada` chega, a conta vira `ativo` e a cobertura começa.
 7. Sobe o vídeo na aba **Anúncios**. O sistema normaliza com ffmpeg e gera a thumb.
 8. O administrador aprova o criativo — esse é o único portão que existe.
-9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano.
+9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano — e é essa frequência que a tela entrega, com a rede vazia ou cheia (RN-39).
 10. O anunciante acompanha exibições na própria aba.
 
 ### 2.2 Dono de ponto — da candidatura à tela no ar
@@ -202,23 +202,51 @@ dividida entre as telas dele. *Violada:* não há caminho. *Quem vê:* —
 aparelho, revogável no admin. O PIN de 4 a 6 dígitos abre **apenas** o painel
 daquela tela. *Violada:* 401 no player. *Quem vê:* quem está na frente da TV.
 
-**RN-09 — A playlist tem teto de 200 slots por hora.** Trava de segurança sobre
-os 240 slots teóricos. *Violada:* o gerador corta o excedente (proporcional,
-regra dos maiores restos). *Quem vê:* ninguém — é proteção silenciosa, mas o
-aperto vira o evento `playlist:teto_corta`.
-> **Ressalva levantada em 16/09/2026, sem decisão ainda** (`docs/PENDENCIAS.md`,
-> item 24): os 240 teóricos só valem com vídeo de 15s. A vitrine aceita de 15 a
-> 30 segundos, e com 30s os 200 slots são 6000 segundos numa hora de 3600 — não
-> cabem. O teto deveria contar duração, não quantidade.
+**RN-09 — A hora da tela é um orçamento de 3600 segundos.** A playlist de cada
+hora é montada gastando esse orçamento, nesta ordem: exibição contratada
+(frequência do plano + déficit da hora anterior), cota de autoanúncio do dono
+do ponto, e o que sobrar vira espaço vago. Quando o contratado passa de 3600s
+o corte é proporcional (regra dos maiores restos) e o aperto vira o evento
+`playlist:teto_corta`; a partir de 80% de ocupação sai o aviso antecipado
+`playlist:hora_quase_cheia`. *Violada:* o gerador corta. *Quem vê:* o dono, na
+métrica — é o sinal de que a rede está vendida e é hora de subir preço ou
+abrir ponto.
+> Até 16/09/2026 o teto era de **200 slots**, não de segundos, e os "240 slots
+> teóricos" só existiam com vídeo de 15s. Com 30s, 200 slots davam 6000
+> segundos numa hora de 3600: metade do programado não cabia e virava déficit
+> que a hora seguinte nunca quitava.
 
 **RN-10 — A frequência compensa déficit da hora anterior.** Quem ficou devendo
-exibição recebe a mais na hora seguinte. *Violada:* não há caminho.
-*Quem vê:* o anunciante, na contagem de exibições.
-> **Ressalva levantada em 16/09/2026, sem decisão ainda** (`docs/PENDENCIAS.md`,
-> item 23): o player toca a playlist em LAÇO, então na prática as confirmadas
-> costumam passar as programadas e o déficit fica sempre em zero — esta regra
-> quase nunca dispara. No caso oposto (item 24) ela dispara para sempre, sem
-> conseguir quitar.
+exibição recebe a mais na hora seguinte, dentro do orçamento da RN-09.
+*Violada:* não há caminho. *Quem vê:* o anunciante, na contagem de exibições.
+
+**RN-39 — A frequência vendida é a frequência entregue, cheia ou vazia a
+rede.** O plano vende "Nx por hora em cada ponto" e a tela entrega exatamente
+N, independente de quantos outros anunciantes existam. As N exibições são
+espalhadas ao longo da hora, não sorteadas — três vezes por hora amontoadas em
+cinco minutos não é três vezes por hora. *Violada:* só pela RN-09, quando a
+rede enche e o corte proporcional entra; aí todos entregam menos, na mesma
+proporção. *Quem vê:* o anunciante, no painel.
+> **O furo que isto fechou** (medido em 16/09/2026): o gerador montava uma
+> lista com N cópias de cada anunciante e o player tocava essa lista em LAÇO
+> (`indice = (indice + 1) % playlist.length`). A lista não tinha relação
+> nenhuma com os 3600 segundos da hora, então a frequência entregue era
+> "quantas voltas cabem na hora". Com um anunciante só na rede, o Essencial
+> vendia 3 e a tela entregava **180**; com 30 anunciantes, o Máximo vendia 12 e
+> entregava 5. O produto piorava 36× conforme a rede desse certo — e
+> `vezes_programadas` e `vezes_confirmadas` nem eram comparáveis.
+> **A alternativa que NÃO foi escolhida:** entregar o excedente como bônus e
+> mostrar "3 contratadas + N de bônus" no painel. Foi descartada porque treina
+> o cliente a esperar o número do lançamento, que a rede não consegue manter
+> quando enche — a mesma degradação, só que combinada.
+
+**RN-40 — Espaço vago da hora anuncia a própria rede.** Os segundos que
+ninguém comprou são preenchidos com a peça institucional do player (`#vazio`
+em `public/player.html`, a mesma que aparece quando não há playlist): "Este
+espaço pode ser do seu negócio". Dez segundos por peça. Não tem url, não é de
+ninguém, não conta exibição e não entra em relatório de entrega. *Violada:*
+não há caminho — a tela nunca fica preta nem parada. *Quem vê:* quem está na
+frente da TV, que é exatamente o público que a Mostraí quer vender.
 
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para

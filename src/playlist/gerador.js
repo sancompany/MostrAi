@@ -1,5 +1,11 @@
 const pool = require('../db/pool');
-const { calcularPlaylist, contarPorAnunciante, dividirCota, pedidoDaHora } = require('../lib/pacing');
+const {
+  montarHoraDeTv,
+  dividirCota,
+  duracaoValida,
+  ID_INSTITUCIONAL,
+  DURACAO_INSTITUCIONAL,
+} = require('../lib/pacing');
 const eventos = require('../lib/eventos');
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
@@ -76,6 +82,14 @@ async function criativosDoDono(contaId) {
   return rows;
 }
 
+// Quem reveza entre peças de durações diferentes ocupa, ao longo da hora, a
+// média delas. Média e não a primeira: a rotação passa por todas.
+function duracaoMedia(criativos) {
+  if (!criativos?.length) return undefined;
+  const soma = criativos.reduce((t, c) => t + duracaoValida(c.duracaoSegundos), 0);
+  return Math.round(soma / criativos.length);
+}
+
 async function deficitHoraAnterior(dispositivoId, horaAnterior) {
   const { rows } = await pool.query(
     `SELECT anunciante_id, GREATEST(vezes_programadas - vezes_confirmadas, 0) AS deficit
@@ -119,10 +133,15 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
   // horário do ponto. O que o plano diz é o que roda, hora a hora.
+  //
+  // A duração entra junto porque a hora passou a ser orçada em SEGUNDOS
+  // (src/lib/pacing.js): quem revezar entre peças de durações diferentes ocupa
+  // a média delas, que é o que de fato acontece ao longo da hora.
   const entrada = anunciantes.map((a) => ({
     id: a.id,
     frequenciaBase: Number(a.frequencia_hora) || 0,
     deficit: deficits[a.id] || 0,
+    duracaoSegundos: duracaoMedia(a.criativos),
   }));
 
   // Dono do ponto entra com a fatia da cota que cabe a esta tela. Não conta
@@ -130,31 +149,51 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   if (doDono.length && cotaDaTela > 0) {
     porId.dono = { criativos: doDono };
-    entrada.push({ id: 'dono', frequenciaBase: cotaDaTela, deficit: 0 });
+    entrada.push({ id: 'dono', frequenciaBase: cotaDaTela, deficit: 0, duracaoSegundos: duracaoMedia(doDono) });
   }
 
-  // Teto de 200 slots/hora: quando o pedido passa disso, todo mundo entrega
-  // menos do que contratou. O corte e proporcional (src/lib/pacing.js), mas
-  // continua sendo entrega menor — e antes nao havia sinal nenhum disso em
-  // lugar nenhum. Vira evento da metrica, que e onde o dono olha.
-  const aperto = pedidoDaHora(entrada);
-  if (aperto.cortou) {
+  const daHora = montarHoraDeTv(entrada);
+
+  // A hora não coube em todo mundo: todos entregam menos do que contrataram.
+  // O corte é proporcional, mas continua sendo entrega menor, e sem isto não
+  // haveria sinal nenhum em lugar nenhum. Vira evento da métrica, que é onde
+  // o dono olha — e é também o aviso de que a rede está vendida e é hora de
+  // subir preço ou abrir ponto novo.
+  if (daHora.cortou) {
     eventos.registrar('playlist:teto_corta', {
       dispositivo_id: dispositivo.id,
       ponto_id: dispositivo.ponto_id,
-      pedido: aperto.pedido,
-      cabe: aperto.cabe,
+      pedido_segundos: daHora.pedidoSegundos,
+      cabe_segundos: daHora.cabeSegundos,
       anunciantes: entrada.length,
     });
   }
 
-  const itensIds = calcularPlaylist(entrada);
-  const contagem = contarPorAnunciante(itensIds);
+  // Quanto da hora está vendido. Registrado só quando a tela passa de 80%:
+  // é o aviso antecipado do corte acima, com tempo de agir antes de alguém
+  // receber menos do que comprou.
+  if (!daHora.cortou && daHora.ocupacao >= 80) {
+    eventos.registrar('playlist:hora_quase_cheia', {
+      dispositivo_id: dispositivo.id,
+      ponto_id: dispositivo.ponto_id,
+      ocupacao: daHora.ocupacao,
+    });
+  }
+
+  // `programados` já vem sem o institucional. O dono do ponto sai aqui: a cota
+  // é permuta, não venda, e não entra no relatório de entrega de ninguém.
+  const contagem = { ...daHora.programados };
   delete contagem.dono;
   await gravarProgramados(dispositivo, horaAtual, contagem);
 
   const usados = {};
-  return itensIds.map((id) => {
+  return daHora.itens.map((id) => {
+    // Inventário vago: o player mostra a própria peça institucional (#vazio em
+    // public/player.html) pelo tempo do item. Não tem url, não é de ninguém e
+    // não conta exibição.
+    if (id === ID_INSTITUCIONAL) {
+      return { anuncianteId: null, institucional: true, url: null, duracaoSegundos: DURACAO_INSTITUCIONAL };
+    }
     const { criativos } = porId[id];
     const vez = usados[id] || 0;
     usados[id] = vez + 1;

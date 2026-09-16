@@ -82,7 +82,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/playlist/:dispositivoId` | Playlist da hora pra esta tela. Itens `{anuncianteId, url, duracaoSegundos, autoanuncio}`; autoanúncio do dono vem com `anuncianteId: null` e não é contado. Programa os contadores da hora. |
+| GET | `/playlist/:dispositivoId` | A HORA INTEIRA desta tela: 3600 segundos de itens `{anuncianteId, url, duracaoSegundos, autoanuncio, institucional}`. Exibição contratada primeiro, cota do dono depois, e o espaço vago preenchido com `institucional: true` (sem url — o player mostra a peça `#vazio`). Autoanúncio do dono e institucional vêm com `anuncianteId: null` e não são contados. Programa os contadores da hora. |
 | POST | `/player/:dispositivoId/played` | `{anuncianteId}` — confirma uma exibição. Só aceita quem está programado nesta tela nesta hora. |
 | POST | `/player/:dispositivoId/heartbeat` | Marca a tela online. |
 | POST | `/player/:dispositivoId/painel` | `{pin}` → painel da tela (mesmo formato do painel do dono). Rate-limited. |

@@ -149,6 +149,23 @@ async function tocarProximo() {
   document.body.classList.remove('sem-playlist');
   const item = playlist[indice];
   indice = (indice + 1) % playlist.length;
+
+  // Inventário vago (src/lib/pacing.js): a hora que não foi vendida é
+  // preenchida com a peça institucional, a MESMA que aparece quando não há
+  // playlist nenhuma. Antes um item sem url era pulado em 1 segundo, e era
+  // isso que fazia a lista dar voltas na hora — o player tocava os anúncios
+  // pagos em laço e o cliente recebia dezenas de vezes o que comprou 3.
+  // Agora o espaço vago ocupa o tempo dele, e a frequência vendida é a
+  // frequência entregue.
+  if (item?.institucional) {
+    document.body.classList.add('institucional');
+    videoEl.classList.remove('ativo');
+    videoEl.pause();
+    setTimeout(tocarProximo, Math.max(2, Number(item.duracaoSegundos) || 10) * 1000);
+    return;
+  }
+  document.body.classList.remove('institucional');
+
   if (!item?.url) {
     setTimeout(tocarProximo, 1000);
     return;
@@ -276,6 +293,27 @@ if (!dispositivoId) {
   playlist = carregarCache();
   atualizarPlaylist().then(tocarProximo);
   setInterval(atualizarPlaylist, 15 * 60 * 1000);
+
+  // Buscar de 15 em 15 minutos não basta desde que a hora passou a ser orçada
+  // em segundos (src/lib/pacing.js): a lista agora É a hora, então virar a
+  // hora sem buscar de novo faz a TV tocar até 15 minutos da hora ANTERIOR
+  // enquanto o servidor já conta na hora nova — e programadas × confirmadas
+  // deixam de fechar. Aqui a TV acorda na virada da hora.
+  //
+  // Os segundos de atraso são de propósito e vêm da chave do aparelho, não do
+  // relógio: sem isso toda tela da rede bateria no servidor no mesmo segundo,
+  // todas as horas. Mesma tela, mesmo atraso, sempre.
+  const atrasoDaVirada = (chaveAparelho.charCodeAt(0) || 0) % 30;
+  function agendarViradaDaHora() {
+    const agora = new Date();
+    const proxima = new Date(agora);
+    proxima.setHours(agora.getHours() + 1, 0, atrasoDaVirada, 0);
+    setTimeout(() => {
+      atualizarPlaylist();
+      agendarViradaDaHora();
+    }, proxima - agora);
+  }
+  agendarViradaDaHora();
   heartbeat();
   setInterval(heartbeat, 5 * 60 * 1000);
   document.documentElement.requestFullscreen?.().catch(() => {});
