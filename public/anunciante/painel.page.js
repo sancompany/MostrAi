@@ -51,7 +51,13 @@ async function carregar() {
     preencherStatusBanner();
     document.getElementById('bonusAnuncios').innerHTML = cardBonus(estado, 'ponto');
     const planoUrl = new URLSearchParams(window.location.search).get('plano');
+    const temPlanoPagoAtivo =
+      ANUNCIANTE.plano_id &&
+      !ANUNCIANTE.plano_cortesia &&
+      ANUNCIANTE.data_expiracao &&
+      new Date(ANUNCIANTE.data_expiracao) > new Date();
     if (planoUrl && !ANUNCIANTE.plano_id) confirmarPlano(planoUrl);
+    else if (planoUrl && temPlanoPagoAtivo && planoUrl !== ANUNCIANTE.plano_id) confirmarTrocaPlano(planoUrl);
     carregarExibicoes();
     carregarCriativos();
     carregarKpiPontos();
@@ -99,6 +105,62 @@ function preencherStatusBanner() {
     ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;
+  preencherAssinatura();
+}
+
+// Autoatendimento: cancelar e trocar de plano, sem passar pelo admin.
+// Só aparece pra quem tem plano pago em dia (cortesia não tem o que
+// cancelar, e conta suspensa já mostra a explicação própria acima).
+function preencherAssinatura() {
+  const panel = document.getElementById('painelAssinatura');
+  const el = document.getElementById('resumoAssinatura');
+  const ativo =
+    ANUNCIANTE.plano_id &&
+    !ANUNCIANTE.plano_cortesia &&
+    !ANUNCIANTE.suspenso &&
+    ANUNCIANTE.data_expiracao &&
+    new Date(ANUNCIANTE.data_expiracao) > new Date();
+  if (!ativo) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const preco = ANUNCIANTE.valor_mensal_travado != null ? `, ${fmt(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+  el.innerHTML = `
+    <p class="u-m-0 u-mb-4">Ativa até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>${preco}.</p>
+    <p class="form-hint u-m-0 u-mb-12">Cancelar não devolve o que já foi pago. O período atual continua no ar até essa data, e não renova depois.</p>
+    <div class="field-row">
+      <a class="btn ghost" href="/planos.html">Trocar de plano</a>
+      <button class="btn ghost" id="btnCancelarAssinatura">Cancelar assinatura</button>
+    </div>
+    <p class="form-msg" id="msgCancelarAssinatura"></p>
+  `;
+  document.getElementById('btnCancelarAssinatura').addEventListener('click', cancelarAssinatura);
+}
+
+async function cancelarAssinatura() {
+  if (
+    !window.confirm(
+      'Cancelar sua assinatura? O período que você já pagou continua no ar até o fim. Depois disso, não há nova cobrança nem novo anúncio no ar.',
+    )
+  )
+    return;
+  const btn = document.getElementById('btnCancelarAssinatura');
+  const msg = document.getElementById('msgCancelarAssinatura');
+  btn.disabled = true;
+  const r = await fetch(`${API_BASE_URL}/anunciantes/me/cancelar-assinatura`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!r.ok) {
+    msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar agora.';
+    msg.className = 'form-msg err';
+    btn.disabled = false;
+    return;
+  }
+  msg.textContent = 'Assinatura cancelada. A cobertura continua até o fim do período já pago.';
+  msg.className = 'form-msg ok';
+  btn.remove();
 }
 
 // Ponto usa a mesma conta de anunciante (ver migration 016) — o card só
@@ -162,6 +224,45 @@ async function confirmarPlano(planoId) {
     // Tira o ?plano= da URL pra que um F5 não caia aqui de novo.
     history.replaceState(null, '', '/anunciante/painel.html');
     assinar(ANUNCIANTE.id, planoId);
+  });
+}
+
+// Troca de plano de quem já paga: mostra o crédito e a diferença antes de
+// mandar pro pagamento (mesmo cuidado de confirmarPlano — sem isso, um F5
+// nesta URL geraria outro pedido de cobrança a cada carregamento).
+async function confirmarTrocaPlano(planoNovoId) {
+  const box = document.getElementById('statusBanner');
+  history.replaceState(null, '', '/anunciante/painel.html');
+  box.insertAdjacentHTML('beforeend', '<p class="soon">Calculando a diferença...</p>');
+  const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ planoNovoId }),
+  });
+  document.querySelector('#statusBanner .soon')?.remove();
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    box.insertAdjacentHTML(
+      'beforeend',
+      `<p class="form-msg err">${esc(corpo.erro || 'Não foi possível calcular a troca.')} <a href="/planos.html">Escolher outro plano</a></p>`,
+    );
+    return;
+  }
+  box.insertAdjacentHTML(
+    'beforeend',
+    `
+    <div class="panel u-mt-14">
+      <h3 class="u-m-0 u-mb-6">Confirmar troca de plano</h3>
+      <p class="u-m-0 u-mb-4">Crédito do que resta no seu plano atual: <b>${fmtBRL(corpo.credito)}</b>.</p>
+      <p class="u-m-0 u-mb-12">Você paga a diferença agora: <b>${fmtBRL(corpo.valor)}</b>. O plano novo vale a partir da confirmação.</p>
+      <button class="btn primary" id="btnConfirmarTroca">Ir para o pagamento</button>
+      <a class="btn ghost" href="/planos.html">Escolher outro</a>
+    </div>`,
+  );
+  document.getElementById('btnConfirmarTroca').addEventListener('click', (e) => {
+    e.target.disabled = true;
+    window.location.href = corpo.checkoutUrl;
   });
 }
 

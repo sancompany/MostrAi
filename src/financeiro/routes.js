@@ -7,6 +7,7 @@ const planosRepo = require('./planos-repository');
 const beneficiosRepo = require('./beneficios-repository');
 const cobrancasRepo = require('./cobrancas-repository');
 const assinaturasRepo = require('./assinaturas-repository');
+const pedidosRepo = require('./pedidos-repository');
 const sanCheckout = require('./san-checkout');
 const drive = require('./drive');
 const pool = require('../db/pool');
@@ -269,17 +270,108 @@ router.get('/plano/:assinaturaId', sanCheckout.exigirChaveCheckout, async (req, 
   res.json(resposta);
 });
 
-// Confirmação/eventos de assinatura (API.md do Checkout, 4.3) — responde 200
-// rápido, processa depois, exatamente como o contrato permite. A autorização
-// é a assinatura HMAC dos headers, conferida em `webhookAutorizado`.
+// Exposto pro San Checkout consultar o pedido avulso (API.md 4.1). Único uso
+// hoje: a diferença de uma troca de plano (ver POST /anunciantes/me/trocar-plano).
+router.get('/pedido/:id', sanCheckout.exigirChaveCheckout, async (req, res) => {
+  const pedido = await pedidosRepo.buscarPorId(req.params.id);
+  if (!pedido) return res.status(404).json({ erro: 'pedido não encontrado' });
+  const anunciante = await anunciantesRepo.buscarPorId(pedido.anunciante_id);
+  res.json({
+    pedidoId: pedido.id,
+    status: pedido.status,
+    itens: [{ nome: pedido.descricao, quantidade: 1, valorUnitario: Number(pedido.valor) }],
+    valorCheio: Number(pedido.valor),
+    valorComDesconto: Number(pedido.valor),
+    descricao: pedido.descricao,
+    pagador: anunciante
+      ? {
+          nome: anunciante.nome_empresa,
+          email: anunciante.contato_email,
+          documento: anunciante.cpf_cnpj,
+          telefone: anunciante.contato_telefone,
+        }
+      : undefined,
+  });
+});
+
+// Confirmação/eventos de assinatura E de pedido avulso (API.md do Checkout,
+// seção 4.3): o MESMO webhook_url recebe os dois formatos, diferenciados
+// pelo campo `tipo` — payload de pedido não tem esse campo (4.3.2). Responde
+// 200 rápido, processa depois, exatamente como o contrato permite. A
+// autorização é a assinatura HMAC dos headers, conferida em `webhookAutorizado`.
 router.post('/webhook/san-checkout', (req, res) => {
   if (!sanCheckout.webhookAutorizado(req)) {
     return res.status(401).json({ erro: 'não autorizado' });
   }
   res.json({ ok: true });
-  sanCheckout.processarWebhookAssinatura(req.body).catch((err) => {
+  const processar =
+    req.body.tipo === 'assinatura' ? sanCheckout.processarWebhookAssinatura : sanCheckout.processarWebhookPedido;
+  processar(req.body).catch((err) => {
     console.error('erro processando webhook san-checkout', err);
   });
+});
+
+// Autoatendimento: o próprio cliente cancela, sem passar pelo admin. A
+// cobertura já paga continua até data_expiracao (mesma regra do cancelamento
+// pelo admin) — o texto da vitrine (FAQ "Como eu cancelo?") já promete isso.
+router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async (req, res) => {
+  const anunciante = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
+  if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
+  const assinatura = await assinaturasRepo.buscarAtivaDoAnunciante(req.session.anuncianteId);
+  if (!assinatura) return res.status(400).json({ erro: 'você não tem assinatura ativa pra cancelar' });
+
+  try {
+    await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+    await assinaturasRepo.marcarCancelada(assinatura.id);
+    res.json({ ok: true });
+  } catch {
+    res.status(502).json({ erro: 'falha ao cancelar no San Checkout. Tente de novo em alguns minutos.' });
+  }
+});
+
+// Troca de plano com o crédito do que resta do plano atual (pedido do dono,
+// 16/09/2026): o plano novo só vale se custar mais do que esse crédito —
+// senão a troca ou não cobraria nada, ou devolveria dinheiro, e ninguém
+// pediu reembolso aqui. Gera um pedido avulso (nunca uma assinatura: essa
+// não aceita desconto) e devolve o link de pagamento da diferença.
+router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, res) => {
+  const { planoNovoId } = req.body;
+  if (!planoNovoId) return res.status(400).json({ erro: 'escolha o plano novo' });
+
+  const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  if (
+    !conta.plano_id ||
+    conta.plano_cortesia ||
+    !conta.data_expiracao ||
+    new Date(conta.data_expiracao) <= new Date()
+  ) {
+    return res.status(400).json({ erro: 'só dá pra trocar quem tem um plano pago ativo agora' });
+  }
+  if (conta.plano_id === planoNovoId) return res.status(400).json({ erro: 'você já está nesse plano' });
+
+  const planoAtual = await planosRepo.buscarPorId(conta.plano_id);
+  const planoNovo = await planosRepo.buscarPorId(planoNovoId);
+  if (!planoNovo?.ativo) return res.status(400).json({ erro: 'plano inválido' });
+
+  const { credito, custoNovo, diferenca } = sanCheckout.calcularDiferencaTroca(conta, planoAtual, planoNovo);
+  if (diferenca <= 0) {
+    return res.status(400).json({
+      erro: 'o crédito do que resta no seu plano atual já cobre o plano novo. Espere renovar ou escolha um plano de valor maior.',
+      credito,
+      custoNovo,
+    });
+  }
+
+  const pedido = await pedidosRepo.criar({
+    anuncianteId: conta.id,
+    tipo: 'troca_plano',
+    planoAtualId: planoAtual.id,
+    planoNovoId: planoNovo.id,
+    valor: diferenca,
+    descricao: `Mostraí, troca de plano: ${planoAtual.nome} (${planoAtual.compromisso_meses}x) para ${planoNovo.nome} (${planoNovo.compromisso_meses}x)`,
+  });
+  res.json({ checkoutUrl: sanCheckout.linkCheckoutPedido(pedido.id), valor: diferenca, credito, custoNovo });
 });
 
 // Admin aciona cancelamento (Vitrina → San Checkout, nunca o pagador direto)

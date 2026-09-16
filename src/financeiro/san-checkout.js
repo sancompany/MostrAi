@@ -5,6 +5,7 @@ const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
+const pedidosRepo = require('./pedidos-repository');
 const { enviarConfirmacaoPagamento, enviarCobrancaFalhou } = require('./email');
 const eventos = require('../lib/eventos');
 
@@ -89,6 +90,14 @@ function linkCheckoutAssinatura(assinaturaId) {
 // entre uma tentativa e outra.
 function linkRenovarAssinatura(assinaturaId) {
   return `${linkCheckoutAssinatura(assinaturaId)}&renovar=1`;
+}
+
+// Pedido avulso (API.md do Checkout, seção 4.1): pagamento único, sem
+// vínculo de assinatura. Único uso hoje é a diferença de troca de plano —
+// a assinatura não aceita desconto, então o valor exato só cabe aqui.
+function linkCheckoutPedido(pedidoId) {
+  const volta = process.env.SITE_URL ? `&returnUrl=${encodeURIComponent(`${process.env.SITE_URL}/obrigado.html`)}` : '';
+  return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&pedido=${pedidoId}${volta}`;
 }
 
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
@@ -177,6 +186,26 @@ function valorMensalDaConta(anunciante, plano) {
   const desconto = Math.min(100, descontoComodato + descontoParceiro);
 
   return desconto ? arredondar(base - percentual(base, desconto)) : base;
+}
+
+// Troca de plano (pedido do dono, 16/09/2026): cobra só a diferença entre
+// o plano novo e o crédito dos dias que restam no atual. 30 dias por mês,
+// igual ao exemplo que o dono deu — não o calendário exato do mês corrente,
+// pra o crédito não variar por causa de fevereiro ter menos dias.
+//
+// Nunca pode dar zero ou negativo: um crédito maior que o plano novo
+// custa significaria ou não cobrar nada (a Asaas recusa pedido de valor
+// zero) ou, pior, dar de volta — e ninguém pediu reembolso em dinheiro.
+// Por isso o valor mínimo é sempre 0,01, e quem chama confere
+// `credito >= custoNovo` antes pra recusar a troca, não pra zerar o preço.
+function calcularDiferencaTroca(anunciante, planoAtual, planoNovo) {
+  const diasRestantes = anunciante.data_expiracao
+    ? Math.ceil((new Date(anunciante.data_expiracao) - Date.now()) / 86400000)
+    : 0;
+  const valorDiarioAtual = valorMensalDaConta(anunciante, planoAtual) / 30;
+  const credito = arredondar(valorDiarioAtual * Math.max(0, diasRestantes));
+  const custoNovo = multiplicar(valorMensalDaConta(anunciante, planoNovo), planoNovo.compromisso_meses);
+  return { credito, custoNovo, diferenca: arredondar(custoNovo - credito) };
 }
 
 async function registrarPendencia(payload, motivo) {
@@ -453,6 +482,76 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   return cobrancaRows[0];
 }
 
+// Webhook de pedido avulso (API.md do Checkout, 4.3.3) — payload sem
+// `tipo`, então quem chama já filtrou pelo formato de assinatura antes.
+// Dedupe pela mesma chave natural do contrato, chargeId + status; pedido
+// já vem com chargeId no corpo, sem precisar consultar nada de volta.
+async function processarWebhookPedido(payload) {
+  if (!payload.pedidoId) {
+    return registrarPendencia(payload, 'webhook de pedido sem pedidoId');
+  }
+  const chave = `${payload.chargeId || payload.pedidoId}|${payload.status}`;
+  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    chave,
+  ]);
+  if (!rowCount) return; // reentrega do mesmo evento, nada a fazer de novo
+
+  const pedido = await pedidosRepo.buscarPorId(payload.pedidoId);
+  if (!pedido) return registrarPendencia(payload, `pedido '${payload.pedidoId}' não encontrado`);
+  if (pedido.status !== 'pendente') return; // já processado (pago ou cancelado) por outra entrega
+
+  // em_analise, estorno_solicitado, estorno_negado, pendente: nenhuma ação
+  // ainda — o contrato pede esperar o desfecho, nunca tratar como falha.
+  if (payload.status === 'confirmado') return aplicarTrocaDePlano(pedido, payload);
+  if (['recusado', 'vencido', 'chargeback', 'estornado'].includes(payload.status)) {
+    return pedidosRepo.marcarCancelado(pedido.id);
+  }
+}
+
+// Efeito da troca de plano, só depois do dinheiro confirmado (nunca antes —
+// é o que impede o cliente pagar zero e a troca acontecer do mesmo jeito
+// por uma corrida entre a tela e o webhook).
+async function aplicarTrocaDePlano(pedido, payload) {
+  const anunciante = await anunciantesRepo.buscarPorId(pedido.anunciante_id);
+  const planoNovo = await planosRepo.buscarPorId(pedido.plano_novo_id);
+  if (!anunciante || !planoNovo) {
+    return registrarPendencia(payload, 'conta ou plano novo não encontrado pra aplicar a troca');
+  }
+
+  const assinaturaAtiva = await assinaturasRepo.buscarAtivaDoAnunciante(anunciante.id);
+  if (assinaturaAtiva) {
+    // A recorrência do plano antigo tem que parar — sem isso o cliente
+    // pagaria o plano antigo de novo no próximo ciclo, por cima do novo.
+    try {
+      await cancelarAssinatura(assinaturaAtiva.id, anunciante.cpf_cnpj);
+      await assinaturasRepo.marcarCancelada(assinaturaAtiva.id);
+    } catch (err) {
+      // O dinheiro da troca já entrou — não dá pra travar a troca por isso,
+      // mas alguém precisa cancelar a mão pra não cobrar as duas coisas.
+      await registrarPendencia(payload, `troca de plano paga, mas falha ao cancelar assinatura antiga: ${err.message}`);
+    }
+  }
+
+  const novaExpiracao = new Date();
+  novaExpiracao.setMonth(novaExpiracao.getMonth() + planoNovo.compromisso_meses);
+
+  await anunciantesRepo.atualizar(anunciante.id, {
+    plano_id: planoNovo.id,
+    suspenso: false,
+    data_expiracao: novaExpiracao,
+    valor_mensal_travado: planoNovo.preco_travado ? valorMensalDaConta(anunciante, planoNovo) : null,
+    plano_cortesia: false,
+    cortesia_motivo: null,
+  });
+  await pool.query(
+    `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1,$2,$3,'pendente')`,
+    [anunciante.id, planoNovo.id, pedido.valor],
+  );
+  await pedidosRepo.marcarPago(pedido.id);
+
+  eventos.registrar('plano:troca_paga', { plano_id: planoNovo.id, valor_confirmado: Number(pedido.valor) }, anunciante);
+}
+
 // Cancelamento é sempre a Vitrina quem aciona (nunca o pagador direto no
 // checkout — INTEGRACAO.md 6.1). Formato do corpo confirmado com quem
 // administra o San Checkout (v2, campo `documento` — CPF ou CNPJ).
@@ -464,12 +563,15 @@ async function cancelarAssinatura(assinaturaId, documento) {
 
 module.exports = {
   valorMensalDaConta,
+  calcularDiferencaTroca,
   exigirChaveCheckout,
   webhookAutorizado,
   linkCheckoutAssinatura,
   linkRenovarAssinatura,
+  linkCheckoutPedido,
   montarRespostaPlano,
   processarWebhookAssinatura,
+  processarWebhookPedido,
   cancelarAssinatura,
   consultarAssinatura,
   chaveDoEvento,
