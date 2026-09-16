@@ -14,6 +14,7 @@
 // se o aviso veio pelo webhook, por aqui, ou pelos dois.
 const pool = require('../db/pool');
 const { consultarAssinatura, aplicarCicloPago } = require('./san-checkout');
+const { enviarCoberturaAcabando } = require('./email');
 
 async function conciliarAssinaturas() {
   const comecouEm = new Date();
@@ -55,6 +56,7 @@ async function conciliarAssinaturas() {
     }
   }
 
+  relato.avisados = await avisarCoberturaAcabando();
   relato.expiradas = await suspenderCoberturaVencida();
   await registrarRelato(comecouEm, relato);
   return relato;
@@ -69,8 +71,8 @@ async function registrarRelato(comecouEm, relato, abortou = null) {
   try {
     await pool.query(
       `INSERT INTO conciliacoes
-         (comecou_em, verificadas, aplicadas, ja_processadas, sem_cobranca, expiradas, falhas, abortou)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         (comecou_em, verificadas, aplicadas, ja_processadas, sem_cobranca, expiradas, avisados, falhas, abortou)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         comecouEm,
         relato.verificadas || 0,
@@ -78,6 +80,7 @@ async function registrarRelato(comecouEm, relato, abortou = null) {
         relato.jaProcessadas || 0,
         relato.semCobranca || 0,
         (relato.expiradas || []).length,
+        (relato.avisados || []).length,
         JSON.stringify(relato.falhas || []),
         abortou,
       ],
@@ -91,6 +94,62 @@ async function registrarRelato(comecouEm, relato, abortou = null) {
 async function ultimaConciliacao() {
   const { rows } = await pool.query('SELECT * FROM conciliacoes ORDER BY id DESC LIMIT 1');
   return rows[0] || null;
+}
+
+// Aviso de cobertura acabando, para quem NÃO tem recorrência (seção F, item
+// 16). Quem trocou de plano pagou um pedido avulso: a cobertura vale pelo
+// período e some sozinha, porque não há próxima cobrança pra acontecer.
+// Quem tem assinatura ativa não entra aqui — pra esse o motor cobra de novo
+// sozinho, e se a cobrança falhar quem avisa é `enviarCobrancaFalhou`.
+//
+// Roda junto da conciliação porque a pergunta é a mesma ("o que vence nos
+// próximos dias") e o cron já existe, uma vez por dia. Falha de e-mail não
+// derruba a conciliação: o aviso só é marcado como dado depois do envio, e
+// no dia seguinte a varredura tenta de novo enquanto a janela durar.
+const DIAS_DE_AVISO = 7;
+
+async function avisarCoberturaAcabando() {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.nome_empresa, a.contato_email, a.data_expiracao,
+            p.nome AS plano_nome, p.compromisso_meses
+       FROM anunciantes a
+       JOIN planos p ON p.id = a.plano_id
+      WHERE a.excluido_em IS NULL
+        AND NOT a.suspenso
+        AND NOT a.plano_cortesia
+        AND a.contato_email IS NOT NULL
+        AND a.data_expiracao IS NOT NULL
+        AND a.data_expiracao >= now()
+        AND a.data_expiracao < now() + ($1 || ' days')::interval
+        AND a.aviso_fim_cobertura_para IS DISTINCT FROM a.data_expiracao
+        AND NOT EXISTS (
+          SELECT 1 FROM assinaturas s
+           WHERE s.anunciante_id = a.id AND s.status = 'ativa'
+        )`,
+    [String(DIAS_DE_AVISO)],
+  );
+
+  const avisados = [];
+  for (const conta of rows) {
+    const dias = Math.ceil((new Date(conta.data_expiracao) - Date.now()) / 86400000);
+    try {
+      await enviarCoberturaAcabando(
+        conta,
+        { nome: conta.plano_nome, compromisso_meses: conta.compromisso_meses },
+        dias,
+      );
+      // Só depois do envio: marcar antes transformaria uma falha de SMTP em
+      // aviso que nunca sai.
+      await pool.query('UPDATE anunciantes SET aviso_fim_cobertura_para = $2 WHERE id = $1', [
+        conta.id,
+        conta.data_expiracao,
+      ]);
+      avisados.push({ id: conta.id, nome_empresa: conta.nome_empresa, dias });
+    } catch (err) {
+      console.error(`falha ao avisar fim de cobertura da conta ${conta.id}:`, err.message);
+    }
+  }
+  return avisados;
 }
 
 // Nada expirava a cobertura. Uma conta cujo `data_expiracao` passou continuava
@@ -115,4 +174,10 @@ async function suspenderCoberturaVencida() {
   return rows;
 }
 
-module.exports = { conciliarAssinaturas, suspenderCoberturaVencida, registrarRelato, ultimaConciliacao };
+module.exports = {
+  conciliarAssinaturas,
+  suspenderCoberturaVencida,
+  avisarCoberturaAcabando,
+  registrarRelato,
+  ultimaConciliacao,
+};

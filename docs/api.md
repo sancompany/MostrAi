@@ -43,7 +43,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/logout` | Destrói a sessão. |
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |
 | POST | `/anunciantes/me/cancelar-assinatura` | Cliente cancela a própria assinatura (migration 041, 16/09/2026). Cobertura já paga continua até `data_expiracao`. 400 sem assinatura ativa. |
-| POST | `/anunciantes/me/trocar-plano` | `{planoNovoId}` → `{checkoutUrl, valor, credito, custoNovo}`. Gera pedido avulso (não assinatura, que não aceita desconto) pela diferença entre o preço cheio do plano novo e o crédito dos dias que restam no atual (30 dias por mês). 400 se o crédito já cobrir o plano novo — nunca cobra zero nem devolve dinheiro. Paga a diferença, o webhook cancela a assinatura antiga e aplica o plano novo; a cobertura vale pelo período do plano novo, sem assinatura recorrente nova (precisa assinar de novo ao vencer). |
+| POST | `/anunciantes/me/trocar-plano` | `{planoNovoId}` → `{checkoutUrl, valor, credito, custoNovo}`. Gera pedido avulso (não assinatura, que não aceita desconto) pela diferença entre o preço cheio do plano novo e o crédito dos dias que restam no atual (30 dias por mês). 400 se o crédito já cobrir o plano novo — nunca cobra zero nem devolve dinheiro. Paga a diferença, o webhook cancela a assinatura antiga e aplica o plano novo; a cobertura vale pelo período do plano novo, sem assinatura recorrente nova (precisa assinar de novo ao vencer, e a conciliação diária avisa por e-mail 7 dias antes). |
 | GET/POST/DELETE | `/anunciantes/:id/criativos[/:criativoId]` | Criativos do anunciante (upload multipart, normalização por ffmpeg, fila de aprovação). |
 | GET | `/anunciantes/:id/exibicoes` | O que rodou pro anunciante, por tela e por dia. |
 | GET | `/anunciantes/:id/exibicoes.csv?dias=N` | Comprovante de veiculacao em planilha (RN-19). `dias` entre 1 e 365, padrao 30. |
@@ -182,6 +182,7 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/cobrancas` | cobranças confirmadas |
+| GET | `/admin/pedidos-avulsos` | trocas de plano em lista própria: quem trocou, de qual plano pra qual, o valor da diferença e a situação (`pendente`/`pago`/`cancelado`). Leitura pura; o pago também aparece em `/admin/cobrancas`. |
 | PATCH | `/admin/cobrancas/:id/nota-fiscal` | marca a nota como emitida |
 | GET | `/admin/comissoes` | comissões geradas |
 | PATCH | `/admin/comissoes/:id` | `{pago}` |

@@ -231,6 +231,7 @@ router.get('/admin/resumo', async (_req, res) => {
           aplicadas: ultima.aplicadas,
           semCobranca: ultima.sem_cobranca,
           expiradas: ultima.expiradas,
+          avisados: ultima.avisados,
           falhas: (ultima.falhas || []).length,
           abortou: ultima.abortou,
         }

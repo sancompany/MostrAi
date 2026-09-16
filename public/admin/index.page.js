@@ -191,6 +191,7 @@ const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+const TROCA_STATUS = { pendente: 'Esperando pagamento', pago: 'Paga', cancelado: 'Cancelada' };
 
 function selectStatus(mapa, atual, attrs) {
   return `<select class="mini" ${attrs}>
@@ -241,6 +242,7 @@ const NAV = [
     grupo: 'Financeiro',
     itens: [
       { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
+      { id: 'trocas', nome: 'Trocas de plano' },
       { id: 'comissoes', nome: 'Comissões' },
       { id: 'pagamentospontos', nome: 'Pagar os pontos' },
       { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
@@ -271,6 +273,8 @@ const SUBTITULOS = {
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
   comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
+  trocas:
+    'Quem trocou de plano no meio do período: de qual plano pra qual, quanto pagou de diferença e quando. O pago também entra em Cobranças; aqui é a lista de quem subiu de plano.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
   pagamentospontos:
     'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar, e isso aparece no extrato do dono do ponto.',
@@ -339,6 +343,7 @@ async function irPara(aba, forcarResumo) {
     categorias: renderCategorias,
     comodato: renderComodato,
     cobrancas: renderCobrancas,
+    trocas: renderTrocas,
     comissoes: renderComissoes,
     custos: renderCustos,
     eventos: renderEventos,
@@ -466,6 +471,7 @@ function linhaConciliacao(c) {
     ? `abortou: ${esc(c.abortou)}`
     : `${c.verificadas} assinatura(s) verificada(s) · ${c.aplicadas} ciclo(s) aplicado(s)` +
       `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}` +
+      `${c.avisados ? ` · ${c.avisados} aviso(s) de fim de cobertura` : ''}` +
       `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
   return `<div class="${problema ? 'alertas' : 'tudo-em-dia'} u-mb-20">
     <b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}
@@ -2490,6 +2496,55 @@ async function renderComodato(el) {
       salvar(`/admin/planos-ponto/${inp.dataset.id}`, { [inp.dataset.pp]: valor }, inp);
     }),
   );
+}
+
+// ---------- trocas de plano ----------
+// Seção F, item 17. O pedido pago já entrava em Cobranças e o que falhava já
+// virava pendência, mas nenhuma tela respondia "quem trocou, de qual plano
+// pra qual, e quando" — e é essa a pergunta que diz se o mecanismo pegou.
+// Leitura pura: daqui não se altera pedido nenhum.
+async function renderTrocas(el) {
+  const pedidos = await pegar('/admin/pedidos-avulsos');
+  const pagos = pedidos.filter((p) => p.status === 'pago');
+  const arrecadado = pagos.reduce((t, p) => t + Number(p.valor), 0);
+  const pendentes = pedidos.filter((p) => p.status === 'pendente').length;
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Anunciante</th><th data-ord>De</th><th data-ord>Para</th>
+      <th data-ord>Diferença</th><th data-ord>Situação</th><th data-ord>Pedido em</th><th data-ord>Pago em</th>
+    </tr></thead><tbody>
+    ${pedidos
+      .map(
+        (p) => `<tr data-filtro="${p.status}">
+      <td><b>${esc(p.nome_empresa)}</b></td>
+      <td>${p.plano_atual_nome ? esc(p.plano_atual_nome) : '<span class="u-dim">sem plano</span>'}</td>
+      <td>${esc(p.plano_novo_nome)} <span class="u-dim">${CICLOS[p.plano_novo_meses] || `${p.plano_novo_meses}x`}</span></td>
+      <td>${fmt(p.valor)}</td>
+      <td><span class="badge ${p.status === 'pago' ? 'badge-ok' : p.status === 'cancelado' ? 'badge-err' : 'badge-pendente'}">${TROCA_STATUS[p.status] || p.status}</span></td>
+      <td>${data(p.criado_em)}</td>
+      <td>${p.pago_em ? data(p.pago_em) : '-'}</td>
+    </tr>`,
+      )
+      .join('')}
+  </tbody></table>`;
+
+  el.innerHTML = pedidos.length
+    ? `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Trocas pagas</span><b>${pagos.length}</b><span class="kpi-caption">${fmt(arrecadado)} em diferenças</span></div>
+      <div class="kpi-card"><span class="kpi-label">Esperando pagamento</span><b>${pendentes}</b><span class="kpi-caption">o cliente abriu o checkout e não concluiu</span></div>
+    </div>
+    ${caixaTabela({
+      chips: [
+        { valor: '', nome: 'Todas' },
+        { valor: 'pago', nome: 'Pagas' },
+        { valor: 'pendente', nome: 'Pendentes' },
+        { valor: 'cancelado', nome: 'Canceladas' },
+      ],
+      html: corpo,
+      dica: 'Troca é pagamento único: não deixa renovação automática no lugar da antiga.',
+    })}`
+    : '<p class="empty-state">Ninguém trocou de plano ainda.</p>';
 }
 
 // ---------- cobranças ----------

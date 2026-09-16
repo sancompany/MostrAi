@@ -1059,41 +1059,89 @@ não sairemos perdendo".)*
   o que for preciso pra aceitar pedido avulso deste projeto — não é algo
   que o Mostraí resolve por dentro do próprio repositório.
 
-**16. [ ] Aviso por e-mail perto do fim do período de uma troca de plano.**
-*(Achado em 16/09/2026, construindo o item 15 — "ainda falta" de lá,
-promovido a item próprio pra não se perder.)*
-· Troca de plano (item 15) não deixa assinatura recorrente nova — a
-  cobertura vale pelo período contratado e some sozinha, sem aviso, se o
-  cliente não voltar e assinar de novo. Falta um e-mail perto do fim
-  desse período (mesmo padrão do e-mail de cobrança falhou,
-  `enviarCobrancaFalhou`), convidando a renovar.
+**16. [x] Aviso por e-mail perto do fim do período de uma troca de plano.**
+**FEITO em 16/09/2026.** *(Achado construindo o item 15 — "ainda falta" de
+lá, promovido a item próprio pra não se perder.)*
+· O problema: troca de plano não deixa assinatura recorrente nova, então a
+  cobertura vale pelo período contratado e some sozinha, sem aviso nenhum,
+  se o cliente não voltar e contratar de novo.
+· Onde ficou: na CONCILIAÇÃO DIÁRIA, não numa rotina nova
+  (`avisarCoberturaAcabando` em `src/financeiro/conciliacao.js`). A
+  pergunta é a mesma que ela já faz todo dia ("o que vence agora") e o cron
+  já existe — rotina nova seria um segundo cron pra configurar e esquecer.
+· Quem recebe: conta ativa, não suspensa, não cortesia, que vence nos
+  próximos 7 dias e **não tem assinatura ativa**. Quem tem assinatura fica
+  de fora de propósito: pra esse o motor cobra sozinho, e se falhar quem
+  avisa é o `enviarCobrancaFalhou` que já existia.
+· Não repete: `anunciantes.aviso_fim_cobertura_para` (migration 043) guarda
+  PARA QUAL expiração o aviso saiu, não um booleano nem a data do envio.
+  Expiração nova é um valor diferente, então o aviso rearma sozinho na
+  próxima troca, sem nenhuma rotina de limpeza. A marca é gravada só depois
+  do envio — marcar antes transformaria uma falha de SMTP em aviso que
+  nunca sai.
+· **Provado contra um Postgres de verdade** (banco descartável, as 43
+  migrations do zero, nodemailer interceptado): das seis contas montadas
+  (vence em 3 dias sem assinatura, vence em 30, já venceu, suspensa,
+  cortesia, com assinatura ativa) só a primeira recebeu; a segunda passada
+  no mesmo dia mandou zero; e mexer na expiração fez o aviso voltar.
+· Some no relato: `conciliacoes.avisados` entra na mesma linha de
+  `expiradas` e aparece na Visão geral do admin. RN-36 em `docs/funcional.md`.
+· Telas trocadas: `src/db/migrations/043_aviso_fim_de_cobertura.sql` (nova),
+  `src/financeiro/email.js`, `src/financeiro/conciliacao.js`,
+  `src/admin/routes.js`, `public/admin/index.page.js`.
 
-**17. [ ] Aba no admin listando pedidos avulsos (troca de plano) em lista
-própria.** *(Achado em 16/09/2026, mesma origem do item 16.)*
-· Hoje o pago já aparece em Cobranças (entra na receita) e o que falha
-  vira pendência na fila de "Eventos pendentes" de sempre — não fica sem
-  rastro. Só não tem uma tela dedicada pra ver, numa lista só, quem
-  trocou de plano, de qual pra qual, e quando.
+**17. [x] Aba no admin listando pedidos avulsos (troca de plano) em lista
+própria.** **FEITO em 16/09/2026.** *(Mesma origem do item 16.)*
+· Aba **Trocas de plano**, no grupo Financeiro, logo abaixo de Cobranças:
+  anunciante, plano de origem, plano de destino com a modalidade, valor da
+  diferença, situação, data do pedido e data do pagamento. Dois KPIs em
+  cima (trocas pagas e quanto renderam; quantas esperam pagamento) e os
+  filtros de sempre (todas / pagas / pendentes / canceladas).
+· Leitura pura: `GET /admin/pedidos-avulsos` não altera pedido nenhum. Quem
+  muda o status de um pedido continua sendo só o webhook assinado.
+· Quem trocou sem ter plano antes aparece como "sem plano" em vez de linha
+  vazia (o `LEFT JOIN` é de propósito: `plano_atual_id` é nulável).
+· Conferido em navegador de verdade a 1440px e 390px com três pedidos de
+  exemplo (pago, pendente, cancelado): três linhas, KPIs certos, nada
+  estourando a tela, nenhum erro de JS.
 
-**18. [ ] `obrigado.html` mostra texto de primeira contratação pra quem
-está voltando de uma troca de plano.** *(Achado em 16/09/2026, mesma
+**18. [x] `obrigado.html` mostra texto de primeira contratação pra quem
+está voltando de uma troca de plano.** **FEITO em 16/09/2026.** *(Mesma
 origem do item 16.)*
-· A página de retorno do pagamento (`public/obrigado.html`) sempre diz
-  "Agora falta o seu anúncio" e "Suba a sua peça" — certo pra quem acabou
-  de assinar o primeiro plano, errado pra quem já tem anúncio no ar e só
-  trocou de plano. O San Checkout devolve `?pedido=ID` na `returnUrl`
-  desse caso (API.md do Checkout, seção 4.1); a página não lê esse
-  parâmetro hoje pra mostrar um texto diferente.
+· A página agora tem os dois textos e mostra um só. O de sempre continua
+  igual. O da troca diz o que é verdade pra quem já está no ar: "Recebemos.
+  Seu anúncio continua no ar", não precisa subir nada, o plano novo entra
+  quando o banco confirmar, e o prazo não renova sozinho.
+· Como distingue: só a volta de PEDIDO traz `?pedido=ID`; assinatura volta
+  sem parâmetro nenhum (API.md do Checkout, seção 3.1, conferido no
+  repositório do Checkout, não de memória).
+· O que a página **não** faz, de propósito: dar o pagamento por confirmado.
+  Query string qualquer um escreve — quem digitar `?pedido=X` na barra de
+  endereço cai no mesmo texto. Por isso os dois textos falam em "recebemos",
+  nunca em "pago". Quem confirma pagamento segue sendo o webhook assinado.
+· Se o JS não rodar, aparece o texto da assinatura, que é o caso comum.
+· Conferido em navegador a 1440px e 390px, nas duas voltas: título da aba,
+  h1 e corpo trocam juntos e o texto errado não fica escondido na página.
+· Telas trocadas: `public/obrigado.html`, `public/obrigado.page.js` (nova).
 
-**19. [ ] Bônus "anunciante ganha tela grátis" sem menção nas páginas
-públicas.** *(Achado em 16/09/2026, na varredura de furos.md — item 13
-fechou o lado inverso, "ponto ganha anúncio grátis", em
+**19. [x] Bônus "anunciante ganha tela grátis" sem menção nas páginas
+públicas.** **FEITO em 16/09/2026.** *(Achado na varredura de furos.md —
+item 13 fechou o lado inverso, "ponto ganha anúncio grátis", em
 `seja-um-ponto.html`; este lado ficou de fora.)*
-· `planos.ponto_apos_meses`: ao completar N meses de plano pago, o
-  anunciante ganha direito a uma tela no próprio comércio. O módulo
-  existe e funciona (aparece como bônus no painel), mas nenhuma página
-  pública (`index.html`, `planos.html`) menciona esse benefício antes da
-  assinatura.
+· `planos.html` já tinha ganhado a linha no card na reorganização do item
+  14 (`planos.page.js`: "Ao completar N meses, ganhe uma tela no seu
+  comércio"). Faltava a home, que é onde a pessoa decide se clica.
+· A home ganhou a linha no cartão "Anunciante", ao lado da do ponto.
+· **Sai do dado, não de texto fixo.** O admin pode nunca ter ligado o
+  módulo em plano nenhum — hoje, aliás, não está ligado em nenhum plano
+  ativo. Então a linha nasce escondida e só aparece se algum plano ativo
+  realmente oferecer o bônus; o prazo mostrado é o MENOR entre os que
+  oferecem, que é o degrau de entrada. Escrever a promessa à mão no HTML
+  faria a home prometer benefício que não está à venda — o mesmo defeito
+  que o item 7 corrigiu no "100% dos pontos".
+· Conferido em navegador nos dois sentidos: com bônus no dado a linha
+  aparece (1440px e 390px, sem estourar a tela); sem bônus no dado, some.
+· Telas trocadas: `public/index.html`, `public/index.page.js`.
 
 **20. [x] Depuração visual do site inteiro (desktop e celular) e editor de
 planos do admin com o visual da vitrine.** **FEITO em 16/09/2026.** *(Pedido
@@ -1155,6 +1203,25 @@ linha e ficam fora da tela".)*
   `src/db/migrations/042_rotulo_sem_travessao.sql` (nova).
 
 ---
+
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 20 itens, 17 estão
+`[x]`. Os três que faltam **não dependem de escrever código aqui**:
+
+- **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no
+  San Checkout, já escrito lá, e segue numa branch sem merge nem deploy.
+  Enquanto não sair, a cobrança de teste travada continua travada, e vai
+  precisar de reconciliação manual do lado de lá mesmo depois do deploy.
+- **Item 2** (e-mail não chegou) — fecha junto com o item 1, e depende da
+  senha de app nova do Gmail (`SMTP_PASS`, item 9 do "SÓ O DONO FAZ").
+  Nenhum e-mail real saiu ainda, então o SMTP continua não verificado.
+- **Item 4** (duas instâncias no Northflank) — não é defeito, é decisão de
+  ordem do dono. Antes de ligar a segunda instância, o cache de playlist e
+  o limitador de login precisam sair da memória do processo.
+
+Ou seja: **a esteira não está parada esperando código**. Está esperando o
+deploy do Checkout, a senha do SMTP e a palavra do dono sobre as instâncias
+— e, acima de tudo, a continuação da revisão dele no site no ar, que é o que
+de fato fecha a Estação 5.
 
 **Retomada combinada com o dono:** a próxima rodada de depuração (seção F
 continua) começa pela tela de Planos, ciclo Mensal — é onde a navegação

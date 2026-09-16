@@ -54,6 +54,30 @@ async function enviarCobrancaFalhou(anunciante, linkRenovar) {
   });
 }
 
+// Cobertura acabando sem recorrência pra renovar (seção F, item 16). Quem
+// trocou de plano pagou um pedido avulso: vale pelo período contratado e
+// acaba ali, sem próxima cobrança. Sem este aviso o anúncio sai do ar num
+// dia qualquer e o cliente só descobre pelo silêncio — o mesmo buraco que
+// `enviarCobrancaFalhou` tapa do lado da assinatura.
+async function enviarCoberturaAcabando(anunciante, plano, diasRestantes) {
+  const quando = diasRestantes <= 0 ? 'hoje' : diasRestantes === 1 ? 'amanhã' : `em ${diasRestantes} dias`;
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: `Sua cobertura na Mostraí acaba ${quando}`,
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `O período do seu plano ${plano.nome} (${CICLO_TEXTO[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}) acaba ${quando}. ` +
+      `Ele foi contratado como pagamento único, então não existe renovação automática: ` +
+      `quando o prazo terminar, seu anúncio sai das telas.\n\n` +
+      `Pra continuar no ar, escolha o plano e contrate de novo aqui:\n` +
+      `${process.env.SITE_URL}/planos.html\n\n` +
+      `Sua peça e seu histórico continuam na sua conta, então não precisa subir nada de novo.\n\n` +
+      `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
 // A conta nasce "pendente de aprovação" e o dono libera no admin — e ate agora
 // isso nao avisava ninguem. A pessoa se cadastrava, via "aguardando aprovacao"
 // e ia embora; quando era liberada, nada acontecia. O momento em que ela PODE
@@ -213,6 +237,7 @@ async function enviarCandidaturaNova(candidatura) {
 
 module.exports = {
   enviarCobrancaFalhou,
+  enviarCoberturaAcabando,
   enviarCandidaturaNova,
   enviarCriativoNoAr,
   enviarCriativoReprovado,

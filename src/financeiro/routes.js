@@ -518,6 +518,24 @@ router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
   res.json(rows[0] || null);
 });
 
+// Trocas de plano em lista própria (seção F, item 17). O pago já entra em
+// Cobranças e o que falha vira pendência, mas nenhuma tela respondia "quem
+// trocou de plano, de qual pra qual, e quando" — a pergunta que decide se o
+// mecanismo vale a pena. Leitura pura: nada aqui altera pedido nenhum.
+router.get('/admin/pedidos-avulsos', async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT pa.*, a.nome_empresa,
+            atual.nome AS plano_atual_nome, novo.nome AS plano_novo_nome,
+            novo.compromisso_meses AS plano_novo_meses
+       FROM pedidos_avulsos pa
+       JOIN anunciantes a ON a.id = pa.anunciante_id
+       LEFT JOIN planos atual ON atual.id = pa.plano_atual_id
+       JOIN planos novo ON novo.id = pa.plano_novo_id
+      ORDER BY pa.criado_em DESC`,
+  );
+  res.json(rows);
+});
+
 router.get('/admin/cobrancas', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT c.*, a.nome_empresa FROM cobrancas_confirmadas c

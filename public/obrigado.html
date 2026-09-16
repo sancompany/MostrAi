@@ -19,37 +19,77 @@
          Checkout — outro domínio — pagava, e ficava parado numa tela que não é
          nossa, sem caminho de volta. O momento de maior confiança da relação
          terminava num beco. -->
+    <!-- Duas voltas diferentes chegam nesta mesma página, e até 16/09/2026 as
+         duas liam "Agora falta o seu anúncio": quem assinou o primeiro plano
+         e quem só trocou de plano no meio do período. Pra este último o texto
+         estava errado do início ao fim — o anúncio dele já está no ar e não há
+         peça nenhuma a subir. O checkout distingue os dois casos sozinho: só a
+         volta de PEDIDO traz `?pedido=ID` (API.md do Checkout, seção 3.1);
+         assinatura não traz nada. O que o parâmetro NÃO diz é se foi pago —
+         quem diz isso é o webhook assinado, por isso nenhum dos dois textos
+         afirma que o dinheiro entrou. -->
     <section class="tight">
       <div class="wrap u-mw-520 u-centro u-ta-c">
-        <p class="eyebrow">Contratação recebida</p>
-        <h1>Deu certo. Agora falta o seu anúncio.</h1>
-        <p class="lead u-m-0 u-centro u-mb-28">A confirmação do pagamento chega por e-mail em alguns minutos, mas o banco pode demorar um pouco. Você não precisa esperar para dar o próximo passo.</p>
+        <div data-volta="assinatura">
+          <p class="eyebrow">Contratação recebida</p>
+          <h1>Deu certo. Agora falta o seu anúncio.</h1>
+          <p class="lead u-m-0 u-centro u-mb-28">A confirmação do pagamento chega por e-mail em alguns minutos, mas o banco pode demorar um pouco. Você não precisa esperar para dar o próximo passo.</p>
 
-        <div class="steps u-ta-l u-mb-28">
-          <div class="step">
-            <div class="n">1</div>
-            <h4>Suba a sua peça</h4>
-            <p>Vídeo ou imagem de 15 a 30 segundos, em pé (9:16). A gente ajusta o formato para caber na tela.</p>
+          <div class="steps u-ta-l u-mb-28">
+            <div class="step">
+              <div class="n">1</div>
+              <h4>Suba a sua peça</h4>
+              <p>Vídeo ou imagem de 15 a 30 segundos, em pé (9:16). A gente ajusta o formato para caber na tela.</p>
+            </div>
+            <div class="step">
+              <div class="n">2</div>
+              <h4>A gente aprova</h4>
+              <p>Conferimos a peça e avisamos por e-mail quando ela entrar no ar.</p>
+            </div>
+            <div class="step">
+              <div class="n">3</div>
+              <h4>Você acompanha</h4>
+              <p>O painel mostra quantas vezes seu anúncio rodou, em qual ponto e em qual dia, e você baixa o comprovante quando quiser.</p>
+            </div>
           </div>
-          <div class="step">
-            <div class="n">2</div>
-            <h4>A gente aprova</h4>
-            <p>Conferimos a peça e avisamos por e-mail quando ela entrar no ar.</p>
-          </div>
-          <div class="step">
-            <div class="n">3</div>
-            <h4>Você acompanha</h4>
-            <p>O painel mostra quantas vezes seu anúncio rodou, em qual ponto e em qual dia, e você baixa o comprovante quando quiser.</p>
-          </div>
+
+          <a class="btn primary" href="/anunciante/painel.html">Subir meu anúncio agora</a>
+          <p class="form-hint u-mt-16">Não tem a arte pronta? A peça simples está incluída no seu plano,
+            <a data-wa="Olá! Acabei de contratar um plano na Mostraí e preciso da arte do meu anúncio." href="https://wa.me/5516994635946" target="_blank" rel="noopener">fale com a gente no WhatsApp</a>.</p>
         </div>
 
-        <a class="btn primary" href="/anunciante/painel.html">Subir meu anúncio agora</a>
-        <p class="form-hint u-mt-16">Não tem a arte pronta? A peça simples está incluída no seu plano,
-          <a data-wa="Olá! Acabei de contratar um plano na Mostraí e preciso da arte do meu anúncio." href="https://wa.me/5516994635946" target="_blank" rel="noopener">fale com a gente no WhatsApp</a>.</p>
+        <div data-volta="troca" hidden>
+          <p class="eyebrow">Troca de plano recebida</p>
+          <h1>Recebemos. Seu anúncio continua no ar.</h1>
+          <p class="lead u-m-0 u-centro u-mb-28">Você não precisa subir nada de novo: a peça que já está rodando continua rodando. Assim que o pagamento for confirmado pelo banco, o plano novo passa a valer.</p>
+
+          <div class="steps u-ta-l u-mb-28">
+            <div class="step">
+              <div class="n">1</div>
+              <h4>O banco confirma</h4>
+              <p>Leva de alguns minutos a algumas horas, conforme a forma de pagamento. A confirmação chega por e-mail.</p>
+            </div>
+            <div class="step">
+              <div class="n">2</div>
+              <h4>O plano novo entra</h4>
+              <p>A frequência e o número de peças do plano novo valem a partir da confirmação, e o painel passa a mostrar o plano novo.</p>
+            </div>
+            <div class="step">
+              <div class="n">3</div>
+              <h4>Fique de olho no prazo</h4>
+              <p>A troca é um pagamento único: ela vale pelo período contratado e não renova sozinha. A gente avisa por e-mail antes de acabar.</p>
+            </div>
+          </div>
+
+          <a class="btn primary" href="/anunciante/painel.html">Ver meu painel</a>
+          <p class="form-hint u-mt-16">Quer trocar a peça junto com o plano?
+            <a data-wa="Olá! Acabei de trocar de plano na Mostraí e quero ajustar meu anúncio." href="https://wa.me/5516994635946" target="_blank" rel="noopener">fale com a gente no WhatsApp</a>.</p>
+        </div>
       </div>
     </section>
   </main>
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
+  <script src="/obrigado.page.js"></script>
 </body>
 </html>

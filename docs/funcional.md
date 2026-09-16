@@ -278,6 +278,23 @@ o do **criativo** (RN-34) — `suspenso` é sobre a CONTA, não sobre o anúncio
 vê:* o anunciante (painel e perfil) e o administrador (coluna "Suspensa" na
 aba Anunciantes, separada da coluna "Status").
 
+**RN-36 — Cobertura sem recorrência avisa por e-mail 7 dias antes de
+acabar.** *(Seção F, item 16, 16/09/2026.)* Quem troca de plano paga um
+**pedido avulso**, não uma assinatura: a cobertura vale pelo período
+contratado e some sozinha, porque não há próxima cobrança pra acontecer. A
+conciliação diária varre as contas ativas que vencem nos próximos 7 dias e
+**não têm assinatura ativa**, e manda um e-mail convidando a contratar de
+novo (`enviarCoberturaAcabando`). Quem tem assinatura fica de fora: pra esse
+o motor cobra sozinho, e se a cobrança falhar quem avisa é
+`enviarCobrancaFalhou` (RN-24). Conta em cortesia e conta já suspensa também
+ficam de fora. O aviso é marcado em `anunciantes.aviso_fim_cobertura_para`
+guardando PARA QUAL expiração ele saiu, não como booleano: expiração nova
+(outra troca, ou um plano assinado) é valor diferente e rearma o aviso
+sozinho, sem rotina de limpeza. A marca só é gravada DEPOIS do envio, então
+falha de SMTP não vira aviso que nunca sai. *Violada:* não há caminho de
+usuário. *Quem vê:* o anunciante (e o administrador, no contador da
+conciliação na Visão geral).
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
@@ -448,6 +465,7 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 |---|---|---|
 | San Checkout fora do ar ao assinar | não cria assinatura local órfã; devolve erro | "não conseguimos abrir o pagamento agora" |
 | Webhook não chega | a conciliação diária encontra a cobrança e credita | nada — a conta ativa sozinha em até 24h |
+| Cobertura de troca de plano perto do fim | a conciliação diária manda o aviso 7 dias antes (RN-36) | e-mail convidando a contratar de novo |
 | Webhook chega duas vezes | dedupe por `chargeId|status`; o segundo não faz nada | nada |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |
 | Rede cai no meio do upload | o criativo não é criado; nada meio-gravado | "o envio falhou, tente de novo" |

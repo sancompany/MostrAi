@@ -269,10 +269,7 @@
       }
       const d = await r.json();
       conta.comunicacoes_revogado_em = d.comunicacoes_revogado_em;
-      dizer(
-        chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado. Não mandamos mais novidades.',
-        'ok',
-      );
+      dizer(chk.checked ? 'Você vai receber novidades.' : 'Consentimento revogado. Não mandamos mais novidades.', 'ok');
     });
 
     $('btnApagarOpcionais').addEventListener('click', async () => {
