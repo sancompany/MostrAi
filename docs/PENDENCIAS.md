@@ -1333,9 +1333,55 @@ aparecer duas vezes), mas não está escrito em regra nenhuma, e o passo 9 do
 `docs/funcional.md` promete o contrário: "o vídeo entra na playlist de todas
 as telas ativas".
 
+**29. [ ] DECISÃO DO DONO — a dívida de superlotação não é registrada, e sem
+ela a folga de 15 minutos não tem o que saldar.** *(Achado em 16/09/2026,
+quando o dono lembrou que "caso aconteça superlotamento de anúncios existe a
+regra de 15 minutos de flexibilidade".)*
+· **A regra existe e está bem desenhada** — `docs/economia-da-rede.md` seção
+  4, item 5, e `docs/proximas-versoes.md`: reservar os primeiros ~15 minutos
+  de cada hora só pra saldar o déficit da hora anterior, em vez de ele
+  competir de novo pelo mesmo corte. **Nunca foi construída**: não existe uma
+  linha de código de folga em `src/lib/pacing.js` nem em `src/playlist/`.
+· **E, como está escrita, ela não funcionaria.** Medido numa rede
+  superlotada estável (30 anunciantes de 12x/h, pedido de 7200s numa hora de
+  3600s):
+
+  | hora | contratou | programou | confirmou | déficit registrado |
+  |---|---|---|---|---|
+  | 1 a 6 | 12 | 6 | 6 | **0** |
+
+  O anunciante deixa de receber 6 exibições por hora, todas as horas, e o
+  déficit fica em zero. `gravarProgramados` grava em `vezes_programadas` o
+  número DEPOIS do corte proporcional, então `deficit = programadas −
+  confirmadas` não enxerga nada. A folga de 15 minutos chegaria e não teria
+  dívida pra saldar.
+· **A raiz:** o `deficit` de hoje compensa **falha de entrega** (tela
+  offline, vídeo que não tocou) e não **falta de inventário** (rede vendida
+  além da hora). São duas dívidas diferentes, e só a primeira está escrita.
+· **O conserto tem três partes, nesta ordem:**
+  1. **Registrar o contratado separado do programado.** Uma coluna aditiva
+     em `exibicoes_contador` (`vezes_contratadas`) guardando o que o plano
+     prometia naquela hora, antes do corte. Sem isso nada mais funciona, e é
+     também o que permite ao painel do anunciante dizer a verdade quando a
+     rede estiver cheia.
+  2. **A folga de 15 minutos**, como já desenhada: 900 dos 3600 segundos da
+     hora reservados pra quitar a dívida da hora anterior, com teto mínimo
+     garantido em vez de prioridade que compete no corte.
+  3. **O freio que impede a dívida de crescer pra sempre.** Folga de 900s
+     por hora não fecha um rombo de 3600s por hora: se a rede for vendida
+     estruturalmente acima da capacidade, a dívida cresce até o infinito
+     independentemente da folga. O freio já existe no banco e não está
+     ligado: `planos.vagas` / `vagas_restantes`, que a vitrine já sabe
+     mostrar. A conta de quantas vagas cabem por hora sai direto do novo
+     orçamento de 3600 segundos.
+· **Enquanto nada disso for construído**, o que protege a rede é o evento
+  `playlist:teto_corta` (já existe) e o aviso antecipado
+  `playlist:hora_quase_cheia` a partir de 80% de ocupação (construído hoje,
+  item 23) — os dois são sinal pro dono, não trava automática.
+
 ---
 
-**Onde a lista está em 16/09/2026 (fim do dia).** Dos 28 itens, 21 estão
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 29 itens, 21 estão
 `[x]`. Os três que faltam **não dependem de escrever código aqui**:
 
 - **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no

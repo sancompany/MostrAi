@@ -135,6 +135,18 @@ e a de custos de 12/09
 ## Folga de 15 minutos pro déficit da hora anterior
 - **O que:** reservar os primeiros ~15 minutos de cada hora só pra saldar o `deficit` (exibição programada e não confirmada) da hora anterior, em vez de ele só entrar como prioridade extra que pode ser cortada de novo se a hora nova também apertar.
 - **Por que:** hoje quem perde exibição numa hora cheia depende de a hora seguinte não estar cheia também pra recuperar — sem garantia, o déficit pode se acumular indefinidamente numa rede saturada.
+- **CORREÇÃO DE 16/09/2026 — esta entrada, como está escrita, NÃO funcionaria.**
+  Medido: numa rede superlotada estável (30 anunciantes de 12x/h, pedido de
+  7200s pra uma hora de 3600s), cada um recebe 6 das 12 que contratou e o
+  `deficit` registrado fica em **zero**, hora após hora. O motivo é que
+  `gravarProgramados` grava em `vezes_programadas` o número DEPOIS do corte
+  proporcional, não o contratado — então `deficit = programadas − confirmadas`
+  dá zero, e a folga de 15 minutos não teria dívida nenhuma pra saldar.
+  O `deficit` de hoje compensa **falha de entrega** (tela offline, vídeo que
+  não tocou), não **falta de inventário** (rede vendida além da hora). São
+  duas dívidas diferentes e só uma está escrita. Construir a folga exige,
+  antes, registrar o contratado separado do programado — ver
+  `docs/PENDENCIAS.md`, item 29.
 - **De onde veio:** `docs/economia-da-rede.md` (seção 4), a pedido do dono em 15/09/2026; usa a mesma janela de 15 minutos que o player já visita (cache de playlist em `src/playlist/routes.js`).
 - **O que toca:** `gerarPlaylistDaHora` e `calcularPlaylist` (`src/lib/pacing.js`) — precisa de um teto mínimo garantido pro déficit dentro da fatia de 15 min, separado do corte proporcional do resto da hora.
 - **Quando vale a pena:** quando o evento `playlist:teto_corta` começar a repetir no mesmo dispositivo em horas seguidas — sinal de que o déficit está empilhando, não só oscilando.
