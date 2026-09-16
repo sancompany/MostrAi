@@ -45,7 +45,6 @@ function render(meses) {
   }
   grid.innerHTML = doMes
     .map((p) => {
-      const porDia = Math.round(p.frequencia_hora * 12);
       const porMes = Number(p.valor_mensal);
       const cheio = p.desconto_percentual > 0 && p.valor_mensal_cheio != null ? Number(p.valor_mensal_cheio) : null;
       return `
@@ -53,8 +52,7 @@ function render(meses) {
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">≈${porDia}x por dia</div>
-      ${cheio ? `<div class="price-riscado">${fmt(cheio)}/mês</div>` : ''}
+      ${cheio ? `<div class="price-riscado">${fmt(cheio)}/mês <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
       <div class="price">${fmt(porMes)}/mês</div>
       <ul>
         <li>${p.frequencia_hora}x por hora em cada ponto</li>
