@@ -133,7 +133,7 @@ e a de custos de 12/09
 - **Quando vale a pena:** quando o dono quiser desenhar um plano com mais de 3 criativos ativos ao mesmo tempo — até lá, os planos atuais (1/2/3) não esbarram no teto.
 
 ## Folga de 15 minutos pro déficit da hora anterior
-- **O que:** reservar os primeiros ~15 minutos de cada hora só pra saldar o `deficit` (exibição programada e não confirmada) da hora anterior, em vez de ele só entrar como prioridade extra que pode ser cortada de novo se a hora nova também apertar.
+- **O que:** tratar a virada da hora como janela e não como parede — exibição programada numa hora conta como entregue se acontecer até 15 minutos depois da virada. *(Definição do dono, 16/09/2026: os 15 minutos são TOLERÂNCIA pra absorver um transbordo ou outro, não inventário reservado. A hora inteira continua vendável — a versão anterior desta entrada dizia "reservar os primeiros 15 minutos", e estava errada.)*
 - **Por que:** hoje quem perde exibição numa hora cheia depende de a hora seguinte não estar cheia também pra recuperar — sem garantia, o déficit pode se acumular indefinidamente numa rede saturada.
 - **CORREÇÃO DE 16/09/2026 — esta entrada, como está escrita, NÃO funcionaria.**
   Medido: numa rede superlotada estável (30 anunciantes de 12x/h, pedido de

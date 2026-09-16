@@ -129,20 +129,25 @@ construído:
    (`embaralhar`) continua decidindo o **QUANDO**/em que ordem, dentro do
    ponto já escolhido, hora a hora. São duas decisões em camadas diferentes,
    não uma reforma do pacing atual.
-5. **Os 15 minutos de folga.** Hoje a hora é um bloco rígido
-   (`horaAtual.setMinutes(0,0,0)`) e quem não coube leva corte proporcional
-   na hora — o `deficit` (a diferença entre o que foi programado e o que foi
-   confirmado, `deficitHoraAnterior`) já existe e já entra como prioridade
-   extra na hora seguinte, mas hoje ele pode ser cortado de novo se a
-   próxima hora também apertar. Dar 15 minutos de folga por hora significa:
-   reservar os primeiros ~15 minutos de cada hora só pra saldar o déficit da
-   hora anterior — um teto MÍNIMO garantido pro que sobrou, em vez de só uma
-   prioridade que compete de novo pelo mesmo corte proporcional. É uma
-   extensão pequena do mecanismo que já existe, não um pacing novo.
-   O poll do player já é de 15 em 15 minutos (`tests/e2e` e
-   `src/playlist/routes.js`, comentário do cache) — a folga proposta usa a
-   MESMA janela que o player já visita, só muda o que é servido dentro
-   dela.
+5. **Os 15 minutos de folga.** *(Definição do dono, corrigida em 16/09/2026:
+   os 15 minutos NÃO são inventário reservado — são **tolerância** pra
+   absorver um transbordo ou outro na hora total. A hora inteira continua
+   vendável. A versão anterior deste item dizia "reservar os primeiros 15
+   minutos", e era leitura minha, não dele.)*
+   Hoje a hora é um bloco rígido (`horaAtual.setMinutes(0,0,0)`): exibição
+   programada às 10h que só acontece às 11h01 não conta pra hora das 10h e
+   ainda vira déficit. Dar 15 minutos de folga significa tratar a virada
+   como JANELA e não como parede — o que foi programado numa hora conta como
+   entregue se acontecer até 15 minutos depois dela. Quem começou a tocar
+   antes da virada e terminou depois continua valendo, e a TV que buscou a
+   playlist atrasada tem tempo de se acertar em vez de gerar déficit de
+   mentira.
+   Escala, pra não superdimensionar: o transbordo FÍSICO é no máximo uma
+   peça, 30 segundos. Os 900s de tolerância são 30x isso. Ou seja, a folga
+   não existe pelo vídeo que atravessa a virada — existe pelo poll do player,
+   que é de 15 em 15 minutos (`src/playlist/routes.js`, comentário do cache)
+   e pode deixar a TV até 15 minutos tocando a hora anterior. A folga usa a
+   MESMA janela que o player já visita.
 
 Os dois desenhos desta seção (sorteio entre pontos e folga de 15 min pro
 déficit) já estão guardados em `docs/proximas-versoes.md`, prontos pra

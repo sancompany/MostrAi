@@ -1364,16 +1364,55 @@ regra de 15 minutos de flexibilidade".)*
      prometia naquela hora, antes do corte. Sem isso nada mais funciona, e é
      também o que permite ao painel do anunciante dizer a verdade quando a
      rede estiver cheia.
-  2. **A folga de 15 minutos**, como já desenhada: 900 dos 3600 segundos da
-     hora reservados pra quitar a dívida da hora anterior, com teto mínimo
-     garantido em vez de prioridade que compete no corte.
-  3. **O freio que impede a dívida de crescer pra sempre.** Folga de 900s
-     por hora não fecha um rombo de 3600s por hora: se a rede for vendida
-     estruturalmente acima da capacidade, a dívida cresce até o infinito
-     independentemente da folga. O freio já existe no banco e não está
-     ligado: `planos.vagas` / `vagas_restantes`, que a vitrine já sabe
-     mostrar. A conta de quantas vagas cabem por hora sai direto do novo
-     orçamento de 3600 segundos.
+  2. **A folga de 15 minutos, na definição do dono** (corrigida por ele em
+     16/09/2026): os 15 minutos são **tolerância**, não inventário
+     reservado. A hora inteira continua vendável; o que muda é que a virada
+     deixa de ser parede — exibição programada numa hora conta como entregue
+     se acontecer até 15 minutos depois. É a mesma janela que resolve o
+     problema do item 26 (confirmação chegando contra o contador da hora
+     nova) e o do item 25 pela metade.
+  3. **O freio que impede a dívida de crescer pra sempre.** A tolerância não
+     cria capacidade: se a rede for vendida estruturalmente acima dos 3600
+     segundos por hora, a dívida cresce até o infinito de qualquer jeito. O
+     freio já existe no banco e não está ligado: `planos.vagas` /
+     `vagas_restantes`, que a vitrine já sabe mostrar. A conta de quantas
+     vagas cabem sai direto do orçamento de 3600 segundos (ver item 30).
+
+**30. [ ] AGUARDANDO O DONO — a lógica da rede, e as vagas que saem dela.**
+*(O dono perguntou em 16/09/2026 quantas vagas cabem numa hora e disse que
+daria a lógica da rede ao chegar em casa. As contas abaixo já estão feitas e
+esperam essa lógica pra virar código.)*
+· **Quantas exibições cabem numa hora:** de **120 a 240**, conforme a
+  duração das peças — 3600s ÷ 30s = 120, 3600s ÷ 15s = 240.
+· **Quantas CONTAS cabem**, com a duração virando benefício do plano
+  (Essencial até 15s, os outros até 30s):
+
+  | plano | consumo | % da hora | rede só disso | teto de receita |
+  |---|---|---|---|---|
+  | Essencial 3x de 15s | 45 s/h | 1,3% | 80 contas | R$ 7.920/mês |
+  | Destaque 6x de 30s | 180 s/h | 5,0% | 20 contas | R$ 3.980/mês |
+  | Máximo 12x de 30s | 360 s/h | 10,0% | 10 contas | R$ 3.990/mês |
+
+  Misturas: 6:3:1 dá **30 contas** e R$ 4.770/mês; 1:1:1 dá 18 contas e
+  R$ 4.182/mês; 1:2:3 dá 12 contas e R$ 3.388/mês.
+· **O que muda tudo:** hoje TODO plano é `todos_pontos` e o gerador não
+  filtra anunciante por tela — então esse teto é da **REDE INTEIRA**, não por
+  tela. Instalar mais telas aumenta o alcance de cada anunciante, não o
+  número de vagas. Pra vender mais contas só há três caminhos: peça mais
+  curta, frequência menor, ou tornar a `cobertura` real (o anunciante compra
+  um ponto em vez de todos), que é o desenho parado na seção 4 do
+  `docs/economia-da-rede.md`. É provavelmente disso que trata a "lógica da
+  rede" que o dono vai trazer.
+· **Observação de preço, que não é minha decisão:** Máximo e Destaque custam
+  praticamente o mesmo por segundo de tela (R$ 3,08 e R$ 3,07 por 1000s,
+  assumindo 12h de comércio aberto). Quem sobe de Destaque pra Máximo paga o
+  dobro e recebe o dobro, sem desconto por volume. O Essencial fica em
+  R$ 6,11 — o dobro dos outros. A escada é coerente de Essencial pra
+  Destaque e plana de Destaque pra cima.
+· **O que está pronto pra construir assim que a lógica chegar:**
+  `duracao_maxima_segundos` como campo de contrato do plano (o ffmpeg já mede
+  a duração no upload), impresso como benefício na vitrine, com todos os
+  planos existentes entrando em 30s pra nada mudar até o dono atribuir.
 · **Enquanto nada disso for construído**, o que protege a rede é o evento
   `playlist:teto_corta` (já existe) e o aviso antecipado
   `playlist:hora_quase_cheia` a partir de 80% de ocupação (construído hoje,
@@ -1381,7 +1420,7 @@ regra de 15 minutos de flexibilidade".)*
 
 ---
 
-**Onde a lista está em 16/09/2026 (fim do dia).** Dos 29 itens, 21 estão
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 30 itens, 21 estão
 `[x]`. Os três que faltam **não dependem de escrever código aqui**:
 
 - **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no
