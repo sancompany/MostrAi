@@ -1095,6 +1095,65 @@ fechou o lado inverso, "ponto ganha anúncio grátis", em
   pública (`index.html`, `planos.html`) menciona esse benefício antes da
   assinatura.
 
+**20. [x] Depuração visual do site inteiro (desktop e celular) e editor de
+planos do admin com o visual da vitrine.** **FEITO em 16/09/2026.** *(Pedido
+do dono ao sair: "visualize todas páginas do site e depure de acordo com o
+mercado... procure bugs visuais tanto para desktop quanto para celular...
+no painel de admin coloque o visual da própria página de planos pública mas
+com os dados editáveis... ao invés de assinar plano um botão de salvar novo
+plano, separados por mensal trimestral semestral e anual... os formulários
+de cadastro login, deixe os menos arredondados... no celular eles quebram a
+linha e ficam fora da tela".)*
+
+- **Como foi olhado:** as 18 páginas públicas mais painel, "meu ponto" e
+  "vendas" abertas em navegador de verdade (Chromium headless), em 1440px,
+  768px e 360px, com os dados reais da API de produção. Medição automática
+  de três coisas em cada uma: página mais larga que a tela, elemento
+  estourando o contêiner, e campo estreito demais pro dado que recebe.
+- **O que estava errado no celular (o que o dono viu):** não era a página
+  vazando pra fora da tela — era campo espremido. A linha CEP / Rua e
+  bairro / Número cabia três colunas dentro de 292px e cada uma virava
+  67px: nem o placeholder `00000-000` aparecia inteiro. O piso de 140px faz
+  a linha QUEBRAR em vez de espremer (duas colunas por linha no celular,
+  nunca três), e o cartão perdeu 8px de padding, que viram largura útil.
+- Mesma origem, outros dois: a dica da senha saía dentro da coluna do campo
+  e virava quatro linhas espremidas ao lado do "Confirmar senha" (agora sai
+  depois da linha, na largura toda), e o link de indicação do vendedor
+  dividia a linha com o botão, quebrando a URL em quatro pedaços no meio da
+  palavra (agora ocupa a linha inteira).
+- **Arredondamento:** botão e campo saíram da pílula de 999px (tokens novos
+  `--radius-btn: 10px` e `--radius-campo: 8px`). Selo e chip continuam
+  redondos de propósito: ali a pílula é o que diz "isto é rótulo, não
+  botão".
+- **Outros achados da varredura:** seletor de ciclo da vitrine virou um
+  controle segmentado (quatro pílulas soltas quebravam em duas linhas
+  desalinhadas no celular); os cinco KPIs do painel deixavam o quinto
+  sozinho numa fileira com um vão do lado (grade de três, quebra 3+2);
+  tabela larga no celular rolava pro lado sem pista nenhuma além da última
+  coluna cortada no meio da palavra (ganhou sombra de rolagem); a vitrine
+  ordenava por nome do tier, então "Destaque" abria a grade e o plano
+  destacado não ficava no meio (agora ordena por preço).
+- **Travessão que faltou:** o rótulo "Preço fundador — nunca muda" é DADO
+  (`planos.rotulo`), não markup — por isso escapou da limpeza do item 13,
+  que leu `public/`. Migration 042 tira só a pontuação, mantendo a palavra
+  que o dono escolheu.
+- **Admin, aba Planos:** a tabela de 15 colunas virou o cartão da própria
+  vitrine com os campos abertos — mesma ordem (rótulo, nome, preço riscado
+  com o desconto, preço grande calculado ao vivo, lista de benefícios) e o
+  mesmo botão no pé, agora "Salvar novo plano" em vez de "Assinar". Segue
+  separado por Mensal, Trimestral, Semestral e Anual, com o contador
+  "N/3 na vitrine" por modalidade. O botão fica sempre visível (como o
+  "Assinar" da vitrine), desligado até haver mudança de contrato pra
+  salvar — botão que some é botão que o dono procura.
+- **Falso alarme conferido:** o balão do WhatsApp parecia cobrir campo no
+  meio do formulário. Não cobre — é artefato de captura de página inteira
+  (elemento `fixed` desenha na posição da janela). Medido com a página
+  rolada até o fim nas três telas de formulário: não cobre nenhum controle.
+- Telas trocadas: `public/style.css`, `public/admin/index.css`,
+  `public/admin/index.page.js`, `public/formulario.js`,
+  `src/financeiro/planos-repository.js`,
+  `src/db/migrations/042_rotulo_sem_travessao.sql` (nova).
+
 ---
 
 **Retomada combinada com o dono:** a próxima rodada de depuração (seção F
