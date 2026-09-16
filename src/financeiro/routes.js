@@ -40,15 +40,24 @@ function limiteCriativosInvalido(valor) {
   return !Number.isInteger(n) || n < 1 || n > 3;
 }
 
+function descontoInvalido(valor) {
+  if (valor === undefined || valor === null || valor === '') return false;
+  const n = Number(valor);
+  return Number.isNaN(n) || n < 0 || n >= 100;
+}
+
 // Cria um plano novo — usado pra lançar preço/promoção sem mexer no que
 // quem já assinou um plano existente está pagando (ver migration 014).
 router.post('/admin/planos', async (req, res) => {
-  const { id, tier, nome, valor_mensal, compromisso_meses, frequencia_hora, cobertura } = req.body;
-  if (!id || !tier || !nome || !valor_mensal || !compromisso_meses || !frequencia_hora || !cobertura) {
+  const { id, tier, nome, valor_mensal_cheio, compromisso_meses, frequencia_hora, cobertura } = req.body;
+  if (!id || !tier || !nome || !valor_mensal_cheio || !compromisso_meses || !frequencia_hora || !cobertura) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
   }
   if (limiteCriativosInvalido(req.body.limite_criativos)) {
     return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
+  }
+  if (descontoInvalido(req.body.desconto_percentual)) {
+    return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
   }
   const ativo = req.body.ativo === undefined ? true : req.body.ativo;
   if (ativo && (await planosRepo.vagaOcupada(Number(compromisso_meses), null, !!req.body.fundador))) {
@@ -115,9 +124,12 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
   if (limiteCriativosInvalido(req.body.limite_criativos)) {
     return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
   }
+  if (descontoInvalido(req.body.desconto_percentual)) {
+    return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
+  }
   // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
   // constraint do banco — devolve o motivo em vez do erro genérico.
-  const vazio = ['nome', 'valor_mensal', 'frequencia_hora', 'compromisso_meses', 'limite_criativos'].find(
+  const vazio = ['nome', 'valor_mensal_cheio', 'frequencia_hora', 'compromisso_meses', 'limite_criativos'].find(
     (c) => c in req.body && (req.body[c] === null || req.body[c] === ''),
   );
   if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });

@@ -21,8 +21,6 @@ const NOTA_CICLO = {
   12: 'Você paga uma vez por ano. O valor por mês abaixo é a referência de quanto isso representa.',
 };
 
-const LABEL_CICLO = { 3: 'cobrado a cada 3 meses', 6: 'cobrado a cada 6 meses', 12: 'cobrado 1x por ano' };
-
 // Referência de preço cheio: é o plano mensal do mesmo tier. Assinar 3
 // meses custa o mensal × 3 se não houvesse desconto — esse é o valor
 // riscado, e a diferença dividida pelos meses é a economia por mês.
@@ -49,24 +47,20 @@ function render(meses) {
     .map((p) => {
       const porDia = Math.round(p.frequencia_hora * 12);
       const porMes = Number(p.valor_mensal);
-      const totalCiclo = porMes * meses;
-      const referencia = mensalDoTier(p.tier) || Number(p.valor_mensal_cheio) || null;
-      const totalCheio = referencia ? referencia * meses : null;
-      const economiaMes = referencia ? referencia - porMes : 0;
+      const cheio = p.desconto_percentual > 0 && p.valor_mensal_cheio != null ? Number(p.valor_mensal_cheio) : null;
       return `
     <div class="plan-card ${p.destaque_no_site ? 'popular' : ''}">
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      <div class="freq">${p.frequencia_hora}x por hora em cada ponto <small>(≈${porDia}x por dia num comércio aberto 12h)</small></div>
-      ${totalCheio && economiaMes > 0 ? `<div class="price-riscado">${fmt(totalCheio)}</div>` : ''}
-      <div class="price">${fmt(totalCiclo)}</div>
-      <div class="price-sub">
-        ${fmt(porMes)}/mês${meses > 1 ? ` · ${LABEL_CICLO[meses]}` : ''}
-        ${economiaMes > 0 ? `<b>Você economiza ${fmt(economiaMes)} por mês</b>` : ''}
-      </div>
-      <ul>${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-        ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}</ul>
+      <div class="freq">≈${porDia}x por dia</div>
+      ${cheio ? `<div class="price-riscado">${fmt(cheio)}/mês</div>` : ''}
+      <div class="price">${fmt(porMes)}/mês</div>
+      <ul>
+        <li>${p.frequencia_hora}x por hora em cada ponto</li>
+        ${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
+        ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}
+      </ul>
       <a class="btn ${p.destaque_no_site ? 'primary' : 'ghost'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
   `;

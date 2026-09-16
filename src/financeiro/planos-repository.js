@@ -1,5 +1,14 @@
 const pool = require('../db/pool');
 
+// O admin digita preço cheio + desconto; o valor cobrado de verdade sai
+// daqui, sempre — nunca é digitado direto (pedido do dono, 16/09/2026).
+// Sem desconto (0, null ou undefined), o valor cobrado é o preço cheio.
+function calcularValorMensal(valorCheio, descontoPercentual) {
+  const cheio = Number(valorCheio);
+  const desconto = Number(descontoPercentual) || 0;
+  return Math.round(cheio * (1 - desconto / 100) * 100) / 100;
+}
+
 // `beneficios` não é mais coluna (migration 015) — vem do catálogo por JOIN.
 // Dois campos, de propósito: `beneficios` são os textos que vão pro site (só
 // os disponíveis), `beneficio_ids` é o vínculo real, inclusive o de benefício
@@ -32,16 +41,21 @@ const CAMPOS_CRIACAO = [
   'vagas',
   'ponto_apos_meses',
   'desconto_comodato_percentual',
+  'desconto_percentual',
 ];
 
 // Criar um plano novo (id novo) em vez de editar um existente é o jeito de
 // mudar preço pra clientes futuros sem mexer no que quem já assinou está
 // pagando (ver migration 014).
 async function criar(dados) {
-  const campos = CAMPOS_CRIACAO.filter((c) => dados[c] !== undefined);
+  const preparado = { ...dados };
+  if (preparado.valor_mensal_cheio != null) {
+    preparado.valor_mensal = calcularValorMensal(preparado.valor_mensal_cheio, preparado.desconto_percentual);
+  }
+  const campos = CAMPOS_CRIACAO.filter((c) => preparado[c] !== undefined);
   const colunas = campos.join(', ');
   const marcadores = campos.map((_, i) => `$${i + 1}`).join(', ');
-  const valores = campos.map((c) => dados[c]);
+  const valores = campos.map((c) => preparado[c]);
   const { rows } = await pool.query(`INSERT INTO planos (${colunas}) VALUES (${marcadores}) RETURNING *`, valores);
   return rows[0];
 }
@@ -143,6 +157,7 @@ const CAMPOS_CONTRATO = [
   'ponto_apos_meses',
   'beneficio_ids',
   'desconto_comodato_percentual',
+  'desconto_percentual',
 ];
 
 const CAMPOS_ATUALIZAVEIS = CAMPOS_VITRINE;
@@ -199,6 +214,9 @@ async function novaVersao(idAtual, mudancas) {
     if (campo in mudancas && mudancas[campo] !== undefined) novo[campo] = mudancas[campo];
   }
   const beneficios = (mudancas.beneficio_ids || atual.beneficio_ids || []).map(Number);
+  if (novo.valor_mensal_cheio != null) {
+    novo.valor_mensal = calcularValorMensal(novo.valor_mensal_cheio, novo.desconto_percentual);
+  }
   novo.id = await proximoId(idAtual);
   novo.ativo = true;
 

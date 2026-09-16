@@ -1492,10 +1492,7 @@ async function renderCandidaturas(el) {
       if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o convite.', 'err');
       const { link } = await r.json();
       navigator.clipboard?.writeText(link).catch(() => {});
-      prompt(
-        'Convite gerado (já copiado). Mande esse link pra pessoa. Vale 7 dias e só pode ser usado uma vez:',
-        link,
-      );
+      prompt('Convite gerado (já copiado). Mande esse link pra pessoa. Vale 7 dias e só pode ser usado uma vez:', link);
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
       renderCandidaturas(el);
@@ -1755,11 +1752,21 @@ async function renderPlanos(el) {
   const contrato = (campo, p) => `data-campo="${campo}" data-grupo="contrato" data-id="${p.id}"`;
   const vitrine = (campo, p) => `data-campo="${campo}" data-grupo="vitrine" data-id="${p.id}"`;
 
-  const linhaPlano = (p) => `<tr data-linha="${p.id}">
+  // Preço cheio e desconto são o que o admin digita; valor_mensal (o que é
+  // cobrado de verdade) é sempre calculado a partir dos dois, no servidor —
+  // por isso aqui é só leitura, recalculado ao vivo pra conferência.
+  const valorComDesconto = (p) => {
+    const cheio = Number(p.valor_mensal_cheio ?? p.valor_mensal);
+    const desconto = Number(p.desconto_percentual) || 0;
+    return Math.round(cheio * (1 - desconto / 100) * 100) / 100;
+  };
+  const linhaPlano = (p) => `<tr data-linha="${p.id}" data-ciclo="${p.compromisso_meses}">
           <td><input class="mini u-w-120" ${contrato('nome', p)} value="${esc(p.nome)}">
             <div class="u-dim u-fs-72 u-mt-2">${esc(p.id)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</div></td>
-          <td><input class="mini u-w-80" type="number" step="0.01" min="0" ${contrato('valor_mensal', p)} value="${p.valor_mensal}"></td>
-          <td><b>${fmt(p.valor_mensal * p.compromisso_meses)}</b></td>
+          <td><input class="mini u-w-80" type="number" step="0.01" min="0" ${contrato('valor_mensal_cheio', p)} data-preco-cheio="${p.id}" value="${p.valor_mensal_cheio ?? p.valor_mensal}"></td>
+          <td><input class="mini u-w-60" type="number" step="0.01" min="0" max="99" ${contrato('desconto_percentual', p)} data-desconto="${p.id}" value="${p.desconto_percentual ?? ''}" placeholder="-"></td>
+          <td><b data-valor-final="${p.id}">${fmt(valorComDesconto(p))}</b>/mês</td>
+          <td><b data-total-ciclo="${p.id}">${fmt(valorComDesconto(p) * p.compromisso_meses)}</b></td>
           <td><input class="mini u-w-60" type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></td>
           <td><input class="mini u-w-60" type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></td>
           <td><input class="mini u-w-60" type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-" title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (vira candidatura de ponto)"></td>
@@ -1771,7 +1778,7 @@ async function renderPlanos(el) {
           <td class="u-ta-c"><input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}></td>
           <td><button class="btn primary mini" data-nova-versao="${p.id}" hidden>Publicar nova versão</button></td>
         </tr>`;
-  const cabecalho = `<tr><th>Nome</th><th>Valor mensal</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Desconto comodato</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
+  const cabecalho = `<tr><th>Nome</th><th>Preço cheio</th><th>Desconto %</th><th>Valor com desconto</th><th>Total do ciclo</th><th>Criativos</th><th>Vagas</th><th>Tela após (meses)</th><th>Desconto comodato</th><th>Travado</th><th>Rótulo</th><th>Benefícios</th><th>Destaque</th><th>Ativo</th><th></th></tr>`;
 
   el.innerHTML = `
     <details class="bloco-novo">
@@ -1791,9 +1798,10 @@ async function renderPlanos(el) {
           <div class="u-col"><label>Frequência/hora</label><input class="mini" type="number" name="frequencia_hora" value="6" required></div>
         </div>
         <div class="field-row">
-          <div class="u-col"><label>Valor mensal (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal" required></div>
-          <div class="u-col"><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
+          <div class="u-col"><label>Preço cheio (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal_cheio" required></div>
+          <div class="u-col"><label>Desconto (%, vazio = sem desconto)</label><input class="mini" type="number" step="0.01" min="0" max="99" name="desconto_percentual"></div>
         </div>
+        <div><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
         <div><label>Cobertura</label><select class="mini" name="cobertura" required>
           <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
         </select></div>
@@ -1825,8 +1833,9 @@ async function renderPlanos(el) {
       .join('')}
 
     <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      <b>Plano assinado é imutável pra quem assinou.</b> Nome, valor, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
+      <b>Plano assinado é imutável pra quem assinou.</b> Nome, preço cheio, desconto, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
       editar um deles acende "Publicar nova versão", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
+      O valor cobrado é sempre calculado (preço cheio menos o desconto). Sem desconto, o preço cheio é o valor cobrado, e o site não mostra preço riscado.
       Vagas, rótulo, destaque e Ativo são só vitrine. Salvam na hora e não alcançam ninguém que já é cliente.
       Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
       "Tela após": módulo cruzado. Ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
@@ -1853,6 +1862,20 @@ async function renderPlanos(el) {
 
   el.querySelectorAll('[data-grupo="contrato"]').forEach((inp) => {
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => acenderBotao(inp.dataset.id));
+  });
+
+  // Preço cheio e desconto recalculam o valor final ao vivo, antes mesmo de
+  // publicar a versão nova — pra conferir o resultado sem chute.
+  el.querySelectorAll('[data-preco-cheio], [data-desconto]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      const id = inp.dataset.precoCheio || inp.dataset.desconto;
+      const linha = el.querySelector(`[data-linha="${id}"]`);
+      const cheio = Number(linha.querySelector('[data-preco-cheio]').value) || 0;
+      const desconto = Number(linha.querySelector('[data-desconto]').value) || 0;
+      const final = Math.round(cheio * (1 - desconto / 100) * 100) / 100;
+      linha.querySelector('[data-valor-final]').textContent = fmt(final);
+      linha.querySelector('[data-total-ciclo]').textContent = fmt(final * Number(linha.dataset.ciclo));
+    });
   });
 
   el.querySelectorAll('[data-beneficios-de]').forEach((caixa) => {
@@ -1900,6 +1923,7 @@ async function renderPlanos(el) {
     if (dados.vagas === '') delete dados.vagas;
     if (dados.ponto_apos_meses === '') delete dados.ponto_apos_meses;
     if (dados.desconto_comodato_percentual === '') delete dados.desconto_comodato_percentual;
+    if (dados.desconto_percentual === '') delete dados.desconto_percentual;
     const msg = document.getElementById('msgNovoPlano');
     const r = await api('/admin/planos', { method: 'POST', body: JSON.stringify(dados) });
     if (!r.ok) {
