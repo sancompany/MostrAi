@@ -16,17 +16,20 @@
 --     (herança do modelo de aprovação) faziam misturado no `status`.
 --
 -- Ordem importa: primeiro guarda o que `suspenso` precisa saber (quem tinha
--- status='suspenso'), depois vira `fundador` em 'parceiro', só então troca a
--- constraint do domínio velho pelo novo.
+-- status='suspenso'), e a constraint velha (que só aceitava os 4 valores
+-- antigos) tem que sair ANTES de qualquer UPDATE gravar 'comum'/'parceiro'
+-- — senão o próprio UPDATE de transição viola a constraint que ele está
+-- tentando substituir. (Isso quebrou o primeiro deploy: a constraint velha
+-- só saía depois do UPDATE, e o Postgres nunca deixou a linha virar 'comum'.)
 ALTER TABLE anunciantes ADD COLUMN suspenso boolean NOT NULL DEFAULT false;
 UPDATE anunciantes SET suspenso = true WHERE status = 'suspenso';
 
 ALTER TABLE anunciantes RENAME COLUMN fundador_desconto_percentual TO parceiro_desconto_percentual;
 ALTER TABLE anunciantes RENAME COLUMN fundador_compromisso_minimo TO parceiro_compromisso_minimo;
+
+ALTER TABLE anunciantes DROP CONSTRAINT anunciantes_status_check;
 UPDATE anunciantes SET status = 'parceiro' WHERE fundador;
 UPDATE anunciantes SET status = 'comum' WHERE status <> 'parceiro';
 ALTER TABLE anunciantes DROP COLUMN fundador;
-
-ALTER TABLE anunciantes DROP CONSTRAINT anunciantes_status_check;
 ALTER TABLE anunciantes ALTER COLUMN status SET DEFAULT 'comum';
 ALTER TABLE anunciantes ADD CONSTRAINT anunciantes_status_check CHECK (status IN ('comum', 'parceiro'));
