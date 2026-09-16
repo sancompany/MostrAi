@@ -3,6 +3,9 @@
 132 furos levantados em 15/09/2026 por oito lentes sobre a teia inteira
 (`docs/teia.md`): **31 críticos, 51 altos, 39 médios, 11 baixos**.
 
+**Rodada de novo em 16/09/2026** contra o código de hoje — resultado logo
+abaixo, antes do placar de 15/09.
+
 **Isto é uma lista de hipóteses com endereço, não de fatos.** A varredura leu o
 código; a verificação adversarial foi interrompida por limite de sessão e depois
 cancelada por custo — verificar por agente custava caro e rendia menos que abrir
@@ -15,6 +18,101 @@ silêncio, que é outro problema e outro conserto.
 Regra: nada daqui vira código sem ser reproduzido antes. O que já foi
 reproduzido e consertado sai desta lista e vira commit.
 
+
+---
+
+## Segunda passada, 16/09/2026 — a lista foi rodada de novo contra o código
+
+**Por que rodar de novo.** O placar de 15/09 fechou as quatro seções, mas
+desde então entrou muito código: vitrine de planos reorganizada, cancelamento
+e troca de plano, depuração visual do site inteiro, e os itens 16 a 19 da
+seção F. Furo fechado não fica fechado sozinho — e código novo traz furo novo.
+
+**Como foi rodada.** Três varreduras, nesta ordem:
+
+1. **Furo a furo, com teste automático.** 78 checagens concretas contra a
+   árvore de hoje, uma por furo verificável.
+2. **As lentes da lista aplicadas à árvore inteira, não à lista.** Rota do
+   servidor sem tela que a chame; função chamada e nunca declarada; `id` que o
+   JS procura e o HTML não tem; rota viva fora do `docs/api.md`; tabela que
+   ninguém lê; coluna escrita e nunca lida.
+3. **Navegador.** As 22 páginas públicas em 1440px e 390px, escutando
+   `pageerror` e medindo estouro. Zero erro de JS, zero estouro.
+
+**Resultado: 11 alarmes na primeira varredura, 9 deles erro do teste e não do
+código.** Vale registrar, porque é o mesmo aviso que abre este documento — a
+lista é de hipóteses, e hipótese se confirma abrindo. Os nove:
+
+- `[hidden]` do botão: o conserto existe, mas como `[hidden] { display: none
+  !important }` global, melhor que a regra por classe que a lista propunha.
+- FAQ de cancelamento: existe em `planos.html` ("Como eu cancelo?"); o teste
+  procurava a palavra "cancelar", que não aparece em "cancelo"/"cancelamento".
+- `pendente_aprovacao`: só sobrevive em migration antiga (história, imutável) e
+  num comentário que explica a remoção. Não é código vivo.
+- Painel do vendedor sem perfil: tratado, com estado próprio pro 403. O teste
+  olhava um arquivo que não existe (`vendas.page.js`; é `vendedor.page.js`).
+- Erro do servidor no login/cadastro: tratado, inclusive o 429. Mora nas
+  páginas, não no `formulario.js` onde o teste procurou.
+- Tela em reparo recebendo playlist: barrado em `src/lib/aparelho.js`, no
+  middleware que autentica o aparelho — lugar certo, não no gerador.
+- Limite de criativos na vitrine: dito, mas como TEXTO DE BENEFÍCIO no banco
+  ("Até 2 criativos ativos, revezando entre si"), não como campo no HTML.
+- `/contato` gravando a mensagem: grava; a tabela chama `mensagens_contato`.
+- `POST /admin/pontos/:id/aparelho`: continua viva de propósito, respondendo
+  410 e dizendo qual é o caminho novo. Lápide é melhor que ausência.
+
+**Os quatro que eram furo de verdade — consertados nesta passada:**
+
+**1. [x] M11 de volta por outra porta: custo por exibição ignora os descontos
+de parceiro e de comodato.** O furo M11 original (custo por exibição usando
+preço de tabela) foi fechado em 15/09 fazendo a conta enxergar
+`valor_mensal_travado` e a cortesia. Só que os descontos de parceiro (RN-31) e
+de comodato (RN-32) nasceram DEPOIS, em `valorMensalDaConta` — e a conta
+inline de `src/anunciantes/routes.js` não os acompanhou. Resultado medido, com
+o plano Destaque trimestral e 1000 exibições confirmadas:
+
+| conta | mostrava | paga de verdade |
+|---|---|---|
+| comum | R$ 0,5672 | R$ 0,5672 |
+| dono de ponto (comodato 20%) | R$ 0,5672 | **R$ 0,4537** |
+| parceira (10%) | R$ 0,5672 | **R$ 0,5104** |
+
+O cliente com desconto via, na própria tela, um custo por exibição 25% maior
+do que o que paga. Conserto: a rota passa a chamar
+`sanCheckout.valorMensalDaConta`, a mesma função que decide o que o Checkout
+cobra. Preço de cobrança não pode ter duas fontes.
+
+**2. [x] `mensagens_contato` é gravada e ninguém nunca a lê.** Furo NOVO,
+criado pelo próprio conserto de 15/09: a migration 039 passou a gravar a
+mensagem antes de tentar o e-mail, justamente pra que falha de SMTP perdesse o
+aviso e não o dado. Só que nenhuma tela lia a tabela — o dado ficou salvo e
+invisível, que é o mesmo furo por outra porta. E pior do que parece: o SMTP
+está fora do ar (seção F, item 2), e `/contato.html` se declara canal de
+pedido do titular (LGPD art. 18), que tem prazo legal. Hoje, todo pedido de
+dado pessoal cai nesse buraco. Conserto: aba **Mensagens do site** no admin,
+com a coluna "aviso" dizendo se o e-mail chegou (quando não chegou, a tela é o
+único lugar onde a mensagem existe), contador de fila no menu, e marcação de
+respondida (migration 044) — fila que não se limpa deixa de ser olhada.
+
+**3. [x] `POST /admin/eventos-pendentes/:id/aplicar` fora do `docs/api.md`.**
+Rota viva, com botão no admin ("Aplicar este ciclo"), que credita cobertura
+depois de conferir a cobrança no Checkout. Caminho de dinheiro não documentado
+— e o doc listava só o `PATCH` irmão, que apenas arquiva e não credita nada.
+Quem lesse o doc concluiria que a fila de eventos não tem saída.
+
+**4. [x] `POST /anunciantes/:id/dispositivos/:dispositivoId/pin` fora do
+`docs/api.md`.** O doc tinha o irmão `GET .../painel` e não esta.
+
+**O que a segunda passada confirmou que continua fechado:** tudo o mais. As
+117 rotas vivas contra o `docs/api.md`: 4 apareciam fora e todas estão lá, em
+entradas combinadas que o teste não sabe ler. Nenhuma tabela sem leitor além
+da de contato. Nenhuma coluna morta nas migrations novas. Nenhum erro de JS
+em nenhuma página.
+
+**Uma lição de método que ficou.** O estouro da célula de mensagem na aba nova
+não vazava a tela, então a medição automática deu tudo certo — quem pegou foi
+olhar a captura. Medição automática pega o que sai da janela; sobreposição
+dentro de uma tabela só se vê.
 
 ---
 

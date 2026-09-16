@@ -1202,9 +1202,35 @@ linha e ficam fora da tela".)*
   `src/financeiro/planos-repository.js`,
   `src/db/migrations/042_rotulo_sem_travessao.sql` (nova).
 
+**21. [x] Segunda passada da `docs/furos.md` contra o código de hoje.**
+**FEITO em 16/09/2026.** *(Pedido do dono: "rode novamente contra furos".)*
+· 78 checagens automáticas furo a furo, mais as lentes da própria lista
+  aplicadas à árvore inteira (rota órfã, função inexistente, `id` que o JS
+  procura, rota fora do doc, tabela sem leitor, coluna morta), mais as 22
+  páginas públicas num navegador de verdade a 1440px e 390px.
+· 11 alarmes, 9 falsos (erro do teste, não do código) e 4 furos reais.
+· **Real 1 — custo por exibição mostrava caro demais pra quem tem desconto.**
+  O M11 tinha sido fechado antes de os descontos de parceiro e comodato
+  existirem, e a conta inline no painel não os acompanhou. Dono de ponto com
+  20% via R$ 0,5672 por exibição onde paga R$ 0,4537. Agora a rota usa
+  `valorMensalDaConta`, a mesma função que decide o que o Checkout cobra.
+· **Real 2 — a caixa de contato existia no banco e em tela nenhuma.** A
+  migration 039 grava a mensagem antes de tentar o e-mail (pra falha de SMTP
+  não sumir com o pedido), mas ninguém lia a tabela. Com o SMTP fora (item 2)
+  e `/contato.html` sendo o canal de pedido do titular (LGPD, com prazo),
+  todo pedido caía num buraco. Aba **Mensagens do site** no admin, com
+  contador no menu, coluna dizendo se o aviso saiu, e marcação de respondida
+  (migration 044).
+· **Reais 3 e 4 — duas rotas vivas fora do `docs/api.md`**, uma delas de
+  caminho de dinheiro (`/admin/eventos-pendentes/:id/aplicar`, que credita o
+  ciclo depois de conferir no Checkout; o doc só listava o PATCH irmão, que
+  arquiva e não credita).
+· Detalhe de cada um, com os nove falsos alarmes nomeados, na seção
+  "Segunda passada, 16/09/2026" de `docs/furos.md`.
+
 ---
 
-**Onde a lista está em 16/09/2026 (fim do dia).** Dos 20 itens, 17 estão
+**Onde a lista está em 16/09/2026 (fim do dia).** Dos 21 itens, 18 estão
 `[x]`. Os três que faltam **não dependem de escrever código aqui**:
 
 - **Item 1** (pagamento confirmado não credita o ciclo) — o conserto é no

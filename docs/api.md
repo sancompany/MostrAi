@@ -51,6 +51,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/me/pontos` | Dono de ponto cadastra outro endereço (entra como `lead`, com Tela 1). |
 | GET | `/anunciantes/:id/dispositivos` | Telas dos pontos da conta, com exibições/anunciantes em 30 dias e `ponto_status`. |
 | GET | `/anunciantes/:id/dispositivos/:dispositivoId/painel` | O que rodou naquela tela: `{porAnunciante, porDia}`. |
+| POST | `/anunciantes/:id/dispositivos/:dispositivoId/pin` | Dono do ponto define o PIN da própria tela (guardado com hash, mesma regra do `/admin/dispositivos/:id/pin`). |
 | GET | `/vendedor/painel` | Papel `vendedor`: `{vendedor, comissoes, totalComissionado, totalPago, totalAReceber}`. |
 | PATCH | `/vendedor/me` | `{chave_pix}` — vendedor completa/troca a própria chave. |
 
@@ -103,7 +104,7 @@ pede.
 ### Resumo
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `offline`), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
+| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
 
 ### Entrada de gente (candidatura → convite → conta)
 | Método | Rota | O que faz |
@@ -182,6 +183,8 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/cobrancas` | cobranças confirmadas |
+| GET | `/admin/mensagens-contato` | caixa de entrada do formulário do site, mais recente primeiro. Traz `email_enviado` (se o aviso por e-mail chegou) e `respondida_em`. Quando `email_enviado` é `false`, esta rota é o ÚNICO lugar onde a mensagem existe |
+| PATCH | `/admin/mensagens-contato/:id` | `{respondida}` — marca ou desmarca como respondida. 404 se a mensagem não existe |
 | GET | `/admin/pedidos-avulsos` | trocas de plano em lista própria: quem trocou, de qual plano pra qual, o valor da diferença e a situação (`pendente`/`pago`/`cancelado`). Leitura pura; o pago também aparece em `/admin/cobrancas`. |
 | PATCH | `/admin/cobrancas/:id/nota-fiscal` | marca a nota como emitida |
 | GET | `/admin/comissoes` | comissões geradas |
@@ -193,6 +196,7 @@ pede.
 | PATCH | `/admin/custos-fixos/:id` | edita |
 | DELETE | `/admin/custos-fixos/:id` | remove |
 | GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo |
-| PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido |
+| PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido (só arquiva — **não credita nada**) |
+| POST | `/admin/eventos-pendentes/:id/aplicar` | credita o ciclo daquele evento de verdade. Confere a cobrança no San Checkout ANTES (`consultarAssinatura`): um evento de "cobrança falhou" também traz `planoId`, e sem a conferência o botão daria cobertura por dinheiro que não entrou. 400 se o evento não aponta pra assinatura conhecida, se a conta sumiu ou se já foi resolvido |
 | GET | `/admin/arrependimentos` | devoluções por arrependimento, pendentes primeiro |
 | POST | `/admin/arrependimentos/:id/estornado` | `{comprovante}` — fecha o pedido depois de devolver no Checkout/Asaas. 404 se já estornado |

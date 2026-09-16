@@ -195,3 +195,16 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
   .nav-item.active { border-left: none; border-bottom-color: var(--brand); }
   .admin-main { padding: 18px 14px 48px; }
 }
+
+/* Mensagem do formulário de contato: texto livre, tamanho imprevisível. A
+   célula herda o `white-space: nowrap` de `.tabela-caixa td` e a mensagem
+   longa saía por cima do selo e do checkbox das colunas seguintes — a tabela
+   não vazava a tela, então a medição automática não pegava; só se vê olhando.
+   O teto vai num DIV dentro da célula de propósito: `max-width` em `td` de
+   tabela com layout automático é sugestão, em bloco é regra. */
+.celula-mensagem {
+  max-width: 360px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}

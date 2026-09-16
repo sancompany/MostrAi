@@ -214,6 +214,7 @@ const NAV = [
     grupo: 'Entrada',
     itens: [
       { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas' },
+      { id: 'contato', nome: 'Mensagens do site', fila: 'contato' },
       { id: 'convites', nome: 'Convites' },
     ],
   },
@@ -258,6 +259,8 @@ const SUBTITULOS = {
     'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
   candidaturas: 'Quem pediu pra ser ponto ou vendedor pelo site. Você conversa, e se fechar, gera o convite daqui.',
+  contato:
+    'Quem escreveu pelo formulário do site. É também o canal de pedido sobre dados pessoais (LGPD), que tem prazo pra responder. A coluna "aviso" diz se o e-mail chegou na sua caixa; quando não chegou, esta tela é o único lugar onde a mensagem existe.',
   convites:
     'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
   pontos:
@@ -332,6 +335,7 @@ async function irPara(aba, forcarResumo) {
   const telas = {
     resumo: renderResumo,
     candidaturas: renderCandidaturas,
+    contato: renderContato,
     convites: renderConvites,
     criativos: renderCriativos,
     pontos: renderPontos,
@@ -2496,6 +2500,64 @@ async function renderComodato(el) {
       salvar(`/admin/planos-ponto/${inp.dataset.id}`, { [inp.dataset.pp]: valor }, inp);
     }),
   );
+}
+
+// ---------- mensagens do site ----------
+// A migration 039 passou a gravar a mensagem antes de tentar o e-mail, pra que
+// falha de SMTP perdesse o aviso e não o dado. Só que ninguém lia a tabela: o
+// dado ficava salvo e invisível — o mesmo furo por outra porta, e pior, porque
+// /contato.html é o canal declarado de pedido do titular (LGPD art. 18).
+async function renderContato(el) {
+  const msgs = await pegar('/admin/mensagens-contato');
+  const abertas = msgs.filter((m) => !m.respondida_em).length;
+  const semAviso = msgs.filter((m) => !m.email_enviado).length;
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Quando</th><th data-ord>Quem</th><th>Mensagem</th><th data-ord>Aviso</th><th>Respondida</th>
+    </tr></thead><tbody>
+    ${msgs
+      .map(
+        (m) => `<tr data-filtro="${m.respondida_em ? 'respondida' : 'aberta'}">
+      <td>${data(m.created_at)}</td>
+      <td><b>${esc(m.nome)}</b><br><a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.telefone ? `<br><span class="u-dim">${esc(m.telefone)}</span>` : ''}</td>
+      <td><div class="celula-mensagem">${esc(m.mensagem)}</div></td>
+      <td>${m.email_enviado ? '<span class="badge badge-ok">enviado</span>' : '<span class="badge badge-err">não saiu</span>'}</td>
+      <td><label class="chip-check"><input type="checkbox" data-respondida="${m.id}" ${m.respondida_em ? 'checked' : ''}> ${m.respondida_em ? data(m.respondida_em) : 'marcar'}</label></td>
+    </tr>`,
+      )
+      .join('')}
+  </tbody></table>`;
+
+  el.innerHTML = msgs.length
+    ? `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Esperando resposta</span><b>${abertas}</b><span class="kpi-caption">pedido de dados tem prazo legal</span></div>
+      <div class="kpi-card"><span class="kpi-label">Aviso por e-mail não saiu</span><b>${semAviso}</b><span class="kpi-caption">${semAviso ? 'só aparecem aqui' : 'todas chegaram na caixa'}</span></div>
+    </div>
+    ${caixaTabela({
+      chips: [
+        { valor: '', nome: 'Todas' },
+        { valor: 'aberta', nome: 'Esperando resposta' },
+        { valor: 'respondida', nome: 'Respondidas' },
+      ],
+      html: corpo,
+      dica: 'Responda pelo e-mail da pessoa e marque aqui.',
+    })}`
+    : '<p class="empty-state">Ninguém escreveu pelo site ainda.</p>';
+
+  el.querySelectorAll('[data-respondida]').forEach((chk) => {
+    chk.addEventListener('change', async () => {
+      const r = await api(`/admin/mensagens-contato/${chk.dataset.respondida}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ respondida: chk.checked }),
+      });
+      if (!r.ok) {
+        chk.checked = !chk.checked;
+        return toast('Não deu pra salvar.', 'err');
+      }
+      irPara('contato', true);
+    });
+  });
 }
 
 // ---------- trocas de plano ----------

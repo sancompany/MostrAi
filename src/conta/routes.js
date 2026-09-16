@@ -105,4 +105,31 @@ router.post('/contato', limiteTentativas, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Admin — a caixa de entrada do formulário de contato. A migration 039 passou
+// a gravar a mensagem antes de tentar o e-mail (pra falha de SMTP perder o
+// aviso, não o dado), mas nenhuma tela lia a tabela: o dado ficava salvo e
+// invisível. Com o SMTP fora do ar, TODA mensagem — inclusive pedido de dado
+// pessoal, que tem prazo legal — caía nesse buraco.
+//
+// `email_enviado` vem junto de propósito: é o que diz se aquela mensagem
+// chegou (ou não) na caixa de entrada de quem responde. Quando ele é `false`,
+// esta tela é o ÚNICO lugar onde a mensagem existe.
+router.get('/admin/mensagens-contato', async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, nome, email, telefone, mensagem, email_enviado, respondida_em, created_at
+       FROM mensagens_contato ORDER BY created_at DESC`,
+  );
+  res.json(rows);
+});
+
+router.patch('/admin/mensagens-contato/:id', async (req, res) => {
+  const { rows } = await pool.query(
+    `UPDATE mensagens_contato SET respondida_em = CASE WHEN $2::boolean THEN now() ELSE NULL END
+      WHERE id = $1 RETURNING id, respondida_em`,
+    [req.params.id, req.body.respondida !== false],
+  );
+  if (!rows[0]) return res.status(404).json({ erro: 'mensagem não encontrada' });
+  res.json(rows[0]);
+});
+
 module.exports = router;

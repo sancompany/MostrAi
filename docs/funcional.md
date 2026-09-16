@@ -295,6 +295,19 @@ falha de SMTP não vira aviso que nunca sai. *Violada:* não há caminho de
 usuário. *Quem vê:* o anunciante (e o administrador, no contador da
 conciliação na Visão geral).
 
+**RN-37 — Mensagem do formulário de contato é uma fila com dono, não um
+e-mail que talvez chegue.** *(Segunda passada da furos.md, 16/09/2026.)* Todo
+envio de `/contato` é GRAVADO em `mensagens_contato` antes de o e-mail ser
+tentado (migration 039) e aparece na aba **Mensagens do site** do admin, com
+`email_enviado` dizendo se o aviso chegou na caixa de entrada: quando é
+`false`, essa tela é o único lugar onde a mensagem existe. Fica na fila (com
+contador no menu) até alguém marcar `respondida_em` (migration 044). A fila
+existe porque `/contato.html` é o canal declarado de pedido do titular de
+dados (LGPD art. 18), que tem prazo legal pra resposta — depender de alguém
+lembrar de abrir a caixa de e-mail não é procedimento. *Violada:* não há
+caminho de usuário; do lado de quem escreveu nada falha. *Quem vê:* o
+administrador.
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.

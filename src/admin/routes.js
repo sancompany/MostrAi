@@ -128,7 +128,12 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM pontos WHERE status = 'lead') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
         (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
-        (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos`,
+        (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos,
+        -- Mensagem do formulário de contato ainda sem resposta. Entra como
+        -- fila porque /contato.html é o canal declarado do titular de dados
+        -- (LGPD art. 18) — pedido com prazo legal não pode depender de
+        -- alguém lembrar de abrir uma aba.
+        (SELECT COUNT(*) FROM mensagens_contato WHERE respondida_em IS NULL) AS contato`,
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -186,6 +191,7 @@ router.get('/admin/resumo', async (_req, res) => {
       // Dinheiro que a lei manda devolver e ainda não voltou. É a única fila
       // com prazo legal correndo, por isso entra como urgente na visão geral.
       arrependimentos: Number(filas.rows[0].arrependimentos),
+      contato: Number(filas.rows[0].contato),
       offline: offline.rows[0].qtd,
     },
     financeiro: {

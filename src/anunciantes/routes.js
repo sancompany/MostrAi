@@ -627,12 +627,20 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     porPonto: porPonto.rows,
     porDia: porDia.rows,
     cobrancas: cobrancas.rows,
-    // O que a conta PAGA, nao o preco de tabela: quem entrou com preco travado
-    // paga o valor congelado, e quem esta em cortesia nao paga nada — mostrar
-    // "custo por exibicao" pra quem recebeu o plano de graca e numero inventado.
+    // O que a conta PAGA, nao o preco de tabela: quem esta em cortesia nao paga
+    // nada — mostrar "custo por exibicao" pra quem recebeu o plano de graca e
+    // numero inventado.
+    //
+    // O valor sai de `valorMensalDaConta`, a MESMA funcao que decide o que o
+    // San Checkout cobra. A conta inline que estava aqui so enxergava o preco
+    // travado; nao enxergava o desconto de parceiro (RN-31) nem o de comodato
+    // (RN-32), que nasceram depois. Resultado: parceiro e dono de ponto viam,
+    // na propria tela, um custo por exibicao MAIOR do que o que pagam. E o
+    // furo M11 de volta, por outra porta — preco de cobranca so pode ter uma
+    // fonte, e ela e a do motor de pagamento.
     custoPorExibicao:
       plano && confirmadas > 0 && !anunciante.plano_cortesia
-        ? (Number(anunciante.valor_mensal_travado || plano.valor_mensal) * plano.compromisso_meses) / confirmadas
+        ? (sanCheckout.valorMensalDaConta(anunciante, plano) * plano.compromisso_meses) / confirmadas
         : null,
   });
 });
