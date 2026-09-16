@@ -225,20 +225,22 @@ rota recusa. *Violada:* não há caminho. *Quem vê:* vendedor e administrador.
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar
 e assinar de novo. *Violada:* mensagem na tela. *Quem vê:* o anunciante.
 
-**RN-14 — Fundador é status de conta, marcado à mão pelo administrador**
-(migration 033, 15/09/2026) — não é mais plano de catálogo, nem trava por
-variável de ambiente (isso deixou de fazer sentido quando RN-27/item 9 passou
-a travar o preço de QUALQUER plano assinado). A conta marcada `fundador`
-ganha um desconto percentual — definido pelo administrador, por conta — nos
-planos que ele liberar (piso de compromisso em meses, ex.: só trimestral pra
-cima). Fora do piso, a assinatura é recusada. *Violada:* "esse plano não está
-liberado para conta fundadora". *Quem vê:* o anunciante.
+**RN-14 — Parceiro é status de conta, marcado à mão pelo administrador**
+(migration 033, 15/09/2026; renomeado de "fundador" pra "parceiro" e
+absorvido pelo `status` na migration 038, 16/09/2026 — ver RN-35) — não é
+plano de catálogo, nem trava por variável de ambiente (isso deixou de fazer
+sentido quando RN-27/item 9 passou a travar o preço de QUALQUER plano
+assinado). A conta com `status = 'parceiro'` ganha um desconto percentual —
+definido pelo administrador, por conta — nos planos que ele liberar (piso de
+compromisso em meses, ex.: só trimestral pra cima). Fora do piso, a
+assinatura é recusada. *Violada:* "esse plano não está liberado para conta
+parceira". *Quem vê:* o anunciante.
 
 **RN-32 — Desconto de comodato por plano (item 8 da spec).** Conta com papel
 `ponto` (comodato) recebe o desconto que o administrador definiu pra aquele
 plano de anunciante especificamente (`planos.desconto_comodato_percentual`,
 campo de contrato — só muda por versão nova). Some com o desconto de
-fundador, se a conta tiver os dois. *Violada:* não há caminho — o desconto
+parceiro, se a conta tiver os dois. *Violada:* não há caminho — o desconto
 já sai no preço. *Quem vê:* o anunciante, no valor cobrado pelo San Checkout.
 
 **RN-33 — Vagas: qualquer plano pode ter teto (campo `vagas`), sem vaga o
@@ -248,15 +250,33 @@ sozinha depois de 15 minutos (decisão do dono, 15/09/2026 — era 7 dias).
 
 **RN-34 — Não existe aprovação de conta.** *(Decisão do dono, 15/09/2026, a
 partir da observação de que uma conta conseguia pagar um plano antes de ser
-aprovada.)* A conta nasce com status `aprovado`, por convite ou pelo
-cadastro aberto — o painel abre na hora, sem esperar ninguém. O único
-portão que resta é o do **criativo**: a peça enviada precisa ser aprovada
-pelo administrador antes de entrar na playlist (RN do módulo de criativos).
-`pendente_aprovacao` continua existindo como valor válido no banco (nenhuma
-conta nova recebe esse status; uma conta antiga que ainda o tenha continua
-funcionando igual — só não tem mais fila nem alerta associado a ela no
-admin). *Violada:* não há caminho — pagar já ativa a conta, como sempre
-ativou. *Quem vê:* o anunciante, no acesso imediato ao painel.
+aprovada.)* A conta nasce liberada, por convite ou pelo cadastro aberto — o
+painel abre na hora, sem esperar ninguém. O único portão que resta é o do
+**criativo**: a peça enviada precisa ser aprovada pelo administrador antes
+de entrar na playlist (RN do módulo de criativos). *Violada:* não há
+caminho — pagar já ativa a conta, como sempre ativou. *Quem vê:* o
+anunciante, no acesso imediato ao painel. *(Nota de 16/09/2026: o valor
+`pendente_aprovacao`, que esta RN dizia continuar válido no banco só por
+compatibilidade, foi removido de vez na migration 038 junto com o resto do
+domínio antigo de `status` — ver RN-35. Não havia nenhuma conta usando esse
+valor.)*
+
+**RN-35 — `status` da conta virou só comum/parceiro; o que bloqueia é
+`suspenso`.** *(Decisão do dono, 16/09/2026, na rodada de depuração: "o
+status de aprovado pendente e ativo continuam no status do cliente" — pedido
+pra simplificar.)* Antes, `anunciantes.status` misturava dois sentidos que
+não tinham nada a ver um com o outro: um rótulo comercial (parceiro/fundador,
+RN-14) e um estado operacional (se a conta podia logar e veicular — herdado
+do modelo antigo de aprovação, RN-34, que já não fazia sentido desde então).
+Agora são dois campos: `status` (`comum` ou `parceiro` — só rótulo, nunca
+bloqueia nada) e `suspenso` (booleano — bloqueia login em `/anunciantes/:id/
+assinar`, some da playlist, e é ligado automaticamente pela conciliação
+diária quando a cobertura vence, ou desligado na hora em que uma cobrança é
+confirmada ou um plano é liberado). O gate real de veiculação continua sendo
+o do **criativo** (RN-34) — `suspenso` é sobre a CONTA, não sobre o anúncio.
+*Violada:* "conta suspensa — fale com o suporte antes de assinar". *Quem
+vê:* o anunciante (painel e perfil) e o administrador (coluna "Suspensa" na
+aba Anunciantes, separada da coluna "Status").
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

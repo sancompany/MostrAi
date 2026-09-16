@@ -180,7 +180,13 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     // ou pelo cadastro aberto (decisão do dono, 15/09/2026: pagar já ativava
     // a conta de qualquer forma, então a fila de aprovação nunca foi um
     // portão de verdade). O único portão que sobra é o do criativo.
-    status: 'aprovado',
+    //
+    // `status` deixou de ser estado operacional (decisão do dono, 16/09/2026):
+    // agora só distingue comum/parceiro. Toda conta nova nasce 'comum'; quem
+    // vira 'parceiro' é marcado à mão pelo admin (substitui o antigo flag
+    // `fundador`). O que hoje bloqueia (não pagou, cobertura venceu, admin
+    // suspendeu) é o campo `suspenso`.
+    status: 'comum',
   };
 
   let anunciante;
@@ -289,7 +295,8 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       'conta:exclusao_pede',
       {
         dias_de_vida: eventos.diasEntre(conta.created_at),
-        tinha_plano_ativo: !!conta.plano_id && conta.status === 'ativo',
+        tinha_plano_ativo:
+          !!conta.plano_id && !conta.suspenso && (!conta.data_expiracao || new Date(conta.data_expiracao) > new Date()),
       },
       conta,
     );
@@ -714,13 +721,13 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
     const anunciante = await repo.atualizar(req.params.id, req.body);
     if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });
 
-    // Só na TRANSIÇÃO de fora pra liberado. Sem comparar com o estado
-    // anterior, todo salvamento do admin numa conta já aprovada contaria
-    // como uma aprovação nova. Conta nova já nasce liberada (não há mais
+    // Só na TRANSIÇÃO de suspensa pra liberada. Sem comparar com o estado
+    // anterior, todo salvamento do admin numa conta já liberada contaria
+    // como uma reinstalação nova. Conta nova já nasce liberada (não há mais
     // aprovação de conta, 15/09/2026) — o caso real que sobra aqui é
-    // reinstalar uma conta suspensa.
-    const liberado = ['aprovado', 'ativo'];
-    if (liberado.includes(anunciante.status) && antes && !liberado.includes(antes.status)) {
+    // reinstalar uma conta suspensa. `suspenso` é o campo operacional desde
+    // 16/09/2026 (`status` virou só comum/parceiro, não bloqueia mais nada).
+    if (antes?.suspenso && !anunciante.suspenso) {
       eventos.registrar(
         'conta:aprovacao_recebe',
         {

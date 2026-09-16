@@ -11,7 +11,7 @@ os testes assinam o webhook, como o Checkout assina), `openssl` no PATH,
 tests/e2e/reset-db.sh                              # zera as tabelas de dados (não os planos)
 tests/e2e/restart.sh                               # sobe o servidor na 3999
 bash tests/e2e/01-fluxo-api.sh                     # candidatura → convite → tela → player → cadastro de anunciante
-bash tests/e2e/02-assinatura-webhook-comissao.sh   # fundador (status de conta), vagas, webhook, cobertura, comissão
+bash tests/e2e/02-assinatura-webhook-comissao.sh   # parceiro (status de conta), vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && tests/e2e/restart.sh
 PW_CHROME=... node tests/e2e/03-navegador.mjs      # 36 checagens no Chromium + screenshots em tests/e2e/saida/
 ```

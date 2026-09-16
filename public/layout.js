@@ -198,12 +198,10 @@
 // Rótulos de status. Estavam repetidos em 5 arquivos, já com textos diferentes
 // pro mesmo status entre uma tela e outra.
 window.ROTULOS = {
-  anunciante: {
-    pendente_aprovacao: 'Pendente de aprovação',
-    aprovado: 'Aprovado — escolha um plano',
-    ativo: 'Ativo',
-    suspenso: 'Suspenso',
-  },
+  // `status` deixou de ser estado operacional (16/09/2026) — só distingue
+  // comum de parceiro (substitui o antigo "fundador"). O que bloqueia
+  // login/veiculação é `suspenso`, mostrado à parte por quem usa isso.
+  anunciante: { comum: 'Comum', parceiro: 'Parceiro' },
   ponto: {
     lead: 'Em análise',
     aguardando_instalacao: 'Aprovado — aguardando instalação',

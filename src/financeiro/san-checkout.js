@@ -158,10 +158,11 @@ async function montarRespostaPlano(assinaturaId) {
 //   DAQUELE plano — o dono define um valor por linha da grade. Fica em
 //   CAMPOS_CONTRATO, então já não muda pra quem já assinou (só por versão
 //   nova) — não precisa de trava própria.
-// - fundador: conta marcada `fundador` pelo dono (à mão, sem concessão
-//   automática) ganha o `fundador_desconto_percentual` dela, mas só nos
-//   planos que o dono liberou pra fundador via `fundador_compromisso_minimo`
-//   (ex.: só trimestral pra cima — mensal fica de fora).
+// - parceiro (era "fundador" até 16/09/2026): conta com `status = 'parceiro'`
+//   marcada pelo dono (à mão, sem concessão automática) ganha o
+//   `parceiro_desconto_percentual` dela, mas só nos planos que o dono liberou
+//   pra parceiro via `parceiro_compromisso_minimo` (ex.: só trimestral pra
+//   cima — mensal fica de fora).
 function valorMensalDaConta(anunciante, plano) {
   const travado = anunciante.valor_mensal_travado != null && anunciante.plano_id === plano.id;
   const base = travado ? Number(anunciante.valor_mensal_travado) : Number(plano.valor_mensal);
@@ -169,11 +170,11 @@ function valorMensalDaConta(anunciante, plano) {
   const descontoComodato = (anunciante.papeis || []).includes('ponto')
     ? Number(plano.desconto_comodato_percentual || 0)
     : 0;
-  const descontoFundador =
-    anunciante.fundador && plano.compromisso_meses >= (anunciante.fundador_compromisso_minimo || 0)
-      ? Number(anunciante.fundador_desconto_percentual || 0)
+  const descontoParceiro =
+    anunciante.status === 'parceiro' && plano.compromisso_meses >= (anunciante.parceiro_compromisso_minimo || 0)
+      ? Number(anunciante.parceiro_desconto_percentual || 0)
       : 0;
-  const desconto = Math.min(100, descontoComodato + descontoFundador);
+  const desconto = Math.min(100, descontoComodato + descontoParceiro);
 
   return desconto ? arredondar(base - percentual(base, desconto)) : base;
 }
@@ -393,7 +394,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     // mesmo plano; plano novo trava no preço dele (se for travado) ou solta.
     await cliente.query(
       `UPDATE anunciantes
-       SET plano_id = $2, status = 'ativo',
+       SET plano_id = $2, suspenso = false,
            data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
            data_expiracao = $3::timestamptz,
            valor_mensal_travado = CASE WHEN NOT $4::boolean THEN NULL

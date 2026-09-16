@@ -536,7 +536,7 @@ PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.h
   · ← conta criada por convite só com papel ponto ou vendedor  → o próprio painel recarregado, já com dashboard
   · **cliente sabe:** Dono de ponto ou vendedor que resolve anunciar não cria outra conta: preenche o endereço da empresa (que vai na nota) e o modo Anúncios abre na mesma conta.
 
-**Faixa de status da conta** — preencherStatusBanner() escreve em #statusBanner: nome da empresa + rótulo de status (ROTULOS.anunciante: pendente_aprovacao='Pendente de aprovação', aprovado='Aprovado — escolha um plano', ativo='Ativo', suspenso='Suspenso') + 'Plano ativo até…
+**Faixa de status da conta** — **Mudou em 16/09/2026 (migration 038):** preencherStatusBanner() escreve em #statusBanner: nome da empresa + (só se `status='parceiro'`) o rótulo "Parceiro" (ROTULOS.anunciante: comum/parceiro — não bloqueia nada, é só rótulo) + 'Plano ativo até…' — e, se `suspenso` for true, a explicação de conta suspensa aparece à parte, no lugar do antigo rótulo 'Suspenso' do status.
   · `public/anunciante/painel.page.js`, `public/layout.js` · rotas: `GET /anunciantes/me` · papéis: anunciante
   · → /planos.html
   · **cliente sabe:** Uma linha só diz em que pé você está: aprovado ou não, com plano ou sem, até quando, e se o seu preço está travado.

@@ -136,7 +136,14 @@
       $('cpfCnpjFixo').value = conta.cpf_cnpj || '';
       $('emailFixo').value = conta.contato_email || '';
       $('perfilNome').textContent = conta.nome_empresa || '';
-      $('perfilStatusBadge').textContent = ROTULOS.anunciante[conta.status] || conta.status || '';
+      // `status` virou só comum/parceiro (16/09/2026) — "Comum" não rende
+      // badge (não é informação nova pro cliente); `suspenso` é o que
+      // importa mostrar de verdade, e tem prioridade sobre o selo de tier.
+      $('perfilStatusBadge').textContent = conta.suspenso
+        ? 'Suspensa'
+        : conta.status === 'parceiro'
+          ? ROTULOS.anunciante.parceiro
+          : '';
       const form = $('formPerfil');
       CAMPOS_EDITAVEIS.forEach((campo) => {
         if (form[campo]) form[campo].value = conta[campo] || '';

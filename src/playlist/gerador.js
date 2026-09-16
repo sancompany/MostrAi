@@ -42,7 +42,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     -- exibicao era contada. criativosDoDono, logo abaixo, ja filtrava.
     JOIN criativos c ON c.anunciante_id = a.id AND c.status = 'aprovado'
       AND c.arquivo_normalizado_url IS NOT NULL
-    WHERE a.status = 'ativo'
+    WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND (
         (a.conta_propria AND COALESCE(a.frequencia_hora_propria, 0) > 0)

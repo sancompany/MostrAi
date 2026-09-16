@@ -203,8 +203,8 @@ await abaAdmin(adm, 'planos', 'Desconto comodato');
   const t = await adm.textContent('#conteudo');
   check('admin planos tem coluna de desconto comodato', t.includes('Desconto comodato'));
 }
-await abaAdmin(adm, 'anunciantes', 'Marcar fundador');
-check('admin anunciantes tem ação de marcar fundador', (await adm.textContent('#conteudo')).includes('Marcar fundador'));
+await abaAdmin(adm, 'anunciantes', 'Marcar parceiro');
+check('admin anunciantes tem ação de marcar parceiro', (await adm.textContent('#conteudo')).includes('Marcar parceiro'));
 await abaAdmin(adm, 'custos', 'DAS MEI');
 check('aba custos lista DAS MEI', (await adm.textContent('#conteudo')).includes('DAS MEI'));
 await shot(adm, 'admin-custos');

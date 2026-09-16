@@ -67,7 +67,9 @@ async function carregar() {
 
 function preencherStatusBanner() {
   const el = document.getElementById('statusBanner');
-  const statusTxt = ROTULOS.anunciante[ANUNCIANTE.status] || ANUNCIANTE.status;
+  // `status` virou só comum/parceiro (16/09/2026) — "Comum" não é
+  // informação nova pro cliente, então só aparece pra quem é parceiro.
+  const statusTxt = ANUNCIANTE.status === 'parceiro' ? ROTULOS.anunciante.parceiro : null;
   let planoTxt = 'Sem plano ainda';
   if (ANUNCIANTE.plano_id) {
     // Cortesia chegava no navegador e nao aparecia em tela nenhuma do cliente:
@@ -81,26 +83,19 @@ function preencherStatusBanner() {
   const travado =
     ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
-  // Só um estado derruba o botão:
-  // - suspenso: POST /anunciantes/:id/assinar recusa com 403 (financeiro/
-  //   routes.js:198). O botão levava pra vitrine e a assinatura estourava lá
-  //   na frente, sem dizer por quê. Quem pediu devolução cai exatamente aqui,
-  //   porque o arrependimento zera o plano e suspende a conta.
-  // - pendente_aprovacao não existe mais pra conta nova (decisão do dono,
-  //   15/09/2026: não há mais aprovação de conta, só de criativo) — a frase
-  //   abaixo fica só pra alguma conta antiga que ainda tenha esse status.
-  const EXPLICACAO = {
-    suspenso:
-      'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
-      'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.',
-    pendente_aprovacao:
-      'Sua conta está em análise: a gente confere os dados e te avisa por e-mail quando ela for aprovada. ' +
-      'Isso não trava a sua assinatura — dá pra escolher o plano e subir o vídeo desde já.',
-  };
-  const explicacao = EXPLICACAO[ANUNCIANTE.status] || null;
-  const podeAssinar = !ANUNCIANTE.plano_id && ANUNCIANTE.status !== 'suspenso';
+  // Só um estado derruba o botão: `suspenso` (campo próprio desde
+  // 16/09/2026, separado de `status`). POST /anunciantes/:id/assinar recusa
+  // com 403 (financeiro/routes.js) quando suspenso. O botão levava pra
+  // vitrine e a assinatura estourava lá na frente, sem dizer por quê. Quem
+  // pediu devolução cai exatamente aqui, porque o arrependimento zera o
+  // plano e suspende a conta.
+  const explicacao = ANUNCIANTE.suspenso
+    ? 'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
+      'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.'
+    : null;
+  const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
   el.innerHTML = `
-    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · ${statusTxt} · ${planoTxt}${travado}</span>
+    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}${travado}</span>
     ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;

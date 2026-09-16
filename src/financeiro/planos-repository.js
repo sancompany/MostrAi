@@ -246,7 +246,8 @@ async function listarArquivados() {
       `
       SELECT
         (SELECT COUNT(*)::int FROM anunciantes
-          WHERE plano_id = $1 AND status = 'ativo' AND excluido_em IS NULL) AS contas_ativas,
+          WHERE plano_id = $1 AND NOT suspenso AND excluido_em IS NULL
+            AND (data_expiracao IS NULL OR data_expiracao >= now())) AS contas_ativas,
         (SELECT COUNT(*)::int FROM cobrancas_confirmadas WHERE plano_id = $1) AS cobrancas`,
       [p.id],
     );

@@ -22,7 +22,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | GET | `/categorias` | Segmentos do cadastro. |
 | POST | `/candidaturas` | Formulário "Seja um ponto" / "Seja um vendedor". Corpo: `tipo` (`ponto`\|`vendedor`), `nome`, `contato_telefone` obrigatórios; ponto exige `nome_comercio` e `endereco`. Não cria conta. |
 | GET | `/convites/:token` | O que um link de convite permite: `{papeis, nome_sugerido, email_sugerido, expira_em}`. 404 se usado/expirado. |
-| POST | `/anunciantes/cadastro` | Cria conta. Sem `convite`: papel `anunciante`, status `pendente_aprovacao`, exige endereço comercial. Com `convite` (token): papéis do convite, status `aprovado`, `chave_pix` obrigatória se vendedor, `plano_ponto_id` opcional se ponto; convite vindo de candidatura de ponto já cria o ponto + "Tela 1". Loga a sessão e devolve a conta. |
+| POST | `/anunciantes/cadastro` | Cria conta, sempre liberada na hora (`status = 'comum'`; não há mais aprovação de conta, RN-34/RN-35 — `status` só distingue comum de parceiro, nunca bloqueia). Sem `convite`: papel `anunciante`, exige endereço comercial. Com `convite` (token): papéis do convite, `chave_pix` obrigatória se vendedor, `plano_ponto_id` opcional se ponto; convite vindo de candidatura de ponto já cria o ponto + "Tela 1". Loga a sessão e devolve a conta. |
 | POST | `/anunciantes/login` | `{email, senha}` → conta (com `papeis`). Senha em scrypt; hash bcrypt antigo migra sozinho no login. |
 | POST | `/anunciantes/esqueci-senha` / `/redefinir-senha` | Fluxo de token por e-mail. `/afiliados/esqueci-senha` é alias legado. |
 | POST | `/contato` | Formulário de contato → e-mail. |

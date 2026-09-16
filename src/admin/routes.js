@@ -85,7 +85,7 @@ router.get('/admin/resumo', async (_req, res) => {
     custosFixos,
     filas,
     pontosPorStatus,
-    anunciantesPorStatus,
+    anunciantesPorSituacao,
     offline,
     faturamento,
     exibicoes,
@@ -96,10 +96,13 @@ router.get('/admin/resumo', async (_req, res) => {
     // conta em cortesia (plano liberado de graça), conta excluída que ficou
     // com status ativo, e conta cuja cobertura já venceu. A margem — que é a
     // métrica principal do projeto — mentia pra cima em todas as três.
+    // `status` deixou de ter esse sentido (virou só comum/parceiro,
+    // 16/09/2026) — quem tem plano de verdade é quem tem `plano_id`.
     pool.query(
       `SELECT COALESCE(SUM(COALESCE(a.valor_mensal_travado, p.valor_mensal)), 0) AS total FROM anunciantes a
        JOIN planos p ON p.id = a.plano_id
-       WHERE a.status = 'ativo'
+       WHERE a.plano_id IS NOT NULL
+         AND NOT a.suspenso
          AND NOT a.plano_cortesia
          AND a.excluido_em IS NULL
          AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`,
@@ -131,9 +134,17 @@ router.get('/admin/resumo', async (_req, res) => {
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
     // "5 anunciantes ativos" com três liberados de graça — e a leitura do
     // negócio saía errada justamente no número que mais importa.
-    pool.query(`SELECT status, plano_cortesia, COUNT(*)::int AS qtd
+    // `status` não diz mais isso (virou só comum/parceiro, 16/09/2026) —
+    // "situação" é calculada de `suspenso` + `plano_id` + `data_expiracao`.
+    pool.query(`SELECT
+                  CASE
+                    WHEN suspenso THEN 'suspenso'
+                    WHEN plano_id IS NOT NULL AND (data_expiracao IS NULL OR data_expiracao >= now()) THEN 'ativo'
+                    ELSE 'sem_plano'
+                  END AS situacao,
+                  plano_cortesia, COUNT(*)::int AS qtd
                 FROM anunciantes WHERE excluido_em IS NULL
-                GROUP BY status, plano_cortesia`),
+                GROUP BY situacao, plano_cortesia`),
     pool.query(
       `SELECT COUNT(*)::int AS qtd FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
        WHERE d.status = 'ativo' AND p.status = 'ativo'
@@ -190,19 +201,19 @@ router.get('/admin/resumo', async (_req, res) => {
       telasAtivas: amortizacao.rows[0].telas,
       fluxoMensal: Number(pontosAtivos.rows[0].fluxo),
       pontosPorStatus: pontosPorStatus.rows,
-      // Mantém a forma antiga (status + qtd, somando os dois tipos) pra não
+      // Mantém a forma antiga (situacao + qtd, somando os dois tipos) pra não
       // quebrar quem já lê isso, e acrescenta a contagem de cortesia separada.
-      anunciantesPorStatus: Object.values(
-        anunciantesPorStatus.rows.reduce((acc, r) => {
-          acc[r.status] = acc[r.status] || { status: r.status, qtd: 0 };
-          acc[r.status].qtd += r.qtd;
+      anunciantesPorSituacao: Object.values(
+        anunciantesPorSituacao.rows.reduce((acc, r) => {
+          acc[r.situacao] = acc[r.situacao] || { situacao: r.situacao, qtd: 0 };
+          acc[r.situacao].qtd += r.qtd;
           return acc;
         }, {}),
       ),
-      anunciantesAtivosPagantes: anunciantesPorStatus.rows
-        .filter((r) => r.status === 'ativo' && !r.plano_cortesia)
+      anunciantesAtivosPagantes: anunciantesPorSituacao.rows
+        .filter((r) => r.situacao === 'ativo' && !r.plano_cortesia)
         .reduce((soma, r) => soma + r.qtd, 0),
-      anunciantesEmCortesia: anunciantesPorStatus.rows
+      anunciantesEmCortesia: anunciantesPorSituacao.rows
         .filter((r) => r.plano_cortesia)
         .reduce((soma, r) => soma + r.qtd, 0),
       exibicoes30d: exibicoes.rows[0].confirmadas,

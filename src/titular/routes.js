@@ -135,7 +135,7 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
   // Fora do ar na hora: o direito é desfazer a contratação, não continuar
   // exibindo até o fim do ciclo pago.
   await anunciantesRepo.atualizar(id, {
-    status: 'suspenso',
+    suspenso: true,
     plano_id: null,
     data_expiracao: null,
     valor_mensal_travado: null,

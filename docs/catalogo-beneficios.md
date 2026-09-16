@@ -25,7 +25,7 @@ Cada benefício vem com uma classificação:
 | Cobertura (1 ponto/dia, 3 pontos/dia, todos os pontos) | `planos.cobertura` | Hoje é só o RÓTULO — a playlist já cobre 100% dos pontos elegíveis pra qualquer plano (comentário em `gerador.js`: "Todo plano cobre 100% da rede nesta fase"). Ligar a régua de verdade (restringir quantos pontos por dia) é trabalho de código, listado na seção 2. |
 | Preço travado no valor de quando entrou | `planos.preco_travado` + `anunciantes.valor_mensal_travado` | `src/financeiro/san-checkout.js`, `valorMensalDaConta` |
 | Desconto pra conta comodato (item 8 da spec) | `planos.desconto_comodato_percentual` | Mesmo arquivo — soma ao preço-base quando a conta tem o papel `ponto` |
-| Desconto e piso de compromisso pra conta fundadora | `anunciantes.fundador_desconto_percentual` / `fundador_compromisso_minimo` | Mesmo arquivo, mais a checagem de elegibilidade em `POST /anunciantes/:id/assinar` |
+| Desconto e piso de compromisso pra conta parceira (`status = 'parceiro'`, renomeado de "fundador" em 16/09/2026) | `anunciantes.parceiro_desconto_percentual` / `parceiro_compromisso_minimo` | Mesmo arquivo, mais a checagem de elegibilidade em `POST /anunciantes/:id/assinar` |
 | Tela no comércio ao completar N meses de plano (módulo cruzado) | `planos.ponto_apos_meses` | `src/conta/modos.js` — vira candidatura de ponto quando resgatado |
 | Teto de vagas do plano | `planos.vagas` | `contarVagasOcupadas` — reserva de 15 minutos pra pagar (item 5) |
 

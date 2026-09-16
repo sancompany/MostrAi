@@ -1,7 +1,10 @@
 const { gerarHash, conferirHash } = require('../lib/senha');
 const pool = require('../db/pool');
 
-const STATUS = ['pendente_aprovacao', 'aprovado', 'ativo', 'suspenso'];
+// `status` deixou de ser estado operacional (decisão do dono, 16/09/2026) —
+// hoje só distingue comum de parceiro (substitui o antigo flag `fundador`).
+// O que bloqueia login/veiculação é o campo `suspenso`, separado.
+const STATUS = ['comum', 'parceiro'];
 
 const CAMPOS_ATUALIZAVEIS = [
   'nome_empresa',
@@ -32,11 +35,15 @@ const CAMPOS_ATUALIZAVEIS = [
   // Plano de cortesia (migration 024) — só o admin libera.
   'plano_cortesia',
   'cortesia_motivo',
-  // Fundador (migration 033, item 4 da spec) — status de conta que só o
-  // admin marca, com o desconto e o piso de compromisso que ele decidir.
-  'fundador',
-  'fundador_desconto_percentual',
-  'fundador_compromisso_minimo',
+  // Bloqueio operacional (migration 038, 16/09/2026) — separado do `status`
+  // (que virou só comum/parceiro). Marcado à mão pelo admin, ou pela
+  // conciliação quando a cobertura vence.
+  'suspenso',
+  // Parceiro (migration 033, renomeado de "fundador" na migration 038) —
+  // status de conta que só o admin marca, com o desconto e o piso de
+  // compromisso que ele decidir.
+  'parceiro_desconto_percentual',
+  'parceiro_compromisso_minimo',
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
@@ -52,7 +59,7 @@ const CAMPOS_PUBLICOS = `
   plano_cortesia, cortesia_motivo,
   ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
-  fundador, fundador_desconto_percentual, fundador_compromisso_minimo
+  suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.
@@ -88,7 +95,9 @@ async function criar(dados, db = pool) {
       // Não existe mais aprovação de conta (decisão do dono, 15/09/2026): a
       // conta nasce liberada, por convite ou pelo cadastro aberto. O único
       // portão que sobra é o do criativo (src/anunciantes/criativos-repository.js).
-      dados.status || 'aprovado',
+      // `status` virou só comum/parceiro (16/09/2026) — toda conta nova é
+      // 'comum'; quem bloqueia é o campo `suspenso`, não este.
+      dados.status || 'comum',
     ],
   );
   return rows[0];

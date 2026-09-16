@@ -198,19 +198,19 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   // não pediu. Sem ele, manda completar o perfil antes.
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta || conta.excluido_em) return res.status(403).json({ erro: 'conta indisponível' });
-  if (conta.status === 'suspenso')
-    return res.status(403).json({ erro: 'conta suspensa — fale com o suporte antes de assinar' });
+  if (conta.suspenso) return res.status(403).json({ erro: 'conta suspensa — fale com o suporte antes de assinar' });
   if (!conta.endereco || !conta.cidade || !conta.uf || !conta.cep) {
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
   }
-  // Conta fundadora só assina o que o dono liberou pra fundador — ex.: só
-  // trimestral pra cima, mensal fora (item 4 da spec, 15/09/2026).
+  // Conta parceira só assina o que o dono liberou pra parceiro — ex.: só
+  // trimestral pra cima, mensal fora (item 4 da spec, 15/09/2026; renomeado
+  // de "fundador" pra "parceiro" em 16/09/2026).
   if (
-    conta.fundador &&
-    conta.fundador_compromisso_minimo != null &&
-    plano.compromisso_meses < conta.fundador_compromisso_minimo
+    conta.status === 'parceiro' &&
+    conta.parceiro_compromisso_minimo != null &&
+    plano.compromisso_meses < conta.parceiro_compromisso_minimo
   ) {
-    return res.status(400).json({ erro: 'esse plano não está liberado para conta fundadora' });
+    return res.status(400).json({ erro: 'esse plano não está liberado para conta parceira' });
   }
   if (!(conta.papeis || []).includes('anunciante')) {
     await pool.query(`UPDATE anunciantes SET papeis = array_append(papeis, 'anunciante') WHERE id = $1`, [conta.id]);
@@ -222,7 +222,8 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // criar outra viraria cobrança dupla. Troca de plano pago é pelo admin
     // (cancela no Checkout e assina de novo). Se nunca foi paga, é só um
     // clique antigo: cancela localmente e segue.
-    const pagou = conta.status === 'ativo' && conta.plano_id === assinatura.plano_id;
+    const pagou =
+      conta.plano_id === assinatura.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
     if (pagou)
       return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
     await assinaturasRepo.marcarCancelada(assinatura.id);
@@ -302,7 +303,7 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
   const duracao = Number(meses) > 0 ? Number(meses) : plano.compromisso_meses;
   const atualizado = await anunciantesRepo.atualizar(anunciante.id, {
     plano_id,
-    status: 'ativo',
+    suspenso: false,
     data_inicio_cobertura: anunciante.data_inicio_cobertura || new Date(),
     data_expiracao: new Date(Date.now() + duracao * 30 * 24 * 60 * 60 * 1000),
     plano_cortesia: true,

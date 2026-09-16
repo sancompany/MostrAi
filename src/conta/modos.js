@@ -330,14 +330,9 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   const bonus = conta && (await bonusAnuncioDaConta(conta));
   if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
-  if (conta.status === 'suspenso' || conta.excluido_em)
+  if (conta.suspenso || conta.excluido_em)
     return res.status(403).json({ erro: 'conta indisponível — fale com o suporte' });
-  if (
-    conta.status === 'ativo' &&
-    conta.plano_id &&
-    conta.data_expiracao &&
-    new Date(conta.data_expiracao) > new Date()
-  ) {
+  if (conta.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date()) {
     return res
       .status(409)
       .json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });
@@ -350,7 +345,7 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
       // pagante e inflava a margem — o caminho equivalente do admin
       // (liberar-plano) já gravava cortesia.
       `UPDATE anunciantes
-       SET plano_id = $2, status = 'ativo',
+       SET plano_id = $2, suspenso = false,
            plano_cortesia = true, cortesia_motivo = 'bônus de ponto',
            data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
            data_expiracao = now() + ($3 || ' months')::interval,

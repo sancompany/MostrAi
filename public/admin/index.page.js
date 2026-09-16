@@ -179,12 +179,13 @@ const PONTO_STATUS = {
   reparo: 'Em reparo',
   inativo: 'Inativo',
 };
-const ANUNCIANTE_STATUS = {
-  pendente_aprovacao: 'Pendente',
-  aprovado: 'Aprovado',
-  ativo: 'Ativo',
-  suspenso: 'Suspenso',
-};
+// `status` deixou de ser estado operacional (16/09/2026) — só distingue
+// comum de parceiro (substitui o antigo flag "fundador"). O que bloqueia
+// login/veiculação é `suspenso`, mostrado à parte (ver ANUNCIANTE_SITUACAO).
+const ANUNCIANTE_STATUS = { comum: 'Comum', parceiro: 'Parceiro' };
+// Situação operacional calculada no backend (GET /admin/resumo) a partir de
+// `suspenso` + `plano_id` + `data_expiracao` — não é mais o campo `status`.
+const ANUNCIANTE_SITUACAO = { ativo: 'Ativo', suspenso: 'Suspenso', sem_plano: 'Sem plano' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
@@ -542,8 +543,11 @@ async function renderResumo(el) {
       <div class="panel">
         <div class="panel-head"><h3>Pontos por status</h3></div>
         ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS)}
-        <div class="panel-head u-mt-22"><h3>Anunciantes por status</h3></div>
-        ${barrasHorizontais(rede.anunciantesPorStatus, ANUNCIANTE_STATUS)}
+        <div class="panel-head u-mt-22"><h3>Anunciantes por situação</h3></div>
+        ${barrasHorizontais(
+          rede.anunciantesPorSituacao.map((r) => ({ status: r.situacao, qtd: r.qtd })),
+          ANUNCIANTE_SITUACAO,
+        )}
       </div>
     </div>`;
 
@@ -691,8 +695,8 @@ async function renderMeusAnuncios(el) {
           <input id="cpFreq2" type="number" min="1" max="60" value="${conta.frequencia_hora_propria || 1}">
           <label for="cpStatus">Situação</label>
           <select id="cpStatus">
-            <option value="ativo"${conta.status === 'ativo' ? ' selected' : ''}>No ar</option>
-            <option value="suspenso"${conta.status === 'suspenso' ? ' selected' : ''}>Pausada</option>
+            <option value="nao"${!conta.suspenso ? ' selected' : ''}>No ar</option>
+            <option value="sim"${conta.suspenso ? ' selected' : ''}>Pausada</option>
           </select>
           <button class="btn ghost" type="submit">Salvar</button>
         </form>
@@ -735,7 +739,7 @@ async function renderMeusAnuncios(el) {
       method: 'PATCH',
       body: JSON.stringify({
         frequencia_hora_propria: Number(document.getElementById('cpFreq2').value),
-        status: document.getElementById('cpStatus').value,
+        suspenso: document.getElementById('cpStatus').value === 'sim',
       }),
     });
     toast(r.ok ? 'salvo' : 'não deu pra salvar', r.ok ? 'ok' : 'err');
@@ -1117,7 +1121,7 @@ async function renderAnunciantes(el) {
 
   const corpo = `<table><thead><tr>
       <th data-ord>ID</th><th data-ord>Empresa</th><th data-ord>Documento</th><th>Contato</th>
-      <th>Ramo</th><th data-ord>Plano</th><th data-ord>Expira</th><th data-ord>Status</th><th data-ord>Entrou</th><th></th>
+      <th>Ramo</th><th data-ord>Plano</th><th data-ord>Expira</th><th data-ord>Status</th><th data-ord>Suspensa</th><th data-ord>Entrou</th><th></th>
     </tr></thead><tbody>
     ${anunciantes
       .map(
@@ -1130,7 +1134,7 @@ async function renderAnunciantes(el) {
         .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
         .join(
           ' ',
-        )}${a.fundador ? ` <span class="badge badge-ok" title="desconto extra ${a.fundador_desconto_percentual ?? 0}%${a.fundador_compromisso_minimo ? ` · só a partir de ${a.fundador_compromisso_minimo}x` : ''}">fundador</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante — não entra em ponto do mesmo ramo">
@@ -1140,13 +1144,17 @@ async function renderAnunciantes(el) {
       <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
       <td>${data(a.data_expiracao)}</td>
       <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
+      <td><select class="mini" data-anunciante="suspenso" data-id="${a.id}">
+        <option value="false"${!a.suspenso ? ' selected' : ''}>Não</option>
+        <option value="true"${a.suspenso ? ' selected' : ''}>Sim</option>
+      </select></td>
       <td>${data(a.created_at)}</td>
       <td>${
         a.excluido_em
           ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
           : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele — já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
            <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
-           <button class="btn ghost mini" data-fundador="${a.id}" title="Marca esta conta como fundadora: desconto extra e piso de compromisso definidos por você">${a.fundador ? 'Editar fundador' : 'Marcar fundador'}</button>
+           <button class="btn ghost mini" data-parceiro="${a.id}" title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${a.status === 'parceiro' ? 'Editar parceiro' : 'Marcar parceiro'}</button>
            ${
              a.plano_id && !a.plano_cortesia
                ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
@@ -1193,8 +1201,15 @@ async function renderAnunciantes(el) {
   el.querySelectorAll('[data-anunciante]').forEach((sel) =>
     sel.addEventListener('change', async () => {
       const campo = sel.dataset.anunciante;
-      const valor = campo === 'categoria_id' ? (sel.value === '' ? null : Number(sel.value)) : sel.value;
-      if ((await salvar(`/admin/anunciantes/${sel.dataset.id}`, { [campo]: valor }, sel)) && campo === 'status') {
+      const valor =
+        campo === 'categoria_id'
+          ? sel.value === ''
+            ? null
+            : Number(sel.value)
+          : campo === 'suspenso'
+            ? sel.value === 'true'
+            : sel.value;
+      if ((await salvar(`/admin/anunciantes/${sel.dataset.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
       }
@@ -1224,24 +1239,25 @@ async function renderAnunciantes(el) {
       renderAnunciantes(el);
     }),
   );
-  // Fundador (item 4 da spec, 15/09/2026): status de conta que só o admin
-  // marca, com o desconto e o piso de compromisso que ele decidir — não é
-  // mais um plano de catálogo separado.
-  el.querySelectorAll('[data-fundador]').forEach((b) =>
+  // Parceiro (item 4 da spec, 15/09/2026; renomeado de "fundador" e
+  // absorvido pelo `status` em 16/09/2026): não é mais um flag à parte —
+  // é o próprio `status` da conta virando 'parceiro', com o desconto e o
+  // piso de compromisso que o admin decidir.
+  el.querySelectorAll('[data-parceiro]').forEach((b) =>
     b.addEventListener('click', async () => {
-      const atual = anunciantes.find((a) => a.id === Number(b.dataset.fundador));
+      const atual = anunciantes.find((a) => a.id === Number(b.dataset.parceiro));
       const desconto = prompt(
-        'Desconto extra (%) além do preço do plano — vazio remove o status de fundador:',
-        atual?.fundador_desconto_percentual ?? '',
+        'Desconto extra (%) além do preço do plano — vazio remove o status de parceiro:',
+        atual?.parceiro_desconto_percentual ?? '',
       );
       if (desconto === null) return;
       if (desconto.trim() === '') {
-        if (!atual?.fundador || !confirm('Remover o status de fundador dessa conta?')) return;
+        if (atual?.status !== 'parceiro' || !confirm('Remover o status de parceiro dessa conta?')) return;
         if (
-          await salvar(`/admin/anunciantes/${b.dataset.fundador}`, {
-            fundador: false,
-            fundador_desconto_percentual: null,
-            fundador_compromisso_minimo: null,
+          await salvar(`/admin/anunciantes/${b.dataset.parceiro}`, {
+            status: 'comum',
+            parceiro_desconto_percentual: null,
+            parceiro_compromisso_minimo: null,
           })
         )
           renderAnunciantes(el);
@@ -1249,14 +1265,14 @@ async function renderAnunciantes(el) {
       }
       const minimo = prompt(
         'Compromisso mínimo (em meses) pra usar o desconto — vazio libera qualquer plano:',
-        atual?.fundador_compromisso_minimo ?? '',
+        atual?.parceiro_compromisso_minimo ?? '',
       );
       if (minimo === null) return;
       if (
-        await salvar(`/admin/anunciantes/${b.dataset.fundador}`, {
-          fundador: true,
-          fundador_desconto_percentual: Number(desconto),
-          fundador_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
+        await salvar(`/admin/anunciantes/${b.dataset.parceiro}`, {
+          status: 'parceiro',
+          parceiro_desconto_percentual: Number(desconto),
+          parceiro_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
         })
       )
         renderAnunciantes(el);
@@ -1807,7 +1823,7 @@ async function renderPlanos(el) {
       Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
       "Tela após": módulo cruzado — ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
       "Desconto comodato": desconto extra pra conta que também é dona de ponto, por plano — some do valor cobrado quando a conta tem o papel "ponto".
-      Fundador não é mais plano de catálogo: é status de conta, marcado à mão em Anunciantes → "Marcar fundador".
+      Parceiro (antigo "fundador") não é plano de catálogo: é status de conta, marcado à mão em Anunciantes → "Marcar parceiro".
     </p>`;
 
   const valorDo = (inp) => {

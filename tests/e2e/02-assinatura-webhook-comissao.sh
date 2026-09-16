@@ -1,6 +1,7 @@
 #!/bin/bash
 # Continuação do 01-fluxo-api.sh — assume cookies adm.txt / ana.txt / joao.txt
-# no cwd. Cobre: desconto de fundador (status de conta, item 4 da spec),
+# no cwd. Cobre: desconto de parceiro (status de conta, item 4 da spec;
+# renomeado de "fundador" em 16/09/2026 — status virou só comum/parceiro),
 # vagas de um plano com teto (mecanismo genérico, agora com reserva de 15 min
 # em vez de 7 dias — item 5), webhook (assinatura HMAC, fail-closed, replay,
 # idempotência, preço travado), 1ª cobrança (`criada`) ativando a conta,
@@ -33,13 +34,13 @@ esperar(){ if echo "$3" | grep -qE "$2"; then ok "$1"; else falha "$1" "$3"; fi;
 ANA=$($PG -c "select id from anunciantes where contato_email='ana@x.com'")
 JOAO=$($PG -c "select id from anunciantes where contato_email='joao@x.com'")
 
-echo "== fundador: status de conta com desconto e piso de compromisso (item 4) =="
+echo "== parceiro: status de conta com desconto e piso de compromisso (item 4) =="
 curl -s -b adm.txt -X PATCH $B/admin/anunciantes/$ANA -H "$J" \
-  -d '{"fundador":true,"fundador_desconto_percentual":10,"fundador_compromisso_minimo":3}' >/dev/null
+  -d '{"status":"parceiro","parceiro_desconto_percentual":10,"parceiro_compromisso_minimo":3}' >/dev/null
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"essencial-1m"}')
-esperar "plano abaixo do piso de compromisso do fundador é recusado" 'não está liberado' "$r"
+esperar "plano abaixo do piso de compromisso do parceiro é recusado" 'não está liberado' "$r"
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"essencial-12m"}')
-esperar "assinar plano elegível pra fundador devolve link de checkout" 'checkoutUrl' "$r"
+esperar "assinar plano elegível pra parceiro devolve link de checkout" 'checkoutUrl' "$r"
 ASS=$($PG -c "select id from assinaturas where anunciante_id=$ANA and status='ativa' order by id desc limit 1")
 esperar "assinatura criada no banco" '^[0-9a-f-]{8,}$|^[0-9]+$' "$ASS"
 r=$(curl -s -H "X-Checkout-Key: $KEY" $B/plano/$ASS)
@@ -82,12 +83,12 @@ echo "== webhook: primeira cobrança paga (evento criada) =="
 # Desde a migration 021 não existe mínimo de telas nem cobertura adiada: quem
 # pagou fica ativo na hora, e a cobertura é `compromisso_meses` cheio a partir
 # do pagamento. Benefício comercial se dá no preço, nunca no tempo — aqui o
-# preço já vem com o desconto de fundador (item 4 da spec).
+# preço já vem com o desconto de parceiro (item 4 da spec).
 r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
-st=$($PG -c "select status||'|'||coalesce(valor_mensal_travado::text,'')||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
-esperar "conta fica ativa na primeira cobrança" '^ativo\|' "$st"
-# O travado guarda o preço DO PLANO (79.20) — o desconto de fundador é lido
+st=$($PG -c "select (not suspenso)::text||'|'||coalesce(valor_mensal_travado::text,'')||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
+esperar "conta fica ativa (não suspensa) na primeira cobrança" '^t\|' "$st"
+# O travado guarda o preço DO PLANO (79.20) — o desconto de parceiro é lido
 # ao vivo a cada cobrança (o admin pode mudar o percentual depois sem
 # recongelar nada), não é somado ao valor travado.
 esperar "preço travado é o do plano, sem o desconto (79.20)" '\|79\.20\|' "$st"
@@ -111,7 +112,7 @@ if [ "$exp2" \> "$exp1" ]; then ok "renovação empurrou a data de expiração";
 
 echo "== evento sem ação automática vira pendência, não derruba conta =="
 enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"cobranca_falhou\",\"eventoId\":\"ev-3\"}" >/dev/null; sleep 1
-st=$($PG -c "select status from anunciantes where id=$ANA"); esperar "conta segue ativa depois de cobranca_falhou" '^ativo$' "$st"
+st=$($PG -c "select suspenso from anunciantes where id=$ANA"); esperar "conta segue ativa depois de cobranca_falhou" '^f$' "$st"
 pend=$($PG -c "select count(*) from eventos_assinatura_pendentes"); esperar "cobranca_falhou virou pendência pro admin" '^[1-9]' "$pend"
 
 echo "== vendedor vê a comissão =="
