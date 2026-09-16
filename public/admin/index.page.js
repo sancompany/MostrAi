@@ -841,15 +841,19 @@ async function renderPontos(el) {
         <p class="form-msg" id="msgNovoPonto"></p>
       </form>
     </details>
-    ${caixaTabela({
-      chips: [
-        { valor: '', nome: 'Todos' },
-        { valor: 'parcial', nome: 'Com tela fora do ar' },
-        ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-      ],
-      html: corpo,
-      dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
-    })}
+    ${
+      pontos.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              { valor: 'parcial', nome: 'Com tela fora do ar' },
+              ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+            ],
+            html: corpo,
+            dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
+          })
+        : '<p class="empty-state">Nenhum ponto ainda. Candidatura em "Seja um ponto" no site vira convite aqui, e o convite aceito nasce ponto. O cadastro manual acima é pra exceção.</p>'
+    }
     <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
@@ -1184,17 +1188,21 @@ async function renderAnunciantes(el) {
         <p class="form-msg" id="msgNovoAnunciante"></p>
       </form>
     </details>
-    ${caixaTabela({
-      chips: [
-        { valor: '', nome: 'Todos' },
-        ...Object.entries(ANUNCIANTE_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-        { valor: 'comodato', nome: 'Dono de ponto' },
-        { valor: 'vendedor', nome: 'Vendedor' },
-        { valor: 'excluida', nome: 'Excluídas' },
-      ],
-      html: corpo,
-      dica: 'Conta excluída fica recuperável por 60 dias. Use Restaurar.',
-    })}`;
+    ${
+      anunciantes.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              ...Object.entries(ANUNCIANTE_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+              { valor: 'comodato', nome: 'Dono de ponto' },
+              { valor: 'vendedor', nome: 'Vendedor' },
+              { valor: 'excluida', nome: 'Excluídas' },
+            ],
+            html: corpo,
+            dica: 'Conta excluída fica recuperável por 60 dias. Use Restaurar.',
+          })
+        : '<p class="empty-state">Nenhum anunciante ainda. Cadastro pelo site cai aqui na hora, ou use "+ Novo anunciante" acima pra exceção.</p>'
+    }`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
 
@@ -2381,7 +2389,7 @@ async function renderComodato(el) {
         )
         .join('')}
     </tbody></table></div></div>
-    <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra — mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado — ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
+    <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra. Mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado. Ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
 
   // A rota de criar opção de comodato existia desde sempre e não tinha
   // formulário em lugar nenhum: dava pra editar as duas opções nascidas na
@@ -2512,7 +2520,7 @@ async function renderComissoes(el) {
       <td>${fmt(c.valor_confirmado)}</td>
       <td><b>${fmt(c.comissao_valor)}</b></td>
       <td>${data(c.criado_em)}</td>
-      <td>${esc(c.chave_pix || '—')}</td>
+      <td>${esc(c.chave_pix || '-')}</td>
       <td>${
         c.pago_em
           ? `<span class="badge badge-ok">pago ${data(c.pago_em)}</span> <button class="btn ghost mini" data-pago="${c.id}" data-valor="0">Desfazer</button>`
@@ -2542,7 +2550,7 @@ async function renderComissoes(el) {
         { valor: '', nome: 'Todas' },
       ],
       html: corpo,
-      dica: 'Marcar como paga só registra aqui — o Pix é feito por fora.',
+      dica: 'Marcar como paga só registra aqui. O Pix é feito por fora.',
     })}`
     : '<p class="empty-state">Nenhuma comissão gerada ainda. Elas aparecem quando um anunciante indicado por um vendedor tem o pagamento confirmado.</p>';
 
@@ -2585,7 +2593,7 @@ async function renderArrependimentos(el) {
       }</td>
       <td>${
         p.status === 'estornado'
-          ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '—')}</span>`
+          ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '-')}</span>`
           : `<input class="u-w-160" placeholder="id do estorno" data-comp="${p.id}">
            <button class="btn primary mini" data-estornado="${p.id}">Registrar devolução</button>`
       }</td>

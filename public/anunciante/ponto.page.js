@@ -48,7 +48,7 @@ async function carregar() {
             ? `<span class="badge badge-ok">pago em ${esc(dataCurta(l.pago_em))}</span>`
             : '<span class="badge badge-pendente">em aberto</span>'
         }</td>
-        <td>${esc(l.forma || '—')}</td>
+        <td>${esc(l.forma || '-')}</td>
       </tr>`,
         )
         .join('')}
@@ -101,7 +101,7 @@ async function carregarTelas() {
       <div class="kpi-card"><span class="kpi-label">Anunciantes na sua tela</span><b>${anunciantes}</b><span>nos últimos 30 dias</span></div>`;
     if (!TELAS.length) {
       el.innerHTML =
-        '<p class="empty-state">Nenhuma tela instalada ainda — assim que a gente instalar, ela aparece aqui.</p>';
+        '<p class="empty-state">Nenhuma tela instalada ainda. Assim que a gente instalar, ela aparece aqui.</p>';
       return;
     }
     el.innerHTML = TELAS.map(
@@ -131,7 +131,7 @@ async function carregarTelas() {
 
 async function abrirPainel(id) {
   const tela = TELAS.find((t) => t.id === id);
-  document.getElementById('modalTelaTitulo').textContent = `${tela.apelido} — ${tela.ponto_nome}`;
+  document.getElementById('modalTelaTitulo').textContent = `${tela.apelido}, ${tela.ponto_nome}`;
   const corpo = document.getElementById('modalTelaCorpo');
   corpo.textContent = 'Carregando...';
   document.getElementById('modalTela').showModal();
@@ -265,7 +265,7 @@ formEnd.addEventListener('submit', async (e) => {
     });
     const corpo = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(corpo.erro || 'falha');
-    msg.textContent = 'Pedido enviado — a gente chama no WhatsApp pra combinar.';
+    msg.textContent = 'Pedido enviado. A gente chama no WhatsApp pra combinar.';
     msg.className = 'form-msg ok';
     formEnd.reset();
     formEnd.hidden = true;
@@ -345,7 +345,7 @@ document.getElementById('arquivoAutoanuncio')?.addEventListener('change', async 
   const input = e.target;
   const msg = document.getElementById('msgAutoanuncio');
   if (!input.files[0]) return;
-  msg.textContent = 'Enviando e processando — pode levar um minuto...';
+  msg.textContent = 'Enviando e processando, pode levar um minuto...';
   msg.className = 'form-msg';
   input.disabled = true;
   const form = new FormData();

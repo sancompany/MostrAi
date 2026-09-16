@@ -149,7 +149,7 @@ fetch(`${API_BASE_URL}/pontos`)
     el.innerHTML =
       `<b>A rede ainda está em montagem.</b> ${situacao} ` +
       'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. ' +
-      'Se preferir esperar, <a href="/contato.html">fale com a gente</a> — e se assinar agora e mudar de ideia, ' +
+      'Se preferir esperar, <a href="/contato.html">fale com a gente</a>. E se assinar agora e mudar de ideia, ' +
       'você tem 7 dias para pedir a devolução integral pelo painel.';
     el.hidden = false;
   })

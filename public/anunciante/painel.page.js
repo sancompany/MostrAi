@@ -90,7 +90,7 @@ function preencherStatusBanner() {
   // pediu devolução cai exatamente aqui, porque o arrependimento zera o
   // plano e suspende a conta.
   const explicacao = ANUNCIANTE.suspenso
-    ? 'Sua conta está suspensa — o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
+    ? 'Sua conta está suspensa, e o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
       'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.'
     : null;
   const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
@@ -118,7 +118,7 @@ async function carregarKpiPontos() {
     ).json();
     el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>${pontos.length}</b><a class="link-secundario" href="/anunciante/ponto.html">Ver meu ponto →</a>`;
   } catch {
-    el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>—</b>';
+    el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>-</b>';
   }
 }
 
@@ -150,7 +150,7 @@ async function confirmarPlano(planoId) {
     `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
-      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b> — ${plano.frequencia_hora}x por hora em cada tela</p>
+      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>, ${plano.frequencia_hora}x por hora em cada tela</p>
       <p class="u-m-0 ${extras ? 'u-mb-4' : 'u-mb-12'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
       ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
@@ -194,7 +194,7 @@ async function assinar(anuncianteId, planoId) {
   if (!/^https?:\/\//.test(checkoutUrl)) {
     box.insertAdjacentHTML(
       'beforeend',
-      '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env) — fale com o suporte técnico.</p>',
+      '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env). Fale com o suporte técnico.</p>',
     );
     return;
   }
@@ -238,8 +238,8 @@ async function carregarExibicoes() {
     const entrega =
       dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
     kConfirmadas.textContent = dados.totalConfirmadas;
-    kEntrega.textContent = dados.totalProgramadas ? `${entrega}%` : '—';
-    kCusto.textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '—';
+    kEntrega.textContent = dados.totalProgramadas ? `${entrega}%` : '-';
+    kCusto.textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
 
     desenharPorDia(dados.porDia || []);
     desenharPorPonto(dados.porPonto || []);
@@ -273,7 +273,7 @@ function explicarZero(dados) {
   el.innerHTML = semPlano
     ? '<b>Seus números aparecem aqui depois que você escolher um plano.</b> Nada foi programado ainda porque a conta não tem plano ativo.'
     : criativoNoAr
-      ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia — cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
+      ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
       : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
   el.hidden = false;
 }
@@ -329,7 +329,7 @@ function desenharPorPonto(porPonto) {
       .map((p) => {
         const prog = Number(p.programadas) || 0;
         const conf = Number(p.confirmadas) || 0;
-        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '—'}</td></tr>`;
+        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td></tr>`;
       })
       .join('')}
   </tbody></table></div>`;
@@ -346,7 +346,7 @@ function desenharCobrancas(cobrancas) {
         (c) => `<tr>
       <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
       <td>${fmt(c.valor)}</td>
-      <td>${c.nota_fiscal_url ? `<a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">Baixar</a>` : esc(c.nota_fiscal_status || '—')}</td>
+      <td>${c.nota_fiscal_url ? `<a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">Baixar</a>` : esc(c.nota_fiscal_status || '-')}</td>
     </tr>`,
       )
       .join('')}
@@ -441,7 +441,7 @@ document.getElementById('arquivoCriativo').addEventListener('change', async (e) 
   const msg = document.getElementById('uploadMsg');
   if (!input.files[0]) return;
 
-  msg.textContent = 'Enviando e processando o vídeo — pode levar um minuto...';
+  msg.textContent = 'Enviando e processando o vídeo, pode levar um minuto...';
   msg.className = 'form-msg';
   // Sem travar o input, escolher outro arquivo durante o envio disparava
   // um segundo POST concorrente e duas listas fora de ordem.
