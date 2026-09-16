@@ -58,6 +58,26 @@ esteira é só o item 8.
      um, e sai daqui corrigido e reverificado — é a rodada de depuração
      (skill `depurar`) que fecha a estação.
 
+9. **Gerar uma senha de app nova do Gmail e trocar `SMTP_PASS` no
+   Northflank.** *(Achado em 16/09/2026, não durante a navegação do site —
+   nos logs de produção, ao investigar por que o e-mail de confirmação de
+   pagamento não chegou.)*
+   · **Causa raiz confirmada nos logs:** `535-5.7.8 Username and Password
+     not accepted` — o Gmail está recusando a senha de app que está em
+     `SMTP_PASS` hoje. O dono confirmou que não trocou essa variável; o
+     Google é quem invalidou a senha (acontece sozinho — troca de senha da
+     conta, reconfiguração de verificação em duas etapas, ou expiração por
+     segurança). Não tem como "usar a mesma de novo": uma vez rejeitada, ela
+     não volta a funcionar — precisa gerar uma senha de app **nova**.
+   · **Onde:** `myaccount.google.com` → Segurança → Senhas de app (exige
+     verificação em duas etapas ativada) → gerar nova → colar em `SMTP_PASS`
+     no Northflank (projeto `mostrai`, variáveis de ambiente). Não precisa de
+     deploy depois.
+   · **Trava:** o e-mail de confirmação de pagamento e o de redefinição de
+     senha — nenhum dos dois sai enquanto essa senha não for trocada. Não
+     trava a cobrança nem a ativação da conta (RUNBOOK.md já documenta isso).
+   · **Só o dono faz** — é a conta Google dele, ninguém mais tem acesso.
+
 ## A.0 Vazamento de segredo no push inicial — rastro limpo, rotação pendente
 
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
@@ -836,3 +856,50 @@ querer mesmo".)*
 - `docs/specs/2026-09-12-mostrai.md` **não foi tocado** — é registro
   histórico congelado da Estação 1/2, já fechadas; ainda cita
   `frequencia_dia` como estava decidido naquela data, o que é esperado.
+
+**11. [x] Construído — status da conta vira só comum/parceiro; `suspenso`
+separa em campo próprio.** **FEITO em 16/09/2026.** *(Pedido do dono fora de
+print, ainda sobre a página de Anunciantes: "vi que o status de aprovado
+pendente e ativo continuam no status do cliente, mude esse status somente
+para 2 status comum e parceiro que é a substituição do fundador"; depois:
+"o status serve somente para separar parceiro de cliente comum, e os
+criativos são aprovados quando sobem em uma aba deles próprio".)*
+
+- `status` deixou de misturar rótulo comercial com estado operacional.
+  Agora: `status` (`comum`/`parceiro`, nunca bloqueia nada — substitui o
+  flag `fundador`, renomeado por inteiro: `parceiro_desconto_percentual` /
+  `parceiro_compromisso_minimo`) e `suspenso` (booleano — o que bloqueia
+  login em `/anunciantes/:id/assinar` e some da playlist; ligado pela
+  conciliação quando a cobertura vence ou à mão pelo admin, desligado por
+  qualquer crédito de ciclo). O gate real de veiculação continua sendo o do
+  criativo (RN-34) — confirmado com o dono, não mudou.
+- Migração 038: renomeia as colunas do antigo "fundador", adiciona
+  `suspenso`, e troca a constraint de status pra `comum`/`parceiro`.
+- **Quase deu problema:** a primeira versão da migração 038 tentava gravar
+  `status = 'comum'` **antes** de tirar a constraint antiga (que só aceitava
+  os 4 valores velhos) — o próprio UPDATE de transição violava a constraint
+  que estava tentando substituir. Isso pôs o serviço em **crash-loop** em
+  produção por cerca de 10 minutos (o container reiniciava, a migração
+  falhava, reiniciava de novo) — sem corromper nada, porque cada migração
+  roda numa transação com rollback automático no erro, então o banco nunca
+  chegou a ficar com o `status` pela metade. Vi o erro exato nos logs do
+  Northflank (`violates check constraint "anunciantes_status_check"`),
+  corrigi a ordem (tirar a constraint antes do UPDATE, não depois) e
+  empurrei um segundo commit — o deploy completou normal na sequência.
+  Confirmado depois: `schema_migrations` tem a 038 aplicada, a conta do
+  dono (id 3) saiu com `status: comum, suspenso: false`, e o site respondeu
+  normalmente durante todo o processo (o Northflank manteve a versão
+  anterior servindo enquanto a nova falhava, não houve indisponibilidade
+  visível).
+- Telas trocadas: `src/db/migrations/038_status_vira_comum_parceiro.sql`
+  (nova); `src/playlist/gerador.js`, `src/financeiro/routes.js`,
+  `src/financeiro/san-checkout.js`, `src/financeiro/conciliacao.js`,
+  `src/financeiro/planos-repository.js`, `src/anunciantes/repository.js`,
+  `src/anunciantes/routes.js`, `src/conta/modos.js`, `src/admin/routes.js`,
+  `src/titular/routes.js`; `public/admin/index.page.js` (badge, botão
+  "Marcar parceiro", coluna "Suspensa", form "Meus anúncios"),
+  `public/anunciante/painel.page.js`, `public/perfil.js`, `public/layout.js`.
+  Testes e2e (02, 03, 04, 05) e docs (`funcional.md` RN-14/34/35 nova,
+  `api.md`, `catalogo-beneficios.md`, `teia.md`) ajustados. Não roda
+  Postgres local nesta sessão — os e2e não foram executados, só
+  revisados linha a linha.
