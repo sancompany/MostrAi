@@ -386,6 +386,52 @@ Agora o número mora em `src/lib/limites.js` e quem recusa é
 gerador fica como última defesa. *Violada:* a rota devolve 400 com o teto.
 *Quem vê:* o administrador, ao criar ou versionar um plano.
 
+**RN-50 — A resposta de `consultar-assinatura` tem duas metades, e as duas
+são lidas.** *(Atualização do San Checkout, 16/09/2026, adotada aqui em
+17/09.)* `status` diz se o VÍNCULO existe (`ativa`/`pausada`/`cancelada`);
+`ultimaCobranca` diz se o último CICLO entrou. A conciliação lia só a segunda
+e jogava a primeira fora, e isso abria dois buracos de dinheiro:
+
+· **Assinatura encerrada fora do nosso fluxo nunca chegava.** Cancelada no
+  painel da Asaas, ou morta por ela depois de falhas seguidas, não gera aviso:
+  o Checkout mediu em 16/09 que há **zero eventos `SUBSCRIPTION_*` entre os 53
+  configurados** na Asaas. Esta rota é o único caminho. O anunciante seguia
+  `ativa` aqui, rodando anúncio de graça, sem nada acusar.
+· **Ciclo falhado sem o webhook `cobranca_falhou`** — que é justamente o aviso
+  que se perde (fila de retry em memória do Checkout, reinício do processo). O
+  anunciante nunca soube que precisava trocar o cartão, e a cobertura vencia.
+
+A decisão mora em `decidirPorEstado` (`src/financeiro/conciliacao.js`), pura e
+sem banco. O vínculo é avaliado ANTES do ciclo: assinatura encerrada não tem
+ciclo a creditar, por mais confirmada que esteja a última cobrança. Status
+desconhecido (o Checkout promete adicionar valores novos) conta como vínculo
+não-ativo e vira evento, mas **não** cancela o registro por conta própria.
+Resposta ausente (404) é "não sei", nunca "cancelada". *Violada:* não há
+caminho de usuário. *Quem vê:* o admin, na aba de Eventos.
+
+**RN-51 — O link de renovação vai assinado, ou não vai.** *(Mudança
+incompatível do San Checkout, API.md 7.3, 16/09/2026.)* `&renovar=1` deixou de
+valer: o `renovar` agora é um HMAC-SHA256 da nossa `SAN_CHECKOUT_KEY` sobre
+`{timestamp}.{contratanteId}.{assinaturaId}.{documento}`. O motivo é um achado
+grave do lado dele — CPF/CNPJ não é segredo, e quem soubesse o documento de um
+assinante ativo montava o link, pagava com o próprio cartão e, ao confirmar,
+fazia o Checkout cancelar a assinatura de verdade da vítima.
+
+Duas armadilhas, as duas silenciosas:
+· **Token que não bate não dá erro.** O Checkout degrada para "assinatura nova
+  comum": cria, cobra e NÃO cancela a antiga — o cliente passa a ter duas
+  assinaturas na Asaas. Por isso, sem chave ou sem documento,
+  `linkRenovarAssinatura` devolve `null` e o e-mail sai **sem link**, pedindo
+  contato. Link sem token é pior que link nenhum.
+· **O documento entra no HMAC só com dígitos**, e de propósito NÃO pelo nosso
+  `limpar()`: a pop-up do Checkout manda `documento.replace(/\D/g, '')` e é
+  contra isso que ele confere. O nosso `limpar()` preserva letras, porque CNPJ
+  é alfanumérico desde julho de 2026 — usá-lo aqui faria o token nunca bater
+  para empresa com letra no CNPJ, e o sintoma seria cobrança dobrada, não erro.
+
+*Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no e-mail de
+cobrança falhada; e o admin, na pendência, que diz qual dos dois casos ocorreu.
+
 **RN-49 — Enquanto a rede é menor que o plano, o tempo dos pontos que faltam
 volta pros pontos que veiculam.** *(Decisão do dono, 17/09/2026.)* O plano
 vende N pontos. Com a rede menor que N, o anunciante recebia menos do que

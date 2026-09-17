@@ -104,3 +104,87 @@ test('o link nunca volta a usar o formato antigo `renovar=1`', () => {
   assert.ok(!link.includes('renovar=1&') && !link.endsWith('renovar=1'), 'formato antigo não pode voltar');
   assert.match(tokenDoLink(link), /^\d+\.[0-9a-f]{64}$/, 'token é "{epoch}.{hmac hex}"');
 });
+
+// ---------------------------------------------------------------------------
+// Conciliação: a resposta de `consultar-assinatura` tem DUAS metades
+// ---------------------------------------------------------------------------
+// Até 17/09/2026 a conciliação lia só `ultimaCobranca` e jogava `status` fora.
+// Os dois buracos eram de dinheiro, e o primeiro é o pior: a Asaas NÃO manda
+// evento de assinatura (o Checkout mediu: zero `SUBSCRIPTION_*` entre os 53
+// configurados), então esta rota é o único caminho pelo qual "cancelada por
+// fora" chega até nós.
+const { decidirPorEstado } = require('../src/financeiro/conciliacao');
+
+const cobranca = (status, chargeId = 'pay_1') => ({ status, chargeId });
+
+test('assinatura cancelada fora do nosso fluxo é detectada e cancelada aqui', () => {
+  const d = decidirPorEstado({ status: 'cancelada', ultimaCobranca: cobranca('confirmado') });
+  assert.strictEqual(d.acao, 'vinculo_encerrado');
+  assert.strictEqual(d.cancelar, true);
+});
+
+// O vínculo vem antes do ciclo de propósito: assinatura encerrada não tem
+// ciclo a creditar, por mais confirmada que a última cobrança dela esteja —
+// e era exatamente esse par que o código antigo lia ao contrário.
+test('vínculo encerrado vence a última cobrança confirmada', () => {
+  assert.strictEqual(
+    decidirPorEstado({ status: 'cancelada', ultimaCobranca: cobranca('confirmado') }).acao,
+    'vinculo_encerrado',
+  );
+  assert.strictEqual(
+    decidirPorEstado({ status: 'pausada', ultimaCobranca: cobranca('confirmado') }).acao,
+    'vinculo_encerrado',
+  );
+});
+
+// `pausada` não tem estado local (a tabela só aceita ativa/cancelada), então
+// ela é registrada mas NÃO derruba o registro.
+test('pausada é registrada sem cancelar o registro local', () => {
+  const d = decidirPorEstado({ status: 'pausada', ultimaCobranca: null });
+  assert.strictEqual(d.acao, 'vinculo_encerrado');
+  assert.strictEqual(d.cancelar, false);
+  assert.strictEqual(d.status, 'pausada');
+});
+
+test('vínculo ativo com ciclo confirmado credita o ciclo, como antes', () => {
+  const d = decidirPorEstado({ status: 'ativa', ultimaCobranca: cobranca('confirmado', 'pay_9') });
+  assert.strictEqual(d.acao, 'aplicar_ciclo');
+  assert.strictEqual(d.ultima.chargeId, 'pay_9');
+});
+
+// Este é o caso que a skill do Checkout nomeia: vínculo vivo, último ciclo
+// falhado. É quem precisa do link de renovação — e quem passava despercebido
+// quando o webhook `cobranca_falhou` se perdia na fila em memória.
+test('vínculo ativo com ciclo vencido ou recusado pede o aviso de renovação', () => {
+  for (const s of ['vencido', 'recusado']) {
+    assert.strictEqual(decidirPorEstado({ status: 'ativa', ultimaCobranca: cobranca(s) }).acao, 'avisar_renovacao', s);
+  }
+});
+
+// Cobrança ainda em aberto não é falha: avisar aqui mandaria o cliente trocar
+// um cartão que ainda pode passar.
+test('cobrança pendente ou em análise não vira aviso de renovação', () => {
+  for (const s of ['pendente', 'em_analise']) {
+    assert.strictEqual(decidirPorEstado({ status: 'ativa', ultimaCobranca: cobranca(s) }).acao, 'nada', s);
+  }
+});
+
+test('sem chargeId não decide nada — nunca inventa chave de dedupe', () => {
+  assert.strictEqual(decidirPorEstado({ status: 'ativa', ultimaCobranca: { status: 'vencido' } }).acao, 'nada');
+  assert.strictEqual(decidirPorEstado({ status: 'ativa', ultimaCobranca: { status: 'confirmado' } }).acao, 'nada');
+});
+
+// 404 do Checkout devolve null. Não é "cancelada": é "não sei", e tratar como
+// cancelamento tiraria do ar quem está pagando por causa de uma instabilidade.
+test('sem resposta não vira cancelamento', () => {
+  assert.strictEqual(decidirPorEstado(null).acao, 'sem_resposta');
+  assert.strictEqual(decidirPorEstado(undefined).acao, 'sem_resposta');
+});
+
+// Status desconhecido (o Checkout promete ADICIONAR valores novos) não pode
+// virar erro nem ser ignorado: é vínculo que não está ativo, e fica visível.
+test('status novo que o Checkout invente não é ignorado nem quebra', () => {
+  const d = decidirPorEstado({ status: 'inadimplente', ultimaCobranca: cobranca('confirmado') });
+  assert.strictEqual(d.acao, 'vinculo_encerrado');
+  assert.strictEqual(d.cancelar, false, 'status desconhecido não cancela o registro por conta própria');
+});

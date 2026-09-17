@@ -13,8 +13,82 @@
 // chaveada por chargeId), então um ciclo nunca entra duas vezes — não importa
 // se o aviso veio pelo webhook, por aqui, ou pelos dois.
 const pool = require('../db/pool');
-const { consultarAssinatura, aplicarCicloPago } = require('./san-checkout');
-const { enviarCoberturaAcabando } = require('./email');
+const { consultarAssinatura, aplicarCicloPago, linkRenovarAssinatura } = require('./san-checkout');
+const { enviarCoberturaAcabando, enviarCobrancaFalhou } = require('./email');
+const anunciantesRepo = require('../anunciantes/repository');
+const assinaturasRepo = require('./assinaturas-repository');
+const eventos = require('../lib/eventos');
+
+// A resposta de `consultar-assinatura` tem DUAS METADES, e até 17/09/2026 a
+// conciliação lia só uma (API.md 5.3 do Checkout):
+//
+//   `status`          -> o VÍNCULO existe? (ativa | pausada | cancelada)
+//   `ultimaCobranca`  -> o último CICLO entrou?
+//
+// Ler só `ultimaCobranca` deixava dois buracos, os dois de dinheiro:
+//
+// 1. ASSINATURA ENCERRADA FORA DO NOSSO FLUXO nunca chegava. Cancelada no
+//    painel da Asaas, ou morta por ela depois de falhas seguidas, não gera
+//    aviso nenhum — o Checkout MEDIU isso em 16/09: zero eventos
+//    `SUBSCRIPTION_*` entre os 53 configurados na Asaas. Esta rota é o ÚNICO
+//    caminho pelo qual isso chega até nós, e a gente jogava fora a metade que
+//    trazia. Resultado: o anunciante seguia `ativa` aqui e rodando anúncio de
+//    graça, pra sempre, sem nada acusar.
+// 2. CICLO QUE FALHOU sem o webhook `cobranca_falhou` ter chegado. Esse aviso
+//    é justamente o que se perde (fila de retry em memória, reinício do
+//    processo), e sem ele o anunciante nunca soube que precisa trocar o
+//    cartão — a cobertura simplesmente vence.
+//
+// `pausada` não tem estado local (a tabela só aceita `ativa`/`cancelada`) e o
+// Mostraí nunca pausa nada, então ela só vira evento, sem mexer no registro.
+// Se um dia pausar virar fluxo de verdade, aí sim vale a coluna.
+const COBRANCA_FALHOU = new Set(['vencido', 'recusado']);
+
+// A decisão sai daqui, pura, sem banco: é caminho de dinheiro, e o teste dela
+// não pode depender de subir Postgres (mesmo padrão de
+// `src/lib/limite-tentativas.js`). O laço abaixo só executa o que ela decide.
+function decidirPorEstado(estado) {
+  if (!estado) return { acao: 'sem_resposta' };
+  // O vínculo vem primeiro: assinatura encerrada não tem ciclo a aplicar,
+  // por mais confirmada que esteja a última cobrança dela.
+  if (estado.status && estado.status !== 'ativa') {
+    return { acao: 'vinculo_encerrado', status: estado.status, cancelar: estado.status === 'cancelada' };
+  }
+  const ultima = estado.ultimaCobranca;
+  if (ultima?.status === 'confirmado' && ultima.chargeId) return { acao: 'aplicar_ciclo', ultima };
+  if (ultima?.chargeId && COBRANCA_FALHOU.has(ultima.status)) return { acao: 'avisar_renovacao', ultima };
+  return { acao: 'nada' };
+}
+
+// Manda o link de renovação pra quem tem o vínculo vivo e o último ciclo
+// falhado. Deduplicado pelo MESMO `webhooks_processados` do resto, com
+// prefixo próprio: sem isso o anunciante receberia o mesmo e-mail todo dia
+// até trocar o cartão, que é a melhor forma de ensinar alguém a ignorar os
+// nossos e-mails. Uma vez por cobrança falhada, e pronto.
+async function avisarRenovacao(assinatura, ultima) {
+  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+    `renovacao|${ultima.chargeId}`,
+  ]);
+  if (!rowCount) return false;
+
+  const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+  if (!anunciante) return false;
+  // `null` quando não dá pra assinar o token: o e-mail sai sem link, pedindo
+  // contato. Link sem token válido cria uma SEGUNDA assinatura na Asaas sem
+  // cancelar a primeira (API.md 7.3) — cobrança dobrada, calada.
+  const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+  await enviarCobrancaFalhou(anunciante, link).catch((err) =>
+    console.error('e-mail de renovação pela conciliação', err),
+  );
+  eventos.registrar('assinatura:renovacao_avisada', {
+    anunciante_id: assinatura.anunciante_id,
+    assinatura_id: assinatura.id,
+    cobranca: ultima.status,
+    com_link: !!link,
+    origem: 'conciliacao',
+  });
+  return true;
+}
 
 async function conciliarAssinaturas() {
   const comecouEm = new Date();
@@ -25,17 +99,45 @@ async function conciliarAssinaturas() {
       WHERE s.status = 'ativa' AND a.excluido_em IS NULL`,
   );
 
-  const relato = { verificadas: 0, aplicadas: 0, jaProcessadas: 0, semCobranca: 0, falhas: [] };
+  const relato = {
+    verificadas: 0,
+    aplicadas: 0,
+    jaProcessadas: 0,
+    semCobranca: 0,
+    canceladasFora: 0,
+    renovacoesAvisadas: 0,
+    falhas: [],
+  };
 
   for (const assinatura of assinaturas) {
     relato.verificadas += 1;
     try {
-      const estado = await consultarAssinatura(assinatura.id, assinatura.cpf_cnpj);
-      const ultima = estado?.ultimaCobranca;
-      if (ultima?.status !== 'confirmado' || !ultima.chargeId) {
+      const decisao = decidirPorEstado(await consultarAssinatura(assinatura.id, assinatura.cpf_cnpj));
+
+      if (decisao.acao === 'vinculo_encerrado') {
+        if (decisao.cancelar) {
+          await assinaturasRepo.marcarCancelada(assinatura.id);
+          relato.canceladasFora += 1;
+        }
+        eventos.registrar(`assinatura:${decisao.status}_fora_do_fluxo`, {
+          anunciante_id: assinatura.anunciante_id,
+          assinatura_id: assinatura.id,
+          // Cobertura já paga continua valendo até `data_expiracao` — quem
+          // derruba é `suspenderCoberturaVencida`, igual ao webhook `cancelada`.
+          // Cancelar no ato tiraria do ar quem pagou o ciclo corrente.
+          nota: 'descoberto pela conciliação; a Asaas não avisa por evento',
+        });
+        continue;
+      }
+
+      if (decisao.acao !== 'aplicar_ciclo') {
+        if (decisao.acao === 'avisar_renovacao') {
+          relato.renovacoesAvisadas += (await avisarRenovacao(assinatura, decisao.ultima)) ? 1 : 0;
+        }
         relato.semCobranca += 1;
         continue;
       }
+      const ultima = decisao.ultima;
 
       // A chave é a mesma que o webhook usaria. Se já está gravada, o webhook
       // chegou e fez o trabalho — não há nada a fazer.
@@ -176,6 +278,7 @@ async function suspenderCoberturaVencida() {
 
 module.exports = {
   conciliarAssinaturas,
+  decidirPorEstado,
   suspenderCoberturaVencida,
   avisarCoberturaAcabando,
   registrarRelato,
