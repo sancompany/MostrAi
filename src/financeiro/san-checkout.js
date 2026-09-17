@@ -159,8 +159,6 @@ async function montarRespostaPlano(assinaturaId) {
   };
 }
 
-// O preço travado é da conta NAQUELE plano: trocar de plano solta a trava.
-//
 // Dois descontos entram por cima do preço-base, somados (item 4 e item 8 da
 // spec, 15/09/2026):
 // - comodato: conta com papel 'ponto' ganha o `desconto_comodato_percentual`

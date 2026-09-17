@@ -190,6 +190,17 @@ const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+// Mesma conta da vitrine (public/planos.page.js): o número grande que o
+// cliente vê sai do dado, não de texto guardado. Aqui ele aparece ao lado do
+// campo pra o dono conferir o efeito do que está digitando.
+const HORAS_ABERTO_DIA = 12;
+const DIAS_MES = 30;
+function horasDeTelaPorMes(p) {
+  if (!p.segundos_por_hora || !p.pontos_incluidos) return '';
+  const h = Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
+  return `= até ${h}h de tela/mês`;
+}
+
 const TROCA_STATUS = { pendente: 'Esperando pagamento', pago: 'Paga', cancelado: 'Cancelada' };
 
 function selectStatus(mapa, atual, attrs) {
@@ -1803,7 +1814,14 @@ async function renderPlanos(el) {
 
       <ul class="ed-lista">
         <li class="ed-freq">
-          <input type="number" min="1" max="60" ${contrato('frequencia_hora', p)} value="${p.frequencia_hora}" aria-label="Frequência por hora">x por hora em cada ponto
+          <input type="number" min="10" max="3600" step="10" ${contrato('segundos_por_hora', p)} value="${p.segundos_por_hora ?? ''}" aria-label="Segundos de tela por hora">s de tela por hora, em cada ponto
+          <span class="u-dim" data-horas-mes="${p.id}">${horasDeTelaPorMes(p)}</span>
+        </li>
+        <li class="ed-freq">
+          <input type="number" min="1" max="999" ${contrato('pontos_incluidos', p)} value="${p.pontos_incluidos ?? ''}" aria-label="Pontos incluídos">pontos da rede, escolhidos pelo cliente
+        </li>
+        <li class="ed-freq">
+          peça de até <input type="number" min="5" max="60" ${contrato('duracao_maxima_segundos', p)} value="${p.duracao_maxima_segundos ?? ''}" aria-label="Duração máxima da peça">segundos
         </li>
       </ul>
       <div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div>
@@ -1833,14 +1851,21 @@ async function renderPlanos(el) {
               .map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`)
               .join('')}
           </select></div>
-          <div class="u-col"><label>Frequência/hora</label><input class="mini" type="number" name="frequencia_hora" value="6" required></div>
+          <div class="u-col"><label>Segundos de tela/hora</label><input class="mini" type="number" name="segundos_por_hora" value="90" min="10" max="3600" step="10" required></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col"><label>Pontos incluídos</label><input class="mini" type="number" name="pontos_incluidos" value="3" min="1" required></div>
+          <div class="u-col"><label>Peça até (segundos)</label><input class="mini" type="number" name="duracao_maxima_segundos" value="15" min="5" max="60" required></div>
         </div>
         <div class="field-row">
           <div class="u-col"><label>Preço cheio (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal_cheio" required></div>
           <div class="u-col"><label>Desconto (%, vazio = sem desconto)</label><input class="mini" type="number" step="0.01" min="0" max="99" name="desconto_percentual"></div>
         </div>
         <div><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
-        <div><label>Cobertura</label><select class="mini" name="cobertura" required>
+        <!-- Cobertura virou rótulo histórico: quem manda agora é o campo de
+             pontos incluídos, logo acima. Fica oculto porque o INSERT ainda
+             exige a coluna. -->
+        <div hidden><label>Cobertura</label><select class="mini" name="cobertura" required>
           <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
         </select></div>
         <div><label>Rótulo (ex.: "Preço promocional, travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
@@ -2227,7 +2252,7 @@ async function renderPlanosArquivados(el) {
     </div>
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Ciclo</th><th data-ord>Valor mensal</th>
-      <th data-ord>Criativos</th><th data-ord>Freq./hora</th><th>Cobertura</th><th>Benefícios</th>
+      <th data-ord>Criativos</th><th data-ord>Tela/hora</th><th data-ord>Pontos</th><th>Benefícios</th>
       <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
     </tr></thead><tbody>
     ${planos
@@ -2238,8 +2263,8 @@ async function renderPlanosArquivados(el) {
       <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
       <td>${fmt(p.valor_mensal)}</td>
       <td class="num">${p.limite_criativos}</td>
-      <td class="num">${p.frequencia_hora}</td>
-      <td>${esc(p.cobertura)}</td>
+      <td class="num">${p.segundos_por_hora ?? '-'}s/h</td>
+      <td class="num">${p.pontos_incluidos ?? 'todos'}</td>
       <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '-'}</td>
       <td>${data(p.arquivado_em)}</td>
       <td>${esc(p.substituido_por || '-')}</td>
