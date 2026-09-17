@@ -663,8 +663,14 @@ garantia de que conta que já pagava não perde o plano ao virar ponto.
 
 ### Itens reportados
 
-**1. [ ] CRÍTICO — pagamento confirmado não credita o ciclo; a conta nunca
-ativa.** *(Reportado em 15/09/2026, pagamento real de teste no sandbox:
+**1. [x] CRÍTICO — pagamento confirmado não credita o ciclo; a conta nunca
+ativa.**
+> **FECHADO em 17/09/2026, conferido no banco de produção, não no código:** a
+> conta 3 (San Company) está `status=comum`, `plano_id=essencial-3m`,
+> `data_expiracao=2026-12-16`, com 1 cobrança confirmada e 2 assinaturas — ou
+> seja, o ciclo aplicou. Havia 0 eventos de assinatura pendentes em aberto.
+> O item ficou aberto no documento depois de já ter sido resolvido; a linha
+> estava mentindo sobre o estado do sistema. *(Reportado em 15/09/2026, pagamento real de teste no sandbox:
 conta "San Company", plano `destaque-3m`, R$ 537,30.)*
 
 *O que acontece:* o cliente paga, a Asaas confirma, o webhook chega no
@@ -716,10 +722,15 @@ cobrança específica sozinho** — a Asaas já entregou o `PAYMENT_CONFIRMED`
 uma vez e não reenvia; vai precisar de reconciliação manual do lado de lá
 depois do deploy.
 
-**2. [ ] E-mail não chegou (nem do Mostraí, nem da Asaas).**
-*Mostraí:* é consequência do item 1 — `enviarConfirmacaoPagamento` só roda
-dentro de `aplicarCicloPago`, que nunca rodou. Não é defeito de SMTP; o SMTP
-continua **não verificado** (nenhum envio real aconteceu ainda).
+**2. [~] E-mail não chegou (nem do Mostraí, nem da Asaas).**
+*Mostraí:* a premissa mudou. Era "consequência do item 1, porque
+`aplicarCicloPago` nunca rodou" — mas ele rodou (item 1 fechado acima). Então
+se o e-mail não saiu, o problema é o SMTP mesmo, e é o item 9 da fila do dono:
+senha de app do Gmail recusada com `535-5.7.8`.
+*Como saber agora, sem esperar outro pagamento:* **admin → Eventos pendentes →
+"Testar agora"** (`GET /admin/diagnostico/smtp`, construído em 17/09/2026).
+Faz o login no servidor sem mandar mensagem e diz na hora se a senha passou.
+O dono trocou a variável no Northflank em 17/09; falta ele clicar e ver.
 *Asaas:* sandbox; conferir na conta da Asaas se o envio de recibo está
 ligado nesse ambiente. Fecha junto com o item 1 — quando o ciclo aplicar, o
 e-mail sai e aí sim se sabe se o SMTP funciona.
