@@ -679,3 +679,114 @@ inteira. É exatamente o furo que já corrigimos três vezes.
 A ordem é: motor (segundos por hora, cobertura por pontos, escolha do
 contratante, duração por plano) e benefícios **na mesma publicação**, como
 versão nova dos planos (RN-27).
+
+---
+
+# 10. O comodato como anunciante — a conta antes da opinião
+
+*(Pergunta do dono em 17/09/2026: "o que acha de criarmos planos para quem tem
+ponto também?", com o receio de que quem abre mão dos R$ 50 receba o Destaque
+direto — "horripilante pensar que receberiam tanto".)*
+
+## 10.1 O que a rede vale por segundo, na grade nova
+
+Com 12h de funcionamento por dia e 30 dias, cada ponto oferece **1.296.000
+segundos de tela por mês**. A preço de tabela:
+
+| plano | segundos/mês | R$ por 1000s | mensal |
+|---|---|---|---|
+| Essencial | 97.200 | 1,019 | R$ 99 |
+| Destaque | 302.400 | 0,823 | R$ 249 |
+| Máximo | 648.000 | 0,693 | R$ 449 |
+
+**Quanto vale R$ 50/mês a preço de tabela:** 49.091 segundos, que são 45 s/h
+em 3 pontos. O Essencial dá 90 s/h. Ou seja:
+
+> **R$ 50 por mês é, exatamente, METADE de um Essencial.**
+
+Essa é a régua para tudo que vem abaixo.
+
+## 10.2 O receio do dono está certo, e tem número
+
+| dar isto por R$ 50 | desconto sobre a tabela |
+|---|---|
+| Essencial | **2,0x** |
+| Destaque | **5,0x** |
+| Máximo | **9,0x** |
+
+Dar o Destaque a quem abre mão dos R$ 50 é vender R$ 249 por R$ 50. O
+Essencial, a 2x, é defensável — é o parceiro que hospeda o equipamento e cede
+a parede. O Destaque, a 5x, não é.
+
+**E o dano maior não é o desconto: é a âncora.** Dono de ponto é comerciante
+local — salão, barbearia, academia. Numa cidade do tamanho de Matão, eles
+conversam com os mesmos comerciantes para quem a Mostraí vende. No mês em que
+a barbearia contar que ficou com o Destaque por R$ 50, a etiqueta de R$ 249
+morre na cidade inteira. O desconto sai do caixa uma vez por mês; a âncora
+sai do preço para sempre.
+
+## 10.3 O furo que ninguém tinha olhado: hoje a troca é ruim PARA O DONO DO PONTO
+
+Os dois planos de comodato de hoje (migration 015):
+
+| plano | dinheiro | cota | valor da cota |
+|---|---|---|---|
+| `ajuda-custo` | R$ 50/mês | 1 slot/h | ~ R$ 5,50/mês |
+| `mais-cota` | R$ 0 | 3 slots/h | ~ R$ 16,50/mês |
+
+A cota roda **só na tela do próprio dono**, e está em SLOTS — é o segundo e
+último lugar do sistema que ainda conta em repetições, junto da conta própria
+(RN-21).
+
+Abrir mão dos R$ 50 compra 2 slots/h a mais, que são 10.800 s/mês, que valem
+**R$ 11,00**.
+
+> **O dono do ponto paga R$ 50 para receber R$ 11. A troca é 4,5x contra
+> ele.** O medo era de estar dando demais; na opção que existe HOJE a
+> Mostraí está pedindo demais. Ninguém que fizer essa conta escolhe
+> `mais-cota` — e o comerciante que fizer a conta depois de aceitar vai
+> sentir que foi passado para trás, que é a pior coisa que pode acontecer
+> com quem tem a chave do lugar onde o equipamento está.
+
+Some a isso que a cota é audiência de quem **já está dentro da loja dele**:
+vale menos que alcance de rede, não mais.
+
+## 10.4 A saída: produto menor, não desconto maior
+
+Um desconto grande num plano de catálogo cria a âncora de 10.2. Um **plano
+próprio, menor e fora da vitrine**, não cria: ninguém pode dizer "a barbearia
+ficou com o Destaque por R$ 50", porque a barbearia não está no Destaque.
+
+Desenho proposto, todo ele em cima de peça que já existe
+(`desconto_comodato_percentual`, RN-32, que já é por linha da grade):
+
+| o que ele tem | dinheiro | o que roda na rede | custo real pra ele |
+|---|---|---|---|
+| **Comodato** (`ajuda-custo`) | recebe R$ 50 | só a cota, na própria tela | — |
+| **Vizinho** *(novo, fora da vitrine)* | recebe R$ 50, paga R$ 49 | 45 s/h em 3 pontos, peça 15s, 1 criativo | **+R$ 1 no bolso** |
+| **Essencial** | abre mão dos R$ 50, paga R$ 49 | a grade cheia | R$ 99 |
+| **Destaque / Máximo** | mantém os R$ 50, paga com desconto de parceiro | a grade cheia | a definir |
+
+O **Vizinho** é metade de um Essencial por metade do preço. Não é desconto: é
+um produto menor, pelo que ele vale. Fecha os três problemas de uma vez —
+o dono do ponto sai ganhando (em vez de perder R$ 39 como em `mais-cota`),
+a Mostraí não mexe no caixa (−50 +49 = −R$ 1, o mesmo de hoje), e a etiqueta
+dos planos de catálogo continua de pé.
+
+E tem um efeito de segunda ordem que vale mais que o R$ 1: o dono do ponto
+vira **anunciante de verdade**, com painel, comprovante e relatório de
+entrega. Ele para de ser só o lugar onde a tela está e passa a ver a rede
+funcionando para o próprio negócio — que é quem mais tarde compra o Destaque
+pelo preço cheio, e quem indica os vizinhos.
+
+## 10.5 O que falta o dono decidir
+
+1. **No Destaque e no Máximo, os R$ 50 continuam caindo na conta dele?** A
+   frase foi "ficariam mesmo abrindo mão somente com o plano essencial", que
+   lido ao pé da letra é sim: abre mão só no Essencial, e nos de cima mantém
+   o dinheiro e ganha um desconto de parceiro maior. Falta o tamanho desse
+   desconto — e ele é a fronteira da âncora de 10.2, então não é número que
+   o código escolhe sozinho.
+2. **O `mais-cota` continua existindo?** Do jeito que está, é uma troca 4,5x
+   contra o comerciante. Ou a cota sobe muito (uns 9 slots/h só empatam com
+   os R$ 50), ou ele sai e o **Vizinho** ocupa o lugar dele.

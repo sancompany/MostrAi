@@ -614,6 +614,45 @@ Estação 6 abre.
 lado a lado; depois as funcionalidades. Prints chegam um de cada vez, e cada
 um vira uma linha nova abaixo assim que resolvido.
 
+### Decisões abertas com o dono (17/09/2026, depois do merge da grade)
+
+**F-D1 [ ] Benefício exclusivo do Máximo.** O relatório mensal por e-mail saiu
+na migration 048 (pedido do dono: "não aumente meu trabalho sobre esse tipo de
+coisa"). O Máximo ficou só com "Tudo do Destaque" mais os números derivados —
+180h de tela/mês, 10 pontos, peça de 30s, 3 criativos. É cartão completo, mas
+sem linha própria. **Três caminhos, e nenhum é do código escolher:**
+· *(a)* Deixar como está. O Máximo se sustenta nos números.
+· *(b)* Voltar "Prioridade em horário de pico", que o dono autorizou
+  ("benefícios fantasiosos como prioridade em horário de pico podem existir").
+  **Ressalva registrada uma vez, e a decisão é dele:** não existe prioridade de
+  horário em linha nenhuma do gerador, então é promessa que não se cumpre num
+  produto com cliente pagante — CDC art. 37 chama isso de publicidade
+  enganosa, e este projeto está classificado no topo da escala de rigor.
+· *(c)* **A versão VERDADEIRA da mesma promessa, que é barata:** quando a hora
+  passa de 3600s e o corte proporcional entra (RN-30), cortar os planos de
+  cima por último. A frase vira "quando a hora enche, você é o último a perder
+  tempo de tela" — verdadeira, exclusiva, sem trabalho recorrente, e hoje ela
+  nunca morde porque a rede está vazia. Custa um peso por tier na função de
+  corte e uma emenda na RN-30.
+
+**F-D2 [ ] "Peça simples incluída: se você não tem arte, a gente faz" é o mesmo
+problema do relatório, e está no plano de MAIOR volume.** Pela regra que o
+dono deu (pode prometer o que não dá trabalho; não pode prometer o que vira
+tarefa dele), esta linha é a mais cara da vitrine: está no Essencial, que é o
+de R$ 99 e o que mais vende, e cada cliente novo pode cobrar uma arte. Trinta
+clientes no Essencial são trinta peças para fazer à mão. Ou vira "uma peça,
+uma vez, na entrada" (escopo fechado), ou sai. Não foi mexida porque o dono
+não pediu — mas ele pediu a REGRA, e a regra pega aqui.
+
+**F-D3 [ ] Planos de comodato — conta feita, desenho proposto, falta o sim.**
+Tudo em `docs/economia-da-rede.md` seção 10. O resumo: R$ 50/mês é exatamente
+metade de um Essencial, então dar o Destaque por eles seria 5x de desconto (o
+receio do dono está certo, e tem número). Mas a opção que existe HOJE
+(`mais-cota`) é 4,5x contra o comerciante — ele abre mão de R$ 50 para receber
+R$ 11 de cota. Proposta: um plano **Vizinho** fora da vitrine, metade do
+Essencial por R$ 49, que ele paga com os R$ 50 que continua recebendo. Faltam
+as duas respostas da seção 10.5.
+
 ### Itens reportados
 
 **1. [ ] CRÍTICO — pagamento confirmado não credita o ciclo; a conta nunca
