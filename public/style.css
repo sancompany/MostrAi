@@ -321,6 +321,19 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 }
 .card input:focus, .card select:focus, .card textarea:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
 
+/* CAMPO COM MENOS DE 16px FAZ O IPHONE DAR ZOOM SOZINHO AO RECEBER FOCO.
+   O Safari do iOS amplia a página quando o campo focado tem fonte menor que
+   16px, e depois ela fica torta: a pessoa digita o e-mail e o site "pula".
+   Os campos estavam em .95rem (15,2px), um fio abaixo do gatilho.
+   16px vale só no celular — no desktop o campo menor é o desenho da tela, e
+   lá o zoom não existe.
+   nao-conferido: o limiar de 16px é comportamento conhecido do WebKit, mas a
+   documentação da Apple não foi aberta nesta sessão. Reconferir na próxima
+   mexida em formulário. (17/09/2026) */
+@media (max-width: 640px) {
+  .card input, .card select, .card textarea, #dlgPerfil input { font-size: 16px; }
+}
+
 /* CELULAR: o `min-width: 0` acima deixa a coluna encolher sem limite, e era o
    que acontecia — a linha CEP / Rua / Número cabia em 292px virando campos de
    67px, onde nem o próprio placeholder "00000-000" aparece inteiro. Encolher
@@ -447,7 +460,13 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
   display: flex; align-items: center; justify-content: center;
 }
 .senha-olho.ativo { color: var(--blue); }
-.senha-olho { position: absolute; }
+/* O olho da senha tinha 30px de alvo (18px de ícone + 6px de padding). 44px é
+   o piso de toque das duas referências de celular, e é o que o menu do próprio
+   site já usa. Fica DEPOIS da regra acima de propósito: mesma especificidade,
+   então quem vence é quem vem por último — colocada antes, ela não valia. */
+@media (max-width: 640px) {
+  .senha-olho { padding: 13px; }
+}
 
 /* Painel do anunciante/ponto: avatar no cabeçalho e popup de perfil nativo
    (<dialog>) — sem lib de modal, o navegador já cuida de backdrop e ESC. */

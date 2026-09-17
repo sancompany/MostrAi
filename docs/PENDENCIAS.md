@@ -1866,3 +1866,46 @@ teto 600s), que é o comportamento mais generoso dos dois.
 **celular** (tópico 1, metade mobile). A aba Planos volta depois, junto com a
 revisão do `/admin`, onde o comportamento dos planos e o desenho de status de
 ponto já estavam marcados pra ser conversados.
+
+
+### Revisão do dono, tópico 1 — metade CELULAR (17/09/2026)
+
+Varredura das 16 páginas sem login a 390px (iPhone), medida no navegador, não
+lida no código.
+
+**Limpo em todas:** nenhuma rola na horizontal, nenhum erro de JS, menu mobile
+com 48px por item, botão do WhatsApp já com o respiro que tira o conteúdo de
+baixo dele, nenhum campo sem rótulo.
+
+**M1. [x] Duas promessas que o sistema não cumpre mais.** Era o F-D3.2, que
+estava marcado como "corrigido no banco, não conferido no navegador".
+· `seja-um-ponto.html` dizia *"todo ponto tem uma cota própria na tela"* — a
+  cota foi zerada na migration 049, quando a contrapartida virou plano de
+  verdade — e *"com alguns meses de tela no ar você ainda ganha um período de
+  plano de anúncio na rede inteira"*, que era o `ponto_apos_meses` removido por
+  autorização do dono. "Rede inteira" também nunca valeu na grade nova: são
+  até 3 pontos.
+· `index.html` prometia *"o triplo de espaço na tela"* a quem abre mão dos
+  R$ 50. Conferido no banco: `comodato-basico` são 45s/hora e `essencial-1m`
+  são 90s — é o **dobro**, e em pontos da rede, não "na tela".
+· Os dois agora dizem o que o contrato de comodato já dizia. Ele era a única
+  das três peças que estava certa, e virou a fonte.
+
+**M2. [x] Campo de formulário fazia o iPhone dar zoom sozinho.** Todos os
+campos estavam em `.95rem` (15,2px), um fio abaixo do limiar de 16px do
+Safari do iOS: ao focar o campo, o navegador amplia a página e ela fica torta
+no meio do cadastro. Agora 16px no celular; no desktop nada muda.
+
+**M3. [x] Alvo de toque.** Seletor de ciclo de 36px → 44px; olho da senha de
+30px → 44px. O menu do próprio site já usava 48px, então esses dois eram os
+únicos abaixo do piso na mesma tela.
+
+**M4. [x] Sobra de CSS:** `.senha-olho { position: absolute }` estava
+declarado duas vezes, quatro linhas uma da outra.
+
+**Erro meu no meio da varredura, registrado porque a lição é geral:** o
+servidor local caiu e minha medição deu "ok" em seis páginas — a página de
+erro do Chrome não rola na horizontal e não tem campo nenhum, então passa por
+limpa. O medidor agora confere que a página é a página (`main` ou `form`
+presente) antes de medir, e grita quando não é. **Medidor sem prova de carga
+não mede nada; ele só concorda.**
