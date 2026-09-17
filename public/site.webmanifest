@@ -4,11 +4,30 @@
   "description": "Rede de telas de anúncio em comércios de Matão-SP.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f8fa",
+  "background_color": "#ffffff",
   "theme_color": "#ff7a1a",
   "lang": "pt-BR",
   "icons": [
-    { "src": "/img/favicon-sanco.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/img/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+    {
+      "src": "/img/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/img/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
   ]
 }
