@@ -15,7 +15,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/health` | `{ok:true}` |
-| GET | `/planos` | Planos ativos pra vitrine, exceto os com `vagas_restantes = 0`. Campos: `preco_travado`, `vagas`, `vagas_restantes`, `desconto_comodato_percentual`, `limite_criativos`, `beneficios`, `valor_mensal_cheio`, `desconto_percentual` (preço riscado só aparece com desconto > 0, migration 040). Fundador não é mais plano de catálogo (migration 033) — é status de conta, sem campo aqui. (`meses_gratis` e `minimo_telas_ativas` sairam do banco na migration 021.) |
+| GET | `/planos` | Planos ativos pra vitrine, exceto os com `vagas_restantes = 0`. Campos: `segundos_por_hora`, `pontos_incluidos`, `duracao_maxima_segundos`, `limite_criativos`, `vagas`, `vagas_restantes`, `desconto_comodato_percentual`, `beneficios`, `valor_mensal_cheio`, `desconto_percentual` (preço riscado só aparece com desconto > 0, migration 040). **Horas de tela por mês, minutos por hora, número de pontos e duração da peça NÃO vêm prontos daqui** — a vitrine calcula dos campos acima (`public/planos.page.js`), pra não existir texto que envelhece quando alguém muda um número. `beneficios` traz só o que é qualitativo. `preco_travado` saiu na migration 046; fundador não é plano de catálogo desde a 033 — é status de conta. (`meses_gratis` e `minimo_telas_ativas` sairam na 021.) |
 | GET | `/planos-ponto` | Opções de comodato (ajuda de custo × mais cota). |
 | GET | `/pontos` | Pontos ativos (nome, endereço, cidade) pra página "Onde estamos". |
 | GET | `/pontos/fluxo` | `{pessoasPorMes}` somando o fluxo estimado dos pontos ativos. |
@@ -36,7 +36,9 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `data_expiracao`, `valor_mensal_travado`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
+| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `plano` (o objeto do plano assinado, com `duracao_maxima_segundos`, `pontos_incluidos` e `segundos_por_hora` — é o que o painel usa pra dizer o limite de duração e montar a escolha de pontos), `data_expiracao`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
+| GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` pra tela de escolha: `limite` (`planos.pontos_incluidos`), `escolhidos` (ids) e `pontos[]` com `nome`, `cidade`, `endereco`, `escolhido` e `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido). 400 se a conta não tem plano. |
+| PUT | `/anunciantes/me/pontos` | ⚠️ Mesmo caminho do `POST` abaixo, sentido diferente: o `POST` é o DONO DE PONTO cadastrando um endereço novo, o `PUT` é o ANUNCIANTE escolhendo onde aparece. Separa o verbo, não o caminho. Troca a escolha inteira: `{pontos:[id,...]}`. Numa transação — metade salva deixaria a conta numa cobertura que ela não escolheu. 400 se passar do limite do plano ou se algum ponto não estiver `em_operacao`. Lista vazia devolve a conta pra distribuição automática (RN-42). |
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
@@ -73,7 +75,6 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, `endereco`… obrigatórios; `plano_ponto_id` opcional). 409 se já houver pedido em análise. |
 | POST | `/conta/modos/vendedor/pedir` | Idem pra vendas (`cidade`, `chave_pix` opcional, `mensagem`). |
 | POST | `/convites/:token/aceitar` | Conta logada aceita um convite: os papéis novos entram nesta conta (vendedor exige `chave_pix`; ponto vindo de candidatura cria ponto + Tela 1). Consome o convite. |
-| POST | `/conta/bonus/ponto/resgatar` | Módulo "tela após N meses" (`planos.ponto_apos_meses`): quando `bonus.ponto.disponivel`, cria candidatura de ponto `origem=bonus_plano` e marca `ponto_bonus_resgatado_em`. Corpo igual ao pedido de ponto. |
 | POST | `/conta/bonus/anuncio/resgatar` | Módulo "anúncio grátis após N meses como ponto" (`planos_ponto.plano_bonus_*`): quando `bonus.anuncio.disponivel`, ativa o plano na conta por M meses sem cobrança (papel anunciante entra junto). 409 se já houver plano ativo. |
 
 Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (origem painel/bônus) liga o papel direto na conta (cria perfil de vendedor ou ponto + Tela 1) e marca `aprovada`.

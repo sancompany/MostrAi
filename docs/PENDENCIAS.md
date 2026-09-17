@@ -1321,8 +1321,22 @@ disser. Se o dono criar um plano com 5 criativos, o cliente sobe 5, o plano
 vende 5, e a tela roda 3 — sem aviso em lugar nenhum. Hoje é latente (o maior
 plano tem 3). Ou os dois números passam a sair do mesmo lugar, ou o admin
 avisa que acima de 3 não roda.
+> **Atualização de 17/09/2026:** a grade nova encosta o Máximo EXATAMENTE no
+> teto (3 criativos). Continua latente, mas sem folga nenhuma: o próximo
+> plano que o dono criar com 4 já cai no furo, sem aviso em lugar nenhum. O
+> conserto barato é `limiteDeCriativos` parar de ter o 3 escrito na mão e o
+> admin recusar plano acima do que o gerador roda.
 
 **28. [ ] Anunciante que também é dono de ponto não roda na própria tela.**
+> **Ficou PIOR com a grade nova (17/09/2026), e continua aberto.** Agora ele
+> pode ESCOLHER o próprio ponto em `PUT /anunciantes/me/pontos` — a rota
+> aceita, porque só confere limite do plano e status `em_operacao`. Gasta uma
+> das 3 (ou 7, ou 10) vagas de cobertura que pagou num ponto onde
+> `anunciantesElegiveis` vai excluí-lo de qualquer jeito. Antes era uma tela a
+> menos de graça; agora é uma vaga paga que some sem aviso. A decisão do dono
+> continua sendo a mesma pergunta (pode ou não pode aparecer na própria tela),
+> mas a correção mínima, valha o que valer a resposta, é a rota avisar em vez
+> de aceitar em silêncio.
 *(Mesma varredura; é o furo "papéis cruzados" da `docs/furos.md` que nunca
 teve decisão.)* `anunciantesElegiveis` exclui `dono_conta_id` da rotação paga
 daquela tela. Quem é as duas coisas paga cobertura de "todos os pontos",
@@ -1378,8 +1392,44 @@ regra de 15 minutos de flexibilidade".)*
      `vagas_restantes`, que a vitrine já sabe mostrar. A conta de quantas
      vagas cabem sai direto do orçamento de 3600 segundos (ver item 30).
 
-**30. [~] A lógica da rede chegou em 17/09/2026 — desenhada, revisada, não
-construída.** O dono trouxe: anunciante escolhe em quais pontos anuncia,
+**30. [x] A lógica da rede chegou em 17/09/2026 — desenhada, revisada, e
+CONSTRUÍDA no mesmo dia, em cinco fatias.** *(Fechada em 17/09/2026. O que
+segue abaixo é o registro do desenho e da revisão; o que foi construído está
+resumido logo aqui.)*
+> **O que foi ao código** (commits `6feb525`, `797018e`, `0c821bc`,
+> `b96bae3`, `c5b2840`; migrations 045, 046 e 047):
+> - **Motor** — a hora virou orçamento de 3600s (RN-09) e o plano passou a
+>   vender TEMPO, não repetição (RN-39): `segundos_por_hora`, com as
+>   inserções saindo de `floor(segundos / duração)`. O corte proporcional
+>   passou a ser medido em segundos e o que sobra vira peça institucional
+>   (RN-40).
+> - **Cobertura por pontos** (RN-42) — `pontos_incluidos` mais a tabela
+>   `anunciantes_pontos`; o contratante escolhe no painel, e quem não escolhe
+>   cai numa distribuição automática ESTÁVEL (hash de `conta-ponto`), que dá
+>   sempre o mesmo resultado mas redistribui quando a rede cresce.
+> - **Duração como benefício** (RN-41) — `duracao_maxima_segundos`, com o
+>   upload recusando acima do teto, e os seis textos que prometiam "15 a 30
+>   segundos" corrigidos.
+> - **Remoções autorizadas** — preço travado (mecanismo + rótulo, no mesmo
+>   commit, como este item exigia) e bônus de tela após N meses. Pontos
+>   ficaram com dois status: `a_instalar` e `em_operacao`.
+> - **Grade** — Essencial 90s/h · 3 pontos · 15s · 1 criativo · R$ 99;
+>   Destaque 120s · 7 · 20s · 2 · R$ 249; Máximo 180s · 10 · 30s · 3 ·
+>   R$ 449. A vitrine DERIVA horas/pontos/duração/criativos dos campos do
+>   plano; a tabela de benefícios guarda só o que é qualitativo.
+>
+> **Das cinco armadilhas da revisão, quatro estão fechadas:** Master e tela
+> ao vivo (cancelados pelo dono), problema do lançamento (resolvido pela
+> promessa "cobre até N pontos"), e a armadilha do parceiro (morreu junto com
+> a trava de preço). **Continua latente a da cortesia** — `plano_cortesia`
+> some da margem —, que só morde quando existir cobrança externa.
+>
+> **Continua aberto:** o item 28 (dono de ponto pode escolher o próprio
+> ponto e ser excluído dele, agora gastando vaga paga) e o item 29 (dívida de
+> superlotação não registrada). E nada disso é verificável de ponta a ponta
+> antes do primeiro ponto instalado — o que passa a ser a próxima trava real.
+
+*Registro do desenho e da revisão, como chegou:* O dono trouxe: anunciante escolhe em quais pontos anuncia,
 plano limitado por número de pontos, ponto cheio sai da escolha, quem não
 escolhe roda sorteado entre os livres, plano Master sob consulta, tela de
 pontos com playlist ao vivo, e planos que evoluem com a rede preservando o
@@ -1440,9 +1490,14 @@ preço do parceiro.
   ativos hoje, conferido em produção); "15 a 30 segundos" escrito em seis
   lugares que viram mentira com 10s; e o fato de que nada disso é
   verificável de ponta a ponta antes do primeiro ponto instalado.
-· **Impacto na esteira:** é escopo novo sobre produto no ar, não depuração.
-  Não cabe dentro da Estação 5 — o caminho honesto é fechar a 5 com o produto
-  atual e abrir esta lógica como v2, com escopo e fronteiras próprios.
+· **Impacto na esteira — a avaliação mudou, e vale dizer por quê.** A leitura
+  inicial foi "é escopo novo sobre produto no ar, abre como v2". O dono optou
+  por construir dentro da Estação 5, e a decisão se sustenta porque o motor
+  antigo estava ERRADO, não só pequeno: vendia N repetições e entregava
+  "quantas voltas cabem na hora" (item 23), com a entrega piorando 36x
+  conforme a rede crescesse. Isso é depuração, não escopo novo — e a
+  cobertura por pontos é a forma correta do mesmo conserto. Com zero cliente
+  pagante, o custo de fazer agora é o menor que jamais será.
 
 **30.1 [ ] (o cálculo de vagas que originou o item, mantido)**
 *(O dono perguntou em 16/09/2026 quantas vagas cabem numa hora e disse que
