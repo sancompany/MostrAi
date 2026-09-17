@@ -352,19 +352,80 @@ Vale, e é boa venda. Dois cuidados, os dois com endereço:
    leitura pura, que não conte exibição — senão a vitrine infla a entrega
    que o anunciante recebe no relatório.
 
-## 6.8 O que está em aberto, e é decisão do dono
+## 6.8 Decidido pelo dono em 17/09/2026
 
-1. O plano de entrada passa a ser 1 ponto? (recomendação: sim)
-2. O limite de 15s cai, e a diferenciação vira só pontos? (recomendação: sim)
-3. Máximo e Master se sobrepõem — Máximo vira "até 10 pontos" e Master "todos
-   sem teto", ou Máximo é aposentado dentro do Master?
-4. O Master aparece na vitrine pública como degrau "fale com o suporte", ou
-   só existe pra quem o dono liberar? (o botão de WhatsApp só faz sentido na
-   primeira leitura)
-5. Preço passa a seguir `frequência × pontos`?
+A seção acima foi escrita antes da decisão; fica como registro do raciocínio.
+O que valeu:
 
-**Impacto na esteira:** isto é escopo novo sobre um produto no ar, não
-depuração — mexe em planos, cobertura, preço e playlist ao mesmo tempo. Pela
-skill `leis` não cabe dentro da Estação 5, que fecha com a revisão do dono
-sobre o que já existe. O caminho honesto é fechar a Estação 5 com o produto
-atual e abrir esta lógica como v2, com escopo e fronteiras próprios.
+| plano | pontos | frequência | duração |
+|---|---|---|---|
+| Essencial | 3 | 3x/h | 10s |
+| Destaque | 7 | 6x/h | 15s |
+| Máximo | todos os pontos da cidade | 12x/h | 30s |
+
+- **Plano Master: cancelado.** Com ele cai também a armadilha da cortesia
+  (6.5) — não some, fica latente pra qualquer cobrança manual futura.
+- **Tela de pontos ao vivo: cancelada.** Com ela cai o risco de saída de
+  vídeo (6.7).
+- **Duração vira degrau, não limite.** Razão do dono: "assim não deixamos
+  eles tão vidrados somente nos pontos e sim em outros benefícios". Isto
+  resolve, por outro caminho, o problema do lançamento de 6.3 — enquanto a
+  rede for pequena e os pontos se equivalerem, a escada é sustentada por
+  frequência e duração, que valem em qualquer tamanho de rede. É melhor do
+  que a saída de "entrada = 1 ponto" que esta revisão tinha proposto.
+- **Escolha de pontos é do CONTRATANTE**, quem já tem plano pago: marca até
+  o limite do plano, ou deixa tudo desmarcado e o sistema escolhe.
+
+### Capacidade com esses números
+
+Consumo por ponto escolhido (frequência × duração), contra os 3600s de cada
+ponto:
+
+| plano | consumo por ponto | contas que cabem NUM ponto |
+|---|---|---|
+| Essencial | 30 s/h | 120 |
+| Destaque | 90 s/h | 40 |
+| Máximo | 360 s/h | 10 |
+
+Contas que a rede aguenta, por pontos instalados:
+
+| pontos | só Essencial | só Destaque | só Máximo |
+|---|---|---|---|
+| 3 | 120 | 40 | 10 |
+| 7 | 280 | 40 | 10 |
+| 10 | 400 | 57 | 10 |
+| 30 | 1.200 | 171 | 10 |
+
+**O Máximo não escala, por desenho.** Como ele pega todos os pontos, sempre
+cabem os mesmos 10, tenha a rede 3 pontos ou 300. Isso não é defeito — é
+escassez real, e escassez real é o que sustenta preço alto no degrau de cima.
+Mas significa que a receita de Máximo tem teto fixo (10 × preço), e o
+crescimento da rede aparece em Essencial e Destaque.
+
+## 6.9 O que a decisão NÃO resolveu
+
+1. **Preço.** Com três eixos (pontos, frequência, duração), a fórmula de
+   preço ficou sem definição. Continua decisão do dono.
+2. **Direito do parceiro na troca de versão.** O problema de 6.6 segue de pé:
+   `aplicarCicloPago` decide a trava por
+   `mesmoPlano = anunciante.plano_id === plano.id`, então migrar a conta pra
+   versão nova reescreve `valor_mensal_travado` com o preço novo —
+   exatamente o contrário do direito do parceiro. Nada na decisão de 17/09
+   tocou nisso.
+3. **A vitrine não pode prometer ponto que não existe.** Hoje a rede tem
+   ZERO pontos ativos (conferido em produção, `GET /pontos` devolve lista
+   vazia). Um card dizendo "7 pontos" sobre uma rede de 3 — ou de 0 — é a
+   mesma falsidade do "100% dos pontos" que já foi corrigida uma vez (seção F
+   item 7 de `docs/PENDENCIAS.md`). O número de pontos do plano precisa sair
+   do dado e ser escrito de forma honesta em qualquer tamanho de rede: "até 3
+   pontos", com o total real ao lado.
+4. **"15 a 30 segundos" está escrito em seis lugares** e vira mentira com
+   10s: `public/index.html`, `public/obrigado.html`,
+   `public/anunciante/ponto.html`, `public/anunciante/painel.html` e dois
+   e-mails em `src/financeiro/email.js`. A validação em
+   `src/anunciantes/routes.js:410` também é global (3 a 60s) e não conhece o
+   teto do plano. Todos os seis precisam passar a sair do plano da conta.
+5. **Nada disso tem onde rodar hoje.** Com 0 pontos ativos, a escolha de
+   pontos não tem o que escolher e nenhum plano tem onde exibir. A feature é
+   construível, mas só é verificável de ponta a ponta depois do primeiro
+   ponto instalado.

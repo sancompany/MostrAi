@@ -1404,7 +1404,22 @@ preço do parceiro.
      reabre o erro de saída de vídeo já registrado em `docs/erros/`. Caminho
      seguro é thumb em rotação, e uma rota de leitura pura que não programe
      contador.
-· **Cinco decisões estão esperando o dono** (listadas em 6.8).
+· **Decidido em 17/09/2026** (seção 6.8 de `docs/economia-da-rede.md`):
+  Essencial 3 pontos / 3x/h / 10s · Destaque 7 pontos / 6x/h / 15s · Máximo
+  todos os pontos / 12x/h / 30s. Plano Master cancelado, tela ao vivo
+  cancelada. A escolha de pontos é do contratante que já paga: marca até o
+  limite do plano, ou deixa desmarcado e o sistema escolhe.
+· **A decisão resolveu 3 das 5 armadilhas** — Master (cancelado, e a
+  armadilha da cortesia vai junto, latente), tela ao vivo (cancelada) e o
+  problema do lançamento, que o dono resolveu por um caminho melhor que o
+  proposto: duração e frequência sustentam a escada enquanto os pontos se
+  equivalem.
+· **Continuam abertas** (seção 6.9): o preço com três eixos; o direito do
+  parceiro na troca de versão (`mesmoPlano` reescreve o preço travado); a
+  vitrine não poder prometer ponto que não existe (a rede tem ZERO pontos
+  ativos hoje, conferido em produção); "15 a 30 segundos" escrito em seis
+  lugares que viram mentira com 10s; e o fato de que nada disso é
+  verificável de ponta a ponta antes do primeiro ponto instalado.
 · **Impacto na esteira:** é escopo novo sobre produto no ar, não depuração.
   Não cabe dentro da Estação 5 — o caminho honesto é fechar a 5 com o produto
   atual e abrir esta lógica como v2, com escopo e fronteiras próprios.
