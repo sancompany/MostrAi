@@ -1147,7 +1147,7 @@ async function renderAnunciantes(el) {
         .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
         .join(
           ' ',
-        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
@@ -1811,11 +1811,7 @@ async function renderPlanos(el) {
       <div class="ed-tecnicos">
         <label>Criativos<input type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></label>
         <label title="Vazio = sem teto de vagas">Vagas<input type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></label>
-        <label title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele">Tela após<input type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-"></label>
         <label title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano">Comodato %<input type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-"></label>
-        <label class="chip-check" title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço">
-          <input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''}> Preço travado
-        </label>
       </div>
 
       <button class="btn primary block" data-nova-versao="${p.id}" disabled>Salvar novo plano</button>
@@ -1850,11 +1846,9 @@ async function renderPlanos(el) {
         <div><label>Rótulo (ex.: "Preço promocional, travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
         <div class="field-row">
           <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
-          <div class="u-col"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
         </div>
         <div><label>Desconto comodato (%, vazio = nenhum)</label><input class="mini" type="number" name="desconto_comodato_percentual" min="1" max="100" title="Desconto extra pra conta que também é dona de ponto, só nesse plano"></div>
         <div class="field-row">
-          <label class="benef-check"><input type="checkbox" name="preco_travado" value="1"><span>Preço travado pelo compromisso</span></label>
         </div>
         <div><label>Benefícios do plano</label><div class="benef-lista" id="novoPlanoBeneficios">${opcoesBeneficio([])}</div></div>
         <button class="btn primary" type="submit">Criar plano</button>
@@ -1967,9 +1961,7 @@ async function renderPlanos(el) {
     dados.beneficio_ids = [...document.querySelectorAll('#novoPlanoBeneficios input:checked')].map((i) =>
       Number(i.value),
     );
-    dados.preco_travado = !!dados.preco_travado;
     if (dados.vagas === '') delete dados.vagas;
-    if (dados.ponto_apos_meses === '') delete dados.ponto_apos_meses;
     if (dados.desconto_comodato_percentual === '') delete dados.desconto_comodato_percentual;
     if (dados.desconto_percentual === '') delete dados.desconto_percentual;
     const msg = document.getElementById('msgNovoPlano');

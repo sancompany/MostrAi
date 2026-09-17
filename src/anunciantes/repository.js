@@ -28,7 +28,6 @@ const CAMPOS_ATUALIZAVEIS = [
   'foto_url',
   'excluido_em',
   'papeis',
-  'valor_mensal_travado',
   // Conta própria do Mostraí (migration 023) — só o admin muda os dois.
   'conta_propria',
   'frequencia_hora_propria',
@@ -55,9 +54,9 @@ const CAMPOS_PUBLICOS = `
   contato_email, contato_telefone, status, plano_id,
   data_inicio_cobertura, data_expiracao, indicado_por_cupom, categoria_id, categoria_livre,
   responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone, foto_url, created_at, excluido_em,
-  papeis, valor_mensal_travado, conta_propria, frequencia_hora_propria,
+  papeis, conta_propria, frequencia_hora_propria,
   plano_cortesia, cortesia_motivo,
-  ponto_bonus_resgatado_em, anuncio_bonus_resgatado_em,
+  anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
   suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo
 `;

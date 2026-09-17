@@ -56,17 +56,8 @@ r=$(curl -s $B/convites/$TOK2); esperar "convite ficou usado" 'inválido' "$r"
 r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["vendedor"]}'); TOK3=$(echo $r | sed 's/.*"token":"\([^"]*\)".*/\1/')
 r=$(curl -s -b beto.txt -X POST $B/convites/$TOK3/aceitar -H "$J" -d '{}'); esperar "vendedor por convite exige Pix" 'Pix' "$r"
 
-echo "== módulo 1: tela após N meses de plano =="
-$PG -c "UPDATE planos SET ponto_apos_meses = 3 WHERE id='essencial-3m'" >/dev/null
-$PG -c "UPDATE anunciantes SET plano_id='essencial-3m', data_inicio_cobertura = now() - interval '4 months', data_expiracao = now() + interval '2 months' WHERE id=$BETO" >/dev/null
-# Beto já é ponto (aceitou convite) → bônus não vale pra quem já é ponto
-r=$(curl -s -b beto.txt $B/conta/modos); esperar "quem já é ponto não vê bônus disponível" '"ja_e_ponto":true' "$r"
-$PG -c "UPDATE anunciantes SET papeis = array_remove(papeis, 'ponto') WHERE id=$BETO" >/dev/null
-r=$(curl -s -b beto.txt $B/conta/modos); esperar "4 meses de plano com módulo de 3 → bônus disponível" '"meses_cobertos":4,"disponivel":true' "$r"
-r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome_comercio":"Bar do Beto","endereco":"Rua D, 4","cidade":"Matão","uf":"SP","cep":"15990-000"}')
-esperar "resgate cria candidatura" '"ok":true' "$r"
-r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "admin vê candidatura de bônus" '"origem":"bonus_plano"' "$r"
-r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome_comercio":"x","endereco":"y"}'); esperar "não resgata duas vezes" 'não está disponível' "$r"
+# Módulo 1 (tela após N meses) removido em 17/09/2026 a pedido do dono —
+# ver src/db/migrations/046. O módulo 2, logo abaixo, continua.
 
 echo "== módulo 2: anúncio grátis após N meses como ponto =="
 $PG -c "UPDATE planos_ponto SET plano_bonus_id='destaque-1m', plano_bonus_apos_meses=6, plano_bonus_meses=2 WHERE id='ajuda-custo'" >/dev/null

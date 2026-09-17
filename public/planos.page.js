@@ -57,7 +57,6 @@ function render(meses) {
       <ul>
         <li>${p.frequencia_hora}x por hora em cada ponto</li>
         ${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-        ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}
       </ul>
       <a class="btn ${p.destaque_no_site ? 'primary' : 'ghost'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>

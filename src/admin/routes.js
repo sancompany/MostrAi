@@ -99,7 +99,7 @@ router.get('/admin/resumo', async (_req, res) => {
     // `status` deixou de ter esse sentido (virou só comum/parceiro,
     // 16/09/2026) — quem tem plano de verdade é quem tem `plano_id`.
     pool.query(
-      `SELECT COALESCE(SUM(COALESCE(a.valor_mensal_travado, p.valor_mensal)), 0) AS total FROM anunciantes a
+      `SELECT COALESCE(SUM(p.valor_mensal), 0) AS total FROM anunciantes a
        JOIN planos p ON p.id = a.plano_id
        WHERE a.plano_id IS NOT NULL
          AND NOT a.suspenso

@@ -79,13 +79,7 @@ console.log('== cadastro só-vendedor pelo convite ==');
   check('aba Meu ponto desbloqueou', await p.$eval('#navMeuPonto', (e) => !e.classList.contains('bloqueado')));
   await shot(p, 'ponto-liberado');
 
-  console.log('== bônus de plano no painel ==');
-  const nina = PG("select id from anunciantes where contato_email='nina@x.com'");
-  PG("UPDATE planos SET ponto_apos_meses = 6 WHERE id='essencial-3m'");
-  PG(`UPDATE anunciantes SET plano_id='essencial-3m', data_inicio_cobertura = now() - interval '2 months', data_expiracao = now() + interval '1 month', papeis = array_remove(papeis, 'ponto') WHERE id=${nina}`);
-  await p.goto(B + '/anunciante/painel.html', { waitUntil: 'networkidle' }); await p.waitForTimeout(800);
-  check('painel de anúncios mostra progresso do bônus de tela', /Bônus do plano.*2 de 6/.test(await p.textContent('#bonusAnuncios')), await p.textContent('#bonusAnuncios'));
-  await shot(p, 'anuncios-bonus');
+  // Bônus de tela após N meses removido em 17/09/2026 (migration 046).
   await p.close();
 }
 

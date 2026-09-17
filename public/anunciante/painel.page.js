@@ -93,8 +93,6 @@ function preencherStatusBanner() {
     if (ANUNCIANTE.data_expiracao) planoTxt += ` até ${window.dataBR(ANUNCIANTE.data_expiracao)}`;
     if (ANUNCIANTE.plano_cortesia) planoTxt += ' · sem cobrança';
   }
-  const travado =
-    ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
   // Só um estado derruba o botão: `suspenso` (campo próprio desde
   // 16/09/2026, separado de `status`). POST /anunciantes/:id/assinar recusa
@@ -108,7 +106,7 @@ function preencherStatusBanner() {
     : null;
   const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
   el.innerHTML = `
-    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}${travado}</span>
+    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}</span>
     ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;
@@ -218,7 +216,7 @@ function preencherAssinatura() {
     return;
   }
   panel.hidden = false;
-  const preco = ANUNCIANTE.valor_mensal_travado != null ? `, ${fmt(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+  const preco = '';
   el.innerHTML = `
     <p class="u-m-0 u-mb-4">Ativa até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>${preco}.</p>
     <p class="form-hint u-m-0 u-mb-12">Cancelar não devolve o que já foi pago. O período atual continua no ar até essa data, e não renova depois.</p>
@@ -297,17 +295,13 @@ async function confirmarPlano(planoId) {
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
-  const extras = [plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '']
-    .filter(Boolean)
-    .join(' ');
   box.insertAdjacentHTML(
     'beforeend',
     `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
       <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>, ${plano.frequencia_hora}x por hora em cada tela</p>
-      <p class="u-m-0 ${extras ? 'u-mb-4' : 'u-mb-12'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
-      ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
+      <p class="u-m-0 u-mb-12">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
     </div>`,

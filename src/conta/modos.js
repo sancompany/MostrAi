@@ -103,7 +103,9 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
       vendedor: { liberado: papeis.includes('vendedor'), pedido: pedidos.find((p) => p.tipo === 'vendedor') || null },
     },
     bonus: {
-      ponto: await bonusPontoDaConta(conta),
+      // `ponto` continua na resposta como null: o painel lê `bonus.ponto` e
+      // tirar a chave quebraria a tela de quem estiver com a página aberta.
+      ponto: null,
       anuncio: await bonusAnuncioDaConta(conta),
     },
   });
@@ -239,61 +241,23 @@ router.patch('/vendedor/me', exigirAnuncianteLogado, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Módulo 1 — plano de anunciante com direito a tela (planos.ponto_apos_meses)
+// Módulo 1 — REMOVIDO em 17/09/2026, a pedido do dono.
 // ---------------------------------------------------------------------------
+// Era o bônus "ganhe uma tela no seu comércio ao completar N meses de plano"
+// (`planos.ponto_apos_meses` + `anunciantes.ponto_bonus_resgatado_em`). Saiu
+// junto com a grade nova: o dono decidiu que o degrau de cima se vende por
+// pontos, tempo de tela e duração da peça, e não por um brinde de longo prazo
+// que ninguém tinha ligado em plano nenhum.
+//
+// O módulo 2 (o inverso: dono de ponto ganha plano de anúncio pelo tempo de
+// comodato) CONTINUA — é a contrapartida do comodato, não um brinde. Por isso
+// `mesesEntre` fica: era do módulo 1, mas quem conta o tempo de casa do ponto
+// também precisa dela.
 function mesesEntre(inicio, fim) {
   const a = new Date(inicio);
   const b = new Date(fim);
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
 }
-
-async function bonusPontoDaConta(conta) {
-  if (!conta.plano_id) return null;
-  const plano = await planosRepo.buscarPorId(conta.plano_id);
-  if (!plano?.ponto_apos_meses) return null;
-  const inicio = conta.data_inicio_cobertura;
-  const fim = conta.data_expiracao && new Date(conta.data_expiracao) < new Date() ? conta.data_expiracao : new Date();
-  const cobertos = inicio ? Math.max(0, mesesEntre(inicio, fim)) : 0;
-  return {
-    apos_meses: plano.ponto_apos_meses,
-    meses_cobertos: cobertos,
-    disponivel:
-      cobertos >= plano.ponto_apos_meses && !conta.ponto_bonus_resgatado_em && !(conta.papeis || []).includes('ponto'),
-    resgatado_em: conta.ponto_bonus_resgatado_em,
-    ja_e_ponto: (conta.papeis || []).includes('ponto'),
-  };
-}
-
-router.post('/conta/bonus/ponto/resgatar', exigirAnuncianteLogado, async (req, res) => {
-  const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
-  const bonus = conta && (await bonusPontoDaConta(conta));
-  if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
-  if (!req.body.nome_comercio || !req.body.endereco)
-    return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
-  if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
-    return res.status(400).json({ erro: 'opção de comodato inválida' });
-  }
-  await emTransacao(async (cliente) => {
-    await cliente.query(
-      `UPDATE anunciantes SET ponto_bonus_resgatado_em = now() WHERE id = $1 AND ponto_bonus_resgatado_em IS NULL`,
-      [conta.id],
-    );
-    await candidaturasRepo.criar(
-      {
-        ...req.body,
-        tipo: 'ponto',
-        nome: conta.responsavel_nome || conta.nome_empresa,
-        contato_telefone: req.body.contato_telefone || conta.contato_telefone,
-        contato_email: conta.contato_email,
-        conta_id: conta.id,
-        origem: 'bonus_plano',
-        mensagem: `Bônus do plano ${conta.plano_id}: direito a uma tela após ${bonus.apos_meses} meses.${req.body.mensagem ? ' ' + req.body.mensagem : ''}`,
-      },
-      cliente,
-    );
-  });
-  res.status(201).json({ ok: true });
-});
 
 // ---------------------------------------------------------------------------
 // Módulo 2 — opção de comodato com plano de anúncio grátis por tempo de casa

@@ -412,10 +412,6 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
     data_expiracao: new Date(Date.now() + duracao * 30 * 24 * 60 * 60 * 1000),
     plano_cortesia: true,
     cortesia_motivo: motivo || null,
-    // Cortesia não trava preço: quando ela acabar e a pessoa assinar, ela
-    // assina pelo valor da vitrine, não por um valor "herdado" de um plano
-    // que nunca foi pago.
-    valor_mensal_travado: null,
   });
   res.json(atualizado);
 });
