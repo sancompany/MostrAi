@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const {
   montarHoraDeTv,
+  pontosDoAnunciante,
   dividirCota,
   duracaoValida,
   ID_INSTITUCIONAL,
@@ -23,9 +24,14 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
   return Math.min(3, Math.max(1, Number(limitePlano) || 1));
 }
 
-// Todo plano cobre 100% da rede nesta fase. "Elegível pra esta tela" é:
-// conta ativa + criativo aprovado + dentro da validade + não ser do mesmo
-// ramo do comércio onde a tela está.
+// "Elegível pra esta tela" é: conta ativa + criativo aprovado + dentro da
+// validade + não ser do mesmo ramo do comércio onde a tela está + O PLANO
+// COBRIR ESTE PONTO.
+//
+// A última condição é nova (17/09/2026). Até aqui todo plano cobria 100% da
+// rede, então instalar uma tela aumentava custo e abria zero vaga. Agora o
+// plano dá acesso a N pontos e o contratante escolhe quais — quem não
+// escolhe recebe uma fatia estável, calculada em `pontosDoAnunciante`.
 //
 // O LEFT JOIN em `planos` existe por causa da CONTA PRÓPRIA do Mostraí
 // (migration 023), que anuncia a rede sem assinar plano. O guarda no WHERE é
@@ -37,9 +43,15 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     `
     SELECT a.id, a.conta_propria,
            COALESCE(p.frequencia_hora, a.frequencia_hora_propria) AS frequencia_hora,
+           p.segundos_por_hora, p.pontos_incluidos,
            p.limite_criativos,
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
-           array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes
+           array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes,
+           COALESCE(
+             (SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
+                FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id),
+             ARRAY[]::int[]
+           ) AS pontos_escolhidos
     FROM anunciantes a
     LEFT JOIN planos p ON p.id = a.plano_id
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
@@ -57,7 +69,8 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
       AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
-    GROUP BY a.id, a.conta_propria, p.frequencia_hora, a.frequencia_hora_propria, p.limite_criativos
+    GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
+             a.frequencia_hora_propria, p.limite_criativos
   `,
     [categoriaDoPonto || null, excluirContaId || null],
   );
@@ -80,6 +93,21 @@ async function criativosDoDono(contaId) {
     [contaId],
   );
   return rows;
+}
+
+// Os pontos que estão no ar agora. É a régua da cobertura: o plano dá acesso
+// a N pontos, e "N de quantos" muda toda vez que um comércio novo entra.
+// Quantas inserções aquele plano compra nesta hora, com a peça que a conta
+// tem hoje.
+function quantasInsercoes(conta, duracaoSegundos) {
+  const segundos = Number(conta.segundos_por_hora) || 0;
+  if (segundos > 0) return Math.floor(segundos / duracaoValida(duracaoSegundos));
+  return Number(conta.frequencia_hora) || 0;
+}
+
+async function pontosEmOperacao() {
+  const { rows } = await pool.query(`SELECT id FROM pontos WHERE status = 'em_operacao' ORDER BY id`);
+  return rows.map((r) => r.id);
 }
 
 // Quem reveza entre peças de durações diferentes ocupa, ao longo da hora, a
@@ -124,11 +152,23 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const horaAnterior = new Date(horaAtual);
   horaAnterior.setHours(horaAnterior.getHours() - 1);
 
-  const [anunciantes, deficits, doDono] = await Promise.all([
+  const [todos, deficits, doDono, pontosNoAr] = await Promise.all([
     anunciantesElegiveis(dispositivo.categoria_id, dispositivo.dono_conta_id),
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
+    pontosEmOperacao(),
   ]);
+
+  // Cobertura: fica quem tem ESTE ponto na fatia dele. A conta própria do
+  // Mostraí não entra na régua — ela anuncia a rede inteira, é o que ela é.
+  const anunciantes = todos.filter(
+    (a) =>
+      a.conta_propria ||
+      pontosDoAnunciante(
+        { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+        pontosNoAr,
+      ).includes(dispositivo.ponto_id),
+  );
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
@@ -137,12 +177,22 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // A duração entra junto porque a hora passou a ser orçada em SEGUNDOS
   // (src/lib/pacing.js): quem revezar entre peças de durações diferentes ocupa
   // a média delas, que é o que de fato acontece ao longo da hora.
-  const entrada = anunciantes.map((a) => ({
-    id: a.id,
-    frequenciaBase: Number(a.frequencia_hora) || 0,
-    deficit: deficits[a.id] || 0,
-    duracaoSegundos: duracaoMedia(a.criativos),
-  }));
+  const entrada = anunciantes.map((a) => {
+    const duracaoSegundos = duracaoMedia(a.criativos);
+    return {
+      id: a.id,
+      // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
+      // da peça que o cliente subiu. Seis de 15s e três de 30s ocupam o mesmo
+      // lugar, e é por isso que a duração deixou de ser eixo de inventário.
+      //
+      // `frequencia_hora * duração` é a ponte pra quem ainda não tem
+      // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
+      // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
+      frequenciaBase: quantasInsercoes(a, duracaoSegundos),
+      deficit: deficits[a.id] || 0,
+      duracaoSegundos,
+    };
+  });
 
   // Dono do ponto entra com a fatia da cota que cabe a esta tela. Não conta
   // como anunciante pagante nem gera contador — é permuta, não venda.

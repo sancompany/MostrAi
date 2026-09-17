@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   montarHoraDeTv,
+  pontosDoAnunciante,
   contarPorAnunciante,
   dividirCota,
   duracaoValida,
@@ -170,4 +171,51 @@ test('conta própria não tem teto de criativos; quem paga plano tem', () => {
   assert.strictEqual(limiteDeCriativos(false, 99, 99), 3, 'teto duro de 3 protege contra zero a mais no admin');
   assert.strictEqual(limiteDeCriativos(false, 0, 5), 1, 'sem plano válido, libera 1');
   assert.strictEqual(limiteDeCriativos(false, null, 5), 1);
+});
+
+// ---------------------------------------------------------------------------
+// Cobertura por pontos — o plano dá acesso a N pontos e o contratante escolhe.
+// ---------------------------------------------------------------------------
+const REDE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+test('plano sem teto de pontos cobre a rede inteira', () => {
+  assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: null }, REDE), REDE);
+});
+
+test('a escolha do contratante é respeitada', () => {
+  assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [2, 5] }, REDE), [2, 5]);
+});
+
+test('escolher mais do que o plano dá não fura o teto', () => {
+  const r = pontosDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [1, 2, 3, 4, 5] }, REDE);
+  assert.strictEqual(r.length, 3);
+});
+
+test('quem não escolhe recebe uma fatia, e ela é estável', () => {
+  const a = pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE);
+  const b = pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE);
+  assert.strictEqual(a.length, 3);
+  assert.deepStrictEqual(a, b, 'o anúncio não pode pular de comércio a cada hora');
+});
+
+test('contas diferentes caem em pontos diferentes', () => {
+  const a = pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE);
+  const b = pontosDoAnunciante({ id: 8, pontosIncluidos: 3 }, REDE);
+  assert.notDeepStrictEqual(a, b, 'sorteio estável não pode ser sorteio igual pra todo mundo');
+});
+
+test('ponto que saiu de operação não gasta vaga de ninguém', () => {
+  // Escolheu um ponto que fechou: cai no sorteio em vez de ficar sem nada.
+  const r = pontosDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [99] }, REDE);
+  assert.strictEqual(r.length, 3);
+  assert.ok(r.every((id) => REDE.includes(id)));
+});
+
+test('rede menor que o plano não quebra — cobre o que existe', () => {
+  const r = pontosDoAnunciante({ id: 7, pontosIncluidos: 10 }, [1, 2, 3]);
+  assert.strictEqual(r.length, 3, 'plano de 10 pontos numa rede de 3 cobre os 3');
+});
+
+test('rede vazia devolve lista vazia, não explode', () => {
+  assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, []), []);
 });
