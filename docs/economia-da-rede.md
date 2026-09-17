@@ -517,3 +517,83 @@ cresce, que é exatamente o que a lógica nova faz.
 Qual grade. Nada de código de plano sai antes disso, porque preço, duração e
 número de pontos são campos de contrato: escolher errado significa publicar
 versão nova depois, que é o retrabalho que ele disse querer evitar.
+
+---
+
+# 8. Vender TEMPO em vez de REPETIÇÃO — 17/09/2026
+
+Proposta do dono: trocar "N vezes por hora" por "N minutos de reprodução
+dentro de 1 hora". Ele mesmo desconfiou dos números que sugeriu (2 a 5 / 10 a
+15 / 20 a 25 minutos) e pediu correção.
+
+## 8.1 A ideia está certa, e por um motivo a mais
+
+Vender tempo **torna a duração do criativo irrelevante para o inventário**: a
+peça de 10s e a de 30s consomem exatamente o que ocupam. Some com o problema
+que a seção 7 achou — três eixos multiplicando —, porque frequência e duração
+deixam de ser dois eixos e viram um só: minutos.
+
+E devolve a escolha ao cliente: com 1,5 min por hora, ele decide entre 6
+inserções de 15s ou 3 de 30s. A entrega é a mesma para a rede.
+
+## 8.2 A régua que decide o tamanho não é o inventário, é o espectador
+
+O erro de sobrevender não aparece na planilha de vagas — aparece na cara de
+quem está esperando na barbearia. Quantas vezes a MESMA pessoa vê o MESMO
+anúncio, com peça de 15s:
+
+| permanência | proposta do dono (5/15/25 min) | corrigida (1,5/2/3 min) |
+|---|---|---|
+| padaria, fila de 5 min | 1,7x · 5x · **8,3x** | 0,5x · 0,7x · 1x |
+| barbearia, 30 min | 10x · 30x · **50x** | 3x · 4x · **6x** |
+| academia, 50 min | 16,7x · 50x · **83x** | 5x · 6,7x · 10x |
+
+**Cinquenta exibições do mesmo anúncio para quem está cortando o cabelo não é
+publicidade, é punição** — e quem paga a conta é o dono do ponto, que tira a
+tela da parede. O teto real de repetição é o espectador, não a hora.
+
+## 8.3 E ela também derruba a receita
+
+Contra a intuição: vender mais tempo por conta rende MENOS, porque cabem
+menos contas.
+
+| receita máxima de UM ponto | Essencial | Destaque | Máximo |
+|---|---|---|---|
+| proposta do dono | R$ 1.188 | R$ 996 | R$ 898 |
+| corrigida | **R$ 3.960** | **R$ 7.470** | **R$ 8.980** |
+
+## 8.4 O ponto que o dono levantou é real — mas é de unidade, não de tamanho
+
+"Sempre achei muito pequena" está certo sobre a SENSAÇÃO. O mesmo produto:
+
+- "3x por hora em cada ponto" — soa pequeno
+- "1,5 minuto de tela por hora" — soa pequeno
+- **"27 horas de tela por mês, em 3 pontos"** — soa do tamanho que é
+
+São a mesma coisa. O conserto é a unidade em que se conta, não a quantidade
+vendida. Minuto por hora é a unidade do MOTOR; hora por mês é a unidade da
+VITRINE.
+
+## 8.5 Grade proposta
+
+| plano | tempo/hora por ponto | pontos | duração máx. da peça | tela/mês | preço |
+|---|---|---|---|---|---|
+| Essencial | 1,5 min | 3 | 15s | **27 h** | R$ 99 |
+| Destaque | 2 min | 7 | 20s | **84 h** | R$ 249 |
+| Máximo | 3 min | 10 | 30s | **180 h** | R$ 449 |
+
+Espalhamento do preço por segundo: **1,5x**. Cabem 40 / 30 / 20 contas por
+ponto. Repetição máxima para quem fica 30 minutos: 3 / 4 / 6 vezes.
+
+A duração máxima continua como benefício (o dono aprovou), mas agora ela é
+só qualidade de peça — não mexe mais no inventário, porque o inventário é
+tempo.
+
+## 8.6 O que isso simplifica no código
+
+`planos.frequencia_hora` (int, vezes) vira `planos.segundos_por_hora` (int,
+segundos). O gerador já foi reescrito em 16/09 para orçar a hora em segundos
+(RN-09), então ele **já fala essa língua**: hoje ele calcula
+`frequência × duração` para chegar aos segundos. Passa a ler os segundos
+direto, e o número de inserções sai da divisão pela duração real da peça.
+É menos código do que existe hoje, não mais.
