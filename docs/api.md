@@ -175,6 +175,7 @@ pede.
 ### Pagamento ao ponto (extrato)
 | Método | Rota | O que faz |
 |---|---|---|
+| POST | `/anunciantes/me/comodato/trocar-por-tela` | **Conta logada** (papel `ponto`): troca a ajuda de custo pelo plano Essencial, em todos os pontos dela, numa transação. Mão única — VOLTAR a receber os R$ 50 só pelo `PATCH /admin/pontos/:id`, porque é despesa nova e recorrente. 400 se a conta não tem ponto ou se já trocou. |
 | GET | `/anunciantes/me/pontos/extrato` | **Conta logada** (papel `ponto`): o que o dono ja recebeu de comodato, mes a mes, com resumo. |
 | GET | `/admin/pontos/:pontoId/pagamentos` | lançamentos daquele ponto |
 | POST | `/admin/pontos/:pontoId/pagamentos` | lança `{competencia:'AAAA-MM', valor, forma?, observacao?, pago_em?}`. Mesmo mês de novo **atualiza**, não duplica (UNIQUE da migration 022) |

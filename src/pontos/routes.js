@@ -10,6 +10,8 @@ const categoriasRepo = require('../categorias/repository');
 const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
+const pool = require('../db/pool');
+const comodato = require('./comodato');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -114,7 +116,34 @@ router.get('/admin/pontos', async (_req, res) => {
 
 router.patch('/admin/pontos/:id', async (req, res) => {
   try {
-    const ponto = await repo.atualizar(req.params.id, req.body);
+    // Trocar a MODALIDADE do comodato não é editar um campo: mexe no que a
+    // Mostraí paga, no plano que o comerciante ganha e no crédito da conta
+    // dele. Passa pela `aplicarModalidade`, que faz as três coisas juntas —
+    // gravar só `plano_ponto_id` deixaria ele numa modalidade nova recebendo
+    // a contrapartida da antiga. Este é o ÚNICO caminho para VOLTAR a receber
+    // a ajuda de custo: é despesa nova e recorrente, e quem decide é o dono.
+    if (req.body.plano_ponto_id) {
+      const cliente = await pool.connect();
+      try {
+        await cliente.query('BEGIN');
+        const opcao = await comodato.aplicarModalidade(req.params.id, req.body.plano_ponto_id, cliente);
+        if (!opcao) {
+          await cliente.query('ROLLBACK');
+          return res.status(400).json({ erro: 'ponto ou modalidade de comodato inválidos' });
+        }
+        await cliente.query('COMMIT');
+      } catch (err) {
+        await cliente.query('ROLLBACK');
+        throw err;
+      } finally {
+        cliente.release();
+      }
+    }
+
+    const { plano_ponto_id: _modalidade, ...resto } = req.body;
+    const ponto = Object.keys(resto).length
+      ? await repo.atualizar(req.params.id, resto)
+      : await repo.buscarPorId(req.params.id);
     if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
 
     res.json(ponto);
@@ -122,6 +151,49 @@ router.patch('/admin/pontos/:id', async (req, res) => {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });
     throw err;
   }
+});
+
+// O dono do ponto troca a ajuda de custo por tela, sozinho e na hora.
+//
+// Só neste sentido. Abrir mão dos R$ 50 não custa nada à Mostraí — ela para
+// de pagar e ele ganha o dobro de tela — então não precisa pedir licença.
+// VOLTAR a receber é despesa nova e recorrente, e sai pelo admin (o PATCH
+// acima). Sem essa assimetria, dava pra pingar entre as modalidades todo mês
+// e sacar a ajuda de custo só nos meses em que ela valesse mais.
+router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, async (req, res) => {
+  const { rows: meus } = await pool.query(
+    `SELECT p.id, pp.ajuda_custo_mensal
+       FROM pontos p LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
+      WHERE p.anunciante_id = $1`,
+    [req.session.anuncianteId],
+  );
+  if (!meus.length) return res.status(400).json({ erro: 'sua conta não tem ponto no comodato' });
+
+  const destino = await comodato.modalidadeSemDinheiro();
+  if (!destino) return res.status(500).json({ erro: 'nenhuma modalidade sem ajuda de custo configurada' });
+
+  const aTrocar = meus.filter((p) => Number(p.ajuda_custo_mensal || 0) > 0);
+  if (!aTrocar.length) {
+    return res.status(400).json({ erro: 'você já trocou a ajuda de custo por tela' });
+  }
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    for (const p of aTrocar) await comodato.aplicarModalidade(p.id, destino.id, cliente);
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
+  eventos.registrar('comodato:trocado_por_tela', {
+    anuncianteId: req.session.anuncianteId,
+    pontos: aTrocar.map((p) => p.id),
+  });
+  res.json({ ok: true, modalidade: destino.nome, pontos: aTrocar.length });
 });
 
 // Admin — foto real do ponto já com o molde instalado (mesmo padrão de

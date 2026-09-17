@@ -190,6 +190,15 @@ async function montarRespostaPlano(assinaturaId) {
 //
 // Entra DEPOIS dos percentuais e nunca deixa a mensalidade negativa: crédito
 // maior que o preço vira mensalidade zero, não devolução de dinheiro.
+//
+// VALE SÓ NO DESTAQUE E NO MÁXIMO, e essa é a parte que engana: o Essencial
+// JÁ É o que ele ganha de graça por abrir mão dos R$ 50. Deixar o crédito
+// valer nele também seria dar duas vezes a mesma coisa — ele teria o
+// Essencial de cortesia e ainda poderia assinar um segundo Essencial por
+// R$ 49. Os R$ 50 se gastam uma vez só, e é no degrau acima do que ele já
+// ganhou.
+const TIERS_COM_CREDITO = new Set(['destaque', 'maximo']);
+
 function valorMensalDaConta(anunciante, plano) {
   const base = Number(plano.valor_mensal);
 
@@ -203,7 +212,10 @@ function valorMensalDaConta(anunciante, plano) {
   const desconto = Math.min(100, descontoComodato + descontoParceiro);
   const comPercentual = desconto ? arredondar(base - percentual(base, desconto)) : base;
 
-  const credito = (anunciante.papeis || []).includes('ponto') ? Number(anunciante.credito_comodato_mensal || 0) : 0;
+  const credito =
+    (anunciante.papeis || []).includes('ponto') && TIERS_COM_CREDITO.has(plano.tier)
+      ? Number(anunciante.credito_comodato_mensal || 0)
+      : 0;
 
   return credito ? arredondar(Math.max(0, comPercentual - credito)) : comPercentual;
 }

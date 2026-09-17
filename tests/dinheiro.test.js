@@ -34,20 +34,20 @@ const conta = (extra = {}) => ({ papeis: ['anunciante'], status: 'comum', ...ext
 const donoDePonto = (extra = {}) => conta({ papeis: ['anunciante', 'ponto'], ...extra });
 
 test('sem crédito de comodato, a conta paga a tabela', () => {
-  assert.strictEqual(valorMensalDaConta(conta(), { valor_mensal: 249, compromisso_meses: 1 }), 249);
+  assert.strictEqual(valorMensalDaConta(conta(), { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1 }), 249);
 });
 
 test('dono de ponto que trocou os R$ 50 por tela paga R$ 50 a menos', () => {
   const dono = donoDePonto({ credito_comodato_mensal: 50 });
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 249, compromisso_meses: 1 }), 199);
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 449, compromisso_meses: 1 }), 399);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1 }), 199);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'maximo', valor_mensal: 449, compromisso_meses: 1 }), 399);
 });
 
 // O crédito é direito de quem cedeu a parede. Conta comum com o campo
 // preenchido por engano não pode sair pagando menos.
 test('crédito só vale pra quem tem o papel de ponto', () => {
   const comum = conta({ credito_comodato_mensal: 50 });
-  assert.strictEqual(valorMensalDaConta(comum, { valor_mensal: 249, compromisso_meses: 1 }), 249);
+  assert.strictEqual(valorMensalDaConta(comum, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1 }), 249);
 });
 
 // Crédito maior que a mensalidade zera a conta — nunca vira dinheiro de volta.
@@ -55,8 +55,8 @@ test('crédito só vale pra quem tem o papel de ponto', () => {
 // negativo pro San Checkout, que é cobrança inválida na Asaas.
 test('crédito nunca deixa a mensalidade negativa', () => {
   const dono = donoDePonto({ credito_comodato_mensal: 50 });
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 30, compromisso_meses: 1 }), 0);
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 50, compromisso_meses: 1 }), 0);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 30, compromisso_meses: 1 }), 0);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 50, compromisso_meses: 1 }), 0);
 });
 
 // O ciclo longo já desconta no `valor_mensal` do plano; o crédito entra
@@ -64,7 +64,7 @@ test('crédito nunca deixa a mensalidade negativa', () => {
 test('crédito entra depois do desconto de ciclo, não antes', () => {
   const dono = donoDePonto({ credito_comodato_mensal: 50 });
   // Destaque anual: 249 - 20% = 199.20 na tabela; com o crédito, 149.20.
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 199.2, compromisso_meses: 12 }), 149.2);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 199.2, compromisso_meses: 12 }), 149.2);
 });
 
 // Parceiro é percentual e comodato é reais: os dois podem existir na mesma
@@ -77,5 +77,23 @@ test('desconto de parceiro em percentual e crédito em reais se somam na ordem c
     credito_comodato_mensal: 50,
   });
   // 249 - 10% = 224.10, depois -50 = 174.10
-  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 249, compromisso_meses: 3 }), 174.1);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 3 }), 174.1);
+});
+
+// O ESSENCIAL FICA DE FORA DO CREDITO, e essa e a parte que engana: o
+// Essencial JA e o que ele ganha de graca por abrir mao dos R$ 50. Se o
+// credito valesse nele tambem, ele teria o Essencial de cortesia E poderia
+// assinar um segundo Essencial por R$ 49 — os mesmos R$ 50 gastos duas vezes.
+test('crédito de comodato NÃO vale no Essencial, só no Destaque e no Máximo', () => {
+  const dono = donoDePonto({ credito_comodato_mensal: 50 });
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'essencial', valor_mensal: 99, compromisso_meses: 1 }), 99);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1 }), 199);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'maximo', valor_mensal: 449, compromisso_meses: 1 }), 399);
+});
+
+// Plano sem tier (versão antiga, ou linha fora da grade de 3) não abate nada:
+// o credito e um direito nomeado, nao um desconto que pega o que aparecer.
+test('plano sem tier não recebe o crédito', () => {
+  const dono = donoDePonto({ credito_comodato_mensal: 50 });
+  assert.strictEqual(valorMensalDaConta(dono, { valor_mensal: 249, compromisso_meses: 1 }), 249);
 });

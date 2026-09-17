@@ -649,10 +649,9 @@ transação que cria o ponto, o crédito de R$ 50 abatendo a mensalidade, a
 trava que impede quem recebe a ajuda de custo de assinar catálogo, e a
 garantia de que conta que já pagava não perde o plano ao virar ponto.
 **Falta, e está aberto:**
-· **F-D3.1** — trocar de opção depois de instalado não tem caminho nenhum: a
-  escolha só acontece na candidatura. Hoje é ato de admin no banco. A recusa
-  da rota de assinar já fala "fale com a gente" em vez de apontar pra um
-  botão que não existe, mas isso é remendo, não solução.
+· **F-D3.1 [x]** — a troca de modalidade existe, com mão única de propósito:
+  trocar a ajuda de custo por tela o dono do ponto faz sozinho; voltar a
+  receber só pelo admin. Construído e provado em 17/09/2026 (RN-43).
 · **F-D3.2** — a página pública do comodato e o painel do dono do ponto ainda
   mostram os textos antigos ("o triplo de vezes na tela"), que a 049 corrigiu
   no banco mas ninguém conferiu no navegador.

@@ -289,6 +289,18 @@ tela.** Quem cede a parede escolhe uma das duas opções, na candidatura:
 · **"Troca os R$ 50 por tela"** — sem dinheiro, e o Essencial inteiro
   incluído = 27 horas por mês, o dobro. **Pode** assinar Destaque ou Máximo,
   com `credito_comodato_mensal` de R$ 50 abatendo a mensalidade.
+**O crédito vale SÓ no Destaque e no Máximo.** No Essencial não abate nada,
+porque o Essencial já É o que ele ganhou por abrir mão dos R$ 50 — abater ali
+também seria gastar os mesmos R$ 50 duas vezes (ele teria o Essencial de
+cortesia e ainda assinaria um segundo por R$ 49).
+**A troca de modalidade tem mão única no autoatendimento:** trocar a ajuda de
+custo POR TELA o dono do ponto faz sozinho e na hora
+(`POST /anunciantes/me/comodato/trocar-por-tela`); VOLTAR a receber os R$ 50
+só sai pelo admin (`PATCH /admin/pontos/:id`). Abrir mão do dinheiro não custa
+nada à Mostraí — ela para de pagar e ele ganha o dobro de tela. Voltar a
+receber é despesa nova e recorrente, e entra no caixa do mês. Sem a
+assimetria, dava pra pingar entre as modalidades e sacar a ajuda de custo só
+nos meses em que ela valesse mais, o que ninguém concilia.
 O plano incluído é concedido na MESMA transação que cria o ponto, e nunca por
 cima de plano que a conta já tenha — dono de ponto que já era cliente pagante
 continua no plano que paga. *Violada:* a rota de assinar recusa. *Quem vê:* o
