@@ -131,7 +131,7 @@ fetch(`${API_BASE_URL}/pontos`)
     if (!Array.isArray(pontos)) return;
     // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
     // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
-    const ativos = pontos.filter((p) => p.status === 'ativo').length;
+    const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
     if (ativos >= PONTOS_PARA_TIRAR_AVISO) return;
     const situacao =
       ativos === 0

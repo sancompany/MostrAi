@@ -70,7 +70,7 @@ r=$(curl -s -b beto.txt -X POST $B/conta/bonus/ponto/resgatar -H "$J" -d '{"nome
 
 echo "== módulo 2: anúncio grátis após N meses como ponto =="
 $PG -c "UPDATE planos_ponto SET plano_bonus_id='destaque-1m', plano_bonus_apos_meses=6, plano_bonus_meses=2 WHERE id='ajuda-custo'" >/dev/null
-$PG -c "UPDATE pontos SET status='ativo' WHERE id=$PONTO" >/dev/null
+$PG -c "UPDATE pontos SET status='em_operacao' WHERE id=$PONTO" >/dev/null
 $PG -c "UPDATE dispositivos SET status='ativo', instalado_em = (now() - interval '7 months')::date WHERE ponto_id=$PONTO" >/dev/null
 $PG -c "UPDATE anunciantes SET plano_id=NULL, data_expiracao=NULL WHERE id=$LIA" >/dev/null
 r=$(curl -s -b lia.txt $B/conta/modos); esperar "7 meses como ponto com módulo de 6 → bônus de anúncio disponível" '"anuncio":\{[^}]*"disponivel":true' "$r"

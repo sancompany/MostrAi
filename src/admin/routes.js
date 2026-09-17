@@ -110,7 +110,7 @@ router.get('/admin/resumo', async (_req, res) => {
     pool.query(
       `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,
               COALESCE(SUM(fluxo_estimado_mensal), 0) AS fluxo
-       FROM pontos WHERE status = 'ativo'`,
+       FROM pontos WHERE status = 'em_operacao'`,
     ),
     // Amortização real: custo de cada tela dividido pelo prazo dela, só das
     // telas ativas; mais os custos fixos lançados pelo dono.
@@ -118,14 +118,14 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0) AS amortizacao,
               COUNT(*)::int AS telas
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-       WHERE d.status = 'ativo' AND p.status = 'ativo'`,
+       WHERE d.status = 'ativo' AND p.status = 'em_operacao'`,
     ),
     pool.query(`SELECT COALESCE(SUM(valor_mensal), 0) AS total FROM custos_fixos WHERE ativo`),
     pool.query(
       `SELECT
         (SELECT COUNT(*) FROM criativos WHERE status = 'pendente') AS criativos,
         (SELECT COUNT(*) FROM eventos_assinatura_pendentes WHERE NOT resolvido) AS eventos,
-        (SELECT COUNT(*) FROM pontos WHERE status = 'lead') AS pontos,
+        (SELECT COUNT(*) FROM pontos WHERE status = 'a_instalar') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
         (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
         (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos,
@@ -152,7 +152,7 @@ router.get('/admin/resumo', async (_req, res) => {
                 GROUP BY situacao, plano_cortesia`),
     pool.query(
       `SELECT COUNT(*)::int AS qtd FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-       WHERE d.status = 'ativo' AND p.status = 'ativo'
+       WHERE d.status = 'ativo' AND p.status = 'em_operacao'
          AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)`,
       [limiteOffline],
     ),
@@ -253,7 +253,7 @@ router.get('/admin/pontos-offline', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT d.id, d.apelido, d.ultima_vez_online, p.id AS ponto_id, p.nome AS ponto_nome
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.status = 'ativo' AND p.status = 'ativo'
+     WHERE d.status = 'ativo' AND p.status = 'em_operacao'
        AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)
      ORDER BY d.ultima_vez_online NULLS FIRST`,
     [new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000)],

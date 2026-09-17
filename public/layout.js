@@ -202,19 +202,15 @@ window.ROTULOS = {
   // comum de parceiro (substitui o antigo "fundador"). O que bloqueia
   // login/veiculação é `suspenso`, mostrado à parte por quem usa isso.
   anunciante: { comum: 'Comum', parceiro: 'Parceiro' },
+  // Dois estados desde 17/09/2026 (migration 045): o ponto existe na rede ou
+  // ainda não. Se a TELA dele quebrou, quem diz é `dispositivos.status`.
   ponto: {
-    lead: 'Em análise',
-    aguardando_instalacao: 'Aprovado, aguardando instalação',
-    ativo: 'Ativo',
-    reparo: 'Em reparo',
-    inativo: 'Inativo',
+    a_instalar: 'Aguardando instalação',
+    em_operacao: 'Em operação',
   },
   pontoClasse: {
-    lead: 'badge-pendente',
-    aguardando_instalacao: 'badge-pendente',
-    ativo: 'badge-ok',
-    reparo: 'badge-pendente',
-    inativo: 'badge-err',
+    a_instalar: 'badge-pendente',
+    em_operacao: 'badge-ok',
   },
   criativo: { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' },
   criativoClasse: { pendente: 'badge-pendente', aprovado: 'badge-ok', reprovado: 'badge-err' },

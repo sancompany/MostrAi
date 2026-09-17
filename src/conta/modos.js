@@ -55,7 +55,7 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
         cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
         anunciante_id: conta.id,
-        status: 'aguardando_instalacao',
+        status: 'a_instalar',
         aceitou_termos_em: new Date(),
       },
       db,
@@ -306,7 +306,7 @@ async function bonusAnuncioDaConta(conta) {
             MIN(COALESCE(d.instalado_em, p.created_at::date)) AS desde
      FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
      JOIN dispositivos d ON d.ponto_id = p.id AND d.status = 'ativo'
-     WHERE p.anunciante_id = $1 AND p.status = 'ativo' AND pp.plano_bonus_id IS NOT NULL
+     WHERE p.anunciante_id = $1 AND p.status = 'em_operacao' AND pp.plano_bonus_id IS NOT NULL
      GROUP BY pp.id ORDER BY pp.plano_bonus_apos_meses LIMIT 1`,
     [conta.id],
   );

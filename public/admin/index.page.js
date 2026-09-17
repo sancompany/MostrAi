@@ -172,12 +172,11 @@ function caixaTabela({ chips = [], html, dica = '' }) {
 }
 
 // ---------- rótulos ----------
+// Dois status desde 17/09/2026 (migration 045). Tela quebrada não é mais
+// estado do PONTO — é estado da tela, em TELA_STATUS logo abaixo.
 const PONTO_STATUS = {
-  lead: 'Novo lead',
-  aguardando_instalacao: 'A instalar',
-  ativo: 'Ativo',
-  reparo: 'Em reparo',
-  inativo: 'Inativo',
+  a_instalar: 'A instalar',
+  em_operacao: 'Em operação',
 };
 // `status` deixou de ser estado operacional (16/09/2026) — só distingue
 // comum de parceiro (substitui o antigo flag "fundador"). O que bloqueia
@@ -930,7 +929,7 @@ async function renderPontos(el) {
     const msg = document.getElementById('msgNovoPonto');
     const r = await api('/admin/pontos', {
       method: 'POST',
-      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'aguardando_instalacao' }),
+      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'a_instalar' }),
     });
     if (!r.ok) {
       msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
@@ -1990,7 +1989,7 @@ async function renderPlanos(el) {
 // lançar e quitar só por curl. O dono do ponto via o extrato dele (que também
 // não tinha tela até hoje) e o dono da rede não tinha por onde pagar.
 async function renderPagamentosPontos(el) {
-  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'ativo' || p.valor_pago_mensal > 0);
+  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'em_operacao' || p.valor_pago_mensal > 0);
   if (!pontos.length) {
     el.innerHTML =
       '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';

@@ -26,7 +26,7 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
       `Seu pagamento do plano ${plano.nome} (${CICLO_TEXTO[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}) foi confirmado — ` +
       `valor cobrado: R$ ${Number(valorCobrado).toFixed(2)}.\n\n` +
       `AGORA FALTA UMA COISA: subir o seu anúncio.\n` +
-      `Abra o painel e envie um vídeo ou imagem de 15 a 30 segundos, em pé (9:16). ` +
+      `Abra o painel e envie um vídeo ou imagem em pé (9:16), na duração que o seu plano permite. ` +
       `A gente ajusta o formato pra caber na tela. Depois da aprovação ele entra no ar.\n\n` +
       `${process.env.SITE_URL}/anunciante/painel.html\n\n` +
       `Não tem a arte pronta? Responda este e-mail ou chame no WhatsApp — a peça simples está incluída no seu plano.\n\n` +
@@ -91,7 +91,7 @@ async function enviarContaAprovada(anunciante) {
       `Olá, ${anunciante.nome_empresa}!\n\n` +
       `Sua conta na Mostraí foi aprovada. Já dá pra escolher um plano e colocar seu anúncio na rotina da cidade.\n\n` +
       `${process.env.SITE_URL}/planos.html\n\n` +
-      `Depois de contratar, é só subir um vídeo ou imagem de 15 a 30 segundos, em pé (9:16) — a gente ajusta o formato.\n\n` +
+      `Depois de contratar, é só subir um vídeo ou imagem em pé (9:16), na duração do seu plano — a gente ajusta o formato.\n\n` +
       `Equipe Mostraí.`,
   });
 }

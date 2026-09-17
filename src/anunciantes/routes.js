@@ -65,7 +65,7 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
       cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
       anunciante_id: conta.id,
-      status: 'aguardando_instalacao',
+      status: 'a_instalar',
       aceitou_termos_em: new Date(),
     },
     db,
@@ -324,7 +324,12 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const vendedor = (anunciante.papeis || []).includes('vendedor')
     ? await vendedoresRepo.buscarPorConta(anunciante.id)
     : null;
-  res.json({ ...anunciante, vendedor });
+  // `plano` junto de propósito: o painel precisa dele pra dizer a duração
+  // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
+  // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
+  // pode estar numa versão aposentada.
+  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  res.json({ ...anunciante, vendedor, plano });
 });
 
 // Edição de perfil self-service — lista branca própria (não os campos
@@ -381,7 +386,7 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // quem autoriza e qual é o teto — então a rotina mora aqui uma vez, e as duas
 // rotas abaixo a chamam. Duplicar isso significaria manter dois lugares que
 // lidam com ffmpeg, arquivo temporário e limpeza de /tmp.
-async function subirCriativo(req, res, { contaId, limite, peloOperador = false }) {
+async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, peloOperador = false }) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
@@ -396,10 +401,14 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
       }
     }
 
-    // Duração: a vitrine pede "15 a 30 segundos" e nada nunca conferiu. Um
-    // vídeo de três minutos entrava inteiro e tomava, sozinho, o lugar de seis
-    // anúncios no rodízio — sem ninguém ver. O teto é 60s (o dobro do
-    // recomendado, pra não recusar quem passou um pouco) e o piso, 3s.
+    // Duração: nada nunca conferiu, e um vídeo de três minutos entrava inteiro
+    // e tomava, sozinho, o lugar de seis anúncios no rodízio.
+    //
+    // Dois tetos. O GLOBAL de 60s é a trava física da tela. O DO PLANO
+    // (`duracao_maxima_segundos`, desde 17/09/2026) é benefício vendido: o
+    // Essencial compra peça de até 15s, o Máximo até 30s. Ele vem de quem
+    // chama, porque a mesma função serve o upload do cliente e o do operador.
+    //
     // Imagem não entra na conta: ela vira vídeo com duração fixa nossa.
     const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
     if (!midia) {
@@ -409,7 +418,12 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
     }
     if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
       return res.status(400).json({
-        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos, e o ideal são 15 a 30`,
+        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos`,
+      });
+    }
+    if (!midia.ehImagem && duracaoMaxima && midia.duracao_segundos > duracaoMaxima) {
+      return res.status(400).json({
+        erro: `esse vídeo tem ${midia.duracao_segundos}s e o seu plano aceita peça de até ${duracaoMaxima}s — corte a peça ou mude de plano`,
       });
     }
 
@@ -466,6 +480,7 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: plano ? plano.limite_criativos : 1,
+    duracaoMaxima: plano ? plano.duracao_maxima_segundos : null,
   });
 });
 
@@ -492,7 +507,9 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
   const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
+    // A conta própria não tem teto de duração: o inventário é da casa.
     limite: conta.conta_propria ? Infinity : plano ? plano.limite_criativos : 1,
+    duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
   });
 });

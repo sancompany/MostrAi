@@ -6,8 +6,8 @@ fetch(`${API_BASE_URL}/pontos`)
   .then((pontos) => {
     const grid = document.getElementById('pontosGrid');
     if (!Array.isArray(pontos)) throw new Error('resposta inesperada');
-    const ativos = pontos.filter((p) => p.status === 'ativo').length;
-    const emConstrucao = pontos.filter((p) => p.status === 'aguardando_instalacao').length;
+    const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
+    const emConstrucao = pontos.filter((p) => p.status === 'a_instalar').length;
     const cidades = new Set(pontos.map((p) => p.cidade)).size;
     // `cidades || 1` dizia "1 Cidade atendida" com a rede vazia — o numero que
     // mais importa pra quem esta decidindo assinar, inventado. Com zero ponto a
@@ -39,15 +39,14 @@ fetch(`${API_BASE_URL}/pontos`)
       return;
     }
     const STATUS_LABEL = {
-      ativo: { texto: 'Ativo', classe: 'badge-ok' },
-      aguardando_instalacao: { texto: 'Em construção', classe: 'badge-pendente' },
-      reparo: { texto: 'Em reparo', classe: 'badge-err' },
+      em_operacao: { texto: 'No ar', classe: 'badge-ok' },
+      a_instalar: { texto: 'Em instalação', classe: 'badge-pendente' },
     };
     grid.innerHTML = pontos
       .map((p) => {
         const enderecoCompleto = `${p.endereco ? p.endereco + ', ' : ''}${p.cidade}`;
         const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-        const st = STATUS_LABEL[p.status] || STATUS_LABEL.ativo;
+        const st = STATUS_LABEL[p.status] || STATUS_LABEL.em_operacao;
         return `
       <div class="ponto-card">
         <span class="badge ${st.classe}">${st.texto}</span>

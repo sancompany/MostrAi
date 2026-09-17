@@ -140,7 +140,7 @@ await shot(adm, 'admin-telas');
 // ativa ponto + tela pra playlist responder
 const telaId = Number(new URL(linkPlayer).searchParams.get('tela'));
 const pontoId = Number(PG(`select ponto_id from dispositivos where id=${telaId}`));
-PG(`update pontos set status='ativo' where id=${pontoId}`);
+PG(`update pontos set status='em_operacao' where id=${pontoId}`);
 
 console.log('== player + painel por PIN ==');
 {

@@ -20,7 +20,7 @@ async function exigirAparelho(req, res, next) {
   // ar, continuava recebendo playlist e confirmando exibicao — ou seja, o
   // anunciante pagava por exibicao numa tela que a operacao ja sabe que nao
   // esta no ar. A TV le esta mensagem na propria tela.
-  if (dispositivo.status !== 'ativo' || dispositivo.ponto_status !== 'ativo') {
+  if (dispositivo.status !== 'ativo' || dispositivo.ponto_status !== 'em_operacao') {
     return res.status(403).json({ erro: 'esta tela está fora do ar no cadastro — fale com a Mostraí pra reativar' });
   }
   req.dispositivo = dispositivo;

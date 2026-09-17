@@ -72,6 +72,13 @@ async function carregar() {
 }
 
 function preencherStatusBanner() {
+  // Duração máxima da peça é benefício do plano (17/09/2026): o texto genérico
+  // do HTML vira o número exato assim que sabemos em qual plano a conta está.
+  const dicaDuracao = document.querySelector('[data-limite-duracao]');
+  if (dicaDuracao && ANUNCIANTE.plano?.duracao_maxima_segundos) {
+    dicaDuracao.textContent = `de até ${ANUNCIANTE.plano.duracao_maxima_segundos} segundos (o que o seu plano permite)`;
+  }
+
   const el = document.getElementById('statusBanner');
   // `status` virou só comum/parceiro (16/09/2026) — "Comum" não é
   // informação nova pro cliente, então só aparece pra quem é parceiro.
