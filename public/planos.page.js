@@ -104,9 +104,9 @@ function render(meses) {
       return `
     <div class="plan-card ${p.destaque_no_site ? 'popular' : ''}">
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
-      ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       <div class="tier">${esc(p.nome)}</div>
-      ${cheio ? `<div class="price-riscado">${fmt(cheio)}/mês <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
+      ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
+      ${cheio ? `<div class="price-riscado"><span>${fmt(cheio)}/mês</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
       <div class="price">${fmt(porMes)}/mês</div>
       <ul>
         ${heranca(p)}

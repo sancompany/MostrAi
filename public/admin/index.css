@@ -133,7 +133,7 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
   width: 100%; border: 1px dashed var(--border); background: transparent; border-radius: 8px;
   padding: 6px 8px; color: var(--text);
 }
-.plano-edit .ed-rotulo { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
+.plano-edit .ed-rotulo { font-size: .85rem; color: var(--text-dim); }
 .plano-edit .ed-nome { font-size: 1.15rem; font-weight: 800; }
 .plano-edit .ed-rotulo:focus, .plano-edit .ed-nome:focus,
 .plano-edit .ed-campo input:focus, .plano-edit .ed-freq input:focus, .plano-edit .ed-tecnicos input:focus {

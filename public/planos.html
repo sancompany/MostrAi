@@ -42,9 +42,15 @@
   <main>
     <section class="tight u-ta-c">
       <div class="wrap">
-        <p class="eyebrow">Planos de lançamento</p>
-        <h1 class="u-fs-240">Escolha quanto tempo de tela a cidade dá pra você</h1>
-        <p class="lead u-m-0 u-centro">O que muda entre os planos são três coisas: quanto tempo de tela você tem a cada hora, em quantos pontos da rede você aparece, e quanto pode durar a sua peça. Os pontos são você quem escolhe. Quanto mais tempo você fica com a gente, menos paga por mês.</p>
+        <!-- "Planos de lançamento" saiu (pedido do dono, 17/09/2026): era um
+             rótulo com prazo de validade — no dia em que o lançamento acabasse,
+             ficaria mentindo na primeira linha da página de preços. O texto
+             novo também acompanha a grade em HORAS POR MÊS: o antigo falava em
+             tempo "a cada hora", que é a conta de dentro, não o que o card
+             mostra em cima. -->
+        <p class="eyebrow">Anuncie nas telas de Matão</p>
+        <h1 class="u-fs-240">Escolha quantas horas de tela a sua marca tem por mês</h1>
+        <p class="lead u-m-0 u-centro">Três coisas mudam de um plano para o outro: quantas horas de tela você tem por mês, em quantos pontos da rede a sua peça aparece, e quanto ela pode durar. Os pontos quem escolhe é você. E quanto mais tempo você fica com a gente, menos paga por mês.</p>
         <p class="hero-fluxo" id="planosFluxo" hidden></p>
       </div>
     </section>
@@ -57,8 +63,8 @@
           <button data-meses="6">Semestral <small></small></button>
           <button data-meses="12">Anual <small></small></button>
         </div>
-        <div class="aviso-rede" id="avisoRede" hidden></div>
         <p class="cycle-note" id="cycleNote">Cobrança única a cada ciclo (3/6/12 meses), e o valor mensal exibido é só pra referência de quanto sai por mês.</p>
+        <div class="aviso-rede" id="avisoRede" hidden></div>
 
         <div class="plans" id="plansGrid"><p class="empty-state">Carregando os planos...</p></div>
       </div>

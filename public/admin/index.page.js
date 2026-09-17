@@ -849,6 +849,16 @@ async function renderPontos(el) {
   </tbody></table>`;
 
   el.innerHTML = `
+    ${avisoDivergencia(planos)}
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>O produto é do tier; a oferta é do ciclo.</b>
+      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
+      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
+      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
+      <b>Mais escolhido</b> são deste ciclo e desse cartão.
+      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
+      planos ao mesmo tempo.
+    </p>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo ponto (cadastro manual)</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovoPonto">
@@ -1196,6 +1206,16 @@ async function renderAnunciantes(el) {
   </tbody></table>`;
 
   el.innerHTML = `
+    ${avisoDivergencia(planos)}
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>O produto é do tier; a oferta é do ciclo.</b>
+      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
+      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
+      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
+      <b>Mais escolhido</b> são deste ciclo e desse cartão.
+      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
+      planos ao mesmo tempo.
+    </p>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo anunciante (cadastro manual)</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovoAnunciante">
@@ -1747,6 +1767,86 @@ async function renderCustos(el) {
 }
 
 // ---------- planos ----------
+// O QUE VALE PRO TIER INTEIRO E O QUE VALE SÓ PRA ESTE CICLO.
+//
+// Uma linha de `planos` é um tier × um ciclo — "Essencial trimestral" é uma
+// linha, "Essencial anual" é outra. O admin mostra as quatro como cartões
+// separados, e todo campo aparece editável nos quatro. Isso esconde a regra:
+//
+//   O PRODUTO é do tier. A OFERTA é do ciclo.
+//
+// O que o cliente COMPRA (nome, subtítulo, tempo de tela, pontos, duração da
+// peça, criativos, benefícios, preço cheio) tem que ser igual nos quatro
+// ciclos — senão a vitrine promete 90s de tela na aba Mensal e 120s na
+// Trimestral, com o mesmo nome e o mesmo card. O que MUDA por ciclo é só como
+// aquilo é vendido: o desconto, e os controles de vitrine.
+//
+// Mexer num campo de tier num cartão só NÃO propaga pros outros três — essa é
+// a armadilha. A única coisa que muda em todos de uma vez é o TEXTO de um
+// benefício, porque `beneficios` é catálogo compartilhado: editar lá reescreve
+// o card dos 12 planos ao mesmo tempo, sem versão nova.
+//
+// Não dá pra travar isso no banco sem quebrar a versão de plano (RN-27: cada
+// edição de contrato publica um id novo, e os quatro ciclos não versionam
+// juntos). Então a defesa é ver: o painel compara os quatro e reclama em cima
+// quando eles discordam.
+const CAMPOS_DO_TIER = {
+  nome: 'Nome',
+  rotulo: 'Subtítulo',
+  valor_mensal_cheio: 'Preço cheio',
+  segundos_por_hora: 'Segundos de tela por hora',
+  pontos_incluidos: 'Pontos incluídos',
+  duracao_maxima_segundos: 'Duração da peça',
+  limite_criativos: 'Criativos',
+  desconto_comodato_percentual: 'Desconto comodato',
+};
+
+// Compara os campos de tier entre os ciclos do mesmo tier. Só planos que ainda
+// estão de pé: versão arquivada guarda o contrato antigo de propósito, e
+// comparar com ela acusaria divergência em toda edição legítima.
+function divergenciasPorTier(planos) {
+  const porTier = {};
+  for (const p of planos) {
+    if (p.arquivado_em || p.fundador) continue;
+    porTier[p.tier] = porTier[p.tier] || [];
+    porTier[p.tier].push(p);
+  }
+  const achados = [];
+  for (const [tier, linhas] of Object.entries(porTier)) {
+    if (linhas.length < 2) continue;
+    for (const [campo, rotulo] of Object.entries(CAMPOS_DO_TIER)) {
+      const vistos = new Map();
+      for (const p of linhas) {
+        const v = p[campo] == null ? '' : String(p[campo]);
+        vistos.set(v, [...(vistos.get(v) || []), CICLOS[p.compromisso_meses] || p.compromisso_meses]);
+      }
+      if (vistos.size > 1) achados.push({ tier, rotulo, vistos });
+    }
+  }
+  return achados;
+}
+
+function avisoDivergencia(planos) {
+  const achados = divergenciasPorTier(planos);
+  if (!achados.length) return '';
+  return `
+    <div class="aviso-rede u-mb-16">
+      <b>Os ciclos do mesmo plano estão diferentes entre si.</b>
+      O cliente vê o mesmo nome nas quatro abas da vitrine, então o que está abaixo ele lê como promessa
+      diferente pro mesmo plano. Acerte nos quatro cartões:
+      <ul class="u-mt-6">
+        ${achados
+          .map(
+            (a) =>
+              `<li><b>${esc(a.tier)} · ${esc(a.rotulo)}</b>: ` +
+              [...a.vistos].map(([v, ciclos]) => `${esc(ciclos.join('/'))} = ${esc(v || '(vazio)')}`).join(' · ') +
+              '</li>',
+          )
+          .join('')}
+      </ul>
+    </div>`;
+}
+
 async function renderPlanos(el) {
   const [planos, beneficios] = await Promise.all([pegar('/admin/planos'), pegar('/admin/beneficios')]);
 
@@ -1786,7 +1886,7 @@ async function renderPlanos(el) {
     return Math.round(cheio * (1 - desconto / 100) * 100) / 100;
   };
   // O cartão do admin é o cartão da vitrine com os campos abertos: mesma
-  // ordem (rótulo, nome, preço riscado + desconto, preço grande, lista de
+  // ordem (nome, subtítulo, preço riscado + desconto, preço grande, lista de
   // benefícios) e o mesmo botão embaixo, só que salvando em vez de assinar.
   // A tabela de 15 colunas que havia aqui mostrava tudo e não parecia nada:
   // o dono editava preço sem ver o que o cliente ia ver.
@@ -1801,8 +1901,8 @@ async function renderPlanos(el) {
         </label>
       </div>
 
-      <input class="ed-rotulo" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}" placeholder="Rótulo (opcional)" aria-label="Rótulo">
       <input class="ed-nome" ${contrato('nome', p)} value="${esc(p.nome)}" aria-label="Nome do plano">
+      <input class="ed-rotulo" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}" placeholder="Subtítulo (opcional)" aria-label="Subtítulo">
 
       <div class="ed-precos">
         <label class="ed-campo">Preço cheio
@@ -1842,6 +1942,16 @@ async function renderPlanos(el) {
     </div>`;
 
   el.innerHTML = `
+    ${avisoDivergencia(planos)}
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>O produto é do tier; a oferta é do ciclo.</b>
+      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
+      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
+      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
+      <b>Mais escolhido</b> são deste ciclo e desse cartão.
+      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
+      planos ao mesmo tempo.
+    </p>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo plano (novo preço/promoção, não mexe no que já existe)</summary>
       <form class="card u-mt-12 u-mw-520" id="formNovoPlano">
@@ -2448,6 +2558,16 @@ async function renderComodato(el) {
       ${planos.map((p) => `<option value="${esc(p.id)}" ${p.id === o.plano_bonus_id ? 'selected' : ''}>${esc(p.nome)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</option>`).join('')}
     </select>`;
   el.innerHTML = `
+    ${avisoDivergencia(planos)}
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>O produto é do tier; a oferta é do ciclo.</b>
+      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
+      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
+      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
+      <b>Mais escolhido</b> são deste ciclo e desse cartão.
+      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
+      planos ao mesmo tempo.
+    </p>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Nova opção de comodato</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovaOpcao">

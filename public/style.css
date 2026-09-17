@@ -230,9 +230,17 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   background: var(--blue); color: var(--escuro-texto); font-size: .75rem; font-weight: 800;
   padding: 4px 12px; border-radius: 999px;
 }
-.plan-card .rotulo { color: var(--brand-text); font-size: .78rem; font-weight: 700; margin-top: 4px; }
-.plan-card .tier { font-weight: 800; font-size: 1.15rem; margin: 6px 0 16px; }
-.plan-card .price-riscado { color: var(--text-dim); text-decoration: line-through; font-size: .95rem; display: inline-flex; align-items: center; gap: 6px; }
+/* Nome primeiro, subtitulo embaixo (pedido do dono, 17/09/2026). O subtitulo
+   deixou de ser chapeu laranja: em cima do nome ele funcionava como etiqueta,
+   embaixo dele competiria com o proprio nome. Aqui ele e linha de apoio. */
+.plan-card .tier { font-weight: 800; font-size: 1.15rem; margin: 4px 0 0; }
+.plan-card .rotulo { color: var(--text-dim); font-size: .85rem; line-height: 1.35; margin: 5px 0 0; }
+/* O respiro antes do preco fica em quem vem depois, e nao no subtitulo: o
+   `rotulo` e opcional, e um plano sem ele colaria o preco no nome. */
+.plan-card .tier + .price-riscado, .plan-card .tier + .price,
+.plan-card .rotulo + .price-riscado, .plan-card .rotulo + .price { margin-top: 16px; }
+.plan-card .price-riscado { color: var(--text-dim); font-size: .95rem; display: inline-flex; align-items: center; gap: 6px; }
+.plan-card .price-riscado > span:first-child { text-decoration: line-through; }
 .plan-card .badge-desconto {
   display: inline-block; background: var(--brand); color: var(--sobre-brand); font-size: .72rem; font-weight: 800;
   padding: 2px 7px; border-radius: 999px; text-decoration: none;
@@ -258,6 +266,12 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .cycle-toggle button:hover:not(.active) { color: var(--text); }
 .cycle-toggle button.active { background: var(--brand); border-color: var(--brand); color: var(--sobre-brand); }
 .cycle-toggle button[disabled] { opacity: .4; cursor: not-allowed; }
+/* No celular as quatro nao cabem numa linha, e `flex-wrap` deixava 2 em cima
+   e 2 embaixo com larguras diferentes — ragged, sem parecer um controle. Grade
+   2x2 de colunas iguais resolve sem tirar nada da moldura. */
+@media (max-width: 460px) {
+  .cycle-toggle { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+}
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
 
 .pontos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }

@@ -1680,3 +1680,94 @@ de fato fecha a Estação 5.
 **Retomada combinada com o dono:** a próxima rodada de depuração (seção F
 continua) começa pela tela de Planos, ciclo Mensal — é onde a navegação
 parou antes desta lista de pendências.
+
+---
+
+## F.1 — Revisão do dono, tópico 1 (sem login): telas conferidas
+
+Uma seção por tela, na ordem em que o dono navegou. Cada linha é o que ele
+relatou, do jeito que relatou, e o que saiu feito.
+
+### Home — [x] sem ajuste
+Relatado em 17/09/2026: *"a home estava completa já, nada a consertar nela"*.
+
+### Planos (`/planos.html`) — [x] rodada de 17/09/2026
+
+**P1. [x] "O que mexe no mensal mexe no trimestral também."**
+O dono pediu "ideia correta sobre o que mexe só no mensal e o que mexe em
+todos". A regra, conferida linha a linha no banco de produção e no
+`src/financeiro/planos-repository.js`:
+
+> **O produto é do tier. A oferta é do ciclo.**
+
+Uma linha de `planos` é **um tier × um ciclo** — "Essencial trimestral" é uma
+linha, "Essencial anual" é outra. São 12 linhas na vitrine (3 tiers × 4
+ciclos), e o seletor da página só troca qual grupo de 4 aparece.
+
+| Campo | Escopo certo | O que o admin faz hoje |
+|---|---|---|
+| `nome`, `rotulo` | **do tier** — igual nos 4 ciclos | edita um cartão só |
+| `segundos_por_hora`, `pontos_incluidos`, `duracao_maxima_segundos`, `limite_criativos` | **do tier** | edita um cartão só |
+| `valor_mensal_cheio` | **do tier** (é o preço de referência) | edita um cartão só |
+| benefícios (o vínculo) | **do tier** | edita um cartão só |
+| benefícios (o **texto**) | **do catálogo** — muda nos 12 planos de uma vez | edita em Benefícios |
+| `desconto_percentual` (e o `valor_mensal` que sai dele) | **do ciclo** | certo |
+| `ativo`, `destaque_no_site`, `vagas` | **do ciclo** | certo |
+
+Ou seja, o que o dono sentiu tem duas caras, e as duas são reais:
+· mexer num campo **de tier** num cartão só **não** propaga pros outros três —
+  a vitrine passa a prometer coisas diferentes com o mesmo nome em abas
+  diferentes, e nada avisa;
+· mexer no **texto** de um benefício propaga pros doze de uma vez, sem versão
+  nova, porque `beneficios` é catálogo compartilhado.
+
+**O que não dá pra fazer:** travar no banco. A RN-27 versiona plano por
+edição de contrato (id novo, `-vN`), e os quatro ciclos não versionam juntos
+— uma trava de igualdade recusaria a primeira das quatro edições legítimas.
+
+**O que foi feito:** a aba Planos do `/admin` passa a **comparar os quatro
+ciclos de cada tier** e abrir um aviso em cima quando eles discordam, dizendo
+o tier, o campo, e qual valor está em qual ciclo. Junto, uma legenda fixa com
+a tabela acima em duas linhas. Conferido: **nenhuma divergência hoje na base
+de produção** (os 12 planos estão coerentes).
+
+**P2. [x] "Esse primeiro texto está desatualizado, já que agora mudou para
+horas por mês."** A lead falava em tempo de tela *"a cada hora"* — que é a
+conta de dentro (`segundos_por_hora`), não o número grande que o card mostra.
+Reescrita em horas por mês.
+
+**P3. [x] "Retire o 'Planos de lançamento' lá do começo e substitua os 3
+textos."** O chapéu tinha prazo de validade embutido: no dia em que o
+lançamento acabasse, ficaria mentindo na primeira linha da página de preços.
+Os três viraram:
+· chapéu → **"Anuncie nas telas de Matão"**
+· título → **"Escolha quantas horas de tela a sua marca tem por mês"**
+· texto → **"Três coisas mudam de um plano para o outro: quantas horas de
+  tela você tem por mês, em quantos pontos da rede a sua peça aparece, e
+  quanto ela pode durar. Os pontos quem escolhe é você. E quanto mais tempo
+  você fica com a gente, menos paga por mês."**
+
+**P4. [x] "Nos planos o título vem primeiro e o subtítulo embaixo; aqui está
+ao contrário."** Trocada a ordem no card da vitrine **e** no cartão do admin,
+que é o espelho dele de propósito. O subtítulo deixou de ser chapéu laranja
+(em cima do nome funcionava como etiqueta; embaixo competiria com o próprio
+nome) e virou linha de apoio cinza.
+
+**P5. [x] Achados na mesma passada, não relatados pelo dono:**
+· a pílula **"-10%" saía riscada** junto com o preço cheio — `text-decoration`
+  desce pros filhos em fluxo e item de flex não é caixa inline atômica, então
+  o `text-decoration: none` da pílula não segurava. O risco passou pro `<span>`
+  do preço;
+· a **nota do ciclo** ("você paga uma vez a cada 3 meses") estava DEPOIS da
+  caixa de aviso da rede, e o `margin-top` negativo dela — feito pra encostar
+  no seletor — puxava a nota pra debaixo do aviso, longe do que ela explica.
+  Subiu pra logo abaixo do seletor;
+· no celular o seletor de ciclo **quebrava em duas linhas desalinhadas**
+  (2 em cima, 2 embaixo, larguras diferentes), exatamente o que o comentário
+  do CSS dizia estar resolvido. Virou grade 2×2 de colunas iguais abaixo de
+  460px.
+
+**P6. [ ] Para o dono decidir (dado, não código):** na aba **Mensal** nenhum
+card tem a faixa **"Mais escolhido"** — `destaque_no_site` é `false` nos três
+planos mensais e `true` nos outros nove. É campo de vitrine, de ciclo, e a
+troca é um clique no `/admin` → Planos. Não mexi: é escolha comercial.
