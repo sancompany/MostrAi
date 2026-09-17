@@ -193,3 +193,178 @@ R$ 164,55/mês (≈ R$ 0,46/hora).
 O que limita a receita hoje não é o custo do ponto, é quantos anunciantes
 pagantes a rede tem — o mesmo achado da seção 2: mais pontos dão mais
 alcance, não mais receita por si só.
+
+---
+
+# 6. A lógica da rede — desenho do dono, 17/09/2026
+
+**Isto ainda não é código.** É o desenho que o dono trouxe, com as contas
+refeitas em cima dele e os problemas que a revisão encontrou. Nada daqui
+entra em produção antes de ele fechar as perguntas em aberto no fim da seção.
+
+## 6.1 O que muda
+
+Hoje todo plano é `todos_pontos` e todo anunciante roda em toda tela — por
+isso o inventário é de 3600 segundos por hora **para a rede inteira**, e
+instalar mais telas aumenta o alcance de cada anunciante sem abrir uma vaga
+sequer (seção 2).
+
+O desenho novo inverte isso: **o plano passa a dar acesso a N pontos, e o
+anunciante escolhe quais.**
+
+- Cada ponto tem a própria hora de 3600 segundos.
+- Um anunciante em K pontos consome `frequência × duração` de cada um dos K.
+- Quem não escolhe roda sorteado entre os pontos **livres**.
+- Ponto que já está cheio sai da lista de escolha.
+
+Com isso o inventário vendável vira `3600 × número de pontos ativos`, e cada
+ponto instalado abre vaga de verdade. É a diferença entre uma rede que satura
+e uma que cresce.
+
+## 6.2 As contas, refeitas
+
+Capacidade por ponto: 3600 s/h. Consumo por conta, **por ponto escolhido**:
+
+| plano | frequência | duração | consumo por ponto | contas que cabem num ponto |
+|---|---|---|---|---|
+| Essencial | 3x/h | 15s | 45 s/h | 80 |
+| Destaque | 6x/h | 30s | 180 s/h | 20 |
+| Máximo | 12x/h | 30s | 360 s/h | 10 |
+
+Com N pontos e cada conta escolhendo K deles, cabem `N × 3600 ÷ (consumo × K)`
+contas. Exemplos, tudo Essencial de 15s escolhendo 3 pontos cada:
+
+| pontos ativos | inventário | contas Essencial |
+|---|---|---|
+| 3 | 10.800 s/h | 80 |
+| 10 | 36.000 s/h | 266 |
+| 30 | 108.000 s/h | 800 |
+
+A rede deixa de ter teto de receita: o teto passa a ser quantos pontos
+existem.
+
+## 6.3 O problema do lançamento — e ele é maior do que parece
+
+O dono levantou: "no início terei poucos pontos, todos então irão querer
+assinar os planos mais baratos, já que tem menos pontos disponíveis".
+
+Está certo, e é pior do que ele disse. Se o plano de entrada der acesso a 3
+pontos e a rede tiver 3 pontos, **o plano de entrada já é a rede inteira** —
+Destaque e Máximo não têm nada a mais pra vender. A escada de preço não fica
+fraca, ela deixa de existir.
+
+**Saída proposta: o plano de entrada é UM ponto.**
+
+| plano | pontos | com 3 pontos na rede | com 10 |
+|---|---|---|---|
+| Essencial | 1 | vende "o ponto da sua rua" | idem |
+| Destaque | 3 | vende 3 de 3 | 3 de 10 |
+| Máximo | 10 (ou todos) | igual ao Destaque | 10 de 10 |
+
+Isso transforma a fraqueza em força: com 3 pontos, "seu anúncio na padaria da
+sua rua por R$ X" é uma venda fácil para o comércio daquela rua — não depende
+de a rede ser grande. E a escada volta a existir já no primeiro dia, porque 1
+é diferente de 3.
+
+Complemento, sem código: manter `ativo = false` nos degraus que a rede ainda
+não sustenta. O admin já tem esse botão.
+
+**Consequência de preço:** se o plano passa a ser definido por pontos, o
+preço deveria acompanhar `frequência × pontos`, não só frequência. É uma
+fórmula que o dono consegue conferir de cabeça.
+
+## 6.4 Os 15 segundos — resposta à pergunta do dono
+
+15 segundos é formato padrão de mídia, não produto capado: é o comprimento
+dominante em DOOH e em TV, e para comércio local (marca, oferta, endereço) é
+suficiente — numa fila de caixa, provavelmente melhor que 30.
+
+**Mas, com a lógica nova, o limite de duração deixa de ser necessário.** Ele
+existia pra espremer mais slots de uma hora fixa; agora o inventário cresce
+com os pontos. O que ele ainda custa continua: faz o plano de entrada parecer
+punição, e dobra o trabalho de produção (duas versões de cada peça quando o
+cliente sobe de plano).
+
+**Recomendação:** diferenciar por PONTOS e manter 30s para todos. Se o dono
+quiser mesmo uma alavanca de duração, inverter a leitura — 15s é o padrão de
+todo mundo e 30s é um benefício dos degraus de cima. A conta é a mesma e a
+história de venda é melhor: bônus em vez de limite.
+
+## 6.5 Plano Master
+
+Plano que pega todos os pontos instalados, mensal, sem autoatendimento: no
+lugar de "Assinar", um botão que abre conversa no WhatsApp. O dono fecha o
+preço e cria a cobrança direto no Asaas.
+
+Mecanicamente é barato: um campo `sob_consulta` no plano muda o botão do card
+e faz `POST /anunciantes/:id/assinar` recusar aquele plano.
+
+**O que NÃO é barato, e é armadilha:** hoje o único jeito de o admin pôr um
+plano numa conta é `POST /admin/anunciantes/:id/liberar-plano`, que grava
+`plano_cortesia = true` e `valor_mensal_travado = null`
+(`src/financeiro/routes.js`). E a receita recorrente do admin exclui
+explicitamente `plano_cortesia` (`src/admin/routes.js`). Ou seja: o dono
+fecharia um Master de R$ 2.000, cobraria no Asaas, e **esse dinheiro não
+apareceria na receita nem na margem** — a conta ainda seria mostrada como
+"em cortesia". É a mesma classe de erro que já foi corrigida duas vezes esta
+semana (receita somando quem não paga; agora seria o inverso).
+
+Antes do Master é preciso separar três coisas que hoje são uma só:
+cortesia (não paga), cobrança externa (paga fora do site, entra na receita) e
+cobrança pelo site.
+
+## 6.6 Planos que evoluem com a rede, e o direito do parceiro
+
+Desenho do dono: quando a rede cresce, os planos crescem junto; cliente comum
+recebe a mudança, **cliente parceiro mantém o preço** mas recebe os
+benefícios novos.
+
+Encaixa no que já existe (RN-27 versiona plano, RN-11 trava preço), mas tem
+um detalhe que quebra em silêncio: para dar benefício novo a quem já assinou,
+a conta precisa apontar pra versão nova do plano. E
+`aplicarCicloPago` decide a trava de preço por
+`mesmoPlano = anunciante.plano_id === plano.id` — mudar a conta de versão faz
+`mesmoPlano` virar falso e **reescreve `valor_mensal_travado` com o preço
+novo**, que é exatamente o contrário do direito do parceiro.
+`valorMensalDaConta` tem a mesma condição.
+
+Então a migração de versão precisa de um caminho próprio que preserve a
+trava, e não pode ser um `UPDATE plano_id` à mão.
+
+## 6.7 Tela de pontos com a playlist ao vivo
+
+Ideia do dono: na página "onde estamos", cada ponto aparece rodando a
+playlist ao vivo, com a localização embaixo e link pro mapa. Mostra de cara
+como o anúncio roda, e a página passa a servir também às contas já
+cadastradas.
+
+Vale, e é boa venda. Dois cuidados, os dois com endereço:
+
+1. **Saída de vídeo.** `docs/erros/2026-09-saida-de-video-sem-cache.md`: uma
+   tela rodando 12h faz ~2.800 exibições/dia e, a 6 MB por peça, >15 GB/dia.
+   O player resolveu isso com cache no aparelho — um visitante do site não
+   tem esse cache. Autoplay de vídeo real pra cada visitante reabre o mesmo
+   buraco, agora com visitante em vez de tela. Caminho seguro: mostrar a
+   THUMB do criativo em rotação (a thumb já é gerada), com o vídeo só sob
+   clique.
+2. **Rota própria.** `GET /playlist/:id` exige chave de aparelho e PROGRAMA
+   os contadores da hora. A página pública precisa de uma rota separada, de
+   leitura pura, que não conte exibição — senão a vitrine infla a entrega
+   que o anunciante recebe no relatório.
+
+## 6.8 O que está em aberto, e é decisão do dono
+
+1. O plano de entrada passa a ser 1 ponto? (recomendação: sim)
+2. O limite de 15s cai, e a diferenciação vira só pontos? (recomendação: sim)
+3. Máximo e Master se sobrepõem — Máximo vira "até 10 pontos" e Master "todos
+   sem teto", ou Máximo é aposentado dentro do Master?
+4. O Master aparece na vitrine pública como degrau "fale com o suporte", ou
+   só existe pra quem o dono liberar? (o botão de WhatsApp só faz sentido na
+   primeira leitura)
+5. Preço passa a seguir `frequência × pontos`?
+
+**Impacto na esteira:** isto é escopo novo sobre um produto no ar, não
+depuração — mexe em planos, cobertura, preço e playlist ao mesmo tempo. Pela
+skill `leis` não cabe dentro da Estação 5, que fecha com a revisão do dono
+sobre o que já existe. O caminho honesto é fechar a Estação 5 com o produto
+atual e abrir esta lógica como v2, com escopo e fronteiras próprios.

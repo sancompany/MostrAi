@@ -1378,7 +1378,38 @@ regra de 15 minutos de flexibilidade".)*
      `vagas_restantes`, que a vitrine já sabe mostrar. A conta de quantas
      vagas cabem sai direto do orçamento de 3600 segundos (ver item 30).
 
-**30. [ ] AGUARDANDO O DONO — a lógica da rede, e as vagas que saem dela.**
+**30. [~] A lógica da rede chegou em 17/09/2026 — desenhada, revisada, não
+construída.** O dono trouxe: anunciante escolhe em quais pontos anuncia,
+plano limitado por número de pontos, ponto cheio sai da escolha, quem não
+escolhe roda sorteado entre os livres, plano Master sob consulta, tela de
+pontos com playlist ao vivo, e planos que evoluem com a rede preservando o
+preço do parceiro.
+· **O desenho inteiro, com as contas refeitas e os problemas encontrados,
+  está na seção 6 de `docs/economia-da-rede.md`.** Resumo do que a revisão
+  achou, tudo verificado no código:
+  1. Com o plano de entrada dando 3 pontos numa rede de 3 pontos, a escada de
+     preço não fica fraca — ela deixa de existir. Saída proposta: entrada = 1
+     ponto ("o ponto da sua rua"), que vende bem já no primeiro dia.
+  2. O limite de 15s deixa de ser necessário: ele existia pra espremer slots
+     de uma hora fixa, e agora o inventário cresce com os pontos.
+  3. **Armadilha do Master:** `liberar-plano` grava `plano_cortesia = true` e
+     a receita do admin exclui cortesia — um Master de R$ 2.000 cobrado no
+     Asaas ficaria invisível na margem. Precisa separar cortesia de cobrança
+     externa antes.
+  4. **Armadilha do parceiro:** migrar a conta pra versão nova do plano faz
+     `mesmoPlano` virar falso em `aplicarCicloPago` e reescreve
+     `valor_mensal_travado` com o preço novo — o contrário do direito de
+     manter o preço.
+  5. **Armadilha da tela ao vivo:** autoplay de vídeo pra cada visitante
+     reabre o erro de saída de vídeo já registrado em `docs/erros/`. Caminho
+     seguro é thumb em rotação, e uma rota de leitura pura que não programe
+     contador.
+· **Cinco decisões estão esperando o dono** (listadas em 6.8).
+· **Impacto na esteira:** é escopo novo sobre produto no ar, não depuração.
+  Não cabe dentro da Estação 5 — o caminho honesto é fechar a 5 com o produto
+  atual e abrir esta lógica como v2, com escopo e fronteiras próprios.
+
+**30.1 [ ] (o cálculo de vagas que originou o item, mantido)**
 *(O dono perguntou em 16/09/2026 quantas vagas cabem numa hora e disse que
 daria a lógica da rede ao chegar em casa. As contas abaixo já estão feitas e
 esperam essa lógica pra virar código.)*
