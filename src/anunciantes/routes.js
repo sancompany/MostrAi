@@ -332,6 +332,97 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   res.json({ ...anunciante, vendedor, plano });
 });
 
+// ---------------------------------------------------------------------------
+// Escolha de pontos pelo contratante (17/09/2026)
+// ---------------------------------------------------------------------------
+// O plano dá acesso a N pontos e quem escolhe quais é o anunciante. Quem não
+// escolhe não fica de fora: `pontosDoAnunciante` sorteia uma fatia estável
+// (src/lib/pacing.js). Deixar tudo desmarcado é uma escolha válida, e é a
+// recomendada pra quem não conhece a cidade.
+//
+// A ocupação de cada ponto vem junto porque o dono pediu que ponto cheio não
+// pudesse ser escolhido: sem ver o quanto já está vendido, a pessoa escolhe o
+// ponto lotado e recebe menos exibição do que receberia num vazio.
+router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+
+  const { rows } = await pool.query(
+    `SELECT p.id, p.nome, p.cidade, p.endereco,
+            COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
+            (ap.ponto_id IS NOT NULL) AS escolhido
+       FROM pontos p
+       LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
+       LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
+       LEFT JOIN planos pl ON pl.id = ao.plano_id
+       LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
+      WHERE p.status = 'em_operacao'
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, ap.ponto_id
+      ORDER BY p.nome`,
+    [conta.id],
+  );
+
+  res.json({
+    limite: plano.pontos_incluidos,
+    escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
+    pontos: rows.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      cidade: r.cidade,
+      endereco: r.endereco,
+      escolhido: r.escolhido,
+      // Quanto da hora daquele ponto já está vendido. 100% = cheio.
+      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
+    })),
+  });
+});
+
+router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+
+  const pedidos = [...new Set((req.body.pontos || []).map(Number).filter(Number.isInteger))];
+  if (plano.pontos_incluidos && pedidos.length > plano.pontos_incluidos) {
+    return res.status(400).json({
+      erro: `seu plano cobre ${plano.pontos_incluidos} ponto(s) e você marcou ${pedidos.length}`,
+    });
+  }
+
+  if (pedidos.length) {
+    const { rows } = await pool.query(`SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status = 'em_operacao'`, [
+      pedidos,
+    ]);
+    if (rows.length !== pedidos.length) {
+      return res.status(400).json({ erro: 'um dos pontos escolhidos não está em operação' });
+    }
+  }
+
+  // Troca a lista inteira numa transação: metade salva seria pior que nada,
+  // porque o anunciante ficaria numa cobertura que ele não escolheu.
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]);
+    for (const pontoId of pedidos) {
+      await cliente.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1,$2)', [
+        conta.id,
+        pontoId,
+      ]);
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
+  eventos.registrar('pontos:escolhidos', { quantidade: pedidos.length, limite: plano.pontos_incluidos }, conta);
+  res.json({ escolhidos: pedidos, limite: plano.pontos_incluidos });
+});
+
 // Edição de perfil self-service — lista branca própria (não os campos
 // admin-only de repo.CAMPOS_ATUALIZAVEIS, ex.: cpf_cnpj/status/plano_id só
 // mudam via admin, ver SPEC.md). Documento e e-mail de acesso também ficam

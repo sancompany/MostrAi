@@ -113,11 +113,97 @@ function preencherStatusBanner() {
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;
   preencherAssinatura();
+  carregarPontos();
 }
 
 // Autoatendimento: cancelar e trocar de plano, sem passar pelo admin.
 // Só aparece pra quem tem plano pago em dia (cortesia não tem o que
 // cancelar, e conta suspensa já mostra a explicação própria acima).
+// ---------------------------------------------------------------------------
+// Onde seu anúncio aparece — escolha de pontos (17/09/2026)
+// ---------------------------------------------------------------------------
+// O plano dá acesso a N pontos. Marcar é opcional: quem não marca recebe uma
+// fatia sorteada de forma estável, e isso é dito na tela em vez de ficar
+// implícito — senão "não marquei nada" parece "não vou aparecer em lugar
+// nenhum", que é o contrário do que acontece.
+async function carregarPontos() {
+  if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia) return;
+  let dados;
+  try {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos-disponiveis`, { credentials: 'include' });
+    if (!r.ok) return;
+    dados = await r.json();
+  } catch {
+    return;
+  }
+  if (!dados.pontos.length) return;
+
+  const limite = dados.limite;
+  document.getElementById('painelPontos').hidden = false;
+  document.getElementById('dicaPontos').textContent = limite
+    ? `Seu plano cobre ${limite} ${limite === 1 ? 'ponto' : 'pontos'}. Marque onde você quer aparecer, ou deixe tudo desmarcado e a gente distribui pra você.`
+    : 'Seu plano cobre todos os pontos da rede.';
+
+  const lista = document.getElementById('listaPontos');
+  lista.innerHTML = dados.pontos
+    .map((p) => {
+      const cheio = p.ocupacao >= 100;
+      return `<label class="ponto-escolha${cheio ? ' cheio' : ''}">
+      <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
+      <span class="ponto-nome">${esc(p.nome)}</span>
+      <span class="ponto-end">${esc(p.endereco || '')}${p.cidade ? `, ${esc(p.cidade)}` : ''}</span>
+      <span class="ponto-ocupacao">${cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+    </label>`;
+    })
+    .join('');
+
+  const msg = document.getElementById('msgPontos');
+  const contador = document.getElementById('contadorPontos');
+  const marcados = () => [...lista.querySelectorAll('input:checked')].map((i) => Number(i.value));
+
+  function pintarContador() {
+    const n = marcados().length;
+    contador.textContent = limite ? `${n} de ${limite}` : `${n} escolhido(s)`;
+    // Passar do limite não é erro de servidor: é uma caixa que não devia ter
+    // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
+    // depois do clique em salvar.
+    if (limite) {
+      lista.querySelectorAll('input:not(:checked)').forEach((i) => {
+        if (!i.closest('.ponto-escolha').classList.contains('cheio')) i.disabled = n >= limite;
+      });
+    }
+  }
+  pintarContador();
+
+  lista.addEventListener('change', async (e) => {
+    if (e.target.tagName !== 'INPUT') return;
+    pintarContador();
+    msg.textContent = 'Salvando...';
+    msg.className = 'form-msg';
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ pontos: marcados() }),
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.textContent = window.frase(corpo.erro || 'não deu pra salvar');
+        msg.className = 'form-msg err';
+        return;
+      }
+      msg.textContent = marcados().length
+        ? 'Pronto. A mudança vale a partir da próxima hora cheia.'
+        : 'Pronto. Sem marcação, a gente distribui seus pontos.';
+      msg.className = 'form-msg ok';
+    } catch {
+      msg.textContent = 'Sem conexão. Tente de novo.';
+      msg.className = 'form-msg err';
+    }
+  });
+}
+
 function preencherAssinatura() {
   const panel = document.getElementById('painelAssinatura');
   const el = document.getElementById('resumoAssinatura');
