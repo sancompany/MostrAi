@@ -111,7 +111,7 @@ function render(meses) {
           .map((b) => `<li>${esc(b)}</li>`)
           .join('')}
       </ul>
-      <a class="btn primary block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
+      <a class="btn ${p.destaque_no_site ? 'popular' : 'primary'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
   `;
     })
@@ -171,37 +171,42 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
 // a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
 // tela dizer isso em lugar nenhum. Nao bloqueia a venda, so para de esconder.
 //
-// Limite de 5 pontos ativos (pedido do dono, 15/09/2026): com a rede ainda
-// pequena o aviso acompanha quantos pontos já estão no ar, e some sozinho
-// assim que o quinto entrar — a partir daí a cobertura já não é mais "rede
-// vazia" o bastante pra precisar do aviso.
+// Limite de 5 pontos na rede (pedido do dono, 15/09/2026): com a rede ainda
+// pequena o aviso acompanha o tamanho dela, e some sozinho assim que o quinto
+// entrar — a partir daí a cobertura já não é mais "rede vazia" o bastante pra
+// precisar do aviso.
 const PONTOS_PARA_TIRAR_AVISO = 5;
 
 fetch(`${API_BASE_URL}/pontos`)
   .then((r) => r.json())
   .then((pontos) => {
     if (!Array.isArray(pontos)) return;
-    // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
-    // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
-    const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
-    if (ativos >= PONTOS_PARA_TIRAR_AVISO) return;
-    const instalando = pontos.filter((p) => p.status === 'a_instalar').length;
+    // UMA contagem só (pedido do dono, 17/09/2026): ponto ATIVO é o que já
+    // tem cadastro na rede — em operação mais esperando instalação. A vitrine
+    // não separa os dois; quem separa é o admin, e o desenho de status vai ser
+    // fechado quando o dono chegar naquela aba.
+    //
+    // `/pontos` já devolve só esses dois status, então a contagem é o tamanho
+    // da lista. Filtrar por status aqui de novo seria repetir a regra do
+    // servidor num lugar que não manda nela.
+    const naRede = pontos.length;
+    if (naRede >= PONTOS_PARA_TIRAR_AVISO) return;
+    const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
     const situacao =
-      ativos === 0
-        ? 'Neste momento não há nenhuma tela no ar.'
-        : `Hoje ${ativos === 1 ? '1 ponto está' : `${ativos} pontos estão`} no ar` +
-          `${instalando ? `, e ${instalando === 1 ? 'mais 1 está' : `mais ${instalando} estão`} em instalação` : ', e a instalação continua'}.`;
+      naRede === 0
+        ? 'Ainda não há nenhum ponto na rede.'
+        : `Hoje a rede tem ${naRede === 1 ? '1 ponto' : `${naRede} pontos`}.`;
 
-    // RN-49: o bônus de cobertura. Só entra com tela no ar — sem nenhuma não
-    // existe pra onde concentrar, e prometer aqui seria vender o que a rede
-    // não tem. "Até onde couber na hora" não é ressalva de rodapé: é o teto
-    // real da regra (um sexto da hora por anunciante), e omitir ele faria a
-    // frase prometer mais do que o gerador entrega.
-    const bonus = ativos
+    // RN-49: o bônus de cobertura. Só entra com tela VEICULANDO — sem nenhuma
+    // não existe pra onde concentrar o tempo, e prometer aqui seria vender o
+    // que a rede não tem. Por isso o gatilho é `veiculando` e não `naRede`:
+    // são as duas contagens diferentes, e usar a errada aqui transformaria a
+    // frase numa promessa que o gerador não cumpre.
+    const bonus = veiculando
       ? '<br><br><b>E você não paga por ponto que ainda não existe.</b> Enquanto a rede for menor que a cobertura ' +
         'do seu plano, o tempo dos pontos que faltam volta para os pontos que já estão no ar — até onde couber na ' +
-        'hora de cada tela. Você aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê o ' +
-        'número exato de horas no seu painel. Conforme os pontos entram no ar, o tempo se espalha de volta.'
+        'hora de cada tela. Você aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê no seu ' +
+        'painel quantas horas a mais isso dá por mês. Conforme os pontos entram no ar, o tempo se espalha de volta.'
       : '';
 
     const el = document.getElementById('avisoRede');

@@ -128,6 +128,12 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
 }
 .btn.primary { background: var(--brand); color: var(--sobre-brand); }
 .btn.primary:hover { background: var(--brand-dim); }
+/* Azul do "Mais escolhido" (pedido do dono, 17/09/2026): os três botões são
+   laranja, menos o do plano destacado — é o que diferencia ele de relance numa
+   linha de três botões iguais. Mesmo azul da borda e da faixa do card, que é
+   de onde a cor do destaque já vinha. */
+.btn.popular { background: var(--blue); color: var(--escuro-texto); }
+.btn.popular:hover { background: var(--blue-dim); }
 .btn.ghost { border-color: var(--border); color: var(--text); background: transparent; }
 .btn.ghost:hover { border-color: var(--text-dim); }
 .btn.block { width: 100%; }

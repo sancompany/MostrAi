@@ -390,15 +390,17 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     // O que o plano compra, o que a rede entrega hoje, e a diferença — que é
     // o número que o dono pediu pra ficar escrito ("a hora que ele vai ganhar
     // a mais"), em vez de um bônus que ninguém consegue conferir.
+    //
+    // Tudo em HORAS POR MÊS, e só: é a unidade que o cliente comprou e a que
+    // o card vende. Segundos por hora é a unidade do motor, e mandar as duas
+    // deixava a tela escolher — que é como o painel nasceu falando em segundos
+    // enquanto a vitrine falava em horas.
     cobertura: {
       contratados: plano.pontos_incluidos,
       veiculando: cobertos.length,
-      em_instalacao: rows.filter((r) => r.status === 'a_instalar').length,
       horas_contratadas: horasDeTelaPorMes(base, plano.pontos_incluidos),
       horas_sem_compensacao: horasDeTelaPorMes(base, cobertos.length),
       horas_hoje: horasDeTelaPorMes(efetivos, cobertos.length),
-      segundos_por_hora_base: base,
-      segundos_por_hora_hoje: efetivos,
       compensando: efetivos > base,
     },
     pontos: rows.map((r) => ({

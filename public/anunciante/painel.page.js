@@ -124,12 +124,16 @@ function preencherStatusBanner() {
 // fatia sorteada de forma estável, e isso é dito na tela em vez de ficar
 // implícito — senão "não marquei nada" parece "não vou aparecer em lugar
 // nenhum", que é o contrário do que acontece.
-// RN-49 — o bônus de cobertura, escrito com os números que dá pra conferir.
+// RN-49 — o bônus de cobertura, em HORAS POR MÊS (pedido do dono, 17/09/2026).
 //
-// Três linhas e não uma: o que o plano compra, o que a rede daria hoje sem a
-// regra, e o que ela dá com ela. A do meio é a que faz as outras duas
-// significarem alguma coisa — sem ela o cliente lê "você ganhou horas" sem
-// saber ganhou em relação a quê.
+// Segundos por hora é a unidade do motor, não a do cliente: ele comprou horas
+// de tela por mês, é assim que o card vende, e trocar de unidade no meio do
+// caminho obriga ele a multiplicar por 12 e por 30 pra saber se ganhou algo.
+// Aqui só aparece a unidade que ele já conhece.
+//
+// Dois números e não um: quantas horas a rede de hoje daria SEM a regra, e
+// quantas ela dá com ela. Sem o primeiro, "você ganhou N horas" não tem em
+// relação a quê — e é justamente o que dá pra conferir.
 function pintarCompensacao(c) {
   const el = document.getElementById('avisoCompensacao');
   if (!el) return;
@@ -139,15 +143,15 @@ function pintarCompensacao(c) {
   }
   const ganho = c.horas_hoje - c.horas_sem_compensacao;
   const faltam = c.contratados - c.veiculando;
+  const h = (n) => `${n} ${n === 1 ? 'hora' : 'horas'}`;
   el.innerHTML =
     `<b>A rede ainda é menor que o seu plano, e você não perde por isso.</b> ` +
     `Seu plano cobre ${c.contratados} pontos e ${c.veiculando} ${c.veiculando === 1 ? 'está' : 'estão'} veiculando hoje. ` +
     `O tempo ${faltam === 1 ? 'do ponto que falta' : `dos ${faltam} pontos que faltam`} volta pros que estão no ar: ` +
-    `em vez de ${c.segundos_por_hora_base}s, você tem <b>${c.segundos_por_hora_hoje}s de tela por hora em cada ponto</b>. ` +
-    `Isso é <b>${c.horas_hoje} horas de tela por mês</b> no lugar das ${c.horas_sem_compensacao} que a rede de hoje daria ` +
-    `— <b>${ganho} ${ganho === 1 ? 'hora' : 'horas'} a mais</b>. ` +
-    `Conforme os pontos entrarem no ar, o tempo se espalha de volta e o total contratado ` +
-    `(${c.horas_contratadas} horas/mês) fica igual.`;
+    `em vez das ${h(c.horas_sem_compensacao)} de tela por mês que a rede de hoje daria, você tem ` +
+    `<b>${h(c.horas_hoje)} de tela por mês</b> — <b>${h(ganho)} a mais</b>, sem pagar nada além do plano. ` +
+    `Conforme os pontos entrarem no ar, o tempo se espalha de volta e você chega nas ` +
+    `${h(c.horas_contratadas)} por mês que contratou.`;
   el.hidden = false;
 }
 

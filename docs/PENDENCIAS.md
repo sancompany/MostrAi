@@ -1771,3 +1771,54 @@ nome) e virou linha de apoio cinza.
 card tem a faixa **"Mais escolhido"** — `destaque_no_site` é `false` nos três
 planos mensais e `true` nos outros nove. É campo de vitrine, de ciclo, e a
 troca é um clique no `/admin` → Planos. Não mexi: é escolha comercial.
+
+#### Planos — segunda leva do dono (17/09/2026)
+
+**P7. [x] Benefícios do card enxutos.** Saiu "X min de tela a cada hora" (a
+conta de DENTRO — mesma grandeza do total do mês em outra unidade) e saiu
+"Comprovante em planilha". "Painel com cada exibição confirmada, ponto a
+ponto" virou **"Dashboard intuitivo"**. Ficaram horas/mês, pontos, duração da
+peça e criativos. O comprovante foi **desativado, não apagado** (migration
+053): o vínculo com os 12 planos continua e a exportação em CSV continua no
+painel — o que saiu foi o anúncio dela.
+
+**P8. [x] Botões.** Os três em laranja, **menos o "Mais escolhido", que é
+azul** — é o que diferencia ele de relance numa linha de três botões iguais.
+Mesmo azul da borda e da faixa do card. Os três cards já ficam da mesma
+altura (`align-items: stretch` da grade) e os botões agora descem pro pé
+(`.plan-card .btn { margin-top: auto }`): antes o Pro, que tem dois
+benefícios a mais, deixava os três "Assinar" em alturas diferentes.
+
+**P9. [x] O aviso laranja passa a ter UMA contagem só.** Ponto **ativo** é o
+que já tem cadastro na rede — em operação **mais** esperando instalação. A
+vitrine não separa os dois ("Hoje a rede tem 3 pontos"); quem separa é o
+admin. O desenho de status fica em aberto, por decisão do dono, pra quando
+ele chegar na aba do admin.
+
+*Ressalva registrada uma vez, e a decisão é dele:* a contagem única conta
+ponto que ainda não veicula. Quem lê "a rede tem 3 pontos" e assina o
+Essencial (3 pontos) pode entender que aparece em 3 telas hoje. O que segura
+isso é a RN-49 logo abaixo, no mesmo aviso: enquanto nem todos veiculam, o
+tempo se concentra, e o painel mostra o número exato. Com 1 ponto no ar o
+Essencial recebe **as 27 horas/mês contratadas inteiras** — então a promessa
+de horas é cumprida mesmo quando a de lugares ainda não é.
+
+**P10. [x] O bônus da RN-49 no painel virou HORAS POR MÊS.** Estava em
+segundos por hora, que é a unidade do motor: o cliente comprou horas por mês,
+é assim que o card vende, e trocar de unidade no meio obrigava ele a
+multiplicar por 12 e por 30 pra saber se ganhou algo. Os campos
+`segundos_por_hora_base` e `segundos_por_hora_hoje` saíram da resposta de
+`/anunciantes/me/pontos-disponiveis` — ninguém lia, e campo que ninguém lê
+dessincroniza calado.
+
+**P11. [x] Teto da RN-49 confirmado pelo dono: 600 segundos** (um sexto da
+hora por anunciante). Fica como está.
+
+*Cenário real do lançamento, conferido:* 1 ponto instalado + 2 a instalar.
+O Essencial (3 pontos) recebe 27 horas/mês — o contratado inteiro, com uma
+tela só no ar. O Pro chega a 60 das 84 e o Prime a 60 das 180, os dois no
+teto. A rede **nasce cobrindo o Essencial**, como o dono previu.
+
+**P12. [ ] Fica pro dono, na aba Planos do admin:** o comportamento dos
+planos (e o desenho de status de ponto) é conversa da revisão do `/admin`, não
+desta tela. Nada foi mexido no motor além da RN-49.
