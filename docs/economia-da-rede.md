@@ -429,3 +429,91 @@ crescimento da rede aparece em Essencial e Destaque.
    pontos não tem o que escolher e nenhum plano tem onde exibir. A feature é
    construível, mas só é verificável de ponta a ponta depois do primeiro
    ponto instalado.
+
+---
+
+# 7. A conta de preço, pedida em 17/09/2026
+
+Custos vindos da seção 5 (os mesmos que `admin/resumo` usa). Preço do
+concorrente vindo de `docs/pesquisa-voltplace.md` (Voltplace, Matão:
+**R$ 150 / R$ 300 / R$ 499**, só mensal, lido no site dela por três
+varreduras).
+
+## 7.1 O que cada conta gasta da rede
+
+Com a grade fechada em 17/09 (Máximo passou a ter teto de 10 pontos):
+
+| plano | por ponto | pontos | total | s/mês | consumo vs Essencial |
+|---|---|---|---|---|---|
+| Essencial 3x de 10s | 30 s/h | 3 | 90 s/h | 32.400 | 1,0x |
+| Destaque 6x de 15s | 90 s/h | 7 | 630 s/h | 226.800 | **7,0x** |
+| Máximo 12x de 30s | 360 s/h | 10 | 3.600 s/h | 1.296.000 | **40,0x** |
+
+## 7.2 O custo de produzir esse tempo é irrelevante
+
+Rede de 5 pontos, com ajuda de custo: **R$ 0,13 por 1000 segundos** de tela.
+Custo direto de cada plano: Essencial R$ 4,11, Destaque R$ 28,79, Máximo
+R$ 164,54 por mês. Todos com margem folgada sobre o preço de hoje.
+
+**Conclusão: custo não é o que deve formar o preço aqui.** O que forma é
+ESCASSEZ — quanto da rede aquela conta ocupa e deixa de estar à venda.
+
+## 7.3 O problema: o degrau de cima está sendo dado
+
+Preço por 1000 segundos de tela, com a grade e os preços de hoje:
+
+| plano | preço | s/mês | R$ por 1000s |
+|---|---|---|---|
+| Essencial | R$ 99 | 32.400 | **R$ 3,06** |
+| Destaque | R$ 199 | 226.800 | R$ 0,88 |
+| Máximo | R$ 399 | 1.296.000 | **R$ 0,31** |
+
+Espalhamento de **9,9x**. O cliente pequeno paga dez vezes mais caro pelo
+mesmo segundo de tela. Desconto de volume é normal em mídia — 10 a 20% por
+degrau. Dez vezes não é desconto de volume, é dar o produto.
+
+Em dinheiro, numa rede de 10 pontos:
+
+| se todos assinarem | contas que cabem | receita/mês |
+|---|---|---|
+| só Essencial | 400 | **R$ 39.600** |
+| só Destaque | 57 | R$ 11.343 |
+| só Máximo | 10 | **R$ 3.990** |
+
+**A mesma rede rende dez vezes menos se o Máximo vender bem.** Sucesso no
+degrau de cima destrói a receita.
+
+**A causa:** três eixos multiplicando. Pontos 3,3x × frequência 4x × duração
+3x = 40x de consumo, contra 4x de preço. Qualquer grade que faça os três
+crescerem juntos explode assim.
+
+## 7.4 As saídas, com as contas
+
+| | Essencial | Destaque | Máximo | espalhamento |
+|---|---|---|---|---|
+| **A. Como está** | 3p/3x/10s · R$ 99 | 7p/6x/15s · R$ 199 | 10p/12x/30s · R$ 399 | 9,9x |
+| **B. Mesmo consumo, preço justo** | R$ 99 | **R$ 589** | **R$ 2.861** | 1,4x |
+| **C. Só pontos escalam** | 3p/6x/15s · R$ 99 | 7p/6x/15s · R$ 199 | 10p/6x/15s · R$ 279 | 1,2x |
+| **E. Pontos + duração, ancorada no concorrente** | 3p/6x/15s · R$ 99 | 7p/6x/20s · **R$ 249** | 10p/6x/30s · **R$ 449** | 1,5x |
+
+- **B** conserta a matemática e quebra a venda: R$ 2.861 não é preço de Matão.
+- **C** é a mais simples de vender ("em quantos pontos você aparece"), mas
+  joga fora o que o dono queria — que a duração também fosse benefício.
+- **E** mantém duração como benefício visível (15/20/30), deixa a frequência
+  igual pra todos, fica **abaixo do concorrente nos três degraus** (99 vs
+  150, 249 vs 300, 449 vs 499) e tem espalhamento de 1,5x.
+
+Receita da rede de 10 pontos na opção E: R$ 13.167 só Essencial, R$ 10.458 só
+Destaque, R$ 8.980 só Máximo. **Perto em qualquer mix** — que é o sinal de
+uma grade saudável: a operação não é premiada nem punida por qual plano vende.
+
+**Recomendação: E.** Frequência igual pra todos não é perda — é o que impede
+os três eixos de multiplicarem. E a `pesquisa-voltplace.md` já tinha apontado
+(item 7) que vender por ponto é o que permite subir preço quando a rede
+cresce, que é exatamente o que a lógica nova faz.
+
+## 7.5 O que ainda falta o dono decidir
+
+Qual grade. Nada de código de plano sai antes disso, porque preço, duração e
+número de pontos são campos de contrato: escolher errado significa publicar
+versão nova depois, que é o retrabalho que ele disse querer evitar.

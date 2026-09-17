@@ -1414,6 +1414,26 @@ preço do parceiro.
   problema do lançamento, que o dono resolveu por um caminho melhor que o
   proposto: duração e frequência sustentam a escada enquanto os pontos se
   equivalem.
+· **Ajustes de 17/09/2026 (segunda rodada):** Máximo ganhou teto de 10
+  pontos (não é mais "todos"). O preço travado sai — o dono não pretende
+  mexer nos planos, então o mecanismo perdeu a razão de existir, e com ele
+  cai a armadilha do parceiro na troca de versão. **Atenção ao tirar:** 9
+  dos 12 planos da vitrine hoje carregam o rótulo "Preço fundador, nunca
+  muda" e o painel diz "Preço travado por N meses" — o rótulo e a frase têm
+  que sair no MESMO commit, senão o site promete o que o código não faz
+  mais. A vitrine passa a dizer "cobre até N pontos da rede", que é honesto
+  em qualquer tamanho. Os pontos passam a ter dois status só: a instalar e
+  em operação.
+· **A conta de preço foi feita** (seção 7 de `docs/economia-da-rede.md`) e
+  achou um problema grande: com pontos × frequência × duração crescendo
+  juntos, o Máximo consome **40x** o Essencial e custa **4x**. O preço por
+  1000 segundos de tela fica em R$ 3,06 no Essencial e **R$ 0,31** no
+  Máximo — espalhamento de 9,9x. Numa rede de 10 pontos, só Essencial rende
+  R$ 39.600/mês e só Máximo rende R$ 3.990: **a mesma rede rende dez vezes
+  menos se o degrau de cima vender bem.** Quatro grades alternativas estão
+  calculadas em 7.4, com a recomendação (opção E: frequência igual pra
+  todos, escada por pontos e duração, R$ 99 / 249 / 449 — abaixo do
+  concorrente nos três degraus).
 · **Continuam abertas** (seção 6.9): o preço com três eixos; o direito do
   parceiro na troca de versão (`mesmoPlano` reescreve o preço travado); a
   vitrine não poder prometer ponto que não existe (a rede tem ZERO pontos
