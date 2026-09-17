@@ -32,15 +32,6 @@ router.get('/admin/planos', async (_req, res) => {
   res.json(await planosRepo.listarTodos());
 });
 
-// Fora de 1..3 os dois leitores do limite discordam: o upload
-// (src/anunciantes/routes.js) libera 0 ou 4 ao pé da letra, enquanto a
-// playlist trava em 1..3. Barra na entrada, que é onde os dois se resolvem.
-function limiteCriativosInvalido(valor) {
-  if (valor === undefined) return false;
-  const n = Number(valor);
-  return !Number.isInteger(n) || n < 1 || n > 3;
-}
-
 function descontoInvalido(valor) {
   if (valor === undefined || valor === null || valor === '') return false;
   const n = Number(valor);
@@ -53,9 +44,6 @@ router.post('/admin/planos', async (req, res) => {
   const { id, tier, nome, valor_mensal_cheio, compromisso_meses, frequencia_hora, cobertura } = req.body;
   if (!id || !tier || !nome || !valor_mensal_cheio || !compromisso_meses || !frequencia_hora || !cobertura) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
-  }
-  if (limiteCriativosInvalido(req.body.limite_criativos)) {
-    return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
   }
   if (descontoInvalido(req.body.desconto_percentual)) {
     return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
@@ -73,6 +61,7 @@ router.post('/admin/planos', async (req, res) => {
     }
     res.status(201).json(await planosRepo.buscarPorId(plano.id));
   } catch (err) {
+    if (err.code === 'LIMITE_CRIATIVOS') return res.status(400).json({ erro: err.message });
     if (err.code === '23505') return res.status(409).json({ erro: 'já existe um plano com esse id' });
     throw err;
   }
@@ -122,9 +111,6 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
     return res.status(409).json({ erro: 'essa versão já está aposentada — parta da versão em uso' });
   }
 
-  if (limiteCriativosInvalido(req.body.limite_criativos)) {
-    return res.status(400).json({ erro: 'limite de criativos precisa ser 1, 2 ou 3' });
-  }
   if (descontoInvalido(req.body.desconto_percentual)) {
     return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
   }
@@ -152,8 +138,13 @@ router.post('/admin/planos/:id/nova-versao', async (req, res) => {
     });
   }
 
-  const novo = await planosRepo.novaVersao(req.params.id, req.body);
-  res.status(201).json(novo);
+  try {
+    const novo = await planosRepo.novaVersao(req.params.id, req.body);
+    res.status(201).json(novo);
+  } catch (err) {
+    if (err.code === 'LIMITE_CRIATIVOS') return res.status(400).json({ erro: err.message });
+    throw err;
+  }
 });
 
 // Versões aposentadas, com quantos assinantes ativos cada uma ainda tem.

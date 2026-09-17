@@ -349,6 +349,43 @@ caminho — a linha saiu do banco na migration 050 e do `obrigado.html`.
 > o que mais vende — trinta clientes seriam trinta artes na mão dele. Serviço
 > que dá trabalho de verdade tem preço; não vira brinde escrito no card.
 
+**RN-46 — Exibição confirmada tem TETO, e a virada da hora tem folga.**
+*(Itens 26 e 29, fechados em 17/09/2026.)* `POST /played` somava sem limite:
+qualquer reenvio da TV — retentativa depois de queda de rede, recarregar a
+página, player reiniciando — contava a mesma exibição de novo. Não é o plano
+entregando a mais, é o COMPROVANTE ficando falso, e o comprovante é o que se
+entrega a quem pagou. O teto é `vezes_programadas`, que é o que aquela hora
+prometeu. Reenvio depois do teto responde 200 com `contou:false`, não erro:
+400 faria o player tentar em laço e encheria o log com o funcionamento
+normal. **A folga:** a peça que começa às 13h59m50s termina depois das 14h, e
+o `played` dela chega numa hora que não é a dela. Nos primeiros 15 minutos, a
+confirmação que não couber na hora corrente é creditada à anterior — a regra
+do dono, "não pode passar de 1 hora, mas se passar alguns minutos, aí sim
+pode deixar passar". Sem ela, uma exibição REAL virava déficit, e a hora
+seguinte repunha: atraso de segundos virava exibição a mais no dia seguinte.
+*Violada:* não há caminho. *Quem vê:* o anunciante, no comprovante.
+
+**RN-47 — Tela sem rede mostra só a Mostraí.** *(Item 25, decisão do dono.)*
+O player guarda a playlist em cache pra atravessar queda curta. Passada uma
+hora sem falar com o servidor, ele para de exibir anúncio e fica só na peça
+institucional — que agora traz telefone e QR code pro site. Dois motivos que
+não aparecem olhando a TV: nenhuma exibição consegue ser confirmada, então o
+anunciante roda de graça e o comprovante dele fica menor que a entrega; e a
+lista em cache envelhece — conta vencida, peça reprovada, plano trocado — e a
+tela passa a exibir anúncio que o cliente já não paga. A peça avisa que é a
+conexão, não o aparelho, senão o dono do ponto liga achando que a TV quebrou.
+*Violada:* não há caminho. *Quem vê:* quem está na frente da TV.
+
+**RN-48 — O teto de criativos é 3, e quem recusa é a gravação do plano.**
+*(Item 27.)* O gerador já cortava a rotação em 3, mas só ele: o admin tinha
+`max="3"` no input (validação de navegador e nada mais) e nenhuma rota
+conferia. Plano criado com 5 pela API era aceito, vendido com 5 na vitrine, e
+a tela rodava 3 — sem aviso, porque o corte era silencioso no fim da linha.
+Agora o número mora em `src/lib/limites.js` e quem recusa é
+`planos-repository`, antes de gravar, com o motivo na mensagem. O corte no
+gerador fica como última defesa. *Violada:* a rota devolve 400 com o teto.
+*Quem vê:* o administrador, ao criar ou versionar um plano.
+
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
 `America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro

@@ -103,6 +103,34 @@ async function prepararArquivos(lista) {
   limparCacheAntigo();
 }
 
+// TELA SEM REDE MOSTRA SÓ A MOSTRAÍ (decisão do dono, 17/09/2026 — item 25).
+//
+// O cache existe pra atravessar queda curta: roteador reiniciando, oscilação
+// de minutos. Passado esse ponto, insistir no cache é pior do que parar, por
+// dois motivos que não aparecem olhando a TV: (1) nenhuma exibição consegue
+// ser confirmada, então o anunciante roda de graça e o comprovante dele fica
+// menor do que a entrega real; (2) a lista em cache envelhece — conta vencida,
+// peça reprovada, plano trocado — e a tela passa a exibir anúncio que o
+// cliente já não paga.
+//
+// Uma hora é o limite: cobre queda de energia e troca de roteador, e é curto
+// o bastante pra não passar uma tarde inteira exibindo o que não conta.
+const TOLERANCIA_OFFLINE_MS = 60 * 60 * 1000;
+let ultimoContatoOk = Date.now();
+
+function marcarOffline() {
+  const faz = Date.now() - ultimoContatoOk;
+  const offline = faz > TOLERANCIA_OFFLINE_MS;
+  document.body.classList.toggle('offline', offline);
+  if (offline) {
+    // `sem-playlist` é o que faz o cartão institucional aparecer. A playlist
+    // em memória não é apagada: quando a rede volta, a tela retoma sem
+    // esperar o próximo ciclo de 15 minutos.
+    document.body.classList.add('sem-playlist');
+  }
+  return offline;
+}
+
 async function atualizarPlaylist() {
   try {
     const r = await fetch(`${API_BASE_URL}/playlist/${dispositivoId}`, { headers: cabecalhos });
@@ -122,17 +150,23 @@ async function atualizarPlaylist() {
       return;
     }
     if (!r.ok) {
-      log('servidor indisponível, tocando playlist em cache');
+      log(
+        marcarOffline()
+          ? 'servidor fora há mais de uma hora — só a peça da Mostraí'
+          : 'servidor indisponível, tocando playlist em cache',
+      );
       return;
     }
     const nova = await r.json();
+    ultimoContatoOk = Date.now();
+    document.body.classList.remove('offline');
     playlist = nova;
     salvarCache(nova);
     document.body.classList.toggle('sem-playlist', !nova.length);
     log(nova.length ? `playlist ok (${nova.length} itens)` : 'sem anúncios programados agora');
     prepararArquivos(nova);
   } catch {
-    log('offline, tocando playlist em cache');
+    log(marcarOffline() ? 'sem rede há mais de uma hora — só a peça da Mostraí' : 'offline, tocando playlist em cache');
   }
 }
 
@@ -141,7 +175,9 @@ async function tocarProximo() {
     setTimeout(tocarProximo, 2000);
     return;
   }
-  if (!playlist.length) {
+  // Offline por tempo demais: a tela fica só na peça da Mostraí, mesmo com
+  // playlist em memória. Segue checando, e volta sozinha quando a rede voltar.
+  if (!playlist.length || marcarOffline()) {
     document.body.classList.add('sem-playlist');
     setTimeout(tocarProximo, 5000);
     return;

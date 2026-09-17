@@ -17,9 +17,17 @@ const dispositivosRepo = require('../dispositivos/repository');
 router.post('/player/:dispositivoId/played', exigirAparelho, async (req, res) => {
   const { anuncianteId } = req.body;
   if (!anuncianteId) return res.status(400).json({ erro: 'anuncianteId obrigatório' });
-  const ok = await gerador.confirmarExibicao(req.dispositivo.id, anuncianteId, new Date());
-  if (!ok) return res.status(400).json({ erro: 'anunciante não está programado nesta tela nesta hora' });
-  res.json({ ok: true });
+  const r = await gerador.confirmarExibicao(req.dispositivo.id, anuncianteId, new Date());
+  if (r.ok) return res.json({ ok: true, janela: r.janela });
+
+  // `ja_completo` NÃO é erro: é a própria TV reenviando o que já contou
+  // (retentativa depois de queda de rede, recarregar a página, player
+  // reiniciando). Responder 400 aqui faria o player tentar de novo em laço, e
+  // encheria o log de erro com o funcionamento normal. 200 com `contou:false`
+  // diz a verdade sem pedir retentativa.
+  if (r.motivo === 'ja_completo') return res.json({ ok: true, contou: false, motivo: 'ja_completo' });
+
+  return res.status(400).json({ erro: 'anunciante não está programado nesta tela nesta hora' });
 });
 
 router.post('/player/:dispositivoId/heartbeat', exigirAparelho, async (req, res) => {

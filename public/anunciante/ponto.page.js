@@ -201,12 +201,81 @@ document.getElementById('modalTela').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) e.currentTarget.close();
 });
 
+// ---------------------------------------------------------------------------
+// Troca de modalidade do comodato — mão única, de propósito
+//
+// Quem cede a parede escolhe entre receber R$ 50 por mês ou trocar esses
+// R$ 50 pelo plano Essencial inteiro. Até 17/09/2026 a escolha só existia na
+// candidatura: depois de instalado, trocar era ato de admin no banco, e a
+// recusa da rota de assinar mandava "fale com a gente" — que é remendo, não
+// caminho.
+//
+// O botão só faz o sentido BARATO: abrir mão do dinheiro. A Mostraí para de
+// pagar e ele ganha o dobro de tela, então não precisa pedir licença a
+// ninguém. Voltar a receber é despesa nova e recorrente, entra no caixa do
+// mês, e continua saindo pelo admin — sem isso dava pra pingar entre as
+// modalidades e sacar a ajuda de custo só nos meses em que ela valesse mais.
+// ---------------------------------------------------------------------------
+async function carregarTrocaComodato(pontos) {
+  const el = document.getElementById('trocaComodato');
+  if (!el) return;
+  const recebendo = (pontos || []).filter((p) => Number(p.valor_pago_mensal || 0) > 0);
+  if (!recebendo.length) {
+    el.hidden = true;
+    return;
+  }
+  const total = recebendo.reduce((soma, p) => soma + Number(p.valor_pago_mensal || 0), 0);
+  el.hidden = false;
+  el.innerHTML = `<div class="card wide u-mt-16">
+    <h4 class="u-m-0">Quer trocar a ajuda de custo por tela?</h4>
+    <p class="form-hint u-mt-8">Hoje você recebe <b>${fmtBRL(total)} por mês</b>${recebendo.length > 1 ? ` (${recebendo.length} endereços)` : ''} e tem o plano básico junto.
+      Abrindo mão desse valor, você passa a ter o <b>plano Essencial inteiro</b> — o dobro de tempo de tela, sem pagar nada —
+      e ainda ganha ${fmtBRL(50)} de abatimento por mês se um dia quiser assinar o Pro ou o Prime.</p>
+    <p class="form-hint u-mt-8"><b>A troca é só num sentido aqui:</b> para voltar a receber a ajuda de custo, fale com a gente.</p>
+    <button type="button" class="btn primary u-mt-12" id="btnTrocarPorTela">Trocar os ${fmtBRL(total)} por tela</button>
+    <p class="form-msg u-mt-8" id="msgTrocaComodato" role="status"></p>
+  </div>`;
+
+  document.getElementById('btnTrocarPorTela').addEventListener('click', async (ev) => {
+    // Confirmação explícita: é dinheiro que ele deixa de receber, e o caminho
+    // de volta não está na mão dele.
+    if (
+      !window.confirm(
+        `Você deixa de receber ${fmtBRL(total)} por mês e passa a ter o plano Essencial inteiro, de graça. Para voltar a receber, vai precisar falar com a gente. Confirmar?`,
+      )
+    )
+      return;
+    const msg = document.getElementById('msgTrocaComodato');
+    ev.target.disabled = true;
+    msg.textContent = 'trocando...';
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/comodato/trocar-por-tela`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(corpo.erro || 'não deu pra trocar agora');
+      msg.className = 'form-msg ok u-mt-8';
+      msg.textContent = 'Pronto. Seu plano agora é o Essencial, e a ajuda de custo deixa de ser paga.';
+      // Recarrega tudo: plano, extrato e a própria oferta (que some).
+      CONTA = await (await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' })).json();
+      carregarPontos();
+      carregarExtrato();
+    } catch (err) {
+      msg.className = 'form-msg err u-mt-8';
+      msg.textContent = err.message;
+      ev.target.disabled = false;
+    }
+  });
+}
+
 async function carregarPontos() {
   const el = document.getElementById('pontosLista');
   try {
     const pontos = await (
       await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/pontos`, { credentials: 'include' })
     ).json();
+    carregarTrocaComodato(pontos);
     if (!pontos.length) {
       el.innerHTML = '<p class="empty-state">Nenhum endereço cadastrado ainda.</p>';
       return;

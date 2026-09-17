@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 
 // O admin digita preço cheio + desconto; o valor cobrado de verdade sai
 // daqui, sempre — nunca é digitado direto (pedido do dono, 16/09/2026).
@@ -48,7 +49,24 @@ const CAMPOS_CRIACAO = [
 // Criar um plano novo (id novo) em vez de editar um existente é o jeito de
 // mudar preço pra clientes futuros sem mexer no que quem já assinou está
 // pagando (ver migration 014).
+// A guarda fica AQUI e não nas rotas: `criar` e `novaVersao` são os dois
+// únicos caminhos que gravam um plano, e uma guarda por caminho é uma guarda
+// que a terceira rota vai esquecer. Erro nomeado, com o teto na mensagem —
+// "valor inválido" manda o dono adivinhar qual.
+function conferirLimiteCriativos(dados) {
+  if (dados.limite_criativos == null) return;
+  const n = Number(dados.limite_criativos);
+  if (!Number.isInteger(n) || n < 1 || n > CRIATIVOS_POR_CONTA) {
+    const erro = new Error(
+      `limite de criativos tem que ser um número inteiro de 1 a ${CRIATIVOS_POR_CONTA} — a rotação da tela não roda mais que isso`,
+    );
+    erro.code = 'LIMITE_CRIATIVOS';
+    throw erro;
+  }
+}
+
 async function criar(dados) {
+  conferirLimiteCriativos(dados);
   const preparado = { ...dados };
   if (preparado.valor_mensal_cheio != null) {
     preparado.valor_mensal = calcularValorMensal(preparado.valor_mensal_cheio, preparado.desconto_percentual);
@@ -213,6 +231,7 @@ async function proximoId(idAtual) {
 // quatro planos ativos no ciclo não escapa da transação — leitura de fora vê
 // o estado commitado, nunca o de dentro.
 async function novaVersao(idAtual, mudancas) {
+  conferirLimiteCriativos(mudancas);
   const atual = await buscarPorId(idAtual);
   if (!atual) return null;
 

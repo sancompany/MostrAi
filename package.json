@@ -34,7 +34,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "qrcode": "^1.5.4"
   },
   "engines": {
     "node": ">=22 <23"

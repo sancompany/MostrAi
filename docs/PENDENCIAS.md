@@ -616,7 +616,7 @@ um vira uma linha nova abaixo assim que resolvido.
 
 ### Decisões abertas com o dono (17/09/2026, depois do merge da grade)
 
-**F-D1 [ ] Benefício exclusivo do Máximo.** O relatório mensal por e-mail saiu
+**F-D1 [x] Benefício exclusivo do Máximo.** *(FECHADO em 17/09/2026: "esqueça esse benefício". O Prime fica com "Tudo do Pro" mais os números derivados, que é cartão completo.)* O relatório mensal por e-mail saiu
 na migration 048 (pedido do dono: "não aumente meu trabalho sobre esse tipo de
 coisa"). O Máximo ficou só com "Tudo do Destaque" mais os números derivados —
 180h de tela/mês, 10 pontos, peça de 30s, 3 criativos. É cartão completo, mas
@@ -649,7 +649,7 @@ transação que cria o ponto, o crédito de R$ 50 abatendo a mensalidade, a
 trava que impede quem recebe a ajuda de custo de assinar catálogo, e a
 garantia de que conta que já pagava não perde o plano ao virar ponto.
 **Falta, e está aberto:**
-· **F-D3.1 [x]** — a troca de modalidade existe, com mão única de propósito:
+· **F-D3.1/3.2 [x]** — a troca de modalidade existe, com mão única de propósito:
   trocar a ajuda de custo por tela o dono do ponto faz sozinho; voltar a
   receber só pelo admin. Construído e provado em 17/09/2026 (RN-43).
 · **F-D3.2** — a página pública do comodato e o painel do dono do ponto ainda
@@ -657,9 +657,8 @@ garantia de que conta que já pagava não perde o plano ao virar ponto.
   no banco mas ninguém conferiu no navegador.
 · **F-D3.3 [x]** — o dono do ponto aparece na tela dele. Decidido e
   construído em 17/09/2026 (RN-44), fechando o item 28 junto.
-· **F-D3.4** — crédito não acumula por ponto (dono de três pontos tem R$ 50,
-  não R$ 150). Escolha conservadora e reversível; nenhum dos três pontos
-  previstos tem dono repetido, então não morde hoje.
+· **F-D3.4 [x]** — confirmado pelo dono em 17/09/2026: o crédito NÃO acumula
+  por ponto. Dono de três pontos tem R$ 50, não R$ 150.
 
 ### Itens reportados
 
@@ -1354,7 +1353,7 @@ cabia e virava déficit que a hora seguinte nunca quitava (medido: déficit
 oscilando em 1 a 4 por hora, para sempre). Agora o orçamento é 3600s e o
 déficit fica em zero nas mesmas condições.
 
-**25. [ ] Exibição tocada offline nunca é contada.** *(Mesma varredura.)* O
+**25. [x] Exibição tocada offline nunca é contada.** *(FECHADO em 17/09/2026 pela decisão do dono: passada uma hora sem rede, a tela para de exibir anúncio e fica só na peça da Mostraí, agora com telefone e QR code. Virou a RN-47.)* *(Mesma varredura.)* O
 player toca do cache quando a internet cai — está escrito na tela, "offline,
 tocando playlist em cache" — e o `POST /played` de cada exibição é
 `fire-and-forget` com `.catch(() => {})`, sem fila e sem retentativa. O
@@ -1363,7 +1362,7 @@ Conserto: guardar as confirmações não entregues no `localStorage` e enviá-la
 na volta da conexão, com a hora em que aconteceram. Pequeno e isolado, mas
 mexe na contagem que fatura — por isso não entrou junto do conserto de fuso.
 
-**26. [ ] Confirmação de exibição não tem teto.** *(Mesma varredura.)*
+**26. [x] Confirmação de exibição não tem teto.** *(FECHADO em 17/09/2026, tratado como bug a pedido do dono: o teto é `vezes_programadas`, e reenvio da TV responde 200 com `contou:false` em vez de erro. Virou a RN-46.)* *(Mesma varredura.)*
 `confirmarExibicao` faz `vezes_confirmadas = vezes_confirmadas + 1` sem
 comparar com `vezes_programadas`. A rota diz, com razão, que uma chave válida
 não pode inflar quem não estava na playlist — mas pode inflar sem limite quem
@@ -1371,7 +1370,7 @@ estava. Hoje isso é até necessário, porque o laço do player confirma muito
 mais do que programou (item 23); depois que o 23 for decidido, isto vira uma
 trava de uma linha. **Não mexer antes do 23.**
 
-**27. [ ] `limiteDeCriativos` trava em 3 e o upload não sabe disso.**
+**27. [x] `limiteDeCriativos` trava em 3 e o upload não sabe disso.** *(FECHADO em 17/09/2026: teto duro de 3, decidido pelo dono, recusado na gravação do plano com o motivo na mensagem. Virou a RN-48.)*
 *(Mesma varredura.)* `src/playlist/gerador.js` limita a rotação a 3 criativos
 por conta, como trava de segurança contra um zero a mais no admin. Mas o
 upload (`POST /anunciantes/:id/criativos`) aceita o que `limite_criativos`
@@ -1406,8 +1405,16 @@ aparecer duas vezes), mas não está escrito em regra nenhuma, e o passo 9 do
 `docs/funcional.md` promete o contrário: "o vídeo entra na playlist de todas
 as telas ativas".
 
-**29. [ ] DECISÃO DO DONO — a dívida de superlotação não é registrada, e sem
-ela a folga de 15 minutos não tem o que saldar.** *(Achado em 16/09/2026,
+**29. [x] DECISÃO DO DONO — a dívida de superlotação não é registrada, e sem
+ela a folga de 15 minutos não tem o que saldar.**
+> **FECHADO em 17/09/2026, e o esclarecimento do dono mudou o que a regra é.**
+> A folga nunca foi estoque reservado nem dívida a saldar: é tolerância de
+> RELÓGIO. "Não pode passar de 1 hora, mas digamos que passe alguns minutos,
+> aí sim pode deixar passar" — ou seja, a peça que começou dentro da hora e
+> terminou depois dela. O `played` dessa peça chega numa hora que não é a
+> dela, e agora é creditado à hora anterior (RN-46). Não existe dívida a
+> registrar porque não existe dívida: existe atraso de segundos. O texto
+> abaixo é o registro da leitura ANTERIOR, que estava errada. *(Achado em 16/09/2026,
 quando o dono lembrou que "caso aconteça superlotamento de anúncios existe a
 regra de 15 minutos de flexibilidade".)*
 · **A regra existe e está bem desenhada** — `docs/economia-da-rede.md` seção

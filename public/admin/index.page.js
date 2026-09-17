@@ -1847,7 +1847,9 @@ async function renderPlanos(el) {
       <form class="card u-mt-12 u-mw-520" id="formNovoPlano">
         <div><label>ID único (ex.: destaque-black-friday)</label><input class="mini" name="id" required></div>
         <div><label>Tier</label><select class="mini" name="tier" required>
-          <option value="essencial">Essencial</option><option value="destaque">Destaque</option><option value="maximo">Máximo</option>
+          <!-- rótulo = nome comercial de hoje; value = tier, que é chave de
+               regra no código e não muda quando o nome muda. -->
+          <option value="essencial">Essencial</option><option value="destaque">Pro</option><option value="maximo">Prime</option>
         </select></div>
         <div><label>Nome exibido</label><input class="mini" name="nome" required></div>
         <div class="field-row">

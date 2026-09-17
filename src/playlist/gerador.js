@@ -8,6 +8,7 @@ const {
   DURACAO_INSTITUCIONAL,
 } = require('../lib/pacing');
 const eventos = require('../lib/eventos');
+const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
 // recebe do ponto a categoria (bloqueio de concorrente) e a cota de
@@ -16,12 +17,16 @@ const eventos = require('../lib/eventos');
 // Quantos criativos da conta entram na rotação.
 //
 // Conta própria não tem teto: o inventário é da casa, e limitar a si mesmo não
-// protege ninguém. Quem paga plano fica no que o plano vende, e nunca acima de
-// 3 — o teto duro existe porque `limite_criativos` é editável no admin e um
-// zero a mais ali encheria a playlist de uma conta só.
+// protege ninguém. Quem paga plano fica no que o plano vende, e nunca acima do
+// teto de `src/lib/limites.js`.
+//
+// Este corte continua aqui como ÚLTIMA defesa (plano antigo, ou alguém
+// escrevendo no banco à mão), mas desde 17/09/2026 já não é a única: quem
+// recusa é o repositório de planos, na gravação, com o motivo na mensagem. O
+// corte silencioso no fim da linha vendia 5 e rodava 3 sem avisar ninguém.
 function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
   if (contaPropria) return disponiveis;
-  return Math.min(3, Math.max(1, Number(limitePlano) || 1));
+  return Math.min(CRIATIVOS_POR_CONTA, Math.max(1, Number(limitePlano) || 1));
 }
 
 // "Elegível pra esta tela" é: conta ativa + criativo aprovado + dentro da
@@ -281,15 +286,63 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
 // Só confirma se havia programação pra esse anunciante nesta tela nesta
 // hora — uma chave válida não pode inflar quem não estava na playlist.
-async function confirmarExibicao(dispositivoId, anuncianteId, hora) {
-  const horaAtual = new Date(hora);
+// A FOLGA DA VIRADA DA HORA (regra do dono, esclarecida em 17/09/2026): "não
+// pode passar de 1 hora, mas digamos que passe alguns minutos, aí sim pode
+// deixar passar". A hora é um orçamento fechado de 3600s, mas a peça que
+// começou às 13h59m50s termina depois das 14h — e o `played` dela chega numa
+// hora que não é a dela. Sem a folga, essa exibição REAL era recusada e
+// entrava como déficit, que a hora seguinte tentava repor: um atraso de
+// segundos virava exibição a mais no dia seguinte.
+const FOLGA_VIRADA_MIN = 15;
+
+// Confirma uma exibição, com TETO. Era `vezes_confirmadas + 1` sem limite
+// nenhum, e por isso qualquer reenvio da TV (queda de rede e retentativa,
+// recarregar a página, player travar e reiniciar) contava a mesma exibição
+// duas vezes. Não é o plano entregando a mais: é o COMPROVANTE ficando falso
+// — e o comprovante é o que se entrega a quem pagou. O teto é
+// `vezes_programadas`, que é exatamente o que aquela hora prometeu.
+//
+// Devolve `{ ok, motivo }` em vez de booleano porque os dois "não" são
+// diferentes e o player precisa distinguir: `nao_programado` é pedido
+// inválido (chave certa tentando confirmar anunciante que não está na hora);
+// `ja_completo` é a própria TV reenviando, que é normal e não é erro.
+async function confirmarExibicao(dispositivoId, anuncianteId, momento) {
+  const horaAtual = new Date(momento);
   horaAtual.setMinutes(0, 0, 0);
-  const { rowCount } = await pool.query(
-    `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
-     WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3`,
-    [anuncianteId, dispositivoId, horaAtual],
-  );
-  return rowCount > 0;
+
+  const creditar = async (janela) => {
+    const { rowCount } = await pool.query(
+      `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
+        WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3
+          AND vezes_confirmadas < vezes_programadas`,
+      [anuncianteId, dispositivoId, janela],
+    );
+    return rowCount > 0;
+  };
+
+  const existe = async (janela) => {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM exibicoes_contador
+        WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3`,
+      [anuncianteId, dispositivoId, janela],
+    );
+    return rows.length > 0;
+  };
+
+  // Hora corrente primeiro: é o caso normal, e a folga é exceção.
+  if (await creditar(horaAtual)) return { ok: true, janela: 'atual' };
+
+  // Sobrou da hora anterior? Só nos primeiros minutos, e só se aquela hora
+  // ainda tiver o que confirmar.
+  const minutos = new Date(momento).getMinutes();
+  if (minutos < FOLGA_VIRADA_MIN) {
+    const anterior = new Date(horaAtual);
+    anterior.setHours(anterior.getHours() - 1);
+    if (await creditar(anterior)) return { ok: true, janela: 'anterior' };
+  }
+
+  if (await existe(horaAtual)) return { ok: false, motivo: 'ja_completo' };
+  return { ok: false, motivo: 'nao_programado' };
 }
 
-module.exports = { gerarPlaylistDaHora, confirmarExibicao, limiteDeCriativos };
+module.exports = { gerarPlaylistDaHora, confirmarExibicao, limiteDeCriativos, FOLGA_VIRADA_MIN };
