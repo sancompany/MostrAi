@@ -597,3 +597,85 @@ segundos). O gerador já foi reescrito em 16/09 para orçar a hora em segundos
 `frequência × duração` para chegar aos segundos. Passa a ler os segundos
 direto, e o número de inserções sai da divisão pela duração real da peça.
 É menos código do que existe hoje, não mais.
+
+---
+
+# 9. Os benefícios de cada plano — 17/09/2026
+
+Grade aprovada pelo dono. **Cada linha abaixo traz a origem**, porque
+benefício sem código atrás é a mentira mais cara que um site de venda pode
+contar — e já achamos três dessas nesta semana.
+
+Origem: **[código]** o sistema cumpre sozinho · **[operação]** o dono cumpre
+à mão, e ninguém confere · **[a construir]** faz parte do que sai junto com
+a grade nova.
+
+## 9.1 Essencial — R$ 99/mês
+
+| benefício | origem |
+|---|---|
+| **27 horas de tela por mês** — 1,5 minuto a cada hora, em cada ponto | [a construir] `segundos_por_hora` |
+| **Em 3 pontos da rede**, escolhidos por você | [a construir] cobertura + escolha |
+| **1 criativo ativo** por vez, trocável quantas vezes quiser | [código] `limite_criativos` |
+| Peça de **até 15 segundos** | [a construir] `duracao_maxima_segundos` |
+| **Painel com cada exibição confirmada**, ponto a ponto | [código] `exibicoes_contador` |
+| **Comprovante em planilha** pra baixar quando quiser | [código] RN-19, `exibicoes.csv` |
+| **Peça simples incluída** — se você não tem arte, a gente faz | [operação] já é feito hoje |
+
+## 9.2 Destaque — R$ 249/mês · *tudo do Essencial, e mais:*
+
+| benefício | origem |
+|---|---|
+| **84 horas de tela por mês** — mais que o triplo do Essencial | [a construir] |
+| **Em 7 pontos**, escolhidos por você | [a construir] |
+| **2 criativos ativos**, revezando entre si | [código] |
+| Peça de **até 20 segundos** | [a construir] |
+| **Atendimento prioritário no WhatsApp** | [operação] |
+| **Sua peça entra na frente na fila de aprovação** | [operação] |
+
+## 9.3 Máximo — R$ 449/mês · *tudo do Destaque, e mais:*
+
+| benefício | origem |
+|---|---|
+| **180 horas de tela por mês** — o dobro do Destaque | [a construir] |
+| **Em 10 pontos**, a maior cobertura da rede | [a construir] |
+| **3 criativos ativos**, revezando entre si | [código] |
+| Peça de **até 30 segundos** — tempo de contar uma história | [a construir] |
+| **Uma tela da Mostraí no seu comércio** ao completar 12 meses | [código] `ponto_apos_meses`, hoje desligado |
+| **Relatório do mês por e-mail**, sem abrir o painel | [operação] |
+
+## 9.4 O que SAI, e por quê
+
+- **"Prioridade em horário de pico"** (benefício id 10, hoje no card do
+  Máximo em produção): **não existe uma linha de código de prioridade de
+  horário em lugar nenhum do gerador.** Já estava marcado como promessa vazia
+  no `docs/catalogo-beneficios.md` e continua no ar. Sai.
+- **"O dobro de frequência de exibição"** e **"Melhor custo por exibição"**:
+  viram redundância — o número de horas já diz isso, e melhor.
+- **"Cobertura máxima da rede"**: substituído por "em 10 pontos", que é o
+  mesmo fato com número.
+- **"Roda pelos pontos ativos da rede"**: substituído por "em 3 pontos,
+  escolhidos por você", que é mais forte e mais verdadeiro.
+
+## 9.5 Duas dívidas que este desenho cria
+
+1. **Os dois [operação] do Destaque e o do Máximo são promessas que o dono
+   cumpre à mão.** Nada no sistema confere, e o cliente não tem como
+   verificar. É a mesma categoria da "prioridade em horário de pico" que
+   estamos tirando — a diferença é que estas se resolvem por atendimento, não
+   por software. Se o dono não quiser dever nada, elas saem e os dois planos
+   ficam só com o que o código garante.
+2. **`ponto_apos_meses` está desligado em todos os planos hoje.** Pra "uma
+   tela no seu comércio ao completar 12 meses" ser verdade, o campo precisa
+   ser preenchido com 12 no Máximo. É um número no admin, não é código.
+
+## 9.6 Ordem de entrada, que não é negociável
+
+Os textos acima **não podem ir pro banco antes do motor**. Se forem, a
+vitrine promete 27 horas de tela enquanto o gerador ainda entrega "3x por
+hora", e "em 3 pontos, escolhidos por você" enquanto todo plano cobre a rede
+inteira. É exatamente o furo que já corrigimos três vezes.
+
+A ordem é: motor (segundos por hora, cobertura por pontos, escolha do
+contratante, duração por plano) e benefícios **na mesma publicação**, como
+versão nova dos planos (RN-27).
