@@ -76,9 +76,23 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
     // NÃO sobrescreve plano que a conta já tenha: o dono de ponto que já era
     // cliente pagante continua no plano que paga. Dar o plano de comodato por
     // cima apagaria uma assinatura ativa.
+    // Entra como CORTESIA, e sem `data_expiracao`: ele não paga nada por
+    // nenhuma das duas opções, e o plano vale enquanto o comodato valer.
+    // Sem a marca de cortesia, a receita e a margem do admin contariam um
+    // Essencial de R$ 99 que ninguém pagou. Sem `data_expiracao` nula, ele
+    // receberia o e-mail de "sua cobertura está acabando" (RN-36) por uma
+    // cobertura que não tem prazo — e o gerador já trata nulo como válido pra
+    // sempre.
+    //
+    // `aplicarCicloPago` limpa cortesia e motivo quando ele decide pagar o
+    // Destaque ou o Máximo, então o plano pago não fica invisível na margem.
     if (opcao?.plano_incluido_id && !conta.plano_id) {
       await db.query(
-        `UPDATE anunciantes SET plano_id = $2, data_inicio_cobertura = COALESCE(data_inicio_cobertura, now())
+        `UPDATE anunciantes
+            SET plano_id = $2,
+                data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
+                plano_cortesia = true,
+                cortesia_motivo = 'comodato'
           WHERE id = $1 AND plano_id IS NULL`,
         [conta.id, opcao.plano_incluido_id],
       );

@@ -152,8 +152,26 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const horaAnterior = new Date(horaAtual);
   horaAnterior.setHours(horaAnterior.getHours() - 1);
 
+  // O DONO DO PONTO PASSA NA PRÓPRIA TELA (decisão do dono, 17/09/2026 —
+  // fecha o item 28 de docs/PENDENCIAS.md).
+  //
+  // Ele era excluído da rotação paga da tela dele, e isso fazia sentido
+  // enquanto a contrapartida do comodato era a COTA de autoanúncio: ele já
+  // entrava por ali, e entrar duas vezes era aparecer em dobro. A cota acabou
+  // na migration 049 — agora a contrapartida é um plano de verdade, e a
+  // exclusão passou a fazer o contrário do que ela protegia: ele escolhia o
+  // próprio ponto em `PUT /anunciantes/me/pontos`, a rota aceitava, e o
+  // gerador tirava ele de lá. Gastava uma vaga de cobertura num lugar onde
+  // nunca ia aparecer, sem aviso nenhum.
+  //
+  // E é justamente a tela DELE que vende o comodato: os clientes dele passam
+  // ali. A exclusão só continua valendo enquanto a cota existir naquela tela,
+  // que é o único caso em que a dobra é real.
+  const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
+  const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
+
   const [todos, deficits, doDono, pontosNoAr] = await Promise.all([
-    anunciantesElegiveis(dispositivo.categoria_id, dispositivo.dono_conta_id),
+    anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
     pontosEmOperacao(),
@@ -195,8 +213,9 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   });
 
   // Dono do ponto entra com a fatia da cota que cabe a esta tela. Não conta
-  // como anunciante pagante nem gera contador — é permuta, não venda.
-  const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
+  // como anunciante pagante nem gera contador — é permuta, não venda. Zerada
+  // nas duas opções de comodato desde a 049, então na prática este bloco só
+  // roda se alguém repuser a cota à mão no admin.
   if (doDono.length && cotaDaTela > 0) {
     porId.dono = { criativos: doDono };
     entrada.push({ id: 'dono', frequenciaBase: cotaDaTela, deficit: 0, duracaoSegundos: duracaoMedia(doDono) });

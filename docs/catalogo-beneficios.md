@@ -82,16 +82,11 @@ sobre algo que se resolve por fora do software (atendimento, produção,
 operação):
 
 - Atendimento prioritário por WhatsApp
-- Produção de peça simples incluída no plano (o que já é feito hoje
-  informalmente, ver `docs/funcional.md` e o e-mail de confirmação de
-  pagamento — mas nunca virou texto de benefício)
-- Relatório mensal em PDF enviado por e-mail (se for feito à mão pelo
-  suporte; se for automático, vira código — ver seção 2)
-- Banner "parceiro fundador" ou selo na página institucional
-- Prioridade na fila de aprovação de criativo (sem SLA numérico — só
-  "primeiro a entrar, primeiro a sair" mais rápido, sem instrumentar nada)
-- Desconto em setup/instalação pra quem também é ponto
-- Brinde ou cortesia de boas-vindas
+- ~~Produção de peça simples incluída no plano~~ — **saiu em 17/09/2026**
+  (migration 050). O dono esclareceu que nunca foi benefício de plano:
+  produção de peça é **serviço à parte**, negociado no WhatsApp, com preço
+  combinado caso a caso. Estava no Essencial, que é o de maior volume — era o
+  mesmo problema do relatório mensal (048), no pior lugar possível.
 
 ## O que fazer com isso
 

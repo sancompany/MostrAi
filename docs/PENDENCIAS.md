@@ -635,14 +635,10 @@ sem linha própria. **Três caminhos, e nenhum é do código escolher:**
   nunca morde porque a rede está vazia. Custa um peso por tier na função de
   corte e uma emenda na RN-30.
 
-**F-D2 [ ] "Peça simples incluída: se você não tem arte, a gente faz" é o mesmo
-problema do relatório, e está no plano de MAIOR volume.** Pela regra que o
-dono deu (pode prometer o que não dá trabalho; não pode prometer o que vira
-tarefa dele), esta linha é a mais cara da vitrine: está no Essencial, que é o
-de R$ 99 e o que mais vende, e cada cliente novo pode cobrar uma arte. Trinta
-clientes no Essencial são trinta peças para fazer à mão. Ou vira "uma peça,
-uma vez, na entrada" (escopo fechado), ou sai. Não foi mexida porque o dono
-não pediu — mas ele pediu a REGRA, e a regra pega aqui.
+**F-D2 [x] "Peça simples incluída" saiu dos planos.** *(FECHADO em 17/09/2026:
+o dono esclareceu que nunca foi benefício — produção de peça é serviço à
+parte, negociado no WhatsApp, com preço caso a caso. Virou a RN-45; saiu do
+banco na migration 050 e do `obrigado.html`.)*
 
 **F-D3 [~] Planos de comodato — CONSTRUÍDO o motor (migration 049), falta a
 troca de opção e as telas.** O dono fechou o desenho em 17/09/2026 e ele está
@@ -660,15 +656,8 @@ garantia de que conta que já pagava não perde o plano ao virar ponto.
 · **F-D3.2** — a página pública do comodato e o painel do dono do ponto ainda
   mostram os textos antigos ("o triplo de vezes na tela"), que a 049 corrigiu
   no banco mas ninguém conferiu no navegador.
-· **F-D3.3 — DECISÃO DO DONO, e ela bloqueia o sentido do modelo:** o dono do
-  ponto aparece na TELA DELE? Hoje `anunciantesElegiveis` exclui
-  `dono_conta_id` da rotação paga daquele ponto (item 28). Isso existia porque
-  ele entrava pela cota de autoanúncio e apareceria duas vezes. A cota acabou
-  na 049 — agora a presença dele vem de um plano de verdade, e a exclusão
-  passou a queimar cobertura que ele ganhou: ele escolhe o próprio ponto, o
-  gerador tira ele de lá, e ninguém avisa. O modelo só faz sentido se ele
-  aparecer onde os clientes dele passam. Mudar isso muda a playlist de todo
-  mundo, então é decisão do dono, não do código.
+· **F-D3.3 [x]** — o dono do ponto aparece na tela dele. Decidido e
+  construído em 17/09/2026 (RN-44), fechando o item 28 junto.
 · **F-D3.4** — crédito não acumula por ponto (dono de três pontos tem R$ 50,
   não R$ 150). Escolha conservadora e reversível; nenhum dos três pontos
   previstos tem dono repetido, então não morde hoje.
@@ -1386,7 +1375,8 @@ avisa que acima de 3 não roda.
 > conserto barato é `limiteDeCriativos` parar de ter o 3 escrito na mão e o
 > admin recusar plano acima do que o gerador roda.
 
-**28. [ ] Anunciante que também é dono de ponto não roda na própria tela.**
+**28. [x] Anunciante que também é dono de ponto não roda na própria tela.**
+*(FECHADO em 17/09/2026 pela decisão do dono: "sim o dono do ponto passa na própria tela". Virou a RN-44. A exclusão só sobrevive enquanto a tela tiver cota de autoanúncio > 0, que é o único caso de aparecer em dobro.)*
 > **Ficou PIOR com a grade nova (17/09/2026), e continua aberto.** Agora ele
 > pode ESCOLHER o próprio ponto em `PUT /anunciantes/me/pontos` — a rota
 > aceita, porque só confere limite do plano e status `em_operacao`. Gasta uma

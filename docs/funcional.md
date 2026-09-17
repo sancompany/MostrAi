@@ -310,6 +310,33 @@ dono do ponto, no painel e na fatura.
 > melhor das hipóteses — trocar R$ 50 por aquilo era um negócio 4,5x contra o
 > comerciante. O plano incluído põe ele na REDE, e vale o que os R$ 50 valem.
 
+**RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
+17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto
+como qualquer anunciante que escolheu aquele ponto, pelo plano que o comodato
+lhe deu. A exclusão antiga (`anunciantesElegiveis` tirava `dono_conta_id`)
+só continua valendo enquanto aquela tela tiver cota de autoanúncio maior que
+zero, que é o único caso em que ele apareceria em dobro. *Violada:* não há
+caminho. *Quem vê:* o dono do ponto, na própria TV, e os clientes dele.
+> A exclusão fazia sentido quando a contrapartida do comodato era a COTA: ele
+> já entrava por ali. Com a cota zerada na 049, ela passou a fazer o contrário
+> do que protegia — ele escolhia o próprio ponto em
+> `PUT /anunciantes/me/pontos`, a rota aceitava, e o gerador tirava ele de lá.
+> Queimava uma vaga de cobertura paga num lugar onde nunca ia aparecer, sem
+> aviso nenhum. E é justamente a tela dele que vende o comodato: é ali que os
+> clientes dele passam.
+
+**RN-45 — Produção de peça é serviço à parte, não benefício de plano.**
+*(Decisão do dono, 17/09/2026: "nunca disse que era benefício, e sim fica
+separado dos planos, com negociação direta pelo WhatsApp, pelo valor que vai
+ser cobrado".)* Nenhum plano promete arte incluída. Quem não tem a peça pede
+orçamento no WhatsApp e combina o preço caso a caso. *Violada:* não há
+caminho — a linha saiu do banco na migration 050 e do `obrigado.html`.
+> É a mesma régua do relatório mensal (048): **pode prometer o que não gera
+> trabalho recorrente; não pode prometer o que vira tarefa do dono, todo mês,
+> pra todo cliente.** A peça incluída estava no Essencial, que é o de R$ 99 e
+> o que mais vende — trinta clientes seriam trinta artes na mão dele. Serviço
+> que dá trabalho de verdade tem preço; não vira brinde escrito no card.
+
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
 `America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro
