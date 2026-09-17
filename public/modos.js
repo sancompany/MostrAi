@@ -183,7 +183,7 @@
           plano_ponto_id: escolhido ? escolhido.value : null,
           mensagem: form.mensagem.value.trim() || null,
         };
-        await enviar(form.dataset.bonus ? '/conta/bonus/ponto/resgatar' : '/conta/modos/ponto/pedir', corpo);
+        await enviar('/conta/modos/ponto/pedir', corpo);
       } else {
         await enviar('/conta/modos/vendedor/pedir', {
           cidade: form.cidade.value.trim(),

@@ -7,7 +7,6 @@ fetch(`${API_BASE_URL}/planos`)
   .then((r) => r.json())
   .then((planos) => {
     pintarPrecoDaDobra(planos || []);
-    pintarBonusDeTela(planos || []);
   })
   .catch(() => {});
 
@@ -18,22 +17,6 @@ function pintarPrecoDaDobra(planos) {
   const el = document.getElementById('heroPreco');
   el.innerHTML = `<b>A partir de ${fmtBRL(maisBarato.valor_mensal)} por mês.</b> Sem agência, sem contrato complicado.`;
   el.hidden = false;
-}
-
-// Bônus cruzado (planos.ponto_apos_meses): ficando N meses no plano, o
-// anunciante ganha uma tela da rede no próprio comércio. O módulo existe
-// desde a migration 020 e só aparecia no painel de quem já pagava — ou seja,
-// depois de assinar, que é justamente quando ele não ajuda mais a decidir.
-// Sai do dado, não de texto fixo: se nenhum plano ativo oferece o bônus, a
-// linha não aparece, e a home não promete o que não está à venda. O prazo
-// mostrado é o menor entre os planos que oferecem, que é o degrau de entrada.
-function pintarBonusDeTela(planos) {
-  const alvo = document.querySelector('[data-bonus-tela]');
-  const comBonus = planos.filter((p) => p.ativo && p.ponto_apos_meses);
-  if (!alvo || !comBonus.length) return;
-  const meses = Math.min(...comBonus.map((p) => Number(p.ponto_apos_meses)));
-  alvo.innerHTML = `<b>Bônus:</b> completando ${meses} ${meses === 1 ? 'mês' : 'meses'} de plano, você ganha uma tela da Mostraí no seu próprio comércio.`;
-  alvo.hidden = false;
 }
 
 // Soma de fluxo dos pontos ativos, só aparece com 1.000+ pessoas somadas

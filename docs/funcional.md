@@ -204,7 +204,7 @@ daquela tela. *Violada:* 401 no player. *Quem vê:* quem está na frente da TV.
 
 **RN-09 — A hora da tela é um orçamento de 3600 segundos.** A playlist de cada
 hora é montada gastando esse orçamento, nesta ordem: exibição contratada
-(frequência do plano + déficit da hora anterior), cota de autoanúncio do dono
+(o tempo de tela do plano + déficit da hora anterior), cota de autoanúncio do dono
 do ponto, e o que sobrar vira espaço vago. Quando o contratado passa de 3600s
 o corte é proporcional (regra dos maiores restos) e o aperto vira o evento
 `playlist:teto_corta`; a partir de 80% de ocupação sai o aviso antecipado
@@ -220,13 +220,22 @@ abrir ponto.
 exibição recebe a mais na hora seguinte, dentro do orçamento da RN-09.
 *Violada:* não há caminho. *Quem vê:* o anunciante, na contagem de exibições.
 
-**RN-39 — A frequência vendida é a frequência entregue, cheia ou vazia a
-rede.** O plano vende "Nx por hora em cada ponto" e a tela entrega exatamente
-N, independente de quantos outros anunciantes existam. As N exibições são
-espalhadas ao longo da hora, não sorteadas — três vezes por hora amontoadas em
-cinco minutos não é três vezes por hora. *Violada:* só pela RN-09, quando a
-rede enche e o corte proporcional entra; aí todos entregam menos, na mesma
-proporção. *Quem vê:* o anunciante, no painel.
+**RN-39 — O que se vende é TEMPO DE TELA por hora, não número de repetições.**
+O plano dá `segundos_por_hora` em cada ponto da cobertura, e o número de
+inserções sai disso: `floor(segundos_por_hora / duração da peça)`. Quem sobe
+uma peça mais curta aparece mais vezes pelo mesmo preço, e quem sobe uma mais
+longa aparece menos — o que a conta consome do estoque é o mesmo nos dois
+casos. As inserções são espalhadas ao longo da hora, não sorteadas: 90
+segundos amontoados em cinco minutos não são 90 segundos de hora. *Violada:*
+só pela RN-09, quando a rede enche e o corte proporcional entra; aí todos
+entregam menos, na mesma proporção. *Quem vê:* o anunciante, no painel.
+> **Por que deixou de ser repetição** (decisão do dono, 17/09/2026): com
+> "N vezes por hora", a duração da peça entrava na conta do estoque duas
+> vezes — o plano de peça longa comia o dobro da hora pelo mesmo preço, e
+> subir o limite de duração de um plano quebrava o orçamento de todos os
+> outros. Vendendo segundos, duração vira benefício de vitrine e para de
+> mexer no inventário. O teto de duração por plano (RN-41) continua, porque
+> peça longa demais deixaria a conta com uma inserção só por hora.
 > **O furo que isto fechou** (medido em 16/09/2026): o gerador montava uma
 > lista com N cópias de cada anunciante e o player tocava essa lista em LAÇO
 > (`indice = (indice + 1) % playlist.length`). A lista não tinha relação
@@ -248,6 +257,29 @@ ninguém, não conta exibição e não entra em relatório de entrega. *Violada:
 não há caminho — a tela nunca fica preta nem parada. *Quem vê:* quem está na
 frente da TV, que é exatamente o público que a Mostraí quer vender.
 
+**RN-41 — Cada plano tem um teto de duração da peça.** `duracao_maxima_segundos`
+define até quantos segundos a peça pode ter: 15s no Essencial, 20s no Destaque,
+30s no Máximo. O upload recusa acima do teto, com o número do plano na
+mensagem, e a vitrine diz o limite antes de a pessoa assinar. O teto não é
+reserva de estoque — quem vende é a RN-39 — é proteção de ritmo: sem ele, uma
+peça de 60s deixaria a conta com uma inserção só por hora. *Violada:* o upload
+recusa. *Quem vê:* o anunciante, ao subir o criativo.
+
+**RN-42 — A cobertura é um número de pontos, e o contratante escolhe quais.**
+`pontos_incluidos` diz em quantos pontos da rede o plano aparece (3 no
+Essencial, 7 no Destaque, 10 no Máximo). O anunciante escolhe quais no painel,
+até o limite do plano; se não escolher nenhum, o sistema distribui sozinho, de
+forma ESTÁVEL — um embaralhamento derivado de `${anuncianteId}-${pontoId}`,
+que dá sempre o mesmo resultado para a mesma conta, mas redistribui quando a
+rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
+"cobre até N pontos da rede": enquanto a rede tiver menos que N, cobre todos.
+*Violada:* a rota recusa escolha acima do limite ou de ponto fora de operação.
+*Quem vê:* o anunciante, na aba de pontos do painel.
+> **Por que "até N", e não "N garantidos"** (decisão do dono, 17/09/2026):
+> no lançamento a rede tem 3 pontos previstos. Prometer 10 pontos ao Máximo
+> seria vender o que não existe; "cobre até 10" é verdade no primeiro dia e
+> continua verdade no centésimo.
+
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
 `America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro
@@ -257,9 +289,19 @@ corte acontecia em UTC e tudo o que rodava antes das 21h caía no dia anterior
 entrega pra quem pagou. *Violada:* não há caminho de usuário. *Quem vê:* o
 anunciante (gráfico e CSV) e quem abre o painel na própria TV.
 
-**RN-11 — Preço travado.** A conta paga o valor de quando entrou
-(`valor_mensal_travado`), mesmo que o plano suba depois. *Violada:* não há
-caminho. *Quem vê:* o anunciante, na fatura.
+**RN-11 — O preço de quem assinou é o da VERSÃO que ele assinou.** Não existe
+mais trava de preço por conta: a proteção é a imutabilidade do contrato
+(RN-27). Editar preço ou benefício publica uma versão nova do plano; a conta
+continua apontando para a versão antiga, e é o `valor_mensal` dela que a
+renovação cobra. O valor só muda se o próprio anunciante trocar de plano.
+*Violada:* não há caminho. *Quem vê:* o anunciante, na fatura.
+> `planos.preco_travado` e `anunciantes.valor_mensal_travado` saíram na
+> migration 046, autorizados pelo dono em 17/09/2026. A trava carregava um
+> defeito medido na mesma data: `aplicarCicloPago` decidia por
+> `anunciante.plano_id === plano.id`, então migrar a conta para a versão nova
+> de um plano REESCREVIA a trava com o preço novo — o contrário exato do
+> direito que ela prometia. Saiu junto o rótulo "Preço fundador, nunca muda",
+> que 9 dos 12 planos exibiam na vitrine.
 
 **RN-12 — Comissão do vendedor é gerada a cada cobrança confirmada**, inclusive
 renovação, no percentual da conta dele — **confirmado pelo dono em
@@ -387,8 +429,10 @@ administrador, com o motivo registrado na própria linha.
 
 **RN-21 — O Mostraí tem uma conta de anunciante própria, e só uma.** Ela vive
 no admin, em "Meus anúncios": anuncia a rede nas telas da rede. Difere de uma
-conta comum em três pontos e só neles — não assina plano (a frequência vem de
-`frequencia_hora_propria`), não tem teto de criativos, e nunca gera cobrança,
+conta comum em três pontos e só neles — não assina plano (a cota vem de
+`frequencia_hora_propria`, e ela é o ÚNICO lugar que ainda conta em
+repetições e não em segundos: sem plano, `segundos_por_hora` é nulo e o
+gerador cai na ponte da RN-39), não tem teto de criativos, e nunca gera cobrança,
 então não entra na receita nem na margem. Difere também da cota de autoanúncio
 do ponto, que só roda nas telas daquele comércio: a conta própria roda na rede
 inteira. *Violada:* tentar criar a segunda recebe 409 antes de qualquer
@@ -448,12 +492,14 @@ da visão geral.
 **RN-27 — Plano assinado é imutável para quem assinou.** Os campos do plano
 se dividem em dois. **Vitrine** (`ativo`, `vagas`, `rotulo`,
 `destaque_no_site`) muda na hora: não alcança ninguém que já é cliente.
-**Contrato** (`nome`, `valor_mensal`, `compromisso_meses`, `frequencia_hora`,
-`cobertura`, `limite_criativos`, `preco_travado`, `fundador`,
-`ponto_apos_meses`, benefícios) não se edita: publica-se uma **versão nova**,
-com id novo, e a anterior é aposentada. Quem já assinou fica na versão
-antiga — mesmo preço, mesma frequência, mesmos benefícios, mesmo limite de
-criativos. Id novo é obrigatório porque o San Checkout guarda a assinatura
+**Contrato** (`tier`, `nome`, `valor_mensal`, `valor_mensal_cheio`,
+`compromisso_meses`, `segundos_por_hora`, `duracao_maxima_segundos`,
+`pontos_incluidos`, `cobertura`, `limite_criativos`, `fundador`,
+`desconto_comodato_percentual`, `desconto_percentual`, benefícios) não se
+edita: publica-se uma **versão nova**, com id novo, e a anterior é aposentada.
+A lista viva está em `CAMPOS_CONTRATO` (`src/financeiro/planos-repository.js`).
+Quem já assinou fica na versão antiga — mesmo preço, mesmo tempo de tela,
+mesmos pontos, mesmos benefícios, mesmo limite de criativos. Id novo é obrigatório porque o San Checkout guarda a assinatura
 pela chave `planoId` + `documento` (`API.md` 4.2): duas versões com o mesmo
 id tornariam cancelamento e conciliação ambíguos. O Checkout já congela
 `valor` e `ciclo` na criação e nunca reconsulta o plano — o que faltava era o
@@ -477,11 +523,13 @@ painel do anunciante, junto do que fazer (excluir e subir a versão corrigida),
 e sai por e-mail. *Violada:* a tela não deixa reprovar com o campo vazio.
 *Quem vê:* anunciante e administrador.
 
-**RN-30 — O teto de 200 slots por hora corta proporcionalmente.** Quando a
-soma das frequências contratadas passa do teto da hora, cada anunciante perde
-a mesma fração do que pediu (regra dos maiores restos, sobre a lista já
-embaralhada) — em vez de o corte ser um sorteio que zerava a hora de quem
-ficasse pra depois do item 200. O aperto vira evento `playlist:teto_corta`.
+**RN-30 — O orçamento da hora corta proporcionalmente.** Quando a soma do
+tempo contratado passa dos 3600 segundos, cada anunciante perde a mesma fração
+do que pediu — medida em SEGUNDOS, pela regra dos maiores restos, sobre a
+lista já embaralhada — em vez de o corte ser um sorteio que zerava a hora de
+quem ficasse pra depois. O aperto vira evento `playlist:teto_corta`.
+(Até 16/09/2026 o teto era de 200 slots; virou orçamento de segundos na
+RN-09.)
 *Violada:* não há caminho. *Quem vê:* o dono, na aba Métrica.
 
 **RN-31 — Conta excluída não recebe ciclo.** A exclusão cancela a assinatura no

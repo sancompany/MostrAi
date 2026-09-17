@@ -164,6 +164,44 @@ function montarHoraDeTv(anunciantes) {
   };
 }
 
+// Em quais pontos este anunciante roda.
+//
+// Regra do dono (17/09/2026): o plano dá acesso a N pontos e o CONTRATANTE
+// escolhe quais. Quem não escolhe não fica de fora — o sistema escolhe por
+// ele. O que o sistema NÃO pode fazer é escolher de novo a cada hora: o
+// anúncio ficaria pulando de comércio em comércio e nenhum relatório faria
+// sentido. Por isso a escolha automática é um sorteio ESTÁVEL, derivado do
+// par (anunciante, ponto) — mesma conta, mesma rede, mesmos pontos, sempre.
+//
+// Quando a rede cresce, os pontos novos entram no sorteio e a distribuição
+// se refaz sozinha. É o que faz "rede expansiva" ser verdade sem ninguém
+// mexer em nada.
+function embaralhamentoEstavel(texto) {
+  let h = 2166136261;
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function pontosDoAnunciante(conta, pontosEmOperacao) {
+  // Plano sem teto de pontos cobre a rede inteira — é o comportamento de
+  // todo plano antes desta mudança, e continua valendo pra quem não tem o
+  // campo preenchido.
+  if (!conta.pontosIncluidos) return [...pontosEmOperacao];
+
+  // Ponto que saiu de operação não conta como escolha gasta: o anunciante
+  // não pode perder uma vaga porque um comércio fechou.
+  const operando = new Set(pontosEmOperacao);
+  const escolhidos = (conta.escolhidos || []).filter((id) => operando.has(id));
+  if (escolhidos.length) return escolhidos.slice(0, conta.pontosIncluidos);
+
+  return [...pontosEmOperacao]
+    .sort((a, b) => embaralhamentoEstavel(`${conta.id}-${a}`) - embaralhamentoEstavel(`${conta.id}-${b}`))
+    .slice(0, conta.pontosIncluidos);
+}
+
 function contarPorAnunciante(itens) {
   const contagem = {};
   for (const id of itens) contagem[id] = (contagem[id] || 0) + 1;
@@ -181,6 +219,7 @@ function dividirCota(cotaDoPonto, telasAtivas) {
 
 module.exports = {
   montarHoraDeTv,
+  pontosDoAnunciante,
   contarPorAnunciante,
   dividirCota,
   duracaoValida,

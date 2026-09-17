@@ -24,7 +24,7 @@ const SQL_MARGEM = `
   ),
   custo_atual AS (
     SELECT
-      (SELECT COALESCE(SUM(valor_pago_mensal), 0) FROM pontos WHERE status = 'ativo') AS pontos,
+      (SELECT COALESCE(SUM(valor_pago_mensal), 0) FROM pontos WHERE status = 'em_operacao') AS pontos,
       (SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0)
          FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
         WHERE d.status = 'ativo' AND p.status = 'ativo') AS amortizacao,

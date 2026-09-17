@@ -172,12 +172,11 @@ function caixaTabela({ chips = [], html, dica = '' }) {
 }
 
 // ---------- rótulos ----------
+// Dois status desde 17/09/2026 (migration 045). Tela quebrada não é mais
+// estado do PONTO — é estado da tela, em TELA_STATUS logo abaixo.
 const PONTO_STATUS = {
-  lead: 'Novo lead',
-  aguardando_instalacao: 'A instalar',
-  ativo: 'Ativo',
-  reparo: 'Em reparo',
-  inativo: 'Inativo',
+  a_instalar: 'A instalar',
+  em_operacao: 'Em operação',
 };
 // `status` deixou de ser estado operacional (16/09/2026) — só distingue
 // comum de parceiro (substitui o antigo flag "fundador"). O que bloqueia
@@ -191,6 +190,17 @@ const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+// Mesma conta da vitrine (public/planos.page.js): o número grande que o
+// cliente vê sai do dado, não de texto guardado. Aqui ele aparece ao lado do
+// campo pra o dono conferir o efeito do que está digitando.
+const HORAS_ABERTO_DIA = 12;
+const DIAS_MES = 30;
+function horasDeTelaPorMes(p) {
+  if (!p.segundos_por_hora || !p.pontos_incluidos) return '';
+  const h = Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
+  return `= até ${h}h de tela/mês`;
+}
+
 const TROCA_STATUS = { pendente: 'Esperando pagamento', pago: 'Paga', cancelado: 'Cancelada' };
 
 function selectStatus(mapa, atual, attrs) {
@@ -930,7 +940,7 @@ async function renderPontos(el) {
     const msg = document.getElementById('msgNovoPonto');
     const r = await api('/admin/pontos', {
       method: 'POST',
-      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'aguardando_instalacao' }),
+      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'a_instalar' }),
     });
     if (!r.ok) {
       msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
@@ -1148,7 +1158,7 @@ async function renderAnunciantes(el) {
         .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
         .join(
           ' ',
-        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.valor_mensal_travado != null ? ` <span class="badge badge-pendente" title="preço travado">${fmt(a.valor_mensal_travado)}/mês travado</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td>${esc(a.cpf_cnpj)}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
@@ -1804,7 +1814,14 @@ async function renderPlanos(el) {
 
       <ul class="ed-lista">
         <li class="ed-freq">
-          <input type="number" min="1" max="60" ${contrato('frequencia_hora', p)} value="${p.frequencia_hora}" aria-label="Frequência por hora">x por hora em cada ponto
+          <input type="number" min="10" max="3600" step="10" ${contrato('segundos_por_hora', p)} value="${p.segundos_por_hora ?? ''}" aria-label="Segundos de tela por hora">s de tela por hora, em cada ponto
+          <span class="u-dim" data-horas-mes="${p.id}">${horasDeTelaPorMes(p)}</span>
+        </li>
+        <li class="ed-freq">
+          <input type="number" min="1" max="999" ${contrato('pontos_incluidos', p)} value="${p.pontos_incluidos ?? ''}" aria-label="Pontos incluídos">pontos da rede, escolhidos pelo cliente
+        </li>
+        <li class="ed-freq">
+          peça de até <input type="number" min="5" max="60" ${contrato('duracao_maxima_segundos', p)} value="${p.duracao_maxima_segundos ?? ''}" aria-label="Duração máxima da peça">segundos
         </li>
       </ul>
       <div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div>
@@ -1812,11 +1829,7 @@ async function renderPlanos(el) {
       <div class="ed-tecnicos">
         <label>Criativos<input type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></label>
         <label title="Vazio = sem teto de vagas">Vagas<input type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></label>
-        <label title="Módulo: ao completar N meses de cobertura, o anunciante ganha direito a uma tela no comércio dele">Tela após<input type="number" min="1" ${contrato('ponto_apos_meses', p)} value="${p.ponto_apos_meses ?? ''}" placeholder="-"></label>
         <label title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano">Comodato %<input type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-"></label>
-        <label class="chip-check" title="Quem assinar paga esse valor até o fim do compromisso, mesmo que o plano mude de preço">
-          <input type="checkbox" ${contrato('preco_travado', p)} ${p.preco_travado ? 'checked' : ''}> Preço travado
-        </label>
       </div>
 
       <button class="btn primary block" data-nova-versao="${p.id}" disabled>Salvar novo plano</button>
@@ -1838,24 +1851,29 @@ async function renderPlanos(el) {
               .map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`)
               .join('')}
           </select></div>
-          <div class="u-col"><label>Frequência/hora</label><input class="mini" type="number" name="frequencia_hora" value="6" required></div>
+          <div class="u-col"><label>Segundos de tela/hora</label><input class="mini" type="number" name="segundos_por_hora" value="90" min="10" max="3600" step="10" required></div>
+        </div>
+        <div class="field-row">
+          <div class="u-col"><label>Pontos incluídos</label><input class="mini" type="number" name="pontos_incluidos" value="3" min="1" required></div>
+          <div class="u-col"><label>Peça até (segundos)</label><input class="mini" type="number" name="duracao_maxima_segundos" value="15" min="5" max="60" required></div>
         </div>
         <div class="field-row">
           <div class="u-col"><label>Preço cheio (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal_cheio" required></div>
           <div class="u-col"><label>Desconto (%, vazio = sem desconto)</label><input class="mini" type="number" step="0.01" min="0" max="99" name="desconto_percentual"></div>
         </div>
         <div><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
-        <div><label>Cobertura</label><select class="mini" name="cobertura" required>
+        <!-- Cobertura virou rótulo histórico: quem manda agora é o campo de
+             pontos incluídos, logo acima. Fica oculto porque o INSERT ainda
+             exige a coluna. -->
+        <div hidden><label>Cobertura</label><select class="mini" name="cobertura" required>
           <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
         </select></div>
         <div><label>Rótulo (ex.: "Preço promocional, travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
         <div class="field-row">
           <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
-          <div class="u-col"><label>Tela após N meses</label><input class="mini" type="number" name="ponto_apos_meses" min="1" title="Módulo cruzado: ao completar N meses o anunciante ganha uma tela no comércio dele"></div>
         </div>
         <div><label>Desconto comodato (%, vazio = nenhum)</label><input class="mini" type="number" name="desconto_comodato_percentual" min="1" max="100" title="Desconto extra pra conta que também é dona de ponto, só nesse plano"></div>
         <div class="field-row">
-          <label class="benef-check"><input type="checkbox" name="preco_travado" value="1"><span>Preço travado pelo compromisso</span></label>
         </div>
         <div><label>Benefícios do plano</label><div class="benef-lista" id="novoPlanoBeneficios">${opcoesBeneficio([])}</div></div>
         <button class="btn primary" type="submit">Criar plano</button>
@@ -1968,9 +1986,7 @@ async function renderPlanos(el) {
     dados.beneficio_ids = [...document.querySelectorAll('#novoPlanoBeneficios input:checked')].map((i) =>
       Number(i.value),
     );
-    dados.preco_travado = !!dados.preco_travado;
     if (dados.vagas === '') delete dados.vagas;
-    if (dados.ponto_apos_meses === '') delete dados.ponto_apos_meses;
     if (dados.desconto_comodato_percentual === '') delete dados.desconto_comodato_percentual;
     if (dados.desconto_percentual === '') delete dados.desconto_percentual;
     const msg = document.getElementById('msgNovoPlano');
@@ -1990,7 +2006,7 @@ async function renderPlanos(el) {
 // lançar e quitar só por curl. O dono do ponto via o extrato dele (que também
 // não tinha tela até hoje) e o dono da rede não tinha por onde pagar.
 async function renderPagamentosPontos(el) {
-  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'ativo' || p.valor_pago_mensal > 0);
+  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'em_operacao' || p.valor_pago_mensal > 0);
   if (!pontos.length) {
     el.innerHTML =
       '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';
@@ -2236,7 +2252,7 @@ async function renderPlanosArquivados(el) {
     </div>
     <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Ciclo</th><th data-ord>Valor mensal</th>
-      <th data-ord>Criativos</th><th data-ord>Freq./hora</th><th>Cobertura</th><th>Benefícios</th>
+      <th data-ord>Criativos</th><th data-ord>Tela/hora</th><th data-ord>Pontos</th><th>Benefícios</th>
       <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
     </tr></thead><tbody>
     ${planos
@@ -2247,8 +2263,8 @@ async function renderPlanosArquivados(el) {
       <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
       <td>${fmt(p.valor_mensal)}</td>
       <td class="num">${p.limite_criativos}</td>
-      <td class="num">${p.frequencia_hora}</td>
-      <td>${esc(p.cobertura)}</td>
+      <td class="num">${p.segundos_por_hora ?? '-'}s/h</td>
+      <td class="num">${p.pontos_incluidos ?? 'todos'}</td>
       <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '-'}</td>
       <td>${data(p.arquivado_em)}</td>
       <td>${esc(p.substituido_por || '-')}</td>

@@ -923,3 +923,33 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 /* Com motivo embaixo, a etiqueta sobe: ela e posicionada no rodape do card e
    ficaria por cima do texto que explica o que corrigir. */
 .criativo-card:has(.criativo-motivo) .badge { bottom: auto; top: 8px; }
+
+/* Escolha de pontos do anunciante (17/09/2026). Cada linha é uma caixa de
+   seleção grande: na TV do comércio quem decide é o dono do negócio, muitas
+   vezes no celular e com pressa. Ponto sem espaço aparece apagado em vez de
+   sumir — saber que existe e está cheio é informação, some não é. */
+.ponto-escolha {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "check nome ocupacao" "check end ocupacao";
+  gap: 2px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-campo);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.ponto-escolha:has(input:checked) { border-color: var(--brand); background: rgba(255,122,26,.05); }
+.ponto-escolha.cheio { opacity: .55; cursor: not-allowed; }
+.ponto-escolha input { grid-area: check; width: 20px; height: 20px; accent-color: var(--brand); }
+.ponto-nome { grid-area: nome; font-weight: 600; }
+.ponto-end { grid-area: end; font-size: .82rem; color: var(--text-dim); }
+.ponto-ocupacao { grid-area: ocupacao; font-size: .78rem; color: var(--text-dim); white-space: nowrap; }
+@media (max-width: 560px) {
+  .ponto-escolha {
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "check nome" "check end" "check ocupacao";
+  }
+  .ponto-ocupacao { margin-top: 2px; }
+}

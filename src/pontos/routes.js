@@ -62,7 +62,7 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
     fluxo_estimado_mensal: req.body.fluxo_estimado_mensal,
     plano_ponto_id: req.body.plano_ponto_id || null,
     anunciante_id: conta.id,
-    status: 'lead',
+    status: 'a_instalar',
     aceitou_termos_em: new Date(),
   });
   await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' });

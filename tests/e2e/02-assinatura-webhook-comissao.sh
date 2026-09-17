@@ -86,12 +86,11 @@ echo "== webhook: primeira cobrança paga (evento criada) =="
 # preço já vem com o desconto de parceiro (item 4 da spec).
 r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
-st=$($PG -c "select (not suspenso)::text||'|'||coalesce(valor_mensal_travado::text,'')||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
+st=$($PG -c "select (not suspenso)::text||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
 esperar "conta fica ativa (não suspensa) na primeira cobrança" '^t\|' "$st"
-# O travado guarda o preço DO PLANO (79.20) — o desconto de parceiro é lido
-# ao vivo a cada cobrança (o admin pode mudar o percentual depois sem
-# recongelar nada), não é somado ao valor travado.
-esperar "preço travado é o do plano, sem o desconto (79.20)" '\|79\.20\|' "$st"
+# A trava de preço saiu em 17/09/2026 (migration 046): o que a conta paga é
+# sempre o valor do plano com os descontos lidos ao vivo. A cobrança logo
+# abaixo é quem prova o preço, e ela continua igual.
 esperar "expiração ≈ 12 meses à frente (>= 360 dias)" '\|(3[6-9][0-9]|4[0-9][0-9])$' "$st"
 cob=$($PG -c "select count(*)||'|'||sum(valor) from cobrancas_confirmadas where anunciante_id=$ANA")
 esperar "cobrança registrada (71,28 x 12 = 855,36)" '^1\|855\.36' "$cob"

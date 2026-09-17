@@ -1,6 +1,9 @@
 const pool = require('../db/pool');
 
-const STATUS = ['lead', 'aguardando_instalacao', 'ativo', 'reparo', 'inativo'];
+// Dois status desde 17/09/2026 (migration 045). Os cinco de antes misturavam
+// "o ponto existe na rede?" com "a tela está funcionando?" — a segunda tem
+// resposta própria em `dispositivos.status`, que continua com três.
+const STATUS = ['a_instalar', 'em_operacao'];
 
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
@@ -64,7 +67,7 @@ async function criar(dados, db = pool) {
       plano_ponto_id || null,
       responsavel_nome,
       responsavel_contato,
-      status || 'lead',
+      status || 'a_instalar',
       aceitou_termos_em || null,
       valor_pago_mensal || 0,
       cota_autoanuncio_slots_hora || 0,
@@ -114,8 +117,8 @@ async function listarPublicos() {
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, c.nome AS categoria_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
-     WHERE p.status IN ('ativo', 'aguardando_instalacao', 'reparo')
-     ORDER BY (p.status = 'ativo') DESC, p.nome`,
+     WHERE p.status IN ('em_operacao', 'a_instalar')
+     ORDER BY (p.status = 'em_operacao') DESC, p.nome`,
   );
   return rows;
 }
@@ -141,7 +144,7 @@ const FLUXO_MINIMO_PARA_EXIBIR = 1000;
 async function somaFluxoMensal() {
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM(fluxo_estimado_mensal), 0)::int AS total
-     FROM pontos WHERE status = 'ativo'`,
+     FROM pontos WHERE status = 'em_operacao'`,
   );
   const total = rows[0].total;
   return total >= FLUXO_MINIMO_PARA_EXIBIR ? total : null;

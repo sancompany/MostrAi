@@ -65,7 +65,7 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
       cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
       anunciante_id: conta.id,
-      status: 'aguardando_instalacao',
+      status: 'a_instalar',
       aceitou_termos_em: new Date(),
     },
     db,
@@ -324,7 +324,103 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const vendedor = (anunciante.papeis || []).includes('vendedor')
     ? await vendedoresRepo.buscarPorConta(anunciante.id)
     : null;
-  res.json({ ...anunciante, vendedor });
+  // `plano` junto de propósito: o painel precisa dele pra dizer a duração
+  // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
+  // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
+  // pode estar numa versão aposentada.
+  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  res.json({ ...anunciante, vendedor, plano });
+});
+
+// ---------------------------------------------------------------------------
+// Escolha de pontos pelo contratante (17/09/2026)
+// ---------------------------------------------------------------------------
+// O plano dá acesso a N pontos e quem escolhe quais é o anunciante. Quem não
+// escolhe não fica de fora: `pontosDoAnunciante` sorteia uma fatia estável
+// (src/lib/pacing.js). Deixar tudo desmarcado é uma escolha válida, e é a
+// recomendada pra quem não conhece a cidade.
+//
+// A ocupação de cada ponto vem junto porque o dono pediu que ponto cheio não
+// pudesse ser escolhido: sem ver o quanto já está vendido, a pessoa escolhe o
+// ponto lotado e recebe menos exibição do que receberia num vazio.
+router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+
+  const { rows } = await pool.query(
+    `SELECT p.id, p.nome, p.cidade, p.endereco,
+            COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
+            (ap.ponto_id IS NOT NULL) AS escolhido
+       FROM pontos p
+       LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
+       LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
+       LEFT JOIN planos pl ON pl.id = ao.plano_id
+       LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
+      WHERE p.status = 'em_operacao'
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, ap.ponto_id
+      ORDER BY p.nome`,
+    [conta.id],
+  );
+
+  res.json({
+    limite: plano.pontos_incluidos,
+    escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
+    pontos: rows.map((r) => ({
+      id: r.id,
+      nome: r.nome,
+      cidade: r.cidade,
+      endereco: r.endereco,
+      escolhido: r.escolhido,
+      // Quanto da hora daquele ponto já está vendido. 100% = cheio.
+      ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
+    })),
+  });
+});
+
+router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+
+  const pedidos = [...new Set((req.body.pontos || []).map(Number).filter(Number.isInteger))];
+  if (plano.pontos_incluidos && pedidos.length > plano.pontos_incluidos) {
+    return res.status(400).json({
+      erro: `seu plano cobre ${plano.pontos_incluidos} ponto(s) e você marcou ${pedidos.length}`,
+    });
+  }
+
+  if (pedidos.length) {
+    const { rows } = await pool.query(`SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status = 'em_operacao'`, [
+      pedidos,
+    ]);
+    if (rows.length !== pedidos.length) {
+      return res.status(400).json({ erro: 'um dos pontos escolhidos não está em operação' });
+    }
+  }
+
+  // Troca a lista inteira numa transação: metade salva seria pior que nada,
+  // porque o anunciante ficaria numa cobertura que ele não escolheu.
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]);
+    for (const pontoId of pedidos) {
+      await cliente.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1,$2)', [
+        conta.id,
+        pontoId,
+      ]);
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
+  eventos.registrar('pontos:escolhidos', { quantidade: pedidos.length, limite: plano.pontos_incluidos }, conta);
+  res.json({ escolhidos: pedidos, limite: plano.pontos_incluidos });
 });
 
 // Edição de perfil self-service — lista branca própria (não os campos
@@ -381,7 +477,7 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // quem autoriza e qual é o teto — então a rotina mora aqui uma vez, e as duas
 // rotas abaixo a chamam. Duplicar isso significaria manter dois lugares que
 // lidam com ffmpeg, arquivo temporário e limpeza de /tmp.
-async function subirCriativo(req, res, { contaId, limite, peloOperador = false }) {
+async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, peloOperador = false }) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
@@ -396,10 +492,14 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
       }
     }
 
-    // Duração: a vitrine pede "15 a 30 segundos" e nada nunca conferiu. Um
-    // vídeo de três minutos entrava inteiro e tomava, sozinho, o lugar de seis
-    // anúncios no rodízio — sem ninguém ver. O teto é 60s (o dobro do
-    // recomendado, pra não recusar quem passou um pouco) e o piso, 3s.
+    // Duração: nada nunca conferiu, e um vídeo de três minutos entrava inteiro
+    // e tomava, sozinho, o lugar de seis anúncios no rodízio.
+    //
+    // Dois tetos. O GLOBAL de 60s é a trava física da tela. O DO PLANO
+    // (`duracao_maxima_segundos`, desde 17/09/2026) é benefício vendido: o
+    // Essencial compra peça de até 15s, o Máximo até 30s. Ele vem de quem
+    // chama, porque a mesma função serve o upload do cliente e o do operador.
+    //
     // Imagem não entra na conta: ela vira vídeo com duração fixa nossa.
     const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
     if (!midia) {
@@ -409,7 +509,12 @@ async function subirCriativo(req, res, { contaId, limite, peloOperador = false }
     }
     if (!midia.ehImagem && (midia.duracao_segundos > 60 || midia.duracao_segundos < 3)) {
       return res.status(400).json({
-        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos, e o ideal são 15 a 30`,
+        erro: `esse vídeo tem ${midia.duracao_segundos}s — a tela aceita de 3 a 60 segundos`,
+      });
+    }
+    if (!midia.ehImagem && duracaoMaxima && midia.duracao_segundos > duracaoMaxima) {
+      return res.status(400).json({
+        erro: `esse vídeo tem ${midia.duracao_segundos}s e o seu plano aceita peça de até ${duracaoMaxima}s — corte a peça ou mude de plano`,
       });
     }
 
@@ -466,6 +571,7 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: plano ? plano.limite_criativos : 1,
+    duracaoMaxima: plano ? plano.duracao_maxima_segundos : null,
   });
 });
 
@@ -492,7 +598,9 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
   const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
+    // A conta própria não tem teto de duração: o inventário é da casa.
     limite: conta.conta_propria ? Infinity : plano ? plano.limite_criativos : 1,
+    duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
   });
 });

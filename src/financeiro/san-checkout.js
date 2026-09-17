@@ -159,8 +159,6 @@ async function montarRespostaPlano(assinaturaId) {
   };
 }
 
-// O preço travado é da conta NAQUELE plano: trocar de plano solta a trava.
-//
 // Dois descontos entram por cima do preço-base, somados (item 4 e item 8 da
 // spec, 15/09/2026):
 // - comodato: conta com papel 'ponto' ganha o `desconto_comodato_percentual`
@@ -172,9 +170,16 @@ async function montarRespostaPlano(assinaturaId) {
 //   `parceiro_desconto_percentual` dela, mas só nos planos que o dono liberou
 //   pra parceiro via `parceiro_compromisso_minimo` (ex.: só trimestral pra
 //   cima — mensal fica de fora).
+//
+// A TRAVA DE PREÇO SAIU EM 17/09/2026, a pedido do dono ("não irei modificar
+// muito os planos então pode retirar o plano travado"). Ela existia pra
+// proteger quem assinou de um aumento futuro; com a grade fechada e sem
+// previsão de mexer, virou máquina parada. E ela carregava um defeito:
+// `mesmoPlano` comparava `anunciante.plano_id === plano.id`, então migrar a
+// conta pra versão nova de um plano REESCREVIA a trava com o preço novo — o
+// contrário exato do direito que ela prometia.
 function valorMensalDaConta(anunciante, plano) {
-  const travado = anunciante.valor_mensal_travado != null && anunciante.plano_id === plano.id;
-  const base = travado ? Number(anunciante.valor_mensal_travado) : Number(plano.valor_mensal);
+  const base = Number(plano.valor_mensal);
 
   const descontoComodato = (anunciante.papeis || []).includes('ponto')
     ? Number(plano.desconto_comodato_percentual || 0)
@@ -390,11 +395,10 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     return registrarPendencia(contexto, 'cobrança de conta já excluída — verificar devolução no Checkout');
   }
 
-  // O que a conta paga é o que estava travado na primeira cobrança deste
-  // plano (preco_travado) — senão, o valor atual do plano.
+  // O que a conta paga é o valor do plano, com os descontos que ela tem
+  // direito (comodato e parceiro).
   const valorMensal = valorMensalDaConta(anunciante, plano);
   const valorCiclo = multiplicar(valorMensal, plano.compromisso_meses);
-  const mesmoPlano = anunciante.plano_id === plano.id;
 
   // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho
   // que o motor de pagamento suporta: o San Checkout cobra no ato da
@@ -419,18 +423,14 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
-    // seguidos recebe os dois. Trava de preço: mantém a da conta se for o
-    // mesmo plano; plano novo trava no preço dele (se for travado) ou solta.
+    // seguidos recebe os dois.
     await cliente.query(
       `UPDATE anunciantes
        SET plano_id = $2, suspenso = false,
            data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
-           data_expiracao = $3::timestamptz,
-           valor_mensal_travado = CASE WHEN NOT $4::boolean THEN NULL
-                                       WHEN $5::boolean THEN COALESCE(valor_mensal_travado, $6::numeric)
-                                       ELSE $6::numeric END
+           data_expiracao = $3::timestamptz
        WHERE id = $1`,
-      [anunciante.id, plano.id, novaExpiracao, !!plano.preco_travado, mesmoPlano, plano.valor_mensal],
+      [anunciante.id, plano.id, novaExpiracao],
     );
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
@@ -539,7 +539,6 @@ async function aplicarTrocaDePlano(pedido, payload) {
     plano_id: planoNovo.id,
     suspenso: false,
     data_expiracao: novaExpiracao,
-    valor_mensal_travado: planoNovo.preco_travado ? valorMensalDaConta(anunciante, planoNovo) : null,
     plano_cortesia: false,
     cortesia_motivo: null,
   });

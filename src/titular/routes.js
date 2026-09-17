@@ -138,7 +138,6 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     suspenso: true,
     plano_id: null,
     data_expiracao: null,
-    valor_mensal_travado: null,
   });
 
   // Fire-and-forget: e-mail que falha não pode desfazer um direito já

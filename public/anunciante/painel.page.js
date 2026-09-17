@@ -72,6 +72,13 @@ async function carregar() {
 }
 
 function preencherStatusBanner() {
+  // Duração máxima da peça é benefício do plano (17/09/2026): o texto genérico
+  // do HTML vira o número exato assim que sabemos em qual plano a conta está.
+  const dicaDuracao = document.querySelector('[data-limite-duracao]');
+  if (dicaDuracao && ANUNCIANTE.plano?.duracao_maxima_segundos) {
+    dicaDuracao.textContent = `de até ${ANUNCIANTE.plano.duracao_maxima_segundos} segundos (o que o seu plano permite)`;
+  }
+
   const el = document.getElementById('statusBanner');
   // `status` virou só comum/parceiro (16/09/2026) — "Comum" não é
   // informação nova pro cliente, então só aparece pra quem é parceiro.
@@ -86,8 +93,6 @@ function preencherStatusBanner() {
     if (ANUNCIANTE.data_expiracao) planoTxt += ` até ${window.dataBR(ANUNCIANTE.data_expiracao)}`;
     if (ANUNCIANTE.plano_cortesia) planoTxt += ' · sem cobrança';
   }
-  const travado =
-    ANUNCIANTE.valor_mensal_travado != null ? ` · preço travado em ${fmtBRL(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
 
   // Só um estado derruba o botão: `suspenso` (campo próprio desde
   // 16/09/2026, separado de `status`). POST /anunciantes/:id/assinar recusa
@@ -101,16 +106,102 @@ function preencherStatusBanner() {
     : null;
   const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
   el.innerHTML = `
-    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}${travado}</span>
+    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}</span>
     ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
   `;
   preencherAssinatura();
+  carregarPontos();
 }
 
 // Autoatendimento: cancelar e trocar de plano, sem passar pelo admin.
 // Só aparece pra quem tem plano pago em dia (cortesia não tem o que
 // cancelar, e conta suspensa já mostra a explicação própria acima).
+// ---------------------------------------------------------------------------
+// Onde seu anúncio aparece — escolha de pontos (17/09/2026)
+// ---------------------------------------------------------------------------
+// O plano dá acesso a N pontos. Marcar é opcional: quem não marca recebe uma
+// fatia sorteada de forma estável, e isso é dito na tela em vez de ficar
+// implícito — senão "não marquei nada" parece "não vou aparecer em lugar
+// nenhum", que é o contrário do que acontece.
+async function carregarPontos() {
+  if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia) return;
+  let dados;
+  try {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos-disponiveis`, { credentials: 'include' });
+    if (!r.ok) return;
+    dados = await r.json();
+  } catch {
+    return;
+  }
+  if (!dados.pontos.length) return;
+
+  const limite = dados.limite;
+  document.getElementById('painelPontos').hidden = false;
+  document.getElementById('dicaPontos').textContent = limite
+    ? `Seu plano cobre ${limite} ${limite === 1 ? 'ponto' : 'pontos'}. Marque onde você quer aparecer, ou deixe tudo desmarcado e a gente distribui pra você.`
+    : 'Seu plano cobre todos os pontos da rede.';
+
+  const lista = document.getElementById('listaPontos');
+  lista.innerHTML = dados.pontos
+    .map((p) => {
+      const cheio = p.ocupacao >= 100;
+      return `<label class="ponto-escolha${cheio ? ' cheio' : ''}">
+      <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
+      <span class="ponto-nome">${esc(p.nome)}</span>
+      <span class="ponto-end">${esc(p.endereco || '')}${p.cidade ? `, ${esc(p.cidade)}` : ''}</span>
+      <span class="ponto-ocupacao">${cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+    </label>`;
+    })
+    .join('');
+
+  const msg = document.getElementById('msgPontos');
+  const contador = document.getElementById('contadorPontos');
+  const marcados = () => [...lista.querySelectorAll('input:checked')].map((i) => Number(i.value));
+
+  function pintarContador() {
+    const n = marcados().length;
+    contador.textContent = limite ? `${n} de ${limite}` : `${n} escolhido(s)`;
+    // Passar do limite não é erro de servidor: é uma caixa que não devia ter
+    // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
+    // depois do clique em salvar.
+    if (limite) {
+      lista.querySelectorAll('input:not(:checked)').forEach((i) => {
+        if (!i.closest('.ponto-escolha').classList.contains('cheio')) i.disabled = n >= limite;
+      });
+    }
+  }
+  pintarContador();
+
+  lista.addEventListener('change', async (e) => {
+    if (e.target.tagName !== 'INPUT') return;
+    pintarContador();
+    msg.textContent = 'Salvando...';
+    msg.className = 'form-msg';
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ pontos: marcados() }),
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.textContent = window.frase(corpo.erro || 'não deu pra salvar');
+        msg.className = 'form-msg err';
+        return;
+      }
+      msg.textContent = marcados().length
+        ? 'Pronto. A mudança vale a partir da próxima hora cheia.'
+        : 'Pronto. Sem marcação, a gente distribui seus pontos.';
+      msg.className = 'form-msg ok';
+    } catch {
+      msg.textContent = 'Sem conexão. Tente de novo.';
+      msg.className = 'form-msg err';
+    }
+  });
+}
+
 function preencherAssinatura() {
   const panel = document.getElementById('painelAssinatura');
   const el = document.getElementById('resumoAssinatura');
@@ -125,7 +216,7 @@ function preencherAssinatura() {
     return;
   }
   panel.hidden = false;
-  const preco = ANUNCIANTE.valor_mensal_travado != null ? `, ${fmt(ANUNCIANTE.valor_mensal_travado)}/mês` : '';
+  const preco = '';
   el.innerHTML = `
     <p class="u-m-0 u-mb-4">Ativa até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>${preco}.</p>
     <p class="form-hint u-m-0 u-mb-12">Cancelar não devolve o que já foi pago. O período atual continua no ar até essa data, e não renova depois.</p>
@@ -204,17 +295,13 @@ async function confirmarPlano(planoId) {
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
-  const extras = [plano.preco_travado ? `Preço travado por ${plano.compromisso_meses} meses.` : '']
-    .filter(Boolean)
-    .join(' ');
   box.insertAdjacentHTML(
     'beforeend',
     `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
       <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>, ${plano.frequencia_hora}x por hora em cada tela</p>
-      <p class="u-m-0 ${extras ? 'u-mb-4' : 'u-mb-12'}">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
-      ${extras ? `<p class="form-hint u-m-0 u-mb-12">${extras}</p>` : ''}
+      <p class="u-m-0 u-mb-12">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
     </div>`,

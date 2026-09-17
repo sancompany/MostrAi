@@ -42,7 +42,7 @@ DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 r=$(curl -s -b joao.txt $B/vendedor/painel); esperar "painel do vendedor pela conta única" 'totalAReceber' "$r"
 
 echo "== admin: tela ativa, ponto ativo, chave, PIN =="
-r=$(curl -s -b adm.txt -X PATCH $B/admin/pontos/$PONTO -H "$J" -d '{"status":"ativo","cota_autoanuncio_slots_hora":4}'); esperar "ponto ativo" '"status":"ativo"' "$r"
+r=$(curl -s -b adm.txt -X PATCH $B/admin/pontos/$PONTO -H "$J" -d '{"status":"em_operacao","cota_autoanuncio_slots_hora":4}'); esperar "ponto em operacao" '"status":"em_operacao"' "$r"
 r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 2","custo_equipamento":2400}'); esperar "segunda tela criada" 'Tela 2' "$r"
 DISP2=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave); esperar "chave gerada" 'aparelho_id' "$r"; CHAVE=$(echo $r | sed 's/.*"aparelho_id":"\([^"]*\)".*/\1/')

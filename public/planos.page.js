@@ -1,3 +1,57 @@
+// Horas de tela, pontos, duração e criativos saem do DADO do plano, não de
+// texto guardado na tabela de benefícios. Escrever "27 horas" à mão cria um
+// número que envelhece sozinho no dia em que alguém mexer em
+// `segundos_por_hora` — e a vitrine passa a prometer o que a tela não faz.
+//
+// A conta das horas assume 12h de comércio aberto por dia, 30 dias. Por isso
+// sai com "até" e com a linha exata embaixo: o número grande vende, o número
+// exato é o que a tela cumpre.
+const HORAS_ABERTO_DIA = 12;
+const DIAS_MES = 30;
+
+function horasDeTelaPorMes(p) {
+  if (!p.segundos_por_hora || !p.pontos_incluidos) return null;
+  return Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
+}
+
+function minutosPorHora(segundos) {
+  const m = segundos / 60;
+  return Number.isInteger(m) ? `${m}` : m.toFixed(1).replace('.', ',');
+}
+
+// "Tudo do Essencial" abre o card, não fecha: é a frase que diz ao leitor que
+// ele não precisa reler o degrau de baixo. Vinha por último porque
+// `planos_beneficios` não guarda ordem, e ordenar no banco por id daria uma
+// ordem que muda a cada benefício novo.
+const HERANCA = /^Tudo do /i;
+const heranca = (p) =>
+  (p.beneficios || [])
+    .filter((b) => HERANCA.test(b))
+    .map((b) => `<li><b>${esc(b)}</b></li>`)
+    .join('');
+const proprios = (p) => (p.beneficios || []).filter((b) => !HERANCA.test(b));
+
+function derivados(p) {
+  const linhas = [];
+  const horas = horasDeTelaPorMes(p);
+  if (horas) {
+    linhas.push(`<li><b>Até ${horas} horas de tela por mês</b>, somando os seus pontos</li>`);
+    linhas.push(`<li>${minutosPorHora(p.segundos_por_hora)} min de tela a cada hora, em cada ponto</li>`);
+  }
+  if (p.pontos_incluidos) {
+    linhas.push(
+      `<li>Em ${p.pontos_incluidos} ${p.pontos_incluidos === 1 ? 'ponto' : 'pontos'} da rede, escolhidos por você</li>`,
+    );
+  }
+  if (p.duracao_maxima_segundos) linhas.push(`<li>Peça de até ${p.duracao_maxima_segundos} segundos</li>`);
+  if (p.limite_criativos) {
+    linhas.push(
+      `<li>${p.limite_criativos} ${p.limite_criativos === 1 ? 'criativo ativo por vez' : 'criativos ativos, revezando entre si'}</li>`,
+    );
+  }
+  return linhas.join('');
+}
+
 let PLANOS = [];
 // Se já estiver logado como anunciante, assinar aqui mesmo — sem passar
 // pelo cadastro de novo (o painel pega o ?plano= e gera a cobrança).
@@ -55,9 +109,11 @@ function render(meses) {
       ${cheio ? `<div class="price-riscado">${fmt(cheio)}/mês <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
       <div class="price">${fmt(porMes)}/mês</div>
       <ul>
-        <li>${p.frequencia_hora}x por hora em cada ponto</li>
-        ${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-        ${p.ponto_apos_meses ? `<li><b>Ao completar ${p.ponto_apos_meses} meses, ganhe uma tela no seu comércio</b></li>` : ''}
+        ${heranca(p)}
+        ${derivados(p)}
+        ${proprios(p)
+          .map((b) => `<li>${esc(b)}</li>`)
+          .join('')}
       </ul>
       <a class="btn ${p.destaque_no_site ? 'primary' : 'ghost'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
@@ -131,7 +187,7 @@ fetch(`${API_BASE_URL}/pontos`)
     if (!Array.isArray(pontos)) return;
     // /pontos e a lista da pagina "Onde estamos", que mostra tambem ponto em
     // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
-    const ativos = pontos.filter((p) => p.status === 'ativo').length;
+    const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
     if (ativos >= PONTOS_PARA_TIRAR_AVISO) return;
     const situacao =
       ativos === 0
