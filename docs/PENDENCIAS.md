@@ -1822,3 +1822,47 @@ teto. A rede **nasce cobrindo o Essencial**, como o dono previu.
 **P12. [ ] Fica pro dono, na aba Planos do admin:** o comportamento dos
 planos (e o desenho de status de ponto) é conversa da revisão do `/admin`, não
 desta tela. Nada foi mexido no motor além da RN-49.
+
+### ONDE PARAMOS NA ABA PLANOS (17/09/2026) — retomar por aqui
+
+A parte visual da tela de Planos está fechada e no ar. **O que ficou em
+aberto é uma coisa só, e é do motor:** qual é o divisor da RN-49.
+
+**Decisão do dono, tomada em 17/09/2026:** contar **todos os pontos já
+cadastrados**, inclusive os `a_instalar`, no divisor — "assim não bate no teto
+nunca". Ele acrescentou que isso não precisa ser passado ao cliente final, e
+que a correção entra **no dashboard quando a revisão continuar**. Por isso
+NÃO foi implementado ainda: está marcado aqui, não construído.
+
+**O número que o dono ainda não tinha quando decidiu** (medido com a função de
+verdade, no cenário do lançamento — 1 ponto no ar + 2 a instalar):
+
+| | contratado | A) divisor = quem veicula (hoje) | C) divisor = todos os cadastrados (decidido) |
+|---|---|---|---|
+| Essencial | 27 h/mês | **27 h** (integral) | **9 h** |
+| Pro | 84 h/mês | 60 h (teto) | 28 h |
+| Prime | 180 h/mês | 60 h (teto) | 60 h |
+| hora da tela, 1 assinante de cada | — | 41% | 27% |
+
+É verdade que C **nunca bate no teto** — o Prime encosta nele exatamente e os
+outros ficam abaixo. O que o teto deixa de fazer, porém, a divisão faz no
+lugar: **C entrega menos que A em todos os planos**, e no Essencial derruba de
+27h (o contratado inteiro) para 9h. Ou seja, C não tira o teto do caminho —
+troca o teto por uma entrega menor, que é o problema que a RN-49 nasceu pra
+resolver.
+
+Duas saídas possíveis pra quando voltarmos, e as duas atendem "não bater no
+teto" sem derrubar a entrega:
+1. **Divisor = quem veicula, e teto maior.** Com 900s (1/4 da hora) o Pro
+   entrega as 84h inteiras e o Prime chega a 90h de 180.
+2. **Divisor = todos os cadastrados, com piso.** A entrega nunca cai abaixo do
+   que o anunciante receberia sem a regra nenhuma — hoje C já respeita isso,
+   mas por acidente, não por construção.
+
+Nada disso bloqueia a revisão: o que está no ar é A (divisor = quem veicula,
+teto 600s), que é o comportamento mais generoso dos dois.
+
+**Retomada combinada:** o dono está longe do PC, então a revisão segue pelo
+**celular** (tópico 1, metade mobile). A aba Planos volta depois, junto com a
+revisão do `/admin`, onde o comportamento dos planos e o desenho de status de
+ponto já estavam marcados pra ser conversados.
