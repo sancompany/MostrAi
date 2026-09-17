@@ -3,7 +3,7 @@ const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
-const { enviarCriativoNoAr, enviarCriativoReprovado } = require('../financeiro/email');
+const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
@@ -71,6 +71,19 @@ router.patch('/admin/criativos/:id', async (req, res) => {
 // As três consultas salvas da métrica (funcional.md §9). Ficam num módulo à
 // parte porque são SQL longo e de leitura própria — misturadas no resumo,
 // ninguém acharia nem uma nem outro.
+// Diagnóstico do e-mail: faz o LOGIN no servidor de SMTP e diz se passou,
+// sem mandar mensagem nenhuma. Existe porque a única forma de saber se a
+// senha de app do Gmail está valendo era esperar um pagamento real acontecer
+// e depois caçar o erro nos logs — o que só se descobre tarde e por acaso
+// (foi assim que o item 9 de PENDENCIAS apareceu, em 16/09/2026).
+//
+// Não devolve a senha nem parte dela: só se existe, quantos caracteres tem e
+// se sobrou espaço no meio. Senha de app do Gmail tem 16 caracteres; os
+// espaços que o Google mostra na tela são separação visual e não entram.
+router.get('/admin/diagnostico/smtp', async (_req, res) => {
+  res.json(await diagnosticarSmtp());
+});
+
 router.get('/admin/metrica', async (_req, res) => {
   res.json(await metrica.consultar());
 });

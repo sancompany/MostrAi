@@ -319,9 +319,13 @@ function montarNav() {
 
 // Contadores no menu — o admin vê o que está pendente sem abrir aba nenhuma.
 function pintarContadores() {
+  // `RESUMO.filas?.` e nao `RESUMO.filas.`: resposta parcial de /admin/resumo
+  // derrubava o menu inteiro com "Cannot read properties of undefined", e um
+  // menu morto esconde TODAS as filas — justo quando algo ja esta errado no
+  // servidor. Contador zerado e degradacao; menu quebrado e apagao.
   if (!RESUMO) return;
   document.querySelectorAll('.nav-item[data-fila]').forEach((btn) => {
-    const qtd = RESUMO.filas[btn.dataset.fila] || 0;
+    const qtd = RESUMO.filas?.[btn.dataset.fila] || 0;
     const cont = btn.querySelector('.cont');
     cont.textContent = qtd;
     cont.hidden = qtd === 0;
@@ -2840,8 +2844,20 @@ async function renderArrependimentos(el) {
 // ---------- eventos pendentes ----------
 async function renderEventos(el) {
   const eventos = await pegar('/admin/eventos-pendentes');
-  el.innerHTML = eventos.length
-    ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+  // Teste do e-mail aqui dentro de propósito: quando um evento fica pendente
+  // por falha de envio, esta é a tela onde você está. O botão faz o login no
+  // servidor de SMTP e diz na hora se a senha de app está valendo — sem
+  // mandar mensagem nenhuma e sem esperar um pagamento real acontecer.
+  const smtp = `<div class="tabela-caixa u-mb-16" style="padding:14px">
+    <b>E-mail (SMTP)</b>
+    <p class="u-fs-84 u-mt-8 u-mb-8">Confere se o servidor aceita a senha de app. Não envia e-mail e não mostra a senha.</p>
+    <button class="btn ghost mini" id="testarSmtp">Testar agora</button>
+    <div id="resultadoSmtp" class="u-fs-84 u-mt-8"></div>
+  </div>`;
+  el.innerHTML =
+    smtp +
+    (eventos.length
+      ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
       <th>ID</th><th>Motivo</th><th>Quando</th><th>Dados recebidos</th><th></th>
     </tr></thead><tbody>
     ${eventos
@@ -2860,7 +2876,23 @@ async function renderEventos(el) {
       )
       .join('')}
   </tbody></table></div></div>`
-    : '<p class="empty-state">Nenhum evento pendente de revisão.</p>';
+      : '<p class="empty-state">Nenhum evento pendente de revisão.</p>');
+
+  el.querySelector('#testarSmtp')?.addEventListener('click', async (ev) => {
+    const alvo = el.querySelector('#resultadoSmtp');
+    ev.target.disabled = true;
+    alvo.textContent = 'testando...';
+    try {
+      const r = await pegar('/admin/diagnostico/smtp');
+      const detalhe = `${esc(r.host || '?')}:${r.porta || '?'} · ${esc(r.usuario || '?')} · senha com ${r.senha_caracteres} caracteres${r.senha_tem_espaco ? ' (TEM ESPAÇO — a senha de app do Gmail tem 16 e os espaços não entram)' : ''}`;
+      alvo.innerHTML = r.ok
+        ? `<span class="badge badge-ok">Funcionando</span> O servidor aceitou a senha.<br><span class="u-fs-72">${detalhe}</span>`
+        : `<span class="badge badge-err">Não passou</span> ${esc(r.erro || 'erro desconhecido')}<br><span class="u-fs-72">${detalhe}</span>`;
+    } catch (err) {
+      alvo.innerHTML = `<span class="badge badge-err">Não deu pra testar</span> ${esc(err.message || '')}`;
+    }
+    ev.target.disabled = false;
+  });
 
   el.querySelectorAll('button[data-resolver]').forEach((btn) =>
     btn.addEventListener('click', async () => {

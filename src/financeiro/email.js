@@ -29,7 +29,7 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
       `Abra o painel e envie um vídeo ou imagem em pé (9:16), na duração que o seu plano permite. ` +
       `A gente ajusta o formato pra caber na tela. Depois da aprovação ele entra no ar.\n\n` +
       `${process.env.SITE_URL}/anunciante/painel.html\n\n` +
-      `Não tem a arte pronta? Responda este e-mail ou chame no WhatsApp — a peça simples está incluída no seu plano.\n\n` +
+      `Não tem a arte pronta? A gente faz pra você — é um serviço à parte do plano, com preço combinado na hora. Responda este e-mail ou chame no WhatsApp que a gente te passa um orçamento.\n\n` +
       `Equipe Mostraí.`,
   });
 }
@@ -235,6 +235,50 @@ async function enviarCandidaturaNova(candidatura) {
   });
 }
 
+// DIAGNOSTICO DE SMTP, pro dono conferir sem depender de esperar um pagamento
+// real acontecer. `verify()` do nodemailer abre a conexao e faz o LOGIN de
+// verdade no servidor, mas NAO manda mensagem nenhuma — e exatamente o que
+// falha quando a senha de app do Gmail e recusada (`535-5.7.8 Username and
+// Password not accepted`).
+//
+// NUNCA devolve o valor de SMTP_PASS, nem parte dele: so diz se a variavel
+// existe e quantos caracteres tem. O tamanho e util porque senha de app do
+// Gmail tem 16 caracteres — se vier 19, sobraram os espacos que o Google
+// mostra na tela (eles sao so separacao visual e nao fazem parte da senha).
+async function diagnosticarSmtp() {
+  const faltando = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'].filter((v) => !process.env[v]);
+  const senha = process.env.SMTP_PASS || '';
+  const base = {
+    host: process.env.SMTP_HOST || null,
+    porta: Number(process.env.SMTP_PORT) || null,
+    usuario: process.env.SMTP_USER || null,
+    remetente: remetente() || null,
+    senha_definida: Boolean(senha),
+    senha_caracteres: senha.length,
+    senha_tem_espaco: /\s/.test(senha),
+  };
+  if (faltando.length) return { ok: false, erro: `variáveis não definidas: ${faltando.join(', ')}`, ...base };
+
+  // Limites de tempo proprios: sem eles, host errado ou porta bloqueada
+  // deixam a tela do admin girando pra sempre em vez de dizer o que houve.
+  const teste = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    auth: { user: process.env.SMTP_USER, pass: senha },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 8000,
+  });
+  try {
+    await teste.verify();
+    return { ok: true, ...base };
+  } catch (err) {
+    return { ok: false, erro: err.message, codigo: err.code || null, resposta: err.response || null, ...base };
+  } finally {
+    teste.close();
+  }
+}
+
 module.exports = {
   enviarCobrancaFalhou,
   enviarCoberturaAcabando,
@@ -247,4 +291,5 @@ module.exports = {
   enviarMensagemContato,
   enviarNovidade,
   enviarArrependimentoRecebido,
+  diagnosticarSmtp,
 };
