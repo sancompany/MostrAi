@@ -284,7 +284,8 @@ const SUBTITULOS = {
     'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas, por isso não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
   beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
-  comodato: 'O que o dono do ponto escolhe no "Seja um ponto": ajuda de custo e cota de autoanúncio.',
+  comodato:
+    'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano básico junto, ou trocar os R$ 50 pelo Essencial inteiro.',
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   trocas:
     'Quem trocou de plano no meio do período: de qual plano pra qual, quanto pagou de diferença e quando. O pago também entra em Cobranças; aqui é a lista de quem subiu de plano.',
