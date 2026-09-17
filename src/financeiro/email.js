@@ -39,6 +39,10 @@ async function enviarConfirmacaoPagamento(anunciante, plano, valorCobrado) {
 // de renovação"). Sem isso a cobertura simplesmente vence na próxima data de
 // expiração e o anunciante nunca soube que devia trocar o cartão.
 async function enviarCobrancaFalhou(anunciante, linkRenovar) {
+  const comoResolver = linkRenovar
+    ? `Pra resolver, atualize o cartão aqui:\n${linkRenovar}\n\n` +
+      `A assinatura antiga só é cancelada quando a nova for confirmada — você não fica sem cobertura na troca.\n\n`
+    : `Pra resolver, responda este e-mail ou chame no WhatsApp que a gente atualiza o pagamento com você.\n\n`;
   await transportador().sendMail({
     from: remetente(),
     to: anunciante.contato_email,
@@ -47,8 +51,7 @@ async function enviarCobrancaFalhou(anunciante, linkRenovar) {
       `Olá, ${anunciante.nome_empresa}!\n\n` +
       `A cobrança deste ciclo não passou — cartão vencido, sem limite ou recusado pelo banco.\n` +
       `Seu anúncio continua no ar até a cobertura atual acabar, mas a renovação automática não vai se repetir sozinha.\n\n` +
-      `Pra resolver, atualize o cartão aqui:\n${linkRenovar}\n\n` +
-      `A assinatura antiga só é cancelada quando a nova for confirmada — você não fica sem cobertura na troca.\n\n` +
+      comoResolver +
       `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
       `Equipe Mostraí.`,
   });

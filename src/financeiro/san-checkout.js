@@ -83,13 +83,50 @@ function linkCheckoutAssinatura(assinaturaId) {
   return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&assinatura=${assinaturaId}${volta}`;
 }
 
+// TOKEN DE RENOVAÇÃO — mudança incompatível do Checkout em 16/09/2026.
+//
+// Até então bastava `&renovar=1`. O Checkout confiava no `documento` que o
+// próprio formulário coletava, e CPF/CNPJ não é segredo: quem soubesse o
+// documento de um assinante ativo montava o link, pagava com o PRÓPRIO
+// cartão e, ao confirmar, fazia o Checkout cancelar a assinatura de verdade
+// da vítima na Asaas. Agora o `renovar` tem que ser um HMAC-SHA256 assinado
+// com a nossa `SAN_CHECKOUT_KEY` (API.md 7.3 dele).
+//
+// O QUE ACONTECE SE O TOKEN NÃO BATER: o Checkout não recusa — ele degrada
+// pra "assinatura nova comum", cria e cobra, e NÃO cancela a antiga. Do
+// nosso lado isso é o pior caso possível: o cliente passa a ter duas
+// assinaturas na Asaas e pode ser cobrado duas vezes. Por isso aqui o token
+// ausente devolve `null` e o e-mail sai sem link, em vez de sair com um link
+// que cobra em dobro calado.
+//
+// O DOCUMENTO VAI SÓ COM DÍGITOS, e NÃO pelo nosso `limpar()`. A pop-up do
+// Checkout manda `documento.replace(/\D/g, '')` (public/js/app.js dele), e o
+// HMAC é conferido contra exatamente o que ela manda. O nosso `limpar()`
+// PRESERVA LETRAS, porque CNPJ é alfanumérico desde julho de 2026 — usar ele
+// aqui faria o token nunca bater pra empresa com letra no CNPJ, e o sintoma
+// seria cobrança dobrada, não erro. Espelhar a pop-up é o que faz bater.
+const soDigitos = (valor) => String(valor || '').replace(/\D/g, '');
+
+function tokenRenovacao(assinaturaId, documento) {
+  const chave = process.env.SAN_CHECKOUT_KEY;
+  if (!chave || !documento) return null;
+  const agora = Math.floor(Date.now() / 1000);
+  const mensagem = `${agora}.${process.env.SAN_CHECKOUT_CONTRATANTE_ID}.${assinaturaId}.${documento}`;
+  return `${agora}.${crypto.createHmac('sha256', chave).update(mensagem).digest('hex')}`;
+}
+
 // Link de RENOVAÇÃO (API.md 7.3): cartão vencido ou cobrança recusada. É o
-// mesmo link de assinar, com `&renovar=1` — o Checkout sabe que é troca de
+// mesmo link de assinar, com o token acima — o Checkout sabe que é troca de
 // cartão de uma assinatura existente, não uma nova. A assinatura antiga só é
 // cancelada quando a nova for paga, então o assinante nunca fica descoberto
 // entre uma tentativa e outra.
-function linkRenovarAssinatura(assinaturaId) {
-  return `${linkCheckoutAssinatura(assinaturaId)}&renovar=1`;
+//
+// Devolve `null` quando não dá pra assinar o token (sem chave no ambiente ou
+// sem documento na conta). Quem chama decide o que fazer — nunca mandar o
+// link sem token.
+function linkRenovarAssinatura(assinaturaId, cpfCnpj) {
+  const token = tokenRenovacao(assinaturaId, soDigitos(cpfCnpj));
+  return token ? `${linkCheckoutAssinatura(assinaturaId)}&renovar=${token}` : null;
 }
 
 // Pedido avulso (API.md do Checkout, seção 4.1): pagamento único, sem
@@ -379,12 +416,21 @@ async function processarWebhookAssinatura(payload) {
   // deveria trocar o cartão.
   if (payload.evento === 'cobranca_falhou') {
     const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+    let comLink = false;
     if (anunciante) {
-      enviarCobrancaFalhou(anunciante, linkRenovarAssinatura(assinatura.id)).catch((err) =>
-        console.error('e-mail de cobrança falhou', err),
-      );
+      // Sem token assinado o link cobraria em dobro (ver `tokenRenovacao`), e
+      // aí é melhor um e-mail que manda falar com a gente do que um link que
+      // cria uma segunda assinatura sem cancelar a primeira.
+      const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+      comLink = !!link;
+      enviarCobrancaFalhou(anunciante, link).catch((err) => console.error('e-mail de cobrança falhou', err));
     }
-    return registrarPendencia(payload, 'cobrança falhou — link de renovação enviado por e-mail');
+    return registrarPendencia(
+      payload,
+      comLink
+        ? 'cobrança falhou — link de renovação enviado por e-mail'
+        : 'cobrança falhou — e-mail enviado SEM link: não foi possível assinar o token de renovação (confira SAN_CHECKOUT_KEY e o cpf_cnpj da conta)',
+    );
   }
 
   if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
