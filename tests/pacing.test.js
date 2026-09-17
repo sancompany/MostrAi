@@ -7,6 +7,8 @@ const {
   dividirCota,
   duracaoValida,
   SEGUNDOS_DA_HORA,
+  segundosCompensados,
+  TETO_COMPENSACAO_SEGUNDOS,
   DURACAO_INSTITUCIONAL,
   DURACAO_PADRAO,
   ID_INSTITUCIONAL,
@@ -282,4 +284,66 @@ test('regerar a mesma hora não muda o que foi programado', () => {
 // (código antigo, teste) tem que receber algo estável.
 test('sem semente ainda assim é estável', () => {
   assert.deepStrictEqual(montarHoraDeTv(contas()).itens, montarHoraDeTv(contas()).itens);
+});
+
+// ---------------------------------------------------------------------------
+// RN-49 — compensação de cobertura enquanto a rede é menor que o plano
+// ---------------------------------------------------------------------------
+// É caminho de contrato: o número que sai daqui é quanto tempo de tela o
+// cliente recebe pelo que pagou. A propriedade que importa não é o valor por
+// ponto, é o TOTAL — a compensação concentra, não presenteia.
+
+test('o total contratado na hora não muda: a compensação concentra, não presenteia', () => {
+  // Pro: 120s em cada um dos 7 pontos = 840s por hora, rede cheia.
+  const total = 120 * 7;
+  for (const cobertos of [7, 6, 5, 4, 3]) {
+    assert.strictEqual(segundosCompensados(120, 7, cobertos) * cobertos, total, `com ${cobertos} pontos`);
+  }
+});
+
+test('rede do tamanho do plano (ou maior) não compensa nada', () => {
+  assert.strictEqual(segundosCompensados(90, 3, 3), 90);
+  assert.strictEqual(segundosCompensados(90, 3, 5), 90);
+});
+
+test('quem paga por mais cobertura recebe mais compensação — é o ponto da regra', () => {
+  const rede = 5;
+  assert.strictEqual(segundosCompensados(90, 3, rede), 90); // Essencial: cabe na rede, não ganha
+  assert.strictEqual(segundosCompensados(120, 7, rede), 168); // Pro
+  assert.strictEqual(segundosCompensados(180, 10, rede), 360); // Prime
+});
+
+// Sem teto, o Prime numa rede de 1 ponto pediria 1800s — metade da hora
+// daquela tela pra uma conta só, e o corte da RN-30 passaria a comer o de
+// todo mundo. O teto é o que faz a promessa ser cumprível.
+test('o teto segura a conta quando a rede é muito menor que o plano', () => {
+  assert.strictEqual(segundosCompensados(180, 10, 1), TETO_COMPENSACAO_SEGUNDOS);
+  assert.strictEqual(segundosCompensados(120, 7, 1), TETO_COMPENSACAO_SEGUNDOS);
+  // Seis contas no teto enchem a hora e nem uma a mais — é de onde o teto sai.
+  assert.strictEqual(TETO_COMPENSACAO_SEGUNDOS * 6, SEGUNDOS_DA_HORA);
+});
+
+test('a compensação nunca devolve menos que o contratado', () => {
+  for (const contratados of [1, 3, 7, 10]) {
+    for (const cobertos of [0, 1, 2, 5, 10, 20]) {
+      assert.ok(
+        segundosCompensados(120, contratados, cobertos) >= 120,
+        `plano de ${contratados} com ${cobertos} cobertos caiu abaixo do contratado`,
+      );
+    }
+  }
+});
+
+// Plano sem teto de pontos cobre a rede inteira (`pontosDoAnunciante` devolve
+// tudo), então não existe ponto faltando pra compensar.
+test('plano que cobre a rede inteira não entra na regra', () => {
+  assert.strictEqual(segundosCompensados(120, null, 5), 120);
+  assert.strictEqual(segundosCompensados(120, 0, 5), 120);
+});
+
+// Ponto `a_instalar` conta como vaga do plano e não veicula. Quem escolheu 2
+// pontos no ar de um plano de 7 concentra nos 2 — e recebe os mesmos 840s.
+test('quem escolheu poucos pontos concentra neles, e recebe o mesmo total', () => {
+  assert.strictEqual(segundosCompensados(120, 7, 2), 420);
+  assert.strictEqual(420 * 2, 120 * 7);
 });

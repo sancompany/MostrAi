@@ -10,6 +10,7 @@ const pool = require('../db/pool');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
+const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
 const { cepValido, telefoneE164, data } = require('../br/formato');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
@@ -348,8 +349,12 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
 
+  // Ponto `a_instalar` entra na lista (RN-49, decisão do dono em 17/09/2026):
+  // ele já conta como vaga do plano, pra quem paga por cobertura maior não
+  // perder o lugar num comércio que está sendo montado. Ele não veicula, e é
+  // por isso que a compensação abaixo o trata como ponto FALTANDO.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco,
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
             (ap.ponto_id IS NOT NULL) AS escolhido
        FROM pontos p
@@ -357,22 +362,55 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
-      WHERE p.status = 'em_operacao'
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, ap.ponto_id
-      ORDER BY p.nome`,
+      WHERE p.status IN ('em_operacao', 'a_instalar')
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, ap.ponto_id
+      ORDER BY p.status DESC, p.nome`,
     [conta.id],
   );
+
+  // A conta do bônus é a MESMA do gerador da playlist, com as mesmas funções:
+  // quantos pontos EM OPERAÇÃO entram na fatia dele hoje, e quantos segundos
+  // por hora isso vira depois da RN-49. Refazer a conta aqui à mão daria um
+  // número no painel diferente do que a tela executa.
+  const noAr = rows.filter((r) => r.status === 'em_operacao').map((r) => r.id);
+  const cobertos = pontosDoAnunciante(
+    {
+      id: conta.id,
+      pontosIncluidos: plano.pontos_incluidos,
+      escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
+    },
+    noAr,
+  );
+  const base = Number(plano.segundos_por_hora) || 0;
+  const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
 
   res.json({
     limite: plano.pontos_incluidos,
     escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
+    // O que o plano compra, o que a rede entrega hoje, e a diferença — que é
+    // o número que o dono pediu pra ficar escrito ("a hora que ele vai ganhar
+    // a mais"), em vez de um bônus que ninguém consegue conferir.
+    cobertura: {
+      contratados: plano.pontos_incluidos,
+      veiculando: cobertos.length,
+      em_instalacao: rows.filter((r) => r.status === 'a_instalar').length,
+      horas_contratadas: horasDeTelaPorMes(base, plano.pontos_incluidos),
+      horas_sem_compensacao: horasDeTelaPorMes(base, cobertos.length),
+      horas_hoje: horasDeTelaPorMes(efetivos, cobertos.length),
+      segundos_por_hora_base: base,
+      segundos_por_hora_hoje: efetivos,
+      compensando: efetivos > base,
+    },
     pontos: rows.map((r) => ({
       id: r.id,
       nome: r.nome,
       cidade: r.cidade,
       endereco: r.endereco,
       escolhido: r.escolhido,
+      status: r.status,
       // Quanto da hora daquele ponto já está vendido. 100% = cheio.
+      // Ponto que ainda não veicula não tem hora vendida — 0 não é "vazio de
+      // verdade", é "ainda não existe", e a tela diz isso com o status.
       ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
     })),
   });
@@ -390,12 +428,16 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     });
   }
 
+  // `a_instalar` é escolha válida desde a RN-49: a vaga fica reservada pro
+  // comércio que está sendo montado, e enquanto ele não veicula o tempo dele
+  // volta pros pontos no ar. O que continua recusado é ponto que não existe.
   if (pedidos.length) {
-    const { rows } = await pool.query(`SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status = 'em_operacao'`, [
-      pedidos,
-    ]);
+    const { rows } = await pool.query(
+      `SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status IN ('em_operacao', 'a_instalar')`,
+      [pedidos],
+    );
     if (rows.length !== pedidos.length) {
-      return res.status(400).json({ erro: 'um dos pontos escolhidos não está em operação' });
+      return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
     }
   }
 

@@ -124,6 +124,33 @@ function preencherStatusBanner() {
 // fatia sorteada de forma estável, e isso é dito na tela em vez de ficar
 // implícito — senão "não marquei nada" parece "não vou aparecer em lugar
 // nenhum", que é o contrário do que acontece.
+// RN-49 — o bônus de cobertura, escrito com os números que dá pra conferir.
+//
+// Três linhas e não uma: o que o plano compra, o que a rede daria hoje sem a
+// regra, e o que ela dá com ela. A do meio é a que faz as outras duas
+// significarem alguma coisa — sem ela o cliente lê "você ganhou horas" sem
+// saber ganhou em relação a quê.
+function pintarCompensacao(c) {
+  const el = document.getElementById('avisoCompensacao');
+  if (!el) return;
+  if (!c?.compensando) {
+    el.hidden = true;
+    return;
+  }
+  const ganho = c.horas_hoje - c.horas_sem_compensacao;
+  const faltam = c.contratados - c.veiculando;
+  el.innerHTML =
+    `<b>A rede ainda é menor que o seu plano, e você não perde por isso.</b> ` +
+    `Seu plano cobre ${c.contratados} pontos e ${c.veiculando} ${c.veiculando === 1 ? 'está' : 'estão'} veiculando hoje. ` +
+    `O tempo ${faltam === 1 ? 'do ponto que falta' : `dos ${faltam} pontos que faltam`} volta pros que estão no ar: ` +
+    `em vez de ${c.segundos_por_hora_base}s, você tem <b>${c.segundos_por_hora_hoje}s de tela por hora em cada ponto</b>. ` +
+    `Isso é <b>${c.horas_hoje} horas de tela por mês</b> no lugar das ${c.horas_sem_compensacao} que a rede de hoje daria ` +
+    `— <b>${ganho} ${ganho === 1 ? 'hora' : 'horas'} a mais</b>. ` +
+    `Conforme os pontos entrarem no ar, o tempo se espalha de volta e o total contratado ` +
+    `(${c.horas_contratadas} horas/mês) fica igual.`;
+  el.hidden = false;
+}
+
 async function carregarPontos() {
   if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia) return;
   let dados;
@@ -139,18 +166,23 @@ async function carregarPontos() {
   const limite = dados.limite;
   document.getElementById('painelPontos').hidden = false;
   document.getElementById('dicaPontos').textContent = limite
-    ? `Seu plano cobre ${limite} ${limite === 1 ? 'ponto' : 'pontos'}. Marque onde você quer aparecer, ou deixe tudo desmarcado e a gente distribui pra você.`
+    ? `Seu plano cobre ${limite} ${limite === 1 ? 'ponto' : 'pontos'}. Marque onde você quer aparecer, ou deixe tudo desmarcado e a gente distribui pra você. Ponto em instalação pode ser marcado: a vaga fica sua.`
     : 'Seu plano cobre todos os pontos da rede.';
+  pintarCompensacao(dados.cobertura);
 
   const lista = document.getElementById('listaPontos');
   lista.innerHTML = dados.pontos
     .map((p) => {
-      const cheio = p.ocupacao >= 100;
+      const instalando = p.status === 'a_instalar';
+      // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
+      // ainda. Bloquear ele por ocupação seria bloquear por um zero que
+      // significa "ainda não existe", não "tem espaço de sobra".
+      const cheio = !instalando && p.ocupacao >= 100;
       return `<label class="ponto-escolha${cheio ? ' cheio' : ''}">
       <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
       <span class="ponto-nome">${esc(p.nome)}</span>
       <span class="ponto-end">${esc(p.endereco || '')}${p.cidade ? `, ${esc(p.cidade)}` : ''}</span>
-      <span class="ponto-ocupacao">${cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+      <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
     </label>`;
     })
     .join('');

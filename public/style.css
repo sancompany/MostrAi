@@ -249,6 +249,10 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .plan-card ul { list-style: none; padding: 0; margin: 18px 0 24px; display: flex; flex-direction: column; gap: 9px; }
 .plan-card li { color: var(--text-dim); font-size: .92rem; padding-left: 22px; position: relative; }
 .plan-card li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
+/* O botão desce pro pé do card. A grade já estica os três à mesma altura, mas
+   o botão seguia o fim da lista — e como o Pro tem dois benefícios a mais que
+   o Prime, os três "Assinar" ficavam em alturas diferentes na mesma linha. */
+.plan-card .btn { margin-top: auto; }
 
 /* Segmentado, não quatro pílulas soltas: as quatro opções são a MESMA
    escolha, e pílula separada no celular quebrava em duas linhas

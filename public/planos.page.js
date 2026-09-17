@@ -3,20 +3,19 @@
 // número que envelhece sozinho no dia em que alguém mexer em
 // `segundos_por_hora` — e a vitrine passa a prometer o que a tela não faz.
 //
-// A conta das horas assume 12h de comércio aberto por dia, 30 dias. Por isso
-// sai com "até" e com a linha exata embaixo: o número grande vende, o número
-// exato é o que a tela cumpre.
+// A conta das horas assume 12h de comércio aberto por dia, 30 dias — por isso
+// sai com "até": comércio que abre menos entrega menos, e prometer o número
+// cheio seria vender hora que a porta fechada não dá.
+//
+// A linha de "X min de tela a cada hora" saiu em 17/09/2026 (pedido do dono).
+// Era a conta de DENTRO: mesma grandeza que o total do mês, em outra unidade,
+// obrigando o leitor a multiplicar pra concluir o que o card já dizia em cima.
 const HORAS_ABERTO_DIA = 12;
 const DIAS_MES = 30;
 
 function horasDeTelaPorMes(p) {
   if (!p.segundos_por_hora || !p.pontos_incluidos) return null;
   return Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
-}
-
-function minutosPorHora(segundos) {
-  const m = segundos / 60;
-  return Number.isInteger(m) ? `${m}` : m.toFixed(1).replace('.', ',');
 }
 
 // "Tudo do Essencial" abre o card, não fecha: é a frase que diz ao leitor que
@@ -34,10 +33,7 @@ const proprios = (p) => (p.beneficios || []).filter((b) => !HERANCA.test(b));
 function derivados(p) {
   const linhas = [];
   const horas = horasDeTelaPorMes(p);
-  if (horas) {
-    linhas.push(`<li><b>Até ${horas} horas de tela por mês</b>, somando os seus pontos</li>`);
-    linhas.push(`<li>${minutosPorHora(p.segundos_por_hora)} min de tela a cada hora, em cada ponto</li>`);
-  }
+  if (horas) linhas.push(`<li><b>Até ${horas} horas de tela por mês</b>, somando os seus pontos</li>`);
   if (p.pontos_incluidos) {
     linhas.push(
       `<li>Em ${p.pontos_incluidos} ${p.pontos_incluidos === 1 ? 'ponto' : 'pontos'} da rede, escolhidos por você</li>`,
@@ -115,7 +111,7 @@ function render(meses) {
           .map((b) => `<li>${esc(b)}</li>`)
           .join('')}
       </ul>
-      <a class="btn ${p.destaque_no_site ? 'primary' : 'ghost'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
+      <a class="btn primary block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
   `;
     })
@@ -189,16 +185,31 @@ fetch(`${API_BASE_URL}/pontos`)
     // instalacao e em reparo. Quem exibe anuncio e so o 'ativo'.
     const ativos = pontos.filter((p) => p.status === 'em_operacao').length;
     if (ativos >= PONTOS_PARA_TIRAR_AVISO) return;
+    const instalando = pontos.filter((p) => p.status === 'a_instalar').length;
     const situacao =
       ativos === 0
         ? 'Neste momento não há nenhuma tela no ar.'
-        : `Hoje ${ativos === 1 ? '1 ponto está' : `${ativos} pontos estão`} no ar, e a instalação continua.`;
+        : `Hoje ${ativos === 1 ? '1 ponto está' : `${ativos} pontos estão`} no ar` +
+          `${instalando ? `, e ${instalando === 1 ? 'mais 1 está' : `mais ${instalando} estão`} em instalação` : ', e a instalação continua'}.`;
+
+    // RN-49: o bônus de cobertura. Só entra com tela no ar — sem nenhuma não
+    // existe pra onde concentrar, e prometer aqui seria vender o que a rede
+    // não tem. "Até onde couber na hora" não é ressalva de rodapé: é o teto
+    // real da regra (um sexto da hora por anunciante), e omitir ele faria a
+    // frase prometer mais do que o gerador entrega.
+    const bonus = ativos
+      ? '<br><br><b>E você não paga por ponto que ainda não existe.</b> Enquanto a rede for menor que a cobertura ' +
+        'do seu plano, o tempo dos pontos que faltam volta para os pontos que já estão no ar — até onde couber na ' +
+        'hora de cada tela. Você aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê o ' +
+        'número exato de horas no seu painel. Conforme os pontos entram no ar, o tempo se espalha de volta.'
+      : '';
+
     const el = document.getElementById('avisoRede');
     el.innerHTML =
       `<b>A rede ainda está em montagem.</b> ${situacao} ` +
       'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. ' +
       'Se preferir esperar, <a href="/contato.html">fale com a gente</a>. E se assinar agora e mudar de ideia, ' +
-      'você tem 7 dias para pedir a devolução integral pelo painel.';
+      `você tem 7 dias para pedir a devolução integral pelo painel.${bonus}`;
     el.hidden = false;
   })
   .catch(() => {});

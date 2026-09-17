@@ -230,6 +230,65 @@ function pontosDoAnunciante(conta, pontosEmOperacao) {
     .slice(0, conta.pontosIncluidos);
 }
 
+// COMPENSAÇÃO DE COBERTURA — RN-49, decidida pelo dono em 17/09/2026.
+//
+// O plano vende N pontos. Enquanto a rede tiver menos que N, o anunciante
+// recebia menos do que pagou, e em silêncio: ele comprou 7 pontos, a rede
+// tinha 5, e os 2 que faltavam simplesmente não existiam pra ele. Quem paga
+// mais era quem perdia mais — o Prime, que cobre 10, ficava com metade do
+// contrato numa rede de 5, enquanto o Essencial, que cobre 3, recebia tudo.
+//
+// A regra: o tempo dos pontos que faltam volta pros pontos que veiculam.
+//
+//   segundos por hora em cada ponto = base × (pontos do plano ÷ pontos cobertos)
+//
+// O TOTAL da hora contratada não muda — só se concentra. Pro (120s × 7) numa
+// rede de 5 vira 168s em cada um dos 5: 840s de qualquer jeito. É a mesma
+// venda entregue no inventário que existe, não um brinde.
+//
+// "Pontos cobertos" é quantos pontos EM OPERAÇÃO entram na fatia dele hoje —
+// quem escolheu 2 dos 7 concentra nos 2, quem não escolheu nada concentra em
+// todos os que estão no ar. Ponto com status `a_instalar` conta como vaga do
+// plano (a pessoa não perde o lugar dele), mas não veicula: é exatamente por
+// isso que ele entra no numerador e nunca no denominador.
+//
+// TETO: um anunciante nunca passa de um sexto da hora numa tela.
+//
+// Sem teto a conta explode no começo, que é justo quando ela mais roda: Prime
+// numa rede de 1 ponto pediria 1800s — metade da hora daquela tela, pra uma
+// conta só. Aí a tela deixa de ser rede e vira canal de um anunciante, e o
+// corte proporcional da RN-30 passa a comer o de todo mundo, inclusive o
+// dele. Um sexto é onde a promessa ainda se cumpre: seis contas compensadas
+// enchem a hora, e antes disso ninguém é cortado. Acima do teto o anunciante
+// para de ganhar — não perde nada do que já tinha.
+const TETO_COMPENSACAO_SEGUNDOS = SEGUNDOS_DA_HORA / 6;
+
+function segundosCompensados(segundosPorHora, pontosIncluidos, pontosCobertos) {
+  const base = Math.max(0, Number(segundosPorHora) || 0);
+  const contratados = Number(pontosIncluidos) || 0;
+  const cobertos = Number(pontosCobertos) || 0;
+  // Sem base, sem teto de pontos (plano que cobre a rede inteira), sem
+  // cobertura nenhuma, ou rede já do tamanho do plano: nada a compensar.
+  if (!base || !contratados || cobertos <= 0 || cobertos >= contratados) return base;
+  return Math.min(TETO_COMPENSACAO_SEGUNDOS, Math.floor((base * contratados) / cobertos));
+}
+
+// Horas de tela por mês, a partir dos segundos por hora e dos pontos.
+//
+// Assume 12h de comércio aberto por dia, 30 dias — é a mesma conta que a
+// vitrine faz no card, e por isso ela sai com "até": comércio que abre menos
+// entrega menos. Mora aqui porque o painel do anunciante passou a precisar
+// dela pro bônus da RN-49, e um segundo lugar calculando isso à mão seria
+// duas respostas diferentes pra mesma pergunta.
+const HORAS_ABERTO_DIA = 12;
+const DIAS_MES = 30;
+
+function horasDeTelaPorMes(segundosPorHora, pontos) {
+  const seg = Math.max(0, Number(segundosPorHora) || 0);
+  const n = Math.max(0, Number(pontos) || 0);
+  return Math.round((seg * n * HORAS_ABERTO_DIA * DIAS_MES) / SEGUNDOS_DA_HORA);
+}
+
 function contarPorAnunciante(itens) {
   const contagem = {};
   for (const id of itens) contagem[id] = (contagem[id] || 0) + 1;
@@ -253,6 +312,9 @@ module.exports = {
   duracaoValida,
   espalhar,
   SEGUNDOS_DA_HORA,
+  segundosCompensados,
+  horasDeTelaPorMes,
+  TETO_COMPENSACAO_SEGUNDOS,
   DURACAO_INSTITUCIONAL,
   DURACAO_PADRAO,
   ID_INSTITUCIONAL,

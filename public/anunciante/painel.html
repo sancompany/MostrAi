@@ -79,6 +79,12 @@
               <span class="form-hint" id="contadorPontos"></span>
             </div>
             <p class="form-hint u-mt-0" id="dicaPontos"></p>
+            <!-- RN-49: enquanto a rede for menor que a cobertura do plano, o
+                 tempo dos pontos que faltam volta pros pontos no ar. O bloco
+                 diz o número exato — contratado, o que a rede daria sem a
+                 regra, e o que ela dá com ela —, porque bônus que o cliente
+                 não consegue conferir é promessa, não benefício. -->
+            <div class="aviso-rede u-mb-16" id="avisoCompensacao" hidden></div>
             <div id="listaPontos"></div>
             <p class="form-msg" id="msgPontos"></p>
           </div>

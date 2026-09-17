@@ -386,6 +386,35 @@ Agora o número mora em `src/lib/limites.js` e quem recusa é
 gerador fica como última defesa. *Violada:* a rota devolve 400 com o teto.
 *Quem vê:* o administrador, ao criar ou versionar um plano.
 
+**RN-49 — Enquanto a rede é menor que o plano, o tempo dos pontos que faltam
+volta pros pontos que veiculam.** *(Decisão do dono, 17/09/2026.)* O plano
+vende N pontos. Com a rede menor que N, o anunciante recebia menos do que
+pagou e em silêncio — e quem pagava mais perdia mais: o Prime, que cobre 10,
+ficava com metade do contrato numa rede de 5, enquanto o Essencial, que cobre
+3, recebia tudo. Agora os segundos por hora em cada ponto viram
+`base × (pontos do plano ÷ pontos cobertos)`, com teto de um sexto da hora por
+anunciante. O TOTAL contratado não muda — só se concentra: Pro (120s × 7) numa
+rede de 5 vira 168s em cada um dos 5, 840s de qualquer jeito. É a mesma venda
+entregue no inventário que existe, não um brinde.
+
+"Pontos cobertos" é quantos pontos EM OPERAÇÃO entram na fatia dele hoje. Ponto
+com status `a_instalar` conta como vaga do plano — o anunciante pode escolher
+ele e não perde o lugar no comércio que está sendo montado —, mas não veicula,
+e é por isso que ele entra no numerador e nunca no denominador.
+
+O teto existe porque sem ele a conta explode justamente quando ela mais roda:
+Prime numa rede de 1 ponto pediria 1800s, metade da hora daquela tela pra uma
+conta só, e o corte proporcional da RN-30 passaria a comer o de todo mundo,
+inclusive o dele. Um sexto é onde a promessa ainda se cumpre — seis contas
+compensadas enchem a hora, e antes disso ninguém é cortado. Acima do teto o
+anunciante para de ganhar; nunca perde o que já tinha.
+
+A conta vive em `segundosCompensados` (`src/lib/pacing.js`) e é usada nos dois
+lugares que precisam concordar: o gerador da playlist e o painel do anunciante.
+*Violada:* não há caminho de usuário — a função nunca devolve menos que o
+contratado. *Quem vê:* o anunciante, no painel, com o número exato de horas a
+mais; e a vitrine, no aviso de rede em montagem.
+
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
 `America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro

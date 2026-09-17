@@ -4,6 +4,7 @@ const {
   pontosDoAnunciante,
   dividirCota,
   duracaoValida,
+  segundosCompensados,
   ID_INSTITUCIONAL,
   DURACAO_INSTITUCIONAL,
 } = require('../lib/pacing');
@@ -103,9 +104,9 @@ async function criativosDoDono(contaId) {
 // Os pontos que estão no ar agora. É a régua da cobertura: o plano dá acesso
 // a N pontos, e "N de quantos" muda toda vez que um comércio novo entra.
 // Quantas inserções aquele plano compra nesta hora, com a peça que a conta
-// tem hoje.
-function quantasInsercoes(conta, duracaoSegundos) {
-  const segundos = Number(conta.segundos_por_hora) || 0;
+// tem hoje. `segundos` já vem compensado pela cobertura (RN-49) — a decisão
+// de quanto ele tem fica fora daqui, que é só a divisão.
+function quantasInsercoes(conta, segundos, duracaoSegundos) {
   if (segundos > 0) return Math.floor(segundos / duracaoValida(duracaoSegundos));
   return Number(conta.frequencia_hora) || 0;
 }
@@ -184,14 +185,22 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele. A conta própria do
   // Mostraí não entra na régua — ela anuncia a rede inteira, é o que ela é.
-  const anunciantes = todos.filter(
-    (a) =>
-      a.conta_propria ||
-      pontosDoAnunciante(
-        { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
-        pontosNoAr,
-      ).includes(dispositivo.ponto_id),
+  //
+  // A fatia é calculada UMA vez por conta e guardada: ela decide duas coisas
+  // agora (se a conta entra nesta tela, e por quantos pontos o tempo dela se
+  // divide na RN-49), e chamar duas vezes convida as duas a divergirem.
+  const cobertura = new Map(
+    todos.map((a) => [
+      a.id,
+      a.conta_propria
+        ? pontosNoAr
+        : pontosDoAnunciante(
+            { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+            pontosNoAr,
+          ),
+    ]),
   );
+  const anunciantes = todos.filter((a) => a.conta_propria || cobertura.get(a.id).includes(dispositivo.ponto_id));
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
@@ -202,6 +211,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // a média delas, que é o que de fato acontece ao longo da hora.
   const entrada = anunciantes.map((a) => {
     const duracaoSegundos = duracaoMedia(a.criativos);
+    // RN-49: enquanto a rede for menor que o plano, o tempo dos pontos que
+    // faltam volta pros que veiculam. Conta própria fica de fora — ela não
+    // compra cobertura, ela É a rede.
+    const segundos = a.conta_propria
+      ? Number(a.segundos_por_hora) || 0
+      : segundosCompensados(a.segundos_por_hora, a.pontos_incluidos, cobertura.get(a.id).length);
     return {
       id: a.id,
       // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
@@ -211,7 +226,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       // `frequencia_hora * duração` é a ponte pra quem ainda não tem
       // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
       // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
-      frequenciaBase: quantasInsercoes(a, duracaoSegundos),
+      frequenciaBase: quantasInsercoes(a, segundos, duracaoSegundos),
       deficit: deficits[a.id] || 0,
       duracaoSegundos,
     };
