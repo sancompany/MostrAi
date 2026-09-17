@@ -61,6 +61,36 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
       db,
     );
     await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
+
+    // A CONTRAPARTIDA DO COMODATO (migration 049, desenho do dono de
+    // 17/09/2026). Quem cede a parede escolhe uma das duas opções, e as duas
+    // dão tela: a opção "Recebe os R$ 50" traz o plano básico junto, e a
+    // "Troca os R$ 50 por tela" traz o Essencial inteiro mais um crédito de
+    // R$ 50 pra quem depois quiser subir pro Destaque ou pro Máximo.
+    //
+    // O plano entra AQUI, na mesma transação que cria o ponto, e não numa
+    // rotina à parte: comodato assinado e contrapartida concedida têm que ser
+    // o mesmo ato, senão existe um intervalo em que ele cedeu a parede e não
+    // recebeu nada — e é justo nesse intervalo que alguém abre um chamado.
+    //
+    // NÃO sobrescreve plano que a conta já tenha: o dono de ponto que já era
+    // cliente pagante continua no plano que paga. Dar o plano de comodato por
+    // cima apagaria uma assinatura ativa.
+    if (opcao?.plano_incluido_id && !conta.plano_id) {
+      await db.query(
+        `UPDATE anunciantes SET plano_id = $2, data_inicio_cobertura = COALESCE(data_inicio_cobertura, now())
+          WHERE id = $1 AND plano_id IS NULL`,
+        [conta.id, opcao.plano_incluido_id],
+      );
+    }
+    // O crédito NÃO acumula por ponto: dono de três pontos tem crédito de
+    // R$ 50, não de R$ 150 (a razão está no cabeçalho da migration 049).
+    if (Number(opcao?.desconto_assinatura_reais) > 0) {
+      await db.query(
+        'UPDATE anunciantes SET credito_comodato_mensal = GREATEST(credito_comodato_mensal, $2) WHERE id = $1',
+        [conta.id, Number(opcao.desconto_assinatura_reais)],
+      );
+    }
   }
 }
 

@@ -280,6 +280,36 @@ rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
 > seria vender o que não existe; "cobre até 10" é verdade no primeiro dia e
 > continua verdade no centésimo.
 
+**RN-43 — O comodato é uma escolha entre dinheiro e tela, e as duas dão
+tela.** Quem cede a parede escolhe uma das duas opções, na candidatura:
+· **"Recebe os R$ 50"** — R$ 50/mês na conta mais o plano básico incluído
+  (`comodato-basico`: 45 s/hora em até 3 pontos, peça de 15s, 1 criativo) =
+  13,5 horas de tela por mês. **Não pode assinar plano de catálogo** enquanto
+  estiver recebendo: `POST /anunciantes/:id/assinar` recusa e explica a troca.
+· **"Troca os R$ 50 por tela"** — sem dinheiro, e o Essencial inteiro
+  incluído = 27 horas por mês, o dobro. **Pode** assinar Destaque ou Máximo,
+  com `credito_comodato_mensal` de R$ 50 abatendo a mensalidade.
+O plano incluído é concedido na MESMA transação que cria o ponto, e nunca por
+cima de plano que a conta já tenha — dono de ponto que já era cliente pagante
+continua no plano que paga. *Violada:* a rota de assinar recusa. *Quem vê:* o
+dono do ponto, no painel e na fatura.
+> **As duas opções custam quase o mesmo ao Mostraí** — R$ 99,50 (R$ 50 de
+> caixa + R$ 49,50 de estoque) contra R$ 99,00 (só estoque). O comerciante
+> escolhe pelo que prefere, não por qual é o negócio melhor: não existe
+> arbitragem entre elas. E a opção B não tira nada do caixa, que com R$ 2.500
+> de equipamento por ponto e receita zero é o que decide no lançamento.
+> **O abatimento de R$ 50 no Destaque e no Máximo não é desconto de verdade,
+> e isso é uma qualidade:** quem pega o Destaque desembolsa R$ 199 mas deixa
+> de receber R$ 50, então paga os R$ 249 da tabela. O preço de catálogo não é
+> corroído e nenhum comerciante da cidade vai poder dizer que o vizinho
+> comprou o Destaque pela metade. O único presente real é o Essencial da
+> opção B: R$ 99 por R$ 50 abertos mão, 2x — proporção que se defende sozinha
+> para quem hospeda o equipamento.
+> **O que SAIU:** a cota de autoanúncio (`cota_slots_hora`) foi a zero nas
+> duas opções. Ela rodava só na tela do próprio dono e valia ~R$ 16,50/mês na
+> melhor das hipóteses — trocar R$ 50 por aquilo era um negócio 4,5x contra o
+> comerciante. O plano incluído põe ele na REDE, e vale o que os R$ 50 valem.
+
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para
 `America/Sao_Paulo` ANTES de cortar o dia, e devolve dia de calendário puro

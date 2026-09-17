@@ -644,14 +644,34 @@ clientes no Essencial são trinta peças para fazer à mão. Ou vira "uma peça,
 uma vez, na entrada" (escopo fechado), ou sai. Não foi mexida porque o dono
 não pediu — mas ele pediu a REGRA, e a regra pega aqui.
 
-**F-D3 [ ] Planos de comodato — conta feita, desenho proposto, falta o sim.**
-Tudo em `docs/economia-da-rede.md` seção 10. O resumo: R$ 50/mês é exatamente
-metade de um Essencial, então dar o Destaque por eles seria 5x de desconto (o
-receio do dono está certo, e tem número). Mas a opção que existe HOJE
-(`mais-cota`) é 4,5x contra o comerciante — ele abre mão de R$ 50 para receber
-R$ 11 de cota. Proposta: um plano **Vizinho** fora da vitrine, metade do
-Essencial por R$ 49, que ele paga com os R$ 50 que continua recebendo. Faltam
-as duas respostas da seção 10.5.
+**F-D3 [~] Planos de comodato — CONSTRUÍDO o motor (migration 049), falta a
+troca de opção e as telas.** O dono fechou o desenho em 17/09/2026 e ele está
+na RN-43 e na seção 10 de `docs/economia-da-rede.md`. O que já roda, provado
+de ponta a ponta pelo fluxo real de aprovação de ponto (12 conferências):
+as duas opções com os números certos, o plano incluído concedido na mesma
+transação que cria o ponto, o crédito de R$ 50 abatendo a mensalidade, a
+trava que impede quem recebe a ajuda de custo de assinar catálogo, e a
+garantia de que conta que já pagava não perde o plano ao virar ponto.
+**Falta, e está aberto:**
+· **F-D3.1** — trocar de opção depois de instalado não tem caminho nenhum: a
+  escolha só acontece na candidatura. Hoje é ato de admin no banco. A recusa
+  da rota de assinar já fala "fale com a gente" em vez de apontar pra um
+  botão que não existe, mas isso é remendo, não solução.
+· **F-D3.2** — a página pública do comodato e o painel do dono do ponto ainda
+  mostram os textos antigos ("o triplo de vezes na tela"), que a 049 corrigiu
+  no banco mas ninguém conferiu no navegador.
+· **F-D3.3 — DECISÃO DO DONO, e ela bloqueia o sentido do modelo:** o dono do
+  ponto aparece na TELA DELE? Hoje `anunciantesElegiveis` exclui
+  `dono_conta_id` da rotação paga daquele ponto (item 28). Isso existia porque
+  ele entrava pela cota de autoanúncio e apareceria duas vezes. A cota acabou
+  na 049 — agora a presença dele vem de um plano de verdade, e a exclusão
+  passou a queimar cobertura que ele ganhou: ele escolhe o próprio ponto, o
+  gerador tira ele de lá, e ninguém avisa. O modelo só faz sentido se ele
+  aparecer onde os clientes dele passam. Mudar isso muda a playlist de todo
+  mundo, então é decisão do dono, não do código.
+· **F-D3.4** — crédito não acumula por ponto (dono de três pontos tem R$ 50,
+  não R$ 150). Escolha conservadora e reversível; nenhum dos três pontos
+  previstos tem dono repetido, então não morde hoje.
 
 ### Itens reportados
 

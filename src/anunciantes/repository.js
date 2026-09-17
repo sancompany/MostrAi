@@ -58,7 +58,8 @@ const CAMPOS_PUBLICOS = `
   plano_cortesia, cortesia_motivo,
   anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
-  suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo
+  suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo,
+  credito_comodato_mensal
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.

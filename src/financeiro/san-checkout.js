@@ -178,6 +178,18 @@ async function montarRespostaPlano(assinaturaId) {
 // `mesmoPlano` comparava `anunciante.plano_id === plano.id`, então migrar a
 // conta pra versão nova de um plano REESCREVIA a trava com o preço novo — o
 // contrário exato do direito que ela prometia.
+// O CRÉDITO DE COMODATO EM REAIS entrou em 17/09/2026 (migration 049). Quem
+// escolhe trocar a ajuda de custo por tela deixa de receber R$ 50 por mês, e
+// esses R$ 50 viram abatimento fixo na mensalidade. É o desenho do dono:
+// "ele nem precisa pagar os 50 reais aqui, ele pode somente abrir mão".
+//
+// Em reais e não em percentual de propósito. O valor abatido tem que ser
+// exatamente o que ele deixou de receber — um percentual daria R$ 50 no
+// Destaque mensal e R$ 40 no anual sem ninguém ter decidido isso, e mudaria
+// sozinho no dia em que o preço da linha mudasse.
+//
+// Entra DEPOIS dos percentuais e nunca deixa a mensalidade negativa: crédito
+// maior que o preço vira mensalidade zero, não devolução de dinheiro.
 function valorMensalDaConta(anunciante, plano) {
   const base = Number(plano.valor_mensal);
 
@@ -189,8 +201,11 @@ function valorMensalDaConta(anunciante, plano) {
       ? Number(anunciante.parceiro_desconto_percentual || 0)
       : 0;
   const desconto = Math.min(100, descontoComodato + descontoParceiro);
+  const comPercentual = desconto ? arredondar(base - percentual(base, desconto)) : base;
 
-  return desconto ? arredondar(base - percentual(base, desconto)) : base;
+  const credito = (anunciante.papeis || []).includes('ponto') ? Number(anunciante.credito_comodato_mensal || 0) : 0;
+
+  return credito ? arredondar(Math.max(0, comPercentual - credito)) : comPercentual;
 }
 
 // Troca de plano (pedido do dono, 16/09/2026): cobra só a diferença entre

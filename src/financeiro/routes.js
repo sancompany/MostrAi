@@ -215,6 +215,37 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   if (!conta.endereco || !conta.cidade || !conta.uf || !conta.cep) {
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
   }
+
+  // A TRAVA DO COMODATO (migration 049, desenho do dono de 17/09/2026): quem
+  // está RECEBENDO a ajuda de custo não assina plano de catálogo. Ou leva o
+  // dinheiro e fica no plano básico que vem junto, ou troca o dinheiro por
+  // tela — e aí sobe pro que quiser, com o crédito abatendo a mensalidade.
+  //
+  // Sem a trava, dava pra receber R$ 50 por mês E assinar o Máximo: o Mostraí
+  // pagaria o comerciante e cobraria dele no mesmo ciclo, com o dinheiro indo
+  // e voltando por dois caminhos que ninguém concilia.
+  //
+  // A recusa diz o que fazer, não só que não pode — mas só promete o caminho
+  // que EXISTE. A troca de opção ainda não tem controle no painel (está em
+  // docs/PENDENCIAS.md), então a mensagem manda falar com a gente. Mandar pra
+  // um botão que não está lá é a mesma mentira da vitrine, só que na tela de
+  // pagamento, que é onde ela custa mais caro.
+  if ((conta.papeis || []).includes('ponto')) {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT pp.permite_assinar
+         FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
+        WHERE p.anunciante_id = $1`,
+      [req.session.anuncianteId],
+    );
+    if (rows.length && rows.every((r) => r.permite_assinar === false)) {
+      return res.status(400).json({
+        erro:
+          'você está recebendo a ajuda de custo do comodato, e por isso fica no plano básico que vem junto. ' +
+          'Pra assinar Destaque ou Máximo é só trocar a ajuda de custo por tela: fale com a gente que a gente troca, ' +
+          'e aí os R$ 50 viram abatimento na sua mensalidade.',
+      });
+    }
+  }
   // Conta parceira só assina o que o dono liberou pra parceiro — ex.: só
   // trimestral pra cima, mensal fora (item 4 da spec, 15/09/2026; renomeado
   // de "fundador" pra "parceiro" em 16/09/2026).
