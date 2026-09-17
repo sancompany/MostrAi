@@ -3,9 +3,15 @@
 // número que envelhece sozinho no dia em que alguém mexer em
 // `segundos_por_hora` — e a vitrine passa a prometer o que a tela não faz.
 //
-// A conta das horas assume 12h de comércio aberto por dia, 30 dias — por isso
-// sai com "até": comércio que abre menos entrega menos, e prometer o número
-// cheio seria vender hora que a porta fechada não dá.
+// O QUE O PLANO VENDE É UM TOTAL DE HORAS NA REDE, dividido entre os pontos —
+// não horas por ponto (decisão do dono, 17/09/2026). A conta é a mesma; o que
+// muda é qual dos dois números é o produto e qual é consequência. Importa
+// porque, com a rede menor que o plano, o total é o que se preserva e a
+// divisão é o que muda (RN-49).
+//
+// A conta assume 12h de comércio aberto por dia, 30 dias — por isso sai com
+// "até": comércio que abre menos entrega menos, e prometer o número cheio
+// seria vender hora que a porta fechada não dá.
 //
 // A linha de "X min de tela a cada hora" saiu em 17/09/2026 (pedido do dono).
 // Era a conta de DENTRO: mesma grandeza que o total do mês, em outra unidade,
@@ -33,10 +39,12 @@ const proprios = (p) => (p.beneficios || []).filter((b) => !HERANCA.test(b));
 function derivados(p) {
   const linhas = [];
   const horas = horasDeTelaPorMes(p);
-  if (horas) linhas.push(`<li><b>Até ${horas} horas de tela por mês</b>, somando os seus pontos</li>`);
+  if (horas) {
+    linhas.push(`<li><b>Até ${horas} horas de tela por mês na rede</b>, divididas entre os seus pontos</li>`);
+  }
   if (p.pontos_incluidos) {
     linhas.push(
-      `<li>Em ${p.pontos_incluidos} ${p.pontos_incluidos === 1 ? 'ponto' : 'pontos'} da rede, escolhidos por você</li>`,
+      `<li>Em até ${p.pontos_incluidos} ${p.pontos_incluidos === 1 ? 'ponto' : 'pontos'} da rede, escolhidos por você</li>`,
     );
   }
   if (p.duracao_maxima_segundos) linhas.push(`<li>Peça de até ${p.duracao_maxima_segundos} segundos</li>`);
