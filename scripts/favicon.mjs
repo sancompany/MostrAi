@@ -1,72 +1,144 @@
-// Gera os ícones do site a partir do símbolo da Mostraí.
+// Gera os ícones do site.
 //
-// A ARTE É DO DONO e não é modificada aqui: `public/img/simbolo-mostrai.svg`
-// já vem com o disco branco e o contorno preto que ele pediu. Este script só
-// RECORTA e redimensiona.
+// O FAVICON É O "M" DA MARCA (decisão do dono, 17/09/2026), dentro do disco
+// branco com contorno preto que ele pediu desde o começo.
 //
-// DUAS SAÍDAS, e a razão é a única que importa num favicon: ele tem 16 pixels
-// pra fazer o trabalho dele.
+// Por que o M e não a lâmpada: um favicon tem 16 pixels. A lâmpada com raios,
+// reduzida a esse tamanho, vira um cinza indistinto — foi a reclamação que
+// abriu o assunto ("o antigo fica totalmente apagado, quase não dá pra ver
+// ele"). Uma letra sólida, em laranja, é a forma que sobrevive: alto
+// contraste, um traço só, reconhecível de relance.
 //
-//   COMPLETO  o símbolo inteiro, como o dono desenhou (lâmpada + raios dentro
-//             do disco). Vai pra 180px+ — celular, PWA, atalho.
-//   RECORTE   o MESMO desenho, com a moldura fechada em volta da lâmpada: os
-//             raios ficam fora do quadro e a lâmpada ocupa o ícone todo. Vai
-//             pra 16 e 32px, que é a aba do navegador.
+// O M SAI DO WORDMARK, não é redesenhado: `logo-mostrai-wordmark.png` tem a
+// letra no serif exato da marca. O script acha os limites dela varrendo os
+// pixels (não por coordenada chutada, que quebra se o logo for reexportado),
+// recorta, e recolore pelo canal alfa — o desenho é o do dono, só muda a cor.
 //
-// O recorte não é um desenho diferente: é o mesmo traço, o mesmo laranja, a
-// mesma lâmpada — só enquadrada de perto. A alternativa era mandar o desenho
-// inteiro pra aba, e aí os raios finos e o anel viram um cinza indistinto a
-// 16px, que foi exatamente a reclamação que originou a troca do favicon
-// ("o antigo fica totalmente apagado, quase não dá pra ver ele").
+// limite: a fonte é raster de 900x203, então o M tem ~180px de altura. Isso
+// cobre 16, 32, 180 e 192 com folga, mas o de 512 (ícone de PWA) sai macio.
+// O caminho de upgrade é o dono subir o M em SVG no repositório; aí este
+// script passa a usar o vetor e o 512 fica duro. Marcado aqui pra não virar
+// surpresa quando alguém instalar o app no celular.
+//
+// O SÍMBOLO DA MARCA (a lâmpada, `simbolo-lampada.svg`) é OUTRA PEÇA e não
+// entra aqui: ele vive na hero da home e no cartão do player. Confundir as
+// duas já custou um retrabalho — está registrado em docs/PENDENCIAS.md.
+import http from 'node:http';
 import fs from 'node:fs';
+import path from 'node:path';
 import { chromium } from 'playwright';
 
-const RAIZ = 'public/img';
-const FONTE = `${RAIZ}/simbolo-mostrai.svg`;
-const completo = fs.readFileSync(FONTE, 'utf8');
+// Servidor estático mínimo: o canvas precisa ler os pixels do wordmark, e
+// `file://` bloqueia `getImageData` por política de origem.
+const srv = http.createServer((req, res) => {
+  // Página em branco própria: carregar a home de verdade traria os scripts
+  // dela pra dentro da medição, e um deles já atrapalhou uma vez.
+  if (req.url === '/branco.html') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end('<!doctype html><html><body></body></html>');
+  }
+  const arq = path.join('public', decodeURIComponent(req.url.split('?')[0]));
+  if (!fs.existsSync(arq)) {
+    res.writeHead(404);
+    return res.end();
+  }
+  res.writeHead(200, { 'Content-Type': arq.endsWith('.png') ? 'image/png' : 'image/svg+xml' });
+  fs.createReadStream(arq).pipe(res);
+});
+await new Promise((ok) => srv.listen(8091, ok));
 
-// A janela do recorte, em coordenadas do viewBox do arquivo (0 0 1500 1500).
-// Escolhida olhando seis janelas lado a lado, no tamanho de aba: mais fechada
-// que esta corta a rosca da lâmpada; mais aberta traz os raios de volta e o
-// ícone volta a embolar a 16px. Nesta, a lâmpada aparece inteira e os
-// toquinhos de raio que sobram ficam simétricos em volta — assimetria, aqui,
-// lê como defeito de recorte.
-const RECORTE = { x: 350, y: 230, lado: 900 };
+const RAIZ = 'public/img';
+const LARANJA = '#ff7a1a';
+const TRACO = '#14171f';
 const LADO = 512;
 const C = LADO / 2;
-
-// O disco branco com contorno preto do tamanho de aba é redesenhado porque o
-// recorte corta o disco original junto com os raios. Mesmas cores do arquivo
-// do dono: branco no fundo, #14171f no traço.
-function recortado() {
-  const interno = completo
-    .replace(/^[\s\S]*?<svg[^>]*>/, '')
-    .replace(/<\/svg>\s*$/, '');
-  const escala = (2 * 236) / RECORTE.lado;
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${LADO} ${LADO}" width="${LADO}" height="${LADO}" role="img" aria-label="Mostraí">
-  <title>Mostraí</title>
-  <circle cx="${C}" cy="${C}" r="250" fill="#ffffff" stroke="#14171f" stroke-width="12"/>
-  <g clip-path="url(#discoMostrai)">
-    <clipPath id="discoMostrai"><circle cx="${C}" cy="${C}" r="244"/></clipPath>
-    <g transform="translate(${C} ${C}) scale(${escala.toFixed(5)}) translate(${-(RECORTE.x + RECORTE.lado / 2)} ${-(RECORTE.y + RECORTE.lado / 2)})">
-      ${interno}
-    </g>
-  </g>
-</svg>`;
-}
-
-const compacto = recortado();
-fs.writeFileSync(`${RAIZ}/favicon.svg`, `${completo.trim()}\n`);
-fs.writeFileSync(`${RAIZ}/favicon-compacto.svg`, `${compacto}\n`);
+const RAIO = 250;
+// Quanto do diâmetro interno a letra ocupa. Uma letra precisa de mais respiro
+// que um desenho: encostada no anel ela lê como "cortada".
+const OCUPACAO = 0.78;
 
 const nav = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const b64 = (s) => `data:image/svg+xml;base64,${Buffer.from(s).toString('base64')}`;
+const pg = await (await nav.newContext({ viewport: { width: 1000, height: 700 } })).newPage();
+await pg.goto('http://localhost:8091/branco.html');
 
-async function png(svg, nome, px) {
+// Recorta o M e devolve um PNG só dele, já na cor da marca. Os limites saem
+// de uma varredura de pixels: a primeira letra do wordmark é o M, e ela
+// termina onde vem a primeira coluna vazia depois dela.
+const m = await pg.evaluate(async ({ cor }) => {
+  const img = new Image();
+  img.src = 'http://localhost:8091/img/logo-mostrai-wordmark.png';
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+
+  // Uma coluna tem tinta se algum pixel dela é opaco e escuro o bastante.
+  const temTinta = (x) => {
+    for (let y = 0; y < c.height; y++) {
+      const i = (y * c.width + x) * 4;
+      if (d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 600) return true;
+    }
+    return false;
+  };
+  let x0 = 0;
+  while (x0 < c.width && !temTinta(x0)) x0++;
+  let x1 = x0;
+  while (x1 < c.width && temTinta(x1)) x1++;
+
+  // Linhas, dentro da faixa do M.
+  const temTintaLinha = (y) => {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * c.width + x) * 4;
+      if (d[i + 3] > 40 && d[i] + d[i + 1] + d[i + 2] < 600) return true;
+    }
+    return false;
+  };
+  let y0 = 0;
+  while (y0 < c.height && !temTintaLinha(y0)) y0++;
+  let y1 = c.height - 1;
+  while (y1 > y0 && !temTintaLinha(y1)) y1--;
+
+  const larg = x1 - x0;
+  const alt = y1 - y0 + 1;
+  const saida = document.createElement('canvas');
+  saida.width = larg;
+  saida.height = alt;
+  const sc = saida.getContext('2d');
+  sc.drawImage(img, x0, y0, larg, alt, 0, 0, larg, alt);
+  // Recolore pelo ALFA: mantém a forma e as bordas suavizadas da letra, troca
+  // só a cor. `source-in` pinta onde já existe tinta.
+  sc.globalCompositeOperation = 'source-in';
+  sc.fillStyle = cor;
+  sc.fillRect(0, 0, larg, alt);
+  return { dados: saida.toDataURL('image/png'), larg, alt };
+}, { cor: LARANJA });
+
+console.log(`M extraído do wordmark: ${m.larg}x${m.alt}px`);
+
+const alturaAlvo = (2 * RAIO - 12) * OCUPACAO;
+const escala = alturaAlvo / m.alt;
+const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LADO} ${LADO}" width="${LADO}" height="${LADO}" role="img" aria-label="Mostraí">
+  <title>Mostraí</title>
+  <circle cx="${C}" cy="${C}" r="${RAIO}" fill="#ffffff" stroke="${TRACO}" stroke-width="12"/>
+  <image href="${m.dados}" x="${(C - (m.larg * escala) / 2).toFixed(2)}" y="${(C - alturaAlvo / 2).toFixed(2)}" width="${(m.larg * escala).toFixed(2)}" height="${alturaAlvo.toFixed(2)}"/>
+</svg>`;
+fs.writeFileSync(`${RAIZ}/favicon.svg`, `${favicon}\n`);
+
+const b64 = (s) => `data:image/svg+xml;base64,${Buffer.from(s).toString('base64')}`;
+for (const [nome, px] of [
+  ['favicon-512.png', 512],
+  ['favicon-192.png', 192],
+  ['apple-touch-icon.png', 180],
+  ['favicon-32.png', 32],
+  ['favicon-16.png', 16],
+]) {
   const ctx = await nav.newContext({ viewport: { width: px, height: px }, deviceScaleFactor: 1 });
   const p = await ctx.newPage();
   await p.setContent(
-    `<html><body style="margin:0;background:#fff"><img src="${b64(svg)}" width="${px}" height="${px}"></body></html>`,
+    `<html><body style="margin:0;background:#fff"><img src="${b64(favicon)}" width="${px}" height="${px}"></body></html>`,
   );
   await p.waitForTimeout(200);
   await p.screenshot({ path: `${RAIZ}/${nome}` });
@@ -74,37 +146,29 @@ async function png(svg, nome, px) {
   console.log(`  ${nome} (${px}px)`);
 }
 
-for (const [nome, px] of [
-  ['favicon-512.png', 512],
-  ['favicon-192.png', 192],
-  ['apple-touch-icon.png', 180],
-])
-  await png(completo, nome, px);
-for (const [nome, px] of [
-  ['favicon-32.png', 32],
-  ['favicon-16.png', 16],
-])
-  await png(compacto, nome, px);
-
-// Folha de prova: como fica NA ABA, que é o único lugar que decide.
-const pg = await (await nav.newContext({ viewport: { width: 980, height: 420 } })).newPage();
+// Folha de prova: na aba, que é onde se decide — e com e sem o disco, porque
+// o anel custa tamanho de letra e o dono precisa ver o preço da escolha.
+const semDisco = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LADO} ${LADO}" width="${LADO}" height="${LADO}">
+  <image href="${m.dados}" x="${(C - (m.larg * ((2 * RAIO * 0.92) / m.alt)) / 2).toFixed(2)}" y="${(C - (RAIO * 0.92)).toFixed(2)}" width="${(m.larg * ((2 * RAIO * 0.92) / m.alt)).toFixed(2)}" height="${(2 * RAIO * 0.92).toFixed(2)}"/>
+</svg>`;
+const prova = await (await nav.newContext({ viewport: { width: 1000, height: 460 } })).newPage();
 const aba = (fundo, cor, rotulo) => `
   <div style="background:${fundo};color:${cor};padding:14px 18px;border-radius:10px;margin-bottom:12px">
     <div style="font:600 12px sans-serif;opacity:.65;margin-bottom:9px">${rotulo}</div>
     <div style="display:flex;gap:34px;align-items:center;font:13px sans-serif">
-      <span style="display:flex;gap:7px;align-items:center"><img src="${b64(completo)}" width="16" height="16">desenho inteiro</span>
-      <span style="display:flex;gap:7px;align-items:center"><img src="${b64(compacto)}" width="16" height="16">RECORTE (o que vai pra aba)</span>
+      <span style="display:flex;gap:7px;align-items:center"><img src="${b64(favicon)}" width="16" height="16">com disco (o que vai)</span>
+      <span style="display:flex;gap:7px;align-items:center"><img src="${b64(semDisco)}" width="16" height="16">sem disco (comparação)</span>
     </div>
   </div>`;
-await pg.setContent(`<html><body style="margin:0;padding:20px;background:#f2f3f5;font:13px sans-serif">
+await prova.setContent(`<html><body style="margin:0;padding:20px;background:#f2f3f5;font:13px sans-serif">
   <div style="font:700 15px sans-serif;margin-bottom:11px">Na aba, 16px real</div>
   ${aba('#ffffff', '#202124', 'Chrome tema claro')}
   ${aba('#35363a', '#e8eaed', 'Chrome tema escuro')}
   <div style="font:700 15px sans-serif;margin:20px 0 9px">Ampliado</div>
   <div style="display:flex;gap:22px">
     ${[
-      ['inteiro — 180px+ (celular, PWA)', completo],
-      ['recorte — 16/32px (aba)', compacto],
+      ['com disco — o que vai pro site', favicon],
+      ['sem disco — comparação', semDisco],
     ]
       .map(
         ([n, s]) =>
@@ -113,7 +177,8 @@ await pg.setContent(`<html><body style="margin:0;padding:20px;background:#f2f3f5
       .join('')}
   </div>
 </body></html>`);
-await pg.waitForTimeout(500);
-await pg.screenshot({ path: '/var/tmp/shots/favicon-prova.png', fullPage: true });
+await prova.waitForTimeout(500);
+await prova.screenshot({ path: '/var/tmp/shots/favicon-prova.png', fullPage: true });
 await nav.close();
+srv.close();
 console.log('\nfolha de prova: /var/tmp/shots/favicon-prova.png');
