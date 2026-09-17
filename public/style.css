@@ -144,6 +144,10 @@ footer.site { margin-top: auto; }
 
 section { padding: 64px 0; }
 section.tight { padding: 40px 0; }
+@media (max-width: 640px) {
+  section { padding: 36px 0; }
+  section.tight { padding: 24px 0; }
+}
 .eyebrow { color: var(--blue); font-weight: 700; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
 h1 { font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.08; letter-spacing: -.02em; margin: 0 0 18px; }
 h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); letter-spacing: -.02em; margin: 0 0 12px; }
@@ -946,6 +950,21 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
   border: 1px solid var(--brand); border-radius: 12px;
   background: #fff6ef; color: var(--text); line-height: 1.6;
 }
+/* O detalhe do bônus de cobertura, recolhido. Mesma mecânica do FAQ (details
+   nativo, sem uma linha de script — que é também o que deixa a CSP recusar
+   script inline), mas dentro do aviso, sem moldura própria. */
+.aviso-detalhe { margin-top: 8px; }
+.aviso-detalhe summary {
+  cursor: pointer; font-weight: 700; color: var(--brand-text); font-size: .9rem;
+  list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  /* 44px de alvo de toque sem empurrar o texto: o respiro sai como padding
+     vertical e volta como margem negativa. */
+  padding: 11px 0; margin: -11px 0;
+}
+.aviso-detalhe summary::-webkit-details-marker { display: none; }
+.aviso-detalhe summary::after { content: "+"; font-size: 1.05rem; }
+.aviso-detalhe[open] summary::after { content: "\2013"; }
+.aviso-detalhe p { margin: 8px 0 0; color: var(--text-dim); font-size: .92rem; }
 
 /* Campo que o servidor apontou como errado. A tela ja diz a frase; isto so
    leva o olho ate o campo. Some no proximo foco. */

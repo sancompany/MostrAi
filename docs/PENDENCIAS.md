@@ -1909,3 +1909,43 @@ erro do Chrome não rola na horizontal e não tem campo nenhum, então passa por
 limpa. O medidor agora confere que a página é a página (`main` ou `form`
 presente) antes de medir, e grita quando não é. **Medidor sem prova de carga
 não mede nada; ele só concorda.**
+
+**M5. [x] Textos encurtados para leitura no celular (pedido do dono,
+17/09/2026: "explicações ficam muito grandes, quem quer rapidez precisa de
+texto mais curto").**
+
+Medido antes de reescrever, a 390px, ranqueado por quanto cada bloco ocupa da
+tela — palpite não decide o que cortar:
+
+| página | texto corrido antes | depois | |
+|---|---|---|---|
+| index | 1,54 telas | **0,91** | −41% |
+| planos | 0,89 | **0,44** | −51% |
+| pontos | 0,86 | **0,60** | −30% |
+| seja-um-ponto | 0,67 | **0,53** | −20% |
+| contato | 0,65 | **0,56** | −14% |
+| seja-um-vendedor | 0,61 | **0,55** | −10% |
+
+**O pior bloco era o aviso da Planos: 138 palavras, 0,61 de uma tela** — e ele
+fica entre o seletor de ciclo e os preços, no caminho de quem tem pressa.
+Metade dele era da mesma rodada. Virou **48 palavras (0,26 de tela)**: fica
+visível só o que muda a decisão de comprar — quantos pontos existem, que a
+cobrança começa no pagamento, o bônus em uma linha e os 7 dias de
+arrependimento. A mecânica inteira do bônus desceu para um `<details>`
+("Como isso funciona"), conferido por teclado: foca, Enter abre, Enter fecha,
+anel de foco presente.
+
+**Uma decisão de método:** não existem duas versões do texto, uma pro celular
+e outra pro desktop. Um texto de 50 palavras numa chamada é longo demais nas
+duas telas, e manter duas versões é garantir que uma delas envelheça sozinha
+(a regra de "texto nasce num lugar só"). Onde o detalhe é necessário de
+verdade, ele fica no mesmo texto, recolhido.
+
+**`comodato.html` NÃO foi encurtado, de propósito.** São 4,5 telas de texto,
+de longe a maior — mas é o contrato, e quem abre aquela página foi ler. Cortar
+cláusula para caber na tela é o oposto do que o documento existe para fazer.
+
+**Também saiu:** o respiro entre seções no celular (64px+64px viravam 128px de
+nada por emenda — 15% da tela, e a Planos tem quatro antes dos preços). Agora
+36px no celular, desktop intacto. E a menção ao "comprovante em planilha" na
+home, último lugar que ainda o anunciava depois da migration 053.

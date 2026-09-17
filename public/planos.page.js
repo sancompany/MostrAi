@@ -200,29 +200,28 @@ fetch(`${API_BASE_URL}/pontos`)
     const naRede = pontos.length;
     if (naRede >= PONTOS_PARA_TIRAR_AVISO) return;
     const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
-    const situacao =
-      naRede === 0
-        ? 'Ainda não há nenhum ponto na rede.'
-        : `Hoje a rede tem ${naRede === 1 ? '1 ponto' : `${naRede} pontos`}.`;
+    const situacao = naRede === 0 ? 'nenhum ponto ainda.' : `${naRede} ${naRede === 1 ? 'ponto' : 'pontos'} hoje.`;
 
-    // RN-49: o bônus de cobertura. Só entra com tela VEICULANDO — sem nenhuma
-    // não existe pra onde concentrar o tempo, e prometer aqui seria vender o
-    // que a rede não tem. Por isso o gatilho é `veiculando` e não `naRede`:
-    // são as duas contagens diferentes, e usar a errada aqui transformaria a
-    // frase numa promessa que o gerador não cumpre.
+    // O detalhe do bônus fica DOBRADO. Ele é verdadeiro e o cliente tem que
+    // poder ler, mas explicar a mecânica inteira entre o seletor e os preços
+    // custava meia tela de celular a quem só queria ver preço. Um texto só,
+    // recolhido — não uma segunda versão pra manter em sincronia.
+    //
+    // Só entra com tela VEICULANDO: sem nenhuma não existe pra onde
+    // concentrar o tempo. Por isso o gatilho é `veiculando` e não `naRede`.
     const bonus = veiculando
-      ? '<br><br><b>E você não paga por ponto que ainda não existe.</b> Enquanto a rede for menor que a cobertura ' +
-        'do seu plano, o tempo dos pontos que faltam volta para os pontos que já estão no ar — até onde couber na ' +
-        'hora de cada tela. Você aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê no seu ' +
-        'painel quantas horas a mais isso dá por mês. Conforme os pontos entram no ar, o tempo se espalha de volta.'
+      ? ' <b>Você não paga por ponto que não existe:</b> enquanto faltarem, o tempo deles vai pras telas já no ar.' +
+        '<details class="aviso-detalhe"><summary>Como isso funciona</summary>' +
+        '<p>O seu plano vende um total de horas de tela por mês. Enquanto a rede for menor que a cobertura dele, ' +
+        'essas horas se concentram nos pontos que já estão no ar — até onde couber na hora de cada tela. Você ' +
+        'aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê no seu painel quantas horas a ' +
+        'mais isso dá por mês. Conforme os pontos entram no ar, o tempo se espalha de volta.</p></details>'
       : '';
 
     const el = document.getElementById('avisoRede');
     el.innerHTML =
-      `<b>A rede ainda está em montagem.</b> ${situacao} ` +
-      'A cobrança do plano começa na confirmação do pagamento, e não quando a primeira tela subir. ' +
-      'Se preferir esperar, <a href="/contato.html">fale com a gente</a>. E se assinar agora e mudar de ideia, ' +
-      `você tem 7 dias para pedir a devolução integral pelo painel.${bonus}`;
+      `<b>Rede em montagem: ${situacao}</b> A cobrança começa quando você paga, não quando a tela sobe. ` +
+      `7 dias pra desistir e receber tudo de volta.${bonus}`;
     el.hidden = false;
   })
   .catch(() => {});
