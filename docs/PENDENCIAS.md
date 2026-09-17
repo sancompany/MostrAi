@@ -614,6 +614,57 @@ Estação 6 abre.
 lado a lado; depois as funcionalidades. Prints chegam um de cada vez, e cada
 um vira uma linha nova abaixo assim que resolvido.
 
+### Roteiro da revisão, definido pelo dono em 17/09/2026
+
+O dono fechou a ordem da rodada. A Estação 5 só fecha quando os três tópicos
+estiverem revisados E ele disser que está satisfeito.
+
+1. **Sem login — desktop e celular.** O site público inteiro, nas duas
+   larguras, corrigindo tudo o que for visual.
+2. **Logado — os quatro papéis:** anunciante, dono de ponto, vendedor e admin.
+3. **Funcionalidades e caminhos:** planos, cadastros, aprovação de criativos,
+   playlist de criativos, e o resto das funções, testados de ponta a ponta.
+
+**Depois disso, nesta ordem:** limpar o banco (abaixo) → fechar a Estação 5 →
+abrir e fechar a Estação 6 (Prontidão) → o dono sobe o San Checkout para
+produção → os dois projetos ficam prontos juntos.
+
+### LIMPEZA DO BANCO — marcada, e só depois da revisão
+
+**Quando:** depois que os três tópicos acima estiverem revisados, e antes do
+primeiro ponto real ser instalado. O dono: "assim podemos limpar todas as
+contas e dados do banco e aí sim posso colocar o primeiro ponto; antes disso
+o lixo de testes fica atrapalhando".
+
+**Não é para executar por iniciativa própria.** Apagar conta e cobrança não
+tem volta, e a base de produção hoje tem uma cobrança confirmada de verdade
+(R$ 267,30, conta 3). Quando o dono der o sinal, o passo é:
+1. Backup manual ANTES, conferido (o job `Backup` roda aos domingos — não
+   basta esperar o próximo).
+2. Lista item a item do que apaga e do que fica, aprovada por ele — contas,
+   cobranças, assinaturas, candidaturas, criativos, mensagens, eventos,
+   pontos, telas, contadores de exibição. Planos e benefícios FICAM: são
+   catálogo, não dado de teste.
+3. Só então o script, numa transação, com contagem antes e depois.
+
+### O FAVICON E O SÍMBOLO DA MARCA SÃO DUAS PEÇAS — erro cometido em 17/09/2026
+
+Registrado porque já custou um retrabalho e vai custar de novo se ninguém
+escrever:
+
+- `public/img/simbolo-lampada.svg` — **símbolo da marca**, a lâmpada SEM
+  círculo, fundo transparente. Vai na hero da home e no cartão institucional
+  do player.
+- `public/img/simbolo-mostrai.svg` — **favicon**, a lâmpada DENTRO do disco
+  branco com contorno preto. Vai só nos ícones (`favicon-*.png`,
+  `apple-touch-icon.png`) e em lugar nenhum mais.
+
+O erro foi tratar as duas como a mesma coisa: apaguei o símbolo da marca e
+pus o favicon na hero, "pra não ter duas versões da mesma marca". Não são
+duas versões — são duas peças com trabalhos diferentes. A regra de "definir
+uma vez" vale para o que precisa continuar idêntico, não para peças
+distintas que por acaso se parecem.
+
 ### Decisões abertas com o dono (17/09/2026, depois do merge da grade)
 
 **F-D1 [x] Benefício exclusivo do Máximo.** *(FECHADO em 17/09/2026: "esqueça esse benefício". O Prime fica com "Tudo do Pro" mais os números derivados, que é cartão completo.)* O relatório mensal por e-mail saiu
