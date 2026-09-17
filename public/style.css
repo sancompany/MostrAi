@@ -281,6 +281,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    2x2 de colunas iguais resolve sem tirar nada da moldura. */
 @media (max-width: 460px) {
   .cycle-toggle { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .cycle-toggle button { min-height: 44px; }
 }
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
 
