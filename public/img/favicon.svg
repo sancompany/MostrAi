@@ -1,18 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Mostraí">
-  <title>Mostraí</title>
-  <!--
-    Favicon: o simbolo da Mostrai (as tres copias — preta no lugar, azul
-    deslocada pra cima, laranja um tico maior e mais pra baixo) dentro de um
-    circulo BRANCO com contorno PRETO, como o dono pediu em 17/09/2026.
-
-    O fundo branco e solido de proposito, nao transparente: a aba do navegador
-    pode ser clara ou escura, e o simbolo tem partes pretas que somem no
-    escuro. Com o disco branco, o icone e o mesmo nos dois temas.
-
-    GERADO por scripts/favicon.mjs a partir de simbolo-lampada.svg — os paths sao os
-    mesmos, e o enquadramento sai de uma medicao da caixa de tinta, nao de
-    numero chutado. Mexeu no simbolo, rode o script de novo.
-  -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Mostraí"><title>Mostraí</title>
+  <circle cx="256" cy="256" r="250" fill="#ffffff" stroke="#14171f" stroke-width="4"/>
+  <g id="alvo" transform="translate(24.75 30.51) scale(0.23125)">
+    <use href="#simbolo-lampada" transform="translate(-30 -21) scale(1.03)" fill="#ff7a1a"/>
+    <use href="#simbolo-lampada" transform="translate(0 -18)" fill="#1d4ed8"/>
+    <use href="#simbolo-lampada" fill="#14171f"/>
+  </g>
   <defs>
     <g id="simbolo-lampada" transform="translate(0,2000) scale(0.1,-0.1)" stroke="none">
       <path d="M9765 19895 c-346 -40 -701 -187 -943 -389 -91 -76 -250 -234 -279
@@ -252,10 +244,4 @@
       1195 -12 26 -53 67 -90 88 -28 15 -141 15 -168 -1z"/>
     </g>
   </defs>
-  <circle cx="256" cy="256" r="250" fill="#ffffff" stroke="#14171f" stroke-width="4"/>
-  <g transform="translate(24.755 30.514) scale(0.231249)">
-    <use href="#simbolo-lampada" transform="translate(-30 -21) scale(1.03)" fill="#ff7a1a"/>
-    <use href="#simbolo-lampada" transform="translate(0 -18)" fill="#1d4ed8"/>
-    <use href="#simbolo-lampada" fill="#14171f"/>
-  </g>
 </svg>
