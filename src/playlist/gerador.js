@@ -221,7 +221,10 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     entrada.push({ id: 'dono', frequenciaBase: cotaDaTela, deficit: 0, duracaoSegundos: duracaoMedia(doDono) });
   }
 
-  const daHora = montarHoraDeTv(entrada);
+  // Semente = (aparelho, hora). A ordem da hora passa a ser a MESMA em
+  // qualquer instância e depois de qualquer reinício, que é o que permite
+  // rodar em mais de uma instância sem cache em memória (item 4).
+  const daHora = montarHoraDeTv(entrada, `${dispositivo.id}-${horaAtual.toISOString()}`);
 
   // A hora não coube em todo mundo: todos entregam menos do que contrataram.
   // O corte é proporcional, mas continua sendo entrega menor, e sem isto não

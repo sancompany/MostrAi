@@ -51,10 +51,37 @@ function duracaoValida(valor) {
   return Number.isFinite(n) && n >= DURACAO_MINIMA ? n : DURACAO_PADRAO;
 }
 
-function embaralhar(lista) {
+// EMBARALHAMENTO DETERMINISTICO (17/09/2026, pra rodar em mais de uma
+// instancia). Era `Math.random()`, e por isso a playlist precisava de um cache
+// em memoria do processo: sem ele, cada poll do player remontava a hora numa
+// ordem diferente e a TV pulava. Cache em memoria e exatamente o que nao
+// sobrevive a duas instancias — cada uma cachearia uma ordem, e o aparelho
+// receberia uma ou outra conforme quem respondesse.
+//
+// Com a semente, a hora de um aparelho e SEMPRE a mesma ordem, calculada por
+// qualquer instancia, e ate depois de reiniciar o servidor. O cache deixou de
+// existir em vez de virar tabela: e menos peca, nao mais.
+//
+// A semente vem do par (aparelho, hora), entao a ordem continua variando de
+// hora em hora e de tela em tela — ninguem ve o mesmo padrao duas vezes.
+function geradorSemente(semente) {
+  let h = embaralhamentoEstavel(String(semente ?? ''));
+  // xorshift32: barato, sem dependencia, e bom o suficiente pra ordenar uma
+  // lista. Nao e para uso criptografico e nao precisa ser.
+  return () => {
+    h ^= h << 13;
+    h ^= h >>> 17;
+    h ^= h << 5;
+    h >>>= 0;
+    return h / 4294967296;
+  };
+}
+
+function embaralhar(lista, semente) {
+  const sorteio = geradorSemente(semente);
   const copia = [...lista];
   for (let i = copia.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(sorteio() * (i + 1));
     [copia[i], copia[j]] = [copia[j], copia[i]];
   }
   return copia;
@@ -98,13 +125,14 @@ function espalhar(grupos, total) {
 // Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
 // `programados` conta só quem ocupa inventário de verdade — o institucional
 // fica de fora de propósito, porque ele não é entrega de ninguém.
-function montarHoraDeTv(anunciantes) {
+function montarHoraDeTv(anunciantes, semente) {
   const pedidos = embaralhar(
     anunciantes.map((a) => ({
       id: a.id,
       duracao: duracaoValida(a.duracaoSegundos),
       quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
     })),
+    semente,
   ).filter((p) => p.quer > 0);
 
   const pedidoSegundos = pedidos.reduce((soma, p) => soma + p.quer * p.duracao, 0);

@@ -219,3 +219,67 @@ test('rede menor que o plano não quebra — cobre o que existe', () => {
 test('rede vazia devolve lista vazia, não explode', () => {
   assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, []), []);
 });
+
+// ---------------------------------------------------------------------------
+// Playlist determinística — o que permite rodar em mais de uma instância
+// (item 4, 17/09/2026). Era `Math.random()` mais um cache em memória do
+// processo; o cache é justamente o que não sobrevive a duas instâncias.
+// ---------------------------------------------------------------------------
+const contas = () => [
+  { id: 1, frequenciaBase: 6, deficit: 0, duracaoSegundos: 15 },
+  { id: 2, frequenciaBase: 4, deficit: 0, duracaoSegundos: 20 },
+  { id: 3, frequenciaBase: 3, deficit: 0, duracaoSegundos: 30 },
+];
+
+test('mesma semente monta a hora exatamente igual (duas instâncias combinam)', () => {
+  const a = montarHoraDeTv(contas(), 'tela-7-2026-09-17T14:00:00.000Z');
+  const b = montarHoraDeTv(contas(), 'tela-7-2026-09-17T14:00:00.000Z');
+  assert.deepStrictEqual(a.itens, b.itens);
+  assert.deepStrictEqual(a.programados, b.programados);
+});
+
+// ACHADO ao escrever este teste, e vale registrar porque contraria a
+// intuição: o sorteio quase NÃO muda a hora. Quem define a ordem é o
+// espalhamento (`espalhar`), que coloca cada anunciante nas posições ideais a
+// partir da quantidade — resultado igual para a mesma quantidade, venha a
+// lista na ordem que vier. O sorteio só decide DESEMPATE entre contas com a
+// mesma quantidade de inserções.
+//
+// Ou seja: o `Math.random()` que estava aqui antes já quase não fazia
+// diferença, e o cache em memória protegia uma variação que mal existia. Isso
+// é bom para o item 4 (menos coisa muda entre instâncias), mas o teste tem
+// que afirmar o que é verdade, não o que eu esperava.
+test('o sorteio desempata contas de mesma quantidade, e só isso', () => {
+  const empatadas = () => [
+    { id: 1, frequenciaBase: 4, deficit: 0, duracaoSegundos: 15 },
+    { id: 2, frequenciaBase: 4, deficit: 0, duracaoSegundos: 15 },
+    { id: 3, frequenciaBase: 4, deficit: 0, duracaoSegundos: 15 },
+  ];
+  const ordens = new Set(
+    ['tela-1-h9', 'tela-1-h10', 'tela-2-h9', 'tela-3-h14', 'tela-9-h21'].map((s) =>
+      JSON.stringify(montarHoraDeTv(empatadas(), s).itens),
+    ),
+  );
+  assert.ok(ordens.size > 1, 'com quantidades empatadas, sementes diferentes devem variar a ordem');
+
+  // Sem empate, a ordem é a mesma em qualquer tela — é o espalhamento
+  // mandando, e é o comportamento desejado: cada um nas suas posições ideais.
+  assert.deepStrictEqual(montarHoraDeTv(contas(), 'tela-1-h9').itens, montarHoraDeTv(contas(), 'tela-2-h22').itens);
+});
+
+// O contador gravado tem que ser o mesmo em qualquer regeração: `gravarProgramados`
+// faz `DO UPDATE SET` (não incrementa), então valor instável viraria número
+// que muda sozinho no painel do anunciante entre um poll e outro.
+test('regerar a mesma hora não muda o que foi programado', () => {
+  const semente = 'tela-1-2026-09-17T09:00:00.000Z';
+  const primeira = montarHoraDeTv(contas(), semente).programados;
+  for (let i = 0; i < 5; i++) {
+    assert.deepStrictEqual(montarHoraDeTv(contas(), semente).programados, primeira);
+  }
+});
+
+// Semente ausente não pode explodir nem virar aleatório: quem chamar sem ela
+// (código antigo, teste) tem que receber algo estável.
+test('sem semente ainda assim é estável', () => {
+  assert.deepStrictEqual(montarHoraDeTv(contas()).itens, montarHoraDeTv(contas()).itens);
+});

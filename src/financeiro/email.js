@@ -245,6 +245,31 @@ async function enviarCandidaturaNova(candidatura) {
 // existe e quantos caracteres tem. O tamanho e util porque senha de app do
 // Gmail tem 16 caracteres — se vier 19, sobraram os espacos que o Google
 // mostra na tela (eles sao so separacao visual e nao fazem parte da senha).
+// O 535 do Gmail nao diz qual das cinco causas e a sua. Esta funcao aponta a
+// mais provavel a partir do que da pra ver — e a primeira delas custou um dia:
+// o SMTP do Gmail autentica com o endereco da CONTA, nunca com um alias de
+// envio. Se `SMTP_USER` e um alias (mostrai@) de uma conta real (admin@), o
+// login falha com "Username and Password not accepted" mesmo com a senha de
+// app perfeita, porque a senha pertence a conta, nao ao alias.
+function dicaDoErro(err, base) {
+  const texto = `${err.message || ''} ${err.response || ''}`;
+  if (!/535|BadCredentials|not accepted|Invalid login/i.test(texto)) return null;
+
+  if (base.senha_tem_espaco) {
+    return 'A senha tem espaço. A senha de app do Gmail são 16 caracteres; os espaços que o Google mostra na tela são só separação visual e não fazem parte dela.';
+  }
+  if (base.senha_caracteres !== 16) {
+    return `A senha tem ${base.senha_caracteres} caracteres. Senha de app do Gmail tem 16 — confira se veio inteira.`;
+  }
+  return (
+    'A senha parece bem formada (16 caracteres, sem espaço), então o suspeito é o USUÁRIO. ' +
+    'O SMTP do Gmail autentica com o endereço da CONTA, nunca com um alias de envio: se ' +
+    `"${base.usuario}" for alias de outra conta, use o endereço real em SMTP_USER e deixe o alias só em ` +
+    'MOSTRAI_EMAIL_FROM (o remetente). Se não for alias, gere uma senha de app nova em ' +
+    'myaccount.google.com → Segurança → Senhas de app.'
+  );
+}
+
 async function diagnosticarSmtp() {
   const faltando = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'].filter((v) => !process.env[v]);
   const senha = process.env.SMTP_PASS || '';
@@ -273,7 +298,14 @@ async function diagnosticarSmtp() {
     await teste.verify();
     return { ok: true, ...base };
   } catch (err) {
-    return { ok: false, erro: err.message, codigo: err.code || null, resposta: err.response || null, ...base };
+    return {
+      ok: false,
+      erro: err.message,
+      codigo: err.code || null,
+      resposta: err.response || null,
+      dica: dicaDoErro(err, base),
+      ...base,
+    };
   } finally {
     teste.close();
   }

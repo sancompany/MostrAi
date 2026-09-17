@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 
 const { conferirSenha } = require('../src/lib/senha');
-const { limiteTentativas } = require('../src/lib/limite-tentativas');
+const { decidir, MAX, JANELA_MS } = require('../src/lib/limite-tentativas');
 const { webhookAutorizado } = require('../src/financeiro/san-checkout');
 const { segredoConfere } = require('../src/lib/segredo');
 
@@ -79,25 +79,27 @@ test('webhook recusa corpo adulterado e exige o corpo cru', () => {
   delete process.env.SAN_CHECKOUT_KEY;
 });
 
-test('limite de tentativas bloqueia depois de 10 na mesma janela', () => {
-  let passou = 0;
-  let bloqueado = 0;
-  for (let i = 0; i < 13; i += 1) {
-    const res = {
-      setHeader() {},
-      status() {
-        return this;
-      },
-      json() {
-        bloqueado += 1;
-      },
-    };
-    limiteTentativas({ ip: '9.9.9.9', path: '/teste-limite' }, res, () => {
-      passou += 1;
-    });
+// A contagem passou pro banco em 17/09/2026 (migration 051), pra o serviço
+// rodar em duas instâncias sem o teto virar 2x10 em silêncio. A REGRA ficou
+// pura (`decidir`), então ela continua testável sem Postgres — que é o que
+// mantém a suíte inteira sem banco.
+test('limite de tentativas: passa até o teto e bloqueia a partir dele', () => {
+  const desde = Date.now();
+  for (let q = 1; q <= MAX; q += 1) {
+    assert.strictEqual(decidir({ quantidade: q, desde }).bloquear, false, `tentativa ${q} devia passar`);
   }
-  assert.strictEqual(passou, 10);
-  assert.strictEqual(bloqueado, 3);
+  assert.strictEqual(decidir({ quantidade: MAX + 1, desde }).bloquear, true);
+  assert.strictEqual(decidir({ quantidade: MAX + 50, desde }).bloquear, true);
+});
+
+test('limite de tentativas: diz quantos minutos faltam, nunca zero', () => {
+  const agora = Date.now();
+  // Recém-bloqueado: a janela inteira pela frente.
+  assert.strictEqual(decidir({ quantidade: MAX + 1, desde: agora, agora }).faltamMinutos, 15);
+  // No fim da janela o arredondamento daria 0, e "espere 0 minutos" é uma
+  // instrução que não dá pra seguir.
+  const quaseFim = agora - (JANELA_MS - 1000);
+  assert.strictEqual(decidir({ quantidade: MAX + 1, desde: quaseFim, agora }).faltamMinutos, 1);
 });
 
 // O login do admin comparava com `===`, que devolve mais rápido quanto mais
