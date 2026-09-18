@@ -1991,3 +1991,89 @@ dizer "até N pontos") e os dois `fetch` corriam soltos: numa rede lenta o
 aviso montava antes e saía com "mais pontos" em vez do número. Provado com
 `/planos` atrasado 1,5s no navegador — o tipo de corrida que nunca aparece na
 máquina de quem escreve e sempre aparece no celular.
+
+---
+
+## G. GUARDADO PRA DEPOIS DA REVISÃO — grade de horas e banco de horas
+
+Conversado com o dono em 17/09/2026, **não construído**, e explicitamente
+adiado por ele: *"vamos ir por revisão primeiro e deixe guardado essas coisas
+por enquanto"*. Nada aqui está no ar. Registrado porque a conversa tinha
+números que não se refazem de cabeça.
+
+### G.1 A conta de inventário que faltava
+
+O dono apontou que ela nunca tinha sido feita: **pontos × horas do mês**.
+
+Um ponto tem **360 h de vitrine por mês** (12 h de comércio aberto × 30 dias).
+A trava real, porém, não é o mês — é a **hora**: em cada tela, a soma de todos
+os anunciantes tem que caber em 3600 s.
+
+| plano | s/hora | h por ponto/mês | % da tela | h TOTAL | consome da rede/hora |
+|---|---|---|---|---|---|
+| Essencial | 90 | 9 h | 2,50% | 27 h | 270 s |
+| Pro | 120 | 12 h | 3,33% | 84 h | 840 s |
+| Prime | 180 | 18 h | 5,00% | 180 h | 1800 s |
+
+**O achado mais importante, e ele não tem nada a ver com a RN-49:** os planos
+escalam em DOIS eixos ao mesmo tempo — mais segundos *e* mais pontos. O efeito
+no preço por unidade de estoque:
+
+| | preço | consome | **R$ por 1000 s de rede** |
+|---|---|---|---|
+| Essencial | R$ 99 | 270 s/h | **R$ 367** |
+| Pro | R$ 249 | 840 s/h | R$ 296 |
+| Prime | R$ 449 | 1800 s/h | **R$ 249** |
+
+O Prime custa 4,5× o Essencial e come **6,7×** o inventário: **quem paga mais
+é quem paga menos pelo estoque**, 32% mais barato por segundo de rede. Isso
+existe desde antes de qualquer conversa desta rodada.
+
+### G.2 A leitura do dono sobre as horas (e por que ele está certo)
+
+Hoje as "27 horas" do card são o **total espalhado nos 3 pontos** (9 h em
+cada). O dono quer que sejam **27 h em cada ponto**, com o total do plano
+aparecendo junto — *"total de horas circuladas de anúncio por mês e total de
+horas veiculadas por ponto"*. É uma mudança de 3×.
+
+Consequência medida: o Prime passaria a consumir **5400 s por hora** da rede —
+**mais de um ponto inteiro só para ele**. Com 3 pontos dá pra vender 6 Primes e
+a rede fecha. Foi exatamente o "excesso de horas" que o dono previu.
+
+Ele também fechou a moldura, e essa parte **já está no ar**: o plano vende
+*horas totais na rede, divididas entre os pontos* — não horas por ponto. O
+card já diz assim.
+
+**Alternativa que resolve o desequilíbrio do G.1 junto:** mesmo tempo por
+ponto em TODOS os planos (27 h), e o que o plano compra é **cobertura** —
+Essencial 3 pontos (81 h), Pro 7 (189 h), Prime 10 (270 h). Aí o R$ por
+1000 s vira R$ 122 / R$ 132 / R$ 166, e o card fica óbvio: *"27 horas em cada
+ponto; o plano diz em quantos"*. **Ressalva:** isso inverte o desconto por
+volume (o plano caro passa a pagar MAIS por unidade), o que é difícil de
+vender. O ponto de equilíbrio é uma decisão de preço do dono, não de código.
+
+### G.3 BANCO DE HORAS — ideia do dono, e a válvula que falta
+
+Proposta dele: *"criamos um banco de horas mensal para anúncios que não
+couberam; eles ganham prioridade no próximo mês e abatem as horas"*. Resolve
+duas coisas de uma vez — o teto da hora e a falta de pontos —, e **torna o
+teto da RN-49 desnecessário**: em vez de concentrar agressivamente ou cortar,
+entrega o que cabe e guarda o resto com prioridade.
+
+**A ressalva, registrada uma vez:** banco que só enche é **dívida que cresce**.
+Se a rede não crescer, passa a existir hora devida que nunca será entregue — e
+isso é pior que entregar menos, porque vira promessa escrita com número. Ele
+precisa de uma válvula. A mais limpa: prioridade no mês seguinte e, se não
+drenar em N meses, o saldo vira **crédito em dinheiro** na conta. Aí a
+promessa é sempre cumprível.
+
+**Tamanho do trabalho:** tabela própria (saldo por anunciante), consumo no
+gerador da playlist, drenagem com prioridade, e tela no painel. Não é ajuste
+de front — é bloco próprio, e por isso foi adiado.
+
+### G.4 Ainda não trazido pelo dono
+
+Ele avisou em 18/09/2026 que há **mais uma atualização do San Checkout, sobre
+mudança de plano e cancelamento**, e que traz quando a revisão permitir. As
+duas atualizações anteriores já foram lidas e adotadas (RN-50 e RN-51). Esta
+ainda **não foi lida** — nada foi assumido sobre ela.
