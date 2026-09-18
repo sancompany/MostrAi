@@ -2956,6 +2956,52 @@ tem acesso à caixa dele:**
 de fato na caixa dele — sem essa prova, "Testar agora" positivo não basta
 (ele testa login, não entrega).
 
+### P42 — achado: as mensagens estão em "Todos os e-mails", sem a etiqueta Caixa de Entrada (18/09/2026)
+
+O dono foi em "Todos os e-mails" (não a Principal) e achou as duas
+mensagens de teste — remetente aparece como "eu", sem a etiqueta
+`Caixa de entrada` ao lado (diferente das linhas do Google/GitHub/etc.,
+que têm essa etiqueta). Confirma a hipótese 1 acima, numa versão mais
+específica: o Gmail, quando o remetente autenticado (`admin@`, via
+`SMTP_USER`) manda pra um endereço que também é dele mesmo (`mostrai@`,
+alias do mesmo `admin@`), trata a mensagem como uma nota que ele mandou
+pra si mesmo — fica só em "Enviados"/"Todos os e-mails", nunca passa pelo
+caminho de entrega que dá a etiqueta de Caixa de Entrada. Isso explica
+`email_enviado = true` sem nunca aparecer na Principal, no Spam ou em
+qualquer aba: a mensagem nunca teve a etiqueta de entrada pra começo.
+
+**Pedido do dono nesta rodada:** já que `admin@sancocore.com.br` cuida do
+e-mail de vários projetos da San & Co. (não só a Mostraí), os assuntos
+dos e-mails que caem nessa caixa compartilhada precisam dizer de qual
+projeto vêm. Feito nesta rodada, sem mudar comportamento nenhum, só o
+texto do assunto — `enviarMensagemContato`, `enviarCandidaturaNova` e
+`enviarArrependimentoRecebido` (as três que endereçam ou copiam
+`MOSTRAI_EMAIL_CONTATO`) agora começam o assunto com `Mostraí — `.
+
+Ele também perguntou se dava pra mandar o e-mail *do* visitante (em vez
+do domínio da Mostraí) — não dá, e o código já evita esse caminho: o
+Gmail rejeita (ou marca como spam) mensagem cujo campo De não é uma
+identidade autorizada da conta autenticada (é a mesma regra do SPF/DKIM
+que qualquer provedor de e-mail aplica contra falsificação). Por isso
+`enviarMensagemContato` já usa `replyTo: email` — o endereço do visitante
+vai no campo de resposta, não no De; clicar "Responder" no e-mail admin
+já responde direto pro visitante.
+
+**Teste que ainda decide a causa raiz, não feito nesta rodada (é troca de
+variável de ambiente no Northflank, não código — combinado que o dono ou
+eu fazemos quando ele quiser):** trocar `MOSTRAI_EMAIL_CONTATO` para
+`admin@sancocore.com.br` (o endereço real, não o alias `mostrai@`),
+mantendo `MOSTRAI_EMAIL_FROM=mostrai@sancocore.com.br` (só pra manter o
+"De" com a marca Mostraí) — se o Gmail tratar um alias como identidade
+"diferente" do endereço real pra fins de entrega, isso é o suficiente pra
+sair de "Enviados" e cair em "Caixa de Entrada" de verdade. Se mesmo assim
+não entregar, o caminho robusto (sem depender de nenhum comportamento
+interno do Gmail) é sair do SMTP do Gmail para receber essas mensagens e
+usar um serviço de e-mail transacional (Resend, SendGrid, Amazon SES) só
+para o envio — não é uma mudança pequena (precisa configurar SPF/DKIM no
+DNS do domínio e uma chave de API nova), então só entra se o teste da
+variável não resolver.
+
 ### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
 
 O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las

@@ -196,7 +196,7 @@ async function enviarMensagemContato({ nome, email, telefone, mensagem }) {
     from: remetente(),
     to: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
     replyTo: email,
-    subject: `Contato pelo site — ${nome}`,
+    subject: `Mostraí — Contato pelo site — ${nome}`,
     text: `Nome: ${nome}\nE-mail: ${email}\nTelefone: ${telefone || '-'}\n\n${mensagem}`,
   });
 }
@@ -278,7 +278,7 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
     from: remetente(),
     to: anunciante.contato_email,
     cc: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
-    subject: 'Desistência registrada — Mostraí',
+    subject: 'Mostraí — Desistência registrada',
     text:
       `Olá, ${anunciante.nome_empresa}!\n\n` +
       `Registramos sua desistência da contratação dentro do prazo de 7 dias. ` +
@@ -297,7 +297,7 @@ async function enviarCandidaturaNova(candidatura) {
   await transportador().sendMail({
     from: remetente(),
     to: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
-    subject: `Candidatura nova de ${tipo} — Mostraí`,
+    subject: `Mostraí — Candidatura nova de ${tipo}`,
     text: [
       `Tipo: ${tipo}`,
       `Nome: ${candidatura.nome}`,
