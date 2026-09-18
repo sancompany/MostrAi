@@ -2578,3 +2578,49 @@ com o esquema parado na migration 036 — rodei `node src/db/migrate.js`
 pra aplicar 037–055 nele antes de testar. Só afeta o banco de
 desenvolvimento local; produção (Supabase) não foi tocada e não tem
 esse problema.
+
+### Revisão do dono, tópico 1 — Onde estamos, rodada 3 (18/09/2026)
+
+**P37. [x] Cards desbalanceados — resolvido dando mais contexto ao card
+1, sem tocar nos outros três.** Print do dono mostrou os dois cards da
+esquerda (1 e 3) visivelmente mais baixos que os da direita (2 e 4),
+deixando espaço em branco. Ele: *"ou escrevemos mais no card das
+esquerda para igualar com os da direita e dar mais contexto, ou
+retiramos texto da direita. (...) o card 1 tela vertical pode melhorar o
+contexto."* Optou pelo primeiro caminho, só no card 1 — reintroduzi (de
+forma mais curta que a versão de antes da rodada 1) a explicação de
+como um vídeo fora do formato 9:16 é tratado:
+
+> Formato 9:16, o mesmo do celular, e nada do seu anúncio é cortado:
+> vídeo horizontal ganha um fundo desfocado do próprio vídeo, e vídeo
+> fora da medida ganha uma faixa fina nas laterais.
+
+Não toquei nos cards 3 e 4 (o desbalanceamento entre eles não foi
+mencionado) nem tirei texto do card 2, como manda a escolha dele.
+
+**P38. [x] Card "Player conectado" — troca de termo.** O dono: *"o 2
+player conectado pode sair a palavra rodízio e entrar playlist."* De
+"...uma tela que cai sai do **rodízio** até voltar" para "...sai da
+**playlist** até voltar" — só a palavra, sem mudar o resto da frase.
+
+**P39. Esclarecido — sem mudança de código.** O dono perguntou: *"sobre
+esse aviso [rede em montagem] você disse que ele sai e então aparece o
+título pontos ativos?"* Confirmando o que ficou registrado no P31: sim.
+As duas coisas acontecem juntas, no mesmo instante — quando o primeiro
+ponto é cadastrado (`pontos.length` deixa de ser zero):
+1. O `statRow` no topo passa a existir e mostra os três números
+   ("Pontos ativos", "Em instalação", "Cidade atendida" — hoje ele nem
+   aparece, porque com zero pontos não tem número nenhum pra mostrar).
+2. O `pontosGrid` troca a mensagem "A rede está em montagem" pela lista
+   real de pontos, cada um com seu status ("No ar" ou "Em instalação").
+
+Ele disse que vai conferir na prática, cadastrando um ponto, e traz o
+feedback depois — combinado, fica em aberto até ele testar.
+
+Conferido: `npm run lint` e `npm run check` verdes (92 testes), Playwright
+confirma o texto novo dos dois cards e a altura mais equilibrada entre
+eles.
+
+**Com isso, revisão de "Onde estamos?" encerrada** (por ora, até o
+feedback do cadastro de ponto no P39). Próximo, por pedido do dono: "a
+casa dos formulários."
