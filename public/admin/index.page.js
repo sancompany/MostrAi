@@ -254,6 +254,7 @@ const NAV = [
     itens: [
       { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
       { id: 'trocas', nome: 'Trocas de plano' },
+      { id: 'bancohoras', nome: 'Banco de horas', fila: 'bancohoras' },
       { id: 'comissoes', nome: 'Comissões' },
       { id: 'pagamentospontos', nome: 'Pagar os pontos' },
       { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
@@ -289,6 +290,8 @@ const SUBTITULOS = {
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   trocas:
     'Quem trocou de plano no meio do período: de qual plano pra qual, quanto pagou de diferença e quando. O pago também entra em Cobranças; aqui é a lista de quem subiu de plano.',
+  bancohoras:
+    'O que a rede prometeu e não entregou por estar vendida além da conta, guardado com prioridade pro mês seguinte. Saldo que passa de alguns meses sem drenar entra na fila de decisão — nunca crédito automático em dinheiro.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
   pagamentospontos:
     'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar, e isso aparece no extrato do dono do ponto.',
@@ -363,6 +366,7 @@ async function irPara(aba, forcarResumo) {
     comodato: renderComodato,
     cobrancas: renderCobrancas,
     trocas: renderTrocas,
+    bancohoras: renderBancoHoras,
     comissoes: renderComissoes,
     custos: renderCustos,
     eventos: renderEventos,
@@ -457,6 +461,7 @@ const ALERTAS = [
     texto: 'devolução(ões) por arrependimento a pagar',
     urgente: true,
   },
+  { fila: 'bancohoras', aba: 'bancohoras', texto: 'saldo(s) do banco de horas esperando decisão' },
 ];
 
 function barrasHorizontais(linhas, mapa) {
@@ -2772,6 +2777,105 @@ async function renderTrocas(el) {
       dica: 'Troca é pagamento único: não deixa renovação automática no lugar da antiga.',
     })}`
     : '<p class="empty-state">Ninguém trocou de plano ainda.</p>';
+}
+
+// ---------- banco de horas (G.3) ----------
+async function renderBancoHoras(el) {
+  const [linhas, fila] = await Promise.all([
+    pegar('/admin/banco-horas'),
+    pegar('/admin/banco-horas/aguardando-credito'),
+  ]);
+  const saldoTotal = linhas
+    .filter((l) => l.status === 'ativo')
+    .reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0);
+
+  const STATUS_BH = { ativo: 'Ativo', drenado: 'Drenado', aguardando_credito: 'Aguardando decisão' };
+  // `resolvido_em` fica preenchido, mas o `status` da linha CONTINUA
+  // 'aguardando_credito' de propósito (registro histórico — ver
+  // resolverCredito, src/bancohoras/repository.js). Sem checar
+  // `resolvido_em` aqui, uma linha já resolvida mostrava "Aguardando
+  // decisão" pra sempre nesta tabela, igual a uma que ainda espera.
+  const situacao = (l) =>
+    l.status === 'aguardando_credito' && l.resolvido_em
+      ? { rotulo: 'Resolvido', classe: 'badge-ok' }
+      : {
+          rotulo: STATUS_BH[l.status] || l.status,
+          classe: l.status === 'ativo' ? 'badge-pendente' : l.status === 'drenado' ? 'badge-ok' : 'badge-err',
+        };
+  const corpo = `<table><thead><tr>
+      <th data-ord>Anunciante</th><th data-ord>Mês</th><th data-ord>Pedidas</th><th data-ord>Entregues</th>
+      <th data-ord>No banco</th><th data-ord>Drenado</th><th data-ord>Saldo</th><th data-ord>Situação</th>
+    </tr></thead><tbody>
+    ${linhas
+      .map((l) => {
+        const saldo = l.exibicoes_banco - l.exibicoes_drenadas;
+        const { rotulo, classe } = situacao(l);
+        return `<tr data-filtro="${l.status}">
+      <td><b>${esc(l.nome_empresa)}</b></td>
+      <td>${data(l.mes_referencia)}</td>
+      <td>${l.exibicoes_pedidas}</td>
+      <td>${l.exibicoes_entregues}</td>
+      <td>${l.exibicoes_banco}</td>
+      <td>${l.exibicoes_drenadas}</td>
+      <td>${saldo}</td>
+      <td><span class="badge ${classe}">${esc(rotulo)}</span></td>
+    </tr>`;
+      })
+      .join('')}
+  </tbody></table>`;
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Saldo ativo hoje</span><b>${saldoTotal}</b><span class="kpi-caption">exibições prometidas, ainda não devolvidas</span></div>
+      <div class="kpi-card"><span class="kpi-label">Esperando decisão</span><b>${fila.length}</b><span class="kpi-caption">passou de alguns meses sem drenar tudo</span></div>
+    </div>
+    ${
+      fila.length
+        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
+      <b>Fila de decisão — nunca crédito automático em dinheiro.</b>
+      <p class="u-m-0 u-mt-8 u-mb-8">Decida fora daqui (crédito manual, desconto na próxima fatura, ou nada) e resolva a linha pra tirar da fila.</p>
+      ${fila
+        .map(
+          (l) => `<div class="field-row u-mb-8">
+        <span class="u-col-2"><b>${esc(l.nome_empresa)}</b> · ${data(l.mes_referencia)} · saldo ${l.exibicoes_banco - l.exibicoes_drenadas} exibições · ${esc(l.contato_email)}</span>
+        <button class="btn ghost mini" data-resolver-banco="${l.id}">Marcar resolvido</button>
+      </div>`,
+        )
+        .join('')}
+    </div>`
+        : ''
+    }
+    ${
+      linhas.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todas' },
+              { valor: 'ativo', nome: 'Ativas' },
+              { valor: 'drenado', nome: 'Drenadas' },
+              { valor: 'aguardando_credito', nome: 'Aguardando decisão' },
+            ],
+            html: corpo,
+            dica: 'Apurado uma vez por mês (npm run apurar-banco-horas), a partir do que cada anunciante pediu e do que a rede confirmou de verdade.',
+          })
+        : '<p class="empty-state">Nenhum déficit apurado ainda.</p>'
+    }`;
+
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  el.querySelectorAll('[data-resolver-banco]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (
+        !confirm(
+          'Marcar esta linha como resolvida? Isso só registra que você decidiu algo — nenhum dinheiro se move sozinho.',
+        )
+      )
+        return;
+      const r = await api(`/admin/banco-horas/${btn.dataset.resolverBanco}/resolver`, { method: 'POST' });
+      if (!r.ok) return toast('Não foi possível resolver.', 'err');
+      toast('Marcado como resolvido.');
+      renderBancoHoras(el);
+    }),
+  );
 }
 
 // ---------- cobranças ----------

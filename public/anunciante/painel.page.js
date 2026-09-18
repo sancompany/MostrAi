@@ -61,6 +61,7 @@ async function carregar() {
     carregarExibicoes();
     carregarCriativos();
     carregarKpiPontos();
+    carregarBancoHoras();
   });
   if (estado && !estado.modos.anunciante.liberado) {
     document.getElementById('statusBanner').innerHTML =
@@ -372,42 +373,54 @@ async function confirmarPlano(planoId) {
   });
 }
 
-// Troca de plano de quem já paga: mostra o crédito e a diferença antes de
-// mandar pro pagamento (mesmo cuidado de confirmarPlano — sem isso, um F5
-// nesta URL geraria outro pedido de cobrança a cada carregamento).
+// Troca de plano de quem já paga (POST /trocar-plano do Checkout, desde
+// 18/09/2026): cobra o acerto proporcional no cartão já salvo, na mesma
+// hora — sem redirecionar pra uma segunda tela de pagamento. O Checkout
+// não tem modo de "só calcular sem cobrar" (o valor nunca vem do corpo da
+// requisição, pra ninguém escolher quanto paga), então não dá pra mostrar
+// o número exato antes de confirmar; o botão avisa o que vai acontecer em
+// vez de prometer um valor que só o servidor sabe.
 async function confirmarTrocaPlano(planoNovoId) {
   const box = document.getElementById('statusBanner');
   history.replaceState(null, '', '/anunciante/painel.html');
-  box.insertAdjacentHTML('beforeend', '<p class="soon">Calculando a diferença...</p>');
-  const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ planoNovoId }),
-  });
-  document.querySelector('#statusBanner .soon')?.remove();
-  const corpo = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    box.insertAdjacentHTML(
-      'beforeend',
-      `<p class="form-msg err">${esc(corpo.erro || 'Não foi possível calcular a troca.')} <a href="/planos.html">Escolher outro plano</a></p>`,
-    );
-    return;
-  }
   box.insertAdjacentHTML(
     'beforeend',
     `
-    <div class="panel u-mt-14">
+    <div class="panel u-mt-14" id="painelTrocaPlano">
       <h3 class="u-m-0 u-mb-6">Confirmar troca de plano</h3>
-      <p class="u-m-0 u-mb-4">Crédito do que resta no seu plano atual: <b>${fmtBRL(corpo.credito)}</b>.</p>
-      <p class="u-m-0 u-mb-12">Você paga a diferença agora: <b>${fmtBRL(corpo.valor)}</b>. O plano novo vale a partir da confirmação.</p>
-      <button class="btn primary" id="btnConfirmarTroca">Ir para o pagamento</button>
+      <p class="u-m-0 u-mb-12">Se o plano novo custa mais, a diferença proporcional aos dias que faltam no seu
+        ciclo atual é cobrada agora, no cartão que você já tem salvo. Se custa menos, nada é cobrado nem
+        devolvido agora — o valor novo passa a valer só na sua próxima renovação.</p>
+      <button class="btn primary" id="btnConfirmarTroca">Trocar agora</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
     </div>`,
   );
-  document.getElementById('btnConfirmarTroca').addEventListener('click', (e) => {
+  document.getElementById('btnConfirmarTroca').addEventListener('click', async (e) => {
     e.target.disabled = true;
-    window.location.href = corpo.checkoutUrl;
+    e.target.textContent = 'Trocando...';
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planoNovoId }),
+    });
+    const corpo = await r.json().catch(() => ({}));
+    document.getElementById('painelTrocaPlano')?.remove();
+    if (!r.ok) {
+      box.insertAdjacentHTML(
+        'beforeend',
+        `<p class="form-msg err">${esc(corpo.erro || 'Não foi possível trocar de plano.')} <a href="/planos.html">Escolher outro plano</a></p>`,
+      );
+      return;
+    }
+    const msg = corpo.acerto?.cobrado
+      ? `Troca feita. Cobramos ${fmtBRL(corpo.acerto.valor)} de acerto no cartão salvo.`
+      : 'Troca feita. Como o plano novo é mais barato, nada foi cobrado agora — o valor novo vale a partir da próxima renovação.';
+    box.insertAdjacentHTML(
+      'beforeend',
+      `<p class="form-msg ok">${esc(msg)}</p><button class="btn ghost" id="btnAtualizarPainel">Atualizar a página</button>`,
+    );
+    document.getElementById('btnAtualizarPainel').addEventListener('click', () => window.location.reload());
   });
 }
 
@@ -475,6 +488,25 @@ async function assinar(anuncianteId, planoId) {
 
 // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
 // (transparência de entrega: programado vs. confirmado, custo por exibição).
+// Banco de horas (G.3): só aparece pra quem tem saldo — conta sem déficit
+// não precisa saber que esse mecanismo existe. `catch` silencioso de
+// propósito: é um aviso extra, não um número que o cliente precisa pra
+// decidir algo, e um painel que já carregou tudo (exibições, criativos)
+// não deveria mostrar erro por causa deste card.
+async function carregarBancoHoras() {
+  try {
+    const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
+    if (!dados.saldo) return;
+    document.getElementById('statusBanner').insertAdjacentHTML(
+      'beforeend',
+      `<span class="dash-explica">Você tem <b>${dados.saldo} exibições</b> de meses em que a rede esteve
+        cheia, com prioridade pra rodar nos próximos dias.</span>`,
+    );
+  } catch {
+    /* aviso extra — sem ele, o painel continua completo */
+  }
+}
+
 async function carregarExibicoes() {
   try {
     const dados = await (
