@@ -486,6 +486,18 @@ async function assinar(anuncianteId, planoId) {
   atualizar();
 })();
 
+// Segundos em tempo legível, na maior unidade que ainda cabe: só segundos
+// enquanto < 60, minutos enquanto < 60min, senão horas. Pedido do dono
+// (18/09/2026) — "N exibições" sozinho não diz o tamanho da prioridade;
+// tempo diz. Sempre com 1 casa nas unidades maiores, pra não sumir com o
+// resto (ex.: 90s → "1,5min", não "2min" arredondado feito outra coisa).
+function duracaoLegivel(segundos) {
+  if (segundos < 60) return `${Math.round(segundos)}s`;
+  const minutos = segundos / 60;
+  if (minutos < 60) return `${(Math.round(minutos * 10) / 10).toLocaleString('pt-BR')}min`;
+  return `${(Math.round((minutos / 60) * 10) / 10).toLocaleString('pt-BR')}h`;
+}
+
 // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
 // (transparência de entrega: programado vs. confirmado, custo por exibição).
 // Banco de horas (G.3): só aparece pra quem tem saldo — conta sem déficit
@@ -493,14 +505,19 @@ async function assinar(anuncianteId, planoId) {
 // propósito: é um aviso extra, não um número que o cliente precisa pra
 // decidir algo, e um painel que já carregou tudo (exibições, criativos)
 // não deveria mostrar erro por causa deste card.
+//
+// O tempo (`dados.segundos`) é ilustrativo — exibições × duração ATUAL da
+// peça (RN-53), não um histórico exato — por isso o número exato de
+// exibições fica do lado, entre parênteses: quem quiser conferir a conta
+// tem o dado que a apuração realmente usa.
 async function carregarBancoHoras() {
   try {
     const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
     if (!dados.saldo) return;
     document.getElementById('statusBanner').insertAdjacentHTML(
       'beforeend',
-      `<span class="dash-explica">Você tem <b>${dados.saldo} exibições</b> de meses em que a rede esteve
-        cheia, com prioridade pra rodar nos próximos dias.</span>`,
+      `<span class="dash-explica">Você tem <b>${duracaoLegivel(dados.segundos)}</b> (${dados.saldo} exibições) de meses em
+        que a rede esteve cheia, com prioridade pra rodar nos próximos dias.</span>`,
     );
   } catch {
     /* aviso extra — sem ele, o painel continua completo */

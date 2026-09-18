@@ -24,6 +24,7 @@ async function apagarConta(anuncianteId) {
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM banco_horas WHERE anunciante_id = $1', [anuncianteId]);
+  await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [anuncianteId]);
 }
 
@@ -180,6 +181,32 @@ test('a válvula move pra aguardando_credito só depois de N meses, e resolverCr
     await bancoHorasRepo.resolverCredito(linhaId);
     const filaDepois = await bancoHorasRepo.listarAguardandoCredito();
     assert.ok(!filaDepois.some((l) => l.id === linhaId), 'resolvida, sai da fila');
+  } finally {
+    await apagarConta(id);
+  }
+});
+
+test('duracaoMediaDoAnunciante lê a duração dos criativos aprovados, e cai no padrão sem nenhum', async () => {
+  const id = await contaDeTeste();
+  try {
+    assert.strictEqual(
+      await bancoHorasRepo.duracaoMediaDoAnunciante(id),
+      20,
+      'sem criativo aprovado, cai no DURACAO_PADRAO (20s)',
+    );
+
+    await pool.query(
+      `INSERT INTO criativos (anunciante_id, status, arquivo_normalizado_url, arquivo_original_url, duracao_segundos)
+       VALUES ($1,'aprovado','https://exemplo.com/a.mp4','https://exemplo.com/a-orig.mp4',10),
+              ($1,'aprovado','https://exemplo.com/b.mp4','https://exemplo.com/b-orig.mp4',20),
+              ($1,'pendente','https://exemplo.com/c.mp4','https://exemplo.com/c-orig.mp4',90)`,
+      [id],
+    );
+    assert.strictEqual(
+      await bancoHorasRepo.duracaoMediaDoAnunciante(id),
+      15,
+      'média só dos aprovados (10 e 20) — o pendente (90) não entra',
+    );
   } finally {
     await apagarConta(id);
   }

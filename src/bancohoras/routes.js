@@ -9,8 +9,14 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 // só o admin tem com ele fora do sistema.
 router.get('/anunciantes/me/banco-horas', exigirAnuncianteLogado, async (req, res) => {
   const minhas = await repo.listarAtivasDoAnunciante(req.session.anuncianteId);
+  const saldo = minhas.reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0);
+  // `segundos` é só pra virar tempo na tela (pedido do dono, 18/09/2026) —
+  // exibições × duração ATUAL da peça, a mesma estimativa sem histórico que
+  // já vale em toda esta feature (ver RN-53). Zero saldo não busca duração.
+  const duracaoMedia = saldo > 0 ? await repo.duracaoMediaDoAnunciante(req.session.anuncianteId) : 0;
   res.json({
-    saldo: minhas.reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0),
+    saldo,
+    segundos: saldo * duracaoMedia,
     linhas: minhas.map((l) => ({
       mesReferencia: l.mes_referencia,
       saldo: l.exibicoes_banco - l.exibicoes_drenadas,

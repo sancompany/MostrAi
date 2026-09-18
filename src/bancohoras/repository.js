@@ -1,9 +1,25 @@
 const pool = require('../db/pool');
+const { DURACAO_PADRAO } = require('../lib/pacing');
 
-// Banco de horas (G.3 de docs/PENDENCIAS.md) — unidade é EXIBIÇÃO (vezes),
-// não segundos (ver migration 058). Uma linha por mês em que um anunciante
-// teve déficit; o saldo de um anunciante é a soma do que falta drenar em
-// toda linha 'ativo' dele.
+// Banco de horas (G.3 de docs/PENDENCIAS.md) — unidade de CONTA é EXIBIÇÃO
+// (vezes), não segundos (ver migration 058): duração de criativo não tem
+// histórico, só o valor atual, e a apuração não pode estimar sobre
+// estimativa. Segundos aparecem só na TELA (painel do anunciante) — pedido
+// do dono, exibições viram tempo pra ficar legível — usando a mesma duração
+// atual, com o mesmo aviso: é ilustrativo, não é o que a apuração usa.
+
+// Duração da peça QUE RODA HOJE, mesma regra de `duracaoMedia`
+// (src/playlist/gerador.js): média dos criativos aprovados, `DURACAO_PADRAO`
+// (20s) se a conta não tiver nenhum aprovado ainda.
+
+async function duracaoMediaDoAnunciante(anuncianteId) {
+  const { rows } = await pool.query(
+    `SELECT ROUND(AVG(duracao_segundos))::int AS media
+     FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL`,
+    [anuncianteId],
+  );
+  return rows[0]?.media || DURACAO_PADRAO;
+}
 
 async function registrarDeficit({ anuncianteId, mesReferencia, exibicoesPedidas, exibicoesEntregues }) {
   const banco = exibicoesPedidas - exibicoesEntregues;
@@ -139,6 +155,7 @@ async function listarTodos() {
 }
 
 module.exports = {
+  duracaoMediaDoAnunciante,
   registrarDeficit,
   saldoAtivoDoAnunciante,
   saldosAtivos,

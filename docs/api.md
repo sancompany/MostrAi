@@ -54,7 +54,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | GET | `/anunciantes/:id/dispositivos` | Telas dos pontos da conta, com exibições/anunciantes em 30 dias e `ponto_status`. |
 | GET | `/anunciantes/:id/dispositivos/:dispositivoId/painel` | O que rodou naquela tela: `{porAnunciante, porDia}`. |
 | POST | `/anunciantes/:id/dispositivos/:dispositivoId/pin` | Dono do ponto define o PIN da própria tela (guardado com hash, mesma regra do `/admin/dispositivos/:id/pin`). |
-| GET | `/anunciantes/me/banco-horas` | Saldo do banco de horas (G.3, RN-53): `{saldo, linhas:[{mesReferencia, saldo}]}`, só linhas `status='ativo'` — o que ainda pode virar prioridade na próxima geração de playlist. Nunca mostra saldo de outra conta, nem linha já drenada ou em fila de crédito. |
+| GET | `/anunciantes/me/banco-horas` | Saldo do banco de horas (G.3, RN-53): `{saldo, segundos, linhas:[{mesReferencia, saldo}]}`, só linhas `status='ativo'` — o que ainda pode virar prioridade na próxima geração de playlist. `segundos` é `saldo × duração atual da peça` — ilustrativo pra virar tempo na tela (18/09/2026), não o dado que a apuração usa; `saldo` (exibições) é o número exato. Nunca mostra saldo de outra conta, nem linha já drenada ou em fila de crédito. |
 | GET | `/vendedor/painel` | Papel `vendedor`: `{vendedor, comissoes, totalComissionado, totalPago, totalAReceber}`. |
 | PATCH | `/vendedor/me` | `{chave_pix}` — vendedor completa/troca a própria chave. |
 
