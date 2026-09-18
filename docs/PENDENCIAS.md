@@ -2676,3 +2676,51 @@ está correto, falta só a senha nova.
 Conferido: `npm run lint` e `npm run check` verdes (92 testes), Playwright
 confirma os três textos novos e a altura balanceada dos cards de "Onde
 estamos".
+
+### P42 continua — senha nova já rodou, e-mail ainda não chegou
+
+O dono trocou a senha de app do Gmail (item 9) e o "Testar agora" do
+admin (`GET /admin/diagnostico/smtp`) confirma: **servidor aceitou a
+senha** (`admin@sancocore.com.br`, host `smtp.gmail.com:587`, senha de
+16 caracteres). Mas ele reporta que o e-mail "ainda parece não estar
+funcionando" — nenhum e-mail chegou na caixa dele.
+
+**Conferido direto no banco de produção (Supabase, projeto MostrAi):**
+existe uma mensagem de teste dele mesmo (`mensagens_contato`, id 1,
+18/09 01:47) com **`email_enviado = true`** — ou seja, o código chamou
+`sendMail()` e o Gmail **aceitou** a mensagem pra retransmitir, sem
+erro. Isso é diferente do que o "Testar agora" mostra: aquele botão só
+faz `.verify()` (confere login, não manda e-mail nenhum); o envio real
+do formulário é a única prova de ponta a ponta que existe hoje, e essa
+prova diz que o Gmail recebeu a mensagem pra entregar.
+
+**O que isso descarta:** não é mais problema de senha, nem de usuário
+errado (a correção do item anterior — usar a conta real, não um alias,
+em `SMTP_USER` — já está em produção, confirmado pelo próprio
+`admin@sancocore.com.br` na tela). O ponto cego agora é **depois** do
+Gmail aceitar: pra onde a mensagem foi.
+
+**Preciso que o dono confira duas coisas, que só ele vê (acesso ao
+Google Workspace/Gmail):**
+1. **Spam/Lixo eletrônico** da caixa que recebe `mostrai@sancocore.com.br`
+   (ou o valor real de `MOSTRAI_EMAIL_CONTATO` no Northflank, se for
+   outro endereço) — aceite no SMTP não garante caixa de entrada; é
+   comum um provedor aceitar e ainda assim jogar pro spam.
+2. Se `mostrai@sancocore.com.br` é mesmo um endereço que **recebe**
+   e-mail (alias de usuário no Admin Console, que entrega na caixa de
+   alguém) ou só foi cadastrado como identidade de **envio** (Gmail →
+   Configurações → Contas → "Enviar e-mail como") — que é só pra sair
+   como remetente e não recebe nada.
+
+Sem eu ver a caixa de e-mail ou o Admin Console do Workspace, não dá
+pra ir além disso — fica registrado aqui até ele confirmar um dos dois
+pontos.
+
+### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
+
+O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las
+numa rodada futura. Nenhuma mudança nelas por enquanto.
+
+**Próximo, por aviso do dono:** ele vai enviar o prompt da nova
+atualização do San Checkout (a "terceira atualização", G.4 —
+plano/cancelamento — combinada em rodadas anteriores desta sessão).
