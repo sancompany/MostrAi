@@ -2153,3 +2153,39 @@ celular.
 pra manter, só que entre "Por que funciona" e o novo bloco de contato (não
 mais como o fecho da página). Botão corrigido pra **"Ver planos"** (era
 "Ver planos e preços"), na mesma regra do H4.
+
+### Revisão do dono, tópico 1 (sem login), rodada 3 — Home (18/09/2026)
+
+**H6. [x] "Tem um comércio? / Quer indicar?" colavam um no outro no
+celular** e o toque num link acertava o outro por engano. Cada convite virou
+um bloco próprio (`<span>`), lado a lado no desktop — cabem numa linha — e
+empilhados com 12px de respiro abaixo de 480px. Conferido no navegador: os
+dois blocos ficam a 12px de distância, sem sobreposição.
+
+**H7. [x] Os três CTAs dos cards agora começam com "Quero".** Anunciante:
+"Ver planos e anunciar" → **"Quero anunciar"**, e o link deixou de ir pro
+cadastro solto e passa a levar direto pra `/planos.html` — é lá que a
+pessoa escolhe o plano antes de criar a conta. Ponto: "Quero uma tela no
+meu comércio" → **"Quero ser ponto"**. Vendedor: já estava certo, sem
+mudança.
+
+**H8. [x] Card do Anunciante: "painel" → "dashboard"**, alinhando com o
+mesmo termo do benefício "Dashboard intuitivo" que os planos já usam.
+
+**H9. [x] Passo 2 ("Suba seu vídeo") ganhou o link de contato** depois de
+"A gente ajuda": quem não tem arte pronta agora tem o caminho, não só a
+promessa. Mesma convenção do resto do site (`<a href="/contato.html">Fale
+com a gente</a>`).
+
+**H10. [x] Passos 3 e 4 reescritos pelo dono:**
+· Passo 3 — "Aprovamos o criativo e já começa a anunciar" / "O anúncio
+  entra nos pontos, normalmente no mesmo dia."
+· Passo 4 — "Acompanhe o desempenho" / "Veja no seu dashboard exclusivo
+  quantas vezes seu anúncio foi visto."
+
+**H11. [x] Razão 4 de "Por que funciona" reescrita:** "Você troca o anúncio
+quando quer" / "Promoção nova? Novo anúncio? Pode subir de onde estiver,
+com só alguns cliques, e entra no ar logo após a aprovação."
+
+Conferido nos dois tamanhos, `npm run check` verde (92 testes), sem
+rolagem horizontal no celular.

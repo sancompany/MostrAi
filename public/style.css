@@ -163,8 +163,15 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .hero p.lead { margin: 0 0 14px; }
 .hero-preco { font-size: 1.05rem; color: var(--text); margin: 0 0 24px; }
 .hero-preco b { color: var(--brand-text); }
-.hero-outras { font-size: .9rem; color: var(--text-dim); margin: 18px 0 0; }
+/* Os dois convites lado a lado colavam um no outro no celular -- o toque
+   num link acertava o outro por engano (achado do dono, 18/09/2026). No
+   desktop cabem numa linha so; abaixo de 480px cada um vira uma linha, com
+   respiro entre eles. */
+.hero-outras { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; color: var(--text-dim); margin: 18px 0 0; }
 .hero-outras a { color: var(--blue); }
+@media (max-width: 480px) {
+  .hero-outras { flex-direction: column; gap: 12px; }
+}
 @media (max-width: 860px) {
   .hero { padding: 40px 0 44px; }
   .hero-grid { grid-template-columns: 1fr; gap: 28px; }
