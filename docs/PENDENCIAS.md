@@ -2502,3 +2502,79 @@ Conferido: `npm run lint` e `npm run check` verdes (92 testes), migration
 055 aplicada localmente, Playwright confirma o texto de abertura, a
 legenda nova e o fallback da foto (sem customização, mostra o arquivo
 estático) em `pontos.html`.
+
+### Revisão do dono, tópico 1 — Onde estamos, rodada 2 (18/09/2026)
+
+**P31. [x] Aviso "Tela vertical e player próprio" retirado.** O dono:
+*"retire esse aviso grande de tela vertical e player próprio e troque
+por pontos ativos."* Frase removida de `pontos.html`, sem substituir por
+texto novo — o número de "Pontos ativos" já aparece no `statRow` no topo
+da página, e o que vem imediatamente depois no layout é a grade real de
+pontos (`pontosGrid`), que é a própria informação que a frase tentava
+resumir.
+
+**Confirmado, sem mudança de código:** o aviso "A rede está em montagem"
+(mensagem de estado vazio do `pontosGrid`) já desaparece **antes** do
+que ele pediu — `listarPublicos()` inclui pontos com status
+`a_instalar` e `em_operacao`, então a mensagem só aparece quando não
+existe **nenhum** ponto cadastrado; ela some assim que o primeiro ponto
+é criado, mesmo antes de ficar ativo. O que a captura de tela mostrou
+(o aviso aparecendo) é porque hoje a rede tem zero pontos cadastrados de
+verdade — nada errado no código.
+
+**P32. [x] Card "Tela vertical, imagem limpa" — texto cortado.** O dono:
+*"retire o aviso a partir de 'o que vem na horizontal'."* De "Formato
+9:16, o mesmo do celular, e nada do seu anúncio é cortado: o que vem na
+horizontal ganha um fundo desfocado do próprio vídeo, e o que vem em pé
+fora da medida ganha uma faixa fina nas laterais." para **"Formato 9:16,
+o mesmo do celular, e nada do seu anúncio é cortado."**
+
+**P33. [x] Card "Player conectado o tempo todo" — texto mais direto,
+mesmo conteúdo.** O dono: *"resuma mais direto, mas sem retirar contexto
+nem encurtar muito."* Reescrito mantendo os três fatos (sinal a cada 5
+min, painel só conta o confirmado, tela que cai sai do rodízio até
+voltar), frases mais curtas: "Cada tela manda sinal a cada 5 minutos e
+confirma cada exibição. O painel mostra só o que foi confirmado, e uma
+tela que cai sai do rodízio até voltar."
+
+**P34. [x] Card "Sem concorrente" — replicado na Home, texto idêntico
+nas duas páginas.** O dono aprovou o card de `pontos.html` como está e
+pediu pra usar o mesmo nas duas páginas, no lugar do exemplo do barbeiro
+que só existia na Home: *"substitua esse exemplo do barbeiro e deixe os
+dois iguais."* `index.html`: "Sem concorrente do seu lado" / "Barbearia
+não vê anúncio de outra barbearia. A rede respeita o segmento de cada
+uma." → **"Sem concorrente na mesma tela" / "Cada ponto tem um segmento.
+Anúncio de concorrente direto do estabelecimento não entra ali."** —
+igual, palavra por palavra, ao card de `pontos.html`. Não toquei no card
+equivalente de `seja-um-ponto.html` ("Sem concorrente na sua tela"): é
+outro público (quem hospeda a tela, não quem anuncia) e o dono não
+mencionou essa página.
+
+**P35. [x] Card "A rede cresce" — deixa claro que tem teto.** O dono:
+*"tem que deixar claro até bater o limite do plano."* De "Ponto novo
+instalado já entra na rotação de quem é assinante, sem mudança de plano
+nem cobrança extra." para **"...sem mudança de plano nem cobrança
+extra, até completar o número de pontos do seu plano."** — o teto é o
+`pontos_incluidos` do plano contratado (RN-49); depois dele, cobertura
+extra só entra trocando de plano.
+
+**P36. [x] Texto final do CTA de ponto, sem citar as duas modalidades de
+comodato.** O dono: *"deixe esse texto interno melhor, sem citar
+necessariamente as duas escolhas do cliente."* De "Tela de graça, sem
+mensalidade. E você escolhe: ajuda de custo todo mês ou mais espaço pro
+seu negócio." (citava as duas opções de comodato) para **"Tela de
+graça, sem mensalidade, e com retorno todo mês pro seu negócio."** — o
+retorno é mencionado sem detalhar qual modalidade (isso já está descrito
+em `comodato.html`, pra quem quiser saber os detalhes).
+
+Conferido: `npm run lint` e `npm run check` verdes (92 testes). Playwright
+confirma os quatro cards de `pontos.html` e a Home com o texto exato
+pedido, o parágrafo antigo ausente, e `index.html`/`pontos.html`
+idênticos no card "Sem concorrente".
+
+**Nota operacional, fora da revisão:** o Postgres local desta sessão
+caiu num restart do ambiente e voltou numa porta diferente (5433 → 5432)
+com o esquema parado na migration 036 — rodei `node src/db/migrate.js`
+pra aplicar 037–055 nele antes de testar. Só afeta o banco de
+desenvolvimento local; produção (Supabase) não foi tocada e não tem
+esse problema.
