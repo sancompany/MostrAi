@@ -150,7 +150,10 @@ router.get('/admin/resumo', async (_req, res) => {
         -- Banco de horas (G.3): saldo que passou de N meses sem drenar,
         -- esperando o admin decidir (crédito manual, desconto, ou nada —
         -- nunca automático). Ver src/bancohoras/apuracao.js.
-        (SELECT COUNT(*) FROM banco_horas WHERE status = 'aguardando_credito' AND resolvido_em IS NULL) AS bancohoras`,
+        (SELECT COUNT(*) FROM banco_horas WHERE status = 'aguardando_credito' AND resolvido_em IS NULL) AS bancohoras,
+        -- Pontos travados pra escolha nova por ocupação (G.7) — só sai daqui
+        -- quando o admin libera (src/pontos/repository.js).
+        (SELECT COUNT(*) FROM pontos WHERE escolha_bloqueada_em IS NOT NULL) AS pontosocupados`,
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -211,6 +214,7 @@ router.get('/admin/resumo', async (_req, res) => {
       contato: Number(filas.rows[0].contato),
       offline: offline.rows[0].qtd,
       bancohoras: Number(filas.rows[0].bancohoras),
+      pontosocupados: Number(filas.rows[0].pontosocupados),
     },
     financeiro: {
       receitaMensal,

@@ -12,6 +12,7 @@ const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const bancoHorasRepo = require('../bancohoras/repository');
 const { MESES_PARA_FILA_DE_CREDITO } = require('../bancohoras/apuracao');
+const pontosRepo = require('../pontos/repository');
 
 // Quanto mais perto a dívida chega da válvula (MESES_PARA_FILA_DE_CREDITO),
 // mais peso ela ganha na hora — pedido do dono, 18/09/2026: "quanto mais
@@ -201,12 +202,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [todos, deficits, doDono, pontosNoAr, saldosBanco] = await Promise.all([
+  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados] = await Promise.all([
     anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
     pontosEmOperacao(),
     bancoHorasRepo.saldosAtivos(),
+    pontosRepo.idsBloqueadosParaEscolha(),
   ]);
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele. A conta própria do
@@ -215,6 +217,14 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // A fatia é calculada UMA vez por conta e guardada: ela decide duas coisas
   // agora (se a conta entra nesta tela, e por quantos pontos o tempo dela se
   // divide na RN-49), e chamar duas vezes convida as duas a divergirem.
+  //
+  // `pontosBloqueados` (G.7) só entra na fatia de quem NÃO escolheu nada —
+  // quem já escolheu um ponto bloqueado continua nele (`pontosDoAnunciante`
+  // só filtra o sorteio automático, nunca a escolha explícita). Quem não
+  // escolheu já é recalculado do zero a cada hora (não existe linha salva
+  // pra essa conta em `anunciantes_pontos`), então aplicar o filtro aqui é
+  // exatamente o que impede um anunciante NOVO, sem escolha própria ainda,
+  // de cair de primeira num ponto que já parou de aceitar gente.
   const cobertura = new Map(
     todos.map((a) => [
       a.id,
@@ -223,6 +233,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         : pontosDoAnunciante(
             { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
             pontosNoAr,
+            pontosBloqueados,
           ),
     ]),
   );

@@ -256,6 +256,29 @@ test('rede vazia devolve lista vazia, não explode', () => {
 });
 
 // ---------------------------------------------------------------------------
+// G.7 — ponto travado por ocupação não entra no sorteio automático, mas
+// nunca tira quem já escolheu (docs/PENDENCIAS.md).
+// ---------------------------------------------------------------------------
+
+test('ponto travado sai do sorteio de quem não escolheu', () => {
+  const r = pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE, [1, 2, 3, 4, 5, 6, 7]);
+  assert.strictEqual(r.length, 3);
+  assert.ok(
+    r.every((id) => ![1, 2, 3, 4, 5, 6, 7].includes(id)),
+    `sorteio caiu num ponto travado: ${r}`,
+  );
+});
+
+test('ponto travado NÃO tira quem já tinha escolhido ele antes', () => {
+  const r = pontosDoAnunciante({ id: 7, pontosIncluidos: 3, escolhidos: [2, 5] }, REDE, [2, 5]);
+  assert.deepStrictEqual(r, [2, 5], 'escolha explícita não é afetada pelo bloqueio — só o sorteio automático é');
+});
+
+test('todos os pontos travados: sorteio devolve lista vazia, não quebra', () => {
+  assert.deepStrictEqual(pontosDoAnunciante({ id: 7, pontosIncluidos: 3 }, REDE, REDE), []);
+});
+
+// ---------------------------------------------------------------------------
 // Playlist determinística — o que permite rodar em mais de uma instância
 // (item 4, 17/09/2026). Era `Math.random()` mais um cache em memória do
 // processo; o cache é justamente o que não sobrevive a duas instâncias.

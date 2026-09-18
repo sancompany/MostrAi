@@ -531,6 +531,32 @@ feature move dinheiro ou desconta fatura por conta própria. *Violada:* não
 há caminho de usuário. *Quem vê:* o anunciante, no painel, quando tem saldo
 ativo; e o admin, na aba "Banco de horas", incluindo a fila de decisão.
 
+**RN-55 — Ponto que cruza 80% da hora vendida para de aceitar escolha
+nova.** *(G.7, `docs/PENDENCIAS.md` — pedido do dono, 18/09/2026; os dois
+números abaixo são leitura minha de um pedido falado, não confirmados
+nestes termos.)* "Ocupação" é a soma de `planos.segundos_por_hora` de toda
+conta associada ao ponto (`anunciantes_pontos`) — SEM a compensação da
+RN-49, de propósito: aqui a pergunta é o que já foi prometido, não o que
+cada um recebe depois de redistribuir o que falta. Ao cruzar 80%
+(`LIMITE_OCUPACAO_BLOQUEIA`), o ponto marca `escolha_bloqueada_em`
+sozinho — e esse bloqueio é STICKY: não sai só porque a ocupação caiu
+depois (uma conta saindo não deve reabrir a vaga sem alguém olhar antes).
+
+O bloqueio é só pra escolha NOVA — nem escolha explícita
+(`PUT /anunciantes/me/pontos`) nem o sorteio automático
+(`pontosDoAnunciante`, quem não escolheu nada) oferecem um ponto travado.
+Quem JÁ estava lá — escolhido antes, ou já caído no sorteio antes de
+travar — continua normalmente: o bloqueio nunca tira cobertura de ninguém,
+só impede alguém novo de entrar.
+
+Só o admin libera (`POST /admin/pontos/:id/liberar-escolha`), e só quando
+sobra `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS` (15 minutos) de espaço real —
+sem essa folga, o próximo anunciante a cair ali reblocaria o ponto minutos
+depois de liberado, e o clique não teria significado nenhum. *Violada:*
+não há caminho de usuário — a escolha (manual ou automática) recusa antes
+de gravar. *Quem vê:* o anunciante, na tela de escolha de pontos (com o %
+de ocupação de cada um); e o admin, na aba "Ocupação dos pontos".
+
 **RN-54 — Contestação de cobrança suspende o acesso na hora.** *(API.md do
 Checkout: "suspenda o acesso" — instrução explícita do lado dele, não
 interpretação nossa.)* Até aqui, `cobranca_contestada` só virava pendência

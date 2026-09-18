@@ -150,6 +150,92 @@ async function somaFluxoMensal() {
   return total >= FLUXO_MINIMO_PARA_EXIBIR ? total : null;
 }
 
+// Bloqueio de escolha por ponto cheio (G.7, docs/PENDENCIAS.md, migration
+// 060) — pedido do dono, 18/09/2026: ponto vendido demais deve parar de
+// aparecer pra ESCOLHA NOVA, não só ganhar compensação depois (RN-49) ou
+// cortar na hora (RN-30). Os dois números abaixo são leitura minha de um
+// pedido falado, não confirmados nestes termos — documentados como tal em
+// docs/PENDENCIAS.md.
+//
+// LIMITE_OCUPACAO_BLOQUEIA: cruzar 80% da hora vendida bloqueia sozinho.
+// FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS: liberar manualmente só é aceito se
+// sobrar pelo menos essa folga (15 min) — sem isso, o próximo anunciante
+// a entrar reblocka o ponto minutos depois de o admin ter liberado.
+const LIMITE_OCUPACAO_BLOQUEIA = 0.8;
+const FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS = 15 * 60;
+
+// Uma linha por (ponto, anunciante) — é o que a tela do admin mostra: toda
+// vez que alguém entra num ponto (assina, escolhe, ou cai lá pelo sorteio
+// automático), aparece uma linha nova aqui, com o que aquela conta ocupa e
+// o total do ponto onde ela está.
+async function ocupacaoPorAnunciante() {
+  const { rows } = await pool.query(
+    `WITH ocupacao AS (
+       SELECT p.id AS ponto_id, COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos
+         FROM pontos p
+         LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
+         LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
+         LEFT JOIN planos pl ON pl.id = a.plano_id
+        GROUP BY p.id
+     )
+     SELECT a.id AS anunciante_id, a.nome_empresa, p.id AS ponto_id, p.nome AS ponto_nome,
+            pl.segundos_por_hora, o.segundos_vendidos, p.escolha_bloqueada_em, ap.escolhido_em
+       FROM anunciantes_pontos ap
+       JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
+       JOIN planos pl ON pl.id = a.plano_id
+       JOIN pontos p ON p.id = ap.ponto_id
+       JOIN ocupacao o ON o.ponto_id = p.id
+      ORDER BY o.segundos_vendidos DESC, p.nome, a.nome_empresa`,
+  );
+  return rows;
+}
+
+// Roda a cada vez que a tabela do admin é aberta (não é cron — não precisa:
+// é lida com frequência suficiente, e bloquear um pouco depois de cruzar
+// 80% não tem custo nenhum). Só ENTRA sozinho; só admin tira (`liberarEscolha`).
+// Só `em_operacao` — `a_instalar` não veicula ainda, então "cheio" não tem
+// sentido pra ele; e ele já é escolha válida por si (RN-49), sem depender
+// deste bloqueio.
+async function avaliarBloqueios() {
+  const { rows } = await pool.query(
+    `UPDATE pontos SET escolha_bloqueada_em = now()
+       WHERE status = 'em_operacao'
+         AND escolha_bloqueada_em IS NULL
+         AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
+                FROM anunciantes_pontos ap
+                JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
+                JOIN planos pl ON pl.id = a.plano_id
+               WHERE ap.ponto_id = pontos.id) >= $1::numeric * 3600
+     RETURNING id`,
+    [LIMITE_OCUPACAO_BLOQUEIA],
+  );
+  return rows.map((r) => r.id);
+}
+
+// Libera pra escolha nova. Só aceita se sobrar a folga mínima — ver o
+// comentário de `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS` acima.
+async function liberarEscolha(id) {
+  const { rows } = await pool.query(
+    `UPDATE pontos SET escolha_bloqueada_em = NULL
+       WHERE id = $1
+         AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
+                FROM anunciantes_pontos ap
+                JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
+                JOIN planos pl ON pl.id = a.plano_id
+               WHERE ap.ponto_id = pontos.id) <= (3600 - $2)
+     RETURNING id`,
+    [id, FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS],
+  );
+  return rows.length > 0;
+}
+
+// Ids dos pontos bloqueados agora — pra filtrar da escolha nova
+// (`pontosDoAnunciante`, RN-42) sem tirar quem já está associado.
+async function idsBloqueadosParaEscolha() {
+  const { rows } = await pool.query(`SELECT id FROM pontos WHERE escolha_bloqueada_em IS NOT NULL`);
+  return rows.map((r) => r.id);
+}
+
 // Chave/valor genérica pra configuração de site que não é de nenhum ponto
 // específico (migration 055). Hoje só a foto de exemplo do "ponto completo"
 // em pontos.html; `null` quando o dono nunca trocou, e a página pública cai
@@ -177,5 +263,11 @@ module.exports = {
   somaFluxoMensal,
   obterConfiguracao,
   definirConfiguracao,
+  ocupacaoPorAnunciante,
+  avaliarBloqueios,
+  liberarEscolha,
+  idsBloqueadosParaEscolha,
+  LIMITE_OCUPACAO_BLOQUEIA,
+  FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS,
   STATUS,
 };

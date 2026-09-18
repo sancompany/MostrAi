@@ -234,6 +234,7 @@ const NAV = [
       { id: 'criativos', nome: 'Fila de criativos', fila: 'criativos' },
       { id: 'meusanuncios', nome: 'Meus anúncios' },
       { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
+      { id: 'ocupacaopontos', nome: 'Ocupação dos pontos', fila: 'pontosocupados' },
       { id: 'telas', nome: 'Telas', fila: 'offline' },
       { id: 'anunciantes', nome: 'Anunciantes' },
       { id: 'vendedores', nome: 'Vendedores' },
@@ -276,6 +277,8 @@ const SUBTITULOS = {
     'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
   pontos:
     'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
+  ocupacaopontos:
+    'Quanto da hora de cada ponto já está vendido, anunciante por anunciante. Ponto que cruza 80% para de aceitar escolha nova — quem já estava lá continua. Só sai do bloqueio se você liberar, e só libera com folga real.',
   telas: 'Cada TV/dispositivo: chave do aparelho, PIN do painel, custo e último sinal. Uma tela = uma playlist.',
   anunciantes:
     'Todas as contas, com os papéis vindos do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
@@ -357,6 +360,7 @@ async function irPara(aba, forcarResumo) {
     convites: renderConvites,
     criativos: renderCriativos,
     pontos: renderPontos,
+    ocupacaopontos: renderOcupacaoPontos,
     telas: renderTelas,
     anunciantes: renderAnunciantes,
     vendedores: renderVendedores,
@@ -462,6 +466,7 @@ const ALERTAS = [
     urgente: true,
   },
   { fila: 'bancohoras', aba: 'bancohoras', texto: 'saldo(s) do banco de horas esperando decisão' },
+  { fila: 'pontosocupados', aba: 'ocupacaopontos', texto: 'ponto(s) travado(s) pra escolha nova por ocupação' },
 ];
 
 function barrasHorizontais(linhas, mapa) {
@@ -2874,6 +2879,98 @@ async function renderBancoHoras(el) {
       if (!r.ok) return toast('Não foi possível resolver.', 'err');
       toast('Marcado como resolvido.');
       renderBancoHoras(el);
+    }),
+  );
+}
+
+// ---------- ocupação dos pontos (G.7) ----------
+// Uma linha por (ponto, anunciante) — cada assinatura nova que entra num
+// ponto vira uma linha aqui, com o que ela ocupa e a % do ponto onde está.
+// Ponto que cruza 80% trava sozinho pra escolha nova; só sai do bloqueio se
+// o admin clicar em liberar, e só libera com folga real de 15 minutos.
+async function renderOcupacaoPontos(el) {
+  const linhas = await pegar('/admin/pontos-ocupacao');
+  const porPonto = new Map();
+  for (const l of linhas) {
+    if (!porPonto.has(l.ponto_id)) {
+      porPonto.set(l.ponto_id, {
+        id: l.ponto_id,
+        nome: l.ponto_nome,
+        segundosVendidos: l.segundos_vendidos,
+        bloqueado: !!l.escolha_bloqueada_em,
+      });
+    }
+  }
+  const pontos = [...porPonto.values()];
+  const bloqueados = pontos.filter((p) => p.bloqueado);
+  const ocupacaoPct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Ponto</th><th data-ord>Anunciante</th><th data-ord>Ocupa (s/hora)</th>
+      <th data-ord>Ocupação do ponto</th><th data-ord>Situação</th>
+    </tr></thead><tbody>
+    ${linhas
+      .map((l) => {
+        const pct = ocupacaoPct(l.segundos_vendidos);
+        const bloqueado = !!l.escolha_bloqueada_em;
+        return `<tr data-filtro="${bloqueado ? 'bloqueado' : 'livre'}">
+      <td><b>${esc(l.ponto_nome)}</b></td>
+      <td>${esc(l.nome_empresa)}</td>
+      <td>${l.segundos_por_hora}s</td>
+      <td>${pct}%</td>
+      <td><span class="badge ${bloqueado ? 'badge-err' : pct >= 80 ? 'badge-pendente' : 'badge-ok'}">${bloqueado ? 'Travado' : `${pct}%`}</span></td>
+    </tr>`;
+      })
+      .join('')}
+  </tbody></table>`;
+
+  el.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card"><span class="kpi-label">Pontos travados</span><b>${bloqueados.length}</b><span class="kpi-caption">fechados pra escolha nova, esperando você liberar</span></div>
+      <div class="kpi-card"><span class="kpi-label">Pontos com assinante</span><b>${pontos.length}</b><span class="kpi-caption">têm pelo menos uma conta associada</span></div>
+    </div>
+    ${
+      bloqueados.length
+        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
+      <b>Pontos travados pra escolha nova.</b>
+      <p class="u-m-0 u-mt-8 u-mb-8">Cruzaram 80% da hora vendida e pararam de entrar na escolha automática e na escolha manual — quem já estava lá continua normalmente. Liberar só funciona se sobrar folga real (15 minutos).</p>
+      ${bloqueados
+        .map(
+          (p) => `<div class="field-row u-mb-8">
+        <span class="u-col-2"><b>${esc(p.nome)}</b> · ${ocupacaoPct(p.segundosVendidos)}% da hora vendida</span>
+        <button class="btn ghost mini" data-liberar-ponto="${p.id}">Liberar pra escolha</button>
+      </div>`,
+        )
+        .join('')}
+    </div>`
+        : ''
+    }
+    ${
+      linhas.length
+        ? caixaTabela({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              { valor: 'livre', nome: 'Livres' },
+              { valor: 'bloqueado', nome: 'Travados' },
+            ],
+            html: corpo,
+            dica: 'Ocupação é a soma dos segundos por hora do plano de cada conta associada ao ponto — sem a compensação da RN-49, de propósito: aqui a pergunta é o que já foi prometido, não o que cada um recebe depois de redistribuir.',
+          })
+        : '<p class="empty-state">Nenhum ponto com anunciante associado ainda.</p>'
+    }`;
+
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  el.querySelectorAll('[data-liberar-ponto]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Liberar este ponto pra escolha nova?')) return;
+      const r = await api(`/admin/pontos/${btn.dataset.liberarPonto}/liberar-escolha`, { method: 'POST' });
+      if (!r.ok) {
+        const corpo = await r.json().catch(() => ({}));
+        return toast(corpo.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
+      }
+      toast('Ponto liberado pra escolha nova.');
+      renderOcupacaoPontos(el);
     }),
   );
 }

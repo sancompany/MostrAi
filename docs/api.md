@@ -37,8 +37,8 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `plano` (o objeto do plano assinado, com `duracao_maxima_segundos`, `pontos_incluidos` e `segundos_por_hora` — é o que o painel usa pra dizer o limite de duração e montar a escolha de pontos), `data_expiracao`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
-| GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` **e `a_instalar`** pra tela de escolha (RN-49: ponto em instalação já é vaga do plano): `limite` (`planos.pontos_incluidos`), `escolhidos` (ids), `pontos[]` com `nome`, `cidade`, `endereco`, `status`, `escolhido` e `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido), e `cobertura` com o bônus da RN-49, sempre em horas por mês (a unidade que o cliente comprou; segundos por hora é unidade de motor e não sai daqui) — `contratados`, `veiculando`, `horas_contratadas`, `horas_sem_compensacao`, `horas_hoje`, `compensando`. 400 se a conta não tem plano. |
-| PUT | `/anunciantes/me/pontos` | ⚠️ Mesmo caminho do `POST` abaixo, sentido diferente: o `POST` é o DONO DE PONTO cadastrando um endereço novo, o `PUT` é o ANUNCIANTE escolhendo onde aparece. Separa o verbo, não o caminho. Troca a escolha inteira: `{pontos:[id,...]}`. Numa transação — metade salva deixaria a conta numa cobertura que ela não escolheu. 400 se passar do limite do plano ou se algum ponto não existir na rede (`em_operacao` ou `a_instalar` — RN-49). Lista vazia devolve a conta pra distribuição automática (RN-42). |
+| GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` **e `a_instalar`** pra tela de escolha (RN-49: ponto em instalação já é vaga do plano): `limite` (`planos.pontos_incluidos`), `escolhidos` (ids), `pontos[]` com `nome`, `cidade`, `endereco`, `status`, `escolhido`, `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido) e `bloqueado` (RN-55 — cruzou 80% e parou de aceitar escolha nova; nunca `true` pra um ponto que a conta já tinha escolhido), e `cobertura` com o bônus da RN-49, sempre em horas por mês (a unidade que o cliente comprou; segundos por hora é unidade de motor e não sai daqui) — `contratados`, `veiculando`, `horas_contratadas`, `horas_sem_compensacao`, `horas_hoje`, `compensando`. 400 se a conta não tem plano. Reavalia o bloqueio (RN-55) antes de responder. |
+| PUT | `/anunciantes/me/pontos` | ⚠️ Mesmo caminho do `POST` abaixo, sentido diferente: o `POST` é o DONO DE PONTO cadastrando um endereço novo, o `PUT` é o ANUNCIANTE escolhendo onde aparece. Separa o verbo, não o caminho. Troca a escolha inteira: `{pontos:[id,...]}`. Numa transação — metade salva deixaria a conta numa cobertura que ela não escolheu. 400 se passar do limite do plano ou se algum ponto não existir na rede (`em_operacao` ou `a_instalar` — RN-49). 409 se algum ponto NOVO na lista (que a conta ainda não tinha) estiver travado por ocupação (RN-55) — `{erro, pontosBloqueados:[id,...]}`; manter um ponto que já era seu, mesmo travado, não é recusado. Lista vazia devolve a conta pra distribuição automática (RN-42, que também pula pontos travados). |
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
@@ -93,7 +93,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
 verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
-**As 74 rotas estão listadas uma a uma de propósito** — contrato que só existe
+**As 76 rotas estão listadas uma a uma de propósito** — contrato que só existe
 em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
 pede.
 
@@ -147,6 +147,8 @@ pede.
 | GET | `/admin/dispositivos/:id/painel` | o mesmo painel que o PIN abre, visto pelo admin |
 | POST | `/admin/pontos/:id/aparelho` | **410** — a chave é por TELA desde a migration 019. Use `POST /admin/dispositivos/:id/chave`. |
 | POST | `/admin/pontos/foto-exemplo` | Foto de exemplo do "ponto completo" mostrada em `pontos.html` — ilustração genérica ao lado do mapa, não é foto de nenhum ponto real. Chave fixa no bucket (upsert sobrescreve); a URL salva leva `?v=` pra não ficar em cache. |
+| GET | `/admin/pontos-ocupacao` | RN-55 (G.7): uma linha por (ponto, anunciante) — `nome_empresa`, `ponto_nome`, `segundos_por_hora` (dessa conta), `segundos_vendidos` (total do ponto), `escolha_bloqueada_em`. Reavalia o bloqueio antes de responder — é aqui que o admin de fato olha isso. |
+| POST | `/admin/pontos/:id/liberar-escolha` | Libera um ponto travado pra escolha nova. 409 se ainda não sobrar `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS` (15 min) de espaço real — sem isso o próximo anunciante a entrar travaria de novo minutos depois. |
 
 ### Catálogo
 | Método | Rota | O que faz |

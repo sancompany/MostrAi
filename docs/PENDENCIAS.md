@@ -2152,18 +2152,53 @@ mesmo motivo do N=3 abaixo: **o dono não sancionou nenhuma delas ainda**.
 Conta própria (`conta_propria`) nunca acumula banco — não paga, não tem o
 que compensar; mesma exclusão que já existe em outras contas da rede.
 
-### G.7 Pendência nova: ponto ficar cheio deve bloquear escolha, não só compensar
+### G.7 Ponto ficar cheio bloqueia escolha nova — construído em 18/09/2026
 
-O dono trouxe em 18/09/2026, na mesma conversa: quando um ponto se aproxima
-do limite de tempo vendido na hora, ele quer que a ESCOLHA de pontos
-(`pontosDoAnunciante`, RN-42) pare de oferecer aquele ponto pra quem ainda
-não escolheu — "redirecionar aos outros pontos" antes de chegar a vender
-além da conta, em vez de só compensar depois (RN-49) ou cortar na hora
-(RN-30). É mecanismo DIFERENTE do banco de horas — não mexe em prioridade
-de playlist, mexe em quais pontos entram na conta de um anunciante quando
-a rede distribui automaticamente. **Não construído ainda** — falta decidir
-com ele o limite exato (que fração da hora vendida bloqueia um ponto pra
-escolha nova) antes de desenhar.
+O dono trouxe em 18/09/2026: quando um ponto se aproxima do limite de tempo
+vendido na hora, a ESCOLHA de pontos (`pontosDoAnunciante`, RN-42) deve
+parar de oferecer aquele ponto pra quem ainda não escolheu — "redirecionar
+aos outros pontos" antes de vender além da conta, em vez de só compensar
+depois (RN-49) ou cortar na hora (RN-30). É mecanismo DIFERENTE do banco de
+horas — não mexe em prioridade de playlist, mexe em quais pontos entram na
+conta de um anunciante quando a rede distribui automaticamente.
+
+**[x] Construído por completo** — migration 060, `src/pontos/repository.js`
+(`avaliarBloqueios`, `liberarEscolha`, `ocupacaoPorAnunciante`), filtro em
+`pontosDoAnunciante` (`src/lib/pacing.js`), recusa em `PUT/GET
+/anunciantes/me/pontos*` e no gerador da playlist (pra quem nunca escolheu
+nada), aba nova no admin ("Ocupação dos pontos"). RN-55 em
+`docs/funcional.md`, rotas em `docs/api.md`. 8 testes novos
+(`tests/pontos-ocupacao.test.js`, mais 3 em `tests/pacing.test.js`), e
+verificação end-to-end real via HTTP (conta nova tentando escolher um
+ponto cheio, admin liberando).
+
+Três números que o dono descreveu falando, não em termos exatos —
+registrados como leitura minha, a confirmar:
+
+- **80% de ocupação bloqueia.** Ele disse "quando bater um limite ali ou
+  ultrapassar um pouco" — sem dar o número. Escolhi 80% (uma folga real
+  antes do ponto vender tudo) como piso razoável
+  (`LIMITE_OCUPACAO_BLOQUEIA`, `src/pontos/repository.js`).
+- **Bloqueio é STICKY — nunca destrava sozinho.** Ele descreveu "só libera
+  ... se eu clicar em liberar", que li como: uma vez travado, só o admin
+  reabre, mesmo que a ocupação caia depois (conta cancelada, por exemplo).
+  Nunca reavalia pra baixo por conta própria.
+- **Liberar exige 15 minutos de folga real.** A frase dele — "só libera
+  pra 100% com a folga de 15 minutos" — é a que tenho menos certeza de ter
+  lido certo. Entendi como: o CLIQUE de liberar só é aceito
+  (`FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS`) se sobrar pelo menos 15 minutos de
+  espaço real no ponto — sem isso, o próximo anunciante a entrar travaria
+  de novo minutos depois, e o clique não teria feito nada. Se a intenção
+  dele era outra (por exemplo, um teto elevado permanente pra pontos já
+  liberados uma vez, em vez dessa checagem pontual no momento do clique),
+  o comportamento de hoje não é esse — **avisar antes de considerar
+  fechado.**
+
+Ocupação é a soma de `planos.segundos_por_hora` de toda conta associada ao
+ponto — SEM a compensação da RN-49 (mesma conta que
+`/anunciantes/me/pontos-disponiveis` já mostrava antes desta pendência
+existir). O bloqueio nunca tira cobertura de quem já tinha — só a escolha
+NOVA (explícita ou pelo sorteio automático) é recusada.
 
 ### G.4 A atualização do San Checkout sobre troca de plano — lida e aplicada em 18/09/2026
 

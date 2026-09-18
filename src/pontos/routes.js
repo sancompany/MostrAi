@@ -121,6 +121,28 @@ router.get('/admin/pontos', async (_req, res) => {
   res.json(pontos);
 });
 
+// G.7 (docs/PENDENCIAS.md, pedido do dono 18/09/2026): quem ocupa cada ponto,
+// e quanto. Reavalia o bloqueio aqui também — a tabela do admin é onde ele
+// realmente olha isso, então é onde a régua de 80% precisa estar fresca.
+router.get('/admin/pontos-ocupacao', async (_req, res) => {
+  await repo.avaliarBloqueios();
+  res.json(await repo.ocupacaoPorAnunciante());
+});
+
+// Libera um ponto pra escolha nova. Só aceita com folga real (ver
+// `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS`, src/pontos/repository.js) — sem
+// isso, o próximo anunciante a cair ali rebloqueia o ponto minutos depois
+// de o admin ter clicado, e a ação não teria significado nenhum.
+router.post('/admin/pontos/:id/liberar-escolha', async (req, res) => {
+  const liberou = await repo.liberarEscolha(req.params.id);
+  if (!liberou) {
+    return res
+      .status(409)
+      .json({ erro: 'ainda não sobra folga de 15 minutos nesse ponto — não dá pra liberar pra escolha agora' });
+  }
+  res.json({ ok: true });
+});
+
 router.patch('/admin/pontos/:id', async (req, res) => {
   try {
     // Trocar a MODALIDADE do comodato não é editar um campo: mexe no que a

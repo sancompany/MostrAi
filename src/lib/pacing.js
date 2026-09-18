@@ -230,7 +230,14 @@ function embaralhamentoEstavel(texto) {
   return h >>> 0;
 }
 
-function pontosDoAnunciante(conta, pontosEmOperacao) {
+// `pontosBloqueados` (G.7, pedido do dono 18/09/2026): ponto que cruzou 80%
+// de ocupação para de entrar em escolha NOVA — mas só nisso. Quem já estava
+// lá (`conta.escolhidos`, ou já caiu ali pelo sorteio de uma rodada
+// anterior) continua recebendo normalmente: o bloqueio nunca tira de quem
+// já tinha, só impede alguém novo de entrar. Por isso o filtro entra SÓ no
+// sorteio automático (linha de baixo), nunca em `operando` (que valida
+// escolha existente).
+function pontosDoAnunciante(conta, pontosEmOperacao, pontosBloqueados = []) {
   // Plano sem teto de pontos cobre a rede inteira — é o comportamento de
   // todo plano antes desta mudança, e continua valendo pra quem não tem o
   // campo preenchido.
@@ -242,7 +249,9 @@ function pontosDoAnunciante(conta, pontosEmOperacao) {
   const escolhidos = (conta.escolhidos || []).filter((id) => operando.has(id));
   if (escolhidos.length) return escolhidos.slice(0, conta.pontosIncluidos);
 
+  const bloqueados = new Set(pontosBloqueados);
   return [...pontosEmOperacao]
+    .filter((id) => !bloqueados.has(id))
     .sort((a, b) => embaralhamentoEstavel(`${conta.id}-${a}`) - embaralhamentoEstavel(`${conta.id}-${b}`))
     .slice(0, conta.pontosIncluidos);
 }

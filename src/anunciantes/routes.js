@@ -344,17 +344,25 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
 // A ocupação de cada ponto vem junto porque o dono pediu que ponto cheio não
 // pudesse ser escolhido: sem ver o quanto já está vendido, a pessoa escolhe o
 // ponto lotado e recebe menos exibição do que receberia num vazio.
+//
+// G.7 (18/09/2026): ponto que cruzou 80% pára de entrar na conta automática
+// E de aceitar escolha nova — mas quem já tinha continua tendo (ver
+// `pontosDoAnunciante`, src/lib/pacing.js). `avaliarBloqueios` roda aqui
+// porque é exatamente o momento em que uma escolha nova está sendo
+// decidida — não precisa de cron separado pra isso.
 router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (req, res) => {
   const conta = await repo.buscarPorId(req.session.anuncianteId);
   const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+
+  await pontosRepo.avaliarBloqueios();
 
   // Ponto `a_instalar` entra na lista (RN-49, decisão do dono em 17/09/2026):
   // ele já conta como vaga do plano, pra quem paga por cobertura maior não
   // perder o lugar num comércio que está sendo montado. Ele não veicula, e é
   // por isso que a compensação abaixo o trata como ponto FALTANDO.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status,
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
             (ap.ponto_id IS NOT NULL) AS escolhido
        FROM pontos p
@@ -363,7 +371,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status IN ('em_operacao', 'a_instalar')
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, ap.ponto_id
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.escolha_bloqueada_em, ap.ponto_id
       ORDER BY p.status DESC, p.nome`,
     [conta.id],
   );
@@ -373,6 +381,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // por hora isso vira depois da RN-49. Refazer a conta aqui à mão daria um
   // número no painel diferente do que a tela executa.
   const noAr = rows.filter((r) => r.status === 'em_operacao').map((r) => r.id);
+  const bloqueados = rows.filter((r) => r.bloqueado).map((r) => r.id);
   const cobertos = pontosDoAnunciante(
     {
       id: conta.id,
@@ -380,6 +389,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
     },
     noAr,
+    bloqueados,
   );
   const base = Number(plano.segundos_por_hora) || 0;
   const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
@@ -414,6 +424,9 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Ponto que ainda não veicula não tem hora vendida — 0 não é "vazio de
       // verdade", é "ainda não existe", e a tela diz isso com o status.
       ocupacao: Math.min(100, Math.round((r.segundos_vendidos / 3600) * 100)),
+      // Cruzou 80% (G.7) — fechado pra escolha nova, mas continua exibindo
+      // pra quem já tinha escolhido (esse nunca é tirado por isso).
+      bloqueado: r.bloqueado && !r.escolhido,
     })),
   });
 });
@@ -440,6 +453,27 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     );
     if (rows.length !== pedidos.length) {
       return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
+    }
+
+    // G.7 (18/09/2026): ponto cruzou 80% pára de aceitar escolha NOVA — mas
+    // continuar com um que já era seu não é escolha nova, então reenviar a
+    // lista com ele dentro não é recusado (senão o bloqueio empurraria o
+    // próprio anunciante que já estava lá pra fora, o que ninguém pediu).
+    await pontosRepo.avaliarBloqueios();
+    const { rows: jaTinha } = await pool.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1', [
+      conta.id,
+    ]);
+    const idsJaTinha = new Set(jaTinha.map((r) => r.ponto_id));
+    const novos = pedidos.filter((id) => !idsJaTinha.has(id));
+    if (novos.length) {
+      const bloqueados = await pontosRepo.idsBloqueadosParaEscolha();
+      const bloqueadosNovos = novos.filter((id) => bloqueados.includes(id));
+      if (bloqueadosNovos.length) {
+        return res.status(409).json({
+          erro: 'um dos pontos escolhidos está com a hora quase toda vendida e parou de aceitar escolha nova',
+          pontosBloqueados: bloqueadosNovos,
+        });
+      }
     }
   }
 
