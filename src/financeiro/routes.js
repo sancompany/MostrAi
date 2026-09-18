@@ -361,11 +361,17 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
   }
 });
 
-// Troca de plano com o crédito do que resta do plano atual (pedido do dono,
-// 16/09/2026): o plano novo só vale se custar mais do que esse crédito —
-// senão a troca ou não cobraria nada, ou devolveria dinheiro, e ninguém
-// pediu reembolso aqui. Gera um pedido avulso (nunca uma assinatura: essa
-// não aceita desconto) e devolve o link de pagamento da diferença.
+// Troca de plano PELO CHECKOUT (POST /trocar-plano dele, construído em
+// 17/09/2026 — substitui o pedido avulso pra este caso). Cobra o acerto
+// proporcional no cartão já salvo, na mesma requisição: sem redirecionar
+// pra uma segunda tela de pagamento, sem o assinante digitar cartão de
+// novo, sem janela sem cobertura entre uma tentativa e outra.
+//
+// A linha nova em `assinaturas` nasce 'pendente_troca' ANTES de chamar o
+// Checkout — é dela que o Checkout lê preço/ciclo do plano de destino
+// (GET /plano/:id, montarRespostaPlano). Se a troca for recusada em
+// QUALQUER ponto (cartão, período não pago, troca simultânea...), a linha
+// é apagada: ela nunca existiu de verdade pro anunciante.
 router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, res) => {
   const { planoNovoId } = req.body;
   if (!planoNovoId) return res.status(400).json({ erro: 'escolha o plano novo' });
@@ -382,28 +388,81 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   }
   if (conta.plano_id === planoNovoId) return res.status(400).json({ erro: 'você já está nesse plano' });
 
-  const planoAtual = await planosRepo.buscarPorId(conta.plano_id);
   const planoNovo = await planosRepo.buscarPorId(planoNovoId);
   if (!planoNovo?.ativo) return res.status(400).json({ erro: 'plano inválido' });
 
-  const { credito, custoNovo, diferenca } = sanCheckout.calcularDiferencaTroca(conta, planoAtual, planoNovo);
-  if (diferenca <= 0) {
-    return res.status(400).json({
-      erro: 'o crédito do que resta no seu plano atual já cobre o plano novo. Espere renovar ou escolha um plano de valor maior.',
-      credito,
-      custoNovo,
-    });
+  const assinaturaAtiva = await assinaturasRepo.buscarAtivaDoAnunciante(conta.id);
+  if (!assinaturaAtiva) {
+    return res
+      .status(409)
+      .json({ erro: 'não encontrei uma assinatura ativa no Checkout pra trocar. Fale com a gente.' });
   }
 
-  const pedido = await pedidosRepo.criar({
+  const assinaturaNova = await assinaturasRepo.criar({
     anuncianteId: conta.id,
-    tipo: 'troca_plano',
-    planoAtualId: planoAtual.id,
-    planoNovoId: planoNovo.id,
-    valor: diferenca,
-    descricao: `Mostraí, troca de plano: ${planoAtual.nome} (${planoAtual.compromisso_meses}x) para ${planoNovo.nome} (${planoNovo.compromisso_meses}x)`,
+    planoId: planoNovo.id,
+    status: 'pendente_troca',
   });
-  res.json({ checkoutUrl: sanCheckout.linkCheckoutPedido(pedido.id), valor: diferenca, credito, custoNovo });
+
+  const { status, corpo } = await sanCheckout.trocarPlano(assinaturaAtiva.id, assinaturaNova.id, conta.cpf_cnpj);
+
+  if (status !== 200) {
+    // O Checkout recusou em algum ponto ANTES de cobrar (ver os códigos em
+    // trocaPlanoController.js do Checkout: 400/402/404/409/502) — a linha
+    // pendente nunca chegou a valer, então some. Se o dinheiro já tiver
+    // sido cobrado e só a confirmação (502) tiver falhado, o próprio
+    // Checkout registra o erro do lado dele (chargeId na resposta); aqui
+    // só cabe não fingir que a troca aconteceu.
+    await assinaturasRepo.excluir(assinaturaNova.id);
+    return res.status(status).json({ erro: corpo.erro || 'não foi possível trocar de plano', ...corpo });
+  }
+
+  // A partir daqui o dinheiro (se houve acerto) já foi cobrado pelo
+  // Checkout — as escritas locais têm que ser tudo ou nada, e uma falha
+  // aqui não pode desaparecer sem deixar rastro (mesmo raciocínio de
+  // aplicarCicloPago, acima).
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await assinaturasRepo.marcarTrocada(assinaturaAtiva.id, cliente);
+    await assinaturasRepo.marcarAtiva(assinaturaNova.id, cliente);
+    await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [conta.id, planoNovo.id]);
+    if (corpo.acerto?.cobrado) {
+      // `plano_anterior_id` é o que permite a aba "Trocas de plano" do
+      // admin continuar existindo: sem ele, esta linha ficaria idêntica a
+      // uma renovação de ciclo comum (ver GET /admin/pedidos-avulsos).
+      await cliente.query(
+        `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status)
+         VALUES ($1,$2,$3,$4,'pendente')`,
+        [conta.id, planoNovo.id, assinaturaAtiva.plano_id, corpo.acerto.valor],
+      );
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK');
+    await sanCheckout.registrarPendencia(
+      {
+        rota: '/anunciantes/me/trocar-plano',
+        assinaturaAtiva: assinaturaAtiva.id,
+        assinaturaNova: assinaturaNova.id,
+        corpo,
+      },
+      `troca de plano cobrada no Checkout (acerto ${corpo.acerto?.valor ?? 0}), mas falhou ao gravar aqui: ${err.message}`,
+    );
+    return res.status(502).json({
+      erro: 'A troca foi cobrada, mas não conseguimos confirmar aqui. Já estamos cientes — fale com a gente se o plano não mudar em alguns minutos.',
+    });
+  } finally {
+    cliente.release();
+  }
+
+  eventos.registrar(
+    'plano:troca_paga',
+    { plano_id: planoNovo.id, valor_confirmado: Number(corpo.acerto?.valor || 0) },
+    conta,
+  );
+
+  res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
 });
 
 // Admin aciona cancelamento (Vitrina → San Checkout, nunca o pagador direto)
@@ -550,16 +609,33 @@ router.patch('/admin/eventos-pendentes/:id', async (req, res) => {
 // Cobranças e o que falha vira pendência, mas nenhuma tela respondia "quem
 // trocou de plano, de qual pra qual, e quando" — a pergunta que decide se o
 // mecanismo vale a pena. Leitura pura: nada aqui altera pedido nenhum.
+//
+// UNION de dois mecanismos, o antigo e o atual (18/09/2026): pedido avulso
+// (aposentado — POST /anunciantes/me/trocar-plano não cria mais nenhum,
+// mas o que já existe continua aqui) e o acerto de POST /trocar-plano do
+// Checkout, que fica em `cobrancas_confirmadas.plano_anterior_id`. Sem o
+// UNION, a troca de hoje ficaria idêntica a uma renovação de ciclo comum
+// nessa tabela, e a pergunta que esta aba responde pararia de ter
+// resposta pra tudo que acontecer a partir de agora.
 router.get('/admin/pedidos-avulsos', async (_req, res) => {
   const { rows } = await pool.query(
-    `SELECT pa.*, a.nome_empresa,
+    `SELECT pa.id, pa.status, pa.valor, pa.criado_em, pa.pago_em, a.nome_empresa,
             atual.nome AS plano_atual_nome, novo.nome AS plano_novo_nome,
             novo.compromisso_meses AS plano_novo_meses
        FROM pedidos_avulsos pa
        JOIN anunciantes a ON a.id = pa.anunciante_id
        LEFT JOIN planos atual ON atual.id = pa.plano_atual_id
        JOIN planos novo ON novo.id = pa.plano_novo_id
-      ORDER BY pa.criado_em DESC`,
+     UNION ALL
+     SELECT c.id::text, 'pago' AS status, c.valor, c.criado_em, c.criado_em AS pago_em, a.nome_empresa,
+            atual.nome AS plano_atual_nome, novo.nome AS plano_novo_nome,
+            novo.compromisso_meses AS plano_novo_meses
+       FROM cobrancas_confirmadas c
+       JOIN anunciantes a ON a.id = c.anunciante_id
+       JOIN planos atual ON atual.id = c.plano_anterior_id
+       JOIN planos novo ON novo.id = c.plano_id
+      WHERE c.plano_anterior_id IS NOT NULL
+      ORDER BY criado_em DESC`,
   );
   res.json(rows);
 });

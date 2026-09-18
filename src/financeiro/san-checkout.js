@@ -129,14 +129,6 @@ function linkRenovarAssinatura(assinaturaId, cpfCnpj) {
   return token ? `${linkCheckoutAssinatura(assinaturaId)}&renovar=${token}` : null;
 }
 
-// Pedido avulso (API.md do Checkout, seção 4.1): pagamento único, sem
-// vínculo de assinatura. Único uso hoje é a diferença de troca de plano —
-// a assinatura não aceita desconto, então o valor exato só cabe aqui.
-function linkCheckoutPedido(pedidoId) {
-  const volta = process.env.SITE_URL ? `&returnUrl=${encodeURIComponent(`${process.env.SITE_URL}/obrigado.html`)}` : '';
-  return `${process.env.SAN_CHECKOUT_BASE_URL}/index.html?c=${process.env.SAN_CHECKOUT_CONTRATANTE_ID}&pedido=${pedidoId}${volta}`;
-}
-
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
 // O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
 // uma troca de endereço não propagada que quebrou a integração antes.
@@ -154,7 +146,7 @@ async function chamarApiCheckout(rota, corpo) {
 // enxerga pagamento que o webhook perdeu. Devolve null se nunca houve
 // assinatura nem tentativa de cobrança (404 estreito, de propósito).
 async function consultarAssinatura(planoId, documento) {
-  const r = await chamarApiCheckout('consultar-assinatura', { planoId, documento });
+  const r = await chamarApiCheckout('consultar-assinatura', { planoId, documento: soDigitos(documento) });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`consultar-assinatura respondeu ${r.status}`);
   return r.json();
@@ -173,9 +165,16 @@ const CICLO_ASAAS = { 1: 'MONTHLY', 3: 'QUARTERLY', 6: 'SEMIANNUALLY', 12: 'YEAR
 //
 // Chamado uma vez só, na criação da assinatura — a Asaas fixa o valor e o
 // ciclo nesse momento e cobra sozinha dali em diante.
+//
+// 'pendente_troca' também serve esta resposta (migration 056): é o status
+// da linha nova, criada ANTES de chamar POST /trocar-plano — o Checkout lê
+// o preço/ciclo de destino por aqui (`resolverPlano`, do lado dele) antes
+// de cobrar o acerto. Só não é servida quando a troca falha e a linha some.
+const STATUS_QUE_SERVEM_PLANO = new Set(['ativa', 'pendente_troca']);
+
 async function montarRespostaPlano(assinaturaId) {
   const assinatura = await assinaturasRepo.buscarPorId(assinaturaId);
-  if (assinatura?.status !== 'ativa') return null;
+  if (!STATUS_QUE_SERVEM_PLANO.has(assinatura?.status)) return null;
 
   const plano = await planosRepo.buscarPorId(assinatura.plano_id);
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
@@ -255,26 +254,6 @@ function valorMensalDaConta(anunciante, plano) {
       : 0;
 
   return credito ? arredondar(Math.max(0, comPercentual - credito)) : comPercentual;
-}
-
-// Troca de plano (pedido do dono, 16/09/2026): cobra só a diferença entre
-// o plano novo e o crédito dos dias que restam no atual. 30 dias por mês,
-// igual ao exemplo que o dono deu — não o calendário exato do mês corrente,
-// pra o crédito não variar por causa de fevereiro ter menos dias.
-//
-// Nunca pode dar zero ou negativo: um crédito maior que o plano novo
-// custa significaria ou não cobrar nada (a Asaas recusa pedido de valor
-// zero) ou, pior, dar de volta — e ninguém pediu reembolso em dinheiro.
-// Por isso o valor mínimo é sempre 0,01, e quem chama confere
-// `credito >= custoNovo` antes pra recusar a troca, não pra zerar o preço.
-function calcularDiferencaTroca(anunciante, planoAtual, planoNovo) {
-  const diasRestantes = anunciante.data_expiracao
-    ? Math.ceil((new Date(anunciante.data_expiracao) - Date.now()) / 86400000)
-    : 0;
-  const valorDiarioAtual = valorMensalDaConta(anunciante, planoAtual) / 30;
-  const credito = arredondar(valorDiarioAtual * Math.max(0, diasRestantes));
-  const custoNovo = multiplicar(valorMensalDaConta(anunciante, planoNovo), planoNovo.compromisso_meses);
-  return { credito, custoNovo, diferenca: arredondar(custoNovo - credito) };
 }
 
 async function registrarPendencia(payload, motivo) {
@@ -409,6 +388,15 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
+  // plano_trocado: aviso fire-and-forget do POST /trocar-plano (API.md do
+  // Checkout, seção 5). A troca em si já foi aplicada de forma SÍNCRONA
+  // pela própria chamada — é a mesma requisição que cobrou o acerto,
+  // alterou a assinatura na Asaas e reescreveu `assinaturas`/`anunciantes`
+  // aqui (ver POST /anunciantes/me/trocar-plano). Este webhook não aplica
+  // nada de novo: existe só pra quem quiser reagir ao evento por fora
+  // dessa chamada (auditoria, outro contratante). Nada a fazer aqui.
+  if (payload.evento === 'plano_trocado') return;
+
   // cobranca_falhou: cartão recusado ou cobrança vencida. O contrato do
   // Checkout (API.md 7.3, item explícito do checklist de integração) manda
   // avisar o assinante com o link de renovação — sem isso a cobertura acaba
@@ -431,6 +419,23 @@ async function processarWebhookAssinatura(payload) {
         ? 'cobrança falhou — link de renovação enviado por e-mail'
         : 'cobrança falhou — e-mail enviado SEM link: não foi possível assinar o token de renovação (confira SAN_CHECKOUT_KEY e o cpf_cnpj da conta)',
     );
+  }
+
+  // cobranca_contestada: chargeback num ciclo. O contrato do Checkout
+  // (API.md, tabela de eventos) manda suspender o acesso — é dinheiro
+  // contestado no banco do cliente, não uma recusa comum de cartão como
+  // `cobranca_falhou`. Suspende igual ao botão do admin (`suspenso`),
+  // então o motor de playlist já para de veicular sozinho
+  // (`anunciantesElegiveis`, src/playlist/gerador.js). Nunca reativa
+  // sozinho: quem decide devolver o acesso depois de um chargeback é
+  // uma pessoa olhando o caso, não um evento automático.
+  if (payload.evento === 'cobranca_contestada') {
+    const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+    if (anunciante && !anunciante.suspenso) {
+      await anunciantesRepo.atualizar(anunciante.id, { suspenso: true });
+      eventos.registrar('pagamento:chargeback_suspende', { plano_id: assinatura.plano_id }, anunciante);
+    }
+    return registrarPendencia(payload, 'chargeback — conta suspensa automaticamente, revisar antes de reativar');
   }
 
   if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
@@ -628,20 +633,41 @@ async function aplicarTrocaDePlano(pedido, payload) {
 // checkout — INTEGRACAO.md 6.1). Formato do corpo confirmado com quem
 // administra o San Checkout (v2, campo `documento` — CPF ou CNPJ).
 async function cancelarAssinatura(assinaturaId, documento) {
-  const r = await chamarApiCheckout('cancelar-assinatura', { planoId: assinaturaId, documento });
+  const r = await chamarApiCheckout('cancelar-assinatura', { planoId: assinaturaId, documento: soDigitos(documento) });
   if (!r.ok) throw new Error('falha ao cancelar assinatura no San Checkout');
   return r.json();
 }
 
+// Troca de plano SEM pedido avulso (POST /trocar-plano, API.md do
+// Checkout, seção 5 — construído em 17/09/2026): cobra o acerto
+// proporcional no cartão já salvo e altera a MESMA assinatura na Asaas,
+// sem o assinante digitar cartão de novo e sem janela sem cobertura.
+//
+// Devolve `{ status, corpo }` sempre, mesmo quando o Checkout recusa (402
+// cartão recusado, 409 troca simultânea/sem cartão/período não pago/
+// encerrada, 502 alteração não confirmada). Não é exceção porque cada
+// recusa tem uma mensagem própria pro usuário final, e quem chama (a rota
+// que criou a linha 'pendente_troca') precisa do código exato pra decidir
+// se apaga a linha criada ou mantém.
+async function trocarPlano(assinaturaId, planoNovoId, documento) {
+  const r = await chamarApiCheckout('trocar-plano', {
+    planoId: assinaturaId,
+    planoNovoId,
+    documento: soDigitos(documento),
+  });
+  const corpo = await r.json().catch(() => ({}));
+  return { status: r.status, corpo };
+}
+
 module.exports = {
   valorMensalDaConta,
-  calcularDiferencaTroca,
   exigirChaveCheckout,
   webhookAutorizado,
+  registrarPendencia,
   linkCheckoutAssinatura,
   linkRenovarAssinatura,
-  linkCheckoutPedido,
   montarRespostaPlano,
+  trocarPlano,
   processarWebhookAssinatura,
   processarWebhookPedido,
   cancelarAssinatura,
