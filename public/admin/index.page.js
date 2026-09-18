@@ -805,10 +805,11 @@ async function renderMeusAnuncios(el) {
 
 // ---------- pontos ----------
 async function renderPontos(el) {
-  const [pontos, categorias, opcoesComodato] = await Promise.all([
+  const [pontos, categorias, opcoesComodato, configSite] = await Promise.all([
     pegar('/admin/pontos'),
     pegar('/admin/categorias'),
     pegar('/admin/planos-ponto'),
+    pegar('/pontos/config'),
   ]);
   // Sinal/chave/PIN são por TELA (migration 019) — ficam na aba "Telas".
   // Aqui o ponto mostra quantas telas tem e quem é o dono (conta).
@@ -859,6 +860,13 @@ async function renderPontos(el) {
       O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
       planos ao mesmo tempo.
     </p>
+    <div class="card u-mb-16 u-mw-420">
+      <label>Foto de exemplo do "ponto completo" (site público)</label>
+      <p class="u-dim u-fs-72 u-m-0 u-mb-8">Aparece em "Onde estamos?", ao lado do mapa. Não é a foto de nenhum
+        ponto real — é a ilustração genérica de como fica o totem montado.</p>
+      <input type="file" accept="image/*" class="mini" id="fotoExemploPonto">
+      ${configSite.fotoExemploUrl ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(configSite.fotoExemploUrl)}" target="_blank" rel="noopener">ver foto atual</a>` : '<p class="u-dim u-fs-72 u-m-0 u-mt-4">Ainda é a foto padrão do site.</p>'}
+    </div>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo ponto (cadastro manual)</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovoPonto">
@@ -949,6 +957,20 @@ async function renderPontos(el) {
       if (r.ok) renderPontos(el);
     }),
   );
+
+  document.getElementById('fotoExemploPonto').addEventListener('change', async (e) => {
+    const input = e.target;
+    if (!input.files[0]) return;
+    const form = new FormData();
+    form.append('arquivo', input.files[0]);
+    const r = await fetch(`${API_BASE_URL}/admin/pontos/foto-exemplo`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
+    if (r.ok) renderPontos(el);
+  });
 
   document.getElementById('formNovoPonto').addEventListener('submit', async (e) => {
     e.preventDefault();

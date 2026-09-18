@@ -2420,3 +2420,79 @@ linhas entram com o resultado literal disso — "Você economizou R$0,00." e
 mesma estrutura visual nos quatro ciclos, sem esconder que aqui não há
 economia real. Sem linha riscada no Mensal (não pedida, e não há valor
 cheio diferente pra riscar).
+
+### Revisão do dono, tópico 1 — Onde estamos, rodada 1 (18/09/2026)
+
+**P27. [x] Texto de abertura sem travessão e com CTA.** O dono: *"retire
+aquele travessão do texto e coloque um cta melhorado nesse texto
+horrendo."* O parágrafo virou frase corrida sem travessão, e ganhou um
+convite embutido pra quem está avaliando anunciar:
+
+> Cada ponto é gente esperando: a cadeira do salão, a espera da academia, a
+> mesa do restaurante. Sua marca aparece neles, e ponto novo entra na sua
+> cobertura sem custo a mais. **Veja os planos e comece a anunciar** →
+> `/planos.html`.
+
+O CTA de baixo da página ("Seu comércio pode ser o próximo" → `/seja-um-
+ponto.html`) já fala com quem quer HOSPEDAR uma tela; este de cima fala
+com quem quer ANUNCIAR — os dois papéis que a página atende, cada um com
+seu convite.
+
+**P28. [ ] Poluição visual do mapa — pendência aberta, esperando decisão
+do dono.** Ele: *"no mapa será que não tem como omitir todas essas
+localizações [restaurante, hospital, mercado etc.] atrapalhando a
+visualização dos locais de pontos?"* O mapa é um `<iframe>` do embed
+gratuito do Google (`maps.google.com/maps?q=...&output=embed`, sem chave
+de API) — nesse modo o Google não aceita nenhum parâmetro pra desligar a
+camada de pontos comerciais; só dá pra fazer isso customizando o estilo
+do mapa, e customizar estilo só existe na Maps JavaScript API, que exige
+projeto no Google Cloud com cobrança ativa e chave própria (**não é** o
+Google Workspace que ele já paga — são produtos e faturamento
+diferentes, confirmado a ele nesta rodada). Três caminhos, aguardando
+escolha dele:
+1. Trocar por um mapa sem chave (Leaflet + tiles CartoDB, estilo claro
+   sem ícone de comércio) — sem custo, mas é a primeira dependência
+   externa carregada por CDN no projeto (hoje é tudo self-hosted, sem
+   build step).
+2. Google Maps com estilo customizado — resolve de verdade, mas exige
+   cadastrar cartão e criar chave no Google Cloud (autorização dele antes
+   de qualquer mudança de cobrança, como sempre).
+3. Manter o Google como está, só ajustar zoom/enquadramento — sem custo,
+   mas não resolve a poluição visual, só reduz a área visível.
+**Nenhuma mudança no mapa nesta rodada** até ele responder.
+
+**P29. [x] Foto de exemplo do "ponto completo" — agora trocável pelo
+admin, sem deploy.** O dono: *"essa foto do ponto completo deve ser
+possível ser trocada no painel do admin quando eu quiser trocá-la."* Não
+é foto de nenhum ponto real (isso já existe, por ponto, em
+`foto_instalacao_url` — `/admin/pontos/:id/foto`); é a ilustração
+genérica do totem montado, hoje um arquivo estático
+(`/img/exemplo-ponto-completo.jpg`). Como o filesystem do container é
+efêmero e a esteira roda 2 instâncias, sobrescrever o arquivo local não
+funcionaria (não persistiria no redeploy, e uma instância não veria o
+que a outra escreveu) — a foto tem que morar no mesmo bucket público do
+Supabase Storage que já guarda avatar de anunciante e criativo:
+- Migration 055: tabela `configuracoes_site` (chave/valor genérica,
+  extensível pra outras configurações de site no futuro), guardando a
+  URL da foto customizada sob a chave `foto_exemplo_ponto_url`.
+- `POST /admin/pontos/foto-exemplo` — mesmo padrão de upload das fotos
+  de ponto (multer → Supabase Storage, chave fixa `site/exemplo-ponto-
+  completo.jpg`, `upsert: true`), grava a URL pública (com `?v=` de
+  cache-bust) na configuração.
+- `GET /pontos/config` — pública, devolve a URL customizada ou `null`.
+- `pontos.page.js` troca a `src` da foto só quando existe customização;
+  sem nenhuma troca, continua a imagem estática de sempre.
+- Painel admin, aba **Pontos**: novo bloco com upload e link "ver foto
+  atual" (ou aviso de que ainda é a padrão), acima do cadastro manual de
+  ponto.
+
+**P30. [x] Legenda da foto simplificada.** O dono: *"o texto abaixo dele
+deve ter somente 'assim fica nosso totem completo'."* Trocado
+`<figcaption>` de "Assim fica um ponto completo. A moldura cobre a TV e
+só a marca do anunciante aparece." para **"Assim fica nosso totem
+completo."**
+
+Conferido: `npm run lint` e `npm run check` verdes (92 testes), migration
+055 aplicada localmente, Playwright confirma o texto de abertura, a
+legenda nova e o fallback da foto (sem customização, mostra o arquivo
+estático) em `pontos.html`.

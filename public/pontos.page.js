@@ -1,3 +1,13 @@
+// Foto de exemplo do "ponto completo" é trocável pelo admin (sem deploy);
+// só troca a `src` quando existe uma customizada — sem isso, continua a
+// imagem estática do arquivo.
+fetch(`${API_BASE_URL}/pontos/config`)
+  .then((r) => r.json())
+  .then(({ fotoExemploUrl }) => {
+    if (fotoExemploUrl) document.querySelector('.exemplo-ponto img').src = fotoExemploUrl;
+  })
+  .catch(() => {});
+
 fetch(`${API_BASE_URL}/pontos`)
   .then((r) => {
     if (!r.ok) throw new Error(`resposta ${r.status}`);

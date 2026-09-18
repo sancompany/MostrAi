@@ -28,6 +28,13 @@ router.get('/pontos/fluxo', async (_req, res) => {
   res.json({ pessoasPorMes: await repo.somaFluxoMensal() });
 });
 
+// Pública — foto de exemplo do "ponto completo" em pontos.html, trocável
+// pelo admin sem deploy (pedido do dono, 18/09/2026). `null` até a primeira
+// troca, e a página cai no arquivo estático padrão nesse caso.
+router.get('/pontos/config', async (_req, res) => {
+  res.json({ fotoExemploUrl: await repo.obterConfiguracao('foto_exemplo_ponto_url') });
+});
+
 // Painel do anunciante — "meus pontos" (mesma conta serve pra anunciar e pra
 // hospedar tela, ver migration 016).
 router.get('/anunciantes/:id/pontos', exigirAnuncianteLogado, async (req, res) => {
@@ -216,6 +223,32 @@ router.post('/admin/pontos/:id/foto', upload.single('arquivo'), async (req, res)
     const ponto = await repo.atualizar(req.params.id, { foto_instalacao_url: data.publicUrl });
     if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
     res.json(ponto);
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+});
+
+// Admin — foto de EXEMPLO do "ponto completo" mostrada em pontos.html (não é
+// de nenhum ponto real; é a ilustração genérica ao lado do mapa). Mesmo
+// padrão de upload das demais fotos deste arquivo. A chave no bucket é fixa
+// (upsert sobrescreve), e o `?v=` na URL salva evita que o navegador
+// continue mostrando a foto antiga em cache depois da troca.
+router.post('/admin/pontos/foto-exemplo', upload.single('arquivo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
+  try {
+    const supabase = require('../lib/supabase');
+    const buffer = fs.readFileSync(req.file.path);
+    const nomeArquivo = 'site/exemplo-ponto-completo.jpg';
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+    if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
+    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
+    const url = `${data.publicUrl}?v=${Date.now()}`;
+    await repo.definirConfiguracao('foto_exemplo_ponto_url', url);
+    res.json({ url });
   } finally {
     fs.unlink(req.file.path, () => {});
   }

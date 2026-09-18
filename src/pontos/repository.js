@@ -150,6 +150,23 @@ async function somaFluxoMensal() {
   return total >= FLUXO_MINIMO_PARA_EXIBIR ? total : null;
 }
 
+// Chave/valor genérica pra configuração de site que não é de nenhum ponto
+// específico (migration 055). Hoje só a foto de exemplo do "ponto completo"
+// em pontos.html; `null` quando o dono nunca trocou, e a página pública cai
+// no arquivo estático padrão nesse caso.
+async function obterConfiguracao(chave) {
+  const { rows } = await pool.query('SELECT valor FROM configuracoes_site WHERE chave = $1', [chave]);
+  return rows[0]?.valor ?? null;
+}
+
+async function definirConfiguracao(chave, valor) {
+  await pool.query(
+    `INSERT INTO configuracoes_site (chave, valor) VALUES ($1, $2)
+     ON CONFLICT (chave) DO UPDATE SET valor = $2`,
+    [chave, valor],
+  );
+}
+
 module.exports = {
   criar,
   listar,
@@ -158,5 +175,7 @@ module.exports = {
   listarPublicos,
   listarPorAnunciante,
   somaFluxoMensal,
+  obterConfiguracao,
+  definirConfiguracao,
   STATUS,
 };
