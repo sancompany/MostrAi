@@ -2029,20 +2029,41 @@ O Prime custa 4,5× o Essencial e come **6,7×** o inventário: **quem paga mais
 é quem paga menos pelo estoque**, 32% mais barato por segundo de rede. Isso
 existe desde antes de qualquer conversa desta rodada.
 
-### G.2 A leitura do dono sobre as horas (e por que ele está certo)
+### G.2 As horas do plano — CORRIGIDO pelo dono em 18/09/2026
 
-Hoje as "27 horas" do card são o **total espalhado nos 3 pontos** (9 h em
-cada). O dono quer que sejam **27 h em cada ponto**, com o total do plano
-aparecendo junto — *"total de horas circuladas de anúncio por mês e total de
-horas veiculadas por ponto"*. É uma mudança de 3×.
+**Esta seção estava errada e foi refeita.** Eu tinha registrado que o dono
+queria **27 h em cada ponto**. Ele corrigiu: *"eu quis dizer somente os pontos
+totais do plano ser 27 horas, não cada ponto ser 27 horas (…) no Essencial, ao
+invés de ser 27 horas cada ponto, é 27 horas por 3 pontos"*. Vale igual pro
+Pro e pro Prime, e **todos os pontos consomem o mesmo tempo da hora**.
 
-Consequência medida: o Prime passaria a consumir **5400 s por hora** da rede —
-**mais de um ponto inteiro só para ele**. Com 3 pontos dá pra vender 6 Primes e
-a rede fecha. Foi exatamente o "excesso de horas" que o dono previu.
+**Isso é exatamente o que o sistema faz hoje** (conferido na função de
+verdade, `horasDeTelaPorMes`, em 18/09/2026):
 
-Ele também fechou a moldura, e essa parte **já está no ar**: o plano vende
-*horas totais na rede, divididas entre os pontos* — não horas por ponto. O
-card já diz assim.
+| plano | total do plano | dividido em | em cada ponto | consumo por hora |
+|---|---|---|---|---|
+| Essencial | **27 h** | 3 pontos | 9 h | 90 s, igual em todos |
+| Pro | **84 h** | 7 pontos | 12 h | 120 s, igual em todos |
+| Prime | **180 h** | 10 pontos | 18 h | 180 s, igual em todos |
+
+**Consequências de o registro estar errado, e agora não estar:**
+
+1. **Não há mudança de 3× a fazer.** O que eu tinha anotado (27 h por ponto)
+   seria triplicar a grade.
+2. **O "excesso de horas" que ele temia não existe neste eixo.** O estouro que
+   eu media — o Prime consumindo 5400 s por hora, mais de um ponto inteiro só
+   pra ele — só aparecia na leitura errada. Com o total preservado, o Prime
+   consome 1800 s por hora da rede, que é o de hoje.
+3. **O que continua valendo do G.1 é o desequilíbrio entre os tiers** (o Prime
+   paga 32% menos por segundo de rede que o Essencial). Esse achado independe
+   desta correção e segue aberto.
+4. A moldura que ele fechou **já está no ar**: o plano vende *horas totais na
+   rede, divididas entre os pontos*, e o card diz assim.
+
+*Lição pra mim, registrada onde não se perde: eu tinha os dois números
+(o total e o por ponto) e escolhi o errado sem devolver a conta pra ele
+confirmar. Número de contrato lido de uma frase ambígua se confere repetindo
+o número, não repetindo a frase.*
 
 **Alternativa que resolve o desequilíbrio do G.1 junto:** mesmo tempo por
 ponto em TODOS os planos (27 h), e o que o plano compra é **cobertura** —
