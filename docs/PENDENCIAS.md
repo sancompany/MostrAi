@@ -2851,21 +2851,37 @@ em `SMTP_USER` — já está em produção, confirmado pelo próprio
 `admin@sancocore.com.br` na tela). O ponto cego agora é **depois** do
 Gmail aceitar: pra onde a mensagem foi.
 
-**Preciso que o dono confira duas coisas, que só ele vê (acesso ao
-Google Workspace/Gmail):**
-1. **Spam/Lixo eletrônico** da caixa que recebe `mostrai@sancocore.com.br`
-   (ou o valor real de `MOSTRAI_EMAIL_CONTATO` no Northflank, se for
-   outro endereço) — aceite no SMTP não garante caixa de entrada; é
-   comum um provedor aceitar e ainda assim jogar pro spam.
-2. Se `mostrai@sancocore.com.br` é mesmo um endereço que **recebe**
-   e-mail (alias de usuário no Admin Console, que entrega na caixa de
-   alguém) ou só foi cadastrado como identidade de **envio** (Gmail →
-   Configurações → Contas → "Enviar e-mail como") — que é só pra sair
-   como remetente e não recebe nada.
+### P42 resolvido — alias criado no Admin Console, SMTP confirmado (18/09/2026)
 
-Sem eu ver a caixa de e-mail ou o Admin Console do Workspace, não dá
-pra ir além disso — fica registrado aqui até ele confirmar um dos dois
-pontos.
+Era exatamente o ponto 2 acima: `mostrai@sancocore.com.br` só existia como
+identidade de **envio** (Gmail → Configurações → Contas → "Enviar e-mail
+como") dentro da própria conta `admin@sancocore.com.br` — nunca um endereço
+que **recebe**. O dono confirmou, com print do Admin Console
+(`Diretório → Usuários → admin@sancocore.com.br → Adicionar e-mails
+alternativos`), que `mostrai` (junto com `contato`, `suporte`, `juridico`,
+`financeiro`, `comercial`, `eventos`) agora é um alias de verdade — mensagem
+endereçada a `mostrai@sancocore.com.br` passa a cair na caixa do `admin@`.
+
+E confirmou de novo, pelo botão "Testar agora": **`Funcionando` —
+`smtp.gmail.com:587` · `admin@sancocore.com.br` · senha de 16
+caracteres, sem espaço.**
+
+**Os dois problemas eram coisas diferentes, e por isso duas correções
+separadas:**
+- **Envio** (Mostraí → anunciante: confirmação de pagamento, conta criada,
+  troca de plano, etc. — RN-56): nunca dependeu de `mostrai@` receber
+  nada — só precisa do login SMTP funcionar (`admin@sancocore.com.br`) e
+  do endereço aparecer no campo "de". Já estava correto desde a correção
+  anterior (usar a conta real, não o alias, em `SMTP_USER`).
+- **Recebimento** (site → Mostraí: formulário de contato — `enviarMensagemContato`,
+  candidatura nova — `enviarCandidaturaNova`, cópia do arrependimento —
+  `enviarArrependimentoRecebido`, todas endereçadas a `mostrai@` ou a
+  `MOSTRAI_EMAIL_CONTATO`): dependia do alias existir de verdade, e é isso
+  que estava faltando até agora.
+
+**Fechado.** Pra fechar o ciclo por completo, falta só ele confirmar que
+uma mensagem nova do formulário de contato chega na caixa do `admin@`
+(não só no spam) — é o último passo que só ele vê.
 
 **Causa raiz confirmada pelo dono (18/09/2026): é a opção 2.** *"Eu só
 configurei o mostrai como um alias do admin@sancocore.com.br."* —
