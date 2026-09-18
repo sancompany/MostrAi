@@ -4,6 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const planosRepo = require('./planos-repository');
+const { horasDeTelaPorMes } = require('../lib/pacing');
 const beneficiosRepo = require('./beneficios-repository');
 const cobrancasRepo = require('./cobrancas-repository');
 const assinaturasRepo = require('./assinaturas-repository');
@@ -23,9 +24,18 @@ const uploadNota = multer({ dest: os.tmpdir() });
 // mão (ver valorMensalDaConta em san-checkout.js). Um plano com `vagas`
 // ainda some da vitrine quando as vagas acabam — mecanismo genérico, não
 // exclusivo de fundador.
+// `horas_por_mes` é calculado AQUI, não em cada tela. Ele já vivia à mão na
+// vitrine e no admin, e a tela de pedido ia virar a terceira cópia — que é
+// como três telas passam a prometer números diferentes pro mesmo plano. A
+// conta é a de `src/lib/pacing.js`, a mesma que o painel usa no bônus da
+// RN-49. Campo NOVO, nada removido: quem já lia a resposta continua lendo.
 router.get('/planos', async (_req, res) => {
   const planos = await planosRepo.listarAtivos();
-  res.json(planos.filter((p) => p.vagas_restantes == null || p.vagas_restantes > 0));
+  res.json(
+    planos
+      .filter((p) => p.vagas_restantes == null || p.vagas_restantes > 0)
+      .map((p) => ({ ...p, horas_por_mes: horasDeTelaPorMes(p.segundos_por_hora, p.pontos_incluidos) })),
+  );
 });
 
 router.get('/admin/planos', async (_req, res) => {

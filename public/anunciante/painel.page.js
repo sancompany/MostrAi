@@ -331,13 +331,35 @@ async function confirmarPlano(planoId) {
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
+  // O que ele está comprando, na MESMA língua do card da vitrine. Aqui dizia
+  // `${plano.frequencia_hora}x por hora em cada tela` — o modelo ANTIGO, de
+  // antes da grade por segundos (migration 045). Era a última frase que o
+  // cliente lia antes de pagar, e ela descrevia outro produto.
+  //
+  // `horas_por_mes` vem calculado do servidor (GET /planos), com a mesma
+  // função da vitrine — não recalculado aqui, que viraria a terceira conta
+  // pro mesmo número.
+  const oQueLeva = [
+    plano.horas_por_mes ? `até <b>${plano.horas_por_mes} horas de tela por mês</b> na rede` : null,
+    plano.pontos_incluidos
+      ? `em até ${plano.pontos_incluidos} ${plano.pontos_incluidos === 1 ? 'ponto' : 'pontos'}`
+      : null,
+    plano.duracao_maxima_segundos ? `peça de até ${plano.duracao_maxima_segundos}s` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
   box.insertAdjacentHTML(
     'beforeend',
     `
     <div class="panel u-mt-14">
       <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
-      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>, ${plano.frequencia_hora}x por hora em cada tela</p>
-      <p class="u-m-0 u-mb-12">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
+      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>${oQueLeva ? ` — ${oQueLeva}` : ''}</p>
+      <p class="u-m-0 u-mb-8">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
+      <!-- A ressalva da cobrança e o arrependimento vivem AQUI (decisão do
+           dono, 18/09/2026), não na vitrine: é nesta tela que a pessoa decide
+           pagar. Na vitrine eram interrupção no meio de quem ainda escolhia. -->
+      <p class="form-hint u-m-0 u-mb-12">A cobrança começa assim que o pagamento é confirmado, e não quando a
+        primeira tela subir. Se mudar de ideia, você tem 7 dias para pedir a devolução integral pelo painel.</p>
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
     </div>`,

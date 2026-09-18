@@ -1949,3 +1949,45 @@ cláusula para caber na tela é o oposto do que o documento existe para fazer.
 nada por emenda — 15% da tela, e a Planos tem quatro antes dos preços). Agora
 36px no celular, desktop intacto. E a menção ao "comprovante em planilha" na
 home, último lugar que ainda o anunciava depois da migration 053.
+
+**M6. [x] O aviso laranja ficou só com a rede (pedido do dono, 18/09/2026).**
+A ressalva da cobrança e os 7 dias de arrependimento saíram da vitrine e foram
+para a **tela de pedido** — é lá que a pessoa decide pagar; na vitrine eram
+interrupção no meio de quem ainda estava escolhendo. O aviso ficou com uma
+coisa só, agora dita por inteiro: o tamanho da rede **e até quantos pontos a
+cobertura dos planos vai**, que é o que faltava pra "faltam pontos" significar
+alguma coisa.
+
+> Rede em montagem: 3 pontos hoje. A cobertura dos planos vai até 10 pontos,
+> então hoje ainda faltam telas pra completar os maiores. **Você não paga por
+> ponto que não existe:** o tempo dos que faltam vai pras telas já no ar.
+> *Como isso funciona +*
+
+45 palavras: 219px no celular, 142px no desktop. Os 7 dias continuam ditos na
+FAQ da mesma página, no contrato do anunciante e na confirmação da assinatura.
+
+**M7. [x] BUG na tela de pedido: ela descrevia o plano no modelo ANTIGO.**
+Achado ao mover o texto. A confirmação dizia `${plano.frequencia_hora}x por
+hora em cada tela` — o modelo de antes da grade por segundos (migration 045).
+Era a última frase que o cliente lia antes de pagar, e descrevia outro
+produto. Agora diz o mesmo do card: *"Essencial — até 27 horas de tela por mês
+na rede, em até 3 pontos, peça de até 15s"*. Conferido de ponta a ponta com
+conta criada e logada, em dois planos.
+
+**M8. [x] `horas_por_mes` passou a vir do SERVIDOR** (`GET /planos`), com a
+função de `src/lib/pacing.js`. O número já era calculado à mão na vitrine e no
+admin, e a tela de pedido ia virar a terceira cópia — que é como três telas
+passam a prometer números diferentes pro mesmo plano. Campo novo, nada
+removido.
+
+*Duplicação que fica registrada, e não foi mexida nesta passada:*
+`horasDeTelaPorMes` ainda existe à mão em `public/planos.page.js` e em
+`public/admin/index.page.js`. Com o campo no payload, as duas podem passar a
+lê-lo — é um passo próprio, e misturar com esta mudança deixaria a revisão
+maior do que precisa.
+
+**M9. [x] Corrida fechada no aviso.** Ele passou a precisar dos planos (pra
+dizer "até N pontos") e os dois `fetch` corriam soltos: numa rede lenta o
+aviso montava antes e saía com "mais pontos" em vez do número. Provado com
+`/planos` atrasado 1,5s no navegador — o tipo de corrida que nunca aparece na
+máquina de quem escreve e sempre aparece no celular.

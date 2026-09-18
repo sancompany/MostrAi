@@ -163,7 +163,12 @@ fetch(`${API_BASE_URL}/pontos/fluxo`)
   })
   .catch(() => {});
 
-Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogin])
+// Guardado numa promessa porque o aviso de rede (lá embaixo) precisa dos
+// planos pra dizer ATÉ QUANTOS pontos a cobertura vai. Sem isso os dois
+// `fetch` corriam soltos e, numa rede lenta, o aviso montava antes dos planos
+// chegarem e saía com "mais pontos" em vez do número — o tipo de corrida que
+// nunca aparece na máquina de quem escreveu e sempre aparece no celular.
+const planosCarregados = Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogin])
   .then(([planos]) => {
     PLANOS = planos;
     atualizarDescontos();
@@ -185,9 +190,8 @@ Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogi
 // precisar do aviso.
 const PONTOS_PARA_TIRAR_AVISO = 5;
 
-fetch(`${API_BASE_URL}/pontos`)
-  .then((r) => r.json())
-  .then((pontos) => {
+Promise.all([fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()), planosCarregados])
+  .then(([pontos]) => {
     if (!Array.isArray(pontos)) return;
     // UMA contagem só (pedido do dono, 17/09/2026): ponto ATIVO é o que já
     // tem cadastro na rede — em operação mais esperando instalação. A vitrine
@@ -200,6 +204,7 @@ fetch(`${API_BASE_URL}/pontos`)
     const naRede = pontos.length;
     if (naRede >= PONTOS_PARA_TIRAR_AVISO) return;
     const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
+    const maiorCobertura = Math.max(0, ...PLANOS.map((p) => Number(p.pontos_incluidos) || 0));
     const situacao = naRede === 0 ? 'nenhum ponto ainda.' : `${naRede} ${naRede === 1 ? 'ponto' : 'pontos'} hoje.`;
 
     // O detalhe do bônus fica DOBRADO. Ele é verdadeiro e o cliente tem que
@@ -210,7 +215,8 @@ fetch(`${API_BASE_URL}/pontos`)
     // Só entra com tela VEICULANDO: sem nenhuma não existe pra onde
     // concentrar o tempo. Por isso o gatilho é `veiculando` e não `naRede`.
     const bonus = veiculando
-      ? ' <b>Você não paga por ponto que não existe:</b> enquanto faltarem, o tempo deles vai pras telas já no ar.' +
+      ? ` A cobertura dos planos vai até ${maiorCobertura || 'mais'} pontos, então hoje ainda faltam telas pra completar os maiores. ` +
+        '<b>Você não paga por ponto que não existe:</b> o tempo dos que faltam vai pras telas já no ar.' +
         '<details class="aviso-detalhe"><summary>Como isso funciona</summary>' +
         '<p>O seu plano vende um total de horas de tela por mês. Enquanto a rede for menor que a cobertura dele, ' +
         'essas horas se concentram nos pontos que já estão no ar — até onde couber na hora de cada tela. Você ' +
@@ -219,9 +225,7 @@ fetch(`${API_BASE_URL}/pontos`)
       : '';
 
     const el = document.getElementById('avisoRede');
-    el.innerHTML =
-      `<b>Rede em montagem: ${situacao}</b> A cobrança começa quando você paga, não quando a tela sobe. ` +
-      `7 dias pra desistir e receber tudo de volta.${bonus}`;
+    el.innerHTML = `<b>Rede em montagem: ${situacao}</b>${bonus}`;
     el.hidden = false;
   })
   .catch(() => {});
