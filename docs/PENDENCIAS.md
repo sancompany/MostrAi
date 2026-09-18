@@ -2148,3 +2148,8 @@ Conferido no navegador nos dois tamanhos, envio do formulário testado
 (mock da API): sem "R$ 50" na home, sem menção a LGPD, `npm run check`
 verde (sintaxe + lint + formato + 92 testes), sem rolagem horizontal no
 celular.
+
+**H5.1 [x] "Esteja presente. Seja lembrado." volta pra home** — o dono pediu
+pra manter, só que entre "Por que funciona" e o novo bloco de contato (não
+mais como o fecho da página). Botão corrigido pra **"Ver planos"** (era
+"Ver planos e preços"), na mesma regra do H4.
