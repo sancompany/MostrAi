@@ -152,6 +152,7 @@ backup hipotético (Lei 6). O ensaio, com data e resultado, entra aqui.
 | `/health` não responde | container caiu ou não sobe | Northflank → Observe → logs. Erro no boot costuma ser variável faltando |
 | Job `Conciliacao` falhou | alguma assinatura não conciliou (sai com código 1) | ler o log: ele nomeia a assinatura e o erro. Cliente pagante pode estar sem cobertura |
 | Job `Backup` falhou | sem backup desta semana | conferir se o volume `/backups` está montado e se o `pg_dump` alcança o banco |
+| Job `ApuracaoBancoHoras` falhou (ou não existe ainda) | o déficit do mês anterior não fechou — ninguém ganha prioridade no mês seguinte, e o saldo antigo não avança pra fila da válvula | ler o log (`npm run apurar-banco-horas`, sai com código 1 no erro); se o job nunca foi criado no Northflank, ver `docs/PENDENCIAS.md`, item A.14 |
 | Webhook do Checkout dando 401 | assinatura HMAC não fecha | a `SAN_CHECKOUT_KEY` dos dois lados divergiu. Comparar com o painel do Checkout |
 | Fila `eventos_assinatura_pendentes` crescendo | eventos chegando e não sendo aplicados | admin → a fila mostra o motivo de cada um |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |

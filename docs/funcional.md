@@ -432,6 +432,89 @@ Duas armadilhas, as duas silenciosas:
 *Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no e-mail de
 cobrança falhada; e o admin, na pendência, que diz qual dos dois casos ocorreu.
 
+**RN-52 — Trocar de plano é uma chamada síncrona, não mais um pedido avulso.**
+*(Rota nova do Checkout, `POST /trocar-plano`, 17/09/2026.)* Até aqui,
+upgrade/downgrade eram um "pedido avulso": um link de pagamento fora do
+ciclo, confirmado por webhook, tarde e às vezes nunca. Agora
+`POST /anunciantes/me/trocar-plano` chama a rota nova do Checkout na hora:
+ele cobra o acerto proporcional no cartão salvo ANTES de mudar o plano (se a
+cobrança falha, nada muda), e devolve o resultado na mesma resposta — sem
+redirecionar, sem pop-up.
+
+Cada linha de `assinaturas` é o `planoId` que o Checkout usa pra nos
+perguntar preço (`GET /plano/:id`) — trocar de plano não é UPDATE na linha,
+é uma linha NOVA. A antiga fica com `status='trocada'` (não `'cancelada'` —
+a assinatura na Asaas é a mesma, só o valor mudou), a nova nasce com
+`status='pendente_troca'` até o Checkout confirmar, e só vira `'ativa'`
+depois do 200. Se o Checkout devolve erro, a linha pendente é apagada e nada
+mais muda.
+
+A partir da troca, o `planoId` do assinante é o da linha NOVA — qualquer
+ação depois (cancelar, pausar, retomar, consultar, link de renovação) usa o
+id novo. `pedidosRepo.criar` e o link de checkout do pedido avulso saem de
+uso pra troca de plano; o histórico de pedidos antigos e o webhook que os
+fecha continuam lidos, só não crescem mais por essa porta.
+
+Downgrade nunca cobra e nunca devolve — o preço novo só vale no próximo
+vencimento, mas o valor da assinatura na Asaas já muda na hora. *Violada:*
+não há caminho de usuário — a rota ou confirma os dois lados (Checkout e
+nosso banco) ou desfaz a linha pendente e devolve erro. *Quem vê:* o
+anunciante, no painel, ao confirmar a troca; e o admin, na aba "Trocas de
+plano".
+
+> Downgrade sem cobrança não gera `cobrancas_confirmadas`, e a aba do admin
+> lê troca por essa tabela (`plano_anterior_id`, migration 059) — uma troca
+> pra plano mais barato não aparece na lista, mesma limitação que o pedido
+> avulso sempre teve com downgrade. Registrado, não corrigido.
+
+**RN-53 — Banco de horas: quem não coube este mês tem prioridade no
+próximo.** *(Pendência G.3, `docs/PENDENCIAS.md` — o mecanismo é decisão do
+dono; a unidade e o prazo da válvula, abaixo, não foram.)* Quando a hora
+está vendida além do que a rede aguenta, o corte proporcional da RN-30 sobra
+pra todo mundo igual — mas quem sempre sobra é sempre o mesmo. Agora a
+diferença entre o que o anunciante pediu (`vezes_pedidas`, novo, guarda o
+pedido ANTES do corte) e o que ele recebeu (`vezes_programadas`) fecha em
+saldo no fim do mês anterior (`apurarMesAnterior`), e esse saldo entra como
+prioridade extra na próxima geração de playlist — até o limite de dobrar o
+pedido normal da hora, nunca mais.
+
+A unidade é EXIBIÇÃO, não segundo: a duração do criativo hoje
+(`criativos.duracao_segundos`) é o valor ATUAL, sem histórico — calcular em
+segundos seria estimar sobre estimativa. Escolha minha, não pedida por ele
+nestes termos.
+
+O saldo drena por ordem de idade (mês mais antigo primeiro, `FOR UPDATE` pra
+não drenar duas vezes a mesma linha em paralelo) e só proporcionalmente ao
+quanto a hora sobrou pra ele: se a hora ainda corta, uma parte do saldo fica
+pra próxima. Conta própria (`conta_propria`) nunca acumula banco — não paga,
+não tem o que compensar.
+
+O saldo é da conta, não da tela — mas a playlist é gerada uma tela por vez, e
+quem cobre vários pontos gera a hora em paralelo em cada um. Sem dividir, o
+mesmo saldo dava prioridade cheia em CADA ponto, e uma conta em 2 pontos
+pagava 1 de dívida e recebia o dobro de volta. A prioridade da hora divide o
+saldo pelos pontos cobertos (mesma fatia que a RN-49 já usa pra ratear
+segundos) antes de aplicar o teto — o dono nunca falou desse caso; é
+inferência de como o resto do motor já resolve o mesmo problema.
+
+Saldo que não drena em `MESES_PARA_FILA_DE_CREDITO` (3, prazo meu — o dono
+nunca fixou um número) meses vira `status='aguardando_credito'`: uma fila
+que o admin decide, nunca um crédito automático — nenhuma linha desta
+feature move dinheiro ou desconta fatura por conta própria. *Violada:* não
+há caminho de usuário. *Quem vê:* o anunciante, no painel, quando tem saldo
+ativo; e o admin, na aba "Banco de horas", incluindo a fila de decisão.
+
+**RN-54 — Contestação de cobrança suspende o acesso na hora.** *(API.md do
+Checkout: "suspenda o acesso" — instrução explícita do lado dele, não
+interpretação nossa.)* Até aqui, `cobranca_contestada` só virava pendência
+genérica pro admin decidir depois. Agora o webhook marca
+`anunciantes.suspenso = true` no mesmo golpe — a decisão de reativar (ou
+não) continua sendo do admin, mas o acesso já para antes dele olhar, porque
+contestação é o único dos sete eventos que aponta fraude ou disputa em
+andamento, não simples atraso. *Violada:* não há caminho de usuário. *Quem
+vê:* o anunciante, que perde acesso ao painel; e o admin, na pendência, que
+registra o motivo pra revisar antes de reativar.
+
 **RN-49 — Enquanto a rede é menor que o plano, o tempo dos pontos que faltam
 volta pros pontos que veiculam.** *(Decisão do dono, 17/09/2026.)* O plano
 vende N pontos. Com a rede menor que N, o anunciante recebia menos do que

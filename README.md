@@ -13,6 +13,7 @@ npm test                      # testes unitários (node:test)
 npm run lint                  # Biome — por que as regras estão assim: docs/lint.md
 npm run check                 # sintaxe + lint + testes — o que o CI roda
 npm run conciliar             # conciliação diária das assinaturas (cron em produção)
+npm run apurar-banco-horas    # apuração mensal do banco de horas (cron mensal em produção)
 ```
 
 Precisa de Node 22+ e um Postgres (local ou o projeto Supabase do Mostraí). `ffmpeg` no PATH pra normalizar criativos.

@@ -319,6 +319,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     redirecionamento hoje; a fonte é o `API.md`.
 12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
+14. [ ] **Banco de horas (G.3, construído em 18/09/2026)**: `npm run apurar-banco-horas` fecha o déficit do mês anterior e roda a válvula — **precisa de um cron job novo no Northflank**, mensal (ex.: `0 6 1 * *`, dia 1 de cada mês), do mesmo jeito que A.11/A.12 já pedem pro `conciliar` e pro `backup`. Sem o cron, o saldo nunca fecha e a prioridade do mês seguinte nunca existe — a rota de consulta (`GET /admin/banco-horas`) fica sempre vazia.
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
 
@@ -2073,7 +2074,7 @@ ponto; o plano diz em quantos"*. **Ressalva:** isso inverte o desconto por
 volume (o plano caro passa a pagar MAIS por unidade), o que é difícil de
 vender. O ponto de equilíbrio é uma decisão de preço do dono, não de código.
 
-### G.3 BANCO DE HORAS — ideia do dono, e a válvula que falta
+### G.3 BANCO DE HORAS — construído em 18/09/2026
 
 Proposta dele: *"criamos um banco de horas mensal para anúncios que não
 couberam; eles ganham prioridade no próximo mês e abatem as horas"*. Resolve
@@ -2081,23 +2082,73 @@ duas coisas de uma vez — o teto da hora e a falta de pontos —, e **torna o
 teto da RN-49 desnecessário**: em vez de concentrar agressivamente ou cortar,
 entrega o que cabe e guarda o resto com prioridade.
 
-**A ressalva, registrada uma vez:** banco que só enche é **dívida que cresce**.
-Se a rede não crescer, passa a existir hora devida que nunca será entregue — e
-isso é pior que entregar menos, porque vira promessa escrita com número. Ele
-precisa de uma válvula. A mais limpa: prioridade no mês seguinte e, se não
-drenar em N meses, o saldo vira **crédito em dinheiro** na conta. Aí a
-promessa é sempre cumprível.
+**[x] Construído por completo** — migrations 057/058, `src/bancohoras/`
+(repositório, apuração mensal, rotas), consumo com prioridade no gerador da
+playlist, tela no painel do anunciante e aba própria no admin. RN-53 em
+`docs/funcional.md`, rotas em `docs/api.md`. 5 testes novos em
+`tests/banco-horas.test.js`.
 
-**Tamanho do trabalho:** tabela própria (saldo por anunciante), consumo no
-gerador da playlist, drenagem com prioridade, e tela no painel. Não é ajuste
-de front — é bloco próprio, e por isso foi adiado.
+Três decisões minhas, nenhuma pedida nestes termos — registradas aqui pelo
+mesmo motivo do N=3 abaixo: **o dono não sancionou nenhuma delas ainda**.
 
-### G.4 Ainda não trazido pelo dono
+- **Unidade: EXIBIÇÃO (contagem), não segundo.** A duração do criativo só
+  existe como valor ATUAL (`criativos.duracao_segundos`, sem histórico) —
+  calcular o déficit em segundos seria estimar sobre estimativa de algo que
+  já mudou. Exibição casa com a unidade que a RN-30 (corte proporcional) já
+  usa. Precisou de coluna nova (`exibicoes_contador.vezes_pedidas`,
+  migration 057) pra guardar o pedido ANTES do corte — sem ela, "não coube
+  porque a hora vendeu demais" e "não coube porque a tela caiu" eram
+  indistinguíveis.
+- **A válvula não devolve dinheiro por conta própria — nunca.** A ressalva
+  original propunha "crédito em dinheiro" automático depois de N meses. Não
+  construí isso: saldo velho vira `status='aguardando_credito'`, uma fila
+  que só o admin resolve (`POST /admin/banco-horas/:id/resolver`), e a
+  resolução pode ser crédito, desconto na próxima fatura, ou nada — quem
+  decide é ele, sempre. Nenhuma linha desta feature move dinheiro ou
+  desconta fatura sozinha; é a mesma régua já usada em todo o financeiro
+  deste projeto (webhook credita, nunca cobra; arrependimento abre pedido,
+  nunca estorna sozinho).
+- **N = 3 meses pro corte da válvula.** Ele nunca fixou um número — pediu
+  "não deixar a dívida crescer pra sempre", sem dizer quanto tempo é
+  demais. Escolhi 3 como piso razoável (`MESES_PARA_FILA_DE_CREDITO`,
+  `src/bancohoras/apuracao.js`) e documentei como escolha minha em todo
+  lugar que o número aparece. **Revisar e confirmar com ele** — é o único
+  item desta seção que precisa da palavra dele antes de virar regra
+  definitiva.
 
-Ele avisou em 18/09/2026 que há **mais uma atualização do San Checkout, sobre
-mudança de plano e cancelamento**, e que traz quando a revisão permitir. As
-duas atualizações anteriores já foram lidas e adotadas (RN-50 e RN-51). Esta
-ainda **não foi lida** — nada foi assumido sobre ela.
+Conta própria (`conta_propria`) nunca acumula banco — não paga, não tem o
+que compensar; mesma exclusão que já existe em outras contas da rede.
+
+### G.4 A atualização do San Checkout sobre troca de plano — lida e aplicada em 18/09/2026
+
+Era a atualização avisada em 18/09/2026, *"sobre mudança de plano e
+cancelamento"*, que o dono disse trazer quando a revisão permitisse. Chegou
+antes — em prompt do próprio Checkout, e não só o prompt: fui direto na
+fonte (`sancompany/san_checkout`, HEAD real na hora,
+`trocaPlanoController.js`, `proporcionalService.js`, `webhookController.js`)
+confirmar cada afirmação antes de aplicar.
+
+**[x] Aplicada por completo** — rota nova `POST /trocar-plano` do Checkout
+(síncrona, cobra o acerto proporcional no cartão salvo ANTES de mudar o
+plano), evento de webhook novo `plano_trocado` (no-op do nosso lado — a
+troca já foi aplicada na hora), e o 7º caso do `cobranca_contestada`
+(suspende a conta automaticamente, RN-54 — já estava na API.md dele, só não
+tínhamos essa reação ainda). RN-52/RN-53/RN-54 em `docs/funcional.md`,
+contrato completo em `docs/api.md`.
+
+**O que ficou aposentado, não removido:** `pedido avulso` deixou de ser o
+caminho de troca de plano — `pedidosRepo.criar` e o link de checkout que
+abria pra isso não têm mais chamador. O que já existia (histórico, leitura,
+o webhook que fecha um pedido antigo) continua no ar; a aba "Trocas de
+plano" do admin passou a somar as duas origens (`UNION`, migration 059) pra
+não perder visão de nada.
+
+**Limite conhecido, aceito, não corrigido:** downgrade sem cobrança não
+grava `cobrancas_confirmadas` — e como a aba do admin lê essa tabela, uma
+troca pra plano mais barato não aparece nela. É a mesma limitação que o
+pedido avulso sempre teve com downgrade (nunca tratava o caso). Registrado
+aqui em vez de resolvido porque corrigir exigiria uma fonte de dado nova só
+pra isso, fora do que a atualização pediu.
 
 ### Revisão do dono, tópico 1 (sem login), passada pelo PC — Home (18/09/2026)
 

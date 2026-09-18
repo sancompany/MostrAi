@@ -28,9 +28,9 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/contato` | Formulário de contato → e-mail. |
 | POST | `/seja-um-ponto` | **410** — cadastro aberto de ponto foi substituído por candidatura + convite. |
 | POST | `/afiliados/cadastro` · `/afiliados/login` · `/afiliados/logout` | **410** — vendedor virou papel da conta única (migration 019). Use `/anunciantes/cadastro` e `/anunciantes/login`. |
-| POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Recebe os dois formatos do Checkout, diferenciados por `tipo` (payload de pedido não tem esse campo). **Assinatura**: idempotente por `chargeId|status`, buscada na rota de conciliação 5.3; `criada` (1ª cobrança) e `cobranca_confirmada` (renovação) creditam o ciclo numa transação; `cancelada` marca a assinatura; os demais eventos viram pendência. **Pedido avulso** (migration 041, só troca de plano hoje): idempotente pelo `chargeId` do próprio corpo; `confirmado` aplica a troca (cancela a assinatura antiga, ativa o plano novo); `recusado`/`vencido`/`chargeback`/`estornado` cancela o pedido. |
-| GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). |
-| GET | `/pedido/:id` | Consulta de pedido avulso pelo San Checkout (header `X-Checkout-Key`). |
+| POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Recebe os dois formatos do Checkout, diferenciados por `tipo` (payload de pedido não tem esse campo). **Assinatura**, 7 eventos (`criada`, `cobranca_confirmada`, `cobranca_falhou`, `cobranca_estornada`, `cobranca_contestada`, `cancelada`, `plano_trocado`): idempotente por `chargeId|status`, buscada na rota de conciliação 5.3; `criada`/`cobranca_confirmada` creditam o ciclo numa transação; `cancelada` marca a assinatura; `cobranca_contestada` suspende a conta na hora (RN-54) e vira pendência; `plano_trocado` é no-op — a troca já foi aplicada de forma síncrona por `POST /anunciantes/me/trocar-plano` (RN-52), o webhook chega só de confirmação; os demais eventos viram pendência. **Pedido avulso** (migration 041, hoje só histórico — RN-52 aposentou este caminho pra troca de plano): idempotente pelo `chargeId` do próprio corpo; `confirmado` aplica a troca (cancela a assinatura antiga, ativa o plano novo); `recusado`/`vencido`/`chargeback`/`estornado` cancela o pedido. |
+| GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). Serve assinatura com status `ativa` OU `pendente_troca` (RN-52 — a linha nova de uma troca em andamento precisa responder preço antes de confirmada). |
+| GET | `/pedido/:id` | Consulta de pedido avulso pelo San Checkout (header `X-Checkout-Key`). Só histórico (ver acima) — nenhum pedido novo nasce por aqui desde 17/09/2026. |
 
 ## Conta logada (`credentials: 'include'`)
 
@@ -45,7 +45,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | POST | `/anunciantes/logout` | Destrói a sessão. |
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |
 | POST | `/anunciantes/me/cancelar-assinatura` | Cliente cancela a própria assinatura (migration 041, 16/09/2026). Cobertura já paga continua até `data_expiracao`. 400 sem assinatura ativa. |
-| POST | `/anunciantes/me/trocar-plano` | `{planoNovoId}` → `{checkoutUrl, valor, credito, custoNovo}`. Gera pedido avulso (não assinatura, que não aceita desconto) pela diferença entre o preço cheio do plano novo e o crédito dos dias que restam no atual (30 dias por mês). 400 se o crédito já cobrir o plano novo — nunca cobra zero nem devolve dinheiro. Paga a diferença, o webhook cancela a assinatura antiga e aplica o plano novo; a cobertura vale pelo período do plano novo, sem assinatura recorrente nova (precisa assinar de novo ao vencer, e a conciliação diária avisa por e-mail 7 dias antes). |
+| POST | `/anunciantes/me/trocar-plano` | `{planoNovoId}` → `{ok, valor, ciclo, acerto}`. Síncrono (RN-52, `POST /trocar-plano` do Checkout, 17/09/2026 — aposenta o pedido avulso pra este fim; sem `checkoutUrl`, não há redirecionamento nem pop-up). 400 sem plano pago ativo, plano cortesia, cobertura vencida, ou trocando pro mesmo plano; 409 sem assinatura ativa no Checkout. Cria a linha nova em `pendente_troca`, chama o Checkout, que cobra o acerto proporcional no cartão salvo ANTES de mudar o plano. Em erro (402/409/502… do Checkout), apaga a linha pendente e devolve o erro dele, sem tocar em nada mais. Em 200: numa transação, marca a linha antiga `trocada`, a nova `ativa`, atualiza `anunciantes.plano_id`, e só grava `cobrancas_confirmadas` (com `plano_anterior_id`) se `acerto.cobrado` — downgrade sem cobrança não gera essa linha (ver `GET /admin/pedidos-avulsos`). Falha ao gravar depois de já ter cobrado no Checkout → 502 e pendência pro admin, nunca finge que a troca não aconteceu. |
 | GET/POST/DELETE | `/anunciantes/:id/criativos[/:criativoId]` | Criativos do anunciante (upload multipart, normalização por ffmpeg, fila de aprovação). |
 | GET | `/anunciantes/:id/exibicoes` | O que rodou pro anunciante, por tela e por dia. |
 | GET | `/anunciantes/:id/exibicoes.csv?dias=N` | Comprovante de veiculacao em planilha (RN-19). `dias` entre 1 e 365, padrao 30. |
@@ -54,6 +54,7 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | GET | `/anunciantes/:id/dispositivos` | Telas dos pontos da conta, com exibições/anunciantes em 30 dias e `ponto_status`. |
 | GET | `/anunciantes/:id/dispositivos/:dispositivoId/painel` | O que rodou naquela tela: `{porAnunciante, porDia}`. |
 | POST | `/anunciantes/:id/dispositivos/:dispositivoId/pin` | Dono do ponto define o PIN da própria tela (guardado com hash, mesma regra do `/admin/dispositivos/:id/pin`). |
+| GET | `/anunciantes/me/banco-horas` | Saldo do banco de horas (G.3, RN-53): `{saldo, linhas:[{mesReferencia, saldo}]}`, só linhas `status='ativo'` — o que ainda pode virar prioridade na próxima geração de playlist. Nunca mostra saldo de outra conta, nem linha já drenada ou em fila de crédito. |
 | GET | `/vendedor/painel` | Papel `vendedor`: `{vendedor, comissoes, totalComissionado, totalPago, totalAReceber}`. |
 | PATCH | `/vendedor/me` | `{chave_pix}` — vendedor completa/troca a própria chave. |
 
@@ -92,7 +93,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 Tudo sob `/admin` passa por `requireAdminSession` (`src/server.js`). A porta de
 verdade é o Cloudflare Access; a sessão é a segunda camada (`CONSTRAINTS.md`).
-**As 66 rotas estão listadas uma a uma de propósito** — contrato que só existe
+**As 74 rotas estão listadas uma a uma de propósito** — contrato que só existe
 em prosa não dá para conferir contra o código, e conferir é o que a Estação 4
 pede.
 
@@ -105,7 +106,8 @@ pede.
 ### Resumo
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
+| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`, `bancohoras` — linhas `aguardando_credito` não resolvidas, G.3), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
+| GET | `/admin/diagnostico/smtp` | Não manda e-mail nenhum — só diz se `SMTP_PASS` existe, quantos caracteres tem e se sobrou espaço no meio (senha de app do Gmail tem 16; os espaços que o Google mostra são só separação visual). Não devolve a senha nem parte dela. Existe porque um SMTP mal configurado só aparece tarde e por acaso (item 9, `docs/PENDENCIAS.md`). |
 
 ### Entrada de gente (candidatura → convite → conta)
 | Método | Rota | O que faz |
@@ -144,6 +146,7 @@ pede.
 | POST | `/admin/dispositivos/:id/pin` | define o PIN (guardado com hash) |
 | GET | `/admin/dispositivos/:id/painel` | o mesmo painel que o PIN abre, visto pelo admin |
 | POST | `/admin/pontos/:id/aparelho` | **410** — a chave é por TELA desde a migration 019. Use `POST /admin/dispositivos/:id/chave`. |
+| POST | `/admin/pontos/foto-exemplo` | Foto de exemplo do "ponto completo" mostrada em `pontos.html` — ilustração genérica ao lado do mapa, não é foto de nenhum ponto real. Chave fixa no bucket (upsert sobrescreve); a URL salva leva `?v=` pra não ficar em cache. |
 
 ### Catálogo
 | Método | Rota | O que faz |
@@ -187,7 +190,7 @@ pede.
 | GET | `/admin/cobrancas` | cobranças confirmadas |
 | GET | `/admin/mensagens-contato` | caixa de entrada do formulário do site, mais recente primeiro. Traz `email_enviado` (se o aviso por e-mail chegou) e `respondida_em`. Quando `email_enviado` é `false`, esta rota é o ÚNICO lugar onde a mensagem existe |
 | PATCH | `/admin/mensagens-contato/:id` | `{respondida}` — marca ou desmarca como respondida. 404 se a mensagem não existe |
-| GET | `/admin/pedidos-avulsos` | trocas de plano em lista própria: quem trocou, de qual plano pra qual, o valor da diferença e a situação (`pendente`/`pago`/`cancelado`). Leitura pura; o pago também aparece em `/admin/cobrancas`. |
+| GET | `/admin/pedidos-avulsos` | trocas de plano em lista própria: quem trocou, de qual plano pra qual, o valor da diferença e a situação. Leitura pura; o pago também aparece em `/admin/cobrancas`. Desde RN-52 (17/09/2026) é um `UNION ALL` de duas origens — os `pedidos_avulsos` de antes (`pendente`/`pago`/`cancelado`) e as trocas novas, lidas de `cobrancas_confirmadas.plano_anterior_id`. **Limite conhecido, não corrigido:** downgrade sem cobrança não grava `cobrancas_confirmadas`, então não aparece nesta lista — mesma limitação que o pedido avulso sempre teve com downgrade. |
 | PATCH | `/admin/cobrancas/:id/nota-fiscal` | marca a nota como emitida |
 | GET | `/admin/comissoes` | comissões geradas |
 | PATCH | `/admin/comissoes/:id` | `{pago}` |
@@ -202,3 +205,10 @@ pede.
 | POST | `/admin/eventos-pendentes/:id/aplicar` | credita o ciclo daquele evento de verdade. Confere a cobrança no San Checkout ANTES (`consultarAssinatura`): um evento de "cobrança falhou" também traz `planoId`, e sem a conferência o botão daria cobertura por dinheiro que não entrou. 400 se o evento não aponta pra assinatura conhecida, se a conta sumiu ou se já foi resolvido |
 | GET | `/admin/arrependimentos` | devoluções por arrependimento, pendentes primeiro |
 | POST | `/admin/arrependimentos/:id/estornado` | `{comprovante}` — fecha o pedido depois de devolver no Checkout/Asaas. 404 se já estornado |
+
+### Banco de horas (G.3, RN-53)
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/banco-horas` | Todas as linhas, mais recente primeiro — inclui `ativo`, `drenado` e `aguardando_credito`. |
+| GET | `/admin/banco-horas/aguardando-credito` | Só a fila da válvula: linhas que passaram de `MESES_PARA_FILA_DE_CREDITO` (3, prazo meu — o dono não fixou um número) sem drenar tudo. É decisão humana daqui pra frente; a rota só mostra quem está esperando. |
+| POST | `/admin/banco-horas/:id/resolver` | Marca a linha como resolvida (`resolvido_em`) — registra QUE o admin decidiu (crédito manual, desconto na próxima fatura, ou nada), nunca decide o quê nem move dinheiro sozinho. 404 se a linha não existe ou já foi resolvida. |
