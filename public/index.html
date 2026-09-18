@@ -83,7 +83,7 @@
           <p class="lead">Seu anúncio roda nas telas de restaurantes, academias, barbearias e salas de espera, no momento exato em que a pessoa tem tempo pra olhar.</p>
           <p class="hero-preco" id="heroPreco" hidden></p>
           <div class="cta-row">
-            <a class="btn primary" href="/planos.html">Ver planos e preços</a>
+            <a class="btn primary" href="/planos.html">Ver planos</a>
             <a class="btn ghost" href="/anunciante/cadastro.html">Criar minha conta</a>
           </div>
           <p class="hero-fluxo" id="heroFluxo" hidden></p>
@@ -104,8 +104,8 @@
           </div>
           <div class="split-card">
             <span class="tag">Ponto (estabelecimento)</span>
-            <h3>Sua parede rende dinheiro todo mês</h3>
-            <p id="cardPonto">Tela, player e instalação por nossa conta. Você escolhe: <b data-ajuda-custo>R$ 50 por mês de ajuda de custo</b> ou, abrindo mão dela, o dobro de tempo de tela pro seu negócio.</p>
+            <h3>Uma tela grátis no seu comércio</h3>
+            <p>A gente instala tudo sem custo pra você. Em troca, escolhe como quer ser recompensado.</p>
             <a class="btn ghost block" href="/seja-um-ponto.html">Quero uma tela no meu comércio</a>
           </div>
           <div class="split-card">
@@ -126,22 +126,22 @@
           <div class="step">
             <div class="n">1</div>
             <h4>Crie sua conta e escolha o plano</h4>
-            <p>Escolha o plano e cadastre a empresa pelo site, em menos de dois minutos. A cobertura começa assim que o pagamento é aprovado.</p>
+            <p>Cadastre a empresa e escolha o plano, pelo site.</p>
           </div>
           <div class="step">
             <div class="n">2</div>
             <h4>Suba seu vídeo</h4>
-            <p>Imagem ou vídeo em pé (9:16) — a gente ajusta o enquadramento sem cortar nada. Não tem arte pronta? A gente resolve com você pelo WhatsApp.</p>
+            <p>Imagem ou vídeo em pé. Sem arte pronta? A gente ajuda.</p>
           </div>
           <div class="step">
             <div class="n">3</div>
             <h4>A gente aprova e põe no ar</h4>
-            <p>Conferimos a peça, normalmente no mesmo dia útil, e ela entra no rodízio. Você recebe o aviso quando sobe.</p>
+            <p>A peça entra no rodízio, normalmente no mesmo dia.</p>
           </div>
           <div class="step">
             <div class="n">4</div>
             <h4>Acompanhe exibição por exibição</h4>
-            <p>No seu painel: quantas vezes rodou, em quais pontos e quanto custou cada exibição.</p>
+            <p>Veja no painel quantas vezes rodou, e onde.</p>
           </div>
         </div>
       </div>
@@ -155,34 +155,73 @@
         <div class="razoes">
           <div class="razao">
             <b>Tempo de espera vira atenção</b>
-            <span>São minutos em que a pessoa não tem o que fazer além de olhar. Seu anúncio não interrompe nada, ele preenche.</span>
+            <span>Minutos sem nada pra fazer além de olhar. É aí que seu anúncio entra.</span>
           </div>
           <div class="razao">
             <b>Rotação garantida, não promessa</b>
-            <span>Seu plano diz quanto tempo de tela você tem a cada hora e em quantos pontos. E o painel mostra cada exibição que aconteceu de verdade.</span>
+            <span>Seu plano diz o tempo de tela e os pontos. O painel mostra cada exibição real.</span>
           </div>
           <div class="razao">
             <b>Sem concorrente do seu lado</b>
-            <span>Barbearia não anuncia dentro de outra barbearia. A rede respeita o segmento de cada anunciante.</span>
+            <span>Barbearia não vê anúncio de outra barbearia. A rede respeita o segmento de cada uma.</span>
           </div>
           <div class="razao">
             <b>Você troca o anúncio quando quiser</b>
-            <span>Promoção nova, data comemorativa, produto que chegou. Sobe pelo celular e entra no ar depois da aprovação.</span>
+            <span>Promoção nova, produto que chegou: sobe pelo celular e entra no ar depois da aprovação.</span>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="tight u-ta-c">
+    <section class="tight">
       <div class="wrap">
-        <h2>Esteja presente. Seja lembrado.</h2>
-        <p class="lead u-m-0 u-centro u-mb-28">Escolha seu plano e coloque o seu negócio na rotina da cidade.</p>
-        <a class="btn primary" href="/planos.html">Ver planos e preços</a>
+        <p class="eyebrow u-ta-c">Fale com a gente</p>
+        <h2 class="u-ta-c">Tem uma dúvida? A gente responde.</h2>
+        <div class="contato-grid u-mt-28">
+          <form class="card u-m-0 u-mw-livre" id="formContato">
+            <div class="field-row">
+              <div class="u-col">
+                <label for="nome">Seu nome</label>
+                <input id="nome" name="nome" required>
+              </div>
+              <div class="u-col">
+                <label for="telefone">WhatsApp <span class="u-fw-400">*opcional</span></label>
+                <input id="telefone" name="telefone">
+              </div>
+            </div>
+            <div>
+              <label for="email">E-mail</label>
+              <input id="email" name="email" type="email" required>
+            </div>
+            <div>
+              <label for="mensagem">Sua mensagem</label>
+              <textarea id="mensagem" name="mensagem" rows="6" required></textarea>
+            </div>
+            <button class="btn primary block" type="submit">Enviar mensagem</button>
+            <p class="form-msg" id="msg"></p>
+          </form>
+
+          <aside class="contato-lado">
+            <div class="split-card">
+              <span class="tag">Resposta rápida</span>
+              <h3>Prefere conversar agora?</h3>
+              <p>No WhatsApp a gente responde de <strong>segunda a sexta, das 9h às 18h</strong>, geralmente em minutos.</p>
+              <a class="btn primary block" href="https://wa.me/5516994635946?text=Ol%C3%A1!%20Vim%20pelo%20site%20da%20Mostraí%20e%20quero%20saber%20mais." data-wa="Olá! Vim pelo site da Mostraí e quero saber mais." target="_blank" rel="noopener">Chamar no WhatsApp</a>
+            </div>
+            <div class="split-card">
+              <span class="tag">Outros canais</span>
+              <h3>Onde nos encontrar</h3>
+              <p>E-mail: <a href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a><br>
+              Matão, SP. Parte do ecossistema San &amp; Co.</p>
+            </div>
+          </aside>
+        </div>
       </div>
     </section>
   </main>
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
   <script src="/index.page.js"></script>
+  <script src="/contato.page.js"></script>
 </body>
 </html>

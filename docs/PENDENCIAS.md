@@ -2098,3 +2098,53 @@ Ele avisou em 18/09/2026 que há **mais uma atualização do San Checkout, sobre
 mudança de plano e cancelamento**, e que traz quando a revisão permitir. As
 duas atualizações anteriores já foram lidas e adotadas (RN-50 e RN-51). Esta
 ainda **não foi lida** — nada foi assumido sobre ela.
+
+### Revisão do dono, tópico 1 (sem login), passada pelo PC — Home (18/09/2026)
+
+**H1. [x] Card do Ponto prometia dinheiro pra quem escolhe a modalidade que
+NÃO dá dinheiro.** *"Sua parede rende dinheiro todo mês (…) está rendendo
+dinheiro pra quem? Está louco em afirmar isso."* — o título e o texto do
+card citavam "R$ 50 por mês de ajuda de custo" como se fosse a única
+recompensa, mas a segunda modalidade do comodato troca o dinheiro por mais
+tempo de tela, sem pagar nada. Era a mesma família de erro do "triplo de
+espaço" já corrigido em `seja-um-ponto.html` (F-D3.2) — e ficou pra trás
+porque a home é uma página separada.
+
+Título → **"Uma tela grátis no seu comércio"**. Texto → **"A gente instala
+tudo sem custo pra você. Em troca, escolhe como quer ser recompensado."**
+O valor exato (R$ 50, ou o dobro de tempo de tela) fica só em
+`seja-um-ponto.html` e no contrato de comodato — os dois lugares que já
+versionam esse número quando o dono mexe nele pelo admin. O `data-ajuda-custo`
+que buscava o valor em `/planos-ponto` só existia pra preencher essa frase;
+saiu junto com ela, do HTML e de `index.page.js`.
+
+**H2. [x] "Como funciona" — passo a passo curto, sem explicação longa.**
+Cada um dos 4 passos perdeu a explicação (prazo de "menos de dois minutos",
+regra de cobertura, formato 9:16, etc.) e ficou com uma frase funcional. O
+detalhe continua dito na tela onde a pessoa de fato executa cada passo
+(cadastro, upload, painel) — nada se perdeu, só saiu do lugar que é vitrine.
+
+**H3. [x] Os 4 cards de "Por que funciona" encurtados.** O eyebrow, o título
+e o lead da seção ficaram como estavam — o dono disse que gostou.
+
+**H4. [x] Botão "Ver planos e preços" → "Ver planos" em todo lugar que
+redireciona pra `/planos.html`.** Dois no `index.html` (hero e o antigo
+fecho) e um em `404.html` ("Ver os planos" → "Ver planos"). Botões de ação
+dentro do painel do anunciante ("Escolher plano", "Trocar de plano") não
+mudaram — são outra ação, não "ver".
+
+**H5. [x] A home não termina mais num botão de planos.** *"Só não gostei
+dessa finalização (…) coloque a página de contatos ali, somente o formulário
+e a resposta rápida do WhatsApp e outros canais."* A seção final
+("Esteja presente. Seja lembrado." + botão) foi substituída por um atalho de
+contato embutido: o mesmo formulário de `contato.html`, o card de resposta
+rápida (WhatsApp) e o de outros canais (e-mail) — **sem** o card de
+Privacidade/LGPD, que fica só na página `contato.html` completa, de onde a
+FAQ de direitos do titular já é linkada. O link **Contato** do menu continua
+apontando pra página inteira, como pedido. `contato.page.js` (o script do
+envio) é genérico — mesmos ids, reaproveitado sem duplicar lógica.
+
+Conferido no navegador nos dois tamanhos, envio do formulário testado
+(mock da API): sem "R$ 50" na home, sem menção a LGPD, `npm run check`
+verde (sintaxe + lint + formato + 92 testes), sem rolagem horizontal no
+celular.
