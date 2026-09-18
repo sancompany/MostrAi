@@ -112,7 +112,19 @@
     // vender fala direto com a gente por um canal oficial, e quem entra,
     // entra por convite que o dono gera à mão depois da conversa. Não é
     // formulário: é aviso só, o mesmo tom do card da home.
-    vendedor(_estado) {
+    vendedor(estado) {
+      // Pedido de antes de 18/09/2026 (self-service já aposentado, mas a
+      // linha antiga pode continuar em aberto) — mesmo tratamento do card
+      // de ponto: nunca deixar sem resposta quem já pediu.
+      const pedido = estado.modos.vendedor.pedido;
+      if (pedido) {
+        return `
+          <div class="card wide modo-card u-ta-c">
+            <p class="eyebrow">Modo vendas</p>
+            <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
+            <p class="form-hint">A gente chama no WhatsApp pra explicar o produto e a comissão. Assim que liberar, seu cupom aparece aqui.</p>
+          </div>`;
+      }
       return `
         <div class="card wide modo-card u-ta-c">
           <p class="eyebrow">Modo vendas</p>

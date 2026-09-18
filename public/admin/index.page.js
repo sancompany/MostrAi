@@ -861,16 +861,6 @@ async function renderPontos(el) {
   </tbody></table>`;
 
   el.innerHTML = `
-    ${avisoDivergencia(planos)}
-    <p class="empty-state u-ta-l u-p-0 u-pb-12">
-      <b>O produto é do tier; a oferta é do ciclo.</b>
-      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
-      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
-      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
-      <b>Mais escolhido</b> são deste ciclo e desse cartão.
-      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
-      planos ao mesmo tempo.
-    </p>
     <div class="card u-mb-16 u-mw-420">
       <label>Foto de exemplo do "ponto completo" (site público)</label>
       <p class="u-dim u-fs-72 u-m-0 u-mb-8">Aparece em "Onde estamos?", ao lado do mapa. Não é a foto de nenhum
@@ -910,7 +900,7 @@ async function renderPontos(el) {
     }
     <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo pedido de "meu ponto" no painel → candidatura → você libera na conta; o cadastro manual abaixo é pra exceção.</p>`;
 
-  turbinarTabela(el.querySelector('.tabela-caixa'));
+  if (pontos.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
   el.querySelectorAll('[data-ponto]').forEach((campo) =>
     campo.addEventListener('change', () => {
@@ -1282,7 +1272,7 @@ async function renderAnunciantes(el) {
         : '<p class="empty-state">Nenhum anunciante ainda. Cadastro pelo site cai aqui na hora, ou use "+ Novo anunciante" acima pra exceção.</p>'
     }`;
 
-  turbinarTabela(el.querySelector('.tabela-caixa'));
+  if (anunciantes.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
   el.querySelectorAll('[data-anunciante]').forEach((sel) =>
     sel.addEventListener('change', async () => {
@@ -2868,7 +2858,7 @@ async function renderBancoHoras(el) {
         : '<p class="empty-state">Nenhum déficit apurado ainda.</p>'
     }`;
 
-  turbinarTabela(el.querySelector('.tabela-caixa'));
+  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
   el.querySelectorAll('[data-resolver-banco]').forEach((btn) =>
     btn.addEventListener('click', async () => {
@@ -2962,7 +2952,7 @@ async function renderOcupacaoPontos(el) {
         : '<p class="empty-state">Nenhum ponto com anunciante associado ainda.</p>'
     }`;
 
-  turbinarTabela(el.querySelector('.tabela-caixa'));
+  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
   el.querySelectorAll('[data-liberar-ponto]').forEach((btn) =>
     btn.addEventListener('click', async () => {
