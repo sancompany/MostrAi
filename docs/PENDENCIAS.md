@@ -2908,6 +2908,54 @@ dono):** duas formas, escolha dele:
 Nenhuma das duas foi aplicada nesta rodada — o dono pediu só pra
 guardar como pendência por enquanto.
 
+### P42 — "Fechado" acima estava errado. Ainda não chega (18/09/2026, mesmo dia)
+
+O dono aplicou a opção 1 (alias de recebimento no Admin Console) e testou
+de novo: duas mensagens de teste pelo formulário ("mensagem de teste 123"
+em 17/09, "teste 1234" em 18/09), as duas com `email_enviado = true` no
+admin (aba "Mensagens do site", aviso verde "enviado") — e **nenhuma das
+duas aparece na caixa real do Gmail** de `admin@sancocore.com.br` (print
+da caixa, 20 mensagens, nenhuma delas). A frase "Fechado" da seção
+anterior foi escrita cedo demais, só com a confirmação do "Testar agora"
+(que só faz login, não prova entrega) — corrigindo aqui.
+
+**O que já foi feito nesta rodada, sem esperar resposta do dono:**
+adicionado ao `GET /admin/diagnostico/smtp` (e mostrado no botão "Testar
+agora" do admin) o endereço de **remetente** e o endereço de **destino do
+formulário de contato**, calculados exatamente como o código realmente usa
+(`remetente()` e `MOSTRAI_EMAIL_CONTATO || remetente()`) — não é segredo
+(é só endereço de e-mail), e deixa o dono confirmar OS DOIS lados sem
+precisar que ninguém leia variável de ambiente no Northflank.
+
+**Duas hipóteses, nenhuma delas provada — ele precisa checar, ninguém aqui
+tem acesso à caixa dele:**
+1. **Filtro/aba escondendo, não sumindo.** O print da caixa mostra só
+   avisos automáticos (Google Cloud, Google Payments, GitHub, Northflank,
+   Cloudflare) — exatamente o tipo de remetente que o Gmail costuma jogar
+   na aba "Promoções" ou "Atualizações" quando as abas estão ativadas, e um
+   e-mail de mesma-conta-pra-mesma-conta (`mostrai@` → `mostrai@`, os dois
+   apontando pro mesmo `admin@`) é candidato claro a cair numa dessas ou no
+   Spam por regra automática de "e-mail enviado por mim mesmo". Pedido ao
+   dono: procurar `in:anywhere subject:"Contato pelo site"` (busca em TODA
+   a caixa, não só Principal) e olhar Config → Filtros e endereços
+   bloqueados por uma regra que arquive ou marque como lido mensagens
+   vindas de `mostrai@` ou `admin@`.
+2. **Alias de recebimento (Diretório) ≠ alias de envio (Gmail "Enviar
+   e-mail como").** O Admin Console resolve quem TEM a caixa; mas o Gmail
+   ainda pode aplicar sua própria checagem de remetente autorizado quando o
+   campo "De" da mensagem SMTP não é o endereço da conta autenticada — e
+   isso pode aceitar na submissão (`sendMail()` não vê erro) e ainda assim
+   não entregar, sem gerar bounce visível. Teste que decide isso sem
+   depender de teoria: trocar `MOSTRAI_EMAIL_FROM` e `MOSTRAI_EMAIL_CONTATO`
+   no Northflank para `admin@sancocore.com.br` (a conta real, mesma lição
+   já aplicada ao `SMTP_USER` — RN-53/P42 anterior) e mandar uma mensagem
+   de teste. Só variável de ambiente, sem deploy — o dono pode fazer isso
+   direto, ou avisar aqui que quer que eu troque.
+
+**Não fechado.** Volta a ser pendência até uma mensagem de teste aparecer
+de fato na caixa dele — sem essa prova, "Testar agora" positivo não basta
+(ele testa login, não entrega).
+
 ### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
 
 O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las

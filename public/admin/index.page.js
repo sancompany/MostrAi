@@ -3229,7 +3229,7 @@ async function renderEventos(el) {
     alvo.textContent = 'testando...';
     try {
       const r = await pegar('/admin/diagnostico/smtp');
-      const detalhe = `${esc(r.host || '?')}:${r.porta || '?'} · ${esc(r.usuario || '?')} · senha com ${r.senha_caracteres} caracteres${r.senha_tem_espaco ? ' (TEM ESPAÇO — a senha de app do Gmail tem 16 e os espaços não entram)' : ''}`;
+      const detalhe = `${esc(r.host || '?')}:${r.porta || '?'} · usuário ${esc(r.usuario || '?')} · senha com ${r.senha_caracteres} caracteres${r.senha_tem_espaco ? ' (TEM ESPAÇO — a senha de app do Gmail tem 16 e os espaços não entram)' : ''}<br>Contato do site sai de <b>${esc(r.remetente || '?')}</b> e cai em <b>${esc(r.destino_contato || '?')}</b> — confira estes dois endereços na caixa (Tudo, Spam e as outras abas, não só Principal) e em Configurações → Filtros e endereços bloqueados.`;
       alvo.innerHTML = r.ok
         ? `<span class="badge badge-ok">Funcionando</span> O servidor aceitou a senha.<br><span class="u-fs-72">${detalhe}</span>`
         : `<span class="badge badge-err">Não passou</span> ${esc(r.erro || 'erro desconhecido')}<br><span class="u-fs-72">${detalhe}</span>${r.dica ? `<div class="u-mt-8"><b>Provável causa:</b> ${esc(r.dica)}</div>` : ''}`;

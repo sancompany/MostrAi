@@ -358,6 +358,7 @@ async function diagnosticarSmtp() {
     porta: Number(process.env.SMTP_PORT) || null,
     usuario: process.env.SMTP_USER || null,
     remetente: remetente() || null,
+    destino_contato: process.env.MOSTRAI_EMAIL_CONTATO || remetente() || null,
     senha_definida: Boolean(senha),
     senha_caracteres: senha.length,
     senha_tem_espaco: /\s/.test(senha),
