@@ -2220,3 +2220,61 @@ Conferido nos dois tamanhos, com rede parcial real (2 no ar + 1 a
 instalar): eyebrow/h1/lead e o aviso completo (visível + `<details>`
 aberto) batendo com o texto pedido, `npm run check` verde (92 testes), sem
 rolagem horizontal no celular.
+
+### Revisão do dono, tópico 1 — Planos, rodada 5 (18/09/2026)
+
+**P15. [x] Aviso laranja movido pra cima do seletor de ciclo.** Ordem
+antiga: seletor → nota do ciclo → aviso de rede. Nova: **aviso de rede →
+seletor → nota do ciclo.** Conferido no DOM e nas duas telas.
+
+**P16. [x] "Como eu cancelo?" atualizada — já existe autoatendimento.**
+A resposta mandava falar com a gente por WhatsApp/e-mail pra algo que o
+próprio painel já resolve sozinho: o botão **"Cancelar assinatura"**
+(`btnCancelarAssinatura`, `painel.page.js`). A FAQ agora aponta pro botão
+primeiro.
+
+**P17. [x] "Quando meu anúncio começa a rodar?"** perdeu o parêntese
+"(dá pra fazer pelo celular)" — informação certa, mas redundante: o painel
+já é responsivo em toda parte, não precisa ser dito aqui.
+
+**P18. [x] "Não tenho vídeo. Dá pra anunciar assim mesmo?" reescrita e
+reorganizada em dois parágrafos**, corrigindo uma promessa que não é mais
+verdadeira: a versão antiga dizia *"ou te indica quem grava um vídeo na
+sua loja"* — a Mostraí **não grava conteúdo no comércio do anunciante**.
+Agora:
+· 1º parágrafo — o que está incluído: o cliente manda logo, fotos, um
+  vídeo que já tenha e o contato pelo WhatsApp; a Mostraí edita e monta o
+  anúncio; isso é parte do plano (cobre a veiculação).
+· 2º parágrafo — o que é serviço à parte: produção profissional com
+  equipe, preço combinado antes de qualquer cobrança (RN-45, sem mudança).
+
+**P19. [x] Pergunta "Vou receber nota fiscal?" removida.**
+
+### P20. [ ] "O preço pode subir depois que eu assinar?" — NÃO ALTERADA,
+e o motivo fica registrado aqui
+
+O dono pediu pra mudar a resposta: *"o checkout aceita troca de preço,
+então sim, mudanças aconteceram — e isso entra como um dos pontos de
+mudanças na atualização do checkout"* (a terceira atualização pendente do
+San Checkout, sobre troca de plano e cancelamento — ver seção G.4, ainda
+não detalhada por ele).
+
+**Não mudei o texto ainda**, porque essa garantia não vive só nesta FAQ —
+ela é **RN-11** (`docs/funcional.md`, sustentada pela versão de plano da
+RN-27: quem assina fica na versão que aceitou) e está **também escrita no
+Termos de Uso** (`termos-de-uso.html`: *"Os planos (…) e valores vigentes
+são sempre os exibidos (…) no momento da contratação"*). Trocar só a
+resposta da FAQ deixaria o site contradizendo o próprio contrato: FAQ diz
+que o preço pode mudar, Termos de Uso diz que não.
+
+Antes de tocar nisso preciso saber, do dono: a regra NOVA é que o preço
+**pode mesmo subir pra quem já assinou** (revogando a RN-11), ou é algo
+mais específico — por exemplo, o Checkout **agora permitindo** trocar o
+valor cobrado de uma assinatura ativa é uma capacidade técnica nova, que
+não obriga a Mostraí a usá-la pra reajustar quem já pagou. A resposta a
+essa pergunta decide se RN-11, esta FAQ e o Termos de Uso mudam juntos, ou
+se nada muda e a resposta atual continua certa. Fica esperando o resto da
+atualização do Checkout (G.4), como ele mesmo combinou.
+
+Conferido: 9 perguntas na FAQ (era 10), textos batendo com o pedido nos
+dois tamanhos, `npm run check` verde (92 testes), sem rolagem horizontal.
