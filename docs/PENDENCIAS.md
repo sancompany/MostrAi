@@ -2112,12 +2112,58 @@ mesmo motivo do N=3 abaixo: **o dono não sancionou nenhuma delas ainda**.
   "não deixar a dívida crescer pra sempre", sem dizer quanto tempo é
   demais. Escolhi 3 como piso razoável (`MESES_PARA_FILA_DE_CREDITO`,
   `src/bancohoras/apuracao.js`) e documentei como escolha minha em todo
-  lugar que o número aparece. **Revisar e confirmar com ele** — é o único
-  item desta seção que precisa da palavra dele antes de virar regra
-  definitiva.
+  lugar que o número aparece. **Ainda não confirmado.** Perguntei o que ele
+  achava do mecanismo em 18/09/2026 e ele respondeu sobre a PRIORIDADE (item
+  abaixo), não sobre o número — o corte de 3 meses em si continua sem
+  palavra dele.
+
+**Ajustado em 18/09/2026, depois de conversa com o dono:**
+
+- **Prioridade cresce com a idade da dívida.** Pedido dele: *"quanto mais
+  tempo no banco tiver mais prioridade tem"*, pra tentar drenar antes da
+  válvula. O teto (antes fixo em dobrar o pedido normal) agora escala de
+  1x até `MULTIPLICADOR_MAXIMO_BANCO` (3, número meu, não pedido nestes
+  termos) conforme a linha mais antiga se aproxima dos 3 meses da válvula.
+  Verificado ao vivo (script descartável, sem sobra no banco): a mesma
+  dívida de 10 exibições entregou 10 no total com 1 mês de idade e 16 com
+  3 meses.
+- **Pode tomar o lugar de outro anunciante na hora — confirmado por ele.**
+  Perguntei se o banco de horas devia se limitar ao espaço vago da hora
+  (nunca afetar ninguém) ou se podia competir de verdade. Resposta dele:
+  pode competir, desde que quem cedeu o lugar tenha ISSO refletido no
+  próprio banco de horas — e é exatamente o que já acontecia: o RN-30 (corte
+  proporcional) já registra `vezes_pedidas > vezes_programadas` de quem foi
+  cortado, seja lá qual for o motivo do corte, e a apuração do mês seguinte
+  credita esse déficit pra ELE também. Nenhum código novo — só confirmação
+  de que o ciclo já fecha sozinho.
+- **Nenhuma peça roda duas vezes seguidas.** Pedido dele, independente da
+  prioridade: `espalhar` (`src/lib/pacing.js`) agora evita vizinho igual
+  antes de aceitar qualquer vaga, com fallback pra nunca cortar entrega
+  (só a ordem muda, quando é matematicamente impossível evitar).
+- **Sobre o timing da troca de plano no dia do vencimento (a corrida com o
+  robô de cobrança da própria Asaas), ele decidiu deixar como está** — não
+  é algo que o Mostraí ou o San Checkout controlam por fora, e o risco é
+  de um único ciclo, no máximo.
+- **Rotação dos segredos que apareceram no terminal** (SESSION_SECRET,
+  ADMIN_PASSWORD, SAN_CHECKOUT_KEY, DATABASE_URL, SMTP_PASS, chave do
+  Google) **fica de lado por agora**, a pedido dele — meu registro
+  continua de pé se ele quiser revisitar.
 
 Conta própria (`conta_propria`) nunca acumula banco — não paga, não tem o
 que compensar; mesma exclusão que já existe em outras contas da rede.
+
+### G.7 Pendência nova: ponto ficar cheio deve bloquear escolha, não só compensar
+
+O dono trouxe em 18/09/2026, na mesma conversa: quando um ponto se aproxima
+do limite de tempo vendido na hora, ele quer que a ESCOLHA de pontos
+(`pontosDoAnunciante`, RN-42) pare de oferecer aquele ponto pra quem ainda
+não escolheu — "redirecionar aos outros pontos" antes de chegar a vender
+além da conta, em vez de só compensar depois (RN-49) ou cortar na hora
+(RN-30). É mecanismo DIFERENTE do banco de horas — não mexe em prioridade
+de playlist, mexe em quais pontos entram na conta de um anunciante quando
+a rede distribui automaticamente. **Não construído ainda** — falta decidir
+com ele o limite exato (que fração da hora vendida bloqueia um ponto pra
+escolha nova) antes de desenhar.
 
 ### G.4 A atualização do San Checkout sobre troca de plano — lida e aplicada em 18/09/2026
 

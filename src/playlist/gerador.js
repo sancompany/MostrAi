@@ -11,6 +11,21 @@ const {
 const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const bancoHorasRepo = require('../bancohoras/repository');
+const { MESES_PARA_FILA_DE_CREDITO } = require('../bancohoras/apuracao');
+
+// Quanto mais perto a dívida chega da válvula (MESES_PARA_FILA_DE_CREDITO),
+// mais peso ela ganha na hora — pedido do dono, 18/09/2026: "quanto mais
+// tempo no banco tiver, mais prioridade tem", pra tentar drenar sozinha
+// antes de precisar virar decisão do admin. Escala de 1x (dívida deste mês,
+// mesmo teto de sempre: nunca mais que dobrar o pedido) até
+// MULTIPLICADOR_MAXIMO_BANCO (dívida na borda da válvula) — número meu, o
+// dono não pediu nestes termos, documentado como tal em docs/PENDENCIAS.md.
+const MULTIPLICADOR_MAXIMO_BANCO = 3;
+
+function multiplicadorPorIdade(idadeMeses) {
+  const fracao = Math.min((idadeMeses || 0) / MESES_PARA_FILA_DE_CREDITO, 1);
+  return 1 + fracao * (MULTIPLICADOR_MAXIMO_BANCO - 1);
+}
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
 // recebe do ponto a categoria (bloqueio de concorrente) e a cota de
@@ -238,10 +253,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     const frequenciaBase = quantasInsercoes(a, segundos, duracaoSegundos);
     // Banco de horas (G.3): quem tem saldo (déficit de mês anterior que
     // ainda não foi devolvido) ganha prioridade aqui, em cima do déficit
-    // normal de hora anterior. Capado no próprio pedido da hora (nunca
-    // mais que o dobro do que pediria sem o banco) — sem teto, uma dívida
-    // grande dominaria a hora inteira, o que a RN-49 já evita do outro
-    // lado. Conta própria não acumula banco (não é cliente).
+    // normal de hora anterior. Capado no próprio pedido da hora — sem
+    // teto, uma dívida grande dominaria a hora inteira, o que a RN-49 já
+    // evita do outro lado. Conta própria não acumula banco (não é
+    // cliente). O teto cresce com `multiplicadorPorIdade` conforme a
+    // dívida envelhece (ver acima) — dívida nova nunca passa do dobro do
+    // pedido normal; dívida perto da válvula pode chegar a
+    // MULTIPLICADOR_MAXIMO_BANCO vezes isso.
     //
     // O saldo é da conta, não da tela — mas a playlist é gerada UMA TELA
     // por vez, e quem cobre vários pontos tem esta função rodando em
@@ -251,9 +269,14 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     // partilha aquelas telas. Divide por `cobertura.get(a.id).length`, a
     // mesma fatia que a RN-49 já usa pra ratear segundos entre pontos —
     // ela existe pra resolver exatamente este problema, com outro número.
+    const bancoDaConta = saldosBanco[a.id];
+    const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
     const prioridadeBanco = a.conta_propria
       ? 0
-      : Math.min(Math.floor((saldosBanco[a.id] || 0) / cobertura.get(a.id).length), frequenciaBase);
+      : Math.min(
+          Math.floor(((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length) * multiplicadorBanco),
+          Math.floor(frequenciaBase * multiplicadorBanco),
+        );
     return {
       id: a.id,
       frequenciaBase,

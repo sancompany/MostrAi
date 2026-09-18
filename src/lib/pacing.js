@@ -96,6 +96,23 @@ function embaralhar(lista, semente) {
 // Cada anunciante recebe as posições ideais (i + 0,5) * total / n e vai pra
 // vaga livre mais próxima. Quem tem mais exibições é colocado primeiro, porque
 // é quem tem menos folga pra ser empurrado.
+//
+// A vaga livre mais próxima NUNCA pode ser vizinha de outra vaga do MESMO
+// anunciante (pedido do dono, 18/09/2026: "nunca rodando 2 vezes seguidas") —
+// a busca tenta achar vaga sem vizinho igual primeiro; só aceita vizinho
+// igual se não sobrar outra (a exibição contratada nunca é descartada por
+// causa disto — pior fica a ordem, nunca a entrega).
+function vagaLivreMaisProxima(vagas, total, ideal, id, semVizinhoIgual) {
+  for (let d = 0; d < total; d++) {
+    for (const candidata of d === 0 ? [ideal] : [ideal - d, ideal + d]) {
+      if (candidata < 0 || candidata >= total || vagas[candidata] !== null) continue;
+      if (semVizinhoIgual && (vagas[candidata - 1] === id || vagas[candidata + 1] === id)) continue;
+      return candidata;
+    }
+  }
+  return -1;
+}
+
 function espalhar(grupos, total) {
   const vagas = new Array(total).fill(null);
   const porTamanho = [...grupos].sort((a, b) => b.quantidade - a.quantidade);
@@ -103,17 +120,8 @@ function espalhar(grupos, total) {
   for (const grupo of porTamanho) {
     for (let i = 0; i < grupo.quantidade; i++) {
       const ideal = Math.min(total - 1, Math.floor(((i + 0.5) * total) / grupo.quantidade));
-      let posicao = -1;
-      for (let d = 0; d < total; d++) {
-        if (ideal - d >= 0 && vagas[ideal - d] === null) {
-          posicao = ideal - d;
-          break;
-        }
-        if (ideal + d < total && vagas[ideal + d] === null) {
-          posicao = ideal + d;
-          break;
-        }
-      }
+      let posicao = vagaLivreMaisProxima(vagas, total, ideal, grupo.id, true);
+      if (posicao < 0) posicao = vagaLivreMaisProxima(vagas, total, ideal, grupo.id, false);
       if (posicao >= 0) vagas[posicao] = grupo.id;
     }
   }

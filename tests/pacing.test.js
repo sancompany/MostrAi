@@ -113,6 +113,39 @@ test('as exibições são espalhadas pela hora, não amontoadas', () => {
   for (const v of vaos) assert.ok(v > total / 5, `exibições amontoadas: vão de ${v} em ${total} itens`);
 });
 
+test('a mesma peça nunca roda duas vezes seguidas, com espaço de sobra pra evitar', () => {
+  // O institucional pode repetir à vontade — não é anunciante, não tem
+  // contrato de espaçamento nenhum. A regra é só entre exibições PAGAS.
+  const hora = montarHoraDeTv([
+    { id: 1, frequenciaBase: 20, deficit: 0, duracaoSegundos: 15 },
+    { id: 2, frequenciaBase: 20, deficit: 0, duracaoSegundos: 15 },
+    { id: 3, frequenciaBase: 20, deficit: 0, duracaoSegundos: 15 },
+  ]);
+  for (let i = 1; i < hora.itens.length; i++) {
+    const [atual, anterior] = [hora.itens[i], hora.itens[i - 1]];
+    if (atual === ID_INSTITUCIONAL || anterior === ID_INSTITUCIONAL) continue;
+    assert.notStrictEqual(
+      atual,
+      anterior,
+      `posição ${i} repete o anunciante de ${i - 1}: ${JSON.stringify(hora.itens)}`,
+    );
+  }
+});
+
+test('sem espaço pra evitar (um anunciante toma quase a hora inteira), a entrega continua completa', () => {
+  // 170 de 180 vagas são do anunciante 1 — evitar toda repetição é
+  // matematicamente impossível (sobram só 10 vagas pra separar 170), mas
+  // nenhuma exibição contratada pode desaparecer por causa disso.
+  const hora = montarHoraDeTv([
+    { id: 1, frequenciaBase: 170, deficit: 0, duracaoSegundos: 20 },
+    { id: 2, frequenciaBase: 10, deficit: 0, duracaoSegundos: 20 },
+  ]);
+  const contagem = { 1: 0, 2: 0 };
+  for (const id of hora.itens) if (id === 1 || id === 2) contagem[id]++;
+  assert.strictEqual(contagem[1], 170, 'as 170 exibições do anunciante 1 todas entregues');
+  assert.strictEqual(contagem[2], 10, 'as 10 do anunciante 2 todas entregues');
+});
+
 test('criativo sem duração declarada entra com a duração padrão', () => {
   assert.strictEqual(duracaoValida(undefined), DURACAO_PADRAO);
   assert.strictEqual(duracaoValida(0), DURACAO_PADRAO, 'zero não pode virar hora infinita');

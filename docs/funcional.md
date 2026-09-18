@@ -475,8 +475,18 @@ pra todo mundo igual — mas quem sempre sobra é sempre o mesmo. Agora a
 diferença entre o que o anunciante pediu (`vezes_pedidas`, novo, guarda o
 pedido ANTES do corte) e o que ele recebeu (`vezes_programadas`) fecha em
 saldo no fim do mês anterior (`apurarMesAnterior`), e esse saldo entra como
-prioridade extra na próxima geração de playlist — até o limite de dobrar o
-pedido normal da hora, nunca mais.
+prioridade extra na próxima geração de playlist.
+
+**Dívida mais velha, prioridade maior — pedido do dono, 18/09/2026: "quanto
+mais tempo no banco tiver, mais prioridade tem", pra tentar drenar antes de
+bater a válvula.** O teto (antes fixo em "nunca mais que dobrar o pedido
+normal") agora cresce com a idade da linha mais antiga ainda ativa: dobra
+pra dívida deste mês e sobe até `MULTIPLICADOR_MAXIMO_BANCO` (3, número meu)
+vezes o pedido normal conforme ela se aproxima dos
+`MESES_PARA_FILA_DE_CREDITO` (3) meses da válvula. Verificado ao vivo: a
+mesma dívida de 10 exibições, com 1 mês de idade, entregou 10 no total (4
+normais + 6 de prioridade); com 3 meses, entregou 16 (4 + 12) — dobra e
+depois quase triplica o que a dívida nova ganhava.
 
 A unidade é EXIBIÇÃO, não segundo: a duração do criativo hoje
 (`criativos.duracao_segundos`) é o valor ATUAL, sem histórico — calcular em
@@ -496,6 +506,23 @@ pagava 1 de dívida e recebia o dobro de volta. A prioridade da hora divide o
 saldo pelos pontos cobertos (mesma fatia que a RN-49 já usa pra ratear
 segundos) antes de aplicar o teto — o dono nunca falou desse caso; é
 inferência de como o resto do motor já resolve o mesmo problema.
+
+**Uma peça nunca roda duas vezes seguidas** (pedido do dono, 18/09/2026),
+prioridade boostada ou não — `espalhar` (`src/lib/pacing.js`) procura vaga
+livre SEM vizinho do mesmo anunciante antes de aceitar qualquer vizinho
+igual; só aceita quando não sobra alternativa (um anunciante tomando quase
+a hora inteira), e mesmo aí a entrega nunca é cortada por causa disso — o
+que muda é só a ordem.
+
+**A prioridade PODE tomar o lugar de outro anunciante na mesma hora — de
+propósito, e sem perda pra quem cedeu.** O dono confirmou: não precisa se
+limitar ao espaço vago da hora. Quando isso corta quem não tem dívida
+nenhuma, o RN-30 já registra a diferença (`vezes_pedidas` maior que
+`vezes_programadas` DAQUELE anunciante, não só de quem furou a fila), e a
+apuração do mês seguinte credita ESSE déficit no banco de horas de quem
+cedeu — o mesmo mecanismo, fechando o ciclo sozinho. Nenhum código novo
+precisou entrar pra isso: é a mesma conta que já fecha o mês de qualquer
+corte por hora vendida.
 
 Saldo que não drena em `MESES_PARA_FILA_DE_CREDITO` (3, prazo meu — o dono
 nunca fixou um número) meses vira `status='aguardando_credito'`: uma fila

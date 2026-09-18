@@ -117,6 +117,34 @@ test('drenar segue FIFO — a linha mais antiga esvazia primeiro', async () => {
   }
 });
 
+test('saldosAtivos traz a idade da linha MAIS ANTIGA ainda ativa, não da mais nova', async () => {
+  const id = await contaDeTeste();
+  try {
+    const hoje = new Date();
+    const tresMesesAtras = new Date(hoje.getFullYear(), hoje.getMonth() - 3, 1);
+    const umMesAtras = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+
+    await bancoHorasRepo.registrarDeficit({
+      anuncianteId: id,
+      mesReferencia: tresMesesAtras.toISOString().slice(0, 10),
+      exibicoesPedidas: 15,
+      exibicoesEntregues: 10,
+    }); // banco 5, 3 meses de idade
+    await bancoHorasRepo.registrarDeficit({
+      anuncianteId: id,
+      mesReferencia: umMesAtras.toISOString().slice(0, 10),
+      exibicoesPedidas: 15,
+      exibicoesEntregues: 10,
+    }); // banco 5, 1 mês de idade
+
+    const saldos = await bancoHorasRepo.saldosAtivos();
+    assert.strictEqual(saldos[id].saldo, 10, 'soma as duas linhas ativas');
+    assert.strictEqual(saldos[id].idadeMeses, 3, 'idade é da linha mais antiga (3 meses), não da mais nova (1 mês)');
+  } finally {
+    await apagarConta(id);
+  }
+});
+
 test('apurarMesAnterior fecha o déficit do mês anterior por vezes_programadas, não por vezes_confirmadas', async () => {
   // Sem dispositivo nenhum no banco de teste, pula: é falta de fixture,
   // não bug real (exibicoes_contador exige um dispositivo_id válido).

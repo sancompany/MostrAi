@@ -46,15 +46,25 @@ async function saldoAtivoDoAnunciante(anuncianteId) {
 // Saldo de TODOS os anunciantes com saldo > 0 numa consulta só — é isso
 // que o gerador de playlist precisa a cada hora, pra não fazer uma
 // consulta por anunciante elegível.
+//
+// `idadeMeses` é de propósito a idade da linha MAIS ANTIGA ainda ativa —
+// pedido do dono, 18/09/2026: "quanto mais tempo no banco tiver, mais
+// prioridade tem", pra tentar drenar antes de bater a válvula
+// (`MESES_PARA_FILA_DE_CREDITO`, src/bancohoras/apuracao.js). Mesma conta de
+// idade que a válvula usa (`date_trunc('month', now())`), pra não haver
+// duas réguas medindo a mesma coisa.
 async function saldosAtivos() {
   const { rows } = await pool.query(
-    `SELECT anunciante_id, SUM(exibicoes_banco - exibicoes_drenadas)::int AS saldo
+    `SELECT anunciante_id,
+            SUM(exibicoes_banco - exibicoes_drenadas)::int AS saldo,
+            (EXTRACT(YEAR FROM age(date_trunc('month', now()), MIN(mes_referencia))) * 12
+             + EXTRACT(MONTH FROM age(date_trunc('month', now()), MIN(mes_referencia))))::int AS idade_meses
      FROM banco_horas WHERE status = 'ativo'
      GROUP BY anunciante_id
      HAVING SUM(exibicoes_banco - exibicoes_drenadas) > 0`,
   );
   const mapa = {};
-  for (const r of rows) mapa[r.anunciante_id] = r.saldo;
+  for (const r of rows) mapa[r.anunciante_id] = { saldo: r.saldo, idadeMeses: r.idade_meses };
   return mapa;
 }
 
