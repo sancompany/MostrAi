@@ -177,9 +177,18 @@ function montarHoraDeTv(anunciantes, semente) {
   const programados = {};
   for (const p of comExibicao) programados[p.id] = p.cabe;
 
+  // O que cada um QUERIA antes do corte proporcional (`p.quer`, calculado
+  // antes de `cabe`) — é o que o banco de horas (G.3) precisa pra apurar o
+  // que não coube por causa da hora estar vendida, não por tela offline.
+  // Vai de todo mundo que pediu, mesmo quem não coube em nada (`cabe`
+  // ausente vira 0 na leitura, não some da conta do déficit).
+  const pedidosPorAnunciante = {};
+  for (const p of pedidos) pedidosPorAnunciante[p.id] = p.quer;
+
   return {
     itens: vagas.map((id) => id ?? ID_INSTITUCIONAL),
     programados,
+    pedidosPorAnunciante,
     segundosContratados,
     segundosInstitucionais: qtdInstitucional * DURACAO_INSTITUCIONAL,
     qtdInstitucional,

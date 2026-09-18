@@ -10,6 +10,7 @@
     "migrate": "node src/db/migrate.js",
     "backup": "bash scripts/backup.sh",
     "conciliar": "node scripts/conciliar.js",
+    "apurar-banco-horas": "node scripts/apurar-banco-horas.js",
     "sintaxe": "for f in $(git ls-files 'src/**/*.js' 'public/**/*.js' 'tests/*.js'); do node --check \"$f\" || exit 1; done",
     "lint": "biome lint .",
     "lint:corrigir": "biome lint --write .",

@@ -146,7 +146,11 @@ router.get('/admin/resumo', async (_req, res) => {
         -- fila porque /contato.html é o canal declarado do titular de dados
         -- (LGPD art. 18) — pedido com prazo legal não pode depender de
         -- alguém lembrar de abrir uma aba.
-        (SELECT COUNT(*) FROM mensagens_contato WHERE respondida_em IS NULL) AS contato`,
+        (SELECT COUNT(*) FROM mensagens_contato WHERE respondida_em IS NULL) AS contato,
+        -- Banco de horas (G.3): saldo que passou de N meses sem drenar,
+        -- esperando o admin decidir (crédito manual, desconto, ou nada —
+        -- nunca automático). Ver src/bancohoras/apuracao.js.
+        (SELECT COUNT(*) FROM banco_horas WHERE status = 'aguardando_credito' AND resolvido_em IS NULL) AS bancohoras`,
     ),
     pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -206,6 +210,7 @@ router.get('/admin/resumo', async (_req, res) => {
       arrependimentos: Number(filas.rows[0].arrependimentos),
       contato: Number(filas.rows[0].contato),
       offline: offline.rows[0].qtd,
+      bancohoras: Number(filas.rows[0].bancohoras),
     },
     financeiro: {
       receitaMensal,

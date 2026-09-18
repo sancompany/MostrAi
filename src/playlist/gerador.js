@@ -10,6 +10,7 @@ const {
 } = require('../lib/pacing');
 const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
+const bancoHorasRepo = require('../bancohoras/repository');
 
 // Playlist é por TELA (dispositivo), não por ponto — migration 019. A tela
 // recebe do ponto a categoria (bloqueio de concorrente) e a cota de
@@ -137,16 +138,25 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior) {
   return mapa;
 }
 
-async function gravarProgramados(dispositivo, horaAtual, contagem) {
+// `pedidos` é o que cada anunciante QUERIA antes do corte (RN-30) — pode
+// ter chave que não está em `contagem` (quem não coube em nada, `cabe=0`,
+// e por isso nem aparece na entrega). `vezes_pedidas` some do banco de
+// horas quem não pediu mais nada naquela hora (conta cancelada, criativo
+// removido): sem pedido não há déficit a apurar.
+async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {}) {
+  const anunciantes = new Set([...Object.keys(contagem), ...Object.keys(pedidos)]);
   await Promise.all(
-    Object.entries(contagem).map(([anuncianteId, vezes]) =>
-      pool.query(
-        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (anunciante_id, dispositivo_id, janela_hora) DO UPDATE SET vezes_programadas = $4`,
-        [anuncianteId, dispositivo.id, horaAtual, vezes],
-      ),
-    ),
+    [...anunciantes].map((anuncianteId) => {
+      const vezes = contagem[anuncianteId] || 0;
+      const pedidas = pedidos[anuncianteId] ?? vezes;
+      return pool.query(
+        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
+     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5`,
+        [anuncianteId, dispositivo.id, horaAtual, vezes, pedidas],
+      );
+    }),
   );
 }
 
@@ -176,11 +186,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [todos, deficits, doDono, pontosNoAr] = await Promise.all([
+  const [todos, deficits, doDono, pontosNoAr, saldosBanco] = await Promise.all([
     anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
     pontosEmOperacao(),
+    bancoHorasRepo.saldosAtivos(),
   ]);
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele. A conta própria do
@@ -217,17 +228,37 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     const segundos = a.conta_propria
       ? Number(a.segundos_por_hora) || 0
       : segundosCompensados(a.segundos_por_hora, a.pontos_incluidos, cobertura.get(a.id).length);
+    // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
+    // da peça que o cliente subiu. Seis de 15s e três de 30s ocupam o mesmo
+    // lugar, e é por isso que a duração deixou de ser eixo de inventário.
+    //
+    // `frequencia_hora * duração` é a ponte pra quem ainda não tem
+    // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
+    // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
+    const frequenciaBase = quantasInsercoes(a, segundos, duracaoSegundos);
+    // Banco de horas (G.3): quem tem saldo (déficit de mês anterior que
+    // ainda não foi devolvido) ganha prioridade aqui, em cima do déficit
+    // normal de hora anterior. Capado no próprio pedido da hora (nunca
+    // mais que o dobro do que pediria sem o banco) — sem teto, uma dívida
+    // grande dominaria a hora inteira, o que a RN-49 já evita do outro
+    // lado. Conta própria não acumula banco (não é cliente).
+    //
+    // O saldo é da conta, não da tela — mas a playlist é gerada UMA TELA
+    // por vez, e quem cobre vários pontos tem esta função rodando em
+    // paralelo pra cada um, todas lendo o MESMO saldo ainda intacto. Sem
+    // dividir, uma conta em 3 pontos puxaria o saldo inteiro 3 vezes na
+    // mesma hora — a dívida "paga" triplicada, à custa de quem mais
+    // partilha aquelas telas. Divide por `cobertura.get(a.id).length`, a
+    // mesma fatia que a RN-49 já usa pra ratear segundos entre pontos —
+    // ela existe pra resolver exatamente este problema, com outro número.
+    const prioridadeBanco = a.conta_propria
+      ? 0
+      : Math.min(Math.floor((saldosBanco[a.id] || 0) / cobertura.get(a.id).length), frequenciaBase);
     return {
       id: a.id,
-      // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
-      // da peça que o cliente subiu. Seis de 15s e três de 30s ocupam o mesmo
-      // lugar, e é por isso que a duração deixou de ser eixo de inventário.
-      //
-      // `frequencia_hora * duração` é a ponte pra quem ainda não tem
-      // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
-      // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
-      frequenciaBase: quantasInsercoes(a, segundos, duracaoSegundos),
-      deficit: deficits[a.id] || 0,
+      frequenciaBase,
+      deficit: (deficits[a.id] || 0) + prioridadeBanco,
+      prioridadeBanco,
       duracaoSegundos,
     };
   });
@@ -276,7 +307,26 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // é permuta, não venda, e não entra no relatório de entrega de ninguém.
   const contagem = { ...daHora.programados };
   delete contagem.dono;
-  await gravarProgramados(dispositivo, horaAtual, contagem);
+  const pedidos = { ...daHora.pedidosPorAnunciante };
+  delete pedidos.dono;
+  await gravarProgramados(dispositivo, horaAtual, contagem, pedidos);
+
+  // Banco de horas (G.3): drena na proporção do que a hora entregou. Se a
+  // hora coube em tudo (cabe === quer), a prioridade toda foi entregue e
+  // drena por inteiro; se cortou, drena só a fração — o resto continua no
+  // banco pra próxima hora tentar de novo. `Math.round` porque o banco é
+  // em exibições inteiras, não fração de exibição.
+  await Promise.all(
+    entrada
+      .filter((e) => e.prioridadeBanco > 0)
+      .map((e) => {
+        const quer = pedidos[e.id] || 0;
+        const cabe = contagem[e.id] || 0;
+        const fracaoAtendida = quer > 0 ? Math.min(1, cabe / quer) : 0;
+        const drenar = Math.round(e.prioridadeBanco * fracaoAtendida);
+        return drenar > 0 ? bancoHorasRepo.drenar(Number(e.id), drenar) : null;
+      }),
+  );
 
   const usados = {};
   return daHora.itens.map((id) => {
