@@ -2409,3 +2409,14 @@ laranja nesta rodada por causa disso.
 Conferido: `npm run lint` e `npm run check` verdes, Playwright confirma os
 três planos nos quatro ciclos (desktop e mobile), migration 054 aplicada
 localmente e testada.
+
+**P25.2 [x] "Você economizou" e "Equivalente a.../mês" também no Mensal.**
+Pedido do dono, ainda na mesma revisão do bloco de preço: *"adicione o
+texto de economia e o texto de equivalência no mensal também, assim fica
+todos iguais mesmo que não entre diferenças claras."* O Mensal não tem
+desconto pra comparar (não existe `cheio` nesse ciclo), então as duas
+linhas entram com o resultado literal disso — "Você economizou R$0,00." e
+"Equivalente a R$X,00/mês." (igual ao próprio preço) — só pra manter a
+mesma estrutura visual nos quatro ciclos, sem esconder que aqui não há
+economia real. Sem linha riscada no Mensal (não pedida, e não há valor
+cheio diferente pra riscar).
