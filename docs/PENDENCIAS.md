@@ -2184,15 +2184,16 @@ registrados como leitura minha, a confirmar:
   reabre, mesmo que a ocupação caia depois (conta cancelada, por exemplo).
   Nunca reavalia pra baixo por conta própria.
 - **Liberar exige 15 minutos de folga real.** A frase dele — "só libera
-  pra 100% com a folga de 15 minutos" — é a que tenho menos certeza de ter
+  pra 100% com a folga de 15 minutos" — foi a que tive menos certeza de ter
   lido certo. Entendi como: o CLIQUE de liberar só é aceito
   (`FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS`) se sobrar pelo menos 15 minutos de
   espaço real no ponto — sem isso, o próximo anunciante a entrar travaria
-  de novo minutos depois, e o clique não teria feito nada. Se a intenção
-  dele era outra (por exemplo, um teto elevado permanente pra pontos já
-  liberados uma vez, em vez dessa checagem pontual no momento do clique),
-  o comportamento de hoje não é esse — **avisar antes de considerar
-  fechado.**
+  de novo minutos depois, e o clique não teria feito nada. Perguntei se
+  essa leitura estava certa; ele respondeu "deixa esse 100% com folga de 15
+  minutos de lado" (18/09/2026) — ou seja, o comportamento de hoje fica
+  como está, sem revisitar por agora. **Fechado nestes termos**, não porque
+  ele confirmou que é exatamente isso, mas porque decidiu não gastar tempo
+  nisso agora.
 
 Ocupação é a soma de `planos.segundos_por_hora` de toda conta associada ao
 ponto — SEM a compensação da RN-49 (mesma conta que
@@ -2200,7 +2201,25 @@ ponto — SEM a compensação da RN-49 (mesma conta que
 existir). O bloqueio nunca tira cobertura de quem já tinha — só a escolha
 NOVA (explícita ou pelo sorteio automático) é recusada.
 
-### G.4 A atualização do San Checkout sobre troca de plano — lida e aplicada em 18/09/2026
+### G.8 Seis momentos da conta avisam por e-mail — completo em 18/09/2026
+
+O dono pediu (18/09/2026) que o e-mail cubra: conta criada, conta excluída,
+plano pago, troca de plano, cancelamento do plano, e aprovação/reprovação
+do criativo. Dois já existiam antes desta pendência — plano pago
+(`enviarConfirmacaoPagamento`, desde a integração com o Checkout) e
+aprovação/reprovação de criativo (`enviarCriativoNoAr`/`enviarCriativoReprovado`,
+RN-18). **[x] Os quatro que faltavam, construídos**: `enviarContaCriada`
+(no cadastro, `POST /anunciantes/cadastro`), `enviarContaExcluida`
+(`POST /anunciantes/me/excluir`), `enviarTrocaDePlano` (com o valor do
+acerto se houve, `POST /anunciantes/me/trocar-plano`) e `enviarCancelamento`
+(nas duas rotas de cancelar — self-service e a do admin em nome do
+cliente). Todos em `src/financeiro/email.js`, RN-56 em `docs/funcional.md`.
+
+Nenhum é testado automaticamente — mesma régua que já valia pros e-mails
+que já existiam (nenhum tem teste no projeto; SMTP não é mockado em
+lugar nenhum). Verifiquei o conteúdo de cada um com um transporte falso
+antes de subir, mas o disparo real (SMTP de verdade) segue sem cobertura
+de teste, como sempre foi.
 
 Era a atualização avisada em 18/09/2026, *"sobre mudança de plano e
 cancelamento"*, que o dono disse trazer quando a revisão permitisse. Chegou

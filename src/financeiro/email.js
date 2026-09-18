@@ -99,6 +99,83 @@ async function enviarContaAprovada(anunciante) {
   });
 }
 
+// Boas-vindas no cadastro (pedido do dono, 18/09/2026) — o primeiro contato
+// por e-mail depois de criar a conta, antes até de escolher plano (conta
+// nova nunca nasce com plano — RN-34/RN-35, sem aprovação nem plano prévio).
+async function enviarContaCriada(anunciante) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Sua conta na Mostraí foi criada',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Sua conta na Mostraí foi criada com sucesso. O próximo passo é escolher um plano ` +
+      `e colocar seu anúncio na rotina da cidade.\n\n` +
+      `${process.env.SITE_URL}/planos.html\n\n` +
+      `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
+// Confirma a exclusão pedida pelo próprio anunciante (RN-24/26, direitos do
+// titular). A cobrança recorrente já foi cancelada antes deste e-mail sair
+// (é a mesma rota que faz as duas coisas) — dizer isso evita a pergunta
+// "vou continuar sendo cobrado?" chegando pelo WhatsApp.
+async function enviarContaExcluida(anunciante) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Sua conta na Mostraí foi excluída',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Sua conta na Mostraí foi excluída, a seu pedido. Se havia assinatura ativa, ` +
+      `a cobrança recorrente já foi cancelada — não vem mais cobrança nenhuma.\n\n` +
+      `Se foi engano, responda este e-mail ou chame no WhatsApp o quanto antes.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
+// Confirma a troca (RN-52, POST /trocar-plano do Checkout) — de qual plano
+// pra qual, e se cobrou acerto ou não. Os números vão abertos porque é a
+// Mostraí que tem de explicar a cobrança ao assinante (mesma régua do
+// próprio Checkout, que devolve os números pra isso).
+async function enviarTrocaDePlano(anunciante, planoAntigo, planoNovo, acerto) {
+  const linhaAcerto = acerto?.cobrado
+    ? `Foi cobrado um acerto proporcional de R$ ${Number(acerto.valor).toFixed(2)} no cartão salvo, pelos dias que faltavam no ciclo atual.`
+    : `Não houve cobrança agora — o valor novo passa a valer a partir da sua próxima renovação.`;
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Troca de plano confirmada — Mostraí',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Sua troca de plano foi confirmada: de ${planoAntigo.nome} para ${planoNovo.nome}.\n\n` +
+      `${linhaAcerto}\n\n` +
+      `${process.env.SITE_URL}/anunciante/painel.html\n\n` +
+      `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
+// Confirma o cancelamento (self-service ou pelo admin em nome do cliente —
+// mesma cobertura das duas rotas). Cobertura já paga continua até vencer;
+// é o mesmo aviso que `enviarCoberturaAcabando` dá pra quem NÃO cancelou,
+// só que aqui o motivo do fim é a decisão do próprio assinante.
+async function enviarCancelamento(anunciante, plano) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Assinatura cancelada — Mostraí',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Sua assinatura do plano ${plano?.nome || ''} foi cancelada. A renovação automática não vai mais acontecer.\n\n` +
+      `Sua cobertura já paga continua no ar até o fim do período atual — nenhum anúncio sai do ar agora.\n\n` +
+      `Se quiser assinar de novo depois, sua conta e seu histórico continuam aqui.\n\n` +
+      `Qualquer dúvida, responda este e-mail ou chame no WhatsApp.\n\n` +
+      `Equipe Mostraí.`,
+  });
+}
+
 async function enviarLinkRedefinicaoSenha(email, nome, link) {
   await transportador().sendMail({
     from: remetente(),
@@ -323,6 +400,10 @@ module.exports = {
   enviarConfirmacaoPagamento,
   enviarLinkRedefinicaoSenha,
   enviarContaAprovada,
+  enviarContaCriada,
+  enviarContaExcluida,
+  enviarTrocaDePlano,
+  enviarCancelamento,
   enviarMensagemContato,
   enviarNovidade,
   enviarArrependimentoRecebido,

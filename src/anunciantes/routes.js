@@ -22,7 +22,7 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
-const { enviarContaAprovada } = require('../financeiro/email');
+const { enviarContaAprovada, enviarContaCriada, enviarContaExcluida } = require('../financeiro/email');
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
 // text/html e o bucket público servia HTML executável no nosso domínio.
@@ -237,6 +237,9 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     },
     anunciante,
   );
+  // Fire-and-forget: e-mail que falha não pode desfazer um cadastro (pedido
+  // do dono, 18/09/2026).
+  enviarContaCriada(anunciante).catch((err) => console.error('e-mail de conta criada', err));
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -301,6 +304,9 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       },
       conta,
     );
+    // Fire-and-forget: e-mail que falha não pode desfazer a exclusão (pedido
+    // do dono, 18/09/2026).
+    enviarContaExcluida(conta).catch((err) => console.error('e-mail de conta excluída', err));
   }
   req.session.destroy(() => res.json({ ok: true }));
 });

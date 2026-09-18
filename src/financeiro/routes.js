@@ -15,6 +15,7 @@ const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
+const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
 
 const uploadNota = multer({ dest: os.tmpdir() });
 
@@ -356,6 +357,12 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
     await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
     await assinaturasRepo.marcarCancelada(assinatura.id);
     res.json({ ok: true });
+    // Fire-and-forget, depois de responder: e-mail que falha não desfaz o
+    // cancelamento (pedido do dono, 18/09/2026).
+    planosRepo
+      .buscarPorId(assinatura.plano_id)
+      .then((plano) => enviarCancelamento(anunciante, plano))
+      .catch((err) => console.error('e-mail de cancelamento', err));
   } catch {
     res.status(502).json({ erro: 'falha ao cancelar no San Checkout. Tente de novo em alguns minutos.' });
   }
@@ -463,6 +470,14 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   );
 
   res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
+
+  // Fire-and-forget: e-mail que falha não desfaz a troca (pedido do dono,
+  // 18/09/2026). `conta.plano_id` aqui ainda é o plano ANTIGO — a variável
+  // local não muda com o UPDATE que acabou de rodar no banco.
+  planosRepo
+    .buscarPorId(conta.plano_id)
+    .then((planoAntigo) => enviarTrocaDePlano(conta, planoAntigo, planoNovo, corpo.acerto))
+    .catch((err) => console.error('e-mail de troca de plano', err));
 });
 
 // Admin aciona cancelamento (Vitrina → San Checkout, nunca o pagador direto)
@@ -518,6 +533,12 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
     await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
     await assinaturasRepo.marcarCancelada(assinatura.id);
     res.json({ ok: true });
+    // Fire-and-forget: mesmo aviso do cancelamento pedido pelo próprio
+    // anunciante — quem cancelou não muda o que o cliente precisa saber.
+    planosRepo
+      .buscarPorId(assinatura.plano_id)
+      .then((plano) => enviarCancelamento(anunciante, plano))
+      .catch((err) => console.error('e-mail de cancelamento', err));
   } catch {
     res.status(502).json({ erro: 'falha ao cancelar no San Checkout' });
   }

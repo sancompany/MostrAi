@@ -557,6 +557,19 @@ não há caminho de usuário — a escolha (manual ou automática) recusa antes
 de gravar. *Quem vê:* o anunciante, na tela de escolha de pontos (com o %
 de ocupação de cada um); e o admin, na aba "Ocupação dos pontos".
 
+**RN-56 — Seis momentos da conta avisam por e-mail, sempre fire-and-forget.**
+*(Pedido do dono, 18/09/2026 — completa a lista que já existia: pagamento
+confirmado, cobrança falhada, cobertura acabando, candidatura nova,
+aprovação/reprovação de criativo, RN-18/RN-36.)* Os quatro que faltavam:
+conta criada (no cadastro), conta excluída (a pedido do titular — RN-24/26),
+troca de plano (RN-52, com o valor do acerto se houve) e cancelamento de
+assinatura (self-service ou pelo admin em nome do cliente — mesmo aviso nos
+dois casos). Nenhum e-mail bloqueia a ação que o disparou: se o SMTP falhar,
+a conta é criada, excluída, trocada ou cancelada do mesmo jeito — só o
+aviso que não sai, e vira log de erro, nunca 500 pro usuário. *Violada:*
+não há caminho de usuário — a ação sempre completa; o e-mail é efeito
+colateral, nunca condição. *Quem vê:* o anunciante, na caixa de entrada.
+
 **RN-54 — Contestação de cobrança suspende o acesso na hora.** *(API.md do
 Checkout: "suspenda o acesso" — instrução explícita do lado dele, não
 interpretação nossa.)* Até aqui, `cobranca_contestada` só virava pendência
@@ -757,11 +770,13 @@ inserção, e o índice único do banco é a última defesa. Conta comum **não 
 se marcar como própria — a marca não existe no caminho de cadastro, só na
 rota do admin. *Quem vê:* o administrador.
 
-**RN-18 — O anunciante é avisado quando o vídeo entra no ar.** Na transição do
-criativo para `aprovado` — e só na transição —, sai um e-mail dizendo que ele
-está na playlist. Salvar de novo um criativo já aprovado não reenvia.
-*Violada:* nada acontece; a aprovação não depende do e-mail. *Quem vê:* o
-anunciante, na caixa de entrada.
+**RN-18 — O anunciante é avisado quando o vídeo entra no ar, ou quando
+precisa de ajuste.** Na transição do criativo para `aprovado` — e só na
+transição —, sai um e-mail dizendo que ele está na playlist; na transição
+pra reprovado, sai um e-mail explicando o motivo (`criativo.motivo_reprovacao`)
+e como reenviar. Salvar de novo um criativo que já passou por uma dessas não
+reenvia. *Violada:* nada acontece; a aprovação não depende do e-mail. *Quem
+vê:* o anunciante, na caixa de entrada.
 
 **RN-19 — O comprovante de veiculação respeita o período escolhido.** O CSV
 sai com `;` e BOM UTF-8, porque o Excel em português com vírgula junta tudo
