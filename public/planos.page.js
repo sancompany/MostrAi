@@ -7,11 +7,15 @@
 // não horas por ponto (decisão do dono, 17/09/2026). A conta é a mesma; o que
 // muda é qual dos dois números é o produto e qual é consequência. Importa
 // porque, com a rede menor que o plano, o total é o que se preserva e a
-// divisão é o que muda (RN-49).
+// divisão é o que muda (RN-49). A frase "na rede, dividida entre os seus
+// pontos" saiu do texto do card em 18/09/2026 (pedido do dono, bullet mais
+// seco) — a divisão continua implícita na linha seguinte ("Em até N pontos
+// da rede"), só não é mais dita duas vezes.
 //
-// A conta assume 12h de comércio aberto por dia, 30 dias — por isso sai com
-// "até": comércio que abre menos entrega menos, e prometer o número cheio
-// seria vender hora que a porta fechada não dá.
+// A conta assume 12h de comércio aberto por dia, 30 dias. O "até" que
+// protegia contra prometer hora que a porta fechada não dá saiu do texto do
+// card em 18/09/2026, a pedido do dono ("27 horas de tela por mês", sem
+// qualificador) — decisão dele sobre a promessa, não mudança na conta.
 //
 // A linha de "X min de tela a cada hora" saiu em 17/09/2026 (pedido do dono).
 // Era a conta de DENTRO: mesma grandeza que o total do mês, em outra unidade,
@@ -39,18 +43,16 @@ const proprios = (p) => (p.beneficios || []).filter((b) => !HERANCA.test(b));
 function derivados(p) {
   const linhas = [];
   const horas = horasDeTelaPorMes(p);
-  if (horas) {
-    linhas.push(`<li><b>Até ${horas} horas de tela por mês na rede</b>, divididas entre os seus pontos</li>`);
-  }
+  if (horas) linhas.push(`<li><b>${horas} horas de tela por mês</b></li>`);
   if (p.pontos_incluidos) {
     linhas.push(
       `<li>Em até ${p.pontos_incluidos} ${p.pontos_incluidos === 1 ? 'ponto' : 'pontos'} da rede, escolhidos por você</li>`,
     );
   }
-  if (p.duracao_maxima_segundos) linhas.push(`<li>Peça de até ${p.duracao_maxima_segundos} segundos</li>`);
+  if (p.duracao_maxima_segundos) linhas.push(`<li>Anúncio de até ${p.duracao_maxima_segundos} segundos</li>`);
   if (p.limite_criativos) {
     linhas.push(
-      `<li>${p.limite_criativos} ${p.limite_criativos === 1 ? 'criativo ativo por vez' : 'criativos ativos, revezando entre si'}</li>`,
+      `<li>${p.limite_criativos} ${p.limite_criativos === 1 ? 'anúncio ativo por vez' : 'anúncios por vez, que revezam entre si'}</li>`,
     );
   }
   return linhas.join('');
@@ -73,10 +75,15 @@ const NOTA_CICLO = {
   // O aviso de "sem fidelidade" do ciclo mensal foi retirado (pedido do
   // dono, 15/09/2026): a mesma informação já está na FAQ "Como eu cancelo?"
   // logo abaixo, e repetir aqui duplicava o texto sem necessidade.
+  //
+  // A segunda frase ("o valor mensal é só referência") saiu em 18/09/2026,
+  // a pedido do dono ("mantenha... somente o aviso"): o preço do card agora
+  // mostra o total do ciclo, o quanto economizou E a equivalência mensal —
+  // a nota repetindo isso ficaria dizendo três vezes a mesma coisa.
   1: '',
-  3: 'Você paga uma vez a cada 3 meses. O valor por mês abaixo é a referência de quanto isso representa.',
-  6: 'Você paga uma vez a cada 6 meses. O valor por mês abaixo é a referência de quanto isso representa.',
-  12: 'Você paga uma vez por ano. O valor por mês abaixo é a referência de quanto isso representa.',
+  3: 'Você paga uma vez a cada 3 meses.',
+  6: 'Você paga uma vez a cada 6 meses.',
+  12: 'Você paga uma vez por ano.',
 };
 
 // Referência de preço cheio: é o plano mensal do mesmo tier. Assinar 3
@@ -110,8 +117,7 @@ function render(meses) {
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       <div class="tier">${esc(p.nome)}</div>
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
-      ${cheio ? `<div class="price-riscado"><span>${fmt(cheio)}/mês</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
-      <div class="price">${fmt(porMes)}/mês</div>
+      ${montarPreco(p, porMes, cheio, meses)}
       <ul>
         ${heranca(p)}
         ${derivados(p)}
@@ -124,6 +130,31 @@ function render(meses) {
   `;
     })
     .join('');
+}
+
+// O preço fala em MÊS no ciclo mensal (não há um "ciclo maior" pra comparar
+// contra) e fala em CICLO nos demais — pedido do dono, 18/09/2026: o que o
+// cliente realmente paga de uma vez, o quanto economizou nesse pagamento, e
+// só por último a equivalência mensal, pra quem quer comparar contra o
+// mensal. Três linhas, nessa ordem: o valor cheio do ciclo inteiro riscado,
+// o valor total do ciclo já com desconto (o número grande), e — do mesmo
+// tamanho da linha riscada — quanto economizou (em verde, pedido do dono,
+// 18/09/2026) e, na linha de baixo, na cor normal, o equivalente por mês.
+// A economia é sempre a do ciclo inteiro, nunca a mensal.
+function montarPreco(p, porMes, cheio, meses) {
+  if (meses === 1 || !cheio) {
+    return `
+      ${cheio ? `<div class="price-riscado"><span>${fmt(cheio)}/mês</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
+      <div class="price">${fmt(porMes)}/mês</div>`;
+  }
+  const cheioCiclo = Math.round(cheio * meses * 100) / 100;
+  const totalCiclo = Math.round(porMes * meses * 100) / 100;
+  const economia = Math.round((cheioCiclo - totalCiclo) * 100) / 100;
+  return `
+      <div class="price-riscado"><span>${fmt(cheioCiclo)}</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>
+      <div class="price">${fmt(totalCiclo)}</div>
+      <div class="price-economia">Você economizou ${fmt(economia)}.</div>
+      <div class="price-equivalente">Equivalente a ${fmt(porMes)}/mês.</div>`;
 }
 
 document.getElementById('cycleToggle').addEventListener('click', (e) => {

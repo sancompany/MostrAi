@@ -2316,3 +2316,96 @@ entra com pelo menos uma tela **veiculando** — sem nenhuma tela no ar não
 existe pra onde concentrar o tempo, e o texto completo com "Como isso
 funciona" apareceria prometendo algo que a rede vazia não cumpre. Ele
 aparece assim que o primeiro ponto for cadastrado como `em_operacao`.
+
+### Revisão do dono, tópico 1 — Planos, rodada 7 (18/09/2026)
+
+**P21. [x] "peça"/"criativo" → "anúncio" em todo texto da vitrine.**
+Termo técnico continua no código, no banco e nos comentários — só a
+palavra que o cliente lê muda. `derivados()` em `public/planos.page.js`
+reescrita: "Anúncio de até N segundos", "N anúncios por vez, que revezam
+entre si". Migration `054_beneficio_anuncio_nao_peca.sql` renomeia o único
+benefício de catálogo com a palavra antiga vinculado a plano **ativo** (id
+17, nos quatro planos Pro): "Sua peça entra na frente na fila de
+aprovação" → "Seu anúncio tem prioridade de aprovação". Os outros três
+benefícios com "criativo" (ids 1, 4, 12) estão presos a versões
+**arquivadas** (RN-27) e não aparecem em lugar nenhum da vitrine — não
+precisam mudar.
+
+**P22. [x] Subtítulo do card (`rotulo`) volta à cor laranja** —
+`var(--brand-text)`, revertendo o cinza (`var(--text-dim)`) de uma rodada
+anterior. Pedido explícito do dono ao revisar o card do Essencial.
+
+**P23. [x] Contorno leve em cada botão do seletor de ciclo** (Mensal /
+Trimestral / Semestral / Anual), pra distinguir um do outro agora que
+ficaram juntos sem espaço: `.cycle-toggle button` ganha
+`border: 1px solid var(--border)`; o botão ativo continua sobrescrevendo
+com `border-color: var(--brand)`.
+
+**P24. [x] Benefícios de cada plano reescritos com a lista exata que o
+dono ditou**, na ordem dele: Essencial — horas de tela por mês, "Em até N
+pontos da rede, escolhidos por você", "Anúncio de até N segundos", "N
+anúncio(s) ativo(s) por vez" (mais dashboard, que já existia); Pro e Prime
+herdam "Tudo do [tier anterior]" e listam só o que muda. Números de horas
+mantidos como o **cálculo real produz** (84h Pro, 180h Prime) — o dono
+ditou 90h/200h de cabeça, mas a própria mensagem fecha dizendo que vai
+acertar preços e benefícios de verdade depois desta revisão; não troquei
+o número certo pelo aproximado dele. Ele confirma/corrige quando fechar
+os preços.
+
+**P25. [x] Bloco de preço redesenhado para os ciclos acima de Mensal**
+(Trimestral/Semestral/Anual — Mensal continua com o preço simples de
+sempre). Três linhas, nessa ordem, em `montarPreco()`
+(`public/planos.page.js`):
+1. Valor cheio do **ciclo inteiro** riscado + badge de desconto (não é
+   mais o valor mensal riscado).
+2. Valor total do ciclo já com desconto, em destaque (número grande).
+3. "Você economizou R$X." — a diferença entre as duas linhas acima, ou
+   seja, **sempre a economia do ciclo inteiro, nunca a mensal** — seguida,
+   numa segunda linha separada, de "Equivalente a R$Y/mês." em cor normal.
+
+Nota abaixo do seletor de ciclo simplificada para uma frase por ciclo
+(`NOTA_CICLO`): "Você paga uma vez a cada N meses"/"por ano".
+
+**P25.1 [x] Correção no meio da rodada — interrupção do dono:** *"o vc
+economizou x é o valor inteiro do ciclo não do mês e o faça verde."*
+Conferido com conta manual e com Playwright contra o servidor local, nos
+três planos × três ciclos (9 combinações): a economia **já era** a do
+ciclo inteiro (ex.: Essencial Trimestral — R$297,00 − R$267,30 =
+R$29,70; não R$99,00 − R$89,10 = R$9,90, que seria a mensal). Não havia
+bug de cálculo, só a cor pendente. Feito:
+- "Você economizou R$X." pintado em verde (`var(--ok)`, `#15803d` — o
+  mesmo tom usado nos checks de benefício e nas mensagens de sucesso do
+  site, contraste 4.5:1+ no fundo branco do card).
+- "Equivalente a R$Y/mês." separado pra linha de baixo, em cor normal
+  (`var(--text-dim)`), a pedido do dono nessa mesma interrupção.
+
+Verificado com Playwright (desktop 1280px e mobile 390px), nos três
+ciclos acima de Mensal: cor da linha da economia = `rgb(21, 128, 61)`
+(verde), cor da linha "Equivalente" = `rgb(91, 100, 114)` (cinza normal),
+valores batendo com o cálculo manual em todas as 9 combinações.
+
+**P26. [x] FAQ "Não tenho vídeo?" reescrita, tom mais formal** — o dono:
+*"ficou muito informal, retire os — e deixe mais formal."* Removidos os
+travessões da versão da rodada 6; texto reorganizado em frases completas,
+sem mudar o conteúdo (produção é serviço à parte, negociado pelo
+WhatsApp, sem gravação profissional).
+
+### G.5 [ ] Pendência nova: fluxo de cadastro de ponto ("seja um ponto")
+
+O dono tentou cadastrar um ponto ele mesmo durante esta revisão e achou o
+caminho **"completamente bagunçado"** — palavras dele, sem mais detalhe
+ainda sobre o que especificamente está errado. **Registrado como
+pendência, sem investigação nem tentativa de conserto nesta rodada** —
+ele vai descrever o que viu, ou eu confiro o fluxo do zero, numa rodada
+futura.
+
+**Consequência direta:** o dono pediu explicitamente pra **adiar a
+revisão do aviso laranja** (o parágrafo de bônus por rede em montagem,
+P-anteriores desta seção) **até depois** que o caminho de "seja um ponto"
+estiver corrigido — faz sentido revisar o aviso sobre pontos só depois que
+o cadastro de ponto em si estiver confiável. Nenhuma mudança no aviso
+laranja nesta rodada por causa disso.
+
+Conferido: `npm run lint` e `npm run check` verdes, Playwright confirma os
+três planos nos quatro ciclos (desktop e mobile), migration 054 aplicada
+localmente e testada.

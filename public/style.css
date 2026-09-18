@@ -251,7 +251,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    deixou de ser chapeu laranja: em cima do nome ele funcionava como etiqueta,
    embaixo dele competiria com o proprio nome. Aqui ele e linha de apoio. */
 .plan-card .tier { font-weight: 800; font-size: 1.15rem; margin: 4px 0 0; }
-.plan-card .rotulo { color: var(--text-dim); font-size: .85rem; line-height: 1.35; margin: 5px 0 0; }
+.plan-card .rotulo { color: var(--brand-text); font-size: .85rem; line-height: 1.35; margin: 5px 0 0; }
 /* O respiro antes do preco fica em quem vem depois, e nao no subtitulo: o
    `rotulo` e opcional, e um plano sem ele colaria o preco no nome. */
 .plan-card .tier + .price-riscado, .plan-card .tier + .price,
@@ -263,6 +263,8 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   padding: 2px 7px; border-radius: 999px; text-decoration: none;
 }
 .plan-card .price { font-size: 2.1rem; font-weight: 800; margin: 2px 0 2px; line-height: 1.15; }
+.plan-card .price-economia { color: var(--ok); font-size: .95rem; margin: 0 0 2px; }
+.plan-card .price-equivalente { color: var(--text-dim); font-size: .95rem; margin: 0 0 2px; }
 .plan-card ul { list-style: none; padding: 0; margin: 18px 0 24px; display: flex; flex-direction: column; gap: 9px; }
 .plan-card li { color: var(--text-dim); font-size: .92rem; padding-left: 22px; position: relative; }
 .plan-card li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
@@ -281,7 +283,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   padding: 4px; width: fit-content; max-width: 100%;
 }
 .cycle-toggle button {
-  background: transparent; border: 1px solid transparent; color: var(--text-dim);
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   padding: 9px 16px; border-radius: 8px; font-size: .88rem; cursor: pointer; font-weight: 600;
 }
 .cycle-toggle button:hover:not(.active) { color: var(--text); }
