@@ -2278,3 +2278,41 @@ atualização do Checkout (G.4), como ele mesmo combinou.
 
 Conferido: 9 perguntas na FAQ (era 10), textos batendo com o pedido nos
 dois tamanhos, `npm run check` verde (92 testes), sem rolagem horizontal.
+
+### Revisão do dono, tópico 1 — Planos, rodada 6 (18/09/2026)
+
+**P18.1 [x] Correção sobre "Não tenho vídeo?": a versão da rodada 5 estava
+errada.** O dono: *"não tem nada de criação de anúncio incluída em plano
+nenhum, é pagamento à parte pelo WhatsApp"* e *"retire a ideia de que
+falaremos com equipe de vídeos profissionais"*. A resposta anterior tratava
+a montagem do anúncio como incluída no plano ("isso está incluído no
+plano, que cobre a veiculação") — contradizia a RN-45 (produção é serviço
+à parte, negociado, preço caso a caso), que já estava certa desde antes
+desta rodada de revisão. Reescrita:
+
+> Dá. A produção do seu anúncio é negociada direto pelo WhatsApp: você
+> manda o que tiver — logo, fotos, um vídeo — e a gente combina o que dá
+> pra fazer com isso. É cobrado um valor extra pela criação do anúncio,
+> que varia com a dificuldade de montar a peça. A gente não faz vídeo
+> profissional (filmagem, produção com equipe) — só o que você já tem em
+> mãos.
+> **Fale com a gente no WhatsApp.**
+
+O link usa a convenção do resto do site (`data-wa` + `href` literal, pra
+funcionar mesmo sem JS — `layout.js` reescreve pela constante única do
+número em `config.js`).
+
+**P20 — confirmado pelo dono, continua pendência.** Sobre "o preço pode
+subir depois que eu assinar": *"sim, pode ser (…) deixe como pendência a
+se resolver quando eu enviar a nova atualização do checkout."* Sem
+mudança na FAQ, RN-11 ou Termos de Uso — como já estava registrado.
+
+**Sobre "o aviso laranja ainda não atualizou": não é bug.** Conferido em
+produção: `GET /pontos` devolve `[]` (zero pontos cadastrados) e o
+`planos.page.js` servido já é a versão nova (contém a frase "Você não
+paga por ponto"). O aviso mostra só **"Rede em montagem: nenhum ponto
+ainda."** porque é exatamente o que a regra manda: o parágrafo do bônus só
+entra com pelo menos uma tela **veiculando** — sem nenhuma tela no ar não
+existe pra onde concentrar o tempo, e o texto completo com "Como isso
+funciona" apareceria prometendo algo que a rede vazia não cumpre. Ele
+aparece assim que o primeiro ponto for cadastrado como `em_operacao`.
