@@ -3086,10 +3086,14 @@ convite manual de vendedor). `04-modos-e-bonus.sh` já testava exatamente o
 caminho novo (pedido pelo painel + liberar na conta) e não precisou mudar.
 `npm run check` verde (114 testes) depois da mudança.
 
-### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
+### Pendências registradas, sem revisão ainda: Telas, Anuncie
 
-O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las
-numa rodada futura. Nenhuma mudança nelas por enquanto.
+O dono decidiu adiar a revisão dessas duas páginas — vai revisá-las numa
+rodada futura. Nenhuma mudança nelas por enquanto, fora o que já saiu por
+conta própria do dono nesta sessão (rótulo "Anunciante" tirado do
+cadastro/login, G.9 acima). "Seja um ponto" e "Seja um vendedor" saíram
+desta lista porque as páginas não existem mais (aposentadas no G.9) —
+não há mais o que revisar nelas.
 
 **Próximo, por aviso do dono:** ele vai enviar o prompt da nova
 atualização do San Checkout (a "terceira atualização", G.4 —
