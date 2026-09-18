@@ -2624,3 +2624,55 @@ eles.
 **Com isso, revisão de "Onde estamos?" encerrada** (por ora, até o
 feedback do cadastro de ponto no P39). Próximo, por pedido do dono: "a
 casa dos formulários."
+
+### Revisão do dono, tópico 1 — Onde estamos (correção) + Contato (18/09/2026)
+
+**P37 corrigido. [x] Card 1 simplificado de novo — a versão anterior era
+"muito ruim".** O dono, sobre o texto que citava vídeo horizontal e
+faixa fina: *"ficou uma explicação (...) muito m***. Melhore os textos:
+não precisa de explicação detalhada, precisa de contexto. Exemplo:
+'cortado: seu anúncio é ajustado para enquadrar dentro do formato de
+nossas telas.'"* Reescrito seguindo o exemplo dele, ao pé da letra:
+
+> Formato 9:16, o mesmo do celular, e nada do seu anúncio é cortado: ele
+> é ajustado para se encaixar no formato das nossas telas.
+
+Mais curto que a tentativa anterior, mas ainda equilibra a altura contra
+o card "Player conectado" (3 linhas cada, ver captura de tela).
+
+**P40. [x] Texto de abertura de `contato.html` — tom mais formal.** O
+dono: *"sobre a tela contatos, melhore esse texto abaixo do título 'Tem
+uma dúvida?', mude ele para se enquadrar melhor formalmente."* De
+"Escreve pra gente que a resposta vem, e se preferir resolver na hora,
+é só chamar no WhatsApp." para **"Escreva para a gente que a resposta
+chega em breve, e se preferir resolver agora mesmo, basta chamar no
+WhatsApp."**
+
+**P41. [x] Card do WhatsApp em `contato.html` — mesmo ajuste de tom.**
+De "No WhatsApp a gente responde de segunda a sexta (...) a mensagem
+fica esperando e é respondida no próximo dia útil." para **"No
+WhatsApp, respondemos de segunda a sexta (...) a mensagem permanece
+registrada e é respondida no próximo dia útil."**
+
+**P42. Esclarecido — achado real, não é dúvida sem fundamento.** O dono:
+*"sobre o formulário, eu acreditava que quando preenchia e enviava ele
+chegava pelo meu e-mail e não no painel admin."* O formulário **faz as
+duas coisas**: grava a mensagem em `mensagens_contato` (é isso que
+aparece no admin, aba "Mensagens do site") **e** tenta mandar um e-mail
+pra `mostrai@sancocore.com.br` na mesma hora (`enviarMensagemContato`,
+`src/financeiro/email.js`). A expectativa dele está certa — o problema é
+que **o e-mail não está saindo**: é o item 9 da lista "SÓ O DONO FAZ"
+(`docs/PENDENCIAS.md`, linha ~61), achado em 16/09/2026 nos logs de
+produção — o Gmail recusa a senha de app que está em `SMTP_PASS` hoje
+(`535-5.7.8 Username and Password not accepted`), e uma senha de app
+rejeitada não volta a funcionar: precisa gerar uma **nova** em
+`myaccount.google.com` → Segurança → Senhas de app, e colar no
+Northflank. Só ele tem acesso a essa conta Google. Enquanto isso não for
+feito, toda mensagem de contato (e o e-mail de recuperação de senha, e o
+de confirmação de pagamento) só existe no admin — nenhuma chega por
+e-mail. Nenhuma mudança de código veio desta rodada: o comportamento já
+está correto, falta só a senha nova.
+
+Conferido: `npm run lint` e `npm run check` verdes (92 testes), Playwright
+confirma os três textos novos e a altura balanceada dos cards de "Onde
+estamos".
