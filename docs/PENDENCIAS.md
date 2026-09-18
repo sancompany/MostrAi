@@ -2987,20 +2987,30 @@ que qualquer provedor de e-mail aplica contra falsificação). Por isso
 vai no campo de resposta, não no De; clicar "Responder" no e-mail admin
 já responde direto pro visitante.
 
-**Teste que ainda decide a causa raiz, não feito nesta rodada (é troca de
-variável de ambiente no Northflank, não código — combinado que o dono ou
-eu fazemos quando ele quiser):** trocar `MOSTRAI_EMAIL_CONTATO` para
-`admin@sancocore.com.br` (o endereço real, não o alias `mostrai@`),
-mantendo `MOSTRAI_EMAIL_FROM=mostrai@sancocore.com.br` (só pra manter o
-"De" com a marca Mostraí) — se o Gmail tratar um alias como identidade
-"diferente" do endereço real pra fins de entrega, isso é o suficiente pra
-sair de "Enviados" e cair em "Caixa de Entrada" de verdade. Se mesmo assim
-não entregar, o caminho robusto (sem depender de nenhum comportamento
-interno do Gmail) é sair do SMTP do Gmail para receber essas mensagens e
-usar um serviço de e-mail transacional (Resend, SendGrid, Amazon SES) só
-para o envio — não é uma mudança pequena (precisa configurar SPF/DKIM no
-DNS do domínio e uma chave de API nova), então só entra se o teste da
-variável não resolver.
+**Teste que decidiu a causa raiz, não feito nesta rodada (é troca de
+variável de ambiente no Northflank, não código):** trocar
+`MOSTRAI_EMAIL_CONTATO` para `admin@sancocore.com.br` (o endereço real, não
+o alias `mostrai@`), mantendo `MOSTRAI_EMAIL_FROM=mostrai@sancocore.com.br`
+(só pra manter o "De" com a marca Mostraí) — o Gmail tratava o alias como
+identidade "diferente" do endereço real pra fins de entrega, e isso foi o
+suficiente pra sair de "Enviados" e cair em "Caixa de Entrada" de verdade.
+
+### P42 fechado (18/09/2026) — testado, entrega confirmada
+
+O dono aplicou a troca de variável e confirmou: mensagem nova chega na
+Caixa de Entrada de `admin@sancocore.com.br`, e testou também o
+"Responder" — funciona, só que o "De" da resposta sai como
+`admin@sancocore.com.br` em vez do alias `mostrai@sancocore.com.br` (ele
+esperava o alias). Ele decidiu que está bom assim — é cosmético (o
+visitante recebe a resposta de qualquer forma) e não vale gastar mais
+tempo nisso agora. Não é pendência.
+
+Fica pra registro, se algum dia quiser perseguir o cosmético: pra a
+resposta saltar do alias, o `mostrai@sancocore.com.br` precisa estar
+cadastrado em Gmail → Configurações → Contas → "Enviar e-mail como"
+*dentro da própria caixa* que recebe (hoje `admin@`) — sem isso o Gmail
+usa a identidade que recebeu a mensagem original (`admin@`) como padrão
+pra responder.
 
 ### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
 
