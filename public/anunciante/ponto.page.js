@@ -1,33 +1,27 @@
 let CONTA = null;
 let TELAS = [];
 
-async function carregar() {
-  CONTA = await carregarConta();
-  if (!CONTA) {
-    window.location.href = '/anunciante/login.html';
-    return;
-  }
-  montarPerfil(CONTA, (nova) => {
-    CONTA = nova;
-  });
-  // Extrato do comodato — o que este dono de ponto já recebeu e o que está em
-  // aberto. A chamada a esta função existia em `Promise.all` desde sempre; a
-  // FUNÇÃO não. Como o erro caía dentro do callback de `montarModo`, que engole
-  // exceção, nada aparecia na tela e nada aparecia no console: o extrato
-  // simplesmente nunca carregava, em silêncio.
-  async function carregarExtrato() {
-    const el = document.getElementById('extratoPonto');
-    if (!el) return;
-    try {
-      const { linhas, resumo } = await (
-        await fetch(`${API_BASE_URL}/anunciantes/me/pontos/extrato`, { credentials: 'include' })
-      ).json();
-      if (!linhas.length) {
-        el.innerHTML =
-          '<p class="empty-state">Nenhum pagamento lançado ainda. Assim que o primeiro mês de comodato for fechado, ele aparece aqui.</p>';
-        return;
-      }
-      el.innerHTML = `
+// Extrato do comodato — o que este dono de ponto já recebeu e o que está em
+// aberto. Fica no nível do módulo (não dentro de `carregar()`) porque
+// `carregarTrocaComodato` também precisa chamar de novo depois da troca —
+// dentro de `carregar()`, essa segunda chamada não alcançava a função
+// (ReferenceError engolido pelo catch do próprio botão: a troca dava certo
+// no servidor, mas a tela mostrava erro).
+async function carregarExtrato() {
+  const el = document.getElementById('extratoPonto');
+  if (!el) return;
+  const mesAno = (d) => window.dataBR(d, { month: '2-digit', year: 'numeric' });
+  const dataCurta = (d) => window.dataBR(d);
+  try {
+    const { linhas, resumo } = await (
+      await fetch(`${API_BASE_URL}/anunciantes/me/pontos/extrato`, { credentials: 'include' })
+    ).json();
+    if (!linhas.length) {
+      el.innerHTML =
+        '<p class="empty-state">Nenhum pagamento lançado ainda. Assim que o primeiro mês de comodato for fechado, ele aparece aqui.</p>';
+      return;
+    }
+    el.innerHTML = `
       <div class="kpi-grid u-mb-14">
         <div class="kpi-card"><span class="kpi-label">Já recebido</span><b>${esc(resumo.totalPagoTexto)}</b>
           <span class="kpi-caption">${resumo.ultimoPagamento ? `último em ${esc(resumo.ultimoPagamento)}` : 'nenhum pagamento ainda'}</span></div>
@@ -53,15 +47,21 @@ async function carregar() {
         )
         .join('')}
       </tbody></table></div></div>`;
-    } catch (err) {
-      console.error('falha ao carregar o extrato do ponto', err);
-      el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus recebimentos agora.</p>';
-    }
+  } catch (err) {
+    console.error('falha ao carregar o extrato do ponto', err);
+    el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus recebimentos agora.</p>';
   }
+}
 
-  const mesAno = (d) => window.dataBR(d, { month: '2-digit', year: 'numeric' });
-  const dataCurta = (d) => window.dataBR(d);
-
+async function carregar() {
+  CONTA = await carregarConta();
+  if (!CONTA) {
+    window.location.href = '/anunciante/login.html';
+    return;
+  }
+  montarPerfil(CONTA, (nova) => {
+    CONTA = nova;
+  });
   // Painel único (modos.js): sem o papel "ponto", card de ativação.
   const estado = await montarModo('ponto', document.getElementById('dashboardPonto'), async (estado) => {
     document.getElementById('statusBanner').innerHTML =

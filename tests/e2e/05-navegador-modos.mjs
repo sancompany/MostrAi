@@ -79,6 +79,24 @@ console.log('== cadastro só-vendedor pelo convite ==');
   check('aba Meu ponto desbloqueou', await p.$eval('#navMeuPonto', (e) => !e.classList.contains('bloqueado')));
   await shot(p, 'ponto-liberado');
 
+  console.log('== trocar ajuda de custo por tela (regressão: carregarExtrato fora de escopo) ==');
+  // O bug: carregarExtrato() só existia dentro de carregar(), e este botão
+  // chamava de fora — ReferenceError engolido pelo catch do próprio clique,
+  // que sobrescrevia a mensagem de sucesso com "carregarExtrato is not
+  // defined" mesmo a troca já tendo dado certo no servidor.
+  await p.click('#btnTrocarPorTela');
+  await p.waitForFunction(() => document.getElementById('msgTrocaComodato').textContent.trim() !== 'trocando...', null, {
+    timeout: 8000,
+  });
+  const msgTroca = await p.textContent('#msgTrocaComodato');
+  check(
+    'mensagem de sucesso, não o erro de escopo',
+    msgTroca.includes('Pronto') && !msgTroca.includes('is not defined'),
+    msgTroca,
+  );
+  check('classe de sucesso, não de erro', await p.$eval('#msgTrocaComodato', (e) => e.className.includes(' ok')));
+  await shot(p, 'ponto-trocou-por-tela');
+
   // Bônus de tela após N meses removido em 17/09/2026 (migration 046).
   await p.close();
 }

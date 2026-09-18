@@ -29,7 +29,10 @@
       "WHATSAPP",
       "aplicarBarras",
       "montarNavAuth",
-      "montarModos"
+      "montarModo",
+      "carregarConta",
+      "cardBonus",
+      "ligarResgateAnuncio"
     ]
   },
   "linter": {
@@ -37,7 +40,8 @@
     "rules": {
       "preset": "recommended",
       "style": { "useTemplate": "off" },
-      "complexity": { "useArrowFunction": "off" }
+      "complexity": { "useArrowFunction": "off" },
+      "correctness": { "noUndeclaredVariables": "error" }
     }
   },
   "overrides": [
