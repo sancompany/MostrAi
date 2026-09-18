@@ -28,13 +28,15 @@
   const AQUI = window.location.pathname.replace(/\/index\.html$/, '/');
   const ehAqui = (href) => AQUI === href || (href !== '/' && AQUI.startsWith(href.replace('.html', '')));
 
+  // Seja um ponto/Seja um vendedor saíram do menu em 18/09/2026: os dois
+  // deixaram de ter porta de entrada própria (candidatura sem conta foi
+  // aposentada — ver src/candidaturas/routes.js). Ponto se pede de dentro do
+  // painel depois de criar conta; vendedor só por contato direto. Sobra
+  // "Anuncie", que agora é a própria ação de criar conta.
   const MENU_PUBLICO = [
     ['/', 'Home'],
     ['/planos.html', 'Planos'],
     ['/pontos.html', 'Onde estamos?'],
-    ['/anunciante/cadastro.html', 'Anuncie'],
-    ['/seja-um-ponto.html', 'Seja um ponto'],
-    ['/seja-um-vendedor.html', 'Seja um vendedor'],
     ['/contato.html', 'Contato'],
   ];
 
@@ -42,7 +44,9 @@
 
   function navPublico() {
     return (
-      MENU_PUBLICO.map(link).join('') + '<a class="btn ghost" href="/anunciante/login.html" data-nav-entrar>Entrar</a>'
+      MENU_PUBLICO.map(link).join('') +
+      `<a class="btn ghost" href="/anunciante/cadastro.html">Criar conta</a>` +
+      '<a class="btn ghost" href="/anunciante/login.html" data-nav-entrar>Entrar</a>'
     );
   }
 

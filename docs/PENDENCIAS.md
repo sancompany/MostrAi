@@ -3022,6 +3022,70 @@ cadastrado em Gmail → Configurações → Contas → "Enviar e-mail como"
 usa a identidade que recebeu a mensagem original (`admin@`) como padrão
 pra responder.
 
+### G.9 — Candidatura sem conta aposentada; ponto e vendedor mudam de porta de entrada (18/09/2026)
+
+Pedido do dono: unificar a entrada — toda conta nasce igual (papel
+`anunciante`, `POST /anunciantes/cadastro`, sem mudança nenhuma nisso), e
+quem quer um papel extra pede de DENTRO da conta já criada, não antes de
+existir. Discutido em rodada de conversa antes de qualquer código (o dono
+pediu isso explicitamente), e só depois de descoberto que o mecanismo pro
+papel `ponto` **já existia inteiro** — construído numa rodada anterior
+desta sessão (`src/conta/modos.js`, `public/modos.js`, v2.1 "painel único")
+— é que a mudança de fato ficou pequena: não foi preciso inventar
+mecanismo novo pra ponto, só cortar a porta de entrada antiga que competia
+com ele.
+
+**[x] Aposentado — sem porta de entrada sem conta pra ponto ou vendedor:**
+- `POST /candidaturas` (o formulário público, sem conta) responde **410**.
+  `enviarCandidaturaNova` (o e-mail de aviso) moveu pra dentro do único
+  lugar que ainda cria candidatura — `POST /conta/modos/ponto/pedir`
+  (`src/conta/modos.js`) — senão o dono perdia o aviso por e-mail que já
+  tinha.
+- `public/seja-um-ponto.html`, `.page.js`, `public/seja-um-vendedor.html`,
+  `.page.js` — removidos. `public/sitemap.xml` sem as duas URLs.
+- Cabeçalho (`public/layout.js`, `MENU_PUBLICO`): sem "Seja um ponto" e
+  "Seja um vendedor". Sobrou Home/Planos/Onde estamos?/Contato + 2 botões,
+  "Criar conta" e "Entrar" (era só "Anuncie" + "Entrar").
+- Home (`public/index.html`): os dois mini-links do hero e os dois cards
+  (Ponto, Vendedor parceiro) apontam pra `/anunciante/cadastro.html`
+  (ponto) e pra `/#contato` (vendedor, âncora nova na seção de contato da
+  própria home) em vez das páginas aposentadas.
+- `public/pontos.html`, `public/pontos.page.js`, `public/comodato.html`:
+  os três links que sobravam pra `/seja-um-ponto.html` também retargetados.
+
+**[x] Vendedor perde o pedido self-service, ponto não muda:** o card do
+modo `vendedor` em `public/modos.js` (dentro do painel, pra quem já tem
+conta) virou só aviso — "fale com a gente" — sem formulário. `POST
+/conta/modos/vendedor/pedir` responde **400** agora ("modo inválido");
+`POST /conta/modos/ponto/pedir` continua exatamente como estava, porque já
+fazia certo: pede só o que é exclusivo do ponto (nome do estabelecimento,
+endereço, segmento, fluxo — tudo o mais já é da conta), cria a candidatura
+com `conta_id`, o dono libera direto nela
+(`POST /admin/candidaturas/:id/liberar`) sem convite e sem conta nova.
+
+Vendedor não fica sem caminho nenhum: o dono já tinha, na aba Convites do
+admin, "+ Novo convite (sem candidatura)" — gera o convite à mão depois da
+conversa oficial, e quem já tem conta (ou cria uma normal) aceita em
+`/convites/:token/aceitar`. Nenhum código novo precisou disso.
+
+**Documentação:** `CONSTRAINTS.md` (o veto de "cadastro aberto" reescrito
+pra descrever os dois mecanismos atuais), `docs/funcional.md` (RN-03
+reescrita, jornadas 2.2/2.3, tabela de telas), `docs/api.md` (as rotas
+aposentadas/alteradas). `docs/teia.md` e `docs/furos.md` **não foram
+atualizados** — são retratos de uma auditoria anterior (387 funções, 132
+furos) e várias entradas sobre o formulário público de candidatura ficaram
+desatualizadas por esta mudança (ex.: os furos sobre "candidatura não avisa
+ninguém por e-mail" e as contradições entre `seja-um-ponto.html` e
+`comodato.html`, que não existem mais). Registrado aqui em vez de corrigido
+linha a linha — os dois documentos precisam de uma rodada de regeneração
+própria, não um remendo dentro desta mudança.
+
+**Testes:** `tests/e2e/01-fluxo-api.sh` reescrito (a seção de candidatura
+pública → convite virou conta direta → pedido pelo painel → liberação, e
+convite manual de vendedor). `04-modos-e-bonus.sh` já testava exatamente o
+caminho novo (pedido pelo painel + liberar na conta) e não precisou mudar.
+`npm run check` verde (114 testes) depois da mudança.
+
 ### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
 
 O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las

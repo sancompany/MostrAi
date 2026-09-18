@@ -41,13 +41,13 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano — e é essa frequência que a tela entrega, com a rede vazia ou cheia (RN-39).
 10. O anunciante acompanha exibições na própria aba.
 
-### 2.2 Dono de ponto — da candidatura à tela no ar
+### 2.2 Dono de ponto — do painel à tela no ar
 
-1. Chega em `/seja-um-ponto.html` e manda a **candidatura** (não cria conta).
-2. O administrador avalia bairro e ramo e decide.
-3. Aprovado, recebe um **convite** (link) por WhatsApp, ou o administrador libera o papel numa conta que já existe.
-4. Abre `/convite.html?t=…`, define senha, e a conta nasce com o papel **ponto**.
-5. O administrador cadastra o ponto e as telas, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
+1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
+2. De dentro do painel, pede o modo **Meu ponto**: nome do estabelecimento, endereço, segmento, fluxo de pessoas (opcional). O resto (nome, contato) já é da conta.
+3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
+4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto (com a Tela 1) nasce ali.
+5. O administrador cadastra as telas extras, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
 6. A TV abre o link do player uma vez; a chave fica guardada no aparelho.
 7. O dono do ponto define o **PIN** da tela no próprio painel
    (`/anunciante/ponto.html` → a tela → "PIN desta tela") e passa a acompanhar
@@ -57,7 +57,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 
 ### 2.3 Vendedor — do convite à comissão
 
-1. Recebe convite do administrador (não existe cadastro aberto).
+1. Fala direto com a Mostraí por um canal oficial (não existe pedido self-service — o card do modo no painel e o card da home só apontam pro contato) e, se fechar, recebe convite do administrador.
 2. Abre `/convite.html?t=…`, a conta nasce com o papel **vendedor** e um cupom.
 3. Manda `/anunciante/cadastro.html?ref=CUPOM` para o interessado.
 4. O indicado assina e paga.
@@ -89,12 +89,10 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 
 | Tela | URL | Quem acessa | O que mostra | O que dá para fazer | Para onde leva |
 |---|---|---|---|---|---|
-| Início | `/` | público | o que é a rede, pontos, chamada | conhecer | planos, seja-um-ponto |
+| Início | `/` | público | o que é a rede, pontos, chamada, card de ponto e de vendedor | conhecer | planos, cadastro, contato |
 | Planos | `/planos.html` | público | grade de 3 níveis × 4 ciclos, e o plano fundador se aberto | escolher plano | cadastro |
-| Pontos | `/pontos.html` | público | os comércios da rede | ver onde o anúncio roda | — |
-| Comodato | `/comodato.html` | público | as opções de quem cede a parede | entender a contrapartida | seja-um-ponto |
-| Seja um ponto | `/seja-um-ponto.html` | público | formulário de candidatura | enviar candidatura | — |
-| Seja um vendedor | `/seja-um-vendedor.html` | público | formulário de candidatura | enviar candidatura | — |
+| Pontos | `/pontos.html` | público | os comércios da rede | ver onde o anúncio roda | cadastro |
+| Comodato | `/comodato.html` | público | as opções de quem cede a parede | entender a contrapartida | — |
 | Contato | `/contato.html` | público | formulário | mandar mensagem | — |
 | Cadastro | `/anunciante/cadastro.html` | público | formulário de conta (aceita `?ref=CUPOM`) | criar conta de anunciante | painel |
 | Login | `/anunciante/login.html` | público | e-mail e senha | entrar | painel |
@@ -112,8 +110,10 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
 
 **Legado, mantido só para link salvo:** `/afiliado/*` responde 410 apontando
-para a conta única. `POST /seja-um-ponto` responde 410 de propósito — o
-caminho é a candidatura.
+para a conta única. `POST /seja-um-ponto` e `POST /candidaturas` (o
+formulário público, sem conta — aposentado em 18/09/2026) respondem 410 de
+propósito — o caminho agora é criar conta e pedir o modo ponto de dentro do
+painel.
 
 ---
 
@@ -176,9 +176,17 @@ enquanto o ciclo dele está ativo, para promoção. Plano desativado aparece
 apagado **só no admin**, nunca para o cliente. *Violada:* o plano some da
 vitrine. *Quem vê:* administrador vê apagado; o público não vê nada.
 
-**RN-03 — Dono de ponto e vendedor só nascem por convite.** Não existe cadastro
-público para esses papéis. *Violada:* `POST /seja-um-ponto` responde 410.
-*Quem vê:* quem tentou.
+**RN-03 — Ponto e vendedor nunca se autodeclaram; o dono sempre decide.**
+*(Reescrita em 18/09/2026 — o formulário público sem conta foi aposentado, a
+pedido do dono, pra unificar a entrada: toda conta nasce igual, sempre
+`anunciante`.)* Ponto pede de dentro do painel de uma conta que já existe
+(`POST /conta/modos/ponto/pedir`), e o dono libera direto nela
+(`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova.
+Vendedor não tem pedido nenhum: só entra depois de falar com o dono por um
+canal oficial, que gera um convite à mão (`POST /admin/convites`, sem
+candidatura). *Violada:* `POST /candidaturas` e `POST /seja-um-ponto`
+respondem 410; `POST /conta/modos/vendedor/pedir` responde 400 (não existe
+mais). *Quem vê:* quem tentou o caminho antigo.
 
 **RN-04 — Benefício comercial se dá no preço, nunca no tempo.** A assinatura do
 San Checkout não tem carência, mês grátis nem pular ciclo. Desconto entra no

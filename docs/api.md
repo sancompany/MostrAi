@@ -20,13 +20,13 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 | GET | `/pontos` | Pontos ativos (nome, endereço, cidade) pra página "Onde estamos". |
 | GET | `/pontos/fluxo` | `{pessoasPorMes}` somando o fluxo estimado dos pontos ativos. |
 | GET | `/categorias` | Segmentos do cadastro. |
-| POST | `/candidaturas` | Formulário "Seja um ponto" / "Seja um vendedor". Corpo: `tipo` (`ponto`\|`vendedor`), `nome`, `contato_telefone` obrigatórios; ponto exige `nome_comercio` e `endereco`. Não cria conta. |
+| POST | `/candidaturas` | **410** — candidatura sem conta foi aposentada (18/09/2026, RN-03). Ponto se pede de dentro do painel de uma conta já criada; vendedor não tem pedido, só contato direto. |
 | GET | `/convites/:token` | O que um link de convite permite: `{papeis, nome_sugerido, email_sugerido, expira_em}`. 404 se usado/expirado. |
 | POST | `/anunciantes/cadastro` | Cria conta, sempre liberada na hora (`status = 'comum'`; não há mais aprovação de conta, RN-34/RN-35 — `status` só distingue comum de parceiro, nunca bloqueia). Sem `convite`: papel `anunciante`, exige endereço comercial. Com `convite` (token): papéis do convite, `chave_pix` obrigatória se vendedor, `plano_ponto_id` opcional se ponto; convite vindo de candidatura de ponto já cria o ponto + "Tela 1". Loga a sessão e devolve a conta. |
 | POST | `/anunciantes/login` | `{email, senha}` → conta (com `papeis`). Senha em scrypt; hash bcrypt antigo migra sozinho no login. |
 | POST | `/anunciantes/esqueci-senha` / `/redefinir-senha` | Fluxo de token por e-mail. `/afiliados/esqueci-senha` é alias legado. |
 | POST | `/contato` | Formulário de contato → e-mail. |
-| POST | `/seja-um-ponto` | **410** — cadastro aberto de ponto foi substituído por candidatura + convite. |
+| POST | `/seja-um-ponto` | **410** — legado. O caminho é criar conta e pedir o modo ponto de dentro do painel (`POST /conta/modos/ponto/pedir`). |
 | POST | `/afiliados/cadastro` · `/afiliados/login` · `/afiliados/logout` | **410** — vendedor virou papel da conta única (migration 019). Use `/anunciantes/cadastro` e `/anunciantes/login`. |
 | POST | `/webhook/san-checkout` | Fail-closed: exige assinatura HMAC válida (`X-Checkout-Signature` + `X-Checkout-Timestamp`, segredo = `SAN_CHECKOUT_KEY`, janela de 300s, corpo cru — API.md 4.3.1 do Checkout). Recebe os dois formatos do Checkout, diferenciados por `tipo` (payload de pedido não tem esse campo). **Assinatura**, 7 eventos (`criada`, `cobranca_confirmada`, `cobranca_falhou`, `cobranca_estornada`, `cobranca_contestada`, `cancelada`, `plano_trocado`): idempotente por `chargeId|status`, buscada na rota de conciliação 5.3; `criada`/`cobranca_confirmada` creditam o ciclo numa transação; `cancelada` marca a assinatura; `cobranca_contestada` suspende a conta na hora (RN-54) e vira pendência; `plano_trocado` é no-op — a troca já foi aplicada de forma síncrona por `POST /anunciantes/me/trocar-plano` (RN-52), o webhook chega só de confirmação; os demais eventos viram pendência. **Pedido avulso** (migration 041, hoje só histórico — RN-52 aposentou este caminho pra troca de plano): idempotente pelo `chargeId` do próprio corpo; `confirmado` aplica a troca (cancela a assinatura antiga, ativa o plano novo); `recusado`/`vencido`/`chargeback`/`estornado` cancela o pedido. |
 | GET | `/plano/:assinaturaId` | Consulta do San Checkout (header `X-Checkout-Key`). Serve assinatura com status `ativa` OU `pendente_troca` (RN-52 — a linha nova de uma troca em andamento precisa responder preço antes de confirmada). |
@@ -71,10 +71,10 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/conta/modos` | `{papeis, modos:{anunciante:{liberado, precisaEndereco}, ponto:{liberado, pedido}, vendedor:{liberado, pedido}}, bonus:{ponto, anuncio}}` — o que o painel usa pra desenhar as três abas e os cards de bônus. |
+| GET | `/conta/modos` | `{papeis, modos:{anunciante:{liberado, precisaEndereco}, ponto:{liberado, pedido}, vendedor:{liberado, pedido}}, bonus:{ponto, anuncio}}` — o que o painel usa pra desenhar as três abas e os cards de bônus. `vendedor.pedido` fica sempre `null` daqui pra frente (18/09/2026) — só existe pra linha antiga de quem pediu antes disso. |
 | POST | `/conta/modos/anunciante` | Ativa o modo anúncios na própria conta: exige `endereco, cidade, uf, cep` (aceita `categoria_id`/`categoria_livre`). Acrescenta o papel. |
-| POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, `endereco`… obrigatórios; `plano_ponto_id` opcional). 409 se já houver pedido em análise. |
-| POST | `/conta/modos/vendedor/pedir` | Idem pra vendas (`cidade`, `chave_pix` opcional, `mensagem`). |
+| POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, `endereco`… obrigatórios; `plano_ponto_id` opcional). 409 se já houver pedido em análise. E-mail de aviso pro dono (`enviarCandidaturaNova`), fire-and-forget. |
+| POST | `/conta/modos/vendedor/pedir` | **400** — aposentado em 18/09/2026 (RN-03). Vendedor não pede mais: fala direto com o dono, que gera o convite à mão. |
 | POST | `/convites/:token/aceitar` | Conta logada aceita um convite: os papéis novos entram nesta conta (vendedor exige `chave_pix`; ponto vindo de candidatura cria ponto + Tela 1). Consome o convite. |
 | POST | `/conta/bonus/anuncio/resgatar` | Módulo "anúncio grátis após N meses como ponto" (`planos_ponto.plano_bonus_*`): quando `bonus.anuncio.disponivel`, ativa o plano na conta por M meses sem cobrança (papel anunciante entra junto). 409 se já houver plano ativo. |
 

@@ -127,7 +127,10 @@ app.use(
 // lê como mudança de endereço. 301 diz a mesma coisa antes do download, e sem
 // script — o que também é o que permite a CSP não liberar script inline.
 const MUDARAM_DE_ENDERECO = {
-  '/afiliado/cadastro.html': '/seja-um-vendedor.html',
+  // '/seja-um-vendedor.html' foi aposentada em 18/09/2026 (candidatura sem
+  // conta virou contato direto) — quem tinha o link antigo de afiliado vai
+  // pro mesmo lugar que o card de vendedor da home manda agora.
+  '/afiliado/cadastro.html': '/#contato',
   '/afiliado/login.html': '/anunciante/login.html',
   '/afiliado/painel.html': '/anunciante/vendedor.html',
   '/anunciante/perfil.html': '/anunciante/painel.html',

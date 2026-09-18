@@ -19,6 +19,7 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const planosRepo = require('../financeiro/planos-repository');
 const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
+const { enviarCandidaturaNova } = require('../financeiro/email');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 const router = express.Router();
@@ -194,11 +195,14 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
 
-// Modos ponto e vendedor: pedido de dentro do painel. Vira candidatura com
-// conta_id; o dono libera no admin (ou gera convite, que a conta aceita).
+// Modo ponto: pedido de dentro do painel. Vira candidatura com conta_id; o
+// dono libera no admin (ou gera convite, que a conta aceita). Vendedor não
+// pede mais assim (18/09/2026, a pedido do dono) — quem quer ser vendedor
+// fala direto com a gente; quem entra, entra por convite que o dono gera à
+// mão depois da conversa, nunca por pedido self-service.
 router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res) => {
   const papel = req.params.papel;
-  if (!['ponto', 'vendedor'].includes(papel)) return res.status(400).json({ erro: 'modo inválido' });
+  if (papel !== 'ponto') return res.status(400).json({ erro: 'modo inválido' });
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   if ((conta.papeis || []).includes(papel))
@@ -209,7 +213,7 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   );
   if (abertos.length)
     return res.status(409).json({ erro: 'você já tem um pedido em análise — a gente chama no WhatsApp' });
-  if (papel === 'ponto' && (!req.body.nome_comercio || !req.body.endereco)) {
+  if (!req.body.nome_comercio || !req.body.endereco) {
     return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   }
   if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
@@ -224,6 +228,10 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
     conta_id: conta.id,
     origem: 'painel',
   });
+  // Fire-and-forget: mesmo aviso que o formulário público mandava antes de
+  // ser aposentado — sem ele, o pedido só aparece pra quem abrir o admin
+  // por acaso (a fila "Candidaturas" ainda avisa, mas o e-mail chega antes).
+  enviarCandidaturaNova(cand).catch((err) => console.error('e-mail de candidatura nova', err));
   res.status(201).json({ ok: true, id: cand.id });
 });
 

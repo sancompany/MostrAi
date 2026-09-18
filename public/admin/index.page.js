@@ -270,7 +270,8 @@ const SUBTITULOS = {
   metrica:
     'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
-  candidaturas: 'Quem pediu pra ser ponto ou vendedor pelo site. Você conversa, e se fechar, gera o convite daqui.',
+  candidaturas:
+    'Quem pediu pra ter um ponto, de dentro do próprio painel. Você conversa, e se fechar, libera na conta.',
   contato:
     'Quem escreveu pelo formulário do site. É também o canal de pedido sobre dados pessoais (LGPD), que tem prazo pra responder. A coluna "aviso" diz se o e-mail chegou na sua caixa; quando não chegou, esta tela é o único lugar onde a mensagem existe.',
   convites:
@@ -905,9 +906,9 @@ async function renderPontos(el) {
             html: corpo,
             dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
           })
-        : '<p class="empty-state">Nenhum ponto ainda. Candidatura em "Seja um ponto" no site vira convite aqui, e o convite aceito nasce ponto. O cadastro manual acima é pra exceção.</p>'
+        : '<p class="empty-state">Nenhum ponto ainda. Pedido de "meu ponto" no painel de uma conta vira candidatura na aba Candidaturas, você libera na conta, e o ponto nasce ali. O cadastro manual acima é pra exceção.</p>'
     }
-    <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo formulário "Seja um ponto" → candidatura → convite; o cadastro manual abaixo é pra exceção.</p>`;
+    <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo pedido de "meu ponto" no painel → candidatura → você libera na conta; o cadastro manual abaixo é pra exceção.</p>`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
 
@@ -1503,7 +1504,9 @@ async function renderCandidaturas(el) {
       <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '-')}</td>
       <td>${
         c.status === 'aprovada'
-          ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
+          ? c.convite_token
+            ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
+            : `<span class="badge badge-ok">Liberado na conta</span>`
           : selectStatus(
               { nova: 'Nova', em_contato: 'Em contato', recusada: 'Recusada' },
               c.status,
@@ -1534,9 +1537,9 @@ async function renderCandidaturas(el) {
           { valor: 'vendedor', nome: 'Só vendedores' },
         ],
         html: corpo,
-        dica: 'Pedido do site → "Gerar convite" (link de cadastro, uso único, 7 dias). Pedido feito de dentro do painel de uma conta → "Liberar na conta" liga o modo direto nela.',
+        dica: 'Hoje só chega pedido de ponto, sempre de dentro do painel de uma conta que já existe — "Liberar na conta" liga o modo direto nela. Vendedor não passa mais por aqui: gere o convite direto na aba Convites depois da conversa. Linhas antigas do formulário público (aposentado em 18/09/2026) continuam listadas pra histórico.',
       })
-    : '<p class="empty-state">Nenhuma candidatura ainda. Os formulários "Seja um ponto" e "Seja um vendedor" do site caem aqui.</p>';
+    : '<p class="empty-state">Nenhuma candidatura ainda. Pedido de "meu ponto" de dentro do painel de uma conta cai aqui.</p>';
 
   if (!lista.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));

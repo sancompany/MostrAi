@@ -1,6 +1,7 @@
-// Fluxo v2 no navegador, contra o servidor local real (porta 3999):
-// candidatura → admin gera convite → cadastro por convite → painel do ponto,
-// painel do vendedor, planos, player + PIN, abas novas do admin.
+// Fluxo v3 no navegador, contra o servidor local real (porta 3999): conta
+// direta nasce anunciante → pede o modo ponto pelo painel → admin libera
+// direto na conta → painel do ponto; convite manual de vendedor (sem
+// candidatura) → painel do vendedor; planos, player + PIN, abas do admin.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
@@ -32,33 +33,60 @@ async function abaAdmin(adm, nome, esperado) {
 }
 async function shot(p, nome) { await p.screenshot({ path: new URL(`./saida/v2-${nome}.png`, import.meta.url).pathname, fullPage: true }); }
 
-console.log('== candidatura de ponto pelo site ==');
-{
-  const p = await pagina('/seja-um-ponto.html');
-  await p.fill('#nome_comercio', 'Farmácia Central');
-  await p.waitForFunction(() => document.querySelectorAll('#categoria_id option').length > 1);
-  await p.selectOption('#categoria_id', { index: 1 });
-  await p.fill('#cep', '15990-000'); await p.fill('#endereco', 'Rua Sete de Setembro'); await p.fill('#numero', '100');
-  await p.fill('#nome', 'Carla'); await p.fill('#contato_telefone', '16 99999-1111');
-  await p.check('#aceite');
-  await p.click('button[type=submit]');
-  await p.waitForSelector('#enviado:not([hidden])', { timeout: 5000 }).catch(() => {});
-  check('candidatura enviada e confirmação aparece', !(await p.$eval('#enviado', (e) => e.hidden)), await p.$eval('#msg', (e) => e.textContent));
-  await shot(p, 'seja-um-ponto');
-  await p.close();
-}
+console.log('== conta direta (Farmácia Central) nasce anunciante; pede o modo ponto pelo painel ==');
+// Sem candidatura sem conta e sem convite pra isso (aposentado 18/09/2026):
+// a conta nasce normal e pede o modo de dentro do painel — a interação com
+// o FORMULÁRIO desse pedido (campos, opções de comodato) já é coberta a
+// fundo por 05-navegador-modos.mjs; aqui só falta ter uma conta com ponto
+// pra alimentar o resto deste arquivo (telas, chave, PIN, player).
+const farm = await pagina('/');
+const rCad = await farm.evaluate(async () =>
+  (
+    await (
+      await fetch('/anunciantes/cadastro', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome_empresa: 'Farmácia Central',
+          cpf_cnpj: '111.444.777-35',
+          endereco: 'Rua Sete de Setembro, 100',
+          cidade: 'Matão',
+          uf: 'SP',
+          cep: '15990-000',
+          contato_email: 'carla@x.com',
+          contato_telefone: '16 99999-1111',
+          senha: 'Senha12@',
+          aceitou_termos: true,
+        }),
+      })
+    ).json()
+  ),
+);
+check('conta direta nasce só com anunciante', JSON.stringify(rCad.papeis) === '["anunciante"]', JSON.stringify(rCad));
+const rPedido = await farm.evaluate(async () =>
+  (
+    await (
+      await fetch('/conta/modos/ponto/pedir', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome_comercio: 'Farmácia Central',
+          endereco: 'Rua Sete de Setembro, 100',
+          cidade: 'Matão',
+          uf: 'SP',
+          cep: '15990-000',
+          segmento: 'saúde',
+        }),
+      })
+    ).json()
+  ),
+);
+check('pedido de ponto criado pelo painel', rPedido.ok === true, JSON.stringify(rPedido));
+await farm.close();
 
-console.log('== candidatura de vendedor ==');
-{
-  const p = await pagina('/seja-um-vendedor.html');
-  await p.fill('#nome', 'Marcos'); await p.fill('#contato_telefone', '16 98888-2222'); await p.check('#aceite');
-  await p.click('button[type=submit]');
-  await p.waitForSelector('#enviado:not([hidden])', { timeout: 5000 }).catch(() => {});
-  check('candidatura de vendedor enviada', !(await p.$eval('#enviado', (e) => e.hidden)));
-  await p.close();
-}
-
-console.log('== admin: candidaturas → convite ==');
+console.log('== admin: candidaturas → libera direto na conta ==');
 const adm = await pagina('/admin/', null, ctxAdmin);
 await adm.fill('#usuario', 'admin'); await adm.fill('#senha', 'Admin12@teste'); await adm.click('#formLogin button[type=submit]');
 await adm.waitForSelector('#app:not([hidden])');
@@ -67,53 +95,12 @@ check('visão geral mostra custos fixos', (await adm.textContent('#conteudo')).i
 check('alerta de candidaturas novas', (await adm.textContent('#conteudo')).includes('candidatura'));
 await shot(adm, 'admin-resumo');
 await abaAdmin(adm, 'candidaturas', 'Farmácia Central');
-check('aba candidaturas lista a farmácia', (await adm.textContent('#conteudo')).includes('Farmácia Central'));
+check('aba candidaturas lista a farmácia, pedido do painel', (await adm.textContent('#conteudo')).includes('Farmácia Central') && (await adm.textContent('#conteudo')).includes('pedido do painel'));
 await shot(adm, 'admin-candidaturas');
-// gera convite (prompt confirm → aceita = também anunciante; prompt do link → aceita)
-let linkConvite = null;
-adm.removeAllListeners('dialog');
-adm.on('dialog', async (d) => {
-  if (d.type() === 'confirm') return d.dismiss(); // só dono de ponto
-  if (d.type() === 'prompt') { linkConvite = d.defaultValue(); return d.accept(); }
-  return d.accept();
-});
-await adm.locator('tr', { hasText: 'Farmácia Central' }).first().locator('[data-convidar]').click(); await adm.waitForTimeout(800);
-check('convite gerado com link', !!linkConvite && linkConvite.includes('/convite.html?t='), linkConvite);
-check('candidatura virou aprovada', (await adm.textContent('#conteudo')).includes('Convite aberto'));
-await adm.click('.nav-item[data-aba="convites"]'); await adm.waitForTimeout(600);
-check('aba convites lista o convite aberto', (await adm.textContent('#conteudo')).includes('Dono de ponto'));
-await shot(adm, 'admin-convites');
-
-console.log('== cadastro por convite ==');
-{
-  const p = await pagina(linkConvite.replace(/^https?:\/\/[^/]+/, ''));
-  await p.waitForSelector('#formConvite:not([hidden])', { timeout: 5000 }).catch(() => {});
-  check('página de convite abre o formulário', !(await p.$eval('#formConvite', (e) => e.hidden)));
-  check('mostra papel dono de ponto', (await p.textContent('#papeis')).includes('Dono de ponto'));
-  check('seção de Pix escondida (não é vendedor)', await p.$eval('#secaoPix', (e) => e.hidden));
-  check('seção de plano do ponto visível', !(await p.$eval('#secaoPlanoPonto', (e) => e.hidden)));
-  await shot(p, 'convite');
-  await p.fill('#cpf_cnpj', '111.444.777-35'); await p.fill('#contato_telefone', '16 99999-1111');
-  await p.fill('#contato_email', 'carla@x.com'); await p.fill('#senha', 'Senha12@'); await p.fill('#senha_confirma', 'Senha12@');
-  await p.check('#aceitou_termos');
-  await p.click('button[type=submit]');
-  await p.waitForURL('**/anunciante/ponto.html', { timeout: 8000 }).catch(() => {});
-  check('após cadastro vai pro painel do ponto', p.url().includes('/anunciante/ponto.html'), p.url());
-  await p.waitForTimeout(800);
-  const txt = await p.textContent('body');
-  check('painel do ponto lista a Tela 1', txt.includes('Tela 1'), txt.slice(0, 200));
-  check('menu: "Meu ponto" liberado e "Anúncios" bloqueado', await p.$eval('#navMeuPonto', (e) => !e.classList.contains('bloqueado')) && await p.$eval('#navDashboard', (e) => e.classList.contains('bloqueado')));
-  await shot(p, 'ponto');
-  await p.close();
-}
-
-console.log('== convite é de uso único ==');
-{
-  const p = await pagina(linkConvite.replace(/^https?:\/\/[^/]+/, ''));
-  await p.waitForTimeout(500);
-  check('segunda abertura mostra inválido', !(await p.$eval('#invalido', (e) => e.hidden)));
-  await p.close();
-}
+await adm.locator('tr', { hasText: 'Farmácia Central' }).first().locator('[data-liberar]').click();
+await adm.waitForTimeout(800);
+check('candidatura liberada direto na conta, sem convite', (await adm.textContent('#conteudo')).includes('Liberado na conta'));
+await shot(adm, 'admin-candidaturas-liberada');
 
 console.log('== admin: telas (chave + PIN) ==');
 await abaAdmin(adm, 'telas', 'Farmácia Central');
@@ -161,13 +148,25 @@ console.log('== player + painel por PIN ==');
   await p.close();
 }
 
-console.log('== vendedor: convite só vendedor → painel de vendas ==');
-adm.removeAllListeners('dialog');
-let linkVend = null;
-adm.on('dialog', async (d) => { if (d.type() === 'confirm') return d.dismiss(); if (d.type() === 'prompt') { linkVend = d.defaultValue(); return d.accept(); } return d.accept(); });
-await abaAdmin(adm, 'candidaturas', 'Marcos');
-await adm.locator('tr', { hasText: 'Marcos' }).first().locator('[data-convidar]').click(); await adm.waitForTimeout(800);
-check('convite de vendedor gerado', !!linkVend);
+console.log('== vendedor: convite manual (sem candidatura) → painel de vendas ==');
+// Vendedor não tem pedido self-service (aposentado 18/09/2026): quem quer
+// ser vendedor fala direto com o dono, que gera o convite à mão — sem
+// candidatura nenhuma por trás. Mesmo padrão de "+ Novo convite (sem
+// candidatura)" que já existe na aba Convites do admin.
+const rConvVend = await adm.evaluate(async () =>
+  (
+    await (
+      await fetch('/admin/convites', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ papeis: ['vendedor'], nome_sugerido: 'Marcos' }),
+      })
+    ).json()
+  ),
+);
+const linkVend = rConvVend.link ? rConvVend.link.replace(/^https?:\/\/[^/]+/, '') : null;
+check('convite de vendedor gerado à mão, sem candidatura', !!linkVend, JSON.stringify(rConvVend));
 {
   // Contexto novo: a Carla continua logada no `ctx`, e convite aberto por
   // conta logada agora oferece "liberar na minha conta" em vez do formulário.
@@ -211,11 +210,11 @@ await shot(adm, 'admin-custos');
 await abaAdmin(adm, 'anunciantes', 'Dono de ponto');
 check('anunciantes mostra badge de papel', (await adm.textContent('#conteudo')).includes('Dono de ponto'));
 
-console.log('== mobile: convite e ponto ==');
+console.log('== mobile: cadastro ==');
 {
-  const p = await pagina('/seja-um-ponto.html', { width: 390, height: 800 });
+  const p = await pagina('/anunciante/cadastro.html', { width: 390, height: 800 });
   const larguraDoc = await p.evaluate(() => document.documentElement.scrollWidth);
-  check('seja-um-ponto não estoura no celular', larguraDoc <= 390, larguraDoc);
+  check('cadastro não estoura no celular', larguraDoc <= 390, larguraDoc);
   await p.close();
 }
 

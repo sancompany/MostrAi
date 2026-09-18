@@ -2,23 +2,22 @@ const express = require('express');
 const router = express.Router();
 const repo = require('./repository');
 const eventos = require('../lib/eventos');
-const { limiteTentativas } = require('../lib/limite-tentativas');
-const { enviarCandidaturaNova } = require('../financeiro/email');
 
-// Público. Substitui o cadastro aberto de ponto e de vendedor.
-router.post('/candidaturas', limiteTentativas, async (req, res) => {
-  const { tipo, nome, contato_telefone } = req.body;
-  if (!repo.TIPOS.includes(tipo)) return res.status(400).json({ erro: 'tipo inválido' });
-  if (!nome || !contato_telefone) return res.status(400).json({ erro: 'nome e WhatsApp são obrigatórios' });
-  if (tipo === 'ponto' && (!req.body.nome_comercio || !req.body.endereco)) {
-    return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
-  }
-  const candidatura = await repo.criar(req.body);
-  // fire-and-forget: e-mail que falha não pode derrubar a candidatura, que é a
-  // única coisa que a pessoa veio fazer. Sem isto, a promessa de "retorno em
-  // até 2 dias úteis" dependia de alguém abrir o admin por acaso.
-  enviarCandidaturaNova(candidatura).catch((err) => console.error('e-mail de candidatura nova', err));
-  res.status(201).json({ ok: true, id: candidatura.id });
+// v3 (18/09/2026): candidatura sem conta foi aposentada. Ponto e vendedor não
+// têm mais porta de entrada pra quem não tem conta ainda — a conta nasce
+// sempre igual (papel `anunciante`, `POST /anunciantes/cadastro`), e quem
+// quer um ponto pede de dentro do painel (`POST /conta/modos/ponto/pedir`,
+// `src/conta/modos.js`), já logado — o endereço e os outros dados exclusivos
+// entram ali, o resto já veio da conta. Vendedor não tem pedido nenhum: o
+// card do modo (e o da home) só apontam pro contato direto; quem vira
+// vendedor é por convite que o dono gera à mão depois da conversa
+// (`POST /admin/convites`, sem candidatura).
+router.post('/candidaturas', (_req, res) => {
+  res.status(410).json({
+    erro:
+      'esse formulário saiu do ar — crie sua conta e peça pra ser ponto de dentro do painel, ' +
+      'ou fale com a gente pra ser vendedor',
+  });
 });
 
 // Admin

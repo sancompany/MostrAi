@@ -108,27 +108,18 @@
           <p class="form-msg" id="modoMsg" role="status"></p>
         </form>`;
     },
-    vendedor(estado) {
-      const pedido = estado.modos.vendedor.pedido;
-      if (pedido) {
-        return `
-          <div class="card wide modo-card u-ta-c">
-            <p class="eyebrow">Modo vendas</p>
-            <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
-            <p class="form-hint">A gente chama no WhatsApp pra explicar o produto e a comissão. Assim que liberar, seu cupom aparece aqui.</p>
-          </div>`;
-      }
+    // Sem pedido self-service (18/09/2026, a pedido do dono) — quem quer
+    // vender fala direto com a gente por um canal oficial, e quem entra,
+    // entra por convite que o dono gera à mão depois da conversa. Não é
+    // formulário: é aviso só, o mesmo tom do card da home.
+    vendedor(_estado) {
       return `
-        <form class="card wide modo-card" id="formModo">
+        <div class="card wide modo-card u-ta-c">
           <p class="eyebrow">Modo vendas</p>
-          <h3>Indique comerciantes e receba comissão no Pix</h3>
-          <p class="form-hint u-m-0 u-mb-6">Você ganha um cupom próprio; toda assinatura fechada com ele rende comissão em cada cobrança. Conta como você pretende vender e a gente libera.</p>
-          <div><label for="m_cidade_v">Cidade onde você atua</label><input id="m_cidade_v" name="cidade" value="Matão" required></div>
-          <div><label for="m_pix">Chave Pix pra receber (pode preencher depois)</label><input id="m_pix" name="chave_pix"></div>
-          <div><label for="m_mensagem_v">Com o que você trabalha? Por que quer vender a Mostraí?</label><textarea id="m_mensagem_v" name="mensagem" rows="3"></textarea></div>
-          <button class="btn primary" type="submit">Pedir liberação</button>
-          <p class="form-msg" id="modoMsg" role="status"></p>
-        </form>`;
+          <h3>Quer ser vendedor parceiro?</h3>
+          <p class="form-hint u-m-0">Fale direto com a gente pra combinar a indicação e a comissão. É a gente que libera esse modo na sua conta depois da conversa.</p>
+          <a class="btn primary u-mt-8" href="/contato.html">Falar com a gente</a>
+        </div>`;
     },
   };
 
@@ -173,24 +164,18 @@
         window.location.reload();
         return;
       }
-      if (modo === 'ponto') {
-        const escolhido = form.querySelector('input[name="plano_ponto_id"]:checked');
-        const corpo = {
-          nome_comercio: form.nome_comercio.value.trim(),
-          ...enderecoDe(form),
-          segmento: segmentoDe(form),
-          fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
-          plano_ponto_id: escolhido ? escolhido.value : null,
-          mensagem: form.mensagem.value.trim() || null,
-        };
-        await enviar('/conta/modos/ponto/pedir', corpo);
-      } else {
-        await enviar('/conta/modos/vendedor/pedir', {
-          cidade: form.cidade.value.trim(),
-          chave_pix: form.chave_pix.value.trim() || null,
-          mensagem: form.mensagem.value.trim() || null,
-        });
-      }
+      // Só ponto pede por aqui — vendedor não tem form (card `vendedor` acima
+      // é só aviso), então este submeter() nunca é chamado com outro modo.
+      const escolhido = form.querySelector('input[name="plano_ponto_id"]:checked');
+      const corpo = {
+        nome_comercio: form.nome_comercio.value.trim(),
+        ...enderecoDe(form),
+        segmento: segmentoDe(form),
+        fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
+        plano_ponto_id: escolhido ? escolhido.value : null,
+        mensagem: form.mensagem.value.trim() || null,
+      };
+      await enviar('/conta/modos/ponto/pedir', corpo);
       msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
       msg.className = 'form-msg ok';
       setTimeout(() => window.location.reload(), 900);

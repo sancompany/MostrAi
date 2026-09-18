@@ -45,7 +45,7 @@ fetch(`${API_BASE_URL}/pontos`)
       .catch(() => {});
     if (!pontos.length) {
       grid.innerHTML =
-        '<p class="empty-state">A rede está em montagem: nenhuma tela no ar ainda. Se você tem comércio em Matão, <a href="/seja-um-ponto.html">a primeira pode ser a sua</a>.</p>';
+        '<p class="empty-state">A rede está em montagem: nenhuma tela no ar ainda. Se você tem comércio em Matão, <a href="/anunciante/cadastro.html">a primeira pode ser a sua</a>.</p>';
       return;
     }
     const STATUS_LABEL = {

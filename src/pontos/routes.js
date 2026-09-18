@@ -88,13 +88,11 @@ router.get('/planos-ponto', async (_req, res) => {
 // Aceita mais de um endereço no mesmo envio (quem tem duas lojas manda as
 // duas de uma vez): cada endereço vira um ponto próprio, com o mesmo
 // responsável e o mesmo plano escolhido.
-// v2: ponto não tem mais cadastro aberto. A página "Seja um ponto" virou
-// candidatura (POST /candidaturas); o dono aprova e gera um convite. Quem
-// tiver o endpoint antigo salvo recebe o motivo.
+// v3: ponto não tem mais formulário nenhum sem conta (nem este, nem a
+// candidatura pública que o substituiu — ver src/candidaturas/routes.js).
+// Quem tiver este endpoint antigo salvo recebe o caminho atual.
 router.post('/seja-um-ponto', (_req, res) => {
-  res
-    .status(410)
-    .json({ erro: 'o cadastro de ponto agora é por convite — envie sua candidatura em /seja-um-ponto.html' });
+  res.status(410).json({ erro: 'crie sua conta e peça pra ser ponto de dentro do painel' });
 });
 
 // Extrato do ponto — o que ele recebeu e o que está em aberto. Quem cede a

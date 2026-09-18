@@ -1,6 +1,7 @@
 #!/bin/bash
-# Fluxo ponta a ponta contra o servidor local: admin → candidatura → convite →
-# cadastro por convite (ponto+vendedor) → tela → chave → playlist → played →
+# Fluxo ponta a ponta contra o servidor local: admin → conta direta (nasce
+# anunciante) → pedido de ponto pelo painel → admin libera na conta → convite
+# manual de vendedor (sem candidatura) → tela → chave → playlist → played →
 # anunciante → assinar (plano inválido) → webhook → cobertura → comissão
 # (webhook/cobertura/comissão continuam em 02-assinatura-webhook-comissao.sh).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -17,25 +18,27 @@ echo "== admin login =="
 r=$(curl -s -c adm.txt -X POST $B/admin/login -H "$J" -d '{"usuario":"admin","senha":"Admin12@teste"}'); esperar "admin entra" '"ok":true' "$r"
 r=$(curl -s -b adm.txt $B/admin/resumo); esperar "resumo responde com custos fixos" 'custosFixosMensal' "$r"
 
-echo "== candidatura pública de ponto =="
-r=$(curl -s -X POST $B/candidaturas -H "$J" -d '{"tipo":"ponto","nome":"João","nome_comercio":"Bar do João","contato_telefone":"16999990000","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"bar","fluxo_estimado_mensal":3000}')
-esperar "candidatura criada" '"ok":true' "$r"; CAND=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/')
-r=$(curl -s -X POST $B/seja-um-ponto -H "$J" -d '{}'); esperar "cadastro aberto de ponto fechado (410)" 'convite' "$r"
+echo "== candidatura sem conta e cadastro aberto de ponto foram aposentados (410) =="
+r=$(curl -s -X POST $B/candidaturas -H "$J" -d '{}'); esperar "candidatura sem conta fechada (410)" 'painel' "$r"
+r=$(curl -s -X POST $B/seja-um-ponto -H "$J" -d '{}'); esperar "cadastro aberto de ponto fechado (410)" 'painel' "$r"
 
-echo "== convite gerado pelo admin a partir da candidatura =="
-r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d "{\"papeis\":[\"ponto\",\"vendedor\"],\"candidatura_id\":$CAND,\"nome_sugerido\":\"João\"}")
-esperar "convite criado com link" 'convite.html\?t=' "$r"; TOK=$(echo $r | sed 's/.*"token":"\([^"]*\)".*/\1/')
-r=$(curl -s $B/convites/$TOK); esperar "convite público diz os papéis" '"papeis":\["ponto","vendedor"\]' "$r"
-r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "candidatura virou aprovada" '"status":"aprovada"' "$r"
+echo "== conta direta nasce anunciante; pede o modo ponto de dentro do painel =="
+r=$(curl -s -c joao.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"João","cpf_cnpj":"111.444.777-35","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"joao@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true}')
+esperar "conta direta nasce só com anunciante" '"papeis":\["anunciante"\]' "$r"; JOAO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
+r=$(curl -s -b joao.txt -X POST $B/conta/modos/vendedor/pedir -H "$J" -d '{}'); esperar "pedido de vendedor foi aposentado (400)" 'inválido' "$r"
+r=$(curl -s -b joao.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"Bar do João","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"bar","fluxo_estimado_mensal":3000}')
+esperar "pedido de ponto criado de dentro do painel" '"ok":true' "$r"; CAND=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/')
 
-echo "== cadastro por convite (sem endereço comercial, com pix) =="
-r=$(curl -s -c joao.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"João\",\"cpf_cnpj\":\"111.444.777-35\",\"contato_email\":\"joao@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"chave_pix\":\"joao@pix\"}")
-esperar "conta criada com papéis do convite" '"papeis":\["ponto","vendedor"\]' "$r"; JOAO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
-r=$(curl -s -X POST $B/anunciantes/cadastro -H "$J" -d "{\"convite\":\"$TOK\",\"nome_empresa\":\"X\",\"cpf_cnpj\":\"111.444.777-35\",\"contato_email\":\"outro@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true}")
-esperar "convite é de uso único" 'usado|inválido' "$r"
+echo "== admin libera o ponto direto na conta, e convida pra vendedor à mão (sem candidatura) =="
+r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "admin vê o pedido com origem painel" '"origem":"painel"' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/candidaturas/$CAND/liberar); esperar "admin libera ponto direto na conta" '"papeis":\["anunciante","ponto"\]' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["vendedor"],"nome_sugerido":"João"}')
+esperar "convite de vendedor gerado à mão, sem candidatura" 'convite.html\?t=' "$r"; TOK=$(echo $r | sed 's/.*"token":"\([^"]*\)".*/\1/')
+r=$(curl -s -b joao.txt -X POST $B/convites/$TOK/aceitar -H "$J" -d '{"chave_pix":"joao@pix"}')
+esperar "conta já logada aceita o convite e ganha vendedor" '"papeis":\["anunciante","ponto","vendedor"\]' "$r"
 r=$(curl -s -b joao.txt $B/anunciantes/me); esperar "me traz perfil de vendedor com cupom" '"codigo_cupom":"' "$r"
 CUPOM=$(echo $r | sed 's/.*"codigo_cupom":"\([^"]*\)".*/\1/')
-r=$(curl -s -b joao.txt $B/anunciantes/$JOAO/pontos); esperar "ponto nasceu da candidatura, ligado à conta" 'Bar do João' "$r"
+r=$(curl -s -b joao.txt $B/anunciantes/$JOAO/pontos); esperar "ponto nasceu do pedido, ligado à conta" 'Bar do João' "$r"
 PONTO=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 r=$(curl -s -b joao.txt $B/anunciantes/$JOAO/dispositivos); esperar "ponto já tem a Tela 1" 'Tela 1' "$r"
 DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
