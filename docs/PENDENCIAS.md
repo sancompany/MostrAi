@@ -2438,28 +2438,34 @@ ponto.html`) já fala com quem quer HOSPEDAR uma tela; este de cima fala
 com quem quer ANUNCIAR — os dois papéis que a página atende, cada um com
 seu convite.
 
-**P28. [ ] Poluição visual do mapa — pendência aberta, esperando decisão
-do dono.** Ele: *"no mapa será que não tem como omitir todas essas
-localizações [restaurante, hospital, mercado etc.] atrapalhando a
-visualização dos locais de pontos?"* O mapa é um `<iframe>` do embed
-gratuito do Google (`maps.google.com/maps?q=...&output=embed`, sem chave
-de API) — nesse modo o Google não aceita nenhum parâmetro pra desligar a
-camada de pontos comerciais; só dá pra fazer isso customizando o estilo
-do mapa, e customizar estilo só existe na Maps JavaScript API, que exige
-projeto no Google Cloud com cobrança ativa e chave própria (**não é** o
-Google Workspace que ele já paga — são produtos e faturamento
-diferentes, confirmado a ele nesta rodada). Três caminhos, aguardando
-escolha dele:
-1. Trocar por um mapa sem chave (Leaflet + tiles CartoDB, estilo claro
-   sem ícone de comércio) — sem custo, mas é a primeira dependência
-   externa carregada por CDN no projeto (hoje é tudo self-hosted, sem
-   build step).
-2. Google Maps com estilo customizado — resolve de verdade, mas exige
-   cadastrar cartão e criar chave no Google Cloud (autorização dele antes
-   de qualquer mudança de cobrança, como sempre).
-3. Manter o Google como está, só ajustar zoom/enquadramento — sem custo,
-   mas não resolve a poluição visual, só reduz a área visível.
-**Nenhuma mudança no mapa nesta rodada** até ele responder.
+**P28. [ ] Poluição visual do mapa — decidido: adiado pra atualização
+futura, mapa continua como está.** Ele: *"no mapa será que não tem como
+omitir todas essas localizações [restaurante, hospital, mercado etc.]
+atrapalhando a visualização dos locais de pontos?"* O mapa é um
+`<iframe>` do embed gratuito do Google (`maps.google.com/maps?q=...&
+output=embed`, sem chave de API) — nesse modo o Google não aceita nenhum
+parâmetro pra desligar a camada de pontos comerciais; só dá pra fazer
+isso customizando o estilo do mapa, e customizar estilo só existe na Maps
+JavaScript API, que exige projeto no Google Cloud com cobrança ativa e
+chave própria (**não é** o Google Workspace que ele já paga — são
+produtos e faturamento diferentes, confirmado a ele nesta rodada).
+
+Ele já tem o projeto e a conta de faturamento no Google Cloud (usa pra
+Drive, ativou os R$200 de crédito inicial) e ia cadastrar a chave agora,
+mas decidiu **adiar**: *"esqueça o Maps por enquanto e coloque ele como
+atualização futura, pré-pagamento único de R$150 para ativar o serviço.
+Ao invés disso, mantenha da forma que está e deixe marcado para futura
+atualização."* Ou seja: o mapa **continua exatamente como está hoje**
+(embed gratuito do Google, com a poluição visual sem solução); a troca
+pra Maps JavaScript API com estilo customizado só entra quando ele
+autorizar o pagamento de R$150 pra isso. Nenhuma mudança no mapa até lá.
+
+Quando ele autorizar: ele mesmo cadastra a chave como variável de
+ambiente `GOOGLE_MAPS_API_KEY` no painel do Northflank (decidido nesta
+rodada — evita eu tocar em configuração de produção sem necessidade), e
+eu troco o `<iframe>` pela Maps JavaScript API com o POI de comércio
+desligado, servindo a chave pelo endpoint público `/pontos/config` (já
+existe, criado no P29 abaixo) — nenhuma chave hardcoded no código.
 
 **P29. [x] Foto de exemplo do "ponto completo" — agora trocável pelo
 admin, sem deploy.** O dono: *"essa foto do ponto completo deve ser
