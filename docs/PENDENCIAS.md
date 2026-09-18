@@ -2716,6 +2716,31 @@ Sem eu ver a caixa de e-mail ou o Admin Console do Workspace, não dá
 pra ir além disso — fica registrado aqui até ele confirmar um dos dois
 pontos.
 
+**Causa raiz confirmada pelo dono (18/09/2026): é a opção 2.** *"Eu só
+configurei o mostrai como um alias do admin@sancocore.com.br."* —
+configurou só o lado de ENVIO (Gmail → Configurações → Contas →
+"Enviar e-mail como"), que deixa o sistema mandar mensagem *dizendo*
+ser de `mostrai@sancocore.com.br`, mas não cria um endereço que
+recebe. É por isso que o Gmail aceita o envio sem erro (`sendMail()`
+não vê problema, a etapa de submissão passa) e, ainda assim, nenhuma
+mensagem chega em lugar nenhum: não existe caixa de entrada do lado de
+`mostrai@sancocore.com.br` pra receber.
+
+**Conserto (ainda não feito, guardado como pendência a pedido do
+dono):** duas formas, escolha dele:
+1. No Google Workspace Admin Console, cadastrar `mostrai@sancocore.com.br`
+   como alias de **recebimento** do usuário `admin@sancocore.com.br`
+   (não é a mesma tela do "Enviar e-mail como" do Gmail) — depois disso,
+   o que já está em produção (`MOSTRAI_EMAIL_CONTATO`) passa a entregar
+   sem precisar tocar em código.
+2. Ou, mais simples e sem depender do Workspace: trocar
+   `MOSTRAI_EMAIL_CONTATO` (e/ou `MOSTRAI_EMAIL_FROM`) no Northflank pra
+   `admin@sancocore.com.br` direto — a caixa que já existe e recebe de
+   verdade. Só variável de ambiente, sem deploy.
+
+Nenhuma das duas foi aplicada nesta rodada — o dono pediu só pra
+guardar como pendência por enquanto.
+
 ### Pendências registradas, sem revisão ainda: Telas, Anuncie, Seja um ponto, Seja um vendedor
 
 O dono decidiu adiar a revisão dessas quatro páginas — vai revisá-las
