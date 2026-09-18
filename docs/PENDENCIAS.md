@@ -2189,3 +2189,34 @@ com só alguns cliques, e entra no ar logo após a aprovação."
 
 Conferido nos dois tamanhos, `npm run check` verde (92 testes), sem
 rolagem horizontal no celular.
+
+### Revisão do dono, tópico 1 — Planos, rodada 4 (18/09/2026)
+
+**P13. [x] Os três textos do topo, reescritos pelo dono:**
+· chapéu: "Anuncie nas telas de Matão" → **"Anuncie nas nossas telas"**
+· título: **"Escolha o plano ideal para dar mais visibilidade à sua marca"**
+· texto: **"Personalize sua campanha: defina o tempo de exibição, a
+  quantidade de pontos e a duração de cada anúncio."**
+
+A cidade continua dita no `<title>` e no `<meta description>` da página —
+não se perdeu, só saiu do chapéu.
+
+**P14. [x] O aviso laranja explica a mecânica do bônus, não só promete
+ela.** O dono: *"deixe um pouco melhor, igual estava antes (…) explique
+bem essa parte"* — a versão anterior (rodada M9) dizia só "você não paga
+por ponto que não existe" sem dizer O QUE acontece. Agora a frase visível
+diz o mecanismo com as palavras do próprio dono: **"Planos que cobrem mais
+pontos do que a rede tem hoje (até N pontos) ganham horas bônus, divididas
+entre os pontos já ativos — até a rede completar a cobertura do plano."**
+O `<details>` "Como isso funciona" continua existindo pra quem quer a
+mecânica completa (como a hora se concentra, o teto por tela, e que o
+bônus some sozinho conforme a rede cresce).
+
+Medido no celular: 50 palavras visíveis, 244px (29% da tela) — mais
+explicativo que a rodada anterior (26%) e ainda longe do que a versão
+original de 138 palavras/61% ocupava.
+
+Conferido nos dois tamanhos, com rede parcial real (2 no ar + 1 a
+instalar): eyebrow/h1/lead e o aviso completo (visível + `<details>`
+aberto) batendo com o texto pedido, `npm run check` verde (92 testes), sem
+rolagem horizontal no celular.

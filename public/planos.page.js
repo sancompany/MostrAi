@@ -207,21 +207,27 @@ Promise.all([fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()), planosCarreg
     const maiorCobertura = Math.max(0, ...PLANOS.map((p) => Number(p.pontos_incluidos) || 0));
     const situacao = naRede === 0 ? 'nenhum ponto ainda.' : `${naRede} ${naRede === 1 ? 'ponto' : 'pontos'} hoje.`;
 
-    // O detalhe do bônus fica DOBRADO. Ele é verdadeiro e o cliente tem que
-    // poder ler, mas explicar a mecânica inteira entre o seletor e os preços
-    // custava meia tela de celular a quem só queria ver preço. Um texto só,
-    // recolhido — não uma segunda versão pra manter em sincronia.
+    // O dono pediu pra melhorar esta parte (18/09/2026): "igual estava antes",
+    // com a mecânica do bônus explicada de verdade, não só prometida. A frase
+    // visível agora diz O QUE acontece (plano com mais pontos que a rede tem
+    // hoje ganha horas bônus, divididas entre os pontos ativos) — não só que
+    // "não se paga por ponto que não existe". O <details> continua existindo
+    // pra quem quer a mecânica completa (como a hora se concentra, o teto por
+    // tela, e que o bônus some sozinho conforme a rede cresce), sem obrigar
+    // todo mundo a ler o parágrafo inteiro.
     //
     // Só entra com tela VEICULANDO: sem nenhuma não existe pra onde
     // concentrar o tempo. Por isso o gatilho é `veiculando` e não `naRede`.
     const bonus = veiculando
-      ? ` A cobertura dos planos vai até ${maiorCobertura || 'mais'} pontos, então hoje ainda faltam telas pra completar os maiores. ` +
-        '<b>Você não paga por ponto que não existe:</b> o tempo dos que faltam vai pras telas já no ar.' +
+      ? ` <b>Você não paga por ponto que ainda não existe.</b> Planos que cobrem mais pontos do que a rede tem ` +
+        `hoje (até ${maiorCobertura || 'mais'} pontos) ganham horas bônus, divididas entre os pontos já ativos — ` +
+        'até a rede completar a cobertura do plano.' +
         '<details class="aviso-detalhe"><summary>Como isso funciona</summary>' +
-        '<p>O seu plano vende um total de horas de tela por mês. Enquanto a rede for menor que a cobertura dele, ' +
-        'essas horas se concentram nos pontos que já estão no ar — até onde couber na hora de cada tela. Você ' +
-        'aparece mais vezes em cada ponto em vez de aparecer em menos lugares, e vê no seu painel quantas horas a ' +
-        'mais isso dá por mês. Conforme os pontos entram no ar, o tempo se espalha de volta.</p></details>'
+        '<p>O seu plano vende um total de horas de tela por mês, divididas entre os pontos que ele cobre. Enquanto ' +
+        'a rede tiver menos pontos que o seu plano, essas horas se concentram nos pontos que já estão no ar — até ' +
+        'onde couber na hora de cada tela. Você aparece mais vezes em cada ponto, em vez de aparecer em menos ' +
+        'lugares, e vê no seu painel quantas horas a mais isso dá por mês. Conforme os pontos entram no ar, o ' +
+        'bônus vai sumindo e o tempo se espalha de volta.</p></details>'
       : '';
 
     const el = document.getElementById('avisoRede');
