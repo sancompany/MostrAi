@@ -238,8 +238,10 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     anunciante,
   );
   // Fire-and-forget: e-mail que falha não pode desfazer um cadastro (pedido
-  // do dono, 18/09/2026).
-  enviarContaCriada(anunciante).catch((err) => console.error('e-mail de conta criada', err));
+  // do dono, 18/09/2026). Só pra quem anuncia — o texto fala em "escolher
+  // plano" e "colocar seu anúncio", que não faz sentido pra quem entrou só
+  // como vendedor ou dono de ponto (convite sem o papel 'anunciante').
+  if (ehAnunciante) enviarContaCriada(anunciante).catch((err) => console.error('e-mail de conta criada', err));
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });

@@ -561,10 +561,13 @@ de ocupação de cada um); e o admin, na aba "Ocupação dos pontos".
 *(Pedido do dono, 18/09/2026 — completa a lista que já existia: pagamento
 confirmado, cobrança falhada, cobertura acabando, candidatura nova,
 aprovação/reprovação de criativo, RN-18/RN-36.)* Os quatro que faltavam:
-conta criada (no cadastro), conta excluída (a pedido do titular — RN-24/26),
-troca de plano (RN-52, com o valor do acerto se houve) e cancelamento de
-assinatura (self-service ou pelo admin em nome do cliente — mesmo aviso nos
-dois casos). Nenhum e-mail bloqueia a ação que o disparou: se o SMTP falhar,
+conta criada (no cadastro — só quando o papel inclui 'anunciante': o texto
+fala em escolher plano e subir anúncio, e não faz sentido pra quem entrou
+só como vendedor ou dono de ponto por convite), conta excluída (a pedido do
+titular — RN-24/26, esse sim pra qualquer papel), troca de plano (RN-52,
+com o valor do acerto se houve) e cancelamento de assinatura (self-service
+ou pelo admin em nome do cliente — mesmo aviso nos dois casos). Nenhum
+e-mail bloqueia a ação que o disparou: se o SMTP falhar,
 a conta é criada, excluída, trocada ou cancelada do mesmo jeito — só o
 aviso que não sai, e vira log de erro, nunca 500 pro usuário. *Violada:*
 não há caminho de usuário — a ação sempre completa; o e-mail é efeito

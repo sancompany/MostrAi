@@ -107,7 +107,7 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`, `bancohoras` — linhas `aguardando_credito` não resolvidas, G.3), financeiro (`receitaMensal`, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta`, `programaFundadorAtivo` |
-| GET | `/admin/diagnostico/smtp` | Não manda e-mail nenhum — só diz se `SMTP_PASS` existe, quantos caracteres tem e se sobrou espaço no meio (senha de app do Gmail tem 16; os espaços que o Google mostra são só separação visual). Não devolve a senha nem parte dela. Existe porque um SMTP mal configurado só aparece tarde e por acaso (item 9, `docs/PENDENCIAS.md`). |
+| GET | `/admin/diagnostico/smtp` | Não manda e-mail nenhum — só diz se `SMTP_PASS` existe, quantos caracteres tem e se sobrou espaço no meio (senha de app do Gmail tem 16; os espaços que o Google mostra são só separação visual). Não devolve a senha nem parte dela. Também devolve `remetente` (`MOSTRAI_EMAIL_FROM`) e `destino_contato` (`MOSTRAI_EMAIL_CONTATO`, o "para" do formulário de contato) — endereços, não segredo, pra confirmar os dois lados sem ler variável no Northflank (P42, `docs/PENDENCIAS.md`). Existe porque um SMTP mal configurado só aparece tarde e por acaso (item 9, `docs/PENDENCIAS.md`). |
 
 ### Entrada de gente (candidatura → convite → conta)
 | Método | Rota | O que faz |

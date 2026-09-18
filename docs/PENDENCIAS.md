@@ -2221,6 +2221,16 @@ lugar nenhum). Verifiquei o conteúdo de cada um com um transporte falso
 antes de subir, mas o disparo real (SMTP de verdade) segue sem cobertura
 de teste, como sempre foi.
 
+**Achado na rodada de `san-co:revisar` (18/09/2026), corrigido na hora:**
+`enviarContaCriada` disparava pra QUALQUER conta nova, inclusive quem
+entrou só como vendedor ou dono de ponto por convite (`papeis` sem
+'anunciante') — e o texto fala em "escolher um plano e colocar seu
+anúncio", que não faz sentido nesses dois casos. Corrigido: só dispara
+quando `papeis.includes('anunciante')` (`src/anunciantes/routes.js`).
+Cadastro direto (sem convite) sempre nasce anunciante, então o caso comum
+não muda — só o convite puro de vendedor/ponto deixou de receber o
+e-mail errado.
+
 Era a atualização avisada em 18/09/2026, *"sobre mudança de plano e
 cancelamento"*, que o dono disse trazer quando a revisão permitisse. Chegou
 antes — em prompt do próprio Checkout, e não só o prompt: fui direto na
