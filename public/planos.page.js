@@ -138,21 +138,21 @@ function render(meses) {
 // só por último a equivalência mensal, pra quem quer comparar contra o
 // mensal. Três linhas, nessa ordem: o valor cheio do ciclo inteiro riscado,
 // o valor total do ciclo já com desconto (o número grande), e — do mesmo
-// tamanho da linha riscada — quanto economizou (em verde, pedido do dono,
-// 18/09/2026) e, na linha de baixo, na cor normal, o equivalente por mês.
-// A economia é sempre a do ciclo inteiro, nunca a mensal. No Mensal (que
-// não tem desconto pra comparar) as mesmas duas linhas aparecem do mesmo
-// jeito — economia R$0,00, equivalente igual ao próprio preço — pra
-// manter os quatro ciclos com a mesma estrutura (pedido do dono,
-// 18/09/2026: "assim fica todos iguais mesmo que não entre diferenças
-// claras").
+// tamanho da linha riscada — quanto economizou (em verde) e, na linha de
+// baixo, na cor normal, o equivalente por mês.
+//
+// As duas últimas linhas são condicionais (pedido do dono, 19/09/2026,
+// revendo a decisão anterior de "manter os quatro ciclos iguais"): no
+// Mensal não há nada pra comparar (o valor já É o mensal), então nenhuma
+// das duas aparece. Nos demais ciclos, "equivalente" sempre aparece (é um
+// número diferente do total do ciclo, útil pra comparar), mas "economizou"
+// só quando o plano tem desconto de verdade — sem ele a economia seria
+// sempre zero, e uma linha dizendo "economizou R$0,00" não ajuda ninguém.
 function montarPreco(p, porMes, cheio, meses) {
   if (meses === 1 || !cheio) {
     return `
       ${cheio ? `<div class="price-riscado"><span>${fmt(cheio)}/mês</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
-      <div class="price">${fmt(porMes)}/mês</div>
-      <div class="price-economia">Você economizou ${fmt(0)}.</div>
-      <div class="price-equivalente">Equivalente a ${fmt(porMes)}/mês.</div>`;
+      <div class="price">${fmt(porMes)}/mês</div>`;
   }
   const cheioCiclo = Math.round(cheio * meses * 100) / 100;
   const totalCiclo = Math.round(porMes * meses * 100) / 100;
@@ -160,7 +160,7 @@ function montarPreco(p, porMes, cheio, meses) {
   return `
       <div class="price-riscado"><span>${fmt(cheioCiclo)}</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>
       <div class="price">${fmt(totalCiclo)}</div>
-      <div class="price-economia">Você economizou ${fmt(economia)}.</div>
+      ${economia > 0 ? `<div class="price-economia">Você economizou ${fmt(economia)}.</div>` : ''}
       <div class="price-equivalente">Equivalente a ${fmt(porMes)}/mês.</div>`;
 }
 

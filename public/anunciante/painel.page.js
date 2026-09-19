@@ -415,6 +415,15 @@ async function montarConfirmacaoPedido(planoId) {
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'mensal' : `a cada ${plano.compromisso_meses} meses`;
+  // Economia e equivalência mensal, condicionais (pedido do dono, 19/09/2026,
+  // mesma regra da vitrine — ver montarPreco em planos.page.js): no ciclo
+  // mensal o total JÁ é o valor por mês, então nenhuma das duas linhas diz
+  // nada de novo. Nos demais ciclos, "economizou" só aparece quando o plano
+  // tem desconto de verdade (`valor_mensal_cheio` é a referência sem
+  // desconto, a mesma que a vitrine usa pro preço riscado).
+  const cheio =
+    plano.desconto_percentual > 0 && plano.valor_mensal_cheio != null ? Number(plano.valor_mensal_cheio) : null;
+  const economia = cheio ? Math.round((cheio * plano.compromisso_meses - total) * 100) / 100 : 0;
   // Cada característica do plano em uma linha, como um resumo de compra, em
   // vez da frase corrida que existia antes. `horas_por_mes` vem calculado
   // pelo servidor (GET /planos), com a mesma função da vitrine — não
@@ -454,7 +463,8 @@ async function montarConfirmacaoPedido(planoId) {
       <span class="rotulo">Total ${ciclo}</span>
       <b>${fmtBRL(total)}</b>
     </div>
-    <p class="form-hint u-m-0${avisoRede ? ' u-mb-14' : ''}">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>
+    ${plano.compromisso_meses > 1 && economia > 0 ? `<p class="pedido-economia u-m-0">Você economizou ${fmtBRL(economia)}.</p>` : ''}
+    ${plano.compromisso_meses > 1 ? `<p class="form-hint u-m-0${avisoRede ? ' u-mb-14' : ''}">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>` : ''}
     ${avisoRede}
     <div class="field-row u-mt-8">
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
