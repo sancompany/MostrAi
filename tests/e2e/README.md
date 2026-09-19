@@ -14,6 +14,7 @@ bash tests/e2e/01-fluxo-api.sh                     # candidatura → convite →
 bash tests/e2e/02-assinatura-webhook-comissao.sh   # parceiro (status de conta), vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && tests/e2e/restart.sh
 PW_CHROME=... node tests/e2e/03-navegador.mjs      # 36 checagens no Chromium + screenshots em tests/e2e/saida/
+PW_CHROME=... node tests/e2e/06-painel-bloqueio-plano.mjs  # sem plano trava o painel; admin libera cortesia e destrava
 ```
 
 O limite de tentativas é em memória: se um teste bater em "muitas tentativas",

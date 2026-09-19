@@ -570,6 +570,12 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .kpi-card .delta.down { color: var(--err); }
 .kpi-card .kpi-caption { font-size: .75rem; }
 .kpi-card .link-secundario { display: inline-block; margin-top: 8px; font-size: .82rem; }
+/* Barrinha de progresso do card de horas (19/09/2026) — mesmo .track/.fill
+   do gráfico por ponto (.bar-chart-h), só que fora dele: sem esse par de
+   regras, a regra genérica "kpi-card span" acima (cor de texto, sem altura)
+   ganharia e a barra sumiria, viraria só um traço de texto vazio. */
+.kpi-card .track { background: var(--bg-alt); border-radius: 6px; height: 8px; overflow: hidden; margin-top: 8px; }
+.kpi-card .fill { display: block; background: var(--brand); height: 100%; border-radius: 6px; min-width: 3px; }
 .panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .panel-head h3 { margin: 0; }
 /* No celular a linha "titulo | descricao" espremia o titulo em duas linhas e

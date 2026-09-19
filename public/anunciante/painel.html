@@ -29,10 +29,10 @@
       <div class="wrap dashboard-grid" id="dashboardAnuncios">
         <div>
           <div class="kpi-grid" id="kpiGrid">
-            <div class="kpi-card"><span class="kpi-label">Exibições confirmadas</span><b>-</b><span class="delta" data-delta></span></div>
-            <div class="kpi-card"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
-            <div class="kpi-card"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições</span></div>
-            <div class="kpi-card"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
+            <div class="kpi-card" data-kpi="confirmadas"><span class="kpi-label">Exibições confirmadas</span><b>-</b><span class="delta" data-delta></span></div>
+            <div class="kpi-card" data-kpi="entrega"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
+            <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições</span></div>
+            <div class="kpi-card" data-kpi="criativos"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
             <div class="kpi-card" id="kpiPontos"><span class="kpi-label">Meus pontos</span><b>-</b></div>
           </div>
 
@@ -98,7 +98,7 @@
         <div>
           <div class="panel">
             <div class="panel-head"><h3>Meus criativos</h3></div>
-            <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>de até 30 segundos</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
+            <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>do tamanho que o seu plano permite</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
             <label class="btn primary upload-label">
               Enviar criativo
               <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>

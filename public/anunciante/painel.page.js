@@ -58,6 +58,16 @@ async function carregar() {
       new Date(ANUNCIANTE.data_expiracao) > new Date();
     if (planoUrl && !ANUNCIANTE.plano_id) confirmarPlano(planoUrl);
     else if (planoUrl && temPlanoPagoAtivo && planoUrl !== ANUNCIANTE.plano_id) confirmarTrocaPlano(planoUrl);
+    // Sem plano ainda, a tela inteira (KPIs, gráficos e o upload de
+    // criativo) fica bloqueada — pedido do dono, 19/09/2026. Antes dava
+    // pra subir 1 criativo mesmo sem plano "pra não travar o meio do
+    // cadastro"; a decisão virou o contrário: trava, com aviso pra
+    // escolher plano (o back também passou a recusar isso, defesa em
+    // profundidade — ver POST /anunciantes/:id/criativos).
+    if (!ANUNCIANTE.plano_id) {
+      montarBloqueioPlano();
+      return;
+    }
     carregarExibicoes();
     carregarCriativos();
     carregarKpiPontos();
@@ -70,6 +80,29 @@ async function carregar() {
     const planoUrl = new URLSearchParams(window.location.search).get('plano');
     if (planoUrl) history.replaceState(null, '', `/anunciante/painel.html?plano=${encodeURIComponent(planoUrl)}`);
   }
+}
+
+// Mesmo padrão de public/modos.js (window.montarModo): esconde o container
+// de verdade e insere um card no lugar dele, um nível abaixo do bloqueio de
+// papel — aqui o papel "anunciante" já está liberado, só falta plano.
+function montarBloqueioPlano() {
+  const container = document.getElementById('dashboardAnuncios');
+  container.hidden = true;
+  const caixa = document.createElement('div');
+  caixa.className = 'wrap';
+  caixa.innerHTML = ANUNCIANTE.suspenso
+    ? `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
+        <p class="eyebrow">Seu painel</p>
+        <h3>Conta suspensa</h3>
+        <p class="form-hint u-m-0">Veja a explicação ali em cima. Seus números voltam a aparecer aqui assim que a conta for reativada.</p>
+      </div>`
+    : `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
+        <p class="eyebrow">Seu painel</p>
+        <h3>Escolha um plano pra ver seus números</h3>
+        <p class="form-hint u-m-0 u-mb-8">Assim que você tiver um plano — pago ou de cortesia —, exibições, criativos e pontos aparecem aqui.</p>
+        <a class="btn primary" href="/planos.html">Escolher plano</a>
+      </div>`;
+  container.parentNode.insertBefore(caixa, container);
 }
 
 function preencherStatusBanner() {
@@ -514,14 +547,38 @@ async function carregarBancoHoras() {
   try {
     const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
     if (!dados.saldo) return;
-    document.getElementById('statusBanner').insertAdjacentHTML(
+    // Virou card no grid (19/09/2026, pedido do dono) — antes era só uma
+    // frase colada no banner, fácil de não notar entre os outros avisos.
+    document.getElementById('kpiGrid').insertAdjacentHTML(
       'beforeend',
-      `<span class="dash-explica">Você tem <b>${duracaoLegivel(dados.segundos)}</b> (${dados.saldo} exibições) de meses em
-        que a rede esteve cheia, com prioridade pra rodar nos próximos dias.</span>`,
+      `<div class="kpi-card">
+        <span class="kpi-label">Banco de horas</span>
+        <b>${duracaoLegivel(dados.segundos)}</b>
+        <span class="badge badge-pendente">${dados.saldo} exibições · prioridade nos próximos dias</span>
+      </div>`,
     );
   } catch {
     /* aviso extra — sem ele, o painel continua completo */
   }
+}
+
+// Horas contratadas x entregues no mês corrente (19/09/2026, pedido do
+// dono) — mesma barrinha de progresso do gráfico por ponto (.track/.fill),
+// sem componente novo. Só aparece com plano (os dois vêm null sem plano, e
+// nem deveria chegar até aqui: o bloqueio de plano já barra essa chamada).
+function desenharHorasMes(contratadas, entregues) {
+  if (contratadas == null) return;
+  const restantes = Math.max(0, contratadas - entregues);
+  const pct = contratadas > 0 ? Math.min(100, (entregues / contratadas) * 100) : 0;
+  document.getElementById('kpiGrid').insertAdjacentHTML(
+    'beforeend',
+    `<div class="kpi-card">
+      <span class="kpi-label">Horas entregues no mês</span>
+      <b>${entregues}h</b>
+      <span class="kpi-caption">de ${contratadas}h contratadas · ${restantes}h ainda por rodar</span>
+      <span class="track u-mt-6"><span class="fill" data-pct="${pct}"></span></span>
+    </div>`,
+  );
 }
 
 async function carregarExibicoes() {
@@ -529,16 +586,17 @@ async function carregarExibicoes() {
     const dados = await (
       await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })
     ).json();
-    const [kConfirmadas, kEntrega, kCusto] = document.querySelectorAll('#kpiGrid .kpi-card:nth-child(-n+3) b');
+    const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
     const entrega =
       dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
-    kConfirmadas.textContent = dados.totalConfirmadas;
-    kEntrega.textContent = dados.totalProgramadas ? `${entrega}%` : '-';
-    kCusto.textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
+    kpi('confirmadas').textContent = dados.totalConfirmadas;
+    kpi('entrega').textContent = dados.totalProgramadas ? `${entrega}%` : '-';
+    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
 
     desenharPorDia(dados.porDia || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
+    desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
     explicarZero(dados);
   } catch {
     // Antes o catch era vazio: falha de API e conta nova produziam a mesma
@@ -556,6 +614,9 @@ async function carregarExibicoes() {
 // Conta nova enxerga a mesma tela de uma conta que parou de rodar: tudo zero,
 // tres traços e nenhum grafico. Sem uma linha dizendo em que etapa a conta
 // esta, quem acabou de pagar conclui que comprou algo que nao funciona.
+//
+// Não trata mais "sem plano" aqui — desde o bloqueio de plano (19/09/2026),
+// essa função só roda com plano garantido (ver montarBloqueioPlano/carregar).
 function explicarZero(dados) {
   const el = document.getElementById('exibicoesVazio');
   if (!el) return;
@@ -563,13 +624,10 @@ function explicarZero(dados) {
     el.hidden = true;
     return;
   }
-  const semPlano = !ANUNCIANTE.plano_id;
   const criativoNoAr = (dados.criativosAprovados || 0) > 0;
-  el.innerHTML = semPlano
-    ? '<b>Seus números aparecem aqui depois que você escolher um plano.</b> Nada foi programado ainda porque a conta não tem plano ativo.'
-    : criativoNoAr
-      ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
-      : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
+  el.innerHTML = criativoNoAr
+    ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
+    : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
   el.hidden = false;
 }
 
@@ -609,20 +667,33 @@ function desenharPorDia(porDia) {
   el.className = `delta ${pct >= 0 ? 'up' : 'down'}`;
 }
 
+// Top 8: já vem ORDER BY confirmadas DESC do servidor — uma rede com muitos
+// pontos virava uma lista de barra alta e ilegível. O resto continua na
+// tabela detalhada logo abaixo, completa, sem corte nenhum.
+const TOP_PONTOS_GRAFICO = 8;
 function desenharPorPonto(porPonto) {
   if (!porPonto.length) return;
   const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
+  const total = porPonto.reduce((soma, p) => soma + Number(p.confirmadas), 0) || 1;
+  const principais = porPonto.slice(0, TOP_PONTOS_GRAFICO);
+  const resto = porPonto.length - principais.length;
   document.getElementById('painelDetalhe').hidden = false;
-  document.getElementById('graficoPonto').innerHTML = porPonto
-    .map(
-      (p) => `
+  document.getElementById('graficoPonto').innerHTML =
+    principais
+      .map((p) => {
+        const v = Number(p.confirmadas);
+        const pct = Math.round((v / total) * 100);
+        return `
     <div class="row">
       <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
-      <span class="track"><span class="fill" data-pct="${(Number(p.confirmadas) / max) * 100}"></span></span>
-      <span class="valor">${p.confirmadas}</span>
-    </div>`,
-    )
-    .join('');
+      <span class="track"><span class="fill" data-pct="${(v / max) * 100}"></span></span>
+      <span class="valor">${v} <span class="u-dim">(${pct}%)</span></span>
+    </div>`;
+      })
+      .join('') +
+    (resto > 0
+      ? `<p class="form-hint u-m-0 u-mt-8">+${resto} outro${resto === 1 ? '' : 's'} ponto${resto === 1 ? '' : 's'} na tabela abaixo.</p>`
+      : '');
   document.getElementById('exibicoesDetalhe').innerHTML =
     `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
     ${porPonto
@@ -664,7 +735,7 @@ async function carregarCriativos() {
       await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })
     ).json();
     const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
-    document.querySelectorAll('#kpiGrid .kpi-card')[3].querySelector('b').textContent = ativos;
+    document.querySelector('#kpiGrid [data-kpi="criativos"] b').textContent = ativos;
     el.innerHTML = criativos.length
       ? `<div class="criativos-lista">
       ${criativos

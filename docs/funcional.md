@@ -131,9 +131,19 @@ Escrito por grupo, porque o padrão se repete.
 
 **Painel (`/anunciante/painel.html`)**
 - *Vazio:* aba sem papel mostra o **card de ativação**, não uma tela em branco.
+  Na aba Anúncios, sem plano ativo (nunca assinou, ou cancelou/venceu sem
+  trocar) o dashboard inteiro (KPIs, gráficos e o upload de criativo) fica
+  atrás de um card de bloqueio com CTA "Escolher plano" (19/09/2026) — o
+  upload de auto-serviço também recusa no backend (400) nesse estado; é
+  caminho diferente do admin/conta própria, que continua sem essa exigência.
+  Conta suspensa cai no mesmo bloqueio, mas sem CTA — só remete pro aviso já
+  mostrado no banner.
 - *Carregando:* abas visíveis, conteúdo em esqueleto.
 - *Erro:* faixa no topo com "não conseguimos carregar seus dados".
-- *Sucesso:* conteúdo da aba.
+- *Sucesso:* conteúdo da aba — com plano ativo, os KPIs incluem banco de
+  horas (saldo em exibições/horas, quando há saldo) e horas entregues no mês
+  vs. contratadas vs. ainda por rodar; o gráfico por ponto mostra os 8 que
+  mais exibiram, com contagem e percentual do total.
 - *Sem permissão:* sessão expirada → volta para o login.
 - *Lista longa:* criativos e exibições paginam a partir de 50 linhas.
 

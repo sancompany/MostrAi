@@ -72,3 +72,8 @@ r=$(curl -s -b ana.txt -X POST $B/anunciantes/me/confirmar-email -H "$J" -d '{"c
 CODIGO=$(PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=$ANA")
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/me/confirmar-email -H "$J" -d "{\"codigo\":\"$CODIGO\"}"); esperar "código certo confirma" '"ok":true' "$r"
 r=$(curl -s -b ana.txt $B/anunciantes/me); esperar "conta marcada confirmada" '"email_confirmado":true' "$r"
+
+echo "== painel sem plano: upload de criativo travado, horas do mês vazias =="
+r=$(curl -s -o /dev/null -w "%{http_code}" -b ana.txt -X POST $B/anunciantes/$ANA/criativos -F "arquivo=@/dev/null;filename=x.mp4;type=video/mp4")
+esperar "upload de criativo sem plano é 400" '^400$' "$r"
+r=$(curl -s -b ana.txt $B/anunciantes/$ANA/exibicoes); esperar "sem plano, horas do mês vêm null" '"horasContratadasMes":null,"horasEntreguesMes":null' "$r"

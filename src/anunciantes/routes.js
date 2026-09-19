@@ -23,6 +23,7 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
+const bancohorasRepo = require('../bancohoras/repository');
 const {
   enviarContaAprovada,
   enviarContaCriada,
@@ -699,14 +700,21 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(403).json({ erro: 'só pode subir criativo pra própria conta' });
   }
-  // Limite de criativos simultâneos vem do plano (ver migration 014) — sem
-  // plano ainda, libera 1 só pra não travar quem está no meio do cadastro.
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
-  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  // Antes liberava 1 criativo sem plano, "pra não travar quem está no meio
+  // do cadastro" — decisão revertida pelo dono, 19/09/2026: o painel agora
+  // trava a tela inteira sem plano (ver front), então subir criativo sem
+  // plano nem deveria ser alcançável por ali; isso é a segunda trava, direto
+  // no servidor, pra quem tentar pela API sem passar pela tela.
+  if (!anunciante.plano_id) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
+  }
+  const plano = await planosRepo.buscarPorId(anunciante.plano_id);
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
-    limite: plano ? plano.limite_criativos : 1,
-    duracaoMaxima: plano ? plano.duracao_maxima_segundos : null,
+    limite: plano.limite_criativos,
+    duracaoMaxima: plano.duracao_maxima_segundos,
   });
 });
 
@@ -827,7 +835,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   }
   const anuncianteId = req.params.id;
 
-  const [totais, porPonto, porDia, cobrancas, anunciante] = await Promise.all([
+  const [totais, porPonto, porDia, cobrancas, anunciante, confirmadasMesRows] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
@@ -858,10 +866,36 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
       [anuncianteId],
     ),
     repo.buscarPorId(anuncianteId),
+    // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
+    // acima: quanto já confirmou no mês corrente, em Matão.
+    pool.query(
+      `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+       FROM exibicoes_contador
+       WHERE anunciante_id = $1
+         AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
+           = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
+      [anuncianteId],
+    ),
   ]);
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+
+  // Horas contratadas x entregues no mês (pedido do dono, 19/09/2026, card
+  // novo no painel). "Contratadas" é o que o plano promete (mesma conta de
+  // `horas_contratadas` em GET /anunciantes/me/pontos-disponiveis — só
+  // precisa de segundos_por_hora e pontos_incluidos, não da cobertura do
+  // dia). "Entregues" é o confirmado do mês corrente convertido em horas
+  // pela duração média dos criativos aprovados — mesma aproximação que o
+  // banco de horas já usa pra "segundos" ilustrativos.
+  let horasContratadasMes = null;
+  let horasEntreguesMes = null;
+  if (plano) {
+    const confirmadasMes = Number(confirmadasMesRows.rows[0].confirmadas);
+    const duracaoMedia = confirmadasMes > 0 ? await bancohorasRepo.duracaoMediaDoAnunciante(anuncianteId) : 0;
+    horasContratadasMes = horasDeTelaPorMes(Number(plano.segundos_por_hora) || 0, plano.pontos_incluidos);
+    horasEntreguesMes = Math.round(((confirmadasMes * duracaoMedia) / 3600) * 10) / 10;
+  }
 
   // Quantas pecas ja estao aprovadas: e o que decide a frase que o painel
   // mostra quando tudo esta zerado ("falta o seu video" x "ja esta no ar, os
@@ -879,6 +913,8 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     porPonto: porPonto.rows,
     porDia: porDia.rows,
     cobrancas: cobrancas.rows,
+    horasContratadasMes,
+    horasEntreguesMes,
     // O que a conta PAGA, nao o preco de tabela: quem esta em cortesia nao paga
     // nada — mostrar "custo por exibicao" pra quem recebeu o plano de graca e
     // numero inventado.

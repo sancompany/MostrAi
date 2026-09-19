@@ -97,6 +97,13 @@ esperar "cobrança registrada (71,28 x 12 = 855,36)" '^1\|855\.36' "$cob"
 com=$($PG -c "select count(*)||'|'||comissao_valor from comissoes where anunciante_id=$ANA group by comissao_valor")
 esperar "comissão do vendedor gerada (12% de 855,36 = 102,64)" '^1\|102.64' "$com"
 
+echo "== painel com plano: upload liberado, horas do mês numéricas =="
+r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/criativos -F "arquivo=@/dev/null;filename=x.mp4;type=video/mp4")
+if echo "$r" | grep -q "ainda não tem plano"; then falha "upload de criativo com plano não esbarra mais no gate de plano" "$r"; else ok "upload de criativo com plano não esbarra mais no gate de plano"; fi
+r=$(curl -s -b ana.txt $B/anunciantes/$ANA/exibicoes)
+esperar "com plano, horasContratadasMes já sai numérico" '"horasContratadasMes":[0-9]' "$r"
+esperar "com plano, horasEntreguesMes já sai numérico" '"horasEntreguesMes":[0-9]' "$r"
+
 echo "== webhook: reentrega idêntica não duplica =="
 enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "só 1 cobrança" '^1$' "$cob"
