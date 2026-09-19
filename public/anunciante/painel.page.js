@@ -386,11 +386,13 @@ function duracaoLegivel(segundos) {
 
 // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
 // (transparência de entrega: programado vs. confirmado, custo por exibição).
-// Banco de horas (G.3): só aparece pra quem tem saldo — conta sem déficit
-// não precisa saber que esse mecanismo existe. `catch` silencioso de
-// propósito: é um aviso extra, não um número que o cliente precisa pra
-// decidir algo, e um painel que já carregou tudo (exibições, criativos)
-// não deveria mostrar erro por causa deste card.
+// Banco de horas (G.3): card sempre visível (19/09/2026, pedido do dono —
+// antes só aparecia com saldo > 0; agora a conta consegue conferir "quanto
+// tem no banco" mesmo quando é zero, sem precisar adivinhar que o
+// mecanismo existe). `catch` silencioso de propósito: é um aviso extra, não
+// um número que o cliente precisa pra decidir algo, e um painel que já
+// carregou tudo (exibições, criativos) não deveria mostrar erro por causa
+// deste card.
 //
 // O tempo (`dados.segundos`) é ilustrativo — exibições × duração ATUAL da
 // peça (RN-53), não um histórico exato — por isso o número exato de
@@ -399,7 +401,6 @@ function duracaoLegivel(segundos) {
 async function carregarBancoHoras() {
   try {
     const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
-    if (!dados.saldo) return;
     // Virou card no grid (19/09/2026, pedido do dono) — antes era só uma
     // frase colada no banner, fácil de não notar entre os outros avisos.
     document.getElementById('kpiGrid').insertAdjacentHTML(
@@ -407,7 +408,11 @@ async function carregarBancoHoras() {
       `<div class="kpi-card">
         <span class="kpi-label">Banco de horas</span>
         <b>${duracaoLegivel(dados.segundos)}</b>
-        <span class="badge badge-pendente">${dados.saldo} exibições · prioridade nos próximos dias</span>
+        ${
+          dados.saldo
+            ? `<span class="badge badge-pendente">${dados.saldo} exibições · prioridade nos próximos dias</span>`
+            : '<span class="kpi-caption">sem déficit acumulado</span>'
+        }
       </div>`,
     );
   } catch {
@@ -446,16 +451,16 @@ async function carregarExibicoes() {
       await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })
     ).json();
     const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
-    const entrega =
-      dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
     kpi('exibicoes').textContent = dados.confirmadasMes ?? 0;
-    kpi('entrega').textContent = dados.totalProgramadas ? `${entrega}%` : '-';
+    // Restantes vira legenda do mesmo card, não card próprio (19/09/2026,
+    // pedido do dono: "só um de exibições realizadas e exibições
+    // restantes") — a pergunta é uma só, a resposta cabe num card.
+    document.querySelector('#kpiGrid [data-kpi="exibicoes"] [data-kpi-restantes-legenda]').textContent =
+      dados.exibicoesRestantesMes != null ? `${dados.exibicoesRestantesMes} restantes até completar o mês` : '';
     kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
-    kpi('restantes').textContent = dados.exibicoesRestantesMes ?? '-';
     kpi('media').textContent = dados.mediaDiariaMes ?? '-';
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
-    desenharPorHora(dados.porHora || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
     desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
@@ -607,29 +612,6 @@ function desenharLegendaPontosDia(principais, serieDoPonto, temOutros) {
     .join('');
 }
 
-// Distribuição por hora do dia (19/09/2026, pedido do dono, seguindo a
-// mesma ideia do ChatGPT/Gemini): mesmo dado de desenharPorDia, só que
-// somado por hora do relógio (0 a 23) — mostra QUANDO o anúncio mais
-// aparece, não em qual dia. O servidor já devolve só as horas com registro,
-// em ordem crescente; preenche as que faltam com zero pra não distorcer a
-// leitura do gráfico (uma hora sem barra nenhuma é diferente de uma hora
-// que nunca teve pedido).
-function desenharPorHora(porHora) {
-  if (!porHora.length) return;
-  const porNumero = new Map(porHora.map((h) => [Number(h.hora), Number(h.confirmadas)]));
-  const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, confirmadas: porNumero.get(h) || 0 }));
-  const max = Math.max(...horas.map((h) => h.confirmadas)) || 1;
-  document.getElementById('painelHorario').hidden = false;
-  document.getElementById('graficoHorario').innerHTML = horas
-    .map(
-      (h) => `<div class="bar-col" title="${String(h.hora).padStart(2, '0')}h: ${h.confirmadas} exibições">
-      <div class="bar" data-pct="${h.confirmadas ? Math.max(2, (h.confirmadas / max) * 100) : 0}"></div>
-      <span class="bar-label">${String(h.hora).padStart(2, '0')}h</span>
-    </div>`,
-    )
-    .join('');
-}
-
 // Top 8: já vem ORDER BY confirmadas DESC do servidor — uma rede com muitos
 // pontos virava uma lista de barra alta e ilegível. O resto continua na
 // tabela detalhada logo abaixo, completa, sem corte nenhum.
@@ -712,7 +694,10 @@ async function carregarCriativos() {
       await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })
     ).json();
     const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
-    document.querySelector('#kpiGrid [data-kpi="criativos"] b').textContent = ativos;
+    // Contador ao lado do título "Meus criativos" (19/09/2026, pedido do
+    // dono) — não é mais card próprio no kpi-grid.
+    const contador = document.getElementById('contadorCriativos');
+    if (contador) contador.textContent = ativos ? `${ativos} ativo${ativos === 1 ? '' : 's'}` : '';
     // "Quero um anúncio" só faz sentido pra quem ainda não subiu nenhuma
     // peça (19/09/2026, pedido do dono) — assim que existe ao menos um
     // criativo na conta, a pergunta "não tem arte ainda?" já não se aplica.

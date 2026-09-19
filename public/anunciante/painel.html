@@ -34,20 +34,20 @@
            dashboard antigo dividia a página em duas colunas grandes (2fr/1fr)
            e "Meus criativos" vivia espremido na coluna lateral — no celular,
            que é onde a maioria dos clientes entra, ficava apertado demais.
-           Cada seção agora ocupa a largura toda; só os pares de gráfico
-           pequenos usam `.duas-colunas`, que já quebra sozinho no celular. -->
+           Cada seção ocupa a largura toda. -->
       <div class="wrap" id="dashboardAnuncios">
         <div class="kpi-grid" id="kpiGrid">
           <!-- Horas de tela é o número que o cliente comprou (19/09/2026,
                pedido do dono) — vem primeiro, e maior, que os outros: é a
                métrica que responde "estou recebendo o que contratei?". -->
           <div class="kpi-card kpi-destaque" data-kpi="horas" hidden><span class="kpi-label">Horas de tela no mês</span><b>-</b><span class="kpi-caption" data-kpi-horas-legenda></span><span class="track u-mt-6"><span class="fill" data-pct="0"></span></span></div>
-          <div class="kpi-card" data-kpi="exibicoes"><span class="kpi-label">Exibições realizadas</span><b>-</b><span class="kpi-caption">neste mês</span></div>
-          <div class="kpi-card" data-kpi="entrega"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
-          <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições no mês</span></div>
-          <div class="kpi-card" data-kpi="restantes"><span class="kpi-label">Exibições restantes</span><b>-</b><span class="kpi-caption">até completar o mês</span></div>
+          <!-- Exibições realizadas + restantes num card só (19/09/2026,
+               pedido do dono) — eram dois cards separados; a pergunta é
+               uma só ("quanto já rodou, quanto falta"), a resposta cabe
+               num card com duas legendas. -->
+          <div class="kpi-card" data-kpi="exibicoes"><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">realizadas neste mês</span><span class="kpi-caption" data-kpi-restantes-legenda></span></div>
+          <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições contratadas no mês</span></div>
           <div class="kpi-card" data-kpi="media"><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia</span></div>
-          <div class="kpi-card" data-kpi="criativos"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
         </div>
 
         <!-- Conta nova via a mesma tela de quem parou de rodar: tudo zero e
@@ -63,35 +63,24 @@
           <div class="legenda-serie" id="legendaPontosDia" hidden></div>
         </div>
 
-        <div class="duas-colunas u-mb-20">
-          <div class="panel" id="painelDetalhe" hidden>
-            <div class="panel-head">
-              <h3>Exibições por ponto</h3>
-              <!-- Comprovante de veiculação: o que o setor chama de
-                   proof-of-play. O dado já existia; faltava a forma que o
-                   anunciante guarda, imprime ou manda pro contador. -->
-              <span>
-                <label for="periodoComprovante" class="form-hint u-m-0">Período</label>
-                <select class="u-m-0 u-mx-8" id="periodoComprovante">
-                  <option value="30">últimos 30 dias</option>
-                  <option value="90">últimos 90 dias</option>
-                  <option value="365">últimos 12 meses</option>
-                </select>
-                <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
-              </span>
-            </div>
-            <div class="bar-chart-h" id="graficoPonto"></div>
-            <div class="u-mt-20" id="exibicoesDetalhe"></div>
+        <div class="panel u-mb-20" id="painelDetalhe" hidden>
+          <div class="panel-head">
+            <h3>Exibições por ponto</h3>
+            <!-- Comprovante de veiculação: o que o setor chama de
+                 proof-of-play. O dado já existia; faltava a forma que o
+                 anunciante guarda, imprime ou manda pro contador. -->
+            <span>
+              <label for="periodoComprovante" class="form-hint u-m-0">Período</label>
+              <select class="u-m-0 u-mx-8" id="periodoComprovante">
+                <option value="30">últimos 30 dias</option>
+                <option value="90">últimos 90 dias</option>
+                <option value="365">últimos 12 meses</option>
+              </select>
+              <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
+            </span>
           </div>
-
-          <!-- Distribuição por horário (19/09/2026, pedido do dono): mesmo
-               dado de "Exibições por dia", só que somado por hora do
-               relógio — mostra QUANDO o anúncio mais aparece (ex.: pico no
-               almoço), não em qual dia. -->
-          <div class="panel" id="painelHorario" hidden>
-            <div class="panel-head"><h3>Exibições por horário</h3><span class="kpi-caption">últimos 30 dias</span></div>
-            <div class="bar-chart" id="graficoHorario"></div>
-          </div>
+          <div class="bar-chart-h" id="graficoPonto"></div>
+          <div class="u-mt-20" id="exibicoesDetalhe"></div>
         </div>
 
         <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
@@ -119,7 +108,10 @@
         </div>
 
         <div class="panel">
-          <div class="panel-head"><h3>Meus criativos</h3></div>
+          <!-- Contador ao lado do título, não mais card próprio no kpi-grid
+               (19/09/2026, pedido do dono) — mesmo padrão de #contadorPontos
+               em "Onde seu anúncio aparece", logo abaixo. -->
+          <div class="panel-head"><h3>Meus criativos</h3><span class="form-hint" id="contadorCriativos"></span></div>
           <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>do tamanho que o seu plano permite</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
           <label class="btn primary upload-label">
             Enviar criativo
