@@ -3,26 +3,16 @@ const fmt = fmtBRL; // config.js
 let ANUNCIANTE = null;
 let ANUNCIANTE_ID = null;
 
-// As duas portas de quem não tem arte. Não há o que construir aqui além do
-// caminho certo pra fora: a peça é feita fora do site, e a gravação é
-// serviço de terceiro com preço caso a caso — as duas coisas se resolvem
-// conversando. A mensagem já vai com o nome da empresa pra conversa não
-// começar com "oi".
+// Porta única pra quem não tem arte (19/09/2026, pedido do dono — antes eram
+// dois links, arte simples incluída no plano e vídeo gravado à parte; virou
+// um botão só, "Quero um anúncio", e a escolha entre os dois vira conversa
+// no WhatsApp, não duas opções na tela). A mensagem já vai com o nome da
+// empresa pra conversa não começar com "oi".
 function montarPortasDeArte() {
   if (!window.linkWhatsApp) return;
   const nome = ANUNCIANTE?.nome_empresa || 'anunciante';
-  const simples = document.getElementById('linkArteSimples');
-  const gravacao = document.getElementById('linkGravacao');
-  if (simples) {
-    simples.href = window.linkWhatsApp(
-      `Olá! Sou ${nome}, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.`,
-    );
-  }
-  if (gravacao) {
-    gravacao.href = window.linkWhatsApp(
-      `Olá! Sou ${nome}, do Mostraí, e quero orçar a gravação de um vídeo para o meu anúncio.`,
-    );
-  }
+  const link = document.getElementById('linkArteSimples');
+  if (link) link.href = window.linkWhatsApp(`Olá! Sou ${nome}, do Mostraí, e quero um anúncio pra minha conta.`);
 }
 
 async function carregar() {
@@ -62,7 +52,6 @@ async function carregar() {
     }
     carregarExibicoes();
     carregarCriativos();
-    carregarKpiPontos();
     carregarBancoHoras();
   });
   if (estado && !estado.modos.anunciante.liberado) {
@@ -345,27 +334,6 @@ async function cancelarAssinatura() {
   btn.remove();
 }
 
-// Ponto usa a mesma conta de anunciante (ver migration 016) — o card só
-// mostra a contagem e manda pro dashboard próprio do ponto; sem ponto
-// ainda, manda pro cadastro. Nada disso mora mais no menu do topo.
-async function carregarKpiPontos() {
-  const el = document.getElementById('kpiPontos');
-  // v2.1: sem o papel "ponto", o atalho leva ao modo "Meu ponto" (card
-  // de ativação); com o papel, mostra a contagem.
-  if (!(ANUNCIANTE.papeis || []).includes('ponto')) {
-    el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>0</b><a class="link-secundario" href="/anunciante/ponto.html">Quero uma tela no meu comércio</a>`;
-    return;
-  }
-  try {
-    const pontos = await (
-      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/pontos`, { credentials: 'include' })
-    ).json();
-    el.innerHTML = `<span class="kpi-label">Meus pontos</span><b>${pontos.length}</b><a class="link-secundario" href="/anunciante/ponto.html">Ver meu ponto →</a>`;
-  } catch {
-    el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>-</b>';
-  }
-}
-
 // Fechar o dialog de plano — mesmo padrão de #dlgPerfil (perfil.js): botão
 // de fechar, clique fora (no <dialog>, o próprio elemento é o backdrop) e
 // Esc, que o <dialog> nativo já trata sozinho.
@@ -480,10 +448,14 @@ async function carregarExibicoes() {
     const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
     const entrega =
       dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
+    kpi('exibicoes').textContent = dados.confirmadasMes ?? 0;
     kpi('entrega').textContent = dados.totalProgramadas ? `${entrega}%` : '-';
-    kpi('custo').textContent = dados.custoPorHora ? `${fmt(dados.custoPorHora)}/h` : '-';
+    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
+    kpi('restantes').textContent = dados.exibicoesRestantesMes ?? '-';
+    kpi('media').textContent = dados.mediaDiariaMes ?? '-';
 
     desenharPorDia(dados.porDia || []);
+    desenharPorHora(dados.porHora || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
     desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
@@ -561,6 +533,29 @@ function desenharPorDia(porDia) {
     `últimos ${dias.length} dias com exibição · ${atual} confirmadas nos últimos 7 dias${delta}`;
 }
 
+// Distribuição por hora do dia (19/09/2026, pedido do dono, seguindo a
+// mesma ideia do ChatGPT/Gemini): mesmo dado de desenharPorDia, só que
+// somado por hora do relógio (0 a 23) — mostra QUANDO o anúncio mais
+// aparece, não em qual dia. O servidor já devolve só as horas com registro,
+// em ordem crescente; preenche as que faltam com zero pra não distorcer a
+// leitura do gráfico (uma hora sem barra nenhuma é diferente de uma hora
+// que nunca teve pedido).
+function desenharPorHora(porHora) {
+  if (!porHora.length) return;
+  const porNumero = new Map(porHora.map((h) => [Number(h.hora), Number(h.confirmadas)]));
+  const horas = Array.from({ length: 24 }, (_, h) => ({ hora: h, confirmadas: porNumero.get(h) || 0 }));
+  const max = Math.max(...horas.map((h) => h.confirmadas)) || 1;
+  document.getElementById('painelHorario').hidden = false;
+  document.getElementById('graficoHorario').innerHTML = horas
+    .map(
+      (h) => `<div class="bar-col" title="${String(h.hora).padStart(2, '0')}h: ${h.confirmadas} exibições">
+      <div class="bar" data-pct="${h.confirmadas ? Math.max(2, (h.confirmadas / max) * 100) : 0}"></div>
+      <span class="bar-label">${String(h.hora).padStart(2, '0')}h</span>
+    </div>`,
+    )
+    .join('');
+}
+
 // Top 8: já vem ORDER BY confirmadas DESC do servidor — uma rede com muitos
 // pontos virava uma lista de barra alta e ilegível. O resto continua na
 // tabela detalhada logo abaixo, completa, sem corte nenhum.
@@ -589,29 +584,43 @@ function desenharPorPonto(porPonto) {
       ? `<p class="form-hint u-m-0 u-mt-8">+${resto} outro${resto === 1 ? '' : 's'} ponto${resto === 1 ? '' : 's'} na tabela abaixo.</p>`
       : '');
   document.getElementById('exibicoesDetalhe').innerHTML =
-    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th></tr></thead><tbody>
+    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th><th>Status</th></tr></thead><tbody>
     ${porPonto
       .map((p) => {
         const prog = Number(p.programadas) || 0;
         const conf = Number(p.confirmadas) || 0;
-        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td></tr>`;
+        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td><td>${statusOnline(p.ultima_vez_online)}</td></tr>`;
       })
       .join('')}
   </tbody></table></div>`;
 }
 
+// "A propaganda tá passando mesmo, ou a TV tá desligada?" (19/09/2026,
+// pedido do dono) — mesma janela de 2h que o admin já usa pra alertar tela
+// offline (HORAS_OFFLINE_ALERTA, src/admin/routes.js). Sem
+// `ultima_vez_online` nenhuma, a tela nunca chegou a pedir playlist — trata
+// como offline também, não como "sem dado".
+const HORAS_OFFLINE_ALERTA = 2;
+function statusOnline(ultimaVezOnline) {
+  const online =
+    ultimaVezOnline && Date.now() - new Date(ultimaVezOnline).getTime() < HORAS_OFFLINE_ALERTA * 3600 * 1000;
+  return online ? '<span class="badge badge-ok">🟢 Online</span>' : '<span class="badge badge-err">🔴 Offline</span>';
+}
+
 // Cobranças já vêm no mesmo endpoint e não eram mostradas em lugar nenhum.
+// Coluna de nota fiscal saiu (19/09/2026, pedido do dono): nenhuma é
+// emitida hoje, e quando passar a emitir vai direto por e-mail, não por um
+// link nesta tabela.
 function desenharCobrancas(cobrancas) {
   if (!cobrancas.length) return;
   document.getElementById('painelCobrancas').hidden = false;
   document.getElementById('listaCobrancas').innerHTML =
-    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th><th>Nota fiscal</th></tr></thead><tbody>
+    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th></tr></thead><tbody>
     ${cobrancas
       .map(
         (c) => `<tr>
       <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
       <td>${fmt(c.valor)}</td>
-      <td>${c.nota_fiscal_url ? `<a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">Baixar</a>` : esc(c.nota_fiscal_status || '-')}</td>
     </tr>`,
       )
       .join('')}
@@ -630,6 +639,11 @@ async function carregarCriativos() {
     ).json();
     const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
     document.querySelector('#kpiGrid [data-kpi="criativos"] b').textContent = ativos;
+    // "Quero um anúncio" só faz sentido pra quem ainda não subiu nenhuma
+    // peça (19/09/2026, pedido do dono) — assim que existe ao menos um
+    // criativo na conta, a pergunta "não tem arte ainda?" já não se aplica.
+    const ajudaArte = document.getElementById('ajudaArte');
+    if (ajudaArte) ajudaArte.hidden = criativos.length > 0;
     el.innerHTML = criativos.length
       ? `<div class="criativos-lista">
       ${criativos

@@ -426,6 +426,13 @@ footer.site .footer-links a:hover { color: var(--text); }
    horizontal no celular. */
 .dashboard-grid > * { min-width: 0; }
 @media (max-width: 800px) { .dashboard-grid { grid-template-columns: 1fr; } }
+/* Par de gráficos menores lado a lado (painel do anunciante, 19/09/2026) —
+   diferente de .dashboard-grid, aqui as duas colunas têm o mesmo peso e
+   quebram sozinhas pelo espaço disponível (auto-fit), sem media query: cada
+   caixa nunca fica menor que 320px, então numa tela estreita elas empilham
+   por conta própria. */
+.duas-colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start; }
+.duas-colunas > * { min-width: 0; }
 .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
 .panel h3 { margin-top: 0; }
 .soon { color: var(--text-dim); font-style: italic; font-size: .9rem; }

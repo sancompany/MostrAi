@@ -30,29 +30,37 @@
          mandam ?plano= pra lá, não mais pra cá. -->
     <section class="tight">
       <div class="wrap" id="bonusAnuncios"></div>
-      <div class="wrap dashboard-grid" id="dashboardAnuncios">
-        <div>
-          <div class="kpi-grid" id="kpiGrid">
-            <!-- Horas de tela é o número que o cliente comprou (19/09/2026,
-                 pedido do dono) — vem primeiro, e maior, que os outros: é a
-                 métrica que responde "estou recebendo o que contratei?". -->
-            <div class="kpi-card kpi-destaque" data-kpi="horas" hidden><span class="kpi-label">Horas de tela no mês</span><b>-</b><span class="kpi-caption" data-kpi-horas-legenda></span><span class="track u-mt-6"><span class="fill" data-pct="0"></span></span></div>
-            <div class="kpi-card" data-kpi="entrega"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
-            <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por hora de tela</span><b>-</b><span class="kpi-caption">plano ÷ horas contratadas</span></div>
-            <div class="kpi-card" data-kpi="criativos"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
-            <div class="kpi-card" id="kpiPontos"><span class="kpi-label">Meus pontos</span><b>-</b></div>
-          </div>
+      <!-- Uma coluna só, de propósito (19/09/2026, pedido do dono): o
+           dashboard antigo dividia a página em duas colunas grandes (2fr/1fr)
+           e "Meus criativos" vivia espremido na coluna lateral — no celular,
+           que é onde a maioria dos clientes entra, ficava apertado demais.
+           Cada seção agora ocupa a largura toda; só os pares de gráfico
+           pequenos usam `.duas-colunas`, que já quebra sozinho no celular. -->
+      <div class="wrap" id="dashboardAnuncios">
+        <div class="kpi-grid" id="kpiGrid">
+          <!-- Horas de tela é o número que o cliente comprou (19/09/2026,
+               pedido do dono) — vem primeiro, e maior, que os outros: é a
+               métrica que responde "estou recebendo o que contratei?". -->
+          <div class="kpi-card kpi-destaque" data-kpi="horas" hidden><span class="kpi-label">Horas de tela no mês</span><b>-</b><span class="kpi-caption" data-kpi-horas-legenda></span><span class="track u-mt-6"><span class="fill" data-pct="0"></span></span></div>
+          <div class="kpi-card" data-kpi="exibicoes"><span class="kpi-label">Exibições realizadas</span><b>-</b><span class="kpi-caption">neste mês</span></div>
+          <div class="kpi-card" data-kpi="entrega"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
+          <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições no mês</span></div>
+          <div class="kpi-card" data-kpi="restantes"><span class="kpi-label">Exibições restantes</span><b>-</b><span class="kpi-caption">até completar o mês</span></div>
+          <div class="kpi-card" data-kpi="media"><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia</span></div>
+          <div class="kpi-card" data-kpi="criativos"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
+        </div>
 
-          <!-- Conta nova via a mesma tela de quem parou de rodar: tudo zero e
-               nenhuma explicacao. Esta linha diz em que etapa a conta esta. -->
-          <p class="dash-explica u-mb-20" id="exibicoesVazio" hidden></p>
+        <!-- Conta nova via a mesma tela de quem parou de rodar: tudo zero e
+             nenhuma explicacao. Esta linha diz em que etapa a conta esta. -->
+        <p class="dash-explica u-mb-20" id="exibicoesVazio" hidden></p>
 
-          <div class="panel u-mb-20" id="painelDia" hidden>
-            <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
-            <div class="bar-chart" id="graficoDia"></div>
-          </div>
+        <div class="panel u-mb-20" id="painelDia" hidden>
+          <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
+          <div class="bar-chart" id="graficoDia"></div>
+        </div>
 
-          <div class="panel u-mb-20" id="painelDetalhe" hidden>
+        <div class="duas-colunas u-mb-20">
+          <div class="panel" id="painelDetalhe" hidden>
             <div class="panel-head">
               <h3>Exibições por ponto</h3>
               <!-- Comprovante de veiculação: o que o setor chama de
@@ -72,58 +80,58 @@
             <div class="u-mt-20" id="exibicoesDetalhe"></div>
           </div>
 
-          <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
-               quem escolhe quais é o anunciante. Deixar tudo desmarcado é
-               escolha válida — aí o sistema distribui. -->
-          <div class="panel u-mb-20" id="painelPontos" hidden>
-            <div class="panel-head">
-              <h3>Onde seu anúncio aparece</h3>
-              <span class="form-hint" id="contadorPontos"></span>
-            </div>
-            <p class="form-hint u-mt-0" id="dicaPontos"></p>
-            <!-- RN-49: enquanto a rede for menor que a cobertura do plano, o
-                 tempo dos pontos que faltam volta pros pontos no ar. O bloco
-                 diz o número exato — contratado, o que a rede daria sem a
-                 regra, e o que ela dá com ela —, porque bônus que o cliente
-                 não consegue conferir é promessa, não benefício. -->
-            <div class="aviso-rede u-mb-16" id="avisoCompensacao" hidden></div>
-            <div id="listaPontos"></div>
-            <p class="form-msg" id="msgPontos"></p>
-          </div>
-
-          <div class="panel" id="painelCobrancas" hidden>
-            <div class="panel-head"><h3>Meus pagamentos</h3></div>
-            <div id="listaCobrancas"></div>
+          <!-- Distribuição por horário (19/09/2026, pedido do dono): mesmo
+               dado de "Exibições por dia", só que somado por hora do
+               relógio — mostra QUANDO o anúncio mais aparece (ex.: pico no
+               almoço), não em qual dia. -->
+          <div class="panel" id="painelHorario" hidden>
+            <div class="panel-head"><h3>Exibições por horário</h3><span class="kpi-caption">últimos 30 dias</span></div>
+            <div class="bar-chart" id="graficoHorario"></div>
           </div>
         </div>
 
-        <div>
-          <div class="panel">
-            <div class="panel-head"><h3>Meus criativos</h3></div>
-            <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>do tamanho que o seu plano permite</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
-            <label class="btn primary upload-label">
-              Enviar criativo
-              <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
-            </label>
-            <p class="form-msg" id="uploadMsg"></p>
-
-            <!-- Não tem arte? Duas saídas, e as duas são conversa, não tela: a
-                 peça é feita fora do site e sobe direto na conta. O passo do
-                 criativo é onde o mercado põe essa oferta (Blip, Canva/Meta) —
-                 no momento exato em que a pessoa trava. -->
-            <div class="ajuda-arte">
-              <p><b>Não tem a arte ainda?</b></p>
-              <p>
-                <a id="linkArteSimples" href="#" target="_blank" rel="noopener">Pedir um anúncio simples</a>,
-                incluído no seu plano. A gente combina no WhatsApp, monta a peça e sobe aqui pra você.
-              </p>
-              <p>
-                <a id="linkGravacao" href="#" target="_blank" rel="noopener">Quero um vídeo gravado</a>,
-                com filmagem feita por uma produtora parceira, orçada à parte. Também pelo WhatsApp.
-              </p>
-            </div>
-            <div class="u-mt-16" id="listaCriativos">Carregando...</div>
+        <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
+             quem escolhe quais é o anunciante. Deixar tudo desmarcado é
+             escolha válida — aí o sistema distribui. -->
+        <div class="panel u-mb-20" id="painelPontos" hidden>
+          <div class="panel-head">
+            <h3>Onde seu anúncio aparece</h3>
+            <span class="form-hint" id="contadorPontos"></span>
           </div>
+          <p class="form-hint u-mt-0" id="dicaPontos"></p>
+          <!-- RN-49: enquanto a rede for menor que a cobertura do plano, o
+               tempo dos pontos que faltam volta pros pontos no ar. O bloco
+               diz o número exato — contratado, o que a rede daria sem a
+               regra, e o que ela dá com ela —, porque bônus que o cliente
+               não consegue conferir é promessa, não benefício. -->
+          <div class="aviso-rede u-mb-16" id="avisoCompensacao" hidden></div>
+          <div id="listaPontos"></div>
+          <p class="form-msg" id="msgPontos"></p>
+        </div>
+
+        <div class="panel u-mb-20" id="painelCobrancas" hidden>
+          <div class="panel-head"><h3>Meus pagamentos</h3></div>
+          <div id="listaCobrancas"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>Meus criativos</h3></div>
+          <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>do tamanho que o seu plano permite</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
+          <label class="btn primary upload-label">
+            Enviar criativo
+            <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
+          </label>
+          <p class="form-msg" id="uploadMsg"></p>
+
+          <!-- Sem arte ainda? Um botão só pro WhatsApp (19/09/2026, pedido do
+               dono — antes eram dois links, um pra arte simples incluída no
+               plano e outro pra vídeo gravado à parte; a escolha entre os
+               dois vira conversa, não tela). Some de vez assim que existe
+               pelo menos um criativo na conta — ver carregarCriativos(). -->
+          <div class="ajuda-arte" id="ajudaArte">
+            <p><a id="linkArteSimples" class="btn ghost" href="#" target="_blank" rel="noopener">Quero um anúncio</a></p>
+          </div>
+          <div class="u-mt-16" id="listaCriativos">Carregando...</div>
         </div>
       </div>
     </section>

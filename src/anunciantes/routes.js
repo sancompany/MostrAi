@@ -848,15 +848,19 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   }
   const anuncianteId = req.params.id;
 
-  const [totais, porPonto, porDia, cobrancas, anunciante, confirmadasMesRows] = await Promise.all([
+  const [totais, porPonto, porDia, porHora, cobrancas, anunciante, confirmadasMesRows] = await Promise.all([
     pool.query(
       `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
       [anuncianteId],
     ),
     pool.query(
+      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
+      // status mostrado é o da tela mais recentemente vista (19/09/2026,
+      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
       `SELECT p.id, p.nome, p.cidade,
-              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas
+              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
+              MAX(d.ultima_vez_online) AS ultima_vez_online
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
        JOIN pontos p ON p.id = d.ponto_id
@@ -873,9 +877,24 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
       [anuncianteId],
     ),
+    // Distribuição por hora do dia (19/09/2026, pedido do dono): mesmos 30
+    // dias do gráfico por dia, só que somado por hora do relógio em vez de
+    // por data — mostra quando o anúncio mais aparece (ex.: pico no
+    // almoço), não quando ele rodou em qual dia.
     pool.query(
-      `SELECT id, valor, criado_em, nota_fiscal_status, nota_fiscal_url
-       FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
+      `SELECT EXTRACT(HOUR FROM janela_hora AT TIME ZONE 'America/Sao_Paulo')::int AS hora,
+              SUM(vezes_confirmadas) AS confirmadas
+       FROM exibicoes_contador WHERE anunciante_id = $1
+         AND janela_hora >= now() - interval '30 days'
+       GROUP BY hora ORDER BY hora`,
+      [anuncianteId],
+    ),
+    // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
+    // emitida, e quando passar a emitir vai direto por e-mail, não por um
+    // link nesta tabela — os campos continuam existindo na tabela
+    // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
+    pool.query(
+      `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
       [anuncianteId],
     ),
     repo.buscarPorId(anuncianteId),
@@ -893,6 +912,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  const confirmadasMes = Number(confirmadasMesRows.rows[0].confirmadas);
 
   // Horas contratadas x entregues no mês (pedido do dono, 19/09/2026, card
   // novo no painel). "Contratadas" é o que o plano promete (mesma conta de
@@ -901,13 +921,28 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   // dia). "Entregues" é o confirmado do mês corrente convertido em horas
   // pela duração média dos criativos aprovados — mesma aproximação que o
   // banco de horas já usa pra "segundos" ilustrativos.
+  //
+  // "Exibições contratadas/restantes/média diária" (19/09/2026, pedido do
+  // dono, seguindo a mesma ideia do ChatGPT/Gemini que ele consultou):
+  // `duracaoMediaDoAnunciante` NUNCA devolve zero (cai no padrão de 20s sem
+  // criativo aprovado ainda — ver bancohoras/repository.js), por isso dá
+  // pra calcular "contratadas" desde o primeiro dia, sem esperar a primeira
+  // exibição confirmada.
   let horasContratadasMes = null;
   let horasEntreguesMes = null;
+  let exibicoesContratadasMes = null;
+  let exibicoesRestantesMes = null;
+  let mediaDiariaMes = null;
   if (plano) {
-    const confirmadasMes = Number(confirmadasMesRows.rows[0].confirmadas);
-    const duracaoMedia = confirmadasMes > 0 ? await bancohorasRepo.duracaoMediaDoAnunciante(anuncianteId) : 0;
+    const duracaoMedia = await bancohorasRepo.duracaoMediaDoAnunciante(anuncianteId);
     horasContratadasMes = horasDeTelaPorMes(Number(plano.segundos_por_hora) || 0, plano.pontos_incluidos);
     horasEntreguesMes = Math.round(((confirmadasMes * duracaoMedia) / 3600) * 10) / 10;
+    exibicoesContratadasMes = Math.round((horasContratadasMes * 3600) / duracaoMedia);
+    exibicoesRestantesMes = Math.max(0, exibicoesContratadasMes - confirmadasMes);
+    // Dia do mês pelo relógio do servidor — aproximação aceitável pra uma
+    // MÉDIA (mesmo espírito ilustrativo de horasEntreguesMes), não vale a
+    // pena buscar o dia em Matão só pra isso.
+    mediaDiariaMes = Math.round((confirmadasMes / new Date().getDate()) * 10) / 10;
   }
 
   // Quantas pecas ja estao aprovadas: e o que decide a frase que o painel
@@ -922,22 +957,27 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   res.json({
     totalProgramadas: Number(totais.rows[0].programadas),
     totalConfirmadas: confirmadas,
+    confirmadasMes,
     criativosAprovados: aprovados[0].n,
     porPonto: porPonto.rows,
     porDia: porDia.rows,
+    porHora: porHora.rows,
     cobrancas: cobrancas.rows,
     horasContratadasMes,
     horasEntreguesMes,
-    // Custo por HORA de tela, não por exibição (19/09/2026, pedido do dono):
-    // a conta vende por horas/mês, não por vez rodada — "custo por exibição"
-    // media junto contas de plano pequeno (peça curta, poucas inserções por
-    // hora) e não bate com o que o anunciante decidiu comprar. Divide pelo
-    // que o plano CONTRATA (`horasContratadasMes`), não pelo que já rodou
-    // (`confirmadas`): assim o número é estável desde o primeiro dia, antes
-    // de qualquer exibição confirmada, em vez de vir `null` no começo do mês.
+    exibicoesContratadasMes,
+    exibicoesRestantesMes,
+    mediaDiariaMes,
+    // Custo por EXIBIÇÃO, não por hora (19/09/2026, pedido do dono — reverte
+    // a decisão anterior do mesmo dia): o número por hora fica "caro"
+    // (poucas dezenas de reais), e por exibição fica "barato" (poucos
+    // centavos) — mesmo valor, leitura diferente, e é a leitura que ele
+    // quer na tela. `null` até a primeira exibição confirmada NO MÊS (não
+    // dá pra dividir por zero) — diferente do custo por hora, que era
+    // estável desde o dia 1; é a troca aceita ao vir por este caminho.
     //
     // O que a conta PAGA, nao o preco de tabela: quem esta em cortesia nao paga
-    // nada — mostrar custo por hora pra quem recebeu o plano de graca seria
+    // nada — mostrar custo por exibição pra quem recebeu o plano de graca seria
     // numero inventado.
     //
     // O valor sai de `valorMensalDaConta`, a MESMA funcao que decide o que o
@@ -947,9 +987,9 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     // na propria tela, um custo maior do que o que pagam. E o furo M11 de
     // volta, por outra porta — preco de cobranca so pode ter uma fonte, e ela
     // e a do motor de pagamento.
-    custoPorHora:
-      plano && horasContratadasMes > 0 && !anunciante.plano_cortesia
-        ? sanCheckout.valorMensalDaConta(anunciante, plano) / horasContratadasMes
+    custoPorExibicao:
+      plano && confirmadasMes > 0 && !anunciante.plano_cortesia
+        ? sanCheckout.valorMensalDaConta(anunciante, plano) / confirmadasMes
         : null,
   });
 });

@@ -546,27 +546,30 @@ PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.h
   · ← /planos.html?plano=X  → San Checkout (host externo)
   · **cliente sabe:** Antes de gerar qualquer cobrança a tela mostra exatamente quanto e de quanto em quanto tempo. Um F5 depois disso não gera segunda cobrança.
 
-**KPIs do topo** (reorganizado 19/09/2026, pedido do dono) — #kpiGrid, preenchido por `data-kpi`: [horas] Horas de tela no mês = dados.horasEntreguesMes/horasContratadasMes (card em destaque, 2 colunas — é a métrica que a conta vende, então vem primeiro), [entrega] round(confirmadas/programadas × 100)%, [custo] Custo por hora de tela = dados.custoPorHora (valor mensal pago ÷ horas contratadas), [criativos] Criativos ativos, mais o card fixo Meus pontos. "Exibições confirmadas" saiu de KPI próprio: virou legenda do gráfico "Exibições por dia" (#legendaDia, com o delta 7 dias vs. 7 anteriores que antes vivia em [data-delta]) — vender por hora torna "N exibições" sozinho enganoso pra plano de peça curta.
+**KPIs do topo** (redesenho 19/09/2026, pedido do dono — "dados redundantes que enchem o dashboard e dão uma cara melhor") — #kpiGrid, 7 cards, preenchido por `data-kpi`: [horas] Horas de tela no mês = dados.horasEntreguesMes/horasContratadasMes (card em destaque, 2 colunas — é a métrica que a conta vende, então vem primeiro), [exibicoes] Exibições realizadas = dados.confirmadasMes, [entrega] round(confirmadas/programadas × 100)%, [custo] Custo por exibição = dados.custoPorExibicao (valor mensal pago ÷ exibições confirmadas no mês — trocado de "por hora" pra "por exibição" no mesmo pedido: por hora "parece caro", por exibição "parece barato", mesmo valor de fundo), [restantes] Exibições restantes = dados.exibicoesRestantesMes, [media] Média diária = dados.mediaDiariaMes, [criativos] Criativos ativos. O card fixo "Meus pontos" saiu de vez (pedido do dono, "pode arrancar"; ver KPI Meus pontos abaixo). "Exibições por dia" continua com sua própria legenda (#legendaDia, delta 7 dias vs. 7 anteriores).
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes`, `GET /anunciantes/:id/criativos` · papéis: anunciante
-  · **cliente sabe:** Quantas horas de tela já rodaram este mês (de quanto contratou), quanto disso era o prometido, quanto custa a hora de tela e quantas peças estão no ar.
+  · **cliente sabe:** Quantas horas de tela e quantas exibições já rodaram este mês (de quanto contratou), quanto disso era o prometido, quanto custa cada exibição, quanto ainda falta e quantas peças estão no ar.
 
 **Gráfico de exibições por dia** — desenharPorDia(porDia) mostra #painelDia com as 14 barras mais recentes (o endpoint devolve DESC e só dias COM registro; o front inverte e não preenche buraco). Cada barra usa data-pct (aplicado por window.aplicarBarras do config.js, porque a CSP proíbe…
   · `public/anunciante/painel.page.js`, `public/config.js` · rotas: `GET /anunciantes/:id/exibicoes` · papéis: anunciante
   · **cliente sabe:** O desenho dos últimos dias em que você apareceu, com a comparação da semana contra a anterior.
 
-**Exibições por ponto (barras + tabela)** — desenharPorPonto(porPonto) mostra #painelDetalhe: barras horizontais por ponto (nome, trilho com .fill data-pct, valor) e a tabela .mini-table com Ponto / Cidade / Programadas / Confirmadas / Entrega%. Os dados vêm do GROUP BY p.id, p.nome, p.cidade sobre…
+**Exibições por ponto (barras + tabela)** — desenharPorPonto(porPonto) mostra #painelDetalhe: barras horizontais por ponto (nome, trilho com .fill data-pct, valor) e a tabela .mini-table com Ponto / Cidade / Programadas / Confirmadas / Entrega% / Status. A coluna Status (19/09/2026) usa `statusOnline(ultima_vez_online)`: badge 🟢 Online/🔴 Offline com o mesmo limiar `HORAS_OFFLINE_ALERTA=2h` já usado no admin. Os dados vêm do GROUP BY p.id, p.nome, p.cidade sobre…
   · `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes` · papéis: anunciante
-  · **cliente sabe:** Em quais comércios seu anúncio apareceu e quanto do prometido foi entregue em cada um.
+  · **cliente sabe:** Em quais comércios seu anúncio apareceu, quanto do prometido foi entregue em cada um, e se a tela está online agora.
+
+**Exibições por horário** (19/09/2026, pedido do dono — "siga o que o pt disse sobre a tela") — desenharPorHora(porHora) mostra #painelHorario: 24 barras (0h-23h), preenchendo com 0 as horas sem registro. Mesmo dado de "Exibições por dia", só que somado por hora do relógio nos últimos 30 dias — mostra QUANDO o anúncio mais aparece (ex.: pico no almoço), não em qual dia. Fica lado a lado com "Exibições por ponto" dentro de `.duas-colunas` (grid que se auto-empilha no celular, sem media query).
+  · `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes` · papéis: anunciante
+  · **cliente sabe:** Em que horário do dia seu anúncio mais aparece.
 
 **Comprovante de veiculação (CSV / proof-of-play)** — Select #periodoComprovante (30/90/365 dias) + link #btnComprovante (<a download>, não fetch+blob, para o navegador usar o nome do Content-Disposition e não esbarrar na CSP). A IIFE comprovante() monta o href e re-monta a cada 'change'. Backend GET…
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes.csv?dias=N` · papéis: anunciante
   · → download do arquivo
   · **cliente sabe:** Um arquivo que abre no Excel com a prova do que rodou, dia a dia e tela a tela — dá para imprimir ou mandar para o contador.
 
-**Meus pagamentos e nota fiscal** — desenharCobrancas(cobrancas) mostra #painelCobrancas com Data / Valor / Nota fiscal. Os dados chegam no MESMO GET /anunciantes/:id/exibicoes (SELECT id, valor, criado_em, nota_fiscal_status, nota_fiscal_url FROM cobrancas_confirmadas ORDER BY criado_em DESC).…
+**Meus pagamentos** — desenharCobrancas(cobrancas) mostra #painelCobrancas com Data / Valor. Os dados chegam no MESMO GET /anunciantes/:id/exibicoes (SELECT id, valor, criado_em FROM cobrancas_confirmadas ORDER BY criado_em DESC). A coluna Nota fiscal saiu da tabela e do SELECT em 19/09/2026 (pedido do dono: nenhuma nota é emitida hoje, e quando passar a ser possível o envio será automático por e-mail, não um link nesta lista — ver BURACO — nota fiscal).
   · `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes` · papéis: anunciante
-  · → arquivo da nota no storage
-  · **cliente sabe:** O histórico do que você pagou e a nota de cada pagamento, assim que ela é emitida.
+  · **cliente sabe:** O histórico do que você pagou.
 
 **Upload de criativo** — Label .upload-label 'Enviar criativo' sobre o input #arquivoCriativo (accept="video/*,image/*", hidden). O change dispara FormData('arquivo') → POST /anunciantes/:id/criativos, com input.disabled durante o envio. Sucesso: 'Criativo enviado! Ele entra em…
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `POST /anunciantes/:id/criativos` · papéis: anunciante
@@ -582,15 +585,13 @@ PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.h
   · `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `DELETE /anunciantes/:id/criativos/:criativoId` · papéis: anunciante
   · **cliente sabe:** Excluir libera uma vaga do seu plano na hora; para trocar a peça, exclua e envie a nova.
 
-**Portas de arte pelo WhatsApp** — montarPortasDeArte() reescreve os href de #linkArteSimples e #linkGravacao com window.linkWhatsApp(mensagem), já com o nome da empresa dentro ('Olá! Sou <empresa>, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.' / '...quero orçar a gravação…
+**Portas de arte pelo WhatsApp** — montarPortasDeArte() reescreve o href de #linkArteSimples com window.linkWhatsApp(mensagem), já com o nome da empresa dentro ('Olá! Sou <empresa>, do Mostraí, e quero pedir o anúncio simples que vem no meu plano.'). Simplificado em 19/09/2026 (pedido do dono): antes eram dois links (#linkArteSimples/#linkGravacao, arte incluída no plano vs. vídeo gravado à parte) — a escolha virou conversa no WhatsApp, não tela. O bloco `#ajudaArte` inteiro some assim que existe pelo menos um criativo na conta (`ajudaArte.hidden = criativos.length > 0` dentro de carregarCriativos(), reavaliado a cada upload/exclusão).
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `public/config.js` · papéis: anunciante
   · → wa.me (externo)
-  · **cliente sabe:** Sem arte? O anúncio simples está incluído no plano e a gravação é orçada à parte — os dois começam por uma conversa no WhatsApp, já identificada.
+  · **cliente sabe:** Sem arte ainda? Um botão só, "Quero um anúncio", que já chega puxando uma conversa no WhatsApp — e some assim que a primeira peça é enviada.
 
-**KPI Meus pontos (ponte para a aba Meu ponto)** — carregarKpiPontos(): sem o papel 'ponto', mostra 0 e o link 'Quero uma tela no meu comércio' → /anunciante/ponto.html (onde modos.js exibe o card de ativação). Com o papel, faz GET /anunciantes/:id/pontos e mostra a contagem + 'Ver meu ponto →'. Falha vira…
-  · `public/anunciante/painel.page.js`, `src/pontos/routes.js` · rotas: `GET /anunciantes/:id/pontos` · papéis: anunciante, ponto
-  · → /anunciante/ponto.html
-  · **cliente sabe:** Se você também cede a parede, o painel mostra quantos pontos seus estão na rede e leva direto para eles.
+**KPI Meus pontos — REMOVIDO (19/09/2026, pedido do dono: "pode arrancar o card meus pontos")** — carregarKpiPontos() e o card fixo do #kpiGrid foram apagados por inteiro; o link "Quero uma tela no meu comércio" pra quem ainda não tem o papel 'ponto' não vive mais aqui. Quem já é ponto continua vendo a própria rede pela aba "Meu ponto" (ponto.page.js), sem atalho a partir do painel de anúncios.
+  · `src/pontos/routes.js` (`GET /anunciantes/:id/pontos`, agora sem chamador no painel de anúncios) · papéis: anunciante, ponto
 
 **Card de bônus do plano (tela ganha por tempo de assinatura)** — #bonusAnuncios recebe cardBonus(estado,'ponto') de modos.js. Com plano que tem ponto_apos_meses, bonusPontoDaConta() calcula meses_cobertos por mesesEntre(data_inicio_cobertura, hoje) e devolve {apos_meses, meses_cobertos, disponivel, resgatado_em,…
   · `public/modos.js`, `src/conta/modos.js` · rotas: `GET /conta/modos`, `POST /conta/bonus/ponto/resgatar` · papéis: anunciante
@@ -1410,7 +1411,7 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · `src/anunciantes/routes.js:380`, `public/anunciante/painel.page.js:169` · rotas: `/anunciantes/:id/exibicoes.csv` · papéis: conta logada
   · ← public/anunciante/painel.page.js:169 (href do btnComprovante)
 
-**GET /anunciantes/:id/exibicoes** — Dashboard agregado: totais programadas/confirmadas, porPonto, porDia, cobranças, horasContratadasMes/horasEntreguesMes e custoPorHora.
+**GET /anunciantes/:id/exibicoes** — Dashboard agregado: totais programadas/confirmadas, confirmadasMes, porPonto (com ultima_vez_online), porDia, porHora, cobranças (sem nota fiscal), horasContratadasMes/horasEntreguesMes, exibicoesContratadasMes/exibicoesRestantesMes, mediaDiariaMes e custoPorExibicao.
   · `src/anunciantes/routes.js:415`, `public/anunciante/painel.page.js:179` · rotas: `/anunciantes/:id/exibicoes` · papéis: conta logada
   · ← public/anunciante/painel.page.js:179
 
@@ -2008,8 +2009,8 @@ Superfície informativa pública do Mostraí: 10 páginas HTML em `/home/user/Mo
   · `public/contrato-anunciante.html`, `public/termos-de-uso.html`, `src/financeiro/routes.js`, `public/anunciante/painel.page.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura`, `POST /anunciantes/me/cancelar-assinatura`, `POST /webhook/san-checkout` · papéis: anunciante, administrador
   · **cliente sabe:** Agora sim — botão "Cancelar assinatura" no painel. `planos.page.js` (FAQ "Como eu cancelo?") já batia com o comportamento real desde a rodada anterior.
 
-**BURACO — nota fiscal** — Cobranças carregam `nota_fiscal_status` e `nota_fiscal_url`, marcadas manualmente por `PATCH /admin/cobrancas/:id/nota-fiscal`, e o anunciante baixa a nota no painel (`painel.page.js` linha 254). Enquanto não houver CNPJ, não há emissão (contrato §1).
-  · `src/financeiro/routes.js`, `public/anunciante/painel.page.js`, `public/contrato-anunciante.html` · rotas: `PATCH /admin/cobrancas/:id/nota-fiscal` · papéis: anunciante, administrador
+**BURACO — nota fiscal** — Cobranças carregam `nota_fiscal_status` e `nota_fiscal_url`, marcadas manualmente por `PATCH /admin/cobrancas/:id/nota-fiscal` (segue existindo, lado admin intacto). O que mudou em 19/09/2026 (pedido do dono, "não será enviada nada mesmo e quando for possivel enviaremos pelo email direto automaticamente"): a tabela "Meus pagamentos" do painel do anunciante PAROU de mostrar a coluna Nota fiscal — `GET /anunciantes/:id/exibicoes` nem seleciona mais os dois campos (`src/anunciantes/routes.js`). Nenhuma nota é emitida hoje; quando passar a ser possível, o plano é mandar por e-mail direto, não reabrir um link nesta tabela. Enquanto não houver CNPJ, não há emissão (contrato §1).
+  · `src/financeiro/routes.js`, `src/anunciantes/routes.js`, `public/anunciante/painel.page.js`, `public/contrato-anunciante.html` · rotas: `PATCH /admin/cobrancas/:id/nota-fiscal`, `GET /anunciantes/:id/exibicoes` · papéis: anunciante, administrador
   · **cliente sabe:** Só em contrato-anunciante.html §1, em letra de contrato. Para um comprador PJ, 'tem nota?' é pergunta de primeira conversa e nenhuma página de venda responde.
 
 **BURACO — limite de criativos por plano** — `planos.limite_criativos` vem em `GET /planos`, e `limiteDeCriativos()` (src/playlist/gerador.js) aplica teto duro de 3 por conta de cliente. O painel conta os criativos ativos (`painel.page.js` linha 265).
