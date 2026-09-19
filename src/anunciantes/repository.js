@@ -43,6 +43,10 @@ const CAMPOS_ATUALIZAVEIS = [
   // compromisso que ele decidir.
   'parceiro_desconto_percentual',
   'parceiro_compromisso_minimo',
+  // Confirmação de e-mail por código (migration 061) — só a rota de
+  // confirmação marca isso, nunca o PATCH de autoedição (não está em
+  // CAMPOS_AUTOEDITAVEIS, em src/anunciantes/routes.js).
+  'email_confirmado',
 ];
 
 // Nunca devolver senha_hash pra fora do repository.
@@ -59,7 +63,7 @@ const CAMPOS_PUBLICOS = `
   anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
   suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo,
-  credito_comodato_mensal
+  credito_comodato_mensal, email_confirmado
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.

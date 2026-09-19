@@ -195,6 +195,66 @@
   if (document.body.dataset.layout === 'conta') {
     window.carregarConta().then((conta) => {
       if (conta) window.aplicarPapeisNoMenu(conta);
+      // E-mail não confirmado (migration 061): aviso em toda página de conta,
+      // não só no painel — a pessoa pode entrar direto por ponto.html ou
+      // vendedor.html sem nunca passar pelo painel de anúncios.
+      if (conta && !conta.email_confirmado) mostrarAvisoEmailNaoConfirmado(conta);
+    });
+  }
+
+  function mostrarAvisoEmailNaoConfirmado(conta) {
+    const cabecalho = document.querySelector('header.site');
+    if (!cabecalho) return;
+    const el = document.createElement('div');
+    el.className = 'aviso-email';
+    el.innerHTML = `
+      <div class="wrap">
+        <span>Confirme seu e-mail (<b>${window.esc(conta.contato_email || '')}</b>) — mandamos um código pra lá.</span>
+        <form id="formConfirmarEmail">
+          <input id="codigoConfirmarEmail" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required>
+          <button type="submit" class="btn primary mini">Confirmar</button>
+        </form>
+        <button type="button" class="btn ghost mini" id="btnReenviarCodigoEmail">Reenviar código</button>
+        <span class="msg" id="msgConfirmarEmail"></span>
+      </div>`;
+    cabecalho.insertAdjacentElement('afterend', el);
+
+    const msg = el.querySelector('#msgConfirmarEmail');
+    el.querySelector('#formConfirmarEmail').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      msg.textContent = '';
+      msg.className = 'msg';
+      const codigo = el.querySelector('#codigoConfirmarEmail').value.trim();
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/confirmar-email`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          msg.textContent = d.erro || 'não deu pra confirmar';
+          msg.className = 'msg err';
+          return;
+        }
+        el.remove();
+      } catch {
+        msg.textContent = 'sem conexão com o servidor';
+        msg.className = 'msg err';
+      }
+    });
+    el.querySelector('#btnReenviarCodigoEmail').addEventListener('click', async () => {
+      msg.className = 'msg';
+      msg.textContent = 'enviando...';
+      try {
+        await fetch(`${API_BASE_URL}/anunciantes/me/reenviar-codigo-email`, { method: 'POST', credentials: 'include' });
+        msg.className = 'msg ok';
+        msg.textContent = 'código reenviado, confere seu e-mail';
+      } catch {
+        msg.className = 'msg err';
+        msg.textContent = 'sem conexão com o servidor';
+      }
     });
   }
 })();

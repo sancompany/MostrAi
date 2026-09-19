@@ -176,6 +176,22 @@ async function enviarCancelamento(anunciante, plano) {
   });
 }
 
+// Código de 6 dígitos pra confirmar que o e-mail digitado no cadastro é de
+// verdade — ele é o login e o único canal de recuperação de senha, então um
+// e-mail errado tranca a pessoa fora da própria conta sem volta.
+async function enviarCodigoConfirmacaoEmail(anunciante, codigo) {
+  await transportador().sendMail({
+    from: remetente(),
+    to: anunciante.contato_email,
+    subject: 'Confirme seu e-mail — Mostraí',
+    text:
+      `Olá, ${anunciante.nome_empresa}!\n\n` +
+      `Seu código de confirmação é: ${codigo}\n\n` +
+      `Digite esse código na sua conta pra confirmar o e-mail. Ele vale por 30 minutos.\n\n` +
+      `Se não foi você que criou essa conta, pode ignorar este e-mail.\n\nEquipe Mostraí.`,
+  });
+}
+
 async function enviarLinkRedefinicaoSenha(email, nome, link) {
   await transportador().sendMail({
     from: remetente(),
@@ -400,6 +416,7 @@ module.exports = {
   enviarCriativoReprovado,
   enviarConfirmacaoPagamento,
   enviarLinkRedefinicaoSenha,
+  enviarCodigoConfirmacaoEmail,
   enviarContaAprovada,
   enviarContaCriada,
   enviarContaExcluida,

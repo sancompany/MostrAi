@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const os = require('node:os');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const router = express.Router();
 const repo = require('./repository');
 const criativosRepo = require('./criativos-repository');
@@ -22,7 +23,27 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
-const { enviarContaAprovada, enviarContaCriada, enviarContaExcluida } = require('../financeiro/email');
+const {
+  enviarContaAprovada,
+  enviarContaCriada,
+  enviarContaExcluida,
+  enviarCodigoConfirmacaoEmail,
+} = require('../financeiro/email');
+
+// Confirmação de e-mail por código (migration 061). Apaga o código anterior
+// antes de gerar outro: só o último vale, pedir de novo não deve deixar dois
+// códigos válidos ao mesmo tempo.
+const VALIDADE_CODIGO_EMAIL_MS = 30 * 60 * 1000;
+async function enviarNovoCodigoConfirmacao(anunciante) {
+  const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  await pool.query('DELETE FROM tokens_confirmacao_email WHERE anunciante_id = $1', [anunciante.id]);
+  await pool.query('INSERT INTO tokens_confirmacao_email (anunciante_id, codigo, expira_em) VALUES ($1,$2,$3)', [
+    anunciante.id,
+    codigo,
+    new Date(Date.now() + VALIDADE_CODIGO_EMAIL_MS),
+  ]);
+  return enviarCodigoConfirmacaoEmail(anunciante, codigo);
+}
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
 // text/html e o bucket público servia HTML executável no nosso domínio.
@@ -242,6 +263,9 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   // plano" e "colocar seu anúncio", que não faz sentido pra quem entrou só
   // como vendedor ou dono de ponto (convite sem o papel 'anunciante').
   if (ehAnunciante) enviarContaCriada(anunciante).catch((err) => console.error('e-mail de conta criada', err));
+  // Código de confirmação vai pra toda conta nova, qualquer papel — o e-mail
+  // é sempre o login, não só de quem anuncia.
+  enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('código de confirmação de e-mail', err));
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -339,6 +363,31 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   // pode estar numa versão aposentada.
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
   res.json({ ...anunciante, vendedor, plano });
+});
+
+// Confirmação de e-mail por código (migration 061). `limiteTentativas` conta
+// tentativa errada pra não virar força-bruta num código de 6 dígitos.
+router.post('/anunciantes/me/confirmar-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
+  const codigo = String(req.body.codigo || '').trim();
+  if (!codigo) return res.status(400).json({ erro: 'código obrigatório' });
+  const { rows } = await pool.query(
+    'SELECT id FROM tokens_confirmacao_email WHERE anunciante_id = $1 AND codigo = $2 AND expira_em > now()',
+    [req.session.anuncianteId, codigo],
+  );
+  if (!rows[0]) return res.status(400).json({ erro: 'código inválido ou expirado — peça um novo' });
+  zerarTentativas(req);
+  await pool.query('DELETE FROM tokens_confirmacao_email WHERE anunciante_id = $1', [req.session.anuncianteId]);
+  await repo.atualizar(req.session.anuncianteId, { email_confirmado: true });
+  res.json({ ok: true });
+});
+
+router.post('/anunciantes/me/reenviar-codigo-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
+  const anunciante = await repo.buscarPorId(req.session.anuncianteId);
+  if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
+  if (!anunciante.email_confirmado) {
+    enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('reenvio de código de confirmação', err));
+  }
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------

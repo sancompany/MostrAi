@@ -448,6 +448,18 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
 .badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
 
+/* Aviso de e-mail não confirmado (migration 061) — fica logo abaixo do
+   cabeçalho em toda página de conta até o código ser digitado. Mesma cor do
+   badge-pendente: é um "falta um passo", não um erro. */
+.aviso-email { background: rgba(255,122,26,.12); border-bottom: 1px solid rgba(255,122,26,.3); }
+.aviso-email .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 20px; font-size: .9rem; color: #8a3d05; }
+.aviso-email form { display: flex; gap: 8px; align-items: center; }
+.aviso-email input { width: 110px; padding: 6px 10px; border: 1px solid rgba(138,61,5,.35); border-radius: 6px; font: inherit; letter-spacing: .08em; }
+.aviso-email .btn.mini { padding: 6px 12px; font-size: .85rem; }
+.aviso-email .msg { flex-basis: 100%; font-size: .85rem; }
+.aviso-email .msg.err { color: #a51b1b; }
+.aviso-email .msg.ok { color: #0f5c2e; }
+
 .criativos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 12px; }
 .criativo-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-alt); }
 /* `contain`, nao `cover`: a miniatura e a unica previa que o anunciante ve do
