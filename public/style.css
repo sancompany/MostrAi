@@ -545,6 +545,22 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 }
 .btn-sair:hover { text-decoration: underline; }
 
+dialog#dlgPlano {
+  border: none; border-radius: var(--radius); padding: 24px; max-width: 420px; width: 92vw;
+  background: var(--card); color: var(--text);
+}
+dialog#dlgPlano::backdrop { background: rgba(20,23,31,.5); }
+
+/* Engrenagem "Gerenciar plano" que abre o dialog — mesmo visual de .btn.ghost,
+   ícone + texto, só que sem herdar o padding maior de .btn (fica discreta na
+   linha do banner, ao lado do texto do plano, não competindo com ele). */
+.btn-engrenagem {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-btn);
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  padding: 8px 14px; font-size: .88rem; font-weight: 600; cursor: pointer; flex-shrink: 0;
+}
+.btn-engrenagem:hover { color: var(--text); border-color: var(--text-dim); }
+
 .dash-status {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -560,6 +576,11 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
 @media (max-width: 460px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; } }
 .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+/* Card de horas (19/09/2026): é o número que o cliente comprou, então ocupa
+   o dobro da largura dos outros — mesma ideia do "big number" que qualquer
+   dashboard de billing usa pro dado que decide se o cliente está satisfeito. */
+.kpi-destaque { grid-column: span 2; }
+@media (max-width: 460px) { .kpi-destaque { grid-column: span 1; } }
 .kpi-card .kpi-label { display: block; color: var(--text-dim); font-size: .8rem; margin-bottom: 6px; }
 /* O numero nao quebra: "- R$ 561,71" saia com o sinal de menos sozinho numa
    linha e o valor na outra, e a margem negativa lida assim parece outro

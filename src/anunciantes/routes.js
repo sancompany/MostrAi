@@ -928,20 +928,28 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     cobrancas: cobrancas.rows,
     horasContratadasMes,
     horasEntreguesMes,
+    // Custo por HORA de tela, não por exibição (19/09/2026, pedido do dono):
+    // a conta vende por horas/mês, não por vez rodada — "custo por exibição"
+    // media junto contas de plano pequeno (peça curta, poucas inserções por
+    // hora) e não bate com o que o anunciante decidiu comprar. Divide pelo
+    // que o plano CONTRATA (`horasContratadasMes`), não pelo que já rodou
+    // (`confirmadas`): assim o número é estável desde o primeiro dia, antes
+    // de qualquer exibição confirmada, em vez de vir `null` no começo do mês.
+    //
     // O que a conta PAGA, nao o preco de tabela: quem esta em cortesia nao paga
-    // nada — mostrar "custo por exibicao" pra quem recebeu o plano de graca e
+    // nada — mostrar custo por hora pra quem recebeu o plano de graca seria
     // numero inventado.
     //
     // O valor sai de `valorMensalDaConta`, a MESMA funcao que decide o que o
     // San Checkout cobra. A conta inline que estava aqui so enxergava o preco
     // travado; nao enxergava o desconto de parceiro (RN-31) nem o de comodato
     // (RN-32), que nasceram depois. Resultado: parceiro e dono de ponto viam,
-    // na propria tela, um custo por exibicao MAIOR do que o que pagam. E o
-    // furo M11 de volta, por outra porta — preco de cobranca so pode ter uma
-    // fonte, e ela e a do motor de pagamento.
-    custoPorExibicao:
-      plano && confirmadas > 0 && !anunciante.plano_cortesia
-        ? (sanCheckout.valorMensalDaConta(anunciante, plano) * plano.compromisso_meses) / confirmadas
+    // na propria tela, um custo maior do que o que pagam. E o furo M11 de
+    // volta, por outra porta — preco de cobranca so pode ter uma fonte, e ela
+    // e a do motor de pagamento.
+    custoPorHora:
+      plano && horasContratadasMes > 0 && !anunciante.plano_cortesia
+        ? sanCheckout.valorMensalDaConta(anunciante, plano) / horasContratadasMes
         : null,
   });
 });

@@ -33,9 +33,12 @@
       <div class="wrap dashboard-grid" id="dashboardAnuncios">
         <div>
           <div class="kpi-grid" id="kpiGrid">
-            <div class="kpi-card" data-kpi="confirmadas"><span class="kpi-label">Exibições confirmadas</span><b>-</b><span class="delta" data-delta></span></div>
+            <!-- Horas de tela é o número que o cliente comprou (19/09/2026,
+                 pedido do dono) — vem primeiro, e maior, que os outros: é a
+                 métrica que responde "estou recebendo o que contratei?". -->
+            <div class="kpi-card kpi-destaque" data-kpi="horas" hidden><span class="kpi-label">Horas de tela no mês</span><b>-</b><span class="kpi-caption" data-kpi-horas-legenda></span><span class="track u-mt-6"><span class="fill" data-pct="0"></span></span></div>
             <div class="kpi-card" data-kpi="entrega"><span class="kpi-label">Entrega</span><b>-</b><span class="kpi-caption">confirmado / programado</span></div>
-            <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições</span></div>
+            <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por hora de tela</span><b>-</b><span class="kpi-caption">plano ÷ horas contratadas</span></div>
             <div class="kpi-card" data-kpi="criativos"><span class="kpi-label">Criativos ativos</span><b>-</b><span class="kpi-caption">não reprovados</span></div>
             <div class="kpi-card" id="kpiPontos"><span class="kpi-label">Meus pontos</span><b>-</b></div>
           </div>
@@ -67,11 +70,6 @@
             </div>
             <div class="bar-chart-h" id="graficoPonto"></div>
             <div class="u-mt-20" id="exibicoesDetalhe"></div>
-          </div>
-
-          <div class="panel" id="painelAssinatura" hidden>
-            <div class="panel-head"><h3>Sua assinatura</h3></div>
-            <div id="resumoAssinatura"></div>
           </div>
 
           <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
@@ -129,6 +127,19 @@
         </div>
       </div>
     </section>
+
+    <!-- Gerenciar plano (19/09/2026, pedido do dono): antes era um card fixo
+         "Sua assinatura" no meio do dashboard, mesmo pra quem só queria ver
+         os números. Vira um dialog, aberto pela engrenagem ao lado do plano
+         no banner do topo — mesmo padrão de <dialog> do popup de perfil
+         (perfil.js), sem lib de modal nova. -->
+    <dialog id="dlgPlano">
+      <div class="dlg-head">
+        <h3>Gerenciar plano</h3>
+        <button type="button" class="dlg-close" id="btnFecharPlano" aria-label="Fechar">&times;</button>
+      </div>
+      <div id="resumoAssinatura"></div>
+    </dialog>
   </main>
 
   <script src="/config.js"></script>

@@ -546,9 +546,9 @@ PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.h
   · ← /planos.html?plano=X  → San Checkout (host externo)
   · **cliente sabe:** Antes de gerar qualquer cobrança a tela mostra exatamente quanto e de quanto em quanto tempo. Um F5 depois disso não gera segunda cobrança.
 
-**Cinco KPIs do topo** — #kpiGrid, preenchido por posição (não por id): [0] Exibições confirmadas (+ delta 7 dias vs. 7 anteriores em [data-delta]), [1] Entrega = round(confirmadas/programadas × 100)%, [2] Custo por exibição = dados.custoPorExibicao, [3] Criativos ativos =…
+**KPIs do topo** (reorganizado 19/09/2026, pedido do dono) — #kpiGrid, preenchido por `data-kpi`: [horas] Horas de tela no mês = dados.horasEntreguesMes/horasContratadasMes (card em destaque, 2 colunas — é a métrica que a conta vende, então vem primeiro), [entrega] round(confirmadas/programadas × 100)%, [custo] Custo por hora de tela = dados.custoPorHora (valor mensal pago ÷ horas contratadas), [criativos] Criativos ativos, mais o card fixo Meus pontos. "Exibições confirmadas" saiu de KPI próprio: virou legenda do gráfico "Exibições por dia" (#legendaDia, com o delta 7 dias vs. 7 anteriores que antes vivia em [data-delta]) — vender por hora torna "N exibições" sozinho enganoso pra plano de peça curta.
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes`, `GET /anunciantes/:id/criativos` · papéis: anunciante
-  · **cliente sabe:** Quantas vezes seu vídeo apareceu, quanto disso era o prometido, quanto custou cada aparição e quantas peças estão no ar.
+  · **cliente sabe:** Quantas horas de tela já rodaram este mês (de quanto contratou), quanto disso era o prometido, quanto custa a hora de tela e quantas peças estão no ar.
 
 **Gráfico de exibições por dia** — desenharPorDia(porDia) mostra #painelDia com as 14 barras mais recentes (o endpoint devolve DESC e só dias COM registro; o front inverte e não preenche buraco). Cada barra usa data-pct (aplicado por window.aplicarBarras do config.js, porque a CSP proíbe…
   · `public/anunciante/painel.page.js`, `public/config.js` · rotas: `GET /anunciantes/:id/exibicoes` · papéis: anunciante
@@ -1074,7 +1074,7 @@ Caminho do dinheiro do Mostraí, ponta a ponta: vitrine pública de planos (publ
 
 **Cancelamento de assinatura** — `cancelarAssinatura` faz POST {SAN_CHECKOUT_API_URL}/api/checkout/cancelar-assinatura {planoId: assinaturaId, documento: cpf_cnpj}; em sucesso marca a assinatura 'cancelada' localmente. Em falha responde 502 e não muda nada local. O evento 'cancelada' vindo…
   · `src/financeiro/san-checkout.js`, `src/financeiro/routes.js`, `src/financeiro/assinaturas-repository.js` · rotas: `POST /admin/anunciantes/:id/cancelar-assinatura`, `POST /anunciantes/me/cancelar-assinatura` · papéis: admin, anunciante
-  · **cliente sabe:** RESOLVIDO em 16/09/2026 — `POST /anunciantes/me/cancelar-assinatura` deixa o próprio cliente cancelar, com botão em "Sua assinatura" no painel (`public/anunciante/painel.page.js`). A rota de admin continua existindo, pro admin cancelar em nome do cliente.
+  · **cliente sabe:** RESOLVIDO em 16/09/2026 — `POST /anunciantes/me/cancelar-assinatura` deixa o próprio cliente cancelar, com botão no dialog "Gerenciar plano" do painel (`public/anunciante/painel.page.js`). A rota de admin continua existindo, pro admin cancelar em nome do cliente.
 
 **Cortesia (liberar plano de graça)** — Põe a conta no ar sem assinatura e sem cobrança: plano_id, status 'ativo', data_expiracao = agora + meses×30 dias, plano_cortesia = true, cortesia_motivo, valor_mensal_travado = null. Recusa com 409 se houver plano pago ativo (plano_id e não cortesia e…
   · `src/financeiro/routes.js`, `src/db/migrations/024_plano_cortesia.sql`, `public/admin/index.page.js` · rotas: `POST /admin/anunciantes/:id/liberar-plano` · papéis: admin
@@ -1410,7 +1410,7 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · `src/anunciantes/routes.js:380`, `public/anunciante/painel.page.js:169` · rotas: `/anunciantes/:id/exibicoes.csv` · papéis: conta logada
   · ← public/anunciante/painel.page.js:169 (href do btnComprovante)
 
-**GET /anunciantes/:id/exibicoes** — Dashboard agregado: totais programadas/confirmadas, porPonto, porDia, cobranças e custoPorExibicao.
+**GET /anunciantes/:id/exibicoes** — Dashboard agregado: totais programadas/confirmadas, porPonto, porDia, cobranças, horasContratadasMes/horasEntreguesMes e custoPorHora.
   · `src/anunciantes/routes.js:415`, `public/anunciante/painel.page.js:179` · rotas: `/anunciantes/:id/exibicoes` · papéis: conta logada
   · ← public/anunciante/painel.page.js:179
 
@@ -1592,7 +1592,7 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
 
 **POST /admin/anunciantes/:id/cancelar-assinatura** — Cancela no San Checkout e marca a assinatura; 502 se o Checkout falhar. RESOLVIDO em 16/09/2026: agora existe também `POST /anunciantes/me/cancelar-assinatura`, a mesma ação pelo próprio cliente.
   · `src/financeiro/routes.js` · rotas: `/admin/anunciantes/:id/cancelar-assinatura`, `/anunciantes/me/cancelar-assinatura` · papéis: sessao de admin, sessao de anunciante
-  · ← public/admin/index.page.js (botão do admin) e public/anunciante/painel.page.js (botão "Cancelar assinatura", em "Sua assinatura").
+  · ← public/admin/index.page.js (botão do admin) e public/anunciante/painel.page.js (botão "Cancelar assinatura", no dialog "Gerenciar plano").
 
 **GET /admin/eventos-pendentes** — Webhooks não aplicados, com motivo e payload.
   · `src/financeiro/routes.js:312`, `public/admin/index.page.js:1664` · rotas: `/admin/eventos-pendentes` · papéis: sessao de admin

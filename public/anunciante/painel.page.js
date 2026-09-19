@@ -131,12 +131,31 @@ function preencherStatusBanner() {
       'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.'
     : null;
   const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
+  // Engrenagem "Gerenciar plano" (19/09/2026, pedido do dono): antes as
+  // informações e ações de assinatura ficavam num card fixo no meio do
+  // dashboard, ocupando espaço pra quem só queria ver os números. Agora é
+  // um dialog, atrás de um botão nesta mesma linha — quem tem plano (mesmo
+  // cortesia ou vencido) sempre pode abrir pra ver os detalhes.
+  const podeGerenciar = !!ANUNCIANTE.plano_id;
   el.innerHTML = `
     <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}</span>
     ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
+    ${
+      podeGerenciar
+        ? `<button type="button" class="btn-engrenagem" id="btnGerenciarPlano" aria-label="Gerenciar plano">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.65 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.3-.08.62-.08.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.4.32.64.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.25.1.5.02.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+      Gerenciar plano
+    </button>`
+        : ''
+    }
   `;
-  preencherAssinatura();
+  if (podeGerenciar) {
+    preencherAssinatura();
+    document.getElementById('btnGerenciarPlano').addEventListener('click', () => {
+      document.getElementById('dlgPlano').showModal();
+    });
+  }
   carregarPontos();
 }
 
@@ -264,31 +283,41 @@ async function carregarPontos() {
   });
 }
 
+// Conteúdo do dialog #dlgPlano — chamada sempre que há plano_id, não só
+// quando "ativo" (19/09/2026): quem está em cortesia ou com a cobertura
+// vencida também pode querer abrir e ver o que está acontecendo. As duas
+// ações (trocar/cancelar) só fazem sentido pra quem paga em dia — não tem o
+// que cancelar numa cortesia, nem o que trocar numa cobertura já vencida
+// (o botão de "Escolher plano" no banner já cobre esse caso).
 function preencherAssinatura() {
-  const panel = document.getElementById('painelAssinatura');
   const el = document.getElementById('resumoAssinatura');
   const ativo =
-    ANUNCIANTE.plano_id &&
     !ANUNCIANTE.plano_cortesia &&
     !ANUNCIANTE.suspenso &&
     ANUNCIANTE.data_expiracao &&
     new Date(ANUNCIANTE.data_expiracao) > new Date();
-  if (!ativo) {
-    panel.hidden = true;
-    return;
-  }
-  panel.hidden = false;
-  const preco = '';
+  const nomePlano = ANUNCIANTE.plano?.nome || 'seu plano';
+  const ate = ANUNCIANTE.data_expiracao
+    ? `${ativo ? 'Ativa' : ANUNCIANTE.plano_cortesia ? 'Cortesia' : 'Vencida'} até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>`
+    : ativo
+      ? 'Ativa'
+      : 'Sem data de expiração';
   el.innerHTML = `
-    <p class="u-m-0 u-mb-4">Ativa até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>${preco}.</p>
-    <p class="form-hint u-m-0 u-mb-12">Cancelar não devolve o que já foi pago. O período atual continua no ar até essa data, e não renova depois.</p>
+    <p class="u-m-0 u-mb-4">${esc(nomePlano)} · ${ate}.</p>
+    ${
+      ativo
+        ? `<p class="form-hint u-m-0 u-mb-12">Cancelar não devolve o que já foi pago. O período atual continua no ar até essa data, e não renova depois.</p>
     <div class="field-row">
       <a class="btn ghost" href="/planos.html">Trocar de plano</a>
       <button class="btn ghost" id="btnCancelarAssinatura">Cancelar assinatura</button>
     </div>
-    <p class="form-msg" id="msgCancelarAssinatura"></p>
+    <p class="form-msg" id="msgCancelarAssinatura"></p>`
+        : ANUNCIANTE.plano_cortesia
+          ? '<p class="form-hint u-m-0">Plano de cortesia, sem cobrança — não há assinatura para cancelar ou trocar por aqui.</p>'
+          : '<p class="form-hint u-m-0">Cobertura vencida. <a href="/planos.html">Escolha um plano</a> para voltar ao ar.</p>'
+    }
   `;
-  document.getElementById('btnCancelarAssinatura').addEventListener('click', cancelarAssinatura);
+  if (ativo) document.getElementById('btnCancelarAssinatura').addEventListener('click', cancelarAssinatura);
 }
 
 async function cancelarAssinatura() {
@@ -336,6 +365,18 @@ async function carregarKpiPontos() {
     el.innerHTML = '<span class="kpi-label">Meus pontos</span><b>-</b>';
   }
 }
+
+// Fechar o dialog de plano — mesmo padrão de #dlgPerfil (perfil.js): botão
+// de fechar, clique fora (no <dialog>, o próprio elemento é o backdrop) e
+// Esc, que o <dialog> nativo já trata sozinho.
+(function dialogPlano() {
+  const dlg = document.getElementById('dlgPlano');
+  if (!dlg) return;
+  document.getElementById('btnFecharPlano').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) dlg.close();
+  });
+})();
 
 // O link do comprovante carrega o período escolhido, como a referência de
 // mercado faz: exportação respeita o mesmo recorte que está na tela.
@@ -407,22 +448,28 @@ async function carregarBancoHoras() {
 }
 
 // Horas contratadas x entregues no mês corrente (19/09/2026, pedido do
-// dono) — mesma barrinha de progresso do gráfico por ponto (.track/.fill),
-// sem componente novo. Só aparece com plano (os dois vêm null sem plano, e
-// nem deveria chegar até aqui: o bloqueio de plano já barra essa chamada).
+// dono) — é a métrica que a conta realmente vende, então é o PRIMEIRO
+// card do grid, não mais um card solto anexado no fim (HTML já reserva o
+// lugar em painel.html, com data-kpi="horas"). Mesma barrinha de progresso
+// do gráfico por ponto (.track/.fill), sem componente novo. Só aparece com
+// plano (os dois vêm null sem plano, e nem deveria chegar até aqui: o
+// bloqueio de plano já barra essa chamada).
 function desenharHorasMes(contratadas, entregues) {
-  if (contratadas == null) return;
+  const card = document.querySelector('#kpiGrid [data-kpi="horas"]');
+  if (contratadas == null || !card) return;
   const restantes = Math.max(0, contratadas - entregues);
   const pct = contratadas > 0 ? Math.min(100, (entregues / contratadas) * 100) : 0;
-  document.getElementById('kpiGrid').insertAdjacentHTML(
-    'beforeend',
-    `<div class="kpi-card">
-      <span class="kpi-label">Horas entregues no mês</span>
-      <b>${entregues}h</b>
-      <span class="kpi-caption">de ${contratadas}h contratadas · ${restantes}h ainda por rodar</span>
-      <span class="track u-mt-6"><span class="fill" data-pct="${pct}"></span></span>
-    </div>`,
-  );
+  card.querySelector('b').textContent = `${entregues}h`;
+  card.querySelector('[data-kpi-horas-legenda]').textContent =
+    `de ${contratadas}h contratadas · ${restantes}h ainda por rodar`;
+  const fill = card.querySelector('.fill');
+  fill.dataset.pct = pct;
+  // A barra já existe no HTML (data-pct="0") desde o carregamento — o
+  // observador de config.js só aplica uma vez por elemento
+  // (:not([data-pct-ok])), então mudar o número aqui não bastaria sozinho.
+  fill.removeAttribute('data-pct-ok');
+  window.aplicarBarras(card);
+  card.hidden = false;
 }
 
 async function carregarExibicoes() {
@@ -433,9 +480,8 @@ async function carregarExibicoes() {
     const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
     const entrega =
       dados.totalProgramadas > 0 ? Math.round((dados.totalConfirmadas / dados.totalProgramadas) * 100) : 0;
-    kpi('confirmadas').textContent = dados.totalConfirmadas;
     kpi('entrega').textContent = dados.totalProgramadas ? `${entrega}%` : '-';
-    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
+    kpi('custo').textContent = dados.custoPorHora ? `${fmt(dados.custoPorHora)}/h` : '-';
 
     desenharPorDia(dados.porDia || []);
     desenharPorPonto(dados.porPonto || []);
@@ -498,17 +544,21 @@ function desenharPorDia(porDia) {
     </div>`;
     })
     .join('');
-  document.getElementById('legendaDia').textContent = `últimos ${dias.length} dias com exibição`;
 
-  // Delta 7 dias x 7 anteriores — no card de confirmadas.
+  // Total de exibições e delta 7 dias x 7 anteriores — antes eram um card
+  // próprio no kpi-grid ("Exibições confirmadas"); saíram de lá (19/09/2026,
+  // pedido do dono) porque a conta vende por HORAS, não por vez rodada, e um
+  // plano pequeno (peça curta, poucas inserções por hora) sempre ia mostrar
+  // um número baixo ali, sem culpa nenhuma da entrega. A contagem continua
+  // visível, só que como legenda do próprio gráfico que ela descreve.
   const soma = (arr) => arr.reduce((t, d) => t + Number(d.confirmadas), 0);
   const atual = soma(porDia.slice(0, 7));
   const anterior = soma(porDia.slice(7, 14));
-  const el = document.querySelector('#kpiGrid [data-delta]');
-  if (!anterior) return;
-  const pct = Math.round(((atual - anterior) / anterior) * 100);
-  el.textContent = `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs. 7 dias antes`;
-  el.className = `delta ${pct >= 0 ? 'up' : 'down'}`;
+  const delta = anterior
+    ? `, ${atual >= anterior ? '▲' : '▼'} ${Math.abs(Math.round(((atual - anterior) / anterior) * 100))}% vs. 7 dias antes`
+    : '';
+  document.getElementById('legendaDia').textContent =
+    `últimos ${dias.length} dias com exibição · ${atual} confirmadas nos últimos 7 dias${delta}`;
 }
 
 // Top 8: já vem ORDER BY confirmadas DESC do servidor — uma rede com muitos
