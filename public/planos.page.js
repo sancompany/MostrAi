@@ -222,11 +222,12 @@ const planosCarregados = Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) =
 // a espera por ponto), entao quem assinasse ia pagar por uma rede vazia sem a
 // tela dizer isso em lugar nenhum. Nao bloqueia a venda, so para de esconder.
 //
-// Limite de 5 pontos na rede (pedido do dono, 15/09/2026): com a rede ainda
-// pequena o aviso acompanha o tamanho dela, e some sozinho assim que o quinto
-// entrar — a partir daí a cobertura já não é mais "rede vazia" o bastante pra
-// precisar do aviso.
-const PONTOS_PARA_TIRAR_AVISO = 5;
+// Limite de 10 pontos na rede (pedido do dono, 15/09/2026, ajustado pra 10
+// em 19/09/2026: com 10 pontos a rede já cobre o maior plano vendido —
+// Máximo, com pontos_incluidos=10 — então não sobra plano que ainda
+// precisaria do bônus de cobertura). Com a rede ainda menor que isso, o
+// aviso acompanha o tamanho dela, e some sozinho assim que o décimo entrar.
+const PONTOS_PARA_TIRAR_AVISO = 10;
 
 Promise.all([fetch(`${API_BASE_URL}/pontos`).then((r) => r.json()), planosCarregados])
   .then(([pontos]) => {

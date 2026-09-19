@@ -367,6 +367,27 @@ function mostrarSecaoConfirmacao() {
   return box;
 }
 
+// Aviso de cobertura da rede (RN-49), reaproveitado da vitrine e do painel
+// com plano ativo: quantos pontos existem hoje e, quando o plano cobre mais
+// pontos do que a rede tem no ar, a explicação de que essas horas entram no
+// banco de horas e se concentram nos pontos já ligados. Quem chama decide se
+// mostra (ver limite de 10 pontos em montarConfirmacaoPedido).
+function montarAvisoRede(plano, pontos) {
+  const naRede = pontos.length;
+  const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
+  const situacaoRede =
+    naRede === 0
+      ? 'A rede ainda não tem nenhum ponto ativo hoje.'
+      : `A rede tem hoje ${naRede} ${naRede === 1 ? 'ponto cadastrado' : 'pontos cadastrados'}${
+          veiculando !== naRede ? `, ${veiculando} já no ar` : ', todos no ar'
+        }.`;
+  const cobreMaisQueARede = plano.pontos_incluidos && veiculando > 0 && plano.pontos_incluidos > veiculando;
+  const explicacaoBancoHoras = cobreMaisQueARede
+    ? ' Enquanto a rede não chega no tamanho do seu plano, as horas dos pontos que faltam entram no banco de horas e se concentram nos pontos que já estão no ar, até a rede completar essa cobertura. Conforme novos pontos entram no ar, o tempo se espalha de volta.'
+    : '';
+  return `<div class="aviso-rede u-m-0"><b>${situacaoRede}</b>${explicacaoBancoHoras}</div>`;
+}
+
 // Confirmação antes de gerar cobrança. Antes, chegar no painel com
 // ?plano=X já criava a cobrança e jogava o anunciante no checkout sem ele
 // nunca ver quanto ia pagar — e um F5 nessa URL gerava outra cobrança.
@@ -411,19 +432,17 @@ async function montarConfirmacaoPedido(planoId) {
   // ainda faltam (pedido do dono, 19/09/2026): mesma mecânica do aviso de
   // cobertura já usado na vitrine e no painel com plano ativo (RN-49), agora
   // também na hora de decidir a compra.
-  const naRede = pontos.length;
-  const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
-  const situacaoRede =
-    naRede === 0
-      ? 'A rede ainda não tem nenhum ponto ativo hoje.'
-      : `A rede tem hoje ${naRede} ${naRede === 1 ? 'ponto cadastrado' : 'pontos cadastrados'}${
-          veiculando !== naRede ? `, ${veiculando} já no ar` : ', todos no ar'
-        }.`;
-  const cobreMaisQueARede = plano.pontos_incluidos && veiculando > 0 && plano.pontos_incluidos > veiculando;
-  const explicacaoBancoHoras = cobreMaisQueARede
-    ? ` Enquanto a rede não chega no tamanho do seu plano, as horas dos pontos que faltam entram no banco de horas e se concentram nos pontos que já estão no ar, até a rede completar essa cobertura. Conforme novos pontos entram no ar, o tempo se espalha de volta.`
-    : '';
+  //
+  // Mesmo limite de 10 pontos da vitrine (`PONTOS_PARA_TIRAR_AVISO` em
+  // planos.page.js, ajustado de 5 pra 10 em 19/09/2026): com 10 pontos a
+  // rede já cobre o maior plano vendido, então o aviso inteiro some — não
+  // sobra plano que ainda precisaria dele.
+  const avisoRede = pontos.length < 10 ? montarAvisoRede(plano, pontos) : '';
 
+  // A ressalva da cobrança e do prazo de arrependimento saiu daqui a pedido
+  // do dono (19/09/2026): a tela de pedido é só o resumo da compra. O prazo
+  // de 7 dias continua valendo e disponível pro cliente (Termos de Uso,
+  // Contrato do anunciante e vitrine em /planos.html) — só não repete aqui.
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
     <h3 class="u-m-0 u-mb-4">${esc(plano.nome)}</h3>
@@ -435,14 +454,9 @@ async function montarConfirmacaoPedido(planoId) {
       <span class="rotulo">Total ${ciclo}</span>
       <b>${fmtBRL(total)}</b>
     </div>
-    <p class="form-hint u-m-0 u-mb-14">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>
-    <div class="aviso-rede u-m-0"><b>${situacaoRede}</b>${explicacaoBancoHoras}</div>
-    <!-- A ressalva da cobrança e o arrependimento vivem AQUI (decisão do
-         dono, 18/09/2026), não na vitrine: é nesta tela que a pessoa decide
-         pagar. Na vitrine eram interrupção no meio de quem ainda escolhia. -->
-    <p class="form-hint u-m-0">A cobrança começa assim que o pagamento é confirmado, e não quando a
-      primeira tela subir. Se mudar de ideia, você tem 7 dias para pedir a devolução integral pelo painel.</p>
-    <div class="field-row">
+    <p class="form-hint u-m-0${avisoRede ? ' u-mb-14' : ''}">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>
+    ${avisoRede}
+    <div class="field-row u-mt-8">
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
     </div>
