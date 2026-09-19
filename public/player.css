@@ -1,8 +1,11 @@
 html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100vw; height: 100vh; }
 /* Painel físico fica 1920x1080 (deitado), giramos 90° via CSS pra ficar
    vertical — sem mexer em hardware. ?orientacao=paisagem desliga o giro. */
-#stage { position: fixed; top: 50%; left: 50%; width: 100vh; height: 100vw; transform: translate(-50%, -50%) rotate(90deg); }
-body.paisagem #stage { width: 100vw; height: 100vh; transform: translate(-50%, -50%); }
+/* --margem (?margem=N, vmin) encolhe o palco igual nos 4 lados: a moldura
+   física que cobre a borda do vidro da TV vira preto, não anúncio cortado. */
+:root { --margem: 0px; }
+#stage { position: fixed; top: 50%; left: 50%; width: calc(100vh - 2 * var(--margem)); height: calc(100vw - 2 * var(--margem)); transform: translate(-50%, -50%) rotate(90deg); }
+body.paisagem #stage { width: calc(100vw - 2 * var(--margem)); height: calc(100vh - 2 * var(--margem)); transform: translate(-50%, -50%); }
 #stage video, #stage img { width: 100%; height: 100%; object-fit: cover; display: none; }
 #stage video.ativo, #stage img.ativo { display: block; }
 #msg { position: fixed; bottom: 8px; left: 8px; color: #444; font: 12px monospace; z-index: 2; }

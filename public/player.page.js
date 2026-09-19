@@ -13,6 +13,19 @@ const CHAVE_APARELHO = `mostrai-aparelho-${dispositivoId}`;
 const NOME_CACHE_ARQUIVOS = `mostrai-midia-${dispositivoId}`;
 if (params.get('orientacao') === 'paisagem') document.body.classList.add('paisagem');
 
+// Margem pra moldura física: mesma lógica de persistência da chave — vem uma
+// vez na URL (?margem=3, em vmin) e fica guardada pro próximo boot da TV.
+const CHAVE_MARGEM = `mostrai-margem-${dispositivoId}`;
+let margem = params.get('margem');
+try {
+  if (margem !== null) localStorage.setItem(CHAVE_MARGEM, margem);
+  else margem = localStorage.getItem(CHAVE_MARGEM);
+} catch {}
+margem = Number(margem);
+if (Number.isFinite(margem) && margem > 0) {
+  document.documentElement.style.setProperty('--margem', `${Math.min(margem, 20)}vmin`);
+}
+
 // Chave do aparelho: vem uma vez na URL (?chave=...) e fica guardada, pra
 // que a TV continue funcionando depois de um reinício sem a query string.
 let chaveAparelho = params.get('chave') || '';
