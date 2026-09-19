@@ -17,6 +17,9 @@ PW_CHROME=... node tests/e2e/03-navegador.mjs      # 36 checagens no Chromium + 
 PW_CHROME=... node tests/e2e/06-painel-bloqueio-plano.mjs  # sem plano trava o painel; admin libera cortesia e destrava
 ```
 
-O limite de tentativas é em memória: se um teste bater em "muitas tentativas",
-reinicie o servidor (`restart.sh`) e rode de novo. Cookies e screenshots vão
-em `tests/e2e/saida/` (ignorado no git).
+O limite de tentativas vive no banco desde a migration 051 (`tentativas_acesso`,
+não mais um `Map` em memória — ver `src/lib/limite-tentativas.js`). Reiniciar
+o servidor (`restart.sh`) NÃO zera o contador. Se um teste bater em "muitas
+tentativas", rode `reset-db.sh` de novo (já trunca `tentativas_acesso`) ou
+espere a janela de 15 min passar. Cookies e screenshots vão em
+`tests/e2e/saida/` (ignorado no git).

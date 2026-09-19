@@ -86,8 +86,8 @@ echo "== webhook: primeira cobrança paga (evento criada) =="
 # preço já vem com o desconto de parceiro (item 4 da spec).
 r=$(enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}")
 esperar "webhook aceito" '"ok":true' "$r"; sleep 1
-st=$($PG -c "select (not suspenso)::text||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
-esperar "conta fica ativa (não suspensa) na primeira cobrança" '^t\|' "$st"
+st=$($PG -c "select (case when suspenso then 'suspensa' else 'ativa' end)||'|'||(data_expiracao::date - now()::date) from anunciantes where id=$ANA")
+esperar "conta fica ativa (não suspensa) na primeira cobrança" '^ativa\|' "$st"
 # A trava de preço saiu em 17/09/2026 (migration 046): o que a conta paga é
 # sempre o valor do plano com os descontos lidos ao vivo. A cobrança logo
 # abaixo é quem prova o preço, e ela continua igual.
