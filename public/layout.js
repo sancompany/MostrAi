@@ -205,6 +205,12 @@
   }
 
   function mostrarModalEmailNaoConfirmado(conta) {
+    // Mesma validade do código no servidor (VALIDADE_CODIGO_EMAIL_MS, em
+    // src/anunciantes/routes.js) — só pra contar aqui, o servidor é quem
+    // decide de verdade se o código ainda vale.
+    const VALIDADE_CODIGO_S = 120;
+    const COOLDOWN_REENVIO_S = 30;
+
     document.body.style.overflow = 'hidden';
     const el = document.createElement('div');
     el.className = 'modal-email';
@@ -212,6 +218,7 @@
       <div class="caixa">
         <h2>Confirme seu e-mail</h2>
         <p>Mandamos um código pra <b>${window.esc(conta.contato_email || '')}</b>. Digite ele aqui pra continuar.</p>
+        <p class="expira" id="expiraEmail"></p>
         <form id="formConfirmarEmail">
           <input id="codigoConfirmarEmail" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required autofocus>
           <button type="submit" class="btn primary">Confirmar</button>
@@ -222,6 +229,53 @@
     document.body.appendChild(el);
 
     const msg = el.querySelector('#msgConfirmarEmail');
+    const expiraEl = el.querySelector('#expiraEmail');
+    const btnReenviar = el.querySelector('#btnReenviarCodigoEmail');
+
+    // Cronômetro do código atual (topo da caixa, acima do campo). Reinicia a
+    // cada código novo — o de agora, ou qualquer reenvio.
+    let timerExpira = null;
+    function contarExpiracao() {
+      clearInterval(timerExpira);
+      let restante = VALIDADE_CODIGO_S;
+      const atualizar = () => {
+        const m = Math.floor(restante / 60);
+        const s = String(restante % 60).padStart(2, '0');
+        expiraEl.textContent = restante > 0 ? `Expira em ${m}:${s}` : 'Código expirado — peça um novo';
+        expiraEl.classList.toggle('expirado', restante <= 0);
+      };
+      atualizar();
+      timerExpira = setInterval(() => {
+        restante--;
+        atualizar();
+        if (restante <= 0) clearInterval(timerExpira);
+      }, 1000);
+    }
+    contarExpiracao();
+
+    // Trava de reenvio: a primeira vez é livre (nada bloqueando ainda); a
+    // cada reenvio depois dessa, o botão fica 30s desabilitado antes do
+    // próximo — impede clicar em Reenviar 10x seguidas e lotar a caixa da
+    // pessoa de código.
+    function iniciarCooldownReenvio() {
+      let restante = COOLDOWN_REENVIO_S;
+      btnReenviar.disabled = true;
+      const atualizar = () => {
+        btnReenviar.textContent = `Reenviar código (${restante}s)`;
+      };
+      atualizar();
+      const iv = setInterval(() => {
+        restante--;
+        if (restante <= 0) {
+          clearInterval(iv);
+          btnReenviar.disabled = false;
+          btnReenviar.textContent = 'Reenviar código';
+          return;
+        }
+        atualizar();
+      }, 1000);
+    }
+
     el.querySelector('#formConfirmarEmail').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       msg.textContent = '';
@@ -240,6 +294,7 @@
           msg.className = 'msg err';
           return;
         }
+        clearInterval(timerExpira);
         document.body.style.overflow = '';
         el.remove();
       } catch {
@@ -247,13 +302,15 @@
         msg.className = 'msg err';
       }
     });
-    el.querySelector('#btnReenviarCodigoEmail').addEventListener('click', async () => {
+    btnReenviar.addEventListener('click', async () => {
       msg.className = 'msg';
       msg.textContent = 'enviando...';
       try {
         await fetch(`${API_BASE_URL}/anunciantes/me/reenviar-codigo-email`, { method: 'POST', credentials: 'include' });
         msg.className = 'msg ok';
         msg.textContent = 'código reenviado, confere seu e-mail';
+        contarExpiracao();
+        iniciarCooldownReenvio();
       } catch {
         msg.className = 'msg err';
         msg.textContent = 'sem conexão com o servidor';
