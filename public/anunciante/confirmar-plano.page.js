@@ -149,9 +149,7 @@ async function montarConfirmacaoTroca(planoNovoId) {
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
     <h3 class="u-m-0 u-mb-14">Trocar de plano</h3>
-    <p class="u-m-0 u-mb-12">Se o plano novo custa mais, a diferença proporcional aos dias que faltam no seu
-      ciclo atual é cobrada agora, no cartão que você já tem salvo. Se custa menos, nada é cobrado nem
-      devolvido agora. O valor novo passa a valer só na sua próxima renovação.</p>
+    <p class="u-m-0 u-mb-12">A diferença entre os planos pode ser cobrada agora, no cartão que você já tem salvo.</p>
     <div class="field-row">
       <button class="btn primary" id="btnConfirmarTroca">Trocar agora</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
