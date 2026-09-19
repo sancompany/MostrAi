@@ -132,6 +132,13 @@ e a de custos de 12/09
 - **O que toca:** `ALTER TABLE planos DROP CONSTRAINT planos_limite_criativos_check` (ou trocar o teto, numa migration nova) e trocar `Math.min(3, ...)` por um teto maior ou configurável em `limiteDeCriativos()` (`src/playlist/gerador.js`); o `max="3"` dos inputs em `public/admin/index.page.js` (`renderPlanos`) também precisa subir.
 - **Quando vale a pena:** quando o dono quiser desenhar um plano com mais de 3 criativos ativos ao mesmo tempo — até lá, os planos atuais (1/2/3) não esbarram no teto.
 
+## Margem e orientação por tela configuráveis no admin, não só na URL
+- **O que:** ao cadastrar/editar uma tela, campos pra margem de cada lado (topo/direita/baixo/esquerda — não uma só, porque a moldura física às vezes cobre um lado bem mais que os outros) e pra orientação (a `paisagem`/vertical de hoje mais um formato "quadrado" pra TV fora do padrão 16:9). Hoje isso só existe como `?margem=` e `?orientacao=` na URL do player (`public/player.css`, `public/player.page.js`), que funciona mas depende de editar a URL na TV.
+- **Por que:** o dono testou numa TV real e achou chato depender da URL — quer configurar isso junto com o resto do cadastro da tela, no admin.
+- **De onde veio:** teste físico do dono com TV + TV stick, 19/09/2026.
+- **O que toca:** coluna(s) novas em `dispositivos` (4 margens + orientação, em vez do parâmetro único), rota de admin pra gravar, `GET /playlist/:id` ou uma rota de config devolvendo isso pro player aplicar sem precisar de query string, `public/admin/index.page.js` (aba Telas).
+- **Quando vale a pena:** quando o dono revisar a parte de administração — ele mesmo pediu pra guardar a ideia até lá, não construir agora.
+
 ## Folga de 15 minutos pro déficit da hora anterior
 - **O que:** tratar a virada da hora como janela e não como parede — exibição programada numa hora conta como entregue se acontecer até 15 minutos depois da virada. *(Definição do dono, 16/09/2026: os 15 minutos são TOLERÂNCIA pra absorver um transbordo ou outro, não inventário reservado. A hora inteira continua vendável — a versão anterior desta entrada dizia "reservar os primeiros 15 minutos", e estava errada.)*
 - **Por que:** hoje quem perde exibição numa hora cheia depende de a hora seguinte não estar cheia também pra recuperar — sem garantia, o déficit pode se acumular indefinidamente numa rede saturada.

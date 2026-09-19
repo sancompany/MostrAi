@@ -207,9 +207,15 @@ async function tocarProximo() {
   // Agora o espaço vago ocupa o tempo dele, e a frequência vendida é a
   // frequência entregue.
   if (item?.institucional) {
-    document.body.classList.add('institucional');
-    videoEl.classList.remove('ativo');
-    videoEl.pause();
+    // Só mexe no DOM na TRANSIÇÃO pra institucional, não a cada item — a
+    // playlist pode ter dezenas de itens institucionais seguidos (hora sem
+    // nenhum anunciante), e repetir os mesmos add/remove/pause sem necessidade
+    // é o que fazia a tela "piscar" de 10 em 10s sem nada mudar de verdade.
+    if (!document.body.classList.contains('institucional')) {
+      document.body.classList.add('institucional');
+      videoEl.classList.remove('ativo');
+      videoEl.pause();
+    }
     setTimeout(tocarProximo, Math.max(2, Number(item.duracaoSegundos) || 10) * 1000);
     return;
   }
