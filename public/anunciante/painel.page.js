@@ -99,7 +99,7 @@ function montarBloqueioPlano() {
     : `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
         <p class="eyebrow">Seu painel</p>
         <h3>Escolha um plano pra ver seus números</h3>
-        <p class="form-hint u-m-0 u-mb-8">Assim que você tiver um plano — pago ou de cortesia —, exibições, criativos e pontos aparecem aqui.</p>
+        <p class="form-hint u-m-0 u-mb-8">Ative um plano e comece a anunciar agora mesmo.</p>
         <a class="btn primary" href="/planos.html">Escolher plano</a>
       </div>`;
   container.parentNode.insertBefore(caixa, container);
