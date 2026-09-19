@@ -451,12 +451,14 @@ async function carregarExibicoes() {
       await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })
     ).json();
     const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
-    kpi('exibicoes').textContent = dados.confirmadasMes ?? 0;
-    // Restantes vira legenda do mesmo card, não card próprio (19/09/2026,
-    // pedido do dono: "só um de exibições realizadas e exibições
-    // restantes") — a pergunta é uma só, a resposta cabe num card.
-    document.querySelector('#kpiGrid [data-kpi="exibicoes"] [data-kpi-restantes-legenda]').textContent =
-      dados.exibicoesRestantesMes != null ? `${dados.exibicoesRestantesMes} restantes até completar o mês` : '';
+    // Fração "concluídas/total" num número só (19/09/2026, pedido do dono)
+    // — antes eram duas legendas de prosa; agora é a mesma resposta num
+    // formato que se lê num olhar só.
+    const concluidas = (dados.confirmadasMes ?? 0).toLocaleString('pt-BR');
+    kpi('exibicoes').textContent =
+      dados.exibicoesContratadasMes != null
+        ? `${concluidas} / ${dados.exibicoesContratadasMes.toLocaleString('pt-BR')}`
+        : concluidas;
     kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
     kpi('media').textContent = dados.mediaDiariaMes ?? '-';
 

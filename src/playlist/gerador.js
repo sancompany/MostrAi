@@ -362,6 +362,19 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       }),
   );
 
+  // Ponto de partida do revezamento gira por hora (19/09/2026, furo real
+  // encontrado a partir de um relato do dono: "rodou só uma vez e não rodou
+  // de novo"). Sem isto, `vez` sempre começava do zero A CADA HORA — pra
+  // conta que só cabe 1 inserção por hora (plano pequeno, começo de conta),
+  // `criativos[0]` (o mais novo, por causa do ORDER BY created_at DESC lá
+  // em cima) ganhava a vaga TODA hora, pra sempre, e qualquer criativo mais
+  // antigo nunca era escolhido — não porque a imagem tivesse alguma
+  // limitação (imagem já virava vídeo de verdade, com duração real, muito
+  // antes deste ponto), mas porque o revezamento reiniciava do mesmo lugar
+  // toda hora. Girar o início pela hora garante que, ao longo de
+  // `criativos.length` horas, todo criativo passa pela vaga pelo menos uma
+  // vez, mesmo quando só cabe uma inserção por vez.
+  const horaEpoch = Math.floor(horaAtual.getTime() / 3_600_000);
   const usados = {};
   return daHora.itens.map((id) => {
     // Inventário vago: o player mostra a própria peça institucional (#vazio em
@@ -373,7 +386,8 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     const { criativos } = porId[id];
     const vez = usados[id] || 0;
     usados[id] = vez + 1;
-    const criativo = criativos[vez % criativos.length];
+    const inicio = horaEpoch % criativos.length;
+    const criativo = criativos[(inicio + vez) % criativos.length];
     return {
       anuncianteId: id === 'dono' ? null : id,
       autoanuncio: id === 'dono',

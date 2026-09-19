@@ -61,9 +61,17 @@ async function subirParaStorage(caminhoLocal, nomeArquivo, contentType) {
 }
 
 // caminhoEntrada: arquivo temporário local já salvo pelo multer.
+// `duracaoMaximaImagem` (19/09/2026, pedido do dono: "transformar imagem em
+// anúncio de acordo com o tempo do plano da pessoa, se for 15 se for 30
+// depende do plano") — só vale pra IMAGEM: vídeo tem duração real, não dá
+// pra esticar; imagem é escolha nossa, então usa o teto inteiro que o
+// plano já vende, em vez do padrão fixo. `null` (conta própria/plano sem
+// duração cadastrada) cai no padrão de sempre.
 // Retorna { arquivo_normalizado_url, thumbnail_url, duracao_segundos }.
-async function normalizar(caminhoEntrada, criativoId) {
-  const { width, height, duracao_segundos, ehImagem } = await probeMidia(caminhoEntrada);
+async function normalizar(caminhoEntrada, criativoId, duracaoMaximaImagem = null) {
+  const probado = await probeMidia(caminhoEntrada);
+  const { width, height, ehImagem } = probado;
+  const duracao_segundos = ehImagem ? duracaoMaximaImagem || DURACAO_PADRAO_IMAGEM : probado.duracao_segundos;
   const jaVertical = height >= width;
 
   const filtro = jaVertical

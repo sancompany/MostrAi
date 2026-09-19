@@ -649,7 +649,11 @@ async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, 
     // Essencial compra peça de até 15s, o Máximo até 30s. Ele vem de quem
     // chama, porque a mesma função serve o upload do cliente e o do operador.
     //
-    // Imagem não entra na conta: ela vira vídeo com duração fixa nossa.
+    // Imagem não entra nessa checagem de duração (não tem duração real pra
+    // violar teto nenhum) — mas usa o MESMO teto do plano na hora de virar
+    // vídeo (19/09/2026, pedido do dono: antes ficava sempre em 10s fixos,
+    // mesmo quem pagava plano de 30s recebia menos do que comprou; ver
+    // ffmpeg.normalizar). Sem plano (conta própria/admin), cai no padrão.
     const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
     if (!midia) {
       return res
@@ -676,7 +680,7 @@ async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, 
     });
 
     try {
-      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id);
+      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima);
       // Peça que o operador subiu já entra aprovada: quem aprovaria é quem
       // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
       // sem decisão nenhuma por trás.
