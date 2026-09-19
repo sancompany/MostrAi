@@ -195,29 +195,31 @@
   if (document.body.dataset.layout === 'conta') {
     window.carregarConta().then((conta) => {
       if (conta) window.aplicarPapeisNoMenu(conta);
-      // E-mail não confirmado (migration 061): aviso em toda página de conta,
-      // não só no painel — a pessoa pode entrar direto por ponto.html ou
-      // vendedor.html sem nunca passar pelo painel de anúncios.
-      if (conta && !conta.email_confirmado) mostrarAvisoEmailNaoConfirmado(conta);
+      // E-mail não confirmado (migration 061): pop-up obrigatório em toda
+      // página de conta — a pessoa pode entrar direto por ponto.html ou
+      // vendedor.html sem nunca passar pelo painel de anúncios. Pedido do
+      // dono, 19/09/2026: virou trava de verdade, não só aviso — antes era
+      // uma barra que dava pra ignorar e continuar navegando.
+      if (conta && !conta.email_confirmado) mostrarModalEmailNaoConfirmado(conta);
     });
   }
 
-  function mostrarAvisoEmailNaoConfirmado(conta) {
-    const cabecalho = document.querySelector('header.site');
-    if (!cabecalho) return;
+  function mostrarModalEmailNaoConfirmado(conta) {
+    document.body.style.overflow = 'hidden';
     const el = document.createElement('div');
-    el.className = 'aviso-email';
+    el.className = 'modal-email';
     el.innerHTML = `
-      <div class="wrap">
-        <span>Confirme seu e-mail (<b>${window.esc(conta.contato_email || '')}</b>) — mandamos um código pra lá.</span>
+      <div class="caixa">
+        <h2>Confirme seu e-mail</h2>
+        <p>Mandamos um código pra <b>${window.esc(conta.contato_email || '')}</b>. Digite ele aqui pra continuar.</p>
         <form id="formConfirmarEmail">
-          <input id="codigoConfirmarEmail" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required>
-          <button type="submit" class="btn primary mini">Confirmar</button>
+          <input id="codigoConfirmarEmail" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required autofocus>
+          <button type="submit" class="btn primary">Confirmar</button>
         </form>
-        <button type="button" class="btn ghost mini" id="btnReenviarCodigoEmail">Reenviar código</button>
-        <span class="msg" id="msgConfirmarEmail"></span>
+        <button type="button" class="reenviar" id="btnReenviarCodigoEmail">Reenviar código</button>
+        <p class="msg" id="msgConfirmarEmail"></p>
       </div>`;
-    cabecalho.insertAdjacentElement('afterend', el);
+    document.body.appendChild(el);
 
     const msg = el.querySelector('#msgConfirmarEmail');
     el.querySelector('#formConfirmarEmail').addEventListener('submit', async (ev) => {
@@ -238,6 +240,7 @@
           msg.className = 'msg err';
           return;
         }
+        document.body.style.overflow = '';
         el.remove();
       } catch {
         msg.textContent = 'sem conexão com o servidor';
