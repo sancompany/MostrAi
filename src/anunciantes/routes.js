@@ -20,6 +20,7 @@ const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
+const indicacoesRepo = require('../indicacoes/repository');
 const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
@@ -94,6 +95,12 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
     db,
   );
   await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
+  // Cupom de indicação do ponto (migration 062) — mesmo ato de criar o
+  // ponto, não uma rotina à parte (ver liberarPapelNaConta em
+  // src/conta/modos.js, que segue essa mesma regra pro caminho de conta já
+  // existente). Sem guarda de existência aqui: conta acabou de nascer, não
+  // tem como já ter cupom.
+  await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
   return ponto;
 }
 
@@ -147,8 +154,14 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   // a comissao simplesmente nunca existia. Conferido aqui, com a mesma
   // consulta que paga a comissao la na frente.
   if (indicado_por_cupom) {
-    const vendedor = await vendedoresRepo.buscarPorCupomAprovado(String(indicado_por_cupom).toUpperCase());
-    if (!vendedor) {
+    // Cupom de ponto sempre começa com "PT-" (migration 062) — namespace
+    // separado do de vendedor, então dá pra rotear sem ambiguidade e sem
+    // gastar duas consultas por cadastro comum.
+    const cupom = String(indicado_por_cupom).toUpperCase();
+    const encontrado = cupom.startsWith('PT-')
+      ? await indicacoesRepo.buscarPontoPorCupom(cupom)
+      : await vendedoresRepo.buscarPorCupomAprovado(cupom);
+    if (!encontrado) {
       return res
         .status(400)
         .json({ erro: 'esse cupom de indicação não existe ou não está ativo', campo: 'indicado_por_cupom' });

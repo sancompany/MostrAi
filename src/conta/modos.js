@@ -17,6 +17,7 @@ const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const planosRepo = require('../financeiro/planos-repository');
+const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
 const { enviarCandidaturaNova } = require('../financeiro/email');
@@ -62,6 +63,16 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
       db,
     );
     await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
+
+    // Cupom de indicação do ponto (migration 062, pedido do dono,
+    // 19/09/2026): toda conta de ponto ganha um, na mesma transação que cria
+    // o ponto — mesmo raciocínio do comodato logo abaixo, o benefício nasce
+    // junto com o papel, não numa rotina à parte. Guarda de existência
+    // (como vendedoresRepo.buscarPorConta acima) porque um dono pode ceder
+    // mais de um ponto: o cupom é por CONTA, não por ponto.
+    if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
+      await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
+    }
 
     // A CONTRAPARTIDA DO COMODATO (migration 049, desenho do dono de
     // 17/09/2026). Quem cede a parede escolhe uma das duas opções, e as duas

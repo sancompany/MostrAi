@@ -68,4 +68,4 @@ async function atualizar(contaId, dados) {
   return rows[0] || null;
 }
 
-module.exports = { criar, buscarPorConta, buscarPorCupomAprovado, listar, atualizar };
+module.exports = { criar, buscarPorConta, buscarPorCupomAprovado, listar, atualizar, gerarCupom };

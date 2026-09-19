@@ -8,6 +8,8 @@ const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
 const { enviarConfirmacaoPagamento, enviarCobrancaFalhou } = require('./email');
 const eventos = require('../lib/eventos');
+const indicacoesRepo = require('../indicacoes/repository');
+const { aplicarUpgradeSeElegivel } = require('../indicacoes/aplicar');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -308,6 +310,25 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
   });
 }
 
+// Crédito de indicação do dono de ponto (migration 062, pedido do dono,
+// 19/09/2026) — irmã de registrarComissaoSeHouver, mas nunca move dinheiro:
+// quem indica com cupom "PT-..." ganha um crédito permanente (não por
+// cobrança, diferente da comissão) e, ao acumular o suficiente, o plano de
+// anúncio da própria conta sobe de tier de graça (ver src/indicacoes/aplicar.js).
+// `db` é o pool por padrão, mas o webhook passa o client da transação pra
+// que crédito e upgrade entrem junto com a cobrança.
+async function registrarCreditoIndicacaoSeHouver(anunciante, db = pool) {
+  if (!anunciante.indicado_por_cupom) return;
+  const cupom = String(anunciante.indicado_por_cupom).toUpperCase();
+  if (!cupom.startsWith('PT-')) return; // cupom de vendedor — já tratado acima
+  const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom);
+  if (!ponto || ponto.conta_id === anunciante.id) return; // ninguém ganha crédito de si mesmo
+
+  const credito = await indicacoesRepo.registrarCredito(ponto.conta_id, anunciante.id, db);
+  if (!credito) return; // esse indicado já tinha gerado crédito antes — nada novo
+  await aplicarUpgradeSeElegivel(ponto.conta_id, db);
+}
+
 // Handler do POST /webhook/san-checkout pro evento de assinatura
 // (API.md do Checkout, 4.3.4): { versao, tipo, planoId, documento, evento }.
 // Aqui `planoId` é o id da nossa linha em `assinaturas` (ver montarRespostaPlano).
@@ -531,6 +552,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
       [anunciante.id, plano.id, valorCiclo],
     ));
     await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
+    await registrarCreditoIndicacaoSeHouver(anunciante, cliente);
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK');
