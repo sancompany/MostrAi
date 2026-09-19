@@ -18,25 +18,17 @@
 <body data-layout="conta">
 
   <main>
-    <section class="tight" id="secaoStatusBanner">
+    <section class="tight">
       <div class="wrap">
         <div class="dash-status" id="statusBanner">Carregando...</div>
       </div>
     </section>
 
-    <!-- Tela exclusiva de confirmação de pedido (19/09/2026): antes essa
-         confirmação entrava dentro do banner de status, por cima do dashboard
-         (ou do card de bloqueio de plano) — duas telas de "escolher plano"
-         empilhadas na mesma página. Agora, com ?plano= na URL, só isto
-         aparece; o resto (banner padrão, dashboard, bloqueio) fica escondido
-         até o pedido ser decidido. -->
-    <section class="tight" id="secaoConfirmacaoPedido" hidden>
-      <div class="wrap">
-        <div class="card wide" id="confirmacaoPedido"></div>
-      </div>
-    </section>
-
-    <section class="tight" id="secaoDashboard">
+    <!-- Confirmar um pedido novo ou uma troca de plano acontece numa página
+         própria (19/09/2026): /anunciante/confirmar-plano.html, sem o
+         cabeçalho do site — ver planos.page.js e cadastro.page.js, que
+         mandam ?plano= pra lá, não mais pra cá. -->
+    <section class="tight">
       <div class="wrap" id="bonusAnuncios"></div>
       <div class="wrap dashboard-grid" id="dashboardAnuncios">
         <div>

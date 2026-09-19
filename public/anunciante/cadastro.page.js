@@ -71,7 +71,7 @@ form.addEventListener('submit', async (e) => {
     // Cadastro já loga a sessão (ver POST /anunciantes/cadastro) — direto
     // pro painel, sem passar pela tela de login de novo.
     const plano = new URLSearchParams(window.location.search).get('plano');
-    window.location.href = plano ? `/anunciante/painel.html?plano=${plano}` : '/anunciante/painel.html';
+    window.location.href = plano ? `/anunciante/confirmar-plano.html?plano=${plano}` : '/anunciante/painel.html';
   } catch {
     msg.textContent = 'Não foi possível criar a conta agora. Tente novamente.';
     msg.className = 'form-msg err';

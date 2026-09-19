@@ -26,7 +26,7 @@ form.addEventListener('submit', async (e) => {
       return;
     }
     const plano = new URLSearchParams(window.location.search).get('plano');
-    window.location.href = plano ? `/anunciante/painel.html?plano=${plano}` : '/anunciante/painel.html';
+    window.location.href = plano ? `/anunciante/confirmar-plano.html?plano=${plano}` : '/anunciante/painel.html';
   } catch {
     msg.textContent = 'Não foi possível entrar agora. Tente novamente.';
     msg.className = 'form-msg err';

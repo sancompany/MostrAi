@@ -60,7 +60,7 @@ function derivados(p) {
 
 let PLANOS = [];
 // Se já estiver logado como anunciante, assinar aqui mesmo — sem passar
-// pelo cadastro de novo (o painel pega o ?plano= e gera a cobrança).
+// pelo cadastro de novo (confirmar-plano.html pega o ?plano= e gera a cobrança).
 let LOGADO = false;
 // A troca do cabeçalho pelo menu da conta é do /layout.js — aqui só
 // interessa saber se está logado, pra o botão do plano ir pro painel
@@ -125,7 +125,7 @@ function render(meses) {
           .map((b) => `<li>${esc(b)}</li>`)
           .join('')}
       </ul>
-      <a class="btn ${p.destaque_no_site ? 'popular' : 'primary'} block" href="${LOGADO ? `/anunciante/painel.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
+      <a class="btn ${p.destaque_no_site ? 'popular' : 'primary'} block" href="${LOGADO ? `/anunciante/confirmar-plano.html?plano=${p.id}` : `/anunciante/cadastro.html?plano=${p.id}`}">Assinar ${esc(p.nome)}</a>
     </div>
   `;
     })

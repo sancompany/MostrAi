@@ -541,10 +541,10 @@ PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.h
   · → /planos.html
   · **cliente sabe:** Uma linha só diz em que pé você está: aprovado ou não, com plano ou sem, até quando, e se o seu preço está travado.
 
-**Confirmação de plano e ida ao checkout** — Com ?plano=X na URL e a conta sem plano_id, confirmarPlano(planoId) busca GET /planos, acha o plano e mostra um bloco 'Confirmar assinatura' com nome, frequencia_hora, total (valor_mensal × compromisso_meses) e 'Preço travado por N meses' quando preco_travado.…
-  · `public/anunciante/painel.page.js`, `src/financeiro/routes.js`, `src/financeiro/san-checkout.js` · rotas: `GET /planos`, `POST /anunciantes/:id/assinar` · papéis: anunciante
+**Confirmação de plano e ida ao checkout** — Página própria desde 19/09/2026 (`confirmar-plano.html`, sem o cabeçalho do site). Com ?plano=X na URL e a conta sem plano_id, montarConfirmacaoPedido(planoId) busca GET /planos, acha o plano e mostra um resumo com subtotal/desconto/equivalente mensal/total agrupados, e o botão 'Ir para o pagamento'.…
+  · `public/anunciante/confirmar-plano.page.js`, `src/financeiro/routes.js`, `src/financeiro/san-checkout.js` · rotas: `GET /planos`, `POST /anunciantes/:id/assinar` · papéis: anunciante
   · ← /planos.html?plano=X  → San Checkout (host externo)
-  · **cliente sabe:** Antes de gerar qualquer cobrança o painel mostra exatamente quanto e de quanto em quanto tempo. Um F5 depois disso não gera segunda cobrança.
+  · **cliente sabe:** Antes de gerar qualquer cobrança a tela mostra exatamente quanto e de quanto em quanto tempo. Um F5 depois disso não gera segunda cobrança.
 
 **Cinco KPIs do topo** — #kpiGrid, preenchido por posição (não por id): [0] Exibições confirmadas (+ delta 7 dias vs. 7 anteriores em [data-delta]), [1] Entrega = round(confirmadas/programadas × 100)%, [2] Custo por exibição = dados.custoPorExibicao, [3] Criativos ativos =…
   · `public/anunciante/painel.html`, `public/anunciante/painel.page.js`, `src/anunciantes/routes.js` · rotas: `GET /anunciantes/:id/exibicoes`, `GET /anunciantes/:id/criativos` · papéis: anunciante
@@ -1033,8 +1033,8 @@ Caminho do dinheiro do Mostraí, ponta a ponta: vitrine pública de planos (publ
 
 **Início de assinatura** — Valida plano ativo, programa fundador, vagas (`contarVagasOcupadas`), conta não excluída/suspensa, endereço comercial completo; acrescenta o papel 'anunciante'; reusa a assinatura ativa ou cria uma nova (`assinaturas-repository.criar`, id UUID); emite o…
   · `src/financeiro/routes.js`, `src/financeiro/assinaturas-repository.js`, `src/financeiro/san-checkout.js` · rotas: `POST /anunciantes/:id/assinar` · papéis: anunciante
-  · ← public/planos.page.js via ?plano=X / confirmarPlano() no painel  → tela de pagamento do San Checkout / GET /plano/:assinaturaId (o Checkout consulta de volta)
-  · **cliente sabe:** `confirmarPlano()` mostra antes de redirecionar: 'Você vai pagar R$ X a cada N meses (R$ Y/mês)', com 'Preço travado por N meses' quando o plano é travado. Erros do servidor ('as vagas desse plano…
+  · ← public/planos.page.js via ?plano=X / montarConfirmacaoPedido() em confirmar-plano.html  → tela de pagamento do San Checkout / GET /plano/:assinaturaId (o Checkout consulta de volta)
+  · **cliente sabe:** `montarConfirmacaoPedido()` mostra antes de redirecionar um resumo com subtotal, desconto, equivalente mensal e total agrupados. Erros do servidor ('as vagas desse plano…
 
 **Contrato de consulta do Checkout** — `montarRespostaPlano` devolve ao San Checkout planoId (= id da assinatura), nome, descrição, `valor` = valorMensalDaConta × compromisso_meses, `ciclo` mapeado para CICLO_ASAAS (MONTHLY/QUARTERLY/SEMIANNUALLY/YEARLY) e o bloco `pagador` (nome, e-mail,…
   · `src/financeiro/san-checkout.js`, `src/financeiro/routes.js` · rotas: `GET /plano/:assinaturaId` · papéis: sistema (San Checkout)
@@ -1575,8 +1575,8 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · ← public/admin/index.page.js:1422
 
 **POST /anunciantes/:id/assinar** — {planoId} → {checkoutUrl}. Exige endereço completo, recusa fundador fechado/sem vaga, reusa assinatura ativa, emite 'plano:assinatura_inicia'.
-  · `src/financeiro/routes.js:178`, `public/anunciante/painel.page.js:138` · rotas: `/anunciantes/:id/assinar` · papéis: conta logada
-  · ← public/anunciante/painel.page.js:138
+  · `src/financeiro/routes.js:178`, `public/anunciante/confirmar-plano.page.js` · rotas: `/anunciantes/:id/assinar` · papéis: conta logada
+  · ← public/anunciante/confirmar-plano.page.js
 
 **GET /plano/:assinaturaId** — O San Checkout consulta a assinatura (montarRespostaPlano).
   · `src/financeiro/routes.js:235`, `src/financeiro/san-checkout.js:19` · rotas: `/plano/:assinaturaId` · papéis: chave do checkout (X-Checkout-Key)
@@ -1835,8 +1835,8 @@ Mapa dos pontos de contato FORA do site do Mostraí, lido no código real (não 
   · → outro domínio (San Checkout) — VIAGEM SÓ DE IDA
   · **cliente sabe:** NADA. Este é o buraco principal do mapa: o cliente sai do mostrai.sancocore.com.br para um domínio que não é o da Mostraí, e nem a tela de origem nem a URL dizem como voltar.
 
-**confirmarPlano(planoId) + assinar(anuncianteId, planoId)** — confirmarPlano desenha o resumo ("Você vai pagar R$ X a cada N meses") e só depois do clique em #btnConfirmarPlano chama assinar(); antes disso limpa o ?plano= da URL com history.replaceState para que um F5 não gere outra cobrança. assinar() faz o POST, e se…
-  · `public/anunciante/painel.page.js (confirmarPlano L99-130, assinar L136-160, redirect na L159)`, `public/anunciante/painel.html` · papéis: anunciante
+**montarConfirmacaoPedido(planoId) + assinar(anuncianteId, planoId)** — Página dedicada desde 19/09/2026 (antes vivia dentro de painel.page.js). montarConfirmacaoPedido desenha o resumo ("Você vai pagar R$ X a cada N meses") e só depois do clique em #btnConfirmarPlano chama assinar(); antes disso limpa o ?plano= da URL com history.replaceState para que um F5 não gere outra cobrança. assinar() faz o POST, e se…
+  · `public/anunciante/confirmar-plano.page.js`, `public/anunciante/confirmar-plano.html` · papéis: anunciante
   · → SAN_CHECKOUT_BASE_URL (outro domínio)
   · **cliente sabe:** Só o rótulo do botão: "Ir para o pagamento". Nenhum texto do tipo "você vai para nosso parceiro de pagamento e volta para cá em seguida", nenhuma marca do San Checkout/Asaas antecipada, nenhuma…
 

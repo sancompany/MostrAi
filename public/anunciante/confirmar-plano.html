@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/img/favicon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Confirmar pedido — Mostraí</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="/style.css">
+  <meta name="theme-color" content="#ff7a1a">
+  <link rel="manifest" href="/site.webmanifest">
+</head>
+<body data-layout="minimo" data-layout-botao="Escolher outro plano|/planos.html">
+
+  <!-- Página dedicada à confirmação do pedido (19/09/2026, pedido do dono):
+       antes esse resumo entrava dentro do painel, embaixo do cabeçalho e do
+       menu inteiro do site — "uma tela de compra" espremida atrás de abas que
+       não servem pra nada nesse momento. Aqui só o essencial: o logo, um
+       botão de voltar (data-layout="minimo"), e o cartão do pedido. -->
+  <main>
+    <section class="tight">
+      <div class="wrap" id="dashboardConfirmacao">
+        <div class="card wide" id="confirmacaoPedido"><p class="form-hint u-m-0">Carregando seu pedido...</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/modos.js"></script>
+  <script src="/anunciante/confirmar-plano.page.js"></script>
+</body>
+</html>
