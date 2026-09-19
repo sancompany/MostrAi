@@ -321,7 +321,10 @@ router.get('/pedido/:id', sanCheckout.exigirChaveCheckout, async (req, res) => {
           nome: anunciante.nome_empresa,
           email: anunciante.contato_email,
           documento: anunciante.cpf_cnpj,
-          telefone: anunciante.contato_telefone,
+          // contato_telefone vem em E.164 (+55...); o Checkout quer só DDD +
+          // número, 10 ou 11 dígitos (mesmo achado de montarRespostaPlano em
+          // san-checkout.js, 19/09/2026).
+          telefone: sanCheckout.telefoneNacional(anunciante.contato_telefone),
         }
       : undefined,
   });

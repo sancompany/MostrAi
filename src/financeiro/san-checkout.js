@@ -107,6 +107,16 @@ function linkCheckoutAssinatura(assinaturaId) {
 // seria cobrança dobrada, não erro. Espelhar a pop-up é o que faz bater.
 const soDigitos = (valor) => String(valor || '').replace(/\D/g, '');
 
+// `contato_telefone` é guardado em E.164 (+5516994635946, ver telefoneE164
+// em src/br/formato.js) pra virar link de WhatsApp — mas o Checkout quer
+// telefone só com DDD, 10 ou 11 dígitos (API.md dele, seção 9.2). Mandando o
+// E.164 direto, o "55" do país virava o DDD que a Asaas lia, e o resto do
+// número desalinhava (achado em produção, 19/09/2026: "(55) 16993-4443" em
+// vez de "(16) 99463-5946"). Mesma suposição de telefoneExibicao (o campo
+// sempre entra em E.164 pelas duas rotas de cadastro): tira só o "55" do
+// início.
+const telefoneNacional = (valor) => soDigitos(valor).replace(/^55/, '');
+
 function tokenRenovacao(assinaturaId, documento) {
   const chave = process.env.SAN_CHECKOUT_KEY;
   if (!chave || !documento) return null;
@@ -183,14 +193,19 @@ async function montarRespostaPlano(assinaturaId) {
   return {
     planoId: assinatura.id,
     nome: plano.nome,
-    descricao: `Mostraí — ${plano.nome}, ciclo de ${plano.compromisso_meses} ${plano.compromisso_meses === 1 ? 'mês' : 'meses'}`,
+    // Só o `nome` já vira o título na tela do Checkout, e o `ciclo` abaixo já
+    // gera o rótulo "cobrança mensal/trimestral/..." sozinho — descricao
+    // repetindo os dois virava "Mostraí — Pro, ciclo de 3 meses — cobrança
+    // trimestral" (achado em produção, 19/09/2026): nome duplicado, ciclo
+    // duplicado, e travessão que não pode aparecer em texto nenhum do site.
+    descricao: 'Espaço publicitário na rede Mostraí.',
     valor: multiplicar(valorMensalDaConta(anunciante, plano), plano.compromisso_meses),
     ciclo: CICLO_ASAAS[plano.compromisso_meses] || 'MONTHLY',
     pagador: {
       nome: anunciante.nome_empresa,
       email: anunciante.contato_email,
       documento: anunciante.cpf_cnpj,
-      telefone: anunciante.contato_telefone,
+      telefone: telefoneNacional(anunciante.contato_telefone),
     },
   };
 }
@@ -661,6 +676,7 @@ async function trocarPlano(assinaturaId, planoNovoId, documento) {
 
 module.exports = {
   valorMensalDaConta,
+  telefoneNacional,
   exigirChaveCheckout,
   webhookAutorizado,
   registrarPendencia,

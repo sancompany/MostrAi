@@ -83,6 +83,20 @@ test('trocarPlano devolve status e corpo mesmo quando o Checkout recusa (402/409
   }
 });
 
+test('telefoneNacional tira o 55 do E.164 antes de mandar pro Checkout', async () => {
+  const sc = comAmbiente();
+  // Achado em produção, 19/09/2026: contato_telefone vem em E.164
+  // (+5516994635946) pra virar link de WhatsApp, mas o Checkout quer só DDD
+  // + número (10 ou 11 dígitos, API.md seção 9.2) — mandando o E.164 direto,
+  // o "55" do país virava o DDD que a Asaas lia.
+  assert.strictEqual(sc.telefoneNacional('+5516994635946'), '16994635946');
+  assert.strictEqual(sc.telefoneNacional('5516994635946'), '16994635946');
+  // DDD 55 é real (Santa Maria-RS): o E.164 dele tem "55" duas vezes
+  // seguidas, e só o primeiro par (o país) deve sair.
+  assert.strictEqual(sc.telefoneNacional('+5555988887777'), '55988887777');
+  assert.strictEqual(sc.telefoneNacional(null), '');
+});
+
 test('montarRespostaPlano serve assinatura pendente_troca (o Checkout lê o destino antes de cobrar)', async () => {
   const sc = comAmbiente();
   const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
