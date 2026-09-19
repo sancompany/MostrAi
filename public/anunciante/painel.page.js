@@ -289,9 +289,7 @@ async function carregarPontos() {
         msg.className = 'form-msg err';
         return;
       }
-      msg.textContent = marcados().length
-        ? 'Pronto. A mudança vale a partir da próxima hora cheia.'
-        : 'Pronto. Sem marcação, a gente distribui seus pontos.';
+      msg.textContent = marcados().length ? 'Pronto. Salvo.' : 'Pronto. Sem marcação, a gente distribui seus pontos.';
       msg.className = 'form-msg ok';
     } catch {
       msg.textContent = 'Sem conexão. Tente de novo.';

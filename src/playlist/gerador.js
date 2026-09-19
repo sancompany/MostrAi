@@ -5,6 +5,7 @@ const {
   dividirCota,
   duracaoValida,
   segundosCompensados,
+  espalhar,
   ID_INSTITUCIONAL,
   DURACAO_INSTITUCIONAL,
 } = require('../lib/pacing');
@@ -13,6 +14,23 @@ const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const bancoHorasRepo = require('../bancohoras/repository');
 const { MESES_PARA_FILA_DE_CREDITO } = require('../bancohoras/apuracao');
 const pontosRepo = require('../pontos/repository');
+const congelamentoRepo = require('./congelamento-repository');
+
+// Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
+// agora) não disputa vaga com quem já estava programado — só pede a fatia
+// que teria direito e entra em fila, sempre depois de tudo que já existe.
+// Sem corte proporcional (RN-30 já rodou pra quem estava na hora desde o
+// início): o pedido do dono foi "não precisa separar por hora, só bater a
+// meta do mês", e o déficit de uma hora cheia demais se resolve sozinho na
+// hora seguinte, como qualquer déficit.
+function sequenciaAdicional(novosEntrada) {
+  const pedidos = novosEntrada
+    .map((n) => ({ id: n.id, quantidade: Math.max(0, (n.frequenciaBase || 0) + (n.deficit || 0)) }))
+    .filter((p) => p.quantidade > 0);
+  if (!pedidos.length) return [];
+  const total = pedidos.reduce((soma, p) => soma + p.quantidade, 0);
+  return espalhar(pedidos, total).filter((id) => id !== null);
+}
 
 // Quanto mais perto a dívida chega da válvula (MESES_PARA_FILA_DE_CREDITO),
 // mais peso ela ganha na hora — pedido do dono, 18/09/2026: "quanto mais
@@ -309,7 +327,37 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // Semente = (aparelho, hora). A ordem da hora passa a ser a MESMA em
   // qualquer instância e depois de qualquer reinício, que é o que permite
   // rodar em mais de uma instância sem cache em memória (item 4).
-  const daHora = montarHoraDeTv(entrada, `${dispositivo.id}-${horaAtual.toISOString()}`);
+  const semente = `${dispositivo.id}-${horaAtual.toISOString()}`;
+
+  // A HORA CONGELA (19/09/2026, pedido do dono: escolher um ponto novo não
+  // pode esperar "a próxima hora cheia" — tem que entrar na hora que já
+  // está no ar, sem empurrar quem já tinha vaga). `montarHoraDeTv` reposiciona
+  // TODO MUNDO quando o total de participantes muda (é assim que o
+  // espalhamento fica justo no início da hora), então a única forma de uma
+  // chegada no meio da hora não mexer em quem já tinha vaga é nunca mais
+  // rodar `montarHoraDeTv` sobre a lista cheia depois da primeira vez.
+  //
+  // Por isso a `entrada` da primeira geração desta hora vira `base`
+  // congelada (migration 064): toda geração seguinte reprocessa a MESMA
+  // `base` pela mesma semente — determinístico, sempre a mesma sequência —
+  // e quem não estava nela ainda entra em `extras`, sempre no fim.
+  const congelada = await congelamentoRepo.buscar(dispositivo.id, horaAtual);
+  let daHora;
+  let idsExtras;
+  if (!congelada) {
+    daHora = montarHoraDeTv(entrada, semente);
+    await congelamentoRepo.criar(dispositivo.id, horaAtual, entrada);
+    idsExtras = [];
+  } else {
+    daHora = montarHoraDeTv(congelada.base, semente);
+    idsExtras = congelada.extras;
+    const idsConhecidos = new Set([...congelada.base.map((e) => e.id), ...idsExtras]);
+    const novaLeva = sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
+    if (novaLeva.length) {
+      await congelamentoRepo.acrescentarExtras(dispositivo.id, horaAtual, novaLeva);
+      idsExtras = [...idsExtras, ...novaLeva];
+    }
+  }
 
   // A hora não coube em todo mundo: todos entregam menos do que contrataram.
   // O corte é proporcional, mas continua sendo entrega menor, e sem isto não
@@ -339,10 +387,16 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   // `programados` já vem sem o institucional. O dono do ponto sai aqui: a cota
   // é permuta, não venda, e não entra no relatório de entrega de ninguém.
+  // `extras` soma por cima — cada item ali é uma inserção de verdade, pedida
+  // e entregue (sem corte, ver `sequenciaAdicional`).
   const contagem = { ...daHora.programados };
   delete contagem.dono;
   const pedidos = { ...daHora.pedidosPorAnunciante };
   delete pedidos.dono;
+  for (const id of idsExtras) {
+    contagem[id] = (contagem[id] || 0) + 1;
+    pedidos[id] = (pedidos[id] || 0) + 1;
+  }
   await gravarProgramados(dispositivo, horaAtual, contagem, pedidos);
 
   // Banco de horas (G.3): drena na proporção do que a hora entregou. Se a
@@ -376,25 +430,35 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // vez, mesmo quando só cabe uma inserção por vez.
   const horaEpoch = Math.floor(horaAtual.getTime() / 3_600_000);
   const usados = {};
-  return daHora.itens.map((id) => {
-    // Inventário vago: o player mostra a própria peça institucional (#vazio em
-    // public/player.html) pelo tempo do item. Não tem url, não é de ninguém e
-    // não conta exibição.
-    if (id === ID_INSTITUCIONAL) {
-      return { anuncianteId: null, institucional: true, url: null, duracaoSegundos: DURACAO_INSTITUCIONAL };
-    }
-    const { criativos } = porId[id];
-    const vez = usados[id] || 0;
-    usados[id] = vez + 1;
-    const inicio = horaEpoch % criativos.length;
-    const criativo = criativos[(inicio + vez) % criativos.length];
-    return {
-      anuncianteId: id === 'dono' ? null : id,
-      autoanuncio: id === 'dono',
-      url: criativo.url,
-      duracaoSegundos: criativo.duracaoSegundos,
-    };
-  });
+  // `extras` sempre depois de `daHora.itens`: é o "sempre no fim" pedido —
+  // quem chegou no meio da hora nunca disputa posição com quem já rodava.
+  return [...daHora.itens, ...idsExtras]
+    .map((id) => {
+      // Inventário vago: o player mostra a própria peça institucional (#vazio em
+      // public/player.html) pelo tempo do item. Não tem url, não é de ninguém e
+      // não conta exibição.
+      if (id === ID_INSTITUCIONAL) {
+        return { anuncianteId: null, institucional: true, url: null, duracaoSegundos: DURACAO_INSTITUCIONAL };
+      }
+      // Congelou numa hora e saiu da elegibilidade depois (ponto desmarcado
+      // de novo, criativo reprovado): a vaga dele só desaparece, não é
+      // reaproveitada por ninguém — não é erro, é o fim natural de uma
+      // escolha desfeita no meio da hora.
+      const dados = porId[id];
+      if (!dados?.criativos?.length) return null;
+      const { criativos } = dados;
+      const vez = usados[id] || 0;
+      usados[id] = vez + 1;
+      const inicio = horaEpoch % criativos.length;
+      const criativo = criativos[(inicio + vez) % criativos.length];
+      return {
+        anuncianteId: id === 'dono' ? null : id,
+        autoanuncio: id === 'dono',
+        url: criativo.url,
+        duracaoSegundos: criativo.duracaoSegundos,
+      };
+    })
+    .filter(Boolean);
 }
 
 // Só confirma se havia programação pra esse anunciante nesta tela nesta
