@@ -8,7 +8,7 @@ Autenticação, três tipos:
 - **Sessão de admin** (mesmo cookie, flag separada) — `POST /admin/login`. Tudo em `/admin/*` exige. Em produção a porta é o Cloudflare Access; a senha é segunda camada.
 - **Chave de aparelho** — header `X-Aparelho-Id` (ou `?chave=` na playlist). Identifica UMA tela (`dispositivos.aparelho_id`). Só dá acesso ao que é daquela tela.
 
-Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidatura, esqueci-senha, PIN da tela.
+Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `Map` em memória) em: login, cadastro, candidatura, esqueci-senha, confirmação de e-mail, PIN da tela.
 
 ## Público (sem login)
 
@@ -36,12 +36,14 @@ Rate limit em memória (10 por 15 min por IP+rota) em: login, cadastro, candidat
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `plano` (o objeto do plano assinado, com `duracao_maxima_segundos`, `pontos_incluidos` e `segundos_por_hora` — é o que o painel usa pra dizer o limite de duração e montar a escolha de pontos), `data_expiracao`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
+| GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `plano` (o objeto do plano assinado, com `duracao_maxima_segundos`, `pontos_incluidos` e `segundos_por_hora` — é o que o painel usa pra dizer o limite de duração e montar a escolha de pontos), `data_expiracao`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, `email_confirmado` (migration 061 — front mostra aviso em toda página de conta enquanto `false`), e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
 | GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` **e `a_instalar`** pra tela de escolha (RN-49: ponto em instalação já é vaga do plano): `limite` (`planos.pontos_incluidos`), `escolhidos` (ids), `pontos[]` com `nome`, `cidade`, `endereco`, `status`, `escolhido`, `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido) e `bloqueado` (RN-55 — cruzou 80% e parou de aceitar escolha nova; nunca `true` pra um ponto que a conta já tinha escolhido), e `cobertura` com o bônus da RN-49, sempre em horas por mês (a unidade que o cliente comprou; segundos por hora é unidade de motor e não sai daqui) — `contratados`, `veiculando`, `horas_contratadas`, `horas_sem_compensacao`, `horas_hoje`, `compensando`. 400 se a conta não tem plano. Reavalia o bloqueio (RN-55) antes de responder. |
 | PUT | `/anunciantes/me/pontos` | ⚠️ Mesmo caminho do `POST` abaixo, sentido diferente: o `POST` é o DONO DE PONTO cadastrando um endereço novo, o `PUT` é o ANUNCIANTE escolhendo onde aparece. Separa o verbo, não o caminho. Troca a escolha inteira: `{pontos:[id,...]}`. Numa transação — metade salva deixaria a conta numa cobertura que ela não escolheu. 400 se passar do limite do plano ou se algum ponto não existir na rede (`em_operacao` ou `a_instalar` — RN-49). 409 se algum ponto NOVO na lista (que a conta ainda não tinha) estiver travado por ocupação (RN-55) — `{erro, pontosBloqueados:[id,...]}`; manter um ponto que já era seu, mesmo travado, não é recusado. Lista vazia devolve a conta pra distribuição automática (RN-42, que também pula pontos travados). |
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
+| POST | `/anunciantes/me/confirmar-email` | `{codigo}` (6 dígitos, migration 061) → `{ok}`. 400 se errado/expirado (validade 30min). Não bloqueia login nem uso da conta — só marca `email_confirmado=true` e faz o aviso sumir do front. |
+| POST | `/anunciantes/me/reenviar-codigo-email` | Gera e manda um código novo (invalida o anterior); no-op silencioso se já confirmado. |
 | POST | `/anunciantes/logout` | Destrói a sessão. |
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |
 | POST | `/anunciantes/me/cancelar-assinatura` | Cliente cancela a própria assinatura (migration 041, 16/09/2026). Cobertura já paga continua até `data_expiracao`. 400 sem assinatura ativa. |

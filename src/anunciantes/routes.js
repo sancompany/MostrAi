@@ -955,7 +955,17 @@ router.post('/admin/anunciantes', async (req, res) => {
     anunciante = await repo.atualizar(anunciante.id, {
       conta_propria: true,
       frequencia_hora_propria: Number(req.body.frequencia_hora_propria) || 1,
+      // Conta interna do Mostraí, não tem inbox de cliente pra confirmar —
+      // sem isso ela nasceria com o aviso de e-mail preso pra sempre, e
+      // nenhum código nunca chegaria em lugar nenhum.
+      email_confirmado: true,
     });
+  } else {
+    // Cadastro pelo admin (achado na revisão, 19/09/2026): sem isso a conta
+    // nascia com email_confirmado=false igual o cadastro aberto, mas nunca
+    // recebia o código — o cliente logava pela primeira vez, via o aviso
+    // preso, e não tinha como saber que precisava clicar "Reenviar código".
+    enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('código de confirmação de e-mail', err));
   }
   // Conta criada pelo dono também é aquisição: o negócio fecha por WhatsApp e
   // o admin cadastra o cliente depois. Deixar de fora furaria o funil
