@@ -42,7 +42,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
 | POST | `/anunciantes/me/excluir` | Soft-delete (60 dias recuperável pelo admin). |
-| POST | `/anunciantes/me/confirmar-email` | `{codigo}` (6 dígitos, migration 061) → `{ok}`. 400 se errado/expirado (validade 30min). Não bloqueia login nem uso da conta — só marca `email_confirmado=true` e faz o aviso sumir do front. |
+| POST | `/anunciantes/me/confirmar-email` | `{codigo}` (6 dígitos, migration 061) → `{ok}`. 400 se errado/expirado (validade 2min — pedido do dono, 19/09/2026). Não bloqueia login nem uso da conta — só marca `email_confirmado=true` e faz o aviso sumir do front. |
 | POST | `/anunciantes/me/reenviar-codigo-email` | Gera e manda um código novo (invalida o anterior); no-op silencioso se já confirmado. |
 | POST | `/anunciantes/logout` | Destrói a sessão. |
 | POST | `/anunciantes/:id/assinar` | `{planoId}` → `{checkoutUrl}`. Recusa plano fundador com programa fechado ou sem vaga. |

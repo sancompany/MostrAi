@@ -33,7 +33,7 @@ const {
 // Confirmação de e-mail por código (migration 061). Apaga o código anterior
 // antes de gerar outro: só o último vale, pedir de novo não deve deixar dois
 // códigos válidos ao mesmo tempo.
-const VALIDADE_CODIGO_EMAIL_MS = 30 * 60 * 1000;
+const VALIDADE_CODIGO_EMAIL_MS = 2 * 60 * 1000;
 async function enviarNovoCodigoConfirmacao(anunciante) {
   const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   await pool.query('DELETE FROM tokens_confirmacao_email WHERE anunciante_id = $1', [anunciante.id]);

@@ -187,7 +187,7 @@ async function enviarCodigoConfirmacaoEmail(anunciante, codigo) {
     text:
       `Olá, ${anunciante.nome_empresa}!\n\n` +
       `Seu código de confirmação é: ${codigo}\n\n` +
-      `Digite esse código na sua conta pra confirmar o e-mail. Ele vale por 30 minutos.\n\n` +
+      `Digite esse código na sua conta pra confirmar o e-mail. Ele vale por 2 minutos.\n\n` +
       `Se não foi você que criou essa conta, pode ignorar este e-mail.\n\nEquipe Mostraí.`,
   });
 }
