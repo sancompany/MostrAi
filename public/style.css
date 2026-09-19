@@ -1101,32 +1101,50 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
    ficaria por cima do texto que explica o que corrigir. */
 .criativo-card:has(.criativo-motivo) .badge { bottom: auto; top: 8px; }
 
-/* Escolha de pontos do anunciante (17/09/2026). Cada linha é uma caixa de
-   seleção grande: na TV do comércio quem decide é o dono do negócio, muitas
-   vezes no celular e com pressa. Ponto sem espaço aparece apagado em vez de
+/* Escolha de pontos do anunciante (17/09/2026, compactado 19/09/2026 —
+   pedido do dono: "se existir muitos pontos cadastrados ele se perde").
+   Era um cartão grande de 2 linhas por ponto; virou uma linha só, densa —
+   com muitos pontos cadastrados, o que ajuda é caber mais na tela de uma
+   vez, não uma caixa maior. Ponto sem espaço aparece apagado em vez de
    sumir — saber que existe e está cheio é informação, some não é. */
 .ponto-escolha {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-areas: "check nome ocupacao" "check end ocupacao";
-  gap: 2px 12px;
+  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-areas: "check nome cidade ocupacao mapa";
+  gap: 4px 10px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-campo);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   cursor: pointer;
 }
 .ponto-escolha:has(input:checked) { border-color: var(--brand); background: rgba(255,122,26,.05); }
 .ponto-escolha.cheio { opacity: .55; cursor: not-allowed; }
-.ponto-escolha input { grid-area: check; width: 20px; height: 20px; accent-color: var(--brand); }
-.ponto-nome { grid-area: nome; font-weight: 600; }
-.ponto-end { grid-area: end; font-size: .82rem; color: var(--text-dim); }
-.ponto-ocupacao { grid-area: ocupacao; font-size: .78rem; color: var(--text-dim); white-space: nowrap; }
+.ponto-escolha[hidden] { display: none; }
+/* `.ponto-marcar` some da caixa (não é mais um elemento visual, só o
+   comportamento de label) — os filhos dele viram grid items diretos do
+   `.ponto-escolha`, no lugar de onde estavam antes de virar <label>
+   aninhado. É o que deixa o link do mapa (fora do label) sem disparar o
+   checkbox junto — ver comentário em painel.page.js. */
+.ponto-marcar { display: contents; cursor: pointer; }
+.ponto-escolha input { grid-area: check; width: 18px; height: 18px; accent-color: var(--brand); flex: none; }
+.ponto-nome { grid-area: nome; font-weight: 600; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ponto-end { grid-area: cidade; font-size: .78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ponto-ocupacao { grid-area: ocupacao; font-size: .74rem; color: var(--text-dim); white-space: nowrap; }
+.ponto-mapa { grid-area: mapa; text-decoration: none; font-size: .9rem; line-height: 1; padding: 2px; }
 @media (max-width: 560px) {
   .ponto-escolha {
-    grid-template-columns: auto 1fr;
-    grid-template-areas: "check nome" "check end" "check ocupacao";
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "check nome mapa" "check ocupacao mapa";
   }
-  .ponto-ocupacao { margin-top: 2px; }
+  .ponto-end { display: none; }
 }
+
+/* Busca de ponto (19/09/2026) — mesmo visual dos campos de formulário
+   (`.card input`), mas fora de `.card`: esta lista mora dentro de `.panel`. */
+.busca-pontos {
+  display: block; width: 100%; background: var(--bg-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-campo); color: var(--text); padding: 9px 12px; font-size: .9rem;
+}
+.busca-pontos:focus { outline: 2px solid var(--brand); outline-offset: 1px; }

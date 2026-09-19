@@ -203,12 +203,13 @@ async function carregarPontos() {
 
   const limite = dados.limite;
   document.getElementById('painelPontos').hidden = false;
-  document.getElementById('dicaPontos').textContent = limite
-    ? `Seu plano cobre ${limite} ${limite === 1 ? 'ponto' : 'pontos'}. Marque onde você quer aparecer, ou deixe tudo desmarcado e a gente distribui pra você. Ponto em instalação pode ser marcado: a vaga fica sua.`
-    : 'Seu plano cobre todos os pontos da rede.';
   pintarCompensacao(dados.cobertura);
 
   const lista = document.getElementById('listaPontos');
+  // Uma linha por ponto, sem o cartão grande de antes (19/09/2026, pedido
+  // do dono: "se existir muitos pontos cadastrados ele se perde") — nome,
+  // cidade e status cabem numa linha só; o link do mapa reaproveita a MESMA
+  // busca do Google Maps que a vitrine pública já usa em pontos.page.js.
   lista.innerHTML = dados.pontos
     .map((p) => {
       const instalando = p.status === 'a_instalar';
@@ -216,14 +217,40 @@ async function carregarPontos() {
       // ainda. Bloquear ele por ocupação seria bloquear por um zero que
       // significa "ainda não existe", não "tem espaço de sobra".
       const cheio = !instalando && p.ocupacao >= 100;
-      return `<label class="ponto-escolha${cheio ? ' cheio' : ''}">
-      <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
-      <span class="ponto-nome">${esc(p.nome)}</span>
-      <span class="ponto-end">${esc(p.endereco || '')}${p.cidade ? `, ${esc(p.cidade)}` : ''}</span>
-      <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
-    </label>`;
+      const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
+      const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
+      // <a> fica FORA do <label> de propósito: um link dentro de um label
+      // ainda ativa o checkbox quando o clique borbulha até o label (é o
+      // label que decide isso, não dá pra impedir com stopPropagation numa
+      // camada acima). O <label> vira `display:contents` no CSS — some da
+      // caixa, mas continua marcando/desmarcando o checkbox normalmente —
+      // e os dois (label e link) viram irmãos dentro do mesmo grid da
+      // linha, então o alinhamento continua igual.
+      return `<div class="ponto-escolha${cheio ? ' cheio' : ''}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
+      <label class="ponto-marcar">
+        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
+        <span class="ponto-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+        <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
+        <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+      </label>
+      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
+    </div>`;
     })
     .join('');
+
+  // Busca só aparece quando faz diferença — poucos pontos não precisam de
+  // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.
+  const LIMIAR_BUSCA = 6;
+  const busca = document.getElementById('buscaPontos');
+  if (busca && dados.pontos.length > LIMIAR_BUSCA) {
+    busca.hidden = false;
+    busca.addEventListener('input', () => {
+      const termo = busca.value.trim().toLowerCase();
+      lista.querySelectorAll('.ponto-escolha').forEach((el) => {
+        el.hidden = termo.length > 0 && !el.dataset.busca.includes(termo);
+      });
+    });
+  }
 
   const msg = document.getElementById('msgPontos');
   const contador = document.getElementById('contadorPontos');
@@ -231,7 +258,8 @@ async function carregarPontos() {
 
   function pintarContador() {
     const n = marcados().length;
-    contador.textContent = limite ? `${n} de ${limite}` : `${n} escolhido(s)`;
+    contador.textContent = limite ? `${n} de ${limite} escolhidos` : `${n} escolhido${n === 1 ? '' : 's'}`;
+    contador.className = !limite || n >= limite ? 'badge badge-ok' : 'badge badge-pendente';
     // Passar do limite não é erro de servidor: é uma caixa que não devia ter
     // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
     // depois do clique em salvar.

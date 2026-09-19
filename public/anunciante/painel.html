@@ -85,19 +85,26 @@
 
         <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
              quem escolhe quais é o anunciante. Deixar tudo desmarcado é
-             escolha válida — aí o sistema distribui. -->
+             escolha válida — aí o sistema distribui. Sem o parágrafo
+             explicativo de antes (19/09/2026, pedido do dono: "retire
+             esse texto") — o contador e o próprio ato de marcar já dizem
+             o que precisa. -->
         <div class="panel u-mb-20" id="painelPontos" hidden>
           <div class="panel-head">
             <h3>Onde seu anúncio aparece</h3>
-            <span class="form-hint" id="contadorPontos"></span>
+            <span class="badge badge-pendente" id="contadorPontos"></span>
           </div>
-          <p class="form-hint u-mt-0" id="dicaPontos"></p>
           <!-- RN-49: enquanto a rede for menor que a cobertura do plano, o
                tempo dos pontos que faltam volta pros pontos no ar. O bloco
                diz o número exato — contratado, o que a rede daria sem a
                regra, e o que ela dá com ela —, porque bônus que o cliente
                não consegue conferir é promessa, não benefício. -->
           <div class="aviso-rede u-mb-16" id="avisoCompensacao" hidden></div>
+          <!-- Busca (19/09/2026, pedido do dono: "se existir muitos pontos
+               cadastrados ele se perde") — filtra a lista abaixo por nome
+               ou cidade, sem chamada nova: os pontos já vêm todos numa
+               tabela só. -->
+          <input type="search" class="busca-pontos u-mb-12" id="buscaPontos" placeholder="Buscar ponto por nome ou cidade" hidden>
           <div id="listaPontos"></div>
           <p class="form-msg" id="msgPontos"></p>
         </div>
