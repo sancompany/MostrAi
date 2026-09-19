@@ -85,19 +85,37 @@ async function montarConfirmacaoPedido(planoId) {
   // do dono (19/09/2026): a tela de pedido é só o resumo da compra. O prazo
   // de 7 dias continua valendo e disponível pro cliente (Termos de Uso,
   // Contrato do anunciante e vitrine em /planos.html) — só não repete aqui.
+  // Resumo de preço primeiro (subtotal, desconto, total, equivalente
+  // mensal), como qualquer tela de checkout de mercado — antes essas quatro
+  // informações vinham espalhadas (um "Total" no meio da lista de
+  // características do plano, "economizou" e "equivale a" soltos depois).
+  // Só mostra Subtotal/Desconto quando existe desconto de verdade
+  // (`cheio` é o preço cheio de referência — sem ele não tem o que abater).
+  const linhasPreco = [
+    cheio ? ['Subtotal', fmtBRL(cheio * plano.compromisso_meses)] : null,
+    economia > 0 ? ['Desconto', `-${fmtBRL(economia)}`, 'desconto'] : null,
+  ].filter(Boolean);
+
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
     <h3 class="u-m-0 u-mb-4">${esc(plano.nome)}</h3>
     <p class="form-hint u-m-0 u-mb-14">Revise os detalhes do seu plano antes de continuar.</p>
-    <div class="pedido-linhas">
-      ${linhas.map(([rotulo, valor]) => `<div class="pedido-linha"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}
-    </div>
+    ${
+      linhasPreco.length
+        ? `<div class="pedido-linhas">
+      ${linhasPreco.map(([rotulo, valor, classe]) => `<div class="pedido-linha${classe ? ` ${classe}` : ''}"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}
+    </div>`
+        : ''
+    }
     <div class="pedido-total">
       <span class="rotulo">Total ${ciclo}</span>
       <b>${fmtBRL(total)}</b>
     </div>
-    ${plano.compromisso_meses > 1 && economia > 0 ? `<p class="pedido-economia u-m-0">Você economizou ${fmtBRL(economia)}.</p>` : ''}
-    ${plano.compromisso_meses > 1 ? `<p class="form-hint u-m-0${avisoRede ? ' u-mb-14' : ''}">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>` : ''}
+    ${plano.compromisso_meses > 1 ? `<p class="form-hint u-m-0 u-mb-14">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>` : ''}
+    <p class="form-hint u-m-0 u-mb-4">O que está incluso</p>
+    <div class="pedido-linhas">
+      ${linhas.map(([rotulo, valor]) => `<div class="pedido-linha"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}
+    </div>
     ${avisoRede}
     <div class="field-row u-mt-8">
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>

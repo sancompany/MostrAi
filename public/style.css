@@ -1012,10 +1012,10 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 }
 .pedido-linha span:first-child { color: var(--text-dim); }
 .pedido-linha span:last-child { font-weight: 600; text-align: right; }
+.pedido-linha.desconto span:last-child { color: var(--ok); }
 .pedido-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; }
 .pedido-total .rotulo { color: var(--text-dim); font-size: .92rem; }
 .pedido-total b { font-size: 1.5rem; }
-.pedido-economia { color: var(--ok); font-size: .85rem; margin-top: 2px; }
 
 /* Campo que o servidor apontou como errado. A tela ja diz a frase; isto so
    leva o olho ate o campo. Some no proximo foco. */

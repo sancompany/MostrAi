@@ -171,6 +171,15 @@
         : papeis.includes('ponto')
           ? '/anunciante/ponto.html'
           : '/anunciante/vendedor.html';
+      // Pedido do dono, 19/09/2026: quem já está logado e cai na home vai
+      // direto pro dashboard — a home é porta de entrada pra quem ainda não
+      // tem conta, não faz sentido mostrar ela de novo pra quem já entrou.
+      // Só a home (`/`); as outras páginas públicas (Planos, Onde estamos,
+      // Contato) continuam abrindo normalmente pra quem já está logado.
+      if (AQUI === '/') {
+        window.location.replace(casa);
+        return;
+      }
       // `title` junto do `bloqueado`: no menu das páginas da conta o cadeado tem
       // explicação ("clique pra ativar") e aqui não tinha nenhuma — a mesma aba
       // cinza dizia coisas diferentes conforme a página em que a pessoa estava.
