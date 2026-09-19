@@ -57,6 +57,10 @@
         <div class="panel u-mb-20" id="painelDia" hidden>
           <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
           <div class="bar-chart" id="graficoDia"></div>
+          <!-- Cada barra empilha por ponto (19/09/2026, pedido do dono):
+               a legenda é a identidade das cores, já que cor sozinha não
+               é acessível — ver skill dataviz. -->
+          <div class="legenda-serie" id="legendaPontosDia" hidden></div>
         </div>
 
         <div class="duas-colunas u-mb-20">

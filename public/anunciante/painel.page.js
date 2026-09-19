@@ -454,7 +454,7 @@ async function carregarExibicoes() {
     kpi('restantes').textContent = dados.exibicoesRestantesMes ?? '-';
     kpi('media').textContent = dados.mediaDiariaMes ?? '-';
 
-    desenharPorDia(dados.porDia || []);
+    desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorHora(dados.porHora || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
@@ -493,13 +493,35 @@ function explicarZero(dados) {
   el.hidden = false;
 }
 
-// Barras verticais dos últimos 14 dias. O endpoint devolve DESC (mais novo
-// primeiro) e só os dias com registro — inverte e mostra como vem, sem
-// preencher buraco de dia sem exibição.
-function desenharPorDia(porDia) {
+// Quantos pontos entram com cor própria na barra empilhada — o resto vira
+// "Outros pontos" (--serie-outros, cinza). 5 é o tanto de slot categórico
+// que a paleta da skill dataviz valida pro par ADJACENTE (o que importa numa
+// barra empilhada, onde um segmento só encosta no de cima e no de baixo).
+const TOP_SERIES_DIA_PONTO = 5;
+
+// Barras verticais dos últimos 14 dias, empilhadas por ponto (19/09/2026,
+// pedido do dono: "no card exibições por dia, coloque também um exibições
+// por ponto"). O endpoint devolve DESC (mais novo primeiro) e só os dias com
+// registro — inverte e mostra como vem, sem preencher buraco de dia sem
+// exibição. `porPonto` já chega ORDER BY confirmadas DESC (mesma rota) —
+// reaproveita esse ranking pra decidir quem ganha cor própria, em vez de
+// recalcular: os 5 primeiros pontos do período inteiro têm sempre a mesma
+// cor em toda barra; o resto soma em "Outros pontos".
+function desenharPorDia(porDia, porDiaPonto, porPonto) {
   if (!porDia.length) return;
   const dias = porDia.slice(0, 14).reverse();
   const max = Math.max(...dias.map((d) => Number(d.confirmadas))) || 1;
+
+  const principais = (porPonto || []).slice(0, TOP_SERIES_DIA_PONTO);
+  const serieDoPonto = new Map(principais.map((p, i) => [p.id, `serie-${i + 1}`]));
+
+  const porDiaChave = new Map();
+  for (const linha of porDiaPonto || []) {
+    const chave = String(linha.dia).slice(0, 10);
+    if (!porDiaChave.has(chave)) porDiaChave.set(chave, []);
+    porDiaChave.get(chave).push(linha);
+  }
+
   document.getElementById('painelDia').hidden = false;
   document.getElementById('graficoDia').innerHTML = dias
     .map((d) => {
@@ -510,12 +532,23 @@ function desenharPorDia(porDia) {
       // o rótulo do dia anterior. Fatiar a string não passa por fuso nenhum,
       // que é o certo pra uma data que não tem fuso.
       const [ano, mes, diaDoMes] = String(d.dia).slice(0, 10).split('-');
+      const segmentos = segmentosDoDia(porDiaChave.get(String(d.dia).slice(0, 10)) || [], serieDoPonto);
+      const pilha = segmentos.length
+        ? segmentos
+            .map(
+              (s) =>
+                `<div class="bar-seg ${s.classe}" data-pct="${v ? (s.valor / v) * 100 : 0}" title="${esc(s.nome)}: ${s.valor} exibições"></div>`,
+            )
+            .join('')
+        : '';
       return `<div class="bar-col" title="${diaDoMes}/${mes}/${ano}: ${v} exibições">
-      <div class="bar" data-pct="${Math.max(2, (v / max) * 100)}"></div>
+      <div class="bar-pilha" data-pct="${Math.max(2, (v / max) * 100)}">${pilha}</div>
       <span class="bar-label">${diaDoMes}/${mes}</span>
     </div>`;
     })
     .join('');
+
+  desenharLegendaPontosDia(principais, serieDoPonto, (porPonto || []).length > TOP_SERIES_DIA_PONTO);
 
   // Total de exibições e delta 7 dias x 7 anteriores — antes eram um card
   // próprio no kpi-grid ("Exibições confirmadas"); saíram de lá (19/09/2026,
@@ -531,6 +564,47 @@ function desenharPorDia(porDia) {
     : '';
   document.getElementById('legendaDia').textContent =
     `últimos ${dias.length} dias com exibição · ${atual} confirmadas nos últimos 7 dias${delta}`;
+}
+
+// Agrupa as linhas de um dia (já filtradas por dia em desenharPorDia) na
+// mesma ordem/cor fixa dos 5 principais + "Outros pontos" — um ponto fora do
+// top 5 do período inteiro sempre cai em "Outros", mesmo que tenha sido o
+// que mais exibiu NESSE dia específico, porque a cor tem que significar o
+// mesmo ponto em toda barra do gráfico, não só naquele dia.
+function segmentosDoDia(linhasDoDia, serieDoPonto) {
+  const porSerie = new Map();
+  let outros = 0;
+  for (const linha of linhasDoDia) {
+    const classe = serieDoPonto.get(linha.ponto_id);
+    const valor = Number(linha.confirmadas);
+    if (!classe) {
+      outros += valor;
+      continue;
+    }
+    const atual = porSerie.get(classe) || { nome: linha.ponto_nome, valor: 0 };
+    atual.valor += valor;
+    porSerie.set(classe, atual);
+  }
+  const segmentos = [...serieDoPonto.values()]
+    .map((classe) => (porSerie.has(classe) ? { classe, ...porSerie.get(classe) } : null))
+    .filter(Boolean);
+  if (outros > 0) segmentos.push({ classe: 'serie-outros', nome: 'Outros pontos', valor: outros });
+  return segmentos;
+}
+
+// Legenda de cores do gráfico empilhado — cor sozinha não é canal acessível
+// (skill dataviz), por isso a identidade de cada ponto também vem por nome
+// aqui, não só pela cor do segmento. Um ponto só (sem "Outros") não precisa
+// de legenda: só existe uma cor, e o título do card já diz o que é.
+function desenharLegendaPontosDia(principais, serieDoPonto, temOutros) {
+  const el = document.getElementById('legendaPontosDia');
+  if (!el) return;
+  const chips = principais.map((p) => ({ classe: serieDoPonto.get(p.id), nome: p.nome }));
+  if (temOutros) chips.push({ classe: 'serie-outros', nome: 'Outros pontos' });
+  el.hidden = chips.length < 2;
+  el.innerHTML = chips
+    .map((c) => `<span class="chip"><span class="swatch ${c.classe}"></span>${esc(c.nome)}</span>`)
+    .join('');
 }
 
 // Distribuição por hora do dia (19/09/2026, pedido do dono, seguindo a

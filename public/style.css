@@ -13,6 +13,19 @@
   --ok: #15803d; /* #16a34a dava 3.3:1 no branco — abaixo do mínimo de 4.5:1 do WCAG AA */
   --err: #dc2626;
 
+  /* Paleta categórica do gráfico "Exibições por dia" empilhado por ponto
+     (19/09/2026) — skill dataviz, ordem validada pelo script (adjacent
+     pairlist, superfície #ffffff do .panel): CVD ΔE mínimo 9.1, contraste
+     normal mínimo 19.6. Só os 5 primeiros slots entram aqui (o card cobre
+     no máximo 5 pontos por nome; o resto vira --serie-outros, cinza neutro
+     de propósito — não é identidade de ponto nenhum, é "o resto"). */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --serie-outros: #9aa3ad;
+
   /* Superfície escura: o painel que o PIN abre na própria TV, num comércio, a
      metros de distância. É a única parte do sistema que não é sobre fundo
      claro — tinha paleta própria escrita à mão em 9 lugares. */
@@ -621,6 +634,34 @@ dialog#dlgPlano::backdrop { background: rgba(20,23,31,.5); }
 .bar-chart .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
 .bar-chart .bar { width: 100%; max-width: 26px; background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; }
 .bar-chart .bar-label { font-size: .7rem; color: var(--text-dim); margin-top: 6px; white-space: nowrap; }
+
+/* "Exibições por dia" empilhada por ponto (19/09/2026, pedido do dono) —
+   .bar-pilha é o mesmo .bar de antes (mesma altura proporcional via
+   data-pct/aplicarBarras), só que agora é um contêiner: cada .bar-seg
+   dentro dela também tem seu próprio data-pct, relativo à altura JÁ
+   resolvida da pilha — por isso as duas percentagens (pilha e segmento)
+   coexistem sem conflito. O espaçador de 2px entre segmentos (skill
+   dataviz) usa border-top + box-sizing:border-box em vez de gap, pra não
+   somar altura além da pilha em barras baixas. */
+.bar-chart .bar-pilha { width: 100%; max-width: 26px; display: flex; flex-direction: column; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 2px; }
+.bar-chart .bar-seg { width: 100%; box-sizing: border-box; border-top: 2px solid var(--card); }
+.bar-chart .bar-seg:first-child { border-top: none; }
+.bar-chart .bar-seg.serie-1 { background: var(--serie-1); }
+.bar-chart .bar-seg.serie-2 { background: var(--serie-2); }
+.bar-chart .bar-seg.serie-3 { background: var(--serie-3); }
+.bar-chart .bar-seg.serie-4 { background: var(--serie-4); }
+.bar-chart .bar-seg.serie-5 { background: var(--serie-5); }
+.bar-chart .bar-seg.serie-outros { background: var(--serie-outros); }
+
+.legenda-serie { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 14px; font-size: .78rem; color: var(--text-dim); }
+.legenda-serie .chip { display: inline-flex; align-items: center; gap: 6px; }
+.legenda-serie .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.legenda-serie .swatch.serie-1 { background: var(--serie-1); }
+.legenda-serie .swatch.serie-2 { background: var(--serie-2); }
+.legenda-serie .swatch.serie-3 { background: var(--serie-3); }
+.legenda-serie .swatch.serie-4 { background: var(--serie-4); }
+.legenda-serie .swatch.serie-5 { background: var(--serie-5); }
+.legenda-serie .swatch.serie-outros { background: var(--serie-outros); }
 
 /* Gráfico de barras horizontais (exibições por ponto). */
 .bar-chart-h { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }

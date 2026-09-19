@@ -127,8 +127,9 @@ window.aplicarBarras = function aplicarBarras(raiz) {
   const alvos = (raiz || document).querySelectorAll('[data-pct]:not([data-pct-ok])');
   alvos.forEach((el) => {
     const pct = Math.max(0, Math.min(100, Number(el.dataset.pct) || 0));
-    // .bar cresce de baixo pra cima (altura); .fill cresce pro lado (largura).
-    el.style[el.classList.contains('bar') ? 'height' : 'width'] = pct + '%';
+    // .fill cresce pro lado (largura); tudo o resto (.bar, .bar-pilha, os
+    // segmentos empilhados dentro dela) cresce de baixo pra cima (altura).
+    el.style[el.classList.contains('fill') ? 'width' : 'height'] = pct + '%';
     el.setAttribute('data-pct-ok', '');
   });
 };
