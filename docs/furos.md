@@ -842,3 +842,16 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · onde: docs/api.md:88 e CLAUDE.md (estação 4)
   · evidência: docs/api.md:88 diz 'As 60 rotas estão listadas uma a uma de propósito'. CLAUDE.md fala em 55 rotas de /admin. O número real é 65: `grep -rhoE "router\.(get|post|patch|put|delete)\('/admin/[^']*'" src/ | sort -u | wc -l` = 63, mais POST /admin/login (src/server.js:126) e POST /admin/logout (src/server.js:142). A tabela…
   · conserto: Corrigir '60' para '65' em docs/api.md:88 e a contagem correspondente no CLAUDE.md.
+
+---
+
+## Novo, 19/09/2026 — achado ao construir a escada de 5 planos do comodato
+
+Não veio de varredura — apareceu ao implementar o Plano Inicial
+(`inicial-1m`, migration 063) e revisar o texto do contrato de comodato
+contra o que o sistema hoje entrega. Confirmado lendo o código, não hipótese.
+
+**O Plano Inicial (1 ponto incluído) não garante que o ponto escolhido seja a própria tela do dono** *(regra de negócio)*
+  · onde: `src/pontos/comodato.js` (`ajustarPlanoIncluido`) e RN-42 (`src/anunciantes/routes.js`, escolha/distribuição automática de pontos)
+  · evidência: `ajustarPlanoIncluido` só troca `anunciantes.plano_id`; nunca grava em `anunciantes_pontos`. Sem escolha manual do dono em `PUT /anunciantes/me/pontos`, RN-42 distribui automaticamente por um embaralhamento estável (`${anuncianteId}-${pontoId}`) entre TODOS os pontos `em_operacao` da rede — não há preferência pelo ponto do próprio dono. Com `pontos_incluidos=3` (o Plano Básico de antes, dado hoje pela modalidade "troca por tela") a chance de o sorteio incluir o próprio ponto era razoável numa rede pequena; com `pontos_incluidos=1` (o Plano Inicial novo, dado por "recebe os R$ 50") a intenção declarada do dono — "1 ponto (a própria tela instalada no comércio dele)" — só se realiza se o sorteio acertar esse único ponto, ou se o dono escolher manualmente depois.
+  · conserto: Decidir se `ajustarPlanoIncluido`/`aplicarModalidade` (`src/pontos/comodato.js`) devem gravar `anunciantes_pontos` com o próprio ponto na mesma transação que concede o Plano Inicial (pré-seleção automática do que já é óbvio pro caso de 1 ponto só), ou deixar como está e reforçar no onboarding que o dono precisa confirmar a escolha em `PUT /anunciantes/me/pontos`. Registrado em `docs/funcional.md`, RN-43, como furo em aberto — não corrigido nesta rodada.

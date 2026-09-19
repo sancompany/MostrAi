@@ -300,22 +300,36 @@ rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
 
 **RN-43 — O comodato é uma escolha entre dinheiro e tela, e as duas dão
 tela.** Quem cede a parede escolhe uma das duas opções, na candidatura:
-· **"Recebe os R$ 50"** — R$ 50/mês na conta mais o plano básico incluído
-  (`comodato-basico`: 45 s/hora em até 3 pontos, peça de 15s, 1 criativo) =
-  13,5 horas de tela por mês. **Não pode assinar plano de catálogo** enquanto
-  estiver recebendo: `POST /anunciantes/:id/assinar` recusa e explica a troca.
-· **"Troca os R$ 50 por tela"** — sem dinheiro, e o Essencial inteiro
-  incluído = 27 horas por mês, o dobro. **Pode** assinar Destaque ou Máximo,
-  com `credito_comodato_mensal` de R$ 50 abatendo a mensalidade.
+· **"Recebe os R$ 50"** — R$ 50/mês na conta mais o **Plano Inicial**
+  incluído (`inicial-1m`: 60 s/hora, `pontos_incluidos=1`, peça de 15s, 1
+  criativo) = 6 horas de tela por mês. A intenção do dono é que esse ponto
+  único seja a própria tela instalada no comércio dele — mas
+  `pontos_incluidos=1` sozinho **não garante isso**: a escolha de QUAL ponto
+  cobre a conta segue a RN-42 (embaralhamento estável entre TODOS os pontos
+  `em_operacao` da rede, se o dono não escolher manualmente em
+  `PUT /anunciantes/me/pontos`), então com 1 vaga só, o sorteio automático
+  pode cair num ponto que não é o dele. **Furo em aberto, não corrigido
+  nesta rodada** — falta decidir se a concessão do Plano Inicial deveria
+  pré-selecionar o próprio ponto do dono (gravando em `anunciantes_pontos` na
+  mesma transação de `ajustarPlanoIncluido`), ou se o dono só resolve isso
+  escolhendo manualmente depois de virar ponto. Benefício reduzido de
+  propósito, à parte desse furo: é a troca pelos R$ 50 em caixa, não um
+  segundo presente cheio (decisão do dono, 19/09/2026). **Não pode assinar
+  plano de catálogo** enquanto estiver recebendo: `POST /anunciantes/:id/assinar`
+  recusa e explica a troca.
+· **"Troca os R$ 50 por tela"** — sem dinheiro, e o **Plano Básico** inteiro
+  incluído (`comodato-basico`: 45 s/hora em até 3 pontos, peça de 15s, 1
+  criativo) = 14 horas de tela por mês, mais que o dobro do Inicial. **Pode**
+  assinar Destaque ou Máximo, com `credito_comodato_mensal` de R$ 50 abatendo
+  a mensalidade.
 **O crédito vale SÓ no Destaque e no Máximo.** No Essencial não abate nada,
-porque o Essencial já É o que ele ganhou por abrir mão dos R$ 50 — abater ali
-também seria gastar os mesmos R$ 50 duas vezes (ele teria o Essencial de
-cortesia e ainda assinaria um segundo por R$ 49).
+porque o Básico incluído nesta opção já é o que ele ganhou por abrir mão dos
+R$ 50 — abater ali também seria gastar os mesmos R$ 50 duas vezes.
 **A troca de modalidade tem mão única no autoatendimento:** trocar a ajuda de
 custo POR TELA o dono do ponto faz sozinho e na hora
 (`POST /anunciantes/me/comodato/trocar-por-tela`); VOLTAR a receber os R$ 50
 só sai pelo admin (`PATCH /admin/pontos/:id`). Abrir mão do dinheiro não custa
-nada à Mostraí — ela para de pagar e ele ganha o dobro de tela. Voltar a
+nada à Mostraí — ela para de pagar e ele ganha mais tela. Voltar a
 receber é despesa nova e recorrente, e entra no caixa do mês. Sem a
 assimetria, dava pra pingar entre as modalidades e sacar a ajuda de custo só
 nos meses em que ela valesse mais, o que ninguém concilia.
@@ -323,22 +337,41 @@ O plano incluído é concedido na MESMA transação que cria o ponto, e nunca po
 cima de plano que a conta já tenha — dono de ponto que já era cliente pagante
 continua no plano que paga. *Violada:* a rota de assinar recusa. *Quem vê:* o
 dono do ponto, no painel e na fatura.
-> **As duas opções custam quase o mesmo ao Mostraí** — R$ 99,50 (R$ 50 de
-> caixa + R$ 49,50 de estoque) contra R$ 99,00 (só estoque). O comerciante
-> escolhe pelo que prefere, não por qual é o negócio melhor: não existe
-> arbitragem entre elas. E a opção B não tira nada do caixa, que com R$ 2.500
-> de equipamento por ponto e receita zero é o que decide no lançamento.
-> **O abatimento de R$ 50 no Destaque e no Máximo não é desconto de verdade,
-> e isso é uma qualidade:** quem pega o Destaque desembolsa R$ 199 mas deixa
-> de receber R$ 50, então paga os R$ 249 da tabela. O preço de catálogo não é
-> corroído e nenhum comerciante da cidade vai poder dizer que o vizinho
-> comprou o Destaque pela metade. O único presente real é o Essencial da
-> opção B: R$ 99 por R$ 50 abertos mão, 2x — proporção que se defende sozinha
-> para quem hospeda o equipamento.
 > **O que SAIU:** a cota de autoanúncio (`cota_slots_hora`) foi a zero nas
 > duas opções. Ela rodava só na tela do próprio dono e valia ~R$ 16,50/mês na
-> melhor das hipóteses — trocar R$ 50 por aquilo era um negócio 4,5x contra o
-> comerciante. O plano incluído põe ele na REDE, e vale o que os R$ 50 valem.
+> melhor das hipóteses — trocar R$ 50 por aquilo era um negócio ruim contra o
+> comerciante. O plano incluído põe ele na REDE (mesmo que só na própria
+> tela, no caso do Inicial), e é o que substitui aquilo.
+> **Antes da migration 063 (19/09/2026)** as duas opções entregavam,
+> respectivamente, o próprio `comodato-basico` e o `essencial-1m` inteiro —
+> dois degraus, não quatro. O dono pediu uma escada de cinco (Inicial,
+> Básico, Essencial, Pro, Prime) com o Inicial reduzido de propósito; como o
+> que ele descreveu pro degrau do meio já era, byte a byte, o
+> `comodato-basico` existente, só o Inicial precisou de plano novo — a
+> migration só criou esse e repontou as duas modalidades um degrau acima.
+
+**RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
+*(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom
+próprio (prefixo `PT-`, tabela `cupons_ponto` — namespace separado do
+`codigo_cupom` de vendedor, que nunca tem hífen). Um comerciante que se
+cadastra com esse cupom **e paga** pelo menos uma vez vira um crédito
+permanente pro dono do ponto (`indicacoes_pagas`, uma linha por indicado,
+nunca por renovação — cancelamento depois não tira o crédito). **Nunca
+comissão em dinheiro** — isso já existe pra vendedor, por outro mecanismo.
+Em vez disso, créditos acumulados liberam de graça o próprio plano de
+anúncio do dono do ponto, um degrau de cada vez: **3 créditos → Essencial,
+7 → Pro (`destaque`), 10 → Prime (`maximo`)**. Nunca sobrescreve cobertura
+PAGA em dia — se a conta está pagando o próprio plano quando o crédito
+completa o limiar, o upgrade fica pendente e entra sozinho assim que essa
+cobertura vencer (reavaliação diária, `scripts/conciliar.js`) ou quando o
+próximo crédito chegar. Nunca rebaixa quem já está num tier igual ou acima.
+Planos de comodato (Inicial/Básico) não contam como "já no Essencial" pra
+essa comparação, mesmo tendo `tier='essencial'` no banco como o Essencial de
+verdade — sem essa distinção o crédito nunca tiraria uma conta do comodato
+pro Essencial pago. *Violada:* não há caminho — o UPDATE que aplica o
+upgrade tem a mesma condição "não pagando em dia" no próprio WHERE, como
+trava atômica. *Quem vê:* o dono do ponto, num card no próprio painel
+(`GET /anunciantes/me/indicacoes`), com o progresso até o próximo degrau.
 
 **RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
 17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto

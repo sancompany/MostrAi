@@ -58,7 +58,7 @@ async function carregarExtrato() {
 // cupom de vendedor (public/anunciante/vendedor.page.js) — link com ?ref=,
 // copiar, mandar no WhatsApp —, mas sem comissão nem chave Pix: aqui o
 // prêmio é o plano subir de tier sozinho, nunca dinheiro.
-const NOME_TIER = { destaque: 'Pro', maximo: 'Prime' };
+const NOME_TIER = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' };
 
 async function carregarIndicacoes() {
   const cartao = document.getElementById('cupomIndicacaoCard');
@@ -81,7 +81,7 @@ async function carregarIndicacoes() {
         ? `Você já garantiu o plano ${NOME_TIER[d.tierGanho]} de graça. Faltam ${d.faltam} indicados pagantes pro ${NOME_TIER[d.proximoTier]}.`
         : `Você já garantiu o plano ${NOME_TIER[d.tierGanho]} de graça — o mais alto que existe.`;
     } else {
-      progresso.textContent = `${d.creditos} de ${d.faltam + d.creditos} indicados pagantes pro plano ${NOME_TIER.destaque} de graça. Faltam ${d.faltam}.`;
+      progresso.textContent = `${d.creditos} de ${d.faltam + d.creditos} indicados pagantes pro plano ${NOME_TIER[d.proximoTier]} de graça. Faltam ${d.faltam}.`;
     }
     cartao.hidden = false;
   } catch (err) {

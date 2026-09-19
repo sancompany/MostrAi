@@ -53,6 +53,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | GET | `/anunciantes/:id/exibicoes.csv?dias=N` | Comprovante de veiculacao em planilha (RN-19). `dias` entre 1 e 365, padrao 30. |
 | GET | `/anunciantes/:id/pontos` | Pontos da conta (papel `ponto`). |
 | POST | `/anunciantes/me/pontos` | Dono de ponto cadastra outro endereço (entra como `lead`, com Tela 1). |
+| GET | `/anunciantes/me/indicacoes` | Créditos de indicação do dono de ponto (migration 062, 19/09/2026): `{codigo, creditos, tierGanho, proximoTier, faltam}`. `codigo` (prefixo `PT-`) é `null` sem papel `ponto` ainda. `tierGanho` é o tier de anúncio mais alto que já foi liberado de graça por indicação (`essencial` a partir de 3 comerciantes indicados que pagaram, `destaque` a partir de 7, `maximo` a partir de 10 — nunca comissão em dinheiro, isso já existe pra vendedor por outro mecanismo). `proximoTier`/`faltam` somem quando já bateu o Máximo. |
 | GET | `/anunciantes/:id/dispositivos` | Telas dos pontos da conta, com exibições/anunciantes em 30 dias e `ponto_status`. |
 | GET | `/anunciantes/:id/dispositivos/:dispositivoId/painel` | O que rodou naquela tela: `{porAnunciante, porDia}`. |
 | POST | `/anunciantes/:id/dispositivos/:dispositivoId/pin` | Dono do ponto define o PIN da própria tela (guardado com hash, mesma regra do `/admin/dispositivos/:id/pin`). |

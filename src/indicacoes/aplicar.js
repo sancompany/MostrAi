@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const planosRepo = require('../financeiro/planos-repository');
+const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const repo = require('./repository');
 const { tierElegivel } = require('./regras');
 
@@ -27,7 +28,16 @@ async function aplicarUpgradeSeElegivel(pontoContaId, db = pool) {
   if (!conta) return null;
 
   const planoAtual = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
-  const tierAtual = planoAtual?.tier;
+  // O plano Inicial e o Básico também têm tier='essencial' no banco (a
+  // coluna `tier`, migration 005, nunca ganhou um valor próprio pra eles —
+  // só id/nome/preço os distingue do Essencial de verdade). Sem essa
+  // exclusão, uma conta no comodato mais básico pareceria "já no Essencial"
+  // pra este comparador, e o crédito de indicação nunca a levaria pro
+  // Essencial de verdade. `idsDePlanosDeComodato` é consultado ao vivo (não
+  // por id fixo) porque é exatamente o conjunto que `planos_ponto` entrega
+  // de graça hoje — muda sozinho se o dono repontar uma modalidade.
+  const idsComodato = await planosPontoRepo.idsDePlanosDeComodato(db);
+  const tierAtual = planoAtual && !idsComodato.includes(planoAtual.id) ? planoAtual.tier : null;
   // Já está no tier alvo ou acima dele — nada a fazer (nunca rebaixa).
   if (tierAtual && ORDEM_TIER.indexOf(tierAtual) >= ORDEM_TIER.indexOf(tierAlvo)) return null;
 

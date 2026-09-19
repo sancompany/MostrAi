@@ -56,4 +56,16 @@ async function criar(dados) {
   return rows[0];
 }
 
-module.exports = { listarAtivos, listarTodos, buscarPorId, atualizar, criar };
+// Os ids de plano que hoje são "só de comodato" — o que alguma modalidade
+// entrega de graça (`plano_incluido_id`), nunca o que se assina pagando.
+// Consultado ao vivo, nunca por id fixo: quando o dono reponta uma
+// modalidade pra outro plano (como a migration 063 fez), o conjunto muda
+// sozinho, sem precisar mexer em quem usa isto (src/indicacoes/aplicar.js).
+async function idsDePlanosDeComodato(db = pool) {
+  const { rows } = await db.query(
+    'SELECT DISTINCT plano_incluido_id FROM planos_ponto WHERE plano_incluido_id IS NOT NULL',
+  );
+  return rows.map((r) => r.plano_incluido_id);
+}
+
+module.exports = { listarAtivos, listarTodos, buscarPorId, atualizar, criar, idsDePlanosDeComodato };
