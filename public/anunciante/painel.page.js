@@ -48,16 +48,25 @@ async function carregar() {
   // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
   // lugar ao card de ativação. Com o papel, segue o fluxo normal.
   const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async (estado) => {
-    preencherStatusBanner();
-    document.getElementById('bonusAnuncios').innerHTML = cardBonus(estado, 'ponto');
     const planoUrl = new URLSearchParams(window.location.search).get('plano');
     const temPlanoPagoAtivo =
       ANUNCIANTE.plano_id &&
       !ANUNCIANTE.plano_cortesia &&
       ANUNCIANTE.data_expiracao &&
       new Date(ANUNCIANTE.data_expiracao) > new Date();
-    if (planoUrl && !ANUNCIANTE.plano_id) confirmarPlano(planoUrl);
-    else if (planoUrl && temPlanoPagoAtivo && planoUrl !== ANUNCIANTE.plano_id) confirmarTrocaPlano(planoUrl);
+    // Confirmação de pedido é uma tela à parte (19/09/2026): enquanto o
+    // anunciante decide, nem o banner padrão nem o dashboard (ou o bloqueio
+    // de plano) aparecem por baixo — ver mostrarConfirmacao().
+    if (planoUrl && !ANUNCIANTE.plano_id) {
+      montarConfirmacaoPedido(planoUrl);
+      return;
+    }
+    if (planoUrl && temPlanoPagoAtivo && planoUrl !== ANUNCIANTE.plano_id) {
+      montarConfirmacaoTroca(planoUrl);
+      return;
+    }
+    preencherStatusBanner();
+    document.getElementById('bonusAnuncios').innerHTML = cardBonus(estado, 'ponto');
     // Sem plano ainda, a tela inteira (KPIs, gráficos e o upload de
     // criativo) fica bloqueada — pedido do dono, 19/09/2026. Antes dava
     // pra subir 1 criativo mesmo sem plano "pra não travar o meio do
@@ -345,59 +354,100 @@ async function carregarKpiPontos() {
   }
 }
 
+// Tela exclusiva de confirmação de pedido (19/09/2026, pedido do dono): antes
+// entrava como um painel dentro do banner de status, por cima do dashboard ou
+// do bloqueio de plano — duas telas de "escolha um plano" empilhadas na
+// mesma página. Agora só isto aparece enquanto o anunciante decide; ver
+// carregar(), que já não chama o resto do dashboard nesse caso.
+function mostrarSecaoConfirmacao() {
+  document.getElementById('secaoStatusBanner').hidden = true;
+  document.getElementById('secaoDashboard').hidden = true;
+  const box = document.getElementById('confirmacaoPedido');
+  document.getElementById('secaoConfirmacaoPedido').hidden = false;
+  return box;
+}
+
 // Confirmação antes de gerar cobrança. Antes, chegar no painel com
 // ?plano=X já criava a cobrança e jogava o anunciante no checkout sem ele
 // nunca ver quanto ia pagar — e um F5 nessa URL gerava outra cobrança.
-async function confirmarPlano(planoId) {
-  const box = document.getElementById('statusBanner');
+async function montarConfirmacaoPedido(planoId) {
+  const box = mostrarSecaoConfirmacao();
+  box.innerHTML = '<p class="form-hint u-m-0">Carregando seu pedido...</p>';
   let plano = null;
+  let pontos = [];
   try {
-    plano = (await (await fetch(`${API_BASE_URL}/planos`)).json()).find((p) => p.id === planoId);
+    const [planos, listaPontos] = await Promise.all([
+      fetch(`${API_BASE_URL}/planos`).then((r) => r.json()),
+      fetch(`${API_BASE_URL}/pontos`)
+        .then((r) => r.json())
+        .catch(() => []),
+    ]);
+    plano = planos.find((p) => p.id === planoId);
+    if (Array.isArray(listaPontos)) pontos = listaPontos;
   } catch {
-    /* mostra o resumo sem valor */
+    /* plano fica null e cai no aviso de erro abaixo */
   }
   if (!plano) {
-    box.insertAdjacentHTML(
-      'beforeend',
-      '<p class="form-msg err">Não encontramos esse plano. Escolha de novo em Planos.</p>',
-    );
+    box.innerHTML =
+      '<p class="form-msg err">Não encontramos esse plano. <a href="/planos.html">Escolha de novo em Planos.</a></p>';
     return;
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
-  const ciclo = plano.compromisso_meses === 1 ? 'por mês' : `a cada ${plano.compromisso_meses} meses`;
-  // O que ele está comprando, na MESMA língua do card da vitrine. Aqui dizia
-  // `${plano.frequencia_hora}x por hora em cada tela` — o modelo ANTIGO, de
-  // antes da grade por segundos (migration 045). Era a última frase que o
-  // cliente lia antes de pagar, e ela descrevia outro produto.
-  //
-  // `horas_por_mes` vem calculado do servidor (GET /planos), com a mesma
-  // função da vitrine — não recalculado aqui, que viraria a terceira conta
-  // pro mesmo número.
-  const oQueLeva = [
-    plano.horas_por_mes ? `até <b>${plano.horas_por_mes} horas de tela por mês</b> na rede` : null,
+  const ciclo = plano.compromisso_meses === 1 ? 'mensal' : `a cada ${plano.compromisso_meses} meses`;
+  // Cada característica do plano em uma linha, como um resumo de compra, em
+  // vez da frase corrida que existia antes. `horas_por_mes` vem calculado
+  // pelo servidor (GET /planos), com a mesma função da vitrine — não
+  // recalculado aqui, que viraria a terceira conta pro mesmo número.
+  const linhas = [
+    plano.horas_por_mes ? ['Horas de tela por mês', `até ${plano.horas_por_mes}h na rede`] : null,
     plano.pontos_incluidos
-      ? `em até ${plano.pontos_incluidos} ${plano.pontos_incluidos === 1 ? 'ponto' : 'pontos'}`
-      : null,
-    plano.duracao_maxima_segundos ? `peça de até ${plano.duracao_maxima_segundos}s` : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
-  box.insertAdjacentHTML(
-    'beforeend',
-    `
-    <div class="panel u-mt-14">
-      <h3 class="u-m-0 u-mb-6">Confirmar assinatura</h3>
-      <p class="u-m-0 u-mb-4"><b>${esc(plano.nome)}</b>${oQueLeva ? ` — ${oQueLeva}` : ''}</p>
-      <p class="u-m-0 u-mb-8">Você vai pagar <b>${fmtBRL(total)}</b> ${ciclo} (${fmtBRL(plano.valor_mensal)}/mês).</p>
-      <!-- A ressalva da cobrança e o arrependimento vivem AQUI (decisão do
-           dono, 18/09/2026), não na vitrine: é nesta tela que a pessoa decide
-           pagar. Na vitrine eram interrupção no meio de quem ainda escolhia. -->
-      <p class="form-hint u-m-0 u-mb-12">A cobrança começa assim que o pagamento é confirmado, e não quando a
-        primeira tela subir. Se mudar de ideia, você tem 7 dias para pedir a devolução integral pelo painel.</p>
+      ? ['Pontos incluídos', `até ${plano.pontos_incluidos} ${plano.pontos_incluidos === 1 ? 'ponto' : 'pontos'}`]
+      : ['Pontos incluídos', 'todos os pontos da rede'],
+    plano.duracao_maxima_segundos ? ['Duração da peça', `até ${plano.duracao_maxima_segundos} segundos`] : null,
+    ['Cobrança', ciclo],
+  ].filter(Boolean);
+
+  // Quantos pontos a rede tem hoje, e o que acontece com as horas dos que
+  // ainda faltam (pedido do dono, 19/09/2026): mesma mecânica do aviso de
+  // cobertura já usado na vitrine e no painel com plano ativo (RN-49), agora
+  // também na hora de decidir a compra.
+  const naRede = pontos.length;
+  const veiculando = pontos.filter((p) => p.status === 'em_operacao').length;
+  const situacaoRede =
+    naRede === 0
+      ? 'A rede ainda não tem nenhum ponto ativo hoje.'
+      : `A rede tem hoje ${naRede} ${naRede === 1 ? 'ponto cadastrado' : 'pontos cadastrados'}${
+          veiculando !== naRede ? `, ${veiculando} já no ar` : ', todos no ar'
+        }.`;
+  const cobreMaisQueARede = plano.pontos_incluidos && veiculando > 0 && plano.pontos_incluidos > veiculando;
+  const explicacaoBancoHoras = cobreMaisQueARede
+    ? ` Enquanto a rede não chega no tamanho do seu plano, as horas dos pontos que faltam entram no banco de horas e se concentram nos pontos que já estão no ar, até a rede completar essa cobertura. Conforme novos pontos entram no ar, o tempo se espalha de volta.`
+    : '';
+
+  box.innerHTML = `
+    <p class="eyebrow">Confirmar pedido</p>
+    <h3 class="u-m-0 u-mb-4">${esc(plano.nome)}</h3>
+    <p class="form-hint u-m-0 u-mb-14">Revise os detalhes do seu plano antes de continuar.</p>
+    <div class="pedido-linhas">
+      ${linhas.map(([rotulo, valor]) => `<div class="pedido-linha"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}
+    </div>
+    <div class="pedido-total">
+      <span class="rotulo">Total ${ciclo}</span>
+      <b>${fmtBRL(total)}</b>
+    </div>
+    <p class="form-hint u-m-0 u-mb-14">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>
+    <div class="aviso-rede u-m-0"><b>${situacaoRede}</b>${explicacaoBancoHoras}</div>
+    <!-- A ressalva da cobrança e o arrependimento vivem AQUI (decisão do
+         dono, 18/09/2026), não na vitrine: é nesta tela que a pessoa decide
+         pagar. Na vitrine eram interrupção no meio de quem ainda escolhia. -->
+    <p class="form-hint u-m-0">A cobrança começa assim que o pagamento é confirmado, e não quando a
+      primeira tela subir. Se mudar de ideia, você tem 7 dias para pedir a devolução integral pelo painel.</p>
+    <div class="field-row">
       <button class="btn primary" id="btnConfirmarPlano">Ir para o pagamento</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
-    </div>`,
-  );
+    </div>
+    <p class="form-msg" id="msgConfirmacaoPedido"></p>
+  `;
   document.getElementById('btnConfirmarPlano').addEventListener('click', (e) => {
     e.target.disabled = true;
     // Tira o ?plano= da URL pra que um F5 não caia aqui de novo.
@@ -408,29 +458,30 @@ async function confirmarPlano(planoId) {
 
 // Troca de plano de quem já paga (POST /trocar-plano do Checkout, desde
 // 18/09/2026): cobra o acerto proporcional no cartão já salvo, na mesma
-// hora — sem redirecionar pra uma segunda tela de pagamento. O Checkout
-// não tem modo de "só calcular sem cobrar" (o valor nunca vem do corpo da
-// requisição, pra ninguém escolher quanto paga), então não dá pra mostrar
-// o número exato antes de confirmar; o botão avisa o que vai acontecer em
-// vez de prometer um valor que só o servidor sabe.
-async function confirmarTrocaPlano(planoNovoId) {
-  const box = document.getElementById('statusBanner');
+// hora, sem redirecionar pra uma segunda tela de pagamento. O Checkout não
+// tem modo de "só calcular sem cobrar" (o valor nunca vem do corpo da
+// requisição, pra ninguém escolher quanto paga), então não dá pra mostrar o
+// número exato antes de confirmar; o botão avisa o que vai acontecer em vez
+// de prometer um valor que só o servidor sabe.
+async function montarConfirmacaoTroca(planoNovoId) {
+  const box = mostrarSecaoConfirmacao();
   history.replaceState(null, '', '/anunciante/painel.html');
-  box.insertAdjacentHTML(
-    'beforeend',
-    `
-    <div class="panel u-mt-14" id="painelTrocaPlano">
-      <h3 class="u-m-0 u-mb-6">Confirmar troca de plano</h3>
-      <p class="u-m-0 u-mb-12">Se o plano novo custa mais, a diferença proporcional aos dias que faltam no seu
-        ciclo atual é cobrada agora, no cartão que você já tem salvo. Se custa menos, nada é cobrado nem
-        devolvido agora — o valor novo passa a valer só na sua próxima renovação.</p>
+  box.innerHTML = `
+    <p class="eyebrow">Confirmar pedido</p>
+    <h3 class="u-m-0 u-mb-14">Trocar de plano</h3>
+    <p class="u-m-0 u-mb-12">Se o plano novo custa mais, a diferença proporcional aos dias que faltam no seu
+      ciclo atual é cobrada agora, no cartão que você já tem salvo. Se custa menos, nada é cobrado nem
+      devolvido agora. O valor novo passa a valer só na sua próxima renovação.</p>
+    <div class="field-row">
       <button class="btn primary" id="btnConfirmarTroca">Trocar agora</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
-    </div>`,
-  );
+    </div>
+    <p class="form-msg" id="msgConfirmacaoPedido"></p>
+  `;
   document.getElementById('btnConfirmarTroca').addEventListener('click', async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Trocando...';
+    const msg = document.getElementById('msgConfirmacaoPedido');
     const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
       method: 'POST',
       credentials: 'include',
@@ -438,20 +489,23 @@ async function confirmarTrocaPlano(planoNovoId) {
       body: JSON.stringify({ planoNovoId }),
     });
     const corpo = await r.json().catch(() => ({}));
-    document.getElementById('painelTrocaPlano')?.remove();
     if (!r.ok) {
-      box.insertAdjacentHTML(
-        'beforeend',
-        `<p class="form-msg err">${esc(corpo.erro || 'Não foi possível trocar de plano.')} <a href="/planos.html">Escolher outro plano</a></p>`,
-      );
+      msg.innerHTML = `${esc(corpo.erro || 'Não foi possível trocar de plano.')} <a href="/planos.html">Escolher outro plano</a>`;
+      msg.className = 'form-msg err';
+      e.target.disabled = false;
+      e.target.textContent = 'Trocar agora';
       return;
     }
-    const msg = corpo.acerto?.cobrado
+    e.target.remove();
+    document.querySelector('#confirmacaoPedido .btn.ghost')?.remove();
+    const texto = corpo.acerto?.cobrado
       ? `Troca feita. Cobramos ${fmtBRL(corpo.acerto.valor)} de acerto no cartão salvo.`
-      : 'Troca feita. Como o plano novo é mais barato, nada foi cobrado agora — o valor novo vale a partir da próxima renovação.';
+      : 'Troca feita. Como o plano novo é mais barato, nada foi cobrado agora. O valor novo vale a partir da próxima renovação.';
+    msg.textContent = texto;
+    msg.className = 'form-msg ok';
     box.insertAdjacentHTML(
       'beforeend',
-      `<p class="form-msg ok">${esc(msg)}</p><button class="btn ghost" id="btnAtualizarPainel">Atualizar a página</button>`,
+      '<button class="btn ghost" id="btnAtualizarPainel">Atualizar a página</button>',
     );
     document.getElementById('btnAtualizarPainel').addEventListener('click', () => window.location.reload());
   });
@@ -461,8 +515,9 @@ async function confirmarTrocaPlano(planoNovoId) {
 // página pública, linkando pra cá com ?plano=X quando já logado); aqui só
 // sobra gerar a cobrança e mandar pro checkout.
 async function assinar(anuncianteId, planoId) {
-  const box = document.getElementById('statusBanner');
-  box.insertAdjacentHTML('beforeend', '<p class="soon">Gerando cobrança...</p>');
+  const msg = document.getElementById('msgConfirmacaoPedido');
+  msg.textContent = 'Gerando cobrança...';
+  msg.className = 'form-msg';
   const r = await fetch(`${API_BASE_URL}/anunciantes/${anuncianteId}/assinar`, {
     method: 'POST',
     credentials: 'include',
@@ -471,10 +526,9 @@ async function assinar(anuncianteId, planoId) {
   });
   if (!r.ok) {
     const erro = (await r.json().catch(() => ({}))).erro;
-    box.insertAdjacentHTML(
-      'beforeend',
-      `<p class="form-msg err">${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a></p>`,
-    );
+    msg.innerHTML = `${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a>`;
+    msg.className = 'form-msg err';
+    document.getElementById('btnConfirmarPlano').disabled = false;
     return;
   }
   const { checkoutUrl } = await r.json();
@@ -484,10 +538,10 @@ async function assinar(anuncianteId, planoId) {
   // avisar nada — melhor mostrar o erro do que redirecionar pra lugar
   // nenhum.
   if (!/^https?:\/\//.test(checkoutUrl)) {
-    box.insertAdjacentHTML(
-      'beforeend',
-      '<p class="form-msg err">Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env). Fale com o suporte técnico.</p>',
-    );
+    msg.textContent =
+      'Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env). Fale com o suporte técnico.';
+    msg.className = 'form-msg err';
+    document.getElementById('btnConfirmarPlano').disabled = false;
     return;
   }
   window.location.href = checkoutUrl;

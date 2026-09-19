@@ -1002,6 +1002,20 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .aviso-detalhe[open] summary::after { content: "\2013"; }
 .aviso-detalhe p { margin: 8px 0 0; color: var(--text-dim); font-size: .92rem; }
 
+/* Resumo de pedido (confirmação de assinatura, 19/09/2026): cada item do
+   plano numa linha própria, como um resumo de compra, em vez da frase
+   corrida que existia antes. */
+.pedido-linhas { border-top: 1px solid var(--border); }
+.pedido-linha {
+  display: flex; justify-content: space-between; gap: 16px; padding: 10px 0;
+  border-bottom: 1px solid var(--border); font-size: .92rem;
+}
+.pedido-linha span:first-child { color: var(--text-dim); }
+.pedido-linha span:last-child { font-weight: 600; text-align: right; }
+.pedido-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; }
+.pedido-total .rotulo { color: var(--text-dim); font-size: .92rem; }
+.pedido-total b { font-size: 1.5rem; }
+
 /* Campo que o servidor apontou como errado. A tela ja diz a frase; isto so
    leva o olho ate o campo. Some no proximo foco. */
 .campo-err { border-color: var(--err) !important; }
