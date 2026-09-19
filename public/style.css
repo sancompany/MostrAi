@@ -68,6 +68,7 @@ header.site {
   border-bottom: 1px solid var(--border);
 }
 header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; position: relative; }
+.header-left { display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; text-decoration: none; }
 .logo img { height: 28px; display: block; }
 nav.main { display: flex; gap: 24px; align-items: center; }

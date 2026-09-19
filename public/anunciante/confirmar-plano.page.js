@@ -48,6 +48,12 @@ async function montarConfirmacaoPedido(planoId) {
   }
   const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
   const ciclo = plano.compromisso_meses === 1 ? 'mensal' : `a cada ${plano.compromisso_meses} meses`;
+  // Nome do ciclo pro título ("Pro - Trimestral"), separado da frase usada
+  // na linha "Cobrança" ("a cada 3 meses") — pedido do dono, 19/09/2026: o
+  // nome do plano sozinho não diz qual ciclo essa confirmação é, e com
+  // troca de plano ou mais de um ciclo por tier isso importa de cara.
+  const NOME_CICLO = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+  const nomeCiclo = NOME_CICLO[plano.compromisso_meses] || `a cada ${plano.compromisso_meses} meses`;
   // Economia e equivalência mensal, condicionais (pedido do dono, 19/09/2026,
   // mesma regra da vitrine — ver montarPreco em planos.page.js): no ciclo
   // mensal o total JÁ é o valor por mês, então nenhuma das duas linhas diz
@@ -98,7 +104,7 @@ async function montarConfirmacaoPedido(planoId) {
 
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
-    <h3 class="u-m-0 u-mb-4">${esc(plano.nome)}</h3>
+    <h3 class="u-m-0 u-mb-4">${esc(plano.nome)} - ${esc(nomeCiclo)}</h3>
     <p class="form-hint u-m-0 u-mb-14">Revise os detalhes do seu plano antes de continuar.</p>
     ${
       linhasPreco.length
@@ -108,11 +114,10 @@ async function montarConfirmacaoPedido(planoId) {
         : ''
     }
     <div class="pedido-total">
-      <span class="rotulo">Total ${ciclo}</span>
+      <span class="rotulo">Total</span>
       <b>${fmtBRL(total)}</b>
     </div>
-    ${plano.compromisso_meses > 1 ? `<p class="form-hint u-m-0 u-mb-14">Equivale a ${fmtBRL(plano.valor_mensal)} por mês.</p>` : ''}
-    <p class="form-hint u-m-0 u-mb-4">O que está incluso</p>
+    <p class="form-hint u-mt-14 u-mb-4">O que está incluso</p>
     <div class="pedido-linhas">
       ${linhas.map(([rotulo, valor]) => `<div class="pedido-linha"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}
     </div>

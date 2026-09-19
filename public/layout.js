@@ -8,6 +8,8 @@
 //   publico   — menu do site (troca pelo menu da conta se já estiver logado)
 //   conta     — menu da conta; as abas seguem os papéis (anunciante/ponto/vendedor)
 //   minimo    — só o logo e, opcionalmente, data-layout-botao="Texto|/destino"
+//               (à direita) e/ou data-layout-botao-esq="Texto|/destino"
+//               (à esquerda do logo, ex.: um "Voltar" de checkout)
 //   nenhum    — não desenha nada (player, admin)
 // Requer /config.js antes.
 // Todo link de WhatsApp escrito no HTML carrega `data-wa` com a mensagem. O
@@ -93,12 +95,23 @@
   // Antes os 7 itens do menu público ficavam soltos, quebrados em duas linhas,
   // cada um com 20px de altura de toque — o mínimo usável é 44px. O topo
   // inteiro do celular era menu, e nenhum item dava pra acertar com o dedo.
+  // Botão à esquerda do logo (ex.: "Voltar" no checkout, pra não duplicar
+  // uma ação que a própria tela já oferece mais abaixo) — mesmo formato
+  // "Texto|destino" de data-layout-botao, só que do outro lado.
+  const botaoEsqDado = document.body.dataset.layoutBotaoEsq;
+  const botaoEsq = botaoEsqDado
+    ? (([texto, href]) => `<a class="btn ghost btn-voltar" href="${href}">${texto}</a>`)(botaoEsqDado.split('|'))
+    : '';
+
   document.body.insertAdjacentHTML(
     'afterbegin',
     `
     <header class="site">
       <div class="wrap">
-        <a class="logo" href="/"><img src="/img/logo-mostrai-wordmark.png" alt="Mostraí"></a>
+        <div class="header-left">
+          ${botaoEsq}
+          <a class="logo" href="/"><img src="/img/logo-mostrai-wordmark.png" alt="Mostraí"></a>
+        </div>
         <button type="button" class="menu-botao" id="btnMenu" aria-expanded="false" aria-controls="navPrincipal" aria-label="Abrir menu">
           <span></span><span></span><span></span>
         </button>
