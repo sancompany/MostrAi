@@ -133,10 +133,10 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← rolagem da home
   · **cliente sabe:** É a única explicação de formato (9:16, 15–30s) e de que existe aprovação antes do ar. Não diz quanto tempo leva a aprovação, nem o que acontece se o criativo for reprovado, nem quantos criativos o…
 
-**index.page.js — prova social de fluxo** — `fetch(API_BASE_URL + '/pontos/fluxo')` → se `pessoasPorMes` for verdadeiro, escreve em #heroFluxo "<b>N pessoas</b> veem sua marca por mês nos pontos já instalados da Mostraí." e tira o hidden. Catch vazio.
+**index.page.js — prova social de fluxo** — `fetch(API_BASE_URL + '/pontos/fluxo')` → se `pessoasPorMes` for verdadeiro, escreve em #heroFluxo "<b>N pessoas</b> veem sua marca por mês nos pontos da Mostraí." e tira o hidden. Sem "já instalados" (19/09/2026, pedido do dono) — o texto não diz mais se o ponto está no ar ou em instalação. Catch vazio.
   · `public/index.page.js` · rotas: `GET /pontos/fluxo → src/pontos/routes.js:24 → repository.somaFluxoMensal()` · papéis: visitante anônimo
   · ← carregamento da home
-  · **cliente sabe:** O número é afirmado sem metodologia: não diz que é estimativa declarada pelos donos dos pontos, nem que só conta ponto ativo. Quando a soma é menor que 1.000, ou quando a API cai, a linha…
+  · **cliente sabe:** O número é afirmado sem metodologia: não diz que é estimativa declarada pelos donos dos pontos, nem que só conta ponto ativo (`status = 'em_operacao'`, apesar do texto não mencionar mais isso). O piso de 1.000 pra exibir saiu (19/09/2026, pedido do dono — só continua null em zero); quando a API cai, a linha…
 
 **index.html — JSON-LD (@graph Organization + WebSite)** — Bloco application/ld+json com Organization (#organizacao) — nome, url, logo, description, email mostrai@sancocore.com.br, telephone +5516994635946, areaServed Matão/SP, address, parentOrganization San & Co., contactPoint de vendas — e WebSite (#site). O…
   · `public/index.html`, `public/planos.html`, `public/contato.html` · papéis: robô de busca
@@ -163,7 +163,7 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← clique do visitante
   · **cliente sabe:** Parcialmente. O #cycleNote muda por ciclo e explica a cobrança ("Você paga uma vez a cada 3 meses. O valor por mês abaixo é a referência...", "Sem compromisso: cobrança todo mês, cancele quando…
 
-**planos.page.js — #planosFluxo** — Mesmo `GET /pontos/fluxo` da home; escreve "Hoje a rede já alcança <b>N pessoas por mês</b> nos pontos instalados." e tira o hidden. Catch vazio.
+**planos.page.js — #planosFluxo** — Mesmo `GET /pontos/fluxo` da home; escreve "Os pontos estimam <b>N pessoas por mês</b> passando na frente das telas." e tira o hidden. Sem "no ar" (19/09/2026, pedido do dono, mesmo motivo do texto da home). Catch vazio.
   · `public/planos.page.js` · rotas: `GET /pontos/fluxo` · papéis: visitante anônimo
   · ← carregamento de /planos.html
   · **cliente sabe:** Mesma lacuna da home: número sem metodologia, ausência silenciosa.
@@ -484,7 +484,7 @@ Papel PONTO (dono do comércio que cede a parede) no Mostraí. Caminho completo:
   · ← aba 'Opções de comodato' do admin  → radios de escolha em convite.page.js e modos.js
   · **cliente sabe:** Só dentro dos dois formulários que desenham os radios. Não existe página pública que liste as opções com preço — /comodato.html descreve as duas modalidades em prosa e remete 'aos valores exibidos no…
 
-**Vitrine pública 'Onde estamos'** — listarPublicos() devolve id, nome, cidade, endereco, status e categoria_nome dos pontos com status IN ('ativo','aguardando_instalacao','reparo') — nunca responsavel_contato. somaFluxoMensal() soma fluxo_estimado_mensal só dos ativos e devolve null abaixo de…
+**Vitrine pública 'Onde estamos'** — listarPublicos() devolve id, nome, cidade, endereco, status e categoria_nome dos pontos com status IN ('ativo','aguardando_instalacao','reparo') — nunca responsavel_contato. somaFluxoMensal() soma fluxo_estimado_mensal só dos ativos e devolve null só em zero (19/09/2026 — o piso de 1.000 pra exibir saiu, pedido do dono)…
   · `public/pontos.html`, `public/pontos.page.js`, `src/pontos/repository.js` · rotas: `GET /pontos`, `GET /pontos/fluxo` · papéis: público
   · ← menu público
   · **cliente sabe:** Não avisado. O nome e o endereço do comércio viram página pública indexável assim que o status sai de 'lead' — inclusive em 'aguardando_instalacao', ou seja, antes de qualquer tela existir no local.…

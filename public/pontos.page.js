@@ -29,8 +29,7 @@ fetch(`${API_BASE_URL}/pontos`)
       <div class="stat"><b>${cidades}</b><span>${cidades > 1 ? 'Cidades atendidas' : 'Cidade atendida'}</span></div>
     `
       : '';
-    // Soma de fluxo só aparece com 1.000+ pessoas somadas (ver
-    // GET /pontos/fluxo) — número pequeno demais não vira prova social.
+    // Soma de fluxo só aparece acima de zero (ver GET /pontos/fluxo).
     fetch(`${API_BASE_URL}/pontos/fluxo`)
       .then((r) => r.json())
       .then(({ pessoasPorMes }) => {

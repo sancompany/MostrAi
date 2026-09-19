@@ -196,7 +196,9 @@ fetch(`${API_BASE_URL}/pontos/fluxo`)
     const el = document.getElementById('planosFluxo');
     // "alcança" era medicao; isto e estimativa de fluxo declarada por cada
     // ponto na instalacao. A palavra mudou pra o que o numero e de verdade.
-    el.innerHTML = `Os pontos no ar estimam <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> passando na frente das telas.`;
+    // Sem "no ar" (19/09/2026, pedido do dono) — mesmo motivo do texto da
+    // home: não importa se o ponto está instalado ou não, só o total.
+    el.innerHTML = `Os pontos estimam <b>${pessoasPorMes.toLocaleString('pt-BR')} pessoas por mês</b> passando na frente das telas.`;
     el.hidden = false;
   })
   .catch(() => {});

@@ -381,7 +381,7 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
 
 **O número de alcance da rede é autodeclarado e apresentado como fato** *(falta pra parecer sério)*
   · onde: public/index.page.js:7, public/planos.page.js:130, public/pontos.page.js:17
-  · evidência: index.page.js:7 escreve '<b>N pessoas</b> veem sua marca por mês nos pontos já instalados da Mostraí.' A fonte é somaFluxoMensal (src/pontos/repository.js:103): SUM(fluxo_estimado_mensal) dos pontos ativos. Esse campo é preenchido pelo próprio comerciante num input opcional — public/seja-um-ponto.html:105 'Média de…
+  · evidência: index.page.js:7 escreve '<b>N pessoas</b> veem sua marca por mês nos pontos da Mostraí.' (19/09/2026: era '...nos pontos já instalados...', o dono pediu pra tirar a menção a instalado ou não — o texto ficou mais genérico, não mais preciso). A fonte é somaFluxoMensal (src/pontos/repository.js:103): SUM(fluxo_estimado_mensal) dos pontos ativos — continua contando só `status = 'em_operacao'`, mas o texto não diz isso. Esse campo é preenchido pelo próprio comerciante num input opcional — public/seja-um-ponto.html:105 'Média de…
   · conserto: Acrescentar a legenda 'estimativa informada pelos próprios estabelecimentos parceiros' abaixo do número em public/index.page.js:7, public/planos.page.js:130 e public/pontos.page.js:17.
 
 **Não há CNPJ e nenhuma página de venda identifica o fornecedor nem dá endereço** *(falta pra parecer sério)*

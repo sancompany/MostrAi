@@ -137,17 +137,16 @@ async function listarPorAnunciante(anuncianteId) {
 }
 
 // Soma de fluxo estimado só dos pontos com status "ativo" — nunca devolve o
-// valor por ponto isolado (ver comentário da coluna na migration 016). Some
-// menos de 1.000, não mostra nada no site (número pequeno demais pra ser
-// prova social).
-const FLUXO_MINIMO_PARA_EXIBIR = 1000;
+// valor por ponto isolado (ver comentário da coluna na migration 016). O
+// piso de 1.000 pra exibir saiu (19/09/2026, pedido do dono) — só continua
+// null em zero, porque "0 pessoas" não é prova social nenhuma.
 async function somaFluxoMensal() {
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM(fluxo_estimado_mensal), 0)::int AS total
      FROM pontos WHERE status = 'em_operacao'`,
   );
   const total = rows[0].total;
-  return total >= FLUXO_MINIMO_PARA_EXIBIR ? total : null;
+  return total > 0 ? total : null;
 }
 
 // Bloqueio de escolha por ponto cheio (G.7, docs/PENDENCIAS.md, migration

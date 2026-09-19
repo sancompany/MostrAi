@@ -22,8 +22,8 @@ router.get('/pontos', async (_req, res) => {
 });
 
 // Pública — soma de fluxo estimado dos pontos ativos, pra home/planos (prova
-// social). Só a soma, nunca por ponto — e só aparece com 1.000+ pessoas
-// somadas (ver repository).
+// social). Só a soma, nunca por ponto — e só aparece acima de zero (ver
+// repository).
 router.get('/pontos/fluxo', async (_req, res) => {
   res.json({ pessoasPorMes: await repo.somaFluxoMensal() });
 });
