@@ -42,3 +42,49 @@ body.offline .vazio-aviso { display: block; }
 /* Alvo invisível pra abrir o painel da tela: 5 toques no canto em 3s, ou a
    tecla P no controle/teclado. Nada visível pra quem passa na frente. */
 #alvoPainel { position: fixed; top: 0; right: 0; width: 18vmin; height: 18vmin; z-index: 3; }
+
+/* Só existe no DOM quando a URL contém ?debug=1. Fica fora do #stage para
+   permanecer legível mesmo quando o conteúdo da TV está girado. */
+#playerDebug {
+  position: fixed;
+  z-index: 10;
+  right: 8px;
+  bottom: 8px;
+  width: min(560px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 8px;
+  background: rgb(8 12 18 / 88%);
+  color: #f4f7fb;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 45%);
+}
+#playerDebug button {
+  position: sticky;
+  top: 0;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 18%);
+  background: #ff7a1a;
+  color: #1a0f00;
+  font: 700 12px/1.2 inherit;
+  cursor: pointer;
+}
+#playerDebug .player-debug-corpo { padding: 10px; }
+#playerDebug.recolhido { width: 170px; max-height: none; overflow: hidden; }
+#playerDebug.recolhido .player-debug-corpo { display: none; }
+#playerDebug dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 3px 8px; margin: 8px 0; }
+#playerDebug dt { color: #aeb8c5; }
+#playerDebug dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+#playerDebug pre {
+  max-height: 190px;
+  margin: 8px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 50%);
+  color: #d9f99d;
+  white-space: pre-wrap;
+}
