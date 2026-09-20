@@ -54,6 +54,8 @@ async function carregar() {
     carregarCriativos();
     carregarBancoHoras();
   });
+  montarCardPonto(estado);
+  montarLinkVendedor(estado);
   if (estado && !estado.modos.anunciante.liberado) {
     document.getElementById('statusBanner').innerHTML =
       `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
@@ -84,6 +86,94 @@ function montarBloqueioPlano() {
         <a class="btn primary" href="/planos.html">Escolher plano</a>
       </div>`;
   container.parentNode.insertBefore(caixa, container);
+}
+
+// "Vendas" saiu do topo (19/09/2026): quem já tem o papel vendedor perdia
+// todo caminho até o próprio painel de vendas sem essa linha — a página
+// continua existindo, só não tem mais aba.
+function montarLinkVendedor(estado) {
+  const caixa = document.getElementById('linkVendedor');
+  if (!caixa || !estado?.papeis?.includes('vendedor')) return;
+  caixa.innerHTML = `<p class="form-hint u-m-0"><a href="/anunciante/vendedor.html">Ver meu painel de vendas →</a></p>`;
+}
+
+// Candidatura a ponto, migrada pro fim do Painel (19/09/2026, pedido do
+// dono: "todas informações restantes já foram pegas" — nome, endereço,
+// cidade, UF e CEP já estão na própria conta, então o card pede só o que é
+// exclusivo do ponto). Bem mais simples que o formulário completo em
+// modos.js (CARDS.ponto, ainda usado por /anunciante/ponto.html): sem
+// escolha de comodato aqui — quem se candidata combina isso no WhatsApp.
+function montarCardPonto(estado) {
+  const caixa = document.getElementById('cardPonto');
+  if (!caixa || !estado) return;
+
+  if ((estado.papeis || []).includes('ponto')) {
+    caixa.innerHTML = `
+      <div class="card wide u-ta-c">
+        <p class="form-hint u-m-0">Você já é um ponto da rede Mostraí. <a href="/anunciante/ponto.html">Ver o painel do meu ponto →</a></p>
+      </div>`;
+    return;
+  }
+
+  const pedido = estado.modos?.ponto?.pedido;
+  if (pedido) {
+    caixa.innerHTML = `
+      <div class="card wide modo-card u-ta-c">
+        <p class="eyebrow">Ser um ponto</p>
+        <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
+        <p class="form-hint">A gente chama no WhatsApp pra combinar a visita e a instalação.</p>
+      </div>`;
+    return;
+  }
+
+  caixa.innerHTML = `
+    <form class="card wide modo-card" id="formCardPonto">
+      <p class="eyebrow">Ser um ponto</p>
+      <h3>Ganhe uma tela no seu comércio</h3>
+      <p class="form-hint u-m-0 u-mb-6">A tela, a instalação e o conteúdo são por nossa conta — você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta a média de movimento do seu comércio e a gente chama pra combinar.</p>
+      <div><label for="cp_fluxo">Movimento médio mensal (pessoas, opcional)</label><input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
+      <div><label for="cp_mensagem">Algo mais? (opcional)</label><textarea id="cp_mensagem" name="mensagem" rows="2"></textarea></div>
+      <button class="btn primary" type="submit">Quero ser um ponto</button>
+      <p class="form-msg" id="cardPontoMsg" role="status"></p>
+    </form>`;
+
+  document.getElementById('formCardPonto').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('cardPontoMsg');
+    msg.textContent = 'Enviando...';
+    msg.className = 'form-msg';
+    try {
+      const r = await fetch(`${API_BASE_URL}/conta/modos/ponto/pedir`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        // O resto (nome, endereço, cidade, UF, CEP, ramo) já está na conta —
+        // pedir de novo aqui seria retrabalho do que o cliente já preencheu.
+        body: JSON.stringify({
+          nome_comercio: ANUNCIANTE.nome_empresa,
+          endereco: ANUNCIANTE.endereco,
+          cidade: ANUNCIANTE.cidade,
+          uf: ANUNCIANTE.uf,
+          cep: ANUNCIANTE.cep,
+          segmento: ANUNCIANTE.categoria_livre || null,
+          fluxo_estimado_mensal: e.target.fluxo_estimado_mensal.value || null,
+          mensagem: e.target.mensagem.value.trim() || null,
+        }),
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.textContent = corpo.erro || 'não deu pra enviar';
+        msg.className = 'form-msg err';
+        return;
+      }
+      msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
+      msg.className = 'form-msg ok';
+      setTimeout(() => window.location.reload(), 900);
+    } catch {
+      msg.textContent = 'Sem conexão. Tente de novo.';
+      msg.className = 'form-msg err';
+    }
+  });
 }
 
 function preencherStatusBanner() {

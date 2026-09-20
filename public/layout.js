@@ -62,13 +62,17 @@
   // Menu da conta — painel único com três modos (v2.1). Os três aparecem
   // sempre; o que a conta não tem papel fica marcado como bloqueado e, ao
   // abrir, mostra o card de ativação (modos.js) em vez do dashboard.
+  // "Meu ponto" e "Vendas" saíram do topo (19/09/2026, pedido do dono): ponto
+  // vira card de candidatura no fim do próprio Painel (ver painel.page.js) e
+  // vendedor deixou de ser algo que se busca no público — quem tem o papel
+  // continua tendo, só não tem mais aba própria aqui em cima. As duas páginas
+  // (`ponto.html`, `vendedor.html`) continuam existindo pra quem já tem o
+  // papel, só não tem mais link direto no menu.
   function navConta() {
     const aba = (href, id, texto) =>
       `<a href="${href}" id="${id}" class="modo-aba"${ehAqui(href) ? ' aria-current="page"' : ''}>${texto}</a>`;
     return `
-      ${aba('/anunciante/painel.html', 'navDashboard', 'Anúncios')}
-      ${aba('/anunciante/ponto.html', 'navMeuPonto', 'Meu ponto')}
-      ${aba('/anunciante/vendedor.html', 'navVendas', 'Vendas')}
+      ${aba('/anunciante/painel.html', 'navDashboard', 'Painel')}
       <a href="/planos.html" id="navPlanos"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
       <button type="button" class="avatar-btn" id="btnPerfil" aria-label="Meu perfil">
         <img id="avatarFoto" alt="" hidden><span id="avatarInicial"></span>
@@ -84,8 +88,6 @@
       el.title = liberado ? '' : 'Modo ainda não ativado, clique pra ativar';
     };
     marcar('navDashboard', papeis.includes('anunciante'));
-    marcar('navMeuPonto', papeis.includes('ponto'));
-    marcar('navVendas', papeis.includes('vendedor'));
   };
 
   const NAVS = { publico: navPublico, conta: navConta, minimo: navMinimo };
@@ -201,9 +203,7 @@
         return `<a href="${href}" id="nav${papel}" class="modo-aba ${liberado ? '' : 'bloqueado'}"${liberado ? '' : ' title="Modo ainda não ativado, clique pra ativar"'}>${texto}</a>`;
       };
       document.querySelector('header.site nav.main').innerHTML = `
-        ${aba('/anunciante/painel.html', 'anunciante', 'Anúncios')}
-        ${aba('/anunciante/ponto.html', 'ponto', 'Meu ponto')}
-        ${aba('/anunciante/vendedor.html', 'vendedor', 'Vendas')}
+        ${aba('/anunciante/painel.html', 'anunciante', 'Painel')}
         <a href="/planos.html"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
         <a class="avatar-btn" href="${casa}" aria-label="Meu perfil">
           ${conta.foto_url ? `<img src="${esc(conta.foto_url)}" alt="">` : `<span>${esc(inicial)}</span>`}

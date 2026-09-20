@@ -36,7 +36,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    mais aprovação de conta (RN-34); o painel abre na hora.
 5. Escolhe o plano e assina → é levado ao San Checkout.
 6. Paga. O webhook `criada` chega, a conta vira `ativo` e a cobertura começa.
-7. Sobe o vídeo na aba **Anúncios**. O sistema normaliza com ffmpeg e gera a thumb.
+7. Sobe o vídeo na aba **Painel**. O sistema normaliza com ffmpeg e gera a thumb.
 8. O administrador aprova o criativo — esse é o único portão que existe.
 9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano — e é essa frequência que a tela entrega, com a rede vazia ou cheia (RN-39).
 10. O anunciante acompanha exibições na própria aba.
@@ -44,7 +44,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.2 Dono de ponto — do painel à tela no ar
 
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
-2. De dentro do painel, pede o modo **Meu ponto**: nome do estabelecimento, endereço, segmento, fluxo de pessoas (opcional). O resto (nome, contato) já é da conta.
+2. No fim do próprio **Painel** (19/09/2026: "Meu ponto" saiu do topo, virou card lá embaixo), se candidata a ponto: só o movimento médio mensal e uma mensagem livre, os dois opcionais — nome, endereço, cidade, UF e CEP já vêm da conta, sem repetir.
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
 4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto (com a Tela 1) nasce ali.
 5. O administrador cadastra as telas extras, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
@@ -99,7 +99,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | abas Anúncios / Meu ponto / Vendas | assinar, subir criativo, ver exibições, baixar o comprovante de veiculação (CSV), e **pedir a arte pelo WhatsApp** (anúncio simples incluído, ou gravação orçada à parte) | perfil, ponto, vendedor |
+| Painel | `/anunciante/painel.html` | conta logada | aba única (19/09/2026: era "Anúncios", "Meu ponto" e "Vendas" saíram do topo) | assinar, subir criativo, ver exibições, baixar o comprovante de veiculação (CSV), **pedir a arte pelo WhatsApp**, e **se candidatar a ponto** (card no fim, só movimento médio mensal + mensagem livre) | perfil, ponto (só quem já é) |
 | Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | telas do ponto, cota, **sinal de cada tela**, e o **extrato** do que já foi pago e do que está em aberto | definir PIN, acompanhar | — |
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
@@ -131,7 +131,7 @@ Escrito por grupo, porque o padrão se repete.
 
 **Painel (`/anunciante/painel.html`)**
 - *Vazio:* aba sem papel mostra o **card de ativação**, não uma tela em branco.
-  Na aba Anúncios, sem plano ativo (nunca assinou, ou cancelou/venceu sem
+  No Painel, sem plano ativo (nunca assinou, ou cancelou/venceu sem
   trocar) o dashboard inteiro (KPIs, gráficos e o upload de criativo) fica
   atrás de um card de bloqueio com CTA "Escolher plano" (19/09/2026) — o
   upload de auto-serviço também recusa no backend (400) nesse estado; é

@@ -43,8 +43,8 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← index.html, planos.html, pontos.html, contato.html, 404.html (todas com data-layout="publico")  → / / /planos.html / /pontos.html
   · **cliente sabe:** Parcial. "Onde estamos?" e "Anuncie" são autoexplicativos; "Seja um ponto" e "Seja um vendedor" não dizem o que é ponto nem o que o vendedor ganha — a explicação só existe dentro da página de destino…
 
-**navConta() — menu da conta (não é superfície institucional, mas substitui o menu público)** — Monta as abas Anúncios (`/anunciante/painel.html`), Meu ponto (`/anunciante/ponto.html`), Vendas (`/anunciante/vendedor.html`), o link Planos e o botão de avatar #btnPerfil.
-  · `public/layout.js` · papéis: anunciante, ponto, vendedor
+**navConta() — menu da conta (não é superfície institucional, mas substitui o menu público)** — Monta a aba única Painel (`/anunciante/painel.html`, chamava-se "Anúncios" até 19/09/2026), o link Planos e o botão de avatar #btnPerfil. "Meu ponto" e "Vendas" saíram do topo (pedido do dono: ponto virou card de candidatura no fim do próprio Painel, vendedor deixou de ser algo aberto ao público) — as duas páginas (`ponto.html`, `vendedor.html`) continuam existindo e navegáveis por link direto pra quem já tem o papel, só sem aba própria aqui.
+  · `public/layout.js` · papéis: anunciante
   · ← páginas de /anunciante/  → /anunciante/painel.html / /anunciante/ponto.html / /anunciante/vendedor.html
   · **cliente sabe:** Sim, via aplicarPapeisNoMenu: aba de papel não ativado recebe `title="Modo ainda não ativado — clique pra ativar"` e classe `bloqueado`.
 
@@ -519,17 +519,22 @@ Papel PONTO (dono do comércio que cede a parede) no Mostraí. Caminho completo:
 
 ## Painel do anunciante
 
-PAINEL DO ANUNCIANTE (aba "Anúncios" do painel único) — /anunciante/painel.html, servido por /home/user/MostrAi/public/anunciante/painel.html + /home/user/MostrAi/public/anunciante/painel.page.js, com quatro scripts compartilhados carregados nesta ordem: /config.js (API_BASE_URL, esc, fmtBRL, linkWhatsApp, aplicarBarras, trava de duplo envio), /layout.js (cabeçalho+rodapé, navConta, aplicarPapeisNoMenu, window.ROTULOS, window.carregarConta), /perfil.js (dialog #dlgPerfil: dados da conta, foto, LGPD/CDC, sair, excluir conta), /formulario.js e /modos.js (montarModo/cardBonus/ligarResgateAnuncio). O HTML tem body data-layout="conta" e NENHUM link de navegação — as abas Anúncios / Meu ponto /…
+PAINEL DO ANUNCIANTE (aba única "Painel", renomeada de "Anúncios" em 19/09/2026) — /anunciante/painel.html, servido por /home/user/MostrAi/public/anunciante/painel.html + /home/user/MostrAi/public/anunciante/painel.page.js, com quatro scripts compartilhados carregados nesta ordem: /config.js (API_BASE_URL, esc, fmtBRL, linkWhatsApp, aplicarBarras, trava de duplo envio), /layout.js (cabeçalho+rodapé, navConta, aplicarPapeisNoMenu, window.ROTULOS, window.carregarConta), /perfil.js (dialog #dlgPerfil: dados da conta, foto, LGPD/CDC, sair, excluir conta), /formulario.js e /modos.js (montarModo/cardBonus/ligarResgateAnuncio). O HTML tem body data-layout="conta" e NENHUM link de navegação — a aba Painel é montada em runtime por navConta(). No fim da página, `montarCardPonto()` (painel.page.js) desenha a candidatura a ponto (ver entrada própria abaixo).
 
 **Abertura do painel e porta de sessão** — carregar() faz GET /anunciantes/me com credentials:'include'. 401 → window.location.href='/anunciante/login.html'. Qualquer outro !r.ok → throw, e o catch final escreve 'Não foi possível carregar sua conta agora.' em #statusBanner (o guard existe justamente…
   · `public/anunciante/painel.page.js`, `src/anunciantes/routes.js`, `src/anunciantes/repository.js` · rotas: `GET /anunciantes/me` · papéis: anunciante, ponto, vendedor
   · ← /anunciante/login.html / /anunciante/cadastro.html (sessão já criada no cadastro) / /convite.html  → /anunciante/login.html
   · **cliente sabe:** Você entra uma vez; o painel é o mesmo para anunciar, para ser ponto e para vender. Sessão vencida devolve para o login, nunca para uma tela em branco.
 
-**Menu, abas por papel e avatar** — navConta() em layout.js injeta as abas Anúncios (#navDashboard), Meu ponto (#navMeuPonto), Vendas (#navVendas), Planos e o botão de avatar #btnPerfil. aplicarPapeisNoMenu({papeis}) marca com a classe .bloqueado a aba cujo papel a conta não tem e põe…
-  · `public/layout.js`, `public/modos.js` · rotas: `GET /anunciantes/me`, `GET /conta/modos` · papéis: anunciante, ponto, vendedor
-  · → /anunciante/ponto.html / /anunciante/vendedor.html / /planos.html
-  · **cliente sabe:** As três abas aparecem sempre. A que você ainda não tem fica apagada e, ao clicar, abre o pedido de ativação em vez de uma tela vazia.
+**Menu e avatar (19/09/2026: uma aba só)** — navConta() em layout.js injeta a aba Painel (#navDashboard), Planos e o botão de avatar #btnPerfil. aplicarPapeisNoMenu({papeis}) marca com a classe .bloqueado a aba Painel se a conta não tiver o papel anunciante (caso hoje inexistente na prática — toda conta nasce com ele). "Meu ponto" e "Vendas" não têm mais aba: `ponto.html`/`vendedor.html` continuam existindo, só sem link no topo.
+  · `public/layout.js`, `public/modos.js` · rotas: `GET /anunciantes/me`, `GET /conta/modos` · papéis: anunciante
+  · → /planos.html
+  · **cliente sabe:** Não tem mais aba pra clicar e descobrir "ainda não ativei isso" — quem quer ser ponto vê o card lá no fim do próprio Painel; quem já é vendedor ou ponto sabe pelo link que a gente manda (ou pela home) onde entrar.
+
+**Candidatura a ponto no fim do Painel (19/09/2026, substitui a aba "Meu ponto" pra quem ainda não é ponto)** — `montarCardPonto(estado)` em `painel.page.js`, chamada de `carregar()` com o mesmo `estado` de `GET /conta/modos` que `montarModo` já buscou. Três estados, mesma lógica de `CARDS.ponto` em `modos.js` só que sem o formulário completo: (1) `papeis.includes('ponto')` → só um link, "Ver o painel do meu ponto →", pra `/anunciante/ponto.html` (o dashboard de verdade, com telas/indicações, não muda em nada); (2) candidatura em aberto (`estado.modos.ponto.pedido`) → aviso "Pedido enviado em [data]"; (3) nenhum dos dois → o card novo: só "Movimento médio mensal" e uma mensagem livre, os dois opcionais, e um `POST /conta/modos/ponto/pedir` que PREENCHE `nome_comercio`/`endereco`/`cidade`/`uf`/`cep`/`segmento` a partir de `ANUNCIANTE` (a conta já logada) em vez de pedir de novo — o backend exige `nome_comercio` e `endereco` (`src/conta/modos.js`), e os dois sempre existem pra quem tem o papel anunciante (obrigatórios no cadastro). Sucesso recarrega a página, que aí já mostra o estado (2).
+  · `public/anunciante/painel.html` (`#cardPonto`), `public/anunciante/painel.page.js`, `src/conta/modos.js` · rotas: `GET /conta/modos`, `POST /conta/modos/ponto/pedir` · papéis: anunciante
+  · → /anunciante/ponto.html (só quem já é ponto)
+  · **cliente sabe:** Sim — o card muda de cara conforme o estado (candidatar-se / aguardando / já é ponto), nunca mostra formulário pra quem já pediu ou já é.
 
 **Gate do modo Anúncios (card de ativação)** — montarModo('anunciante', #dashboardAnuncios, cb) consulta GET /conta/modos. Se modos.anunciante.liberado → executa o callback (banner, bônus, exibições, criativos, KPI de pontos). Se não → esconde #dashboardAnuncios (container.hidden=true), insere…
   · `public/modos.js`, `src/conta/modos.js` · rotas: `GET /conta/modos`, `POST /conta/modos/anunciante` · papéis: ponto, vendedor
@@ -744,10 +749,10 @@ O papel VENDEDOR é um dos três papéis da conta única (`anunciantes.papeis te
   · ← links salvos de antes da v2  → /anunciante/login.html
   · **cliente sabe:** A mensagem do 410 diz exatamente para onde ir. Boa.
 
-**Navegação da aba Vendas** — Não existe link para /anunciante/vendedor.html escrito em HTML: a aba é montada em runtime por `public/layout.js`. Em `navConta()` a aba 'Vendas' sempre aparece; `aplicarPapeisNoMenu` adiciona a classe `bloqueado` e o title 'Modo ainda não ativado — clique…
-  · `public/layout.js`, `public/modos.js` · papéis: conta logada
-  · ← qualquer página com data-layout='conta' ou 'publico'  → /anunciante/vendedor.html
-  · **cliente sabe:** Coerente: a aba bloqueada é convite a ativar, não um erro.
+**Navegação da aba Vendas — REMOVIDA do menu (19/09/2026)** — Não existe mais aba nem link pra /anunciante/vendedor.html no menu (nem público, nem da conta). A página continua no ar e funcional pra quem já tem o papel vendedor; o caminho até ela agora é `montarLinkVendedor()` (`painel.page.js`) — uma linha só, "Ver meu painel de vendas →", que aparece no fim do Painel quando `papeis.includes('vendedor')`, sem inflar o menu com uma aba que quase ninguém usa.
+  · `public/layout.js`, `public/anunciante/painel.page.js` · rotas: `GET /anunciantes/me` · papéis: vendedor
+  · ← link no fim de /anunciante/painel.html  → /anunciante/vendedor.html
+  · **cliente sabe:** Sim — o link só some se a conta não tiver o papel; quem já é vendedor sempre acha o próprio painel, só que agora dentro do Painel em vez de lá em cima.
 
 **Estados sem tela:** QUANDO o vendedor recebe. É o buraco central. `comissoes.pago_em` só muda por clique manual do admin em `PATCH… · Comissão gerada sem avisar ninguém. `src/financeiro/email.js` não tem nenhuma função dirigida ao vendedor. O anunciante… · Comissão marcada como paga sem avisar ninguém. A badge muda no painel se o vendedor entrar. Sem comprovante, sem… · Vendedor com `status='inativo'`: `registrarComissaoSeHouver` filtra por `v.status='aprovado'` e simplesmente retorna. O… · Cupom inexistente ou digitado errado: `POST /anunciantes/cadastro` aceita qualquer string em `indicado_por_cupom`,… · Auto-indicação: `if (vendedor.conta_id === anunciante.id) return` — bloqueio correto, mas totalmente silencioso. O… · Conta com o papel 'vendedor' sem linha em `vendedores`. `papeis` está em `CAMPOS_ATUALIZAVEIS` de… · Perfil de vendedor com `chave_pix` NULL. `liberarPapelNaConta` chama `vendedoresRepo.criar(..., {chave_pix:… · `ROTULOS.vendedor.pendente_aprovacao` em `public/layout.js` é um estado que o banco proíbe: o CHECK da migration 019… · Indicado que se cadastrou com o cupom mas ainda não pagou é invisível para o vendedor. O painel só lista `comissoes`,… · Candidatura de vendedor recusada (`PATCH /admin/candidaturas/:id` com status 'recusada'): nenhuma notificação, nenhuma… · Mudança de `comissao_percentual` no admin não tem vigência nem histórico. O painel do vendedor passa a mostrar o valor…
 
