@@ -2,6 +2,11 @@
 
 ## NOW
 
+**Ordem combinada com o dono, 20/09/2026: ele termina primeiro uma revisão
+do site em andamento pelo Codex (fora deste canal); os dois bugs abaixo
+ficam reservados pra serem resolvidos por este agente (Claude Code), não
+pelo Codex — explícito, não assumir o contrário.**
+
 - **Descobrir a causa real de "anúncio nunca passou na TV"** (conta San
   União, único ponto da rede: "Bruno Henrique Sanches").
   - Objetivo: identificar por que os anúncios dessa conta não estão
@@ -60,10 +65,18 @@
     `src/playlist/congelamento-repository.js`, `tests/`.
   - Critério de conclusão: teste roda em `npm test`/`npm run check` e falha
     se a garantia for quebrada.
-- **Confirmar se o job `ApuracaoBancoHoras` existe no Northflank**
-  (`docs/PENDENCIAS.md`, item A.14; `RUNBOOK.md` já registra a incerteza).
-  - Critério de conclusão: job confirmado existente e rodando mensalmente,
-    ou criado se não existir.
+- **Criar o job `ApuracaoBancoHoras` no Northflank — confirmado que NÃO
+  existe** (20/09/2026, checado via API do Northflank durante o incidente
+  de senha do Postgres: só há `Conciliacao` e `Backup` no projeto
+  `mostrai`; `docs/PENDENCIAS.md`, item A.14; `RUNBOOK.md` já registrava
+  isso como incerteza, agora é fato). O déficit mensal do banco de horas
+  nunca fecha sozinho sem esse job.
+  - Critério de conclusão: job criado (cron mensal, `npm run
+    apurar-banco-horas`) e uma primeira execução manual bem-sucedida —
+    **lembrar de configurar a `DATABASE_URL` (e os outros env vars que o
+    script precisar) direto nesse job**, já que jobs no Northflank não
+    herdam a variável do serviço (ver
+    `docs/erros/2026-09-20-senha-do-postgres-divergente-entre-supabase-e-northflank.md`).
 - **Investigar se `bonus.ponto` sempre `null` em `GET /conta/modos` é
   intencional** (`src/conta/modos.js`) — o banner "você ganhou uma tela"
   nunca aparece no Painel hoje.
