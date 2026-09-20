@@ -85,17 +85,41 @@
 
 ## BUGS
 
-Ver `NOW` acima para os dois bugs abertos com investigação em andamento
-(anúncio não veicula; troca de plano falhando). Nenhum outro bug aberto
-confirmado nesta sessão além desses dois.
+Ver `NOW` e a atualização da auditoria abaixo. Além dos dois relatos
+anteriores, a auditoria confirmou falhas de integridade na confirmação/banco
+de horas e condições de corrida no congelamento.
 
 ## TECHNICAL DEBT
 
-- `categoria_id` do ponto nunca é gravado por nenhum caminho de cadastro —
-  o filtro de "sem concorrente na sua tela" existe no motor mas nunca
-  dispara na prática (`docs/furos.md`, já catalogado). Consertar exige
-  decidir onde coletar `categoria_id` do ponto em cada um dos caminhos de
-  criação (candidatura, admin, `POST /anunciantes/me/pontos`).
+- `docs/furos.md` e registros antigos dizem que `categoria_id` do ponto nunca
+  é gravado. Isso está desatualizado: cadastro de endereço/admin gravam e
+  produção possui o campo. Falta teste ponta a ponta do bloqueio.
 - Rate limit de tentativas (`src/lib/limite-tentativas.js`) é em memória —
   reinicia a cada deploy/restart. Aceitável hoje pela escala, mas não
   sobrevive a duas instâncias sem sincronizar.
+
+## AUDITORIA 20/09/2026 — prioridade acima da fila anterior
+
+- **Fechar integridade `player → confirmação → métrica`**: revisar a TV física; decidir o que constitui conclusão; implementar confirmação durável/idempotente/retry e alinhar dashboard/contador. O anúncio investigado foi programado; a lacuna está depois da playlist. Decidir em item separado se falha física deve criar saldo diferente do banco de capacidade atual.
+- **Corrigir concorrência do congelamento**: a requisição perdedora da primeira criação deve reler a base vencedora; extras concorrentes devem ser deduplicados/serializados. Cobrir com teste.
+- **Corrigir registro de categoria na documentação**: código atual e produção gravam `categoria_id`; falta teste ponta a ponta do bloqueio e regenerar `docs/furos.md`.
+- **Triar dependências** em mudança separada, sem `--force`: 1 crítica, 3 altas e 6 moderadas no audit atual.
+
+## PLAYER/TV — próximo passo após investigação de 20/09/2026
+
+- Executar o roteiro da TV em `docs/investigacao-player-confirmacao-2026-09-20.md`, capturando playlist, mídia, eventos, heartbeat e status/body de `/played`.
+- O modo temporário `?debug=1` já está pronto e não muda a contagem; usá-lo se DevTools remoto não estiver disponível.
+- Depois do diagnóstico, aprovar contrato `playing` = iniciada, `ended` = concluída, aceite idempotente = confirmada; definir separadamente se falha física alimenta outro saldo ou o banco atual.
+
+## DEBUG DO PLAYER PRONTO — próximo passo é teste físico
+
+- Abrir a URL completa da TV com `&debug=1`; confirmar painel e logs com prefixo `[MostrAi Player Debug]`.
+- Observar uma execução completa e registrar playlist, `play()`, eventos, `/played`, heartbeat e avanço; repetir com queda antes/durante a mídia.
+- Comparar contadores do painel PIN antes/depois e exportar HAR sem headers/chave.
+- Depois do teste, retirar `debug=1` e classificar a evidência antes de alterar contabilização.
+
+## MAPA FUNCIONAL 20/09/2026 — revisão manual ativa
+
+- Inventário completo de usuário/admin: `docs/mapa-funcional-completo-2026-09-20.md`.
+- **Novo bug confirmado, não corrigido:** `src/admin/metrica.js` usa `p.status = 'ativo'` na amortização histórica; status atual é `em_operacao`, então a aba Métrica zera esse custo. Tratar quando o dono chegar nessa tela ou autorizar.
+- Continuar da metade atual da revisão indicada pelo dono; não reiniciar auditoria nem retomar espontaneamente os bugs técnicos pausados.

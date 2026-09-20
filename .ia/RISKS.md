@@ -41,13 +41,10 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 
 ## Produto / arquitetura
 
-- **Filtro "sem concorrente na sua tela" é inofensivo hoje**: nenhum
-  caminho de criação de ponto grava `categoria_id` no ponto, então a
-  exclusão de concorrente em `anunciantesElegiveis` nunca dispara na
-  prática. Isso significa que a promessa "seu anúncio não aparece na tela
-  de um concorrente seu" **não é verdade hoje**, embora o mecanismo exista.
-  Já catalogado como furo (`docs/furos.md`). Criticidade: média-alta se
-  algum anunciante já foi informado dessa garantia comercialmente.
+- **Filtro "sem concorrente" ainda precisa de teste ponta a ponta**: a
+  hipótese anterior de ausência de `categoria_id` foi refutada pelo código e
+  por produção. O risco restante é comportamental: provar que todas as formas
+  de criar/editar conta e ponto resultam na exclusão esperada na playlist.
 - **Congelamento da hora (ADR-005) não tem teste automatizado dedicado** em
   `tests/` — só foi verificado manualmente nesta sessão (script descartável
   não commitado). Uma regressão futura no comportamento "sempre no fim"
@@ -94,3 +91,15 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   específico do ambiente de execução (`PW_CHROME`) — não documentado como
   instalar esse binário do zero num ambiente novo (só como reaproveitar o
   que já existe). Ver `.ia/OPERATIONS.md`.
+
+## Atualização — auditoria de 20/09/2026
+
+- **Crítico — integridade de confirmação:** `/played` sai no começo da tentativa e falhas são ignoradas, sem identidade, retry ou idempotência por execução. Métricas podem divergir da reprodução real.
+- **Decisão de produto — banco de horas:** ele foi implementado deliberadamente para déficit de capacidade (`pedidas - programadas`), não falha física. A drenagem também ocorre quando a recuperação cabe na programação. Decidir se falha da TV cria mecanismo separado; não classificar o cálculo atual isoladamente como bug.
+- **Alto — concorrência do congelamento:** duas primeiras requisições podem responder bases distintas; extras concorrentes podem duplicar.
+- **Correção de risco antigo:** categoria do ponto é gravável e existe em produção. O risco real restante é ausência de teste ponta a ponta do bloqueio, não ausência do dado.
+- **Dependências:** audit atual contém 1 vulnerabilidade crítica, 3 altas e 6 moderadas.
+
+## Mapa funcional — achado de 20/09/2026
+
+- **Métrica financeira (P1):** a consulta histórica de margem em `src/admin/metrica.js` filtra o status antigo `p.status = 'ativo'`; desde a migration 045 o ponto operacional é `em_operacao`. A amortização histórica fica zerada e pode superestimar margem. A Visão geral usa o status correto. Não corrigido durante o inventário.

@@ -41,6 +41,115 @@ let playlist = [];
 let indice = 0;
 let painelAberto = false;
 
+// Diagnóstico temporário da TV física. Fora de ?debug=1 todas as funções
+// abaixo viram no-op e nenhum elemento, log ou acesso a sessionStorage é
+// criado. Nunca registra a chave do aparelho, headers, cookies ou a URL
+// completa (query strings podem carregar credenciais em integrações futuras).
+const DEBUG_ATIVO = params.get('debug') === '1';
+const DEBUG_PREFIXO = '[MostrAi Player Debug]';
+const DEBUG_STORAGE = `mostrai-player-debug-${dispositivoId}`;
+const DEBUG_LIMITE = 40;
+let debugPainel = null;
+let debugAtual = null;
+let debugErros = 0;
+let debugUltimoPlayed = '—';
+let debugUltimoHeartbeat = '—';
+let debugUltimaPlaylist = '—';
+let debugLinhas = [];
+
+function urlDebug(valor) {
+  if (!valor) return '—';
+  if (String(valor).startsWith('blob:')) return 'blob local';
+  try {
+    const url = new URL(valor, window.location.origin);
+    const partes = url.pathname.split('/').filter(Boolean);
+    return `${url.host}/${partes.slice(-2).join('/')}`;
+  } catch {
+    return String(valor).split('?')[0].slice(-80);
+  }
+}
+
+function horaDebug() {
+  return new Date().toLocaleTimeString('pt-BR', { hour12: false });
+}
+
+function salvarDebug() {
+  try {
+    sessionStorage.setItem(DEBUG_STORAGE, JSON.stringify(debugLinhas));
+  } catch {}
+}
+
+function renderizarDebug(status, evento) {
+  if (!debugPainel) return;
+  const atual = debugAtual || {};
+  debugPainel.querySelector('[data-debug="status"]').textContent = status || 'aguardando';
+  debugPainel.querySelector('[data-debug="peca"]').textContent =
+    atual.indice === undefined
+      ? '—'
+      : `#${atual.indice} · anunciante ${atual.anuncianteId ?? 'institucional'} · criativo ${atual.criativoId ?? 'n/d'}`;
+  debugPainel.querySelector('[data-debug="duracao"]').textContent = atual.duracao ? `${atual.duracao}s` : '—';
+  debugPainel.querySelector('[data-debug="janela"]').textContent = atual.janela || '—';
+  debugPainel.querySelector('[data-debug="url"]').textContent = atual.url || '—';
+  debugPainel.querySelector('[data-debug="evento"]').textContent = evento || '—';
+  debugPainel.querySelector('[data-debug="played"]').textContent = debugUltimoPlayed;
+  debugPainel.querySelector('[data-debug="heartbeat"]').textContent = debugUltimoHeartbeat;
+  debugPainel.querySelector('[data-debug="playlist"]').textContent = debugUltimaPlaylist;
+  debugPainel.querySelector('[data-debug="erros"]').textContent = String(debugErros);
+  debugPainel.querySelector('[data-debug="log"]').textContent = debugLinhas.slice(-12).join('\n');
+}
+
+function eventoDebug(evento, detalhes = {}, status = evento) {
+  if (!DEBUG_ATIVO) return;
+  const registro = { timestamp: new Date().toISOString(), evento, ...detalhes };
+  const resumo = Object.entries(detalhes)
+    .map(([chave, valor]) => `${chave}=${String(valor)}`)
+    .join(' ');
+  debugLinhas.push(`${horaDebug()} ${evento}${resumo ? ` · ${resumo}` : ''}`);
+  debugLinhas = debugLinhas.slice(-DEBUG_LIMITE);
+  salvarDebug();
+  console.log(DEBUG_PREFIXO, registro);
+  renderizarDebug(status, evento);
+}
+
+function iniciarDebug() {
+  if (!DEBUG_ATIVO) return;
+  try {
+    const anteriores = JSON.parse(sessionStorage.getItem(DEBUG_STORAGE));
+    if (Array.isArray(anteriores)) debugLinhas = anteriores.slice(-DEBUG_LIMITE);
+  } catch {}
+
+  debugPainel = document.createElement('aside');
+  debugPainel.id = 'playerDebug';
+  debugPainel.setAttribute('aria-live', 'polite');
+  debugPainel.innerHTML = `
+    <button type="button" id="playerDebugAlternar" aria-expanded="true">Ocultar diagnóstico</button>
+    <div class="player-debug-corpo">
+      <strong>Mostraí Player Debug</strong>
+      <dl>
+        <dt>Status</dt><dd data-debug="status">aguardando</dd>
+        <dt>Peça</dt><dd data-debug="peca">—</dd>
+        <dt>Duração</dt><dd data-debug="duracao">—</dd>
+        <dt>Janela</dt><dd data-debug="janela">—</dd>
+        <dt>URL</dt><dd data-debug="url">—</dd>
+        <dt>Evento</dt><dd data-debug="evento">—</dd>
+        <dt>Último /played</dt><dd data-debug="played">—</dd>
+        <dt>Heartbeat</dt><dd data-debug="heartbeat">—</dd>
+        <dt>Playlist</dt><dd data-debug="playlist">—</dd>
+        <dt>Erros</dt><dd data-debug="erros">0</dd>
+      </dl>
+      <pre data-debug="log"></pre>
+    </div>`;
+  document.body.appendChild(debugPainel);
+  debugPainel.querySelector('#playerDebugAlternar').addEventListener('click', (e) => {
+    const oculto = debugPainel.classList.toggle('recolhido');
+    e.currentTarget.textContent = oculto ? 'Mostrar diagnóstico' : 'Ocultar diagnóstico';
+    e.currentTarget.setAttribute('aria-expanded', String(!oculto));
+  });
+  eventoDebug('debug_ativado', { tela: dispositivoId || 'ausente' });
+}
+
+iniciarDebug();
+
 function log(t) {
   msgEl.textContent = t;
 }
@@ -145,9 +254,14 @@ function marcarOffline() {
 }
 
 async function atualizarPlaylist() {
+  eventoDebug('playlist_poll_enviado', {}, 'atualizando playlist');
   try {
     const r = await fetch(`${API_BASE_URL}/playlist/${dispositivoId}`, { headers: cabecalhos });
+    eventoDebug('playlist_http', { status: r.status });
     if (r.status === 401) {
+      debugErros += 1;
+      debugUltimaPlaylist = `${horaDebug()} · HTTP 401`;
+      renderizarDebug('playlist recusada', 'playlist_http');
       log('chave do aparelho inválida, gere de novo no painel admin');
       return;
     }
@@ -156,6 +270,9 @@ async function atualizarPlaylist() {
     // operação já tirou do ar. Melhor parar e dizer o motivo na própria TV.
     if (r.status === 403) {
       const corpo = await r.json().catch(() => ({}));
+      debugErros += 1;
+      debugUltimaPlaylist = `${horaDebug()} · HTTP 403`;
+      renderizarDebug('tela fora do ar', 'playlist_http');
       playlist = [];
       salvarCache([]);
       document.body.classList.add('sem-playlist');
@@ -163,6 +280,9 @@ async function atualizarPlaylist() {
       return;
     }
     if (!r.ok) {
+      debugErros += 1;
+      debugUltimaPlaylist = `${horaDebug()} · HTTP ${r.status}`;
+      renderizarDebug('falha de playlist', 'playlist_http');
       log(
         marcarOffline()
           ? 'servidor fora há mais de uma hora — só a peça da Mostraí'
@@ -171,6 +291,8 @@ async function atualizarPlaylist() {
       return;
     }
     const nova = await r.json();
+    debugUltimaPlaylist = `${horaDebug()} · HTTP ${r.status} · ${nova.length} itens`;
+    eventoDebug('playlist_recebida', { itens: nova.length, status: r.status }, 'playlist pronta');
     ultimoContatoOk = Date.now();
     document.body.classList.remove('offline');
     playlist = nova;
@@ -178,26 +300,54 @@ async function atualizarPlaylist() {
     document.body.classList.toggle('sem-playlist', !nova.length);
     log(nova.length ? `playlist ok (${nova.length} itens)` : 'sem anúncios programados agora');
     prepararArquivos(nova);
-  } catch {
+  } catch (err) {
+    debugErros += 1;
+    debugUltimaPlaylist = `${horaDebug()} · falha de rede`;
+    eventoDebug('playlist_falhou', { erro: err?.name || 'erro' }, 'playlist indisponível');
     log(marcarOffline() ? 'sem rede há mais de uma hora — só a peça da Mostraí' : 'offline, tocando playlist em cache');
   }
 }
 
 async function tocarProximo() {
   if (painelAberto) {
+    eventoDebug('avanco_adiado', { motivo: 'painel aberto' }, 'painel aberto');
     setTimeout(tocarProximo, 2000);
     return;
   }
   // Offline por tempo demais: a tela fica só na peça da Mostraí, mesmo com
   // playlist em memória. Segue checando, e volta sozinha quando a rede voltar.
   if (!playlist.length || marcarOffline()) {
+    eventoDebug('avanco_adiado', { motivo: playlist.length ? 'offline' : 'playlist vazia' }, 'institucional');
     document.body.classList.add('sem-playlist');
     setTimeout(tocarProximo, 5000);
     return;
   }
   document.body.classList.remove('sem-playlist');
-  const item = playlist[indice];
+  const indiceAtual = indice;
+  const item = playlist[indiceAtual];
   indice = (indice + 1) % playlist.length;
+  const inicioJanela = new Date();
+  inicioJanela.setMinutes(0, 0, 0);
+  debugAtual = {
+    indice: indiceAtual,
+    anuncianteId: item?.anuncianteId ?? null,
+    criativoId: item?.criativoId ?? null,
+    url: urlDebug(item?.url),
+    duracao: Number(item?.duracaoSegundos) || null,
+    janela: item?.janelaHora || `${inicioJanela.toISOString()} (inferida local)`,
+  };
+  eventoDebug(
+    'peca_selecionada',
+    {
+      indice: indiceAtual,
+      anunciante: debugAtual.anuncianteId ?? 'institucional',
+      criativo: debugAtual.criativoId ?? 'n/d',
+      url: debugAtual.url,
+      duracao: debugAtual.duracao ?? 'n/d',
+      janela: debugAtual.janela,
+    },
+    'preparando peça',
+  );
 
   // Inventário vago (src/lib/pacing.js): a hora que não foi vendida é
   // preenchida com a peça institucional, a MESMA que aparece quando não há
@@ -216,43 +366,126 @@ async function tocarProximo() {
       videoEl.classList.remove('ativo');
       videoEl.pause();
     }
-    setTimeout(tocarProximo, Math.max(2, Number(item.duracaoSegundos) || 10) * 1000);
+    eventoDebug('institucional_iniciada', { duracao: Math.max(2, Number(item.duracaoSegundos) || 10) });
+    setTimeout(
+      () => {
+        eventoDebug('avanco_proxima', { motivo: 'institucional concluída' }, 'avançando');
+        tocarProximo();
+      },
+      Math.max(2, Number(item.duracaoSegundos) || 10) * 1000,
+    );
     return;
   }
   document.body.classList.remove('institucional');
 
   if (!item?.url) {
-    setTimeout(tocarProximo, 1000);
+    debugErros += 1;
+    eventoDebug('peca_sem_url', {}, 'peça inválida');
+    setTimeout(() => {
+      eventoDebug('avanco_proxima', { motivo: 'sem URL', atrasoMs: 1000 }, 'avançando');
+      tocarProximo();
+    }, 1000);
     return;
   }
-  trocarFonte(await fonteDe(item.url));
+  eventoDebug('preparacao_iniciada', { url: urlDebug(item.url) }, 'carregando mídia');
+  const fonte = await fonteDe(item.url);
+  eventoDebug('fonte_resolvida', { origem: fonte.startsWith('blob:') ? 'cache' : 'rede' });
+  trocarFonte(fonte);
   videoEl.classList.add('ativo');
-  videoEl.play().catch(() => {});
+  eventoDebug('play_chamado', {}, 'solicitando reprodução');
+  videoEl.play().then(
+    () => eventoDebug('play_resolvido', {}, 'play aceito'),
+    (err) => {
+      debugErros += 1;
+      eventoDebug('play_rejeitado', { erro: err?.name || 'erro' }, 'play rejeitado');
+    },
+  );
   // Autoanúncio do dono (anuncianteId null) não é cobrado nem contado.
   if (item.anuncianteId) {
+    eventoDebug('played_enviado', { anunciante: item.anuncianteId }, 'enviando /played');
     fetch(`${API_BASE_URL}/player/${dispositivoId}/played`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...cabecalhos },
       body: JSON.stringify({ anuncianteId: item.anuncianteId }),
-    }).catch(() => {}); // fire-and-forget — não trava a exibição
+    })
+      .then(async (r) => {
+        if (!DEBUG_ATIVO) return;
+        const corpo = await r
+          .clone()
+          .json()
+          .catch(() => null);
+        const resumo = corpo?.motivo || corpo?.janela || corpo?.erro || (corpo?.ok ? 'ok' : 'sem corpo');
+        debugUltimoPlayed = `${horaDebug()} · HTTP ${r.status} · ${resumo}`;
+        if (!r.ok) debugErros += 1;
+        eventoDebug(
+          'played_resposta',
+          { status: r.status, resultado: resumo },
+          r.ok ? '/played aceito' : '/played recusado',
+        );
+      })
+      .catch((err) => {
+        if (!DEBUG_ATIVO) return;
+        debugErros += 1;
+        debugUltimoPlayed = `${horaDebug()} · falha de rede`;
+        eventoDebug('played_falhou', { erro: err?.name || 'erro' }, '/played falhou');
+      }); // continua fire-and-forget — diagnóstico não trava a exibição
   }
 }
 
-videoEl.addEventListener('ended', tocarProximo);
+for (const nome of ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'waiting']) {
+  videoEl.addEventListener(nome, () =>
+    eventoDebug(nome, {
+      tempo: videoEl.currentTime.toFixed(2),
+      duracao: Number.isFinite(videoEl.duration) ? videoEl.duration : 'n/d',
+    }),
+  );
+}
+videoEl.addEventListener('ended', () => {
+  eventoDebug('ended', { tempo: videoEl.currentTime.toFixed(2) }, 'reprodução concluída');
+  eventoDebug('avanco_proxima', { motivo: 'ended' }, 'avançando');
+  tocarProximo();
+});
 // URL 404, codec não suportado ou arquivo corrompido nunca disparam
 // 'ended' — sem isso a tela ficava parada pra sempre.
 videoEl.addEventListener('error', () => {
+  debugErros += 1;
+  eventoDebug('error', { codigo: videoEl.error?.code || 'n/d' }, 'erro de mídia');
   log('item falhou, pulando');
+  eventoDebug('avanco_proxima', { motivo: 'error', atrasoMs: 500 }, 'avançando após erro');
   setTimeout(tocarProximo, 500);
 });
-videoEl.addEventListener('stalled', () =>
+videoEl.addEventListener('stalled', () => {
+  eventoDebug('stalled', { pausado: videoEl.paused, tempo: videoEl.currentTime.toFixed(2) }, 'mídia travada');
   setTimeout(() => {
-    if (videoEl.paused && !painelAberto) tocarProximo();
-  }, 10000),
-);
+    if (videoEl.paused && !painelAberto) {
+      eventoDebug('avanco_proxima', { motivo: 'stalled pausado', atrasoMs: 10000 }, 'avançando após stall');
+      tocarProximo();
+    } else {
+      eventoDebug('stalled_timeout_sem_avanco', { pausado: videoEl.paused });
+    }
+  }, 10000);
+});
 
 function heartbeat() {
-  fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, { method: 'POST', headers: cabecalhos }).catch(() => {});
+  eventoDebug('heartbeat_enviado', {}, 'enviando heartbeat');
+  fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, { method: 'POST', headers: cabecalhos })
+    .then(async (r) => {
+      if (!DEBUG_ATIVO) return;
+      const corpo = await r
+        .clone()
+        .json()
+        .catch(() => null);
+      const resultado = corpo?.erro || (corpo?.ok ? 'ok' : 'sem corpo');
+      debugUltimoHeartbeat = `${horaDebug()} · HTTP ${r.status} · ${resultado}`;
+      if (!r.ok) debugErros += 1;
+      eventoDebug('heartbeat_resposta', { status: r.status, resultado }, r.ok ? 'heartbeat ok' : 'heartbeat recusado');
+    })
+    .catch((err) => {
+      if (!DEBUG_ATIVO) return;
+      debugErros += 1;
+      debugUltimoHeartbeat = `${horaDebug()} · falha de rede`;
+      eventoDebug('heartbeat_falhou', { erro: err?.name || 'erro' }, 'heartbeat falhou');
+    });
 }
 
 // ---------------------------------------------------------------------

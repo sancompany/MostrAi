@@ -136,3 +136,21 @@ memória entre agentes).
 
 Ver `docs/PENDENCIAS.md` seção F (rodada de depuração aberta com o dono) e
 `.ia/TODO.md` para a lista organizada por urgência.
+
+## Atualização — auditoria transversal de 20/09/2026
+
+Relatório completo: `docs/auditoria-estacao-5-2026-09-20.md`.
+
+- Produção confirmou que o anúncio investigado tem a cadeia de elegibilidade completa e foi programado muitas vezes, mas quase nada foi confirmado; a TV estava sem heartbeat recente. O foco passa a player/mídia/rede/confirmação.
+- O player envia `/played` no início e ignora erro/resposta. Banco de horas é drenado/apurado por programação em vez de confirmação: inconsistência sistêmica de “entrega”.
+- O congelamento 064 tem corridas na criação inicial e na anexação de extras.
+- O ponto de produção possui `categoria_id`, e o código atual o grava por cadastro/admin. A afirmação anterior de que nenhum caminho gravava categoria está desatualizada.
+- `npm audit` reporta 10 vulnerabilidades (1 crítica, 3 altas, 6 moderadas).
+
+## Investigação player/TV — 20/09/2026
+
+Fluxo reconstruído em `docs/investigacao-player-confirmacao-2026-09-20.md`. Confirmado: `/played` sai logo após `play()` e não após `ended`; resposta é ignorada, sem retry/idempotência/identidade de peça ou janela. Imagens já são MP4 no player. A conclusão anterior sobre banco foi refinada: ele mede corte de capacidade (`pedidas - programadas`) por desenho; falha física (`programadas - confirmadas`) é separada e depende de decisão de produto.
+
+## Mapa funcional completo — 20/09/2026
+
+Inventário atual de todas as funcionalidades de usuário, admin e operação em `docs/mapa-funcional-completo-2026-09-20.md`. Novo bug confirmado: a aba admin Métrica usa status antigo de ponto ao calcular amortização histórica e pode inflar margem; Visão geral usa a regra correta. Bugs técnicos previamente mapeados continuam pausados. Prioridade é acompanhar a revisão manual já em andamento pelo dono.
