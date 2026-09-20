@@ -61,3 +61,11 @@ conformidade: ou corrige, ou vira exceção registrada no `CONSTRAINTS.md`.
   dono revisa o site em produção e reporta o que precisa de ajuste; cada
   item entra na seção F e sai corrigido. Fecha só com a lista `[x]` e o dono
   satisfeito. Nenhuma outra pendência bloqueia hoje.
+
+## Memória entre agentes (Claude Code, Codex, Jules)
+Este projeto agora também é trabalhado por mais de um agente de IA, em
+sessões que não compartilham memória entre si. `AGENTS.md` (raiz) e `.ia/`
+guardam o estado operacional entre sessões — branch atual, o que está pela
+metade, decisões que não devem ser desfeitas sem contexto. Leia `AGENTS.md`
+antes de continuar qualquer tarefa aqui; não substitui nada deste arquivo
+nem de `CONSTRAINTS.md`, é complementar.

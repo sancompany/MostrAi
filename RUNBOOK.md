@@ -191,8 +191,12 @@ donos de ponto e vendedores (`docs/inventario-de-dados.md`).
 | **Cloudflare** | o domínio, e o Access do `/admin` | — |
 | **SMTP (Google)** | e-mail de confirmação e de redefinição de senha | o pagamento é creditado do mesmo jeito |
 
-A playlist tem cache em memória do processo, então uma queda curta não
-interrompe as telas na hora.
+A playlist **não tem cache em memória do processo** desde 17/09/2026 (cada
+poll recalcula, estabilizado por embaralhamento determinístico — ver
+`.ia/DECISIONS.md`, ADR-004). Quem faz uma queda curta não interromper a
+tela na hora é o **player**: ele guarda a última playlist recebida e o
+arquivo de cada criativo em cache local (Cache API), e só some depois de
+`TOLERANCIA_OFFLINE_MS` sem contato bem-sucedido com o servidor.
 
 ---
 

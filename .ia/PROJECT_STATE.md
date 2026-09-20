@@ -1,0 +1,138 @@
+# PROJECT_STATE.md — Estado exato do Mostraí
+
+Levantado em 20/09/2026, a partir do código e do Git — não de memória de
+conversa. Ver `.ia/HANDOFF.md` para o que fazer a seguir; este arquivo é o
+retrato, não o próximo passo.
+
+## Branch e Git
+
+- Branch de desenvolvimento designada: `claude/busy-noether-hheir2`.
+- `main` e `claude/busy-noether-hheir2` estão sincronizadas no commit
+  `b3fe101` ("nav: tira Vendas e Meu ponto do topo, Anúncios vira Painel,
+  ponto ganha card de candidatura simplificado").
+- Existe uma terceira branch remota, `claude/mostrai-estacao-1-pipeline-y2vgr5`
+  (commit `44929d6`, "Adiciona Dockerfile de producao para o Northflank"),
+  **não investigada nesta sessão** — pode ser trabalho paralelo ou
+  experimento abandonado; confirmar antes de mexer ou descartar.
+- `npm run check` (sintaxe + lint + formato + 122 testes unitários) verde no
+  commit acima.
+- CI (`.github/workflows/ci.yml`) roda o mesmo `npm run check` a cada push/PR
+  na `main`.
+
+## Estação da esteira San & Co.
+
+Estação **5 — Construção**, aberta 14/09/2026. No ar em produção desde
+15/09/2026 (`mostrai.sancocore.com.br`). Falta só a rodada de depuração da
+seção F de `docs/PENDENCIAS.md` — o dono revisa o produto no ar e reporta
+ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
+
+## Funcionalidades concluídas (confirmadas no código, testadas)
+
+- Cadastro/login de conta única, três papéis possíveis.
+- Catálogo de planos no banco (Inicial/Básico/Essencial/Pro/Prime +
+  variações de comodato), sem regra em variável de ambiente.
+- Assinatura, troca de plano e cancelamento via San Checkout (webhook
+  fail-closed/idempotente/transacional).
+- Upload de criativo com validação síncrona (ffmpeg), normalização de
+  imagem para vídeo na duração do plano, aprovação manual pelo admin.
+- Geração de playlist por hora com orçamento em segundos, cobertura de
+  pontos com compensação de rede incompleta, banco de horas com prioridade
+  e válvula de expiração.
+- **Congelamento da hora da playlist** (19/09/2026, o mais recente) —
+  escolha de ponto ou criativo aprovado entra na hora corrente sem
+  reposicionar quem já estava programado. Testado manualmente
+  (`.ia/DECISIONS.md`, ADR-005) — sem teste automatizado dedicado em
+  `tests/` ainda (ver `.ia/TODO.md`).
+- Painel do anunciante: bloqueio total sem plano, KPIs (horas/exibições
+  contratadas vs. entregues, custo por exibição fixo, banco de horas),
+  gráficos por dia/ponto, escolha de pontos compacta com busca.
+- **Nav consolidada numa aba só ("Painel")** (19/09/2026) — Vendas e Meu
+  ponto saíram do topo; candidatura a ponto virou card simplificado no fim
+  do Painel; link para quem já é vendedor/ponto. Testado com Playwright
+  (script descartável, não commitado — ver `.ia/OPERATIONS.md`).
+- Indicação de ponto com cupom e upgrade automático de plano por limiar.
+- Comissão de vendedor (entrada só por convite direto do dono).
+- Painel administrativo: contas, candidaturas, convites, pontos, telas,
+  criativos, dinheiro, banco de horas, resumo com margem real.
+- Direitos do titular de dados (LGPD) — `src/titular/`.
+
+## Funcionalidades parcialmente concluídas / com lacuna conhecida
+
+- **Filtro de categoria concorrente na playlist** — a lógica existe
+  (`anunciantesElegiveis` exclui anunciante com a mesma `categoria_id` do
+  ponto), mas **nenhum caminho de criação de ponto grava `categoria_id`**
+  hoje — na prática o filtro nunca exclui ninguém. Furo já catalogado em
+  `docs/furos.md`. Ver `.ia/RISKS.md` e `.ia/TODO.md`.
+- **Job `ApuracaoBancoHoras` no Northflank** — existe o script
+  (`npm run apurar-banco-horas`), mas não está confirmado nesta sessão se o
+  job foi de fato criado no painel do Northflank (`RUNBOOK.md` já registra
+  essa incerteza). Ver `docs/PENDENCIAS.md`, item A.14.
+- **Bônus "ganhou uma tela" (`cardBonus`, qual='ponto') no Painel** —
+  `GET /conta/modos` sempre devolve `bonus.ponto: null` por design atual
+  (comentário no próprio código, `src/conta/modos.js`), então esse banner
+  nunca aparece em `/anunciante/painel.html` hoje — não investigado se isso
+  é intencional ou lacuna; não presumir nenhum dos dois sem checar com o
+  dono ou reler o histórico do commit que introduziu isso.
+
+## Funcionalidades/bugs em aberto (não resolvidos, com investigação registrada)
+
+- **"Anúncio nunca passou na TV" (relato do dono, conta "San União", único
+  ponto da rede hoje)** — investigado nesta sessão, causa **ainda não
+  confirmada**. Seis hipóteses de causas comuns foram checadas no código e
+  **descartadas** (upload/normalização síncrona sem estado quebrado
+  possível; filtro de categoria já é sabidamente inofensivo por outro furo;
+  fila de aprovação já tem contador visível no admin, entre outras). Não
+  houve acesso de leitura aprovado ao banco de produção (Supabase) para
+  confirmar a causa real nesta sessão. Ver `.ia/TODO.md` (seção BUGS) para
+  o checklist específico ainda pendente de resposta do dono ou de acesso
+  liberado ao banco.
+- **Troca de plano falhando com "não foi possível calcular o acerto
+  proporcional desta troca"** — investigado a fundo nesta sessão,
+  incluindo leitura do código-fonte real do `sancompany/san_checkout`
+  (clonado à parte). Concluído que os três valores que o Mostraí envia
+  (`planoId`, `planoNovoId`, `documento`) estão corretos, e a falha é uma
+  condição de `dadoIncoerente` dentro de `calcularAcertoDeTroca`
+  (`proporcionalService.js` do Checkout) — aponta pra dado de assinatura
+  do lado do Checkout (ciclo/data de vencimento divergente, ou cobrança
+  confirmada faltando), não um bug do Mostraí. **Não é possível fechar essa
+  investigação sem acesso ao banco do San Checkout** (projeto Supabase
+  separado, `San_Checkout` — ref/host não registrado aqui, ver
+  `.ia/INTEGRATIONS.md`) para a assinatura específica afetada.
+
+## Telas existentes
+
+Ver `docs/api.md` (mapa rota-a-rota) e `docs/funcional.md` (tabela tela-a-
+tela) — fonte de verdade, não duplicada aqui.
+
+## Banco / migrations
+
+63 arquivos SQL em `src/db/migrations/`, numerados até `064` (a numeração
+pula um índice — confirmado por listagem, não investigado o motivo). Mais
+recente: `064_playlist_hora_congelada.sql`. Aplicadas por
+`src/db/migrate.js`, idempotente, com `pg_advisory_lock`.
+
+## Integrações — estado observado
+
+- **Supabase** (Postgres + Storage): funcionando, confirmado via ferramenta
+  MCP nesta sessão (dois projetos existem: `MostrAi` e `San_Checkout`).
+- **San Checkout**: funcionando para assinatura nova; troca de plano com
+  falha pontual não resolvida (ver acima).
+- **Cloudflare Access em `/admin`**: confirmado ativo desde 15/09/2026.
+- **Northflank**: deploy automático confirmado funcionando (deploys desta
+  sessão verificados em produção via `/health` e strings distintas nos
+  arquivos publicados).
+- **SMTP (Google)**: funcionando; resposta sai do endereço real, não do
+  alias (cosmético, aceito pelo dono).
+
+## Última área trabalhada
+
+Nesta sessão, em ordem: KPIs do Painel → seleção de pontos compacta →
+correção de revezamento de criativos + duração de imagem → texto de troca
+de plano → **congelamento da hora da playlist** → nav consolidada numa aba
+só + candidatura a ponto simplificada → **esta tarefa** (estrutura `.ia/` de
+memória entre agentes).
+
+## Principais pendências (fora as duas acima)
+
+Ver `docs/PENDENCIAS.md` seção F (rodada de depuração aberta com o dono) e
+`.ia/TODO.md` para a lista organizada por urgência.
