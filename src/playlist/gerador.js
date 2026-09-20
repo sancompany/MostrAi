@@ -341,23 +341,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // congelada (migration 064): toda geração seguinte reprocessa a MESMA
   // `base` pela mesma semente — determinístico, sempre a mesma sequência —
   // e quem não estava nela ainda entra em `extras`, sempre no fim.
-  const congelada = await congelamentoRepo.buscar(dispositivo.id, horaAtual);
-  let daHora;
-  let idsExtras;
-  if (!congelada) {
-    daHora = montarHoraDeTv(entrada, semente);
-    await congelamentoRepo.criar(dispositivo.id, horaAtual, entrada);
-    idsExtras = [];
-  } else {
-    daHora = montarHoraDeTv(congelada.base, semente);
-    idsExtras = congelada.extras;
-    const idsConhecidos = new Set([...congelada.base.map((e) => e.id), ...idsExtras]);
-    const novaLeva = sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
-    if (novaLeva.length) {
-      await congelamentoRepo.acrescentarExtras(dispositivo.id, horaAtual, novaLeva);
-      idsExtras = [...idsExtras, ...novaLeva];
-    }
-  }
+  const congelada = await congelamentoRepo.resolver(dispositivo.id, horaAtual, entrada, (base, extras) => {
+    const idsConhecidos = new Set([...base.map((e) => e.id), ...extras]);
+    return sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
+  });
+  const daHora = montarHoraDeTv(congelada.base, semente);
+  const idsExtras = congelada.extras;
 
   // A hora não coube em todo mundo: todos entregam menos do que contrataram.
   // O corte é proporcional, mas continua sendo entrega menor, e sem isto não

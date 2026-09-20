@@ -6,7 +6,7 @@
 
 O Mostraí já é uma v1 publicada e coerente de mídia indoor por assinatura, mas a Estação 5 ainda não pode fechar. O risco principal está no elo **playlist → reprodução → confirmação → métrica → banco de horas**. Produção prova que o anúncio investigado é elegível e foi programado muitas vezes, porém quase nenhuma reprodução foi confirmada. A investigação deixa de ser “por que não entrou na playlist” e passa a ser “por que a TV não reproduziu/confirmou o que recebeu”.
 
-O banco de horas considera programação ao formar/drenar déficit porque foi desenhado para falta de capacidade, não falha física. A divergência entre esse significado e a ideia comercial de entrega precisa ser decidida antes de qualquer correção. Há ainda duas corridas no congelamento novo, vulnerabilidades npm (uma crítica e três altas), jobs sem confirmação, ausência de teste do congelamento e drift documental. `/health`, Supabase e Cloudflare Access estão ativos.
+O banco de horas considera programação ao formar/drenar déficit porque foi desenhado para falta de capacidade, não falha física. A divergência entre esse significado e a ideia comercial de entrega precisa ser decidida antes de qualquer correção. As duas corridas encontradas no congelamento foram corrigidas em 20/09/2026; permanecem vulnerabilidades npm (uma crítica e três altas), jobs sem confirmação, ausência de teste ponta a ponta da ordem final do congelamento e drift documental. `/health`, Supabase e Cloudflare Access estão ativos.
 
 **Primeiro furo:** integridade da confirmação quando a tela não conclui ou não consegue falar com o servidor. **Primeira tela para revisar junto:** player na TV física, com log e rede visíveis. **Primeira decisão sistêmica:** manter o banco restrito a déficit de capacidade ou criar também recuperação de falha física, sem misturar os dois conceitos.
 
@@ -42,7 +42,7 @@ Node 22 + Express 4, SQL manual com `pg`, sessão PostgreSQL, frontend HTML/CSS/
 | Cancelamento/renovação | Parcial | Código/testes puros, sem ensaio real de todos estados. |
 | Upload/aprovação | Funcionando | Produção tem criativo aprovado/normalizado; falta matriz de formatos. |
 | Cobertura | Funcionando com risco | Conta investigada tem ponto escolhido e foi programada. |
-| Playlist | Parcial | Produção programa; congelamento não tem teste e tem corridas. |
+| Playlist | Parcial | Produção programa; corridas do congelamento corrigidas e teste do repositório presente, mas falta teste ponta a ponta da ordem final. |
 | Reprodução/contagem | Quebrada ou indisponível | Programadas e confirmadas divergem drasticamente; heartbeat estava antigo. |
 | Banco de horas | Implementado, operação não confirmada | Tabela vazia; job incerto; regra usa programado. |
 | Ponto/categoria | Funcionando hoje | Backend/admin gravam `categoria_id`; produção o possui. `.ia` estava errada. |
@@ -65,13 +65,13 @@ Node 22 + Express 4, SQL manual com `pg`, sessão PostgreSQL, frontend HTML/CSS/
 
 **Fato confirmado:** geração drena saldo quando a recuperação coube na programação; a apuração mensal usa `pedidas - programadas`. **Correção de classificação:** comentários, migration e teste provam que o banco foi desenhado apenas para corte de capacidade. A falta física (`programadas - confirmadas`) é deliberadamente separada. Portanto isso não é, isoladamente, bug comprovado; vira lacuna de produto se “banco de horas” também promete recuperar falha da TV. A decisão e impactos estão detalhados em `docs/investigacao-player-confirmacao-2026-09-20.md`.
 
-### B3 — corrida na primeira base congelada (P1)
+### B3 — corrida na primeira base congelada (P1, corrigida em 20/09/2026)
 
-Duas requisições podem ler ausência, construir bases diferentes e devolver cada qual a sua, embora só uma vença `ON CONFLICT DO NOTHING`. A perdedora não relê a vencedora. Viola a garantia de uma sequência. Envolve `src/playlist/gerador.js`, `src/playlist/congelamento-repository.js` e `playlist_hora_congelada`.
+Duas requisições podiam ler ausência, construir bases diferentes e devolver cada qual a sua, embora só uma vencesse `ON CONFLICT DO NOTHING`. A correção serializa a resolução por `(dispositivo, hora)` no PostgreSQL e faz toda requisição reler a base vencedora antes de montar a resposta. Cobertura dedicada em `tests/playlist-congelamento.test.js`.
 
-### B4 — corrida duplica extras congelados (P1)
+### B4 — corrida duplicava extras congelados (P1, corrigida em 20/09/2026)
 
-Polls concorrentes podem ler os mesmos extras e ambos concatenar o mesmo novo ID. Não há lock, unicidade nem deduplicação no `UPDATE extras = extras || ...`, podendo superprogramar a hora de entrada.
+Polls concorrentes podiam ler os mesmos extras e ambos concatenar a mesma nova leva. Agora leitura, cálculo e anexação dos extras ficam na mesma transação protegida pelo lock específico da tela/hora. Repetições dentro da leva continuam válidas porque representam a frequência; somente a duplicação concorrente da leva foi eliminada.
 
 ### B5 — relato “não entra na playlist” está mal classificado (P0 operacional)
 
@@ -232,7 +232,7 @@ Em todas: desktop 1440, tablet, 320/375 px, zoom 200%, teclado; loading/erro/vaz
 1. Observar na TV playlist, URL/codec, eventos, console/rede, heartbeat e `/played`.
 2. Decidir evento de entrega, retry/idempotência, offline e virada de hora.
 3. Corrigir B1 com identidade, idempotência e retry; decidir B2 separadamente antes de alterar banco ou reconciliar dados.
-4. Corrigir/testar B3/B4 com concorrência real.
+4. ~~Corrigir/testar B3/B4 com concorrência real.~~ Corrigido com seção crítica transacional e testes dedicados; validar no fluxo normal após o deploy.
 5. Fechar troca no Checkout com matriz upgrade/downgrade/ciclo.
 6. Confirmar jobs, backup e restauração.
 7. Executar checklist funcional por ator, classificando toda descoberta.

@@ -56,11 +56,12 @@ pelo Codex — explícito, não assumir o contrário.**
 
 ## NEXT
 
-- **Teste automatizado para o congelamento da hora da playlist** (ADR-005).
-  - Objetivo: cobrir em `tests/` (unitário sobre `gerador.js`, ou um script
-    e2e permanente) o comportamento "quem já estava programado não muda de
-    posição; quem chega depois entra sempre no fim" — hoje só verificado
-    manualmente.
+- **Completar o teste ponta a ponta do congelamento da hora da playlist**
+  (ADR-005).
+  - Estado: `tests/playlist-congelamento.test.js` já cobre serialização da
+    base/extras e rollback. Ainda falta cobrir o payload final do gerador:
+    "quem já estava programado não muda de posição; quem chega depois entra
+    sempre no fim".
   - Arquivos: `src/playlist/gerador.js`,
     `src/playlist/congelamento-repository.js`, `tests/`.
   - Critério de conclusão: teste roda em `npm test`/`npm run check` e falha
@@ -100,7 +101,8 @@ pelo Codex — explícito, não assumir o contrário.**
 
 Ver `NOW` e a atualização da auditoria abaixo. Além dos dois relatos
 anteriores, a auditoria confirmou falhas de integridade na confirmação/banco
-de horas e condições de corrida no congelamento.
+de horas. As condições de corrida do congelamento foram corrigidas em
+20/09/2026.
 
 ## TECHNICAL DEBT
 
@@ -114,7 +116,7 @@ de horas e condições de corrida no congelamento.
 ## AUDITORIA 20/09/2026 — prioridade acima da fila anterior
 
 - **Fechar integridade `player → confirmação → métrica`**: revisar a TV física; decidir o que constitui conclusão; implementar confirmação durável/idempotente/retry e alinhar dashboard/contador. O anúncio investigado foi programado; a lacuna está depois da playlist. Decidir em item separado se falha física deve criar saldo diferente do banco de capacidade atual.
-- **Corrigir concorrência do congelamento**: a requisição perdedora da primeira criação deve reler a base vencedora; extras concorrentes devem ser deduplicados/serializados. Cobrir com teste.
+- **Fechado em 20/09/2026 — concorrência do congelamento**: resolução serializada por `(dispositivo, hora)` com advisory lock transacional; a perdedora relê a base vencedora e extras são calculados/anexados na mesma seção crítica. Coberto por `tests/playlist-congelamento.test.js`. Não confundir repetições legítimas da frequência com duplicação de leva.
 - **Corrigir registro de categoria na documentação**: código atual e produção gravam `categoria_id`; falta teste ponta a ponta do bloqueio e regenerar `docs/furos.md`.
 - **Triar dependências** em mudança separada, sem `--force`: 1 crítica, 3 altas e 6 moderadas no audit atual.
 

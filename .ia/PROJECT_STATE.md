@@ -41,8 +41,10 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - **Congelamento da hora da playlist** (19/09/2026, o mais recente) —
   escolha de ponto ou criativo aprovado entra na hora corrente sem
   reposicionar quem já estava programado. Testado manualmente
-  (`.ia/DECISIONS.md`, ADR-005) — sem teste automatizado dedicado em
-  `tests/` ainda (ver `.ia/TODO.md`).
+  (`.ia/DECISIONS.md`, ADR-005). Em 20/09/2026, a criação da base e a
+  anexação de extras foram serializadas por tela/hora no PostgreSQL para
+  impedir bases divergentes e levas duplicadas; há cobertura dedicada em
+  `tests/playlist-congelamento.test.js`.
 - Painel do anunciante: bloqueio total sem plano, KPIs (horas/exibições
   contratadas vs. entregues, custo por exibição fixo, banco de horas),
   gráficos por dia/ponto, escolha de pontos compacta com busca.
@@ -143,7 +145,8 @@ Relatório completo: `docs/auditoria-estacao-5-2026-09-20.md`.
 
 - Produção confirmou que o anúncio investigado tem a cadeia de elegibilidade completa e foi programado muitas vezes, mas quase nada foi confirmado; a TV estava sem heartbeat recente. O foco passa a player/mídia/rede/confirmação.
 - O player envia `/played` no início e ignora erro/resposta. Banco de horas é drenado/apurado por programação em vez de confirmação: inconsistência sistêmica de “entrega”.
-- O congelamento 064 tem corridas na criação inicial e na anexação de extras.
+- As corridas antes identificadas no congelamento 064 foram fechadas em
+  20/09/2026 com lock transacional por tela/hora e teste dedicado.
 - O ponto de produção possui `categoria_id`, e o código atual o grava por cadastro/admin. A afirmação anterior de que nenhum caminho gravava categoria está desatualizada.
 - `npm audit` reporta 10 vulnerabilidades (1 crítica, 3 altas, 6 moderadas).
 

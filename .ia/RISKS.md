@@ -45,10 +45,11 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   hipótese anterior de ausência de `categoria_id` foi refutada pelo código e
   por produção. O risco restante é comportamental: provar que todas as formas
   de criar/editar conta e ponto resultam na exclusão esperada na playlist.
-- **Congelamento da hora (ADR-005) não tem teste automatizado dedicado** em
-  `tests/` — só foi verificado manualmente nesta sessão (script descartável
-  não commitado). Uma regressão futura no comportamento "sempre no fim"
-  não seria pega pelo `npm run check`. Criticidade: média.
+- **Congelamento da hora (ADR-005) ainda não tem teste ponta a ponta da ordem
+  completa** — `tests/playlist-congelamento.test.js` cobre a seção crítica,
+  base vencedora, anexação e rollback, mas uma regressão que altere a posição
+  final no payload do gerador ainda depende dos testes de pacing e da revisão
+  manual. Criticidade: média.
 - **`GET /conta/modos` sempre devolve `bonus.ponto: null`** por comentário
   explícito no código — o banner de "você ganhou uma tela" nunca aparece no
   Painel. Não investigado se é intencional; risco de ser um benefício de
@@ -103,7 +104,7 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 
 - **Crítico — integridade de confirmação:** `/played` sai no começo da tentativa e falhas são ignoradas, sem identidade, retry ou idempotência por execução. Métricas podem divergir da reprodução real.
 - **Decisão de produto — banco de horas:** ele foi implementado deliberadamente para déficit de capacidade (`pedidas - programadas`), não falha física. A drenagem também ocorre quando a recuperação cabe na programação. Decidir se falha da TV cria mecanismo separado; não classificar o cálculo atual isoladamente como bug.
-- **Alto — concorrência do congelamento:** duas primeiras requisições podem responder bases distintas; extras concorrentes podem duplicar.
+- **Mitigado em 20/09/2026 — concorrência do congelamento:** base e extras passaram a ser resolvidos sob lock transacional por tela/hora. A base perdedora é descartada antes da resposta e uma nova leva não pode ser anexada duas vezes. Manter o teste dedicado e não retirar a seção crítica ao otimizar o gerador.
 - **Correção de risco antigo:** categoria do ponto é gravável e existe em produção. O risco real restante é ausência de teste ponta a ponta do bloqueio, não ausência do dado.
 - **Dependências:** audit atual contém 1 vulnerabilidade crítica, 3 altas e 6 moderadas.
 

@@ -3098,3 +3098,30 @@ não há mais o que revisar nelas.
 **Próximo, por aviso do dono:** ele vai enviar o prompt da nova
 atualização do San Checkout (a "terceira atualização", G.4 —
 plano/cancelamento — combinada em rodadas anteriores desta sessão).
+
+### F — concorrência do congelamento da playlist fechada (20/09/2026)
+
+Depois de confirmar na TV física que o modo `&debug=1` funcionou, o dono
+autorizou corrigir também o caminho da playlist, com a condição de preservar
+as regras existentes. Foram fechadas as duas corridas registradas pela
+auditoria: duas primeiras requisições não podem mais responder com bases
+diferentes, e polls concorrentes não podem mais anexar a mesma leva de extras
+duas vezes.
+
+**[x] Correção aplicada sem mudar a regra comercial:**
+- a seção crítica usa `pg_advisory_xact_lock` por `(dispositivo, hora)`;
+- a primeira base continua sendo a base imutável da hora;
+- toda requisição concorrente relê a base vencedora antes de responder;
+- participantes que ficaram elegíveis depois continuam entrando somente no
+  fim, em `extras`;
+- repetições dentro de uma leva continuam válidas: representam a frequência
+  contratada, não duplicação acidental;
+- não houve mudança no player, `/played`, métricas, duração, cobertura,
+  pacing, banco de horas ou ordem da base já congelada.
+
+**Evidência:** `tests/playlist-congelamento.test.js` cobre criação sob lock,
+uso da base vencedora, anexação única da leva e rollback. Os testes de pacing
+continuam cobrindo orçamento de 3600 segundos, frequência, distribuição,
+determinismo, cobertura e compensação. Ainda fica como melhoria futura um
+teste ponta a ponta do payload final provando a posição de um novo participante
+no fim da lista.
