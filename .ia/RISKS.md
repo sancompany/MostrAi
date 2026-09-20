@@ -68,10 +68,17 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   backup nunca foi restaurado de teste** (`RUNBOOK.md`, seção 5: "Este
   backup nunca foi restaurado. Backup não restaurado é backup hipotético").
   Criticidade: alta até o primeiro ensaio de restauração acontecer.
-- **Job `ApuracaoBancoHoras` — status de existência no Northflank não
-  confirmado** nesta sessão. Se não existir, o déficit mensal do banco de
-  horas nunca fecha e ninguém ganha prioridade — silencioso, sem erro
-  visível até alguém notar que o banco de horas não está funcionando.
+- **Job `ApuracaoBancoHoras` confirmado que NÃO existe no Northflank**
+  (20/09/2026, checado via API durante o incidente de senha do Postgres —
+  só há `Conciliacao` e `Backup`). O déficit mensal do banco de horas nunca
+  fecha e ninguém ganha prioridade — silencioso, sem erro visível até
+  alguém notar que o banco de horas não está funcionando. Ver `.ia/TODO.md`.
+- **Segredos do Northflank não usam secret group compartilhado** — cada
+  serviço/job guarda sua própria cópia de cada variável
+  (`DATABASE_URL` incluída). Trocar um segredo exige lembrar de atualizar
+  em cada recurso separadamente; esquecer um já derrubou produção uma vez
+  (20/09/2026, ver `docs/erros/2026-09-20-senha-do-postgres-divergente-entre-supabase-e-northflank.md`).
+  Migrar pra um secret group do projeto eliminaria essa classe de erro.
 - **Branch `claude/mostrai-estacao-1-pipeline-y2vgr5` não investigada** —
   pode ser trabalho relevante esquecido ou experimento morto. Risco de
   algum agente futuro divergir dela sem saber que existe, ou de conflito se

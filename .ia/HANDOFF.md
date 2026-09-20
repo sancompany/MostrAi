@@ -25,6 +25,18 @@ causa confirmada (ver abaixo). Nav e playlist tiveram mudanças reais nesta
 mesma sessão, antes desta tarefa de scaffolding — ver `.ia/PROJECT_STATE.md`
 pro retrato completo.
 
+**Incidente resolvido no mesmo dia, depois da tarefa de scaffolding**:
+produção caiu inteira (500 em toda rota que toca o banco) porque a senha do
+Postgres foi trocada no Supabase sem atualizar `DATABASE_URL` no Northflank
+— nem no serviço `mostrai`, nem nos jobs `Conciliacao`/`Backup` (cada um
+guarda a própria cópia da variável, não há secret group compartilhado).
+Corrigido nos três lugares e confirmado (site, admin, e os dois jobs
+disparados manualmente com sucesso). Detalhe completo em
+`docs/erros/2026-09-20-senha-do-postgres-divergente-entre-supabase-e-northflank.md`.
+De passagem, confirmado que o job `ApuracaoBancoHoras` **não existe** no
+Northflank (só `Conciliacao` e `Backup`) — já não era mais incerteza depois
+disso, ver `.ia/TODO.md`.
+
 ## Work completed (nesta sessão, antes e durante esta tarefa)
 - Corrigido revezamento de criativos que travava no mais recente + duração
   de imagem passou a usar o teto do plano.
@@ -58,8 +70,10 @@ União" para o bug de playlist) retornou "requires approval" e não foi
 insistida.
 
 ## What is working
-Tudo que estava funcionando antes desta tarefa continua — nenhuma mudança
-de código de produto foi feita aqui, só documentação/estrutura.
+Produção inteira — site, `/admin`, login, playlist, jobs `Conciliacao` e
+`Backup` — confirmada de pé depois do incidente de senha do Postgres (ver
+acima). Nenhuma mudança de código de produto foi feita nesta sessão depois
+do scaffolding — só a correção operacional da credencial.
 
 ## What is not working
 - Anúncio da conta "San União" (único ponto da rede: "Bruno Henrique
