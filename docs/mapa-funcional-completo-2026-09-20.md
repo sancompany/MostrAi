@@ -192,3 +192,7 @@ Pareado por chave, playlist por tela, cache de lista/mídia, institucional, offl
 ## 11. Ordem da revisão manual daqui em diante
 
 Continuar do ponto atual do dono, sem reiniciar: para cada tela, testar happy path, vazio, erro, celular e efeito lateral. Sugestão de sequência restante quando não houver uma ordem já iniciada: autenticação/conta → painel anunciante → ponto → vendedor → admin Entrada → Operação → Catálogo → Financeiro. Todo achado deve receber uma das etiquetas: **bug**, **inconsistência**, **melhoria visual**, **decisão de produto**, **legado** ou **não confirmado**.
+
+## 12. Inconsistências públicas corrigidas em 20/09/2026
+
+Os Termos de Uso foram sincronizados com o produto atual em quatro pontos: toda conta nasce anunciante e vendedor entra somente por convite; vigência/cobertura começam no pagamento sem espera por ponto; cancelamento é self-service pelo painel com contato como contingência; e a distribuição foi descrita como orçamento por hora, distinguindo a operação real da estimativa comercial de 12 horas/dia. O contrato do anunciante e a vitrine já seguiam essas regras.

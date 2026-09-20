@@ -123,3 +123,4 @@ de horas e condições de corrida no congelamento.
 - Inventário completo de usuário/admin: `docs/mapa-funcional-completo-2026-09-20.md`.
 - **Novo bug confirmado, não corrigido:** `src/admin/metrica.js` usa `p.status = 'ativo'` na amortização histórica; status atual é `em_operacao`, então a aba Métrica zera esse custo. Tratar quando o dono chegar nessa tela ou autorizar.
 - Continuar da metade atual da revisão indicada pelo dono; não reiniciar auditoria nem retomar espontaneamente os bugs técnicos pausados.
+- **Fechado:** Termos públicos sincronizados com cadastro multipapel, cobertura imediata, cancelamento pelo painel e orçamento por hora/estimativa de 12h por dia.

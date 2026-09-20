@@ -12,6 +12,9 @@ Inventário completo de site público, conta, anunciante, ponto, vendedor, playe
 ## New confirmed finding
 `src/admin/metrica.js` usa o status antigo `p.status = 'ativo'` ao calcular amortização histórica. Pontos atuais usam `em_operacao`; a aba Métrica zera amortização e pode inflar margem. Visão geral está correta. Não corrigido porque esta etapa era mapeamento.
 
+## Public review synchronized
+Termos de Uso agora refletem o produto atual: conta nasce anunciante e vendedor só por convite; cobertura/vigência começam no pagamento sem espera por ponto; cancelamento é feito no painel; tempo é reservado por hora e a projeção mensal usa referência de 12h/dia. Próximo passo continua sendo a primeira observação do dono nas telas autenticadas/admin.
+
 ## Paused until explicit request
 Player/proof-of-play, banco de horas/déficit físico, corridas da playlist e troca proporcional. Manter registrados, não trabalhar espontaneamente.
 
