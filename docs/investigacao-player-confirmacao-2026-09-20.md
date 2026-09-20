@@ -220,7 +220,7 @@ Não usar URL como identidade e não confiar no relógio da TV para decidir a ja
 
 1. **Decisão de produto:** aprovar `ended` como conclusão e decidir se falha física entra no banco de horas ou em mecanismo separado.
 2. **Contrato/schema:** criar ocorrências identificáveis (tabela ou token determinístico) e tabela de confirmações idempotentes; planejar retenção.
-3. **Gerador:** incluir `playbackId`, `criativoId`, `janelaHora` e posição sem quebrar institucional/dono; resolver corridas do congelamento antes ou junto.
+3. **Gerador:** incluir `playbackId`, `criativoId`, `janelaHora` e posição sem quebrar institucional/dono; preservar a seção crítica do congelamento, cujas corridas foram corrigidas em 20/09/2026.
 4. **Backend `/played`:** receber `playbackId`, validar aparelho/ocorrência, inserir idempotentemente, responder `contou`, estado e janela; manter compatibilidade temporária se necessário.
 5. **Player:** máquina de estado por ocorrência; listeners `loadstart/loadedmetadata/canplay/playing/waiting/ended/error/stalled`; timeout cancelável; confirmar em `ended`; fila persistente de confirmação e retry com backoff.
 6. **Logs diagnósticos:** modo `?debug=1` ou painel protegido, sem expor chave, mostrando IDs, URL sanitizada, eventos, tempos e HTTP.
@@ -233,12 +233,12 @@ Arquivos principais: `public/player.page.js`, `public/player.html`, `public/play
 
 ## 8. Congelamento e impacto no diagnóstico
 
-As duas corridas podem interferir se houver polls simultâneos:
+Na data da investigação, duas corridas podiam interferir se houvesse polls simultâneos:
 
 - bases distintas podem fazer duas respostas divergirem na primeira geração;
 - extras duplicados podem repetir ocorrências e aumentar `vezes_programadas`.
 
-Na TV atual, uma única página normalmente faz um poll por vez, mas virada da hora e intervalo de 15 minutos podem coincidir; reload/duas abas/proxy retry também tornam concorrência possível. Para o diagnóstico físico, registrar timestamp e corpo de **cada** resposta e garantir uma única aba. Se houver listas diferentes, não atribuir imediatamente o efeito ao playback. As corridas não explicam, sozinhas, `/played` ignorado nem a falta de heartbeat.
+**Estado atualizado em 20/09/2026:** essas duas corridas foram corrigidas sem mudar as regras da playlist. A resolução da base e dos extras agora é serializada no PostgreSQL por `(dispositivo, hora)`; a perdedora relê a base vencedora e a nova leva de extras é decidida e anexada sob o mesmo lock transacional. A TV continua recebendo a base estável seguida dos extras, e repetições intencionais da frequência são preservadas. Isso reduz ruído no diagnóstico, mas não altera nem resolve o contrato de `/played`.
 
 ## 9. Roteiro curto para a TV física
 

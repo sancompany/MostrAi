@@ -125,6 +125,14 @@ com base em dado fresco (não congelado) — só a ORDEM/composição da base é
 que fica fixa; ver `docs/teia.md`, entrada "Congelamento da hora da
 playlist".
 
+**Reforço de concorrência (20/09/2026):** criação da base e anexação de
+extras são serializadas por um `pg_advisory_xact_lock` transacional com a
+chave `(dispositivo, hora)`. A requisição que chegar depois obrigatoriamente
+relê a base vencedora sob o lock; a decisão e a gravação da nova leva de
+extras acontecem na mesma transação. Isso preserva todas as regras acima e
+fecha duas corridas: respostas com bases iniciais diferentes e duplicação de
+uma mesma leva de extras. O lock é por tela/hora, não global.
+
 ## ADR-006 — `anunciantes` é a tabela de contas; nunca renomear
 
 Status: Ativa (veto formal em `CONSTRAINTS.md`).
