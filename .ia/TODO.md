@@ -2,6 +2,11 @@
 
 ## NOW
 
+**Ordem combinada com o dono, 20/09/2026: ele termina primeiro uma revisão
+do site em andamento pelo Codex (fora deste canal); os dois bugs abaixo
+ficam reservados pra serem resolvidos por este agente (Claude Code), não
+pelo Codex — explícito, não assumir o contrário.**
+
 - **Descobrir a causa real de "anúncio nunca passou na TV"** (conta San
   União, único ponto da rede: "Bruno Henrique Sanches").
   - Objetivo: identificar por que os anúncios dessa conta não estão

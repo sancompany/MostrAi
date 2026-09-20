@@ -84,18 +84,32 @@ do scaffolding — só a correção operacional da credencial.
   lado do San Checkout, não confirmável sem acesso ao banco dele.
 
 ## Next task
-Conforme `.ia/TODO.md` (NOW): resolver os dois bugs acima. Para o primeiro
-(anúncio não veicula), o próximo passo mais direto é ganhar acesso de
-leitura ao Supabase de produção (projeto `MostrAi` — descubra o ref/host
-pelo `list_projects` da ferramenta MCP, não está registrado em arquivo por
-ser identificador de infraestrutura, ver `.ia/INTEGRATIONS.md`) — se a
-ferramenta MCP `Supabase` estiver disponível e uma chamada `execute_sql`
-for aprovada, rodar a consulta que já estava pronta nesta sessão (buscar a
-conta por nome/e-mail, cruzar plano → cobertura de pontos → criativo
-aprovado → tela) em vez de pedir o checklist manual ao dono. Para o segundo
-(troca de plano), o próximo passo é acesso ao banco do San Checkout
-(projeto Supabase `San_Checkout`, mesma ressalva) para a assinatura
-específica, ou envolvimento de quem administra o Checkout.
+**Combinado com o dono em 20/09/2026, ordem explícita:**
+1. Ele termina primeiro uma revisão do site em andamento pelo **Codex**
+   (sessão separada, fora deste agente) — não é trabalho deste canal.
+2. **Os dois bugs abaixo ficam reservados pra serem resolvidos AQUI**
+   (Claude Code), não pelo Codex — ele foi explícito sobre isso. Não
+   assumir que o Codex vai mexer neles nem duplicar a investigação lá.
+3. Ideia nova pra registrar sem implementar ainda: **banco de horas nos
+   dois sentidos** (hora com sobra roda mais anúncio em vez de só
+   institucional, e isso vira crédito que amortece hora apertada depois) —
+   detalhada em `docs/proximas-versoes.md`, entrada "Banco de horas nos
+   dois sentidos: sobra acelera, aperto puxa do banco". Não é uma tarefa do
+   `NOW`, é ideia pra próxima rodada — não comece a implementar sem o dono
+   pedir explicitamente.
+
+Conforme `.ia/TODO.md` (NOW), quando for a vez de atacar os dois bugs: para
+o primeiro (anúncio não veicula), o próximo passo mais direto é ganhar
+acesso de leitura ao Supabase de produção (projeto `MostrAi` — descubra o
+ref/host pelo `list_projects` da ferramenta MCP, não está registrado em
+arquivo por ser identificador de infraestrutura, ver `.ia/INTEGRATIONS.md`)
+— se a ferramenta MCP `Supabase` estiver disponível e uma chamada
+`execute_sql` for aprovada, rodar a consulta que já estava pronta nesta
+sessão (buscar a conta por nome/e-mail, cruzar plano → cobertura de pontos
+→ criativo aprovado → tela) em vez de pedir o checklist manual ao dono.
+Para o segundo (troca de plano), o próximo passo é acesso ao banco do San
+Checkout (projeto Supabase `San_Checkout`, mesma ressalva) para a
+assinatura específica, ou envolvimento de quem administra o Checkout.
 
 ## Known bugs
 Ver "What is not working" acima e `.ia/TODO.md` (BUGS). Nenhum outro bug
