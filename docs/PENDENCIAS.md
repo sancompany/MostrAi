@@ -2262,6 +2262,28 @@ pedido avulso sempre teve com downgrade (nunca tratava o caso). Registrado
 aqui em vez de resolvido porque corrigir exigiria uma fonte de dado nova só
 pra isso, fora do que a atualização pediu.
 
+### G.9 Troca de plano com acerto redireciona o pagador — 21/09/2026
+
+O dono testou o caminho de G.8 (troca cobrava direto no cartão salvo, sem
+o pagador ver nada) e reverteu: quando há diferença a pagar, o pagador
+precisa aprovar o valor numa tela do próprio Checkout antes de qualquer
+cobrança. O Checkout construiu isso no mesmo dia (`sancompany/san_checkout`
+commit `9c21be1`, `POST /trocar-plano` responde `202` com `approvalUrl`
+quando há acerto ≥ R$ 5,00) e o Mostraí foi atualizado pra tratar: a rota
+`POST /anunciantes/me/trocar-plano` repassa o `202` pro front, que
+redireciona pra `approvalUrl`; quem aplica a troca de verdade nesse caso é
+o webhook `plano_trocado` (`src/financeiro/san-checkout.js`), não mais a
+resposta síncrona — RN-52 em `docs/funcional.md` documenta os dois
+caminhos.
+
+**Limite conhecido, aceito, não corrigido:** se o pagador nunca aprovar, o
+link expira sozinho em 15 minutos do lado do Checkout, mas a linha
+`pendente_troca` daqui não tem nada que a feche — fica órfã pra sempre
+(não atrapalha nada: `buscarAtivaDoAnunciante` só olha `status='ativa'`,
+então uma nova tentativa de troca funciona normalmente). Corrigir exigiria
+um evento do Checkout avisando expiração (não existe hoje) ou uma
+varredura própria aqui — fora do escopo desta entrega.
+
 ### Revisão do dono, tópico 1 (sem login), passada pelo PC — Home (18/09/2026)
 
 **H1. [x] Card do Ponto prometia dinheiro pra quem escolhe a modalidade que

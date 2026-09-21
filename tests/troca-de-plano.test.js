@@ -118,22 +118,31 @@ test('montarRespostaPlano serve assinatura pendente_troca (o Checkout lê o dest
   }
 });
 
-test('webhook de plano_trocado não erra e não reaplica nada (a troca já foi síncrona)', async () => {
+test('webhook de plano_trocado é no-op quando a assinatura já está ativa (troca sem acerto, aplicada de forma síncrona)', async () => {
   const sc = comAmbiente();
   const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
   const originalBuscar = assinaturasRepo.buscarPorId;
   const originalCancelar = assinaturasRepo.marcarCancelada;
+  const originalMarcarAtiva = assinaturasRepo.marcarAtiva;
   let cancelarChamado = false;
+  let marcarAtivaChamado = false;
   assinaturasRepo.buscarPorId = async (id) => ({ id, anunciante_id: 1, plano_id: 'p1', status: 'ativa' });
   assinaturasRepo.marcarCancelada = async () => {
     cancelarChamado = true;
+  };
+  assinaturasRepo.marcarAtiva = async () => {
+    marcarAtivaChamado = true;
   };
   const par = comCheckoutRespondendo({}, 200); // consultar-assinatura, se chaveDoEvento precisar
   try {
     // planoId único a cada rodada: a chave de dedupe de um evento que não
     // credita ciclo é hash(dia|corpo) — corpo fixo faria a segunda rodada
     // do dia ser descartada como reentrega, e o teste "passaria" sem testar
-    // nada (ver docs/erros/ desta sessão).
+    // nada (ver docs/erros/ desta sessão). Sem stub em pool.connect aqui de
+    // propósito: o pg-pool implementa `pool.query` (usado logo acima, na
+    // dedupe) chamando `this.connect` por dentro — simular só `connect`
+    // trava esse `query` sem callback, e trava o teste inteiro (achado
+    // construindo este teste, 21/09/2026).
     await sc.processarWebhookAssinatura({
       versao: 1,
       tipo: 'assinatura',
@@ -150,10 +159,128 @@ test('webhook de plano_trocado não erra e não reaplica nada (a troca já foi s
       false,
       'plano_trocado não cancela nada — quem cancela é o cliente, não este evento',
     );
+    assert.strictEqual(marcarAtivaChamado, false, 'já está ativa: não reaplica a troca');
   } finally {
     assinaturasRepo.buscarPorId = originalBuscar;
     assinaturasRepo.marcarCancelada = originalCancelar;
+    assinaturasRepo.marcarAtiva = originalMarcarAtiva;
     par.restaurar();
+  }
+});
+
+// As duas próximas usam linhas reais no banco (padrão de
+// tests/indicacoes.test.js), não um cliente de pool simulado: o código sob
+// teste mistura `pool.query` (dedupe) com `pool.connect` (transação da
+// troca) na MESMA chamada, e um `pool.connect` fake não dá conta dos dois
+// sem reimplementar o client do `pg` por dentro (ver comentário acima).
+async function contaDeTeste(prefixo) {
+  const pool = require('../src/db/pool');
+  const email = `${prefixo}-${randomUUID()}@example.com`;
+  const { rows } = await pool.query(
+    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em, papeis)
+     VALUES ($1, '11144477735', $2, '16999990000', 'x', now(), '{anunciante}')
+     RETURNING id`,
+    [prefixo, email],
+  );
+  return rows[0].id;
+}
+
+async function apagarConta(id) {
+  const pool = require('../src/db/pool');
+  // eventos.registrar (src/lib/eventos.js) é fire-and-forget de propósito —
+  // não devolve a promise do INSERT pra quem chama, em lugar nenhum do
+  // projeto. A limpeza aqui roda antes desse INSERT terminar sem essa
+  // pausa curta, e a FK de `eventos` pra `anunciantes` derruba o teste.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM assinaturas WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
+}
+
+test('webhook de plano_trocado aplica a troca quando a linha ainda está pendente_troca (pagador aprovou no Checkout, 202)', async () => {
+  const sc = comAmbiente();
+  const pool = require('../src/db/pool');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const anunciante = await contaDeTeste('troca-pendente');
+  try {
+    const antiga = await assinaturasRepo.criar({ anuncianteId: anunciante, planoId: 'essencial-1m', status: 'ativa' });
+    const nova = await assinaturasRepo.criar({
+      anuncianteId: anunciante,
+      planoId: 'destaque-1m',
+      status: 'pendente_troca',
+    });
+
+    await sc.processarWebhookAssinatura({
+      versao: 1,
+      tipo: 'assinatura',
+      planoId: nova.id,
+      planoAnterior: antiga.id,
+      documento: '11144477735',
+      evento: 'plano_trocado',
+      valor: 160,
+      ciclo: 'MONTHLY',
+      acertoCobrado: 30,
+    });
+
+    const antigaDepois = await assinaturasRepo.buscarPorId(antiga.id);
+    const novaDepois = await assinaturasRepo.buscarPorId(nova.id);
+    assert.strictEqual(antigaDepois.status, 'trocada', 'marca a assinatura antiga como trocada');
+    assert.strictEqual(novaDepois.status, 'ativa', 'marca a assinatura nova como ativa');
+
+    const { rows: contaRows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [anunciante]);
+    assert.strictEqual(contaRows[0].plano_id, 'destaque-1m', 'atualiza o plano_id do anunciante');
+
+    const { rows: cobrancaRows } = await pool.query(
+      'SELECT plano_id, plano_anterior_id, valor FROM cobrancas_confirmadas WHERE anunciante_id = $1',
+      [anunciante],
+    );
+    assert.strictEqual(cobrancaRows.length, 1, 'grava a cobrança confirmada (houve acerto)');
+    assert.strictEqual(cobrancaRows[0].plano_id, 'destaque-1m');
+    assert.strictEqual(cobrancaRows[0].plano_anterior_id, 'essencial-1m');
+    assert.strictEqual(Number(cobrancaRows[0].valor), 30);
+  } finally {
+    await apagarConta(anunciante);
+  }
+});
+
+test('webhook de plano_trocado sem acerto (downgrade absorvido) não grava cobranca_confirmada', async () => {
+  const sc = comAmbiente();
+  const pool = require('../src/db/pool');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const anunciante = await contaDeTeste('troca-sem-acerto');
+  try {
+    const antiga = await assinaturasRepo.criar({ anuncianteId: anunciante, planoId: 'destaque-1m', status: 'ativa' });
+    const nova = await assinaturasRepo.criar({
+      anuncianteId: anunciante,
+      planoId: 'essencial-1m',
+      status: 'pendente_troca',
+    });
+
+    // Este caso não deveria acontecer de verdade — sem acerto o Checkout
+    // responde 200 na hora, nunca gera o 202/aprovação que este webhook
+    // resolve. Mesmo assim, `acertoCobrado: 0` não pode gravar uma
+    // cobrança de R$ 0 se algum dia chegar assim.
+    await sc.processarWebhookAssinatura({
+      versao: 1,
+      tipo: 'assinatura',
+      planoId: nova.id,
+      planoAnterior: antiga.id,
+      documento: '11144477735',
+      evento: 'plano_trocado',
+      valor: 60,
+      ciclo: 'MONTHLY',
+      acertoCobrado: 0,
+    });
+
+    const { rows: cobrancaRows } = await pool.query('SELECT id FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+      anunciante,
+    ]);
+    assert.strictEqual(cobrancaRows.length, 0, 'sem acerto cobrado, não grava cobrança nenhuma');
+    const { rows: contaRows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [anunciante]);
+    assert.strictEqual(contaRows[0].plano_id, 'essencial-1m', 'ainda assim troca o plano — o acerto é só o dinheiro');
+  } finally {
+    await apagarConta(anunciante);
   }
 });
 

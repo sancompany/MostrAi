@@ -373,11 +373,15 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
   }
 });
 
-// Troca de plano PELO CHECKOUT (POST /trocar-plano dele, construído em
-// 17/09/2026 — substitui o pedido avulso pra este caso). Cobra o acerto
-// proporcional no cartão já salvo, na mesma requisição: sem redirecionar
-// pra uma segunda tela de pagamento, sem o assinante digitar cartão de
-// novo, sem janela sem cobertura entre uma tentativa e outra.
+// Troca de plano PELO CHECKOUT (POST /trocar-plano dele — substitui o
+// pedido avulso pra este caso). Sem acerto a cobrar (rebaixamento, ou
+// acerto absorvido), troca na hora, sem o assinante digitar cartão de
+// novo. Com acerto a cobrar (mudança de contrato em 21/09/2026: o dono
+// testou o caminho antigo — que cobrava direto, sem o pagador ver nada —
+// e decidiu que qualquer cobrança precisa de aprovação explícita dele),
+// o Checkout responde 202 e devolve `approvalUrl`: quem confirma essa
+// troca é o webhook `plano_trocado`, não esta resposta (ver
+// processarWebhookAssinatura em san-checkout.js).
 //
 // A linha nova em `assinaturas` nasce 'pendente_troca' ANTES de chamar o
 // Checkout — é dela que o Checkout lê preço/ciclo do plano de destino
@@ -417,6 +421,20 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   });
 
   const { status, corpo } = await sanCheckout.trocarPlano(assinaturaAtiva.id, assinaturaNova.id, conta.cpf_cnpj);
+
+  if (status === 202) {
+    // Nada foi cobrado nem alterado ainda — a linha 'pendente_troca' fica
+    // exatamente como está. Só o webhook plano_trocado (se o pagador
+    // aprovar) ou a expiração sozinha do lado do Checkout (se não
+    // aprovar) resolvem daqui pra frente; não há nada a fazer nesta
+    // resposta além de mandar o pagador pra lá.
+    return res.status(202).json({
+      status: 'aprovacao_pendente',
+      approvalUrl: corpo.approvalUrl,
+      expiresAt: corpo.expiresAt,
+      amount: corpo.amount,
+    });
+  }
 
   if (status !== 200) {
     // O Checkout recusou em algum ponto ANTES de cobrar (ver os códigos em
