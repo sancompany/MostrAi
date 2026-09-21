@@ -160,11 +160,16 @@ function turbinarTabela(caixa) {
 }
 
 // Monta a casca padrão de tabela (busca + chips + rodapé de contagem).
-function caixaTabela({ chips = [], html, dica = '' }) {
+// `ativo`: chip que já entra marcado (por valor, não por índice) — quem
+// chega de outra tela já filtrado (ex.: "Pontos por status" na Visão geral)
+// não vê "Todos" primeiro pra depois clicar de novo. Sem isso, o padrão é o
+// primeiro chip, igual sempre foi.
+function caixaTabela({ chips = [], html, dica = '', ativo = null }) {
+  const valorAtivo = ativo !== null && chips.some((c) => c.valor === ativo) ? ativo : chips[0]?.valor;
   return `<div class="tabela-caixa">
     <div class="tabela-topo">
       <input class="busca" type="search" placeholder="Buscar...">
-      <div class="chips">${chips.map((c, i) => `<button type="button" class="chip ${i === 0 ? 'active' : ''}" data-filtro="${c.valor}">${esc(c.nome)}</button>`).join('')}</div>
+      <div class="chips">${chips.map((c) => `<button type="button" class="chip ${c.valor === valorAtivo ? 'active' : ''}" data-filtro="${c.valor}">${esc(c.nome)}</button>`).join('')}</div>
     </div>
     <div class="rolagem">${html}</div>
     <div class="tabela-pe"><span data-contagem></span><span>${dica}</span></div>
@@ -180,11 +185,8 @@ const PONTO_STATUS = {
 };
 // `status` deixou de ser estado operacional (16/09/2026) — só distingue
 // comum de parceiro (substitui o antigo flag "fundador"). O que bloqueia
-// login/veiculação é `suspenso`, mostrado à parte (ver ANUNCIANTE_SITUACAO).
+// login/veiculação é `suspenso`, mostrado à parte na coluna Suspensa.
 const ANUNCIANTE_STATUS = { comum: 'Comum', parceiro: 'Parceiro' };
-// Situação operacional calculada no backend (GET /admin/resumo) a partir de
-// `suspenso` + `plano_id` + `data_expiracao` — não é mais o campo `status`.
-const ANUNCIANTE_SITUACAO = { ativo: 'Ativo', suspenso: 'Suspenso', sem_plano: 'Sem plano' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
@@ -253,16 +255,7 @@ const ALIAS_REVERSO = Object.fromEntries(Object.entries(ALIASES_ANTIGOS).map(([v
 const MODULOS = [
   {
     grupo: 'Mostraí',
-    itens: [
-      {
-        id: 'visaogeral',
-        nome: 'Visão geral',
-        abas: [
-          { id: 'hoje', nome: 'Hoje', render: renderResumo },
-          { id: 'performance', nome: 'Performance', render: renderMetrica },
-        ],
-      },
-    ],
+    itens: [{ id: 'visaogeral', nome: 'Visão geral', render: renderResumo }],
   },
   {
     grupo: 'Operação',
@@ -356,9 +349,7 @@ const TODOS_MODULOS = MODULOS.flatMap((g) => g.itens);
 const buscarModulo = (id) => TODOS_MODULOS.find((m) => m.id === id);
 
 const SUBTITULOS = {
-  resumo: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
-  metrica:
-    'A margem mês a mês, onde as pessoas param no caminho até pagar, e quanto tempo suas filas demoram. Tudo ignorando a sua própria conta e as contas de teste.',
+  visaogeral: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
   candidaturas:
     'Quem pediu pra ter um ponto, de dentro do próprio painel. Você conversa, e se fechar, libera na conta.',
@@ -458,7 +449,7 @@ function resolverAlvo(alvoBruto) {
   const canonico = ALIASES_ANTIGOS[bruto] || bruto;
   const [moduloId, abaId] = canonico.split('/');
   const modulo = buscarModulo(moduloId);
-  if (!modulo) return { moduloId: 'visaogeral', abaId: 'hoje' };
+  if (!modulo) return { moduloId: 'visaogeral', abaId: null };
   if (!modulo.abas) return { moduloId, abaId: null };
   const aba = modulo.abas.find((a) => a.id === abaId) || modulo.abas[0];
   return { moduloId, abaId: aba.id };
@@ -603,7 +594,6 @@ const ALERTAS = [
   { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) nova(s) pra responder' },
   { fila: 'eventos', aba: 'eventos', texto: 'evento(s) de pagamento pra revisar', urgente: true },
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
-  { fila: 'notas', aba: 'cobrancas', texto: 'nota(s) fiscal(is) por emitir' },
   {
     fila: 'arrependimentos',
     aba: 'arrependimentos',
@@ -614,17 +604,21 @@ const ALERTAS = [
   { fila: 'pontosocupados', aba: 'ocupacaopontos', texto: 'ponto(s) travado(s) pra escolha nova por ocupação' },
 ];
 
-function barrasHorizontais(linhas, mapa) {
+// `paraAba`: quando informado, cada linha vira botão que navega pra lá com
+// o status já filtrado (ver FILTRO_PONTOS_STATUS/data-status-clique, uma
+// linha abaixo). Sem isso, continua puro texto, como sempre foi.
+function barrasHorizontais(linhas, mapa, paraAba = null) {
   if (!linhas.length) return '<p class="empty-state u-py-8">Nada cadastrado ainda.</p>';
   const max = Math.max(...linhas.map((l) => l.qtd)) || 1;
+  const tag = paraAba ? 'button' : 'div';
   return `<div class="bar-chart-h">${linhas
     .map(
       (l) => `
-    <div class="row">
+    <${tag} ${paraAba ? `type="button" class="row row-clicavel" data-status-clique="${esc(l.status)}"` : 'class="row"'}>
       <span class="nome">${esc(mapa[l.status] || l.status)}</span>
       <span class="track"><span class="fill" data-pct="${(l.qtd / max) * 100}"></span></span>
       <span class="valor">${l.qtd}</span>
-    </div>`,
+    </${tag}>`,
     )
     .join('')}</div>`;
 }
@@ -662,10 +656,6 @@ function redeVazia(rede) {
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
-  const entrega = rede.programadas30d ? Math.round((rede.exibicoes30d / rede.programadas30d) * 100) : null;
-  const meses = financeiro.faturamentoPorMes || [];
-  const maxFat = Math.max(...meses.map((m) => Number(m.total)), 1);
-  const margemOk = financeiro.margemMensal >= 0;
 
   el.innerHTML = `
     ${
@@ -688,50 +678,27 @@ async function renderResumo(el) {
 
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
-      <div class="kpi-card"><span class="kpi-label">Custo dos pontos</span><b>${fmt(financeiro.custoPontosMensal)}</b><span class="kpi-caption">ajuda de custo paga</span></div>
-      <div class="kpi-card"><span class="kpi-label">Amortização</span><b>${fmt(financeiro.amortizacaoMensal)}</b><span class="kpi-caption">custo de cada tela ÷ prazo dela</span></div>
-      <div class="kpi-card"><span class="kpi-label">Custos fixos</span><b>${fmt(financeiro.custosFixosMensal)}</b><a class="link-secundario" href="#custos">editar →</a></div>
-      <div class="kpi-card"><span class="kpi-label">Margem</span><b>${fmt(financeiro.margemMensal)}</b><span class="delta ${margemOk ? 'up' : 'down'}">${margemOk ? 'no azul' : 'no vermelho'}</span></div>
     </div>
 
     <div class="kpi-grid u-mb-20">
-      <div class="kpi-card"><span class="kpi-label">Pontos ativos</span><b>${rede.pontosAtivos}</b><span class="kpi-caption">${rede.telasAtivas} tela(s) no ar · +${rede.novosPontos30d} pontos em 30 dias</span></div>
       <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
-      <div class="kpi-card"><span class="kpi-label">Exibições (30 dias)</span><b>${num(rede.exibicoes30d)}</b><span class="kpi-caption">${entrega === null ? 'sem programação ainda' : `${entrega}% do programado`}</span></div>
       <div class="kpi-card"><span class="kpi-label">Anunciantes novos</span><b>${rede.novosAnunciantes30d}</b><span class="kpi-caption">nos últimos 30 dias</span></div>
     </div>
 
     ${linhaConciliacao(RESUMO.conciliacao)}
 
-    <div class="dashboard-grid">
-      <div class="panel">
-        <div class="panel-head"><h3>Faturamento confirmado</h3><span class="kpi-caption">últimos 6 meses</span></div>
-        ${
-          meses.length
-            ? `<div class="bar-chart">${meses
-                .map((m) => {
-                  const [ano, mes] = m.mes.split('-');
-                  return `<div class="bar-col" title="${m.mes}: ${fmt(m.total)}">
-            <div class="bar" data-pct="${Math.max(2, (Number(m.total) / maxFat) * 100)}"></div>
-            <span class="bar-label">${mes}/${ano.slice(2)}</span>
-          </div>`;
-                })
-                .join('')}</div>`
-            : '<p class="empty-state u-py-14">Nenhuma cobrança confirmada ainda.</p>'
-        }
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h3>Pontos por status</h3></div>
-        ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS)}
-        <div class="panel-head u-mt-22"><h3>Anunciantes por situação</h3></div>
-        ${barrasHorizontais(
-          rede.anunciantesPorSituacao.map((r) => ({ status: r.situacao, qtd: r.qtd })),
-          ANUNCIANTE_SITUACAO,
-        )}
-      </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Pontos por status</h3></div>
+      ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS, 'pontos')}
     </div>`;
 
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
+  el.querySelectorAll('[data-status-clique]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      FILTRO_PONTOS_STATUS = btn.dataset.statusClique;
+      irPara('pontos');
+    }),
+  );
 }
 
 // ---------- pendências ----------
@@ -978,7 +945,14 @@ async function renderMeusAnuncios(el) {
 }
 
 // ---------- pontos ----------
+// Mesmo padrão de FILTRO_TELAS_PONTO (aba Telas): a Visão geral seta este
+// global antes de navegar pra cá, quando o clique veio de um status
+// específico em "Pontos por status" — consumido uma vez só.
+let FILTRO_PONTOS_STATUS = null;
+
 async function renderPontos(el) {
+  const filtroStatus = FILTRO_PONTOS_STATUS;
+  FILTRO_PONTOS_STATUS = null;
   const [pontos, categorias, opcoesComodato, configSite] = await Promise.all([
     pegar('/admin/pontos'),
     pegar('/admin/categorias'),
@@ -1058,6 +1032,7 @@ async function renderPontos(el) {
             ],
             html: corpo,
             dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
+            ativo: filtroStatus,
           })
         : '<p class="empty-state">Nenhum ponto ainda. Pedido de "meu ponto" no painel de uma conta vira candidatura na aba Candidaturas, você libera na conta, e o ponto nasce ali. O cadastro manual acima é pra exceção.</p>'
     }
@@ -2418,125 +2393,6 @@ async function renderPagamentosPontos(el) {
       renderPagamentosPontos(el);
     }),
   );
-}
-
-// ---------- métrica ----------
-// As três consultas da seção 9 do funcional, numa tela só. O que elas
-// respondem e por que são essas três está em src/admin/metrica.js — aqui é só
-// a leitura.
-async function renderMetrica(el) {
-  const m = await pegar('/admin/metrica');
-  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-');
-  const ultimo = m.margem[m.margem.length - 1] || {};
-
-  const funil = m.funil.length
-    ? m.funil
-    : [{ mes: '-', cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 }];
-  const totalFunil = funil.reduce(
-    (t, f) => ({
-      cadastros: t.cadastros + f.cadastros,
-      aprovacoes: t.aprovacoes + f.aprovacoes,
-      checkouts_abertos: t.checkouts_abertos + f.checkouts_abertos,
-      pagamentos: t.pagamentos + f.pagamentos,
-    }),
-    { cadastros: 0, aprovacoes: 0, checkouts_abertos: 0, pagamentos: 0 },
-  );
-
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Margem deste mês</span><b>${fmt(ultimo.margem || 0)}</b>
-        <span class="delta ${Number(ultimo.margem) >= 0 ? 'up' : 'down'}">${Number(ultimo.margem) >= 0 ? 'no azul' : 'no vermelho'}</span></div>
-      <div class="kpi-card"><span class="kpi-label">Chega ao checkout e paga</span><b>${pct(totalFunil.pagamentos, totalFunil.checkouts_abertos)}</b>
-        <span class="kpi-caption">${totalFunil.pagamentos} de ${totalFunil.checkouts_abertos} em ${m.meses} meses</span></div>
-      <div class="kpi-card"><span class="kpi-label">Cadastra e paga</span><b>${pct(totalFunil.pagamentos, totalFunil.cadastros)}</b>
-        <span class="kpi-caption">${totalFunil.pagamentos} de ${totalFunil.cadastros} cadastros</span></div>
-    </div>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Margem mês a mês</h3><span class="kpi-caption">receita confirmada − pontos − amortização − fixos</span></div>
-    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>Mês</th><th class="num">Receita</th><th class="num">Pontos</th><th class="num">Amortização</th><th class="num">Fixos</th><th class="num">Margem</th>
-    </tr></thead><tbody>
-    ${m.margem
-      .map(
-        (r) => `<tr>
-      <td>${esc(r.mes)}</td>
-      <td class="num">${fmt(r.receita)}</td>
-      <td class="num">${fmt(r.custo_pontos)}</td>
-      <td class="num">${fmt(r.amortizacao)}</td>
-      <td class="num">${fmt(r.custos_fixos)}</td>
-      <td class="num"><b class="${Number(r.margem) >= 0 ? 'delta up' : 'delta down'}">${fmt(r.margem)}</b></td>
-    </tr>`,
-      )
-      .join('')}
-    </tbody></table></div></div>
-    <p class="form-hint u-m-0 u-mb-20">Os três custos são os de <b>hoje</b>, repetidos em todo mês da tabela: o sistema não guarda quanto a rede custava em março. Só a receita é histórica de verdade.</p>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Funil, mês a mês</h3><span class="kpi-caption">cadastrou → aprovado → abriu o checkout → pagou</span></div>
-    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>Mês</th><th class="num">Cadastros</th><th class="num">Aprovações</th><th class="num">Checkouts abertos</th><th class="num">Pagamentos</th><th class="num">Checkout → pago</th>
-    </tr></thead><tbody>
-    ${
-      m.funil.length
-        ? m.funil
-            .map(
-              (f) => `<tr>
-      <td>${esc(f.mes)}</td>
-      <td class="num">${f.cadastros}</td>
-      <td class="num">${f.aprovacoes}</td>
-      <td class="num">${f.checkouts_abertos}</td>
-      <td class="num"><b>${f.pagamentos}</b></td>
-      <td class="num">${pct(f.pagamentos, f.checkouts_abertos)}</td>
-    </tr>`,
-            )
-            .join('')
-        : '<tr><td colspan="6" class="u-dim">Nenhum evento ainda.</td></tr>'
-    }
-    </tbody></table></div></div>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Tempo das suas filas</h3><span class="kpi-caption">últimas 90 dias, por semana</span></div>
-    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>Semana</th><th>Fila</th><th class="num">Quantidade</th><th class="num">Mediana (h)</th><th class="num">Pior caso (h)</th>
-    </tr></thead><tbody>
-    ${
-      m.filas.length
-        ? m.filas
-            .map(
-              (f) => `<tr>
-      <td>${esc(f.semana)}</td>
-      <td>${f.nome === 'conta:aprovacao_recebe' ? 'Reinstalar conta suspensa' : 'Aprovar criativo'}</td>
-      <td class="num">${f.quantidade}</td>
-      <td class="num"><b>${f.mediana_horas ?? '-'}</b></td>
-      <td class="num">${f.pior_caso_horas ?? '-'}</td>
-    </tr>`,
-            )
-            .join('')
-        : '<tr><td colspan="5" class="u-dim">Nada aprovado nos últimos 90 dias.</td></tr>'
-    }
-    </tbody></table></div></div>
-    <p class="form-hint u-m-0 u-mb-20">Mediana, não média: uma conta esquecida por duas semanas puxaria a média e esconderia que o resto sai no mesmo dia.</p>
-
-    <details>
-      <summary class="u-pointer u-dim u-fs-85 u-py-8">Instrumentação: o que está sendo gravado</summary>
-      <div class="tabela-caixa u-mt-8"><div class="rolagem"><table><thead><tr>
-        <th>Evento</th><th class="num">Total</th><th class="num">Internos</th><th>Último</th>
-      </tr></thead><tbody>
-      ${
-        m.eventos.length
-          ? m.eventos
-              .map(
-                (e) => `<tr>
-        <td><code>${esc(e.nome)}</code></td>
-        <td class="num">${e.total}</td>
-        <td class="num">${e.internos}</td>
-        <td>${data(e.ultimo)}</td>
-      </tr>`,
-              )
-              .join('')
-          : '<tr><td colspan="4" class="u-dim">Nenhum evento gravado ainda.</td></tr>'
-      }
-      </tbody></table></div></div>
-      <p class="form-hint">Evento que nunca aparece aqui é evento que ninguém emite. <code>exibicao:video_toca</code> não entra nesta tabela de propósito. Ele já existe agregado em "Telas", por hora e por anunciante, com programadas e confirmadas.</p>
-    </details>`;
 }
 
 // ---------- planos arquivados ----------

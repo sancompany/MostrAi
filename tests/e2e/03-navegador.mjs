@@ -98,7 +98,10 @@ const adm = await pagina('/admin/', null, ctxAdmin);
 await adm.fill('#usuario', 'admin'); await adm.fill('#senha', 'Admin12@teste'); await adm.click('#formLogin button[type=submit]');
 await adm.waitForSelector('#app:not([hidden])');
 await adm.waitForTimeout(600);
-check('visão geral mostra custos fixos', (await adm.textContent('#conteudo')).includes('Custos fixos'));
+// Visão geral simplificada (21/09/2026, pedido do dono): só receita recorrente,
+// alcance da rede, anunciantes novos e pontos por status — custos/margem/
+// amortização/pontos ativos/exibições/faturamento/anunciantes por situação saíram.
+check('visão geral mostra receita recorrente', (await adm.textContent('#conteudo')).includes('Receita recorrente'));
 check('alerta de candidaturas novas', (await adm.textContent('#conteudo')).includes('candidatura'));
 await shot(adm, 'admin-resumo');
 await abaAdmin(adm, 'candidaturas', 'Farmácia Central');
