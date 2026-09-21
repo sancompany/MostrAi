@@ -852,17 +852,18 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   }
   const anuncianteId = req.params.id;
 
-  const [totais, porPonto, porDia, porDiaPonto, cobrancas, anunciante, confirmadasMesRows] = await Promise.all([
-    pool.query(
-      `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+  const [totais, porPonto, porDia, porDiaPonto, cobrancas, anunciante, confirmadasMesRows, janelaMesRows] =
+    await Promise.all([
+      pool.query(
+        `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
-      [anuncianteId],
-    ),
-    pool.query(
-      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-      // status mostrado é o da tela mais recentemente vista (19/09/2026,
-      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
-      `SELECT p.id, p.nome, p.cidade,
+        [anuncianteId],
+      ),
+      pool.query(
+        // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
+        // status mostrado é o da tela mais recentemente vista (19/09/2026,
+        // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+        `SELECT p.id, p.nome, p.cidade,
               SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
               MAX(d.ultima_vez_online) AS ultima_vez_online
        FROM exibicoes_contador e
@@ -871,23 +872,23 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY p.id, p.nome, p.cidade
        ORDER BY confirmadas DESC`,
-      [anuncianteId],
-    ),
-    pool.query(
-      // Mesmo corte de dia do comprovante em CSV (ver acima): no fuso de
-      // Matão, não no do servidor.
-      `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas) AS confirmadas
+        [anuncianteId],
+      ),
+      pool.query(
+        // Mesmo corte de dia do comprovante em CSV (ver acima): no fuso de
+        // Matão, não no do servidor.
+        `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1
        GROUP BY dia ORDER BY dia DESC LIMIT 30`,
-      [anuncianteId],
-    ),
-    // Mesma coisa, mas por ponto dentro de cada dia (19/09/2026, pedido do
-    // dono: "no card exibições por dia, coloque também um exibições por
-    // ponto") — o front empilha por cor de ponto em vez de mostrar só o
-    // total do dia. Mesmo corte de 30 dias do gráfico por dia; sem LIMIT
-    // aqui porque é dia × ponto, não só dia.
-    pool.query(
-      `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+        [anuncianteId],
+      ),
+      // Mesma coisa, mas por ponto dentro de cada dia (19/09/2026, pedido do
+      // dono: "no card exibições por dia, coloque também um exibições por
+      // ponto") — o front empilha por cor de ponto em vez de mostrar só o
+      // total do dia. Mesmo corte de 30 dias do gráfico por dia; sem LIMIT
+      // aqui porque é dia × ponto, não só dia.
+      pool.query(
+        `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
               p.id AS ponto_id, p.nome AS ponto_nome, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
@@ -895,28 +896,45 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY dia, p.id, p.nome
        ORDER BY dia DESC`,
-      [anuncianteId],
-    ),
-    // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
-    // emitida, e quando passar a emitir vai direto por e-mail, não por um
-    // link nesta tabela — os campos continuam existindo na tabela
-    // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
-    pool.query(
-      `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
-      [anuncianteId],
-    ),
-    repo.buscarPorId(anuncianteId),
-    // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
-    // acima: quanto já confirmou no mês corrente, em Matão.
-    pool.query(
-      `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+        [anuncianteId],
+      ),
+      // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
+      // emitida, e quando passar a emitir vai direto por e-mail, não por um
+      // link nesta tabela — os campos continuam existindo na tabela
+      // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
+      pool.query(
+        `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
+        [anuncianteId],
+      ),
+      repo.buscarPorId(anuncianteId),
+      // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
+      // acima: quanto já confirmou no mês corrente, em Matão.
+      pool.query(
+        `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador
        WHERE anunciante_id = $1
          AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
            = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
-      [anuncianteId],
-    ),
-  ]);
+        [anuncianteId],
+      ),
+      // Primeiro dia com PROGRAMAÇÃO (não confirmação) no mês corrente, em
+      // Matão — é o início real da campanha dentro do mês, mesmo em dias sem
+      // nenhuma confirmação. Existe uma linha em exibicoes_contador sempre que
+      // a conta foi programada numa hora, então MIN() aqui não depende de ter
+      // rodado de verdade (21/09/2026, correção da média diária: dividir por
+      // "dia do mês" penalizava campanha que começou no meio do mês —
+      // 14 exibições em 2 dias virava "0,7 por dia" em vez de "7 por dia").
+      pool.query(
+        `SELECT
+         MIN(date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo'))::date AS primeiro_dia,
+         date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje
+       FROM exibicoes_contador
+       WHERE anunciante_id = $1
+         AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
+           = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
+        [anuncianteId],
+      ),
+    ]);
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
@@ -947,10 +965,16 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     horasEntreguesMes = Math.round(((confirmadasMes * duracaoMedia) / 3600) * 10) / 10;
     exibicoesContratadasMes = Math.round((horasContratadasMes * 3600) / duracaoMedia);
     exibicoesRestantesMes = Math.max(0, exibicoesContratadasMes - confirmadasMes);
-    // Dia do mês pelo relógio do servidor — aproximação aceitável pra uma
-    // MÉDIA (mesmo espírito ilustrativo de horasEntreguesMes), não vale a
-    // pena buscar o dia em Matão só pra isso.
-    mediaDiariaMes = Math.round((confirmadasMes / new Date().getDate()) * 10) / 10;
+    // Dias DECORRIDOS DESDE O INÍCIO DA CAMPANHA no mês, não "dia do mês"
+    // (21/09/2026, correção: o divisor antigo penalizava campanha nova —
+    // conta que começou dia 19 e confirmou 14 vezes até dia 21 mostrava
+    // "0,7 por dia", dividindo por 21 em vez de pelos 3 dias em que a
+    // campanha de fato existiu). `janelaMesRows` só tem linha quando já
+    // houve programação neste mês; sem isso, 1 dia evita divisão por zero
+    // sem inventar uma média que não existe ainda.
+    const { primeiro_dia: primeiroDia, hoje } = janelaMesRows.rows[0] || {};
+    const diasDecorridos = primeiroDia ? Math.round((new Date(hoje) - new Date(primeiroDia)) / 86_400_000) + 1 : 1;
+    mediaDiariaMes = Math.round((confirmadasMes / diasDecorridos) * 10) / 10;
   }
 
   // Quantas pecas ja estao aprovadas: e o que decide a frase que o painel

@@ -131,7 +131,7 @@ function montarCardPonto(estado) {
       <div class="ponto-opportunity-summary">
         <div class="ponto-opportunity-copy">
           <span class="ponto-opportunity-icon" aria-hidden="true">⌂</span>
-          <div><p class="section-eyebrow">Faça parte da rede</p><h3>Você também possui um comércio?</h3><p class="form-hint">Transforme-o em um ponto MostrAi e ganhe uma tela.</p></div>
+          <div><p class="section-eyebrow">Faça parte da rede</p><h3>Você também possui um comércio?</h3><p class="form-hint">Transforme-o em um ponto Mostraí e ganhe uma tela.</p></div>
         </div>
         <button class="btn primary" type="button" id="btnAbrirCardPonto" aria-expanded="false">Quero ser um ponto</button>
       </div>
@@ -255,12 +255,7 @@ function preencherStatusBanner() {
     }
       </div>
     </div>
-    <div class="hero-metrics" aria-label="Resumo da campanha">
-      <div class="hero-metric"><span>Plano</span><strong>${esc(ANUNCIANTE.plano?.nome || (ANUNCIANTE.plano_id ? 'Ativo' : 'Sem plano'))}</strong></div>
-      <div class="hero-metric"><span>Horas entregues</span><strong id="heroHoras">—</strong></div>
-      <div class="hero-metric"><span>Exibições confirmadas</span><strong id="heroExibicoes">—</strong></div>
-      <div class="hero-metric"><span>Pontos veiculando</span><strong id="heroPontos">—</strong></div>
-    </div>
+    <div class="hero-status" id="heroStatus" hidden></div>
   `;
   if (podeGerenciar) {
     preencherAssinatura();
@@ -307,7 +302,7 @@ function pintarCompensacao(c) {
   const faltam = c.contratados - c.veiculando;
   const h = (n) => `${n} ${n === 1 ? 'hora' : 'horas'}`;
   el.innerHTML =
-    `<b>A rede MostrAi está crescendo</b> ` +
+    `<b>A rede Mostraí está crescendo</b> ` +
     `Seu plano cobre ${c.contratados} pontos e ${c.veiculando} ${c.veiculando === 1 ? 'está' : 'estão'} veiculando hoje. ` +
     `O tempo ${faltam === 1 ? 'do ponto que falta' : `dos ${faltam} pontos que faltam`} volta pros que estão no ar: ` +
     `em vez das ${h(c.horas_sem_compensacao)} de tela por mês que a rede de hoje daria, você tem ` +
@@ -330,8 +325,6 @@ async function carregarPontos() {
   const limite = dados.limite;
   document.getElementById('painelPontos').hidden = false;
   pintarCompensacao(dados.cobertura);
-  const heroPontos = document.getElementById('heroPontos');
-  if (heroPontos) heroPontos.textContent = String(dados.cobertura?.veiculando ?? dados.pontos.length);
 
   const lista = document.getElementById('listaPontos');
   if (!dados.pontos.length) {
@@ -391,7 +384,14 @@ async function carregarPontos() {
 
   function pintarContador() {
     const n = marcados().length;
-    contador.textContent = limite ? `${n} de ${limite} escolhidos` : `${n} escolhido${n === 1 ? '' : 's'}`;
+    const base = limite ? `${n} de ${limite} escolhidos` : `${n} escolhido${n === 1 ? '' : 's'}`;
+    // "Escolhidos" e "em operação" são contagens diferentes (o cliente pode
+    // escolher um ponto que ainda está em instalação, ou não escolher nada e
+    // ainda assim aparecer nos que estão no ar) — juntar os dois números no
+    // mesmo badge evita a leitura de que "1 de 7" já diz tudo sobre a
+    // cobertura real de hoje.
+    const veiculando = dados.cobertura?.veiculando;
+    contador.textContent = veiculando != null ? `${base} · ${veiculando} em operação` : base;
     contador.className = !limite || n >= limite ? 'badge badge-ok' : 'badge badge-pendente';
     // Passar do limite não é erro de servidor: é uma caixa que não devia ter
     // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
@@ -543,6 +543,51 @@ function duracaoLegivel(segundos) {
   return `${(Math.round((minutos / 60) * 10) / 10).toLocaleString('pt-BR')}h`;
 }
 
+// Tempo decorrido em prosa curta, pro aviso de ponto fora do ar — não reusa
+// duracaoLegivel porque ali "3h" faz sentido pra uma duração de exibição, e
+// aqui um silêncio de dois dias em horas ("48h") é mais difícil de ler que
+// "2 dias".
+function tempoDesde(dataISO) {
+  const horas = (Date.now() - new Date(dataISO).getTime()) / 3_600_000;
+  if (horas < 1) return `${Math.max(1, Math.round(horas * 60))} min`;
+  if (horas < 48) return `${Math.round(horas)} h`;
+  return `${Math.round(horas / 24)} dias`;
+}
+
+// Estado operacional no hero (21/09/2026, revisão de design): "campanha
+// ativa" não pode significar só "tem plano" — a tela pode estar apagada há
+// horas com o plano em dia, e é exatamente esse caso que o anunciante mais
+// precisa ver primeiro, antes de qualquer KPI. Mesmo limiar de
+// HORAS_OFFLINE_ALERTA que a tabela "Exibições por ponto" já usa
+// (statusOnline), pras duas leituras nunca divergirem.
+function pintarStatusOperacional(porPonto) {
+  const el = document.getElementById('heroStatus');
+  if (!el) return;
+  if (!porPonto.length) {
+    el.hidden = true;
+    return;
+  }
+  const agora = Date.now();
+  const online = (p) =>
+    p.ultima_vez_online && agora - new Date(p.ultima_vez_online).getTime() < HORAS_OFFLINE_ALERTA * 3600 * 1000;
+  const noAr = porPonto.filter(online);
+  const n = porPonto.length;
+  const itens = [
+    `<span class="hero-status-item"><span class="dot" aria-hidden="true"></span>${noAr.length} de ${n} ${n === 1 ? 'ponto no ar' : 'pontos no ar'}</span>`,
+  ];
+  if (noAr.length < n) {
+    const foraDoAr = porPonto.filter((p) => !online(p));
+    const maisAntigo = foraDoAr
+      .map((p) => p.ultima_vez_online)
+      .filter(Boolean)
+      .sort()[0];
+    const desde = maisAntigo ? `sinal mais antigo há ${tempoDesde(maisAntigo)}` : 'nunca recebeu playlist';
+    itens.push(`<span class="hero-status-item hero-status-alerta">⚠ ${desde}</span>`);
+  }
+  el.innerHTML = itens.join('');
+  el.hidden = false;
+}
+
 // Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
 // (transparência de entrega: programado vs. confirmado, custo por exibição).
 // Banco de horas (G.3): card sempre visível (19/09/2026, pedido do dono —
@@ -593,8 +638,6 @@ function desenharHorasMes(contratadas, entregues) {
   const restantes = Math.max(0, contratadas - entregues);
   const pct = contratadas > 0 ? Math.min(100, (entregues / contratadas) * 100) : 0;
   card.querySelector('b').textContent = `${entregues}h`;
-  const heroHoras = document.getElementById('heroHoras');
-  if (heroHoras) heroHoras.textContent = `${entregues}h de ${contratadas}h`;
   card.querySelector('[data-kpi-horas-legenda]').textContent =
     `de ${contratadas}h contratadas · ${restantes}h ainda por rodar`;
   const fill = card.querySelector('.fill');
@@ -621,15 +664,19 @@ async function carregarExibicoes() {
       dados.exibicoesContratadasMes != null
         ? `${concluidas} / ${dados.exibicoesContratadasMes.toLocaleString('pt-BR')}`
         : concluidas;
-    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
+    // Por MIL exibições, não por exibição só (21/09/2026, revisão de
+    // design): a mesma fórmula (plano ÷ previstas) em duas casas decimais
+    // colapsava pra R$ 0,01 em qualquer plano — número que não se move não
+    // informa nada. Não é CPM: CPM é custo por mil PESSOAS impactadas, e o
+    // Mostraí não mede audiência, só reprodução na tela.
+    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao * 1000) : '-';
     kpi('media').textContent = dados.mediaDiariaMes ?? '-';
-    const heroExibicoes = document.getElementById('heroExibicoes');
-    if (heroExibicoes) heroExibicoes.textContent = concluidas;
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorPonto(dados.porPonto || []);
     desenharCobrancas(dados.cobrancas || []);
     desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
+    pintarStatusOperacional(dados.porPonto || []);
     explicarZero(dados);
   } catch {
     // Antes o catch era vazio: falha de API e conta nova produziam a mesma
@@ -795,26 +842,34 @@ function desenharPorPonto(porPonto) {
     document.getElementById('exibicoesDetalhe').innerHTML = '';
     return;
   }
-  const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
-  const total = porPonto.reduce((soma, p) => soma + Number(p.confirmadas), 0) || 1;
-  const principais = porPonto.slice(0, TOP_PONTOS_GRAFICO);
-  const resto = porPonto.length - principais.length;
-  document.getElementById('graficoPonto').innerHTML =
-    principais
-      .map((p) => {
-        const v = Number(p.confirmadas);
-        const pct = Math.round((v / total) * 100);
-        return `
+  // Com um ponto só, a distribuição é sempre 100% por definição — a barra
+  // não informa nada além do que o título da seção já diz (21/09/2026,
+  // revisão de design). A tabela abaixo, com entrega e status por ponto,
+  // continua sempre visível: ela conta uma história diferente da barra.
+  if (porPonto.length < 2) {
+    document.getElementById('graficoPonto').innerHTML = '';
+  } else {
+    const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
+    const total = porPonto.reduce((soma, p) => soma + Number(p.confirmadas), 0) || 1;
+    const principais = porPonto.slice(0, TOP_PONTOS_GRAFICO);
+    const resto = porPonto.length - principais.length;
+    document.getElementById('graficoPonto').innerHTML =
+      principais
+        .map((p) => {
+          const v = Number(p.confirmadas);
+          const pct = Math.round((v / total) * 100);
+          return `
     <div class="row">
       <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
       <span class="track"><span class="fill" data-pct="${(v / max) * 100}"></span></span>
       <span class="valor">${v} <span class="u-dim">(${pct}%)</span></span>
     </div>`;
-      })
-      .join('') +
-    (resto > 0
-      ? `<p class="form-hint u-m-0 u-mt-8">+${resto} outro${resto === 1 ? '' : 's'} ponto${resto === 1 ? '' : 's'} na tabela abaixo.</p>`
-      : '');
+        })
+        .join('') +
+      (resto > 0
+        ? `<p class="form-hint u-m-0 u-mt-8">+${resto} outro${resto === 1 ? '' : 's'} ponto${resto === 1 ? '' : 's'} na tabela abaixo.</p>`
+        : '');
+  }
   document.getElementById('exibicoesDetalhe').innerHTML =
     `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th><th>Status</th></tr></thead><tbody>
     ${porPonto
