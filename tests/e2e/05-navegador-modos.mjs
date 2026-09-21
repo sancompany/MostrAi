@@ -68,7 +68,10 @@ console.log('== cadastro só-vendedor pelo convite ==');
   await shot(p, 'ponto-pedido');
 
   console.log('== admin libera na conta ==');
-  await adm.click('.nav-item[data-aba="candidaturas"]');
+  // Hash antigo, não clique no menu (redesenho de 21/09/2026 — ver 03-navegador.mjs).
+  await adm.evaluate(() => {
+    location.hash = 'candidaturas';
+  });
   await adm.waitForFunction(() => document.getElementById('conteudo').textContent.includes('Doceria Nina'), null, { timeout: 8000 });
   check('admin vê pedido do painel', (await adm.textContent('#conteudo')).includes('pedido do painel'));
   await adm.locator('tr', { hasText: 'Doceria Nina' }).first().locator('[data-liberar]').click();
@@ -102,10 +105,14 @@ console.log('== cadastro só-vendedor pelo convite ==');
 }
 
 console.log('== admin: opções de comodato com módulo de bônus ==');
-await adm.click('.nav-item[data-aba="comodato"]');
+await adm.evaluate(() => {
+  location.hash = 'comodato';
+});
 await adm.waitForFunction(() => document.getElementById('conteudo').textContent.includes('Bônus'), null, { timeout: 8000 }).catch(() => {});
 check('aba comodato mostra colunas do bônus', (await adm.textContent('#conteudo')).includes('Bônus: plano de anúncio'));
-await adm.click('.nav-item[data-aba="planos"]');
+await adm.evaluate(() => {
+  location.hash = 'planos';
+});
 await adm.waitForFunction(() => document.getElementById('conteudo').textContent.includes('Tela após'), null, { timeout: 8000 }).catch(() => {});
 check('aba planos mostra coluna "Tela após"', (await adm.textContent('#conteudo')).includes('Tela após'));
 

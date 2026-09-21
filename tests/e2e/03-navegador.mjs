@@ -27,7 +27,13 @@ async function pagina(url, vp, contexto = ctx) {
   return p;
 }
 async function abaAdmin(adm, nome, esperado) {
-  await adm.click(`.nav-item[data-aba="${nome}"]`);
+  // Vai pelo hash antigo (não pelo clique no menu): desde o redesenho de
+  // 21/09/2026 os itens do menu viram módulo (data-modulo), não mais aba
+  // solta — e o hash antigo é exatamente o que a compatibilidade promete
+  // continuar abrindo. Ver ALIASES_ANTIGOS em public/admin/index.page.js.
+  await adm.evaluate((h) => {
+    location.hash = h;
+  }, nome);
   await adm.waitForFunction((t) => document.getElementById('conteudo').textContent.includes(t), esperado, { timeout: 8000 }).catch(() => {});
   await adm.waitForTimeout(200);
 }

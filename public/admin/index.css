@@ -16,6 +16,28 @@
 .admin-topo h2 { margin: 0; font-size: 1.35rem; }
 .admin-topo .sub { margin: 3px 0 0; color: var(--text-dim); font-size: .85rem; max-width: 620px; }
 
+/* Fileira de abas dentro de um módulo (redesenho de 21/09/2026: 25 telas
+   viraram 12 módulos, várias com abas por dentro). Mesmo padrão visual dos
+   `.nav-item` do menu lateral — sublinhado na cor da marca em vez de barra
+   lateral, porque aqui a fileira é horizontal. */
+.modulo-abas {
+  display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modulo-aba {
+  display: flex; align-items: center; gap: 7px; background: none; border: none;
+  border-bottom: 2px solid transparent; color: var(--text-dim); padding: 9px 4px;
+  margin-bottom: -1px; font-size: .87rem; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.modulo-aba + .modulo-aba { margin-left: 14px; }
+.modulo-aba:hover { color: var(--text); }
+.modulo-aba.active { color: var(--brand-text); border-bottom-color: var(--brand); }
+.modulo-aba .cont { background: var(--err); color: #fff; border-radius: 999px; font-size: .66rem; font-weight: 700; padding: 1px 6px; line-height: 1.5; }
+@media (max-width: 860px) {
+  .modulo-abas { overflow-x: auto; flex-wrap: nowrap; }
+  .modulo-aba { white-space: nowrap; }
+}
+
 /* Alertas da visão geral: só aparece o que tem fila > 0, e cada um leva
    direto pra seção que resolve. */
 .alertas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }

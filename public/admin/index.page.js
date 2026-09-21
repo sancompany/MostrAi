@@ -212,58 +212,148 @@ function selectStatus(mapa, atual, attrs) {
 }
 
 // ---------- navegação ----------
-const NAV = [
+// Redesenho de 21/09/2026: 25 itens independentes viraram 12 módulos
+// agrupados por fluxo (docs/specs/2026-09-21-redesenho-admin.md). Nenhuma
+// função de render mudou — cada aba abaixo chama exatamente a mesma função
+// de antes. Os 25 hashes antigos continuam abrindo a tela certa: o roteador
+// resolve o id antigo pro par módulo/aba novo por este mapa, então nenhum
+// `href="#pontos"`/`irPara('telas')`/`data-ir="criativos"` espalhado pelas
+// telas abaixo precisou mudar.
+const ALIASES_ANTIGOS = {
+  resumo: 'visaogeral/hoje',
+  metrica: 'visaogeral/performance',
+  candidaturas: 'entrada/candidaturas',
+  contato: 'entrada/mensagens',
+  convites: 'entrada/convites',
+  criativos: 'conteudo/aprovacao',
+  meusanuncios: 'conteudo/proprios',
+  pontos: 'rede/pontos',
+  ocupacaopontos: 'rede/ocupacao',
+  telas: 'rede/telas',
+  bancohoras: 'rede/entrega',
+  anunciantes: 'anunciantes',
+  vendedores: 'vendedores',
+  planos: 'planos/ativos',
+  planosarquivados: 'planos/arquivados',
+  beneficios: 'planos/beneficios',
+  categorias: 'configuracoes/categorias',
+  comodato: 'configuracoes/comodato',
+  eventos: 'configuracoes/diagnostico',
+  cobrancas: 'receitas/cobrancas',
+  trocas: 'receitas/trocas',
+  arrependimentos: 'receitas/devolucoes',
+  comissoes: 'repasses/vendedores',
+  pagamentospontos: 'repasses/pontos',
+  custos: 'custos',
+};
+// Reverso: de "módulo/aba" novo pro id antigo — só pra reaproveitar o texto
+// de SUBTITULOS sem duplicar nenhuma frase.
+const ALIAS_REVERSO = Object.fromEntries(Object.entries(ALIASES_ANTIGOS).map(([velho, novo]) => [novo, velho]));
+
+const MODULOS = [
   {
-    grupo: 'Início',
+    grupo: 'Mostraí',
     itens: [
-      { id: 'resumo', nome: 'Visão geral' },
-      { id: 'metrica', nome: 'Métrica' },
-    ],
-  },
-  {
-    grupo: 'Entrada',
-    itens: [
-      { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas' },
-      { id: 'contato', nome: 'Mensagens do site', fila: 'contato' },
-      { id: 'convites', nome: 'Convites' },
+      {
+        id: 'visaogeral',
+        nome: 'Visão geral',
+        abas: [
+          { id: 'hoje', nome: 'Hoje', render: renderResumo },
+          { id: 'performance', nome: 'Performance', render: renderMetrica },
+        ],
+      },
     ],
   },
   {
     grupo: 'Operação',
     itens: [
-      { id: 'criativos', nome: 'Fila de criativos', fila: 'criativos' },
-      { id: 'meusanuncios', nome: 'Meus anúncios' },
-      { id: 'pontos', nome: 'Pontos', fila: 'pontos' },
-      { id: 'ocupacaopontos', nome: 'Ocupação dos pontos', fila: 'pontosocupados' },
-      { id: 'telas', nome: 'Telas', fila: 'offline' },
-      { id: 'anunciantes', nome: 'Anunciantes' },
-      { id: 'vendedores', nome: 'Vendedores' },
+      {
+        id: 'rede',
+        nome: 'Rede',
+        abas: [
+          { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
+          { id: 'telas', nome: 'Telas', fila: 'offline', render: renderTelas },
+          { id: 'ocupacao', nome: 'Ocupação', fila: 'pontosocupados', render: renderOcupacaoPontos },
+          { id: 'entrega', nome: 'Entrega', fila: 'bancohoras', render: renderBancoHoras },
+        ],
+      },
+      { id: 'anunciantes', nome: 'Anunciantes', render: renderAnunciantes },
+      {
+        id: 'conteudo',
+        nome: 'Conteúdo',
+        abas: [
+          { id: 'aprovacao', nome: 'Aprovação', fila: 'criativos', render: renderCriativos },
+          { id: 'proprios', nome: 'Anúncios próprios', render: renderMeusAnuncios },
+        ],
+      },
+      {
+        id: 'entrada',
+        nome: 'Entrada',
+        abas: [
+          { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
+          { id: 'convites', nome: 'Convites', render: renderConvites },
+          { id: 'mensagens', nome: 'Mensagens', fila: 'contato', render: renderContato },
+        ],
+      },
     ],
   },
   {
-    grupo: 'Catálogo',
+    grupo: 'Comercial',
     itens: [
-      { id: 'planos', nome: 'Planos' },
-      { id: 'planosarquivados', nome: 'Planos arquivados' },
-      { id: 'beneficios', nome: 'Benefícios' },
-      { id: 'categorias', nome: 'Categorias' },
-      { id: 'comodato', nome: 'Opções de comodato' },
+      {
+        id: 'planos',
+        nome: 'Planos',
+        abas: [
+          { id: 'ativos', nome: 'Ativos', render: renderPlanos },
+          { id: 'arquivados', nome: 'Arquivados', render: renderPlanosArquivados },
+          { id: 'beneficios', nome: 'Benefícios', render: renderBeneficios },
+        ],
+      },
+      { id: 'vendedores', nome: 'Vendedores', render: renderVendedores },
     ],
   },
   {
     grupo: 'Financeiro',
     itens: [
-      { id: 'cobrancas', nome: 'Cobranças', fila: 'notas' },
-      { id: 'trocas', nome: 'Trocas de plano' },
-      { id: 'bancohoras', nome: 'Banco de horas', fila: 'bancohoras' },
-      { id: 'comissoes', nome: 'Comissões' },
-      { id: 'pagamentospontos', nome: 'Pagar os pontos' },
-      { id: 'arrependimentos', nome: 'Devoluções', fila: 'arrependimentos' },
-      { id: 'custos', nome: 'Custos fixos' },
-      { id: 'eventos', nome: 'Eventos pendentes', fila: 'eventos' },
+      {
+        id: 'receitas',
+        nome: 'Receitas',
+        abas: [
+          { id: 'cobrancas', nome: 'Cobranças', fila: 'notas', render: renderCobrancas },
+          { id: 'trocas', nome: 'Trocas', render: renderTrocas },
+          { id: 'devolucoes', nome: 'Devoluções', fila: 'arrependimentos', render: renderArrependimentos },
+        ],
+      },
+      {
+        id: 'repasses',
+        nome: 'Repasses',
+        abas: [
+          { id: 'pontos', nome: 'Pontos', render: renderPagamentosPontos },
+          { id: 'vendedores', nome: 'Vendedores', render: renderComissoes },
+        ],
+      },
+      { id: 'custos', nome: 'Custos', render: renderCustos },
+    ],
+  },
+  {
+    grupo: 'Sistema',
+    itens: [
+      {
+        id: 'configuracoes',
+        nome: 'Configurações',
+        abas: [
+          { id: 'categorias', nome: 'Categorias', render: renderCategorias },
+          { id: 'comodato', nome: 'Comodato', render: renderComodato },
+          { id: 'diagnostico', nome: 'Diagnóstico', fila: 'eventos', render: renderEventos },
+        ],
+      },
+      { id: 'pendencias', nome: 'Pendências', render: renderPendencias },
     ],
   },
 ];
+
+const TODOS_MODULOS = MODULOS.flatMap((g) => g.itens);
+const buscarModulo = (id) => TODOS_MODULOS.find((m) => m.id === id);
 
 const SUBTITULOS = {
   resumo: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
@@ -305,17 +395,20 @@ const SUBTITULOS = {
     'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar. Falta devolver o dinheiro no painel do Checkout e registrar aqui.',
   meusanuncios:
     'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
+  pendencias:
+    'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
 };
 
 let RESUMO = null;
+let ABA_ATUAL = { modulo: null, aba: null };
 
 function montarNav() {
-  document.getElementById('nav').innerHTML = NAV.map(
+  document.getElementById('nav').innerHTML = MODULOS.map(
     (g) => `
     <div class="nav-grupo">${g.grupo}</div>
     ${g.itens
       .map(
-        (i) => `<button type="button" class="nav-item" data-aba="${i.id}" ${i.fila ? `data-fila="${i.fila}"` : ''}>
+        (i) => `<button type="button" class="nav-item" data-modulo="${i.id}">
       <span>${i.nome}</span><span class="cont" hidden></span>
     </button>`,
       )
@@ -324,82 +417,133 @@ function montarNav() {
   ).join('');
 }
 
-// Contadores no menu — o admin vê o que está pendente sem abrir aba nenhuma.
+function contarFilasDoModulo(modulo) {
+  if (!RESUMO) return 0;
+  const filas = modulo.abas ? modulo.abas.map((a) => a.fila).filter(Boolean) : [];
+  return filas.reduce((soma, f) => soma + (RESUMO.filas?.[f] || 0), 0);
+}
+
+// Contadores no menu (e nas abas de dentro de um módulo) — o admin vê o que
+// está pendente sem abrir nada.
 function pintarContadores() {
   // `RESUMO.filas?.` e nao `RESUMO.filas.`: resposta parcial de /admin/resumo
   // derrubava o menu inteiro com "Cannot read properties of undefined", e um
   // menu morto esconde TODAS as filas — justo quando algo ja esta errado no
   // servidor. Contador zerado e degradacao; menu quebrado e apagao.
   if (!RESUMO) return;
-  document.querySelectorAll('.nav-item[data-fila]').forEach((btn) => {
-    const qtd = RESUMO.filas?.[btn.dataset.fila] || 0;
+  document.querySelectorAll('.nav-item[data-modulo]').forEach((btn) => {
+    const modulo = buscarModulo(btn.dataset.modulo);
+    const qtd = contarFilasDoModulo(modulo);
+    const cont = btn.querySelector('.cont');
+    cont.textContent = qtd;
+    cont.hidden = qtd === 0;
+  });
+  document.querySelectorAll('.modulo-aba[data-aba]').forEach((btn) => {
+    const modulo = buscarModulo(ABA_ATUAL.modulo);
+    const aba = modulo?.abas?.find((a) => a.id === btn.dataset.aba);
+    if (!aba?.fila) return;
+    const qtd = RESUMO.filas?.[aba.fila] || 0;
     const cont = btn.querySelector('.cont');
     cont.textContent = qtd;
     cont.hidden = qtd === 0;
   });
 }
 
-async function irPara(aba, forcarResumo) {
-  const alvo = SUBTITULOS[aba] ? aba : 'resumo';
-  document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.aba === alvo));
-  const item = NAV.flatMap((g) => g.itens).find((i) => i.id === alvo);
-  document.getElementById('tituloSecao').textContent = item ? item.nome : 'Visão geral';
-  document.getElementById('subSecao').textContent = SUBTITULOS[alvo];
-  if (location.hash !== `#${alvo}`) location.hash = alvo;
+// Resolve tanto um hash antigo ("pontos") quanto um novo ("rede/pontos") ou
+// um módulo sozinho ("rede", cai na primeira aba). É o único lugar que sabe
+// a diferença — todo o resto do arquivo continua chamando irPara('pontos')
+// como sempre chamou.
+function resolverAlvo(alvoBruto) {
+  const bruto = alvoBruto || 'visaogeral';
+  const canonico = ALIASES_ANTIGOS[bruto] || bruto;
+  const [moduloId, abaId] = canonico.split('/');
+  const modulo = buscarModulo(moduloId);
+  if (!modulo) return { moduloId: 'visaogeral', abaId: 'hoje' };
+  if (!modulo.abas) return { moduloId, abaId: null };
+  const aba = modulo.abas.find((a) => a.id === abaId) || modulo.abas[0];
+  return { moduloId, abaId: aba.id };
+}
 
-  const el = document.getElementById('conteudo');
-  el.textContent = 'Carregando...';
+function subtituloDe(moduloId, abaId) {
+  const chave = abaId ? `${moduloId}/${abaId}` : moduloId;
+  return SUBTITULOS[ALIAS_REVERSO[chave] || moduloId] || '';
+}
+
+// Módulo sem abas (Anunciantes, Vendedores, Custos, Pendências) renderiza
+// direto no container, igual sempre foi. Módulo com abas monta a fileira de
+// abas uma vez e só troca o conteúdo de dentro ao mudar de aba — a fileira
+// não pisca, e cada função de render continua recebendo o mesmo tipo de `el`
+// que sempre recebeu, só que agora pode ser o container da aba em vez do
+// container da página inteira.
+async function renderModulo(el, modulo, abaId) {
+  if (!modulo.abas) {
+    el.textContent = 'Carregando...';
+    try {
+      await modulo.render(el);
+    } catch (err) {
+      console.error(`falha ao montar o módulo ${modulo.id}`, err);
+      el.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
+    }
+    return;
+  }
+
+  const abaAtiva = modulo.abas.find((a) => a.id === abaId) || modulo.abas[0];
+  el.innerHTML = `
+    <div class="modulo-abas">
+      ${modulo.abas
+        .map(
+          (a) => `<button type="button" class="modulo-aba ${a.id === abaAtiva.id ? 'active' : ''}" data-aba="${a.id}">
+        ${a.nome}<span class="cont" hidden></span>
+      </button>`,
+        )
+        .join('')}
+    </div>
+    <div id="abaConteudo">Carregando...</div>`;
+
+  pintarContadores();
+  el.querySelectorAll('.modulo-aba').forEach((btn) =>
+    btn.addEventListener('click', () => irPara(`${modulo.id}/${btn.dataset.aba}`)),
+  );
+
+  const subEl = document.getElementById('abaConteudo');
+  try {
+    await abaAtiva.render(subEl);
+  } catch (err) {
+    console.error(`falha ao montar a aba ${modulo.id}/${abaAtiva.id}`, err);
+    subEl.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
+  }
+}
+
+async function irPara(alvoBruto, forcarResumo) {
+  const { moduloId, abaId } = resolverAlvo(alvoBruto);
+  ABA_ATUAL = { modulo: moduloId, aba: abaId };
+  const canonico = abaId ? `${moduloId}/${abaId}` : moduloId;
+  const modulo = buscarModulo(moduloId);
+
+  document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.modulo === moduloId));
+  document.getElementById('tituloSecao').textContent = modulo.nome;
+  document.getElementById('subSecao').textContent = subtituloDe(moduloId, abaId);
+  if (location.hash !== `#${canonico}`) location.hash = canonico;
+
   if (!RESUMO || forcarResumo) {
     RESUMO = await pegar('/admin/resumo');
     pintarContadores();
   }
 
-  const telas = {
-    resumo: renderResumo,
-    candidaturas: renderCandidaturas,
-    contato: renderContato,
-    convites: renderConvites,
-    criativos: renderCriativos,
-    pontos: renderPontos,
-    ocupacaopontos: renderOcupacaoPontos,
-    telas: renderTelas,
-    anunciantes: renderAnunciantes,
-    vendedores: renderVendedores,
-    planos: renderPlanos,
-    beneficios: renderBeneficios,
-    categorias: renderCategorias,
-    comodato: renderComodato,
-    cobrancas: renderCobrancas,
-    trocas: renderTrocas,
-    bancohoras: renderBancoHoras,
-    comissoes: renderComissoes,
-    custos: renderCustos,
-    eventos: renderEventos,
-    meusanuncios: renderMeusAnuncios,
-    arrependimentos: renderArrependimentos,
-    planosarquivados: renderPlanosArquivados,
-    metrica: renderMetrica,
-    pagamentospontos: renderPagamentosPontos,
-  };
-  try {
-    await telas[alvo](el);
-  } catch (err) {
-    console.error(`falha ao montar a aba ${alvo}`, err);
-    el.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
-  }
+  await renderModulo(document.getElementById('conteudo'), modulo, abaId);
 }
 
 document.getElementById('nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-item');
-  if (btn) irPara(btn.dataset.aba);
+  if (btn) irPara(btn.dataset.modulo);
 });
 document
   .getElementById('btnRecarregar')
-  .addEventListener('click', () => irPara(location.hash.slice(1) || 'resumo', true));
+  .addEventListener('click', () => irPara(location.hash.slice(1) || 'visaogeral', true));
 window.addEventListener('hashchange', () => {
-  const aba = location.hash.slice(1) || 'resumo';
-  const ativo = document.querySelector('.nav-item.active');
-  if (!ativo || ativo.dataset.aba !== aba) irPara(aba);
+  const alvo = location.hash.slice(1) || 'visaogeral';
+  const { moduloId, abaId } = resolverAlvo(alvo);
+  if (ABA_ATUAL.modulo !== moduloId || ABA_ATUAL.aba !== abaId) irPara(alvo);
 });
 
 // ---------- login ----------
@@ -407,7 +551,7 @@ async function mostrarApp() {
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   montarNav();
-  irPara(location.hash.slice(1) || 'resumo', true);
+  irPara(location.hash.slice(1) || 'visaogeral', true);
 }
 
 document.getElementById('formLogin').addEventListener('submit', async (e) => {
@@ -587,6 +731,25 @@ async function renderResumo(el) {
       </div>
     </div>`;
 
+  el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
+}
+
+// ---------- pendências ----------
+// Mesmas filas da Visão geral (ALERTAS, RESUMO.filas já carregados por
+// irPara) — nenhum dado novo, só uma lista dedicada sem os KPIs e o gráfico
+// que "Hoje" também mostra, pra quando a pergunta é só "o que eu resolvo".
+async function renderPendencias(el) {
+  const { filas } = RESUMO;
+  const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
+  el.innerHTML = pendentes.length
+    ? `<div class="alertas">${pendentes
+        .map(
+          (a) => `<button type="button" class="alerta ${a.urgente ? 'urgente' : ''}" data-ir="${a.aba}">
+        <b>${filas[a.fila]}</b><span>${a.texto}</span>
+      </button>`,
+        )
+        .join('')}</div>`
+    : '<p class="tudo-em-dia"><b>Nada pendente agora.</b> Assim que alguma fila tiver algo esperando você, aparece aqui.</p>';
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
 }
 

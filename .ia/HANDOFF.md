@@ -6,6 +6,63 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Painel admin reorganizado: 25 telas → 12 módulos (21/09/2026, este agente)
+Pedido do dono: reestruturar o admin inteiro (rascunho dele via GPT + pesquisa
+de mercado + mapeamento do código real, tudo registrado em
+`docs/specs/2026-09-21-redesenho-admin.md` e
+`docs/specs/2026-09-21-admin-inventario-funcoes.md`), depois autorização direta
+pra construir sem mais discussão item a item ("julgo olhando a tela").
+
+**O que mudou, só isso:** navegação e agrupamento visual. `public/admin/index.page.js`
+ganhou `MODULOS` (12 itens em 5 grupos: Mostraí/Operação/Comercial/Financeiro/Sistema)
+no lugar do antigo `NAV` (25 itens em 5 grupos), um roteador novo (`irPara`,
+`resolverAlvo`, `renderModulo`) e uma fileira de abas por módulo quando ele
+agrupa mais de uma tela antiga. **Nenhuma função `render*()` foi reescrita** —
+cada aba nova chama exatamente a função de antes, então toda edição inline,
+toda regra de negócio e toda rota consumida continuam idênticas. Nova tela
+`renderPendencias` (módulo "Pendências") reaproveita a mesma lista `ALERTAS`
+e `RESUMO.filas` da Visão geral — nenhum dado novo.
+
+**Compatibilidade:** os 25 hashes antigos (`#pontos`, `#criativos` etc.)
+continuam abrindo a tela certa via `ALIASES_ANTIGOS` — nenhum `href="#x"` ou
+`irPara('x')` espalhado pelas ~210 funções internas precisou mudar.
+Verificado com Playwright: os 25 hashes antigos + os 12 módulos novos + todas
+as sub-abas navegam certo, zero erro novo de console (só um CSP de estilo
+inline pré-existente em `renderEventos`, não tocado).
+
+**Bug achado e corrigido no caminho** (não estava no escopo, mas a própria
+reorganização o expôs): `src/admin/metrica.js` comparava `p.status = 'ativo'`
+num status que não existe desde a migration 045 — a amortização da aba
+Performance (fundida com a Visão geral em abas) sempre dava zero, divergindo
+do número certo da aba ao lado. Corrigido pra `p.status = 'em_operacao'`
+(mesmo padrão já usado em `src/admin/routes.js`). `docs/erros/2026-09-21-metrica-amortizacao-status-errado.md`.
+
+**Verificado, não só lido:** `npm run check` (125/125 testes) e toda a
+bateria de `tests/e2e/` (01, 02, 03, 05, 06, 07, 08) contra Postgres local de
+verdade + Chromium real. Dois ajustes nos próprios scripts de teste — `03-navegador.mjs`
+e `05-navegador-modos.mjs` clicavam em `.nav-item[data-aba="x"]` (estrutura
+antiga); passaram a navegar pelo hash antigo direto (`location.hash = 'x'`),
+o que também serviu de teste real da promessa de compatibilidade.
+
+**Dois achados pré-existentes, confirmados NÃO relacionados a esta mudança**
+(já sabidos, não corrigidos, fora de escopo): `#navVendas` (03-navegador.mjs)
+e `#navMeuPonto` (05-navegador-modos.mjs) — seletores do painel do
+**anunciante**, removidos numa reestruturação de nav anterior (item 77 do
+histórico desta sessão), scripts nunca atualizados depois. `tests/e2e/06-painel-bloqueio-plano.mjs`
+também falha num rótulo renomeado ("Horas entregues no mês") no mesmo painel
+— idem, já sabido, confirmado de novo agora.
+
+**Deliberadamente fora desta rodada** (era o pedido original via GPT, mas o
+dono cortou escopo — "tá muita coisa"): mover a edição densa de Pontos/Telas/Anunciantes/Comodato
+pra página de detalhe com drawer; desduplicar o aviso de divergência de
+ciclos e o texto "produto é do tier" (aparecem 3x: Planos, Anunciantes,
+Comodato); o CSP inline-style pré-existente em Eventos/Diagnóstico. Tudo
+com risco/decisão mapeado em `docs/specs/2026-09-21-redesenho-admin.md`,
+seções 5 e 7, se um dia isso for retomado.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`**
+até o dono revisar visualmente — mesma regra que o rascunho do GPT já trazia.
+
 ## Advertiser dashboard redesigned
 `public/anunciante/painel.html`, `painel.css` e `painel.page.js` agora formam um dashboard SaaS/AdTech responsivo: resumo executivo, KPIs, performance, relatório por ponto, cobertura positiva, biblioteca de criativos, pagamentos e candidatura recolhida sob CTA. Foram preservados endpoints, IDs funcionais, cálculos, filtros, comprovante, upload/exclusão, plano e candidatura. Validado com dados simulados realistas em Chromium nos viewports 1440×1000, 1280×800, 768×1024 e 390×844, sem erro de console nem overflow da página. Screenshots temporárias: `/tmp/painel-{desktop,notebook,tablet,mobile}.png` (não versionadas).
 

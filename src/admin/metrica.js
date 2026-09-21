@@ -27,7 +27,12 @@ const SQL_MARGEM = `
       (SELECT COALESCE(SUM(valor_pago_mensal), 0) FROM pontos WHERE status = 'em_operacao') AS pontos,
       (SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0)
          FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-        WHERE d.status = 'ativo' AND p.status = 'ativo') AS amortizacao,
+        -- p.status nunca foi 'ativo' desde a migration 045 (só a_instalar/em_operacao,
+        -- ver PONTO_STATUS em index.page.js) — esta amortização ficava sempre zero,
+        -- divergindo da Visão geral (src/admin/routes.js:134), que já usava o status
+        -- certo. Achado ao unificar as duas telas em abas no redesenho de 21/09/2026:
+        -- o número errado ficou visível ao lado do certo, a um clique de distância.
+        WHERE d.status = 'ativo' AND p.status = 'em_operacao') AS amortizacao,
       (SELECT COALESCE(SUM(valor_mensal), 0) FROM custos_fixos) AS fixos
   )
   SELECT to_char(m.mes, 'YYYY-MM') AS mes,
