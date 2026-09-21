@@ -173,14 +173,18 @@ test('webhook de plano_trocado é no-op quando a assinatura já está ativa (tro
 // teste mistura `pool.query` (dedupe) com `pool.connect` (transação da
 // troca) na MESMA chamada, e um `pool.connect` fake não dá conta dos dois
 // sem reimplementar o client do `pg` por dentro (ver comentário acima).
-async function contaDeTeste(prefixo) {
+async function contaDeTeste(prefixo, planoId) {
   const pool = require('../src/db/pool');
   const email = `${prefixo}-${randomUUID()}@example.com`;
+  // `planoId` espelha o plano da assinatura 'ativa' que o teste vai criar —
+  // na vida real, `anunciantes.plano_id` NUNCA fica dessincronizado da
+  // assinatura ativa (é exatamente essa invariante que a conferência de
+  // troca concorrente, em processarWebhookAssinatura, depende).
   const { rows } = await pool.query(
-    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em, papeis)
-     VALUES ($1, '11144477735', $2, '16999990000', 'x', now(), '{anunciante}')
+    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em, papeis, plano_id)
+     VALUES ($1, '11144477735', $2, '16999990000', 'x', now(), '{anunciante}', $3)
      RETURNING id`,
-    [prefixo, email],
+    [prefixo, email, planoId || null],
   );
   return rows[0].id;
 }
@@ -202,7 +206,7 @@ test('webhook de plano_trocado aplica a troca quando a linha ainda está pendent
   const sc = comAmbiente();
   const pool = require('../src/db/pool');
   const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
-  const anunciante = await contaDeTeste('troca-pendente');
+  const anunciante = await contaDeTeste('troca-pendente', 'essencial-1m');
   try {
     const antiga = await assinaturasRepo.criar({ anuncianteId: anunciante, planoId: 'essencial-1m', status: 'ativa' });
     const nova = await assinaturasRepo.criar({
@@ -244,11 +248,81 @@ test('webhook de plano_trocado aplica a troca quando a linha ainda está pendent
   }
 });
 
+test('webhook de plano_trocado não sobrescreve uma troca concorrente mais nova já aplicada', async () => {
+  // O Checkout permite duas intenções pendentes ao mesmo tempo pra mesma
+  // conta (não bloqueia "já existe uma pendente" — API.md seção 5.6). Se o
+  // pagador aprovar as duas, a segunda a chegar não pode reverter a conta
+  // pro plano da primeira.
+  const sc = comAmbiente();
+  const pool = require('../src/db/pool');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const anunciante = await contaDeTeste('troca-concorrente', 'essencial-1m');
+  try {
+    const original = await assinaturasRepo.criar({
+      anuncianteId: anunciante,
+      planoId: 'essencial-1m',
+      status: 'ativa',
+    });
+    const intencaoY = await assinaturasRepo.criar({
+      anuncianteId: anunciante,
+      planoId: 'destaque-1m',
+      status: 'pendente_troca',
+    });
+    const intencaoZ = await assinaturasRepo.criar({
+      anuncianteId: anunciante,
+      planoId: 'maximo-1m',
+      status: 'pendente_troca',
+    });
+
+    // Y aprova primeiro: aplica normalmente.
+    await sc.processarWebhookAssinatura({
+      versao: 1,
+      tipo: 'assinatura',
+      planoId: intencaoY.id,
+      planoAnterior: original.id,
+      documento: '11144477735',
+      evento: 'plano_trocado',
+      valor: 160,
+      ciclo: 'MONTHLY',
+      acertoCobrado: 30,
+    });
+
+    // Z aprova depois, mas ainda referenciando `original` como anterior —
+    // a conta já não está mais lá.
+    await sc.processarWebhookAssinatura({
+      versao: 1,
+      tipo: 'assinatura',
+      planoId: intencaoZ.id,
+      planoAnterior: original.id,
+      documento: '11144477735',
+      evento: 'plano_trocado',
+      valor: 300,
+      ciclo: 'MONTHLY',
+      acertoCobrado: 50,
+    });
+
+    const { rows: contaRows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [anunciante]);
+    assert.strictEqual(contaRows[0].plano_id, 'destaque-1m', 'fica no plano da troca Y — Z não sobrescreve por cima');
+
+    const zDepois = await assinaturasRepo.buscarPorId(intencaoZ.id);
+    assert.strictEqual(zDepois.status, 'pendente_troca', 'Z não é aplicada — fica pendente, vira pendência pro admin');
+
+    const { rows: cobrancaRows } = await pool.query(
+      'SELECT plano_id FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em',
+      [anunciante],
+    );
+    assert.strictEqual(cobrancaRows.length, 1, 'só a cobrança de Y é gravada — Z não gera cobrança fantasma');
+    assert.strictEqual(cobrancaRows[0].plano_id, 'destaque-1m');
+  } finally {
+    await apagarConta(anunciante);
+  }
+});
+
 test('webhook de plano_trocado sem acerto (downgrade absorvido) não grava cobranca_confirmada', async () => {
   const sc = comAmbiente();
   const pool = require('../src/db/pool');
   const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
-  const anunciante = await contaDeTeste('troca-sem-acerto');
+  const anunciante = await contaDeTeste('troca-sem-acerto', 'destaque-1m');
   try {
     const antiga = await assinaturasRepo.criar({ anuncianteId: anunciante, planoId: 'destaque-1m', status: 'ativa' });
     const nova = await assinaturasRepo.criar({

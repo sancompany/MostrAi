@@ -450,6 +450,21 @@ async function processarWebhookAssinatura(payload) {
       return registrarPendencia(payload, `conta '${assinatura.anunciante_id}' não encontrada pra aplicar a troca`);
     }
 
+    // O Checkout permite mais de uma intenção pendente ao mesmo tempo
+    // (API.md do Checkout, seção 5.6 — "não há bloqueio de já existe uma
+    // pendente"): o pagador pode abrir a tela de troca duas vezes antes de
+    // aprovar qualquer uma, e as duas aprovarem depois. Sem esta conferência,
+    // a segunda aprovação a chegar sobrescreveria `anunciantes.plano_id`
+    // por cima de uma troca mais nova que já tinha sido aplicada — aqui só
+    // aplica se a conta ainda está exatamente no plano de onde esta
+    // intenção partiu.
+    if (anunciante.plano_id !== assinaturaAntiga.plano_id) {
+      return registrarPendencia(
+        payload,
+        `conta '${anunciante.id}' já está no plano '${anunciante.plano_id}', não mais em '${assinaturaAntiga.plano_id}' — provável troca concorrente aprovada antes; não sobrescrevendo`,
+      );
+    }
+
     // Mesma escrita tudo-ou-nada da chamada síncrona (ver
     // POST /anunciantes/me/trocar-plano) — só que disparada pelo webhook
     // em vez da resposta HTTP original.
