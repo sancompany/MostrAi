@@ -227,8 +227,26 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (!req.body.nome_comercio || !req.body.endereco) {
     return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
   }
+  // Defesa em profundidade (21/09/2026, pedido do dono: campo virou
+  // obrigatório na tela) — o card do painel já exige no HTML, mas quem
+  // chamar a rota direto não passa pelo front. É o único número que a
+  // candidatura de ponto realmente precisa e que a conta não tem como já
+  // ter informado antes (ao contrário de nome/endereço/ramo).
+  if (!req.body.fluxo_estimado_mensal || Number(req.body.fluxo_estimado_mensal) <= 0) {
+    return res.status(400).json({ erro: 'movimento médio mensal é obrigatório' });
+  }
   if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
     return res.status(400).json({ erro: 'opção de comodato inválida' });
+  }
+  // Segmento do comércio: a conta já respondeu isso pra poder anunciar
+  // (POST /conta/modos/anunciante exige o ramo) — reaproveita em vez de
+  // perguntar de novo. `categoria_livre` é texto direto; `categoria_id`
+  // (ramo do catálogo fixo) precisa de uma busca pelo nome antes de virar
+  // o texto que a candidatura guarda.
+  let segmento = req.body.segmento || conta.categoria_livre || null;
+  if (!segmento && conta.categoria_id) {
+    const categoria = await categoriasRepo.buscarAtivaPorId(conta.categoria_id);
+    segmento = categoria?.nome || null;
   }
   const cand = await candidaturasRepo.criar({
     ...req.body,
@@ -236,6 +254,7 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
     nome: conta.responsavel_nome || conta.nome_empresa,
     contato_telefone: req.body.contato_telefone || conta.contato_telefone,
     contato_email: conta.contato_email,
+    segmento,
     conta_id: conta.id,
     origem: 'painel',
   });

@@ -138,9 +138,13 @@ function montarCardPonto(estado) {
       <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
         <form id="formCardPonto">
           <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
-          <div class="field-row">
-            <div><label for="cp_fluxo">Movimento médio mensal (opcional)</label><input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
-            <div><label for="cp_mensagem">Algo mais? (opcional)</label><textarea id="cp_mensagem" name="mensagem" rows="2"></textarea></div>
+          <div class="u-mb-12">
+            <label for="cp_fluxo">Média de pessoas que passam por mês</label>
+            <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
+          </div>
+          <div>
+            <label for="cp_mensagem">Algo mais? (opcional)</label>
+            <textarea id="cp_mensagem" name="mensagem" rows="2"></textarea>
           </div>
           <button class="btn primary" type="submit">Enviar meu interesse</button>
           <p class="form-msg" id="cardPontoMsg" role="status"></p>
@@ -167,14 +171,16 @@ function montarCardPonto(estado) {
         headers: { 'Content-Type': 'application/json' },
         // O resto (nome, endereço, cidade, UF, CEP, ramo) já está na conta —
         // pedir de novo aqui seria retrabalho do que o cliente já preencheu.
+        // `segmento` nem entra aqui: o backend resolve sozinho a partir do
+        // ramo que a conta já informou pra poder anunciar (categoria_id ou
+        // categoria_livre), então o front não precisa saber qual dos dois é.
         body: JSON.stringify({
           nome_comercio: ANUNCIANTE.nome_empresa,
           endereco: ANUNCIANTE.endereco,
           cidade: ANUNCIANTE.cidade,
           uf: ANUNCIANTE.uf,
           cep: ANUNCIANTE.cep,
-          segmento: ANUNCIANTE.categoria_livre || null,
-          fluxo_estimado_mensal: e.target.fluxo_estimado_mensal.value || null,
+          fluxo_estimado_mensal: Number(e.target.fluxo_estimado_mensal.value),
           mensagem: e.target.mensagem.value.trim() || null,
         }),
       });

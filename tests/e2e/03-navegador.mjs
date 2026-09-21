@@ -78,6 +78,7 @@ const rPedido = await farm.evaluate(async () =>
           uf: 'SP',
           cep: '15990-000',
           segmento: 'saúde',
+          fluxo_estimado_mensal: 1200,
         }),
       })
     ).json()

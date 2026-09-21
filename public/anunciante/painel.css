@@ -113,8 +113,7 @@
 .ponto-opportunity p { margin: 0; }
 .ponto-opportunity-form { padding: 0 28px 26px; border-top: 1px solid #f0e5dc; }
 .ponto-opportunity-form[hidden] { display: none; }
-.ponto-opportunity-form form { max-width: 720px; padding-top: 20px; }
-.ponto-opportunity-form .field-row { align-items: end; }
+.ponto-opportunity-form form { max-width: 460px; padding-top: 20px; }
 .painel-hero .dash-explica { display: block; margin-top: 12px; color: rgba(255,255,255,.78); }
 .painel-hero .dash-explica a { color: #fff; }
 .empty-state.dashboard-empty { display: grid; place-items: center; min-height: 130px; margin: 8px 0 0; border: 1px dashed var(--border); border-radius: 12px; background: #fafbfc; color: var(--text-dim); text-align: center; }
