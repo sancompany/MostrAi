@@ -73,6 +73,12 @@ async function montarConfirmacaoPedido(planoId) {
       ? ['Pontos incluídos', `até ${plano.pontos_incluidos} ${plano.pontos_incluidos === 1 ? 'ponto' : 'pontos'}`]
       : ['Pontos incluídos', 'todos os pontos da rede'],
     plano.duracao_maxima_segundos ? ['Duração da peça', `até ${plano.duracao_maxima_segundos} segundos`] : null,
+    // exibicoes_por_mes também vem calculado do servidor (mesma conta de
+    // horas_por_mes, ver GET /planos) — é o piso: uma peça mais curta que
+    // o teto do plano aparece mais vezes que este número, nunca menos.
+    plano.exibicoes_por_mes
+      ? ['Exibições por mês', `pelo menos ${plano.exibicoes_por_mes.toLocaleString('pt-BR')} vezes na rede`]
+      : null,
     ['Cobrança', ciclo],
   ].filter(Boolean);
 

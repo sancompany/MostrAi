@@ -4,7 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const planosRepo = require('./planos-repository');
-const { horasDeTelaPorMes } = require('../lib/pacing');
+const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const beneficiosRepo = require('./beneficios-repository');
 const cobrancasRepo = require('./cobrancas-repository');
 const assinaturasRepo = require('./assinaturas-repository');
@@ -35,7 +35,15 @@ router.get('/planos', async (_req, res) => {
   res.json(
     planos
       .filter((p) => p.vagas_restantes == null || p.vagas_restantes > 0)
-      .map((p) => ({ ...p, horas_por_mes: horasDeTelaPorMes(p.segundos_por_hora, p.pontos_incluidos) })),
+      .map((p) => {
+        const horas_por_mes = horasDeTelaPorMes(p.segundos_por_hora, p.pontos_incluidos);
+        // Benefício novo (21/09/2026, pedido do dono): quantas vezes o
+        // anúncio aparece no mês. Reaproveita horas_por_mes ÷ a duração
+        // máxima do plano — mesma lógica de `exibicoesPorMes`, ver
+        // src/lib/pacing.js. Zero (não `null`) quando o plano não declara
+        // duração, pro front não ter que tratar dois tipos de "vazio".
+        return { ...p, horas_por_mes, exibicoes_por_mes: exibicoesPorMes(horas_por_mes, p.duracao_maxima_segundos) };
+      }),
   );
 });
 

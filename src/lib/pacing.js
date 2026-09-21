@@ -315,6 +315,20 @@ function horasDeTelaPorMes(segundosPorHora, pontos) {
   return Math.round((seg * n * HORAS_ABERTO_DIA * DIAS_MES) / SEGUNDOS_DA_HORA);
 }
 
+// Quantas vezes o anúncio aparece no mês — reaproveita `horasDeTelaPorMes`
+// (o total de tela que o plano já garante) dividido pela duração da peça,
+// em vez de guardar um terceiro número que precisaria ser mantido igual aos
+// outros dois. Usa `duracao_maxima_segundos` do PLANO, não a duração real
+// do criativo (que só existe depois do upload, e varia por anunciante): uma
+// peça mais curta que o teto do plano exibe MAIS vezes que este número,
+// nunca menos — é o piso garantido, não um teto.
+function exibicoesPorMes(horasPorMes, duracaoSegundos) {
+  const horas = Math.max(0, Number(horasPorMes) || 0);
+  const duracao = Math.max(0, Number(duracaoSegundos) || 0);
+  if (!horas || !duracao) return 0;
+  return Math.floor((horas * SEGUNDOS_DA_HORA) / duracao);
+}
+
 function contarPorAnunciante(itens) {
   const contagem = {};
   for (const id of itens) contagem[id] = (contagem[id] || 0) + 1;
@@ -340,6 +354,7 @@ module.exports = {
   SEGUNDOS_DA_HORA,
   segundosCompensados,
   horasDeTelaPorMes,
+  exibicoesPorMes,
   TETO_COMPENSACAO_SEGUNDOS,
   DURACAO_INSTITUCIONAL,
   DURACAO_PADRAO,

@@ -28,6 +28,17 @@ function horasDeTelaPorMes(p) {
   return Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
 }
 
+// Quantas vezes o anúncio aparece no mês — mesma conta de
+// src/lib/pacing.js#exibicoesPorMes, reaproveitando as horas de tela já
+// calculadas acima em vez de um terceiro número. Usa a duração MÁXIMA do
+// plano: uma peça mais curta cabe mais vezes, então este é o piso
+// garantido, não um teto.
+function exibicoesPorMes(p) {
+  const horas = horasDeTelaPorMes(p);
+  if (!horas || !p.duracao_maxima_segundos) return null;
+  return Math.floor((horas * 3600) / p.duracao_maxima_segundos);
+}
+
 // "Tudo do Essencial" abre o card, não fecha: é a frase que diz ao leitor que
 // ele não precisa reler o degrau de baixo. Vinha por último porque
 // `planos_beneficios` não guarda ordem, e ordenar no banco por id daria uma
@@ -50,6 +61,8 @@ function derivados(p) {
     );
   }
   if (p.duracao_maxima_segundos) linhas.push(`<li>Anúncio de até ${p.duracao_maxima_segundos} segundos</li>`);
+  const exibicoes = exibicoesPorMes(p);
+  if (exibicoes) linhas.push(`<li>Pelo menos ${exibicoes.toLocaleString('pt-BR')} exibições por mês</li>`);
   if (p.limite_criativos) {
     linhas.push(
       `<li>${p.limite_criativos} ${p.limite_criativos === 1 ? 'anúncio ativo por vez' : 'anúncios por vez, que revezam entre si'}</li>`,
