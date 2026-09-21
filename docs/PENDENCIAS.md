@@ -3224,3 +3224,76 @@ Se aparecer duplicidade real, a fusão é decisão do dono (qual conta é a
 algo pra automatizar. Uma constraint `UNIQUE` sobre a forma normalizada só
 entra depois dessa decisão; forçar agora, com duplicidade desconhecida,
 quebraria produção sem aviso.
+
+### H — contrato novo de playlist/played, pro app Android nativo (21/09/2026)
+
+O repositório irmão `sancompany/playlist.mostrai` (app Android TV nativo,
+sideload, projeto separado) já estava pronto pro lado dele desde a estação 5
+daquele projeto — faltava só o backend publicar o contrato que ele já sabe
+ler (envelope com `versaoContrato`/`janelaId`/`itemProgramacaoId`/
+`criativoId`, e `POST /played` em lote deduplicado por `execucaoId`). Pedido
+direto do dono: ler o repositório do app e construir o lado do Mostraí.
+Contrato completo, com exemplo de payload e o vocabulário de `status`, em
+`docs/api.md`, seção "Tela (chave de aparelho)".
+
+**[x] `dispositivos.contrato_playlist`** (migration 065, `smallint`, padrão
+`1`) decide POR TELA qual formato `GET /playlist/:dispositivoId` devolve —
+o app novo não manda nenhum cabeçalho de versão (só reconhece a forma pela
+resposta), então o servidor não tinha como decidir por requisição; virou
+config por dispositivo, editável em `PATCH /admin/dispositivos/:id`. Toda
+tela nasce em 1 (o array de sempre) — o player web (`public/player.page.js`)
+não foi tocado e continua recebendo exatamente a mesma coisa de antes.
+
+**[x] Identidade do item sem reconstruir a hora.** `itemProgramacaoId` é
+montado em `gerarPlaylistDaHora` (`src/playlist/gerador.js`) como
+`dispositivoId|horaISO|índice|tipo` — o índice vem da posição na sequência
+congelada (`playlist_hora_congelada`, migration 064) ANTES do filtro que
+remove vagas que saíram de elegibilidade no meio da hora (senão um buraco
+desloca o índice de tudo que vem depois, a cada poll), e `tipo` já é o
+próprio `anuncianteId` (ou `dono`/`inst`) — assim `/played` não precisa
+reler a hora congelada pra saber quem creditar, só decodifica a string que
+ele mesmo devolveu.
+
+**[x] Deduplicação obrigatória e durável.** `execucoes_confirmadas`
+(migration 065, `execucao_id` único) mais `src/playlist/execucoes-
+repository.js#confirmarComDedup` — reserva o `execucaoId` e credita
+`exibicoes_contador` NA MESMA transação, pra um crash no meio nunca deixar
+"já visto" gravado sem ter creditado (a lacuna que motiva o `execucaoId`
+existir, de novo). `limite:` sem expurgo automático — cresce por execução
+confirmada, aceitável hoje (rede de 1 ponto); ver comentário na própria
+migration pra quando isso precisar de rotina de limpeza.
+
+**[x] `criativoId` é o id real de `criativos`** — assumido imutável por
+conteúdo (upload novo = id novo), o mesmo invariante que o app depende
+(`criativoId → url` imutável, pra cache de mídia sem revalidar). **Ressalva
+conhecida:** `PATCH /admin/criativos/:id` tecnicamente aceita reescrever
+`arquivo_normalizado_url` no MESMO id (`CAMPOS_ATUALIZAVEIS` do
+repositório) — nenhum caminho de UI faz isso hoje (o campo só é preenchido
+uma vez, logo após o upload), mas se um dia alguém usar essa rota genérica
+pra trocar o arquivo de um criativo já aprovado, o cache do app ficaria
+servindo o vídeo antigo pro `criativoId` que já tinha. Não corrigido agora
+— fora do pedido, e o caminho que abriria essa porta não existe na prática.
+
+**[x] Bug achado e corrigido no caminho** (não estava no escopo, mas o
+teste de limpeza do dispositivo de teste expôs): `dispositivosRepo.deletar`
+só apagava `exibicoes_contador` e `dispositivos` — desde a migration 064
+(congelamento), apagar uma tela que já gerou playlist quebra a FK de
+`playlist_hora_congelada` e a exclusão falha silenciosamente pra sempre.
+Corrigido pra apagar também `playlist_hora_congelada` e (agora)
+`execucoes_confirmadas` antes do `dispositivos`.
+
+**Verificado:** `npm run check` (133/133 testes, 5 novos em
+`tests/playlist-contrato-novo.test.js` — envelope estável entre polls,
+dedup por `execucaoId`, teto atingido, item/janela inválidos) contra
+Postgres local real; fumaça manual pela API HTTP de verdade (servidor
+local, tela nova marcada `contrato_playlist=2`, `GET /playlist` devolvendo
+o envelope, `POST /played` em lote, tela legada em paralelo devolvendo o
+array de sempre sem mudar nada, exclusão da tela de teste pelo admin
+funcionando depois da correção do `deletar`).
+
+**Fora deste trabalho, de propósito:** nada mudou em `public/player.page.js`
+(player web) nem em `sancompany/playlist.mostrai` (app) — só o lado do
+Mostraí. O app ainda precisa ser testado contra este backend de verdade
+(pendência dele mesmo, `playlist.mostrai/docs/pendencias.md`) e verificado
+em hardware real antes de qualquer tela passar pra `contrato_playlist=2`
+em produção.

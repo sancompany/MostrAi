@@ -174,6 +174,20 @@ em `docs/PENDENCIAS.md` seção G; produção ainda não foi checada.
 **Ideia futura registrada, não construída:** reserva de ~20% da capacidade
 dos pontos pra conteúdo institucional/estratégico.
 
+## Contrato novo de playlist/played pro app Android nativo — 21/09/2026
+
+Lado do Mostraí do contrato que `sancompany/playlist.mostrai` (app Android
+TV nativo, projeto separado) já sabia consumir. `dispositivos.contrato_playlist`
+(migration 065, padrão 1) decide por tela se `/playlist` devolve o array de
+sempre ou o envelope novo (`versaoContrato`/`janelaId`/`itemProgramacaoId`/
+`criativoId`); `/played` aceita lote deduplicado por `execucaoId`, com ledger
+próprio (`execucoes_confirmadas`) creditado na mesma transação. Nenhuma tela
+de produção foi migrada pro contrato novo ainda — isso é passo separado,
+depois do app ser confirmado rodando em hardware real. Player web e o
+repositório do app não foram tocados. Detalhe em `.ia/HANDOFF.md` e
+`docs/PENDENCIAS.md` seção H. `npm run check` 133/133. Ainda na branch
+`claude/busy-noether-hheir2`.
+
 ## Mapa funcional completo — 20/09/2026
 
 Inventário atual de todas as funcionalidades de usuário, admin e operação em `docs/mapa-funcional-completo-2026-09-20.md`. Novo bug confirmado: a aba admin Métrica usa status antigo de ponto ao calcular amortização histórica e pode inflar margem; Visão geral usa a regra correta. Bugs técnicos previamente mapeados continuam pausados. Prioridade é acompanhar a revisão manual já em andamento pelo dono.

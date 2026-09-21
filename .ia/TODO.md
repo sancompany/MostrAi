@@ -92,6 +92,18 @@ pelo Codex — explícito, não assumir o contrário.**
     decidir com o dono caso a caso (nunca merge automático) antes de propor
     qualquer constraint `UNIQUE` em `cpf_cnpj`.
 
+- **Marcar `contrato_playlist=2` na(s) tela(s) do app Android nativo, quando
+  o dono confirmar o app rodando em hardware real** (21/09/2026 — contrato
+  do backend pronto, ver `.ia/HANDOFF.md` e `docs/PENDENCIAS.md` seção H).
+  - Estado: nenhuma tela em produção está no contrato novo ainda — todas
+    seguem em `1` (array de sempre), player web intocado.
+  - Dependência: `sancompany/playlist.mostrai`, `docs/pendencias.md`, "só o
+    dono faz" — instalar o APK num aparelho real e testar contra este
+    backend de verdade (nunca testado, só JSON sintético do lado do app).
+  - Critério de conclusão: `PATCH /admin/dispositivos/:id
+    {"contrato_playlist":2}` na tela certa, e confirmação visual de que o
+    app está tocando a playlist e reportando `/played` em lote.
+
 ## NEXT
 
 - **IDEIA FUTURA, não implementada (21/09/2026, pedido explícito do dono ao

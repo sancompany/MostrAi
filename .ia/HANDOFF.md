@@ -6,6 +6,44 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Contrato novo de playlist/played pro app Android nativo (21/09/2026, este agente)
+Pedido direto do dono: "leia o repositório do aplicativo e faça o que tiver
+que fazer do seu lado" — referência ao app irmão `sancompany/playlist.mostrai`
+(Android TV nativo, sideload), cuja estação 5 já estava pronta esperando o
+Mostraí publicar o contrato que ele já sabe consumir (envelope com
+`versaoContrato`/`janelaId`/`itemProgramacaoId`/`criativoId`, `POST /played`
+em lote deduplicado por `execucaoId`). Contrato completo em `docs/api.md`,
+"Tela (chave de aparelho)"; resumo técnico em `docs/PENDENCIAS.md` seção H.
+
+**O que mudou, em uma linha cada:**
+- `dispositivos.contrato_playlist` (migration 065, padrão `1`) decide POR
+  TELA se `/playlist` devolve o array de sempre ou o envelope novo — o app
+  não manda cabeçalho de versão, então virou config por dispositivo.
+- `itemProgramacaoId` embute índice (posição na hora congelada) + quem
+  creditar, pra `/played` não precisar reconstruir a hora.
+- `execucoes_confirmadas` (ledger novo) + `execucoes-repository.js` credita
+  e deduplica na MESMA transação — sem essa atomicidade, um crash no meio
+  perderia o crédito de uma exibição real pra sempre.
+- Bug achado e corrigido no caminho: `dispositivosRepo.deletar` não limpava
+  `playlist_hora_congelada` (existe desde a migration 064) — apagar tela que
+  já gerou playlist falhava com FK, sempre, desde 19/09. Corrigido.
+
+**Deliberadamente intocado:** `public/player.page.js` (player web, contrato
+1, não mudou nem uma linha) e o repositório `sancompany/playlist.mostrai`
+(o pedido foi só do lado do Mostraí — "do seu lado"). Nenhuma tela em
+produção foi migrada pra `contrato_playlist=2`; isso só faz sentido depois
+do dono confirmar o app rodando em hardware real (pendência do OUTRO
+repositório) e então marcar a tela específica no admin.
+
+**Verificado:** `npm run check` (133/133, 5 testes novos em
+`tests/playlist-contrato-novo.test.js`), e fumaça manual pela API HTTP real
+(servidor local + Postgres local: tela de teste em contrato 2 recebendo o
+envelope, `/played` em lote com item malformado devolvendo `item_invalido`,
+tela legada em paralelo sem mudar nada, exclusão da tela de teste pelo
+admin funcionando).
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
 ## Admin: Rede e Anunciantes reorganizados por entidade (21/09/2026, este agente)
 Pedido do dono, spec fechada de 20 itens com screenshots do admin em produção:
 o PONTO virou a entidade central de Rede (era 3 telas/abas separadas — Pontos,
