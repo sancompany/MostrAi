@@ -176,6 +176,66 @@ function caixaTabela({ chips = [], html, dica = '', ativo = null }) {
   </div>`;
 }
 
+// Mesma casca de caixaTabela (busca + chips + rodapé), pra uma grade de
+// cards em vez de linhas de tabela (21/09/2026 — cards de ponto). O shell
+// visual (.tabela-caixa/.tabela-topo/.busca/.chips) já era genérico o
+// bastante pra servir aos dois; só o conteúdo e o item que a busca/o chip
+// filtram mudam (`.ponto-card` em vez de `<tr>`).
+function caixaCards({ chips = [], html, dica = '', ativo = null }) {
+  const valorAtivo = ativo !== null && chips.some((c) => c.valor === ativo) ? ativo : chips[0]?.valor;
+  return `<div class="tabela-caixa">
+    <div class="tabela-topo">
+      <input class="busca" type="search" placeholder="Buscar...">
+      <div class="chips">${chips.map((c) => `<button type="button" class="chip ${c.valor === valorAtivo ? 'active' : ''}" data-filtro="${c.valor}">${esc(c.nome)}</button>`).join('')}</div>
+    </div>
+    <div class="pontos-grid u-p-14">${html}</div>
+    <div class="tabela-pe"><span data-contagem></span><span>${dica}</span></div>
+  </div>`;
+}
+
+function turbinarCards(caixa, seletorItem) {
+  const itens = () => [...caixa.querySelectorAll(seletorItem)];
+  const busca = caixa.querySelector('.busca');
+  const contagem = caixa.querySelector('[data-contagem]');
+
+  function aplicar() {
+    const termo = (busca ? busca.value : '').toLowerCase().trim();
+    const chipAtivo = caixa.querySelector('.chip.active');
+    const filtro = chipAtivo ? chipAtivo.dataset.filtro || '' : '';
+    let visiveis = 0;
+    itens().forEach((card) => {
+      const casaTermo = !termo || card.textContent.toLowerCase().includes(termo);
+      const casaFiltro = !filtro || (card.dataset.filtro || '').split(' ').includes(filtro);
+      card.hidden = !(casaTermo && casaFiltro);
+      if (!card.hidden) visiveis += 1;
+    });
+    if (contagem) contagem.textContent = `${visiveis} de ${itens().length}`;
+    let aviso = caixa.querySelector('[data-vazio]');
+    if (visiveis > 0) {
+      if (aviso) aviso.hidden = true;
+      return;
+    }
+    if (!aviso) {
+      aviso = document.createElement('p');
+      aviso.className = 'empty-state';
+      aviso.setAttribute('data-vazio', '');
+      caixa.querySelector('.pontos-grid').insertAdjacentElement('afterend', aviso);
+    }
+    aviso.hidden = false;
+    aviso.textContent = 'Nenhum ponto com esse filtro ou essa busca.';
+  }
+
+  if (busca) busca.addEventListener('input', aplicar);
+  caixa.querySelectorAll('.chip').forEach((chip) =>
+    chip.addEventListener('click', () => {
+      caixa.querySelectorAll('.chip').forEach((x) => x.classList.remove('active'));
+      chip.classList.add('active');
+      aplicar();
+    }),
+  );
+  aplicar();
+}
+
 // ---------- rótulos ----------
 // Dois status desde 17/09/2026 (migration 045). Tela quebrada não é mais
 // estado do PONTO — é estado da tela, em TELA_STATUS logo abaixo.
@@ -230,9 +290,12 @@ const ALIASES_ANTIGOS = {
   criativos: 'conteudo/aprovacao',
   meusanuncios: 'conteudo/proprios',
   pontos: 'rede/pontos',
-  ocupacaopontos: 'rede/ocupacao',
-  telas: 'rede/telas',
-  bancohoras: 'rede/entrega',
+  // Telas e Ocupação não são mais abas próprias (21/09/2026) — os três
+  // hashes antigos caem na listagem de pontos; quem quiser a tela ou a
+  // ocupação de um endereço específico abre o card dele.
+  ocupacaopontos: 'rede/pontos',
+  telas: 'rede/pontos',
+  bancohoras: 'rede/pontos',
   anunciantes: 'anunciantes',
   vendedores: 'vendedores',
   planos: 'planos/ativos',
@@ -261,14 +324,16 @@ const MODULOS = [
     grupo: 'Operação',
     itens: [
       {
+        // O ponto virou a entidade central (21/09/2026, pedido do dono):
+        // Telas e Ocupação, que eram abas irmãs, agora vivem DENTRO do
+        // detalhe de cada ponto (ver renderPontoDetalhe) — não navega mais
+        // entre telas globais pra entender um endereço só. "Entrega" (banco
+        // de horas) saiu do menu por pedido dele: a função e as rotas
+        // continuam intactas (renderBancoHoras, src/bancohoras/routes.js),
+        // só não tem mais superfície de navegação — ver ALIASES_ANTIGOS.
         id: 'rede',
         nome: 'Rede',
-        abas: [
-          { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
-          { id: 'telas', nome: 'Telas', fila: 'offline', render: renderTelas },
-          { id: 'ocupacao', nome: 'Ocupação', fila: 'pontosocupados', render: renderOcupacaoPontos },
-          { id: 'entrega', nome: 'Entrega', fila: 'bancohoras', render: renderBancoHoras },
-        ],
+        abas: [{ id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos }],
       },
       { id: 'anunciantes', nome: 'Anunciantes', render: renderAnunciantes },
       {
@@ -358,10 +423,7 @@ const SUBTITULOS = {
   convites:
     'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
   pontos:
-    'Comércios da rede: status, comodato, ajuda de custo, cota e acabamento. As telas de cada ponto ficam em "Telas".',
-  ocupacaopontos:
-    'Quanto da hora de cada ponto já está vendido, anunciante por anunciante. Ponto que cruza 80% para de aceitar escolha nova — quem já estava lá continua. Só sai do bloqueio se você liberar, e só libera com folga real.',
-  telas: 'Cada TV/dispositivo: chave do aparelho, PIN do painel, custo e último sinal. Uma tela = uma playlist.',
+    'Comércios da rede: quem são, onde ficam e quantas telas têm. Abra um ponto pra ver telas, ocupação e editar o que é dele.',
   anunciantes:
     'Todas as contas, com os papéis vindos do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
@@ -375,8 +437,6 @@ const SUBTITULOS = {
   cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
   trocas:
     'Quem trocou de plano no meio do período: de qual plano pra qual, quanto pagou de diferença e quando. O pago também entra em Cobranças; aqui é a lista de quem subiu de plano.',
-  bancohoras:
-    'O que a rede prometeu e não entregou por estar vendida além da conta, guardado com prioridade pro mês seguinte. Saldo que passa de alguns meses sem drenar entra na fila de decisão — nunca crédito automático em dinheiro.',
   comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
   pagamentospontos:
     'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar, e isso aparece no extrato do dono do ponto.',
@@ -391,7 +451,7 @@ const SUBTITULOS = {
 };
 
 let RESUMO = null;
-let ABA_ATUAL = { modulo: null, aba: null };
+let ABA_ATUAL = { modulo: null, aba: null, resto: null };
 
 function montarNav() {
   document.getElementById('nav').innerHTML = MODULOS.map(
@@ -444,15 +504,22 @@ function pintarContadores() {
 // um módulo sozinho ("rede", cai na primeira aba). É o único lugar que sabe
 // a diferença — todo o resto do arquivo continua chamando irPara('pontos')
 // como sempre chamou.
+//
+// `resto` (21/09/2026): tudo que vem depois do módulo/aba, cru, sem
+// interpretar — hoje serve pro detalhe de um ponto (`rede/pontos/42`, ou
+// `rede/pontos/42/telas` pra abrir direto numa sub-aba do detalhe) e pro
+// detalhe de um anunciante (`anunciantes/42`, módulo sem aba nenhuma). Quem
+// dá sentido ao `resto` é a própria tela (`renderPontos`/`renderAnunciantes`),
+// não o roteador — mesma regra de sempre, só um nível a mais.
 function resolverAlvo(alvoBruto) {
   const bruto = alvoBruto || 'visaogeral';
   const canonico = ALIASES_ANTIGOS[bruto] || bruto;
-  const [moduloId, abaId] = canonico.split('/');
+  const [moduloId, ...partes] = canonico.split('/');
   const modulo = buscarModulo(moduloId);
-  if (!modulo) return { moduloId: 'visaogeral', abaId: null };
-  if (!modulo.abas) return { moduloId, abaId: null };
-  const aba = modulo.abas.find((a) => a.id === abaId) || modulo.abas[0];
-  return { moduloId, abaId: aba.id };
+  if (!modulo) return { moduloId: 'visaogeral', abaId: null, resto: null };
+  if (!modulo.abas) return { moduloId, abaId: null, resto: partes.join('/') || null };
+  const aba = modulo.abas.find((a) => a.id === partes[0]) || modulo.abas[0];
+  return { moduloId, abaId: aba.id, resto: partes.slice(1).join('/') || null };
 }
 
 function subtituloDe(moduloId, abaId) {
@@ -466,11 +533,11 @@ function subtituloDe(moduloId, abaId) {
 // não pisca, e cada função de render continua recebendo o mesmo tipo de `el`
 // que sempre recebeu, só que agora pode ser o container da aba em vez do
 // container da página inteira.
-async function renderModulo(el, modulo, abaId) {
+async function renderModulo(el, modulo, abaId, resto) {
   if (!modulo.abas) {
     el.textContent = 'Carregando...';
     try {
-      await modulo.render(el);
+      await modulo.render(el, resto);
     } catch (err) {
       console.error(`falha ao montar o módulo ${modulo.id}`, err);
       el.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
@@ -498,7 +565,7 @@ async function renderModulo(el, modulo, abaId) {
 
   const subEl = document.getElementById('abaConteudo');
   try {
-    await abaAtiva.render(subEl);
+    await abaAtiva.render(subEl, resto);
   } catch (err) {
     console.error(`falha ao montar a aba ${modulo.id}/${abaAtiva.id}`, err);
     subEl.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
@@ -506,9 +573,9 @@ async function renderModulo(el, modulo, abaId) {
 }
 
 async function irPara(alvoBruto, forcarResumo) {
-  const { moduloId, abaId } = resolverAlvo(alvoBruto);
-  ABA_ATUAL = { modulo: moduloId, aba: abaId };
-  const canonico = abaId ? `${moduloId}/${abaId}` : moduloId;
+  const { moduloId, abaId, resto } = resolverAlvo(alvoBruto);
+  ABA_ATUAL = { modulo: moduloId, aba: abaId, resto };
+  const canonico = [moduloId, abaId, resto].filter(Boolean).join('/');
   const modulo = buscarModulo(moduloId);
 
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.modulo === moduloId));
@@ -521,7 +588,7 @@ async function irPara(alvoBruto, forcarResumo) {
     pintarContadores();
   }
 
-  await renderModulo(document.getElementById('conteudo'), modulo, abaId);
+  await renderModulo(document.getElementById('conteudo'), modulo, abaId, resto);
 }
 
 document.getElementById('nav').addEventListener('click', (e) => {
@@ -533,8 +600,8 @@ document
   .addEventListener('click', () => irPara(location.hash.slice(1) || 'visaogeral', true));
 window.addEventListener('hashchange', () => {
   const alvo = location.hash.slice(1) || 'visaogeral';
-  const { moduloId, abaId } = resolverAlvo(alvo);
-  if (ABA_ATUAL.modulo !== moduloId || ABA_ATUAL.aba !== abaId) irPara(alvo);
+  const { moduloId, abaId, resto } = resolverAlvo(alvo);
+  if (ABA_ATUAL.modulo !== moduloId || ABA_ATUAL.aba !== abaId || ABA_ATUAL.resto !== resto) irPara(alvo);
 });
 
 // ---------- login ----------
@@ -952,57 +1019,46 @@ async function renderMeusAnuncios(el) {
 }
 
 // ---------- pontos ----------
-// Mesmo padrão de FILTRO_TELAS_PONTO (aba Telas): a Visão geral seta este
-// global antes de navegar pra cá, quando o clique veio de um status
-// específico em "Pontos por status" — consumido uma vez só.
+// O ponto virou a entidade central (21/09/2026, pedido do dono). A aba
+// Pontos mostra uma grade de cards; clicar num ponto abre o detalhe dele,
+// com sub-abas Resumo/Telas/Ocupação — Telas e Ocupação deixaram de ser
+// destinos próprios no menu.
+//
+// Mesmo padrão de sempre: a Visão geral seta este global antes de navegar
+// pra cá, quando o clique veio de um status específico em "Pontos por
+// status" — consumido uma vez só.
 let FILTRO_PONTOS_STATUS = null;
 
-async function renderPontos(el) {
+// A chave do aparelho é o que autentica a TV (ver src/lib/aparelho.js).
+// O link completo é o que se abre no navegador da tela — ele guarda a
+// chave e continua funcionando depois de reiniciar.
+const linkDoPlayer = (telaId, chave) =>
+  `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
+
+// `resto` vem cru do roteador (ver resolverAlvo): "" pra grade, "42" ou
+// "42/telas" pro detalhe de um ponto, na sub-aba que vier depois da barra.
+async function renderPontos(el, resto) {
+  const [pontoIdBruto, subAbaBruta] = (resto || '').split('/');
+  const pontoId = pontoIdBruto ? Number(pontoIdBruto) : null;
+  if (pontoId) return renderPontoDetalhe(el, pontoId, subAbaBruta || 'resumo');
+  return renderPontosGrade(el);
+}
+
+function montarPontoCard(p) {
+  const segmento = p.categoria_nome || p.segmento;
+  return `<a class="ponto-card ponto-card-foto" href="#rede/pontos/${p.id}" data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
+    ${p.foto_instalacao_url ? `<img src="${esc(p.foto_instalacao_url)}" alt="" loading="lazy">` : '<div class="ponto-card-semfoto">Sem foto</div>'}
+    <span class="badge ${p.status === 'em_operacao' ? 'badge-ok' : 'badge-pendente'}">${esc(PONTO_STATUS[p.status] || p.status)}</span>
+    <h4>${esc(p.nome)}</h4>
+    <p>${esc(p.cidade)}/${esc(p.uf)}${segmento ? ` · ${esc(segmento)}` : ''}</p>
+    <p>${p.telas_ativas ?? 0}/${p.telas ?? 0} ${p.telas === 1 ? 'tela no ar' : 'telas no ar'} · cadastrado em ${data(p.created_at)}</p>
+  </a>`;
+}
+
+async function renderPontosGrade(el) {
   const filtroStatus = FILTRO_PONTOS_STATUS;
   FILTRO_PONTOS_STATUS = null;
-  const [pontos, categorias, opcoesComodato, configSite] = await Promise.all([
-    pegar('/admin/pontos'),
-    pegar('/admin/categorias'),
-    pegar('/admin/planos-ponto'),
-    pegar('/pontos/config'),
-  ]);
-  // Sinal/chave/PIN são por TELA (migration 019) — ficam na aba "Telas".
-  // Aqui o ponto mostra quantas telas tem e quem é o dono (conta).
-  const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Dono (conta)</th><th data-ord>Cidade</th><th>Segmento do local</th>
-      <th>Comodato</th><th data-ord>Ajuda R$/mês</th><th data-ord>Cota/h</th><th data-ord>Status</th>
-      <th data-ord>Fluxo/mês</th><th>Molde</th><th data-ord>Telas</th><th>Foto</th>
-    </tr></thead><tbody>
-    ${pontos
-      .map(
-        (p) => `<tr data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
-      <td>${p.id}</td>
-      <td><b>${esc(p.nome)}</b><div class="u-dim u-fs-72">${esc(p.responsavel_nome)} · ${esc(p.responsavel_contato)}</div></td>
-      <td>${p.dono_nome ? esc(p.dono_nome) : '<span class="u-dim">sem conta</span>'}</td>
-      <td>${esc(p.cidade)}/${esc(p.uf)}</td>
-      <td><select class="mini" data-ponto="categoria_id" data-id="${p.id}" title="Define de qual segmento NÃO entra anúncio nessa tela">
-        <option value="">-</option>
-        ${categorias.map((c) => `<option value="${c.id}" ${c.id === p.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
-      </select></td>
-      <td><select class="mini" data-ponto="plano_ponto_id" data-id="${p.id}">
-        <option value="">-</option>
-        ${opcoesComodato.map((o) => `<option value="${o.id}" ${o.id === p.plano_ponto_id ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}
-      </select></td>
-      <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" data-id="${p.id}" value="${p.valor_pago_mensal}"></td>
-      <td><input class="mini u-w-60" type="number" min="0" data-ponto="cota_autoanuncio_slots_hora" data-id="${p.id}" value="${p.cota_autoanuncio_slots_hora}"></td>
-      <td>${selectStatus(PONTO_STATUS, p.status, `data-ponto="status" data-id="${p.id}"`)}</td>
-      <td><input class="mini u-w-80" type="number" min="0" data-ponto="fluxo_estimado_mensal" data-id="${p.id}" value="${p.fluxo_estimado_mensal ?? ''}" title="Só entra na soma pública se o ponto estiver ativo"></td>
-      <td class="u-ta-c"><input type="checkbox" data-ponto="acabamento_completo" data-id="${p.id}" ${p.acabamento_completo ? 'checked' : ''} title="Molde de ACM já instalado"></td>
-      <td><a href="#telas" data-ver-telas="${p.id}"><b>${p.telas_ativas ?? 0}</b>/${p.telas ?? 0} no ar</a>
-        <button class="btn ghost mini" data-nova-tela="${p.id}" title="Adiciona mais uma TV nesse endereço">+ tela</button></td>
-      <td>
-        <input type="file" accept="image/*" class="mini u-w-100" data-foto-ponto="${p.id}">
-        ${p.foto_instalacao_url ? `<a class="u-d-block u-fs-72" href="${esc(p.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto</a>` : ''}
-      </td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
+  const [pontos, configSite] = await Promise.all([pegar('/admin/pontos'), pegar('/pontos/config')]);
 
   el.innerHTML = `
     <div class="card u-mb-16 u-mw-420">
@@ -1031,78 +1087,20 @@ async function renderPontos(el) {
     </details>
     ${
       pontos.length
-        ? caixaTabela({
+        ? caixaCards({
             chips: [
               { valor: '', nome: 'Todos' },
               { valor: 'parcial', nome: 'Com tela fora do ar' },
               ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
             ],
-            html: corpo,
-            dica: 'Alterações salvam ao sair do campo. Chave, PIN e sinal de cada TV ficam na aba Telas.',
+            html: pontos.map(montarPontoCard).join(''),
+            dica: 'Clique num ponto pra ver telas, ocupação e editar os dados dele.',
             ativo: filtroStatus,
           })
         : '<p class="empty-state">Nenhum ponto ainda. Pedido de "meu ponto" no painel de uma conta vira candidatura na aba Candidaturas, você libera na conta, e o ponto nasce ali. O cadastro manual acima é pra exceção.</p>'
-    }
-    <p class="empty-state u-ta-l u-p-0 u-pt-4">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis por ponto. Trocar a opção aqui não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo. Ponto novo entra pelo pedido de "meu ponto" no painel → candidatura → você libera na conta; o cadastro manual abaixo é pra exceção.</p>`;
+    }`;
 
-  if (pontos.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-ponto]').forEach((campo) =>
-    campo.addEventListener('change', () => {
-      if (campo.type === 'checkbox')
-        return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: campo.checked }, campo);
-      const numerico = [
-        'valor_pago_mensal',
-        'cota_autoanuncio_slots_hora',
-        'fluxo_estimado_mensal',
-        'categoria_id',
-      ].includes(campo.dataset.ponto);
-      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
-      return salvar(`/admin/pontos/${campo.dataset.id}`, { [campo.dataset.ponto]: valor }, campo);
-    }),
-  );
-
-  el.querySelectorAll('[data-ver-telas]').forEach((a) =>
-    a.addEventListener('click', () => {
-      FILTRO_TELAS_PONTO = Number(a.dataset.verTelas);
-    }),
-  );
-  el.querySelectorAll('[data-nova-tela]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const apelido = prompt(
-        'Nome da tela (ex.: Tela 2, balcão):',
-        `Tela ${pontos.find((p) => p.id === Number(btn.dataset.novaTela))?.telas + 1 || 2}`,
-      );
-      if (apelido === null) return;
-      const custo = prompt(
-        'Custo do equipamento dessa tela (R$), pra amortização. Pode deixar 0 e preencher depois:',
-        '0',
-      );
-      const r = await api(`/admin/pontos/${btn.dataset.novaTela}/dispositivos`, {
-        method: 'POST',
-        body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }),
-      });
-      if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
-      toast('Tela criada. Gere a chave dela na aba Telas.');
-      FILTRO_TELAS_PONTO = Number(btn.dataset.novaTela);
-      irPara('telas');
-    }),
-  );
-
-  el.querySelectorAll('[data-foto-ponto]').forEach((input) =>
-    input.addEventListener('change', async () => {
-      if (!input.files[0]) return;
-      const form = new FormData();
-      form.append('arquivo', input.files[0]);
-      const r = await fetch(`${API_BASE_URL}/admin/pontos/${input.dataset.fotoPonto}/foto`, {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-      });
-      toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
-      if (r.ok) renderPontos(el);
-    }),
-  );
+  if (pontos.length) turbinarCards(el.querySelector('.tabela-caixa'), '.ponto-card');
 
   document.getElementById('fotoExemploPonto').addEventListener('change', async (e) => {
     const input = e.target;
@@ -1115,7 +1113,7 @@ async function renderPontos(el) {
       body: form,
     });
     toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
-    if (r.ok) renderPontos(el);
+    if (r.ok) renderPontosGrade(el);
   });
 
   document.getElementById('formNovoPonto').addEventListener('submit', async (e) => {
@@ -1131,46 +1129,154 @@ async function renderPontos(el) {
       return;
     }
     toast('Ponto criado.');
-    renderPontos(el);
+    renderPontosGrade(el);
   });
 }
 
-// ---------- telas (dispositivos) ----------
-let FILTRO_TELAS_PONTO = null;
+// ---------- detalhe do ponto ----------
+const PONTO_SUBABAS = [
+  { id: 'resumo', nome: 'Resumo' },
+  { id: 'telas', nome: 'Telas' },
+  { id: 'ocupacao', nome: 'Ocupação' },
+];
 
-// A chave do aparelho é o que autentica a TV (ver src/lib/aparelho.js).
-// O link completo é o que se abre no navegador da tela — ele guarda a
-// chave e continua funcionando depois de reiniciar.
-const linkDoPlayer = (telaId, chave) =>
-  `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
+// Sem endpoint "GET /admin/pontos/:id" — reaproveita a listagem (que já
+// junta categoria/dono/contagem de telas) e acha o ponto nela, igual o
+// resto do arquivo sempre fez (sem cache local de nada).
+async function renderPontoDetalhe(el, pontoId, subAbaPedida) {
+  const [pontos, categorias, opcoesComodato] = await Promise.all([
+    pegar('/admin/pontos'),
+    pegar('/admin/categorias'),
+    pegar('/admin/planos-ponto'),
+  ]);
+  const ponto = pontos.find((p) => p.id === pontoId);
+  if (!ponto) {
+    el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Pontos</a></p>';
+    return;
+  }
+  const abaAtiva = PONTO_SUBABAS.find((a) => a.id === subAbaPedida) || PONTO_SUBABAS[0];
 
-async function renderTelas(el) {
-  const filtroPonto = FILTRO_TELAS_PONTO;
-  FILTRO_TELAS_PONTO = null;
-  // Filtrando por ponto, pede só as telas daquele ponto (a rota existia desde
-  // sempre e ninguem chamava; o admin baixava a rede inteira pra descartar
-  // quase tudo no navegador). E a lista de telas sem sinal vem do servidor, em
-  // vez de refazer a regra das 2 horas aqui: eram duas implementacoes da mesma
-  // regra, livres pra divergir — e a do alerta do topo ja era a do servidor.
+  el.innerHTML = `
+    <p class="u-m-0 u-mb-10"><a href="#rede/pontos">← Pontos</a></p>
+    <div class="panel-head u-mb-10">
+      <h3 class="u-m-0">${esc(ponto.nome)}</h3>
+      <span class="badge ${ponto.status === 'em_operacao' ? 'badge-ok' : 'badge-pendente'}">${esc(PONTO_STATUS[ponto.status] || ponto.status)}</span>
+    </div>
+    <div class="modulo-abas">
+      ${PONTO_SUBABAS.map((a) => `<button type="button" class="modulo-aba ${a.id === abaAtiva.id ? 'active' : ''}" data-subaba="${a.id}">${a.nome}</button>`).join('')}
+    </div>
+    <div id="pontoSubConteudo">Carregando...</div>`;
+
+  el.querySelectorAll('[data-subaba]').forEach((btn) =>
+    btn.addEventListener('click', () => irPara(`rede/pontos/${pontoId}/${btn.dataset.subaba}`)),
+  );
+
+  const subEl = document.getElementById('pontoSubConteudo');
+  if (abaAtiva.id === 'telas') return renderPontoTelas(subEl, ponto);
+  if (abaAtiva.id === 'ocupacao') return renderPontoOcupacao(subEl, ponto);
+  return renderPontoResumo(subEl, ponto, categorias, opcoesComodato);
+}
+
+// Os campos que antes eram 9 colunas editáveis numa linha de tabela viram
+// um formulário vertical — mesmos campos, mesmo salvar() por campo, só sem
+// precisar de data-id em cada um (o ponto já está fechado no escopo).
+async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
+  el.innerHTML = `
+    <div class="card u-mw-520">
+      <div class="field-row">
+        <div class="u-col-2"><label>Dono (conta)</label><p class="u-m-0">${ponto.dono_nome ? esc(ponto.dono_nome) : '<span class="u-dim">sem conta</span>'}</p></div>
+        <div class="u-col"><label>Cadastrado em</label><p class="u-m-0">${data(ponto.created_at)}</p></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2"><label>Cidade</label><p class="u-m-0">${esc(ponto.cidade)}/${esc(ponto.uf)}</p></div>
+        <div class="u-col-2"><label>Endereço</label><p class="u-m-0">${esc(ponto.endereco || '-')}</p></div>
+      </div>
+      <div><label>Responsável</label><p class="u-m-0">${esc(ponto.responsavel_nome)} · ${esc(ponto.responsavel_contato)}</p></div>
+      <div class="field-row">
+        <div class="u-col-2">
+          <label>Segmento</label>
+          <select class="mini" data-ponto="categoria_id" title="Define de qual segmento NÃO entra anúncio nessa tela">
+            <option value="">${ponto.categoria_livre ? `(livre) ${esc(ponto.categoria_livre)}` : '-'}</option>
+            ${categorias.map((c) => `<option value="${c.id}" ${c.id === ponto.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="u-col-2"><label>Status</label>${selectStatus(PONTO_STATUS, ponto.status, 'data-ponto="status"')}</div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2">
+          <label>Comodato</label>
+          <select class="mini" data-ponto="plano_ponto_id">
+            <option value="">-</option>
+            ${opcoesComodato.map((o) => `<option value="${o.id}" ${o.id === ponto.plano_ponto_id ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="u-col"><label>Ajuda R$/mês</label><input class="mini" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" value="${ponto.valor_pago_mensal}"></div>
+        <div class="u-col"><label>Cota/h</label><input class="mini" type="number" min="0" data-ponto="cota_autoanuncio_slots_hora" value="${ponto.cota_autoanuncio_slots_hora}"></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2"><label>Fluxo estimado/mês</label><input class="mini" type="number" min="0" data-ponto="fluxo_estimado_mensal" value="${ponto.fluxo_estimado_mensal ?? ''}" title="Só entra na soma pública se o ponto estiver ativo"></div>
+        <div class="u-col-2"><label><input type="checkbox" data-ponto="acabamento_completo" ${ponto.acabamento_completo ? 'checked' : ''}> Molde de ACM já instalado</label></div>
+      </div>
+      <div>
+        <label>Foto do ponto</label><br>
+        <input type="file" accept="image/*" class="mini" id="fotoPonto">
+        ${ponto.foto_instalacao_url ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(ponto.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto atual</a>` : ''}
+      </div>
+    </div>
+    <p class="empty-state u-ta-l u-p-0 u-pt-10">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis aqui. Trocar a opção não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo.</p>`;
+
+  el.querySelectorAll('[data-ponto]').forEach((campo) =>
+    campo.addEventListener('change', () => {
+      if (campo.type === 'checkbox')
+        return salvar(`/admin/pontos/${ponto.id}`, { [campo.dataset.ponto]: campo.checked }, campo);
+      const numerico = [
+        'valor_pago_mensal',
+        'cota_autoanuncio_slots_hora',
+        'fluxo_estimado_mensal',
+        'categoria_id',
+      ].includes(campo.dataset.ponto);
+      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
+      return salvar(`/admin/pontos/${ponto.id}`, { [campo.dataset.ponto]: valor }, campo);
+    }),
+  );
+
+  document.getElementById('fotoPonto').addEventListener('change', async (e) => {
+    const input = e.target;
+    if (!input.files[0]) return;
+    const form = new FormData();
+    form.append('arquivo', input.files[0]);
+    const r = await fetch(`${API_BASE_URL}/admin/pontos/${ponto.id}/foto`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+    toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
+    if (r.ok) irPara(`rede/pontos/${ponto.id}/resumo`);
+  });
+}
+
+// Mesma tabela e as mesmas ações de sempre (chave, PIN, custo/prazo de
+// amortização, painel de exibições, exclusão) — só que sempre escondida
+// dentro de UM ponto agora, em vez de "todas as telas da rede" com um
+// filtro opcional por cima. A rota já aceitava esse filtro desde sempre.
+async function renderPontoTelas(el, ponto) {
   const [telas, semSinal] = await Promise.all([
-    pegar(filtroPonto ? `/admin/pontos/${filtroPonto}/dispositivos` : '/admin/dispositivos'),
+    pegar(`/admin/pontos/${ponto.id}/dispositivos`),
     pegar('/admin/pontos-offline').catch(() => []),
   ]);
   const idsOffline = new Set((semSinal || []).map((d) => d.id));
   const estaOffline = (t) => idsOffline.has(t.id);
-  const lista = telas;
   const amort = (t) =>
     Number(t.custo_equipamento) > 0 ? Number(t.custo_equipamento) / Math.max(1, Number(t.meses_amortizacao) || 36) : 0;
 
   const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Ponto</th><th data-ord>Tela</th><th data-ord>Status</th><th data-ord>Último sinal</th>
+      <th data-ord>ID</th><th data-ord>Tela</th><th data-ord>Status</th><th data-ord>Último sinal</th>
       <th>Chave / link do player</th><th>PIN do painel</th><th data-ord>Custo R$</th><th data-ord>Meses</th><th data-ord>Amort./mês</th><th data-ord>Instalada em</th><th></th>
     </tr></thead><tbody>
-    ${lista
+    ${telas
       .map(
         (t) => `<tr data-filtro="${t.status}${estaOffline(t) ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
       <td>${t.id}</td>
-      <td><b>${esc(t.ponto_nome)}</b><div class="u-dim u-fs-72">${esc(t.ponto_cidade || '')} · ponto ${esc(PONTO_STATUS[t.ponto_status] || t.ponto_status)}</div></td>
       <td><input class="mini u-w-120" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}"></td>
       <td>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</td>
       <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '-'}</td>
@@ -1194,9 +1300,9 @@ async function renderTelas(el) {
   </tbody></table>`;
 
   el.innerHTML = `
-    ${filtroPonto ? `<p class="form-hint u-m-0 u-mb-10">Mostrando só as telas do ponto #${filtroPonto}. <a href="#telas" data-limpar-filtro>Ver todas</a></p>` : ''}
+    <div class="field-row u-mb-10"><button class="btn ghost mini" id="btnNovaTela" title="Adiciona mais uma TV nesse endereço">+ tela</button></div>
     ${
-      lista.length
+      telas.length
         ? caixaTabela({
             chips: [
               { valor: '', nome: 'Todas' },
@@ -1207,13 +1313,28 @@ async function renderTelas(el) {
             html: corpo,
             dica: 'Uma tela = um link do player + uma playlist. Custo e prazo alimentam a amortização da visão geral.',
           })
-        : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" na aba Pontos.</p>'
+        : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" acima.</p>'
     }
     <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P). Só mostra o que rodou nela, nada mais.</p>`;
 
-  if (!lista.length) return;
+  document.getElementById('btnNovaTela').addEventListener('click', async () => {
+    const apelido = prompt('Nome da tela (ex.: Tela 2, balcão):', `Tela ${telas.length + 1}`);
+    if (apelido === null) return;
+    const custo = prompt(
+      'Custo do equipamento dessa tela (R$), pra amortização. Pode deixar 0 e preencher depois:',
+      '0',
+    );
+    const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, {
+      method: 'POST',
+      body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }),
+    });
+    if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
+    toast('Tela criada. Gere a chave dela abaixo.');
+    renderPontoTelas(el, ponto);
+  });
+
+  if (!telas.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelector('[data-limpar-filtro]')?.addEventListener('click', () => renderTelas(el));
 
   el.querySelectorAll('[data-tela]').forEach((campo) =>
     campo.addEventListener('change', async () => {
@@ -1225,7 +1346,7 @@ async function renderTelas(el) {
       ) {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
-        if (campo.dataset.tela !== 'status') renderTelas(el);
+        if (campo.dataset.tela !== 'status') renderPontoTelas(el, ponto);
       }
     }),
   );
@@ -1246,7 +1367,7 @@ async function renderTelas(el) {
         'Abra este link no navegador da TV (ele guarda a chave e continua funcionando depois de reiniciar):',
         linkDoPlayer(btn.dataset.chave, aparelho_id),
       );
-      renderTelas(el);
+      renderPontoTelas(el, ponto);
     }),
   );
 
@@ -1270,7 +1391,7 @@ async function renderTelas(el) {
       });
       if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.', 'err');
       toast(pin.trim() ? 'PIN definido.' : 'PIN removido.');
-      renderTelas(el);
+      renderPontoTelas(el, ponto);
     }),
   );
 
@@ -1286,7 +1407,7 @@ async function renderTelas(el) {
       }
       linha.insertAdjacentHTML(
         'afterend',
-        `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="12">
+        `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="11">
       <b>Últimos 30 dias: ${num(total)} exibições confirmadas</b>
       ${
         d.porAnunciante.length
@@ -1306,13 +1427,70 @@ async function renderTelas(el) {
       const r = await api(`/admin/dispositivos/${btn.dataset.excluirTela}`, { method: 'DELETE' });
       if (!r.ok) return toast('Não foi possível excluir.', 'err');
       toast('Tela excluída.');
-      renderTelas(el);
+      renderPontoTelas(el, ponto);
     }),
   );
 }
 
+// Mesma regra de sempre (G.7): ponto que cruza 80% da hora vendida trava
+// pra escolha nova, sozinho, e só sai do bloqueio com folga real (15 min).
+// Antes era uma tabela cruzando TODOS os pontos; aqui já se sabe de qual
+// ponto se trata, então é só a fatia dele.
+async function renderPontoOcupacao(el, ponto) {
+  const todas = await pegar('/admin/pontos-ocupacao');
+  const linhas = todas.filter((l) => l.ponto_id === ponto.id);
+  const ocupacaoPct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
+  const pctTotal = linhas.length ? ocupacaoPct(linhas[0].segundos_vendidos) : 0;
+  const bloqueado = !!ponto.escolha_bloqueada_em;
+
+  el.innerHTML = `
+    <div class="kpi-grid u-mb-16">
+      <div class="kpi-card"><span class="kpi-label">Capacidade utilizada</span><b>${pctTotal}%</b><span class="kpi-caption">soma dos segundos por hora do plano de cada conta associada — sem a compensação da RN-49, de propósito: aqui a pergunta é o que já foi prometido</span></div>
+      <div class="kpi-card"><span class="kpi-label">Capacidade livre</span><b>${Math.max(0, 100 - pctTotal)}%</b></div>
+    </div>
+    ${
+      bloqueado
+        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
+      <b>Travado pra escolha nova.</b>
+      <p class="u-m-0 u-mt-8 u-mb-8">Cruzou 80% da hora vendida e parou de entrar na escolha automática e na escolha manual — quem já estava lá continua normalmente. Liberar só funciona se sobrar folga real (15 minutos).</p>
+      <button class="btn ghost mini" id="btnLiberarPonto">Liberar pra escolha</button>
+    </div>`
+        : ''
+    }
+    <div class="tabela-caixa"><div class="rolagem">${
+      linhas.length
+        ? `<table><thead><tr><th data-ord>Anunciante</th><th data-ord>Ocupa (s/hora)</th><th data-ord>Ocupação do ponto</th></tr></thead><tbody>
+      ${linhas.map((l) => `<tr><td>${esc(l.nome_empresa)}</td><td>${l.segundos_por_hora}s</td><td>${ocupacaoPct(l.segundos_vendidos)}%</td></tr>`).join('')}
+    </tbody></table>`
+        : '<p class="empty-state">Nenhum anunciante associado a este ponto ainda.</p>'
+    }</div></div>`;
+
+  document.getElementById('btnLiberarPonto')?.addEventListener('click', async () => {
+    if (!confirm('Liberar este ponto pra escolha nova?')) return;
+    const r = await api(`/admin/pontos/${ponto.id}/liberar-escolha`, { method: 'POST' });
+    if (!r.ok) {
+      const corpoErro = await r.json().catch(() => ({}));
+      return toast(corpoErro.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
+    }
+    toast('Ponto liberado pra escolha nova.');
+    renderPontoOcupacao(el, ponto);
+  });
+}
+
 // ---------- anunciantes ----------
-async function renderAnunciantes(el) {
+// Listagem enxuta (21/09/2026, pedido do dono): a linha virou resumo
+// clicável, sem select nem botão nenhum — edição e ações moraram pro
+// detalhe da conta (renderAnuncianteDetalhe). O aviso de divergência de
+// ciclo (avisoDivergencia) saiu daqui — ele nasceu pros PLANOS, e continua
+// existindo lá (aba Planos); esta tela só o herdava por acaso, de quando
+// tudo vivia junto numa página só.
+async function renderAnunciantes(el, resto) {
+  const anuncianteId = resto ? Number(resto) : null;
+  if (anuncianteId) return renderAnuncianteDetalhe(el, anuncianteId);
+  return renderAnunciantesLista(el);
+}
+
+async function renderAnunciantesLista(el) {
   const [anunciantes, categorias, planos, pontos] = await Promise.all([
     pegar('/admin/anunciantes'),
     pegar('/admin/categorias'),
@@ -1324,66 +1502,36 @@ async function renderAnunciantes(el) {
   const nomePlano = Object.fromEntries(
     planos.map((p) => [p.id, `${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`]),
   );
+  const nomeCategoria = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
   const temPonto = new Set(pontos.map((p) => p.anunciante_id).filter(Boolean));
 
   const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Empresa</th><th data-ord>Documento</th><th>Contato</th>
-      <th>Ramo</th><th data-ord>Plano</th><th data-ord>Expira</th><th data-ord>Status</th><th data-ord>Suspensa</th><th data-ord>Entrou</th><th></th>
+      <th data-ord>ID</th><th data-ord>Empresa</th><th>Contato</th>
+      <th>Ramo</th><th data-ord>Plano</th><th data-ord>Status</th><th data-ord>Entrou</th>
     </tr></thead><tbody>
     ${anunciantes
       .map(
         (
           a,
-        ) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="${a.excluido_em ? 'u-op-60' : ''}">
+        ) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="linha-clicavel${a.excluido_em ? ' u-op-60' : ''}" data-abrir="${a.id}">
       <td>${a.id}</td>
       <td><b>${esc(a.nome_empresa)}</b> ${(a.papeis || ['anunciante'])
         .filter((x) => x !== 'anunciante')
         .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
         .join(
           ' ',
-        )}${a.status === 'parceiro' ? ` <span class="badge badge-ok" title="desconto extra ${a.parceiro_desconto_percentual ?? 0}%${a.parceiro_compromisso_minimo ? ` · só a partir de ${a.parceiro_compromisso_minimo}x` : ''}">parceiro</span>` : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
-      <td>${esc(a.cpf_cnpj)}</td>
+        )}${a.status === 'parceiro' ? ' <span class="badge badge-ok">parceiro</span>' : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
-      <td><select class="mini" data-anunciante="categoria_id" data-id="${a.id}" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
-        <option value="">${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : '-'}</option>
-        ${categorias.map((c) => `<option value="${c.id}" ${c.id === a.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
-      </select></td>
-      <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(a.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</td>
-      <td>${data(a.data_expiracao)}</td>
-      <td>${selectStatus(ANUNCIANTE_STATUS, a.status, `data-anunciante="status" data-id="${a.id}"`)}</td>
-      <td><select class="mini" data-anunciante="suspenso" data-id="${a.id}">
-        <option value="false"${!a.suspenso ? ' selected' : ''}>Não</option>
-        <option value="true"${a.suspenso ? ' selected' : ''}>Sim</option>
-      </select></td>
+      <td>${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : a.categoria_id ? esc(nomeCategoria[a.categoria_id] || '?') : '<span class="u-dim">-</span>'}</td>
+      <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ' <span class="badge badge-pendente">cortesia</span>' : ''}</td>
+      <td>${esc(ANUNCIANTE_STATUS[a.status] || a.status)}${a.suspenso ? ' <span class="badge badge-err">suspensa</span>' : ''}</td>
       <td>${data(a.created_at)}</td>
-      <td>${
-        a.excluido_em
-          ? `<button class="btn ghost mini" data-restaurar="${a.id}">Restaurar</button>`
-          : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele, já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir="${a.id}"></label>
-           <button class="btn ghost mini" data-liberar="${a.id}" title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
-           <button class="btn ghost mini" data-parceiro="${a.id}" title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${a.status === 'parceiro' ? 'Editar parceiro' : 'Marcar parceiro'}</button>
-           ${
-             a.plano_id && !a.plano_cortesia
-               ? `<button class="btn ghost mini u-txt-erro" data-cancelar="${a.id}" title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>`
-               : ''
-}`
-      }</td>
     </tr>`,
       )
       .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
-    ${avisoDivergencia(planos)}
-    <p class="empty-state u-ta-l u-p-0 u-pb-12">
-      <b>O produto é do tier; a oferta é do ciclo.</b>
-      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
-      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
-      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
-      <b>Mais escolhido</b> são deste ciclo e desse cartão.
-      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
-      planos ao mesmo tempo.
-    </p>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo anunciante (cadastro manual)</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovoAnunciante">
@@ -1412,141 +1560,15 @@ async function renderAnunciantes(el) {
               { valor: 'excluida', nome: 'Excluídas' },
             ],
             html: corpo,
-            dica: 'Conta excluída fica recuperável por 60 dias. Use Restaurar.',
+            dica: 'Clique numa conta pra ver o resumo completo e as ações. Conta excluída fica recuperável por 60 dias.',
           })
         : '<p class="empty-state">Nenhum anunciante ainda. Cadastro pelo site cai aqui na hora, ou use "+ Novo anunciante" acima pra exceção.</p>'
     }`;
 
   if (anunciantes.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
-  el.querySelectorAll('[data-anunciante]').forEach((sel) =>
-    sel.addEventListener('change', async () => {
-      const campo = sel.dataset.anunciante;
-      const valor =
-        campo === 'categoria_id'
-          ? sel.value === ''
-            ? null
-            : Number(sel.value)
-          : campo === 'suspenso'
-            ? sel.value === 'true'
-            : sel.value;
-      if ((await salvar(`/admin/anunciantes/${sel.dataset.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
-        RESUMO = await pegar('/admin/resumo');
-        pintarContadores();
-      }
-    }),
-  );
-
-  // Exclusão de conta é soft-delete (migration 017): o anunciante pede,
-  // o suporte desfaz aqui dentro de 60 dias zerando excluido_em.
-  // A peça é feita FORA do site (combinada no WhatsApp) e sobe direto na
-  // conta do cliente. Multipart, então não passa pelo `api()`, que manda JSON.
-  // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
-  // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
-  el.querySelectorAll('[data-liberar]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const opcoes = planos
-        .map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`)
-        .join('\n');
-      const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
-      if (!plano_id) return;
-      const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
-      const r = await api(`/admin/anunciantes/${b.dataset.liberar}/liberar-plano`, {
-        method: 'POST',
-        body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
-      });
-      if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
-      toast('plano liberado, a conta está no ar, sem cobrança');
-      renderAnunciantes(el);
-    }),
-  );
-  // Parceiro (item 4 da spec, 15/09/2026; renomeado de "fundador" e
-  // absorvido pelo `status` em 16/09/2026): não é mais um flag à parte —
-  // é o próprio `status` da conta virando 'parceiro', com o desconto e o
-  // piso de compromisso que o admin decidir.
-  el.querySelectorAll('[data-parceiro]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const atual = anunciantes.find((a) => a.id === Number(b.dataset.parceiro));
-      const desconto = prompt(
-        'Desconto extra (%) além do preço do plano. Deixe vazio para remover o status de parceiro:',
-        atual?.parceiro_desconto_percentual ?? '',
-      );
-      if (desconto === null) return;
-      if (desconto.trim() === '') {
-        if (atual?.status !== 'parceiro' || !confirm('Remover o status de parceiro dessa conta?')) return;
-        if (
-          await salvar(`/admin/anunciantes/${b.dataset.parceiro}`, {
-            status: 'comum',
-            parceiro_desconto_percentual: null,
-            parceiro_compromisso_minimo: null,
-          })
-        )
-          renderAnunciantes(el);
-        return;
-      }
-      const minimo = prompt(
-        'Compromisso mínimo (em meses) pra usar o desconto. Deixe vazio para liberar qualquer plano:',
-        atual?.parceiro_compromisso_minimo ?? '',
-      );
-      if (minimo === null) return;
-      if (
-        await salvar(`/admin/anunciantes/${b.dataset.parceiro}`, {
-          status: 'parceiro',
-          parceiro_desconto_percentual: Number(desconto),
-          parceiro_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
-        })
-      )
-        renderAnunciantes(el);
-    }),
-  );
-  el.querySelectorAll('[data-subir]').forEach((input) =>
-    input.addEventListener('change', async () => {
-      const arquivo = input.files[0];
-      if (!arquivo) return;
-      input.disabled = true;
-      toast('enviando e normalizando o vídeo...');
-      const dados = new FormData();
-      dados.append('arquivo', arquivo);
-      const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${input.dataset.subir}/criativos`, {
-        method: 'POST',
-        body: dados,
-        credentials: 'include',
-      });
-      input.disabled = false;
-      input.value = '';
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
-      toast('anúncio no ar na conta do cliente');
-    }),
-  );
-  // A rota de cancelar assinatura existia desde sempre e nao tinha um unico
-  // botao em lugar nenhum: nao havia como parar uma cobranca recorrente pela
-  // interface. Cancelar so no painel do Asaas deixaria o banco daqui achando
-  // que a assinatura segue viva.
-  el.querySelectorAll('[data-cancelar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const linha = btn.closest('tr');
-      const nome = linha ? linha.querySelector('b').textContent : 'esta conta';
-      if (
-        !confirm(
-          `Cancelar a assinatura de ${nome}?\n\n` +
-            'A cobrança recorrente para no San Checkout e não volta sozinha. ' +
-            'A cobertura já paga continua valendo até a data de expiração, ' +
-            'e o anúncio não sai do ar hoje.',
-        )
-      )
-        return;
-      const r = await api(`/admin/anunciantes/${btn.dataset.cancelar}/cancelar-assinatura`, { method: 'POST' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', true);
-      toast('Assinatura cancelada. A cobertura paga continua até expirar.');
-      renderAnunciantes(el);
-    }),
-  );
-
-  el.querySelectorAll('[data-restaurar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
-      if (await salvar(`/admin/anunciantes/${btn.dataset.restaurar}`, { excluido_em: null })) renderAnunciantes(el);
-    }),
+  el.querySelectorAll('[data-abrir]').forEach((tr) =>
+    tr.addEventListener('click', () => irPara(`anunciantes/${tr.dataset.abrir}`)),
   );
 
   document.getElementById('formNovoAnunciante').addEventListener('submit', async (e) => {
@@ -1565,7 +1587,217 @@ async function renderAnunciantes(el) {
     alert(
       `Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora. Não fica salva em nenhuma tela depois desta.`,
     );
-    renderAnunciantes(el);
+    renderAnunciantesLista(el);
+  });
+}
+
+// Detalhe da conta: resumo completo (documento, contato, ramo, plano,
+// status, suspensão) + as ações que antes disputavam espaço na linha da
+// tabela. Mesmas rotas, mesmos prompts, mesmas condições de quando cada
+// botão aparece — só o lugar mudou.
+async function renderAnuncianteDetalhe(el, anuncianteId) {
+  const [anunciantes, categorias, planos] = await Promise.all([
+    pegar('/admin/anunciantes'),
+    pegar('/admin/categorias'),
+    pegar('/admin/planos'),
+  ]);
+  const anunciante = anunciantes.find((a) => a.id === anuncianteId);
+  if (!anunciante) {
+    el.innerHTML =
+      '<p class="form-msg err">Conta não encontrada. <a href="#anunciantes">Voltar pra Anunciantes</a></p>';
+    return;
+  }
+  const plano = anunciante.plano_id ? planos.find((p) => p.id === anunciante.plano_id) : null;
+  const nomePlano = plano
+    ? `${plano.nome} · ${CICLOS[plano.compromisso_meses] || plano.compromisso_meses + 'x'}`
+    : null;
+
+  el.innerHTML = `
+    <p class="u-m-0 u-mb-10"><a href="#anunciantes">← Anunciantes</a></p>
+    <h3 class="u-m-0 u-mb-16">${esc(anunciante.nome_empresa)}
+      ${(anunciante.papeis || ['anunciante'])
+        .filter((x) => x !== 'anunciante')
+        .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
+        .join(' ')}
+      ${
+        anunciante.status === 'parceiro'
+          ? ` <span class="badge badge-ok" title="desconto extra ${anunciante.parceiro_desconto_percentual ?? 0}%${anunciante.parceiro_compromisso_minimo ? ` · só a partir de ${anunciante.parceiro_compromisso_minimo}x` : ''}">parceiro</span>`
+          : ''
+      }
+      ${anunciante.excluido_em ? ` <span class="badge badge-err">excluída ${data(anunciante.excluido_em)}</span>` : ''}
+    </h3>
+
+    <div class="card u-mw-520 u-mb-16">
+      <div class="field-row">
+        <div class="u-col-2"><label>Documento</label><p class="u-m-0">${esc(anunciante.cpf_cnpj)}</p></div>
+        <div class="u-col-2"><label>Entrou em</label><p class="u-m-0">${data(anunciante.created_at)}</p></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2"><label>E-mail</label><p class="u-m-0">${esc(anunciante.contato_email)}</p></div>
+        <div class="u-col-2"><label>WhatsApp</label><p class="u-m-0">${esc(anunciante.contato_telefone)}</p></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2">
+          <label>Ramo</label>
+          <select class="mini" data-anunciante="categoria_id" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
+            <option value="">${anunciante.categoria_livre ? `(livre) ${esc(anunciante.categoria_livre)}` : '-'}</option>
+            ${categorias.map((c) => `<option value="${c.id}" ${c.id === anunciante.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="u-col-2"><label>Status</label>${selectStatus(ANUNCIANTE_STATUS, anunciante.status, 'data-anunciante="status"')}</div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2"><label>Plano</label><p class="u-m-0">${nomePlano ? esc(nomePlano) : '<span class="u-dim">sem plano</span>'}${anunciante.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(anunciante.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</p></div>
+        <div class="u-col-2"><label>Expira em</label><p class="u-m-0">${data(anunciante.data_expiracao)}</p></div>
+      </div>
+      <div>
+        <label>Suspensa</label>
+        <select class="mini u-w-100" data-anunciante="suspenso">
+          <option value="false"${!anunciante.suspenso ? ' selected' : ''}>Não</option>
+          <option value="true"${anunciante.suspenso ? ' selected' : ''}>Sim</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card u-mw-520">
+      <label class="u-d-block u-mb-8">Ações da conta</label>
+      <div class="field-row">
+        ${
+          anunciante.excluido_em
+            ? '<button class="btn ghost mini" data-restaurar>Restaurar</button>'
+            : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele, já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir></label>
+           <button class="btn ghost mini" data-liberar title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
+           <button class="btn ghost mini" data-parceiro title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${anunciante.status === 'parceiro' ? 'Editar parceiro' : 'Marcar parceiro'}</button>
+           ${
+             anunciante.plano_id && !anunciante.plano_cortesia
+               ? '<button class="btn ghost mini u-txt-erro" data-cancelar title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>'
+               : ''
+}`
+        }
+      </div>
+    </div>`;
+
+  const recarregar = () => irPara(`anunciantes/${anunciante.id}`);
+
+  el.querySelectorAll('[data-anunciante]').forEach((sel) =>
+    sel.addEventListener('change', async () => {
+      const campo = sel.dataset.anunciante;
+      const valor =
+        campo === 'categoria_id'
+          ? sel.value === ''
+            ? null
+            : Number(sel.value)
+          : campo === 'suspenso'
+            ? sel.value === 'true'
+            : sel.value;
+      if ((await salvar(`/admin/anunciantes/${anunciante.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+      }
+    }),
+  );
+
+  // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
+  // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
+  el.querySelector('[data-liberar]')?.addEventListener('click', async () => {
+    const opcoes = planos
+      .map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`)
+      .join('\n');
+    const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
+    if (!plano_id) return;
+    const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
+    const r = await api(`/admin/anunciantes/${anunciante.id}/liberar-plano`, {
+      method: 'POST',
+      body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
+    });
+    if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
+    toast('plano liberado, a conta está no ar, sem cobrança');
+    recarregar();
+  });
+
+  // Parceiro (item 4 da spec, 15/09/2026; renomeado de "fundador" e
+  // absorvido pelo `status` em 16/09/2026): não é mais um flag à parte —
+  // é o próprio `status` da conta virando 'parceiro', com o desconto e o
+  // piso de compromisso que o admin decidir.
+  el.querySelector('[data-parceiro]')?.addEventListener('click', async () => {
+    const desconto = prompt(
+      'Desconto extra (%) além do preço do plano. Deixe vazio para remover o status de parceiro:',
+      anunciante.parceiro_desconto_percentual ?? '',
+    );
+    if (desconto === null) return;
+    if (desconto.trim() === '') {
+      if (anunciante.status !== 'parceiro' || !confirm('Remover o status de parceiro dessa conta?')) return;
+      if (
+        await salvar(`/admin/anunciantes/${anunciante.id}`, {
+          status: 'comum',
+          parceiro_desconto_percentual: null,
+          parceiro_compromisso_minimo: null,
+        })
+      )
+        recarregar();
+      return;
+    }
+    const minimo = prompt(
+      'Compromisso mínimo (em meses) pra usar o desconto. Deixe vazio para liberar qualquer plano:',
+      anunciante.parceiro_compromisso_minimo ?? '',
+    );
+    if (minimo === null) return;
+    if (
+      await salvar(`/admin/anunciantes/${anunciante.id}`, {
+        status: 'parceiro',
+        parceiro_desconto_percentual: Number(desconto),
+        parceiro_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
+      })
+    )
+      recarregar();
+  });
+
+  // Exclusão de conta é soft-delete (migration 017): o anunciante pede, o
+  // suporte desfaz aqui dentro de 60 dias zerando excluido_em. A peça é
+  // feita FORA do site (combinada no WhatsApp) e sobe direto na conta do
+  // cliente. Multipart, então não passa pelo `api()`, que manda JSON.
+  el.querySelector('[data-subir]')?.addEventListener('change', async (e) => {
+    const input = e.target;
+    const arquivo = input.files[0];
+    if (!arquivo) return;
+    input.disabled = true;
+    toast('enviando e normalizando o vídeo...');
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${anunciante.id}/criativos`, {
+      method: 'POST',
+      body: dados,
+      credentials: 'include',
+    });
+    input.disabled = false;
+    input.value = '';
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra subir', 'err');
+    toast('anúncio no ar na conta do cliente');
+  });
+
+  // A rota de cancelar assinatura existia desde sempre e nao tinha um unico
+  // botao em lugar nenhum: nao havia como parar uma cobranca recorrente pela
+  // interface. Cancelar so no painel do Asaas deixaria o banco daqui achando
+  // que a assinatura segue viva.
+  el.querySelector('[data-cancelar]')?.addEventListener('click', async () => {
+    if (
+      !confirm(
+        `Cancelar a assinatura de ${anunciante.nome_empresa}?\n\n` +
+          'A cobrança recorrente para no San Checkout e não volta sozinha. ' +
+          'A cobertura já paga continua valendo até a data de expiração, ' +
+          'e o anúncio não sai do ar hoje.',
+      )
+    )
+      return;
+    const r = await api(`/admin/anunciantes/${anunciante.id}/cancelar-assinatura`, { method: 'POST' });
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', 'err');
+    toast('Assinatura cancelada. A cobertura paga continua até expirar.');
+    recarregar();
+  });
+
+  el.querySelector('[data-restaurar]')?.addEventListener('click', async () => {
+    if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
+    if (await salvar(`/admin/anunciantes/${anunciante.id}`, { excluido_em: null })) recarregar();
   });
 }
 
@@ -2803,196 +3035,14 @@ async function renderTrocas(el) {
     : '<p class="empty-state">Ninguém trocou de plano ainda.</p>';
 }
 
-// ---------- banco de horas (G.3) ----------
-async function renderBancoHoras(el) {
-  const [linhas, fila] = await Promise.all([
-    pegar('/admin/banco-horas'),
-    pegar('/admin/banco-horas/aguardando-credito'),
-  ]);
-  const saldoTotal = linhas
-    .filter((l) => l.status === 'ativo')
-    .reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0);
-
-  const STATUS_BH = { ativo: 'Ativo', drenado: 'Drenado', aguardando_credito: 'Aguardando decisão' };
-  // `resolvido_em` fica preenchido, mas o `status` da linha CONTINUA
-  // 'aguardando_credito' de propósito (registro histórico — ver
-  // resolverCredito, src/bancohoras/repository.js). Sem checar
-  // `resolvido_em` aqui, uma linha já resolvida mostrava "Aguardando
-  // decisão" pra sempre nesta tabela, igual a uma que ainda espera.
-  const situacao = (l) =>
-    l.status === 'aguardando_credito' && l.resolvido_em
-      ? { rotulo: 'Resolvido', classe: 'badge-ok' }
-      : {
-          rotulo: STATUS_BH[l.status] || l.status,
-          classe: l.status === 'ativo' ? 'badge-pendente' : l.status === 'drenado' ? 'badge-ok' : 'badge-err',
-        };
-  const corpo = `<table><thead><tr>
-      <th data-ord>Anunciante</th><th data-ord>Mês</th><th data-ord>Pedidas</th><th data-ord>Entregues</th>
-      <th data-ord>No banco</th><th data-ord>Drenado</th><th data-ord>Saldo</th><th data-ord>Situação</th>
-    </tr></thead><tbody>
-    ${linhas
-      .map((l) => {
-        const saldo = l.exibicoes_banco - l.exibicoes_drenadas;
-        const { rotulo, classe } = situacao(l);
-        return `<tr data-filtro="${l.status}">
-      <td><b>${esc(l.nome_empresa)}</b></td>
-      <td>${data(l.mes_referencia)}</td>
-      <td>${l.exibicoes_pedidas}</td>
-      <td>${l.exibicoes_entregues}</td>
-      <td>${l.exibicoes_banco}</td>
-      <td>${l.exibicoes_drenadas}</td>
-      <td>${saldo}</td>
-      <td><span class="badge ${classe}">${esc(rotulo)}</span></td>
-    </tr>`;
-      })
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Saldo ativo hoje</span><b>${saldoTotal}</b><span class="kpi-caption">exibições prometidas, ainda não devolvidas</span></div>
-      <div class="kpi-card"><span class="kpi-label">Esperando decisão</span><b>${fila.length}</b><span class="kpi-caption">passou de alguns meses sem drenar tudo</span></div>
-    </div>
-    ${
-      fila.length
-        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
-      <b>Fila de decisão — nunca crédito automático em dinheiro.</b>
-      <p class="u-m-0 u-mt-8 u-mb-8">Decida fora daqui (crédito manual, desconto na próxima fatura, ou nada) e resolva a linha pra tirar da fila.</p>
-      ${fila
-        .map(
-          (l) => `<div class="field-row u-mb-8">
-        <span class="u-col-2"><b>${esc(l.nome_empresa)}</b> · ${data(l.mes_referencia)} · saldo ${l.exibicoes_banco - l.exibicoes_drenadas} exibições · ${esc(l.contato_email)}</span>
-        <button class="btn ghost mini" data-resolver-banco="${l.id}">Marcar resolvido</button>
-      </div>`,
-        )
-        .join('')}
-    </div>`
-        : ''
-    }
-    ${
-      linhas.length
-        ? caixaTabela({
-            chips: [
-              { valor: '', nome: 'Todas' },
-              { valor: 'ativo', nome: 'Ativas' },
-              { valor: 'drenado', nome: 'Drenadas' },
-              { valor: 'aguardando_credito', nome: 'Aguardando decisão' },
-            ],
-            html: corpo,
-            dica: 'Apurado uma vez por mês (npm run apurar-banco-horas), a partir do que cada anunciante pediu e do que a rede confirmou de verdade.',
-          })
-        : '<p class="empty-state">Nenhum déficit apurado ainda.</p>'
-    }`;
-
-  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-resolver-banco]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (
-        !confirm(
-          'Marcar esta linha como resolvida? Isso só registra que você decidiu algo — nenhum dinheiro se move sozinho.',
-        )
-      )
-        return;
-      const r = await api(`/admin/banco-horas/${btn.dataset.resolverBanco}/resolver`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível resolver.', 'err');
-      toast('Marcado como resolvido.');
-      renderBancoHoras(el);
-    }),
-  );
-}
-
-// ---------- ocupação dos pontos (G.7) ----------
-// Uma linha por (ponto, anunciante) — cada assinatura nova que entra num
-// ponto vira uma linha aqui, com o que ela ocupa e a % do ponto onde está.
-// Ponto que cruza 80% trava sozinho pra escolha nova; só sai do bloqueio se
-// o admin clicar em liberar, e só libera com folga real de 15 minutos.
-async function renderOcupacaoPontos(el) {
-  const linhas = await pegar('/admin/pontos-ocupacao');
-  const porPonto = new Map();
-  for (const l of linhas) {
-    if (!porPonto.has(l.ponto_id)) {
-      porPonto.set(l.ponto_id, {
-        id: l.ponto_id,
-        nome: l.ponto_nome,
-        segundosVendidos: l.segundos_vendidos,
-        bloqueado: !!l.escolha_bloqueada_em,
-      });
-    }
-  }
-  const pontos = [...porPonto.values()];
-  const bloqueados = pontos.filter((p) => p.bloqueado);
-  const ocupacaoPct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
-
-  const corpo = `<table><thead><tr>
-      <th data-ord>Ponto</th><th data-ord>Anunciante</th><th data-ord>Ocupa (s/hora)</th>
-      <th data-ord>Ocupação do ponto</th><th data-ord>Situação</th>
-    </tr></thead><tbody>
-    ${linhas
-      .map((l) => {
-        const pct = ocupacaoPct(l.segundos_vendidos);
-        const bloqueado = !!l.escolha_bloqueada_em;
-        return `<tr data-filtro="${bloqueado ? 'bloqueado' : 'livre'}">
-      <td><b>${esc(l.ponto_nome)}</b></td>
-      <td>${esc(l.nome_empresa)}</td>
-      <td>${l.segundos_por_hora}s</td>
-      <td>${pct}%</td>
-      <td><span class="badge ${bloqueado ? 'badge-err' : pct >= 80 ? 'badge-pendente' : 'badge-ok'}">${bloqueado ? 'Travado' : `${pct}%`}</span></td>
-    </tr>`;
-      })
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Pontos travados</span><b>${bloqueados.length}</b><span class="kpi-caption">fechados pra escolha nova, esperando você liberar</span></div>
-      <div class="kpi-card"><span class="kpi-label">Pontos com assinante</span><b>${pontos.length}</b><span class="kpi-caption">têm pelo menos uma conta associada</span></div>
-    </div>
-    ${
-      bloqueados.length
-        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
-      <b>Pontos travados pra escolha nova.</b>
-      <p class="u-m-0 u-mt-8 u-mb-8">Cruzaram 80% da hora vendida e pararam de entrar na escolha automática e na escolha manual — quem já estava lá continua normalmente. Liberar só funciona se sobrar folga real (15 minutos).</p>
-      ${bloqueados
-        .map(
-          (p) => `<div class="field-row u-mb-8">
-        <span class="u-col-2"><b>${esc(p.nome)}</b> · ${ocupacaoPct(p.segundosVendidos)}% da hora vendida</span>
-        <button class="btn ghost mini" data-liberar-ponto="${p.id}">Liberar pra escolha</button>
-      </div>`,
-        )
-        .join('')}
-    </div>`
-        : ''
-    }
-    ${
-      linhas.length
-        ? caixaTabela({
-            chips: [
-              { valor: '', nome: 'Todos' },
-              { valor: 'livre', nome: 'Livres' },
-              { valor: 'bloqueado', nome: 'Travados' },
-            ],
-            html: corpo,
-            dica: 'Ocupação é a soma dos segundos por hora do plano de cada conta associada ao ponto — sem a compensação da RN-49, de propósito: aqui a pergunta é o que já foi prometido, não o que cada um recebe depois de redistribuir.',
-          })
-        : '<p class="empty-state">Nenhum ponto com anunciante associado ainda.</p>'
-    }`;
-
-  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-liberar-ponto]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Liberar este ponto pra escolha nova?')) return;
-      const r = await api(`/admin/pontos/${btn.dataset.liberarPonto}/liberar-escolha`, { method: 'POST' });
-      if (!r.ok) {
-        const corpo = await r.json().catch(() => ({}));
-        return toast(corpo.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
-      }
-      toast('Ponto liberado pra escolha nova.');
-      renderOcupacaoPontos(el);
-    }),
-  );
-}
+// A tela de banco de horas (G.3, "Entrega") saiu da navegação do admin
+// (21/09/2026, pedido do dono) — só a superfície própria no menu, não a
+// função do produto: `src/bancohoras/routes.js` e `repository.js`
+// continuam intactos, com a regra "nunca crédito automático em dinheiro"
+// documentada lá (repository.js:115), perto do código que a aplica. O
+// render antigo (`renderBancoHoras`) foi removido por ficar sem chamador
+// nenhum — reconstrua a partir do histórico do git se um dia a tela
+// precisar voltar.
 
 // ---------- cobranças ----------
 async function renderCobrancas(el) {

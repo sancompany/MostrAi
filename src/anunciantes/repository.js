@@ -1,4 +1,5 @@
 const { gerarHash, conferirHash } = require('../lib/senha');
+const { limpar: limparDocumento } = require('../br/documento');
 const pool = require('../db/pool');
 
 // `status` deixou de ser estado operacional (decisão do dono, 16/09/2026) —
@@ -67,6 +68,13 @@ const CAMPOS_PUBLICOS = `
 `;
 
 // `db` opcional: o cadastro por convite passa o client da transação.
+//
+// `cpf_cnpj` é normalizado (`limpar` — sem pontuação, maiúsculo) AQUI, não em
+// cada rota que chama `criar` (cadastro público, cadastro manual do admin,
+// convite) — 21/09/2026, pedido do dono: documento digitado com ou sem
+// pontuação nunca pode virar duas identidades diferentes daqui pra frente.
+// Contas já gravadas antes desta mudança não são tocadas — ver
+// docs/PENDENCIAS.md pra o que fazer com as duplicidades que já existem.
 async function criar(dados, db = pool) {
   const senha_hash = await gerarHash(dados.senha);
   const { rows } = await db.query(
@@ -79,7 +87,7 @@ async function criar(dados, db = pool) {
      RETURNING ${CAMPOS_PUBLICOS}`,
     [
       dados.nome_empresa,
-      dados.cpf_cnpj,
+      limparDocumento(dados.cpf_cnpj),
       dados.endereco || null,
       dados.cidade || null,
       dados.uf || null,
@@ -139,7 +147,10 @@ async function atualizar(id, dados) {
   if (!campos.length) return buscarPorId(id);
 
   const sets = campos.map((campo, i) => `${campo} = $${i + 2}`).join(', ');
-  const valores = campos.map((c) => dados[c]);
+  // Mesma normalização de `criar` — quem editar cpf_cnpj por aqui (hoje
+  // ninguém no admin, mas a rota genérica de PATCH aceita) não reabre a
+  // porta pra documento sem padrão.
+  const valores = campos.map((c) => (c === 'cpf_cnpj' ? limparDocumento(dados[c]) : dados[c]));
   await pool.query(`UPDATE anunciantes SET ${sets} WHERE id = $1`, [id, ...valores]);
   return buscarPorId(id);
 }

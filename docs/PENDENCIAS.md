@@ -3144,3 +3144,83 @@ dados e estados vazios explícitos.
 com dados simulados cobrindo oito pontos, três criativos, pagamentos, uma tela
 offline e compensação de rede. Sem erros no console e sem overflow horizontal
 da página; o gráfico usa rolagem interna no celular quando necessário.
+
+### G — admin: Rede e Anunciantes reorganizados por entidade (21/09/2026)
+
+**[x] Rede — o ponto virou a entidade central**, seguindo o item 5 de
+`docs/specs/2026-09-21-redesenho-admin.md` (que já apontava essa fatia como
+"maior volume de edição inline a migrar", deixada pra depois da navegação
+base). A aba "Pontos" (dentro de Rede) mostra cards com foto, nome, cidade,
+segmento, status, telas e data de cadastro — clicar num card abre o detalhe
+do ponto, com três sub-abas (Resumo/Telas/Ocupação) que absorvem tudo que
+antes eram as abas irmãs "Telas" e "Ocupação". A aba "Entrega" (banco de
+horas) saiu do menu — a função e as rotas continuam intactas
+(`src/bancohoras/`), só a superfície de navegação foi removida (pedido
+explícito do dono); `renderBancoHoras`, sem chamador nenhum, foi apagado do
+front (lint flagou; reconstrói do histórico do git se precisar voltar). Os
+quatro hashes antigos (`#pontos`, `#telas`, `#ocupacaopontos`, `#bancohoras`)
+continuam abrindo alguma coisa válida — os três primeiros caem na grade de
+Pontos, o de Entrega também (a rota não tem mais aba própria pra apontar).
+
+**[x] Anunciantes — listagem virou resumo, ações foram pro detalhe.** A
+tabela caiu de 11 colunas com 3 selects e um `<label>` de upload por linha
+pra 7 colunas só de leitura (empresa, contato, ramo, plano, status, entrou).
+Clicar na linha abre o detalhe da conta, com os mesmos campos editáveis de
+antes (ramo, status, suspensão) e as mesmas quatro ações (Subir anúncio,
+Liberar plano, Marcar parceiro, Cancelar assinatura) — os `prompt()`
+sequenciais de Liberar plano e Marcar parceiro continuam exatamente como
+eram (não viraram formulário — fora do escopo pedido). O aviso laranja de
+divergência de ciclo (`avisoDivergencia`) saiu desta tela — ele nasceu pra
+Planos, e continua lá; Anunciantes só o herdava de quando as duas telas
+viviam juntas.
+
+**Roteamento estendido pra suportar as duas telas:** `resolverAlvo()`
+ganhou um terceiro pedaço de hash (`resto`), cru, que a própria tela
+interpreta — `#rede/pontos/42` abre o ponto 42, `#rede/pontos/42/telas`
+abre direto na sub-aba Telas dele, `#anunciantes/7` abre o detalhe da conta
+7. Nenhum outro módulo dos 12 usa `resto` ainda; o mecanismo é genérico,
+não amarrado a Rede/Anunciantes.
+
+**Validado:** `npm run check` verde, Playwright contra Postgres local real
+(grade de pontos com foto/sem foto, detalhe com as três sub-abas, hash
+antigo `#telas` caindo na grade certa, listagem e detalhe de Anunciantes,
+os dois em mobile 390×844) — sem erro novo de console.
+
+**[ ] IDEIA FUTURA, só documentada — reserva de ~20% da capacidade dos
+pontos.** Pedido explícito do dono: não implementar agora. A ideia é
+reservar uma fatia da hora de cada ponto (≈20%) fora da venda comercial
+normal dos planos, pra (1) conteúdo institucional da própria Mostraí e (2)
+uma futura campanha premium que apareça em TODOS os pontos da rede ao
+mesmo tempo — administrada, quando existir, em Conteúdo → "Anúncios
+próprios/da Mostraí". Não mexe em playlist, no cálculo de ocupação, no
+banco, nem cria plano ou campanha nenhuma agora — decisão e desenho ficam
+pra quando o dono priorizar.
+
+**[ ] PENDÊNCIA — contas duplicadas por documento, não consolidadas.**
+Confirmado no código (21/09/2026): `anunciantes.cpf_cnpj` nunca teve
+normalização nem constraint de unicidade — "552.085.198-01" e
+"55208519801" sempre foram gravados como strings diferentes, e login/dedup
+de conta sempre foi só por e-mail (nunca por documento). A partir de agora
+(`src/anunciantes/repository.js#criar`/`#atualizar`), todo documento novo
+grava normalizado (`src/br/documento.js#limpar` — sem pontuação,
+maiúsculo), e uma edição de `cpf_cnpj` pela rota genérica de PATCH também
+normaliza. **Contas já existentes não foram tocadas nem fundidas** — é
+regra explícita do dono, não esquecimento. Levantamento na base local (sem
+dado real) não achou duplicidade nenhuma; a checagem que importa é em
+produção, com esta consulta (substitua a normalização se o `limpar()` do
+`documento.js` mudar):
+
+```sql
+SELECT upper(regexp_replace(cpf_cnpj, '[^0-9A-Za-z]', '', 'g')) AS normalizado,
+       count(*), array_agg(id ORDER BY id) AS ids
+FROM anunciantes
+GROUP BY normalizado
+HAVING count(*) > 1
+ORDER BY count(*) DESC;
+```
+
+Se aparecer duplicidade real, a fusão é decisão do dono (qual conta é a
+"verdadeira", o que fazer com pontos/assinaturas/histórico da outra) — não
+algo pra automatizar. Uma constraint `UNIQUE` sobre a forma normalizada só
+entra depois dessa decisão; forçar agora, com duplicidade desconhecida,
+quebraria produção sem aviso.

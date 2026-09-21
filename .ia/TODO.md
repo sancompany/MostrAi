@@ -78,7 +78,26 @@ pelo Codex — explícito, não assumir o contrário.**
     inferência do contrato de API), e a assinatura afetada corrigida ou o
     cliente contornado manualmente.
 
+- **Checar duplicidade de contas por documento (CPF/CNPJ) em produção**
+  (21/09/2026, admin reorganizado por este agente).
+  - Estado: `src/anunciantes/repository.js` passou a normalizar `cpf_cnpj`
+    na gravação (dali pra frente); contas já existentes com o mesmo
+    documento em formatações diferentes **não foram consolidadas** — nenhum
+    apagamento, nenhum merge automático, a pedido explícito do dono.
+  - Query de diagnóstico pronta em `docs/PENDENCIAS.md`, seção G (agrupa por
+    documento normalizado, mostra os ids duplicados). Rodada contra o banco
+    local: 0 duplicidades (é dado de sandbox). **Produção ainda não foi
+    checada.**
+  - Critério de conclusão: rodar a query em produção; se houver duplicidade,
+    decidir com o dono caso a caso (nunca merge automático) antes de propor
+    qualquer constraint `UNIQUE` em `cpf_cnpj`.
+
 ## NEXT
+
+- **IDEIA FUTURA, não implementada (21/09/2026, pedido explícito do dono ao
+  registrar, não ao construir):** reservar ~20% da capacidade de cada ponto
+  pra conteúdo institucional/estratégico (hoje é 100% comercial). Não mexer
+  em playlist/pacing pra isso sem novo pedido — ver `.ia/HANDOFF.md`.
 
 - **Completar o teste ponta a ponta do congelamento da hora da playlist**
   (ADR-005).

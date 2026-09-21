@@ -60,6 +60,18 @@
 .alerta.urgente b { color: var(--err); }
 .tudo-em-dia { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; font-size: .88rem; }
 
+/* Card de ponto com foto (Rede, 21/09/2026) — a grade (.pontos-grid) e a
+   casca do card (.ponto-card, badge/h4/p) já existiam em public/style.css
+   pro site público; aqui só entra o que o admin precisa a mais: a foto em
+   destaque no topo e o reset de link (o card é um <a>, o site público usa
+   <div>). */
+.ponto-card-foto { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
+.ponto-card-foto:hover { border-color: var(--brand); }
+.ponto-card-foto img, .ponto-card-semfoto {
+  width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin: -20px -20px 12px; width: calc(100% + 40px);
+}
+.ponto-card-semfoto { display: flex; align-items: center; justify-content: center; background: var(--bg-alt); color: var(--text-dim); font-size: .8rem; }
+
 /* Tabelas: caixa com busca, filtros por status e contagem. Ordenação por
    clique no cabeçalho é client-side — são dezenas de linhas, não milhares. */
 .tabela-caixa { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
@@ -73,6 +85,10 @@
 .tabela-caixa th, .tabela-caixa td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
 .tabela-caixa thead th { position: sticky; top: 0; background: var(--bg-alt); z-index: 1; color: var(--text-dim); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
 .tabela-caixa tbody tr:hover { background: var(--bg-alt); }
+/* Linha que abre um detalhe ao clicar (Anunciantes, 21/09/2026) — o hover
+   já existe pra toda linha de tabela; só falta o cursor dizer que esta é
+   clicável. */
+.linha-clicavel { cursor: pointer; }
 .tabela-caixa tbody tr:last-child td { border-bottom: none; }
 /* Número alinhado à direita compara de relance; à esquerda, não. Mesma
    regra que a .mini-table já tinha — faltava valer nas tabelas do admin. */

@@ -6,6 +6,68 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Admin: Rede e Anunciantes reorganizados por entidade (21/09/2026, este agente)
+Pedido do dono, spec fechada de 20 itens com screenshots do admin em produção:
+o PONTO virou a entidade central de Rede (era 3 telas/abas separadas — Pontos,
+Telas, Ocupação — cada uma com sua própria tabela) e a tabela de Anunciantes
+foi simplificada (lista enxuta + detalhe por conta, ações saíram da linha).
+Só reorganização administrativa/UX — **nenhuma relação de backend, rota, regra
+de negócio ou autorização foi tocada**; cada função de render nova chama as
+mesmas rotas de sempre.
+
+**Rede:** `renderPontos` virou um dispatcher — grade de cards (`.ponto-card`,
+foto grande quando existe, placeholder quando não) sem `pontoId` no hash, ou
+`renderPontoDetalhe` com 3 sub-abas (Resumo/Telas/Ocupação) quando tem.
+`renderOcupacaoPontos` (tela solta) foi deletada — virou a sub-aba Ocupação,
+sempre filtrada a um ponto. Entrega/banco de horas **saiu do menu Rede**
+(não existe mais como página administrativa independente) — a lógica de
+backend (`src/bancohoras/`) não foi tocada, só a superfície de admin; a regra
+"nunca crédito automático em dinheiro" que estava só no texto da tela deletada
+já vive independentemente em `src/bancohoras/repository.js:115`.
+Roteador do admin (`public/admin/index.page.js`, `resolverAlvo`/`irPara`/
+`renderModulo`) ganhou um 3º segmento de hash (`resto`) pra isso — mecanismo
+genérico, disponível pra qualquer módulo agora, não só Rede/Anunciantes.
+Hashes antigos preservados via `ALIASES_ANTIGOS`: `#telas`→`rede/pontos`,
+`#ocupacaopontos`→`rede/pontos`, `#bancohoras`→`rede/pontos` (a rota antiga
+de Entrega não tem mais tela própria pra apontar; cai na grade de Pontos).
+
+**Anunciantes:** lista caiu pra 7 colunas (nome/contato/ramo/plano/status/
+entrada + badges de papel), sem os botões de ação nem o aviso laranja de
+divergência de ciclo (que **continua existindo em Planos**, não foi apagado,
+só duplicado — a chamada em Anunciantes foi removida, a de Planos ficou
+intacta). Clicar na linha abre `renderAnuncianteDetalhe`: resumo completo +
+os mesmos 4 botões de ação de sempre (Subir anúncio/Liberar plano/Marcar
+parceiro/Cancelar assinatura), mesmas condições de disponibilidade, mesmas
+rotas — só mudou de lugar na tela.
+
+**Documento (CPF/CNPJ) normalizado na gravação, dali pra frente:**
+`src/anunciantes/repository.js` (`criar`/`atualizar`) agora passa `cpf_cnpj`
+por `limpar()` (`src/br/documento.js` — sem pontuação, maiúsculo, preserva
+letra porque CNPJ é alfanumérico desde jul/2024) antes de gravar. Corrigido
+na raiz (repository, não nas rotas) — cobre cadastro público, cadastro do
+admin e convite de uma vez. **Contas já gravadas antes de hoje não foram
+tocadas, nenhuma foi apagada, nenhum merge automático foi feito** — só o
+comportamento novo, dali pra frente. Não há constraint `UNIQUE` em
+`cpf_cnpj` hoje (confirmado antes de mexer — só `contato_email` é único), e
+nenhuma foi criada agora: seria destrutivo sem antes tratar as duplicidades
+existentes. Query pronta pra achar duplicidade por documento normalizado está
+em `docs/PENDENCIAS.md`, seção G — **rodada contra o banco local não achou
+nenhuma (é dado de sandbox); produção ainda não foi checada, fica registrado
+como pendência, não resolvido aqui**.
+
+**IDEIA FUTURA, explicitamente NÃO implementada agora** (só registrada, a
+pedido do dono): reservar ~20% da capacidade de cada ponto pra conteúdo
+institucional/estratégico (hoje é 100% comercial). Fica pra quando o dono
+pedir — não mexer em playlist/pacing pra isso sem novo pedido.
+
+**Verificado:** `npm test` (novo `tests/anunciantes-normalizacao-documento.test.js`,
+3 casos: pontuação removida, letra de CNPJ alfanumérico preservada, edição
+também normaliza), Playwright em desktop e mobile (grade com/sem foto, telas
+0/1/muitas, as 3 sub-abas, lista e detalhe de Anunciantes, hashes antigos
+redirecionando certo), `npm run lint`/`sintaxe`/`formato`.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
 ## Painel admin reorganizado: 25 telas → 12 módulos (21/09/2026, este agente)
 Pedido do dono: reestruturar o admin inteiro (rascunho dele via GPT + pesquisa
 de mercado + mapeamento do código real, tudo registrado em
