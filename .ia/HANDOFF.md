@@ -6,6 +6,19 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Varredura visual do admin — botões sem CSS e avisos mal coloridos (21/09/2026, este agente)
+Pedido do dono: mapear a funcionalidade do admin e corrigir botão mal estilizado, aviso inútil e função em aberto. Login via Playwright em todos os 12 módulos/22 telas (incluindo detalhe de ponto e de anunciante). Achados reais, corrigidos — detalhe técnico em `docs/PENDENCIAS.md`, seção I:
+- Crash de verdade ao abrir Conteúdo → Aprovação pelo menu (`renderCriativos` recebia `resto=null` do roteador genérico, não `undefined`, e o parâmetro default nunca entrava).
+- 4 `<input type="file">` nativos (cinza, fora do desenho) viraram o padrão já usado em "Subir anúncio": label estilizada escondendo o input de verdade.
+- 2 checkboxes virando "barra cinza" cobrindo a linha inteira (Convites "papéis da conta" e Pontos "Molde de ACM") — mesmo bug do `.card input{width:100%}` que `.check-row` já resolvia noutro lugar, agora generalizado.
+- Checkboxes de tabela azuis (cor do navegador) em Custos/Categorias/Comodato/Benefícios — regra geral `input[type=checkbox]{accent-color:var(--brand)}` no admin, resolve para sempre.
+- Aviso "conciliação nunca rodou" estava verde (`.tudo-em-dia`) e o caso realmente grave (atrasada/abortou) saía SEM cor nenhuma (classe errada, `alertas` plural em vez de `alerta`). Trocados por laranja/vermelho, condizente com a gravidade.
+- De brinde: a violação de CSP inline-style em Diagnóstico (já sabida, "não tocada") sumiu ao trocar `style="padding:14px"` por uma classe utilitária que já existia.
+
+Nenhuma função foi removida — a varredura não achou nada sem uso real; o inventário de `docs/specs/2026-09-21-admin-inventario-funcoes.md` continua batendo. `npm run check` 133/133, zero erro de console em todas as 22 telas (desktop + mobile 390×844). Dados de teste acumulados no banco (24 eventos pendentes, um "Contador" duplicado em Custos) não foram apagados — é limpeza de banco, que o dono já disse que vai fazer à parte.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
 ## Contrato novo de playlist/played pro app Android nativo (21/09/2026, este agente)
 Pedido direto do dono: "leia o repositório do aplicativo e faça o que tiver
 que fazer do seu lado" — referência ao app irmão `sancompany/playlist.mostrai`

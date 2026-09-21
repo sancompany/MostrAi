@@ -3297,3 +3297,68 @@ Mostraí. O app ainda precisa ser testado contra este backend de verdade
 (pendência dele mesmo, `playlist.mostrai/docs/pendencias.md`) e verificado
 em hardware real antes de qualquer tela passar pra `contrato_playlist=2`
 em produção.
+
+### I — varredura visual do admin: botões sem CSS e avisos mal coloridos (21/09/2026)
+
+Pedido do dono: mapear a funcionalidade do admin inteiro e corrigir botão
+mal estilizado, aviso inútil e função em aberto. Login como admin +
+Playwright em todos os 12 módulos/sub-abas (22 telas, incluindo detalhe de
+ponto e de anunciante) — cada achado abaixo é real, visto na tela, não
+suposição de código.
+
+**[x] Crash na fila de Conteúdo → Aprovação.** `renderCriativos(el,
+status = 'pendente')` — o parâmetro default só cobre `undefined`, e o
+roteador genérico de módulos sempre passa `resto` (que é `null` sem
+terceiro pedaço de hash) como segundo argumento. Abrir a aba pelo menu
+(não por hash direto) sempre quebrava com `TypeError`. `status = status ||
+'pendente'` dentro da função — corrigido na raiz, não no chamador (é o
+único caso hoje, mas o padrão `render(el, resto)` é genérico; qualquer
+outra função com default no 2º parâmetro teria o mesmo problema).
+
+**[x] Quatro `<input type="file">` nativos** (foto de exemplo do ponto,
+foto do ponto, novo anúncio da conta própria, PDF de nota fiscal em
+Cobranças) apareciam com o botão cinza do navegador ("Choose File"),
+fora do desenho do resto do admin. Convertidos pro padrão que já existia
+em "Subir anúncio" (Anunciantes): `<label class="btn ghost">` escondendo o
+`<input hidden>` de verdade. O de "Novo anúncio" ganhou um `<span>` de
+apoio com o nome do arquivo escolhido, porque perdeu o texto nativo do
+navegador.
+
+**[x] Checkbox virando barra cinza cobrindo a linha inteira** — "Papéis da
+conta que vai nascer" (Entrada → Convites) e "Molde de ACM já instalado"
+(Rede → ponto → Resumo). As duas usam checkbox dentro de `<form
+class="card">`, e `.card input { width:100%; padding:11px 12px }` também
+pega `<input type="checkbox">` sem classe própria — mesmo bug já resolvido
+uma vez para outro caso (`.check-row`, comentário em `public/style.css`),
+mas não generalizado. `.benef-check input` ganhou o mesmo reset explícito
+de tamanho/padding; o de Pontos passou a usar `.check-row`.
+
+**[x] Checkboxes de tabela azuis (cor do navegador), não laranja (a marca)**
+— Custos, Categorias, Comodato e Benefícios, todas com `<input
+type="checkbox">` sem classe. Regra geral em `admin/index.css` —
+`input[type="checkbox"] { accent-color: var(--brand) }` — resolve estas e
+qualquer checkbox esquecido no futuro, sem depender de lembrar de por
+classe em cada tela nova.
+
+**[x] Aviso da conciliação com a cor errada.** "A conciliação nunca rodou
+por aqui" usava `.tudo-em-dia` (verde) — a mesma cor de "está tudo bem",
+pro aviso mais preocupante da Visão geral (a rede de segurança de quem
+paga nunca rodou). E quando a conciliação RODOU com problema (atrasada,
+abortou, falhas), o código aplicava a classe `alertas` (plural — o
+CONTÊINER em grade de vários cards, não um card) num `<div>` sozinho, que
+saía sem borda nem cor nenhuma — o caso mais grave era o que menos
+chamava atenção. Os dois agora usam `.alerta` (laranja) e `.alerta
+urgente` (vermelho), a mesma classe que os alertas de fila já usam.
+
+**Verificado:** `npm run check` (133/133), Playwright em todos os 22
+telas (zero erro de console, incluindo o CSP inline-style pré-existente em
+Diagnóstico — resolvido de brinde ao trocar o `style="padding:14px"` por
+`.u-p-14`, classe que já existia) e em 4 telas críticas no mobile
+(390×844). Nenhuma função foi removida nesta rodada — a varredura não
+achou nenhuma tela ou botão sem uso real; o que existe hoje corresponde ao
+inventário de `docs/specs/2026-09-21-admin-inventario-funcoes.md`.
+
+**Fora desta rodada, de propósito:** dados de teste acumulados no banco
+local (24 eventos pendentes, contador duplicado em Custos) não foram
+apagados — são artefato de sessões de teste anteriores, e o dono já
+sinalizou que vai limpar o banco separadamente antes de ir pra produção.

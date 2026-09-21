@@ -695,7 +695,11 @@ function barrasHorizontais(linhas, mapa, paraAba = null) {
 // hoje?" — e o cron ainda está por configurar no Northflank.
 function linhaConciliacao(c) {
   if (!c) {
-    return `<div class="tudo-em-dia u-mb-20"><b>A conciliação nunca rodou por aqui.</b>
+    // `.alerta` (singular, laranja) — isto é um aviso, não um "tudo em dia":
+    // a rede de segurança de quem paga nunca rodou. Achado na varredura
+    // visual de 21/09/2026: usava `.tudo-em-dia` (verde), a cor errada pro
+    // que a frase diz.
+    return `<div class="alerta u-mb-20 u-cursor-default"><b>A conciliação nunca rodou por aqui.</b>
       Ela é a rede de segurança de quem paga e cujo aviso do Checkout se perde. Rode <code>npm run conciliar</code> uma vez por dia.</div>`;
   }
   const horas = Math.floor((Date.now() - new Date(c.terminouEm).getTime()) / 3600000);
@@ -708,7 +712,11 @@ function linhaConciliacao(c) {
       `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}` +
       `${c.avisados ? ` · ${c.avisados} aviso(s) de fim de cobertura` : ''}` +
       `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
-  return `<div class="${problema ? 'alertas' : 'tudo-em-dia'} u-mb-20">
+  // Achado na mesma varredura: a versão anterior usava a classe `alertas`
+  // (plural, o CONTÊINER em grade de vários cards) num único `<div>` — sem
+  // `.alerta` (singular), o caso com problema saía sem borda colorida
+  // nenhuma, e era justo o caso que mais precisava chamar atenção.
+  return `<div class="${problema ? 'alerta urgente' : 'tudo-em-dia'} u-mb-20 u-cursor-default">
     <b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}
   </div>`;
 }
@@ -795,7 +803,13 @@ async function renderPendencias(el) {
 }
 
 // ---------- fila de criativos ----------
-async function renderCriativos(el, status = 'pendente') {
+async function renderCriativos(el, status) {
+  // `status` chega `null` (não `undefined`) quando esta função é montada como
+  // aba pelo roteador genérico (`renderModulo` sempre passa `resto`, e sem
+  // terceiro pedaço de hash `resto` é `null`) — o parâmetro default só cobre
+  // `undefined`, então sem isto a fila abria com status `null` e quebrava
+  // (achado na varredura visual de 21/09/2026).
+  status = status || 'pendente';
   const [criativos, anunciantes] = await Promise.all([
     pegar(`/admin/criativos?status=${status}`),
     pegar('/admin/anunciantes'),
@@ -942,8 +956,9 @@ async function renderMeusAnuncios(el) {
         </form>
 
         <form id="formSubir" class="card u-mw-420">
-          <label for="cpArquivo">Novo anúncio (vídeo ou imagem)</label>
-          <input id="cpArquivo" type="file" accept="video/*,image/*" required>
+          <label>Novo anúncio (vídeo ou imagem)</label>
+          <label class="btn ghost u-mb-8">Escolher arquivo<input id="cpArquivo" type="file" accept="video/*,image/*" hidden required></label>
+          <span class="u-dim u-fs-78 u-d-block u-mb-8" id="cpArquivoNome">nenhum arquivo escolhido</span>
           <button class="btn primary" type="submit">Subir</button>
         </form>
         <p class="sub u-m-0 u-mt-8" id="cpMsg"></p>
@@ -983,6 +998,16 @@ async function renderMeusAnuncios(el) {
       }),
     });
     toast(r.ok ? 'salvo' : 'não deu pra salvar', r.ok ? 'ok' : 'err');
+  });
+
+  // O botão que escolhe o arquivo é um <label> estilizado escondendo o
+  // <input type="file"> de verdade (mesmo truque de "Subir anúncio" em
+  // Anunciantes) — sem isto o navegador desenha o próprio botão cinza
+  // "Choose File", fora do desenho do resto da tela (achado na varredura
+  // visual de 21/09/2026). Como o nome do arquivo escolhido não aparece mais
+  // sozinho, este span substitui.
+  document.getElementById('cpArquivo').addEventListener('change', (e) => {
+    document.getElementById('cpArquivoNome').textContent = e.target.files[0]?.name || 'nenhum arquivo escolhido';
   });
 
   // Upload vai em multipart, então não passa pelo `api()`, que manda JSON.
@@ -1065,7 +1090,7 @@ async function renderPontosGrade(el) {
       <label>Foto de exemplo do "ponto completo" (site público)</label>
       <p class="u-dim u-fs-72 u-m-0 u-mb-8">Aparece em "Onde estamos?", ao lado do mapa. Não é a foto de nenhum
         ponto real — é a ilustração genérica de como fica o totem montado.</p>
-      <input type="file" accept="image/*" class="mini" id="fotoExemploPonto">
+      <label class="btn ghost mini">Escolher foto<input type="file" accept="image/*" hidden id="fotoExemploPonto"></label>
       ${configSite.fotoExemploUrl ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(configSite.fotoExemploUrl)}" target="_blank" rel="noopener">ver foto atual</a>` : '<p class="u-dim u-fs-72 u-m-0 u-mt-4">Ainda é a foto padrão do site.</p>'}
     </div>
     <details class="bloco-novo">
@@ -1215,11 +1240,11 @@ async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
       </div>
       <div class="field-row">
         <div class="u-col-2"><label>Fluxo estimado/mês</label><input class="mini" type="number" min="0" data-ponto="fluxo_estimado_mensal" value="${ponto.fluxo_estimado_mensal ?? ''}" title="Só entra na soma pública se o ponto estiver ativo"></div>
-        <div class="u-col-2"><label><input type="checkbox" data-ponto="acabamento_completo" ${ponto.acabamento_completo ? 'checked' : ''}> Molde de ACM já instalado</label></div>
+        <div class="u-col-2"><label class="check-row"><input type="checkbox" data-ponto="acabamento_completo" ${ponto.acabamento_completo ? 'checked' : ''}><span>Molde de ACM já instalado</span></label></div>
       </div>
       <div>
         <label>Foto do ponto</label><br>
-        <input type="file" accept="image/*" class="mini" id="fotoPonto">
+        <label class="btn ghost mini">Escolher foto<input type="file" accept="image/*" hidden id="fotoPonto"></label>
         ${ponto.foto_instalacao_url ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(ponto.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto atual</a>` : ''}
       </div>
     </div>
@@ -3063,7 +3088,7 @@ async function renderCobrancas(el) {
       <td>${
         c.nota_fiscal_status === 'emitida'
           ? `<span class="badge badge-ok">emitida</span> <a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">ver PDF</a>`
-          : `<input type="file" accept="application/pdf" class="mini u-w-140" data-cobranca="${c.id}">`
+          : `<label class="btn ghost mini">Anexar PDF<input type="file" accept="application/pdf" hidden data-cobranca="${c.id}"></label>`
       }</td>
     </tr>`,
       )
@@ -3262,7 +3287,7 @@ async function renderEventos(el) {
   // por falha de envio, esta é a tela onde você está. O botão faz o login no
   // servidor de SMTP e diz na hora se a senha de app está valendo — sem
   // mandar mensagem nenhuma e sem esperar um pagamento real acontecer.
-  const smtp = `<div class="tabela-caixa u-mb-16" style="padding:14px">
+  const smtp = `<div class="tabela-caixa u-mb-16 u-p-14">
     <b>E-mail (SMTP)</b>
     <p class="u-fs-84 u-mt-8 u-mb-8">Confere se o servidor aceita a senha de app. Não envia e-mail e não mostra a senha.</p>
     <button class="btn ghost mini" id="testarSmtp">Testar agora</button>
