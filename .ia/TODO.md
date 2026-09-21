@@ -4,13 +4,18 @@
 
 **Atualizado 21/09/2026 — plano do dono pros próximos ~2 dias, antes de
 começar a vender:**
-1. **Terminar a revisão visual do painel admin e do painel do anunciante —
-   reservado pra este agente (Claude), não pro Codex.** O redesign do
-   Codex (`public/anunciante/painel.html/.css/.page.js`) "melhorou muito"
-   mas não bateu 100% na parte visual — o dono foi explícito que quer isso
-   corrigido aqui, principalmente **voltar as cores pra paleta própria do
-   Mostraí** (laranja `#ff7a1a`) onde o redesign se afastou dela. Ver
-   `.ia/HANDOFF.md`, "Plano do dono..." pro detalhe completo.
+1. **Revisão visual do painel do anunciante — primeira rodada feita
+   (21/09/2026), painel admin ainda não revisado.** Cor da marca corrigida
+   (hero deixou de ser azul-marinho, virou laranja queimado dentro de
+   `--brand`), hero sem KPI duplicado + estado operacional (ponto
+   online/offline), linguagem de métricas corrigida ("previstas", custo
+   por 1.000, média diária). Detalhe completo em `.ia/HANDOFF.md`,
+   "Advertiser dashboard — segunda camada de refinamento". **Ainda falta**:
+   revisão visual do painel ADMIN (não tocado nesta rodada — `public/
+   admin/index.css` já usa só tokens, então pode não precisar de nada, mas
+   não foi conferido tela por tela); e essa rodada do anunciante está numa
+   branch (`claude/busy-noether-hheir2`), aguardando o dono revisar e
+   autorizar merge/deploy.
 2. Terminar o app Android TV da playlist —
    `docs/proximas-versoes.md`, "App Android TV nativo..." (projeto à
    parte, fora deste repositório).
