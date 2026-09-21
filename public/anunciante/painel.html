@@ -10,6 +10,7 @@
   <title>Meu painel na Mostraí</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/anunciante/painel.css">
   <link rel="canonical" href="https://mostrai.sancocore.com.br/anunciante/painel.html">
   <meta name="theme-color" content="#ff7a1a">
   <link rel="manifest" href="/site.webmanifest">
@@ -17,148 +18,109 @@
 </head>
 <body data-layout="conta">
 
-  <main>
-    <section class="tight">
-      <div class="wrap">
-        <div class="dash-status" id="statusBanner">Carregando...</div>
+  <main class="anunciante-dashboard">
+    <section class="dashboard-hero-section">
+      <div class="wrap painel-wrap">
+        <div class="dash-status painel-hero" id="statusBanner" aria-live="polite">
+          <div class="painel-skeleton">Carregando seu painel...</div>
+        </div>
+        <div id="bonusAnuncios"></div>
       </div>
     </section>
 
-    <!-- Confirmar um pedido novo ou uma troca de plano acontece numa página
-         própria (19/09/2026): /anunciante/confirmar-plano.html, sem o
-         cabeçalho do site — ver planos.page.js e cadastro.page.js, que
-         mandam ?plano= pra lá, não mais pra cá. -->
-    <section class="tight">
-      <div class="wrap" id="bonusAnuncios"></div>
-      <!-- Uma coluna só, de propósito (19/09/2026, pedido do dono): o
-           dashboard antigo dividia a página em duas colunas grandes (2fr/1fr)
-           e "Meus criativos" vivia espremido na coluna lateral — no celular,
-           que é onde a maioria dos clientes entra, ficava apertado demais.
-           Cada seção ocupa a largura toda. -->
-      <div class="wrap" id="dashboardAnuncios">
-        <div class="kpi-grid" id="kpiGrid">
-          <!-- Horas de tela é o número que o cliente comprou (19/09/2026,
-               pedido do dono) — vem primeiro, e maior, que os outros: é a
-               métrica que responde "estou recebendo o que contratei?". -->
-          <div class="kpi-card kpi-destaque" data-kpi="horas" hidden><span class="kpi-label">Horas de tela no mês</span><b>-</b><span class="kpi-caption" data-kpi-horas-legenda></span><span class="track u-mt-6"><span class="fill" data-pct="0"></span></span></div>
-          <!-- Exibições em fração "concluídas/total" (19/09/2026, pedido do
-               dono) — eram dois cards separados (realizadas, restantes);
-               viraram um número só, no formato que já responde as duas
-               perguntas de uma vez. -->
-          <div class="kpi-card" data-kpi="exibicoes"><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">concluídas / total contratado no mês</span></div>
-          <div class="kpi-card" data-kpi="custo"><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições contratadas no mês</span></div>
-          <div class="kpi-card" data-kpi="media"><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia</span></div>
-        </div>
-
-        <!-- Conta nova via a mesma tela de quem parou de rodar: tudo zero e
-             nenhuma explicacao. Esta linha diz em que etapa a conta esta. -->
-        <p class="dash-explica u-mb-20" id="exibicoesVazio" hidden></p>
-
-        <div class="panel u-mb-20" id="painelDia" hidden>
-          <div class="panel-head"><h3>Exibições por dia</h3><span class="kpi-caption" id="legendaDia"></span></div>
-          <div class="bar-chart" id="graficoDia"></div>
-          <!-- Cada barra empilha por ponto (19/09/2026, pedido do dono):
-               a legenda é a identidade das cores, já que cor sozinha não
-               é acessível — ver skill dataviz. -->
-          <div class="legenda-serie" id="legendaPontosDia" hidden></div>
-        </div>
-
-        <div class="panel u-mb-20" id="painelDetalhe" hidden>
-          <div class="panel-head">
-            <h3>Exibições por ponto</h3>
-            <!-- Comprovante de veiculação: o que o setor chama de
-                 proof-of-play. O dado já existia; faltava a forma que o
-                 anunciante guarda, imprime ou manda pro contador. -->
-            <span>
-              <label for="periodoComprovante" class="form-hint u-m-0">Período</label>
-              <select class="u-m-0 u-mx-8" id="periodoComprovante">
-                <option value="30">últimos 30 dias</option>
-                <option value="90">últimos 90 dias</option>
-                <option value="365">últimos 12 meses</option>
-              </select>
-              <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
-            </span>
+    <!-- O JS mantém os mesmos IDs e contratos funcionais; esta camada apenas
+         reorganiza visualmente os dados existentes do painel. -->
+    <section class="dashboard-content">
+      <div class="wrap painel-wrap" id="dashboardAnuncios">
+        <section class="dashboard-section" aria-labelledby="tituloResumo">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="section-eyebrow">Visão geral</p>
+              <h2 id="tituloResumo">Resumo da campanha</h2>
+            </div>
+            <p>Dados do mês atual, atualizados pelas telas da rede.</p>
           </div>
-          <div class="bar-chart-h" id="graficoPonto"></div>
-          <div class="u-mt-20" id="exibicoesDetalhe"></div>
-        </div>
-
-        <!-- Escolha de pontos (17/09/2026): o plano dá acesso a N pontos e
-             quem escolhe quais é o anunciante. Deixar tudo desmarcado é
-             escolha válida — aí o sistema distribui. Sem o parágrafo
-             explicativo de antes (19/09/2026, pedido do dono: "retire
-             esse texto") — o contador e o próprio ato de marcar já dizem
-             o que precisa. -->
-        <div class="panel u-mb-20" id="painelPontos" hidden>
-          <div class="panel-head">
-            <h3>Onde seu anúncio aparece</h3>
-            <span class="badge badge-pendente" id="contadorPontos"></span>
+          <div class="kpi-grid" id="kpiGrid">
+            <article class="kpi-card kpi-destaque" data-kpi="horas" hidden>
+              <span class="kpi-icon kpi-icon-orange" aria-hidden="true">◷</span>
+              <span class="kpi-label">Horas de tela no mês</span><b>-</b>
+              <span class="kpi-caption" data-kpi-horas-legenda></span>
+              <span class="track" aria-hidden="true"><span class="fill" data-pct="0"></span></span>
+            </article>
+            <article class="kpi-card" data-kpi="exibicoes"><span class="kpi-icon" aria-hidden="true">▶</span><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">concluídas / total contratado no mês</span></article>
+            <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por exibição</span><b>-</b><span class="kpi-caption">plano ÷ exibições contratadas no mês</span></article>
+            <article class="kpi-card" data-kpi="media"><span class="kpi-icon" aria-hidden="true">↗</span><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia</span></article>
           </div>
-          <!-- RN-49: enquanto a rede for menor que a cobertura do plano, o
-               tempo dos pontos que faltam volta pros pontos no ar. O bloco
-               diz o número exato — contratado, o que a rede daria sem a
-               regra, e o que ela dá com ela —, porque bônus que o cliente
-               não consegue conferir é promessa, não benefício. -->
-          <div class="aviso-rede u-mb-16" id="avisoCompensacao" hidden></div>
-          <!-- Busca (19/09/2026, pedido do dono: "se existir muitos pontos
-               cadastrados ele se perde") — filtra a lista abaixo por nome
-               ou cidade, sem chamada nova: os pontos já vêm todos numa
-               tabela só. -->
-          <input type="search" class="busca-pontos u-mb-12" id="buscaPontos" placeholder="Buscar ponto por nome ou cidade" hidden>
-          <div id="listaPontos"></div>
-          <p class="form-msg" id="msgPontos"></p>
-        </div>
+          <div class="dashboard-notice" id="exibicoesVazio" hidden></div>
+        </section>
 
-        <div class="panel u-mb-20" id="painelCobrancas" hidden>
-          <div class="panel-head"><h3>Meus pagamentos</h3></div>
-          <div id="listaCobrancas"></div>
-        </div>
-
-        <div class="panel">
-          <!-- Contador ao lado do título, não mais card próprio no kpi-grid
-               (19/09/2026, pedido do dono) — mesmo padrão de #contadorPontos
-               em "Onde seu anúncio aparece", logo abaixo. -->
-          <div class="panel-head"><h3>Meus criativos</h3><span class="form-hint" id="contadorCriativos"></span></div>
-          <p class="form-hint u-m-0 u-mb-12">Vídeo ou imagem em pé (9:16), <span data-limite-duracao>do tamanho que o seu plano permite</span>. O limite do arquivo é 95 MB. O criativo roda mudo nas telas: pode subir com ou sem áudio, ele não é reproduzido.</p>
-          <label class="btn primary upload-label">
-            Enviar criativo
-            <input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden>
-          </label>
-          <p class="form-msg" id="uploadMsg"></p>
-
-          <!-- Sem arte ainda? Um botão só pro WhatsApp (19/09/2026, pedido do
-               dono — antes eram dois links, um pra arte simples incluída no
-               plano e outro pra vídeo gravado à parte; a escolha entre os
-               dois vira conversa, não tela). Some de vez assim que existe
-               pelo menos um criativo na conta — ver carregarCriativos(). -->
-          <div class="ajuda-arte" id="ajudaArte">
-            <p><a id="linkArteSimples" class="btn ghost" href="#" target="_blank" rel="noopener">Quero um anúncio</a></p>
+        <section class="dashboard-section" aria-labelledby="tituloPerformance">
+          <div class="section-heading">
+            <div><p class="section-eyebrow">Performance</p><h2 id="tituloPerformance">Acompanhe sua veiculação</h2></div>
+            <p>Exibições confirmadas pelas telas onde sua campanha está ativa.</p>
           </div>
-          <div class="u-mt-16" id="listaCriativos">Carregando...</div>
-        </div>
+          <div class="performance-grid">
+            <article class="panel painel-grafico" id="painelDia" hidden>
+              <div class="panel-head"><div><h3>Exibições por dia</h3><span class="panel-subtitle">Evolução recente da campanha</span></div><span class="kpi-caption" id="legendaDia"></span></div>
+              <div class="bar-chart" id="graficoDia"></div>
+              <div class="legenda-serie" id="legendaPontosDia" hidden></div>
+            </article>
+
+            <article class="panel painel-pontos-performance" id="painelDetalhe" hidden>
+              <div class="panel-head performance-head">
+                <div><h3>Exibições por ponto</h3><span class="panel-subtitle">Compare entrega e situação das telas</span></div>
+                <div class="performance-actions">
+                  <label for="periodoComprovante">Período</label>
+                  <select id="periodoComprovante"><option value="30">últimos 30 dias</option><option value="90">últimos 90 dias</option><option value="365">últimos 12 meses</option></select>
+                  <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
+                </div>
+              </div>
+              <div class="bar-chart-h" id="graficoPonto"></div>
+              <div class="performance-table" id="exibicoesDetalhe"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="dashboard-section" aria-labelledby="tituloCobertura">
+          <article class="panel painel-cobertura" id="painelPontos" hidden>
+            <div class="panel-head"><div><p class="section-eyebrow">Cobertura da rede</p><h2 id="tituloCobertura">Onde seu anúncio aparece</h2><span class="panel-subtitle">Escolha seus pontos ou deixe a Mostraí distribuir automaticamente.</span></div><span class="badge badge-pendente" id="contadorPontos"></span></div>
+            <div class="network-growth" id="avisoCompensacao" hidden></div>
+            <input type="search" class="busca-pontos" id="buscaPontos" placeholder="Buscar ponto por nome ou cidade" hidden>
+            <div class="pontos-selecao" id="listaPontos"></div>
+            <p class="form-msg" id="msgPontos" role="status"></p>
+          </article>
+        </section>
+
+        <section class="dashboard-section" aria-labelledby="tituloCriativos">
+          <article class="panel painel-criativos">
+            <div class="panel-head criativos-head">
+              <div><p class="section-eyebrow">Biblioteca de anúncios</p><h2 id="tituloCriativos">Meus criativos</h2><span class="panel-subtitle"><span data-limite-duracao>Vídeo ou imagem vertical</span> · até 95 MB · reprodução sem áudio</span></div>
+              <div class="criativos-actions"><span class="badge badge-neutro" id="contadorCriativos"></span><label class="btn primary upload-label">Enviar criativo<input type="file" id="arquivoCriativo" accept="video/*,image/*" hidden></label></div>
+            </div>
+            <p class="form-msg" id="uploadMsg" role="status"></p>
+            <div class="ajuda-arte" id="ajudaArte"><p class="u-m-0">Ainda não tem uma peça pronta? <a id="linkArteSimples" href="#" target="_blank" rel="noopener">Fale com a gente</a>.</p></div>
+            <div id="listaCriativos" class="criativos-library-loading">Carregando criativos...</div>
+          </article>
+        </section>
+
+        <section class="dashboard-section secondary-section" aria-labelledby="tituloPagamentos">
+          <article class="panel painel-cobrancas" id="painelCobrancas" hidden>
+            <div class="panel-head"><div><p class="section-eyebrow">Plano e cobrança</p><h2 id="tituloPagamentos">Meus pagamentos</h2></div><button type="button" class="btn-link" id="btnGerenciarPlanoSecundario">Gerenciar plano</button></div>
+            <div id="listaCobrancas"></div>
+          </article>
+        </section>
       </div>
     </section>
 
-    <!-- Candidatura a ponto, migrada pro fim do Painel (19/09/2026, pedido do
-         dono): antes era aba própria "Meu ponto" lá em cima; virou card no
-         fim daqui, bem mais simples que o formulário completo de
-         /anunciante/ponto.html (que continua existindo, agora só pra quem já
-         é ponto). Ver montarCardPonto em painel.page.js. -->
-    <section class="tight">
-      <div class="wrap" id="linkVendedor"></div>
-      <div class="wrap" id="cardPonto"></div>
+    <section class="dashboard-opportunity">
+      <div class="wrap painel-wrap">
+        <div id="linkVendedor"></div>
+        <div id="cardPonto"></div>
+      </div>
     </section>
 
-    <!-- Gerenciar plano (19/09/2026, pedido do dono): antes era um card fixo
-         "Sua assinatura" no meio do dashboard, mesmo pra quem só queria ver
-         os números. Vira um dialog, aberto pela engrenagem ao lado do plano
-         no banner do topo — mesmo padrão de <dialog> do popup de perfil
-         (perfil.js), sem lib de modal nova. -->
     <dialog id="dlgPlano">
-      <div class="dlg-head">
-        <h3>Gerenciar plano</h3>
-        <button type="button" class="dlg-close" id="btnFecharPlano" aria-label="Fechar">&times;</button>
-      </div>
+      <div class="dlg-head"><h3>Gerenciar plano</h3><button type="button" class="dlg-close" id="btnFecharPlano" aria-label="Fechar">&times;</button></div>
       <div id="resumoAssinatura"></div>
     </dialog>
   </main>
