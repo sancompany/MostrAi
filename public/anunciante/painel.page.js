@@ -127,15 +127,33 @@ function montarCardPonto(estado) {
   }
 
   caixa.innerHTML = `
-    <form class="card wide modo-card" id="formCardPonto">
-      <p class="eyebrow">Ser um ponto</p>
-      <h3>Ganhe uma tela no seu comércio</h3>
-      <p class="form-hint u-m-0 u-mb-6">A tela, a instalação e o conteúdo são por nossa conta — você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta a média de movimento do seu comércio e a gente chama pra combinar.</p>
-      <div><label for="cp_fluxo">Movimento médio mensal (pessoas, opcional)</label><input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
-      <div><label for="cp_mensagem">Algo mais? (opcional)</label><textarea id="cp_mensagem" name="mensagem" rows="2"></textarea></div>
-      <button class="btn primary" type="submit">Quero ser um ponto</button>
-      <p class="form-msg" id="cardPontoMsg" role="status"></p>
-    </form>`;
+    <div class="card wide ponto-opportunity">
+      <div class="ponto-opportunity-summary">
+        <div class="ponto-opportunity-copy">
+          <span class="ponto-opportunity-icon" aria-hidden="true">⌂</span>
+          <div><p class="section-eyebrow">Faça parte da rede</p><h3>Você também possui um comércio?</h3><p class="form-hint">Transforme-o em um ponto MostrAi e ganhe uma tela.</p></div>
+        </div>
+        <button class="btn primary" type="button" id="btnAbrirCardPonto" aria-expanded="false">Quero ser um ponto</button>
+      </div>
+      <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
+        <form id="formCardPonto">
+          <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
+          <div class="field-row">
+            <div><label for="cp_fluxo">Movimento médio mensal (opcional)</label><input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
+            <div><label for="cp_mensagem">Algo mais? (opcional)</label><textarea id="cp_mensagem" name="mensagem" rows="2"></textarea></div>
+          </div>
+          <button class="btn primary" type="submit">Enviar meu interesse</button>
+          <p class="form-msg" id="cardPontoMsg" role="status"></p>
+        </form>
+      </div>
+    </div>`;
+
+  document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
+    const conteudo = document.getElementById('conteudoCardPonto');
+    conteudo.hidden = !conteudo.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!conteudo.hidden));
+    e.currentTarget.textContent = conteudo.hidden ? 'Quero ser um ponto' : 'Fechar formulário';
+  });
 
   document.getElementById('formCardPonto').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -217,8 +235,15 @@ function preencherStatusBanner() {
   // cortesia ou vencido) sempre pode abrir pra ver os detalhes.
   const podeGerenciar = !!ANUNCIANTE.plano_id;
   el.innerHTML = `
-    <span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong>${statusTxt ? ` · ${statusTxt}` : ''} · ${planoTxt}</span>
-    ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
+    <div class="hero-main">
+      <div class="hero-copy">
+        <p class="hero-kicker">Painel da campanha</p>
+        <h1>Olá, ${esc(ANUNCIANTE.nome_empresa)}</h1>
+        <p>Acompanhe a entrega do seu anúncio e a presença da sua marca na rede Mostraí.</p>
+        <span class="hero-plan"><span class="hero-plan-dot"></span>${statusTxt ? `${statusTxt} · ` : ''}${planoTxt}</span>
+        ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
+      </div>
+      <div>
     ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
     ${
       podeGerenciar
@@ -228,12 +253,25 @@ function preencherStatusBanner() {
     </button>`
         : ''
     }
+      </div>
+    </div>
+    <div class="hero-metrics" aria-label="Resumo da campanha">
+      <div class="hero-metric"><span>Plano</span><strong>${esc(ANUNCIANTE.plano?.nome || (ANUNCIANTE.plano_id ? 'Ativo' : 'Sem plano'))}</strong></div>
+      <div class="hero-metric"><span>Horas entregues</span><strong id="heroHoras">—</strong></div>
+      <div class="hero-metric"><span>Exibições confirmadas</span><strong id="heroExibicoes">—</strong></div>
+      <div class="hero-metric"><span>Pontos veiculando</span><strong id="heroPontos">—</strong></div>
+    </div>
   `;
   if (podeGerenciar) {
     preencherAssinatura();
     document.getElementById('btnGerenciarPlano').addEventListener('click', () => {
       document.getElementById('dlgPlano').showModal();
     });
+  }
+  const botaoSecundario = document.getElementById('btnGerenciarPlanoSecundario');
+  if (botaoSecundario) {
+    botaoSecundario.hidden = !podeGerenciar;
+    if (podeGerenciar) botaoSecundario.onclick = () => document.getElementById('dlgPlano').showModal();
   }
   carregarPontos();
 }
@@ -269,7 +307,7 @@ function pintarCompensacao(c) {
   const faltam = c.contratados - c.veiculando;
   const h = (n) => `${n} ${n === 1 ? 'hora' : 'horas'}`;
   el.innerHTML =
-    `<b>A rede ainda é menor que o seu plano, e você não perde por isso.</b> ` +
+    `<b>A rede MostrAi está crescendo</b> ` +
     `Seu plano cobre ${c.contratados} pontos e ${c.veiculando} ${c.veiculando === 1 ? 'está' : 'estão'} veiculando hoje. ` +
     `O tempo ${faltam === 1 ? 'do ponto que falta' : `dos ${faltam} pontos que faltam`} volta pros que estão no ar: ` +
     `em vez das ${h(c.horas_sem_compensacao)} de tela por mês que a rede de hoje daria, você tem ` +
@@ -289,13 +327,18 @@ async function carregarPontos() {
   } catch {
     return;
   }
-  if (!dados.pontos.length) return;
-
   const limite = dados.limite;
   document.getElementById('painelPontos').hidden = false;
   pintarCompensacao(dados.cobertura);
+  const heroPontos = document.getElementById('heroPontos');
+  if (heroPontos) heroPontos.textContent = String(dados.cobertura?.veiculando ?? dados.pontos.length);
 
   const lista = document.getElementById('listaPontos');
+  if (!dados.pontos.length) {
+    lista.innerHTML =
+      '<div class="empty-state dashboard-empty">A rede ainda não tem pontos disponíveis para seleção. Sua cobertura aparecerá aqui conforme eles entrarem no ar.</div>';
+    return;
+  }
   // Uma linha por ponto, sem o cartão grande de antes (19/09/2026, pedido
   // do dono: "se existir muitos pontos cadastrados ele se perde") — nome,
   // cidade e status cabem numa linha só; o link do mapa reaproveita a MESMA
@@ -521,7 +564,8 @@ async function carregarBancoHoras() {
     // frase colada no banner, fácil de não notar entre os outros avisos.
     document.getElementById('kpiGrid').insertAdjacentHTML(
       'beforeend',
-      `<div class="kpi-card">
+      `<div class="kpi-card kpi-secondary">
+        <span class="kpi-icon" aria-hidden="true">＋</span>
         <span class="kpi-label">Banco de horas</span>
         <b>${duracaoLegivel(dados.segundos)}</b>
         ${
@@ -549,6 +593,8 @@ function desenharHorasMes(contratadas, entregues) {
   const restantes = Math.max(0, contratadas - entregues);
   const pct = contratadas > 0 ? Math.min(100, (entregues / contratadas) * 100) : 0;
   card.querySelector('b').textContent = `${entregues}h`;
+  const heroHoras = document.getElementById('heroHoras');
+  if (heroHoras) heroHoras.textContent = `${entregues}h de ${contratadas}h`;
   card.querySelector('[data-kpi-horas-legenda]').textContent =
     `de ${contratadas}h contratadas · ${restantes}h ainda por rodar`;
   const fill = card.querySelector('.fill');
@@ -577,6 +623,8 @@ async function carregarExibicoes() {
         : concluidas;
     kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao) : '-';
     kpi('media').textContent = dados.mediaDiariaMes ?? '-';
+    const heroExibicoes = document.getElementById('heroExibicoes');
+    if (heroExibicoes) heroExibicoes.textContent = concluidas;
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorPonto(dados.porPonto || []);
@@ -631,7 +679,13 @@ const TOP_SERIES_DIA_PONTO = 5;
 // recalcular: os 5 primeiros pontos do período inteiro têm sempre a mesma
 // cor em toda barra; o resto soma em "Outros pontos".
 function desenharPorDia(porDia, porDiaPonto, porPonto) {
-  if (!porDia.length) return;
+  document.getElementById('painelDia').hidden = false;
+  if (!porDia.length) {
+    document.getElementById('graficoDia').innerHTML =
+      '<div class="empty-state dashboard-empty">As exibições confirmadas aparecerão aqui assim que a campanha começar a rodar.</div>';
+    document.getElementById('legendaDia').textContent = 'Sem exibições confirmadas no período';
+    return;
+  }
   const dias = porDia.slice(0, 14).reverse();
   const max = Math.max(...dias.map((d) => Number(d.confirmadas))) || 1;
 
@@ -645,7 +699,6 @@ function desenharPorDia(porDia, porDiaPonto, porPonto) {
     porDiaChave.get(chave).push(linha);
   }
 
-  document.getElementById('painelDia').hidden = false;
   document.getElementById('graficoDia').innerHTML = dias
     .map((d) => {
       const v = Number(d.confirmadas);
@@ -663,7 +716,7 @@ function desenharPorDia(porDia, porDiaPonto, porPonto) {
                 `<div class="bar-seg ${s.classe}" data-pct="${v ? (s.valor / v) * 100 : 0}" title="${esc(s.nome)}: ${s.valor} exibições"></div>`,
             )
             .join('')
-        : '';
+        : `<div class="bar-seg serie-1" data-pct="100" title="${v} exibições"></div>`;
       return `<div class="bar-col" title="${diaDoMes}/${mes}/${ano}: ${v} exibições">
       <div class="bar-pilha" data-pct="${Math.max(2, (v / max) * 100)}">${pilha}</div>
       <span class="bar-label">${diaDoMes}/${mes}</span>
@@ -735,12 +788,17 @@ function desenharLegendaPontosDia(principais, serieDoPonto, temOutros) {
 // tabela detalhada logo abaixo, completa, sem corte nenhum.
 const TOP_PONTOS_GRAFICO = 8;
 function desenharPorPonto(porPonto) {
-  if (!porPonto.length) return;
+  document.getElementById('painelDetalhe').hidden = false;
+  if (!porPonto.length) {
+    document.getElementById('graficoPonto').innerHTML =
+      '<div class="empty-state dashboard-empty">Nenhum ponto com exibições neste período.</div>';
+    document.getElementById('exibicoesDetalhe').innerHTML = '';
+    return;
+  }
   const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
   const total = porPonto.reduce((soma, p) => soma + Number(p.confirmadas), 0) || 1;
   const principais = porPonto.slice(0, TOP_PONTOS_GRAFICO);
   const resto = porPonto.length - principais.length;
-  document.getElementById('painelDetalhe').hidden = false;
   document.getElementById('graficoPonto').innerHTML =
     principais
       .map((p) => {
@@ -786,8 +844,12 @@ function statusOnline(ultimaVezOnline) {
 // emitida hoje, e quando passar a emitir vai direto por e-mail, não por um
 // link nesta tabela.
 function desenharCobrancas(cobrancas) {
-  if (!cobrancas.length) return;
   document.getElementById('painelCobrancas').hidden = false;
+  if (!cobrancas.length) {
+    document.getElementById('listaCobrancas').innerHTML =
+      '<div class="empty-state dashboard-empty">Nenhum pagamento registrado ainda.</div>';
+    return;
+  }
   document.getElementById('listaCobrancas').innerHTML =
     `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th></tr></thead><tbody>
     ${cobrancas
@@ -826,7 +888,9 @@ async function carregarCriativos() {
       ${criativos
         .map((c) => {
           const video = c.arquivo_normalizado_url && ehVideo(c.arquivo_normalizado_url);
-          return `<div class="criativo-card" data-id="${c.id}">
+          const tipo = video ? 'Vídeo' : 'Imagem';
+          const duracao = c.duracao_segundos ? `${Number(c.duracao_segundos)}s` : 'Processando';
+          return `<div class="criativo-card" data-id="${c.id}"><div class="criativo-media">
           ${
             c.arquivo_normalizado_url
               ? video
@@ -836,7 +900,8 @@ async function carregarCriativos() {
               : '<div class="criativo-placeholder">processando...</div>'
           }
           <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
-          <span class="badge ${ROTULOS.criativoClasse[c.status]}">${ROTULOS.criativo[c.status]}</span>
+          <span class="badge ${ROTULOS.criativoClasse[c.status] || 'badge-pendente'}">${esc(ROTULOS.criativo[c.status] || c.status)}</span>
+          </div><div class="criativo-meta"><strong>${tipo}</strong><span>${duracao}</span></div>
           ${c.status === 'reprovado' ? `<p class="criativo-motivo">${c.motivo_reprovacao ? esc(c.motivo_reprovacao) : 'Fale com a gente pra entender o que ajustar.'}<br><b>Exclua esta peça e suba a versão corrigida.</b></p>` : ''}
         </div>`;
         })

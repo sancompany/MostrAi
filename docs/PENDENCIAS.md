@@ -3125,3 +3125,22 @@ continuam cobrindo orçamento de 3600 segundos, frequência, distribuição,
 determinismo, cobertura e compensação. Ainda fica como melhoria futura um
 teste ponta a ponta do payload final provando a posição de um novo participante
 no fim da lista.
+
+### F — dashboard do anunciante redesenhado (21/09/2026)
+
+**[x] Revisão visual solicitada pelo dono:** o painel deixou de ser uma pilha
+de cards/tabelas sem hierarquia e passou a apresentar a campanha como produto
+DOOH: resumo executivo, KPIs, performance diária, relatório escalável por
+ponto, cobertura da rede, biblioteca de criativos, pagamentos e oportunidade
+de ser ponto. A candidatura continua no próprio painel, mas o formulário só
+abre depois do CTA, reduzindo o ruído da página.
+
+**Limites preservados:** nenhuma rota, payload, cálculo, métrica, autenticação,
+integração, regra de plano, upload/aprovação, proof-of-play, playlist ou banco
+de horas foi alterado. O JavaScript só ganhou composição visual dos mesmos
+dados e estados vazios explícitos.
+
+**Validação visual:** Chromium em 1440×1000, 1280×800, 768×1024 e 390×844,
+com dados simulados cobrindo oito pontos, três criativos, pagamentos, uma tela
+offline e compensação de rede. Sem erros no console e sem overflow horizontal
+da página; o gráfico usa rolagem interna no celular quando necessário.
