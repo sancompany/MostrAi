@@ -103,6 +103,7 @@ router.get('/admin/resumo', async (_req, res) => {
     faturamento,
     exibicoes,
     novos,
+    conversao,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
     // `status = 'ativo'`, então somava três coisas que não pagam nada:
@@ -111,14 +112,19 @@ router.get('/admin/resumo', async (_req, res) => {
     // métrica principal do projeto — mentia pra cima em todas as três.
     // `status` deixou de ter esse sentido (virou só comum/parceiro,
     // 16/09/2026) — quem tem plano de verdade é quem tem `plano_id`.
+    // Agrupado por ciclo (compromisso_meses) desde 21/09/2026, pedido do
+    // dono: a Visão geral mostra um card por ciclo (mensal/trimestral/
+    // semestral/anual) além do total — a soma dos grupos já É o total, sem
+    // precisar de uma segunda consulta.
     pool.query(
-      `SELECT COALESCE(SUM(p.valor_mensal), 0) AS total FROM anunciantes a
+      `SELECT p.compromisso_meses, COALESCE(SUM(p.valor_mensal), 0) AS total FROM anunciantes a
        JOIN planos p ON p.id = a.plano_id
        WHERE a.plano_id IS NOT NULL
          AND NOT a.suspenso
          AND NOT a.plano_cortesia
          AND a.excluido_em IS NULL
-         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`,
+         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)
+       GROUP BY p.compromisso_meses`,
     ),
     pool.query(
       `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,
@@ -192,13 +198,32 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL) AS anunciantes,
         (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days') AS pontos`,
     ),
+    // % de quem criou conta e está pagando um plano de verdade hoje — pedido
+    // do dono, 21/09/2026. "Criou conta" é todo mundo (menos a conta própria
+    // da Mostraí); "paga" usa o mesmo filtro da receita recorrente acima
+    // (cortesia e suspensa não contam como pagando, mas contam no total —
+    // criaram conta, só não converteram).
+    pool.query(
+      `SELECT
+        (SELECT COUNT(*) FROM anunciantes WHERE NOT conta_propria) AS total,
+        (SELECT COUNT(*) FROM anunciantes
+           WHERE NOT conta_propria AND plano_id IS NOT NULL AND NOT suspenso AND NOT plano_cortesia
+             AND excluido_em IS NULL AND (data_expiracao IS NULL OR data_expiracao >= current_date)) AS pagantes`,
+    ),
   ]);
 
   const ultima = await ultimaConciliacao();
-  const receitaMensal = Number(receita.rows[0].total);
+  // Um valor por ciclo (1/3/6/12 meses); ciclo sem nenhuma conta pagando não
+  // vem linha nenhuma do banco, por isso o default de 0 pra cada um.
+  const receitaPorCiclo = { 1: 0, 3: 0, 6: 0, 12: 0 };
+  for (const r of receita.rows) receitaPorCiclo[r.compromisso_meses] = Number(r.total);
+  const receitaMensal = Object.values(receitaPorCiclo).reduce((soma, v) => soma + v, 0);
   const custoPontosMensal = Number(pontosAtivos.rows[0].total);
   const amortizacaoMensal = Number(amortizacao.rows[0].amortizacao);
   const custosFixosMensal = Number(custosFixos.rows[0].total);
+  const totalContas = Number(conversao.rows[0].total);
+  const contasPagantes = Number(conversao.rows[0].pagantes);
+  const percentualPagantes = totalContas > 0 ? (contasPagantes / totalContas) * 100 : null;
 
   res.json({
     // Filas que pedem ação do admin — viram os alertas do topo da tela.
@@ -218,11 +243,17 @@ router.get('/admin/resumo', async (_req, res) => {
     },
     financeiro: {
       receitaMensal,
+      receitaPorCiclo,
       custoPontosMensal,
       amortizacaoMensal,
       custosFixosMensal,
       margemMensal: receitaMensal - custoPontosMensal - amortizacaoMensal - custosFixosMensal,
       faturamentoPorMes: faturamento.rows,
+      // null (não 0) quando não há nenhuma conta ainda — 0% mentiria "todo
+      // mundo tentou e ninguém converteu" numa rede que não tem conta nenhuma.
+      percentualPagantes,
+      totalContas,
+      contasPagantes,
     },
     rede: {
       pontosAtivos: Number(pontosAtivos.rows[0].qtd),

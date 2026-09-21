@@ -677,12 +677,19 @@ async function renderResumo(el) {
     }
 
     <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
+      <div class="kpi-card"><span class="kpi-label">Receita recorrente · Total</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
+      ${Object.entries(CICLOS)
+        .map(
+          ([meses, nome]) =>
+            `<div class="kpi-card"><span class="kpi-label">Receita recorrente · ${nome}</span><b>${fmt(financeiro.receitaPorCiclo[meses])}</b><span class="kpi-caption">contas nesse ciclo, por mês</span></div>`,
+        )
+        .join('')}
     </div>
 
     <div class="kpi-grid u-mb-20">
       <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
       <div class="kpi-card"><span class="kpi-label">Anunciantes novos</span><b>${rede.novosAnunciantes30d}</b><span class="kpi-caption">nos últimos 30 dias</span></div>
+      <div class="kpi-card"><span class="kpi-label">Cadastra e paga</span><b>${financeiro.percentualPagantes === null ? '-' : `${financeiro.percentualPagantes.toFixed(0)}%`}</b><span class="kpi-caption">${financeiro.percentualPagantes === null ? 'nenhuma conta ainda' : `${financeiro.contasPagantes} de ${financeiro.totalContas} contas · cortesia e suspensa não contam`}</span></div>
     </div>
 
     ${linhaConciliacao(RESUMO.conciliacao)}
