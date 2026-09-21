@@ -2284,6 +2284,29 @@ então uma nova tentativa de troca funciona normalmente). Corrigir exigiria
 um evento do Checkout avisando expiração (não existe hoje) ou uma
 varredura própria aqui — fora do escopo desta entrega.
 
+### G.10 E-mails do Mostraí são texto puro, sem identidade visual — 21/09/2026
+
+*(Achado a pedido do dono, verificando se o e-mail de troca de plano
+estava ligado.)* **Confirmado: está** — `enviarTrocaDePlano`
+(`src/financeiro/email.js`) é chamado tanto no caminho síncrono (sem
+acerto, `POST /anunciantes/me/trocar-plano`) quanto no caminho novo do
+webhook (com acerto, aprovado no Checkout — G.9 acima). Os dois casos
+disparam o e-mail.
+
+**O que ficou registrado, não corrigido:** os 16 e-mails deste arquivo
+(confirmação de pagamento, troca de plano, cobrança falhada, conta
+criada/excluída, cancelamento, criativo aprovado/reprovado etc.) são
+**todos texto puro** — `sendMail({ text: ... })`, nenhum usa `html`.
+Funcionam (SMTP autenticado, conteúdo correto, verificados manualmente
+antes de subir cada um), mas chegam sem logo, sem cor de marca, sem
+nenhuma formatação — parecem rascunho, não comunicação de uma empresa que
+cobra cartão de crédito. **Decisão de design que só o dono faz** (que
+identidade visual, se um template HTML único serve pra todos os 16 ou se
+merece variação por tipo de aviso) — não é algo pra decidir sozinho numa
+sessão de revisão. Quando ele decidir, dá pra fazer incremental (um
+template base em HTML + a mesma função de "linha de texto" que já existe
+em cada `enviar*`, sem reescrever a lógica de quando cada e-mail dispara).
+
 ### Revisão do dono, tópico 1 (sem login), passada pelo PC — Home (18/09/2026)
 
 **H1. [x] Card do Ponto prometia dinheiro pra quem escolhe a modalidade que
