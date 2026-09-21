@@ -62,6 +62,8 @@ A "promoção de trazer gente de fora" mencionada antes (e que ficava sem detalh
 ## Revisão visual/funcional das telas — três ainda faltam (21/09/2026)
 Depois do painel do anunciante fechado nesta sessão, o dono listou o que falta revisar: **1) painel admin, 2) painel do ponto/comodato, 3) painel do vendedor**. Sem pedido de começar ainda — só registrado pra não perder a ordem.
 
+**Item já pautado pra quando a revisão do admin começar:** conta própria virar preenchimento elástico do vazio da hora (não frequência fixa) e configuração por criativo (alcance + frequência/"plano" por peça, não por conta) — ver `docs/proximas-versoes.md`, "Conta própria vira preenchimento elástico do vazio, configurada por criativo". Nasceu de uma investigação desta sessão sobre por que o cartão institucional aparece tanto — não era bug, era o desenho atual (RN-40) mesmo, e o dono decidiu mudar. Achado junto, baixo risco, independente do resto: a aba "Meus anúncios" do admin (`src/admin/routes.js:16`) só lista criativos `pendente`, e os da conta própria nascem `aprovado` — nunca aparecem lá.
+
 ## margemVmin — reafirmado que precisa ser por lado (4 valores), não só por tela (21/09/2026)
 O dono apontou de novo: `margemVmin` tem que vir do admin (por tela), e como
 **4 valores independentes** (um por lado — topo/base/esquerda/direita), não
