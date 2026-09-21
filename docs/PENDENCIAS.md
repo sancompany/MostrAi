@@ -95,24 +95,26 @@ esteira é só o item 8.
     · Como é DROP de coluna, segue a regra do projeto: só com autorização
       explícita do dono, numa migration própria (não fiz sozinho).
 
-11. **Configurar o San Checkout para aceitar pedido avulso deste projeto.**
-    *(Achado em 16/09/2026, construindo a troca de plano — item 15 da seção F
-    abaixo. O próprio dono disse que ia resolver: "configurarei o checkout a
-    aceitar esses dois".)*
-    · O Mostraí já expõe `GET /pedido/:id` e processa o webhook de pedido
-      avulso (payload sem `tipo`, seção 4.3.3 do `API.md` do Checkout) — o
-      código está pronto e no ar desde a migration 041.
-    · **O que falta é do lado de quem administra o San Checkout:** confirmar
-      que o `contratante_id` deste projeto está habilitado pra pedido avulso
-      (não só assinatura), e que o `webhook_url` cadastrado é o mesmo que já
-      recebe os eventos de assinatura (`POST /webhook/san-checkout`) — o
-      contrato diz que os dois tipos chegam no mesmo endereço.
-    · **Trava:** sem isso, `POST /anunciantes/me/trocar-plano` gera o pedido
-      e o link de pagamento, mas o Checkout pode recusar a tela ou nunca
-      confirmar o pagamento de volta — a troca de plano fica sem efeito
-      prático até essa configuração existir.
-    · **Só o dono faz** — é configuração do lado do San Checkout, fora do
-      repositório do Mostraí.
+11. ~~Configurar o San Checkout para aceitar pedido avulso deste projeto.~~ —
+    **CAIU, sem virar pendência.** *(Achado em 16/09/2026, construindo a
+    troca de plano — item 15 da seção F abaixo; superado em 17-18/09/2026,
+    seção G.8.)*
+    · Na época, `POST /anunciantes/me/trocar-plano` gerava um pedido avulso e
+      dependia de configuração do San Checkout pra aceitar esse tipo de
+      cobrança — daí a trava registrada aqui.
+    · **O caminho mudou em 17/09/2026** (seção G.8): o Checkout construiu uma
+      rota síncrona própria, `POST /trocar-plano` — cobra o acerto
+      proporcional no cartão já salvo, na mesma requisição, sem gerar
+      cobrança avulsa nenhuma. `POST /anunciantes/me/trocar-plano` foi
+      reescrita pra chamar essa rota nova (`sanCheckout.trocarPlano()`, em
+      `src/financeiro/san-checkout.js`); confirmado direto na fonte do
+      Checkout antes de aplicar, não só pelo prompt dele.
+    · `pedidosRepo.criar` não tem mais chamador nenhum pra troca de plano —
+      "pedido avulso" ficou aposentado, não removido (histórico e o webhook
+      que fecha um pedido antigo continuam no ar; a aba de trocas do admin
+      faz `UNION` das duas origens pra não perder visão). Sem chamador novo,
+      não existe mais nada pra habilitar do lado do San Checkout — a
+      pendência não tem mais objeto.
 
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
 Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.

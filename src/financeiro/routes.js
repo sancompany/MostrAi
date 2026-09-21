@@ -303,8 +303,10 @@ router.get('/plano/:assinaturaId', sanCheckout.exigirChaveCheckout, async (req, 
   res.json(resposta);
 });
 
-// Exposto pro San Checkout consultar o pedido avulso (API.md 4.1). Único uso
-// hoje: a diferença de uma troca de plano (ver POST /anunciantes/me/trocar-plano).
+// Exposto pro San Checkout consultar o pedido avulso (API.md 4.1). Pedido
+// avulso está aposentado como caminho de troca de plano desde 17/09/2026
+// (essa rota usa POST /trocar-plano dele agora, síncrona) — o que resta aqui
+// é só leitura de pedidos antigos, criados antes da mudança.
 router.get('/pedido/:id', sanCheckout.exigirChaveCheckout, async (req, res) => {
   const pedido = await pedidosRepo.buscarPorId(req.params.id);
   if (!pedido) return res.status(404).json({ erro: 'pedido não encontrado' });
