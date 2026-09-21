@@ -2,6 +2,25 @@
 
 ## NOW
 
+**Atualizado 21/09/2026 — plano do dono pros próximos ~2 dias, antes de
+começar a vender:**
+1. **Terminar a revisão visual do painel admin e do painel do anunciante —
+   reservado pra este agente (Claude), não pro Codex.** O redesign do
+   Codex (`public/anunciante/painel.html/.css/.page.js`) "melhorou muito"
+   mas não bateu 100% na parte visual — o dono foi explícito que quer isso
+   corrigido aqui, principalmente **voltar as cores pra paleta própria do
+   Mostraí** (laranja `#ff7a1a`) onde o redesign se afastou dela. Ver
+   `.ia/HANDOFF.md`, "Plano do dono..." pro detalhe completo.
+2. Terminar o app Android TV da playlist —
+   `docs/proximas-versoes.md`, "App Android TV nativo..." (projeto à
+   parte, fora deste repositório).
+3. Trocar o San Checkout de sandbox pra produção — **não investigado
+   ainda** se é algo que se mexe daqui (`SAN_CHECKOUT_*` no Northflank já
+   parecem apontar pra `sancocore.com.br`, não claramente sandbox) ou
+   decisão só de quem administra o Checkout.
+4. Finalizar os testes (checar se `npm run check` e os e2e cobrem o
+   redesign do Codex).
+
 **Ordem combinada com o dono, 20/09/2026: ele termina primeiro uma revisão
 do site em andamento pelo Codex (fora deste canal); os dois bugs abaixo
 ficam reservados pra serem resolvidos por este agente (Claude Code), não
