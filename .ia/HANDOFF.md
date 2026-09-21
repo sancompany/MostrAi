@@ -62,5 +62,20 @@ A "promoção de trazer gente de fora" mencionada antes (e que ficava sem detalh
 ## Revisão visual/funcional das telas — três ainda faltam (21/09/2026)
 Depois do painel do anunciante fechado nesta sessão, o dono listou o que falta revisar: **1) painel admin, 2) painel do ponto/comodato, 3) painel do vendedor**. Sem pedido de começar ainda — só registrado pra não perder a ordem.
 
+## margemVmin — reafirmado que precisa ser por lado (4 valores), não só por tela (21/09/2026)
+O dono apontou de novo: `margemVmin` tem que vir do admin (por tela), e como
+**4 valores independentes** (um por lado — topo/base/esquerda/direita), não
+um número só igual nos 4 lados. A ideia já estava registrada em
+`docs/proximas-versoes.md` ("Margem e orientação por tela configuráveis no
+admin, não só na URL") pensando no player web; esta sessão atualizou essa
+entrada pra também cobrir o app Android nativo (que reproduz o mesmo
+problema: `ConfigAparelho.margemVmin`/`ConfigExterna.Dados.margemVmin` são
+um `Float` único aplicado igual nos 4 lados por
+`PlayerActivity.aplicarMargemOverscan()`). Espelhado em
+`sancompany/playlist.mostrai` (`docs/pendencias.md` e
+`docs/proximas-versoes.md`), reconciliando com um registro concorrente que
+outra sessão já tinha feito lá (faltava a nuance dos 4 lados). **Nada
+implementado** — só registro, como pedido.
+
 ## playlist.mostrai — entrega de provisionamento revisada, nada a mudar aqui (21/09/2026)
 A outra sessão entregou `ConfigExterna` (lê `mostrai-config.json` de um pendrive/volume externo montado, mesmos 5 campos do provisionamento por `adb`/build embutido). Conferido: é 100% client-side, nenhuma chamada nova ao backend, nenhum campo que o `sancompany/mostrai` precise passar a aceitar. Build + 53 testes verdes localmente (SDK Android montado em `/opt/android-sdk` nesta sessão pra verificar de verdade, não só ler). PR #1 (`playlist.mostrai`) segue em draft, aguardando o dono testar em hardware real.
