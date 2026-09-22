@@ -88,6 +88,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
            p.limite_criativos,
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes,
+           array_agg(c.id ORDER BY c.created_at DESC) AS criativo_ids,
            COALESCE(
              (SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
                 FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id),
@@ -118,7 +119,12 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
 
   return rows.map((r) => {
     const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
-    return { ...r, criativos: r.urls.slice(0, limite).map((url, i) => ({ url, duracaoSegundos: r.duracoes[i] })) };
+    return {
+      ...r,
+      criativos: r.urls
+        .slice(0, limite)
+        .map((url, i) => ({ url, duracaoSegundos: r.duracoes[i], criativoId: r.criativo_ids[i] })),
+    };
   });
 }
 
@@ -128,7 +134,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
 async function criativosDoDono(contaId) {
   if (!contaId) return [];
   const { rows } = await pool.query(
-    `SELECT arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos"
+    `SELECT id AS "criativoId", arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos"
      FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
      ORDER BY created_at DESC LIMIT 3`,
     [contaId],
@@ -419,15 +425,33 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // vez, mesmo quando só cabe uma inserção por vez.
   const horaEpoch = Math.floor(horaAtual.getTime() / 3_600_000);
   const usados = {};
+  // Identidade do item pro contrato novo (migration 065, app Android nativo
+  // `sancompany/playlist.mostrai`): `janelaId` marca a hora congelada desta
+  // tela, e `itemProgramacaoId` soma a POSIÇÃO na sequência congelada — antes
+  // do `.filter(Boolean)` abaixo remover vagas que saíram de elegibilidade no
+  // meio da hora, senão um buraco no meio deslocaria o índice de tudo que vem
+  // depois a cada poll. O tipo/anunciante vai dentro do próprio id (formato
+  // em docs/api.md) pra `/played` não precisar reconstruir a hora pra saber
+  // quem creditar — só decodifica a string que ele mesmo devolveu.
+  const janelaId = `${dispositivo.id}|${horaAtual.toISOString()}`;
   // `extras` sempre depois de `daHora.itens`: é o "sempre no fim" pedido —
   // quem chegou no meio da hora nunca disputa posição com quem já rodava.
-  return [...daHora.itens, ...idsExtras]
-    .map((id) => {
+  const itens = [...daHora.itens, ...idsExtras]
+    .map((id, indice) => {
       // Inventário vago: o player mostra a própria peça institucional (#vazio em
       // public/player.html) pelo tempo do item. Não tem url, não é de ninguém e
       // não conta exibição.
       if (id === ID_INSTITUCIONAL) {
-        return { anuncianteId: null, institucional: true, url: null, duracaoSegundos: DURACAO_INSTITUCIONAL };
+        return {
+          itemProgramacaoId: `${janelaId}|${indice}|inst`,
+          criativoId: null,
+          anuncianteId: null,
+          autoanuncio: false,
+          institucional: true,
+          contabiliza: false,
+          url: null,
+          duracaoSegundos: DURACAO_INSTITUCIONAL,
+        };
       }
       // Congelou numa hora e saiu da elegibilidade depois (ponto desmarcado
       // de novo, criativo reprovado): a vaga dele só desaparece, não é
@@ -440,14 +464,31 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       usados[id] = vez + 1;
       const inicio = horaEpoch % criativos.length;
       const criativo = criativos[(inicio + vez) % criativos.length];
+      const autoanuncio = id === 'dono';
       return {
-        anuncianteId: id === 'dono' ? null : id,
-        autoanuncio: id === 'dono',
+        itemProgramacaoId: `${janelaId}|${indice}|${autoanuncio ? 'dono' : id}`,
+        criativoId: criativo.criativoId != null ? String(criativo.criativoId) : null,
+        anuncianteId: autoanuncio ? null : id,
+        autoanuncio,
+        institucional: false,
+        // Autoanúncio (permuta do comodato) e institucional nunca contam —
+        // mesma regra que `parseLegado` do app já infere hoje pro contrato
+        // antigo, só que explícita aqui em vez de deduzida do outro lado.
+        contabiliza: !autoanuncio,
         url: criativo.url,
         duracaoSegundos: criativo.duracaoSegundos,
       };
     })
     .filter(Boolean);
+
+  return {
+    versaoContrato: 2,
+    janelaId,
+    janelaInicio: horaAtual.toISOString(),
+    janelaFim: new Date(horaAtual.getTime() + 3_600_000).toISOString(),
+    servidorAgora: new Date().toISOString(),
+    itens,
+  };
 }
 
 // Só confirma se havia programação pra esse anunciante nesta tela nesta
@@ -460,6 +501,33 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 // entrava como déficit, que a hora seguinte tentava repor: um atraso de
 // segundos virava exibição a mais no dia seguinte.
 const FOLGA_VIRADA_MIN = 15;
+
+// As duas operações que tanto `confirmarExibicao` (contrato antigo, por
+// anunciante+momento) quanto `confirmarExecucao` (contrato novo, por
+// itemProgramacaoId já decodificado) precisam: creditar com teto, e saber se
+// a linha existe (pra distinguir "já completou" de "nunca foi programado").
+// `db` opcional (padrão `pool`): `execucoes-repository.js` passa o client de
+// uma transação, pra creditar e reservar o `execucaoId` (dedup) atomicamente
+// — sem isso, um crash bem no meio (entre creditar e gravar o ledger) credita
+// sem deixar rastro de dedup, e a próxima retentativa credita nas de novo.
+async function creditarConfirmacao(anuncianteId, dispositivoId, janela, db = pool) {
+  const { rowCount } = await db.query(
+    `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
+      WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3
+        AND vezes_confirmadas < vezes_programadas`,
+    [anuncianteId, dispositivoId, janela],
+  );
+  return rowCount > 0;
+}
+
+async function existeConfirmacao(anuncianteId, dispositivoId, janela, db = pool) {
+  const { rows } = await db.query(
+    `SELECT 1 FROM exibicoes_contador
+      WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3`,
+    [anuncianteId, dispositivoId, janela],
+  );
+  return rows.length > 0;
+}
 
 // Confirma uma exibição, com TETO. Era `vezes_confirmadas + 1` sem limite
 // nenhum, e por isso qualquer reenvio da TV (queda de rede e retentativa,
@@ -476,27 +544,8 @@ async function confirmarExibicao(dispositivoId, anuncianteId, momento) {
   const horaAtual = new Date(momento);
   horaAtual.setMinutes(0, 0, 0);
 
-  const creditar = async (janela) => {
-    const { rowCount } = await pool.query(
-      `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
-        WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3
-          AND vezes_confirmadas < vezes_programadas`,
-      [anuncianteId, dispositivoId, janela],
-    );
-    return rowCount > 0;
-  };
-
-  const existe = async (janela) => {
-    const { rows } = await pool.query(
-      `SELECT 1 FROM exibicoes_contador
-        WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3`,
-      [anuncianteId, dispositivoId, janela],
-    );
-    return rows.length > 0;
-  };
-
   // Hora corrente primeiro: é o caso normal, e a folga é exceção.
-  if (await creditar(horaAtual)) return { ok: true, janela: 'atual' };
+  if (await creditarConfirmacao(anuncianteId, dispositivoId, horaAtual)) return { ok: true, janela: 'atual' };
 
   // Sobrou da hora anterior? Só nos primeiros minutos, e só se aquela hora
   // ainda tiver o que confirmar.
@@ -504,11 +553,55 @@ async function confirmarExibicao(dispositivoId, anuncianteId, momento) {
   if (minutos < FOLGA_VIRADA_MIN) {
     const anterior = new Date(horaAtual);
     anterior.setHours(anterior.getHours() - 1);
-    if (await creditar(anterior)) return { ok: true, janela: 'anterior' };
+    if (await creditarConfirmacao(anuncianteId, dispositivoId, anterior)) return { ok: true, janela: 'anterior' };
   }
 
-  if (await existe(horaAtual)) return { ok: false, motivo: 'ja_completo' };
+  if (await existeConfirmacao(anuncianteId, dispositivoId, horaAtual)) return { ok: false, motivo: 'ja_completo' };
   return { ok: false, motivo: 'nao_programado' };
 }
 
-module.exports = { gerarPlaylistDaHora, confirmarExibicao, limiteDeCriativos, FOLGA_VIRADA_MIN };
+// Decodifica um `itemProgramacaoId` do contrato novo (formato montado em
+// `gerarPlaylistDaHora`: `dispositivoId|horaISO|indice|tipo`) e credita —
+// sem reconstruir a hora congelada: o índice existe pra identidade estável
+// entre polls (RN-09 do app), o `tipo` já traz quem creditar embutido, então
+// não precisa reler `playlist_hora_congelada` pra saber a resposta.
+//
+// Devolve exatamente um dos status que `playlist.mostrai`
+// (`FilaProofOfPlay.STATUS_DEFINITIVOS`) reconhece como definitivo — qualquer
+// string fora dessa lista faz o app manter o item na fila e tentar de novo,
+// então esta função nunca deve inventar um status novo sem atualizar os dois
+// lados (ver docs/api.md).
+async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janelaId, agora, db = pool) {
+  const partes = String(itemProgramacaoId || '').split('|');
+  if (partes.length !== 4) return 'item_invalido';
+  const [dispositivoIdStr, horaISO, indiceStr, tipo] = partes;
+  if (Number(dispositivoIdStr) !== Number(dispositivoIdEsperado)) return 'janela_desconhecida';
+  if (janelaId !== `${dispositivoIdStr}|${horaISO}`) return 'item_invalido';
+  const horaJanela = new Date(horaISO);
+  if (Number.isNaN(horaJanela.getTime()) || !/^\d+$/.test(indiceStr)) return 'item_invalido';
+
+  const anuncianteId = Number(tipo);
+  // `dono` (autoanúncio) e `inst` (institucional) nunca contam — o app já
+  // filtra isso do próprio lado (`FilaProofOfPlay.registrarInicio` não cria
+  // execução pra item com `contabiliza=false`), então chegar aqui com um
+  // desses é o app tentando confirmar algo que não devia existir.
+  if (!Number.isInteger(anuncianteId)) return 'item_invalido';
+
+  // Mesma folga da virada de hora do contrato antigo — a peça pode terminar
+  // minutos depois da hora virar, e o `janelaId` já diz exatamente qual hora
+  // era a dela (não precisa adivinhar pela hora "agora").
+  const diffMin = (new Date(agora).getTime() - horaJanela.getTime()) / 60_000;
+  if (diffMin < -1 || diffMin > 60 + FOLGA_VIRADA_MIN) return 'janela_expirada';
+
+  if (await creditarConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'contabilizado';
+  if (await existeConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'teto_atingido';
+  return 'janela_desconhecida';
+}
+
+module.exports = {
+  gerarPlaylistDaHora,
+  confirmarExibicao,
+  confirmarExecucao,
+  limiteDeCriativos,
+  FOLGA_VIRADA_MIN,
+};

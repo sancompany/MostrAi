@@ -85,6 +85,15 @@ const rPedido = await farm.evaluate(async () =>
           cep: '15990-000',
           segmento: 'saúde',
           fluxo_estimado_mensal: 1200,
+          horario_semanal: {
+            seg: { abre: '08:00', fecha: '18:00' },
+            ter: { abre: '08:00', fecha: '18:00' },
+            qua: { abre: '08:00', fecha: '18:00' },
+            qui: { abre: '08:00', fecha: '18:00' },
+            sex: { abre: '08:00', fecha: '18:00' },
+            sab: { abre: '08:00', fecha: '12:00' },
+            dom: null,
+          },
         }),
       })
     ).json()

@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 
 // Candidatura = formulário público de "quero ser ponto" / "quero ser
 // vendedor". Não cria conta; o dono fala com a pessoa e gera um convite.
@@ -8,11 +9,13 @@ const CAMPOS_ATUALIZAVEIS = ['status', 'convite_id'];
 
 // conta_id/origem: pedido feito de dentro do painel (migration 020).
 async function criar(dados, db = pool) {
+  const horarioValidado = validarHorarioSemanal(dados.horario_semanal);
   const { rows } = await db.query(
     `INSERT INTO candidaturas
        (tipo, nome, nome_comercio, contato_telefone, contato_email, endereco, cidade, uf, cep,
-        segmento, fluxo_estimado_mensal, mensagem, conta_id, origem, chave_pix, plano_ponto_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        segmento, fluxo_estimado_mensal, mensagem, conta_id, origem, chave_pix, plano_ponto_id,
+        horario_semanal)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
     [
       dados.tipo,
       dados.nome,
@@ -30,6 +33,7 @@ async function criar(dados, db = pool) {
       dados.origem || 'site',
       dados.chave_pix || null,
       dados.plano_ponto_id || null,
+      horarioValidado ? JSON.stringify(horarioValidado) : null,
     ],
   );
   return rows[0];

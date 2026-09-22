@@ -1,3 +1,12 @@
+/* Checkbox de tabela sem classe nenhuma (Custos, Categorias, Comodato,
+   Benefícios — "ativo/disponível", achado na varredura visual de
+   21/09/2026) saía azul, a cor padrão do navegador — a única cor de destaque
+   do resto do admin é a marca (laranja). Regra geral em vez de uma classe
+   por tela: pega qualquer checkbox esquecido sem quebrar os que já têm
+   `accent-color` próprio (`.check-row`, `.benef-check`), porque a
+   especificidade é igual e a ordem no arquivo não muda o resultado deles. */
+input[type="checkbox"] { accent-color: var(--brand); }
+
 /* Painel administrativo: casca própria (menu lateral + área de conteúdo)
    em vez do cabeçalho do site — são 12 seções, uma fileira de abas não
    cabe mais e não dá pra agrupar por assunto. */
@@ -60,6 +69,18 @@
 .alerta.urgente b { color: var(--err); }
 .tudo-em-dia { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; font-size: .88rem; }
 
+/* Card de ponto com foto (Rede, 21/09/2026) — a grade (.pontos-grid) e a
+   casca do card (.ponto-card, badge/h4/p) já existiam em public/style.css
+   pro site público; aqui só entra o que o admin precisa a mais: a foto em
+   destaque no topo e o reset de link (o card é um <a>, o site público usa
+   <div>). */
+.ponto-card-foto { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
+.ponto-card-foto:hover { border-color: var(--brand); }
+.ponto-card-foto img, .ponto-card-semfoto {
+  width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin: -20px -20px 12px; width: calc(100% + 40px);
+}
+.ponto-card-semfoto { display: flex; align-items: center; justify-content: center; background: var(--bg-alt); color: var(--text-dim); font-size: .8rem; }
+
 /* Tabelas: caixa com busca, filtros por status e contagem. Ordenação por
    clique no cabeçalho é client-side — são dezenas de linhas, não milhares. */
 .tabela-caixa { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
@@ -73,6 +94,10 @@
 .tabela-caixa th, .tabela-caixa td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
 .tabela-caixa thead th { position: sticky; top: 0; background: var(--bg-alt); z-index: 1; color: var(--text-dim); font-weight: 600; font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; }
 .tabela-caixa tbody tr:hover { background: var(--bg-alt); }
+/* Linha que abre um detalhe ao clicar (Anunciantes, 21/09/2026) — o hover
+   já existe pra toda linha de tabela; só falta o cursor dizer que esta é
+   clicável. */
+.linha-clicavel { cursor: pointer; }
 .tabela-caixa tbody tr:last-child td { border-bottom: none; }
 /* Número alinhado à direita compara de relance; à esquerda, não. Mesma
    regra que a .mini-table já tinha — faltava valer nas tabelas do admin. */
@@ -135,7 +160,17 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
 .gate { max-width: 360px; margin: 90px auto; }
 .benef-lista { display: flex; flex-direction: column; gap: 3px; max-height: 132px; overflow-y: auto; padding-right: 4px; }
 .benef-check { display: flex; align-items: flex-start; gap: 6px; font-size: .78rem; color: var(--text-dim); cursor: pointer; white-space: normal; }
-.benef-check input { margin: 2px 0 0; accent-color: var(--brand); }
+/* Reset explícito (não só herdar): igual ao de `.check-row` em public/style.css
+   — sem isto, dentro de um `<form class="card">` (Convites, "papéis da conta
+   que vai nascer") o checkbox herda `.card input { width:100%; padding:11px }`
+   e vira uma barra cinza cobrindo a linha inteira, em vez de uma caixinha —
+   achado na varredura visual de 21/09/2026. Em `.plano-edit` (Planos,
+   benefícios do plano) não tinha esse container pai, por isso nunca quebrou
+   lá — mas o reset vale sempre, não só onde já doeu. */
+.benef-check input {
+  width: 15px; height: 15px; min-width: 15px; flex: 0 0 15px;
+  margin: 2px 0 0; padding: 0; background: none; border-radius: 4px; accent-color: var(--brand);
+}
 .bloco-novo { margin-bottom: 18px; }
 .bloco-novo > summary { display: inline-flex; cursor: pointer; }
 

@@ -3,12 +3,22 @@ const pool = require('../db/pool');
 const { gerarHash, conferirHash } = require('../lib/senha');
 
 // Dispositivo = uma tela. Ponto = o comércio/endereço (migration 019).
-const CAMPOS_ATUALIZAVEIS = ['apelido', 'status', 'custo_equipamento', 'meses_amortizacao', 'instalado_em'];
+const CAMPOS_ATUALIZAVEIS = [
+  'apelido',
+  'status',
+  'custo_equipamento',
+  'meses_amortizacao',
+  'instalado_em',
+  // Migration 065 — 1 (padrão) devolve o array de sempre pro player web; 2 é
+  // o envelope novo, pra quem instalar o app Android nativo nesta tela.
+  'contrato_playlist',
+];
 const STATUS = ['ativo', 'reparo', 'inativo'];
 
 // pin_hash nunca sai daqui pra fora.
 const CAMPOS_PUBLICOS = `id, ponto_id, apelido, aparelho_id, status, ultima_vez_online,
-  custo_equipamento, meses_amortizacao, instalado_em, created_at, (pin_hash IS NOT NULL) AS tem_pin`;
+  custo_equipamento, meses_amortizacao, instalado_em, created_at, (pin_hash IS NOT NULL) AS tem_pin,
+  contrato_playlist`;
 
 async function criar(pontoId, dados = {}, db = pool) {
   const { rows } = await db.query(
@@ -33,7 +43,7 @@ async function buscarPorId(id) {
 // Uso interno do player: precisa do ponto junto (categoria, horário, cota).
 async function buscarComPonto(id) {
   const { rows } = await pool.query(
-    `SELECT d.id, d.ponto_id, d.aparelho_id, d.status,
+    `SELECT d.id, d.ponto_id, d.aparelho_id, d.status, d.contrato_playlist,
             p.categoria_id, p.horario_abertura, p.horario_fechamento,
             p.cota_autoanuncio_slots_hora, p.anunciante_id AS dono_conta_id, p.status AS ponto_status,
             (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
@@ -46,7 +56,8 @@ async function buscarComPonto(id) {
 // Mesmos campos públicos, prefixados com o alias da tabela — sem isso
 // `status`/`created_at` ficam ambíguos no JOIN com pontos.
 const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status, d.ultima_vez_online,
-  d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin`;
+  d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin,
+  d.contrato_playlist`;
 
 // Mesmos campos de listarTodos (com nome, cidade e status do ponto): a tela de
 // telas do admin mostra essas colunas, e sem elas filtrar por ponto devolvia
@@ -127,6 +138,11 @@ async function contarAtivas() {
 
 async function deletar(id) {
   await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [id]);
+  // As duas de baixo (migrations 064 e 065) também referenciam dispositivos —
+  // sem elas aqui, apagar uma tela que já gerou playlist ou proof-of-play
+  // quebra a FK e a exclusão nunca funciona, silenciosamente até alguém tentar.
+  await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1', [id]);
+  await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM dispositivos WHERE id = $1', [id]);
 }
 

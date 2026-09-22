@@ -78,7 +78,38 @@ pelo Codex — explícito, não assumir o contrário.**
     inferência do contrato de API), e a assinatura afetada corrigida ou o
     cliente contornado manualmente.
 
+- **Checar duplicidade de contas por documento (CPF/CNPJ) em produção**
+  (21/09/2026, admin reorganizado por este agente).
+  - Estado: `src/anunciantes/repository.js` passou a normalizar `cpf_cnpj`
+    na gravação (dali pra frente); contas já existentes com o mesmo
+    documento em formatações diferentes **não foram consolidadas** — nenhum
+    apagamento, nenhum merge automático, a pedido explícito do dono.
+  - Query de diagnóstico pronta em `docs/PENDENCIAS.md`, seção G (agrupa por
+    documento normalizado, mostra os ids duplicados). Rodada contra o banco
+    local: 0 duplicidades (é dado de sandbox). **Produção ainda não foi
+    checada.**
+  - Critério de conclusão: rodar a query em produção; se houver duplicidade,
+    decidir com o dono caso a caso (nunca merge automático) antes de propor
+    qualquer constraint `UNIQUE` em `cpf_cnpj`.
+
+- **Marcar `contrato_playlist=2` na(s) tela(s) do app Android nativo, quando
+  o dono confirmar o app rodando em hardware real** (21/09/2026 — contrato
+  do backend pronto, ver `.ia/HANDOFF.md` e `docs/PENDENCIAS.md` seção H).
+  - Estado: nenhuma tela em produção está no contrato novo ainda — todas
+    seguem em `1` (array de sempre), player web intocado.
+  - Dependência: `sancompany/playlist.mostrai`, `docs/pendencias.md`, "só o
+    dono faz" — instalar o APK num aparelho real e testar contra este
+    backend de verdade (nunca testado, só JSON sintético do lado do app).
+  - Critério de conclusão: `PATCH /admin/dispositivos/:id
+    {"contrato_playlist":2}` na tela certa, e confirmação visual de que o
+    app está tocando a playlist e reportando `/played` em lote.
+
 ## NEXT
+
+- **IDEIA FUTURA, não implementada (21/09/2026, pedido explícito do dono ao
+  registrar, não ao construir):** reservar ~20% da capacidade de cada ponto
+  pra conteúdo institucional/estratégico (hoje é 100% comercial). Não mexer
+  em playlist/pacing pra isso sem novo pedido — ver `.ia/HANDOFF.md`.
 
 - **Completar o teste ponta a ponta do congelamento da hora da playlist**
   (ADR-005).

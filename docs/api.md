@@ -37,7 +37,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/anunciantes/me` | A conta: `papeis`, `status`, `plano_id`, `plano` (o objeto do plano assinado, com `duracao_maxima_segundos`, `pontos_incluidos` e `segundos_por_hora` — é o que o painel usa pra dizer o limite de duração e montar a escolha de pontos), `data_expiracao`, `plano_cortesia`, `comunicacoes_revogado_em`, `dados_opcionais_apagados_em`, `email_confirmado` (migration 061 — front mostra aviso em toda página de conta enquanto `false`), e `vendedor` (perfil) quando tem o papel. (`meses_gratis_creditados` e `meses_cobertura_pendentes` sairam do banco na migration 021.) |
-| GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` **e `a_instalar`** pra tela de escolha (RN-49: ponto em instalação já é vaga do plano): `limite` (`planos.pontos_incluidos`), `escolhidos` (ids), `pontos[]` com `nome`, `cidade`, `endereco`, `status`, `escolhido`, `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido) e `bloqueado` (RN-55 — cruzou 80% e parou de aceitar escolha nova; nunca `true` pra um ponto que a conta já tinha escolhido), e `cobertura` com o bônus da RN-49, sempre em horas por mês (a unidade que o cliente comprou; segundos por hora é unidade de motor e não sai daqui) — `contratados`, `veiculando`, `horas_contratadas`, `horas_sem_compensacao`, `horas_hoje`, `compensando`. 400 se a conta não tem plano. Reavalia o bloqueio (RN-55) antes de responder. |
+| GET | `/anunciantes/me/pontos-disponiveis` | Os pontos `em_operacao` **e `a_instalar`** pra tela de escolha (RN-49: ponto em instalação já é vaga do plano): `limite` (`planos.pontos_incluidos`), `escolhidos` (ids), `pontos[]` com `nome`, `cidade`, `endereco`, `status`, `escolhido`, `ocupacao` (0-100, quanto dos 3600s daquele ponto já está vendido), `horario` (resumo textual do `horario_semanal` do ponto, ex. `"Seg-sex 09:00-18:00 · Sáb 09:00-15:00 · Dom fechado"`, `null` se o ponto ainda não informou — vai no `title` do nome no card, 22/09/2026) e `bloqueado` (RN-55 — cruzou 80% e parou de aceitar escolha nova; nunca `true` pra um ponto que a conta já tinha escolhido), e `cobertura` com o bônus da RN-49, sempre em horas por mês (a unidade que o cliente comprou; segundos por hora é unidade de motor e não sai daqui) — `contratados`, `veiculando`, `horas_contratadas`, `horas_sem_compensacao`, `horas_hoje`, `compensando`. 400 se a conta não tem plano. Reavalia o bloqueio (RN-55) antes de responder. |
 | PUT | `/anunciantes/me/pontos` | ⚠️ Mesmo caminho do `POST` abaixo, sentido diferente: o `POST` é o DONO DE PONTO cadastrando um endereço novo, o `PUT` é o ANUNCIANTE escolhendo onde aparece. Separa o verbo, não o caminho. Troca a escolha inteira: `{pontos:[id,...]}`. Numa transação — metade salva deixaria a conta numa cobertura que ela não escolheu. 400 se passar do limite do plano ou se algum ponto não existir na rede (`em_operacao` ou `a_instalar` — RN-49). 409 se algum ponto NOVO na lista (que a conta ainda não tinha) estiver travado por ocupação (RN-55) — `{erro, pontosBloqueados:[id,...]}`; manter um ponto que já era seu, mesmo travado, não é recusado. Lista vazia devolve a conta pra distribuição automática (RN-42, que também pula pontos travados). |
 | PATCH | `/anunciantes/me` | Edita dados de contato/endereço. |
 | POST | `/anunciantes/me/foto` | Foto de perfil (multipart `arquivo`). |
@@ -76,7 +76,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 |---|---|---|
 | GET | `/conta/modos` | `{papeis, modos:{anunciante:{liberado, precisaEndereco}, ponto:{liberado, pedido}, vendedor:{liberado, pedido}}, bonus:{ponto, anuncio}}` — o que o painel usa pra desenhar as três abas e os cards de bônus. `vendedor.pedido` fica sempre `null` daqui pra frente (18/09/2026) — só existe pra linha antiga de quem pediu antes disso. |
 | POST | `/conta/modos/anunciante` | Ativa o modo anúncios na própria conta: exige `endereco, cidade, uf, cep` (aceita `categoria_id`/`categoria_livre`). Acrescenta o papel. |
-| POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, `endereco` e `fluxo_estimado_mensal` obrigatórios — este último desde 21/09/2026; `plano_ponto_id` opcional). `segmento` não precisa vir no corpo: resolvido no servidor a partir de `categoria_livre` da conta ou, se ela usa o catálogo fixo, do nome de `categoria_id`. 409 se já houver pedido em análise. E-mail de aviso pro dono (`enviarCandidaturaNova`), fire-and-forget. |
+| POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, `endereco`, `fluxo_estimado_mensal` e `horario_semanal` obrigatórios — este último desde 22/09/2026; `plano_ponto_id` opcional). `segmento` não precisa vir no corpo: resolvido no servidor a partir de `categoria_livre` da conta ou, se ela usa o catálogo fixo, do nome de `categoria_id`. `horario_semanal` é `{seg,ter,qua,qui,sex,sab,dom}`, cada dia `null` (fechado) ou `{abre,fecha}` em `HH:MM` (`src/lib/horario-semanal.js#validar`) — a tela só pede 3 grupos (seg-sex/sáb/dom) e replica seg-sex pros 5 dias. 409 se já houver pedido em análise. E-mail de aviso pro dono (`enviarCandidaturaNova`), fire-and-forget. |
 | POST | `/conta/modos/vendedor/pedir` | **400** — aposentado em 18/09/2026 (RN-03). Vendedor não pede mais: fala direto com o dono, que gera o convite à mão. |
 | POST | `/convites/:token/aceitar` | Conta logada aceita um convite: os papéis novos entram nesta conta (vendedor exige `chave_pix`; ponto vindo de candidatura cria ponto + Tela 1). Consome o convite. |
 | POST | `/conta/bonus/anuncio/resgatar` | Módulo "anúncio grátis após N meses como ponto" (`planos_ponto.plano_bonus_*`): quando `bonus.anuncio.disponivel`, ativa o plano na conta por M meses sem cobrança (papel anunciante entra junto). 409 se já houver plano ativo. |
@@ -87,10 +87,91 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/playlist/:dispositivoId` | A HORA INTEIRA desta tela: 3600 segundos de itens `{anuncianteId, url, duracaoSegundos, autoanuncio, institucional}`. Exibição contratada primeiro, cota do dono depois, e o espaço vago preenchido com `institucional: true` (sem url — o player mostra a peça `#vazio`). Autoanúncio do dono e institucional vêm com `anuncianteId: null` e não são contados. Programa os contadores da hora. |
-| POST | `/player/:dispositivoId/played` | `{anuncianteId}` — confirma uma exibição. Só aceita quem está programado nesta tela nesta hora. |
+| GET | `/playlist/:dispositivoId` | A HORA INTEIRA desta tela. Duas formas, decididas por `dispositivos.contrato_playlist` (migration 065) — ver "Contrato novo" abaixo. |
+| POST | `/player/:dispositivoId/played` | Duas formas no mesmo corpo, decididas pelo que chega — ver "Contrato novo" abaixo. |
 | POST | `/player/:dispositivoId/heartbeat` | Marca a tela online. |
 | POST | `/player/:dispositivoId/painel` | `{pin}` → painel da tela (mesmo formato do painel do dono). Rate-limited. |
+
+### Contrato 1 — array (padrão, player web)
+
+`contrato_playlist = 1` (padrão de toda tela nova). `GET /playlist/:dispositivoId`
+devolve um array puro de itens `{anuncianteId, url, duracaoSegundos, autoanuncio,
+institucional}` — exibição contratada primeiro, cota do dono depois, espaço vago
+preenchido com `institucional: true` (sem url — o player mostra a peça `#vazio`).
+Autoanúncio do dono e institucional vêm com `anuncianteId: null` e não são
+contados. Programa os contadores da hora (`exibicoes_contador`).
+
+`POST /player/:dispositivoId/played` recebe `{anuncianteId}` e confirma uma
+exibição — só aceita quem está programado nesta tela nesta hora. `200
+{ok:true, janela}` credita; `200 {ok:true, contou:false, motivo:"ja_completo"}`
+é a própria TV reenviando o que já contou (não é erro); `400` é pedido inválido
+(anunciante não programado).
+
+### Contrato 2 — envelope (app Android nativo, `sancompany/playlist.mostrai`, 21/09/2026)
+
+`contrato_playlist = 2`, marcado por tela no admin (`PATCH
+/admin/dispositivos/:id {"contrato_playlist":2}`) — pra quem instalar o app
+nativo naquela TV. `GET /playlist/:dispositivoId` devolve:
+
+```json
+{
+  "versaoContrato": 2,
+  "janelaId": "<dispositivoId>|<horaISO>",
+  "janelaInicio": "2026-09-21T22:00:00.000Z",
+  "janelaFim": "2026-09-21T23:00:00.000Z",
+  "servidorAgora": "2026-09-21T22:00:07.123Z",
+  "itens": [
+    {
+      "itemProgramacaoId": "<janelaId>|<indice>|<anuncianteId|dono|inst>",
+      "criativoId": "42",
+      "anuncianteId": "7",
+      "autoanuncio": false,
+      "institucional": false,
+      "contabiliza": true,
+      "url": "https://.../normalizado.mp4",
+      "duracaoSegundos": 15
+    }
+  ]
+}
+```
+
+`itemProgramacaoId` é opaco pro app (só compara igualdade) mas tem forma fixa —
+`indice` é a posição na sequência congelada da hora (`playlist_hora_congelada`,
+migration 064), **antes** de remover vagas que saíram de elegibilidade no meio
+da hora, pra não deslocar o índice de quem vem depois a cada poll. Estável
+entre polls da mesma hora (é o que permite ao app reancorar sem reiniciar a
+exibição em andamento). `criativoId` é o id real de `criativos` — muda só
+quando o criativo muda de verdade (upload novo, nunca edição do mesmo id).
+
+`POST /player/:dispositivoId/played` recebe `{"eventos":[{execucaoId,
+janelaId, itemProgramacaoId, criativoId, iniciadoEm, terminadoEm}, ...]}` (até
+50 por lote) e devolve `{"resultados":[{execucaoId, status}, ...]}`. `status`
+é sempre um destes (vocabulário fixo, definido do lado do app —
+`FilaProofOfPlay.STATUS_DEFINITIVOS` em `playlist.mostrai` — mudar aqui sem
+mudar lá quebra a fila de retentativa):
+
+- `contabilizado` — creditado.
+- `duplicado` — `execucaoId` já visto antes (retentativa depois de resposta
+  perdida); não credita de novo.
+- `teto_atingido` — a hora já tinha `vezes_confirmadas = vezes_programadas`
+  pra este anunciante quando este `execucaoId` (novo) chegou.
+- `janela_desconhecida` — `itemProgramacaoId` aponta pra outra tela, ou pra
+  uma janela que nunca existiu nesta.
+- `item_invalido` — `itemProgramacaoId`/`janelaId` malformado.
+- `janela_expirada` — a hora referenciada é velha demais (mesma folga de 15
+  minutos da virada de hora do contrato 1, `FOLGA_VIRADA_MIN`).
+
+Deduplicação por `execucaoId` é obrigatória e durável — ledger em
+`execucoes_confirmadas` (migration 065), reserva e crédito na MESMA
+transação (`src/playlist/execucoes-repository.js`), pra um crash no meio
+nunca deixar "já visto" gravado sem ter creditado. `criativoId`/`janelaId`
+que o app manda de volta não são cross-checados contra o banco além do
+prefixo de `itemProgramacaoId` — a confiança é a mesma chave de aparelho de
+sempre (`X-Aparelho-Id`), igual ao contrato 1.
+
+Registra 1 evento por LOTE em `eventos` (`playlist:proofofplay_lote`, com a
+contagem por status) — não por execução, mesmo motivo do comentário em
+`src/player/routes.js` sobre `exibicao:video_toca` nunca virar linha própria.
 
 ## Admin (`/admin/*`, sessão de admin)
 
@@ -136,8 +217,8 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/pontos` | lista |
-| POST | `/admin/pontos` | cria |
-| PATCH | `/admin/pontos/:id` | status, endereço, ajuda de custo, cota |
+| POST | `/admin/pontos` | cria. `horario_semanal` opcional aqui (exceção do cadastro manual — a tela do admin só manda se o operador marcar "já sei o horário", pra não gravar 09h-18h como se fosse real) |
+| PATCH | `/admin/pontos/:id` | status, endereço, ajuda de custo, cota, `horario_semanal` (mesmo formato de `POST /conta/modos/ponto/pedir`, editável a qualquer momento no card "Horário de funcionamento" do Resumo do ponto) |
 | POST | `/admin/pontos/:id/foto` | foto do comércio |
 | GET | `/admin/pontos-offline` | telas sem sinal além do limite |
 | GET | `/admin/pontos/:pontoId/dispositivos` | telas do ponto |

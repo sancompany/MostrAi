@@ -35,7 +35,7 @@ esperar "modo anúncios ativado (papel entra)" '"papeis":\["vendedor","anunciant
 r=$(curl -s -b lia.txt -X POST $B/anunciantes/$LIA/assinar -H "$J" -d '{"planoId":"essencial-3m"}'); esperar "agora consegue assinar" 'checkoutUrl' "$r"
 
 echo "== pede modo ponto de dentro do painel; admin libera na conta =="
-r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"Loja da Lia","endereco":"Rua C, 3","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"loja","fluxo_estimado_mensal":2000,"plano_ponto_id":"ajuda-custo"}')
+r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"Loja da Lia","endereco":"Rua C, 3","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"loja","fluxo_estimado_mensal":2000,"plano_ponto_id":"ajuda-custo","horario_semanal":{"seg":{"abre":"09:00","fecha":"18:00"},"ter":{"abre":"09:00","fecha":"18:00"},"qua":{"abre":"09:00","fecha":"18:00"},"qui":{"abre":"09:00","fecha":"18:00"},"sex":{"abre":"09:00","fecha":"18:00"},"sab":{"abre":"09:00","fecha":"15:00"},"dom":null}}')
 esperar "pedido de ponto criado" '"ok":true' "$r"; CAND=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/')
 r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"x","endereco":"y"}'); esperar "segundo pedido é recusado" 'em análise' "$r"
 r=$(curl -s -b lia.txt $B/conta/modos); esperar "modos mostra pedido pendente de ponto" '"ponto":\{"liberado":false,"pedido":\{"tipo":"ponto"' "$r"

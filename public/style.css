@@ -1021,6 +1021,7 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .u-op-60 { opacity: .6; }
 .u-d-block { display: block; }
 .u-pointer { cursor: pointer; }
+.u-cursor-default { cursor: default; }
 
 /* FAQ da vitrine. <details> nativo: abre e fecha sem uma linha de script, o
    que tambem e o que permite a CSP nao liberar script inline. */

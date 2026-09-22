@@ -22,6 +22,7 @@ const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
 const { enviarCandidaturaNova } = require('../financeiro/email');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
+const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 
 const router = express.Router();
 
@@ -53,6 +54,7 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         responsavel_nome: cand.nome,
         responsavel_contato: cand.contato_telefone,
         fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
+        horario_semanal: cand.horario_semanal || null,
         plano_ponto_id: opcao ? opcao.id : null,
         valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
         cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
@@ -238,6 +240,20 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
     return res.status(400).json({ erro: 'opção de comodato inválida' });
   }
+  // Horário de funcionamento — pedido do dono, 22/09/2026: quem cede a
+  // parede diz o horário do próprio comércio nesta mesma tela, junto do
+  // resto do cadastro (não numa tela separada depois). Obrigatório aqui —
+  // é o único lugar onde a pessoa que sabe o horário está preenchendo o
+  // formulário; o cadastro manual do admin (exceção) deixa opcional.
+  if (!req.body.horario_semanal) {
+    return res.status(400).json({ erro: 'horário de funcionamento é obrigatório' });
+  }
+  let horario_semanal;
+  try {
+    horario_semanal = validarHorarioSemanal(req.body.horario_semanal);
+  } catch (err) {
+    return res.status(err.status || 400).json({ erro: err.message });
+  }
   // Segmento do comércio: a conta já respondeu isso pra poder anunciar
   // (POST /conta/modos/anunciante exige o ramo) — reaproveita em vez de
   // perguntar de novo. `categoria_livre` é texto direto; `categoria_id`
@@ -255,6 +271,7 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
     contato_telefone: req.body.contato_telefone || conta.contato_telefone,
     contato_email: conta.contato_email,
     segmento,
+    horario_semanal,
     conta_id: conta.id,
     origem: 'painel',
   });

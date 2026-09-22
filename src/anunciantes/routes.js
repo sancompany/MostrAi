@@ -12,6 +12,7 @@ const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
 const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
+const { resumo: resumoHorarioSemanal } = require('../lib/horario-semanal');
 const { cepValido, telefoneE164, data } = require('../br/formato');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
@@ -433,7 +434,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // perder o lugar num comércio que está sendo montado. Ele não veicula, e é
   // por isso que a compensação abaixo o trata como ponto FALTANDO.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
             (ap.ponto_id IS NOT NULL) AS escolhido
        FROM pontos p
@@ -442,7 +443,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status IN ('em_operacao', 'a_instalar')
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.escolha_bloqueada_em, ap.ponto_id
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
       ORDER BY p.status DESC, p.nome`,
     [conta.id],
   );
@@ -491,6 +492,11 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       endereco: r.endereco,
       escolhido: r.escolhido,
       status: r.status,
+      // Pedido do dono, 22/09/2026: quem escolhe o ponto vê o horário de
+      // funcionamento dele. Texto pronto (não o objeto por dia) — o
+      // front-end só exibe, não precisa saber o formato de
+      // src/lib/horario-semanal.js.
+      horario: resumoHorarioSemanal(r.horario_semanal),
       // Quanto da hora daquele ponto já está vendido. 100% = cheio.
       // Ponto que ainda não veicula não tem hora vendida — 0 não é "vazio de
       // verdade", é "ainda não existe", e a tela diz isso com o status.

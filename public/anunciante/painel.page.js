@@ -103,6 +103,55 @@ function montarLinkVendedor(estado) {
 // exclusivo do ponto). Bem mais simples que o formulário completo em
 // modos.js (CARDS.ponto, ainda usado por /anunciante/ponto.html): sem
 // escolha de comodato aqui — quem se candidata combina isso no WhatsApp.
+// Horário de funcionamento do ponto (pedido do dono, 22/09/2026) — mesmo
+// padrão de 3 grupos de public/modos.js (sem módulo compartilhado entre os
+// dois arquivos, por convenção do projeto).
+const GRUPOS_HORARIO = [
+  { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
+  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
+  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
+];
+
+const CAMPO_HORARIO_SEMANAL = () => `
+  <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
+  ${GRUPOS_HORARIO.map(
+    (g) => `
+    <div class="field-row u-ai-c" data-horario-grupo="${g.id}">
+      <div class="u-col-2"><b>${g.rotulo}</b></div>
+      <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
+      <div class="u-col field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
+        <div class="u-col"><label>Abre</label><input type="time" data-horario-abre value="09:00"></div>
+        <div class="u-col"><label>Fecha</label><input type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
+      </div>
+    </div>`,
+  ).join('')}`;
+
+function ligarHorarioSemanal(form) {
+  form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+    const chk = grupo.querySelector('[data-horario-fechado]');
+    const campos = grupo.querySelector('[data-horario-campos]');
+    chk.addEventListener('change', () => {
+      campos.hidden = chk.checked;
+    });
+  });
+}
+
+function lerHorarioSemanalDoForm(form) {
+  const porGrupo = {};
+  form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+    const id = grupo.dataset.horarioGrupo;
+    const fechado = grupo.querySelector('[data-horario-fechado]').checked;
+    porGrupo[id] = fechado
+      ? null
+      : {
+          abre: grupo.querySelector('[data-horario-abre]').value,
+          fecha: grupo.querySelector('[data-horario-fecha]').value,
+        };
+  });
+  const semana = porGrupo.semana;
+  return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
+}
+
 function montarCardPonto(estado) {
   const caixa = document.getElementById('cardPonto');
   if (!caixa || !estado) return;
@@ -142,15 +191,18 @@ function montarCardPonto(estado) {
             <label for="cp_fluxo">Média de pessoas que passam por mês</label>
             <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
           </div>
-          <div>
+          <div class="u-mb-12">
             <label for="cp_mensagem">Algo mais? (opcional)</label>
             <textarea id="cp_mensagem" name="mensagem" rows="2"></textarea>
           </div>
+          ${CAMPO_HORARIO_SEMANAL()}
           <button class="btn primary" type="submit">Enviar meu interesse</button>
           <p class="form-msg" id="cardPontoMsg" role="status"></p>
         </form>
       </div>
     </div>`;
+
+  ligarHorarioSemanal(document.getElementById('formCardPonto'));
 
   document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
     const conteudo = document.getElementById('conteudoCardPonto');
@@ -182,6 +234,7 @@ function montarCardPonto(estado) {
           cep: ANUNCIANTE.cep,
           fluxo_estimado_mensal: Number(e.target.fluxo_estimado_mensal.value),
           mensagem: e.target.mensagem.value.trim() || null,
+          horario_semanal: lerHorarioSemanalDoForm(e.target),
         }),
       });
       const corpo = await r.json().catch(() => ({}));
@@ -358,10 +411,22 @@ async function carregarPontos() {
       // caixa, mas continua marcando/desmarcando o checkbox normalmente —
       // e os dois (label e link) viram irmãos dentro do mesmo grid da
       // linha, então o alinhamento continua igual.
+      // Horário de funcionamento (22/09/2026, pedido do dono) vai no title
+      // do nome — a linha já é enxuta de propósito (19/09/2026, "se existir
+      // muitos pontos ele se perde"), sem espaço pra mais uma coluna visível.
+      // `title` sozinho não é acessível (não existe pra quem navega por
+      // teclado, e leitor de tela não anuncia de forma confiável) — o span
+      // também ganha `tabindex`/`aria-label`, que resolve teclado e leitor
+      // de tela nos dois; toque-e-segure no celular sem leitor de tela
+      // continua sem revelar o texto (limite conhecido do `title`, aceito
+      // pelo dono junto da compactação: "mais excluso"). `null` (ponto
+      // antigo, sem horário informado ainda) não aparece — mostrar "não
+      // informado" por hover de todo ponto seria mais ruído que ajuda.
+      const tituloNome = p.horario ? `${p.nome} · ${p.horario}` : p.nome;
       return `<div class="ponto-escolha${cheio ? ' cheio' : ''}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
       <label class="ponto-marcar">
         <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
-        <span class="ponto-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+        <span class="ponto-nome" title="${esc(tituloNome)}" ${p.horario ? `tabindex="0" aria-label="${esc(tituloNome)}"` : ''}>${esc(p.nome)}</span>
         <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
         <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
       </label>

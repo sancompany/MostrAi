@@ -1,10 +1,162 @@
 # Current Handoff
 
 ## Updated
-2026-09-21
+2026-09-22
 
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
+
+## Horário de funcionamento do ponto, construído (22/09/2026, este agente)
+Pedido do dono, funcionalidade que ele lembrava de ter esquecido: cada ponto
+precisa dizer seu horário de funcionamento (seg-sex / sáb / dom), e isso
+precisa aparecer pro anunciante ao escolher onde o anúncio roda. Investigação
+confirmou: `pontos.horario_abertura`/`horario_fechamento` (migration 001)
+existiam no banco desde o início e nunca foram ligados a formulário nenhum —
+exatamente a lacuna que o dono lembrava. Detalhe técnico completo em
+`docs/PENDENCIAS.md`, seção J.
+
+**O que mudou, em uma linha cada:**
+- Migration 066: `pontos.horario_semanal` e `candidaturas.horario_semanal`
+  (jsonb, um valor por dia da semana), colunas antigas mantidas paradas.
+- `src/lib/horario-semanal.js` — `validar()` e `resumo()`, únicos, usados
+  nos três lugares que escrevem ou leem o campo.
+- `POST /conta/modos/ponto/pedir` (as duas telas públicas de candidatura)
+  passou a EXIGIR o horário — único momento em que quem sabe o horário do
+  comércio está preenchendo o formulário.
+- Widget de 3 grupos (seg-sex/sáb/dom, domingo fechado por padrão)
+  duplicado em `public/modos.js`, `public/anunciante/painel.page.js` e
+  `public/admin/index.page.js` — sem bundler, é a convenção do projeto.
+- Admin (`POST /admin/pontos`, cadastro manual) deixa o campo opcional por
+  um checkbox desmarcado — não silenciosamente 09:00-18:00 como se fosse
+  real (placeholder virando dado falso).
+- `GET /anunciantes/me/pontos-disponiveis` ganhou `horario` (resumo
+  textual); o anunciante vê no `title` (tooltip) do nome do ponto, sem
+  alargar a lista compacta (`.ponto-escolha`, redesenhada 19/09/2026).
+- Achado e corrigido no caminho: o card estreito de "Novo ponto" no admin
+  (~420px) espremia os campos de hora até sobrar só o ícone, porque
+  reusava o layout de 3 colunas aninhadas do formulário público (640px) —
+  virou 2 linhas só na versão do admin.
+
+**Verificado:** `tests/horario-semanal.test.js` (8 testes novos), `npm run
+check` (141/141), os e2e que passam pela rota
+(`01-fluxo-api.sh`/`02-...comissao.sh`/`04-modos-e-bonus.sh`/
+`03-navegador.mjs`/`08-candidatura-ponto.mjs`) e verificação visual manual
+por Playwright dos três widgets.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
+## Varredura visual do admin — botões sem CSS e avisos mal coloridos (21/09/2026, este agente)
+Pedido do dono: mapear a funcionalidade do admin e corrigir botão mal estilizado, aviso inútil e função em aberto. Login via Playwright em todos os 12 módulos/22 telas (incluindo detalhe de ponto e de anunciante). Achados reais, corrigidos — detalhe técnico em `docs/PENDENCIAS.md`, seção I:
+- Crash de verdade ao abrir Conteúdo → Aprovação pelo menu (`renderCriativos` recebia `resto=null` do roteador genérico, não `undefined`, e o parâmetro default nunca entrava).
+- 4 `<input type="file">` nativos (cinza, fora do desenho) viraram o padrão já usado em "Subir anúncio": label estilizada escondendo o input de verdade.
+- 2 checkboxes virando "barra cinza" cobrindo a linha inteira (Convites "papéis da conta" e Pontos "Molde de ACM") — mesmo bug do `.card input{width:100%}` que `.check-row` já resolvia noutro lugar, agora generalizado.
+- Checkboxes de tabela azuis (cor do navegador) em Custos/Categorias/Comodato/Benefícios — regra geral `input[type=checkbox]{accent-color:var(--brand)}` no admin, resolve para sempre.
+- Aviso "conciliação nunca rodou" estava verde (`.tudo-em-dia`) e o caso realmente grave (atrasada/abortou) saía SEM cor nenhuma (classe errada, `alertas` plural em vez de `alerta`). Trocados por laranja/vermelho, condizente com a gravidade.
+- De brinde: a violação de CSP inline-style em Diagnóstico (já sabida, "não tocada") sumiu ao trocar `style="padding:14px"` por uma classe utilitária que já existia.
+
+Nenhuma função foi removida — a varredura não achou nada sem uso real; o inventário de `docs/specs/2026-09-21-admin-inventario-funcoes.md` continua batendo. `npm run check` 133/133, zero erro de console em todas as 22 telas (desktop + mobile 390×844). Dados de teste acumulados no banco (24 eventos pendentes, um "Contador" duplicado em Custos) não foram apagados — é limpeza de banco, que o dono já disse que vai fazer à parte.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
+## Contrato novo de playlist/played pro app Android nativo (21/09/2026, este agente)
+Pedido direto do dono: "leia o repositório do aplicativo e faça o que tiver
+que fazer do seu lado" — referência ao app irmão `sancompany/playlist.mostrai`
+(Android TV nativo, sideload), cuja estação 5 já estava pronta esperando o
+Mostraí publicar o contrato que ele já sabe consumir (envelope com
+`versaoContrato`/`janelaId`/`itemProgramacaoId`/`criativoId`, `POST /played`
+em lote deduplicado por `execucaoId`). Contrato completo em `docs/api.md`,
+"Tela (chave de aparelho)"; resumo técnico em `docs/PENDENCIAS.md` seção H.
+
+**O que mudou, em uma linha cada:**
+- `dispositivos.contrato_playlist` (migration 065, padrão `1`) decide POR
+  TELA se `/playlist` devolve o array de sempre ou o envelope novo — o app
+  não manda cabeçalho de versão, então virou config por dispositivo.
+- `itemProgramacaoId` embute índice (posição na hora congelada) + quem
+  creditar, pra `/played` não precisar reconstruir a hora.
+- `execucoes_confirmadas` (ledger novo) + `execucoes-repository.js` credita
+  e deduplica na MESMA transação — sem essa atomicidade, um crash no meio
+  perderia o crédito de uma exibição real pra sempre.
+- Bug achado e corrigido no caminho: `dispositivosRepo.deletar` não limpava
+  `playlist_hora_congelada` (existe desde a migration 064) — apagar tela que
+  já gerou playlist falhava com FK, sempre, desde 19/09. Corrigido.
+
+**Deliberadamente intocado:** `public/player.page.js` (player web, contrato
+1, não mudou nem uma linha) e o repositório `sancompany/playlist.mostrai`
+(o pedido foi só do lado do Mostraí — "do seu lado"). Nenhuma tela em
+produção foi migrada pra `contrato_playlist=2`; isso só faz sentido depois
+do dono confirmar o app rodando em hardware real (pendência do OUTRO
+repositório) e então marcar a tela específica no admin.
+
+**Verificado:** `npm run check` (133/133, 5 testes novos em
+`tests/playlist-contrato-novo.test.js`), e fumaça manual pela API HTTP real
+(servidor local + Postgres local: tela de teste em contrato 2 recebendo o
+envelope, `/played` em lote com item malformado devolvendo `item_invalido`,
+tela legada em paralelo sem mudar nada, exclusão da tela de teste pelo
+admin funcionando).
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
+## Admin: Rede e Anunciantes reorganizados por entidade (21/09/2026, este agente)
+Pedido do dono, spec fechada de 20 itens com screenshots do admin em produção:
+o PONTO virou a entidade central de Rede (era 3 telas/abas separadas — Pontos,
+Telas, Ocupação — cada uma com sua própria tabela) e a tabela de Anunciantes
+foi simplificada (lista enxuta + detalhe por conta, ações saíram da linha).
+Só reorganização administrativa/UX — **nenhuma relação de backend, rota, regra
+de negócio ou autorização foi tocada**; cada função de render nova chama as
+mesmas rotas de sempre.
+
+**Rede:** `renderPontos` virou um dispatcher — grade de cards (`.ponto-card`,
+foto grande quando existe, placeholder quando não) sem `pontoId` no hash, ou
+`renderPontoDetalhe` com 3 sub-abas (Resumo/Telas/Ocupação) quando tem.
+`renderOcupacaoPontos` (tela solta) foi deletada — virou a sub-aba Ocupação,
+sempre filtrada a um ponto. Entrega/banco de horas **saiu do menu Rede**
+(não existe mais como página administrativa independente) — a lógica de
+backend (`src/bancohoras/`) não foi tocada, só a superfície de admin; a regra
+"nunca crédito automático em dinheiro" que estava só no texto da tela deletada
+já vive independentemente em `src/bancohoras/repository.js:115`.
+Roteador do admin (`public/admin/index.page.js`, `resolverAlvo`/`irPara`/
+`renderModulo`) ganhou um 3º segmento de hash (`resto`) pra isso — mecanismo
+genérico, disponível pra qualquer módulo agora, não só Rede/Anunciantes.
+Hashes antigos preservados via `ALIASES_ANTIGOS`: `#telas`→`rede/pontos`,
+`#ocupacaopontos`→`rede/pontos`, `#bancohoras`→`rede/pontos` (a rota antiga
+de Entrega não tem mais tela própria pra apontar; cai na grade de Pontos).
+
+**Anunciantes:** lista caiu pra 7 colunas (nome/contato/ramo/plano/status/
+entrada + badges de papel), sem os botões de ação nem o aviso laranja de
+divergência de ciclo (que **continua existindo em Planos**, não foi apagado,
+só duplicado — a chamada em Anunciantes foi removida, a de Planos ficou
+intacta). Clicar na linha abre `renderAnuncianteDetalhe`: resumo completo +
+os mesmos 4 botões de ação de sempre (Subir anúncio/Liberar plano/Marcar
+parceiro/Cancelar assinatura), mesmas condições de disponibilidade, mesmas
+rotas — só mudou de lugar na tela.
+
+**Documento (CPF/CNPJ) normalizado na gravação, dali pra frente:**
+`src/anunciantes/repository.js` (`criar`/`atualizar`) agora passa `cpf_cnpj`
+por `limpar()` (`src/br/documento.js` — sem pontuação, maiúsculo, preserva
+letra porque CNPJ é alfanumérico desde jul/2024) antes de gravar. Corrigido
+na raiz (repository, não nas rotas) — cobre cadastro público, cadastro do
+admin e convite de uma vez. **Contas já gravadas antes de hoje não foram
+tocadas, nenhuma foi apagada, nenhum merge automático foi feito** — só o
+comportamento novo, dali pra frente. Não há constraint `UNIQUE` em
+`cpf_cnpj` hoje (confirmado antes de mexer — só `contato_email` é único), e
+nenhuma foi criada agora: seria destrutivo sem antes tratar as duplicidades
+existentes. Query pronta pra achar duplicidade por documento normalizado está
+em `docs/PENDENCIAS.md`, seção G — **rodada contra o banco local não achou
+nenhuma (é dado de sandbox); produção ainda não foi checada, fica registrado
+como pendência, não resolvido aqui**.
+
+**IDEIA FUTURA, explicitamente NÃO implementada agora** (só registrada, a
+pedido do dono): reservar ~20% da capacidade de cada ponto pra conteúdo
+institucional/estratégico (hoje é 100% comercial). Fica pra quando o dono
+pedir — não mexer em playlist/pacing pra isso sem novo pedido.
+
+**Verificado:** `npm test` (novo `tests/anunciantes-normalizacao-documento.test.js`,
+3 casos: pontuação removida, letra de CNPJ alfanumérico preservada, edição
+também normaliza), Playwright em desktop e mobile (grade com/sem foto, telas
+0/1/muitas, as 3 sub-abas, lista e detalhe de Anunciantes, hashes antigos
+redirecionando certo), `npm run lint`/`sintaxe`/`formato`.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
 
 ## Troca de plano com acerto agora redireciona pro Checkout aprovar (21/09/2026, este agente)
 O San Checkout mudou de contrato NO MESMO DIA (`sancompany/san_checkout` commit

@@ -3191,3 +3191,291 @@ dados e estados vazios explícitos.
 com dados simulados cobrindo oito pontos, três criativos, pagamentos, uma tela
 offline e compensação de rede. Sem erros no console e sem overflow horizontal
 da página; o gráfico usa rolagem interna no celular quando necessário.
+
+### G — admin: Rede e Anunciantes reorganizados por entidade (21/09/2026)
+
+**[x] Rede — o ponto virou a entidade central**, seguindo o item 5 de
+`docs/specs/2026-09-21-redesenho-admin.md` (que já apontava essa fatia como
+"maior volume de edição inline a migrar", deixada pra depois da navegação
+base). A aba "Pontos" (dentro de Rede) mostra cards com foto, nome, cidade,
+segmento, status, telas e data de cadastro — clicar num card abre o detalhe
+do ponto, com três sub-abas (Resumo/Telas/Ocupação) que absorvem tudo que
+antes eram as abas irmãs "Telas" e "Ocupação". A aba "Entrega" (banco de
+horas) saiu do menu — a função e as rotas continuam intactas
+(`src/bancohoras/`), só a superfície de navegação foi removida (pedido
+explícito do dono); `renderBancoHoras`, sem chamador nenhum, foi apagado do
+front (lint flagou; reconstrói do histórico do git se precisar voltar). Os
+quatro hashes antigos (`#pontos`, `#telas`, `#ocupacaopontos`, `#bancohoras`)
+continuam abrindo alguma coisa válida — os três primeiros caem na grade de
+Pontos, o de Entrega também (a rota não tem mais aba própria pra apontar).
+
+**[x] Anunciantes — listagem virou resumo, ações foram pro detalhe.** A
+tabela caiu de 11 colunas com 3 selects e um `<label>` de upload por linha
+pra 7 colunas só de leitura (empresa, contato, ramo, plano, status, entrou).
+Clicar na linha abre o detalhe da conta, com os mesmos campos editáveis de
+antes (ramo, status, suspensão) e as mesmas quatro ações (Subir anúncio,
+Liberar plano, Marcar parceiro, Cancelar assinatura) — os `prompt()`
+sequenciais de Liberar plano e Marcar parceiro continuam exatamente como
+eram (não viraram formulário — fora do escopo pedido). O aviso laranja de
+divergência de ciclo (`avisoDivergencia`) saiu desta tela — ele nasceu pra
+Planos, e continua lá; Anunciantes só o herdava de quando as duas telas
+viviam juntas.
+
+**Roteamento estendido pra suportar as duas telas:** `resolverAlvo()`
+ganhou um terceiro pedaço de hash (`resto`), cru, que a própria tela
+interpreta — `#rede/pontos/42` abre o ponto 42, `#rede/pontos/42/telas`
+abre direto na sub-aba Telas dele, `#anunciantes/7` abre o detalhe da conta
+7. Nenhum outro módulo dos 12 usa `resto` ainda; o mecanismo é genérico,
+não amarrado a Rede/Anunciantes.
+
+**Validado:** `npm run check` verde, Playwright contra Postgres local real
+(grade de pontos com foto/sem foto, detalhe com as três sub-abas, hash
+antigo `#telas` caindo na grade certa, listagem e detalhe de Anunciantes,
+os dois em mobile 390×844) — sem erro novo de console.
+
+**[ ] IDEIA FUTURA, só documentada — reserva de ~20% da capacidade dos
+pontos.** Pedido explícito do dono: não implementar agora. A ideia é
+reservar uma fatia da hora de cada ponto (≈20%) fora da venda comercial
+normal dos planos, pra (1) conteúdo institucional da própria Mostraí e (2)
+uma futura campanha premium que apareça em TODOS os pontos da rede ao
+mesmo tempo — administrada, quando existir, em Conteúdo → "Anúncios
+próprios/da Mostraí". Não mexe em playlist, no cálculo de ocupação, no
+banco, nem cria plano ou campanha nenhuma agora — decisão e desenho ficam
+pra quando o dono priorizar.
+
+**[ ] PENDÊNCIA — contas duplicadas por documento, não consolidadas.**
+Confirmado no código (21/09/2026): `anunciantes.cpf_cnpj` nunca teve
+normalização nem constraint de unicidade — "552.085.198-01" e
+"55208519801" sempre foram gravados como strings diferentes, e login/dedup
+de conta sempre foi só por e-mail (nunca por documento). A partir de agora
+(`src/anunciantes/repository.js#criar`/`#atualizar`), todo documento novo
+grava normalizado (`src/br/documento.js#limpar` — sem pontuação,
+maiúsculo), e uma edição de `cpf_cnpj` pela rota genérica de PATCH também
+normaliza. **Contas já existentes não foram tocadas nem fundidas** — é
+regra explícita do dono, não esquecimento. Levantamento na base local (sem
+dado real) não achou duplicidade nenhuma; a checagem que importa é em
+produção, com esta consulta (substitua a normalização se o `limpar()` do
+`documento.js` mudar):
+
+```sql
+SELECT upper(regexp_replace(cpf_cnpj, '[^0-9A-Za-z]', '', 'g')) AS normalizado,
+       count(*), array_agg(id ORDER BY id) AS ids
+FROM anunciantes
+GROUP BY normalizado
+HAVING count(*) > 1
+ORDER BY count(*) DESC;
+```
+
+Se aparecer duplicidade real, a fusão é decisão do dono (qual conta é a
+"verdadeira", o que fazer com pontos/assinaturas/histórico da outra) — não
+algo pra automatizar. Uma constraint `UNIQUE` sobre a forma normalizada só
+entra depois dessa decisão; forçar agora, com duplicidade desconhecida,
+quebraria produção sem aviso.
+
+### H — contrato novo de playlist/played, pro app Android nativo (21/09/2026)
+
+O repositório irmão `sancompany/playlist.mostrai` (app Android TV nativo,
+sideload, projeto separado) já estava pronto pro lado dele desde a estação 5
+daquele projeto — faltava só o backend publicar o contrato que ele já sabe
+ler (envelope com `versaoContrato`/`janelaId`/`itemProgramacaoId`/
+`criativoId`, e `POST /played` em lote deduplicado por `execucaoId`). Pedido
+direto do dono: ler o repositório do app e construir o lado do Mostraí.
+Contrato completo, com exemplo de payload e o vocabulário de `status`, em
+`docs/api.md`, seção "Tela (chave de aparelho)".
+
+**[x] `dispositivos.contrato_playlist`** (migration 065, `smallint`, padrão
+`1`) decide POR TELA qual formato `GET /playlist/:dispositivoId` devolve —
+o app novo não manda nenhum cabeçalho de versão (só reconhece a forma pela
+resposta), então o servidor não tinha como decidir por requisição; virou
+config por dispositivo, editável em `PATCH /admin/dispositivos/:id`. Toda
+tela nasce em 1 (o array de sempre) — o player web (`public/player.page.js`)
+não foi tocado e continua recebendo exatamente a mesma coisa de antes.
+
+**[x] Identidade do item sem reconstruir a hora.** `itemProgramacaoId` é
+montado em `gerarPlaylistDaHora` (`src/playlist/gerador.js`) como
+`dispositivoId|horaISO|índice|tipo` — o índice vem da posição na sequência
+congelada (`playlist_hora_congelada`, migration 064) ANTES do filtro que
+remove vagas que saíram de elegibilidade no meio da hora (senão um buraco
+desloca o índice de tudo que vem depois, a cada poll), e `tipo` já é o
+próprio `anuncianteId` (ou `dono`/`inst`) — assim `/played` não precisa
+reler a hora congelada pra saber quem creditar, só decodifica a string que
+ele mesmo devolveu.
+
+**[x] Deduplicação obrigatória e durável.** `execucoes_confirmadas`
+(migration 065, `execucao_id` único) mais `src/playlist/execucoes-
+repository.js#confirmarComDedup` — reserva o `execucaoId` e credita
+`exibicoes_contador` NA MESMA transação, pra um crash no meio nunca deixar
+"já visto" gravado sem ter creditado (a lacuna que motiva o `execucaoId`
+existir, de novo). `limite:` sem expurgo automático — cresce por execução
+confirmada, aceitável hoje (rede de 1 ponto); ver comentário na própria
+migration pra quando isso precisar de rotina de limpeza.
+
+**[x] `criativoId` é o id real de `criativos`** — assumido imutável por
+conteúdo (upload novo = id novo), o mesmo invariante que o app depende
+(`criativoId → url` imutável, pra cache de mídia sem revalidar). **Ressalva
+conhecida:** `PATCH /admin/criativos/:id` tecnicamente aceita reescrever
+`arquivo_normalizado_url` no MESMO id (`CAMPOS_ATUALIZAVEIS` do
+repositório) — nenhum caminho de UI faz isso hoje (o campo só é preenchido
+uma vez, logo após o upload), mas se um dia alguém usar essa rota genérica
+pra trocar o arquivo de um criativo já aprovado, o cache do app ficaria
+servindo o vídeo antigo pro `criativoId` que já tinha. Não corrigido agora
+— fora do pedido, e o caminho que abriria essa porta não existe na prática.
+
+**[x] Bug achado e corrigido no caminho** (não estava no escopo, mas o
+teste de limpeza do dispositivo de teste expôs): `dispositivosRepo.deletar`
+só apagava `exibicoes_contador` e `dispositivos` — desde a migration 064
+(congelamento), apagar uma tela que já gerou playlist quebra a FK de
+`playlist_hora_congelada` e a exclusão falha silenciosamente pra sempre.
+Corrigido pra apagar também `playlist_hora_congelada` e (agora)
+`execucoes_confirmadas` antes do `dispositivos`.
+
+**Verificado:** `npm run check` (133/133 testes, 5 novos em
+`tests/playlist-contrato-novo.test.js` — envelope estável entre polls,
+dedup por `execucaoId`, teto atingido, item/janela inválidos) contra
+Postgres local real; fumaça manual pela API HTTP de verdade (servidor
+local, tela nova marcada `contrato_playlist=2`, `GET /playlist` devolvendo
+o envelope, `POST /played` em lote, tela legada em paralelo devolvendo o
+array de sempre sem mudar nada, exclusão da tela de teste pelo admin
+funcionando depois da correção do `deletar`).
+
+**Fora deste trabalho, de propósito:** nada mudou em `public/player.page.js`
+(player web) nem em `sancompany/playlist.mostrai` (app) — só o lado do
+Mostraí. O app ainda precisa ser testado contra este backend de verdade
+(pendência dele mesmo, `playlist.mostrai/docs/pendencias.md`) e verificado
+em hardware real antes de qualquer tela passar pra `contrato_playlist=2`
+em produção.
+
+### I — varredura visual do admin: botões sem CSS e avisos mal coloridos (21/09/2026)
+
+Pedido do dono: mapear a funcionalidade do admin inteiro e corrigir botão
+mal estilizado, aviso inútil e função em aberto. Login como admin +
+Playwright em todos os 12 módulos/sub-abas (22 telas, incluindo detalhe de
+ponto e de anunciante) — cada achado abaixo é real, visto na tela, não
+suposição de código.
+
+**[x] Crash na fila de Conteúdo → Aprovação.** `renderCriativos(el,
+status = 'pendente')` — o parâmetro default só cobre `undefined`, e o
+roteador genérico de módulos sempre passa `resto` (que é `null` sem
+terceiro pedaço de hash) como segundo argumento. Abrir a aba pelo menu
+(não por hash direto) sempre quebrava com `TypeError`. `status = status ||
+'pendente'` dentro da função — corrigido na raiz, não no chamador (é o
+único caso hoje, mas o padrão `render(el, resto)` é genérico; qualquer
+outra função com default no 2º parâmetro teria o mesmo problema).
+
+**[x] Quatro `<input type="file">` nativos** (foto de exemplo do ponto,
+foto do ponto, novo anúncio da conta própria, PDF de nota fiscal em
+Cobranças) apareciam com o botão cinza do navegador ("Choose File"),
+fora do desenho do resto do admin. Convertidos pro padrão que já existia
+em "Subir anúncio" (Anunciantes): `<label class="btn ghost">` escondendo o
+`<input hidden>` de verdade. O de "Novo anúncio" ganhou um `<span>` de
+apoio com o nome do arquivo escolhido, porque perdeu o texto nativo do
+navegador.
+
+**[x] Checkbox virando barra cinza cobrindo a linha inteira** — "Papéis da
+conta que vai nascer" (Entrada → Convites) e "Molde de ACM já instalado"
+(Rede → ponto → Resumo). As duas usam checkbox dentro de `<form
+class="card">`, e `.card input { width:100%; padding:11px 12px }` também
+pega `<input type="checkbox">` sem classe própria — mesmo bug já resolvido
+uma vez para outro caso (`.check-row`, comentário em `public/style.css`),
+mas não generalizado. `.benef-check input` ganhou o mesmo reset explícito
+de tamanho/padding; o de Pontos passou a usar `.check-row`.
+
+**[x] Checkboxes de tabela azuis (cor do navegador), não laranja (a marca)**
+— Custos, Categorias, Comodato e Benefícios, todas com `<input
+type="checkbox">` sem classe. Regra geral em `admin/index.css` —
+`input[type="checkbox"] { accent-color: var(--brand) }` — resolve estas e
+qualquer checkbox esquecido no futuro, sem depender de lembrar de por
+classe em cada tela nova.
+
+**[x] Aviso da conciliação com a cor errada.** "A conciliação nunca rodou
+por aqui" usava `.tudo-em-dia` (verde) — a mesma cor de "está tudo bem",
+pro aviso mais preocupante da Visão geral (a rede de segurança de quem
+paga nunca rodou). E quando a conciliação RODOU com problema (atrasada,
+abortou, falhas), o código aplicava a classe `alertas` (plural — o
+CONTÊINER em grade de vários cards, não um card) num `<div>` sozinho, que
+saía sem borda nem cor nenhuma — o caso mais grave era o que menos
+chamava atenção. Os dois agora usam `.alerta` (laranja) e `.alerta
+urgente` (vermelho), a mesma classe que os alertas de fila já usam.
+
+**Verificado:** `npm run check` (133/133), Playwright em todos os 22
+telas (zero erro de console, incluindo o CSP inline-style pré-existente em
+Diagnóstico — resolvido de brinde ao trocar o `style="padding:14px"` por
+`.u-p-14`, classe que já existia) e em 4 telas críticas no mobile
+(390×844). Nenhuma função foi removida nesta rodada — a varredura não
+achou nenhuma tela ou botão sem uso real; o que existe hoje corresponde ao
+inventário de `docs/specs/2026-09-21-admin-inventario-funcoes.md`.
+
+**Fora desta rodada, de propósito:** dados de teste acumulados no banco
+local (24 eventos pendentes, contador duplicado em Custos) não foram
+apagados — são artefato de sessões de teste anteriores, e o dono já
+sinalizou que vai limpar o banco separadamente antes de ir pra produção.
+
+### J — horário de funcionamento do ponto, construído (22/09/2026)
+
+Pedido do dono, memória de uma pulga atrás da orelha: cada ponto precisa
+dizer o horário de funcionamento do comércio, e isso precisa aparecer pro
+anunciante na hora de escolher onde o anúncio roda. Achado ao investigar:
+`pontos.horario_abertura`/`horario_fechamento` (migration 001, um só
+horário, sem dia da semana) existiam no banco desde o começo e nunca
+foram ligados a formulário nenhum nem a lógica nenhuma — funcionalidade
+esquecida, exatamente como o dono lembrava.
+
+**[x] Coluna nova.** Migration 066: `pontos.horario_semanal` e
+`candidaturas.horario_semanal`, ambas `jsonb`, formato `{seg,ter,qua,qui,
+sex,sab,dom}` — cada dia `null` (fechado) ou `{abre,fecha}` em `HH:MM`.
+As colunas antigas (`horario_abertura`/`horario_fechamento`) ficaram
+paradas, sem uso — aditivo, nada foi dropado (`CONSTRAINTS.md`).
+`src/lib/horario-semanal.js` centraliza `validar()` (usado nos três
+pontos de escrita: candidatura pelo painel, candidatura pelo card
+"Faça parte da rede", e admin) e `resumo()` (texto curto tipo "Seg-sex
+09:00-18:00 · Sáb 09:00-15:00 · Dom fechado", coberto por
+`tests/horario-semanal.test.js`).
+
+**[x] Tela pede só 3 grupos, não 7 dias.** Segunda a sexta, sábado e
+domingo — o próprio pedido do dono já sugeria a simplificação
+("poderia fazer desse jeito"), e o servidor replica o grupo "semana" pros
+5 dias úteis antes de gravar. Domingo já nasce marcado "Fechado" por
+padrão (mais comum que aberto). Widget duplicado em três lugares — sem
+bundler, sem import entre páginas estáticas, é a convenção do projeto
+(ver `README.md`): `public/modos.js` (card completo de
+`/anunciante/ponto.html`), `public/anunciante/painel.page.js` (card
+compacto "Faça parte da rede", embutido no fim do painel) e
+`public/admin/index.page.js` (cadastro manual do admin + edição no
+Resumo do ponto).
+
+**[x] Obrigatório onde tem que ser, opcional onde é exceção.**
+`POST /conta/modos/ponto/pedir` (as duas telas públicas de candidatura)
+exige `horario_semanal` — é o único momento em que quem sabe o horário
+do próprio comércio está preenchendo o formulário. O cadastro manual do
+admin (`POST /admin/pontos`, a exceção documentada pro caso sem
+candidatura) deixa opcional por um checkbox "Já sei o horário de
+funcionamento" desmarcado por padrão — sem isso, o formulário submeteria
+09:00-18:00 como se fosse dado real assim que a tela carrega (placeholder
+virando dado falso, o erro que a skill `construir` pede pra evitar). Dá
+pra completar depois no Resumo do ponto, que sempre mostra o card mesmo
+sem horário informado ainda.
+
+**[x] Aparece pro anunciante, sem alargar a lista.** A lista de pontos
+pra escolher (`.ponto-escolha`, redesenhada em 19/09/2026 pra caber mais
+pontos na tela de uma vez) não ganhou coluna nova — o resumo do horário
+vai no `title` (tooltip) do nome do ponto, `GET
+/anunciante/me/pontos-disponiveis` expõe o campo `horario` já formatado.
+Ponto antigo sem horário informado não mostra nada (evita ruído de
+"não informado" em todo card).
+
+**Verificado:** `tests/horario-semanal.test.js` (8 testes), `npm run
+check` (141/141), os quatro scripts de e2e que passam por
+`/conta/modos/ponto/pedir` (`01-fluxo-api.sh`, `02-assinatura-webhook-
+comissao.sh`, `04-modos-e-bonus.sh`, `03-navegador.mjs`,
+`08-candidatura-ponto.mjs`) e verificação visual por Playwright dos três
+widgets (público, cadastro manual do admin, edição no Resumo) — achado e
+corrigido no caminho: o card estreito do admin (~420px) espremia o campo
+de hora até sobrar só o ícone, porque reusava o layout de 3 colunas
+aninhadas do formulário largo público (640px); virou duas linhas
+(rótulo+checkbox, depois abre/fecha) só na versão do admin.
+
+**Fora desta rodada:** o `06-painel-bloqueio-plano.mjs` e o
+`05-navegador-modos.mjs` têm falhas pré-existentes, sem relação com este
+trabalho (confirmado rodando a mesma versão no commit anterior a esta
+mudança) — o primeiro num card de KPI que não é deste pedido, o segundo
+por um seletor de nav removido numa consolidação anterior.
