@@ -136,6 +136,57 @@ const CAMPO_HORARIO_SEMANAL = () => `
     ).join('')}
   </div>`;
 
+// Foto da fachada com preview real (22/09/2026, pedido do dono — antes só
+// mostrava o nome do arquivo). Mesmo padrão de public/modos.js, cópia
+// própria por convenção do projeto (sem módulo compartilhado).
+const CAMPO_FOTO_FACHADA = (prefixo) => `
+  <div class="campo-foto">
+    <div class="campo-foto-preview" id="${prefixo}fotoPreview" hidden><img alt="Pré-visualização da foto da fachada"></div>
+    <div class="campo-foto-linha">
+      <label class="btn ghost mini" for="${prefixo}foto" id="${prefixo}fotoLabel">Escolher foto da fachada</label>
+      <button type="button" class="btn ghost mini u-txt-erro" id="${prefixo}fotoRemover" hidden>Remover foto</button>
+      <input type="file" accept="image/*" id="${prefixo}foto" hidden>
+    </div>
+    <span class="u-fs-72 u-dim" id="${prefixo}fotoNome">${DICA_FOTO_PADRAO}</span>
+  </div>`;
+
+// FileReader (data:), não URL.createObjectURL — a CSP do site só libera
+// `img-src 'self' data:` (src/server.js), sem `blob:`. Achado testando: a
+// troca de foto e o texto do botão funcionavam, mas a imagem em si nunca
+// aparecia, bloqueada pelo navegador em silêncio.
+function ligarFotoFachada(prefixo) {
+  const input = document.getElementById(`${prefixo}foto`);
+  if (!input) return;
+  const preview = document.getElementById(`${prefixo}fotoPreview`);
+  const label = document.getElementById(`${prefixo}fotoLabel`);
+  const remover = document.getElementById(`${prefixo}fotoRemover`);
+  const hint = document.getElementById(`${prefixo}fotoNome`);
+  const limpar = () => {
+    preview.hidden = true;
+    preview.querySelector('img').src = '';
+    label.textContent = 'Escolher foto da fachada';
+    remover.hidden = true;
+    hint.textContent = DICA_FOTO_PADRAO;
+  };
+  input.addEventListener('change', () => {
+    const arquivo = input.files[0];
+    if (!arquivo) return limpar();
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      preview.querySelector('img').src = leitor.result;
+      preview.hidden = false;
+    };
+    leitor.readAsDataURL(arquivo);
+    label.textContent = 'Trocar foto';
+    remover.hidden = false;
+    hint.textContent = arquivo.name;
+  });
+  remover.addEventListener('click', () => {
+    input.value = '';
+    limpar();
+  });
+}
+
 function ligarHorarioSemanal(form) {
   form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
     const chk = linha.querySelector('[data-horario-fechado]');
@@ -196,11 +247,7 @@ function montarCardPonto(estado) {
       <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
         <form id="formCardPonto">
           <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
-          <div class="campo-foto u-mb-12">
-            <label class="btn ghost mini" for="cp_foto">Escolher foto da fachada</label>
-            <input type="file" accept="image/*" id="cp_foto" hidden>
-            <span class="u-fs-72 u-dim" id="cp_fotoNome">${DICA_FOTO_PADRAO}</span>
-          </div>
+          ${CAMPO_FOTO_FACHADA('cp_')}
           <p class="form-sep-titulo u-mt-0">Sobre o movimento</p>
           <div class="u-mb-12">
             <label for="cp_fluxo">Média de pessoas que passam por mês</label>
@@ -219,9 +266,7 @@ function montarCardPonto(estado) {
     </div>`;
 
   ligarHorarioSemanal(document.getElementById('formCardPonto'));
-  document.getElementById('cp_foto').addEventListener('change', (e) => {
-    document.getElementById('cp_fotoNome').textContent = e.target.files[0]?.name || DICA_FOTO_PADRAO;
-  });
+  ligarFotoFachada('cp_');
 
   document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
     const conteudo = document.getElementById('conteudoCardPonto');

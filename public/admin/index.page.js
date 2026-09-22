@@ -289,7 +289,7 @@ function caixaCards({ chips = [], html, dica = '', ativo = null }) {
   </div>`;
 }
 
-function turbinarCards(caixa, seletorItem) {
+function turbinarCards(caixa, seletorItem, substantivo = 'ponto') {
   const itens = () => [...caixa.querySelectorAll(seletorItem)];
   const busca = caixa.querySelector('.busca');
   const contagem = caixa.querySelector('[data-contagem]');
@@ -321,7 +321,9 @@ function turbinarCards(caixa, seletorItem) {
     // Mensagem distingue busca de filtro (seção 15 do redesenho da Rede,
     // 22/09/2026) — "nenhum ponto neste status" não é a mesma frustração de
     // "sua busca não achou nada", e o card genérico não dizia qual delas.
-    aviso.textContent = termo ? 'Nenhum ponto encontrado para esta busca.' : 'Nenhum ponto neste status.';
+    aviso.textContent = termo
+      ? `Nenhum ${substantivo} encontrado para esta busca.`
+      : `Nenhum ${substantivo} neste status.`;
   }
 
   if (busca) busca.addEventListener('input', aplicar);
@@ -392,9 +394,16 @@ function selectStatus(mapa, atual, attrs) {
 const ALIASES_ANTIGOS = {
   resumo: 'visaogeral/hoje',
   metrica: 'visaogeral/performance',
-  candidaturas: 'entrada/candidaturas',
-  contato: 'entrada/mensagens',
-  convites: 'entrada/convites',
+  // Entrada foi encerrada como área da navegação (22/09/2026, pedido do
+  // dono): Candidaturas virou aba de Rede (pertence conceitualmente a
+  // pontos, não a "gente entrando"), Mensagens virou rota sem menu própria
+  // (aberta pelo aviso da Visão geral), Convites saiu da interface —
+  // `renderConvites`/`/admin/convites` continuam existindo no código
+  // (legado, sem UI) só não navega mais lá; o hash antigo `#convites` cai
+  // sozinho em visaogeral (resolverAlvo já degrada assim quando o módulo
+  // não existe mais).
+  candidaturas: 'rede/candidaturas',
+  contato: 'mensagens',
   criativos: 'conteudo/aprovacao',
   meusanuncios: 'conteudo/proprios',
   pontos: 'rede/pontos',
@@ -441,7 +450,13 @@ const MODULOS = [
         // só não tem mais superfície de navegação — ver ALIASES_ANTIGOS.
         id: 'rede',
         nome: 'Rede',
-        abas: [{ id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos }],
+        abas: [
+          { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
+          // Candidatura é sempre pra ser PONTO (vendedor não passa mais por
+          // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
+          // de "entrada" (encerrada 22/09/2026, pedido do dono).
+          { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
+        ],
       },
       { id: 'anunciantes', nome: 'Anunciantes', render: renderAnunciantes },
       {
@@ -452,15 +467,12 @@ const MODULOS = [
           { id: 'proprios', nome: 'Anúncios próprios', render: renderMeusAnuncios },
         ],
       },
-      {
-        id: 'entrada',
-        nome: 'Entrada',
-        abas: [
-          { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
-          { id: 'convites', nome: 'Convites', render: renderConvites },
-          { id: 'mensagens', nome: 'Mensagens', fila: 'contato', render: renderContato },
-        ],
-      },
+      // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
+      // pendência mora na Visão geral (ALERTAS abaixo) e leva pra cá. `oculto`
+      // tira o botão do menu sem tirar o módulo de TODOS_MODULOS/buscarModulo,
+      // então a rota (`#mensagens`, ou o hash antigo `#contato` via
+      // ALIASES_ANTIGOS) continua funcionando normalmente.
+      { id: 'mensagens', nome: 'Mensagens', oculto: true, render: renderContato },
     ],
   },
   {
@@ -524,12 +536,8 @@ const buscarModulo = (id) => TODOS_MODULOS.find((m) => m.id === id);
 const SUBTITULOS = {
   visaogeral: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
-  candidaturas:
-    'Quem pediu pra ter um ponto, de dentro do próprio painel. Você conversa, e se fechar, libera na conta.',
-  contato:
-    'Quem escreveu pelo formulário do site. É também o canal de pedido sobre dados pessoais (LGPD), que tem prazo pra responder. A coluna "aviso" diz se o e-mail chegou na sua caixa; quando não chegou, esta tela é o único lugar onde a mensagem existe.',
-  convites:
-    'Links de cadastro gerados por você: quem entra por eles nasce com os papéis marcados. Uso único, com validade.',
+  candidaturas: 'Pedidos pra ter um ponto, de dentro do próprio painel. Aprovado vira ponto na hora.',
+  contato: 'Quem escreveu pelo site — também é o canal de pedido de dados pessoais, com prazo legal pra responder.',
   pontos:
     'Comércios da rede: quem são, onde ficam e quantas telas têm. Abra um ponto pra ver telas, ocupação e editar o que é dele.',
   anunciantes:
@@ -566,6 +574,7 @@ function montarNav() {
     (g) => `
     <div class="nav-grupo">${g.grupo}</div>
     ${g.itens
+      .filter((i) => !i.oculto)
       .map(
         (i) => `<button type="button" class="nav-item" data-modulo="${i.id}">
       <span>${i.nome}</span><span class="cont" hidden></span>
@@ -766,7 +775,8 @@ api('/admin/resumo').then((r) => {
 const ALERTAS = [
   { fila: 'criativos', aba: 'criativos', texto: 'criativo(s) esperando aprovação', urgente: true },
   { fila: 'offline', aba: 'telas', texto: 'tela(s) ativas sem dar sinal', urgente: true },
-  { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) nova(s) pra responder' },
+  { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) aguardando análise' },
+  { fila: 'contato', aba: 'mensagens', texto: 'mensagem(ns) aguardando resposta' },
   { fila: 'eventos', aba: 'eventos', texto: 'evento(s) de pagamento pra revisar', urgente: true },
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   {
@@ -2005,126 +2015,150 @@ async function renderVendedores(el) {
 }
 
 // ---------- candidaturas ----------
-async function renderCandidaturas(el) {
-  const lista = await pegar('/admin/candidaturas');
-  const corpo = `<table><thead><tr>
-      <th data-ord>Quando</th><th data-ord>Tipo</th><th data-ord>Nome</th><th>Comércio / endereço</th><th>Contato</th><th>Mensagem</th><th data-ord>Status</th><th></th>
-    </tr></thead><tbody>
-    ${lista
-      .map(
-        (c) => `<tr data-filtro="${c.status} ${c.tipo}">
-      <td>${data(c.criado_em)}</td>
-      <td><span class="badge ${c.tipo === 'ponto' ? 'badge-ok' : 'badge-pendente'}">${c.tipo === 'ponto' ? 'Ponto' : 'Vendedor'}</span>
-        ${c.origem === 'painel' ? '<div class="u-fs-70 u-dim">pedido do painel</div>' : c.origem === 'bonus_plano' ? '<div class="u-fs-70 u-txt-marca"><b>bônus do plano</b></div>' : ''}</td>
-      <td><b>${esc(c.nome)}</b>${c.conta_id ? `<div class="u-fs-72 u-dim">conta #${c.conta_id} · ${esc(c.conta_nome || '')}</div>` : ''}</td>
-      <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
-      <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div class="u-dim u-fs-72">${esc(c.contato_email || '')}</div></td>
-      <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '-')}</td>
-      <td>${
-        c.status === 'aprovada'
-          ? c.convite_token
-            ? `<span class="badge ${c.convite_usado_em ? 'badge-ok' : c.convite_aberto ? 'badge-pendente' : 'badge-err'}">Convite ${c.convite_usado_em ? 'usado' : c.convite_aberto ? 'aberto' : 'expirado'}</span>`
-            : `<span class="badge badge-ok">Liberado na conta</span>`
-          : selectStatus(
-              { nova: 'Nova', em_contato: 'Em contato', recusada: 'Recusada' },
-              c.status,
-              `data-cand="status" data-id="${c.id}"`,
-            )
-      }</td>
-      <td>${
-        c.conta_id && c.status !== 'aprovada' && c.status !== 'recusada'
-          ? `<button class="btn primary mini" data-liberar="${c.id}" data-tipo="${c.tipo}" title="Liga o modo direto na conta que pediu">Liberar na conta</button>`
-          : ''
-      }
-          ${!c.conta_id && c.status !== 'recusada' && !c.convite_usado_em && !c.convite_aberto ? `<button class="btn primary mini" data-convidar="${c.id}" data-tipo="${c.tipo}" data-nome="${esc(c.nome)}" data-email="${esc(c.contato_email || '')}">${c.status === 'aprovada' ? 'Gerar convite novo' : 'Gerar convite'}</button>` : ''}
-          ${c.convite_aberto ? `<button class="btn ghost mini" data-copiar-convite="${esc(c.convite_token)}">Copiar link</button>` : ''}</td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
+// Redesenho de 22/09/2026 (encerramento da área "Entrada", pedido do dono):
+// candidatura é sempre pra ser PONTO (vendedor não passa mais por aqui desde
+// 18/09/2026), então vira cards com a mesma linguagem visual de Rede/Pontos
+// — a candidatura É visualmente um "futuro ponto". Sem funil (nova/em
+// contato desapareceram da UI, ainda existem no banco só por causa de linha
+// antiga): só "Em análise" até o dono decidir Aprovar ou Recusar.
+async function renderCandidaturas(el, resto) {
+  const [idBruto] = (resto || '').split('/');
+  const id = idBruto ? Number(idBruto) : null;
+  if (id) return renderCandidaturaDetalhe(el, id);
+  return renderCandidaturasGrade(el);
+}
 
-  el.innerHTML = lista.length
-    ? caixaTabela({
-        chips: [
-          { valor: 'nova', nome: 'Novas' },
-          { valor: 'em_contato', nome: 'Em contato' },
-          { valor: 'aprovada', nome: 'Aprovadas' },
-          { valor: 'recusada', nome: 'Recusadas' },
-          { valor: '', nome: 'Todas' },
-          { valor: 'ponto', nome: 'Só pontos' },
-          { valor: 'vendedor', nome: 'Só vendedores' },
-        ],
-        html: corpo,
-        dica: 'Hoje só chega pedido de ponto, sempre de dentro do painel de uma conta que já existe — "Liberar na conta" liga o modo direto nela. Vendedor não passa mais por aqui: gere o convite direto na aba Convites depois da conversa. Linhas antigas do formulário público (aposentado em 18/09/2026) continuam listadas pra histórico.',
+function montarCandidaturaCard(c) {
+  const nome = c.nome_comercio || c.nome;
+  return `<a class="ponto-card ponto-card-link" href="#rede/candidaturas/${c.id}">
+    <div class="ponto-card-media">${fotoOuPlaceholder(c.foto_fachada_url, nome)}</div>
+    <span class="badge badge-pendente">Em análise</span>
+    <h4>${esc(nome)}</h4>
+    <p>${esc(c.cidade || '')}${c.uf ? `/${esc(c.uf)}` : ''}${c.segmento ? ` · ${esc(c.segmento)}` : ''}</p>
+    <p>${c.fluxo_estimado_mensal ? `${num(c.fluxo_estimado_mensal)} pessoas/mês` : 'Movimento não informado'} · ${data(c.criado_em)}</p>
+  </a>`;
+}
+
+async function renderCandidaturasGrade(el) {
+  const todas = await pegar('/admin/candidaturas');
+  // "Em análise" cobre 'nova' e 'em_contato' juntos — o funil de 3 etapas
+  // saiu da UI (pedido do dono: candidatura é simples, não CRM), mas o
+  // valor antigo continua válido no banco pra não precisar de migration.
+  const pendentes = todas.filter((c) => c.status !== 'aprovada' && c.status !== 'recusada');
+
+  el.innerHTML = pendentes.length
+    ? caixaCards({
+        html: pendentes.map(montarCandidaturaCard).join(''),
+        dica: 'Clique numa candidatura pra ver a ficha completa.',
       })
-    : '<p class="empty-state">Nenhuma candidatura ainda. Pedido de "meu ponto" de dentro do painel de uma conta cai aqui.</p>';
+    : '<p class="empty-state">Nenhuma candidatura aguardando análise.</p>';
 
-  if (!lista.length) return;
-  turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-cand]').forEach((sel) =>
-    sel.addEventListener('change', async () => {
-      if (await salvar(`/admin/candidaturas/${sel.dataset.id}`, { status: sel.value }, sel)) {
-        RESUMO = await pegar('/admin/resumo');
-        pintarContadores();
-      }
-    }),
-  );
-  el.querySelectorAll('[data-convidar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const papeis = btn.dataset.tipo === 'ponto' ? ['ponto'] : ['vendedor'];
-      const extra = confirm(
-        btn.dataset.tipo === 'ponto'
-          ? 'Esse dono de ponto também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só dono de ponto.'
-          : 'Esse vendedor também vai ANUNCIAR (ter plano pago)? OK = sim, também anunciante. Cancelar = só vendedor.',
-      );
-      if (extra) papeis.push('anunciante');
-      const r = await api('/admin/convites', {
-        method: 'POST',
-        body: JSON.stringify({
-          papeis,
-          candidatura_id: Number(btn.dataset.convidar),
-          nome_sugerido: btn.dataset.nome,
-          email_sugerido: btn.dataset.email || null,
-        }),
-      });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o convite.', 'err');
+  if (pendentes.length) turbinarCards(el.querySelector('.tabela-caixa'), '.ponto-card', 'candidatura');
+}
+
+async function renderCandidaturaDetalhe(el, id) {
+  const todas = await pegar('/admin/candidaturas');
+  const c = todas.find((x) => x.id === id);
+  if (!c) {
+    el.innerHTML = '<p class="form-msg err">Candidatura não encontrada. <a href="#rede/candidaturas">Voltar</a></p>';
+    return;
+  }
+  const nome = c.nome_comercio || c.nome;
+  const telefoneWpp = String(c.contato_telefone || '').replace(/\D/g, '');
+
+  el.innerHTML = `
+    <p class="ponto-breadcrumb u-mb-16"><a href="#rede/candidaturas">Rede</a><span class="u-dim"> / </span>${esc(nome)}</p>
+    <div class="card u-mw-820">
+      <div class="ponto-info-cabecalho">
+        <div class="ponto-info-foto">${fotoOuPlaceholder(c.foto_fachada_url, nome)}</div>
+        <div class="ponto-info-titulo">
+          <span class="badge badge-pendente">Em análise</span>
+          <h3 class="u-m-0">${esc(nome)}</h3>
+          <p class="u-dim u-m-0">${c.endereco ? `${esc(c.endereco)}, ` : ''}${esc(c.cidade || '')}${c.uf ? `/${esc(c.uf)}` : ''}</p>
+          <p class="u-dim u-m-0 u-fs-85">${c.segmento ? esc(c.segmento) : 'Sem segmento informado'}</p>
+        </div>
+      </div>
+      <hr class="ponto-info-sep">
+      <div class="field-row">
+        <div class="u-col-2"><label>Responsável</label><p class="u-m-0">${esc(c.nome)}${telefoneWpp ? ` · <a href="https://wa.me/55${telefoneWpp}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a>` : ''}</p></div>
+        <div class="u-col-2"><label>E-mail</label><p class="u-m-0">${c.contato_email ? esc(c.contato_email) : '<span class="u-dim">não informado</span>'}</p></div>
+      </div>
+      <div class="field-row">
+        <div class="u-col-2"><label>Movimento estimado/mês</label><p class="u-m-0">${c.fluxo_estimado_mensal ? `${num(c.fluxo_estimado_mensal)} pessoas` : '<span class="u-dim">não informado</span>'}</p></div>
+        <div class="u-col-2"><label>Horário de funcionamento</label><p class="u-m-0">${c.horario_semanal ? esc(resumoHorarioSemanal(c.horario_semanal)) : '<span class="u-dim">não informado</span>'}</p></div>
+      </div>
+      ${c.mensagem ? `<div><label>Observações</label><p class="u-m-0">${esc(c.mensagem)}</p></div>` : ''}
+      <div><label>Candidatura enviada em</label><p class="u-m-0">${data(c.criado_em)}</p></div>
+      <div class="field-row u-mt-16">
+        <button class="btn ghost u-txt-erro" type="button" data-recusar="${c.id}">Recusar</button>
+        <button class="btn primary" type="button" data-aprovar="${c.id}">Aprovar ponto</button>
+      </div>
+      <p class="form-msg" id="candDetalheMsg"></p>
+    </div>`;
+
+  const msg = document.getElementById('candDetalheMsg');
+  el.querySelector('[data-aprovar]').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!confirm(`Aprovar "${nome}"? O ponto (e a Tela 1, se tiver conta vinculada) nasce agora com esses dados.`))
+      return;
+    btn.disabled = true;
+    // Candidatura de conta existente (caminho de hoje): liga o papel direto
+    // na conta, cria o ponto. Candidatura antiga sem conta (aposentada
+    // 18/09/2026, pode sobrar linha de antes): cai no convite, único jeito
+    // de uma pessoa sem conta ainda virar ponto — POST /admin/convites já
+    // marca a candidatura como aprovada sozinho (src/convites/routes.js).
+    const r = c.conta_id
+      ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST' })
+      : await api('/admin/convites', {
+          method: 'POST',
+          body: JSON.stringify({
+            papeis: ['ponto'],
+            candidatura_id: c.id,
+            nome_sugerido: c.nome,
+            email_sugerido: c.contato_email || null,
+          }),
+        });
+    if (!r.ok) {
+      btn.disabled = false;
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível aprovar.';
+      msg.className = 'form-msg err';
+      return;
+    }
+    if (!c.conta_id) {
       const { link } = await r.json();
       navigator.clipboard?.writeText(link).catch(() => {});
-      prompt('Convite gerado (já copiado). Mande esse link pra pessoa. Vale 7 dias e só pode ser usado uma vez:', link);
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-      renderCandidaturas(el);
-    }),
-  );
-  el.querySelectorAll('[data-liberar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (
-        !confirm(
-          `Liberar o modo "${btn.dataset.tipo === 'ponto' ? 'Meu ponto' : 'Vendas'}" nessa conta agora?${btn.dataset.tipo === 'ponto' ? ' O ponto e a Tela 1 são criados com o endereço do pedido.' : ''}`,
-        )
-      )
-        return;
-      const r = await api(`/admin/candidaturas/${btn.dataset.liberar}/liberar`, { method: 'POST' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível liberar.', 'err');
-      toast('Modo liberado na conta.');
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-      renderCandidaturas(el);
-    }),
-  );
-  el.querySelectorAll('[data-copiar-convite]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const link = `${window.location.origin}/convite.html?t=${encodeURIComponent(btn.dataset.copiarConvite)}`;
-      navigator.clipboard?.writeText(link).then(
-        () => toast('Link do convite copiado.'),
-        () => prompt('Link:', link),
+      prompt(
+        'Convite gerado (já copiado) — essa candidatura é antiga, sem conta vinculada. Mande esse link pra pessoa criar a conta e virar ponto:',
+        link,
       );
-    }),
-  );
+    }
+    toast('Candidatura aprovada.');
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    irPara('rede/candidaturas');
+  });
+  el.querySelector('[data-recusar]').addEventListener('click', async () => {
+    if (!confirm(`Recusar "${nome}"?`)) return;
+    const r = await api(`/admin/candidaturas/${c.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'recusada' }),
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível recusar.';
+      msg.className = 'form-msg err';
+      return;
+    }
+    toast('Candidatura recusada.');
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    irPara('rede/candidaturas');
+  });
 }
 
 // ---------- convites ----------
-async function renderConvites(el) {
+// Sem rota na UI desde a reorganização da Entrada (22/09/2026) — mantido
+// como código morto autorizado, não referenciado pelo router.
+async function _renderConvites(el) {
   const convites = await pegar('/admin/convites');
   const corpo = `<table><thead><tr>
       <th data-ord>Criado</th><th>Papéis</th><th data-ord>Pra quem</th><th data-ord>Vale até</th><th data-ord>Situação</th><th>Conta criada</th><th></th>
@@ -2208,7 +2242,7 @@ async function renderConvites(el) {
     const { link } = await r.json();
     navigator.clipboard?.writeText(link).catch(() => {});
     prompt('Convite gerado (já copiado). Mande esse link pra pessoa:', link);
-    renderConvites(el);
+    _renderConvites(el);
   });
   el.querySelectorAll('[data-copiar-link]').forEach((btn) =>
     btn.addEventListener('click', () => {
@@ -2224,7 +2258,7 @@ async function renderConvites(el) {
       const r = await api(`/admin/convites/${btn.dataset.revogar}/revogar`, { method: 'POST' });
       if (!r.ok) return toast('Não foi possível revogar.', 'err');
       toast('Convite revogado.');
-      renderConvites(el);
+      _renderConvites(el);
     }),
   );
 }
@@ -3104,55 +3138,49 @@ async function renderComodato(el) {
 // falha de SMTP perdesse o aviso e não o dado. Só que ninguém lia a tabela: o
 // dado ficava salvo e invisível — o mesmo furo por outra porta, e pior, porque
 // /contato.html é o canal declarado de pedido do titular (LGPD art. 18).
+//
+// Redesenho de 22/09/2026 (encerramento de "Entrada"): sem item próprio na
+// sidebar — chega pelo aviso da Visão geral (ALERTAS, fila `contato`). Só
+// mostra pendente; marcar como respondida some da tela NA HORA, sem
+// recarregar nada (o registro continua no banco, `respondida_em` preenchido
+// — histórico e LGPD preservados, só não tem mais aba "Respondidas").
 async function renderContato(el) {
-  const msgs = await pegar('/admin/mensagens-contato');
-  const abertas = msgs.filter((m) => !m.respondida_em).length;
-  const semAviso = msgs.filter((m) => !m.email_enviado).length;
+  const todas = await pegar('/admin/mensagens-contato');
+  const pendentes = todas.filter((m) => !m.respondida_em);
 
-  const corpo = `<table><thead><tr>
-      <th data-ord>Quando</th><th data-ord>Quem</th><th>Mensagem</th><th data-ord>Aviso</th><th>Respondida</th>
-    </tr></thead><tbody>
-    ${msgs
-      .map(
-        (m) => `<tr data-filtro="${m.respondida_em ? 'respondida' : 'aberta'}">
+  const linha = (m) => `<tr data-msg="${m.id}">
       <td>${data(m.created_at)}</td>
       <td><b>${esc(m.nome)}</b><br><a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.telefone ? `<br><span class="u-dim">${esc(m.telefone)}</span>` : ''}</td>
       <td><div class="celula-mensagem">${esc(m.mensagem)}</div></td>
-      <td>${m.email_enviado ? '<span class="badge badge-ok">enviado</span>' : '<span class="badge badge-err">não saiu</span>'}</td>
-      <td><label class="chip-check"><input type="checkbox" data-respondida="${m.id}" ${m.respondida_em ? 'checked' : ''}> ${m.respondida_em ? data(m.respondida_em) : 'marcar'}</label></td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
+      <td>${m.email_enviado ? '<span class="badge badge-ok">aviso enviado</span>' : '<span class="badge badge-err">aviso não saiu</span>'}</td>
+      <td><button class="btn primary mini" type="button" data-respondida="${m.id}">Marcar como respondida</button></td>
+    </tr>`;
 
-  el.innerHTML = msgs.length
-    ? `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Esperando resposta</span><b>${abertas}</b><span class="kpi-caption">pedido de dados tem prazo legal</span></div>
-      <div class="kpi-card"><span class="kpi-label">Aviso por e-mail não saiu</span><b>${semAviso}</b><span class="kpi-caption">${semAviso ? 'só aparecem aqui' : 'todas chegaram na caixa'}</span></div>
-    </div>
-    ${caixaTabela({
-      chips: [
-        { valor: '', nome: 'Todas' },
-        { valor: 'aberta', nome: 'Esperando resposta' },
-        { valor: 'respondida', nome: 'Respondidas' },
-      ],
-      html: corpo,
-      dica: 'Responda pelo e-mail da pessoa e marque aqui.',
-    })}`
-    : '<p class="empty-state">Ninguém escreveu pelo site ainda.</p>';
+  const corpo = `<table><thead><tr>
+      <th data-ord>Quando</th><th data-ord>Quem</th><th>Mensagem</th><th data-ord>Aviso</th><th></th>
+    </tr></thead><tbody>${pendentes.map(linha).join('')}</tbody></table>`;
 
-  el.querySelectorAll('[data-respondida]').forEach((chk) => {
-    chk.addEventListener('change', async () => {
-      const r = await api(`/admin/mensagens-contato/${chk.dataset.respondida}`, {
+  el.innerHTML = pendentes.length
+    ? caixaTabela({ html: corpo, dica: 'Responda pelo e-mail da pessoa e marque aqui.' })
+    : '<p class="empty-state">Nenhuma mensagem aguardando resposta.</p>';
+
+  if (!pendentes.length) return;
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  el.querySelectorAll('[data-respondida]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const r = await api(`/admin/mensagens-contato/${btn.dataset.respondida}`, {
         method: 'PATCH',
-        body: JSON.stringify({ respondida: chk.checked }),
+        body: JSON.stringify({ respondida: true }),
       });
       if (!r.ok) {
-        chk.checked = !chk.checked;
+        btn.disabled = false;
         return toast('Não deu pra salvar.', 'err');
       }
-      irPara('contato', true);
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderContato(el);
     });
   });
 }

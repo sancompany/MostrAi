@@ -447,9 +447,12 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .link-secundario { display: inline-block; margin-top: 2px; font-size: .85rem; color: var(--blue); text-decoration: none; }
 .link-secundario:hover { text-decoration: underline; }
 
-/* Campo de foto da fachada, no topo do formulário de candidatura — botão +
-   texto de status na mesma linha, quebra pro mobile sem apertar. */
-.campo-foto { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0; }
+/* Campo de foto da fachada, no topo do formulário de candidatura — preview
+   real da imagem (22/09/2026) em cima, botão + texto de status embaixo. */
+.campo-foto { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2px 0; }
+.campo-foto-preview { width: 96px; height: 96px; border-radius: var(--radius); overflow: hidden; background: var(--bg-alt); flex-shrink: 0; }
+.campo-foto-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.campo-foto-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* Escolha entre as opções de comodato (ajuda de custo x mais cota) */
 .escolha-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
