@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const { gerarHash, conferirHash } = require('../lib/senha');
+const { sincronizarStatusPonto } = require('../pontos/repository');
 
 // Dispositivo = uma tela. Ponto = o comércio/endereço (migration 019).
 const CAMPOS_ATUALIZAVEIS = [
@@ -12,13 +13,20 @@ const CAMPOS_ATUALIZAVEIS = [
   // Migration 065 — 1 (padrão) devolve o array de sempre pro player web; 2 é
   // o envelope novo, pra quem instalar o app Android nativo nesta tela.
   'contrato_playlist',
+  // Margens da safe area (migration 069) — área que o molde físico do ACM
+  // cobre, em vmin, mesma unidade que o player web já usava num valor só
+  // (?margem=N). Nunca negativo (CHECK no banco).
+  'margem_superior',
+  'margem_direita',
+  'margem_inferior',
+  'margem_esquerda',
 ];
 const STATUS = ['ativo', 'reparo', 'inativo'];
 
 // pin_hash nunca sai daqui pra fora.
 const CAMPOS_PUBLICOS = `id, ponto_id, apelido, aparelho_id, status, ultima_vez_online,
   custo_equipamento, meses_amortizacao, instalado_em, created_at, (pin_hash IS NOT NULL) AS tem_pin,
-  contrato_playlist`;
+  contrato_playlist, margem_superior, margem_direita, margem_inferior, margem_esquerda`;
 
 async function criar(pontoId, dados = {}, db = pool) {
   const { rows } = await db.query(
@@ -32,6 +40,13 @@ async function criar(pontoId, dados = {}, db = pool) {
       dados.instalado_em || null,
     ],
   );
+  // Nasce 'inativo' (default da coluna, migration 069) — não muda o status
+  // automático do ponto sozinha (só entra na conta quando alguém marcar
+  // 'ativo'), mas sincroniza mesmo assim: um ponto que só tinha telas
+  // inativas/em reparo e ganha mais uma segue exatamente igual, e um ponto
+  // recém-criado sem tela nenhuma que agora ganha a primeira sai de
+  // "a_instalar" só quando ela virar 'ativo' de verdade.
+  await sincronizarStatusPonto(pontoId, db);
   return rows[0];
 }
 
@@ -44,6 +59,7 @@ async function buscarPorId(id) {
 async function buscarComPonto(id) {
   const { rows } = await pool.query(
     `SELECT d.id, d.ponto_id, d.aparelho_id, d.status, d.contrato_playlist,
+            d.margem_superior, d.margem_direita, d.margem_inferior, d.margem_esquerda,
             p.categoria_id, p.horario_abertura, p.horario_fechamento,
             p.cota_autoanuncio_slots_hora, p.anunciante_id AS dono_conta_id, p.status AS ponto_status,
             (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
@@ -91,6 +107,10 @@ async function atualizar(id, dados) {
     id,
     ...campos.map((c) => dados[c]),
   ]);
+  // Status do ponto acompanha automaticamente (rodada final da Rede) — só
+  // recalcula quando o campo que pode ter mudado o resultado muda; os
+  // outros campos (chave, PIN, custo, margens...) nunca afetam a conta.
+  if (rows[0] && campos.includes('status')) await sincronizarStatusPonto(rows[0].ponto_id);
   return rows[0] || null;
 }
 
@@ -126,17 +146,9 @@ async function marcarOnline(id) {
   await pool.query('UPDATE dispositivos SET ultima_vez_online = now() WHERE id = $1', [id]);
 }
 
-// Telas ativas na rede inteira. Já foi o gatilho de minimo_telas_ativas, que
-// saiu na migration 021; hoje é número de operação (quanta rede está no ar).
-async function contarAtivas() {
-  const { rows } = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.status = 'ativo' AND p.status = 'ativo'`,
-  );
-  return rows[0].total;
-}
-
 async function deletar(id) {
+  const existente = await buscarPorId(id);
+  if (!existente) return;
   await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [id]);
   // As duas de baixo (migrations 064 e 065) também referenciam dispositivos —
   // sem elas aqui, apagar uma tela que já gerou playlist ou proof-of-play
@@ -144,6 +156,9 @@ async function deletar(id) {
   await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM dispositivos WHERE id = $1', [id]);
+  // Excluir a última tela de um ponto tem que voltar ele pra "Aguardando
+  // instalação" — sem isso o status ficava preso no valor de antes de apagar.
+  await sincronizarStatusPonto(existente.ponto_id);
 }
 
 module.exports = {
@@ -157,7 +172,6 @@ module.exports = {
   definirPin,
   conferirPin,
   marcarOnline,
-  contarAtivas,
   deletar,
   STATUS,
 };

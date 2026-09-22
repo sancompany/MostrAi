@@ -58,9 +58,23 @@ async function confirmarLote(dispositivo, eventosRecebidos) {
   return { resultados };
 }
 
+// Margens da safe area (migration 069) pegam carona no heartbeat — a TV já
+// chama isso a cada 5min (public/player.page.js), então não precisa de
+// endpoint novo nem de mudar o contrato de /playlist (que continua igual
+// pras telas já no ar, contrato 1 ou 2). Unidade vmin, mesma que o player
+// já usava num valor só (?margem=N).
 router.post('/player/:dispositivoId/heartbeat', exigirAparelho, async (req, res) => {
   await dispositivosRepo.marcarOnline(req.dispositivo.id);
-  res.json({ ok: true });
+  const { margem_superior, margem_direita, margem_inferior, margem_esquerda } = req.dispositivo;
+  res.json({
+    ok: true,
+    margens: {
+      superior: Number(margem_superior) || 0,
+      direita: Number(margem_direita) || 0,
+      inferior: Number(margem_inferior) || 0,
+      esquerda: Number(margem_esquerda) || 0,
+    },
+  });
 });
 
 module.exports = router;

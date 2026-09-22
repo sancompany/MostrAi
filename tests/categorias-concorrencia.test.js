@@ -34,13 +34,18 @@ async function criarPontoTeste(categoriaId) {
     segmento: 'Teste',
     responsavel_nome: 'Fulano',
     responsavel_contato: '16999990000',
-    status: 'em_operacao',
+    // `status` não entra mais aqui — é automático (sincronizarStatusPonto,
+    // migration 069) e quem decide é `dispositivoDoPonto`, marcando a tela
+    // 'ativo' depois de criada.
     categoria_id: categoriaId || null,
   });
 }
 
 async function dispositivoDoPonto(pontoId) {
   const dispositivo = await dispositivosRepo.criar(pontoId, { apelido: `Teste ${randomUUID()}` });
+  // Nasce 'inativo' (default da coluna) — precisa virar 'ativo' pra contar
+  // como tela em operação (o ponto acompanha via sincronizarStatusPonto).
+  await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 

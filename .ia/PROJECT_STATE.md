@@ -111,10 +111,11 @@ tela) — fonte de verdade, não duplicada aqui.
 
 ## Banco / migrations
 
-63 arquivos SQL em `src/db/migrations/`, numerados até `064` (a numeração
-pula um índice — confirmado por listagem, não investigado o motivo). Mais
-recente: `064_playlist_hora_congelada.sql`. Aplicadas por
-`src/db/migrate.js`, idempotente, com `pg_advisory_lock`.
+Arquivos SQL em `src/db/migrations/`, numerados até `069`. Mais recente:
+`069_status_automatico_e_margens_da_tela.sql` (4 valores de `pontos.status`,
+status automático via `sincronizarStatusPonto`, margens de safe area por
+tela). Aplicadas por `src/db/migrate.js`, idempotente, com
+`pg_advisory_lock`.
 
 ## Integrações — estado observado
 
@@ -207,3 +208,31 @@ reservado" que o dono descreveu não existe assim no código — ver
 ## Mapa funcional completo — 20/09/2026
 
 Inventário atual de todas as funcionalidades de usuário, admin e operação em `docs/mapa-funcional-completo-2026-09-20.md`. Novo bug confirmado: a aba admin Métrica usa status antigo de ponto ao calcular amortização histórica e pode inflar margem; Visão geral usa a regra correta. Bugs técnicos previamente mapeados continuam pausados. Prioridade é acompanhar a revisão manual já em andamento pelo dono.
+
+## Rede, rodada final do admin — 22/09/2026
+
+Prompt de 35 seções do dono, considerado a especificação definitiva da tela
+Rede — substitui as decisões de instalação/ACM/status intermediários das
+rodadas anteriores (21-22/09/2026, seções G/L de `docs/PENDENCIAS.md`).
+Mudança central: **`pontos.status` virou automático e real no banco**
+(migration 069, 4 valores — `a_instalar`/`em_operacao`/`em_reparo`/
+`inativo` — escritos só por `sincronizarStatusPonto`, derivado de
+`dispositivos.status`), substituindo o "status visual sem 3º valor no
+banco" da rodada anterior. Instalação/ACM saíram do admin de vez. Telas
+viraram cards com margens de safe area (chegam no player pelo heartbeat).
+Ocupação da rede virou tabela operacional (antes: painel agregado com
+lista simples). Candidatura recebeu acabamento final (foto no topo,
+formulário em blocos). Detalhe completo, inclusive o mapeamento de todo
+consumidor de `pontos.status` e as duas correções de comportamento
+encontradas no caminho (device recém-criado nasce `inativo`, ponto
+nascido de candidatura não ganha mais uma "Tela 1" vazia automática; e
+`em_reparo` passou a contar como escolha válida pro anunciante e como
+visível no site público, igual `a_instalar` já era): `.ia/HANDOFF.md`,
+`.ia/DECISIONS.md` (ADR novo) e `docs/PENDENCIAS.md` seção M. `npm run
+check` 161/161 (5 testes reescritos em `tests/redesenho-rede.test.js`,
+2 testes de playlist ajustados pro novo default de `dispositivos.status`).
+`tests/e2e/09-rede-redesenho.mjs` reescrito por completo pro modelo novo,
+58 checagens, 0 falhas. Branch `claude/wonderful-hypatia-i7y4xx`,
+aguardando revisão do dono — por pedido explícito do prompt, esta é a
+ÚLTIMA rodada de redesenho da Rede (não propor novo redesenho depois
+desta, só ajustes pontuais que o dono pedir).

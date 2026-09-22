@@ -1,10 +1,12 @@
-// Horário de funcionamento do ponto, por dia da semana (migration 066).
-// Formato: objeto com uma chave por dia — `null` (fechado) ou
-// `{abre:"HH:MM", fecha:"HH:MM"}`. O formulário só pergunta 3 grupos
-// (semana/sábado/domingo, ver public/modos.js e public/admin/index.page.js),
-// mas a coluna guarda por dia — mais flexível se um dia precisar divergir um
-// dia sem precisar de migration nova.
-const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+// Horário de funcionamento do ponto, por dia da semana (migration 066) +
+// feriados (rodada final da Rede, 22/09/2026 — chave nova dentro do MESMO
+// jsonb, sem migration: linha antiga sem "feriados" só lê `undefined`,
+// tratado igual a fechado/não informado). Formato: objeto com uma chave por
+// dia — `null` (fechado) ou `{abre:"HH:MM", fecha:"HH:MM"}`. Até 22/09/2026
+// o formulário perguntava só 3 grupos (semana/sábado/domingo); a coluna
+// sempre guardou por dia — o formulário virou 8 linhas (7 dias + feriados),
+// mas o schema não mudou nada.
+const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom', 'feriados'];
 const NOME_DIA = {
   seg: 'segunda',
   ter: 'terça',
@@ -13,6 +15,7 @@ const NOME_DIA = {
   sex: 'sexta',
   sab: 'sábado',
   dom: 'domingo',
+  feriados: 'feriados',
 };
 const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -64,6 +67,10 @@ function resumo(horario) {
   }
   partes.push(`Sáb ${fmt(horario.sab)}`);
   partes.push(`Dom ${fmt(horario.dom)}`);
+  // Só entra se alguém de fato respondeu — registro antigo não tem essa
+  // chave (undefined), e "Feriados: fechado" não deveria aparecer do nada
+  // pra quem nunca foi perguntado sobre isso.
+  if (horario.feriados !== undefined) partes.push(`Feriados ${fmt(horario.feriados)}`);
   return partes.join(' · ');
 }
 

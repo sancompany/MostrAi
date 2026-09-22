@@ -6,6 +6,7 @@
 // (estado) => desenharDashboard(estado)). Requer /config.js e /layout.js.
 (function () {
   const $ = (sel, raiz) => (raiz || document).querySelector(sel);
+  const DICA_FOTO_PADRAO = 'Opcional — sem foto, usamos um ícone padrão até você mandar uma.';
 
   async function estadoDosModos() {
     const r = await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' });
@@ -45,35 +46,41 @@
     <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias required></select></div>
     <div data-categoria-livre hidden><label for="${prefixo}categoria_livre">Qual?</label><input id="${prefixo}categoria_livre" name="categoria_livre"></div>`;
 
-  // Horário de funcionamento do ponto (pedido do dono, 22/09/2026) — 3
-  // grupos (segunda a sexta / sábado / domingo) em vez de 7 campos por dia:
-  // é o que o próprio pedido sugeriu como suficiente, e cobre o caso comum
-  // sem pedir a mesma coisa 5 vezes. Guardado por dia da mesma forma
-  // (src/lib/horario-semanal.js), só a TELA agrupa.
-  const GRUPOS_HORARIO = [
-    { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
-    { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
-    { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
+  // Horário de funcionamento do ponto, dia a dia + feriados (rodada final
+  // da Rede, 22/09/2026 — substitui os 3 grupos de antes). O schema sempre
+  // guardou por dia (src/lib/horario-semanal.js); só o formulário mudou.
+  const DIAS_HORARIO = [
+    { id: 'seg', rotulo: 'Segunda', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+    { id: 'ter', rotulo: 'Terça', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+    { id: 'qua', rotulo: 'Quarta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+    { id: 'qui', rotulo: 'Quinta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+    { id: 'sex', rotulo: 'Sexta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+    { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false, abre: '09:00', fecha: '15:00' },
+    { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
+    { id: 'feriados', rotulo: 'Feriados', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
   ];
 
   const CAMPO_HORARIO_SEMANAL = () => `
     <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
-    ${GRUPOS_HORARIO.map(
-      (g) => `
-      <div class="field-row u-ai-c" data-horario-grupo="${g.id}">
-        <div class="u-col-2"><b>${g.rotulo}</b></div>
-        <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
-        <div class="u-col field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
-          <div class="u-col"><label>Abre</label><input type="time" data-horario-abre value="09:00"></div>
-          <div class="u-col"><label>Fecha</label><input type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
-        </div>
-      </div>`,
-    ).join('')}`;
+    <div class="horario-semanal">
+      ${DIAS_HORARIO.map(
+        (d) => `
+        <div class="horario-dia" data-horario-dia="${d.id}">
+          <span class="horario-dia-nome">${d.rotulo}</span>
+          <div class="horario-dia-campos" ${d.fechadoPadrao ? 'hidden' : ''}>
+            <input class="mini" type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre">
+            <span class="u-dim">–</span>
+            <input class="mini" type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha">
+          </div>
+          <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${d.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label>
+        </div>`,
+      ).join('')}
+    </div>`;
 
   function ligarHorarioSemanal(form) {
-    form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-      const chk = grupo.querySelector('[data-horario-fechado]');
-      const campos = grupo.querySelector('[data-horario-campos]');
+    form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+      const chk = linha.querySelector('[data-horario-fechado]');
+      const campos = linha.querySelector('.horario-dia-campos');
       chk.addEventListener('change', () => {
         campos.hidden = chk.checked;
       });
@@ -81,19 +88,18 @@
   }
 
   function lerHorarioSemanalDoForm(form) {
-    const porGrupo = {};
-    form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-      const id = grupo.dataset.horarioGrupo;
-      const fechado = grupo.querySelector('[data-horario-fechado]').checked;
-      porGrupo[id] = fechado
+    const horario = {};
+    form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+      const dia = linha.dataset.horarioDia;
+      const fechado = linha.querySelector('[data-horario-fechado]').checked;
+      horario[dia] = fechado
         ? null
         : {
-            abre: grupo.querySelector('[data-horario-abre]').value,
-            fecha: grupo.querySelector('[data-horario-fecha]').value,
+            abre: linha.querySelector('[data-horario-abre]').value,
+            fecha: linha.querySelector('[data-horario-fecha]').value,
           };
     });
-    const semana = porGrupo.semana;
-    return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
+    return horario;
   }
 
   function segmentoDe(form) {
@@ -148,15 +154,21 @@
               ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
               : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'
           }</p>
+          <p class="form-sep-titulo u-mt-0">Estabelecimento</p>
           <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
+          <div class="campo-foto">
+            <label class="btn ghost mini" for="m_foto">Escolher foto da fachada</label>
+            <input type="file" accept="image/*" id="m_foto" hidden>
+            <span class="u-fs-72 u-dim" id="m_fotoNome">${DICA_FOTO_PADRAO}</span>
+          </div>
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Segmento')}
           <div><label for="m_fluxo">Média de pessoas que passam por mês (opcional)</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
           ${CAMPO_HORARIO_SEMANAL()}
           <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
           <div class="escolha-grid" id="modoEscolhaPlano"></div>
-          <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2"></textarea></div>
-          <div><label class="btn ghost mini">Foto da fachada (opcional)<input type="file" accept="image/*" id="m_foto" hidden></label><span class="u-fs-72 u-dim" id="m_fotoNome"></span></div>
+          <p class="form-sep-titulo u-mt-8">Informações adicionais</p>
+          <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
           <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
           <p class="form-msg" id="modoMsg" role="status"></p>
         </form>`;
@@ -295,7 +307,7 @@
       if (modo === 'ponto') {
         ligarHorarioSemanal(form);
         $('#m_foto', form)?.addEventListener('change', (e) => {
-          $('#m_fotoNome', form).textContent = e.target.files[0]?.name || '';
+          $('#m_fotoNome', form).textContent = e.target.files[0]?.name || DICA_FOTO_PADRAO;
         });
       }
       carregarOpcoesComodato($('#modoEscolhaPlano', card));

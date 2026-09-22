@@ -17,6 +17,7 @@ PW_CHROME=... node tests/e2e/03-navegador.mjs      # 36 checagens no Chromium + 
 PW_CHROME=... node tests/e2e/06-painel-bloqueio-plano.mjs  # sem plano trava o painel; admin libera cortesia e destrava
 PW_CHROME=... node tests/e2e/07-painel-design.mjs  # marca, paleta, hero sem KPI duplicado + estado operacional, "previstas", custo por 1.000, média diária, barra de 1 ponto
 PW_CHROME=... node tests/e2e/08-candidatura-ponto.mjs  # card "Faça parte da rede": movimento médio obrigatório, segmento resolvido por categoria_id OU categoria_livre
+PW_CHROME=... node tests/e2e/09-rede-redesenho.mjs # Rede: status automático (grade/filtros/detalhe/site público), telas em cards + margens, ocupação como tabela, candidatura com foto
 ```
 
 O limite de tentativas vive no banco desde a migration 051 (`tentativas_acesso`,

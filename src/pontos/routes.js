@@ -12,7 +12,6 @@ const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const pool = require('../db/pool');
 const comodato = require('./comodato');
-const dispositivosRepo = require('../dispositivos/repository');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -72,10 +71,13 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
     fluxo_estimado_mensal: req.body.fluxo_estimado_mensal,
     plano_ponto_id: req.body.plano_ponto_id || null,
     anunciante_id: conta.id,
-    status: 'a_instalar',
+    // Sem `status`: nasce sem tela nenhuma (default da coluna é
+    // 'a_instalar'), e o status automático (migration 069) lê 0 dispositivos
+    // como "aguardando instalação" — mesma correção que
+    // src/conta/modos.js#liberarPapelNaConta e
+    // src/anunciantes/routes.js#criarPontoDaCandidatura.
     aceitou_termos_em: new Date(),
   });
-  await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' });
   res.status(201).json(ponto);
 });
 
@@ -225,30 +227,13 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
   res.json({ ok: true, modalidade: destino.nome, pontos: aTrocar.length });
 });
 
-// Admin — foto real do ponto já com o molde instalado (mesmo padrão de
-// upload da nota fiscal em financeiro/routes.js).
-router.post('/admin/pontos/:id/foto', upload.single('arquivo'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
-  try {
-    const supabase = require('../lib/supabase');
-    const buffer = fs.readFileSync(req.file.path);
-    // Number(): o `:id` chega decodificado e ia direto pro nome do objeto no
-    // bucket — `..%2F..%2Fx` viraria uma chave de storage arbitrária.
-    const nomeArquivo = `pontos/instalacao-${Number(req.params.id)}.jpg`;
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-    const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, {
-      contentType: 'image/jpeg',
-      upsert: true,
-    });
-    if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
-    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-    const ponto = await repo.atualizar(req.params.id, { foto_instalacao_url: data.publicUrl });
-    if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
-    res.json(ponto);
-  } finally {
-    fs.unlink(req.file.path, () => {});
-  }
-});
+// Upload administrativo da foto do ponto (`POST /admin/pontos/:id/foto`)
+// foi removido na rodada final da Rede (22/09/2026) — a foto pertence ao
+// estabelecimento e vem da candidatura (`POST
+// /conta/modos/ponto/candidaturas/:id/foto`, src/candidaturas/routes.js);
+// sem consumidor real depois de tirar o botão "Trocar foto do ponto" do
+// admin (confirmado antes de remover: só a UI que acabou de sair chamava
+// esta rota).
 
 // Admin — foto de EXEMPLO do "ponto completo" mostrada em pontos.html (não é
 // de nenhum ponto real; é a ilustração genérica ao lado do mapa). Mesmo

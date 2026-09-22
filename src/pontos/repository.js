@@ -1,10 +1,11 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 
-// Dois status desde 17/09/2026 (migration 045). Os cinco de antes misturavam
-// "o ponto existe na rede?" com "a tela está funcionando?" — a segunda tem
-// resposta própria em `dispositivos.status`, que continua com três.
-const STATUS = ['a_instalar', 'em_operacao'];
+// Quatro status desde 22/09/2026 (migration 069, rodada final da Rede) —
+// e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
+// abaixo) deriva de `dispositivos.status` sempre que uma tela muda. Por
+// isso `status` saiu de CAMPOS_ATUALIZAVEIS — só essa função grava a coluna.
+const STATUS = ['a_instalar', 'em_operacao', 'em_reparo', 'inativo'];
 
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
@@ -33,7 +34,6 @@ const CAMPOS_ATUALIZAVEIS = [
   // campos acima são de antes, nunca tiveram tela nem uso; este é o de
   // verdade, ver src/lib/horario-semanal.js.
   'horario_semanal',
-  'status',
   'anunciante_id',
   'acabamento_completo',
   'foto_instalacao_url',
@@ -109,13 +109,7 @@ async function listar() {
     `SELECT p.*, c.nome AS categoria_nome, pp.nome AS plano_ponto_nome,
             a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
-            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas,
-            -- Status visual "TV instalada" (redesenho da Rede, 22/09/2026):
-            -- prova de instalação FÍSICA é a data de instalação da tela
-            -- (instalado_em, preenchida à mão na aba Telas), não
-            -- aparelho_id/chave — gerar uma chave só prova que alguém
-            -- abriu o link, não que a TV chegou no endereço.
-            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.instalado_em IS NOT NULL) AS telas_instaladas
+            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
@@ -144,16 +138,48 @@ async function atualizar(id, dados) {
   return rows[0] || null;
 }
 
+// Status automático do ponto (rodada final da Rede, 22/09/2026) — único
+// lugar que escreve `pontos.status`. Chamada de dentro de
+// src/dispositivos/repository.js toda vez que uma tela nasce, muda de
+// status, ou é excluída, pra nunca existir um momento em que o status do
+// ponto e o das telas dele contem histórias diferentes.
+//
+//   0 telas                -> a_instalar   (Aguardando instalação)
+//   >=1 tela ativa         -> em_operacao  (Ativo)
+//   0 ativa, >=1 reparo    -> em_reparo    (Em reparo)
+//   0 ativa, 0 reparo      -> inativo      (Inativo, mas tem tela cadastrada)
+async function sincronizarStatusPonto(pontoId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*) FILTER (WHERE status = 'ativo')::int AS ativas,
+            COUNT(*) FILTER (WHERE status = 'reparo')::int AS em_reparo,
+            COUNT(*)::int AS total
+       FROM dispositivos WHERE ponto_id = $1`,
+    [pontoId],
+  );
+  const { ativas, em_reparo, total } = rows[0];
+  const status = total === 0 ? 'a_instalar' : ativas > 0 ? 'em_operacao' : em_reparo > 0 ? 'em_reparo' : 'inativo';
+  await db.query('UPDATE pontos SET status = $2 WHERE id = $1', [pontoId, status]);
+  return status;
+}
+
 // Pública (módulo 7 "onde estamos") — pontos ativos + em construção/reparo,
 // pra mostrar a rede crescendo com status visível, só campo seguro. Nunca
 // devolver responsavel_contato aqui. (O player não usa isso — ele resolve
 // playlist por ponto_id direto, não lista pontos.)
+//
+// Só `inativo` fica de fora (rodada final da Rede, 22/09/2026): antes desta
+// rodada `pontos.status` só tinha 2 valores possíveis (a_instalar/em_operacao,
+// migration 045) e este filtro incluía os dois — na prática, 100% dos pontos
+// reais. Com o status automático (migration 069) `em_reparo` virou um valor
+// de verdade; este comentário já dizia "ativos + em construção/reparo" desde
+// antes, então entra na mesma lista — só `inativo` (tela(s) cadastrada(s),
+// nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
 async function listarPublicos() {
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
-     WHERE p.status IN ('em_operacao', 'a_instalar')
+     WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
      ORDER BY (p.status = 'em_operacao') DESC, p.nome`,
   );
   return rows;
@@ -299,6 +325,7 @@ module.exports = {
   obterConfiguracao,
   definirConfiguracao,
   ocupacaoPorAnunciante,
+  sincronizarStatusPonto,
   avaliarBloqueios,
   liberarEscolha,
   idsBloqueadosParaEscolha,
