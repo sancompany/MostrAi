@@ -4,6 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const planosRepo = require('./planos-repository');
+const promocoesRepo = require('./promocoes-repository');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const beneficiosRepo = require('./beneficios-repository');
 const cobrancasRepo = require('./cobrancas-repository');
@@ -49,6 +50,77 @@ router.get('/planos', async (_req, res) => {
 
 router.get('/admin/planos', async (_req, res) => {
   res.json(await planosRepo.listarTodos());
+});
+
+// OFERTAS > PREÇOS (reformulação comercial, 22/09/2026) — os 3 produtos
+// fixos, cada um com as 4 ofertas de ciclo já resolvidas. Substitui a grade
+// de "todo plano é uma linha solta" por "3 produtos, cada um com 4 ciclos"
+// pra quem só precisa mexer em preço/desconto no dia a dia — ver
+// planosRepo#listarProdutos.
+router.get('/admin/ofertas/produtos', async (_req, res) => {
+  res.json(await planosRepo.listarProdutos());
+});
+
+const TIERS_VALIDOS = new Set(['essencial', 'destaque', 'maximo']);
+
+// Único campo editável por fora do preço/desconto de cada produto — Parte E
+// do pedido é taxativa: preço-base + os 4 descontos de ciclo + comodato, nada
+// além disso. `descontos` chega como { "1": pct, "3": pct, "6": pct, "12": pct }.
+router.patch('/admin/ofertas/produtos/:tier', async (req, res) => {
+  if (!TIERS_VALIDOS.has(req.params.tier)) return res.status(400).json({ erro: 'produto inválido' });
+  try {
+    const produto = await planosRepo.atualizarProduto(req.params.tier, {
+      precoBase: req.body.precoBase,
+      descontos: req.body.descontos || {},
+      descontoComodato: req.body.descontoComodato,
+    });
+    res.json(produto);
+  } catch (err) {
+    res.status(err.status || 400).json({ erro: err.message });
+  }
+});
+
+// OFERTAS > PROMOÇÕES (mesma reformulação) — CRUD do admin. `itens` é a
+// matriz produto × ciclo (Parte N do pedido): cada linha diz quais tier +
+// compromisso_meses participam e com que desconto; ciclo sem linha fica de
+// fora sem precisar de flag "desabilitado" separada.
+router.get('/admin/ofertas/promocoes', async (_req, res) => {
+  res.json(await promocoesRepo.listarTodas());
+});
+
+router.post('/admin/ofertas/promocoes', async (req, res) => {
+  try {
+    res.status(201).json(await promocoesRepo.criar(req.body));
+  } catch (err) {
+    res.status(err.status || 400).json({ erro: err.message });
+  }
+});
+
+router.patch('/admin/ofertas/promocoes/:id', async (req, res) => {
+  const atual = await promocoesRepo.buscarPorId(req.params.id);
+  if (!atual) return res.status(404).json({ erro: 'promoção não encontrada' });
+  try {
+    res.json(await promocoesRepo.atualizar(req.params.id, req.body));
+  } catch (err) {
+    res.status(err.status || 400).json({ erro: err.message });
+  }
+});
+
+router.delete('/admin/ofertas/promocoes/:id', async (req, res) => {
+  try {
+    await promocoesRepo.excluir(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    res.status(err.status || 400).json({ erro: err.message });
+  }
+});
+
+// Pública — a(s) promoção(ões) vigente(s) marcada(s) pra aparecer numa
+// superfície específica (Home, Planos, painel de usuário logado). Sem
+// filtro de superfície aqui — o front escolhe o campo `mostrar_*` que
+// interessa, porque a mesma promoção pode aparecer em mais de um lugar.
+router.get('/promocoes/vigentes', async (_req, res) => {
+  res.json(await promocoesRepo.listarVigentes());
 });
 
 function descontoInvalido(valor) {
@@ -284,7 +356,23 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     assinatura = null;
   }
   if (!assinatura) {
-    assinatura = await assinaturasRepo.criar({ anuncianteId: req.session.anuncianteId, planoId: plano.id });
+    // Condição promocional vigente pra esse produto × ciclo, se houver — o
+    // snapshot trava aqui, no instante da adesão (Parte T do pedido de
+    // Ofertas/Promoções, 22/09/2026): editar ou encerrar a promoção depois
+    // não muda o que essa assinatura já tem direito até o prazo acabar.
+    const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses);
+    let promocaoValidoAte = null;
+    if (condicao) {
+      promocaoValidoAte = new Date();
+      promocaoValidoAte.setMonth(promocaoValidoAte.getMonth() + condicao.promocao.duracao_beneficio_meses);
+    }
+    assinatura = await assinaturasRepo.criar({
+      anuncianteId: req.session.anuncianteId,
+      planoId: plano.id,
+      promocaoId: condicao?.promocao.id,
+      promocaoDescontoPercentual: condicao?.descontoPercentual,
+      promocaoValidoAte,
+    });
   }
 
   // Emitido ao entregar o link, não ao pagar: a distância entre este evento e
@@ -294,7 +382,7 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     {
       plano_id: plano.id,
       plano_ciclo: plano.compromisso_meses,
-      valor_cobrado: sanCheckout.valorMensalDaConta(conta, plano),
+      valor_cobrado: sanCheckout.valorMensalDaConta(conta, plano, assinatura),
     },
     conta,
   );

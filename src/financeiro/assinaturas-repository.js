@@ -1,12 +1,24 @@
 const { randomUUID } = require('node:crypto');
 const pool = require('../db/pool');
 
-async function criar({ anuncianteId, planoId, status }) {
+// `promocao*` (rodada de Ofertas/Promoções, 22/09/2026) — snapshot travado
+// no instante da adesão, não referência viva. Quem chama já resolveu a
+// condição vigente antes (ver promocoesRepo#condicaoVigente em
+// financeiro/routes.js); esta função só grava o que recebeu.
+async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual, promocaoValidoAte }) {
   const id = randomUUID();
   const { rows } = await pool.query(
-    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status)
-     VALUES ($1,$2,$3, COALESCE($4, 'ativa')) RETURNING *`,
-    [id, anuncianteId, planoId, status || null],
+    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual, promocao_valido_ate)
+     VALUES ($1,$2,$3, COALESCE($4, 'ativa'), $5, $6, $7) RETURNING *`,
+    [
+      id,
+      anuncianteId,
+      planoId,
+      status || null,
+      promocaoId || null,
+      promocaoDescontoPercentual || null,
+      promocaoValidoAte || null,
+    ],
   );
   return rows[0];
 }

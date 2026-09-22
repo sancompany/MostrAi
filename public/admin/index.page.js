@@ -406,9 +406,12 @@ const ALIASES_ANTIGOS = {
   bancohoras: 'rede/pontos',
   anunciantes: 'anunciantes',
   vendedores: 'vendedores',
-  planos: 'planos/ativos',
-  planosarquivados: 'planos/arquivados',
-  beneficios: 'planos/beneficios',
+  // "Planos" virou "Ofertas" (reformulação comercial, 22/09/2026) —
+  // Arquivados e Benefícios não têm mais aba própria, caem em Preços (mesmo
+  // padrão de telas/ocupação acima).
+  planos: 'ofertas/precos',
+  planosarquivados: 'ofertas/precos',
+  beneficios: 'ofertas/precos',
   categorias: 'configuracoes/categorias',
   comodato: 'configuracoes/comodato',
   eventos: 'configuracoes/diagnostico',
@@ -467,12 +470,18 @@ const MODULOS = [
     grupo: 'Comercial',
     itens: [
       {
-        id: 'planos',
-        nome: 'Planos',
+        // "Ofertas" (reformulação comercial, 22/09/2026) — substitui "Planos"
+        // na navegação. Essencial/Pro/Prime são produtos fixos (Parte B do
+        // pedido do dono); Arquivados e Benefícios saíram da UI de propósito
+        // (Parte K/D) — `renderPlanos`/`renderPlanosArquivados`/
+        // `renderBeneficios` continuam definidas mais abaixo, só sem aba que
+        // chame, por enquanto (limpeza fica pra outra rodada, pedido
+        // explícito: não gastar esta rodada removendo código legado).
+        id: 'ofertas',
+        nome: 'Ofertas',
         abas: [
-          { id: 'ativos', nome: 'Ativos', render: renderPlanos },
-          { id: 'arquivados', nome: 'Arquivados', render: renderPlanosArquivados },
-          { id: 'beneficios', nome: 'Benefícios', render: renderBeneficios },
+          { id: 'precos', nome: 'Preços', render: renderPrecos },
+          { id: 'promocoes', nome: 'Promoções', render: renderPromocoes },
         ],
       },
       { id: 'vendedores', nome: 'Vendedores', render: renderVendedores },
@@ -535,10 +544,7 @@ const SUBTITULOS = {
   anunciantes:
     'Todas as contas, com os papéis vindos do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
-  planos: 'Preços do site. Cada modalidade mostra no máximo 3 planos na vitrine.',
-  planosarquivados:
-    'Versões aposentadas por uma edição. Continuam cobrando igual pra quem assinou nelas, por isso não são apagadas. A coluna "contas ativas" é o número que um dia torna seguro apagar uma versão.',
-  beneficios: 'Catálogo de benefícios reaproveitado por todos os planos.',
+  ofertas: 'Os 3 produtos da rede — Essencial, Pro e Prime — e as promoções vigentes.',
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
   comodato:
     'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano básico junto, ou trocar os R$ 50 pelo Essencial inteiro.',
@@ -859,6 +865,8 @@ async function renderResumo(el) {
           : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'
     }
 
+    <div id="promocaoAtivaResumo"></div>
+
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Receita recorrente · Total</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
       ${Object.entries(CICLOS)
@@ -896,6 +904,43 @@ async function renderResumo(el) {
   );
 
   renderOcupacaoRede(document.getElementById('ocupacaoRede'));
+  renderPromocaoAtivaResumo(document.getElementById('promocaoAtivaResumo'));
+}
+
+// Bloco de promoção ativa na Visão geral (Parte S do pedido de Ofertas/
+// Promoções, 22/09/2026). Só as marcadas "mostrar na Visão Geral do admin" —
+// sem promoção vigente nenhuma com essa marca, o bloco não existe (nunca
+// mostra vazio). Mais de uma: resumo compacto, uma linha por promoção — não
+// vira catálogo aqui, quem quer editar clica "Abrir" e vai pra Ofertas.
+async function renderPromocaoAtivaResumo(el) {
+  const vigentes = (await pegar('/promocoes/vigentes')).filter((p) => p.mostrar_admin);
+  if (!vigentes.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `<div class="panel promocao-ativa-panel u-mb-16">
+    <div class="panel-head"><h3>Promoção${vigentes.length > 1 ? 'ões' : ''} ativa${vigentes.length > 1 ? 's' : ''}</h3></div>
+    ${vigentes
+      .map((p) => {
+        const ciclos = [...new Set((p.itens || []).map((i) => CICLOS[i.compromissoMeses] || i.compromissoMeses))];
+        return `<div class="promocao-ativa-linha">
+          <div>
+            <b>${esc(p.titulo_publico)}</b>${p.selo ? ` <span class="badge badge-info">${esc(p.selo)}</span>` : ''}
+            <p class="u-dim u-fs-85 u-m-0">
+              ${p.compra_fim ? `Até ${data(p.compra_fim)}` : 'Sem prazo pra comprar'} ·
+              ${esc(ciclos.join(' · ')) || 'nenhum ciclo'} ·
+              Condição por ${p.duracao_beneficio_meses} meses ·
+              ${p.adesoes} ades${p.adesoes === 1 ? 'ão' : 'ões'}${p.limite_adesoes != null ? ` de ${p.limite_adesoes}` : ''}
+            </p>
+          </div>
+          <button class="btn ghost mini" data-abrir-promocao="${p.id}">Abrir promoção</button>
+        </div>`;
+      })
+      .join('')}
+  </div>`;
+  el.querySelectorAll('[data-abrir-promocao]').forEach((btn) =>
+    btn.addEventListener('click', () => irPara('ofertas/promocoes')),
+  );
 }
 
 // Ocupação agregada da rede (saiu da aba própria de cada ponto, redesenho
@@ -2017,7 +2062,7 @@ async function renderCandidaturas(el) {
       <td><span class="badge ${c.tipo === 'ponto' ? 'badge-ok' : 'badge-pendente'}">${c.tipo === 'ponto' ? 'Ponto' : 'Vendedor'}</span>
         ${c.origem === 'painel' ? '<div class="u-fs-70 u-dim">pedido do painel</div>' : c.origem === 'bonus_plano' ? '<div class="u-fs-70 u-txt-marca"><b>bônus do plano</b></div>' : ''}</td>
       <td><b>${esc(c.nome)}</b>${c.conta_id ? `<div class="u-fs-72 u-dim">conta #${c.conta_id} · ${esc(c.conta_nome || '')}</div>` : ''}</td>
-      <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
+      <td>${c.tipo === 'ponto' ? `<b>${esc(c.nome_comercio || '')}</b><div class="u-fs-76">${esc(c.endereco || '')}${c.bairro ? `, ${esc(c.bairro)}` : ''} · ${esc(c.cidade || '')}/${esc(c.uf || '')}</div><div class="u-dim u-fs-72">${esc(c.segmento || '')}${c.fluxo_estimado_mensal ? ` · ~${num(c.fluxo_estimado_mensal)} pessoas/mês` : ''}</div>` : `<span class="u-dim">${esc(c.cidade || '')}</span>`}</td>
       <td><a href="https://wa.me/55${String(c.contato_telefone || '').replace(/\D/g, '')}" target="_blank" rel="noopener">${esc(c.contato_telefone)}</a><div class="u-dim u-fs-72">${esc(c.contato_email || '')}</div></td>
       <td class="u-mw-240 u-fs-78 u-ws-normal">${esc(c.mensagem || '-')}</td>
       <td>${
@@ -2398,6 +2443,348 @@ function avisoDivergencia(planos) {
           .join('')}
       </ul>
     </div>`;
+}
+
+// ---------- OFERTAS > PREÇOS (reformulação comercial, 22/09/2026) ----------
+// 3 produtos fixos (Essencial/Pro/Prime — chave `tier`, não editável aqui:
+// características estruturais como pontos/segundos-por-hora/duração/
+// criativos são fixas por produto e não entram nesta tela, Parte C/D do
+// pedido). Editável: preço-base mensal + um desconto por ciclo + desconto
+// comodato — nada além disso (Parte E). Por baixo continua a mesma máquina
+// de versão imutável de sempre (`GET/PATCH /admin/ofertas/produtos/:tier`,
+// que chama `planosRepo.atualizarProduto` — ver o repositório).
+function calcularPreviewCiclo(precoBase, meses, descontoPercentual) {
+  const cheio = Math.round(Number(precoBase || 0) * meses * 100) / 100;
+  const desconto = Number(descontoPercentual) || 0;
+  const final = Math.round(cheio * (1 - desconto / 100) * 100) / 100;
+  const economia = Math.round((cheio - final) * 100) / 100;
+  const porMes = meses ? Math.round((final / meses) * 100) / 100 : final;
+  return { cheio, final, economia, porMes };
+}
+
+function montarPreviewCiclo(meses, preview) {
+  if (meses === 1) {
+    return `<div class="oferta-preco"><b>${fmt(preview.final)}</b>/mês</div>`;
+  }
+  return `<div class="oferta-preco">
+    <div class="price-riscado"><span>${fmt(preview.cheio)}</span>${preview.economia > 0 ? ` <span class="badge-desconto">-${Math.round((preview.economia / preview.cheio) * 100)}%</span>` : ''}</div>
+    <b>${fmt(preview.final)}</b>
+    ${preview.economia > 0 ? `<div class="price-economia">economiza ${fmt(preview.economia)}</div>` : ''}
+    <div class="price-equivalente">equivale a ${fmt(preview.porMes)}/mês</div>
+  </div>`;
+}
+
+function montarCardProduto(p) {
+  return `
+    <div class="card oferta-produto" data-produto="${p.tier}">
+      <h3 class="u-m-0">${esc(p.nome)}</h3>
+      <div class="u-mb-10">
+        <label>Preço-base mensal</label>
+        <span class="ed-moeda">R$<input type="number" step="0.01" min="0.01" class="oferta-preco-base" value="${p.precoBase}"></span>
+      </div>
+      <div class="oferta-ciclos">
+        ${Object.entries(CICLOS)
+          .map(([meses, nome]) => {
+            const ciclo = p.ciclos[meses];
+            const preview = calcularPreviewCiclo(p.precoBase, Number(meses), ciclo?.descontoPercentual);
+            return `<div class="oferta-ciclo" data-meses="${meses}">
+              <div class="oferta-ciclo-topo">
+                <span>${nome}</span>
+                <span class="ed-moeda mini"><input type="number" class="mini oferta-desconto" step="0.01" min="0" max="99" value="${ciclo?.descontoPercentual ?? ''}" placeholder="0">%</span>
+              </div>
+              <div data-preview>${montarPreviewCiclo(Number(meses), preview)}</div>
+            </div>`;
+          })
+          .join('')}
+      </div>
+      <div class="u-mt-10" title="Desconto extra pra conta que também é dona de ponto (comodato) — separado do desconto de ciclo acima">
+        <label>Desconto comodato (%, vazio = nenhum)</label>
+        <input type="number" min="1" max="100" class="mini oferta-comodato" value="${p.descontoComodato ?? ''}" placeholder="-">
+      </div>
+      <button class="btn primary block u-mt-12" data-salvar-produto="${p.tier}">Salvar</button>
+      <p class="form-msg" data-msg-produto="${p.tier}"></p>
+    </div>`;
+}
+
+async function renderPrecos(el) {
+  const produtos = await pegar('/admin/ofertas/produtos');
+  el.innerHTML = `
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>Essencial, Pro e Prime são produtos fixos.</b> O que muda aqui é só preço e desconto — pontos, horas de
+      tela, duração do anúncio e criativos são características do produto e não mudam nesta tela.
+    </p>
+    <div class="oferta-produtos-grid">${produtos.map(montarCardProduto).join('')}</div>`;
+
+  // Recalcula os 4 previews ao vivo, sem esperar salvar — mesma régua da
+  // vitrine pública (preço cheio riscado, badge, preço final, economia,
+  // equivalente mensal), só que antes de publicar.
+  el.querySelectorAll('.oferta-produto').forEach((cartao) => {
+    const recalcular = () => {
+      const precoBase = Number(cartao.querySelector('.oferta-preco-base').value) || 0;
+      cartao.querySelectorAll('.oferta-ciclo').forEach((linha) => {
+        const meses = Number(linha.dataset.meses);
+        const desconto = linha.querySelector('.oferta-desconto').value;
+        const preview = calcularPreviewCiclo(precoBase, meses, desconto);
+        linha.querySelector('[data-preview]').innerHTML = montarPreviewCiclo(meses, preview);
+      });
+    };
+    cartao
+      .querySelectorAll('.oferta-preco-base, .oferta-desconto')
+      .forEach((inp) => inp.addEventListener('input', recalcular));
+  });
+
+  el.querySelectorAll('[data-salvar-produto]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const tier = btn.dataset.salvarProduto;
+      const cartao = el.querySelector(`.oferta-produto[data-produto="${tier}"]`);
+      const msg = el.querySelector(`[data-msg-produto="${tier}"]`);
+      const descontos = {};
+      cartao.querySelectorAll('.oferta-ciclo').forEach((linha) => {
+        descontos[linha.dataset.meses] = linha.querySelector('.oferta-desconto').value || null;
+      });
+      const corpo = {
+        precoBase: cartao.querySelector('.oferta-preco-base').value,
+        descontos,
+        descontoComodato: cartao.querySelector('.oferta-comodato').value || null,
+      };
+      const r = await api(`/admin/ofertas/produtos/${tier}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.';
+        msg.className = 'form-msg err';
+        return;
+      }
+      msg.textContent = 'Salvo.';
+      msg.className = 'form-msg ok';
+      toast(`${tier === 'essencial' ? 'Essencial' : tier === 'destaque' ? 'Pro' : 'Prime'} atualizado.`);
+    });
+  });
+}
+
+// ---------- OFERTAS > PROMOÇÕES ----------
+// Entidade separada do produto (Parte L): uma matriz produto × ciclo, cada
+// célula com o próprio desconto. Ciclo sem célula marcada fica de fora —
+// não precisa de "desabilitado" explícito (Parte N).
+const NOME_TIER = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' };
+
+function montarLinhaPromocao(promo) {
+  const agora = new Date();
+  const dentroDaJanela =
+    (!promo.compra_inicio || new Date(promo.compra_inicio) <= agora) &&
+    (!promo.compra_fim || new Date(promo.compra_fim) >= agora);
+  const status = !promo.ativa
+    ? '<span class="badge badge-err">desativada</span>'
+    : !dentroDaJanela
+      ? '<span class="badge badge-pendente">fora da janela</span>'
+      : promo.limite_adesoes != null && promo.adesoes >= promo.limite_adesoes
+        ? '<span class="badge badge-err">esgotada</span>'
+        : '<span class="badge badge-ok">vigente</span>';
+  const itensPorTier = {};
+  (promo.itens || []).forEach((i) => {
+    itensPorTier[i.tier] = itensPorTier[i.tier] || [];
+    itensPorTier[i.tier].push(`${CICLOS[i.compromissoMeses] || i.compromissoMeses}: -${i.descontoPercentual}%`);
+  });
+  const matriz =
+    Object.entries(itensPorTier)
+      .map(([tier, linhas]) => `<b>${NOME_TIER[tier] || tier}</b>: ${esc(linhas.join(' · '))}`)
+      .join('<br>') || '<span class="u-dim">nenhum produto/ciclo</span>';
+  return `<tr data-promocao="${promo.id}">
+    <td>${esc(promo.titulo_publico)}${promo.selo ? ` <span class="badge badge-info">${esc(promo.selo)}</span>` : ''}<div class="u-dim u-fs-78">${esc(promo.nome_interno)}</div></td>
+    <td>${status}</td>
+    <td class="u-fs-85"><div class="celula-mensagem">${matriz}</div></td>
+    <td class="u-fs-85">${promo.compra_fim ? `até ${data(promo.compra_fim)}` : 'sem prazo'}</td>
+    <td class="u-fs-85">${promo.duracao_beneficio_meses} meses</td>
+    <td>${promo.adesoes}${promo.limite_adesoes != null ? `/${promo.limite_adesoes}` : ''}</td>
+    <td>
+      <button class="btn ghost mini" data-editar-promocao="${promo.id}">Editar</button>
+      <button class="btn ghost mini" data-alternar-promocao="${promo.id}" data-ativa="${promo.ativa}">${promo.ativa ? 'Desativar' : 'Ativar'}</button>
+      ${promo.adesoes === 0 ? `<button class="btn ghost mini u-txt-erro" data-excluir-promocao="${promo.id}">Excluir</button>` : ''}
+    </td>
+  </tr>`;
+}
+
+// Formulário de criação/edição — mesmo formulário serve os dois casos
+// (`promocaoEditando` diferencia POST de PATCH). A matriz produto × ciclo é
+// uma checkbox por célula (12 no total: 3 produtos × 4 ciclos); marcada,
+// libera o campo de desconto daquela célula.
+function montarFormularioPromocao(promo) {
+  const item = (tier, meses) => (promo?.itens || []).find((i) => i.tier === tier && i.compromissoMeses === meses);
+  return `
+    <form class="card wide" id="formPromocao">
+      <p class="form-sep-titulo u-mt-0">Identidade</p>
+      <div class="field-row">
+        <div class="u-col"><label>Nome interno</label><input class="mini" name="nome_interno" required value="${esc(promo?.nome_interno || '')}"></div>
+        <div class="u-col"><label>Selo curto (ex.: "Pré-venda")</label><input class="mini" name="selo" value="${esc(promo?.selo || '')}"></div>
+      </div>
+      <div><label>Título público</label><input name="titulo_publico" required value="${esc(promo?.titulo_publico || '')}"></div>
+      <div><label>Subtítulo</label><input name="subtitulo" value="${esc(promo?.subtitulo || '')}"></div>
+      <div><label>Descrição</label><textarea name="descricao" rows="2">${esc(promo?.descricao || '')}</textarea></div>
+      <div><label>Imagem/banner (URL, opcional)</label><input name="imagem_url" value="${esc(promo?.imagem_url || '')}"></div>
+
+      <p class="form-sep-titulo">Janela de compra</p>
+      <p class="form-hint u-m-0">Fora dela a promoção não aparece pra escolha nova — quem já aderiu não é afetado.</p>
+      <div class="field-row">
+        <div class="u-col"><label>Começa em (vazio = já vale)</label><input class="mini" type="datetime-local" name="compra_inicio" value="${promo?.compra_inicio ? new Date(promo.compra_inicio).toISOString().slice(0, 16) : ''}"></div>
+        <div class="u-col"><label>Termina em (vazio = sem prazo)</label><input class="mini" type="datetime-local" name="compra_fim" value="${promo?.compra_fim ? new Date(promo.compra_fim).toISOString().slice(0, 16) : ''}"></div>
+      </div>
+
+      <p class="form-sep-titulo">Condição</p>
+      <div class="field-row">
+        <div class="u-col"><label title="Quantos meses, a partir da adesão, o desconto vale">Duração do benefício (meses)</label><input class="mini" type="number" min="1" name="duracao_beneficio_meses" value="${promo?.duracao_beneficio_meses ?? 12}" required></div>
+        <div class="u-col"><label>Limite de adesões (vazio = sem teto)</label><input class="mini" type="number" min="1" name="limite_adesoes" value="${promo?.limite_adesoes ?? ''}"></div>
+      </div>
+      <p class="form-hint u-m-0">Marque as células que participam e o desconto de cada uma. Célula sem marca fica fora da promoção.</p>
+      <table class="promo-matriz"><thead><tr><th></th>${Object.values(CICLOS)
+        .map((n) => `<th>${n}</th>`)
+        .join('')}</tr></thead>
+        <tbody>
+          ${Object.entries(NOME_TIER)
+            .map(
+              ([tier, nome]) =>
+                `<tr><th>${nome}</th>${Object.keys(CICLOS)
+                  .map((meses) => {
+                    const atual = item(tier, Number(meses));
+                    return `<td><label class="check-row u-m-0"><input type="checkbox" data-item-tier="${tier}" data-item-meses="${meses}" ${atual ? 'checked' : ''}></label>
+                    <input type="number" class="mini" data-item-desconto data-item-tier="${tier}" data-item-meses="${meses}" min="0.01" max="100" step="0.01" placeholder="%" value="${atual?.descontoPercentual ?? ''}" ${atual ? '' : 'hidden'}></td>`;
+                  })
+                  .join('')}</tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>
+
+      <p class="form-sep-titulo">Exposição</p>
+      <div class="field-row u-flex-wrap">
+        <label class="check-row"><input type="checkbox" name="mostrar_home" ${promo?.mostrar_home ? 'checked' : ''}> Mostrar na Home</label>
+        <label class="check-row"><input type="checkbox" name="mostrar_planos" ${promo?.mostrar_planos !== false ? 'checked' : ''}> Mostrar na página de Planos</label>
+        <label class="check-row"><input type="checkbox" name="mostrar_logados" ${promo?.mostrar_logados ? 'checked' : ''}> Mostrar pra usuários logados</label>
+        <label class="check-row"><input type="checkbox" name="mostrar_admin" ${promo?.mostrar_admin !== false ? 'checked' : ''}> Mostrar na Visão Geral do admin</label>
+      </div>
+      <label class="check-row"><input type="checkbox" name="ativa" ${promo?.ativa !== false ? 'checked' : ''}> Ativa</label>
+
+      <div class="field-row u-mt-12">
+        <button class="btn primary" type="submit">${promo ? 'Salvar' : 'Criar promoção'}</button>
+        <button class="btn ghost" type="button" id="btnCancelarPromocao">Cancelar</button>
+      </div>
+      <p class="form-msg" id="msgPromocao"></p>
+    </form>`;
+}
+
+async function renderPromocoes(el) {
+  const promocoes = await pegar('/admin/ofertas/promocoes');
+  el.innerHTML = `
+    <div class="field-row u-mb-14">
+      <h3 class="u-m-0 u-mr-auto">Promoções</h3>
+      <button class="btn primary" id="btnNovaPromocao">+ Nova promoção</button>
+    </div>
+    <div id="formPromocaoWrap" hidden></div>
+    ${
+      promocoes.length
+        ? caixaTabela({
+            html: `<table><thead><tr><th>Promoção</th><th>Status</th><th>Produto × ciclo</th><th>Compra até</th><th>Duração</th><th>Adesões</th><th></th></tr></thead>
+          <tbody>${promocoes.map(montarLinhaPromocao).join('')}</tbody></table>`,
+          })
+        : '<p class="empty-state">Nenhuma promoção criada ainda.</p>'
+    }`;
+  if (promocoes.length) turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  const wrap = document.getElementById('formPromocaoWrap');
+  function abrirFormulario(promo) {
+    wrap.innerHTML = montarFormularioPromocao(promo);
+    wrap.hidden = false;
+    wrap.scrollIntoView({ behavior: 'smooth' });
+    const form = document.getElementById('formPromocao');
+
+    form.querySelectorAll('[data-item-tier][type="checkbox"]').forEach((chk) => {
+      chk.addEventListener('change', () => {
+        const desconto = form.querySelector(
+          `[data-item-desconto][data-item-tier="${chk.dataset.itemTier}"][data-item-meses="${chk.dataset.itemMeses}"]`,
+        );
+        desconto.hidden = !chk.checked;
+        if (chk.checked) desconto.focus();
+      });
+    });
+
+    document.getElementById('btnCancelarPromocao').addEventListener('click', () => {
+      wrap.hidden = true;
+      wrap.innerHTML = '';
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('msgPromocao');
+      const fd = new FormData(form);
+      const itens = [];
+      form.querySelectorAll('[data-item-tier][type="checkbox"]:checked').forEach((chk) => {
+        const desconto = form.querySelector(
+          `[data-item-desconto][data-item-tier="${chk.dataset.itemTier}"][data-item-meses="${chk.dataset.itemMeses}"]`,
+        );
+        if (desconto.value) {
+          itens.push({
+            tier: chk.dataset.itemTier,
+            compromissoMeses: Number(chk.dataset.itemMeses),
+            descontoPercentual: Number(desconto.value),
+          });
+        }
+      });
+      const corpo = {
+        nome_interno: fd.get('nome_interno'),
+        titulo_publico: fd.get('titulo_publico'),
+        subtitulo: fd.get('subtitulo') || null,
+        descricao: fd.get('descricao') || null,
+        selo: fd.get('selo') || null,
+        imagem_url: fd.get('imagem_url') || null,
+        compra_inicio: fd.get('compra_inicio') || null,
+        compra_fim: fd.get('compra_fim') || null,
+        duracao_beneficio_meses: Number(fd.get('duracao_beneficio_meses')),
+        limite_adesoes: fd.get('limite_adesoes') || null,
+        mostrar_home: fd.get('mostrar_home') === 'on',
+        mostrar_planos: fd.get('mostrar_planos') === 'on',
+        mostrar_logados: fd.get('mostrar_logados') === 'on',
+        mostrar_admin: fd.get('mostrar_admin') === 'on',
+        ativa: fd.get('ativa') === 'on',
+        itens,
+      };
+      const r = promo
+        ? await api(`/admin/ofertas/promocoes/${promo.id}`, { method: 'PATCH', body: JSON.stringify(corpo) })
+        : await api('/admin/ofertas/promocoes', { method: 'POST', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.';
+        msg.className = 'form-msg err';
+        return;
+      }
+      toast(promo ? 'Promoção atualizada.' : 'Promoção criada.');
+      renderPromocoes(el);
+    });
+  }
+
+  document.getElementById('btnNovaPromocao').addEventListener('click', () => abrirFormulario(null));
+  el.querySelectorAll('[data-editar-promocao]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const promo = promocoes.find((p) => p.id === Number(btn.dataset.editarPromocao));
+      abrirFormulario(promo);
+    });
+  });
+  el.querySelectorAll('[data-alternar-promocao]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const ativa = btn.dataset.ativa === 'true';
+      const r = await api(`/admin/ofertas/promocoes/${btn.dataset.alternarPromocao}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ativa: !ativa }),
+      });
+      if (!r.ok) return toast('Não foi possível atualizar.', 'err');
+      toast(ativa ? 'Promoção desativada.' : 'Promoção ativada.');
+      renderPromocoes(el);
+    });
+  });
+  el.querySelectorAll('[data-excluir-promocao]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Excluir esta promoção? Só é possível porque ela ainda não tem nenhuma adesão.')) return;
+      const r = await api(`/admin/ofertas/promocoes/${btn.dataset.excluirPromocao}`, { method: 'DELETE' });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+      toast('Promoção excluída.');
+      renderPromocoes(el);
+    });
+  });
 }
 
 async function renderPlanos(el) {

@@ -333,6 +333,15 @@ async function carregarTrocaComodato(pontos) {
   });
 }
 
+// Foto/placeholder no mesmo padrão visual dos outros cards que representam
+// um ponto (Rede, admin, preview de candidatura, "Onde estamos") — variações
+// da mesma entidade, não idênticas (polimento mínimo, Parte AH, 22/09/2026;
+// sem módulo compartilhado entre os arquivos, convenção do projeto).
+function fotoOuPlaceholderPonto(url, nome) {
+  if (url) return `<img src="${esc(url)}" alt="${esc(nome || '')}" loading="lazy">`;
+  return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Ponto sem foto')}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
+}
+
 async function carregarPontos() {
   const el = document.getElementById('pontosLista');
   try {
@@ -347,13 +356,15 @@ async function carregarPontos() {
     el.innerHTML = pontos
       .map(
         (p) => `
-      <div class="ponto-endereco-card">
+      <div class="ponto-card">
+        <div class="ponto-card-media">${fotoOuPlaceholderPonto(p.foto_instalacao_url, p.nome)}</div>
         <span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>
-        <strong>${esc(p.nome || '')}</strong>
-        <span>${esc(p.endereco)}</span>
-        <span class="u-dim u-fs-88">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</span>
-        ${Number(p.valor_pago_mensal) > 0 ? `<span class="u-fs-85">Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></span>` : ''}
-        ${p.cota_autoanuncio_slots_hora ? `<span class="u-fs-85 u-dim">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</span>` : ''}
+        <h4>${esc(p.nome || '')}</h4>
+        <p>${esc(p.endereco)}</p>
+        <p>${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</p>
+        ${p.categoria_nome ? `<p>${esc(p.categoria_nome)}</p>` : ''}
+        ${Number(p.valor_pago_mensal) > 0 ? `<p>Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></p>` : ''}
+        ${p.cota_autoanuncio_slots_hora ? `<p class="u-dim">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</p>` : ''}
       </div>`,
       )
       .join('');
@@ -362,46 +373,88 @@ async function carregarPontos() {
   }
 }
 
+// Formulário canônico de candidatura — outro endereço da mesma conta, então
+// pede tudo de novo (não reaproveita nome/endereço/segmento da conta, ao
+// contrário do card compacto do Painel). Montado em JS com o módulo
+// compartilhado (public/candidatura-ponto.js) pra garantir os mesmos campos,
+// validação, horário, foto com preview e preview de card dos outros dois
+// pontos de entrada.
+const candidaturaRaiz = document.getElementById('candidaturaNovoEndereco');
+candidaturaRaiz.innerHTML = `
+  <form class="card wide u-mt-16" id="formEndereco">
+    <p class="form-sep-titulo">Novo endereço</p>
+    <p class="form-hint u-m-0">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
+    <div><label for="end_nome_comercio">Nome do estabelecimento</label><input id="end_nome_comercio" name="nome" required></div>
+    ${candidaturaCampoFoto('end_')}
+    ${candidaturaCampoEndereco('end_')}
+    ${candidaturaCampoSegmento('end_', 'Segmento')}
+    <div><label for="end_fluxo">Média de pessoas que passam por mês</label><input id="end_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>
+    ${candidaturaCampoHorario()}
+    <div><label for="end_mensagem">Algo mais? (opcional)</label><textarea id="end_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
+    <div class="field-row">
+      <button class="btn primary" type="submit">Enviar pedido</button>
+      <button class="btn ghost" type="button" id="btnCancelarEndereco">Cancelar</button>
+    </div>
+    <p class="form-msg" id="msgEndereco" role="status"></p>
+  </form>
+  ${candidaturaCampoPreview()}`;
+
 const formEnd = document.getElementById('formEndereco');
+// O formulário nasce antes do DOMContentLoaded (script síncrono, sem esperar
+// nenhum fetch) — o listener global de public/formulario.js já liga CEP e
+// categorias sozinho quando o documento termina de carregar. Ligar aqui de
+// novo duplicava o combobox de segmento (dois campos de busca no ar).
+candidaturaLigarHorario(formEnd);
+candidaturaLigarFoto(formEnd, 'end_');
+const previewNovoEndereco = candidaturaRaiz.querySelector('.candidatura-preview');
+if (previewNovoEndereco) candidaturaLigarPreviewCard(formEnd, previewNovoEndereco, 'end_');
+
 document.getElementById('btnNovoEndereco').addEventListener('click', () => {
-  formEnd.hidden = false;
-  formEnd.scrollIntoView({ behavior: 'smooth' });
+  candidaturaRaiz.hidden = false;
+  candidaturaRaiz.scrollIntoView({ behavior: 'smooth' });
 });
 document.getElementById('btnCancelarEndereco').addEventListener('click', () => {
-  formEnd.hidden = true;
+  candidaturaRaiz.hidden = true;
 });
 formEnd.addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('msgEndereco');
   msg.textContent = 'Enviando...';
   msg.className = 'form-msg';
-  const opcao = formEnd.categoria_id.options[formEnd.categoria_id.selectedIndex];
-  const usouLivre = !formEnd.querySelector('[data-categoria-livre]').hidden;
   try {
     const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        nome: formEnd.nome.value.trim(),
-        endereco: `${formEnd.endereco.value.trim()}, ${formEnd.numero.value.trim()}`,
-        cidade: formEnd.cidade.value.trim(),
-        uf: formEnd.uf.value.trim().toUpperCase(),
-        cep: formEnd.cep.value.trim(),
-        segmento: usouLivre ? formEnd.categoria_livre.value.trim() : opcao ? opcao.dataset.nome : '',
-        // O texto sozinho nao bloqueia concorrente: quem faz isso e o
-        // categoria_id, que o gerador da playlist compara com o do anunciante.
-        // Sem ele, o ponto nascia sem bloqueio e a tela do dono podia exibir
-        // anuncio do concorrente da esquina.
-        categoria_id: usouLivre ? null : formEnd.categoria_id.value || null,
+        nome_comercio: formEnd.nome.value.trim(),
+        ...candidaturaEnderecoDoForm(formEnd),
+        segmento: candidaturaSegmentoDoForm(formEnd),
+        fluxo_estimado_mensal: formEnd.fluxo_estimado_mensal.value || null,
+        mensagem: formEnd.mensagem.value.trim() || null,
+        horario_semanal: candidaturaHorarioDoForm(formEnd),
       }),
     });
-    const corpo = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(corpo.erro || 'falha');
+    const resposta = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(resposta.erro || 'falha');
+    // Foto opcional, sobe DEPOIS (mesmo padrão dos outros dois pontos de
+    // entrada) — o pedido já vale sem foto, e uma falha aqui não desfaz o
+    // que já foi enviado.
+    const arquivo = candidaturaFotoSelecionada(formEnd, 'end_');
+    if (arquivo) {
+      const fd = new FormData();
+      fd.append('arquivo', arquivo);
+      const rFoto = await fetch(`${API_BASE_URL}/conta/modos/ponto/candidaturas/${resposta.id}/foto`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
+    }
     msg.textContent = 'Pedido enviado. A gente chama no WhatsApp pra combinar.';
     msg.className = 'form-msg ok';
     formEnd.reset();
-    formEnd.hidden = true;
+    candidaturaRaiz.hidden = true;
     carregarPontos();
   } catch (err) {
     msg.textContent = err.message === 'falha' ? 'Não foi possível enviar agora.' : err.message;

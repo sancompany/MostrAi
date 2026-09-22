@@ -6,12 +6,12 @@ const router = express.Router();
 const repo = require('./repository');
 const eventos = require('../lib/eventos');
 const planosPontoRepo = require('./planos-ponto-repository');
-const categoriasRepo = require('../categorias/repository');
 const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const pool = require('../db/pool');
 const comodato = require('./comodato');
+const { criarCandidaturaPonto } = require('../conta/modos');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -44,41 +44,33 @@ router.get('/anunciantes/:id/pontos', exigirAnuncianteLogado, async (req, res) =
   res.json(await repo.listarPorAnunciante(req.params.id));
 });
 
-// Dono de ponto (papel vindo do convite) cadastra outro endereço pela conta.
-// Entra como lead: o dono do Mostraí aprova no admin, como qualquer ponto.
+// Dono de ponto (papel vindo do convite) cadastra outro endereço pela conta
+// — "+ Cadastrar outro endereço" em Meus endereços. ENTRA COMO CANDIDATURA
+// (rodada de candidatura canônica, 22/09/2026), igual ao caminho "Você
+// também possui um comércio?": aparece em Candidaturas pro admin Aprovar/
+// Recusar, e só vira ponto de verdade quando aprovada (liberarPapelNaConta).
+// Achado real, corrigido nesta rodada: antes esta rota criava o PONTO
+// direto (`repo.criar`), sem passar pelo admin — apesar do comentário aqui
+// sempre ter dito "entra como lead, o dono aprova". Mesmo contrato de dados
+// do outro caminho (`criarCandidaturaPonto`, src/conta/modos.js) — os dois
+// formulários têm que pedir e mandar exatamente os mesmos campos.
 router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta || !(conta.papeis || []).includes('ponto')) {
     return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
   }
-  const { nome, endereco, cidade, uf, cep, segmento, categoria_id, responsavel_nome, responsavel_contato } = req.body;
-  if (!nome || !endereco || !cidade || !uf || !cep)
-    return res.status(400).json({ erro: 'nome e endereço completo são obrigatórios' });
-  // Validado contra o catálogo: id inventado no corpo viraria FK quebrada, e
-  // id de outra tabela viraria bloqueio de concorrente errado.
-  const categoria = categoria_id ? await categoriasRepo.buscarAtivaPorId(categoria_id) : null;
-  if (categoria_id && !categoria) return res.status(400).json({ erro: 'ramo inválido' });
-  const ponto = await repo.criar({
-    nome,
-    endereco,
-    cidade,
-    uf,
-    cep,
-    segmento: segmento || 'outro',
-    categoria_id: categoria ? categoria.id : null,
-    responsavel_nome: responsavel_nome || conta.responsavel_nome || conta.nome_empresa,
-    responsavel_contato: responsavel_contato || conta.contato_telefone,
-    fluxo_estimado_mensal: req.body.fluxo_estimado_mensal,
-    plano_ponto_id: req.body.plano_ponto_id || null,
-    anunciante_id: conta.id,
-    // Sem `status`: nasce sem tela nenhuma (default da coluna é
-    // 'a_instalar'), e o status automático (migration 069) lê 0 dispositivos
-    // como "aguardando instalação" — mesma correção que
-    // src/conta/modos.js#liberarPapelNaConta e
-    // src/anunciantes/routes.js#criarPontoDaCandidatura.
-    aceitou_termos_em: new Date(),
-  });
-  res.status(201).json(ponto);
+  const { rows: abertos } = await pool.query(
+    `SELECT id FROM candidaturas WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')`,
+    [conta.id],
+  );
+  if (abertos.length)
+    return res.status(409).json({ erro: 'você já tem um endereço em análise — a gente chama no WhatsApp' });
+  try {
+    const cand = await criarCandidaturaPonto(conta, req.body);
+    res.status(201).json({ ok: true, id: cand.id });
+  } catch (err) {
+    res.status(err.status || 400).json({ erro: err.message });
+  }
 });
 
 // Pública — as duas opções de comodato que o estabelecimento escolhe no

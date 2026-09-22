@@ -32,7 +32,21 @@
       "montarModo",
       "carregarConta",
       "cardBonus",
-      "ligarResgateAnuncio"
+      "ligarResgateAnuncio",
+      "CANDIDATURA_DICA_FOTO_PADRAO",
+      "CANDIDATURA_FOTO_PLACEHOLDER_SVG",
+      "candidaturaCampoEndereco",
+      "candidaturaEnderecoDoForm",
+      "candidaturaCampoSegmento",
+      "candidaturaSegmentoDoForm",
+      "candidaturaCampoFoto",
+      "candidaturaLigarFoto",
+      "candidaturaFotoSelecionada",
+      "candidaturaCampoHorario",
+      "candidaturaLigarHorario",
+      "candidaturaHorarioDoForm",
+      "candidaturaCampoPreview",
+      "candidaturaLigarPreviewCard"
     ]
   },
   "linter": {

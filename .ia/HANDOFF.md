@@ -3,6 +3,96 @@
 ## Updated
 2026-09-22
 
+## Ofertas + Promoções + formulário canônico de candidatura (22/09/2026, este agente)
+Prompt de 41 seções (A–AO) do dono: reformulação estrutural e visual da
+área comercial. Instrução explícita de não ler documentação histórica
+ampla (código é a fonte de verdade), não limpar código legado nesta
+rodada, e prosseguir com a implementação sem esperar nova autorização se
+não houver bloqueador real de negócio (nenhum encontrado). "Depois disso
+considere OFERTAS + PROMOÇÕES + FORMULÁRIO CANÔNICO DE CANDIDATURA
+concluídos nesta rodada" — mesmo padrão de fechamento da rodada final da
+Rede, abaixo.
+
+**Em uma linha cada:**
+- Migration 070 (única): `pontos`/`candidaturas` ganham `bairro`/
+  `complemento` (endereço estava concatenando rua+bairro num campo só —
+  ViaCEP já devolvia os dois separados, só faltava a coluna); tabelas
+  `promocoes`/`promocoes_itens` novas; `assinaturas` ganha
+  `promocao_id`/`promocao_desconto_percentual`/`promocao_valido_ate`
+  (snapshot da condição no momento da adesão, mesmo padrão de
+  `plano_id` apontando pra uma versão congelada).
+- **Ofertas (admin)**: "Planos" virou "Ofertas", só 2 abas (Preços,
+  Promoções) — Arquivados/Benefícios saíram da UI (código antigo
+  continua morto, não apagado, por instrução explícita do prompt).
+  `planos-repository.js#listarProdutos/atualizarProduto` agrupam os 4
+  ciclos de cada tier (Essencial/Pro/Prime) num card por produto; editar
+  reusa o `novaVersao()` já existente (só cria versão nova quando o valor
+  realmente muda — testado idempotente).
+- **Promoções**: entidade separada de plano (nunca "Pro Black Friday"
+  fake) — matriz tier×ciclo com desconto por célula, Mensal pode ficar de
+  fora. `promocoes-repository.js#condicaoVigente` é o motor; **ADR-014**
+  (`.ia/DECISIONS.md`) registra a decisão de o desconto promocional
+  SUBSTITUIR o de ciclo (nunca somar), com comodato/parceiro continuando
+  a somar por cima. Snapshot na assinatura no momento da adesão — preço
+  já vendido nunca recalcula se a promoção mudar depois.
+- **Site público**: os 3 cards de produto mostram os 4 ciclos com
+  geometria idêntica agora (`.price-linha-vazia{visibility:hidden}`
+  reserva o espaço da linha de risco/economia/equivalente mesmo quando
+  não se aplica) — corrige o bug visual do card Mensal mais baixo que os
+  outros (decisão de 19/09 que o prompt reverteu explicitamente, Parte
+  J). Bloco de promoção em Home (se `mostrar_home`), Planos (aplicado por
+  célula elegível) e painel logado (`mostrar_logados`); Visão Geral do
+  admin mostra resumo compacto só quando há promoção ativa.
+- **Formulário canônico de candidatura** (`public/candidatura-ponto.js`,
+  script global de verdade, sem IIFE — mesma convenção de
+  `formulario.js`, porque os 3 pontos de entrada (`modos.js` CARDS.ponto,
+  `painel.page.js` card compacto, `ponto.page.js` "+ Cadastrar outro
+  endereço") precisam chamar as mesmas funções): endereço com
+  rua/bairro/complemento separados, foto com preview real
+  (`URL.createObjectURL` + Trocar/Remover), horário 7 dias + feriados,
+  preview de card ao vivo ao lado do form (`.candidatura-layout`, empilha
+  no mobile <900px).
+- **Achado real, corrigido nesta rodada**: `POST /anunciantes/me/pontos`
+  ("+ Cadastrar outro endereço") criava o PONTO direto
+  (`pontosRepo.criar`), nunca passava pelo admin — apesar do próprio
+  comentário no código sempre ter dito "entra como lead". Agora chama
+  `criarCandidaturaPonto` (mesma função do outro caminho), vira
+  candidatura de verdade, só vira ponto quando o admin aprova. Um segundo
+  achado no mesmo raio: `criarPontoDaCandidatura`
+  (`src/anunciantes/routes.js`, caminho de convite) não copiava
+  `horario_semanal`/`foto_instalacao_url`/`observacoes` da candidatura
+  pro ponto — corrigido pra igualar `liberarPapelNaConta`.
+- **CSP furada, achada testando**: o preview real de foto usa `<img
+  src="blob:...">` (client-side, `URL.createObjectURL`) — a CSP não
+  liberava `blob:` em `img-src` (só em `media-src`, pro player). Sem o
+  ajuste em `src/server.js`, a prévia da foto quebrava silenciosamente
+  (ícone de imagem quebrada) em qualquer navegador real. Corrigido:
+  `img-src` ganhou `blob:`.
+- **Bug de duplicação achado testando**: injetar o formulário de "outro
+  endereço" via `innerHTML` de forma SÍNCRONA (sem esperar fetch nenhum)
+  faz o `DOMContentLoaded` global de `formulario.js` (que já liga
+  CEP/categorias em todo o documento) rodar DEPOIS da injeção e religar o
+  mesmo campo de novo — dois campos de busca de segmento na tela.
+  Corrigido removendo a chamada manual de `ligarCep`/`ligarCategorias`
+  nesse caminho (o listener global já cobre, porque a injeção acontece
+  antes do documento terminar de carregar) — o padrão do `modos.js`
+  (chamada manual dentro de `montarModo`, que é `async` e só injeta DEPOIS
+  do `DOMContentLoaded` já ter passado) continua correto e não mudou.
+- Testado com Playwright (fluxo real via `fetch` + cookie de sessão,
+  screenshots desktop/mobile): preview ao vivo atualiza com `input`, foto
+  real mostra miniatura nos dois previews (inline + card), "+ Cadastrar
+  outro endereço" cria candidatura (confirmado direto no banco, `status
+  ='nova'`), bloqueio de pedido duplicado (409) funciona.
+- `npm run check` verde (sintaxe + lint + format + 161 testes) —
+  `DATABASE_URL` não estava exportado no shell desta sessão por padrão,
+  setar antes de rodar (`postgres://mostrai:mostrai@localhost:5432/mostrai`
+  local).
+- Pendente ainda dentro desta rodada: polimento visual do card "Meus
+  endereços" foi feito (foto/placeholder, segmento), mas a tabela de
+  Candidaturas no admin não ganhou redesign nenhum (fora do escopo
+  explícito do prompt, Parte AN — não mexer além do necessário pra
+  receber os campos novos; só bairro entrou na coluna de endereço).
+
 ## Rede, rodada final — status automático, telas em cards, ocupação como tabela (22/09/2026, este agente)
 Prompt de 35 seções do dono: "considere este prompt como a especificação
 definitiva desta tela... o objetivo é ENCERRAR a revisão da Rede depois

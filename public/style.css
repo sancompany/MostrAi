@@ -214,6 +214,22 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .hero-fluxo { margin: 18px 0 0; font-size: .95rem; color: var(--text-dim); }
 .hero-fluxo b { color: var(--brand-text); }
 
+/* Bloco promocional da Home (Parte P do pedido de Ofertas/Promoções,
+   22/09/2026) — banner com o mesmo tratamento visual do resto do site
+   (card + degradê de marca), imagem opcional ao lado do texto. */
+.promo-home {
+  display: flex; align-items: center; gap: 28px; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px; overflow: hidden;
+}
+.promo-home-img { width: 220px; height: 220px; object-fit: cover; border-radius: calc(var(--radius) - 6px); flex: none; }
+.promo-home-texto h2 { margin: 8px 0 4px; }
+.promo-home-texto .badge { background: var(--brand); color: var(--sobre-brand); }
+.promo-home-texto .btn { margin-top: 12px; }
+@media (max-width: 640px) {
+  .promo-home { flex-direction: column; text-align: center; padding: 20px; }
+  .promo-home-img { width: 100%; height: 180px; }
+}
+
 .razoes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
 @media (max-width: 760px) { .razoes { grid-template-columns: 1fr; } }
 .razao {
@@ -279,6 +295,18 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .plan-card .price { font-size: 2.1rem; font-weight: 800; margin: 2px 0 2px; line-height: 1.15; }
 .plan-card .price-economia { color: var(--ok); font-size: .95rem; margin: 0 0 2px; }
 .plan-card .price-equivalente { color: var(--text-dim); font-size: .95rem; margin: 0 0 2px; }
+/* Reserva a altura da linha sem mostrar o número (rodada de Ofertas,
+   22/09/2026, Parte J): Mensal e ciclos sem desconto de verdade não têm
+   riscado/economia/equivalente pra mostrar, mas o card continua com a
+   MESMA geometria dos outros ciclos — só o conteúdo dessa linha some. */
+.plan-card .price-linha-vazia { visibility: hidden; }
+/* Promoção aplicada ao card (Parte Q do pedido) — selo curto acima do
+   preço, nota de validade da condição abaixo das linhas de preço. */
+.plan-card .price-selo-promo {
+  display: inline-block; background: var(--brand); color: var(--sobre-brand); font-size: .72rem; font-weight: 800;
+  padding: 3px 9px; border-radius: 999px; margin: 4px 0 8px;
+}
+.plan-card .price-promo-duracao { color: var(--text-dim); font-size: .78rem; margin: 6px 0 0; }
 .plan-card ul { list-style: none; padding: 0; margin: 18px 0 24px; display: flex; flex-direction: column; gap: 9px; }
 .plan-card li { color: var(--text-dim); font-size: .92rem; padding-left: 22px; position: relative; }
 .plan-card li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
@@ -450,6 +478,28 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 /* Campo de foto da fachada, no topo do formulário de candidatura — botão +
    texto de status na mesma linha, quebra pro mobile sem apertar. */
 .campo-foto { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0; }
+
+/* Foto da fachada com preview real (formulário canônico de candidatura,
+   22/09/2026, Parte X) — miniatura de verdade em vez de só o nome do
+   arquivo escolhido; substitui .campo-foto nos 3 pontos de entrada. */
+.campo-foto-preview { display: flex; align-items: center; gap: 14px; margin: 2px 0; }
+.campo-foto-preview-img {
+  width: 64px; height: 64px; flex: 0 0 64px; border-radius: var(--radius-campo);
+  overflow: hidden; background: var(--bg-alt); color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.campo-foto-preview-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.campo-foto-preview-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Formulário de candidatura ao lado do preview do card (Parte Y) — lado a
+   lado no desktop, empilhado no celular/tablet. A ordem no DOM já é
+   formulário → preview, o grid só reposiciona a segunda coluna. */
+.candidatura-layout { display: grid; grid-template-columns: minmax(0, 640px) minmax(260px, 300px); gap: 24px; align-items: start; justify-content: center; }
+@media (max-width: 900px) {
+  .candidatura-layout { grid-template-columns: 1fr; }
+}
+.candidatura-preview-titulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0 0 10px; }
+.candidatura-preview-card { pointer-events: none; }
 
 /* Escolha entre as opções de comodato (ajuda de custo x mais cota) */
 .escolha-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

@@ -25,6 +25,11 @@
           <div class="painel-skeleton">Carregando seu painel...</div>
         </div>
         <div id="bonusAnuncios"></div>
+        <!-- Promoção pra usuários logados (rodada de Ofertas/Promoções,
+             22/09/2026, Parte R) — só existe quando alguma promoção vigente
+             está marcada "mostrar pra usuários logados"; nunca redesenha o
+             resto do painel nem mexe no fluxo de troca de plano. -->
+        <div id="promocaoLogado" hidden></div>
       </div>
     </section>
 
@@ -129,6 +134,7 @@
   <script src="/layout.js"></script>
   <script src="/perfil.js"></script>
   <script src="/formulario.js"></script>
+  <script src="/candidatura-ponto.js"></script>
   <script src="/modos.js"></script>
   <script src="/anunciante/painel.page.js"></script>
 </body>

@@ -302,6 +302,124 @@ async function listarArquivados() {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// OFERTAS > PREÇOS (reformulação comercial, 22/09/2026) — os 3 produtos fixos
+// (Essencial/Pro/Prime, chave `tier`) editados como UM produto, não como 4
+// linhas soltas por ciclo. Por baixo continua a mesma máquina de sempre
+// (`novaVersao`, uma linha imutável por tier×ciclo, versão nova quando algo
+// muda) — só a CASCA fica simples: preço-base mensal + um desconto por
+// ciclo (Mensal/Trimestral/Semestral/Anual) + desconto comodato, os únicos
+// campos que o pedido do dono deixa editáveis no admin. Características
+// estruturais (segundos/hora, pontos, duração, criativos, nome) não entram
+// aqui de propósito — ficam como estão, fixas por tier.
+const CICLOS_PRODUTO = [1, 3, 6, 12];
+
+// Uma linha por ciclo, a que está valendo hoje pra aquele tier. Quando existir
+// mais de uma ativa no mesmo ciclo (não deveria, mas o catálogo antigo
+// permite plano solto fora da grade dos 3 produtos) pega a mais cara — é a
+// que carrega o preço-base de verdade, não uma promoção ou plano avulso.
+async function linhaAtualDoProduto(tier, compromissoMeses) {
+  const { rows } = await pool.query(
+    `SELECT * FROM planos
+      WHERE tier = $1 AND compromisso_meses = $2 AND ativo AND NOT fundador
+      ORDER BY valor_mensal_cheio DESC NULLS LAST, id LIMIT 1`,
+    [tier, compromissoMeses],
+  );
+  return rows[0] || null;
+}
+
+// Os 3 produtos, cada um com as 4 ofertas de ciclo — é o que a tela OFERTAS >
+// PREÇOS lê pra montar os 3 cards. `precoBase` é o `valor_mensal_cheio` do
+// ciclo mensal (a referência de onde os outros ciclos partem, Parte H do
+// pedido); `descontoComodato` vem do mensal também — as 4 linhas de um
+// mesmo tier sempre compartilham o mesmo preço cheio e o mesmo desconto
+// comodato (é assim que a grade nasce, migration 047), então ler do mensal
+// basta.
+async function listarProdutos() {
+  const tiers = ['essencial', 'destaque', 'maximo'];
+  const produtos = [];
+  for (const tier of tiers) {
+    const porCiclo = {};
+    for (const meses of CICLOS_PRODUTO) {
+      porCiclo[meses] = await linhaAtualDoProduto(tier, meses);
+    }
+    const referencia = porCiclo[1] || Object.values(porCiclo).find(Boolean);
+    if (!referencia) continue; // tier sem nenhuma linha ativa — não deveria acontecer, mas não quebra a tela
+    produtos.push({
+      tier,
+      nome: referencia.nome,
+      precoBase: Number(referencia.valor_mensal_cheio ?? referencia.valor_mensal),
+      descontoComodato:
+        referencia.desconto_comodato_percentual != null ? Number(referencia.desconto_comodato_percentual) : null,
+      ciclos: Object.fromEntries(
+        CICLOS_PRODUTO.map((meses) => {
+          const p = porCiclo[meses];
+          return [
+            meses,
+            p
+              ? {
+                  planoId: p.id,
+                  descontoPercentual: p.desconto_percentual != null ? Number(p.desconto_percentual) : null,
+                  valorMensal: Number(p.valor_mensal),
+                }
+              : null,
+          ];
+        }),
+      ),
+    });
+  }
+  return produtos;
+}
+
+// Atualiza o produto inteiro (as 4 linhas do tier) numa tacada: preço-base
+// novo se igual entra em todo mundo, cada ciclo recebe o desconto que veio
+// pra ele, e o desconto comodato (que não é por ciclo) entra igual nas 4.
+// Só publica versão nova pra ciclo cujo valor de verdade mudou — reabrir e
+// salvar sem mexer em nada não deve encher "Arquivados" de linha idêntica.
+// `descontos` é um objeto { 1: pct|null, 3: ..., 6: ..., 12: ... }.
+async function atualizarProduto(tier, { precoBase, descontos, descontoComodato }) {
+  const cheio = Number(precoBase);
+  if (!Number.isFinite(cheio) || cheio <= 0) {
+    const erro = new Error('preço-base tem que ser um número maior que zero');
+    erro.status = 400;
+    throw erro;
+  }
+  const comodato = descontoComodato === '' || descontoComodato == null ? null : Number(descontoComodato);
+  if (comodato != null && (!Number.isFinite(comodato) || comodato <= 0 || comodato > 100)) {
+    const erro = new Error('desconto comodato tem que ser vazio ou um número entre 1 e 100');
+    erro.status = 400;
+    throw erro;
+  }
+
+  const resultado = [];
+  for (const meses of CICLOS_PRODUTO) {
+    const atual = await linhaAtualDoProduto(tier, meses);
+    if (!atual) continue; // ciclo sem linha hoje — fora do escopo desta rodada (ver comentário da migration)
+    const descontoBruto = descontos ? descontos[meses] : undefined;
+    const desconto = descontoBruto === '' || descontoBruto == null ? null : Number(descontoBruto);
+    if (desconto != null && (!Number.isFinite(desconto) || desconto < 0 || desconto >= 100)) {
+      const erro = new Error(`desconto do ciclo de ${meses} meses tem que ser vazio ou um número entre 0 e 99`);
+      erro.status = 400;
+      throw erro;
+    }
+    const cheioAtual = atual.valor_mensal_cheio != null ? Number(atual.valor_mensal_cheio) : null;
+    const descontoAtual = atual.desconto_percentual != null ? Number(atual.desconto_percentual) : null;
+    const comodatoAtual =
+      atual.desconto_comodato_percentual != null ? Number(atual.desconto_comodato_percentual) : null;
+    const mudou = cheioAtual !== cheio || descontoAtual !== desconto || comodatoAtual !== comodato;
+    resultado.push(
+      mudou
+        ? await novaVersao(atual.id, {
+            valor_mensal_cheio: cheio,
+            desconto_percentual: desconto,
+            desconto_comodato_percentual: comodato,
+          })
+        : atual,
+    );
+  }
+  return resultado;
+}
+
 module.exports = {
   criar,
   listarAtivos,
@@ -317,4 +435,6 @@ module.exports = {
   MAX_ATIVOS_POR_CICLO,
   CAMPOS_VITRINE,
   CAMPOS_CONTRATO,
+  listarProdutos,
+  atualizarProduto,
 };

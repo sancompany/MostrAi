@@ -419,3 +419,35 @@ Consequências: qualquer novo consumidor de `pontos.status` precisa tratar
 os 4 valores, não 2. Reverter pra manual exigiria desfazer
 `sincronizarStatusPonto` e devolver `status` a `CAMPOS_ATUALIZAVEIS` — não
 é mudança trivial, decisão de produto se algum dia for pedida.
+
+## ADR-014 — Desconto de promoção SUBSTITUI o desconto de ciclo; comodato/parceiro continuam somando (22/09/2026)
+
+Status: Ativa.
+
+Contexto: rodada de Ofertas + Promoções (22/09/2026, prompt de 41 seções do
+dono). Uma promoção vigente (ex.: "Pré-venda Mostraí") e o desconto normal
+de ciclo (Trimestral/Semestral/Anual) podiam, em teoria, coexistir pro
+mesmo plano — o prompt não disse explicitamente empilhar ou substituir.
+
+Decisão: o desconto promocional SUBSTITUI o desconto de ciclo sobre o
+preço cheio (`valor_mensal_cheio`) — nunca os dois aplicados em sequência.
+Desconto de comodato e de parceiro continuam somando por cima do preço
+resultante (promocional ou normal, o que estiver vigente), porque são
+direitos da CONTA (dono de ponto, parceiro comercial), ortogonais a qual
+"preço de tabela" está em vigor.
+
+Motivo: a Parte Q do prompt descreve o card de preço promocional como
+autocontido — "preço cheio riscado, selo de desconto, preço promocional,
+economia, equivalente mensal" — nunca "10% de ciclo + mais X% de
+promoção". Substituir mantém o card simples de explicar e o cálculo do
+`san-checkout.js` (cobrança real) idêntico ao que a Parte P mostra
+publicamente — duas fontes de verdade divergindo aqui seria o pior erro
+possível numa tela de preço.
+
+Onde vive: `public/planos.page.js#montarPreco` (exibição) e
+`src/financeiro/san-checkout.js#valorMensalDaConta` (cobrança) — os dois
+implementam a mesma regra, comentário cruzado em cada um.
+
+Consequências: se um dia o dono pedir promoção empilhável com ciclo,
+exige mudar os dois lugares junto, e a UI do card de preço (hoje mostra
+um desconto só) também muda — não é ajuste de uma linha.
