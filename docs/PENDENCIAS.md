@@ -3345,6 +3345,62 @@ Mostraí. O app ainda precisa ser testado contra este backend de verdade
 em hardware real antes de qualquer tela passar pra `contrato_playlist=2`
 em produção.
 
+**Auditoria de 22/09/2026** (pedido do dono: ler o repositório do app de
+novo — ele lançou uma atualização — e conferir o que falta no backend).
+Comparado campo a campo, rota a rota, status a status com o código atual de
+`sancompany/playlist.mostrai` (`MostraiApi.kt`, `PlaylistJson.kt`,
+`PlayedJson.kt`, `FilaProofOfPlay.STATUS_DEFINITIVOS`):
+
+- **Contrato inteiro já bate.** Caminho (`/playlist/:dispositivoId`,
+  `/player/:dispositivoId/played`, `/heartbeat`), verbo, cabeçalho
+  (`X-Aparelho-Id`), forma do envelope, forma do lote de `/played` e os 6
+  status que `confirmarExecucao`/`confirmarComDedup` podem devolver
+  (`contabilizado`, `duplicado`, `teto_atingido`, `item_invalido`,
+  `janela_desconhecida`, `janela_expirada`) — todos batem 1:1 com o que o
+  app reconhece como definitivo. As duas garantias que o app documenta
+  como dependência (`itemProgramacaoId` por posição na sequência congelada;
+  `criativoId → url` imutável) seguram — a segunda com a mesma ressalva já
+  registrada acima (`PATCH /admin/criativos/:id` tecnicamente permite
+  reescrever o arquivo no mesmo id, mas nenhum caminho de UI faz isso).
+
+- **[x] Achado e corrigido:** não existia controle nenhum na UI do admin
+  pra ligar `contrato_playlist` — só dava pra mudar com um `PATCH` cru
+  (curl/Postman), o que não bate com a proposta do próprio projeto ("tudo
+  pelo site"). A aba Telas (`renderPontoTelas`,
+  `public/admin/index.page.js`) ganhou uma coluna "Contrato" com um select
+  (mesmo padrão do select de Status que já existia ali), gravando pela
+  mesma rota que já aceitava o campo. Sem migration, sem rota nova.
+  Verificado por Playwright: cria ponto → aba Telas → troca o select →
+  `GET /admin/pontos/:id/dispositivos` confirma `contrato_playlist:2`
+  persistido.
+
+- **Achado, não corrigido — decisão do dono, não bug.** O app nativo hoje
+  só lê PIN de provisionamento local (embutido no build, `mostrai-
+  config.json` ou `adb`), sempre exatamente 4 dígitos — reforçado na
+  própria atualização que motivou esta auditoria (`fix(config): PIN do
+  painel só aceita exatamente 4 dígitos numéricos`). O PIN que o site admin
+  grava por tela (`POST /admin/dispositivos/:id/pin`, usado hoje só pelo
+  player web) aceita de 4 a 6 dígitos. Não é bug: são dois sistemas de PIN
+  hoje desconectados — o app não busca o PIN do backend, e o próprio
+  repositório do app já lista isso como questão aberta ("PIN universal ×
+  PIN por tela do admin", `playlist.mostrai/README.md`, "Em aberto"). Só
+  vira trabalho de verdade se/quando o dono decidir unificar os dois — aí
+  o backend precisaria apertar a validação pra exatos 4 dígitos (ou os dois
+  PINs continuam sendo coisas diferentes, por decisão explícita).
+
+- **Não é pendência nova — já documentado como backlog intencional.**
+  `margemVmin` por tela, por lado (4 valores, um por topo/base/esquerda/
+  direita) — pedido do dono duas vezes em 21/09/2026, registrado nos dois
+  repositórios (`docs/proximas-versoes.md` daqui, seção "Margem e
+  orientação por tela configuráveis no admin, não só na URL"; mesmo lá,
+  seção de mesmo nome) como "não construir agora, dono revisa admin
+  primeiro". Confirmado que continua sem nenhum campo no backend hoje —
+  como já esperado, não é um esquecimento.
+
+**Verificado (desta auditoria):** `npm run check` (156/156) depois da
+mudança na UI; Playwright manual confirmando o select novo e a persistência
+no banco.
+
 ### I — varredura visual do admin: botões sem CSS e avisos mal coloridos (21/09/2026)
 
 Pedido do dono: mapear a funcionalidade do admin inteiro e corrigir botão

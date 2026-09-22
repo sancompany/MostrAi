@@ -415,6 +415,10 @@ const PONTO_STATUS = {
 const ANUNCIANTE_STATUS = { comum: 'Comum', parceiro: 'Parceiro' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
+// Migration 065 — decide qual formato `GET /playlist` devolve pra essa tela.
+// Só a app nativa (sancompany/playlist.mostrai) sabe ler o envelope; toda
+// tela nasce em 1 e só muda quando alguém instalar o app nela de verdade.
+const CONTRATO_PLAYLIST = { 1: 'Player web (padrão)', 2: 'App Android nativo' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
@@ -1516,7 +1520,7 @@ async function renderPontoTelas(el, ponto) {
 
   const corpo = `<table><thead><tr>
       <th data-ord>ID</th><th data-ord>Tela</th><th data-ord>Status</th><th data-ord>Último sinal</th>
-      <th>Chave / link do player</th><th>PIN do painel</th><th data-ord>Custo R$</th><th data-ord>Meses</th><th data-ord>Amort./mês</th><th data-ord>Instalada em</th><th></th>
+      <th>Chave / link do player</th><th>Contrato</th><th>PIN do painel</th><th data-ord>Custo R$</th><th data-ord>Meses</th><th data-ord>Amort./mês</th><th data-ord>Instalada em</th><th></th>
     </tr></thead><tbody>
     ${telas
       .map(
@@ -1531,6 +1535,7 @@ async function renderPontoTelas(el, ponto) {
            <button class="btn ghost mini" data-chave="${t.id}" data-trocar="1" title="Gera uma chave nova e derruba o aparelho atual">Trocar</button>`
           : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`
       }</td>
+      <td>${selectStatus(CONTRATO_PLAYLIST, String(t.contrato_playlist), `data-tela="contrato_playlist" data-id="${t.id}"`)}</td>
       <td>${t.tem_pin ? '<span class="badge badge-ok">definido</span> ' : '<span class="badge badge-pendente">sem PIN</span> '}
         <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></td>
       <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}"></td>
@@ -1583,7 +1588,7 @@ async function renderPontoTelas(el, ponto) {
 
   el.querySelectorAll('[data-tela]').forEach((campo) =>
     campo.addEventListener('change', async () => {
-      const numerico = ['custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela);
+      const numerico = ['custo_equipamento', 'meses_amortizacao', 'contrato_playlist'].includes(campo.dataset.tela);
       const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
       if (
         (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) &&
