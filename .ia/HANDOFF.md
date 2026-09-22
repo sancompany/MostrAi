@@ -6,6 +6,37 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Auditoria pós-atualização do app Android (22/09/2026, este agente)
+Pedido do dono: o player nativo (`sancompany/playlist.mostrai`) lançou uma
+atualização, ele pediu pra ler o repositório e conferir o que falta no
+backend do Mostraí pra suportar. Comparado campo a campo, rota a rota,
+status a status contra o código atual do app — detalhe completo em
+`docs/PENDENCIAS.md`, seção H (adenda de 22/09/2026).
+
+**Resultado principal: o contrato novo já está pronto** (foi construído
+numa sessão anterior, seção H original) — rotas, cabeçalho, envelope, lote
+de `/played`, os 6 status de dedup, as duas garantias de imutabilidade que
+o app depende. Nada disso precisou de código novo.
+
+**O que faltava de verdade, corrigido nesta sessão:** não existia controle
+nenhum na aba Telas do admin pra ligar `contrato_playlist=2` — só dava pra
+fazer com um `PATCH` cru (curl/Postman). Adicionado um select "Contrato"
+na tabela de Telas (`public/admin/index.page.js`, mesmo padrão do select de
+Status já existente), sem migration nem rota nova. Verificado por
+Playwright: cria ponto → aba Telas → troca o select → persiste no banco.
+
+**Achados que NÃO são bugs, registrados pra quando o dono decidir:**
+- PIN do app (sempre 4 dígitos, local) e PIN do site admin (4-6 dígitos,
+  hoje só usado pelo player web) são dois sistemas desconectados — já
+  listado como questão aberta no próprio repo do app.
+- `margemVmin` por tela/por lado — já era backlog intencional ("não
+  construir agora"), confirmado que continua sem campo no backend, como
+  esperado.
+
+**Verificado:** `npm run check` (156/156), Playwright manual do select novo.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
 ## Reforma da taxonomia de categorias concorrenciais (22/09/2026, este agente)
 Pedido do dono, spec completa de 13 itens em uma mensagem, autorização direta
 ("pode implementar"). Regra imutável reafirmada: categoria existe só pra

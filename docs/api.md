@@ -109,9 +109,11 @@ exibição — só aceita quem está programado nesta tela nesta hora. `200
 
 ### Contrato 2 — envelope (app Android nativo, `sancompany/playlist.mostrai`, 21/09/2026)
 
-`contrato_playlist = 2`, marcado por tela no admin (`PATCH
-/admin/dispositivos/:id {"contrato_playlist":2}`) — pra quem instalar o app
-nativo naquela TV. `GET /playlist/:dispositivoId` devolve:
+`contrato_playlist = 2`, marcado por tela direto na aba Telas do admin (select
+"Contrato", 22/09/2026 — antes só dava pra mudar por `PATCH
+/admin/dispositivos/:id {"contrato_playlist":2}` na unha, sem controle na UI)
+— pra quem instalar o app nativo naquela TV. `GET /playlist/:dispositivoId`
+devolve:
 
 ```json
 {
