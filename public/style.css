@@ -1149,3 +1149,28 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
   border-radius: var(--radius-campo); color: var(--text); padding: 9px 12px; font-size: .9rem;
 }
 .busca-pontos:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/* Busca de categoria (22/09/2026) — o <select data-categorias> vira hidden
+   (public/formulario.js#montarBusca) e este campo assume o lugar visual dele,
+   mesmo padrão de .card input pra não destoar do resto do formulário. */
+.categoria-busca-wrap { position: relative; }
+.categoria-busca {
+  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-campo);
+  color: var(--text); padding: 11px 12px; font-size: .95rem;
+}
+.categoria-busca:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+.categoria-busca:disabled { opacity: .6; }
+.categoria-resultados {
+  list-style: none; margin: 4px 0 0; padding: 4px; position: absolute; z-index: 20; top: 100%; left: 0; right: 0;
+  max-height: 280px; overflow-y: auto; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-campo); box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.categoria-resultados li {
+  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: .9rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.categoria-resultados li:hover, .categoria-resultados li:active { background: var(--bg-alt); }
+.categoria-grupo { font-size: .74rem; color: var(--text-dim); white-space: nowrap; }
+.categoria-vazio { color: var(--text-dim); cursor: default; }
+.categoria-vazio:hover { background: transparent; }
+.categoria-nao-encontrei { color: var(--blue); font-weight: 600; border-top: 1px solid var(--border); margin-top: 2px; }

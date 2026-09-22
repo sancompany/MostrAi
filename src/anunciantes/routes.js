@@ -22,6 +22,7 @@ const pontosRepo = require('../pontos/repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const indicacoesRepo = require('../indicacoes/repository');
+const categoriasRepo = require('../categorias/repository');
 const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
@@ -83,6 +84,13 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       uf: cand.uf || 'SP',
       cep: cand.cep || '',
       segmento: cand.segmento || 'outro',
+      // Mesma correção de src/conta/modos.js#liberarPapelNaConta: a categoria
+      // é da CONTA (quem cede a parede), candidatura nunca teve essas
+      // colunas. Sem isso a regra de bloqueio de concorrente
+      // (src/playlist/gerador.js:112) ficava inoperante em todo ponto criado
+      // por este caminho.
+      categoria_id: conta.categoria_id || null,
+      categoria_livre: conta.categoria_livre || null,
       responsavel_nome: cand.nome,
       responsavel_contato: cand.contato_telefone,
       fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
@@ -191,6 +199,14 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
 
   const senhaFraca = conferirSenha(senha);
   if (senhaFraca) return res.status(400).json({ erro: senhaFraca });
+
+  // Sem isso, categoria_id inválido/legado só quebrava na FK — 500 genérico
+  // em vez de um 400 dizendo o quê. Único cadastro que não passava por
+  // buscarAtivaPorId (POST /conta/modos/anunciante e POST /anunciantes/me/pontos
+  // já validavam) — achado no mapeamento de 22/09/2026.
+  if (req.body.categoria_id && !(await categoriasRepo.buscarAtivaPorId(req.body.categoria_id))) {
+    return res.status(400).json({ erro: 'ramo inválido', campo: 'categoria_id' });
+  }
 
   const existente = await repo.buscarPorEmailComSenha(contato_email);
   if (existente) return res.status(409).json({ erro: 'e-mail já cadastrado' });

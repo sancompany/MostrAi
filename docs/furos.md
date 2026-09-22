@@ -229,10 +229,10 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · evidência: pontos.html: "Se algum ponto cai, ele sai da conta — você não paga por exibição que não aconteceu." Busca em src/ por pro.?rata|abatimento|credito|reembols retorna APENAS o fluxo de arrependimento (src/titular/*) — não há nenhuma linha que desconte, credite ou recalcule valor por exibição não entregue.…
   · conserto: Remover a frase de public/pontos.html ou construir a regra de abatimento — hoje a página de venda contradiz o documento legal que o próprio cliente aceitou.
 
-**"Sem concorrente na sua tela" não funciona: nenhum caminho de criação de ponto grava categoria_id** *(informação faltando)*
+**RESOLVIDO em 22/09/2026 (reforma da taxonomia de categorias, docs/PENDENCIAS.md seção K) — "Sem concorrente na sua tela" não funciona: nenhum caminho de criação de ponto grava categoria_id** *(informação faltando)*
   · onde: src/anunciantes/routes.js:41-54 (criarPontoDaCandidatura), src/conta/modos.js:40-52 (liberarPapelNaConta), src/pontos/routes.js:39-56 (POST /anunciantes/me/pontos) × src/playlist/gerador.js:46
-  · evidência: O filtro de concorrente é `AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)` em gerador.js, com $1 = ponto.categoria_id. pontosRepo.criar ACEITA categoria_id (src/pontos/repository.js:16-33), mas as três funções que criam ponto passam só `segmento` (texto livre) e nunca categoria_id — logo o…
-  · conserto: Passar categoria_id em criarPontoDaCandidatura, liberarPapelNaConta e POST /anunciantes/me/pontos (e coletá-lo em candidaturas), senão todo ponto novo roda sem o bloqueio que o comodato promete.
+  · evidência original: O filtro de concorrente é `AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)` em gerador.js, com $1 = ponto.categoria_id. pontosRepo.criar ACEITA categoria_id (src/pontos/repository.js:16-33), mas as três funções que criam ponto passam só `segmento` (texto livre) e nunca categoria_id.
+  · conserto aplicado: `POST /anunciantes/me/pontos` (src/pontos/routes.js) já validava e gravava categoria_id antes desta rodada (corrigido em sessão anterior, sem atualizar este arquivo). `criarPontoDaCandidatura` e `liberarPapelNaConta` corrigidos agora — os dois copiam `categoria_id`/`categoria_livre` da conta pro ponto novo.
 
 **Quem paga sai do site e nunca volta: não há returnUrl, não há página de retorno e o e-mail não tem link** *(informação faltando)*
   · onde: src/financeiro/san-checkout.js:70-72, public/anunciante/painel.page.js (window.location.href), public/ (sem obrigado/sucesso/retorno), src/financeiro/email.js:19-30
@@ -294,10 +294,10 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · evidência: O resgate do bônus faz `UPDATE anunciantes SET plano_id = $2, status = 'ativo', data_inicio_cobertura = COALESCE(...), data_expiracao = now() + ($3 || ' months')::interval, anuncio_bonus_resgatado_em = now()` — e NÃO grava `plano_cortesia`. A cortesia do admin, no caminho equivalente, grava explicitamente…
   · conserto: Acrescentar `plano_cortesia = true` (e um `cortesia_motivo` tipo 'bônus de ponto') ao UPDATE do resgate em /home/user/MostrAi/src/conta/modos.js, e filtrar `AND NOT a.plano_cortesia AND a.excluido_em IS NULL AND (a.data_expiracao IS NULL…
 
-**Ativar o modo anúncios por dentro do painel dispensa o ramo — e o anúncio passa a rodar dentro de concorrente direto** *(papéis cruzados)*
-  · onde: public/modos.js:40 (CAMPO_SEGMENTO) e src/playlist/gerador.js (anunciantesElegiveis)
-  · evidência: `grep -rn data-categorias public/` mostra que public/anunciante/cadastro.html:48 e public/seja-um-ponto.html:70 marcam o select com `required`, mas public/modos.js:40 monta `<select ... data-categorias>` SEM `required`. `ligarCategorias` (public/formulario.js) nunca seta `required = true` — só seta `false` no caminho…
-  · conserto: Pôr `required` no select de CAMPO_SEGMENTO em /home/user/MostrAi/public/modos.js:40 e exigir categoria_id (ou categoria_livre) no servidor em POST /conta/modos/anunciante e em POST /conta/bonus/anuncio/resgatar, em…
+**RESOLVIDO em sessão anterior, confirmado em 22/09/2026 (reforma da taxonomia de categorias, docs/PENDENCIAS.md seção K) — Ativar o modo anúncios por dentro do painel dispensa o ramo — e o anúncio passa a rodar dentro de concorrente direto** *(papéis cruzados)*
+  · onde: public/modos.js:45 (CAMPO_SEGMENTO) e src/playlist/gerador.js (anunciantesElegiveis)
+  · evidência original: `grep -rn data-categorias public/` mostra que public/anunciante/cadastro.html:48 e public/seja-um-ponto.html:70 marcam o select com `required`, mas public/modos.js:40 monta `<select ... data-categorias>` SEM `required`. `ligarCategorias` (public/formulario.js) nunca seta `required = true` — só seta `false` no caminho…
+  · conserto aplicado: `<select id="${prefixo}categoria_id" name="categoria_id" data-categorias required>` já está com `required` em public/modos.js:45 — corrigido em sessão anterior, sem atualizar este arquivo. Não foi tocado nesta rodada.
 
 **O primeiro cliente paga por uma rede com zero telas — e o contrato que ele aceitou diz que não deveria** *(primeira vez)*
   · onde: public/contrato-anunciante.html:39 · src/financeiro/routes.js:178-230 · src/financeiro/san-checkout.js (aplicarCicloPago) · src/db/migrations/021_remove_cobertura_adiada.sql
@@ -524,10 +524,10 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · evidência: `aspect-ratio` só transfere para a dimensão `auto`. Com `width:100%` definido, a altura sai da razão e depois é CORTADA pelo `max-height` — a largura não é recalculada, então a caixa deixa de ser 9:16 e o `object-fit: cover` crops o vídeo verticalmente. Painel do anunciante: a lista fica na coluna de 1fr do…
   · conserto: Trocar `object-fit: cover` por `contain` nas duas regras, ou (melhor) deixar a largura derivar da altura: em style.css:392 e admin/index.css:66 usar `height: 420px/300px; width: auto; max-width: 100%; margin: 0 auto;` e remover o…
 
-**Endereço novo cadastrado pelo próprio dono de ponto nasce sem categoria_id — a tela dele fica sem bloqueio de concorrente** *(papéis cruzados)*
-  · onde: src/pontos/routes.js (POST /anunciantes/me/pontos) e public/anunciante/ponto.page.js (submit de #formEndereco)
-  · evidência: public/anunciante/ponto.html:76 oferece `<select id="categoria_id" data-categorias>` mas o submit em ponto.page.js monta o corpo com apenas `{nome, endereco, cidade, uf, cep, segmento}` — `segmento` recebe só o TEXTO (`opcao.dataset.nome`) e `categoria_id` nunca é enviado. Do lado do servidor, o handler desestrutura…
-  · conserto: Enviar `categoria_id` no corpo do #formEndereco em /home/user/MostrAi/public/anunciante/ponto.page.js e repassá-lo em POST /anunciantes/me/pontos em /home/user/MostrAi/src/pontos/routes.js (validando contra o catálogo, como…
+**RESOLVIDO em sessão anterior, confirmado em 22/09/2026 (reforma da taxonomia de categorias, docs/PENDENCIAS.md seção K) — Endereço novo cadastrado pelo próprio dono de ponto nasce sem categoria_id — a tela dele fica sem bloqueio de concorrente** *(papéis cruzados)*
+  · onde: src/pontos/routes.js (POST /anunciantes/me/pontos) e public/anunciante/ponto.page.js:396 (submit de #formEndereco)
+  · evidência original: public/anunciante/ponto.html:76 oferece `<select id="categoria_id" data-categorias>` mas o submit em ponto.page.js monta o corpo com apenas `{nome, endereco, cidade, uf, cep, segmento}` — `segmento` recebe só o TEXTO (`opcao.dataset.nome`) e `categoria_id` nunca é enviado. Do lado do servidor, o handler desestrutura…
+  · conserto aplicado: ponto.page.js:396 já envia `categoria_id: usouLivre ? null : formEnd.categoria_id.value || null` — corrigido em sessão anterior, sem atualizar este arquivo. Não foi tocado nesta rodada.
 
 **Anunciante que também é dono de ponto paga cobertura total e nunca roda (nem conta) na própria tela** *(papéis cruzados)*
   · onde: src/playlist/gerador.js (anunciantesElegiveis + gerarPlaylistDaHora + criativosDoDono) e public/anunciante/painel.page.js (Exibições por ponto)

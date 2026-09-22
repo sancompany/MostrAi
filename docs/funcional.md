@@ -388,6 +388,39 @@ caminho. *Quem vê:* o dono do ponto, na própria TV, e os clientes dele.
 > aviso nenhum. E é justamente a tela dele que vende o comodato: é ali que os
 > clientes dele passam.
 
+**RN-57 — Categoria impede concorrente direto na mesma tela; grupo e alias
+não entram nisso.** *(Reforma da taxonomia, 22/09/2026 — a regra em si
+existe desde a migration 015, mas nunca tinha virado RN, só comentário de
+código em `src/playlist/gerador.js` e `src/categorias/*`.)* Um anunciante
+não entra na playlist de uma tela cujo ponto tem a MESMA `categoria_id`
+que ele (`anunciantesElegiveis`, `src/playlist/gerador.js:112`) —
+comparação exata de id, recalculada a cada geração de playlist, nunca uma
+trava gravada. `categoria_id IS NULL` de qualquer lado (ponto ou
+anunciante) libera geral: ponto sem categoria não bloqueia ninguém,
+anunciante sem categoria (só `categoria_livre`) nunca é bloqueado por
+ninguém — `categoria_livre` é texto de exibição, nunca participa da
+comparação. A taxonomia (migration 067) trocou 25 categorias amplas
+(“Clínica / consultório”, “Academia / studio”) por ~230 específicas,
+organizadas em `grupo` (só visual, ex. “Saúde”) — grupo nunca bloqueia:
+Odontologia e Fisioterapia estão as duas no grupo Saúde e não competem
+entre si, só Odontologia bloqueia Odontologia. `aliases` (ex. “dentista”
+→ Odontologia) só ajudam a achar a categoria na busca, nunca são
+comparados. Categoria antiga marcada `legado` some do catálogo oferecido
+a cadastro novo, mas continua bloqueando normalmente quem já a usa — o
+`categoria_id` gravado não muda sozinho. *Violada:* nenhuma; sem teste
+algum até a migration 067, que adicionou cobertura em
+`tests/categorias-concorrencia.test.js`. *Quem vê:* o anunciante nunca
+vê a mecânica — só o efeito (o próprio anúncio aparecendo ou não numa
+tela); o admin vê e edita a categoria de cada ponto/anunciante.
+> Furo achado junto (não é a regra em si, é quem alimentava ela):
+> `criarPontoDaCandidatura` (`src/anunciantes/routes.js`) e
+> `liberarPapelNaConta` (`src/conta/modos.js`) — os dois caminhos que
+> criam um ponto a partir de uma candidatura aprovada — nunca copiavam
+> `categoria_id`/`categoria_livre` da conta pro ponto novo. Todo ponto
+> nascido de candidatura (o caminho mais comum de todos) nascia sem
+> categoria nenhuma, e a RN acima ficava inoperante nele até o admin
+> preencher à mão. Corrigido nos dois lugares.
+
 **RN-45 — Produção de peça é serviço à parte, não benefício de plano.**
 *(Decisão do dono, 17/09/2026: "nunca disse que era benefício, e sim fica
 separado dos planos, com negociação direta pelo WhatsApp, pelo valor que vai

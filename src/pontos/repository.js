@@ -16,6 +16,12 @@ const CAMPOS_ATUALIZAVEIS = [
   'cep',
   'segmento',
   'categoria_id',
+  // Espelha anunciantes.categoria_livre (migration 015): preenchido quando o
+  // dono não achou a categoria dele no catálogo — "pendente de
+  // classificação", não entra na regra de bloqueio (só categoria_id entra).
+  // pontos nunca teve essa coluna até a migration 067; o admin lia um campo
+  // que não existia (sempre "-").
+  'categoria_livre',
   'responsavel_nome',
   'responsavel_contato',
   'plano_ponto_id',
@@ -43,6 +49,7 @@ async function criar(dados, db = pool) {
     cep,
     segmento,
     categoria_id,
+    categoria_livre,
     plano_ponto_id,
     responsavel_nome,
     responsavel_contato,
@@ -58,11 +65,11 @@ async function criar(dados, db = pool) {
 
   const { rows } = await db.query(
     `INSERT INTO pontos
-       (nome, endereco, cidade, uf, cep, segmento, categoria_id, plano_ponto_id,
+       (nome, endereco, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
         horario_semanal)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       nome,
@@ -72,6 +79,7 @@ async function criar(dados, db = pool) {
       cep,
       segmento,
       categoria_id || null,
+      categoria_livre || null,
       plano_ponto_id || null,
       responsavel_nome,
       responsavel_contato,

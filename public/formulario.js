@@ -43,8 +43,27 @@ function ligarCep(escopo) {
   });
 }
 
-// data-categorias num <select> — popula com o catálogo do admin e mostra o
-// campo livre (data-categoria-livre) quando a escolha for "Outro".
+// Busca ignorando maiúsculas/acentos ("estetica" acha "Estética"). Guardado
+// junto do valor original — nunca altera o que fica gravado, só o que é
+// comparado na hora de filtrar.
+function normalizarBusca(txt) {
+  return (txt || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+// data-categorias num <select> — vira um campo de busca (22/09/2026: catálogo
+// passou de 25 pra ~230 categorias, um select tradicional parou de fazer
+// sentido). O <select> continua existindo no DOM, só escondido: é ele quem
+// seguem lendo — form.categoria_id.value, .options[.selectedIndex].dataset,
+// FormData — em cadastro.page.js, modos.js e ponto.page.js, sem precisar
+// mexer em nenhum desses arquivos. A busca é só uma camada de cima.
+//
+// Categoria = o que bloqueia concorrente direto (grupo é só organização
+// visual, nunca entra nisso — ver src/playlist/gerador.js). "Não encontrei
+// minha categoria" substitui o antigo "Outro" (era uma comparação de string
+// solta no front, `nome === 'Outro'`): agora é só limpar o select e mostrar
+// o campo de texto livre que os três formulários já tinham — mesmo mecanismo
+// de categoria_livre / categoria pendente que já existia desde a migration
+// 015, só sem depender de uma linha mágica no catálogo.
 async function ligarCategorias(escopo) {
   const selects = (escopo || document).querySelectorAll('[data-categorias]');
   if (!selects.length) return;
@@ -53,35 +72,138 @@ async function ligarCategorias(escopo) {
     const r = await fetch(`${API_BASE_URL}/categorias`);
     categorias = await r.json();
     // Erro do servidor também vem como JSON válido ({erro:...}) — sem essa
-    // checagem o .map() estouraria fora do try e o select ficaria vazio e
+    // checagem o .map() estouraria fora do try e o campo ficaria vazio e
     // obrigatório, travando o cadastro sem dizer por quê.
     if (!r.ok || !Array.isArray(categorias)) throw new Error('resposta inesperada');
   } catch {
-    // Sem a lista, o select ficaria vazio e obrigatório — o navegador
+    // Sem a lista, o campo ficaria vazio e obrigatório — o navegador
     // bloquearia o envio sem dizer por quê e o cadastro morreria aí. Melhor
     // liberar o campo e perguntar o ramo depois, por WhatsApp.
     selects.forEach((sel) => {
       sel.required = false;
       sel.innerHTML = '<option value="">(a gente confirma seu ramo no contato)</option>';
+      montarBusca(sel, [], true);
     });
     return;
   }
 
+  const comBusca = categorias.map((c) => ({
+    ...c,
+    busca: normalizarBusca(`${c.nome} ${(c.aliases || []).join(' ')}`),
+  }));
   selects.forEach((sel) => {
     sel.innerHTML =
       '<option value="">Selecione...</option>' +
       categorias.map((c) => `<option value="${c.id}" data-nome="${c.nome}">${c.nome}</option>`).join('');
-    const form = sel.closest('form') || document;
-    const livre = form.querySelector('[data-categoria-livre]');
-    if (!livre) return;
-    const alternar = () => {
-      const nome = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].dataset.nome;
-      const outro = nome === 'Outro';
-      livre.hidden = !outro;
-      livre.querySelector('input').required = outro;
-    };
-    sel.addEventListener('change', alternar);
-    alternar();
+    montarBusca(sel, comBusca, false);
+  });
+}
+
+// Monta o campo de busca por cima do <select> (que fica hidden, mas continua
+// no form). `semCatalogo` é o caso de fallback do catch acima — sem lista
+// pra filtrar, mostra só um aviso, sem pretender ser buscável.
+function montarBusca(sel, categorias, semCatalogo) {
+  sel.hidden = true;
+  const form = sel.closest('form') || document;
+  const livre = form.querySelector('[data-categoria-livre]');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'categoria-busca-wrap';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'categoria-busca';
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-expanded', 'false');
+  input.autocomplete = 'off';
+  input.placeholder = semCatalogo ? '(a gente confirma seu ramo no contato)' : 'Pesquise sua atividade...';
+  input.disabled = semCatalogo;
+  const lista = document.createElement('ul');
+  lista.className = 'categoria-resultados';
+  lista.hidden = true;
+  wrap.append(input, lista);
+  sel.insertAdjacentElement('afterend', wrap);
+  if (semCatalogo) return;
+
+  // Edição de algo que já tem categoria escolhida (admin, ou volta na
+  // página) — o campo de busca nasce mostrando o nome já selecionado.
+  const opcaoInicial = sel.options[sel.selectedIndex];
+  if (opcaoInicial?.value) input.value = opcaoInicial.dataset.nome;
+
+  const escolher = (categoria) => {
+    sel.innerHTML =
+      '<option value="">Selecione...</option>' +
+      categorias
+        .map(
+          (c) =>
+            `<option value="${c.id}" data-nome="${c.nome}" ${c.id === categoria.id ? 'selected' : ''}>${c.nome}</option>`,
+        )
+        .join('');
+    input.value = categoria.nome;
+    if (livre) {
+      livre.hidden = true;
+      livre.querySelector('input').required = false;
+      livre.querySelector('input').value = '';
+    }
+    fechar();
+    sel.dispatchEvent(new Event('change'));
+  };
+
+  const naoEncontrei = () => {
+    sel.value = '';
+    input.value = '';
+    if (livre) {
+      livre.hidden = false;
+      livre.querySelector('input').required = true;
+      livre.querySelector('input').focus();
+    }
+    fechar();
+    sel.dispatchEvent(new Event('change'));
+  };
+
+  function fechar() {
+    lista.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+  }
+
+  function abrir(termo) {
+    const alvo = normalizarBusca(termo);
+    // Sem termo ainda: mostra o catálogo inteiro, agrupado (é a mesma lista
+    // que um select mostraria aberto, só que já pesquisável). Com termo,
+    // filtra por nome OU alias e ignora o agrupamento — quem está buscando
+    // já sabe o que quer, o grupo só atrapalharia a leitura dos resultados.
+    const bateu = alvo ? categorias.filter((c) => c.busca.includes(alvo)) : categorias;
+    const LIMITE = 40;
+    const itens = bateu.slice(0, LIMITE);
+    lista.innerHTML =
+      (itens.length
+        ? itens
+            .map(
+              (c) =>
+                `<li role="option" data-id="${c.id}">${esc(c.nome)}<span class="categoria-grupo">${esc(c.grupo || '')}</span></li>`,
+            )
+            .join('')
+        : '<li class="categoria-vazio">Nada encontrado.</li>') +
+      `<li class="categoria-nao-encontrei" data-nao-encontrei>Não encontrei minha categoria</li>`;
+    lista.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+
+  input.addEventListener('focus', () => abrir(input.value));
+  input.addEventListener('input', () => abrir(input.value));
+  input.addEventListener('blur', () => setTimeout(fechar, 150)); // dá tempo do click no item disparar antes de sumir a lista
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fechar();
+    if (e.key === 'Enter') e.preventDefault();
+  });
+  lista.addEventListener('mousedown', (e) => {
+    // mousedown (não click) pra vencer o blur do input, que fecharia a
+    // lista antes do click chegar a disparar.
+    const li = e.target.closest('li');
+    if (!li) return;
+    e.preventDefault();
+    if (li.dataset.naoEncontrei !== undefined) return naoEncontrei();
+    const categoria = categorias.find((c) => String(c.id) === li.dataset.id);
+    if (categoria) escolher(categoria);
   });
 }
 
