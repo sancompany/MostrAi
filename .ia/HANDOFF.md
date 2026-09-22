@@ -3,6 +3,28 @@
 ## Updated
 2026-09-22
 
+## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
+`main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta
+sessão trabalhava a Rede — ambas tocaram `src/pontos/repository.js` e
+`public/admin/index.page.js` na mesma área (ficha do ponto). Merge
+resolvido: minha migration virou 068 (colisão de número com a deles, que já
+era 067). Na ficha do ponto, a busca de categoria editável que eles
+adicionaram (`categoriaBuscaHtml`/`ligarCategoriaBusca`, com limpeza de
+`categoria_livre` ao escolher) **não entrou** — a ficha é somente-leitura
+desde o redesenho desta sessão (pedido explícito do dono: só status/molde
+ACM ficam editáveis, categoria não estava na lista). O componente de busca
+continua ativo e usado normalmente no cadastro, nas outras telas públicas e
+no detalhe de Anunciantes — só não em Pontos.
+**Dívida real, registrada, não resolvida**: com isso, não existe mais UI
+pra corrigir `categoria_id`/`categoria_livre` de um ponto já criado (antes
+existia, meio errado, no formulário de cadastro manual removido). Na
+prática `liberarPapelNaConta` já propaga a categoria da CONTA pro ponto no
+nascimento (fix deles), então o caso só importa se a conta mudar de ramo
+DEPOIS do ponto já existir — raro, e sem UI hoje pra corrigir se acontecer
+(precisaria de PATCH direto ou uma tela nova, decisão do dono se quiser).
+`npm run check` 161/161 depois do merge (153 desta sessão + 8 deles),
+`tests/e2e/01-fluxo-api.sh` e `09-rede-redesenho.mjs` reconfirmados verdes.
+
 ## Redesenho completo da tela Rede do admin (22/09/2026, este agente)
 Pedido do dono, autorização direta pra implementar a rodada inteira ("pode
 implementar... não precisa perguntar de novo, só se achar decisão de
