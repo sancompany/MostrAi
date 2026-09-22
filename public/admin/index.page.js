@@ -23,6 +23,97 @@ function esc(v) {
   return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
 
+// ---------- horário de funcionamento (migration 066) ----------
+// Mesmo formato de src/lib/horario-semanal.js: um objeto por dia da semana,
+// `null` (fechado) ou `{abre,fecha}`. O admin só edita em 3 grupos (segunda
+// a sexta / sábado / domingo), igual ao formulário público (public/modos.js)
+// — os dois arquivos duplicam esta lógica de propósito (sem bundler, sem
+// import entre páginas estáticas, ver README).
+const GRUPOS_HORARIO = [
+  { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
+  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
+  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
+];
+
+// Card do admin é bem mais estreito que o .card.wide do formulário público
+// (public/modos.js) — os 3 níveis de coluna aninhados que funcionam lá
+// espremiam o campo de hora até sobrar só o ícone aqui. Abre/Fecha ganham
+// linha própria em vez de dividir espaço com o rótulo e o checkbox.
+function campoHorarioSemanal() {
+  return GRUPOS_HORARIO.map(
+    (g) => `
+    <div class="u-mb-8" data-horario-grupo="${g.id}">
+      <div class="field-row u-ai-c">
+        <div class="u-col-2"><label class="u-m-0">${g.rotulo}</label></div>
+        <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
+      </div>
+      <div class="field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
+        <div class="u-col"><label>Abre</label><input class="mini" type="time" data-horario-abre value="09:00"></div>
+        <div class="u-col"><label>Fecha</label><input class="mini" type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
+      </div>
+    </div>`,
+  ).join('');
+}
+
+function ligarHorarioSemanal(el) {
+  el.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+    const chk = grupo.querySelector('[data-horario-fechado]');
+    const campos = grupo.querySelector('[data-horario-campos]');
+    chk.addEventListener('change', () => {
+      campos.hidden = chk.checked;
+    });
+  });
+}
+
+function lerHorarioSemanalDoEl(el) {
+  const porGrupo = {};
+  el.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+    const id = grupo.dataset.horarioGrupo;
+    const fechado = grupo.querySelector('[data-horario-fechado]').checked;
+    porGrupo[id] = fechado
+      ? null
+      : {
+          abre: grupo.querySelector('[data-horario-abre]').value,
+          fecha: grupo.querySelector('[data-horario-fecha]').value,
+        };
+  });
+  const semana = porGrupo.semana;
+  return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
+}
+
+// Preenche os 3 grupos com um `horario_semanal` já existente, pra editar em
+// vez de sempre começar do padrão (09h-18h / 09h-15h / fechado).
+function preencherHorarioSemanal(el, horario) {
+  const grupo = (id, valor) => {
+    const g = el.querySelector(`[data-horario-grupo="${id}"]`);
+    const chk = g.querySelector('[data-horario-fechado]');
+    const campos = g.querySelector('[data-horario-campos]');
+    chk.checked = !valor;
+    campos.hidden = !valor;
+    if (valor) {
+      g.querySelector('[data-horario-abre]').value = valor.abre;
+      g.querySelector('[data-horario-fecha]').value = valor.fecha;
+    }
+  };
+  grupo('semana', horario?.seg);
+  grupo('sab', horario?.sab);
+  grupo('dom', horario?.dom);
+}
+
+// Texto curto pro card ("Seg-sex 09:00-18:00 · Sáb 09:00-15:00 · Dom
+// fechado") — mesma regra de src/lib/horario-semanal.js#resumo.
+function resumoHorarioSemanal(horario) {
+  if (!horario) return null;
+  const f = (v) => (v ? `${v.abre}-${v.fecha}` : 'fechado');
+  const semana = ['seg', 'ter', 'qua', 'qui', 'sex'].map((d) => horario[d]);
+  const semanaIgual = semana.every((v) => JSON.stringify(v) === JSON.stringify(semana[0]));
+  const partes = semanaIgual
+    ? [`Seg-sex ${f(semana[0])}`]
+    : ['seg', 'ter', 'qua', 'qui', 'sex'].map((d, i) => `${['Seg', 'Ter', 'Qua', 'Qui', 'Sex'][i]} ${f(horario[d])}`);
+  partes.push(`Sáb ${f(horario.sab)}`, `Dom ${f(horario.dom)}`);
+  return partes.join(' · ');
+}
+
 let toastTimer;
 function toast(texto, tipo) {
   let el = document.getElementById('toast');
@@ -1077,6 +1168,7 @@ function montarPontoCard(p) {
     <h4>${esc(p.nome)}</h4>
     <p>${esc(p.cidade)}/${esc(p.uf)}${segmento ? ` · ${esc(segmento)}` : ''}</p>
     <p>${p.telas_ativas ?? 0}/${p.telas ?? 0} ${p.telas === 1 ? 'tela no ar' : 'telas no ar'} · cadastrado em ${data(p.created_at)}</p>
+    ${p.horario_semanal ? `<p class="u-dim u-fs-72">${esc(resumoHorarioSemanal(p.horario_semanal))}</p>` : ''}
   </a>`;
 }
 
@@ -1106,6 +1198,9 @@ async function renderPontosGrade(el) {
         </div>
         <div><label>Responsável</label><input class="mini" name="responsavel_nome" required></div>
         <div><label>WhatsApp</label><input class="mini" name="responsavel_contato" required></div>
+        <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
+        <label class="check-row"><input type="checkbox" id="npTemHorario"><span>Já sei o horário de funcionamento (senão, completa depois no Resumo do ponto)</span></label>
+        <div id="npHorario" hidden>${campoHorarioSemanal()}</div>
         <button class="btn primary" type="submit">Criar ponto</button>
         <p class="form-msg" id="msgNovoPonto"></p>
       </form>
@@ -1141,12 +1236,22 @@ async function renderPontosGrade(el) {
     if (r.ok) renderPontosGrade(el);
   });
 
+  ligarHorarioSemanal(document.getElementById('formNovoPonto'));
+  document.getElementById('npTemHorario').addEventListener('change', (e) => {
+    document.getElementById('npHorario').hidden = !e.target.checked;
+  });
+
   document.getElementById('formNovoPonto').addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('msgNovoPonto');
+    const temHorario = document.getElementById('npTemHorario').checked;
     const r = await api('/admin/pontos', {
       method: 'POST',
-      body: JSON.stringify({ ...Object.fromEntries(new FormData(e.target)), status: 'a_instalar' }),
+      body: JSON.stringify({
+        ...Object.fromEntries(new FormData(e.target)),
+        status: 'a_instalar',
+        horario_semanal: temHorario ? lerHorarioSemanalDoEl(e.target) : null,
+      }),
     });
     if (!r.ok) {
       msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
@@ -1248,6 +1353,11 @@ async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
         ${ponto.foto_instalacao_url ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(ponto.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto atual</a>` : ''}
       </div>
     </div>
+    <div class="card u-mw-520 u-mt-16" id="cardHorarioPonto">
+      <label>Horário de funcionamento</label>
+      ${!ponto.horario_semanal ? '<p class="u-dim u-fs-78 u-m-0 u-mb-8" id="horarioNaoInformado">Ainda não informado.</p>' : ''}
+      ${campoHorarioSemanal()}
+    </div>
     <p class="empty-state u-ta-l u-p-0 u-pt-10">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis aqui. Trocar a opção não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo.</p>`;
 
   el.querySelectorAll('[data-ponto]').forEach((campo) =>
@@ -1262,6 +1372,17 @@ async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
       ].includes(campo.dataset.ponto);
       const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
       return salvar(`/admin/pontos/${ponto.id}`, { [campo.dataset.ponto]: valor }, campo);
+    }),
+  );
+
+  const cardHorario = document.getElementById('cardHorarioPonto');
+  ligarHorarioSemanal(cardHorario);
+  if (ponto.horario_semanal) preencherHorarioSemanal(cardHorario, ponto.horario_semanal);
+  cardHorario.querySelectorAll('[data-horario-fechado],[data-horario-abre],[data-horario-fecha]').forEach((campo) =>
+    campo.addEventListener('change', async () => {
+      if (await salvar(`/admin/pontos/${ponto.id}`, { horario_semanal: lerHorarioSemanalDoEl(cardHorario) }, campo)) {
+        document.getElementById('horarioNaoInformado')?.remove();
+      }
     }),
   );
 

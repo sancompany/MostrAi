@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 
 // Dois status desde 17/09/2026 (migration 045). Os cinco de antes misturavam
 // "o ponto existe na rede?" com "a tela está funcionando?" — a segunda tem
@@ -22,6 +23,10 @@ const CAMPOS_ATUALIZAVEIS = [
   'cota_autoanuncio_slots_hora',
   'horario_abertura',
   'horario_fechamento',
+  // Horário de funcionamento por dia da semana (migration 066) — os dois
+  // campos acima são de antes, nunca tiveram tela nem uso; este é o de
+  // verdade, ver src/lib/horario-semanal.js.
+  'horario_semanal',
   'status',
   'anunciante_id',
   'acabamento_completo',
@@ -47,14 +52,17 @@ async function criar(dados, db = pool) {
     aceitou_termos_em,
     valor_pago_mensal,
     cota_autoanuncio_slots_hora,
+    horario_semanal,
   } = dados;
+  const horarioValidado = validarHorarioSemanal(horario_semanal);
 
   const { rows } = await db.query(
     `INSERT INTO pontos
        (nome, endereco, cidade, uf, cep, segmento, categoria_id, plano_ponto_id,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
-        valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
+        horario_semanal)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       nome,
@@ -73,6 +81,7 @@ async function criar(dados, db = pool) {
       cota_autoanuncio_slots_hora || 0,
       anunciante_id || null,
       fluxo_estimado_mensal || null,
+      horarioValidado ? JSON.stringify(horarioValidado) : null,
     ],
   );
   return rows[0];
@@ -103,7 +112,11 @@ async function atualizar(id, dados) {
   if (!campos.length) return buscarPorId(id);
 
   const sets = campos.map((campo, i) => `${campo} = $${i + 2}`).join(', ');
-  const valores = campos.map((c) => dados[c]);
+  const valores = campos.map((c) => {
+    if (c !== 'horario_semanal') return dados[c];
+    const horarioValidado = validarHorarioSemanal(dados[c]);
+    return horarioValidado ? JSON.stringify(horarioValidado) : null;
+  });
   const { rows } = await pool.query(`UPDATE pontos SET ${sets} WHERE id = $1 RETURNING *`, [id, ...valores]);
   return rows[0] || null;
 }

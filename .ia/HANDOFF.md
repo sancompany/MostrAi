@@ -1,10 +1,49 @@
 # Current Handoff
 
 ## Updated
-2026-09-21
+2026-09-22
 
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
+
+## Horário de funcionamento do ponto, construído (22/09/2026, este agente)
+Pedido do dono, funcionalidade que ele lembrava de ter esquecido: cada ponto
+precisa dizer seu horário de funcionamento (seg-sex / sáb / dom), e isso
+precisa aparecer pro anunciante ao escolher onde o anúncio roda. Investigação
+confirmou: `pontos.horario_abertura`/`horario_fechamento` (migration 001)
+existiam no banco desde o início e nunca foram ligados a formulário nenhum —
+exatamente a lacuna que o dono lembrava. Detalhe técnico completo em
+`docs/PENDENCIAS.md`, seção J.
+
+**O que mudou, em uma linha cada:**
+- Migration 066: `pontos.horario_semanal` e `candidaturas.horario_semanal`
+  (jsonb, um valor por dia da semana), colunas antigas mantidas paradas.
+- `src/lib/horario-semanal.js` — `validar()` e `resumo()`, únicos, usados
+  nos três lugares que escrevem ou leem o campo.
+- `POST /conta/modos/ponto/pedir` (as duas telas públicas de candidatura)
+  passou a EXIGIR o horário — único momento em que quem sabe o horário do
+  comércio está preenchendo o formulário.
+- Widget de 3 grupos (seg-sex/sáb/dom, domingo fechado por padrão)
+  duplicado em `public/modos.js`, `public/anunciante/painel.page.js` e
+  `public/admin/index.page.js` — sem bundler, é a convenção do projeto.
+- Admin (`POST /admin/pontos`, cadastro manual) deixa o campo opcional por
+  um checkbox desmarcado — não silenciosamente 09:00-18:00 como se fosse
+  real (placeholder virando dado falso).
+- `GET /anunciantes/me/pontos-disponiveis` ganhou `horario` (resumo
+  textual); o anunciante vê no `title` (tooltip) do nome do ponto, sem
+  alargar a lista compacta (`.ponto-escolha`, redesenhada 19/09/2026).
+- Achado e corrigido no caminho: o card estreito de "Novo ponto" no admin
+  (~420px) espremia os campos de hora até sobrar só o ícone, porque
+  reusava o layout de 3 colunas aninhadas do formulário público (640px) —
+  virou 2 linhas só na versão do admin.
+
+**Verificado:** `tests/horario-semanal.test.js` (8 testes novos), `npm run
+check` (141/141), os e2e que passam pela rota
+(`01-fluxo-api.sh`/`02-...comissao.sh`/`04-modos-e-bonus.sh`/
+`03-navegador.mjs`/`08-candidatura-ponto.mjs`) e verificação visual manual
+por Playwright dos três widgets.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
 
 ## Varredura visual do admin — botões sem CSS e avisos mal coloridos (21/09/2026, este agente)
 Pedido do dono: mapear a funcionalidade do admin e corrigir botão mal estilizado, aviso inútil e função em aberto. Login via Playwright em todos os 12 módulos/22 telas (incluindo detalhe de ponto e de anunciante). Achados reais, corrigidos — detalhe técnico em `docs/PENDENCIAS.md`, seção I:

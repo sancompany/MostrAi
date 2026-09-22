@@ -26,7 +26,7 @@ echo "== conta direta nasce anunciante; pede o modo ponto de dentro do painel ==
 r=$(curl -s -c joao.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"João","cpf_cnpj":"111.444.777-35","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"joao@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true}')
 esperar "conta direta nasce só com anunciante" '"papeis":\["anunciante"\]' "$r"; JOAO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b joao.txt -X POST $B/conta/modos/vendedor/pedir -H "$J" -d '{}'); esperar "pedido de vendedor foi aposentado (400)" 'inválido' "$r"
-r=$(curl -s -b joao.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"Bar do João","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"bar","fluxo_estimado_mensal":3000}')
+r=$(curl -s -b joao.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"Bar do João","endereco":"Rua A, 10","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"bar","fluxo_estimado_mensal":3000,"horario_semanal":{"seg":{"abre":"09:00","fecha":"18:00"},"ter":{"abre":"09:00","fecha":"18:00"},"qua":{"abre":"09:00","fecha":"18:00"},"qui":{"abre":"09:00","fecha":"18:00"},"sex":{"abre":"09:00","fecha":"18:00"},"sab":{"abre":"09:00","fecha":"15:00"},"dom":null}}')
 esperar "pedido de ponto criado de dentro do painel" '"ok":true' "$r"; CAND=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/')
 
 echo "== admin libera o ponto direto na conta, e convida pra vendedor à mão (sem candidatura) =="

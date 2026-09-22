@@ -109,7 +109,13 @@ const dispositivosRepo = require('../dispositivos/repository');
 // Admin cria o ponto — e a primeira tela junto, pra nunca existir ponto sem
 // dispositivo (o player e o contador são por tela desde a migration 019).
 router.post('/admin/pontos', async (req, res) => {
-  const ponto = await repo.criar(req.body);
+  let ponto;
+  try {
+    ponto = await repo.criar(req.body);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
   await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' });
   res.status(201).json(ponto);
 });
@@ -176,6 +182,7 @@ router.patch('/admin/pontos/:id', async (req, res) => {
     res.json(ponto);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });
+    if (err.status) return res.status(err.status).json({ erro: err.message });
     throw err;
   }
 });

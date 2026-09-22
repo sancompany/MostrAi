@@ -44,7 +44,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.2 Dono de ponto — do painel à tela no ar
 
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
-2. No fim do próprio **Painel** (19/09/2026: "Meu ponto" saiu do topo, virou card lá embaixo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
+2. No fim do próprio **Painel** (19/09/2026: "Meu ponto" saiu do topo, virou card lá embaixo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
 4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto (com a Tela 1) nasce ali.
 5. O administrador cadastra as telas extras, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
@@ -99,7 +99,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | aba única (19/09/2026: era "Anúncios", "Meu ponto" e "Vendas" saíram do topo) | assinar, subir criativo, ver exibições, baixar o comprovante de veiculação (CSV), **pedir a arte pelo WhatsApp**, e **se candidatar a ponto** (card no fim, movimento médio mensal obrigatório + mensagem livre) | perfil, ponto (só quem já é) |
+| Painel | `/anunciante/painel.html` | conta logada | aba única (19/09/2026: era "Anúncios", "Meu ponto" e "Vendas" saíram do topo) | assinar, subir criativo, ver exibições, baixar o comprovante de veiculação (CSV), **pedir a arte pelo WhatsApp**, e **se candidatar a ponto** (card no fim, movimento médio mensal e horário de funcionamento obrigatórios + mensagem livre) | perfil, ponto (só quem já é) |
 | Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | telas do ponto, cota, **sinal de cada tela**, e o **extrato** do que já foi pago e do que está em aberto | definir PIN, acompanhar | — |
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |

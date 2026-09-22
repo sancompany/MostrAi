@@ -45,6 +45,57 @@
     <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias required></select></div>
     <div data-categoria-livre hidden><label for="${prefixo}categoria_livre">Qual?</label><input id="${prefixo}categoria_livre" name="categoria_livre"></div>`;
 
+  // Horário de funcionamento do ponto (pedido do dono, 22/09/2026) — 3
+  // grupos (segunda a sexta / sábado / domingo) em vez de 7 campos por dia:
+  // é o que o próprio pedido sugeriu como suficiente, e cobre o caso comum
+  // sem pedir a mesma coisa 5 vezes. Guardado por dia da mesma forma
+  // (src/lib/horario-semanal.js), só a TELA agrupa.
+  const GRUPOS_HORARIO = [
+    { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
+    { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
+    { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
+  ];
+
+  const CAMPO_HORARIO_SEMANAL = () => `
+    <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
+    ${GRUPOS_HORARIO.map(
+      (g) => `
+      <div class="field-row u-ai-c" data-horario-grupo="${g.id}">
+        <div class="u-col-2"><b>${g.rotulo}</b></div>
+        <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
+        <div class="u-col field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
+          <div class="u-col"><label>Abre</label><input type="time" data-horario-abre value="09:00"></div>
+          <div class="u-col"><label>Fecha</label><input type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
+        </div>
+      </div>`,
+    ).join('')}`;
+
+  function ligarHorarioSemanal(form) {
+    form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+      const chk = grupo.querySelector('[data-horario-fechado]');
+      const campos = grupo.querySelector('[data-horario-campos]');
+      chk.addEventListener('change', () => {
+        campos.hidden = chk.checked;
+      });
+    });
+  }
+
+  function lerHorarioSemanalDoForm(form) {
+    const porGrupo = {};
+    form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
+      const id = grupo.dataset.horarioGrupo;
+      const fechado = grupo.querySelector('[data-horario-fechado]').checked;
+      porGrupo[id] = fechado
+        ? null
+        : {
+            abre: grupo.querySelector('[data-horario-abre]').value,
+            fecha: grupo.querySelector('[data-horario-fecha]').value,
+          };
+    });
+    const semana = porGrupo.semana;
+    return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
+  }
+
   function segmentoDe(form) {
     const sel = form.categoria_id;
     const opcao = sel?.options[sel.selectedIndex];
@@ -101,6 +152,7 @@
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Segmento')}
           <div><label for="m_fluxo">Média de pessoas que passam por mês (opcional)</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
+          ${CAMPO_HORARIO_SEMANAL()}
           <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
           <div class="escolha-grid" id="modoEscolhaPlano"></div>
           <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2"></textarea></div>
@@ -186,6 +238,7 @@
         fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
         plano_ponto_id: escolhido ? escolhido.value : null,
         mensagem: form.mensagem.value.trim() || null,
+        horario_semanal: lerHorarioSemanalDoForm(form),
       };
       await enviar('/conta/modos/ponto/pedir', corpo);
       msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
@@ -222,6 +275,7 @@
     if (form) {
       if (window.ligarCep) window.ligarCep(card);
       if (window.ligarCategorias) window.ligarCategorias(card);
+      if (modo === 'ponto') ligarHorarioSemanal(form);
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
       form.addEventListener('submit', (e) => {
         e.preventDefault();

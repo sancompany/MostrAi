@@ -116,6 +116,8 @@ const segmentoA = PG(`SELECT segmento FROM candidaturas WHERE conta_id=${contaA.
 check('segmento resolvido a partir de categoria_id (Barbearia)', segmentoA === 'Barbearia', segmentoA);
 const fluxoA = PG(`SELECT fluxo_estimado_mensal FROM candidaturas WHERE conta_id=${contaA.id} AND tipo='ponto'`);
 check('fluxo_estimado_mensal gravado', fluxoA === '2500', fluxoA);
+const horarioA = PG(`SELECT horario_semanal->'seg'->>'abre' FROM candidaturas WHERE conta_id=${contaA.id} AND tipo='ponto'`);
+check('horário de funcionamento gravado (padrão do widget)', horarioA === '09:00', horarioA);
 
 console.log('== conta B: ramo em texto livre (categoria_livre) ==');
 const { cadastro: pB, conta: contaB } = await novaConta('Mercado Z', 'z@x.com', null);

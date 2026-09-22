@@ -3362,3 +3362,73 @@ inventário de `docs/specs/2026-09-21-admin-inventario-funcoes.md`.
 local (24 eventos pendentes, contador duplicado em Custos) não foram
 apagados — são artefato de sessões de teste anteriores, e o dono já
 sinalizou que vai limpar o banco separadamente antes de ir pra produção.
+
+### J — horário de funcionamento do ponto, construído (22/09/2026)
+
+Pedido do dono, memória de uma pulga atrás da orelha: cada ponto precisa
+dizer o horário de funcionamento do comércio, e isso precisa aparecer pro
+anunciante na hora de escolher onde o anúncio roda. Achado ao investigar:
+`pontos.horario_abertura`/`horario_fechamento` (migration 001, um só
+horário, sem dia da semana) existiam no banco desde o começo e nunca
+foram ligados a formulário nenhum nem a lógica nenhuma — funcionalidade
+esquecida, exatamente como o dono lembrava.
+
+**[x] Coluna nova.** Migration 066: `pontos.horario_semanal` e
+`candidaturas.horario_semanal`, ambas `jsonb`, formato `{seg,ter,qua,qui,
+sex,sab,dom}` — cada dia `null` (fechado) ou `{abre,fecha}` em `HH:MM`.
+As colunas antigas (`horario_abertura`/`horario_fechamento`) ficaram
+paradas, sem uso — aditivo, nada foi dropado (`CONSTRAINTS.md`).
+`src/lib/horario-semanal.js` centraliza `validar()` (usado nos três
+pontos de escrita: candidatura pelo painel, candidatura pelo card
+"Faça parte da rede", e admin) e `resumo()` (texto curto tipo "Seg-sex
+09:00-18:00 · Sáb 09:00-15:00 · Dom fechado", coberto por
+`tests/horario-semanal.test.js`).
+
+**[x] Tela pede só 3 grupos, não 7 dias.** Segunda a sexta, sábado e
+domingo — o próprio pedido do dono já sugeria a simplificação
+("poderia fazer desse jeito"), e o servidor replica o grupo "semana" pros
+5 dias úteis antes de gravar. Domingo já nasce marcado "Fechado" por
+padrão (mais comum que aberto). Widget duplicado em três lugares — sem
+bundler, sem import entre páginas estáticas, é a convenção do projeto
+(ver `README.md`): `public/modos.js` (card completo de
+`/anunciante/ponto.html`), `public/anunciante/painel.page.js` (card
+compacto "Faça parte da rede", embutido no fim do painel) e
+`public/admin/index.page.js` (cadastro manual do admin + edição no
+Resumo do ponto).
+
+**[x] Obrigatório onde tem que ser, opcional onde é exceção.**
+`POST /conta/modos/ponto/pedir` (as duas telas públicas de candidatura)
+exige `horario_semanal` — é o único momento em que quem sabe o horário
+do próprio comércio está preenchendo o formulário. O cadastro manual do
+admin (`POST /admin/pontos`, a exceção documentada pro caso sem
+candidatura) deixa opcional por um checkbox "Já sei o horário de
+funcionamento" desmarcado por padrão — sem isso, o formulário submeteria
+09:00-18:00 como se fosse dado real assim que a tela carrega (placeholder
+virando dado falso, o erro que a skill `construir` pede pra evitar). Dá
+pra completar depois no Resumo do ponto, que sempre mostra o card mesmo
+sem horário informado ainda.
+
+**[x] Aparece pro anunciante, sem alargar a lista.** A lista de pontos
+pra escolher (`.ponto-escolha`, redesenhada em 19/09/2026 pra caber mais
+pontos na tela de uma vez) não ganhou coluna nova — o resumo do horário
+vai no `title` (tooltip) do nome do ponto, `GET
+/anunciante/me/pontos-disponiveis` expõe o campo `horario` já formatado.
+Ponto antigo sem horário informado não mostra nada (evita ruído de
+"não informado" em todo card).
+
+**Verificado:** `tests/horario-semanal.test.js` (8 testes), `npm run
+check` (141/141), os quatro scripts de e2e que passam por
+`/conta/modos/ponto/pedir` (`01-fluxo-api.sh`, `02-assinatura-webhook-
+comissao.sh`, `04-modos-e-bonus.sh`, `03-navegador.mjs`,
+`08-candidatura-ponto.mjs`) e verificação visual por Playwright dos três
+widgets (público, cadastro manual do admin, edição no Resumo) — achado e
+corrigido no caminho: o card estreito do admin (~420px) espremia o campo
+de hora até sobrar só o ícone, porque reusava o layout de 3 colunas
+aninhadas do formulário largo público (640px); virou duas linhas
+(rótulo+checkbox, depois abre/fecha) só na versão do admin.
+
+**Fora desta rodada:** o `06-painel-bloqueio-plano.mjs` e o
+`05-navegador-modos.mjs` têm falhas pré-existentes, sem relação com este
+trabalho (confirmado rodando a mesma versão no commit anterior a esta
+mudança) — o primeiro num card de KPI que não é deste pedido, o segundo
+por um seletor de nav removido numa consolidação anterior.
