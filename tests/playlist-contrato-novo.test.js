@@ -5,6 +5,7 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
+const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 
@@ -13,7 +14,26 @@ const criativosRepo = require('../src/anunciantes/criativos-repository');
 // estável por posição, e proof-of-play em lote deduplicado por execucaoId.
 // Ver docs/api.md e docs/PENDENCIAS.md seção H.
 
-const PONTO_ID = 1; // "Farmácia Central", em_operacao — já existe no seed local.
+// Ponto próprio por teste, não um id fixo do "seed local" — o CI sobe um
+// Postgres limpo, sem seed nenhum (achado rodando este arquivo pela primeira
+// vez no pipeline, 22/09/2026): PONTO_ID=1 nunca existiu lá.
+async function criarPontoTeste() {
+  return pontosRepo.criar({
+    nome: `Ponto Teste ${randomUUID()}`,
+    endereco: 'Rua Y, 1',
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    segmento: 'Teste',
+    responsavel_nome: 'Fulano',
+    responsavel_contato: '16999990000',
+    status: 'em_operacao',
+  });
+}
+
+async function apagarPonto(id) {
+  await pool.query('DELETE FROM pontos WHERE id = $1', [id]);
+}
 
 async function contaComPlanoEAnuncioAprovado() {
   const conta = await anunciantesRepo.criar({
@@ -40,13 +60,15 @@ async function contaComPlanoEAnuncioAprovado() {
 }
 
 async function dispositivoContratoNovo() {
-  const dispositivo = await dispositivosRepo.criar(PONTO_ID, { apelido: `Teste ${randomUUID()}` });
+  const ponto = await criarPontoTeste();
+  const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2 });
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 
-async function limparDispositivo(id) {
+async function limparDispositivo(id, pontoId) {
   await dispositivosRepo.deletar(id);
+  if (pontoId) await apagarPonto(pontoId);
 }
 
 async function apagarConta(id) {
@@ -82,14 +104,20 @@ test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criati
     assert.strictEqual(item2.itemProgramacaoId, item.itemProgramacaoId);
     assert.strictEqual(item2.criativoId, item.criativoId);
   } finally {
-    await limparDispositivo(dispositivo.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
   }
 });
 
 test('dispositivo com contrato_playlist=1 (padrão) não muda — array de sempre', async () => {
-  const dispositivo = await dispositivosRepo.buscarComPonto(1); // Tela 1 do seed, nunca migrada pra contrato 2
-  assert.strictEqual(dispositivo.contrato_playlist, 1);
+  const ponto = await criarPontoTeste();
+  const criado = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` }); // sem tocar contrato_playlist — fica no padrão
+  try {
+    const dispositivo = await dispositivosRepo.buscarComPonto(criado.id);
+    assert.strictEqual(dispositivo.contrato_playlist, 1);
+  } finally {
+    await limparDispositivo(criado.id, ponto.id);
+  }
 });
 
 test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId devolve duplicado', async () => {
@@ -133,7 +161,7 @@ test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId 
     );
     assert.strictEqual(depois[0].vezes_confirmadas, 1, 'não pode dobrar o crédito na retentativa');
   } finally {
-    await limparDispositivo(dispositivo.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
   }
 });
@@ -158,7 +186,7 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
     const resultado = await execucoesRepo.confirmarComDedup(dispositivo.id, evento, new Date());
     assert.strictEqual(resultado.status, 'teto_atingido');
   } finally {
-    await limparDispositivo(dispositivo.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
   }
 });
@@ -183,6 +211,6 @@ test('confirmarExecucao: item malformado, janela de outra tela e janela expirada
       'janela_expirada',
     );
   } finally {
-    await limparDispositivo(dispositivo.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
   }
 });
