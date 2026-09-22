@@ -65,6 +65,8 @@ echo "== anunciante: cadastro aberto, plano inválido =="
 r=$(curl -s -c ana.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"nome_empresa\":\"Padaria Ana\",\"cpf_cnpj\":\"11.222.333/0001-81\",\"endereco\":\"R\",\"cidade\":\"Matão\",\"uf\":\"SP\",\"cep\":\"15990-000\",\"contato_email\":\"ana@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"indicado_por_cupom\":\"$CUPOM\"}")
 esperar "anunciante cadastro aberto, papel anunciante" '"papeis":\["anunciante"\]' "$r"; ANA=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"nao-existe"}'); esperar "plano inexistente recusado" 'inválido' "$r"
+r=$(curl -s -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"X","cpf_cnpj":"390.533.447-05","endereco":"R","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"catinvalida@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true,"categoria_id":999999}')
+esperar "categoria_id inválido no cadastro é 400, não 500" 'ramo inválido' "$r"
 
 echo "== confirmação de e-mail por código (migration 061) =="
 r=$(curl -s -b ana.txt $B/anunciantes/me); esperar "conta nova nasce sem confirmar" '"email_confirmado":false' "$r"

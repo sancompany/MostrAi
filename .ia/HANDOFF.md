@@ -6,6 +6,64 @@
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 
+## Reforma da taxonomia de categorias concorrenciais (22/09/2026, este agente)
+Pedido do dono, spec completa de 13 itens em uma mensagem, autorização direta
+("pode implementar"). Regra imutável reafirmada: categoria existe só pra
+impedir dois CONCORRENTES DIRETOS na mesma tela — `categoria_id` igual
+bloqueia, grupo nunca bloqueia. Detalhe técnico completo (mapa das 22
+categorias antigas → novas, o que ficou fora de propósito, checklist de
+verificação) em `docs/PENDENCIAS.md`, seção K; regra formalizada pela
+primeira vez em `docs/funcional.md` RN-57.
+
+**O que mudou, em uma linha cada:**
+- Migration 067 (aditiva): `categorias` ganha `grupo`, `aliases[]`, `legado`;
+  `pontos` ganha `categoria_livre` (paridade com `anunciantes`). As 25
+  categorias amplas antigas viram `legado=true` (Barbearia/Odontologia/
+  Imobiliária foram upgradadas no lugar, mesmo `id`); ~229 categorias novas
+  e específicas entram em 20 grupos. Nada foi apagado nem reatribuído sem
+  aviso — correspondência proposta, não aplicada, é decisão do dono.
+- `GET /categorias` só devolve ativas e não-legadas (com grupo+aliases);
+  contas antigas continuam válidas e continuam bloqueando concorrência
+  (legado nunca é excluído do que já está em uso, só do catálogo de opção).
+- Todo select de categoria virou busca (nome+alias, sem acento/maiúscula,
+  até 40 resultados) sobre um `<select>` escondido — `public/formulario.js`
+  (compartilhado pelas 3 telas públicas) e uma cópia equivalente no bundle
+  do admin (`public/admin/index.page.js`), mesma convenção do horário
+  semanal. "Não encontrei minha categoria" cai em `categoria_livre` (texto
+  livre, nunca bloqueia — reaproveita o padrão que `anunciantes` já tinha
+  desde a migration 015, só faltava em `pontos`).
+- Admin de Categorias: tabela ganhou colunas Grupo/Aliases, chip "Legado",
+  filtro por grupo — sem virar tela gigante (busca já existente reaproveitada).
+- **Dois furos reais, pré-existentes, corrigidos**: `criarPontoDaCandidatura`
+  (`src/anunciantes/routes.js`) e `liberarPapelNaConta` (`src/conta/modos.js`)
+  — os dois caminhos reais de nascimento de ponto — nunca copiavam
+  `categoria_id`/`categoria_livre` da conta pro ponto novo, então o ponto
+  nascia sem proteção de concorrente nenhuma. `POST /anunciantes/cadastro`
+  ganhou validação de `categoria_id` (era 500, agora 400 pra id inválido).
+- **Bug de infra encontrado no caminho**: `turbinarTabela` (helper de busca
+  de tabela do admin) filtrava por `tr.textContent`, que não vê valor de
+  `<input>`/`<select>` — a busca da tela de Categorias (e qualquer tabela
+  toda feita de campos editáveis) não funcionava pra nada. Corrigido na
+  raiz, no helper compartilhado.
+
+**Deliberadamente fora desta rodada** (pedido explícito do dono): scoring,
+recomendação automática, targeting, IA, múltiplas categorias por negócio,
+hierarquia complexa de bloqueio. Ação pendente do dono: revisar a tabela de
+correspondência em `docs/PENDENCIAS.md` seção K e decidir se alguma das 22
+categorias legadas deve virar `ativo=false` de vez (hoje só saíram do
+catálogo de opção — continuam bloqueando quem já as usa).
+
+**Verificado:** `tests/categorias-concorrencia.test.js` (8 testes novos,
+mesma-categoria bloqueia / categoria-diferente não bloqueia / categoria
+nula não bloqueia / categoria_livre nunca bloqueia / legado ainda bloqueia
+quem já usa / catálogo público exclui inativa e legado / `liberarPapelNaConta`
+propaga categoria), `tests/e2e/01-fluxo-api.sh` estendido (categoria_id
+inválido → 400), Playwright manual dos três widgets (busca por nome
+completo, parcial, sem acento, por alias, "não encontrei", categoria já
+legada ainda aparecendo pra quem já usa), `npm run check`.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
+
 ## Horário de funcionamento do ponto, construído (22/09/2026, este agente)
 Pedido do dono, funcionalidade que ele lembrava de ter esquecido: cada ponto
 precisa dizer seu horário de funcionamento (seg-sex / sáb / dom), e isso

@@ -3479,3 +3479,153 @@ aninhadas do formulário largo público (640px); virou duas linhas
 trabalho (confirmado rodando a mesma versão no commit anterior a esta
 mudança) — o primeiro num card de KPI que não é deste pedido, o segundo
 por um seletor de nav removido numa consolidação anterior.
+
+### K — reforma da taxonomia de categorias (22/09/2026)
+
+Pedido do dono: as 25 categorias da migration 015 eram amplas demais pra
+representar concorrência direta de verdade ("Advocacia / contabilidade",
+"Clínica / consultório", "Academia / studio" bloqueavam negócios que não
+competem entre si). Pediu uma taxonomia específica (~230 categorias),
+organizada só visualmente em grupos, com busca pesquisável (ignora
+maiúscula/acento, aceita alias) no lugar do select tradicional, e foi
+explícito: **não mudar a regra principal** (categoria impede concorrente
+direto na mesma tela) e, se qualquer coisa exigisse migration destrutiva,
+**parar e documentar antes de executar** — é esta seção.
+
+**Mapeamento feito antes de escrever a migration** (agente Explore
+dedicado + leitura manual cruzada): a regra vive inteira em
+`anunciantesElegiveis` (`src/playlist/gerador.js:112`) — compara
+`pontos.categoria_id` com `anunciantes.categoria_id`, `categoria_livre`
+nunca participa, `categoria_id NULL` de qualquer lado libera geral. Banco
+de dev estava praticamente vazio (2 anunciantes e 1 ponto, todos sem
+categoria) — não deu pra tirar conclusão de uso real a partir dele; toda
+categoria existente foi tratada como potencialmente em uso, em qualquer
+ambiente, nunca reatribuída automaticamente. Achados extras registrados
+abaixo (RN-57 em `docs/funcional.md` e furos corrigidos).
+
+**[x] Migration 067 — só aditiva, nada apagado.** `categorias` ganhou
+`grupo` (organização visual), `aliases` (busca) e `legado` (boolean).
+Das 25 antigas: 3 já eram específicas o bastante (Barbearia, Odontologia,
+Imobiliária) e viraram a linha oficial da categoria nova NO MESMO id — zero
+FK re-apontada. As outras 22 (as 21 amplas + "Outro") viraram
+`legado=true, ativo=false`: somem do catálogo oferecido a cadastro novo,
+mas a linha continua existindo — quem já usa continua bloqueando
+concorrente normalmente (RN-57), só não é mais oferecida a escolha nova.
+Nenhuma categoria foi excluída, nenhum `categoria_id` de conta/ponto
+existente foi tocado. `pontos` ganhou `categoria_livre` (só `anunciantes`
+tinha desde a 015) — sem essa coluna, o admin já lia um campo que nunca
+existiu de verdade (sempre "-").
+
+**Correspondência proposta (documentada, não executada) — as 22
+categorias legado e o que fazer com quem ainda as usa:**
+
+| Legado | Não converte automaticamente pra… | Porque |
+|---|---|---|
+| Salão de beleza / estética | Salão de beleza, Clínica de estética, Estética facial/corporal, Manicure, Cílios/Sobrancelhas, Depilação, Bronzeamento, Maquiagem, Tatuagem/Piercing, Massoterapia, Spa | 11 categorias novas possíveis — só o dono do negócio sabe qual |
+| Academia / studio | Academia, CrossFit, Pilates, Personal trainer, Escola de luta, Dança, Natação | studio de pilates ≠ academia de musculação ≠ escola de dança |
+| Restaurante / lanchonete | Restaurante, Lanchonete/Hamburgueria, Pizzaria, Pastelaria, Esfiharia, Marmitaria | formatos concorrem entre si de forma diferente (delivery vs salão) |
+| Padaria / conveniência | Padaria, Conveniência | são negócios diferentes que hoje dividem uma categoria |
+| Bar / adega | Bar/Pub, Adega/Distribuidora | um serve no local, o outro vende pra viagem |
+| Mercado / hortifruti | Mercado/Supermercado, Hortifruti, Mercearia, Açougue, Casa de carnes | porte e sortimento bem diferentes |
+| Moda / vestuário | Loja de roupas, Moda feminina/masculina/infantil/íntima | segmentação por público, não dá pra inferir |
+| Calçados / acessórios | Calçados, Bolsas/Acessórios, Joalheria, Semijoias, Relojoaria | categorias concorrenciais bem separadas hoje |
+| Farmácia / saúde | Farmácia/Drogaria, ou qualquer categoria do grupo Saúde | "saúde" sozinho não diz qual profissão |
+| Clínica / consultório | Clínica médica, Odontologia, Fisioterapia, Psicologia, Nutrição, Fonoaudiologia, Terapia ocupacional, Quiropraxia, Oftalmologia, Home care | 10 especialidades possíveis — a mais ambígua de todas |
+| Pet shop / veterinária | Pet shop, Clínica veterinária, Banho e tosa, Hotel/Creche pet, Adestramento | loja ≠ clínica ≠ serviço |
+| Oficina / autopeças | Oficina mecânica, Oficina de motos, Autoelétrica, Funilaria/Pintura, Autopeças, Pneus | tipo de serviço/produto bem diferente |
+| Concessionária / veículos | Concessionária/Revenda de veículos, Revenda de motos | carro ≠ moto |
+| Construção / materiais | Material de construção, Tintas, Elétrica, Hidráulica, Ferragens, Madeireira, Marmoraria, Vidraçaria, Serralheria, Esquadrias, Pisos/Revestimentos | 11 categorias — a segunda mais ambígua |
+| Móveis / decoração | Loja de móveis, Móveis planejados, Colchões, Decoração | produto específico bem diferente |
+| Eletro / celulares | Loja de celulares, Assistência de celulares, Informática, Assistência de informática, Eletrônicos | venda ≠ conserto, celular ≠ informática |
+| Escola / curso | Qualquer categoria do grupo Educação (11 opções) | nível/modalidade de ensino bem diferente |
+| Advocacia / contabilidade | Advocacia, Contabilidade | são profissões diferentes, o dono foi explícito nisso |
+| Financeiro / seguros | Qualquer categoria do grupo Financeiro (8 opções) | banco ≠ seguradora ≠ fintech |
+| Turismo / eventos | Qualquer categoria dos grupos Turismo e Eventos (17 opções) | são dois grupos inteiros diferentes hoje |
+| Serviços gerais | Qualquer categoria — era genérica demais desde o início | nunca teve especificidade nenhuma |
+| Outro | vira `categoria_id NULL` + `categoria_livre` (texto que a pessoa digitou) — não é uma categoria, nunca foi | ver item abaixo |
+
+**Ação pendente, do dono/admin, sem prazo:** abrir Configurações →
+Categorias, filtrar pelo chip "Legado", ver (quando a base de produção
+tiver dado) quais contas/pontos ainda apontam pra cada uma (não há tela
+pronta pra isso ainda — é uma consulta direta no banco por
+`categoria_id`, candidato a virar relatório se o volume justificar) e
+reclassificar uma a uma pela busca nova. Não é urgente: enquanto isso,
+RN-57 continua protegendo normalmente quem está na categoria legado.
+
+**[x] "Outro" deixou de ser string mágica.** Era `nome === 'Outro'`
+comparado no front (`public/formulario.js`) — se o admin renomeasse ou
+duplicasse essa categoria, o mecanismo quebrava, silencioso. Agora "Não
+encontrei minha categoria" (sempre o último item da lista de busca) limpa
+o `categoria_id` e mostra o campo de texto livre que os 3 formulários já
+tinham — mesmo `categoria_livre` que existe desde a migration 015, sem
+linha nenhuma no catálogo pra sustentar isso. A linha "Outro" (id
+antigo) fica gravada, inerte, só por segurança de FK de quem já tinha
+esse id.
+
+**[x] Furo achado e corrigido: ponto nascido de candidatura nunca tinha
+categoria.** `criarPontoDaCandidatura` (`src/anunciantes/routes.js`) e
+`liberarPapelNaConta` (`src/conta/modos.js`, o caminho mais usado — é o
+que a candidatura pelo painel usa) nunca copiavam `categoria_id`/
+`categoria_livre` da conta pro ponto que nasce dela. RN-57 ficava
+inoperante em todo ponto criado por esses dois caminhos até o admin
+preencher à mão depois. Corrigido nos dois — ponto agora nasce com a
+mesma categoria da conta que virou dono dele.
+
+**[x] Furo achado e corrigido: cadastro público não validava
+`categoria_id`.** `POST /anunciantes/cadastro` lia `categoria_id` do
+corpo sem checar se existia/estava ativa — id inválido virava 500 (erro
+de FK cru) em vez de 400. Os outros dois cadastros que aceitam categoria
+(`POST /conta/modos/anunciante`, `POST /anunciantes/me/pontos`) já
+validavam; só este não.
+
+**[x] Busca da tabela do admin estava quebrada — achado montando a
+busca por grupo, não é específico desta tela.** `turbinarTabela`
+(helper compartilhado, `public/admin/index.page.js`) filtra por
+`tr.textContent`, que não enxerga `value` de `<input>`/`<select>`. Numa
+tabela onde toda coluna editável é um input (categorias: nome, grupo,
+aliases) a busca nunca achava nada, pra nenhum termo. Corrigido no
+helper compartilhado (soma os `value` dos campos ao texto buscável) —
+beneficia qualquer tabela do admin com esse formato, não só a nova.
+
+**[x] Widget de busca pesquisável.** Reaproveita a busca da tabela do
+admin como pedido ("a busca atual da tabela pode ser reaproveitada") só
+onde já existia (Configurações → Categorias); nos SELETORES de categoria
+(cadastro, ativação de modo anunciante, candidatura a ponto, admin —
+edição de ponto/anunciante/novo ponto manual) o `<select>` continua no
+DOM (fica `hidden`, mantém compatibilidade com todo código que já lia
+`.value`/`.selectedIndex`/`FormData` sem precisar tocar nesses arquivos)
+e ganha um campo de busca por cima: ignora maiúscula/acento (`normalize
+NFD`), pesquisa nome e aliases, mostra o grupo ao lado de cada resultado,
+"Não encontrei minha categoria" sempre por último. Implementado uma vez
+em `public/formulario.js` (`ligarCategorias`/`montarBusca` — já é o
+arquivo compartilhado pelos 3 cadastros públicos, sem precisar duplicar
+nada) e uma segunda vez em `public/admin/index.page.js`
+(`categoriaBuscaHtml`/`ligarCategoriaBusca` — sem bundler, sem import
+entre os dois front-ends, mesma convenção do resto do projeto).
+
+**[x] Ambiguidade corrigida: escolher categoria pelo catálogo, no admin,
+agora limpa `categoria_livre`.** Antes os dois campos podiam ficar
+preenchidos ao mesmo tempo (o select antigo nunca apagava o livre).
+
+**Deliberadamente fora desta rodada** (regra principal preservada, sem
+scoring/IA/multi-categoria, exatamente como pedido): nenhuma mudança em
+`anunciantesElegiveis`; nenhum endpoint novo de busca server-side (o
+catálogo — ~230 linhas — é pequeno o bastante pra filtrar 100% no
+cliente, uma fetch só); nenhuma reclassificação automática de conta/ponto
+já cadastrado.
+
+**Verificado:** `tests/categorias-concorrencia.test.js` (8 testes novos:
+mesma categoria bloqueia, categorias diferentes não bloqueiam, ponto sem
+categoria libera geral, `categoria_livre` nunca bloqueia, categoria
+legado continua bloqueando quem já usa, catálogo público só mostra
+ativa+não-legado, categoria legado não valida como escolha nova,
+`liberarPapelNaConta` propaga categoria da conta pro ponto — zero teste
+cobria essa regra antes desta migration), `npm run check` (156/156 numa
+base zerada, igual CI), os e2e que passam por cadastro/candidatura
+(`01-fluxo-api.sh` com um caso novo pro `categoria_id` inválido,
+`02-assinatura-webhook-comissao.sh`, `04-modos-e-bonus.sh`,
+`08-candidatura-ponto.mjs` — este último confirma que "Barbearia" segue
+resolvendo certo pelo mesmo id de antes da migration), e verificação
+visual por Playwright dos widgets (cadastro público, "novo ponto" do
+admin, busca com alias sem acento, "não encontrei minha categoria", busca
+da tabela de categorias filtrando 251→1 linha).
