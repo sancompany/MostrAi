@@ -73,6 +73,12 @@ async function montarConfirmacaoPedido(planoId) {
       ? ['Pontos incluídos', `até ${plano.pontos_incluidos} ${plano.pontos_incluidos === 1 ? 'ponto' : 'pontos'}`]
       : ['Pontos incluídos', 'todos os pontos da rede'],
     plano.duracao_maxima_segundos ? ['Duração da peça', `até ${plano.duracao_maxima_segundos} segundos`] : null,
+    // exibicoes_por_mes também vem calculado do servidor (mesma conta de
+    // horas_por_mes, ver GET /planos) — é o piso: uma peça mais curta que
+    // o teto do plano aparece mais vezes que este número, nunca menos.
+    plano.exibicoes_por_mes
+      ? ['Exibições por mês', `pelo menos ${plano.exibicoes_por_mes.toLocaleString('pt-BR')} vezes na rede`]
+      : null,
     ['Cobrança', ciclo],
   ].filter(Boolean);
 
@@ -137,19 +143,21 @@ async function montarConfirmacaoPedido(planoId) {
   });
 }
 
-// Troca de plano de quem já paga (POST /trocar-plano do Checkout, desde
-// 18/09/2026): cobra o acerto proporcional no cartão já salvo, na mesma
-// hora, sem redirecionar pra uma segunda tela de pagamento. O Checkout não
-// tem modo de "só calcular sem cobrar" (o valor nunca vem do corpo da
-// requisição, pra ninguém escolher quanto paga), então não dá pra mostrar o
-// número exato antes de confirmar; o botão avisa o que vai acontecer em vez
-// de prometer um valor que só o servidor sabe.
+// Troca de plano de quem já paga (POST /trocar-plano do Checkout). Sem
+// diferença a pagar (rebaixamento, ou diferença abaixo de R$ 5), troca na
+// hora, sem sair daqui. Com diferença a pagar, desde 21/09/2026 o Checkout
+// responde 202 e pede pra levar o pagador pra uma tela dele — o dono
+// decidiu que nenhuma cobrança acontece sem o pagador aprovar o valor
+// explicitamente (antes, cobrava direto no cartão salvo, sem ele ver
+// nada). Não dá pra saber ANTES de chamar qual dos dois vai acontecer (o
+// valor nunca vem do corpo da requisição, pra ninguém escolher quanto
+// paga), então o botão avisa os dois casos.
 async function montarConfirmacaoTroca(planoNovoId) {
   const box = document.getElementById('confirmacaoPedido');
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
     <h3 class="u-m-0 u-mb-14">Trocar de plano</h3>
-    <p class="u-m-0 u-mb-12">A diferença entre os planos pode ser cobrada agora, no cartão que você já tem salvo.</p>
+    <p class="u-m-0 u-mb-12">Se houver diferença a pagar entre os planos, você vai aprovar o valor exato numa tela do Checkout antes de qualquer cobrança. Sem diferença, a troca já acontece agora.</p>
     <div class="field-row">
       <button class="btn primary" id="btnConfirmarTroca">Trocar agora</button>
       <a class="btn ghost" href="/planos.html">Escolher outro</a>
@@ -167,6 +175,23 @@ async function montarConfirmacaoTroca(planoNovoId) {
       body: JSON.stringify({ planoNovoId }),
     });
     const corpo = await r.json().catch(() => ({}));
+    if (r.status === 202) {
+      // approvalUrl ausente não deveria acontecer (contrato do Checkout
+      // garante os dois juntos no 202) — mas cair no sucesso abaixo sem
+      // ele diria "troca feita" pra uma troca que não aconteceu. Melhor
+      // erro claro do que mentira sobre dinheiro.
+      if (!corpo.approvalUrl) {
+        msg.textContent = 'Não conseguimos abrir a tela de aprovação do Checkout. Tente de novo em instantes.';
+        msg.className = 'form-msg err';
+        e.target.disabled = false;
+        e.target.textContent = 'Trocar agora';
+        return;
+      }
+      msg.textContent = 'Levando você pro Checkout pra aprovar o valor...';
+      msg.className = 'form-msg';
+      window.location.href = corpo.approvalUrl;
+      return;
+    }
     if (!r.ok) {
       msg.innerHTML = `${esc(corpo.erro || 'Não foi possível trocar de plano.')} <a href="/planos.html">Escolher outro plano</a>`;
       msg.className = 'form-msg err';

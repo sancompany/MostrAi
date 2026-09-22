@@ -95,24 +95,26 @@ esteira é só o item 8.
     · Como é DROP de coluna, segue a regra do projeto: só com autorização
       explícita do dono, numa migration própria (não fiz sozinho).
 
-11. **Configurar o San Checkout para aceitar pedido avulso deste projeto.**
-    *(Achado em 16/09/2026, construindo a troca de plano — item 15 da seção F
-    abaixo. O próprio dono disse que ia resolver: "configurarei o checkout a
-    aceitar esses dois".)*
-    · O Mostraí já expõe `GET /pedido/:id` e processa o webhook de pedido
-      avulso (payload sem `tipo`, seção 4.3.3 do `API.md` do Checkout) — o
-      código está pronto e no ar desde a migration 041.
-    · **O que falta é do lado de quem administra o San Checkout:** confirmar
-      que o `contratante_id` deste projeto está habilitado pra pedido avulso
-      (não só assinatura), e que o `webhook_url` cadastrado é o mesmo que já
-      recebe os eventos de assinatura (`POST /webhook/san-checkout`) — o
-      contrato diz que os dois tipos chegam no mesmo endereço.
-    · **Trava:** sem isso, `POST /anunciantes/me/trocar-plano` gera o pedido
-      e o link de pagamento, mas o Checkout pode recusar a tela ou nunca
-      confirmar o pagamento de volta — a troca de plano fica sem efeito
-      prático até essa configuração existir.
-    · **Só o dono faz** — é configuração do lado do San Checkout, fora do
-      repositório do Mostraí.
+11. ~~Configurar o San Checkout para aceitar pedido avulso deste projeto.~~ —
+    **CAIU, sem virar pendência.** *(Achado em 16/09/2026, construindo a
+    troca de plano — item 15 da seção F abaixo; superado em 17-18/09/2026,
+    seção G.8.)*
+    · Na época, `POST /anunciantes/me/trocar-plano` gerava um pedido avulso e
+      dependia de configuração do San Checkout pra aceitar esse tipo de
+      cobrança — daí a trava registrada aqui.
+    · **O caminho mudou em 17/09/2026** (seção G.8): o Checkout construiu uma
+      rota síncrona própria, `POST /trocar-plano` — cobra o acerto
+      proporcional no cartão já salvo, na mesma requisição, sem gerar
+      cobrança avulsa nenhuma. `POST /anunciantes/me/trocar-plano` foi
+      reescrita pra chamar essa rota nova (`sanCheckout.trocarPlano()`, em
+      `src/financeiro/san-checkout.js`); confirmado direto na fonte do
+      Checkout antes de aplicar, não só pelo prompt dele.
+    · `pedidosRepo.criar` não tem mais chamador nenhum pra troca de plano —
+      "pedido avulso" ficou aposentado, não removido (histórico e o webhook
+      que fecha um pedido antigo continuam no ar; a aba de trocas do admin
+      faz `UNION` das duas origens pra não perder visão). Sem chamador novo,
+      não existe mais nada pra habilitar do lado do San Checkout — a
+      pendência não tem mais objeto.
 
 O primeiro commit levou o `.env` **real** para o repositório, que é **público**.
 Detalhes e causa em `docs/erros/2026-09-13-env-real-em-repositorio-publico.md`.
@@ -2259,6 +2261,51 @@ troca pra plano mais barato não aparece nela. É a mesma limitação que o
 pedido avulso sempre teve com downgrade (nunca tratava o caso). Registrado
 aqui em vez de resolvido porque corrigir exigiria uma fonte de dado nova só
 pra isso, fora do que a atualização pediu.
+
+### G.9 Troca de plano com acerto redireciona o pagador — 21/09/2026
+
+O dono testou o caminho de G.8 (troca cobrava direto no cartão salvo, sem
+o pagador ver nada) e reverteu: quando há diferença a pagar, o pagador
+precisa aprovar o valor numa tela do próprio Checkout antes de qualquer
+cobrança. O Checkout construiu isso no mesmo dia (`sancompany/san_checkout`
+commit `9c21be1`, `POST /trocar-plano` responde `202` com `approvalUrl`
+quando há acerto ≥ R$ 5,00) e o Mostraí foi atualizado pra tratar: a rota
+`POST /anunciantes/me/trocar-plano` repassa o `202` pro front, que
+redireciona pra `approvalUrl`; quem aplica a troca de verdade nesse caso é
+o webhook `plano_trocado` (`src/financeiro/san-checkout.js`), não mais a
+resposta síncrona — RN-52 em `docs/funcional.md` documenta os dois
+caminhos.
+
+**Limite conhecido, aceito, não corrigido:** se o pagador nunca aprovar, o
+link expira sozinho em 15 minutos do lado do Checkout, mas a linha
+`pendente_troca` daqui não tem nada que a feche — fica órfã pra sempre
+(não atrapalha nada: `buscarAtivaDoAnunciante` só olha `status='ativa'`,
+então uma nova tentativa de troca funciona normalmente). Corrigir exigiria
+um evento do Checkout avisando expiração (não existe hoje) ou uma
+varredura própria aqui — fora do escopo desta entrega.
+
+### G.10 E-mails do Mostraí são texto puro, sem identidade visual — 21/09/2026
+
+*(Achado a pedido do dono, verificando se o e-mail de troca de plano
+estava ligado.)* **Confirmado: está** — `enviarTrocaDePlano`
+(`src/financeiro/email.js`) é chamado tanto no caminho síncrono (sem
+acerto, `POST /anunciantes/me/trocar-plano`) quanto no caminho novo do
+webhook (com acerto, aprovado no Checkout — G.9 acima). Os dois casos
+disparam o e-mail.
+
+**O que ficou registrado, não corrigido:** os 16 e-mails deste arquivo
+(confirmação de pagamento, troca de plano, cobrança falhada, conta
+criada/excluída, cancelamento, criativo aprovado/reprovado etc.) são
+**todos texto puro** — `sendMail({ text: ... })`, nenhum usa `html`.
+Funcionam (SMTP autenticado, conteúdo correto, verificados manualmente
+antes de subir cada um), mas chegam sem logo, sem cor de marca, sem
+nenhuma formatação — parecem rascunho, não comunicação de uma empresa que
+cobra cartão de crédito. **Decisão de design que só o dono faz** (que
+identidade visual, se um template HTML único serve pra todos os 16 ou se
+merece variação por tipo de aviso) — não é algo pra decidir sozinho numa
+sessão de revisão. Quando ele decidir, dá pra fazer incremental (um
+template base em HTML + a mesma função de "linha de texto" que já existe
+em cada `enviar*`, sem reescrever a lógica de quando cada e-mail dispara).
 
 ### Revisão do dono, tópico 1 (sem login), passada pelo PC — Home (18/09/2026)
 

@@ -483,14 +483,28 @@ Duas armadilhas, as duas silenciosas:
 *Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no e-mail de
 cobrança falhada; e o admin, na pendência, que diz qual dos dois casos ocorreu.
 
-**RN-52 — Trocar de plano é uma chamada síncrona, não mais um pedido avulso.**
-*(Rota nova do Checkout, `POST /trocar-plano`, 17/09/2026.)* Até aqui,
-upgrade/downgrade eram um "pedido avulso": um link de pagamento fora do
-ciclo, confirmado por webhook, tarde e às vezes nunca. Agora
-`POST /anunciantes/me/trocar-plano` chama a rota nova do Checkout na hora:
-ele cobra o acerto proporcional no cartão salvo ANTES de mudar o plano (se a
-cobrança falha, nada muda), e devolve o resultado na mesma resposta — sem
-redirecionar, sem pop-up.
+**RN-52 — Trocar de plano não é mais um pedido avulso; e, desde
+21/09/2026, cobrança com valor exige aprovação do pagador.**
+*(Rota do Checkout, `POST /trocar-plano`, 17/09/2026; mudança de contrato
+em 21/09/2026, `docs/specs/2026-09-20-troca-de-plano-redireciona-
+pagador.md` do repositório do Checkout.)* Até 17/09, upgrade/downgrade
+eram um "pedido avulso": um link de pagamento fora do ciclo, confirmado
+por webhook, tarde e às vezes nunca. `POST /anunciantes/me/trocar-plano`
+passou a chamar a rota nova do Checkout, com dois desfechos possíveis:
+
+- **Sem diferença a cobrar** (rebaixamento, ou diferença abaixo de
+  R$ 5,00): a troca acontece na hora, na mesma resposta — sem
+  redirecionar, sem pop-up. Como sempre foi.
+- **Com diferença a cobrar**: o dono testou o caminho antigo (cobrava
+  direto no cartão salvo, sem o pagador ver nada) e decidiu que isso
+  precisa de aprovação explícita. O Checkout responde `202` com
+  `approvalUrl`, e `confirmar-plano.page.js` redireciona o anunciante pra
+  lá — nada é cobrado nem alterado até ele aprovar o valor exato numa
+  tela do próprio Checkout. **Quem confirma essa troca é o webhook
+  `plano_trocado`, não a resposta HTTP original** — se o pagador nunca
+  aprovar, o link expira sozinho (15 minutos, do lado do Checkout) e a
+  linha `pendente_troca` daqui fica órfã, sem nada cobrando ela de volta
+  (registrado, não corrigido — ver `docs/PENDENCIAS.md`).
 
 Cada linha de `assinaturas` é o `planoId` que o Checkout usa pra nos
 perguntar preço (`GET /plano/:id`) — trocar de plano não é UPDATE na linha,

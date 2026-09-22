@@ -158,6 +158,51 @@ redirecionando certo), `npm run lint`/`sintaxe`/`formato`.
 
 **Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em `main`.**
 
+## Troca de plano com acerto agora redireciona pro Checkout aprovar (21/09/2026, este agente)
+O San Checkout mudou de contrato NO MESMO DIA (`sancompany/san_checkout` commit
+`9c21be1`, "Trocar de plano redireciona o pagador ao Checkout para aprovar o
+acerto") — o dono testou o caminho de 17-18/09 (cobrava direto no cartão
+salvo, sem o pagador ver nada) e reverteu: quando há diferença a pagar,
+`POST /trocar-plano` agora responde `202` com `approvalUrl`, e só cobra depois
+que o pagador aprova numa tela do próprio Checkout. Sem diferença
+(rebaixamento/absorção < R$5), continua `200` na hora, sem redirect, igual
+sempre foi.
+
+**O que mudou no Mostraí**, pra acompanhar:
+- `src/financeiro/routes.js` (`POST /anunciantes/me/trocar-plano`): novo
+  ramo pro `202` — não aplica nada, só repassa `approvalUrl`/`expiresAt`/`amount`
+  pro front. A linha `pendente_troca` fica como está.
+- `src/financeiro/san-checkout.js` (`processarWebhookAssinatura`, evento
+  `plano_trocado`): deixou de ser no-op. Agora só é no-op quando a
+  assinatura já está `ativa` (caso síncrono, sem acerto); quando ainda está
+  `pendente_troca`, este webhook é quem aplica a troca de verdade (marca
+  trocada/ativa, atualiza `anunciantes.plano_id`, grava
+  `cobrancas_confirmadas` se houve cobrança, manda o e-mail) — é o ÚNICO
+  sinal de que a troca aconteceu no caso assíncrono.
+- `public/anunciante/confirmar-plano.page.js` (`montarConfirmacaoTroca`):
+  no `202`, redireciona `window.location.href = approvalUrl` (mesmo padrão
+  que `assinar()` já usa pra assinatura nova).
+- Docs atualizados: `docs/api.md`, `docs/funcional.md` (RN-52),
+  `docs/PENDENCIAS.md` (seção G.9, com o limite conhecido: link nunca
+  aprovado deixa uma linha `pendente_troca` órfã, inofensiva, sem
+  varredura própria — fora de escopo desta entrega).
+
+**Verificado:** `npm run check` (127/127 testes) contra Postgres local
+real — dois testes novos usam linhas reais em `anunciantes`/`assinaturas`
+(não um cliente de pool simulado: `pool.query` da dedupe do webhook e
+`pool.connect` da transação da troca coexistem na mesma função, e simular
+só `connect` trava o `query` por dentro do `pg-pool` — achado construindo
+o primeiro teste, documentado no próprio arquivo). Não testado no
+navegador contra um Checkout de verdade respondendo 202 (sandbox não tem
+acesso de rede pro Checkout real) — só revisão do diff + testes de
+unidade do lado do Mostraí.
+
+**Pendência que este item resolveu, mas não a que motivou a pergunta
+original:** a pendência 11 (antiga) do `PENDENCIAS.md`, sobre configurar o
+San Checkout pra aceitar pedido avulso, segue corretamente marcada como
+caída — o pedido avulso continua aposentado como caminho de troca de
+plano, o `202` novo não trouxe ele de volta.
+
 ## Painel admin reorganizado: 25 telas → 12 módulos (21/09/2026, este agente)
 Pedido do dono: reestruturar o admin inteiro (rascunho dele via GPT + pesquisa
 de mercado + mapeamento do código real, tudo registrado em

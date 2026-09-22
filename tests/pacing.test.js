@@ -12,6 +12,7 @@ const {
   DURACAO_INSTITUCIONAL,
   DURACAO_PADRAO,
   ID_INSTITUCIONAL,
+  exibicoesPorMes,
 } = require('../src/lib/pacing');
 
 const pagos = (itens) => itens.filter((i) => i !== ID_INSTITUCIONAL);
@@ -402,4 +403,26 @@ test('plano que cobre a rede inteira não entra na regra', () => {
 test('quem escolheu poucos pontos concentra neles, e recebe o mesmo total', () => {
   assert.strictEqual(segundosCompensados(120, 7, 2), 420);
   assert.strictEqual(420 * 2, 120 * 7);
+});
+
+// exibicoesPorMes: benefício novo (21/09/2026, pedido do dono) — reaproveita
+// horasDeTelaPorMes (já em horas) dividido pela duração da peça, em vez de
+// um terceiro número guardado à parte.
+test('exibicoesPorMes: horas de tela ÷ duração da peça, em segundos', () => {
+  // 27h de tela, peça de 20s: 27*3600/20 = 4860
+  assert.strictEqual(exibicoesPorMes(27, 20), 4860);
+  // Peça mais curta que o teto do plano cabe MAIS vezes, nunca menos.
+  assert.ok(exibicoesPorMes(27, 10) > exibicoesPorMes(27, 20));
+});
+
+test('exibicoesPorMes: sem horas ou sem duração, zero — nunca divide por zero', () => {
+  assert.strictEqual(exibicoesPorMes(0, 20), 0);
+  assert.strictEqual(exibicoesPorMes(27, 0), 0);
+  assert.strictEqual(exibicoesPorMes(null, 20), 0);
+  assert.strictEqual(exibicoesPorMes(27, null), 0);
+});
+
+test('exibicoesPorMes: arredonda pra baixo — nunca promete uma exibição que não cabe inteira', () => {
+  assert.strictEqual(exibicoesPorMes(1, 4000), 0); // 3600/4000 < 1
+  assert.strictEqual(exibicoesPorMes(2, 4000), 1); // 7200/4000 = 1,8 -> 1
 });

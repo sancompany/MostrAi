@@ -6,7 +6,7 @@ const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
-const { enviarConfirmacaoPagamento, enviarCobrancaFalhou } = require('./email');
+const { enviarConfirmacaoPagamento, enviarCobrancaFalhou, enviarTrocaDePlano } = require('./email');
 const eventos = require('../lib/eventos');
 const indicacoesRepo = require('../indicacoes/repository');
 const { aplicarUpgradeSeElegivel } = require('../indicacoes/aplicar');
@@ -424,14 +424,85 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
-  // plano_trocado: aviso fire-and-forget do POST /trocar-plano (API.md do
-  // Checkout, seção 5). A troca em si já foi aplicada de forma SÍNCRONA
-  // pela própria chamada — é a mesma requisição que cobrou o acerto,
-  // alterou a assinatura na Asaas e reescreveu `assinaturas`/`anunciantes`
-  // aqui (ver POST /anunciantes/me/trocar-plano). Este webhook não aplica
-  // nada de novo: existe só pra quem quiser reagir ao evento por fora
-  // dessa chamada (auditoria, outro contratante). Nada a fazer aqui.
-  if (payload.evento === 'plano_trocado') return;
+  // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
+  // a troca não teve acerto a cobrar (200 imediato), a aplicação já
+  // aconteceu na própria chamada de POST /anunciantes/me/trocar-plano, e
+  // `assinatura` já está 'ativa' — este evento só confirma o que já foi
+  // feito, sem nada a fazer. Mas quando houve acerto, o Checkout responde
+  // 202 e NÃO cobra nada na hora: o pagador aprova depois, numa tela dele,
+  // e este webhook é o ÚNICO sinal de que a troca de fato aconteceu — a
+  // linha nova continua 'pendente_troca' até aqui. `assinatura.status`
+  // distingue os dois casos sem precisar guardar mais nada.
+  if (payload.evento === 'plano_trocado') {
+    if (assinatura.status !== 'pendente_troca') return; // já aplicada pela chamada síncrona
+
+    const assinaturaAntiga = await assinaturasRepo.buscarPorId(payload.planoAnterior);
+    const planoNovo = await planosRepo.buscarPorId(assinatura.plano_id);
+    if (!assinaturaAntiga || !planoNovo) {
+      return registrarPendencia(
+        payload,
+        'assinatura anterior ou plano novo não encontrado pra aplicar a troca aprovada no Checkout',
+      );
+    }
+    const planoAntigo = await planosRepo.buscarPorId(assinaturaAntiga.plano_id);
+    const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+    if (!anunciante) {
+      return registrarPendencia(payload, `conta '${assinatura.anunciante_id}' não encontrada pra aplicar a troca`);
+    }
+
+    // O Checkout permite mais de uma intenção pendente ao mesmo tempo
+    // (API.md do Checkout, seção 5.6 — "não há bloqueio de já existe uma
+    // pendente"): o pagador pode abrir a tela de troca duas vezes antes de
+    // aprovar qualquer uma, e as duas aprovarem depois. Sem esta conferência,
+    // a segunda aprovação a chegar sobrescreveria `anunciantes.plano_id`
+    // por cima de uma troca mais nova que já tinha sido aplicada — aqui só
+    // aplica se a conta ainda está exatamente no plano de onde esta
+    // intenção partiu.
+    if (anunciante.plano_id !== assinaturaAntiga.plano_id) {
+      return registrarPendencia(
+        payload,
+        `conta '${anunciante.id}' já está no plano '${anunciante.plano_id}', não mais em '${assinaturaAntiga.plano_id}' — provável troca concorrente aprovada antes; não sobrescrevendo`,
+      );
+    }
+
+    // Mesma escrita tudo-ou-nada da chamada síncrona (ver
+    // POST /anunciantes/me/trocar-plano) — só que disparada pelo webhook
+    // em vez da resposta HTTP original.
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+      await assinaturasRepo.marcarTrocada(assinaturaAntiga.id, cliente);
+      await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
+      await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [anunciante.id, planoNovo.id]);
+      if (payload.acertoCobrado > 0) {
+        await cliente.query(
+          `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status)
+           VALUES ($1,$2,$3,$4,'pendente')`,
+          [anunciante.id, planoNovo.id, assinaturaAntiga.plano_id, payload.acertoCobrado],
+        );
+      }
+      await cliente.query('COMMIT');
+    } catch (err) {
+      await cliente.query('ROLLBACK');
+      return registrarPendencia(
+        payload,
+        `troca de plano aprovada e cobrada no Checkout, mas falhou ao gravar aqui: ${err.message}`,
+      );
+    } finally {
+      cliente.release();
+    }
+
+    eventos.registrar(
+      'plano:troca_paga',
+      { plano_id: planoNovo.id, valor_confirmado: Number(payload.acertoCobrado || 0) },
+      anunciante,
+    );
+    enviarTrocaDePlano(anunciante, planoAntigo, planoNovo, {
+      cobrado: payload.acertoCobrado > 0,
+      valor: payload.acertoCobrado,
+    }).catch((err) => console.error('e-mail de troca de plano', err));
+    return;
+  }
 
   // cobranca_falhou: cartão recusado ou cobrança vencida. O contrato do
   // Checkout (API.md 7.3, item explícito do checklist de integração) manda
@@ -676,16 +747,22 @@ async function cancelarAssinatura(assinaturaId, documento) {
 }
 
 // Troca de plano SEM pedido avulso (POST /trocar-plano, API.md do
-// Checkout, seção 5 — construído em 17/09/2026): cobra o acerto
-// proporcional no cartão já salvo e altera a MESMA assinatura na Asaas,
-// sem o assinante digitar cartão de novo e sem janela sem cobertura.
+// Checkout, seção 5.6): altera a MESMA assinatura na Asaas, sem o
+// assinante digitar cartão de novo e sem janela sem cobertura.
 //
-// Devolve `{ status, corpo }` sempre, mesmo quando o Checkout recusa (402
-// cartão recusado, 409 troca simultânea/sem cartão/período não pago/
-// encerrada, 502 alteração não confirmada). Não é exceção porque cada
-// recusa tem uma mensagem própria pro usuário final, e quem chama (a rota
-// que criou a linha 'pendente_troca') precisa do código exato pra decidir
-// se apaga a linha criada ou mantém.
+// Desde 21/09/2026, três saídas, não duas: sem acerto (ou acerto < R$5)
+// continua `200` na hora; com acerto a cobrar, virou `202` — nada é
+// cobrado nem alterado ainda, e o corpo traz `approvalUrl` (o pagador
+// aprova o valor numa tela do próprio Checkout antes de qualquer débito;
+// quem confirma de verdade é o webhook `plano_trocado`, não esta
+// resposta). Antes disso, a rota cobrava direto, sem o pagador ver nada.
+//
+// Devolve `{ status, corpo }` sempre, mesmo quando o Checkout recusa (400
+// dado inválido, 404 sem assinatura/plano, 409 período não confirmado/sem
+// cartão salvo/assinatura encerrada, 502 troca imediata não confirmada).
+// Não é exceção porque cada recusa tem uma mensagem própria pro usuário
+// final, e quem chama (a rota que criou a linha 'pendente_troca') precisa
+// do código exato pra decidir se apaga a linha criada ou mantém.
 async function trocarPlano(assinaturaId, planoNovoId, documento) {
   const r = await chamarApiCheckout('trocar-plano', {
     planoId: assinaturaId,
