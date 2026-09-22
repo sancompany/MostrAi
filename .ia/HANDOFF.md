@@ -3,6 +3,53 @@
 ## Updated
 2026-09-22
 
+## Reorganização definitiva da antiga área Entrada (22/09/2026, este agente)
+Pedido do dono, spec de 36 partes numa mensagem só + critério de aceite,
+autorização direta pra implementar sem pausa por decisão visual pequena.
+Objetivo: "Entrada" deixa de existir na navegação do admin. Detalhe técnico
+completo no relatório final desta sessão (não duplicado aqui — ver PR/commit
+`reorganizar entrada: candidaturas em Rede, mensagens em Visão Geral,
+convites fora da UI`).
+
+**Em uma linha cada:**
+- Candidaturas virou 2ª aba de `rede` (`public/admin/index.page.js`): grade
+  de cards (mesmo idioma visual de Pontos) → ficha somente com
+  Aprovar/Recusar, sem funil CRM. Aprovar reaproveita 100% do mecanismo que
+  já existia (`liberarPapelNaConta` quando tem `conta_id`, `POST
+  /admin/convites` com `candidatura_id` no caminho legado sem conta) — zero
+  rota nova.
+- Mensagens saiu da navegação, virou alerta condicional na Visão Geral
+  (`ALERTAS`) que abre uma rota interna sem item de sidebar — módulo novo
+  `oculto: true`, filtrado em `montarNav()`. `GET/PATCH
+  /admin/mensagens-contato` já existiam, sem mudança de backend.
+- Convites: removido da UI (nav, `ALIASES_ANTIGOS`, `SUBTITULOS`) sem tocar
+  backend/DB. `renderConvites` virou `_renderConvites` (prefixo `_`, convenção
+  do lint do projeto pra código morto intencional) — mantido como legado, sem
+  chamador no router. Hash antigo `#convites` cai sozinho em `visaogeral`
+  (`resolverAlvo` já degradava assim; comportamento pré-existente, só
+  confirmado).
+- Bug real encontrado e corrigido no caminho: preview de foto no formulário
+  de candidatura (`public/modos.js` e `public/anunciante/painel.page.js`)
+  nunca aparecia — `URL.createObjectURL` gera `blob:`, fora da CSP
+  (`img-src 'self' data:`). Trocado por `FileReader.readAsDataURL()` (já
+  permitido), sem alterar a CSP.
+- `src/admin/routes.js`: contagem de "Em análise" ampliada de `status =
+  'nova'` pra `status NOT IN ('aprovada','recusada')` (cobre `em_contato`
+  legado também) — única mudança de backend do round.
+- Migration: nenhuma. O CHECK de `candidaturas.status` (4 valores) já
+  cobria a simplificação — "Em análise" é só `nova`+`em_contato` tratados
+  igual na UI.
+- Fora do escopo deliberadamente (confirmado no critério de aceite): o
+  preview ao vivo do "futuro ponto" ao lado do formulário (era exemplo, não
+  obrigatório).
+
+**Verificado:** `npm run check` 161/161; Playwright cobrindo
+desktop/tablet/mobile (candidaturas, ficha, Visão Geral, Mensagens, hash
+antigo), sem erro de console novo.
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em
+`main`.**
+
 ## Rede, rodada final — status automático, telas em cards, ocupação como tabela (22/09/2026, este agente)
 Prompt de 35 seções do dono: "considere este prompt como a especificação
 definitiva desta tela... o objetivo é ENCERRAR a revisão da Rede depois
@@ -108,6 +155,31 @@ página (input nativo do browser).
 `main`.** Por pedido explícito do prompt: esta é a ÚLTIMA rodada de
 redesenho da Rede — próximo trabalho na área é só ajuste pontual que o
 dono pedir depois de revisar, não novo redesenho.
+
+## Reauditoria de alinhamento com o app Android (22/09/2026, este agente)
+Pedido do dono: o app (`sancompany/playlist.mostrai`) recebeu mais commits
+(rotação de tela, PIN travado em 4 dígitos, assets de marca, preparo pro
+`margemVmin`), conferir de novo o alinhamento — **sem mexer em
+`margemVmin`**, que outro agente já está construindo do lado do app
+(`playlist.mostrai` PR #2, branch `claude/festive-goldberg-4gdhqi`) e que
+"deve ser ligado ao final". Detalhe completo em `docs/PENDENCIAS.md`,
+seção H (segunda adenda, "Reauditoria de 22/09/2026").
+
+**Resultado:** `main` continua alinhado depois de dois merges paralelos
+(reforma de categorias + redesenho da Rede) que aconteceram entre a
+auditoria anterior e esta — nenhum dos dois tocou playlist/dispositivos, o
+select de `contrato_playlist` sobreviveu intacto, `npm run check` 161/161.
+
+**Achado novo, registrado, não construído:** o app ganhou RN-15 — decide
+tocar vídeo × tela institucional local só pela presença de `url` no item,
+preparando um futuro "vídeo de fundo institucional pelo admin"
+(`PARA-O-BACKEND.md`, novo no repo do app). Hoje o item institucional do
+backend sempre manda `url: null` — confirmado. Mesma categoria de
+`margemVmin`: precisa de decisão do dono (onde o vídeo mora, upload por
+tela ou por ponto) antes de virar código — não construído.
+
+**Trabalhando direto em `main`** (mudança é só documentação, nenhum código
+tocado nesta rodada).
 
 ## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
 `main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta

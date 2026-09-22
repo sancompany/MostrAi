@@ -146,7 +146,7 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM eventos_assinatura_pendentes WHERE NOT resolvido) AS eventos,
         (SELECT COUNT(*) FROM pontos WHERE status = 'a_instalar') AS pontos,
         (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
-        (SELECT COUNT(*) FROM candidaturas WHERE status = 'nova') AS candidaturas,
+        (SELECT COUNT(*) FROM candidaturas WHERE status NOT IN ('aprovada', 'recusada')) AS candidaturas,
         (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos,
         -- Mensagem do formulário de contato ainda sem resposta. Entra como
         -- fila porque /contato.html é o canal declarado do titular de dados

@@ -46,6 +46,62 @@
     <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias required></select></div>
     <div data-categoria-livre hidden><label for="${prefixo}categoria_livre">Qual?</label><input id="${prefixo}categoria_livre" name="categoria_livre"></div>`;
 
+  // Foto da fachada com preview real (22/09/2026, pedido do dono — antes só
+  // mostrava o nome do arquivo). Opcional sempre: sem foto, o card da
+  // candidatura cai no placeholder oficial, igual sempre foi.
+  const CAMPO_FOTO_FACHADA = (prefixo) => `
+    <div class="campo-foto">
+      <div class="campo-foto-preview" id="${prefixo}fotoPreview" hidden><img alt="Pré-visualização da foto da fachada"></div>
+      <div class="campo-foto-linha">
+        <label class="btn ghost mini" for="${prefixo}foto" id="${prefixo}fotoLabel">Escolher foto da fachada</label>
+        <button type="button" class="btn ghost mini u-txt-erro" id="${prefixo}fotoRemover" hidden>Remover foto</button>
+        <input type="file" accept="image/*" id="${prefixo}foto" hidden>
+      </div>
+      <span class="u-fs-72 u-dim" id="${prefixo}fotoNome">${DICA_FOTO_PADRAO}</span>
+    </div>`;
+
+  // FileReader (data:), não URL.createObjectURL — a CSP do site só libera
+  // `img-src 'self' data:` (src/server.js), sem `blob:`. Achado testando: a
+  // troca de foto e o texto do botão funcionavam, mas a imagem em si nunca
+  // aparecia, bloqueada pelo navegador em silêncio.
+  function ligarFotoFachada(form, prefixo) {
+    const input = $(`#${prefixo}foto`, form);
+    if (!input) return;
+    const preview = $(`#${prefixo}fotoPreview`, form);
+    const label = $(`#${prefixo}fotoLabel`, form);
+    const remover = $(`#${prefixo}fotoRemover`, form);
+    const hint = $(`#${prefixo}fotoNome`, form);
+    const limpar = () => {
+      preview.hidden = true;
+      preview.querySelector('img').src = '';
+      label.textContent = 'Escolher foto da fachada';
+      remover.hidden = true;
+      hint.textContent = DICA_FOTO_PADRAO;
+    };
+    input.addEventListener('change', () => {
+      const arquivo = input.files[0];
+      if (!arquivo) return limpar();
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        // Achado do review: se o usuário clicou "Remover foto" ou trocou de
+        // arquivo antes da leitura terminar, `input.files[0]` já não é mais
+        // este `arquivo` — descarta a leitura velha em vez de sobrescrever
+        // a prévia com uma foto removida/superada.
+        if (input.files[0] !== arquivo) return;
+        preview.querySelector('img').src = leitor.result;
+        preview.hidden = false;
+      };
+      leitor.readAsDataURL(arquivo);
+      label.textContent = 'Trocar foto';
+      remover.hidden = false;
+      hint.textContent = arquivo.name;
+    });
+    remover.addEventListener('click', () => {
+      input.value = '';
+      limpar();
+    });
+  }
+
   // Horário de funcionamento do ponto, dia a dia + feriados (rodada final
   // da Rede, 22/09/2026 — substitui os 3 grupos de antes). O schema sempre
   // guardou por dia (src/lib/horario-semanal.js); só o formulário mudou.
@@ -156,11 +212,7 @@
           }</p>
           <p class="form-sep-titulo u-mt-0">Estabelecimento</p>
           <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
-          <div class="campo-foto">
-            <label class="btn ghost mini" for="m_foto">Escolher foto da fachada</label>
-            <input type="file" accept="image/*" id="m_foto" hidden>
-            <span class="u-fs-72 u-dim" id="m_fotoNome">${DICA_FOTO_PADRAO}</span>
-          </div>
+          ${CAMPO_FOTO_FACHADA('m_')}
           ${CAMPOS_ENDERECO('m_')}
           ${CAMPO_SEGMENTO('m_', 'Segmento')}
           <div><label for="m_fluxo">Média de pessoas que passam por mês (opcional)</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
@@ -306,9 +358,7 @@
       if (window.ligarCategorias) window.ligarCategorias(card);
       if (modo === 'ponto') {
         ligarHorarioSemanal(form);
-        $('#m_foto', form)?.addEventListener('change', (e) => {
-          $('#m_fotoNome', form).textContent = e.target.files[0]?.name || DICA_FOTO_PADRAO;
-        });
+        ligarFotoFachada(form, 'm_');
       }
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
       form.addEventListener('submit', (e) => {
