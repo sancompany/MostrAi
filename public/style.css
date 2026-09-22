@@ -429,9 +429,27 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .check-row label a { color: var(--blue); text-decoration: underline; }
 .form-hint { font-size: .8rem; color: var(--text-dim); margin: -6px 0 0; }
 .form-sep { border: 0; border-top: 1px solid var(--border); margin: 8px 0 2px; }
+
+/* Horário de funcionamento — 7 dias + feriados, uma linha cada (rodada
+   final da Rede, 22/09/2026, substitui o agrupamento em 3 blocos). */
+.horario-semanal { display: flex; flex-direction: column; }
+.horario-dia { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.horario-dia:last-child { border-bottom: none; }
+.horario-dia-nome { min-width: 76px; font-weight: 600; font-size: .85rem; }
+.horario-dia-campos { display: flex; align-items: center; gap: 6px; }
+.horario-dia-campos input[type="time"] { width: 92px; }
+.horario-dia-fechado { margin: 0 0 0 auto; }
+@media (max-width: 420px) {
+  .horario-dia { padding: 10px 0; }
+  .horario-dia-fechado { margin-left: 0; width: 100%; order: 3; }
+}
 .form-sep-titulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 4px 0 0; }
 .link-secundario { display: inline-block; margin-top: 2px; font-size: .85rem; color: var(--blue); text-decoration: none; }
 .link-secundario:hover { text-decoration: underline; }
+
+/* Campo de foto da fachada, no topo do formulário de candidatura — botão +
+   texto de status na mesma linha, quebra pro mobile sem apertar. */
+.campo-foto { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0; }
 
 /* Escolha entre as opções de comodato (ajuda de custo x mais cota) */
 .escolha-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -960,6 +978,8 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .u-m-0 { margin: 0; }
 .u-mx-8 { margin-left: 8px; margin-right: 8px; }
 .u-centro { margin-left: auto; margin-right: auto; }
+.u-ml-auto { margin-left: auto; }
+.u-mr-auto { margin-right: auto; }
 .u-mt-0 { margin-top: 0; }
 .u-mt-2 { margin-top: 2px; }
 .u-mt-6 { margin-top: 6px; }

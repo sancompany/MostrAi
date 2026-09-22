@@ -19,7 +19,6 @@ const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
@@ -98,12 +97,17 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
       cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
       anunciante_id: conta.id,
-      status: 'a_instalar',
+      // Sem `status`: nasce sem tela nenhuma (default da coluna é
+      // 'a_instalar'), e o status automático (migration 069) lê 0
+      // dispositivos exatamente como "aguardando instalação". Criar aqui uma
+      // "Tela 1" vazia, como antes desta rodada, fazia esse ponto nascer com
+      // 1 dispositivo 'inativo' e o status virava "Inativo" — errado pra
+      // quem nunca teve tela nenhuma (mesma correção de
+      // src/conta/modos.js#liberarPapelNaConta).
       aceitou_termos_em: new Date(),
     },
     db,
   );
-  await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
   // Cupom de indicação do ponto (migration 062) — mesmo ato de criar o
   // ponto, não uma rotina à parte (ver liberarPapelNaConta em
   // src/conta/modos.js, que segue essa mesma regra pro caminho de conta já
@@ -449,6 +453,11 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // ele já conta como vaga do plano, pra quem paga por cobertura maior não
   // perder o lugar num comércio que está sendo montado. Ele não veicula, e é
   // por isso que a compensação abaixo o trata como ponto FALTANDO.
+  // `em_reparo` entra pela mesma regra (rodada final da Rede, 22/09/2026):
+  // status automático desde a migration 069, mesma situação de "não veicula
+  // agora mas o lugar é real e pode voltar" que `a_instalar` já cobria — o
+  // `noAr` abaixo já trata os dois como "fora do ar" hoje, só `inativo`
+  // (tela cadastrada, nenhuma funcionando) fica fora da lista.
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
@@ -458,7 +467,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
-      WHERE p.status IN ('em_operacao', 'a_instalar')
+      WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
       GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
       ORDER BY p.status DESC, p.nome`,
     [conta.id],
@@ -536,12 +545,14 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     });
   }
 
-  // `a_instalar` é escolha válida desde a RN-49: a vaga fica reservada pro
-  // comércio que está sendo montado, e enquanto ele não veicula o tempo dele
-  // volta pros pontos no ar. O que continua recusado é ponto que não existe.
+  // `a_instalar`/`em_reparo` são escolha válida desde a RN-49 (a_instalar) e
+  // a rodada final da Rede (em_reparo entra pela mesma regra, 22/09/2026): a
+  // vaga fica reservada pro ponto que não está veiculando agora, e enquanto
+  // não veicula o tempo dele volta pros pontos no ar. O que continua
+  // recusado é ponto que não existe (ou `inativo`).
   if (pedidos.length) {
     const { rows } = await pool.query(
-      `SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status IN ('em_operacao', 'a_instalar')`,
+      `SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status IN ('em_operacao', 'a_instalar', 'em_reparo')`,
       [pedidos],
     );
     if (rows.length !== pedidos.length) {

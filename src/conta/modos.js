@@ -14,7 +14,6 @@ const anunciantesRepo = require('../anunciantes/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const dispositivosRepo = require('../dispositivos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const planosRepo = require('../financeiro/planos-repository');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -43,7 +42,7 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
   }
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
     const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
-    const ponto = await pontosRepo.criar(
+    await pontosRepo.criar(
       {
         nome: cand.nome_comercio || conta.nome_empresa,
         endereco: cand.endereco,
@@ -72,12 +71,18 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
         cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
         anunciante_id: conta.id,
-        status: 'a_instalar',
+        // Nasce sem nenhuma tela — o status automático (rodada final da
+        // Rede, migration 069) lê 0 dispositivos como "aguardando
+        // instalação", que é exatamente o que um ponto recém-aprovado é: o
+        // admin cria a tela de verdade (botão "+ tela") só quando for
+        // instalar de fato. Criar uma "Tela 1" vazia aqui (como antes desta
+        // rodada) fazia esse ponto nascer com 1 dispositivo 'inativo' e o
+        // status automático virava "Inativo" — errado pra quem nunca teve
+        // tela nenhuma.
         aceitou_termos_em: new Date(),
       },
       db,
     );
-    await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' }, db);
 
     // Cupom de indicação do ponto (migration 062, pedido do dono,
     // 19/09/2026): toda conta de ponto ganha um, na mesma transação que cria

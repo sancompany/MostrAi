@@ -27,7 +27,9 @@ async function criarPontoTeste() {
     segmento: 'Teste',
     responsavel_nome: 'Fulano',
     responsavel_contato: '16999990000',
-    status: 'em_operacao',
+    // `status` não entra mais aqui — é automático (sincronizarStatusPonto,
+    // migration 069): `dispositivoContratoNovo` marca a tela 'ativo' depois
+    // de criada, e o ponto acompanha sozinho.
   });
 }
 
@@ -62,7 +64,7 @@ async function contaComPlanoEAnuncioAprovado() {
 async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
-  await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2 });
+  await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2, status: 'ativo' });
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 

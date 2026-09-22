@@ -301,7 +301,12 @@ Consequências: nenhuma ação necessária — já corrigido e testado.
 
 ## ADR-007 — Status visual do ponto é derivado, não um 3º valor no banco
 
-Status: Ativa desde 22/09/2026 (redesenho da tela Rede do admin).
+Status: **Superada em 22/09/2026 pelo ADR-009** (rodada final da Rede) — o
+dono pediu status automático de verdade, com `em_reparo` como 3º valor
+real no banco. Registro abaixo mantido como histórico de por que a decisão
+original foi tomada, não como estado atual.
+
+Status (original): Ativa desde 22/09/2026 (redesenho da tela Rede do admin).
 
 Contexto: o dono pediu 3 estados visuais (Aguardando instalação/TV
 instalada/Em operação) pros cards e filtros da Rede. `pontos.status` só tem
@@ -358,3 +363,59 @@ de produto nova (ex.: um piso mínimo de segundos institucionais por hora,
 descontado ANTES do orçamento comercial em `src/lib/pacing.js`) — não
 implementada aqui, fora do escopo desta rodada (era só reorganização
 visual + o que já existia).
+
+## ADR-009 — `pontos.status` vira automático de verdade, 4 valores reais no banco (supera ADR-007)
+
+Status: Ativa desde 22/09/2026 (rodada final da Rede, prompt de 35 seções
+do dono — "considere este prompt como a especificação definitiva").
+
+Contexto: ADR-007 (acima) resolveu deliberadamente NÃO tocar
+`pontos.status` — manteve só 2 valores reais e simulou um 3º estado visual
+("TV instalada") calculado no front a partir de `telas_instaladas`. O dono
+revisou essa decisão e pediu o oposto: `em_reparo` como estado real,
+derivado automaticamente das telas, sem controle manual nenhum no admin.
+
+Decisão: `pontos.status` virou 4 valores reais (`a_instalar`/`em_operacao`/
+`em_reparo`/`inativo`, migration 069), escritos por uma única função
+(`sincronizarStatusPonto`, `src/pontos/repository.js`), chamada de dentro
+de `src/dispositivos/repository.js` nos 3 pontos onde uma tela muda
+(criar, atualizar `status`, deletar). Ninguém mais escreve a coluna direto
+— `status` saiu de `CAMPOS_ATUALIZAVEIS` de pontos. Regra: 0 telas →
+`a_instalar`; ≥1 tela `ativo` → `em_operacao`; 0 ativa e ≥1 em `reparo` →
+`em_reparo`; tem tela(s), nenhuma ativa/reparo → `inativo`.
+
+Consumidores mapeados antes de mexer (pedido explícito do prompt):
+- **Sem mudança**: `src/playlist/gerador.js` (só `em_operacao` entra na
+  playlist) e `src/lib/aparelho.js` (gate do player só libera com
+  `em_operacao`) — veiculação de verdade continua exatamente igual.
+  `avaliarBloqueios` (G.7, 80%) continua só em `em_operacao` — ponto que
+  não veicula não pode estar "cheio".
+- **Mudança deliberada, documentada**: `listarPublicos` (site público) e a
+  escolha de pontos do anunciante (`GET .../pontos-disponiveis`, `PUT
+  .../pontos`) passaram a aceitar `em_reparo` junto com `em_operacao`/
+  `a_instalar` — antes desta rodada só existiam 2 valores possíveis, então
+  esses filtros cobriam de fato 100% dos pontos reais; com `em_reparo`
+  virando um valor de verdade, não estendê-los faria pontos reais
+  desaparecerem da noite pro dia sem nenhuma mudança física ter
+  acontecido. `em_reparo` é estruturalmente igual a `a_instalar` pro
+  propósito desses dois filtros (não veicula agora, mas é um lugar real —
+  RN-49 já tratava `a_instalar` assim). Só `inativo` ficou de fora — o
+  caso genuinamente novo (tela(s) cadastrada(s), nenhuma funcionando).
+
+Efeito colateral encontrado e corrigido no caminho: 3 lugares
+(`liberarPapelNaConta`, `criarPontoDaCandidatura`, cadastro de endereço
+pelo dono de ponto) criavam uma "Tela 1" vazia junto com o ponto. Como
+tela nova nasce `inativo` (default da coluna, também mudado nesta
+migration — era `'ativo'`), isso fazia o ponto nascer `inativo` em vez de
+`a_instalar`. Os 3 lugares pararam de criar essa tela — o admin cria de
+verdade só na instalação física.
+
+Motivo: `em_reparo` como estado real permite ao admin ver, filtrar e agir
+sobre telas quebradas sem depender de olhar a lista de telas ponto a
+ponto; e mantém uma única fonte de verdade (não duas, como o modelo
+anterior — DB com 2 valores + cálculo no front com um 3º).
+
+Consequências: qualquer novo consumidor de `pontos.status` precisa tratar
+os 4 valores, não 2. Reverter pra manual exigiria desfazer
+`sincronizarStatusPonto` e devolver `status` a `CAMPOS_ATUALIZAVEIS` — não
+é mudança trivial, decisão de produto se algum dia for pedida.

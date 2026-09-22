@@ -3595,7 +3595,104 @@ existia desde o redesenho de Rede por entidade de 21/09/2026 — confirmado
 pré-existente, não desta mudança, script nunca atualizado depois daquela
 reorganização.
 
-### K — reforma da taxonomia de categorias (22/09/2026)
+### M — Rede, rodada final: status automático, telas em cards, ocupação como tabela, margens de safe area (22/09/2026)
+
+Pedido do dono: prompt de 35 seções considerado a especificação definitiva
+da tela Rede, substituindo as decisões de instalação/ACM/status
+intermediários das rodadas G e L acima. Autorizado a implementar tudo sem
+pausa, exceto decisão de negócio real. Detalhe técnico completo:
+`.ia/HANDOFF.md` e `.ia/DECISIONS.md`. Resumo:
+
+- **`pontos.status` virou 100% automático e real no banco** (migration 069,
+  4 valores: `a_instalar`/`em_operacao`/`em_reparo`/`inativo`, CHECK novo).
+  `sincronizarStatusPonto` (`src/pontos/repository.js`) é a ÚNICA escrita —
+  chamada de dentro de `src/dispositivos/repository.js` toda vez que uma
+  tela nasce, muda de status ou é excluída. Regra: 0 telas → `a_instalar`;
+  ≥1 ativa → `em_operacao`; 0 ativa e ≥1 em reparo → `em_reparo`; tem
+  tela(s), nenhuma ativa/reparo → `inativo`. Substitui o modelo da rodada L
+  (status visual derivado de `telas_instaladas`, sem 3º valor no banco) —
+  `telas_instaladas` saiu (coluna computada e comentário morto removidos de
+  `listar()`).
+- **Consumidores de `pontos.status` mapeados e ajustados**: playlist
+  (`src/playlist/gerador.js`) e gate do player (`src/lib/aparelho.js`)
+  continuam só em `em_operacao` — veiculação de verdade não mudou. Listagem
+  pública "Onde estamos" (`listarPublicos`) e a lista de pontos disponíveis
+  pro anunciante escolher (`GET /anunciantes/me/pontos-disponiveis`,
+  `PUT /anunciantes/me/pontos`) passaram a incluir `em_reparo` junto com
+  `em_operacao`/`a_instalar` — o comentário de `listarPublicos` já dizia
+  "ativos + em construção/reparo" desde antes desta rodada, só não existia
+  um `em_reparo` de verdade pra cumprir; e `em_reparo` é estruturalmente
+  igual a `a_instalar` (não veicula agora, ponto é real, RN-49 já tratava
+  `a_instalar` assim). Só `inativo` fica de fora dos dois. O bloqueio de 80%
+  (`avaliarBloqueios`) continua só em `em_operacao`, sem mudança — um ponto
+  que não veicula não pode estar "cheio".
+- **Pontos nascidos de candidatura não ganham mais uma "Tela 1" vazia
+  automática** (`src/conta/modos.js#liberarPapelNaConta`,
+  `src/anunciantes/routes.js#criarPontoDaCandidatura`,
+  `src/pontos/routes.js` — cadastro de outro endereço pelo dono de ponto).
+  Antes desta rodada isso criava, no mesmo INSERT, uma tela sem chave —
+  com o status automático novo, essa tela (nascida `inativo`, default da
+  coluna) fazia o ponto virar "Inativo" na hora de nascer, em vez de
+  "Aguardando instalação". O admin cria a tela de verdade (botão "+ tela")
+  só quando for instalar de fato.
+- **Admin: Instalação e ACM saíram de vez** — `renderPontoInstalacao`
+  (molde ACM, botão colocar/voltar de operação) foi removido; ficha do
+  ponto (`renderPontoInformacoes`) é só leitura, sem controle nenhum,
+  Comodato aparece como informação simples (redesenho de planos/benefícios
+  de comodato fica pra revisão futura — fora do escopo desta rodada). Rota
+  `POST /admin/pontos/:id/foto` (upload manual pelo admin) foi removida —
+  a foto só nasce pela candidatura (`POST
+  /conta/modos/ponto/candidaturas/:id/foto`).
+- **Detalhe do ponto em 2 colunas** (`.ponto-detalhe-grid`, desktop;
+  empilha no mobile) com breadcrumb "Rede / Nome" no lugar do botão de
+  voltar improvisado.
+- **Telas: tabela virou cards horizontais** (`.tela-card`), menos colunas
+  (Tela/Contrato/Custo R$/Meses/Amort./mês/Painel saíram — sem player de
+  terceiro pra configurar contrato nesta tela, sem custo aqui). Ficou
+  ID/status/último sinal/chave-link/PIN/instalada em, mais **margens de
+  safe area por tela** (`margem_superior/direita/inferior/esquerda`,
+  migration 069, vmin, nunca negativo) — chegam no player pelo heartbeat
+  (`GET /player/heartbeat/:id`) e são aplicadas com `calc()` + inset real
+  (`#quadro`/`#stage`, `public/player.css`/`public/player.page.js`),
+  reaproveitando a mesma unidade do `?margem=N` legado (fallback mantido).
+- **Ocupação da rede virou tabela operacional** na Visão geral
+  (`renderOcupacaoRede`): Ponto/Status/Telas/Anunciantes (expande peso por
+  anunciante em segundos/hora — métrica real, não score inventado)/
+  Ocupação comercial/Restante (80%)/Reserva Mostraí (sempre 20%, nunca
+  como capacidade disponível)/Ação (Liberar, só quando travado). Regra
+  80/20 confirmada como já era (G.7, `LIMITE_OCUPACAO_BLOQUEIA=0.8`,
+  `src/pontos/repository.js`) — divergência de nomenclatura já registrada
+  na rodada L (`.ia/DECISIONS.md`), não alterada de novo.
+- **Candidatura ("Quero ser um ponto"), acabamento final**: foto da
+  fachada subiu pro topo do formulário nos dois lugares
+  (`public/modos.js`, `public/anunciante/painel.page.js`), com hint padrão
+  ("Opcional — sem foto, usamos um ícone padrão até você mandar uma.") que
+  não some se o dono abrir e cancelar o seletor de arquivo (bug corrigido
+  nesta rodada). Formulário completo (`public/modos.js`) organizado em
+  blocos: Estabelecimento / Horário de funcionamento / Como você quer ser
+  recompensado / Informações adicionais.
+- **Horário: 7 dias individuais + Feriados**, sem migration —
+  `pontos.horario_semanal`/`candidaturas.horario_semanal` já guardavam por
+  dia desde a migration 066; só a chave nova `feriados` entrou no mesmo
+  jsonb (`src/lib/horario-semanal.js`, `DIAS`/`NOME_DIA`/`resumo`).
+
+**Verificado:** `npm run check` (161/161, um teste reescrito —
+`tests/redesenho-rede.test.js` trocou a verificação de `telas_instaladas`
+por uma sequência completa de `sincronizarStatusPonto`: 0 telas → tela
+nasce inativa → ativa → reparo → inativa → 2ª tela ativa → apaga as duas,
+sem estado residual em nenhum passo) e `tests/e2e/09-rede-redesenho.mjs`
+(reescrito pro modelo novo — sem Instalação/ACM/"TV instalada", telas em
+cards, ocupação como tabela, `em_reparo`/`inativo` cobertos na grade, nos
+filtros e no site público — 58 checagens, 0 falhas, screenshots
+desktop+mobile em `tests/e2e/saida/v26-*.png`).
+
+**Achado, não é bug**: em navegador com locale en-US, o `<input
+type="time">` nativo dos campos de horário pode renderizar em 12h com o
+indicador AM/PM cortado pela largura de 92px do campo (ex.: "18:00" mostra
+"06:00" sem "PM" visível). O valor salvo continua correto (24h HH:mm,
+confirmado via `inputValue()`) — é só exibição, e depende do locale do
+navegador/SO, fora do controle da página (input nativo). Locale pt-BR (o
+caso real de produção) já formata em 24h nativamente.
 
 Pedido do dono: as 25 categorias da migration 015 eram amplas demais pra
 representar concorrência direta de verdade ("Advocacia / contabilidade",

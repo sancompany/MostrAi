@@ -103,33 +103,43 @@ function montarLinkVendedor(estado) {
 // exclusivo do ponto). Bem mais simples que o formulário completo em
 // modos.js (CARDS.ponto, ainda usado por /anunciante/ponto.html): sem
 // escolha de comodato aqui — quem se candidata combina isso no WhatsApp.
-// Horário de funcionamento do ponto (pedido do dono, 22/09/2026) — mesmo
-// padrão de 3 grupos de public/modos.js (sem módulo compartilhado entre os
-// dois arquivos, por convenção do projeto).
-const GRUPOS_HORARIO = [
-  { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
-  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
-  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
+// Horário de funcionamento do ponto, dia a dia + feriados (rodada final da
+// Rede, 22/09/2026 — substitui os 3 grupos de antes; mesmo padrão de
+// public/modos.js, sem módulo compartilhado entre os dois arquivos, por
+// convenção do projeto).
+const DICA_FOTO_PADRAO = 'Opcional — sem foto, usamos um ícone padrão até você mandar uma.';
+const DIAS_HORARIO = [
+  { id: 'seg', rotulo: 'Segunda', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+  { id: 'ter', rotulo: 'Terça', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+  { id: 'qua', rotulo: 'Quarta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+  { id: 'qui', rotulo: 'Quinta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+  { id: 'sex', rotulo: 'Sexta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
+  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false, abre: '09:00', fecha: '15:00' },
+  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
+  { id: 'feriados', rotulo: 'Feriados', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
 ];
 
 const CAMPO_HORARIO_SEMANAL = () => `
   <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
-  ${GRUPOS_HORARIO.map(
-    (g) => `
-    <div class="field-row u-ai-c" data-horario-grupo="${g.id}">
-      <div class="u-col-2"><b>${g.rotulo}</b></div>
-      <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
-      <div class="u-col field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
-        <div class="u-col"><label>Abre</label><input type="time" data-horario-abre value="09:00"></div>
-        <div class="u-col"><label>Fecha</label><input type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
-      </div>
-    </div>`,
-  ).join('')}`;
+  <div class="horario-semanal">
+    ${DIAS_HORARIO.map(
+      (d) => `
+      <div class="horario-dia" data-horario-dia="${d.id}">
+        <span class="horario-dia-nome">${d.rotulo}</span>
+        <div class="horario-dia-campos" ${d.fechadoPadrao ? 'hidden' : ''}>
+          <input class="mini" type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre">
+          <span class="u-dim">–</span>
+          <input class="mini" type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha">
+        </div>
+        <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${d.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label>
+      </div>`,
+    ).join('')}
+  </div>`;
 
 function ligarHorarioSemanal(form) {
-  form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-    const chk = grupo.querySelector('[data-horario-fechado]');
-    const campos = grupo.querySelector('[data-horario-campos]');
+  form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+    const chk = linha.querySelector('[data-horario-fechado]');
+    const campos = linha.querySelector('.horario-dia-campos');
     chk.addEventListener('change', () => {
       campos.hidden = chk.checked;
     });
@@ -137,19 +147,18 @@ function ligarHorarioSemanal(form) {
 }
 
 function lerHorarioSemanalDoForm(form) {
-  const porGrupo = {};
-  form.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-    const id = grupo.dataset.horarioGrupo;
-    const fechado = grupo.querySelector('[data-horario-fechado]').checked;
-    porGrupo[id] = fechado
+  const horario = {};
+  form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+    const dia = linha.dataset.horarioDia;
+    const fechado = linha.querySelector('[data-horario-fechado]').checked;
+    horario[dia] = fechado
       ? null
       : {
-          abre: grupo.querySelector('[data-horario-abre]').value,
-          fecha: grupo.querySelector('[data-horario-fecha]').value,
+          abre: linha.querySelector('[data-horario-abre]').value,
+          fecha: linha.querySelector('[data-horario-fecha]').value,
         };
   });
-  const semana = porGrupo.semana;
-  return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
+  return horario;
 }
 
 function montarCardPonto(estado) {
@@ -187,19 +196,22 @@ function montarCardPonto(estado) {
       <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
         <form id="formCardPonto">
           <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
+          <div class="campo-foto u-mb-12">
+            <label class="btn ghost mini" for="cp_foto">Escolher foto da fachada</label>
+            <input type="file" accept="image/*" id="cp_foto" hidden>
+            <span class="u-fs-72 u-dim" id="cp_fotoNome">${DICA_FOTO_PADRAO}</span>
+          </div>
+          <p class="form-sep-titulo u-mt-0">Sobre o movimento</p>
           <div class="u-mb-12">
             <label for="cp_fluxo">Média de pessoas que passam por mês</label>
             <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
           </div>
+          ${CAMPO_HORARIO_SEMANAL()}
+          <p class="form-sep-titulo">Informações adicionais</p>
           <div class="u-mb-12">
             <label for="cp_mensagem">Algo mais? (opcional)</label>
-            <textarea id="cp_mensagem" name="mensagem" rows="2"></textarea>
+            <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
           </div>
-          <div class="u-mb-12">
-            <label class="btn ghost mini">Foto da fachada (opcional)<input type="file" accept="image/*" id="cp_foto" hidden></label>
-            <span class="u-fs-72 u-dim" id="cp_fotoNome"></span>
-          </div>
-          ${CAMPO_HORARIO_SEMANAL()}
           <button class="btn primary" type="submit">Enviar meu interesse</button>
           <p class="form-msg" id="cardPontoMsg" role="status"></p>
         </form>
@@ -208,7 +220,7 @@ function montarCardPonto(estado) {
 
   ligarHorarioSemanal(document.getElementById('formCardPonto'));
   document.getElementById('cp_foto').addEventListener('change', (e) => {
-    document.getElementById('cp_fotoNome').textContent = e.target.files[0]?.name || '';
+    document.getElementById('cp_fotoNome').textContent = e.target.files[0]?.name || DICA_FOTO_PADRAO;
   });
 
   document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {

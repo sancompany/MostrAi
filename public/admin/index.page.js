@@ -336,11 +336,20 @@ function turbinarCards(caixa, seletorItem) {
 }
 
 // ---------- rótulos ----------
-// Dois status desde 17/09/2026 (migration 045). Tela quebrada não é mais
-// estado do PONTO — é estado da tela, em TELA_STATUS logo abaixo.
+// Quatro status desde 22/09/2026 (migration 069, rodada final da Rede) —
+// AUTOMÁTICO, derivado das telas do ponto (src/pontos/repository.js#sincronizarStatusPonto).
+// Ninguém edita isso à mão em lugar nenhum do admin.
 const PONTO_STATUS = {
-  a_instalar: 'A instalar',
-  em_operacao: 'Em operação',
+  a_instalar: 'Aguardando instalação',
+  em_operacao: 'Ativo',
+  em_reparo: 'Em reparo',
+  inativo: 'Inativo',
+};
+const PONTO_STATUS_CLASSE = {
+  a_instalar: 'badge-pendente',
+  em_operacao: 'badge-ok',
+  em_reparo: 'badge-info',
+  inativo: 'badge-err',
 };
 // `status` deixou de ser estado operacional (16/09/2026) — só distingue
 // comum de parceiro (substitui o antigo flag "fundador"). O que bloqueia
@@ -348,10 +357,6 @@ const PONTO_STATUS = {
 const ANUNCIANTE_STATUS = { comum: 'Comum', parceiro: 'Parceiro' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
-// Migration 065 — decide qual formato `GET /playlist` devolve pra essa tela.
-// Só a app nativa (sancompany/playlist.mostrai) sabe ler o envelope; toda
-// tela nasce em 1 e só muda quando alguém instalar o app nela de verdade.
-const CONTRATO_PLAYLIST = { 1: 'Player web (padrão)', 2: 'App Android nativo' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
@@ -879,7 +884,7 @@ async function renderResumo(el) {
 
     <div class="panel u-mt-16">
       <div class="panel-head"><h3>Ocupação da rede</h3></div>
-      <div id="ocupacaoRede" class="ocupacao-rede">Carregando...</div>
+      <div id="ocupacaoRede">Carregando...</div>
     </div>`;
 
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
@@ -902,39 +907,100 @@ async function renderResumo(el) {
 // já vem repetido — igual — em toda linha do mesmo ponto). Async e
 // separado do resto da Visão geral pra não segurar o resumo inteiro
 // esperando esta consulta a mais.
+// Ocupação da rede — tabela operacional (rodada final da Rede, 22/09/2026):
+// virou tabela de verdade (era barra simples), mas a REGRA não mudou nada —
+// mesmo `GET /admin/pontos-ocupacao` (G.7, `ocupacaoPorAnunciante` em
+// src/pontos/repository.js), mesmo limite de 80% (LIMITE_OCUPACAO_BLOQUEIA).
+// Os 20% de reserva são sempre exibidos como reserva — nunca somados em
+// "disponível comercial" (pedido explícito: não confundir os dois).
+const LIMITE_OCUPACAO_COMERCIAL = 0.8 * 3600; // 2880s — mesmo valor de LIMITE_OCUPACAO_BLOQUEIA
+const RESERVA_MOSTRAI_PCT = 20; // sempre 20%, constante — não é "sobra", é reserva deliberada
+
 async function renderOcupacaoRede(el) {
-  const linhas = await pegar('/admin/pontos-ocupacao');
+  const [linhasOcupacao, pontos] = await Promise.all([pegar('/admin/pontos-ocupacao'), pegar('/admin/pontos')]);
+  const pontosPorId = new Map(pontos.map((p) => [p.id, p]));
   const porPonto = new Map();
-  linhas.forEach((l) => {
+  linhasOcupacao.forEach((l) => {
     if (!porPonto.has(l.ponto_id)) {
       porPonto.set(l.ponto_id, {
         pontoId: l.ponto_id,
         nome: l.ponto_nome,
         segundosVendidos: l.segundos_vendidos,
         bloqueado: !!l.escolha_bloqueada_em,
+        anunciantes: [],
       });
     }
+    porPonto.get(l.ponto_id).anunciantes.push({ nome: l.nome_empresa, segundosPorHora: l.segundos_por_hora });
   });
-  const pontos = [...porPonto.values()].sort((a, b) => b.segundosVendidos - a.segundosVendidos);
-  const pct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
+  const linhas = [...porPonto.values()].sort((a, b) => b.segundosVendidos - a.segundosVendidos);
 
-  el.innerHTML = pontos.length
-    ? pontos
-        .map((p) => {
-          const percentual = pct(p.segundosVendidos);
-          return `<div class="ocupacao-rede-item${p.bloqueado ? ' bloqueado' : ''}">
-            <span class="nome">${esc(p.nome)}</span>
-            <span class="pct">${percentual}% ocupado · ${100 - percentual}% disponível</span>
-            <span class="track"><span class="fill" data-pct="${percentual}"></span></span>
-            ${
-              p.bloqueado
-                ? `<div class="aviso-bloqueio"><span>Cruzou 80% — seleção normal bloqueada</span><button class="btn ghost mini" data-liberar="${p.pontoId}">Liberar</button></div>`
-                : ''
-            }
-          </div>`;
-        })
-        .join('')
-    : '<p class="empty-state">Nenhum ponto possui ocupação comercial ainda.</p>';
+  if (!linhas.length) {
+    el.innerHTML = '<p class="empty-state">Nenhum ponto possui ocupação comercial ainda.</p>';
+    return;
+  }
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Ponto</th><th data-ord>Status</th><th data-ord>Telas</th><th data-ord>Anunciantes</th>
+      <th data-ord>Ocupação comercial</th><th data-ord>Restante (80%)</th><th>Reserva Mostraí (20%)</th><th></th>
+    </tr></thead><tbody>
+    ${linhas
+      .map((l) => {
+        const ponto = pontosPorId.get(l.pontoId);
+        const pctUsado = Math.min(100, Math.round((l.segundosVendidos / 3600) * 100));
+        const restanteSeg = Math.max(0, LIMITE_OCUPACAO_COMERCIAL - l.segundosVendidos);
+        const pctRestante = Math.round((restanteSeg / 3600) * 100);
+        return `<tr data-filtro="${l.bloqueado ? 'bloqueado' : ''}" data-ponto-id="${l.pontoId}">
+      <td>${esc(l.nome)}</td>
+      <td>${ponto ? `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>` : '-'}</td>
+      <td>${ponto?.telas ?? '-'}</td>
+      <td><button class="btn ghost mini" data-expandir-ocupacao="${l.pontoId}">${l.anunciantes.length}</button></td>
+      <td title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${pctUsado}%${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
+      <td title="Dentro do teto comercial de 80% (${LIMITE_OCUPACAO_COMERCIAL}s)">${pctRestante}%</td>
+      <td class="u-dim" title="Reservado pra institucional e conta própria — nunca entra como disponível comercial">${RESERVA_MOSTRAI_PCT}%</td>
+      <td>${l.bloqueado ? `<button class="btn ghost mini" data-liberar="${l.pontoId}">Liberar</button>` : ''}</td>
+    </tr>`;
+      })
+      .join('')}
+  </tbody></table>`;
+
+  el.innerHTML = caixaTabela({
+    chips: [
+      { valor: '', nome: 'Todos' },
+      { valor: 'bloqueado', nome: 'Travados (80%)' },
+    ],
+    html: corpo,
+    dica: 'Clique no número de anunciantes pra ver o peso (s/hora) de cada um nesse ponto.',
+  });
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  el.querySelectorAll('[data-expandir-ocupacao]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const linha = btn.closest('tr');
+      const existente = linha.nextElementSibling;
+      if (existente && existente.dataset.ocupacaoDe === btn.dataset.expandirOcupacao) {
+        existente.remove();
+        return;
+      }
+      const p = porPonto.get(Number(btn.dataset.expandirOcupacao));
+      const ordenados = [...p.anunciantes].sort((a, b) => b.segundosPorHora - a.segundosPorHora);
+      linha.insertAdjacentHTML(
+        'afterend',
+        `<tr data-ocupacao-de="${btn.dataset.expandirOcupacao}"><td class="u-bg" colspan="8">
+      ${
+        ordenados.length
+          ? `<table class="mini-table u-mt-6"><thead><tr><th>Anunciante</th><th>Peso (s/hora)</th><th>% do ponto</th></tr></thead><tbody>
+        ${ordenados
+          .map(
+            (a) =>
+              `<tr><td>${esc(a.nome)}</td><td>${a.segundosPorHora}s</td><td>${Math.round((a.segundosPorHora / 3600) * 100)}%</td></tr>`,
+          )
+          .join('')}</tbody></table>`
+          : '<p class="empty-state u-py-6">Nenhum anunciante associado.</p>'
+      }
+    </td></tr>`,
+      );
+    }),
+  );
 
   el.querySelectorAll('[data-liberar]').forEach((btn) =>
     btn.addEventListener('click', async () => {
@@ -1238,26 +1304,6 @@ async function renderPontos(el, resto) {
   return renderPontosGrade(el);
 }
 
-// Status VISUAL do ponto (redesenho da Rede, 22/09/2026) — não é um 3º
-// valor no banco: `pontos.status` continua só com `a_instalar`/`em_operacao`
-// (migration 045), porque é ele que decide elegibilidade de playlist
-// (src/playlist/gerador.js), gate do player (src/lib/aparelho.js), pacing e
-// amortização — mudar esse enum seria mudança de regra de negócio, não de
-// tela. "TV instalada" é só uma LEITURA de `telas_instaladas` (contagem de
-// dispositivos com `instalado_em` preenchido, ver src/pontos/repository.js)
-// enquanto o ponto ainda está `a_instalar` — não usa aparelho_id/chave, que
-// só prova que alguém gerou um link, não que a TV chegou no endereço.
-const STATUS_VISUAL_PONTO = {
-  aguardando: { nome: 'Aguardando instalação', classe: 'badge-pendente' },
-  tv_instalada: { nome: 'TV instalada', classe: 'badge-info' },
-  em_operacao: { nome: 'Em operação', classe: 'badge-ok' },
-};
-
-function statusVisualPonto(p) {
-  if (p.status === 'em_operacao') return 'em_operacao';
-  return p.telas_instaladas > 0 ? 'tv_instalada' : 'aguardando';
-}
-
 // Placeholder oficial de ponto sem foto (redesenho de 22/09/2026) — pedido
 // do dono: parar de usar a foto artificial de "seu anúncio aqui" (o cartão
 // institucional do player) como fallback de estabelecimento. Mesmo conceito
@@ -1275,13 +1321,10 @@ function fotoOuPlaceholder(url, nome) {
 
 function montarPontoCard(p) {
   const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
-  const st = STATUS_VISUAL_PONTO[statusVisualPonto(p)];
-  const telasTexto = !p.telas
-    ? 'Nenhuma tela ainda'
-    : `${p.telas} ${p.telas === 1 ? 'tela' : 'telas'}${p.telas_ativas < p.telas ? ' · alguma inativa' : ''}`;
-  return `<a class="ponto-card ponto-card-link" href="#rede/pontos/${p.id}" data-filtro="${statusVisualPonto(p)}">
+  const telasTexto = !p.telas ? 'Nenhuma tela ainda' : `${p.telas} ${p.telas === 1 ? 'tela' : 'telas'}`;
+  return `<a class="ponto-card ponto-card-link" href="#rede/pontos/${p.id}" data-filtro="${p.status}">
     <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
-    <span class="badge ${st.classe}">${st.nome}</span>
+    <span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>
     <h4>${esc(p.nome)}</h4>
     <p>${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}</p>
     <p>${telasTexto}</p>
@@ -1290,21 +1333,15 @@ function montarPontoCard(p) {
 
 async function renderPontosGrade(el) {
   // Vem da Visão geral ("Pontos por status" → clique num status real do
-  // banco). `em_operacao` mapeia direto pro chip visual igual; `a_instalar`
-  // cobre DOIS chips visuais (aguardando/TV instalada) — sem como escolher
-  // um sozinho, cai em "Todos" em vez de arriscar o errado.
-  const filtroStatus = FILTRO_PONTOS_STATUS === 'em_operacao' ? 'em_operacao' : null;
+  // banco) — status do ponto é automático desde 22/09/2026, então o valor
+  // já bate 1:1 com o chip.
+  const filtroStatus = FILTRO_PONTOS_STATUS;
   FILTRO_PONTOS_STATUS = null;
   const pontos = await pegar('/admin/pontos');
 
   el.innerHTML = pontos.length
     ? caixaCards({
-        chips: [
-          { valor: '', nome: 'Todos' },
-          { valor: 'aguardando', nome: STATUS_VISUAL_PONTO.aguardando.nome },
-          { valor: 'tv_instalada', nome: STATUS_VISUAL_PONTO.tv_instalada.nome },
-          { valor: 'em_operacao', nome: STATUS_VISUAL_PONTO.em_operacao.nome },
-        ],
+        chips: [{ valor: '', nome: 'Todos' }, ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
         html: pontos.map(montarPontoCard).join(''),
         dica: 'Clique num ponto pra ver a ficha completa e as telas.',
         ativo: filtroStatus,
@@ -1328,153 +1365,116 @@ async function renderPontoDetalhe(el, pontoId) {
   const pontos = await pegar('/admin/pontos');
   const ponto = pontos.find((p) => p.id === pontoId);
   if (!ponto) {
-    el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Pontos</a></p>';
+    el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Rede</a></p>';
     return;
   }
-  const st = STATUS_VISUAL_PONTO[statusVisualPonto(ponto)];
-  // Mesma prioridade do card (montarPontoCard): categoria do catálogo
-  // primeiro, senão categoria livre, senão o texto puro de `segmento` — que
-  // é o único que a candidatura de fato grava hoje (liberarPapelNaConta,
-  // src/conta/modos.js, nunca escreve categoria_id/categoria_livre no
-  // ponto). Sem esse fallback o segmento sumia da ficha pra praticamente
-  // todo ponto nascido do fluxo novo.
-  const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
 
   el.innerHTML = `
-    <p class="u-m-0 u-mb-10"><a href="#rede/pontos">← Pontos</a></p>
-    <div class="ponto-ficha-cabecalho u-mb-20">
-      <div class="ponto-ficha-foto">${fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome)}</div>
-      <div class="ponto-ficha-titulo">
-        <span class="badge ${st.classe}">${st.nome}</span>
-        <h3 class="u-m-0">${esc(ponto.nome)}</h3>
-        <p class="u-dim u-m-0">${esc(ponto.endereco || ponto.cidade)}${ponto.endereco ? `, ${esc(ponto.cidade)}/${esc(ponto.uf)}` : ''}</p>
-        <p class="u-dim u-m-0 u-fs-85">${segmento ? esc(segmento) : 'Sem segmento informado'} · ${ponto.telas || 0} ${ponto.telas === 1 ? 'tela' : 'telas'}</p>
-      </div>
-    </div>
-    <div id="pontoInformacoes"></div>
-    <div id="pontoInstalacao"></div>
-    <div id="pontoTelas"></div>`;
+    <p class="ponto-breadcrumb u-mb-16"><a href="#rede/pontos">Rede</a><span class="u-dim"> / </span>${esc(ponto.nome)}</p>
+    <div class="ponto-detalhe-grid">
+      <div id="pontoInformacoes"></div>
+      <div id="pontoTelas"></div>
+    </div>`;
 
   renderPontoInformacoes(document.getElementById('pontoInformacoes'), ponto);
-  renderPontoInstalacao(document.getElementById('pontoInstalacao'), ponto);
   renderPontoTelas(document.getElementById('pontoTelas'), ponto);
 }
 
-// Ficha do estabelecimento — SOMENTE LEITURA (redesenho de 22/09/2026,
-// pedido do dono: "dados fornecidos pelo estabelecimento devem ser
-// tratados como ficha", não formulário). Quem fornece os dados agora é a
-// candidatura (liberarPapelNaConta, src/conta/modos.js); o admin consulta,
-// não edita comercial. As duas exceções reais (status/acabamento) viraram
-// controles operacionais em renderPontoInstalacao, não campo desta ficha.
+// Ficha do estabelecimento — SOMENTE LEITURA (pedido do dono: "dados
+// fornecidos pelo estabelecimento devem ser tratados como ficha", não
+// formulário). Quem fornece os dados é a candidatura (liberarPapelNaConta,
+// src/conta/modos.js); o admin consulta, não edita. Status é automático
+// (deriva das telas, src/pontos/repository.js#sincronizarStatusPonto) — não
+// tem controle nenhum aqui. Molde ACM saiu do admin de vez (rodada final da
+// Rede, 22/09/2026): passou a ser operado fora deste painel, sem sistema
+// novo — se precisar consultar o valor antigo, é direto no banco.
+// Comodato aparece como informação simples de propósito — a estrutura de
+// planos/benefícios de comodato é revisão futura (tela Planos/Benefícios),
+// não desta rodada.
 function renderPontoInformacoes(el, ponto) {
+  // Mesma prioridade do card (montarPontoCard): categoria do catálogo
+  // primeiro, senão categoria livre, senão o texto puro de `segmento` — o
+  // único que a candidatura de fato grava hoje.
+  const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
   const linha = (rotulo, valor) =>
     valor ? `<div><label>${esc(rotulo)}</label><p class="u-m-0">${valor}</p></div>` : '';
   el.innerHTML = `
-    <div class="card u-mw-640">
+    <div class="card">
+      <div class="ponto-info-cabecalho">
+        <div class="ponto-info-foto">${fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome)}</div>
+        <div class="ponto-info-titulo">
+          <span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>
+          <h3 class="u-m-0">${esc(ponto.nome)}</h3>
+          <p class="u-dim u-m-0">${esc(ponto.endereco || ponto.cidade)}${ponto.endereco ? `, ${esc(ponto.cidade)}/${esc(ponto.uf)}` : ''}</p>
+          <p class="u-dim u-m-0 u-fs-85">${segmento ? esc(segmento) : 'Sem segmento informado'} · ${ponto.telas || 0} ${ponto.telas === 1 ? 'tela' : 'telas'}</p>
+        </div>
+      </div>
+      <hr class="ponto-info-sep">
       <div class="field-row">
         <div class="u-col-2"><label>Responsável</label><p class="u-m-0">${esc(ponto.responsavel_nome || '-')}${ponto.responsavel_contato ? ` · ${esc(ponto.responsavel_contato)}` : ''}</p></div>
         <div class="u-col-2"><label>Dono (conta)</label><p class="u-m-0">${ponto.dono_nome ? esc(ponto.dono_nome) : '<span class="u-dim">sem conta</span>'}</p></div>
       </div>
       <div class="field-row">
-        <div class="u-col-2"><label>Endereço</label><p class="u-m-0">${esc(ponto.endereco || '-')}</p></div>
-        <div class="u-col"><label>Cidade/UF</label><p class="u-m-0">${esc(ponto.cidade)}/${esc(ponto.uf)}</p></div>
-      </div>
-      <div class="field-row">
         <div class="u-col-2"><label>Movimento estimado/mês</label><p class="u-m-0">${ponto.fluxo_estimado_mensal ? `${num(ponto.fluxo_estimado_mensal)} pessoas` : '<span class="u-dim">não informado</span>'}</p></div>
         <div class="u-col-2"><label>Horário de funcionamento</label><p class="u-m-0">${ponto.horario_semanal ? esc(resumoHorarioSemanal(ponto.horario_semanal)) : '<span class="u-dim">não informado</span>'}</p></div>
       </div>
-      <div class="field-row">
-        <div class="u-col-2"><label>Comodato</label><p class="u-m-0">${ponto.plano_ponto_nome ? esc(ponto.plano_ponto_nome) : '<span class="u-dim">-</span>'}${Number(ponto.valor_pago_mensal) > 0 ? ` · ${fmt(ponto.valor_pago_mensal)}/mês` : ''}</p></div>
-        <div class="u-col-2"><label>Molde ACM</label><p class="u-m-0">${ponto.acabamento_completo ? 'Instalado' : '<span class="u-dim">Pendente</span>'}</p></div>
-      </div>
+      ${linha('Comodato', ponto.plano_ponto_nome ? `${esc(ponto.plano_ponto_nome)}${Number(ponto.valor_pago_mensal) > 0 ? ` · ${fmt(ponto.valor_pago_mensal)}/mês` : ''}` : '')}
       ${linha('Observações', ponto.observacoes ? esc(ponto.observacoes) : '')}
       <div><label>Cadastrado em</label><p class="u-m-0">${data(ponto.created_at)}</p></div>
     </div>`;
-}
-
-// Único trecho realmente operacional da ficha (exceção explícita ao
-// somente-leitura acima) — as mesmas duas ações que já existiam (status e
-// molde ACM), só reorganizadas: eram um <select> solto e um checkbox no
-// meio de um formulário comercial, viram um painel de instalação próprio.
-// Mesmo PATCH /admin/pontos/:id de sempre, mesma whitelist
-// (CAMPOS_ATUALIZAVEIS, src/pontos/repository.js) — nenhuma regra nova.
-// "TV instalada" não tem toggle aqui: é OS TELAS embaixo (campo
-// `instalado_em` de cada uma) que decidem esse estado — duplicar o controle
-// aqui criaria uma segunda fonte de verdade pro mesmo fato.
-function renderPontoInstalacao(el, ponto) {
-  const tvInstalada = ponto.telas_instaladas > 0;
-  el.innerHTML = `
-    <div class="card u-mw-640 u-mt-16">
-      <label class="u-m-0">Instalação</label>
-      <div class="ponto-instalacao u-mt-6">
-        <span class="badge ${tvInstalada ? 'badge-ok' : 'badge-pendente'}">${tvInstalada ? 'TV instalada' : 'TV aguardando instalação'}</span>
-        <label class="check-row" title="Data de instalação de cada tela decide isto — ver Telas abaixo"><input type="checkbox" disabled ${tvInstalada ? 'checked' : ''}><span class="u-dim">TV instalada (por tela, abaixo)</span></label>
-        <label class="check-row"><input type="checkbox" id="pontoAcabamento" ${ponto.acabamento_completo ? 'checked' : ''}><span>Molde ACM instalado</span></label>
-        ${
-          ponto.status === 'em_operacao'
-            ? '<button class="btn ghost mini" id="btnVoltarInstalacao" title="Só se precisar corrigir por engano">Voltar pra aguardando instalação</button>'
-            : '<button class="btn primary mini" id="btnColocarOperacao">Colocar em operação</button>'
-        }
-      </div>
-      <p class="empty-state u-ta-l u-p-0 u-pt-10">Foto do ponto: sobe junto da candidatura (com o molde já instalado). Pra trocar depois, use o botão abaixo.</p>
-      <label class="btn ghost mini">Trocar foto do ponto<input type="file" accept="image/*" hidden id="fotoPonto"></label>
-      <p class="form-msg" id="msgFotoPonto"></p>
-    </div>`;
-
-  document
-    .getElementById('pontoAcabamento')
-    .addEventListener('change', (e) =>
-      salvar(`/admin/pontos/${ponto.id}`, { acabamento_completo: e.target.checked }, e.target),
-    );
-
-  document.getElementById('btnColocarOperacao')?.addEventListener('click', async () => {
-    const r = await api(`/admin/pontos/${ponto.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'em_operacao' }),
-    });
-    if (!r.ok) return toast('Não foi possível colocar em operação.', 'err');
-    toast('Ponto em operação.');
-    irPara(`rede/pontos/${ponto.id}`);
-  });
-
-  document.getElementById('btnVoltarInstalacao')?.addEventListener('click', async () => {
-    if (!confirm('Voltar este ponto pra "aguardando instalação"? Ele para de entrar na playlist.')) return;
-    const r = await api(`/admin/pontos/${ponto.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status: 'a_instalar' }),
-    });
-    if (!r.ok) return toast('Não foi possível voltar o status.', 'err');
-    toast('Status atualizado.');
-    irPara(`rede/pontos/${ponto.id}`);
-  });
-
-  document.getElementById('fotoPonto').addEventListener('change', async (e) => {
-    const input = e.target;
-    if (!input.files[0]) return;
-    const msg = document.getElementById('msgFotoPonto');
-    msg.textContent = 'Enviando...';
-    msg.className = 'form-msg';
-    const form = new FormData();
-    form.append('arquivo', input.files[0]);
-    const r = await fetch(`${API_BASE_URL}/admin/pontos/${ponto.id}/foto`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    });
-    if (!r.ok) {
-      msg.textContent = 'Não foi possível enviar a foto.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    toast('Foto enviada.');
-    irPara(`rede/pontos/${ponto.id}`);
-  });
 }
 
 // Mesma tabela e as mesmas ações de sempre (chave, PIN, custo/prazo de
 // amortização, painel de exibições, exclusão) — só que sempre escondida
 // dentro de UM ponto agora, em vez de "todas as telas da rede" com um
 // filtro opcional por cima. A rota já aceitava esse filtro desde sempre.
+// Cards horizontais em vez de tabela (rodada final da Rede, 22/09/2026) —
+// menos colunas (Tela/Contrato/Custo/Meses/Amort./Painel saíram, seção 12
+// do pedido: sem player de terceiro pra configurar contrato, sem custo
+// nesta tela) sobraram só ID/status/sinal/chave/PIN/instalação + margens
+// novas, e cabem melhor num card do que espremidas numa linha de tabela —
+// funciona igual com 1 tela (o caso comum hoje) ou várias.
+function montarTelaCard(t, estaOffline) {
+  const offline = estaOffline(t);
+  return `<div class="tela-card" data-filtro="${t.status}${offline ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
+    <div class="tela-card-topo">
+      <span class="tela-card-id">Tela #${t.id}</span>
+      ${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}
+      <span class="tela-card-sinal">${offline ? '<span class="badge badge-err">sem sinal</span>' : t.ultima_vez_online ? `desde ${new Date(t.ultima_vez_online).toLocaleString('pt-BR')}` : '<span class="u-dim">nunca conectou</span>'}</span>
+      <button class="btn ghost mini u-txt-erro u-ml-auto" data-excluir-tela="${t.id}" title="Só se essa tela nunca rodou nada">Excluir</button>
+    </div>
+    <div class="tela-card-corpo">
+      <div class="tela-campo">
+        <label>Chave / link do player</label>
+        ${
+          t.aparelho_id
+            ? `<div class="field-row"><button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
+               <button class="btn ghost mini" data-chave="${t.id}" data-trocar="1" title="Gera uma chave nova e derruba o aparelho atual">Trocar</button></div>`
+            : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`
+        }
+      </div>
+      <div class="tela-campo">
+        <label>PIN do painel</label>
+        <div class="field-row">${t.tem_pin ? '<span class="badge badge-ok">definido</span>' : '<span class="badge badge-pendente">sem PIN</span>'}
+          <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></div>
+      </div>
+      <div class="tela-campo">
+        <label>Instalada em</label>
+        <input class="mini" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}">
+      </div>
+      <div class="tela-campo tela-campo-margens">
+        <label title="Área que a moldura do molde ACM cobre — o player encolhe a mídia pra não ficar atrás dela">Margens da safe area (vmin)</label>
+        <div class="margens-grid">
+          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_superior" data-id="${t.id}" value="${t.margem_superior ?? 0}" title="Superior">
+          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_direita" data-id="${t.id}" value="${t.margem_direita ?? 0}" title="Direita">
+          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_inferior" data-id="${t.id}" value="${t.margem_inferior ?? 0}" title="Inferior">
+          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_esquerda" data-id="${t.id}" value="${t.margem_esquerda ?? 0}" title="Esquerda">
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function renderPontoTelas(el, ponto) {
   const [telas, semSinal] = await Promise.all([
     pegar(`/admin/pontos/${ponto.id}/dispositivos`),
@@ -1482,68 +1482,38 @@ async function renderPontoTelas(el, ponto) {
   ]);
   const idsOffline = new Set((semSinal || []).map((d) => d.id));
   const estaOffline = (t) => idsOffline.has(t.id);
-  const amort = (t) =>
-    Number(t.custo_equipamento) > 0 ? Number(t.custo_equipamento) / Math.max(1, Number(t.meses_amortizacao) || 36) : 0;
-
-  const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Tela</th><th data-ord>Status</th><th data-ord>Último sinal</th>
-      <th>Chave / link do player</th><th>Contrato</th><th>PIN do painel</th><th data-ord>Custo R$</th><th data-ord>Meses</th><th data-ord>Amort./mês</th><th data-ord>Instalada em</th><th></th>
-    </tr></thead><tbody>
-    ${telas
-      .map(
-        (t) => `<tr data-filtro="${t.status}${estaOffline(t) ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
-      <td>${t.id}</td>
-      <td><input class="mini u-w-120" data-tela="apelido" data-id="${t.id}" value="${esc(t.apelido)}"></td>
-      <td>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</td>
-      <td>${estaOffline(t) ? '<span class="badge badge-err">sem sinal</span> ' : ''}${t.ultima_vez_online ? new Date(t.ultima_vez_online).toLocaleString('pt-BR') : '-'}</td>
-      <td>${
-        t.aparelho_id
-          ? `<button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
-           <button class="btn ghost mini" data-chave="${t.id}" data-trocar="1" title="Gera uma chave nova e derruba o aparelho atual">Trocar</button>`
-          : `<button class="btn primary mini" data-chave="${t.id}">Gerar chave</button>`
-      }</td>
-      <td>${selectStatus(CONTRATO_PLAYLIST, String(t.contrato_playlist), `data-tela="contrato_playlist" data-id="${t.id}"`)}</td>
-      <td>${t.tem_pin ? '<span class="badge badge-ok">definido</span> ' : '<span class="badge badge-pendente">sem PIN</span> '}
-        <button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar' : 'Definir'}</button></td>
-      <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-tela="custo_equipamento" data-id="${t.id}" value="${t.custo_equipamento ?? 0}"></td>
-      <td><input class="mini u-w-60" type="number" min="1" data-tela="meses_amortizacao" data-id="${t.id}" value="${t.meses_amortizacao ?? 36}"></td>
-      <td>${amort(t) ? fmt(amort(t)) : '-'}</td>
-      <td><input class="mini u-w-120" type="date" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}"></td>
-      <td><button class="btn ghost mini" data-painel-tela="${t.id}" title="O que rodou nessa tela">Painel</button>
-          <button class="btn ghost mini u-txt-erro" data-excluir-tela="${t.id}" title="Só se nunca rodou nada">×</button></td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
 
   el.innerHTML = `
-    <div class="field-row u-mb-10"><button class="btn ghost mini" id="btnNovaTela" title="Adiciona mais uma TV nesse endereço">+ tela</button></div>
-    ${
-      telas.length
-        ? caixaTabela({
-            chips: [
-              { valor: '', nome: 'Todas' },
-              { valor: 'offline', nome: 'Sem sinal' },
-              { valor: 'semchave', nome: 'Sem chave' },
-              ...Object.entries(TELA_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-            ],
-            html: corpo,
-            dica: 'Uma tela = um link do player + uma playlist. Custo e prazo alimentam a amortização da visão geral.',
-          })
-        : '<p class="empty-state">Nenhuma tela ainda. Crie a primeira pelo botão "+ tela" acima.</p>'
-    }
-    <p class="empty-state u-ta-l u-p-0 u-pt-4">Como ligar uma TV: gere a chave → copie o link → abra no navegador da TV (ou no app kiosk apontando pra ele). O PIN abre o painel da tela na própria TV (5 toques no canto superior direito ou tecla P). Só mostra o que rodou nela, nada mais.</p>`;
+    <div class="card">
+      <div class="field-row u-mb-10">
+        <h3 class="u-m-0 u-mr-auto">Telas</h3>
+        <button class="btn ghost mini" id="btnNovaTela">+ tela</button>
+      </div>
+      ${
+        telas.length
+          ? `<div class="telas-topo u-mb-10">
+              <input class="busca" type="search" placeholder="Buscar...">
+              <div class="chips">
+                <button type="button" class="chip active" data-filtro="">Todas</button>
+                <button type="button" class="chip" data-filtro="offline">Sem sinal</button>
+                <button type="button" class="chip" data-filtro="semchave">Sem chave</button>
+                ${Object.entries(TELA_STATUS)
+                  .map(([v, n]) => `<button type="button" class="chip" data-filtro="${v}">${n}</button>`)
+                  .join('')}
+              </div>
+            </div>
+            <div class="telas-lista">${telas.map((t) => montarTelaCard(t, estaOffline)).join('')}</div>
+            <p class="u-dim u-fs-78 u-m-0 u-mt-8" data-contagem></p>`
+          : '<p class="empty-state">Nenhuma tela instalada neste ponto.</p>'
+      }
+    </div>`;
 
   document.getElementById('btnNovaTela').addEventListener('click', async () => {
-    const apelido = prompt('Nome da tela (ex.: Tela 2, balcão):', `Tela ${telas.length + 1}`);
+    const apelido = prompt('Nome da tela (só interno, ex.: Tela 2 — balcão):', `Tela ${telas.length + 1}`);
     if (apelido === null) return;
-    const custo = prompt(
-      'Custo do equipamento dessa tela (R$), pra amortização. Pode deixar 0 e preencher depois:',
-      '0',
-    );
     const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, {
       method: 'POST',
-      body: JSON.stringify({ apelido, custo_equipamento: Number(custo) || 0 }),
+      body: JSON.stringify({ apelido }),
     });
     if (!r.ok) return toast('Não foi possível criar a tela.', 'err');
     toast('Tela criada. Gere a chave dela abaixo.');
@@ -1551,19 +1521,45 @@ async function renderPontoTelas(el, ponto) {
   });
 
   if (!telas.length) return;
-  turbinarTabela(el.querySelector('.tabela-caixa'));
+
+  const busca = el.querySelector('.busca');
+  const contagem = el.querySelector('[data-contagem]');
+  const cartoes = () => [...el.querySelectorAll('.tela-card')];
+  function aplicarFiltro() {
+    const termo = (busca.value || '').toLowerCase().trim();
+    const chipAtivo = el.querySelector('.chip.active');
+    const filtro = chipAtivo ? chipAtivo.dataset.filtro : '';
+    let visiveis = 0;
+    cartoes().forEach((card) => {
+      const casaTermo = !termo || card.textContent.toLowerCase().includes(termo);
+      const casaFiltro = !filtro || (card.dataset.filtro || '').split(' ').includes(filtro);
+      card.hidden = !(casaTermo && casaFiltro);
+      if (!card.hidden) visiveis += 1;
+    });
+    contagem.textContent = `${visiveis} de ${cartoes().length}`;
+  }
+  busca.addEventListener('input', aplicarFiltro);
+  el.querySelectorAll('.chip').forEach((chip) =>
+    chip.addEventListener('click', () => {
+      el.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      aplicarFiltro();
+    }),
+  );
+  aplicarFiltro();
 
   el.querySelectorAll('[data-tela]').forEach((campo) =>
     campo.addEventListener('change', async () => {
-      const numerico = ['custo_equipamento', 'meses_amortizacao', 'contrato_playlist'].includes(campo.dataset.tela);
+      const numerico = ['margem_superior', 'margem_direita', 'margem_inferior', 'margem_esquerda'].includes(
+        campo.dataset.tela,
+      );
       const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
-      if (
-        (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) &&
-        ['status', 'custo_equipamento', 'meses_amortizacao'].includes(campo.dataset.tela)
-      ) {
-        RESUMO = await pegar('/admin/resumo');
-        pintarContadores();
-        if (campo.dataset.tela !== 'status') renderPontoTelas(el, ponto);
+      if (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) {
+        if (campo.dataset.tela === 'status') {
+          RESUMO = await pegar('/admin/resumo');
+          pintarContadores();
+          renderPontoTelas(el, ponto);
+        }
       }
     }),
   );
@@ -1580,10 +1576,7 @@ async function renderPontoTelas(el, ponto) {
       const r = await api(`/admin/dispositivos/${btn.dataset.chave}/chave`, { method: 'POST' });
       if (!r.ok) return toast('Não foi possível gerar a chave.', 'err');
       const { aparelho_id } = await r.json();
-      prompt(
-        'Abra este link no navegador da TV (ele guarda a chave e continua funcionando depois de reiniciar):',
-        linkDoPlayer(btn.dataset.chave, aparelho_id),
-      );
+      prompt('Abra este link no navegador da TV:', linkDoPlayer(btn.dataset.chave, aparelho_id));
       renderPontoTelas(el, ponto);
     }),
   );
@@ -1600,7 +1593,7 @@ async function renderPontoTelas(el, ponto) {
 
   el.querySelectorAll('[data-pin]').forEach((btn) =>
     btn.addEventListener('click', async () => {
-      const pin = prompt('PIN de 4 a 6 dígitos pra abrir o painel dessa tela na TV (deixe vazio pra remover):');
+      const pin = prompt('PIN de 4 a 6 dígitos (deixe vazio pra remover):');
       if (pin === null) return;
       const r = await api(`/admin/dispositivos/${btn.dataset.pin}/pin`, {
         method: 'POST',
@@ -1609,31 +1602,6 @@ async function renderPontoTelas(el, ponto) {
       if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.', 'err');
       toast(pin.trim() ? 'PIN definido.' : 'PIN removido.');
       renderPontoTelas(el, ponto);
-    }),
-  );
-
-  el.querySelectorAll('[data-painel-tela]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const d = await pegar(`/admin/dispositivos/${btn.dataset.painelTela}/painel`);
-      const total = d.porAnunciante.reduce((s, a) => s + a.confirmadas, 0);
-      const linha = btn.closest('tr');
-      const existente = linha.nextElementSibling;
-      if (existente && existente.dataset.painelDe === btn.dataset.painelTela) {
-        existente.remove();
-        return;
-      }
-      linha.insertAdjacentHTML(
-        'afterend',
-        `<tr data-painel-de="${btn.dataset.painelTela}"><td class="u-bg" colspan="11">
-      <b>Últimos 30 dias: ${num(total)} exibições confirmadas</b>
-      ${
-        d.porAnunciante.length
-          ? `<table class="mini-table u-mt-6"><thead><tr><th>Anunciante</th><th>Programadas</th><th>Confirmadas</th></tr></thead><tbody>
-        ${d.porAnunciante.map((a) => `<tr><td>${esc(a.nome_empresa)}</td><td>${a.programadas}</td><td>${a.confirmadas}</td></tr>`).join('')}</tbody></table>`
-          : '<p class="empty-state u-py-6">Nada rodou nessa tela ainda.</p>'
-      }
-    </td></tr>`,
-      );
     }),
   );
 

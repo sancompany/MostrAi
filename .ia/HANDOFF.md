@@ -3,6 +3,112 @@
 ## Updated
 2026-09-22
 
+## Rede, rodada final — status automático, telas em cards, ocupação como tabela (22/09/2026, este agente)
+Prompt de 35 seções do dono: "considere este prompt como a especificação
+definitiva desta tela... o objetivo é ENCERRAR a revisão da Rede depois
+desta rodada." Substitui as decisões de instalação/ACM/status
+intermediários das duas rodadas anteriores (seções G/L, abaixo). Autorizado
+a implementar tudo sem pausa, exceto decisão de negócio real (nenhuma
+encontrada). Detalhe completo em `docs/PENDENCIAS.md` seção M; a decisão
+que valia ADR foi pra `.ia/DECISIONS.md` (ADR-009).
+
+**Pré-voo (seção 34 do prompt) — respondido antes de codar:**
+1. Consumidores de `pontos.status` mapeados por grep: `src/playlist/gerador.js`
+   (elegibilidade), `src/lib/aparelho.js` (gate do player), `listarPublicos`/
+   `pontos-disponiveis`/`PUT /anunciantes/me/pontos` (visibilidade e escolha),
+   `somaFluxoMensal`/`avaliarBloqueios` (só `em_operacao`), admin
+   (`public/admin/index.page.js`).
+2. Estratégia: coluna real com 4 valores, escrita só por uma função
+   (`sincronizarStatusPonto`), chamada de dentro de `dispositivos/repository.js`
+   nos 3 pontos onde uma tela muda (criar/atualizar status/deletar) — nunca
+   duas fontes de verdade, nunca computado no SELECT.
+3. Regra 80/20: só existe o freio de 80% (`LIMITE_OCUPACAO_BLOQUEIA`,
+   G.7) — mesma divergência de nomenclatura já registrada na rodada L
+   (ADR-008), não fechada de novo aqui, só reconfirmada.
+4. Peso do anunciante por ponto: `planos.segundos_por_hora` — métrica real
+   já usada no motor de playlist, sem inventar score novo.
+5. Margens/safe area: só existia um `?margem=N` uniforme no player (fallback
+   legado mantido); não existia por tela nem por lado.
+6. Horário: `horario_semanal` (jsonb, migration 066) já guardava por dia
+   individual, apesar do formulário só perguntar 3 grupos — achado que
+   evitou migration de dado (só a chave `feriados` nova).
+7. Migrations necessárias: uma (069) — 4 valores de status + 4 colunas de
+   margem em `dispositivos` + default de `dispositivos.status` pra
+   `'inativo'`.
+8. Bloqueador real: nenhum. Prosseguiu com a implementação completa.
+
+**Em uma linha cada:**
+- Migration 069 (única desta rodada): `pontos_status_check` novo (4
+  valores), `dispositivos.status` DEFAULT `'inativo'` (era `'ativo'` —
+  tela nova nasce sem confirmar operação; furo pego pelos testes de
+  playlist quebrando, corrigido nos próprios testes — ver abaixo), 4
+  colunas de margem em `dispositivos` (`numeric NOT NULL DEFAULT 0 CHECK
+  (>= 0)`).
+- `sincronizarStatusPonto` (`src/pontos/repository.js`) nova, única escrita
+  de `pontos.status`. `status` saiu de `CAMPOS_ATUALIZAVEIS` de pontos —
+  ninguém mais edita via PATCH.
+- **Dois lugares criavam uma "Tela 1" vazia junto com o ponto**
+  (`src/conta/modos.js#liberarPapelNaConta`, `src/anunciantes/routes.js#
+  criarPontoDaCandidatura`, e `src/pontos/routes.js` — cadastro de outro
+  endereço pelo dono de ponto). Com o status automático, essa tela (nascida
+  `inativo`) fazia o ponto virar "Inativo" no nascimento em vez de
+  "Aguardando instalação" — **achado e corrigido nesta rodada**: os 3
+  lugares pararam de criar a tela; o admin cria de verdade (`+ tela`) só na
+  instalação real.
+- `listarPublicos` (site público) e a lista de pontos disponíveis pro
+  anunciante (`GET .../pontos-disponiveis`, `PUT .../pontos`) passaram a
+  incluir `em_reparo` junto com `em_operacao`/`a_instalar` — o comentário
+  de `listarPublicos` já dizia "ativos + em construção/reparo" desde antes
+  (quando só existiam 2 valores possíveis, na prática cobria 100% dos
+  pontos); `em_reparo` é estruturalmente igual a `a_instalar` (RN-49 já
+  tratava "não veicula agora, mas é real" como escolha válida). Só
+  `inativo` ficou de fora dos dois — o caso realmente novo.
+- Admin (`public/admin/index.page.js`): `renderPontoInstalacao` (molde ACM
+  + botões colocar/voltar de operação) removido de vez; `POST
+  /admin/pontos/:id/foto` removido (só a candidatura sobe foto agora).
+  Detalhe do ponto virou grid de 2 colunas com breadcrumb. Telas: tabela →
+  cards (`montarTelaCard`), colunas Tela/Contrato/Custo/Meses/Amort./Painel
+  saíram (o `contrato_playlist` que uma sessão paralela tinha acabado de
+  adicionar como select saiu de novo — sem player de terceiro pra
+  configurar aqui), 4 inputs de margem por tela entraram. Ocupação da rede:
+  painel simples → tabela operacional (`caixaTabela`/`turbinarTabela`,
+  expande peso por anunciante em segundos/hora ao clicar).
+- Margens chegam no player pelo heartbeat (`GET /player/heartbeat/:id`
+  devolve `margens`), aplicadas com `calc()` + inset real (`#quadro`/
+  `#stage`, `public/player.css`/`.page.js`) — reaproveita a unidade (vmin)
+  do `?margem=N` legado, que continua funcionando como fallback.
+- Candidatura: foto subiu pro topo dos 2 formulários
+  (`public/modos.js`/`public/anunciante/painel.page.js`), hint padrão que
+  não some ao cancelar o seletor de arquivo (bug visto e corrigido no
+  caminho), formulário completo organizado em blocos (Estabelecimento/
+  Horário/Como você quer ser recompensado/Informações adicionais).
+- `telas_instaladas` (coluna computada de `listar()`, base do extinto "TV
+  instalada" da rodada L) confirmada sem consumidor e removida.
+
+**Verificado:** `npm run check` 161/161 — `tests/redesenho-rede.test.js`
+reescrito (a verificação de `telas_instaladas` virou uma sequência
+completa de `sincronizarStatusPonto`: 0 telas → tela nasce inativa → ativa
+→ reparo → inativa → 2ª tela ativa → apaga as duas, sem estado residual em
+nenhum passo); `tests/categorias-concorrencia.test.js` e
+`tests/playlist-contrato-novo.test.js` ajustados pro novo default de
+`dispositivos.status` (helpers de teste agora marcam a tela `ativo`
+explicitamente em vez de contar com o default antigo).
+`tests/e2e/09-rede-redesenho.mjs` reescrito por completo (o da rodada L
+testava Instalação/ACM/"TV instalada"/tabela de telas — nada disso existe
+mais): 58 checagens, 0 falhas, screenshots em `tests/e2e/saida/v26-*.png`.
+
+**Achado, não é bug, registrado pra não reabrir**: em navegador com locale
+en-US, `<input type="time">` nativo pode renderizar em 12h com o AM/PM
+cortado pela largura do campo (92px) — "18:00" aparece como "06:00" sem
+"PM" visível. Valor salvo confirmado correto (24h, via `inputValue()`);
+locale pt-BR (produção) já formata em 24h nativamente. Fora do controle da
+página (input nativo do browser).
+
+**Trabalhando na branch `claude/wonderful-hypatia-i7y4xx`, sem merge em
+`main`.** Por pedido explícito do prompt: esta é a ÚLTIMA rodada de
+redesenho da Rede — próximo trabalho na área é só ajuste pontual que o
+dono pedir depois de revisar, não novo redesenho.
+
 ## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
 `main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta
 sessão trabalhava a Rede — ambas tocaram `src/pontos/repository.js` e

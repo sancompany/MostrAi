@@ -3,15 +3,16 @@ const assert = require('node:assert');
 const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const pontosRepo = require('../src/pontos/repository');
+const dispositivosRepo = require('../src/dispositivos/repository');
 const candidaturasRepo = require('../src/candidaturas/repository');
 const { liberarPapelNaConta } = require('../src/conta/modos');
 
-// Redesenho da tela Rede do admin (22/09/2026) — cobre o que o código novo
-// faz de diferente: status visual derivado de `telas_instaladas` (não da
-// chave do aparelho), e os dois furos fechados no pipeline candidatura →
-// ponto (foto da fachada e "algo a mais" → observações). A regra de 80% e o
-// resto do pipeline já têm cobertura própria em pontos-ocupacao.test.js —
-// não duplicada aqui.
+// Rodada final da Rede do admin (22/09/2026) — cobre o que o código novo faz
+// de diferente: status do ponto 100% automático (`sincronizarStatusPonto`,
+// migration 069, derivado de `dispositivos.status`, nunca escrito à mão), e
+// os dois furos fechados no pipeline candidatura → ponto (foto da fachada e
+// "algo a mais" → observações). A regra de 80% e o resto do pipeline já têm
+// cobertura própria em pontos-ocupacao.test.js — não duplicada aqui.
 
 async function contaDeTeste() {
   const { rows } = await pool.query(
@@ -112,30 +113,46 @@ test('liberarPapelNaConta não quebra sem foto nem mensagem (os dois furos são 
   }
 });
 
-test('listar() traz telas_instaladas — prova de instalação física é a data, não a chave', async () => {
+// Sequência de aceite da rodada final (seção de testes do prompt, 22/09/2026):
+// 0 telas -> a_instalar; 1 ativa -> em_operacao; ativa->reparo (única tela)
+// -> em_reparo; reparo->inativa -> inativo; ganha uma 2ª ativa -> em_operacao
+// de novo; apaga a última tela -> volta a a_instalar. Nenhum estado residual
+// incorreto em nenhum passo.
+test('status do ponto acompanha as telas sozinho, sem estado residual', async () => {
   const { rows: pontoRows } = await pool.query(
-    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status)
-     VALUES ($1, 'Rua Teste', 'Matão', 'SP', '00000000', 'teste', 'Fulano', '16999990000', 'a_instalar') RETURNING id`,
-    [`Ponto Teste Instalação ${randomUUID()}`],
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato)
+     VALUES ($1, 'Rua Teste', 'Matão', 'SP', '00000000', 'teste', 'Fulano', '16999990000') RETURNING id`,
+    [`Ponto Teste Status Automático ${randomUUID()}`],
   );
   const pontoId = pontoRows[0].id;
+  const statusDoPonto = async () => (await pontosRepo.buscarPorId(pontoId)).status;
   try {
-    // Tela com chave gerada (aparelho_id) mas SEM instalado_em: não conta
-    // como "TV instalada" — só prova que alguém abriu o link, não que a TV
-    // chegou no endereço (a mesma distinção que o redesenho da Rede pediu).
-    await pool.query(`INSERT INTO dispositivos (ponto_id, apelido, aparelho_id) VALUES ($1, 'Tela 1', $2)`, [
-      pontoId,
-      randomUUID(),
-    ]);
-    let pontos = await pontosRepo.listar();
-    let ponto = pontos.find((p) => p.id === pontoId);
-    assert.strictEqual(ponto.telas, 1);
-    assert.strictEqual(ponto.telas_instaladas, 0, 'chave gerada sozinha não é instalação física');
+    assert.strictEqual(await statusDoPonto(), 'a_instalar', '0 telas nasce aguardando instalação');
 
-    await pool.query('UPDATE dispositivos SET instalado_em = current_date WHERE ponto_id = $1', [pontoId]);
-    pontos = await pontosRepo.listar();
-    ponto = pontos.find((p) => p.id === pontoId);
-    assert.strictEqual(ponto.telas_instaladas, 1, 'instalado_em preenchido conta como TV instalada');
+    // Tela nasce 'inativo' (default da coluna) — a partir daqui já existe
+    // 1 tela cadastrada, então "aguardando instalação" (0 telas) não se
+    // aplica mais: cai em "tem tela(s), nenhuma ativa/reparo" -> inativo.
+    const tela1 = await dispositivosRepo.criar(pontoId, { apelido: 'Tela 1' });
+    assert.strictEqual(await statusDoPonto(), 'inativo', 'tela recém-criada (inativa) já conta como tela cadastrada');
+
+    await dispositivosRepo.atualizar(tela1.id, { status: 'ativo' });
+    assert.strictEqual(await statusDoPonto(), 'em_operacao', '1 tela ativa já basta pra "Ativo"');
+
+    await dispositivosRepo.atualizar(tela1.id, { status: 'reparo' });
+    assert.strictEqual(await statusDoPonto(), 'em_reparo', 'única tela foi pra reparo, ninguém mais ativa');
+
+    await dispositivosRepo.atualizar(tela1.id, { status: 'inativo' });
+    assert.strictEqual(await statusDoPonto(), 'inativo', 'tem tela cadastrada, nenhuma ativa nem em reparo');
+
+    const tela2 = await dispositivosRepo.criar(pontoId, { apelido: 'Tela 2' });
+    await dispositivosRepo.atualizar(tela2.id, { status: 'ativo' });
+    assert.strictEqual(await statusDoPonto(), 'em_operacao', 'segunda tela ativa reabre o ponto');
+
+    await dispositivosRepo.deletar(tela1.id);
+    assert.strictEqual(await statusDoPonto(), 'em_operacao', 'apagar a tela inativa não mexe — a outra segue ativa');
+
+    await dispositivosRepo.deletar(tela2.id);
+    assert.strictEqual(await statusDoPonto(), 'a_instalar', 'apagou a última tela — volta a aguardando instalação');
   } finally {
     await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [pontoId]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);

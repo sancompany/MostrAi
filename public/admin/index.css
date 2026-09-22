@@ -78,38 +78,58 @@ input[type="checkbox"] { accent-color: var(--brand); }
 .ponto-card-link:hover { border-color: var(--brand); box-shadow: 0 6px 18px rgba(0,0,0,.07); }
 .ponto-card-link:active { transform: scale(.997); }
 
-/* Cabeçalho da ficha do ponto (redesenho de 22/09/2026) — foto grande ao
-   lado do título, não mais um `<h3>` solto acima de um formulário. */
-.ponto-ficha-cabecalho { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-.ponto-ficha-foto { width: 220px; max-width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; background: var(--bg-alt); flex-shrink: 0; }
-.ponto-ficha-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ponto-ficha-titulo { display: flex; flex-direction: column; gap: 5px; min-width: 220px; flex: 1; }
-.ponto-ficha-titulo h3 { font-size: 1.4rem; margin-top: 2px; }
-@media (max-width: 560px) {
-  .ponto-ficha-foto { width: 100%; aspect-ratio: 16 / 9; }
+/* Navegação do detalhe do ponto (rodada final da Rede, 22/09/2026) —
+   "Rede / Nome do ponto" integrado ao cabeçalho, não mais um link solto
+   "← Pontos" acima de tudo. */
+.ponto-breadcrumb { margin: 0; font-size: .92rem; color: var(--text); }
+.ponto-breadcrumb a { color: var(--text-dim); text-decoration: none; }
+.ponto-breadcrumb a:hover { color: var(--brand); text-decoration: underline; }
+
+/* Detalhe do ponto em duas colunas lado a lado (seção 7 do pedido) —
+   Informações à esquerda (somente-leitura), Telas à direita (editável).
+   Empilha naturalmente no mobile — é só um grid de 1 coluna abaixo do
+   breakpoint, sem lógica JS nenhuma. */
+.ponto-detalhe-grid { display: grid; grid-template-columns: minmax(320px, 460px) 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) {
+  .ponto-detalhe-grid { grid-template-columns: 1fr; }
 }
 
-/* Badge "TV instalada" (status visual intermediário do ponto, redesenho de
-   22/09/2026) — mesma fórmula de contraste dos outros badges (fundo muito
-   claro da cor + texto escuro da mesma família), com --blue no lugar de
-   --brand/--ok/--err. */
+/* Cabeçalho dentro do card de Informações — foto ao lado do título, não
+   mais um `<h3>` solto acima de um formulário. */
+.ponto-info-cabecalho { display: flex; gap: 16px; align-items: flex-start; }
+.ponto-info-foto { width: 120px; flex-shrink: 0; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: var(--bg-alt); }
+.ponto-info-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ponto-info-titulo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ponto-info-titulo h3 { font-size: 1.25rem; margin-top: 2px; }
+.ponto-info-sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+@media (max-width: 480px) {
+  .ponto-info-cabecalho { flex-direction: column; }
+  .ponto-info-foto { width: 100%; aspect-ratio: 16 / 9; }
+}
+
+/* Badge "Em reparo" — mesma fórmula de contraste dos outros badges (fundo
+   muito claro da cor + texto escuro da mesma família), com --blue no lugar
+   de --brand/--ok/--err. */
 .badge-info { background: rgba(29,78,216,.12); color: #1e3a8a; }
 
-/* Instalação (dentro da ficha do ponto) — 2 conferências + 1 ação, layout
-   compacto em vez de formulário. */
-.ponto-instalacao { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; }
-.ponto-instalacao .check-row { margin: 0; }
-
-/* Ocupação da rede (Visão geral, redesenho de 22/09/2026) — uma linha por
-   ponto, barra + percentual, sem virar tabela. */
-.ocupacao-rede { display: flex; flex-direction: column; gap: 10px; }
-.ocupacao-rede-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; }
-.ocupacao-rede-item .nome { font-weight: 600; font-size: .88rem; }
-.ocupacao-rede-item .pct { font-size: .82rem; color: var(--text-dim); text-align: right; }
-.ocupacao-rede-item .track { grid-column: 1 / -1; background: var(--bg-alt); border-radius: 6px; height: 8px; overflow: hidden; }
-.ocupacao-rede-item .fill { display: block; height: 100%; background: var(--brand); border-radius: 6px; min-width: 3px; }
-.ocupacao-rede-item.bloqueado .fill { background: var(--err); }
-.ocupacao-rede-item .aviso-bloqueio { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .78rem; color: var(--err); }
+/* Telas do ponto — cards horizontais (rodada final da Rede, 22/09/2026),
+   não mais linha de tabela. Busca+chips reaproveitam .busca/.chip; só a
+   moldura (.tabela-topo, com borda de baixo pensada pra grudar na
+   .tabela-caixa) não serve aqui, dentro de um .card comum. */
+.telas-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.telas-lista { display: flex; flex-direction: column; gap: 12px; }
+.tela-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.tela-card-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.tela-card-id { font-weight: 700; font-size: .86rem; }
+.tela-card-sinal { font-size: .78rem; color: var(--text-dim); }
+.tela-card-corpo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.tela-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.tela-campo label { font-size: .74rem; color: var(--text-dim); }
+.tela-campo-margens { grid-column: span 2; }
+.margens-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 64px)); gap: 6px; }
+@media (max-width: 480px) {
+  .tela-campo-margens { grid-column: 1 / -1; }
+}
 
 /* Tabelas: caixa com busca, filtros por status e contagem. Ordenação por
    clique no cabeçalho é client-side — são dezenas de linhas, não milhares. */

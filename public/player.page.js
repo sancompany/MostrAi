@@ -13,18 +13,33 @@ const CHAVE_APARELHO = `mostrai-aparelho-${dispositivoId}`;
 const NOME_CACHE_ARQUIVOS = `mostrai-midia-${dispositivoId}`;
 if (params.get('orientacao') === 'paisagem') document.body.classList.add('paisagem');
 
-// Margem pra moldura física: mesma lógica de persistência da chave — vem uma
-// vez na URL (?margem=3, em vmin) e fica guardada pro próximo boot da TV.
-const CHAVE_MARGEM = `mostrai-margem-${dispositivoId}`;
-let margem = params.get('margem');
-try {
-  if (margem !== null) localStorage.setItem(CHAVE_MARGEM, margem);
-  else margem = localStorage.getItem(CHAVE_MARGEM);
-} catch {}
-margem = Number(margem);
-if (Number.isFinite(margem) && margem > 0) {
-  document.documentElement.style.setProperty('--margem', `${Math.min(margem, 20)}vmin`);
+// Margens pra moldura física, por lado (migration 069) — persistidas por
+// tela no admin, entregues a cada heartbeat (5 em 5 min, já rodava; não é
+// endpoint novo). `?margem=N` na URL continua funcionando como valor único
+// legado (mesmos 4 lados iguais) pra quem já tinha isso na TV — o primeiro
+// heartbeat que responder sobrescreve com os valores reais assim que
+// chegar. Guardado em localStorage pra já aparecer certo no boot seguinte,
+// antes do primeiro heartbeat responder.
+const CHAVE_MARGENS = `mostrai-margens-${dispositivoId}`;
+const LADOS_MARGEM = ['superior', 'direita', 'inferior', 'esquerda'];
+function aplicarMargens(margens) {
+  if (!margens) return;
+  LADOS_MARGEM.forEach((lado) => {
+    const v = Number(margens[lado]);
+    document.documentElement.style.setProperty(
+      `--m-${lado}`,
+      `${Number.isFinite(v) && v >= 0 ? Math.min(v, 20) : 0}vmin`,
+    );
+  });
 }
+const margemLegado = Number(params.get('margem'));
+if (Number.isFinite(margemLegado) && margemLegado > 0) {
+  aplicarMargens({ superior: margemLegado, direita: margemLegado, inferior: margemLegado, esquerda: margemLegado });
+}
+try {
+  const salvas = JSON.parse(localStorage.getItem(CHAVE_MARGENS) || 'null');
+  if (salvas) aplicarMargens(salvas);
+} catch {}
 
 // Chave do aparelho: vem uma vez na URL (?chave=...) e fica guardada, pra
 // que a TV continue funcionando depois de um reinício sem a query string.
@@ -470,11 +485,17 @@ function heartbeat() {
   eventoDebug('heartbeat_enviado', {}, 'enviando heartbeat');
   fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, { method: 'POST', headers: cabecalhos })
     .then(async (r) => {
-      if (!DEBUG_ATIVO) return;
       const corpo = await r
         .clone()
         .json()
         .catch(() => null);
+      if (corpo?.margens) {
+        aplicarMargens(corpo.margens);
+        try {
+          localStorage.setItem(CHAVE_MARGENS, JSON.stringify(corpo.margens));
+        } catch {}
+      }
+      if (!DEBUG_ATIVO) return;
       const resultado = corpo?.erro || (corpo?.ok ? 'ok' : 'sem corpo');
       debugUltimoHeartbeat = `${horaDebug()} · HTTP ${r.status} · ${resultado}`;
       if (!r.ok) debugErros += 1;
