@@ -3,6 +3,73 @@
 ## Updated
 2026-09-22
 
+## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
+`main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta
+sessão trabalhava a Rede — ambas tocaram `src/pontos/repository.js` e
+`public/admin/index.page.js` na mesma área (ficha do ponto). Merge
+resolvido: minha migration virou 068 (colisão de número com a deles, que já
+era 067). Na ficha do ponto, a busca de categoria editável que eles
+adicionaram (`categoriaBuscaHtml`/`ligarCategoriaBusca`, com limpeza de
+`categoria_livre` ao escolher) **não entrou** — a ficha é somente-leitura
+desde o redesenho desta sessão (pedido explícito do dono: só status/molde
+ACM ficam editáveis, categoria não estava na lista). O componente de busca
+continua ativo e usado normalmente no cadastro, nas outras telas públicas e
+no detalhe de Anunciantes — só não em Pontos.
+**Dívida real, registrada, não resolvida**: com isso, não existe mais UI
+pra corrigir `categoria_id`/`categoria_livre` de um ponto já criado (antes
+existia, meio errado, no formulário de cadastro manual removido). Na
+prática `liberarPapelNaConta` já propaga a categoria da CONTA pro ponto no
+nascimento (fix deles), então o caso só importa se a conta mudar de ramo
+DEPOIS do ponto já existir — raro, e sem UI hoje pra corrigir se acontecer
+(precisaria de PATCH direto ou uma tela nova, decisão do dono se quiser).
+`npm run check` 161/161 depois do merge (153 desta sessão + 8 deles),
+`tests/e2e/01-fluxo-api.sh` e `09-rede-redesenho.mjs` reconfirmados verdes.
+
+## Redesenho completo da tela Rede do admin (22/09/2026, este agente)
+Pedido do dono, autorização direta pra implementar a rodada inteira ("pode
+implementar... não precisa perguntar de novo, só se achar decisão de
+negócio nova"). Objetivo: Rede virar centro operacional — grade de cards →
+ficha do ponto (somente-leitura) → Telas (única parte editável). Detalhe
+técnico completo e as decisões tomadas em `docs/PENDENCIAS.md` seção K;
+as duas decisões que valiam ADR foram pra `.ia/DECISIONS.md` (ADR-007
+status visual derivado, ADR-008 divergência da regra 80/20).
+
+**Em uma linha cada:**
+- `public/admin/index.page.js`: grade de cards nova (`montarPontoCard`,
+  `caixaCards` reaproveitado), placeholder de foto oficial
+  (`fotoOuPlaceholder`, SVG de pin), status visual derivado
+  (`statusVisualPonto`), ficha do ponto somente-leitura
+  (`renderPontoInformacoes`) + painel de Instalação
+  (`renderPontoInstalacao`, único trecho realmente editável fora de Telas),
+  Ocupação virou painel agregado na Visão geral (`renderOcupacaoRede`).
+- Removido da UI: bloco de foto-de-exemplo do site público, botão "+Novo
+  ponto" (cadastro manual). O endpoint `POST /admin/pontos` foi removido
+  de vez (backend) — confirmado sem consumidor real antes (nem teste, nem
+  `docs/api.md`); `POST /admin/pontos/foto-exemplo` ficou no backend sem
+  gatilho na UI (config ainda é lida pelo site público, só perdeu o jeito
+  de trocar pela tela — dívida registrada, seção K).
+- Migration 067: `candidaturas.foto_fachada_url` + `pontos.observacoes`,
+  fechando os 2 furos do pipeline candidatura→ponto (o resto — endereço,
+  segmento, responsável, movimento, horário — já fluía). Upload de foto em
+  2 passos, autenticado (`POST /conta/modos/ponto/candidaturas/:id/foto`).
+- **Achado real corrigido no caminho**: `segmento` no header da ficha só
+  olhava `categoria_nome`/`categoria_livre` — mas `liberarPapelNaConta`
+  nunca escreve essas duas colunas, só o `segmento` texto puro. Sem o
+  fallback, praticamente todo ponto nascido da candidatura mostrava "Sem
+  segmento informado". Corrigido (mesma prioridade do card:
+  `categoria_nome || categoria_livre || segmento`).
+
+**Verificado:** `npm run check` 153/153 (5 testes novos,
+`tests/redesenho-rede.test.js`); `tests/e2e/01-fluxo-api.sh` e
+`08-candidatura-ponto.mjs` sem regressão; `tests/e2e/09-rede-redesenho.mjs`
+novo (39 checagens, screenshots desktop+mobile em `tests/e2e/saida/v25-*`).
+`03-navegador.mjs` quebra num seletor de tabela de telas que já não existe
+desde a reorganização de Rede por entidade de 21/09 — confirmado
+pré-existente, não desta mudança.
+
+**Trabalhando na branch `claude/wonderful-hypatia-i7y4xx`, sem merge em
+`main`.**
+
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 

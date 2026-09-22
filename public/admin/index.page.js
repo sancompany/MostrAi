@@ -25,81 +25,11 @@ function esc(v) {
 
 // ---------- horário de funcionamento (migration 066) ----------
 // Mesmo formato de src/lib/horario-semanal.js: um objeto por dia da semana,
-// `null` (fechado) ou `{abre,fecha}`. O admin só edita em 3 grupos (segunda
-// a sexta / sábado / domingo), igual ao formulário público (public/modos.js)
-// — os dois arquivos duplicam esta lógica de propósito (sem bundler, sem
-// import entre páginas estáticas, ver README).
-const GRUPOS_HORARIO = [
-  { id: 'semana', rotulo: 'Segunda a sexta', fechadoPadrao: false },
-  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false },
-  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true },
-];
-
-// Card do admin é bem mais estreito que o .card.wide do formulário público
-// (public/modos.js) — os 3 níveis de coluna aninhados que funcionam lá
-// espremiam o campo de hora até sobrar só o ícone aqui. Abre/Fecha ganham
-// linha própria em vez de dividir espaço com o rótulo e o checkbox.
-function campoHorarioSemanal() {
-  return GRUPOS_HORARIO.map(
-    (g) => `
-    <div class="u-mb-8" data-horario-grupo="${g.id}">
-      <div class="field-row u-ai-c">
-        <div class="u-col-2"><label class="u-m-0">${g.rotulo}</label></div>
-        <div class="u-col"><label class="check-row"><input type="checkbox" data-horario-fechado ${g.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label></div>
-      </div>
-      <div class="field-row" data-horario-campos ${g.fechadoPadrao ? 'hidden' : ''}>
-        <div class="u-col"><label>Abre</label><input class="mini" type="time" data-horario-abre value="09:00"></div>
-        <div class="u-col"><label>Fecha</label><input class="mini" type="time" data-horario-fecha value="${g.id === 'sab' ? '15:00' : '18:00'}"></div>
-      </div>
-    </div>`,
-  ).join('');
-}
-
-function ligarHorarioSemanal(el) {
-  el.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-    const chk = grupo.querySelector('[data-horario-fechado]');
-    const campos = grupo.querySelector('[data-horario-campos]');
-    chk.addEventListener('change', () => {
-      campos.hidden = chk.checked;
-    });
-  });
-}
-
-function lerHorarioSemanalDoEl(el) {
-  const porGrupo = {};
-  el.querySelectorAll('[data-horario-grupo]').forEach((grupo) => {
-    const id = grupo.dataset.horarioGrupo;
-    const fechado = grupo.querySelector('[data-horario-fechado]').checked;
-    porGrupo[id] = fechado
-      ? null
-      : {
-          abre: grupo.querySelector('[data-horario-abre]').value,
-          fecha: grupo.querySelector('[data-horario-fecha]').value,
-        };
-  });
-  const semana = porGrupo.semana;
-  return { seg: semana, ter: semana, qua: semana, qui: semana, sex: semana, sab: porGrupo.sab, dom: porGrupo.dom };
-}
-
-// Preenche os 3 grupos com um `horario_semanal` já existente, pra editar em
-// vez de sempre começar do padrão (09h-18h / 09h-15h / fechado).
-function preencherHorarioSemanal(el, horario) {
-  const grupo = (id, valor) => {
-    const g = el.querySelector(`[data-horario-grupo="${id}"]`);
-    const chk = g.querySelector('[data-horario-fechado]');
-    const campos = g.querySelector('[data-horario-campos]');
-    chk.checked = !valor;
-    campos.hidden = !valor;
-    if (valor) {
-      g.querySelector('[data-horario-abre]').value = valor.abre;
-      g.querySelector('[data-horario-fecha]').value = valor.fecha;
-    }
-  };
-  grupo('semana', horario?.seg);
-  grupo('sab', horario?.sab);
-  grupo('dom', horario?.dom);
-}
-
+// `null` (fechado) ou `{abre,fecha}`. O admin só LÊ (a ficha do ponto é
+// somente-leitura desde o redesenho de 22/09/2026 — quem preenche é a
+// candidatura, public/modos.js/painel.page.js, que mantêm a própria cópia
+// editável do widget, convenção do projeto sem bundler).
+//
 // Texto curto pro card ("Seg-sex 09:00-18:00 · Sáb 09:00-15:00 · Dom
 // fechado") — mesma regra de src/lib/horario-semanal.js#resumo.
 function resumoHorarioSemanal(horario) {
@@ -388,7 +318,10 @@ function turbinarCards(caixa, seletorItem) {
       caixa.querySelector('.pontos-grid').insertAdjacentElement('afterend', aviso);
     }
     aviso.hidden = false;
-    aviso.textContent = 'Nenhum ponto com esse filtro ou essa busca.';
+    // Mensagem distingue busca de filtro (seção 15 do redesenho da Rede,
+    // 22/09/2026) — "nenhum ponto neste status" não é a mesma frustração de
+    // "sua busca não achou nada", e o card genérico não dizia qual delas.
+    aviso.textContent = termo ? 'Nenhum ponto encontrado para esta busca.' : 'Nenhum ponto neste status.';
   }
 
   if (busca) busca.addEventListener('input', aplicar);
@@ -942,6 +875,11 @@ async function renderResumo(el) {
     <div class="panel">
       <div class="panel-head"><h3>Pontos por status</h3></div>
       ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS, 'pontos')}
+    </div>
+
+    <div class="panel u-mt-16">
+      <div class="panel-head"><h3>Ocupação da rede</h3></div>
+      <div id="ocupacaoRede" class="ocupacao-rede">Carregando...</div>
     </div>`;
 
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
@@ -949,6 +887,65 @@ async function renderResumo(el) {
     btn.addEventListener('click', () => {
       FILTRO_PONTOS_STATUS = btn.dataset.statusClique;
       irPara('pontos');
+    }),
+  );
+
+  renderOcupacaoRede(document.getElementById('ocupacaoRede'));
+}
+
+// Ocupação agregada da rede (saiu da aba própria de cada ponto, redesenho
+// de 22/09/2026 — pedido do dono: "não quero transformar a Visão geral numa
+// enorme tabela", uma linha por ponto, barra + percentual). Mesmo endpoint
+// e mesmo cálculo de sempre (G.7, `ocupacaoPorAnunciante`,
+// src/pontos/repository.js) — não duplica a soma, só agrupa por ponto (a
+// query devolve uma linha por par ponto×anunciante, e `segundos_vendidos`
+// já vem repetido — igual — em toda linha do mesmo ponto). Async e
+// separado do resto da Visão geral pra não segurar o resumo inteiro
+// esperando esta consulta a mais.
+async function renderOcupacaoRede(el) {
+  const linhas = await pegar('/admin/pontos-ocupacao');
+  const porPonto = new Map();
+  linhas.forEach((l) => {
+    if (!porPonto.has(l.ponto_id)) {
+      porPonto.set(l.ponto_id, {
+        pontoId: l.ponto_id,
+        nome: l.ponto_nome,
+        segundosVendidos: l.segundos_vendidos,
+        bloqueado: !!l.escolha_bloqueada_em,
+      });
+    }
+  });
+  const pontos = [...porPonto.values()].sort((a, b) => b.segundosVendidos - a.segundosVendidos);
+  const pct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
+
+  el.innerHTML = pontos.length
+    ? pontos
+        .map((p) => {
+          const percentual = pct(p.segundosVendidos);
+          return `<div class="ocupacao-rede-item${p.bloqueado ? ' bloqueado' : ''}">
+            <span class="nome">${esc(p.nome)}</span>
+            <span class="pct">${percentual}% ocupado · ${100 - percentual}% disponível</span>
+            <span class="track"><span class="fill" data-pct="${percentual}"></span></span>
+            ${
+              p.bloqueado
+                ? `<div class="aviso-bloqueio"><span>Cruzou 80% — seleção normal bloqueada</span><button class="btn ghost mini" data-liberar="${p.pontoId}">Liberar</button></div>`
+                : ''
+            }
+          </div>`;
+        })
+        .join('')
+    : '<p class="empty-state">Nenhum ponto possui ocupação comercial ainda.</p>';
+
+  el.querySelectorAll('[data-liberar]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Liberar este ponto pra escolha nova?')) return;
+      const r = await api(`/admin/pontos/${btn.dataset.liberar}/liberar-escolha`, { method: 'POST' });
+      if (!r.ok) {
+        const corpoErro = await r.json().catch(() => ({}));
+        return toast(corpoErro.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
+      }
+      toast('Ponto liberado pra escolha nova.');
+      renderOcupacaoRede(el);
     }),
   );
 }
@@ -1230,268 +1227,233 @@ let FILTRO_PONTOS_STATUS = null;
 const linkDoPlayer = (telaId, chave) =>
   `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
 
-// `resto` vem cru do roteador (ver resolverAlvo): "" pra grade, "42" ou
-// "42/telas" pro detalhe de um ponto, na sub-aba que vier depois da barra.
+// `resto` vem cru do roteador (ver resolverAlvo): "" pra grade, "42" pro
+// detalhe de um ponto. Sem sub-abas desde o redesenho de 22/09/2026 (a
+// ficha virou somente-leitura e cabe na mesma página que Telas) — um hash
+// antigo tipo "42/telas" ainda abre o ponto certo, só ignora o resto.
 async function renderPontos(el, resto) {
-  const [pontoIdBruto, subAbaBruta] = (resto || '').split('/');
+  const [pontoIdBruto] = (resto || '').split('/');
   const pontoId = pontoIdBruto ? Number(pontoIdBruto) : null;
-  if (pontoId) return renderPontoDetalhe(el, pontoId, subAbaBruta || 'resumo');
+  if (pontoId) return renderPontoDetalhe(el, pontoId);
   return renderPontosGrade(el);
 }
 
+// Status VISUAL do ponto (redesenho da Rede, 22/09/2026) — não é um 3º
+// valor no banco: `pontos.status` continua só com `a_instalar`/`em_operacao`
+// (migration 045), porque é ele que decide elegibilidade de playlist
+// (src/playlist/gerador.js), gate do player (src/lib/aparelho.js), pacing e
+// amortização — mudar esse enum seria mudança de regra de negócio, não de
+// tela. "TV instalada" é só uma LEITURA de `telas_instaladas` (contagem de
+// dispositivos com `instalado_em` preenchido, ver src/pontos/repository.js)
+// enquanto o ponto ainda está `a_instalar` — não usa aparelho_id/chave, que
+// só prova que alguém gerou um link, não que a TV chegou no endereço.
+const STATUS_VISUAL_PONTO = {
+  aguardando: { nome: 'Aguardando instalação', classe: 'badge-pendente' },
+  tv_instalada: { nome: 'TV instalada', classe: 'badge-info' },
+  em_operacao: { nome: 'Em operação', classe: 'badge-ok' },
+};
+
+function statusVisualPonto(p) {
+  if (p.status === 'em_operacao') return 'em_operacao';
+  return p.telas_instaladas > 0 ? 'tv_instalada' : 'aguardando';
+}
+
+// Placeholder oficial de ponto sem foto (redesenho de 22/09/2026) — pedido
+// do dono: parar de usar a foto artificial de "seu anúncio aqui" (o cartão
+// institucional do player) como fallback de estabelecimento. Mesmo conceito
+// nas superfícies que mostram ponto (aqui e public/pontos.page.js — sem
+// bundler, cada arquivo tem a própria cópia, convenção do projeto).
+function fotoOuPlaceholder(url, nome) {
+  if (url) return `<img src="${esc(url)}" alt="${esc(nome || '')}" loading="lazy">`;
+  return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Ponto sem foto')}">
+    <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true">
+      <path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="12" cy="9.25" r="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+  </div>`;
+}
+
 function montarPontoCard(p) {
-  const segmento = p.categoria_nome || p.segmento;
-  return `<a class="ponto-card ponto-card-foto" href="#rede/pontos/${p.id}" data-filtro="${p.status}${p.telas_ativas < p.telas ? ' parcial' : ''}">
-    ${p.foto_instalacao_url ? `<img src="${esc(p.foto_instalacao_url)}" alt="" loading="lazy">` : '<div class="ponto-card-semfoto">Sem foto</div>'}
-    <span class="badge ${p.status === 'em_operacao' ? 'badge-ok' : 'badge-pendente'}">${esc(PONTO_STATUS[p.status] || p.status)}</span>
+  const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
+  const st = STATUS_VISUAL_PONTO[statusVisualPonto(p)];
+  const telasTexto = !p.telas
+    ? 'Nenhuma tela ainda'
+    : `${p.telas} ${p.telas === 1 ? 'tela' : 'telas'}${p.telas_ativas < p.telas ? ' · alguma inativa' : ''}`;
+  return `<a class="ponto-card ponto-card-link" href="#rede/pontos/${p.id}" data-filtro="${statusVisualPonto(p)}">
+    <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
+    <span class="badge ${st.classe}">${st.nome}</span>
     <h4>${esc(p.nome)}</h4>
-    <p>${esc(p.cidade)}/${esc(p.uf)}${segmento ? ` · ${esc(segmento)}` : ''}</p>
-    <p>${p.telas_ativas ?? 0}/${p.telas ?? 0} ${p.telas === 1 ? 'tela no ar' : 'telas no ar'} · cadastrado em ${data(p.created_at)}</p>
-    ${p.horario_semanal ? `<p class="u-dim u-fs-72">${esc(resumoHorarioSemanal(p.horario_semanal))}</p>` : ''}
+    <p>${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}</p>
+    <p>${telasTexto}</p>
   </a>`;
 }
 
 async function renderPontosGrade(el) {
-  const filtroStatus = FILTRO_PONTOS_STATUS;
+  // Vem da Visão geral ("Pontos por status" → clique num status real do
+  // banco). `em_operacao` mapeia direto pro chip visual igual; `a_instalar`
+  // cobre DOIS chips visuais (aguardando/TV instalada) — sem como escolher
+  // um sozinho, cai em "Todos" em vez de arriscar o errado.
+  const filtroStatus = FILTRO_PONTOS_STATUS === 'em_operacao' ? 'em_operacao' : null;
   FILTRO_PONTOS_STATUS = null;
-  const [pontos, configSite, categorias] = await Promise.all([
-    pegar('/admin/pontos'),
-    pegar('/pontos/config'),
-    pegar('/admin/categorias'),
-  ]);
+  const pontos = await pegar('/admin/pontos');
 
-  el.innerHTML = `
-    <div class="card u-mb-16 u-mw-420">
-      <label>Foto de exemplo do "ponto completo" (site público)</label>
-      <p class="u-dim u-fs-72 u-m-0 u-mb-8">Aparece em "Onde estamos?", ao lado do mapa. Não é a foto de nenhum
-        ponto real — é a ilustração genérica de como fica o totem montado.</p>
-      <label class="btn ghost mini">Escolher foto<input type="file" accept="image/*" hidden id="fotoExemploPonto"></label>
-      ${configSite.fotoExemploUrl ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(configSite.fotoExemploUrl)}" target="_blank" rel="noopener">ver foto atual</a>` : '<p class="u-dim u-fs-72 u-m-0 u-mt-4">Ainda é a foto padrão do site.</p>'}
-    </div>
-    <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Novo ponto (cadastro manual)</summary>
-      <form class="card u-mt-12 u-mw-420" id="formNovoPonto">
-        <div><label>Nome</label><input class="mini" name="nome" required></div>
-        <div><label>Categoria</label>${categoriaBuscaHtml('npCategoria', null, { name: 'categoria_id' })}<p class="u-dim u-fs-72 u-m-0 u-mt-4">É o que impede concorrente direto nesta tela — deixe em branco se ainda não souber.</p></div>
-        <div><label>Segmento (texto livre, aparece no site)</label><input class="mini" name="segmento" id="npSegmento" required></div>
-        <div><label>Endereço</label><input class="mini" name="endereco" required></div>
-        <div class="field-row">
-          <div class="u-col-2"><label>Cidade</label><input class="mini" name="cidade" required value="Matão"></div>
-          <div class="u-col"><label>UF</label><input class="mini" name="uf" maxlength="2" required value="SP"></div>
-          <div class="u-col"><label>CEP</label><input class="mini" name="cep" required></div>
-        </div>
-        <div><label>Responsável</label><input class="mini" name="responsavel_nome" required></div>
-        <div><label>WhatsApp</label><input class="mini" name="responsavel_contato" required></div>
-        <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
-        <label class="check-row"><input type="checkbox" id="npTemHorario"><span>Já sei o horário de funcionamento (senão, completa depois no Resumo do ponto)</span></label>
-        <div id="npHorario" hidden>${campoHorarioSemanal()}</div>
-        <button class="btn primary" type="submit">Criar ponto</button>
-        <p class="form-msg" id="msgNovoPonto"></p>
-      </form>
-    </details>
-    ${
-      pontos.length
-        ? caixaCards({
-            chips: [
-              { valor: '', nome: 'Todos' },
-              { valor: 'parcial', nome: 'Com tela fora do ar' },
-              ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-            ],
-            html: pontos.map(montarPontoCard).join(''),
-            dica: 'Clique num ponto pra ver telas, ocupação e editar os dados dele.',
-            ativo: filtroStatus,
-          })
-        : '<p class="empty-state">Nenhum ponto ainda. Pedido de "meu ponto" no painel de uma conta vira candidatura na aba Candidaturas, você libera na conta, e o ponto nasce ali. O cadastro manual acima é pra exceção.</p>'
-    }`;
+  el.innerHTML = pontos.length
+    ? caixaCards({
+        chips: [
+          { valor: '', nome: 'Todos' },
+          { valor: 'aguardando', nome: STATUS_VISUAL_PONTO.aguardando.nome },
+          { valor: 'tv_instalada', nome: STATUS_VISUAL_PONTO.tv_instalada.nome },
+          { valor: 'em_operacao', nome: STATUS_VISUAL_PONTO.em_operacao.nome },
+        ],
+        html: pontos.map(montarPontoCard).join(''),
+        dica: 'Clique num ponto pra ver a ficha completa e as telas.',
+        ativo: filtroStatus,
+      })
+    : '<p class="empty-state">Nenhum ponto cadastrado ainda. Pedido de "meu ponto" no painel de uma conta vira candidatura na aba Candidaturas — você libera na conta, e o ponto nasce de lá.</p>';
 
   if (pontos.length) turbinarCards(el.querySelector('.tabela-caixa'), '.ponto-card');
-
-  document.getElementById('fotoExemploPonto').addEventListener('change', async (e) => {
-    const input = e.target;
-    if (!input.files[0]) return;
-    const form = new FormData();
-    form.append('arquivo', input.files[0]);
-    const r = await fetch(`${API_BASE_URL}/admin/pontos/foto-exemplo`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    });
-    toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
-    if (r.ok) renderPontosGrade(el);
-  });
-
-  ligarCategoriaBusca('npCategoria', categorias, (categoria) => {
-    // Só sugere o segmento se ainda estiver vazio — não sobrescreve o que o
-    // admin já tiver digitado de próprio punho.
-    const segmento = document.getElementById('npSegmento');
-    if (segmento && !segmento.value) segmento.value = categoria.nome;
-  });
-  ligarHorarioSemanal(document.getElementById('formNovoPonto'));
-  document.getElementById('npTemHorario').addEventListener('change', (e) => {
-    document.getElementById('npHorario').hidden = !e.target.checked;
-  });
-
-  document.getElementById('formNovoPonto').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgNovoPonto');
-    const temHorario = document.getElementById('npTemHorario').checked;
-    const r = await api('/admin/pontos', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...Object.fromEntries(new FormData(e.target)),
-        status: 'a_instalar',
-        horario_semanal: temHorario ? lerHorarioSemanalDoEl(e.target) : null,
-      }),
-    });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    toast('Ponto criado.');
-    renderPontosGrade(el);
-  });
 }
 
 // ---------- detalhe do ponto ----------
-const PONTO_SUBABAS = [
-  { id: 'resumo', nome: 'Resumo' },
-  { id: 'telas', nome: 'Telas' },
-  { id: 'ocupacao', nome: 'Ocupação' },
-];
-
-// Sem endpoint "GET /admin/pontos/:id" — reaproveita a listagem (que já
-// junta categoria/dono/contagem de telas) e acha o ponto nela, igual o
-// resto do arquivo sempre fez (sem cache local de nada).
-async function renderPontoDetalhe(el, pontoId, subAbaPedida) {
-  const [pontos, categorias, opcoesComodato] = await Promise.all([
-    pegar('/admin/pontos'),
-    pegar('/admin/categorias'),
-    pegar('/admin/planos-ponto'),
-  ]);
+// Sem abas (redesenho de 22/09/2026): a ficha do estabelecimento é
+// somente-leitura, então não compete mais por espaço com a tabela de telas —
+// as duas cabem na mesma página, em blocos. Sem endpoint "GET
+// /admin/pontos/:id" — reaproveita a listagem (que já junta categoria,
+// comodato, dono e contagem de telas) e acha o ponto nela, igual sempre foi;
+// por isso também não precisa mais buscar `/admin/categorias` nem
+// `/admin/planos-ponto` à parte: os nomes já vêm prontos na própria linha do
+// ponto (`categoria_nome`/`plano_ponto_nome`), e o formulário que precisava
+// das opções cruas saiu (fluxo morto a menos, pedido da seção 13).
+async function renderPontoDetalhe(el, pontoId) {
+  const pontos = await pegar('/admin/pontos');
   const ponto = pontos.find((p) => p.id === pontoId);
   if (!ponto) {
     el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Pontos</a></p>';
     return;
   }
-  const abaAtiva = PONTO_SUBABAS.find((a) => a.id === subAbaPedida) || PONTO_SUBABAS[0];
+  const st = STATUS_VISUAL_PONTO[statusVisualPonto(ponto)];
+  // Mesma prioridade do card (montarPontoCard): categoria do catálogo
+  // primeiro, senão categoria livre, senão o texto puro de `segmento` — que
+  // é o único que a candidatura de fato grava hoje (liberarPapelNaConta,
+  // src/conta/modos.js, nunca escreve categoria_id/categoria_livre no
+  // ponto). Sem esse fallback o segmento sumia da ficha pra praticamente
+  // todo ponto nascido do fluxo novo.
+  const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
 
   el.innerHTML = `
     <p class="u-m-0 u-mb-10"><a href="#rede/pontos">← Pontos</a></p>
-    <div class="panel-head u-mb-10">
-      <h3 class="u-m-0">${esc(ponto.nome)}</h3>
-      <span class="badge ${ponto.status === 'em_operacao' ? 'badge-ok' : 'badge-pendente'}">${esc(PONTO_STATUS[ponto.status] || ponto.status)}</span>
+    <div class="ponto-ficha-cabecalho u-mb-20">
+      <div class="ponto-ficha-foto">${fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome)}</div>
+      <div class="ponto-ficha-titulo">
+        <span class="badge ${st.classe}">${st.nome}</span>
+        <h3 class="u-m-0">${esc(ponto.nome)}</h3>
+        <p class="u-dim u-m-0">${esc(ponto.endereco || ponto.cidade)}${ponto.endereco ? `, ${esc(ponto.cidade)}/${esc(ponto.uf)}` : ''}</p>
+        <p class="u-dim u-m-0 u-fs-85">${segmento ? esc(segmento) : 'Sem segmento informado'} · ${ponto.telas || 0} ${ponto.telas === 1 ? 'tela' : 'telas'}</p>
+      </div>
     </div>
-    <div class="modulo-abas">
-      ${PONTO_SUBABAS.map((a) => `<button type="button" class="modulo-aba ${a.id === abaAtiva.id ? 'active' : ''}" data-subaba="${a.id}">${a.nome}</button>`).join('')}
-    </div>
-    <div id="pontoSubConteudo">Carregando...</div>`;
+    <div id="pontoInformacoes"></div>
+    <div id="pontoInstalacao"></div>
+    <div id="pontoTelas"></div>`;
 
-  el.querySelectorAll('[data-subaba]').forEach((btn) =>
-    btn.addEventListener('click', () => irPara(`rede/pontos/${pontoId}/${btn.dataset.subaba}`)),
-  );
-
-  const subEl = document.getElementById('pontoSubConteudo');
-  if (abaAtiva.id === 'telas') return renderPontoTelas(subEl, ponto);
-  if (abaAtiva.id === 'ocupacao') return renderPontoOcupacao(subEl, ponto);
-  return renderPontoResumo(subEl, ponto, categorias, opcoesComodato);
+  renderPontoInformacoes(document.getElementById('pontoInformacoes'), ponto);
+  renderPontoInstalacao(document.getElementById('pontoInstalacao'), ponto);
+  renderPontoTelas(document.getElementById('pontoTelas'), ponto);
 }
 
-// Os campos que antes eram 9 colunas editáveis numa linha de tabela viram
-// um formulário vertical — mesmos campos, mesmo salvar() por campo, só sem
-// precisar de data-id em cada um (o ponto já está fechado no escopo).
-async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
+// Ficha do estabelecimento — SOMENTE LEITURA (redesenho de 22/09/2026,
+// pedido do dono: "dados fornecidos pelo estabelecimento devem ser
+// tratados como ficha", não formulário). Quem fornece os dados agora é a
+// candidatura (liberarPapelNaConta, src/conta/modos.js); o admin consulta,
+// não edita comercial. As duas exceções reais (status/acabamento) viraram
+// controles operacionais em renderPontoInstalacao, não campo desta ficha.
+function renderPontoInformacoes(el, ponto) {
+  const linha = (rotulo, valor) =>
+    valor ? `<div><label>${esc(rotulo)}</label><p class="u-m-0">${valor}</p></div>` : '';
   el.innerHTML = `
-    <div class="card u-mw-520">
+    <div class="card u-mw-640">
       <div class="field-row">
+        <div class="u-col-2"><label>Responsável</label><p class="u-m-0">${esc(ponto.responsavel_nome || '-')}${ponto.responsavel_contato ? ` · ${esc(ponto.responsavel_contato)}` : ''}</p></div>
         <div class="u-col-2"><label>Dono (conta)</label><p class="u-m-0">${ponto.dono_nome ? esc(ponto.dono_nome) : '<span class="u-dim">sem conta</span>'}</p></div>
-        <div class="u-col"><label>Cadastrado em</label><p class="u-m-0">${data(ponto.created_at)}</p></div>
       </div>
       <div class="field-row">
-        <div class="u-col-2"><label>Cidade</label><p class="u-m-0">${esc(ponto.cidade)}/${esc(ponto.uf)}</p></div>
         <div class="u-col-2"><label>Endereço</label><p class="u-m-0">${esc(ponto.endereco || '-')}</p></div>
-      </div>
-      <div><label>Responsável</label><p class="u-m-0">${esc(ponto.responsavel_nome)} · ${esc(ponto.responsavel_contato)}</p></div>
-      <div class="field-row">
-        <div class="u-col-2">
-          <label>Categoria</label>
-          <p class="u-dim u-fs-72 u-m-0 u-mb-4">É o que impede concorrente direto de entrar nesta tela.</p>
-          ${categoriaBuscaHtml(
-            'resumoCategoria',
-            categorias.find((c) => c.id === ponto.categoria_id),
-            { placeholder: ponto.categoria_livre ? `(livre) ${ponto.categoria_livre}` : undefined },
-          )}
-        </div>
-        <div class="u-col-2"><label>Status</label>${selectStatus(PONTO_STATUS, ponto.status, 'data-ponto="status"')}</div>
+        <div class="u-col"><label>Cidade/UF</label><p class="u-m-0">${esc(ponto.cidade)}/${esc(ponto.uf)}</p></div>
       </div>
       <div class="field-row">
-        <div class="u-col-2">
-          <label>Comodato</label>
-          <select class="mini" data-ponto="plano_ponto_id">
-            <option value="">-</option>
-            ${opcoesComodato.map((o) => `<option value="${o.id}" ${o.id === ponto.plano_ponto_id ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="u-col"><label>Ajuda R$/mês</label><input class="mini" type="number" step="0.01" min="0" data-ponto="valor_pago_mensal" value="${ponto.valor_pago_mensal}"></div>
-        <div class="u-col"><label>Cota/h</label><input class="mini" type="number" min="0" data-ponto="cota_autoanuncio_slots_hora" value="${ponto.cota_autoanuncio_slots_hora}"></div>
+        <div class="u-col-2"><label>Movimento estimado/mês</label><p class="u-m-0">${ponto.fluxo_estimado_mensal ? `${num(ponto.fluxo_estimado_mensal)} pessoas` : '<span class="u-dim">não informado</span>'}</p></div>
+        <div class="u-col-2"><label>Horário de funcionamento</label><p class="u-m-0">${ponto.horario_semanal ? esc(resumoHorarioSemanal(ponto.horario_semanal)) : '<span class="u-dim">não informado</span>'}</p></div>
       </div>
       <div class="field-row">
-        <div class="u-col-2"><label>Fluxo estimado/mês</label><input class="mini" type="number" min="0" data-ponto="fluxo_estimado_mensal" value="${ponto.fluxo_estimado_mensal ?? ''}" title="Só entra na soma pública se o ponto estiver ativo"></div>
-        <div class="u-col-2"><label class="check-row"><input type="checkbox" data-ponto="acabamento_completo" ${ponto.acabamento_completo ? 'checked' : ''}><span>Molde de ACM já instalado</span></label></div>
+        <div class="u-col-2"><label>Comodato</label><p class="u-m-0">${ponto.plano_ponto_nome ? esc(ponto.plano_ponto_nome) : '<span class="u-dim">-</span>'}${Number(ponto.valor_pago_mensal) > 0 ? ` · ${fmt(ponto.valor_pago_mensal)}/mês` : ''}</p></div>
+        <div class="u-col-2"><label>Molde ACM</label><p class="u-m-0">${ponto.acabamento_completo ? 'Instalado' : '<span class="u-dim">Pendente</span>'}</p></div>
       </div>
-      <div>
-        <label>Foto do ponto</label><br>
-        <label class="btn ghost mini">Escolher foto<input type="file" accept="image/*" hidden id="fotoPonto"></label>
-        ${ponto.foto_instalacao_url ? `<a class="u-d-block u-fs-72 u-mt-4" href="${esc(ponto.foto_instalacao_url)}" target="_blank" rel="noopener">ver foto atual</a>` : ''}
-      </div>
-    </div>
-    <div class="card u-mw-520 u-mt-16" id="cardHorarioPonto">
-      <label>Horário de funcionamento</label>
-      ${!ponto.horario_semanal ? '<p class="u-dim u-fs-78 u-m-0 u-mb-8" id="horarioNaoInformado">Ainda não informado.</p>' : ''}
-      ${campoHorarioSemanal()}
-    </div>
-    <p class="empty-state u-ta-l u-p-0 u-pt-10">A ajuda de custo e a cota vêm da opção de comodato escolhida no cadastro, mas ficam editáveis aqui. Trocar a opção não recalcula sozinho. A cota é dividida entre as telas ativas do ponto. Fluxo mensal só entra na soma pública com o ponto ativo.</p>`;
+      ${linha('Observações', ponto.observacoes ? esc(ponto.observacoes) : '')}
+      <div><label>Cadastrado em</label><p class="u-m-0">${data(ponto.created_at)}</p></div>
+    </div>`;
+}
 
-  el.querySelectorAll('[data-ponto]').forEach((campo) =>
-    campo.addEventListener('change', () => {
-      if (campo.type === 'checkbox')
-        return salvar(`/admin/pontos/${ponto.id}`, { [campo.dataset.ponto]: campo.checked }, campo);
-      const numerico = [
-        'valor_pago_mensal',
-        'cota_autoanuncio_slots_hora',
-        'fluxo_estimado_mensal',
-        'categoria_id',
-      ].includes(campo.dataset.ponto);
-      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
-      return salvar(`/admin/pontos/${ponto.id}`, { [campo.dataset.ponto]: valor }, campo);
-    }),
-  );
+// Único trecho realmente operacional da ficha (exceção explícita ao
+// somente-leitura acima) — as mesmas duas ações que já existiam (status e
+// molde ACM), só reorganizadas: eram um <select> solto e um checkbox no
+// meio de um formulário comercial, viram um painel de instalação próprio.
+// Mesmo PATCH /admin/pontos/:id de sempre, mesma whitelist
+// (CAMPOS_ATUALIZAVEIS, src/pontos/repository.js) — nenhuma regra nova.
+// "TV instalada" não tem toggle aqui: é OS TELAS embaixo (campo
+// `instalado_em` de cada uma) que decidem esse estado — duplicar o controle
+// aqui criaria uma segunda fonte de verdade pro mesmo fato.
+function renderPontoInstalacao(el, ponto) {
+  const tvInstalada = ponto.telas_instaladas > 0;
+  el.innerHTML = `
+    <div class="card u-mw-640 u-mt-16">
+      <label class="u-m-0">Instalação</label>
+      <div class="ponto-instalacao u-mt-6">
+        <span class="badge ${tvInstalada ? 'badge-ok' : 'badge-pendente'}">${tvInstalada ? 'TV instalada' : 'TV aguardando instalação'}</span>
+        <label class="check-row" title="Data de instalação de cada tela decide isto — ver Telas abaixo"><input type="checkbox" disabled ${tvInstalada ? 'checked' : ''}><span class="u-dim">TV instalada (por tela, abaixo)</span></label>
+        <label class="check-row"><input type="checkbox" id="pontoAcabamento" ${ponto.acabamento_completo ? 'checked' : ''}><span>Molde ACM instalado</span></label>
+        ${
+          ponto.status === 'em_operacao'
+            ? '<button class="btn ghost mini" id="btnVoltarInstalacao" title="Só se precisar corrigir por engano">Voltar pra aguardando instalação</button>'
+            : '<button class="btn primary mini" id="btnColocarOperacao">Colocar em operação</button>'
+        }
+      </div>
+      <p class="empty-state u-ta-l u-p-0 u-pt-10">Foto do ponto: sobe junto da candidatura (com o molde já instalado). Pra trocar depois, use o botão abaixo.</p>
+      <label class="btn ghost mini">Trocar foto do ponto<input type="file" accept="image/*" hidden id="fotoPonto"></label>
+      <p class="form-msg" id="msgFotoPonto"></p>
+    </div>`;
 
-  // Escolher uma categoria do catálogo limpa categoria_livre junto — do
-  // contrário os dois campos ficavam preenchidos ao mesmo tempo (achado no
-  // mapeamento de 22/09/2026: o select antigo nunca fazia essa limpeza).
-  ligarCategoriaBusca('resumoCategoria', categorias, (categoria) => {
-    salvar(
-      `/admin/pontos/${ponto.id}`,
-      { categoria_id: categoria.id, categoria_livre: null },
-      document.getElementById('resumoCategoriaBusca'),
+  document
+    .getElementById('pontoAcabamento')
+    .addEventListener('change', (e) =>
+      salvar(`/admin/pontos/${ponto.id}`, { acabamento_completo: e.target.checked }, e.target),
     );
+
+  document.getElementById('btnColocarOperacao')?.addEventListener('click', async () => {
+    const r = await api(`/admin/pontos/${ponto.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'em_operacao' }),
+    });
+    if (!r.ok) return toast('Não foi possível colocar em operação.', 'err');
+    toast('Ponto em operação.');
+    irPara(`rede/pontos/${ponto.id}`);
   });
 
-  const cardHorario = document.getElementById('cardHorarioPonto');
-  ligarHorarioSemanal(cardHorario);
-  if (ponto.horario_semanal) preencherHorarioSemanal(cardHorario, ponto.horario_semanal);
-  cardHorario.querySelectorAll('[data-horario-fechado],[data-horario-abre],[data-horario-fecha]').forEach((campo) =>
-    campo.addEventListener('change', async () => {
-      if (await salvar(`/admin/pontos/${ponto.id}`, { horario_semanal: lerHorarioSemanalDoEl(cardHorario) }, campo)) {
-        document.getElementById('horarioNaoInformado')?.remove();
-      }
-    }),
-  );
+  document.getElementById('btnVoltarInstalacao')?.addEventListener('click', async () => {
+    if (!confirm('Voltar este ponto pra "aguardando instalação"? Ele para de entrar na playlist.')) return;
+    const r = await api(`/admin/pontos/${ponto.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'a_instalar' }),
+    });
+    if (!r.ok) return toast('Não foi possível voltar o status.', 'err');
+    toast('Status atualizado.');
+    irPara(`rede/pontos/${ponto.id}`);
+  });
 
   document.getElementById('fotoPonto').addEventListener('change', async (e) => {
     const input = e.target;
     if (!input.files[0]) return;
+    const msg = document.getElementById('msgFotoPonto');
+    msg.textContent = 'Enviando...';
+    msg.className = 'form-msg';
     const form = new FormData();
     form.append('arquivo', input.files[0]);
     const r = await fetch(`${API_BASE_URL}/admin/pontos/${ponto.id}/foto`, {
@@ -1499,8 +1461,13 @@ async function renderPontoResumo(el, ponto, categorias, opcoesComodato) {
       credentials: 'include',
       body: form,
     });
-    toast(r.ok ? 'Foto enviada.' : 'Não foi possível enviar a foto.', r.ok ? '' : 'err');
-    if (r.ok) irPara(`rede/pontos/${ponto.id}/resumo`);
+    if (!r.ok) {
+      msg.textContent = 'Não foi possível enviar a foto.';
+      msg.className = 'form-msg err';
+      return;
+    }
+    toast('Foto enviada.');
+    irPara(`rede/pontos/${ponto.id}`);
   });
 }
 
@@ -1682,54 +1649,11 @@ async function renderPontoTelas(el, ponto) {
   );
 }
 
-// Mesma regra de sempre (G.7): ponto que cruza 80% da hora vendida trava
-// pra escolha nova, sozinho, e só sai do bloqueio com folga real (15 min).
-// Antes era uma tabela cruzando TODOS os pontos; aqui já se sabe de qual
-// ponto se trata, então é só a fatia dele.
-async function renderPontoOcupacao(el, ponto) {
-  const todas = await pegar('/admin/pontos-ocupacao');
-  const linhas = todas.filter((l) => l.ponto_id === ponto.id);
-  const ocupacaoPct = (segundos) => Math.min(100, Math.round((segundos / 3600) * 100));
-  const pctTotal = linhas.length ? ocupacaoPct(linhas[0].segundos_vendidos) : 0;
-  const bloqueado = !!ponto.escolha_bloqueada_em;
-
-  el.innerHTML = `
-    <div class="kpi-grid u-mb-16">
-      <div class="kpi-card"><span class="kpi-label">Capacidade utilizada</span><b>${pctTotal}%</b><span class="kpi-caption">soma dos segundos por hora do plano de cada conta associada — sem a compensação da RN-49, de propósito: aqui a pergunta é o que já foi prometido</span></div>
-      <div class="kpi-card"><span class="kpi-label">Capacidade livre</span><b>${Math.max(0, 100 - pctTotal)}%</b></div>
-    </div>
-    ${
-      bloqueado
-        ? `<div class="empty-state u-ta-l u-p-16 u-mb-16">
-      <b>Travado pra escolha nova.</b>
-      <p class="u-m-0 u-mt-8 u-mb-8">Cruzou 80% da hora vendida e parou de entrar na escolha automática e na escolha manual — quem já estava lá continua normalmente. Liberar só funciona se sobrar folga real (15 minutos).</p>
-      <button class="btn ghost mini" id="btnLiberarPonto">Liberar pra escolha</button>
-    </div>`
-        : ''
-    }
-    <div class="tabela-caixa"><div class="rolagem">${
-      linhas.length
-        ? `<table><thead><tr><th data-ord>Anunciante</th><th data-ord>Ocupa (s/hora)</th><th data-ord>Ocupação do ponto</th></tr></thead><tbody>
-      ${linhas.map((l) => `<tr><td>${esc(l.nome_empresa)}</td><td>${l.segundos_por_hora}s</td><td>${ocupacaoPct(l.segundos_vendidos)}%</td></tr>`).join('')}
-    </tbody></table>`
-        : '<p class="empty-state">Nenhum anunciante associado a este ponto ainda.</p>'
-    }</div></div>`;
-
-  document.getElementById('btnLiberarPonto')?.addEventListener('click', async () => {
-    if (!confirm('Liberar este ponto pra escolha nova?')) return;
-    const r = await api(`/admin/pontos/${ponto.id}/liberar-escolha`, { method: 'POST' });
-    if (!r.ok) {
-      const corpoErro = await r.json().catch(() => ({}));
-      return toast(corpoErro.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
-    }
-    toast('Ponto liberado pra escolha nova.');
-    // Sem isso o card renderizava de novo com o MESMO objeto `ponto` da
-    // closure — escolha_bloqueada_em continuava preenchido, e a tela
-    // seguia mostrando "travado" mesmo com o backend já tendo liberado.
-    ponto.escolha_bloqueada_em = null;
-    renderPontoOcupacao(el, ponto);
-  });
-}
+// Ocupação por ponto saiu da ficha (redesenho de 22/09/2026, pedido do
+// dono) — virou visão agregada da rede inteira em "Visão geral"
+// (renderOcupacaoRede, mais abaixo). Mesmo endpoint (`/admin/pontos-ocupacao`)
+// e mesma regra G.7 (LIMITE_OCUPACAO_BLOQUEIA = 0.8, src/pontos/repository.js)
+// — só a exibição mudou de lugar, o cálculo é lido de lá, não duplicado.
 
 // ---------- anunciantes ----------
 // Listagem enxuta (21/09/2026, pedido do dono): a linha virou resumo

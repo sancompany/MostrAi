@@ -69,17 +69,47 @@ input[type="checkbox"] { accent-color: var(--brand); }
 .alerta.urgente b { color: var(--err); }
 .tudo-em-dia { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; font-size: .88rem; }
 
-/* Card de ponto com foto (Rede, 21/09/2026) — a grade (.pontos-grid) e a
-   casca do card (.ponto-card, badge/h4/p) já existiam em public/style.css
-   pro site público; aqui só entra o que o admin precisa a mais: a foto em
-   destaque no topo e o reset de link (o card é um <a>, o site público usa
-   <div>). */
-.ponto-card-foto { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
-.ponto-card-foto:hover { border-color: var(--brand); }
-.ponto-card-foto img, .ponto-card-semfoto {
-  width: 100%; height: 140px; object-fit: cover; border-radius: 8px; margin: -20px -20px 12px; width: calc(100% + 40px);
+/* Card de ponto clicável (Rede, redesenho de 22/09/2026) — a grade
+   (.pontos-grid), a foto/placeholder (.ponto-card-media) e a casca do card
+   (.ponto-card, badge/h4/p) já são a base compartilhada de public/style.css
+   (site público "Onde estamos" usa a mesma). Aqui só entra o que muda por
+   ser um link (<a>) em vez de uma <div> estática. */
+.ponto-card-link { display: block; text-decoration: none; color: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .08s; }
+.ponto-card-link:hover { border-color: var(--brand); box-shadow: 0 6px 18px rgba(0,0,0,.07); }
+.ponto-card-link:active { transform: scale(.997); }
+
+/* Cabeçalho da ficha do ponto (redesenho de 22/09/2026) — foto grande ao
+   lado do título, não mais um `<h3>` solto acima de um formulário. */
+.ponto-ficha-cabecalho { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.ponto-ficha-foto { width: 220px; max-width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; background: var(--bg-alt); flex-shrink: 0; }
+.ponto-ficha-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ponto-ficha-titulo { display: flex; flex-direction: column; gap: 5px; min-width: 220px; flex: 1; }
+.ponto-ficha-titulo h3 { font-size: 1.4rem; margin-top: 2px; }
+@media (max-width: 560px) {
+  .ponto-ficha-foto { width: 100%; aspect-ratio: 16 / 9; }
 }
-.ponto-card-semfoto { display: flex; align-items: center; justify-content: center; background: var(--bg-alt); color: var(--text-dim); font-size: .8rem; }
+
+/* Badge "TV instalada" (status visual intermediário do ponto, redesenho de
+   22/09/2026) — mesma fórmula de contraste dos outros badges (fundo muito
+   claro da cor + texto escuro da mesma família), com --blue no lugar de
+   --brand/--ok/--err. */
+.badge-info { background: rgba(29,78,216,.12); color: #1e3a8a; }
+
+/* Instalação (dentro da ficha do ponto) — 2 conferências + 1 ação, layout
+   compacto em vez de formulário. */
+.ponto-instalacao { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; }
+.ponto-instalacao .check-row { margin: 0; }
+
+/* Ocupação da rede (Visão geral, redesenho de 22/09/2026) — uma linha por
+   ponto, barra + percentual, sem virar tabela. */
+.ocupacao-rede { display: flex; flex-direction: column; gap: 10px; }
+.ocupacao-rede-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; }
+.ocupacao-rede-item .nome { font-weight: 600; font-size: .88rem; }
+.ocupacao-rede-item .pct { font-size: .82rem; color: var(--text-dim); text-align: right; }
+.ocupacao-rede-item .track { grid-column: 1 / -1; background: var(--bg-alt); border-radius: 6px; height: 8px; overflow: hidden; }
+.ocupacao-rede-item .fill { display: block; height: 100%; background: var(--brand); border-radius: 6px; min-width: 3px; }
+.ocupacao-rede-item.bloqueado .fill { background: var(--err); }
+.ocupacao-rede-item .aviso-bloqueio { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: .78rem; color: var(--err); }
 
 /* Tabelas: caixa com busca, filtros por status e contagem. Ordenação por
    clique no cabeçalho é client-side — são dezenas de linhas, não milhares. */

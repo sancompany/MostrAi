@@ -12,6 +12,7 @@ const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const pool = require('../db/pool');
 const comodato = require('./comodato');
+const dispositivosRepo = require('../dispositivos/repository');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -104,21 +105,15 @@ router.get('/anunciantes/me/pontos/extrato', exigirAnuncianteLogado, async (req,
 });
 
 // Admin — protegido por requireAdminSession, montado em server.js
-const dispositivosRepo = require('../dispositivos/repository');
 
-// Admin cria o ponto — e a primeira tela junto, pra nunca existir ponto sem
-// dispositivo (o player e o contador são por tela desde a migration 019).
-router.post('/admin/pontos', async (req, res) => {
-  let ponto;
-  try {
-    ponto = await repo.criar(req.body);
-  } catch (err) {
-    if (err.status) return res.status(err.status).json({ erro: err.message });
-    throw err;
-  }
-  await dispositivosRepo.criar(ponto.id, { apelido: 'Tela 1' });
-  res.status(201).json(ponto);
-});
+// Cadastro manual do ponto pelo admin (`POST /admin/pontos`) foi removido
+// no redesenho da Rede (22/09/2026): o dono não cadastra ponto à mão, quem
+// fornece os dados é o próprio estabelecimento pela candidatura
+// (`POST /conta/modos/ponto/pedir` → liberarPapelNaConta, src/conta/modos.js,
+// que já cria o ponto + Tela 1). Confirmado sem consumidor real antes de
+// remover: nenhuma tela além do botão que sumiu chamava esta rota, nenhum
+// teste (`tests/e2e/01-fluxo-api.sh` cria o ponto pela candidatura, não por
+// aqui), nenhuma menção em `docs/api.md`. Documentado em `.ia/DECISIONS.md`.
 
 router.get('/admin/pontos', async (_req, res) => {
   const pontos = await repo.listar();

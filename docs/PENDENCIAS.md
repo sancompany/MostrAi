@@ -3536,6 +3536,65 @@ trabalho (confirmado rodando a mesma versão no commit anterior a esta
 mudança) — o primeiro num card de KPI que não é deste pedido, o segundo
 por um seletor de nav removido numa consolidação anterior.
 
+### L — redesenho da tela Rede: grade de cards, ficha somente-leitura, ocupação na Visão geral (22/09/2026)
+
+Pedido do dono, rodada de implementação completa (autorizado a codar sem
+pausa por decisão, exceto o que fosse decisão de negócio nova). Detalhe
+técnico e as decisões tomadas: `.ia/HANDOFF.md`. Resumo:
+
+- **Rede virou grade de cards** (`public/admin/index.page.js`): saiu o bloco
+  de foto-de-exemplo do site público, saiu o cadastro manual de ponto
+  (botão + `POST /admin/pontos`, rota removida — sem consumidor real,
+  confirmado antes: nenhum teste usava, `docs/api.md` não a documentava; o
+  pipeline de verdade é a candidatura). Cards mostram foto ou placeholder
+  oficial (SVG de pin, `fotoOuPlaceholder`), badge de status, cidade/
+  segmento, nº de telas. Busca+filtros reaproveitam o shell já existente
+  (`caixaCards`/`turbinarCards`).
+- **3 status VISUAIS, sem 3º valor no banco.** `pontos.status` continua só
+  `a_instalar`/`em_operacao` (mexe em elegibilidade de playlist, pacing,
+  gate do player — mudar seria regra de negócio nova). "TV instalada" é
+  derivado de `telas_instaladas` (contagem de `dispositivos.instalado_em`
+  preenchido — NÃO `aparelho_id`/chave, que só prova link gerado, não TV no
+  endereço).
+- **Ficha do ponto virou somente-leitura** (`renderPontoInformacoes`):
+  responsável, endereço, segmento, movimento, horário, comodato, molde ACM,
+  observações, cadastro. Único trecho editável: **Instalação**
+  (`renderPontoInstalacao`, molde ACM + botão colocar/voltar de operação —
+  mesmo `PATCH /admin/pontos/:id` de sempre) e **Telas** (inalterado).
+  Aba "Ocupação" por ponto foi removida.
+- **Ocupação virou painel agregado na Visão geral** (`renderOcupacaoRede`),
+  reaproveitando `GET /admin/pontos-ocupacao` (mesmo cálculo, G.7,
+  `LIMITE_OCUPACAO_BLOQUEIA=0.8` em `src/pontos/repository.js` — não
+  tocado). **Divergência encontrada e documentada, não corrigida**: a regra
+  "80% comercial / 20% reservado pra institucional e conta própria" que o
+  dono descreveu **não existe assim no código** — o que existe é um freio
+  de VENDA (bloqueia escolha nova ao cruzar 80% do COMPROMISSO vendido) e
+  um preenchimento institucional best-effort (usa só a sobra real, sem piso
+  garantido). Detalhe em `.ia/DECISIONS.md`.
+- **Migration 067** (aditiva): `candidaturas.foto_fachada_url` e
+  `pontos.observacoes`. Fecha os 2 furos do pipeline candidatura→ponto
+  (`liberarPapelNaConta`, `src/conta/modos.js`, já copiava o resto —
+  endereço/segmento/responsável/movimento/horário): foto da fachada (upload
+  em 2 passos, `POST /conta/modos/ponto/candidaturas/:id/foto`, autenticado,
+  mesmo padrão Supabase Storage de sempre) e "algo a mais" (`mensagem` →
+  `observacoes`). Campo de foto é opcional nos dois formulários de
+  candidatura (`public/modos.js`, `public/anunciante/painel.page.js`).
+- Site público "Onde estamos" (`public/pontos.page.js`) ganhou foto/
+  placeholder nos cards (`GET /pontos` agora traz `foto_instalacao_url`).
+
+**Verificado:** `npm run check` (153/153, 5 testes novos em
+`tests/redesenho-rede.test.js`), `tests/e2e/01-fluxo-api.sh` e
+`tests/e2e/08-candidatura-ponto.mjs` (pipeline real via HTTP, sem
+regressão), e `tests/e2e/09-rede-redesenho.mjs` (novo, 39 checagens:
+grade/filtros/busca, detalhe com foto e sem foto, nome/endereço grandes,
+fluxo de instalação, ocupação agregada com liberar, site público, e
+candidatura com foto de ponta a ponta) — screenshots desktop+mobile em
+`tests/e2e/saida/v25-*.png`. `tests/e2e/03-navegador.mjs` quebra num
+seletor de telas em tabela plana (`#telas`→tr[data-chave]) que já não
+existia desde o redesenho de Rede por entidade de 21/09/2026 — confirmado
+pré-existente, não desta mudança, script nunca atualizado depois daquela
+reorganização.
+
 ### K — reforma da taxonomia de categorias (22/09/2026)
 
 Pedido do dono: as 25 categorias da migration 015 eram amplas demais pra

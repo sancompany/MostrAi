@@ -38,6 +38,11 @@ const CAMPOS_ATUALIZAVEIS = [
   'acabamento_completo',
   'foto_instalacao_url',
   'fluxo_estimado_mensal',
+  // Migration 067 — "algo a mais" da candidatura, copiado no nascimento do
+  // ponto (ver liberarPapelNaConta); editável aqui só pelo mesmo motivo dos
+  // outros dados de ficha, não porque o admin deva reescrever a palavra do
+  // estabelecimento.
+  'observacoes',
 ];
 
 async function criar(dados, db = pool) {
@@ -60,6 +65,8 @@ async function criar(dados, db = pool) {
     valor_pago_mensal,
     cota_autoanuncio_slots_hora,
     horario_semanal,
+    foto_instalacao_url,
+    observacoes,
   } = dados;
   const horarioValidado = validarHorarioSemanal(horario_semanal);
 
@@ -68,8 +75,8 @@ async function criar(dados, db = pool) {
        (nome, endereco, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
-        horario_semanal)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        horario_semanal, foto_instalacao_url, observacoes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING *`,
     [
       nome,
@@ -90,6 +97,8 @@ async function criar(dados, db = pool) {
       anunciante_id || null,
       fluxo_estimado_mensal || null,
       horarioValidado ? JSON.stringify(horarioValidado) : null,
+      foto_instalacao_url || null,
+      observacoes || null,
     ],
   );
   return rows[0];
@@ -100,7 +109,13 @@ async function listar() {
     `SELECT p.*, c.nome AS categoria_nome, pp.nome AS plano_ponto_nome,
             a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
-            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas
+            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas,
+            -- Status visual "TV instalada" (redesenho da Rede, 22/09/2026):
+            -- prova de instalação FÍSICA é a data de instalação da tela
+            -- (instalado_em, preenchida à mão na aba Telas), não
+            -- aparelho_id/chave — gerar uma chave só prova que alguém
+            -- abriu o link, não que a TV chegou no endereço.
+            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.instalado_em IS NOT NULL) AS telas_instaladas
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
@@ -135,7 +150,7 @@ async function atualizar(id, dados) {
 // playlist por ponto_id direto, não lista pontos.)
 async function listarPublicos() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, c.nome AS categoria_nome
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      WHERE p.status IN ('em_operacao', 'a_instalar')

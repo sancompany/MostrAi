@@ -195,6 +195,10 @@ function montarCardPonto(estado) {
             <label for="cp_mensagem">Algo mais? (opcional)</label>
             <textarea id="cp_mensagem" name="mensagem" rows="2"></textarea>
           </div>
+          <div class="u-mb-12">
+            <label class="btn ghost mini">Foto da fachada (opcional)<input type="file" accept="image/*" id="cp_foto" hidden></label>
+            <span class="u-fs-72 u-dim" id="cp_fotoNome"></span>
+          </div>
           ${CAMPO_HORARIO_SEMANAL()}
           <button class="btn primary" type="submit">Enviar meu interesse</button>
           <p class="form-msg" id="cardPontoMsg" role="status"></p>
@@ -203,6 +207,9 @@ function montarCardPonto(estado) {
     </div>`;
 
   ligarHorarioSemanal(document.getElementById('formCardPonto'));
+  document.getElementById('cp_foto').addEventListener('change', (e) => {
+    document.getElementById('cp_fotoNome').textContent = e.target.files[0]?.name || '';
+  });
 
   document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
     const conteudo = document.getElementById('conteudoCardPonto');
@@ -242,6 +249,20 @@ function montarCardPonto(estado) {
         msg.textContent = corpo.erro || 'não deu pra enviar';
         msg.className = 'form-msg err';
         return;
+      }
+      // Foto opcional, sobe DEPOIS (furo A do redesenho da Rede, 22/09/2026)
+      // — mesmo padrão de public/modos.js: a candidatura já vale sem foto,
+      // e uma falha aqui não desfaz o pedido que já foi enviado.
+      const arquivo = document.getElementById('cp_foto').files[0];
+      if (arquivo) {
+        const fd = new FormData();
+        fd.append('arquivo', arquivo);
+        const rFoto = await fetch(`${API_BASE_URL}/conta/modos/ponto/candidaturas/${corpo.id}/foto`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
       }
       msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
       msg.className = 'form-msg ok';

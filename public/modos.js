@@ -156,6 +156,7 @@
           <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
           <div class="escolha-grid" id="modoEscolhaPlano"></div>
           <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2"></textarea></div>
+          <div><label class="btn ghost mini">Foto da fachada (opcional)<input type="file" accept="image/*" id="m_foto" hidden></label><span class="u-fs-72 u-dim" id="m_fotoNome"></span></div>
           <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
           <p class="form-msg" id="modoMsg" role="status"></p>
         </form>`;
@@ -240,7 +241,23 @@
         mensagem: form.mensagem.value.trim() || null,
         horario_semanal: lerHorarioSemanalDoForm(form),
       };
-      await enviar('/conta/modos/ponto/pedir', corpo);
+      const resposta = await enviar('/conta/modos/ponto/pedir', corpo);
+      // Foto é opcional e sobe DEPOIS (furo A do redesenho da Rede,
+      // 22/09/2026) — a candidatura já existe e vale sem foto nenhuma; sem
+      // arquivo escolhido, nem tenta. Se o upload falhar, o pedido já foi
+      // enviado mesmo assim (não trava o fluxo principal por causa da
+      // foto) — só avisa.
+      const arquivo = $('#m_foto', form)?.files[0];
+      if (arquivo) {
+        const fd = new FormData();
+        fd.append('arquivo', arquivo);
+        const rFoto = await fetch(`${API_BASE_URL}/conta/modos/ponto/candidaturas/${resposta.id}/foto`, {
+          method: 'POST',
+          credentials: 'include',
+          body: fd,
+        });
+        if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
+      }
       msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
       msg.className = 'form-msg ok';
       setTimeout(() => window.location.reload(), 900);
@@ -275,7 +292,12 @@
     if (form) {
       if (window.ligarCep) window.ligarCep(card);
       if (window.ligarCategorias) window.ligarCategorias(card);
-      if (modo === 'ponto') ligarHorarioSemanal(form);
+      if (modo === 'ponto') {
+        ligarHorarioSemanal(form);
+        $('#m_foto', form)?.addEventListener('change', (e) => {
+          $('#m_fotoNome', form).textContent = e.target.files[0]?.name || '';
+        });
+      }
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
       form.addEventListener('submit', (e) => {
         e.preventDefault();

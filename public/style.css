@@ -312,12 +312,44 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 }
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
 
-.pontos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+/* `minmax(260px, 340px)` em vez de `1fr`: com auto-fill, 1 ou 2 pontos não
+   esticam o card até a largura absurda de um monitor grande (redesenho da
+   Rede, 22/09/2026) — sobra espaço na borda da grade, de propósito, em vez
+   de um card gigante. Com dezenas de pontos, continua cabendo o máximo de
+   colunas que a largura permitir. */
+.pontos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 340px)); gap: 18px; }
 .ponto-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.ponto-card .badge { margin-bottom: 8px; }
-.ponto-card h4 { margin: 0 0 6px; }
-.ponto-card p { margin: 0; color: var(--text-dim); font-size: .9rem; }
+.ponto-card .badge { margin-bottom: 10px; }
+.ponto-card h4 { margin: 0 0 5px; font-size: 1.05rem; line-height: 1.3; }
+.ponto-card p { margin: 0; color: var(--text-dim); font-size: .87rem; line-height: 1.4; }
+.ponto-card p + p { margin-top: 3px; }
+
+/* Foto do ponto (ou placeholder) no topo do card, mesma proporção reservada
+   nos dois casos — nunca pula de tamanho quando a foto chega depois. Usada
+   na Rede do admin e em "Onde estamos" (22/09/2026): ponto sem foto não
+   pode continuar mostrando a foto artificial de "seu anúncio aqui", vira
+   ícone oficial de ponto da rede em fundo neutro. */
+.ponto-card-media {
+  aspect-ratio: 16 / 10;
+  margin: -20px -20px 14px;
+  width: calc(100% + 40px);
+  border-radius: var(--radius) var(--radius) 0 0;
+  overflow: hidden;
+  background: var(--bg-alt);
+}
+.ponto-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ponto-foto-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, var(--bg-alt), var(--card));
+  color: var(--text-dim);
+}
+.ponto-foto-placeholder svg { opacity: .5; }
+
 .empty-state { color: var(--text-dim); text-align: center; padding: 40px 0; }
+@media (max-width: 480px) {
+  .pontos-grid { grid-template-columns: 1fr; }
+}
 
 /* O cartao vale pra qualquer elemento, nao so pro <form>: a tela de
    "Recebido!" de Seja um ponto e Seja um vendedor e uma <div class="card"> e
