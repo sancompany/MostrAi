@@ -8,18 +8,29 @@
 input[type="checkbox"] { accent-color: var(--brand); }
 
 /* Painel administrativo: casca própria (menu lateral + área de conteúdo)
-   em vez do cabeçalho do site — são 12 seções, uma fileira de abas não
-   cabe mais e não dá pra agrupar por assunto. */
+   em vez do cabeçalho do site. Sidebar plana desde a rodada Navegação
+   (22/09/2026, pedido do dono) — sem cabeçalho de grupo (nem "MOSTRAÍ",
+   nem "OPERAÇÃO"/"COMERCIAL"/"SISTEMA"), só a lista de módulos. */
 .admin-shell[hidden] { display: none; }
 .admin-shell { display: grid; grid-template-columns: 224px 1fr; min-height: 100vh; width: 100%; }
 .admin-side { background: var(--card); border-right: 1px solid var(--border); padding: 18px 0 24px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .admin-side .marca { padding: 0 18px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .admin-side .marca img { height: 22px; display: block; }
-.nav-grupo { color: var(--text-dim); font-size: .66rem; text-transform: uppercase; letter-spacing: .07em; padding: 16px 18px 6px; font-weight: 700; }
 .nav-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; background: none; border: none; border-left: 3px solid transparent; color: var(--text-dim); padding: 9px 18px; font-size: .86rem; cursor: pointer; font-family: inherit; }
 .nav-item:hover { background: var(--bg-alt); color: var(--text); }
 .nav-item.active { background: var(--bg-alt); border-left-color: var(--brand); color: var(--text); font-weight: 600; }
 .nav-item .cont { background: var(--err); color: #fff; border-radius: 999px; font-size: .68rem; font-weight: 700; padding: 1px 7px; line-height: 1.5; }
+/* Mídia Mostraí, último item da sidebar (rodada Navegação, 22/09/2026):
+   "ação administrativa especial", não uma linha igual às outras — a
+   separação do resto da lista vem só de espaçamento/borda, nunca de um
+   título de seção. Cor da marca em fundo bem leve, sempre visível (não só
+   no hover/active), pra ler como atalho, não como mais um destino comum. */
+.nav-item-destaque {
+  margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--border);
+  background: rgba(255, 122, 26, .08); color: var(--brand-text); font-weight: 700;
+}
+.nav-item-destaque:hover { background: rgba(255, 122, 26, .14); color: var(--brand-text); }
+.nav-item-destaque.active { background: rgba(255, 122, 26, .14); border-left-color: var(--brand); }
 .admin-main { padding: 24px 28px 60px; min-width: 0; }
 .admin-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .admin-topo h2 { margin: 0; font-size: 1.35rem; }
@@ -327,10 +338,13 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
 @media (max-width: 900px) {
   .admin-shell { grid-template-columns: 1fr; }
   .admin-side { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 0; }
-  .nav-grupo { display: none; }
   .nav-lista { display: flex; overflow-x: auto; gap: 2px; padding: 0 12px 6px; }
   .nav-item { border-left: none; border-bottom: 3px solid transparent; white-space: nowrap; padding: 8px 12px; }
   .nav-item.active { border-left: none; border-bottom-color: var(--brand); }
+  /* A fileira vira horizontal aqui — a separação de cima (`margin-top`/
+     `border-top`) não apareceria numa linha só, então troca pra borda
+     esquerda, mesma ideia, eixo diferente. */
+  .nav-item-destaque { margin-top: 0; padding-top: 8px; border-top: none; border-left: 1px solid var(--border); margin-left: 6px; padding-left: 14px; }
   .admin-main { padding: 18px 14px 48px; }
 }
 

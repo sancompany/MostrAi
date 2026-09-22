@@ -3,6 +3,58 @@
 ## Updated
 2026-09-22
 
+## Limpeza estrutural final da navegação do admin (22/09/2026, este agente)
+Pedido do dono, fechamento explícito: "depois desta tarefa não quero mais
+reorganizar grandes módulos — a próxima fase é revisão tela a tela". Regra
+de leitura: código como fonte, sem auditoria geral, sem ler HANDOFF/
+PROJECT_STATE/docs históricas. Detalhe técnico completo só no commit (não
+duplicado em `docs/PENDENCIAS.md` de propósito, pra não contrariar a regra
+de leitura mínima desta rodada — mudança é só navegação, sem rota/API nova).
+
+**Em uma linha cada:**
+- `MODULOS` (`public/admin/index.page.js`) virou lista PLANA — sem `grupo`/
+  `itens` aninhado, sem cabeçalhos "MOSTRAÍ"/"OPERAÇÃO"/"COMERCIAL"/
+  "SISTEMA". Ordem visível: Visão geral, Rede, Contas, Ofertas, Mídia
+  Mostraí (`destaque: true`, estilizada como atalho especial no fim —
+  `.nav-item-destaque`, fundo/borda na cor da marca, só separação por
+  espaçamento, sem título de seção).
+- **Configurações e Pendências saíram do array por completo** (nem
+  `oculto`) — hashes antigos (`#configuracoes`, `#configuracoes/comodato`,
+  `#configuracoes/diagnostico`, `#pendencias`) caem sozinhos em
+  `visaogeral`, mesmo padrão já usado pra "custos" (rodada Financeiro):
+  `resolverAlvo()` degrada assim quando `buscarModulo()` não acha o id.
+  Categorias (já vivia em Contas) e Comodato (não reimplementado — outra
+  frente cuida da versão nova dentro de Ofertas) não têm mais destino em
+  Configurações. Diagnóstico (teste SMTP + fila de eventos do San
+  Checkout) saiu da UI por completo — sem destino nenhum, nem oculto,
+  "recuperável por ferramenta interna se precisar" (pedido explícito do
+  dono). `_renderComodato`/`_renderEventos`/`_renderPendencias`
+  (prefixo `_`, convenção do lint pra código morto) continuam definidas,
+  sem chamador.
+- **Achado e corrigido no roteador**: com vários hashes antigos caindo no
+  MESMO destino de fallback (`visaogeral`), navegar de um pro outro em
+  sequência batia no guard de `hashchange` (comparava só contra
+  `ABA_ATUAL`, que já estava em `visaogeral` desde a queda anterior) e
+  pulava `irPara` — a tela certa continuava no ar, mas a URL ficava presa
+  no hash antigo. Adicionado `location.hash !== canonico` ao guard; sem
+  loop (a própria `irPara` só reatribui o hash quando ele ainda não bate).
+- Removida a entrada `eventos` de `ALERTAS` (alimentava Visão Geral E a
+  extinta Pendências) — apontava pra uma tela que deixou de existir,
+  teria virado badge órfão.
+- CSS: `.nav-grupo` removida (não é mais emitida por `montarNav`);
+  `.nav-item-destaque` nova, com variante mobile (borda esquerda em vez de
+  superior, porque a lista vira linha horizontal em telas estreitas).
+
+**Verificado:** `npm run check` (168/168, só os 15 avisos de lint já
+conhecidos — 3 pré-existentes de Ofertas + 12 de `candidatura-ponto.js`,
+nenhum novo), Playwright cobrindo sidebar (5 itens, ordem, sem
+agrupamento, Mídia Mostraí com classe de destaque e por último), navegação
+normal pelos 5 itens, os 4 hashes antigos em sequência (a regressão que o
+fix do roteador resolve), Categorias só em Contas, sem alerta órfão de
+eventos na Visão Geral, responsividade desktop/tablet/mobile (sem overflow
+horizontal, Mídia Mostraí visível e clicável nos três, botão Sair
+acessível em mobile), screenshots desktop/mobile conferidos visualmente.
+
 ## Bloco FINANCEIRO do admin reorganizado (22/09/2026, este agente)
 Pedido do dono, spec de 51 seções numa mensagem só: desmontar Receitas/
 Repasses/Custos como páginas fixas — "normalidade não ocupa espaço,
