@@ -162,8 +162,36 @@ async function existeContaPropria() {
   return rows.length > 0;
 }
 
+async function buscarContaPropria() {
+  const { rows } = await pool.query(`SELECT ${CAMPOS_PUBLICOS} FROM anunciantes WHERE conta_propria LIMIT 1`);
+  return rows[0] || null;
+}
+
+// Conta institucional do Mostraí — recurso interno, singleton, sem tela de
+// criação (reorganização de Conteúdo, 22/09/2026: "não quero formulário de
+// bootstrap da conta, não quero login dessa conta"). Idempotente: a
+// primeira mídia própria criada aciona isto e cria a linha sozinha; toda
+// chamada seguinte devolve a mesma conta. Nome/CNPJ são só o que a coluna
+// NOT NULL exige — nunca aparecem em tela nenhuma, a conta não emite nota
+// nem faz login de verdade (senha aleatória, nunca entregue a ninguém).
+async function ensureContaMostrai() {
+  const existente = await buscarContaPropria();
+  if (existente) return existente;
+  const senha = require('node:crypto').randomBytes(24).toString('base64url');
+  const criada = await criar({
+    nome_empresa: 'Mostraí',
+    cpf_cnpj: '00000000000000',
+    contato_email: 'rede+propria@mostrai.local',
+    contato_telefone: '+5516000000000',
+    senha,
+  });
+  return atualizar(criada.id, { conta_propria: true, email_confirmado: true });
+}
+
 module.exports = {
   existeContaPropria,
+  buscarContaPropria,
+  ensureContaMostrai,
   criar,
   buscarPorEmailComSenha,
   buscarPorId,

@@ -360,7 +360,6 @@ const ANUNCIANTE_STATUS = { comum: 'Comum', parceiro: 'Parceiro' };
 const VENDEDOR_STATUS = { aprovado: 'Aprovado', inativo: 'Inativo' };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
-const CRIATIVO_STATUS = { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 // Mesma conta da vitrine (public/planos.page.js): o número grande que o
 // cliente vê sai do dado, não de texto guardado. Aqui ele aparece ao lado do
@@ -404,8 +403,8 @@ const ALIASES_ANTIGOS = {
   // não existe mais).
   candidaturas: 'rede/candidaturas',
   contato: 'mensagens',
-  criativos: 'conteudo/aprovacao',
-  meusanuncios: 'conteudo/proprios',
+  criativos: 'aprovacao',
+  meusanuncios: 'midiamostrai',
   pontos: 'rede/pontos',
   // Telas e Ocupação não são mais abas próprias (21/09/2026) — os três
   // hashes antigos caem na listagem de pontos; quem quiser a tela ou a
@@ -475,14 +474,17 @@ const MODULOS = [
           { id: 'categorias', nome: 'Categorias', render: renderCategorias },
         ],
       },
-      {
-        id: 'conteudo',
-        nome: 'Conteúdo',
-        abas: [
-          { id: 'aprovacao', nome: 'Aprovação', fila: 'criativos', render: renderCriativos },
-          { id: 'proprios', nome: 'Anúncios próprios', render: renderMeusAnuncios },
-        ],
-      },
+      // "Conteúdo" foi desmontada (reorganização de 22/09/2026, pedido do
+      // dono): Anúncios próprios virou página própria — Mídia Mostraí —, e
+      // Aprovação perdeu item de menu (mesmo padrão de Mensagens abaixo: o
+      // aviso mora na Visão geral, `oculto` tira o botão sem tirar o módulo
+      // de TODOS_MODULOS/buscarModulo, a rota `#aprovacao` continua
+      // funcionando). `renderCriativos`/`renderMeusAnuncios` (a versão
+      // antiga, com "Criar conta própria") continuam definidas mais abaixo
+      // como legado sem chamador — `renderMeusAnuncios` foi substituída por
+      // `renderMidiaMostrai`.
+      { id: 'midiamostrai', nome: 'Mídia Mostraí', render: renderMidiaMostrai },
+      { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
       // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
       // pendência mora na Visão geral (ALERTAS abaixo) e leva pra cá. `oculto`
       // tira o botão do menu sem tirar o módulo de TODOS_MODULOS/buscarModulo,
@@ -586,7 +588,7 @@ const SUBTITULOS = {
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar. Falta devolver o dinheiro no painel do Checkout e registrar aqui.',
   meusanuncios:
-    'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
+    'Conteúdo institucional da própria rede: cada mídia tem frequência, cobertura e período próprios, sem plano nem cobrança.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
 };
@@ -1118,67 +1120,55 @@ async function renderPendencias(el) {
 }
 
 // ---------- fila de criativos ----------
-async function renderCriativos(el, status) {
-  // `status` chega `null` (não `undefined`) quando esta função é montada como
-  // aba pelo roteador genérico (`renderModulo` sempre passa `resto`, e sem
-  // terceiro pedaço de hash `resto` é `null`) — o parâmetro default só cobre
-  // `undefined`, então sem isto a fila abria com status `null` e quebrava
-  // (achado na varredura visual de 21/09/2026).
-  status = status || 'pendente';
-  const [criativos, anunciantes] = await Promise.all([
-    pegar(`/admin/criativos?status=${status}`),
+const ehVideoUrl = (u) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u || '');
+
+// Aprovação de criativos (reorganização de Conteúdo, 22/09/2026): caixa de
+// PENDÊNCIAS, não histórico (Parte 24) — só mostra "pendente", sem abas de
+// Aprovados/Reprovados. Resolvido some da tela sozinho.
+async function renderCriativos(el) {
+  const [criativos, anunciantes, midias] = await Promise.all([
+    pegar('/admin/criativos?status=pendente'),
     pegar('/admin/anunciantes'),
+    pegar('/admin/midias-proprias'),
   ]);
   // O endpoint de criativos só devolve anunciante_id — sem o nome, o admin
   // aprovava um número. Junta aqui em vez de mexer na query do servidor.
   const nomePor = Object.fromEntries(anunciantes.map((a) => [a.id, a.nome_empresa]));
-  const ehVideo = (u) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u || '');
+  // Nome interno (Parte 21: "nome do criativo, se houver") só existe pra
+  // mídia própria — criativo de anunciante pagante não tem esse campo.
+  const nomeMidiaPor = Object.fromEntries(midias.map((m) => [m.criativo_id, m.nome_interno]));
 
   el.innerHTML = `
-    <div class="chips u-mb-16">
-      ${Object.entries(CRIATIVO_STATUS)
-        .map(
-          ([v, nome]) =>
-            `<button type="button" class="chip ${v === status ? 'active' : ''}" data-status="${v}">${nome}</button>`,
-        )
-        .join('')}
-    </div>
+    <div id="ajusteMidiaWrap" hidden></div>
     ${
       criativos.length
         ? `<div class="criativo-fila">${criativos
             .map((c) => {
               const url = c.arquivo_normalizado_url || c.arquivo_original_url;
+              const ehVideo = ehVideoUrl(url);
               return `<div class="item">
         ${
-          url && ehVideo(url)
+          url && ehVideo
             ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(c.thumbnail_url || '')}"></video>`
             : url
               ? `<img class="midia" src="${esc(url)}" alt="">`
               : '<div class="midia"></div>'
         }
         <div class="dados">
-          <b>${esc(nomePor[c.anunciante_id] || `Anunciante #${c.anunciante_id}`)}</b>
-          <small>#${c.id} · ${c.duracao_segundos ? `${c.duracao_segundos}s · ` : ''}enviado ${data(c.created_at)}</small>
+          <b>${esc(nomeMidiaPor[c.id] || nomePor[c.anunciante_id] || `Anunciante #${c.anunciante_id}`)}</b>
+          <small>${esc(nomePor[c.anunciante_id] || '')}${nomeMidiaPor[c.id] ? ` · #${c.id}` : ` #${c.id}`} · ${ehVideo ? 'vídeo' : 'imagem'}${c.duracao_segundos ? ` · ${c.duracao_segundos}s` : ''} · enviado ${data(c.created_at)}</small>
         </div>
-        ${
-          status === 'pendente'
-            ? `<div class="acoes">
-          <button class="btn primary mini" data-acao="aprovado" data-id="${c.id}">Aprovar</button>
+        <div class="acoes">
+          <button class="btn ghost mini" data-ajustar="${c.id}">Ajustar mídia</button>
           <button class="btn ghost mini" data-acao="reprovado" data-id="${c.id}">Reprovar</button>
-        </div>`
-            : `<div class="acoes">
-          <button class="btn ghost mini" data-acao="${status === 'aprovado' ? 'reprovado' : 'aprovado'}" data-id="${c.id}">Mudar para ${status === 'aprovado' ? 'reprovado' : 'aprovado'}</button>
-        </div>`
-        }
+          <button class="btn primary mini" data-acao="aprovado" data-id="${c.id}">Aprovar</button>
+        </div>
       </div>`;
             })
             .join('')}</div>`
-        : `<p class="empty-state">Nenhum criativo ${CRIATIVO_STATUS[status].toLowerCase()}.</p>`
+        : '<p class="empty-state">Nenhum criativo aguardando aprovação.</p>'
     }`;
 
-  el.querySelectorAll('.chip[data-status]').forEach((chip) =>
-    chip.addEventListener('click', () => renderCriativos(el, chip.dataset.status)),
-  );
   el.querySelectorAll('button[data-acao]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       // Reprovar sem motivo era um beco sem saída pro anunciante: o card dele
@@ -1194,8 +1184,528 @@ async function renderCriativos(el, status) {
       if (await salvar(`/admin/criativos/${btn.dataset.id}`, corpo)) {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
-        renderCriativos(el, status);
+        renderCriativos(el);
       }
+    }),
+  );
+  el.querySelectorAll('[data-ajustar]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const c = criativos.find((x) => x.id === Number(btn.dataset.ajustar));
+      abrirAjusteMidia(document.getElementById('ajusteMidiaWrap'), c, nomePor[c.anunciante_id], () =>
+        renderCriativos(el),
+      );
+    }),
+  );
+}
+
+// "Ajustar mídia" (Parte 25/26): baixar, substituir sem criar outro
+// criativo (Parte 27 — o backend já garante isso, `/admin/criativos/:id/
+// substituir` atualiza a mesma linha), ver o novo preview, aprovar. Volta
+// pra "pendente" sozinho ao trocar o arquivo (Parte 29) — o botão Aprovar
+// aqui é só conveniência pra não precisar voltar pra fila depois de trocar.
+function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
+  const url = criativo.arquivo_normalizado_url || criativo.arquivo_original_url;
+  const ehVideo = ehVideoUrl(url);
+  wrap.innerHTML = `
+    <div class="card wide u-mb-16">
+      <div class="field-row u-ai-c">
+        <h3 class="u-m-0 u-mr-auto">Ajustar mídia #${criativo.id}</h3>
+        <button class="btn ghost mini" type="button" id="btnFecharAjuste">Fechar</button>
+      </div>
+      <div class="field-row">
+        <div class="u-col" id="previewAjuste">
+          ${
+            url && ehVideo
+              ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(criativo.thumbnail_url || '')}"></video>`
+              : url
+                ? `<img class="midia" src="${esc(url)}" alt="">`
+                : '<div class="midia"></div>'
+          }
+        </div>
+        <div class="u-col-2">
+          <p class="u-m-0"><b>Conta</b><br>${esc(nomeConta || `Anunciante #${criativo.anunciante_id}`)}</p>
+          <p class="u-mt-8"><b>Formato</b><br>${ehVideo ? 'Vídeo' : 'Imagem'}${criativo.duracao_segundos ? ` · ${criativo.duracao_segundos}s` : ''}</p>
+          <p class="u-mt-8"><b>Enviado em</b><br>${data(criativo.created_at)}</p>
+          <div class="field-row u-mt-12">
+            ${url ? `<a class="btn ghost mini" href="${esc(url)}" download target="_blank" rel="noopener">Baixar arquivo</a>` : ''}
+            <label class="btn ghost mini" for="arquivoSubstituto">Substituir arquivo<input type="file" id="arquivoSubstituto" accept="video/*,image/*" hidden></label>
+            <button class="btn primary mini" type="button" id="btnAprovarAjuste">Aprovar</button>
+          </div>
+          <p class="form-msg" id="msgAjuste" role="status"></p>
+        </div>
+      </div>
+    </div>`;
+  wrap.hidden = false;
+  wrap.scrollIntoView({ behavior: 'smooth' });
+
+  document.getElementById('btnFecharAjuste').addEventListener('click', () => {
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+  });
+  document.getElementById('btnAprovarAjuste').addEventListener('click', async () => {
+    if (await salvar(`/admin/criativos/${criativo.id}`, { status: 'aprovado' })) {
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      wrap.hidden = true;
+      wrap.innerHTML = '';
+      aoFechar();
+    }
+  });
+  document.getElementById('arquivoSubstituto').addEventListener('change', async (e) => {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    const msg = document.getElementById('msgAjuste');
+    msg.textContent = 'Enviando e normalizando... isso leva alguns segundos.';
+    msg.className = 'form-msg';
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    const r = await fetch(`${API_BASE_URL}/admin/criativos/${criativo.id}/substituir`, {
+      method: 'POST',
+      body: dados,
+      credentials: 'include',
+    });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'não deu pra substituir';
+      msg.className = 'form-msg err';
+      return;
+    }
+    const atualizado = await r.json();
+    msg.textContent = 'Arquivo substituído — volta pra "em análise" até você aprovar de novo.';
+    msg.className = 'form-msg ok';
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    abrirAjusteMidia(wrap, atualizado, nomeConta, aoFechar);
+  });
+}
+
+// ---------- mídia Mostraí ----------
+// Conteúdo institucional da própria rede (reorganização de Conteúdo,
+// 22/09/2026, Partes 5-18 do pedido): cada peça tem frequência, cobertura e
+// período PRÓPRIOS — não existe mais "conta própria com vezes por hora" nem
+// formulário de bootstrap (a conta institucional vira singleton por baixo,
+// `ensureContaMostrai`, ver src/anunciantes/repository.js). Backend inteiro
+// em src/midias/ — aqui só consome as rotas.
+function htmlPreviewMidia(url, thumb) {
+  if (url && ehVideoUrl(url)) {
+    return `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(thumb || '')}"></video>`;
+  }
+  if (url) return `<img class="midia" src="${esc(url)}" alt="">`;
+  return '<div class="midia"></div>';
+}
+
+const SITUACAO_MIDIA_ROTULO = { ativa: 'Ativa', agendada: 'Agendada', pausada: 'Pausada', encerrada: 'Encerrada' };
+const SITUACAO_MIDIA_BADGE = {
+  ativa: 'badge-ok',
+  agendada: 'badge-info',
+  pausada: 'badge-pendente',
+  encerrada: 'badge-err',
+};
+
+function montarCardMidia(m) {
+  const url = m.arquivo_normalizado_url || m.arquivo_original_url;
+  const sit = m.situacaoDerivada;
+  const cobertura =
+    m.cobertura_tipo === 'rede' ? 'Toda a rede' : `${m.qtd_pontos} ponto${m.qtd_pontos === 1 ? '' : 's'}`;
+  const periodo =
+    m.periodo_inicio || m.periodo_fim
+      ? `${m.periodo_inicio ? data(m.periodo_inicio) : 'sempre'} até ${m.periodo_fim ? data(m.periodo_fim) : 'sem fim'}`
+      : 'Sempre no ar';
+  return `<div class="item">
+    ${htmlPreviewMidia(url, m.thumbnail_url)}
+    <div class="dados">
+      <div class="field-row u-ai-c u-m-0">
+        <b class="u-mr-auto">${esc(m.nome_interno)}</b>
+        <span class="badge ${SITUACAO_MIDIA_BADGE[sit] || ''}">${SITUACAO_MIDIA_ROTULO[sit] || sit}</span>
+      </div>
+      ${m.aprovacao_status !== 'aprovado' ? '<span class="badge badge-pendente u-mt-4 u-d-block">Em análise</span>' : ''}
+      <small class="u-d-block u-mt-4">${m.duracao_segundos ? `${m.duracao_segundos}s` : '-'} · ${m.frequencia_hora}x/hora · ${cobertura}</small>
+      <small class="u-d-block">${periodo}</small>
+    </div>
+    <div class="acoes">
+      <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
+      ${
+        sit === 'pausada'
+          ? `<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`
+          : sit !== 'encerrada'
+            ? `<button class="btn ghost mini" data-pausar-midia="${m.id}">Pausar</button>`
+            : ''
+      }
+      ${sit !== 'encerrada' ? `<button class="btn ghost mini" data-encerrar-midia="${m.id}">Retirar do ar</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// Tabela de capacidade da rede (Parte 16/17) — mesmo padrão de
+// renderOcupacaoRede (expandir por clique mostra quem consome ali), só que
+// separando comercial de institucional em vez de uma coluna só (Parte 9:
+// "não quero só uma porcentagem abstrata").
+function montarTabelaCapacidade(el, capacidade) {
+  if (!capacidade.length) {
+    el.innerHTML = '<p class="empty-state">Nenhum ponto em operação ainda.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
+      <th>Ponto</th><th>Status</th><th>Comercial</th><th>Mostraí/Universal</th><th>Livre</th><th>Mídias próprias</th>
+    </tr></thead><tbody>
+    ${capacidade
+      .map(
+        (p) => `<tr>
+      <td>${esc(p.pontoNome)}</td>
+      <td><span class="badge ${PONTO_STATUS_CLASSE[p.status] || ''}">${PONTO_STATUS[p.status] || p.status}</span></td>
+      <td>${p.comercialPct}%</td>
+      <td>${p.institucionalPct}%</td>
+      <td>${p.livrePct}%</td>
+      <td><button class="btn ghost mini" data-expandir-capacidade="${p.pontoId}">${p.qtdMidiasProprias}</button></td>
+    </tr>`,
+      )
+      .join('')}
+    </tbody></table></div></div>`;
+
+  el.querySelectorAll('[data-expandir-capacidade]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const linha = btn.closest('tr');
+      const existente = linha.nextElementSibling;
+      if (existente && existente.dataset.capacidadeDe === btn.dataset.expandirCapacidade) {
+        existente.remove();
+        return;
+      }
+      const midiasNoPonto = await pegar(`/admin/capacidade-rede/${btn.dataset.expandirCapacidade}/midias`);
+      linha.insertAdjacentHTML(
+        'afterend',
+        `<tr data-capacidade-de="${btn.dataset.expandirCapacidade}"><td class="u-bg" colspan="6">
+      ${
+        midiasNoPonto.length
+          ? `<table class="mini-table u-mt-6"><thead><tr><th>Mídia</th><th>% do ponto</th></tr></thead><tbody>
+        ${midiasNoPonto.map((m) => `<tr><td>${esc(m.nomeInterno)}</td><td>${m.pct}%</td></tr>`).join('')}
+      </tbody></table>`
+          : '<p class="empty-state u-py-6">Nenhuma mídia própria nesse ponto.</p>'
+      }
+    </td></tr>`,
+      );
+    }),
+  );
+}
+
+function montarLinhaPontoPicker(p, marcado) {
+  return `<label class="mm-ponto-linha" data-busca="${esc(`${p.pontoNome} ${p.cidade || ''}`.toLowerCase())}">
+    <input type="checkbox" value="${p.pontoId}" ${marcado ? 'checked' : ''}>
+    <span class="mm-ponto-nome">${esc(p.pontoNome)}</span>
+    <span class="mm-ponto-cidade u-dim">${esc(p.cidade || '')}</span>
+    <span class="mm-ponto-ocupacao">Comercial ${p.comercialPct}% · Mostraí ${p.institucionalPct}% · Livre ${p.livrePct}%</span>
+  </label>`;
+}
+
+// Mesmo default de src/lib/ffmpeg.js#DURACAO_PADRAO_IMAGEM — só pra estimar
+// o preview de capacidade ANTES do upload real (Parte 7: frequência entra no
+// cálculo de verdade). O servidor sempre revalida com a duração normalizada
+// de verdade ao salvar (Parte 10/12) — esta estimativa nunca é a palavra
+// final, só evita mostrar "Ajuste..." até o arquivo terminar de subir.
+const DURACAO_PADRAO_IMAGEM_JS = 10;
+
+// Formulário de criação/edição de uma mídia própria (Parte 6: Conteúdo,
+// Veiculação, Cobertura, Capacidade). `midia` null = criar; objeto (de
+// `buscarPorId`, com `pontosIds`) = editar. Substituir arquivo NÃO mora
+// aqui — isso é "Ajustar mídia" na fila de Aprovação (Parte 25-29), pra não
+// duplicar o mecanismo que já preserva o mesmo criativo lógico.
+async function abrirEditorMidia(wrap, midia, aoFechar) {
+  const pontosRede = await pegar('/admin/capacidade-rede');
+  const pontosSelecionados = new Set(midia?.pontosIds || []);
+  const isoLocal = (v) => (v ? new Date(v).toISOString().slice(0, 16) : '');
+  let duracaoEstimada = midia?.duracao_segundos || 0;
+  const temPeriodo = !!(midia?.periodo_inicio || midia?.periodo_fim);
+
+  wrap.innerHTML = `
+    <div class="card wide">
+      <div class="field-row u-ai-c">
+        <h3 class="u-m-0 u-mr-auto">${midia ? `Editar — ${esc(midia.nome_interno)}` : 'Nova mídia própria'}</h3>
+        <button class="btn ghost mini" type="button" id="btnFecharEditorMidia">Fechar</button>
+      </div>
+      <form id="formMidia">
+        <p class="form-sep-titulo u-mt-0">Conteúdo</p>
+        <div class="u-col"><label>Nome interno</label><input name="nome_interno" required value="${esc(midia?.nome_interno || '')}"></div>
+        ${
+          midia
+            ? `<div class="u-mt-10">${htmlPreviewMidia(midia.arquivo_normalizado_url || midia.arquivo_original_url, midia.thumbnail_url)}
+                <p class="u-dim u-fs-78 u-mt-4 u-m-0">${midia.duracao_segundos ? `${midia.duracao_segundos}s` : ''}${midia.aprovacao_status !== 'aprovado' ? ' · em análise' : ''} — pra trocar o arquivo, use "Ajustar mídia" na fila de Aprovação.</p>`
+            : `<div class="u-mt-10">
+                 <label class="btn ghost mini" for="mmArquivo">Escolher arquivo<input type="file" id="mmArquivo" accept="video/*,image/*" hidden required></label>
+                 <span class="u-dim u-fs-78 u-d-block u-mt-4" id="mmArquivoNome">nenhum arquivo escolhido</span>
+               </div>`
+        }
+
+        <p class="form-sep-titulo">Veiculação</p>
+        <div class="field-row">
+          <div class="u-col"><label>Vezes por hora</label><input class="mini" type="number" min="1" max="60" name="frequencia_hora" required value="${midia?.frequencia_hora || 1}"></div>
+        </div>
+        <label class="check-row u-mt-8"><input type="checkbox" id="mmAgendada" ${temPeriodo ? 'checked' : ''}> Tem período definido (fora dele, não entra no ar)</label>
+        <div class="field-row u-mt-8" id="mmPeriodoCampos" ${temPeriodo ? '' : 'hidden'}>
+          <div class="u-col"><label>Começa em</label><input class="mini" type="datetime-local" name="periodo_inicio" value="${isoLocal(midia?.periodo_inicio)}"></div>
+          <div class="u-col"><label>Termina em</label><input class="mini" type="datetime-local" name="periodo_fim" value="${isoLocal(midia?.periodo_fim)}"></div>
+        </div>
+        ${!midia ? '<label class="check-row u-mt-8"><input type="checkbox" name="situacao_pausada"> Criar pausada (não entra no ar ainda)</label>' : ''}
+
+        <p class="form-sep-titulo">Cobertura</p>
+        <div class="field-row">
+          <label class="check-row"><input type="radio" name="cobertura_tipo" value="rede" ${(midia?.cobertura_tipo || 'rede') === 'rede' ? 'checked' : ''}> Toda a rede</label>
+          <label class="check-row"><input type="radio" name="cobertura_tipo" value="pontos" ${midia?.cobertura_tipo === 'pontos' ? 'checked' : ''}> Pontos específicos</label>
+        </div>
+        <p class="form-hint u-m-0">"Toda a rede" inclui pontos novos automaticamente, sem limite de quantidade.</p>
+        <div id="mmPontosWrap" ${midia?.cobertura_tipo === 'pontos' ? '' : 'hidden'}>
+          <input class="busca u-mt-8 u-mb-8" type="search" id="mmBuscaPontos" placeholder="Buscar ponto...">
+          <div class="mm-pontos-lista">
+            ${pontosRede.map((p) => montarLinhaPontoPicker(p, pontosSelecionados.has(p.pontoId))).join('') || '<p class="empty-state u-py-8">Nenhum ponto em operação ainda.</p>'}
+          </div>
+        </div>
+
+        <p class="form-sep-titulo">Capacidade</p>
+        <div id="mmCapacidadePreview"><p class="u-dim u-fs-78 u-m-0">${midia ? 'Ajuste frequência e cobertura pra ver o impacto em cada ponto.' : 'Escolha o arquivo pra ver o impacto em cada ponto.'}</p></div>
+
+        <div class="field-row u-mt-14">
+          <button class="btn primary" type="submit">${midia ? 'Salvar' : 'Criar mídia'}</button>
+          <button class="btn ghost" type="button" id="btnCancelarMidia">Cancelar</button>
+        </div>
+        <p class="form-msg" id="mmMsg"></p>
+      </form>
+    </div>`;
+  wrap.hidden = false;
+  wrap.scrollIntoView({ behavior: 'smooth' });
+
+  const form = document.getElementById('formMidia');
+  const fechar = () => {
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+  };
+  document.getElementById('btnFecharEditorMidia').addEventListener('click', fechar);
+  document.getElementById('btnCancelarMidia').addEventListener('click', fechar);
+
+  document.getElementById('mmAgendada').addEventListener('change', (e) => {
+    document.getElementById('mmPeriodoCampos').hidden = !e.target.checked;
+    if (!e.target.checked) {
+      form.periodo_inicio.value = '';
+      form.periodo_fim.value = '';
+    }
+  });
+
+  form.querySelectorAll('input[name="cobertura_tipo"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      document.getElementById('mmPontosWrap').hidden = form.cobertura_tipo.value !== 'pontos';
+      atualizarPreview();
+    }),
+  );
+
+  const buscaPontos = document.getElementById('mmBuscaPontos');
+  if (buscaPontos) {
+    buscaPontos.addEventListener('input', () => {
+      const termo = buscaPontos.value.trim().toLowerCase();
+      document.querySelectorAll('.mm-ponto-linha').forEach((linha) => {
+        linha.hidden = termo.length > 0 && !linha.dataset.busca.includes(termo);
+      });
+    });
+  }
+  document.querySelectorAll('.mm-ponto-linha input').forEach((chk) => chk.addEventListener('change', atualizarPreview));
+  form.frequencia_hora.addEventListener('input', atualizarPreview);
+
+  const arquivoInput = document.getElementById('mmArquivo');
+  if (arquivoInput) {
+    arquivoInput.addEventListener('change', () => {
+      const arquivo = arquivoInput.files[0];
+      document.getElementById('mmArquivoNome').textContent = arquivo?.name || 'nenhum arquivo escolhido';
+      if (!arquivo) return;
+      if (arquivo.type.startsWith('image/')) {
+        duracaoEstimada = DURACAO_PADRAO_IMAGEM_JS;
+        atualizarPreview();
+        return;
+      }
+      const videoTeste = document.createElement('video');
+      videoTeste.preload = 'metadata';
+      videoTeste.onloadedmetadata = () => {
+        duracaoEstimada = Math.round(videoTeste.duration) || 0;
+        URL.revokeObjectURL(videoTeste.src);
+        atualizarPreview();
+      };
+      videoTeste.src = URL.createObjectURL(arquivo);
+    });
+  }
+
+  async function atualizarPreview() {
+    const alvo = document.getElementById('mmCapacidadePreview');
+    if (!duracaoEstimada) {
+      alvo.innerHTML = `<p class="u-dim u-fs-78 u-m-0">${midia ? 'Ajuste frequência e cobertura pra ver o impacto em cada ponto.' : 'Escolha o arquivo pra ver o impacto em cada ponto.'}</p>`;
+      return;
+    }
+    const coberturaTipo = form.cobertura_tipo.value;
+    const idsMarcados =
+      coberturaTipo === 'pontos'
+        ? [...document.querySelectorAll('.mm-ponto-linha input:checked')].map((i) => i.value)
+        : [];
+    if (coberturaTipo === 'pontos' && !idsMarcados.length) {
+      alvo.innerHTML = '<p class="u-dim u-fs-78 u-m-0">Escolha pelo menos um ponto pra ver o impacto.</p>';
+      return;
+    }
+    const params = new URLSearchParams({
+      cobertura_tipo: coberturaTipo,
+      frequencia_hora: form.frequencia_hora.value || '0',
+      duracao_segundos: String(duracaoEstimada),
+    });
+    if (idsMarcados.length) params.set('pontos_ids', idsMarcados.join(','));
+    if (midia) params.set('excluir_midia_id', midia.id);
+    const linhas = await pegar(`/admin/midias-proprias-preview-ocupacao?${params}`);
+    if (!linhas.length) {
+      alvo.innerHTML = '<p class="u-dim u-fs-78 u-m-0">Nenhum ponto em operação nessa cobertura.</p>';
+      return;
+    }
+    const excedentes = linhas.filter((l) => !l.comporta);
+    alvo.innerHTML = `
+      ${excedentes.length ? `<p class="form-msg err u-m-0 u-mb-8">Excede 100% em ${excedentes.length} ponto(s) — reduza a frequência ou a cobertura antes de salvar.</p>` : ''}
+      <table class="mini-table"><thead><tr><th>Ponto</th><th>Atual</th><th>Depois desta mídia</th></tr></thead><tbody>
+      ${linhas
+        .map(
+          (l) => `<tr class="${l.comporta ? '' : 'mm-linha-excede'}">
+        <td>${esc(l.pontoNome)}</td><td>${l.atualPct}%</td>
+        <td>${l.depoisPct}%${l.comporta ? '' : ' — excede'}</td>
+      </tr>`,
+        )
+        .join('')}
+      </tbody></table>`;
+  }
+  atualizarPreview();
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const msg = document.getElementById('mmMsg');
+    const idsMarcados =
+      form.cobertura_tipo.value === 'pontos'
+        ? [...document.querySelectorAll('.mm-ponto-linha input:checked')].map((i) => i.value)
+        : [];
+    if (form.cobertura_tipo.value === 'pontos' && !idsMarcados.length) {
+      msg.textContent = 'Escolha pelo menos um ponto, ou marque "toda a rede".';
+      msg.className = 'form-msg err';
+      return;
+    }
+
+    if (!midia) {
+      const arquivo = arquivoInput.files[0];
+      if (!arquivo) {
+        msg.textContent = 'Escolha um arquivo.';
+        msg.className = 'form-msg err';
+        return;
+      }
+      msg.textContent = 'Enviando e normalizando... isso leva alguns segundos.';
+      msg.className = 'form-msg';
+      const dados = new FormData();
+      dados.append('arquivo', arquivo);
+      dados.append('nome_interno', form.nome_interno.value);
+      dados.append('frequencia_hora', form.frequencia_hora.value);
+      dados.append('cobertura_tipo', form.cobertura_tipo.value);
+      if (idsMarcados.length) dados.append('pontos_ids', idsMarcados.join(','));
+      if (document.getElementById('mmAgendada').checked) {
+        if (form.periodo_inicio.value)
+          dados.append('periodo_inicio', new Date(form.periodo_inicio.value).toISOString());
+        if (form.periodo_fim.value) dados.append('periodo_fim', new Date(form.periodo_fim.value).toISOString());
+      }
+      if (form.situacao_pausada?.checked) dados.append('situacao', 'pausada');
+      const r = await fetch(`${API_BASE_URL}/admin/midias-proprias`, {
+        method: 'POST',
+        body: dados,
+        credentials: 'include',
+      });
+      if (!r.ok) {
+        msg.textContent = (await r.json().catch(() => ({}))).erro || 'não deu pra criar';
+        msg.className = 'form-msg err';
+        return;
+      }
+      toast('mídia criada');
+      fechar();
+      aoFechar();
+      return;
+    }
+
+    const corpo = {
+      nome_interno: form.nome_interno.value,
+      frequencia_hora: Number(form.frequencia_hora.value),
+      cobertura_tipo: form.cobertura_tipo.value,
+      periodo_inicio:
+        document.getElementById('mmAgendada').checked && form.periodo_inicio.value
+          ? new Date(form.periodo_inicio.value).toISOString()
+          : null,
+      periodo_fim:
+        document.getElementById('mmAgendada').checked && form.periodo_fim.value
+          ? new Date(form.periodo_fim.value).toISOString()
+          : null,
+    };
+    if (form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
+    const r = await api(`/admin/midias-proprias/${midia.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+    if (!r.ok) {
+      msg.textContent = (await r.json().catch(() => ({}))).erro || 'não deu pra salvar';
+      msg.className = 'form-msg err';
+      return;
+    }
+    toast('salvo');
+    fechar();
+    aoFechar();
+  });
+}
+
+async function renderMidiaMostrai(el) {
+  const [midias, capacidade] = await Promise.all([pegar('/admin/midias-proprias'), pegar('/admin/capacidade-rede')]);
+  const porSituacao = (s) => midias.filter((m) => m.situacaoDerivada === s).length;
+
+  el.innerHTML = `
+    <div class="field-row u-ai-c u-mb-14">
+      <span class="u-mr-auto"></span>
+      <button class="btn primary" id="btnNovaMidia">+ Nova mídia</button>
+    </div>
+    <div class="mm-resumo u-mb-16">
+      <div class="mm-resumo-item"><b>${porSituacao('ativa')}</b><span>ativas</span></div>
+      <div class="mm-resumo-item"><b>${porSituacao('agendada')}</b><span>agendadas</span></div>
+      <div class="mm-resumo-item"><b>${porSituacao('pausada')}</b><span>pausadas</span></div>
+      <div class="mm-resumo-item"><b>${capacidade.length}</b><span>pontos em operação</span></div>
+    </div>
+    <div id="editorMidiaWrap" hidden></div>
+    ${
+      midias.length
+        ? `<div class="criativo-fila u-mb-24">${midias.map(montarCardMidia).join('')}</div>`
+        : '<p class="empty-state">Nenhuma mídia própria cadastrada.</p>'
+    }
+    <h3>Capacidade da rede</h3>
+    <div id="mmCapacidadeWrap"></div>`;
+
+  montarTabelaCapacidade(document.getElementById('mmCapacidadeWrap'), capacidade);
+
+  const wrap = document.getElementById('editorMidiaWrap');
+  document
+    .getElementById('btnNovaMidia')
+    .addEventListener('click', () => abrirEditorMidia(wrap, null, () => renderMidiaMostrai(el)));
+
+  el.querySelectorAll('[data-editar-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const midia = await pegar(`/admin/midias-proprias/${btn.dataset.editarMidia}`);
+      abrirEditorMidia(wrap, midia, () => renderMidiaMostrai(el));
+    }),
+  );
+  el.querySelectorAll('[data-pausar-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const r = await api(`/admin/midias-proprias/${btn.dataset.pausarMidia}/pausar`, { method: 'POST' });
+      if (!r.ok) return toast('não deu pra pausar', 'err');
+      toast('mídia pausada');
+      renderMidiaMostrai(el);
+    }),
+  );
+  el.querySelectorAll('[data-retomar-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const r = await api(`/admin/midias-proprias/${btn.dataset.retomarMidia}/retomar`, { method: 'POST' });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'não deu pra retomar', 'err');
+      toast('mídia retomada');
+      renderMidiaMostrai(el);
+    }),
+  );
+  el.querySelectorAll('[data-encerrar-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Retirar esta mídia do ar? Ela para de entrar na programação — não precisa excluir nada.')) return;
+      const r = await api(`/admin/midias-proprias/${btn.dataset.encerrarMidia}/encerrar`, { method: 'POST' });
+      if (!r.ok) return toast('não deu pra retirar do ar', 'err');
+      toast('mídia retirada do ar');
+      renderMidiaMostrai(el);
     }),
   );
 }
@@ -1206,7 +1716,7 @@ async function renderCriativos(el, status) {
 // mesmos contadores, mas dispensa plano e nunca gera cobrança — por isso
 // não aparece na receita nem na margem. Só pode existir uma; o índice
 // único do banco garante isso mesmo com dois cliques.
-async function renderMeusAnuncios(el) {
+async function _renderMeusAnuncios(el) {
   const contas = await pegar('/admin/anunciantes');
   const conta = contas.find((c) => c.conta_propria);
 
@@ -1243,7 +1753,7 @@ async function renderMeusAnuncios(el) {
       });
       if (!r.ok) return toast((await r.json()).erro || 'não deu pra criar', 'err');
       toast('conta própria criada');
-      renderMeusAnuncios(el);
+      _renderMeusAnuncios(el);
     });
     return;
   }
@@ -1344,7 +1854,7 @@ async function renderMeusAnuncios(el) {
       return toast((await r.json()).erro || 'falhou', 'err');
     }
     toast('anúncio enviado');
-    renderMeusAnuncios(el);
+    _renderMeusAnuncios(el);
   });
 
   el.querySelectorAll('[data-tirar],[data-por]').forEach((b) =>
@@ -1353,7 +1863,7 @@ async function renderMeusAnuncios(el) {
       const status = b.dataset.tirar ? 'reprovado' : 'aprovado';
       const r = await api(`/admin/criativos/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
       if (!r.ok) return toast('não deu pra mudar', 'err');
-      renderMeusAnuncios(el);
+      _renderMeusAnuncios(el);
     }),
   );
 }

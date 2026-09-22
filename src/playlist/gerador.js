@@ -15,6 +15,7 @@ const bancoHorasRepo = require('../bancohoras/repository');
 const { MESES_PARA_FILA_DE_CREDITO } = require('../bancohoras/apuracao');
 const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
+const midiasRepo = require('../midias/repository');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
 // agora) não disputa vaga com quem já estava programado — só pede a fatia
@@ -74,16 +75,19 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // plano dá acesso a N pontos e o contratante escolhe quais — quem não
 // escolhe recebe uma fatia estável, calculada em `pontosDoAnunciante`.
 //
-// O LEFT JOIN em `planos` existe por causa da CONTA PRÓPRIA do Mostraí
-// (migration 023), que anuncia a rede sem assinar plano. O guarda no WHERE é
-// o que impede o efeito colateral óbvio de trocar JOIN por LEFT JOIN: conta
-// ativa e sem plano nenhum entrando na playlist de graça. Ou tem plano, ou é
-// própria com frequência definida — não existe terceiro caso.
+// A CONTA PRÓPRIA do Mostraí (migration 023) SAIU desta função (reorganização
+// de Conteúdo, 22/09/2026) — cada peça institucional agora é uma "mídia
+// própria" independente (`midias-proprias`), com a própria frequência e
+// cobertura, não mais um valor único por conta. Ver `midiasElegiveis`
+// abaixo, chamada à parte em `gerarPlaylistDaHora`.
+// `anunciantes.frequencia_hora_propria`/`conta_propria` continuam existindo
+// no banco (legado, sem uso novo) — só não alimentam mais a playlist por
+// aqui.
 async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
   const { rows } = await pool.query(
     `
     SELECT a.id, a.conta_propria,
-           COALESCE(p.frequencia_hora, a.frequencia_hora_propria) AS frequencia_hora,
+           p.frequencia_hora,
            p.segundos_por_hora, p.pontos_incluidos,
            p.limite_criativos,
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
@@ -95,7 +99,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
              ARRAY[]::int[]
            ) AS pontos_escolhidos
     FROM anunciantes a
-    LEFT JOIN planos p ON p.id = a.plano_id
+    JOIN planos p ON p.id = a.plano_id
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -104,15 +108,11 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
       AND c.arquivo_normalizado_url IS NOT NULL
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
-      AND (
-        (a.conta_propria AND COALESCE(a.frequencia_hora_propria, 0) > 0)
-        OR (NOT a.conta_propria AND p.id IS NOT NULL)
-      )
+      AND NOT a.conta_propria
       AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
-    GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
-             a.frequencia_hora_propria, p.limite_criativos
+    GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos, p.limite_criativos
   `,
     [categoriaDoPonto || null, excluirContaId || null],
   );
@@ -126,6 +126,23 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
         .map((url, i) => ({ url, duracaoSegundos: r.duracoes[i], criativoId: r.criativo_ids[i] })),
     };
   });
+}
+
+// Mídias próprias elegíveis nesta tela, uma entrada de playlist por mídia
+// (Parte 5/7 do pedido: cada mídia tem a própria frequência e cobertura,
+// não é mais rateada entre pontos como a cobertura de plano — RN-49 e banco
+// de horas não se aplicam aqui, os dois existem pra compensar/repartir
+// cobertura entre pontos, e cada mídia já diz direto quantas vezes por
+// hora, nos pontos que ela mesma escolheu).
+async function midiasElegiveis(pontoId) {
+  const rows = await midiasRepo.elegiveisNoPonto(pontoId);
+  return rows.map((r) => ({
+    id: `midia:${r.id}`,
+    frequenciaBase: Number(r.frequencia_hora) || 0,
+    deficit: 0,
+    duracaoSegundos: r.duracao_segundos,
+    criativos: [{ url: r.url, duracaoSegundos: r.duracao_segundos, criativoId: r.criativo_id }],
+  }));
 }
 
 // Cota de autoanúncio: os criativos aprovados da conta dona do ponto entram
@@ -226,17 +243,17 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados] = await Promise.all([
+  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias] = await Promise.all([
     anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
     deficitHoraAnterior(dispositivo.id, horaAnterior),
     criativosDoDono(dispositivo.dono_conta_id),
     pontosEmOperacao(),
     bancoHorasRepo.saldosAtivos(),
     pontosRepo.idsBloqueadosParaEscolha(),
+    midiasElegiveis(dispositivo.ponto_id),
   ]);
 
-  // Cobertura: fica quem tem ESTE ponto na fatia dele. A conta própria do
-  // Mostraí não entra na régua — ela anuncia a rede inteira, é o que ela é.
+  // Cobertura: fica quem tem ESTE ponto na fatia dele.
   //
   // A fatia é calculada UMA vez por conta e guardada: ela decide duas coisas
   // agora (se a conta entra nesta tela, e por quantos pontos o tempo dela se
@@ -252,16 +269,14 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cobertura = new Map(
     todos.map((a) => [
       a.id,
-      a.conta_propria
-        ? pontosNoAr
-        : pontosDoAnunciante(
-            { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
-            pontosNoAr,
-            pontosBloqueados,
-          ),
+      pontosDoAnunciante(
+        { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+        pontosNoAr,
+        pontosBloqueados,
+      ),
     ]),
   );
-  const anunciantes = todos.filter((a) => a.conta_propria || cobertura.get(a.id).includes(dispositivo.ponto_id));
+  const anunciantes = todos.filter((a) => cobertura.get(a.id).includes(dispositivo.ponto_id));
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
@@ -273,11 +288,8 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const entrada = anunciantes.map((a) => {
     const duracaoSegundos = duracaoMedia(a.criativos);
     // RN-49: enquanto a rede for menor que o plano, o tempo dos pontos que
-    // faltam volta pros que veiculam. Conta própria fica de fora — ela não
-    // compra cobertura, ela É a rede.
-    const segundos = a.conta_propria
-      ? Number(a.segundos_por_hora) || 0
-      : segundosCompensados(a.segundos_por_hora, a.pontos_incluidos, cobertura.get(a.id).length);
+    // faltam volta pros que veiculam.
+    const segundos = segundosCompensados(a.segundos_por_hora, a.pontos_incluidos, cobertura.get(a.id).length);
     // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
     // da peça que o cliente subiu. Seis de 15s e três de 30s ocupam o mesmo
     // lugar, e é por isso que a duração deixou de ser eixo de inventário.
@@ -290,8 +302,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     // ainda não foi devolvido) ganha prioridade aqui, em cima do déficit
     // normal de hora anterior. Capado no próprio pedido da hora — sem
     // teto, uma dívida grande dominaria a hora inteira, o que a RN-49 já
-    // evita do outro lado. Conta própria não acumula banco (não é
-    // cliente). O teto cresce com `multiplicadorPorIdade` conforme a
+    // evita do outro lado. O teto cresce com `multiplicadorPorIdade` conforme a
     // dívida envelhece (ver acima) — dívida nova nunca passa do dobro do
     // pedido normal; dívida perto da válvula pode chegar a
     // MULTIPLICADOR_MAXIMO_BANCO vezes isso.
@@ -306,12 +317,10 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     // ela existe pra resolver exatamente este problema, com outro número.
     const bancoDaConta = saldosBanco[a.id];
     const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
-    const prioridadeBanco = a.conta_propria
-      ? 0
-      : Math.min(
-          Math.floor(((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length) * multiplicadorBanco),
-          Math.floor(frequenciaBase * multiplicadorBanco),
-        );
+    const prioridadeBanco = Math.min(
+      Math.floor(((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length) * multiplicadorBanco),
+      Math.floor(frequenciaBase * multiplicadorBanco),
+    );
     return {
       id: a.id,
       frequenciaBase,
@@ -320,6 +329,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       duracaoSegundos,
     };
   });
+
+  // Mídia própria: cada uma já entra pronta (frequência e cobertura são
+  // dela mesma, sem RN-49 nem banco de horas — ver `midiasElegiveis`).
+  for (const m of midiasProprias) {
+    porId[m.id] = { criativos: m.criativos };
+    entrada.push({ id: m.id, frequenciaBase: m.frequenciaBase, deficit: 0, duracaoSegundos: m.duracaoSegundos });
+  }
 
   // Dono do ponto entra com a fatia da cota que cabe a esta tela. Não conta
   // como anunciante pagante nem gera contador — é permuta, não venda. Zerada
@@ -382,13 +398,22 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   // `programados` já vem sem o institucional. O dono do ponto sai aqui: a cota
   // é permuta, não venda, e não entra no relatório de entrega de ninguém.
-  // `extras` soma por cima — cada item ali é uma inserção de verdade, pedida
-  // e entregue (sem corte, ver `sequenciaAdicional`).
+  // Mídia própria também sai — mesmo motivo (não é anunciante, não tem
+  // `exibicoes_contador` pra creditar; `anunciante_id` daquela tabela é
+  // int e não aceitaria a string `midia:N`). O filtro em `idsExtras`
+  // (`id !== 'dono' && !String(id).startsWith('midia:')`) existe porque,
+  // sem ele, um dos dois chegando no meio da hora (`extras`, quando a base
+  // já congelou sem ele) voltava pro objeto pela soma logo abaixo.
   const contagem = { ...daHora.programados };
   delete contagem.dono;
   const pedidos = { ...daHora.pedidosPorAnunciante };
   delete pedidos.dono;
+  for (const m of midiasProprias) {
+    delete contagem[m.id];
+    delete pedidos[m.id];
+  }
   for (const id of idsExtras) {
+    if (id === 'dono' || String(id).startsWith('midia:')) continue;
     contagem[id] = (contagem[id] || 0) + 1;
     pedidos[id] = (pedidos[id] || 0) + 1;
   }
@@ -465,16 +490,26 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       const inicio = horaEpoch % criativos.length;
       const criativo = criativos[(inicio + vez) % criativos.length];
       const autoanuncio = id === 'dono';
+      // Mídia própria tem arquivo de verdade (ao contrário do item
+      // institucional de preenchimento, `ID_INSTITUCIONAL` acima, que não
+      // tem url nenhuma) — por isso `institucional: false` aqui: aquele
+      // campo já tem um significado fixo no player (mostra o cartão
+      // genérico "este espaço pode ser seu", nunca troca por vídeo real) e
+      // reaproveitá-lo pra mídia própria trocaria o vídeo pelo cartão gená.
+      // `anuncianteId: null` (mesmo mecanismo do autoanúncio) é o que faz o
+      // player não mandar `/played` pra uma mídia que não é venda.
+      const midiaPropria = typeof id === 'string' && id.startsWith('midia:');
       return {
         itemProgramacaoId: `${janelaId}|${indice}|${autoanuncio ? 'dono' : id}`,
         criativoId: criativo.criativoId != null ? String(criativo.criativoId) : null,
-        anuncianteId: autoanuncio ? null : id,
+        anuncianteId: autoanuncio || midiaPropria ? null : id,
         autoanuncio,
         institucional: false,
-        // Autoanúncio (permuta do comodato) e institucional nunca contam —
-        // mesma regra que `parseLegado` do app já infere hoje pro contrato
-        // antigo, só que explícita aqui em vez de deduzida do outro lado.
-        contabiliza: !autoanuncio,
+        // Autoanúncio (permuta do comodato), institucional (preenchimento) e
+        // mídia própria nunca contam — mesma regra que `parseLegado` do app
+        // já infere hoje pro contrato antigo, só que explícita aqui em vez
+        // de deduzida do outro lado.
+        contabiliza: !autoanuncio && !midiaPropria,
         url: criativo.url,
         duracaoSegundos: criativo.duracaoSegundos,
       };
