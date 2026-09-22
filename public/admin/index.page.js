@@ -413,7 +413,8 @@ const ALIASES_ANTIGOS = {
   ocupacaopontos: 'rede/pontos',
   telas: 'rede/pontos',
   bancohoras: 'rede/pontos',
-  anunciantes: 'anunciantes',
+  // "Anunciantes" virou a aba "Contas" de Contas (rodada Contas, 22/09/2026).
+  anunciantes: 'contas/contas',
   vendedores: 'vendedores',
   // "Planos" virou "Ofertas" (reformulação comercial, 22/09/2026) —
   // Arquivados e Benefícios não têm mais aba própria, caem em Preços (mesmo
@@ -421,7 +422,7 @@ const ALIASES_ANTIGOS = {
   planos: 'ofertas/precos',
   planosarquivados: 'ofertas/precos',
   beneficios: 'ofertas/precos',
-  categorias: 'configuracoes/categorias',
+  categorias: 'contas/categorias',
   comodato: 'configuracoes/comodato',
   eventos: 'configuracoes/diagnostico',
   cobrancas: 'receitas/cobrancas',
@@ -461,7 +462,19 @@ const MODULOS = [
           { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
         ],
       },
-      { id: 'anunciantes', nome: 'Anunciantes', render: renderAnunciantes },
+      {
+        // "Anunciantes" virou "Contas" (rodada Contas, 22/09/2026, pedido do
+        // dono): a entidade real não é "anunciante" — é uma conta que pode
+        // acumular papéis (anunciante, dono de ponto, vendedor). Categorias
+        // se mudou pra cá também (saiu de Configurações): é dado de conta
+        // (e de ponto), não configuração de sistema.
+        id: 'contas',
+        nome: 'Contas',
+        abas: [
+          { id: 'contas', nome: 'Contas', render: renderContasAba },
+          { id: 'categorias', nome: 'Categorias', render: renderCategorias },
+        ],
+      },
       {
         id: 'conteudo',
         nome: 'Conteúdo',
@@ -496,7 +509,11 @@ const MODULOS = [
           { id: 'promocoes', nome: 'Promoções', render: renderPromocoes },
         ],
       },
-      { id: 'vendedores', nome: 'Vendedores', render: renderVendedores },
+      // Sem item próprio na sidebar (rodada Contas, 22/09/2026): filtro
+      // "Vendedores", aba Vendedor, comissão e cupom/link agora vivem dentro
+      // da conta em Contas. `oculto` mantém a rota/hash antigo funcionando
+      // (mesmo padrão de "mensagens" acima) sem remover a tabela nem o código.
+      { id: 'vendedores', nome: 'Vendedores', oculto: true, render: renderVendedores },
     ],
   },
   {
@@ -528,8 +545,10 @@ const MODULOS = [
       {
         id: 'configuracoes',
         nome: 'Configurações',
+        // Categorias saiu daqui (rodada Contas, 22/09/2026) — mudou pra
+        // Contas > Categorias, que é o lugar administrativo definitivo dela
+        // agora. `ALIASES_ANTIGOS.categorias` aponta pro endereço novo.
         abas: [
-          { id: 'categorias', nome: 'Categorias', render: renderCategorias },
           { id: 'comodato', nome: 'Comodato', render: renderComodato },
           { id: 'diagnostico', nome: 'Diagnóstico', fila: 'eventos', render: renderEventos },
         ],
@@ -550,7 +569,7 @@ const SUBTITULOS = {
   pontos:
     'Comércios da rede: quem são, onde ficam e quantas telas têm. Abra um ponto pra ver telas, ocupação e editar o que é dele.',
   anunciantes:
-    'Todas as contas, com os papéis vindos do convite. "Subir anúncio" põe a peça pronta direto na conta do cliente, já aprovada: ela é feita fora do site e combinada no WhatsApp.',
+    'Toda conta da rede — anunciante, dono de ponto, vendedor, um ou vários papéis juntos. Abra uma pra ver a ficha completa.',
   vendedores: 'Contas com papel de vendedor: cupom, Pix e percentual de comissão.',
   ofertas: 'Os 3 produtos da rede — Essencial, Pro e Prime — e as promoções vigentes.',
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
@@ -631,12 +650,20 @@ function pintarContadores() {
 // `resto` (21/09/2026): tudo que vem depois do módulo/aba, cru, sem
 // interpretar — hoje serve pro detalhe de um ponto (`rede/pontos/42`, ou
 // `rede/pontos/42/telas` pra abrir direto numa sub-aba do detalhe) e pro
-// detalhe de um anunciante (`anunciantes/42`, módulo sem aba nenhuma). Quem
-// dá sentido ao `resto` é a própria tela (`renderPontos`/`renderAnunciantes`),
-// não o roteador — mesma regra de sempre, só um nível a mais.
+// detalhe de uma conta (`contas/contas/42`, aba "Contas" dentro do módulo
+// Contas). Quem dá sentido ao `resto` é a própria tela
+// (`renderPontos`/`renderContasAba`), não o roteador — mesma regra de
+// sempre, só um nível a mais.
 function resolverAlvo(alvoBruto) {
   const bruto = alvoBruto || 'visaogeral';
-  const canonico = ALIASES_ANTIGOS[bruto] || bruto;
+  // O alias pode bater com o hash inteiro ("categorias" → "contas/categorias")
+  // ou só com o primeiro pedaço, sobrando um id ("anunciantes/42", link velho
+  // de conta — vira "contas/contas/42"). Sem o segundo caso, um módulo que
+  // virou aba (rodada Contas, 22/09/2026: "anunciantes" não existe mais como
+  // id de módulo sozinho) perdia o `resto` e caía sempre em visaogeral.
+  const [primeiro, ...resto] = bruto.split('/');
+  const canonico =
+    ALIASES_ANTIGOS[bruto] || (ALIASES_ANTIGOS[primeiro] ? [ALIASES_ANTIGOS[primeiro], ...resto].join('/') : bruto);
   const [moduloId, ...partes] = canonico.split('/');
   const modulo = buscarModulo(moduloId);
   if (!modulo) return { moduloId: 'visaogeral', abaId: null, resto: null };
@@ -1678,63 +1705,86 @@ async function renderPontoTelas(el, ponto) {
 // e mesma regra G.7 (LIMITE_OCUPACAO_BLOQUEIA = 0.8, src/pontos/repository.js)
 // — só a exibição mudou de lugar, o cálculo é lido de lá, não duplicado.
 
-// ---------- anunciantes ----------
-// Listagem enxuta (21/09/2026, pedido do dono): a linha virou resumo
-// clicável, sem select nem botão nenhum — edição e ações moraram pro
-// detalhe da conta (renderAnuncianteDetalhe). O aviso de divergência de
-// ciclo (avisoDivergencia) saiu daqui — ele nasceu pros PLANOS, e continua
-// existindo lá (aba Planos); esta tela só o herdava por acaso, de quando
-// tudo vivia junto numa página só.
-async function renderAnunciantes(el, resto) {
-  const anuncianteId = resto ? Number(resto) : null;
-  if (anuncianteId) return renderAnuncianteDetalhe(el, anuncianteId);
-  return renderAnunciantesLista(el);
+// ---------- contas ----------
+// "Anunciantes" virou "Contas" (rodada Contas, 22/09/2026, pedido do dono):
+// a entidade real do sistema não é "anunciante" — é uma CONTA, que pode
+// acumular papéis (anunciante, dono de ponto, vendedor). A tabela que guarda
+// isso continua sendo `anunciantes` (nome de coluna/tabela não mudou, só a
+// UI), e `papeis` (text[]) já era editável por `PATCH /admin/anunciantes/:id`
+// desde antes — nenhuma rota nova precisou nascer pra listar ou filtrar por
+// papel. Listagem enxuta (21/09/2026, pedido do dono): a linha vira resumo
+// clicável, sem select nem botão nenhum — edição e ações moram na ficha
+// (renderContaDetalhe).
+async function renderContasAba(el, resto) {
+  const contaId = resto ? Number(resto) : null;
+  if (contaId) return renderContaDetalhe(el, contaId);
+  return renderContasLista(el);
 }
 
-async function renderAnunciantesLista(el) {
+async function renderContasLista(el) {
   const [anunciantes, categorias, planos, pontos] = await Promise.all([
     pegar('/admin/anunciantes'),
     pegar('/admin/categorias'),
     pegar('/admin/planos'),
     pegar('/admin/pontos'),
   ]);
-  // Plano mostrava só o id cru; e desde que ponto usa conta de anunciante
-  // (migration 016), dá pra marcar aqui quem também é dono de ponto.
   const nomePlano = Object.fromEntries(
     planos.map((p) => [p.id, `${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`]),
   );
   const nomeCategoria = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
+  // Comodato é direito do PONTO, não da conta que assina um plano comercial
+  // por cima (seção 17 do pedido: os dois são camadas separadas, nunca
+  // fundidas num "plano híbrido"). Uma conta pode ceder mais de um ponto;
+  // pega o primeiro achado só pra identificação rápida na listagem — a
+  // ficha (aba Pontos) mostra todos.
+  const comodatoPorConta = {};
+  pontos
+    .filter((p) => p.anunciante_id && p.plano_ponto_nome)
+    .forEach((p) => {
+      if (!comodatoPorConta[p.anunciante_id]) comodatoPorConta[p.anunciante_id] = p.plano_ponto_nome;
+    });
   const temPonto = new Set(pontos.map((p) => p.anunciante_id).filter(Boolean));
 
   const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Empresa</th><th>Contato</th>
-      <th>Ramo</th><th data-ord>Plano</th><th data-ord>Status</th><th data-ord>Entrou</th>
+      <th data-ord>Conta</th><th>Contato</th><th>Categoria</th>
+      <th data-ord>Plano comercial</th><th data-ord>Comodato</th><th data-ord>Status</th><th data-ord>Entrou</th>
     </tr></thead><tbody>
     ${anunciantes
-      .map(
-        (
-          a,
-        ) => `<tr data-filtro="${a.excluido_em ? 'excluida' : a.status}${temPonto.has(a.id) || (a.papeis || []).includes('ponto') ? ' comodato' : ''}${(a.papeis || []).includes('vendedor') ? ' vendedor' : ''}" class="linha-clicavel${a.excluido_em ? ' u-op-60' : ''}" data-abrir="${a.id}">
-      <td>${a.id}</td>
-      <td><b>${esc(a.nome_empresa)}</b> ${(a.papeis || ['anunciante'])
-        .filter((x) => x !== 'anunciante')
-        .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
-        .join(
-          ' ',
-        )}${a.status === 'parceiro' ? ' <span class="badge badge-ok">parceiro</span>' : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</td>
+      .map((a) => {
+        const papeis = a.papeis?.length ? a.papeis : ['anunciante'];
+        const ehDonoPonto = papeis.includes('ponto') || temPonto.has(a.id);
+        const filtro = [
+          a.excluido_em ? '' : a.status,
+          // Achado do review: "Inativas/Excluídas" só pegava quem tinha
+          // excluido_em — suspensão (`suspenso`) é o outro estado inativo
+          // real (mostra badge "suspensa" na linha), e ficava fora do
+          // filtro que promete cobrir os dois.
+          a.excluido_em || a.suspenso ? 'inativa' : '',
+          papeis.includes('anunciante') ? 'anunciante' : '',
+          ehDonoPonto ? 'comodato' : '',
+          papeis.includes('vendedor') ? 'vendedor' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const badgesPapel = [...papeis, ...(ehDonoPonto && !papeis.includes('ponto') ? ['ponto'] : [])]
+          .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
+          .join(' ');
+        return `<tr data-filtro="${filtro}" class="linha-clicavel${a.excluido_em ? ' u-op-60' : ''}" data-abrir="${a.id}">
+      <td><b>${esc(a.nome_empresa)}</b><div class="u-mt-2">${badgesPapel}${a.status === 'parceiro' ? ' <span class="badge badge-ok">parceiro</span>' : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</div></td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td>${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : a.categoria_id ? esc(nomeCategoria[a.categoria_id] || '?') : '<span class="u-dim">-</span>'}</td>
       <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ' <span class="badge badge-pendente">cortesia</span>' : ''}</td>
+      <td>${comodatoPorConta[a.id] ? esc(comodatoPorConta[a.id]) : '<span class="u-dim">-</span>'}</td>
       <td>${esc(ANUNCIANTE_STATUS[a.status] || a.status)}${a.suspenso ? ' <span class="badge badge-err">suspensa</span>' : ''}</td>
       <td>${data(a.created_at)}</td>
-    </tr>`,
-      )
+    </tr>`;
+      })
       .join('')}
   </tbody></table>`;
 
   el.innerHTML = `
     <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Novo anunciante (cadastro manual)</summary>
+      <summary class="btn ghost mini">+ Nova conta (cadastro manual)</summary>
       <form class="card u-mt-12 u-mw-420" id="formNovoAnunciante">
         <div><label>Nome da empresa</label><input class="mini" name="nome_empresa" required></div>
         <div><label>CNPJ/CPF</label><input class="mini" name="cpf_cnpj" required></div>
@@ -1746,7 +1796,7 @@ async function renderAnunciantesLista(el) {
         </div>
         <div><label>E-mail de acesso</label><input class="mini" type="email" name="contato_email" required></div>
         <div><label>WhatsApp</label><input class="mini" name="contato_telefone" required></div>
-        <button class="btn primary" type="submit">Criar anunciante</button>
+        <button class="btn primary" type="submit">Criar conta</button>
         <p class="form-msg" id="msgNovoAnunciante"></p>
       </form>
     </details>
@@ -1754,22 +1804,23 @@ async function renderAnunciantesLista(el) {
       anunciantes.length
         ? caixaTabela({
             chips: [
-              { valor: '', nome: 'Todos' },
-              ...Object.entries(ANUNCIANTE_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-              { valor: 'comodato', nome: 'Dono de ponto' },
-              { valor: 'vendedor', nome: 'Vendedor' },
-              { valor: 'excluida', nome: 'Excluídas' },
+              { valor: '', nome: 'Todas' },
+              { valor: 'anunciante', nome: 'Anunciantes' },
+              { valor: 'comodato', nome: 'Donos de ponto' },
+              { valor: 'vendedor', nome: 'Vendedores' },
+              { valor: 'parceiro', nome: 'Parceiras' },
+              { valor: 'inativa', nome: 'Inativas/Excluídas' },
             ],
             html: corpo,
-            dica: 'Clique numa conta pra ver o resumo completo e as ações. Conta excluída fica recuperável por 60 dias.',
+            dica: 'Clique numa conta pra ver a ficha completa. Conta excluída fica recuperável por 60 dias.',
           })
-        : '<p class="empty-state">Nenhum anunciante ainda. Cadastro pelo site cai aqui na hora, ou use "+ Novo anunciante" acima pra exceção.</p>'
+        : '<p class="empty-state">Nenhuma conta ainda. Cadastro pelo site cai aqui na hora, ou use "+ Nova conta" acima pra exceção.</p>'
     }`;
 
   if (anunciantes.length) turbinarTabela(el.querySelector('.tabela-caixa'));
 
   el.querySelectorAll('[data-abrir]').forEach((tr) =>
-    tr.addEventListener('click', () => irPara(`anunciantes/${tr.dataset.abrir}`)),
+    tr.addEventListener('click', () => irPara(`contas/contas/${tr.dataset.abrir}`)),
   );
 
   document.getElementById('formNovoAnunciante').addEventListener('submit', async (e) => {
@@ -1786,78 +1837,114 @@ async function renderAnunciantesLista(el) {
       return;
     }
     alert(
-      `Anunciante criado! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro anunciante agora. Não fica salva em nenhuma tela depois desta.`,
+      `Conta criada! Senha de acesso: ${corpoResp.senhaGerada}\n\nRepasse pro cliente agora. Não fica salva em nenhuma tela depois desta.`,
     );
-    renderAnunciantesLista(el);
+    renderContasLista(el);
   });
 }
 
-// Detalhe da conta: resumo completo (documento, contato, ramo, plano,
-// status, suspensão) + as ações que antes disputavam espaço na linha da
-// tabela. Mesmas rotas, mesmos prompts, mesmas condições de quando cada
-// botão aparece — só o lugar mudou.
-async function renderAnuncianteDetalhe(el, anuncianteId) {
-  const [anunciantes, categorias, planos] = await Promise.all([
+// Ficha da conta: cabeçalho fixo (nome, status, badges de papel) + abas
+// DINÂMICAS — só aparece a aba que aquela conta realmente usa (seção 10 do
+// pedido: "papel != nova conta", "não quero abas vazias"). Resumo é sempre
+// a primeira; Plano/Pontos/Vendedor entram conforme papeis/dados reais.
+// Conteúdo e Financeiro ficam de fora deste round de propósito (virão
+// quando as telas Conteúdo/Repasses forem redesenhadas).
+async function renderContaDetalhe(el, contaId) {
+  const [anunciantes, categorias, planos, pontos, vendedores] = await Promise.all([
     pegar('/admin/anunciantes'),
     pegar('/admin/categorias'),
     pegar('/admin/planos'),
+    pegar('/admin/pontos'),
+    pegar('/admin/vendedores'),
   ]);
-  const anunciante = anunciantes.find((a) => a.id === anuncianteId);
-  if (!anunciante) {
-    el.innerHTML =
-      '<p class="form-msg err">Conta não encontrada. <a href="#anunciantes">Voltar pra Anunciantes</a></p>';
+  const conta = anunciantes.find((a) => a.id === contaId);
+  if (!conta) {
+    el.innerHTML = '<p class="form-msg err">Conta não encontrada. <a href="#contas/contas">Voltar pra Contas</a></p>';
     return;
   }
-  const plano = anunciante.plano_id ? planos.find((p) => p.id === anunciante.plano_id) : null;
-  const nomePlano = plano
-    ? `${plano.nome} · ${CICLOS[plano.compromisso_meses] || plano.compromisso_meses + 'x'}`
-    : null;
+  const recarregar = () => irPara(`contas/contas/${conta.id}`);
+  const papeis = conta.papeis?.length ? conta.papeis : ['anunciante'];
+  const pontosDaConta = pontos.filter((p) => p.anunciante_id === conta.id);
+  const vendedor = vendedores.find((v) => v.conta_id === conta.id) || null;
+
+  const ABAS = [
+    { id: 'resumo', nome: 'Resumo', mostra: true },
+    { id: 'plano', nome: 'Plano', mostra: papeis.includes('anunciante') },
+    { id: 'pontos', nome: 'Pontos', mostra: papeis.includes('ponto') || pontosDaConta.length > 0 },
+    { id: 'vendedor', nome: 'Vendedor', mostra: papeis.includes('vendedor') || !!vendedor },
+  ].filter((a) => a.mostra);
 
   el.innerHTML = `
-    <p class="u-m-0 u-mb-10"><a href="#anunciantes">← Anunciantes</a></p>
-    <h3 class="u-m-0 u-mb-16">${esc(anunciante.nome_empresa)}
-      ${(anunciante.papeis || ['anunciante'])
-        .filter((x) => x !== 'anunciante')
-        .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
-        .join(' ')}
-      ${
-        anunciante.status === 'parceiro'
-          ? ` <span class="badge badge-ok" title="desconto extra ${anunciante.parceiro_desconto_percentual ?? 0}%${anunciante.parceiro_compromisso_minimo ? ` · só a partir de ${anunciante.parceiro_compromisso_minimo}x` : ''}">parceiro</span>`
-          : ''
-      }
-      ${anunciante.excluido_em ? ` <span class="badge badge-err">excluída ${data(anunciante.excluido_em)}</span>` : ''}
-    </h3>
+    <p class="u-m-0 u-mb-10"><a href="#contas/contas">← Contas</a></p>
+    <div class="ponto-info-titulo u-mb-12">
+      <h3 class="u-m-0">${esc(conta.nome_empresa)}</h3>
+      <p class="u-dim u-m-0">${conta.excluido_em ? `Excluída em ${data(conta.excluido_em)}` : conta.suspenso ? 'Suspensa' : 'Ativa'}</p>
+      <p class="u-m-0 u-mt-4">
+        ${[...papeis, ...(pontosDaConta.length && !papeis.includes('ponto') ? ['ponto'] : [])]
+          .map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`)
+          .join(' ')}
+        ${
+          conta.status === 'parceiro'
+            ? ` <span class="badge badge-ok" title="desconto extra ${conta.parceiro_desconto_percentual ?? 0}%${conta.parceiro_compromisso_minimo ? ` · só a partir de ${conta.parceiro_compromisso_minimo}x` : ''}">parceira</span>`
+            : ''
+        }
+      </p>
+    </div>
+    <div class="modulo-abas u-mb-12">
+      ${ABAS.map((a) => `<button type="button" class="modulo-aba ${a.id === 'resumo' ? 'active' : ''}" data-conta-aba="${a.id}">${a.nome}</button>`).join('')}
+    </div>
+    <div id="contaAbaConteudo"></div>`;
 
+  const conteudo = document.getElementById('contaAbaConteudo');
+
+  function desenhar(abaId) {
+    el.querySelectorAll('[data-conta-aba]').forEach((btn) =>
+      btn.classList.toggle('active', btn.dataset.contaAba === abaId),
+    );
+    if (abaId === 'plano') return desenharContaPlano(conteudo, conta, planos, recarregar);
+    if (abaId === 'pontos') return desenharContaPontos(conteudo, pontosDaConta);
+    if (abaId === 'vendedor') return desenharContaVendedor(conteudo, conta, vendedor, recarregar);
+    return desenharContaResumo(conteudo, conta, categorias, papeis, vendedor, recarregar);
+  }
+
+  el.querySelectorAll('[data-conta-aba]').forEach((btn) =>
+    btn.addEventListener('click', () => desenhar(btn.dataset.contaAba)),
+  );
+  desenhar('resumo');
+}
+
+// Aba Resumo: dados gerais de leitura (documento, contato, categoria, status)
+// + as ações administrativas que fazem sentido pra QUALQUER conta (subir
+// anúncio avulso, marcar parceira, restaurar, ativar o papel vendedor).
+// Ações específicas de plano (liberar/cancelar) moraram pra aba Plano.
+function desenharContaResumo(el, conta, categorias, papeis, vendedor, recarregar) {
+  el.innerHTML = `
     <div class="card u-mw-520 u-mb-16">
       <div class="field-row">
-        <div class="u-col-2"><label>Documento</label><p class="u-m-0">${esc(anunciante.cpf_cnpj)}</p></div>
-        <div class="u-col-2"><label>Entrou em</label><p class="u-m-0">${data(anunciante.created_at)}</p></div>
+        <div class="u-col-2"><label>Documento</label><p class="u-m-0">${esc(conta.cpf_cnpj)}</p></div>
+        <div class="u-col-2"><label>Entrou em</label><p class="u-m-0">${data(conta.created_at)}</p></div>
       </div>
       <div class="field-row">
-        <div class="u-col-2"><label>E-mail</label><p class="u-m-0">${esc(anunciante.contato_email)}</p></div>
-        <div class="u-col-2"><label>WhatsApp</label><p class="u-m-0">${esc(anunciante.contato_telefone)}</p></div>
+        <div class="u-col-2"><label>E-mail</label><p class="u-m-0">${esc(conta.contato_email)}</p></div>
+        <div class="u-col-2"><label>WhatsApp</label><p class="u-m-0">${esc(conta.contato_telefone)}</p></div>
       </div>
       <div class="field-row">
         <div class="u-col-2">
-          <label>Ramo</label>
+          <label>Categoria</label>
           <p class="u-dim u-fs-72 u-m-0 u-mb-4">Não entra em ponto do mesmo ramo.</p>
           ${categoriaBuscaHtml(
             'detalheCategoria',
-            categorias.find((c) => c.id === anunciante.categoria_id),
-            { placeholder: anunciante.categoria_livre ? `(livre) ${anunciante.categoria_livre}` : undefined },
+            categorias.find((c) => c.id === conta.categoria_id),
+            { placeholder: conta.categoria_livre ? `(livre) ${conta.categoria_livre}` : undefined },
           )}
         </div>
-        <div class="u-col-2"><label>Status</label>${selectStatus(ANUNCIANTE_STATUS, anunciante.status, 'data-anunciante="status"')}</div>
-      </div>
-      <div class="field-row">
-        <div class="u-col-2"><label>Plano</label><p class="u-m-0">${nomePlano ? esc(nomePlano) : '<span class="u-dim">sem plano</span>'}${anunciante.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(anunciante.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</p></div>
-        <div class="u-col-2"><label>Expira em</label><p class="u-m-0">${data(anunciante.data_expiracao)}</p></div>
+        <div class="u-col-2"><label>Status</label>${selectStatus(ANUNCIANTE_STATUS, conta.status, 'data-anunciante="status"')}</div>
       </div>
       <div>
         <label>Suspensa</label>
         <select class="mini u-w-100" data-anunciante="suspenso">
-          <option value="false"${!anunciante.suspenso ? ' selected' : ''}>Não</option>
-          <option value="true"${anunciante.suspenso ? ' selected' : ''}>Sim</option>
+          <option value="false"${!conta.suspenso ? ' selected' : ''}>Não</option>
+          <option value="true"${conta.suspenso ? ' selected' : ''}>Sim</option>
         </select>
       </div>
     </div>
@@ -1866,75 +1953,44 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
       <label class="u-d-block u-mb-8">Ações da conta</label>
       <div class="field-row">
         ${
-          anunciante.excluido_em
+          conta.excluido_em
             ? '<button class="btn ghost mini" data-restaurar>Restaurar</button>'
             : `<label class="btn ghost mini" title="Sobe a peça direto na conta dele, já entra aprovada">Subir anúncio<input type="file" accept="video/*,image/*" hidden data-subir></label>
-           <button class="btn ghost mini" data-liberar title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
-           <button class="btn ghost mini" data-parceiro title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${anunciante.status === 'parceiro' ? 'Editar parceiro' : 'Marcar parceiro'}</button>
-           ${
-             anunciante.plano_id && !anunciante.plano_cortesia
-               ? '<button class="btn ghost mini u-txt-erro" data-cancelar title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>'
-               : ''
-}`
+           <button class="btn ghost mini" data-parceiro title="Marca esta conta como parceira: desconto extra e piso de compromisso definidos por você">${conta.status === 'parceiro' ? 'Editar parceira' : 'Marcar parceira'}</button>
+           ${papeis.includes('vendedor') || vendedor ? '' : '<button class="btn ghost mini" data-ativar-vendedor title="Cria o perfil de vendedor (cupom automático) e libera o papel">Ativar papel Vendedor</button>'}`
         }
       </div>
     </div>`;
-
-  const recarregar = () => irPara(`anunciantes/${anunciante.id}`);
 
   el.querySelectorAll('[data-anunciante]').forEach((sel) =>
     sel.addEventListener('change', async () => {
       const campo = sel.dataset.anunciante;
       const valor = campo === 'suspenso' ? sel.value === 'true' : sel.value;
-      if ((await salvar(`/admin/anunciantes/${anunciante.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
+      if ((await salvar(`/admin/anunciantes/${conta.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
       }
     }),
   );
 
-  // Mesma limpeza de categoria_livre ao escolher pelo catálogo que o Resumo
-  // do ponto ganhou (os dois liam o campo livre sem nunca apagar).
   ligarCategoriaBusca('detalheCategoria', categorias, (categoria) => {
     salvar(
-      `/admin/anunciantes/${anunciante.id}`,
+      `/admin/anunciantes/${conta.id}`,
       { categoria_id: categoria.id, categoria_livre: null },
       document.getElementById('detalheCategoriaBusca'),
     );
   });
 
-  // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
-  // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
-  el.querySelector('[data-liberar]')?.addEventListener('click', async () => {
-    const opcoes = planos
-      .map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`)
-      .join('\n');
-    const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
-    if (!plano_id) return;
-    const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
-    const r = await api(`/admin/anunciantes/${anunciante.id}/liberar-plano`, {
-      method: 'POST',
-      body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
-    });
-    if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
-    toast('plano liberado, a conta está no ar, sem cobrança');
-    recarregar();
-  });
-
-  // Parceiro (item 4 da spec, 15/09/2026; renomeado de "fundador" e
-  // absorvido pelo `status` em 16/09/2026): não é mais um flag à parte —
-  // é o próprio `status` da conta virando 'parceiro', com o desconto e o
-  // piso de compromisso que o admin decidir.
   el.querySelector('[data-parceiro]')?.addEventListener('click', async () => {
     const desconto = prompt(
-      'Desconto extra (%) além do preço do plano. Deixe vazio para remover o status de parceiro:',
-      anunciante.parceiro_desconto_percentual ?? '',
+      'Desconto extra (%) além do preço do plano. Deixe vazio para remover o status de parceira:',
+      conta.parceiro_desconto_percentual ?? '',
     );
     if (desconto === null) return;
     if (desconto.trim() === '') {
-      if (anunciante.status !== 'parceiro' || !confirm('Remover o status de parceiro dessa conta?')) return;
+      if (conta.status !== 'parceiro' || !confirm('Remover o status de parceira dessa conta?')) return;
       if (
-        await salvar(`/admin/anunciantes/${anunciante.id}`, {
+        await salvar(`/admin/anunciantes/${conta.id}`, {
           status: 'comum',
           parceiro_desconto_percentual: null,
           parceiro_compromisso_minimo: null,
@@ -1945,11 +2001,11 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
     }
     const minimo = prompt(
       'Compromisso mínimo (em meses) pra usar o desconto. Deixe vazio para liberar qualquer plano:',
-      anunciante.parceiro_compromisso_minimo ?? '',
+      conta.parceiro_compromisso_minimo ?? '',
     );
     if (minimo === null) return;
     if (
-      await salvar(`/admin/anunciantes/${anunciante.id}`, {
+      await salvar(`/admin/anunciantes/${conta.id}`, {
         status: 'parceiro',
         parceiro_desconto_percentual: Number(desconto),
         parceiro_compromisso_minimo: minimo.trim() === '' ? null : Number(minimo),
@@ -1958,10 +2014,6 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
       recarregar();
   });
 
-  // Exclusão de conta é soft-delete (migration 017): o anunciante pede, o
-  // suporte desfaz aqui dentro de 60 dias zerando excluido_em. A peça é
-  // feita FORA do site (combinada no WhatsApp) e sobe direto na conta do
-  // cliente. Multipart, então não passa pelo `api()`, que manda JSON.
   el.querySelector('[data-subir]')?.addEventListener('change', async (e) => {
     const input = e.target;
     const arquivo = input.files[0];
@@ -1970,7 +2022,7 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
     toast('enviando e normalizando o vídeo...');
     const dados = new FormData();
     dados.append('arquivo', arquivo);
-    const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${anunciante.id}/criativos`, {
+    const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${conta.id}/criativos`, {
       method: 'POST',
       body: dados,
       credentials: 'include',
@@ -1981,29 +2033,160 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
     toast('anúncio no ar na conta do cliente');
   });
 
-  // A rota de cancelar assinatura existia desde sempre e nao tinha um unico
-  // botao em lugar nenhum: nao havia como parar uma cobranca recorrente pela
-  // interface. Cancelar so no painel do Asaas deixaria o banco daqui achando
-  // que a assinatura segue viva.
+  el.querySelector('[data-restaurar]')?.addEventListener('click', async () => {
+    if (!confirm('Restaurar essa conta? Ela volta a conseguir entrar.')) return;
+    if (await salvar(`/admin/anunciantes/${conta.id}`, { excluido_em: null })) recarregar();
+  });
+
+  // Papel vendedor (seção 21 do pedido): cria o perfil (cupom automático)
+  // reaproveitando o mesmo caminho que uma candidatura aprovada usa
+  // (liberarPapelNaConta, src/conta/modos.js) — sem sistema paralelo.
+  el.querySelector('[data-ativar-vendedor]')?.addEventListener('click', async () => {
+    if (!confirm(`Ativar o papel Vendedor pra ${conta.nome_empresa}? Um cupom é gerado na hora.`)) return;
+    const r = await api(`/admin/anunciantes/${conta.id}/ativar-vendedor`, { method: 'POST' });
+    if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível ativar.', 'err');
+    toast('Papel Vendedor ativado.');
+    recarregar();
+  });
+}
+
+// Aba Plano: só o que já existe hoje (RN do plano comercial), sem
+// redesenhar assinatura/Checkout/cortesia — liberar plano de graça e
+// cancelar assinatura são as duas ações que já existiam, movidas pra cá
+// por pertencerem ao plano, não ao resumo geral da conta.
+function desenharContaPlano(el, conta, planos, recarregar) {
+  const plano = conta.plano_id ? planos.find((p) => p.id === conta.plano_id) : null;
+  const nomePlano = plano
+    ? `${plano.nome} · ${CICLOS[plano.compromisso_meses] || plano.compromisso_meses + 'x'}`
+    : null;
+  el.innerHTML = `
+    <div class="card u-mw-520 u-mb-16">
+      <div class="field-row">
+        <div class="u-col-2"><label>Plano comercial</label><p class="u-m-0">${nomePlano ? esc(nomePlano) : '<span class="u-dim">sem plano</span>'}${conta.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(conta.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</p></div>
+        <div class="u-col-2"><label>Expira em</label><p class="u-m-0">${data(conta.data_expiracao)}</p></div>
+      </div>
+    </div>
+    <div class="card u-mw-520">
+      <label class="u-d-block u-mb-8">Ações do plano</label>
+      <div class="field-row">
+        <button class="btn ghost mini" data-liberar title="Põe a conta no ar sem cobrar nada">Liberar plano</button>
+        ${
+          conta.plano_id && !conta.plano_cortesia
+            ? '<button class="btn ghost mini u-txt-erro" data-cancelar title="Cancela a cobrança recorrente no San Checkout. A cobertura já paga continua até expirar.">Cancelar assinatura</button>'
+            : ''
+        }
+      </div>
+    </div>`;
+
+  el.querySelector('[data-liberar]')?.addEventListener('click', async () => {
+    const opcoes = planos
+      .map((p) => `${p.id} = ${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`)
+      .join('\n');
+    const plano_id = prompt(`Qual plano liberar?\n\n${opcoes}`);
+    if (!plano_id) return;
+    const motivo = prompt('Por que está liberando? (parceria, teste, cortesia de lançamento...)') || '';
+    const r = await api(`/admin/anunciantes/${conta.id}/liberar-plano`, {
+      method: 'POST',
+      body: JSON.stringify({ plano_id: plano_id.trim(), motivo }),
+    });
+    if (!r.ok) return toast((await r.json()).erro || 'não deu pra liberar', 'err');
+    toast('plano liberado, a conta está no ar, sem cobrança');
+    recarregar();
+  });
+
   el.querySelector('[data-cancelar]')?.addEventListener('click', async () => {
     if (
       !confirm(
-        `Cancelar a assinatura de ${anunciante.nome_empresa}?\n\n` +
+        `Cancelar a assinatura de ${conta.nome_empresa}?\n\n` +
           'A cobrança recorrente para no San Checkout e não volta sozinha. ' +
           'A cobertura já paga continua valendo até a data de expiração, ' +
           'e o anúncio não sai do ar hoje.',
       )
     )
       return;
-    const r = await api(`/admin/anunciantes/${anunciante.id}/cancelar-assinatura`, { method: 'POST' });
+    const r = await api(`/admin/anunciantes/${conta.id}/cancelar-assinatura`, { method: 'POST' });
     if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.', 'err');
     toast('Assinatura cancelada. A cobertura paga continua até expirar.');
     recarregar();
   });
+}
 
-  el.querySelector('[data-restaurar]')?.addEventListener('click', async () => {
-    if (!confirm('Restaurar essa conta? O anunciante volta a conseguir entrar.')) return;
-    if (await salvar(`/admin/anunciantes/${anunciante.id}`, { excluido_em: null })) recarregar();
+// Aba Pontos: os pontos que essa conta cedeu (dono de ponto). Ficha
+// somente-leitura — clique leva pro detalhe de verdade em Rede (seção 15 do
+// pedido: "não redesenhar a tela Rede"). Comodato aparece como informação
+// simples, sempre separado do plano comercial (aba Plano) — nunca fundidos
+// num "plano híbrido" (seção 17).
+function desenharContaPontos(el, pontosDaConta) {
+  if (!pontosDaConta.length) {
+    el.innerHTML = '<p class="empty-state">Nenhum ponto vinculado a esta conta.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="card u-mw-680">
+    ${pontosDaConta
+      .map(
+        (p) => `<a class="conta-ponto-linha" href="#rede/pontos/${p.id}">
+        <div>
+          <b>${esc(p.nome)}</b>
+          <p class="u-dim u-m-0 u-fs-85">${esc(p.endereco || p.cidade || '')}</p>
+        </div>
+        <div class="u-ta-r">
+          <span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>
+          <p class="u-dim u-m-0 u-fs-78 u-mt-2">${p.telas || 0} ${p.telas === 1 ? 'tela' : 'telas'}${p.plano_ponto_nome ? ` · comodato ${esc(p.plano_ponto_nome)}` : ''}</p>
+        </div>
+      </a>`,
+      )
+      .join('<hr class="ponto-info-sep">')}
+  </div>`;
+}
+
+// Aba Vendedor: comissão, Pix e cupom/link — os mesmos campos e as mesmas
+// rotas da antiga tabela Vendedores, só que dentro da conta (seção 20 do
+// pedido). Cupom/link continuam vindo do mecanismo automático já existente
+// (vendedoresRepo.gerarCupom, na criação) — não se gera nada aqui.
+function desenharContaVendedor(el, conta, vendedor, recarregar) {
+  if (!vendedor) {
+    el.innerHTML =
+      '<p class="empty-state">Papel Vendedor ativo, mas o perfil ainda não foi criado. Atualize a página.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="card u-mw-520">
+    <div class="field-row">
+      <div class="u-col-2">
+        <label>Cupom</label>
+        <p class="u-m-0"><code>${esc(vendedor.codigo_cupom)}</code></p>
+        <button class="btn ghost mini u-mt-4" data-copiar-cupom="${esc(vendedor.codigo_cupom)}">Copiar link de indicação</button>
+      </div>
+      <div class="u-col-2"><label>Status</label>${selectStatus(VENDEDOR_STATUS, vendedor.status, `data-vendedor="status"`)}</div>
+    </div>
+    <div class="field-row">
+      <div class="u-col-2">
+        <label>Comissão (%)</label>
+        <input class="mini u-w-100" type="number" step="0.01" min="10" max="30" data-vendedor="comissao_percentual" value="${vendedor.comissao_percentual}" title="Entre 10% e 30%">
+      </div>
+      <div class="u-col-2"><label>Chave Pix</label><input class="mini" data-vendedor="chave_pix" value="${esc(vendedor.chave_pix || '')}"></div>
+    </div>
+    <div><label>Vendedor desde</label><p class="u-m-0">${data(vendedor.created_at)}</p></div>
+  </div>`;
+
+  el.querySelectorAll('[data-vendedor]').forEach((campo) =>
+    campo.addEventListener('change', async () => {
+      const chave = campo.dataset.vendedor;
+      const valor = chave === 'comissao_percentual' ? Number(campo.value) : campo.value;
+      const r = await api(`/admin/vendedores/${conta.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ [chave]: valor }),
+      });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.', 'err');
+      toast('Salvo.');
+      if (chave === 'status') recarregar();
+    }),
+  );
+  el.querySelector('[data-copiar-cupom]')?.addEventListener('click', () => {
+    const link = `${window.location.origin}/anunciante/cadastro.html?ref=${encodeURIComponent(vendedor.codigo_cupom)}`;
+    navigator.clipboard?.writeText(link).then(
+      () => toast('Link de indicação copiado.'),
+      () => prompt('Link:', link),
+    );
   });
 }
 

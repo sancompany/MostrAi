@@ -453,4 +453,4 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
 
-module.exports = { router, adicionarPapel, liberarPapelNaConta, criarCandidaturaPonto };
+module.exports = { router, adicionarPapel, liberarPapelNaConta, criarCandidaturaPonto, emTransacao };

@@ -107,6 +107,16 @@ input[type="checkbox"] { accent-color: var(--brand); }
   .ponto-info-foto { width: 100%; aspect-ratio: 16 / 9; }
 }
 
+/* Linha de ponto dentro da aba Pontos da ficha de conta (rodada Contas,
+   22/09/2026) — lista compacta, não a grade de cards de Rede (que segue lá,
+   sem redesenho). */
+.conta-ponto-linha { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; text-decoration: none; color: inherit; }
+.conta-ponto-linha:hover { color: var(--brand-text); }
+@media (max-width: 480px) {
+  .conta-ponto-linha { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .conta-ponto-linha .u-ta-r { text-align: left; }
+}
+
 /* Badge "Em reparo" — mesma fórmula de contraste dos outros badges (fundo
    muito claro da cor + texto escuro da mesma família), com --blue no lugar
    de --brand/--ok/--err. */
