@@ -46,6 +46,8 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
       {
         nome: cand.nome_comercio || conta.nome_empresa,
         endereco: cand.endereco,
+        bairro: cand.bairro,
+        complemento: cand.complemento,
         cidade: cand.cidade || 'Matão',
         uf: cand.uf || 'SP',
         cep: cand.cep || '',
@@ -231,6 +233,67 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
 // pede mais assim (18/09/2026, a pedido do dono) — quem quer ser vendedor
 // fala direto com a gente; quem entra, entra por convite que o dono gera à
 // mão depois da conversa, nunca por pedido self-service.
+// Candidatura de ponto canônica (rodada "Ofertas + formulário canônico de
+// candidatura", 22/09/2026) — usada pelos DOIS caminhos de entrada: "Você
+// também possui um comércio?" (conta ainda sem papel `ponto`) e "+
+// Cadastrar outro endereço" (conta que já é dona de ponto e cede mais um
+// endereço, `src/pontos/routes.js`). Antes desta rodada só o primeiro
+// caminho criava candidatura de verdade — o segundo criava um PONTO direto,
+// sem passar pelo Aprovar/Recusar do admin (achado real, corrigido aqui).
+// Os dois têm o MESMO contrato de dados a partir daqui; a diferença entre
+// eles é só a guarda de quem pode chamar (ver as duas rotas).
+async function criarCandidaturaPonto(conta, dados) {
+  if (!dados.nome_comercio || !dados.endereco) {
+    throw Object.assign(new Error('nome do comércio e endereço são obrigatórios'), { status: 400 });
+  }
+  // Defesa em profundidade (21/09/2026, pedido do dono: campo virou
+  // obrigatório na tela) — o card do painel já exige no HTML, mas quem
+  // chamar a rota direto não passa pelo front. É o único número que a
+  // candidatura de ponto realmente precisa e que a conta não tem como já
+  // ter informado antes (ao contrário de nome/endereço/ramo).
+  if (!dados.fluxo_estimado_mensal || Number(dados.fluxo_estimado_mensal) <= 0) {
+    throw Object.assign(new Error('movimento médio mensal é obrigatório'), { status: 400 });
+  }
+  if (dados.plano_ponto_id && !(await planosPontoRepo.buscarPorId(dados.plano_ponto_id))) {
+    throw Object.assign(new Error('opção de comodato inválida'), { status: 400 });
+  }
+  // Horário de funcionamento — pedido do dono, 22/09/2026: quem cede a
+  // parede diz o horário do próprio comércio nesta mesma tela, junto do
+  // resto do cadastro (não numa tela separada depois). Obrigatório aqui —
+  // é o único lugar onde a pessoa que sabe o horário está preenchendo o
+  // formulário; o cadastro manual do admin (exceção) deixa opcional.
+  if (!dados.horario_semanal) {
+    throw Object.assign(new Error('horário de funcionamento é obrigatório'), { status: 400 });
+  }
+  const horario_semanal = validarHorarioSemanal(dados.horario_semanal);
+  // Segmento do comércio: a conta já respondeu isso pra poder anunciar
+  // (POST /conta/modos/anunciante exige o ramo) — reaproveita em vez de
+  // perguntar de novo. `categoria_livre` é texto direto; `categoria_id`
+  // (ramo do catálogo fixo) precisa de uma busca pelo nome antes de virar
+  // o texto que a candidatura guarda.
+  let segmento = dados.segmento || conta.categoria_livre || null;
+  if (!segmento && conta.categoria_id) {
+    const categoria = await categoriasRepo.buscarAtivaPorId(conta.categoria_id);
+    segmento = categoria?.nome || null;
+  }
+  const cand = await candidaturasRepo.criar({
+    ...dados,
+    tipo: 'ponto',
+    nome: conta.responsavel_nome || conta.nome_empresa,
+    contato_telefone: dados.contato_telefone || conta.contato_telefone,
+    contato_email: conta.contato_email,
+    segmento,
+    horario_semanal,
+    conta_id: conta.id,
+    origem: 'painel',
+  });
+  // Fire-and-forget: mesmo aviso que o formulário público mandava antes de
+  // ser aposentado — sem ele, o pedido só aparece pra quem abrir o admin
+  // por acaso (a fila "Candidaturas" ainda avisa, mas o e-mail chega antes).
+  enviarCandidaturaNova(cand).catch((err) => console.error('e-mail de candidatura nova', err));
+  return cand;
+}
+
 router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res) => {
   const papel = req.params.papel;
   if (papel !== 'ponto') return res.status(400).json({ erro: 'modo inválido' });
@@ -244,60 +307,12 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   );
   if (abertos.length)
     return res.status(409).json({ erro: 'você já tem um pedido em análise — a gente chama no WhatsApp' });
-  if (!req.body.nome_comercio || !req.body.endereco) {
-    return res.status(400).json({ erro: 'nome do comércio e endereço são obrigatórios' });
-  }
-  // Defesa em profundidade (21/09/2026, pedido do dono: campo virou
-  // obrigatório na tela) — o card do painel já exige no HTML, mas quem
-  // chamar a rota direto não passa pelo front. É o único número que a
-  // candidatura de ponto realmente precisa e que a conta não tem como já
-  // ter informado antes (ao contrário de nome/endereço/ramo).
-  if (!req.body.fluxo_estimado_mensal || Number(req.body.fluxo_estimado_mensal) <= 0) {
-    return res.status(400).json({ erro: 'movimento médio mensal é obrigatório' });
-  }
-  if (req.body.plano_ponto_id && !(await planosPontoRepo.buscarPorId(req.body.plano_ponto_id))) {
-    return res.status(400).json({ erro: 'opção de comodato inválida' });
-  }
-  // Horário de funcionamento — pedido do dono, 22/09/2026: quem cede a
-  // parede diz o horário do próprio comércio nesta mesma tela, junto do
-  // resto do cadastro (não numa tela separada depois). Obrigatório aqui —
-  // é o único lugar onde a pessoa que sabe o horário está preenchendo o
-  // formulário; o cadastro manual do admin (exceção) deixa opcional.
-  if (!req.body.horario_semanal) {
-    return res.status(400).json({ erro: 'horário de funcionamento é obrigatório' });
-  }
-  let horario_semanal;
   try {
-    horario_semanal = validarHorarioSemanal(req.body.horario_semanal);
+    const cand = await criarCandidaturaPonto(conta, req.body);
+    res.status(201).json({ ok: true, id: cand.id });
   } catch (err) {
-    return res.status(err.status || 400).json({ erro: err.message });
+    res.status(err.status || 400).json({ erro: err.message });
   }
-  // Segmento do comércio: a conta já respondeu isso pra poder anunciar
-  // (POST /conta/modos/anunciante exige o ramo) — reaproveita em vez de
-  // perguntar de novo. `categoria_livre` é texto direto; `categoria_id`
-  // (ramo do catálogo fixo) precisa de uma busca pelo nome antes de virar
-  // o texto que a candidatura guarda.
-  let segmento = req.body.segmento || conta.categoria_livre || null;
-  if (!segmento && conta.categoria_id) {
-    const categoria = await categoriasRepo.buscarAtivaPorId(conta.categoria_id);
-    segmento = categoria?.nome || null;
-  }
-  const cand = await candidaturasRepo.criar({
-    ...req.body,
-    tipo: papel,
-    nome: conta.responsavel_nome || conta.nome_empresa,
-    contato_telefone: req.body.contato_telefone || conta.contato_telefone,
-    contato_email: conta.contato_email,
-    segmento,
-    horario_semanal,
-    conta_id: conta.id,
-    origem: 'painel',
-  });
-  // Fire-and-forget: mesmo aviso que o formulário público mandava antes de
-  // ser aposentado — sem ele, o pedido só aparece pra quem abrir o admin
-  // por acaso (a fila "Candidaturas" ainda avisa, mas o e-mail chega antes).
-  enviarCandidaturaNova(cand).catch((err) => console.error('e-mail de candidatura nova', err));
-  res.status(201).json({ ok: true, id: cand.id });
 });
 
 // Convite aberto por quem já tem conta: os papéis entram nesta conta em vez
@@ -438,4 +453,4 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
 
-module.exports = { router, adicionarPapel, liberarPapelNaConta };
+module.exports = { router, adicionarPapel, liberarPapelNaConta, criarCandidaturaPonto };

@@ -12,6 +12,13 @@ const STATUS = ['a_instalar', 'em_operacao', 'em_reparo', 'inativo'];
 const CAMPOS_ATUALIZAVEIS = [
   'nome',
   'endereco',
+  // Bairro e complemento entraram na migration 070 (rodada de candidatura
+  // canônica, 22/09/2026) — antes disso `endereco` guardava rua e bairro
+  // concatenados (o ViaCEP devolve os dois separados; era o formulário que
+  // juntava). Endereço antigo continua lendo normal, só não tem os dois
+  // campos novos preenchidos.
+  'bairro',
+  'complemento',
   'cidade',
   'uf',
   'cep',
@@ -49,6 +56,8 @@ async function criar(dados, db = pool) {
   const {
     nome,
     endereco,
+    bairro,
+    complemento,
     cidade,
     uf,
     cep,
@@ -72,15 +81,17 @@ async function criar(dados, db = pool) {
 
   const { rows } = await db.query(
     `INSERT INTO pontos
-       (nome, endereco, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
+       (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
         horario_semanal, foto_instalacao_url, observacoes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
      RETURNING *`,
     [
       nome,
       endereco,
+      bairro || null,
+      complemento || null,
       cidade,
       uf,
       cep,

@@ -79,6 +79,8 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
     {
       nome: cand.nome_comercio || conta.nome_empresa,
       endereco: cand.endereco,
+      bairro: cand.bairro,
+      complemento: cand.complemento,
       cidade: cand.cidade || 'Matão',
       uf: cand.uf || 'SP',
       cep: cand.cep || '',
@@ -93,6 +95,13 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       responsavel_nome: cand.nome,
       responsavel_contato: cand.contato_telefone,
       fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
+      // Horário/foto/observações não eram copiados aqui (achado na rodada de
+      // candidatura canônica, 22/09/2026) — este é o caminho de quem aceita
+      // um convite virando conta nova, `liberarPapelNaConta` é o de conta já
+      // existente; os dois têm que copiar os mesmos dados da candidatura.
+      horario_semanal: cand.horario_semanal || null,
+      foto_instalacao_url: cand.foto_fachada_url || null,
+      observacoes: cand.mensagem || null,
       plano_ponto_id: opcao ? opcao.id : null,
       valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
       cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
@@ -971,6 +980,11 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  // Mesmo motivo do comentário abaixo, em "custoPorExibicao": preço de
+  // cobrança só pode ter uma fonte. Sem a assinatura aqui, quem está numa
+  // condição promocional (Ofertas/Promoções, 22/09/2026) veria um custo por
+  // exibição maior do que o que paga de verdade.
+  const assinaturaAtiva = await assinaturasRepo.buscarAtivaDoAnunciante(anuncianteId);
   const confirmadasMes = Number(confirmadasMesRows.rows[0].confirmadas);
 
   // Horas contratadas x entregues no mês (pedido do dono, 19/09/2026, card
@@ -1056,7 +1070,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     // e a do motor de pagamento.
     custoPorExibicao:
       plano && exibicoesContratadasMes > 0 && !anunciante.plano_cortesia
-        ? sanCheckout.valorMensalDaConta(anunciante, plano) / exibicoesContratadasMes
+        ? sanCheckout.valorMensalDaConta(anunciante, plano, assinaturaAtiva) / exibicoesContratadasMes
         : null,
   });
 });

@@ -6,7 +6,6 @@
 // (estado) => desenharDashboard(estado)). Requer /config.js e /layout.js.
 (function () {
   const $ = (sel, raiz) => (raiz || document).querySelector(sel);
-  const DICA_FOTO_PADRAO = 'Opcional — sem foto, usamos um ícone padrão até você mandar uma.';
 
   async function estadoDosModos() {
     const r = await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' });
@@ -30,149 +29,10 @@
     return dados;
   }
 
-  const CAMPOS_ENDERECO = (prefixo) => `
-    <div class="field-row">
-      <div class="u-col"><label for="${prefixo}cep">CEP</label><input id="${prefixo}cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required></div>
-      <div class="u-col-2"><label for="${prefixo}endereco">Rua e bairro</label><input id="${prefixo}endereco" name="endereco" required></div>
-      <div class="u-col"><label for="${prefixo}numero">Número</label><input id="${prefixo}numero" name="numero" required></div>
-    </div>
-    <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
-    <div class="field-row">
-      <div class="u-col-2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" value="Matão" required></div>
-      <div class="u-col"><label for="${prefixo}uf">UF</label><input id="${prefixo}uf" name="uf" maxlength="2" value="SP" required></div>
-    </div>`;
-
-  const CAMPO_SEGMENTO = (prefixo, rotulo) => `
-    <div><label for="${prefixo}categoria_id">${rotulo}</label><select id="${prefixo}categoria_id" name="categoria_id" data-categorias required></select></div>
-    <div data-categoria-livre hidden><label for="${prefixo}categoria_livre">Qual?</label><input id="${prefixo}categoria_livre" name="categoria_livre"></div>`;
-
-  // Foto da fachada com preview real (22/09/2026, pedido do dono — antes só
-  // mostrava o nome do arquivo). Opcional sempre: sem foto, o card da
-  // candidatura cai no placeholder oficial, igual sempre foi.
-  const CAMPO_FOTO_FACHADA = (prefixo) => `
-    <div class="campo-foto">
-      <div class="campo-foto-preview" id="${prefixo}fotoPreview" hidden><img alt="Pré-visualização da foto da fachada"></div>
-      <div class="campo-foto-linha">
-        <label class="btn ghost mini" for="${prefixo}foto" id="${prefixo}fotoLabel">Escolher foto da fachada</label>
-        <button type="button" class="btn ghost mini u-txt-erro" id="${prefixo}fotoRemover" hidden>Remover foto</button>
-        <input type="file" accept="image/*" id="${prefixo}foto" hidden>
-      </div>
-      <span class="u-fs-72 u-dim" id="${prefixo}fotoNome">${DICA_FOTO_PADRAO}</span>
-    </div>`;
-
-  // FileReader (data:), não URL.createObjectURL — a CSP do site só libera
-  // `img-src 'self' data:` (src/server.js), sem `blob:`. Achado testando: a
-  // troca de foto e o texto do botão funcionavam, mas a imagem em si nunca
-  // aparecia, bloqueada pelo navegador em silêncio.
-  function ligarFotoFachada(form, prefixo) {
-    const input = $(`#${prefixo}foto`, form);
-    if (!input) return;
-    const preview = $(`#${prefixo}fotoPreview`, form);
-    const label = $(`#${prefixo}fotoLabel`, form);
-    const remover = $(`#${prefixo}fotoRemover`, form);
-    const hint = $(`#${prefixo}fotoNome`, form);
-    const limpar = () => {
-      preview.hidden = true;
-      preview.querySelector('img').src = '';
-      label.textContent = 'Escolher foto da fachada';
-      remover.hidden = true;
-      hint.textContent = DICA_FOTO_PADRAO;
-    };
-    input.addEventListener('change', () => {
-      const arquivo = input.files[0];
-      if (!arquivo) return limpar();
-      const leitor = new FileReader();
-      leitor.onload = () => {
-        // Achado do review: se o usuário clicou "Remover foto" ou trocou de
-        // arquivo antes da leitura terminar, `input.files[0]` já não é mais
-        // este `arquivo` — descarta a leitura velha em vez de sobrescrever
-        // a prévia com uma foto removida/superada.
-        if (input.files[0] !== arquivo) return;
-        preview.querySelector('img').src = leitor.result;
-        preview.hidden = false;
-      };
-      leitor.readAsDataURL(arquivo);
-      label.textContent = 'Trocar foto';
-      remover.hidden = false;
-      hint.textContent = arquivo.name;
-    });
-    remover.addEventListener('click', () => {
-      input.value = '';
-      limpar();
-    });
-  }
-
-  // Horário de funcionamento do ponto, dia a dia + feriados (rodada final
-  // da Rede, 22/09/2026 — substitui os 3 grupos de antes). O schema sempre
-  // guardou por dia (src/lib/horario-semanal.js); só o formulário mudou.
-  const DIAS_HORARIO = [
-    { id: 'seg', rotulo: 'Segunda', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-    { id: 'ter', rotulo: 'Terça', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-    { id: 'qua', rotulo: 'Quarta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-    { id: 'qui', rotulo: 'Quinta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-    { id: 'sex', rotulo: 'Sexta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-    { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false, abre: '09:00', fecha: '15:00' },
-    { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
-    { id: 'feriados', rotulo: 'Feriados', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
-  ];
-
-  const CAMPO_HORARIO_SEMANAL = () => `
-    <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
-    <div class="horario-semanal">
-      ${DIAS_HORARIO.map(
-        (d) => `
-        <div class="horario-dia" data-horario-dia="${d.id}">
-          <span class="horario-dia-nome">${d.rotulo}</span>
-          <div class="horario-dia-campos" ${d.fechadoPadrao ? 'hidden' : ''}>
-            <input class="mini" type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre">
-            <span class="u-dim">–</span>
-            <input class="mini" type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha">
-          </div>
-          <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${d.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label>
-        </div>`,
-      ).join('')}
-    </div>`;
-
-  function ligarHorarioSemanal(form) {
-    form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
-      const chk = linha.querySelector('[data-horario-fechado]');
-      const campos = linha.querySelector('.horario-dia-campos');
-      chk.addEventListener('change', () => {
-        campos.hidden = chk.checked;
-      });
-    });
-  }
-
-  function lerHorarioSemanalDoForm(form) {
-    const horario = {};
-    form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
-      const dia = linha.dataset.horarioDia;
-      const fechado = linha.querySelector('[data-horario-fechado]').checked;
-      horario[dia] = fechado
-        ? null
-        : {
-            abre: linha.querySelector('[data-horario-abre]').value,
-            fecha: linha.querySelector('[data-horario-fecha]').value,
-          };
-    });
-    return horario;
-  }
-
-  function segmentoDe(form) {
-    const sel = form.categoria_id;
-    const opcao = sel?.options[sel.selectedIndex];
-    const livre = form.querySelector('[data-categoria-livre]');
-    return livre && !livre.hidden ? form.categoria_livre.value.trim() : opcao ? opcao.dataset.nome || '' : '';
-  }
-
-  function enderecoDe(form) {
-    return {
-      endereco: `${form.endereco.value.trim()}, ${form.numero.value.trim()}`,
-      cidade: form.cidade.value.trim(),
-      uf: form.uf.value.trim().toUpperCase(),
-      cep: form.cep.value.trim(),
-    };
-  }
+  // Endereço, segmento, horário semanal, foto com preview e preview de card:
+  // todos vêm do módulo canônico compartilhado (public/candidatura-ponto.js,
+  // rodada de Ofertas/Promoções, 22/09/2026) — mesmos campos, mesma
+  // validação, usados aqui e em painel.page.js/ponto.page.js.
 
   // ---- cards de ativação, um por modo ----
   const CARDS = {
@@ -182,8 +42,8 @@
           <p class="eyebrow">Modo anúncios</p>
           <h3>Coloque a sua marca nas telas da cidade</h3>
           <p class="form-hint u-m-0 u-mb-6">Sua conta já existe, pra anunciar só falta o endereço da empresa (vai na nota fiscal). Depois é escolher um plano e subir o vídeo.</p>
-          ${CAMPOS_ENDERECO('m_')}
-          ${CAMPO_SEGMENTO('m_', 'Ramo de atividade')}
+          ${candidaturaCampoEndereco('m_')}
+          ${candidaturaCampoSegmento('m_', 'Ramo de atividade')}
           <p class="form-hint">O ramo garante que você não divida a tela com um concorrente direto.</p>
           <button class="btn primary" type="submit">Ativar modo anúncios</button>
           <p class="form-msg" id="modoMsg" role="status"></p>
@@ -202,28 +62,31 @@
       }
       const ganhou = bonus?.disponivel;
       return `
-        <form class="card wide modo-card" id="formModo" data-bonus="${ganhou ? '1' : ''}">
-          <p class="eyebrow">Modo meu ponto</p>
-          <h3>${ganhou ? 'Você ganhou uma tela no seu comércio!' : 'Quero uma tela no meu comércio'}</h3>
-          <p class="form-hint u-m-0 u-mb-6">${
-            ganhou
-              ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
-              : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'
-          }</p>
-          <p class="form-sep-titulo u-mt-0">Estabelecimento</p>
-          <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
-          ${CAMPO_FOTO_FACHADA('m_')}
-          ${CAMPOS_ENDERECO('m_')}
-          ${CAMPO_SEGMENTO('m_', 'Segmento')}
-          <div><label for="m_fluxo">Média de pessoas que passam por mês (opcional)</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="0" inputmode="numeric"></div>
-          ${CAMPO_HORARIO_SEMANAL()}
-          <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
-          <div class="escolha-grid" id="modoEscolhaPlano"></div>
-          <p class="form-sep-titulo u-mt-8">Informações adicionais</p>
-          <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
-          <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
-          <p class="form-msg" id="modoMsg" role="status"></p>
-        </form>`;
+        <div class="candidatura-layout">
+          <form class="card wide modo-card" id="formModo" data-bonus="${ganhou ? '1' : ''}">
+            <p class="eyebrow">Modo meu ponto</p>
+            <h3>${ganhou ? 'Você ganhou uma tela no seu comércio!' : 'Quero uma tela no meu comércio'}</h3>
+            <p class="form-hint u-m-0 u-mb-6">${
+              ganhou
+                ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
+                : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'
+            }</p>
+            <p class="form-sep-titulo u-mt-0">Estabelecimento</p>
+            <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
+            ${candidaturaCampoFoto('m_')}
+            ${candidaturaCampoEndereco('m_')}
+            ${candidaturaCampoSegmento('m_', 'Segmento')}
+            <div><label for="m_fluxo">Média de pessoas que passam por mês</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>
+            ${candidaturaCampoHorario()}
+            <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
+            <div class="escolha-grid" id="modoEscolhaPlano"></div>
+            <p class="form-sep-titulo u-mt-8">Informações adicionais</p>
+            <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
+            <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
+            <p class="form-msg" id="modoMsg" role="status"></p>
+          </form>
+          ${candidaturaCampoPreview()}
+        </div>`;
     },
     // Sem pedido self-service (18/09/2026, a pedido do dono) — quem quer
     // vender fala direto com a gente por um canal oficial, e quem entra,
@@ -282,7 +145,7 @@
     try {
       if (modo === 'anunciante') {
         await enviar('/conta/modos/anunciante', {
-          ...enderecoDe(form),
+          ...candidaturaEnderecoDoForm(form),
           categoria_id: form.categoria_id.value || null,
           categoria_livre: form.querySelector('[data-categoria-livre]').hidden
             ? null
@@ -298,12 +161,12 @@
       const escolhido = form.querySelector('input[name="plano_ponto_id"]:checked');
       const corpo = {
         nome_comercio: form.nome_comercio.value.trim(),
-        ...enderecoDe(form),
-        segmento: segmentoDe(form),
+        ...candidaturaEnderecoDoForm(form),
+        segmento: candidaturaSegmentoDoForm(form),
         fluxo_estimado_mensal: form.fluxo_estimado_mensal.value || null,
         plano_ponto_id: escolhido ? escolhido.value : null,
         mensagem: form.mensagem.value.trim() || null,
-        horario_semanal: lerHorarioSemanalDoForm(form),
+        horario_semanal: candidaturaHorarioDoForm(form),
       };
       const resposta = await enviar('/conta/modos/ponto/pedir', corpo);
       // Foto é opcional e sobe DEPOIS (furo A do redesenho da Rede,
@@ -311,7 +174,7 @@
       // arquivo escolhido, nem tenta. Se o upload falhar, o pedido já foi
       // enviado mesmo assim (não trava o fluxo principal por causa da
       // foto) — só avisa.
-      const arquivo = $('#m_foto', form)?.files[0];
+      const arquivo = candidaturaFotoSelecionada(form, 'm_');
       if (arquivo) {
         const fd = new FormData();
         fd.append('arquivo', arquivo);
@@ -357,8 +220,10 @@
       if (window.ligarCep) window.ligarCep(card);
       if (window.ligarCategorias) window.ligarCategorias(card);
       if (modo === 'ponto') {
-        ligarHorarioSemanal(form);
-        ligarFotoFachada(form, 'm_');
+        candidaturaLigarHorario(form);
+        candidaturaLigarFoto(form, 'm_');
+        const previewRaiz = $('.candidatura-preview', card);
+        if (previewRaiz) candidaturaLigarPreviewCard(form, previewRaiz, 'm_');
       }
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
       form.addEventListener('submit', (e) => {

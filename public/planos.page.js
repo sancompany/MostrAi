@@ -123,14 +123,13 @@ function render(meses) {
   }
   grid.innerHTML = doMes
     .map((p) => {
-      const porMes = Number(p.valor_mensal);
-      const cheio = p.desconto_percentual > 0 && p.valor_mensal_cheio != null ? Number(p.valor_mensal_cheio) : null;
+      const promo = condicaoPromocionalVigente(p.tier, meses);
       return `
     <div class="plan-card ${p.destaque_no_site ? 'popular' : ''}">
       ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
       <div class="tier">${esc(p.nome)}</div>
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
-      ${montarPreco(p, porMes, cheio, meses)}
+      ${montarPreco(p, meses, promo)}
       <ul>
         ${heranca(p)}
         ${derivados(p)}
@@ -154,27 +153,41 @@ function render(meses) {
 // tamanho da linha riscada — quanto economizou (em verde) e, na linha de
 // baixo, na cor normal, o equivalente por mês.
 //
-// As duas últimas linhas são condicionais (pedido do dono, 19/09/2026,
-// revendo a decisão anterior de "manter os quatro ciclos iguais"): no
-// Mensal não há nada pra comparar (o valor já É o mensal), então nenhuma
-// das duas aparece. Nos demais ciclos, "equivalente" sempre aparece (é um
-// número diferente do total do ciclo, útil pra comparar), mas "economizou"
-// só quando o plano tem desconto de verdade — sem ele a economia seria
-// sempre zero, e uma linha dizendo "economizou R$0,00" não ajuda ninguém.
-function montarPreco(p, porMes, cheio, meses) {
-  if (meses === 1 || !cheio) {
-    return `
-      ${cheio ? `<div class="price-riscado"><span>${fmt(cheio)}/mês</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>` : ''}
-      <div class="price">${fmt(porMes)}/mês</div>`;
-  }
-  const cheioCiclo = Math.round(cheio * meses * 100) / 100;
+// As duas últimas linhas são condicionais NO CONTEÚDO (pedido do dono,
+// 19/09/2026, revendo a decisão anterior de "manter os quatro ciclos
+// iguais"): no Mensal SEM promoção não há nada pra comparar (o valor já É
+// o mensal), e "economizou" só faz sentido quando existe desconto de
+// verdade — sem ele a economia seria sempre zero, e uma linha dizendo
+// "economizou R$0,00" não ajuda ninguém. Isso continua valendo.
+//
+// O que NÃO pode mais variar é a GEOMETRIA (reformulação comercial,
+// 22/09/2026, Parte J: "os cards do ciclo Mensal ficam menores/diferentes
+// dos cards dos outros ciclos" — o próprio card pulava de 2 pra 4 linhas ao
+// trocar de aba, e a régua de altura ficava pulando junto). As 4 linhas
+// (riscado/badge, preço, economia, equivalente) sempre nascem no DOM nos 4
+// ciclos; a que não se aplica fica com `.price-linha-vazia` — reserva a
+// mesma altura, sem mostrar um número que não existe.
+//
+// `promo` (Parte Q, mesma rodada): quando o ciclo participa de uma
+// promoção vigente, o desconto promocional SUBSTITUI o desconto normal do
+// ciclo na conta (mesma régua do backend, san-checkout.js#valorMensalDaConta)
+// — é o preço de tabela daquele ciclo enquanto a promoção vale, não mais um
+// desconto em cima do desconto.
+function montarPreco(p, meses, promo) {
+  const cheioBase = Number(p.valor_mensal_cheio ?? p.valor_mensal);
+  const desconto = promo ? Number(promo.descontoPercentual) : Number(p.desconto_percentual) || 0;
+  const porMes = desconto ? Math.round(cheioBase * (1 - desconto / 100) * 100) / 100 : cheioBase;
+  const cheioCiclo = Math.round(cheioBase * meses * 100) / 100;
   const totalCiclo = Math.round(porMes * meses * 100) / 100;
   const economia = Math.round((cheioCiclo - totalCiclo) * 100) / 100;
+  const temRiscado = cheioCiclo > totalCiclo;
   return `
-      <div class="price-riscado"><span>${fmt(cheioCiclo)}</span> <span class="badge-desconto">-${Number(p.desconto_percentual)}%</span></div>
-      <div class="price">${fmt(totalCiclo)}</div>
-      ${economia > 0 ? `<div class="price-economia">Você economizou ${fmt(economia)}.</div>` : ''}
-      <div class="price-equivalente">Equivalente a ${fmt(porMes)}/mês.</div>`;
+      ${promo ? `<div class="price-selo-promo">${esc(promo.promocao?.selo || promo.promocao?.titulo_publico || 'Promoção')}</div>` : ''}
+      <div class="price-riscado ${temRiscado ? '' : 'price-linha-vazia'}">${temRiscado ? `<span>${fmt(cheioCiclo)}</span> <span class="badge-desconto">-${desconto}%</span>` : '&nbsp;'}</div>
+      <div class="price">${fmt(totalCiclo)}${meses === 1 ? '/mês' : ''}</div>
+      <div class="price-economia ${economia > 0 ? '' : 'price-linha-vazia'}">${economia > 0 ? `Você economizou ${fmt(economia)}.` : '&nbsp;'}</div>
+      <div class="price-equivalente ${meses > 1 ? '' : 'price-linha-vazia'}">${meses > 1 ? `Equivalente a ${fmt(porMes)}/mês.` : '&nbsp;'}</div>
+      ${promo ? `<div class="price-promo-duracao">Preço válido por ${promo.promocao?.duracao_beneficio_meses} meses a partir da adesão.</div>` : ''}`;
 }
 
 document.getElementById('cycleToggle').addEventListener('click', (e) => {
@@ -187,6 +200,9 @@ document.getElementById('cycleToggle').addEventListener('click', (e) => {
 
 // O desconto de cada ciclo sai dos preços que estão no banco, não de um
 // número escrito na mão aqui — se o admin mexer no preço, o rótulo segue.
+// Promoção vigente entra na mesma conta (Parte Q): o rótulo do ciclo mostra
+// o MAIOR desconto real de quem está ali, promocional incluso — senão a
+// aba dizia "-10%" enquanto o card já embaixo mostrava "-15%" de promoção.
 function atualizarDescontos() {
   document.querySelectorAll('#cycleToggle button').forEach((btn) => {
     const meses = Number(btn.dataset.meses);
@@ -194,6 +210,8 @@ function atualizarDescontos() {
     if (!rotulo || meses === 1) return;
     const descontos = PLANOS.filter((p) => p.compromisso_meses === meses)
       .map((p) => {
+        const promo = condicaoPromocionalVigente(p.tier, meses);
+        if (promo) return Number(promo.descontoPercentual);
         const base = mensalDoTier(p.tier);
         return base ? Math.round((1 - p.valor_mensal / base) * 100) : 0;
       })
@@ -221,9 +239,28 @@ fetch(`${API_BASE_URL}/pontos/fluxo`)
 // `fetch` corriam soltos e, numa rede lenta, o aviso montava antes dos planos
 // chegarem e saía com "mais pontos" em vez do número — o tipo de corrida que
 // nunca aparece na máquina de quem escreveu e sempre aparece no celular.
-const planosCarregados = Promise.all([fetch(`${API_BASE_URL}/planos`).then((r) => r.json()), carregarLogin])
-  .then(([planos]) => {
+// Promoções vigentes marcadas pra aparecer na página de Planos (Parte Q do
+// pedido de Ofertas/Promoções, 22/09/2026) — falha muda (sem promoção
+// nenhuma) em vez de quebrar a vitrine se o endpoint cair.
+let PROMOCOES_VIGENTES = [];
+function condicaoPromocionalVigente(tier, compromissoMeses) {
+  for (const promo of PROMOCOES_VIGENTES) {
+    const item = (promo.itens || []).find((i) => i.tier === tier && i.compromissoMeses === compromissoMeses);
+    if (item) return { ...item, promocao: promo };
+  }
+  return null;
+}
+
+const planosCarregados = Promise.all([
+  fetch(`${API_BASE_URL}/planos`).then((r) => r.json()),
+  fetch(`${API_BASE_URL}/promocoes/vigentes`)
+    .then((r) => r.json())
+    .catch(() => []),
+  carregarLogin,
+])
+  .then(([planos, promocoes]) => {
     PLANOS = planos;
+    PROMOCOES_VIGENTES = (Array.isArray(promocoes) ? promocoes : []).filter((p) => p.mostrar_planos);
     atualizarDescontos();
     render(3);
   })

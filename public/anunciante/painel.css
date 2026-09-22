@@ -155,3 +155,14 @@
   .ponto-opportunity-copy { align-items: flex-start; }
   .ponto-opportunity-form { padding: 0 20px 22px; }
 }
+
+/* Promoção pra usuários logados (Parte R do pedido de Ofertas/Promoções,
+   22/09/2026) — linha discreta abaixo do status da conta, com CTA pra
+   página de Planos. Não é um card cheio como a Home: o painel já tem muita
+   coisa em cima, isso é um aviso, não uma nova seção. */
+.promo-logado {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 18px; margin-top: 12px;
+}
+.promo-logado .badge { margin-right: 8px; }

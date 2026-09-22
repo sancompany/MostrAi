@@ -201,7 +201,7 @@ async function montarRespostaPlano(assinaturaId) {
     // trimestral" (achado em produção, 19/09/2026): nome duplicado, ciclo
     // duplicado, e travessão que não pode aparecer em texto nenhum do site.
     descricao: 'Espaço publicitário na rede Mostraí.',
-    valor: multiplicar(valorMensalDaConta(anunciante, plano), plano.compromisso_meses),
+    valor: multiplicar(valorMensalDaConta(anunciante, plano, assinatura), plano.compromisso_meses),
     ciclo: CICLO_ASAAS[plano.compromisso_meses] || 'MONTHLY',
     pagador: {
       nome: anunciante.nome_empresa,
@@ -252,8 +252,30 @@ async function montarRespostaPlano(assinaturaId) {
 // ganhou.
 const TIERS_COM_CREDITO = new Set(['destaque', 'maximo']);
 
-function valorMensalDaConta(anunciante, plano) {
-  const base = Number(plano.valor_mensal);
+// `assinatura` é opcional (várias chamadas antigas não tinham como passar) —
+// quando vem, e carrega uma condição promocional ainda dentro do prazo
+// prometido (`promocao_valido_ate`, rodada de Ofertas/Promoções,
+// 22/09/2026), o desconto promocional SUBSTITUI o desconto do ciclo na base
+// (mesma régua da vitrine pública, public/planos.page.js: a promoção é o
+// preço de tabela daquele ciclo enquanto vale, não mais um percentual em
+// cima do preço de tabela normal) — comodato e parceiro continuam entrando
+// DEPOIS, em cima dessa base, porque são direito da CONTA, não do ciclo.
+// É um SNAPSHOT da assinatura, travado no instante da adesão (ver
+// promocoes-repository.js#condicaoVigente e o ponto de criação em
+// financeiro/routes.js) — preço-base mudando depois, ou a promoção sendo
+// editada/encerrada, não afeta quem já aderiu até o prazo acabar (Parte T
+// do pedido: nunca recalcula retroativamente).
+function valorMensalDaConta(anunciante, plano, assinatura) {
+  const promoAtiva = assinatura?.promocao_valido_ate && new Date(assinatura.promocao_valido_ate) > new Date();
+  const base = promoAtiva
+    ? arredondar(
+        Number(plano.valor_mensal_cheio ?? plano.valor_mensal) -
+          percentual(
+            Number(plano.valor_mensal_cheio ?? plano.valor_mensal),
+            Number(assinatura.promocao_desconto_percentual || 0),
+          ),
+      )
+    : Number(plano.valor_mensal);
 
   const descontoComodato = (anunciante.papeis || []).includes('ponto')
     ? Number(plano.desconto_comodato_percentual || 0)
@@ -581,8 +603,8 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   }
 
   // O que a conta paga é o valor do plano, com os descontos que ela tem
-  // direito (comodato e parceiro).
-  const valorMensal = valorMensalDaConta(anunciante, plano);
+  // direito (comodato, parceiro, e promocional se a assinatura carregar um).
+  const valorMensal = valorMensalDaConta(anunciante, plano, assinatura);
   const valorCiclo = multiplicar(valorMensal, plano.compromisso_meses);
 
   // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho

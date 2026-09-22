@@ -103,119 +103,8 @@ function montarLinkVendedor(estado) {
 // exclusivo do ponto). Bem mais simples que o formulário completo em
 // modos.js (CARDS.ponto, ainda usado por /anunciante/ponto.html): sem
 // escolha de comodato aqui — quem se candidata combina isso no WhatsApp.
-// Horário de funcionamento do ponto, dia a dia + feriados (rodada final da
-// Rede, 22/09/2026 — substitui os 3 grupos de antes; mesmo padrão de
-// public/modos.js, sem módulo compartilhado entre os dois arquivos, por
-// convenção do projeto).
-const DICA_FOTO_PADRAO = 'Opcional — sem foto, usamos um ícone padrão até você mandar uma.';
-const DIAS_HORARIO = [
-  { id: 'seg', rotulo: 'Segunda', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-  { id: 'ter', rotulo: 'Terça', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-  { id: 'qua', rotulo: 'Quarta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-  { id: 'qui', rotulo: 'Quinta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-  { id: 'sex', rotulo: 'Sexta', fechadoPadrao: false, abre: '09:00', fecha: '18:00' },
-  { id: 'sab', rotulo: 'Sábado', fechadoPadrao: false, abre: '09:00', fecha: '15:00' },
-  { id: 'dom', rotulo: 'Domingo', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
-  { id: 'feriados', rotulo: 'Feriados', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
-];
-
-const CAMPO_HORARIO_SEMANAL = () => `
-  <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
-  <div class="horario-semanal">
-    ${DIAS_HORARIO.map(
-      (d) => `
-      <div class="horario-dia" data-horario-dia="${d.id}">
-        <span class="horario-dia-nome">${d.rotulo}</span>
-        <div class="horario-dia-campos" ${d.fechadoPadrao ? 'hidden' : ''}>
-          <input class="mini" type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre">
-          <span class="u-dim">–</span>
-          <input class="mini" type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha">
-        </div>
-        <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${d.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label>
-      </div>`,
-    ).join('')}
-  </div>`;
-
-// Foto da fachada com preview real (22/09/2026, pedido do dono — antes só
-// mostrava o nome do arquivo). Mesmo padrão de public/modos.js, cópia
-// própria por convenção do projeto (sem módulo compartilhado).
-const CAMPO_FOTO_FACHADA = (prefixo) => `
-  <div class="campo-foto">
-    <div class="campo-foto-preview" id="${prefixo}fotoPreview" hidden><img alt="Pré-visualização da foto da fachada"></div>
-    <div class="campo-foto-linha">
-      <label class="btn ghost mini" for="${prefixo}foto" id="${prefixo}fotoLabel">Escolher foto da fachada</label>
-      <button type="button" class="btn ghost mini u-txt-erro" id="${prefixo}fotoRemover" hidden>Remover foto</button>
-      <input type="file" accept="image/*" id="${prefixo}foto" hidden>
-    </div>
-    <span class="u-fs-72 u-dim" id="${prefixo}fotoNome">${DICA_FOTO_PADRAO}</span>
-  </div>`;
-
-// FileReader (data:), não URL.createObjectURL — a CSP do site só libera
-// `img-src 'self' data:` (src/server.js), sem `blob:`. Achado testando: a
-// troca de foto e o texto do botão funcionavam, mas a imagem em si nunca
-// aparecia, bloqueada pelo navegador em silêncio.
-function ligarFotoFachada(prefixo) {
-  const input = document.getElementById(`${prefixo}foto`);
-  if (!input) return;
-  const preview = document.getElementById(`${prefixo}fotoPreview`);
-  const label = document.getElementById(`${prefixo}fotoLabel`);
-  const remover = document.getElementById(`${prefixo}fotoRemover`);
-  const hint = document.getElementById(`${prefixo}fotoNome`);
-  const limpar = () => {
-    preview.hidden = true;
-    preview.querySelector('img').src = '';
-    label.textContent = 'Escolher foto da fachada';
-    remover.hidden = true;
-    hint.textContent = DICA_FOTO_PADRAO;
-  };
-  input.addEventListener('change', () => {
-    const arquivo = input.files[0];
-    if (!arquivo) return limpar();
-    const leitor = new FileReader();
-    leitor.onload = () => {
-      // Achado do review: se o usuário clicou "Remover foto" ou trocou de
-      // arquivo antes da leitura terminar, `input.files[0]` já não é mais
-      // este `arquivo` — descarta a leitura velha em vez de sobrescrever
-      // a prévia com uma foto removida/superada.
-      if (input.files[0] !== arquivo) return;
-      preview.querySelector('img').src = leitor.result;
-      preview.hidden = false;
-    };
-    leitor.readAsDataURL(arquivo);
-    label.textContent = 'Trocar foto';
-    remover.hidden = false;
-    hint.textContent = arquivo.name;
-  });
-  remover.addEventListener('click', () => {
-    input.value = '';
-    limpar();
-  });
-}
-
-function ligarHorarioSemanal(form) {
-  form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
-    const chk = linha.querySelector('[data-horario-fechado]');
-    const campos = linha.querySelector('.horario-dia-campos');
-    chk.addEventListener('change', () => {
-      campos.hidden = chk.checked;
-    });
-  });
-}
-
-function lerHorarioSemanalDoForm(form) {
-  const horario = {};
-  form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
-    const dia = linha.dataset.horarioDia;
-    const fechado = linha.querySelector('[data-horario-fechado]').checked;
-    horario[dia] = fechado
-      ? null
-      : {
-          abre: linha.querySelector('[data-horario-abre]').value,
-          fecha: linha.querySelector('[data-horario-fecha]').value,
-        };
-  });
-  return horario;
-}
+// Foto, horário e preview vêm do módulo canônico compartilhado
+// (public/candidatura-ponto.js, rodada de Ofertas/Promoções, 22/09/2026).
 
 function montarCardPonto(estado) {
   const caixa = document.getElementById('cardPonto');
@@ -250,28 +139,40 @@ function montarCardPonto(estado) {
         <button class="btn primary" type="button" id="btnAbrirCardPonto" aria-expanded="false">Quero ser um ponto</button>
       </div>
       <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
-        <form id="formCardPonto">
-          <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
-          ${CAMPO_FOTO_FACHADA('cp_')}
-          <p class="form-sep-titulo u-mt-0">Sobre o movimento</p>
-          <div class="u-mb-12">
-            <label for="cp_fluxo">Média de pessoas que passam por mês</label>
-            <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
-          </div>
-          ${CAMPO_HORARIO_SEMANAL()}
-          <p class="form-sep-titulo">Informações adicionais</p>
-          <div class="u-mb-12">
-            <label for="cp_mensagem">Algo mais? (opcional)</label>
-            <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
-          </div>
-          <button class="btn primary" type="submit">Enviar meu interesse</button>
-          <p class="form-msg" id="cardPontoMsg" role="status"></p>
-        </form>
+        <div class="candidatura-layout">
+          <form id="formCardPonto">
+            <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
+            ${candidaturaCampoFoto('cp_')}
+            <p class="form-sep-titulo u-mt-8">Sobre o movimento</p>
+            <div class="u-mb-12">
+              <label for="cp_fluxo">Média de pessoas que passam por mês</label>
+              <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
+            </div>
+            ${candidaturaCampoHorario()}
+            <p class="form-sep-titulo">Informações adicionais</p>
+            <div class="u-mb-12">
+              <label for="cp_mensagem">Algo mais? (opcional)</label>
+              <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
+            </div>
+            <button class="btn primary" type="submit">Enviar meu interesse</button>
+            <p class="form-msg" id="cardPontoMsg" role="status"></p>
+          </form>
+          ${candidaturaCampoPreview()}
+        </div>
       </div>
     </div>`;
 
-  ligarHorarioSemanal(document.getElementById('formCardPonto'));
-  ligarFotoFachada('cp_');
+  const formCardPonto = document.getElementById('formCardPonto');
+  candidaturaLigarHorario(formCardPonto);
+  candidaturaLigarFoto(formCardPonto, 'cp_');
+  const previewCardPonto = document.querySelector('#conteudoCardPonto .candidatura-preview');
+  if (previewCardPonto) {
+    candidaturaLigarPreviewCard(formCardPonto, previewCardPonto, 'cp_', {
+      nome: ANUNCIANTE.nome_empresa,
+      cidade: ANUNCIANTE.cidade,
+      uf: ANUNCIANTE.uf,
+    });
+  }
 
   document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
     const conteudo = document.getElementById('conteudoCardPonto');
@@ -303,7 +204,7 @@ function montarCardPonto(estado) {
           cep: ANUNCIANTE.cep,
           fluxo_estimado_mensal: Number(e.target.fluxo_estimado_mensal.value),
           mensagem: e.target.mensagem.value.trim() || null,
-          horario_semanal: lerHorarioSemanalDoForm(e.target),
+          horario_semanal: candidaturaHorarioDoForm(e.target),
         }),
       });
       const corpo = await r.json().catch(() => ({}));
@@ -315,7 +216,7 @@ function montarCardPonto(estado) {
       // Foto opcional, sobe DEPOIS (furo A do redesenho da Rede, 22/09/2026)
       // — mesmo padrão de public/modos.js: a candidatura já vale sem foto,
       // e uma falha aqui não desfaz o pedido que já foi enviado.
-      const arquivo = document.getElementById('cp_foto').files[0];
+      const arquivo = candidaturaFotoSelecionada(e.target, 'cp_');
       if (arquivo) {
         const fd = new FormData();
         fd.append('arquivo', arquivo);
@@ -1203,3 +1104,27 @@ document.getElementById('arquivoCriativo').addEventListener('change', async (e) 
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
+
+// Promoção pra usuários logados (Parte R do pedido de Ofertas/Promoções,
+// 22/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), filtrada
+// por `mostrar_logados`. Independente do resto do carregamento do painel:
+// se essa chamada falhar, o painel inteiro continua funcionando igual, só
+// sem o banner.
+fetch(`${API_BASE_URL}/promocoes/vigentes`)
+  .then((r) => r.json())
+  .then((promocoes) => {
+    const promo = (Array.isArray(promocoes) ? promocoes : []).find((p) => p.mostrar_logados);
+    if (!promo) return;
+    const el = document.getElementById('promocaoLogado');
+    el.innerHTML = `
+      <div class="promo-logado">
+        <div>
+          ${promo.selo ? `<span class="badge badge-pendente">${esc(promo.selo)}</span>` : ''}
+          <b>${esc(promo.titulo_publico)}</b>
+          ${promo.subtitulo ? `<p class="u-m-0 u-dim">${esc(promo.subtitulo)}</p>` : ''}
+        </div>
+        <a class="btn primary mini" href="/planos.html">Ver condição</a>
+      </div>`;
+    el.hidden = false;
+  })
+  .catch(() => {});

@@ -12,10 +12,10 @@ async function criar(dados, db = pool) {
   const horarioValidado = validarHorarioSemanal(dados.horario_semanal);
   const { rows } = await db.query(
     `INSERT INTO candidaturas
-       (tipo, nome, nome_comercio, contato_telefone, contato_email, endereco, cidade, uf, cep,
+       (tipo, nome, nome_comercio, contato_telefone, contato_email, endereco, bairro, complemento, cidade, uf, cep,
         segmento, fluxo_estimado_mensal, mensagem, conta_id, origem, chave_pix, plano_ponto_id,
         horario_semanal)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
     [
       dados.tipo,
       dados.nome,
@@ -23,6 +23,8 @@ async function criar(dados, db = pool) {
       dados.contato_telefone,
       dados.contato_email || null,
       dados.endereco || null,
+      dados.bairro || null,
+      dados.complemento || null,
       dados.cidade || null,
       dados.uf || null,
       dados.cep || null,

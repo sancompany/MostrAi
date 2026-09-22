@@ -19,6 +19,32 @@ function pintarPrecoDaDobra(planos) {
   el.hidden = false;
 }
 
+// Bloco promocional da Home (Parte P do pedido de Ofertas/Promoções,
+// 22/09/2026) — consome a campanha vigente marcada "mostrar na Home", nunca
+// hardcoded. Sem promoção vigente com essa marca, a seção some inteira
+// (fica `hidden` desde o HTML, e continua assim).
+fetch(`${API_BASE_URL}/promocoes/vigentes`)
+  .then((r) => r.json())
+  .then((promocoes) => {
+    const promo = (Array.isArray(promocoes) ? promocoes : []).find((p) => p.mostrar_home);
+    if (!promo) return;
+    const secao = document.getElementById('promocaoHomeSecao');
+    const el = document.getElementById('promocaoHome');
+    el.innerHTML = `
+      <div class="promo-home ${promo.imagem_url ? 'com-imagem' : ''}">
+        ${promo.imagem_url ? `<img class="promo-home-img" src="${esc(promo.imagem_url)}" alt="">` : ''}
+        <div class="promo-home-texto">
+          ${promo.selo ? `<span class="badge">${esc(promo.selo)}</span>` : ''}
+          <h2>${esc(promo.titulo_publico)}</h2>
+          ${promo.subtitulo ? `<p class="lead">${esc(promo.subtitulo)}</p>` : ''}
+          ${promo.descricao ? `<p>${esc(promo.descricao)}</p>` : ''}
+          <a class="btn primary" href="/planos.html">Ver condição na página de planos</a>
+        </div>
+      </div>`;
+    secao.hidden = false;
+  })
+  .catch(() => {});
+
 // Soma de fluxo dos pontos ativos, só aparece acima de zero (ver
 // GET /pontos/fluxo) — funciona como prova social pro funil de vendas, mas
 // não expõe número de ponto isolado.
