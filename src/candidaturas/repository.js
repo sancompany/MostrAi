@@ -39,6 +39,17 @@ async function criar(dados, db = pool) {
   return rows[0];
 }
 
+// Foto da fachada (migration 067) — segundo passo do formulário de
+// candidatura (a candidatura já existe, criada como JSON puro; a foto sobe
+// depois, com multipart, no mesmo padrão de upload das demais fotos do
+// projeto). Não passa por `atualizar`/CAMPOS_ATUALIZAVEIS de propósito: essa
+// whitelist serve a rota ADMIN (`PATCH /admin/candidaturas/:id`), e uma URL
+// de storage não é campo que o admin edite à mão.
+async function definirFoto(id, url, db = pool) {
+  const { rows } = await db.query('UPDATE candidaturas SET foto_fachada_url = $2 WHERE id = $1 RETURNING *', [id, url]);
+  return rows[0] || null;
+}
+
 async function listar() {
   const { rows } = await pool.query(
     `SELECT c.*, v.token AS convite_token, v.usado_em AS convite_usado_em,
@@ -72,4 +83,4 @@ async function contarNovas() {
   return rows[0].total;
 }
 
-module.exports = { criar, listar, buscarPorId, atualizar, contarNovas, TIPOS, STATUS };
+module.exports = { criar, listar, buscarPorId, atualizar, definirFoto, contarNovas, TIPOS, STATUS };

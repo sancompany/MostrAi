@@ -298,3 +298,63 @@ criativo passa pela vaga pelo menos uma vez, mesmo quando só cabe uma
 inserção por vez.
 
 Consequências: nenhuma ação necessária — já corrigido e testado.
+
+## ADR-007 — Status visual do ponto é derivado, não um 3º valor no banco
+
+Status: Ativa desde 22/09/2026 (redesenho da tela Rede do admin).
+
+Contexto: o dono pediu 3 estados visuais (Aguardando instalação/TV
+instalada/Em operação) pros cards e filtros da Rede. `pontos.status` só tem
+dois valores desde a migration 045 (`a_instalar`/`em_operacao`) e alimenta
+elegibilidade de playlist (`src/playlist/gerador.js`), gate de confirmação
+do player (`src/lib/aparelho.js`), pacing e amortização — um 3º valor real
+exigiria revisar todos esses pontos.
+
+Decisão: "TV instalada" é calculado (`statusVisualPonto`,
+`public/admin/index.page.js`) a partir de `telas_instaladas` — contagem de
+`dispositivos.instalado_em` preenchido, nova coluna já lida por
+`src/pontos/repository.js#listar`. Não usa `aparelho_id`/chave: gerar uma
+chave só prova que alguém abriu o link, não que a TV chegou no endereço.
+
+Motivo: zero mudança de regra de negócio, zero risco pra playlist/pacing/
+gate — é presentation logic pura sobre dado que já existia.
+
+Consequências: se um dia o negócio precisar que "TV instalada" dispare
+algo no backend (ex.: notificação, cobrança), precisa virar coluna real —
+hoje é só leitura pro admin.
+
+## ADR-008 — A regra "80% comercial / 20% reservado" não existe como o dono descreveu
+
+Status: Registrada, não corrigida (22/09/2026, redesenho da Rede).
+
+Contexto: o dono descreveu uma reserva deliberada de 20% da capacidade de
+cada ponto pra conteúdo institucional/universal e pra conta própria da
+Mostraí, com o limite de 80% garantindo essa reserva. Investigação real do
+código antes de tocar em ocupação (pedido explícito dele nesta rodada)
+achou dois mecanismos DIFERENTES e INDEPENDENTES, não um só:
+
+1. `LIMITE_OCUPACAO_BLOQUEIA = 0.8` (`src/pontos/repository.js`, G.7,
+   migration 060): freio de VENDA — quando a soma do `segundos_por_hora`
+   CONTRATADO pelos anunciantes já associados ao ponto cruza 80% de 3600s,
+   o ponto para de aparecer pra ESCOLHA NOVA. Quem já está lá continua
+   normal; `liberar-escolha` só reabre com folga real (15min).
+2. O preenchimento institucional (`src/lib/pacing.js`, `ID_INSTITUCIONAL`)
+   usa só o que sobra DE VERDADE depois do contratado + autoanúncio do
+   comodato — best-effort, sem piso garantido. Se o contratado já bate
+   3600s (RN-30 corta proporcional), o institucional pode não rodar nada
+   naquela hora.
+
+Não existe nenhum código que reserve 20% de forma garantida. Os dois
+mecanismos SE CORRELACIONAM na prática (o freio de venda tende a deixar
+sobra), mas um não implica o outro — o freio olha COMPROMISSO vendido, não
+tempo de tela realmente entregue.
+
+Decisão: **não alterar nenhum dos dois mecanismos.** A Ocupação agregada na
+Visão geral (`renderOcupacaoRede`) só EXIBE o que `ocupacaoPorAnunciante()`
+já calcula — mesmo número de sempre, sem reescrever a regra.
+
+Consequências: se o dono quiser a reserva garantida de verdade, é decisão
+de produto nova (ex.: um piso mínimo de segundos institucionais por hora,
+descontado ANTES do orçamento comercial em `src/lib/pacing.js`) — não
+implementada aqui, fora do escopo desta rodada (era só reorganização
+visual + o que já existia).

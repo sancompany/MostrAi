@@ -3,6 +3,51 @@
 ## Updated
 2026-09-22
 
+## Redesenho completo da tela Rede do admin (22/09/2026, este agente)
+Pedido do dono, autorização direta pra implementar a rodada inteira ("pode
+implementar... não precisa perguntar de novo, só se achar decisão de
+negócio nova"). Objetivo: Rede virar centro operacional — grade de cards →
+ficha do ponto (somente-leitura) → Telas (única parte editável). Detalhe
+técnico completo e as decisões tomadas em `docs/PENDENCIAS.md` seção K;
+as duas decisões que valiam ADR foram pra `.ia/DECISIONS.md` (ADR-007
+status visual derivado, ADR-008 divergência da regra 80/20).
+
+**Em uma linha cada:**
+- `public/admin/index.page.js`: grade de cards nova (`montarPontoCard`,
+  `caixaCards` reaproveitado), placeholder de foto oficial
+  (`fotoOuPlaceholder`, SVG de pin), status visual derivado
+  (`statusVisualPonto`), ficha do ponto somente-leitura
+  (`renderPontoInformacoes`) + painel de Instalação
+  (`renderPontoInstalacao`, único trecho realmente editável fora de Telas),
+  Ocupação virou painel agregado na Visão geral (`renderOcupacaoRede`).
+- Removido da UI: bloco de foto-de-exemplo do site público, botão "+Novo
+  ponto" (cadastro manual). O endpoint `POST /admin/pontos` foi removido
+  de vez (backend) — confirmado sem consumidor real antes (nem teste, nem
+  `docs/api.md`); `POST /admin/pontos/foto-exemplo` ficou no backend sem
+  gatilho na UI (config ainda é lida pelo site público, só perdeu o jeito
+  de trocar pela tela — dívida registrada, seção K).
+- Migration 067: `candidaturas.foto_fachada_url` + `pontos.observacoes`,
+  fechando os 2 furos do pipeline candidatura→ponto (o resto — endereço,
+  segmento, responsável, movimento, horário — já fluía). Upload de foto em
+  2 passos, autenticado (`POST /conta/modos/ponto/candidaturas/:id/foto`).
+- **Achado real corrigido no caminho**: `segmento` no header da ficha só
+  olhava `categoria_nome`/`categoria_livre` — mas `liberarPapelNaConta`
+  nunca escreve essas duas colunas, só o `segmento` texto puro. Sem o
+  fallback, praticamente todo ponto nascido da candidatura mostrava "Sem
+  segmento informado". Corrigido (mesma prioridade do card:
+  `categoria_nome || categoria_livre || segmento`).
+
+**Verificado:** `npm run check` 153/153 (5 testes novos,
+`tests/redesenho-rede.test.js`); `tests/e2e/01-fluxo-api.sh` e
+`08-candidatura-ponto.mjs` sem regressão; `tests/e2e/09-rede-redesenho.mjs`
+novo (39 checagens, screenshots desktop+mobile em `tests/e2e/saida/v25-*`).
+`03-navegador.mjs` quebra num seletor de tabela de telas que já não existe
+desde a reorganização de Rede por entidade de 21/09 — confirmado
+pré-existente, não desta mudança.
+
+**Trabalhando na branch `claude/wonderful-hypatia-i7y4xx`, sem merge em
+`main`.**
+
 ## Current priority
 Revisão manual funcional e visual conduzida pelo dono. Ele já está aproximadamente na metade. Não reiniciar auditoria: receber a próxima observação, investigar transversalmente e fazer a menor correção coerente.
 

@@ -188,6 +188,22 @@ repositório do app não foram tocados. Detalhe em `.ia/HANDOFF.md` e
 `docs/PENDENCIAS.md` seção H. `npm run check` 133/133. Ainda na branch
 `claude/busy-noether-hheir2`.
 
+## Redesenho da tela Rede do admin — 22/09/2026
+
+`public/admin/index.page.js`: Rede virou grade de cards (foto/placeholder,
+status visual derivado — Aguardando instalação/TV instalada/Em operação,
+sem mudar `pontos.status` real) com ficha somente-leitura por ponto +
+painel de Instalação (único trecho editável fora de Telas). Ocupação saiu
+da aba por ponto e virou painel agregado na Visão geral, mesmo cálculo de
+sempre (G.7). Cadastro manual de ponto (UI e rota `POST /admin/pontos`)
+removido — sem consumidor real. Migration 067 fecha os 2 furos do pipeline
+candidatura→ponto (foto da fachada, "algo a mais" → observações). Detalhe
+completo em `.ia/HANDOFF.md` e `docs/PENDENCIAS.md` seção K. Divergência
+real encontrada e documentada (não corrigida): a regra "80% comercial/20%
+reservado" que o dono descreveu não existe assim no código — ver
+`.ia/DECISIONS.md` ADR-008. `npm run check` 153/153. Ainda na branch
+`claude/wonderful-hypatia-i7y4xx`, aguardando revisão do dono.
+
 ## Mapa funcional completo — 20/09/2026
 
 Inventário atual de todas as funcionalidades de usuário, admin e operação em `docs/mapa-funcional-completo-2026-09-20.md`. Novo bug confirmado: a aba admin Métrica usa status antigo de ponto ao calcular amortização histórica e pode inflar margem; Visão geral usa a regra correta. Bugs técnicos previamente mapeados continuam pausados. Prioridade é acompanhar a revisão manual já em andamento pelo dono.

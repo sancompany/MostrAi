@@ -55,6 +55,11 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         responsavel_contato: cand.contato_telefone,
         fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
         horario_semanal: cand.horario_semanal || null,
+        // Migration 067 — os dois furos do redesenho da Rede: a foto da
+        // fachada e o "algo a mais" da candidatura nascem com o ponto, no
+        // mesmo INSERT (mesmo raciocínio do horário semanal acima).
+        foto_instalacao_url: cand.foto_fachada_url || null,
+        observacoes: cand.mensagem || null,
         plano_ponto_id: opcao ? opcao.id : null,
         valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
         cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,

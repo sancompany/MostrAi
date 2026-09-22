@@ -1,3 +1,19 @@
+// Placeholder oficial de ponto sem foto (redesenho da Rede, 22/09/2026) —
+// mesmo conceito e a mesma marcação do card do admin (public/admin/index.page.js,
+// fotoOuPlaceholder). Sem bundler, cada arquivo tem a própria cópia
+// (convenção do projeto) — aqui não usa `foto` como fallback de
+// estabelecimento sem foto: aquilo é a ilustração genérica do totem
+// completo (abaixo), não a foto de nenhum ponto real.
+function fotoOuPlaceholder(url, nome) {
+  if (url) return `<img src="${esc(url)}" alt="${esc(nome || '')}" loading="lazy">`;
+  return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Ponto sem foto')}">
+    <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+      <path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="12" cy="9.25" r="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+  </div>`;
+}
+
 // Foto de exemplo do "ponto completo" é trocável pelo admin (sem deploy);
 // só troca a `src` quando existe uma customizada — sem isso, continua a
 // imagem estática do arquivo.
@@ -58,6 +74,7 @@ fetch(`${API_BASE_URL}/pontos`)
         const st = STATUS_LABEL[p.status] || STATUS_LABEL.em_operacao;
         return `
       <div class="ponto-card">
+        <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
         <span class="badge ${st.classe}">${st.texto}</span>
         <h4>${esc(p.nome)}</h4>
         <p>${esc(p.cidade)}${p.endereco ? ', ' + esc(p.endereco) : ''}</p>
