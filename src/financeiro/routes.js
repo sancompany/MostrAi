@@ -813,6 +813,7 @@ router.patch('/admin/cobrancas/:id/nota-fiscal', uploadNota.single('arquivo'), a
 // /afiliados/* ficam respondendo 410 por um tempo pra quem tiver link salvo.
 // ---------------------------------------------------------------------------
 const vendedoresRepo = require('./vendedores-repository');
+const { liberarPapelNaConta, emTransacao } = require('../conta/modos');
 
 function exigirVendedorLogado(req, res, next) {
   if (!req.session.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
@@ -873,6 +874,26 @@ router.patch('/admin/comissoes/:id', async (req, res) => {
 });
 
 router.get('/admin/vendedores', async (_req, res) => res.json(await vendedoresRepo.listar()));
+
+// Ativar o papel vendedor numa conta que já existe (rodada Contas,
+// 22/09/2026) — reaproveita `liberarPapelNaConta` (src/conta/modos.js), o
+// mesmo caminho que uma candidatura aprovada usa, sem `cand` (não há
+// candidatura aqui, só uma conta que o admin decidiu virar vendedora). Cria
+// o perfil em `vendedores` com cupom automático; nunca duplica se já existe.
+router.post('/admin/anunciantes/:id/ativar-vendedor', async (req, res) => {
+  const conta = await anunciantesRepo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  // `vendedoresRepo.criar` usa SAVEPOINT (retry de colisão de cupom) — só
+  // funciona dentro de uma transação de verdade, daí `emTransacao` em vez de
+  // passar o pool cru (mesmo erro reproduziria em qualquer chamador novo de
+  // liberarPapelNaConta pra papel vendedor fora de uma candidatura).
+  await emTransacao((cliente) => liberarPapelNaConta(conta, 'vendedor', null, cliente));
+  const [anunciante, vendedor] = await Promise.all([
+    anunciantesRepo.buscarPorId(req.params.id),
+    vendedoresRepo.buscarPorConta(req.params.id),
+  ]);
+  res.status(201).json({ anunciante, vendedor });
+});
 
 router.patch('/admin/vendedores/:contaId', async (req, res) => {
   try {

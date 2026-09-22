@@ -3,6 +3,76 @@
 ## Updated
 2026-09-22
 
+## Casca da central de Contas + Categorias (22/09/2026, este agente)
+Pedido do dono: "Anunciantes" vira conceitualmente "Contas" — a entidade real
+é uma conta que pode acumular papéis (anunciante, dono de ponto, vendedor),
+não um registro fixo de um tipo só. Só a CASCA desta rodada — organização de
+papéis + mover Categorias pro lugar definitivo — nenhuma regra financeira
+nova, nenhuma fusão de comodato com plano comercial. Regra de leitura do
+prompt: código como fonte de verdade, sem auditoria geral.
+
+**Pré-voo (10 perguntas do prompt, respondidas antes de codar):** conta =
+tabela `anunciantes` (nome já não muda, só a UI); papéis = `papeis` text[]
+já editável via `PATCH /admin/anunciantes/:id` (nada novo); dono de ponto =
+`pontos.anunciante_id`; vendedor = tabela `vendedores` (1:1 por `conta_id`,
+cupom automático em `vendedoresRepo.criar`); comissão/cupom/link já vivem em
+`src/financeiro/vendedores-repository.js`; parceiro = `anunciantes.status =
+'parceiro'` (não é papel, é status — confirmado no código, `PAPEIS` só tem
+anunciante/ponto/vendedor); ações hoje na ficha do anunciante: liberar
+plano, marcar parceiro, subir anúncio, cancelar assinatura, restaurar;
+Categorias já mora em `src/categorias/routes.js` (CRUD completo, nada pra
+construir); categoria liga em conta/ponto por `categoria_id`/`categoria_livre`
+direto na tabela; mudança mínima de backend: só uma rota nova (ativar papel
+vendedor numa conta, reaproveitando `liberarPapelNaConta`).
+
+**Em uma linha cada:**
+- `public/admin/index.page.js`: "Anunciantes" virou o módulo `contas` com 2
+  abas — "Contas" (`renderContasAba`/`renderContasLista`/`renderContaDetalhe`,
+  substituindo `renderAnunciantes*`) e "Categorias" (`renderCategorias`,
+  só mudou de módulo pai). "Vendedores" ganhou `oculto: true` (mesmo padrão
+  de "mensagens") — página e rota seguem existindo, só sem botão na sidebar.
+  Listagem: coluna de papéis mostra TODOS (inclusive "Anunciante", que antes
+  ficava escondido por ser assumido), colunas Plano comercial e Comodato
+  separadas (nunca fundidas — pedido explícito do dono), filtros novos
+  (Anunciantes/Donos de ponto/Vendedores/Parceiras/Inativas).
+- Ficha da conta: cabeçalho fixo + abas DINÂMICAS — Resumo sempre, Plano só
+  se papel anunciante, Pontos só se dono de ponto (papel ou `pontos.anunciante_id`
+  real), Vendedor só se papel vendedor ou perfil já existe. Nenhuma aba vazia
+  nasce só pra antecipar trabalho futuro (Conteúdo/Financeiro ficaram de
+  fora de propósito). Resumo: dados + ações gerais (marcar parceira, subir
+  anúncio, restaurar, **ativar papel Vendedor**). Plano: dados do plano +
+  liberar/cancelar (as duas ações que eram do Resumo, movidas pra cá por
+  pertencerem ao plano). Pontos: lista somente-leitura dos pontos da conta,
+  clique leva pra Rede (Rede não foi mexida). Vendedor: comissão/Pix/cupom,
+  mesmos campos e rotas da antiga tabela.
+- **Rota nova, única mudança real de backend**: `POST
+  /admin/anunciantes/:id/ativar-vendedor` (`src/financeiro/routes.js`) —
+  reaproveita `liberarPapelNaConta` (`src/conta/modos.js`, exportada agora
+  junto com `emTransacao`) sem `cand`. **Achado e corrigido no caminho**:
+  `vendedoresRepo.criar` usa `SAVEPOINT` (retry de colisão de cupom), que só
+  funciona dentro de uma transação de verdade — a rota nova por pouco foi ao
+  ar chamando `liberarPapelNaConta(conta, 'vendedor', null, pool)` direto
+  (sem transação), o que quebra com "SAVEPOINT can only be used in
+  transaction blocks"; corrigido envolvendo em `emTransacao`.
+- **Achado e corrigido no roteador**: renomear o módulo `anunciantes` pra
+  `contas` quebrava links antigos com id (`#anunciantes/42`) — `resolverAlvo`
+  só casava o alias contra o hash INTEIRO, não contra o primeiro pedaço
+  antes de um `/id`. Generalizado pra tentar o alias pelo primeiro segmento
+  também, sobrando o resto — corrige esse caso pra qualquer alias futuro no
+  mesmo formato, não só Contas.
+- Migration: nenhuma. `papeis`, `vendedores`, `categorias` já tinham tudo.
+
+**Legado mantido de propósito** (pedido explícito: não gastar esta rodada
+limpando): `renderAnunciantes*` foram renomeadas/reescritas (não sobrou
+código morto ali), mas `renderVendedores` (tabela antiga) e a página
+Vendedores continuam intactas, só ocultas.
+
+**Verificado:** `npm run check` 161/161; Playwright cobrindo desktop/tablet/
+mobile — listagem com filtros/busca, conta com 1 papel e com 3 papéis
+simultâneos (abas corretas em cada caso), ativar papel Vendedor de ponta a
+ponta (cupom gerado no banco), Categorias dentro de Contas, hash antigo
+`#anunciantes/42` caindo na ficha nova, `#vendedores` ainda funcionando.
+
 ## Ofertas + Promoções + formulário canônico de candidatura (22/09/2026, este agente)
 Prompt de 41 seções (A–AO) do dono: reformulação estrutural e visual da
 área comercial. Instrução explícita de não ler documentação histórica
