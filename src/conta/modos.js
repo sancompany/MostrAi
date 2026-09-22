@@ -51,6 +51,14 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         uf: cand.uf || 'SP',
         cep: cand.cep || '',
         segmento: cand.segmento || 'outro',
+        // A categoria é da CONTA (quem cede a parede), não da candidatura —
+        // candidaturas nunca teve essas colunas, só o `segmento` resolvido
+        // em texto (ver POST /conta/modos/ponto/pedir). Sem isso, todo ponto
+        // nascido daqui nascia com categoria_id NULL e a regra de bloqueio de
+        // concorrente (src/playlist/gerador.js:112) ficava inoperante nele —
+        // achado no mapeamento de 22/09/2026, não um comportamento novo.
+        categoria_id: conta.categoria_id || null,
+        categoria_livre: conta.categoria_livre || null,
         responsavel_nome: cand.nome,
         responsavel_contato: cand.contato_telefone,
         fluxo_estimado_mensal: cand.fluxo_estimado_mensal,

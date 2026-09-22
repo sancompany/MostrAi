@@ -19,10 +19,10 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | GET | `/planos-ponto` | Opções de comodato (ajuda de custo × mais cota). |
 | GET | `/pontos` | Pontos ativos (nome, endereço, cidade, `foto_instalacao_url`) pra página "Onde estamos" — sem foto, o front usa o placeholder oficial. |
 | GET | `/pontos/fluxo` | `{pessoasPorMes}` somando o fluxo estimado dos pontos ativos. |
-| GET | `/categorias` | Segmentos do cadastro. |
+| GET | `/categorias` | Catálogo de categorias pro seletor pesquisável (22/09/2026, migration 067 — ~230 categorias específicas, era 25 amplas): `{id, nome, grupo, aliases}`. Só `ativo AND NOT legado` — categoria antiga (ampla demais, ex. "Clínica / consultório") não aparece mais aqui, mas continua bloqueando concorrente pra quem já a usa (RN-57). `grupo` é só organização visual da lista (ex. "Saúde"); `aliases` só ajudam a achar na busca ("dentista" → Odontologia). Nenhum dos dois entra na regra de bloqueio — só `categoria_id` entra (`src/playlist/gerador.js#anunciantesElegiveis`). |
 | POST | `/candidaturas` | **410** — candidatura sem conta foi aposentada (18/09/2026, RN-03). Ponto se pede de dentro do painel de uma conta já criada; vendedor não tem pedido, só contato direto. |
 | GET | `/convites/:token` | O que um link de convite permite: `{papeis, nome_sugerido, email_sugerido, expira_em}`. 404 se usado/expirado. |
-| POST | `/anunciantes/cadastro` | Cria conta, sempre liberada na hora (`status = 'comum'`; não há mais aprovação de conta, RN-34/RN-35 — `status` só distingue comum de parceiro, nunca bloqueia). Sem `convite`: papel `anunciante`, exige endereço comercial. Com `convite` (token): papéis do convite, `chave_pix` obrigatória se vendedor, `plano_ponto_id` opcional se ponto; convite vindo de candidatura de ponto já cria o ponto + "Tela 1". Loga a sessão e devolve a conta. |
+| POST | `/anunciantes/cadastro` | Cria conta, sempre liberada na hora (`status = 'comum'`; não há mais aprovação de conta, RN-34/RN-35 — `status` só distingue comum de parceiro, nunca bloqueia). Sem `convite`: papel `anunciante`, exige endereço comercial. Com `convite` (token): papéis do convite, `chave_pix` obrigatória se vendedor, `plano_ponto_id` opcional se ponto; convite vindo de candidatura de ponto já cria o ponto + "Tela 1" — categoria da conta é copiada pro ponto (RN-57, corrigido 22/09/2026). `categoria_id`, se vier, precisa existir e estar ativa (400 "ramo inválido" — antes virava 500 na FK, achado no mapeamento da reforma de taxonomia). Loga a sessão e devolve a conta. |
 | POST | `/anunciantes/login` | `{email, senha}` → conta (com `papeis`). Senha em scrypt; hash bcrypt antigo migra sozinho no login. |
 | POST | `/anunciantes/esqueci-senha` / `/redefinir-senha` | Fluxo de token por e-mail. `/afiliados/esqueci-senha` é alias legado. |
 | POST | `/contato` | Formulário de contato → e-mail. |
@@ -82,7 +82,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | POST | `/convites/:token/aceitar` | Conta logada aceita um convite: os papéis novos entram nesta conta (vendedor exige `chave_pix`; ponto vindo de candidatura cria ponto + Tela 1). Consome o convite. |
 | POST | `/conta/bonus/anuncio/resgatar` | Módulo "anúncio grátis após N meses como ponto" (`planos_ponto.plano_bonus_*`): quando `bonus.anuncio.disponivel`, ativa o plano na conta por M meses sem cobrança (papel anunciante entra junto). 409 se já houver plano ativo. |
 
-Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (origem painel/bônus) liga o papel direto na conta (cria perfil de vendedor ou ponto + Tela 1) e marca `aprovada`.
+Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (origem painel/bônus) liga o papel direto na conta (cria perfil de vendedor ou ponto + Tela 1) e marca `aprovada`. Ponto herda `categoria_id`/`categoria_livre` da conta (RN-57, corrigido 22/09/2026 — antes nascia sem categoria nenhuma, bloqueio de concorrente inoperante).
 
 ## Tela (chave de aparelho)
 
@@ -250,10 +250,10 @@ pede.
 | POST | `/admin/beneficios` | cria |
 | PATCH | `/admin/beneficios/:id` | edita |
 | DELETE | `/admin/beneficios/:id` | remove |
-| GET | `/admin/categorias` | lista |
-| POST | `/admin/categorias` | cria |
-| PATCH | `/admin/categorias/:id` | edita |
-| DELETE | `/admin/categorias/:id` | remove |
+| GET | `/admin/categorias` | lista todas (ativa, inativa e legado — `GET /categorias` pública mostra só o que sobra depois do filtro) |
+| POST | `/admin/categorias` | cria: `{nome (obrigatório), grupo?, aliases?}` |
+| PATCH | `/admin/categorias/:id` | edita `nome`, `ativo`, `grupo`, `aliases` (array) ou `legado` |
+| DELETE | `/admin/categorias/:id` | remove — 409 se estiver em uso (FK de `anunciantes`/`pontos`); desative em vez de excluir |
 
 ### Criativos
 | Método | Rota | O que faz |

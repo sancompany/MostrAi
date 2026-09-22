@@ -44,6 +44,70 @@ function resumoHorarioSemanal(horario) {
   return partes.join(' · ');
 }
 
+// Busca de categoria (22/09/2026, ~230 categorias — select tradicional parou
+// de fazer sentido) — mesma ideia de public/formulario.js#montarBusca, versão
+// admin: aqui não há <select> pra esconder por baixo, é tudo montado direto
+// no template string, então o "valor" fica num input hidden. Duplicado de
+// propósito (sem bundler, sem import entre os dois front-ends — ver README).
+function normalizarBuscaCategoria(txt) {
+  return (txt || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+function categoriaBuscaHtml(idPrefixo, categoriaAtual, { placeholder, name } = {}) {
+  return `<div class="categoria-busca-wrap">
+    <input type="text" class="mini categoria-busca" id="${idPrefixo}Busca" autocomplete="off"
+      placeholder="${esc(placeholder || 'Pesquise a categoria...')}" value="${categoriaAtual ? esc(categoriaAtual.nome) : ''}">
+    <input type="hidden" id="${idPrefixo}Id" ${name ? `name="${name}"` : ''} value="${categoriaAtual ? categoriaAtual.id : ''}">
+    <ul class="categoria-resultados" id="${idPrefixo}Resultados" hidden></ul>
+  </div>`;
+}
+
+// `categorias`: a lista completa do admin (`GET /admin/categorias`, inclui
+// legado/inativa) — só entram na BUSCA as ativas e não-legado (não faz
+// sentido oferecer categoria descontinuada pra escolha nova), mas o valor já
+// selecionado (`categoriaBuscaHtml`, acima) mostra o nome de qualquer uma,
+// legado ou não, porque desfazer uma associação existente não é a mesma
+// decisão que criar uma nova.
+function ligarCategoriaBusca(idPrefixo, categorias, aoEscolher) {
+  const input = document.getElementById(`${idPrefixo}Busca`);
+  const hiddenId = document.getElementById(`${idPrefixo}Id`);
+  const lista = document.getElementById(`${idPrefixo}Resultados`);
+  if (!input) return;
+  const comBusca = categorias
+    .filter((c) => c.ativo && !c.legado)
+    .map((c) => ({ ...c, busca: normalizarBuscaCategoria(`${c.nome} ${(c.aliases || []).join(' ')}`) }));
+
+  function abrir(termo) {
+    const alvo = normalizarBuscaCategoria(termo);
+    const bateu = alvo ? comBusca.filter((c) => c.busca.includes(alvo)) : comBusca;
+    lista.innerHTML =
+      bateu
+        .slice(0, 40)
+        .map(
+          (c) => `<li data-id="${c.id}">${esc(c.nome)}<span class="categoria-grupo">${esc(c.grupo || '')}</span></li>`,
+        )
+        .join('') || '<li class="categoria-vazio">Nada encontrado.</li>';
+    lista.hidden = false;
+  }
+  input.addEventListener('focus', () => abrir(input.value));
+  input.addEventListener('input', () => {
+    abrir(input.value);
+    if (!input.value) hiddenId.value = '';
+  });
+  input.addEventListener('blur', () => setTimeout(() => (lista.hidden = true), 150));
+  lista.addEventListener('mousedown', (e) => {
+    const li = e.target.closest('li[data-id]');
+    if (!li) return;
+    e.preventDefault();
+    const categoria = comBusca.find((c) => String(c.id) === li.dataset.id);
+    if (!categoria) return;
+    input.value = categoria.nome;
+    hiddenId.value = categoria.id;
+    lista.hidden = true;
+    if (aoEscolher) aoEscolher(categoria);
+  });
+}
+
 let toastTimer;
 function toast(texto, tipo) {
   let el = document.getElementById('toast');
@@ -92,13 +156,24 @@ function turbinarTabela(caixa) {
   const contagem = caixa.querySelector('[data-contagem]');
   const linhas = () => [...tabela.tBodies[0].rows];
 
+  // `tr.textContent` não enxerga o `value` de <input>/<select> — só texto de
+  // verdade no DOM. Numa linha inteira de campos editáveis (categorias, por
+  // exemplo: nome/grupo/aliases são todos <input>) a busca nunca achava
+  // nada, silenciosamente (achado montando a busca por grupo da reforma de
+  // categorias, 22/09/2026 — a busca "reaproveitada" estava quebrada pra
+  // qualquer tabela só de inputs, não só a nova).
+  function textoBuscavel(tr) {
+    const valores = [...tr.querySelectorAll('input, select')].map((c) => c.value).join(' ');
+    return `${tr.textContent} ${valores}`.toLowerCase();
+  }
+
   function aplicar() {
     const termo = (busca ? busca.value : '').toLowerCase().trim();
     const chipAtivo = caixa.querySelector('.chip.active');
     const filtro = chipAtivo ? chipAtivo.dataset.filtro || '' : '';
     let visiveis = 0;
     linhas().forEach((tr) => {
-      const casaTermo = !termo || tr.textContent.toLowerCase().includes(termo);
+      const casaTermo = !termo || textoBuscavel(tr).includes(termo);
       const casaFiltro = !filtro || (tr.dataset.filtro || '').split(' ').includes(filtro);
       tr.hidden = !(casaTermo && casaFiltro);
       if (!tr.hidden) visiveis += 1;
@@ -1737,10 +1812,12 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
       <div class="field-row">
         <div class="u-col-2">
           <label>Ramo</label>
-          <select class="mini" data-anunciante="categoria_id" title="Ramo do anunciante. Não entra em ponto do mesmo ramo">
-            <option value="">${anunciante.categoria_livre ? `(livre) ${esc(anunciante.categoria_livre)}` : '-'}</option>
-            ${categorias.map((c) => `<option value="${c.id}" ${c.id === anunciante.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
-          </select>
+          <p class="u-dim u-fs-72 u-m-0 u-mb-4">Não entra em ponto do mesmo ramo.</p>
+          ${categoriaBuscaHtml(
+            'detalheCategoria',
+            categorias.find((c) => c.id === anunciante.categoria_id),
+            { placeholder: anunciante.categoria_livre ? `(livre) ${anunciante.categoria_livre}` : undefined },
+          )}
         </div>
         <div class="u-col-2"><label>Status</label>${selectStatus(ANUNCIANTE_STATUS, anunciante.status, 'data-anunciante="status"')}</div>
       </div>
@@ -1780,20 +1857,23 @@ async function renderAnuncianteDetalhe(el, anuncianteId) {
   el.querySelectorAll('[data-anunciante]').forEach((sel) =>
     sel.addEventListener('change', async () => {
       const campo = sel.dataset.anunciante;
-      const valor =
-        campo === 'categoria_id'
-          ? sel.value === ''
-            ? null
-            : Number(sel.value)
-          : campo === 'suspenso'
-            ? sel.value === 'true'
-            : sel.value;
+      const valor = campo === 'suspenso' ? sel.value === 'true' : sel.value;
       if ((await salvar(`/admin/anunciantes/${anunciante.id}`, { [campo]: valor }, sel)) && campo === 'suspenso') {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
       }
     }),
   );
+
+  // Mesma limpeza de categoria_livre ao escolher pelo catálogo que o Resumo
+  // do ponto ganhou (os dois liam o campo livre sem nunca apagar).
+  ligarCategoriaBusca('detalheCategoria', categorias, (categoria) => {
+    salvar(
+      `/admin/anunciantes/${anunciante.id}`,
+      { categoria_id: categoria.id, categoria_livre: null },
+      document.getElementById('detalheCategoriaBusca'),
+    );
+  });
 
   // Liberar plano de graça. A conta fica igual a uma pagante pra quem vê a
   // tela, e diferente pra quem lê o resumo — que é onde a diferença importa.
@@ -2857,23 +2937,37 @@ async function renderBeneficios(el) {
 }
 
 // ---------- categorias ----------
+// Categoria = o que impede concorrente direto na mesma tela (pontos e
+// anunciantes com o mesmo categoria_id, ver src/playlist/gerador.js). Grupo
+// é só organização visual desta tabela e do seletor de busca — nunca entra
+// no bloqueio. Aliases só ajudam a achar a categoria na busca (22/09/2026,
+// reforma da taxonomia — ver docs/PENDENCIAS.md seção K).
 async function renderCategorias(el) {
   const categorias = await pegar('/admin/categorias');
-  const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>Aparece no cadastro</th><th></th></tr></thead><tbody>
+  const grupos = [...new Set(categorias.map((c) => c.grupo).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR'),
+  );
+  const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>Grupo</th><th>Aliases (separe por vírgula)</th><th data-ord>Aparece no cadastro</th><th></th></tr></thead><tbody>
     ${categorias
       .map(
-        (c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
-      <td><input class="mini u-w-300" data-cat="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
+        (
+          c,
+        ) => `<tr data-filtro="${[c.ativo ? 'ativo' : 'inativo', c.legado ? 'legado' : ''].filter(Boolean).join(' ')}">
+      <td><input class="mini u-w-260" data-cat="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
+      <td><input class="mini u-w-180" data-cat="grupo" data-id="${c.id}" list="listaGrupos" value="${esc(c.grupo || '')}"></td>
+      <td><input class="mini u-w-220" data-cat="aliases" data-id="${c.id}" value="${esc((c.aliases || []).join(', '))}"></td>
       <td class="u-ta-c"><input type="checkbox" data-cat="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
-      <td><button class="btn ghost mini" data-excluir="${c.id}">Excluir</button></td>
+      <td>${c.legado ? '<span class="badge badge-pendente" title="Categoria antiga, ampla demais — some do cadastro, mas quem já usa continua valendo. Reative o checkbox ao lado se quiser voltar a oferecer.">legado</span>' : ''}<button class="btn ghost mini" data-excluir="${c.id}">Excluir</button></td>
     </tr>`,
       )
       .join('')}
-  </tbody></table>`;
+  </tbody></table>
+  <datalist id="listaGrupos">${grupos.map((g) => `<option value="${esc(g)}">`).join('')}</datalist>`;
 
   el.innerHTML = `
     <form class="card bloco-novo u-mw-420" id="formNovaCategoria">
       <div><label>Nova categoria</label><input class="mini" name="nome" placeholder="ex.: Tatuagem / piercing" required></div>
+      <div><label>Grupo (opcional, só organização)</label><input class="mini" name="grupo" list="listaGrupos" placeholder="ex.: Beleza e estética"></div>
       <button class="btn primary" type="submit">Criar categoria</button>
       <p class="form-msg" id="msgNovaCategoria"></p>
     </form>
@@ -2884,9 +2978,10 @@ async function renderCategorias(el) {
               { valor: '', nome: 'Todas' },
               { valor: 'ativo', nome: 'No cadastro' },
               { valor: 'inativo', nome: 'Fora do cadastro' },
+              { valor: 'legado', nome: 'Legado' },
             ],
             html: corpo,
-            dica: 'Categoria já usada por alguém cadastrado não pode ser excluída. Desmarque para parar de oferecer.',
+            dica: 'Busca cobre nome e grupo. Categoria já usada por alguém cadastrado não pode ser excluída — desmarque pra parar de oferecer.',
           })
         : '<p class="empty-state">Nenhuma categoria cadastrada.</p>'
     }`;
@@ -2895,11 +2990,16 @@ async function renderCategorias(el) {
 
   el.querySelectorAll('[data-cat]').forEach((inp) =>
     inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
-      salvar(
-        `/admin/categorias/${inp.dataset.id}`,
-        { [inp.dataset.cat]: inp.type === 'checkbox' ? inp.checked : inp.value },
-        inp,
-      );
+      const valor =
+        inp.type === 'checkbox'
+          ? inp.checked
+          : inp.dataset.cat === 'aliases'
+            ? inp.value
+                .split(',')
+                .map((a) => a.trim())
+                .filter(Boolean)
+            : inp.value;
+      salvar(`/admin/categorias/${inp.dataset.id}`, { [inp.dataset.cat]: valor }, inp);
     }),
   );
 
