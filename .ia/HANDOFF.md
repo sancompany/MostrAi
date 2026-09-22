@@ -109,6 +109,31 @@ página (input nativo do browser).
 redesenho da Rede — próximo trabalho na área é só ajuste pontual que o
 dono pedir depois de revisar, não novo redesenho.
 
+## Reauditoria de alinhamento com o app Android (22/09/2026, este agente)
+Pedido do dono: o app (`sancompany/playlist.mostrai`) recebeu mais commits
+(rotação de tela, PIN travado em 4 dígitos, assets de marca, preparo pro
+`margemVmin`), conferir de novo o alinhamento — **sem mexer em
+`margemVmin`**, que outro agente já está construindo do lado do app
+(`playlist.mostrai` PR #2, branch `claude/festive-goldberg-4gdhqi`) e que
+"deve ser ligado ao final". Detalhe completo em `docs/PENDENCIAS.md`,
+seção H (segunda adenda, "Reauditoria de 22/09/2026").
+
+**Resultado:** `main` continua alinhado depois de dois merges paralelos
+(reforma de categorias + redesenho da Rede) que aconteceram entre a
+auditoria anterior e esta — nenhum dos dois tocou playlist/dispositivos, o
+select de `contrato_playlist` sobreviveu intacto, `npm run check` 161/161.
+
+**Achado novo, registrado, não construído:** o app ganhou RN-15 — decide
+tocar vídeo × tela institucional local só pela presença de `url` no item,
+preparando um futuro "vídeo de fundo institucional pelo admin"
+(`PARA-O-BACKEND.md`, novo no repo do app). Hoje o item institucional do
+backend sempre manda `url: null` — confirmado. Mesma categoria de
+`margemVmin`: precisa de decisão do dono (onde o vídeo mora, upload por
+tela ou por ponto) antes de virar código — não construído.
+
+**Trabalhando direto em `main`** (mudança é só documentação, nenhum código
+tocado nesta rodada).
+
 ## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
 `main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta
 sessão trabalhava a Rede — ambas tocaram `src/pontos/repository.js` e
