@@ -36,9 +36,15 @@ test('validar() recusa hora fora do padrão HH:MM', () => {
   assert.throws(() => validar({ ...base, sab: { abre: '09:00', fecha: '25:00' } }), /sábado inválido/);
 });
 
-test('validar() recusa abre >= fecha', () => {
+test('validar() aceita abre > fecha (vira madrugada — bar/balada 18:00-02:00)', () => {
   const base = Object.fromEntries(DIAS.map((d) => [d, null]));
-  assert.throws(() => validar({ ...base, dom: { abre: '18:00', fecha: '09:00' } }), /abertura precisa ser antes/);
+  const validado = validar({ ...base, sex: { abre: '18:00', fecha: '02:00' } });
+  assert.deepStrictEqual(validado.sex, { abre: '18:00', fecha: '02:00' });
+});
+
+test('validar() recusa abre === fecha (ambíguo)', () => {
+  const base = Object.fromEntries(DIAS.map((d) => [d, null]));
+  assert.throws(() => validar({ ...base, dom: { abre: '09:00', fecha: '09:00' } }), /não pode ser igual/);
 });
 
 test('resumo() agrupa segunda a sexta quando os 5 dias são iguais', () => {

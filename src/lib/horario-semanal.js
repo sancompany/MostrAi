@@ -35,8 +35,12 @@ function validar(horario) {
     if (typeof v !== 'object' || !HORA_VALIDA.test(v.abre) || !HORA_VALIDA.test(v.fecha)) {
       throw erro(`horário de ${NOME_DIA[dia]} inválido`);
     }
-    if (v.abre >= v.fecha) {
-      throw erro(`${NOME_DIA[dia]}: horário de abertura precisa ser antes do de fechamento`);
+    // `abre > fecha` é válido de propósito — vira madrugada (bar/balada
+    // 18:00-02:00, por exemplo). Só a igualdade exata é ambígua (nunca abre,
+    // ou abre 24h — nenhum dos dois é o que o campo "Fechado" já representa)
+    // e por isso é recusada.
+    if (v.abre === v.fecha) {
+      throw erro(`${NOME_DIA[dia]}: horário de abertura não pode ser igual ao de fechamento`);
     }
     limpo[dia] = { abre: v.abre, fecha: v.fecha };
   }

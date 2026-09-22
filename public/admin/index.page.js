@@ -1619,6 +1619,10 @@ async function renderPontoOcupacao(el, ponto) {
       return toast(corpoErro.erro || 'Não foi possível liberar — ainda não sobra folga suficiente.', 'err');
     }
     toast('Ponto liberado pra escolha nova.');
+    // Sem isso o card renderizava de novo com o MESMO objeto `ponto` da
+    // closure — escolha_bloqueada_em continuava preenchido, e a tela
+    // seguia mostrando "travado" mesmo com o backend já tendo liberado.
+    ponto.escolha_bloqueada_em = null;
     renderPontoOcupacao(el, ponto);
   });
 }

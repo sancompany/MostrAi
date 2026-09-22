@@ -413,15 +413,20 @@ async function carregarPontos() {
       // linha, então o alinhamento continua igual.
       // Horário de funcionamento (22/09/2026, pedido do dono) vai no title
       // do nome — a linha já é enxuta de propósito (19/09/2026, "se existir
-      // muitos pontos ele se perde"), sem espaço pra mais uma coluna visível;
-      // hover/toque-e-segure mostra sem alargar nada. `null` (ponto antigo,
-      // sem horário informado ainda) não aparece — mostrar "não informado"
-      // por hover de todo ponto seria mais ruído que ajuda.
+      // muitos pontos ele se perde"), sem espaço pra mais uma coluna visível.
+      // `title` sozinho não é acessível (não existe pra quem navega por
+      // teclado, e leitor de tela não anuncia de forma confiável) — o span
+      // também ganha `tabindex`/`aria-label`, que resolve teclado e leitor
+      // de tela nos dois; toque-e-segure no celular sem leitor de tela
+      // continua sem revelar o texto (limite conhecido do `title`, aceito
+      // pelo dono junto da compactação: "mais excluso"). `null` (ponto
+      // antigo, sem horário informado ainda) não aparece — mostrar "não
+      // informado" por hover de todo ponto seria mais ruído que ajuda.
       const tituloNome = p.horario ? `${p.nome} · ${p.horario}` : p.nome;
       return `<div class="ponto-escolha${cheio ? ' cheio' : ''}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
       <label class="ponto-marcar">
         <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
-        <span class="ponto-nome" title="${esc(tituloNome)}">${esc(p.nome)}</span>
+        <span class="ponto-nome" title="${esc(tituloNome)}" ${p.horario ? `tabindex="0" aria-label="${esc(tituloNome)}"` : ''}>${esc(p.nome)}</span>
         <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
         <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
       </label>
