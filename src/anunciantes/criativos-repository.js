@@ -8,6 +8,12 @@ const CAMPOS_ATUALIZAVEIS = [
   'thumbnail_url',
   'editado_pelo_operador',
   'motivo_reprovacao',
+  // Substituir arquivo de uma mídia própria (Parte 27, reorganização de
+  // Conteúdo, 22/09/2026) atualiza a MESMA linha em vez de criar outra —
+  // por isso original/duração, que antes só entravam no INSERT, também
+  // precisam ser editáveis.
+  'arquivo_original_url',
+  'duracao_segundos',
 ];
 
 async function criar(dados) {

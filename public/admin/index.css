@@ -376,3 +376,25 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
 .promo-matriz th, .promo-matriz td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
 .promo-matriz th:first-child, .promo-matriz td:first-child { text-align: left; }
 .promo-matriz td input[type="number"] { width: 56px; margin-top: 3px; }
+
+/* Mídia Mostraí (reorganização de Conteúdo, 22/09/2026) — resumo em faixa
+   (mesma ideia dos KPIs da Visão geral, sem gráfico); os cards reaproveitam
+   .criativo-fila sem CSS novo. O picker de pontos (cobertura específica)
+   segue a régua visual do .ponto-escolha do painel do anunciante, só que
+   escopado aqui — o admin não carrega o CSS do anunciante (sem bundler,
+   cada área tem o próprio arquivo, ver README). */
+.mm-resumo { display: flex; gap: 22px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; }
+.mm-resumo-item { display: flex; flex-direction: column; gap: 1px; }
+.mm-resumo-item b { font-size: 1.4rem; line-height: 1.2; }
+.mm-resumo-item span { color: var(--text-dim); font-size: .78rem; }
+
+.mm-pontos-lista { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.mm-ponto-linha { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; font-size: .82rem; cursor: pointer; flex-wrap: wrap; }
+.mm-ponto-linha:hover { background: var(--bg-alt); }
+.mm-ponto-linha:has(input:checked) { background: rgba(255,122,26,.08); }
+.mm-ponto-linha input { accent-color: var(--brand); }
+.mm-ponto-nome { font-weight: 600; flex: 1 1 140px; min-width: 0; }
+.mm-ponto-cidade { font-size: .74rem; flex: 0 0 auto; }
+.mm-ponto-ocupacao { font-size: .7rem; color: var(--text-dim); flex: 1 1 100%; }
+
+.mm-linha-excede td { color: var(--err); font-weight: 700; }
