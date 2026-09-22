@@ -437,129 +437,117 @@ const ALIASES_ANTIGOS = {
 // de SUBTITULOS sem duplicar nenhuma frase.
 const ALIAS_REVERSO = Object.fromEntries(Object.entries(ALIASES_ANTIGOS).map(([velho, novo]) => [novo, velho]));
 
+// Sidebar final (rodada Navegação, 22/09/2026, pedido do dono): lista PLANA,
+// sem `grupo`/cabeçalho de seção — "MOSTRAÍ"/"OPERAÇÃO"/"COMERCIAL"/"SISTEMA"
+// não existem mais. A ordem visível é a ordem literal do array (depois do
+// filtro de `oculto` em `montarNav()`): Visão geral, Rede, Contas, Ofertas, e
+// por último Mídia Mostraí — `destaque: true` faz `montarNav()` estilizar
+// esse item como atalho especial (separação por espaçamento, não por
+// título de seção). Configurações e Pendências saíram do array por completo
+// (não só `oculto`): os hashes antigos (`#configuracoes`, `#pendencias` e
+// filhos) caem sozinhos em `visaogeral`, porque `resolverAlvo()` já degrada
+// assim quando `buscarModulo()` não acha o id — mesmo padrão do alias
+// "custos", que também não tem módulo (nem oculto) desde a rodada Financeiro.
 const MODULOS = [
+  { id: 'visaogeral', nome: 'Visão geral', render: renderResumo },
   {
-    grupo: 'Mostraí',
-    itens: [{ id: 'visaogeral', nome: 'Visão geral', render: renderResumo }],
-  },
-  {
-    grupo: 'Operação',
-    itens: [
-      {
-        // O ponto virou a entidade central (21/09/2026, pedido do dono):
-        // Telas e Ocupação, que eram abas irmãs, agora vivem DENTRO do
-        // detalhe de cada ponto (ver renderPontoDetalhe) — não navega mais
-        // entre telas globais pra entender um endereço só. "Entrega" (banco
-        // de horas) saiu do menu por pedido dele: a função e as rotas
-        // continuam intactas (renderBancoHoras, src/bancohoras/routes.js),
-        // só não tem mais superfície de navegação — ver ALIASES_ANTIGOS.
-        id: 'rede',
-        nome: 'Rede',
-        abas: [
-          { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
-          // Candidatura é sempre pra ser PONTO (vendedor não passa mais por
-          // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
-          // de "entrada" (encerrada 22/09/2026, pedido do dono).
-          { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
-        ],
-      },
-      {
-        // "Anunciantes" virou "Contas" (rodada Contas, 22/09/2026, pedido do
-        // dono): a entidade real não é "anunciante" — é uma conta que pode
-        // acumular papéis (anunciante, dono de ponto, vendedor). Categorias
-        // se mudou pra cá também (saiu de Configurações): é dado de conta
-        // (e de ponto), não configuração de sistema.
-        id: 'contas',
-        nome: 'Contas',
-        abas: [
-          { id: 'contas', nome: 'Contas', render: renderContasAba },
-          { id: 'categorias', nome: 'Categorias', render: renderCategorias },
-        ],
-      },
-      // "Conteúdo" foi desmontada (reorganização de 22/09/2026, pedido do
-      // dono): Anúncios próprios virou página própria — Mídia Mostraí —, e
-      // Aprovação perdeu item de menu (mesmo padrão de Mensagens abaixo: o
-      // aviso mora na Visão geral, `oculto` tira o botão sem tirar o módulo
-      // de TODOS_MODULOS/buscarModulo, a rota `#aprovacao` continua
-      // funcionando). `renderCriativos`/`renderMeusAnuncios` (a versão
-      // antiga, com "Criar conta própria") continuam definidas mais abaixo
-      // como legado sem chamador — `renderMeusAnuncios` foi substituída por
-      // `renderMidiaMostrai`.
-      { id: 'midiamostrai', nome: 'Mídia Mostraí', render: renderMidiaMostrai },
-      { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
-      // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
-      // pendência mora na Visão geral (ALERTAS abaixo) e leva pra cá. `oculto`
-      // tira o botão do menu sem tirar o módulo de TODOS_MODULOS/buscarModulo,
-      // então a rota (`#mensagens`, ou o hash antigo `#contato` via
-      // ALIASES_ANTIGOS) continua funcionando normalmente.
-      { id: 'mensagens', nome: 'Mensagens', oculto: true, render: renderContato },
+    // O ponto virou a entidade central (21/09/2026, pedido do dono):
+    // Telas e Ocupação, que eram abas irmãs, agora vivem DENTRO do
+    // detalhe de cada ponto (ver renderPontoDetalhe) — não navega mais
+    // entre telas globais pra entender um endereço só. "Entrega" (banco
+    // de horas) saiu do menu por pedido dele: a função e as rotas
+    // continuam intactas (renderBancoHoras, src/bancohoras/routes.js),
+    // só não tem mais superfície de navegação — ver ALIASES_ANTIGOS.
+    id: 'rede',
+    nome: 'Rede',
+    abas: [
+      { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
+      // Candidatura é sempre pra ser PONTO (vendedor não passa mais por
+      // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
+      // de "entrada" (encerrada 22/09/2026, pedido do dono).
+      { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
     ],
   },
   {
-    grupo: 'Comercial',
-    itens: [
-      {
-        // "Ofertas" (reformulação comercial, 22/09/2026) — substitui "Planos"
-        // na navegação. Essencial/Pro/Prime são produtos fixos (Parte B do
-        // pedido do dono); Arquivados e Benefícios saíram da UI de propósito
-        // (Parte K/D) — `renderPlanos`/`renderPlanosArquivados`/
-        // `renderBeneficios` continuam definidas mais abaixo, só sem aba que
-        // chame, por enquanto (limpeza fica pra outra rodada, pedido
-        // explícito: não gastar esta rodada removendo código legado).
-        id: 'ofertas',
-        nome: 'Ofertas',
-        abas: [
-          { id: 'precos', nome: 'Preços', render: renderPrecos },
-          { id: 'promocoes', nome: 'Promoções', render: renderPromocoes },
-        ],
-      },
-      // Sem item próprio na sidebar (rodada Contas, 22/09/2026): filtro
-      // "Vendedores", aba Vendedor, comissão e cupom/link agora vivem dentro
-      // da conta em Contas. `oculto` mantém a rota/hash antigo funcionando
-      // (mesmo padrão de "mensagens" acima) sem remover a tabela nem o código.
-      { id: 'vendedores', nome: 'Vendedores', oculto: true, render: renderVendedores },
+    // "Anunciantes" virou "Contas" (rodada Contas, 22/09/2026, pedido do
+    // dono): a entidade real não é "anunciante" — é uma conta que pode
+    // acumular papéis (anunciante, dono de ponto, vendedor). Categorias
+    // se mudou pra cá também (saiu de Configurações): é dado de conta
+    // (e de ponto), não configuração de sistema — única fonte administrativa
+    // agora, sem duplicar em outro lugar.
+    id: 'contas',
+    nome: 'Contas',
+    abas: [
+      { id: 'contas', nome: 'Contas', render: renderContasAba },
+      { id: 'categorias', nome: 'Categorias', render: renderCategorias },
     ],
   },
   {
-    grupo: 'Sistema',
-    itens: [
-      {
-        id: 'configuracoes',
-        nome: 'Configurações',
-        // Categorias saiu daqui (rodada Contas, 22/09/2026) — mudou pra
-        // Contas > Categorias, que é o lugar administrativo definitivo dela
-        // agora. `ALIASES_ANTIGOS.categorias` aponta pro endereço novo.
-        abas: [
-          { id: 'comodato', nome: 'Comodato', render: renderComodato },
-          { id: 'diagnostico', nome: 'Diagnóstico', fila: 'eventos', render: renderEventos },
-        ],
-      },
-      { id: 'pendencias', nome: 'Pendências', render: renderPendencias },
-      // Financeiro deixou de ser grupo próprio da sidebar (rodada Financeiro,
-      // 22/09/2026, pedido do dono: "normalidade não ocupa espaço, pendência
-      // aparece") — Receitas/Repasses/Custos como páginas permanentes saíram.
-      // O que sobra é drill-down: a Visão geral mostra receita e pendências
-      // reais (repasses/comissões/trocas/devoluções) e cada uma leva pra cá
-      // por clique. `oculto` mantém a rota (`#financeiro/repasses` etc.) sem
-      // nenhum botão na sidebar — mesmo padrão de "mensagens"/"vendedores".
-      {
-        id: 'financeiro',
-        nome: 'Financeiro',
-        oculto: true,
-        abas: [
-          { id: 'repasses', nome: 'Repasses', render: renderFilaRepasses },
-          { id: 'comissoes', nome: 'Comissões', render: renderFilaComissoes },
-          { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
-          { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
-          { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
-        ],
-      },
+    // "Ofertas" (reformulação comercial, 22/09/2026) — substitui "Planos"
+    // na navegação. Essencial/Pro/Prime são produtos fixos (Parte B do
+    // pedido do dono); Arquivados e Benefícios saíram da UI de propósito
+    // (Parte K/D) — `renderPlanos`/`renderPlanosArquivados`/
+    // `renderBeneficios` continuam definidas mais abaixo, só sem aba que
+    // chame, por enquanto (limpeza fica pra outra rodada, pedido
+    // explícito: não gastar esta rodada removendo código legado). Comodato
+    // (saiu de Configurações nesta rodada de Navegação) pertence
+    // conceitualmente aqui também, mas a implementação comercial correta
+    // está sendo tratada em outra frente — não reimplementado nesta rodada,
+    // de propósito.
+    id: 'ofertas',
+    nome: 'Ofertas',
+    abas: [
+      { id: 'precos', nome: 'Preços', render: renderPrecos },
+      { id: 'promocoes', nome: 'Promoções', render: renderPromocoes },
     ],
   },
+  // "Conteúdo" foi desmontada (reorganização de 22/09/2026, pedido do
+  // dono): Anúncios próprios virou página própria — Mídia Mostraí —, e
+  // Aprovação perdeu item de menu (mesmo padrão de Mensagens abaixo: o
+  // aviso mora na Visão geral, `oculto` tira o botão sem tirar o módulo
+  // de `buscarModulo`, a rota `#aprovacao` continua funcionando).
+  // `renderCriativos`/`renderMeusAnuncios` (a versão antiga, com "Criar
+  // conta própria") continuam definidas mais abaixo como legado sem
+  // chamador — `renderMeusAnuncios` foi substituída por `renderMidiaMostrai`.
+  { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
+  // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
+  // pendência mora na Visão geral (ALERTAS abaixo) e leva pra cá. `oculto`
+  // tira o botão do menu sem tirar o módulo de `buscarModulo`, então a rota
+  // (`#mensagens`, ou o hash antigo `#contato` via ALIASES_ANTIGOS) continua
+  // funcionando normalmente.
+  { id: 'mensagens', nome: 'Mensagens', oculto: true, render: renderContato },
+  // Sem item próprio na sidebar (rodada Contas, 22/09/2026): filtro
+  // "Vendedores", aba Vendedor, comissão e cupom/link agora vivem dentro
+  // da conta em Contas. `oculto` mantém a rota/hash antigo funcionando
+  // (mesmo padrão de "mensagens" acima) sem remover a tabela nem o código.
+  { id: 'vendedores', nome: 'Vendedores', oculto: true, render: renderVendedores },
+  // Financeiro deixou de ser grupo próprio da sidebar (rodada Financeiro,
+  // 22/09/2026, pedido do dono: "normalidade não ocupa espaço, pendência
+  // aparece") — Receitas/Repasses/Custos como páginas permanentes saíram.
+  // O que sobra é drill-down: a Visão geral mostra receita e pendências
+  // reais (repasses/comissões/trocas/devoluções) e cada uma leva pra cá
+  // por clique. `oculto` mantém a rota (`#financeiro/repasses` etc.) sem
+  // nenhum botão na sidebar — mesmo padrão de "mensagens"/"vendedores".
+  {
+    id: 'financeiro',
+    nome: 'Financeiro',
+    oculto: true,
+    abas: [
+      { id: 'repasses', nome: 'Repasses', render: renderFilaRepasses },
+      { id: 'comissoes', nome: 'Comissões', render: renderFilaComissoes },
+      { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
+      { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
+      { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
+    ],
+  },
+  // Último item de propósito (rodada Navegação, 22/09/2026): Mídia Mostraí é
+  // "ação administrativa especial", não mais um item de "Conteúdo" — fica
+  // sozinho no fim da lista, com `destaque: true` pra `montarNav()` desenhar
+  // como atalho, separado do resto só por espaçamento (sem título de seção).
+  { id: 'midiamostrai', nome: 'Mídia Mostraí', destaque: true, render: renderMidiaMostrai },
 ];
 
-const TODOS_MODULOS = MODULOS.flatMap((g) => g.itens);
-const buscarModulo = (id) => TODOS_MODULOS.find((m) => m.id === id);
+const buscarModulo = (id) => MODULOS.find((m) => m.id === id);
 
 const SUBTITULOS = {
   visaogeral: 'O que precisa de você agora, o resultado do mês e a fotografia da rede.',
@@ -591,20 +579,18 @@ const SUBTITULOS = {
 let RESUMO = null;
 let ABA_ATUAL = { modulo: null, aba: null, resto: null };
 
+// Lista plana (rodada Navegação, 22/09/2026) — sem `.nav-grupo`, sem
+// cabeçalho de seção. `destaque` (só em Mídia Mostraí) ganha a classe
+// `.nav-item-destaque`, que traz a separação visual sozinha (espaçamento +
+// borda), sem precisar de um título "FERRAMENTAS"/"CONTEÚDO" antes dela.
 function montarNav() {
-  document.getElementById('nav').innerHTML = MODULOS.map(
-    (g) => `
-    <div class="nav-grupo">${g.grupo}</div>
-    ${g.itens
-      .filter((i) => !i.oculto)
-      .map(
-        (i) => `<button type="button" class="nav-item" data-modulo="${i.id}">
+  document.getElementById('nav').innerHTML = MODULOS.filter((i) => !i.oculto)
+    .map(
+      (i) => `<button type="button" class="nav-item${i.destaque ? ' nav-item-destaque' : ''}" data-modulo="${i.id}">
       <span>${i.nome}</span><span class="cont" hidden></span>
     </button>`,
-      )
-      .join('')}
-  `,
-  ).join('');
+    )
+    .join('');
 }
 
 function contarFilasDoModulo(modulo) {
@@ -748,7 +734,23 @@ document
 window.addEventListener('hashchange', () => {
   const alvo = location.hash.slice(1) || 'visaogeral';
   const { moduloId, abaId, resto } = resolverAlvo(alvo);
-  if (ABA_ATUAL.modulo !== moduloId || ABA_ATUAL.aba !== abaId || ABA_ATUAL.resto !== resto) irPara(alvo);
+  // Achado testando a rodada Navegação (22/09/2026): com vários hashes
+  // antigos caindo no MESMO destino de fallback (visaogeral — configuracoes,
+  // configuracoes/comodato, configuracoes/diagnostico, pendencias), navegar
+  // de um pro outro em sequência batia só nas três primeiras condições
+  // (ABA_ATUAL já era 'visaogeral' desde a queda anterior) e pulava
+  // `irPara` — a tela certa continuava no ar, mas a URL ficava travada no
+  // hash antigo. `location.hash` comparado contra o canônico fecha esse
+  // buraco sem abrir loop (a própria `irPara` só reatribui o hash quando ele
+  // ainda não bate, e o hashchange seguinte já encontra tudo igual).
+  const canonico = `#${[moduloId, abaId, resto].filter(Boolean).join('/')}`;
+  if (
+    ABA_ATUAL.modulo !== moduloId ||
+    ABA_ATUAL.aba !== abaId ||
+    ABA_ATUAL.resto !== resto ||
+    location.hash !== canonico
+  )
+    irPara(alvo);
 });
 
 // ---------- login ----------
@@ -807,7 +809,12 @@ const ALERTAS = [
   { fila: 'offline', aba: 'telas', texto: 'tela(s) ativas sem dar sinal', urgente: true },
   { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) aguardando análise' },
   { fila: 'contato', aba: 'mensagens', texto: 'mensagem(ns) aguardando resposta' },
-  { fila: 'eventos', aba: 'eventos', texto: 'evento(s) de pagamento pra revisar', urgente: true },
+  // "evento(s) de pagamento pra revisar" saiu daqui (rodada Navegação,
+  // 22/09/2026): Diagnóstico deixou de existir na UI, então essa fila não
+  // tem mais destino pra clicar — deixar o alerta clicável levando pra
+  // `visaogeral` (fallback de `resolverAlvo`) seria um badge apontando pra
+  // função aposentada. `RESUMO.filas.eventos` continua calculado no backend,
+  // só não aparece mais aqui.
   { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   {
     fila: 'arrependimentos',
@@ -1144,7 +1151,7 @@ async function renderOcupacaoRede(el) {
 // Mesmas filas da Visão geral (ALERTAS, RESUMO.filas já carregados por
 // irPara) — nenhum dado novo, só uma lista dedicada sem os KPIs e o gráfico
 // que "Hoje" também mostra, pra quando a pergunta é só "o que eu resolvo".
-async function renderPendencias(el) {
+async function _renderPendencias(el) {
   const { filas } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
   el.innerHTML = pendentes.length
@@ -4130,7 +4137,7 @@ async function renderCategorias(el) {
 }
 
 // ---------- opções de comodato ----------
-async function renderComodato(el) {
+async function _renderComodato(el) {
   const [opcoes, planos] = await Promise.all([pegar('/admin/planos-ponto'), pegar('/admin/planos')]);
   const selectPlano = (o) => `<select class="mini u-w-140" data-pp="plano_bonus_id" data-id="${o.id}">
       <option value="">(sem bônus)</option>
@@ -4203,7 +4210,7 @@ async function renderComodato(el) {
       return;
     }
     toast('Opção de comodato criada.');
-    renderComodato(el);
+    _renderComodato(el);
   });
 
   el.querySelectorAll('[data-pp]').forEach((inp) =>
@@ -4456,7 +4463,7 @@ async function renderFilaDevolucoes(el) {
 }
 
 // ---------- eventos pendentes ----------
-async function renderEventos(el) {
+async function _renderEventos(el) {
   const eventos = await pegar('/admin/eventos-pendentes');
   // Teste do e-mail aqui dentro de propósito: quando um evento fica pendente
   // por falha de envio, esta é a tela onde você está. O botão faz o login no
@@ -4519,7 +4526,7 @@ async function renderEventos(el) {
       if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) {
         RESUMO = await pegar('/admin/resumo');
         pintarContadores();
-        renderEventos(el);
+        _renderEventos(el);
       }
     }),
   );
@@ -4540,7 +4547,7 @@ async function renderEventos(el) {
       if (!r.ok) return window.alert(corpo.erro || 'não foi possível aplicar esse ciclo agora');
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
-      renderEventos(el);
+      _renderEventos(el);
     }),
   );
 }
