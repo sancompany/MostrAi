@@ -294,6 +294,13 @@ router.get('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
   res.json(await pagamentosRepo.listarPorPonto(req.params.pontoId));
 });
 
+// Fila financeira "quem devo pagar este mês" (rodada Financeiro, 22/09/2026)
+// — usada pela Visão geral (contador/total) e pela tela de drill-down
+// #financeiro/repasses.
+router.get('/admin/pagamentos-ponto/pendentes', async (_req, res) => {
+  res.json(await pagamentosRepo.listarPendentesDoMes());
+});
+
 router.post('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
   const { competencia, valor, forma, observacao, pago_em } = req.body;
   if (!competencia || valor === undefined || valor === null) {

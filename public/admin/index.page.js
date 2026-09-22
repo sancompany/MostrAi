@@ -373,8 +373,6 @@ function horasDeTelaPorMes(p) {
   return `= até ${h}h de tela/mês`;
 }
 
-const TROCA_STATUS = { pendente: 'Esperando pagamento', pago: 'Paga', cancelado: 'Cancelada' };
-
 function selectStatus(mapa, atual, attrs) {
   return `<select class="mini" ${attrs}>
     ${Object.entries(mapa)
@@ -425,12 +423,16 @@ const ALIASES_ANTIGOS = {
   categorias: 'contas/categorias',
   comodato: 'configuracoes/comodato',
   eventos: 'configuracoes/diagnostico',
-  cobrancas: 'receitas/cobrancas',
-  trocas: 'receitas/trocas',
-  arrependimentos: 'receitas/devolucoes',
-  comissoes: 'repasses/vendedores',
-  pagamentospontos: 'repasses/pontos',
-  custos: 'custos',
+  // Financeiro (rodada 22/09/2026): Receitas/Repasses saem de página
+  // permanente e viram drill-down oculto — os hashes antigos continuam
+  // abrindo a tela certa, só que agora escondida da sidebar. Custos não tem
+  // mais tela nenhuma (nem oculta): o hash antigo cai em visaogeral sozinho,
+  // igual todo alias que aponta pra um módulo que não existe mais.
+  cobrancas: 'financeiro/cobrancas',
+  trocas: 'financeiro/trocas',
+  arrependimentos: 'financeiro/devolucoes',
+  comissoes: 'financeiro/comissoes',
+  pagamentospontos: 'financeiro/repasses',
 };
 // Reverso: de "módulo/aba" novo pro id antigo — só pra reaproveitar o texto
 // de SUBTITULOS sem duplicar nenhuma frase.
@@ -517,29 +519,6 @@ const MODULOS = [
     ],
   },
   {
-    grupo: 'Financeiro',
-    itens: [
-      {
-        id: 'receitas',
-        nome: 'Receitas',
-        abas: [
-          { id: 'cobrancas', nome: 'Cobranças', fila: 'notas', render: renderCobrancas },
-          { id: 'trocas', nome: 'Trocas', render: renderTrocas },
-          { id: 'devolucoes', nome: 'Devoluções', fila: 'arrependimentos', render: renderArrependimentos },
-        ],
-      },
-      {
-        id: 'repasses',
-        nome: 'Repasses',
-        abas: [
-          { id: 'pontos', nome: 'Pontos', render: renderPagamentosPontos },
-          { id: 'vendedores', nome: 'Vendedores', render: renderComissoes },
-        ],
-      },
-      { id: 'custos', nome: 'Custos', render: renderCustos },
-    ],
-  },
-  {
     grupo: 'Sistema',
     itens: [
       {
@@ -554,6 +533,25 @@ const MODULOS = [
         ],
       },
       { id: 'pendencias', nome: 'Pendências', render: renderPendencias },
+      // Financeiro deixou de ser grupo próprio da sidebar (rodada Financeiro,
+      // 22/09/2026, pedido do dono: "normalidade não ocupa espaço, pendência
+      // aparece") — Receitas/Repasses/Custos como páginas permanentes saíram.
+      // O que sobra é drill-down: a Visão geral mostra receita e pendências
+      // reais (repasses/comissões/trocas/devoluções) e cada uma leva pra cá
+      // por clique. `oculto` mantém a rota (`#financeiro/repasses` etc.) sem
+      // nenhum botão na sidebar — mesmo padrão de "mensagens"/"vendedores".
+      {
+        id: 'financeiro',
+        nome: 'Financeiro',
+        oculto: true,
+        abas: [
+          { id: 'repasses', nome: 'Repasses', render: renderFilaRepasses },
+          { id: 'comissoes', nome: 'Comissões', render: renderFilaComissoes },
+          { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
+          { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
+          { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
+        ],
+      },
     ],
   },
 ];
@@ -575,16 +573,13 @@ const SUBTITULOS = {
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
   comodato:
     'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano básico junto, ou trocar os R$ 50 pelo Essencial inteiro.',
-  cobrancas: 'Pagamentos confirmados e emissão de nota fiscal.',
-  trocas:
-    'Quem trocou de plano no meio do período: de qual plano pra qual, quanto pagou de diferença e quando. O pago também entra em Cobranças; aqui é a lista de quem subiu de plano.',
-  comissoes: 'Quanto cada vendedor tem a receber, e o Pix pra pagar.',
-  pagamentospontos:
-    'A ajuda de custo do comodato, ponto a ponto. Lance o mês e quite quando pagar, e isso aparece no extrato do dono do ponto.',
-  custos: 'Custos mensais que entram na margem: MEI, contador, domínio, deslocamento... o que você lançar aqui.',
+  cobrancas: 'Histórico de pagamentos confirmados.',
+  trocas: 'Quem trocou de plano no meio do período e ainda não pagou a diferença.',
+  comissoes: 'Comissões de vendedor em aberto. Marcar como paga só registra aqui — o Pix é por fora.',
+  pagamentospontos: 'Quem tem ajuda de custo de comodato pra pagar este mês.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
   arrependimentos:
-    'Quem desistiu da contratação dentro dos 7 dias da lei. A cobrança já foi cancelada e o anúncio já saiu do ar. Falta devolver o dinheiro no painel do Checkout e registrar aqui.',
+    'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
   meusanuncios:
     'A conta de anunciante do próprio Mostraí: anuncia a rede nas telas da rede, sem plano e sem cobrança. Criativos ilimitados.',
   pendencias:
@@ -879,6 +874,59 @@ function redeVazia(rede) {
   return !rede.pontosAtivos && !rede.telasAtivas && contas === 0;
 }
 
+// Bloco Financeiro da Visão geral (rodada Financeiro, 22/09/2026). A regra
+// da rodada inteira: "normalidade não ocupa espaço, pendência aparece" — os
+// dois números de receita ficam sempre visíveis (não dependem de ação), a
+// lista de pendências some por completo quando não há nenhuma (nunca um
+// item com contador zero). Cards por ciclo (mensal/trimestral/semestral/
+// anual) saíram daqui de propósito — continuam em `financeiro.receitaPorCiclo`
+// pra quem quiser consumir, só pararam de ocupar a tela principal.
+function painelFinanceiroResumo(financeiro, filas) {
+  const pendencias = [
+    financeiro.repassesPendentes.qtd > 0 && {
+      aba: 'financeiro/repasses',
+      qtd: financeiro.repassesPendentes.qtd,
+      texto: `repasse(s) de ponto pendente(s) · ${fmt(financeiro.repassesPendentes.total)}`,
+    },
+    financeiro.comissoesPendentes.qtd > 0 && {
+      aba: 'financeiro/comissoes',
+      qtd: financeiro.comissoesPendentes.qtd,
+      texto: `comissão(ões) de vendedor pendente(s) · ${fmt(financeiro.comissoesPendentes.total)}`,
+    },
+    financeiro.trocasPendentes.qtd > 0 && {
+      aba: 'financeiro/trocas',
+      qtd: financeiro.trocasPendentes.qtd,
+      texto: 'troca(s) de plano aguardando pagamento',
+    },
+    (filas.arrependimentos || 0) > 0 && {
+      aba: 'financeiro/devolucoes',
+      qtd: filas.arrependimentos,
+      texto: 'devolução(ões) por arrependimento pendente(s)',
+    },
+  ].filter(Boolean);
+
+  return `
+    <div class="panel financeiro-panel u-mb-16">
+      <div class="panel-head"><h3>Financeiro</h3></div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
+        <div class="kpi-card"><span class="kpi-label">Confirmado no mês</span><b>${fmt(financeiro.receitaConfirmadaMes)}</b><a class="link-secundario" href="#financeiro/cobrancas">Ver histórico →</a></div>
+      </div>
+      ${
+        pendencias.length
+          ? `<div class="alertas">${pendencias
+              .map(
+                (p) => `
+          <button type="button" class="alerta" data-ir="${p.aba}">
+            <b>${p.qtd}</b><span>${p.texto}</span>
+          </button>`,
+              )
+              .join('')}</div>`
+          : ''
+      }
+    </div>`;
+}
+
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
@@ -904,15 +952,7 @@ async function renderResumo(el) {
 
     <div id="promocaoAtivaResumo"></div>
 
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Receita recorrente · Total</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
-      ${Object.entries(CICLOS)
-        .map(
-          ([meses, nome]) =>
-            `<div class="kpi-card"><span class="kpi-label">Receita recorrente · ${nome}</span><b>${fmt(financeiro.receitaPorCiclo[meses])}</b><span class="kpi-caption">contas nesse ciclo, por mês</span></div>`,
-        )
-        .join('')}
-    </div>
+    ${painelFinanceiroResumo(financeiro, filas)}
 
     <div class="kpi-grid u-mb-20">
       <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
@@ -2510,7 +2550,14 @@ async function _renderConvites(el) {
 }
 
 // ---------- custos fixos ----------
-async function renderCustos(el) {
+// Sem rota na UI desde a rodada Financeiro (22/09/2026, pedido do dono: a
+// Mostraí não vira sistema de controle contábil) — mantido como código
+// morto autorizado, não referenciado pelo router. `custos_fixos` segue no
+// banco, `margemMensal` (GET /admin/resumo) segue calculada com o último
+// valor gravado — nenhuma tela deste admin lê `margemMensal` (conferido:
+// só `receitaMensal`/`receitaConfirmadaMes` aparecem na Visão geral), então
+// não há métrica visível ficando enganosa por custo desatualizado.
+async function _renderCustos(el) {
   const custos = await pegar('/admin/custos-fixos');
   const total = custos.filter((c) => c.ativo).reduce((t, c) => t + Number(c.valor_mensal), 0);
   const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>R$/mês</th><th>Observação</th><th data-ord>Entra na margem</th><th></th></tr></thead><tbody>
@@ -2568,7 +2615,7 @@ async function renderCustos(el) {
             : campo.value;
       if (await salvar(`/admin/custos-fixos/${campo.dataset.id}`, { [campo.dataset.custo]: valor }, campo)) {
         RESUMO = await pegar('/admin/resumo');
-        if (campo.dataset.custo !== 'nome' && campo.dataset.custo !== 'observacao') renderCustos(el);
+        if (campo.dataset.custo !== 'nome' && campo.dataset.custo !== 'observacao') _renderCustos(el);
       }
     }),
   );
@@ -2578,7 +2625,7 @@ async function renderCustos(el) {
       const r = await api(`/admin/custos-fixos/${btn.dataset.excluirCusto}`, { method: 'DELETE' });
       if (r.ok) {
         RESUMO = await pegar('/admin/resumo');
-        renderCustos(el);
+        _renderCustos(el);
       }
     }),
   );
@@ -2595,7 +2642,7 @@ async function renderCustos(el) {
       return;
     }
     RESUMO = await pegar('/admin/resumo');
-    renderCustos(el);
+    _renderCustos(el);
   });
 }
 
@@ -3293,116 +3340,62 @@ async function renderPlanos(el) {
   });
 }
 
-// ---------- pagar os pontos ----------
-// As três rotas existiam desde a migration 022 e NENHUMA tinha tela: dava pra
-// lançar e quitar só por curl. O dono do ponto via o extrato dele (que também
-// não tinha tela até hoje) e o dono da rede não tinha por onde pagar.
-async function renderPagamentosPontos(el) {
-  const pontos = (await pegar('/admin/pontos')).filter((p) => p.status === 'em_operacao' || p.valor_pago_mensal > 0);
-  if (!pontos.length) {
-    el.innerHTML =
-      '<p class="empty-state">Nenhum ponto ativo ainda. A ajuda de custo aparece aqui quando o primeiro ponto entrar no ar.</p>';
+// ---------- fila financeira: repasses de pontos ----------
+// Rodada Financeiro (22/09/2026): "eu preciso saber QUEM devo pagar no mês"
+// — a fila se monta sozinha a partir de `pontos.valor_pago_mensal` (a
+// modalidade "troca por tela" do comodato tem esse valor zerado, então ela
+// nunca aparece aqui — regra de comodato não foi recriada, só consumida) e
+// de `GET /admin/pagamentos-ponto/pendentes` (quem ainda não tem lançamento
+// pago pra este mês). Sumiu o formulário manual "Lançar o mês": um clique
+// em "Pagar" lança e quita no mesmo passo; quem já tinha lançamento em
+// aberto (lançado por fora, ou de um mês anterior) usa "Marcar como pago".
+async function renderFilaRepasses(el) {
+  const pendentes = await pegar('/admin/pagamentos-ponto/pendentes');
+  const mesAtual = new Date().toISOString().slice(0, 7);
+
+  if (!pendentes.length) {
+    el.innerHTML = '<p class="empty-state">Nenhum repasse pendente.</p>';
     return;
   }
-  const mesAtual = new Date().toISOString().slice(0, 7);
-  const listas = await Promise.all(pontos.map((p) => pegar(`/admin/pontos/${p.id}/pagamentos`)));
 
-  const linhas = [];
-  let aberto = 0;
-  pontos.forEach((p, i) => {
-    (listas[i] || []).forEach((l) => {
-      if (!l.pago_em) aberto += Number(l.valor);
-      linhas.push({ ...l, ponto_nome: p.nome });
-    });
-  });
-  linhas.sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)));
-
-  const semLancamento = pontos.filter(
-    (_p, i) => !(listas[i] || []).some((l) => String(l.competencia).slice(0, 7) === mesAtual),
-  );
-
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Em aberto</span><b>${fmt(aberto)}</b><span class="kpi-caption">lançado e ainda não pago</span></div>
-      <div class="kpi-card"><span class="kpi-label">Sem lançamento em ${esc(mesAtual)}</span><b>${semLancamento.length}</b><span class="kpi-caption">de ${pontos.length} ponto(s) ativo(s)</span></div>
-    </div>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançar o mês</h3></div>
-    <form class="card u-mw-520" id="formPagPonto">
-      <div><label for="pagPonto">Ponto</label><select class="mini" id="pagPonto" required>
-        ${pontos.map((p) => `<option value="${p.id}">${esc(p.nome)} (${fmt(p.valor_pago_mensal || 0)}/mês)</option>`).join('')}
-      </select></div>
-      <div class="field-row">
-        <div class="u-col"><label for="pagComp">Competência</label><input class="mini" id="pagComp" type="month" value="${mesAtual}" required></div>
-        <div class="u-col"><label for="pagValor">Valor (R$)</label><input class="mini" id="pagValor" type="number" step="0.01" min="0" required></div>
-      </div>
-      <div class="field-row">
-        <div class="u-col"><label for="pagForma">Forma</label><input class="mini" id="pagForma" placeholder="pix, dinheiro, desconto…"></div>
-        <div class="u-col"><label for="pagObs">Observação</label><input class="mini" id="pagObs"></div>
-      </div>
-      <label class="check-row"><input type="checkbox" id="pagJaPago"><span>Já paguei, lançar direto como quitado</span></label>
-      <button class="btn primary" type="submit">Lançar</button>
-      <p class="form-msg" id="msgPagPonto"></p>
-    </form>
-
-    <div class="panel-head u-m-0 u-mt-24 u-mb-10"><h3>Lançamentos</h3></div>
-    ${
-      linhas.length
-        ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th data-ord>Competência</th><th data-ord>Ponto</th><th class="num">Valor</th><th data-ord>Situação</th><th>Forma</th><th>Observação</th><th></th>
-    </tr></thead><tbody>
-    ${linhas
+  el.innerHTML = `<div class="card u-mw-680">
+    ${pendentes
       .map(
-        (l) => `<tr data-filtro="${l.pago_em ? 'pago' : 'aberto'}">
-      <td>${esc(String(l.competencia).slice(0, 7))}</td>
-      <td>${esc(l.ponto_nome)}</td>
-      <td class="num"><b>${fmt(l.valor)}</b></td>
-      <td>${l.pago_em ? `<span class="badge badge-ok">pago ${data(l.pago_em)}</span>` : '<span class="badge badge-pendente">em aberto</span>'}</td>
-      <td>${esc(l.forma || '-')}</td>
-      <td class="u-ws-normal u-mw-240 u-fs-72">${esc(l.observacao || '-')}</td>
-      <td><button class="btn ${l.pago_em ? 'ghost' : 'primary'} mini" data-quitar="${l.id}" data-pago="${l.pago_em ? '0' : '1'}">${l.pago_em ? 'Desfazer' : 'Marcar como pago'}</button></td>
-    </tr>`,
+        (p) => `<div class="linha-financeira" data-linha="${p.pagamento_id || `novo-${p.ponto_id}`}">
+        <div>
+          <b>${esc(p.ponto_nome)}</b>
+          <p class="u-dim u-m-0 u-fs-85">${esc(p.conta_nome || p.responsavel_nome || 'sem responsável cadastrado')} · ${esc(mesAtual)}${p.forma ? ` · ${esc(p.forma)}` : ''}</p>
+        </div>
+        <div class="u-ta-r">
+          <b>${fmt(p.valor_pago_mensal)}</b>
+          <button class="btn primary mini u-d-block u-mt-4" data-pagar="${p.ponto_id}" data-pagamento="${p.pagamento_id || ''}">${p.pagamento_id ? 'Marcar como pago' : 'Pagar'}</button>
+        </div>
+      </div>`,
       )
-      .join('')}
-    </tbody></table></div></div>`
-        : '<p class="empty-state">Nenhum lançamento ainda.</p>'
-    }
-    <p class="empty-state u-ta-l u-p-0 u-pt-16">Um lançamento por ponto por mês. O banco recusa o segundo da mesma competência, então duplo clique não vira pagamento dobrado. O dono do ponto vê exatamente esta lista no painel dele, em "Meus recebimentos".</p>`;
+      .join('<hr class="ponto-info-sep">')}
+  </div>`;
 
-  if (linhas.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  document.getElementById('formPagPonto').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgPagPonto');
-    const corpo = {
-      competencia: document.getElementById('pagComp').value,
-      valor: Number(document.getElementById('pagValor').value),
-      forma: document.getElementById('pagForma').value.trim() || null,
-      observacao: document.getElementById('pagObs').value.trim() || null,
-    };
-    if (document.getElementById('pagJaPago').checked) corpo.pago_em = new Date().toISOString();
-    const r = await api(`/admin/pontos/${document.getElementById('pagPonto').value}/pagamentos`, {
-      method: 'POST',
-      body: JSON.stringify(corpo),
-    });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não deu pra lançar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    toast('Lançado.');
-    renderPagamentosPontos(el);
-  });
-
-  el.querySelectorAll('[data-quitar]').forEach((btn) =>
+  el.querySelectorAll('[data-pagar]').forEach((btn) =>
     btn.addEventListener('click', async () => {
-      const r = await api(`/admin/pagamentos-ponto/${btn.dataset.quitar}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ pago: btn.dataset.pago === '1' }),
-      });
-      if (!r.ok) return toast('Não deu pra atualizar.', true);
-      toast(btn.dataset.pago === '1' ? 'Pagamento quitado.' : 'Quitação desfeita.');
-      renderPagamentosPontos(el);
+      btn.disabled = true;
+      const pagamentoId = btn.dataset.pagamento;
+      const r = pagamentoId
+        ? await api(`/admin/pagamentos-ponto/${pagamentoId}`, { method: 'PATCH', body: JSON.stringify({ pago: true }) })
+        : await api(`/admin/pontos/${btn.dataset.pagar}/pagamentos`, {
+            method: 'POST',
+            body: JSON.stringify({
+              competencia: mesAtual,
+              valor: pendentes.find((p) => p.ponto_id === Number(btn.dataset.pagar)).valor_pago_mensal,
+              pago_em: new Date().toISOString(),
+            }),
+          });
+      if (!r.ok) {
+        btn.disabled = false;
+        return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível registrar o pagamento.', 'err');
+      }
+      toast('Repasse pago.');
+      RESUMO = await pegar('/admin/resumo');
+      renderFilaRepasses(el);
     }),
   );
 }
@@ -3778,48 +3771,33 @@ async function renderContato(el) {
 // virava pendência, mas nenhuma tela respondia "quem trocou, de qual plano
 // pra qual, e quando" — e é essa a pergunta que diz se o mecanismo pegou.
 // Leitura pura: daqui não se altera pedido nenhum.
-async function renderTrocas(el) {
-  const pedidos = await pegar('/admin/pedidos-avulsos');
-  const pagos = pedidos.filter((p) => p.status === 'pago');
-  const arrecadado = pagos.reduce((t, p) => t + Number(p.valor), 0);
-  const pendentes = pedidos.filter((p) => p.status === 'pendente').length;
+// ---------- fila financeira: trocas de plano ----------
+// Rodada Financeiro (22/09/2026): só quem abriu o checkout da diferença e
+// não pagou ainda. Não tem ação aqui — o pagamento acontece no Checkout do
+// próprio cliente (webhook fecha sozinho); a lógica de troca/prorrata não
+// foi tocada, só a exibição. Paga ou cancelada é histórico, sem tela fixa —
+// mesmos dados, só sem consulta nova.
+async function renderFilaTrocas(el) {
+  const pendentes = (await pegar('/admin/pedidos-avulsos')).filter((p) => p.status === 'pendente');
 
-  const corpo = `<table><thead><tr>
-      <th data-ord>Anunciante</th><th data-ord>De</th><th data-ord>Para</th>
-      <th data-ord>Diferença</th><th data-ord>Situação</th><th data-ord>Pedido em</th><th data-ord>Pago em</th>
-    </tr></thead><tbody>
-    ${pedidos
+  if (!pendentes.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma troca aguardando pagamento.</p>';
+    return;
+  }
+
+  el.innerHTML = `<div class="card u-mw-680">
+    ${pendentes
       .map(
-        (p) => `<tr data-filtro="${p.status}">
-      <td><b>${esc(p.nome_empresa)}</b></td>
-      <td>${p.plano_atual_nome ? esc(p.plano_atual_nome) : '<span class="u-dim">sem plano</span>'}</td>
-      <td>${esc(p.plano_novo_nome)} <span class="u-dim">${CICLOS[p.plano_novo_meses] || `${p.plano_novo_meses}x`}</span></td>
-      <td>${fmt(p.valor)}</td>
-      <td><span class="badge ${p.status === 'pago' ? 'badge-ok' : p.status === 'cancelado' ? 'badge-err' : 'badge-pendente'}">${TROCA_STATUS[p.status] || p.status}</span></td>
-      <td>${data(p.criado_em)}</td>
-      <td>${p.pago_em ? data(p.pago_em) : '-'}</td>
-    </tr>`,
+        (p) => `<div class="linha-financeira">
+        <div>
+          <b>${esc(p.nome_empresa)}</b>
+          <p class="u-dim u-m-0 u-fs-85">${p.plano_atual_nome ? esc(p.plano_atual_nome) : 'sem plano'} → ${esc(p.plano_novo_nome)} ${esc(CICLOS[p.plano_novo_meses] || `${p.plano_novo_meses}x`)} · pedida em ${data(p.criado_em)}</p>
+        </div>
+        <div class="u-ta-r"><b>${fmt(p.valor)}</b><span class="badge badge-pendente u-d-block u-mt-4">esperando pagamento</span></div>
+      </div>`,
       )
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = pedidos.length
-    ? `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Trocas pagas</span><b>${pagos.length}</b><span class="kpi-caption">${fmt(arrecadado)} em diferenças</span></div>
-      <div class="kpi-card"><span class="kpi-label">Esperando pagamento</span><b>${pendentes}</b><span class="kpi-caption">o cliente abriu o checkout e não concluiu</span></div>
-    </div>
-    ${caixaTabela({
-      chips: [
-        { valor: '', nome: 'Todas' },
-        { valor: 'pago', nome: 'Pagas' },
-        { valor: 'pendente', nome: 'Pendentes' },
-        { valor: 'cancelado', nome: 'Canceladas' },
-      ],
-      html: corpo,
-      dica: 'Troca é pagamento único: não deixa renovação automática no lugar da antiga.',
-    })}`
-    : '<p class="empty-state">Ninguém trocou de plano ainda.</p>';
+      .join('<hr class="ponto-info-sep">')}
+  </div>`;
 }
 
 // A tela de banco de horas (G.3, "Entrega") saiu da navegação do admin
@@ -3831,213 +3809,138 @@ async function renderTrocas(el) {
 // nenhum — reconstrua a partir do histórico do git se um dia a tela
 // precisar voltar.
 
-// ---------- cobranças ----------
-async function renderCobrancas(el) {
+// ---------- histórico: cobranças ----------
+// Rodada Financeiro (22/09/2026): pura leitura, sem ação nenhuma — a emissão
+// manual de nota fiscal (upload de PDF) saiu da UI de propósito (pedido do
+// dono: não emitir/anexar nota pela Mostraí; quando existir emissão fiscal
+// automática, o resultado dela vira uma FALHA na Visão geral, não uma tarefa
+// manual aqui). `PATCH /admin/cobrancas/:id/nota-fiscal` continua no backend,
+// sem chamador nesta tela.
+async function renderHistoricoCobrancas(el) {
   const cobrancas = await pegar('/admin/cobrancas');
+  if (!cobrancas.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma cobrança confirmada ainda.</p>';
+    return;
+  }
   const total = cobrancas.reduce((t, c) => t + Number(c.valor), 0);
-  const pendentes = cobrancas.filter((c) => c.nota_fiscal_status !== 'emitida').length;
 
   const corpo = `<table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Anunciante</th><th data-ord>Valor</th><th data-ord>Data</th><th>Nota fiscal</th>
+      <th data-ord>ID</th><th data-ord>Anunciante</th><th data-ord>Valor</th><th data-ord>Data</th>
     </tr></thead><tbody>
     ${cobrancas
       .map(
-        (c) => `<tr data-filtro="${c.nota_fiscal_status}">
+        (c) => `<tr>
       <td>${c.id}</td>
       <td><b>${esc(c.nome_empresa)}</b></td>
       <td>${fmt(c.valor)}</td>
       <td>${data(c.criado_em)}</td>
-      <td>${
-        c.nota_fiscal_status === 'emitida'
-          ? `<span class="badge badge-ok">emitida</span> <a href="${esc(c.nota_fiscal_url)}" target="_blank" rel="noopener">ver PDF</a>`
-          : `<label class="btn ghost mini">Anexar PDF<input type="file" accept="application/pdf" hidden data-cobranca="${c.id}"></label>`
-      }</td>
     </tr>`,
       )
       .join('')}
   </tbody></table>`;
 
-  el.innerHTML = cobrancas.length
-    ? `
+  el.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Total confirmado</span><b>${fmt(total)}</b><span class="kpi-caption">${cobrancas.length} cobrança(s)</span></div>
-      <div class="kpi-card"><span class="kpi-label">Notas por emitir</span><b>${pendentes}</b><span class="kpi-caption">envie o PDF na linha</span></div>
     </div>
-    ${caixaTabela({
-      chips: [
-        { valor: '', nome: 'Todas' },
-        { valor: 'pendente', nome: 'Sem nota' },
-        { valor: 'emitida', nome: 'Com nota' },
-      ],
-      html: corpo,
-      dica: 'Selecionar o PDF já envia a nota.',
-    })}`
-    : '<p class="empty-state">Nenhuma cobrança confirmada ainda.</p>';
+    ${caixaTabela({ chips: [{ valor: '', nome: 'Todas' }], html: corpo, dica: 'Histórico de pagamentos confirmados.' })}`;
 
-  if (!cobrancas.length) return;
   turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('input[data-cobranca]').forEach((input) =>
-    input.addEventListener('change', async () => {
-      if (!input.files[0]) return;
-      const form = new FormData();
-      form.append('arquivo', input.files[0]);
-      const r = await fetch(`${API_BASE_URL}/admin/cobrancas/${input.dataset.cobranca}/nota-fiscal`, {
-        method: 'PATCH',
-        credentials: 'include',
-        body: form,
-      });
-      toast(r.ok ? 'Nota fiscal anexada.' : 'Não foi possível anexar a nota.', r.ok ? '' : 'err');
-      if (r.ok) {
-        RESUMO = await pegar('/admin/resumo');
-        pintarContadores();
-        renderCobrancas(el);
-      }
-    }),
-  );
 }
 
-// ---------- comissões ----------
-async function renderComissoes(el) {
-  const comissoes = await pegar('/admin/comissoes');
-  const aReceber = comissoes.filter((c) => !c.pago_em);
-  const totalAPagar = aReceber.reduce((t, c) => t + Number(c.comissao_valor), 0);
+// ---------- fila financeira: comissões de vendedor ----------
+// Rodada Financeiro (22/09/2026): só o que está em aberto — "normalidade não
+// ocupa espaço". Histórico de comissões pagas continua em `comissoes`, sem
+// aba pra navegar por ele aqui (pedido explícito: nada de abas de concluídos).
+async function renderFilaComissoes(el) {
+  const comissoes = (await pegar('/admin/comissoes')).filter((c) => !c.pago_em);
 
-  // Agrupa por vendedor: na hora de pagar, o que interessa é "quanto pro
-  // Fulano", não linha a linha.
-  const porVendedor = {};
-  aReceber.forEach((c) => {
-    porVendedor[c.vendedor_nome] = porVendedor[c.vendedor_nome] || { total: 0, pix: c.chave_pix, qtd: 0 };
-    porVendedor[c.vendedor_nome].total += Number(c.comissao_valor);
-    porVendedor[c.vendedor_nome].qtd += 1;
-  });
+  if (!comissoes.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma comissão pendente.</p>';
+    return;
+  }
 
-  const corpo = `<table><thead><tr>
-      <th data-ord>Vendedor</th><th data-ord>Anunciante</th><th data-ord>Venda</th><th data-ord>Comissão</th><th data-ord>Data</th><th>Chave Pix</th><th data-ord>Situação</th>
-    </tr></thead><tbody>
+  el.innerHTML = `<div class="card u-mw-680">
     ${comissoes
       .map(
-        (c) => `<tr data-filtro="${c.pago_em ? 'pago' : 'aberto'}">
-      <td><b>${esc(c.vendedor_nome)}</b></td>
-      <td>${esc(c.nome_empresa)}</td>
-      <td>${fmt(c.valor_confirmado)}</td>
-      <td><b>${fmt(c.comissao_valor)}</b></td>
-      <td>${data(c.criado_em)}</td>
-      <td>${esc(c.chave_pix || '-')}</td>
-      <td>${
-        c.pago_em
-          ? `<span class="badge badge-ok">pago ${data(c.pago_em)}</span> <button class="btn ghost mini" data-pago="${c.id}" data-valor="0">Desfazer</button>`
-          : `<button class="btn primary mini" data-pago="${c.id}" data-valor="1">Marcar como paga</button>`
-      }</td>
-    </tr>`,
+        (c) => `<div class="linha-financeira" data-linha="${c.id}">
+        <div>
+          <b>${esc(c.vendedor_nome)}</b>
+          <p class="u-dim u-m-0 u-fs-85">indicou ${esc(c.nome_empresa)} · venda de ${fmt(c.valor_confirmado)} · ${data(c.criado_em)}</p>
+          ${c.chave_pix ? `<p class="u-dim u-m-0 u-fs-72">Pix: ${esc(c.chave_pix)}</p>` : ''}
+        </div>
+        <div class="u-ta-r">
+          <b>${fmt(c.comissao_valor)}</b>
+          <button class="btn primary mini u-d-block u-mt-4" data-pago="${c.id}">Marcar como paga</button>
+        </div>
+      </div>`,
       )
-      .join('')}
-  </tbody></table>`;
+      .join('<hr class="ponto-info-sep">')}
+  </div>`;
 
-  el.innerHTML = comissoes.length
-    ? `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Total a pagar</span><b>${fmt(totalAPagar)}</b><span class="kpi-caption">${aReceber.length} comissão(ões) em aberto</span></div>
-      ${Object.entries(porVendedor)
-        .slice(0, 3)
-        .map(
-          ([nome, d]) => `
-        <div class="kpi-card"><span class="kpi-label">${esc(nome)}</span><b>${fmt(d.total)}</b><span class="kpi-caption">${esc(d.pix || 'sem chave Pix')}</span></div>`,
-        )
-        .join('')}
-    </div>
-    ${caixaTabela({
-      chips: [
-        { valor: 'aberto', nome: 'A pagar' },
-        { valor: 'pago', nome: 'Pagas' },
-        { valor: '', nome: 'Todas' },
-      ],
-      html: corpo,
-      dica: 'Marcar como paga só registra aqui. O Pix é feito por fora.',
-    })}`
-    : '<p class="empty-state">Nenhuma comissão gerada ainda. Elas aparecem quando um anunciante indicado por um vendedor tem o pagamento confirmado.</p>';
-
-  if (!comissoes.length) return;
-  turbinarTabela(el.querySelector('.tabela-caixa'));
   el.querySelectorAll('[data-pago]').forEach((btn) =>
     btn.addEventListener('click', async () => {
-      if (await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: btn.dataset.valor === '1' }))
-        renderComissoes(el);
+      btn.disabled = true;
+      if (!(await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: true }))) {
+        btn.disabled = false;
+        return;
+      }
+      RESUMO = await pegar('/admin/resumo');
+      renderFilaComissoes(el);
     }),
   );
 }
 
-// ---------- devoluções por arrependimento ----------
-// O estorno acontece FORA daqui: a API do San Checkout não expõe estorno, quem
-// devolve é uma pessoa no painel do Checkout/Asaas. Esta tela existe pra que o
-// pedido não vire um e-mail que alguém esquece — é dinheiro que a lei manda
-// devolver, com prazo.
-async function renderArrependimentos(el) {
-  const pedidos = await pegar('/admin/arrependimentos');
-  const abertos = pedidos.filter((p) => p.status === 'pendente');
-  const totalAberto = abertos.reduce((t, p) => t + Number(p.valor_a_estornar), 0);
+// ---------- fila financeira: devoluções por arrependimento ----------
+// Rodada Financeiro (22/09/2026): só as pendentes. O estorno acontece FORA
+// daqui (API do San Checkout não expõe estorno, é o painel do Checkout/
+// Asaas) — esta fila existe pra que o pedido não vire um e-mail que alguém
+// esquece: é dinheiro que a lei manda devolver, com prazo. Resolvida some
+// da fila; o registro (com o comprovante) continua no banco.
+async function renderFilaDevolucoes(el) {
+  const pendentes = (await pegar('/admin/arrependimentos')).filter((p) => p.status === 'pendente');
 
-  const corpo = `<table><thead><tr>
-      <th data-ord>Protocolo</th><th data-ord>Anunciante</th><th>CPF/CNPJ</th><th data-ord>Valor</th>
-      <th data-ord>Pedido em</th><th data-ord>Situação</th><th></th>
-    </tr></thead><tbody>
-    ${pedidos
+  if (!pendentes.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma devolução pendente.</p>';
+    return;
+  }
+
+  el.innerHTML = `<div class="card u-mw-680">
+    ${pendentes
       .map(
-        (p) => `<tr data-filtro="${p.status}">
-      <td><b>${p.id}</b></td>
-      <td>${esc(p.nome_empresa)}<div class="u-dim u-fs-72">${esc(p.contato_email)}</div></td>
-      <td>${esc(p.cpf_cnpj)}</td>
-      <td><b>${fmt(p.valor_a_estornar)}</b></td>
-      <td>${data(p.pedido_em)}</td>
-      <td>${
-        p.status === 'estornado'
-          ? `<span class="badge badge-ok">devolvido ${data(p.estornado_em)}</span>`
-          : '<span class="badge badge-pendente">a devolver</span>'
-      }</td>
-      <td>${
-        p.status === 'estornado'
-          ? `<span class="u-dim u-fs-72">${esc(p.comprovante || '-')}</span>`
-          : `<input class="u-w-160" placeholder="id do estorno" data-comp="${p.id}">
-           <button class="btn primary mini" data-estornado="${p.id}">Registrar devolução</button>`
-      }</td>
-    </tr>`,
+        (p) => `<div class="linha-financeira" data-linha="${p.id}">
+        <div>
+          <b>${esc(p.nome_empresa)}</b>
+          <p class="u-dim u-m-0 u-fs-85">${esc(p.contato_email)} · ${esc(p.cpf_cnpj)} · pedida em ${data(p.pedido_em)}</p>
+        </div>
+        <div class="u-ta-r">
+          <b>${fmt(p.valor_a_estornar)}</b>
+          <div class="field-row u-mt-4">
+            <input class="mini u-w-140" placeholder="id do estorno" data-comp="${p.id}">
+            <button class="btn primary mini" data-estornado="${p.id}">Registrar</button>
+          </div>
+        </div>
+      </div>`,
       )
-      .join('')}
-  </tbody></table>`;
+      .join('<hr class="ponto-info-sep">')}
+  </div>`;
 
-  el.innerHTML = pedidos.length
-    ? `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">A devolver</span><b>${fmt(totalAberto)}</b><span class="kpi-caption">${abertos.length} pedido(s) em aberto</span></div>
-    </div>
-    ${caixaTabela({
-      chips: [
-        { valor: 'pendente', nome: 'A devolver' },
-        { valor: 'estornado', nome: 'Devolvidas' },
-        { valor: '', nome: 'Todas' },
-      ],
-      html: corpo,
-      dica: 'A devolução é feita no painel do San Checkout/Asaas. Aqui você registra o comprovante pra fechar o pedido.',
-    })}`
-    : '<p class="empty-state">Ninguém desistiu de uma contratação até agora.</p>';
-
-  if (!pedidos.length) return;
-  turbinarTabela(el.querySelector('.tabela-caixa'));
   el.querySelectorAll('[data-estornado]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const campo = el.querySelector(`[data-comp="${btn.dataset.estornado}"]`);
-      // `salvar()` forca PATCH e esta rota e POST — a fila de devolucao nunca
-      // fechava, o pedido ficava aberto pra sempre e o dinheiro devolvido nao
-      // era registrado em lugar nenhum.
+      btn.disabled = true;
       const r = await api(`/admin/arrependimentos/${btn.dataset.estornado}/estornado`, {
         method: 'POST',
         body: JSON.stringify({ comprovante: campo.value.trim() }),
       });
       if (!r.ok) {
-        toast((await r.json().catch(() => ({}))).erro || 'Nao deu pra registrar.', true);
-        return;
+        btn.disabled = false;
+        return toast((await r.json().catch(() => ({}))).erro || 'Não deu pra registrar.', 'err');
       }
-      toast('Devolucao registrada.');
-      renderArrependimentos(el);
+      toast('Devolução registrada.');
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderFilaDevolucoes(el);
     }),
   );
 }

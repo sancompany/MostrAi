@@ -117,6 +117,16 @@ input[type="checkbox"] { accent-color: var(--brand); }
   .conta-ponto-linha .u-ta-r { text-align: left; }
 }
 
+/* Linha das filas financeiras (rodada Financeiro, 22/09/2026) — repasses,
+   comissões, trocas, devoluções: mesma ideia de lista compacta acima, só
+   que o lado direito tem duas linhas (valor + ação), por isso
+   align-items:flex-start em vez de center. */
+.linha-financeira { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; }
+@media (max-width: 480px) {
+  .linha-financeira { flex-direction: column; gap: 6px; }
+  .linha-financeira .u-ta-r { text-align: left; }
+}
+
 /* Badge "Em reparo" — mesma fórmula de contraste dos outros badges (fundo
    muito claro da cor + texto escuro da mesma família), com --blue no lugar
    de --brand/--ok/--err. */

@@ -3,6 +3,78 @@
 ## Updated
 2026-09-22
 
+## Bloco FINANCEIRO do admin reorganizado (22/09/2026, este agente)
+Pedido do dono, spec de 51 seções numa mensagem só: desmontar Receitas/
+Repasses/Custos como páginas fixas — "normalidade não ocupa espaço,
+pendência aparece pra eu resolver", sem mini-ERP, San Checkout continua
+dono da infraestrutura de pagamento. Regra de leitura do prompt: código
+como fonte de verdade, sem ler `PROJECT_STATE`/`TODO`/histórico a não ser
+que uma dependência financeira não desse pra confirmar só pelo código
+(não aconteceu). Detalhe técnico completo em `docs/PENDENCIAS.md` seção N.
+
+**Em uma linha cada:**
+- Grupo "Financeiro" sumiu da sidebar. Repasses/Comissões/Trocas/
+  Devoluções/Cobranças viraram drill-down oculto (`#financeiro/*`),
+  hospedado dentro do grupo "Sistema" (`oculto: true`) pra não deixar um
+  cabeçalho "FINANCEIRO" vazio — `montarNav()` imprime o nome do grupo sem
+  checar se sobrou item depois do filtro de ocultos.
+- Visão geral ganhou `painelFinanceiroResumo()`: dois números sempre
+  visíveis (Receita recorrente, Confirmado no mês) + lista de pendências
+  que só existe quando tem algo (repasse/comissão/troca/devolução) —
+  contador zero nunca aparece.
+- **Fila de repasses nova, automática**: `listarPendentesDoMes()`
+  (`src/pontos/pagamentos-repository.js`) junta `pontos` com
+  `pagamentos_ponto` do mês corrente, só `valor_pago_mensal > 0` — a
+  modalidade "troca por tela" (valor zero) nunca aparece, sem recriar
+  regra de comodato nenhuma. Rota nova `GET
+  /admin/pagamentos-ponto/pendentes`. Marcar como pago some da fila e da
+  Visão geral na hora.
+- Nota fiscal manual saiu inteira da UI (KPI "Notas por emitir", upload de
+  PDF, filtro Sem nota/Com nota) — Cobranças virou histórico só-leitura.
+  `PATCH .../nota-fiscal` continua no backend sem chamador, pronta pra
+  quando existir emissão automática (não construída agora).
+- Custos desapareceu da UI (CRUD de custo fixo, DAS, amortização, "entra
+  na margem") — rotas e tabelas intactas no backend. **Conferido antes de
+  tirar a tela** (seção 26 do prompt): nenhum indicador da Visão geral
+  dependia de `custoPontosMensal`/`amortizacaoMensal`/`custosFixosMensal`/
+  `margemMensal` — só a extinta `renderCustos` (agora `_renderCustos`,
+  código morto por convenção do lint) os lia. Os quatro continuam
+  calculados em `GET /admin/resumo`, sem exposição em UI nenhuma.
+- **Achado e corrigido de passagem**: a fila de Devoluções
+  (`renderArrependimentos`, agora `renderFilaDevolucoes`) estava com um
+  bug pré-existente documentado em `docs/teia.md` — o botão "Registrar
+  devolução" chamava o helper `salvar()` (fixo em `PATCH`) contra uma rota
+  `POST`. A reescrita da fila passou a chamar `api()` com `method: 'POST'`
+  direto — corrigido, não era o objetivo da rodada.
+- `TROCA_STATUS` (constante que virou órfã pela reescrita de
+  `renderFilaTrocas`) foi apagada, não prefixada com `_` — "deletar vence
+  adicionar", sem chamador nenhum no arquivo.
+- Migration: nenhuma (dado e rotas de trocas/devoluções/comissões/
+  repasses/cobranças já existiam, só ganharam consumidor novo no front).
+
+**Deliberadamente fora desta rodada:** os quatro cards de receita por
+ciclo (mensal/trimestral/semestral/anual) saíram da Visão geral pra bater
+com o exemplo literal do pedido — o dado continua em
+`financeiro.receitaPorCiclo`. Uma tela unificada de "Movimentações" não
+foi construída (era opcional no pedido; os drill-downs por domínio já
+cobrem a necessidade operacional).
+
+**Verificado:** `npm test` (161/161), `npm run check` (só os 3 avisos de
+lint já conhecidos, de antes desta rodada), Playwright cobrindo login,
+sidebar sem "Financeiro"/"Receitas"/"Repasses"/"Custos", painel compacto
+com as quatro pendências simultâneas, clique até a fila de repasses,
+pagar um repasse e ver ele sumir da fila e da Visão geral na hora (com
+`pago_em` gravado no banco), trocas/devoluções mostrando só o pendente,
+cobranças sem nenhum rastro de nota fiscal manual, hash antigo `#custos`
+caindo em Visão geral sem abrir tela nenhuma, sem overflow horizontal em
+390px (mobile) na Visão geral nem nas filas. Docs atualizados:
+`docs/api.md`, `docs/funcional.md`, `docs/teia.md`, `docs/PENDENCIAS.md`
+(seção N).
+
+**Trabalhando na branch `claude/busy-noether-hheir2`, sem merge em
+`main`** (branch reiniciada de `origin/main` no começo desta sessão,
+porque a PR anterior nela já tinha sido mergeada).
+
 ## Casca da central de Contas + Categorias (22/09/2026, este agente)
 Pedido do dono: "Anunciantes" vira conceitualmente "Contas" — a entidade real
 é uma conta que pode acumular papéis (anunciante, dono de ponto, vendedor),

@@ -3870,3 +3870,80 @@ resolvendo certo pelo mesmo id de antes da migration), e verificação
 visual por Playwright dos widgets (cadastro público, "novo ponto" do
 admin, busca com alias sem acento, "não encontrei minha categoria", busca
 da tabela de categorias filtrando 251→1 linha).
+
+### N — admin: bloco FINANCEIRO reorganizado (22/09/2026)
+
+**[x] Receitas/Repasses/Custos desmontados; o grupo "Financeiro" da sidebar
+deixou de existir.** Regra do dono: "normalidade não ocupa espaço,
+pendência aparece pra eu resolver" — nada de mini-ERP dentro do admin, o
+San Checkout continua sendo dono da infraestrutura de pagamento. A Visão
+geral ganhou um painel compacto (`painelFinanceiroResumo`): dois números
+sempre visíveis (Receita recorrente, Confirmado no mês — com link
+discreto pro histórico de cobranças) e uma lista de pendências que só
+existe quando tem algo nela (repasse de ponto, comissão de vendedor, troca
+de plano esperando pagamento, devolução por arrependimento) — item com
+contador zero não aparece, nunca um card de normalidade.
+
+**[x] Repasses/Comissões/Trocas/Devoluções/Cobranças viraram drill-down
+oculto** (`#financeiro/repasses`, `#financeiro/comissoes`,
+`#financeiro/trocas`, `#financeiro/devolucoes`, `#financeiro/cobrancas`),
+roteável mas fora da sidebar (módulo `oculto: true`, hospedado dentro do
+grupo "Sistema" pra não deixar um cabeçalho "FINANCEIRO" vazio na sidebar
+— `montarNav` imprime o nome do grupo sem checar se sobrou item depois do
+filtro de ocultos). Os hashes antigos (`#cobrancas`, `#trocas`,
+`#arrependimentos`, `#comissoes`, `#pagamentospontos`) continuam abrindo a
+tela certa, só que escondida agora.
+
+**[x] Fila de repasses ficou automática.** Nova
+`listarPendentesDoMes()` (`src/pontos/pagamentos-repository.js`) junta
+`pontos` com `pagamentos_ponto` do mês corrente e devolve só quem tem
+`valor_pago_mensal > 0` e ainda não foi pago — a modalidade de comodato
+"troca por tela" (valor zero) nunca aparece, sem recriar regra de
+comodato nenhuma, só lendo o valor que já existia. Nova rota `GET
+/admin/pagamentos-ponto/pendentes`. Marcar como pago some da fila na hora
+e atualiza os contadores, sem refresh manual.
+
+**[x] Nota fiscal manual saiu inteira da UI.** "Notas por emitir",
+"Anexar PDF", os filtros Sem nota/Com nota — tudo removido da tela de
+Cobranças, que virou histórico só-leitura. `PATCH
+/admin/cobrancas/:id/nota-fiscal` continua no backend, sem chamador —
+fica pronta pra quando existir emissão automática (pagamento confirmado
+→ emite → avisa o cliente por e-mail → registra o resultado), que não foi
+construída nesta rodada.
+
+**[x] Custos desapareceu da UI por completo** (CRUD de custo fixo, DAS,
+domínio, deslocamento, Supabase, amortização, "entra na margem") — as
+rotas `/admin/custos-fixos*` e as tabelas continuam de pé, só sem tela
+que as chame. **Conferido antes de tirar a tela:** nenhum indicador da
+Visão geral depende de `custoPontosMensal`/`amortizacaoMensal`/
+`custosFixosMensal`/`margemMensal` — só a extinta `renderCustos`
+(renomeada `_renderCustos`, código morto por convenção do lint, não
+apagado) os lia. Os quatro campos continuam calculados em `GET
+/admin/resumo` (nada inventado, nada escondido), só sem consumidor no
+front.
+
+**[x] Trocas de plano e Devoluções continuam página, viraram
+somente-leitura de pendência.** Fila mostra só o que está pendente/
+esperando pagamento; assim que resolvido (troca aplicada pelo webhook,
+devolução estornada pelo admin), some da fila e da Visão geral — o
+histórico continua na tabela. Nenhuma lógica de prorrata/Checkout/
+intents/webhook foi tocada.
+
+**Deliberadamente fora desta rodada:** os quatro cards de receita por
+ciclo (mensal/trimestral/semestral/anual) saíram da Visão geral pra bater
+com o exemplo literal do pedido (dois números só) — o dado continua
+disponível em `financeiro.receitaPorCiclo` pra quem quiser consumir. Uma
+tela unificada de "Movimentações" não foi construída (era opcional no
+pedido, e os drill-downs por domínio já cobrem a necessidade operacional
+real: "quem eu devo pagar", "quem eu devo cobrar", "o que está parado").
+
+**Verificado:** `npm test` (161/161), `npm run check` (só os 3
+avisos de lint já conhecidos, de antes desta rodada), e um roteiro
+Playwright cobrindo login, sidebar sem "Financeiro"/"Receitas"/
+"Repasses"/"Custos", o painel compacto da Visão geral com as quatro
+pendências simultâneas, clique até a fila de repasses, pagar um repasse
+e ver ele sumir da fila e da Visão geral na hora (com `pago_em` gravado
+no banco), trocas e devoluções mostrando só o pendente, cobranças sem
+nenhum rastro de nota fiscal manual, o hash antigo `#custos` caindo em
+Visão geral sem abrir tela nenhuma, e sem overflow horizontal em 390px
+(mobile) na Visão geral nem nas filas.

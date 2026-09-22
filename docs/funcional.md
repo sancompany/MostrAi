@@ -67,11 +67,17 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.4 Administrador — o dia a dia
 
 1. Entra em `/admin` (usuário e senha; o Cloudflare Access é a porta).
-2. Vê o **resumo**: receita, ajuda de custo, amortização, custos fixos e **margem real**.
+2. Vê o **resumo**: receita recorrente, confirmado no mês, e só as pendências
+   que existem de verdade (repasse de ponto, comissão, troca de plano
+   esperando pagamento, devolução) — normalidade não ocupa espaço na tela
+   (rodada Financeiro, 22/09/2026).
 3. Aprova contas, candidaturas e criativos.
 4. Gera convites, cadastra pontos e telas, define chave e PIN.
 5. Edita a grade de planos e os benefícios.
-6. Confere cobranças, comissões e a fila de eventos pendentes.
+6. Clica numa pendência financeira pra resolver: paga o repasse do ponto,
+   quita a comissão do vendedor, acompanha a troca ou registra a devolução.
+   Cada fila é um drill-down (fora da sidebar), aberto só pelo clique na
+   pendência — pendência resolvida sai da fila na hora e some da Visão geral.
 
 ### 2.5 Tela — o ciclo do player
 
@@ -104,7 +110,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | `/player.html?tela=ID` | a TV, com chave | o vídeo da vez | tocar; 5 toques abrem o painel por PIN | — |
-| Admin | `/admin/` | administrador | tudo: resumo, contas, candidaturas, convites, pontos, telas, planos, benefícios, cobranças, comissões, vendedores, custos fixos, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí) | operar a rede inteira | — |
+| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, pontos, telas, planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
 | Termos de uso | `/termos-de-uso.html` | público | o contrato | ler | — |
 | Política de privacidade | `/politica-de-privacidade.html` | público | uso de dados | ler | — |
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
@@ -919,8 +925,9 @@ admin — não há pró-rata pelos dias em que o anúncio rodou, o direito não 
 proporcional. O estorno em si é executado no painel do Checkout/Asaas, porque a
 API dele não expõe estorno; o admin registra o comprovante pra fechar o pedido.
 *Violada:* o índice único barra um segundo pedido em aberto por conta.
-*Quem vê:* o titular, no perfil; o administrador, na aba Devoluções e no alerta
-da visão geral.
+*Quem vê:* o titular, no perfil; o administrador, na pendência da visão geral
+(clica e abre a fila `#financeiro/devolucoes` — sem página fixa desde a
+rodada Financeiro de 22/09/2026).
 
 **RN-27 — Plano assinado é imutável para quem assinou.** Os campos do plano
 se dividem em dois. **Vitrine** (`ativo`, `vagas`, `rotulo`,
@@ -1046,7 +1053,10 @@ página de política que ninguém abre.
 **Métrica principal:** margem mensal real — receita confirmada menos ajuda de
 custo aos pontos, menos amortização das telas, menos custos fixos. Definida na
 Estação 1. É precursora de receita porque uma rede que cresce com margem
-negativa quebra crescendo.
+negativa quebra crescendo. Continua calculada em `GET /admin/resumo`
+(`margemMensal`); desde a rodada Financeiro de 22/09/2026 não aparece em
+nenhuma tela do admin (a página de Custos saiu da UI) — quem acompanha, lê a
+API direto.
 
 Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 `objeto_adjetivo`.

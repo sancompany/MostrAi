@@ -5,6 +5,7 @@ const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
+const pagamentosPontoRepo = require('../pontos/pagamentos-repository');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
 
@@ -104,6 +105,9 @@ router.get('/admin/resumo', async (_req, res) => {
     exibicoes,
     novos,
     conversao,
+    repassesPendentes,
+    comissoesPendentes,
+    trocasPendentes,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
     // `status = 'ativo'`, então somava três coisas que não pagam nada:
@@ -210,6 +214,20 @@ router.get('/admin/resumo', async (_req, res) => {
            WHERE NOT conta_propria AND plano_id IS NOT NULL AND NOT suspenso AND NOT plano_cortesia
              AND excluido_em IS NULL AND (data_expiracao IS NULL OR data_expiracao >= current_date)) AS pagantes`,
     ),
+    // Bloco financeiro da Visão geral (rodada Financeiro, 22/09/2026):
+    // "normalidade não ocupa espaço, pendência aparece" — as três filas de
+    // dinheiro a pagar, com contador e total, só pra virar o card quando
+    // qtd > 0. A lista completa de repasses (com ponto/responsável/forma)
+    // é a mesma usada pela fila #financeiro/repasses — uma função só, sem
+    // duas consultas divergindo.
+    pagamentosPontoRepo.listarPendentesDoMes(),
+    pool.query(
+      `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(comissao_valor), 0) AS total
+       FROM comissoes WHERE pago_em IS NULL`,
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor), 0) AS total FROM pedidos_avulsos WHERE status = 'pendente'`,
+    ),
   ]);
 
   const ultima = await ultimaConciliacao();
@@ -249,11 +267,29 @@ router.get('/admin/resumo', async (_req, res) => {
       custosFixosMensal,
       margemMensal: receitaMensal - custoPontosMensal - amortizacaoMensal - custosFixosMensal,
       faturamentoPorMes: faturamento.rows,
+      // Confirmado no mês corrente = a própria linha de `faturamentoPorMes`
+      // (cobrancas_confirmadas agrupado por mês) — sem consulta nova, só
+      // achar a linha do mês de hoje; 0 se ninguém pagou ainda este mês.
+      receitaConfirmadaMes: Number(
+        faturamento.rows.find((r) => r.mes === new Date().toISOString().slice(0, 7))?.total || 0,
+      ),
       // null (não 0) quando não há nenhuma conta ainda — 0% mentiria "todo
       // mundo tentou e ninguém converteu" numa rede que não tem conta nenhuma.
       percentualPagantes,
       totalContas,
       contasPagantes,
+      // Pendências financeiras (rodada Financeiro, 22/09/2026) — só existem
+      // pra virar o card da Visão geral quando qtd > 0; "resolvido some,
+      // histórico persiste" (nunca um card de zero).
+      repassesPendentes: {
+        qtd: repassesPendentes.length,
+        total: repassesPendentes.reduce((s, r) => s + Number(r.valor_pago_mensal), 0),
+      },
+      comissoesPendentes: {
+        qtd: Number(comissoesPendentes.rows[0].qtd),
+        total: Number(comissoesPendentes.rows[0].total),
+      },
+      trocasPendentes: { qtd: Number(trocasPendentes.rows[0].qtd), total: Number(trocasPendentes.rows[0].total) },
     },
     rede: {
       pontosAtivos: Number(pontosAtivos.rows[0].qtd),

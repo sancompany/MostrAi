@@ -20,6 +20,29 @@ async function extratoDaConta(anuncianteId) {
   return rows;
 }
 
+// Fila financeira (rodada Financeiro, 22/09/2026): quem devo pagar ESTE mês.
+// Só pontos com dinheiro de verdade envolvido (`valor_pago_mensal > 0` — a
+// modalidade "troca por tela" do comodato não gera repasse nenhum, isso já
+// vem certo de `pontos.valor_pago_mensal`, sem recriar a regra de comodato
+// aqui) e SEM lançamento pago pra este mês: nunca lançou (`pagamento_id`
+// nulo, a ficha vira "Pagar" — lança já quitado) ou lançou e ainda não
+// pagou (`pagamento_id` presente, vira "Marcar como pago").
+async function listarPendentesDoMes() {
+  const { rows } = await pool.query(
+    `SELECT p.id AS ponto_id, p.nome AS ponto_nome, p.valor_pago_mensal,
+            p.responsavel_nome, a.nome_empresa AS conta_nome,
+            pg.id AS pagamento_id, pg.forma, pg.observacao
+       FROM pontos p
+       LEFT JOIN anunciantes a ON a.id = p.anunciante_id
+       LEFT JOIN pagamentos_ponto pg
+         ON pg.ponto_id = p.id AND pg.competencia = date_trunc('month', current_date)::date
+      WHERE p.status = 'em_operacao' AND p.valor_pago_mensal > 0
+        AND (pg.id IS NULL OR pg.pago_em IS NULL)
+      ORDER BY p.nome`,
+  );
+  return rows;
+}
+
 async function listarPorPonto(pontoId) {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS} FROM pagamentos_ponto WHERE ponto_id = $1 ORDER BY competencia DESC`,
@@ -65,4 +88,4 @@ function resumir(linhas) {
   };
 }
 
-module.exports = { extratoDaConta, listarPorPonto, lancar, marcarPago, resumir };
+module.exports = { extratoDaConta, listarPorPonto, listarPendentesDoMes, lancar, marcarPago, resumir };

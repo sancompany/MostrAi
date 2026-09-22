@@ -193,7 +193,8 @@ pede.
 ### Resumo
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`, `bancohoras` — linhas `aguardando_credito` não resolvidas, G.3), financeiro (`receitaMensal`, `receitaPorCiclo` — por `compromisso_meses`, 1/3/6/12 —, `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal`, **`margemMensal`**, `faturamentoPorMes`, `percentualPagantes` — `null` sem conta nenhuma —, `totalContas`, `contasPagantes`: quem tem plano ativo, não suspenso, não cortesia), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta` |
+| GET | `/admin/resumo` | filas (`criativos`, `eventos`, `anunciantes`, `pontos`, `notas`, `candidaturas`, `arrependimentos`, `contato`, `offline`, `bancohoras` — linhas `aguardando_credito` não resolvidas, G.3), financeiro (`receitaMensal`, `receitaConfirmadaMes` — confirmado no mês corrente, de `faturamentoPorMes` —, `receitaPorCiclo` — por `compromisso_meses`, 1/3/6/12, não exibido na Visão geral desde a rodada Financeiro de 22/09/2026, só consumido por quem quiser —, `repassesPendentes`/`comissoesPendentes`/`trocasPendentes` — `{qtd, total}`, o que alimenta as pendências financeiras da Visão geral (rodada Financeiro, 22/09/2026); `custoPontosMensal`, `amortizacaoMensal`, `custosFixosMensal` e `margemMensal` continuam calculados mas não aparecem em nenhuma tela do admin desde que a página de Custos saiu da UI — nenhum dado apagado, só sem exposição —, `percentualPagantes` — `null` sem conta nenhuma —, `totalContas`, `contasPagantes`: quem tem plano ativo, não suspenso, não cortesia), rede (`pontosAtivos`, `telasAtivas`, `fluxoMensal`, exibições, novos), `horasOfflineAlerta` |
+| GET | `/admin/pagamentos-ponto/pendentes` | fila "quem devo pagar este mês" (rodada Financeiro, 22/09/2026): pontos `em_operacao` com `valor_pago_mensal > 0` (comodato sem dinheiro de verdade nunca aparece aqui) e sem lançamento pago pra competência atual. Usada pela Visão geral e pelo drill-down `#financeiro/repasses` |
 | GET | `/admin/diagnostico/smtp` | Não manda e-mail nenhum — só diz se `SMTP_PASS` existe, quantos caracteres tem e se sobrou espaço no meio (senha de app do Gmail tem 16; os espaços que o Google mostra são só separação visual). Não devolve a senha nem parte dela. Também devolve `remetente` (`MOSTRAI_EMAIL_FROM`) e `destino_contato` (`MOSTRAI_EMAIL_CONTATO`, o "para" do formulário de contato) — endereços, não segredo, pra confirmar os dois lados sem ler variável no Northflank (P42, `docs/PENDENCIAS.md`). Existe porque um SMTP mal configurado só aparece tarde e por acaso (item 9, `docs/PENDENCIAS.md`). |
 
 ### Entrada de gente (candidatura → convite → conta)
@@ -272,6 +273,16 @@ pede.
 | PATCH | `/admin/pagamentos-ponto/:id` | `{pago}` quita ou reabre o lançamento |
 
 ### Dinheiro
+Rodada Financeiro (22/09/2026): Receitas/Repasses/Custos saíram de página
+permanente da sidebar do admin — "normalidade não ocupa espaço, pendência
+aparece". Repasses, comissões, trocas e devoluções viraram drill-down oculto
+(`#financeiro/repasses`, `#financeiro/comissoes`, `#financeiro/trocas`,
+`#financeiro/devolucoes`), acessados só pelo clique na pendência da Visão
+geral. Custos (`/admin/custos-fixos*`) e a emissão manual de nota fiscal
+(`PATCH .../nota-fiscal`, upload de PDF) **não têm mais chamador nenhum no
+front** — as rotas abaixo continuam de pé (dado e histórico preservados),
+só sem tela.
+
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/cobrancas` | cobranças confirmadas |
