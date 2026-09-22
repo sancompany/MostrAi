@@ -1754,7 +1754,12 @@ async function renderContasLista(el) {
         const papeis = a.papeis?.length ? a.papeis : ['anunciante'];
         const ehDonoPonto = papeis.includes('ponto') || temPonto.has(a.id);
         const filtro = [
-          a.excluido_em ? 'excluida' : a.status,
+          a.excluido_em ? '' : a.status,
+          // Achado do review: "Inativas/Excluídas" só pegava quem tinha
+          // excluido_em — suspensão (`suspenso`) é o outro estado inativo
+          // real (mostra badge "suspensa" na linha), e ficava fora do
+          // filtro que promete cobrir os dois.
+          a.excluido_em || a.suspenso ? 'inativa' : '',
           papeis.includes('anunciante') ? 'anunciante' : '',
           ehDonoPonto ? 'comodato' : '',
           papeis.includes('vendedor') ? 'vendedor' : '',
@@ -1804,7 +1809,7 @@ async function renderContasLista(el) {
               { valor: 'comodato', nome: 'Donos de ponto' },
               { valor: 'vendedor', nome: 'Vendedores' },
               { valor: 'parceiro', nome: 'Parceiras' },
-              { valor: 'excluida', nome: 'Inativas/Excluídas' },
+              { valor: 'inativa', nome: 'Inativas/Excluídas' },
             ],
             html: corpo,
             dica: 'Clique numa conta pra ver a ficha completa. Conta excluída fica recuperável por 60 dias.',
