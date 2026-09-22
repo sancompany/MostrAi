@@ -173,6 +173,11 @@ function ligarFotoFachada(prefixo) {
     if (!arquivo) return limpar();
     const leitor = new FileReader();
     leitor.onload = () => {
+      // Achado do review: se o usuário clicou "Remover foto" ou trocou de
+      // arquivo antes da leitura terminar, `input.files[0]` já não é mais
+      // este `arquivo` — descarta a leitura velha em vez de sobrescrever
+      // a prévia com uma foto removida/superada.
+      if (input.files[0] !== arquivo) return;
       preview.querySelector('img').src = leitor.result;
       preview.hidden = false;
     };

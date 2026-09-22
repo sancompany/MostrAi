@@ -2065,6 +2065,16 @@ async function renderCandidaturaDetalhe(el, id) {
   }
   const nome = c.nome_comercio || c.nome;
   const telefoneWpp = String(c.contato_telefone || '').replace(/\D/g, '');
+  // Volta pelo histórico do navegador (ou um bookmark) pode reabrir a ficha
+  // de uma candidatura já decidida — os botões só fazem sentido enquanto o
+  // status ainda é o de fila (achado do review: sem essa checagem, dava
+  // pra "Recusar" uma candidatura já aprovada, com ponto já criado).
+  const pendente = c.status !== 'aprovada' && c.status !== 'recusada';
+  const badge = pendente
+    ? '<span class="badge badge-pendente">Em análise</span>'
+    : c.status === 'aprovada'
+      ? '<span class="badge badge-ok">Aprovada</span>'
+      : '<span class="badge badge-err">Recusada</span>';
 
   el.innerHTML = `
     <p class="ponto-breadcrumb u-mb-16"><a href="#rede/candidaturas">Rede</a><span class="u-dim"> / </span>${esc(nome)}</p>
@@ -2072,7 +2082,7 @@ async function renderCandidaturaDetalhe(el, id) {
       <div class="ponto-info-cabecalho">
         <div class="ponto-info-foto">${fotoOuPlaceholder(c.foto_fachada_url, nome)}</div>
         <div class="ponto-info-titulo">
-          <span class="badge badge-pendente">Em análise</span>
+          ${badge}
           <h3 class="u-m-0">${esc(nome)}</h3>
           <p class="u-dim u-m-0">${c.endereco ? `${esc(c.endereco)}, ` : ''}${esc(c.cidade || '')}${c.uf ? `/${esc(c.uf)}` : ''}</p>
           <p class="u-dim u-m-0 u-fs-85">${c.segmento ? esc(c.segmento) : 'Sem segmento informado'}</p>
@@ -2089,13 +2099,18 @@ async function renderCandidaturaDetalhe(el, id) {
       </div>
       ${c.mensagem ? `<div><label>Observações</label><p class="u-m-0">${esc(c.mensagem)}</p></div>` : ''}
       <div><label>Candidatura enviada em</label><p class="u-m-0">${data(c.criado_em)}</p></div>
-      <div class="field-row u-mt-16">
+      ${
+        pendente
+          ? `<div class="field-row u-mt-16">
         <button class="btn ghost u-txt-erro" type="button" data-recusar="${c.id}">Recusar</button>
         <button class="btn primary" type="button" data-aprovar="${c.id}">Aprovar ponto</button>
-      </div>
+      </div>`
+          : ''
+      }
       <p class="form-msg" id="candDetalheMsg"></p>
     </div>`;
 
+  if (!pendente) return;
   const msg = document.getElementById('candDetalheMsg');
   el.querySelector('[data-aprovar]').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -2107,12 +2122,15 @@ async function renderCandidaturaDetalhe(el, id) {
     // 18/09/2026, pode sobrar linha de antes): cai no convite, único jeito
     // de uma pessoa sem conta ainda virar ponto — POST /admin/convites já
     // marca a candidatura como aprovada sozinho (src/convites/routes.js).
+    // `c.tipo` preserva o papel real da linha antiga (achado do review:
+    // linha de vendedor pré-18/09 caindo aqui não pode nascer com o papel
+    // de ponto).
     const r = c.conta_id
       ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST' })
       : await api('/admin/convites', {
           method: 'POST',
           body: JSON.stringify({
-            papeis: ['ponto'],
+            papeis: [c.tipo === 'vendedor' ? 'vendedor' : 'ponto'],
             candidatura_id: c.id,
             nome_sugerido: c.nome,
             email_sugerido: c.contato_email || null,
