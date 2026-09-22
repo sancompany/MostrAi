@@ -56,10 +56,8 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self'",
   "font-src 'self'",
-  // data: para as imagens embutidas; o Storage serve os criativos; blob: é o
-  // preview real da foto da fachada antes do upload (URL.createObjectURL,
-  // formulário canônico de candidatura, 22/09/2026).
-  `img-src 'self' data: blob: ${MIDIA.slice(1).join(' ')}`.trim(),
+  // data: para as imagens embutidas; o Storage serve os criativos.
+  `img-src 'self' data: ${MIDIA.slice(1).join(' ')}`.trim(),
   // blob: é o player tocando do cache offline (URL.createObjectURL).
   `media-src ${MIDIA.join(' ')} blob:`,
   // viacep preenche endereço no cadastro; o player busca o criativo pra cachear.

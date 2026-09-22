@@ -65,8 +65,11 @@ function candidaturaSegmentoDoForm(form) {
 // ---------- Foto da fachada, com preview real (Parte X) ----------
 // Problema que isto corrige: antes, escolher uma imagem só trocava o TEXTO
 // do nome do arquivo — nunca aparecia a foto de verdade. Agora aparece um
-// <img> de verdade assim que o arquivo é escolhido (URL.createObjectURL,
-// sem round-trip no servidor pra pré-visualizar), com "Trocar"/"Remover".
+// <img> de verdade assim que o arquivo é escolhido, com "Trocar"/"Remover".
+// FileReader (data:), não URL.createObjectURL — a CSP do site só libera
+// `img-src 'self' data:` (src/server.js), sem `blob:` (achado já registrado
+// noutra rodada: a troca de foto funcionava, mas a imagem nunca aparecia,
+// bloqueada pelo navegador em silêncio).
 function candidaturaCampoFoto(prefixo) {
   return `
     <div class="campo-foto-preview" data-campo-foto>
@@ -103,11 +106,8 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
   const btnEscolher = raiz.querySelector('[data-foto-escolher]');
   const btnTrocar = raiz.querySelector('[data-foto-trocar]');
   const btnRemover = raiz.querySelector('[data-foto-remover]');
-  let urlObjeto = null;
 
   function mostrarPlaceholder() {
-    if (urlObjeto) URL.revokeObjectURL(urlObjeto);
-    urlObjeto = null;
     previewImg.innerHTML = CANDIDATURA_FOTO_PLACEHOLDER_SVG;
     legenda.textContent = CANDIDATURA_DICA_FOTO_PADRAO;
     btnEscolher.hidden = false;
@@ -116,9 +116,16 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
   }
 
   function mostrarArquivo(arquivo) {
-    if (urlObjeto) URL.revokeObjectURL(urlObjeto);
-    urlObjeto = URL.createObjectURL(arquivo);
-    previewImg.innerHTML = `<img src="${urlObjeto}" alt="Prévia da foto da fachada">`;
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      // Se a pessoa clicou "Remover foto" ou trocou de arquivo antes da
+      // leitura terminar, `input.files[0]` já não é mais este `arquivo` —
+      // descarta a leitura velha em vez de sobrescrever a prévia com uma
+      // foto removida/superada.
+      if (input.files[0] !== arquivo) return;
+      previewImg.innerHTML = `<img src="${leitor.result}" alt="Prévia da foto da fachada">`;
+    };
+    leitor.readAsDataURL(arquivo);
     legenda.textContent = arquivo.name;
     btnEscolher.hidden = true;
     btnTrocar.hidden = false;
@@ -260,8 +267,15 @@ function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
 
     const mediaFoto = previewRaiz.querySelector('[data-preview-foto]');
     if (foto) {
-      const url = URL.createObjectURL(foto);
-      mediaFoto.innerHTML = `<img src="${url}" alt="">`;
+      // FileReader (data:), não URL.createObjectURL — mesmo motivo do
+      // preview inline em candidaturaLigarFoto: a CSP não libera `blob:`
+      // em img-src.
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        if (candidaturaFotoSelecionada(form, prefixo) !== foto) return;
+        mediaFoto.innerHTML = `<img src="${leitor.result}" alt="">`;
+      };
+      leitor.readAsDataURL(foto);
     } else {
       mediaFoto.innerHTML = `<div class="ponto-foto-placeholder" role="img" aria-label="Sem foto">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
     }

@@ -475,10 +475,6 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .link-secundario { display: inline-block; margin-top: 2px; font-size: .85rem; color: var(--blue); text-decoration: none; }
 .link-secundario:hover { text-decoration: underline; }
 
-/* Campo de foto da fachada, no topo do formulário de candidatura — botão +
-   texto de status na mesma linha, quebra pro mobile sem apertar. */
-.campo-foto { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0; }
-
 /* Foto da fachada com preview real (formulário canônico de candidatura,
    22/09/2026, Parte X) — miniatura de verdade em vez de só o nome do
    arquivo escolhido; substitui .campo-foto nos 3 pontos de entrada. */

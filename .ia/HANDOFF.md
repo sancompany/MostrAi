@@ -48,10 +48,14 @@ Rede, abaixo.
   `formulario.js`, porque os 3 pontos de entrada (`modos.js` CARDS.ponto,
   `painel.page.js` card compacto, `ponto.page.js` "+ Cadastrar outro
   endereço") precisam chamar as mesmas funções): endereço com
-  rua/bairro/complemento separados, foto com preview real
-  (`URL.createObjectURL` + Trocar/Remover), horário 7 dias + feriados,
-  preview de card ao vivo ao lado do form (`.candidatura-layout`, empilha
-  no mobile <900px).
+  rua/bairro/complemento separados, foto com preview real (`FileReader` +
+  `readAsDataURL`, não `URL.createObjectURL` — a CSP só libera `data:` em
+  `img-src`, não `blob:`; consolida no módulo compartilhado o mesmo padrão
+  que a rodada "Reorganização da Entrada" abaixo já tinha aplicado, sem
+  módulo, em `modos.js`/`painel.page.js` separadamente), Trocar/Remover,
+  horário 7 dias + feriados, preview de card ao vivo ao lado do form
+  (`.candidatura-layout`, empilha no mobile <900px) — este último é novo,
+  não existia antes desta rodada em nenhum dos 3 lugares.
 - **Achado real, corrigido nesta rodada**: `POST /anunciantes/me/pontos`
   ("+ Cadastrar outro endereço") criava o PONTO direto
   (`pontosRepo.criar`), nunca passava pelo admin — apesar do próprio
@@ -62,12 +66,6 @@ Rede, abaixo.
   (`src/anunciantes/routes.js`, caminho de convite) não copiava
   `horario_semanal`/`foto_instalacao_url`/`observacoes` da candidatura
   pro ponto — corrigido pra igualar `liberarPapelNaConta`.
-- **CSP furada, achada testando**: o preview real de foto usa `<img
-  src="blob:...">` (client-side, `URL.createObjectURL`) — a CSP não
-  liberava `blob:` em `img-src` (só em `media-src`, pro player). Sem o
-  ajuste em `src/server.js`, a prévia da foto quebrava silenciosamente
-  (ícone de imagem quebrada) em qualquer navegador real. Corrigido:
-  `img-src` ganhou `blob:`.
 - **Bug de duplicação achado testando**: injetar o formulário de "outro
   endereço" via `innerHTML` de forma SÍNCRONA (sem esperar fetch nenhum)
   faz o `DOMContentLoaded` global de `formulario.js` (que já liga
@@ -78,20 +76,83 @@ Rede, abaixo.
   antes do documento terminar de carregar) — o padrão do `modos.js`
   (chamada manual dentro de `montarModo`, que é `async` e só injeta DEPOIS
   do `DOMContentLoaded` já ter passado) continua correto e não mudou.
+- **Merge com a rodada "Reorganização da Entrada"** (abaixo — mesmo dia,
+  outro agente, PR já fundida em `main` antes desta): sobreposição real em
+  `public/admin/index.page.js` (nav "Planos"→"Ofertas" nesta rodada,
+  Candidaturas virando aba de Rede na outra), `public/modos.js` e
+  `public/anunciante/painel.page.js` (os dois mexeram no mesmo formulário
+  de candidatura — a outra rodada trocou `URL.createObjectURL` por
+  `FileReader` por causa da CSP, sem módulo compartilhado; esta rodada
+  criou o módulo compartilhado). Resolvido reaplicando as duas mudanças
+  juntas: a base estrutural da outra rodada (nav, grade de candidaturas,
+  `FileReader`) mais as camadas desta (Ofertas/Promoções, módulo
+  `candidatura-ponto.js` com `FileReader` em vez de `blob:`, preview de
+  card ao vivo, bairro/complemento na ficha de candidatura do admin).
 - Testado com Playwright (fluxo real via `fetch` + cookie de sessão,
   screenshots desktop/mobile): preview ao vivo atualiza com `input`, foto
   real mostra miniatura nos dois previews (inline + card), "+ Cadastrar
   outro endereço" cria candidatura (confirmado direto no banco, `status
-  ='nova'`), bloqueio de pedido duplicado (409) funciona.
+  ='nova'`), bloqueio de pedido duplicado (409) funciona. Achado nesse
+  teste (já corrigido acima do merge): antes de trocar pra `FileReader`, a
+  primeira versão desta rodada usava `URL.createObjectURL` e abria `blob:`
+  na CSP — revertido; a versão final não toca a CSP.
 - `npm run check` verde (sintaxe + lint + format + 161 testes) —
   `DATABASE_URL` não estava exportado no shell desta sessão por padrão,
   setar antes de rodar (`postgres://mostrai:mostrai@localhost:5432/mostrai`
   local).
 - Pendente ainda dentro desta rodada: polimento visual do card "Meus
-  endereços" foi feito (foto/placeholder, segmento), mas a tabela de
-  Candidaturas no admin não ganhou redesign nenhum (fora do escopo
-  explícito do prompt, Parte AN — não mexer além do necessário pra
-  receber os campos novos; só bairro entrou na coluna de endereço).
+  endereços" foi feito (foto/placeholder, segmento), mas a tabela/grade de
+  Candidaturas no admin não ganhou redesign além do necessário pra mostrar
+  o campo novo (bairro na ficha de detalhe) — fora do escopo explícito do
+  prompt, Parte AN.
+
+## Reorganização definitiva da antiga área Entrada (22/09/2026, este agente)
+Pedido do dono, spec de 36 partes numa mensagem só + critério de aceite,
+autorização direta pra implementar sem pausa por decisão visual pequena.
+Objetivo: "Entrada" deixa de existir na navegação do admin. Detalhe técnico
+completo no relatório final desta sessão (não duplicado aqui — ver PR/commit
+`reorganizar entrada: candidaturas em Rede, mensagens em Visão Geral,
+convites fora da UI`).
+
+**Em uma linha cada:**
+- Candidaturas virou 2ª aba de `rede` (`public/admin/index.page.js`): grade
+  de cards (mesmo idioma visual de Pontos) → ficha somente com
+  Aprovar/Recusar, sem funil CRM. Aprovar reaproveita 100% do mecanismo que
+  já existia (`liberarPapelNaConta` quando tem `conta_id`, `POST
+  /admin/convites` com `candidatura_id` no caminho legado sem conta) — zero
+  rota nova.
+- Mensagens saiu da navegação, virou alerta condicional na Visão Geral
+  (`ALERTAS`) que abre uma rota interna sem item de sidebar — módulo novo
+  `oculto: true`, filtrado em `montarNav()`. `GET/PATCH
+  /admin/mensagens-contato` já existiam, sem mudança de backend.
+- Convites: removido da UI (nav, `ALIASES_ANTIGOS`, `SUBTITULOS`) sem tocar
+  backend/DB. `renderConvites` virou `_renderConvites` (prefixo `_`, convenção
+  do lint do projeto pra código morto intencional) — mantido como legado, sem
+  chamador no router. Hash antigo `#convites` cai sozinho em `visaogeral`
+  (`resolverAlvo` já degradava assim; comportamento pré-existente, só
+  confirmado).
+- Bug real encontrado e corrigido no caminho: preview de foto no formulário
+  de candidatura (`public/modos.js` e `public/anunciante/painel.page.js`)
+  nunca aparecia — `URL.createObjectURL` gera `blob:`, fora da CSP
+  (`img-src 'self' data:`). Trocado por `FileReader.readAsDataURL()` (já
+  permitido), sem alterar a CSP.
+- `src/admin/routes.js`: contagem de "Em análise" ampliada de `status =
+  'nova'` pra `status NOT IN ('aprovada','recusada')` (cobre `em_contato`
+  legado também) — única mudança de backend do round.
+- Migration: nenhuma. O CHECK de `candidaturas.status` (4 valores) já
+  cobria a simplificação — "Em análise" é só `nova`+`em_contato` tratados
+  igual na UI.
+- Fora do escopo deliberadamente (confirmado no critério de aceite): o
+  preview ao vivo do "futuro ponto" ao lado do formulário (era exemplo, não
+  obrigatório).
+
+**Verificado:** `npm run check` 161/161; Playwright cobrindo
+desktop/tablet/mobile (candidaturas, ficha, Visão Geral, Mensagens, hash
+antigo), sem erro de console novo.
+
+**Fundida em `main` (PR #9) no mesmo dia** — nota original desta seção
+("sem merge em `main`") corrigida aqui porque ficou desatualizada; ver a
+seção de merge acima, no topo deste arquivo.
 
 ## Rede, rodada final — status automático, telas em cards, ocupação como tabela (22/09/2026, este agente)
 Prompt de 35 seções do dono: "considere este prompt como a especificação
@@ -198,6 +259,31 @@ página (input nativo do browser).
 `main`.** Por pedido explícito do prompt: esta é a ÚLTIMA rodada de
 redesenho da Rede — próximo trabalho na área é só ajuste pontual que o
 dono pedir depois de revisar, não novo redesenho.
+
+## Reauditoria de alinhamento com o app Android (22/09/2026, este agente)
+Pedido do dono: o app (`sancompany/playlist.mostrai`) recebeu mais commits
+(rotação de tela, PIN travado em 4 dígitos, assets de marca, preparo pro
+`margemVmin`), conferir de novo o alinhamento — **sem mexer em
+`margemVmin`**, que outro agente já está construindo do lado do app
+(`playlist.mostrai` PR #2, branch `claude/festive-goldberg-4gdhqi`) e que
+"deve ser ligado ao final". Detalhe completo em `docs/PENDENCIAS.md`,
+seção H (segunda adenda, "Reauditoria de 22/09/2026").
+
+**Resultado:** `main` continua alinhado depois de dois merges paralelos
+(reforma de categorias + redesenho da Rede) que aconteceram entre a
+auditoria anterior e esta — nenhum dos dois tocou playlist/dispositivos, o
+select de `contrato_playlist` sobreviveu intacto, `npm run check` 161/161.
+
+**Achado novo, registrado, não construído:** o app ganhou RN-15 — decide
+tocar vídeo × tela institucional local só pela presença de `url` no item,
+preparando um futuro "vídeo de fundo institucional pelo admin"
+(`PARA-O-BACKEND.md`, novo no repo do app). Hoje o item institucional do
+backend sempre manda `url: null` — confirmado. Mesma categoria de
+`margemVmin`: precisa de decisão do dono (onde o vídeo mora, upload por
+tela ou por ponto) antes de virar código — não construído.
+
+**Trabalhando direto em `main`** (mudança é só documentação, nenhum código
+tocado nesta rodada).
 
 ## Merge com a reforma de categorias (outra sessão, 22/09/2026, este agente)
 `main` avançou (PR #5, "reforma da taxonomia de categorias") enquanto esta

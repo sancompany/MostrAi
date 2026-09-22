@@ -3401,6 +3401,35 @@ Comparado campo a campo, rota a rota, status a status com o código atual de
 mudança na UI; Playwright manual confirmando o select novo e a persistência
 no banco.
 
+**Reauditoria de 22/09/2026** (pedido do dono: o app teve mais commits,
+conferir alinhamento de novo — nesta rodada, sem mexer em `margemVmin`,
+que outro agente está construindo do lado do app, `playlist.mostrai` PR #2).
+`main` recebeu, entre a auditoria acima e esta, o merge da reforma de
+categorias (PR #5/#6, migration 067→068 renumerada por colisão) e o
+redesenho da tela Rede — nenhum dos dois toca playlist/dispositivos/
+contrato, `contrato_playlist` e o select da UI sobreviveram aos dois merges
+intactos, `npm run check` 161/161 no `main` atual.
+
+- **Novo, não é pendência do dono ainda — é feature nova, registrada pra
+  quando ele pedir.** `playlist.mostrai` ganhou RN-15: o app agora decide
+  tocar vídeo × desenhar a tela institucional local só pela presença de
+  `url` no item (não mais pela flag `institucional`) — preparo do lado do
+  app pra um futuro "vídeo de fundo institucional configurado pelo admin".
+  `PARA-O-BACKEND.md` (novo, no repositório do app) documenta isso.
+  Confirmado: hoje o item institucional que `gerarPlaylistDaHora`
+  (`src/playlist/gerador.js`) devolve sempre tem `url: null` — o app já
+  aceita o campo estruturalmente (`PlaylistJson` lê `url` em qualquer
+  item), só falta o backend decidir ONDE esse vídeo mora (upload por
+  tela? por ponto? um campo em `dispositivos`?) e `gerarPlaylistDaHora`
+  passar a preencher. Mesma categoria de `margemVmin`: precisa de decisão
+  do dono antes (armazenamento, UI de upload, se é por tela ou por ponto),
+  não é bug nem coisa esquecida — só não construir sem ele pedir.
+
+**Verificado (reauditoria):** `npm run check` 161/161 no `main` pós-merges;
+nenhuma coluna de `margemVmin`/rotação/vídeo institucional existe em
+`dispositivos` hoje, como esperado (confirma que ninguém começou o lado do
+backend ainda).
+
 ### I — varredura visual do admin: botões sem CSS e avisos mal coloridos (21/09/2026)
 
 Pedido do dono: mapear a funcionalidade do admin inteiro e corrigir botão
