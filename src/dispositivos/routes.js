@@ -7,6 +7,19 @@ const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 const horarioSemanal = require('../lib/horario-semanal');
+const sse = require('../lib/sse');
+
+// Tela nasceu, mudou ou saiu: o dono do ponto vê em "Meus pontos" sem F5.
+// `point.updated` junto porque o estado do ponto é derivado das telas
+// (sincronizarStatusPonto) — a primeira tela ativa é o que o tira de
+// "Aguardando instalação".
+async function avisarDonoDaTela(pontoId) {
+  const { rows } = await pool.query('SELECT anunciante_id FROM pontos WHERE id = $1', [pontoId]);
+  const dono = rows[0]?.anunciante_id;
+  if (!dono) return;
+  sse.emitirParaConta(dono, 'screen.updated', { pontoId });
+  sse.emitirParaConta(dono, 'point.updated', { id: pontoId });
+}
 
 // ---------------------------------------------------------------------------
 // Admin
@@ -22,7 +35,9 @@ router.get('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
 router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
   const ponto = await pontosRepo.buscarPorId(req.params.pontoId);
   if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
-  res.status(201).json(await repo.criar(ponto.id, req.body));
+  const tela = await repo.criar(ponto.id, req.body);
+  await avisarDonoDaTela(ponto.id);
+  res.status(201).json(tela);
 });
 
 router.patch('/admin/dispositivos/:id', async (req, res) => {
@@ -40,6 +55,7 @@ router.patch('/admin/dispositivos/:id', async (req, res) => {
         custo_aparelho: dispositivo.custo_equipamento,
       });
     }
+    await avisarDonoDaTela(dispositivo.ponto_id);
     res.json(dispositivo);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'valor inválido' });
@@ -63,7 +79,9 @@ router.post('/admin/dispositivos/:id/pin', async (req, res) => {
 });
 
 router.delete('/admin/dispositivos/:id', async (req, res) => {
+  const existente = await repo.buscarPorId(req.params.id);
   await repo.deletar(req.params.id);
+  if (existente) await avisarDonoDaTela(existente.ponto_id);
   res.json({ ok: true });
 });
 

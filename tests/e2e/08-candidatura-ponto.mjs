@@ -92,7 +92,7 @@ console.log('== conta A: ramo do catálogo fixo (categoria_id) ==');
 const { cadastro: pA, conta: contaA } = await novaConta('Padaria Lu', 'lu@x.com', 1); // Barbearia
 const painelA = await pagina('/anunciante/painel.html');
 await painelA.waitForTimeout(500);
-await painelA.click('#btnAbrirCardPonto');
+await painelA.click('[data-acao="abrir-oportunidade"]');
 check('formulário abre', await painelA.isVisible('#formCardPonto'));
 check('campo de fluxo é obrigatório', await painelA.$eval('#cp_fluxo', (e) => e.required));
 check('rótulo não diz mais "(opcional)"', !(await painelA.textContent('label[for="cp_fluxo"]')).includes('opcional'));
@@ -110,10 +110,9 @@ console.log('== preenchendo e enviando de verdade ==');
 await painelA.fill('#cp_fluxo', '2500');
 await painelA.click('#formCardPonto button[type=submit]');
 await painelA.waitForTimeout(600);
-// Sem reload (Fase 5, 23/09/2026): o formulário inteiro é substituído pelo
-// card "Pedido enviado em..." no lugar — #cardPontoMsg (dentro do form) não
-// existe mais depois disso, a confirmação agora é o próprio card.
-check('card "Pedido enviado" aparece no lugar do formulário', (await painelA.textContent('#cardPonto')).includes('Pedido enviado'));
+// Sem reload: o formulário fecha e o pedido vira o card "Em análise" em
+// Meus pontos (Fatia 2) — a confirmação que fica é o próprio card.
+check('card "Em análise" aparece em Meus pontos', (await painelA.textContent('#pontosLista')).includes('Em análise'));
 check('formulário some depois do envio (sem reload)', !(await painelA.$('#formCardPonto')));
 
 const segmentoA = PG(`SELECT segmento FROM candidaturas WHERE conta_id=${contaA.id} AND tipo='ponto'`);
@@ -127,7 +126,7 @@ console.log('== conta B: ramo em texto livre (categoria_livre) ==');
 const { cadastro: pB, conta: contaB } = await novaConta('Mercado Z', 'z@x.com', null);
 const painelB = await pagina('/anunciante/painel.html');
 await painelB.waitForTimeout(500);
-await painelB.click('#btnAbrirCardPonto');
+await painelB.click('[data-acao="abrir-oportunidade"]');
 await painelB.fill('#cp_fluxo', '900');
 await painelB.click('#formCardPonto button[type=submit]');
 await painelB.waitForTimeout(600);

@@ -345,7 +345,7 @@ await cadastro.evaluate(
 
 const painel = await pagina('/anunciante/painel.html');
 await painel.waitForTimeout(500);
-await painel.click('#btnAbrirCardPonto');
+await painel.click('[data-acao="abrir-oportunidade"]');
 check('campo de foto (opcional) existe no formulário', (await painel.locator('#cp_foto').count()) === 1);
 // Elementos renomeados pelo formulário canônico de candidatura (rodada
 // "Formulário canônico de candidatura", 22/09/2026): #cp_fotoNome/.campo-foto
@@ -386,7 +386,7 @@ await painel.click('#formCardPonto button[type=submit]');
 await painel.waitForTimeout(700);
 check(
   'pedido enviado com sucesso MESMO com o upload da foto falhando (Supabase não configurado neste ambiente)',
-  (await painel.textContent('#cardPontoMsg')).includes('Pedido enviado'),
+  (await painel.textContent('#msgMeusPontos')).includes('Pedido enviado'),
 );
 const mensagemGravada = PG(`SELECT mensagem FROM candidaturas WHERE conta_id=${conta.id} AND tipo='ponto'`);
 check('"algo a mais" gravado na candidatura', mensagemGravada === 'fachada azul, de frente pro semáforo', mensagemGravada);

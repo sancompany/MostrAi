@@ -111,6 +111,10 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
       cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
       anunciante_id: conta.id,
+      // Vínculo candidatura → ponto (migration 080): sem ele, "Meus pontos"
+      // não sabe que o pedido já virou ponto, e o índice único não protege
+      // este caminho contra materializar a mesma candidatura duas vezes.
+      candidatura_id: cand.id,
       // Sem `status`: nasce sem tela nenhuma (default da coluna é
       // 'a_instalar'), e o status automático (migration 069) lê 0
       // dispositivos exatamente como "aguardando instalação". Criar aqui uma

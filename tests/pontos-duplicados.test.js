@@ -73,6 +73,8 @@ async function limpar(contaId) {
   await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [contaId]);
   await pool.query('DELETE FROM candidaturas WHERE conta_id = $1', [contaId]);
   await pool.query('DELETE FROM cupons_ponto WHERE conta_id = $1', [contaId]).catch(() => {});
+  // A aprovação avisa o dono (notificação ponto_aprovado, Fatia 2).
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [contaId]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [contaId]);
 }
 

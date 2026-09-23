@@ -13,6 +13,8 @@ const pool = require('../db/pool');
 const comodato = require('./comodato');
 const { criarCandidaturaPonto } = require('../conta/modos');
 const candidaturasRepo = require('../candidaturas/repository');
+const { meusPontosDaConta } = require('./meus-pontos');
+const sse = require('../lib/sse');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -54,6 +56,20 @@ router.get('/anunciantes/me/pontos/candidaturas', exigirAnuncianteLogado, async 
   res.json(await candidaturasRepo.listarAbertasPorConta(req.session.anuncianteId, 'ponto'));
 });
 
+// "Meus pontos" do painel único — pedido em análise, ponto e telas na MESMA
+// entidade, com projeção segura (ver src/pontos/meus-pontos.js). `ehPonto`
+// diz ao painel por qual porta um estabelecimento novo entra: a conta que já
+// é ponto usa POST /anunciantes/me/pontos; a que ainda não é, POST
+// /conta/modos/ponto/pedir. As duas criam a mesma candidatura.
+router.get('/anunciantes/me/meus-pontos', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  res.json({
+    ehPonto: (conta.papeis || []).includes('ponto'),
+    estabelecimentos: await meusPontosDaConta(conta.id),
+  });
+});
+
 // Dono de ponto (papel vindo do convite) cadastra outro endereço pela conta
 // — "+ Cadastrar outro endereço" em Meus endereços. ENTRA COMO CANDIDATURA
 // (rodada de candidatura canônica, 22/09/2026), igual ao caminho "Você
@@ -81,6 +97,8 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   if (motivo) return res.status(409).json({ erro: motivo });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
+    // Outras abas da mesma conta: o pedido novo aparece em "Meus pontos".
+    sse.emitirParaConta(conta.id, 'application.updated', { id: cand.id, status: cand.status });
     res.status(201).json({ ok: true, id: cand.id });
   } catch (err) {
     res.status(err.status || 400).json({ erro: err.message });
@@ -177,11 +195,17 @@ router.patch('/admin/pontos/:id', async (req, res) => {
     }
 
     const { plano_ponto_id: _modalidade, ...resto } = req.body;
+    const antes = await repo.buscarPorId(req.params.id);
     const ponto = Object.keys(resto).length
       ? await repo.atualizar(req.params.id, resto)
       : await repo.buscarPorId(req.params.id);
     if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
 
+    // "Meus pontos" do dono atualiza sem F5. Os dois donos quando o vínculo
+    // muda: um ganha o ponto, o outro perde.
+    for (const dono of new Set([antes?.anunciante_id, ponto.anunciante_id].filter(Boolean))) {
+      sse.emitirParaConta(dono, 'point.updated', { id: ponto.id });
+    }
     res.json(ponto);
   } catch (err) {
     if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });
@@ -230,6 +254,9 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
     anuncianteId: req.session.anuncianteId,
     pontos: aTrocar.map((p) => p.id),
   });
+  sse.emitirParaConta(req.session.anuncianteId, 'point.updated', {});
+  sse.emitirParaConta(req.session.anuncianteId, 'finance.updated', {});
+  sse.emitirParaConta(req.session.anuncianteId, 'plan.updated', {});
   res.json({ ok: true, modalidade: destino.nome, pontos: aTrocar.length });
 });
 

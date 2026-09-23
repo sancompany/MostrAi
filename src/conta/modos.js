@@ -23,6 +23,8 @@ const convitesRepo = require('../convites/repository');
 const { enviarCandidaturaNova } = require('../financeiro/email');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
 
 const router = express.Router();
 
@@ -309,6 +311,7 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (motivo) return res.status(409).json({ erro: motivo });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
+    sse.emitirParaConta(conta.id, 'application.updated', { id: cand.id, status: cand.status });
     res.status(201).json({ ok: true, id: cand.id });
   } catch (err) {
     res.status(err.status || 400).json({ erro: err.message });
@@ -369,6 +372,23 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
     if (err.status) return res.status(err.status).json({ erro: err.message });
     throw err;
   }
+  // Esta é a aprovação que o admin de verdade usa (candidatura com conta) —
+  // e ela não avisava ninguém: o aviso e o SSE só existiam no PATCH de
+  // status, que o botão "Aprovar" não chama. O dono via "Em análise" até dar
+  // F5. Depois do COMMIT, pra quem recarregar já ler o ponto novo.
+  if (cand.tipo === 'ponto') {
+    await notificacoesRepo
+      .registrar(conta.id, {
+        tipo: 'ponto_aprovado',
+        titulo: 'Seu pedido de ponto foi aprovado',
+        descricao: 'A gente chama no WhatsApp pra combinar a visita e a instalação.',
+        entidadeTipo: 'candidatura',
+        entidadeId: cand.id,
+      })
+      .catch((err) => console.error('falha ao notificar aprovação de ponto', err.message));
+    sse.emitirParaConta(conta.id, 'point.updated', {});
+  }
+  sse.emitirParaConta(conta.id, 'application.updated', { id: cand.id, status: 'aprovada' });
   res.json({ ok: true, conta: await anunciantesRepo.buscarPorId(conta.id) });
 });
 
