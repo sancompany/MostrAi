@@ -140,6 +140,20 @@ async function carregar() {
   }
 }
 
+// Sem F5 (Fase 3, SSE — eventos.js): cada evento refaz só o módulo afetado.
+// `application.updated`/`account.updated` passam por `carregar()` inteiro
+// porque podem mudar se o papel "ponto" está liberado (candidatura aprovada,
+// conta suspensa/reativada) — o resto é o refresh direto de sempre.
+if (window.ligarEventosDaConta) {
+  window.ligarEventosDaConta({
+    'application.updated': carregar,
+    'account.updated': carregar,
+    'point.updated': carregarPontos,
+    'screen.updated': carregarTelas,
+    'finance.updated': carregarExtrato,
+  });
+}
+
 function tempoDesde(iso) {
   if (!iso) return 'nunca ligou';
   const min = Math.round((Date.now() - new Date(iso)) / 60000);

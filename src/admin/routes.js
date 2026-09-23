@@ -10,6 +10,8 @@ const dispositivosRepo = require('../dispositivos/repository');
 const { valorMensalDaConta } = require('../financeiro/san-checkout');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
 
 // HORAS_OFFLINE_ALERTA morreu como filtro fixo de "sem heartbeat" (rodada
 // horário operacional da tela, 23/09/2026) — virou TOLERANCIA_OFFLINE_MS
@@ -52,8 +54,19 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // o que coloca o vídeo no ar. Conta própria (Mídia Mostraí) não recebe
       // — o `contato_email` dela é um endereço interno sem caixa de entrada
       // (ensureContaMostrai), não um anunciante de verdade esperando aviso.
-      if (dono && !dono.conta_propria)
+      if (dono && !dono.conta_propria) {
         enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
+        notificacoesRepo
+          .registrar(dono.id, {
+            tipo: 'criativo_aprovado',
+            titulo: 'Seu criativo foi aprovado',
+            descricao: 'Já está no ar.',
+            entidadeTipo: 'criativo',
+            entidadeId: criativo.id,
+          })
+          .catch((err) => console.error('falha ao notificar criativo aprovado', err.message));
+        sse.emitirParaConta(dono.id, 'creative.updated', { id: criativo.id, status: criativo.status });
+      }
       eventos.registrar(
         'criativo:video_aprova',
         {
@@ -70,8 +83,19 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     if (criativo.status === 'reprovado' && antes?.status !== 'reprovado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // Mesma exclusão de conta própria do bloco de aprovado acima.
-      if (dono && !dono.conta_propria)
+      if (dono && !dono.conta_propria) {
         enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
+        notificacoesRepo
+          .registrar(dono.id, {
+            tipo: 'criativo_recusado',
+            titulo: 'Seu criativo não foi aprovado desta vez',
+            descricao: criativo.motivo_reprovacao || undefined,
+            entidadeTipo: 'criativo',
+            entidadeId: criativo.id,
+          })
+          .catch((err) => console.error('falha ao notificar criativo recusado', err.message));
+        sse.emitirParaConta(dono.id, 'creative.updated', { id: criativo.id, status: criativo.status });
+      }
       eventos.registrar(
         'criativo:video_reprova',
         {

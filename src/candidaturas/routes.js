@@ -5,7 +5,14 @@ const fs = require('node:fs');
 const router = express.Router();
 const repo = require('./repository');
 const eventos = require('../lib/eventos');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
+
+const STATUS_TITULO = {
+  aprovada: 'Seu pedido de ponto foi aprovado',
+  recusada: 'Seu pedido de ponto não foi aprovado desta vez',
+};
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -83,6 +90,24 @@ router.patch('/admin/candidaturas/:id', async (req, res) => {
       ramo: c.segmento,
       dias_ate_aprovar: eventos.diasEntre(c.criado_em),
     });
+  }
+  // Avisa a conta dona da candidatura (Fase 3, SSE) quando o status muda de
+  // verdade — "Em análise" nunca gera aviso, só a decisão. `c.conta_id`
+  // sempre existe desde que a candidatura sem conta foi aposentada (v3,
+  // comentário no topo do arquivo); a checagem continua por segurança
+  // contra linha legada.
+  if (c.conta_id && antes && antes.status !== c.status && STATUS_TITULO[c.status]) {
+    notificacoesRepo
+      .registrar(c.conta_id, {
+        tipo: c.status === 'aprovada' ? 'ponto_aprovado' : 'ponto_recusado',
+        titulo: STATUS_TITULO[c.status],
+        descricao:
+          c.status === 'aprovada' ? 'A gente chama no WhatsApp pra combinar a visita e a instalação.' : undefined,
+        entidadeTipo: 'candidatura',
+        entidadeId: c.id,
+      })
+      .catch((err) => console.error('falha ao notificar candidatura', err.message));
+    sse.emitirParaConta(c.conta_id, 'application.updated', { id: c.id, status: c.status });
   }
   res.json(c);
 });

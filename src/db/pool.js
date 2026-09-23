@@ -1,4 +1,5 @@
 const { Pool, types } = require('pg');
+const config = require('./connection-config');
 
 // Coluna `date` volta como TEXTO, não como Date.
 //
@@ -20,8 +21,7 @@ types.setTypeParser(1082, (valor) => valor);
 // Supabase (e a maioria dos Postgres gerenciados) exige conexão SSL — sem isso
 // a conexão cai no meio do handshake (ECONNRESET). Postgres local (dev na
 // máquina) normalmente não fala SSL, então só liga quando não for localhost.
-const ehLocal = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || '');
-module.exports = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: ehLocal ? false : { rejectUnauthorized: false },
-});
+// `config` (connectionString + ssl) mora em connection-config.js, dividido
+// com o client dedicado do LISTEN/NOTIFY (src/lib/sse.js) — mesma conexão,
+// duas formas de usar.
+module.exports = new Pool(config);
