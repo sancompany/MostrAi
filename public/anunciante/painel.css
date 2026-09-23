@@ -166,3 +166,53 @@
   padding: 14px 18px; margin-top: 12px;
 }
 .promo-logado .badge { margin-right: 8px; }
+
+/* Créditos e benefícios (Fatia 1, 23/09/2026). Fica fora do dashboard
+   bloqueável: conta sem plano também vê e resgata. Sem barra de progresso nem
+   cadeado — é um extrato e uma tabela de preços em créditos, não um jogo. */
+.creditos-content { padding-top: 0; }
+.creditos-head { align-items: flex-start; }
+.creditos-saldo { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.creditos-saldo b { font-size: 2rem; }
+.creditos-saldo span { color: var(--text-dim); font-size: .8rem; }
+.creditos-situacao { margin: 4px 0 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #f9fafb; font-size: .9rem; }
+.creditos-situacao p { margin: 4px 0; }
+.creditos-motivo { color: var(--text-dim); }
+.creditos-colunas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 24px; }
+/* Sem isso a tabela (larga por natureza) define a largura mínima do item e
+   empurra a página pra fora da tela no celular; ela rola no .u-ox-auto. */
+.creditos-colunas > * { min-width: 0; }
+.creditos-titulo { margin: 0 0 6px; font-size: 1rem; }
+.creditos-nota { margin: 0 0 12px; color: var(--text-dim); font-size: .84rem; }
+.creditos-link { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.creditos-link code { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; background: #f3f5f8; font-size: .78rem; overflow-wrap: anywhere; }
+.creditos-codigo { margin: 0 0 12px; font-size: .84rem; color: var(--text-dim); }
+.creditos-atividade { margin: 12px 0 0; font-size: .84rem; color: var(--text-dim); }
+.creditos-tabela { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.creditos-tabela th, .creditos-tabela td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.creditos-tabela thead th { color: var(--text-dim); font-size: .76rem; font-weight: 700; }
+.creditos-tabela td { min-width: 96px; }
+.creditos-custo { display: block; margin-bottom: 6px; font-weight: 700; }
+.creditos-faltam { display: block; color: var(--text-dim); font-size: .78rem; }
+.creditos-historico { margin-top: 18px; }
+.creditos-historico summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
+.creditos-movimentos { list-style: none; margin: 12px 0 0; padding: 0; }
+.creditos-movimentos li { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .84rem; }
+.creditos-movimentos time { color: var(--text-dim); }
+.creditos-entrada { color: var(--ok, #15803d); }
+.creditos-saida { color: var(--text-dim); }
+.resgate-etapas { margin: 0; padding-left: 20px; }
+.resgate-etapas li { margin-bottom: 12px; }
+.resgate-etapas li b { display: block; }
+.resgate-etapas li span { display: block; color: var(--text-dim); font-size: .85rem; }
+.resgate-rotulo { color: var(--blue) !important; font-size: .7rem !important; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.resgate-notas { margin: 0; padding-left: 20px; font-size: .85rem; color: var(--text-dim); }
+@media (max-width: 860px) {
+  .creditos-colunas { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .creditos-head { flex-direction: column; }
+  .creditos-saldo { align-items: flex-start; }
+  .creditos-movimentos li { grid-template-columns: 1fr auto; }
+  .creditos-movimentos time { grid-column: 1 / -1; }
+}

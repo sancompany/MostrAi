@@ -132,11 +132,58 @@
       </div>
     </section>
 
+    <!-- Créditos e benefícios: fora de #dashboardAnuncios de propósito — conta
+         sem plano tem o dashboard bloqueado, e é justamente ela que mais pode
+         querer trocar créditos por um plano. Tudo aqui é reescrito inteiro a
+         cada carga (carregarCreditos), então rodar de novo pelo SSE não
+         acumula nada. -->
+    <section class="dashboard-content creditos-content">
+      <div class="wrap painel-wrap">
+        <section class="dashboard-section" id="modCreditos" aria-labelledby="tituloCreditos" hidden>
+          <article class="panel painel-creditos">
+            <div class="panel-head creditos-head">
+              <div>
+                <p class="section-eyebrow">Indicações</p>
+                <h2 id="tituloCreditos">Créditos e benefícios</h2>
+                <span class="panel-subtitle">Cada pagamento de quem você indicou vira crédito. Créditos viram tempo de plano.</span>
+              </div>
+              <div class="creditos-saldo"><b id="creditosSaldo">-</b><span>créditos</span></div>
+            </div>
+            <div id="creditosSituacao"></div>
+            <div class="creditos-colunas">
+              <div class="creditos-bloco" id="creditosIndicacao"></div>
+              <div class="creditos-bloco creditos-opcoes-bloco">
+                <h3 class="creditos-titulo">Trocar créditos por um plano</h3>
+                <p class="creditos-nota">Benefício temporário: vale pelo período escolhido e depois termina. Nada é cobrado quando ele acaba.</p>
+                <div id="creditosOpcoes"></div>
+              </div>
+            </div>
+            <details class="creditos-historico">
+              <summary>Histórico de créditos</summary>
+              <div id="creditosHistorico"></div>
+            </details>
+          </article>
+        </section>
+      </div>
+    </section>
+
     <section class="dashboard-opportunity">
       <div class="wrap painel-wrap">
         <div id="cardPonto"></div>
       </div>
     </section>
+
+    <!-- Confirmação do resgate: mostra antes o que muda (agora → ativado →
+         depois). Nada é debitado até o clique em Confirmar. -->
+    <dialog id="dlgResgate" class="dlg-resgate">
+      <div class="dlg-head"><h3>Confirmar resgate</h3><button type="button" class="dlg-close" id="btnFecharResgate" aria-label="Fechar">&times;</button></div>
+      <div id="previewResgate"></div>
+      <p class="form-msg" id="msgResgate" role="status"></p>
+      <div class="dlg-acoes">
+        <button type="button" class="btn ghost" id="btnCancelarResgate">Cancelar</button>
+        <button type="button" class="btn primary" id="btnConfirmarResgate">Confirmar resgate</button>
+      </div>
+    </dialog>
 
     <dialog id="dlgPlano">
       <div class="dlg-head"><h3>Gerenciar plano</h3><button type="button" class="dlg-close" id="btnFecharPlano" aria-label="Fechar">&times;</button></div>
@@ -149,6 +196,7 @@
   <script src="/layout.js"></script>
   <script src="/perfil.js"></script>
   <script src="/notificacoes.js"></script>
+  <script src="/creditos.js"></script>
   <script src="/formulario.js"></script>
   <script src="/candidatura-ponto.js"></script>
   <script src="/modos.js"></script>

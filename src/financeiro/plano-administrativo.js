@@ -193,16 +193,23 @@ async function historicoDaConta(contaId) {
 // exatamente o que a conta tinha, e o card de plano no painel convida a
 // assinar de novo. Ver relatório final da sessão pra esse ponto.
 async function resgatarOuConcederBeneficio(
-  { conta, plano, validoAte, observacao, adminUsuario, origem, ledgerId },
+  { conta, plano, validoAte: validoAteInformado, diasDeBeneficio, observacao, adminUsuario, origem, ledgerId },
   dbExterno,
 ) {
   const executar = async (db) => {
     await fecharAbertos(db, conta.id, 'substituido', adminUsuario);
-    // Mesma fórmula de "pagando em dia" de indicacoes/aplicar.js e
-    // financeiro/routes.js — um ciclo pago (não cortesia) ainda não vencido.
+    // Mesma fórmula de "pagando em dia" de financeiro/routes.js — um ciclo
+    // pago (não cortesia) ainda não vencido.
     const pagandoEmDia =
       conta.plano_id && !conta.plano_cortesia && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
     const status = pagandoEmDia ? 'agendado' : 'ativo';
+    // Duração em dias (resgate de créditos): a validade conta a partir do dia
+    // em que o benefício COMEÇA, não do dia do resgate. Antes o agendado
+    // recebia "hoje + N dias" e, se o ciclo pago terminasse depois disso,
+    // nascia já vencido — a conta pagava os créditos e não recebia nada.
+    const validoAte = diasDeBeneficio
+      ? somarDias(pagandoEmDia ? conta.data_expiracao : hojeISO(), diasDeBeneficio)
+      : validoAteInformado;
     const { rows: historico } = await db.query(
       `INSERT INTO planos_administrativos
          (anunciante_id, plano_id, valido_ate, observacao, concedido_por, plano_anterior_id,
@@ -241,6 +248,17 @@ async function resgatarOuConcederBeneficio(
   return dbExterno ? executar(dbExterno) : comTransacao(executar);
 }
 
+// Datas em 'AAAA-MM-DD' (as colunas são `date`; o pool devolve texto — ver
+// src/db/pool.js). Aritmética em UTC pra não escorregar um dia no fuso.
+function hojeISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+function somarDias(dataISO, dias) {
+  const base = new Date(`${String(dataISO).slice(0, 10)}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + Number(dias));
+  return base.toISOString().slice(0, 10);
+}
+
 // Reavaliação diária (mesma rotina de sempre, scripts/conciliar.js) — duas
 // passadas independentes, cada uma resolvendo um lado do ciclo de vida.
 
@@ -277,6 +295,20 @@ async function ativarBeneficiosAgendados() {
         await cliente.query('ROLLBACK');
         continue;
       }
+      // A duração comprada é preservada mesmo se a ativação atrasou (a
+      // assinatura paga renovou depois do resgate): a validade anda junto
+      // com o início real. Sem isso, cada renovação encurtava o benefício
+      // até ele nascer vencido.
+      const {
+        rows: [{ valido_ate: validoAte }],
+      } = await cliente.query(
+        `UPDATE planos_administrativos
+            SET valido_ate = CASE WHEN plano_anterior_valido_ate IS NULL THEN valido_ate
+                                  ELSE GREATEST(valido_ate, current_date + (valido_ate - plano_anterior_valido_ate)) END,
+                status = 'ativo', ativado_em = now()
+          WHERE id = $1 RETURNING valido_ate`,
+        [linha.historico_id],
+      );
       await cliente.query(
         `UPDATE anunciantes SET plano_id=$2, plano_cortesia=true,
                 cortesia_motivo=$3, data_inicio_cobertura=now(), data_expiracao=$4 WHERE id=$1`,
@@ -284,12 +316,9 @@ async function ativarBeneficiosAgendados() {
           linha.anunciante_id,
           linha.beneficio_plano_id,
           linha.observacao ? `Benefício: ${linha.observacao}` : 'Benefício por créditos',
-          linha.valido_ate,
+          validoAte,
         ],
       );
-      await cliente.query(`UPDATE planos_administrativos SET status='ativo', ativado_em=now() WHERE id=$1`, [
-        linha.historico_id,
-      ]);
       await cliente.query('COMMIT');
       ativados += 1;
     } catch (err) {

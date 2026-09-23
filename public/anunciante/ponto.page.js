@@ -53,64 +53,6 @@ async function carregarExtrato() {
   }
 }
 
-// Créditos de indicação (migration 062): cupom próprio de todo dono de
-// ponto, e quanto falta pro próximo tier de anúncio. Mesmo padrão visual do
-// cupom de vendedor (public/anunciante/vendedor.page.js) — link com ?ref=,
-// copiar, mandar no WhatsApp —, mas sem comissão nem chave Pix: aqui o
-// prêmio é o plano subir de tier sozinho, nunca dinheiro.
-const NOME_TIER = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' };
-
-async function carregarIndicacoes() {
-  const cartao = document.getElementById('cupomIndicacaoCard');
-  if (!cartao) return;
-  try {
-    const d = await (await fetch(`${API_BASE_URL}/anunciantes/me/indicacoes`, { credentials: 'include' })).json();
-    if (!d.codigo) {
-      cartao.hidden = true;
-      return;
-    }
-    const link = `${window.location.origin}/anunciante/cadastro.html?ref=${encodeURIComponent(d.codigo)}`;
-    document.getElementById('cupomIndicacao').textContent = d.codigo;
-    document.getElementById('linkCupomIndicacao').textContent = link;
-    document.getElementById('btnWhatsIndicacao').href =
-      `https://wa.me/?text=${encodeURIComponent(`Anuncie nas telas da Mostraí em Matão. Cadastre por aqui com o meu cupom ${d.codigo}: ${link}`)}`;
-
-    const progresso = document.getElementById('progressoIndicacao');
-    if (d.tierGanho) {
-      progresso.textContent = d.proximoTier
-        ? `Você já garantiu o plano ${NOME_TIER[d.tierGanho]} de graça. Faltam ${d.faltam} indicados pagantes pro ${NOME_TIER[d.proximoTier]}.`
-        : `Você já garantiu o plano ${NOME_TIER[d.tierGanho]} de graça — o mais alto que existe.`;
-    } else {
-      progresso.textContent = `${d.creditos} de ${d.faltam + d.creditos} indicados pagantes pro plano ${NOME_TIER[d.proximoTier]} de graça. Faltam ${d.faltam}.`;
-    }
-    cartao.hidden = false;
-  } catch (err) {
-    console.error('falha ao carregar o cupom de indicação', err);
-    cartao.hidden = true;
-  }
-}
-
-function copiar(texto, btn) {
-  navigator.clipboard
-    .writeText(texto)
-    .then(() => {
-      const antes = btn.textContent;
-      btn.textContent = 'Copiado!';
-      setTimeout(() => {
-        btn.textContent = antes;
-      }, 1500);
-    })
-    .catch(() => {});
-}
-document
-  .getElementById('btnCopiarCupomIndicacao')
-  ?.addEventListener('click', (e) => copiar(document.getElementById('cupomIndicacao').textContent, e.currentTarget));
-document
-  .getElementById('btnCopiarLinkIndicacao')
-  ?.addEventListener('click', (e) =>
-    copiar(document.getElementById('linkCupomIndicacao').textContent, e.currentTarget),
-  );
-
 async function carregar() {
   CONTA = await carregarConta();
   if (!CONTA) {
@@ -126,13 +68,7 @@ async function carregar() {
       `<span><strong>${esc(CONTA.nome_empresa)}</strong> · meu ponto</span>`;
     document.getElementById('bonusPonto').innerHTML = cardBonus(estado, 'anuncio');
     ligarResgateAnuncio(document.getElementById('bonusPonto'));
-    await Promise.all([
-      carregarTelas(),
-      carregarPontos(),
-      carregarExtrato(),
-      carregarAutoanuncio(),
-      carregarIndicacoes(),
-    ]);
+    await Promise.all([carregarTelas(), carregarPontos(), carregarExtrato(), carregarAutoanuncio()]);
   });
   if (estado && !estado.modos.ponto.liberado) {
     document.getElementById('statusBanner').innerHTML =

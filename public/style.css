@@ -808,11 +808,13 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 }
 .btn-sair:hover { text-decoration: underline; }
 
-dialog#dlgPlano {
+dialog#dlgPlano, dialog.dlg-resgate {
   border: none; border-radius: var(--radius); padding: 24px; max-width: 420px; width: 92vw;
   background: var(--card); color: var(--text);
 }
-dialog#dlgPlano::backdrop { background: rgba(20,23,31,.5); }
+dialog.dlg-resgate { max-width: 480px; }
+dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop { background: rgba(20,23,31,.5); }
+.dlg-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 
 /* Engrenagem "Gerenciar plano" que abre o dialog — mesmo visual de .btn.ghost,
    ícone + texto, só que sem herdar o padding maior de .btn (fica discreta na

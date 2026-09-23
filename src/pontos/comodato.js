@@ -131,7 +131,7 @@ async function bloqueiaPlanoComercial(contaId, db = pool) {
   const { rows } = await db.query(
     `SELECT DISTINCT pp.permite_assinar
        FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-      WHERE p.anunciante_id = $1`,
+      WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
     [contaId],
   );
   return rows.length > 0 && rows.every((r) => r.permite_assinar === false);
