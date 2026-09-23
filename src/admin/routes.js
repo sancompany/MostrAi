@@ -44,8 +44,11 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     if (criativo.status === 'aprovado' && antes?.status !== 'aprovado' && antes?.status !== 'retirado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
-      // o que coloca o vídeo no ar.
-      if (dono) enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
+      // o que coloca o vídeo no ar. Conta própria (Mídia Mostraí) não recebe
+      // — o `contato_email` dela é um endereço interno sem caixa de entrada
+      // (ensureContaMostrai), não um anunciante de verdade esperando aviso.
+      if (dono && !dono.conta_propria)
+        enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
       eventos.registrar(
         'criativo:video_aprova',
         {
@@ -61,7 +64,9 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // com o motivo e o caminho de correção.
     if (criativo.status === 'reprovado' && antes?.status !== 'reprovado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
-      if (dono) enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
+      // Mesma exclusão de conta própria do bloco de aprovado acima.
+      if (dono && !dono.conta_propria)
+        enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
       eventos.registrar(
         'criativo:video_reprova',
         {
