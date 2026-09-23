@@ -20,7 +20,7 @@ const pool = require('../db/pool');
 // que deixou de receber R$ 50 e não ganhou a tela.
 //
 // COMODATO É SEPARADO DE PLANO COMERCIAL (23/09/2026, decisão do dono e do
-// GPT — migration 076). Até aqui, `sincronizarComodato` escrevia no MESMO
+// GPT — migration 077). Até aqui, `sincronizarComodato` escrevia no MESMO
 // campo que o plano pago/cortesia (`anunciantes.plano_id`), com uma guarda
 // pra nunca sobrescrever assinatura ativa — e por isso mesmo, quando a
 // assinatura ESTAVA ativa, o comodato simplesmente não era gravado em lugar

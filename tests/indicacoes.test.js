@@ -91,7 +91,7 @@ test('aplicarUpgradeSeElegivel: sem plano nenhum, sobe um degrau por vez conform
 });
 
 test('aplicarUpgradeSeElegivel: conta no comodato (Inicial/Básico) não conta como "já no Essencial"', async () => {
-  // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 076,
+  // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 077,
   // separação de comodato/plano comercial) — `comodato_plano_id`, nunca
   // `plano_id`. `plano_id` fica null pra essa conta, e um `plano_id` null
   // já significa "sem tier nenhum" pro comparador — não precisa mais de

@@ -102,7 +102,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     -- COALESCE: plano comercial manda quando existe E ainda está dentro da
     -- validade; sem ele (nunca teve, ou passou e a conciliação ainda não
     -- rodou), o comodato (Inicial/Básico) governa sozinho — os dois nunca se
-    -- somam (23/09/2026, migration 076, mesma regra de
+    -- somam (23/09/2026, migration 077, mesma regra de
     -- src/anunciantes/repository.js#planoEfetivoId). Achado real (revisão de
     -- 23/09/2026): antes o WHERE abaixo excluía a conta INTEIRA quando o
     -- comercial vencia, mesmo com comodato ativo — o comodato nunca tem

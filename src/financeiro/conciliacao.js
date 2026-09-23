@@ -268,7 +268,7 @@ async function avisarCoberturaAcabando() {
 // "Cancelar plano" da ficha (`plano-administrativo.js#encerrar`, reusado,
 // não duplicado) — sem tocar `suspenso`. Conta em cortesia entra na regra
 // igual — cortesia também tem prazo. O comodato (campo próprio desde a
-// migration 076) nunca é afetado: nunca esteve em `plano_id`.
+// migration 077) nunca é afetado: nunca esteve em `plano_id`.
 async function encerrarCoberturaVencida() {
   const { rows } = await pool.query(`
     SELECT id, nome_empresa, data_expiracao FROM anunciantes

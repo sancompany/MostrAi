@@ -134,12 +134,22 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
   const params = [pontosIds || null, excluirMidiaId || 0, status];
   const { rows } = await pool.query(
     `WITH comercial AS (
-       SELECT p.id AS ponto_id, COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_comercial
+       -- FILTER (WHERE p.status = 'em_operacao'): o anunciante pode escolher
+       -- um ponto ainda 'a_instalar' pra reservar a vaga (RN-49) — a linha em
+       -- anunciantes_pontos existe antes de qualquer tela física existir. Sem
+       -- este filtro, esse ponto contava segundos_por_hora do plano do
+       -- anunciante como ocupação comercial REAL, mesmo sem nenhuma tela pra
+       -- exibir nada (achado na revisão da Visão geral, 23/09/2026). O filtro
+       -- fica dentro do SUM (não no WHERE de fora) pra o ponto continuar
+       -- aparecendo na lista com 0% comercial — é alocação planejada, não
+       -- ocupação operacional — em vez de sumir da tabela.
+       SELECT p.id AS ponto_id,
+              COALESCE(SUM(pl.segundos_por_hora) FILTER (WHERE p.status = 'em_operacao'), 0)::int AS segundos_comercial
          FROM pontos p
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
          -- COALESCE: mesma regra de ocupação por plano efetivo (23/09/2026,
-         -- migration 076) — sem isso, anunciante só-comodato ocupando ponto
+         -- migration 077) — sem isso, anunciante só-comodato ocupando ponto
          -- desaparecia da capacidade calculada aqui.
          LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
         WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))

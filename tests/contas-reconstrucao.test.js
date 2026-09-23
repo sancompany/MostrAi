@@ -85,12 +85,12 @@ test('validadeValida: só data real e que ainda não passou', () => {
   assert.strictEqual(planoAdm.validadeValida(daqui(40)), daqui(40), 'devolve a própria string');
 });
 
-test('origemDoPlano: só comercial — comodato nunca ocupa plano_id (migration 076)', () => {
+test('origemDoPlano: só comercial — comodato nunca ocupa plano_id (migration 077)', () => {
   assert.strictEqual(planoAdm.origemDoPlano({ plano_id: null }), null);
   assert.strictEqual(planoAdm.origemDoPlano({ plano_id: 'x', plano_cortesia: false }), 'assinatura');
   // Mesmo que um dado antigo ainda carregue 'comodato' por acidente, não é
   // tratado como caso especial — vira cortesia comum, como qualquer outro
-  // motivo (comodato tem campo próprio, `comodato_plano_id`, desde 076).
+  // motivo (comodato tem campo próprio, `comodato_plano_id`, desde 077).
   assert.strictEqual(
     planoAdm.origemDoPlano({ plano_id: 'x', plano_cortesia: true, cortesia_motivo: 'comodato' }),
     'cortesia',
@@ -154,7 +154,7 @@ test('conceder → trocar → encerrar: um plano vigente, histórico guardado, n
 
 test('encerrar plano comercial de dono de ponto em comodato NUNCA toca o comodato', async () => {
   // Decisão do dono e do GPT, 23/09/2026: comodato e plano comercial são
-  // entitlements independentes (migration 076). Não existe mais "devolver
+  // entitlements independentes (migration 077). Não existe mais "devolver
   // comodato" ao encerrar — ele nunca sai, porque nunca esteve em plano_id.
   const conta = await criarConta({ papeis: '{anunciante,ponto}' });
   try {

@@ -68,7 +68,7 @@ const CAMPOS_PUBLICOS = `
 `;
 
 // Comodato (Inicial/Básico) e plano comercial (Essencial/Pro/Prime) são
-// entitlements INDEPENDENTES desde 23/09/2026 (migration 076) — nunca mais
+// entitlements INDEPENDENTES desde 23/09/2026 (migration 077) — nunca mais
 // no mesmo campo. Mas pra tudo que é COTA/DIREITO DE VEICULAR (quantos
 // criativos cabem, quantos pontos a conta escolhe, a duração máxima da
 // peça, a frequência por hora), o que importa é: a conta tem ALGUM plano

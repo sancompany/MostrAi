@@ -17,7 +17,7 @@ const pool = require('../db/pool');
 const TIERS_COMERCIAIS = new Set(['essencial', 'destaque', 'maximo']);
 
 // De onde vem o plano comercial que está na conta agora — nunca mais
-// 'comodato' (migration 076, 23/09/2026): comodato tem campo próprio
+// 'comodato' (migration 077, 23/09/2026): comodato tem campo próprio
 // (`anunciantes.comodato_plano_id`), independente, e nenhum código escreve
 // mais um produto de comodato em `plano_id`. Quem quer saber do comodato lê
 // `comodato_plano_id` direto (ver ficha da conta no admin).
@@ -106,14 +106,14 @@ async function conceder({ conta, plano, validoAte, observacao, adminUsuario }) {
 }
 
 // Encerra o plano comercial vigente agora. Só o plano COMERCIAL é encerrado
-// (23/09/2026, decisão do dono e do GPT, migration 076): comodato mora em
+// (23/09/2026, decisão do dono e do GPT, migration 077): comodato mora em
 // campo próprio e nunca é tocado por este fluxo — não existe "devolver
 // comodato" porque ele nunca saiu. Histórico preservado.
 //
 // `motivo`: 'cancelado' é o botão da ficha (admin decidiu agora, com
 // `adminUsuario`); 'vencido' é a conciliação diária encerrando sozinha uma
 // cobertura que passou da validade, sem suspender a conta por isso
-// (`src/financeiro/conciliacao.js#encerrarCoberturaVencida`, migration 077
+// (`src/financeiro/conciliacao.js#encerrarCoberturaVencida`, migration 078
 // — "suspensão só pelo admin, plano vencido cancela sozinho").
 async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
   return comTransacao(async (db) => {

@@ -64,7 +64,11 @@ async function confirmarLote(dispositivo, eventosRecebidos) {
 // pras telas já no ar, contrato 1 ou 2). Unidade vmin, mesma que o player
 // já usava num valor só (?margem=N).
 router.post('/player/:dispositivoId/heartbeat', exigirAparelho, async (req, res) => {
-  await dispositivosRepo.marcarOnline(req.dispositivo.id);
+  // `erro` (migration 076) é um texto curto que o player manda quando algo deu
+  // errado do lado dele (ex.: falha ao baixar playlist) — vira ultimo_erro,
+  // parte da régua de status-tela.js. Ausente/vazio limpa o que já existia.
+  const erro = typeof req.body.erro === 'string' ? req.body.erro.slice(0, 500) : null;
+  await dispositivosRepo.marcarOnline(req.dispositivo.id, erro);
   const { margem_superior, margem_direita, margem_inferior, margem_esquerda } = req.dispositivo;
   res.json({
     ok: true,

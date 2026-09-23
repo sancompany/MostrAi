@@ -691,7 +691,7 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
   // Legado (Parte 15 da reconstrução de Contas, 23/09/2026 — sem tela
   // chamando, ver /admin/anunciantes/:id/plano-administrativo). Reforçado
   // aqui pelo mesmo motivo da separação de comodato/plano comercial
-  // (migration 076): sem esta trava, um `plano_id` de comodato (Inicial ou
+  // (migration 077): sem esta trava, um `plano_id` de comodato (Inicial ou
   // Básico, ambos `ativo=false` no catálogo — nunca vendáveis) passando por
   // aqui reintroduziria exatamente o bug que a separação corrigiu.
   if (plano.ativo === false) {

@@ -67,17 +67,28 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.4 Administrador — o dia a dia
 
 1. Entra em `/admin` (usuário e senha; o Cloudflare Access é a porta).
-2. Vê o **resumo**: receita recorrente, confirmado no mês, e só as pendências
-   que existem de verdade (repasse de ponto, comissão, troca de plano
-   esperando pagamento, devolução) — normalidade não ocupa espaço na tela
-   (rodada Financeiro, 22/09/2026).
+2. Vê o **resumo** em 2 colunas no desktop (revisão final da Visão geral,
+   23/09/2026): coluna operacional (alertas reais de tela — só quem deveria
+   estar online e não está, RN-58 —, pendências: Candidaturas/Criativos/
+   Mensagens/Financeiro, resumo de pontos por status, Ocupação da rede) e
+   coluna de negócio (card único Financeiro — receita recorrente mensal
+   calculada linha a linha por conta, respeitando promoção travada/desconto
+   de parceiro/crédito de comodato, recebido no mês, conciliação discreta
+   quando saudável, pendências financeiras agregadas —, promoção ativa,
+   indicadores de rede). Mobile empilha as duas colunas na ordem natural.
+   Comissão de vendedor não soma mais nesse agregado — o conceito de
+   vendedor saiu do escopo da Visão geral (segue existindo dentro de Contas).
 3. Aprova contas, candidaturas e criativos.
-4. Gera convites, cadastra pontos e telas, define chave e PIN.
+4. Gera convites, cadastra pontos e telas, define chave e PIN, e escolhe o
+   horário operacional de cada tela (RN-58: segue o ponto, 24h, ou horário
+   próprio).
 5. Edita a grade de planos e os benefícios.
-6. Clica numa pendência financeira pra resolver: paga o repasse do ponto,
-   quita a comissão do vendedor, acompanha a troca ou registra a devolução.
-   Cada fila é um drill-down (fora da sidebar), aberto só pelo clique na
-   pendência — pendência resolvida sai da fila na hora e some da Visão geral.
+6. Clica na pendência Financeiro pra abrir a Central Financeira (Cobranças/
+   Repasses/Trocas/Devoluções — sem aba de Comissões desde 23/09/2026) e
+   resolver: paga o repasse do ponto, acompanha a troca ou registra a
+   devolução. Cada fila é um drill-down (fora da sidebar, com "← Visão
+   geral" no topo), aberto só pelo clique na pendência — pendência resolvida
+   sai da fila na hora e some da Visão geral.
 
 ### 2.5 Tela — o ciclo do player
 
@@ -337,7 +348,7 @@ está aposentado: não entra em cálculo nenhum e não aparece mais em Ofertas �
 comodato é só o crédito em reais. **Corrigido em 23/09/2026 (decisão do dono e
 do GPT, correção do modelo de domínio):** comodato e plano comercial são dois
 direitos INDEPENDENTES na conta — `anunciantes.comodato_plano_id` (Inicial/
-Básico, migration 076, sincronizado pelos pontos da conta) e
+Básico, migration 077, sincronizado pelos pontos da conta) e
 `anunciantes.plano_id` (Essencial/Pro/Prime, pago ou cortesia) nunca mais
 compartilham campo. Quem tem o Básico e assina um plano pago mantém os dois ao
 mesmo tempo — cancelar ou encerrar o plano comercial nunca mexe no comodato,
@@ -855,17 +866,45 @@ usuário. *Quem vê:* o anunciante (e o administrador, no contador da
 conciliação na Visão geral).
 
 **RN-37 — Mensagem do formulário de contato é uma fila com dono, não um
-e-mail que talvez chegue.** *(Segunda passada da furos.md, 16/09/2026.)* Todo
+e-mail que talvez chegue.** *(Segunda passada da furos.md, 16/09/2026;
+abas Pendentes/Histórico na revisão final da Visão geral, 23/09/2026.)* Todo
 envio de `/contato` é GRAVADO em `mensagens_contato` antes de o e-mail ser
-tentado (migration 039) e aparece na aba **Mensagens do site** do admin, com
+tentado (migration 039) e aparece na aba **Mensagens** do admin (`#mensagens`,
+sem item próprio na sidebar — chega pelo aviso da Visão geral), com
 `email_enviado` dizendo se o aviso chegou na caixa de entrada: quando é
-`false`, essa tela é o único lugar onde a mensagem existe. Fica na fila (com
-contador no menu) até alguém marcar `respondida_em` (migration 044). A fila
-existe porque `/contato.html` é o canal declarado de pedido do titular de
+`false`, essa tela é o único lugar onde a mensagem existe. **Pendentes** lista
+quem ainda não tem `respondida_em` (migration 044) e é onde a tela abre por
+padrão; marcar como respondida tira da fila NA HORA e o registro passa a
+aparecer em **Histórico** (mesma rota `GET /admin/mensagens-contato`, sem
+filtro no servidor — as duas abas leem tudo e filtram do lado do cliente).
+Histórico é só leitura: a resposta em si acontece por fora (e-mail/telefone),
+a aba só guarda o rastro (recebida em, respondida em, contato, mensagem). A
+fila existe porque `/contato.html` é o canal declarado de pedido do titular de
 dados (LGPD art. 18), que tem prazo legal pra resposta — depender de alguém
 lembrar de abrir a caixa de e-mail não é procedimento. *Violada:* não há
 caminho de usuário; do lado de quem escreveu nada falha. *Quem vê:* o
 administrador.
+
+**RN-58 — Uma tela só vira alerta quando deveria estar online e não está.**
+*(Revisão final da Visão geral, 23/09/2026, seção 2 do pedido.)* Antes, "sem
+sinal" era só heartbeat vencido há mais de 2h — uma loja fechada às 18h virava
+alerta todo fim de tarde. Cada tela tem um `modo_horario` (migration 076):
+`ponto` (usa o `horario_semanal` do ponto onde está instalada, o padrão),
+`24h` (sempre esperada online) ou `personalizado` (`horario_semanal` PRÓPRIO
+da tela, pra quando ela roda além do horário do comércio — ex.: tela virada
+pra rua). `src/lib/status-tela.js#statusOperacionalTela` é a única régua,
+avaliada nesta ordem: `em_reparo`/`inativa` (status manual, nunca alerta) →
+`aguardando_primeiro_sinal` (nunca completou um heartbeat, mesmo fora do
+horário) → `fora_do_horario` (não deveria estar online agora — nunca vira
+alerta) → `sem_sinal` (deveria estar online, heartbeat venceu há mais de 2h)
+→ `erro_do_player` (o player relatou um erro real na última chamada,
+`dispositivos.ultimo_erro`, via `POST /player/:id/heartbeat {erro}`) →
+`operando`. Só `sem_sinal`/`erro_do_player` contam pro alerta "tela(s)
+deveriam estar operando e não estão" da Visão geral e pro card na ficha da
+tela; os outros são estado esperado. *Violada:* o backend nunca afirma
+tentativa de comunicação que não chegou — `aguardando_primeiro_sinal` exige
+`ultima_vez_online IS NULL` de verdade. *Quem vê:* o administrador, na Visão
+geral e na ficha do ponto (Rede > Pontos > tela).
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
@@ -915,8 +954,12 @@ precisa de ajuste.** Na transição do criativo para `aprovado` — e só na
 transição —, sai um e-mail dizendo que ele está na playlist; na transição
 pra reprovado, sai um e-mail explicando o motivo (`criativo.motivo_reprovacao`)
 e como reenviar. Salvar de novo um criativo que já passou por uma dessas não
-reenvia. *Violada:* nada acontece; a aprovação não depende do e-mail. *Quem
-vê:* o anunciante, na caixa de entrada.
+reenvia. Cobre também o caso de reenviar/substituir um criativo já reprovado
+e depois aprová-lo: a substituição volta o status pra `pendente`, então a
+próxima aprovação é uma transição nova e reenvia normalmente. A conta própria
+(RN-21) nunca recebe — `contato_email` dela é um endereço interno, sem caixa
+de entrada de verdade. *Violada:* nada acontece; a aprovação não depende do
+e-mail. *Quem vê:* o anunciante, na caixa de entrada.
 
 **RN-19 — O comprovante de veiculação respeita o período escolhido.** O CSV
 sai com `;` e BOM UTF-8, porque o Excel em português com vírgula junta tudo

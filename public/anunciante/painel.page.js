@@ -48,7 +48,7 @@ async function carregar() {
     // profundidade — ver POST /anunciantes/:id/criativos).
     //
     // "Plano" aqui é o EFETIVO — comercial OU comodato (23/09/2026,
-    // separação dos dois campos, migration 076). Dono de ponto sem nenhum
+    // separação dos dois campos, migration 077). Dono de ponto sem nenhum
     // plano pago continua liberado pelo comodato (Inicial/Básico), que
     // sempre deu direito a subir o autoanúncio — só nunca tinha campo
     // próprio antes.

@@ -27,7 +27,7 @@ async function aplicarUpgradeSeElegivel(pontoContaId, db = pool) {
   const conta = await anunciantesRepo.buscarPorId(pontoContaId);
   if (!conta) return null;
 
-  // `conta.plano_id` é só plano COMERCIAL desde 23/09/2026 (migration 076,
+  // `conta.plano_id` é só plano COMERCIAL desde 23/09/2026 (migration 077,
   // separação de comodato) — antes precisava excluir os ids de comodato daqui
   // à mão (`idsDePlanosDeComodato`) pra não confundir Inicial/Básico com um
   // Essencial de verdade; agora `plano_id` nunca é um produto de comodato,

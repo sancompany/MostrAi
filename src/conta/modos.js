@@ -111,7 +111,7 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
     // o mesmo ato, senão existe um intervalo em que ele cedeu a parede e não
     // recebeu nada — e é justo nesse intervalo que alguém abre um chamado.
     //
-    // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 076,
+    // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 077,
     // `comodato.sincronizarComodato`) — independente de plano comercial.
     // Cliente pagante que também cede um ponto mantém o plano que paga E
     // ganha o comodato junto; os dois nunca se sobrescrevem.

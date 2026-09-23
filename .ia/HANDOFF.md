@@ -58,7 +58,7 @@ sem seção nova, correção direta nas RN existentes de `docs/funcional.md`,
 RN-32/RN-35/RN-32-A) e `docs/api.md` (rotas `/anunciantes/me`,
 `/admin/anunciantes/:id/plano[-administrativo[/encerrar]]`).
 
-- **Migration 076** — `anunciantes.comodato_plano_id` (Inicial/Básico),
+- **Migration 077** (renumerada de 076 — colisão com a `076_horario_operacional_da_tela.sql` de outra rodada, mesmo dia; ver nota de merge em `docs/PENDENCIAS.md`) — `anunciantes.comodato_plano_id` (Inicial/Básico),
   independente de `plano_id` (agora SÓ comercial: Essencial/Pro/Prime, pago
   ou cortesia) de vez. Migração de dado em 3 passos, sem chute: deriva do
   ponto vivo pra todo mundo (via `planos_ponto.plano_incluido_id`, o de
@@ -80,7 +80,7 @@ RN-32/RN-35/RN-32-A) e `docs/api.md` (rotas `/anunciantes/me`,
   desaparecido" — a frase do dono, literal.)
 - **Suspensão automática removida.** `conciliacao.js#encerrarCoberturaVencida`
   (renomeada de `suspenderCoberturaVencida`) agora chama o mesmo `encerrar()`
-  do botão manual, com `motivo:'vencido'` (migration 077 amplia o CHECK de
+  do botão manual, com `motivo:'vencido'` (migration 078 amplia o CHECK de
   `encerrado_motivo`) em vez de marcar `suspenso=true`. Suspensão automática
   sobrevive só em `cobranca_contestada` (chargeback, obrigação contratual do
   San Checkout) e no direito de arrependimento (o próprio titular pedindo) —
@@ -108,6 +108,47 @@ RN-32/RN-35/RN-32-A) e `docs/api.md` (rotas `/anunciantes/me`,
 - **Próximo, mesma sessão, pedido explícito do dono:** correção cirúrgica em
   Rede (candidatura, CEP/bairro, safe area) — ver seção logo abaixo assim que
   existir, e `docs/PENDENCIAS.md` se ficar algo em aberto.
+
+## Revisão final da Visão geral do admin + fluxos internos (23/09/2026, outro agente, mergeada nesta branch)
+Pedido do dono (17 seções): fechar a V1 do ADMIN com revisão estrutural da
+Visão geral (2 colunas, muito mais compacta) e dos fluxos que ela abre.
+Detalhe completo em `docs/PENDENCIAS.md` (seção "Revisão final da Visão
+geral e fluxos internos — 23/09/2026", final do arquivo) — resumo aqui:
+
+- **Régua única de status de tela** (migration 074, `src/lib/status-tela.js`):
+  `modo_horario` (`ponto`/`24h`/`personalizado`) por tela, `horario_semanal`
+  próprio no modo personalizado (editável na ficha do ponto). Substitui a
+  checagem fixa "2h sem heartbeat" nas 2 telas do ADMIN (não tocou as 2
+  cópias em `public/anunciante/painel.page.js`, fora de escopo desta
+  rodada). Player manda `{erro}` no heartbeat quando algo real falha.
+- **MRR corrigido**: `src/admin/routes.js#agregarReceitaPorCiclo` chama
+  `valorMensalDaConta()` por conta (a mesma função da cobrança real) em vez
+  de somar `planos.valor_mensal` cru — promoção travada, desconto de
+  parceiro e crédito de comodato agora entram na conta.
+- **Comissão de vendedor saiu** do card financeiro da Visão geral e da aba
+  da Central Financeira (fica só Cobranças/Repasses/Trocas/Devoluções) —
+  backend/tabela/Contas intactos, só parou de somar/aparecer aqui.
+- **Financeiro virou 1 card** (receita recorrente + recebido no mês +
+  conciliação discreta + pendências agregadas), Mensagens ganhou abas
+  Pendentes/Histórico, Pendências operacionais caiu de 8 pra 4 cards,
+  indicadores renomeados (Novas contas / Conversão cadastro → pagamento /
+  Alcance estimado), "Pontos por status" virou resumo de uma linha.
+  Todo módulo `oculto: true` (Financeiro/Mensagens/Aprovação/Vendedores)
+  ganhou link "← Visão geral".
+- **Layout final**: `.visao-geral-colunas` (2 colunas >900px, empilha
+  sozinho abaixo disso).
+- **Bug corrigido** (já reportado antes, ver rodada de integridade abaixo):
+  ponto sem tela inflava ocupação comercial — `ocupacaoPorPonto`
+  (`src/midias/repository.js`) agora só soma `segundos_por_hora` de ponto
+  `em_operacao`.
+- `npm run check`: 204/204 testes, lint/format limpos (só os 3 avisos
+  antigos). Testado no navegador via Playwright headless (login, Visão
+  geral com/sem dado, Mensagens, Central Financeira, editor de horário da
+  tela salvando de verdade) — screenshots em desktop 1400px e mobile
+  420px, sem overflow, sem erro de console novo.
+- **Fora de escopo, de propósito**: `painel.page.js` do anunciante não foi
+  tocado; "Recebido no mês" não mudou de nome no backend (`receitaConfirmadaMes`),
+  só o rótulo na UI.
 
 ## Reconstrução final de Contas + Categorias (23/09/2026, este agente)
 Pedido do dono (63 partes): toda conta já pode anunciar; Central de Contas

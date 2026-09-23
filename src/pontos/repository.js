@@ -257,7 +257,7 @@ async function ocupacaoPorAnunciante() {
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
          -- COALESCE: comercial manda quando existe, comodato cobre o resto
-         -- (23/09/2026, migration 076) — sem isso, anunciante só-comodato
+         -- (23/09/2026, migration 077) — sem isso, anunciante só-comodato
          -- ocupando ponto via escolha sumia da ocupação (plano_id ficou null).
          LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
         GROUP BY p.id

@@ -11,7 +11,7 @@
 -- dono por trás. Agora essa rotina ENCERRA o plano comercial (mesma ação do
 -- botão "Cancelar plano" na ficha — `plano-administrativo.js#encerrar`,
 -- reaproveitado, não duplicado), e não mexe em `suspenso`. O comodato (campo
--- próprio desde a migration 076) nunca é tocado por isso.
+-- próprio desde a migration 077) nunca é tocado por isso.
 --
 -- `cobranca_contestada` (chargeback) CONTINUA suspendendo automaticamente —
 -- não é o mesmo caso: é obrigação contratual do San Checkout

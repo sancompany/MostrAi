@@ -507,7 +507,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        FROM pontos p
        LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
-       -- COALESCE: plano efetivo de quem ocupa (23/09/2026, migration 076) —
+       -- COALESCE: plano efetivo de quem ocupa (23/09/2026, migration 077) —
        -- sem isso, outro anunciante só-comodato escolhido no mesmo ponto
        -- desaparecia da ocupação mostrada aqui.
        LEFT JOIN planos pl ON pl.id = COALESCE(ao.plano_id, ao.comodato_plano_id)
