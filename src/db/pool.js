@@ -24,4 +24,16 @@ types.setTypeParser(1082, (valor) => valor);
 // `config` (connectionString + ssl) mora em connection-config.js, dividido
 // com o client dedicado do LISTEN/NOTIFY (src/lib/sse.js) — mesma conexão,
 // duas formas de usar.
-module.exports = new Pool(config);
+//
+// `max` explícito (achado real em produção, 23/09/2026): o padrão do driver
+// é 10 por Pool, sem teto nenhum contra o pooler. O Supavisor de sessão do
+// Supabase deste projeto está configurado pra 15 conexões — com
+// `instances: 2` no Northflank (item 4, concluído), dois Pools default já
+// bastam pra estourar isso sozinhos, e foi exatamente o que aconteceu:
+// `error: (EMAXCONNSESSION) max clients reached in session mode - max
+// clients are limited to pool_size: 15`, num Promise.all de
+// src/admin/routes.js, antes desta correção. 5 por instância (2×5=10) deixa
+// margem pro client dedicado do LISTEN (src/lib/sse.js, 1 por instância,
+// nunca devolvido) e pra conexão avulsa de scripts/conciliar.js (job
+// separado, roda fora das 2 instâncias do serviço).
+module.exports = new Pool({ ...config, max: 5 });
