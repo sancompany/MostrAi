@@ -3,18 +3,6 @@ const fmt = fmtBRL; // config.js
 let ANUNCIANTE = null;
 let ANUNCIANTE_ID = null;
 
-// Porta única pra quem não tem arte (19/09/2026, pedido do dono — antes eram
-// dois links, arte simples incluída no plano e vídeo gravado à parte; virou
-// um botão só, "Quero um anúncio", e a escolha entre os dois vira conversa
-// no WhatsApp, não duas opções na tela). A mensagem já vai com o nome da
-// empresa pra conversa não começar com "oi".
-function montarPortasDeArte() {
-  if (!window.linkWhatsApp) return;
-  const nome = ANUNCIANTE?.nome_empresa || 'anunciante';
-  const link = document.getElementById('linkArteSimples');
-  if (link) link.href = window.linkWhatsApp(`Olá! Sou ${nome}, do Mostraí, e quero um anúncio pra minha conta.`);
-}
-
 async function carregar() {
   const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
   if (r.status === 401) {
@@ -33,7 +21,6 @@ async function carregar() {
     ANUNCIANTE = nova;
     preencherStatusBanner();
   });
-  montarPortasDeArte();
 
   // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
   // lugar ao card de ativação. Com o papel, segue o fluxo normal.
@@ -62,7 +49,6 @@ async function carregar() {
     }
     removerBloqueioPlano();
     carregarExibicoes();
-    carregarCriativos();
     carregarBancoHoras();
   });
   if (estado && !estado.modos.anunciante.liberado) {
@@ -86,7 +72,6 @@ if (window.ligarEventosDaConta) {
     'plan.updated': carregar,
     'account.updated': carregar,
     'application.updated': carregar,
-    'creative.updated': carregarCriativos,
   });
 }
 
@@ -125,13 +110,6 @@ function montarBloqueioPlano() {
 }
 
 function preencherStatusBanner() {
-  // Duração máxima da peça é benefício do plano (17/09/2026): o texto genérico
-  // do HTML vira o número exato assim que sabemos em qual plano a conta está.
-  const dicaDuracao = document.querySelector('[data-limite-duracao]');
-  if (dicaDuracao && ANUNCIANTE.plano?.duracao_maxima_segundos) {
-    dicaDuracao.textContent = `de até ${ANUNCIANTE.plano.duracao_maxima_segundos} segundos (o que o seu plano permite)`;
-  }
-
   const el = document.getElementById('statusBanner');
   let planoTxt = 'Sem plano ainda';
   if (ANUNCIANTE.plano_id) {
@@ -650,7 +628,7 @@ function explicarZero(dados) {
   const criativoNoAr = (dados.criativosAprovados || 0) > 0;
   el.innerHTML = criativoNoAr
     ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
-    : '<b>Falta o seu vídeo.</b> Suba a peça aqui embaixo: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
+    : '<b>Falta o seu vídeo.</b> Envie a peça em Meus criativos: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
   el.hidden = false;
 }
 
@@ -861,134 +839,6 @@ function desenharCobrancas(cobrancas) {
   </tbody></table></div>`;
 }
 
-function ehVideo(url) {
-  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || '');
-}
-
-async function carregarCriativos() {
-  const el = document.getElementById('listaCriativos');
-  try {
-    const criativos = await (
-      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, { credentials: 'include' })
-    ).json();
-    const ativos = criativos.filter((c) => c.status !== 'reprovado').length;
-    // Contador ao lado do título "Meus criativos" (19/09/2026, pedido do
-    // dono) — não é mais card próprio no kpi-grid.
-    const contador = document.getElementById('contadorCriativos');
-    if (contador) contador.textContent = ativos ? `${ativos} ativo${ativos === 1 ? '' : 's'}` : '';
-    // "Quero um anúncio" só faz sentido pra quem ainda não subiu nenhuma
-    // peça (19/09/2026, pedido do dono) — assim que existe ao menos um
-    // criativo na conta, a pergunta "não tem arte ainda?" já não se aplica.
-    const ajudaArte = document.getElementById('ajudaArte');
-    if (ajudaArte) ajudaArte.hidden = criativos.length > 0;
-    el.innerHTML = criativos.length
-      ? `<div class="criativos-lista">
-      ${criativos
-        .map((c) => {
-          const video = c.arquivo_normalizado_url && ehVideo(c.arquivo_normalizado_url);
-          const tipo = video ? 'Vídeo' : 'Imagem';
-          const duracao = c.duracao_segundos ? `${Number(c.duracao_segundos)}s` : 'Processando';
-          return `<div class="criativo-card" data-id="${c.id}"><div class="criativo-media">
-          ${
-            c.arquivo_normalizado_url
-              ? video
-                ? `<video src="${esc(c.arquivo_normalizado_url)}" muted loop playsinline poster="${esc(c.thumbnail_url || '')}"></video>
-                 <button type="button" class="criativo-play" aria-label="Reproduzir"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M8 5v14l11-7z"/></svg></button>`
-                : `<img src="${esc(c.arquivo_normalizado_url)}" alt="">`
-              : '<div class="criativo-placeholder">processando...</div>'
-          }
-          <button type="button" class="criativo-excluir" aria-label="Excluir criativo">&times;</button>
-          <span class="badge ${ROTULOS.criativoClasse[c.status] || 'badge-pendente'}">${esc(ROTULOS.criativo[c.status] || c.status)}</span>
-          </div><div class="criativo-meta"><strong>${tipo}</strong><span>${duracao}</span></div>
-          ${c.status === 'reprovado' ? `<p class="criativo-motivo">${c.motivo_reprovacao ? esc(c.motivo_reprovacao) : 'Fale com a gente pra entender o que ajustar.'}<br><b>Exclua esta peça e suba a versão corrigida.</b></p>` : ''}
-        </div>`;
-        })
-        .join('')}
-    </div>`
-      : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
-  } catch (err) {
-    // O `catch` mudo daqui escondeu por semanas um ReferenceError
-    // (`CRIATIVO_ROTULOS`, mapa que foi renomeado e ficou uma chamada pra
-    // trás): todo anunciante COM criativo via "não foi possível carregar" e
-    // ninguém sabia por quê, porque a mensagem culpava a rede e a rede estava
-    // boa. Erro de programação tem que aparecer no console.
-    console.error('falha ao montar a lista de criativos', err);
-    el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus criativos agora.</p>';
-  }
-}
-
-// Play/excluir por delegação — a lista é re-renderizada a cada carregamento,
-// então não dá pra prender listener em cada card.
-document.getElementById('listaCriativos').addEventListener('click', async (e) => {
-  const card = e.target.closest('.criativo-card');
-  if (!card) return;
-
-  if (e.target.closest('.criativo-play')) {
-    const video = card.querySelector('video');
-    video.play();
-    card.classList.add('tocando');
-    video.addEventListener('pause', () => card.classList.remove('tocando'), { once: true });
-    return;
-  }
-  if (e.target.closest('video')) {
-    const video = card.querySelector('video');
-    video.pause();
-    card.classList.remove('tocando');
-    return;
-  }
-  if (e.target.closest('.criativo-excluir')) {
-    if (!confirm('Excluir este criativo? Pra trocar por outro, é só enviar um novo depois.')) return;
-    const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos/${card.dataset.id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    const msg = document.getElementById('uploadMsg');
-    if (r.ok) {
-      msg.textContent = 'Criativo excluído.';
-      msg.className = 'form-msg ok';
-      carregarCriativos();
-    } else {
-      msg.textContent = 'Não foi possível excluir agora. Tente de novo.';
-      msg.className = 'form-msg err';
-    }
-  }
-});
-
-// Um controle só: escolher o arquivo já envia — sem botão "Enviar" à parte.
-document.getElementById('arquivoCriativo').addEventListener('change', async (e) => {
-  const input = e.target;
-  const msg = document.getElementById('uploadMsg');
-  if (!input.files[0]) return;
-
-  msg.textContent = 'Enviando e processando o vídeo, pode levar um minuto...';
-  msg.className = 'form-msg';
-  // Sem travar o input, escolher outro arquivo durante o envio disparava
-  // um segundo POST concorrente e duas listas fora de ordem.
-  input.disabled = true;
-  const form = new FormData();
-  form.append('arquivo', input.files[0]);
-
-  try {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/criativos`, {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    });
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || '');
-    msg.textContent = 'Criativo enviado! Ele entra em análise antes de ir pro ar.';
-    msg.className = 'form-msg ok';
-    input.value = '';
-    carregarCriativos();
-  } catch (err) {
-    msg.textContent = err.message
-      ? window.frase(err.message)
-      : 'Não foi possível enviar o criativo agora. Tente de novo.';
-    msg.className = 'form-msg err';
-  } finally {
-    input.disabled = false;
-  }
-});
-
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
@@ -1000,6 +850,9 @@ if (window.montarCreditos) window.montarCreditos({ aoResgatar: carregar });
 // Meus pontos: independente do modo anúncios e do plano (dono de ponto sem
 // plano comercial também vê o próprio comércio).
 if (window.montarMeusPontos) window.montarMeusPontos({ obterConta: () => ANUNCIANTE });
+// Meus criativos: o comercial e o do comodato, fora do bloqueio de plano
+// comercial (o módulo se esconde sozinho quando não há plano nenhum).
+if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => ANUNCIANTE });
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
 // 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já

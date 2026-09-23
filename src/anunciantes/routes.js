@@ -827,11 +827,34 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
     return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
   }
   const plano = await planosRepo.buscarPorId(planoId);
-  return subirCriativo(req, res, {
+  // Substituir sem tirar do ar (Fatia 3): o cliente troca a peça aprovada
+  // pela nova, e a atual continua rodando até a nova ser aprovada — antes o
+  // único jeito era excluir primeiro e ficar sem nada no ar durante a
+  // análise. Mesma regra do caminho do operador (/admin/criativos/:id/substituto).
+  let substitui = null;
+  if (req.body.substitui) {
+    const atual = await criativosRepo.buscarPorId(req.body.substitui);
+    const recusa = (status, erro) => {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(status).json({ erro });
+    };
+    if (!atual || atual.anunciante_id !== anunciante.id) return recusa(404, 'criativo não encontrado');
+    if (atual.status !== 'aprovado') return recusa(400, 'só dá pra substituir uma peça aprovada');
+    const { rows } = await pool.query(
+      `SELECT id FROM criativos WHERE substitui_criativo_id = $1 AND status = 'pendente' LIMIT 1`,
+      [atual.id],
+    );
+    if (rows.length) return recusa(409, 'essa peça já tem uma substituta em análise');
+    substitui = atual;
+  }
+  const enviou = await subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: plano.limite_criativos,
     duracaoMaxima: plano.duracao_maxima_segundos,
+    substitui,
   });
+  if (res.statusCode === 201) sse.emitirParaConta(anunciante.id, 'creative.updated', {});
+  return enviou;
 });
 
 // Admin subindo criativo na conta de um anunciante.
@@ -912,13 +935,12 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
   });
 });
 
-// Criativos de UMA conta pra ficha do admin (Parte 18-24), com o que a
-// playlist faria com eles agora: `no_ar` segue exatamente a regra do gerador
-// (conta elegível + aprovado com arquivo pronto + os N mais recentes, N =
-// limite do plano). Mesmo motor da fila global — isto só lê.
-router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
-  const conta = await repo.buscarPorId(req.params.id);
-  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+// O que a playlist faria com os criativos de uma conta agora: `no_ar` segue
+// exatamente a regra do gerador (conta elegível + aprovado com arquivo pronto
+// + os N mais recentes, N = limite do plano). Uma função só pra ficha do
+// admin e pro "Meus criativos" do painel — as duas telas nunca podem
+// discordar sobre o que está no ar.
+async function criativosComSituacao(conta) {
   const criativos = await criativosRepo.listarPorAnunciante(conta.id);
   const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   const contaVeicula =
@@ -930,11 +952,69 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
   const limite = plano ? limiteDeCriativos(false, plano.limite_criativos, prontos.length) : 0;
   const noAr = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
+  return { criativos: criativos.map((c) => ({ ...c, no_ar: noAr.has(c.id) })), plano, limite, contaVeicula };
+}
+
+// Criativos de UMA conta pra ficha do admin (Parte 18-24). Mesmo motor da
+// fila global — isto só lê.
+router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
+  const conta = await repo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const { criativos, limite, contaVeicula } = await criativosComSituacao(conta);
   res.json({
-    criativos: criativos.map((c) => ({ ...c, no_ar: noAr.has(c.id) })),
+    criativos,
     limite_no_ar: limite,
     limite_cadastro: CRIATIVOS_POR_CONTA,
     conta_veicula: contaVeicula,
+  });
+});
+
+// "Meus criativos" do painel único (Fatia 3, 23/09/2026) — o comercial e o
+// do comodato (autoanúncio na tela do próprio comércio) são a MESMA tabela e
+// a mesma cota da conta; antes eram duas telas, uma em cada página. Cada peça
+// vem com a situação que o cliente entende:
+//   em_analise · aprovado (pronto, fora do rodízio agora) · no_ar ·
+//   fora_do_ar (retirado) · recusado
+// e o vínculo de substituição nos dois sentidos (a peça atual sabe que tem
+// substituta em análise; a substituta sabe quem ela troca).
+const SITUACAO_CRIATIVO = { pendente: 'em_analise', reprovado: 'recusado', retirado: 'fora_do_ar' };
+router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const { criativos, plano, limite, contaVeicula } = await criativosComSituacao(conta);
+  const substitutaDe = new Map(
+    criativos
+      .filter((c) => c.status === 'pendente' && c.substitui_criativo_id)
+      .map((c) => [c.substitui_criativo_id, c.id]),
+  );
+  const emUso = await criativosRepo.contarNaoReprovados(conta.id);
+  const { rows: pontos } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM pontos WHERE anunciante_id = $1 AND status = 'em_operacao'`,
+    [conta.id],
+  );
+  res.json({
+    criativos: criativos.map((c) => ({
+      id: c.id,
+      situacao: c.status === 'aprovado' ? (c.no_ar ? 'no_ar' : 'aprovado') : SITUACAO_CRIATIVO[c.status],
+      arquivoUrl: c.arquivo_normalizado_url,
+      thumbnailUrl: c.thumbnail_url,
+      duracaoSegundos: c.duracao_segundos,
+      motivoRecusa: c.status === 'reprovado' ? c.motivo_reprovacao : null,
+      feitoPelaMostrai: !!c.editado_pelo_operador,
+      substitui: c.substitui_criativo_id,
+      substitutaEmAnalise: substitutaDe.get(c.id) || null,
+      enviadoEm: c.created_at,
+    })),
+    temPlano: !!plano,
+    // Plano comercial (anúncio na rede) e/ou comodato (a cota na tela do
+    // próprio comércio) — o painel explica onde a peça aprovada roda.
+    rodaNaRede: !!conta.plano_id,
+    rodaNoProprioPonto: pontos[0].n > 0,
+    contaVeicula,
+    limiteNoAr: limite,
+    limiteCadastro: plano ? plano.limite_criativos : 0,
+    emUso,
+    duracaoMaxima: plano?.duracao_maxima_segundos || null,
   });
 });
 
@@ -956,6 +1036,7 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
     return res.status(404).json({ erro: 'criativo não encontrado' });
   }
   await criativosRepo.deletar(req.params.criativoId);
+  sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', { id: criativo.id });
   // Best-effort: limpa os arquivos do storage. Se falhar, não impede a
   // exclusão do registro — só fica lixo no bucket pra limpar depois.
   try {

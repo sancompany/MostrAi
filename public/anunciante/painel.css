@@ -262,3 +262,12 @@
   .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
   .tela-linha .tela-num, .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
 }
+
+/* Meus criativos (Fatia 3): explicação da situação e "Substituir" no card. */
+.criativos-content { padding-top: 0; }
+.criativo-explica { margin: 0; padding: 0 12px 12px; color: var(--text-dim); font-size: .78rem; line-height: 1.4; }
+.situacao-recusado .criativo-explica { color: #a51b1b; }
+.criativo-substituir { margin: 0 12px 12px; align-self: flex-start; }
+.upload-label.desabilitado { opacity: .5; cursor: not-allowed; }
+/* Selo em cima da mídia: o fundo translúcido do badge some no vídeo escuro. */
+.criativo-media .badge { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
