@@ -61,18 +61,27 @@ router.get('/admin/ofertas/produtos', async (_req, res) => {
   res.json(await planosRepo.listarProdutos());
 });
 
+// Os 2 produtos fixos de comodato (Inicial e Básico) — rodada de
+// integridade, 23/09/2026. Somente leitura: não são compráveis e não têm
+// preço; sumiram da UI quando Configurações > Comodato saiu e voltam aqui,
+// em Ofertas, que é onde os produtos moram. Ver planosRepo#listarProdutosComodato.
+router.get('/admin/ofertas/comodato', async (_req, res) => {
+  res.json(await planosRepo.listarProdutosComodato());
+});
+
 const TIERS_VALIDOS = new Set(['essencial', 'destaque', 'maximo']);
 
-// Único campo editável por fora do preço/desconto de cada produto — Parte E
-// do pedido é taxativa: preço-base + os 4 descontos de ciclo + comodato, nada
-// além disso. `descontos` chega como { "1": pct, "3": pct, "6": pct, "12": pct }.
+// Preço-base + os 4 descontos de ciclo, nada além disso. `descontos` chega
+// como { "1": pct, "3": pct, "6": pct, "12": pct }. O antigo "desconto
+// comodato %" saiu daqui na rodada de integridade (23/09/2026): a migration
+// 049 já tinha trocado esse percentual pelo crédito em reais da conta, e
+// deixar o campo editável reabria um segundo desconto de comodato por cima.
 router.patch('/admin/ofertas/produtos/:tier', async (req, res) => {
   if (!TIERS_VALIDOS.has(req.params.tier)) return res.status(400).json({ erro: 'produto inválido' });
   try {
     const produto = await planosRepo.atualizarProduto(req.params.tier, {
       precoBase: req.body.precoBase,
       descontos: req.body.descontos || {},
-      descontoComodato: req.body.descontoComodato,
     });
     res.json(produto);
   } catch (err) {
@@ -321,10 +330,12 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     );
     if (rows.length && rows.every((r) => r.permite_assinar === false)) {
       return res.status(400).json({
+        // Quem recebe a ajuda de custo ganha o plano Inicial (migration 063),
+        // não mais o Básico; e os nomes dos pagos são Essencial/Pro/Prime.
         erro:
-          'você está recebendo a ajuda de custo do comodato, e por isso fica no plano básico que vem junto. ' +
-          'Pra assinar Destaque ou Máximo é só trocar a ajuda de custo por tela: fale com a gente que a gente troca, ' +
-          'e aí os R$ 50 viram abatimento na sua mensalidade.',
+          'você está recebendo a ajuda de custo do comodato, e por isso fica no plano Inicial que vem junto. ' +
+          'Pra assinar um plano pago (Essencial, Pro ou Prime) é só trocar a ajuda de custo por tela: fale com a gente ' +
+          'que a gente troca, e aí os R$ 50 viram abatimento na sua mensalidade.',
       });
     }
   }

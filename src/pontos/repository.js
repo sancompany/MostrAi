@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
+const { LIMITE_COMERCIAL } = require('../lib/capacidade');
 
 // Quatro status desde 22/09/2026 (migration 069, rodada final da Rede) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -117,13 +118,19 @@ async function criar(dados, db = pool) {
 
 async function listar() {
   const { rows } = await pool.query(
+    // `comodato_produto_nome` (rodada de integridade, 23/09/2026): o PRODUTO
+    // que a modalidade dá (Inicial/Básico, via plano_incluido_id), pra Contas
+    // mostrar o comodato pelo nome do produto e não só pelo nome da
+    // modalidade ("Recebe os R$ 50" / "Troca os R$ 50 por tela").
     `SELECT p.*, c.nome AS categoria_nome, pp.nome AS plano_ponto_nome,
+            pl.nome AS comodato_produto_nome,
             a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
+     LEFT JOIN planos pl ON pl.id = pp.plano_incluido_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
      ORDER BY p.created_at DESC`,
   );
@@ -233,7 +240,9 @@ async function somaFluxoMensal() {
 // FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS: liberar manualmente só é aceito se
 // sobrar pelo menos essa folga (15 min) — sem isso, o próximo anunciante
 // a entrar reblocka o ponto minutos depois de o admin ter liberado.
-const LIMITE_OCUPACAO_BLOQUEIA = 0.8;
+// Valor único em src/lib/capacidade.js (rodada de integridade, 23/09/2026):
+// a régua 80/20 que Visão geral e Mídia Mostraí mostram lê o mesmo número.
+const LIMITE_OCUPACAO_BLOQUEIA = LIMITE_COMERCIAL;
 const FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS = 15 * 60;
 
 // Uma linha por (ponto, anunciante) — é o que a tela do admin mostra: toda

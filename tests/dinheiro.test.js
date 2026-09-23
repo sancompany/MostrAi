@@ -24,10 +24,11 @@ test('arredondar corta pra 2 casas', () => {
 // ---------------------------------------------------------------------------
 // Crédito de comodato em reais (migration 049, desenho do dono de 17/09/2026)
 // ---------------------------------------------------------------------------
-// Quem cede a parede escolhe: recebe R$ 50 por mês, ou troca os R$ 50 por
-// tela. Quem troca leva o Essencial de graça e, se quiser subir, paga o
-// Destaque ou o Máximo com R$ 50 abatidos. O abatimento é em REAIS, não em
-// percentual, porque tem que valer exatamente o que ele deixou de receber.
+// Quem cede a parede escolhe: recebe R$ 50 por mês (e ganha o Inicial), ou
+// troca os R$ 50 por tela (e ganha o Básico). Quem troca, se quiser assinar
+// um plano pago (Essencial, Pro ou Prime), paga com R$ 50 abatidos. O
+// abatimento é em REAIS, não em percentual, porque tem que valer exatamente o
+// que ele deixou de receber.
 const { valorMensalDaConta } = require('../src/financeiro/san-checkout');
 
 const conta = (extra = {}) => ({ papeis: ['anunciante'], status: 'comum', ...extra });
@@ -80,15 +81,28 @@ test('desconto de parceiro em percentual e crédito em reais se somam na ordem c
   assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 3 }), 174.1);
 });
 
-// O ESSENCIAL FICA DE FORA DO CREDITO, e essa e a parte que engana: o
-// Essencial JA e o que ele ganha de graca por abrir mao dos R$ 50. Se o
-// credito valesse nele tambem, ele teria o Essencial de cortesia E poderia
-// assinar um segundo Essencial por R$ 49 — os mesmos R$ 50 gastos duas vezes.
-test('crédito de comodato NÃO vale no Essencial, só no Destaque e no Máximo', () => {
+// O ESSENCIAL ENTROU NO CRÉDITO na rodada de integridade (23/09/2026,
+// decisão comercial do dono). Ele ficava de fora porque, no desenho da
+// migration 049, quem trocava os R$ 50 por tela GANHAVA o Essencial de
+// cortesia. Desde a migration 063 quem troca ganha o Básico (produto de
+// comodato próprio), então o Essencial pago é um degrau acima como os outros.
+test('crédito de comodato vale nos três planos pagos: Essencial, Pro e Prime', () => {
   const dono = donoDePonto({ credito_comodato_mensal: 50 });
-  assert.strictEqual(valorMensalDaConta(dono, { tier: 'essencial', valor_mensal: 99, compromisso_meses: 1 }), 99);
+  assert.strictEqual(valorMensalDaConta(dono, { tier: 'essencial', valor_mensal: 99, compromisso_meses: 1 }), 49);
   assert.strictEqual(valorMensalDaConta(dono, { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1 }), 199);
   assert.strictEqual(valorMensalDaConta(dono, { tier: 'maximo', valor_mensal: 449, compromisso_meses: 1 }), 399);
+});
+
+// O percentual de comodato por plano foi aposentado (migration 049 já o
+// tinha zerado; a tela de Ofertas voltou a expor o campo e o cálculo ainda
+// lia). Mesmo com valor gravado no plano, ele não pode mais descontar nada:
+// o único desconto de comodato é o crédito em reais da conta.
+test('desconto_comodato_percentual gravado no plano não desconta mais nada', () => {
+  const dono = donoDePonto({ credito_comodato_mensal: 0 });
+  const plano = { tier: 'destaque', valor_mensal: 249, compromisso_meses: 1, desconto_comodato_percentual: 20 };
+  assert.strictEqual(valorMensalDaConta(dono, plano), 249);
+  const comCredito = donoDePonto({ credito_comodato_mensal: 50 });
+  assert.strictEqual(valorMensalDaConta(comCredito, plano), 199);
 });
 
 // Plano sem tier (versão antiga, ou linha fora da grade de 3) não abate nada:

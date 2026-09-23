@@ -292,9 +292,9 @@ async function carregarTrocaComodato(pontos) {
   el.hidden = false;
   el.innerHTML = `<div class="card wide u-mt-16">
     <h4 class="u-m-0">Quer trocar a ajuda de custo por tela?</h4>
-    <p class="form-hint u-mt-8">Hoje você recebe <b>${fmtBRL(total)} por mês</b>${recebendo.length > 1 ? ` (${recebendo.length} endereços)` : ''} e tem o plano básico junto.
-      Abrindo mão desse valor, você passa a ter o <b>plano Essencial inteiro</b> — o dobro de tempo de tela, sem pagar nada —
-      e ainda ganha ${fmtBRL(50)} de abatimento por mês se um dia quiser assinar o Pro ou o Prime.</p>
+    <p class="form-hint u-mt-8">Hoje você recebe <b>${fmtBRL(total)} por mês</b>${recebendo.length > 1 ? ` (${recebendo.length} endereços)` : ''} e tem o plano Inicial junto.
+      Abrindo mão desse valor, você passa a ter o <b>plano Básico</b>, com mais que o dobro de tempo de tela e em até 3 pontos da rede, sem pagar nada,
+      e ainda ganha ${fmtBRL(50)} de abatimento por mês se um dia quiser assinar o Essencial, o Pro ou o Prime.</p>
     <p class="form-hint u-mt-8"><b>A troca é só num sentido aqui:</b> para voltar a receber a ajuda de custo, fale com a gente.</p>
     <button type="button" class="btn primary u-mt-12" id="btnTrocarPorTela">Trocar os ${fmtBRL(total)} por tela</button>
     <p class="form-msg u-mt-8" id="msgTrocaComodato" role="status"></p>
@@ -305,7 +305,7 @@ async function carregarTrocaComodato(pontos) {
     // de volta não está na mão dele.
     if (
       !window.confirm(
-        `Você deixa de receber ${fmtBRL(total)} por mês e passa a ter o plano Essencial inteiro, de graça. Para voltar a receber, vai precisar falar com a gente. Confirmar?`,
+        `Você deixa de receber ${fmtBRL(total)} por mês e passa a ter o plano Básico, de graça. Para voltar a receber, vai precisar falar com a gente. Confirmar?`,
       )
     )
       return;
@@ -320,7 +320,7 @@ async function carregarTrocaComodato(pontos) {
       const corpo = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(corpo.erro || 'não deu pra trocar agora');
       msg.className = 'form-msg ok u-mt-8';
-      msg.textContent = 'Pronto. Seu plano agora é o Essencial, e a ajuda de custo deixa de ser paga.';
+      msg.textContent = 'Pronto. Seu plano agora é o Básico, e a ajuda de custo deixa de ser paga.';
       // Recarrega tudo: plano, extrato e a própria oferta (que some).
       CONTA = await (await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' })).json();
       carregarPontos();
