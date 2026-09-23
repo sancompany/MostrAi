@@ -110,7 +110,11 @@ console.log('== preenchendo e enviando de verdade ==');
 await painelA.fill('#cp_fluxo', '2500');
 await painelA.click('#formCardPonto button[type=submit]');
 await painelA.waitForTimeout(600);
-check('mensagem de sucesso', (await painelA.textContent('#cardPontoMsg')).includes('Pedido enviado'));
+// Sem reload (Fase 5, 23/09/2026): o formulário inteiro é substituído pelo
+// card "Pedido enviado em..." no lugar — #cardPontoMsg (dentro do form) não
+// existe mais depois disso, a confirmação agora é o próprio card.
+check('card "Pedido enviado" aparece no lugar do formulário', (await painelA.textContent('#cardPonto')).includes('Pedido enviado'));
+check('formulário some depois do envio (sem reload)', !(await painelA.$('#formCardPonto')));
 
 const segmentoA = PG(`SELECT segmento FROM candidaturas WHERE conta_id=${contaA.id} AND tipo='ponto'`);
 check('segmento resolvido a partir de categoria_id (Barbearia)', segmentoA === 'Barbearia', segmentoA);
