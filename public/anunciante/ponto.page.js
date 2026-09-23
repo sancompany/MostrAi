@@ -547,6 +547,9 @@ formEnd.addEventListener('submit', async (e) => {
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
+// Uma vez só (fora de carregar(), que pode rodar de novo por SSE — Fase 5)
+// — chamar de novo duplicaria os ouvintes de clique do sino.
+if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();
 
 // ---------------------------------------------------------------------------
 // Autoanúncio do dono do ponto
