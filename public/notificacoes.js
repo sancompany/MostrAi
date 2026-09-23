@@ -10,6 +10,7 @@
 (function () {
   let naoLidas = 0;
   let carregouUmaVez = false;
+  let sequenciaCarregar = 0;
 
   function atualizarBadge() {
     const badge = document.getElementById('sinoBadge');
@@ -55,13 +56,21 @@
     </button>`;
   }
 
+  // Eventos de SSE podem chegar em rajada (cada um chama carregar()) e o
+  // popover também dispara um carregar() próprio ao abrir — duas chamadas
+  // sobrepostas, a mais lenta responde depois e pisava por cima do resultado
+  // mais novo (achado do revisor automático da PR nº 30, 23/09/2026). Cada
+  // chamada carimba a própria vez; só a última em curso pode aplicar o que
+  // veio.
   async function carregar() {
     const lista = document.getElementById('centralNotifLista');
     if (!lista) return;
+    const minhaVez = ++sequenciaCarregar;
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/notificacoes`, { credentials: 'include' });
       if (!r.ok) throw new Error();
       const { notificacoes, naoLidas: n } = await r.json();
+      if (minhaVez !== sequenciaCarregar) return;
       naoLidas = n;
       atualizarBadge();
       lista.innerHTML = notificacoes.length
@@ -72,7 +81,9 @@
         .forEach((btn) => btn.addEventListener('click', () => marcarLida(Number(btn.dataset.id), btn)));
       carregouUmaVez = true;
     } catch {
-      if (!carregouUmaVez) lista.innerHTML = '<p class="texto-vazio">Não foi possível carregar agora.</p>';
+      if (minhaVez === sequenciaCarregar && !carregouUmaVez) {
+        lista.innerHTML = '<p class="texto-vazio">Não foi possível carregar agora.</p>';
+      }
     }
   }
 

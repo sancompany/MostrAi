@@ -764,6 +764,17 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 @media (max-width: 480px) {
   .central-notif { position: fixed; top: 64px; right: 16px; left: 16px; width: auto; }
 }
+/* Abaixo de 960px o .sino-wrap vive dentro de nav.main, que fica
+   `visibility:hidden`/`max-height:0` até o hambúrguer abrir (achado do
+   revisor automático da PR nº 30, 23/09/2026) — o aviso de não lida
+   desaparecia por completo, quando o objetivo dele é ser visto sem
+   precisar abrir nada. Destacado do fluxo da nav com position:fixed,
+   ancorado à esquerda do botão de menu, sempre visível — igual em
+   nav.main fechada ou aberta, porque não é cópia, é o mesmo elemento
+   só reposicionado. */
+@media (max-width: 960px) {
+  .sino-wrap { position: fixed; top: 13px; right: 68px; z-index: 70; visibility: visible; }
+}
 
 dialog#dlgPerfil {
   border: none; border-radius: var(--radius); padding: 24px; max-width: 460px; width: 92vw;
