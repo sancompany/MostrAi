@@ -1335,8 +1335,12 @@ th[data-ord].desc::after {
 .tabela-capacidade thead tr + tr th {
   top: 29px;
 }
-.tabela-capacidade td:nth-child(3),
-.tabela-capacidade td:nth-child(5),
+/* Divisória no começo de cada grupo (Comercial, Mostraí). Marcada por
+   classe na célula, não por posição: a tabela da Visão geral tem a coluna
+   Anunciantes a mais que a da Mídia Mostraí, e `nth-child` fixo desenhava a
+   linha no meio do grupo numa das duas. `>` pra não vazar pra mini-tabela
+   da linha de detalhe expandida. */
+.tabela-capacidade > tbody > tr > td.grupo-inicio,
 .tabela-capacidade thead tr + tr th:nth-child(1),
 .tabela-capacidade thead tr + tr th:nth-child(3) {
   border-left: 1px solid var(--border);
