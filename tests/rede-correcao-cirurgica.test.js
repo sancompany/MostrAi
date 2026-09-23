@@ -10,7 +10,7 @@ const candidaturasRepo = require('../src/candidaturas/repository');
 // Correção cirúrgica de Rede (23/09/2026, pedido do dono): candidatura de
 // endereço só bloqueia duplicata pelo MESMO endereço (achado real: bloqueava
 // qualquer segundo endereço enquanto o primeiro estivesse em análise), e
-// "Meus endereços" precisa de uma lista das candidaturas em aberto da conta.
+// "Meus pontos" (antes "Meus endereços") lista as candidaturas em aberto da conta.
 
 async function subirApp(montar) {
   const app = express();
@@ -121,7 +121,7 @@ test('POST /anunciantes/me/pontos: bloqueia só o MESMO endereço, libera endere
   }
 });
 
-test('GET /anunciantes/me/pontos/candidaturas: só as em aberto desta conta', async () => {
+test('Meus pontos: só os pedidos em aberto desta conta (GET /anunciantes/me/meus-pontos)', async () => {
   const conta = await criarContaPonto();
   const outraConta = await criarContaPonto();
   const { chamar, fechar } = await subirApp((app) => app.use(require('../src/pontos/routes')));
@@ -164,15 +164,18 @@ test('GET /anunciantes/me/pontos/candidaturas: só as em aberto desta conta', as
       origem: 'painel',
     });
 
-    const r = await chamar('GET', '/anunciantes/me/pontos/candidaturas', null, conta.id);
+    // "Meus endereços" virou "Meus pontos" (Fatia 2/6 do painel único): a
+    // mesma regra, agora na rota que junta pedido e ponto.
+    const r = await chamar('GET', '/anunciantes/me/meus-pontos', null, conta.id);
     assert.strictEqual(r.status, 200);
+    const pedidos = r.corpo.estabelecimentos.filter((e) => e.tipo === 'candidatura');
     assert.strictEqual(
-      r.corpo.length,
+      pedidos.length,
       1,
       'só a candidatura em aberto desta conta — não a aprovada, não a de outra conta',
     );
-    assert.strictEqual(r.corpo[0].id, aberta.id);
-    assert.strictEqual(r.corpo[0].nome_comercio, 'Loja A');
+    assert.strictEqual(pedidos[0].id, aberta.id);
+    assert.strictEqual(pedidos[0].nome, 'Loja A');
   } finally {
     await fechar();
     await apagarConta(conta.id);

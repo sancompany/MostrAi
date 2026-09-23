@@ -12,7 +12,6 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const pool = require('../db/pool');
 const comodato = require('./comodato');
 const { criarCandidaturaPonto } = require('../conta/modos');
-const candidaturasRepo = require('../candidaturas/repository');
 const { meusPontosDaConta } = require('./meus-pontos');
 const sse = require('../lib/sse');
 
@@ -38,24 +37,10 @@ router.get('/pontos/config', async (_req, res) => {
   res.json({ fotoExemploUrl: await repo.obterConfiguracao('foto_exemplo_ponto_url') });
 });
 
-// Painel do anunciante — "meus pontos" (mesma conta serve pra anunciar e pra
-// hospedar tela, ver migration 016).
-router.get('/anunciantes/:id/pontos', exigirAnuncianteLogado, async (req, res) => {
-  if (Number(req.params.id) !== req.session.anuncianteId) {
-    return res.status(403).json({ erro: 'só pode ver pontos da própria conta' });
-  }
-  res.json(await repo.listarPorAnunciante(req.params.id));
-});
-
-// "Meus endereços" (correção cirúrgica de Rede, 23/09/2026): candidaturas em
-// aberto desta conta, pra mostrar ao lado dos pontos de verdade com "Em
-// análise" — sem misturar no modelo (ver listarAbertasPorConta). Some daqui
-// sozinha quando o admin aprova (o status deixa de ser 'nova'/'em_contato'),
-// exatamente quando o ponto de verdade nasce — sem exibição duplicada.
-router.get('/anunciantes/me/pontos/candidaturas', exigirAnuncianteLogado, async (req, res) => {
-  res.json(await candidaturasRepo.listarAbertasPorConta(req.session.anuncianteId, 'ponto'));
-});
-
+// "Meu ponto" (GET /anunciantes/:id/pontos, devolvia a linha inteira do
+// ponto) e "Meus endereços" (GET /anunciantes/me/pontos/candidaturas) saíram
+// com a página antiga do ponto (Fatia 6, 23/09/2026): a rota abaixo junta os
+// dois, com projeção fechada.
 // "Meus pontos" do painel único — pedido em análise, ponto e telas na MESMA
 // entidade, com projeção segura (ver src/pontos/meus-pontos.js). `ehPonto`
 // diz ao painel por qual porta um estabelecimento novo entra: a conta que já
@@ -122,13 +107,9 @@ router.post('/seja-um-ponto', (_req, res) => {
   res.status(410).json({ erro: 'crie sua conta e peça pra ser ponto de dentro do painel' });
 });
 
-// Extrato do ponto — o que ele recebeu e o que está em aberto. Quem cede a
-// parede precisa saber se o mês passado foi pago sem ter que perguntar; é o
-// padrão de todo portal de quem hospeda tela de anúncio.
-router.get('/anunciantes/me/pontos/extrato', exigirAnuncianteLogado, async (req, res) => {
-  const linhas = await pagamentosRepo.extratoDaConta(req.session.anuncianteId);
-  res.json({ linhas, resumo: pagamentosRepo.resumir(linhas) });
-});
+// Extrato do ponto (GET /anunciantes/me/pontos/extrato) saiu com a página
+// antiga do ponto (Fatia 6): o mesmo extrato, sem a anotação interna, está em
+// GET /anunciantes/me/financeiro (src/conta/financeiro.js).
 
 // Admin — protegido por requireAdminSession, montado em server.js
 

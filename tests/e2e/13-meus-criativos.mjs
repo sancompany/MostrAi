@@ -208,7 +208,7 @@ await p.waitForSelector('#modCriativos:not([hidden])', { timeout: 8000 }).catch(
 check('dono só com comodato vê Meus criativos', await p.isVisible('#modCriativos'));
 check('roda só na tela do comércio', /rodam na tela do seu comércio/.test(await p.textContent('#criativosSubtitulo')));
 await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
-check('página antiga do ponto sem o upload próprio', !(await p.$('#arquivoAutoanuncio')));
+check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#arquivoAutoanuncio')), p.url());
 
 check('sem erro de console', erros.length === 0, erros.join(' | '));
 check('nenhuma resposta 4xx/5xx inesperada', respostasRuins.length === 0, respostasRuins.join(' | '));

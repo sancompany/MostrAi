@@ -62,12 +62,9 @@
   // Menu da conta — painel único com três modos (v2.1). Os três aparecem
   // sempre; o que a conta não tem papel fica marcado como bloqueado e, ao
   // abrir, mostra o card de ativação (modos.js) em vez do dashboard.
-  // "Meu ponto" e "Vendas" saíram do topo (19/09/2026, pedido do dono): ponto
-  // vira card de candidatura no fim do próprio Painel (ver painel.page.js) e
-  // vendedor deixou de ser algo que se busca no público — quem tem o papel
-  // continua tendo, só não tem mais aba própria aqui em cima. As duas páginas
-  // (`ponto.html`, `vendedor.html`) continuam existindo pra quem já tem o
-  // papel, só não tem mais link direto no menu.
+  // "Meu ponto" e "Vendas" saíram do topo (19/09/2026, pedido do dono), e as
+  // duas páginas saíram do ar: vendedor com o programa (23/09/2026), ponto
+  // com o painel único (Fatia 6) — hoje as duas redirecionam pro Painel.
   // Sino de atualizações (Fase 4, 23/09/2026) — histórico de eventos da
   // conta (criativo aprovado, candidatura decidida, pagamento, créditos,
   // benefício, suspensão). Marcação fica aqui porque é parte do cabeçalho
@@ -105,7 +102,9 @@
       el.classList.toggle('bloqueado', !liberado);
       el.title = liberado ? '' : 'Modo ainda não ativado, clique pra ativar';
     };
-    marcar('navDashboard', papeis.includes('anunciante'));
+    // O Painel serve toda conta desde a Fatia 6 (dono de ponto que não
+    // anuncia também mora nele): a aba nunca fica "bloqueada".
+    marcar('navDashboard', papeis.length > 0);
   };
 
   const NAVS = { publico: navPublico, conta: navConta, minimo: navMinimo };
@@ -201,10 +200,9 @@
       const inicial = (conta.nome_empresa || '?').trim().charAt(0).toUpperCase();
       // Conta só-vendedor não tem mais casa própria (programa de vendedores
       // aposentado, 23/09/2026): toda conta pode anunciar, então cai no painel.
-      const casa =
-        papeis.includes('ponto') && !papeis.includes('anunciante')
-          ? '/anunciante/ponto.html'
-          : '/anunciante/painel.html';
+      // Painel único (Fatia 6): a casa de toda conta é o Painel — inclusive a
+      // do dono de ponto que não anuncia.
+      const casa = '/anunciante/painel.html';
       // Pedido do dono, 19/09/2026: quem já está logado e cai na home vai
       // direto pro dashboard — a home é porta de entrada pra quem ainda não
       // tem conta, não faz sentido mostrar ela de novo pra quem já entrou.
@@ -218,7 +216,8 @@
       // explicação ("clique pra ativar") e aqui não tinha nenhuma — a mesma aba
       // cinza dizia coisas diferentes conforme a página em que a pessoa estava.
       const aba = (href, papel, texto) => {
-        const liberado = papeis.includes(papel);
+        // Painel serve toda conta (Fatia 6); o cadeado só vale pra outro modo.
+        const liberado = papel === 'anunciante' || papeis.includes(papel);
         return `<a href="${href}" id="nav${papel}" class="modo-aba ${liberado ? '' : 'bloqueado'}"${liberado ? '' : ' title="Modo ainda não ativado, clique pra ativar"'}>${texto}</a>`;
       };
       document.querySelector('header.site nav.main').innerHTML = `
@@ -237,8 +236,8 @@
     window.carregarConta().then((conta) => {
       if (conta) window.aplicarPapeisNoMenu(conta);
       // E-mail não confirmado (migration 061): pop-up obrigatório em toda
-      // página de conta — a pessoa pode entrar direto por ponto.html ou
-      // vendedor.html sem nunca passar pelo painel de anúncios. Pedido do
+      // página de conta — a pessoa pode entrar direto por outra página da
+      // conta sem nunca passar pelo painel. Pedido do
       // dono, 19/09/2026: virou trava de verdade, não só aviso — antes era
       // uma barra que dava pra ignorar e continuar navegando.
       if (conta && !conta.email_confirmado) mostrarModalEmailNaoConfirmado(conta);

@@ -138,7 +138,7 @@ test('anunciante sem categoria_id (só categoria_livre): nunca é bloqueado, mes
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(
       envelope.itens.find((i) => i.anuncianteId === conta.id),
-      'categoria_livre nunca entra na regra de bloqueio — só categoria_id (ver comentário em ponto.page.js)',
+      'categoria_livre nunca entra na regra de bloqueio — só categoria_id (ver src/playlist/gerador.js)',
     );
   } finally {
     await limpar({ pontoId: ponto.id, dispositivoId: dispositivo.id, contaId: conta.id });

@@ -60,7 +60,7 @@ function normalizarBusca(txt) {
 // passou de 25 pra ~230 categorias, um select tradicional parou de fazer
 // sentido). O <select> continua existindo no DOM, só escondido: é ele quem
 // seguem lendo — form.categoria_id.value, .options[.selectedIndex].dataset,
-// FormData — em cadastro.page.js, modos.js e ponto.page.js, sem precisar
+// FormData — em cadastro.page.js, modos.js e meus-pontos.js, sem precisar
 // mexer em nenhum desses arquivos. A busca é só uma camada de cima.
 //
 // Categoria = o que bloqueia concorrente direto (grupo é só organização

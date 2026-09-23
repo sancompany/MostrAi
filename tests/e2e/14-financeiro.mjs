@@ -131,7 +131,7 @@ check('celular: sem rolagem horizontal', (await p.evaluate(() => document.docume
 await shot(p, '2-celular');
 
 await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
-check('página antiga do ponto sem extrato nem troca', !(await p.$('#extratoPonto')) && !(await p.$('#trocaComodato')));
+check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#extratoPonto')), p.url());
 
 check('sem erro de console', erros.length === 0, erros.join(' | '));
 check('nenhuma resposta 4xx/5xx inesperada', respostasRuins.length === 0, respostasRuins.join(' | '));

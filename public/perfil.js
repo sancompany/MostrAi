@@ -1,7 +1,7 @@
 // Popup de perfil da conta (anunciante e dono de ponto usam o mesmo login).
 //
 // Isso estava duplicado linha a linha em anunciante/painel.html e
-// anunciante/ponto.html — ~230 linhas em dois lugares, onde qualquer correção
+// a página antiga do ponto — ~230 linhas em dois lugares, onde qualquer correção
 // precisava ser feita duas vezes e mais cedo ou mais tarde ia divergir.
 //
 // Uso: montarPerfil() depois de ter a conta carregada. Requer /config.js e

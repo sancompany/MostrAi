@@ -50,7 +50,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 5. O administrador cadastra as telas extras, define custo e prazo de amortização de cada uma, e gera a **chave de aparelho**.
 6. A TV abre o link do player uma vez; a chave fica guardada no aparelho.
 7. O dono do ponto define o **PIN** da tela no próprio painel
-   (`/anunciante/ponto.html` → a tela → "PIN desta tela") e passa a acompanhar
+   (Painel → Meus pontos → a tela → "Ver o que rodou" → "PIN desta tela") e passa a acompanhar
    ali — ou pelo painel da própria TV, com 5 toques no canto e o PIN.
 8. Sobe o **próprio anúncio** na cota do comodato, em "Meu anúncio na minha
    tela": mesma conferência de conteúdo que vale para qualquer anúncio da rede.
@@ -117,7 +117,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
 | Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela e definir o PIN, trocar a ajuda de custo por tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
-| Meu ponto | `/anunciante/ponto.html` | conta com papel ponto | (em aposentadoria — as Fatias 2 a 6 do painel único levam tudo pro Painel; o "Meu anúncio na minha tela" já virou parte de **Meus criativos** no Painel, Fatia 3, e extrato + troca da ajuda de custo viraram **Financeiro**, Fatia 4) telas do ponto, cota, **sinal de cada tela**, e o **extrato** do que já foi pago e do que está em aberto | definir PIN, acompanhar | — |
+| ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas e PIN estão em **Meus pontos**, o autoanúncio em **Meus criativos**, extrato e troca da ajuda de custo em **Financeiro** | — | — |
 | Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | `/player.html?tela=ID` | a TV, com chave | o vídeo da vez | tocar; 5 toques abrem o painel por PIN | — |

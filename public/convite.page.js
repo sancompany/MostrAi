@@ -69,11 +69,11 @@ async function carregar() {
         });
         const corpo = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(corpo.erro || 'Não foi possível liberar agora.');
+        // Painel único (Fatia 6, 23/09/2026): ponto, anúncio e o resto da
+        // conta moram na mesma página — o pedido aparece em "Meus pontos".
         window.location.href = novos.includes('ponto')
-          ? '/anunciante/ponto.html'
-          : novos.includes('vendedor')
-            ? '/anunciante/vendedor.html'
-            : '/anunciante/painel.html';
+          ? '/anunciante/painel.html#modPontos'
+          : '/anunciante/painel.html';
       } catch (err) {
         msg.textContent = err.message;
         msg.className = 'form-msg err';
@@ -192,13 +192,8 @@ form.addEventListener('submit', async (e) => {
     if (!r.ok) throw new Error(corpo.erro || 'falha');
     msg.textContent = 'Conta criada! Abrindo seu painel...';
     msg.className = 'form-msg ok';
-    const destino =
-      PAPEIS.includes('vendedor') && !PAPEIS.includes('ponto') && !PAPEIS.includes('anunciante')
-        ? '/anunciante/vendedor.html'
-        : PAPEIS.includes('ponto') && !PAPEIS.includes('anunciante')
-          ? '/anunciante/ponto.html'
-          : '/anunciante/painel.html';
-    window.location.href = destino;
+    // Painel único (Fatia 6): toda conta nova cai no mesmo painel.
+    window.location.href = PAPEIS.includes('ponto') ? '/anunciante/painel.html#modPontos' : '/anunciante/painel.html';
   } catch (err) {
     msg.textContent = err.message === 'falha' ? 'Não foi possível criar a conta agora. Tente novamente.' : err.message;
     msg.className = 'form-msg err';

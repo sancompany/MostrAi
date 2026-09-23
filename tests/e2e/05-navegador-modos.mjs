@@ -4,14 +4,14 @@
 //
 // Parte A — conta que entra por convite de ponto, sem o papel anunciante:
 // candidatura antiga (sem conta) → admin aprova na ficha e o convite sai num
-// modal → cadastro pelo convite escolhendo a ajuda de custo → Meu ponto com o
-// endereço aguardando instalação → troca da ajuda de custo por tela
-// (regressão: carregarExtrato fora de escopo) → Painel com cadeado → card de
-// ativação → modo anúncios ligado (sem plano, o painel pede um plano).
+// modal → cadastro pelo convite escolhendo a ajuda de custo → cai no PAINEL
+// ÚNICO (Fatia 6: a página separada do ponto saiu) com o ponto em "Meus
+// pontos" aguardando instalação → troca da ajuda de custo por tela no
+// Financeiro → card de ativação do modo anúncios → modo ligado.
 //
-// Parte B — conta que só anuncia abre Meu ponto: card do modo com as opções
-// de comodato → pedido enviado. (Aprovar a candidatura de uma conta que já
-// existe fica no 03-navegador.mjs.)
+// Parte B — o endereço antigo da página do ponto redireciona pro painel, e a
+// conta que só anuncia pede o ponto pelo convite de "Meus pontos". (Aprovar a
+// candidatura de uma conta que já existe fica no 03-navegador.mjs.)
 //
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
@@ -142,42 +142,34 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
   await p.fill('#senha', 'Senha12@'); await p.fill('#senha_confirma', 'Senha12@');
   await p.check('#aceitou_termos');
   await p.click('#formConvite button[type=submit]');
-  await p.waitForURL('**/anunciante/ponto.html', { timeout: 8000 }).catch(() => {});
+  await p.waitForURL('**/anunciante/painel.html**', { timeout: 8000 }).catch(() => {});
   // Deixa a página terminar de carregar antes do reload abaixo — recarregar
   // no meio aborta os fetches em voo, e cada um vira um erro de console.
   await p.waitForLoadState('networkidle');
-  check('cadastro pelo convite cai no Meu ponto', p.url().includes('/anunciante/ponto.html'), p.url());
+  check('cadastro pelo convite cai no painel único, em Meus pontos', /\/anunciante\/painel\.html#modPontos/.test(p.url()), p.url());
   check('conta nasce só com o papel de ponto', PG(`SELECT papeis::text FROM anunciantes WHERE contato_email='nina@x.com'`) === '{ponto}');
   await confirmarEmail(p, 'nina@x.com');
   await p.reload({ waitUntil: 'networkidle' });
 
-  console.log('== A. Meu ponto: endereço aguardando instalação, sem tela ==');
-  await p.locator('#pontosLista .ponto-card', { hasText: 'Doceria Nina' }).waitFor({ timeout: 8000 }).catch(() => {});
-  const endereco = await p.textContent('#pontosLista');
-  check('o endereço da candidatura aparece em "Meus endereços"', endereco.includes('Doceria Nina') && endereco.includes('Aguardando instalação'), endereco.slice(0, 200));
-  check('ajuda de custo no rodapé do endereço', endereco.includes('Ajuda de custo'), endereco.slice(0, 200));
-  check('sem tela ainda — mensagem certa', (await p.textContent('#telasLista')).includes('Nenhuma tela instalada ainda'));
-  check('Painel com cadeado (conta sem o papel anunciante)', await p.$eval('#navDashboard', (e) => e.classList.contains('bloqueado')));
+  console.log('== A. Meus pontos: o ponto aguardando instalação ==');
+  await p.locator('#pontosLista .estab-card', { hasText: 'Doceria Nina' }).waitFor({ timeout: 8000 }).catch(() => {});
+  const estab = await p.textContent('#pontosLista');
+  check('o ponto aparece em "Meus pontos", aguardando instalação', estab.includes('Doceria Nina') && estab.includes('Aguardando instalação'), estab.slice(0, 200));
+  check('ajuda de custo no rodapé do ponto', estab.includes('ajuda de custo'), estab.slice(0, 200));
+  check('Painel sem cadeado (serve toda conta)', await p.$eval('#navDashboard', (e) => !e.classList.contains('bloqueado')));
+  check('card de ativação do modo anúncios no lugar da campanha', !!(await p.$('form.modo-card#formModo')));
   await shot(p, 'ponto-liberado');
 
-  console.log('== A. trocar ajuda de custo por tela (regressão: carregarExtrato fora de escopo) ==');
-  // O bug: carregarExtrato() só existia dentro de carregar(), e este botão
-  // chamava de fora — ReferenceError engolido pelo catch do próprio clique,
-  // que sobrescrevia a mensagem de sucesso com "carregarExtrato is not
-  // defined" mesmo a troca já tendo dado certo no servidor.
-  await p.click('#btnTrocarPorTela');
-  await p.waitForFunction(() => document.getElementById('msgTrocaComodato').textContent.trim() !== 'trocando...', null, {
-    timeout: 8000,
-  });
-  const msgTroca = await p.textContent('#msgTrocaComodato');
-  check('mensagem de sucesso, não o erro de escopo', msgTroca.includes('Pronto') && !msgTroca.includes('is not defined'), msgTroca);
-  check('classe de sucesso, não de erro', await p.$eval('#msgTrocaComodato', (e) => e.className.includes(' ok')));
+  console.log('== A. trocar ajuda de custo por tela, no Financeiro ==');
+  await p.waitForSelector('[data-acao="trocar-comodato"]', { timeout: 8000 });
+  p.once('dialog', (d) => d.accept());
+  await p.click('[data-acao="trocar-comodato"]');
+  await p.waitForFunction(() => !document.querySelector('[data-acao="trocar-comodato"]'), null, { timeout: 8000 }).catch(() => {});
+  check('oferta some depois da troca', !(await p.$('[data-acao="trocar-comodato"]')));
   check('ajuda de custo deixa de ser paga', Number(PG(`SELECT valor_pago_mensal FROM pontos WHERE nome='Doceria Nina'`)) === 0);
   await shot(p, 'ponto-trocou-por-tela');
 
-  console.log('== A. Painel com cadeado → card de ativação → modo anúncios ==');
-  await p.click('#navDashboard');
-  await p.waitForURL('**/anunciante/painel.html');
+  console.log('== A. card de ativação → modo anúncios ==');
   await p.waitForSelector('form.modo-card#formModo');
   check('dashboard de anúncios escondido', await p.$eval('#dashboardAnuncios', (e) => e.hidden));
   await shot(p, 'anuncios-bloqueado');
@@ -190,7 +182,6 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
   const kpiHoras = p.locator('#kpiGrid [data-kpi="horas"]');
   await kpiHoras.waitFor({ timeout: 10000 }).catch(() => {});
   check('card de ativação some depois de ativar', !(await p.$('#formModo')));
-  check('Painel sem cadeado', await p.$eval('#navDashboard', (e) => !e.classList.contains('bloqueado')));
   check(
     'painel abre com as horas do plano do comodato, sem bloqueio de plano',
     (await p.$eval('#dashboardAnuncios', (e) => !e.hidden)) && !(await p.$('#bloqueioPlano')) && /contratadas/.test(await kpiHoras.textContent()),
@@ -200,7 +191,7 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
   await p.close();
 }
 
-console.log('== B. conta que só anuncia abre Meu ponto: card do modo com as opções de comodato ==');
+console.log('== B. endereço antigo da página do ponto → painel; conta que só anuncia pede ponto ==');
 {
   const ctxB = await b.newContext({ viewport: { width: 1280, height: 900 } });
   await responderViaCep(ctxB);
@@ -215,19 +206,14 @@ console.log('== B. conta que só anuncia abre Meu ponto: card do modo com as op�
   check('conta direta nasce só com anunciante', JSON.stringify(conta.papeis) === '["anunciante"]', JSON.stringify(conta));
   await confirmarEmail(p, 'lia@x.com');
   await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
-  await p.locator('#modoEscolhaPlano .escolha').first().waitFor({ timeout: 8000 }).catch(() => {});
-  check(
-    'card do modo ponto com as opções de comodato',
-    (await p.textContent('#formModo')).includes('Como você quer ser recompensado') && (await p.locator('#modoEscolhaPlano .escolha').count()) >= 2,
-  );
+  check('ponto.html redireciona pro painel, em Meus pontos', /\/anunciante\/painel\.html#modPontos$/.test(p.url()), p.url());
+  await p.waitForSelector('[data-acao="abrir-oportunidade"]', { timeout: 8000 });
   await shot(p, 'ponto-bloqueado');
-  await p.fill('#m_nome_comercio', 'Doceria Lia');
-  await preencherEndereco(p, 'm_', 'Rua Doce', '2');
-  await escolherRamo(p, '#formModo', 'Confeitaria');
-  await p.fill('#m_fluxo', '800');
-  await p.click('#formModo button[type=submit]');
-  await p.waitForFunction(() => document.body.textContent.includes('Pedido enviado'), null, { timeout: 8000 }).catch(() => {});
-  check('depois do pedido mostra "Pedido enviado"', (await p.textContent('body')).includes('Pedido enviado'));
+  await p.click('[data-acao="abrir-oportunidade"]');
+  await p.fill('#cp_fluxo', '800');
+  await p.click('#formCardPonto button[type=submit]');
+  await p.waitForSelector('.estab-card.estado-em_analise', { timeout: 8000 }).catch(() => {});
+  check('depois do pedido o card "Em análise" aparece', !!(await p.$('.estab-card.estado-em_analise')));
   check('candidatura de ponto gravada na conta', PG(`SELECT count(*) FROM candidaturas WHERE conta_id=${conta.id} AND tipo='ponto'`) === '1');
   await shot(p, 'ponto-pedido');
   await p.close();
