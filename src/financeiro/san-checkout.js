@@ -9,7 +9,9 @@ const pedidosRepo = require('./pedidos-repository');
 const { enviarConfirmacaoPagamento, enviarCobrancaFalhou, enviarTrocaDePlano } = require('./email');
 const eventos = require('../lib/eventos');
 const indicacoesRepo = require('../indicacoes/repository');
-const { aplicarUpgradeSeElegivel } = require('../indicacoes/aplicar');
+const creditosRepo = require('../creditos/repository');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -352,20 +354,27 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 // Crédito de indicação do dono de ponto (migration 062, pedido do dono,
 // 19/09/2026) — irmã de registrarComissaoSeHouver, mas nunca move dinheiro:
 // quem indica com cupom "PT-..." ganha um crédito permanente (não por
-// cobrança, diferente da comissão) e, ao acumular o suficiente, o plano de
-// anúncio da própria conta sobe de tier de graça (ver src/indicacoes/aplicar.js).
-// `db` é o pool por padrão, mas o webhook passa o client da transação pra
-// que crédito e upgrade entrem junto com a cobrança.
-async function registrarCreditoIndicacaoSeHouver(anunciante, db = pool) {
+// cobrança, diferente da comissão) e vira ledger, pra resgate explícito
+// depois (src/creditos/, migration 079, reconstrução do painel da conta,
+// 23/09/2026) — CADA cobrança confirmada gera crédito, primeira e toda
+// renovação (antes só a primeira contava, ver indicacoes/repository.js#
+// registrarCredito, que fica congelado como histórico). `db` é o pool por
+// padrão, mas o webhook passa o client da transação pra que crédito e
+// cobrança entrem juntos, ou nenhum dos dois — mesmo padrão de sempre.
+// `cobrancaConfirmadaId` é a chave de idempotência: sem ela, webhook
+// duplicado ou a conciliação reprocessando geraria o mesmo crédito de novo.
+async function registrarCreditoIndicacaoSeHouver(anunciante, cobrancaConfirmadaId, db = pool) {
   if (!anunciante.indicado_por_cupom) return;
   const cupom = String(anunciante.indicado_por_cupom).toUpperCase();
   if (!cupom.startsWith('PT-')) return; // cupom de vendedor — já tratado acima
   const ponto = await indicacoesRepo.buscarPontoPorCupom(cupom);
   if (!ponto || ponto.conta_id === anunciante.id) return; // ninguém ganha crédito de si mesmo
 
-  const credito = await indicacoesRepo.registrarCredito(ponto.conta_id, anunciante.id, db);
-  if (!credito) return; // esse indicado já tinha gerado crédito antes — nada novo
-  await aplicarUpgradeSeElegivel(ponto.conta_id, db);
+  const credito = await creditosRepo.registrarCreditoIndicacao(ponto.conta_id, anunciante.id, cobrancaConfirmadaId, db);
+  if (!credito) return; // idempotência: essa cobrança já tinha gerado crédito
+  // Emitido fora da transação de verdade só depois do COMMIT (quem chama faz
+  // isso) — aqui só monta a intenção; ver logo abaixo, após o commit.
+  return { pontoContaId: ponto.conta_id };
 }
 
 // Handler do POST /webhook/san-checkout pro evento de assinatura
@@ -644,6 +653,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   // ficava ativa sem cobrança registrada.
   const cliente = await pool.connect();
   let cobrancaRows;
+  let creditoIndicacao;
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
@@ -675,7 +685,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
       [anunciante.id, plano.id, valorCiclo],
     ));
     await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
-    await registrarCreditoIndicacaoSeHouver(anunciante, cliente);
+    creditoIndicacao = await registrarCreditoIndicacaoSeHouver(anunciante, cobrancaRows[0].id, cliente);
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK');
@@ -716,6 +726,30 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   enviarConfirmacaoPagamento(anunciante, plano, valorCiclo).catch((err) => {
     console.error('falha ao enviar e-mail de confirmação', err);
   });
+
+  // Notificação + evento em tempo real — só depois do COMMIT, mesmo
+  // raciocínio do evento de métrica acima: nunca anunciar um dado que
+  // ainda pode dar ROLLBACK. `.catch` porque uma falha aqui é aviso extra,
+  // nunca motivo pra derrubar um pagamento que já entrou de verdade.
+  const valorFormatado = Number(valorCiclo).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  notificacoesRepo
+    .registrar(anunciante.id, {
+      tipo: 'pagamento_confirmado',
+      titulo: `Pagamento confirmado: ${plano.nome}`,
+      descricao: `${valorFormatado} recebidos.`,
+    })
+    .catch((err) => console.error('falha ao registrar notificação de pagamento', err));
+  sse.emitirParaConta(anunciante.id, 'payment.updated', {});
+  if (creditoIndicacao) {
+    notificacoesRepo
+      .registrar(creditoIndicacao.pontoContaId, {
+        tipo: 'credito_indicacao',
+        titulo: 'Você ganhou 1 crédito por indicação',
+        descricao: `${anunciante.nome_empresa} confirmou o pagamento.`,
+      })
+      .catch((err) => console.error('falha ao registrar notificação de crédito', err));
+    sse.emitirParaConta(creditoIndicacao.pontoContaId, 'credits.updated', {});
+  }
 
   return cobrancaRows[0];
 }

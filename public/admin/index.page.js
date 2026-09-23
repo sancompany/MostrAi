@@ -6,7 +6,50 @@ function api(caminho, opts = {}) {
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
   });
 }
-const pegar = async (caminho) => (await api(caminho)).json();
+
+// Erro tipado de leitura — carrega o status HTTP (0 = rede fora do ar/sem
+// resposta) pra quem chama decidir o que fazer sem reabrir o corpo.
+class ErroApi extends Error {
+  constructor(status, corpo) {
+    super(corpo?.erro || `erro ${status}`);
+    this.status = status;
+  }
+}
+
+// GET com JSON — achado na investigação do bug "admin abre com mensagem de
+// erro, F5 resolve" (Fase 2, 23/09/2026): esta função nunca conferia
+// `response.ok`, então uma falha transitória (cold start, blip de rede,
+// sessão ainda não propagada) devolvia o CORPO DE ERRO (`{erro:'...'}`) como
+// se fosse o dado esperado — o primeiro código que desmontava esse objeto
+// (ex.: `const {filas} = RESUMO` em renderResumo) quebrava com TypeError,
+// pego pelo catch genérico de `renderModulo`, que é exatamente a mensagem
+// que aparecia. F5 "resolvia" só por recarregar do zero, quando a segunda
+// tentativa já pegava o backend aquecido — não é conserto, é sorte.
+// Retry de uma tentativa só, sem backoff longo, e só pra falha que reenviar
+// pode resolver (rede caiu no meio, 5xx de cold start, 429): erro de
+// autenticação/validação (401/403/404) nunca tenta de novo, porque reenviar
+// não muda o resultado.
+async function pegar(caminho, tentativasRestantes = 1) {
+  let resposta;
+  try {
+    resposta = await api(caminho);
+  } catch {
+    if (tentativasRestantes > 0) {
+      await new Promise((r) => setTimeout(r, 700));
+      return pegar(caminho, tentativasRestantes - 1);
+    }
+    throw new ErroApi(0, { erro: 'sem conexão com o servidor' });
+  }
+  if (!resposta.ok) {
+    const corpo = await resposta.json().catch(() => ({}));
+    if (tentativasRestantes > 0 && (resposta.status >= 500 || resposta.status === 429)) {
+      await new Promise((r) => setTimeout(r, 700));
+      return pegar(caminho, tentativasRestantes - 1);
+    }
+    throw new ErroApi(resposta.status, corpo);
+  }
+  return resposta.json();
+}
 
 function fmt(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -968,12 +1011,19 @@ async function irPara(alvoBruto, forcarResumo) {
   migalhaTopo.hidden = !modulo.oculto;
   if (location.hash !== `#${canonico}`) location.hash = canonico;
 
+  const conteudoEl = document.getElementById('conteudo');
   if (!RESUMO || forcarResumo) {
-    RESUMO = await pegar('/admin/resumo');
+    try {
+      RESUMO = await pegar('/admin/resumo');
+    } catch (err) {
+      console.error('falha ao carregar /admin/resumo', err);
+      conteudoEl.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
+      return;
+    }
     pintarContadores();
   }
 
-  await renderModulo(document.getElementById('conteudo'), modulo, abaId, resto);
+  await renderModulo(conteudoEl, modulo, abaId, resto);
 }
 
 document.getElementById('nav').addEventListener('click', (e) => {
@@ -1006,11 +1056,20 @@ window.addEventListener('hashchange', () => {
 });
 
 // ---------- login ----------
-async function mostrarApp() {
+// `resumoPreCarregado`: quando o teste de sessão no rodapé do arquivo já
+// buscou `/admin/resumo` com sucesso, reaproveita — evita duas chamadas
+// quase simultâneas ao mesmo endpoint na abertura (a outra fonte da
+// intermitência: duas requisições concorrentes bem no momento em que a
+// sessão/cold start é mais frágil).
+async function mostrarApp(resumoPreCarregado) {
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   montarNav();
-  irPara(location.hash.slice(1) || 'visaogeral', true);
+  if (resumoPreCarregado) {
+    RESUMO = resumoPreCarregado;
+    pintarContadores();
+  }
+  irPara(location.hash.slice(1) || 'visaogeral', !resumoPreCarregado);
 }
 
 document.getElementById('formLogin').addEventListener('submit', async (e) => {
@@ -1050,10 +1109,18 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
   location.reload();
 });
 
-// Sessão é cookie httpOnly — testa se já tem uma válida antes de mostrar o gate.
-api('/admin/resumo').then((r) => {
-  if (r.ok) mostrarApp();
-});
+// Sessão é cookie httpOnly — testa se já tem uma válida antes de mostrar o
+// gate. 401 é o caso normal de quem não está logado — fica no gate, sem
+// mensagem nenhuma. Qualquer outra falha (rede, 5xx mesmo depois do retry
+// de `pegar`) agora avisa em vez de deixar o gate parado sem explicação.
+pegar('/admin/resumo')
+  .then((resumo) => mostrarApp(resumo))
+  .catch((err) => {
+    if (err.status === 401) return;
+    const msg = document.getElementById('gateMsg');
+    msg.textContent = 'Não foi possível verificar sua sessão agora. Recarregue a página.';
+    msg.className = 'form-msg err';
+  });
 
 // ---------- visão geral ----------
 // Alertas de EXCEÇÃO operacional (rodada de integridade, 23/09/2026): só o
