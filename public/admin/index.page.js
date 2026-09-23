@@ -3375,6 +3375,17 @@ function planoComercialDaConta(conta, planosPorId) {
 
 const ORIGEM_PLANO = { assinatura: 'Assinatura paga', cortesia: 'Cortesia administrativa' };
 
+// Rótulos do tipo de movimentação do ledger (migration 079) — mesmos valores
+// do CHECK de creditos_ledger.tipo.
+const TIPO_CREDITO = {
+  indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
+  indicacao_renovacao: 'Indicação · renovação',
+  concessao_admin: 'Concedido pelo admin',
+  estorno_admin: 'Estorno (admin)',
+  resgate_beneficio: 'Resgate de benefício',
+  estorno_resgate: 'Estorno de resgate',
+};
+
 // Comodato é direito do PONTO (modalidade + produto Inicial/Básico),
 // espelhado em `conta.comodato_plano_id` (sincronizado por
 // `pontos/comodato.js#sincronizarComodato` toda vez que a modalidade de um
@@ -3499,9 +3510,10 @@ async function renderContaDetalhe(el, contaId) {
       ${vazio(conta ? 'A conta interna do Mostraí é gerida em Mídia Mostraí.' : 'Conta não encontrada.')}`;
     return;
   }
-  const [planoInfo, criativosInfo] = await Promise.all([
+  const [planoInfo, criativosInfo, creditos] = await Promise.all([
     pegar(`/admin/anunciantes/${conta.id}/plano`),
     pegar(`/admin/anunciantes/${conta.id}/criativos`),
+    pegar(`/admin/anunciantes/${conta.id}/creditos`),
   ]);
   const planosPorId = Object.fromEntries(planos.map((p) => [p.id, p]));
   const pontosDaConta = pontos.filter((p) => p.anunciante_id === conta.id);
@@ -3509,7 +3521,18 @@ async function renderContaDetalhe(el, contaId) {
   const comodato = comodatoDaConta(conta, pontosDaConta, planosPorId);
   const bloqueada = conta.suspenso || !!conta.excluido_em;
   const recarregar = () => renderContaDetalhe(el, conta.id);
-  const ctx = { conta, categorias, planos, planosPorId, comercial, planoInfo, criativosInfo, bloqueada, recarregar };
+  const ctx = {
+    conta,
+    categorias,
+    planos,
+    planosPorId,
+    comercial,
+    planoInfo,
+    criativosInfo,
+    creditos,
+    bloqueada,
+    recarregar,
+  };
 
   // Dados | Plano | Comodato lado a lado e da mesma altura em tela larga
   // (polimento final, 23/09/2026) — antes Dados terminava no meio da coluna
@@ -3528,6 +3551,7 @@ async function renderContaDetalhe(el, contaId) {
       <section class="panel conta-secao" id="contaPlano"></section>
       <section class="panel conta-secao" id="contaComodato"></section>
     </div>
+    <section class="panel conta-secao" id="contaCreditos"></section>
     <section class="panel conta-secao" id="contaCriativos"></section>
     <section class="panel conta-secao" id="contaPontos"></section>
     <div class="conta-rodape" id="contaRodape"></div>`;
@@ -3535,6 +3559,7 @@ async function renderContaDetalhe(el, contaId) {
   desenharContaDados(document.getElementById('contaDados'), ctx);
   desenharContaPlano(document.getElementById('contaPlano'), ctx);
   desenharContaComodato(document.getElementById('contaComodato'), comodato, pontosDaConta);
+  desenharContaCreditos(document.getElementById('contaCreditos'), ctx);
   desenharContaCriativos(document.getElementById('contaCriativos'), ctx);
   desenharContaPontos(document.getElementById('contaPontos'), pontosDaConta);
   desenharContaRodape(document.getElementById('contaRodape'), ctx);
@@ -3624,6 +3649,45 @@ function desenharContaPlano(el, ctx) {
   el.innerHTML = `<div class="secao-topo"><h3>Plano</h3></div>${corpo}${acoes}${historico}`;
   el.querySelector('[data-plano-conceder]')?.addEventListener('click', () => abrirPlanoAdministrativo(ctx));
   el.querySelector('[data-plano-cancelar]')?.addEventListener('click', () => abrirCancelarPlano(ctx));
+}
+
+// Créditos (Fase 6 da reconstrução do painel, 23/09/2026): "Conceder
+// créditos" é o jeito NORMAL de dar cortesia comercial daqui pra frente — o
+// admin escolhe só a quantidade, e a conta decide depois em que plano/
+// período usa, exatamente como um crédito de indicação (mesmo ledger, mesma
+// régua de resgate do painel dela). "Alterar/Conceder plano" (seção Plano,
+// acima) continua existindo, mas vira o caminho técnico — pra corrigir algo
+// na hora, não o fluxo comercial normal.
+function desenharContaCreditos(el, ctx) {
+  const { creditos, planoInfo, bloqueada } = ctx;
+  const agendado = planoInfo.historico.find((h) => h.status === 'agendado');
+  const movimentos = creditos.movimentacoes.slice(0, 8);
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Créditos</h3></div>
+    <dl class="dados dados-2">
+      <div><dt>Saldo</dt><dd>${plural(creditos.saldo, 'crédito')}</dd></div>
+      ${
+        agendado
+          ? `<div class="dados-largo"><dt>Benefício agendado</dt><dd>${esc(nomeDoPlano({ nome: agendado.plano_nome, compromisso_meses: agendado.compromisso_meses }))} · começa quando o plano pago atual terminar</dd></div>`
+          : ''
+      }
+    </dl>
+    ${
+      bloqueada
+        ? ''
+        : '<div class="acoes secao-pe"><button type="button" class="btn ghost mini" data-creditos-conceder>Conceder créditos</button></div>'
+    }
+    ${
+      movimentos.length
+        ? `<details class="conta-historico"><summary>Movimentações (${creditos.movimentacoes.length})</summary><ul>${movimentos
+            .map(
+              (m) =>
+                `<li>${m.quantidade > 0 ? '+' : ''}${num(m.quantidade)} · ${esc(TIPO_CREDITO[m.tipo] || m.tipo)}${m.origem_nome ? ` · ${esc(m.origem_nome)}` : ''} · ${data(m.criado_em)}${m.observacao ? `<br><span class="u-dim">${esc(m.observacao)}</span>` : ''}</li>`,
+            )
+            .join('')}</ul></details>`
+        : '<p class="texto-vazio">Nenhuma movimentação ainda.</p>'
+    }`;
+  el.querySelector('[data-creditos-conceder]')?.addEventListener('click', () => abrirConcederCreditos(ctx));
 }
 
 function desenharContaComodato(el, comodato, pontosDaConta) {
@@ -3931,6 +3995,46 @@ function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
 // ---------- plano administrativo: modais (Partes 13-17) ----------
 function dataIsoLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Conceder créditos (Fase 6): um campo de quantidade e um de motivo — a
+// mesma simplicidade do resgate no painel da conta. Sem tier/período aqui;
+// quem decide em que vira é a conta, depois, com o saldo já disponível.
+function abrirConcederCreditos(ctx) {
+  const { conta, recarregar } = ctx;
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Conceder créditos',
+    corpo: `<form id="formConcederCreditos" class="modal-form">
+        <div><label for="creditosQtd">Quantidade</label><input type="number" id="creditosQtd" name="quantidade" min="1" step="1" required></div>
+        <div><label for="creditosMotivo">Motivo</label><input type="text" id="creditosMotivo" name="motivo" maxlength="200" required placeholder="ex.: parceria de lançamento, correção de cortesia antiga"></div>
+        <p class="campo-ajuda">Os créditos entram no saldo da conta — ela escolhe depois em que plano e período usa, do painel dela, do mesmo jeito que um crédito de indicação.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formConcederCreditos" class="btn primary">Conceder</button>`,
+  });
+  const form = dlg.querySelector('#formConcederCreditos');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const quantidade = Number(form.quantidade.value);
+    const motivo = form.motivo.value.trim();
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      return erroNoModal(dlg, 'Quantidade precisa ser um número inteiro positivo.');
+    }
+    if (!motivo) return erroNoModal(dlg, 'Descreva o motivo.');
+    const botao = dlg.querySelector('[type="submit"]');
+    botao.disabled = true;
+    const r = await api(`/admin/anunciantes/${conta.id}/creditos/conceder`, {
+      method: 'POST',
+      body: JSON.stringify({ quantidade, motivo }),
+    });
+    if (!r.ok) {
+      botao.disabled = false;
+      return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível conceder os créditos.');
+    }
+    toast(`${plural(quantidade, 'crédito concedido', 'créditos concedidos')}.`);
+    fechar();
+    recarregar();
+  });
 }
 
 function abrirPlanoAdministrativo(ctx) {
