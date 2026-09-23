@@ -231,9 +231,12 @@ function montarCardPonto(estado) {
         });
         if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
       }
-      msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
-      msg.className = 'form-msg ok';
-      setTimeout(() => window.location.reload(), 900);
+      // Sem reload: busca o estado de novo (agora com `pedido` preenchido) e
+      // deixa montarCardPonto trocar o formulário pelo card "Pedido enviado
+      // em..." no lugar — a função já sabe desenhar os 3 estados a partir do
+      // estado fresco, mesmo padrão de public/modos.js#montarModo.
+      const estadoNovo = await (await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' })).json();
+      montarCardPonto(estadoNovo);
     } catch {
       msg.textContent = 'Sem conexão. Tente de novo.';
       msg.className = 'form-msg err';

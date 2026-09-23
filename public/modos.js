@@ -150,7 +150,7 @@
     }
   }
 
-  async function submeter(modo, form, _estado) {
+  async function submeter(modo, form, _estado, container, aoLiberado) {
     const msg = $('#modoMsg', form);
     msg.textContent = 'Enviando...';
     msg.className = 'form-msg';
@@ -163,9 +163,9 @@
             ? null
             : form.categoria_livre.value.trim(),
         });
-        msg.textContent = 'Modo anúncios ativado!';
-        msg.className = 'form-msg ok';
-        window.location.reload();
+        // Sem reload: busca o estado de novo (agora liberado) e deixa
+        // montarModo trocar o card pelo dashboard de verdade, no lugar.
+        await montarModo(modo, container, aoLiberado);
         return;
       }
       // Só ponto pede por aqui — vendedor não tem form (card `vendedor` acima
@@ -197,9 +197,10 @@
         });
         if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
       }
-      msg.textContent = 'Pedido enviado, a gente chama no WhatsApp.';
-      msg.className = 'form-msg ok';
-      setTimeout(() => window.location.reload(), 900);
+      // Sem reload: busca o estado de novo (agora com `pedido` preenchido) —
+      // montarModo troca o formulário pelo card "Pedido enviado em..." no
+      // mesmo lugar, sem F5. A mensagem de sucesso já fica visível ali.
+      await montarModo(modo, container, aoLiberado);
     } catch (err) {
       msg.textContent = err.message;
       msg.className = 'form-msg err';
@@ -217,13 +218,20 @@
     }
     if (!estado) return null;
     if (window.aplicarPapeisNoMenu) window.aplicarPapeisNoMenu({ papeis: estado.papeis });
+    // Card de uma chamada anterior desta mesma função (reaproveitada depois
+    // de ativar/pedir, sem reload — ver submeter()) nunca pode duplicar nem
+    // ficar órfão na tela.
+    const anterior = container.parentNode?.querySelector(`[data-modo-card="${modo}"]`);
+    if (anterior) anterior.remove();
     if (estado.modos[modo].liberado) {
+      container.hidden = false;
       if (aoLiberado) await aoLiberado(estado);
       return estado;
     }
     container.hidden = true;
     const caixa = document.createElement('div');
     caixa.className = 'wrap';
+    caixa.dataset.modoCard = modo;
     caixa.innerHTML = CARDS[modo](estado);
     container.parentNode.insertBefore(caixa, container);
     const card = caixa.firstElementChild;
@@ -240,7 +248,7 @@
       carregarOpcoesComodato($('#modoEscolhaPlano', card));
       form.addEventListener('submit', (e) => {
         e.preventDefault();
-        submeter(modo, form, estado);
+        submeter(modo, form, estado, container, aoLiberado);
       });
     }
     return estado;

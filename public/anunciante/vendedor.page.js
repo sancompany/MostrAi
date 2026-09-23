@@ -21,18 +21,25 @@ async function carregar() {
 document.getElementById('formPix').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('msgPix');
+  const chave = e.target.chave_pix.value.trim();
   const r = await fetch(`${API_BASE_URL}/vendedor/me`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chave_pix: e.target.chave_pix.value.trim() }),
+    body: JSON.stringify({ chave_pix: chave }),
   });
   if (!r.ok) {
     msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não deu pra salvar.';
     msg.className = 'form-msg err';
     return;
   }
-  window.location.reload();
+  // Sem reload: o PATCH confirmado já diz o valor certo — atualiza o mesmo
+  // texto que carregarVendas() preenche no primeiro carregamento.
+  document.getElementById('pix').textContent = chave || '(falta cadastrar)';
+  document.getElementById('avisoPix').hidden = !!chave;
+  msg.textContent = 'Chave Pix salva.';
+  msg.className = 'form-msg ok';
+  e.target.reset();
 });
 
 async function carregarVendas() {
