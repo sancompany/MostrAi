@@ -117,6 +117,26 @@ async function conceder({ conta, plano, validoAte, observacao, adminUsuario }) {
 // — "suspensão só pelo admin, plano vencido cancela sozinho").
 async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
   return comTransacao(async (db) => {
+    // 'vencido' (a conciliação diária, nunca o admin): a linha que alimentou
+    // `encerrarCoberturaVencida` foi lida numa SELECT separada, antes desta
+    // transação — um webhook de pagamento pode ter renovado a cobertura
+    // (`cobranca_confirmada`) bem nesse intervalo. Sem reconferir aqui, esta
+    // UPDATE apagaria um plano que acabou de ser pago de novo (achado real,
+    // revisão de 23/09/2026). `FOR UPDATE` trava a linha: se o webhook
+    // estiver no meio da própria transação de renovação, esta espera ele
+    // terminar antes de decidir, em vez de correr por cima.
+    if (motivo === 'vencido') {
+      const { rows: aindaVencido } = await db.query(
+        `SELECT id FROM anunciantes
+          WHERE id = $1 AND plano_id IS NOT NULL AND data_expiracao IS NOT NULL AND data_expiracao < current_date
+          FOR UPDATE`,
+        [conta.id],
+      );
+      if (!aindaVencido.length) {
+        const { rows: fresca } = await db.query('SELECT * FROM anunciantes WHERE id = $1', [conta.id]);
+        return fresca[0] || null;
+      }
+    }
     await fecharAbertos(db, conta.id, motivo, adminUsuario);
     const { rows } = await db.query(
       `UPDATE anunciantes

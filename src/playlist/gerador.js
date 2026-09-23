@@ -99,10 +99,20 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
              ARRAY[]::int[]
            ) AS pontos_escolhidos
     FROM anunciantes a
-    -- COALESCE: plano comercial manda quando existe; sem ele, o comodato
-    -- (Inicial/Básico) governa sozinho — os dois nunca se somam (23/09/2026,
-    -- migration 076, mesma regra de src/anunciantes/repository.js#planoEfetivoId).
-    JOIN planos p ON p.id = COALESCE(a.plano_id, a.comodato_plano_id)
+    -- COALESCE: plano comercial manda quando existe E ainda está dentro da
+    -- validade; sem ele (nunca teve, ou passou e a conciliação ainda não
+    -- rodou), o comodato (Inicial/Básico) governa sozinho — os dois nunca se
+    -- somam (23/09/2026, migration 076, mesma regra de
+    -- src/anunciantes/repository.js#planoEfetivoId). Achado real (revisão de
+    -- 23/09/2026): antes o WHERE abaixo excluía a conta INTEIRA quando o
+    -- comercial vencia, mesmo com comodato ativo — o comodato nunca tem
+    -- data_expiracao própria (é ligado à modalidade do ponto, não a um
+    -- ciclo), então um Básico com plano pago vencido sumia da playlist até o
+    -- próximo encerrarCoberturaVencida, um dia depois.
+    JOIN planos p ON p.id = COALESCE(
+      CASE WHEN a.data_expiracao IS NULL OR a.data_expiracao >= now() THEN a.plano_id END,
+      a.comodato_plano_id
+    )
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -112,7 +122,6 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND NOT a.conta_propria
-      AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
       AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
       AND ($2::int IS NULL OR a.id <> $2)
     GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos, p.limite_criativos

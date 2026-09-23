@@ -636,6 +636,75 @@ test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende, comod
   }
 });
 
+// Achado real em revisão (Codex, PR #20, 23/09/2026): a SELECT que alimenta
+// encerrarCoberturaVencida lê a conta ANTES do laço que chama encerrar() pra
+// cada uma — entre as duas, um webhook de pagamento pode renovar a cobertura
+// (cobranca_confirmada). Sem reconferir dentro da própria transação, a UPDATE
+// apagaria um plano que acabou de ser pago de novo.
+test('encerrar(motivo=vencido): reconfere a validade dentro da transação — não apaga plano renovado na corrida com um webhook', async () => {
+  const conta = await criarConta();
+  try {
+    const plano = (await pool.query("SELECT * FROM planos WHERE id = 'essencial-1m'")).rows[0];
+    await planoAdm.conceder({ conta, plano, validoAte: '2020-01-01', observacao: 'teste de corrida' });
+
+    // Snapshot ANTIGO (vencido) — o que a SELECT de encerrarCoberturaVencida
+    // teria capturado antes da corrida.
+    const snapshotAntigo = { id: conta.id, data_expiracao: '2020-01-01' };
+    // O webhook renova a cobertura DEPOIS daquela SELECT, mas ANTES desta
+    // chamada a encerrar() — é a janela que o achado aponta.
+    await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [conta.id, daqui(60)]);
+
+    await planoAdm.encerrar({ conta: snapshotAntigo, motivo: 'vencido' });
+
+    const depois = await pool.query('SELECT plano_id, data_expiracao FROM anunciantes WHERE id = $1', [conta.id]);
+    assert.strictEqual(depois.rows[0].plano_id, 'essencial-1m', 'a renovação recente não foi apagada pela corrida');
+    assert.strictEqual(String(depois.rows[0].data_expiracao).slice(0, 10), daqui(60), 'data renovada continua');
+
+    const [historico] = await planoAdm.historicoDaConta(conta.id);
+    assert.strictEqual(historico.encerrado_em, null, 'histórico continua aberto — nada foi encerrado de verdade');
+  } finally {
+    await apagarConta(conta.id);
+  }
+});
+
+// Achado real em revisão (Codex, PR #20, 23/09/2026): a régua de
+// bloqueiaPlanoComercial (acima) trava CONCEDER/VENDER plano comercial pra
+// quem está no Inicial, mas o caminho contrário — o admin trocar a
+// modalidade PRA Inicial de uma conta que já tem plano comercial vigente —
+// não tinha trava nenhuma, deixando "Inicial + plano comercial" coexistir
+// pela porta dos fundos.
+test('aplicarModalidade: recusa trocar pra Inicial quando a conta tem plano comercial vigente', async () => {
+  const comodato = require('../src/pontos/comodato');
+  const conta = await criarConta({ plano_id: 'essencial-1m', plano_cortesia: false, data_expiracao: daqui(30) });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
+       VALUES ('Ponto Comercial+Basico', 'Rua Z', 'Matão', 'SP', '15990000', 'x', 'Z', '16999990000', $1, 'mais-cota')
+       RETURNING id`,
+      [conta.id],
+    );
+    const pontoId = rows[0].id;
+    await comodato.sincronizarComodato(conta.id);
+
+    await assert.rejects(
+      () => comodato.aplicarModalidade(pontoId, 'ajuda-custo'),
+      /plano comercial vigente/,
+      'não deixa trocar pra Inicial com plano comercial ativo',
+    );
+    const depois = await pool.query('SELECT plano_ponto_id FROM pontos WHERE id = $1', [pontoId]);
+    assert.strictEqual(depois.rows[0].plano_ponto_id, 'mais-cota', 'modalidade do ponto não mudou');
+
+    // Controle: sem plano comercial, a mesma troca é permitida — a trava é
+    // só pra quem realmente acumularia os dois.
+    await pool.query('UPDATE anunciantes SET plano_id = NULL, data_expiracao = NULL WHERE id = $1', [conta.id]);
+    const opcao = await comodato.aplicarModalidade(pontoId, 'ajuda-custo');
+    assert.strictEqual(opcao.id, 'ajuda-custo', 'sem plano comercial, a troca pra Inicial funciona normalmente');
+  } finally {
+    await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
+    await apagarConta(conta.id);
+  }
+});
+
 test('POST /assinar: bloqueado por Inicial usa a régua compartilhada (bloqueiaPlanoComercial)', async () => {
   const financeiro = require('../src/financeiro/routes');
   const app = await subirApp((a) => {
@@ -670,6 +739,122 @@ test('POST /assinar: bloqueado por Inicial usa a régua compartilhada (bloqueiaP
     assert.match(corpo.erro, /ajuda de custo do comodato/);
   } finally {
     await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
+    await apagarConta(conta.id);
+    await app.fechar();
+  }
+});
+
+// Achado real em revisão (Codex, PR #20, 23/09/2026): `pagou` (que decide se
+// dá pra assinar outro plano sem passar pelo suporte) só olhava o plano_id
+// ATUAL da conta — que a conciliação diária agora pode limpar sozinha quando
+// a cobrança recorrente falha, SEM cancelar a assinatura no San Checkout
+// (antes disso a conta ficava suspensa e nem chegava aqui de novo). Sem
+// checar se ela já foi cobrada de verdade (cobrancas_confirmadas), essa
+// assinatura caía no mesmo caminho de uma nunca paga: cancelamento só local,
+// o San Checkout seguiria tentando cobrar as duas.
+test('POST /assinar: assinatura antiga já cobrada precisa cancelar no San Checkout antes de trocar (corrida com a conciliação)', async () => {
+  const sanCheckout = require('../src/financeiro/san-checkout');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const financeiro = require('../src/financeiro/routes');
+  const original = sanCheckout.cancelarAssinatura;
+  const app = await subirApp((a) => {
+    a.use((req, _res, next) => {
+      req.session.anuncianteId = Number(req.headers['x-conta']);
+      next();
+    });
+    a.use(financeiro.router);
+  });
+  const conta = await criarConta({ endereco: 'Rua X, 1', cidade: 'Matão', uf: 'SP', cep: '15990000' });
+  const pedir = (planoId) =>
+    fetch(`${app.base}/anunciantes/${conta.id}/assinar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-conta': String(conta.id) },
+      body: JSON.stringify({ planoId }),
+    });
+  try {
+    const assinaturaAntiga = await assinaturasRepo.criar({
+      anuncianteId: conta.id,
+      planoId: 'essencial-1m',
+      status: 'ativa',
+    });
+    // O fato histórico de que essa assinatura já cobrou de verdade —
+    // conta.plano_id sozinho não é mais garantia disso (a conciliação pode
+    // tê-lo limpado sem cancelar nada no Checkout).
+    await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor) VALUES ($1, 'essencial-1m', 100)`,
+      [conta.id],
+    );
+    // conta.plano_id já foi limpo (simula encerrarCoberturaVencida tendo
+    // rodado) — a checagem antiga (`conta.plano_id === assinatura.plano_id`)
+    // não bate mais, mas a assinatura no San Checkout nunca foi cancelada.
+
+    sanCheckout.cancelarAssinatura = async () => {
+      throw new Error('checkout fora do ar');
+    };
+    const falhou = await pedir('destaque-1m');
+    assert.strictEqual(falhou.status, 502);
+    assert.strictEqual(
+      (await assinaturasRepo.buscarPorId(assinaturaAntiga.id)).status,
+      'ativa',
+      'não marca cancelada sem confirmar no Checkout',
+    );
+
+    const cancelou = [];
+    sanCheckout.cancelarAssinatura = async (id) => {
+      cancelou.push(id);
+    };
+    const ok = await pedir('destaque-1m');
+    assert.strictEqual(ok.status, 200);
+    assert.deepStrictEqual(
+      cancelou,
+      [assinaturaAntiga.id],
+      'a assinatura antiga é cancelada no Checkout antes de trocar',
+    );
+    assert.strictEqual((await assinaturasRepo.buscarPorId(assinaturaAntiga.id)).status, 'cancelada');
+  } finally {
+    sanCheckout.cancelarAssinatura = original;
+    await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [conta.id]);
+    await apagarConta(conta.id);
+    await app.fechar();
+  }
+});
+
+// Controle do achado acima: uma assinatura que NUNCA foi cobrada de verdade
+// (checkout abandonado, clique antigo) continua cancelando só localmente,
+// sem precisar do San Checkout responder — não é o caso que o achado cobre.
+test('POST /assinar: assinatura antiga nunca cobrada cancela só localmente, sem chamar o San Checkout', async () => {
+  const sanCheckout = require('../src/financeiro/san-checkout');
+  const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+  const financeiro = require('../src/financeiro/routes');
+  const original = sanCheckout.cancelarAssinatura;
+  const app = await subirApp((a) => {
+    a.use((req, _res, next) => {
+      req.session.anuncianteId = Number(req.headers['x-conta']);
+      next();
+    });
+    a.use(financeiro.router);
+  });
+  const conta = await criarConta({ endereco: 'Rua X, 1', cidade: 'Matão', uf: 'SP', cep: '15990000' });
+  try {
+    const assinaturaAbandonada = await assinaturasRepo.criar({
+      anuncianteId: conta.id,
+      planoId: 'essencial-1m',
+      status: 'ativa',
+    });
+    let chamou = false;
+    sanCheckout.cancelarAssinatura = async () => {
+      chamou = true;
+    };
+    const r = await fetch(`${app.base}/anunciantes/${conta.id}/assinar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-conta': String(conta.id) },
+      body: JSON.stringify({ planoId: 'destaque-1m' }),
+    });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(chamou, false, 'checkout abandonado nunca teve nada pra cancelar no Checkout');
+    assert.strictEqual((await assinaturasRepo.buscarPorId(assinaturaAbandonada.id)).status, 'cancelada');
+  } finally {
+    sanCheckout.cancelarAssinatura = original;
     await apagarConta(conta.id);
     await app.fechar();
   }

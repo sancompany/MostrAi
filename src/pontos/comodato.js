@@ -63,6 +63,16 @@ async function sincronizarComodato(contaId, db = pool) {
 }
 
 // Aplica uma modalidade a UM ponto e acerta a conta do dono dele.
+//
+// Trava simétrica à de `bloqueiaPlanoComercial` (achado real, revisão de
+// 23/09/2026): aquela impede CONCEDER/VENDER plano comercial pra quem está
+// no Inicial; esta impede o caminho contrário — o admin trocar a modalidade
+// PRA Inicial (`permite_assinar = false`) de uma conta que já tem plano
+// comercial vigente (`anunciantes.plano_id`). Sem ela, o único lugar que
+// ainda deixava "Inicial + plano comercial" coexistir era este — o
+// autoatendimento (`POST /anunciantes/me/comodato/trocar-por-tela`) só anda
+// no sentido oposto (ajuda de custo → Básico), então esta trava só morde a
+// troca manual do admin.
 async function aplicarModalidade(pontoId, opcaoId, db = pool) {
   const { rows: pts } = await db.query('SELECT id, anunciante_id FROM pontos WHERE id = $1', [pontoId]);
   const ponto = pts[0];
@@ -71,6 +81,18 @@ async function aplicarModalidade(pontoId, opcaoId, db = pool) {
   const { rows: ops } = await db.query('SELECT * FROM planos_ponto WHERE id = $1', [opcaoId]);
   const opcao = ops[0];
   if (!opcao) return null;
+
+  if (!opcao.permite_assinar && ponto.anunciante_id) {
+    const { rows: contas } = await db.query('SELECT plano_id FROM anunciantes WHERE id = $1', [ponto.anunciante_id]);
+    if (contas[0]?.plano_id) {
+      throw Object.assign(
+        new Error(
+          'esta conta tem plano comercial vigente — encerre ou cancele o plano antes de trocar pra uma modalidade que não acumula com ele',
+        ),
+        { status: 409 },
+      );
+    }
+  }
 
   await db.query(
     `UPDATE pontos

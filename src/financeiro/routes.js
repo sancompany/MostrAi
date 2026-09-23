@@ -402,6 +402,29 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
       conta.plano_id === assinatura.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
     if (pagou)
       return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
+    // Achado real (revisão de 23/09/2026): `pagou` só olha o `plano_id`
+    // ATUAL da conta — que a conciliação diária (encerrarCoberturaVencida)
+    // agora pode limpar sozinha quando a cobrança recorrente falha e a
+    // cobertura vence, SEM cancelar a assinatura no San Checkout (isso nunca
+    // existiu; antes disso a conta ficava suspensa e nem chegava aqui). Sem
+    // olhar o histórico, essa assinatura que já foi cobrada de verdade caía
+    // no mesmo caminho de uma que nunca chegou a ser paga (checkout
+    // abandonado): cancelamento só local, o San Checkout seguiria tentando
+    // cobrar as duas. `cobrancas_confirmadas` é o fato histórico que
+    // `conta.plano_id` não é mais garantia de refletir.
+    const { rows: jaFoiCobrada } = await pool.query(
+      'SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1 AND plano_id = $2 LIMIT 1',
+      [conta.id, assinatura.plano_id],
+    );
+    if (jaFoiCobrada.length) {
+      try {
+        await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
+      } catch {
+        return res
+          .status(502)
+          .json({ erro: 'não deu pra cancelar sua assinatura anterior no San Checkout — tente de novo em instantes' });
+      }
+    }
     await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
   }
