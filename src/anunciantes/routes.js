@@ -26,6 +26,8 @@ const eventos = require('../lib/eventos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
 const bancohorasRepo = require('../bancohoras/repository');
+const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
+const { limiteDeCriativos } = require('../playlist/gerador');
 const {
   enviarContaAprovada,
   enviarContaCriada,
@@ -153,7 +155,12 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     if (!convite)
       return res.status(400).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
   }
-  const papeis = convite ? convite.papeis : ['anunciante'];
+  // Papel Vendedor aposentado (reconstrução de Contas, 23/09/2026, pedido do
+  // dono): convite antigo que ainda carregue 'vendedor' não cria vendedor
+  // novo — a conta nasce com o resto dos papéis (ou só anunciante). Os
+  // vendedores que já existem ficam no banco, intactos.
+  const papeisDoConvite = convite ? convite.papeis.filter((p) => p !== 'vendedor') : [];
+  const papeis = papeisDoConvite.length ? papeisDoConvite : ['anunciante'];
   const ehAnunciante = papeis.includes('anunciante');
 
   // Endereço comercial só é obrigatório pra quem anuncia; dono de ponto tem o
@@ -179,10 +186,12 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     // Cupom de ponto sempre começa com "PT-" (migration 062) — namespace
     // separado do de vendedor, então dá pra rotear sem ambiguidade e sem
     // gastar duas consultas por cadastro comum.
+    // Cupom de vendedor não vale mais (programa aposentado, 23/09/2026 — sem
+    // indicação nova, sem comissão nova). O front já reenvia o cadastro sem o
+    // cupom quando o erro vem com `campo`, então o link antigo só perde a
+    // indicação, não o cadastro. Cupom de ponto (PT-) segue valendo.
     const cupom = String(indicado_por_cupom).toUpperCase();
-    const encontrado = cupom.startsWith('PT-')
-      ? await indicacoesRepo.buscarPontoPorCupom(cupom)
-      : await vendedoresRepo.buscarPorCupomAprovado(cupom);
+    const encontrado = cupom.startsWith('PT-') ? await indicacoesRepo.buscarPontoPorCupom(cupom) : null;
     if (!encontrado) {
       return res
         .status(400)
@@ -327,6 +336,14 @@ router.post('/anunciantes/login', limiteTentativas, async (req, res) => {
   if (anunciante.excluido_em) {
     return res.status(403).json({ erro: 'essa conta foi excluída — fale com o suporte pra recuperar' });
   }
+  // Suspensa perde o acesso (reconstrução de Contas, 23/09/2026, Parte 27) —
+  // antes o login ignorava `suspenso` e a conta seguia entrando, subindo
+  // criativo e mexendo no cadastro; só a compra era barrada. Sessão já aberta
+  // cai pelo middleware de server.js. Só a senha certa chega aqui, então a
+  // mensagem não revela nada a quem está chutando.
+  if (anunciante.suspenso) {
+    return res.status(403).json({ erro: 'esta conta está suspensa — fale com a gente pra reativar o acesso' });
+  }
   zerarTentativas(req);
   // Sessão nova a cada login (fixação de sessão) — ver server.js.
   req.session.regenerate((err) => {
@@ -389,6 +406,21 @@ router.post('/anunciantes/logout', (req, res) => {
 
 function exigirAnuncianteLogado(req, res, next) {
   if (!req.session.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
+  next();
+}
+
+// Conta suspensa perde o acesso também com a sessão já aberta (reconstrução
+// de Contas, 23/09/2026, Parte 27). O login barra a entrada nova; isto barra
+// quem já estava dentro quando o admin suspendeu: a sessão deixa de valer e
+// toda rota que exige conta logada responde 401, que o front já trata
+// mandando pro login — onde a mensagem de "suspensa" aparece. Uma leitura por
+// chave primária por request autenticada; o ponto físico do dono suspenso
+// continua tocando (a TV autentica pelo aparelho, não por esta sessão).
+// Montado em server.js antes de todas as rotas.
+async function derrubarSessaoSuspensa(req, _res, next) {
+  if (!req.session?.anuncianteId) return next();
+  const { rows } = await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [req.session.anuncianteId]);
+  if (rows[0]?.suspenso) delete req.session.anuncianteId;
   next();
 }
 
@@ -668,13 +700,22 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // quem autoriza e qual é o teto — então a rotina mora aqui uma vez, e as duas
 // rotas abaixo a chamam. Duplicar isso significaria manter dois lugares que
 // lidam com ffmpeg, arquivo temporário e limpeza de /tmp.
-async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, peloOperador = false }) {
+// `substitui` (reconstrução de Contas, 23/09/2026, Parte 22): criativo A que
+// este upload vai substituir. O novo (B) nasce EM ANÁLISE mesmo vindo do
+// operador, apontando pra A — A segue no ar até B ser aprovado (ver PATCH
+// /admin/criativos/:id em src/admin/routes.js). Não passa pelo limite: B só
+// entra tirando A, então o total cadastrado depois da troca é o mesmo.
+async function subirCriativo(
+  req,
+  res,
+  { contaId, limite, duracaoMaxima = null, peloOperador = false, substitui = null },
+) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
   // até 95 MB de lixo em /tmp por request recusada.
   try {
-    if (Number.isFinite(limite)) {
+    if (Number.isFinite(limite) && !substitui) {
       const emUso = await criativosRepo.contarNaoReprovados(contaId);
       if (emUso >= limite) {
         return res
@@ -719,16 +760,19 @@ async function subirCriativo(req, res, { contaId, limite, duracaoMaxima = null, 
       arquivo_normalizado_url: null,
       thumbnail_url: null,
       duracao_segundos: null,
+      substitui_criativo_id: substitui ? substitui.id : null,
     });
 
     try {
       const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima);
       // Peça que o operador subiu já entra aprovada: quem aprovaria é quem
       // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
-      // sem decisão nenhuma por trás.
+      // sem decisão nenhuma por trás. Substituto é a exceção: a troca só
+      // acontece na aprovação, então ele espera em análise.
       const criativo = await criativosRepo.atualizar(criativoTemp.id, {
         ...normalizado,
-        ...(peloOperador ? { editado_pelo_operador: true, status: 'aprovado' } : {}),
+        ...(peloOperador ? { editado_pelo_operador: true } : {}),
+        ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
       });
       res.status(201).json(criativo);
     } catch (err) {
@@ -791,19 +835,93 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
 // `editado_pelo_operador` marca a origem. A coluna já existia desde a
 // migration 003 — é o registro de que aquela peça não veio do anunciante, e
 // serve pra ninguém cobrar dele um vídeo que o Mostraí montou.
+//
+// Teto de CADASTRO desde a reconstrução de Contas (23/09/2026, Parte 21): até
+// 3 criativos por conta (CRIATIVOS_POR_CONTA), independente do plano. Quantos
+// RODAM ao mesmo tempo continua sendo o `limite_criativos` do plano, decidido
+// na playlist (limiteDeCriativos em src/playlist/gerador.js) — "até 3
+// cadastrados" e "N no ar" são coisas diferentes, e a ficha mostra as duas.
+// Conta suspensa não recebe criativo novo (Parte 27).
 router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async (req, res) => {
   const conta = await repo.buscarPorId(req.params.id);
-  if (!conta) {
+  if (!conta || conta.suspenso) {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(404).json({ erro: 'conta não encontrada' });
+    return conta
+      ? res.status(409).json({ erro: 'conta suspensa — reative antes de mexer nos criativos' })
+      : res.status(404).json({ erro: 'conta não encontrada' });
   }
   const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
     // A conta própria não tem teto de duração: o inventário é da casa.
-    limite: conta.conta_propria ? Infinity : plano ? plano.limite_criativos : 1,
+    limite: conta.conta_propria ? Infinity : CRIATIVOS_POR_CONTA,
     duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
+  });
+});
+
+// Substituir criativo sem tirar o atual do ar (Parte 22): sobe B apontando
+// pra A. Só faz sentido pra quem está aprovado/no ar — em análise ou
+// recusado se troca o arquivo na mesma linha (POST /admin/criativos/:id/substituir).
+router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (req, res) => {
+  const descartar = () => req.file && fs.unlink(req.file.path, () => {});
+  const atual = await criativosRepo.buscarPorId(req.params.id);
+  if (!atual) {
+    descartar();
+    return res.status(404).json({ erro: 'criativo não encontrado' });
+  }
+  if (atual.status !== 'aprovado') {
+    descartar();
+    return res.status(400).json({ erro: 'só dá pra substituir criativo aprovado — nos outros, troque o arquivo' });
+  }
+  const conta = await repo.buscarPorId(atual.anunciante_id);
+  if (!conta || conta.suspenso) {
+    descartar();
+    return res.status(409).json({ erro: 'conta suspensa — reative antes de mexer nos criativos' });
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM criativos WHERE substitui_criativo_id = $1 AND status = 'pendente' LIMIT 1`,
+    [atual.id],
+  );
+  if (rows.length) {
+    descartar();
+    return res
+      .status(409)
+      .json({ erro: 'esse criativo já tem um substituto em análise — aprove ou recuse aquele antes' });
+  }
+  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  return subirCriativo(req, res, {
+    contaId: conta.id,
+    limite: Infinity,
+    duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
+    peloOperador: true,
+    substitui: atual,
+  });
+});
+
+// Criativos de UMA conta pra ficha do admin (Parte 18-24), com o que a
+// playlist faria com eles agora: `no_ar` segue exatamente a regra do gerador
+// (conta elegível + aprovado com arquivo pronto + os N mais recentes, N =
+// limite do plano). Mesmo motor da fila global — isto só lê.
+router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
+  const conta = await repo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const criativos = await criativosRepo.listarPorAnunciante(conta.id);
+  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const contaVeicula =
+    !!plano &&
+    !conta.suspenso &&
+    !conta.excluido_em &&
+    !conta.conta_propria &&
+    (!conta.data_expiracao || new Date(conta.data_expiracao) >= new Date());
+  const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
+  const limite = plano ? limiteDeCriativos(false, plano.limite_criativos, prontos.length) : 0;
+  const noAr = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
+  res.json({
+    criativos: criativos.map((c) => ({ ...c, no_ar: noAr.has(c.id) })),
+    limite_no_ar: limite,
+    limite_cadastro: CRIATIVOS_POR_CONTA,
+    conta_veicula: contaVeicula,
   });
 });
 
@@ -1194,4 +1312,4 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
   }
 });
 
-module.exports = { router, exigirAnuncianteLogado };
+module.exports = { router, exigirAnuncianteLogado, derrubarSessaoSuspensa };

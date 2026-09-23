@@ -17,6 +17,7 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
 const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
+const planoAdministrativo = require('./plano-administrativo');
 
 const uploadNota = multer({ dest: os.tmpdir() });
 
@@ -720,6 +721,89 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
   }
 });
 
+// ---------- plano administrativo (reconstrução de Contas, 23/09/2026) ----------
+// Benefício/cortesia concedido pelo admin — regras em plano-administrativo.js.
+// Substitui, na ficha da conta, o "Liberar plano" por prompt() com id digitado
+// (a rota liberar-plano acima fica como legado, sem tela chamando).
+
+// O que a ficha precisa pra mostrar Plano sem adivinhar: de onde vem o plano
+// vigente, se há assinatura paga ativa (só essa passa pelo San Checkout) e o
+// histórico de benefícios administrativos.
+router.get('/admin/anunciantes/:id/plano', async (req, res) => {
+  const conta = await anunciantesRepo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const [assinatura, historico] = await Promise.all([
+    assinaturasRepo.buscarAtivaDoAnunciante(conta.id),
+    planoAdministrativo.historicoDaConta(conta.id),
+  ]);
+  res.json({
+    origem: planoAdministrativo.origemDoPlano(conta),
+    assinatura_ativa: assinatura
+      ? { id: assinatura.id, plano_id: assinatura.plano_id, created_at: assinatura.created_at }
+      : null,
+    historico,
+  });
+});
+
+// Conceder (ou trocar por) um benefício. Uma conta, um plano comercial
+// vigente: se há assinatura paga ativa, ela é cancelada ANTES pela mesma
+// lógica do cancelar-assinatura (San Checkout primeiro; se ele recusar, nada
+// muda). Sem cobrança, sem diferença, sem troca paga, sem reembolso — nenhuma
+// regra existente pede reembolso aqui, então nenhum é gerado.
+router.post('/admin/anunciantes/:id/plano-administrativo', async (req, res) => {
+  const { plano_id, valido_ate } = req.body;
+  const plano = plano_id ? await planosRepo.buscarPorId(plano_id) : null;
+  if (!plano || !planoAdministrativo.TIERS_COMERCIAIS.has(plano.tier) || plano.fundador || plano.ativo === false) {
+    return res.status(400).json({ erro: 'escolha Essencial, Pro ou Prime e um ciclo' });
+  }
+  const validoAte = planoAdministrativo.validadeValida(valido_ate);
+  if (!validoAte) {
+    return res.status(400).json({ erro: 'escolha uma data de validade no futuro' });
+  }
+  const conta = await anunciantesRepo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  if (conta.conta_propria) {
+    return res.status(400).json({ erro: 'a conta interna do Mostraí não recebe plano comercial' });
+  }
+  if (conta.excluido_em) return res.status(409).json({ erro: 'conta excluída — restaure antes de conceder plano' });
+  if (conta.suspenso) return res.status(409).json({ erro: 'conta suspensa — reative antes de conceder plano' });
+  const observacao =
+    String(req.body.observacao || '')
+      .trim()
+      .slice(0, 500) || null;
+
+  const assinatura = await assinaturasRepo.buscarAtivaDoAnunciante(conta.id);
+  if (assinatura) {
+    try {
+      await sanCheckout.cancelarAssinatura(assinatura.id, conta.cpf_cnpj);
+      await assinaturasRepo.marcarCancelada(assinatura.id);
+    } catch {
+      return res
+        .status(502)
+        .json({ erro: 'não deu pra cancelar a assinatura paga no San Checkout — nada foi alterado, tente de novo' });
+    }
+  }
+  const { conta: atualizada } = await planoAdministrativo.conceder({
+    conta,
+    plano,
+    validoAte,
+    observacao,
+    adminUsuario: req.session.adminUsuario,
+  });
+  res.json({ conta: atualizada, assinatura_cancelada: !!assinatura });
+});
+
+// Encerrar o benefício administrativo agora (assinatura paga não passa por
+// aqui — essa usa cancelar-assinatura, que mantém a cobertura já paga).
+router.post('/admin/anunciantes/:id/plano-administrativo/encerrar', async (req, res) => {
+  const conta = await anunciantesRepo.buscarPorId(req.params.id);
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  if (planoAdministrativo.origemDoPlano(conta) !== 'cortesia') {
+    return res.status(400).json({ erro: 'esta conta não tem benefício administrativo em vigor' });
+  }
+  res.json(await planoAdministrativo.encerrar({ conta, adminUsuario: req.session.adminUsuario }));
+});
+
 // Fila de reconciliação manual (webhooks que não deram pra correlacionar
 // automaticamente ou eventos sem ação automática — ver san-checkout.js)
 router.get('/admin/eventos-pendentes', async (_req, res) => {
@@ -870,7 +954,6 @@ router.patch('/admin/cobrancas/:id/nota-fiscal', uploadNota.single('arquivo'), a
 // /afiliados/* ficam respondendo 410 por um tempo pra quem tiver link salvo.
 // ---------------------------------------------------------------------------
 const vendedoresRepo = require('./vendedores-repository');
-const { liberarPapelNaConta, emTransacao } = require('../conta/modos');
 
 function exigirVendedorLogado(req, res, next) {
   if (!req.session.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
@@ -932,24 +1015,12 @@ router.patch('/admin/comissoes/:id', async (req, res) => {
 
 router.get('/admin/vendedores', async (_req, res) => res.json(await vendedoresRepo.listar()));
 
-// Ativar o papel vendedor numa conta que já existe (rodada Contas,
-// 22/09/2026) — reaproveita `liberarPapelNaConta` (src/conta/modos.js), o
-// mesmo caminho que uma candidatura aprovada usa, sem `cand` (não há
-// candidatura aqui, só uma conta que o admin decidiu virar vendedora). Cria
-// o perfil em `vendedores` com cupom automático; nunca duplica se já existe.
-router.post('/admin/anunciantes/:id/ativar-vendedor', async (req, res) => {
-  const conta = await anunciantesRepo.buscarPorId(req.params.id);
-  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  // `vendedoresRepo.criar` usa SAVEPOINT (retry de colisão de cupom) — só
-  // funciona dentro de uma transação de verdade, daí `emTransacao` em vez de
-  // passar o pool cru (mesmo erro reproduziria em qualquer chamador novo de
-  // liberarPapelNaConta pra papel vendedor fora de uma candidatura).
-  await emTransacao((cliente) => liberarPapelNaConta(conta, 'vendedor', null, cliente));
-  const [anunciante, vendedor] = await Promise.all([
-    anunciantesRepo.buscarPorId(req.params.id),
-    vendedoresRepo.buscarPorConta(req.params.id),
-  ]);
-  res.status(201).json({ anunciante, vendedor });
+// Papel Vendedor aposentado (reconstrução de Contas, 23/09/2026, pedido do
+// dono): nenhum vendedor novo nasce. A rota fica respondendo 410 em vez de
+// sumir, pra quem chamar por engano saber o porquê. Vendedores, comissões e
+// cupons que já existem continuam no banco (histórico).
+router.post('/admin/anunciantes/:id/ativar-vendedor', (_req, res) => {
+  res.status(410).json({ erro: 'o papel Vendedor foi aposentado — não há mais vendedor novo' });
 });
 
 router.patch('/admin/vendedores/:contaId', async (req, res) => {

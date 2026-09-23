@@ -58,7 +58,9 @@ function normalizarBusca(txt) {
 // mexer em nenhum desses arquivos. A busca é só uma camada de cima.
 //
 // Categoria = o que bloqueia concorrente direto (grupo é só organização
-// visual, nunca entra nisso — ver src/playlist/gerador.js). "Não encontrei
+// do admin, nunca entra nisso nem aparece aqui — ver src/playlist/gerador.js
+// e a Parte 45 da reconstrução de Categorias, 23/09/2026: o cliente vê só o
+// nome da categoria canônica; alias só serve pra achar). "Não encontrei
 // minha categoria" substitui o antigo "Outro" (era uma comparação de string
 // solta no front, `nome === 'Outro'`): agora é só limpar o select e mostrar
 // o campo de texto livre que os três formulários já tinham — mesmo mecanismo
@@ -90,6 +92,7 @@ async function ligarCategorias(escopo) {
   const comBusca = categorias.map((c) => ({
     ...c,
     busca: normalizarBusca(`${c.nome} ${(c.aliases || []).join(' ')}`),
+    buscaNome: normalizarBusca(c.nome),
   }));
   selects.forEach((sel) => {
     sel.innerHTML =
@@ -167,21 +170,22 @@ function montarBusca(sel, categorias, semCatalogo) {
 
   function abrir(termo) {
     const alvo = normalizarBusca(termo);
-    // Sem termo ainda: mostra o catálogo inteiro, agrupado (é a mesma lista
-    // que um select mostraria aberto, só que já pesquisável). Com termo,
-    // filtra por nome OU alias e ignora o agrupamento — quem está buscando
-    // já sabe o que quer, o grupo só atrapalharia a leitura dos resultados.
-    const bateu = alvo ? categorias.filter((c) => c.busca.includes(alvo)) : categorias;
+    // Sem termo ainda: mostra o catálogo inteiro em ordem alfabética (é a
+    // mesma lista que um select mostraria aberto, só que já pesquisável). Com
+    // termo, filtra por nome OU alias — e quem bateu pelo NOME vem antes de
+    // quem bateu só pelo alias ("pousada" mostra "Hotel / Pousada" no topo).
+    const bateu = alvo
+      ? categorias
+          .filter((c) => c.busca.includes(alvo))
+          .map((c) => ({ c, peso: c.buscaNome.startsWith(alvo) ? 0 : c.buscaNome.includes(alvo) ? 1 : 2 }))
+          .sort((a, b) => a.peso - b.peso)
+          .map((x) => x.c)
+      : categorias;
     const LIMITE = 40;
     const itens = bateu.slice(0, LIMITE);
     lista.innerHTML =
       (itens.length
-        ? itens
-            .map(
-              (c) =>
-                `<li role="option" data-id="${c.id}">${esc(c.nome)}<span class="categoria-grupo">${esc(c.grupo || '')}</span></li>`,
-            )
-            .join('')
+        ? itens.map((c) => `<li role="option" data-id="${c.id}">${esc(c.nome)}</li>`).join('')
         : '<li class="categoria-vazio">Nada encontrado.</li>') +
       `<li class="categoria-nao-encontrei" data-nao-encontrei>Não encontrei minha categoria</li>`;
     lista.hidden = false;

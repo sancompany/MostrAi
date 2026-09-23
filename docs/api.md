@@ -217,8 +217,13 @@ pede.
 | GET | `/admin/anunciantes` | lista |
 | POST | `/admin/anunciantes` | cria conta pelo admin. Com `conta_propria: true` dispensa endereço (a rede não recebe nota de si mesma) e recusa a segunda com 409 |
 | PATCH | `/admin/anunciantes/:id` | status, papéis, dados, e `conta_propria`/`frequencia_hora_propria` |
-| POST | `/admin/anunciantes/:id/criativos` | sobe a peça direto na conta do cliente, **já aprovada** e marcada em `editado_pelo_operador`. A peça é feita fora do site. Teto: o do plano na conta de cliente, nenhum na conta própria |
-| POST | `/admin/anunciantes/:id/liberar-plano` | `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo |
+| POST | `/admin/anunciantes/:id/criativos` | sobe a peça direto na conta do cliente, **já aprovada** e marcada em `editado_pelo_operador`. A peça é feita fora do site. Teto de CADASTRO: 3 por conta (`CRIATIVOS_POR_CONTA`) desde 23/09/2026 — quantos rodam juntos continua sendo o `limite_criativos` do plano; nenhum teto na conta própria. 409 com a conta suspensa |
+| GET | `/admin/anunciantes/:id/criativos` | criativos da conta pra ficha, com `no_ar` calculado pela mesma regra do gerador (conta veiculando + aprovado com arquivo + os N mais recentes do plano), `limite_no_ar`, `limite_cadastro`, `conta_veicula` (23/09/2026) |
+| GET | `/admin/anunciantes/:id/plano` | origem do plano vigente (`assinatura`/`cortesia`/`comodato`/null), assinatura paga ativa (se houver) e histórico de benefícios administrativos (23/09/2026) |
+| POST | `/admin/anunciantes/:id/plano-administrativo` | `{plano_id, valido_ate: 'AAAA-MM-DD', observacao?}` — concede/troca por BENEFÍCIO (cortesia administrativa: sem cobrança, sem receita). Só Essencial/Pro/Prime ativos. Assinatura paga ativa é cancelada antes pelo San Checkout (502 e nada muda se ele recusar). Sem diferença, troca paga ou reembolso. Encerra o benefício anterior no histórico (`planos_administrativos`, migration 075). 409 com a conta suspensa ou excluída |
+| POST | `/admin/anunciantes/:id/plano-administrativo/encerrar` | encerra o benefício vigente agora; se a conta tem ponto em comodato, o plano do comodato volta. 400 se o plano vigente não for cortesia (assinatura paga usa `cancelar-assinatura`) |
+| POST | `/admin/anunciantes/:id/ativar-vendedor` | **410** desde 23/09/2026 — papel Vendedor aposentado (dados antigos intactos) |
+| POST | `/admin/anunciantes/:id/liberar-plano` | legado (sem tela chamando desde 23/09/2026 — ver `plano-administrativo`). `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo |
 | POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. Mesma ação de `POST /anunciantes/me/cancelar-assinatura`, pelo admin em nome do cliente (16/09/2026: o pagador também pode cancelar sozinho, ver Conta logada) |
 
 ### Pontos e telas
@@ -256,16 +261,18 @@ pede.
 | POST | `/admin/beneficios` | cria |
 | PATCH | `/admin/beneficios/:id` | edita |
 | DELETE | `/admin/beneficios/:id` | remove |
-| GET | `/admin/categorias` | lista todas (ativa, inativa e legado — `GET /categorias` pública mostra só o que sobra depois do filtro) |
-| POST | `/admin/categorias` | cria: `{nome (obrigatório), grupo?, aliases?}` |
-| PATCH | `/admin/categorias/:id` | edita `nome`, `ativo`, `grupo`, `aliases` (array) ou `legado` |
-| DELETE | `/admin/categorias/:id` | remove — 409 se estiver em uso (FK de `anunciantes`/`pontos`); desative em vez de excluir |
+| GET | `/admin/categorias` | lista todas (ativa, inativa e legado — `GET /categorias` pública mostra só o que sobra depois do filtro), com `uso_contas`, `uso_pontos` e `canonica_nome` (23/09/2026) |
+| POST | `/admin/categorias` | cria: `{nome (obrigatório), grupo?, aliases?, ativo?, legado?}` |
+| PATCH | `/admin/categorias/:id` | edita `nome`, `ativo`, `grupo`, `aliases` (array) ou `legado` (legado força `ativo = false`) |
+| POST | `/admin/categorias/:id/mesclar` | `{destino_id}` — funde na canônica numa transação: reaponta contas e pontos, grava `canonica_id`, vira legado e o nome vira alias da canônica. 400 se o destino for ela mesma ou legado (23/09/2026, mesma operação da migration 074) |
+| DELETE | `/admin/categorias/:id` | remove — 409 se estiver em uso (FK de `anunciantes`/`pontos`); mescle ou tire do cadastro em vez de excluir |
 
 ### Criativos
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/criativos` | fila de aprovação |
-| PATCH | `/admin/criativos/:id` | aprova ou recusa. Só aprovado entra na playlist |
+| PATCH | `/admin/criativos/:id` | aprova, recusa, retira do ar (`retirado`, migration 075) ou põe de volta. Só aprovado entra na playlist. Aprovar um substituto (`substitui_criativo_id`) tira o original do ar no mesmo gesto |
+| POST | `/admin/criativos/:id/substituto` | multipart `arquivo` — sobe a versão nova de um criativo APROVADO sem tirá-lo do ar: a nova nasce em análise apontando pra ele; ao ser aprovada, troca de lugar. 409 se já houver substituto em análise ou a conta estiver suspensa (23/09/2026) |
 
 ### Pagamento ao ponto (extrato)
 | Método | Rota | O que faz |
