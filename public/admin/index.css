@@ -179,7 +179,9 @@ button.pend-linha:hover { border-color: var(--brand); }
 .tela-campo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .tela-campo label { font-size: .74rem; color: var(--text-dim); }
 .tela-campo-margens { grid-column: span 2; }
-.margens-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 64px)); gap: 6px; }
+.margens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; max-width: 320px; }
+.margem-campo { display: flex; flex-direction: column; gap: 2px; }
+.margem-campo label { font-size: .7rem; color: var(--text-dim); }
 @media (max-width: 480px) {
   .tela-campo-margens { grid-column: 1 / -1; }
 }

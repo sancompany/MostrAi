@@ -3,6 +3,53 @@
 ## Updated
 2026-09-23
 
+## Correção cirúrgica de Rede: candidatura, CEP/bairro, safe area (23/09/2026, este agente)
+Pedido explícito do dono, separado da reconstrução de Contas acima: "NÃO
+quero redesenhar Rede... só 3 correções funcionais". Rede está congelada
+pra V1 depois deste round — o resto visual fica pra uma rodada universal
+futura.
+
+- **Confirmação de candidatura**: `public/anunciante/ponto.page.js`, "+
+  Cadastrar outro endereço" — a mensagem de sucesso (`msg`) morava DENTRO do
+  form que a linha seguinte escondia (`candidaturaRaiz.hidden = true`);
+  ninguém via. Agora um elemento próprio, fora do form
+  (`#msgNovoEnderecoConfirma`, `public/anunciante/ponto.html`), mostra a
+  confirmação depois do form fechar.
+- **"Meus endereços" mostra candidaturas pendentes**: rota nova `GET
+  /anunciantes/me/pontos/candidaturas` (`src/pontos/routes.js`, repositório
+  `candidaturasRepo.listarAbertasPorConta`) lista as candidaturas em aberto
+  da conta; `carregarPontos()` funde com os pontos de verdade, badge "Em
+  análise". Sem FK entre candidatura e ponto (como já era) — a candidatura
+  só some da lista quando o admin aprova (status sai de 'nova'/'em_contato'),
+  sem exibição duplicada.
+- **Bloqueio de duplicata corrigido pra ser por ENDEREÇO**: achado real —
+  `POST /anunciantes/me/pontos` e `POST /conta/modos/:papel/pedir` bloqueavam
+  QUALQUER segundo endereço enquanto o primeiro estivesse em análise, mesmo
+  sendo lugares diferentes (dono de duas lojas não conseguia candidatar a
+  segunda). Agora compara `endereco`+`cep` (case/espaço insensível) da MESMA
+  conta; mensagem `"Já existe uma solicitação em análise para este
+  endereço"`.
+- **CEP → Rua/Bairro**: `public/formulario.js#ligarCep()` concatenava
+  `bairro` dentro do campo Rua (`"Avenida X, Bairro Y"`) mesmo com o campo
+  `bairro` dedicado já existindo no formulário canônico de candidatura
+  (`public/candidatura-ponto.js`, de uma rodada anterior — nunca tinha sido
+  ligado). Agora preenche os dois campos separados; campo que a ViaCEP não
+  devolve fica vazio, nunca inventado.
+- **Safe area (margens da tela)**: os 4 inputs (`public/admin/index.page.js`,
+  card de Telas) só tinham `title=` (tooltip) distinguindo Superior/Direita/
+  Inferior/Esquerda — confuso, sem rótulo visível. Agora cada um tem
+  `<label>` visível, mais uma linha curta "1 vmin = 1% do menor lado da área
+  visível da tela". Unidade (vmin), `step=0.5` (decimais) e `min=0` já
+  existiam; mapeamento pro player conferido sem inversão (`superior→top`,
+  `direita→right`, `inferior→bottom`, `esquerda→left`,
+  `public/player.css`/`player.page.js`).
+- Teste novo: `tests/rede-correcao-cirurgica.test.js` (bloqueio por endereço,
+  listagem de candidaturas abertas). `tests/e2e/09-rede-redesenho.mjs`
+  corrigido: apontava pra elementos aposentados por uma rodada anterior
+  (`#cp_fotoNome`/`.campo-foto` → `[data-foto-legenda]`/`[data-campo-foto]`
+  do formulário canônico) — achado ao rodar, não causado por este round.
+  Suíte 206/206, `npm run check` limpo.
+
 ## Correção do modelo de domínio: comodato × plano comercial separados + suspensão só manual (23/09/2026, este agente)
 Feedback do dono sobre a reconstrução de Contas acima, em 3 pontos + 1
 decisão maior (dele e do GPT, "correção do modelo de domínio, não de Contas").

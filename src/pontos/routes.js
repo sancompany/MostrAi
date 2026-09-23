@@ -12,6 +12,7 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const pool = require('../db/pool');
 const comodato = require('./comodato');
 const { criarCandidaturaPonto } = require('../conta/modos');
+const candidaturasRepo = require('../candidaturas/repository');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -44,6 +45,15 @@ router.get('/anunciantes/:id/pontos', exigirAnuncianteLogado, async (req, res) =
   res.json(await repo.listarPorAnunciante(req.params.id));
 });
 
+// "Meus endereços" (correção cirúrgica de Rede, 23/09/2026): candidaturas em
+// aberto desta conta, pra mostrar ao lado dos pontos de verdade com "Em
+// análise" — sem misturar no modelo (ver listarAbertasPorConta). Some daqui
+// sozinha quando o admin aprova (o status deixa de ser 'nova'/'em_contato'),
+// exatamente quando o ponto de verdade nasce — sem exibição duplicada.
+router.get('/anunciantes/me/pontos/candidaturas', exigirAnuncianteLogado, async (req, res) => {
+  res.json(await candidaturasRepo.listarAbertasPorConta(req.session.anuncianteId, 'ponto'));
+});
+
 // Dono de ponto (papel vindo do convite) cadastra outro endereço pela conta
 // — "+ Cadastrar outro endereço" em Meus endereços. ENTRA COMO CANDIDATURA
 // (rodada de candidatura canônica, 22/09/2026), igual ao caminho "Você
@@ -59,12 +69,19 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   if (!conta || !(conta.papeis || []).includes('ponto')) {
     return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
   }
+  // Bloqueio SÓ pelo mesmo endereço (achado real, 23/09/2026: bloqueava
+  // qualquer segundo endereço enquanto o primeiro estivesse em análise,
+  // mesmo sendo lugares diferentes — quem tem duas lojas não conseguia
+  // candidatar a segunda). Rua+número (endereco) e CEP juntos identificam o
+  // endereço; comparação sem espaço/maiúscula pra não deixar passar por
+  // diferença de digitação boba.
   const { rows: abertos } = await pool.query(
-    `SELECT id FROM candidaturas WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')`,
-    [conta.id],
+    `SELECT id FROM candidaturas
+       WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')
+         AND lower(trim(endereco)) = lower(trim($2)) AND trim(COALESCE(cep, '')) = trim($3)`,
+    [conta.id, req.body.endereco || '', req.body.cep || ''],
   );
-  if (abertos.length)
-    return res.status(409).json({ erro: 'você já tem um endereço em análise — a gente chama no WhatsApp' });
+  if (abertos.length) return res.status(409).json({ erro: 'Já existe uma solicitação em análise para este endereço' });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
     res.status(201).json({ ok: true, id: cand.id });

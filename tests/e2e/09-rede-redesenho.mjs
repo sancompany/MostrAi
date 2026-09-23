@@ -325,13 +325,20 @@ const painel = await pagina('/anunciante/painel.html');
 await painel.waitForTimeout(500);
 await painel.click('#btnAbrirCardPonto');
 check('campo de foto (opcional) existe no formulário', (await painel.locator('#cp_foto').count()) === 1);
-check('dica padrão de foto aparece antes de escolher arquivo', (await painel.textContent('#cp_fotoNome')).includes('Opcional'));
+// Elementos renomeados pelo formulário canônico de candidatura (rodada
+// "Formulário canônico de candidatura", 22/09/2026): #cp_fotoNome/.campo-foto
+// viraram [data-foto-legenda]/[data-campo-foto] (public/candidatura-ponto.js)
+// — este teste ainda apontava pros nomes antigos.
+check(
+  'dica padrão de foto aparece antes de escolher arquivo',
+  (await painel.textContent('[data-foto-legenda]')).includes('Opcional'),
+);
 // A foto vem ANTES do campo de movimento no formulário (seção "topo" pedida
 // na rodada final) — comparado a posição no DOM.
 check(
   'campo de foto vem antes do campo de movimento',
   await painel.evaluate(() => {
-    const foto = document.querySelector('.campo-foto');
+    const foto = document.querySelector('[data-campo-foto]');
     const fluxo = document.getElementById('cp_fluxo');
     return !!(foto && fluxo) && !!(foto.compareDocumentPosition(fluxo) & Node.DOCUMENT_POSITION_FOLLOWING);
   }),
@@ -349,7 +356,10 @@ writeFileSync(
   ),
 );
 await painel.setInputFiles('#cp_foto', fotoTeste);
-check('nome do arquivo aparece depois de escolher', (await painel.textContent('#cp_fotoNome')) === 'foto-teste.png');
+check(
+  'nome do arquivo aparece depois de escolher',
+  (await painel.textContent('[data-foto-legenda]')) === 'foto-teste.png',
+);
 await painel.click('#formCardPonto button[type=submit]');
 await painel.waitForTimeout(700);
 check(

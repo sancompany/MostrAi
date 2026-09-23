@@ -278,12 +278,16 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   if ((conta.papeis || []).includes(papel))
     return res.status(409).json({ erro: 'esse modo já está liberado na sua conta' });
+  // Mesmo bloqueio por ENDEREÇO de `POST /anunciantes/me/pontos`
+  // (src/pontos/routes.js) — nunca por "já tem qualquer pedido em aberto",
+  // que barrava candidatar um segundo endereço diferente.
   const { rows: abertos } = await pool.query(
-    `SELECT id FROM candidaturas WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')`,
-    [conta.id, papel],
+    `SELECT id FROM candidaturas
+       WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')
+         AND lower(trim(endereco)) = lower(trim($3)) AND trim(COALESCE(cep, '')) = trim($4)`,
+    [conta.id, papel, req.body.endereco || '', req.body.cep || ''],
   );
-  if (abertos.length)
-    return res.status(409).json({ erro: 'você já tem um pedido em análise — a gente chama no WhatsApp' });
+  if (abertos.length) return res.status(409).json({ erro: 'Já existe uma solicitação em análise para este endereço' });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
     res.status(201).json({ ok: true, id: cand.id });

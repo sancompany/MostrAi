@@ -2382,11 +2382,24 @@ function montarTelaCard(t, estaOffline) {
       </div>
       <div class="tela-campo tela-campo-margens">
         <label title="Área que a moldura do molde ACM cobre — o player encolhe a mídia pra não ficar atrás dela">Margens da safe area (vmin)</label>
+        <p class="form-hint u-m-0 u-fs-72">1 vmin = 1% do menor lado da área visível da tela.</p>
         <div class="margens-grid">
-          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_superior" data-id="${t.id}" value="${t.margem_superior ?? 0}" title="Superior">
-          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_direita" data-id="${t.id}" value="${t.margem_direita ?? 0}" title="Direita">
-          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_inferior" data-id="${t.id}" value="${t.margem_inferior ?? 0}" title="Inferior">
-          <input class="mini" type="number" min="0" step="0.5" data-tela="margem_esquerda" data-id="${t.id}" value="${t.margem_esquerda ?? 0}" title="Esquerda">
+          <div class="margem-campo">
+            <label for="margemSuperior${t.id}">Superior</label>
+            <input class="mini" type="number" min="0" step="0.5" id="margemSuperior${t.id}" data-tela="margem_superior" data-id="${t.id}" value="${t.margem_superior ?? 0}">
+          </div>
+          <div class="margem-campo">
+            <label for="margemDireita${t.id}">Direita</label>
+            <input class="mini" type="number" min="0" step="0.5" id="margemDireita${t.id}" data-tela="margem_direita" data-id="${t.id}" value="${t.margem_direita ?? 0}">
+          </div>
+          <div class="margem-campo">
+            <label for="margemInferior${t.id}">Inferior</label>
+            <input class="mini" type="number" min="0" step="0.5" id="margemInferior${t.id}" data-tela="margem_inferior" data-id="${t.id}" value="${t.margem_inferior ?? 0}">
+          </div>
+          <div class="margem-campo">
+            <label for="margemEsquerda${t.id}">Esquerda</label>
+            <input class="mini" type="number" min="0" step="0.5" id="margemEsquerda${t.id}" data-tela="margem_esquerda" data-id="${t.id}" value="${t.margem_esquerda ?? 0}">
+          </div>
         </div>
       </div>
     </div>
