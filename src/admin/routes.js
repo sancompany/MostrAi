@@ -24,10 +24,24 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     const criativo = await criativosRepo.atualizar(req.params.id, req.body);
     if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
 
+    // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
+    // tira A do ar no mesmo gesto — A vira 'retirado' (continua cadastrado,
+    // sai da playlist). Vale pra aprovação vinda da ficha da conta ou da fila
+    // global: é o mesmo PATCH. Se esta segunda escrita falhar, os dois ficam
+    // aprovados por um instante e o gerador já toca o mais recente (B) —
+    // nada quebra, só fica um a mais até alguém retirar.
+    if (criativo.status === 'aprovado' && antes?.status === 'pendente' && criativo.substitui_criativo_id) {
+      await pool.query(`UPDATE criativos SET status = 'retirado' WHERE id = $1 AND status = 'aprovado'`, [
+        criativo.substitui_criativo_id,
+      ]);
+    }
+
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia
-    // "seu anúncio está no ar" várias vezes pelo mesmo vídeo.
-    if (criativo.status === 'aprovado' && antes?.status !== 'aprovado') {
+    // "seu anúncio está no ar" várias vezes pelo mesmo vídeo. Voltar do
+    // 'retirado' (Colocar no ar, na ficha) também não é aprovação nova: sem
+    // e-mail, sem evento de tempo-até-aprovar.
+    if (criativo.status === 'aprovado' && antes?.status !== 'aprovado' && antes?.status !== 'retirado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
       // o que coloca o vídeo no ar.

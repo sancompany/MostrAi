@@ -261,8 +261,10 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .razao b { display: block; margin-bottom: 6px; font-size: 1.02rem; }
 .razao span { color: var(--text-dim); font-size: .93rem; }
 
+/* Dois cartões (Anunciante e Ponto) desde 23/09/2026 — o de Vendedor
+   parceiro saiu com o programa de vendedores (aposentado pelo dono). */
 .split {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
 }
 @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
 .split-card {

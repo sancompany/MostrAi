@@ -2,8 +2,10 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 
 // Convite = link com token, papéis, validade e uso único, gerado pelo dono.
-// É o ÚNICO caminho de entrada de dono de ponto e de vendedor (CONSTRAINTS.md).
-const PAPEIS = ['anunciante', 'ponto', 'vendedor'];
+// É o ÚNICO caminho de entrada de dono de ponto (CONSTRAINTS.md). 'vendedor'
+// saiu da lista (papel aposentado, 23/09/2026): convite novo não o carrega
+// mais — convite antigo que ainda o tenha é filtrado na aceitação.
+const PAPEIS = ['anunciante', 'ponto'];
 const VALIDADE_DIAS_PADRAO = 7;
 
 async function criar({ papeis, nomeSugerido, emailSugerido, candidaturaId, validadeDias }) {

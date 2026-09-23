@@ -31,7 +31,11 @@ async function carregar() {
     return mostrarInvalido('Não deu pra conferir o convite agora. Tente de novo em instantes.');
   }
 
-  PAPEIS = convite.papeis || [];
+  // 'vendedor' não conta mais (programa aposentado, 23/09/2026) — convite
+  // antigo que ainda o traga é tratado só pelos outros papéis, igual ao
+  // servidor (src/anunciantes/routes.js, src/conta/modos.js).
+  PAPEIS = (convite.papeis || []).filter((p) => p !== 'vendedor');
+  if (!PAPEIS.length) PAPEIS = ['anunciante'];
   const nomes = PAPEIS.map((p) => (TEXTO_PAPEL[p] || [p])[0].toLowerCase());
 
   // Já logado: oferece ligar os papéis nesta conta (painel único) em vez

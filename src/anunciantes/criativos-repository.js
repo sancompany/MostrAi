@@ -1,6 +1,9 @@
 const pool = require('../db/pool');
 
-const STATUS = ['pendente', 'aprovado', 'reprovado'];
+// 'retirado' (migration 075): aprovado que o admin tirou do ar, ou que saiu
+// porque o substituto foi aprovado. Continua cadastrado; o gerador só toca
+// 'aprovado', então fica fora da playlist sem nenhuma outra regra.
+const STATUS = ['pendente', 'aprovado', 'reprovado', 'retirado'];
 
 const CAMPOS_ATUALIZAVEIS = [
   'status',
@@ -19,8 +22,8 @@ const CAMPOS_ATUALIZAVEIS = [
 async function criar(dados) {
   const { rows } = await pool.query(
     `INSERT INTO criativos
-       (anunciante_id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url, duracao_segundos)
-     VALUES ($1,$2,$3,$4,$5)
+       (anunciante_id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url, duracao_segundos, substitui_criativo_id)
+     VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING *`,
     [
       dados.anunciante_id,
@@ -28,6 +31,7 @@ async function criar(dados) {
       dados.arquivo_normalizado_url,
       dados.thumbnail_url,
       dados.duracao_segundos,
+      dados.substitui_criativo_id || null,
     ],
   );
   return rows[0];
@@ -39,10 +43,14 @@ async function buscarPorId(id) {
 }
 
 // Conta pra aplicar o limite de criativos do plano (não conta reprovado —
-// reprovado não ocupa a cota, ver src/anunciantes/routes.js).
+// reprovado não ocupa a cota, ver src/anunciantes/routes.js). Substituto em
+// análise também não conta: ele só entra tirando o que substitui, então o
+// total depois da troca é o mesmo de antes (Parte 22).
 async function contarNaoReprovados(anuncianteId) {
   const { rows } = await pool.query(
-    "SELECT COUNT(*)::int AS total FROM criativos WHERE anunciante_id = $1 AND status != 'reprovado'",
+    `SELECT COUNT(*)::int AS total FROM criativos
+      WHERE anunciante_id = $1 AND status != 'reprovado'
+        AND NOT (status = 'pendente' AND substitui_criativo_id IS NOT NULL)`,
     [anuncianteId],
   );
   return rows[0].total;

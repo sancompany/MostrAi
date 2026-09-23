@@ -55,7 +55,6 @@ async function carregar() {
     carregarBancoHoras();
   });
   montarCardPonto(estado);
-  montarLinkVendedor(estado);
   if (estado && !estado.modos.anunciante.liberado) {
     document.getElementById('statusBanner').innerHTML =
       `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
@@ -86,15 +85,6 @@ function montarBloqueioPlano() {
         <a class="btn primary" href="/planos.html">Escolher plano</a>
       </div>`;
   container.parentNode.insertBefore(caixa, container);
-}
-
-// "Vendas" saiu do topo (19/09/2026): quem já tem o papel vendedor perdia
-// todo caminho até o próprio painel de vendas sem essa linha — a página
-// continua existindo, só não tem mais aba.
-function montarLinkVendedor(estado) {
-  const caixa = document.getElementById('linkVendedor');
-  if (!caixa || !estado?.papeis?.includes('vendedor')) return;
-  caixa.innerHTML = `<p class="form-hint u-m-0"><a href="/anunciante/vendedor.html">Ver meu painel de vendas →</a></p>`;
 }
 
 // Candidatura a ponto, migrada pro fim do Painel (19/09/2026, pedido do
@@ -246,9 +236,6 @@ function preencherStatusBanner() {
   }
 
   const el = document.getElementById('statusBanner');
-  // `status` virou só comum/parceiro (16/09/2026) — "Comum" não é
-  // informação nova pro cliente, então só aparece pra quem é parceiro.
-  const statusTxt = ANUNCIANTE.status === 'parceiro' ? ROTULOS.anunciante.parceiro : null;
   let planoTxt = 'Sem plano ainda';
   if (ANUNCIANTE.plano_id) {
     // Cortesia chegava no navegador e nao aparecia em tela nenhuma do cliente:
@@ -283,7 +270,7 @@ function preencherStatusBanner() {
         <p class="hero-kicker">Painel da campanha</p>
         <h1>Olá, ${esc(ANUNCIANTE.nome_empresa)}</h1>
         <p>Acompanhe a entrega do seu anúncio e a presença da sua marca na rede Mostraí.</p>
-        <span class="hero-plan"><span class="hero-plan-dot"></span>${statusTxt ? `${statusTxt} · ` : ''}${planoTxt}</span>
+        <span class="hero-plan"><span class="hero-plan-dot"></span>${planoTxt}</span>
         ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
       </div>
       <div>
