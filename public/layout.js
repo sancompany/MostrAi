@@ -407,6 +407,23 @@ window.ROTULOS = {
     reprovado: 'badge-err',
     retirado: 'badge-pendente',
   },
+  // "Meus criativos" do painel (GET /anunciantes/me/criativos): a situação
+  // que o cliente entende, com "No ar" separado de "Aprovado" (aprovada mas
+  // fora do rodízio agora — plano sem vaga pra mais uma peça, ou sem plano).
+  criativoSituacao: {
+    em_analise: 'Em análise',
+    aprovado: 'Aprovado',
+    no_ar: 'No ar',
+    fora_do_ar: 'Fora do ar',
+    recusado: 'Recusado',
+  },
+  criativoSituacaoClasse: {
+    em_analise: 'badge-pendente',
+    aprovado: 'badge-neutro',
+    no_ar: 'badge-ok',
+    fora_do_ar: 'badge-neutro',
+    recusado: 'badge-err',
+  },
   // So dois estados: o CHECK da migration 019 e ('aprovado','inativo'). O
   // 'pendente_aprovacao' que estava aqui vinha do modelo antigo de afiliado e
   // nao existe no banco — rotulo pra um estado impossivel.
