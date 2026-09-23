@@ -148,7 +148,10 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
          FROM pontos p
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-         LEFT JOIN planos pl ON pl.id = a.plano_id
+         -- COALESCE: mesma regra de ocupação por plano efetivo (23/09/2026,
+         -- migration 077) — sem isso, anunciante só-comodato ocupando ponto
+         -- desaparecia da capacidade calculada aqui.
+         LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
         WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
         GROUP BY p.id
      ),

@@ -256,14 +256,17 @@ async function ocupacaoPorAnunciante() {
          FROM pontos p
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-         LEFT JOIN planos pl ON pl.id = a.plano_id
+         -- COALESCE: comercial manda quando existe, comodato cobre o resto
+         -- (23/09/2026, migration 077) — sem isso, anunciante só-comodato
+         -- ocupando ponto via escolha sumia da ocupação (plano_id ficou null).
+         LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
         GROUP BY p.id
      )
      SELECT a.id AS anunciante_id, a.nome_empresa, p.id AS ponto_id, p.nome AS ponto_nome,
             pl.segundos_por_hora, o.segundos_vendidos, p.escolha_bloqueada_em, ap.escolhido_em
        FROM anunciantes_pontos ap
        JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-       JOIN planos pl ON pl.id = a.plano_id
+       JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
        JOIN pontos p ON p.id = ap.ponto_id
        JOIN ocupacao o ON o.ponto_id = p.id
       ORDER BY o.segundos_vendidos DESC, p.nome, a.nome_empresa`,
@@ -285,7 +288,7 @@ async function avaliarBloqueios() {
          AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-                JOIN planos pl ON pl.id = a.plano_id
+                JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
                WHERE ap.ponto_id = pontos.id) >= $1::numeric * 3600
      RETURNING id`,
     [LIMITE_OCUPACAO_BLOQUEIA],
@@ -302,7 +305,7 @@ async function liberarEscolha(id) {
          AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-                JOIN planos pl ON pl.id = a.plano_id
+                JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
                WHERE ap.ponto_id = pontos.id) <= (3600 - $2)
      RETURNING id`,
     [id, FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS],

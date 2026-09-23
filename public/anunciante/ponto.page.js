@@ -342,20 +342,38 @@ function fotoOuPlaceholderPonto(url, nome) {
   return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Ponto sem foto')}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
 }
 
+// Candidatura em aberto (endereço ainda em análise, não é ponto de verdade
+// ainda — ver src/candidaturas/repository.js#listarAbertasPorConta). Mesmo
+// cartão visual do ponto, badge "Em análise" (mesma classe do preview em
+// candidatura-ponto.js), sem os dados que só um ponto aprovado tem.
+function cartaoCandidaturaPendente(c) {
+  return `
+    <div class="ponto-card">
+      <div class="ponto-card-media">${fotoOuPlaceholderPonto(c.foto_fachada_url, c.nome_comercio)}</div>
+      <span class="badge badge-pendente">Em análise</span>
+      <h4>${esc(c.nome_comercio || '')}</h4>
+      <p>${esc(c.endereco || '')}</p>
+      <p>${esc(c.cidade || '')}${c.uf ? '/' + esc(c.uf) : ''}</p>
+    </div>`;
+}
+
 async function carregarPontos() {
   const el = document.getElementById('pontosLista');
   try {
-    const pontos = await (
-      await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/pontos`, { credentials: 'include' })
-    ).json();
+    const [pontos, candidaturas] = await Promise.all([
+      (await fetch(`${API_BASE_URL}/anunciantes/${CONTA.id}/pontos`, { credentials: 'include' })).json(),
+      (await fetch(`${API_BASE_URL}/anunciantes/me/pontos/candidaturas`, { credentials: 'include' })).json(),
+    ]);
     carregarTrocaComodato(pontos);
-    if (!pontos.length) {
+    if (!pontos.length && !candidaturas.length) {
       el.innerHTML = '<p class="empty-state">Nenhum endereço cadastrado ainda.</p>';
       return;
     }
-    el.innerHTML = pontos
-      .map(
-        (p) => `
+    el.innerHTML =
+      candidaturas.map(cartaoCandidaturaPendente).join('') +
+      pontos
+        .map(
+          (p) => `
       <div class="ponto-card">
         <div class="ponto-card-media">${fotoOuPlaceholderPonto(p.foto_instalacao_url, p.nome)}</div>
         <span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>
@@ -366,8 +384,8 @@ async function carregarPontos() {
         ${Number(p.valor_pago_mensal) > 0 ? `<p>Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></p>` : ''}
         ${p.cota_autoanuncio_slots_hora ? `<p class="u-dim">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</p>` : ''}
       </div>`,
-      )
-      .join('');
+        )
+        .join('');
   } catch {
     el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus endereços agora.</p>';
   }
@@ -451,10 +469,19 @@ formEnd.addEventListener('submit', async (e) => {
       });
       if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
     }
-    msg.textContent = 'Pedido enviado. A gente chama no WhatsApp pra combinar.';
-    msg.className = 'form-msg ok';
+    // A confirmação mora FORA do formulário (achado real, 23/09/2026): `msg`
+    // fica dentro de `candidaturaRaiz`, que a linha seguinte esconde — a
+    // pessoa nunca chegava a ver "pedido enviado" antes de sumir. Agora quem
+    // confirma é `msgConfirma` (public/anunciante/ponto.html, fora do form),
+    // que fica visível depois do formulário fechar; o cartão "Em análise" na
+    // lista logo abaixo (carregarPontos) é a confirmação que persiste.
     formEnd.reset();
     candidaturaRaiz.hidden = true;
+    msg.textContent = '';
+    const msgConfirma = document.getElementById('msgNovoEnderecoConfirma');
+    msgConfirma.textContent = 'Pedido enviado. A gente chama no WhatsApp pra combinar.';
+    msgConfirma.className = 'form-msg ok';
+    msgConfirma.hidden = false;
     carregarPontos();
   } catch (err) {
     msg.textContent = err.message === 'falha' ? 'Não foi possível enviar agora.' : err.message;
@@ -473,8 +500,9 @@ carregar().catch(() => {
 // modalidade inteira de quem abre mão dos R$ 50. O gerador da playlist já
 // puxava os criativos aprovados desta conta (criativosDoDono, limite 3) e não
 // havia nenhuma tela pra subir o vídeo: a cota era reservada e ficava vazia.
-// A rota é a mesma do anunciante (POST /anunciantes/:id/criativos), que já
-// aceita conta sem plano com teto de 1.
+// A rota é a mesma do anunciante (POST /anunciantes/:id/criativos) — o teto
+// vem do comodato (Inicial/Básico, campo próprio desde 23/09/2026, migration
+// 076), que a rota já lê como "plano efetivo" quando não há plano pago.
 // ---------------------------------------------------------------------------
 function ehVideoArquivo(url) {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || '');

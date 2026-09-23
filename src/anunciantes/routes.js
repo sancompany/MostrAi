@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const router = express.Router();
 const repo = require('./repository');
+const { planoEfetivoId } = repo;
 const criativosRepo = require('./criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
 const pool = require('../db/pool');
@@ -437,7 +438,7 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
   // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
   // pode estar numa versão aposentada.
-  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
   res.json({ ...anunciante, vendedor, plano });
 });
 
@@ -485,7 +486,7 @@ router.post('/anunciantes/me/reenviar-codigo-email', exigirAnuncianteLogado, lim
 // decidida — não precisa de cron separado pra isso.
 router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (req, res) => {
   const conta = await repo.buscarPorId(req.session.anuncianteId);
-  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
 
   await pontosRepo.avaliarBloqueios();
@@ -506,7 +507,10 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        FROM pontos p
        LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
-       LEFT JOIN planos pl ON pl.id = ao.plano_id
+       -- COALESCE: plano efetivo de quem ocupa (23/09/2026, migration 077) —
+       -- sem isso, outro anunciante só-comodato escolhido no mesmo ponto
+       -- desaparecia da ocupação mostrada aqui.
+       LEFT JOIN planos pl ON pl.id = COALESCE(ao.plano_id, ao.comodato_plano_id)
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
       GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
@@ -576,7 +580,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
 
 router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await repo.buscarPorId(req.session.anuncianteId);
-  const plano = conta?.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   if (!plano) return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
 
   const pedidos = [...new Set((req.body.pontos || []).map(Number).filter(Number.isInteger))];
@@ -808,12 +812,15 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   // do cadastro" — decisão revertida pelo dono, 19/09/2026: o painel agora
   // trava a tela inteira sem plano (ver front), então subir criativo sem
   // plano nem deveria ser alcançável por ali; isso é a segunda trava, direto
-  // no servidor, pra quem tentar pela API sem passar pela tela.
-  if (!anunciante.plano_id) {
+  // no servidor, pra quem tentar pela API sem passar pela tela. "Plano"
+  // aqui é o EFETIVO (comercial ou comodato, 23/09/2026) — dono de ponto
+  // sem plano pago nenhum sobe o autoanúncio pela cota do comodato.
+  const planoId = planoEfetivoId(anunciante);
+  if (!planoId) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
   }
-  const plano = await planosRepo.buscarPorId(anunciante.plano_id);
+  const plano = await planosRepo.buscarPorId(planoId);
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: plano.limite_criativos,
@@ -850,7 +857,7 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
       ? res.status(409).json({ erro: 'conta suspensa — reative antes de mexer nos criativos' })
       : res.status(404).json({ erro: 'conta não encontrada' });
   }
-  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
     // A conta própria não tem teto de duração: o inventário é da casa.
@@ -889,7 +896,7 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
       .status(409)
       .json({ erro: 'esse criativo já tem um substituto em análise — aprove ou recuse aquele antes' });
   }
-  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
     limite: Infinity,
@@ -907,7 +914,7 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
   const conta = await repo.buscarPorId(req.params.id);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   const criativos = await criativosRepo.listarPorAnunciante(conta.id);
-  const plano = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
+  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   const contaVeicula =
     !!plano &&
     !conta.suspenso &&
@@ -1097,7 +1104,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     ]);
 
   const confirmadas = Number(totais.rows[0].confirmadas);
-  const plano = anunciante.plano_id ? await planosRepo.buscarPorId(anunciante.plano_id) : null;
+  const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
   // Mesmo motivo do comentário abaixo, em "custoPorExibicao": preço de
   // cobrança só pode ter uma fonte. Sem a assinatura aqui, quem está numa
   // condição promocional (Ofertas/Promoções, 22/09/2026) veria um custo por

@@ -85,4 +85,30 @@ async function contarNovas() {
   return rows[0].total;
 }
 
-module.exports = { criar, listar, buscarPorId, atualizar, definirFoto, contarNovas, TIPOS, STATUS };
+// Candidaturas em aberto de uma conta (Parte de correção cirúrgica de Rede,
+// 23/09/2026): "Meus endereços" precisa mostrar o que está em análise junto
+// dos pontos de verdade, sem misturar as duas coisas no modelo — a
+// candidatura continua candidatura até o admin aprovar (aí vira ponto, e some
+// daqui porque o status deixa de ser 'nova'/'em_contato').
+async function listarAbertasPorConta(contaId, tipo) {
+  const { rows } = await pool.query(
+    `SELECT id, tipo, nome_comercio, endereco, bairro, cidade, uf, foto_fachada_url, status, criado_em
+       FROM candidaturas
+      WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')
+      ORDER BY criado_em DESC`,
+    [contaId, tipo],
+  );
+  return rows;
+}
+
+module.exports = {
+  criar,
+  listar,
+  buscarPorId,
+  atualizar,
+  definirFoto,
+  contarNovas,
+  listarAbertasPorConta,
+  TIPOS,
+  STATUS,
+};

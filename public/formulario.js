@@ -26,8 +26,14 @@ function ligarCep(escopo) {
         const dados = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
         if (dados.erro) throw new Error();
         const rua = achar('endereco');
+        // Rua e bairro são campos separados (Parte W, migration 070) — nunca
+        // mais concatenados. Quando a ViaCEP não devolve um dos dois (CEP de
+        // faixa, sem logradouro/bairro fixo), o campo fica vazio, pro cliente
+        // preencher — nunca inventado nem colado no outro campo.
+        if (rua) rua.value = dados.logradouro || '';
+        const bairro = achar('bairro');
+        if (bairro) bairro.value = dados.bairro || '';
         // Deixa o número pro cliente digitar — é o único pedaço que o CEP não sabe.
-        if (rua) rua.value = `${dados.logradouro}${dados.bairro ? `, ${dados.bairro}` : ''}`;
         if (achar('cidade')) achar('cidade').value = dados.localidade;
         if (achar('uf')) achar('uf').value = dados.uf;
         if (aviso) aviso.textContent = 'Confira e complete com o número.';

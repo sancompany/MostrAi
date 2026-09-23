@@ -17,7 +17,7 @@ async function exportarConta(anuncianteId) {
            data_inicio_cobertura, data_expiracao, indicado_por_cupom,
            responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone,
            aceitou_termos_em, created_at, foto_url, categoria_id, categoria_livre,
-           excluido_em, papeis, plano_cortesia, cortesia_motivo,
+           excluido_em, papeis, plano_cortesia, cortesia_motivo, comodato_plano_id,
            comunicacoes_revogado_em, dados_opcionais_apagados_em
       FROM anunciantes WHERE id = $1`);
   if (!conta) return null;

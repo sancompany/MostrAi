@@ -3,7 +3,113 @@
 ## Updated
 2026-09-23
 
-## Revisão final da Visão geral do admin + fluxos internos (23/09/2026, este agente)
+## Correção cirúrgica de Rede: candidatura, CEP/bairro, safe area (23/09/2026, este agente)
+Pedido explícito do dono, separado da reconstrução de Contas acima: "NÃO
+quero redesenhar Rede... só 3 correções funcionais". Rede está congelada
+pra V1 depois deste round — o resto visual fica pra uma rodada universal
+futura.
+
+- **Confirmação de candidatura**: `public/anunciante/ponto.page.js`, "+
+  Cadastrar outro endereço" — a mensagem de sucesso (`msg`) morava DENTRO do
+  form que a linha seguinte escondia (`candidaturaRaiz.hidden = true`);
+  ninguém via. Agora um elemento próprio, fora do form
+  (`#msgNovoEnderecoConfirma`, `public/anunciante/ponto.html`), mostra a
+  confirmação depois do form fechar.
+- **"Meus endereços" mostra candidaturas pendentes**: rota nova `GET
+  /anunciantes/me/pontos/candidaturas` (`src/pontos/routes.js`, repositório
+  `candidaturasRepo.listarAbertasPorConta`) lista as candidaturas em aberto
+  da conta; `carregarPontos()` funde com os pontos de verdade, badge "Em
+  análise". Sem FK entre candidatura e ponto (como já era) — a candidatura
+  só some da lista quando o admin aprova (status sai de 'nova'/'em_contato'),
+  sem exibição duplicada.
+- **Bloqueio de duplicata corrigido pra ser por ENDEREÇO**: achado real —
+  `POST /anunciantes/me/pontos` e `POST /conta/modos/:papel/pedir` bloqueavam
+  QUALQUER segundo endereço enquanto o primeiro estivesse em análise, mesmo
+  sendo lugares diferentes (dono de duas lojas não conseguia candidatar a
+  segunda). Agora compara `endereco`+`cep` (case/espaço insensível) da MESMA
+  conta; mensagem `"Já existe uma solicitação em análise para este
+  endereço"`.
+- **CEP → Rua/Bairro**: `public/formulario.js#ligarCep()` concatenava
+  `bairro` dentro do campo Rua (`"Avenida X, Bairro Y"`) mesmo com o campo
+  `bairro` dedicado já existindo no formulário canônico de candidatura
+  (`public/candidatura-ponto.js`, de uma rodada anterior — nunca tinha sido
+  ligado). Agora preenche os dois campos separados; campo que a ViaCEP não
+  devolve fica vazio, nunca inventado.
+- **Safe area (margens da tela)**: os 4 inputs (`public/admin/index.page.js`,
+  card de Telas) só tinham `title=` (tooltip) distinguindo Superior/Direita/
+  Inferior/Esquerda — confuso, sem rótulo visível. Agora cada um tem
+  `<label>` visível, mais uma linha curta "1 vmin = 1% do menor lado da área
+  visível da tela". Unidade (vmin), `step=0.5` (decimais) e `min=0` já
+  existiam; mapeamento pro player conferido sem inversão (`superior→top`,
+  `direita→right`, `inferior→bottom`, `esquerda→left`,
+  `public/player.css`/`player.page.js`).
+- Teste novo: `tests/rede-correcao-cirurgica.test.js` (bloqueio por endereço,
+  listagem de candidaturas abertas). `tests/e2e/09-rede-redesenho.mjs`
+  corrigido: apontava pra elementos aposentados por uma rodada anterior
+  (`#cp_fotoNome`/`.campo-foto` → `[data-foto-legenda]`/`[data-campo-foto]`
+  do formulário canônico) — achado ao rodar, não causado por este round.
+  Suíte 206/206, `npm run check` limpo.
+
+## Correção do modelo de domínio: comodato × plano comercial separados + suspensão só manual (23/09/2026, este agente)
+Feedback do dono sobre a reconstrução de Contas acima, em 3 pontos + 1
+decisão maior (dele e do GPT, "correção do modelo de domínio, não de Contas").
+Branch `claude/wonderful-hypatia-i7y4xx`. Ver `docs/PENDENCIAS.md` (raiz —
+sem seção nova, correção direta nas RN existentes de `docs/funcional.md`,
+RN-32/RN-35/RN-32-A) e `docs/api.md` (rotas `/anunciantes/me`,
+`/admin/anunciantes/:id/plano[-administrativo[/encerrar]]`).
+
+- **Migration 077** (renumerada de 076 — colisão com a `076_horario_operacional_da_tela.sql` de outra rodada, mesmo dia; ver nota de merge em `docs/PENDENCIAS.md`) — `anunciantes.comodato_plano_id` (Inicial/Básico),
+  independente de `plano_id` (agora SÓ comercial: Essencial/Pro/Prime, pago
+  ou cortesia) de vez. Migração de dado em 3 passos, sem chute: deriva do
+  ponto vivo pra todo mundo (via `planos_ponto.plano_incluido_id`, o de
+  maior `ordem`); COALESCE pro `plano_id` antigo só nas contas órfãs
+  (`cortesia_motivo='comodato'` sem ponto — caso synthetic, não achado em
+  produção); limpa o slot comercial dessas órfãs depois. `sincronizarComodato`
+  (`src/pontos/comodato.js`) recalcula o campo toda vez que a modalidade de
+  um ponto muda — mesmo padrão "melhor, não soma" do `credito_comodato_mensal`.
+- **Regra nova, centralizada em `comodato.bloqueiaPlanoComercial(contaId)`**
+  (lê `planos_ponto.permite_assinar`, campo que já existia desde a 049):
+  Inicial bloqueia comprar/receber plano comercial (o sistema pede pra trocar
+  a modalidade pra Básico antes — sem conversão automática escondida); Básico
+  libera; sem ponto nenhum não bloqueia. Checado em 5 lugares: `/assinar`
+  self-service, concessão administrativa, `liberar-plano` legado, upgrade por
+  indicação, resgate de bônus.
+- **`plano-administrativo.js#encerrar()`** simplificado: encerra só o slot
+  comercial. Comodato NUNCA é tocado — nem por cancelamento de cortesia, nem
+  por cancelamento de assinatura paga. ("Não 'volta'; ele nunca deveria ter
+  desaparecido" — a frase do dono, literal.)
+- **Suspensão automática removida.** `conciliacao.js#encerrarCoberturaVencida`
+  (renomeada de `suspenderCoberturaVencida`) agora chama o mesmo `encerrar()`
+  do botão manual, com `motivo:'vencido'` (migration 078 amplia o CHECK de
+  `encerrado_motivo`) em vez de marcar `suspenso=true`. Suspensão automática
+  sobrevive só em `cobranca_contestada` (chargeback, obrigação contratual do
+  San Checkout) e no direito de arrependimento (o próprio titular pedindo) —
+  os dois não são "cobertura só venceu", são caso à parte, e ficaram como
+  estavam.
+- **Blast radius do `plano_id` virar só comercial** — corrigido com
+  `anunciantesRepo.planoEfetivoId(conta) = plano_id || comodato_plano_id`,
+  aplicado em ~15 pontos: elegibilidade de playlist
+  (`playlist/gerador.js`), ocupação (`pontos/repository.js` ×4,
+  `midias/repository.js`), upload/limite de criativo, pontos-disponíveis,
+  dashboard do painel (`public/anunciante/painel.page.js` — **o mais crítico:
+  sem esse fix o gate de bloqueio do painel escondia o autoanúncio de quem só
+  tem Básico**), exibições.
+- **Admin** (`public/admin/index.page.js`): ficha mostra Comodato e Plano
+  comercial como blocos de fato independentes (lê `comodato_plano_id` direto,
+  sem inferir de `plano_id`); texto do modal de cancelar cortesia não promete
+  mais "o comodato volta"; resumo da Visão Geral fala "plano(s) encerrado(s)
+  por cobertura vencida" em vez de "suspensa(s)".
+- **Texto legal (Termos §6, Política de Privacidade — programa de Vendedor)
+  marcado como pendência**, não editado — `docs/PENDENCIAS.md`, seção H. O
+  dono decide a redação; é o pedido dele explícito nesta rodada.
+- Testes: `tests/contas-reconstrucao.test.js` (+7 novos/reescritos) e
+  `tests/indicacoes.test.js` (+1). Suíte 204/204, `npm run check` limpo (15
+  avisos pré-existentes, nenhum novo).
+- **Próximo, mesma sessão, pedido explícito do dono:** correção cirúrgica em
+  Rede (candidatura, CEP/bairro, safe area) — ver seção logo abaixo assim que
+  existir, e `docs/PENDENCIAS.md` se ficar algo em aberto.
+
+## Revisão final da Visão geral do admin + fluxos internos (23/09/2026, outro agente, mergeada nesta branch)
 Pedido do dono (17 seções): fechar a V1 do ADMIN com revisão estrutural da
 Visão geral (2 colunas, muito mais compacta) e dos fluxos que ela abre.
 Detalhe completo em `docs/PENDENCIAS.md` (seção "Revisão final da Visão
@@ -44,7 +150,7 @@ geral e fluxos internos — 23/09/2026", final do arquivo) — resumo aqui:
   tocado; "Recebido no mês" não mudou de nome no backend (`receitaConfirmadaMes`),
   só o rótulo na UI.
 
-## Reconstrução final de Contas + Categorias (23/09/2026, outro agente, mergeado nesta branch)
+## Reconstrução final de Contas + Categorias (23/09/2026, este agente)
 Pedido do dono (63 partes): toda conta já pode anunciar; Central de Contas
 e ficha única; plano administrativo como benefício; criativos e pontos na
 ficha; suspensão que tira acesso; Vendedor/Parceiro fora da experiência;

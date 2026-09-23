@@ -103,6 +103,10 @@
           <h3 class="u-m-0">Meus endereços</h3>
           <button type="button" class="btn ghost" id="btnNovoEndereco">+ Cadastrar outro endereço</button>
         </div>
+        <!-- Fora do formulário (candidaturaNovoEndereco, abaixo) de propósito:
+             o formulário fecha assim que o pedido é enviado, e uma mensagem
+             de confirmação DENTRO dele some junto — ninguém via. -->
+        <p class="form-msg" id="msgNovoEnderecoConfirma" role="status" hidden></p>
         <div class="pontos-lista" id="pontosLista">Carregando...</div>
 
         <!-- Formulário canônico de candidatura (public/candidatura-ponto.js) —
