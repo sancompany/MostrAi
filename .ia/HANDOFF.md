@@ -3,6 +3,107 @@
 ## Updated
 2026-09-23
 
+## Reconstrução do painel único + créditos — Fases 1, 2 e 6 mergeadas; 3-5/7/8 em aberto (23/09/2026, este agente)
+Pedido gigante do dono (mensagem única, ~40 tópicos): reconstrução estrutural
+completa do painel da conta (unificar anunciante+ponto num dashboard só,
+modelo de créditos/benefícios por indicação e concessão administrativa, SSE
+pra eliminar F5 em todo o site, correção do bug intermitente do admin).
+Branch `claude/busy-noether-hheir2` (a designada desta sessão — o trabalho
+tinha sido feito por engano em `claude/painel-unico-creditos`, mesmo
+conteúdo, replicado pra branch certa antes do PR). PR #25, squash-merge em
+`main` (`327881c`), deploy Northflank confirmado (`/health` ok, build+
+rollout COMPLETED). **Só as Fases 1, 2 e 6 do pedido foram entregues nesta
+sessão — é um pedido grande demais pra uma sessão só sem virar
+implementação pela metade; o resto fica documentado abaixo pro próximo
+agente continuar.**
+
+**Entregue (mergeado, em produção):**
+- **Migration 079**: `creditos_ledger` (ledger imutável, saldo = SOMA,
+  idempotente por `cobranca_confirmada_id`, backfill de `indicacoes_pagas`);
+  `planos_administrativos` ganha `status` (agendado/ativo/encerrado, trava
+  de no-máximo-um-ativo/agendado por conta), `plano_anterior_valido_ate`,
+  `origem`, `ledger_id`; tabela `notificacoes` (central de atualizações da
+  conta).
+- **`src/creditos/`** (novo módulo): `regras.js` (3/7/10 créditos por mês,
+  estendido aos 4 ciclos), `repository.js` (ledger), `notificacoes.js`
+  (central + emissão SSE), `routes.js` (auto-atendimento + admin),
+  `eventos-routes.js` (`GET /conta/eventos`, SSE).
+- **`src/lib/sse.js`**: event bus in-memory por conta (`Map<contaId,
+  Set<res>>`), `limite:` documentado — upgrade pra Postgres LISTEN/NOTIFY
+  se precisar de mais de uma instância (hoje `instances:2` no Northflank,
+  **isso é uma limitação real não resolvida** — evento emitido na instância
+  A não chega em quem está conectado na B; só funciona hoje por
+  coincidência/sorte de roteamento, não por design. Documentar antes de
+  built any UI que dependa de tempo real).
+- **`src/financeiro/plano-administrativo.js`**: `resgatarOuConcederBeneficio`/
+  `ativarBeneficiosAgendados`/`encerrarBeneficiosVencidos` — ciclo pago em
+  curso nunca é interrompido nem cobrado 2x; ao terminar sem nada agendado,
+  a conta volta pra "sem plano", nunca gera cobrança sozinha. **Limite
+  documentado no código**: pausar/retomar a assinatura de VERDADE no San
+  Checkout exigiria um contrato que este projeto não tem lido na fonte
+  (`docs/erros/2026-09-14-contrato-do-checkout-suposto-em-vez-de-lido.md`)
+  — por isso o desenho usa `cancelarAssinatura` (já provado) em vez de
+  pausar/resumir. Se o dono confirmar que o Checkout tem um contrato de
+  pausa real, vale revisar esse desenho.
+- **`src/indicacoes/repository.js`**: `buscarPlanoAtivoDoTier` ganhou
+  `ORDER BY id` (bug real, não-determinístico antes).
+- **Bug do admin corrigido na raiz**: `pegar()` (`public/admin/index.page.js`)
+  não conferia `response.ok` — ver
+  `docs/erros/2026-09-23-pegar-nao-conferia-status-http.md`. Ganhou retry
+  curto (1x) pra falha transitória (rede/5xx/429), nunca pra 401/403/404.
+- **Admin, Central de Contas**: nova seção "Créditos" na ficha (saldo,
+  benefício agendado, histórico, botão "Conceder créditos" → modal
+  quantidade+motivo → `POST /admin/anunciantes/:id/creditos/conceder`).
+  "Alterar/Conceder plano" (a rota antiga, direto) continua existindo como
+  caminho técnico — não mais o fluxo comercial normal.
+- Testes: `tests/creditos.test.js` (14, novo) + 8 arquivos de teste
+  existentes ajustados (limpeza de `notificacoes`/`creditos_ledger` no
+  `apagarConta`). Suíte inteira: **249/249**, `npm run check` limpo (16
+  avisos de lint, baseline pré-existente).
+- **Achado no caminho, não é bug do meu código**: a `DATABASE_URL` não é
+  exportada por padrão no shell desta sessão — setar sempre
+  (`set -a && source .env && set +a`) antes de `npm test`/`node
+  src/server.js`, senão a primeira query de qualquer teste falha com "no
+  PostgreSQL user name specified in startup packet" (fácil de confundir
+  com bug real — não é, é ambiente).
+
+**NÃO entregue nesta sessão — fica pro próximo agente, na ordem do pedido
+original do dono:**
+- **Fase 3 (SSE, incompleta)**: só o backend existe (event bus + endpoint +
+  3 eventos emitidos: `payment.updated`/`credits.updated`/
+  `notification.created`). Faltam: cliente `EventSource` no frontend
+  (reconexão com backoff, resync em `visibilitychange`/`online`), e os
+  eventos que faltam emitir (`application.updated` na aprovação/recusa de
+  candidatura, `point.updated`/`screen.updated` em mudança de status de
+  ponto/tela, `plan.updated` em troca/cancelamento de plano, `account.updated`
+  em suspensão/reativação). **Antes de emitir mais eventos, resolver a
+  limitação de 2 instâncias acima** (ou aceitar e documentar que SSE só
+  funciona parcialmente até resolver).
+- **Fase 4 (a maior, não iniciada)**: dashboard único da conta — unificar
+  `public/anunciante/painel.html`/`.page.js` e `ponto.html`/`.page.js` num
+  só, com os módulos condicionais do pedido original (Resumo, Plano
+  comercial, Créditos e benefícios — UI de resgate com preview
+  agora→depois→ao terminar ainda não existe, só o backend —, Performance,
+  Cobertura, Meus criativos, Meus pontos, Financeiro). Esta é a fatia que
+  vale abrir com `san-co:construir` (auditoria de verdade antes de
+  escrever) e fatiar em várias sessões — não tentar de uma vez.
+- **Fase 5**: os 7 `location.reload()` mapeados na auditoria original
+  seguem intactos (`public/admin/index.page.js:1050` — logout, provavelmente
+  fica; `public/convite.page.js:84`; `public/player.page.js:656`;
+  `public/anunciante/vendedor.page.js:35`; `public/anunciante/painel.page.js:236`;
+  `public/modos.js:168,202`). Nenhum foi tocado.
+- **Fase 7**: faltam os testes de INTERFACE (sem F5), ADMIN (cold start,
+  retry seguro — a mudança da Fase 2 não ganhou teste automatizado, só
+  smoke manual) e SSE (isolamento entre contas, reconexão) do pedido
+  original.
+- **Fase 8**: checklist manual de 16 cenários e autorrevisão final do
+  pedido original — não rodados (não fazia sentido sem a Fase 4 existir).
+
+**Se o dono perguntar "cadê o resto do pedido gigante"**: está tudo listado
+acima, section por section, na ordem que ele mesmo deu. Nada foi abandonado
+silenciosamente — foi uma decisão deliberada de entregar uma fatia completa
+e testada (backend + admin) em vez de um dashboard pela metade.
+
 ## Roteiros e2e de navegador em dia (23/09/2026, este agente)
 `tests/e2e/03`, `05` e `06` foram reescritos pro fluxo de hoje (as falhas
 eram anteriores ao PR #22: vendedor, custos, "Marcar parceiro", candidaturas
