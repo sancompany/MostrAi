@@ -10,7 +10,8 @@ os testes assinam o webhook, como o Checkout assina), `openssl` no PATH,
 ```bash
 tests/e2e/reset-db.sh                              # zera as tabelas de dados (não os planos)
 tests/e2e/restart.sh                               # sobe o servidor na 3999
-bash tests/e2e/01-fluxo-api.sh                     # candidatura → convite → tela → player → cadastro de anunciante
+bash tests/e2e/01-fluxo-api.sh                     # pedido de ponto → admin libera → Meus pontos → telas ativadas → player → anunciante indicado pelo cupom PT- → e-mail
+tests/e2e/reset-db.sh && bash tests/e2e/04-modos-e-bonus.sh  # conta só-ponto (convite) → modo anúncios → outro estabelecimento → troca da ajuda de custo → bônus de anúncio
 bash tests/e2e/02-assinatura-webhook-comissao.sh   # parceiro (status de conta), vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && tests/e2e/restart.sh
 # Cada roteiro de navegador assume banco zerado (repetem e-mails entre si):
