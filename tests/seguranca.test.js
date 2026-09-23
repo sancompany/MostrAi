@@ -59,9 +59,14 @@ test('webhook recusa assinatura feita com outra chave', () => {
 
 // Passo 1 do API.md 4.3.1: sem a janela, quem capturar um webhook legítimo
 // reenvia depois e credita o mesmo ciclo de novo.
-test('webhook recusa timestamp fora da janela de 300s', () => {
+// Relógio congelado: o teste e `webhookAutorizado` leem `Date.now()` em
+// instantes diferentes, e se a virada de segundo caísse entre as duas
+// leituras, `agora + 301` ficava a exatos 300s da hora da função e passava —
+// a asserção "futuro demais" falhava de vez em quando no CI (PR #22).
+test('webhook recusa timestamp fora da janela de 300s', (t) => {
   process.env.SAN_CHECKOUT_KEY = CHAVE;
   const agora = Math.floor(Date.now() / 1000);
+  t.mock.method(Date, 'now', () => agora * 1000);
   assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora - 301 })), false, 'antigo demais');
   assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora + 301 })), false, 'futuro demais');
   assert.strictEqual(webhookAutorizado(assinar(CORPO, { timestamp: agora - 299 })), true, 'dentro da janela passa');
