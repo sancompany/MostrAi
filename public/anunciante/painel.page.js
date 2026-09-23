@@ -1105,15 +1105,18 @@ carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
 
-// Promoção pra usuários logados (Parte R do pedido de Ofertas/Promoções,
-// 22/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), filtrada
-// por `mostrar_logados`. Independente do resto do carregamento do painel:
-// se essa chamada falhar, o painel inteiro continua funcionando igual, só
-// sem o banner.
+// Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
+// 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já
+// filtrada no servidor por elegibilidade COMERCIAL (plano ativo agora, ou
+// já assinou antes), não por ter sessão aberta. Sem checkbox próprio pra
+// esta superfície: qualquer promoção vigente e elegível pra esta conta
+// aparece aqui. Independente do resto do carregamento do painel: se essa
+// chamada falhar, o painel inteiro continua funcionando igual, só sem o
+// banner.
 fetch(`${API_BASE_URL}/promocoes/vigentes`)
   .then((r) => r.json())
   .then((promocoes) => {
-    const promo = (Array.isArray(promocoes) ? promocoes : []).find((p) => p.mostrar_logados);
+    const promo = (Array.isArray(promocoes) ? promocoes : [])[0];
     if (!promo) return;
     const el = document.getElementById('promocaoLogado');
     el.innerHTML = `

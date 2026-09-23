@@ -124,12 +124,55 @@ router.delete('/admin/ofertas/promocoes/:id', async (req, res) => {
   }
 });
 
-// Pública — a(s) promoção(ões) vigente(s) marcada(s) pra aparecer numa
-// superfície específica (Home, Planos, painel de usuário logado). Sem
-// filtro de superfície aqui — o front escolhe o campo `mostrar_*` que
-// interessa, porque a mesma promoção pode aparecer em mais de um lugar.
-router.get('/promocoes/vigentes', async (_req, res) => {
+// Pública — as promoções vigentes E elegíveis pra quem está pedindo (Parte
+// da reconstrução de 23/09/2026: elegibilidade COMERCIAL, não sessão).
+// Sem sessão de anunciante = tratado como "novo" (mesma regra de visitante
+// sem conta). Sem filtro de SUPERFÍCIE aqui ainda — o front escolhe o campo
+// `mostrar_home`/`mostrar_planos` que interessa, porque a mesma promoção
+// pode aparecer em mais de um lugar.
+router.get('/promocoes/vigentes', async (req, res) => {
+  const conta = req.session.anuncianteId ? await anunciantesRepo.buscarPorId(req.session.anuncianteId) : null;
+  const estado = await promocoesRepo.estadoComercialDaConta(conta);
+  const vigentes = await promocoesRepo.listarVigentes();
+  res.json(vigentes.filter((p) => promocoesRepo.elegivel(p, estado)));
+});
+
+// Admin — todas as vigentes, SEM filtro de elegibilidade (a Visão Geral
+// precisa ver a promoção que está no ar pra qualquer público, não só a que
+// apareceria pro próprio operador). A sessão do admin nunca é uma sessão de
+// anunciante, então reusar a rota pública aqui sempre trataria o pedido como
+// "visitante novo" e escondia promoção de "assinantes".
+router.get('/admin/ofertas/promocoes-vigentes', async (_req, res) => {
   res.json(await promocoesRepo.listarVigentes());
+});
+
+// Upload da mídia da promoção (Parte B do pedido) — mesmo padrão de
+// `POST /anunciantes/me/foto` (Supabase Storage direto, sem ffmpeg: é
+// imagem, não vídeo). A promoção precisa existir antes (formulário salva os
+// campos de texto primeiro, depois sobe a imagem — mesma convenção de
+// "Ajustar mídia" em Mídia Mostraí).
+router.post('/admin/ofertas/promocoes/:id/imagem', uploadNota.single('arquivo'), async (req, res) => {
+  const atual = await promocoesRepo.buscarPorId(req.params.id);
+  if (!atual) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(404).json({ erro: 'promoção não encontrada' });
+  }
+  if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
+  try {
+    const supabase = require('../lib/supabase');
+    const buffer = fs.readFileSync(req.file.path);
+    const nomeArquivo = `promocoes/promocao-${req.params.id}-${Date.now()}.jpg`;
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+    if (error) return res.status(502).json({ erro: 'falha ao salvar a imagem' });
+    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
+    res.json(await promocoesRepo.atualizar(req.params.id, { imagem_url: data.publicUrl }));
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
 });
 
 function descontoInvalido(valor) {
@@ -367,11 +410,14 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     assinatura = null;
   }
   if (!assinatura) {
-    // Condição promocional vigente pra esse produto × ciclo, se houver — o
-    // snapshot trava aqui, no instante da adesão (Parte T do pedido de
-    // Ofertas/Promoções, 22/09/2026): editar ou encerrar a promoção depois
-    // não muda o que essa assinatura já tem direito até o prazo acabar.
-    const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses);
+    // Condição promocional vigente E elegível pra essa CONTA (Parte T do
+    // pedido de Ofertas/Promoções; elegibilidade comercial adicionada
+    // 23/09/2026) — o snapshot trava aqui, no instante da adesão: editar ou
+    // encerrar a promoção depois não muda o que essa assinatura já tem
+    // direito até o prazo acabar. `conta` já foi carregada acima — mesmo
+    // objeto usado nas travas de endereço/comodato logo ali em cima.
+    const estadoComercial = await promocoesRepo.estadoComercialDaConta(conta);
+    const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses, estadoComercial);
     let promocaoValidoAte = null;
     if (condicao) {
       promocaoValidoAte = new Date();

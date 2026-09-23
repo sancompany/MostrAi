@@ -69,6 +69,17 @@
 <body data-layout="publico">
 
   <main>
+    <!-- Bloco promocional (reconstrução de Ofertas/Promoções, 23/09/2026) —
+         abaixo do header, ACIMA do hero (pedido do dono: "não quero aquele
+         bloco quadrado com cara de foto de perfil abaixo do hero" — precisa
+         parecer campanha publicitária de verdade, com presença). Só existe
+         quando alguma promoção vigente está marcada "mostrar na Home"
+         (index.page.js consome GET /promocoes/vigentes, já filtrado por
+         elegibilidade comercial — nunca uma promoção fixa escrita aqui). -->
+    <section class="tight" id="promocaoHomeSecao" hidden>
+      <div class="wrap"><div id="promocaoHome"></div></div>
+    </section>
+
     <!-- Dobra. Antes eram 340px de símbolo antes da primeira palavra, seis
          linhas de texto centralizado e três botões de mesmo peso — quem paga
          (o anunciante) disputava atenção com dono de ponto e vendedor, e o
@@ -94,14 +105,6 @@
         </div>
         <img class="hero-simbolo" src="/img/simbolo-lampada.svg" alt="" aria-hidden="true">
       </div>
-    </section>
-
-    <!-- Bloco promocional (rodada de Ofertas/Promoções, 22/09/2026) — só
-         existe quando alguma promoção vigente está marcada "mostrar na
-         Home" (index.page.js consome GET /promocoes/vigentes; nunca é uma
-         promoção fixa escrita aqui). -->
-    <section class="tight" id="promocaoHomeSecao" hidden>
-      <div class="wrap"><div id="promocaoHome"></div></div>
     </section>
 
     <section class="tight">

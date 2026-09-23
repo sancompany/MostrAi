@@ -214,20 +214,42 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .hero-fluxo { margin: 18px 0 0; font-size: .95rem; color: var(--text-dim); }
 .hero-fluxo b { color: var(--brand-text); }
 
-/* Bloco promocional da Home (Parte P do pedido de Ofertas/Promoções,
-   22/09/2026) — banner com o mesmo tratamento visual do resto do site
-   (card + degradê de marca), imagem opcional ao lado do texto. */
-.promo-home {
-  display: flex; align-items: center; gap: 28px; background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 28px; overflow: hidden;
+/* Banner promocional da Home (reconstrução de Ofertas/Promoções,
+   23/09/2026) — abaixo do header, acima do hero: precisa ler como campanha
+   publicitária de verdade ("largura ampla, presença visual"), não um card
+   quadrado com imagem ao lado (era a queixa: "cara de foto de perfil").
+   Largura cheia, degradê de marca por padrão; com imagem no formato
+   horizontal, a imagem VIRA o fundo (`background-image`, setado inline por
+   index.page.js) com um véu escuro por cima pro texto continuar legível —
+   outros formatos (quadrado/vertical) não tentam virar banner largo, ficam
+   no degradê de texto mesmo (a imagem deles serve os outros lugares:
+   card/mobile, não a Home). */
+.promo-home-banner {
+  position: relative; background: linear-gradient(135deg, var(--brand), var(--brand-dim) 65%, #b8440a);
+  border-radius: var(--radius); padding: 44px 32px; text-align: center; overflow: hidden;
 }
-.promo-home-img { width: 220px; height: 220px; object-fit: cover; border-radius: calc(var(--radius) - 6px); flex: none; }
-.promo-home-texto h2 { margin: 8px 0 4px; }
-.promo-home-texto .badge { background: var(--brand); color: var(--sobre-brand); }
-.promo-home-texto .btn { margin-top: 12px; }
+/* Imagem de fundo como <img> de verdade, não `background-image` inline —
+   a CSP (`style-src 'self'`, sem `unsafe-inline`) bloqueia silenciosamente
+   qualquer atributo `style=""` injetado por JS (achado testando: o atributo
+   aparecia no DOM, mas o navegador nunca aplicava a regra). `img-src` já
+   libera o storage das mídias, então a imagem entra como elemento normal,
+   absoluto atrás do texto — véu escuro por cima pra continuar legível. */
+.promo-home-banner.com-imagem { min-height: 260px; display: flex; align-items: center; justify-content: center; }
+.promo-home-img-fundo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.promo-home-banner.com-imagem::before {
+  content: ''; position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55));
+}
+.promo-home-conteudo { position: relative; z-index: 2; max-width: 620px; margin: 0 auto; color: #fff; }
+.promo-home-conteudo .badge { background: rgba(255,255,255,.9); color: var(--brand-text); font-weight: 800; }
+.promo-home-conteudo h2 { margin: 10px 0 6px; color: #fff; font-size: 1.9rem; }
+.promo-home-conteudo .lead { color: rgba(255,255,255,.92); margin: 0 0 6px; }
+.promo-home-prazo { color: rgba(255,255,255,.85); font-size: .84rem; margin: 0 0 16px; }
+.promo-home-conteudo .btn.primary { background: #fff; color: var(--brand-text); border-color: #fff; margin-top: 6px; }
+.promo-home-conteudo .btn.primary:hover { background: rgba(255,255,255,.9); }
 @media (max-width: 640px) {
-  .promo-home { flex-direction: column; text-align: center; padding: 20px; }
-  .promo-home-img { width: 100%; height: 180px; }
+  .promo-home-banner { padding: 32px 20px; }
+  .promo-home-conteudo h2 { font-size: 1.5rem; }
 }
 
 .razoes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
