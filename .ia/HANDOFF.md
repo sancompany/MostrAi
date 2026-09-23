@@ -3,6 +3,38 @@
 ## Updated
 2026-09-23
 
+## Polimento visual final do admin, V1 (23/09/2026, este agente)
+Pedido do dono: última rodada universal de acabamento visual do admin antes
+da V1 — sem regra comercial, cálculo, permissão, schema ou framework novos.
+Detalhe completo em `docs/PENDENCIAS.md`, seção "Polimento visual final do
+admin (V1)".
+
+- **Onde mora o sistema:** `public/admin/index.css` foi reescrito inteiro,
+  em ordem (tokens → casca → cabeçalho → botões → campos → seleção →
+  painéis → tabelas → vazios → modal → páginas). Não redefinir peça
+  compartilhada dentro de classe de página. Helpers novos em
+  `public/admin/index.page.js`: `cardEntidade`, `fichaCabecalho`,
+  `enderecoFicha`, `segmentado`, `alternar`, `migalha`, `vazio`,
+  `plural`, `pct`, `humanizarPlanoId`/`nomePlanoOuId` (nunca mostrar slug de
+  plano), `ajustarFotos` (logo quadrado vira `contain`).
+- **Upload:** todo botão de escolher arquivo é `<button
+  data-escolher-arquivo="idDoInput">` (um ouvinte delegado abre o input).
+  `<label for>` não recebe foco — não voltar pra ele.
+- **Compartilhado com o site:** `.ponto-card.com-corpo` (card com corpo:
+  admin + "Meus endereços"), `.foto-contida`, `.form-bloco`, `.btn.mini`,
+  `.btn.perigo-sutil` e o widget de horário (`.horario-dia` em grade: dia
+  fechado DESABILITA os campos, não esconde) estão em `public/style.css`.
+  `candidatura-ponto.js` ganhou `candidaturaBloco` e
+  `candidaturaAjustarFoto` (globais no `biome.json`);
+  `candidaturaCampoHorario()` não traz mais o título — quem chama põe o bloco.
+- **Backend (só correção de dado):** `listarPorPonto` passou a devolver as
+  margens da safe area (o admin mostrava 0 depois de recarregar); "Novas
+  contas" da Visão geral exclui a conta própria. Um teste novo pra cada, em
+  `tests/integridade-admin.test.js`.
+- **Pegadinha de teste local:** os 2 testes `ocupacaoPorPonto` e
+  `condicaoVigente` falham se o banco local tiver dado de demonstração
+  (pontos/promoções semeados); com o banco limpo passam 235/235.
+
 ## Correção cirúrgica de Rede: candidatura, CEP/bairro, safe area (23/09/2026, este agente)
 Pedido explícito do dono, separado da reconstrução de Contas acima: "NÃO
 quero redesenhar Rede... só 3 correções funcionais". Rede está congelada

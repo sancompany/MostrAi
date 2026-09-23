@@ -338,23 +338,41 @@ async function carregarTrocaComodato(pontos) {
 // da mesma entidade, não idênticas (polimento mínimo, Parte AH, 22/09/2026;
 // sem módulo compartilhado entre os arquivos, convenção do projeto).
 function fotoOuPlaceholderPonto(url, nome) {
-  if (url) return `<img src="${esc(url)}" alt="${esc(nome || '')}" loading="lazy">`;
+  if (url) return `<img src="${esc(url)}" alt="${esc(nome || '')}" loading="lazy" data-foto>`;
   return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Ponto sem foto')}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
 }
+
+// Card compacto de endereço (polimento final, 23/09/2026) — mesma estrutura
+// dos cards da Rede no admin: nome e estado no cabeçalho, endereço e segmento
+// embaixo, e o que é dinheiro/cota no pé.
+function cartaoEndereco({ foto, nome, badge, linhas, rodape }) {
+  return `
+    <div class="ponto-card com-corpo">
+      <div class="ponto-card-media">${foto}</div>
+      <div class="ponto-card-corpo">
+        <div class="ponto-card-topo"><h4>${nome}</h4>${badge}</div>
+        ${linhas
+          .filter(Boolean)
+          .map((l) => `<p class="ponto-card-meta">${l}</p>`)
+          .join('')}
+        ${rodape ? `<p class="ponto-card-pe">${rodape}</p>` : ''}
+      </div>
+    </div>`;
+}
+
+const cidadeUf = (x) => `${esc(x.cidade || '')}${x.uf ? `/${esc(x.uf)}` : ''}`;
 
 // Candidatura em aberto (endereço ainda em análise, não é ponto de verdade
 // ainda — ver src/candidaturas/repository.js#listarAbertasPorConta). Mesmo
 // cartão visual do ponto, badge "Em análise" (mesma classe do preview em
 // candidatura-ponto.js), sem os dados que só um ponto aprovado tem.
 function cartaoCandidaturaPendente(c) {
-  return `
-    <div class="ponto-card">
-      <div class="ponto-card-media">${fotoOuPlaceholderPonto(c.foto_fachada_url, c.nome_comercio)}</div>
-      <span class="badge badge-pendente">Em análise</span>
-      <h4>${esc(c.nome_comercio || '')}</h4>
-      <p>${esc(c.endereco || '')}</p>
-      <p>${esc(c.cidade || '')}${c.uf ? '/' + esc(c.uf) : ''}</p>
-    </div>`;
+  return cartaoEndereco({
+    foto: fotoOuPlaceholderPonto(c.foto_fachada_url, c.nome_comercio),
+    nome: esc(c.nome_comercio || ''),
+    badge: '<span class="badge badge-pendente">Em análise</span>',
+    linhas: [[esc(c.endereco || ''), cidadeUf(c)].filter(Boolean).join(' · ')],
+  });
 }
 
 async function carregarPontos() {
@@ -372,20 +390,24 @@ async function carregarPontos() {
     el.innerHTML =
       candidaturas.map(cartaoCandidaturaPendente).join('') +
       pontos
-        .map(
-          (p) => `
-      <div class="ponto-card">
-        <div class="ponto-card-media">${fotoOuPlaceholderPonto(p.foto_instalacao_url, p.nome)}</div>
-        <span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>
-        <h4>${esc(p.nome || '')}</h4>
-        <p>${esc(p.endereco)}</p>
-        <p>${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</p>
-        ${p.categoria_nome ? `<p>${esc(p.categoria_nome)}</p>` : ''}
-        ${Number(p.valor_pago_mensal) > 0 ? `<p>Ajuda de custo: <b>${fmtBRL(p.valor_pago_mensal)}/mês</b></p>` : ''}
-        ${p.cota_autoanuncio_slots_hora ? `<p class="u-dim">Cota do seu anúncio: ${p.cota_autoanuncio_slots_hora}x por hora, dividida entre as telas</p>` : ''}
-      </div>`,
+        .map((p) =>
+          cartaoEndereco({
+            foto: fotoOuPlaceholderPonto(p.foto_instalacao_url, p.nome),
+            nome: esc(p.nome || ''),
+            badge: `<span class="badge ${ROTULOS.pontoClasse[p.status] || 'badge-pendente'}">${esc(ROTULOS.ponto[p.status] || p.status)}</span>`,
+            linhas: [[esc(p.endereco || ''), cidadeUf(p)].filter(Boolean).join(' · '), esc(p.categoria_nome || '')],
+            rodape: [
+              Number(p.valor_pago_mensal) > 0 ? `Ajuda de custo <b>${fmtBRL(p.valor_pago_mensal)}/mês</b>` : '',
+              p.cota_autoanuncio_slots_hora
+                ? `Seu anúncio ${p.cota_autoanuncio_slots_hora}x por hora, somando as telas`
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          }),
         )
         .join('');
+    el.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
   } catch {
     el.innerHTML = '<p class="form-msg err">Não foi possível carregar seus endereços agora.</p>';
   }
@@ -398,18 +420,37 @@ async function carregarPontos() {
 // validação, horário, foto com preview e preview de card dos outros dois
 // pontos de entrada.
 const candidaturaRaiz = document.getElementById('candidaturaNovoEndereco');
+// Cinco blocos, um assunto cada (polimento final, 23/09/2026):
+// estabelecimento/foto, endereço, segmento/movimento, horário, observações.
 candidaturaRaiz.innerHTML = `
-  <form class="card wide u-mt-16" id="formEndereco">
-    <p class="form-sep-titulo">Novo endereço</p>
-    <p class="form-hint u-m-0">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
-    <div><label for="end_nome_comercio">Nome do estabelecimento</label><input id="end_nome_comercio" name="nome" required></div>
-    ${candidaturaCampoFoto('end_')}
-    ${candidaturaCampoEndereco('end_')}
-    ${candidaturaCampoSegmento('end_', 'Segmento')}
-    <div><label for="end_fluxo">Média de pessoas que passam por mês</label><input id="end_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>
-    ${candidaturaCampoHorario()}
-    <div><label for="end_mensagem">Algo mais? (opcional)</label><textarea id="end_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
-    <div class="field-row">
+  <form class="card wide" id="formEndereco">
+    <div>
+      <h3 class="u-m-0">Novo endereço</h3>
+      <p class="form-hint u-m-0 u-mt-6">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
+    </div>
+    ${candidaturaBloco(
+      'end_',
+      'estabelecimento',
+      'Estabelecimento',
+      `<div><label for="end_nome_comercio">Nome do estabelecimento</label><input id="end_nome_comercio" name="nome" required></div>
+      ${candidaturaCampoFoto('end_')}`,
+    )}
+    ${candidaturaBloco('end_', 'endereco', 'Endereço', candidaturaCampoEndereco('end_'))}
+    ${candidaturaBloco(
+      'end_',
+      'segmento',
+      'Segmento e movimento',
+      `${candidaturaCampoSegmento('end_', 'Segmento')}
+      <div><label for="end_fluxo">Média de pessoas que passam por mês</label><input id="end_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>`,
+    )}
+    ${candidaturaBloco('end_', 'horario', 'Horário de funcionamento', candidaturaCampoHorario())}
+    ${candidaturaBloco(
+      'end_',
+      'observacoes',
+      'Observações',
+      '<div><label for="end_mensagem">Algo mais? (opcional)</label><textarea id="end_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>',
+    )}
+    <div class="form-acoes">
       <button class="btn primary" type="submit">Enviar pedido</button>
       <button class="btn ghost" type="button" id="btnCancelarEndereco">Cancelar</button>
     </div>

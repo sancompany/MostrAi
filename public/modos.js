@@ -71,17 +71,29 @@
                 ? `Seu plano completou ${bonus.apos_meses} meses e dá direito a uma tela instalada, sem custo. Conta onde ela vai ficar.`
                 : 'A tela, a instalação e o conteúdo são por nossa conta. Você escolhe ajuda de custo ou mais espaço pro seu próprio anúncio. Conta um pouco sobre o seu comércio e a gente chama pra combinar.'
             }</p>
-            <p class="form-sep-titulo u-mt-0">Estabelecimento</p>
-            <div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
-            ${candidaturaCampoFoto('m_')}
-            ${candidaturaCampoEndereco('m_')}
-            ${candidaturaCampoSegmento('m_', 'Segmento')}
-            <div><label for="m_fluxo">Média de pessoas que passam por mês</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>
-            ${candidaturaCampoHorario()}
-            <p class="form-sep-titulo u-mt-8">Como você quer ser recompensado</p>
-            <div class="escolha-grid" id="modoEscolhaPlano"></div>
-            <p class="form-sep-titulo u-mt-8">Informações adicionais</p>
-            <div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>
+            ${candidaturaBloco(
+              'm_',
+              'estabelecimento',
+              'Estabelecimento',
+              `<div><label for="m_nome_comercio">Nome do estabelecimento</label><input id="m_nome_comercio" name="nome_comercio" required></div>
+              ${candidaturaCampoFoto('m_')}`,
+            )}
+            ${candidaturaBloco('m_', 'endereco', 'Endereço', candidaturaCampoEndereco('m_'))}
+            ${candidaturaBloco(
+              'm_',
+              'segmento',
+              'Segmento e movimento',
+              `${candidaturaCampoSegmento('m_', 'Segmento')}
+              <div><label for="m_fluxo">Média de pessoas que passam por mês</label><input id="m_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required></div>`,
+            )}
+            ${candidaturaBloco('m_', 'horario', 'Horário de funcionamento', candidaturaCampoHorario())}
+            ${candidaturaBloco('m_', 'recompensa', 'Como você quer ser recompensado', '<div class="escolha-grid" id="modoEscolhaPlano"></div>')}
+            ${candidaturaBloco(
+              'm_',
+              'observacoes',
+              'Observações',
+              '<div><label for="m_mensagem">Algo mais? (opcional)</label><textarea id="m_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea></div>',
+            )}
             <button class="btn primary" type="submit">${ganhou ? 'Pedir minha tela' : 'Enviar pedido'}</button>
             <p class="form-msg" id="modoMsg" role="status"></p>
           </form>

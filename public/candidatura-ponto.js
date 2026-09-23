@@ -12,7 +12,39 @@
 // um script global de verdade (não IIFE) — mesma convenção de
 // public/formulario.js, pra dar pra chamar de qualquer um dos três.
 
-const CANDIDATURA_DICA_FOTO_PADRAO = 'Opcional — sem foto, usamos um ícone padrão até você mandar uma.';
+const CANDIDATURA_DICA_FOTO_PADRAO = 'Opcional. Sem foto, o card usa o ícone padrão.';
+
+const CANDIDATURA_FOTO_PLACEHOLDER_SVG = `<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+  <path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+  <circle cx="12" cy="9.25" r="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
+</svg>`;
+
+// ---------- Blocos do formulário (polimento final, 23/09/2026) ----------
+// Um assunto por bloco, com título próprio: estabelecimento/foto, endereço,
+// segmento/movimento, horário, observações. `role="group"` com
+// `aria-labelledby` em vez de <fieldset>: o <legend> é desenhado em cima da
+// borda do fieldset e brigava com o separador entre os blocos.
+function candidaturaBloco(prefixo, chave, titulo, conteudo) {
+  const id = `${prefixo}bloco_${chave}`;
+  return `
+    <div class="form-bloco" role="group" aria-labelledby="${id}">
+      <p class="form-sep-titulo" id="${id}">${titulo}</p>
+      ${conteudo}
+    </div>`;
+}
+
+// Logo quadrado ou em pé numa moldura deitada: com `cover` ele era cortado e
+// ampliado até sobrar uma letra gigante no card (achado do dono no polimento
+// final). Abaixo de 1,2:1 a imagem entra inteira, com respiro. Mesma régua de
+// `ajustarFotos` no admin (public/admin/index.page.js) — duplicada de
+// propósito, os dois front-ends não compartilham script.
+function candidaturaAjustarFoto(img) {
+  const aplicar = () => {
+    if (img.naturalWidth && img.naturalWidth / img.naturalHeight < 1.2) img.classList.add('foto-contida');
+  };
+  if (img.complete) aplicar();
+  else img.addEventListener('load', aplicar, { once: true });
+}
 
 // ---------- Endereço (Parte W: rua e bairro separados) ----------
 // `ligarCep` (public/formulario.js) já busca `logradouro`/`bairro`
@@ -29,7 +61,7 @@ function candidaturaCampoEndereco(prefixo) {
     <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
     <div class="field-row">
       <div class="u-col-2"><label for="${prefixo}bairro">Bairro</label><input id="${prefixo}bairro" name="bairro"></div>
-      <div class="u-col-2"><label for="${prefixo}complemento">Complemento (opcional)</label><input id="${prefixo}complemento" name="complemento"></div>
+      <div class="u-col-2"><label for="${prefixo}complemento">Complemento</label><input id="${prefixo}complemento" name="complemento" placeholder="Opcional"></div>
     </div>
     <div class="field-row">
       <div class="u-col-2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" value="Matão" required></div>
@@ -70,29 +102,24 @@ function candidaturaSegmentoDoForm(form) {
 // `img-src 'self' data:` (src/server.js), sem `blob:` (achado já registrado
 // noutra rodada: a troca de foto funcionava, mas a imagem nunca aparecia,
 // bloqueada pelo navegador em silêncio).
+// "Escolher foto" é <button>, não <label for>: rótulo não recebe foco, então
+// quem navega por teclado nunca chegava no upload (polimento final).
 function candidaturaCampoFoto(prefixo) {
   return `
     <div class="campo-foto-preview" data-campo-foto>
-      <div class="campo-foto-preview-img" data-foto-preview>
-        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-          <path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-          <circle cx="12" cy="9.25" r="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        </svg>
+      <div class="campo-foto-preview-img" data-foto-preview>${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>
+      <div class="campo-foto-preview-info">
+        <span class="campo-foto-preview-rotulo" id="${prefixo}foto_rotulo">Foto da fachada</span>
+        <span class="campo-foto-preview-legenda" data-foto-legenda>${CANDIDATURA_DICA_FOTO_PADRAO}</span>
+        <div class="campo-foto-preview-acoes">
+          <button type="button" class="btn ghost mini" data-foto-escolher aria-describedby="${prefixo}foto_rotulo">Escolher foto</button>
+          <button type="button" class="btn ghost mini" data-foto-trocar aria-describedby="${prefixo}foto_rotulo" hidden>Trocar</button>
+          <button type="button" class="btn perigo-sutil mini" data-foto-remover aria-describedby="${prefixo}foto_rotulo" hidden>Remover</button>
+        </div>
       </div>
-      <div class="campo-foto-preview-acoes">
-        <label class="btn ghost mini" for="${prefixo}foto" data-foto-escolher>Escolher foto da fachada</label>
-        <button type="button" class="btn ghost mini" data-foto-trocar hidden>Trocar foto</button>
-        <button type="button" class="btn ghost mini u-txt-erro" data-foto-remover hidden>Remover foto</button>
-        <input type="file" accept="image/*" id="${prefixo}foto" hidden>
-        <span class="u-fs-72 u-dim" data-foto-legenda>${CANDIDATURA_DICA_FOTO_PADRAO}</span>
-      </div>
+      <input type="file" accept="image/*" id="${prefixo}foto" hidden>
     </div>`;
 }
-
-const CANDIDATURA_FOTO_PLACEHOLDER_SVG = `<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
-  <path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-  <circle cx="12" cy="9.25" r="2.75" fill="none" stroke="currentColor" stroke-width="1.6"/>
-</svg>`;
 
 // Liga o campo de foto de um form. `aoMudar` (opcional) é chamado depois de
 // cada escolha/remoção, pra quem tiver um preview de CARD (não só o
@@ -110,6 +137,7 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
   function mostrarPlaceholder() {
     previewImg.innerHTML = CANDIDATURA_FOTO_PLACEHOLDER_SVG;
     legenda.textContent = CANDIDATURA_DICA_FOTO_PADRAO;
+    legenda.removeAttribute('title');
     btnEscolher.hidden = false;
     btnTrocar.hidden = true;
     btnRemover.hidden = true;
@@ -124,9 +152,11 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
       // foto removida/superada.
       if (input.files[0] !== arquivo) return;
       previewImg.innerHTML = `<img src="${leitor.result}" alt="Prévia da foto da fachada">`;
+      candidaturaAjustarFoto(previewImg.querySelector('img'));
     };
     leitor.readAsDataURL(arquivo);
     legenda.textContent = arquivo.name;
+    legenda.title = arquivo.name;
     btnEscolher.hidden = true;
     btnTrocar.hidden = false;
     btnRemover.hidden = false;
@@ -138,10 +168,14 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
     else mostrarPlaceholder();
     if (aoMudar) aoMudar();
   });
+  btnEscolher.addEventListener('click', () => input.click());
   btnTrocar.addEventListener('click', () => input.click());
   btnRemover.addEventListener('click', () => {
     input.value = '';
     mostrarPlaceholder();
+    // O foco estava no "Remover", que acabou de sumir — devolve pro botão que
+    // ficou no lugar, senão o teclado cai no começo da página.
+    btnEscolher.focus();
     if (aoMudar) aoMudar();
   });
 }
@@ -162,20 +196,22 @@ const CANDIDATURA_DIAS_HORARIO = [
   { id: 'feriados', rotulo: 'Feriados', fechadoPadrao: true, abre: '09:00', fecha: '13:00' },
 ];
 
+// Dia fechado mantém os campos no lugar, desabilitados — antes eles sumiam e
+// Domingo/Feriados viravam linhas de outra geometria (polimento final). O
+// título do bloco fica com quem chama (`candidaturaBloco`).
 function candidaturaCampoHorario() {
   return `
-    <p class="form-sep-titulo u-mt-8">Horário de funcionamento</p>
     <div class="horario-semanal">
       ${CANDIDATURA_DIAS_HORARIO.map(
         (d) => `
-        <div class="horario-dia" data-horario-dia="${d.id}">
+        <div class="horario-dia${d.fechadoPadrao ? ' fechado' : ''}" data-horario-dia="${d.id}">
           <span class="horario-dia-nome">${d.rotulo}</span>
-          <div class="horario-dia-campos" ${d.fechadoPadrao ? 'hidden' : ''}>
-            <input class="mini" type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre">
-            <span class="u-dim">–</span>
-            <input class="mini" type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha">
+          <div class="horario-dia-campos">
+            <input type="time" data-horario-abre value="${d.abre}" aria-label="${d.rotulo}, abre" ${d.fechadoPadrao ? 'disabled' : ''}>
+            <span aria-hidden="true">–</span>
+            <input type="time" data-horario-fecha value="${d.fecha}" aria-label="${d.rotulo}, fecha" ${d.fechadoPadrao ? 'disabled' : ''}>
           </div>
-          <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${d.fechadoPadrao ? 'checked' : ''}><span>Fechado</span></label>
+          <label class="horario-dia-fechado"><input type="checkbox" data-horario-fechado aria-label="${d.rotulo}, fechado" ${d.fechadoPadrao ? 'checked' : ''}>Fechado</label>
         </div>`,
       ).join('')}
     </div>`;
@@ -184,9 +220,11 @@ function candidaturaCampoHorario() {
 function candidaturaLigarHorario(form) {
   form.querySelectorAll('[data-horario-dia]').forEach((linha) => {
     const chk = linha.querySelector('[data-horario-fechado]');
-    const campos = linha.querySelector('.horario-dia-campos');
     chk.addEventListener('change', () => {
-      campos.hidden = chk.checked;
+      linha.classList.toggle('fechado', chk.checked);
+      linha.querySelectorAll('input[type="time"]').forEach((campo) => {
+        campo.disabled = chk.checked;
+      });
     });
   });
 }
@@ -211,19 +249,22 @@ function candidaturaHorarioDoForm(form) {
 // foto ou placeholder, badge de status ("Em análise" — candidatura nunca
 // nasce ponto direto, Parte AE), nome, segmento, cidade/UF, movimento.
 // Atualiza em tempo real conforme o formulário é preenchido.
+// Mesmo card "com corpo" da Rede no admin (nome e estado no cabeçalho,
+// cidade/segmento embaixo, movimento no pé) — e com largura máxima: no
+// celular ele ocupava a tela quase inteira.
 function candidaturaCampoPreview() {
   return `
     <div class="candidatura-preview" aria-hidden="true">
       <p class="candidatura-preview-titulo">Assim vai aparecer</p>
-      <div class="ponto-card candidatura-preview-card">
+      <div class="ponto-card com-corpo candidatura-preview-card">
         <div class="ponto-card-media" data-preview-foto>
-          <div class="ponto-foto-placeholder" role="img" aria-label="Sem foto">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>
+          <div class="ponto-foto-placeholder">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>
         </div>
-        <span class="badge badge-pendente">Em análise</span>
-        <h4 data-preview-nome>Nome do estabelecimento</h4>
-        <p data-preview-segmento class="u-dim">Segmento</p>
-        <p data-preview-cidade class="u-dim">Cidade/UF</p>
-        <p data-preview-fluxo class="u-dim" hidden></p>
+        <div class="ponto-card-corpo">
+          <div class="ponto-card-topo"><h4 data-preview-nome>Nome do estabelecimento</h4><span class="badge badge-pendente">Em análise</span></div>
+          <p class="ponto-card-meta"><span data-preview-cidade>Cidade/UF</span> · <span data-preview-segmento>Segmento</span></p>
+          <p class="ponto-card-pe" data-preview-fluxo hidden></p>
+        </div>
       </div>
     </div>`;
 }
@@ -274,10 +315,11 @@ function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
       leitor.onload = () => {
         if (candidaturaFotoSelecionada(form, prefixo) !== foto) return;
         mediaFoto.innerHTML = `<img src="${leitor.result}" alt="">`;
+        candidaturaAjustarFoto(mediaFoto.querySelector('img'));
       };
       leitor.readAsDataURL(foto);
     } else {
-      mediaFoto.innerHTML = `<div class="ponto-foto-placeholder" role="img" aria-label="Sem foto">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
+      mediaFoto.innerHTML = `<div class="ponto-foto-placeholder">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
     }
   }
   form.addEventListener('input', atualizar);
