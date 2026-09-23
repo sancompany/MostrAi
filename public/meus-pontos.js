@@ -475,7 +475,12 @@
       lista.innerHTML =
         '<p class="form-msg err">Não foi possível carregar seus pontos agora. Tente atualizar a página.</p>';
     }
+    const primeiraVez = secao.hidden;
     secao.hidden = false;
+    // Quem chega por /anunciante/painel.html#modPontos (convite, antiga
+    // página do ponto) abria no topo: quando o navegador resolveu o #, a
+    // seção ainda estava escondida esperando esta carga.
+    if (primeiraVez && window.location.hash === '#modPontos') secao.scrollIntoView({ block: 'start' });
   }
 
   window.montarMeusPontos = function montarMeusPontos(opcoes = {}) {

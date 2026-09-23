@@ -203,10 +203,11 @@ router.patch('/admin/pontos/:id', async (req, res) => {
 // acima). Sem essa assimetria, dava pra pingar entre as modalidades todo mês
 // e sacar a ajuda de custo só nos meses em que ela valesse mais.
 router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, async (req, res) => {
+  // Mesma régua da oferta no Financeiro (src/conta/financeiro.js): troca quem
+  // RECEBE hoje pelo valor contratado do ponto, não pelo preço atual da
+  // modalidade — senão a oferta e a troca discordavam depois de um reajuste.
   const { rows: meus } = await pool.query(
-    `SELECT p.id, pp.ajuda_custo_mensal
-       FROM pontos p LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-      WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
+    `SELECT id, valor_pago_mensal FROM pontos WHERE anunciante_id = $1 AND status <> 'arquivado'`,
     [req.session.anuncianteId],
   );
   if (!meus.length) return res.status(400).json({ erro: 'sua conta não tem ponto no comodato' });
@@ -214,7 +215,7 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
   const destino = await comodato.modalidadeSemDinheiro();
   if (!destino) return res.status(500).json({ erro: 'nenhuma modalidade sem ajuda de custo configurada' });
 
-  const aTrocar = meus.filter((p) => Number(p.ajuda_custo_mensal || 0) > 0);
+  const aTrocar = meus.filter((p) => Number(p.valor_pago_mensal || 0) > 0);
   if (!aTrocar.length) {
     return res.status(400).json({ erro: 'você já trocou a ajuda de custo por tela' });
   }

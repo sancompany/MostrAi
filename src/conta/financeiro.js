@@ -31,15 +31,18 @@ router.get('/anunciantes/me/financeiro', exigirAnuncianteLogado, async (req, res
     ),
     conta.plano_id ? pool.query('SELECT nome FROM planos WHERE id = $1', [conta.plano_id]) : null,
     pagamentosRepo.extratoDaConta(conta.id),
+    // O valor CONTRATADO de cada ponto (`pontos.valor_pago_mensal`, copiado da
+    // modalidade no dia da aprovação — migration 015), não o preço atual da
+    // modalidade: o admin pode reajustar a modalidade depois, e o contrato de
+    // quem já é ponto não muda com isso.
     pool.query(
-      `SELECT p.id, p.nome, pp.ajuda_custo_mensal
-         FROM pontos p LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-        WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
+      `SELECT id, nome, valor_pago_mensal FROM pontos
+        WHERE anunciante_id = $1 AND status <> 'arquivado'`,
       [conta.id],
     ),
   ]);
-  const recebendo = pontos.rows.filter((p) => Number(p.ajuda_custo_mensal || 0) > 0);
-  const ajudaMensal = recebendo.reduce((s, p) => s + Number(p.ajuda_custo_mensal), 0);
+  const recebendo = pontos.rows.filter((p) => Number(p.valor_pago_mensal || 0) > 0);
+  const ajudaMensal = recebendo.reduce((s, p) => s + Number(p.valor_pago_mensal), 0);
   res.json({
     pagamentos: {
       mostrar: !!conta.plano_id || cobrancas.rows.length > 0,

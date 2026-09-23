@@ -84,7 +84,7 @@ test('anuncia e cede a parede: os dois blocos, troca oferecida, nota interna for
     } = await pool.query(
       `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato,
                            anunciante_id, status, plano_ponto_id, valor_pago_mensal)
-       VALUES ('P', 'R', 'Matão', 'SP', '1', 'outro', 'R', '1', $1, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
+       VALUES ('P', 'R', 'Matão', 'SP', '1', 'outro', 'R', '1', $1, 'em_operacao', 'ajuda-custo', 35) RETURNING id`,
       [conta],
     );
     await pool.query(
@@ -103,7 +103,9 @@ test('anuncia e cede a parede: os dois blocos, troca oferecida, nota interna for
     );
     assert.equal(d.recebimentos.mostrar, true);
     assert.equal(d.recebimentos.resumo.totalPago, 50);
-    assert.deepEqual(d.recebimentos.troca, { totalMensal: 50, pontos: 1 });
+    // Contratado a R$ 35 numa modalidade que hoje vale R$ 50: vale o contrato
+    // do ponto (pontos.valor_pago_mensal), não o preço atual da modalidade.
+    assert.deepEqual(d.recebimentos.troca, { totalMensal: 35, pontos: 1 });
 
     await pool.query(`UPDATE pontos SET plano_ponto_id = 'mais-cota', valor_pago_mensal = 0 WHERE id = $1`, [ponto.id]);
     const depois = JSON.parse((await app.ler(conta)).texto);
