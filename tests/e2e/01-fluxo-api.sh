@@ -38,9 +38,12 @@ r=$(curl -s -b joao.txt -X POST $B/convites/$TOK/aceitar -H "$J" -d '{"chave_pix
 esperar "conta já logada aceita o convite e ganha vendedor" '"papeis":\["anunciante","ponto","vendedor"\]' "$r"
 r=$(curl -s -b joao.txt $B/anunciantes/me); esperar "me traz perfil de vendedor com cupom" '"codigo_cupom":"' "$r"
 CUPOM=$(echo $r | sed 's/.*"codigo_cupom":"\([^"]*\)".*/\1/')
-r=$(curl -s -b joao.txt $B/anunciantes/$JOAO/pontos); esperar "ponto nasceu do pedido, ligado à conta" 'Bar do João' "$r"
-PONTO=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
-r=$(curl -s -b joao.txt $B/anunciantes/$JOAO/dispositivos); esperar "ponto já tem a Tela 1" 'Tela 1' "$r"
+# "Meus pontos" (painel único): as rotas /anunciantes/:id/pontos e
+# /anunciantes/:id/dispositivos saíram — o ponto e as telas vêm juntos daqui.
+r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "ponto nasceu do pedido, ligado à conta" 'Bar do João' "$r"
+PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
+# Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 1"}'); esperar "admin cria a Tela 1" 'Tela 1' "$r"
 DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 r=$(curl -s -b joao.txt $B/vendedor/painel); esperar "painel do vendedor pela conta única" 'totalAReceber' "$r"
 

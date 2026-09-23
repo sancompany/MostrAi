@@ -41,10 +41,13 @@ r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_com
 r=$(curl -s -b lia.txt $B/conta/modos); esperar "modos mostra pedido pendente de ponto" '"ponto":\{"liberado":false,"pedido":\{"tipo":"ponto"' "$r"
 r=$(curl -s -b adm.txt $B/admin/candidaturas); esperar "admin vê origem painel e conta" '"origem":"painel"' "$r"
 r=$(curl -s -b adm.txt -X POST $B/admin/candidaturas/$CAND/liberar); esperar "admin libera na conta" '"papeis":\["vendedor","anunciante","ponto"\]' "$r"
-r=$(curl -s -b lia.txt $B/anunciantes/$LIA/pontos); esperar "ponto criado com endereço do pedido" 'Loja da Lia' "$r"
-esperar "ajuda de custo copiada da opção de comodato" '"valor_pago_mensal":"[1-9]' "$r"
-PONTO=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
-r=$(curl -s -b lia.txt $B/anunciantes/$LIA/dispositivos); esperar "Tela 1 criada" 'Tela 1' "$r"
+# "Meus pontos" (painel único) substitui /anunciantes/:id/pontos e
+# /anunciantes/:id/dispositivos, que saíram.
+r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "ponto criado com endereço do pedido" 'Loja da Lia' "$r"
+esperar "ajuda de custo copiada da opção de comodato" '"ajudaCustoMensal":[1-9]' "$r"
+PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
+# Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 1"}'); esperar "Tela 1 criada" 'Tela 1' "$r"
 
 echo "== convite aceito por conta logada =="
 r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["ponto"],"nome_sugerido":"Beto"}')
