@@ -35,11 +35,14 @@ async function adicionarPapel(contaId, papel, db = pool) {
 // Liga um papel numa conta existente a partir de uma candidatura aprovada
 // (admin "liberar na conta" ou convite aceito por conta logada). Cria o que
 // o papel precisa: perfil de vendedor, ponto + Tela 1.
+//
+// Papel Vendedor aposentado (23/09/2026, pedido do dono): pedir 'vendedor'
+// aqui não faz mais nada — nem papel novo, nem perfil de vendedor. É o ponto
+// único por onde convite aceito, candidatura antiga e o admin chegavam, então
+// fechar aqui fecha todos. Vendedor que já existe fica como está.
 async function liberarPapelNaConta(conta, papel, cand, db) {
+  if (papel === 'vendedor') return;
   await adicionarPapel(conta.id, papel, db);
-  if (papel === 'vendedor' && !(await vendedoresRepo.buscarPorConta(conta.id))) {
-    await vendedoresRepo.criar(conta.id, { chave_pix: cand?.chave_pix || null, nome: conta.nome_empresa }, db);
-  }
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
     const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
     await pontosRepo.criar(
@@ -323,20 +326,17 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   const convite = await convitesRepo.buscarValido(req.params.token);
   if (!convite) return res.status(404).json({ erro: 'convite inválido, usado ou expirado — fale com quem te enviou' });
-  const novos = (convite.papeis || []).filter((p) => !(conta.papeis || []).includes(p));
+  // 'vendedor' não conta mais (papel aposentado, 23/09/2026) — convite
+  // antigo que só liberava isso não tem mais nada a liberar.
+  const novos = (convite.papeis || []).filter((p) => p !== 'vendedor' && !(conta.papeis || []).includes(p));
   if (!novos.length) return res.status(409).json({ erro: 'sua conta já tem tudo que esse convite libera' });
-  if (novos.includes('vendedor') && !req.body.chave_pix)
-    return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
 
   try {
     await emTransacao(async (cliente) => {
       const consumido = await convitesRepo.consumir(req.params.token, conta.id, cliente);
       if (!consumido) throw Object.assign(new Error('esse convite acabou de ser usado'), { status: 409 });
       const cand = convite.candidatura_id ? await candidaturasRepo.buscarPorId(convite.candidatura_id) : null;
-      for (const papel of novos) {
-        const dadosPapel = papel === 'vendedor' ? { ...(cand || {}), chave_pix: req.body.chave_pix } : cand;
-        await liberarPapelNaConta(conta, papel, dadosPapel, cliente);
-      }
+      for (const papel of novos) await liberarPapelNaConta(conta, papel, cand, cliente);
       // Convite de ponto sem candidatura: o endereço entra depois em "Meu ponto".
       if (cand) await cliente.query(`UPDATE candidaturas SET conta_id = $2 WHERE id = $1`, [cand.id, conta.id]);
     });

@@ -136,14 +136,9 @@
       $('cpfCnpjFixo').value = conta.cpf_cnpj || '';
       $('emailFixo').value = conta.contato_email || '';
       $('perfilNome').textContent = conta.nome_empresa || '';
-      // `status` virou só comum/parceiro (16/09/2026) — "Comum" não rende
-      // badge (não é informação nova pro cliente); `suspenso` é o que
-      // importa mostrar de verdade, e tem prioridade sobre o selo de tier.
-      $('perfilStatusBadge').textContent = conta.suspenso
-        ? 'Suspensa'
-        : conta.status === 'parceiro'
-          ? ROTULOS.anunciante.parceiro
-          : '';
+      // Só `suspenso` rende selo. "Parceiro" saiu da experiência
+      // (reconstrução de Contas, 23/09/2026) — o dado fica no banco, o selo não.
+      $('perfilStatusBadge').textContent = conta.suspenso ? 'Suspensa' : '';
       const form = $('formPerfil');
       CAMPOS_EDITAVEIS.forEach((campo) => {
         if (form[campo]) form[campo].value = conta[campo] || '';

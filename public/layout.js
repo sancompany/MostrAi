@@ -181,11 +181,12 @@
       if (!conta) return;
       const papeis = conta.papeis || ['anunciante'];
       const inicial = (conta.nome_empresa || '?').trim().charAt(0).toUpperCase();
-      const casa = papeis.includes('anunciante')
-        ? '/anunciante/painel.html'
-        : papeis.includes('ponto')
+      // Conta só-vendedor não tem mais casa própria (programa de vendedores
+      // aposentado, 23/09/2026): toda conta pode anunciar, então cai no painel.
+      const casa =
+        papeis.includes('ponto') && !papeis.includes('anunciante')
           ? '/anunciante/ponto.html'
-          : '/anunciante/vendedor.html';
+          : '/anunciante/painel.html';
       // Pedido do dono, 19/09/2026: quem já está logado e cai na home vai
       // direto pro dashboard — a home é porta de entrada pra quem ainda não
       // tem conta, não faz sentido mostrar ela de novo pra quem já entrou.
@@ -358,8 +359,15 @@ window.ROTULOS = {
     a_instalar: 'badge-pendente',
     em_operacao: 'badge-ok',
   },
-  criativo: { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado' },
-  criativoClasse: { pendente: 'badge-pendente', aprovado: 'badge-ok', reprovado: 'badge-err' },
+  // 'retirado' (23/09/2026, migration 075): o admin tirou do ar, ou saiu
+  // porque a versão nova foi aprovada no lugar. Continua na conta.
+  criativo: { pendente: 'Em análise', aprovado: 'Aprovado', reprovado: 'Reprovado', retirado: 'Fora do ar' },
+  criativoClasse: {
+    pendente: 'badge-pendente',
+    aprovado: 'badge-ok',
+    reprovado: 'badge-err',
+    retirado: 'badge-pendente',
+  },
   // So dois estados: o CHECK da migration 019 e ('aprovado','inativo'). O
   // 'pendente_aprovacao' que estava aqui vinha do modelo antigo de afiliado e
   // nao existe no banco — rotulo pra um estado impossivel.

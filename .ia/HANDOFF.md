@@ -3,7 +3,61 @@
 ## Updated
 2026-09-23
 
-## Reconstrução de Ofertas/Promoções (23/09/2026, este agente)
+## Reconstrução final de Contas + Categorias (23/09/2026, este agente)
+Pedido do dono (63 partes): toda conta já pode anunciar; Central de Contas
+e ficha única; plano administrativo como benefício; criativos e pontos na
+ficha; suspensão que tira acesso; Vendedor/Parceiro fora da experiência;
+taxonomia de categorias consolidada. Depois disso o dono faz outra revisão
+manual do admin — **não continuar mexendo em outras telas.**
+
+- **Migration 074** (categorias): coluna `canonica_id`; 31 fusões de
+  sinônimo/concorrente direto (ex.: Pousada→Hotel / Pousada, Casa de
+  carnes→Açougue / Casa de carnes, Sementes/Fertilizantes/Defensivos→Insumos
+  agrícolas). A absorvida vira legado + fora do cadastro, contas/pontos são
+  reapontados (fecha falso-negativo de concorrência), nome vira alias. 17
+  renomes pra clareza, aliases novos. Tudo por NOME e no-op se a linha não
+  existir; renome só se o nome novo estiver livre (produção pode ter
+  diferido do dev). 229→198 ativas. As 22 legadas da 067 continuam sem
+  mapeamento automático (ambíguas — de propósito).
+- **Migration 075**: `planos_administrativos` (histórico de benefício;
+  estado vigente continua em `anunciantes`) + `criativos.status` aceita
+  `retirado` + `criativos.substitui_criativo_id`.
+- **Plano administrativo** (`src/financeiro/plano-administrativo.js` +
+  rotas em financeiro/routes.js): cortesia, nunca cobrança; assinatura
+  paga ativa é cancelada antes pela lógica existente (502 = nada muda);
+  encerrar devolve o plano do comodato se houver ponto. `data_expiracao` é
+  `date` — a validade trafega como string 'AAAA-MM-DD' (Date do JS às
+  23:59 BRT gravava um dia a mais). `liberar-plano` ficou legado.
+- **Suspensão**: login recusa conta suspensa (403) e
+  `derrubarSessaoSuspensa` (anunciantes/routes.js, montado em server.js)
+  derruba sessão aberta. Ponto físico do dono suspenso segue tocando (TV
+  autentica por aparelho). Antes, suspensa só não conseguia comprar.
+  Efeito colateral consciente: conta auto-suspensa (cobrança falhou /
+  cobertura venceu) também não entra mais — já não conseguia assinar antes.
+- **Criativos**: teto de cadastro do admin = 3 (`CRIATIVOS_POR_CONTA`);
+  quantos rodam = limite do plano (gerador). Substituir sobe B em análise
+  apontando pra A; aprovar B retira A (PATCH /admin/criativos/:id, vale
+  também pela fila global). Retirar/colocar no ar = status `retirado` ⇄
+  `aprovado` (voltar do retirado não reenvia e-mail de "no ar").
+- **Vendedor aposentado**: `ativar-vendedor` 410; `liberarPapelNaConta`
+  ignora 'vendedor'; convite novo não aceita o papel e o antigo é filtrado;
+  cupom de vendedor não vale no cadastro (PT- de ponto segue);
+  `registrarComissaoSeHouver` desligado por `COMISSAO_DE_VENDEDOR_ATIVA =
+  false` (nenhuma comissão nova, nem de renovação). Tabelas/histórico e a
+  fila oculta de Comissões (pagamento do que já existe) intactos.
+  `/anunciante/vendedor.html` → 301 pro painel. Card "Vendedor parceiro" e
+  "Quer indicar?" saíram da home; FAQ de planos sem "Vendas".
+  **Pendente do dono**: termos-de-uso §6 e política de privacidade ainda
+  descrevem o programa de vendedores (texto legal — não mexido).
+- **Parceiro**: selo/filtro/status saíram de toda UI (admin, painel,
+  perfil). O desconto de parceiro em `san-checkout.js` continua valendo
+  pra quem já é parceiro (dado preservado, cobrança não mexida).
+- **Admin**: `abrirModal`/`confirmarModal` (<dialog> nativo) substituem
+  prompt/confirm nos fluxos de Contas/Categorias e no Reprovar da fila
+  global. Conta interna (`conta_propria`) fora da Central de Contas.
+- Testes: `tests/contas-reconstrucao.test.js` (14). Suíte 198/198.
+
+## Reconstrução de Ofertas/Promoções (23/09/2026, agente anterior)
 Pedido do dono: reconstrução visual e funcional completa de Ofertas
 (Preços + Promoções), admin e site público. Requisito explícito mais
 importante: parar de segmentar promoção por sessão ("logado × deslogado")

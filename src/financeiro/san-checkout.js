@@ -309,9 +309,19 @@ async function registrarPendencia(payload, motivo) {
   ]);
 }
 
+// Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
+// pedido do dono: "sem novas comissões"). Nenhuma comissão NOVA nasce daqui
+// em diante — nem de cadastro novo, nem da renovação de quem já tinha vindo
+// por cupom. As comissões que já existem ficam na tabela como estão (histórico
+// e fila de pagamento). A função fica inteira atrás da chave pra que
+// religar, se o dono um dia quiser, seja trocar uma constante — não
+// reescrever a regra.
+const COMISSAO_DE_VENDEDOR_ATIVA = false;
+
 // `db` é o pool por padrão, mas o webhook passa o client da transação pra
 // que a comissão entre junto com a cobrança — ou não entre nenhuma das duas.
 async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
+  if (!COMISSAO_DE_VENDEDOR_ATIVA) return;
   if (!anunciante.indicado_por_cupom || !valor) return;
   // Vendedor é papel da conta única (migration 019). Cupom em maiúsculas pra
   // não perder comissão por caixa diferente.

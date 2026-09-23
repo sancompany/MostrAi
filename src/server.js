@@ -134,8 +134,12 @@ const MUDARAM_DE_ENDERECO = {
   // pro mesmo lugar que o card de vendedor da home manda agora.
   '/afiliado/cadastro.html': '/#contato',
   '/afiliado/login.html': '/anunciante/login.html',
-  '/afiliado/painel.html': '/anunciante/vendedor.html',
+  '/afiliado/painel.html': '/anunciante/painel.html',
   '/anunciante/perfil.html': '/anunciante/painel.html',
+  // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026):
+  // o painel de vendas (cupom, link, comissão) saiu da experiência. Os dados
+  // ficam no banco; quem tinha o link cai no painel da conta.
+  '/anunciante/vendedor.html': '/anunciante/painel.html',
 };
 Object.entries(MUDARAM_DE_ENDERECO).forEach(([de, para]) => {
   app.get(de, (_req, res) => res.redirect(301, para));
@@ -184,6 +188,9 @@ app.post('/admin/login', limiteTentativas, (req, res) => {
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
     req.session.isAdmin = true;
+    // Quem concedeu/encerrou um plano administrativo fica no histórico
+    // (planos_administrativos.concedido_por) — é o único nome que existe.
+    req.session.adminUsuario = String(usuario);
     res.json({ ok: true });
   });
 });
@@ -196,6 +203,10 @@ function requireAdminSession(req, res, next) {
   next();
 }
 app.use('/admin', requireAdminSession);
+
+// Conta suspensa perde o acesso com a sessão já aberta (Parte 27 da
+// reconstrução de Contas) — regra em src/anunciantes/routes.js.
+app.use(anunciantesRoutes.derrubarSessaoSuspensa);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 

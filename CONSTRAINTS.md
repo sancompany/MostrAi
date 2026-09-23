@@ -24,9 +24,9 @@ Item desejado para depois não mora aqui — mora em `docs/proximas-versoes.md`.
 - **Autodeclaração de papel `ponto` ou `vendedor`.** Ninguém ganha esses
   papéis só por pedir — sempre passa pelo dono. Ponto: a conta (já criada,
   sempre `anunciante`) pede de dentro do painel, o dono aprova e libera
-  direto nela (`POST /admin/candidaturas/:id/liberar`). Vendedor: nem pedido
-  tem — só entra depois de falar direto com o dono por canal oficial, que
-  gera um convite à mão (`POST /admin/convites`, sem candidatura). Formulário
+  direto nela (`POST /admin/candidaturas/:id/liberar`). Vendedor: papel
+  APOSENTADO em 23/09/2026 (pedido do dono) — nenhum vendedor, convite,
+  cupom ou comissão nova; os registros antigos ficam no banco. Formulário
   público sem conta (`POST /candidaturas`, "Seja um ponto"/"Seja um
   vendedor") foi aposentado em 18/09/2026 — pedido do dono, pra unificar a
   entrada: toda conta nasce igual, e o papel extra vem depois, de dentro
