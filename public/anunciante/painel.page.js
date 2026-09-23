@@ -168,11 +168,6 @@ function preencherStatusBanner() {
       document.getElementById('dlgPlano').showModal();
     });
   }
-  const botaoSecundario = document.getElementById('btnGerenciarPlanoSecundario');
-  if (botaoSecundario) {
-    botaoSecundario.hidden = !podeGerenciar;
-    if (podeGerenciar) botaoSecundario.onclick = () => document.getElementById('dlgPlano').showModal();
-  }
   carregarPontos();
 }
 
@@ -591,7 +586,6 @@ async function carregarExibicoes() {
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorPonto(dados.porPonto || []);
-    desenharCobrancas(dados.cobrancas || []);
     desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
     pintarStatusOperacional(dados.porPonto || []);
     explicarZero(dados);
@@ -815,30 +809,6 @@ function statusOnline(ultimaVezOnline) {
   return online ? '<span class="badge badge-ok">🟢 Online</span>' : '<span class="badge badge-err">🔴 Offline</span>';
 }
 
-// Cobranças já vêm no mesmo endpoint e não eram mostradas em lugar nenhum.
-// Coluna de nota fiscal saiu (19/09/2026, pedido do dono): nenhuma é
-// emitida hoje, e quando passar a emitir vai direto por e-mail, não por um
-// link nesta tabela.
-function desenharCobrancas(cobrancas) {
-  document.getElementById('painelCobrancas').hidden = false;
-  if (!cobrancas.length) {
-    document.getElementById('listaCobrancas').innerHTML =
-      '<div class="empty-state dashboard-empty">Nenhum pagamento registrado ainda.</div>';
-    return;
-  }
-  document.getElementById('listaCobrancas').innerHTML =
-    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Data</th><th>Valor</th></tr></thead><tbody>
-    ${cobrancas
-      .map(
-        (c) => `<tr>
-      <td>${new Date(c.criado_em).toLocaleDateString('pt-BR')}</td>
-      <td>${fmt(c.valor)}</td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table></div>`;
-}
-
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
@@ -853,6 +823,8 @@ if (window.montarMeusPontos) window.montarMeusPontos({ obterConta: () => ANUNCIA
 // Meus criativos: o comercial e o do comodato, fora do bloqueio de plano
 // comercial (o módulo se esconde sozinho quando não há plano nenhum).
 if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => ANUNCIANTE });
+// Financeiro: pagamentos do plano e recebimentos do comodato.
+if (window.montarFinanceiro) window.montarFinanceiro();
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
 // 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já

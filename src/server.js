@@ -228,6 +228,7 @@ app.use(midiasRoutes);
 app.use(creditosRoutes);
 app.use(eventosRoutes);
 app.use(require('./conta/modos').router);
+app.use(require('./conta/financeiro'));
 
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador
 // manda `Accept: text/html` e merece uma tela; `fetch` do painel espera JSON e

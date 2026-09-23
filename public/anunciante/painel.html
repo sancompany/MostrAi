@@ -111,12 +111,6 @@
           </article>
         </section>
 
-        <section class="dashboard-section secondary-section" aria-labelledby="tituloPagamentos">
-          <article class="panel painel-cobrancas" id="painelCobrancas" hidden>
-            <div class="panel-head"><div><p class="section-eyebrow">Plano e cobrança</p><h2 id="tituloPagamentos">Meus pagamentos</h2></div><button type="button" class="btn-link" id="btnGerenciarPlanoSecundario">Gerenciar plano</button></div>
-            <div id="listaCobrancas"></div>
-          </article>
-        </section>
       </div>
     </section>
 
@@ -135,6 +129,23 @@
             <p class="form-msg" id="uploadMsg" role="status"></p>
             <div class="ajuda-arte" id="ajudaArte" hidden><p class="u-m-0">Ainda não tem uma peça pronta? <a id="linkArteSimples" href="#" target="_blank" rel="noopener">Fale com a gente</a>.</p></div>
             <div id="listaCriativos" class="criativos-library-loading">Carregando criativos...</div>
+          </article>
+        </section>
+      </div>
+    </section>
+
+    <!-- Financeiro (Fatia 4): o que a conta paga (plano) e o que recebe
+         (ajuda de custo do comodato), cada bloco só quando tem assunto. -->
+    <section class="dashboard-content financeiro-content">
+      <div class="wrap painel-wrap">
+        <section class="dashboard-section" id="modFinanceiro" aria-labelledby="tituloFinanceiro" hidden>
+          <article class="panel painel-financeiro">
+            <div class="panel-head"><div><p class="section-eyebrow">Dinheiro da conta</p><h2 id="tituloFinanceiro">Financeiro</h2></div></div>
+            <p class="form-msg err" id="finErro" role="status" hidden>Não foi possível carregar seu financeiro agora. Tente atualizar a página.</p>
+            <div class="fin-colunas">
+              <div class="fin-bloco" id="finPagamentos" hidden></div>
+              <div class="fin-bloco" id="finRecebimentos" hidden></div>
+            </div>
           </article>
         </section>
       </div>
@@ -237,6 +248,7 @@
   <script src="/candidatura-ponto.js"></script>
   <script src="/meus-pontos.js"></script>
   <script src="/meus-criativos.js"></script>
+  <script src="/financeiro-conta.js"></script>
   <script src="/modos.js"></script>
   <script src="/anunciante/painel.page.js"></script>
 </body>
