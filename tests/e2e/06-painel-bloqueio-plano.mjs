@@ -3,9 +3,10 @@
 // dashboard inteiro — KPIs, gráficos e upload de criativo — escondido atrás
 // de um card com CTA pra escolher plano. Depois que o admin libera um plano
 // (cortesia, via /admin/anunciantes/:id/liberar-plano — mesmo efeito de um
-// plano pago pra essa tela), o bloqueio some e os KPIs novos aparecem, entre
-// eles "Horas entregues no mês" (só existe com plano). Assume banco zerado
-// e servidor na 3999.
+// plano pago pra essa tela), o bloqueio some e os KPIs aparecem, entre eles o
+// de horas de tela no mês (`data-kpi="horas"`, só existe com plano — era o
+// card "Horas entregues no mês" até o commit 152d03d). Assume banco zerado e
+// servidor na 3999.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
@@ -72,7 +73,10 @@ await p.reload({ waitUntil: 'networkidle' });
 await p.waitForTimeout(1000);
 check('bloqueio de plano some', !(await p.$('#bloqueioPlano')));
 check('dashboard de anúncios reaparece', !(await p.$eval('#dashboardAnuncios', (e) => e.hidden)));
-check('card "Horas entregues no mês" aparece no grid', (await p.textContent('#kpiGrid')).includes('Horas entregues no mês'));
+const kpiHoras = p.locator('#kpiGrid [data-kpi="horas"]');
+check('KPI "Horas de tela no mês" aparece no grid', await kpiHoras.isVisible());
+const legendaHoras = await kpiHoras.locator('[data-kpi-horas-legenda]').textContent();
+check('KPI de horas mostra o contratado do plano', /de [\d.,]+h contratadas/.test(legendaHoras), legendaHoras);
 check('upload de criativo liberado na tela', !!(await p.$('#arquivoCriativo')));
 await shot(p, 'com-plano');
 

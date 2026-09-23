@@ -3,6 +3,19 @@
 ## Updated
 2026-09-23
 
+## Roteiros e2e de navegador em dia (23/09/2026, este agente)
+`tests/e2e/03`, `05` e `06` foram reescritos pro fluxo de hoje (as falhas
+eram anteriores ao PR #22: vendedor, custos, "Marcar parceiro", candidaturas
+em tabela e o card "Horas entregues no mês" já não existiam). 03 a 09 passam
+com `falhas: 0` depois de `tests/e2e/reset-db.sh` — rode o reset antes de
+CADA roteiro (repetem e-mails). O 09 ainda sai com código 1 só pelos 2 erros
+de console do upload de foto sem Supabase, que ele mesmo espera.
+- `reset-db.sh` agora apaga o plano de fixture `plano-teste-e2e-rede` (do
+  09): ativo no catálogo, ele fazia `buscarPlanoAtivoDoTier` (`LIMIT 1` sem
+  `ORDER BY`) devolver o plano errado nos testes de unidade rodados depois.
+- O 05 responde pela ViaCEP (`route.fulfill`) e espera a busca do CEP
+  terminar antes de digitar a rua — a resposta sobrescreve rua/bairro.
+
 ## Polimento visual final do admin, V1 (23/09/2026, este agente)
 Pedido do dono: última rodada universal de acabamento visual do admin antes
 da V1 — sem regra comercial, cálculo, permissão, schema ou framework novos.
