@@ -24,6 +24,8 @@ const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
 const eventos = require('../lib/eventos');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
 const bancohorasRepo = require('../bancohoras/repository');
@@ -1311,6 +1313,20 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
       );
       // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
       enviarContaAprovada(anunciante).catch((err) => console.error('e-mail de conta aprovada', err));
+    }
+    // Aviso em tempo real nas duas transições (Fase 3, SSE) — a conta
+    // suspensa não pode descobrir só porque um botão parou de funcionar
+    // (pedido original: "on reactivation, interface must update
+    // automatically"). Símetrico: suspender também avisa.
+    if (!!antes?.suspenso !== !!anunciante.suspenso) {
+      notificacoesRepo
+        .registrar(anunciante.id, {
+          tipo: anunciante.suspenso ? 'conta_suspensa' : 'conta_reativada',
+          titulo: anunciante.suspenso ? 'Sua conta foi suspensa' : 'Sua conta foi reativada',
+          descricao: anunciante.suspenso ? 'Fale com a gente pra entender o motivo.' : undefined,
+        })
+        .catch((err) => console.error('falha ao notificar suspensão/reativação', err.message));
+      sse.emitirParaConta(anunciante.id, 'account.updated', { suspenso: anunciante.suspenso });
     }
     res.json(anunciante);
   } catch (err) {

@@ -70,6 +70,23 @@ async function carregar() {
   }
 }
 
+// Sem F5 (Fase 3, SSE — eventos.js): cada evento refaz só o que ele afeta.
+// `payment.updated`/`plan.updated`/`account.updated` mudam o estado da CONTA
+// (plano, expiração, suspensão) — o próprio `carregar()` já resolve isso do
+// zero, incluindo o bloqueio de plano, sem reload. `credits.updated` e
+// `notification.created` ainda não têm consumidor nesta página (o card de
+// créditos e o sino de notificações são da Fase 4, o dashboard único) —
+// registrar os handlers deles agora seria trabalho sem efeito nenhum ainda.
+if (window.ligarEventosDaConta) {
+  window.ligarEventosDaConta({
+    'payment.updated': carregar,
+    'plan.updated': carregar,
+    'account.updated': carregar,
+    'application.updated': carregar,
+    'creative.updated': carregarCriativos,
+  });
+}
+
 // Mesmo padrão de public/modos.js (window.montarModo): esconde o container
 // de verdade e insere um card no lugar dele, um nível abaixo do bloqueio de
 // papel — aqui o papel "anunciante" já está liberado, só falta plano.
