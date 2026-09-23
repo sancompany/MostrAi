@@ -83,7 +83,7 @@ check('Pagamentos visível', await p.isVisible('#finPagamentos'));
 check('Recebimentos escondido', !(await p.isVisible('#finRecebimentos')));
 check('plano e cobrança', /Essencial[\s\S]*Ativa[\s\S]*149,90/.test(await p.textContent('#finPagamentos')));
 check('sem o "Meus pagamentos" antigo', !(await p.$('#painelCobrancas')));
-await p.click('#finPagamentos [data-acao="gerenciar-plano"]');
+await p.click('#modPlano [data-acao="gerenciar-plano"]');
 check('Gerenciar plano abre o diálogo', await p.evaluate(() => document.getElementById('dlgPlano').open));
 await p.click('#btnFecharPlano');
 await p.close();

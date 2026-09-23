@@ -3,8 +3,8 @@
 // comodato de quem cede a parede) num lugar só; cada bloco aparece quando tem
 // assunto, os dois lado a lado quando a conta faz as duas coisas.
 //
-// Uso: montarFinanceiro(). "Gerenciar plano" abre o #dlgPlano que o painel já
-// preenche (painel.page.js#preencherAssinatura). Requer /config.js,
+// Uso: montarFinanceiro(). As ações do plano (escolher, gerenciar) moram no
+// card "Plano comercial" do painel — aqui só o histórico. Requer /config.js,
 // /layout.js e /eventos.js. Idempotente: cada carga reescreve os blocos.
 (function () {
   let dados = null;
@@ -35,7 +35,6 @@
     return `
       <div class="fin-bloco-topo">
         <div><h3 class="fin-titulo">Pagamentos</h3><p class="fin-nota">O que você paga à Mostraí pelo plano.</p></div>
-        ${p.plano.situacao !== 'sem_plano' ? '<button type="button" class="btn-link" data-acao="gerenciar-plano">Gerenciar plano</button>' : '<a class="btn primary mini" href="/planos.html">Escolher plano</a>'}
       </div>
       <p class="fin-plano"><b>${esc(p.plano.nome || 'Sem plano')}</b> <span class="badge ${classe}">${esc(rotulo)}</span>${esc(validade)}</p>
       ${lista}`;
@@ -142,7 +141,6 @@
     $('modFinanceiro')?.addEventListener('click', (ev) => {
       const alvo = ev.target.closest('[data-acao]');
       if (!alvo) return;
-      if (alvo.dataset.acao === 'gerenciar-plano') $('dlgPlano')?.showModal();
       if (alvo.dataset.acao === 'trocar-comodato') trocarComodato(alvo);
     });
     if (window.ligarEventosDaConta) {

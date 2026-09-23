@@ -411,6 +411,35 @@
     }
   }
 
+  // Resumo e alertas do topo do painel (painel-resumo.js): tela que precisa
+  // de atenção é o alerta mais urgente de um dono de ponto.
+  function publicar(estabs) {
+    if (!window.publicarResumo) return;
+    const pontos = estabs.filter((e) => e.tipo === 'ponto');
+    const ativos = pontos.filter((e) => e.estado === 'ativo').length;
+    const alertas = [];
+    for (const e of pontos) {
+      for (const t of e.telas.filter((x) => x.nivel === 'atencao')) {
+        alertas.push({ nivel: 'atencao', texto: `${t.nome} (${e.nome}): ${t.situacaoTexto}`, alvo: 'modPontos' });
+      }
+    }
+    for (const e of estabs.filter((x) => x.estado === 'em_analise')) {
+      alertas.push({ nivel: 'info', texto: `Pedido de ${e.nome} em análise.`, alvo: 'modPontos' });
+    }
+    window.publicarResumo('pontos', {
+      chips: pontos.length
+        ? [
+            {
+              rotulo: 'Pontos',
+              valor: `${ativos} de ${pontos.length} ${pontos.length === 1 ? 'ativo' : 'ativos'}`,
+              alvo: 'modPontos',
+            },
+          ]
+        : [],
+      alertas,
+    });
+  }
+
   // ---------- Carga ----------
   // Uma carga por vez: SSE de tela e de ponto chegam juntos (a mesma mudança
   // emite os dois), e sem isto viravam duas requisições iguais em paralelo.
@@ -439,6 +468,7 @@
       $('btnNovoPonto').hidden = !estabs.length || formAberto;
       lista.innerHTML = estabs.length ? estabs.map(htmlEstabelecimento).join('') : formAberto ? '' : htmlOportunidade();
       lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
+      publicar(estabs);
     } catch {
       dados = null;
       $('pontosResumo').textContent = '';

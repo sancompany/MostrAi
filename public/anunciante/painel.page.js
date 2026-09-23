@@ -4,16 +4,24 @@ let ANUNCIANTE = null;
 let ANUNCIANTE_ID = null;
 
 async function carregar() {
-  const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
-  if (r.status === 401) {
-    window.location.href = '/anunciante/login.html';
-    return;
+  // Primeira carga: reaproveita o /anunciantes/me que o layout.js já pediu
+  // (carregarConta) — eram duas chamadas iguais a cada abertura do painel.
+  // As recargas (SSE, resgate) pedem de novo: o plano pode ter mudado.
+  const jaCarregada = !ANUNCIANTE && window.carregarConta ? await window.carregarConta() : null;
+  if (jaCarregada) {
+    ANUNCIANTE = jaCarregada;
+  } else {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
+    if (r.status === 401) {
+      window.location.href = '/anunciante/login.html';
+      return;
+    }
+    // Sem isso, um 500 caía no .json(), ANUNCIANTE_ID virava undefined e o
+    // painel montava vazio e funcional — o cliente via "0 exibições" em vez
+    // de "não deu pra carregar".
+    if (!r.ok) throw new Error();
+    ANUNCIANTE = await r.json();
   }
-  // Sem isso, um 500 caía no .json(), ANUNCIANTE_ID virava undefined e o
-  // painel montava vazio e funcional — o cliente via "0 exibições" em vez
-  // de "não deu pra carregar".
-  if (!r.ok) throw new Error();
-  ANUNCIANTE = await r.json();
   ANUNCIANTE_ID = ANUNCIANTE.id;
   // Popup de perfil, avatar e sair vêm de /perfil.js — a mesma tela que o
   // painel do ponto usa, em vez de duas cópias que divergem.
@@ -21,11 +29,13 @@ async function carregar() {
     ANUNCIANTE = nova;
     preencherStatusBanner();
   });
+  // Hero, resumo e plano valem pra toda conta — inclusive a que ainda não
+  // ativou o modo anúncios (dono de ponto que só cede a parede).
+  preencherStatusBanner();
 
   // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
   // lugar ao card de ativação. Com o papel, segue o fluxo normal.
   const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async (estado) => {
-    preencherStatusBanner();
     // Bônus de comodato (plano de anúncio grátis por tempo de ponto no ar):
     // antes só aparecia na página separada do ponto.
     const bonus = document.getElementById('bonusAnuncios');
@@ -52,8 +62,6 @@ async function carregar() {
     carregarBancoHoras();
   });
   if (estado && !estado.modos.anunciante.liberado) {
-    document.getElementById('statusBanner').innerHTML =
-      `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
     // Veio da vitrine querendo um plano: guarda pra depois de ativar.
     const planoUrl = new URLSearchParams(window.location.search).get('plano');
     if (planoUrl) history.replaceState(null, '', `/anunciante/painel.html?plano=${encodeURIComponent(planoUrl)}`);
@@ -109,66 +117,95 @@ function montarBloqueioPlano() {
   container.parentNode.insertBefore(caixa, container);
 }
 
+// Hero da conta (Fatia 5): saudação e, pra conta suspensa, a explicação.
+// O que a conta tem e o que precisa de atenção vem logo abaixo, do resumo
+// (painel-resumo.js); plano e ações de assinatura moram no card "Plano
+// comercial" — antes o hero repetia o plano e o botão de gerenciar.
 function preencherStatusBanner() {
   const el = document.getElementById('statusBanner');
-  let planoTxt = 'Sem plano ainda';
-  if (ANUNCIANTE.plano_id) {
-    // Cortesia chegava no navegador e nao aparecia em tela nenhuma do cliente:
-    // quem ganhou o plano (bonus de ponto ou liberacao do dono) via "Plano
-    // ativo" igualzinho a quem paga, e nao sabia que nao havia cobranca — nem
-    // que a data de expiracao nao vai renovar sozinha.
-    planoTxt = ANUNCIANTE.plano_cortesia ? 'Plano de cortesia' : 'Plano ativo';
-    if (ANUNCIANTE.data_expiracao) planoTxt += ` até ${window.dataBR(ANUNCIANTE.data_expiracao)}`;
-    if (ANUNCIANTE.plano_cortesia) planoTxt += ' · sem cobrança';
-  }
-
-  // Só um estado derruba o botão: `suspenso` (campo próprio desde
-  // 16/09/2026, separado de `status`). POST /anunciantes/:id/assinar recusa
-  // com 403 (financeiro/routes.js) quando suspenso. O botão levava pra
-  // vitrine e a assinatura estourava lá na frente, sem dizer por quê. Quem
-  // pediu devolução cai exatamente aqui, porque o arrependimento zera o
-  // plano e suspende a conta.
+  // Só um estado tem explicação aqui: `suspenso` (campo próprio desde
+  // 16/09/2026, separado de `status`). Quem pediu devolução cai exatamente
+  // aqui, porque o arrependimento zera o plano e suspende a conta.
   const explicacao = ANUNCIANTE.suspenso
     ? 'Sua conta está suspensa, e o anúncio não está no ar. Se você pediu devolução, o pedido está em andamento; ' +
       'se foi falta de pagamento, a conta volta assim que a cobrança for confirmada. <a href="/contato.html">Fale com a gente</a>.'
     : null;
-  const podeAssinar = !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso;
-  // Engrenagem "Gerenciar plano" (19/09/2026, pedido do dono): antes as
-  // informações e ações de assinatura ficavam num card fixo no meio do
-  // dashboard, ocupando espaço pra quem só queria ver os números. Agora é
-  // um dialog, atrás de um botão nesta mesma linha — quem tem plano (mesmo
-  // cortesia ou vencido) sempre pode abrir pra ver os detalhes.
-  const podeGerenciar = !!ANUNCIANTE.plano_id;
   el.innerHTML = `
     <div class="hero-main">
       <div class="hero-copy">
-        <p class="hero-kicker">Painel da campanha</p>
+        <p class="hero-kicker">Sua conta na Mostraí</p>
         <h1>Olá, ${esc(ANUNCIANTE.nome_empresa)}</h1>
-        <p>Acompanhe a entrega do seu anúncio e a presença da sua marca na rede Mostraí.</p>
-        <span class="hero-plan"><span class="hero-plan-dot"></span>${planoTxt}</span>
+        <p>Anúncios, pontos, criativos e o dinheiro da conta, num lugar só.</p>
         ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
-      </div>
-      <div>
-    ${podeAssinar ? '<a class="btn primary" href="/planos.html">Escolher plano</a>' : ''}
-    ${
-      podeGerenciar
-        ? `<button type="button" class="btn-engrenagem" id="btnGerenciarPlano" aria-label="Gerenciar plano">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.65 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.3-.08.62-.08.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.4.32.64.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.25.1.5.02.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
-      Gerenciar plano
-    </button>`
-        : ''
-    }
       </div>
     </div>
     <div class="hero-status" id="heroStatus" hidden></div>
   `;
-  if (podeGerenciar) {
-    preencherAssinatura();
-    document.getElementById('btnGerenciarPlano').addEventListener('click', () => {
-      document.getElementById('dlgPlano').showModal();
-    });
-  }
+  desenharPlano();
   carregarPontos();
+}
+
+// "Plano comercial" (Fatia 5): o que a conta tem pra anunciar na rede —
+// situação, validade e as ações (escolher, trocar, gerenciar). O comodato
+// aparece junto quando existe, porque é ele que põe o anúncio do dono na
+// tela do próprio comércio mesmo sem plano pago.
+function situacaoDoPlano() {
+  if (!ANUNCIANTE.plano_id) return ['sem_plano', 'badge-neutro', 'Sem plano'];
+  if (ANUNCIANTE.suspenso) return ['suspensa', 'badge-err', 'Suspensa'];
+  if (ANUNCIANTE.data_expiracao && new Date(ANUNCIANTE.data_expiracao) <= new Date())
+    return ['vencida', 'badge-pendente', 'Vencida'];
+  if (ANUNCIANTE.plano_cortesia) return ['cortesia', 'badge-neutro', 'Cortesia'];
+  return ['ativa', 'badge-ok', 'Ativa'];
+}
+
+function desenharPlano() {
+  const secao = document.getElementById('modPlano');
+  if (!secao || !ANUNCIANTE) return;
+  const [situacao, classe, rotulo] = situacaoDoPlano();
+  const nome = ANUNCIANTE.plano_id ? ANUNCIANTE.plano?.nome || 'Seu plano' : 'Nenhum plano comercial';
+  const validade =
+    ANUNCIANTE.plano_id && ANUNCIANTE.data_expiracao
+      ? `<p class="plano-validade">${situacao === 'vencida' ? 'Venceu em' : 'Até'} ${window.dataBR(ANUNCIANTE.data_expiracao)}${ANUNCIANTE.plano_cortesia ? ' · sem cobrança, não renova sozinho' : ''}</p>`
+      : '';
+  const comodato =
+    ANUNCIANTE.comodato_plano_id && !ANUNCIANTE.plano_id
+      ? '<p class="plano-comodato">Pelo comodato, o seu anúncio já roda na tela do seu comércio.</p>'
+      : '';
+  const acoes = [];
+  if (ANUNCIANTE.plano_id) {
+    acoes.push('<button type="button" class="btn ghost mini" data-acao="gerenciar-plano">Gerenciar plano</button>');
+  } else if (!ANUNCIANTE.suspenso) {
+    acoes.push('<a class="btn primary mini" href="/planos.html">Escolher plano</a>');
+  }
+  document.getElementById('planoResumo').innerHTML = `
+    <p class="plano-nome"><b>${esc(nome)}</b> <span class="badge ${classe}">${rotulo}</span></p>
+    ${validade}${comodato}
+    ${acoes.length ? `<div class="plano-acoes">${acoes.join('')}</div>` : ''}`;
+  secao.hidden = false;
+  if (ANUNCIANTE.plano_id) preencherAssinatura();
+
+  const alertas = [];
+  if (situacao === 'vencida')
+    alertas.push({
+      nivel: 'atencao',
+      texto: 'Seu plano venceu — escolha um plano pra voltar ao ar.',
+      alvo: 'modPlano',
+    });
+  if (situacao === 'suspensa')
+    alertas.push({ nivel: 'atencao', texto: 'Sua conta está suspensa: o anúncio não está no ar.', alvo: 'modPlano' });
+  const diasRestantes = ANUNCIANTE.data_expiracao
+    ? Math.ceil((new Date(ANUNCIANTE.data_expiracao) - Date.now()) / 86400000)
+    : null;
+  if (situacao === 'cortesia' && diasRestantes !== null && diasRestantes <= 7)
+    alertas.push({
+      nivel: 'info',
+      texto: `Sua cortesia termina em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'} e não renova sozinha.`,
+      alvo: 'modPlano',
+    });
+  window.publicarResumo?.('plano', {
+    chips: [{ rotulo: 'Plano', valor: ANUNCIANTE.plano_id ? `${nome} · ${rotulo}` : 'Sem plano', alvo: 'modPlano' }],
+    alertas,
+  });
 }
 
 // Autoatendimento: cancelar e trocar de plano, sem passar pelo admin.
@@ -282,12 +319,15 @@ async function carregarPontos() {
   const busca = document.getElementById('buscaPontos');
   if (busca && dados.pontos.length > LIMIAR_BUSCA) {
     busca.hidden = false;
-    busca.addEventListener('input', () => {
+    // `oninput`/`onchange` (e não addEventListener): esta função roda de novo
+    // a cada carga do painel (SSE, resgate), e cada addEventListener somava
+    // mais um ouvinte — um clique no ponto virava N PUTs iguais.
+    busca.oninput = () => {
       const termo = busca.value.trim().toLowerCase();
       lista.querySelectorAll('.ponto-escolha').forEach((el) => {
         el.hidden = termo.length > 0 && !el.dataset.busca.includes(termo);
       });
-    });
+    };
   }
 
   const msg = document.getElementById('msgPontos');
@@ -316,7 +356,7 @@ async function carregarPontos() {
   }
   pintarContador();
 
-  lista.addEventListener('change', async (e) => {
+  lista.onchange = async (e) => {
     if (e.target.tagName !== 'INPUT') return;
     pintarContador();
     msg.textContent = 'Salvando...';
@@ -340,7 +380,7 @@ async function carregarPontos() {
       msg.textContent = 'Sem conexão. Tente de novo.';
       msg.className = 'form-msg err';
     }
-  });
+  };
 }
 
 // Conteúdo do dialog #dlgPlano — chamada sempre que há plano_id, não só
@@ -411,6 +451,9 @@ async function cancelarAssinatura() {
 (function dialogPlano() {
   const dlg = document.getElementById('dlgPlano');
   if (!dlg) return;
+  document.getElementById('modPlano')?.addEventListener('click', (e) => {
+    if (e.target.closest('[data-acao="gerenciar-plano"]')) dlg.showModal();
+  });
   document.getElementById('btnFecharPlano').addEventListener('click', () => dlg.close());
   dlg.addEventListener('click', (e) => {
     if (e.target === dlg) dlg.close();
@@ -619,10 +662,14 @@ function explicarZero(dados) {
     el.hidden = true;
     return;
   }
-  const criativoNoAr = (dados.criativosAprovados || 0) > 0;
-  el.innerHTML = criativoNoAr
-    ? '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.'
-    : '<b>Falta o seu vídeo.</b> Envie a peça em Meus criativos: a gente confere (normalmente no mesmo dia útil) e, aprovada, ela entra no rodízio. Os números começam a aparecer logo depois.';
+  // "Falta o seu vídeo" saiu daqui (Fatia 5): é alerta do topo do painel,
+  // publicado por Meus criativos — dito uma vez só.
+  if (!((dados.criativosAprovados || 0) > 0)) {
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML =
+    '<b>Seu anúncio já está aprovado e entra no rodízio das telas.</b> A primeira contagem aparece aqui na próxima hora cheia. Cada exibição é confirmada pela própria tela, e é isso que você vê neste painel.';
   el.hidden = false;
 }
 

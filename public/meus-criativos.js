@@ -99,6 +99,30 @@
     }
   }
 
+  // Resumo e alertas do topo do painel (painel-resumo.js).
+  function publicar() {
+    if (!window.publicarResumo) return;
+    const noAr = dados.criativos.filter((c) => c.situacao === 'no_ar').length;
+    const alertas = dados.criativos
+      .filter((c) => c.situacao === 'recusado')
+      .map(() => ({
+        nivel: 'atencao',
+        texto: 'Uma peça foi recusada — veja o motivo e envie a versão corrigida.',
+        alvo: 'modCriativos',
+      }));
+    if (!dados.criativos.length) {
+      alertas.push({
+        nivel: 'atencao',
+        texto: 'Falta o seu criativo: envie a peça pra entrar no ar.',
+        alvo: 'modCriativos',
+      });
+    }
+    window.publicarResumo('criativos', {
+      chips: [{ rotulo: 'Criativos', valor: `${noAr} no ar`, alvo: 'modCriativos' }],
+      alertas,
+    });
+  }
+
   function carregar() {
     if (!carregando) {
       carregando = desenhar().finally(() => {
@@ -120,8 +144,10 @@
       // cartão "Escolha um plano" do painel já diz isso.
       if (!dados.temPlano) {
         secao.hidden = true;
+        window.publicarResumo?.('criativos', {});
         return;
       }
+      publicar();
       desenharCabecalho();
       lista.innerHTML = dados.criativos.length
         ? `<div class="criativos-lista">${dados.criativos.map(htmlCriativo).join('')}</div>`
