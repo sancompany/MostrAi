@@ -3,6 +3,70 @@
 ## Updated
 2026-09-23
 
+## Reconstrução do painel único + créditos — atualização 2 (23/09/2026, este agente, mesma sessão)
+Continuação direta da seção abaixo ("Fases 1, 2 e 6"), depois do dono
+mandar "faça o restante do pedido". Sub-fases fechadas nesta rodada, cada
+uma PR própria, squash-merge em `main`, deploy Northflank verificado:
+
+- **Fase 5 (reload → refresh) — PR #27, mergeado.** Dos 7
+  `location.reload()` mapeados na auditoria, 4 eram o bug real (estado
+  desatualizado até F5 depois de um POST bem-sucedido): `modos.js`
+  (ativar modo anúncios, pedir modo ponto), `painel.page.js` (card "Quero
+  ser um ponto"), `vendedor.page.js` (salvar Pix). Os outros 3 (logout do
+  admin, "usar outra conta" no convite, refresh diário agendado do
+  player) são reload LEGÍTIMO — sessão terminando ou manutenção agendada,
+  não "estado desatualizado" — e não foram tocados.
+- **Fase 3 (SSE entre instâncias) — PR #28, mergeado.** `src/lib/sse.js`
+  só alcançava quem estava conectado na MESMA instância. Achado real: o
+  serviço roda com `instances: 2` no Northflank (não numa instância só,
+  como um comentário meu de uma rodada anterior desta sessão presumia sem
+  conferir). Corrigido com Postgres LISTEN/NOTIFY (`src/db/connection-
+  config.js`, novo, dividido com `pool.js`) — confirmado por WebSearch
+  antes de escrever que a porta 5432 do pooler Supabase é "session mode"
+  e suporta LISTEN/NOTIFY. Verificado com dois processos Node simulando
+  as 2 instâncias: evento cruza de um pro outro só pelo banco.
+  `public/eventos.js` (novo): cliente EventSource compartilhado
+  (`window.ligarEventosDaConta`), resincroniza em `visibilitychange` e
+  `online`. 3 emissores novos: candidatura aprovada/recusada
+  (`application.updated`, `src/candidaturas/routes.js`), criativo
+  aprovado/recusado (`creative.updated`, `src/admin/routes.js`), conta
+  suspensa/reativada (`account.updated`, `src/anunciantes/routes.js`) —
+  cada um também grava notificação. `credits.updated`/
+  `plan.updated`/`point.updated`/`screen.updated`/`finance.updated`
+  existem no cliente mas ainda sem emissor (fica pra quando o dashboard
+  que os consome existir).
+- **Hotfix — PR #29, mergeado, achado auditando o deploy da Fase 3.**
+  `src/db/pool.js` não tinha `max` explícito — padrão do driver `pg` é
+  10, e com `instances: 2` isso já bastava sozinho pra estourar o teto de
+  15 conexões do Supavisor de sessão do Supabase de produção (erro FATAL
+  real nos logs, `EMAXCONNSESSION`, ANTES até do deploy da Fase 3 — a
+  conexão nova do LISTEN só piorava uma folga que já estava apertada).
+  Corrigido com `max: 5` (2×5=10, sobra margem pro LISTEN + conciliar.js).
+  Lição: `docs/erros/2026-09-23-pool-sem-teto-estourava-limite-do-supavisor.md`.
+- **Fase 4, fatia 1 (sino de Atualizações) — PR #30, em revisão no
+  momento deste registro.** A conta já recebia notificações desde a Fase
+  1 mas não tinha como VER — sino + popover no cabeçalho compartilhado
+  (`public/layout.js#navConta`), comportamento em `public/notificacoes.js`
+  (novo): lista, marcar lida (otimista), marcar todas, ligado a
+  `notification.created` via SSE (badge sobe sem F5). Verificado com
+  Playwright real, desktop e mobile.
+
+**Fase 4 (o resto — o dashboard único de verdade) ainda não começou.**
+É a fatia grande de verdade: unificar `painel.html`/`.page.js` e
+`ponto.html`/`.page.js` num só, com Resumo compacto, o card "Plano
+comercial + Créditos e benefícios" (com o preview agora→depois→ao
+terminar e o resgate de créditos — hoje só o backend existe, `GET/POST
+/anunciantes/me/creditos*`, sem UI nenhuma consumindo), Performance,
+Cobertura (reusar o card de ponto do admin), Meus criativos unificado,
+Meus pontos unificado (candidatura+ponto+tela na mesma linha do tempo,
+nunca duplicado), Financeiro unificado. Cada peça é grande o bastante pra
+ser sua própria fatia/PR — não tentar de uma vez.
+
+**Fase 7 (testes obrigatórios) e Fase 8 (checklist manual de 16 cenários +
+autorrevisão + relatório final) continuam não iniciadas** — fazem mais
+sentido depois que a Fase 4 tiver algo substancial pra testar de ponta a
+ponta.
+
 ## Reconstrução do painel único + créditos — Fases 1, 2 e 6 mergeadas; 3-5/7/8 em aberto (23/09/2026, este agente)
 Pedido gigante do dono (mensagem única, ~40 tópicos): reconstrução estrutural
 completa do painel da conta (unificar anunciante+ponto num dashboard só,

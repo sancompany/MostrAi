@@ -128,3 +128,4 @@ carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar seu painel agora.';
   document.getElementById('comissoes').innerHTML = '';
 });
+if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();

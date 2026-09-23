@@ -68,12 +68,30 @@
   // continua tendo, só não tem mais aba própria aqui em cima. As duas páginas
   // (`ponto.html`, `vendedor.html`) continuam existindo pra quem já tem o
   // papel, só não tem mais link direto no menu.
+  // Sino de atualizações (Fase 4, 23/09/2026) — histórico de eventos da
+  // conta (criativo aprovado, candidatura decidida, pagamento, créditos,
+  // benefício, suspensão). Marcação fica aqui porque é parte do cabeçalho
+  // compartilhado; o comportamento mora em public/notificacoes.js (mesma
+  // divisão que avatar-btn/dlgPerfil têm entre layout.js e perfil.js).
   function navConta() {
     const aba = (href, id, texto) =>
       `<a href="${href}" id="${id}" class="modo-aba"${ehAqui(href) ? ' aria-current="page"' : ''}>${texto}</a>`;
     return `
       ${aba('/anunciante/painel.html', 'navDashboard', 'Painel')}
       <a href="/planos.html" id="navPlanos"${ehAqui('/planos.html') ? ' aria-current="page"' : ''}>Planos</a>
+      <div class="sino-wrap">
+        <button type="button" class="sino-btn" id="btnSino" aria-label="Atualizações" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2a6 6 0 0 0-6 6v3.09c0 .53-.21 1.04-.59 1.41L4 14v1h16v-1l-1.41-1.5a2 2 0 0 1-.59-1.41V8a6 6 0 0 0-6-6zm0 20a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22z"/></svg>
+          <span class="sino-badge" id="sinoBadge" hidden>0</span>
+        </button>
+        <div class="central-notif" id="centralNotif" hidden>
+          <div class="central-notif-topo">
+            <h3>Atualizações</h3>
+            <button type="button" class="link-sutil" id="btnMarcarTodasLidas">Marcar todas como lidas</button>
+          </div>
+          <div class="central-notif-lista" id="centralNotifLista"><p class="texto-vazio">Carregando...</p></div>
+        </div>
+      </div>
       <button type="button" class="avatar-btn" id="btnPerfil" aria-label="Meu perfil">
         <img id="avatarFoto" alt="" hidden><span id="avatarInicial"></span>
       </button>`;

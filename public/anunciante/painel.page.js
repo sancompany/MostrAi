@@ -1125,6 +1125,9 @@ document.getElementById('arquivoCriativo').addEventListener('change', async (e) 
 carregar().catch(() => {
   document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
 });
+// Uma vez só (fora de carregar(), que pode rodar de novo por SSE — Fase 5)
+// — chamar de novo duplicaria os ouvintes de clique do sino.
+if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
 // 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já
