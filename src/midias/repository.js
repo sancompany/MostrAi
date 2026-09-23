@@ -152,7 +152,7 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
          -- migration 077) — sem isso, anunciante só-comodato ocupando ponto
          -- desaparecia da capacidade calculada aqui.
          LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
-        WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
+        WHERE p.status <> 'arquivado' AND ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
         GROUP BY p.id
      ),
      institucional_rede AS (
@@ -185,7 +185,7 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operaca
        LEFT JOIN comercial cm ON cm.ponto_id = p.id
        CROSS JOIN institucional_rede ir
        LEFT JOIN institucional_pontos ip ON ip.ponto_id = p.id
-      WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
+      WHERE p.status <> 'arquivado' AND ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
       ORDER BY p.nome`,
     params,
   );

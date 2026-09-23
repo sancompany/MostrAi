@@ -268,7 +268,7 @@ router.get('/admin/resumo', async (_req, res) => {
         -- quando o admin libera (src/pontos/repository.js).
         (SELECT COUNT(*) FROM pontos WHERE escolha_bloqueada_em IS NOT NULL) AS pontosocupados`,
     ),
-    pool.query('SELECT status, COUNT(*)::int AS qtd FROM pontos GROUP BY status'),
+    pool.query(`SELECT status, COUNT(*)::int AS qtd FROM pontos WHERE status <> 'arquivado' GROUP BY status`),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
     // "5 anunciantes ativos" com três liberados de graça — e a leitura do
     // negócio saía errada justamente no número que mais importa.
@@ -304,7 +304,7 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT
         (SELECT COUNT(*) FROM anunciantes
           WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL AND NOT conta_propria) AS anunciantes,
-        (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days') AS pontos`,
+        (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days' AND status <> 'arquivado') AS pontos`,
     ),
     // % de quem criou conta e está pagando um plano de verdade hoje — pedido
     // do dono, 21/09/2026. "Criou conta" é todo mundo (menos a conta própria

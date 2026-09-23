@@ -433,7 +433,7 @@ async function carregarPontos() {
         <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
         <span class="ponto-nome" title="${esc(tituloNome)}" ${p.horario ? `tabindex="0" aria-label="${esc(tituloNome)}"` : ''}>${esc(p.nome)}</span>
         <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
-        <span class="ponto-ocupacao">${instalando ? 'Em instalação' : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+        <span class="ponto-ocupacao">${instalando ? window.ROTULOS.ponto.a_instalar : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
       </label>
       <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
     </div>`;
@@ -679,25 +679,25 @@ function pintarStatusOperacional(porPonto) {
 // exibições fica do lado, entre parênteses: quem quiser conferir a conta
 // tem o dado que a apuração realmente usa.
 async function carregarBancoHoras() {
+  const card = document.querySelector('#kpiGrid [data-kpi="banco"]');
+  if (!card) return;
   try {
     const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
-    // Virou card no grid (19/09/2026, pedido do dono) — antes era só uma
-    // frase colada no banner, fácil de não notar entre os outros avisos.
-    document.getElementById('kpiGrid').insertAdjacentHTML(
-      'beforeend',
-      `<div class="kpi-card kpi-secondary">
-        <span class="kpi-icon" aria-hidden="true">＋</span>
-        <span class="kpi-label">Banco de horas</span>
-        <b>${duracaoLegivel(dados.segundos)}</b>
-        ${
-          dados.saldo
-            ? `<span class="badge badge-pendente">${dados.saldo} exibições · prioridade nos próximos dias</span>`
-            : '<span class="kpi-caption">sem déficit acumulado</span>'
-        }
-      </div>`,
-    );
+    // Só aparece quando tem significado (23/09/2026, pedido do dono, revendo
+    // o "card sempre visível" de 19/09): sem déficit, um card dizendo "0s ·
+    // sem déficit acumulado" ocupa espaço do resumo sem informar nada. Com
+    // déficit, é a informação de que a entrega atrasada será compensada.
+    if (!dados.saldo) {
+      card.hidden = true;
+      return;
+    }
+    card.querySelector('b').textContent = duracaoLegivel(dados.segundos);
+    card.querySelector('[data-kpi-banco-legenda]').textContent =
+      `${dados.saldo} exibições · prioridade nos próximos dias`;
+    card.hidden = false;
   } catch {
     /* aviso extra — sem ele, o painel continua completo */
+    card.hidden = true;
   }
 }
 
@@ -754,16 +754,20 @@ async function carregarExibicoes() {
     desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
     pintarStatusOperacional(dados.porPonto || []);
     explicarZero(dados);
+    const erro = document.getElementById('exibicoesErro');
+    if (erro) erro.hidden = true;
   } catch {
     // Antes o catch era vazio: falha de API e conta nova produziam a mesma
     // tela de "—", e quem paga não conseguia distinguir "meu anúncio não
     // rodou" de "o painel quebrou".
-    document
-      .getElementById('statusBanner')
-      .insertAdjacentHTML(
-        'beforeend',
-        '<p class="form-msg err">Não foi possível carregar seus números agora. Tente atualizar a página.</p>',
-      );
+    //
+    // Elemento próprio em vez de anexar ao #statusBanner: com o SSE
+    // reexecutando esta função, cada falha empilhava mais uma linha de erro.
+    const erro = document.getElementById('exibicoesErro');
+    if (erro) {
+      erro.textContent = 'Não foi possível carregar seus números agora. Tente atualizar a página.';
+      erro.hidden = false;
+    }
   }
 }
 

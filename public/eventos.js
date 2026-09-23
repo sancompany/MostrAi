@@ -49,8 +49,21 @@
     });
   }
 
+  // Deduplica por função, não por evento. Uma página que recarrega tudo com
+  // uma função só costuma assiná-la em vários eventos (o painel assina
+  // payment/plan/account/application com o mesmo `carregar`). Sem deduplicar,
+  // um resync chamava essa função uma vez POR EVENTO — quatro buscas idênticas
+  // em paralelo e quatro renders concorrentes a cada volta pra aba.
   function resincronizarTudo() {
-    Object.keys(handlers).forEach(disparar);
+    const unicas = new Set();
+    Object.values(handlers).forEach((assinantes) => assinantes.forEach((fn) => unicas.add(fn)));
+    unicas.forEach((fn) => {
+      try {
+        fn();
+      } catch (err) {
+        console.error('eventos: resync de handler falhou', err);
+      }
+    });
   }
 
   function abrir() {

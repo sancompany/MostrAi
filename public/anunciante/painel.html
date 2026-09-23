@@ -55,8 +55,23 @@
             <article class="kpi-card" data-kpi="exibicoes"><span class="kpi-icon" aria-hidden="true">▶</span><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">confirmadas / previstas no mês</span></article>
             <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por 1.000 exibições</span><b>-</b><span class="kpi-caption">plano ÷ exibições previstas no mês, por mil</span></article>
             <article class="kpi-card" data-kpi="media"><span class="kpi-icon" aria-hidden="true">↗</span><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia, desde o início da campanha no mês</span></article>
+            <!-- Banco de horas: lugar FIXO no grid, preenchido por
+                 carregarBancoHoras(). Antes o card era criado por
+                 insertAdjacentHTML('beforeend') a cada chamada — e como o SSE
+                 (Fase 3) passou a reexecutar carregar(), cada volta à aba
+                 empilhava uma cópia nova. Card fixo + hidden é idempotente por
+                 construção: reexecutar só reescreve o mesmo lugar. -->
+            <article class="kpi-card kpi-secondary" data-kpi="banco" hidden>
+              <span class="kpi-icon" aria-hidden="true">＋</span>
+              <span class="kpi-label">Banco de horas</span><b>-</b>
+              <span class="badge badge-pendente" data-kpi-banco-legenda></span>
+            </article>
           </div>
           <div class="dashboard-notice" id="exibicoesVazio" hidden></div>
+          <!-- Erro de carregamento dos números. Elemento próprio e idempotente:
+               antes a mensagem era anexada ao #statusBanner, e uma falha de API
+               reexecutada pelo SSE empilhava uma linha de erro por tentativa. -->
+          <p class="form-msg err" id="exibicoesErro" role="status" hidden></p>
         </section>
 
         <section class="dashboard-section" aria-labelledby="tituloPerformance">

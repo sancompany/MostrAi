@@ -77,6 +77,7 @@ async function criar(dados, db = pool) {
     horario_semanal,
     foto_instalacao_url,
     observacoes,
+    candidatura_id,
   } = dados;
   const horarioValidado = validarHorarioSemanal(horario_semanal);
 
@@ -85,8 +86,8 @@ async function criar(dados, db = pool) {
        (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
-        horario_semanal, foto_instalacao_url, observacoes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        horario_semanal, foto_instalacao_url, observacoes, candidatura_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
      RETURNING *`,
     [
       nome,
@@ -111,11 +112,51 @@ async function criar(dados, db = pool) {
       horarioValidado ? JSON.stringify(horarioValidado) : null,
       foto_instalacao_url || null,
       observacoes || null,
+      candidatura_id || null,
     ],
   );
   return rows[0];
 }
 
+// Identidade do estabelecimento (23/09/2026, auditoria do ponto duplicado).
+// Uma função só para as três portas que podiam criar o mesmo lugar duas
+// vezes: os dois formulários de candidatura (POST /anunciantes/me/pontos e
+// POST /conta/modos/ponto/pedir) e a aprovação (liberarPapelNaConta).
+//
+// NÃO é "mesmo endereço" sozinho — dois comércios diferentes podem dividir o
+// endereço (galeria, sala comercial, box). O mesmo estabelecimento é: mesma
+// conta dona + mesmo nome + mesmo endereço. Devolve o motivo em texto pra
+// quem recusa, ou null quando está livre.
+async function estabelecimentoJaCadastrado(
+  contaId,
+  { nome, endereco, cep },
+  db = pool,
+  { incluirPedidos = true } = {},
+) {
+  if (incluirPedidos) {
+    const { rows: pedidos } = await db.query(
+      `SELECT id FROM candidaturas
+         WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')
+           AND lower(trim(endereco)) = lower(trim($2)) AND trim(COALESCE(cep, '')) = trim($3)`,
+      [contaId, endereco || '', cep || ''],
+    );
+    if (pedidos.length) return 'Já existe uma solicitação em análise para este endereço';
+  }
+  if (!nome) return null;
+  const { rows: pontos } = await db.query(
+    `SELECT id FROM pontos
+       WHERE anunciante_id = $1 AND status <> 'arquivado'
+         AND lower(trim(nome)) = lower(trim($2)) AND lower(trim(endereco)) = lower(trim($3))
+       LIMIT 1`,
+    [contaId, nome, endereco || ''],
+  );
+  if (pontos.length) return 'Este estabelecimento já é um ponto da sua conta';
+  return null;
+}
+
+// Ponto arquivado (migration 080) fica fora de toda listagem da experiência
+// normal. O histórico continua no banco — `mesclado_em_ponto_id` diz para
+// qual registro canônico ele foi.
 async function listar() {
   const { rows } = await pool.query(
     // `comodato_produto_nome` (rodada de integridade, 23/09/2026): o PRODUTO
@@ -132,6 +173,7 @@ async function listar() {
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
      LEFT JOIN planos pl ON pl.id = pp.plano_incluido_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
+     WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
   );
   return rows;
@@ -176,8 +218,14 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
   );
   const { ativas, em_reparo, total } = rows[0];
   const status = total === 0 ? 'a_instalar' : ativas > 0 ? 'em_operacao' : em_reparo > 0 ? 'em_reparo' : 'inativo';
-  await db.query('UPDATE pontos SET status = $2 WHERE id = $1', [pontoId, status]);
-  return status;
+  // Arquivado é decisão explícita e auditável (migration 080), nunca
+  // derivada das telas — o status automático não pode ressuscitar um ponto
+  // mesclado só porque alguém mexeu numa tela dele.
+  const { rowCount } = await db.query(`UPDATE pontos SET status = $2 WHERE id = $1 AND status <> 'arquivado'`, [
+    pontoId,
+    status,
+  ]);
+  return rowCount ? status : 'arquivado';
 }
 
 // Pública (módulo 7 "onde estamos") — pontos ativos + em construção/reparo,
@@ -209,7 +257,7 @@ async function listarPorAnunciante(anuncianteId) {
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-     WHERE p.anunciante_id = $1
+     WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
     [anuncianteId],
   );
@@ -339,6 +387,7 @@ async function definirConfiguracao(chave, valor) {
 
 module.exports = {
   criar,
+  estabelecimentoJaCadastrado,
   listar,
   buscarPorId,
   atualizar,
