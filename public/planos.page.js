@@ -251,6 +251,32 @@ function condicaoPromocionalVigente(tier, compromissoMeses) {
   return null;
 }
 
+// Banner no topo da página (Parte 4 do pedido, camada 1: "o usuário entende
+// claramente que existe uma campanha ativa e quais condições ela oferece" —
+// antes só o preço mudava, sem nenhum aviso de que havia promoção).
+// Mesmo visual do banner da Home (`.promo-home-banner`), sem botão — a
+// página inteira já É a oferta, não precisa de CTA pra rolar até ela mesma.
+function pintarBannerPlanos(promo) {
+  if (!promo) return;
+  const secao = document.getElementById('promocaoPlanosBanner');
+  const el = document.getElementById('promocaoPlanosTopo');
+  const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
+  const prazo = promo.compra_fim
+    ? `<p class="promo-home-prazo">Condição válida até ${new Date(promo.compra_fim).toLocaleDateString('pt-BR')}.</p>`
+    : '';
+  el.innerHTML = `
+    <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
+      ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}
+      <div class="promo-home-conteudo">
+        ${promo.selo ? `<span class="badge">${esc(promo.selo)}</span>` : ''}
+        <h2>${esc(promo.titulo_publico)}</h2>
+        ${promo.subtitulo ? `<p class="lead">${esc(promo.subtitulo)}</p>` : ''}
+        ${prazo}
+      </div>
+    </div>`;
+  secao.hidden = false;
+}
+
 const planosCarregados = Promise.all([
   fetch(`${API_BASE_URL}/planos`).then((r) => r.json()),
   fetch(`${API_BASE_URL}/promocoes/vigentes`)
@@ -261,6 +287,7 @@ const planosCarregados = Promise.all([
   .then(([planos, promocoes]) => {
     PLANOS = planos;
     PROMOCOES_VIGENTES = (Array.isArray(promocoes) ? promocoes : []).filter((p) => p.mostrar_planos);
+    pintarBannerPlanos(PROMOCOES_VIGENTES[0]);
     atualizarDescontos();
     render(3);
   })

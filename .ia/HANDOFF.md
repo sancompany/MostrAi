@@ -3,6 +3,90 @@
 ## Updated
 2026-09-23
 
+## Reconstrução de Ofertas/Promoções (23/09/2026, este agente)
+Pedido do dono: reconstrução visual e funcional completa de Ofertas
+(Preços + Promoções), admin e site público. Requisito explícito mais
+importante: parar de segmentar promoção por sessão ("logado × deslogado")
+e passar a segmentar por ELEGIBILIDADE COMERCIAL (novos usuários / já
+assinam / todos), calculada a partir do estado real da conta, não de ter
+sessão aberta.
+
+**Em uma linha cada:**
+- Migration 073 (aditiva): `promocoes` ganha `publico_elegivel`
+  (`novos`/`assinantes`/`todos`), `formato_midia`
+  (`horizontal`/`quadrado`/`vertical`) e `status`
+  (`rascunho`/`ativa`/`encerrada`, backfill a partir do antigo `ativa`).
+  `mostrar_logados`/`mostrar_admin`/`ativa` continuam na tabela (nunca se
+  apaga coluna sem permissão explícita), só pararam de ser lidos/escritos.
+- **Elegibilidade** (`src/financeiro/promocoes-repository.js`):
+  `temPlanoAtivo(conta)` reusa o mesmo predicado já usado em
+  `planos-repository.js` (`plano_id` + não suspensa + não excluída + sem
+  `data_expiracao` vencida); `jaAssinouAntes` olha
+  `cobrancas_confirmadas`. `GET /promocoes/vigentes` (pública) monta o
+  estado a partir de `req.session.anuncianteId` quando existir — sem
+  sessão = tratado como "novo" (mesma regra de visitante). `condicaoVigente`
+  (motor de preço real da assinatura, `POST /anunciantes/:id/assinar`)
+  também passou a receber o estado comercial — sem isso, o preço cobrado
+  de verdade podia ser mais generoso do que a elegibilidade permitia
+  mesmo com a vitrine já filtrando certo. **Achado no caminho**: o resumo
+  de promoção ativa da Visão Geral do admin usava a MESMA rota pública —
+  como sessão de admin nunca é sessão de anunciante, isso escondia
+  promoção "só assinantes" do próprio admin. Corrigido com rota própria
+  (`GET /admin/ofertas/promocoes-vigentes`, sem filtro de elegibilidade).
+- **Upload de imagem da promoção**: `POST
+  /admin/ofertas/promocoes/:id/imagem`, mesmo padrão do avatar
+  (`POST /anunciantes/me/foto` — Supabase Storage direto, sem ffmpeg).
+  Promoção salva primeiro (JSON), imagem sobe depois num segundo POST
+  multipart — mesma convenção de "Ajustar mídia" em Mídia Mostraí.
+- **Admin > Preços**: grade 3 colunas fixas (era `auto-fit`/`minmax`, que
+  deixava vazio nas laterais em telas largas), ciclos em grade 2×2 dentro
+  do card (era 1 coluna de 4 caixas empilhadas), comodato isolado num
+  painel com fundo próprio. Textos explicativos redundantes removidos.
+- **Admin > Promoções**: formulário reescrito em blocos (Identidade,
+  Mídia, Janela de compra, Condições, Produtos e ciclos, Exibição).
+  Formato de mídia por 3 botões visuais (proporção de verdade, não
+  `<select>`); "Mostrar na página de Planos" fica obrigatório e desabilitado
+  quando há produto/ciclo participando; status vira 3 pills
+  (Rascunho/Ativa/Encerrada) no lugar do checkbox solto "ativa". Listagem
+  virou cards (`.promo-card`) em vez de tabela crua.
+- **Achado e corrigido (bug real, não só polimento)**: as pills de rádio
+  novas (elegibilidade/status) primeiro saíram completamente sobrepostas —
+  `.chip-check input` não tinha o reset de `width`/`padding` que
+  `.benef-check input` já tinha (documentado ali: dentro de um
+  `<form class="card">`, `.card input { width:100%; padding:11px }`
+  global estica qualquer input esquecido). Corrigido com o mesmo reset.
+- **Achado e corrigido (bug real de CSP)**: a primeira versão do banner
+  com imagem de fundo usava `style="background-image:url(...)"` inline —
+  a CSP (`style-src 'self'`, sem `unsafe-inline`) bloqueia isso em
+  silêncio (o atributo aparece no DOM, o navegador nunca aplica a regra).
+  Corrigido trocando por um `<img>` de verdade, absoluto atrás do texto
+  (`img-src` já libera o storage das mídias) — sem tocar a CSP.
+- **Site público**: banner da promoção saiu de "card quadrado com imagem
+  ao lado" (fora do fluxo, abaixo do hero) pra banner de largura cheia
+  ACIMA do hero, com degradê de marca (ou a imagem de fundo, se formato
+  horizontal). Planos ganhou o mesmo banner no topo (camada 1) além da
+  aplicação por célula que já existia (camada 2). Painel logado: bloco
+  simplificado — mostra a primeira promoção vigente (já filtrada por
+  elegibilidade no servidor), sem filtro próprio de superfície.
+- Achado testando em mobile: `.promo-matriz` (tabela produto × ciclo) sem
+  `.rolagem` ao redor causava overflow horizontal da PÁGINA inteira em
+  390px — corrigido envolvendo a tabela, mesmo padrão de toda tabela do
+  admin.
+
+**Deliberadamente não testado de ponta a ponta**: upload real de imagem
+pro Supabase Storage — `SUPABASE_URL` não tem valor real neste ambiente
+(mesma limitação já documentada na rodada de Mídia Mostraí). Rota
+verificada até o ponto de chamar `supabase.storage.upload` (erro
+esperado de credencial ausente, não erro de lógica); o mecanismo é cópia
+literal do upload de avatar, que já funciona em produção.
+
+**Verificado:** `npm run check` (184/184, 15 avisos de lint já
+conhecidos), 11 testes novos de elegibilidade comercial
+(`tests/promocoes-elegibilidade.test.js`), Playwright manual (admin
+desktop/tablet/mobile — Preços, criar/editar promoção com todos os
+blocos, listagem em cards, Visão Geral; site público Home/Planos
+desktop/mobile, sem promoção e com promoção, com/sem imagem de fundo).
+
 ## Rodada de integridade do admin (23/09/2026, este agente)
 Correção transversal, sem redesign. Próxima etapa definida pelo dono:
 revisão manual tela por tela, começando pela Visão geral — NÃO continuar

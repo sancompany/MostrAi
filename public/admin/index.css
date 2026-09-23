@@ -297,7 +297,16 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
   color: var(--text-dim); background: var(--bg-alt); border: 1px solid var(--border);
   border-radius: 999px; padding: 4px 10px; cursor: pointer; white-space: nowrap;
 }
-.chip-check input { accent-color: var(--brand); margin: 0; }
+/* Reset explícito (não só herdar) — mesmo motivo do `.benef-check input`
+   acima: dentro de um `<form class="card">` (agora também o de Promoções,
+   com pills de elegibilidade/status), `.card input { width:100%; padding:
+   11px }` global estica o rádio/checkbox pra virar uma barra cobrindo a
+   pill inteira, em vez de uma bolinha (achado montando o formulário novo de
+   Promoções, 23/09/2026 — mesma classe de bug já documentado ali). */
+.chip-check input {
+  width: 15px; height: 15px; min-width: 15px; flex: 0 0 15px;
+  margin: 0; padding: 0; accent-color: var(--brand);
+}
 .chip-check:has(input:checked) { color: var(--text); border-color: var(--brand); background: rgba(255,122,26,.10); }
 
 .plano-edit .ed-rotulo, .plano-edit .ed-nome {
@@ -383,17 +392,39 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
   line-height: 1.4;
 }
 
-/* Ofertas > Preços (reformulação comercial, 22/09/2026) — 3 cards quase
-   quadrados, um por produto, cada um com os 4 ciclos dentro (Parte F do
-   pedido: chega de um card por ciclo). */
-.oferta-produtos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-.oferta-produto { display: flex; flex-direction: column; }
-/* Produtos de comodato em Ofertas (somente leitura, rodada de integridade). */
+/* Ofertas > Preços (reconstrução visual, 23/09/2026) — 3 colunas fixas em
+   vez de auto-fit/minmax: numa tela larga o auto-fit deixava os cards
+   pequenos e uma faixa de vazio nas laterais em vez de ocupar a largura
+   disponível (achado revisando o pedido "melhor ocupação horizontal"). Cai
+   pra 1 coluna no mesmo ponto de quebra que o resto do admin usa
+   (860px, `.ponto-detalhe-grid`). */
+.oferta-produtos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+@media (max-width: 860px) {
+  .oferta-produtos-grid { grid-template-columns: 1fr; }
+}
+.oferta-produto { display: flex; flex-direction: column; padding: 22px; }
+.oferta-produto h3 { font-size: 1.3rem; }
+.oferta-produto-cabecalho { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.oferta-preco-base-campo { display: flex; flex-direction: column; gap: 3px; font-size: .72rem; color: var(--text-dim); font-weight: 600; text-align: right; }
+.oferta-preco-base-campo .ed-moeda { font-size: 1.05rem; }
+.oferta-preco-base-campo input { width: 76px; }
+
+/* Comodato separado visualmente dos produtos pagos (Parte 1 do pedido: "não
+   se confundem com o que é vendido") — painel com fundo próprio, não só um
+   <h3> solto entre as duas grades. */
+.oferta-comodato-secao { background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-top: 22px; }
+.oferta-comodato-card { background: var(--card); }
 .oferta-comodato-lista { margin: 10px 0 0; padding-left: 18px; font-size: .84rem; line-height: 1.55; color: var(--text); }
 .ed-moeda.mini input { width: 46px; }
-.oferta-ciclos { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.oferta-ciclo { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--bg-alt); }
-.oferta-ciclo-topo { display: flex; align-items: center; justify-content: space-between; font-size: .85rem; font-weight: 700; margin-bottom: 4px; }
+
+/* Ciclos em grade 2×2 (era uma coluna empilhada de 4 caixas — a mesma
+   informação cabia em menos altura, com mais presença por caixa). */
+.oferta-ciclos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.oferta-ciclo { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg-alt); }
+.oferta-ciclo-topo { display: flex; align-items: center; justify-content: space-between; font-size: .85rem; font-weight: 700; margin-bottom: 5px; }
+@media (max-width: 420px) {
+  .oferta-ciclos { grid-template-columns: 1fr; }
+}
 /* Mesma régua visual do site público (public/style.css .plan-card), só que
    escopada aqui em vez de reusar a classe (páginas diferentes, sem bundler,
    ver README) — riscado/badge/preço grande/economia/equivalente. */
@@ -414,6 +445,38 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
 .promo-matriz th, .promo-matriz td { padding: 6px 8px; text-align: center; border-bottom: 1px solid var(--border); }
 .promo-matriz th:first-child, .promo-matriz td:first-child { text-align: left; }
 .promo-matriz td input[type="number"] { width: 56px; margin-top: 3px; }
+
+/* Ofertas > Promoções — reconstrução visual, 23/09/2026. Picker de formato
+   (Parte B): 3 opções visuais com a proporção de verdade da mídia, não só
+   texto — clica na miniatura, não num <select>. */
+.formato-picker { display: flex; gap: 10px; flex-wrap: wrap; }
+.formato-opcao {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border: 2px solid var(--border); border-radius: 10px; padding: 10px 14px;
+  cursor: pointer; width: 130px; text-align: center;
+}
+.formato-opcao:hover { border-color: var(--brand-dim); }
+.formato-opcao:has(input:checked) { border-color: var(--brand); background: rgba(255, 122, 26, .06); }
+.formato-opcao input { position: absolute; opacity: 0; width: 0; height: 0; }
+.formato-preview { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; }
+.formato-preview-horizontal { width: 100%; aspect-ratio: 21 / 9; }
+.formato-preview-quadrado { width: 56px; aspect-ratio: 1 / 1; }
+.formato-preview-vertical { width: 34px; aspect-ratio: 9 / 16; }
+.formato-nome { font-size: .8rem; font-weight: 600; }
+
+.promo-midia-preview:has(img) { margin-top: 8px; max-width: 320px; }
+.promo-midia-preview img { width: 100%; border-radius: 8px; display: block; border: 1px solid var(--border); }
+
+.chip-check-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+
+/* Listagem de promoções em cards (Parte 5 do pedido: "parecer painel
+   comercial, não tabela técnica") — substitui a tabela crua. */
+.promo-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.promo-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.promo-card-midia { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: var(--bg-alt); }
+.promo-card-midia-vazia { background: linear-gradient(135deg, var(--bg-alt), var(--border)); }
+.promo-card-corpo { padding: 14px 16px; }
+.promo-card-meta { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: var(--text-dim); }
 
 /* Mídia Mostraí (reorganização de Conteúdo, 22/09/2026; revisão visual de
    23/09/2026) — resumo em faixa (mesma ideia dos KPIs da Visão geral, sem

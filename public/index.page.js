@@ -19,10 +19,12 @@ function pintarPrecoDaDobra(planos) {
   el.hidden = false;
 }
 
-// Bloco promocional da Home (Parte P do pedido de Ofertas/Promoções,
-// 22/09/2026) — consome a campanha vigente marcada "mostrar na Home", nunca
-// hardcoded. Sem promoção vigente com essa marca, a seção some inteira
-// (fica `hidden` desde o HTML, e continua assim).
+// Banner promocional da Home (reconstrução de Ofertas/Promoções,
+// 23/09/2026) — abaixo do header, acima do hero (ver index.html): precisa
+// ler como campanha publicitária de verdade, não um card solto. Consome a
+// campanha vigente E elegível pra quem está vendo (GET /promocoes/vigentes
+// já filtra por elegibilidade comercial no servidor) marcada "mostrar na
+// Home". Sem nenhuma, a seção some inteira (fica `hidden` desde o HTML).
 fetch(`${API_BASE_URL}/promocoes/vigentes`)
   .then((r) => r.json())
   .then((promocoes) => {
@@ -30,14 +32,18 @@ fetch(`${API_BASE_URL}/promocoes/vigentes`)
     if (!promo) return;
     const secao = document.getElementById('promocaoHomeSecao');
     const el = document.getElementById('promocaoHome');
+    const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
+    const prazo = promo.compra_fim
+      ? `<p class="promo-home-prazo">Condição válida até ${new Date(promo.compra_fim).toLocaleDateString('pt-BR')}.</p>`
+      : '';
     el.innerHTML = `
-      <div class="promo-home ${promo.imagem_url ? 'com-imagem' : ''}">
-        ${promo.imagem_url ? `<img class="promo-home-img" src="${esc(promo.imagem_url)}" alt="">` : ''}
-        <div class="promo-home-texto">
+      <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
+        ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}
+        <div class="promo-home-conteudo">
           ${promo.selo ? `<span class="badge">${esc(promo.selo)}</span>` : ''}
           <h2>${esc(promo.titulo_publico)}</h2>
           ${promo.subtitulo ? `<p class="lead">${esc(promo.subtitulo)}</p>` : ''}
-          ${promo.descricao ? `<p>${esc(promo.descricao)}</p>` : ''}
+          ${prazo}
           <a class="btn primary" href="/planos.html">Ver condição na página de planos</a>
         </div>
       </div>`;

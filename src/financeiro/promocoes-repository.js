@@ -7,6 +7,12 @@ const pool = require('../db/pool');
 // o próprio desconto — Mensal pode simplesmente não ter linha e ficar de
 // fora (Parte N do pedido).
 
+// `mostrar_logados`/`mostrar_admin`/`ativa` saíram daqui (reconstrução de
+// Ofertas/Promoções, 23/09/2026) — colunas continuam existindo (migrations
+// são aditivas), só pararam de ser lidas/escritas: quem vê a promoção agora
+// é `publico_elegivel` (elegibilidade comercial, não sessão), e o controle
+// manual de liga/desliga é `status` (substitui `ativa`). A Visão Geral do
+// admin passou a mostrar toda promoção vigente, sem opt-in por checkbox.
 const CAMPOS_IDENTIDADE = [
   'nome_interno',
   'titulo_publico',
@@ -14,15 +20,15 @@ const CAMPOS_IDENTIDADE = [
   'descricao',
   'selo',
   'imagem_url',
+  'formato_midia',
   'compra_inicio',
   'compra_fim',
   'duracao_beneficio_meses',
   'limite_adesoes',
+  'publico_elegivel',
+  'status',
   'mostrar_home',
   'mostrar_planos',
-  'mostrar_logados',
-  'mostrar_admin',
-  'ativa',
 ];
 
 async function listarTodas() {
@@ -152,7 +158,7 @@ async function listarVigentes() {
       (SELECT COUNT(*)::int FROM assinaturas a WHERE a.promocao_id = p.id) AS adesoes
     FROM promocoes p
     LEFT JOIN promocoes_itens i ON i.promocao_id = p.id
-    WHERE p.ativa
+    WHERE p.status = 'ativa'
       AND (p.compra_inicio IS NULL OR p.compra_inicio <= now())
       AND (p.compra_fim IS NULL OR p.compra_fim >= now())
     GROUP BY p.id
@@ -162,13 +168,51 @@ async function listarVigentes() {
   return rows;
 }
 
+// Elegibilidade COMERCIAL (reconstrução de Ofertas/Promoções, 23/09/2026:
+// "não trate a promoção com a lógica usuário logado vs deslogado. A lógica
+// correta deve ser de ELEGIBILIDADE COMERCIAL") — depende do estado da
+// CONTA (tem plano ativo? já assinou antes?), nunca de ter sessão aberta.
+// Visitante sem sessão é tratado como "novo" (mesma coisa que logado sem
+// plano — nenhum dos dois tem histórico de assinatura pra excluir).
+function temPlanoAtivo(conta) {
+  if (!conta?.plano_id || conta.suspenso || conta.excluido_em) return false;
+  return !conta.data_expiracao || new Date(conta.data_expiracao) >= new Date();
+}
+
+async function jaAssinouAntes(anuncianteId) {
+  const { rows } = await pool.query(
+    'SELECT EXISTS(SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1) AS existe',
+    [anuncianteId],
+  );
+  return rows[0].existe;
+}
+
+// `conta` null (visitante sem sessão) = "novo" por padrão: sem plano ativo,
+// sem histórico. Usado tanto pela vitrine pública (`GET /promocoes/vigentes`)
+// quanto pela assinatura de verdade (`POST /anunciantes/:id/assinar`) — o
+// preço cobrado nunca pode ser mais generoso do que o que a vitrine mostrou,
+// então os dois pontos passam pelo mesmo cálculo.
+async function estadoComercialDaConta(conta) {
+  if (!conta) return { temPlanoAtivo: false, jaAssinouAntes: false };
+  return { temPlanoAtivo: temPlanoAtivo(conta), jaAssinouAntes: await jaAssinouAntes(conta.id) };
+}
+
+function elegivel(promo, estado) {
+  if (promo.publico_elegivel === 'assinantes') return !!estado.temPlanoAtivo;
+  if (promo.publico_elegivel === 'novos') return !estado.temPlanoAtivo && !estado.jaAssinouAntes;
+  return true; // 'todos'
+}
+
 // A condição promocional pra UM tier × ciclo específico, se houver alguma
-// vigente — é o que a vitrine e a assinatura nova consultam. Mais de uma
-// promoção vigente cobrindo a mesma célula (o admin deveria evitar, mas
+// vigente E elegível pro `estado` informado — é o que a vitrine e a
+// assinatura nova consultam (Parte T do pedido original: o desconto
+// aplicado na cobrança real nunca pode ser mais generoso do que a
+// elegibilidade permite, mesmo que alguém monte a chamada à mão). Mais de
+// uma promoção vigente cobrindo a mesma célula (o admin deveria evitar, mas
 // nada impede) resolve pela mais recente, não pela de maior desconto — é a
 // mesma regra "última decisão vale" que o resto do admin já segue.
-async function condicaoVigente(tier, compromissoMeses) {
-  const vigentes = await listarVigentes();
+async function condicaoVigente(tier, compromissoMeses, estado = { temPlanoAtivo: false, jaAssinouAntes: false }) {
+  const vigentes = (await listarVigentes()).filter((p) => elegivel(p, estado));
   for (const promo of vigentes) {
     const item = (promo.itens || []).find((i) => i.tier === tier && i.compromissoMeses === Number(compromissoMeses));
     if (item) return { promocao: promo, descontoPercentual: item.descontoPercentual };
@@ -183,5 +227,7 @@ module.exports = {
   atualizar,
   excluir,
   listarVigentes,
+  estadoComercialDaConta,
+  elegivel,
   condicaoVigente,
 };
