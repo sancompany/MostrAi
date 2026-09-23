@@ -890,8 +890,12 @@ precisa de ajuste.** Na transição do criativo para `aprovado` — e só na
 transição —, sai um e-mail dizendo que ele está na playlist; na transição
 pra reprovado, sai um e-mail explicando o motivo (`criativo.motivo_reprovacao`)
 e como reenviar. Salvar de novo um criativo que já passou por uma dessas não
-reenvia. *Violada:* nada acontece; a aprovação não depende do e-mail. *Quem
-vê:* o anunciante, na caixa de entrada.
+reenvia. Cobre também o caso de reenviar/substituir um criativo já reprovado
+e depois aprová-lo: a substituição volta o status pra `pendente`, então a
+próxima aprovação é uma transição nova e reenvia normalmente. A conta própria
+(RN-21) nunca recebe — `contato_email` dela é um endereço interno, sem caixa
+de entrada de verdade. *Violada:* nada acontece; a aprovação não depende do
+e-mail. *Quem vê:* o anunciante, na caixa de entrada.
 
 **RN-19 — O comprovante de veiculação respeita o período escolhido.** O CSV
 sai com `;` e BOM UTF-8, porque o Excel em português com vírgula junta tudo
