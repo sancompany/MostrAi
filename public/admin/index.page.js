@@ -574,8 +574,7 @@ const SUBTITULOS = {
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
-  meusanuncios:
-    'Conteúdo institucional da própria rede: cada mídia tem frequência, cobertura e período próprios, sem plano nem cobrança.',
+  meusanuncios: 'Conteúdo institucional da própria rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
 };
@@ -1206,7 +1205,30 @@ async function _renderPendencias(el) {
 }
 
 // ---------- fila de criativos ----------
-const ehVideoUrl = (u) => /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u || '');
+// Formato REAL do arquivo (rodada Mídia Mostraí, 23/09/2026): o arquivo
+// NORMALIZADO é sempre um .mp4 — até imagem vira um vídeo em loop de 1
+// frame, pra tocar igual na TV (src/lib/ffmpeg.js#normalizar) — então
+// decidir <img> vs <video> pela extensão dele classificava toda imagem
+// como vídeo (aparecia com controles de player). `arquivo_original_url`
+// guarda o nome do arquivo que o cliente mandou, com a extensão real —
+// é ele que diz o formato de verdade.
+const EXT_IMAGEM = /\.(png|jpe?g|webp|gif|svg)(\?|$)/i;
+const ehImagemArquivo = (nomeOuUrl) => EXT_IMAGEM.test(nomeOuUrl || '');
+
+// Preview de um criativo — card de Mídia Mostraí, fila de Aprovação e
+// "Ajustar mídia" decidem o mesmo jeito, uma função só (corrigir na raiz).
+// Imagem mostra a miniatura estática (thumbnail_url, um frame do vídeo
+// normalizado) em vez do próprio .mp4 em loop.
+function montarPreviewAsset({ original, normalizado, thumb, classe = 'midia' }) {
+  if (ehImagemArquivo(original)) {
+    const src = thumb || normalizado;
+    return src ? `<img class="${classe}" src="${esc(src)}" alt="">` : `<div class="${classe}"></div>`;
+  }
+  if (normalizado) {
+    return `<video class="${classe}" src="${esc(normalizado)}" muted loop playsinline controls poster="${esc(thumb || '')}"></video>`;
+  }
+  return `<div class="${classe}"></div>`;
+}
 
 // Aprovação de criativos (reorganização de Conteúdo, 22/09/2026): caixa de
 // PENDÊNCIAS, não histórico (Parte 24) — só mostra "pendente", sem abas de
@@ -1230,16 +1252,9 @@ async function renderCriativos(el) {
       criativos.length
         ? `<div class="criativo-fila">${criativos
             .map((c) => {
-              const url = c.arquivo_normalizado_url || c.arquivo_original_url;
-              const ehVideo = ehVideoUrl(url);
+              const ehVideo = !ehImagemArquivo(c.arquivo_original_url);
               return `<div class="item">
-        ${
-          url && ehVideo
-            ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(c.thumbnail_url || '')}"></video>`
-            : url
-              ? `<img class="midia" src="${esc(url)}" alt="">`
-              : '<div class="midia"></div>'
-        }
+        ${montarPreviewAsset({ original: c.arquivo_original_url, normalizado: c.arquivo_normalizado_url, thumb: c.thumbnail_url })}
         <div class="dados">
           <b>${esc(nomeMidiaPor[c.id] || nomePor[c.anunciante_id] || `Anunciante #${c.anunciante_id}`)}</b>
           <small>${esc(nomePor[c.anunciante_id] || '')}${nomeMidiaPor[c.id] ? ` · #${c.id}` : ` #${c.id}`} · ${ehVideo ? 'vídeo' : 'imagem'}${c.duracao_segundos ? ` · ${c.duracao_segundos}s` : ''} · enviado ${data(c.created_at)}</small>
@@ -1291,7 +1306,7 @@ async function renderCriativos(el) {
 // aqui é só conveniência pra não precisar voltar pra fila depois de trocar.
 function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
   const url = criativo.arquivo_normalizado_url || criativo.arquivo_original_url;
-  const ehVideo = ehVideoUrl(url);
+  const ehVideo = !ehImagemArquivo(criativo.arquivo_original_url);
   wrap.innerHTML = `
     <div class="card wide u-mb-16">
       <div class="field-row u-ai-c">
@@ -1300,13 +1315,7 @@ function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
       </div>
       <div class="field-row">
         <div class="u-col" id="previewAjuste">
-          ${
-            url && ehVideo
-              ? `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(criativo.thumbnail_url || '')}"></video>`
-              : url
-                ? `<img class="midia" src="${esc(url)}" alt="">`
-                : '<div class="midia"></div>'
-          }
+          ${montarPreviewAsset({ original: criativo.arquivo_original_url, normalizado: criativo.arquivo_normalizado_url, thumb: criativo.thumbnail_url })}
         </div>
         <div class="u-col-2">
           <p class="u-m-0"><b>Conta</b><br>${esc(nomeConta || `Anunciante #${criativo.anunciante_id}`)}</p>
@@ -1371,14 +1380,6 @@ function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
 // formulário de bootstrap (a conta institucional vira singleton por baixo,
 // `ensureContaMostrai`, ver src/anunciantes/repository.js). Backend inteiro
 // em src/midias/ — aqui só consome as rotas.
-function htmlPreviewMidia(url, thumb) {
-  if (url && ehVideoUrl(url)) {
-    return `<video class="midia" src="${esc(url)}" muted loop playsinline controls poster="${esc(thumb || '')}"></video>`;
-  }
-  if (url) return `<img class="midia" src="${esc(url)}" alt="">`;
-  return '<div class="midia"></div>';
-}
-
 const SITUACAO_MIDIA_ROTULO = { ativa: 'Ativa', agendada: 'Agendada', pausada: 'Pausada', encerrada: 'Encerrada' };
 const SITUACAO_MIDIA_BADGE = {
   ativa: 'badge-ok',
@@ -1387,8 +1388,12 @@ const SITUACAO_MIDIA_BADGE = {
   encerrada: 'badge-err',
 };
 
+// Card da grade de Mídias próprias — classes `.mm-*` próprias (não
+// `.criativo-fila`/`.item`/`.midia` da fila de Aprovação): aqui o preview
+// precisa de `object-fit: contain` num fundo neutro (o asset é uma peça pra
+// conferir por inteiro, não uma miniatura recortada), e misturar a mesma
+// classe mudaria a Aprovação junto, fora do pedido desta rodada.
 function montarCardMidia(m) {
-  const url = m.arquivo_normalizado_url || m.arquivo_original_url;
   const sit = m.situacaoDerivada;
   const cobertura =
     m.cobertura_tipo === 'rede' ? 'Toda a rede' : `${m.qtd_pontos} ponto${m.qtd_pontos === 1 ? '' : 's'}`;
@@ -1396,9 +1401,9 @@ function montarCardMidia(m) {
     m.periodo_inicio || m.periodo_fim
       ? `${m.periodo_inicio ? data(m.periodo_inicio) : 'sempre'} até ${m.periodo_fim ? data(m.periodo_fim) : 'sem fim'}`
       : 'Sempre no ar';
-  return `<div class="item">
-    ${htmlPreviewMidia(url, m.thumbnail_url)}
-    <div class="dados">
+  return `<div class="mm-card">
+    <div class="mm-card-preview">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
+    <div class="mm-card-dados">
       <div class="field-row u-ai-c u-m-0">
         <b class="u-mr-auto">${esc(m.nome_interno)}</b>
         <span class="badge ${SITUACAO_MIDIA_BADGE[sit] || ''}">${SITUACAO_MIDIA_ROTULO[sit] || sit}</span>
@@ -1407,7 +1412,7 @@ function montarCardMidia(m) {
       <small class="u-d-block u-mt-4">${m.duracao_segundos ? `${m.duracao_segundos}s` : '-'} · ${m.frequencia_hora}x/hora · ${cobertura}</small>
       <small class="u-d-block">${periodo}</small>
     </div>
-    <div class="acoes">
+    <div class="mm-card-acoes">
       <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
       ${
         sit === 'pausada'
@@ -1481,12 +1486,27 @@ function montarTabelaCapacidade(el, capacidade) {
   );
 }
 
-function montarLinhaPontoPicker(p, marcado) {
-  return `<label class="mm-ponto-linha" data-busca="${esc(`${p.pontoNome} ${p.cidade || ''}`.toLowerCase())}">
-    <input type="checkbox" value="${p.pontoId}" ${marcado ? 'checked' : ''}>
-    <span class="mm-ponto-nome">${esc(p.pontoNome)}</span>
-    <span class="mm-ponto-cidade u-dim">${esc(p.cidade || '')}</span>
-    <span class="mm-ponto-ocupacao">Comercial ${p.comercialPct}% · Mostraí ${p.mostraiPct}% (reserva de 20%)</span>
+// Card do seletor de pontos (rodada Mídia Mostraí, 23/09/2026) — mesma
+// identidade visual de Rede > Pontos (`.ponto-card`/`.ponto-card-media`/
+// `fotoOuPlaceholder`, de public/style.css, compartilhada com o site
+// público), só que como rótulo de checkbox em vez de link: o card inteiro
+// seleciona, o check no canto é só reforço visual (o input continua
+// presente e focável por teclado).
+function montarPontoPickerCard(p, marcado) {
+  const segmento = p.categoriaNome || p.categoriaLivre || p.segmento;
+  const busca = `${p.pontoNome} ${p.cidade || ''} ${p.uf || ''} ${segmento || ''} ${p.endereco || ''}`.toLowerCase();
+  return `<label class="ponto-card mm-picker-card" data-busca="${esc(busca)}">
+    <input type="checkbox" class="mm-picker-input" value="${p.pontoId}" ${marcado ? 'checked' : ''}>
+    <div class="ponto-card-media">${fotoOuPlaceholder(p.fotoUrl, p.pontoNome)}</div>
+    <span class="mm-picker-check" aria-hidden="true">✓</span>
+    <span class="badge ${PONTO_STATUS_CLASSE[p.status] || ''}">${PONTO_STATUS[p.status] || p.status}</span>
+    <h4>${esc(p.pontoNome)}</h4>
+    <p>${esc(p.cidade || '')}${p.uf ? `/${esc(p.uf)}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}</p>
+    <div class="mm-picker-stats">
+      <span>Comercial <b>${p.comercialPct}%</b></span>
+      <span>Mostraí <b>${p.mostraiPct}%</b></span>
+      <span>Reserva <b>${p.reservaRestantePct}%</b></span>
+    </div>
   </label>`;
 }
 
@@ -1498,62 +1518,110 @@ function montarLinhaPontoPicker(p, marcado) {
 const DURACAO_PADRAO_IMAGEM_JS = 10;
 
 // Formulário de criação/edição de uma mídia própria (Parte 6: Conteúdo,
-// Veiculação, Cobertura, Capacidade). `midia` null = criar; objeto (de
-// `buscarPorId`, com `pontosIds`) = editar. Substituir arquivo NÃO mora
-// aqui — isso é "Ajustar mídia" na fila de Aprovação (Parte 25-29), pra não
-// duplicar o mecanismo que já preserva o mesmo criativo lógico.
+// Veiculação, Cobertura, Capacidade) — revisão visual de 23/09/2026: duas
+// colunas no desktop (configuração / preview), preview real assim que o
+// arquivo é escolhido, e "Alterar mídia" embutido na edição (reaproveita
+// `/admin/criativos/:id/substituir`, o mesmo endpoint de "Ajustar mídia" na
+// fila de Aprovação — mesmo criativo lógico, só troca o arquivo).
 async function abrirEditorMidia(wrap, midia, aoFechar) {
-  const pontosRede = await pegar('/admin/capacidade-rede');
+  // Capacidade dá comercial/Mostraí/reserva por ponto; Pontos dá foto,
+  // segmento e UF — o seletor de cobertura junta as duas pra virar card
+  // (Parte 20/21), sem endpoint novo nenhum.
+  const [pontosCapacidade, pontosCadastro] = await Promise.all([
+    pegar('/admin/capacidade-rede'),
+    pegar('/admin/pontos'),
+  ]);
+  const cadastroPorId = Object.fromEntries(pontosCadastro.map((p) => [p.id, p]));
+  const pontosRede = pontosCapacidade.map((p) => {
+    const cad = cadastroPorId[p.pontoId];
+    return {
+      ...p,
+      fotoUrl: cad?.foto_instalacao_url || null,
+      uf: cad?.uf || null,
+      endereco: cad?.endereco || null,
+      categoriaNome: cad?.categoria_nome || null,
+      categoriaLivre: cad?.categoria_livre || null,
+      segmento: cad?.segmento || null,
+    };
+  });
   const pontosSelecionados = new Set(midia?.pontosIds || []);
   const isoLocal = (v) => (v ? new Date(v).toISOString().slice(0, 16) : '');
   let duracaoEstimada = midia?.duracao_segundos || 0;
   const temPeriodo = !!(midia?.periodo_inicio || midia?.periodo_fim);
 
+  // Painel de preview — o MESMO container/classe serve a criação (assim que
+  // o arquivo é escolhido) e a edição (arquivo já salvo): container de
+  // tamanho fixo com `object-fit: contain`, então nem um vídeo vertical nem
+  // uma imagem panorâmica nunca estouram o painel (Parte 12).
+  const previewInicial = midia
+    ? montarPreviewAsset({
+        original: midia.arquivo_original_url,
+        normalizado: midia.arquivo_normalizado_url,
+        thumb: midia.thumbnail_url,
+        classe: 'mm-card-asset',
+      })
+    : '<p class="u-dim u-fs-78 u-m-0">Escolha um arquivo pra ver o preview.</p>';
+  const infoInicial = midia
+    ? `${ehImagemArquivo(midia.arquivo_original_url) ? 'Imagem' : 'Vídeo'}${midia.duracao_segundos ? ` · ${midia.duracao_segundos}s` : ''}${midia.aprovacao_status !== 'aprovado' ? ' · em análise' : ''}`
+    : '';
+
   wrap.innerHTML = `
-    <div class="card wide">
+    <div class="card mm-editor-card">
       <div class="field-row u-ai-c">
         <h3 class="u-m-0 u-mr-auto">${midia ? `Editar — ${esc(midia.nome_interno)}` : 'Nova mídia própria'}</h3>
         <button class="btn ghost mini" type="button" id="btnFecharEditorMidia">Fechar</button>
       </div>
       <form id="formMidia">
-        <p class="form-sep-titulo u-mt-0">Conteúdo</p>
-        <div class="u-col"><label>Nome interno</label><input name="nome_interno" required value="${esc(midia?.nome_interno || '')}"></div>
-        ${
-          midia
-            ? `<div class="u-mt-10">${htmlPreviewMidia(midia.arquivo_normalizado_url || midia.arquivo_original_url, midia.thumbnail_url)}
-                <p class="u-dim u-fs-78 u-mt-4 u-m-0">${midia.duracao_segundos ? `${midia.duracao_segundos}s` : ''}${midia.aprovacao_status !== 'aprovado' ? ' · em análise' : ''} — pra trocar o arquivo, use "Ajustar mídia" na fila de Aprovação.</p>`
-            : `<div class="u-mt-10">
-                 <label class="btn ghost mini" for="mmArquivo">Escolher arquivo<input type="file" id="mmArquivo" accept="video/*,image/*" hidden required></label>
-                 <span class="u-dim u-fs-78 u-d-block u-mt-4" id="mmArquivoNome">nenhum arquivo escolhido</span>
-               </div>`
-        }
+        <div class="mm-editor-grid">
+          <div class="mm-editor-col">
+            <p class="form-sep-titulo u-mt-0">Conteúdo</p>
+            <div class="u-col"><label>Nome interno</label><input name="nome_interno" required value="${esc(midia?.nome_interno || '')}"></div>
+            ${
+              !midia
+                ? `<div class="u-mt-10">
+                     <label class="btn ghost mini" for="mmArquivo">Escolher arquivo<input type="file" id="mmArquivo" accept="video/*,image/*" hidden required></label>
+                   </div>`
+                : ''
+            }
 
-        <p class="form-sep-titulo">Veiculação</p>
-        <div class="field-row">
-          <div class="u-col"><label>Vezes por hora</label><input class="mini" type="number" min="1" max="60" name="frequencia_hora" required value="${midia?.frequencia_hora || 1}"></div>
-        </div>
-        <label class="check-row u-mt-8"><input type="checkbox" id="mmAgendada" ${temPeriodo ? 'checked' : ''}> Tem período definido (fora dele, não entra no ar)</label>
-        <div class="field-row u-mt-8" id="mmPeriodoCampos" ${temPeriodo ? '' : 'hidden'}>
-          <div class="u-col"><label>Começa em</label><input class="mini" type="datetime-local" name="periodo_inicio" value="${isoLocal(midia?.periodo_inicio)}"></div>
-          <div class="u-col"><label>Termina em</label><input class="mini" type="datetime-local" name="periodo_fim" value="${isoLocal(midia?.periodo_fim)}"></div>
-        </div>
-        ${!midia ? '<label class="check-row u-mt-8"><input type="checkbox" name="situacao_pausada"> Criar pausada (não entra no ar ainda)</label>' : ''}
+            <p class="form-sep-titulo">Veiculação</p>
+            <div class="field-row">
+              <div class="u-col"><label>Vezes por hora</label><input class="mini" type="number" min="1" max="60" name="frequencia_hora" required value="${midia?.frequencia_hora || 1}"></div>
+            </div>
+            <label class="check-row u-mt-8"><input type="checkbox" id="mmAgendada" ${temPeriodo ? 'checked' : ''}> Tem período definido (fora dele, não entra no ar)</label>
+            <div class="field-row u-mt-8" id="mmPeriodoCampos" ${temPeriodo ? '' : 'hidden'}>
+              <div class="u-col"><label>Começa em</label><input class="mini" type="datetime-local" name="periodo_inicio" value="${isoLocal(midia?.periodo_inicio)}"></div>
+              <div class="u-col"><label>Termina em</label><input class="mini" type="datetime-local" name="periodo_fim" value="${isoLocal(midia?.periodo_fim)}"></div>
+            </div>
+            ${!midia ? '<label class="check-row u-mt-8"><input type="checkbox" name="situacao_pausada"> Começar pausada</label>' : ''}
 
-        <p class="form-sep-titulo">Cobertura</p>
-        <div class="field-row">
-          <label class="check-row"><input type="radio" name="cobertura_tipo" value="rede" ${(midia?.cobertura_tipo || 'rede') === 'rede' ? 'checked' : ''}> Toda a rede</label>
-          <label class="check-row"><input type="radio" name="cobertura_tipo" value="pontos" ${midia?.cobertura_tipo === 'pontos' ? 'checked' : ''}> Pontos específicos</label>
-        </div>
-        <p class="form-hint u-m-0">"Toda a rede" inclui pontos novos automaticamente, sem limite de quantidade.</p>
-        <div id="mmPontosWrap" ${midia?.cobertura_tipo === 'pontos' ? '' : 'hidden'}>
-          <input class="busca u-mt-8 u-mb-8" type="search" id="mmBuscaPontos" placeholder="Buscar ponto...">
-          <div class="mm-pontos-lista">
-            ${pontosRede.map((p) => montarLinhaPontoPicker(p, pontosSelecionados.has(p.pontoId))).join('') || '<p class="empty-state u-py-8">Nenhum ponto em operação ainda.</p>'}
+            <p class="form-sep-titulo">Cobertura</p>
+            <div class="field-row">
+              <label class="check-row"><input type="radio" name="cobertura_tipo" value="rede" ${(midia?.cobertura_tipo || 'rede') === 'rede' ? 'checked' : ''}> Toda a rede</label>
+              <label class="check-row"><input type="radio" name="cobertura_tipo" value="pontos" ${midia?.cobertura_tipo === 'pontos' ? 'checked' : ''}> Pontos específicos</label>
+            </div>
+            <p class="form-hint u-m-0">"Toda a rede" inclui pontos novos automaticamente, sem limite de quantidade.</p>
+            <div id="mmPontosWrap" ${midia?.cobertura_tipo === 'pontos' ? '' : 'hidden'}>
+              <input class="busca u-mt-8 u-mb-8" type="search" id="mmBuscaPontos" placeholder="Buscar por nome, cidade ou segmento...">
+              <div class="mm-picker-grid">
+                ${pontosRede.map((p) => montarPontoPickerCard(p, pontosSelecionados.has(p.pontoId))).join('') || '<p class="empty-state u-py-8">Nenhum ponto em operação ainda.</p>'}
+              </div>
+            </div>
+
+            <p class="form-sep-titulo">Capacidade projetada</p>
+            <div id="mmCapacidadePreview"><p class="u-dim u-fs-78 u-m-0">${midia ? 'Ajuste frequência e cobertura pra ver o impacto em cada ponto.' : 'Escolha o arquivo pra ver o impacto em cada ponto.'}</p></div>
+          </div>
+          <div class="mm-editor-col mm-editor-col-preview">
+            <p class="form-sep-titulo u-mt-0">Preview</p>
+            <div class="mm-editor-preview-box" id="mmPreviewBox">${previewInicial}</div>
+            <p class="u-dim u-fs-78 u-mt-6 u-m-0" id="mmPreviewInfo">${infoInicial}</p>
+            ${
+              midia
+                ? `<label class="btn ghost mini u-mt-10" for="mmAlterarArquivo">Alterar mídia<input type="file" id="mmAlterarArquivo" accept="video/*,image/*" hidden></label>`
+                : ''
+            }
           </div>
         </div>
-
-        <p class="form-sep-titulo">Capacidade</p>
-        <div id="mmCapacidadePreview"><p class="u-dim u-fs-78 u-m-0">${midia ? 'Ajuste frequência e cobertura pra ver o impacto em cada ponto.' : 'Escolha o arquivo pra ver o impacto em cada ponto.'}</p></div>
 
         <div class="field-row u-mt-14">
           <button class="btn primary" type="submit">${midia ? 'Salvar' : 'Criar mídia'}</button>
@@ -1592,20 +1660,53 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
   if (buscaPontos) {
     buscaPontos.addEventListener('input', () => {
       const termo = buscaPontos.value.trim().toLowerCase();
-      document.querySelectorAll('.mm-ponto-linha').forEach((linha) => {
-        linha.hidden = termo.length > 0 && !linha.dataset.busca.includes(termo);
+      document.querySelectorAll('.mm-picker-card').forEach((card) => {
+        card.hidden = termo.length > 0 && !card.dataset.busca.includes(termo);
       });
     });
   }
-  document.querySelectorAll('.mm-ponto-linha input').forEach((chk) => chk.addEventListener('change', atualizarPreview));
+  document.querySelectorAll('.mm-picker-card input').forEach((chk) => chk.addEventListener('change', atualizarPreview));
   form.frequencia_hora.addEventListener('input', atualizarPreview);
+
+  // Preview real assim que o arquivo é escolhido (Parte 13) — imagem vira
+  // <img>, vídeo vira <video> com controles; a duração real (pro cálculo de
+  // capacidade) só é confirmada de verdade pelo servidor ao normalizar —
+  // isto aqui é só a melhor estimativa ANTES do upload.
+  function previewLocal(arquivo) {
+    const box = document.getElementById('mmPreviewBox');
+    const info = document.getElementById('mmPreviewInfo');
+    if (arquivo.type.startsWith('image/') || ehImagemArquivo(arquivo.name)) {
+      // FileReader (data:), não URL.createObjectURL — a CSP do site só
+      // libera `img-src 'self' data:` (src/server.js), sem `blob:` (mesmo
+      // achado já registrado em public/candidatura-ponto.js#candidaturaCampoFoto:
+      // com blob: a imagem some, bloqueada em silêncio pelo navegador).
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        box.innerHTML = `<img class="mm-card-asset" src="${esc(leitor.result)}" alt="">`;
+        const sonda = new Image();
+        sonda.onload = () => {
+          info.textContent = `${arquivo.name} · imagem${sonda.naturalWidth ? ` · ${sonda.naturalWidth}×${sonda.naturalHeight}px` : ''}`;
+        };
+        sonda.src = leitor.result;
+      };
+      leitor.readAsDataURL(arquivo);
+      return;
+    }
+    // Vídeo: blob: já é liberado em `media-src` (o player offline também usa).
+    const url = URL.createObjectURL(arquivo);
+    box.innerHTML = `<video class="mm-card-asset" src="${esc(url)}" muted loop playsinline controls></video>`;
+    const videoEl = box.querySelector('video');
+    videoEl.onloadedmetadata = () => {
+      info.textContent = `${arquivo.name} · vídeo${videoEl.duration ? ` · ${Math.round(videoEl.duration)}s` : ''}`;
+    };
+  }
 
   const arquivoInput = document.getElementById('mmArquivo');
   if (arquivoInput) {
     arquivoInput.addEventListener('change', () => {
       const arquivo = arquivoInput.files[0];
-      document.getElementById('mmArquivoNome').textContent = arquivo?.name || 'nenhum arquivo escolhido';
       if (!arquivo) return;
+      previewLocal(arquivo);
       if (arquivo.type.startsWith('image/')) {
         duracaoEstimada = DURACAO_PADRAO_IMAGEM_JS;
         atualizarPreview();
@@ -1622,6 +1723,53 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     });
   }
 
+  // "Alterar mídia" (Parte 16, edição) — mesmo endpoint de "Ajustar mídia"
+  // na fila de Aprovação (`/admin/criativos/:id/substituir`): troca o
+  // arquivo do MESMO criativo lógico, nunca cria outra mídia. Volta pra "em
+  // análise" sempre (o backend já garante isso), então some o texto de
+  // "aprovado" do card até o operador aprovar de novo.
+  const alterarInput = document.getElementById('mmAlterarArquivo');
+  if (alterarInput) {
+    alterarInput.addEventListener('change', async () => {
+      const arquivo = alterarInput.files[0];
+      if (!arquivo) return;
+      const msg = document.getElementById('mmMsg');
+      previewLocal(arquivo);
+      msg.textContent = 'Enviando e normalizando... isso leva alguns segundos.';
+      msg.className = 'form-msg';
+      const dados = new FormData();
+      dados.append('arquivo', arquivo);
+      const r = await fetch(`${API_BASE_URL}/admin/criativos/${midia.criativo_id}/substituir`, {
+        method: 'POST',
+        body: dados,
+        credentials: 'include',
+      });
+      if (!r.ok) {
+        msg.textContent = (await r.json().catch(() => ({}))).erro || 'não deu pra substituir';
+        msg.className = 'form-msg err';
+        return;
+      }
+      const atualizado = await r.json();
+      midia.arquivo_original_url = atualizado.arquivo_original_url;
+      midia.arquivo_normalizado_url = atualizado.arquivo_normalizado_url;
+      midia.thumbnail_url = atualizado.thumbnail_url;
+      midia.duracao_segundos = atualizado.duracao_segundos;
+      midia.aprovacao_status = atualizado.status;
+      duracaoEstimada = atualizado.duracao_segundos || duracaoEstimada;
+      document.getElementById('mmPreviewBox').innerHTML = montarPreviewAsset({
+        original: midia.arquivo_original_url,
+        normalizado: midia.arquivo_normalizado_url,
+        thumb: midia.thumbnail_url,
+        classe: 'mm-card-asset',
+      });
+      document.getElementById('mmPreviewInfo').textContent =
+        `${ehImagemArquivo(midia.arquivo_original_url) ? 'Imagem' : 'Vídeo'}${midia.duracao_segundos ? ` · ${midia.duracao_segundos}s` : ''} · em análise`;
+      msg.textContent = 'Arquivo substituído — volta pra "em análise" até aprovar de novo, na fila de Aprovação.';
+      msg.className = 'form-msg ok';
+      atualizarPreview();
+    });
+  }
+
   async function atualizarPreview() {
     const alvo = document.getElementById('mmCapacidadePreview');
     if (!duracaoEstimada) {
@@ -1631,7 +1779,7 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     const coberturaTipo = form.cobertura_tipo.value;
     const idsMarcados =
       coberturaTipo === 'pontos'
-        ? [...document.querySelectorAll('.mm-ponto-linha input:checked')].map((i) => i.value)
+        ? [...document.querySelectorAll('.mm-picker-card input:checked')].map((i) => i.value)
         : [];
     if (coberturaTipo === 'pontos' && !idsMarcados.length) {
       alvo.innerHTML = '<p class="u-dim u-fs-78 u-m-0">Escolha pelo menos um ponto pra ver o impacto.</p>';
@@ -1676,7 +1824,7 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     const msg = document.getElementById('mmMsg');
     const idsMarcados =
       form.cobertura_tipo.value === 'pontos'
-        ? [...document.querySelectorAll('.mm-ponto-linha input:checked')].map((i) => i.value)
+        ? [...document.querySelectorAll('.mm-picker-card input:checked')].map((i) => i.value)
         : [];
     if (form.cobertura_tipo.value === 'pontos' && !idsMarcados.length) {
       msg.textContent = 'Escolha pelo menos um ponto, ou marque "toda a rede".';
@@ -1747,6 +1895,10 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
   });
 }
 
+// Hierarquia da página (revisão visual de 23/09/2026, pedido do dono):
+// Resumo → Capacidade da rede → Mídias próprias. Capacidade morava depois
+// da grade de mídias; como ela é o "quanto ainda cabe" antes de decidir
+// criar uma peça nova, faz mais sentido vir primeiro.
 async function renderMidiaMostrai(el) {
   const [midias, capacidade] = await Promise.all([pegar('/admin/midias-proprias'), pegar('/admin/capacidade-rede')]);
   const porSituacao = (s) => midias.filter((m) => m.situacaoDerivada === s).length;
@@ -1756,20 +1908,26 @@ async function renderMidiaMostrai(el) {
       <span class="u-mr-auto"></span>
       <button class="btn primary" id="btnNovaMidia">+ Nova mídia</button>
     </div>
-    <div class="mm-resumo u-mb-16">
+    <div class="mm-resumo u-mb-20">
       <div class="mm-resumo-item"><b>${porSituacao('ativa')}</b><span>ativas</span></div>
       <div class="mm-resumo-item"><b>${porSituacao('agendada')}</b><span>agendadas</span></div>
       <div class="mm-resumo-item"><b>${porSituacao('pausada')}</b><span>pausadas</span></div>
       <div class="mm-resumo-item"><b>${capacidade.length}</b><span>pontos em operação</span></div>
     </div>
     <div id="editorMidiaWrap" hidden></div>
+
+    <h3 class="u-mb-8">Capacidade da rede</h3>
+    <div id="mmCapacidadeWrap" class="u-mb-24"></div>
+
+    <div class="field-row u-ai-c u-mb-12">
+      <h3 class="u-m-0 u-mr-auto">Mídias próprias</h3>
+      <span class="u-dim u-fs-85">${midias.length} ${midias.length === 1 ? 'mídia' : 'mídias'}</span>
+    </div>
     ${
       midias.length
-        ? `<div class="criativo-fila u-mb-24">${midias.map(montarCardMidia).join('')}</div>`
-        : '<p class="empty-state">Nenhuma mídia própria cadastrada.</p>'
-    }
-    <h3>Capacidade da rede</h3>
-    <div id="mmCapacidadeWrap"></div>`;
+        ? `<div class="mm-grid">${midias.map(montarCardMidia).join('')}</div>`
+        : `<p class="empty-state">Nenhuma mídia própria cadastrada.<br><span class="u-fs-85">Crie uma mídia para utilizar a reserva institucional da rede.</span></p>`
+    }`;
 
   montarTabelaCapacidade(document.getElementById('mmCapacidadeWrap'), capacidade);
 
