@@ -3947,3 +3947,35 @@ no banco), trocas e devoluções mostrando só o pendente, cobranças sem
 nenhum rastro de nota fiscal manual, o hash antigo `#custos` caindo em
 Visão geral sem abrir tela nenhuma, e sem overflow horizontal em 390px
 (mobile) na Visão geral nem nas filas.
+
+## H. Texto legal desatualizado — pendência, marcada em 23/09/2026 (não editar sem o dono)
+
+**O quê:** `termos-de-uso.html` §6 e `politica-de-privacidade.html` ainda
+descrevem o programa de Vendedor/Parceiro (comissão, cadastro, cupom) que
+saiu da UI em 23/09/2026 (ver seção acima, "Vendedor aposentado" no
+`.ia/HANDOFF.md`). Dados e histórico de quem já foi vendedor continuam
+intactos no banco — é só o texto público que ficou descrevendo um caminho
+que ninguém mais percorre pelo site.
+
+**Por que não editei agora:** texto legal é a skill `legal`, e o dono pediu
+explicitamente, na mesma rodada em que aposentou a UI de Vendedor: "marque o
+texto legal atualização como pendência" — não corrigir de cabeça. Alteração
+de Termos/Privacidade muda obrigação contratual e exposição jurídica; quem
+decide a redação final e se o programa fica formalmente encerrado (ou só
+pausado, pra decisão futura) é o dono, não o código.
+
+**O que fica pendente, pra quando o dono quiser resolver:**
+1. Revisar `termos-de-uso.html` §6 (comissão de vendedor/afiliado) e decidir
+   se o programa é encerrado formalmente no texto, ou se o parágrafo muda
+   pra refletir "pausado, dados preservados".
+2. Revisar `politica-de-privacidade.html` onde cita dado coletado de
+   vendedor (chave PIX, comissão) — mesma decisão: manter descrevendo o que
+   já foi coletado (base legal de guarda de histórico) ou reescrever.
+3. Já existe inventário do que cada tela pedia em `docs/inventario-de-dados.md`
+   — ponto de partida pra não esquecer campo nenhum na revisão.
+
+**Não bloqueia a Estação 5** (não é bug nem comportamento quebrado — é texto
+correto sobre um recurso que só saiu de tela, RN-05 do CONSTRAINTS.md sobre
+"não editar migrations" não se aplica aqui, é outra cautela: não mexer em
+texto jurídico sem o dono revisar a redação). Fica registrado aqui até ele
+decidir.

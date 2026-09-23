@@ -334,11 +334,18 @@ fora porque, no desenho da migration 049, quem trocava ganhava o Essencial de
 cortesia; desde a 063 ganha o Básico, então o Essencial pago é um degrau acima
 como os outros. O percentual de comodato por plano (`desconto_comodato_percentual`)
 está aposentado: não entra em cálculo nenhum e não aparece mais em Ofertas —
-comodato é só o crédito em reais. **Limite conhecido:** a conta guarda um plano
-só (`anunciantes.plano_id`); quando quem tem o Básico assina um plano pago, o
-pago ocupa o lugar do Básico — os dois não rodam ao mesmo tempo como direitos
-separados. Contas mostra comodato e plano comercial em colunas separadas, mas o
-motor entrega só o pago (decisão de produto pendente).
+comodato é só o crédito em reais. **Corrigido em 23/09/2026 (decisão do dono e
+do GPT, correção do modelo de domínio):** comodato e plano comercial são dois
+direitos INDEPENDENTES na conta — `anunciantes.comodato_plano_id` (Inicial/
+Básico, migration 076, sincronizado pelos pontos da conta) e
+`anunciantes.plano_id` (Essencial/Pro/Prime, pago ou cortesia) nunca mais
+compartilham campo. Quem tem o Básico e assina um plano pago mantém os dois ao
+mesmo tempo — cancelar ou encerrar o plano comercial nunca mexe no comodato,
+que nunca "volta" porque nunca sai. Quem está no Inicial (`permite_assinar
+=false` na modalidade) é bloqueado ao tentar comprar ou receber Essencial/Pro/
+Prime — primeiro troca pra Básico, sem conversão automática escondida
+(`comodato.bloqueiaPlanoComercial`, checado em `/assinar`, na concessão
+administrativa, no `liberar-plano` legado e na indicação premiada).
 **A troca de modalidade tem mão única no autoatendimento:** trocar a ajuda de
 custo POR TELA o dono do ponto faz sozinho e na hora
 (`POST /anunciantes/me/comodato/trocar-por-tela`); VOLTAR a receber os R$ 50
@@ -804,13 +811,31 @@ RN-14) e um estado operacional (se a conta podia logar e veicular — herdado
 do modelo antigo de aprovação, RN-34, que já não fazia sentido desde então).
 Agora são dois campos: `status` (`comum` ou `parceiro` — só rótulo, nunca
 bloqueia nada) e `suspenso` (booleano — bloqueia login em `/anunciantes/:id/
-assinar`, some da playlist, e é ligado automaticamente pela conciliação
-diária quando a cobertura vence, ou desligado na hora em que uma cobrança é
+assinar` e some da playlist; desligado na hora em que uma cobrança é
 confirmada ou um plano é liberado). O gate real de veiculação continua sendo
 o do **criativo** (RN-34) — `suspenso` é sobre a CONTA, não sobre o anúncio.
-*Violada:* "conta suspensa — fale com o suporte antes de assinar". *Quem
-vê:* o anunciante (painel e perfil) e o administrador (coluna "Suspensa" na
-aba Anunciantes, separada da coluna "Status").
+**Corrigido em 23/09/2026** (decisão do dono: "suspensão só ocorre através de
+mim pelo admin, nunca suspensão automática — o plano é cancelado
+automaticamente"): `suspenso` só liga por ação do admin (aba Anunciantes) ou
+pelas duas exceções que continuam automáticas por serem obrigação legal/
+contratual, não simples atraso — contestação de cobrança (RN-54) e direito de
+arrependimento (o próprio titular pedindo). A conciliação diária, quando a
+cobertura vence, não suspende mais: ela ENCERRA o plano comercial vigente
+(mesma ação do botão "Cancelar plano" na ficha, `motivo='vencido'` no
+histórico em vez de `'cancelado'` — RN-32-A). *Violada:* "conta suspensa —
+fale com o suporte antes de assinar". *Quem vê:* o anunciante (painel e
+perfil) e o administrador (coluna "Suspensa" na aba Anunciantes, separada da
+coluna "Status").
+
+**RN-32-A — Cobertura vencida cancela o plano comercial, nunca suspende a
+conta.** *(23/09/2026, decisão do dono — ver RN-35.)* A conciliação diária
+(`src/financeiro/conciliacao.js#encerrarCoberturaVencida`) varre as contas com
+plano comercial vencido e chama o mesmo `plano-administrativo.js#encerrar()`
+do botão manual do admin, com `motivo:'vencido'` — distinção só no histórico
+(`planos_administrativos.encerrado_motivo`). O comodato (`comodato_plano_id`)
+nunca é tocado por essa rotina. *Violada:* nenhuma — é rotina automática, sem
+caminho de usuário. *Quem vê:* o admin, no histórico de benefícios da ficha e
+no resumo da Visão Geral ("plano(s) encerrado(s) por cobertura vencida").
 
 **RN-36 — Cobertura sem recorrência avisa por e-mail 7 dias antes de
 acabar.** *(Seção F, item 16, 16/09/2026.)* Quem troca de plano paga um

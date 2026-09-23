@@ -64,8 +64,22 @@ const CAMPOS_PUBLICOS = `
   anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
   suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo,
-  credito_comodato_mensal, email_confirmado
+  credito_comodato_mensal, comodato_plano_id, email_confirmado
 `;
+
+// Comodato (Inicial/Básico) e plano comercial (Essencial/Pro/Prime) são
+// entitlements INDEPENDENTES desde 23/09/2026 (migration 076) — nunca mais
+// no mesmo campo. Mas pra tudo que é COTA/DIREITO DE VEICULAR (quantos
+// criativos cabem, quantos pontos a conta escolhe, a duração máxima da
+// peça, a frequência por hora), o que importa é: a conta tem ALGUM plano
+// que dê esse direito? O comercial manda quando existe (é sempre igual ou
+// melhor); o comodato cobre quem só tem ele. `comodato_plano_id` é apenas
+// espelho de dado (sincronizado por `pontos/comodato.js`), nunca editável
+// direto — por isso não entra em CAMPOS_ATUALIZAVEIS, mesmo tratamento de
+// `credito_comodato_mensal`.
+function planoEfetivoId(conta) {
+  return conta?.plano_id || conta?.comodato_plano_id || null;
+}
 
 // `db` opcional: o cadastro por convite passa o client da transação.
 //
@@ -197,6 +211,7 @@ module.exports = {
   buscarPorId,
   validarSenha,
   listar,
+  planoEfetivoId,
   atualizar,
   STATUS,
 };

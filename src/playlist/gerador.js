@@ -99,7 +99,10 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
              ARRAY[]::int[]
            ) AS pontos_escolhidos
     FROM anunciantes a
-    JOIN planos p ON p.id = a.plano_id
+    -- COALESCE: plano comercial manda quando existe; sem ele, o comodato
+    -- (Inicial/Básico) governa sozinho — os dois nunca se somam (23/09/2026,
+    -- migration 076, mesma regra de src/anunciantes/repository.js#planoEfetivoId).
+    JOIN planos p ON p.id = COALESCE(a.plano_id, a.comodato_plano_id)
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a

@@ -91,18 +91,16 @@ test('aplicarUpgradeSeElegivel: sem plano nenhum, sobe um degrau por vez conform
 });
 
 test('aplicarUpgradeSeElegivel: conta no comodato (Inicial/Básico) não conta como "já no Essencial"', async () => {
-  // Inicial e Básico têm tier='essencial' no banco (mesma coluna do
-  // Essencial de verdade — migration 005 nunca distinguiu os dois), então
-  // o comparador de tier precisa ignorar planos de comodato, senão o
-  // crédito nunca levaria essa conta pro Essencial pago de verdade.
+  // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 076,
+  // separação de comodato/plano comercial) — `comodato_plano_id`, nunca
+  // `plano_id`. `plano_id` fica null pra essa conta, e um `plano_id` null
+  // já significa "sem tier nenhum" pro comparador — não precisa mais de
+  // filtro nenhum (era o que `idsDePlanosDeComodato` fazia, aposentado
+  // junto com a separação).
   const ponto = await contaDeTeste('indicacoes-comodato');
   const indicados = await Promise.all([1, 2, 3].map(() => contaDeTeste('indicacoes-ref-com')));
   try {
-    await pool.query(
-      `UPDATE anunciantes SET plano_id = 'comodato-basico', plano_cortesia = true, cortesia_motivo = 'comodato'
-        WHERE id = $1`,
-      [ponto],
-    );
+    await pool.query(`UPDATE anunciantes SET comodato_plano_id = 'comodato-basico' WHERE id = $1`, [ponto]);
     for (const indicadoId of indicados) await repo.registrarCredito(ponto, indicadoId);
 
     const resultado = await aplicarUpgradeSeElegivel(ponto);
@@ -110,7 +108,43 @@ test('aplicarUpgradeSeElegivel: conta no comodato (Inicial/Básico) não conta c
     assert.match(resultado.plano_id, /^essencial-1m/);
     assert.strictEqual(resultado.plano_cortesia, true);
     assert.strictEqual(resultado.cortesia_motivo, 'indicação');
+
+    const { rows } = await pool.query('SELECT comodato_plano_id FROM anunciantes WHERE id = $1', [ponto]);
+    assert.strictEqual(rows[0].comodato_plano_id, 'comodato-basico', 'comodato não é tocado pelo upgrade');
   } finally {
+    await apagarContas([ponto, ...indicados]);
+  }
+});
+
+test('aplicarUpgradeSeElegivel: conta na modalidade Inicial (ajuda de custo) espera até trocar', async () => {
+  // Inicial não acumula com plano comercial (decisão do dono e do GPT,
+  // 23/09/2026) — o upgrade por indicação concede um plano de verdade, então
+  // entra na mesma trava de qualquer concessão. O crédito não se perde: fica
+  // esperando a próxima reavaliação diária, depois que a conta trocar de
+  // modalidade.
+  const ponto = await contaDeTeste('indicacoes-inicial');
+  const indicados = await Promise.all([1, 2, 3].map(() => contaDeTeste('indicacoes-ref-ini')));
+  try {
+    await pool.query(
+      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
+       VALUES ('Ponto Indicação Inicial', 'Rua Z, 1', 'Matão', 'SP', '15990000', 'x', 'Z', '16999990000', $1, 'ajuda-custo')`,
+      [ponto],
+    );
+    await pool.query(`UPDATE anunciantes SET comodato_plano_id = 'inicial-1m' WHERE id = $1`, [ponto]);
+    for (const indicadoId of indicados) await repo.registrarCredito(ponto, indicadoId);
+
+    const resultado = await aplicarUpgradeSeElegivel(ponto);
+    assert.strictEqual(resultado, null, 'bloqueado enquanto estiver em Inicial — sem conversão automática escondida');
+
+    const { rows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [ponto]);
+    assert.strictEqual(rows[0].plano_id, null, 'nada foi concedido');
+    assert.strictEqual(
+      await repo.contarCreditos(ponto),
+      3,
+      'o crédito continua contado, esperando a troca de modalidade',
+    );
+  } finally {
+    await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [ponto]);
     await apagarContas([ponto, ...indicados]);
   }
 });

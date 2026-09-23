@@ -980,7 +980,7 @@ function linhaConciliacao(c) {
   const detalhe = c.abortou
     ? `abortou: ${esc(c.abortou)}`
     : `${c.verificadas} assinatura(s) verificada(s) · ${c.aplicadas} ciclo(s) aplicado(s)` +
-      `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}` +
+      `${c.expiradas ? ` · ${c.expiradas} plano(s) encerrado(s) por cobertura vencida` : ''}` +
       `${c.avisados ? ` · ${c.avisados} aviso(s) de fim de cobertura` : ''}` +
       `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
   // Achado na mesma varredura: a versão anterior usava a classe `alertas`
@@ -2554,21 +2554,23 @@ async function renderPontoTelas(el, ponto) {
 //
 // A tabela continua sendo `anunciantes` — só a UI chama de conta.
 
-// Plano de comodato NÃO é plano comercial (rodada de integridade,
-// 23/09/2026). O Inicial/Básico que vem do ponto fica gravado em `plano_id`
-// com cortesia de motivo 'comodato' (pontos/comodato.js).
-const planoEhComodato = (conta) => !!(conta.plano_cortesia && conta.cortesia_motivo === 'comodato');
+// Comodato (Inicial/Básico) e plano comercial (Essencial/Pro/Prime) são
+// entitlements INDEPENDENTES desde 23/09/2026 — decisão do dono e do GPT,
+// migration 076: dois campos próprios (`plano_id` e `comodato_plano_id`),
+// nunca mais um sobrescrevendo o outro. Básico coexiste com qualquer plano
+// comercial; Inicial bloqueia conceder/vender um (o backend recusa —
+// `pontos/comodato.js#bloqueiaPlanoComercial` — as duas telas de plano
+// abaixo só mostram o erro que ele mandar).
 
 function nomeDoPlano(plano) {
   if (!plano) return '';
   return `${plano.nome} · ${CICLOS[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}`;
 }
 
-// Plano COMERCIAL da conta (nunca o do comodato), com a origem separada
-// (Parte 12): 'assinatura' = pago pelo San Checkout; 'cortesia' = benefício
-// concedido pelo admin (ou bônus). Nunca mistura as duas.
+// Plano COMERCIAL da conta, com a origem (Parte 12): 'assinatura' = pago
+// pelo San Checkout; 'cortesia' = benefício concedido pelo admin (ou bônus).
 function planoComercialDaConta(conta, planosPorId) {
-  if (!conta.plano_id || planoEhComodato(conta)) return null;
+  if (!conta.plano_id) return null;
   return {
     plano: planosPorId[conta.plano_id] || null,
     id: conta.plano_id,
@@ -2580,14 +2582,21 @@ function planoComercialDaConta(conta, planosPorId) {
 
 const ORIGEM_PLANO = { assinatura: 'Assinatura paga', cortesia: 'Cortesia administrativa' };
 
-// Comodato é direito do PONTO (modalidade + produto Inicial/Básico) — vem
-// dos pontos da conta, não do plano gravado nela.
+// Comodato é direito do PONTO (modalidade + produto Inicial/Básico),
+// espelhado em `conta.comodato_plano_id` (sincronizado por
+// `pontos/comodato.js#sincronizarComodato` toda vez que a modalidade de um
+// ponto muda). A lista de pontos só entra aqui pra mostrar QUAL modalidade
+// ("Troca os R$ 50 por tela") — o produto em si vem do campo da conta.
 function comodatoDaConta(conta, pontosDaConta, planosPorId) {
+  if (!conta.comodato_plano_id) return null;
   const ponto =
-    pontosDaConta.find((p) => p.comodato_produto_nome) || pontosDaConta.find((p) => p.plano_ponto_nome) || null;
-  if (ponto) return { produto: ponto.comodato_produto_nome || null, modalidade: ponto.plano_ponto_nome || null };
-  if (planoEhComodato(conta)) return { produto: planosPorId[conta.plano_id]?.nome || 'Comodato', modalidade: null };
-  return null;
+    pontosDaConta.find(
+      (p) => p.plano_ponto_id && p.comodato_produto_nome === planosPorId[conta.comodato_plano_id]?.nome,
+    ) || pontosDaConta.find((p) => p.plano_ponto_nome);
+  return {
+    produto: planosPorId[conta.comodato_plano_id]?.nome || ponto?.comodato_produto_nome || 'Comodato',
+    modalidade: ponto?.plano_ponto_nome || null,
+  };
 }
 
 async function renderContasAba(el, resto) {
@@ -3217,7 +3226,7 @@ function abrirCancelarPlano(ctx) {
   const pago = comercial.origem === 'assinatura';
   const texto = pago
     ? `<p>A assinatura de <b>${esc(nomeDoPlano(comercial.plano) || comercial.id)}</b> é cancelada no San Checkout e a cobrança recorrente para. A cobertura já paga continua valendo até ${comercial.expira ? data(comercial.expira) : 'o fim do ciclo'} — o anúncio não sai do ar hoje. Nenhum reembolso é gerado.</p>`
-    : `<p>O benefício <b>${esc(nomeDoPlano(comercial.plano) || comercial.id)}</b> (cortesia administrativa) termina agora. ${planoInfo.historico.length ? 'O histórico fica guardado.' : ''} Se a conta tem ponto em comodato, o plano do comodato volta a valer.</p>`;
+    : `<p>O benefício <b>${esc(nomeDoPlano(comercial.plano) || comercial.id)}</b> (cortesia administrativa) termina agora. ${planoInfo.historico.length ? 'O histórico fica guardado.' : ''} O comodato desta conta (se houver) não é afetado — é separado do plano comercial e nunca é tocado por este cancelamento.</p>`;
   const { dlg, fechar } = abrirModal({
     titulo: 'Cancelar plano?',
     corpo: `${texto}<p class="form-msg" data-msg role="status"></p>`,

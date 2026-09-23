@@ -16,29 +16,14 @@ const pool = require('../db/pool');
 
 const TIERS_COMERCIAIS = new Set(['essencial', 'destaque', 'maximo']);
 
-// De onde vem o plano que está na conta agora. Comodato e plano comercial
-// são coisas separadas (Parte 12) — o comodato vem do ponto e não é
-// "plano atual" pra efeito de troca.
+// De onde vem o plano comercial que está na conta agora — nunca mais
+// 'comodato' (migration 076, 23/09/2026): comodato tem campo próprio
+// (`anunciantes.comodato_plano_id`), independente, e nenhum código escreve
+// mais um produto de comodato em `plano_id`. Quem quer saber do comodato lê
+// `comodato_plano_id` direto (ver ficha da conta no admin).
 function origemDoPlano(conta) {
   if (!conta?.plano_id) return null;
-  if (conta.plano_cortesia && conta.cortesia_motivo === 'comodato') return 'comodato';
-  if (conta.plano_cortesia) return 'cortesia';
-  return 'assinatura';
-}
-
-// Plano incluído no comodato de algum ponto da conta (Inicial/Básico) — é o
-// que volta pra conta quando o benefício comercial acaba, igual ao que o
-// cadastro do ponto teria posto lá (src/conta/modos.js, src/pontos/comodato.js).
-async function planoDoComodato(contaId, db = pool) {
-  const { rows } = await db.query(
-    `SELECT pp.plano_incluido_id
-       FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-      WHERE p.anunciante_id = $1 AND pp.plano_incluido_id IS NOT NULL
-      ORDER BY pp.ordem, pp.id
-      LIMIT 1`,
-    [contaId],
-  );
-  return rows[0]?.plano_incluido_id || null;
+  return conta.plano_cortesia ? 'cortesia' : 'assinatura';
 }
 
 // `validoAte`: 'AAAA-MM-DD'. Vai pra `data_expiracao`, que é `date` — por
@@ -120,26 +105,25 @@ async function conceder({ conta, plano, validoAte, observacao, adminUsuario }) {
   });
 }
 
-// Encerra o benefício administrativo vigente agora. Se a conta tem ponto em
-// comodato, o plano do comodato volta (sem prazo, como nasceu); senão a conta
-// fica sem plano comercial. Histórico preservado.
-async function encerrar({ conta, adminUsuario }) {
+// Encerra o plano comercial vigente agora. Só o plano COMERCIAL é encerrado
+// (23/09/2026, decisão do dono e do GPT, migration 076): comodato mora em
+// campo próprio e nunca é tocado por este fluxo — não existe "devolver
+// comodato" porque ele nunca saiu. Histórico preservado.
+//
+// `motivo`: 'cancelado' é o botão da ficha (admin decidiu agora, com
+// `adminUsuario`); 'vencido' é a conciliação diária encerrando sozinha uma
+// cobertura que passou da validade, sem suspender a conta por isso
+// (`src/financeiro/conciliacao.js#encerrarCoberturaVencida`, migration 077
+// — "suspensão só pelo admin, plano vencido cancela sozinho").
+async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
   return comTransacao(async (db) => {
-    await fecharAbertos(db, conta.id, 'cancelado', adminUsuario);
-    const comodato = await planoDoComodato(conta.id, db);
-    const { rows } = comodato
-      ? await db.query(
-          `UPDATE anunciantes
-              SET plano_id = $2, plano_cortesia = true, cortesia_motivo = 'comodato', data_expiracao = NULL
-            WHERE id = $1 RETURNING *`,
-          [conta.id, comodato],
-        )
-      : await db.query(
-          `UPDATE anunciantes
-              SET plano_id = NULL, plano_cortesia = false, cortesia_motivo = NULL, data_expiracao = NULL
-            WHERE id = $1 RETURNING *`,
-          [conta.id],
-        );
+    await fecharAbertos(db, conta.id, motivo, adminUsuario);
+    const { rows } = await db.query(
+      `UPDATE anunciantes
+          SET plano_id = NULL, plano_cortesia = false, cortesia_motivo = NULL, data_expiracao = NULL
+        WHERE id = $1 RETURNING *`,
+      [conta.id],
+    );
     return rows[0];
   });
 }
@@ -158,7 +142,6 @@ async function historicoDaConta(contaId) {
 module.exports = {
   TIERS_COMERCIAIS,
   origemDoPlano,
-  planoDoComodato,
   validadeValida,
   conceder,
   encerrar,

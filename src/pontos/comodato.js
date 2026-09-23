@@ -18,13 +18,29 @@ const pool = require('../db/pool');
 // Tudo aqui roda na MESMA transação de quem chamou: modalidade trocada e
 // contrapartida ajustada são um ato só. Metade aplicada é um comerciante
 // que deixou de receber R$ 50 e não ganhou a tela.
+//
+// COMODATO É SEPARADO DE PLANO COMERCIAL (23/09/2026, decisão do dono e do
+// GPT — migration 076). Até aqui, `sincronizarComodato` escrevia no MESMO
+// campo que o plano pago/cortesia (`anunciantes.plano_id`), com uma guarda
+// pra nunca sobrescrever assinatura ativa — e por isso mesmo, quando a
+// assinatura ESTAVA ativa, o comodato simplesmente não era gravado em lugar
+// nenhum: cancelar o plano pago "descobria" o campo e não havia nada pra
+// aparecer no lugar. Agora comodato mora em `anunciantes.comodato_plano_id`,
+// SEMPRE espelhando a modalidade viva do(s) ponto(s) da conta, nunca tocado
+// por nenhum fluxo de plano comercial (assinatura, cortesia administrativa,
+// bônus). Básico coexiste com qualquer plano comercial. Inicial não —
+// `bloqueiaPlanoComercial`, abaixo, é a régua que os fluxos de plano
+// comercial consultam antes de conceder ou vender.
 
-// O crédito vale o MAIOR entre os pontos da conta, nunca a soma — dono de
-// três pontos tem crédito de R$ 50, não de R$ 150. Recalcular a partir dos
-// pontos (em vez de somar ou subtrair no lugar) é o que faz a troca funcionar
-// nos dois sentidos sem deixar resto: quem volta pra ajuda de custo perde o
-// crédito no mesmo cálculo que o deu.
-async function recalcularCredito(contaId, db) {
+// O crédito e o comodato valem o MELHOR entre os pontos da conta, nunca a
+// soma — dono de três pontos tem UM crédito de R$ 50 (não R$ 150) e UM
+// comodato (o melhor dos três, não os três empilhados). Recalcular a partir
+// dos pontos (em vez de somar ou subtrair no lugar) é o que faz a troca
+// funcionar nos dois sentidos sem deixar resto: quem volta pra ajuda de
+// custo perde o crédito e o comodato de nível melhor no mesmo cálculo que
+// os deu. `ordem` em `planos_ponto` já expressa "melhor" (mais-cota > ajuda-
+// custo) — mesmo critério que a migração de dados usou.
+async function sincronizarComodato(contaId, db = pool) {
   await db.query(
     `UPDATE anunciantes a
         SET credito_comodato_mensal = COALESCE((
@@ -32,24 +48,17 @@ async function recalcularCredito(contaId, db) {
                 FROM pontos p
                 JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
                WHERE p.anunciante_id = a.id
-            ), 0)
+            ), 0),
+            comodato_plano_id = (
+              SELECT pp.plano_incluido_id
+                FROM pontos p
+                JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
+               WHERE p.anunciante_id = a.id AND pp.plano_incluido_id IS NOT NULL
+               ORDER BY pp.ordem DESC
+               LIMIT 1
+            )
       WHERE a.id = $1`,
     [contaId],
-  );
-}
-
-// O plano incluído só é trocado quando o que está lá é O PLANO DO COMODATO.
-// Conta que assinou Destaque com o próprio dinheiro não pode ter a assinatura
-// substituída por um plano de cortesia porque trocou de modalidade — seria
-// apagar o que ela paga.
-async function ajustarPlanoIncluido(contaId, opcao, db) {
-  if (!opcao?.plano_incluido_id) return;
-  await db.query(
-    `UPDATE anunciantes
-        SET plano_id = $2, plano_cortesia = true, cortesia_motivo = 'comodato'
-      WHERE id = $1
-        AND (plano_id IS NULL OR (plano_cortesia AND cortesia_motivo = 'comodato'))`,
-    [contaId, opcao.plano_incluido_id],
   );
 }
 
@@ -70,10 +79,7 @@ async function aplicarModalidade(pontoId, opcaoId, db = pool) {
     [ponto.id, opcao.id, opcao.ajuda_custo_mensal, opcao.cota_slots_hora],
   );
 
-  if (ponto.anunciante_id) {
-    await ajustarPlanoIncluido(ponto.anunciante_id, opcao, db);
-    await recalcularCredito(ponto.anunciante_id, db);
-  }
+  if (ponto.anunciante_id) await sincronizarComodato(ponto.anunciante_id, db);
   return opcao;
 }
 
@@ -87,4 +93,26 @@ async function modalidadeSemDinheiro(db = pool) {
   return rows[0] || null;
 }
 
-module.exports = { aplicarModalidade, recalcularCredito, modalidadeSemDinheiro };
+// A TRAVA DO COMODATO (migration 049, desenho do dono de 17/09/2026;
+// centralizada aqui em 23/09/2026 — antes só vivia dentro de POST
+// /anunciantes/:id/assinar, e por isso só valia pra quem COMPRAVA um plano;
+// concessão administrativa e créditos automáticos passavam batido pela mesma
+// regra). `permite_assinar` já existe em `planos_ponto` com exatamente esta
+// régua desde a migration 049: falso pra "ajuda-custo" (Inicial), true pra
+// "mais-cota" (Básico) — não é reinventada aqui, só passa a valer em todo
+// lugar que concede ou vende plano comercial, não só na compra direta.
+//
+// Verdadeiro só quando NENHUM ponto da conta permite (dono de pontos em
+// modalidades diferentes fica liberado se pelo menos um permitir — mesma
+// leitura que já valia dentro de /assinar).
+async function bloqueiaPlanoComercial(contaId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT DISTINCT pp.permite_assinar
+       FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
+      WHERE p.anunciante_id = $1`,
+    [contaId],
+  );
+  return rows.length > 0 && rows.every((r) => r.permite_assinar === false);
+}
+
+module.exports = { aplicarModalidade, sincronizarComodato, modalidadeSemDinheiro, bloqueiaPlanoComercial };

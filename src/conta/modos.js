@@ -15,6 +15,7 @@ const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const planosPontoRepo = require('../pontos/planos-ponto-repository');
+const comodato = require('../pontos/comodato');
 const planosRepo = require('../financeiro/planos-repository');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
@@ -101,47 +102,20 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
 
     // A CONTRAPARTIDA DO COMODATO (migration 049, desenho do dono de
     // 17/09/2026). Quem cede a parede escolhe uma das duas opções, e as duas
-    // dão tela: a opção "Recebe os R$ 50" traz o plano básico junto, e a
-    // "Troca os R$ 50 por tela" traz o Essencial inteiro mais um crédito de
-    // R$ 50 pra quem depois quiser subir pro Destaque ou pro Máximo.
+    // dão tela: a opção "Recebe os R$ 50" traz o Inicial junto, e a "Troca
+    // os R$ 50 por tela" traz o Básico, mais um crédito de R$ 50 pra quem
+    // depois quiser assinar Essencial, Pro ou Máximo.
     //
-    // O plano entra AQUI, na mesma transação que cria o ponto, e não numa
+    // Sincronizado AQUI, na mesma transação que cria o ponto, e não numa
     // rotina à parte: comodato assinado e contrapartida concedida têm que ser
     // o mesmo ato, senão existe um intervalo em que ele cedeu a parede e não
     // recebeu nada — e é justo nesse intervalo que alguém abre um chamado.
     //
-    // NÃO sobrescreve plano que a conta já tenha: o dono de ponto que já era
-    // cliente pagante continua no plano que paga. Dar o plano de comodato por
-    // cima apagaria uma assinatura ativa.
-    // Entra como CORTESIA, e sem `data_expiracao`: ele não paga nada por
-    // nenhuma das duas opções, e o plano vale enquanto o comodato valer.
-    // Sem a marca de cortesia, a receita e a margem do admin contariam um
-    // Essencial de R$ 99 que ninguém pagou. Sem `data_expiracao` nula, ele
-    // receberia o e-mail de "sua cobertura está acabando" (RN-36) por uma
-    // cobertura que não tem prazo — e o gerador já trata nulo como válido pra
-    // sempre.
-    //
-    // `aplicarCicloPago` limpa cortesia e motivo quando ele decide pagar o
-    // Destaque ou o Máximo, então o plano pago não fica invisível na margem.
-    if (opcao?.plano_incluido_id && !conta.plano_id) {
-      await db.query(
-        `UPDATE anunciantes
-            SET plano_id = $2,
-                data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
-                plano_cortesia = true,
-                cortesia_motivo = 'comodato'
-          WHERE id = $1 AND plano_id IS NULL`,
-        [conta.id, opcao.plano_incluido_id],
-      );
-    }
-    // O crédito NÃO acumula por ponto: dono de três pontos tem crédito de
-    // R$ 50, não de R$ 150 (a razão está no cabeçalho da migration 049).
-    if (Number(opcao?.desconto_assinatura_reais) > 0) {
-      await db.query(
-        'UPDATE anunciantes SET credito_comodato_mensal = GREATEST(credito_comodato_mensal, $2) WHERE id = $1',
-        [conta.id, Number(opcao.desconto_assinatura_reais)],
-      );
-    }
+    // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 076,
+    // `comodato.sincronizarComodato`) — independente de plano comercial.
+    // Cliente pagante que também cede um ponto mantém o plano que paga E
+    // ganha o comodato junto; os dois nunca se sobrescrevem.
+    if (opcao?.plano_incluido_id) await comodato.sincronizarComodato(conta.id, db);
   }
 }
 
@@ -432,6 +406,15 @@ router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req,
     return res
       .status(409)
       .json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });
+  }
+  // Mesma trava de qualquer concessão de plano comercial (Parte da separação
+  // de comodato, 23/09/2026): o bônus concede um plano de verdade, e conta
+  // em Inicial não pode ter os dois. Quem está em Inicial resgata assim que
+  // trocar a modalidade (o crédito não se perde — fica esperando).
+  if (await comodato.bloqueiaPlanoComercial(conta.id)) {
+    return res.status(409).json({
+      erro: 'sua conta está na modalidade "Recebe os R$ 50" do comodato, que não acumula com plano comercial — troque pra "Troca os R$ 50 por tela" pra resgatar o bônus',
+    });
   }
   await emTransacao(async (cliente) => {
     await adicionarPapel(conta.id, 'anunciante', cliente);

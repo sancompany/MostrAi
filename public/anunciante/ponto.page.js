@@ -473,8 +473,9 @@ carregar().catch(() => {
 // modalidade inteira de quem abre mão dos R$ 50. O gerador da playlist já
 // puxava os criativos aprovados desta conta (criativosDoDono, limite 3) e não
 // havia nenhuma tela pra subir o vídeo: a cota era reservada e ficava vazia.
-// A rota é a mesma do anunciante (POST /anunciantes/:id/criativos), que já
-// aceita conta sem plano com teto de 1.
+// A rota é a mesma do anunciante (POST /anunciantes/:id/criativos) — o teto
+// vem do comodato (Inicial/Básico, campo próprio desde 23/09/2026, migration
+// 076), que a rota já lê como "plano efetivo" quando não há plano pago.
 // ---------------------------------------------------------------------------
 function ehVideoArquivo(url) {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url || '');

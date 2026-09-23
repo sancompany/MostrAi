@@ -46,7 +46,13 @@ async function carregar() {
     // cadastro"; a decisão virou o contrário: trava, com aviso pra
     // escolher plano (o back também passou a recusar isso, defesa em
     // profundidade — ver POST /anunciantes/:id/criativos).
-    if (!ANUNCIANTE.plano_id) {
+    //
+    // "Plano" aqui é o EFETIVO — comercial OU comodato (23/09/2026,
+    // separação dos dois campos, migration 076). Dono de ponto sem nenhum
+    // plano pago continua liberado pelo comodato (Inicial/Básico), que
+    // sempre deu direito a subir o autoanúncio — só nunca tinha campo
+    // próprio antes.
+    if (!ANUNCIANTE.plano_id && !ANUNCIANTE.comodato_plano_id) {
       montarBloqueioPlano();
       return;
     }

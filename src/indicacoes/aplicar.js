@@ -1,9 +1,9 @@
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const planosRepo = require('../financeiro/planos-repository');
-const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const repo = require('./repository');
 const { tierElegivel } = require('./regras');
+const comodato = require('../pontos/comodato');
 
 const ORDEM_TIER = ['essencial', 'destaque', 'maximo'];
 
@@ -27,19 +27,20 @@ async function aplicarUpgradeSeElegivel(pontoContaId, db = pool) {
   const conta = await anunciantesRepo.buscarPorId(pontoContaId);
   if (!conta) return null;
 
+  // `conta.plano_id` é só plano COMERCIAL desde 23/09/2026 (migration 076,
+  // separação de comodato) — antes precisava excluir os ids de comodato daqui
+  // à mão (`idsDePlanosDeComodato`) pra não confundir Inicial/Básico com um
+  // Essencial de verdade; agora `plano_id` nunca é um produto de comodato,
+  // então o tier lido aqui já é sempre o comercial, sem filtro nenhum.
   const planoAtual = conta.plano_id ? await planosRepo.buscarPorId(conta.plano_id) : null;
-  // O plano Inicial e o Básico também têm tier='essencial' no banco (a
-  // coluna `tier`, migration 005, nunca ganhou um valor próprio pra eles —
-  // só id/nome/preço os distingue do Essencial de verdade). Sem essa
-  // exclusão, uma conta no comodato mais básico pareceria "já no Essencial"
-  // pra este comparador, e o crédito de indicação nunca a levaria pro
-  // Essencial de verdade. `idsDePlanosDeComodato` é consultado ao vivo (não
-  // por id fixo) porque é exatamente o conjunto que `planos_ponto` entrega
-  // de graça hoje — muda sozinho se o dono repontar uma modalidade.
-  const idsComodato = await planosPontoRepo.idsDePlanosDeComodato(db);
-  const tierAtual = planoAtual && !idsComodato.includes(planoAtual.id) ? planoAtual.tier : null;
+  const tierAtual = planoAtual ? planoAtual.tier : null;
   // Já está no tier alvo ou acima dele — nada a fazer (nunca rebaixa).
   if (tierAtual && ORDEM_TIER.indexOf(tierAtual) >= ORDEM_TIER.indexOf(tierAlvo)) return null;
+  // A mesma trava de qualquer concessão de plano comercial (upgrade por
+  // indicação também concede um plano de verdade) — conta em Inicial espera
+  // até trocar de modalidade; a reavaliação diária tenta de novo sozinha
+  // (`reavaliarTodos`), sem perder o crédito já acumulado.
+  if (await comodato.bloqueiaPlanoComercial(pontoContaId, db)) return null;
 
   // "Livre pra cortesia" é o oposto de "pagando cobertura em dia" — mesma
   // conta de temPlanoPagoAtivo em public/anunciante/painel.page.js e do gate

@@ -14,6 +14,7 @@
 // se o aviso veio pelo webhook, por aqui, ou pelos dois.
 const pool = require('../db/pool');
 const { consultarAssinatura, aplicarCicloPago, linkRenovarAssinatura } = require('./san-checkout');
+const planoAdministrativo = require('./plano-administrativo');
 const { enviarCoberturaAcabando, enviarCobrancaFalhou } = require('./email');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
@@ -123,7 +124,7 @@ async function conciliarAssinaturas() {
           anunciante_id: assinatura.anunciante_id,
           assinatura_id: assinatura.id,
           // Cobertura já paga continua valendo até `data_expiracao` — quem
-          // derruba é `suspenderCoberturaVencida`, igual ao webhook `cancelada`.
+          // encerra é `encerrarCoberturaVencida`, igual ao webhook `cancelada`.
           // Cancelar no ato tiraria do ar quem pagou o ciclo corrente.
           nota: 'descoberto pela conciliação; a Asaas não avisa por evento',
         });
@@ -159,7 +160,7 @@ async function conciliarAssinaturas() {
   }
 
   relato.avisados = await avisarCoberturaAcabando();
-  relato.expiradas = await suspenderCoberturaVencida();
+  relato.expiradas = await encerrarCoberturaVencida();
   await registrarRelato(comecouEm, relato);
   return relato;
 }
@@ -260,26 +261,31 @@ async function avisarCoberturaAcabando() {
 // filtrava por data, entao o anuncio parava de rodar; o que nao parava era o
 // sistema dizer que estava tudo certo.
 //
-// Suspende, nao exclui: `suspenso` e reversivel, mantem o historico. Desde
-// 16/09/2026 e um campo proprio, separado de `status` (que virou so
-// comum/parceiro). Conta em cortesia entra na regra igual — cortesia tambem
-// tem prazo.
-async function suspenderCoberturaVencida() {
+// Até 23/09/2026 isso SUSPENDIA a conta (`suspenso = true`) — mas suspensão
+// passou a ser só do admin, nunca automática (pedido do dono, resposta
+// direta à reconstrução de Contas: "o plano é cancelado automaticamente").
+// Agora esta rotina ENCERRA o plano comercial — mesma ação do botão
+// "Cancelar plano" da ficha (`plano-administrativo.js#encerrar`, reusado,
+// não duplicado) — sem tocar `suspenso`. Conta em cortesia entra na regra
+// igual — cortesia também tem prazo. O comodato (campo próprio desde a
+// migration 076) nunca é afetado: nunca esteve em `plano_id`.
+async function encerrarCoberturaVencida() {
   const { rows } = await pool.query(`
-    UPDATE anunciantes
-       SET suspenso = true
-     WHERE NOT suspenso
+    SELECT id, nome_empresa, data_expiracao FROM anunciantes
+     WHERE plano_id IS NOT NULL
        AND excluido_em IS NULL
        AND data_expiracao IS NOT NULL
-       AND data_expiracao < current_date
-    RETURNING id, nome_empresa, data_expiracao`);
+       AND data_expiracao < current_date`);
+  for (const conta of rows) {
+    await planoAdministrativo.encerrar({ conta, motivo: 'vencido' });
+  }
   return rows;
 }
 
 module.exports = {
   conciliarAssinaturas,
   decidirPorEstado,
-  suspenderCoberturaVencida,
+  encerrarCoberturaVencida,
   avisarCoberturaAcabando,
   registrarRelato,
   ultimaConciliacao,
