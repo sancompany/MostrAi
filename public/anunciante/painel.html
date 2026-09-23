@@ -167,9 +167,28 @@
       </div>
     </section>
 
-    <section class="dashboard-opportunity">
+    <!-- Meus pontos (Fatia 2): pedido em análise, ponto e telas num card só
+         por estabelecimento. Fora de #dashboardAnuncios pelo mesmo motivo de
+         Créditos: dono de ponto sem plano comercial (ou sem o modo anúncios)
+         também precisa ver o próprio comércio. Sem estabelecimento nenhum, o
+         próprio módulo vira o convite "Você também possui um comércio?". -->
+    <section class="dashboard-content pontos-content">
       <div class="wrap painel-wrap">
-        <div id="cardPonto"></div>
+        <section class="dashboard-section" id="modPontos" aria-labelledby="tituloMeusPontos" hidden>
+          <article class="panel painel-meus-pontos">
+            <div class="panel-head">
+              <div>
+                <p class="section-eyebrow">Seus comércios na rede</p>
+                <h2 id="tituloMeusPontos">Meus pontos</h2>
+                <span class="panel-subtitle" id="pontosResumo"></span>
+              </div>
+              <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
+            </div>
+            <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
+            <div class="estab-lista" id="pontosLista"></div>
+            <div class="pontos-novo" id="pontosNovo" hidden></div>
+          </article>
+        </section>
       </div>
     </section>
 
@@ -183,6 +202,15 @@
         <button type="button" class="btn ghost" id="btnCancelarResgate">Cancelar</button>
         <button type="button" class="btn primary" id="btnConfirmarResgate">Confirmar resgate</button>
       </div>
+    </dialog>
+
+    <!-- O que rodou numa tela (dono do ponto) — aberto de "Meus pontos". -->
+    <dialog id="modalTela" class="dlg-tela">
+      <div class="dlg-head">
+        <h3 id="modalTelaTitulo">Tela</h3>
+        <button type="button" class="dlg-close" id="fecharModalTela" aria-label="Fechar">&times;</button>
+      </div>
+      <div id="modalTelaCorpo">Carregando...</div>
     </dialog>
 
     <dialog id="dlgPlano">
@@ -199,6 +227,7 @@
   <script src="/creditos.js"></script>
   <script src="/formulario.js"></script>
   <script src="/candidatura-ponto.js"></script>
+  <script src="/meus-pontos.js"></script>
   <script src="/modos.js"></script>
   <script src="/anunciante/painel.page.js"></script>
 </body>

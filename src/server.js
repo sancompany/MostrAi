@@ -242,7 +242,13 @@ const paginaDeErro = (arquivo) => path.join(__dirname, '..', 'public', arquivo);
 
 // 404 — rota que não existe. Sem isto, endereço errado morria no handler
 // padrão do Express, que devolve uma página em inglês com o caminho dentro.
+//
+// `no-store` (23/09/2026, deploy da Fatia 1): no deploy em rolagem, o pod
+// antigo respondia 404 para o arquivo novo (creditos.js), a Cloudflare
+// guardava esse 404 e continuava servindo depois que o pod novo subiu. Um
+// "não existe" nunca é fato estável o bastante pra ir pra cache.
 app.use((req, res) => {
+  res.set('Cache-Control', 'no-store');
   if (querHtml(req)) return res.status(404).sendFile(paginaDeErro('404.html'));
   res.status(404).json({ erro: 'não encontrado' });
 });

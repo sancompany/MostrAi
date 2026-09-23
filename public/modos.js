@@ -267,39 +267,44 @@
       // se o site esqueceu.
       if (b.ja_e_ponto) {
         return `<div class="aviso-fundador"><b>Bônus do plano:</b> ele dá uma tela no comércio de quem ainda não é ponto da rede,
-          e você já é. Quer uma tela em outro endereço seu? <a href="/anunciante/ponto.html">Cadastre o endereço</a> ou
+          e você já é. Quer uma tela em outro endereço seu? <a href="/anunciante/painel.html#modPontos">Cadastre o endereço</a> ou
           <a href="/contato.html">fale com a gente</a>.</div>`;
       }
       if (b.resgatado_em)
-        return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}. Sua tela está sendo combinada. Acompanhe em "Meu ponto".</div>`;
+        return `<div class="aviso-fundador"><b>Bônus do plano resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}. Sua tela está sendo combinada. Acompanhe em "Meus pontos".</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_cobertos);
       return b.disponivel
-        ? `<div class="aviso-fundador"><b>Você ganhou uma tela no seu comércio!</b> Seu plano completou ${b.apos_meses} meses. <a href="/anunciante/ponto.html">Pedir minha tela →</a></div>`
+        ? `<div class="aviso-fundador"><b>Você ganhou uma tela no seu comércio!</b> Seu plano completou ${b.apos_meses} meses. <a href="/anunciante/painel.html#modPontos">Pedir minha tela →</a></div>`
         : `<div class="aviso-fundador"><b>Bônus do plano:</b> ao completar ${b.apos_meses} meses você ganha uma tela no seu comércio, ${b.meses_cobertos} de ${b.apos_meses} ${b.apos_meses > 1 ? 'meses' : 'mês'} (faltam ${falta}).</div>`;
     }
     if (qual === 'anuncio') {
       if (b.resgatado_em)
-        return `<div class="aviso-fundador"><b>Bônus resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}: ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}. Veja em "Anúncios".</div>`;
+        return `<div class="aviso-fundador"><b>Bônus resgatado</b> em ${new Date(b.resgatado_em).toLocaleDateString('pt-BR')}: ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}. Veja no seu painel.</div>`;
       const falta = Math.max(0, b.apos_meses - b.meses_ativo);
       return b.disponivel
-        ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary u-ml-8" id="btnResgatarAnuncio">Ativar meu anúncio grátis</button><span id="msgResgate" class="form-hint"></span></div>`
+        ? `<div class="aviso-fundador"><b>Você ganhou ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}!</b> Seu ponto completou ${b.apos_meses} meses no ar. <button type="button" class="btn primary u-ml-8" id="btnResgatarAnuncio">Ativar meu anúncio grátis</button><span id="msgResgateBonus" class="form-hint"></span></div>`
         : `<div class="aviso-fundador"><b>Bônus da opção ${esc(b.opcao)}:</b> com ${b.apos_meses} meses de ponto no ar você ganha ${b.meses_gratis} ${b.meses_gratis > 1 ? 'meses' : 'mês'} do plano ${esc(b.plano_nome)}, ${b.meses_ativo} de ${b.apos_meses} (faltam ${falta}).</div>`;
     }
     return '';
   };
 
-  window.ligarResgateAnuncio = function ligarResgateAnuncio(raiz) {
+  // `aoResgatar` recarrega o que depende do plano, no lugar — sem ele (página
+  // que não é o painel), vai pro painel. `#msgResgateBonus` e não
+  // `#msgResgate`: esse id já é do diálogo de resgate de créditos no painel,
+  // e com os dois na mesma página a mensagem caía no lugar errado.
+  window.ligarResgateAnuncio = function ligarResgateAnuncio(raiz, aoResgatar) {
     const btn = $('#btnResgatarAnuncio', raiz);
     if (!btn) return;
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
         await enviar('/conta/bonus/anuncio/resgatar', {});
-        $('#msgResgate', raiz).textContent = 'Ativado! Abrindo seus anúncios...';
-        window.location.href = '/anunciante/painel.html';
+        $('#msgResgateBonus', raiz).textContent = 'Ativado!';
+        if (aoResgatar) aoResgatar();
+        else window.location.href = '/anunciante/painel.html';
       } catch (err) {
         btn.disabled = false;
-        $('#msgResgate', raiz).textContent = err.message;
+        $('#msgResgateBonus', raiz).textContent = err.message;
       }
     });
   };

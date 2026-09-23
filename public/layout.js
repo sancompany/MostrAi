@@ -367,15 +367,36 @@ window.ROTULOS = {
   // comum de parceiro (substitui o antigo "fundador"). O que bloqueia
   // login/veiculação é `suspenso`, mostrado à parte por quem usa isso.
   anunciante: { comum: 'Comum', parceiro: 'Parceiro' },
-  // Dois estados desde 17/09/2026 (migration 045): o ponto existe na rede ou
-  // ainda não. Se a TELA dele quebrou, quem diz é `dispositivos.status`.
+  // Os quatro status automáticos do ponto (migration 069, derivados das
+  // telas por sincronizarStatusPonto). Faltavam os dois últimos: um ponto em
+  // reparo aparecia com a chave crua do banco.
   ponto: {
     a_instalar: 'Aguardando instalação',
-    em_operacao: 'Em operação',
+    em_operacao: 'Ativo',
+    em_reparo: 'Em manutenção',
+    inativo: 'Inativo',
   },
   pontoClasse: {
     a_instalar: 'badge-pendente',
     em_operacao: 'badge-ok',
+    em_reparo: 'badge-pendente',
+    inativo: 'badge-neutro',
+  },
+  // "Meus pontos" do painel (src/pontos/meus-pontos.js): o ciclo inteiro do
+  // estabelecimento, do pedido em análise ao ponto no ar.
+  estabelecimento: {
+    em_analise: 'Em análise',
+    aguardando_instalacao: 'Aguardando instalação',
+    ativo: 'Ativo',
+    em_manutencao: 'Em manutenção',
+    inativo: 'Inativo',
+  },
+  estabelecimentoClasse: {
+    em_analise: 'badge-pendente',
+    aguardando_instalacao: 'badge-pendente',
+    ativo: 'badge-ok',
+    em_manutencao: 'badge-pendente',
+    inativo: 'badge-neutro',
   },
   // 'retirado' (23/09/2026, migration 075): o admin tirou do ar, ou saiu
   // porque a versão nova foi aprovada no lugar. Continua na conta.

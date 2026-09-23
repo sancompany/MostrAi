@@ -39,7 +39,11 @@ async function carregar() {
   // lugar ao card de ativação. Com o papel, segue o fluxo normal.
   const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async (estado) => {
     preencherStatusBanner();
-    document.getElementById('bonusAnuncios').innerHTML = cardBonus(estado, 'ponto');
+    // Bônus de comodato (plano de anúncio grátis por tempo de ponto no ar):
+    // antes só aparecia na página separada do ponto.
+    const bonus = document.getElementById('bonusAnuncios');
+    bonus.innerHTML = cardBonus(estado, 'ponto') + cardBonus(estado, 'anuncio');
+    ligarResgateAnuncio(bonus, carregar);
     // Sem plano ainda, a tela inteira (KPIs, gráficos e o upload de
     // criativo) fica bloqueada — pedido do dono, 19/09/2026. Antes dava
     // pra subir 1 criativo mesmo sem plano "pra não travar o meio do
@@ -61,7 +65,6 @@ async function carregar() {
     carregarCriativos();
     carregarBancoHoras();
   });
-  montarCardPonto(estado);
   if (estado && !estado.modos.anunciante.liberado) {
     document.getElementById('statusBanner').innerHTML =
       `<span><strong>${esc(ANUNCIANTE.nome_empresa)}</strong> · modo anúncios ainda não ativado</span>`;
@@ -119,157 +122,6 @@ function montarBloqueioPlano() {
         <a class="btn primary" href="/planos.html">Escolher plano</a>
       </div>`;
   container.parentNode.insertBefore(caixa, container);
-}
-
-// Candidatura a ponto, migrada pro fim do Painel (19/09/2026, pedido do
-// dono: "todas informações restantes já foram pegas" — nome, endereço,
-// cidade, UF e CEP já estão na própria conta, então o card pede só o que é
-// exclusivo do ponto). Bem mais simples que o formulário completo em
-// modos.js (CARDS.ponto, ainda usado por /anunciante/ponto.html): sem
-// escolha de comodato aqui — quem se candidata combina isso no WhatsApp.
-// Foto, horário e preview vêm do módulo canônico compartilhado
-// (public/candidatura-ponto.js, rodada de Ofertas/Promoções, 22/09/2026).
-
-function montarCardPonto(estado) {
-  const caixa = document.getElementById('cardPonto');
-  if (!caixa || !estado) return;
-
-  if ((estado.papeis || []).includes('ponto')) {
-    caixa.innerHTML = `
-      <div class="card wide u-ta-c">
-        <p class="form-hint u-m-0">Você já é um ponto da rede Mostraí. <a href="/anunciante/ponto.html">Ver o painel do meu ponto →</a></p>
-      </div>`;
-    return;
-  }
-
-  const pedido = estado.modos?.ponto?.pedido;
-  if (pedido) {
-    caixa.innerHTML = `
-      <div class="card wide modo-card u-ta-c">
-        <p class="eyebrow">Ser um ponto</p>
-        <h3>Pedido enviado em ${new Date(pedido.criado_em).toLocaleDateString('pt-BR')}</h3>
-        <p class="form-hint">A gente chama no WhatsApp pra combinar a visita e a instalação.</p>
-      </div>`;
-    return;
-  }
-
-  caixa.innerHTML = `
-    <div class="card wide ponto-opportunity">
-      <div class="ponto-opportunity-summary">
-        <div class="ponto-opportunity-copy">
-          <span class="ponto-opportunity-icon" aria-hidden="true">⌂</span>
-          <div><p class="section-eyebrow">Faça parte da rede</p><h3>Você também possui um comércio?</h3><p class="form-hint">Transforme-o em um ponto Mostraí e ganhe uma tela.</p></div>
-        </div>
-        <button class="btn primary" type="button" id="btnAbrirCardPonto" aria-expanded="false">Quero ser um ponto</button>
-      </div>
-      <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
-        <div class="candidatura-layout">
-          <form id="formCardPonto" class="form-blocos">
-            <p class="form-hint u-m-0">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
-            ${candidaturaBloco('cp_', 'estabelecimento', 'Estabelecimento', candidaturaCampoFoto('cp_'))}
-            ${candidaturaBloco(
-              'cp_',
-              'movimento',
-              'Movimento',
-              `<div>
-                <label for="cp_fluxo">Média de pessoas que passam por mês</label>
-                <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
-              </div>`,
-            )}
-            ${candidaturaBloco('cp_', 'horario', 'Horário de funcionamento', candidaturaCampoHorario())}
-            ${candidaturaBloco(
-              'cp_',
-              'observacoes',
-              'Observações',
-              `<div>
-                <label for="cp_mensagem">Algo mais? (opcional)</label>
-                <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
-              </div>`,
-            )}
-            <div class="form-acoes"><button class="btn primary" type="submit">Enviar meu interesse</button></div>
-            <p class="form-msg" id="cardPontoMsg" role="status"></p>
-          </form>
-          ${candidaturaCampoPreview()}
-        </div>
-      </div>
-    </div>`;
-
-  const formCardPonto = document.getElementById('formCardPonto');
-  candidaturaLigarHorario(formCardPonto);
-  candidaturaLigarFoto(formCardPonto, 'cp_');
-  const previewCardPonto = document.querySelector('#conteudoCardPonto .candidatura-preview');
-  if (previewCardPonto) {
-    candidaturaLigarPreviewCard(formCardPonto, previewCardPonto, 'cp_', {
-      nome: ANUNCIANTE.nome_empresa,
-      cidade: ANUNCIANTE.cidade,
-      uf: ANUNCIANTE.uf,
-    });
-  }
-
-  document.getElementById('btnAbrirCardPonto').addEventListener('click', (e) => {
-    const conteudo = document.getElementById('conteudoCardPonto');
-    conteudo.hidden = !conteudo.hidden;
-    e.currentTarget.setAttribute('aria-expanded', String(!conteudo.hidden));
-    e.currentTarget.textContent = conteudo.hidden ? 'Quero ser um ponto' : 'Fechar formulário';
-  });
-
-  document.getElementById('formCardPonto').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('cardPontoMsg');
-    msg.textContent = 'Enviando...';
-    msg.className = 'form-msg';
-    try {
-      const r = await fetch(`${API_BASE_URL}/conta/modos/ponto/pedir`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        // O resto (nome, endereço, cidade, UF, CEP, ramo) já está na conta —
-        // pedir de novo aqui seria retrabalho do que o cliente já preencheu.
-        // `segmento` nem entra aqui: o backend resolve sozinho a partir do
-        // ramo que a conta já informou pra poder anunciar (categoria_id ou
-        // categoria_livre), então o front não precisa saber qual dos dois é.
-        body: JSON.stringify({
-          nome_comercio: ANUNCIANTE.nome_empresa,
-          endereco: ANUNCIANTE.endereco,
-          cidade: ANUNCIANTE.cidade,
-          uf: ANUNCIANTE.uf,
-          cep: ANUNCIANTE.cep,
-          fluxo_estimado_mensal: Number(e.target.fluxo_estimado_mensal.value),
-          mensagem: e.target.mensagem.value.trim() || null,
-          horario_semanal: candidaturaHorarioDoForm(e.target),
-        }),
-      });
-      const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        msg.textContent = corpo.erro || 'não deu pra enviar';
-        msg.className = 'form-msg err';
-        return;
-      }
-      // Foto opcional, sobe DEPOIS (furo A do redesenho da Rede, 22/09/2026)
-      // — mesmo padrão de public/modos.js: a candidatura já vale sem foto,
-      // e uma falha aqui não desfaz o pedido que já foi enviado.
-      const arquivo = candidaturaFotoSelecionada(e.target, 'cp_');
-      if (arquivo) {
-        const fd = new FormData();
-        fd.append('arquivo', arquivo);
-        const rFoto = await fetch(`${API_BASE_URL}/conta/modos/ponto/candidaturas/${corpo.id}/foto`, {
-          method: 'POST',
-          credentials: 'include',
-          body: fd,
-        });
-        if (!rFoto.ok) console.error('falha ao enviar foto da candidatura', await rFoto.text().catch(() => ''));
-      }
-      // Sem reload: busca o estado de novo (agora com `pedido` preenchido) e
-      // deixa montarCardPonto trocar o formulário pelo card "Pedido enviado
-      // em..." no lugar — a função já sabe desenhar os 3 estados a partir do
-      // estado fresco, mesmo padrão de public/modos.js#montarModo.
-      const estadoNovo = await (await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' })).json();
-      montarCardPonto(estadoNovo);
-    } catch {
-      msg.textContent = 'Sem conexão. Tente de novo.';
-      msg.className = 'form-msg err';
-    }
-  });
 }
 
 function preencherStatusBanner() {
@@ -1145,6 +997,9 @@ carregar().catch(() => {
 if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();
 // Resgate muda o plano da conta: `carregar` refaz banner, bloqueio e KPIs.
 if (window.montarCreditos) window.montarCreditos({ aoResgatar: carregar });
+// Meus pontos: independente do modo anúncios e do plano (dono de ponto sem
+// plano comercial também vê o próprio comércio).
+if (window.montarMeusPontos) window.montarMeusPontos({ obterConta: () => ANUNCIANTE });
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
 // 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já

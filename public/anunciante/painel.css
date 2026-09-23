@@ -216,3 +216,49 @@
   .creditos-movimentos li { grid-template-columns: 1fr auto; }
   .creditos-movimentos time { grid-column: 1 / -1; }
 }
+
+/* Meus pontos (Fatia 2): um card por estabelecimento, com o andamento
+   (Em análise → Aguardando instalação → Ativo) e as telas dentro dele. */
+.pontos-content { padding-top: 0; }
+.painel-meus-pontos h2 { margin: 2px 0 0; font-size: clamp(1.2rem, 2vw, 1.48rem); line-height: 1.2; letter-spacing: -.015em; }
+.estab-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 16px; }
+.estab-lista > * { min-width: 0; }
+.estab-lista > .form-msg, .estab-lista > .ponto-opportunity { grid-column: 1 / -1; }
+.estab-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.estab-topo { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.estab-foto { width: 64px; height: 64px; overflow: hidden; border-radius: 12px; background: var(--bg-alt); }
+.estab-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.estab-foto .ponto-foto-placeholder { height: 100%; }
+.estab-id h3 { margin: 0; font-size: 1.02rem; line-height: 1.25; overflow-wrap: anywhere; }
+.estab-end, .estab-meta { margin: 3px 0 0; color: var(--text-dim); font-size: .82rem; overflow-wrap: anywhere; }
+.estab-etapas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: etapa; }
+.estab-etapas li { position: relative; padding-top: 10px; color: var(--text-dim); font-size: .74rem; line-height: 1.25; }
+.estab-etapas li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 4px; background: #e8ebf0; }
+.estab-etapas li.feita::before { background: #9bd6b0; }
+.estab-etapas li.atual { color: var(--text); font-weight: 700; }
+.estab-etapas li.atual::before { background: var(--brand); }
+.estado-ativo .estab-etapas li.atual::before { background: #16a34a; }
+.estab-explica { margin: 0; color: var(--text-dim); font-size: .86rem; }
+.estab-subtitulo { margin: 0 0 6px; font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.estab-telas ul { margin: 0; padding: 0; list-style: none; }
+.tela-linha { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.tela-dot { width: 10px; height: 10px; border-radius: 50%; background: #aab3c0; }
+.nivel-ok .tela-dot { background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.12); }
+.nivel-atencao .tela-dot { background: #dc2626; box-shadow: 0 0 0 4px rgba(220,38,38,.12); }
+.tela-id { display: flex; flex-direction: column; min-width: 0; font-size: .86rem; }
+.tela-id > span { color: var(--text-dim); font-size: .8rem; }
+.tela-id .tela-alerta { margin-top: 4px; color: #a51b1b; }
+.tela-num { color: var(--text-dim); font-size: .8rem; text-align: right; }
+.tela-num b { color: var(--text); }
+.estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
+.estab-pe { margin: 0; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .82rem; }
+.pontos-novo { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+.pontos-novo form { max-width: 560px; }
+#msgMeusPontos { margin: 0 0 12px; }
+@media (max-width: 640px) {
+  .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
+  .estab-foto { width: 52px; height: 52px; }
+  .estab-topo .badge { grid-column: 2; justify-self: start; }
+  .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
+  .tela-linha .tela-num, .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
+}
