@@ -212,12 +212,10 @@ async function montarRespostaPlano(assinaturaId) {
   };
 }
 
-// Dois descontos entram por cima do preço-base, somados (item 4 e item 8 da
-// spec, 15/09/2026):
-// - comodato: conta com papel 'ponto' ganha o `desconto_comodato_percentual`
-//   DAQUELE plano — o dono define um valor por linha da grade. Fica em
-//   CAMPOS_CONTRATO, então já não muda pra quem já assinou (só por versão
-//   nova) — não precisa de trava própria.
+// Por cima do preço-base entram (item 4 e item 8 da spec, 15/09/2026):
+// - comodato: HOJE é só o crédito em reais (abaixo). O percentual por plano
+//   (`desconto_comodato_percentual`) foi aposentado — ver o comentário
+//   dentro de `valorMensalDaConta`.
 // - parceiro (era "fundador" até 16/09/2026): conta com `status = 'parceiro'`
 //   marcada pelo dono (à mão, sem concessão automática) ganha o
 //   `parceiro_desconto_percentual` dela, mas só nos planos que o dono liberou
@@ -244,13 +242,17 @@ async function montarRespostaPlano(assinaturaId) {
 // Entra DEPOIS dos percentuais e nunca deixa a mensalidade negativa: crédito
 // maior que o preço vira mensalidade zero, não devolução de dinheiro.
 //
-// VALE SÓ NO DESTAQUE E NO MÁXIMO, e essa é a parte que engana: o Essencial
-// JÁ É o que ele ganha de graça por abrir mão dos R$ 50. Deixar o crédito
-// valer nele também seria dar duas vezes a mesma coisa — ele teria o
-// Essencial de cortesia e ainda poderia assinar um segundo Essencial por
-// R$ 49. Os R$ 50 se gastam uma vez só, e é no degrau acima do que ele já
-// ganhou.
-const TIERS_COM_CREDITO = new Set(['destaque', 'maximo']);
+// VALE NOS TRÊS PLANOS PAGOS — Essencial, Pro (`destaque`) e Prime
+// (`maximo`) — desde a rodada de integridade de 23/09/2026 (decisão
+// comercial do dono). A regra antiga deixava o Essencial de fora porque,
+// no desenho da migration 049, quem trocava os R$ 50 por tela GANHAVA o
+// Essencial inteiro de cortesia — o crédito nele seria dar a mesma coisa
+// duas vezes. Desde a migration 063 isso não existe mais: quem troca ganha o
+// Básico (produto de comodato próprio, 45s/hora em 3 pontos), não o
+// Essencial, então o Essencial pago é um degrau acima como os outros dois.
+// Lista fechada de propósito: plano sem tier (versão antiga, linha fora da
+// grade) continua sem crédito — é direito nomeado, não desconto genérico.
+const TIERS_COM_CREDITO = new Set(['essencial', 'destaque', 'maximo']);
 
 // `assinatura` é opcional (várias chamadas antigas não tinham como passar) —
 // quando vem, e carrega uma condição promocional ainda dentro do prazo
@@ -277,14 +279,19 @@ function valorMensalDaConta(anunciante, plano, assinatura) {
       )
     : Number(plano.valor_mensal);
 
-  const descontoComodato = (anunciante.papeis || []).includes('ponto')
-    ? Number(plano.desconto_comodato_percentual || 0)
-    : 0;
+  // O percentual de comodato por plano (`desconto_comodato_percentual`) NÃO
+  // entra mais (rodada de integridade, 23/09/2026). A migration 049 já tinha
+  // zerado a coluna e declarado que "quem manda agora é o crédito em reais da
+  // conta" — mas a leitura continuava aqui, e a tela de Ofertas voltou a
+  // deixar o campo editável: preencher ali abriria um SEGUNDO desconto de
+  // comodato por cima do crédito, sem ninguém ter decidido isso. Comodato é
+  // só o `credito_comodato_mensal`, abaixo. A coluna fica no banco (sem DROP
+  // nesta rodada), só sem efeito.
   const descontoParceiro =
     anunciante.status === 'parceiro' && plano.compromisso_meses >= (anunciante.parceiro_compromisso_minimo || 0)
       ? Number(anunciante.parceiro_desconto_percentual || 0)
       : 0;
-  const desconto = Math.min(100, descontoComodato + descontoParceiro);
+  const desconto = Math.min(100, descontoParceiro);
   const comPercentual = desconto ? arredondar(base - percentual(base, desconto)) : base;
 
   const credito =
@@ -631,9 +638,22 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
     // seguidos recebe os dois.
+    //
+    // Ciclo PAGO tira a marca de cortesia (rodada de integridade,
+    // 23/09/2026). Quem tinha o Básico do comodato (cortesia, motivo
+    // 'comodato') e assinava o Pro ficava com o Pro gravado MAS ainda marcado
+    // como cortesia: saía da receita recorrente e do "cadastra e paga",
+    // perdia o botão "Cancelar assinatura" no admin, e — o pior — continuava
+    // casando com a guarda de `pontos/comodato.js#ajustarPlanoIncluido`
+    // ("só troca se o que está lá é o plano do comodato"), que podia
+    // sobrescrever o plano pago pelo Básico na próxima vez que uma modalidade
+    // fosse aplicada (ex.: um segundo ponto aprovado). O comentário de
+    // `conta/modos.js` já dizia que este passo limpava a cortesia — não
+    // limpava.
     await cliente.query(
       `UPDATE anunciantes
        SET plano_id = $2, suspenso = false,
+           plano_cortesia = false, cortesia_motivo = NULL,
            data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
            data_expiracao = $3::timestamptz
        WHERE id = $1`,

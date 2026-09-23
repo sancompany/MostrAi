@@ -148,8 +148,18 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT
         (SELECT COUNT(*) FROM criativos WHERE status = 'pendente') AS criativos,
         (SELECT COUNT(*) FROM eventos_assinatura_pendentes WHERE NOT resolvido) AS eventos,
-        (SELECT COUNT(*) FROM pontos WHERE status = 'a_instalar') AS pontos,
-        (SELECT COUNT(*) FROM cobrancas_confirmadas WHERE nota_fiscal_status = 'pendente') AS notas,
+        -- Candidatura pendente = mesma definição da aba Rede > Candidaturas
+        -- (tudo que ainda não foi aprovado nem recusado). Ponto "aguardando
+        -- instalação" NÃO entra aqui: já é ponto aprovado, só sem tela. A
+        -- fila antiga "pontos" (status 'a_instalar', rotulada como
+        -- "candidatos aguardando triagem") saiu na rodada de integridade de
+        -- 23/09/2026 — ela contava 'lead' (o ponto candidato de antes da
+        -- tabela de candidaturas) e, quando 'lead' foi aposentado, a query
+        -- virou 'a_instalar' sem mudar o rótulo. A contagem por status do
+        -- ponto continua em rede.pontosPorStatus, que é o lugar dela.
+        -- "Notas por emitir" também saiu: todo pagamento nasce com
+        -- nota_fiscal_status = 'pendente', então a fila contava o histórico
+        -- inteiro, e emissão manual não existe mais na UI.
         (SELECT COUNT(*) FROM candidaturas WHERE status NOT IN ('aprovada', 'recusada')) AS candidaturas,
         (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos,
         -- Mensagem do formulário de contato ainda sem resposta. Entra como
@@ -248,9 +258,11 @@ router.get('/admin/resumo', async (_req, res) => {
     filas: {
       criativos: Number(filas.rows[0].criativos),
       eventos: Number(filas.rows[0].eventos),
-      pontos: Number(filas.rows[0].pontos),
-      notas: Number(filas.rows[0].notas),
       candidaturas: Number(filas.rows[0].candidaturas),
+      // Não existe emissão fiscal automática ainda (a manual saiu da UI na
+      // rodada Financeiro). Quando existir, aqui entra a contagem de falhas
+      // REAIS da automação — até lá, zero honesto, nunca um erro inventado.
+      falhasFiscais: 0,
       // Dinheiro que a lei manda devolver e ainda não voltou. É a única fila
       // com prazo legal correndo, por isso entra como urgente na visão geral.
       arrependimentos: Number(filas.rows[0].arrependimentos),
@@ -278,9 +290,11 @@ router.get('/admin/resumo', async (_req, res) => {
       percentualPagantes,
       totalContas,
       contasPagantes,
-      // Pendências financeiras (rodada Financeiro, 22/09/2026) — só existem
-      // pra virar o card da Visão geral quando qtd > 0; "resolvido some,
-      // histórico persiste" (nunca um card de zero).
+      // Pendências financeiras (rodada Financeiro, 22/09/2026) — alimentam o
+      // resumo operacional da Visão geral, que mostra também o zero desde a
+      // rodada de integridade (23/09/2026): contador que some não se distingue
+      // de contador que deixou de carregar. Resolvido sai da conta, histórico
+      // persiste na tabela.
       repassesPendentes: {
         qtd: repassesPendentes.length,
         total: repassesPendentes.reduce((s, r) => s + Number(r.valor_pago_mensal), 0),

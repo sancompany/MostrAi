@@ -78,6 +78,32 @@ input[type="checkbox"] { accent-color: var(--brand); }
 .alerta span { color: var(--text-dim); font-size: .79rem; }
 .alerta.urgente { border-left-color: var(--err); }
 .alerta.urgente b { color: var(--err); }
+/* Alerta sem destino (banco de horas, sem tela no admin): informa, não finge
+   ser clicável. */
+.alerta-sem-link { cursor: default; }
+.alerta-sem-link:hover { border-color: var(--border); }
+
+/* Resumo operacional fixo da Visão geral (rodada de integridade, 23/09/2026):
+   zero aparece neutro, pendência ganha destaque moderado, só devolução
+   (prazo legal) ganha destaque forte. Compacto de propósito — uma linha por
+   fila, não oito cards. `.pend-erro` é contador que não veio do servidor:
+   mostra "—", nunca um zero que ninguém contou. */
+.pend-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 10px; }
+.pend-linha {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text); font-family: inherit; font-size: .86rem; text-align: left;
+}
+button.pend-linha { cursor: pointer; }
+button.pend-linha:hover { border-color: var(--brand); }
+.pend-qtd { white-space: nowrap; font-size: .92rem; }
+.pend-zero { color: var(--text-dim); }
+.pend-zero .pend-qtd { font-weight: 500; }
+.pend-ativa { border-left-color: var(--brand); background: rgba(255, 122, 26, .06); }
+.pend-ativa .pend-qtd { color: var(--brand-text); }
+.pend-forte { border-left-color: var(--err); background: rgba(220, 38, 38, .07); }
+.pend-forte .pend-qtd { color: var(--err); }
+.pend-erro { border-style: dashed; color: var(--text-dim); }
 .tudo-em-dia { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--ok); border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; font-size: .88rem; }
 
 /* Card de ponto clicável (Rede, redesenho de 22/09/2026) — a grade
@@ -366,6 +392,8 @@ input.mini:focus, select.mini:focus, textarea.mini:focus { outline: 2px solid va
    pedido: chega de um card por ciclo). */
 .oferta-produtos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 .oferta-produto { display: flex; flex-direction: column; }
+/* Produtos de comodato em Ofertas (somente leitura, rodada de integridade). */
+.oferta-comodato-lista { margin: 10px 0 0; padding-left: 18px; font-size: .84rem; line-height: 1.55; color: var(--text); }
 .ed-moeda.mini input { width: 46px; }
 .oferta-ciclos { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .oferta-ciclo { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--bg-alt); }

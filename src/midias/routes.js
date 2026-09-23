@@ -267,10 +267,13 @@ router.get('/admin/midias-proprias-preview-ocupacao', async (req, res) => {
 });
 
 // Capacidade da rede (Parte 16) — mesma tabela serve o picker de pontos
-// (Parte 9, comercial/institucional/livre por ponto) e a visão consolidada
-// dentro de Mídia Mostraí.
-router.get('/admin/capacidade-rede', async (_req, res) => {
-  res.json(await midiasRepo.ocupacaoPorPonto(null, null));
+// (Parte 9) e a visão consolidada dentro de Mídia Mostraí. `?escopo=rede`
+// (rodada de integridade, 23/09/2026) devolve todos os pontos, não só os em
+// operação: é o que a tabela "Ocupação da rede" da Visão geral usa, pra que
+// as duas telas leiam a MESMA régua 80/20 (src/lib/capacidade.js).
+router.get('/admin/capacidade-rede', async (req, res) => {
+  const status = req.query.escopo === 'rede' ? null : ['em_operacao'];
+  res.json(await midiasRepo.ocupacaoPorPonto(null, null, status));
 });
 
 router.get('/admin/capacidade-rede/:pontoId/midias', async (req, res) => {

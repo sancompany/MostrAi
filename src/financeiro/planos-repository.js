@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
+const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 
 // O admin digita preço cheio + desconto; o valor cobrado de verdade sai
 // daqui, sempre — nunca é digitado direto (pedido do dono, 16/09/2026).
@@ -349,8 +350,6 @@ async function listarProdutos() {
       tier,
       nome: referencia.nome,
       precoBase: Number(referencia.valor_mensal_cheio ?? referencia.valor_mensal),
-      descontoComodato:
-        referencia.desconto_comodato_percentual != null ? Number(referencia.desconto_comodato_percentual) : null,
       ciclos: Object.fromEntries(
         CICLOS_PRODUTO.map((meses) => {
           const p = porCiclo[meses];
@@ -373,20 +372,18 @@ async function listarProdutos() {
 
 // Atualiza o produto inteiro (as 4 linhas do tier) numa tacada: preço-base
 // novo se igual entra em todo mundo, cada ciclo recebe o desconto que veio
-// pra ele, e o desconto comodato (que não é por ciclo) entra igual nas 4.
-// Só publica versão nova pra ciclo cujo valor de verdade mudou — reabrir e
-// salvar sem mexer em nada não deve encher "Arquivados" de linha idêntica.
-// `descontos` é um objeto { 1: pct|null, 3: ..., 6: ..., 12: ... }.
-async function atualizarProduto(tier, { precoBase, descontos, descontoComodato }) {
+// pra ele. Só publica versão nova pra ciclo cujo valor de verdade mudou —
+// reabrir e salvar sem mexer em nada não deve encher "Arquivados" de linha
+// idêntica. `descontos` é um objeto { 1: pct|null, 3: ..., 6: ..., 12: ... }.
+// `desconto_comodato_percentual` não entra mais (rodada de integridade,
+// 23/09/2026): é legado da migration 049, que trocou o percentual pelo
+// crédito em reais. `novaVersao` copia a linha atual, então o valor que já
+// estiver gravado é preservado sem ser editado — e não entra mais em cálculo
+// nenhum (ver san-checkout.js#valorMensalDaConta).
+async function atualizarProduto(tier, { precoBase, descontos }) {
   const cheio = Number(precoBase);
   if (!Number.isFinite(cheio) || cheio <= 0) {
     const erro = new Error('preço-base tem que ser um número maior que zero');
-    erro.status = 400;
-    throw erro;
-  }
-  const comodato = descontoComodato === '' || descontoComodato == null ? null : Number(descontoComodato);
-  if (comodato != null && (!Number.isFinite(comodato) || comodato <= 0 || comodato > 100)) {
-    const erro = new Error('desconto comodato tem que ser vazio ou um número entre 1 e 100');
     erro.status = 400;
     throw erro;
   }
@@ -404,20 +401,51 @@ async function atualizarProduto(tier, { precoBase, descontos, descontoComodato }
     }
     const cheioAtual = atual.valor_mensal_cheio != null ? Number(atual.valor_mensal_cheio) : null;
     const descontoAtual = atual.desconto_percentual != null ? Number(atual.desconto_percentual) : null;
-    const comodatoAtual =
-      atual.desconto_comodato_percentual != null ? Number(atual.desconto_comodato_percentual) : null;
-    const mudou = cheioAtual !== cheio || descontoAtual !== desconto || comodatoAtual !== comodato;
+    const mudou = cheioAtual !== cheio || descontoAtual !== desconto;
     resultado.push(
-      mudou
-        ? await novaVersao(atual.id, {
-            valor_mensal_cheio: cheio,
-            desconto_percentual: desconto,
-            desconto_comodato_percentual: comodato,
-          })
-        : atual,
+      mudou ? await novaVersao(atual.id, { valor_mensal_cheio: cheio, desconto_percentual: desconto }) : atual,
     );
   }
   return resultado;
+}
+
+// Os 2 produtos fixos de comodato — Inicial e Básico (rodada de integridade,
+// 23/09/2026). Não passam por `listarProdutos` porque são `ativo = false` (a
+// vitrine e o assinar recusam: não se compram, chegam pela modalidade do
+// ponto). Saem daqui pela MESMA ligação que `pontos/comodato.js` usa pra dar
+// o plano ao dono do ponto — `planos_ponto.plano_incluido_id` —, nunca por id
+// fixo no código: se o dono repontar uma modalidade, a tela acompanha.
+// Horas e exibições usam as mesmas funções da vitrine (src/lib/pacing.js).
+async function listarProdutosComodato() {
+  const { rows } = await pool.query(
+    `SELECT pp.id AS modalidade_id, pp.nome AS modalidade_nome, pp.ajuda_custo_mensal,
+            pp.permite_assinar, pp.desconto_assinatura_reais,
+            pl.id AS plano_id, pl.nome, pl.ativo, pl.segundos_por_hora, pl.pontos_incluidos,
+            pl.duracao_maxima_segundos, pl.limite_criativos
+       FROM planos_ponto pp
+       JOIN planos pl ON pl.id = pp.plano_incluido_id
+      WHERE pp.ativo
+      ORDER BY pp.ordem, pp.id`,
+  );
+  return rows.map((r) => {
+    const horasMes = horasDeTelaPorMes(r.segundos_por_hora, r.pontos_incluidos);
+    return {
+      planoId: r.plano_id,
+      nome: r.nome,
+      compravel: r.ativo,
+      modalidadeId: r.modalidade_id,
+      modalidadeNome: r.modalidade_nome,
+      ajudaCustoMensal: Number(r.ajuda_custo_mensal || 0),
+      permiteAssinar: r.permite_assinar,
+      creditoAssinatura: Number(r.desconto_assinatura_reais || 0),
+      segundosPorHora: r.segundos_por_hora,
+      pontosIncluidos: r.pontos_incluidos,
+      duracaoMaximaSegundos: r.duracao_maxima_segundos,
+      limiteCriativos: r.limite_criativos,
+      horasMes,
+      exibicoesMes: exibicoesPorMes(horasMes, r.duracao_maxima_segundos),
+    };
+  });
 }
 
 module.exports = {
@@ -436,5 +464,6 @@ module.exports = {
   CAMPOS_VITRINE,
   CAMPOS_CONTRATO,
   listarProdutos,
+  listarProdutosComodato,
   atualizarProduto,
 };

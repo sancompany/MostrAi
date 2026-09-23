@@ -326,11 +326,19 @@ tela.** Quem cede a parede escolhe uma das duas opções, na candidatura:
 · **"Troca os R$ 50 por tela"** — sem dinheiro, e o **Plano Básico** inteiro
   incluído (`comodato-basico`: 45 s/hora em até 3 pontos, peça de 15s, 1
   criativo) = 14 horas de tela por mês, mais que o dobro do Inicial. **Pode**
-  assinar Destaque ou Máximo, com `credito_comodato_mensal` de R$ 50 abatendo
-  a mensalidade.
-**O crédito vale SÓ no Destaque e no Máximo.** No Essencial não abate nada,
-porque o Básico incluído nesta opção já é o que ele ganhou por abrir mão dos
-R$ 50 — abater ali também seria gastar os mesmos R$ 50 duas vezes.
+  assinar um plano pago (Essencial, Pro ou Prime), com `credito_comodato_mensal`
+  de R$ 50 abatendo a mensalidade.
+**O crédito vale nos três planos pagos** desde a rodada de integridade do admin
+(23/09/2026, decisão comercial do dono). A regra antiga deixava o Essencial de
+fora porque, no desenho da migration 049, quem trocava ganhava o Essencial de
+cortesia; desde a 063 ganha o Básico, então o Essencial pago é um degrau acima
+como os outros. O percentual de comodato por plano (`desconto_comodato_percentual`)
+está aposentado: não entra em cálculo nenhum e não aparece mais em Ofertas —
+comodato é só o crédito em reais. **Limite conhecido:** a conta guarda um plano
+só (`anunciantes.plano_id`); quando quem tem o Básico assina um plano pago, o
+pago ocupa o lugar do Básico — os dois não rodam ao mesmo tempo como direitos
+separados. Contas mostra comodato e plano comercial em colunas separadas, mas o
+motor entrega só o pago (decisão de produto pendente).
 **A troca de modalidade tem mão única no autoatendimento:** trocar a ajuda de
 custo POR TELA o dono do ponto faz sozinho e na hora
 (`POST /anunciantes/me/comodato/trocar-por-tela`); VOLTAR a receber os R$ 50

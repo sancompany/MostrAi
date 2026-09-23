@@ -1,7 +1,32 @@
 # Current Handoff
 
 ## Updated
-2026-09-22
+2026-09-23
+
+## Rodada de integridade do admin (23/09/2026, este agente)
+Correção transversal, sem redesign. Próxima etapa definida pelo dono:
+revisão manual tela por tela, começando pela Visão geral — NÃO continuar
+reorganizando.
+
+**Corrigido:** contador "ponto(s) candidatos aguardando triagem" contava
+ponto `a_instalar` (fila `pontos` herdada do status `lead`) — saiu; badge de
+Rede agora é só candidatura. Resumo operacional fixo na Visão geral (8
+filas, zero neutro, "—" se não carregou). `filas.notas` saiu (contava todo
+pagamento). Inicial/Básico voltaram à UI em Ofertas (somente leitura,
+`GET /admin/ofertas/comodato`). `% comodato` aposentado (UI + cálculo).
+Crédito de R$ 50 do Básico vale também no Essencial. `aplicarCicloPago`
+agora limpa `plano_cortesia`/`cortesia_motivo` (paying customer ficava como
+cortesia e o pago podia ser sobrescrito pelo Básico). Régua 80/20 única em
+`src/lib/capacidade.js`, usada por Mídia Mostraí e Visão geral. Contas separa
+comodato de plano comercial. Migration 072: textos das modalidades de
+comodato (guardada — só troca texto ainda igual ao semeado).
+
+**Aberto, pra revisão tela a tela (não corrigido de propósito):** Básico +
+plano pago não coexistem como direitos separados (um `plano_id` só);
+Inicial "só o próprio ponto" não é amarrado pelo motor; alerta de tela sem
+sinal ignora horário do ponto (nunca implementado); banco de horas sem tela
+no admin (alerta ficou sem link); trocas `pendente_troca` do fluxo novo não
+entram em fila nenhuma; sem UI pra editar valores/textos de comodato.
 
 ## Limpeza estrutural final da navegação do admin (22/09/2026, este agente)
 Pedido do dono, fechamento explícito: "depois desta tarefa não quero mais

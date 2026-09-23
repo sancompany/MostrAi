@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { SEGUNDOS_DA_HORA, quebraCapacidade } = require('../lib/capacidade');
 
 // Mídia Mostraí (reorganização de Conteúdo, 22/09/2026, pedido do dono):
 // cada peça institucional é uma linha aqui, 1-pra-1 com um `criativo`
@@ -115,20 +116,22 @@ async function definirSituacao(id, situacao) {
 // (frequência × duração = segundos/hora), nunca mexe no bloqueio comercial
 // de 80% (`avaliarBloqueios`), que continua intocado — Parte 10: "não altere
 // essa política".
-const SEGUNDOS_DA_HORA = 3600;
-
-// `pontosIds`: null = todos os pontos em operação (pra tabela de
-// capacidade da rede, Parte 16); array = só esses (pra preview de
-// cobertura específica, Parte 11). `excluirMidiaId`: ao editar uma mídia
-// existente, não conta a contribuição dela mesma como "já ocupado" — senão
-// editar sem mudar nada mostraria a mídia disputando espaço com ela própria.
-async function ocupacaoPorPonto(pontosIds, excluirMidiaId) {
+// `pontosIds`: null = todos os pontos do escopo (pra tabela de capacidade
+// da rede, Parte 16); array = só esses (pra preview de cobertura
+// específica, Parte 11). `excluirMidiaId`: ao editar uma mídia existente,
+// não conta a contribuição dela mesma como "já ocupado" — senão editar sem
+// mudar nada mostraria a mídia disputando espaço com ela própria.
+// `status`: só 'em_operacao' por padrão (Mídia Mostraí e o preview de
+// publicação); `null` = todos os pontos, pra tabela de ocupação da Visão
+// geral, que também lista ponto aguardando instalação com anunciante já
+// escolhido (rodada de integridade, 23/09/2026 — mesma régua nas duas telas).
+async function ocupacaoPorPonto(pontosIds, excluirMidiaId, status = ['em_operacao']) {
   // `$1::int[] IS NULL OR ...` em vez de montar o filtro condicionalmente
   // na string: sem isso, quando `pontosIds` é null o placeholder $1 some do
   // texto da query mas continua sendo passado como parâmetro, e o Postgres
   // recusa com "could not determine data type of parameter $1" (não tem
   // onde inferir o tipo de um parâmetro que não aparece na query).
-  const params = [pontosIds || null, excluirMidiaId || 0];
+  const params = [pontosIds || null, excluirMidiaId || 0, status];
   const { rows } = await pool.query(
     `WITH comercial AS (
        SELECT p.id AS ponto_id, COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_comercial
@@ -136,7 +139,7 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId) {
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
          LEFT JOIN planos pl ON pl.id = a.plano_id
-        WHERE p.status = 'em_operacao' AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
+        WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
         GROUP BY p.id
      ),
      institucional_rede AS (
@@ -169,21 +172,28 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId) {
        LEFT JOIN comercial cm ON cm.ponto_id = p.id
        CROSS JOIN institucional_rede ir
        LEFT JOIN institucional_pontos ip ON ip.ponto_id = p.id
-      WHERE p.status = 'em_operacao' AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
+      WHERE ($3::text[] IS NULL OR p.status = ANY($3::text[])) AND ($1::int[] IS NULL OR p.id = ANY($1::int[]))
       ORDER BY p.nome`,
     params,
   );
   return rows.map((r) => {
-    const segundosOcupados = Number(r.segundos_comercial) + Number(r.segundos_institucional);
+    const segundosComercial = Number(r.segundos_comercial);
+    const segundosMostrai = Number(r.segundos_institucional);
+    const q = quebraCapacidade(segundosComercial, segundosMostrai);
     return {
       pontoId: r.ponto_id,
       pontoNome: r.ponto_nome,
       cidade: r.cidade,
       status: r.status,
-      comercialPct: Math.round((Number(r.segundos_comercial) / SEGUNDOS_DA_HORA) * 1000) / 10,
-      institucionalPct: Math.round((Number(r.segundos_institucional) / SEGUNDOS_DA_HORA) * 1000) / 10,
-      livrePct: Math.max(0, Math.round((1 - segundosOcupados / SEGUNDOS_DA_HORA) * 1000) / 10),
-      atualPct: Math.round((segundosOcupados / SEGUNDOS_DA_HORA) * 1000) / 10,
+      segundosComercial,
+      segundosMostrai,
+      ...q,
+      // Nomes antigos mantidos pra quem ainda lê (mesmos valores de antes).
+      // `livrePct` NÃO é mais mostrado em tela nenhuma: somava a reserva
+      // Mostraí com o comercial ainda não vendido num saldo só.
+      institucionalPct: q.mostraiPct,
+      atualPct: q.totalPct,
+      livrePct: Math.max(0, Math.round((100 - q.totalPct) * 10) / 10),
       qtdMidiasProprias: r.qtd_midias_proprias,
     };
   });
@@ -193,15 +203,22 @@ async function ocupacaoPorPonto(pontosIds, excluirMidiaId) {
 // acima, só soma a contribuição da configuração sendo editada/criada em
 // cima do que já existe. `pontosAlvo`: null (cobertura 'rede') calcula em
 // TODOS os pontos em operação; array (cobertura 'pontos') calcula só neles.
+// A trava continua sendo o TOTAL passar de 100% (`comporta`); passar da
+// reserva de 20% só é sinalizado (`acimaDaReserva`), não bloqueado — é
+// ocupar capacidade comercial ainda não vendida, não estourar a hora.
 async function previewOcupacao({ pontosAlvo, frequenciaHora, duracaoSegundos, excluirMidiaId }) {
   const linhas = await ocupacaoPorPonto(pontosAlvo, excluirMidiaId);
-  const contribuicaoPct =
-    Math.round(((Number(frequenciaHora) * Number(duracaoSegundos || 0)) / SEGUNDOS_DA_HORA) * 1000) / 10;
-  return linhas.map((l) => ({
-    ...l,
-    depoisPct: Math.round((l.atualPct + contribuicaoPct) * 10) / 10,
-    comporta: l.atualPct + contribuicaoPct <= 100,
-  }));
+  const contribuicao = Number(frequenciaHora) * Number(duracaoSegundos || 0);
+  return linhas.map((l) => {
+    const depois = quebraCapacidade(l.segundosComercial, l.segundosMostrai + contribuicao);
+    return {
+      ...l,
+      depoisPct: depois.totalPct,
+      mostraiDepoisPct: depois.mostraiPct,
+      acimaDaReserva: depois.mostraiAcimaDaReservaPct > 0,
+      comporta: !depois.excede,
+    };
+  });
 }
 
 // Quem entra na playlist desta tela agora (src/playlist/gerador.js chama).

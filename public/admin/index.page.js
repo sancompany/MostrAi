@@ -461,7 +461,11 @@ const MODULOS = [
     id: 'rede',
     nome: 'Rede',
     abas: [
-      { id: 'pontos', nome: 'Pontos', fila: 'pontos', render: renderPontos },
+      // Sem `fila` de propósito (rodada de integridade, 23/09/2026): a fila
+      // "pontos" contava ponto aguardando instalação e inflava o contador de
+      // Rede como se fosse candidatura. O badge de Rede agora é só a fila
+      // de candidaturas — a mesma que a aba Candidaturas lista.
+      { id: 'pontos', nome: 'Pontos', render: renderPontos },
       // Candidatura é sempre pra ser PONTO (vendedor não passa mais por
       // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
       // de "entrada" (encerrada 22/09/2026, pedido do dono).
@@ -511,7 +515,7 @@ const MODULOS = [
   // chamador — `renderMeusAnuncios` foi substituída por `renderMidiaMostrai`.
   { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
   // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
-  // pendência mora na Visão geral (ALERTAS abaixo) e leva pra cá. `oculto`
+  // pendência mora na Visão geral (PENDENCIAS_OPERACIONAIS) e leva pra cá. `oculto`
   // tira o botão do menu sem tirar o módulo de `buscarModulo`, então a rota
   // (`#mensagens`, ou o hash antigo `#contato` via ALIASES_ANTIGOS) continua
   // funcionando normalmente.
@@ -562,7 +566,7 @@ const SUBTITULOS = {
   ofertas: 'Os 3 produtos da rede — Essencial, Pro e Prime — e as promoções vigentes.',
   categorias: 'Segmentos usados no cadastro, para impedir concorrente direto na mesma tela.',
   comodato:
-    'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano básico junto, ou trocar os R$ 50 pelo Essencial inteiro.',
+    'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano Inicial junto, ou trocar os R$ 50 pelo plano Básico.',
   cobrancas: 'Histórico de pagamentos confirmados.',
   trocas: 'Quem trocou de plano no meio do período e ainda não pagou a diferença.',
   comissoes: 'Comissões de vendedor em aberto. Marcar como paga só registra aqui — o Pix é por fora.',
@@ -804,27 +808,79 @@ api('/admin/resumo').then((r) => {
 });
 
 // ---------- visão geral ----------
+// Alertas de EXCEÇÃO operacional (rodada de integridade, 23/09/2026): só o
+// que foge da rotina e só aparece quando existe. O trabalho pendente normal
+// (candidaturas, criativos, mensagens, repasses, comissões, trocas,
+// devoluções, falhas fiscais) saiu daqui e mora no resumo operacional fixo
+// (`PENDENCIAS_OPERACIONAIS`, logo abaixo), que mostra também o zero.
+//
+// - "evento(s) de pagamento pra revisar" saiu na rodada Navegação
+//   (22/09/2026): Diagnóstico deixou de existir na UI, não há destino.
+// - "ponto(s) candidatos aguardando triagem" saiu na rodada de integridade:
+//   contava ponto 'a_instalar' (já aprovado, só sem tela) como se fosse
+//   candidatura. Candidatura de verdade está em PENDENCIAS_OPERACIONAIS.
+// - Banco de horas não tem mais tela no admin desde 21/09/2026 (pedido do
+//   dono, "Entrega" saiu do menu) — o aviso fica, mas sem link, porque
+//   levar pra Rede/Pontos era levar pra um lugar onde não dá pra resolver.
+// - Ponto travado por ocupação só se libera na tabela "Ocupação da rede"
+//   desta mesma Visão geral — `rolar` desce até ela em vez de navegar pra
+//   Rede/Pontos, onde o botão Liberar não existe.
 const ALERTAS = [
-  { fila: 'criativos', aba: 'criativos', texto: 'criativo(s) esperando aprovação', urgente: true },
   { fila: 'offline', aba: 'telas', texto: 'tela(s) ativas sem dar sinal', urgente: true },
-  { fila: 'candidaturas', aba: 'candidaturas', texto: 'candidatura(s) aguardando análise' },
-  { fila: 'contato', aba: 'mensagens', texto: 'mensagem(ns) aguardando resposta' },
-  // "evento(s) de pagamento pra revisar" saiu daqui (rodada Navegação,
-  // 22/09/2026): Diagnóstico deixou de existir na UI, então essa fila não
-  // tem mais destino pra clicar — deixar o alerta clicável levando pra
-  // `visaogeral` (fallback de `resolverAlvo`) seria um badge apontando pra
-  // função aposentada. `RESUMO.filas.eventos` continua calculado no backend,
-  // só não aparece mais aqui.
-  { fila: 'pontos', aba: 'pontos', texto: 'ponto(s) candidatos aguardando triagem' },
   {
-    fila: 'arrependimentos',
-    aba: 'arrependimentos',
-    texto: 'devolução(ões) por arrependimento a pagar',
-    urgente: true,
+    fila: 'bancohoras',
+    texto: 'saldo(s) do banco de horas esperando decisão',
+    semLink: 'O banco de horas não tem mais tela no admin — resolver por suporte técnico.',
   },
-  { fila: 'bancohoras', aba: 'bancohoras', texto: 'saldo(s) do banco de horas esperando decisão' },
-  { fila: 'pontosocupados', aba: 'ocupacaopontos', texto: 'ponto(s) travado(s) pra escolha nova por ocupação' },
+  { fila: 'pontosocupados', rolar: 'ocupacaoRede', texto: 'ponto(s) travado(s) pra escolha nova por ocupação' },
 ];
+
+// Resumo operacional FIXO (rodada de integridade, 23/09/2026, pedido do
+// dono): mostra o zero de propósito — um contador que some não se distingue
+// de um contador que deixou de carregar. Cada linha usa exatamente a mesma
+// definição da tela de destino (mesma fila de `/admin/resumo`). `forte`:
+// devolução tem prazo legal correndo (CDC art. 49), por isso é o único item
+// que ganha destaque forte quando > 0; o resto ganha destaque moderado.
+const PENDENCIAS_OPERACIONAIS = [
+  { nome: 'Candidaturas', aba: 'rede/candidaturas', qtd: (r) => r.filas?.candidaturas },
+  { nome: 'Criativos', aba: 'aprovacao', qtd: (r) => r.filas?.criativos },
+  { nome: 'Mensagens', aba: 'mensagens', qtd: (r) => r.filas?.contato },
+  {
+    nome: 'Repasses',
+    aba: 'financeiro/repasses',
+    qtd: (r) => r.financeiro?.repassesPendentes?.qtd,
+    valor: (r) => r.financeiro?.repassesPendentes?.total,
+  },
+  {
+    nome: 'Comissões',
+    aba: 'financeiro/comissoes',
+    qtd: (r) => r.financeiro?.comissoesPendentes?.qtd,
+    valor: (r) => r.financeiro?.comissoesPendentes?.total,
+  },
+  { nome: 'Trocas', aba: 'financeiro/trocas', qtd: (r) => r.financeiro?.trocasPendentes?.qtd },
+  { nome: 'Devoluções', aba: 'financeiro/devolucoes', qtd: (r) => r.filas?.arrependimentos, forte: true },
+  // Sem destino: não existe automação fiscal ainda, então não há fila pra
+  // abrir. O backend devolve 0 fixo até ela existir.
+  { nome: 'Falhas fiscais', qtd: (r) => r.filas?.falhasFiscais },
+];
+
+function painelPendenciasOperacionais(resumo) {
+  const linhas = PENDENCIAS_OPERACIONAIS.map((p) => {
+    const qtd = p.qtd(resumo);
+    const carregou = typeof qtd === 'number' && Number.isFinite(qtd);
+    const estado = !carregou ? 'pend-erro' : qtd === 0 ? 'pend-zero' : p.forte ? 'pend-forte' : 'pend-ativa';
+    const valor = p.valor && carregou ? ` · ${fmt(p.valor(resumo) || 0)}` : '';
+    const conteudo = `<span class="pend-nome">${p.nome}</span><b class="pend-qtd">${carregou ? qtd : '—'}${valor}</b>`;
+    return p.aba
+      ? `<button type="button" class="pend-linha ${estado}" data-ir="${p.aba}">${conteudo}</button>`
+      : `<div class="pend-linha ${estado}">${conteudo}</div>`;
+  }).join('');
+  return `
+    <div class="panel u-mb-16">
+      <div class="panel-head"><h3>Pendências operacionais</h3></div>
+      <div class="pend-lista">${linhas}</div>
+    </div>`;
+}
 
 // `paraAba`: quando informado, cada linha vira botão que navega pra lá com
 // o status já filtrado (ver FILTRO_PONTOS_STATUS/data-status-clique, uma
@@ -879,41 +935,20 @@ function linhaConciliacao(c) {
 // "Tudo em dia" no primeiro dia de uso diz exatamente o contrario do que o
 // dono precisa ouvir: nao ha fila porque nao ha nada — nem ponto, nem conta.
 function redeVazia(rede) {
-  const contas = (rede.anunciantesPorStatus || []).reduce((soma, r) => soma + Number(r.qtd || 0), 0);
+  // `anunciantesPorSituacao` é o nome que `/admin/resumo` devolve desde
+  // 16/09/2026 — lia `anunciantesPorStatus`, que não existe, então "contas"
+  // dava sempre 0 e a mensagem de rede vazia aparecia mesmo com contas.
+  const contas = (rede.anunciantesPorSituacao || []).reduce((soma, r) => soma + Number(r.qtd || 0), 0);
   return !rede.pontosAtivos && !rede.telasAtivas && contas === 0;
 }
 
-// Bloco Financeiro da Visão geral (rodada Financeiro, 22/09/2026). A regra
-// da rodada inteira: "normalidade não ocupa espaço, pendência aparece" — os
-// dois números de receita ficam sempre visíveis (não dependem de ação), a
-// lista de pendências some por completo quando não há nenhuma (nunca um
-// item com contador zero). Cards por ciclo (mensal/trimestral/semestral/
-// anual) saíram daqui de propósito — continuam em `financeiro.receitaPorCiclo`
-// pra quem quiser consumir, só pararam de ocupar a tela principal.
-function painelFinanceiroResumo(financeiro, filas) {
-  const pendencias = [
-    financeiro.repassesPendentes.qtd > 0 && {
-      aba: 'financeiro/repasses',
-      qtd: financeiro.repassesPendentes.qtd,
-      texto: `repasse(s) de ponto pendente(s) · ${fmt(financeiro.repassesPendentes.total)}`,
-    },
-    financeiro.comissoesPendentes.qtd > 0 && {
-      aba: 'financeiro/comissoes',
-      qtd: financeiro.comissoesPendentes.qtd,
-      texto: `comissão(ões) de vendedor pendente(s) · ${fmt(financeiro.comissoesPendentes.total)}`,
-    },
-    financeiro.trocasPendentes.qtd > 0 && {
-      aba: 'financeiro/trocas',
-      qtd: financeiro.trocasPendentes.qtd,
-      texto: 'troca(s) de plano aguardando pagamento',
-    },
-    (filas.arrependimentos || 0) > 0 && {
-      aba: 'financeiro/devolucoes',
-      qtd: filas.arrependimentos,
-      texto: 'devolução(ões) por arrependimento pendente(s)',
-    },
-  ].filter(Boolean);
-
+// Bloco Financeiro da Visão geral (rodada Financeiro, 22/09/2026): só os
+// dois números de receita. As filas de dinheiro (repasses, comissões,
+// trocas, devoluções) moram no resumo operacional fixo desde a rodada de
+// integridade (23/09/2026) — mostrar as duas coisas repetia a mesma fila em
+// dois lugares da mesma tela. Cards por ciclo continuam em
+// `financeiro.receitaPorCiclo` pra quem quiser consumir.
+function painelFinanceiroResumo(financeiro) {
   return `
     <div class="panel financeiro-panel u-mb-16">
       <div class="panel-head"><h3>Financeiro</h3></div>
@@ -921,47 +956,42 @@ function painelFinanceiroResumo(financeiro, filas) {
         <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
         <div class="kpi-card"><span class="kpi-label">Confirmado no mês</span><b>${fmt(financeiro.receitaConfirmadaMes)}</b><a class="link-secundario" href="#financeiro/cobrancas">Ver histórico →</a></div>
       </div>
-      ${
-        pendencias.length
-          ? `<div class="alertas">${pendencias
-              .map(
-                (p) => `
-          <button type="button" class="alerta" data-ir="${p.aba}">
-            <b>${p.qtd}</b><span>${p.texto}</span>
-          </button>`,
-              )
-              .join('')}</div>`
-          : ''
-      }
     </div>`;
+}
+
+function botaoAlerta(a, qtd) {
+  const classe = `alerta ${a.urgente ? 'urgente' : ''}`;
+  const conteudo = `<b>${qtd}</b><span>${a.texto}</span>`;
+  if (a.semLink) return `<div class="${classe} alerta-sem-link" title="${esc(a.semLink)}">${conteudo}</div>`;
+  if (a.rolar) return `<button type="button" class="${classe}" data-rolar="${a.rolar}">${conteudo}</button>`;
+  return `<button type="button" class="${classe}" data-ir="${a.aba}">${conteudo}</button>`;
 }
 
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
 
+  // Sem exceção nenhuma, a faixa de alertas não ocupa espaço — o resumo
+  // operacional logo abaixo já mostra cada fila, zero incluído. A única
+  // mensagem que sobra é a de rede recém-criada, que diz o que fazer.
   el.innerHTML = `
     ${
       pendentes.length
-        ? `<div class="alertas">${pendentes
-            .map(
-              (a) => `
-          <button type="button" class="alerta ${a.urgente ? 'urgente' : ''}" data-ir="${a.aba}">
-            <b>${filas[a.fila]}</b><span>${a.texto}</span>
-          </button>`,
-            )
-            .join('')}</div>`
+        ? `<div class="alertas">${pendentes.map((a) => botaoAlerta(a, filas[a.fila])).join('')}</div>`
         : redeVazia(rede)
-          ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhuma fila esperando você, e nenhum ponto no ar ainda.
-             Os primeiros passos: <a href="#pontos">cadastrar o primeiro ponto</a>, gerar a chave da tela em
-             <a href="#telas">Telas</a>, e pôr o anúncio da própria Mostraí no ar por
-             <a href="#meusanuncios">Meus anúncios</a>. Tela vazia é tela sem prova social.</div>`
-          : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'
+          ? `<div class="tudo-em-dia"><b>Rede em montagem.</b> Nenhum ponto no ar ainda.
+             Os primeiros passos: aprovar a primeira candidatura em
+             <a href="#rede/candidaturas">Rede › Candidaturas</a>, instalar a tela (a chave fica na ficha do ponto,
+             em <a href="#rede/pontos">Rede › Pontos</a>) e pôr a mídia da própria Mostraí no ar em
+             <a href="#midiamostrai">Mídia Mostraí</a>. Tela vazia é tela sem prova social.</div>`
+          : ''
     }
+
+    ${painelPendenciasOperacionais(RESUMO)}
 
     <div id="promocaoAtivaResumo"></div>
 
-    ${painelFinanceiroResumo(financeiro, filas)}
+    ${painelFinanceiroResumo(financeiro)}
 
     <div class="kpi-grid u-mb-20">
       <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
@@ -982,6 +1012,11 @@ async function renderResumo(el) {
     </div>`;
 
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
+  el.querySelectorAll('[data-rolar]').forEach((btn) =>
+    btn.addEventListener('click', () =>
+      document.getElementById(btn.dataset.rolar)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    ),
+  );
   el.querySelectorAll('[data-status-clique]').forEach((btn) =>
     btn.addEventListener('click', () => {
       FILTRO_PONTOS_STATUS = btn.dataset.statusClique;
@@ -1044,12 +1079,18 @@ async function renderPromocaoAtivaResumo(el) {
 // src/pontos/repository.js), mesmo limite de 80% (LIMITE_OCUPACAO_BLOQUEIA).
 // Os 20% de reserva são sempre exibidos como reserva — nunca somados em
 // "disponível comercial" (pedido explícito: não confundir os dois).
-const LIMITE_OCUPACAO_COMERCIAL = 0.8 * 3600; // 2880s — mesmo valor de LIMITE_OCUPACAO_BLOQUEIA
-const RESERVA_MOSTRAI_PCT = 20; // sempre 20%, constante — não é "sobra", é reserva deliberada
-
+// Desde a rodada de integridade (23/09/2026) os percentuais vêm de
+// `GET /admin/capacidade-rede?escopo=rede` — a MESMA régua 80/20 da tela
+// Mídia Mostraí (src/lib/capacidade.js). Antes a reserva aparecia fixa em
+// "20%" aqui (ignorando o que a Mostraí já usava) e como "Livre 96,7%" lá.
 async function renderOcupacaoRede(el) {
-  const [linhasOcupacao, pontos] = await Promise.all([pegar('/admin/pontos-ocupacao'), pegar('/admin/pontos')]);
+  const [linhasOcupacao, pontos, capacidade] = await Promise.all([
+    pegar('/admin/pontos-ocupacao'),
+    pegar('/admin/pontos'),
+    pegar('/admin/capacidade-rede?escopo=rede'),
+  ]);
   const pontosPorId = new Map(pontos.map((p) => [p.id, p]));
+  const capacidadePorPonto = new Map(capacidade.map((c) => [c.pontoId, c]));
   const porPonto = new Map();
   linhasOcupacao.forEach((l) => {
     if (!porPonto.has(l.ponto_id)) {
@@ -1072,22 +1113,20 @@ async function renderOcupacaoRede(el) {
 
   const corpo = `<table><thead><tr>
       <th data-ord>Ponto</th><th data-ord>Status</th><th data-ord>Telas</th><th data-ord>Anunciantes</th>
-      <th data-ord>Ocupação comercial</th><th data-ord>Restante (80%)</th><th>Reserva Mostraí (20%)</th><th></th>
+      <th data-ord>Ocupação comercial</th><th data-ord>Comercial restante (80%)</th><th>Reserva Mostraí (20%)</th><th></th>
     </tr></thead><tbody>
     ${linhas
       .map((l) => {
         const ponto = pontosPorId.get(l.pontoId);
-        const pctUsado = Math.min(100, Math.round((l.segundosVendidos / 3600) * 100));
-        const restanteSeg = Math.max(0, LIMITE_OCUPACAO_COMERCIAL - l.segundosVendidos);
-        const pctRestante = Math.round((restanteSeg / 3600) * 100);
+        const cap = capacidadePorPonto.get(l.pontoId);
         return `<tr data-filtro="${l.bloqueado ? 'bloqueado' : ''}" data-ponto-id="${l.pontoId}">
       <td>${esc(l.nome)}</td>
       <td>${ponto ? `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>` : '-'}</td>
       <td>${ponto?.telas ?? '-'}</td>
       <td><button class="btn ghost mini" data-expandir-ocupacao="${l.pontoId}">${l.anunciantes.length}</button></td>
-      <td title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${pctUsado}%${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
-      <td title="Dentro do teto comercial de 80% (${LIMITE_OCUPACAO_COMERCIAL}s)">${pctRestante}%</td>
-      <td class="u-dim" title="Reservado pra institucional e conta própria — nunca entra como disponível comercial">${RESERVA_MOSTRAI_PCT}%</td>
+      <td title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${cap ? `${cap.comercialPct}%` : '-'}${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
+      <td title="Do teto comercial de 80%, já descontado o que a Mostraí usa acima da reserva">${cap ? `${cap.comercialRestantePct}%` : '-'}</td>
+      <td title="Mídia própria e universal — nunca entra como disponível comercial">${cap ? `${cap.mostraiPct}% usado · ${cap.reservaRestantePct}% livre` : '-'}</td>
       <td>${l.bloqueado ? `<button class="btn ghost mini" data-liberar="${l.pontoId}">Liberar</button>` : ''}</td>
     </tr>`;
       })
@@ -1391,8 +1430,15 @@ function montarTabelaCapacidade(el, capacidade) {
     el.innerHTML = '<p class="empty-state">Nenhum ponto em operação ainda.</p>';
     return;
   }
+  // Régua 80/20 (rodada de integridade, 23/09/2026): sem coluna "Livre" —
+  // ela somava a reserva Mostraí com o comercial ainda não vendido e dava a
+  // entender que a mídia própria podia ocupar ~97% da hora. Mesmos números
+  // da tabela "Ocupação da rede" da Visão geral (src/lib/capacidade.js).
   el.innerHTML = `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>Ponto</th><th>Status</th><th>Comercial</th><th>Mostraí/Universal</th><th>Livre</th><th>Mídias próprias</th>
+      <th>Ponto</th><th>Status</th><th title="Vendido a anunciantes">Comercial</th>
+      <th title="Do teto comercial de 80%">Comercial restante</th>
+      <th title="Mídia própria e universal, dentro da reserva de 20%">Mostraí</th>
+      <th title="Da reserva de 20%">Reserva restante</th><th>Total</th><th>Mídias próprias</th>
     </tr></thead><tbody>
     ${capacidade
       .map(
@@ -1400,8 +1446,10 @@ function montarTabelaCapacidade(el, capacidade) {
       <td>${esc(p.pontoNome)}</td>
       <td><span class="badge ${PONTO_STATUS_CLASSE[p.status] || ''}">${PONTO_STATUS[p.status] || p.status}</span></td>
       <td>${p.comercialPct}%</td>
-      <td>${p.institucionalPct}%</td>
-      <td>${p.livrePct}%</td>
+      <td>${p.comercialRestantePct}% <span class="u-dim u-fs-78">de 80%</span></td>
+      <td>${p.mostraiPct}%${p.mostraiAcimaDaReservaPct > 0 ? ` <span class="badge badge-pendente" title="${p.mostraiAcimaDaReservaPct}% ocupando capacidade comercial ainda não vendida">acima da reserva</span>` : ''}</td>
+      <td>${p.reservaRestantePct}% <span class="u-dim u-fs-78">de 20%</span></td>
+      <td>${p.totalPct}%</td>
       <td><button class="btn ghost mini" data-expandir-capacidade="${p.pontoId}">${p.qtdMidiasProprias}</button></td>
     </tr>`,
       )
@@ -1419,7 +1467,7 @@ function montarTabelaCapacidade(el, capacidade) {
       const midiasNoPonto = await pegar(`/admin/capacidade-rede/${btn.dataset.expandirCapacidade}/midias`);
       linha.insertAdjacentHTML(
         'afterend',
-        `<tr data-capacidade-de="${btn.dataset.expandirCapacidade}"><td class="u-bg" colspan="6">
+        `<tr data-capacidade-de="${btn.dataset.expandirCapacidade}"><td class="u-bg" colspan="8">
       ${
         midiasNoPonto.length
           ? `<table class="mini-table u-mt-6"><thead><tr><th>Mídia</th><th>% do ponto</th></tr></thead><tbody>
@@ -1438,7 +1486,7 @@ function montarLinhaPontoPicker(p, marcado) {
     <input type="checkbox" value="${p.pontoId}" ${marcado ? 'checked' : ''}>
     <span class="mm-ponto-nome">${esc(p.pontoNome)}</span>
     <span class="mm-ponto-cidade u-dim">${esc(p.cidade || '')}</span>
-    <span class="mm-ponto-ocupacao">Comercial ${p.comercialPct}% · Mostraí ${p.institucionalPct}% · Livre ${p.livrePct}%</span>
+    <span class="mm-ponto-ocupacao">Comercial ${p.comercialPct}% · Mostraí ${p.mostraiPct}% (reserva de 20%)</span>
   </label>`;
 }
 
@@ -1602,13 +1650,19 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       return;
     }
     const excedentes = linhas.filter((l) => !l.comporta);
+    // Passar da reserva de 20% não bloqueia (a trava é o total > 100%), mas
+    // tem que ficar claro que o excedente come capacidade comercial ainda
+    // não vendida — rodada de integridade, 23/09/2026.
+    const acimaDaReserva = linhas.filter((l) => l.comporta && l.acimaDaReserva);
     alvo.innerHTML = `
       ${excedentes.length ? `<p class="form-msg err u-m-0 u-mb-8">Excede 100% em ${excedentes.length} ponto(s) — reduza a frequência ou a cobertura antes de salvar.</p>` : ''}
-      <table class="mini-table"><thead><tr><th>Ponto</th><th>Atual</th><th>Depois desta mídia</th></tr></thead><tbody>
+      ${acimaDaReserva.length ? `<p class="form-msg u-m-0 u-mb-8">Passa da reserva Mostraí de 20% em ${acimaDaReserva.length} ponto(s): o excedente ocupa capacidade comercial ainda não vendida.</p>` : ''}
+      <table class="mini-table"><thead><tr><th>Ponto</th><th>Mostraí agora</th><th>Mostraí depois <span class="u-dim">(reserva 20%)</span></th><th>Total depois</th></tr></thead><tbody>
       ${linhas
         .map(
           (l) => `<tr class="${l.comporta ? '' : 'mm-linha-excede'}">
-        <td>${esc(l.pontoNome)}</td><td>${l.atualPct}%</td>
+        <td>${esc(l.pontoNome)}</td><td>${l.mostraiPct}%</td>
+        <td>${l.mostraiDepoisPct}%${l.acimaDaReserva ? ' — acima da reserva' : ''}</td>
         <td>${l.depoisPct}%${l.comporta ? '' : ' — excede'}</td>
       </tr>`,
         )
@@ -2272,6 +2326,22 @@ async function renderPontoTelas(el, ponto) {
 // papel. Listagem enxuta (21/09/2026, pedido do dono): a linha vira resumo
 // clicável, sem select nem botão nenhum — edição e ações moram na ficha
 // (renderContaDetalhe).
+// Plano de comodato NÃO é plano comercial (rodada de integridade,
+// 23/09/2026). O Inicial/Básico que vem do ponto fica gravado em `plano_id`
+// com cortesia de motivo 'comodato' (pontos/comodato.js) — sem esta checagem
+// Contas mostrava "Básico · Mensal · cortesia" na coluna de plano comercial,
+// como se fosse um plano vendido.
+const planoEhComodato = (conta) => !!(conta.plano_cortesia && conta.cortesia_motivo === 'comodato');
+
+// `info` = { produto, modalidade } do ponto da conta; `planoComodato` = nome
+// do plano de comodato gravado na conta, pra quando não há ponto listado.
+function textoComodato(info, planoComodato) {
+  const produto = info?.produto || planoComodato;
+  if (!produto && !info?.modalidade) return '<span class="u-dim">-</span>';
+  if (!produto) return esc(info.modalidade);
+  return `<span title="${esc(info?.modalidade || '')}">${esc(produto)}</span>`;
+}
+
 async function renderContasAba(el, resto) {
   const contaId = resto ? Number(resto) : null;
   if (contaId) return renderContaDetalhe(el, contaId);
@@ -2288,17 +2358,22 @@ async function renderContasLista(el) {
   const nomePlano = Object.fromEntries(
     planos.map((p) => [p.id, `${p.nome} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}`]),
   );
+  const nomePlanoCurto = Object.fromEntries(planos.map((p) => [p.id, p.nome]));
   const nomeCategoria = Object.fromEntries(categorias.map((c) => [c.id, c.nome]));
   // Comodato é direito do PONTO, não da conta que assina um plano comercial
   // por cima (seção 17 do pedido: os dois são camadas separadas, nunca
   // fundidas num "plano híbrido"). Uma conta pode ceder mais de um ponto;
   // pega o primeiro achado só pra identificação rápida na listagem — a
   // ficha (aba Pontos) mostra todos.
+  // Mostra o PRODUTO de comodato (Inicial/Básico), com a modalidade no
+  // título — rodada de integridade, 23/09/2026.
   const comodatoPorConta = {};
   pontos
     .filter((p) => p.anunciante_id && p.plano_ponto_nome)
     .forEach((p) => {
-      if (!comodatoPorConta[p.anunciante_id]) comodatoPorConta[p.anunciante_id] = p.plano_ponto_nome;
+      if (!comodatoPorConta[p.anunciante_id]) {
+        comodatoPorConta[p.anunciante_id] = { produto: p.comodato_produto_nome, modalidade: p.plano_ponto_nome };
+      }
     });
   const temPonto = new Set(pontos.map((p) => p.anunciante_id).filter(Boolean));
 
@@ -2330,8 +2405,8 @@ async function renderContasLista(el) {
       <td><b>${esc(a.nome_empresa)}</b><div class="u-mt-2">${badgesPapel}${a.status === 'parceiro' ? ' <span class="badge badge-ok">parceiro</span>' : ''}${a.excluido_em ? ` <span class="badge badge-err">excluída ${data(a.excluido_em)}</span>` : ''}</div></td>
       <td><div class="u-fs-78">${esc(a.contato_email)}</div><div class="u-dim u-fs-74">${esc(a.contato_telefone)}</div></td>
       <td>${a.categoria_livre ? `(livre) ${esc(a.categoria_livre)}` : a.categoria_id ? esc(nomeCategoria[a.categoria_id] || '?') : '<span class="u-dim">-</span>'}</td>
-      <td>${a.plano_id ? esc(nomePlano[a.plano_id] || a.plano_id) : '<span class="u-dim">sem plano</span>'}${a.plano_cortesia ? ' <span class="badge badge-pendente">cortesia</span>' : ''}</td>
-      <td>${comodatoPorConta[a.id] ? esc(comodatoPorConta[a.id]) : '<span class="u-dim">-</span>'}</td>
+      <td>${a.plano_id && !planoEhComodato(a) ? `${esc(nomePlano[a.plano_id] || a.plano_id)}${a.plano_cortesia ? ' <span class="badge badge-pendente">cortesia</span>' : ''}` : '<span class="u-dim">sem plano</span>'}</td>
+      <td>${textoComodato(comodatoPorConta[a.id], planoEhComodato(a) ? nomePlanoCurto[a.plano_id] : null)}</td>
       <td>${esc(ANUNCIANTE_STATUS[a.status] || a.status)}${a.suspenso ? ' <span class="badge badge-err">suspensa</span>' : ''}</td>
       <td>${data(a.created_at)}</td>
     </tr>`;
@@ -2613,15 +2688,19 @@ function desenharContaResumo(el, conta, categorias, papeis, vendedor, recarregar
 // por pertencerem ao plano, não ao resumo geral da conta.
 function desenharContaPlano(el, conta, planos, recarregar) {
   const plano = conta.plano_id ? planos.find((p) => p.id === conta.plano_id) : null;
-  const nomePlano = plano
-    ? `${plano.nome} · ${CICLOS[plano.compromisso_meses] || plano.compromisso_meses + 'x'}`
-    : null;
+  // Comodato e plano comercial são coisas separadas (rodada de integridade,
+  // 23/09/2026): o Inicial/Básico do ponto aparece na linha de comodato, não
+  // como "plano comercial em cortesia".
+  const ehComodato = planoEhComodato(conta);
+  const nomePlano =
+    plano && !ehComodato ? `${plano.nome} · ${CICLOS[plano.compromisso_meses] || plano.compromisso_meses + 'x'}` : null;
   el.innerHTML = `
     <div class="card u-mw-520 u-mb-16">
       <div class="field-row">
-        <div class="u-col-2"><label>Plano comercial</label><p class="u-m-0">${nomePlano ? esc(nomePlano) : '<span class="u-dim">sem plano</span>'}${conta.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(conta.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</p></div>
-        <div class="u-col-2"><label>Expira em</label><p class="u-m-0">${data(conta.data_expiracao)}</p></div>
+        <div class="u-col-2"><label>Plano comercial</label><p class="u-m-0">${nomePlano ? esc(nomePlano) : '<span class="u-dim">sem plano</span>'}${nomePlano && conta.plano_cortesia ? ` <span class="badge badge-pendente" title="${esc(conta.cortesia_motivo || 'liberado pelo admin')}">cortesia</span>` : ''}</p></div>
+        <div class="u-col-2"><label>Expira em</label><p class="u-m-0">${nomePlano ? data(conta.data_expiracao) : '<span class="u-dim">-</span>'}</p></div>
       </div>
+      ${ehComodato && plano ? `<div class="u-mt-10"><label>Comodato</label><p class="u-m-0">${esc(plano.nome)} <span class="u-dim u-fs-78">· vem do ponto, sem cobrança</span></p></div>` : ''}
     </div>
     <div class="card u-mw-520">
       <label class="u-d-block u-mb-8">Ações do plano</label>
@@ -2899,8 +2978,10 @@ async function renderCandidaturaDetalhe(el, id) {
   const msg = document.getElementById('candDetalheMsg');
   el.querySelector('[data-aprovar]').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
-    if (!confirm(`Aprovar "${nome}"? O ponto (e a Tela 1, se tiver conta vinculada) nasce agora com esses dados.`))
-      return;
+    // Sem "e a Tela 1": desde a rodada final da Rede (22/09/2026) o ponto
+    // nasce SEM tela, como "aguardando instalação" — a tela é criada na
+    // instalação de verdade (src/conta/modos.js).
+    if (!confirm(`Aprovar "${nome}"? O ponto nasce agora com esses dados, aguardando instalação.`)) return;
     btn.disabled = true;
     // Candidatura de conta existente (caminho de hoje): liga o papel direto
     // na conta, cria o ponto. Candidatura antiga sem conta (aposentada
@@ -3296,23 +3377,61 @@ function montarCardProduto(p) {
           })
           .join('')}
       </div>
-      <div class="u-mt-10" title="Desconto extra pra conta que também é dona de ponto (comodato) — separado do desconto de ciclo acima">
-        <label>Desconto comodato (%, vazio = nenhum)</label>
-        <input type="number" min="1" max="100" class="mini oferta-comodato" value="${p.descontoComodato ?? ''}" placeholder="-">
-      </div>
       <button class="btn primary block u-mt-12" data-salvar-produto="${p.tier}">Salvar</button>
       <p class="form-msg" data-msg-produto="${p.tier}"></p>
     </div>`;
 }
 
+// Card somente-leitura dos 2 produtos de comodato (rodada de integridade,
+// 23/09/2026) — sumiram da UI quando Configurações > Comodato saiu. Não têm
+// preço nem botão: não se compram, chegam pela modalidade do ponto. Tudo que
+// aparece aqui vem do banco (`GET /admin/ofertas/comodato`), nada fixo no
+// front.
+function montarCardComodato(c) {
+  const pontos = c.pontosIncluidos === 1 ? '1 ponto' : `até ${c.pontosIncluidos} pontos`;
+  const criativos = `${c.limiteCriativos} criativo${c.limiteCriativos === 1 ? '' : 's'}`;
+  const contrapartida =
+    c.ajudaCustoMensal > 0
+      ? `Dono do ponto recebe ${fmt(c.ajudaCustoMensal)}/mês em dinheiro`
+      : 'Dono do ponto abre mão da ajuda de custo em troca da mídia';
+  const assinatura = c.permiteAssinar
+    ? `Pode ter plano pago junto${c.creditoAssinatura > 0 ? `, com ${fmt(c.creditoAssinatura)}/mês de crédito` : ''}`
+    : 'Não assina plano pago enquanto estiver nesta modalidade';
+  return `
+    <div class="card oferta-produto" data-comodato="${esc(c.planoId)}">
+      <div class="field-row u-ai-c u-m-0">
+        <h3 class="u-m-0 u-mr-auto">${esc(c.nome)}</h3>
+        <span class="badge badge-info">não comprável</span>
+      </div>
+      <p class="u-dim u-fs-78 u-m-0 u-mt-2">Modalidade: ${esc(c.modalidadeNome)}</p>
+      <ul class="oferta-comodato-lista">
+        <li>${c.segundosPorHora}s por hora · ${pontos}</li>
+        <li>Criativo de até ${c.duracaoMaximaSegundos}s · ${criativos}</li>
+        <li>Cerca de ${c.horasMes}h de tela/mês · ${num(c.exibicoesMes)} exibições planejadas</li>
+        <li>${contrapartida}</li>
+        <li>${assinatura}</li>
+      </ul>
+    </div>`;
+}
+
 async function renderPrecos(el) {
-  const produtos = await pegar('/admin/ofertas/produtos');
+  const [produtos, comodato] = await Promise.all([pegar('/admin/ofertas/produtos'), pegar('/admin/ofertas/comodato')]);
   el.innerHTML = `
     <p class="empty-state u-ta-l u-p-0 u-pb-12">
       <b>Essencial, Pro e Prime são produtos fixos.</b> O que muda aqui é só preço e desconto — pontos, horas de
       tela, duração do anúncio e criativos são características do produto e não mudam nesta tela.
     </p>
-    <div class="oferta-produtos-grid">${produtos.map(montarCardProduto).join('')}</div>`;
+    <div class="oferta-produtos-grid">${produtos.map(montarCardProduto).join('')}</div>
+    <h3 class="u-mt-24">Comodato</h3>
+    <p class="empty-state u-ta-l u-p-0 u-pb-12">
+      <b>Inicial e Básico não se compram:</b> chegam ao dono do ponto pela modalidade de comodato que ele escolheu.
+      Características fixas, sem preço.
+    </p>
+    ${
+      comodato.length
+        ? `<div class="oferta-produtos-grid">${comodato.map(montarCardComodato).join('')}</div>`
+        : '<p class="form-msg err">Nenhum produto de comodato encontrado — confira as modalidades ativas do comodato.</p>'
+    }`;
 
   // Recalcula os 4 previews ao vivo, sem esperar salvar — mesma régua da
   // vitrine pública (preço cheio riscado, badge, preço final, economia,
@@ -3344,7 +3463,6 @@ async function renderPrecos(el) {
       const corpo = {
         precoBase: cartao.querySelector('.oferta-preco-base').value,
         descontos,
-        descontoComodato: cartao.querySelector('.oferta-comodato').value || null,
       };
       const r = await api(`/admin/ofertas/produtos/${tier}`, { method: 'PATCH', body: JSON.stringify(corpo) });
       if (!r.ok) {
