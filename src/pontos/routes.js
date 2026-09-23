@@ -69,19 +69,16 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   if (!conta || !(conta.papeis || []).includes('ponto')) {
     return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
   }
-  // Bloqueio SÓ pelo mesmo endereço (achado real, 23/09/2026: bloqueava
-  // qualquer segundo endereço enquanto o primeiro estivesse em análise,
-  // mesmo sendo lugares diferentes — quem tem duas lojas não conseguia
-  // candidatar a segunda). Rua+número (endereco) e CEP juntos identificam o
-  // endereço; comparação sem espaço/maiúscula pra não deixar passar por
-  // diferença de digitação boba.
-  const { rows: abertos } = await pool.query(
-    `SELECT id FROM candidaturas
-       WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')
-         AND lower(trim(endereco)) = lower(trim($2)) AND trim(COALESCE(cep, '')) = trim($3)`,
-    [conta.id, req.body.endereco || '', req.body.cep || ''],
-  );
-  if (abertos.length) return res.status(409).json({ erro: 'Já existe uma solicitação em análise para este endereço' });
+  // Mesma régua das outras duas portas (repo.estabelecimentoJaCadastrado):
+  // pedido em análise no mesmo endereço, ou o mesmo estabelecimento já
+  // materializado como ponto desta conta. Antes só a primeira metade existia
+  // — depois de aprovado, o mesmo lugar passava livre e virava ponto duplicado.
+  const motivo = await repo.estabelecimentoJaCadastrado(conta.id, {
+    nome: req.body.nome_comercio,
+    endereco: req.body.endereco,
+    cep: req.body.cep,
+  });
+  if (motivo) return res.status(409).json({ erro: motivo });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
     res.status(201).json({ ok: true, id: cand.id });
@@ -204,7 +201,7 @@ router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, 
   const { rows: meus } = await pool.query(
     `SELECT p.id, pp.ajuda_custo_mensal
        FROM pontos p LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-      WHERE p.anunciante_id = $1`,
+      WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
     [req.session.anuncianteId],
   );
   if (!meus.length) return res.status(400).json({ erro: 'sua conta não tem ponto no comodato' });

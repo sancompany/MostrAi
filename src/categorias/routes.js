@@ -37,7 +37,7 @@ router.get('/admin/categorias', async (_req, res) => {
                    WHERE categoria_id IS NOT NULL AND NOT conta_propria GROUP BY categoria_id) ua
               ON ua.categoria_id = c.id
        LEFT JOIN (SELECT categoria_id, COUNT(*) AS total FROM pontos
-                   WHERE categoria_id IS NOT NULL GROUP BY categoria_id) up
+                   WHERE categoria_id IS NOT NULL AND status <> 'arquivado' GROUP BY categoria_id) up
               ON up.categoria_id = c.id
       ORDER BY c.nome`,
   );

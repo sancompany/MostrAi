@@ -45,6 +45,25 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
   if (papel === 'vendedor') return;
   await adicionarPapel(conta.id, papel, db);
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
+    // Uma candidatura materializa no máximo UM ponto (23/09/2026, auditoria
+    // do ponto duplicado). Já materializada = nada a criar, é o mesmo lugar.
+    // O índice único `pontos_candidatura_unica` (migration 080) é a trava de
+    // banco para a corrida; esta checagem é o caminho normal, sem erro.
+    const { rows: jaExiste } = await db.query('SELECT id FROM pontos WHERE candidatura_id = $1', [cand.id]);
+    if (jaExiste.length) return;
+    // E uma candidatura NOVA do mesmo estabelecimento (mesma conta, nome e
+    // endereço) também não vira segundo ponto — era assim que "Bruno H
+    // Sanches" aparecia duas vezes em produção. Sem olhar pedidos em análise:
+    // a candidatura que está sendo aprovada É um pedido em análise.
+    const motivo = await pontosRepo.estabelecimentoJaCadastrado(
+      conta.id,
+      { nome: cand.nome_comercio || conta.nome_empresa, endereco: cand.endereco, cep: cand.cep },
+      db,
+      { incluirPedidos: false },
+    );
+    if (motivo) {
+      throw Object.assign(new Error(`${motivo} — recuse esta candidatura em vez de aprovar`), { status: 409 });
+    }
     const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
     await pontosRepo.criar(
       {
@@ -77,6 +96,7 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
         cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
         anunciante_id: conta.id,
+        candidatura_id: cand.id,
         // Nasce sem nenhuma tela — o status automático (rodada final da
         // Rede, migration 069) lê 0 dispositivos como "aguardando
         // instalação", que é exatamente o que um ponto recém-aprovado é: o
@@ -278,16 +298,15 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   if ((conta.papeis || []).includes(papel))
     return res.status(409).json({ erro: 'esse modo já está liberado na sua conta' });
-  // Mesmo bloqueio por ENDEREÇO de `POST /anunciantes/me/pontos`
-  // (src/pontos/routes.js) — nunca por "já tem qualquer pedido em aberto",
-  // que barrava candidatar um segundo endereço diferente.
-  const { rows: abertos } = await pool.query(
-    `SELECT id FROM candidaturas
-       WHERE conta_id = $1 AND tipo = $2 AND status IN ('nova', 'em_contato')
-         AND lower(trim(endereco)) = lower(trim($3)) AND trim(COALESCE(cep, '')) = trim($4)`,
-    [conta.id, papel, req.body.endereco || '', req.body.cep || ''],
-  );
-  if (abertos.length) return res.status(409).json({ erro: 'Já existe uma solicitação em análise para este endereço' });
+  // Mesma régua de `POST /anunciantes/me/pontos` — uma função só
+  // (pontosRepo.estabelecimentoJaCadastrado), nunca "já tem qualquer pedido
+  // em aberto", que barrava candidatar um segundo endereço diferente.
+  const motivo = await pontosRepo.estabelecimentoJaCadastrado(conta.id, {
+    nome: req.body.nome_comercio,
+    endereco: req.body.endereco,
+    cep: req.body.cep,
+  });
+  if (motivo) return res.status(409).json({ erro: motivo });
   try {
     const cand = await criarCandidaturaPonto(conta, req.body);
     res.status(201).json({ ok: true, id: cand.id });
@@ -334,10 +353,22 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
   if (cand.status === 'aprovada') return res.status(409).json({ erro: 'já liberada' });
   const conta = await anunciantesRepo.buscarPorId(cand.conta_id);
   if (!conta || conta.excluido_em) return res.status(400).json({ erro: 'conta não encontrada ou excluída' });
-  await emTransacao(async (cliente) => {
-    await liberarPapelNaConta(conta, cand.tipo, cand, cliente);
-    await cliente.query(`UPDATE candidaturas SET status = 'aprovada' WHERE id = $1`, [cand.id]);
-  });
+  try {
+    await emTransacao(async (cliente) => {
+      // A checagem de "já liberada" acima roda FORA da transação — dois
+      // cliques simultâneos passavam os dois. Relê travando a linha: o
+      // segundo espera o primeiro terminar e vê 'aprovada'.
+      const {
+        rows: [atual],
+      } = await cliente.query('SELECT status FROM candidaturas WHERE id = $1 FOR UPDATE', [cand.id]);
+      if (atual.status === 'aprovada') throw Object.assign(new Error('já liberada'), { status: 409 });
+      await liberarPapelNaConta(conta, cand.tipo, cand, cliente);
+      await cliente.query(`UPDATE candidaturas SET status = 'aprovada' WHERE id = $1`, [cand.id]);
+    });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
   res.json({ ok: true, conta: await anunciantesRepo.buscarPorId(conta.id) });
 });
 

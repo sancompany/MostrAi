@@ -47,13 +47,13 @@ async function sincronizarComodato(contaId, db = pool) {
               SELECT MAX(pp.desconto_assinatura_reais)
                 FROM pontos p
                 JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-               WHERE p.anunciante_id = a.id
+               WHERE p.anunciante_id = a.id AND p.status <> 'arquivado'
             ), 0),
             comodato_plano_id = (
               SELECT pp.plano_incluido_id
                 FROM pontos p
                 JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-               WHERE p.anunciante_id = a.id AND pp.plano_incluido_id IS NOT NULL
+               WHERE p.anunciante_id = a.id AND p.status <> 'arquivado' AND pp.plano_incluido_id IS NOT NULL
                ORDER BY pp.ordem DESC
                LIMIT 1
             )
