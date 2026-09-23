@@ -390,4 +390,15 @@ window.ROTULOS = {
   // 'pendente_aprovacao' que estava aqui vinha do modelo antigo de afiliado e
   // nao existe no banco — rotulo pra um estado impossivel.
   vendedor: { aprovado: 'Aprovado', inativo: 'Inativo' },
+  // Créditos e benefícios. As chaves de tier são as do banco (planos.tier);
+  // o nome que o cliente vê é outro desde a grade nova.
+  tier: { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' },
+  movimentoCredito: {
+    indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
+    indicacao_renovacao: 'Indicação · renovação',
+    concessao_admin: 'Crédito da Mostraí',
+    estorno_admin: 'Ajuste da Mostraí',
+    resgate_beneficio: 'Resgate de benefício',
+    estorno_resgate: 'Estorno de resgate',
+  },
 };

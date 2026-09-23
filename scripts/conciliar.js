@@ -10,7 +10,6 @@
 // nao muda nada la.
 require('dotenv').config();
 const { conciliarAssinaturas, registrarRelato } = require('../src/financeiro/conciliacao');
-const { reavaliarTodos } = require('../src/indicacoes/aplicar');
 const { ativarBeneficiosAgendados, encerrarBeneficiosVencidos } = require('../src/financeiro/plano-administrativo');
 const comecouEm = new Date();
 
@@ -21,18 +20,6 @@ conciliarAssinaturas()
         `${r.jaProcessadas} já processadas pelo webhook · ${r.semCobranca} sem cobrança confirmada`,
     );
     for (const f of r.falhas) console.error(`  falhou ${f.assinaturaId}: ${f.erro}`);
-
-    // Upgrade de tier por indicação (migration 062) que ficou pendente
-    // porque o dono do ponto ainda pagava o próprio plano na hora em que
-    // ganhou o crédito — aqui é onde ele entra sozinho, assim que esse plano
-    // vencer. Falha aqui não é motivo pra marcar a conciliação de assinatura
-    // (que já rodou e já teve seu próprio código de saída) como abortada.
-    try {
-      const ind = await reavaliarTodos();
-      console.log(`indicações: ${ind.verificadas} contas com crédito · ${ind.aplicados} upgrade(s) aplicado(s)`);
-    } catch (err) {
-      console.error('reavaliação de upgrades por indicação falhou:', err.message);
-    }
 
     // Ciclo de vida do benefício por créditos (migration 079): encerra o
     // benefício vencido ANTES de ativar o agendado — um benefício que acaba

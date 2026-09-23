@@ -56,6 +56,7 @@ async function carregar() {
       montarBloqueioPlano();
       return;
     }
+    removerBloqueioPlano();
     carregarExibicoes();
     carregarCriativos();
     carregarBancoHoras();
@@ -74,9 +75,8 @@ async function carregar() {
 // `payment.updated`/`plan.updated`/`account.updated` mudam o estado da CONTA
 // (plano, expiração, suspensão) — o próprio `carregar()` já resolve isso do
 // zero, incluindo o bloqueio de plano, sem reload. `credits.updated` e
-// `notification.created` ainda não têm consumidor nesta página (o card de
-// créditos e o sino de notificações são da Fase 4, o dashboard único) —
-// registrar os handlers deles agora seria trabalho sem efeito nenhum ainda.
+// `notification.created` são assinados pelos próprios módulos (creditos.js,
+// notificacoes.js).
 if (window.ligarEventosDaConta) {
   window.ligarEventosDaConta({
     'payment.updated': carregar,
@@ -90,10 +90,21 @@ if (window.ligarEventosDaConta) {
 // Mesmo padrão de public/modos.js (window.montarModo): esconde o container
 // de verdade e insere um card no lugar dele, um nível abaixo do bloqueio de
 // papel — aqui o papel "anunciante" já está liberado, só falta plano.
+// Idempotente e reversível: carregar() roda de novo pelo SSE e depois de um
+// resgate de créditos. Sem remover o anterior, cada rodada empilhava outro
+// card de bloqueio; sem desfazer, a conta que ganhava plano continuava
+// bloqueada até dar F5.
+function removerBloqueioPlano() {
+  document.getElementById('bloqueioPlanoCaixa')?.remove();
+  document.getElementById('dashboardAnuncios').hidden = false;
+}
+
 function montarBloqueioPlano() {
+  removerBloqueioPlano();
   const container = document.getElementById('dashboardAnuncios');
   container.hidden = true;
   const caixa = document.createElement('div');
+  caixa.id = 'bloqueioPlanoCaixa';
   caixa.className = 'wrap';
   caixa.innerHTML = ANUNCIANTE.suspenso
     ? `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
@@ -1132,6 +1143,8 @@ carregar().catch(() => {
 // Uma vez só (fora de carregar(), que pode rodar de novo por SSE — Fase 5)
 // — chamar de novo duplicaria os ouvintes de clique do sino.
 if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();
+// Resgate muda o plano da conta: `carregar` refaz banner, bloqueio e KPIs.
+if (window.montarCreditos) window.montarCreditos({ aoResgatar: carregar });
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
 // 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já

@@ -56,31 +56,6 @@
           <div id="listaAutoanuncio">Carregando...</div>
         </div>
 
-        <!-- Créditos de indicação (migration 062, pedido do dono, 19/09/2026):
-             todo dono de ponto ganha um cupom próprio; comerciante que assina
-             usando ele vira crédito permanente, e ao acumular o suficiente o
-             plano de anúncio deste dono sobe de tier sozinho, de graça — nunca
-             comissão em dinheiro (isso é o cupom de vendedor, outra tela). -->
-        <div class="panel-head u-mt-32 u-mb-14">
-          <h3 class="u-m-0">Meu cupom de indicação</h3>
-          <span class="form-hint u-m-0">Comerciante que assina um plano com esse cupom vira crédito pra você.</span>
-        </div>
-        <div class="card wide u-mt-0" id="cupomIndicacaoCard" hidden>
-          <div class="field-row u-ai-c">
-            <div class="chave-box u-fs-130 u-ls-wide u-col" id="cupomIndicacao"></div>
-            <button type="button" class="btn ghost" id="btnCopiarCupomIndicacao">Copiar</button>
-          </div>
-          <p class="form-hint u-m-0">O comerciante digita esse cupom no cadastro, ou usa o seu link, que já preenche sozinho:</p>
-          <div class="field-row u-ai-c">
-            <div class="chave-box u-col" id="linkCupomIndicacao"></div>
-            <button type="button" class="btn ghost" id="btnCopiarLinkIndicacao">Copiar link</button>
-          </div>
-          <div class="field-row u-gap-8 u-flex-wrap">
-            <a class="btn primary" id="btnWhatsIndicacao" href="#" target="_blank" rel="noopener">Mandar no WhatsApp</a>
-          </div>
-          <p class="form-hint u-m-0" id="progressoIndicacao"></p>
-        </div>
-
         <!-- Extrato do comodato. A rota GET /anunciantes/me/pontos/extrato
              existia desde a migration 022 e nunca teve tela: quem cede a
              parede via o valor combinado e nao tinha onde conferir o que ja

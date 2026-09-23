@@ -353,12 +353,9 @@ async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
 
 // Crédito de indicação do dono de ponto (migration 062, pedido do dono,
 // 19/09/2026) — irmã de registrarComissaoSeHouver, mas nunca move dinheiro:
-// quem indica com cupom "PT-..." ganha um crédito permanente (não por
-// cobrança, diferente da comissão) e vira ledger, pra resgate explícito
-// depois (src/creditos/, migration 079, reconstrução do painel da conta,
-// 23/09/2026) — CADA cobrança confirmada gera crédito, primeira e toda
-// renovação (antes só a primeira contava, ver indicacoes/repository.js#
-// registrarCredito, que fica congelado como histórico). `db` é o pool por
+// quem indica com cupom "PT-..." ganha crédito no ledger, pra resgate
+// explícito depois (src/creditos/, migration 079) — CADA cobrança confirmada
+// gera crédito, a primeira e toda renovação. `db` é o pool por
 // padrão, mas o webhook passa o client da transação pra que crédito e
 // cobrança entrem juntos, ou nenhum dos dois — mesmo padrão de sempre.
 // `cobrancaConfirmadaId` é a chave de idempotência: sem ela, webhook
