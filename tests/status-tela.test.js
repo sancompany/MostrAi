@@ -5,8 +5,12 @@ const { DIAS } = require('../src/lib/horario-semanal');
 
 // Régua única de status operacional da tela (revisão final da Visão Geral,
 // 23/09/2026) — substitui a checagem fixa de "2h sem heartbeat" que ignorava
-// o horário de funcionamento. 2026-09-23 é uma quarta-feira.
-const QUARTA_MEIO_DIA = new Date('2026-09-23T12:00:00');
+// o horário de funcionamento. 2026-09-23 é uma quarta-feira. Offset `-03:00`
+// explícito: `estaAbertoAgora` lê a wall-clock de São Paulo via `Intl`
+// (achado em revisão de PR), não o fuso do processo — sem o offset, este
+// literal seria interpretado em UTC (fuso do servidor/CI) e representaria
+// 09:00 em SP, não meio-dia.
+const QUARTA_MEIO_DIA = new Date('2026-09-23T12:00:00-03:00');
 const HORARIO_9_18 = { ...Object.fromEntries(DIAS.map((d) => [d, null])), qua: { abre: '09:00', fecha: '18:00' } };
 const HORARIO_FECHADO_QUARTA = { ...Object.fromEntries(DIAS.map((d) => [d, null])) };
 const RECENTE = new Date(QUARTA_MEIO_DIA.getTime() - 5 * 60 * 1000).toISOString();

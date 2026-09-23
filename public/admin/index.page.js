@@ -2558,14 +2558,16 @@ async function renderPontoTelas(el, ponto) {
       );
       const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
       if (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) {
-        // status muda a régua de sinal/rede na Visão geral; modo_horario muda
-        // o próprio editor abaixo (mostra/esconde) — as duas pedem recarregar
-        // o card pra refletir o que já foi salvo, não só o campo tocado.
+        // status e modo_horario podem os dois mudar a situação operacional da
+        // tela (src/lib/status-tela.js) — e com ela o alerta "sem sinal" da
+        // Visão geral (achado em revisão de PR: só `status` recarregava
+        // RESUMO, `modo_horario` só re-renderizava o card local e deixava o
+        // contador do menu desatualizado até um Atualizar manual). As duas
+        // recarregam RESUMO e o próprio card, pro editor mostrar/esconder e o
+        // contador bater com o que acabou de ser salvo.
         if (campo.dataset.tela === 'status' || campo.dataset.tela === 'modo_horario') {
-          if (campo.dataset.tela === 'status') {
-            RESUMO = await pegar('/admin/resumo');
-            pintarContadores();
-          }
+          RESUMO = await pegar('/admin/resumo');
+          pintarContadores();
           renderPontoTelas(el, ponto);
         }
       }
@@ -2599,6 +2601,14 @@ async function renderPontoTelas(el, ponto) {
       });
       if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o horário.', 'err');
       toast('Horário salvo.');
+      // Mesmo motivo do listener de `[data-tela]` acima: um horário
+      // personalizado novo pode mudar a situação operacional da tela na
+      // hora (ex.: tela que estava fora_do_horario passa a estar dentro) —
+      // sem recarregar RESUMO o alerta da Visão geral ficava com o número
+      // de antes até um Atualizar manual (achado em revisão de PR).
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderPontoTelas(el, ponto);
     }),
   );
 
