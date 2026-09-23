@@ -3947,3 +3947,102 @@ no banco), trocas e devoluções mostrando só o pendente, cobranças sem
 nenhum rastro de nota fiscal manual, o hash antigo `#custos` caindo em
 Visão geral sem abrir tela nenhuma, e sem overflow horizontal em 390px
 (mobile) na Visão geral nem nas filas.
+
+## Revisão final da Visão geral e fluxos internos — 23/09/2026
+
+Pedido do dono: fechar a V1 do admin com uma revisão estrutural da Visão
+geral (2 colunas, muito mais compacta) e dos fluxos que ela abre. 17
+seções no pedido original; o que mudou:
+
+**[x] Régua única de status operacional da tela** (migration 074,
+`src/lib/status-tela.js`). Cada tela ganha `modo_horario`
+(`ponto`/`24h`/`personalizado`) e, no modo personalizado, `horario_semanal`
+próprio — editável na ficha do ponto (Rede > Pontos > tela), reaproveitando
+o mesmo componente visual do formulário de candidatura. `statusOperacionalTela`
+substitui as 4 cópias da checagem fixa "2h sem heartbeat" que existiam (2 em
+`src/admin/routes.js`, 2 em `public/anunciante/painel.page.js` — só as do
+admin foram trocadas nesta rodada, por ser "fechar a V1 do ADMIN"; as do
+painel do anunciante continuam com a checagem antiga, de propósito, fora de
+escopo). `POST /player/:id/heartbeat` aceita `{erro}` opcional
+(`dispositivos.ultimo_erro`/`ultimo_erro_em`) — o player (`public/
+player.page.js`) manda quando a playlist responde 401/403/erro/falha de
+rede, e limpa sozinho no próximo heartbeat depois de um `playlist_recebida`
+ok. 12 testes novos (`tests/status-tela.test.js`) + 5 em
+`tests/horario-semanal.test.js` (`estaAbertoAgora`) + 1 de integração
+(`marcarOnline` grava e limpa o erro, `tests/integridade-admin.test.js`).
+
+**[x] MRR deixou de somar o preço de tabela cru.** `agregarReceitaPorCiclo`
+(`src/admin/routes.js`) chama `valorMensalDaConta()` linha a linha — a MESMA
+função que já monta a cobrança de verdade em `san-checkout.js` — em vez de
+`SUM(planos.valor_mensal)` direto. Sem isso, conta com promoção travada,
+desconto de parceiro ou crédito de comodato entrava pelo preço cheio atual,
+nunca pelo valor real congelado na adesão. Plano Inicial/Básico continuam
+de fora sem exclusão explícita (já têm `valor_mensal = 0`). Teste novo em
+`tests/integridade-admin.test.js` cobre promoção ativa/vencida.
+
+**[x] Comissão de vendedor saiu do agregado financeiro da Visão geral e da
+Central Financeira** ("o conceito de vendedor foi retirado do projeto").
+A tabela `comissoes`, a rota `/admin/comissoes` e a tela de vendedores
+dentro de Contas continuam intactas — só o card/aba pararam de somar/expor
+aqui. `_renderFilaComissoes` (função morta, prefixo `_`, convenção do
+projeto) e o hash antigo `#comissoes`/`#financeiro/comissoes` caem na lista
+de vendedores.
+
+**[x] Financeiro virou 1 card compacto** com receita recorrente mensal,
+recebido no mês, conciliação discreta (só vira alerta de largura cheia
+quando atrasada/com falha) e as pendências financeiras AGREGADAS (repasse +
+troca com problema + devolução — `financeiro.pendenciasFinanceiras`, soma
+pronta do backend). Central Financeira perdeu a aba Comissões (fica
+Cobranças/Repasses/Trocas/Devoluções) e ganhou "← Visão geral" no topo —
+mesmo link em Mensagens, Aprovação de criativos e Vendedores (qualquer
+módulo `oculto: true`).
+
+**[x] Mensagens ganhou abas Pendentes/Histórico** — antes só mostrava
+pendente e a mensagem "sumia" ao responder. Mesmo endpoint, filtro no
+cliente; abre em Pendentes por padrão vindo do aviso da Visão geral.
+
+**[x] Pendências operacionais: 8 cards viraram 4** (Candidaturas, Criativos,
+Mensagens, Financeiro) — Comissões e Falhas fiscais saíram de vez, Repasses/
+Trocas/Devoluções viraram o card Financeiro agregado acima.
+
+**[x] Indicadores de negócio renomeados e agrupados num card "Rede":**
+"Anunciantes novos" → "Novas contas", "Cadastra e paga" → "Conversão
+cadastro → pagamento", "Alcance da rede" → "Alcance estimado".
+
+**[x] "Pontos por status" (barra horizontal grande) virou resumo de uma
+linha** — "N pontos · X ativo · Y aguardando instalação · Z tela em
+operação", cada status ainda clicável (mesmo destino de sempre, Rede >
+Pontos filtrado). `_barrasHorizontais` fica como função morta.
+
+**[x] Layout final: 2 colunas no desktop** (`.visao-geral-colunas`, corte em
+900px — mesmo breakpoint que já colapsa a sidebar). Coluna operacional:
+alertas reais, pendências, resumo de pontos, Ocupação da rede. Coluna de
+negócio: Financeiro, promoção ativa, indicadores. Mobile empilha sozinho
+(HTML em sequência, sem grid).
+
+**[x] Bug investigado e corrigido: ponto sem tela inflava ocupação
+comercial.** Um ponto `a_instalar` (0 telas) com anunciante já escolhido
+(RN-49 permite reservar antes de instalar) aparecia com ocupação comercial
+> 0% na tabela "Ocupação da rede" — `ocupacaoPorPonto`
+(`src/midias/repository.js`) somava `segundos_por_hora` de qualquer ponto
+com anunciante vinculado, sem checar se ele tinha tela operacional de
+verdade. Corrigido com `FILTER (WHERE p.status = 'em_operacao')` dentro do
+`SUM` — o ponto continua na lista (alocação planejada visível), só não
+conta mais como capacidade de veiculação real. Teste de fixture em
+`tests/integridade-admin.test.js`.
+
+**Deliberadamente fora desta rodada:** `public/anunciante/painel.page.js`
+mantém sua própria checagem fixa de heartbeat (não migrada pra
+`status-tela.js` — o pedido era "fechar a V1 do ADMIN"). "Recebido no mês"
+não trocou de nome no backend (`receitaConfirmadaMes` continua assim),
+só o rótulo mudou na UI — renomear o campo era mudança de contrato sem
+ganho real. Repasses (seção 4.1 do pedido) já eram 100% derivados da
+modalidade do ponto (`pontos.valor_pago_mensal`, nunca lançamento manual)
+antes desta rodada — nada precisou mudar lá, só confirmado.
+
+**Verificado:** `npm run check` (204/204 testes, lint/format limpos — só os
+3 avisos de lint já conhecidos, de antes desta rodada), roteiro manual no
+navegador (login, Visão geral com e sem dado, Mensagens Pendentes/
+Histórico, Central Financeira nas 4 abas, ficha de ponto com o editor de
+horário próprio da tela salvando de verdade), screenshot desktop (1400px)
+e mobile (420px) sem overflow.

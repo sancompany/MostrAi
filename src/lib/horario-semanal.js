@@ -74,4 +74,32 @@ function resumo(horario) {
   return partes.join(' · ');
 }
 
-module.exports = { DIAS, NOME_DIA, validar, resumo };
+// "Está aberto agora?" (revisão final da Visão Geral, 23/09/2026) — não
+// existia: até aqui `horario_semanal` só alimentava texto (`resumo`), nunca
+// entrou em cálculo nenhum. `null`/objeto sem a chave do dia devolve `null`
+// ("não dá pra saber" — ponto sem horário cadastrado), não `false`, porque
+// quem chama trata "não sei" como "deveria estar online" (mesma suposição de
+// sempre, antes de existir este cálculo).
+// limite: janela que passa da meia-noite (ex. 18:00-02:00) só é reconhecida
+// no dia em que COMEÇA — não olha o dia anterior. Cobre o caso pedido (tela
+// além do horário do comércio, mesmo dia); virada de dia por instalação
+// aberta a noite toda é caso raro o suficiente pra ficar de fora desta rodada.
+function estaAbertoAgora(horario, agora = new Date()) {
+  if (!horario) return null;
+  const chave = DIAS[agora.getDay() === 0 ? 6 : agora.getDay() - 1]; // getDay(): 0=domingo
+  const janela = horario[chave];
+  if (janela === undefined) return null;
+  if (!janela) return false;
+  const minutos = (hhmm) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const agoraMin = agora.getHours() * 60 + agora.getMinutes();
+  const abre = minutos(janela.abre);
+  const fecha = minutos(janela.fecha);
+  // `abre > fecha` = janela vira a noite (validado como caso legítimo em
+  // `validar`, ex. bar 18:00-02:00) — aberto fora do intervalo [fecha,abre).
+  return abre < fecha ? agoraMin >= abre && agoraMin < fecha : agoraMin >= abre || agoraMin < fecha;
+}
+
+module.exports = { DIAS, NOME_DIA, validar, resumo, estaAbertoAgora };

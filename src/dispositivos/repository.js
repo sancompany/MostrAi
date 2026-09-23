@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const { gerarHash, conferirHash } = require('../lib/senha');
 const { sincronizarStatusPonto } = require('../pontos/repository');
+const { statusOperacionalTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 
 // Dispositivo = uma tela. Ponto = o comércio/endereço (migration 019).
 const CAMPOS_ATUALIZAVEIS = [
@@ -20,13 +21,19 @@ const CAMPOS_ATUALIZAVEIS = [
   'margem_direita',
   'margem_inferior',
   'margem_esquerda',
+  // Horário operacional da tela (migration 074) — validado à parte em
+  // routes.js (mesmo formato/validação de pontos.horario_semanal) antes de
+  // chegar aqui.
+  'modo_horario',
+  'horario_semanal',
 ];
 const STATUS = ['ativo', 'reparo', 'inativo'];
 
 // pin_hash nunca sai daqui pra fora.
 const CAMPOS_PUBLICOS = `id, ponto_id, apelido, aparelho_id, status, ultima_vez_online,
   custo_equipamento, meses_amortizacao, instalado_em, created_at, (pin_hash IS NOT NULL) AS tem_pin,
-  contrato_playlist, margem_superior, margem_direita, margem_inferior, margem_esquerda`;
+  contrato_playlist, margem_superior, margem_direita, margem_inferior, margem_esquerda,
+  modo_horario, horario_semanal, ultimo_erro, ultimo_erro_em`;
 
 async function criar(pontoId, dados = {}, db = pool) {
   const { rows } = await db.query(
@@ -73,7 +80,17 @@ async function buscarComPonto(id) {
 // `status`/`created_at` ficam ambíguos no JOIN com pontos.
 const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status, d.ultima_vez_online,
   d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin,
-  d.contrato_playlist`;
+  d.contrato_playlist, d.modo_horario, d.horario_semanal, d.ultimo_erro, d.ultimo_erro_em`;
+
+// `situacaoOperacional` (migration 074 + src/lib/status-tela.js) é derivado
+// aqui, não guardado — a régua de "operando/fora do horário/sem sinal/etc"
+// muda com o relógio, nunca é um fato gravado no banco.
+function comSituacaoOperacional(rows) {
+  return rows.map((tela) => ({
+    ...tela,
+    situacaoOperacional: statusOperacionalTela(tela, tela.ponto_horario_semanal),
+  }));
+}
 
 // Mesmos campos de listarTodos (com nome, cidade e status do ponto): a tela de
 // telas do admin mostra essas colunas, e sem elas filtrar por ponto devolvia
@@ -82,21 +99,30 @@ const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status,
 async function listarPorPonto(pontoId) {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS_PUBLICOS_D},
-            p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status
+            p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
+            p.horario_semanal AS ponto_horario_semanal
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
      WHERE d.ponto_id = $1 ORDER BY d.id`,
     [pontoId],
   );
-  return rows;
+  return comSituacaoOperacional(rows);
 }
 
 async function listarTodos() {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS_PUBLICOS_D},
-            p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status
+            p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
+            p.horario_semanal AS ponto_horario_semanal
      FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id ORDER BY p.nome, d.id`,
   );
-  return rows;
+  return comSituacaoOperacional(rows);
+}
+
+// Só as telas que precisam de atenção agora (SITUACOES_DE_ALERTA) — usado
+// pelo card de alerta da Visão Geral, que antes contava qualquer heartbeat
+// vencido sem saber se a tela deveria estar online.
+async function listarComProblemaDeSinal() {
+  return (await listarTodos()).filter((t) => SITUACOES_DE_ALERTA.has(t.situacaoOperacional));
 }
 
 async function atualizar(id, dados) {
@@ -142,8 +168,14 @@ async function conferirPin(id, pin) {
   return (await conferirHash(String(pin), rows[0].pin_hash)).ok;
 }
 
-async function marcarOnline(id) {
-  await pool.query('UPDATE dispositivos SET ultima_vez_online = now() WHERE id = $1', [id]);
+// `erro` vem do próprio player (migration 074) — presente grava os dois
+// campos juntos, ausente/vazio limpa os dois: não existe erro "preso" depois
+// que o player volta a reportar normal.
+async function marcarOnline(id, erro) {
+  await pool.query(
+    'UPDATE dispositivos SET ultima_vez_online = now(), ultimo_erro = $2, ultimo_erro_em = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END WHERE id = $1',
+    [id, erro || null],
+  );
 }
 
 async function deletar(id) {
@@ -167,6 +199,7 @@ module.exports = {
   buscarComPonto,
   listarPorPonto,
   listarTodos,
+  listarComProblemaDeSinal,
   atualizar,
   gerarChave,
   definirPin,

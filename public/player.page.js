@@ -255,6 +255,15 @@ async function prepararArquivos(lista) {
 const TOLERANCIA_OFFLINE_MS = 60 * 60 * 1000;
 let ultimoContatoOk = Date.now();
 
+// Erro operacional pra classificar a tela no admin (migration 074,
+// src/lib/status-tela.js#erro_do_player) — diferente de "sem sinal"
+// (heartbeat que nem chegou): aqui o player SEGUE respondendo heartbeat,
+// só que algo real deu errado na última tentativa de playlist. Vai junto
+// no próximo heartbeat (`heartbeat()`, mais abaixo); heartbeat não espera
+// pela playlist pra não acoplar os dois ciclos. Some sozinho quando a
+// playlist volta a vir limpa — não existe erro "preso" no player.
+let ultimoErroOperacional = null;
+
 function marcarOffline() {
   const faz = Date.now() - ultimoContatoOk;
   const offline = faz > TOLERANCIA_OFFLINE_MS;
@@ -277,6 +286,7 @@ async function atualizarPlaylist() {
       debugErros += 1;
       debugUltimaPlaylist = `${horaDebug()} · HTTP 401`;
       renderizarDebug('playlist recusada', 'playlist_http');
+      ultimoErroOperacional = 'chave do aparelho inválida';
       log('chave do aparelho inválida, gere de novo no painel admin');
       return;
     }
@@ -291,6 +301,7 @@ async function atualizarPlaylist() {
       playlist = [];
       salvarCache([]);
       document.body.classList.add('sem-playlist');
+      ultimoErroOperacional = corpo.erro || 'tela fora do ar no cadastro';
       log(corpo.erro || 'esta tela está fora do ar no cadastro');
       return;
     }
@@ -298,6 +309,7 @@ async function atualizarPlaylist() {
       debugErros += 1;
       debugUltimaPlaylist = `${horaDebug()} · HTTP ${r.status}`;
       renderizarDebug('falha de playlist', 'playlist_http');
+      ultimoErroOperacional = `playlist respondeu HTTP ${r.status}`;
       log(
         marcarOffline()
           ? 'servidor fora há mais de uma hora — só a peça da Mostraí'
@@ -309,6 +321,7 @@ async function atualizarPlaylist() {
     debugUltimaPlaylist = `${horaDebug()} · HTTP ${r.status} · ${nova.length} itens`;
     eventoDebug('playlist_recebida', { itens: nova.length, status: r.status }, 'playlist pronta');
     ultimoContatoOk = Date.now();
+    ultimoErroOperacional = null;
     document.body.classList.remove('offline');
     playlist = nova;
     salvarCache(nova);
@@ -319,6 +332,7 @@ async function atualizarPlaylist() {
     debugErros += 1;
     debugUltimaPlaylist = `${horaDebug()} · falha de rede`;
     eventoDebug('playlist_falhou', { erro: err?.name || 'erro' }, 'playlist indisponível');
+    ultimoErroOperacional = `falha de rede ao buscar playlist (${err?.name || 'erro'})`;
     log(marcarOffline() ? 'sem rede há mais de uma hora — só a peça da Mostraí' : 'offline, tocando playlist em cache');
   }
 }
@@ -483,7 +497,15 @@ videoEl.addEventListener('stalled', () => {
 
 function heartbeat() {
   eventoDebug('heartbeat_enviado', {}, 'enviando heartbeat');
-  fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, { method: 'POST', headers: cabecalhos })
+  fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, {
+    method: 'POST',
+    headers: { ...cabecalhos, 'Content-Type': 'application/json' },
+    // `erro` (migration 074) pega carona no heartbeat de sempre — sem
+    // endpoint novo, mesma ideia das margens da safe area logo abaixo.
+    // Ausente/null limpa o que o backend tinha guardado (src/dispositivos/
+    // repository.js#marcarOnline): não existe erro "preso".
+    body: JSON.stringify({ erro: ultimoErroOperacional || null }),
+  })
     .then(async (r) => {
       const corpo = await r
         .clone()
