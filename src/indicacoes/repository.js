@@ -79,11 +79,18 @@ async function listarContasComCredito(db = pool) {
 // financeiro/planos-repository.js). Buscar por (tier, compromisso_meses,
 // ativo) é o que modalidadeSemDinheiro (src/pontos/comodato.js) já faz,
 // pelo mesmo motivo.
+// `ORDER BY` (achado na auditoria da reconstrução do painel, 23/09/2026):
+// sem ele, `LIMIT 1` não é determinístico se algum dia existir mais de um
+// plano ativo pro mesmo tier+ciclo (nada no schema impede isso — um
+// `fundador` pode coexistir com um comercial normal do mesmo tier/ciclo).
+// Mesma cautela que `financeiro/planos-repository.js#linhaAtualDoProduto`
+// já usa pro mesmo risco: nunca um fundador aqui (vagas limitadas, preço
+// twisted pra esse caso), e desempate estável por id.
 async function buscarPlanoAtivoDoTier(tier, compromissoMeses, db = pool) {
-  const { rows } = await db.query('SELECT * FROM planos WHERE tier = $1 AND compromisso_meses = $2 AND ativo LIMIT 1', [
-    tier,
-    compromissoMeses,
-  ]);
+  const { rows } = await db.query(
+    'SELECT * FROM planos WHERE tier = $1 AND compromisso_meses = $2 AND ativo AND NOT fundador ORDER BY id LIMIT 1',
+    [tier, compromissoMeses],
+  );
   return rows[0] || null;
 }
 

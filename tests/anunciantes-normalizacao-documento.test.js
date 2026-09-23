@@ -10,6 +10,7 @@ const repo = require('../src/anunciantes/repository');
 // e-mail único, e apaga no final.
 
 async function apagarConta(id) {
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
 }
 

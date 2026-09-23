@@ -22,6 +22,7 @@ async function contaDeTeste() {
 
 async function apagarConta(anuncianteId) {
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [anuncianteId]);
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM banco_horas WHERE anunciante_id = $1', [anuncianteId]);
   await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [anuncianteId]);

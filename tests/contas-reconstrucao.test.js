@@ -60,6 +60,12 @@ async function criarConta(extra = {}) {
 async function apagarConta(id) {
   await new Promise((r) => setTimeout(r, 100)); // eventos.registrar é fire-and-forget
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
+  // notificacoes/creditos_ledger (migration 079): mesmo raciocínio de
+  // eventos acima — pagamento confirmado grava notificação, e crédito de
+  // indicação vira linha de ledger; nenhuma das duas tabelas tem cascade
+  // de propósito (são histórico auditável, não descartável).
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = $1 OR origem_conta_id = $1', [id]);
   await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM comissoes WHERE anunciante_id = $1 OR vendedor_conta_id = $1', [id]);

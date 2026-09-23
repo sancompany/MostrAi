@@ -54,6 +54,7 @@ async function criarContaPonto() {
 async function apagarConta(id) {
   await new Promise((r) => setTimeout(r, 100)); // eventos.registrar é fire-and-forget
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM candidaturas WHERE conta_id = $1', [id]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
 }

@@ -25,6 +25,8 @@ const titularRoutes = require('./titular/routes');
 const bancoHorasRoutes = require('./bancohoras/routes');
 const indicacoesRoutes = require('./indicacoes/routes');
 const midiasRoutes = require('./midias/routes');
+const creditosRoutes = require('./creditos/routes');
+const eventosRoutes = require('./creditos/eventos-routes');
 
 const app = express();
 
@@ -225,6 +227,8 @@ app.use(titularRoutes);
 app.use(bancoHorasRoutes);
 app.use(indicacoesRoutes);
 app.use(midiasRoutes);
+app.use(creditosRoutes);
+app.use(eventosRoutes);
 app.use(require('./conta/modos').router);
 
 // Quem pediu página e quem pediu dado recebem coisas diferentes: navegador

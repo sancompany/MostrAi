@@ -11,6 +11,7 @@
 require('dotenv').config();
 const { conciliarAssinaturas, registrarRelato } = require('../src/financeiro/conciliacao');
 const { reavaliarTodos } = require('../src/indicacoes/aplicar');
+const { ativarBeneficiosAgendados, encerrarBeneficiosVencidos } = require('../src/financeiro/plano-administrativo');
 const comecouEm = new Date();
 
 conciliarAssinaturas()
@@ -31,6 +32,19 @@ conciliarAssinaturas()
       console.log(`indicações: ${ind.verificadas} contas com crédito · ${ind.aplicados} upgrade(s) aplicado(s)`);
     } catch (err) {
       console.error('reavaliação de upgrades por indicação falhou:', err.message);
+    }
+
+    // Ciclo de vida do benefício por créditos (migration 079): encerra o
+    // benefício vencido ANTES de ativar o agendado — um benefício que acaba
+    // de vencer libera exatamente a vaga que o `idx_planos_admin_um_ativo`
+    // exige pra outro entrar no lugar. A ordem importa.
+    try {
+      const enc = await encerrarBeneficiosVencidos();
+      console.log(`benefícios: ${enc.verificados} vencidos verificados · ${enc.encerrados} encerrado(s)`);
+      const ativ = await ativarBeneficiosAgendados();
+      console.log(`benefícios: ${ativ.verificados} agendados verificados · ${ativ.ativados} ativado(s)`);
+    } catch (err) {
+      console.error('ciclo de vida de benefícios por créditos falhou:', err.message);
     }
 
     process.exit(r.falhas.length ? 1 : 0);

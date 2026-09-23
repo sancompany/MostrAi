@@ -19,6 +19,8 @@ async function apagarConta(id) {
   // eventos.registrar é fire-and-forget (ver troca-de-plano.test.js).
   await new Promise((resolve) => setTimeout(resolve, 100));
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = $1 OR origem_conta_id = $1', [id]);
   await pool.query('DELETE FROM comissoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM assinaturas WHERE anunciante_id = $1', [id]);

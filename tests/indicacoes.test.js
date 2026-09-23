@@ -36,6 +36,8 @@ async function contaDeTeste(prefixo) {
 
 async function apagarContas(ids) {
   await pool.query('DELETE FROM indicacoes_pagas WHERE ponto_conta_id = ANY($1) OR indicado_conta_id = ANY($1)', [ids]);
+  await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = ANY($1) OR origem_conta_id = ANY($1)', [ids]);
+  await pool.query('DELETE FROM notificacoes WHERE anunciante_id = ANY($1)', [ids]);
   await pool.query('DELETE FROM cupons_ponto WHERE conta_id = ANY($1)', [ids]);
   await pool.query('DELETE FROM anunciantes WHERE id = ANY($1)', [ids]);
 }

@@ -44,9 +44,15 @@ function validadeValida(validoAte) {
 
 // Encerra as linhas de histórico ainda abertas da conta.
 async function fecharAbertos(db, contaId, motivo, adminUsuario) {
+  // `status = 'encerrado'` (migration 079) tem que andar junto de
+  // `encerrado_em` sempre — os dois eram uma coisa só até essa migration
+  // (linha aberta = `encerrado_em IS NULL`); agora que `status` também
+  // decide as travas de "no máximo 1 ativo/1 agendado por conta"
+  // (`idx_planos_admin_um_ativo`/`_um_agendado`), esquecer de atualizar um
+  // dos dois deixa a linha velha colidindo com a nova no mesmo estado.
   await db.query(
     `UPDATE planos_administrativos
-        SET encerrado_em = now(), encerrado_por = $3, encerrado_motivo = $2
+        SET encerrado_em = now(), encerrado_por = $3, encerrado_motivo = $2, status = 'encerrado'
       WHERE anunciante_id = $1 AND encerrado_em IS NULL`,
     [contaId, motivo, adminUsuario || null],
   );
@@ -159,6 +165,177 @@ async function historicoDaConta(contaId) {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Ciclo de vida do benefício por créditos (migration 079, reconstrução do
+// painel da conta, 23/09/2026)
+//
+// `conceder`/`encerrar` acima continuam os únicos dois jeitos de mudar o
+// que está gravado em `anunciantes.plano_id` por benefício — a diferença é
+// que, a partir daqui, quem decide SE aplica agora ou agenda pra depois é
+// este bloco, nunca mais quem chama.
+//
+// REGRA (pedido do dono): um ciclo pago em curso sempre termina
+// integralmente — nunca é interrompido no meio, e a conta nunca é cobrada
+// duas vezes (a assinatura de verdade continua sem renovar, cancelada por
+// quem chamou ANTES de chegar aqui — mesma rota admin de sempre). Sem
+// assinatura paga em curso, o benefício entra em vigor na hora, como
+// `conceder()` sempre fez.
+//
+// limite (deliberado, registrado aqui por decisão de escopo): retomar a
+// COBRANÇA de verdade sozinho ao fim do benefício exigiria confirmar no
+// contrato do San Checkout uma operação de pausa/retomada de assinatura que
+// este projeto ainda não tem lida na fonte (docs/erros/2026-09-14-
+// contrato-do-checkout-suposto-em-vez-de-lido.md é a lição exata sobre não
+// supor esse contrato). Por isso, quando o benefício termina e não há outro
+// agendado, a conta volta pra "sem plano" — nunca uma cobrança nova é
+// disparada sozinha. O histórico (`plano_anterior_id`/
+// `plano_anterior_valido_ate`) fica registrado pra quem for reativar saber
+// exatamente o que a conta tinha, e o card de plano no painel convida a
+// assinar de novo. Ver relatório final da sessão pra esse ponto.
+async function resgatarOuConcederBeneficio(
+  { conta, plano, validoAte, observacao, adminUsuario, origem, ledgerId },
+  dbExterno,
+) {
+  const executar = async (db) => {
+    await fecharAbertos(db, conta.id, 'substituido', adminUsuario);
+    // Mesma fórmula de "pagando em dia" de indicacoes/aplicar.js e
+    // financeiro/routes.js — um ciclo pago (não cortesia) ainda não vencido.
+    const pagandoEmDia =
+      conta.plano_id && !conta.plano_cortesia && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
+    const status = pagandoEmDia ? 'agendado' : 'ativo';
+    const { rows: historico } = await db.query(
+      `INSERT INTO planos_administrativos
+         (anunciante_id, plano_id, valido_ate, observacao, concedido_por, plano_anterior_id,
+          plano_anterior_origem, plano_anterior_valido_ate, status, ativado_em, origem, ledger_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [
+        conta.id,
+        plano.id,
+        validoAte,
+        observacao || null,
+        adminUsuario || null,
+        conta.plano_id || null,
+        origemDoPlano(conta),
+        pagandoEmDia ? conta.data_expiracao : null,
+        status,
+        pagandoEmDia ? null : new Date(),
+        origem,
+        ledgerId || null,
+      ],
+    );
+    let atualizada = conta;
+    if (status === 'ativo') {
+      const { rows } = await db.query(
+        `UPDATE anunciantes
+            SET plano_id = $2, plano_cortesia = true, cortesia_motivo = $3,
+                data_inicio_cobertura = now(), data_expiracao = $4
+          WHERE id = $1 RETURNING *`,
+        [conta.id, plano.id, observacao ? `Benefício: ${observacao}` : 'Benefício por créditos', validoAte],
+      );
+      atualizada = rows[0];
+    }
+    // 'agendado' não muda `anunciantes` agora — a conta continua no plano
+    // pago (ou sem plano, se nunca teve) até a reavaliação diária ativar.
+    return { conta: atualizada, historico: historico[0], status };
+  };
+  return dbExterno ? executar(dbExterno) : comTransacao(executar);
+}
+
+// Reavaliação diária (mesma rotina de sempre, scripts/conciliar.js) — duas
+// passadas independentes, cada uma resolvendo um lado do ciclo de vida.
+
+// 1) Ativa benefício agendado cujo ciclo pago anterior já passou. Não confia
+// só no `plano_anterior_valido_ate` gravado: reconfere contra
+// `anunciantes.data_expiracao` AGORA, porque a mesma trava que
+// `encerrar(motivo='vencido')` já usa vale aqui — um webhook pode ter
+// renovado a cobertura paga entre o agendamento e hoje, e nesse caso o
+// benefício espera mais um ciclo, não atropela.
+async function ativarBeneficiosAgendados() {
+  // `ha.plano_id` vem apelidado (`beneficio_plano_id`) de propósito: sem
+  // isso colidiria com `anunciantes.plano_id` (o plano ATUAL da conta, não
+  // o do benefício agendado) — os dois se chamam igual, e `a.*` depois de
+  // `ha.plano_id` na mesma SELECT sobrescreveria silenciosamente.
+  const { rows: pendentes } = await pool.query(
+    `SELECT ha.id AS historico_id, ha.anunciante_id, ha.plano_id AS beneficio_plano_id, ha.valido_ate, ha.observacao
+       FROM planos_administrativos ha
+      WHERE ha.status = 'agendado'`,
+  );
+  let ativados = 0;
+  for (const linha of pendentes) {
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+      const { rows: trava } = await cliente.query(
+        `SELECT * FROM anunciantes WHERE id = $1
+           AND NOT (plano_id IS NOT NULL AND NOT plano_cortesia AND data_expiracao > now())
+           FOR UPDATE`,
+        [linha.anunciante_id],
+      );
+      if (!trava.length) {
+        // Ainda pagando em dia (renovou depois do agendamento) — tenta de
+        // novo no próximo dia, sem mexer em nada agora.
+        await cliente.query('ROLLBACK');
+        continue;
+      }
+      await cliente.query(
+        `UPDATE anunciantes SET plano_id=$2, plano_cortesia=true,
+                cortesia_motivo=$3, data_inicio_cobertura=now(), data_expiracao=$4 WHERE id=$1`,
+        [
+          linha.anunciante_id,
+          linha.beneficio_plano_id,
+          linha.observacao ? `Benefício: ${linha.observacao}` : 'Benefício por créditos',
+          linha.valido_ate,
+        ],
+      );
+      await cliente.query(`UPDATE planos_administrativos SET status='ativo', ativado_em=now() WHERE id=$1`, [
+        linha.historico_id,
+      ]);
+      await cliente.query('COMMIT');
+      ativados += 1;
+    } catch (err) {
+      await cliente.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      cliente.release();
+    }
+  }
+  return { verificados: pendentes.length, ativados };
+}
+
+// 2) Encerra benefício ATIVO cujo `valido_ate` já passou. Se houver um
+// próximo AGENDADO pra mesma conta, esse dia vira o dia dele de ativar (a
+// passada 1 acima, no mesmo job diário, cobre isso: encerra aqui, ativa lá
+// na volta seguinte — nunca no mesmo instante, sempre no próximo dia;
+// aceitável porque o benefício expira à meia-noite do fuso do servidor,
+// mesma granularidade de `valido_ate date` que todo o resto do projeto usa
+// pra plano administrativo).
+async function encerrarBeneficiosVencidos() {
+  const { rows: vencidos } = await pool.query(
+    `SELECT ha.id, ha.anunciante_id FROM planos_administrativos ha
+      WHERE ha.status = 'ativo' AND ha.valido_ate < current_date`,
+  );
+  let encerrados = 0;
+  for (const linha of vencidos) {
+    const conta = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [linha.anunciante_id]);
+    if (!conta.rows[0]) continue;
+    // Só encerra se a conta ainda está no MESMO plano que este benefício
+    // concedeu (mesma cautela de encerrar(motivo='vencido') pra plano
+    // pago — algo pode ter trocado o plano da conta nesse meio-tempo).
+    await comTransacao(async (db) => {
+      await db.query(
+        `UPDATE planos_administrativos SET status='encerrado', encerrado_em=now(), encerrado_motivo='vencido' WHERE id=$1`,
+        [linha.id],
+      );
+      await db.query(
+        `UPDATE anunciantes SET plano_id=NULL, plano_cortesia=false, cortesia_motivo=NULL, data_expiracao=NULL WHERE id=$1`,
+        [linha.anunciante_id],
+      );
+    });
+    encerrados += 1;
+  }
+  return { verificados: vencidos.length, encerrados };
+}
+
 module.exports = {
   TIERS_COMERCIAIS,
   origemDoPlano,
@@ -166,4 +343,7 @@ module.exports = {
   conceder,
   encerrar,
   historicoDaConta,
+  resgatarOuConcederBeneficio,
+  ativarBeneficiosAgendados,
+  encerrarBeneficiosVencidos,
 };
