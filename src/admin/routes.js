@@ -6,10 +6,15 @@ const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
 const pagamentosPontoRepo = require('../pontos/pagamentos-repository');
+const dispositivosRepo = require('../dispositivos/repository');
+const { valorMensalDaConta } = require('../financeiro/san-checkout');
 const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
 
-const HORAS_OFFLINE_ALERTA = 2;
+// HORAS_OFFLINE_ALERTA morreu como filtro fixo de "sem heartbeat" (rodada
+// horário operacional da tela, 23/09/2026) — virou TOLERANCIA_OFFLINE_MS
+// dentro de src/lib/status-tela.js, a única régua de "sem sinal" agora
+// (soma horário de funcionamento + modo da tela, não só o relógio).
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
 // constante igual pra todo ponto, ver docs/erros/2026-09-amortizacao-constante-no-codigo.md
 
@@ -108,9 +113,39 @@ router.get('/admin/metrica', async (_req, res) => {
   res.json(await metrica.consultar());
 });
 
-router.get('/admin/resumo', async (_req, res) => {
-  const limiteOffline = new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000);
+// Função pura, separada da rota só pra dar pra testar sem servidor (mesmo
+// motivo de sempre: lógica não trivial de dinheiro ganha uma checagem
+// executável). Cada linha de `receita.rows` já traz conta + plano + a
+// assinatura ativa (se houver) juntos — aqui só soma por ciclo, chamando
+// `valorMensalDaConta` linha a linha pra respeitar promoção travada,
+// desconto de parceiro e crédito de comodato (seção 6.1 do pedido).
+function agregarReceitaPorCiclo(linhas) {
+  // Ciclo sem nenhuma conta pagando não vem linha nenhuma do banco, por
+  // isso o default de 0 pra cada um (1/3/6/12 meses).
+  const receitaPorCiclo = { 1: 0, 3: 0, 6: 0, 12: 0 };
+  for (const r of linhas) {
+    const valor = valorMensalDaConta(
+      {
+        status: r.status,
+        papeis: r.papeis,
+        credito_comodato_mensal: r.credito_comodato_mensal,
+        parceiro_desconto_percentual: r.parceiro_desconto_percentual,
+        parceiro_compromisso_minimo: r.parceiro_compromisso_minimo,
+      },
+      {
+        tier: r.tier,
+        valor_mensal: r.valor_mensal,
+        valor_mensal_cheio: r.valor_mensal_cheio,
+        compromisso_meses: r.compromisso_meses,
+      },
+      { promocao_valido_ate: r.promocao_valido_ate, promocao_desconto_percentual: r.promocao_desconto_percentual },
+    );
+    receitaPorCiclo[r.compromisso_meses] = (receitaPorCiclo[r.compromisso_meses] || 0) + valor;
+  }
+  return receitaPorCiclo;
+}
 
+router.get('/admin/resumo', async (_req, res) => {
   const [
     receita,
     pontosAtivos,
@@ -119,13 +154,12 @@ router.get('/admin/resumo', async (_req, res) => {
     filas,
     pontosPorStatus,
     anunciantesPorSituacao,
-    offline,
+    telasComProblemaDeSinal,
     faturamento,
     exibicoes,
     novos,
     conversao,
     repassesPendentes,
-    comissoesPendentes,
     trocasPendentes,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
@@ -135,19 +169,34 @@ router.get('/admin/resumo', async (_req, res) => {
     // métrica principal do projeto — mentia pra cima em todas as três.
     // `status` deixou de ter esse sentido (virou só comum/parceiro,
     // 16/09/2026) — quem tem plano de verdade é quem tem `plano_id`.
-    // Agrupado por ciclo (compromisso_meses) desde 21/09/2026, pedido do
-    // dono: a Visão geral mostra um card por ciclo (mensal/trimestral/
-    // semestral/anual) além do total — a soma dos grupos já É o total, sem
-    // precisar de uma segunda consulta.
+    //
+    // Virou consulta de LINHAS, não de soma pronta (revisão final da Visão
+    // geral, 23/09/2026, seção 6.1 do pedido): `p.valor_mensal` sozinho é só
+    // o preço de TABELA do ciclo — não carrega promoção travada na adesão
+    // (`assinaturas.promocao_*`, snapshot da rodada de Ofertas/Promoções),
+    // nem o desconto de parceiro, nem o crédito de comodato da conta
+    // (`credito_comodato_mensal`). Somar `valor_mensal` direto inflava o MRR
+    // de qualquer conta com um desses três. `valorMensalDaConta()` (mesma
+    // função que já monta a cobrança de verdade em san-checkout.js) resolve
+    // os três — reaproveitada aqui, não reimplementada. Plano Inicial/Básico
+    // já têm `valor_mensal = 0` na tabela, então nem precisam de exclusão à
+    // parte: entram na conta e somam zero.
     pool.query(
-      `SELECT p.compromisso_meses, COALESCE(SUM(p.valor_mensal), 0) AS total FROM anunciantes a
+      `SELECT a.id, a.status, a.papeis, a.credito_comodato_mensal,
+              a.parceiro_desconto_percentual, a.parceiro_compromisso_minimo,
+              p.tier, p.valor_mensal, p.valor_mensal_cheio, p.compromisso_meses,
+              s.promocao_valido_ate, s.promocao_desconto_percentual
+       FROM anunciantes a
        JOIN planos p ON p.id = a.plano_id
+       LEFT JOIN LATERAL (
+         SELECT promocao_valido_ate, promocao_desconto_percentual FROM assinaturas
+         WHERE anunciante_id = a.id AND status = 'ativa' ORDER BY created_at DESC LIMIT 1
+       ) s ON true
        WHERE a.plano_id IS NOT NULL
          AND NOT a.suspenso
          AND NOT a.plano_cortesia
          AND a.excluido_em IS NULL
-         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)
-       GROUP BY p.compromisso_meses`,
+         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`,
     ),
     pool.query(
       `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,
@@ -181,6 +230,7 @@ router.get('/admin/resumo', async (_req, res) => {
         -- inteiro, e emissão manual não existe mais na UI.
         (SELECT COUNT(*) FROM candidaturas WHERE status NOT IN ('aprovada', 'recusada')) AS candidaturas,
         (SELECT COUNT(*) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos,
+        (SELECT COALESCE(SUM(valor_a_estornar), 0) FROM arrependimentos WHERE status = 'pendente') AS arrependimentos_total,
         -- Mensagem do formulário de contato ainda sem resposta. Entra como
         -- fila porque /contato.html é o canal declarado do titular de dados
         -- (LGPD art. 18) — pedido com prazo legal não pode depender de
@@ -209,12 +259,9 @@ router.get('/admin/resumo', async (_req, res) => {
                   plano_cortesia, COUNT(*)::int AS qtd
                 FROM anunciantes WHERE excluido_em IS NULL
                 GROUP BY situacao, plano_cortesia`),
-    pool.query(
-      `SELECT COUNT(*)::int AS qtd FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-       WHERE d.status = 'ativo' AND p.status = 'em_operacao'
-         AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)`,
-      [limiteOffline],
-    ),
+    // Só telas em sem_sinal/erro_do_player (src/lib/status-tela.js) — nunca
+    // fora_do_horario nem aguardando_primeiro_sinal, que não são falha.
+    dispositivosRepo.listarComProblemaDeSinal(),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
        FROM cobrancas_confirmadas
@@ -251,19 +298,12 @@ router.get('/admin/resumo', async (_req, res) => {
     // duas consultas divergindo.
     pagamentosPontoRepo.listarPendentesDoMes(),
     pool.query(
-      `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(comissao_valor), 0) AS total
-       FROM comissoes WHERE pago_em IS NULL`,
-    ),
-    pool.query(
       `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor), 0) AS total FROM pedidos_avulsos WHERE status = 'pendente'`,
     ),
   ]);
 
   const ultima = await ultimaConciliacao();
-  // Um valor por ciclo (1/3/6/12 meses); ciclo sem nenhuma conta pagando não
-  // vem linha nenhuma do banco, por isso o default de 0 pra cada um.
-  const receitaPorCiclo = { 1: 0, 3: 0, 6: 0, 12: 0 };
-  for (const r of receita.rows) receitaPorCiclo[r.compromisso_meses] = Number(r.total);
+  const receitaPorCiclo = agregarReceitaPorCiclo(receita.rows);
   const receitaMensal = Object.values(receitaPorCiclo).reduce((soma, v) => soma + v, 0);
   const custoPontosMensal = Number(pontosAtivos.rows[0].total);
   const amortizacaoMensal = Number(amortizacao.rows[0].amortizacao);
@@ -272,21 +312,37 @@ router.get('/admin/resumo', async (_req, res) => {
   const contasPagantes = Number(conversao.rows[0].pagantes);
   const percentualPagantes = totalContas > 0 ? (contasPagantes / totalContas) * 100 : null;
 
+  // Pendências financeiras (revisão final da Visão geral, 23/09/2026,
+  // seção 3/4 do pedido): repasse pendente + troca de plano com problema +
+  // devolução pendente viram UM card agregado ("Financeiro / N · R$ X"),
+  // não mais três cards separados. Comissão de vendedor SAIU da conta — o
+  // conceito de vendedor não é mais parte do pedido; a tabela/rota
+  // `comissoes` continua existindo dentro de Contas, só não soma mais aqui.
+  const repassesPendentesInfo = {
+    qtd: repassesPendentes.length,
+    total: repassesPendentes.reduce((s, r) => s + Number(r.valor_pago_mensal), 0),
+  };
+  const trocasPendentesInfo = {
+    qtd: Number(trocasPendentes.rows[0].qtd),
+    total: Number(trocasPendentes.rows[0].total),
+  };
+  const devolucoesPendentesInfo = {
+    qtd: Number(filas.rows[0].arrependimentos),
+    total: Number(filas.rows[0].arrependimentos_total),
+  };
+
   res.json({
     // Filas que pedem ação do admin — viram os alertas do topo da tela.
     filas: {
       criativos: Number(filas.rows[0].criativos),
       eventos: Number(filas.rows[0].eventos),
       candidaturas: Number(filas.rows[0].candidaturas),
-      // Não existe emissão fiscal automática ainda (a manual saiu da UI na
-      // rodada Financeiro). Quando existir, aqui entra a contagem de falhas
-      // REAIS da automação — até lá, zero honesto, nunca um erro inventado.
-      falhasFiscais: 0,
-      // Dinheiro que a lei manda devolver e ainda não voltou. É a única fila
-      // com prazo legal correndo, por isso entra como urgente na visão geral.
+      // Dinheiro que a lei manda devolver e ainda não voltou. Continua exposta
+      // solta (além de entrar no agregado financeiro) porque é a única com
+      // prazo legal correndo — o alerta de urgência olha só pra ela.
       arrependimentos: Number(filas.rows[0].arrependimentos),
       contato: Number(filas.rows[0].contato),
-      offline: offline.rows[0].qtd,
+      offline: telasComProblemaDeSinal.length,
       bancohoras: Number(filas.rows[0].bancohoras),
       pontosocupados: Number(filas.rows[0].pontosocupados),
     },
@@ -309,20 +365,16 @@ router.get('/admin/resumo', async (_req, res) => {
       percentualPagantes,
       totalContas,
       contasPagantes,
-      // Pendências financeiras (rodada Financeiro, 22/09/2026) — alimentam o
-      // resumo operacional da Visão geral, que mostra também o zero desde a
-      // rodada de integridade (23/09/2026): contador que some não se distingue
-      // de contador que deixou de carregar. Resolvido sai da conta, histórico
-      // persiste na tabela.
-      repassesPendentes: {
-        qtd: repassesPendentes.length,
-        total: repassesPendentes.reduce((s, r) => s + Number(r.valor_pago_mensal), 0),
+      repassesPendentes: repassesPendentesInfo,
+      trocasPendentes: trocasPendentesInfo,
+      devolucoesPendentes: devolucoesPendentesInfo,
+      // O card único da Visão geral (seção 3/4) — soma dos três acima.
+      // Detalhe de cada um mora na Central Financeira (`#financeiro`), aba a
+      // aba, não aqui.
+      pendenciasFinanceiras: {
+        qtd: repassesPendentesInfo.qtd + trocasPendentesInfo.qtd + devolucoesPendentesInfo.qtd,
+        total: repassesPendentesInfo.total + trocasPendentesInfo.total + devolucoesPendentesInfo.total,
       },
-      comissoesPendentes: {
-        qtd: Number(comissoesPendentes.rows[0].qtd),
-        total: Number(comissoesPendentes.rows[0].total),
-      },
-      trocasPendentes: { qtd: Number(trocasPendentes.rows[0].qtd), total: Number(trocasPendentes.rows[0].total) },
     },
     rede: {
       pontosAtivos: Number(pontosAtivos.rows[0].qtd),
@@ -364,23 +416,26 @@ router.get('/admin/resumo', async (_req, res) => {
           abortou: ultima.abortou,
         }
       : null,
-    horasOfflineAlerta: HORAS_OFFLINE_ALERTA,
   });
 });
 
-// Alerta de ponto offline — a aba "Pontos" filtra pela mesma regra usando
-// ultima_vez_online + horasOfflineAlerta do /admin/resumo; isso aqui fica
-// como a lista pronta, pra quando alguém quiser só ela.
+// Alerta de tela com sinal comprometido — a aba "Rede" usa a mesma lista;
+// isso aqui fica como o endpoint pronto, pra quando alguém quiser só ela.
+// Substituiu a checagem fixa "sem heartbeat há 2h" (rodada horário
+// operacional da tela, 23/09/2026): agora só entra quem deveria estar
+// online e não está (src/lib/status-tela.js).
 router.get('/admin/pontos-offline', async (_req, res) => {
-  const { rows } = await pool.query(
-    `SELECT d.id, d.apelido, d.ultima_vez_online, p.id AS ponto_id, p.nome AS ponto_nome
-     FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.status = 'ativo' AND p.status = 'em_operacao'
-       AND (d.ultima_vez_online IS NULL OR d.ultima_vez_online < $1)
-     ORDER BY d.ultima_vez_online NULLS FIRST`,
-    [new Date(Date.now() - HORAS_OFFLINE_ALERTA * 3600 * 1000)],
+  const telas = await dispositivosRepo.listarComProblemaDeSinal();
+  res.json(
+    telas.map((t) => ({
+      id: t.id,
+      apelido: t.apelido,
+      ultima_vez_online: t.ultima_vez_online,
+      ponto_id: t.ponto_id,
+      ponto_nome: t.ponto_nome,
+      situacaoOperacional: t.situacaoOperacional,
+    })),
   );
-  res.json(rows);
 });
 
 // Custos fixos da operação — entram na margem do resumo.
@@ -412,5 +467,10 @@ router.delete('/admin/custos-fixos/:id', async (req, res) => {
   await pool.query('DELETE FROM custos_fixos WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 });
+
+// Anexado no próprio router (não num export nomeado): server.js espera
+// `require('./admin/routes')` como o router pronto, sem quebrar isso só
+// pra dar um gancho de teste pra uma função pura.
+router.agregarReceitaPorCiclo = agregarReceitaPorCiclo;
 
 module.exports = router;

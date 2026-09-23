@@ -6,6 +6,7 @@ const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { limiteTentativas } = require('../lib/limite-tentativas');
+const horarioSemanal = require('../lib/horario-semanal');
 
 // ---------------------------------------------------------------------------
 // Admin
@@ -26,6 +27,7 @@ router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
 
 router.patch('/admin/dispositivos/:id', async (req, res) => {
   try {
+    if ('horario_semanal' in req.body) req.body.horario_semanal = horarioSemanal.validar(req.body.horario_semanal);
     const antes = await repo.buscarPorId(req.params.id);
     const dispositivo = await repo.atualizar(req.params.id, req.body);
     if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });

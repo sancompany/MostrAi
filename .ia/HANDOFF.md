@@ -3,7 +3,48 @@
 ## Updated
 2026-09-23
 
-## Reconstrução final de Contas + Categorias (23/09/2026, este agente)
+## Revisão final da Visão geral do admin + fluxos internos (23/09/2026, este agente)
+Pedido do dono (17 seções): fechar a V1 do ADMIN com revisão estrutural da
+Visão geral (2 colunas, muito mais compacta) e dos fluxos que ela abre.
+Detalhe completo em `docs/PENDENCIAS.md` (seção "Revisão final da Visão
+geral e fluxos internos — 23/09/2026", final do arquivo) — resumo aqui:
+
+- **Régua única de status de tela** (migration 074, `src/lib/status-tela.js`):
+  `modo_horario` (`ponto`/`24h`/`personalizado`) por tela, `horario_semanal`
+  próprio no modo personalizado (editável na ficha do ponto). Substitui a
+  checagem fixa "2h sem heartbeat" nas 2 telas do ADMIN (não tocou as 2
+  cópias em `public/anunciante/painel.page.js`, fora de escopo desta
+  rodada). Player manda `{erro}` no heartbeat quando algo real falha.
+- **MRR corrigido**: `src/admin/routes.js#agregarReceitaPorCiclo` chama
+  `valorMensalDaConta()` por conta (a mesma função da cobrança real) em vez
+  de somar `planos.valor_mensal` cru — promoção travada, desconto de
+  parceiro e crédito de comodato agora entram na conta.
+- **Comissão de vendedor saiu** do card financeiro da Visão geral e da aba
+  da Central Financeira (fica só Cobranças/Repasses/Trocas/Devoluções) —
+  backend/tabela/Contas intactos, só parou de somar/aparecer aqui.
+- **Financeiro virou 1 card** (receita recorrente + recebido no mês +
+  conciliação discreta + pendências agregadas), Mensagens ganhou abas
+  Pendentes/Histórico, Pendências operacionais caiu de 8 pra 4 cards,
+  indicadores renomeados (Novas contas / Conversão cadastro → pagamento /
+  Alcance estimado), "Pontos por status" virou resumo de uma linha.
+  Todo módulo `oculto: true` (Financeiro/Mensagens/Aprovação/Vendedores)
+  ganhou link "← Visão geral".
+- **Layout final**: `.visao-geral-colunas` (2 colunas >900px, empilha
+  sozinho abaixo disso).
+- **Bug corrigido** (já reportado antes, ver rodada de integridade abaixo):
+  ponto sem tela inflava ocupação comercial — `ocupacaoPorPonto`
+  (`src/midias/repository.js`) agora só soma `segundos_por_hora` de ponto
+  `em_operacao`.
+- `npm run check`: 204/204 testes, lint/format limpos (só os 3 avisos
+  antigos). Testado no navegador via Playwright headless (login, Visão
+  geral com/sem dado, Mensagens, Central Financeira, editor de horário da
+  tela salvando de verdade) — screenshots em desktop 1400px e mobile
+  420px, sem overflow, sem erro de console novo.
+- **Fora de escopo, de propósito**: `painel.page.js` do anunciante não foi
+  tocado; "Recebido no mês" não mudou de nome no backend (`receitaConfirmadaMes`),
+  só o rótulo na UI.
+
+## Reconstrução final de Contas + Categorias (23/09/2026, outro agente, mergeado nesta branch)
 Pedido do dono (63 partes): toda conta já pode anunciar; Central de Contas
 e ficha única; plano administrativo como benefício; criativos e pontos na
 ficha; suspensão que tira acesso; Vendedor/Parceiro fora da experiência;

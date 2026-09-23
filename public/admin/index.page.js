@@ -480,6 +480,17 @@ const ALIASES_ANTIGOS = {
   bancohoras: 'rede/pontos',
   // "Anunciantes" virou a aba "Contas" de Contas (rodada Contas, 22/09/2026).
   anunciantes: 'contas/contas',
+  // Comissões saiu de aba da Central Financeira (revisão final da Visão
+  // geral, 23/09/2026) e, na mesma data, a reconstrução de Contas + Categorias
+  // (outro agente, mergeada nesta branch) removeu de vez a lista global de
+  // vendedores (`renderVendedores`/módulo `vendedores`) — vendedor/parceiro
+  // saiu de toda a UI, o cadastro de comissões da conta agora vive na ficha
+  // dela em Contas. Sem alias explícito daqui pra baixo: `#comissoes`,
+  // `#vendedores` e `#financeiro/comissoes` caem sozinhos em `visaogeral`
+  // (resolverAlvo já degrada assim quando `buscarModulo()` não acha o id —
+  // mesmo padrão do alias "custos"). Backend (`GET/PATCH /admin/comissoes`,
+  // `/admin/vendedores`) e as tabelas continuam intactos, só sem tela que
+  // os chame.
   // "Planos" virou "Ofertas" (reformulação comercial, 22/09/2026) —
   // Arquivados e Benefícios não têm mais aba própria, caem em Preços (mesmo
   // padrão de telas/ocupação acima).
@@ -497,7 +508,6 @@ const ALIASES_ANTIGOS = {
   cobrancas: 'financeiro/cobrancas',
   trocas: 'financeiro/trocas',
   arrependimentos: 'financeiro/devolucoes',
-  comissoes: 'financeiro/comissoes',
   pagamentospontos: 'financeiro/repasses',
 };
 // Reverso: de "módulo/aba" novo pro id antigo — só pra reaproveitar o texto
@@ -585,8 +595,19 @@ const MODULOS = [
   // pendência mora na Visão geral (PENDENCIAS_OPERACIONAIS) e leva pra cá. `oculto`
   // tira o botão do menu sem tirar o módulo de `buscarModulo`, então a rota
   // (`#mensagens`, ou o hash antigo `#contato` via ALIASES_ANTIGOS) continua
-  // funcionando normalmente.
-  { id: 'mensagens', nome: 'Mensagens', oculto: true, render: renderContato },
+  // funcionando normalmente. Abas Pendentes/Histórico (revisão final da
+  // Visão geral, 23/09/2026, seção 5) — resolverAlvo cai na primeira aba
+  // (Pendentes) sozinho quando o hash não pede uma aba específica, então o
+  // clique vindo da Visão geral já abre onde sempre abriu.
+  {
+    id: 'mensagens',
+    nome: 'Mensagens',
+    oculto: true,
+    abas: [
+      { id: 'pendentes', nome: 'Pendentes', fila: 'contato', render: renderMensagensPendentes },
+      { id: 'historico', nome: 'Histórico', render: renderMensagensHistorico },
+    ],
+  },
   // Financeiro deixou de ser grupo próprio da sidebar (rodada Financeiro,
   // 22/09/2026, pedido do dono: "normalidade não ocupa espaço, pendência
   // aparece") — Receitas/Repasses/Custos como páginas permanentes saíram.
@@ -595,15 +616,20 @@ const MODULOS = [
   // por clique. `oculto` mantém a rota (`#financeiro/repasses` etc.) sem
   // nenhum botão na sidebar — mesmo padrão de "mensagens"/"vendedores".
   {
+    // Comissões saiu das abas (revisão final da Visão geral, 23/09/2026,
+    // pedido do dono: "o conceito de vendedor foi retirado do projeto").
+    // `_renderFilaComissoes` e a tabela `comissoes` continuam existindo —
+    // vendedor/comissão ainda vive dentro de Contas (rodada Contas,
+    // 22/09/2026) e não foi tocado aqui; só a Central Financeira parou de
+    // expor um separado pra ela. Ver ALIASES_ANTIGOS pro hash antigo.
     id: 'financeiro',
     nome: 'Financeiro',
     oculto: true,
     abas: [
+      { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
       { id: 'repasses', nome: 'Repasses', render: renderFilaRepasses },
-      { id: 'comissoes', nome: 'Comissões', render: renderFilaComissoes },
       { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
       { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
-      { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
     ],
   },
   // Último item de propósito (rodada Navegação, 22/09/2026): Mídia Mostraí é
@@ -620,6 +646,9 @@ const SUBTITULOS = {
   criativos: 'Anúncios enviados pelos anunciantes esperando aprovação antes de entrar no ar.',
   candidaturas: 'Pedidos pra ter um ponto, de dentro do próprio painel. Aprovado vira ponto na hora.',
   contato: 'Quem escreveu pelo site — também é o canal de pedido de dados pessoais, com prazo legal pra responder.',
+  'mensagens/pendentes':
+    'Quem escreveu pelo site e ainda espera resposta — também é o canal de pedido de dados pessoais, com prazo legal pra responder.',
+  'mensagens/historico': 'Mensagens já respondidas — só consulta, a resposta em si aconteceu por fora.',
   pontos:
     'Comércios da rede: quem são, onde ficam e quantas telas têm. Abra um ponto pra ver telas, ocupação e editar o que é dele.',
   anunciantes:
@@ -721,7 +750,12 @@ function resolverAlvo(alvoBruto) {
 
 function subtituloDe(moduloId, abaId) {
   const chave = abaId ? `${moduloId}/${abaId}` : moduloId;
-  return SUBTITULOS[ALIAS_REVERSO[chave] || moduloId] || '';
+  // Preferência: alias legado revertido (module/aba novo é bem mais recente
+  // que a frase em si, ex. "rede/pontos" -> "pontos") e só then a própria
+  // chave — sem isso uma aba nova sem alias antigo (ex. "mensagens/
+  // pendentes", seção 5 do pedido, 23/09/2026) nunca achava o SUBTITULOS
+  // que tem exatamente o nome dela.
+  return SUBTITULOS[ALIAS_REVERSO[chave] || chave] || '';
 }
 
 // Módulo sem abas (Anunciantes, Vendedores, Custos, Pendências) renderiza
@@ -778,6 +812,11 @@ async function irPara(alvoBruto, forcarResumo) {
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.modulo === moduloId));
   document.getElementById('tituloSecao').textContent = modulo.nome;
   document.getElementById('subSecao').textContent = subtituloDe(moduloId, abaId);
+  // Rota interna sem sidebar (Mensagens, Financeiro, Aprovação, Vendedores)
+  // só se chega por um card da Visão geral — sem ela na lista de módulos,
+  // sem esse link não haveria como voltar (revisão final da Visão geral,
+  // 23/09/2026, seção 13 do pedido).
+  document.getElementById('voltarVisaoGeral').hidden = !modulo.oculto;
   if (location.hash !== `#${canonico}`) location.hash = canonico;
 
   if (!RESUMO || forcarResumo) {
@@ -886,7 +925,10 @@ api('/admin/resumo').then((r) => {
 //   desta mesma Visão geral — `rolar` desce até ela em vez de navegar pra
 //   Rede/Pontos, onde o botão Liberar não existe.
 const ALERTAS = [
-  { fila: 'offline', aba: 'telas', texto: 'tela(s) ativas sem dar sinal', urgente: true },
+  // "offline" só conta sem_sinal/erro_do_player (src/lib/status-tela.js) —
+  // tela fora do horário de funcionamento ou nunca instalada não é falha e
+  // não entra aqui (revisão final da Visão geral, 23/09/2026).
+  { fila: 'offline', aba: 'telas', texto: 'tela(s) deveriam estar operando e não estão', urgente: true },
   {
     fila: 'bancohoras',
     texto: 'saldo(s) do banco de horas esperando decisão',
@@ -898,30 +940,25 @@ const ALERTAS = [
 // Resumo operacional FIXO (rodada de integridade, 23/09/2026, pedido do
 // dono): mostra o zero de propósito — um contador que some não se distingue
 // de um contador que deixou de carregar. Cada linha usa exatamente a mesma
-// definição da tela de destino (mesma fila de `/admin/resumo`). `forte`:
-// devolução tem prazo legal correndo (CDC art. 49), por isso é o único item
-// que ganha destaque forte quando > 0; o resto ganha destaque moderado.
+// definição da tela de destino (mesma fila de `/admin/resumo`).
+//
+// 4 cards, não 8 (revisão final da Visão geral, 23/09/2026, seção 3 do
+// pedido): Comissões e Falhas fiscais saíram — "o conceito de vendedor foi
+// retirado do projeto", e falha fiscal nunca teve automação nenhuma que
+// pudesse falhar de verdade. Repasses/Trocas/Devoluções deixaram de ser
+// cards próprios e viram UM "Financeiro" agregado (financeiro.
+// pendenciasFinanceiras, já somado no backend) — clique abre a Central
+// Financeira, que aí sim detalha cada fila na aba dela.
 const PENDENCIAS_OPERACIONAIS = [
   { nome: 'Candidaturas', aba: 'rede/candidaturas', qtd: (r) => r.filas?.candidaturas },
   { nome: 'Criativos', aba: 'aprovacao', qtd: (r) => r.filas?.criativos },
   { nome: 'Mensagens', aba: 'mensagens', qtd: (r) => r.filas?.contato },
   {
-    nome: 'Repasses',
+    nome: 'Financeiro',
     aba: 'financeiro/repasses',
-    qtd: (r) => r.financeiro?.repassesPendentes?.qtd,
-    valor: (r) => r.financeiro?.repassesPendentes?.total,
+    qtd: (r) => r.financeiro?.pendenciasFinanceiras?.qtd,
+    valor: (r) => r.financeiro?.pendenciasFinanceiras?.total,
   },
-  {
-    nome: 'Comissões',
-    aba: 'financeiro/comissoes',
-    qtd: (r) => r.financeiro?.comissoesPendentes?.qtd,
-    valor: (r) => r.financeiro?.comissoesPendentes?.total,
-  },
-  { nome: 'Trocas', aba: 'financeiro/trocas', qtd: (r) => r.financeiro?.trocasPendentes?.qtd },
-  { nome: 'Devoluções', aba: 'financeiro/devolucoes', qtd: (r) => r.filas?.arrependimentos, forte: true },
-  // Sem destino: não existe automação fiscal ainda, então não há fila pra
-  // abrir. O backend devolve 0 fixo até ela existir.
-  { nome: 'Falhas fiscais', qtd: (r) => r.filas?.falhasFiscais },
 ];
 
 function painelPendenciasOperacionais(resumo) {
@@ -942,10 +979,11 @@ function painelPendenciasOperacionais(resumo) {
     </div>`;
 }
 
-// `paraAba`: quando informado, cada linha vira botão que navega pra lá com
-// o status já filtrado (ver FILTRO_PONTOS_STATUS/data-status-clique, uma
-// linha abaixo). Sem isso, continua puro texto, como sempre foi.
-function barrasHorizontais(linhas, mapa, paraAba = null) {
+// `_` (revisão final da Visão geral, 23/09/2026, seção 9 do pedido): a
+// seção grande com barra horizontal por status de ponto saiu — virou resumo
+// de uma linha (`resumoPontosCompacto`, mais abaixo). Fica marcada como
+// morta, não apagada (`paraAba` era só usado por esta chamada).
+function _barrasHorizontais(linhas, mapa, paraAba = null) {
   if (!linhas.length) return '<p class="empty-state u-py-8">Nada cadastrado ainda.</p>';
   const max = Math.max(...linhas.map((l) => l.qtd)) || 1;
   const tag = paraAba ? 'button' : 'div';
@@ -961,17 +999,46 @@ function barrasHorizontais(linhas, mapa, paraAba = null) {
     .join('')}</div>`;
 }
 
-// Linha da conciliação diária na Visão geral. Ela é o que salva quem pagou e
-// cujo webhook se perdeu; sem esta linha, não havia onde responder "ela rodou
-// hoje?" — e o cron ainda está por configurar no Northflank.
-function linhaConciliacao(c) {
+// Resumo compacto de pontos por status (substitui a barra horizontal acima,
+// seção 9 do pedido): "3 pontos · 1 ativo · 2 aguardando instalação · 1
+// tela em operação", cada status clicável (mesmo `data-status-clique` de
+// sempre, filtra a aba Pontos). `rede.telasAtivas` já é só tela com status
+// 'ativo' EM ponto 'em_operacao' (src/admin/routes.js) — é exatamente
+// "tela em operação", não "tela cadastrada".
+function resumoPontosCompacto(rede) {
+  const porStatus = Object.fromEntries((rede.pontosPorStatus || []).map((r) => [r.status, Number(r.qtd)]));
+  const total = Object.values(porStatus).reduce((soma, v) => soma + v, 0);
+  const partes = Object.keys(PONTO_STATUS)
+    .filter((s) => porStatus[s])
+    .map(
+      (s) =>
+        `<button type="button" class="chip-resumo" data-status-clique="${s}">${porStatus[s]} ${PONTO_STATUS[s].toLowerCase()}</button>`,
+    )
+    .join('');
+  const telas = Number(rede.telasAtivas) || 0;
+  return `
+    <div class="panel u-mb-16">
+      <div class="panel-head"><h3>Pontos</h3></div>
+      <p class="resumo-pontos u-m-0"><b>${total}</b> ponto${total === 1 ? '' : 's'}${partes ? ` · ${partes}` : ''} ·
+        <b>${telas}</b> tela${telas === 1 ? '' : 's'} em operação</p>
+    </div>`;
+}
+
+// Conciliação diária (seção 10 do pedido, 23/09/2026): saudável vira uma
+// linha discreta DENTRO do card Financeiro (`.resumo`) — "normalidade não
+// ocupa espaço". Só sai um alerta de largura cheia (`.alerta`) quando
+// atrasada ou com falha real — junto dos outros alertas reais do topo, que
+// é o único lugar da tela reservado pra exceção.
+function conciliacaoInfo(c) {
   if (!c) {
     // `.alerta` (singular, laranja) — isto é um aviso, não um "tudo em dia":
-    // a rede de segurança de quem paga nunca rodou. Achado na varredura
-    // visual de 21/09/2026: usava `.tudo-em-dia` (verde), a cor errada pro
-    // que a frase diz.
-    return `<div class="alerta u-mb-20 u-cursor-default"><b>A conciliação nunca rodou por aqui.</b>
-      Ela é a rede de segurança de quem paga e cujo aviso do Checkout se perde. Rode <code>npm run conciliar</code> uma vez por dia.</div>`;
+    // a rede de segurança de quem paga nunca rodou.
+    return {
+      problema: true,
+      alerta: `<div class="alerta urgente u-mb-12 u-cursor-default"><b>A conciliação nunca rodou por aqui.</b>
+        Ela é a rede de segurança de quem paga e cujo aviso do Checkout se perde. Rode <code>npm run conciliar</code> uma vez por dia.</div>`,
+      resumo: '',
+    };
   }
   const horas = Math.floor((Date.now() - new Date(c.terminouEm).getTime()) / 3600000);
   const atrasada = horas >= 36;
@@ -983,13 +1050,13 @@ function linhaConciliacao(c) {
       `${c.expiradas ? ` · ${c.expiradas} cobertura(s) vencida(s) suspensa(s)` : ''}` +
       `${c.avisados ? ` · ${c.avisados} aviso(s) de fim de cobertura` : ''}` +
       `${c.falhas ? ` · ${c.falhas} falha(s)` : ''}`;
-  // Achado na mesma varredura: a versão anterior usava a classe `alertas`
-  // (plural, o CONTÊINER em grade de vários cards) num único `<div>` — sem
-  // `.alerta` (singular), o caso com problema saía sem borda colorida
-  // nenhuma, e era justo o caso que mais precisava chamar atenção.
-  return `<div class="${problema ? 'alerta urgente' : 'tudo-em-dia'} u-mb-20 u-cursor-default">
-    <b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}
-  </div>`;
+  return {
+    problema,
+    alerta: problema
+      ? `<div class="alerta urgente u-mb-12 u-cursor-default"><b>Conciliação ${quando}${atrasada ? ' (atrasada)' : ''}.</b> ${detalhe}</div>`
+      : '',
+    resumo: problema ? '' : `<p class="u-dim u-fs-74 u-m-0 u-mt-8">Conciliação ${quando} · ${detalhe}</p>`,
+  };
 }
 
 // "Tudo em dia" no primeiro dia de uso diz exatamente o contrario do que o
@@ -1002,19 +1069,49 @@ function redeVazia(rede) {
   return !rede.pontosAtivos && !rede.telasAtivas && contas === 0;
 }
 
-// Bloco Financeiro da Visão geral (rodada Financeiro, 22/09/2026): só os
-// dois números de receita. As filas de dinheiro (repasses, comissões,
-// trocas, devoluções) moram no resumo operacional fixo desde a rodada de
-// integridade (23/09/2026) — mostrar as duas coisas repetia a mesma fila em
-// dois lugares da mesma tela. Cards por ciclo continuam em
-// `financeiro.receitaPorCiclo` pra quem quiser consumir.
-function painelFinanceiroResumo(financeiro) {
+// Bloco Financeiro da Visão geral — card único e compacto (revisão final da
+// Visão geral, 23/09/2026, seção 6 do pedido): antes eram 2 cards grandes
+// (Receita recorrente + Confirmado no mês) soltos no meio da tela. Agora é
+// um só, com as pendências financeiras agregadas (repasse + troca com
+// problema + devolução — nunca mais comissão, seção 3/4) e a conciliação
+// discreta dentro (seção 10) — "normalidade não ocupa espaço".
+function painelFinanceiroResumo(financeiro, conciliacaoResumoHtml) {
+  const pend = financeiro.pendenciasFinanceiras || { qtd: 0, total: 0 };
   return `
     <div class="panel financeiro-panel u-mb-16">
       <div class="panel-head"><h3>Financeiro</h3></div>
+      <div class="financeiro-linhas">
+        <div class="financeiro-linha">
+          <b>${fmt(financeiro.receitaMensal)}<span class="u-fs-72 u-dim">/mês</span></b>
+          <span class="u-dim u-fs-78" title="equivalente mensal das assinaturas pagas ativas">Receita recorrente mensal</span>
+        </div>
+        <div class="financeiro-linha">
+          <b>${fmt(financeiro.receitaConfirmadaMes)}</b>
+          <span class="u-dim u-fs-78">Recebido no mês</span>
+        </div>
+      </div>
+      ${conciliacaoResumoHtml || ''}
+      <p class="financeiro-pendencias u-m-0 u-mt-8">
+        ${pend.qtd ? `<b>${pend.qtd}</b> pendência${pend.qtd === 1 ? '' : 's'} · ${fmt(pend.total)}` : '<span class="u-dim">Nenhuma pendência financeira.</span>'}
+      </p>
+      <a class="link-secundario" href="#financeiro/cobrancas">Abrir financeiro →</a>
+    </div>`;
+}
+
+// "Rede" — indicadores de negócio compactados num card só (seção 8 do
+// pedido): "Anunciantes novos"→"Novas contas" (toda conta pode anunciar
+// agora, não só quem tinha esse papel) e "Cadastra e paga"→"Conversão
+// cadastro → pagamento" (mais claro sobre o que o número mede). "Alcance"
+// virou "Alcance estimado" explicitamente — é estimativa de fluxo, nunca
+// contagem real de pessoas.
+function painelIndicadoresRede(rede, financeiro) {
+  return `
+    <div class="panel u-mb-16">
+      <div class="panel-head"><h3>Rede</h3></div>
       <div class="kpi-grid">
-        <div class="kpi-card"><span class="kpi-label">Receita recorrente</span><b>${fmt(financeiro.receitaMensal)}</b><span class="kpi-caption">planos ativos, por mês</span></div>
-        <div class="kpi-card"><span class="kpi-label">Confirmado no mês</span><b>${fmt(financeiro.receitaConfirmadaMes)}</b><a class="link-secundario" href="#financeiro/cobrancas">Ver histórico →</a></div>
+        <div class="kpi-card"><span class="kpi-label">Alcance estimado</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês</span></div>
+        <div class="kpi-card"><span class="kpi-label">Novas contas</span><b>${rede.novosAnunciantes30d}</b><span class="kpi-caption">últimos 30 dias</span></div>
+        <div class="kpi-card"><span class="kpi-label">Conversão cadastro → pagamento</span><b>${financeiro.percentualPagantes === null ? '-' : `${financeiro.percentualPagantes.toFixed(0)}%`}</b><span class="kpi-caption">${financeiro.percentualPagantes === null ? 'nenhuma conta ainda' : `${financeiro.contasPagantes} de ${financeiro.totalContas} · cortesia/suspensa fora`}</span></div>
       </div>
     </div>`;
 }
@@ -1027,14 +1124,23 @@ function botaoAlerta(a, qtd) {
   return `<button type="button" class="${classe}" data-ir="${a.aba}">${conteudo}</button>`;
 }
 
+// Layout final (seção 12 do pedido): 2 colunas no desktop (>900px, mesmo
+// corte que já colapsa a sidebar — ver admin/index.css), empilha sozinho no
+// mobile por ser a ordem natural do HTML sem grid nenhum. Coluna
+// operacional: alertas reais de tela, pendências, resumo da rede, ocupação
+// (bloco maior, mais denso). Coluna negócio: Financeiro, promoção ativa,
+// indicadores — tudo que responde "como vai o dinheiro e o crescimento",
+// sem competir por atenção com o que pede ação agora.
 async function renderResumo(el) {
   const { filas, financeiro, rede } = RESUMO;
   const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
+  const conciliacao = conciliacaoInfo(RESUMO.conciliacao);
 
   // Sem exceção nenhuma, a faixa de alertas não ocupa espaço — o resumo
   // operacional logo abaixo já mostra cada fila, zero incluído. A única
   // mensagem que sobra é a de rede recém-criada, que diz o que fazer.
   el.innerHTML = `
+    ${conciliacao.alerta}
     ${
       pendentes.length
         ? `<div class="alertas">${pendentes.map((a) => botaoAlerta(a, filas[a.fila])).join('')}</div>`
@@ -1047,28 +1153,20 @@ async function renderResumo(el) {
           : ''
     }
 
-    ${painelPendenciasOperacionais(RESUMO)}
-
-    <div id="promocaoAtivaResumo"></div>
-
-    ${painelFinanceiroResumo(financeiro)}
-
-    <div class="kpi-grid u-mb-20">
-      <div class="kpi-card"><span class="kpi-label">Alcance da rede</span><b>${num(rede.fluxoMensal)}</b><span class="kpi-caption">pessoas/mês estimadas</span></div>
-      <div class="kpi-card"><span class="kpi-label">Anunciantes novos</span><b>${rede.novosAnunciantes30d}</b><span class="kpi-caption">nos últimos 30 dias</span></div>
-      <div class="kpi-card"><span class="kpi-label">Cadastra e paga</span><b>${financeiro.percentualPagantes === null ? '-' : `${financeiro.percentualPagantes.toFixed(0)}%`}</b><span class="kpi-caption">${financeiro.percentualPagantes === null ? 'nenhuma conta ainda' : `${financeiro.contasPagantes} de ${financeiro.totalContas} contas · cortesia e suspensa não contam`}</span></div>
-    </div>
-
-    ${linhaConciliacao(RESUMO.conciliacao)}
-
-    <div class="panel">
-      <div class="panel-head"><h3>Pontos por status</h3></div>
-      ${barrasHorizontais(rede.pontosPorStatus, PONTO_STATUS, 'pontos')}
-    </div>
-
-    <div class="panel u-mt-16">
-      <div class="panel-head"><h3>Ocupação da rede</h3></div>
-      <div id="ocupacaoRede">Carregando...</div>
+    <div class="visao-geral-colunas">
+      <div class="coluna-operacional">
+        ${painelPendenciasOperacionais(RESUMO)}
+        ${resumoPontosCompacto(rede)}
+        <div class="panel">
+          <div class="panel-head"><h3>Ocupação da rede</h3></div>
+          <div id="ocupacaoRede">Carregando...</div>
+        </div>
+      </div>
+      <div class="coluna-negocio">
+        ${painelFinanceiroResumo(financeiro, conciliacao.resumo)}
+        <div id="promocaoAtivaResumo"></div>
+        ${painelIndicadoresRede(rede, financeiro)}
+      </div>
     </div>`;
 
   el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
@@ -2352,13 +2450,59 @@ function renderPontoInformacoes(el, ponto) {
 // nesta tela) sobraram só ID/status/sinal/chave/PIN/instalação + margens
 // novas, e cabem melhor num card do que espremidas numa linha de tabela —
 // funciona igual com 1 tela (o caso comum hoje) ou várias.
-function montarTelaCard(t, estaOffline) {
-  const offline = estaOffline(t);
-  return `<div class="tela-card" data-filtro="${t.status}${offline ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
+// Texto/badge do sinal (revisão final da Visão geral, 23/09/2026) — antes era
+// só "sem sinal" (2h sem heartbeat, sem olhar horário). `situacaoOperacional`
+// já vem calculado do backend (src/lib/status-tela.js), única régua.
+const SINAL_TELA = {
+  aguardando_primeiro_sinal: () => '<span class="u-dim">nunca conectou</span>',
+  fora_do_horario: () => '<span class="u-dim">fora do horário</span>',
+  sem_sinal: () => '<span class="badge badge-err">sem sinal</span>',
+  erro_do_player: (t) => `<span class="badge badge-err" title="${esc(t.ultimo_erro || '')}">erro do player</span>`,
+  em_reparo: () => '<span class="u-dim">em reparo</span>',
+  inativa: () => '<span class="u-dim">inativa</span>',
+  operando: (t) => (t.ultima_vez_online ? `desde ${new Date(t.ultima_vez_online).toLocaleString('pt-BR')}` : ''),
+};
+// Só essas duas entram no filtro "Sem sinal" e no alerta da Visão geral —
+// as outras são estado esperado (fora do horário, nunca instalada, manual).
+const SITUACOES_DE_ALERTA_TELA = new Set(['sem_sinal', 'erro_do_player']);
+
+const MODO_HORARIO_TELA = { ponto: 'Segue o horário do ponto', '24h': '24 horas', personalizado: 'Horário próprio' };
+const DIAS_HORARIO_TELA = [
+  { id: 'seg', rotulo: 'Segunda' },
+  { id: 'ter', rotulo: 'Terça' },
+  { id: 'qua', rotulo: 'Quarta' },
+  { id: 'qui', rotulo: 'Quinta' },
+  { id: 'sex', rotulo: 'Sexta' },
+  { id: 'sab', rotulo: 'Sábado' },
+  { id: 'dom', rotulo: 'Domingo' },
+  { id: 'feriados', rotulo: 'Feriados' },
+];
+
+function horarioTelaCampos(horario) {
+  return `<div class="horario-semanal">
+    ${DIAS_HORARIO_TELA.map((d) => {
+      const janela = horario?.[d.id];
+      return `<div class="horario-dia" data-horario-dia="${d.id}">
+        <span class="horario-dia-nome">${d.rotulo}</span>
+        <div class="horario-dia-campos" ${janela ? '' : 'hidden'}>
+          <input class="mini" type="time" data-horario-abre value="${janela?.abre || '09:00'}" aria-label="${d.rotulo}, abre">
+          <span class="u-dim">–</span>
+          <input class="mini" type="time" data-horario-fecha value="${janela?.fecha || '18:00'}" aria-label="${d.rotulo}, fecha">
+        </div>
+        <label class="check-row horario-dia-fechado"><input type="checkbox" data-horario-fechado ${janela ? '' : 'checked'}><span>Fechado</span></label>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function montarTelaCard(t) {
+  const alerta = SITUACOES_DE_ALERTA_TELA.has(t.situacaoOperacional);
+  const modoHorario = t.modo_horario || 'ponto';
+  return `<div class="tela-card" data-filtro="${t.status}${alerta ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
     <div class="tela-card-topo">
       <span class="tela-card-id">Tela #${t.id}</span>
       ${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}
-      <span class="tela-card-sinal">${offline ? '<span class="badge badge-err">sem sinal</span>' : t.ultima_vez_online ? `desde ${new Date(t.ultima_vez_online).toLocaleString('pt-BR')}` : '<span class="u-dim">nunca conectou</span>'}</span>
+      <span class="tela-card-sinal">${(SINAL_TELA[t.situacaoOperacional] || SINAL_TELA.operando)(t)}</span>
       <button class="btn ghost mini u-txt-erro u-ml-auto" data-excluir-tela="${t.id}" title="Só se essa tela nunca rodou nada">Excluir</button>
     </div>
     <div class="tela-card-corpo">
@@ -2389,17 +2533,23 @@ function montarTelaCard(t, estaOffline) {
           <input class="mini" type="number" min="0" step="0.5" data-tela="margem_esquerda" data-id="${t.id}" value="${t.margem_esquerda ?? 0}" title="Esquerda">
         </div>
       </div>
+      <div class="tela-campo tela-campo-horario">
+        <label title="Quando essa tela deveria estar online — decide o que vira alerta de 'sem sinal'">Horário operacional</label>
+        ${selectStatus(MODO_HORARIO_TELA, modoHorario, `data-tela="modo_horario" data-id="${t.id}"`)}
+        <div class="horario-tela-editor" data-horario-tela="${t.id}" ${modoHorario === 'personalizado' ? '' : 'hidden'}>
+          ${horarioTelaCampos(t.horario_semanal)}
+          <button type="button" class="btn ghost mini" data-salvar-horario-tela="${t.id}">Salvar horário</button>
+        </div>
+      </div>
     </div>
   </div>`;
 }
 
 async function renderPontoTelas(el, ponto) {
-  const [telas, semSinal] = await Promise.all([
-    pegar(`/admin/pontos/${ponto.id}/dispositivos`),
-    pegar('/admin/pontos-offline').catch(() => []),
-  ]);
-  const idsOffline = new Set((semSinal || []).map((d) => d.id));
-  const estaOffline = (t) => idsOffline.has(t.id);
+  // `situacaoOperacional` já vem pronta em cada tela (src/dispositivos/
+  // repository.js) — não precisa mais de uma segunda chamada só pra saber
+  // quem está sem sinal.
+  const telas = await pegar(`/admin/pontos/${ponto.id}/dispositivos`);
 
   el.innerHTML = `
     <div class="card">
@@ -2420,7 +2570,7 @@ async function renderPontoTelas(el, ponto) {
                   .join('')}
               </div>
             </div>
-            <div class="telas-lista">${telas.map((t) => montarTelaCard(t, estaOffline)).join('')}</div>
+            <div class="telas-lista">${telas.map((t) => montarTelaCard(t)).join('')}</div>
             <p class="u-dim u-fs-78 u-m-0 u-mt-8" data-contagem></p>`
           : '<p class="empty-state">Nenhuma tela instalada neste ponto.</p>'
       }
@@ -2473,12 +2623,57 @@ async function renderPontoTelas(el, ponto) {
       );
       const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
       if (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) {
-        if (campo.dataset.tela === 'status') {
+        // status e modo_horario podem os dois mudar a situação operacional da
+        // tela (src/lib/status-tela.js) — e com ela o alerta "sem sinal" da
+        // Visão geral (achado em revisão de PR: só `status` recarregava
+        // RESUMO, `modo_horario` só re-renderizava o card local e deixava o
+        // contador do menu desatualizado até um Atualizar manual). As duas
+        // recarregam RESUMO e o próprio card, pro editor mostrar/esconder e o
+        // contador bater com o que acabou de ser salvo.
+        if (campo.dataset.tela === 'status' || campo.dataset.tela === 'modo_horario') {
           RESUMO = await pegar('/admin/resumo');
           pintarContadores();
           renderPontoTelas(el, ponto);
         }
       }
+    }),
+  );
+
+  el.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+    const chk = linha.querySelector('[data-horario-fechado]');
+    const campos = linha.querySelector('.horario-dia-campos');
+    chk.addEventListener('change', () => {
+      campos.hidden = chk.checked;
+    });
+  });
+
+  el.querySelectorAll('[data-salvar-horario-tela]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const editor = el.querySelector(`[data-horario-tela="${btn.dataset.salvarHorarioTela}"]`);
+      const horario_semanal = {};
+      editor.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+        const fechado = linha.querySelector('[data-horario-fechado]').checked;
+        horario_semanal[linha.dataset.horarioDia] = fechado
+          ? null
+          : {
+              abre: linha.querySelector('[data-horario-abre]').value,
+              fecha: linha.querySelector('[data-horario-fecha]').value,
+            };
+      });
+      const r = await api(`/admin/dispositivos/${btn.dataset.salvarHorarioTela}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ horario_semanal }),
+      });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o horário.', 'err');
+      toast('Horário salvo.');
+      // Mesmo motivo do listener de `[data-tela]` acima: um horário
+      // personalizado novo pode mudar a situação operacional da tela na
+      // hora (ex.: tela que estava fora_do_horario passa a estar dentro) —
+      // sem recarregar RESUMO o alerta da Visão geral ficava com o número
+      // de antes até um Atualizar manual (achado em revisão de PR).
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+      renderPontoTelas(el, ponto);
     }),
   );
 
@@ -5011,11 +5206,15 @@ async function _renderComodato(el) {
 // /contato.html é o canal declarado de pedido do titular (LGPD art. 18).
 //
 // Redesenho de 22/09/2026 (encerramento de "Entrada"): sem item próprio na
-// sidebar — chega pelo aviso da Visão geral (ALERTAS, fila `contato`). Só
-// mostra pendente; marcar como respondida some da tela NA HORA, sem
-// recarregar nada (o registro continua no banco, `respondida_em` preenchido
-// — histórico e LGPD preservados, só não tem mais aba "Respondidas").
-async function renderContato(el) {
+// sidebar — chega pelo aviso da Visão geral (ALERTAS, fila `contato`).
+//
+// Abas Pendentes/Histórico (revisão final da Visão geral, 23/09/2026, seção
+// 5 do pedido): antes só existia Pendentes, e responder uma mensagem a
+// fazia sumir sem deixar rastro navegável — o registro continuava no banco
+// (`respondida_em` preenchido, LGPD preservada) mas não tinha mais tela que
+// mostrasse. Mesmo endpoint pras duas abas (`GET /admin/mensagens-contato`
+// já devolve tudo, sem filtro no servidor) — cada aba filtra do seu lado.
+async function renderMensagensPendentes(el) {
   const todas = await pegar('/admin/mensagens-contato');
   const pendentes = todas.filter((m) => !m.respondida_em);
 
@@ -5051,9 +5250,40 @@ async function renderContato(el) {
       }
       RESUMO = await pegar('/admin/resumo');
       pintarContadores();
-      renderContato(el);
+      renderMensagensPendentes(el);
     });
   });
+}
+
+// Só leitura — nenhuma ação aqui, a mensagem já foi respondida por fora
+// (e-mail/telefone). Mais recente primeiro, igual todo histórico do admin.
+async function renderMensagensHistorico(el) {
+  const todas = await pegar('/admin/mensagens-contato');
+  const respondidas = todas
+    .filter((m) => m.respondida_em)
+    .sort((a, b) => new Date(b.respondida_em) - new Date(a.respondida_em));
+
+  if (!respondidas.length) {
+    el.innerHTML = '<p class="empty-state">Nenhuma mensagem respondida ainda.</p>';
+    return;
+  }
+
+  const linha = (m) => `<tr data-msg="${m.id}">
+      <td>${data(m.created_at)}</td>
+      <td>${data(m.respondida_em)}</td>
+      <td><b>${esc(m.nome)}</b><br><a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.telefone ? `<br><span class="u-dim">${esc(m.telefone)}</span>` : ''}</td>
+      <td><div class="celula-mensagem">${esc(m.mensagem)}</div></td>
+    </tr>`;
+
+  const corpo = `<table><thead><tr>
+      <th data-ord>Recebida</th><th data-ord>Respondida</th><th data-ord>Quem</th><th>Mensagem</th>
+    </tr></thead><tbody>${respondidas.map(linha).join('')}</tbody></table>`;
+
+  el.innerHTML = caixaTabela({
+    html: corpo,
+    dica: 'Só consulta — a resposta em si acontece por fora (e-mail/telefone).',
+  });
+  turbinarTabela(el.querySelector('.tabela-caixa'));
 }
 
 // ---------- trocas de plano ----------
@@ -5138,11 +5368,17 @@ async function renderHistoricoCobrancas(el) {
   turbinarTabela(el.querySelector('.tabela-caixa'));
 }
 
-// ---------- fila financeira: comissões de vendedor ----------
+// ---------- fila financeira: comissões de vendedor (SEM aba, ver abaixo) ----------
 // Rodada Financeiro (22/09/2026): só o que está em aberto — "normalidade não
 // ocupa espaço". Histórico de comissões pagas continua em `comissoes`, sem
 // aba pra navegar por ele aqui (pedido explícito: nada de abas de concluídos).
-async function renderFilaComissoes(el) {
+// Perdeu a aba na Central Financeira (revisão final da Visão geral,
+// 23/09/2026: "o conceito de vendedor foi retirado do projeto") — a tabela
+// `comissoes` e a rota `/admin/comissoes` continuam intactas (vendedor ainda
+// existe dentro de Contas), só esta fila específica ficou sem chamador.
+// `_` no nome pelo mesmo motivo de sempre neste arquivo: função morta que
+// não se apaga, só marca.
+async function _renderFilaComissoes(el) {
   const comissoes = (await pegar('/admin/comissoes')).filter((c) => !c.pago_em);
 
   if (!comissoes.length) {
@@ -5176,7 +5412,7 @@ async function renderFilaComissoes(el) {
         return;
       }
       RESUMO = await pegar('/admin/resumo');
-      renderFilaComissoes(el);
+      _renderFilaComissoes(el);
     }),
   );
 }
