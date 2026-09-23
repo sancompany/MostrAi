@@ -34,6 +34,14 @@ admin (V1)".
 - **Pegadinha de teste local:** os 2 testes `ocupacaoPorPonto` e
   `condicaoVigente` falham se o banco local tiver dado de demonstração
   (pontos/promoções semeados); com o banco limpo passam 235/235.
+- **Follow-up da revisão independente (PR seguinte ao #22):** divisória
+  das tabelas de capacidade marcada por classe (`td.grupo-inicio`), não por
+  `nth-child` — as duas tabelas têm colunas diferentes; ordenar/filtrar
+  devolve `aria-expanded="false"` ao botão do detalhe; `copiarTexto()` no
+  lugar de `navigator.clipboard?.writeText(...).then` (quebrava sem a API);
+  `tests/e2e/09-rede-redesenho.mjs` atualizado pra marcação nova (roda com
+  `PW_CHROME=/opt/pw-browsers/chromium`; os 2 erros de console do upload de
+  foto sem Supabase são esperados e anteriores a esta rodada).
 
 ## Correção cirúrgica de Rede: candidatura, CEP/bairro, safe area (23/09/2026, este agente)
 Pedido explícito do dono, separado da reconstrução de Contas acima: "NÃO

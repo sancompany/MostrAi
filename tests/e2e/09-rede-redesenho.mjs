@@ -4,7 +4,9 @@
 // como tabela operacional, candidatura com foto no topo. Assume banco zerado
 // e servidor na 3999 (NODE_ENV=test). Substitui o roteiro da rodada anterior
 // (v25) — badges/painéis daquela versão (Instalação, ACM, "TV instalada",
-// tabela de telas) não existem mais.
+// tabela de telas) não existem mais. Seletores e textos acompanham o polimento
+// visual final do admin (23/09/2026, PR #22): ficha em `.ficha-*`, migalha
+// "Pontos / <nome>", safe area em cruz, "+ Tela" e "Liberar" em modal.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -180,25 +182,32 @@ await admin.waitForTimeout(400);
 await admin.screenshot({ path: `${SAIDA}v26-rede-grade-mobile.png`, fullPage: true });
 await admin.setViewportSize({ width: 1400, height: 960 });
 
-console.log('== detalhe do ponto — 2 colunas, breadcrumb, sem Instalação/ACM ==');
+console.log('== detalhe do ponto — 2 colunas, migalha, sem Instalação/ACM na ficha ==');
 await admin.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, idC);
 await admin.waitForTimeout(400);
-check('breadcrumb "Rede / <nome>"', (await admin.textContent('.ponto-breadcrumb')).includes('Rede') && (await admin.textContent('.ponto-breadcrumb')).includes('Academia'));
-check('voltar pela breadcrumb leva pra grade', await admin.locator('.ponto-breadcrumb a:has-text("Rede")').isVisible());
-check('foto grande no cabeçalho', await admin.locator('.ponto-info-foto img').isVisible());
-check('nome grande aparece por inteiro', (await admin.textContent('.ponto-info-titulo h3')).includes('Academia Corpo em Movimento'));
-check('segmento aparece', (await admin.textContent('.ponto-info-titulo')).includes('academia'));
+const migalhaTexto = await admin.textContent('.breadcrumb');
+check('migalha "Pontos / <nome>"', migalhaTexto.includes('Pontos') && migalhaTexto.includes('Academia'), migalhaTexto);
+check('voltar pela migalha leva pra grade', await admin.locator('.breadcrumb a:has-text("Pontos")').isVisible());
+check('foto grande no cabeçalho', await admin.locator('.ficha-foto img').isVisible());
+check('nome grande aparece por inteiro', (await admin.textContent('.ficha-nome h3')).includes('Academia Corpo em Movimento'));
+check('segmento aparece', (await admin.textContent('.ficha-titulo')).includes('academia'));
 check('responsável somente-leitura (sem input)', (await admin.locator('#pontoInformacoes input, #pontoInformacoes select').count()) === 0);
 check('horário de funcionamento mostrado como texto', (await admin.textContent('#pontoInformacoes')).includes('06:00'));
 check('observações aparecem', (await admin.textContent('#pontoInformacoes')).includes('estacionamento'));
-check('sem painel de Instalação/ACM na ficha', !(await admin.locator('text=/ACM|molde|Instalação/i').count()));
+// "Instalação" voltou como grupo de CADA TELA (data e horário da tela) — o
+// que não pode voltar é o painel de instalação/ACM da ficha do ponto.
+check(
+  'sem painel de Instalação/ACM na ficha',
+  !(await admin.locator('text=/ACM|molde/i').count()) &&
+    !(await admin.locator('#pontoInformacoes').locator('text=/Instalação/i').count()),
+);
 check('3 telas em cards (não tabela)', (await admin.locator('#pontoTelas .tela-card').count()) === 3);
 check('sem tabela de telas', (await admin.locator('#pontoTelas table').count()) === 0);
 check('sem coluna/campo "Contrato" nas telas', !(await admin.locator('#pontoTelas').locator('text=Contrato').count()));
 check('sem coluna/campo "Custo" nas telas', !(await admin.locator('#pontoTelas').locator('text=Custo').count()));
-check('campos de margem (4 lados) na 1ª tela', (await admin.locator('.tela-card').first().locator('.margens-grid input').count()) === 4);
+check('campos de margem (4 lados) na 1ª tela', (await admin.locator('.tela-card').first().locator('.safe-area input').count()) === 4);
 await admin.screenshot({ path: `${SAIDA}v26-ponto-detalhe-desktop.png`, fullPage: true });
 await admin.setViewportSize({ width: 390, height: 844 });
 await admin.waitForTimeout(400);
@@ -222,13 +231,17 @@ await admin.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, idA);
 await admin.waitForTimeout(300);
-check('placeholder no cabeçalho do ponto sem foto', await admin.locator('.ponto-info-foto .ponto-foto-placeholder').isVisible());
-check('badge "Aguardando instalação" no detalhe', (await admin.textContent('.ponto-info-titulo')).includes('Aguardando instalação'));
+check('placeholder no cabeçalho do ponto sem foto', await admin.locator('.ficha-foto .ponto-foto-placeholder').isVisible());
+check('badge "Aguardando instalação" no detalhe', (await admin.textContent('.ficha-titulo')).includes('Aguardando instalação'));
 check('nenhuma tela — mensagem certa', (await admin.textContent('#pontoTelas')).includes('Nenhuma tela'));
 check('sem botão de instalação manual', !(await admin.locator('text=/Colocar em operação|Voltar.*instalação/i').count()));
 
-console.log('== criar tela pelo botão "+ tela" — ponto sai de aguardando instalação ==');
+console.log('== criar tela pelo botão "+ Tela" — ponto sai de aguardando instalação ==');
+// "+ Tela" abre um modal com o nome já preenchido ("Tela 1"), não mais o
+// prompt() nativo — confirmar é o botão "Criar tela" do rodapé.
 await admin.click('#btnNovaTela');
+await admin.waitForSelector('dialog.modal-admin[open] #novaTelaApelido');
+await admin.click('dialog.modal-admin[open] button[type=submit]');
 await admin.waitForTimeout(400);
 check('tela criada aparece', (await admin.locator('#pontoTelas .tela-card').count()) === 1);
 check('status automático já não é "a_instalar" (tela cadastrada, ainda inativa)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'inativo');
@@ -249,13 +262,20 @@ await admin.evaluate(() => {
 await admin.waitForTimeout(500);
 check('painel "Ocupação da rede" existe', await admin.isVisible('#ocupacaoRede'));
 check('é uma tabela (não mais barra simples)', await admin.locator('#ocupacaoRede table').isVisible());
+// Colunas agrupadas: Comercial (teto 80%) e Mostraí (reserva 20%), cada
+// grupo com Usado + Restante/Livre. Status e telas saíram das colunas pra
+// linha de apoio embaixo do nome do ponto.
 const cabecalhos = await admin.locator('#ocupacaoRede thead th').allTextContents();
 check(
-  'colunas: Ponto/Status/Telas/Anunciantes/Ocupação/Restante/Reserva',
-  ['Ponto', 'Status', 'Telas', 'Anunciantes'].every((c) => cabecalhos.some((h) => h.includes(c))) &&
-    cabecalhos.some((h) => h.includes('80%')) &&
-    cabecalhos.some((h) => h.includes('Reserva Mostraí')),
+  'colunas: Ponto/Anunciantes + grupos Comercial 80% e Mostraí 20% (Usado/Restante/Livre)',
+  ['Ponto', 'Anunciantes', 'Usado', 'Restante', 'Livre'].every((c) => cabecalhos.some((h) => h.includes(c))) &&
+    cabecalhos.some((h) => h.includes('Comercial') && h.includes('80%')) &&
+    cabecalhos.some((h) => h.includes('Mostraí') && h.includes('20%')),
   cabecalhos,
+);
+check(
+  'status e telas do ponto na linha de apoio',
+  /Ativo · 1 tela/.test(await admin.textContent('#ocupacaoRede .celula-sub')),
 );
 check('ponto D aparece na lista de ocupação', (await admin.textContent('#ocupacaoRede')).includes('Farmácia Ocupação'));
 check('reserva Mostraí sempre 20% (nunca some)', (await admin.textContent('#ocupacaoRede')).includes('20%'));
@@ -263,7 +283,9 @@ await admin.click('[data-expandir-ocupacao]');
 await admin.waitForTimeout(300);
 check('expandir mostra o peso por anunciante (s/hora)', (await admin.textContent('#ocupacaoRede')).includes('s/hora'));
 await admin.screenshot({ path: `${SAIDA}v26-visao-geral-ocupacao.png`, fullPage: true });
+// "Liberar" pede confirmação num modal antes de chamar a rota.
 await admin.click('[data-liberar]');
+await admin.click('dialog.modal-admin[open] [data-confirmar]');
 await admin.waitForTimeout(400);
 check('ponto D liberado com sucesso', PG(`SELECT escolha_bloqueada_em FROM pontos WHERE id=${idD}`) === '');
 

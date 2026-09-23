@@ -4195,6 +4195,14 @@ máxima e logo quadrado inteiro (`contain`), nunca uma letra gigante.
   centralizado) quebrando layouts do admin; `prompt()`/`confirm()` nativos
   trocados por modal em todos os fluxos vivos.
 - Lista de Contas passava da largura do notebook (coluna "Entrou" cortada).
+- Revisão independente depois do merge (corrigido no PR seguinte): a
+  divisória das tabelas de capacidade era `nth-child` fixo pra duas tabelas
+  com colunas diferentes — na Mídia Mostraí caía no meio do grupo — e vazava
+  pra mini-tabela do detalhe; ordenar/filtrar deixava `aria-expanded="true"`
+  num botão cujo detalhe já tinha sumido; "Copiar link" quebrava sem a API
+  de clipboard em vez de cair no aviso de copiar à mão; faltava um espaço
+  no resumo da promoção ativa; e o roteiro `tests/e2e/09-rede-redesenho.mjs`
+  ainda procurava a marcação antiga (agora passa inteiro de novo).
 
 **Verificado:** `npm run check` (235/235 com o banco limpo; lint só com os
 avisos já conhecidos de funções globais do `candidatura-ponto.js`);

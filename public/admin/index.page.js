@@ -301,6 +301,13 @@ document.addEventListener('click', (e) => {
   if (gatilho) document.getElementById(gatilho.dataset.escolherArquivo)?.click();
 });
 
+// Copiar pro clipboard sem quebrar quando a API não existe (origem sem HTTPS,
+// navegador antigo): `navigator.clipboard?.writeText(x).then(...)` virava
+// `undefined.then` e jogava erro, em vez de cair no aviso de copiar à mão.
+function copiarTexto(texto) {
+  return navigator.clipboard ? navigator.clipboard.writeText(texto) : Promise.reject(new Error('sem clipboard'));
+}
+
 // Mensagem de erro dentro do modal (em vez de toast escondido atrás do fundo).
 function erroNoModal(dlg, texto) {
   const msg = dlg.querySelector('[data-msg]');
@@ -328,6 +335,13 @@ function turbinarTabela(caixa) {
   // Linha de detalhe expandida (ocupação, capacidade) não é registro — não
   // conta, não filtra, não ordena.
   const linhas = () => [...tabela.tBodies[0].rows].filter((tr) => !tr.hasAttribute('data-detalhe'));
+  // Ordenar/filtrar fecha a linha de detalhe aberta — e o botão que a abriu
+  // volta a dizer "fechado" pro leitor de tela (antes ficava aria-expanded
+  // "true" apontando pra uma linha que já não existia).
+  function fecharDetalhes() {
+    tabela.querySelectorAll('tr[data-detalhe]').forEach((tr) => tr.remove());
+    tabela.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  }
 
   // `tr.textContent` não enxerga o `value` de <input>/<select> — só texto de
   // verdade no DOM. Numa linha inteira de campos editáveis (categorias, por
@@ -345,7 +359,7 @@ function turbinarTabela(caixa) {
     const chipAtivo = caixa.querySelector('.chip.active');
     const filtro = chipAtivo ? chipAtivo.dataset.filtro || '' : '';
     let visiveis = 0;
-    tabela.querySelectorAll('tr[data-detalhe]').forEach((tr) => tr.remove());
+    fecharDetalhes();
     linhas().forEach((tr) => {
       const casaTermo = !termo || textoBuscavel(tr).includes(termo);
       const casaFiltro = !filtro || (tr.dataset.filtro || '').split(' ').includes(filtro);
@@ -393,7 +407,7 @@ function turbinarTabela(caixa) {
       // não bate com a coluna do corpo, então ele diz qual é.
       const idx = th.dataset.col !== undefined ? Number(th.dataset.col) : [...th.parentNode.children].indexOf(th);
       const desc = th.classList.contains('asc');
-      tabela.querySelectorAll('tr[data-detalhe]').forEach((tr) => tr.remove());
+      fecharDetalhes();
       tabela.querySelectorAll('th[data-ord]').forEach((x) => x.classList.remove('asc', 'desc'));
       th.classList.add(desc ? 'desc' : 'asc');
       // Célula com input/select ordena pelo valor do campo, não pelo texto
@@ -1377,7 +1391,7 @@ async function renderPromocaoAtivaResumo(el) {
         return `<div class="promocao-ativa-item">
           <p class="promocao-ativa-titulo"><b>${esc(p.titulo_publico)}</b>${p.selo ? ` <span class="badge badge-neutro">${esc(p.selo)}</span>` : ''}</p>
           <p class="promocao-ativa-meta">${p.compra_fim ? `Até ${data(p.compra_fim)}` : 'Sem prazo pra comprar'} · ${esc(ciclos.join(', ')) || 'nenhum ciclo'}</p>
-          <p class="promocao-ativa-meta">${plural(p.duracao_beneficio_meses, 'mês', 'meses')} de desconto ·${p.limite_adesoes != null ? `${p.adesoes} de ${plural(p.limite_adesoes, 'adesão', 'adesões')}` : plural(p.adesoes, 'adesão', 'adesões')}</p>
+          <p class="promocao-ativa-meta">${plural(p.duracao_beneficio_meses, 'mês', 'meses')} de desconto · ${p.limite_adesoes != null ? `${p.adesoes} de ${plural(p.limite_adesoes, 'adesão', 'adesões')}` : plural(p.adesoes, 'adesão', 'adesões')}</p>
         </div>`;
       })
       .join('')}
@@ -1466,9 +1480,9 @@ async function renderOcupacaoRede(el) {
         ${ponto ? `<span class="celula-sub"><i class="ponto-status ${PONTO_STATUS_CLASSE[ponto.status] || ''}" aria-hidden="true"></i>${PONTO_STATUS[ponto.status] || ponto.status} · ${telas}</span>` : ''}
       </div></td>
       <td class="num"><button type="button" class="link-contagem" data-expandir-ocupacao="${l.pontoId}" aria-expanded="false" title="Ver o peso de cada anunciante neste ponto">${l.anunciantes.length}</button></td>
-      <td class="num" title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${cap ? pct(cap.comercialPct) : '—'}${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
+      <td class="num grupo-inicio" title="${Math.round(l.segundosVendidos)}s de 3600s/hora">${cap ? pct(cap.comercialPct) : '—'}${l.bloqueado ? ' <span class="badge badge-err">travado</span>' : ''}</td>
       <td class="num">${cap ? pct(cap.comercialRestantePct) : '—'}</td>
-      <td class="num">${cap ? pct(cap.mostraiPct) : '—'}</td>
+      <td class="num grupo-inicio">${cap ? pct(cap.mostraiPct) : '—'}</td>
       <td class="num">${cap ? pct(cap.reservaRestantePct) : '—'}</td>
       ${algumTravado ? `<td class="u-ta-r">${l.bloqueado ? `<button class="btn ghost mini" data-liberar="${l.pontoId}">Liberar</button>` : ''}</td>` : ''}
     </tr>`;
@@ -1836,9 +1850,9 @@ function montarTabelaCapacidade(el, capacidade) {
         <a href="#rede/pontos/${p.pontoId}">${esc(p.pontoNome)}</a>
         <span class="celula-sub"><i class="ponto-status ${PONTO_STATUS_CLASSE[p.status] || ''}" aria-hidden="true"></i>${PONTO_STATUS[p.status] || p.status}</span>
       </div></td>
-      <td class="num">${pct(p.comercialPct)}</td>
+      <td class="num grupo-inicio">${pct(p.comercialPct)}</td>
       <td class="num">${pct(p.comercialRestantePct)}</td>
-      <td class="num">${pct(p.mostraiPct)}${p.mostraiAcimaDaReservaPct > 0 ? `<span class="celula-alerta" title="${pct(p.mostraiAcimaDaReservaPct)} ocupando capacidade comercial ainda não vendida">acima da reserva</span>` : ''}</td>
+      <td class="num grupo-inicio">${pct(p.mostraiPct)}${p.mostraiAcimaDaReservaPct > 0 ? `<span class="celula-alerta" title="${pct(p.mostraiAcimaDaReservaPct)} ocupando capacidade comercial ainda não vendida">acima da reserva</span>` : ''}</td>
       <td class="num">${pct(p.reservaRestantePct)}</td>
       <td class="num"><b>${pct(p.totalPct)}</b></td>
       <td class="num"><button type="button" class="link-contagem" data-expandir-capacidade="${p.pontoId}" aria-expanded="false" title="Ver as mídias próprias neste ponto">${p.qtdMidiasProprias}</button></td>
@@ -3142,7 +3156,7 @@ async function renderPontoTelas(el, ponto) {
   el.querySelectorAll('[data-copiar]').forEach((btn) =>
     btn.addEventListener('click', () => {
       const link = linkDoPlayer(btn.dataset.telaId, btn.dataset.copiar);
-      navigator.clipboard?.writeText(link).then(
+      copiarTexto(link).then(
         () => toast('Link copiado.'),
         () => mostrarLinkPlayer(link, 'Link do player'),
       );
@@ -3220,7 +3234,7 @@ function mostrarLink({ titulo, texto, link }) {
   campo.select();
   dlg.querySelector('[data-copiar-link]').addEventListener('click', () => {
     campo.select();
-    navigator.clipboard?.writeText(link).then(
+    copiarTexto(link).then(
       () => toast('Link copiado.'),
       () => erroNoModal(dlg, 'Não deu pra copiar sozinho — selecione o link e copie.'),
     );
@@ -4167,7 +4181,7 @@ async function renderCandidaturaDetalhe(el, id) {
     }
     if (!c.conta_id) {
       const { link } = await r.json();
-      navigator.clipboard?.writeText(link).catch(() => {});
+      copiarTexto(link).catch(() => {});
       mostrarLink({
         titulo: 'Convite gerado',
         texto:
@@ -4289,13 +4303,13 @@ async function _renderConvites(el) {
       return;
     }
     const { link } = await r.json();
-    navigator.clipboard?.writeText(link).catch(() => {});
+    copiarTexto(link).catch(() => {});
     prompt('Convite gerado (já copiado). Mande esse link pra pessoa:', link);
     _renderConvites(el);
   });
   el.querySelectorAll('[data-copiar-link]').forEach((btn) =>
     btn.addEventListener('click', () => {
-      navigator.clipboard?.writeText(btn.dataset.copiarLink).then(
+      copiarTexto(btn.dataset.copiarLink).then(
         () => toast('Link copiado.'),
         () => prompt('Link:', btn.dataset.copiarLink),
       );
