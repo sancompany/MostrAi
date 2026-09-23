@@ -26,6 +26,32 @@ function origemDoPlano(conta) {
   return conta.plano_cortesia ? 'cortesia' : 'assinatura';
 }
 
+// De onde vem o DIREITO comercial que está na conta agora, com o nome que a
+// ficha e a lista de Contas mostram (revisão da ficha de Conta, 23/09/2026).
+// `origemDoPlano` acima continua a régua binária gravada no histórico
+// (`plano_anterior_origem`); esta distingue as cortesias entre si, por fato
+// gravado: a linha 'ativo' de `planos_administrativos` do MESMO plano diz se
+// veio de resgate de créditos (origem 'indicacao') ou de concessão direta do
+// admin (o antigo "Conceder plano", hoje legado). Sem linha: `liberar-plano`
+// antigo ou o bônus de tempo de ponto — os dois legados.
+const ORIGENS_DO_DIREITO = {
+  assinatura: 'Assinatura paga',
+  beneficio_creditos: 'Benefício por créditos',
+  cortesia_legada: 'Cortesia administrativa legada',
+  bonus_ponto: 'Bônus de ponto legado',
+  comodato: 'Comodato',
+};
+
+function origemDoDireito(conta, beneficioAtivo) {
+  if (!conta?.plano_id) return null;
+  if (!conta.plano_cortesia) return 'assinatura';
+  if (beneficioAtivo && beneficioAtivo.plano_id === conta.plano_id) {
+    return beneficioAtivo.origem === 'indicacao' ? 'beneficio_creditos' : 'cortesia_legada';
+  }
+  if (conta.cortesia_motivo === 'bônus de ponto') return 'bonus_ponto';
+  return 'cortesia_legada';
+}
+
 // `validoAte`: 'AAAA-MM-DD'. Vai pra `data_expiracao`, que é `date` — por
 // isso segue como texto, nunca como Date do JS (um Date às 23:59 de Brasília
 // já é o dia seguinte em UTC, e o banco gravaria um dia a mais). Devolve a
@@ -152,6 +178,22 @@ async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
     );
     return rows[0];
   });
+}
+
+// Benefício pago com CRÉDITOS (resgate) ainda aberto — em vigor ou
+// programado. As rotas técnicas de plano (conceder direto, encerrar,
+// liberar-plano) recusam mexer por cima dele: fechar como "substituído" ou
+// "cancelado" jogava fora, em silêncio, os créditos que o cliente já pagou
+// (aconteceu em produção em 23/09/2026 — 120 créditos de um Prime anual
+// substituídos 42 s depois por uma cortesia administrativa).
+async function beneficioPorCreditosAberto(contaId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT * FROM planos_administrativos
+      WHERE anunciante_id = $1 AND status IN ('ativo', 'agendado') AND origem = 'indicacao'
+      ORDER BY id DESC LIMIT 1`,
+    [contaId],
+  );
+  return rows[0] || null;
 }
 
 async function historicoDaConta(contaId) {
@@ -340,24 +382,30 @@ async function ativarBeneficiosAgendados() {
 // pra plano administrativo).
 async function encerrarBeneficiosVencidos() {
   const { rows: vencidos } = await pool.query(
-    `SELECT ha.id, ha.anunciante_id FROM planos_administrativos ha
+    `SELECT ha.id, ha.anunciante_id, ha.plano_id FROM planos_administrativos ha
       WHERE ha.status = 'ativo' AND ha.valido_ate < current_date`,
   );
   let encerrados = 0;
   for (const linha of vencidos) {
     const conta = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [linha.anunciante_id]);
     if (!conta.rows[0]) continue;
-    // Só encerra se a conta ainda está no MESMO plano que este benefício
-    // concedeu (mesma cautela de encerrar(motivo='vencido') pra plano
-    // pago — algo pode ter trocado o plano da conta nesse meio-tempo).
+    // A linha do histórico sempre fecha (venceu). A CONTA só volta pra "sem
+    // plano" se ainda estiver neste benefício — cortesia, mesmo plano. O
+    // comentário antigo já prometia essa cautela e o código não fazia (achado
+    // na revisão da ficha de Conta, 23/09/2026): um cliente em benefício que
+    // assinava um plano pago ficava com a linha 'ativo' esquecida, e no dia
+    // em que ela vencia esta rotina zerava o plano PAGO dele. Condição dentro
+    // do próprio UPDATE (não num SELECT antes) pra não correr com um webhook
+    // de pagamento no meio.
     await comTransacao(async (db) => {
       await db.query(
         `UPDATE planos_administrativos SET status='encerrado', encerrado_em=now(), encerrado_motivo='vencido' WHERE id=$1`,
         [linha.id],
       );
       await db.query(
-        `UPDATE anunciantes SET plano_id=NULL, plano_cortesia=false, cortesia_motivo=NULL, data_expiracao=NULL WHERE id=$1`,
-        [linha.anunciante_id],
+        `UPDATE anunciantes SET plano_id=NULL, plano_cortesia=false, cortesia_motivo=NULL, data_expiracao=NULL
+          WHERE id=$1 AND plano_cortesia AND plano_id = $2`,
+        [linha.anunciante_id, linha.plano_id],
       );
     });
     encerrados += 1;
@@ -367,11 +415,14 @@ async function encerrarBeneficiosVencidos() {
 
 module.exports = {
   TIERS_COMERCIAIS,
+  ORIGENS_DO_DIREITO,
   origemDoPlano,
+  origemDoDireito,
   validadeValida,
   conceder,
   encerrar,
   historicoDaConta,
+  beneficioPorCreditosAberto,
   resgatarOuConcederBeneficio,
   ativarBeneficiosAgendados,
   encerrarBeneficiosVencidos,

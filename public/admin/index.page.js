@@ -984,6 +984,9 @@ async function renderModulo(el, modulo, abaId, resto) {
 
 async function irPara(alvoBruto, forcarResumo) {
   const { moduloId, abaId, resto } = resolverAlvo(alvoBruto);
+  // Saindo da ficha de uma conta: fecha o canal de eventos dela (a ficha abre
+  // o próprio ao desenhar — ver ligarEventosDaFicha).
+  if (EVENTOS_FICHA && !(moduloId === 'contas' && resto === String(EVENTOS_FICHA.contaId))) fecharEventosDaFicha();
   ABA_ATUAL = { modulo: moduloId, aba: abaId, resto };
   const canonico = [moduloId, abaId, resto].filter(Boolean).join('/');
   const modulo = buscarModulo(moduloId);
@@ -3360,30 +3363,26 @@ function nomePlanoOuId(plano, id) {
   return nomeDoPlano(plano) || humanizarPlanoId(id);
 }
 
-// Plano COMERCIAL da conta, com a origem (Parte 12): 'assinatura' = pago
-// pelo San Checkout; 'cortesia' = benefício concedido pelo admin (ou bônus).
+// Plano COMERCIAL da conta na lista, com a ORIGEM decidida no servidor
+// (`plano_origem`, plano-administrativo.js#origemDoDireito — a mesma régua da
+// ficha). Antes toda cortesia saía "Cortesia administrativa", inclusive
+// benefício pago com créditos.
 function planoComercialDaConta(conta, planosPorId) {
   if (!conta.plano_id) return null;
   return {
     plano: planosPorId[conta.plano_id] || null,
     id: conta.plano_id,
-    origem: conta.plano_cortesia ? 'cortesia' : 'assinatura',
+    origem: conta.plano_origem || (conta.plano_cortesia ? 'cortesia_legada' : 'assinatura'),
     vencido: !!(conta.data_expiracao && new Date(conta.data_expiracao) < new Date()),
     expira: conta.data_expiracao,
   };
 }
 
-const ORIGEM_PLANO = { assinatura: 'Assinatura paga', cortesia: 'Cortesia administrativa' };
-
-// Rótulos do tipo de movimentação do ledger (migration 079) — mesmos valores
-// do CHECK de creditos_ledger.tipo.
-const TIPO_CREDITO = {
-  indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
-  indicacao_renovacao: 'Indicação · renovação',
-  concessao_admin: 'Concedido pelo admin',
-  estorno_admin: 'Estorno (admin)',
-  resgate_beneficio: 'Resgate de benefício',
-  estorno_resgate: 'Estorno de resgate',
+const ORIGEM_PLANO = {
+  assinatura: 'Assinatura paga',
+  beneficio_creditos: 'Benefício por créditos',
+  cortesia_legada: 'Cortesia administrativa legada',
+  bonus_ponto: 'Bônus de ponto legado',
 };
 
 // Comodato é direito do PONTO (modalidade + produto Inicial/Básico),
@@ -3495,237 +3494,546 @@ async function renderContasLista(el) {
 }
 
 // ---------- ficha da conta ----------
-// Página única, sem mini-abas (Parte 8): Conta (cabeçalho) → Dados → Plano →
-// Comodato → Criativos → Pontos → Suspensão, nesta ordem, tudo visível.
-async function renderContaDetalhe(el, contaId) {
-  const [anunciantes, categorias, planos, pontos] = await Promise.all([
-    pegar('/admin/anunciantes'),
-    pegar('/admin/categorias'),
-    pegar('/admin/planos'),
-    pegar('/admin/pontos'),
-  ]);
-  const conta = anunciantes.find((a) => a.id === contaId);
-  if (!conta || conta.conta_propria) {
-    el.innerHTML = `${migalha([{ rotulo: 'Contas', href: '#contas/contas' }])}
-      ${vazio(conta ? 'A conta interna do Mostraí é gerida em Mídia Mostraí.' : 'Conta não encontrada.')}`;
-    return;
-  }
-  const [planoInfo, criativosInfo, creditos] = await Promise.all([
-    pegar(`/admin/anunciantes/${conta.id}/plano`),
-    pegar(`/admin/anunciantes/${conta.id}/criativos`),
-    pegar(`/admin/anunciantes/${conta.id}/creditos`),
-  ]);
-  const planosPorId = Object.fromEntries(planos.map((p) => [p.id, p]));
-  const pontosDaConta = pontos.filter((p) => p.anunciante_id === conta.id);
-  const comercial = planoComercialDaConta(conta, planosPorId);
-  const comodato = comodatoDaConta(conta, pontosDaConta, planosPorId);
-  const bloqueada = conta.suspenso || !!conta.excluido_em;
-  const recarregar = () => renderContaDetalhe(el, conta.id);
-  const ctx = {
-    conta,
-    categorias,
-    planos,
-    planosPorId,
-    comercial,
-    planoInfo,
-    criativosInfo,
-    creditos,
-    bloqueada,
-    recarregar,
-  };
+// Revisão de 23/09/2026 (pedido do dono: "a interface precisa representar o
+// domínio da Mostraí, não a estrutura das tabelas"). A ficha lê UMA fonte —
+// GET /admin/anunciantes/:id/situacao (src/anunciantes/situacao.js), onde
+// cada regra é decidida uma vez: origem do plano, fila Agora → Próximo →
+// Depois, comodato por ponto + modalidade, ponto × solicitação, selo "Dono de
+// ponto", invariantes. Antes cada card tirava a própria conclusão de uma
+// lista crua diferente, e dois cards chegaram a se contradizer ("Sem ponto em
+// comodato" ao lado de "Pontos: 1"). Aqui só se desenha.
+//
+// Cards condicionais: Plano, Dados, Créditos e Criativos sempre; Comodato e
+// Pontos só com ponto aprovado; Solicitações de ponto só com pedido em
+// análise. Históricos recolhidos. Ações destrutivas discretas, no fim.
+//
+// Reatividade sem F5: a ficha assina os eventos da própria conta
+// (GET /admin/anunciantes/:id/eventos, o mesmo barramento SSE do painel do
+// cliente) e se redesenha quando o cliente resgata créditos, uma candidatura
+// é aprovada, um ponto ou tela muda.
 
-  // Dados | Plano | Comodato lado a lado e da mesma altura em tela larga
-  // (polimento final, 23/09/2026) — antes Dados terminava no meio da coluna
-  // da direita e deixava um buraco embaixo. Em tela média, Dados ocupa a
-  // linha de cima e Plano/Comodato dividem a de baixo.
-  el.innerHTML = `
-    ${migalha([{ rotulo: 'Contas', href: '#contas/contas' }, { rotulo: conta.nome_empresa }])}
-    <header class="conta-cabecalho">
-      <h2>${esc(conta.nome_empresa)}</h2>
-      ${pontosDaConta.length ? '<span class="badge badge-info">Dono de ponto</span>' : ''}
-      ${conta.suspenso ? '<span class="conta-sinal conta-sinal-err">Conta suspensa</span>' : ''}
-      ${conta.excluido_em ? `<span class="conta-sinal">Excluída em ${data(conta.excluido_em)}</span>` : ''}
-    </header>
-    <div class="conta-grade">
-      <section class="panel conta-secao conta-dados-secao" id="contaDados"></section>
-      <section class="panel conta-secao" id="contaPlano"></section>
-      <section class="panel conta-secao" id="contaComodato"></section>
-    </div>
-    <section class="panel conta-secao" id="contaCreditos"></section>
-    <section class="panel conta-secao" id="contaCriativos"></section>
-    <section class="panel conta-secao" id="contaPontos"></section>
-    <div class="conta-rodape" id="contaRodape"></div>`;
+const ORIGEM_CLASSE = {
+  assinatura: 'badge-ok',
+  beneficio_creditos: 'badge-info',
+  cortesia_legada: 'badge-neutro',
+  bonus_ponto: 'badge-neutro',
+  comodato: 'badge-neutro',
+};
 
-  desenharContaDados(document.getElementById('contaDados'), ctx);
-  desenharContaPlano(document.getElementById('contaPlano'), ctx);
-  desenharContaComodato(document.getElementById('contaComodato'), comodato, pontosDaConta);
-  desenharContaCreditos(document.getElementById('contaCreditos'), ctx);
-  desenharContaCriativos(document.getElementById('contaCriativos'), ctx);
-  desenharContaPontos(document.getElementById('contaPontos'), pontosDaConta);
-  desenharContaRodape(document.getElementById('contaRodape'), ctx);
+// Rótulos do tipo de movimentação do ledger (migration 079) — mesmos valores
+// do CHECK de creditos_ledger.tipo.
+const TIPO_CREDITO = {
+  indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
+  indicacao_renovacao: 'Indicação · renovação',
+  concessao_admin: 'Concedido pelo admin',
+  estorno_admin: 'Estorno (admin)',
+  resgate_beneficio: 'Resgate de benefício',
+  estorno_resgate: 'Estorno de resgate',
+};
+
+let EVENTOS_FICHA = null; // { contaId, fonte: EventSource, timer }
+
+function fecharEventosDaFicha() {
+  if (!EVENTOS_FICHA) return;
+  EVENTOS_FICHA.fonte.close();
+  clearTimeout(EVENTOS_FICHA.timer);
+  EVENTOS_FICHA = null;
 }
 
-// Dados: só leitura, menos a categoria (Parte 11 — o admin corrige a
-// categoria aqui; o resto é do cliente, pelo painel dele).
-function desenharContaDados(el, { conta, categorias }) {
-  const atual = categorias.find((c) => c.id === conta.categoria_id);
-  const aviso = atual?.legado
-    ? `<p class="u-dim u-fs-78 u-m-0 u-mt-4">“${esc(atual.nome)}” é uma categoria antiga — escolha a atual.</p>`
-    : !atual && conta.categoria_livre
-      ? `<p class="u-dim u-fs-78 u-m-0 u-mt-4">O cliente descreveu: “${esc(conta.categoria_livre)}”. Escolha a categoria que corresponde.</p>`
-      : '';
+async function renderContaDetalhe(el, contaId) {
+  let situacao = null;
+  let categorias = [];
+  try {
+    [situacao, categorias] = await Promise.all([
+      pegar(`/admin/anunciantes/${contaId}/situacao`),
+      pegar('/admin/categorias'),
+    ]);
+  } catch (err) {
+    if (err.status !== 404) throw err;
+  }
+  if (!situacao || situacao.dados.contaPropria) {
+    fecharEventosDaFicha();
+    el.innerHTML = `${migalha([{ rotulo: 'Contas', href: '#contas/contas' }])}
+      ${vazio(situacao ? 'A conta interna do Mostraí é gerida em Mídia Mostraí.' : 'Conta não encontrada.')}`;
+    return;
+  }
+  desenharFicha(el, situacao, categorias);
+  ligarEventosDaFicha(el, contaId);
+}
+
+// Redesenha com o estado novo sem piscar "Carregando..." e sem perder a
+// rolagem nem os históricos que o admin tinha aberto.
+async function atualizarFicha(el, contaId) {
+  if (!el.isConnected) return;
+  const [situacao, categorias] = await Promise.all([
+    pegar(`/admin/anunciantes/${contaId}/situacao`),
+    pegar('/admin/categorias'),
+  ]);
+  if (!el.isConnected) return;
+  const abertos = [...el.querySelectorAll('details[data-historico][open]')].map((d) => d.dataset.historico);
+  const rolagem = window.scrollY;
+  desenharFicha(el, situacao, categorias);
+  abertos.forEach((k) => {
+    const d = el.querySelector(`details[data-historico="${k}"]`);
+    if (d) d.open = true;
+  });
+  window.scrollTo(0, rolagem);
+}
+
+function ligarEventosDaFicha(el, contaId) {
+  // Mesma conta redesenhada do zero (botão Atualizar recria o contêiner da
+  // aba): o canal continua, só passa a apontar pro contêiner novo — sem isso
+  // o próximo evento via o antigo desconectado e fechava o canal.
+  if (EVENTOS_FICHA?.contaId === contaId) {
+    EVENTOS_FICHA.el = el;
+    return;
+  }
+  fecharEventosDaFicha();
+  if (typeof EventSource === 'undefined') return;
+  const fonte = new EventSource(`${API_BASE_URL}/admin/anunciantes/${contaId}/eventos`, { withCredentials: true });
+  const estado = { contaId, fonte, el, timer: null };
+  const tentar = async () => {
+    const alvo = estado.el;
+    if (ABA_ATUAL.modulo !== 'contas' || ABA_ATUAL.resto !== String(contaId) || !alvo.isConnected) {
+      fecharEventosDaFicha();
+      return;
+    }
+    // Nunca redesenha por baixo de um modal aberto ou de um campo em edição
+    // — tenta de novo daqui a pouco.
+    const ativo = document.activeElement;
+    if (document.querySelector('dialog[open]') || (alvo.contains(ativo) && ativo.matches('input, textarea, select'))) {
+      estado.timer = setTimeout(tentar, 1500);
+      return;
+    }
+    try {
+      await atualizarFicha(alvo, contaId);
+    } catch (err) {
+      console.error('falha ao atualizar a ficha da conta', err);
+    }
+  };
+  const agendar = () => {
+    clearTimeout(estado.timer);
+    estado.timer = setTimeout(tentar, 400);
+  };
+  [
+    'credits.updated',
+    'payment.updated',
+    'plan.updated',
+    'point.updated',
+    'screen.updated',
+    'application.updated',
+    'creative.updated',
+    'account.updated',
+    'finance.updated',
+  ].forEach((ev) => fonte.addEventListener(ev, agendar));
+  EVENTOS_FICHA = estado;
+}
+
+function desenharFicha(el, s, categorias) {
+  const d = s.dados;
+  const bloqueada = d.suspensa || !!d.excluidaEm;
+  const ctx = {
+    s,
+    conta: { id: d.id, nome: d.nome, suspensa: d.suspensa, excluidaEm: d.excluidaEm },
+    categorias,
+    bloqueada,
+    // Depois de uma ação que já deu certo: se a releitura falhar (rede), a
+    // ação não "falhou" — só avisa pra atualizar.
+    recarregar: () =>
+      atualizarFicha(el, d.id).catch((err) => {
+        console.warn('ficha da conta: releitura falhou', err);
+        toast('Feito — mas não deu pra atualizar a ficha. Clique em Atualizar.', 'err');
+      }),
+  };
+  el.innerHTML = `
+    ${migalha([{ rotulo: 'Contas', href: '#contas/contas' }, { rotulo: d.nome }])}
+    <header class="conta-cabecalho">
+      <h2>${esc(d.nome)}</h2>
+      ${s.donoDePonto ? '<span class="badge badge-info">Dono de ponto</span>' : ''}
+      ${d.suspensa ? '<span class="conta-sinal conta-sinal-err">Conta suspensa</span>' : ''}
+      ${d.excluidaEm ? `<span class="conta-sinal">Excluída em ${data(d.excluidaEm)}</span>` : ''}
+    </header>
+    ${
+      s.alertas.length
+        ? `<div class="conta-alertas" role="status">${s.alertas.map((a) => `<p class="aviso-linha">${esc(a.texto)}</p>`).join('')}</div>`
+        : ''
+    }
+    <div class="conta-grade">
+      <section class="panel conta-secao" id="contaDados"></section>
+      <section class="panel conta-secao" id="contaPlano"></section>
+    </div>
+    <div class="conta-grade${s.comodato ? '' : ' conta-grade-uma'}">
+      ${s.comodato ? '<section class="panel conta-secao" id="contaComodato"></section>' : ''}
+      <section class="panel conta-secao" id="contaCreditos"></section>
+    </div>
+    <section class="panel conta-secao" id="contaCriativos"></section>
+    ${s.pontos.length ? '<section class="panel conta-secao" id="contaPontos"></section>' : ''}
+    ${s.solicitacoes.length ? '<section class="panel conta-secao conta-secao-discreta" id="contaSolicitacoes"></section>' : ''}
+    <div class="conta-rodape" id="contaRodape"></div>`;
+
+  desenharContaDados(el.querySelector('#contaDados'), ctx);
+  desenharContaPlano(el.querySelector('#contaPlano'), ctx);
+  if (s.comodato) desenharContaComodato(el.querySelector('#contaComodato'), ctx);
+  desenharContaCreditos(el.querySelector('#contaCreditos'), ctx);
+  desenharContaCriativos(el.querySelector('#contaCriativos'), {
+    ...ctx,
+    criativosInfo: {
+      criativos: s.criativos.lista,
+      limite_no_ar: s.criativos.resumo.limiteNoAr,
+      limite_cadastro: s.criativos.resumo.limiteConta,
+      conta_veicula: s.criativos.resumo.contaVeicula,
+    },
+  });
+  if (s.pontos.length) desenharContaPontos(el.querySelector('#contaPontos'), s.pontos);
+  if (s.solicitacoes.length) desenharContaSolicitacoes(el.querySelector('#contaSolicitacoes'), s.solicitacoes);
+  desenharContaRodape(el.querySelector('#contaRodape'), ctx);
+}
+
+// Dados: só leitura, menos a categoria (o admin corrige a categoria aqui; o
+// resto é do cliente, pelo painel dele). Categoria antiga (fora do cadastro
+// atual) não fica escrita dentro da busca como se valesse: aparece como
+// aviso, com a sucessora em um clique quando a fusão de categorias gravou
+// uma (`canonica_id`, migration 074) e sugestões pelo nome quando não.
+function desenharContaDados(el, { s, categorias, bloqueada, recarregar }) {
+  const d = s.dados;
+  const cat = d.categoria;
+  const antiga = cat?.antiga;
+  const atual = cat && !antiga ? categorias.find((c) => c.id === cat.id) || { id: cat.id, nome: cat.nome } : null;
+  let aviso = '';
+  let sugestoes = [];
+  if (antiga) {
+    sugestoes = cat.canonica ? [cat.canonica] : sugerirCategorias(cat.nome, categorias);
+    aviso = `<p class="aviso-linha u-mt-4">“${esc(cat.nome)}” é uma categoria antiga, fora do cadastro atual — o bloqueio de concorrente não enxerga ela direito. ${
+      sugestoes.length ? 'Troque por uma atual:' : 'Pesquise a atual acima.'
+    }</p>`;
+  } else if (!cat && d.categoriaLivre) {
+    sugestoes = sugerirCategorias(d.categoriaLivre, categorias);
+    aviso = `<p class="aviso-linha u-mt-4">O cliente descreveu: “${esc(d.categoriaLivre)}”. ${sugestoes.length ? 'Escolha a categoria que corresponde:' : 'Pesquise a categoria que corresponde acima.'}</p>`;
+  }
   el.innerHTML = `
     <div class="secao-topo"><h3>Dados</h3></div>
     <dl class="dados dados-2">
-      <div><dt>Documento</dt><dd>${esc(conta.cpf_cnpj)}</dd></div>
-      <div><dt>Entrou em</dt><dd>${data(conta.created_at)}</dd></div>
-      <div><dt>E-mail</dt><dd>${esc(conta.contato_email)}</dd></div>
-      <div><dt>WhatsApp</dt><dd class="u-nowrap">${esc(conta.contato_telefone)}</dd></div>
+      <div><dt>Documento</dt><dd>${esc(d.documento)}</dd></div>
+      <div><dt>Entrou em</dt><dd>${data(d.entrouEm)}</dd></div>
+      <div><dt>E-mail</dt><dd>${esc(d.email)}</dd></div>
+      <div><dt>WhatsApp</dt><dd class="u-nowrap">${esc(d.telefone)}</dd></div>
       <div class="dados-largo"><dt><label for="fichaCategoriaBusca">Categoria</label></dt><dd>
-        ${categoriaBuscaHtml('fichaCategoria', atual, { placeholder: 'Pesquise a categoria...' })}
+        ${categoriaBuscaHtml('fichaCategoria', atual, { placeholder: antiga ? 'Escolha a categoria atual...' : 'Pesquise a categoria...' })}
         ${aviso}
+        ${
+          sugestoes.length && !bloqueada
+            ? `<div class="categoria-sugestoes">${sugestoes
+                .map(
+                  (c) => `<button type="button" class="btn ghost mini" data-sugestao="${c.id}">${esc(c.nome)}</button>`,
+                )
+                .join('')}</div>`
+            : ''
+        }
       </dd></div>
     </dl>`;
-  ligarCategoriaBusca('fichaCategoria', categorias, (categoria) => {
+  const salvarCategoria = (categoria) =>
     salvar(
-      `/admin/anunciantes/${conta.id}`,
+      `/admin/anunciantes/${d.id}`,
       { categoria_id: categoria.id, categoria_livre: null },
       document.getElementById('fichaCategoriaBusca'),
     );
+  ligarCategoriaBusca('fichaCategoria', categorias, async (categoria) => {
+    if (await salvarCategoria(categoria)) recarregar();
+  });
+  el.querySelectorAll('[data-sugestao]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const categoria = categorias.find((c) => String(c.id) === b.dataset.sugestao) || {
+        id: Number(b.dataset.sugestao),
+      };
+      if (await salvarCategoria(categoria)) recarregar();
+    }),
+  );
+}
+
+// Até 4 categorias ATUAIS cujo nome ou alias contém uma palavra do nome
+// antigo ("Restaurante / lanchonete" → Restaurante, Lanchonete...). Só
+// sugestão — quem decide é o admin, nenhuma troca é automática.
+function sugerirCategorias(texto, categorias) {
+  const palavras = normalizarBuscaCategoria(texto)
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p.length >= 4);
+  if (!palavras.length) return [];
+  return categorias
+    .filter((c) => c.ativo && !c.legado)
+    .map((c) => {
+      const nome = normalizarBuscaCategoria(c.nome);
+      const tudo = normalizarBuscaCategoria(`${c.nome} ${(c.aliases || []).join(' ')}`);
+      const peso = palavras.reduce((t, p) => t + (nome.includes(p) ? 2 : tudo.includes(p) ? 1 : 0), 0);
+      return { c, peso };
+    })
+    .filter((x) => x.peso > 0)
+    .sort((a, b) => b.peso - a.peso || a.c.nome.localeCompare(b.c.nome))
+    .slice(0, 4)
+    .map((x) => x.c);
+}
+
+// O que um plano entrega, numa linha ("180 s/h · 10 pontos · peça até 30 s ·
+// 3 no ar por vez · ~540 h/mês").
+function direitosTexto(dir) {
+  if (!dir) return '';
+  return [
+    dir.segundosPorHora ? `${dir.segundosPorHora} s por hora` : '',
+    dir.pontos ? plural(dir.pontos, 'ponto') : '',
+    dir.duracaoMaxima ? `peça até ${dir.duracaoMaxima} s` : '',
+    dir.criativosNoAr ? `${dir.criativosNoAr} no ar por vez` : '',
+    dir.horasPorMes ? `~${num(dir.horasPorMes)} h/mês` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+// Plano: o direito de veicular, com a ORIGEM, em fila — Agora → Próximo →
+// Depois. Sem botão de conceder/alterar/cancelar plano (saíram da ficha:
+// cortesia agora é crédito). Só a assinatura PAGA ativa tem uma ação aqui,
+// discreta: cancelar a recorrência no San Checkout.
+function desenharContaPlano(el, ctx) {
+  const { s, bloqueada } = ctx;
+  const p = s.plano;
+  const etapa = (rotulo, corpo) =>
+    `<li class="plano-etapa"><span class="plano-etapa-rotulo">${rotulo}</span><div class="plano-etapa-corpo">${corpo}</div></li>`;
+
+  let agora;
+  if (p.agora?.tipo === 'comercial') {
+    const a = p.agora;
+    const prazo = a.renovaEm
+      ? `Próxima renovação ${data(a.renovaEm)}`
+      : a.assinaturaCancelada
+        ? `Assinatura cancelada — cobertura paga até ${data(a.validoAte)}, não renova`
+        : a.validoAte
+          ? `Válido até ${data(a.validoAte)}`
+          : 'Sem prazo';
+    agora = `<div class="plano-linha"><b class="conta-plano-nome">${esc(a.nome)}</b><span class="badge ${ORIGEM_CLASSE[a.origem] || 'badge-neutro'}">${esc(a.origemTexto)}</span></div>
+      <p class="plano-meta">${prazo}${a.desde ? ` · desde ${data(a.desde)}` : ''}</p>
+      ${a.direitos ? `<p class="plano-direitos">${esc(direitosTexto(a.direitos))}</p>` : ''}`;
+  } else if (p.agora?.tipo === 'comodato') {
+    agora = `<div class="plano-linha"><b class="conta-plano-nome">${esc(p.agora.nome)}</b><span class="badge badge-neutro">Comodato</span></div>
+      <p class="plano-meta">Vem da modalidade do ponto — sem cobrança, sem prazo.</p>
+      ${p.agora.direitos ? `<p class="plano-direitos">${esc(direitosTexto(p.agora.direitos))}</p>` : ''}`;
+  } else {
+    agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano</b></div>
+      <p class="plano-meta">A conta não veicula na rede. Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
+  }
+
+  const etapas = [etapa('Agora', agora)];
+  if (p.proximo) {
+    const x = p.proximo;
+    etapas.push(
+      etapa(
+        'Próximo',
+        `<div class="plano-linha"><b>${esc(x.nome)}</b><span class="badge ${ORIGEM_CLASSE[x.origem] || 'badge-neutro'}">${esc(x.origemTexto)}</span></div>
+        <p class="plano-meta">Começa ${x.comecaEm ? `em ${data(x.comecaEm)}, ` : ''}quando o ciclo pago terminar · até ${data(x.validoAte)}</p>
+        ${x.esperaAssinatura ? '<p class="plano-meta">A assinatura segue ativa: se renovar antes, o benefício espera o fim do novo ciclo, com a mesma duração.</p>' : ''}`,
+      ),
+    );
+  }
+  if (p.depois) {
+    etapas.push(
+      etapa(
+        'Depois',
+        `<p class="plano-meta plano-meta-forte">${p.depois.tipo === 'renova' ? '' : `Em ${data(p.depois.em)}: `}${esc(p.depois.texto)}</p>`,
+      ),
+    );
+  }
+
+  // "Veiculando" só com peça rodando de fato — plano sem criativo no ar não
+  // passa nada na tela.
+  const noAr = s.criativos.resumo.noAr;
+  const veicula = !p.veicula
+    ? `<span class="badge badge-neutro" title="${s.dados.suspensa ? 'Conta suspensa: fora da rotação.' : 'Sem plano vigente.'}">Não veicula</span>`
+    : noAr
+      ? '<span class="badge badge-ok">Veiculando</span>'
+      : '<span class="badge badge-pendente" title="O plano está vigente, mas nenhum criativo aprovado está no ar.">Sem peça no ar</span>';
+  const podeCancelarAssinatura = !bloqueada && p.agora?.origem === 'assinatura' && p.assinaturaAtiva;
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Plano</h3><div class="secao-acoes">${veicula}</div></div>
+    <ol class="plano-fila">${etapas.join('')}</ol>
+    ${
+      podeCancelarAssinatura
+        ? '<div class="acoes secao-pe"><button type="button" class="btn perigo-sutil mini" data-cancelar-assinatura>Cancelar assinatura</button></div>'
+        : ''
+    }`;
+  el.querySelector('[data-cancelar-assinatura]')?.addEventListener('click', () => abrirCancelarAssinatura(ctx));
+}
+
+// Comodato: direito do PONTO. Uma linha por ponto aprovado, com a modalidade
+// e o que o dono recebe — ponto sem modalidade aparece como o furo que é, com
+// a ação pra resolver, em vez de "sem comodato".
+function desenharContaComodato(el, ctx) {
+  const { s, bloqueada } = ctx;
+  const c = s.comodato;
+  const contrapartida = [
+    c.repasseMensal ? `${fmt(c.repasseMensal)}/mês de repasse` : '',
+    c.creditoMensal ? `${fmt(c.creditoMensal)}/mês de crédito na mensalidade` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const linhas = c.pontos
+    .map((pt) => {
+      const m = pt.modalidade;
+      const corpo = m
+        ? `<span class="comodato-modalidade"><b>${esc(m.produto || m.nome)}</b> · ${esc(m.nome)}</span>
+           <span class="item-meta">${esc(m.recebe)}${m.acumulaComComercial ? '' : ' · não acumula com plano comercial'}</span>`
+        : '<span class="comodato-modalidade comodato-sem"><b>Modalidade não definida</b></span><span class="item-meta">O dono não recebe repasse nem crédito até definir.</span>';
+      const acao = bloqueada
+        ? ''
+        : `<button type="button" class="btn ${m ? 'ghost' : 'primary'} mini" data-modalidade="${pt.id}">${m ? 'Alterar' : 'Definir modalidade'}</button>`;
+      return `<li class="comodato-ponto">
+        <div class="comodato-ponto-nome"><b>${esc(pt.nome)}</b><span class="item-meta">Ponto ${esc(pt.statusTexto.toLowerCase())}</span></div>
+        <div class="comodato-ponto-corpo">${corpo}</div>
+        ${acao}
+      </li>`;
+    })
+    .join('');
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Comodato</h3>${contrapartida ? `<span class="secao-nota">${esc(contrapartida)}</span>` : ''}</div>
+    ${
+      c.produto
+        ? `<p class="plano-meta u-mt-0"><b>${esc(c.produto.nome)}</b> vigente${c.produto.direitos ? ` — ${esc(direitosTexto(c.produto.direitos))}` : ''}${c.pontos.length > 1 ? '. Vale o melhor entre os pontos, nunca a soma.' : '.'}</p>`
+        : ''
+    }
+    <ul class="comodato-lista">${linhas}</ul>
+    ${c.naoAcumulaComComercial ? '<p class="campo-ajuda">Inicial (recebe o repasse) não acumula com plano comercial — pra assinar ou resgatar, o ponto precisa estar no Básico.</p>' : ''}`;
+  el.querySelectorAll('[data-modalidade]').forEach((b) =>
+    b.addEventListener('click', () =>
+      abrirModalidadeDoPonto(
+        ctx,
+        c.pontos.find((pt) => String(pt.id) === b.dataset.modalidade),
+      ),
+    ),
+  );
+}
+
+// Definir/alterar a modalidade de comodato de um ponto — o mesmo PATCH de
+// sempre (`/admin/pontos/:id` com `plano_ponto_id` → comodato.
+// aplicarModalidade, numa transação: modalidade, repasse e crédito juntos).
+// É o único caminho pra VOLTAR a receber o repasse (despesa nova: decisão do
+// dono), e o servidor recusa Inicial em conta com plano comercial.
+async function abrirModalidadeDoPonto(ctx, ponto) {
+  const modalidades = (await pegar('/admin/planos-ponto')).filter((m) => m.ativo);
+  const atual = ponto.modalidade?.id || '';
+  const { dlg, fechar } = abrirModal({
+    titulo: ponto.modalidade ? 'Alterar modalidade do comodato' : 'Definir modalidade do comodato',
+    corpo: `<p class="u-mt-0">Ponto <b>${esc(ponto.nome)}</b>. A modalidade decide o que o dono recebe por ceder a parede.</p>
+      <div class="modalidade-opcoes">${modalidades
+        .map(
+          (m) => `<label class="modalidade-opcao">
+            <input type="radio" name="modalidade" value="${esc(m.id)}" ${m.id === atual ? 'checked' : ''}>
+            <span><b>${esc(m.nome)}</b>
+              <span class="item-meta">${Number(m.ajuda_custo_mensal) > 0 ? `Recebe ${fmt(m.ajuda_custo_mensal)}/mês de repasse` : `${fmt(m.desconto_assinatura_reais)}/mês de crédito na mensalidade`} · ${m.permite_assinar ? 'acumula com plano comercial' : 'não acumula com plano comercial'}</span>
+            </span>
+          </label>`,
+        )
+        .join('')}</div>
+      <p class="form-msg" data-msg role="status"></p>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>Salvar modalidade</button>',
+  });
+  const botao = dlg.querySelector('[data-confirmar]');
+  botao.addEventListener('click', async () => {
+    const escolhida = dlg.querySelector('[name="modalidade"]:checked')?.value;
+    if (!escolhida) return erroNoModal(dlg, 'Escolha uma modalidade.');
+    if (escolhida === atual) return fechar();
+    botao.disabled = true;
+    const r = await api(`/admin/pontos/${ponto.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ plano_ponto_id: escolhida }),
+    });
+    if (!r.ok) {
+      botao.disabled = false;
+      return erroNoModal(
+        dlg,
+        window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar a modalidade.'),
+      );
+    }
+    toast('Modalidade salva.');
+    fechar();
+    ctx.recarregar();
   });
 }
 
-// Plano comercial (Partes 12-17). Conceder/alterar/cancelar sempre por modal.
-function desenharContaPlano(el, ctx) {
-  const { conta, comercial, planoInfo, bloqueada } = ctx;
-  const assinaturaAtiva = planoInfo.assinatura_ativa;
-  const vigente = planoInfo.historico.find(
-    (h) => !h.encerrado_em && comercial?.origem === 'cortesia' && h.plano_id === conta.plano_id,
-  );
-  let corpo;
-  if (comercial) {
-    const detalhe =
-      comercial.origem === 'assinatura'
-        ? assinaturaAtiva
-          ? 'Cobrança recorrente pelo San Checkout.'
-          : 'Assinatura já cancelada — a cobertura paga vale até a data abaixo.'
-        : 'Sem cobrança — não entra em receita.';
-    corpo = `
-      <div class="conta-plano-topo">
-        <p class="conta-plano-nome">${esc(nomePlanoOuId(comercial.plano, comercial.id))}</p>
-        <span class="badge ${comercial.vencido ? 'badge-err' : comercial.origem === 'assinatura' ? 'badge-ok' : 'badge-info'}">${comercial.vencido ? 'Vencido' : ORIGEM_PLANO[comercial.origem]}</span>
-      </div>
-      <dl class="dados dados-2">
-        <div><dt>${comercial.vencido ? 'Venceu em' : 'Válido até'}</dt><dd>${comercial.expira ? data(comercial.expira) : 'sem prazo'}</dd></div>
-        <div><dt>Desde</dt><dd>${conta.data_inicio_cobertura ? data(conta.data_inicio_cobertura) : '—'}</dd></div>
-        ${vigente?.observacao ? `<div class="dados-largo"><dt>Observação</dt><dd>${esc(vigente.observacao)}</dd></div>` : ''}
-      </dl>
-      <p class="campo-ajuda">${comercial.vencido ? ORIGEM_PLANO[comercial.origem] : detalhe}</p>`;
-  } else {
-    corpo = '<p class="texto-vazio">Sem plano comercial.</p>';
-  }
-  // Seção vazia fica do tamanho do que tem, em vez de esticar até a altura
-  // de Dados ao lado (polimento final).
-  el.classList.toggle('conta-secao-vazia', !comercial);
-  const podeCancelar = comercial && (comercial.origem === 'cortesia' || assinaturaAtiva);
-  // Cancelar tem a cor de ação destrutiva, discreta, no fim da linha — antes
-  // era texto preto sem borda ao lado de "Alterar plano" e lia como link solto.
-  const acoes = bloqueada
-    ? `<p class="campo-ajuda">${conta.excluido_em ? 'Restaure a conta' : 'Reative a conta'} pra mexer no plano.</p>`
-    : `<div class="acoes secao-pe">
-        <button type="button" class="btn ghost mini" data-plano-conceder>${comercial ? 'Alterar plano' : 'Conceder plano'}</button>
-        ${podeCancelar ? '<button type="button" class="btn perigo-sutil mini" data-plano-cancelar>Cancelar plano</button>' : ''}
-      </div>`;
-  const historico = planoInfo.historico.length
-    ? `<details class="conta-historico"><summary>Histórico de benefícios (${planoInfo.historico.length})</summary><ul>${planoInfo.historico
-        .map((h) => {
-          const fim = h.encerrado_em
-            ? `encerrado em ${data(h.encerrado_em)}${h.encerrado_motivo === 'substituido' ? ' (substituído)' : ''}`
-            : `até ${data(h.valido_ate)}`;
-          return `<li><b>${esc(nomeDoPlano({ nome: h.plano_nome, compromisso_meses: h.compromisso_meses }))}</b> · desde ${data(h.inicio)} · ${fim}${h.concedido_por ? ` · por ${esc(h.concedido_por)}` : ''}${h.observacao ? `<br><span class="u-dim">${esc(h.observacao)}</span>` : ''}</li>`;
-        })
-        .join('')}</ul></details>`
-    : '';
-  el.innerHTML = `<div class="secao-topo"><h3>Plano</h3></div>${corpo}${acoes}${historico}`;
-  el.querySelector('[data-plano-conceder]')?.addEventListener('click', () => abrirPlanoAdministrativo(ctx));
-  el.querySelector('[data-plano-cancelar]')?.addEventListener('click', () => abrirCancelarPlano(ctx));
-}
-
-// Créditos (Fase 6 da reconstrução do painel, 23/09/2026): "Conceder
-// créditos" é o jeito NORMAL de dar cortesia comercial daqui pra frente — o
-// admin escolhe só a quantidade, e a conta decide depois em que plano/
-// período usa, exatamente como um crédito de indicação (mesmo ledger, mesma
-// régua de resgate do painel dela). "Alterar/Conceder plano" (seção Plano,
-// acima) continua existindo, mas vira o caminho técnico — pra corrigir algo
-// na hora, não o fluxo comercial normal.
+// Créditos e benefícios: o jeito NORMAL de dar cortesia comercial. Saldo,
+// concessão (quantidade + motivo + nota interna, com o admin e a hora
+// gravados no ledger imutável) e os dois históricos, recolhidos.
 function desenharContaCreditos(el, ctx) {
-  const { creditos, planoInfo, bloqueada } = ctx;
-  const agendado = planoInfo.historico.find((h) => h.status === 'agendado');
-  const movimentos = creditos.movimentacoes.slice(0, 8);
+  const { s, bloqueada } = ctx;
+  const cr = s.creditos;
+  const movs = cr.movimentacoes;
+  const bens = s.beneficios;
   el.innerHTML = `
-    <div class="secao-topo"><h3>Créditos</h3></div>
-    <dl class="dados dados-2">
-      <div><dt>Saldo</dt><dd>${plural(creditos.saldo, 'crédito')}</dd></div>
-      ${
-        agendado
-          ? `<div class="dados-largo"><dt>Benefício agendado</dt><dd>${esc(nomeDoPlano({ nome: agendado.plano_nome, compromisso_meses: agendado.compromisso_meses }))} · começa quando o plano pago atual terminar</dd></div>`
-          : ''
-      }
-    </dl>
+    <div class="secao-topo"><h3>Créditos e benefícios</h3></div>
+    <div class="creditos-topo">
+      <div class="creditos-saldo"><span class="u-dim u-fs-78">Saldo</span><b>${plural(cr.saldo, 'crédito')}</b></div>
+      ${bloqueada ? '' : '<button type="button" class="btn ghost mini" data-creditos-conceder>Conceder créditos</button>'}
+    </div>
+    <p class="campo-ajuda u-mt-4">A conta resgata o saldo pelo painel dela — o benefício entra na fila do plano, sem sobrepor o que já está em vigor.</p>
     ${
-      bloqueada
-        ? ''
-        : '<div class="acoes secao-pe"><button type="button" class="btn ghost mini" data-creditos-conceder>Conceder créditos</button></div>'
+      movs.length
+        ? `<details class="conta-historico" data-historico="movimentacoes"><summary>Movimentações (${movs.length})</summary><ul>${movs
+            .map((m) => {
+              const detalhes = [
+                m.motivo
+                  ? `<span class="u-dim">${m.tipo === 'concessao_admin' ? 'Motivo: ' : ''}${esc(m.motivo)}</span>`
+                  : '',
+                m.notaInterna ? `<span class="u-dim">Nota interna: ${esc(m.notaInterna)}</span>` : '',
+              ].filter(Boolean);
+              return `<li><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${m.quantidade > 0 ? '+' : '−'}${num(Math.abs(m.quantidade))}</b> · ${esc(TIPO_CREDITO[m.tipo] || m.tipo)}${m.origemNome ? ` · ${esc(m.origemNome)}` : ''} · ${data(m.criadoEm)}${m.concedidoPor ? ` · por ${esc(m.concedidoPor)}` : ''}${detalhes.length ? `<br>${detalhes.join('<br>')}` : ''}</li>`;
+            })
+            .join('')}</ul></details>`
+        : '<p class="texto-vazio u-mt-8">Nenhuma movimentação ainda.</p>'
     }
     ${
-      movimentos.length
-        ? `<details class="conta-historico"><summary>Movimentações (${creditos.movimentacoes.length})</summary><ul>${movimentos
-            .map(
-              (m) =>
-                `<li>${m.quantidade > 0 ? '+' : ''}${num(m.quantidade)} · ${esc(TIPO_CREDITO[m.tipo] || m.tipo)}${m.origem_nome ? ` · ${esc(m.origem_nome)}` : ''} · ${data(m.criado_em)}${m.observacao ? `<br><span class="u-dim">${esc(m.observacao)}</span>` : ''}</li>`,
-            )
+      bens.length
+        ? `<details class="conta-historico" data-historico="beneficios"><summary>Histórico de benefícios (${bens.length})</summary><ul>${bens
+            .map((b) => {
+              const periodo =
+                b.status === 'agendado'
+                  ? `começa ${b.comecaEm ? data(b.comecaEm) : 'no fim do ciclo pago'} · até ${data(b.validoAte)}`
+                  : `${data(b.inicio)} → ${b.encerradoEm ? data(b.encerradoEm) : data(b.validoAte)}`;
+              return `<li><b>${esc(b.nome)}</b> · ${esc(b.origemTexto)}${b.custoCreditos ? ` (${plural(b.custoCreditos, 'crédito')})` : ''} · <span class="${b.status === 'encerrado' ? 'u-dim' : ''}">${esc(b.statusTexto)}</span><br><span class="u-dim">${periodo}${b.concedidoPor ? ` · por ${esc(b.concedidoPor)}` : ''}${b.observacao && b.origem !== 'beneficio_creditos' ? ` · ${esc(b.observacao)}` : ''}</span></li>`;
+            })
             .join('')}</ul></details>`
-        : '<p class="texto-vazio">Nenhuma movimentação ainda.</p>'
+        : ''
     }`;
   el.querySelector('[data-creditos-conceder]')?.addEventListener('click', () => abrirConcederCreditos(ctx));
 }
 
-function desenharContaComodato(el, comodato, pontosDaConta) {
-  el.classList.toggle('conta-secao-vazia', !comodato);
-  el.innerHTML = comodato
-    ? `<div class="secao-topo"><h3>Comodato</h3></div>
-      <dl class="dados dados-2">
-        <div><dt>Produto</dt><dd>${esc(comodato.produto || '—')}</dd></div>
-        <div><dt>Modalidade</dt><dd>${esc(comodato.modalidade || '—')}</dd></div>
-      </dl>
-      <p class="campo-ajuda">Vem do ponto${pontosDaConta.length > 1 ? ' (a conta tem mais de um)' : ''}, sem cobrança. Separado do plano comercial.</p>`
-    : '<div class="secao-topo"><h3>Comodato</h3></div><p class="texto-vazio">Sem ponto em comodato.</p>';
+// Pontos APROVADOS da conta (nunca candidatura) — card deitado: foto, nome,
+// estado administrativo, endereço, telas e a saúde operacional resumida.
+// Clique leva pro ponto na Rede; telas não se gerenciam daqui.
+function desenharContaPontos(el, pontos) {
+  el.innerHTML = `<div class="secao-topo"><h3>Pontos</h3><span class="contagem">${pontos.length}</span></div>
+    <div class="itens-grade">${pontos
+      .map((p) => {
+        const endereco = [p.endereco, p.bairro].filter(Boolean).join(' · ');
+        return `<a class="item-linha" href="#rede/pontos/${p.id}">
+          <span class="item-linha-foto">${fotoOuPlaceholder(p.fotoUrl, p.nome)}</span>
+          <span class="item-linha-corpo">
+            <span class="item-linha-topo"><b>${esc(p.nome)}</b><span class="badge ${PONTO_STATUS_CLASSE[p.status] || 'badge-pendente'}">${esc(p.statusTexto)}</span></span>
+            ${endereco ? `<span class="item-linha-meta">${esc(endereco)}</span>` : ''}
+            <span class="item-linha-meta">${esc(p.cidade || '')}${p.uf ? `/${esc(p.uf)}` : ''} · ${p.telas ? plural(p.telas, 'tela') : 'sem tela'}</span>
+            <span class="item-linha-meta saude-${p.saude.nivel}">${esc(p.saude.texto)}</span>
+          </span>
+        </a>`;
+      })
+      .join('')}</div>`;
+  ajustarFotos(el);
 }
 
-// Pontos da conta — card deitado e baixo (foto pequena + nome, endereço,
-// estado e telas) em vez do card de vitrine de Rede > Pontos: aqui o ponto é
-// um item da ficha, não a tela principal, e um card só não pode sobrar
-// sozinho num bloco de largura inteira. Clique leva pro ponto na Rede —
-// telas não se gerenciam daqui (Parte 25).
-function desenharContaPontos(el, pontosDaConta) {
-  el.innerHTML = `<div class="secao-topo"><h3>Pontos</h3>${pontosDaConta.length ? `<span class="contagem">${pontosDaConta.length}</span>` : ''}</div>${
-    pontosDaConta.length
-      ? `<div class="itens-grade">${pontosDaConta
-          .map((p) => {
-            const endereco = [p.endereco, p.bairro].filter(Boolean).join(' · ');
-            return `<a class="item-linha" href="#rede/pontos/${p.id}">
-              <span class="item-linha-foto">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</span>
-              <span class="item-linha-corpo">
-                <span class="item-linha-topo"><b>${esc(p.nome)}</b><span class="badge ${PONTO_STATUS_CLASSE[p.status] || 'badge-pendente'}">${esc(PONTO_STATUS[p.status] || p.status)}</span></span>
-                ${endereco ? `<span class="item-linha-meta">${esc(endereco)}</span>` : ''}
-                <span class="item-linha-meta">${esc(p.cidade || '')}${p.uf ? `/${esc(p.uf)}` : ''} · ${p.telas ? plural(p.telas, 'tela') : 'nenhuma tela ainda'}</span>
-              </span>
-            </a>`;
-          })
-          .join('')}</div>`
-      : '<p class="texto-vazio">Nenhum ponto nesta conta.</p>'
-  }`;
-  ajustarFotos(el);
+// Solicitações de ponto em análise — separadas de Pontos, discretas: pedido
+// não é ponto, não dá selo, não entra em comodato. Abre a candidatura em Rede.
+function desenharContaSolicitacoes(el, solicitacoes) {
+  el.innerHTML = `<div class="secao-topo"><h3>Solicitações de ponto</h3><span class="secao-nota">${plural(solicitacoes.length, 'em análise', 'em análise')}</span></div>
+    <ul class="solicitacoes-lista">${solicitacoes
+      .map((c) => {
+        const endereco = [c.endereco, c.bairro, c.cidade].filter(Boolean).join(' · ');
+        return `<li><a href="#rede/candidaturas/${c.id}"><b>${esc(c.nome || 'Sem nome')}</b>${endereco ? `<span class="item-meta">${esc(endereco)}</span>` : ''}</a><span class="item-meta">Enviada em ${data(c.enviadaEm)}</span></li>`;
+      })
+      .join('')}</ul>`;
 }
 
 // ---------- criativos da conta (Partes 18-24) ----------
@@ -3757,7 +4065,6 @@ function desenharContaCriativos(el, ctx) {
   const cadastrados = criativos.filter(
     (c) => c.status !== 'reprovado' && !(c.status === 'pendente' && c.substitui_criativo_id),
   ).length;
-  const noAr = criativos.filter((c) => c.no_ar).length;
   const podeAdicionar = !bloqueada && cadastrados < info.limite_cadastro;
 
   const cards = criativos
@@ -3808,12 +4115,37 @@ function desenharContaCriativos(el, ctx) {
     })
     .join('');
 
+  // Os números que respondem "quantos pode ter, quantos rodam e em que pé
+  // está cada um" — limite da CONTA (cadastro) separado do limite do PLANO
+  // (simultâneos no ar), que são regras diferentes (lib/limites.js ×
+  // gerador.js#limiteDeCriativos).
+  const r = ctx.s.criativos.resumo;
+  const semAr = ctx.s.dados.suspensa
+    ? 'conta suspensa'
+    : ctx.s.dados.excluidaEm
+      ? 'conta excluída'
+      : 'sem plano vigente';
+  const contagens = [
+    `<span><b>${r.cadastrados} de ${r.limiteConta}</b> cadastrados <span class="u-dim">(limite da conta)</span></span>`,
+    r.contaVeicula
+      ? `<span><b>${r.noAr} de ${r.limiteNoAr}</b> no ar <span class="u-dim">(simultâneos do plano)</span></span>`
+      : `<span class="u-dim">Nenhum no ar — ${semAr}</span>`,
+    r.emAnalise ? `<span>${plural(r.emAnalise, 'em análise', 'em análise')}</span>` : '',
+    r.substituicoesPendentes
+      ? `<span>${plural(r.substituicoesPendentes, 'substituição pendente', 'substituições pendentes')}</span>`
+      : '',
+    r.aprovadosForaDoAr
+      ? `<span>${plural(r.aprovadosForaDoAr, 'aprovado fora do ar', 'aprovados fora do ar')}</span>`
+      : '',
+    r.retirados ? `<span>${plural(r.retirados, 'retirado do ar', 'retirados do ar')}</span>` : '',
+    r.recusados ? `<span>${plural(r.recusados, 'recusado', 'recusados')}</span>` : '',
+  ].filter(Boolean);
   el.innerHTML = `
     <div class="secao-topo">
       <h3>Criativos</h3>
-      <span class="secao-nota">${cadastrados} de ${info.limite_cadastro} cadastrados${info.limite_no_ar ? ` · o plano põe ${info.limite_no_ar} no ar por vez (${noAr} agora)` : ''}</span>
       ${podeAdicionar ? '<div class="secao-acoes"><button type="button" class="btn ghost mini" data-cr-adicionar>+ Adicionar criativo</button></div>' : ''}
     </div>
+    <p class="criativos-contagens">${contagens.join('')}</p>
     ${
       criativos.length
         ? `<div class="criativos-grade">${cards}</div>`
@@ -3992,27 +4324,47 @@ function enviarCriativo({ titulo, explicacao, url, aoTerminar }) {
   });
 }
 
-// ---------- plano administrativo: modais (Partes 13-17) ----------
-function dataIsoLocal(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+// ---------- créditos e assinatura: modais ----------
+// "Conceder plano", "Alterar plano" e "Cancelar plano" (cortesia) SAÍRAM da
+// ficha na revisão de 23/09/2026 (pedido do dono): cortesia comercial é
+// crédito, que a conta resgata e entra na MESMA fila de benefícios, sem
+// sobrepor nada. As rotas antigas ficam no servidor como ferramenta técnica
+// de correção, sem tela, e recusam mexer em benefício pago com créditos.
+// Cortesias administrativas já concedidas continuam valendo até o fim — a
+// ficha mostra como "Cortesia administrativa legada".
 
-// Conceder créditos (Fase 6): um campo de quantidade e um de motivo — a
-// mesma simplicidade do resgate no painel da conta. Sem tier/período aqui;
-// quem decide em que vira é a conta, depois, com o saldo já disponível.
+// Conceder créditos: quantidade + motivo (o cliente lê) + nota interna (só
+// o time lê). Quem concedeu e quando o ledger grava sozinho. A tabela de
+// referência vem do servidor (mesma régua do resgate, creditos/regras.js).
 function abrirConcederCreditos(ctx) {
-  const { conta, recarregar } = ctx;
+  const { s, conta, recarregar } = ctx;
+  const ref = s.creditos.referencia;
   const { dlg, fechar } = abrirModal({
     titulo: 'Conceder créditos',
     corpo: `<form id="formConcederCreditos" class="modal-form">
-        <div><label for="creditosQtd">Quantidade</label><input type="number" id="creditosQtd" name="quantidade" min="1" step="1" required></div>
-        <div><label for="creditosMotivo">Motivo</label><input type="text" id="creditosMotivo" name="motivo" maxlength="200" required placeholder="ex.: parceria de lançamento, correção de cortesia antiga"></div>
-        <p class="campo-ajuda">Os créditos entram no saldo da conta — ela escolhe depois em que plano e período usa, do painel dela, do mesmo jeito que um crédito de indicação.</p>
+        <div><label for="creditosQtd">Quantidade</label><input type="number" id="creditosQtd" name="quantidade" min="1" max="100000" step="1" required inputmode="numeric"></div>
+        <p class="creditos-referencia">Referência por mês de benefício: ${ref
+          .map((r) => `<b>${esc(r.nome)}</b> ${plural(r.porMes, 'crédito')}`)
+          .join(
+            ' · ',
+          )}. Ex.: ${esc(ref[ref.length - 1]?.nome || 'Prime')} por 12 meses = ${num(ref[ref.length - 1]?.anual || 120)} créditos.</p>
+        <div><label for="creditosMotivo">Motivo <span class="u-dim">(o cliente lê no extrato)</span></label><input type="text" id="creditosMotivo" name="motivo" maxlength="200" required placeholder="ex.: parceria de lançamento"></div>
+        <div><label for="creditosNota">Nota interna <span class="u-dim">(opcional, só o time vê)</span></label><textarea id="creditosNota" name="nota_interna" rows="2" maxlength="500" placeholder="ex.: combinado por WhatsApp em 20/09"></textarea></div>
+        <p class="campo-ajuda" data-previa>Saldo agora: <b>${plural(s.creditos.saldo, 'crédito')}</b>.</p>
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formConcederCreditos" class="btn primary">Conceder</button>`,
   });
   const form = dlg.querySelector('#formConcederCreditos');
+  const previa = dlg.querySelector('[data-previa]');
+  form.quantidade.addEventListener('input', () => {
+    const q = Number(form.quantidade.value);
+    previa.innerHTML =
+      Number.isInteger(q) && q > 0
+        ? `Saldo: <b>${plural(s.creditos.saldo, 'crédito')}</b> → <b>${plural(s.creditos.saldo + q, 'crédito')}</b>. Fica registrado quem concedeu e quando.`
+        : `Saldo agora: <b>${plural(s.creditos.saldo, 'crédito')}</b>.`;
+  });
+  form.quantidade.focus();
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const quantidade = Number(form.quantidade.value);
@@ -4020,16 +4372,19 @@ function abrirConcederCreditos(ctx) {
     if (!Number.isInteger(quantidade) || quantidade <= 0) {
       return erroNoModal(dlg, 'Quantidade precisa ser um número inteiro positivo.');
     }
-    if (!motivo) return erroNoModal(dlg, 'Descreva o motivo.');
+    if (!motivo) return erroNoModal(dlg, 'Descreva o motivo — é o que o cliente lê.');
     const botao = dlg.querySelector('[type="submit"]');
     botao.disabled = true;
     const r = await api(`/admin/anunciantes/${conta.id}/creditos/conceder`, {
       method: 'POST',
-      body: JSON.stringify({ quantidade, motivo }),
+      body: JSON.stringify({ quantidade, motivo, nota_interna: form.nota_interna.value.trim() }),
     });
     if (!r.ok) {
       botao.disabled = false;
-      return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível conceder os créditos.');
+      return erroNoModal(
+        dlg,
+        window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível conceder os créditos.'),
+      );
     }
     toast(`${plural(quantidade, 'crédito concedido', 'créditos concedidos')}.`);
     fechar();
@@ -4037,162 +4392,76 @@ function abrirConcederCreditos(ctx) {
   });
 }
 
-function abrirPlanoAdministrativo(ctx) {
-  const { planos, comercial } = ctx;
-  const vendaveis = planos.filter((p) => p.ativo && !p.fundador && NOME_TIER[p.tier] && CICLOS[p.compromisso_meses]);
-  const porChave = Object.fromEntries(vendaveis.map((p) => [`${p.tier}:${p.compromisso_meses}`, p]));
-  const tiers = Object.keys(NOME_TIER).filter((t) => vendaveis.some((p) => p.tier === t));
-  const ciclos = Object.keys(CICLOS)
-    .map(Number)
-    .filter((m) => vendaveis.some((p) => p.compromisso_meses === m));
-  const tierAtual = comercial?.plano && tiers.includes(comercial.plano.tier) ? comercial.plano.tier : tiers[0];
-  const cicloAtual =
-    comercial?.plano && ciclos.includes(comercial.plano.compromisso_meses)
-      ? comercial.plano.compromisso_meses
-      : ciclos[0];
-
+// Cancelar a ASSINATURA paga (recorrência no San Checkout). A cobertura já
+// paga continua até o fim do ciclo; nada é reembolsado. Não existe mais
+// "cancelar cortesia" pela ficha.
+function abrirCancelarAssinatura(ctx) {
+  const { s, conta, recarregar } = ctx;
+  const a = s.plano.agora;
   const { dlg, fechar } = abrirModal({
-    titulo: comercial ? 'Alterar plano' : 'Conceder plano',
-    corpo: `<form id="formPlanoAdm" class="modal-form">
-        <div><span class="campo-rotulo">Plano</span>${segmentado(
-          'tier',
-          Object.fromEntries(tiers.map((t) => [t, NOME_TIER[t]])),
-          tierAtual,
-        )}</div>
-        <div><span class="campo-rotulo">Ciclo</span>${segmentado(
-          'ciclo',
-          Object.fromEntries(ciclos.map((m) => [String(m), CICLOS[m]])),
-          String(cicloAtual),
-        )}</div>
-        <div><label for="planoAdmValidade">Válido até</label><input type="date" id="planoAdmValidade" name="valido_ate" required></div>
-        <div><label>Origem</label><p class="u-m-0"><span class="badge badge-info">Cortesia administrativa</span> <span class="u-dim u-fs-78">sem cobrança, sem Pix, sem fatura — não entra em receita</span></p></div>
-        <div><label for="planoAdmObs">Observação <span class="u-dim">(opcional)</span></label><textarea id="planoAdmObs" name="observacao" rows="2" maxlength="500" placeholder="ex.: parceria de lançamento, teste de 30 dias"></textarea></div>
-        <p class="form-msg" data-msg role="status"></p>
-      </form>`,
-    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPlanoAdm" class="btn primary">Continuar</button>`,
-  });
-  const form = dlg.querySelector('#formPlanoAdm');
-  const validade = form.valido_ate;
-  const hoje = new Date();
-  validade.min = dataIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 1));
-  let validadeEditada = false;
-  const sugerirValidade = () => {
-    if (validadeEditada) return;
-    const meses = Number(form.querySelector('[name="ciclo"]:checked').value);
-    validade.value = dataIsoLocal(new Date(hoje.getFullYear(), hoje.getMonth() + meses, hoje.getDate()));
-  };
-  validade.addEventListener('input', () => {
-    validadeEditada = true;
-  });
-  form.querySelectorAll('[name="ciclo"]').forEach((r) => r.addEventListener('change', sugerirValidade));
-  sugerirValidade();
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const tier = form.querySelector('[name="tier"]:checked')?.value;
-    const meses = Number(form.querySelector('[name="ciclo"]:checked')?.value);
-    const plano = porChave[`${tier}:${meses}`];
-    if (!plano) return erroNoModal(dlg, 'Essa combinação de plano e ciclo não está à venda hoje.');
-    if (!validade.value || validade.value < validade.min)
-      return erroNoModal(dlg, 'Escolha uma validade a partir de amanhã.');
-    const escolha = { plano, validoAte: validade.value, observacao: form.observacao.value.trim() };
-    fechar();
-    confirmarPlanoAdministrativo(ctx, escolha);
-  });
-}
-
-// Confirmação (Parte 16): plano atual × novo benefício × consequências.
-function confirmarPlanoAdministrativo(ctx, { plano, validoAte, observacao }) {
-  const { conta, comercial, planoInfo, recarregar } = ctx;
-  const [a, m, d] = validoAte.split('-');
-  const consequencias = [];
-  if (comercial) consequencias.push('O plano atual é encerrado agora. O histórico fica guardado.');
-  if (comercial?.origem === 'assinatura' && planoInfo.assinatura_ativa) {
-    consequencias.push('A assinatura paga é cancelada no San Checkout — a cobrança recorrente para.');
-  }
-  consequencias.push('Nenhuma cobrança, diferença de plano ou reembolso é gerado.');
-  consequencias.push('O novo plano entra no ar hoje e vale até a data escolhida.');
-  const { dlg, fechar } = abrirModal({
-    titulo: comercial ? 'Confirmar alteração de plano' : 'Confirmar concessão de plano',
-    corpo: `<div class="troca-plano">
-        <div class="troca-plano-lado"><span class="u-dim u-fs-78">Plano atual</span><b>${comercial ? esc(nomePlanoOuId(comercial.plano, comercial.id)) : 'Nenhum'}</b>${comercial ? `<span class="u-fs-78">${ORIGEM_PLANO[comercial.origem]}</span>` : ''}</div>
-        <div class="troca-plano-seta" aria-hidden="true">→</div>
-        <div class="troca-plano-lado troca-plano-novo"><span class="u-dim u-fs-78">Novo benefício</span><b>${esc(nomeDoPlano(plano))}</b><span class="u-fs-78">Cortesia administrativa · até ${d}/${m}/${a}</span></div>
-      </div>
-      ${observacao ? `<p class="u-fs-85"><span class="u-dim">Observação:</span> ${esc(observacao)}</p>` : ''}
-      <ul class="lista-consequencias">${consequencias.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
+    titulo: 'Cancelar assinatura?',
+    corpo: `<p>A assinatura de <b>${esc(a.nome)}</b> é cancelada no San Checkout e a cobrança recorrente para. A cobertura já paga continua valendo até ${a.validoAte ? data(a.validoAte) : 'o fim do ciclo'} — o anúncio não sai do ar hoje. Nenhum reembolso é gerado.</p>
+      ${s.plano.proximo ? `<p class="u-dim u-fs-85">O benefício programado (${esc(s.plano.proximo.nome)}) começa quando a cobertura paga terminar.</p>` : ''}
       <p class="form-msg" data-msg role="status"></p>`,
-    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>${comercial ? 'Confirmar alteração' : 'Conceder plano'}</button>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn perigo" data-confirmar>Cancelar assinatura</button>`,
   });
   const botao = dlg.querySelector('[data-confirmar]');
   botao.addEventListener('click', async () => {
     botao.disabled = true;
-    const r = await api(`/admin/anunciantes/${conta.id}/plano-administrativo`, {
-      method: 'POST',
-      body: JSON.stringify({ plano_id: plano.id, valido_ate: validoAte, observacao }),
-    });
+    const r = await api(`/admin/anunciantes/${conta.id}/cancelar-assinatura`, { method: 'POST' });
     if (!r.ok) {
       botao.disabled = false;
-      return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível conceder o plano.');
+      return erroNoModal(dlg, window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.'));
     }
-    toast(comercial ? 'Plano alterado.' : 'Plano concedido.');
-    fechar();
-    recarregar();
-  });
-}
-
-function abrirCancelarPlano(ctx) {
-  const { conta, comercial, planoInfo, recarregar } = ctx;
-  const pago = comercial.origem === 'assinatura';
-  const texto = pago
-    ? `<p>A assinatura de <b>${esc(nomePlanoOuId(comercial.plano, comercial.id))}</b> é cancelada no San Checkout e a cobrança recorrente para. A cobertura já paga continua valendo até ${comercial.expira ? data(comercial.expira) : 'o fim do ciclo'} — o anúncio não sai do ar hoje. Nenhum reembolso é gerado.</p>`
-    : `<p>O benefício <b>${esc(nomePlanoOuId(comercial.plano, comercial.id))}</b> (cortesia administrativa) termina agora. ${planoInfo.historico.length ? 'O histórico fica guardado.' : ''} O comodato desta conta (se houver) não é afetado — é separado do plano comercial e nunca é tocado por este cancelamento.</p>`;
-  const { dlg, fechar } = abrirModal({
-    titulo: 'Cancelar plano?',
-    corpo: `${texto}<p class="form-msg" data-msg role="status"></p>`,
-    rodape: `<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn perigo" data-confirmar>Cancelar plano</button>`,
-  });
-  const botao = dlg.querySelector('[data-confirmar]');
-  botao.addEventListener('click', async () => {
-    botao.disabled = true;
-    const r = await api(
-      pago
-        ? `/admin/anunciantes/${conta.id}/cancelar-assinatura`
-        : `/admin/anunciantes/${conta.id}/plano-administrativo/encerrar`,
-      { method: 'POST' },
-    );
-    if (!r.ok) {
-      botao.disabled = false;
-      return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar.');
-    }
-    toast(pago ? 'Assinatura cancelada. A cobertura paga continua até expirar.' : 'Benefício encerrado.');
+    toast('Assinatura cancelada. A cobertura paga continua até expirar.');
     fechar();
     recarregar();
   });
 }
 
 // ---------- suspensão (Partes 26-29) ----------
-// Canto de baixo, discreto e vermelho. Suspender bloqueia login, painel,
-// compra, upload e mexida em criativo; NÃO desliga os pontos físicos da
-// conta (a TV autentica pelo aparelho). Os criativos comerciais saem da
-// rotação como sempre saíram (gerador ignora conta suspensa).
+// No fim da ficha, discreto e vermelho. Suspender bloqueia login, painel,
+// compra, resgate, upload e mudança comercial; NÃO desliga os pontos físicos
+// da conta (a TV autentica pelo aparelho) nem apaga histórico. Os criativos
+// comerciais saem da rotação (o gerador ignora conta suspensa). Confirmação
+// séria: o botão só libera depois de marcar que entendeu.
 function desenharContaRodape(el, { conta, recarregar }) {
   el.innerHTML = `
-    ${conta.excluido_em ? '<button type="button" class="btn ghost mini" data-restaurar>Restaurar conta</button>' : ''}
+    ${conta.excluidaEm ? '<button type="button" class="btn ghost mini" data-restaurar>Restaurar conta</button>' : ''}
     ${
-      conta.suspenso
+      conta.suspensa
         ? '<button type="button" class="btn ghost mini" data-reativar>Reativar conta</button>'
         : '<button type="button" class="btn perigo-sutil mini" data-suspender>Suspender conta</button>'
     }`;
-  el.querySelector('[data-suspender]')?.addEventListener('click', async () => {
-    const ok = await confirmarModal({
+  el.querySelector('[data-suspender]')?.addEventListener('click', () => {
+    const { dlg, fechar } = abrirModal({
       titulo: 'Suspender esta conta?',
-      texto: `<p>A conta perderá acesso ao painel e não poderá comprar, subir ou alterar criativos, nem fazer operações comerciais. Os anúncios dela saem da rotação.</p>
-        <p class="u-dim u-fs-85">Os pontos físicos da conta continuam funcionando. Nada é apagado — dá pra reativar depois.</p>`,
-      botao: 'Suspender conta',
-      perigo: true,
+      corpo: `<p class="u-mt-0">Enquanto suspensa, <b>${esc(conta.nome)}</b>:</p>
+        <ul class="lista-consequencias">
+          <li>perde o acesso ao painel (a sessão aberta cai);</li>
+          <li>não compra, não resgata créditos, não sobe nem altera criativos;</li>
+          <li>não faz nenhuma mudança comercial;</li>
+          <li>sai da rotação: os anúncios dela deixam de passar nas telas.</li>
+        </ul>
+        <p class="u-dim u-fs-85">Os pontos físicos da conta continuam funcionando — a tela não é desligada. Nada é apagado: plano, créditos e histórico ficam como estão, e dá pra reativar depois.</p>
+        <label class="confirmar-serio"><input type="checkbox" data-entendi> Entendi — suspender ${esc(conta.nome)}</label>
+        <p class="form-msg" data-msg role="status"></p>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn perigo" data-confirmar disabled>Suspender conta</button>',
     });
-    if (ok && (await salvar(`/admin/anunciantes/${conta.id}`, { suspenso: true }))) recarregar();
+    const botao = dlg.querySelector('[data-confirmar]');
+    dlg.querySelector('[data-entendi]').addEventListener('change', (e) => {
+      botao.disabled = !e.target.checked;
+    });
+    botao.addEventListener('click', async () => {
+      botao.disabled = true;
+      if (await salvar(`/admin/anunciantes/${conta.id}`, { suspenso: true })) {
+        fechar();
+        recarregar();
+      } else {
+        botao.disabled = false;
+      }
+    });
   });
   el.querySelector('[data-reativar]')?.addEventListener('click', async () => {
     const ok = await confirmarModal({

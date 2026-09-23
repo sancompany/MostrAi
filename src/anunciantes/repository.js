@@ -81,6 +81,19 @@ function planoEfetivoId(conta) {
   return conta?.plano_id || conta?.comodato_plano_id || null;
 }
 
+// O plano que o GERADOR honra AGORA (src/playlist/gerador.js#
+// anunciantesElegiveis, mesmo COALESCE): o comercial enquanto estiver dentro
+// da validade; vencido (a conciliação diária ainda não limpou), cai pro
+// comodato. `planoEfetivoId` acima ignora a validade — serve pra cota de
+// cadastro; pra dizer "está no ar" / "veicula agora", é esta (revisão da
+// ficha de Conta, 23/09/2026: a ficha dizia "fora da rotação" pra conta com
+// comercial vencido e Básico ativo, enquanto a TV tocava o criativo).
+function planoVigenteId(conta, agora = new Date()) {
+  if (!conta) return null;
+  const comercialVale = conta.plano_id && (!conta.data_expiracao || new Date(conta.data_expiracao) >= agora);
+  return (comercialVale ? conta.plano_id : null) || conta.comodato_plano_id || null;
+}
+
 // `db` opcional: o cadastro por convite passa o client da transação.
 //
 // `cpf_cnpj` é normalizado (`limpar` — sem pontuação, maiúsculo) AQUI, não em
@@ -212,6 +225,7 @@ module.exports = {
   validarSenha,
   listar,
   planoEfetivoId,
+  planoVigenteId,
   atualizar,
   STATUS,
 };

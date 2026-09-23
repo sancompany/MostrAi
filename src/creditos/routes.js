@@ -201,17 +201,37 @@ router.post('/anunciantes/me/notificacoes/marcar-todas-lidas', exigirAnuncianteL
 // decide em que vira. `liberar-plano` e `plano-administrativo` continuam
 // existindo (não apagados), como mecanismo técnico de correção emergencial,
 // não como fluxo comercial normal.
+//
+// Revisão da ficha de Conta (23/09/2026): motivo passou a ser OBRIGATÓRIO no
+// servidor (antes só o modal exigia — um POST direto gravava concessão sem
+// motivo nenhum no ledger) e ganhou a nota interna opcional (migration 081).
+// Conta suspensa ou excluída não recebe concessão: a suspensão congela
+// qualquer mudança comercial, e a ficha já escondia o botão nesse estado.
 router.post('/admin/anunciantes/:id/creditos/conceder', async (req, res) => {
-  const { quantidade, motivo } = req.body;
+  const { quantidade } = req.body;
+  const motivo = String(req.body.motivo || '')
+    .trim()
+    .slice(0, 200);
+  const notaInterna =
+    String(req.body.nota_interna || '')
+      .trim()
+      .slice(0, 500) || null;
+  if (!motivo) return res.status(400).json({ erro: 'descreva o motivo da concessão' });
   const conta = await anunciantesRepo.buscarPorId(req.params.id);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   if (conta.conta_propria) return res.status(400).json({ erro: 'a conta interna do Mostraí não recebe crédito' });
+  if (conta.excluido_em) return res.status(409).json({ erro: 'conta excluída — restaure antes de conceder créditos' });
+  if (conta.suspenso) return res.status(409).json({ erro: 'conta suspensa — reative antes de conceder créditos' });
   try {
-    const linha = await repo.concederAdmin(conta.id, quantidade, { motivo, adminUsuario: req.session.adminUsuario });
+    const linha = await repo.concederAdmin(conta.id, quantidade, {
+      motivo,
+      notaInterna,
+      adminUsuario: req.session.adminUsuario,
+    });
     await notificacoesRepo.registrar(conta.id, {
       tipo: 'creditos_recebidos',
-      titulo: `Você recebeu ${linha.quantidade} créditos`,
-      descricao: motivo || undefined,
+      titulo: `Você recebeu ${linha.quantidade} ${linha.quantidade === 1 ? 'crédito' : 'créditos'}`,
+      descricao: motivo,
     });
     sse.emitirParaConta(conta.id, 'credits.updated', {});
     res.status(201).json(linha);

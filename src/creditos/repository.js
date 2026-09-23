@@ -38,14 +38,18 @@ async function registrarCreditoIndicacao(pontoContaId, indicadoContaId, cobranca
 // quem decide em que vira é o resgate, exatamente como créditos de
 // indicação. `quantidade` sempre positiva aqui (estorno usa a função
 // própria abaixo, nunca quantidade negativa direto).
-async function concederAdmin(contaId, quantidade, { motivo, adminUsuario }, db = pool) {
+//
+// `motivo` vai pra `observacao` e o CLIENTE lê (extrato e central de
+// atualizações). `notaInterna` (migration 081) é só do time — nenhuma rota de
+// autoatendimento projeta essa coluna.
+async function concederAdmin(contaId, quantidade, { motivo, notaInterna, adminUsuario }, db = pool) {
   const qtd = Math.trunc(Number(quantidade));
   if (!Number.isFinite(qtd) || qtd <= 0)
     throw Object.assign(new Error('quantidade precisa ser um inteiro positivo'), { status: 400 });
   const { rows } = await db.query(
-    `INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, concedido_por, observacao)
-     VALUES ($1, 'concessao_admin', $2, $3, $4) RETURNING *`,
-    [contaId, qtd, adminUsuario || null, motivo || null],
+    `INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, concedido_por, observacao, nota_interna)
+     VALUES ($1, 'concessao_admin', $2, $3, $4, $5) RETURNING *`,
+    [contaId, qtd, adminUsuario || null, motivo || null, notaInterna || null],
   );
   return rows[0];
 }
