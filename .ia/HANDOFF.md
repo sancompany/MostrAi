@@ -3,6 +3,44 @@
 ## Updated
 2026-09-23
 
+## Revisão da ficha de Conta do admin (23/09/2026, noite, este agente)
+Pedido do dono (32 seções): revisar, corrigir e refinar Admin → Contas →
+ficha da conta, sem reconstruir o admin. NÃO MEXER respeitado: Player,
+heartbeat V2, Tela/Player API, OTA, Rede inteira, sidebar, Mídia Mostraí,
+Ofertas. Decisão registrada no **ADR-015**.
+- **Fonte única**: `GET /admin/anunciantes/:id/situacao`
+  (`src/anunciantes/situacao.js`) decide tudo que a ficha mostra — origem do
+  plano (`assinatura` / `beneficio_creditos` / `cortesia_legada` /
+  `bonus_ponto` / `comodato`, regra em `plano-administrativo.js#
+  origemDoDireito`, também usada na lista de Contas via `plano_origem`),
+  fila Agora → Próximo → Depois, comodato por ponto + modalidade, pontos
+  aprovados (reusa `meusPontosDaConta`) × solicitações em análise, selo
+  "Dono de ponto" (≥ 1 ponto aprovado, nunca `papeis`), invariantes.
+- **Ficha nova** (`public/admin/index.page.js`, seção "ficha da conta"):
+  [Dados][Plano] / [Comodato?][Créditos e benefícios] / Criativos / Pontos? /
+  Solicitações? / ações críticas. Conceder/Alterar/Cancelar plano SAÍRAM;
+  só "Cancelar assinatura" (paga) ficou. "Definir/Alterar modalidade" no
+  card Comodato (mesmo PATCH `/admin/pontos/:id`). Categoria antiga com
+  sucessora/sugestões em um clique. Suspensão com confirmação "Entendi".
+  Reatividade: `GET /admin/anunciantes/:id/eventos` (mesmo SSE do painel).
+- **Créditos**: migration 081 (`creditos_ledger.nota_interna`); motivo
+  obrigatório no servidor; 409 pra conta suspensa/excluída.
+- **Motor de benefícios — 2 bugs reais corrigidos**: (1)
+  `encerrarBeneficiosVencidos` zerava o plano PAGO de quem assinou por cima
+  de um benefício (a linha 'ativo' ficava órfã) — agora só limpa a conta se
+  ela ainda está naquele benefício; (2) `aplicarCicloPago` agora fecha o
+  benefício 'ativo' como `substituido` na mesma transação. Rotas técnicas
+  (`plano-administrativo`, `/encerrar`, `liberar-plano`) recusam mexer em
+  benefício pago com créditos / benefício aberto.
+- **"No ar"** usa `repository.planoVigenteId` (mesmo COALESCE do gerador):
+  comercial vencido + Básico continua no ar pelo comodato.
+- Testes: `tests/ficha-conta.test.js` (17 invariantes) e
+  `tests/e2e/16-ficha-conta.mjs` (perfis A–K, reatividade, fluxos novos,
+  celular; limpa o que cria). Suíte: 280/280.
+- **Dado de produção NÃO alterado** — ver `docs/PENDENCIAS.md` §I (120
+  créditos da conta 5 substituídos pela ficha antiga; ponto "SAntos unio"
+  sem modalidade; categoria antiga).
+
 ## Auditoria forense + reconstrução do painel único em 6 fatias (23/09/2026, fim do dia)
 Depois do dono PARAR a integração do Player V2 e pedir auditoria forense
 ("produção não corresponde ao escopo"), esta sessão entregou, cada item um

@@ -451,3 +451,34 @@ implementam a mesma regra, comentário cruzado em cada um.
 Consequências: se um dia o dono pedir promoção empilhável com ciclo,
 exige mudar os dois lugares junto, e a UI do card de preço (hoje mostra
 um desconto só) também muda — não é ajuste de uma linha.
+
+## ADR-015 — Ficha de Conta lê UMA fonte de domínio; cortesia é crédito; benefício pago com créditos é intocável (23/09/2026)
+
+Status: Ativa.
+
+Contexto: revisão da ficha de Conta do admin pedida pelo dono ("a interface
+precisa representar o domínio da Mostraí, não a estrutura das tabelas").
+A ficha montava a conta no navegador a partir de seis listas cruas, e dois
+cards chegaram a se contradizer em produção ("Sem ponto em comodato" ao lado
+de "Pontos: Santos unio · Inativo"). Os botões Conceder/Alterar/Cancelar
+plano apagaram, em produção, um benefício pago com 120 créditos (substituído
+por cortesia administrativa 42 s depois).
+
+Decisão:
+1. `GET /admin/anunciantes/:id/situacao` (`src/anunciantes/situacao.js`) é
+   a ÚNICA leitura da ficha. Origem do plano, fila Agora → Próximo → Depois,
+   comodato (ponto + modalidade), ponto × solicitação, selo "Dono de ponto"
+   e invariantes são decididos ali. A tela só desenha.
+2. Cortesia comercial = CRÉDITOS (`creditos/conceder`, motivo obrigatório +
+   nota interna). "Conceder/Alterar/Cancelar plano" saíram da ficha; as
+   rotas ficam como ferramenta técnica sem tela, e recusam (409) mexer em
+   benefício pago com créditos em vigor ou programado.
+3. Cortesia administrativa antiga NÃO é migrada nem apagada: vale até o fim
+   e aparece como "Cortesia administrativa legada".
+4. "No ar" usa o plano VIGENTE (`repository.planoVigenteId`, mesmo COALESCE
+   do gerador) — ficha e TV nunca discordam.
+
+Consequências: quem mexer em regra de plano/comodato/selo muda
+`situacao.js` (e o teste `tests/ficha-conta.test.js`), nunca a tela. Pra
+reintroduzir concessão direta de plano, rever este ADR — o dono pediu
+explicitamente que o fluxo normal seja crédito.

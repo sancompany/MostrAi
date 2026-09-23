@@ -79,6 +79,20 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    Comissão de vendedor não soma mais nesse agregado — o conceito de
    vendedor saiu do escopo da Visão geral (segue existindo dentro de Contas).
 3. Aprova contas, candidaturas e criativos.
+   **Ficha da conta** (Contas → conta, revisão de 23/09/2026, ADR-015): lê
+   uma fonte só (`/admin/anunciantes/:id/situacao`) e responde quem é a
+   conta e o que ela tem — Dados (categoria antiga com troca em um clique),
+   Plano em fila **Agora → Próximo → Depois** com a ORIGEM do direito
+   (assinatura paga, benefício por créditos, cortesia administrativa
+   legada, comodato), Comodato só com ponto aprovado (modalidade por ponto:
+   Inicial = repasse de R$ 50 e não acumula com plano comercial; Básico =
+   crédito de R$ 50 na mensalidade, um por conta), Créditos e benefícios
+   (saldo, **Conceder créditos** com motivo e nota interna — o jeito normal
+   de dar cortesia; conceder plano direto saiu da ficha), Criativos (limite
+   da conta × simultâneos do plano), Pontos aprovados (nunca candidatura) e
+   Solicitações de ponto à parte. Selo "Dono de ponto" só com ponto
+   aprovado. Atualiza sozinha (SSE) quando o cliente resgata créditos ou uma
+   candidatura é aprovada.
 4. Gera convites, cadastra pontos e telas, define chave e PIN, e escolhe o
    horário operacional de cada tela (RN-58: segue o ponto, 24h, ou horário
    próprio).

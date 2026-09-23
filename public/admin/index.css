@@ -1840,41 +1840,6 @@ a.celula-sub:hover {
   font-size: 0.85rem;
   line-height: 1.55;
 }
-.troca-plano {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
-}
-.troca-plano-lado {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.troca-plano-lado b {
-  font-size: 1rem;
-}
-.troca-plano-novo {
-  border-color: var(--brand);
-  background: var(--brand-tint);
-}
-.troca-plano-seta {
-  align-self: center;
-  color: var(--text-dim);
-  font-size: 1.2rem;
-}
-@media (max-width: 480px) {
-  .troca-plano {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .troca-plano-seta {
-    justify-self: center;
-    transform: rotate(90deg);
-  }
-}
 
 /* Aviso de salvo/erro de edição inline. */
 @keyframes flashOk {
@@ -2472,29 +2437,29 @@ button.pend-bloco:focus-visible {
 .conta-cabecalho .conta-sinal {
   margin-left: 0;
 }
-/* Dados | Plano | Comodato: três colunas de mesma altura em tela larga;
-   em tela média, Dados em cima e os dois lado a lado embaixo. */
+/* Ficha da conta (revisão de 23/09/2026): duas colunas proporcionais —
+   [Dados][Plano] e [Comodato][Créditos e benefícios] — do mesmo tamanho,
+   sem buraco embaixo do card mais curto. Sem comodato, Créditos ocupa a
+   linha inteira (`conta-grade-uma`). No celular, uma coluna. */
 .conta-grade {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
-.conta-grade .conta-dados-secao {
-  grid-column: 1 / -1;
+.conta-grade-uma {
+  grid-template-columns: minmax(0, 1fr);
 }
-@media (min-width: 1360px) {
-  .conta-grade {
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .conta-grade .conta-dados-secao {
-    grid-column: auto;
-  }
-}
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .conta-grade {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+.conta-alertas {
+  margin: -6px 0 16px;
+}
+.conta-alertas .aviso-linha {
+  margin-bottom: 6px;
 }
 .conta-secao {
   display: flex;
@@ -2509,20 +2474,10 @@ button.pend-bloco:focus-visible {
 .conta-secao .campo-ajuda {
   margin-top: 12px;
 }
-.conta-grade .conta-secao-vazia {
-  align-self: start;
-}
 .texto-vazio {
   margin: 0;
   font-size: 0.86rem;
   color: var(--text-dim);
-}
-.conta-plano-topo {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  margin-bottom: 14px;
 }
 .conta-plano-nome {
   margin: 0;
@@ -2548,6 +2503,223 @@ button.pend-bloco:focus-visible {
   padding-left: 18px;
   line-height: 1.55;
 }
+/* ---------- ficha da conta: Plano em fila, Comodato por ponto, Créditos ----------
+   (revisão de 23/09/2026) */
+.plano-fila {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.plano-etapa {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px dashed var(--border);
+}
+.plano-etapa:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.plano-etapa-rotulo {
+  padding-top: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.plano-etapa-corpo {
+  min-width: 0;
+}
+.plano-linha {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.plano-etapa .conta-plano-nome {
+  font-size: 1.08rem;
+}
+.plano-meta {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.plano-meta-forte {
+  margin-top: 2px;
+  color: var(--text);
+}
+.plano-direitos {
+  margin: 6px 0 0;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--bg-alt);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.comodato-lista {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.comodato-ponto {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
+  gap: 6px 14px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.comodato-ponto-nome,
+.comodato-ponto-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.comodato-ponto-nome b,
+.comodato-modalidade {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.comodato-sem b {
+  color: var(--err-texto);
+}
+@media (max-width: 560px) {
+  .comodato-ponto {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.modalidade-opcoes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.modalidade-opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  cursor: pointer;
+}
+.modalidade-opcao:has(input:checked) {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+.modalidade-opcao input {
+  margin-top: 3px;
+}
+.modalidade-opcao > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Saldo e "Conceder créditos" juntos, no começo da linha — com o card na
+   largura toda (conta sem comodato), o botão no canto oposto ficava a um
+   monitor de distância do número que ele muda. */
+.creditos-topo {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+}
+.creditos-saldo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.creditos-saldo b {
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.creditos-entrada {
+  color: var(--ok);
+}
+.creditos-saida {
+  color: var(--err-texto);
+}
+.creditos-referencia {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-alt);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.criativos-contagens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: -4px 0 14px;
+  font-size: 0.82rem;
+}
+.saude-atencao {
+  color: var(--err-texto);
+  font-weight: 600;
+}
+.conta-secao-discreta {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.conta-secao-discreta .secao-topo {
+  margin-bottom: 8px;
+}
+.conta-secao-discreta h3 {
+  font-size: 0.92rem;
+}
+.solicitacoes-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.solicitacoes-lista li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.86rem;
+}
+.solicitacoes-lista li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.solicitacoes-lista a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.solicitacoes-lista a:hover b {
+  text-decoration: underline;
+}
+.categoria-sugestoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.confirmar-serio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
 .conta-rodape {
   display: flex;
   align-items: center;
