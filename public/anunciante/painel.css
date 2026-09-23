@@ -271,3 +271,28 @@
 .upload-label.desabilitado { opacity: .5; cursor: not-allowed; }
 /* Selo em cima da mídia: o fundo translúcido do badge some no vídeo escuro. */
 .criativo-media .badge { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+
+/* Financeiro (Fatia 4): pagamentos e recebimentos lado a lado quando a conta
+   faz as duas coisas; um bloco só ocupa a largura toda. */
+.financeiro-content { padding-top: 0; }
+.painel-financeiro h2 { margin: 2px 0 0; font-size: clamp(1.2rem, 2vw, 1.48rem); line-height: 1.2; letter-spacing: -.015em; }
+.fin-colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 24px; }
+.fin-colunas > * { min-width: 0; }
+.fin-bloco-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.fin-titulo { margin: 0; font-size: 1rem; }
+.fin-nota { margin: 2px 0 0; color: var(--text-dim); font-size: .82rem; }
+.fin-plano { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; font-size: .9rem; }
+.fin-lista { list-style: none; margin: 0; padding: 0; }
+.fin-lista li { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
+.fin-lista time { color: var(--text-dim); }
+.fin-lista b { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fin-resumo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.fin-resumo > div { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 12px; background: #f9fafb; }
+.fin-resumo span, .fin-resumo small { color: var(--text-dim); font-size: .76rem; }
+.fin-resumo b { font-size: 1.15rem; }
+.fin-troca { margin-top: 14px; padding: 12px 14px; border: 1px dashed #ffc391; border-radius: 12px; background: #fffaf6; font-size: .86rem; }
+.fin-troca p { margin: 0 0 8px; }
+@media (max-width: 520px) {
+  .fin-lista li { grid-template-columns: minmax(0, 1fr) auto; }
+  .fin-lista time { grid-column: 1 / -1; }
+}
