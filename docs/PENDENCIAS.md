@@ -3954,7 +3954,9 @@ Pedido do dono: fechar a V1 do admin com uma revisão estrutural da Visão
 geral (2 colunas, muito mais compacta) e dos fluxos que ela abre. 17
 seções no pedido original; o que mudou:
 
-**[x] Régua única de status operacional da tela** (migration 074,
+**[x] Régua única de status operacional da tela** (migration 076 — nasceu
+074, renumerada no merge com a reconstrução de Contas + Categorias do mesmo
+dia, que já tinha uma 074 própria; ver nota de merge no fim desta seção —
 `src/lib/status-tela.js`). Cada tela ganha `modo_horario`
 (`ponto`/`24h`/`personalizado`) e, no modo personalizado, `horario_semanal`
 próprio — editável na ficha do ponto (Rede > Pontos > tela), reaproveitando
@@ -3982,11 +3984,16 @@ de fora sem exclusão explícita (já têm `valor_mensal = 0`). Teste novo em
 
 **[x] Comissão de vendedor saiu do agregado financeiro da Visão geral e da
 Central Financeira** ("o conceito de vendedor foi retirado do projeto").
-A tabela `comissoes`, a rota `/admin/comissoes` e a tela de vendedores
-dentro de Contas continuam intactas — só o card/aba pararam de somar/expor
-aqui. `_renderFilaComissoes` (função morta, prefixo `_`, convenção do
-projeto) e o hash antigo `#comissoes`/`#financeiro/comissoes` caem na lista
-de vendedores.
+A tabela `comissoes` e a rota `/admin/comissoes` continuam intactas — só o
+card/aba pararam de somar/expor aqui. `_renderFilaComissoes` (função morta,
+prefixo `_`, convenção do projeto). **Atualizado no merge com a
+reconstrução de Contas + Categorias (mesmo dia, outro agente):** a lista
+global de vendedores (`renderVendedores`/módulo `vendedores`) foi removida
+de vez por aquela rodada — vendedor/parceiro saiu de toda a UI, o cadastro
+de comissão de cada conta agora vive na ficha dela em Contas. Os hashes
+legados `#comissoes`/`#vendedores`/`#financeiro/comissoes` não têm mais
+destino explícito — caem sozinhos em `visaogeral` (mesmo padrão do alias
+"custos", que já degradava assim).
 
 **[x] Financeiro virou 1 card compacto** com receita recorrente mensal,
 recebido no mês, conciliação discreta (só vira alerta de largura cheia
@@ -4040,9 +4047,28 @@ ganho real. Repasses (seção 4.1 do pedido) já eram 100% derivados da
 modalidade do ponto (`pontos.valor_pago_mensal`, nunca lançamento manual)
 antes desta rodada — nada precisou mudar lá, só confirmado.
 
-**Verificado:** `npm run check` (204/204 testes, lint/format limpos — só os
-3 avisos de lint já conhecidos, de antes desta rodada), roteiro manual no
-navegador (login, Visão geral com e sem dado, Mensagens Pendentes/
-Histórico, Central Financeira nas 4 abas, ficha de ponto com o editor de
-horário próprio da tela salvando de verdade), screenshot desktop (1400px)
-e mobile (420px) sem overflow.
+**Verificado:** `npm run check` (206/206 testes desta rodada, lint/format
+limpos — só os 3 avisos de lint já conhecidos, de antes desta rodada),
+roteiro manual no navegador (login, Visão geral com e sem dado, Mensagens
+Pendentes/Histórico, Central Financeira nas 4 abas, ficha de ponto com o
+editor de horário próprio da tela salvando de verdade), screenshot desktop
+(1400px) e mobile (420px) sem overflow. Achados do review automático (Codex,
+PR #21) corrigidos antes do merge: `estaAbertoAgora` lia hora no fuso do
+processo (não de São Paulo) — corrigido com `Intl` pinado em
+`America/Sao_Paulo`; `horario.feriados` nunca era consultado — feriados
+nacionais (fixos + Páscoa) adicionados; salvar horário/mudar `modo_horario`
+não recarregava o contador de alerta da Visão geral — corrigido.
+
+**Nota de merge (mesmo dia, com a reconstrução de Contas + Categorias, outro
+agente):** as duas rodadas tinham migration `074` própria — a desta rodada
+renumerou pra `076_horario_operacional_da_tela.sql` (a tabela
+`schema_migrations` local foi ajustada manualmente pro rename, sem re-rodar
+o SQL). O merge trouxe `renderVendedores`/módulo `vendedores` REMOVIDOS por
+aquela rodada — a versão inicial desta aqui tentava manter esse módulo pro
+hash legado de comissões e crasharia o admin inteiro (`ReferenceError:
+renderVendedores is not defined`, pego em `require()` antes do push).
+Corrigido: os hashes legados de comissão/vendedor caem em `visaogeral`, sem
+destino próprio, igual o alias "custos". `npm run check` (220/220,
+206 daqui + 14 de `tests/contas-reconstrucao.test.js`) e roteiro Playwright
+completo (Visão geral, Contas, Mensagens, Financeiro, Rede, Ofertas)
+rodaram de novo depois do merge, sem erro de console novo.

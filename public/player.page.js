@@ -255,7 +255,7 @@ async function prepararArquivos(lista) {
 const TOLERANCIA_OFFLINE_MS = 60 * 60 * 1000;
 let ultimoContatoOk = Date.now();
 
-// Erro operacional pra classificar a tela no admin (migration 074,
+// Erro operacional pra classificar a tela no admin (migration 076,
 // src/lib/status-tela.js#erro_do_player) — diferente de "sem sinal"
 // (heartbeat que nem chegou): aqui o player SEGUE respondendo heartbeat,
 // só que algo real deu errado na última tentativa de playlist. Vai junto
@@ -500,7 +500,7 @@ function heartbeat() {
   fetch(`${API_BASE_URL}/player/${dispositivoId}/heartbeat`, {
     method: 'POST',
     headers: { ...cabecalhos, 'Content-Type': 'application/json' },
-    // `erro` (migration 074) pega carona no heartbeat de sempre — sem
+    // `erro` (migration 076) pega carona no heartbeat de sempre — sem
     // endpoint novo, mesma ideia das margens da safe area logo abaixo.
     // Ausente/null limpa o que o backend tinha guardado (src/dispositivos/
     // repository.js#marcarOnline): não existe erro "preso".

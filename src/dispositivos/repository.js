@@ -21,7 +21,7 @@ const CAMPOS_ATUALIZAVEIS = [
   'margem_direita',
   'margem_inferior',
   'margem_esquerda',
-  // Horário operacional da tela (migration 074) — validado à parte em
+  // Horário operacional da tela (migration 076) — validado à parte em
   // routes.js (mesmo formato/validação de pontos.horario_semanal) antes de
   // chegar aqui.
   'modo_horario',
@@ -82,7 +82,7 @@ const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status,
   d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin,
   d.contrato_playlist, d.modo_horario, d.horario_semanal, d.ultimo_erro, d.ultimo_erro_em`;
 
-// `situacaoOperacional` (migration 074 + src/lib/status-tela.js) é derivado
+// `situacaoOperacional` (migration 076 + src/lib/status-tela.js) é derivado
 // aqui, não guardado — a régua de "operando/fora do horário/sem sinal/etc"
 // muda com o relógio, nunca é um fato gravado no banco.
 function comSituacaoOperacional(rows) {
@@ -168,7 +168,7 @@ async function conferirPin(id, pin) {
   return (await conferirHash(String(pin), rows[0].pin_hash)).ok;
 }
 
-// `erro` vem do próprio player (migration 074) — presente grava os dois
+// `erro` vem do próprio player (migration 076) — presente grava os dois
 // campos juntos, ausente/vazio limpa os dois: não existe erro "preso" depois
 // que o player volta a reportar normal.
 async function marcarOnline(id, erro) {

@@ -863,7 +863,7 @@ administrador.
 **RN-58 — Uma tela só vira alerta quando deveria estar online e não está.**
 *(Revisão final da Visão geral, 23/09/2026, seção 2 do pedido.)* Antes, "sem
 sinal" era só heartbeat vencido há mais de 2h — uma loja fechada às 18h virava
-alerta todo fim de tarde. Cada tela tem um `modo_horario` (migration 074):
+alerta todo fim de tarde. Cada tela tem um `modo_horario` (migration 076):
 `ponto` (usa o `horario_semanal` do ponto onde está instalada, o padrão),
 `24h` (sempre esperada online) ou `personalizado` (`horario_semanal` PRÓPRIO
 da tela, pra quando ela roda além do horário do comércio — ex.: tela virada

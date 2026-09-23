@@ -90,7 +90,7 @@ Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (or
 |---|---|---|
 | GET | `/playlist/:dispositivoId` | A HORA INTEIRA desta tela. Duas formas, decididas por `dispositivos.contrato_playlist` (migration 065) — ver "Contrato novo" abaixo. |
 | POST | `/player/:dispositivoId/played` | Duas formas no mesmo corpo, decididas pelo que chega — ver "Contrato novo" abaixo. |
-| POST | `/player/:dispositivoId/heartbeat` | Marca a tela online. Corpo opcional `{erro}` (migration 074, revisão final da Visão geral, 23/09/2026) — texto curto de um problema real que o player detectou (ex.: "tela fora do ar no cadastro"); grava `dispositivos.ultimo_erro`/`ultimo_erro_em` junto do heartbeat. Ausente/`null` limpa os dois — não existe erro "preso" depois que o player volta a reportar normal. Alimenta o estado `erro_do_player` de `src/lib/status-tela.js`. |
+| POST | `/player/:dispositivoId/heartbeat` | Marca a tela online. Corpo opcional `{erro}` (migration 076, revisão final da Visão geral, 23/09/2026) — texto curto de um problema real que o player detectou (ex.: "tela fora do ar no cadastro"); grava `dispositivos.ultimo_erro`/`ultimo_erro_em` junto do heartbeat. Ausente/`null` limpa os dois — não existe erro "preso" depois que o player volta a reportar normal. Alimenta o estado `erro_do_player` de `src/lib/status-tela.js`. |
 | POST | `/player/:dispositivoId/painel` | `{pin}` → painel da tela (mesmo formato do painel do dono). Rate-limited. |
 
 ### Contrato 1 — array (padrão, player web)
@@ -235,7 +235,7 @@ pede.
 | GET | `/admin/pontos/:pontoId/dispositivos` | telas do ponto, cada uma com `situacaoOperacional` calculado (`operando`/`fora_do_horario`/`aguardando_primeiro_sinal`/`sem_sinal`/`erro_do_player`/`em_reparo`/`inativa`) |
 | POST | `/admin/pontos/:pontoId/dispositivos` | cria tela — nasce sempre `status='inativo'` (default da coluna, migration 069); quem confirma que está funcionando marca `ativo` depois, pelo PATCH abaixo |
 | GET | `/admin/dispositivos` | todas as telas, mesmo formato de `.../dispositivos` acima |
-| PATCH | `/admin/dispositivos/:id` | apelido, status, custo, prazo de amortização, `instalado_em`, `margem_superior`/`margem_direita`/`margem_inferior`/`margem_esquerda` (safe area da tela, migration 069 — vmin, nunca negativo), `modo_horario` (`'ponto'`\|`'24h'`\|`'personalizado'`, migration 074) e `horario_semanal` (só usado quando `modo_horario='personalizado'`; mesmo formato/validação de `pontos.horario_semanal`, `src/lib/horario-semanal.js`). Mudar `status` recalcula `pontos.status` do dono na hora (`sincronizarStatusPonto`). |
+| PATCH | `/admin/dispositivos/:id` | apelido, status, custo, prazo de amortização, `instalado_em`, `margem_superior`/`margem_direita`/`margem_inferior`/`margem_esquerda` (safe area da tela, migration 069 — vmin, nunca negativo), `modo_horario` (`'ponto'`\|`'24h'`\|`'personalizado'`, migration 076) e `horario_semanal` (só usado quando `modo_horario='personalizado'`; mesmo formato/validação de `pontos.horario_semanal`, `src/lib/horario-semanal.js`). Mudar `status` recalcula `pontos.status` do dono na hora (`sincronizarStatusPonto`). |
 | DELETE | `/admin/dispositivos/:id` | remove |
 | POST | `/admin/dispositivos/:id/chave` | gera a chave de aparelho e devolve o link do player |
 | POST | `/admin/dispositivos/:id/pin` | define o PIN (guardado com hash) |
