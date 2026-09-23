@@ -3,6 +3,34 @@
 ## Updated
 2026-09-23
 
+## Auditoria forense + reconstrução do painel único em 6 fatias (23/09/2026, fim do dia)
+Depois do dono PARAR a integração do Player V2 e pedir auditoria forense
+("produção não corresponde ao escopo"), esta sessão entregou, cada item um
+PR com squash-merge, deploy Northflank + purge Cloudflare verificados:
+- **#31** bugs: Banco de Horas empilhando, resync chamando a mesma função N
+  vezes, mensagem de erro acumulando, ponto duplicado "Bruno H Sanches"
+  (migration 080: `pontos.candidatura_id` UNIQUE parcial + arquivamento
+  auditável `arquivado_em`/`motivo_arquivamento`/`mesclado_em_ponto_id`).
+- **#32 Fatia 1** Créditos e benefícios (`public/creditos.js`), modelo
+  antigo de cupom/“3 indicados = grátis” removido.
+- **#33 Fatia 2** Meus pontos (`public/meus-pontos.js`,
+  `GET /anunciantes/me/meus-pontos`, `src/pontos/meus-pontos.js`); aprovar
+  candidatura (/liberar) agora notifica + SSE; admin de telas emite
+  `screen.updated`/`point.updated`; 404 com `Cache-Control: no-store`.
+- **#34 Fatia 3** Meus criativos (`public/meus-criativos.js`,
+  `GET /anunciantes/me/criativos`), substituição pelo cliente (`substitui`).
+- **#35 Fatia 4** Financeiro (`public/financeiro-conta.js`,
+  `GET /anunciantes/me/financeiro`, `src/conta/financeiro.js`).
+- **#36 Fatia 5** grade única + resumo/alertas (`public/painel-resumo.js`),
+  card Plano comercial; corrigidos ouvintes acumulados na Cobertura.
+- **#37 Fatia 6** `ponto.html` → 301 pro painel; rotas antigas sem
+  consumidor removidas.
+e2e novos: `tests/e2e/12..15`. Player V2 continua SUSPENSO por ordem do
+dono (contrato em sancompany/playlist.mostrai, docs/player-v2-*.md) — não
+retomar sem pedido explícito. Pontos 1/2 de produção têm `anunciante_id`
+NULL (origem não rastreável): não aparecem em "Meus pontos" de conta
+nenhuma até o admin vincular (PATCH /admin/pontos/:id `anunciante_id`).
+
 ## Reconstrução do painel único + créditos — atualização 2 (23/09/2026, este agente, mesma sessão)
 Continuação direta da seção abaixo ("Fases 1, 2 e 6"), depois do dono
 mandar "faça o restante do pedido". Sub-fases fechadas nesta rodada, cada

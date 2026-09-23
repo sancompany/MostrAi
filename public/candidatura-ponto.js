@@ -1,16 +1,15 @@
 // Formulário canônico de candidatura/endereço de ponto (reformulação
-// comercial + candidatura, 22/09/2026). UM conceito só, usado em 3 lugares:
-//   - public/modos.js (CARDS.ponto — formulário completo, quando a conta
-//     ainda não tem endereço/segmento próprios pra reaproveitar);
-//   - public/anunciante/painel.page.js ("Você também possui um comércio?"
-//     — card compacto, reaproveita nome/endereço/segmento da CONTA);
-//   - public/anunciante/ponto.page.js ("+ Cadastrar outro endereço" — outro
-//     endereço da mesma conta, então pede tudo de novo, é um lugar novo).
+// comercial + candidatura, 22/09/2026). UM conceito só, hoje montado todo em
+// public/meus-pontos.js (painel único, Fatia 6), em duas formas:
+//   - "Você também possui um comércio?" — card compacto, reaproveita
+//     nome/endereço/segmento da CONTA;
+//   - "+ Cadastrar outro estabelecimento" (ou conta sem endereço) — completo,
+//     porque é outro lugar e pede tudo de novo.
 // Mesmos campos, mesma validação, mesmo componente de horário, mesmo upload
 // de foto (com preview real), mesmo preview de card, mesmo payload — só o
-// que aparece na tela (contexto) muda entre os três. Sem bundler, então é
+// que aparece na tela (contexto) muda entre as formas. Sem bundler, então é
 // um script global de verdade (não IIFE) — mesma convenção de
-// public/formulario.js, pra dar pra chamar de qualquer um dos três.
+// public/formulario.js.
 
 const CANDIDATURA_DICA_FOTO_PADRAO = 'Opcional. Sem foto, o card usa o ícone padrão.';
 

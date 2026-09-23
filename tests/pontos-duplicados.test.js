@@ -8,6 +8,7 @@ const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
 const pontosRepo = require('../src/pontos/repository');
+const { meusPontosDaConta } = require('../src/pontos/meus-pontos');
 
 // Ponto duplicado (auditoria forense de 23/09/2026): "Bruno H Sanches"
 // aparecia duas vezes em "Onde seu anúncio aparece" porque eram DUAS linhas
@@ -202,7 +203,7 @@ test('status automático não ressuscita um ponto arquivado', async () => {
     assert.equal(status, 'arquivado');
     const { rows: depois } = await pool.query('SELECT status FROM pontos WHERE id = $1', [rows[0].id]);
     assert.equal(depois[0].status, 'arquivado');
-    assert.equal((await pontosRepo.listarPorAnunciante(conta.id)).length, 0, 'fora da experiência normal');
+    assert.equal((await meusPontosDaConta(conta.id)).length, 0, 'fora da experiência normal (Meus pontos)');
   } finally {
     await limpar(conta.id);
   }

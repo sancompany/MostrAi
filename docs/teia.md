@@ -43,7 +43,7 @@ Superfície institucional pública do Mostraí: 6 páginas HTML (`/index.html`, 
   · ← index.html, planos.html, pontos.html, contato.html, 404.html (todas com data-layout="publico")  → / / /planos.html / /pontos.html
   · **cliente sabe:** Parcial. "Onde estamos?" e "Anuncie" são autoexplicativos; "Seja um ponto" e "Seja um vendedor" não dizem o que é ponto nem o que o vendedor ganha — a explicação só existe dentro da página de destino…
 
-**navConta() — menu da conta (não é superfície institucional, mas substitui o menu público)** — Monta a aba única Painel (`/anunciante/painel.html`, chamava-se "Anúncios" até 19/09/2026), o link Planos e o botão de avatar #btnPerfil. "Meu ponto" e "Vendas" saíram do topo (pedido do dono: ponto virou card de candidatura no fim do próprio Painel, vendedor deixou de ser algo aberto ao público) — as duas páginas (`ponto.html`, `vendedor.html`) continuam existindo e navegáveis por link direto pra quem já tem o papel, só sem aba própria aqui.
+**navConta() — menu da conta (não é superfície institucional, mas substitui o menu público)** — Monta a aba única Painel (`/anunciante/painel.html`, chamava-se "Anúncios" até 19/09/2026), o link Planos e o botão de avatar #btnPerfil. "Meu ponto" e "Vendas" saíram do topo (pedido do dono: ponto virou card de candidatura no fim do próprio Painel, vendedor deixou de ser algo aberto ao público) — as duas páginas (`ponto.html`, `vendedor.html`) foram aposentadas depois (vendedor com o programa; ponto com o painel único, 23/09/2026) e redirecionam pro Painel.
   · `public/layout.js` · papéis: anunciante
   · ← páginas de /anunciante/  → /anunciante/painel.html / /anunciante/ponto.html / /anunciante/vendedor.html
   · **cliente sabe:** Sim, via aplicarPapeisNoMenu: aba de papel não ativado recebe `title="Modo ainda não ativado — clique pra ativar"` e classe `bloqueado`.
@@ -381,6 +381,8 @@ CAPTAÇÃO DE ANUNCIANTE — da vitrine pública até a sessão logada no painel
 ---
 
 ## Papel ponto (dono do comércio)
+
+> **Atualização 23/09/2026 (painel único, Fatias 2–6):** `public/anunciante/ponto.html` e `ponto.page.js` foram **aposentados** — o endereço responde 301 pro Painel (`#modPontos`). O que eles faziam mora agora em `public/meus-pontos.js` (pedido, ponto, telas, PIN; `GET /anunciantes/me/meus-pontos`), `public/meus-criativos.js` (autoanúncio junto dos criativos comerciais; `GET /anunciantes/me/criativos`) e `public/financeiro-conta.js` (extrato e troca da ajuda de custo; `GET /anunciantes/me/financeiro`). As funções de `ponto.page.js` citadas abaixo são histórico, não código vivo.
 
 Papel PONTO (dono do comércio que cede a parede) no Mostraí. Caminho completo: candidatura pública em /seja-um-ponto.html → triagem no admin (aba Candidaturas) → convite com token → /convite.html cria a conta (ou liga o papel numa conta já logada) → ponto + "Tela 1" criados no mesmo COMMIT → admin cadastra custo, gera chave de aparelho e PIN, muda o ponto para ativo → TV abre /player.html → dono acompanha em /anunciante/ponto.html → extrato de pagamento existe no backend mas NÃO tem tela. 2 páginas públicas (seja-um-ponto.html, comodato.html), 1 página de entrada (convite.html), 1 página de painel (anunciante/ponto.html) + componente compartilhado modos.js, e 4 domínios de backend…
 

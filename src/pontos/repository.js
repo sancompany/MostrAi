@@ -251,19 +251,6 @@ async function listarPublicos() {
   return rows;
 }
 
-async function listarPorAnunciante(anuncianteId) {
-  const { rows } = await pool.query(
-    `SELECT p.*, c.nome AS categoria_nome, pp.nome AS plano_ponto_nome
-     FROM pontos p
-     LEFT JOIN categorias c ON c.id = p.categoria_id
-     LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-     WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
-     ORDER BY p.created_at DESC`,
-    [anuncianteId],
-  );
-  return rows;
-}
-
 // Soma de fluxo estimado só dos pontos com status "ativo" — nunca devolve o
 // valor por ponto isolado (ver comentário da coluna na migration 016). O
 // piso de 1.000 pra exibir saiu (19/09/2026, pedido do dono) — só continua
@@ -392,7 +379,6 @@ module.exports = {
   buscarPorId,
   atualizar,
   listarPublicos,
-  listarPorAnunciante,
   somaFluxoMensal,
   obterConfiguracao,
   definirConfiguracao,

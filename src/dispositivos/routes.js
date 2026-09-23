@@ -88,24 +88,9 @@ router.delete('/admin/dispositivos/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Dono do ponto: as telas dos pontos dele, com o que rodou em cada uma.
 // ---------------------------------------------------------------------------
-router.get('/anunciantes/:id/dispositivos', exigirAnuncianteLogado, async (req, res) => {
-  if (Number(req.params.id) !== req.session.anuncianteId) {
-    return res.status(403).json({ erro: 'só pode ver as próprias telas' });
-  }
-  const { rows } = await pool.query(
-    `SELECT d.id, d.ponto_id, d.apelido, d.status, d.ultima_vez_online, d.instalado_em,
-            p.nome AS ponto_nome, p.endereco, p.cidade, p.uf, p.status AS ponto_status,
-            COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
-            COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
-     FROM dispositivos d
-     JOIN pontos p ON p.id = d.ponto_id
-     LEFT JOIN exibicoes_contador e ON e.dispositivo_id = d.id
-     WHERE p.anunciante_id = $1
-     GROUP BY d.id, p.id ORDER BY p.nome, d.id`,
-    [req.session.anuncianteId],
-  );
-  res.json(rows);
-});
+// A lista de telas do dono (GET /anunciantes/:id/dispositivos) saiu com a
+// página antiga do ponto (Fatia 6, 23/09/2026): as telas vêm dentro de cada
+// ponto em GET /anunciantes/me/meus-pontos, já com a situação em texto.
 
 // O que rodou numa tela específica (dono do ponto ou admin), para o painel
 // por tela.

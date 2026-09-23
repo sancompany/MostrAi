@@ -123,8 +123,8 @@ check('celular: a página não rola na horizontal', larguraExtra <= 1, `${largur
 await shot(p, '4-celular');
 
 await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
-const ponto = await p.textContent('body');
-check('página do ponto sem o cupom antigo', !/Meu cupom de indicação|indicados pagantes/.test(ponto));
+check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()), p.url());
+check('sem o cupom antigo em lugar nenhum', !/Meu cupom de indicação|indicados pagantes/.test(await p.textContent('body')));
 
 check('sem erro de console', erros.length === 0, erros.join(' | '));
 check('nenhuma resposta 4xx/5xx inesperada', respostasRuins.length === 0, respostasRuins.join(' | '));

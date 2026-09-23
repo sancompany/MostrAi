@@ -141,6 +141,12 @@ const MUDARAM_DE_ENDERECO = {
   // o painel de vendas (cupom, link, comissão) saiu da experiência. Os dados
   // ficam no banco; quem tinha o link cai no painel da conta.
   '/anunciante/vendedor.html': '/anunciante/painel.html',
+  // Painel único (Fatia 6, 23/09/2026): a página separada do ponto saiu. Telas,
+  // pedido, criativo e recebimentos estão no Painel, em "Meus pontos",
+  // "Meus criativos" e "Financeiro". O endereço sem extensão também, porque
+  // o mapa de páginas abaixo é montado a partir dos arquivos que existem.
+  '/anunciante/ponto.html': '/anunciante/painel.html#modPontos',
+  '/anunciante/ponto': '/anunciante/painel.html#modPontos',
 };
 Object.entries(MUDARAM_DE_ENDERECO).forEach(([de, para]) => {
   app.get(de, (_req, res) => res.redirect(301, para));
