@@ -296,3 +296,60 @@
   .fin-lista li { grid-template-columns: minmax(0, 1fr) auto; }
   .fin-lista time { grid-column: 1 / -1; }
 }
+
+/* ---------------------------------------------------------------------------
+   Painel único (Fatia 5): um grid, não blocos em fila. Celular: uma coluna,
+   na ordem das áreas. Desktop largo: campanha e criativos à esquerda, a
+   coluna lateral (plano, pontos, financeiro) ocupa as duas linhas à direita,
+   créditos embaixo na largura toda.
+   ------------------------------------------------------------------------- */
+.painel-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start;
+  grid-template-areas: "campanha" "lateral" "criativos" "creditos";
+}
+.area-campanha { grid-area: campanha; display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.area-criativos { grid-area: criativos; min-width: 0; }
+.area-lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.area-creditos { grid-area: creditos; min-width: 0; }
+.painel-grid .dashboard-section { margin-bottom: 0; }
+.area-campanha[hidden] { display: none; }
+/* Cartões de bloqueio (sem plano / modo não ativado) nascem antes de
+   #dashboardAnuncios e tomam o lugar dele na grade. */
+.painel-grid > .wrap { grid-area: campanha; max-width: none; margin: 0; padding: 0; }
+@media (min-width: 1100px) {
+  .painel-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+    grid-template-areas: "campanha lateral" "criativos lateral" "creditos creditos";
+  }
+  /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só. */
+  .area-lateral .estab-lista { grid-template-columns: minmax(0, 1fr); }
+  .area-lateral .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
+  .area-lateral .tela-linha .tela-num, .area-lateral .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
+  .area-lateral .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
+  .area-lateral .panel-head { flex-wrap: wrap; }
+  .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Resumo da conta e alertas, no hero. */
+.resumo-conta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.resumo-conta:empty { display: none; }
+.resumo-chip { display: inline-flex; flex-direction: column; gap: 2px; min-width: 120px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); text-decoration: none; box-shadow: var(--dash-shadow); }
+.resumo-chip span { color: var(--text-dim); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.resumo-chip b { font-size: .95rem; }
+.resumo-chip:hover { border-color: #ffc391; }
+.alertas-conta { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.alertas-conta li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 12px; font-size: .88rem; }
+.alertas-conta .alerta-atencao { background: #fff1f1; color: #7f1717; border: 1px solid #f6caca; }
+.alertas-conta .alerta-info { background: #f3f6fb; color: #33415c; border: 1px solid #dfe6f1; }
+.alerta-icone { display: grid; flex: 0 0 20px; place-items: center; height: 20px; border-radius: 50%; background: currentColor; font-size: .72rem; font-weight: 800; }
+.alerta-icone { color: inherit; }
+.alertas-conta .alerta-atencao .alerta-icone { background: #dc2626; color: #fff; }
+.alertas-conta .alerta-info .alerta-icone { background: #526071; color: #fff; }
+.alertas-conta li > span:nth-child(2) { flex: 1; }
+.alertas-conta a { color: inherit; font-weight: 700; white-space: nowrap; }
+
+/* Plano comercial (coluna lateral). */
+.painel-plano h2 { margin: 2px 0 10px; font-size: 1.15rem; }
+.plano-nome { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.plano-validade, .plano-comodato { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
+.plano-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

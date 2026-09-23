@@ -111,6 +111,9 @@
       $('creditosIndicacao').hidden = !dados.indicacao;
       $('creditosOpcoes').innerHTML = htmlOpcoes(dados);
       $('creditosHistorico').innerHTML = htmlHistorico(dados.movimentacoes);
+      window.publicarResumo?.('creditos', {
+        chips: [{ rotulo: 'Créditos', valor: String(dados.saldo), alvo: 'modCreditos' }],
+      });
     } catch {
       // Saldo desconhecido nunca vira "0": mostra que não carregou.
       dados = null;

@@ -24,6 +24,11 @@
         <div class="dash-status painel-hero" id="statusBanner" aria-live="polite">
           <div class="painel-skeleton">Carregando seu painel...</div>
         </div>
+        <!-- Resumo da conta e alertas (Fatia 5): cada módulo publica o que
+             sabe (evento painel:resumo) e isto junta num lugar só — o que a
+             conta tem, e o que precisa de atenção agora. -->
+        <div class="resumo-conta" id="resumoConta" aria-label="Resumo da conta"></div>
+        <ul class="alertas-conta" id="alertasConta" aria-label="Precisa de atenção" hidden></ul>
         <div id="bonusAnuncios"></div>
         <!-- Promoção pra usuários logados (rodada de Ofertas/Promoções,
              22/09/2026, Parte R) — só existe quando alguma promoção vigente
@@ -33,10 +38,15 @@
       </div>
     </section>
 
-    <!-- O JS mantém os mesmos IDs e contratos funcionais; esta camada apenas
-         reorganiza visualmente os dados existentes do painel. -->
+    <!-- Painel único (Fatia 5): um grid só, não blocos antigos em fila.
+         Campanha e criativos à esquerda (o que se lê mais), a coluna lateral
+         com o que é da conta (plano, pontos, dinheiro), e créditos embaixo.
+         No celular vira uma coluna, na ordem das áreas. Os cards de bloqueio
+         (sem plano / modo não ativado) nascem ANTES de #dashboardAnuncios e
+         ocupam a mesma área (ver painel.css). -->
     <section class="dashboard-content">
-      <div class="wrap painel-wrap" id="dashboardAnuncios">
+      <div class="wrap painel-wrap painel-grid">
+        <div class="area-campanha" id="dashboardAnuncios">
         <section class="dashboard-section" aria-labelledby="tituloResumo">
           <div class="section-heading compact-heading">
             <div>
@@ -112,13 +122,8 @@
         </section>
 
       </div>
-    </section>
 
-    <!-- Meus criativos (Fatia 3): a peça comercial e a do comodato (o anúncio
-         do próprio comércio na tela dele) numa biblioteca só. Fora de
-         #dashboardAnuncios: dono de ponto só com comodato também envia. -->
-    <section class="dashboard-content criativos-content">
-      <div class="wrap painel-wrap">
+        <div class="area-criativos">
         <section class="dashboard-section" id="modCriativos" aria-labelledby="tituloCriativos" hidden>
           <article class="panel painel-criativos">
             <div class="panel-head criativos-head">
@@ -131,13 +136,33 @@
             <div id="listaCriativos" class="criativos-library-loading">Carregando criativos...</div>
           </article>
         </section>
-      </div>
-    </section>
+        </div>
 
-    <!-- Financeiro (Fatia 4): o que a conta paga (plano) e o que recebe
-         (ajuda de custo do comodato), cada bloco só quando tem assunto. -->
-    <section class="dashboard-content financeiro-content">
-      <div class="wrap painel-wrap">
+        <aside class="area-lateral" aria-label="Sua conta">
+        <section class="dashboard-section" id="modPlano" aria-labelledby="tituloPlano" hidden>
+          <article class="panel painel-plano">
+            <p class="section-eyebrow">Anúncio na rede</p>
+            <h2 id="tituloPlano">Plano comercial</h2>
+            <div id="planoResumo"></div>
+          </article>
+        </section>
+
+        <section class="dashboard-section" id="modPontos" aria-labelledby="tituloMeusPontos" hidden>
+          <article class="panel painel-meus-pontos">
+            <div class="panel-head">
+              <div>
+                <p class="section-eyebrow">Seus comércios na rede</p>
+                <h2 id="tituloMeusPontos">Meus pontos</h2>
+                <span class="panel-subtitle" id="pontosResumo"></span>
+              </div>
+              <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
+            </div>
+            <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
+            <div class="estab-lista" id="pontosLista"></div>
+            <div class="pontos-novo" id="pontosNovo" hidden></div>
+          </article>
+        </section>
+
         <section class="dashboard-section" id="modFinanceiro" aria-labelledby="tituloFinanceiro" hidden>
           <article class="panel painel-financeiro">
             <div class="panel-head"><div><p class="section-eyebrow">Dinheiro da conta</p><h2 id="tituloFinanceiro">Financeiro</h2></div></div>
@@ -148,16 +173,9 @@
             </div>
           </article>
         </section>
-      </div>
-    </section>
+        </aside>
 
-    <!-- Créditos e benefícios: fora de #dashboardAnuncios de propósito — conta
-         sem plano tem o dashboard bloqueado, e é justamente ela que mais pode
-         querer trocar créditos por um plano. Tudo aqui é reescrito inteiro a
-         cada carga (carregarCreditos), então rodar de novo pelo SSE não
-         acumula nada. -->
-    <section class="dashboard-content creditos-content">
-      <div class="wrap painel-wrap">
+        <div class="area-creditos">
         <section class="dashboard-section" id="modCreditos" aria-labelledby="tituloCreditos" hidden>
           <article class="panel painel-creditos">
             <div class="panel-head creditos-head">
@@ -183,31 +201,7 @@
             </details>
           </article>
         </section>
-      </div>
-    </section>
-
-    <!-- Meus pontos (Fatia 2): pedido em análise, ponto e telas num card só
-         por estabelecimento. Fora de #dashboardAnuncios pelo mesmo motivo de
-         Créditos: dono de ponto sem plano comercial (ou sem o modo anúncios)
-         também precisa ver o próprio comércio. Sem estabelecimento nenhum, o
-         próprio módulo vira o convite "Você também possui um comércio?". -->
-    <section class="dashboard-content pontos-content">
-      <div class="wrap painel-wrap">
-        <section class="dashboard-section" id="modPontos" aria-labelledby="tituloMeusPontos" hidden>
-          <article class="panel painel-meus-pontos">
-            <div class="panel-head">
-              <div>
-                <p class="section-eyebrow">Seus comércios na rede</p>
-                <h2 id="tituloMeusPontos">Meus pontos</h2>
-                <span class="panel-subtitle" id="pontosResumo"></span>
-              </div>
-              <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
-            </div>
-            <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
-            <div class="estab-lista" id="pontosLista"></div>
-            <div class="pontos-novo" id="pontosNovo" hidden></div>
-          </article>
-        </section>
+        </div>
       </div>
     </section>
 
@@ -243,6 +237,7 @@
   <script src="/layout.js"></script>
   <script src="/perfil.js"></script>
   <script src="/notificacoes.js"></script>
+  <script src="/painel-resumo.js"></script>
   <script src="/creditos.js"></script>
   <script src="/formulario.js"></script>
   <script src="/candidatura-ponto.js"></script>
