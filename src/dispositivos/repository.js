@@ -77,10 +77,14 @@ async function buscarComPonto(id) {
 }
 
 // Mesmos campos públicos, prefixados com o alias da tabela — sem isso
-// `status`/`created_at` ficam ambíguos no JOIN com pontos.
+// `status`/`created_at` ficam ambíguos no JOIN com pontos. As margens da safe
+// area faltavam aqui desde a migration 069 (só CAMPOS_PUBLICOS tinha): o
+// admin lê as telas por esta lista, então os 4 campos voltavam sempre como 0
+// depois de recarregar, mesmo com o valor salvo no banco e chegando no player.
 const CAMPOS_PUBLICOS_D = `d.id, d.ponto_id, d.apelido, d.aparelho_id, d.status, d.ultima_vez_online,
   d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at, (d.pin_hash IS NOT NULL) AS tem_pin,
-  d.contrato_playlist, d.modo_horario, d.horario_semanal, d.ultimo_erro, d.ultimo_erro_em`;
+  d.contrato_playlist, d.margem_superior, d.margem_direita, d.margem_inferior, d.margem_esquerda,
+  d.modo_horario, d.horario_semanal, d.ultimo_erro, d.ultimo_erro_em`;
 
 // `situacaoOperacional` (migration 076 + src/lib/status-tela.js) é derivado
 // aqui, não guardado — a régua de "operando/fora do horário/sem sinal/etc"

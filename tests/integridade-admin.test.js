@@ -185,6 +185,37 @@ test('marcarOnline: erro grava junto do heartbeat, heartbeat limpo apaga o erro'
   }
 });
 
+// Margens da safe area na ficha do ponto (polimento visual, 23/09/2026): a
+// listagem que o admin usa (listarPorPonto) não devolvia os 4 campos, então
+// a tela mostrava 0 em tudo depois de recarregar, mesmo com o valor salvo.
+test('listarPorPonto devolve as margens da safe area salvas', async () => {
+  const pool = require('../src/db/pool');
+  const dispositivosRepo = require('../src/dispositivos/repository');
+  const { rows: pontoRows } = await pool.query(
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status)
+     VALUES ('Ponto Margens Integridade', 'Rua Teste', 'Matão', 'SP', '00000000', 'teste', 'Fulano', '16999990000', 'a_instalar')
+     RETURNING id`,
+  );
+  const pontoId = pontoRows[0].id;
+  const dispositivo = await dispositivosRepo.criar(pontoId, { apelido: 'Tela Margens' });
+  try {
+    await dispositivosRepo.atualizar(dispositivo.id, {
+      margem_superior: 2,
+      margem_direita: 1.5,
+      margem_inferior: 4,
+      margem_esquerda: 0.5,
+    });
+    const [tela] = await dispositivosRepo.listarPorPonto(pontoId);
+    assert.deepStrictEqual(
+      [tela.margem_superior, tela.margem_direita, tela.margem_inferior, tela.margem_esquerda].map(Number),
+      [2, 1.5, 4, 0.5],
+    );
+  } finally {
+    await dispositivosRepo.deletar(dispositivo.id);
+    await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
+  }
+});
+
 // MRR (seção 6.1 da revisão final da Visão geral, 23/09/2026): somar
 // `planos.valor_mensal` direto ignorava promoção travada na adesão, desconto
 // de parceiro e crédito de comodato — os três reduzem o que a conta paga de
@@ -259,5 +290,30 @@ test('ocupacaoPorPonto: ponto a_instalar não conta ocupação comercial mesmo c
     await pool.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [contaId]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [contaId]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
+  }
+});
+
+// "Novas contas" da Visão geral não conta a conta própria da Mostraí — ela
+// nasce com a migration, então num banco recém-migrado aparecia "1 conta
+// nova" sem ninguém ter se cadastrado (polimento final, 23/09/2026). Mesma
+// régua da conversão cadastro → pagamento, que já deixava a própria de fora.
+test('resumo: novas contas em 30 dias não conta a conta própria', async () => {
+  const pool = require('../src/db/pool');
+  const express = require('express');
+  const app = express();
+  app.use(require('../src/admin/routes'));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  try {
+    const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/resumo`);
+    assert.strictEqual(r.status, 200);
+    const resumo = await r.json();
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria
+         FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL`,
+    );
+    assert.strictEqual(resumo.rede.novosAnunciantes30d, rows[0].sem_propria);
+  } finally {
+    await new Promise((r) => server.close(r));
   }
 });

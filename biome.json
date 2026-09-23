@@ -46,7 +46,9 @@
       "candidaturaLigarHorario",
       "candidaturaHorarioDoForm",
       "candidaturaCampoPreview",
-      "candidaturaLigarPreviewCard"
+      "candidaturaLigarPreviewCard",
+      "candidaturaBloco",
+      "candidaturaAjustarFoto"
     ]
   },
   "linter": {

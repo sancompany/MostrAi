@@ -136,21 +136,29 @@ function montarCardPonto(estado) {
       </div>
       <div class="ponto-opportunity-form" id="conteudoCardPonto" hidden>
         <div class="candidatura-layout">
-          <form id="formCardPonto">
-            <p class="form-hint u-m-0 u-mb-12">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
-            ${candidaturaCampoFoto('cp_')}
-            <p class="form-sep-titulo u-mt-8">Sobre o movimento</p>
-            <div class="u-mb-12">
-              <label for="cp_fluxo">Média de pessoas que passam por mês</label>
-              <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
-            </div>
-            ${candidaturaCampoHorario()}
-            <p class="form-sep-titulo">Informações adicionais</p>
-            <div class="u-mb-12">
-              <label for="cp_mensagem">Algo mais? (opcional)</label>
-              <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
-            </div>
-            <button class="btn primary" type="submit">Enviar meu interesse</button>
+          <form id="formCardPonto" class="form-blocos">
+            <p class="form-hint u-m-0">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
+            ${candidaturaBloco('cp_', 'estabelecimento', 'Estabelecimento', candidaturaCampoFoto('cp_'))}
+            ${candidaturaBloco(
+              'cp_',
+              'movimento',
+              'Movimento',
+              `<div>
+                <label for="cp_fluxo">Média de pessoas que passam por mês</label>
+                <input id="cp_fluxo" name="fluxo_estimado_mensal" type="number" min="1" inputmode="numeric" required>
+              </div>`,
+            )}
+            ${candidaturaBloco('cp_', 'horario', 'Horário de funcionamento', candidaturaCampoHorario())}
+            ${candidaturaBloco(
+              'cp_',
+              'observacoes',
+              'Observações',
+              `<div>
+                <label for="cp_mensagem">Algo mais? (opcional)</label>
+                <textarea id="cp_mensagem" name="mensagem" rows="2" placeholder="Estacionamento, ponto de referência, horário de pico..."></textarea>
+              </div>`,
+            )}
+            <div class="form-acoes"><button class="btn primary" type="submit">Enviar meu interesse</button></div>
             <p class="form-msg" id="cardPontoMsg" role="status"></p>
           </form>
           ${candidaturaCampoPreview()}

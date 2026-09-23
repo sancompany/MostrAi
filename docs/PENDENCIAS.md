@@ -4123,3 +4123,86 @@ Comentários que citavam "migration 076"/"migration 077" nesse contexto
 (código, testes, `docs/api.md`, `docs/funcional.md`, `.ia/HANDOFF.md`)
 atualizados junto, um por um, sem tocar nas referências legítimas de `076`
 desta rodada (horário operacional da tela).
+
+## Polimento visual final do admin (V1) — 23/09/2026
+
+Pedido do dono: "última rodada universal de polimento visual do admin antes
+do lançamento da V1" — revisão de produto, não lista de tickets; sem mudar
+regra comercial, cálculo, permissão, schema nem framework (HTML/CSS/JS puro
+continua). Auditoria primeiro (screenshots de todas as telas em 1440, 1920,
+1024 e 390 px, com dados e com o banco vazio), depois sistema compartilhado,
+depois página a página, depois segunda passada como quem nunca viu a tela.
+
+**[x] Sistema visual compartilhado** (`public/admin/index.css`, reescrito do
+zero, em ordem: tokens → casca → cabeçalho/migalha → botões → campos →
+seleção → painéis → tabelas → vazios → modal → páginas). Largura máxima de
+conteúdo (1320px, nada de "oceano" num monitor largo); escala de espaço
+única; altura/raio/foco iguais em todo botão e campo; três pesos de botão —
+primário (um por tela), secundário, destrutivo (`perigo` cheio só dentro de
+modal, `perigo-sutil` texto vermelho no gatilho: Excluir, Retirar do ar,
+Recusar, Cancelar plano, Remover); um padrão de seleção por tipo de controle
+(segmentado, interruptor, card selecionável com check dentro da borda);
+migalha padrão ("Visão geral / Financeiro", "Pontos / Padaria"); vazio
+compacto padrão; tabela padrão (número à direita em algarismo tabular, data
+que abre a linha à esquerda, sombra de rolagem quando passa da tela).
+Menu lateral: ativo com fundo leve + marca na borda, sem botão aceso de
+largura inteira; Mídia Mostraí no mesmo desenho dos outros itens.
+
+**[x] Páginas:** Visão geral (2 colunas mantidas, pendências como uma
+unidade, financeiro compacto, promoção secundária, ocupação alinhada);
+Mídia Mostraí (4 mini indicadores, capacidade → mídias, "+ Nova mídia"
+colado no título, cards com nome dominando e "Retirar do ar" destrutivo,
+editor ~62/38 com preview emoldurado, seletor de pontos com um só padrão
+de seleção, capacidade projetada "agora → depois"); Ofertas > Preços (um
+plano por linha, preço-base no cabeçalho, os 4 ciclos lado a lado com preço
+dominante, riscado secundário e economia em verde, Salvar fraco até haver
+mudança); Promoções (grupos vigente/futura/rascunho/encerrada, imagem só
+quando existe, fatos separados, formulário em 2 colunas com prévia real de
+Home e Planos, formatos com forma física, matriz produto × ciclo compacta,
+"Salvar rascunho"/"Publicar promoção" sem mudar a semântica, "Encerrada" só
+na edição); Rede (grade de cards com um placeholder oficial, ficha sem vão
+entre dados e telas, tela em blocos Player/PIN/Instalação, safe area em cruz
+compacta com Topo/Direita/Baixo/Esquerda e unidade); Candidaturas (mesma
+grade, Aprovar primário, Recusar destrutivo); Contas (plano sempre
+humanizado — "Essencial · Trimestral", nunca `essencial-3m`; sem "#id";
+vazio de plano/comodato compacto); Categorias ("0 contas", Editar
+discreto); Financeiro e Mensagens (migalha, tabelas e vazios padrão).
+Painel do dono de ponto (componentes compartilhados): "Meus endereços" em
+cards compactos, formulário em 5 blocos, uploader com miniatura, nome do
+arquivo, Trocar e Remover; horário com a mesma geometria em todo dia
+(fechado desabilita, não esconde); prévia "Assim vai aparecer" com largura
+máxima e logo quadrado inteiro (`contain`), nunca uma letra gigante.
+
+**[x] Achados além da lista do pedido** (todos corrigidos nesta rodada):
+- `section { padding: 64px 0 }` do site vazava pro admin: vãos de 64px em
+  Preços, Promoções e Mídia. Zerado só dentro do admin (`:where()`).
+- Classes usadas e nunca definidas: `u-ta-r` (coluna de ação solta no meio
+  da tabela — "Registrar pagamento", "Marcar como respondida", "Editar"),
+  `u-mt-4`, `u-pb-12`. Varredura de todas as classes do admin contra o CSS.
+- Upload (mídia, criativo substituto, promoção, foto da fachada) por
+  `<label for>` — não recebe foco, então era inalcançável por teclado.
+  Virou `<button>` que abre o `<input type=file>`.
+- Margens da safe area sempre voltavam 0 no admin depois de recarregar:
+  `listarPorPonto` não selecionava as 4 colunas (desde a migration 069).
+  Teste novo em `tests/integridade-admin.test.js`.
+- "Novas contas" da Visão geral contava a conta própria da Mostraí (nasce
+  com a migration). Mesma régua da conversão, que já a excluía. Teste novo.
+- Planos arquivados vazavam como slug na lista de Contas; percentual com
+  ponto decimal (quebrava a ordenação); plurais ("1 pontos"); subtítulos que
+  sumiam por causa do alias reverso; recorte que escondia a borda do
+  criativo na fila de aprovação; `required` num input de arquivo escondido
+  que bloqueava o envio da mídia em silêncio; `.card` público (520px
+  centralizado) quebrando layouts do admin; `prompt()`/`confirm()` nativos
+  trocados por modal em todos os fluxos vivos.
+- Lista de Contas passava da largura do notebook (coluna "Entrou" cortada).
+
+**Verificado:** `npm run check` (235/235 com o banco limpo; lint só com os
+avisos já conhecidos de funções globais do `candidatura-ponto.js`);
+roteiro Playwright ponta a ponta (criar mídia pelo teclado, trocar/alterar
+arquivo, criar/publicar/excluir promoção com imagem e matriz, Salvar de
+Preços acendendo só com mudança, horário próprio da tela com a mesma
+geometria em todo dia, margem salva voltando do banco, modais de plano e
+categoria, repasse, mensagem respondida, aprovação e recusa); screenshots
+em 1920/1440/1024/390 sem rolagem horizontal; estado vazio em todas as
+telas; nenhum erro de console além dos esperados no ambiente local sem
+Supabase (upload de arquivo recusado pelo storage).

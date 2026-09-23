@@ -273,9 +273,13 @@ router.get('/admin/resumo', async (_req, res) => {
               COALESCE(SUM(vezes_programadas), 0)::int AS programadas
        FROM exibicoes_contador WHERE janela_hora > now() - interval '30 days'`,
     ),
+    // Sem a conta própria (mesma régua da conversão logo abaixo): ela nasce
+    // com a migration, então num banco recém-migrado aparecia como "1 conta
+    // nova" sem ninguém ter se cadastrado (achado no polimento final).
     pool.query(
       `SELECT
-        (SELECT COUNT(*) FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL) AS anunciantes,
+        (SELECT COUNT(*) FROM anunciantes
+          WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL AND NOT conta_propria) AS anunciantes,
         (SELECT COUNT(*) FROM pontos WHERE created_at > now() - interval '30 days') AS pontos`,
     ),
     // % de quem criou conta e está pagando um plano de verdade hoje — pedido
