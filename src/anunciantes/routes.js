@@ -27,6 +27,7 @@ const eventos = require('../lib/eventos');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
+const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
@@ -940,17 +941,22 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
 // + os N mais recentes, N = limite do plano). Uma função só pra ficha do
 // admin e pro "Meus criativos" do painel — as duas telas nunca podem
 // discordar sobre o que está no ar.
+//
+// O plano é o VIGENTE (`planoVigenteId`, o mesmo COALESCE do gerador), não o
+// efetivo cru: comercial vencido com comodato ativo continua veiculando pelo
+// comodato — antes esta função dizia "fora da rotação" nesse caso enquanto a
+// TV tocava a peça (revisão da ficha de Conta, 23/09/2026).
 async function criativosComSituacao(conta) {
   const criativos = await criativosRepo.listarPorAnunciante(conta.id);
-  const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
-  const contaVeicula =
-    !!plano &&
-    !conta.suspenso &&
-    !conta.excluido_em &&
-    !conta.conta_propria &&
-    (!conta.data_expiracao || new Date(conta.data_expiracao) >= new Date());
+  // `plano` (devolvido) continua o EFETIVO — é dele que o painel do cliente
+  // lê limite de cadastro e duração máxima, igual ao upload (subirCriativo).
+  const efetivoId = planoEfetivoId(conta);
+  const plano = efetivoId ? await planosRepo.buscarPorId(efetivoId) : null;
+  const vigenteId = repo.planoVigenteId(conta);
+  const vigente = vigenteId === efetivoId ? plano : vigenteId ? await planosRepo.buscarPorId(vigenteId) : null;
+  const contaVeicula = !!vigente && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
-  const limite = plano ? limiteDeCriativos(false, plano.limite_criativos, prontos.length) : 0;
+  const limite = vigente ? limiteDeCriativos(false, vigente.limite_criativos, prontos.length) : 0;
   const noAr = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
   return { criativos: criativos.map((c) => ({ ...c, no_ar: noAr.has(c.id) })), plano, limite, contaVeicula };
 }
@@ -1288,9 +1294,23 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
 });
 
 // Admin — protegido por requireAdminToken, montado em server.js
+//
+// `plano_origem` (revisão da ficha de Conta, 23/09/2026): a lista de Contas
+// dizia "Cortesia administrativa" pra QUALQUER cortesia, inclusive benefício
+// pago com créditos. Mesma régua da ficha (plano-administrativo.js#
+// origemDoDireito), decidida aqui em vez de adivinhada no navegador.
 router.get('/admin/anunciantes', async (_req, res) => {
-  const anunciantes = await repo.listar();
-  res.json(anunciantes);
+  const [anunciantes, { rows: ativos }] = await Promise.all([
+    repo.listar(),
+    pool.query(`SELECT anunciante_id, plano_id, origem FROM planos_administrativos WHERE status = 'ativo'`),
+  ]);
+  const beneficioPorConta = new Map(ativos.map((b) => [b.anunciante_id, b]));
+  res.json(
+    anunciantes.map((a) => ({
+      ...a,
+      plano_origem: planoAdministrativo.origemDoDireito(a, beneficioPorConta.get(a.id)),
+    })),
+  );
 });
 
 // Criação manual pelo admin (cadastro "a frio", sem passar pelo formulário
@@ -1420,4 +1440,4 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
   }
 });
 
-module.exports = { router, exigirAnuncianteLogado, derrubarSessaoSuspensa };
+module.exports = { router, exigirAnuncianteLogado, derrubarSessaoSuspensa, criativosComSituacao };

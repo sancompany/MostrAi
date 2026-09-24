@@ -1,0 +1,16 @@
+-- Nota interna na concessão de créditos (23/09/2026, revisão da ficha de
+-- Conta do admin, pedido do dono).
+--
+-- Créditos viraram o jeito NORMAL de o admin dar cortesia comercial (o
+-- "Conceder plano" direto saiu da ficha). A concessão precisa de quatro
+-- coisas registradas: quantidade, motivo, quem concedeu e quando — as três
+-- últimas já existiam (`observacao`, `concedido_por`, `criado_em`). Faltava a
+-- nota INTERNA: o `motivo` (coluna `observacao`) é lido pelo cliente na
+-- central de atualizações e no extrato do painel dele; a nota é só do time
+-- (ex.: "combinado com o Bruno no WhatsApp em 20/09"), nunca sai numa rota
+-- de autoatendimento.
+--
+-- Aditiva e opcional: linhas antigas ficam com NULL, nenhuma é reescrita. O
+-- ledger continua imutável — a nota nasce junto com a linha, não é editada
+-- depois.
+ALTER TABLE creditos_ledger ADD COLUMN IF NOT EXISTS nota_interna text;

@@ -676,6 +676,20 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
        WHERE id = $1`,
       [anunciante.id, plano.id, novaExpiracao],
     );
+    // Ciclo pago por cima de um benefício EM VIGOR (cliente em cortesia ou
+    // benefício por créditos que resolve assinar): o plano da conta passa a
+    // ser o pago na mesma linha acima, então a linha 'ativo' do histórico
+    // deixa de ser verdade — fecha como substituída, na mesma transação.
+    // Sem isso ela ficava 'ativo' pra sempre e, no dia do vencimento,
+    // `encerrarBeneficiosVencidos` zerava o plano PAGO (revisão da ficha de
+    // Conta, 23/09/2026). Benefício 'agendado' não é tocado: ele espera o
+    // ciclo pago terminar, é a fila funcionando.
+    await cliente.query(
+      `UPDATE planos_administrativos
+          SET status = 'encerrado', encerrado_em = now(), encerrado_motivo = 'substituido'
+        WHERE anunciante_id = $1 AND status = 'ativo'`,
+      [anunciante.id],
+    );
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
        VALUES ($1,$2,$3,'pendente') RETURNING id`,

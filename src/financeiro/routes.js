@@ -718,6 +718,18 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
       erro: 'essa conta está na modalidade "Recebe os R$ 50" do comodato, que não acumula com plano comercial',
     });
   }
+  // Esta rota não conhece o histórico de benefícios: gravar por cima de um
+  // benefício aberto deixava a linha 'ativo'/'agendado' órfã, contradizendo
+  // o plano gravado na conta (revisão da ficha de Conta, 23/09/2026).
+  const { rows: abertos } = await pool.query(
+    `SELECT 1 FROM planos_administrativos WHERE anunciante_id = $1 AND status IN ('ativo', 'agendado') LIMIT 1`,
+    [anunciante.id],
+  );
+  if (abertos.length) {
+    return res
+      .status(409)
+      .json({ erro: 'essa conta tem benefício em vigor ou programado — não dá pra liberar por cima' });
+  }
 
   const duracao = Number(meses) > 0 ? Number(meses) : plano.compromisso_meses;
   const atualizado = await anunciantesRepo.atualizar(anunciante.id, {
@@ -757,6 +769,15 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
 // Benefício/cortesia concedido pelo admin — regras em plano-administrativo.js.
 // Substitui, na ficha da conta, o "Liberar plano" por prompt() com id digitado
 // (a rota liberar-plano acima fica como legado, sem tela chamando).
+//
+// Revisão da ficha de Conta (23/09/2026, pedido do dono): "Conceder/Alterar/
+// Cancelar plano" SAÍRAM da ficha — cortesia comercial agora é crédito
+// (`POST /admin/anunciantes/:id/creditos/conceder`), que entra na mesma fila
+// de benefícios do resgate. `plano-administrativo` e `/encerrar` ficam como
+// FERRAMENTA TÉCNICA de correção excepcional, sem tela, e nunca por cima de
+// benefício pago com créditos (`beneficioPorCreditosAberto`). Cortesias
+// administrativas antigas continuam valendo até o fim (o gerador lê
+// `anunciantes.plano_id`, e `encerrarBeneficiosVencidos` fecha no prazo).
 
 // O que a ficha precisa pra mostrar Plano sem adivinhar: de onde vem o plano
 // vigente, se há assinatura paga ativa (só essa passa pelo San Checkout) e o
@@ -811,6 +832,13 @@ router.post('/admin/anunciantes/:id/plano-administrativo', async (req, res) => {
         'troque a modalidade pra "Troca os R$ 50 por tela" antes de conceder Essencial, Pro ou Prime',
     });
   }
+  if (await planoAdministrativo.beneficioPorCreditosAberto(conta.id)) {
+    return res.status(409).json({
+      erro:
+        'esta conta tem um benefício pago com créditos em vigor ou programado — ele não pode ser substituído ' +
+        'por cortesia (os créditos já foram debitados). Espere ele terminar.',
+    });
+  }
   const observacao =
     String(req.body.observacao || '')
       .trim()
@@ -844,6 +872,11 @@ router.post('/admin/anunciantes/:id/plano-administrativo/encerrar', async (req, 
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   if (planoAdministrativo.origemDoPlano(conta) !== 'cortesia') {
     return res.status(400).json({ erro: 'esta conta não tem benefício administrativo em vigor' });
+  }
+  if (await planoAdministrativo.beneficioPorCreditosAberto(conta.id)) {
+    return res.status(409).json({
+      erro: 'o benefício em vigor foi pago com créditos — não se encerra por aqui (os créditos já foram debitados)',
+    });
   }
   res.json(await planoAdministrativo.encerrar({ conta, adminUsuario: req.session.adminUsuario }));
 });

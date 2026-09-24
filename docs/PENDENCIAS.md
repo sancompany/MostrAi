@@ -4215,6 +4215,34 @@ em 1920/1440/1024/390 sem rolagem horizontal; estado vazio em todas as
 telas; nenhum erro de console além dos esperados no ambiente local sem
 Supabase (upload de arquivo recusado pelo storage).
 
+## I. Ficha de Conta do admin — decisões de dado que só o dono toma (23/09/2026)
+
+A revisão da ficha de Conta (ADR-015 em `.ia/DECISIONS.md`) corrigiu a tela e
+o motor, mas **não mexeu em dado de produção** — "não DELETE histórico, não
+migre cegamente". Duas coisas ficaram visíveis na conta "SAntos unio" (id 5)
+e pedem decisão:
+
+- **I.1 [ ] 120 créditos debitados por um benefício que foi substituído.**
+  Em 23/09/2026 às 23:02 a conta resgatou Prime · 12 meses por 120 créditos
+  (histórico #2, ledger #2); 42 s depois o "Alterar plano" da ficha antiga
+  concedeu Prime · 12 meses como cortesia administrativa (#3) e fechou o
+  resgate como "substituído". O direito não se perdeu (a cortesia vale até
+  23/09/2027, 5 dias além do resgate), mas os 120 créditos saíram do saldo
+  sem benefício próprio. Caminhos: *(a)* deixar — foi teste do próprio dono
+  (concedido por "Master-BHS", 500 créditos de "parceria"); *(b)* devolver
+  com uma linha `estorno_resgate` de +120 no ledger (nunca editar a linha
+  antiga). A ficha mostra os dois registros no histórico, sem esconder nada.
+- **I.2 [ ] Ponto "SAntos unio" sem modalidade de comodato.** Nasceu da
+  candidatura #1 sem `plano_ponto_id`, então o dono do ponto não recebe
+  repasse nem crédito e a conta não ganha o Inicial/Básico. A ficha agora
+  mostra isso como alerta, com o botão **Definir modalidade** no card
+  Comodato (o mesmo PATCH de sempre, `aplicarModalidade`). Escolher entre
+  "Recebe os R$ 50" (Inicial — não acumula com o Prime em vigor, o servidor
+  recusa) e "Troca os R$ 50 por tela" (Básico) é decisão comercial sua.
+- **I.3 [ ] Categoria antiga "Restaurante / lanchonete" na mesma conta.** A
+  ficha sugere as atuais ("Restaurante", "Lanchonete / Hamburgueria") em um
+  clique; qual é a certa só quem conhece o comércio sabe.
+
 ## Rodada de responsividade e experiência mobile do site público — 23–24/09/2026
 
 Pedido do dono: rodada final de RESPONSIVIDADE do site público, sem redesign,

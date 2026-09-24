@@ -219,6 +219,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use(pontosRoutes);
 app.use(anunciantesRoutes.router);
+app.use(require('./anunciantes/situacao').router);
 app.use(playlistRoutes);
 app.use(playerRoutes);
 app.use(financeiroRoutes.router);
