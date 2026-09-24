@@ -16,11 +16,19 @@ function fotoOuPlaceholder(url, nome) {
 
 // Foto de exemplo do "ponto completo" é trocável pelo admin (sem deploy);
 // só troca a `src` quando existe uma customizada — sem isso, continua a
-// imagem estática do arquivo.
+// imagem estática do arquivo. O `srcset` (versão leve pro celular) sai junto:
+// com ele presente, o navegador ignora a `src` nova e continuaria mostrando
+// a foto estática. As dimensões reservadas também saem — a foto do admin
+// pode ter outra proporção.
 fetch(`${API_BASE_URL}/pontos/config`)
   .then((r) => r.json())
   .then(({ fotoExemploUrl }) => {
-    if (fotoExemploUrl) document.querySelector('.exemplo-ponto img').src = fotoExemploUrl;
+    if (!fotoExemploUrl) return;
+    const img = document.querySelector('.exemplo-ponto img');
+    img.removeAttribute('srcset');
+    img.removeAttribute('width');
+    img.removeAttribute('height');
+    img.src = fotoExemploUrl;
   })
   .catch(() => {});
 

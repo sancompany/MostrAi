@@ -240,7 +240,7 @@ desta, só ajustes pontuais que o dono pedir).
 ## Player V2 — integração definitiva (24/09/2026)
 
 Backend do contrato V2 do Mostraí Player construído, V1 mantido. Migration
-081 (a mais recente). Rotas do Player: `/player/provisionar`,
+082 (a mais recente; a 081 é a nota interna do ledger de créditos). Rotas do Player: `/player/provisionar`,
 `/player/:id/hello`, `/heartbeat`, `/config`, `/played` (lote),
 `/playlist/:id` (envelope V2 com `contentHash`). Admin: Rede → Ponto → Tela
 (ficha em 5 blocos) e Rede → Versões do Player. Saúde da tela só em

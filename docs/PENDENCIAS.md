@@ -4215,6 +4215,223 @@ em 1920/1440/1024/390 sem rolagem horizontal; estado vazio em todas as
 telas; nenhum erro de console além dos esperados no ambiente local sem
 Supabase (upload de arquivo recusado pelo storage).
 
+## I. Ficha de Conta do admin — decisões de dado que só o dono toma (23/09/2026)
+
+A revisão da ficha de Conta (ADR-015 em `.ia/DECISIONS.md`) corrigiu a tela e
+o motor, mas **não mexeu em dado de produção** — "não DELETE histórico, não
+migre cegamente". Duas coisas ficaram visíveis na conta "SAntos unio" (id 5)
+e pedem decisão:
+
+- **I.1 [ ] 120 créditos debitados por um benefício que foi substituído.**
+  Em 23/09/2026 às 23:02 a conta resgatou Prime · 12 meses por 120 créditos
+  (histórico #2, ledger #2); 42 s depois o "Alterar plano" da ficha antiga
+  concedeu Prime · 12 meses como cortesia administrativa (#3) e fechou o
+  resgate como "substituído". O direito não se perdeu (a cortesia vale até
+  23/09/2027, 5 dias além do resgate), mas os 120 créditos saíram do saldo
+  sem benefício próprio. Caminhos: *(a)* deixar — foi teste do próprio dono
+  (concedido por "Master-BHS", 500 créditos de "parceria"); *(b)* devolver
+  com uma linha `estorno_resgate` de +120 no ledger (nunca editar a linha
+  antiga). A ficha mostra os dois registros no histórico, sem esconder nada.
+- **I.2 [ ] Ponto "SAntos unio" sem modalidade de comodato.** Nasceu da
+  candidatura #1 sem `plano_ponto_id`, então o dono do ponto não recebe
+  repasse nem crédito e a conta não ganha o Inicial/Básico. A ficha agora
+  mostra isso como alerta, com o botão **Definir modalidade** no card
+  Comodato (o mesmo PATCH de sempre, `aplicarModalidade`). Escolher entre
+  "Recebe os R$ 50" (Inicial — não acumula com o Prime em vigor, o servidor
+  recusa) e "Troca os R$ 50 por tela" (Básico) é decisão comercial sua.
+- **I.3 [ ] Categoria antiga "Restaurante / lanchonete" na mesma conta.** A
+  ficha sugere as atuais ("Restaurante", "Lanchonete / Hamburgueria") em um
+  clique; qual é a certa só quem conhece o comércio sabe.
+
+## Rodada de responsividade e experiência mobile do site público — 23–24/09/2026
+
+Pedido do dono: rodada final de RESPONSIVIDADE do site público, sem redesign,
+sem trocar identidade, texto ou regra comercial. Auditoria → correção →
+reauditoria, medida no navegador (Playwright + Chromium do ambiente), não
+lida no código. Admin e painel da conta fora do escopo (o cabeçalho, o rodapé
+e o botão do WhatsApp são compartilhados e mudaram junto — conferido que o
+painel e a confirmação de plano continuam sem rolagem lateral e sem erro).
+
+**Rotas auditadas (15):** `/`, `/planos.html`, `/pontos.html`,
+`/contato.html`, `/anunciante/login.html`, `/anunciante/cadastro.html`,
+`/esqueci-senha.html`, `/redefinir-senha.html`, `/termos-de-uso.html`,
+`/politica-de-privacidade.html`, `/comodato.html`,
+`/contrato-anunciante.html`, `/obrigado.html`, `/convite.html`, 404.
+**Viewports (14):** 320x568, 360x800, 375x812, 390x844, 412x915, 430x932,
+667x375, 844x390 (deitado), 768x1024, 820x1180, 1280x720, 1366x768,
+1440x900, 1920x1080. Banco local espelhando os dados públicos de produção
+(1 ponto, 1.000 pessoas/mês, a promoção "pré venda"), mais uma passada com
+dados de estresse (nome de 60 caracteres sem espaço, endereço longo, 4
+pontos).
+
+**Resultado final (210 combinações):** 0 rolagem horizontal
+(`scrollWidth ≤ clientWidth` em todas, sem `overflow-x: hidden`), 0 campo
+com fonte < 16px, 0 item de menu fora da tela ou atrás do WhatsApp, 0 caso
+do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
+(WCAG 2.1 A/AA) sem violação nas 8 rotas principais em 390 e 1366px.
+
+### Corrigido
+
+- **R1 [x] Menu atrás do WhatsApp no celular deitado.** Em 667x375 e 844x390
+  "Criar conta" e "Entrar" ficavam embaixo do botão flutuante (z 50 > z 20
+  do cabeçalho). Agora o botão some com o menu aberto; "Criar conta" e
+  "Entrar" ficam lado a lado (o menu encolheu 58px) e a altura máxima é a da
+  janela menos o cabeçalho.
+- **R2 [x] Menu não fechava ao tocar fora.** Véu escurecido atrás do menu
+  pega o toque (fecha sem acionar o link que estivesse embaixo); Esc devolve
+  o foco ao botão; foco de teclado saindo do cabeçalho fecha; girar pra
+  desktop fecha. Rolagem não é travada.
+- **R3 [x] Hambúrguer abrindo menu vazio** no login e no cadastro (layout
+  mínimo sem botão), e escondendo o único botão em "Voltar ao site",
+  "Ir pro meu painel". Layout mínimo não tem mais hambúrguer: o botão fica
+  na barra. Login ganhou "Criar conta" e cadastro ganhou "Entrar" no
+  cabeçalho (mesmo mecanismo do `convite.html`), levando o `?plano=` junto.
+- **R4 [x] Campos com 15,2px no iPad e no iPhone deitado** (a regra de 16px
+  valia só até 640px — zoom automático do Safari em 667/768/820/844px).
+  16px em qualquer largura no site público.
+- **R5 [x] Alvos de toque < 44px:** perguntas do FAQ (28px — o preenchimento
+  estava no `<details>`, só o texto abria), links do rodapé (15px), seletor
+  de ciclo no tablet (36px), "Esqueci minha senha"/"Voltar ao login" (20px),
+  olho da senha no tablet (30px), "Ver no mapa" (20px). Todos ≥ 44px.
+- **R6 [x] Botão `<button>` 6px mais baixo que `<a class="btn">`** (não herda
+  fonte nem entrelinha): "Enviar mensagem" 43px ao lado de "Chamar no
+  WhatsApp" 49px, desktop incluso. Mesma altura agora.
+- **R7 [x] Banner de pré-venda ocupava a primeira tela inteira** a 360px
+  (420px de altura, botão quebrando em 2 linhas): compacto no celular; a
+  dobra da Home agora mostra banner, título, proposta, preço e "Ver planos".
+- **R8 [x] Contraste:** texto branco sobre o laranja de marca puro no
+  começo do degradê do banner (2,6:1). O degradê passou a começar no
+  `--brand-dim` e passar pelo `--brand-text` (os dois da paleta). O laranja
+  de texto sobre o fundo cinza-claro dava 4,24:1 (mínimo 4,5) — no site
+  público o token fica um fio mais escuro (`#b3500a`, 4,86:1); painel e admin
+  seguem com o valor-base. "Como isso funciona" do aviso: 4,2 → 7,2:1.
+- **R9 [x] Selo "pré venda" virava uma faixa laranja da largura do card**
+  (inline-block esticado pelo flex em coluna) — desktop também. Pílula agora.
+- **R10 [x] Onde estamos:** celular na ordem mapa → pontos → foto (a foto do
+  totem vinha antes dos pontos de verdade); mapa com 300px no celular (não
+  prende o dedo) e link "Abrir no Google Maps" com 44px; métricas em 2x2;
+  com um ponto só, o card fica centralizado em vez de colado à esquerda;
+  foto de exemplo com versão de 720px (307 KB → 78 KB no celular) e
+  dimensões reservadas.
+- **R11 [x] "Como funciona" no celular:** sequência vertical com o número ao
+  lado do título e um trilho ligando 1 → 2 → 3 → 4; 2x2 do tablet até 959px.
+- **R12 [x] Formulários:** uma coluna abaixo de 600px (Nome + WhatsApp e
+  Senha + Confirmar ficavam lado a lado com 160px em 412–430px), Cidade + UF
+  na mesma linha; `type="tel"`/`inputmode`/`autocomplete`/`maxlength` nos
+  campos (o WhatsApp do contato e o telefone do cadastro eram texto comum);
+  CPF/CNPJ SEM teclado numérico de propósito (CNPJ alfanumérico); mensagem
+  do formulário com `role="status"`; o `<p>` vazio da mensagem deixava 60px
+  de vão embaixo do botão; botão trava enquanto envia (evita cadastro e
+  mensagem duplicados); Responsável recolhido em `<details>` "(opcional)",
+  e um erro do servidor num campo dele abre o bloco antes de focar.
+- **R13 [x] Rodapé:** no celular, links em duas colunas com 44px cada (era
+  uma linha de 15px de altura); respiro embaixo dele pro WhatsApp (cobria o
+  e-mail no fim de toda página abaixo de 1280px); desktop numa linha como
+  antes.
+- **R14 [x] Botão do WhatsApp:** `env(safe-area-inset-*)`, 52px no celular e
+  48px abaixo de 360px, some com campo focado em tela de toque (o teclado
+  sobe e ele cairia sobre o campo/"Enviar").
+- **R15 [x] Planos no tablet:** um card por linha com no máximo 560px (antes
+  esticava até 700px); seletor de ciclo em 2x2 até 599px (entre 461 e 599
+  quebrava torto) com `aria-pressed`.
+- **R16 [x] Escala responsiva** (`clamp()`) de h1/h2/lead/títulos de página,
+  espaçamento de seção compacto até 767px, margem lateral de 16px no
+  celular (alinhada com o logo). Desktop idêntico acima de ~1200px.
+
+### Inconsistências de texto e preço — corrigidas com evidência no código
+
+- **T1 [x] Tela de confirmação do pedido ignorava a promoção.** A vitrine e a
+  cobrança (`POST /anunciantes/:id/assinar` → `condicaoVigente`,
+  `src/financeiro/routes.js`) aplicam o desconto promocional; a confirmação
+  calculava só com `valor_mensal`. Pro trimestral: vitrine R$ 597,60,
+  confirmação **R$ 672,30**, Checkout R$ 597,60. **Correção final
+  (24/09/2026, depois da revisão contra o ADR-014):** a primeira versão
+  repetia a conta da promoção no navegador — ainda deixava de fora o
+  crédito de comodato e o desconto de parceiro, que o ADR-014 manda somar.
+  Agora o servidor cota (`GET /anunciantes/me/cotacao/:planoId`,
+  `src/financeiro/cotacao.js`) com as MESMAS funções do `POST /assinar`
+  (`condicaoVigente` + `valorMensalDaConta`), e a tela só desenha: subtotal,
+  desconto do ciclo ou da promoção, "desconto da sua conta" (comodato/
+  parceiro) e a validade da condição. Conferido: conta comum R$ 597,60;
+  dona de ponto com R$ 50 de crédito + parceiro 10% R$ 387,84 — o mesmo
+  número da função de cobrança. Teste novo: `tests/cotacao.test.js`.
+  Nenhuma regra mudou.
+- **T2 [x] FAQ "E se eu não pagar a renovação?"** dizia "a conta fica
+  suspensa até a regularização" — a migration 078 (decisão do dono) tirou a
+  suspensão automática: o plano é encerrado e volta com a cobrança paga
+  (`aplicarCicloPago`). Texto: "A conta não é suspensa: o acesso ao painel,
+  o histórico e os vídeos continuam lá." Ajustado depois contra as regras do
+  #40 (`planoVigenteId`, `ativarBeneficiosAgendados`): quem tem o plano do
+  comodato ou um benefício de créditos programado continua no ar — a
+  resposta passou a dizer isso.
+- **T3 [x] FAQ "Já tenho conta como ponto"** falava nos "modos Anúncios e
+  Meu ponto" — o painel é único desde a Fatia 6.
+- **T4 [x] Login:** "anúncios, ponto ou vendas" — programa de vendedor
+  aposentado (CONSTRAINTS) e painel único.
+- **T5 [x] Cadastro:** "a gente confere seus dados e libera a conta" — não
+  existe mais aprovação de conta (`src/anunciantes/routes.js:261`, decisão
+  de 15/09). Texto: a conta nasce liberada; confirmar o e-mail, escolher o
+  plano, subir o anúncio.
+
+### Achado e NÃO alterado — decisão do dono
+
+- **D1 [ ] Promoção "pré venda" no Anual não dá vantagem.** Ela dá 20% nos
+  ciclos de 3, 6 e 12 meses, e o desconto normal do Anual já é 20%: o card
+  anual mostra o selo "pré venda" e "Preço válido por 12 meses", com o mesmo
+  preço de sem promoção (R$ 950,40 / 2.390,40 / 4.310,40) — e a promoção
+  SUBSTITUI o desconto do ciclo, não soma. Caminhos: tirar o Anual da
+  promoção, ou dar a ele um percentual maior que 20%. Configuração no admin
+  (Ofertas), sem código.
+- **D2 [ ] Texto da promoção no banco** (editável no admin): "durante **apré**
+  venda da **mostrai**", "**Valido** somente um curto **periodo**". A
+  descrição interna tem texto de teste ("fw2enw5…") — não aparece no site.
+- **D3 [ ] Fim da promoção um dia antes do digitado.** O admin manda o
+  `datetime-local` sem fuso; o banco grava como UTC. "31/10 00:00" virou
+  31/10 00:00 UTC = 30/10 21:00 em Matão, e quem compra no dia 30 à noite já
+  não pega a condição. O site formata a data no fuso de quem vê: medido com o
+  navegador no fuso de São Paulo, a Home e a Planos dizem **"válida até
+  30/10/2026"** (no fuso UTC, 31/10) — coerente com o instante real em que a
+  promoção acaba, mas não com o que foi digitado. Correção é no admin (fora
+  desta rodada); até lá, digitar "01/11 03:00" dá o fim do dia 31 em Matão.
+- **D4 [ ] Console de visitante anônimo mostra um 401** em toda página
+  pública (`/anunciantes/me`, a sondagem de sessão do cabeçalho). É esperado
+  e não é exceção de JS; some se um dia a sondagem virar uma rota que
+  responda 204 pra quem não está logado.
+- **D6 [ ] Erro de console em TODA página de produção: Cloudflare Web
+  Analytics barrado pela CSP.** Achado validando em produção (24/09/2026): o
+  Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js` (Web
+  Analytics com instalação automática ligada na zona), e a CSP do site
+  (`script-src 'self'`, ADR-011) recusa — "Refused to load the script…" no
+  console de todas as rotas, e a métrica nunca foi coletada. Não aparece no
+  local (não há Cloudflare na frente). Dois caminhos, decisão do dono:
+  (a) desligar a instalação automática do Web Analytics no painel da
+  Cloudflare (nada no código); ou (b) liberar `https://static.cloudflareinsights.com`
+  no `script-src` e `https://cloudflareinsights.com` no `connect-src`
+  (`src/server.js`) — é um terceiro executando script no site, então passa
+  pelo inventário de dados/política de privacidade antes.
+- **D5 [ ] Cadastro: "Rua e bairro" com CEP preenche só a rua** — o
+  formulário não tem campo de bairro, e o `ligarCep` não cola mais o bairro
+  na rua (Parte W). Quem não digitar o bairro fica sem ele.
+
+**Deploy misto (achado em produção, 24/09/2026):** na primeira passada em
+produção logo depois do deploy, a Home a 360px veio com o `layout.js`
+antigo e o `style.css` novo (o serviço roda em 2 instâncias no Northflank e,
+no rolling deploy, cada arquivo pode vir de uma) — o menu, sem a classe nova,
+ficou aberto na horizontal e empurrou a página 256px. Minutos depois as duas
+instâncias serviam o novo e a Home deu 0 rolagem nos 14 viewports. Mesmo
+transitório, o CSS passou a colapsar o menu por PADRÃO e só o layout mínimo
+sai dessa regra (`.nav-simples`): JS antigo + CSS novo agora cai no menu de
+antes — simulado no local, 0 rolagem.
+
+**Verificado:** medidor (15 rotas × 14 viewports, 210 combinações) antes e
+depois; screenshots comparadas (antes × depois) em 1366px das 7 rotas
+principais — desktop sem regressão, só as correções R6/R8/R9/R13 de
+propósito; roteiro de interação (menu por toque e teclado, FAQ, FAB com
+campo focado e menu aberto, `?plano=` entre cadastro e login, erro em campo
+recolhido, preço anual com promoção) — 70 checagens, todas ok; axe-core sem
+violação; `npm run check` limpo (263/263 testes, 16 avisos de lint =
+linha de base anterior).
+
 ## Player V2 — integração definitiva com o Mostraí Player (24/09/2026)
 
 Plano, divergências e ordem de trabalho em
@@ -4224,7 +4441,7 @@ o checklist divergem dele, vale o código (ex.: regime `HORAS_24`, não
 `24_HOURS`; o Player não reporta Device Owner/capacidades/watchdog, então a
 ficha não mostra).
 
-**[x] Construído e testado** (migration 081, `src/player/`, `src/lib/cofre.js`,
+**[x] Construído e testado** (migration 082, `src/player/`, `src/lib/cofre.js`,
 `src/lib/operacao-tela.js`, `src/lib/status-tela.js`, admin Rede):
 provisionamento por token de uso único; credencial só como hash com
 rotação/sobreposição e revogação; hello; heartbeat como retrato com eventos
@@ -4234,7 +4451,7 @@ normalizado; `played` em lote sem 400 de conteúdo; OTA com release só ativáve
 depois de assinatura conferida; UI Rede → Ponto → Tela (ficha em 5 blocos,
 SSE); visão simplificada do dono; V1 (`/player.html`) continua funcionando.
 Testes: `tests/player-v2.test.js`, `tests/operacao-tela.test.js`,
-`tests/status-tela.test.js`, e2e `tests/e2e/16-rede-player-v2.mjs`.
+`tests/status-tela.test.js`, e2e `tests/e2e/17-rede-player-v2.mjs`.
 
 **Efeito no negócio que aparece no deploy:** a regra de status do ponto
 mudou — "em operação" exige uma tela ativa que **já deu sinal** alguma vez.
@@ -4260,10 +4477,10 @@ operação que nunca foi vista.
   sem prazo).
 
 **[ ] Depois da validação em produção:**
-- Migration 082: zerar `dispositivos.aparelho_id` (a chave V1 em texto puro).
-  A 081 já gravou o hash de todas e a autenticação só lê o hash; a coluna
+- Migration 083: zerar `dispositivos.aparelho_id` (a chave V1 em texto puro).
+  A 082 já gravou o hash de todas e a autenticação só lê o hash; a coluna
   ficou só para poder voltar o deploy sem perder a chave das TVs V1.
-- `contentHash` só existe para criativo normalizado depois da 081. Os antigos
+- `contentHash` só existe para criativo normalizado depois da 082. Os antigos
   vão sem hash (o Player aceita — o campo é opcional); preencher exige baixar
   cada MP4 do storage e calcular — script de uma vez, fora do deploy.
 
@@ -4301,8 +4518,8 @@ compatibilidade V1) e o smoke completo (C). Corrigido, cada um com teste em
   recarga a cada 60 s;
 - TV V1 nova ficava até 15 min sem anúncio (ponto fora da cobertura até o
   heartbeat) — o primeiro GET de playlist conta como sinal;
-- a 081 cortava margens > 10 que o player web V1 respeita — não corta mais;
+- a 082 cortava margens > 10 que o player web V1 respeita — não corta mais;
   o teto de 10 vale para a escrita nova e para o que vai ao V2.
-Replay da 081 num banco com formato de produção (TVs V1 com chave em texto,
+Replay da 082 num banco com formato de produção (TVs V1 com chave em texto,
 margem 15, tela sem sinal): hash confere, numeração estável, ponto sem sinal
 vira "Aguardando instalação", reaplicar não muda nada.

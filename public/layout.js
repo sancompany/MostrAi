@@ -44,11 +44,18 @@
 
   const link = ([href, texto]) => `<a href="${href}"${ehAqui(href) ? ' aria-current="page"' : ''}>${texto}</a>`;
 
+  // Os dois botões de conta ficam num grupo: no desktop o grupo some
+  // (`display: contents`) e eles seguem lado a lado na barra como sempre; no
+  // menu de celular o grupo vira uma linha de duas colunas — "Criar conta" e
+  // "Entrar" empilhados eram 116px de menu, e com o celular deitado os dois
+  // ficavam fora da tela ou atrás do botão do WhatsApp.
   function navPublico() {
     return (
       MENU_PUBLICO.map(link).join('') +
+      '<div class="nav-acoes">' +
       `<a class="btn ghost" href="/anunciante/cadastro.html">Criar conta</a>` +
-      '<a class="btn ghost" href="/anunciante/login.html" data-nav-entrar>Entrar</a>'
+      '<a class="btn ghost" href="/anunciante/login.html">Entrar</a>' +
+      '</div>'
     );
   }
 
@@ -114,6 +121,7 @@
   // Antes os 7 itens do menu público ficavam soltos, quebrados em duas linhas,
   // cada um com 20px de altura de toque — o mínimo usável é 44px. O topo
   // inteiro do celular era menu, e nenhum item dava pra acertar com o dedo.
+  //
   // Botão à esquerda do logo (ex.: "Voltar" no checkout, pra não duplicar
   // uma ação que a própria tela já oferece mais abaixo) — mesmo formato
   // "Texto|destino" de data-layout-botao, só que do outro lado.
@@ -122,6 +130,17 @@
     ? (([texto, href]) => `<a class="btn ghost btn-voltar" href="${href}">${texto}</a>`)(botaoEsqDado.split('|'))
     : '';
 
+  // Hambúrguer só onde há menu de verdade (site público e conta). No layout
+  // mínimo a barra tem no máximo UM botão — "Voltar ao site", "Já tenho
+  // conta", "Entrar" — e escondê-lo atrás de um hambúrguer era pior que
+  // mostrar; no login e no cadastro, sem botão nenhum, o hambúrguer abria um
+  // menu vazio. A exceção é marcada (`nav-simples`), não a regra: colapsar
+  // continua sendo o padrão do CSS, então um `layout.js` antigo servido junto
+  // com o `style.css` novo (o serviço roda em 2 instâncias, e no deploy cada
+  // arquivo pode vir de uma) cai no menu de antes, e não num menu aberto que
+  // empurra a página 256px pro lado — visto em produção em 24/09/2026.
+  const colapsa = layout === 'publico' || layout === 'conta';
+
   document.body.insertAdjacentHTML(
     'afterbegin',
     `
@@ -129,39 +148,66 @@
       <div class="wrap">
         <div class="header-left">
           ${botaoEsq}
-          <a class="logo" href="/"><img src="/img/logo-mostrai-wordmark.png" alt="Mostraí"></a>
+          <a class="logo" href="/"><img src="/img/logo-mostrai-wordmark.png" alt="Mostraí" width="124" height="28"></a>
         </div>
-        <button type="button" class="menu-botao" id="btnMenu" aria-expanded="false" aria-controls="navPrincipal" aria-label="Abrir menu">
+        ${
+          colapsa
+            ? `<button type="button" class="menu-botao" id="btnMenu" aria-expanded="false" aria-controls="navPrincipal" aria-label="Abrir menu">
           <span></span><span></span><span></span>
-        </button>
-        <nav class="main" id="navPrincipal">${(NAVS[layout] || navMinimo)()}</nav>
+        </button>`
+            : ''
+        }
+        <nav class="main${colapsa ? '' : ' nav-simples'}" id="navPrincipal" aria-label="Principal">${(NAVS[layout] || navMinimo)()}</nav>
       </div>
-    </header>`,
+    </header>
+    ${colapsa ? '<div class="menu-veu" id="menuVeu" hidden></div>' : ''}`,
   );
 
   (function menuDeCelular() {
     const botao = document.getElementById('btnMenu');
     const nav = document.getElementById('navPrincipal');
-    if (!botao || !nav) return;
-    const fechar = () => {
-      nav.classList.remove('aberto');
-      botao.setAttribute('aria-expanded', 'false');
-      botao.setAttribute('aria-label', 'Abrir menu');
-    };
-    botao.addEventListener('click', () => {
-      const abrindo = !nav.classList.contains('aberto');
-      nav.classList.toggle('aberto', abrindo);
-      botao.setAttribute('aria-expanded', String(abrindo));
-      botao.setAttribute('aria-label', abrindo ? 'Fechar menu' : 'Abrir menu');
-    });
-    // Escolher um item fecha o menu; Esc também. Sem isso o menu fica aberto
-    // por cima da página que a pessoa acabou de pedir.
+    const veu = document.getElementById('menuVeu');
+    const header = document.querySelector('header.site');
+    if (!botao || !nav || !veu) return;
+    const aberto = () => nav.classList.contains('aberto');
+    function alternar(abrir) {
+      nav.classList.toggle('aberto', abrir);
+      veu.hidden = !abrir;
+      // A classe no body é o que tira o botão do WhatsApp da frente do menu
+      // (ele fica por cima de tudo, e com o celular deitado cobria "Entrar").
+      document.body.classList.toggle('menu-aberto', abrir);
+      botao.setAttribute('aria-expanded', String(abrir));
+      botao.setAttribute('aria-label', abrir ? 'Fechar menu' : 'Abrir menu');
+    }
+    botao.addEventListener('click', () => alternar(!aberto()));
+    // Fecha: ao escolher um item, ao tocar fora (o véu escurecido pega o
+    // toque — sem ele, o toque "fora" caía num link da página por baixo), com
+    // Esc (devolvendo o foco ao botão) e quando o foco do teclado sai do
+    // cabeçalho. A rolagem da página não é travada: o menu é curto e o
+    // cabeçalho é fixo, então rolar com ele aberto não perde nada.
     nav.addEventListener('click', (e) => {
-      if (e.target.closest('a')) fechar();
+      if (e.target.closest('a')) alternar(false);
     });
+    veu.addEventListener('click', () => alternar(false));
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') fechar();
+      if (e.key === 'Escape' && aberto()) {
+        alternar(false);
+        botao.focus();
+      }
     });
+    header.addEventListener('focusout', (e) => {
+      if (aberto() && e.relatedTarget && !header.contains(e.relatedTarget)) alternar(false);
+    });
+    // Girar o tablet (ou alargar a janela) com o menu aberto passa pro layout
+    // de desktop, onde o véu não tem mais o que cobrir. `addListener` é o
+    // nome antigo (Safari < 14): sem o fallback, a exceção pararia este
+    // arquivo antes de desenhar o rodapé e o botão do WhatsApp.
+    const desktop = window.matchMedia('(min-width: 961px)');
+    const aoVirarDesktop = (e) => {
+      if (e.matches && aberto()) alternar(false);
+    };
+    if (desktop.addEventListener) desktop.addEventListener('change', aoVirarDesktop);
+    else if (desktop.addListener) desktop.addListener(aoVirarDesktop);
   })();
 
   document.body.insertAdjacentHTML(
@@ -169,9 +215,9 @@
     `
     <footer class="site">
       <div class="wrap">
-        <span>© Mostraí, Matão-SP. Parte do ecossistema San &amp; Co.</span>
-        <span class="footer-links"><a href="/contato.html">Fale com a gente</a> · <a href="/termos-de-uso.html">Termos de Uso</a> · <a href="/politica-de-privacidade.html">Privacidade</a> · <a href="/comodato.html">Comodato</a> · <a href="/contrato-anunciante.html">Contrato do anunciante</a></span>
-        <span><a href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a></span>
+        <p class="footer-marca">© Mostraí, Matão-SP. Parte do ecossistema San &amp; Co.</p>
+        <nav class="footer-links" aria-label="Rodapé"><a href="/contato.html">Fale com a gente</a><a href="/termos-de-uso.html">Termos de Uso</a><a href="/politica-de-privacidade.html">Privacidade</a><a href="/comodato.html">Comodato</a><a href="/contrato-anunciante.html">Contrato do anunciante</a></nav>
+        <a class="footer-email" href="mailto:mostrai@sancocore.com.br">mostrai@sancocore.com.br</a>
       </div>
     </footer>
     <a class="whatsapp-fab" href="${window.linkWhatsApp('Olá! Vim pelo site da Mostraí e quero saber mais.')}" target="_blank" rel="noopener" aria-label="Falar no WhatsApp">

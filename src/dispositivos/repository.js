@@ -9,11 +9,11 @@ const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 
 // Tela = `dispositivos` (migration 019); Ponto = o comércio. O Player é a
-// identidade provisionada numa tela (migration 081). Nomes de coluna em
+// identidade provisionada numa tela (migration 082). Nomes de coluna em
 // docs/specs/2026-09-23-player-v2-backend.md.
 
 // O que o admin edita numa tela. Tudo que vai na config do Player sobe a
-// versão desejada sozinho, por gatilho no banco (migration 081).
+// versão desejada sozinho, por gatilho no banco (migration 082).
 const CAMPOS_ATUALIZAVEIS = [
   'status',
   'custo_equipamento',
@@ -255,7 +255,7 @@ async function listarComProblemaDeSinal() {
 // Escrita
 // ---------------------------------------------------------------------------
 // Número estável dentro do ponto: o gatilho `tela_numero_estavel`
-// (migration 081) dá o próximo número do contador do ponto no INSERT.
+// (migration 082) dá o próximo número do contador do ponto no INSERT.
 async function criar(pontoId, dados = {}) {
   const client = await pool.connect();
   try {

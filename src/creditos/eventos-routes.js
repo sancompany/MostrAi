@@ -38,18 +38,29 @@ function abrirStream(req, res, registrar, remover) {
 // GET /conta/eventos — stream de eventos da conta logada. Autenticado por
 // sessão (cookie), igual toda rota de `/anunciantes/me/*` — nunca por
 // token na URL, que vazaria em log de acesso e no histórico do navegador.
-router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => {
-  const contaId = req.session.anuncianteId;
+const streamDaConta = (req, res, contaId) =>
   abrirStream(
     req,
     res,
     (r) => sse.registrarCliente(contaId, r),
     (r) => sse.removerCliente(contaId, r),
   );
+
+router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => streamDaConta(req, res, req.session.anuncianteId));
+
+// GET /admin/anunciantes/:id/eventos — o MESMO stream da conta, pra ficha de
+// Conta do admin (revisão de 23/09/2026: "reatividade sem F5"). O admin vê
+// qualquer conta, então assinar os eventos de uma é só ler o que ela já lê:
+// créditos resgatados, candidatura aprovada, ponto/tela mudando. Protegido
+// pelo `requireAdminSession` montado em '/admin' no server.js.
+router.get('/admin/anunciantes/:id/eventos', (req, res) => {
+  const contaId = Number(req.params.id);
+  if (!Number.isInteger(contaId) || contaId <= 0) return res.status(400).json({ erro: 'conta inválida' });
+  streamDaConta(req, res, contaId);
 });
 
-// GET /admin/eventos — mesmo stream para o admin (sessão de admin, via
-// requireAdminSession em /admin): tela e ponto mudando sem F5.
+// GET /admin/eventos — canal do próprio admin (Player V2): tela e ponto
+// mudando na Rede sem F5. Mesma sessão de admin, via requireAdminSession.
 router.get('/admin/eventos', (req, res) => {
   abrirStream(req, res, sse.registrarAdmin, sse.removerAdmin);
 });

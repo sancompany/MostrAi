@@ -53,6 +53,21 @@
   --radius-btn: 10px;
   --radius-campo: 8px;
   --max: 1120px;
+
+  /* Botão flutuante do WhatsApp: tamanho e distância da borda. Viram token
+     porque três peças dependem deles — o próprio botão, o respiro do rodapé
+     (que não pode nascer embaixo dele) e o celular pequeno, onde ele encolhe.
+     O `env(safe-area-inset-*)` soma a área do entalhe/barra do iPhone quando
+     existir; sem `viewport-fit=cover` na página ele vale 0, e está certo
+     assim: o navegador já mantém o conteúdo fora do entalhe. */
+  --fab: 56px;
+  --fab-margem: 20px;
+}
+@media (max-width: 767px) {
+  :root { --fab: 52px; --fab-margem: 14px; }
+}
+@media (max-width: 359px) {
+  :root { --fab: 48px; --fab-margem: 12px; }
 }
 
 * { box-sizing: border-box; }
@@ -80,10 +95,16 @@ header.site {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
-header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; position: relative; }
-.header-left { display: flex; align-items: center; gap: 16px; }
-.logo { display: flex; align-items: center; text-decoration: none; }
-.logo img { height: 28px; display: block; }
+header.site .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 64px; position: relative; }
+.header-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.logo { display: flex; align-items: center; text-decoration: none; flex: none; }
+/* `width: auto` porque o <img> ganhou width/height no HTML (reserva o espaço
+   antes de a imagem chegar, sem o cabeçalho "pular"): sem isto, o atributo
+   travaria a largura quando a altura muda no celular pequeno. */
+.logo img { height: 28px; width: auto; display: block; }
+@media (max-width: 359px) {
+  .logo img { height: 24px; }
+}
 nav.main { display: flex; gap: 24px; align-items: center; }
 nav.main a { text-decoration: none; color: var(--text-dim); font-size: .95rem; white-space: nowrap; }
 nav.main a:hover { color: var(--blue); }
@@ -94,6 +115,9 @@ nav.main a[aria-current="page"]::after {
   background: var(--brand); margin-top: 3px;
 }
 nav.main a.btn[aria-current="page"]::after { display: none; }
+/* Grupo "Criar conta" + "Entrar" (layout.js): no desktop não existe como
+   caixa — os dois seguem na barra, com o mesmo espaçamento de antes. */
+.nav-acoes { display: contents; }
 
 /* Botão do menu de celular. Só existe abaixo de 960px — acima disso o menu
    inteiro cabe na horizontal. 44px é o alvo de toque mínimo usável.
@@ -111,29 +135,45 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
 .menu-botao[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
 .menu-botao[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
+.menu-botao:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+
 @media (max-width: 960px) {
   header.site .wrap { height: 60px; padding: 0 16px; }
   .menu-botao { display: flex; }
   /* Fora da tela até abrir. `hidden` não serve: o menu precisa animar e
-     precisa continuar no fluxo de foco quando aberto. */
-  nav.main {
+     precisa continuar no fluxo de foco quando aberto. Todo menu colapsa,
+     menos o do layout mínimo (`.nav-simples`, layout.js), que é um botão só
+     e fica à vista. */
+  nav.main:not(.nav-simples) {
     position: absolute; left: 0; right: 0; top: 100%;
     flex-direction: column; align-items: stretch; gap: 0;
     background: var(--card); border-bottom: 1px solid var(--border);
     padding: 6px 16px 14px; box-shadow: 0 12px 24px rgba(20,23,31,.08);
     max-height: 0; overflow: hidden; visibility: hidden;
   }
-  nav.main.aberto { max-height: 80vh; overflow-y: auto; visibility: visible; }
+  /* Altura da janela menos o cabeçalho, não 80vh: com o celular deitado
+     (375px de altura) 80vh cortava o fim do menu; agora ele usa tudo o que
+     sobra e só rola se ainda assim não couber. */
+  nav.main:not(.nav-simples).aberto { max-height: calc(100vh - 60px); overflow-y: auto; visibility: visible; }
   /* 48px de altura por item: alvo de dedo de verdade, não 20px. */
-  nav.main a {
+  nav.main:not(.nav-simples) a {
     font-size: 1rem; min-height: 48px; display: flex; align-items: center;
     border-bottom: 1px solid var(--border);
   }
-  nav.main a:last-child { border-bottom: 0; }
-  nav.main a[aria-current="page"]::after { display: none; }
-  nav.main a[aria-current="page"] { color: var(--brand-text); }
-  nav.main a.btn { justify-content: center; margin-top: 10px; min-height: 48px; }
-  header.site { position: sticky; }
+  nav.main:not(.nav-simples) a:last-child { border-bottom: 0; }
+  nav.main:not(.nav-simples) a[aria-current="page"]::after { display: none; }
+  nav.main:not(.nav-simples) a[aria-current="page"] { color: var(--brand-text); }
+  nav.main:not(.nav-simples) a.btn { justify-content: center; margin-top: 10px; min-height: 48px; }
+  /* "Criar conta" e "Entrar" lado a lado, cada um com metade da largura. */
+  nav.main:not(.nav-simples) .nav-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  nav.main:not(.nav-simples) .nav-acoes a.btn { margin-top: 0; border-bottom: 1px solid var(--border); }
+  /* Véu atrás do menu aberto: escurece a página e pega o toque "fora", que
+     fecha o menu sem acionar o link que estivesse embaixo do dedo. Fica logo
+     abaixo do cabeçalho (z 20) na pilha. */
+  .menu-veu { position: fixed; inset: 0; z-index: 19; background: rgba(20,23,31,.35); }
+  /* Layout mínimo: o único botão fica na barra, mais compacto — "Ir pro meu
+     painel" ao lado do logo precisa caber em 320px. */
+  nav.main.nav-simples a.btn { padding: 10px 14px; min-height: 44px; white-space: nowrap; }
 }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -179,7 +219,7 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    sem rolar. Empilhado no celular, com o símbolo DEPOIS do texto — imagem
    decorativa não vai na frente da razão de a página existir. */
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 48px; align-items: center; }
-.hero-simbolo { width: 100%; max-width: 360px; justify-self: center; display: block; }
+.hero-simbolo { width: 100%; height: auto; max-width: 360px; justify-self: center; display: block; }
 .hero h1 { margin: 0 0 14px; }
 .hero p.lead { margin: 0 0 14px; }
 .hero-preco { font-size: 1.05rem; color: var(--text); margin: 0 0 24px; }
@@ -190,14 +230,27 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    respiro entre eles. */
 .hero-outras { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; color: var(--text-dim); margin: 18px 0 0; }
 .hero-outras a { color: var(--blue); }
-@media (max-width: 480px) {
+@media (max-width: 599px) {
   .hero-outras { flex-direction: column; gap: 12px; }
 }
-@media (max-width: 860px) {
-  .hero { padding: 40px 0 44px; }
-  .hero-grid { grid-template-columns: 1fr; gap: 28px; }
+/* Tablet em pé (768/820) fica com texto e símbolo lado a lado, como o
+   desktop: empilhar ali deixava 300px de lâmpada entre a proposta e o resto
+   da página numa tela que tem largura de sobra pras duas colunas. */
+@media (max-width: 959px) {
+  .hero { padding: 48px 0 44px; }
+  .hero-grid { gap: 32px; }
+  .hero-simbolo { max-width: 240px; }
+}
+/* CELULAR: a dobra precisa responder o que é, quanto custa e o que fazer —
+   com o banner de campanha em cima, o respiro de desktop empurrava o preço e
+   o botão pra segunda tela. O símbolo (decorativo) desce pro fim e encolhe. */
+@media (max-width: 767px) {
+  .hero { padding: 28px 0 32px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 20px; }
   .hero-texto { order: 1; }
-  .hero-simbolo { order: 2; max-width: 240px; }
+  .hero-simbolo { order: 2; max-width: 150px; }
+  .hero .eyebrow { letter-spacing: .05em; }
+  .hero-preco { margin-bottom: 18px; }
   .cta-row .btn { width: 100%; }
 }
 .hero-decorated {
@@ -231,8 +284,13 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    outros formatos (quadrado/vertical) não tentam virar banner largo, ficam
    no degradê de texto mesmo (a imagem deles serve os outros lugares:
    card/mobile, não a Home). */
+/* O degradê começava no laranja de marca puro (#ff7a1a), onde o texto
+   branco fica em 2,6:1 — abaixo até do mínimo de texto grande (3:1), e o
+   subtítulo e o prazo são texto pequeno (4,5:1). Agora começa no
+   --brand-dim e passa pelo --brand-text, os dois laranjas da própria paleta:
+   o banner continua laranja de campanha e o texto branco fica legível. */
 .promo-home-banner {
-  position: relative; background: linear-gradient(135deg, var(--brand), var(--brand-dim) 65%, #b8440a);
+  position: relative; background: linear-gradient(135deg, var(--brand-dim), var(--brand-text) 40%, #9c3d07);
   border-radius: var(--radius); padding: 44px 32px; text-align: center; overflow: hidden;
 }
 /* Imagem de fundo como <img> de verdade, não `background-image` inline —
@@ -248,46 +306,67 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
   background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55));
 }
 .promo-home-conteudo { position: relative; z-index: 2; max-width: 620px; margin: 0 auto; color: #fff; }
-.promo-home-conteudo .badge { background: rgba(255,255,255,.9); color: var(--brand-text); font-weight: 800; }
+.promo-home-conteudo .badge { background: #fff; color: var(--brand-text); font-weight: 800; }
 .promo-home-conteudo h2 { margin: 10px 0 6px; color: #fff; font-size: 1.9rem; }
-.promo-home-conteudo .lead { color: rgba(255,255,255,.92); margin: 0 0 6px; }
-.promo-home-prazo { color: rgba(255,255,255,.85); font-size: .84rem; margin: 0 0 16px; }
+.promo-home-conteudo .lead { color: #fff; margin: 0 0 6px; }
+.promo-home-prazo { color: #fff; font-size: .84rem; margin: 0 0 16px; }
 .promo-home-conteudo .btn.primary { background: #fff; color: var(--brand-text); border-color: #fff; margin-top: 6px; }
 .promo-home-conteudo .btn.primary:hover { background: rgba(255,255,255,.9); }
-@media (max-width: 640px) {
-  .promo-home-banner { padding: 32px 20px; }
-  .promo-home-conteudo h2 { font-size: 1.5rem; }
+/* CELULAR: o banner ocupava a primeira tela inteira (420px a 360px de
+   largura: título em 3 linhas de 24px, botão quebrando em 2 linhas) e a
+   proposta da Mostraí só aparecia depois de rolar. Compacto, ele continua
+   dizendo a campanha, e a dobra ainda mostra o que é e quanto custa. */
+@media (max-width: 767px) {
+  section.tight.secao-promo { padding: 12px 0 0; }
+}
+@media (max-width: 599px) {
+  .promo-home-banner { padding: 20px 16px 18px; }
+  .promo-home-banner.com-imagem { min-height: 200px; }
+  .promo-home-conteudo .badge { font-size: .72rem; padding: 2px 9px; }
+  .promo-home-conteudo h2 { font-size: clamp(1.1rem, .9rem + 1.2vw, 1.3rem); line-height: 1.25; margin: 8px 0 4px; }
+  .promo-home-conteudo .lead { font-size: .92rem; line-height: 1.45; margin-bottom: 4px; }
+  .promo-home-prazo { font-size: .8rem; margin-bottom: 12px; }
+  .promo-home-conteudo .btn.primary { width: 100%; margin-top: 0; padding: 11px 14px; font-size: .9rem; }
+}
+/* 320px: "Ver condição na página de planos" quebrava em duas linhas. */
+@media (max-width: 359px) {
+  .promo-home-conteudo .btn.primary { padding: 11px 8px; font-size: .86rem; }
 }
 
 .razoes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
-@media (max-width: 760px) { .razoes { grid-template-columns: 1fr; } }
 .razao {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 20px 22px; border-left: 3px solid var(--brand);
 }
 .razao b { display: block; margin-bottom: 6px; font-size: 1.02rem; }
 .razao span { color: var(--text-dim); font-size: .93rem; }
+/* Duas colunas só com largura de verdade (≥600px); abaixo disso, uma — sem
+   encolher a fonte pra caber duas. */
+@media (max-width: 599px) {
+  .razoes { grid-template-columns: 1fr; gap: 12px; }
+  .razao { padding: 16px 18px; }
+}
 
 /* Dois cartões (Anunciante e Ponto) desde 23/09/2026 — o de Vendedor
    parceiro saiu com o programa de vendedores (aposentado pelo dono). */
 .split {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
 }
-@media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .split { grid-template-columns: 1fr; gap: 14px; } }
 .split-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 28px; display: flex; flex-direction: column; gap: 12px;
 }
 .split-card .tag { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--blue); }
-.split-card h3 { margin: 0; font-size: 1.3rem; }
+.split-card h3 { margin: 0; font-size: clamp(1.12rem, 1rem + .6vw, 1.3rem); }
 .split-card p { color: var(--text-dim); margin: 0; flex: 1; }
+@media (max-width: 599px) { .split-card { padding: 20px; gap: 10px; } }
 
 /* auto-fit em vez de 3 fixas: o "Como funciona" da home passou a ter quatro
    passos (o terceiro, a aprovacao da peca, nao existia na tela e existia na
    vida). Com 3 colunas fixas o quarto caia sozinho numa linha. */
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 24px; counter-reset: step; }
-@media (max-width: 860px) { .steps { grid-template-columns: repeat(2, 1fr); gap: 18px; } }
-@media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }
+@media (max-width: 959px) { .steps { grid-template-columns: repeat(2, 1fr); gap: 22px 18px; } }
 .step { position: relative; padding-left: 4px; }
 .step .n {
   width: 36px; height: 36px; border-radius: 999px; background: var(--text); color: var(--escuro-texto);
@@ -295,9 +374,29 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 }
 .step h4 { margin: 0 0 6px; }
 .step p { color: var(--text-dim); margin: 0; }
+/* CELULAR: sequência vertical com o número à esquerda e um trilho ligando
+   um passo ao outro — lê como 1 → 2 → 3 → 4, não como quatro blocos soltos
+   empilhados, e o número deixa de gastar uma linha inteira acima do título. */
+@media (max-width: 599px) {
+  .steps { grid-template-columns: 1fr; gap: 0; }
+  .step { display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 14px; padding: 0 0 22px; }
+  .step:last-child { padding-bottom: 0; }
+  .step .n { grid-row: 1 / span 2; margin: 0; position: relative; z-index: 1; }
+  .step h4 { grid-column: 2; margin: 7px 0 4px; }
+  .step p { grid-column: 2; }
+  .step:not(:last-child)::before {
+    content: ""; position: absolute; left: 17px; top: 36px; bottom: 0; width: 2px;
+    background: var(--border);
+  }
+}
 
 .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
-@media (max-width: 900px) { .plans { grid-template-columns: 1fr; } }
+/* Um por linha abaixo de 900px (três lado a lado não cabem o preço — "R$
+   1.077,60" em 2,1rem passa dos 184px de miolo de um card de tablet), mas
+   sem esticar até 700px de largura no tablet em pé: a lista de 7 itens vira
+   linhas longas demais pra ler de relance. Espaço maior entre os cards
+   porque o selo "Mais escolhido" sobe 13px pra fora da borda. */
+@media (max-width: 899px) { .plans { grid-template-columns: minmax(0, 1fr); gap: 26px; max-width: 560px; margin: 0 auto; } }
 .plan-card {
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 28px; display: flex; flex-direction: column; position: relative;
@@ -333,9 +432,12 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .plan-card .price-linha-vazia { visibility: hidden; }
 /* Promoção aplicada ao card (Parte Q do pedido) — selo curto acima do
    preço, nota de validade da condição abaixo das linhas de preço. */
+/* `align-self`: dentro do card (flex em coluna) o inline-block sozinho
+   esticava e o selo virava uma faixa laranja da largura inteira do card —
+   o mesmo defeito que o .badge já tinha tido. */
 .plan-card .price-selo-promo {
-  display: inline-block; background: var(--brand); color: var(--sobre-brand); font-size: .72rem; font-weight: 800;
-  padding: 3px 9px; border-radius: 999px; margin: 4px 0 8px;
+  display: inline-block; align-self: flex-start; background: var(--brand); color: var(--sobre-brand); font-size: .72rem; font-weight: 800;
+  padding: 3px 9px; border-radius: 999px; margin: 8px 0 6px;
 }
 .plan-card .price-promo-duracao { color: var(--text-dim); font-size: .78rem; margin: 6px 0 0; }
 .plan-card ul { list-style: none; padding: 0; margin: 18px 0 24px; display: flex; flex-direction: column; gap: 9px; }
@@ -345,6 +447,12 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
    o botão seguia o fim da lista — e como o Pro tem dois benefícios a mais que
    o Prime, os três "Assinar" ficavam em alturas diferentes na mesma linha. */
 .plan-card .btn { margin-top: auto; }
+@media (max-width: 599px) {
+  .plan-card { padding: 22px 20px; }
+  .plan-card .price { font-size: clamp(1.8rem, 1.5rem + 1.5vw, 2.1rem); }
+  .plan-card ul { margin: 16px 0 20px; gap: 8px; }
+}
+.plan-card .tier, .plan-card li { overflow-wrap: anywhere; }
 
 /* Segmentado, não quatro pílulas soltas: as quatro opções são a MESMA
    escolha, e pílula separada no celular quebrava em duas linhas
@@ -358,15 +466,22 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .cycle-toggle button {
   background: transparent; border: 1px solid var(--border); color: var(--text-dim);
   padding: 9px 16px; border-radius: 8px; font-size: .88rem; cursor: pointer; font-weight: 600;
+  font-family: inherit; line-height: 1.2;
 }
+.cycle-toggle button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .cycle-toggle button:hover:not(.active) { color: var(--text); }
 .cycle-toggle button.active { background: var(--brand); border-color: var(--brand); color: var(--sobre-brand); }
 .cycle-toggle button[disabled] { opacity: .4; cursor: not-allowed; }
 /* No celular as quatro nao cabem numa linha, e `flex-wrap` deixava 2 em cima
    e 2 embaixo com larguras diferentes — ragged, sem parecer um controle. Grade
    2x2 de colunas iguais resolve sem tirar nada da moldura. */
-@media (max-width: 460px) {
-  .cycle-toggle { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+@media (max-width: 599px) {
+  .cycle-toggle { display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin-bottom: 28px; }
+  .cycle-toggle button { padding: 8px 6px; }
+}
+/* 44px de alvo em qualquer tela de toque — o tablet ficava com os 36px de
+   desktop. */
+@media (max-width: 1023px), (pointer: coarse) {
   .cycle-toggle button { min-height: 44px; }
 }
 .cycle-note { text-align: center; color: var(--text-dim); font-size: .85rem; margin: -20px 0 32px; }
@@ -487,12 +602,11 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
      largura com o botão ao lado, viravam quatro pedaços de URL quebrados no
      meio da palavra. Ocupam a linha inteira, e o botão desce pra próxima. */
   .card .field-row > .chave-box { flex-basis: 100%; }
-  /* Respiro pro botão de ação não nascer embaixo do balão do WhatsApp. */
-  main { padding-bottom: 72px; }
 }
 
 .contato-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
-@media (max-width: 860px) { .contato-grid { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .contato-grid { grid-template-columns: 1fr; gap: 16px; } }
+.contato-lado a { overflow-wrap: anywhere; }
 .contato-lado { display: flex; flex-direction: column; gap: 16px; }
 .contato-lado a { color: var(--blue); }
 /* Aceite dos termos: caixinha de 16px de verdade (o input herdava o
@@ -623,11 +737,52 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .stat-row { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; text-align: center; }
 .stat-row .stat b { display: block; font-size: 1.8rem; color: var(--text); }
 .stat-row .stat span { color: var(--text-dim); font-size: .85rem; }
+/* CELULAR: quatro números numa linha que quebra viravam 1 + 3 desalinhados,
+   lidos como tabela espremida. Em grade 2x2, cada número é uma peça. */
+@media (max-width: 599px) {
+  .stat-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat-row .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 10px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .stat-row .stat b { font-size: 1.5rem; line-height: 1.2; }
+  .stat-row .stat span { line-height: 1.35; }
+}
 
 footer.site { border-top: 1px solid var(--border); padding: 40px 0; color: var(--text-dim); font-size: .85rem; }
-footer.site .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
+footer.site .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+.footer-marca { margin: 0; }
+footer.site .footer-links { display: flex; flex-wrap: wrap; align-items: center; }
 footer.site .footer-links a { color: var(--text-dim); text-decoration: none; }
 footer.site .footer-links a:hover { color: var(--text); }
+/* O "·" entre os links era texto solto no HTML; virou enfeite do CSS pra
+   poder sumir no celular, onde cada link é um alvo de toque próprio. Como
+   inline-block, ele não herda o sublinhado nem a cor de hover do link. */
+footer.site .footer-links a + a::before { content: "·"; display: inline-block; margin: 0 .3em; color: var(--text-dim); }
+.footer-email { overflow-wrap: anywhere; }
+/* Respiro embaixo do rodapé pro botão do WhatsApp: no fim da página ele
+   ficava por cima do e-mail. Acima de 1280px a coluna de 1120px deixa margem
+   de sobra na lateral e o botão cabe nela, sem cobrir nada. */
+@media (max-width: 1279px) {
+  footer.site { padding-bottom: calc(24px + var(--fab) + var(--fab-margem) + env(safe-area-inset-bottom, 0px)); }
+}
+/* CELULAR: a linha "Fale com a gente · Termos · Privacidade · Comodato ·
+   Contrato" tinha 15px de altura de toque por link. Empilhado em duas
+   colunas, cada link é um alvo de 44px. */
+@media (max-width: 767px) {
+  footer.site { padding-top: 28px; }
+  footer.site .wrap { flex-direction: column; align-items: stretch; gap: 8px; }
+  footer.site .footer-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+  footer.site .footer-links a,
+  footer.site .footer-email { min-height: 44px; display: flex; align-items: center; line-height: 1.35; }
+  footer.site .footer-links a + a::before { display: none; }
+  .footer-email { align-self: flex-start; }
+}
+/* Tablet e tela de toque larga: a linha continua uma linha só, mas cada
+   link ganha 44px de altura de toque (eram 20px). */
+@media (min-width: 768px) and (max-width: 1023px), (min-width: 768px) and (pointer: coarse) {
+  footer.site .footer-links a, footer.site .footer-email { display: inline-flex; align-items: center; min-height: 44px; }
+}
 
 .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
 /* Item de grid tem min-width:auto por padrão — sem isso, o conteúdo mais
@@ -1583,39 +1738,89 @@ dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop { background: rgba(20,23
 .legal-doc .atualizado { color: var(--text-dim); font-size: .85rem; margin-bottom: 32px; }
 
 .whatsapp-fab {
-  position: fixed; bottom: 20px; right: 20px; z-index: 50;
-  width: 56px; height: 56px; border-radius: 999px;
+  position: fixed; z-index: 50;
+  right: calc(var(--fab-margem) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--fab-margem) + env(safe-area-inset-bottom, 0px));
+  width: var(--fab); height: var(--fab); border-radius: 999px;
   background: var(--whatsapp); display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.35); text-decoration: none;
+  transition: opacity .15s, visibility .15s;
 }
-.whatsapp-fab svg { width: 28px; height: 28px; fill: var(--escuro-texto); }
+.whatsapp-fab svg { width: 50%; height: 50%; fill: var(--escuro-texto); }
 .whatsapp-fab:hover { filter: brightness(1.08); }
+.whatsapp-fab:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+/* Some quando não pode ajudar e só atrapalharia: com o menu de celular
+   aberto (cobria "Entrar" com o celular deitado) e, em tela de toque, com um
+   campo focado — o teclado sobe, o botão sobe junto e cai em cima do campo
+   ou do "Enviar". Volta sozinho quando o foco sai. */
+body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
+@media (max-width: 1023px) {
+  body:has(input:focus, textarea:focus, select:focus) .whatsapp-fab { opacity: 0; visibility: hidden; }
+}
+/* Nas páginas da conta, o botão fixo ficava por cima do último conteúdo —
+   inclusive do "Ativar modo anúncios", que é o botão que a pessoa veio
+   apertar. O respiro embaixo tira todo mundo de baixo dele. No site público
+   quem ganha o respiro é o rodapé (acima), que é sempre o fim da página. */
 @media (max-width: 640px) {
-  .whatsapp-fab { width: 50px; height: 50px; bottom: 16px; right: 16px; }
-  .whatsapp-fab svg { width: 25px; height: 25px; }
-  /* O botao flutuante e fixo no canto e ficava por cima do ultimo conteudo da
-     pagina — inclusive por cima do "Ativar modo anuncios", que e o botao que
-     a pessoa veio apertar. O respiro embaixo tira todo mundo de baixo dele. */
-  main { padding-bottom: 76px; }
+  [data-layout="conta"] main { padding-bottom: 76px; }
 }
 
 .whatsapp-note { text-align: center; font-size: .88rem; color: var(--text-dim); }
 .whatsapp-note a { color: var(--whatsapp); font-weight: 600; text-decoration: none; }
 .whatsapp-note a:hover { text-decoration: underline; }
 
-.map-embed { max-width: 860px; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.map-embed iframe { width: 100%; height: 560px; display: block; border: 0; }
-@media (max-width: 700px) { .map-embed iframe { height: 380px; } }
+.map-embed { max-width: 860px; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-alt); }
+.map-embed iframe { width: 100%; height: 480px; display: block; border: 0; }
 
-/* Mapa + exemplo de ponto completo lado a lado no desktop; no celular o
-   flex-wrap já empilha na ordem do HTML (mapa, depois exemplo). */
-.mapa-e-exemplo { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; margin: 0 auto 20px; max-width: 1100px; }
-.mapa-e-exemplo .map-embed { flex: 2; min-width: 280px; margin: 0; }
-.exemplo-ponto { flex: 1; min-width: 220px; margin: 0; }
-.exemplo-ponto img { width: 100%; display: block; border: 1px solid var(--border); border-radius: var(--radius); }
+/* "Onde estamos": mapa e foto do totem lado a lado no desktop, com os
+   pontos embaixo; no celular, uma coluna na ordem MAPA → PONTOS → FOTO — o
+   que existe de verdade (os pontos) vem antes da foto ilustrativa. A ordem do
+   HTML já é essa; o desktop só reposiciona a foto pra coluna da direita. */
+.rede-layout {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-areas: "mapa foto" "pontos pontos";
+  gap: 20px; align-items: start; max-width: 1100px; margin: 0 auto;
+}
+.rede-mapa { grid-area: mapa; min-width: 0; }
+.rede-mapa .map-embed { max-width: none; margin: 0; }
+.rede-pontos { grid-area: pontos; }
+.rede-foto { grid-area: foto; }
+.mapa-abrir {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px;
+  font-size: .9rem; font-weight: 600; color: var(--blue); text-decoration: none;
+}
+.mapa-abrir:hover { text-decoration: underline; }
+.exemplo-ponto { margin: 0; }
+.exemplo-ponto img { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: var(--radius); }
 .exemplo-ponto figcaption { font-size: .82rem; color: var(--text-dim); margin-top: 8px; text-align: center; }
-.ponto-card .mapa-link { display: inline-block; margin-top: 8px; font-size: .82rem; color: var(--blue); text-decoration: none; }
+/* Com um ponto só, o card ficava colado à esquerda embaixo do mapa, com o
+   resto da linha vazio. `auto-fit` (e não o `auto-fill` da regra-base, que
+   é do admin também) descarta as trilhas vazias, e aí centralizar funciona:
+   um ponto fica no meio; muitos, preenchem a linha como antes. */
+#pontosGrid { grid-template-columns: repeat(auto-fit, minmax(260px, 340px)); justify-content: center; }
+#pontosGrid > .empty-state { grid-column: 1 / -1; }
+@media (max-width: 599px) {
+  #pontosGrid { grid-template-columns: minmax(0, 1fr); }
+}
+.ponto-card .mapa-link {
+  display: inline-flex; align-items: center; min-height: 44px; margin: 2px 0 -10px;
+  font-size: .88rem; color: var(--blue); text-decoration: none;
+}
 .ponto-card .mapa-link:hover { text-decoration: underline; }
+#pontosGrid .ponto-card h4 { overflow-wrap: anywhere; }
+@media (max-width: 959px) {
+  .map-embed iframe { height: 400px; }
+}
+/* Mapa com 300px no celular: largura inteira, altura que deixa a página
+   aparecer em volta — um mapa da altura da tela prende o dedo, que tenta
+   rolar a página e acaba arrastando o mapa. */
+@media (max-width: 767px) {
+  .rede-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mapa" "pontos" "foto"; gap: 16px; }
+  .rede-foto { max-width: 340px; width: 100%; justify-self: center; }
+}
+@media (max-width: 599px) {
+  .map-embed iframe { height: 300px; }
+}
 
 /* A escolha do comodato usa input escondido (opacity:0) — sem isso, quem
    navega por teclado não vê onde está numa decisão que envolve dinheiro. */
@@ -1653,7 +1858,7 @@ dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop { background: rgba(20,23
 .painel-tela th, .painel-tela td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--escuro-borda); }
 .painel-tela th { color: var(--escuro-texto-dim); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
 .painel-tela .erro { color: var(--escuro-err); margin: 8px 0 0; }
-@media (max-width: 640px) { .escolha-grid, .razoes { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .escolha-grid { grid-template-columns: 1fr; } }
 
 dialog.dlg-tela { border: none; border-radius: var(--radius); padding: 24px; max-width: 560px; width: 94vw; background: var(--card); color: var(--text); }
 dialog.dlg-tela::backdrop { background: rgba(20,23,31,.5); }
@@ -1842,21 +2047,31 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
    que tambem e o que permite a CSP nao liberar script inline. */
 .faq { max-width: 760px; margin: 0 auto; }
 .faq h2 { text-align: center; margin-bottom: 20px; }
+/* O preenchimento mora no <summary>, não no <details>: antes a caixa inteira
+   parecia clicável, mas só a linha do texto (28px) abria a pergunta — tocar
+   na borda de cima ou de baixo não fazia nada. Agora a caixa toda é o alvo. */
 .faq details {
   background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 10px;
+  margin-bottom: 10px;
 }
 .faq summary {
   cursor: pointer; font-weight: 600; color: var(--text);
   list-style: none; display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; min-height: 52px; border-radius: 12px; line-height: 1.4;
 }
+.faq summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .faq summary::-webkit-details-marker { display: none; }
 .faq summary::before {
   content: "+"; color: var(--brand-text); font-weight: 700; font-size: 1.15rem;
   width: 16px; flex: none; text-align: center;
 }
 .faq details[open] summary::before { content: "\2013"; }
-.faq details p { margin: 10px 0 2px; color: var(--text-dim); line-height: 1.6; }
+.faq details p { margin: 0 18px 12px; color: var(--text-dim); line-height: 1.6; }
+.faq details p:last-child { margin-bottom: 16px; }
+@media (max-width: 599px) {
+  .faq summary { padding: 12px 14px; gap: 8px; }
+  .faq details p { margin-left: 14px; margin-right: 14px; }
+}
 
 /* Aviso de rede vazia na vitrine. Mesma familia do .aviso-fundador, com a cor
    de alerta em vez da de destaque. */
@@ -1865,12 +2080,17 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
   border: 1px solid var(--brand); border-radius: 12px;
   background: #fff6ef; color: var(--text); line-height: 1.6;
 }
+@media (max-width: 599px) {
+  #avisoRede { padding: 12px 14px; font-size: .94rem; line-height: 1.55; margin-bottom: 18px; }
+}
 /* O detalhe do bônus de cobertura, recolhido. Mesma mecânica do FAQ (details
    nativo, sem uma linha de script — que é também o que deixa a CSP recusar
    script inline), mas dentro do aviso, sem moldura própria. */
 .aviso-detalhe { margin-top: 8px; }
 .aviso-detalhe summary {
-  cursor: pointer; font-weight: 700; color: var(--brand-text); font-size: .9rem;
+  /* #8a3d05 (o marrom do .badge-pendente), não --brand-text: sobre o creme
+     do aviso o laranja dava 4,2:1, abaixo do mínimo de 4,5:1. */
+  cursor: pointer; font-weight: 700; color: #8a3d05; font-size: .9rem;
   list-style: none; display: inline-flex; align-items: center; gap: 6px;
   /* 44px de alvo de toque sem empurrar o texto: o respiro sai como padding
      vertical e volta como margem negativa. */
@@ -1891,6 +2111,11 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 }
 .pedido-linha span:first-child { color: var(--text-dim); }
 .pedido-linha span:last-child { font-weight: 600; text-align: right; }
+/* Valor em dinheiro não quebra: "-R$ 209,76" saía com o sinal numa linha e
+   o número na outra, e desconto lido assim parece outro valor. Quem quebra é
+   o rótulo, à esquerda. Só nas linhas de dinheiro — texto longo como "pelo
+   menos 15.120 vezes na rede" precisa poder quebrar a 320px. */
+.pedido-linha.dinheiro span:last-child { white-space: nowrap; }
 .pedido-linha.desconto span:last-child { color: var(--ok); }
 .pedido-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; }
 .pedido-total .rotulo { color: var(--text-dim); font-size: .92rem; }
@@ -1989,3 +2214,107 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 .categoria-vazio { color: var(--text-dim); cursor: default; }
 .categoria-vazio:hover { background: transparent; }
 .categoria-nao-encontrei { color: var(--blue); font-weight: 600; border-top: 1px solid var(--border); margin-top: 2px; }
+
+/* ===================================================================
+   SITE PÚBLICO — camada responsiva (rodada mobile, 23/09/2026)
+   Vale só pras páginas de layout `publico` e `minimo` (vitrine, login,
+   cadastro, senha, documentos). O painel da conta e o admin usam as mesmas
+   peças-base (`section`, `.wrap`, `.btn`, `.card`) e ficam fora desta rodada
+   de propósito — por isso o escopo, e não uma mudança nas regras-base.
+   `:where()` mantém a especificidade da regra-base: aqui só se ganha por vir
+   depois, nunca por peso, e uma classe de componente continua vencendo.
+   Réguas: 600 (celular → formulário em uma coluna, respiro compacto),
+   768 (tablet), 961 (menu na barra), 1280 (coluna com margem lateral).
+   =================================================================== */
+
+/* Texto sem espaço (e-mail, URL, nome de empresa comprido) quebra em vez de
+   empurrar a página pro lado. `break-word` só age quando a palavra não cabe. */
+:where([data-layout="publico"], [data-layout="minimo"]) { overflow-wrap: break-word; }
+
+/* O laranja de texto (#c2570a) dá 4,50:1 no branco, mas o fundo da página é
+   o cinza-claro --bg, e ali ele cai pra 4,24:1 — abaixo do mínimo AA. O
+   destaque "1.000 pessoas por mês" e o preço da dobra ficam direto sobre o
+   fundo. Mesmo tom, um fio mais escuro: 4,86:1 no fundo, 5,16:1 no branco.
+   Só no site público; painel e admin seguem com o valor da paleta-base. */
+:where([data-layout="publico"], [data-layout="minimo"]) { --brand-text: #b3500a; }
+
+/* Escala de tipo. O teto é o de antes (desktop idêntico acima de ~1200px);
+   o piso é o que cabe num celular de 360px sem o título virar cinco linhas. */
+:where([data-layout="publico"], [data-layout="minimo"]) h1 { font-size: clamp(1.8rem, 1.1rem + 3.2vw, 3.1rem); }
+:where([data-layout="publico"], [data-layout="minimo"]) h2 { font-size: clamp(1.35rem, 1.05rem + 1.4vw, 2.1rem); }
+:where([data-layout="publico"], [data-layout="minimo"]) p.lead { font-size: clamp(1rem, .94rem + .5vw, 1.15rem); }
+:where([data-layout="publico"], [data-layout="minimo"]) .u-fs-240 { font-size: clamp(1.5rem, 1rem + 2.6vw, 2.4rem); }
+:where([data-layout="publico"], [data-layout="minimo"]) .u-fs-220 { font-size: clamp(1.45rem, .95rem + 2.4vw, 2.2rem); }
+
+/* Botão: <button> não herda fonte nem entrelinha do corpo, então o "Enviar"
+   de um formulário (43px) saía mais baixo que o "Ver planos" ao lado (49px),
+   que é <a>. Mesma fonte, mesma altura, e nunca abaixo de 44px de toque. */
+:where([data-layout="publico"], [data-layout="minimo"]) .btn { font-family: inherit; line-height: 1.5; min-height: 44px; }
+
+/* Foco de teclado visível e igual em todo link e botão. */
+:where([data-layout="publico"], [data-layout="minimo"]) :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--blue); outline-offset: 2px;
+}
+
+/* Campo com 16px em QUALQUER largura: o limiar de zoom do Safari vale no
+   iPad e no iPhone deitado também, e a regra antiga (só até 640px) deixava
+   os dois de fora — medido: 15,2px em 667, 768, 820 e 844px. */
+:where([data-layout="publico"], [data-layout="minimo"]) .card :is(input, select, textarea),
+:where([data-layout="publico"], [data-layout="minimo"]) .categoria-busca { font-size: 16px; }
+
+/* Mensagem do formulário: o <p> vazio carregava margem de parágrafo e altura
+   mínima, e deixava 60px de vão embaixo do botão em todo formulário. */
+:where([data-layout="publico"], [data-layout="minimo"]) .card .form-msg { margin: 0; }
+:where([data-layout="publico"], [data-layout="minimo"]) .card .form-msg:empty { min-height: 0; }
+
+/* "Esqueci minha senha", "Voltar ao login": 20px de altura viravam 44. */
+:where([data-layout="publico"], [data-layout="minimo"]) .link-secundario {
+  display: inline-flex; align-items: center; min-height: 44px; margin-top: 0;
+}
+/* Olho da senha com 44px de alvo em qualquer largura (no tablet ficava nos
+   30px de desktop). O ícone não muda de tamanho, só a área de toque. */
+:where([data-layout="publico"], [data-layout="minimo"]) .senha-olho { padding: 13px; }
+:where([data-layout="publico"], [data-layout="minimo"]) .card .senha-wrap input { padding-right: 52px; }
+
+/* Bloco opcional recolhido (Responsável, no cadastro): mesmo desenho dos
+   títulos de bloco, com +/– pra dizer que abre. */
+.bloco-opcional { border-top: 1px solid var(--border); padding-top: 4px; }
+.bloco-opcional > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 44px; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim);
+}
+.bloco-opcional > summary::-webkit-details-marker { display: none; }
+.bloco-opcional > summary::after { content: "+"; font-size: 1.2rem; color: var(--brand-text); }
+.bloco-opcional[open] > summary::after { content: "\2013"; }
+.bloco-opcional > summary .bloco-opcional-nota { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.bloco-opcional-corpo { display: flex; flex-direction: column; gap: 14px; padding: 6px 0 4px; }
+
+/* Aceite dos termos: caixinha um pouco maior e texto sem encolher. */
+@media (max-width: 767px) {
+  :where([data-layout="publico"], [data-layout="minimo"]) .check-row label { font-size: .9rem; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .check-row input[type="checkbox"] {
+    width: 20px; height: 20px; min-width: 20px; flex-basis: 20px; margin-top: 3px;
+  }
+}
+
+/* Respiro de seção compacto também no celular deitado e no tablet pequeno
+   (a regra-base só compacta até 640px). */
+@media (max-width: 767px) {
+  :where([data-layout="publico"], [data-layout="minimo"]) section { padding: 36px 0; }
+  :where([data-layout="publico"], [data-layout="minimo"]) section.tight { padding: 24px 0; }
+}
+
+@media (max-width: 599px) {
+  /* 16px de margem lateral, a mesma do cabeçalho — antes o logo ficava 4px
+     fora do alinhamento do conteúdo. */
+  :where([data-layout="publico"], [data-layout="minimo"]) .wrap { padding: 0 16px; }
+  /* Formulário em UMA coluna no celular: pares como Nome + WhatsApp ou Senha
+     + Confirmar ficavam lado a lado em 412–430px com 160px cada. A exceção é
+     quem é curto por natureza e só faz sentido junto (Cidade + UF). */
+  :where([data-layout="publico"], [data-layout="minimo"]) .card { padding: 20px 18px; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row { flex-direction: column; gap: 14px; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row > * { flex: none; min-width: 0; width: 100%; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row.linha-curta { flex-direction: row; flex-wrap: nowrap; gap: 12px; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row.linha-curta > * { flex: 1 1 0; width: auto; }
+  :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row.linha-curta > .campo-uf { flex: 0 0 76px; }
+}

@@ -29,15 +29,26 @@ async function montarConfirmacaoPedido(planoId) {
   box.innerHTML = '<p class="form-hint u-m-0">Carregando seu pedido...</p>';
   let plano = null;
   let pontos = [];
+  let cotacao = null;
   try {
-    const [planos, listaPontos] = await Promise.all([
+    const [planos, listaPontos, cotado] = await Promise.all([
       fetch(`${API_BASE_URL}/planos`).then((r) => r.json()),
       fetch(`${API_BASE_URL}/pontos`)
         .then((r) => r.json())
         .catch(() => []),
+      // O valor vem do SERVIDOR, calculado pelas mesmas funções da cobrança
+      // (GET /anunciantes/me/cotacao, src/financeiro/cotacao.js): promoção
+      // vigente pra esta conta, desconto do ciclo, crédito de comodato e
+      // desconto de parceiro (ADR-014). Até 23/09/2026 esta tela fazia a
+      // própria conta com `valor_mensal` e mostrava R$ 672,30 pra uma
+      // cobrança de R$ 597,60 — duas contas pro mesmo preço divergem.
+      fetch(`${API_BASE_URL}/anunciantes/me/cotacao/${encodeURIComponent(planoId)}`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     ]);
     plano = planos.find((p) => p.id === planoId);
     if (Array.isArray(listaPontos)) pontos = listaPontos;
+    cotacao = cotado;
   } catch {
     /* plano fica null e cai no aviso de erro abaixo */
   }
@@ -46,7 +57,10 @@ async function montarConfirmacaoPedido(planoId) {
       '<p class="form-msg err">Não encontramos esse plano. <a href="/planos.html">Escolha de novo em Planos.</a></p>';
     return;
   }
-  const total = Math.round(Number(plano.valor_mensal) * plano.compromisso_meses * 100) / 100;
+  // Sem a cotação (rede caiu no meio), a tela não inventa um número: diz que
+  // o valor exato aparece no pagamento, e o botão continua funcionando —
+  // quem calcula a cobrança é o servidor, com ou sem esta tela.
+  const total = cotacao ? cotacao.valorCiclo : null;
   const ciclo = plano.compromisso_meses === 1 ? 'mensal' : `a cada ${plano.compromisso_meses} meses`;
   // Nome do ciclo pro título ("Pro - Trimestral"), separado da frase usada
   // na linha "Cobrança" ("a cada 3 meses") — pedido do dono, 19/09/2026: o
@@ -54,15 +68,14 @@ async function montarConfirmacaoPedido(planoId) {
   // troca de plano ou mais de um ciclo por tier isso importa de cara.
   const NOME_CICLO = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
   const nomeCiclo = NOME_CICLO[plano.compromisso_meses] || `a cada ${plano.compromisso_meses} meses`;
-  // Economia e equivalência mensal, condicionais (pedido do dono, 19/09/2026,
-  // mesma regra da vitrine — ver montarPreco em planos.page.js): no ciclo
-  // mensal o total JÁ é o valor por mês, então nenhuma das duas linhas diz
-  // nada de novo. Nos demais ciclos, "economizou" só aparece quando o plano
-  // tem desconto de verdade (`valor_mensal_cheio` é a referência sem
-  // desconto, a mesma que a vitrine usa pro preço riscado).
-  const cheio =
-    plano.desconto_percentual > 0 && plano.valor_mensal_cheio != null ? Number(plano.valor_mensal_cheio) : null;
-  const economia = cheio ? Math.round((cheio * plano.compromisso_meses - total) * 100) / 100 : 0;
+  // Subtotal e descontos, condicionais (pedido do dono, 19/09/2026, mesma
+  // regra da vitrine — ver montarPreco em planos.page.js): só aparecem
+  // quando existe desconto de verdade. O desconto de TABELA é o do ciclo ou
+  // o da promoção (um substitui o outro, ADR-014); o da CONTA é o crédito de
+  // comodato e/ou o desconto de parceiro, que somam por cima.
+  const descontoTabela = cotacao ? Math.round((cotacao.cheioCiclo - cotacao.tabelaCiclo) * 100) / 100 : 0;
+  const descontoConta = cotacao ? Math.round((cotacao.tabelaCiclo - cotacao.valorCiclo) * 100) / 100 : 0;
+  const promo = cotacao?.promocao;
   // Cada característica do plano em uma linha, como um resumo de compra, em
   // vez da frase corrida que existia antes. `horas_por_mes` vem calculado
   // pelo servidor (GET /planos), com a mesma função da vitrine — não
@@ -97,16 +110,32 @@ async function montarConfirmacaoPedido(planoId) {
   // do dono (19/09/2026): a tela de pedido é só o resumo da compra. O prazo
   // de 7 dias continua valendo e disponível pro cliente (Termos de Uso,
   // Contrato do anunciante e vitrine em /planos.html) — só não repete aqui.
-  // Resumo de preço primeiro (subtotal, desconto, total, equivalente
-  // mensal), como qualquer tela de checkout de mercado — antes essas quatro
-  // informações vinham espalhadas (um "Total" no meio da lista de
-  // características do plano, "economizou" e "equivale a" soltos depois).
-  // Só mostra Subtotal/Desconto quando existe desconto de verdade
-  // (`cheio` é o preço cheio de referência — sem ele não tem o que abater).
-  const linhasPreco = [
-    cheio ? ['Subtotal', fmtBRL(cheio * plano.compromisso_meses)] : null,
-    economia > 0 ? ['Desconto', `-${fmtBRL(economia)}`, 'desconto'] : null,
+  // Resumo de preço primeiro (subtotal, descontos, total), como qualquer
+  // tela de checkout de mercado.
+  const direitosDaConta = [
+    cotacao?.creditoComodato ? 'crédito do comodato' : null,
+    cotacao?.descontoParceiro ? 'desconto de parceiro' : null,
   ].filter(Boolean);
+  const linhasPreco = [
+    descontoTabela > 0 || descontoConta > 0 ? ['Subtotal', fmtBRL(cotacao.cheioCiclo), 'dinheiro'] : null,
+    descontoTabela > 0
+      ? [
+          promo ? `Desconto (${promo.selo || 'promoção'}, -${promo.descontoPercentual}%)` : 'Desconto do ciclo',
+          `-${fmtBRL(descontoTabela)}`,
+          'desconto dinheiro',
+        ]
+      : null,
+    descontoConta > 0
+      ? [`Desconto da sua conta (${direitosDaConta.join(' e ')})`, `-${fmtBRL(descontoConta)}`, 'desconto dinheiro']
+      : null,
+  ].filter(Boolean);
+  const notaPromo = promo
+    ? `<p class="form-hint u-m-0">Preço promocional válido por ${promo.duracaoMeses} meses a partir da adesão.</p>`
+    : '';
+  const totalHtml =
+    total != null
+      ? `<b>${fmtBRL(total)}</b>`
+      : '<span class="form-hint u-m-0">O valor exato aparece na tela de pagamento.</span>';
 
   box.innerHTML = `
     <p class="eyebrow">Confirmar pedido</p>
@@ -121,8 +150,9 @@ async function montarConfirmacaoPedido(planoId) {
     }
     <div class="pedido-total">
       <span class="rotulo">Total</span>
-      <b>${fmtBRL(total)}</b>
+      ${totalHtml}
     </div>
+    ${notaPromo}
     <p class="form-hint u-mt-14 u-mb-4">O que está incluso</p>
     <div class="pedido-linhas">
       ${linhas.map(([rotulo, valor]) => `<div class="pedido-linha"><span>${esc(rotulo)}</span><span>${esc(valor)}</span></div>`).join('')}

@@ -7,7 +7,7 @@ const pool = require('../db/pool');
 // Keystore: o Android recusa APK assinado com chave diferente da instalada
 // (contrato §8.4) e o servidor não tem como provar a assinatura de um APK
 // que ele nem baixa. Por isso uma release só pode ser ATIVADA depois que um
-// humano marca "assinatura conferida" (CHECK no banco, migration 081) — e o
+// humano marca "assinatura conferida" (CHECK no banco, migration 082) — e o
 // Player de hoje ainda não tem keystore definitivo (auditoria do Player,
 // seção 7): nenhuma release deve ser ativada antes dele.
 

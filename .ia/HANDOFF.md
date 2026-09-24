@@ -9,7 +9,7 @@ O MOSTRAÍ PLAYER" (77 seções). Fonte de verdade do protocolo: o CÓDIGO do
 Player (`sancompany/Playlist.MostrAi`, main), depois `player-v2-contract.md`,
 depois o checklist. Plano e tabela de divergências:
 `docs/specs/2026-09-23-player-v2-backend.md`. Entregue (branch
-`claude/busy-noether-hheir2`): migration 081 (aditiva), `src/player/`
+`claude/busy-noether-hheir2`): migration 082 (aditiva; a 081 é a nota interna do ledger de créditos, de outro PR), `src/player/`
 (credencial, sinal, config, releases, tela-eventos), `src/lib/cofre.js`,
 `src/lib/operacao-tela.js`, saúde única em `src/lib/status-tela.js`, admin
 Rede → Ponto → Tela (ficha em 5 blocos, SSE `admin:true`), visão do dono
@@ -18,13 +18,83 @@ em `RUNBOOK.md` §6.1; o que falta em `docs/PENDENCIAS.md`, seção "Player V2".
 **Não desfazer sem contexto:**
 - Credencial só como hash; cofre (AES-GCM, chave do `SESSION_SECRET`) só
   para PIN, chave candidata e janela de repetição do token.
-- `aparelho_id` (chave V1 em texto) ficou na 081 de propósito: a 082 zera
+- `aparelho_id` (chave V1 em texto) ficou na 082 de propósito: a 083 zera
   depois de validar produção (rollback seguro).
 - Regime `HORAS_24` (não `24_HOURS`): o Player usa esse nome.
 - `played` nunca responde 400 por conteúdo (o Player põe em quarentena
   permanente) — status por item.
 - Release só ativa com `assinatura_conferida_em` (CHECK no banco).
 - Ponto "em operação" exige tela que já deu sinal (`primeiro_sinal_em`).
+
+## Rodada de responsividade/mobile do site público (24/09/2026, este agente)
+Pedido do dono: rodada final de RESPONSIVIDADE do site público — sem
+redesign, sem mexer em regra comercial, admin ou painel da conta. Detalhe
+completo (R1–R16 corrigidos, T1–T5 textos/preço corrigidos com evidência,
+D1–D5 achados que são decisão do dono) em `docs/PENDENCIAS.md`, seção
+"Rodada de responsividade e experiência mobile do site público".
+- **Onde mora:** `public/style.css` — o que é só do site público está no
+  bloco final "SITE PÚBLICO — camada responsiva", com escopo
+  `:where([data-layout="publico"], [data-layout="minimo"])` (especificidade
+  zero, painel e admin não mudam). Componentes exclusivos do site (hero,
+  banner, planos, FAQ, rede) foram editados no próprio lugar. Réguas: 600 /
+  768 / 961 (menu) / 1280. Tokens novos: `--fab`, `--fab-margem`.
+- **`public/layout.js`:** hambúrguer só nos layouts `publico` e `conta`
+  (mínimo mostra o único botão); véu `#menuVeu` fecha ao tocar fora; Esc
+  devolve foco; `body.menu-aberto` esconde o WhatsApp; rodapé virou
+  `<nav class="footer-links">` (separador "·" é CSS). "Criar conta"/"Entrar"
+  num grupo `.nav-acoes` (`display: contents` no desktop).
+- **Achado T1 (preço):** `confirmar-plano.page.js` ignorava a promoção que o
+  `POST /assinar` aplica (confirmação dizia R$ 672,30, cobrança R$ 597,60),
+  e nunca mostrou crédito de comodato nem desconto de parceiro (ADR-014).
+  Agora a tela só desenha a cotação do servidor —
+  `GET /anunciantes/me/cotacao/:planoId` (`src/financeiro/cotacao.js`, mesmas
+  funções da cobrança; teste em `tests/cotacao.test.js`). Quem mexer na regra
+  de preço mexe em `valorMensalDaConta`/`condicaoVigente` e a cotação segue.
+- **Como medir de novo:** o medidor e o roteiro de interação desta rodada
+  ficaram fora do repositório (descartáveis, como manda o OPERATIONS.md);
+  o método está descrito na seção da PENDENCIAS. Pegadinhas: rodar os
+  testes com `NODE_ENV=test` (senão o LISTEN do SSE segura cada arquivo de
+  teste aberto e o `npm test` "trava"); o Chromium do Playwright não usa o
+  proxy do ambiente, então mapa do Google e ViaCEP aparecem quebrados no
+  local — não é bug.
+
+## Revisão da ficha de Conta do admin (23/09/2026, noite, este agente)
+Pedido do dono (32 seções): revisar, corrigir e refinar Admin → Contas →
+ficha da conta, sem reconstruir o admin. NÃO MEXER respeitado: Player,
+heartbeat V2, Tela/Player API, OTA, Rede inteira, sidebar, Mídia Mostraí,
+Ofertas. Decisão registrada no **ADR-015**.
+- **Fonte única**: `GET /admin/anunciantes/:id/situacao`
+  (`src/anunciantes/situacao.js`) decide tudo que a ficha mostra — origem do
+  plano (`assinatura` / `beneficio_creditos` / `cortesia_legada` /
+  `bonus_ponto` / `comodato`, regra em `plano-administrativo.js#
+  origemDoDireito`, também usada na lista de Contas via `plano_origem`),
+  fila Agora → Próximo → Depois, comodato por ponto + modalidade, pontos
+  aprovados (reusa `meusPontosDaConta`) × solicitações em análise, selo
+  "Dono de ponto" (≥ 1 ponto aprovado, nunca `papeis`), invariantes.
+- **Ficha nova** (`public/admin/index.page.js`, seção "ficha da conta"):
+  [Dados][Plano] / [Comodato?][Créditos e benefícios] / Criativos / Pontos? /
+  Solicitações? / ações críticas. Conceder/Alterar/Cancelar plano SAÍRAM;
+  só "Cancelar assinatura" (paga) ficou. "Definir/Alterar modalidade" no
+  card Comodato (mesmo PATCH `/admin/pontos/:id`). Categoria antiga com
+  sucessora/sugestões em um clique. Suspensão com confirmação "Entendi".
+  Reatividade: `GET /admin/anunciantes/:id/eventos` (mesmo SSE do painel).
+- **Créditos**: migration 081 (`creditos_ledger.nota_interna`); motivo
+  obrigatório no servidor; 409 pra conta suspensa/excluída.
+- **Motor de benefícios — 2 bugs reais corrigidos**: (1)
+  `encerrarBeneficiosVencidos` zerava o plano PAGO de quem assinou por cima
+  de um benefício (a linha 'ativo' ficava órfã) — agora só limpa a conta se
+  ela ainda está naquele benefício; (2) `aplicarCicloPago` agora fecha o
+  benefício 'ativo' como `substituido` na mesma transação. Rotas técnicas
+  (`plano-administrativo`, `/encerrar`, `liberar-plano`) recusam mexer em
+  benefício pago com créditos / benefício aberto.
+- **"No ar"** usa `repository.planoVigenteId` (mesmo COALESCE do gerador):
+  comercial vencido + Básico continua no ar pelo comodato.
+- Testes: `tests/ficha-conta.test.js` (17 invariantes) e
+  `tests/e2e/16-ficha-conta.mjs` (perfis A–K, reatividade, fluxos novos,
+  celular; limpa o que cria). Suíte: 280/280.
+- **Dado de produção NÃO alterado** — ver `docs/PENDENCIAS.md` §I (120
+  créditos da conta 5 substituídos pela ficha antiga; ponto "SAntos unio"
+  sem modalidade; categoria antiga).
 
 ## Auditoria forense + reconstrução do painel único em 6 fatias (23/09/2026, fim do dia)
 Depois do dono PARAR a integração do Player V2 e pedir auditoria forense

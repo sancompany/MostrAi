@@ -533,7 +533,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         duracaoSegundos: criativo.duracaoSegundos,
         // SHA-256 do arquivo servido (contrato V2 §6.1): o Player guarda por
         // conteúdo e confere o download. Sem hash (criativo anterior à
-        // migration 081, ou URL trocada à mão) o campo não vai, e o Player
+        // migration 082, ou URL trocada à mão) o campo não vai, e o Player
         // cai no cache por criativoId (V1).
         ...(criativo.contentHash ? { contentHash: criativo.contentHash } : {}),
       };

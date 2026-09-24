@@ -30,7 +30,7 @@ const { registrarPrimeiroContato } = require('../player/sinal');
 // que o player web `public/player.page.js` e o Android antigo leem).
 
 // Folga contra a corrida entre a geração e uma mudança commitada durante ela
-// (o gatilho da migration 081 marca com o relógio do statement, antes do
+// (o gatilho da migration 082 marca com o relógio do statement, antes do
 // commit): só limpa marcas feitas antes do início da geração menos isto.
 const FOLGA_DESATUALIZADA_MS = 5000;
 

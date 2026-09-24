@@ -38,10 +38,10 @@
         <form class="card" id="formEsqueci">
           <div>
             <label for="email">E-mail</label>
-            <input id="email" name="email" type="email" required>
+            <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
           </div>
           <button class="btn primary block" type="submit">Enviar link de recuperação</button>
-          <p class="form-msg" id="msg"></p>
+          <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
           <p class="u-ta-c u-m-0 u-mt-12"><a class="link-secundario" id="voltarLogin" href="/anunciante/login.html">Voltar ao login</a></p>
         </form>
       </div>

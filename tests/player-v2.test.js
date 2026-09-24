@@ -769,12 +769,12 @@ test('rotação: promoção que perde a corrida para o admin → 401; para outra
   }
 });
 
-test('V1: chave antiga em texto (backfill da 081) autentica só com X-Aparelho-Id; hash do SQL = hash do Node', async () => {
+test('V1: chave antiga em texto (backfill da 082) autentica só com X-Aparelho-Id; hash do SQL = hash do Node', async () => {
   const pid = await novoPonto();
   const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
   const chaveV1 = `v1-${randomUUID()}`;
   await pool.query('UPDATE dispositivos SET aparelho_id = $2 WHERE id = $1', [tela.id, chaveV1]);
-  // Mesma expressão da seção 2 da migration 081.
+  // Mesma expressão da seção 2 da migration 082.
   await pool.query(
     `UPDATE dispositivos
         SET chave_hash = encode(sha256(convert_to(aparelho_id, 'UTF8')), 'hex'),
