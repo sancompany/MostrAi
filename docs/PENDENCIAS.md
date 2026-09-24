@@ -4397,9 +4397,31 @@ do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
   pública (`/anunciantes/me`, a sondagem de sessão do cabeçalho). É esperado
   e não é exceção de JS; some se um dia a sondagem virar uma rota que
   responda 204 pra quem não está logado.
+- **D6 [ ] Erro de console em TODA página de produção: Cloudflare Web
+  Analytics barrado pela CSP.** Achado validando em produção (24/09/2026): o
+  Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js` (Web
+  Analytics com instalação automática ligada na zona), e a CSP do site
+  (`script-src 'self'`, ADR-011) recusa — "Refused to load the script…" no
+  console de todas as rotas, e a métrica nunca foi coletada. Não aparece no
+  local (não há Cloudflare na frente). Dois caminhos, decisão do dono:
+  (a) desligar a instalação automática do Web Analytics no painel da
+  Cloudflare (nada no código); ou (b) liberar `https://static.cloudflareinsights.com`
+  no `script-src` e `https://cloudflareinsights.com` no `connect-src`
+  (`src/server.js`) — é um terceiro executando script no site, então passa
+  pelo inventário de dados/política de privacidade antes.
 - **D5 [ ] Cadastro: "Rua e bairro" com CEP preenche só a rua** — o
   formulário não tem campo de bairro, e o `ligarCep` não cola mais o bairro
   na rua (Parte W). Quem não digitar o bairro fica sem ele.
+
+**Deploy misto (achado em produção, 24/09/2026):** na primeira passada em
+produção logo depois do deploy, a Home a 360px veio com o `layout.js`
+antigo e o `style.css` novo (o serviço roda em 2 instâncias no Northflank e,
+no rolling deploy, cada arquivo pode vir de uma) — o menu, sem a classe nova,
+ficou aberto na horizontal e empurrou a página 256px. Minutos depois as duas
+instâncias serviam o novo e a Home deu 0 rolagem nos 14 viewports. Mesmo
+transitório, o CSS passou a colapsar o menu por PADRÃO e só o layout mínimo
+sai dessa regra (`.nav-simples`): JS antigo + CSS novo agora cai no menu de
+antes — simulado no local, 0 rolagem.
 
 **Verificado:** medidor (15 rotas × 14 viewports, 210 combinações) antes e
 depois; screenshots comparadas (antes × depois) em 1366px das 7 rotas
