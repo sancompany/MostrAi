@@ -4232,7 +4232,10 @@ e pedem decisão:
   (concedido por "Master-BHS", 500 créditos de "parceria"); *(b)* devolver
   com uma linha `estorno_resgate` de +120 no ledger (nunca editar a linha
   antiga). A ficha mostra os dois registros no histórico, sem esconder nada.
-- **I.2 [ ] Ponto "SAntos unio" sem modalidade de comodato.** Nasceu da
+- **I.2 [x] ~~Ponto "SAntos unio" sem modalidade de comodato.~~** Resolvido
+  pela reestruturação de 24/09/2026 (ADR-016, §J abaixo): não existe mais
+  modalidade — o ponto gera +1 crédito/mês quando tiver tela ativa. Texto
+  original, pra histórico: Nasceu da
   candidatura #1 sem `plano_ponto_id`, então o dono do ponto não recebe
   repasse nem crédito e a conta não ganha o Inicial/Básico. A ficha agora
   mostra isso como alerta, com o botão **Definir modalidade** no card
@@ -4431,3 +4434,60 @@ campo focado e menu aberto, `?plano=` entre cadastro e login, erro em campo
 recolhido, preço anual com promoção) — 70 checagens, todas ok; axe-core sem
 violação; `npm run check` limpo (263/263 testes, 16 avisos de lint =
 linha de base anterior).
+
+## J. Reestruturação do benefício dos pontos — o que ficou pro dono (24/09/2026)
+
+ADR-016 em `.ia/DECISIONS.md`: ser ponto não é plano; o ponto gera **+1
+crédito por mês** (tela ativa), no mesmo ledger; Inicial, Básico, repasse,
+ajuda de custo e crédito monetário saíram do fluxo ativo — histórico
+preservado, nada apagado.
+
+**Auditoria de produção antes da migration 082** (Supabase, 24/09/2026):
+0 contas com `comodato_plano_id`; 0 contas com Inicial/Básico em
+`plano_id`; 0 contas com `credito_comodato_mensal` > 0 (nada a converter);
+0 pontos com `valor_pago_mensal` > 0; 0 pontos com cota de autoanúncio;
+1 repasse histórico em `pagamentos_ponto` (fica, só leitura); 2 modalidades
+em `planos_ponto` ativas (a 082 marca `ativo=false`); 1 ponto com
+modalidade gravada (ponto 1 "Bruno H Sanches", `mais-cota`, **sem conta
+dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
+`comodato-basico` já `ativo=false`, sem conta nem histórico apontando.
+
+- **J.1 [ ] Texto jurídico (não reescrito — skill `legal`, decisão do dono).**
+  Referências ao modelo antigo em documentos legais publicados:
+  - `public/comodato.html` — Contrato de Comodato de Equipamento. §3
+    "Contrapartida ao estabelecimento" descreve as modalidades "Recebe os
+    R$ 50" (ajuda de custo mensal) e "Troca os R$ 50 por tela"; §3 também
+    fala em "tempo de tela ... de cada modalidade"; `<meta description>` e
+    `og:description` repetem "receber R$ 50 por mês ou levar um plano de
+    anúncio de graça". O restante (cessão do equipamento, energia,
+    manutenção, furto, devolução) continua válido — **o comodato do
+    EQUIPAMENTO não foi removido**. O rodapé de todas as páginas e o
+    convite de ponto continuam linkando esse contrato. Proposta de redação
+    pra §3, pra o dono validar: "Enquanto o ponto participa da rede, com
+    tela instalada e ativa, a conta do estabelecimento acumula 1 crédito
+    por mês, utilizável em benefícios temporários de anúncio (Essencial,
+    Pro ou Prime), conforme a tabela vigente no painel. Créditos não são
+    dinheiro, não são sacáveis e não geram obrigação de pagamento."
+  - `public/termos-de-uso.html` e `public/politica-de-privacidade.html`:
+    nenhuma menção a R$ 50/modalidade/repasse ao ponto (a palavra "repasse"
+    em Termos §6 é da comissão de vendedor — pendência §H).
+  - `public/contrato-anunciante.html`: sem menção ao modelo antigo.
+- **J.2 [ ] Ponto 1 "Bruno H Sanches" sem conta dona.** Em operação com 1
+  tela ativa, mas sem `anunciante_id` — o crédito mensal não tem a quem ir.
+  Vincular a uma conta é decisão sua (Rede → ponto).
+- **J.3 [ ] Ponto 3 "SAntos unio" (conta 5) está inativo, sem tela ativa.**
+  Por isso ainda não gera crédito ("Crédito de setembro já concedido" só
+  aparece depois que a tela for ativada e o job diário rodar).
+- **J.4 [ ] Colunas legadas.** `anunciantes.comodato_plano_id`,
+  `anunciantes.credito_comodato_mensal`, `pontos.plano_ponto_id`,
+  `pontos.valor_pago_mensal`, `planos.desconto_comodato_percentual`,
+  tabelas `planos_ponto` e `pagamentos_ponto`: sem leitura que dê direito
+  e sem escrita nova. Dropar é migration futura, se e quando você quiser
+  apagar o histórico — por ora, preservadas pra auditoria.
+- **J.5 [ ] "Cobrança adiada".** O pedido falava em "Cobrança do Pro é
+  adiada durante o benefício". A assinatura do San Checkout não pula ciclo
+  (CONSTRAINTS.md: "benefício no preço, nunca no tempo"), então o sistema
+  faz o equivalente sem violar isso: a renovação cobra no calendário de
+  sempre e os dias pagos ficam GUARDADOS (`plano_pago_guardado_*`) até o
+  benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
+  verdade na cobrança, é mudança de contrato com o San Checkout.

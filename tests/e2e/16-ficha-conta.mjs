@@ -1,9 +1,15 @@
 // Ficha de Conta do admin (revisão de 23/09/2026) — os 11 perfis do pedido
 // do dono (A–K), cada um aberto na rota real, com captura de tela, e as
 // frases que a ficha nunca pode contradizer. Mais: reatividade sem F5
-// (créditos concedidos e candidatura aprovada por fora aparecem sozinhos) e
-// os fluxos novos (conceder créditos, definir modalidade, suspender).
-// Assume servidor na 3999 e `DATABASE_URL` no ambiente.
+// (créditos concedidos, crédito mensal do ponto e candidatura aprovada por
+// fora aparecem sozinhos) e os fluxos (conceder créditos, suspender).
+// Reestruturação de 24/09/2026 (ADR-016): os perfis E/F/G/I/K têm dados do
+// modelo antigo (Inicial/Básico, R$ 50) de propósito — a ficha tem que
+// mostrar a conta pelo modelo novo (sem card Comodato, sem R$ 50, benefício
+// do ponto = +1 crédito/mês), com o legado só no banco.
+// Assume servidor na 3999 e `DATABASE_URL` no ambiente. O crédito mensal do
+// ponto vem de outro processo (o job) pelo LISTEN/NOTIFY do SSE, desligado
+// com NODE_ENV=test: suba com `tests/e2e/restart.sh NODE_ENV=development ...`.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -89,12 +95,13 @@ P.D = conta('D · Pago + benefício programado', { plano_id: "'destaque-1m'", pl
 assinatura(P.D, 'destaque-1m');
 PG(`INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, plano_anterior_id, plano_anterior_origem, plano_anterior_valido_ate)
     VALUES (${P.D}, 'maximo-3m', ${dias(110)}, 'agendado', 'indicacao', 'destaque-1m', 'assinatura', ${dias(20)})`);
-P.E = conta('E · Dono de ponto Inicial', { comodato_plano_id: "'inicial-1m'" });
-ponto(P.E, 'Loja Inicial', { modalidade: 'ajuda-custo', status: 'em_operacao', repasse: 50, tela: 'ativo' });
+P.E = conta('E · Dono de ponto (legado 1)', { comodato_plano_id: "'inicial-1m'" });
+const pontoE = ponto(P.E, 'Loja E', { modalidade: 'ajuda-custo', status: 'em_operacao', repasse: 50, tela: 'ativo' });
+PG(`UPDATE dispositivos SET aparelho_id = 'ap-e2e-${randomUUID()}' WHERE ponto_id = ${pontoE}`);
 criativo(P.E);
-P.F = conta('F · Dono de ponto Básico', { comodato_plano_id: "'comodato-basico'", credito_comodato_mensal: '50' });
-ponto(P.F, 'Loja Básico', { modalidade: 'mais-cota', status: 'em_operacao', tela: 'ativo' });
-P.G = conta('G · Básico + plano comercial', {
+P.F = conta('F · Dono de ponto (legado 2)', { comodato_plano_id: "'comodato-basico'", credito_comodato_mensal: '50' });
+ponto(P.F, 'Loja F', { modalidade: 'mais-cota', status: 'em_operacao', tela: 'ativo' });
+P.G = conta('G · Legado + plano pago', {
   comodato_plano_id: "'comodato-basico'",
   credito_comodato_mensal: '50',
   plano_id: "'destaque-3m'",
@@ -125,24 +132,40 @@ P.K = conta('K · Conta suspensa', { suspenso: 'true', plano_id: "'destaque-3m'"
 ponto(P.K, 'Loja K', { modalidade: 'mais-cota', status: 'em_operacao', tela: 'ativo' });
 PG(`UPDATE anunciantes SET comodato_plano_id = 'comodato-basico', credito_comodato_mensal = 50 WHERE id = ${P.K}`);
 criativo(P.K);
+// L: Pro PAGO guardado por baixo de um benefício Prime (migration 082).
+P.L = conta('L · Pago guardado sob benefício', {
+  plano_id: "'maximo-1m'",
+  plano_cortesia: 'true',
+  cortesia_motivo: "'Benefício por créditos'",
+  data_inicio_cobertura: 'current_date',
+  data_expiracao: dias(25),
+  plano_pago_guardado_id: "'destaque-1m'",
+  plano_pago_guardado_dias: '30',
+});
+assinatura(P.L, 'destaque-1m');
+PG(`INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+    VALUES (${P.L}, 'maximo-1m', ${dias(25)}, 'ativo', 'indicacao', now())`);
 console.log('  contas:', JSON.stringify(P));
 
 // O que cada perfil TEM que mostrar.
+// Ser ponto não dá plano (ADR-016): E/F/I, com Inicial/Básico legado, ficam
+// "Sem plano". Nenhum perfil tem card Comodato.
 const ESPERADO = {
-  A: { selo: false, comodato: false, pontos: false, solicitacoes: false, plano: /Sem plano/ },
-  B: { selo: false, comodato: false, pontos: false, solicitacoes: false, plano: /Assinatura paga/, renova: true },
-  C: { selo: false, comodato: false, pontos: false, solicitacoes: false, plano: /Benefício por créditos/ },
-  D: { selo: false, comodato: false, pontos: false, solicitacoes: false, plano: /Assinatura paga/, proximo: true },
-  E: { selo: true, comodato: true, pontos: true, solicitacoes: false, plano: /Inicial/ },
-  F: { selo: true, comodato: true, pontos: true, solicitacoes: false, plano: /Básico/ },
-  G: { selo: true, comodato: true, pontos: true, solicitacoes: false, plano: /Assinatura paga/ },
-  H: { selo: false, comodato: false, pontos: false, solicitacoes: true, plano: /Sem plano/ },
-  I: { selo: true, comodato: true, pontos: true, solicitacoes: false, plano: /Básico/ },
-  J: { selo: true, comodato: true, pontos: true, solicitacoes: true, plano: /Cortesia administrativa legada/ },
-  K: { selo: true, comodato: true, pontos: true, solicitacoes: false, plano: /Assinatura paga/ },
+  A: { selo: false, pontos: false, solicitacoes: false, plano: /Sem plano/ },
+  B: { selo: false, pontos: false, solicitacoes: false, plano: /Assinatura paga/, renova: true },
+  C: { selo: false, pontos: false, solicitacoes: false, plano: /Benefício por créditos/ },
+  D: { selo: false, pontos: false, solicitacoes: false, plano: /Assinatura paga/, proximo: true },
+  E: { selo: true, pontos: true, solicitacoes: false, plano: /Sem plano/ },
+  F: { selo: true, pontos: true, solicitacoes: false, plano: /Sem plano/ },
+  G: { selo: true, pontos: true, solicitacoes: false, plano: /Assinatura paga/ },
+  H: { selo: false, pontos: false, solicitacoes: true, plano: /Sem plano/ },
+  I: { selo: true, pontos: true, solicitacoes: false, plano: /Sem plano/ },
+  J: { selo: true, pontos: true, solicitacoes: true, plano: /Cortesia administrativa legada/ },
+  K: { selo: true, pontos: true, solicitacoes: false, plano: /Assinatura paga/ },
+  L: { selo: false, pontos: false, solicitacoes: false, plano: /Benefício por créditos/ },
 };
 const PROIBIDO =
-  /Conceder plano|Liberar plano|Alterar plano|Cancelar plano|Sem ponto em comodato|undefined|NaN|\bnull\b|destaque-\d+m|maximo-\d+m|comodato-basico|inicial-1m|mais-cota|ajuda-custo|a_instalar|em_operacao|beneficio_creditos|cortesia_legada|concessao_admin|resgate_beneficio/;
+  /Conceder plano|Liberar plano|Alterar plano|Cancelar plano|Comodato|comodato|\bInicial\b|Básico|R\$ ?50|50 reais|repasse|ajuda de custo|crédito monetário|modalidade|undefined|NaN|\bnull\b|destaque-\d+m|maximo-\d+m|comodato-basico|inicial-1m|mais-cota|ajuda-custo|a_instalar|em_operacao|beneficio_creditos|cortesia_legada|concessao_admin|resgate_beneficio|credito_mensal_ponto|pago_guardado/;
 
 const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
 const ctx = await b.newContext({ viewport: { width: 1366, height: 900 } });
@@ -175,7 +198,7 @@ for (const [perfil, id] of Object.entries(P)) {
   const cabecalho = await admin.locator('.conta-cabecalho').innerText();
   check(`${perfil}: selo Dono de ponto ${e.selo ? 'presente' : 'ausente'}`, /Dono de ponto/.test(cabecalho) === e.selo);
   check(`${perfil}: sem selo "Anunciante"`, !/Anunciante/.test(cabecalho));
-  check(`${perfil}: card Comodato ${e.comodato ? 'presente' : 'ausente'}`, (await admin.locator('#contaComodato').count()) === (e.comodato ? 1 : 0));
+  check(`${perfil}: sem card Comodato`, (await admin.locator('#contaComodato').count()) === 0);
   check(`${perfil}: card Pontos ${e.pontos ? 'presente' : 'ausente'}`, (await admin.locator('#contaPontos').count()) === (e.pontos ? 1 : 0));
   check(
     `${perfil}: Solicitações ${e.solicitacoes ? 'presente' : 'ausente'}`,
@@ -193,21 +216,23 @@ for (const [perfil, id] of Object.entries(P)) {
 
 console.log('== conteúdo específico ==');
 await abrir(P.J);
-let t = await admin.locator('#contaComodato').innerText();
-check('J: ponto sem modalidade aparece como furo, com ação', /Modalidade não definida/.test(t) && /Definir modalidade/.test(t));
-check('J: alerta do ponto sem modalidade no topo', /sem modalidade de comodato/.test(await admin.locator('.conta-alertas').innerText()));
-check('J: ponto Inativo continua em Pontos', /Inativo/.test(await admin.locator('#contaPontos').innerText()));
+let t = await admin.locator('#contaPontos').innerText();
+check('J: ponto Inativo continua em Pontos', /Inativo/.test(t));
+check('J: ponto inativo fora do programa de créditos', /\+1 crédito\/mês/.test(t) && /fora do programa/.test(t), t);
+check('J: nenhum alerta de modalidade', !(await admin.locator('.conta-alertas').count()) || !/modalidade/.test(await admin.locator('.conta-alertas').innerText()));
 check('J: categoria antiga com sugestões', (await admin.locator('.categoria-sugestoes button').count()) >= 1);
 await abrir(P.E);
-t = await admin.locator('#contaComodato').innerText();
-check('E: Inicial com repasse de R$ 50 e "não acumula"', /repasse/.test(t) && /não acumula/.test(t));
+t = await admin.locator('#contaPontos').innerText();
+check('E: benefício do ponto +1 crédito/mês, sem R$ 50', /\+1 crédito\/mês/.test(t) && !/R\$/.test(t), t);
+check('E: Inicial legado não dá plano', /Sem plano/.test(await admin.locator('#contaPlano').innerText()));
 await abrir(P.F);
-t = await admin.locator('#contaComodato').innerText();
-check('F: Básico com crédito de R$ 50 na mensalidade', /crédito na mensalidade/.test(t));
-check('F: créditos (saldo) separado do crédito monetário', /0 créditos/.test(await admin.locator('#contaCreditos').innerText()));
-await abrir(P.G);
-t = await admin.locator('#contaComodato').innerText();
-check('G: dois pontos, "vale o melhor, nunca a soma"', /nunca a soma/.test(t));
+check('F: 0 créditos — o crédito monetário antigo não virou crédito', /0 créditos/.test(await admin.locator('#contaCreditos').innerText()));
+await abrir(P.D);
+t = await admin.locator('#contaPlano').innerText();
+check('D: Depois volta ao Pro pago, sem perder dia pago', /Volta ao Pro[\s\S]*nenhum dia pago se perde/.test(t), t);
+await abrir(P.L);
+t = await admin.locator('#contaPlano').innerText();
+check('L: Agora benefício Prime, Próximo o Pro pago guardado com os dias', /Prime[\s\S]*Próximo[\s\S]*Pro[\s\S]*Guardado[\s\S]*30 dias pagos/i.test(t), t);
 await abrir(P.C);
 await admin.click('details[data-historico="movimentacoes"] summary');
 t = await admin.locator('#contaCreditos').innerText();
@@ -260,6 +285,26 @@ check('H: selo Dono de ponto apareceu', /Dono de ponto/.test(await admin.locator
 check('H: Solicitações sumiu (virou ponto)', (await admin.locator('#contaSolicitacoes').count()) === 0);
 check('H: sem recarregar a página', await admin.evaluate(() => window.__semRecarregar === true));
 
+console.log('== crédito mensal do ponto aparece sozinho na ficha (E) ==');
+await abrir(P.E);
+await admin.evaluate(() => {
+  window.__semRecarregar = true;
+});
+execSync(
+  `node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [${pontoE}] }).then(() => setTimeout(() => process.exit(0), 600))"`,
+  { cwd: new URL('../..', import.meta.url).pathname, env: process.env },
+);
+await admin
+  .waitForFunction(() => /1 crédito/.test(document.querySelector('.creditos-saldo b')?.textContent || ''), null, { timeout: 8000 })
+  .catch(() => {});
+check('E: saldo 1 crédito sozinho (SSE)', (await admin.locator('.creditos-saldo b').innerText()) === '1 crédito');
+await admin.click('details[data-historico="movimentacoes"] summary');
+t = await admin.locator('#contaCreditos').innerText();
+check('E: movimentação "Crédito mensal do ponto · Loja E"', /Crédito mensal do ponto · Loja E/.test(t), t);
+t = await admin.locator('#contaPontos').innerText();
+check('E: ponto diz que o crédito do mês já saiu', /último: /.test(t) && /próximo: /.test(t), t);
+check('E: sem recarregar a página', await admin.evaluate(() => window.__semRecarregar === true));
+
 console.log('== conceder créditos pela ficha ==');
 await abrir(P.A);
 await admin.click('[data-creditos-conceder]');
@@ -283,17 +328,6 @@ await admin.locator('.categoria-sugestoes button').first().click();
 await admin.waitForFunction(() => !document.querySelector('.categoria-sugestoes'));
 check('A: aviso de categoria antiga some depois de trocar', !/categoria antiga/.test(await admin.locator('#contaDados').innerText()));
 
-console.log('== definir modalidade (J) ==');
-await abrir(P.J);
-await admin.click('[data-modalidade]');
-await admin.check('input[name="modalidade"][value="mais-cota"]');
-await admin.click('dialog [data-confirmar]');
-await admin.waitForFunction(() => !/Modalidade não definida/.test(document.querySelector('#contaComodato')?.innerText || ''));
-t = await admin.locator('#contaComodato').innerText();
-check('J: modalidade Básico aplicada, crédito aparece', /Básico/.test(t) && /crédito na mensalidade/.test(t));
-check('J: alerta de modalidade sumiu', !(await admin.locator('.conta-alertas').count()) || !/sem modalidade/.test(await admin.locator('.conta-alertas').innerText()));
-await admin.screenshot({ path: `${SAIDA}ficha-J-depois-da-modalidade.png`, fullPage: true });
-
 console.log('== suspender (B) — confirmação séria ==');
 await abrir(P.B);
 await admin.click('[data-suspender]');
@@ -309,7 +343,7 @@ check('B: reativada', true);
 
 console.log('== celular ==');
 await admin.setViewportSize({ width: 390, height: 844 });
-for (const perfil of ['G', 'J', 'C']) {
+for (const perfil of ['G', 'J', 'C', 'L']) {
   await abrir(P[perfil]);
   check(`${perfil} (390px): sem rolagem horizontal`, await admin.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await admin.screenshot({ path: `${SAIDA}ficha-${perfil}-celular.png`, fullPage: true });

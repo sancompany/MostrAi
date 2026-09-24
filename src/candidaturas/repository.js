@@ -34,7 +34,9 @@ async function criar(dados, db = pool) {
       dados.conta_id || null,
       dados.origem || 'site',
       dados.chave_pix || null,
-      dados.plano_ponto_id || null,
+      // Modalidade de comodato aposentada (24/09/2026, ADR-016): coluna
+      // mantida pelo histórico, nunca mais preenchida.
+      null,
       horarioValidado ? JSON.stringify(horarioValidado) : null,
     ],
   );

@@ -1,7 +1,8 @@
 // Página de cadastro por convite: o único caminho de entrada de dono de
 // ponto e de vendedor. O token diz quais papéis a conta nasce tendo; o
-// formulário só mostra o que cada papel precisa (Pix pra vendedor, plano
-// de comodato pra ponto, endereço comercial pra anunciante).
+// formulário só mostra o que cada papel precisa (Pix pra vendedor, o que o
+// ponto ganha — créditos, sem escolha de modalidade desde 24/09/2026 — pra
+// ponto, endereço comercial pra anunciante).
 const token = new URLSearchParams(window.location.search).get('t');
 const form = document.getElementById('formConvite');
 const msg = document.getElementById('msg');
@@ -122,31 +123,7 @@ async function carregar() {
   if (ehPonto) docs.push('os <a href="/comodato.html" target="_blank">termos do comodato</a> da tela instalada');
   document.getElementById('rotuloTermos').innerHTML =
     `Li e aceito ${docs.slice(0, -1).join(', ')} e ${docs[docs.length - 1]}.`;
-  if (ehPonto) carregarPlanosPonto();
   form.hidden = false;
-}
-
-async function carregarPlanosPonto() {
-  try {
-    const planos = await (await fetch(`${API_BASE_URL}/planos-ponto`)).json();
-    document.getElementById('escolhaPlano').innerHTML = planos
-      .map(
-        (p, i) => `
-      <label class="escolha">
-        <input type="radio" name="plano_ponto_id" value="${p.id}" ${i === 0 ? 'checked' : ''}>
-        <span class="box">
-          <b>${esc(p.nome)}${Number(p.ajuda_custo_mensal) > 0 ? `, ${fmtBRL(p.ajuda_custo_mensal)}/mês` : ''}</b>
-          <small>${esc(p.chamada || '')}</small>
-          <ul>${(p.beneficios || []).map((b) => `<li>${esc(b)}</li>`).join('')}
-            ${p.plano_bonus_id ? `<li>Depois de ${p.plano_bonus_apos_meses} meses como ponto, ganhe ${p.plano_bonus_meses} ${p.plano_bonus_meses > 1 ? 'meses' : 'mês'} de anúncio grátis</li>` : ''}</ul>
-        </span>
-      </label>`,
-      )
-      .join('');
-  } catch {
-    document.getElementById('escolhaPlano').innerHTML =
-      '<p class="form-hint">Não deu pra carregar as opções agora, a gente combina no WhatsApp.</p>';
-  }
 }
 
 form.addEventListener('submit', async (e) => {
@@ -163,10 +140,6 @@ form.addEventListener('submit', async (e) => {
     aceitou_termos: form.aceitou_termos.checked,
   };
   if (PAPEIS.includes('vendedor')) dados.chave_pix = form.chave_pix.value.trim();
-  if (PAPEIS.includes('ponto')) {
-    const escolhido = form.querySelector('input[name="plano_ponto_id"]:checked');
-    if (escolhido) dados.plano_ponto_id = escolhido.value;
-  }
   if (PAPEIS.includes('anunciante')) {
     Object.assign(dados, {
       endereco: `${form.endereco.value.trim()}, ${form.numero.value.trim()}`,

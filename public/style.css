@@ -711,22 +711,6 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .candidatura-preview-titulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0 0 10px; }
 .candidatura-preview-card { pointer-events: none; }
 
-/* Escolha entre as opções de comodato (ajuda de custo x mais cota) */
-.escolha-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-@media (max-width: 620px) { .escolha-grid { grid-template-columns: 1fr; } }
-.escolha { position: relative; }
-.escolha input { position: absolute; opacity: 0; pointer-events: none; }
-.escolha span.box {
-  display: block; height: 100%; border: 1px solid var(--border); border-radius: 12px;
-  padding: 16px; background: var(--bg-alt); cursor: pointer;
-}
-.escolha input:checked + span.box { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); background: var(--card); }
-.escolha b { display: block; font-size: .98rem; margin-bottom: 4px; }
-.escolha small { color: var(--text-dim); font-size: .84rem; line-height: 1.5; display: block; }
-.escolha ul { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
-.escolha li { font-size: .82rem; color: var(--text-dim); padding-left: 18px; position: relative; }
-.escolha li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
-
 .endereco-bloco { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
 .endereco-bloco + .endereco-bloco { border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 14px; }
 .endereco-topo { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; font-weight: 700; color: var(--text-dim); }
@@ -1250,10 +1234,6 @@ body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
   .map-embed iframe { height: 300px; }
 }
 
-/* A escolha do comodato usa input escondido (opacity:0) — sem isso, quem
-   navega por teclado não vê onde está numa decisão que envolve dinheiro. */
-.escolha input:focus-visible + * { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
-
 /* Candidatura / convite (v2: ponto e vendedor entram por convite do dono) */
 .passos { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; color: var(--text-dim); font-size: .92rem; line-height: 1.5; }
 .passos li::marker { color: var(--brand); font-weight: 800; }
@@ -1297,7 +1277,6 @@ body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
 .painel-tela th, .painel-tela td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--escuro-borda); }
 .painel-tela th { color: var(--escuro-texto-dim); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
 .painel-tela .erro { color: var(--escuro-err); margin: 8px 0 0; }
-@media (max-width: 640px) { .escolha-grid { grid-template-columns: 1fr; } }
 
 dialog.dlg-tela { border: none; border-radius: var(--radius); padding: 24px; max-width: 560px; width: 94vw; background: var(--card); color: var(--text); }
 dialog.dlg-tela::backdrop { background: rgba(20,23,31,.5); }

@@ -112,10 +112,7 @@ async function montarConfirmacaoPedido(planoId) {
   // Contrato do anunciante e vitrine em /planos.html) — só não repete aqui.
   // Resumo de preço primeiro (subtotal, descontos, total), como qualquer
   // tela de checkout de mercado.
-  const direitosDaConta = [
-    cotacao?.creditoComodato ? 'crédito do comodato' : null,
-    cotacao?.descontoParceiro ? 'desconto de parceiro' : null,
-  ].filter(Boolean);
+  const direitosDaConta = [cotacao?.descontoParceiro ? 'desconto de parceiro' : null].filter(Boolean);
   const linhasPreco = [
     descontoTabela > 0 || descontoConta > 0 ? ['Subtotal', fmtBRL(cotacao.cheioCiclo), 'dinheiro'] : null,
     descontoTabela > 0
@@ -246,7 +243,12 @@ async function montarConfirmacaoTroca(planoNovoId) {
 // Assinatura de plano — a escolha em si acontece em /planos.html (mesma
 // página pública, linkando pra cá com ?plano=X quando já logado); aqui só
 // sobra gerar a cobrança e mandar pro checkout.
-async function assinar(anuncianteId, planoId) {
+//
+// Benefício em vigor (24/09/2026, ADR-016): o servidor responde 409 com
+// `confirmacao` dizendo exatamente o que acontece com o benefício (encerra na
+// hora, sem devolver créditos; ou o plano começa depois dele). A pessoa lê e
+// escolhe Voltar ou Continuar — só então a cobrança é gerada.
+async function assinar(anuncianteId, planoId, confirmarBeneficio = false) {
   const msg = document.getElementById('msgConfirmacaoPedido');
   msg.textContent = 'Gerando cobrança...';
   msg.className = 'form-msg';
@@ -254,8 +256,21 @@ async function assinar(anuncianteId, planoId) {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ planoId }),
+    body: JSON.stringify({ planoId, confirmarBeneficio }),
   });
+  if (r.status === 409) {
+    const corpo = await r.json().catch(() => ({}));
+    if (corpo.confirmacao) {
+      msg.textContent = '';
+      if (await confirmarTroca(corpo.confirmacao)) return assinar(anuncianteId, planoId, true);
+      document.getElementById('btnConfirmarPlano').disabled = false;
+      return;
+    }
+    msg.innerHTML = `${esc(corpo.erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a>`;
+    msg.className = 'form-msg err';
+    document.getElementById('btnConfirmarPlano').disabled = false;
+    return;
+  }
   if (!r.ok) {
     const erro = (await r.json().catch(() => ({}))).erro;
     msg.innerHTML = `${esc(erro || 'Não foi possível gerar a cobrança.')} <a href="/planos.html">Escolher outro plano</a>`;
@@ -306,7 +321,13 @@ async function carregar() {
       !ANUNCIANTE.plano_cortesia &&
       ANUNCIANTE.data_expiracao &&
       new Date(ANUNCIANTE.data_expiracao) > new Date();
-    if (!ANUNCIANTE.plano_id) {
+    // Sem plano, ou num benefício (cortesia — por créditos ou legado): o
+    // pedido é uma assinatura nova. Como ela convive com o benefício quem
+    // decide é o servidor (ADR-016): pago maior entra na hora e encerra o
+    // benefício; igual ou menor começa depois dele — o /assinar devolve o
+    // texto e o cliente confirma antes de pagar (confirmarTroca, abaixo).
+    const vencido = ANUNCIANTE.data_expiracao && new Date(ANUNCIANTE.data_expiracao) <= new Date();
+    if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia || vencido) {
       montarConfirmacaoPedido(planoUrl);
       return;
     }
@@ -314,10 +335,33 @@ async function carregar() {
       montarConfirmacaoTroca(planoUrl);
       return;
     }
-    // Já tem esse plano mesmo (ou plano de cortesia, que não troca por
-    // aqui) — nada a confirmar, volta pro painel de verdade.
+    // Já tem esse plano pago — nada a confirmar, volta pro painel.
     window.location.href = '/anunciante/painel.html';
   });
 }
 
 carregar();
+
+// Diálogo nativo (<dialog>) com o texto que o servidor mandou — Voltar ou
+// Continuar. Resolve true só em Continuar.
+function confirmarTroca({ titulo, texto, botao }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'dlg-resgate';
+    dlg.innerHTML = `<h3 class="u-mt-0">${esc(titulo)}</h3><p>${esc(texto)}</p>
+      <div class="dlg-acoes"><button type="button" class="btn ghost" data-voltar>Voltar</button>
+      <button type="button" class="btn primary" data-continuar>${esc(botao)}</button></div>`;
+    document.body.appendChild(dlg);
+    let ok = false;
+    dlg.querySelector('[data-voltar]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('[data-continuar]').addEventListener('click', () => {
+      ok = true;
+      dlg.close();
+    });
+    dlg.addEventListener('close', () => {
+      dlg.remove();
+      resolve(ok);
+    });
+    dlg.showModal();
+  });
+}

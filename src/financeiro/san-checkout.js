@@ -12,6 +12,7 @@ const indicacoesRepo = require('../indicacoes/repository');
 const creditosRepo = require('../creditos/repository');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
+const planoAdministrativo = require('./plano-administrativo');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -214,56 +215,14 @@ async function montarRespostaPlano(assinaturaId) {
   };
 }
 
-// Por cima do preço-base entram (item 4 e item 8 da spec, 15/09/2026):
-// - comodato: HOJE é só o crédito em reais (abaixo). O percentual por plano
-//   (`desconto_comodato_percentual`) foi aposentado — ver o comentário
-//   dentro de `valorMensalDaConta`.
-// - parceiro (era "fundador" até 16/09/2026): conta com `status = 'parceiro'`
-//   marcada pelo dono (à mão, sem concessão automática) ganha o
-//   `parceiro_desconto_percentual` dela, mas só nos planos que o dono liberou
-//   pra parceiro via `parceiro_compromisso_minimo` (ex.: só trimestral pra
-//   cima — mensal fica de fora).
-//
-// A TRAVA DE PREÇO SAIU EM 17/09/2026, a pedido do dono ("não irei modificar
-// muito os planos então pode retirar o plano travado"). Ela existia pra
-// proteger quem assinou de um aumento futuro; com a grade fechada e sem
-// previsão de mexer, virou máquina parada. E ela carregava um defeito:
-// `mesmoPlano` comparava `anunciante.plano_id === plano.id`, então migrar a
-// conta pra versão nova de um plano REESCREVIA a trava com o preço novo — o
-// contrário exato do direito que ela prometia.
-// O CRÉDITO DE COMODATO EM REAIS entrou em 17/09/2026 (migration 049). Quem
-// escolhe trocar a ajuda de custo por tela deixa de receber R$ 50 por mês, e
-// esses R$ 50 viram abatimento fixo na mensalidade. É o desenho do dono:
-// "ele nem precisa pagar os 50 reais aqui, ele pode somente abrir mão".
-//
-// Em reais e não em percentual de propósito. O valor abatido tem que ser
-// exatamente o que ele deixou de receber — um percentual daria R$ 50 no
-// Destaque mensal e R$ 40 no anual sem ninguém ter decidido isso, e mudaria
-// sozinho no dia em que o preço da linha mudasse.
-//
-// Entra DEPOIS dos percentuais e nunca deixa a mensalidade negativa: crédito
-// maior que o preço vira mensalidade zero, não devolução de dinheiro.
-//
-// VALE NOS TRÊS PLANOS PAGOS — Essencial, Pro (`destaque`) e Prime
-// (`maximo`) — desde a rodada de integridade de 23/09/2026 (decisão
-// comercial do dono). A regra antiga deixava o Essencial de fora porque,
-// no desenho da migration 049, quem trocava os R$ 50 por tela GANHAVA o
-// Essencial inteiro de cortesia — o crédito nele seria dar a mesma coisa
-// duas vezes. Desde a migration 063 isso não existe mais: quem troca ganha o
-// Básico (produto de comodato próprio, 45s/hora em 3 pontos), não o
-// Essencial, então o Essencial pago é um degrau acima como os outros dois.
-// Lista fechada de propósito: plano sem tier (versão antiga, linha fora da
-// grade) continua sem crédito — é direito nomeado, não desconto genérico.
-const TIERS_COM_CREDITO = new Set(['essencial', 'destaque', 'maximo']);
-
 // `assinatura` é opcional (várias chamadas antigas não tinham como passar) —
 // quando vem, e carrega uma condição promocional ainda dentro do prazo
 // prometido (`promocao_valido_ate`, rodada de Ofertas/Promoções,
 // 22/09/2026), o desconto promocional SUBSTITUI o desconto do ciclo na base
 // (mesma régua da vitrine pública, public/planos.page.js: a promoção é o
 // preço de tabela daquele ciclo enquanto vale, não mais um percentual em
-// cima do preço de tabela normal) — comodato e parceiro continuam entrando
-// DEPOIS, em cima dessa base, porque são direito da CONTA, não do ciclo.
+// cima do preço de tabela normal) — o desconto de parceiro continua entrando
+// DEPOIS, em cima dessa base, porque é direito da CONTA, não do ciclo.
 // É um SNAPSHOT da assinatura, travado no instante da adesão (ver
 // promocoes-repository.js#condicaoVigente e o ponto de criação em
 // financeiro/routes.js) — preço-base mudando depois, ou a promoção sendo
@@ -281,27 +240,20 @@ function valorMensalDaConta(anunciante, plano, assinatura) {
       )
     : Number(plano.valor_mensal);
 
-  // O percentual de comodato por plano (`desconto_comodato_percentual`) NÃO
-  // entra mais (rodada de integridade, 23/09/2026). A migration 049 já tinha
-  // zerado a coluna e declarado que "quem manda agora é o crédito em reais da
-  // conta" — mas a leitura continuava aqui, e a tela de Ofertas voltou a
-  // deixar o campo editável: preencher ali abriria um SEGUNDO desconto de
-  // comodato por cima do crédito, sem ninguém ter decidido isso. Comodato é
-  // só o `credito_comodato_mensal`, abaixo. A coluna fica no banco (sem DROP
-  // nesta rodada), só sem efeito.
+  // Nenhum desconto de comodato entra no preço: nem o percentual por plano
+  // (`desconto_comodato_percentual`, sem efeito desde 23/09/2026) nem o
+  // crédito em reais da conta (sem efeito desde 24/09/2026, abaixo).
   const descontoParceiro =
     anunciante.status === 'parceiro' && plano.compromisso_meses >= (anunciante.parceiro_compromisso_minimo || 0)
       ? Number(anunciante.parceiro_desconto_percentual || 0)
       : 0;
   const desconto = Math.min(100, descontoParceiro);
-  const comPercentual = desconto ? arredondar(base - percentual(base, desconto)) : base;
-
-  const credito =
-    (anunciante.papeis || []).includes('ponto') && TIERS_COM_CREDITO.has(plano.tier)
-      ? Number(anunciante.credito_comodato_mensal || 0)
-      : 0;
-
-  return credito ? arredondar(Math.max(0, comPercentual - credito)) : comPercentual;
+  // O crédito monetário de R$ 50 do comodato Básico (`credito_comodato_mensal`)
+  // SAIU do preço (24/09/2026, ADR-016): o benefício de ser ponto agora é
+  // crédito do ledger, nunca desconto em reais. Auditoria de produção: 0
+  // contas com esse crédito — ninguém tem a mensalidade alterada. A coluna
+  // fica no banco como legado, sem efeito.
+  return desconto ? arredondar(base - percentual(base, desconto)) : base;
 }
 
 async function registrarPendencia(payload, motivo) {
@@ -651,45 +603,26 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
   const cliente = await pool.connect();
   let cobrancaRows;
   let creditoIndicacao;
+  let eventosDaFila = [];
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
     // seguidos recebe os dois.
     //
-    // Ciclo PAGO tira a marca de cortesia (rodada de integridade,
-    // 23/09/2026). Quem tinha o Básico do comodato (cortesia, motivo
-    // 'comodato') e assinava o Pro ficava com o Pro gravado MAS ainda marcado
-    // como cortesia: saía da receita recorrente e do "cadastra e paga",
-    // perdia o botão "Cancelar assinatura" no admin, e — o pior — continuava
-    // casando com a guarda de `pontos/comodato.js#ajustarPlanoIncluido`
-    // ("só troca se o que está lá é o plano do comodato"), que podia
-    // sobrescrever o plano pago pelo Básico na próxima vez que uma modalidade
-    // fosse aplicada (ex.: um segundo ponto aprovado). O comentário de
-    // `conta/modos.js` já dizia que este passo limpava a cortesia — não
-    // limpava.
-    await cliente.query(
-      `UPDATE anunciantes
-       SET plano_id = $2, suspenso = false,
-           plano_cortesia = false, cortesia_motivo = NULL,
-           data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
-           data_expiracao = $3::timestamptz
-       WHERE id = $1`,
-      [anunciante.id, plano.id, novaExpiracao],
-    );
-    // Ciclo pago por cima de um benefício EM VIGOR (cliente em cortesia ou
-    // benefício por créditos que resolve assinar): o plano da conta passa a
-    // ser o pago na mesma linha acima, então a linha 'ativo' do histórico
-    // deixa de ser verdade — fecha como substituída, na mesma transação.
-    // Sem isso ela ficava 'ativo' pra sempre e, no dia do vencimento,
-    // `encerrarBeneficiosVencidos` zerava o plano PAGO (revisão da ficha de
-    // Conta, 23/09/2026). Benefício 'agendado' não é tocado: ele espera o
-    // ciclo pago terminar, é a fila funcionando.
-    await cliente.query(
-      `UPDATE planos_administrativos
-          SET status = 'encerrado', encerrado_em = now(), encerrado_motivo = 'substituido'
-        WHERE anunciante_id = $1 AND status = 'ativo'`,
-      [anunciante.id],
-    );
+    // Ciclo PAGO que entra na hora tira a marca de cortesia (rodada de
+    // integridade, 23/09/2026): plano pago marcado como cortesia saía da
+    // receita recorrente e perdia o "Cancelar assinatura" no admin.
+    // Onde este ciclo entra na FILA (24/09/2026, ADR-016): sem benefício no
+    // caminho, é a conta de sempre (plano pago, cobertura estendida, sem
+    // marca de cortesia — ver o histórico da rodada de integridade em
+    // plano-administrativo.js); com benefício em vigor, a prioridade por
+    // nível decide se o pago entra agora (encerrando o benefício menor) ou
+    // espera guardado até o benefício acabar. Conta relida travada: um
+    // resgate ou a rotina diária no mesmo instante esperam este ciclo.
+    const {
+      rows: [contaTravada],
+    } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [anunciante.id]);
+    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao);
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
        VALUES ($1,$2,$3,'pendente') RETURNING id`,
@@ -751,6 +684,30 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     })
     .catch((err) => console.error('falha ao registrar notificação de pagamento', err));
   sse.emitirParaConta(anunciante.id, 'payment.updated', {});
+  // O que o ciclo fez com a fila de benefícios (ADR-016) — o cliente sabe
+  // na hora por que o plano mudou (ou por que ainda não mudou).
+  for (const ev of eventosDaFila) {
+    const nomeBeneficio = ev.beneficio?.planoNome || ev.linha?.plano_nome || 'benefício';
+    const aviso =
+      ev.tipo === 'beneficio_superado'
+        ? {
+            titulo: `Seu benefício ${nomeBeneficio} foi encerrado`,
+            descricao: `Seu plano ${plano.nome} pago entrou em vigor.`,
+          }
+        : ev.tipo === 'pago_depois_do_beneficio'
+          ? {
+              titulo: `Seu plano ${plano.nome} começa depois do benefício`,
+              descricao: `O benefício ${nomeBeneficio} continua até o fim; o período pago fica guardado e começa em seguida.`,
+            }
+          : {
+              titulo: `Benefício programado ${nomeBeneficio} cancelado`,
+              descricao: `Seu plano ${plano.nome} pago já oferece mais recursos.`,
+            };
+    notificacoesRepo
+      .registrar(anunciante.id, { tipo: `fila_${ev.tipo}`, ...aviso })
+      .catch((err) => console.error('falha ao notificar mudança na fila de benefícios', err));
+  }
+  if (eventosDaFila.length) sse.emitirParaConta(anunciante.id, 'plan.updated', {});
   if (creditoIndicacao) {
     notificacoesRepo
       .registrar(creditoIndicacao.pontoContaId, {

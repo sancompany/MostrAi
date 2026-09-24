@@ -1,6 +1,5 @@
 const pool = require('../db/pool');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
-const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 
 // O admin digita preço cheio + desconto; o valor cobrado de verdade sai
 // daqui, sempre — nunca é digitado direto (pedido do dono, 16/09/2026).
@@ -409,45 +408,6 @@ async function atualizarProduto(tier, { precoBase, descontos }) {
   return resultado;
 }
 
-// Os 2 produtos fixos de comodato — Inicial e Básico (rodada de integridade,
-// 23/09/2026). Não passam por `listarProdutos` porque são `ativo = false` (a
-// vitrine e o assinar recusam: não se compram, chegam pela modalidade do
-// ponto). Saem daqui pela MESMA ligação que `pontos/comodato.js` usa pra dar
-// o plano ao dono do ponto — `planos_ponto.plano_incluido_id` —, nunca por id
-// fixo no código: se o dono repontar uma modalidade, a tela acompanha.
-// Horas e exibições usam as mesmas funções da vitrine (src/lib/pacing.js).
-async function listarProdutosComodato() {
-  const { rows } = await pool.query(
-    `SELECT pp.id AS modalidade_id, pp.nome AS modalidade_nome, pp.ajuda_custo_mensal,
-            pp.permite_assinar, pp.desconto_assinatura_reais,
-            pl.id AS plano_id, pl.nome, pl.ativo, pl.segundos_por_hora, pl.pontos_incluidos,
-            pl.duracao_maxima_segundos, pl.limite_criativos
-       FROM planos_ponto pp
-       JOIN planos pl ON pl.id = pp.plano_incluido_id
-      WHERE pp.ativo
-      ORDER BY pp.ordem, pp.id`,
-  );
-  return rows.map((r) => {
-    const horasMes = horasDeTelaPorMes(r.segundos_por_hora, r.pontos_incluidos);
-    return {
-      planoId: r.plano_id,
-      nome: r.nome,
-      compravel: r.ativo,
-      modalidadeId: r.modalidade_id,
-      modalidadeNome: r.modalidade_nome,
-      ajudaCustoMensal: Number(r.ajuda_custo_mensal || 0),
-      permiteAssinar: r.permite_assinar,
-      creditoAssinatura: Number(r.desconto_assinatura_reais || 0),
-      segundosPorHora: r.segundos_por_hora,
-      pontosIncluidos: r.pontos_incluidos,
-      duracaoMaximaSegundos: r.duracao_maxima_segundos,
-      limiteCriativos: r.limite_criativos,
-      horasMes,
-      exibicoesMes: exibicoesPorMes(horasMes, r.duracao_maxima_segundos),
-    };
-  });
-}
-
 module.exports = {
   criar,
   listarAtivos,
@@ -464,6 +424,5 @@ module.exports = {
   CAMPOS_VITRINE,
   CAMPOS_CONTRATO,
   listarProdutos,
-  listarProdutosComodato,
   atualizarProduto,
 };

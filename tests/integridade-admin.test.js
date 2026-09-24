@@ -45,6 +45,8 @@ test('ciclo pago tira a marca de cortesia de quem vinha do comodato', async () =
   );
   const contaId = rows[0].id;
   try {
+    // Básico é legado sem nível (ADR-016): não conta como benefício na fila,
+    // então o ciclo pago entra na hora por cima dele.
     const assinatura = await assinaturasRepo.criar({ anuncianteId: contaId, planoId: 'destaque-1m', status: 'ativa' });
     await sc.aplicarCicloPago(assinatura, `teste-integridade-${randomUUID()}`);
 
@@ -68,36 +70,19 @@ test('ciclo pago tira a marca de cortesia de quem vinha do comodato', async () =
   }
 });
 
-// Inicial e Básico sumiram da UI quando Configurações > Comodato saiu. Agora
-// vêm de `listarProdutosComodato` pela mesma ligação que o comodato usa pra
-// dar o plano (planos_ponto.plano_incluido_id), com as horas da vitrine.
-test('Ofertas lista os 2 produtos de comodato com as características fixas', async () => {
+// Inicial e Básico deixaram de ser produto (24/09/2026, ADR-016): o catálogo
+// ativo de Ofertas é só Essencial, Pro e Prime, e nenhuma listagem de
+// "produtos de comodato" existe mais.
+test('Ofertas: catálogo ativo só Essencial/Pro/Prime; Inicial e Básico fora', async () => {
   const planosRepo = require('../src/financeiro/planos-repository');
-  const produtos = await planosRepo.listarProdutosComodato();
-  const porPlano = Object.fromEntries(produtos.map((p) => [p.planoId, p]));
-
-  const inicial = porPlano['inicial-1m'];
-  assert.ok(inicial, 'Inicial aparece');
-  assert.strictEqual(inicial.compravel, false, 'Inicial não é comprável');
-  assert.strictEqual(inicial.segundosPorHora, 60);
-  assert.strictEqual(inicial.pontosIncluidos, 1);
-  assert.strictEqual(inicial.duracaoMaximaSegundos, 15);
-  assert.strictEqual(inicial.limiteCriativos, 1);
-  assert.strictEqual(inicial.horasMes, 6);
-  assert.strictEqual(inicial.ajudaCustoMensal, 50, 'quem tem o Inicial recebe os R$ 50');
-  assert.strictEqual(inicial.permiteAssinar, false, 'Inicial não compra plano pago');
-
-  const basico = porPlano['comodato-basico'];
-  assert.ok(basico, 'Básico aparece');
-  assert.strictEqual(basico.compravel, false, 'Básico não é comprável');
-  assert.strictEqual(basico.segundosPorHora, 45);
-  assert.strictEqual(basico.pontosIncluidos, 3);
-  assert.strictEqual(basico.duracaoMaximaSegundos, 15);
-  assert.strictEqual(basico.limiteCriativos, 1);
-  assert.strictEqual(basico.horasMes, 14);
-  assert.strictEqual(basico.ajudaCustoMensal, 0, 'quem tem o Básico abriu mão dos R$ 50');
-  assert.strictEqual(basico.permiteAssinar, true, 'Básico pode ter plano pago junto');
-  assert.strictEqual(basico.creditoAssinatura, 50);
+  assert.strictEqual(planosRepo.listarProdutosComodato, undefined, 'listagem de comodato removida');
+  const produtos = await planosRepo.listarProdutos();
+  assert.deepStrictEqual(produtos.map((p) => p.tier).sort(), ['destaque', 'essencial', 'maximo']);
+  const pool = require('../src/db/pool');
+  const { rows } = await pool.query(`SELECT id, ativo FROM planos WHERE id IN ('inicial-1m', 'comodato-basico')`);
+  for (const r of rows) assert.strictEqual(r.ativo, false, `${r.id} continua fora de venda (histórico)`);
+  const { rows: modalidades } = await pool.query('SELECT COUNT(*)::int AS n FROM planos_ponto WHERE ativo');
+  assert.strictEqual(modalidades[0].n, 0, 'nenhuma modalidade de comodato ativa (linhas preservadas)');
 });
 
 // Régua 80/20 única (src/lib/capacidade.js): os dois saldos nunca se somam

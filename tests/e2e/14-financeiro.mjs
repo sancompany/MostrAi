@@ -1,9 +1,9 @@
 // Financeiro na rota real (/anunciante/painel.html), Fatia 4.
-// Pagamentos (plano) e recebimentos (comodato) num módulo só: só quem anuncia
-// vê um bloco; quem anuncia E cede a parede vê os dois; quem não tem nenhum
-// não vê o módulo. A troca da ajuda de custo por tela atualiza o bloco sem
-// F5, e a anotação interna do lançamento nunca sai do servidor. A página
-// antiga do ponto não tem mais extrato. Assume servidor na 3999.
+// Só Pagamentos (o que a conta paga à Mostraí). "Recebimentos" saiu em
+// 24/09/2026 (ADR-016): quem cede a parede ganha créditos, não dinheiro —
+// mesmo com repasse antigo no histórico, nada de R$ 50 aparece aqui, e a
+// anotação interna do repasse nunca sai do servidor. A página antiga do
+// ponto não tem mais extrato. Assume servidor na 3999.
 import { chromium } from 'playwright';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
@@ -80,7 +80,7 @@ PG(`INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor) VALUES ($
 p = await entrar(anunc);
 await p.waitForSelector('#modFinanceiro:not([hidden])');
 check('Pagamentos visível', await p.isVisible('#finPagamentos'));
-check('Recebimentos escondido', !(await p.isVisible('#finRecebimentos')));
+check('sem bloco de Recebimentos', !(await p.$('#finRecebimentos')));
 check('plano e cobrança', /Essencial[\s\S]*Ativa[\s\S]*149,90/.test(await p.textContent('#finPagamentos')));
 check('sem o "Meus pagamentos" antigo', !(await p.$('#painelCobrancas')));
 await p.click('#modPlano [data-acao="gerenciar-plano"]');
@@ -88,43 +88,25 @@ check('Gerenciar plano abre o diálogo', await p.evaluate(() => document.getElem
 await p.click('#btnFecharPlano');
 await p.close();
 
-console.log('== anuncia e cede a parede: os dois blocos ==');
+console.log('== anuncia e cede a parede, com repasse antigo no histórico: só Pagamentos ==');
 const ambos = await novaConta('finambos');
 PG(`UPDATE anunciantes SET plano_id = 'essencial-1m', data_inicio_cobertura = now(), data_expiracao = now() + interval '20 days', papeis = ARRAY['anunciante','ponto'] WHERE id = ${ambos.id}`);
 PG(`INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor) VALUES (${ambos.id}, 'essencial-1m', 149.90)`);
 const ponto = PG(
-  `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status, plano_ponto_id, valor_pago_mensal)
-   VALUES ('Bar Financeiro', 'Rua Três, 3', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${ambos.id}, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
+  `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status)
+   VALUES ('Bar Financeiro', 'Rua Três, 3', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${ambos.id}, 'em_operacao') RETURNING id`,
 );
 PG(`INSERT INTO pagamentos_ponto (ponto_id, competencia, valor, pago_em, forma, observacao) VALUES (${ponto}, date_trunc('month', now() - interval '1 month'), 50, now(), 'pix', 'NOTA INTERNA DO ADMIN')`);
-PG(`INSERT INTO pagamentos_ponto (ponto_id, competencia, valor) VALUES (${ponto}, date_trunc('month', now()), 50)`);
 p = await entrar(ambos);
-await p.waitForSelector('#finRecebimentos:not([hidden])');
-await p.evaluate(() => {
-  window.__semReload = true;
-});
-check('os dois blocos lado a lado', (await p.isVisible('#finPagamentos')) && (await p.isVisible('#finRecebimentos')));
-const receb = await p.textContent('#finRecebimentos');
-check('já recebido e em aberto', /Já recebido[\s\S]*50,00[\s\S]*Em aberto[\s\S]*50,00/.test(receb), receb.slice(0, 200));
-check('linha paga e linha em aberto', /pago em/.test(receb) && /em aberto/.test(receb));
-check('oferta de troca aparece', receb.includes('Trocar os'));
+await p.waitForSelector('#modFinanceiro:not([hidden])');
+const fin = await p.textContent('#modFinanceiro');
+check('só Pagamentos', (await p.isVisible('#finPagamentos')) && !(await p.$('#finRecebimentos')));
+check('nada de repasse, R$ 50 ou troca por tela', !/Recebimentos|repasse|ajuda de custo|R\$ 50|Trocar os/i.test(fin), fin.slice(0, 300));
 const api = await p.evaluate(async () => (await fetch('/anunciantes/me/financeiro', { credentials: 'include' })).text());
 check('anotação interna não sai do servidor', !api.includes('NOTA INTERNA'));
+check('API sem recebimentos', !api.includes('recebimentos'));
+check('repasse antigo continua no banco (histórico)', PG(`SELECT count(*) FROM pagamentos_ponto WHERE ponto_id = ${ponto}`) === '1');
 await shot(p, '1-ambos');
-
-console.log('== troca da ajuda de custo por tela ==');
-p.once('dialog', (d) => d.accept());
-await p.click('[data-acao="trocar-comodato"]');
-await p.waitForFunction(() => !document.querySelector('[data-acao="trocar-comodato"]'), null, { timeout: 8000 }).catch(() => {});
-check('oferta some depois da troca, sem F5', !(await p.$('[data-acao="trocar-comodato"]')) && (await p.evaluate(() => window.__semReload === true)));
-check('ponto passou pra modalidade sem dinheiro', PG(`SELECT plano_ponto_id FROM pontos WHERE id = ${ponto}`) === 'mais-cota');
-check('histórico de recebimentos continua', (await p.textContent('#finRecebimentos')).includes('Já recebido'));
-for (let i = 0; i < 3; i++) {
-  await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await p.waitForTimeout(300);
-}
-await p.waitForTimeout(600);
-check('resync não duplica linhas', (await p.$$('#finRecebimentos .fin-lista li')).length === 2);
 await p.setViewportSize({ width: 390, height: 844 });
 await p.waitForTimeout(400);
 check('celular: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);

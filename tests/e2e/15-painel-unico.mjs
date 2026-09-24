@@ -22,7 +22,10 @@ const falha = (t, d) => {
 };
 const check = (t, cond, d) => (cond ? ok(t) : falha(t, d));
 
-const ANTIGOS = /Meu cupom de indicação|indicados pagantes|3 indicados|Meu anúncio na minha tela|Meus endereços|Minhas telas|Meus recebimentos|Meus pagamentos|painel do meu ponto/i;
+// Modelo antigo do ponto (ADR-016, 24/09/2026) entra na mesma lista: nada
+// de Inicial/Básico, R$ 50, repasse, ajuda de custo ou comodato comercial.
+const ANTIGOS =
+  /Meu cupom de indicação|indicados pagantes|3 indicados|Meu anúncio na minha tela|Meus endereços|Minhas telas|Meus recebimentos|Meus pagamentos|painel do meu ponto|Recebimentos|\bInicial\b|Básico|R\$ ?50|50 reais|repasse|ajuda de custo|comodato|crédito monetário/i;
 
 async function novaConta(prefixo, papeis = "ARRAY['anunciante']") {
   const email = `${prefixo}-${Date.now()}@teste.com`;
@@ -51,14 +54,13 @@ const comPlano = (id) =>
   PG(`UPDATE anunciantes SET plano_id = 'essencial-1m', data_inicio_cobertura = now(), data_expiracao = now() + interval '20 days' WHERE id = ${id}`);
 const comPonto = (id, nome, telaSemSinal) => {
   const ponto = PG(
-    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status, plano_ponto_id, valor_pago_mensal)
-     VALUES ('${nome}', 'Rua Cinco, 5', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${id}, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status)
+     VALUES ('${nome}', 'Rua Cinco, 5', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${id}, 'em_operacao') RETURNING id`,
   );
   PG(
     `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online)
      VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now() - interval '${telaSemSinal ? '5 hours' : '1 minute'}')`,
   );
-  PG(`UPDATE anunciantes SET comodato_plano_id = 'inicial-1m' WHERE id = ${id}`);
 };
 
 async function abrir(conta, nome, largura = 1280) {
@@ -111,7 +113,8 @@ PG(`INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, observacao) VA
 let s = await abrir(ambos, 'ambos');
 for (const m of ['#modPlano', '#modPontos', '#modCriativos', '#modFinanceiro', '#modCreditos', '#dashboardAnuncios'])
   check(`ambos: ${m} visível`, await visivel(s.p, m));
-check('ambos: Pagamentos e Recebimentos', (await visivel(s.p, '#finPagamentos')) && (await visivel(s.p, '#finRecebimentos')));
+check('ambos: só Pagamentos (sem Recebimentos)', (await visivel(s.p, '#finPagamentos')) && !(await s.p.$('#finRecebimentos')));
+check('ambos: benefício do ponto em Meus pontos', (await s.p.textContent('#pontosLista')).includes('+1 crédito por mês'));
 const chips = await s.p.textContent('#resumoConta');
 check('ambos: resumo com plano, pontos, criativos e créditos', /Plano[\s\S]*Essencial[\s\S]*Pontos[\s\S]*1 de 1[\s\S]*Criativos[\s\S]*Créditos[\s\S]*5/.test(chips), chips);
 const alertas = await s.p.textContent('#alertasConta');
@@ -141,7 +144,7 @@ const anunc = await novaConta('unico-anunc');
 comPlano(anunc.id);
 s = await abrir(anunc, 'anunciante');
 check('anunciante: Meus pontos é o convite', (await s.p.textContent('#pontosLista')).includes('possui um comércio'));
-check('anunciante: só Pagamentos', (await visivel(s.p, '#finPagamentos')) && !(await visivel(s.p, '#finRecebimentos')));
+check('anunciante: só Pagamentos', (await visivel(s.p, '#finPagamentos')) && !(await s.p.$('#finRecebimentos')));
 check('anunciante: sem chip de pontos', !(await s.p.textContent('#resumoConta')).includes('Pontos'));
 await comum('anunciante', s);
 await s.ctx.close();
@@ -151,9 +154,10 @@ const dono = await novaConta('unico-dono', "ARRAY['ponto']");
 comPonto(dono.id, 'Mercearia Grade', false);
 s = await abrir(dono, 'dono');
 check('dono: Meus pontos com o ponto', (await s.p.textContent('#pontosLista')).includes('Mercearia Grade'));
-check('dono: Meus criativos pelo comodato', await visivel(s.p, '#modCriativos'));
-check('dono: Recebimentos visível', await visivel(s.p, '#finRecebimentos'));
-check('dono: Plano comercial diz que não tem, e explica o comodato', /Nenhum plano comercial[\s\S]*comodato/.test(await s.p.textContent('#modPlano')));
+check('dono: ser ponto não dá plano — sem Meus criativos', !(await visivel(s.p, '#modCriativos')));
+check('dono: sem Financeiro (nada pago, nada a receber)', !(await visivel(s.p, '#modFinanceiro')));
+check('dono: Plano comercial diz que não tem', /Nenhum plano comercial/.test(await s.p.textContent('#modPlano')));
+check('dono: benefício do ponto, +1 crédito por mês', (await s.p.textContent('#pontosLista')).includes('+1 crédito por mês'));
 check('dono: hero com saudação (não mais "modo não ativado")', (await s.p.textContent('#statusBanner')).includes('Olá'));
 await comum('dono', s);
 await s.ctx.close();

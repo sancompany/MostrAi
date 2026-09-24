@@ -9,9 +9,10 @@ const pool = require('../db/pool');
 // Toda consulta ignora `interno` — o dono testando não é métrica.
 const MESES = 6;
 
-// 1. A MÉTRICA PRINCIPAL, mês a mês. Receita confirmada menos ajuda de custo
-// aos pontos, menos amortização das telas, menos custos fixos. Os três custos
-// são do estado ATUAL da rede, não históricos: o sistema não guarda quanto
+// 1. A MÉTRICA PRINCIPAL, mês a mês. Receita confirmada menos amortização
+// das telas, menos custos fixos (a ajuda de custo aos pontos saiu em
+// 24/09/2026, ADR-016 — crédito não é despesa). Os custos são do estado
+// ATUAL da rede, não históricos: o sistema não guarda quanto
 // custava a rede em março, e fingir que guarda seria pior que dizer isso.
 const SQL_MARGEM = `
   WITH meses AS (
@@ -24,7 +25,9 @@ const SQL_MARGEM = `
   ),
   custo_atual AS (
     SELECT
-      (SELECT COALESCE(SUM(valor_pago_mensal), 0) FROM pontos WHERE status = 'em_operacao') AS pontos,
+      -- Repasse aos pontos acabou em 24/09/2026 (ADR-016): ponto gera créditos,
+      -- não custa dinheiro por mês. Coluna mantida em 0 pra série não mudar de forma.
+      0::numeric AS pontos,
       (SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0)
          FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
         -- p.status nunca foi 'ativo' desde a migration 045 (só a_instalar/em_operacao,

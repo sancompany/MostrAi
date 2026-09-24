@@ -1,7 +1,7 @@
-// Meus criativos — módulo do painel único (Fatia 3, 23/09/2026). A peça
-// comercial e a do comodato (o anúncio do próprio comércio na tela dele) são
-// a MESMA tabela e a mesma cota da conta; antes eram duas telas, "Meus
-// criativos" no painel e "Meu anúncio na minha tela" na página do ponto.
+// Meus criativos — módulo do painel único (Fatia 3, 23/09/2026). O anúncio
+// na rede e o anúncio na tela do próprio comércio são a MESMA peça e a mesma
+// cota da conta; antes eram duas telas, "Meus criativos" no painel e "Meu
+// anúncio na minha tela" na página do ponto.
 //
 // Situações (GET /anunciantes/me/criativos): Em análise · Aprovado (pronto,
 // fora do rodízio agora) · No ar · Fora do ar · Recusado. Substituir uma peça
@@ -70,8 +70,8 @@
     </div>`;
   }
 
-  // Onde a peça aprovada roda — depende do que a conta tem: plano comercial
-  // (pontos da rede) e/ou ponto no ar (a cota do comodato na própria tela).
+  // Onde a peça aprovada roda — depende do que a conta tem: plano (pontos
+  // da rede) e/ou ponto no ar (a tela do próprio comércio).
   function ondeRoda() {
     const lugares = [];
     if (dados.rodaNaRede) lugares.push('nos pontos do seu plano');
@@ -140,7 +140,7 @@
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos`, { credentials: 'include' });
       if (!r.ok) throw new Error();
       dados = await r.json();
-      // Sem plano nenhum (comercial ou comodato) não há o que enviar: o
+      // Sem plano (pago ou benefício) não há o que enviar: o
       // cartão "Escolha um plano" do painel já diz isso.
       if (!dados.temPlano) {
         secao.hidden = true;
@@ -256,7 +256,7 @@
     if (window.ligarEventosDaConta) {
       window.ligarEventosDaConta({
         'creative.updated': carregar,
-        // Plano mudou (assinatura, resgate, comodato): muda o que roda e o teto.
+        // Plano mudou (assinatura, resgate de créditos): muda o que roda e o teto.
         'plan.updated': carregar,
         'payment.updated': carregar,
         'credits.updated': carregar,

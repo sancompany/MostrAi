@@ -21,8 +21,12 @@ julgamento (não fórmula), está dito.
   `segundos_por_hora` (modelo atual), `pontos_incluidos` (quantos pontos da
   rede o plano cobre), `duracao_maxima_segundos` (teto da peça),
   `limite_criativos`, `preco_travado` (mantém o valor de quando assinou),
-  `desconto_comodato_percentual` (desconto pra quem também é dono de
-  ponto).
+  `desconto_comodato_percentual` (aposentado — sem efeito; ADR-016).
+- **Ser ponto não é plano (ADR-016, 24/09/2026)**: ponto com tela ativa
+  gera +1 crédito por mês no ledger único; plano pago × benefício por
+  créditos seguem a prioridade Essencial < Pro < Prime
+  (`plano-administrativo.js`). Inicial/Básico/repasse/ajuda de custo não
+  existem no fluxo ativo.
 - **Benefício comercial é sempre no preço, nunca no tempo**: não existe
   carência, mês grátis ou pular ciclo na assinatura (`CONSTRAINTS.md`).
 
@@ -47,9 +51,9 @@ julgamento (não fórmula), está dito.
 
 1. **Exibição contratada**: `frequenciaBase + déficit da hora anterior +
    prioridade do banco de horas`.
-2. **Cota de autoanúncio** do dono do ponto (permuta do comodato) — hoje
-   zerada por padrão nas duas opções de comodato desde a migration 049; só
-   roda se o admin repuser a cota à mão.
+2. **Cota de autoanúncio** do dono do ponto (permuta do comodato antigo) —
+   zerada em todos os pontos desde a migration 049 (produção: 0 pontos com
+   cota em 24/09/2026); só rodaria se alguém repusesse a cota no banco.
 3. **Peça institucional** (`ID_INSTITUCIONAL`, duração fixa
    `DURACAO_INSTITUCIONAL = 10` segundos) preenche o que sobra.
 
@@ -149,7 +153,7 @@ cortesia, quando marcado):
   desde o início, não pelas exibições realizadas"). `null` se a conta está
   em cortesia (não paga nada) ou sem plano. `valorMensalDaConta` é a MESMA
   função que decide o que o San Checkout cobra — inclui desconto de
-  parceiro e de comodato.
+  parceiro (o crédito de comodato saiu em 24/09/2026, ADR-016).
 
 ## Categoria/concorrência
 

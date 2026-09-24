@@ -482,3 +482,62 @@ Consequências: quem mexer em regra de plano/comodato/selo muda
 `situacao.js` (e o teste `tests/ficha-conta.test.js`), nunca a tela. Pra
 reintroduzir concessão direta de plano, rever este ADR — o dono pediu
 explicitamente que o fluxo normal seja crédito.
+
+## ADR-016 — Ser ponto não é plano: o ponto gera créditos; plano pago × benefício por prioridade de tier (24/09/2026)
+
+Status: Ativa. Supera, no que conflita, a separação comodato/plano comercial
+(migration 077) e o item 2 do ADR-015 sobre "comodato por ponto + modalidade".
+
+Contexto: pedido do dono ("REESTRUTURAÇÃO COMPLETA DO MODELO DE BENEFÍCIOS
+DOS PONTOS"). O modelo antigo tinha duas modalidades de comodato — "Recebe
+os R$ 50" (repasse mensal + plano Inicial, sem poder assinar) e "Troca os
+R$ 50 por tela" (plano Básico + R$ 50 de desconto na mensalidade) —, uma
+fila de repasses no admin e um bônus de anúncio por tempo de ponto.
+
+Decisão:
+1. **Ponto aprovado + tela instalada e ativa = +1 crédito por mês**
+   (`src/creditos/ponto.js`, migration 082). Um por PONTO (não por tela),
+   por competência (mês em America/Sao_Paulo), no MESMO ledger
+   (`creditos_ledger`, tipo `credito_mensal_ponto`, com `ponto_id` e
+   `competencia`). Idempotência no banco: índice único (ponto, competência).
+   Elegibilidade não olha heartbeat (queda de internet não tira o mês);
+   tela desligada pelo admin, ponto arquivado/mesclado, conta excluída ou a
+   conta interna tiram. Candidatura, aprovação sem tela e troca de dono no
+   mês não geram (de novo). Concedido pelo job diário `npm run conciliar`.
+2. **Não existe mais**: Inicial, Básico, repasse mensal, ajuda de custo,
+   crédito monetário de R$ 50, escolha de modalidade (convite, candidatura,
+   admin), bônus de anúncio por tempo de ponto, aba Repasses, card Comodato
+   da ficha, "Comodato" em Ofertas. Rotas viram 410; `planos_ponto` ficam
+   todos `ativo = false`; nada é apagado — `pagamentos_ponto`,
+   `pontos.plano_ponto_id/valor_pago_mensal`, `anunciantes.comodato_plano_id/
+   credito_comodato_mensal` e os planos `inicial-1m`/`comodato-basico` ficam
+   como histórico. Saldo monetário antigo NÃO é convertido em crédito.
+3. **Uma economia de créditos, três planos**: Essencial (1) < Pro (2) <
+   Prime (3). Entre plano PAGO e BENEFÍCIO por créditos vale sempre UM
+   plano efetivo:
+   - pago MAIOR que o benefício em vigor → entra na hora; o benefício fecha
+     como `superado_por_plano_pago`, sem devolver créditos; o cliente vê o
+     aviso ANTES de pagar (`/assinar` → 409 com `confirmacao`);
+   - pago IGUAL ou MENOR → o benefício continua; o período pago fica
+     GUARDADO (`anunciantes.plano_pago_guardado_id/_dias`) e assume quando o
+     benefício acaba, com os dias intactos ("cobrança adiada" — o San
+     Checkout não tem pausa, então renovações durante o benefício somam
+     dias guardados, nunca se perdem);
+   - benefício PROGRAMADO abaixo do novo pago fecha como
+     `superado_por_plano_pago`; igual ou acima continua na fila;
+   - resgate ABAIXO do plano pago em dia é recusado sem consumir crédito;
+     resgate igual/acima entra depois do ciclo pago e o pago volta depois.
+4. **Financeiro**: crédito não é receita nem despesa. MRR soma só
+   assinatura paga (inclui o pago guardado sob um benefício, porque a
+   assinatura segue ativa). Custo de pontos (repasse) saiu da margem.
+5. O comodato JURÍDICO do equipamento (`/comodato.html`) não foi reescrito:
+   é documento legal, listado como pendência do dono (docs/PENDENCIAS.md §J).
+
+Consequências: toda regra de elegibilidade mora em
+`creditos/ponto.js#SQL_PONTOS_ELEGIVEIS` (job, painel e admin leem a mesma
+SQL). Toda regra de convivência pago × benefício mora em
+`plano-administrativo.js` (`preverPagamento`, `aplicarPagamentoNaFila`,
+`ativarBeneficiosAgendados`, `encerrarBeneficiosVencidos`, `encerrar`) e
+é coberta por `tests/prioridade-planos.test.js` (matriz 3×3). Nenhuma nova
+operação no modelo antigo: reintroduzir modalidade, repasse ou plano de
+ponto exige rever este ADR.

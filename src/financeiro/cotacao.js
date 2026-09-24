@@ -5,8 +5,9 @@
 // navegador. Até 23/09/2026 a tela calculava sozinha com `valor_mensal` e
 // divergia do `POST /assinar` em dois pontos: ignorava a promoção vigente
 // (vitrine R$ 597,60, confirmação R$ 672,30, Checkout R$ 597,60) e nunca
-// mostrou o crédito de comodato nem o desconto de parceiro, que o ADR-014
-// manda somar por cima do preço de tabela.
+// mostrou o desconto de parceiro, que o ADR-014 manda somar por cima do preço
+// de tabela. (O crédito de comodato também somava; saiu em 24/09/2026 —
+// ADR-016: ser ponto gera créditos, não desconto em reais.)
 //
 // Por isso aqui não há regra de preço nenhuma: é a MESMA escolha de promoção
 // do `POST /assinar` (`condicaoVigente` com o estado comercial da conta) e a
@@ -33,8 +34,6 @@ async function cotarPlano(conta, plano) {
   // Preço de TABELA (ciclo ou promoção, sem nenhum direito da conta): a mesma
   // função, com uma conta neutra — nem parceiro, nem dona de ponto.
   const tabelaMensal = valorMensalDaConta({ papeis: [] }, plano, simulada);
-  // Só o parceiro (sem o crédito do comodato), pra dizer qual direito pesou.
-  const comParceiroMensal = valorMensalDaConta({ ...conta, papeis: [] }, plano, simulada);
   const valorMensal = valorMensalDaConta(conta, plano, simulada);
 
   return {
@@ -46,8 +45,7 @@ async function cotarPlano(conta, plano) {
     cheioCiclo: multiplicar(cheioMensal, meses),
     tabelaCiclo: multiplicar(tabelaMensal, meses),
     valorCiclo: multiplicar(valorMensal, meses),
-    descontoParceiro: comParceiroMensal < tabelaMensal,
-    creditoComodato: valorMensal < comParceiroMensal,
+    descontoParceiro: valorMensal < tabelaMensal,
     promocao: condicao
       ? {
           selo: condicao.promocao.selo || null,

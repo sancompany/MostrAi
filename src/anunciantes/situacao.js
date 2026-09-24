@@ -10,7 +10,6 @@ const { horasDeTelaPorMes } = require('../lib/pacing');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { criativosComSituacao } = require('./routes');
-const { bloqueiaPlanoComercial } = require('../pontos/comodato');
 
 // SITUAÇÃO DA CONTA — a leitura de domínio da ficha de Conta do admin
 // (revisão de 23/09/2026, pedido do dono: "a interface precisa representar o
@@ -25,24 +24,22 @@ const { bloqueiaPlanoComercial } = require('../pontos/comodato');
 //
 // As regras, na ordem em que a ficha mostra:
 //
-// PLANO (o direito de veicular na rede):
-//   · "Agora" é o que o gerador honra hoje (`repo.planoVigenteId`, o mesmo
-//     COALESCE de src/playlist/gerador.js): o comercial dentro da validade,
-//     senão o produto do comodato, senão nada.
-//   · A ORIGEM do comercial sai de fato gravado, nunca de rótulo livre:
-//     sem `plano_cortesia` = assinatura paga; cortesia com a linha 'ativo' de
+// PLANO (o direito de veicular na rede): só Essencial, Pro ou Prime.
+//   · "Agora" é o que o gerador honra hoje (`repo.planoVigenteId`, mesma
+//     condição de src/playlist/gerador.js): o comercial dentro da validade.
+//   · A ORIGEM sai de fato gravado, nunca de rótulo livre: sem
+//     `plano_cortesia` = assinatura paga; cortesia com a linha 'ativo' de
 //     `planos_administrativos` de origem 'indicacao' = benefício por
-//     créditos; qualquer outra cortesia = cortesia administrativa LEGADA
-//     (o "Conceder plano" saiu da ficha; as que existem valem até o fim).
-//   · "Próximo" é o benefício 'agendado' (espera o ciclo pago terminar).
-//   · "Depois" é o que sobra quando a fila acaba: renovação da assinatura,
-//     o produto do comodato, ou nenhum plano. Nada é cobrado sozinho.
+//     créditos; qualquer outra cortesia = cortesia administrativa LEGADA.
+//   · "Próximo" é o benefício 'agendado', ou o plano PAGO guardado por baixo
+//     de um benefício em vigor (migration 082) — volta quando ele acabar.
+//   · "Depois" é o que sobra quando a fila acaba: renovação da assinatura ou
+//     nenhum plano. Nada é cobrado sozinho.
+//   Inicial/Básico não são mais plano (24/09/2026, ADR-016).
 //
-// COMODATO: direito do PONTO. Só existe com ponto aprovado; a modalidade de
-//   cada ponto decide o que o dono recebe (Inicial: repasse de R$ 50/mês e
-//   não acumula com plano comercial; Básico: crédito de R$ 50/mês na
-//   mensalidade e acumula). Ponto sem modalidade é um furo operacional, dito
-//   como tal — não "sem comodato".
+// PONTO: gera créditos, não plano. Cada ponto aprovado mostra o benefício
+//   (+1 crédito/mês, elegível ou não, último crédito) pela mesma regra do job
+//   (creditos/ponto.js). Não existe card "Comodato" comercial.
 //
 // PONTO × CANDIDATURA: ponto é linha de `pontos` com `anunciante_id` desta
 //   conta e não arquivada (mesma consulta de "Meus pontos" do painel —
@@ -64,12 +61,15 @@ const STATUS_DO_PONTO = {
   inativo: 'Inativo',
 };
 
-const MOTIVO_ENCERRAMENTO = { substituido: 'substituído', cancelado: 'cancelado', vencido: 'venceu' };
+const MOTIVO_ENCERRAMENTO = {
+  substituido: 'substituído',
+  cancelado: 'cancelado',
+  vencido: 'venceu',
+  superado_por_plano_pago: 'plano pago maior entrou',
+};
 
-function nomeDoPlano(plano, idsDeComodato) {
+function nomeDoPlano(plano) {
   if (!plano) return null;
-  // Produto de comodato não tem ciclo: "Básico", não "Básico · Mensal".
-  if (idsDeComodato.has(plano.id)) return plano.nome.replace(/^Plano\s+/i, '');
   return `${plano.nome} · ${CICLOS[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}`;
 }
 
@@ -101,26 +101,9 @@ function diaISO(valor) {
 }
 
 // Linha do tempo do direito de veicular: Agora → Próximo → Depois.
-function linhaDoTempo({
-  conta,
-  comercial,
-  comodatoProduto,
-  assinaturaAtiva,
-  beneficioAtivo,
-  beneficioAgendado,
-  planos,
-  ids,
-  agora,
-}) {
+function linhaDoTempo({ conta, comercial, assinaturaAtiva, beneficioAtivo, beneficioAgendado, planos, agora }) {
   const comercialVigente = !!conta.plano_id && (!conta.data_expiracao || new Date(conta.data_expiracao) >= agora);
   const origem = origemDoComercial(conta, beneficioAtivo);
-  const produtoComodato = comodatoProduto
-    ? {
-        planoId: comodatoProduto.id,
-        nome: nomeDoPlano(comodatoProduto, ids),
-        direitos: direitosDoPlano(comodatoProduto),
-      }
-    : null;
 
   let agoraItem = null;
   if (comercialVigente) {
@@ -128,7 +111,7 @@ function linhaDoTempo({
     agoraItem = {
       tipo: 'comercial',
       planoId: conta.plano_id,
-      nome: nomeDoPlano(comercial, ids) || 'Plano',
+      nome: nomeDoPlano(comercial) || 'Plano',
       origem,
       origemTexto: ORIGENS[origem],
       desde: diaISO(conta.data_inicio_cobertura),
@@ -137,96 +120,100 @@ function linhaDoTempo({
       assinaturaCancelada: origem === 'assinatura' && !assinaturaAtiva,
       direitos: direitosDoPlano(comercial),
     };
-  } else if (produtoComodato) {
-    agoraItem = { tipo: 'comodato', ...produtoComodato, origem: 'comodato', origemTexto: ORIGENS.comodato };
   }
+
+  // Plano pago GUARDADO por baixo do benefício em vigor (migration 082).
+  const guardado =
+    conta.plano_cortesia && conta.plano_pago_guardado_id
+      ? {
+          planoId: conta.plano_pago_guardado_id,
+          nome: nomeDoPlano(planos[conta.plano_pago_guardado_id]) || 'Plano',
+          dias: Number(conta.plano_pago_guardado_dias) || 0,
+          assinaturaAtiva: !!assinaturaAtiva,
+        }
+      : null;
 
   let proximo = null;
   if (beneficioAgendado) {
     const plano = planos[beneficioAgendado.plano_id];
     const o = origemDoBeneficio(beneficioAgendado);
     proximo = {
+      tipo: 'beneficio',
       planoId: beneficioAgendado.plano_id,
-      nome: nomeDoPlano(plano, ids) || 'Plano',
+      nome: nomeDoPlano(plano) || 'Plano',
       origem: o,
       origemTexto: ORIGENS[o],
-      // Começa quando o ciclo pago acabar; se a assinatura renovar antes, o
-      // benefício anda junto, com a mesma duração (ativarBeneficiosAgendados).
+      // Começa no fim do ciclo pago em curso, mesmo que a assinatura renove
+      // (o pago fica guardado — plano-administrativo.js#ativarBeneficiosAgendados).
       comecaEm: diaISO(beneficioAgendado.plano_anterior_valido_ate || conta.data_expiracao),
       validoAte: diaISO(beneficioAgendado.valido_ate),
       esperaAssinatura: !!assinaturaAtiva,
+    };
+  } else if (guardado && agoraItem) {
+    proximo = {
+      tipo: 'pago_guardado',
+      planoId: guardado.planoId,
+      nome: guardado.nome,
+      origem: 'assinatura',
+      origemTexto: ORIGENS.assinatura,
+      // O benefício vale até `validoAte` inclusive; o job do dia seguinte
+      // devolve o pago com `current_date + dias`.
+      comecaEm: agoraItem.validoAte ? somarDiasISO(agoraItem.validoAte, 1) : null,
+      dias: guardado.dias,
+      validoAte: agoraItem.validoAte ? somarDiasISO(agoraItem.validoAte, 1 + guardado.dias) : null,
     };
   }
 
   // O que acontece quando a fila acaba.
   let depois = null;
-  const fimDaFila = proximo ? proximo.validoAte : agoraItem?.tipo === 'comercial' ? agoraItem.validoAte : null;
   if (agoraItem?.tipo === 'comercial' && agoraItem.renovaEm && !proximo) {
     depois = { tipo: 'renova', em: agoraItem.renovaEm, texto: `Renova sozinha em ${dataBR(agoraItem.renovaEm)}.` };
-  } else if (fimDaFila) {
-    depois = produtoComodato
-      ? { tipo: 'comodato', em: fimDaFila, ...produtoComodato, texto: `Volta para ${produtoComodato.nome} (comodato).` }
-      : { tipo: 'sem_plano', em: fimDaFila, texto: 'Fica sem plano comercial. Nada é cobrado automaticamente.' };
+  } else if (proximo?.tipo === 'pago_guardado') {
+    depois = guardado.assinaturaAtiva
+      ? { tipo: 'renova', em: proximo.validoAte, texto: `A assinatura ${guardado.nome} segue renovando.` }
+      : {
+          tipo: 'sem_plano',
+          em: proximo.validoAte,
+          texto: 'Fica sem plano comercial. Nada é cobrado automaticamente.',
+        };
+  } else if (proximo?.tipo === 'beneficio' && agoraItem?.origem === 'assinatura' && assinaturaAtiva) {
+    // Pro pago → benefício Prime → volta ao Pro: o ciclo que renovar durante
+    // o benefício fica guardado e assume quando ele acabar. A assinatura do
+    // San Checkout não pula ciclo (CONSTRAINTS.md), então "adiar a cobrança"
+    // é isto: cobra no calendário de sempre, e os dias pagos esperam.
+    depois = {
+      tipo: 'volta_pago',
+      em: proximo.validoAte,
+      texto: `Volta ao ${agoraItem.nome} pago. O que for pago durante o benefício fica guardado — nenhum dia pago se perde.`,
+    };
+  } else {
+    const fimDaFila = proximo ? proximo.validoAte : agoraItem?.validoAte || null;
+    if (fimDaFila) {
+      depois = { tipo: 'sem_plano', em: fimDaFila, texto: 'Fica sem plano comercial. Nada é cobrado automaticamente.' };
+    }
   }
 
   const vencido =
     conta.plano_id && !comercialVigente
       ? {
           planoId: conta.plano_id,
-          nome: nomeDoPlano(comercial, ids) || 'Plano',
+          nome: nomeDoPlano(comercial) || 'Plano',
           origemTexto: ORIGENS[origem],
           venceuEm: diaISO(conta.data_expiracao),
         }
       : null;
 
-  return { agora: agoraItem, proximo, depois, vencido };
+  return { agora: agoraItem, proximo, depois, vencido, guardado };
+}
+
+function somarDiasISO(iso, dias) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + Number(dias));
+  return d.toISOString().slice(0, 10);
 }
 
 function dataBR(iso) {
   return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '';
-}
-
-// Mesmo formato do resto do admin (fmt em public/admin/index.page.js): "R$ 50,00".
-const reais = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-// Modalidade de comodato de cada ponto aprovado — o que o dono recebe.
-async function modalidadesDosPontos(contaId) {
-  const { rows } = await pool.query(
-    `SELECT p.id, p.status, p.plano_ponto_id, p.valor_pago_mensal,
-            pp.nome AS modalidade_nome, pp.ajuda_custo_mensal, pp.desconto_assinatura_reais,
-            pp.permite_assinar, pp.plano_incluido_id, pp.ordem
-       FROM pontos p LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-      WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'`,
-    [contaId],
-  );
-  return new Map(rows.map((r) => [r.id, r]));
-}
-
-function modalidadeDoPonto(m, planos, ids) {
-  if (!m?.plano_ponto_id) return null;
-  const produto = planos[m.plano_incluido_id];
-  const repasse = Number(m.valor_pago_mensal) || 0;
-  const credito = Number(m.desconto_assinatura_reais) || 0;
-  // Repasse é por PONTO (cada um recebe o seu); o crédito do Básico é UM por
-  // conta, o melhor entre os pontos (comodato.js#sincronizarComodato) — a
-  // frase diz isso pra dois pontos no Básico não parecerem R$ 100.
-  const recebe =
-    repasse > 0
-      ? `Recebe ${reais(repasse)}/mês de repasse por este ponto`
-      : credito > 0
-        ? `Crédito de ${reais(credito)}/mês na mensalidade (um por conta, não soma)`
-        : 'Sem contrapartida em dinheiro';
-  return {
-    id: m.plano_ponto_id,
-    nome: m.modalidade_nome,
-    produtoId: m.plano_incluido_id || null,
-    produto: produto ? nomeDoPlano(produto, ids) : null,
-    repasseMensal: repasse,
-    creditoMensal: credito,
-    acumulaComComercial: m.permite_assinar !== false,
-    ordem: m.ordem || 0,
-    recebe,
-  };
 }
 
 // Saúde operacional resumida, a partir da MESMA situação de tela que o dono
@@ -257,25 +244,22 @@ async function situacaoDaConta(contaId, agora = new Date()) {
 
   const [
     { rows: planosRows },
-    { rows: produtosComodato },
     assinaturaAtiva,
     historico,
     saldo,
     movimentacoes,
     estabelecimentos,
-    modalidades,
+    { rows: statusDosPontos },
     { criativos, limite: limiteNoAr, contaVeicula },
     { rows: categoriaRows },
-    bloqueiaComercial,
   ] = await Promise.all([
     pool.query('SELECT * FROM planos'),
-    pool.query('SELECT DISTINCT plano_incluido_id AS id FROM planos_ponto WHERE plano_incluido_id IS NOT NULL'),
     assinaturasRepo.buscarAtivaDoAnunciante(conta.id),
     planoAdministrativo.historicoDaConta(conta.id),
     creditosRepo.saldo(conta.id),
     creditosRepo.movimentacoes(conta.id, 200),
     meusPontosDaConta(conta.id, agora),
-    modalidadesDosPontos(conta.id),
+    pool.query(`SELECT id, status FROM pontos WHERE anunciante_id = $1 AND status <> 'arquivado'`, [conta.id]),
     criativosComSituacao(conta),
     conta.categoria_id
       ? pool.query(
@@ -285,16 +269,15 @@ async function situacaoDaConta(contaId, agora = new Date()) {
           [conta.categoria_id],
         )
       : { rows: [] },
-    bloqueiaPlanoComercial(conta.id),
   ]);
   const planos = Object.fromEntries(planosRows.map((p) => [p.id, p]));
-  const ids = new Set(produtosComodato.map((r) => r.id));
+  const statusPorPonto = new Map(statusDosPontos.map((r) => [r.id, r.status]));
 
   // ---------- pontos (aprovados) e solicitações (candidaturas em análise) ----------
   const pontos = estabelecimentos
     .filter((e) => e.tipo === 'ponto')
     .map((e) => {
-      const m = modalidades.get(e.id);
+      const status = statusPorPonto.get(e.id) || null;
       return {
         id: e.id,
         nome: e.nome,
@@ -303,12 +286,13 @@ async function situacaoDaConta(contaId, agora = new Date()) {
         cidade: e.cidade,
         uf: e.uf,
         fotoUrl: e.fotoUrl,
-        status: m?.status || null,
-        statusTexto: STATUS_DO_PONTO[m?.status] || 'Inativo',
+        status,
+        statusTexto: STATUS_DO_PONTO[status] || 'Inativo',
         telas: e.telas.length,
         telasComAlerta: e.alertas,
         saude: saudeDoPonto(e.telas),
-        modalidade: modalidadeDoPonto(m, planos, ids),
+        // +1 crédito/mês quando elegível (creditos/ponto.js, via meus-pontos).
+        beneficio: e.beneficio,
         desde: e.desde,
       };
     });
@@ -325,42 +309,16 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       enviadaEm: e.desde,
     }));
 
-  // ---------- comodato: derivado do ponto + modalidade ----------
-  // "Vale o melhor entre os pontos, nunca a soma" — mesma régua de
-  // pontos/comodato.js#sincronizarComodato (ordem maior = melhor).
-  const comModalidade = pontos.filter((p) => p.modalidade?.produtoId);
-  const melhor = comModalidade.reduce((a, p) => (!a || p.modalidade.ordem > a.modalidade.ordem ? p : a), null);
-  const produtoDerivadoId = melhor?.modalidade.produtoId || null;
-  const comodatoProduto = planos[conta.comodato_plano_id] || null;
-  const comodato = pontos.length
-    ? {
-        pontos: pontos.map((p) => ({ id: p.id, nome: p.nome, statusTexto: p.statusTexto, modalidade: p.modalidade })),
-        produto: comodatoProduto
-          ? {
-              planoId: comodatoProduto.id,
-              nome: nomeDoPlano(comodatoProduto, ids),
-              direitos: direitosDoPlano(comodatoProduto),
-            }
-          : null,
-        creditoMensal: Number(conta.credito_comodato_mensal) || 0,
-        repasseMensal: pontos.reduce((s, p) => s + (p.modalidade?.repasseMensal || 0), 0),
-        naoAcumulaComComercial: bloqueiaComercial,
-        pontosSemModalidade: pontos.filter((p) => !p.modalidade).length,
-      }
-    : null;
-
   // ---------- plano ----------
   const beneficioAtivo = historico.find((h) => h.status === 'ativo') || null;
   const beneficioAgendado = historico.find((h) => h.status === 'agendado') || null;
   const plano = linhaDoTempo({
     conta,
     comercial: planos[conta.plano_id] || null,
-    comodatoProduto,
     assinaturaAtiva,
     beneficioAtivo,
     beneficioAgendado,
     planos,
-    ids,
     agora,
   });
   plano.veicula = contaVeicula;
@@ -378,7 +336,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
           : `Encerrado${h.encerrado_motivo ? ` · ${MOTIVO_ENCERRAMENTO[h.encerrado_motivo] || h.encerrado_motivo}` : ''}`;
     return {
       id: h.id,
-      nome: nomeDoPlano(planos[h.plano_id], ids) || 'Plano',
+      nome: nomeDoPlano(planos[h.plano_id]) || 'Plano',
       origem: o,
       origemTexto: ORIGENS[o],
       status: h.status,
@@ -402,6 +360,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       notaInterna: m.nota_interna || null,
       concedidoPor: m.concedido_por,
       origemNome: m.origem_nome,
+      pontoNome: m.ponto_nome || null,
       criadoEm: m.criado_em,
     })),
     // Tabela de referência do modal "Conceder créditos" — a mesma régua do
@@ -458,31 +417,23 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     dados,
     donoDePonto: pontos.length > 0,
     plano,
-    comodato,
     creditos,
     beneficios,
     criativos: { resumo: resumoCriativos, lista: criativos },
     pontos,
     solicitacoes,
   };
-  situacao.alertas = verificarInvariantes({ conta, situacao, produtoDerivadoId, beneficioAtivo, bloqueiaComercial });
+  situacao.alertas = await verificarInvariantes({ conta, situacao, beneficioAtivo, beneficioAgendado });
   return situacao;
 }
 
 // INVARIANTES — o que nunca pode ser verdade ao mesmo tempo. Se o dado
 // quebra uma delas, a ficha diz o que está errado (em vez de mostrar dois
 // cards que se contradizem) e o teste de invariantes pega a regressão.
-function verificarInvariantes({ conta, situacao, produtoDerivadoId, beneficioAtivo, bloqueiaComercial }) {
+async function verificarInvariantes({ conta, situacao, beneficioAtivo, beneficioAgendado }) {
   const alertas = [];
   const { plano, pontos, criativos } = situacao;
   for (const p of pontos) {
-    if (!p.modalidade) {
-      alertas.push({
-        codigo: 'ponto_sem_modalidade',
-        texto: `${p.nome}: ponto aprovado sem modalidade de comodato — o dono não recebe repasse nem crédito, e a conta não ganha o Inicial/Básico até definir.`,
-        pontoId: p.id,
-      });
-    }
     if (p.status === 'em_operacao' && p.telas === 0) {
       alertas.push({
         codigo: 'ponto_ativo_sem_tela',
@@ -491,11 +442,20 @@ function verificarInvariantes({ conta, situacao, produtoDerivadoId, beneficioAti
       });
     }
   }
-  if ((conta.comodato_plano_id || null) !== produtoDerivadoId) {
+  // Crédito de ponto que o dado não sustenta (ponto sem tela, arquivado ou
+  // de outra conta creditando esta) — nunca deveria existir; o job só
+  // concede pela regra única de creditos/ponto.js.
+  const { rows: creditoSemBase } = await pool.query(
+    `SELECT l.competencia, p.nome FROM creditos_ledger l JOIN pontos p ON p.id = l.ponto_id
+      WHERE l.anunciante_id = $1 AND l.tipo = 'credito_mensal_ponto'
+        AND (p.status = 'arquivado' OR NOT EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id))
+      LIMIT 1`,
+    [conta.id],
+  );
+  if (creditoSemBase.length) {
     alertas.push({
-      codigo: 'comodato_dessincronizado',
-      texto:
-        'O comodato gravado na conta não bate com a modalidade dos pontos dela — a próxima troca de modalidade ressincroniza.',
+      codigo: 'credito_de_ponto_sem_base',
+      texto: `${creditoSemBase[0].nome}: há crédito mensal de um ponto hoje arquivado ou sem tela (histórico — confira).`,
     });
   }
   if (beneficioAtivo && !(conta.plano_cortesia && conta.plano_id === beneficioAtivo.plano_id)) {
@@ -505,11 +465,21 @@ function verificarInvariantes({ conta, situacao, produtoDerivadoId, beneficioAti
         'Há um benefício marcado como em vigor, mas a conta está em outro plano — a rotina diária encerra no prazo sem mexer no plano atual.',
     });
   }
-  if (bloqueiaComercial && conta.plano_id && plano.agora?.tipo === 'comercial') {
-    alertas.push({
-      codigo: 'inicial_com_comercial',
-      texto: 'A conta está no Inicial (recebe repasse) e tem plano comercial ao mesmo tempo — os dois não acumulam.',
-    });
+  // Benefício programado MENOR que o plano pago em vigor: a fila não pode
+  // reduzir o plano depois (o pagamento encerra esses — ADR-016).
+  if (beneficioAgendado && plano.agora?.origem === 'assinatura') {
+    const {
+      rows: [tiers],
+    } = await pool.query(
+      `SELECT (SELECT tier FROM planos WHERE id = $1) AS agendado, (SELECT tier FROM planos WHERE id = $2) AS pago`,
+      [beneficioAgendado.plano_id, conta.plano_id],
+    );
+    if (planoAdministrativo.nivelDoTier(tiers.agendado) < planoAdministrativo.nivelDoTier(tiers.pago)) {
+      alertas.push({
+        codigo: 'beneficio_menor_programado',
+        texto: 'Há um benefício programado menor que o plano pago em vigor — ele não deveria estar na fila.',
+      });
+    }
   }
   if (plano.vencido) {
     alertas.push({
