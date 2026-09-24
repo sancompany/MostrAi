@@ -10,11 +10,12 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 (Codex/Jules) antes do reset final do banco — **banco NÃO resetado**.
 
 ## Último commit / deploy
-- MostrAi `main` = **`c6287fd`** (PR #53, I-2) — deployed SHA no Northflank
+- MostrAi `main` = **`4b25c0e`** (PR #56) — deployed SHA no Northflank
   `mostrai/mostrai` (2 instâncias), `/health` ok, cache purgado. Sequência
   da estação: `63952fb` (#49 C+D, migration 088) → `89d73d4` (#50 G+E,
   migration 089) → `1411abd` (#51 H+F) → `08ea4e8` (#52 I-1) → `c6287fd`
-  (#53 I-2). PR #54 (roteiro online + docs) fecha a estação.
+  (#53 I-2) → `2ed9473` (#54 J+K, fecha a estação) → `a975c52` (#55,
+  revisão Codex) → `4b25c0e` (#56, webhook de intenção cancelada).
 - Migrations em produção: até **089** (conferido em `schema_migrations`).
 - Player (`sancompany/Playlist.MostrAi`): `28bc93d` (main).
 - San Checkout (`sancompany/san_checkout`): `f7b1cb9`, `ASAAS_AMBIENTE=sandbox`
@@ -75,7 +76,7 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 
 ## Depois do fecho
 - Revisão Codex dos PRs #50–#54 (24/09, mesma tarde): 8 achados corrigidos
-  em PR de acompanhamento; 1 ficou registrado (PENDENCIAS L.1, drenagem do
+  no PR #55 e o achado do próprio #55 no PR #56; 1 ficou registrado (PENDENCIAS L.1, drenagem do
   banco de horas retentável — espera a decisão de manter o banco).
 
 ## Bloqueios reais

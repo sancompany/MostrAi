@@ -4768,7 +4768,10 @@ IDs das apps do Access saíram do relatório (ficam no histórico do git — nã
 são segredo, mas CONSTRAINTS.md pede fora do repositório). Segunda volta
 (achado do Codex no próprio PR de acompanhamento): pagamento que chega por
 uma intenção já cancelada sem ciclo pago vira pendência "devolver no
-Checkout" em vez de creditar cobertura por cima do link novo.
+Checkout" em vez de creditar cobertura por cima do link novo — e a mesma
+recusa vale pro botão "Aplicar este ciclo" do admin (409, botão escondido);
+"já pagou" enxerga também os ciclos do backfill da migration 087, que não
+têm `assinatura_id` (`cicloContratado.jaTeveCicloPago`).
 
 - [ ] **Banco de horas: drenagem retentável.** Hoje o gerador drena o banco
   só na geração que congelou a hora (`criadaAgora`). Se essa geração falhar

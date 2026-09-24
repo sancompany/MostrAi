@@ -102,4 +102,30 @@ async function situacaoDoCusto(conta, db = pool) {
   };
 }
 
-module.exports = { exibicoesPrevistasMes, registrar, origemDoCicloPago, custoPorExibicaoPrevista, situacaoDoCusto };
+// A assinatura já teve algum ciclo PAGO? Duas fontes, porque o backfill da
+// migration 087 gravou os ciclos antigos ligados só à cobrança
+// (`cobranca_confirmada_id`), sem `assinatura_id` — olhar só a coluna
+// direta tratava assinatura paga antes de 087 como "nunca pagou" (revisão
+// Codex do PR #56). Legado = ciclo sem assinatura_id, da mesma conta e do
+// mesmo plano, cobrado depois de a assinatura nascer.
+async function jaTeveCicloPago(assinatura, db = pool) {
+  const { rows } = await db.query(
+    `SELECT 1
+       FROM ciclos_contratados c
+       LEFT JOIN cobrancas_confirmadas cc ON cc.id = c.cobranca_confirmada_id
+      WHERE c.assinatura_id = $1
+         OR (c.assinatura_id IS NULL AND cc.anunciante_id = $2 AND cc.plano_id = $3 AND cc.criado_em >= $4)
+      LIMIT 1`,
+    [assinatura.id, assinatura.anunciante_id, assinatura.plano_id, assinatura.created_at],
+  );
+  return rows.length > 0;
+}
+
+module.exports = {
+  exibicoesPrevistasMes,
+  registrar,
+  origemDoCicloPago,
+  jaTeveCicloPago,
+  custoPorExibicaoPrevista,
+  situacaoDoCusto,
+};
