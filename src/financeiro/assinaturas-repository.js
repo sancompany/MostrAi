@@ -5,11 +5,15 @@ const pool = require('../db/pool');
 // no instante da adesão, não referência viva. Quem chama já resolveu a
 // condição vigente antes (ver promocoesRepo#condicaoVigente em
 // financeiro/routes.js); esta função só grava o que recebeu.
+//
+// Nasce 'pendente_pagamento' (migration 089, consolidação 24/09/2026): o
+// link foi gerado, ninguém pagou ainda. Vira 'ativa' com o primeiro ciclo
+// pago (aplicarCicloPago) — nunca pelo navegador voltar do Checkout.
 async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual, promocaoValidoAte }) {
   const id = randomUUID();
   const { rows } = await pool.query(
     `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual, promocao_valido_ate)
-     VALUES ($1,$2,$3, COALESCE($4, 'ativa'), $5, $6, $7) RETURNING *`,
+     VALUES ($1,$2,$3, COALESCE($4, 'pendente_pagamento'), $5, $6, $7) RETURNING *`,
     [
       id,
       anuncianteId,
@@ -50,8 +54,22 @@ async function marcarTrocada(id, db = pool) {
 
 async function marcarAtiva(id, db = pool) {
   const { rows } = await db.query(
-    `UPDATE assinaturas SET status = 'ativa' WHERE id = $1 AND status = 'pendente_troca' RETURNING *`,
+    `UPDATE assinaturas SET status = 'ativa' WHERE id = $1 AND status IN ('pendente_troca', 'pendente_pagamento') RETURNING *`,
     [id],
+  );
+  return rows[0] || null;
+}
+
+// Link já gerado e ainda não pago para este plano — reaproveitado por um
+// segundo clique em "Assinar" (o Checkout lê a mesma linha; nada é criado
+// em dobro). Só dentro de 24 h: depois disso é outra sessão de compra.
+async function buscarPendenteDePagamento(anuncianteId, planoId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT * FROM assinaturas
+      WHERE anunciante_id = $1 AND plano_id = $2 AND status = 'pendente_pagamento'
+        AND created_at > now() - interval '24 hours'
+      ORDER BY created_at DESC LIMIT 1`,
+    [anuncianteId, planoId],
   );
   return rows[0] || null;
 }
@@ -71,5 +89,6 @@ module.exports = {
   excluir,
   marcarTrocada,
   marcarAtiva,
+  buscarPendenteDePagamento,
   buscarAtivaDoAnunciante,
 };

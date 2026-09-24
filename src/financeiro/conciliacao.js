@@ -91,13 +91,33 @@ async function avisarRenovacao(assinatura, ultima) {
   return true;
 }
 
+async function cobrancaJaRegistrada(assinatura, ultima) {
+  if (!ultima?.criadoEm) return false;
+  const { rows: criada } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [
+    `criada|${assinatura.id}`,
+  ]);
+  if (!criada.length) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM cobrancas_confirmadas
+      WHERE anunciante_id = $1 AND plano_id = $2
+        AND criado_em BETWEEN $3::timestamptz - interval '10 minutes' AND $3::timestamptz + interval '1 day'
+      LIMIT 1`,
+    [assinatura.anunciante_id, assinatura.plano_id, ultima.criadoEm],
+  );
+  return rows.length > 0;
+}
+
 async function conciliarAssinaturas() {
   const comecouEm = new Date();
+  // 'pendente_pagamento' recente entra também (migration 089): é o link
+  // cujo webhook `criada` pode ter se perdido — a consulta 5.3 diz se a
+  // primeira cobrança entrou; depois de 30 dias sem pagar, é abandono.
   const { rows: assinaturas } = await pool.query(
-    `SELECT s.id, s.anunciante_id, s.plano_id, a.cpf_cnpj
+    `SELECT s.id, s.anunciante_id, s.plano_id, s.status, a.cpf_cnpj
        FROM assinaturas s
        JOIN anunciantes a ON a.id = s.anunciante_id
-      WHERE s.status = 'ativa' AND a.excluido_em IS NULL`,
+      WHERE a.excluido_em IS NULL
+        AND (s.status = 'ativa' OR (s.status = 'pendente_pagamento' AND s.created_at > now() - interval '30 days'))`,
   );
 
   const relato = {
@@ -151,8 +171,16 @@ async function conciliarAssinaturas() {
         relato.jaProcessadas += 1;
         continue;
       }
+      // Primeiro ciclo que entrou pelo webhook 'criada' antes de a Asaas
+      // revelar o chargeId (chave `criada|assinatura`): a cobrança já está
+      // registrada, minutos depois da hora em que a Asaas a criou. Creditar
+      // de novo seria cobertura em dobro por um pagamento só.
+      if (await cobrancaJaRegistrada(assinatura, ultima)) {
+        relato.jaProcessadas += 1;
+        continue;
+      }
 
-      await aplicarCicloPago(assinatura, chave);
+      await aplicarCicloPago(assinatura, chave, null, { valorCobrado: ultima.valorCobrado });
       relato.aplicadas += 1;
     } catch (err) {
       relato.falhas.push({ assinaturaId: assinatura.id, erro: err.message });
