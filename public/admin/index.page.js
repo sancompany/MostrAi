@@ -6354,7 +6354,7 @@ async function renderEventosPendentes(el) {
       <td class="u-ws-normal"><details><summary class="u-pointer u-txt-link">ver payload</summary>
         <pre class="u-fs-72 u-bg-alt u-p-8 u-r-6 u-o-auto u-mw-460">${esc(JSON.stringify(e.payload, null, 2))}</pre></details></td>
       <td class="u-ws-normal">
-        ${e.payload?.planoId ? `<button class="btn primary mini" data-aplicar="${e.id}">Aplicar este ciclo</button> ` : ''}
+        ${e.payload?.planoId && e.aplicavel !== false ? `<button class="btn primary mini" data-aplicar="${e.id}">Aplicar este ciclo</button> ` : ''}
         <button class="btn ghost mini" data-resolver="${e.id}">Marcar resolvido</button>
       </td>
     </tr>`,

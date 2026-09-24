@@ -733,7 +733,16 @@ router.get('/admin/eventos-pendentes', async (_req, res) => {
   const { rows } = await pool.query(
     `SELECT * FROM eventos_assinatura_pendentes WHERE resolvido = false ORDER BY criado_em DESC`,
   );
-  res.json(rows);
+  // `aplicavel: false` = pagamento de intenção já cancelada sem ciclo pago:
+  // o botão "Aplicar este ciclo" some (e o POST abaixo recusa de qualquer
+  // jeito) — creditar aqui daria cobertura por cima do link novo.
+  const resposta = [];
+  for (const e of rows) {
+    const assinatura = e.payload?.planoId ? await assinaturasRepo.buscarPorId(e.payload.planoId) : null;
+    const aplicavel = !!assinatura && !(await sanCheckout.intencaoCanceladaSemPagamento(assinatura));
+    resposta.push({ ...e, aplicavel });
+  }
+  res.json(resposta);
 });
 
 // Aplicar o ciclo que ficou pendente. "Marcar resolvido" só apagava o item da
@@ -756,6 +765,15 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
 
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
   if (!anunciante) return res.status(400).json({ erro: 'a conta dessa assinatura não existe mais' });
+
+  // A mesma recusa do webhook: intenção cancelada sem ciclo pago não se
+  // aplica nem à mão — a chave do `criada` (`criada|<assinatura>`) e a deste
+  // botão (`chargeId|status`) são diferentes, então a dedupe não seguraria.
+  if (await sanCheckout.intencaoCanceladaSemPagamento(assinatura)) {
+    return res.status(409).json({
+      erro: 'essa assinatura é uma intenção de compra já cancelada e nunca paga — devolva no Checkout e marque resolvido; creditar daria cobertura em dobro',
+    });
+  }
 
   // Confere no Checkout ANTES de creditar. Sem isto, apertar o botão num
   // evento de "cobrança falhou" — que também traz planoId — daria cobertura

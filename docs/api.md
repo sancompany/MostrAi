@@ -327,9 +327,9 @@ das rotas em 24/09/2026 (**410**; dado e histórico ficam no banco).
 | GET/PATCH | `/admin/comissoes*` | **410 desde 24/09/2026** — programa de vendedores aposentado; as tabelas `comissoes`/`vendedores` ficam no banco como histórico (a exportação LGPD ainda as lê) |
 | GET/PATCH | `/admin/vendedores*` | **410** — idem |
 | GET/POST/PATCH/DELETE | `/admin/custos-fixos*` | **410 desde 24/09/2026** — a tela saiu em 22/09/2026 (sem mini-ERP no admin); o resumo continua somando o que há em `custos_fixos` |
-| GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo |
+| GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo. `aplicavel: false` quando o evento aponta pra uma intenção de compra já cancelada e nunca paga (link antigo) — o front esconde "Aplicar este ciclo" e o POST recusa com 409 (revisão Codex do PR #56) |
 | PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido (só arquiva — **não credita nada**) |
-| POST | `/admin/eventos-pendentes/:id/aplicar` | credita o ciclo daquele evento de verdade. Confere a cobrança no San Checkout ANTES (`consultarAssinatura`): um evento de "cobrança falhou" também traz `planoId`, e sem a conferência o botão daria cobertura por dinheiro que não entrou. 400 se o evento não aponta pra assinatura conhecida, se a conta sumiu ou se já foi resolvido |
+| POST | `/admin/eventos-pendentes/:id/aplicar` | credita o ciclo daquele evento de verdade. Confere a cobrança no San Checkout ANTES (`consultarAssinatura`): um evento de "cobrança falhou" também traz `planoId`, e sem a conferência o botão daria cobertura por dinheiro que não entrou. 400 se o evento não aponta pra assinatura conhecida, se a conta sumiu ou se já foi resolvido; 409 se a assinatura é uma intenção cancelada e nunca paga (a mesma recusa do webhook — devolver no Checkout, não creditar) |
 | GET | `/admin/arrependimentos` | devoluções por arrependimento, pendentes primeiro |
 | POST | `/admin/arrependimentos/:id/estornado` | `{comprovante}` — fecha o pedido depois de devolver no Checkout/Asaas. 404 se já estornado |
 

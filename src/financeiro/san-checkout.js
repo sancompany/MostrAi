@@ -316,6 +316,21 @@ async function registrarCreditoIndicacaoSeHouver(anunciante, cobrancaConfirmadaI
 // abaixo) só ficam registrados pro admin revisar, pra nunca derrubar o
 // acesso de alguém sem intervenção humana.
 const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
+
+// Intenção de compra cancelada AQUI (link antigo morto por um link novo, ou
+// pela exclusão da conta) que nunca teve ciclo pago. Um pagamento que chega
+// pra ela (a tela do Checkout já estava aberta) NÃO pode creditar: criaria
+// cobertura e uma assinatura na Asaas por cima da nova — cobrança em dobro
+// (revisão Codex dos PRs #55/#56). Vale pro webhook E pro botão "Aplicar
+// este ciclo" do admin — a mesma pergunta, respondida num lugar só.
+// Assinatura que JÁ pagou (inclusive antes da migration 087) e foi cancelada
+// depois não é isso: o ciclo que a Asaas cobrou entra, o dinheiro entrou.
+const MOTIVO_INTENCAO_CANCELADA =
+  'pagamento de uma intenção de compra já cancelada (link antigo) — devolver no Checkout, nada foi creditado';
+async function intencaoCanceladaSemPagamento(assinatura) {
+  if (assinatura?.status !== 'cancelada') return false;
+  return !(await cicloContratado.jaTeveCicloPago(assinatura));
+}
 // Chave de deduplicação do evento. O contrato manda tratar o processamento
 // como idempotente pela chave natural `chargeId` + `status` (API.md do
 // Checkout, 4.3.6) — só que o payload de assinatura NÃO carrega chargeId
@@ -440,15 +455,8 @@ async function processarWebhookAssinatura(payload) {
   // foi cancelada depois (`ciclos_contratados` tem linha dela) continua
   // creditando o ciclo que a Asaas cobrou: o dinheiro entrou, a cobertura
   // vale.
-  if (
-    assinatura.status === 'cancelada' &&
-    EVENTOS_QUE_CREDITAM.has(payload.evento) &&
-    (await cicloContratado.origemDoCicloPago(pool, assinatura.id)) === 'compra'
-  ) {
-    return registrarPendencia(
-      payload,
-      'pagamento de uma intenção de compra já cancelada (link antigo) — devolver no Checkout, nada foi creditado',
-    );
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento) && (await intencaoCanceladaSemPagamento(assinatura))) {
+    return registrarPendencia(payload, MOTIVO_INTENCAO_CANCELADA);
   }
 
   // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
@@ -933,4 +941,6 @@ module.exports = {
   consultarAssinatura,
   chaveDoEvento,
   aplicarCicloPago,
+  intencaoCanceladaSemPagamento,
+  MOTIVO_INTENCAO_CANCELADA,
 };

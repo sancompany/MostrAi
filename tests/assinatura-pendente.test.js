@@ -15,7 +15,31 @@ process.env.SAN_CHECKOUT_KEY = process.env.SAN_CHECKOUT_KEY || 'chave-teste';
 process.env.SAN_CHECKOUT_API_URL = process.env.SAN_CHECKOUT_API_URL || 'https://checkout.exemplo';
 const sc = require('../src/financeiro/san-checkout');
 const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+const cicloContratado = require('../src/financeiro/ciclo-contratado');
 const { conciliarAssinaturas } = require('../src/financeiro/conciliacao');
+
+// Rotas do financeiro montadas direto (a proteção do /admin é do server.js,
+// não do router) — só pra bater no botão "Aplicar este ciclo".
+async function subirAdmin() {
+  const express = require('express');
+  require('express-async-errors');
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, proximo) => {
+    req.session = { adminUsuario: 'teste' };
+    proximo();
+  });
+  app.use(require('../src/financeiro/routes').router);
+  app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const chamar = async (metodo, caminho) => {
+    const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { 'Content-Type': 'application/json' } });
+    return { status: r.status, corpo: await r.json().catch(() => null) };
+  };
+  return { chamar, fechar: () => new Promise((r) => server.close(r)) };
+}
 
 const PLANO = 'essencial-1m';
 
@@ -270,9 +294,61 @@ test('pagamento de intenção já cancelada (link antigo) vira pendência, não 
     assert.equal(cob.length, 0, 'nenhuma cobrança registrada');
     const contaDepois = (await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id])).rows[0];
     assert.equal(contaDepois.plano_id, null, 'nenhuma cobertura concedida');
+
+    // O botão do admin também recusa (chave diferente — a dedupe não seguraria).
+    const admin = await subirAdmin();
+    try {
+      const {
+        rows: [pendencia],
+      } = await pool.query(
+        "SELECT id FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+        [velha.id],
+      );
+      const lista = await admin.chamar('GET', '/admin/eventos-pendentes');
+      assert.equal(lista.status, 200);
+      assert.equal(lista.corpo.find((e) => e.id === pendencia.id)?.aplicavel, false, 'lista marca como não aplicável');
+      const aplicar = await admin.chamar('POST', `/admin/eventos-pendentes/${pendencia.id}/aplicar`);
+      assert.equal(aplicar.status, 409);
+      assert.match(aplicar.corpo.erro, /intenção de compra já cancelada/);
+      assert.equal(
+        (await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id])).rows.length,
+        0,
+      );
+    } finally {
+      await admin.fechar();
+    }
     await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1", [velha.id]);
   } finally {
     await apagar(c.id, rodada);
+  }
+});
+
+test('assinatura paga antes da migration 087 (ciclo sem assinatura_id) e cancelada depois NÃO é intenção sem pagamento', async () => {
+  const c = await conta();
+  try {
+    const a = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const {
+      rows: [cobranca],
+    } = await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 10, 'pendente') RETURNING id`,
+      [c.id, PLANO],
+    );
+    // Linha como o backfill da 087 gravou: ligada só à cobrança.
+    await pool.query(
+      `INSERT INTO ciclos_contratados (anunciante_id, plano_id, cobranca_confirmada_id, origem, ciclo_meses, valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+       VALUES ($1, $2, $3, 'compra', 1, 10, 0, 0)`,
+      [c.id, PLANO, cobranca.id],
+    );
+    await assinaturasRepo.marcarCancelada(a.id);
+    const cancelada = await assinaturasRepo.buscarPorId(a.id);
+    assert.equal(await cicloContratado.jaTeveCicloPago(cancelada), true, 'o ciclo legado conta como pago');
+    assert.equal(await sc.intencaoCanceladaSemPagamento(cancelada), false, 'renovação em trânsito continua creditando');
+    // E uma intenção nova, cancelada sem pagar, continua sendo recusada.
+    const nova = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    assert.equal(await sc.intencaoCanceladaSemPagamento(await assinaturasRepo.buscarPorId(nova.id)), true);
+  } finally {
+    await apagar(c.id);
   }
 });
 
