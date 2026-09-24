@@ -1,7 +1,35 @@
 # Current Handoff
 
 ## Updated
-2026-09-23
+2026-09-24
+
+## Rodada de responsividade/mobile do site público (24/09/2026, este agente)
+Pedido do dono: rodada final de RESPONSIVIDADE do site público — sem
+redesign, sem mexer em regra comercial, admin ou painel da conta. Detalhe
+completo (R1–R16 corrigidos, T1–T5 textos/preço corrigidos com evidência,
+D1–D5 achados que são decisão do dono) em `docs/PENDENCIAS.md`, seção
+"Rodada de responsividade e experiência mobile do site público".
+- **Onde mora:** `public/style.css` — o que é só do site público está no
+  bloco final "SITE PÚBLICO — camada responsiva", com escopo
+  `:where([data-layout="publico"], [data-layout="minimo"])` (especificidade
+  zero, painel e admin não mudam). Componentes exclusivos do site (hero,
+  banner, planos, FAQ, rede) foram editados no próprio lugar. Réguas: 600 /
+  768 / 961 (menu) / 1280. Tokens novos: `--fab`, `--fab-margem`.
+- **`public/layout.js`:** hambúrguer só nos layouts `publico` e `conta`
+  (mínimo mostra o único botão); véu `#menuVeu` fecha ao tocar fora; Esc
+  devolve foco; `body.menu-aberto` esconde o WhatsApp; rodapé virou
+  `<nav class="footer-links">` (separador "·" é CSS). "Criar conta"/"Entrar"
+  num grupo `.nav-acoes` (`display: contents` no desktop).
+- **Achado T1 (preço):** `confirmar-plano.page.js` ignorava a promoção que o
+  `POST /assinar` aplica (confirmação dizia R$ 672,30, cobrança R$ 597,60).
+  Agora usa `/promocoes/vigentes` com sessão e a mesma conta de centavos.
+- **Como medir de novo:** o medidor e o roteiro de interação desta rodada
+  ficaram fora do repositório (descartáveis, como manda o OPERATIONS.md);
+  o método está descrito na seção da PENDENCIAS. Pegadinhas: rodar os
+  testes com `NODE_ENV=test` (senão o LISTEN do SSE segura cada arquivo de
+  teste aberto e o `npm test` "trava"); o Chromium do Playwright não usa o
+  proxy do ambiente, então mapa do Google e ViaCEP aparecem quebrados no
+  local — não é bug.
 
 ## Revisão da ficha de Conta do admin (23/09/2026, noite, este agente)
 Pedido do dono (32 seções): revisar, corrigir e refinar Admin → Contas →

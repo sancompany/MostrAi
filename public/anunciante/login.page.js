@@ -1,10 +1,22 @@
 const form = document.getElementById('formLogin');
 const msg = document.getElementById('msg');
+
+// O "Criar conta" do cabeçalho leva o plano escolhido junto (mesmo motivo do
+// "Entrar" no cadastro): o cadastro já continua pra confirmação com ele.
+(function levarPlanoProCadastro() {
+  const plano = new URLSearchParams(window.location.search).get('plano');
+  const criar = document.querySelector('header.site nav a[href="/anunciante/cadastro.html"]');
+  if (plano && criar) criar.href = `/anunciante/cadastro.html?plano=${encodeURIComponent(plano)}`;
+})();
+// Trava o botão enquanto o login responde (o hash de senha leva um tempo
+// de propósito); destrava em qualquer desfecho que não seja entrar.
+const botaoEntrar = form.querySelector('[type="submit"]');
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   msg.textContent = 'Entrando...';
   msg.className = 'form-msg';
   const dados = Object.fromEntries(new FormData(form));
+  botaoEntrar.disabled = true;
   try {
     const r = await fetch(`${API_BASE_URL}/anunciantes/login`, {
       method: 'POST',
@@ -23,6 +35,7 @@ form.addEventListener('submit', async (e) => {
       else if (r.status === 403 && corpo.erro) msg.textContent = window.frase(corpo.erro);
       else msg.textContent = 'E-mail ou senha inválidos.';
       msg.className = 'form-msg err';
+      botaoEntrar.disabled = false;
       return;
     }
     const plano = new URLSearchParams(window.location.search).get('plano');
@@ -30,5 +43,6 @@ form.addEventListener('submit', async (e) => {
   } catch {
     msg.textContent = 'Não foi possível entrar agora. Tente novamente.';
     msg.className = 'form-msg err';
+    botaoEntrar.disabled = false;
   }
 });

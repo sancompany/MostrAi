@@ -4,10 +4,12 @@ document.getElementById('voltarLogin').href = '/anunciante/login.html';
 
 const form = document.getElementById('formEsqueci');
 const msg = document.getElementById('msg');
+const botaoEnviar = form.querySelector('[type="submit"]');
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   msg.textContent = 'Enviando...';
   msg.className = 'form-msg';
+  botaoEnviar.disabled = true;
   try {
     await fetch(`${API_BASE_URL}/anunciantes/esqueci-senha`, {
       method: 'POST',
@@ -21,5 +23,7 @@ form.addEventListener('submit', async (e) => {
   } catch {
     msg.textContent = 'Não foi possível enviar agora. Tente novamente em instantes.';
     msg.className = 'form-msg err';
+  } finally {
+    botaoEnviar.disabled = false;
   }
 });

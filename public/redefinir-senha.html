@@ -39,14 +39,14 @@
         <form class="card" id="formSenha">
           <div>
             <label for="senha">Nova senha</label>
-            <input id="senha" type="password" data-senha required>
+            <input id="senha" type="password" autocomplete="new-password" data-senha required>
           </div>
           <div>
             <label for="senha_confirma">Confirmar nova senha</label>
-            <input id="senha_confirma" type="password" data-senha-confirma required>
+            <input id="senha_confirma" type="password" autocomplete="new-password" data-senha-confirma required>
           </div>
           <button class="btn primary block" type="submit">Salvar senha</button>
-          <p class="form-msg" id="msg"></p>
+          <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
         </form>
       </div>
     </section>

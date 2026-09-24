@@ -59,18 +59,18 @@
          23/09/2026, Parte 4: "só o preço mudar não transmite sensação de
          promoção" — camada 1 aqui, camada 2 é a aplicação nos cards/ciclos
          logo abaixo, que já existia). Mesmo visual do banner da Home. -->
-    <section class="tight" id="promocaoPlanosBanner" hidden>
+    <section class="tight secao-promo" id="promocaoPlanosBanner" hidden>
       <div class="wrap"><div id="promocaoPlanosTopo"></div></div>
     </section>
 
     <section class="tight">
       <div class="wrap">
         <div class="aviso-rede" id="avisoRede" hidden></div>
-        <div class="cycle-toggle" id="cycleToggle">
-          <button data-meses="1">Mensal</button>
-          <button data-meses="3" class="active">Trimestral <small></small></button>
-          <button data-meses="6">Semestral <small></small></button>
-          <button data-meses="12">Anual <small></small></button>
+        <div class="cycle-toggle" id="cycleToggle" role="group" aria-label="Ciclo de pagamento">
+          <button type="button" data-meses="1" aria-pressed="false">Mensal</button>
+          <button type="button" data-meses="3" class="active" aria-pressed="true">Trimestral <small></small></button>
+          <button type="button" data-meses="6" aria-pressed="false">Semestral <small></small></button>
+          <button type="button" data-meses="12" aria-pressed="false">Anual <small></small></button>
         </div>
         <p class="cycle-note" id="cycleNote">Cobrança única a cada ciclo (3/6/12 meses), e o valor mensal exibido é só pra referência de quanto sai por mês.</p>
 
@@ -109,8 +109,8 @@
 
           <details>
             <summary>Já tenho conta como ponto. Preciso criar outra?</summary>
-            <p>Não. É uma conta só: o mesmo login anuncia e hospeda tela. No seu painel existem os modos
-              <em>Anúncios</em> e <em>Meu ponto</em>, e você ativa o que faltar em um clique, sem novo cadastro e sem nova senha.</p>
+            <p>Não. É uma conta só: o mesmo login anuncia e hospeda tela. A campanha e os seus pontos ficam no
+              mesmo painel, e o que faltar você pede de lá mesmo, sem novo cadastro e sem nova senha.</p>
           </details>
 
           <details>
@@ -133,7 +133,7 @@
 
           <details>
             <summary>E se eu não pagar a renovação?</summary>
-            <p>A cobertura vence na data e a conta fica suspensa até a regularização. O anúncio sai do ar, mas a conta, o histórico e os vídeos continuam lá. Assim que a cobrança é confirmada, tudo volta.</p>
+            <p>A cobertura vence na data e o anúncio sai do ar até a regularização. A conta não é suspensa: o acesso ao painel, o histórico e os vídeos continuam lá. Assim que a cobrança é confirmada, tudo volta.</p>
           </details>
         </div>
       </div>

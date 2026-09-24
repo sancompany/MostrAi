@@ -1,9 +1,23 @@
 const form = document.getElementById('formCadastro');
 const msg = document.getElementById('msg');
+
+// Quem veio de "Assinar X" na vitrine e já tem conta troca de tela pelo
+// "Entrar" do cabeçalho — sem o ?plano= ele perderia o plano escolhido no
+// caminho (o login sabe continuar pra confirmação quando o recebe).
+(function levarPlanoProLogin() {
+  const plano = new URLSearchParams(window.location.search).get('plano');
+  const entrar = document.querySelector('header.site nav a[href="/anunciante/login.html"]');
+  if (plano && entrar) entrar.href = `/anunciante/login.html?plano=${encodeURIComponent(plano)}`;
+})();
+// Trava o botão enquanto a conta é criada: dois toques seguidos no celular
+// mandavam dois cadastros, e o segundo voltava "e-mail já cadastrado" pra
+// quem acabou de criar a conta.
+const botaoCriar = form.querySelector('[type="submit"]');
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   msg.textContent = 'Enviando...';
   msg.className = 'form-msg';
+  botaoCriar.disabled = true;
   form.querySelectorAll('.campo-err').forEach((c) => c.classList.remove('campo-err'));
   const dados = Object.fromEntries(new FormData(form));
   dados.aceitou_termos = form.aceitou_termos.checked;
@@ -44,6 +58,7 @@ form.addEventListener('submit', async (e) => {
     if (r.status === 409) {
       msg.textContent = 'Esse e-mail já tem cadastro. Tente entrar.';
       msg.className = 'form-msg err';
+      botaoCriar.disabled = false;
       return;
     }
     if (!r.ok) {
@@ -61,9 +76,14 @@ form.addEventListener('submit', async (e) => {
       msg.className = 'form-msg err';
       const campo = corpo.campo && form.elements[corpo.campo];
       if (campo) {
+        // Campo do bloco recolhido (Responsável): abre antes de focar, senão
+        // o foco não acontece e a pessoa não vê qual campo o servidor recusou.
+        const recolhido = campo.closest('details');
+        if (recolhido) recolhido.open = true;
         campo.classList.add('campo-err');
         campo.focus();
       }
+      botaoCriar.disabled = false;
       return;
     }
     msg.textContent = 'Conta criada!';
@@ -75,5 +95,6 @@ form.addEventListener('submit', async (e) => {
   } catch {
     msg.textContent = 'Não foi possível criar a conta agora. Tente novamente.';
     msg.className = 'form-msg err';
+    botaoCriar.disabled = false;
   }
 });
