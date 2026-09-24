@@ -8,6 +8,9 @@ Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
 - `docs/specs/2026-09-12-mostrai.md` — por que existe, e o escopo validado
 - `docs/erros/` — o que já deu errado aqui; não repita
 - `docs/PENDENCIAS.md` — o que falta, e o que só o dono faz
+- `docs/CONSOLIDATION_STATE.md` — estado da consolidação final (24/09/2026):
+  o que vale, o que saiu, e as decisões abertas; relatório em
+  `docs/relatorio-consolidacao-final-2026-09-24.md`
 - `docs/api.md` — o mapa das rotas
 - `README.md` — como rodar e testar
 - `RUNBOOK.md` — como operar, reverter e restaurar
