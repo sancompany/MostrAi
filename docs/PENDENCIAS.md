@@ -4214,3 +4214,64 @@ categoria, repasse, mensagem respondida, aprovação e recusa); screenshots
 em 1920/1440/1024/390 sem rolagem horizontal; estado vazio em todas as
 telas; nenhum erro de console além dos esperados no ambiente local sem
 Supabase (upload de arquivo recusado pelo storage).
+
+## Player V2 — integração definitiva com o Mostraí Player (24/09/2026)
+
+Plano, divergências e ordem de trabalho em
+`docs/specs/2026-09-23-player-v2-backend.md`. Fonte de verdade do protocolo:
+o código do Player (`sancompany/Playlist.MostrAi`, main) — onde o contrato ou
+o checklist divergem dele, vale o código (ex.: regime `HORAS_24`, não
+`24_HOURS`; o Player não reporta Device Owner/capacidades/watchdog, então a
+ficha não mostra).
+
+**[x] Construído e testado** (migration 081, `src/player/`, `src/lib/cofre.js`,
+`src/lib/operacao-tela.js`, `src/lib/status-tela.js`, admin Rede):
+provisionamento por token de uso único; credencial só como hash com
+rotação/sobreposição e revogação; hello; heartbeat como retrato com eventos
+de transição; saúde derivada numa régua só; config desejada × aplicada;
+playlist marcada como desatualizada por trigger e `contentHash` do MP4
+normalizado; `played` em lote sem 400 de conteúdo; OTA com release só ativável
+depois de assinatura conferida; UI Rede → Ponto → Tela (ficha em 5 blocos,
+SSE); visão simplificada do dono; V1 (`/player.html`) continua funcionando.
+Testes: `tests/player-v2.test.js`, `tests/operacao-tela.test.js`,
+`tests/status-tela.test.js`, e2e `tests/e2e/16-rede-player-v2.mjs`.
+
+**Efeito no negócio que aparece no deploy:** a regra de status do ponto
+mudou — "em operação" exige uma tela ativa que **já deu sinal** alguma vez.
+Ponto marcado em operação cuja tela nunca falou passa a aparecer como
+"Aguardando instalação". É correção, não regressão: antes o admin afirmava
+operação que nunca foi vista.
+
+**[ ] Depende do aparelho real (só testável com a TV):**
+- Provisionar um Player V2 de verdade com o `mostrai-config.json` baixado do
+  admin de produção e ver a ficha passar de "Aguardando primeiro sinal" a
+  "Operando" sem recarregar.
+- Conferir que `desvioRelogioMs`, `fila` e `update.estado` chegam com os
+  valores que o Player manda em campo (os testes usam o formato do código).
+- Rotação de credencial com a TV ligada: a chave nova chega no heartbeat e a
+  antiga para de valer depois do primeiro uso da nova.
+- OTA ponta a ponta: publicar um APK, conferir a assinatura, ativar, ver
+  `update.estado` ir de `DOWNLOADING` a `READY`/instalado.
+
+**[ ] Só o dono faz:**
+- Guardar o keystore de assinatura do APK e conferir a assinatura de cada
+  release antes de ativá-la (o sistema nunca ativa sozinho — CHECK no banco).
+- Decidir se as telas V1 em campo migram para o app V2 (o V1 segue aceito
+  sem prazo).
+
+**[ ] Depois da validação em produção:**
+- Migration 082: zerar `dispositivos.aparelho_id` (a chave V1 em texto puro).
+  A 081 já gravou o hash de todas e a autenticação só lê o hash; a coluna
+  ficou só para poder voltar o deploy sem perder a chave das TVs V1.
+- `contentHash` só existe para criativo normalizado depois da 081. Os antigos
+  vão sem hash (o Player aceita — o campo é opcional); preencher exige baixar
+  cada MP4 do storage e calcular — script de uma vez, fora do deploy.
+
+**[ ] Encontrado de passagem, fora do escopo (hipótese com endereço):**
+- `tests/e2e/02-assinatura-webhook-comissao.sh` já falhava na main (roteiro da
+  era do vendedor) — não mexido.
+- `DELETE` de criativo (`src/anunciantes/routes.js`, remoção no storage) apaga
+  `${id}.mp4`; conferir se, depois de "substituir", o arquivo vivo continua
+  com esse nome ou fica órfão no bucket.
+- Upload de foto na candidatura dá 500 no ambiente local sem Supabase
+  configurado (esperado localmente; em produção funciona).
