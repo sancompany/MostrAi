@@ -53,7 +53,7 @@ r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "ponto criado com
 esperar "ajuda de custo copiada da opção de comodato" '"ajudaCustoMensal":[1-9]' "$r"
 PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
 # Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 1"}'); esperar "Tela 1 criada" 'Tela 1' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "Tela 1 criada" '"nome":"Tela 1"' "$r"
 DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 
 echo "== convite aceito por conta logada =="
@@ -81,6 +81,9 @@ $PG -c "UPDATE planos_ponto SET plano_bonus_id='destaque-1m', plano_bonus_apos_m
 # meses, é o que põe o ponto em operação e conta o tempo de casa.
 INSTALADO=$(date -d '7 months ago' +%F)
 r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d "{\"status\":\"ativo\",\"instalado_em\":\"$INSTALADO\"}"); esperar "tela ativada, instalada há 7 meses" '"status":"ativo"' "$r"
+# Player V2: o ponto só entra em operação com o primeiro sinal da tela.
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave-legada); CHAVE=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
+r=$(curl -s -X POST $B/player/$DISP/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "primeiro sinal da tela" '"ok":true' "$r"
 $PG -c "UPDATE anunciantes SET plano_id=NULL, data_expiracao=NULL WHERE id=$LIA" >/dev/null
 r=$(curl -s -b lia.txt $B/conta/modos); esperar "7 meses como ponto com módulo de 6 → bônus de anúncio disponível" '"anuncio":\{[^}]*"disponivel":true' "$r"
 r=$(curl -s -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}')

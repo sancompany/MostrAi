@@ -55,8 +55,8 @@ const comPonto = (id, nome, telaSemSinal) => {
      VALUES ('${nome}', 'Rua Cinco, 5', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${id}, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
   );
   PG(
-    `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online)
-     VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now() - interval '${telaSemSinal ? '5 hours' : '1 minute'}')`,
+    `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, primeiro_sinal_em, ultima_vez_online)
+     VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now() - interval '1 day', now() - interval '${telaSemSinal ? '5 hours' : '1 minute'}')`,
   );
   PG(`UPDATE anunciantes SET comodato_plano_id = 'inicial-1m' WHERE id = ${id}`);
 };

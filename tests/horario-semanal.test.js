@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { validar, resumo, DIAS, estaAbertoAgora } = require('../src/lib/horario-semanal');
+const { validar, resumo, DIAS } = require('../src/lib/horario-semanal');
 
 // Horário de funcionamento do ponto, por dia da semana (migration 066,
 // 22/09/2026, pedido do dono).
@@ -81,72 +81,6 @@ test('resumo() de null é null (ponto sem horário informado)', () => {
   assert.strictEqual(resumo(null), null);
 });
 
-// estaAbertoAgora() (revisão final da Visão Geral, 23/09/2026) — 2026-09-23
-// é uma quarta-feira, usada como dia fixo nestes testes. Offset `-03:00`
-// EXPLÍCITO em todo literal daqui pra baixo (achado em revisão de PR): sem
-// ele, `new Date('...T12:00:00')` é interpretado no fuso do PROCESSO, não
-// de São Paulo — neste projeto o servidor roda em UTC, e a função lê a
-// wall-clock de Matão (`relogioEmMatao`, src/lib/horario-semanal.js) através
-// de `Intl` independente do fuso do processo. Data com offset fixo garante o
-// mesmo instante (e a mesma leitura local) rodando em qualquer máquina.
-test('estaAbertoAgora(): null (sem horário cadastrado) devolve null, não false', () => {
-  assert.strictEqual(estaAbertoAgora(null, new Date('2026-09-23T12:00:00-03:00')), null);
-});
-
-test('estaAbertoAgora(): dentro da janela do dia é true, fora é false', () => {
-  const base = Object.fromEntries(DIAS.map((d) => [d, null]));
-  const horario = { ...base, qua: { abre: '09:00', fecha: '18:00' } };
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T12:00:00-03:00')), true);
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T20:00:00-03:00')), false);
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T08:59:00-03:00')), false);
-});
-
-test('estaAbertoAgora(): dia fechado (null) é false', () => {
-  const base = Object.fromEntries(DIAS.map((d) => [d, null]));
-  assert.strictEqual(estaAbertoAgora(base, new Date('2026-09-23T12:00:00-03:00')), false);
-});
-
-test('estaAbertoAgora(): janela que vira a noite (abre > fecha)', () => {
-  const base = Object.fromEntries(DIAS.map((d) => [d, null]));
-  const horario = { ...base, qua: { abre: '18:00', fecha: '02:00' } };
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T23:00:00-03:00')), true);
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T01:00:00-03:00')), true);
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T10:00:00-03:00')), false);
-});
-
-test('estaAbertoAgora(): registro sem a chave do dia (jsonb antigo) devolve null', () => {
-  assert.strictEqual(estaAbertoAgora({}, new Date('2026-09-23T12:00:00-03:00')), null);
-});
-
-test('estaAbertoAgora(): lê a wall-clock de São Paulo, não o fuso do processo', () => {
-  // 2026-09-23T12:00:00Z = 09:00 em São Paulo (UTC-3, sem horário de
-  // verão desde 2019) — dentro de 09:00-18:00 só se a leitura for local.
-  // Rodando num processo em UTC (padrão deste projeto/CI), a versão com
-  // bug lia 12:00 direto e também dava `true` aqui por coincidência — o
-  // caso de fora da janela acima (`20:00:00-03:00` = `23:00:00Z`) é quem
-  // prova a diferença, mas este cobre o ponto de fronteira explicitamente.
-  const base = Object.fromEntries(DIAS.map((d) => [d, null]));
-  const horario = { ...base, qua: { abre: '09:00', fecha: '18:00' } };
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T12:00:00Z')), true);
-  assert.strictEqual(estaAbertoAgora(horario, new Date('2026-09-23T21:30:00Z')), false); // 18:30 em SP
-});
-
-test('estaAbertoAgora(): feriado nacional usa horario.feriados, não o dia da semana', () => {
-  // 2026-04-21 (terça) é Tiradentes — feriado nacional fixo.
-  const base = Object.fromEntries(DIAS.map((d) => [d, { abre: '09:00', fecha: '18:00' }]));
-  const horarioFechadoNoFeriado = { ...base, feriados: null };
-  const horarioAbertoNoFeriado = { ...base, feriados: { abre: '10:00', fecha: '14:00' } };
-  assert.strictEqual(
-    estaAbertoAgora(horarioFechadoNoFeriado, new Date('2026-04-21T12:00:00-03:00')),
-    false,
-    'terça normal abriria às 9h, mas 21/04 é feriado e o feriado está marcado fechado',
-  );
-  assert.strictEqual(
-    estaAbertoAgora(horarioAbertoNoFeriado, new Date('2026-04-21T11:00:00-03:00')),
-    true,
-    'feriado com janela própria usa a janela do feriado, não a da terça',
-  );
-  // Sem a chave "feriados" (registro antigo), o feriado nem é considerado —
-  // continua pelo dia da semana normal, mesma regra do resumo() de sempre.
-  assert.strictEqual(estaAbertoAgora(base, new Date('2026-04-21T12:00:00-03:00')), true);
-});
+// "Deveria estar operando agora?" saiu daqui (Player V2, 24/09/2026): a regra
+// única é src/lib/operacao-tela.js, espelho do Player — testada em
+// tests/operacao-tela.test.js (fuso, madrugada, feriado).

@@ -44,29 +44,38 @@ CUPOM=$(echo $r | sed 's/.*"codigo":"\(PT-[^"]*\)".*/\1/')
 # /anunciantes/:id/dispositivos saíram — o ponto e as telas vêm juntos daqui.
 r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "ponto nasceu do pedido, ligado à conta" 'Bar do João' "$r"
 PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
-# Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 1"}'); esperar "admin cria a Tela 1" 'Tela 1' "$r"
-DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
+# Ponto nasce sem tela desde a migration 069: o admin cria a primeira. Sem
+# nome manual (Player V2): o nome é derivado, "Tela N".
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "admin cria a Tela 1" '"nome":"Tela 1"' "$r"
+DISP=$(echo $r | sed 's/^{"id":\([0-9]*\).*/\1/')
 
-echo "== admin: tela ativa, ponto ativo, chave, PIN =="
+echo "== admin: tela ativa, ponto ativo só com primeiro sinal, chave, PIN =="
 r=$(curl -s -b adm.txt -X PATCH $B/admin/pontos/$PONTO -H "$J" -d '{"cota_autoanuncio_slots_hora":4}'); esperar "cota do autoanúncio salva" '"cota_autoanuncio_slots_hora":4' "$r"
-r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "tela recém-criada nasce inativa: ponto fica inativo" '"estado":"inativo"' "$r"
-# Status do ponto é automático (migration 069): ativar a tela é o que põe o
-# ponto em operação — e a tela nasce inativa, que o player recusa com 403.
-r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"status":"ativo"}'); esperar "Tela 1 ativada" '"status":"ativo"' "$r"
-r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "tela ativa põe o ponto em operação" '"estado":"ativo"' "$r"
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 2","custo_equipamento":2400}'); esperar "segunda tela criada" 'Tela 2' "$r"
-DISP2=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
-r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP2 -H "$J" -d '{"status":"ativo"}'); esperar "Tela 2 ativada (amortização só conta tela ativa)" '"status":"ativo"' "$r"
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave); esperar "chave gerada" 'aparelho_id' "$r"; CHAVE=$(echo $r | sed 's/.*"aparelho_id":"\([^"]*\)".*/\1/')
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/pin -H "$J" -d '{"pin":"1234"}'); esperar "PIN definido (com hash)" '"tem_pin":true' "$r"
-r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"custo_equipamento":2400,"meses_amortizacao":36}'); esperar "custo por tela salvo" '"custo_equipamento":"2400"' "$r"
-r=$(curl -s -b adm.txt $B/admin/resumo); esperar "amortização real no resumo (2 telas x 66,67)" '"amortizacaoMensal":133' "$r"
+# Player V2 (24/09/2026): tela nasce Ativa, mas o ponto só vira "Ativo" com o
+# primeiro sinal de uma tela — cadastrada não é operando.
+r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "tela ativa sem sinal: ponto aguardando instalação" '"estado":"aguardando_instalacao"' "$r"
+esperar "dono vê a tela aguardando a primeira conexão" '"situacao":"aguardando_primeiro_sinal"' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"custo_equipamento":2400}'); esperar "segunda tela criada, número estável" '"nome":"Tela 2"' "$r"
+DISP2=$(echo $r | sed 's/^{"id":\([0-9]*\).*/\1/')
+# compat-v1: chave do player web, mostrada uma vez só dentro do link.
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave-legada); esperar "chave legada gerada (link do player web)" 'player\.html\?tela=' "$r"
+CHAVE=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP2/chave-legada); CHAVE2=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
+r=$(curl -s -b adm.txt $B/admin/dispositivos/$DISP); esperar "admin não recebe a chave de volta" '"fingerprint":"[0-9A-F]{6}"' "$r"
+if echo "$r" | grep -q "$CHAVE"; then falha "chave em claro na ficha" "$CHAVE"; else ok "chave em claro nunca volta pro admin"; fi
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/pin -H "$J" -d '{"pin":"12345"}'); esperar "PIN de 5 dígitos recusado (Player V2 aceita 4)" 'exatamente 4' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/pin -H "$J" -d '{"pin":"1234"}'); esperar "PIN de manutenção configurado" '"pin":{"configurado":true' "$r"
+if echo "$r" | grep -q '1234'; then falha "PIN em claro na ficha" ''; else ok "PIN nunca volta pro admin"; fi
+r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"custo_equipamento":2400,"meses_amortizacao":36}'); esperar "custo por tela salvo" '"custoEquipamento":2400' "$r"
 
-echo "== player: sem chave 401, com chave 200 =="
+echo "== player V1 (web): sem chave 401, com chave 200, primeiro sinal =="
 r=$(curl -s -o /dev/null -w "%{http_code}" $B/playlist/$DISP); esperar "playlist sem chave é 401" '^401$' "$r"
-r=$(curl -s -o /dev/null -w "%{http_code}" "$B/playlist/$DISP?chave=$CHAVE"); esperar "playlist com chave é 200" '^200$' "$r"
-r=$(curl -s -X POST $B/player/$DISP/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "heartbeat" '"ok":true' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" "$B/playlist/$DISP?chave=$CHAVE"); esperar "chave na URL não autentica (vai pra log)" '^401$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Aparelho-Id: $CHAVE" $B/playlist/$DISP); esperar "playlist com chave no header é 200" '^200$' "$r"
+r=$(curl -s -X POST $B/player/$DISP/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "heartbeat V1 vazio" '"ok":true' "$r"
+r=$(curl -s -X POST $B/player/$DISP2/heartbeat -H "X-Aparelho-Id: $CHAVE2"); esperar "heartbeat da Tela 2" '"ok":true' "$r"
+r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "primeiro sinal põe o ponto em operação" '"estado":"ativo"' "$r"
+r=$(curl -s -b adm.txt $B/admin/resumo); esperar "amortização real no resumo (2 telas x 66,67)" '"amortizacaoMensal":133' "$r"
 r=$(curl -s -X POST $B/player/$DISP/played -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"anuncianteId":999}'); esperar "played de quem não está na playlist é recusado" 'não está programado' "$r"
 r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"0000"}'); esperar "PIN errado 401" 'PIN incorreto' "$r"
 r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"1234"}'); esperar "PIN certo abre painel da tela" 'porAnunciante' "$r"

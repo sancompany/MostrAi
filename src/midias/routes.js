@@ -239,6 +239,8 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
       arquivo_normalizado_url: temp.arquivo_normalizado_url,
       thumbnail_url: temp.thumbnail_url,
       duracao_segundos: temp.duracao_segundos,
+      conteudo_sha256: temp.conteudo_sha256,
+      conteudo_bytes: temp.conteudo_bytes,
       status: 'pendente',
       motivo_reprovacao: null,
     });

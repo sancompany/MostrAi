@@ -128,15 +128,31 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
   const statusDoPonto = async () => (await pontosRepo.buscarPorId(pontoId)).status;
   try {
     assert.strictEqual(await statusDoPonto(), 'a_instalar', '0 telas nasce aguardando instalação');
+    const deuSinal = async (telaId) => {
+      await pool.query('UPDATE dispositivos SET primeiro_sinal_em = now(), ultima_vez_online = now() WHERE id = $1', [
+        telaId,
+      ]);
+      await pontosRepo.sincronizarStatusPonto(pontoId);
+    };
 
-    // Tela nasce 'inativo' (default da coluna) — a partir daqui já existe
-    // 1 tela cadastrada, então "aguardando instalação" (0 telas) não se
-    // aplica mais: cai em "tem tela(s), nenhuma ativa/reparo" -> inativo.
-    const tela1 = await dispositivosRepo.criar(pontoId, { apelido: 'Tela 1' });
-    assert.strictEqual(await statusDoPonto(), 'inativo', 'tela recém-criada (inativa) já conta como tela cadastrada');
+    // Player V2 (24/09/2026): tela nasce Ativa, mas tela cadastrada não é
+    // tela operando — o ponto só vira "Ativo" com o primeiro sinal.
+    const tela1 = await dispositivosRepo.criar(pontoId, {});
+    assert.strictEqual(tela1.nome, 'Tela 1');
+    assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela ativa que nunca falou: ainda aguardando instalação');
 
-    await dispositivosRepo.atualizar(tela1.id, { status: 'ativo' });
-    assert.strictEqual(await statusDoPonto(), 'em_operacao', '1 tela ativa já basta pra "Ativo"');
+    await deuSinal(tela1.id);
+    assert.strictEqual(await statusDoPonto(), 'em_operacao', 'primeiro sinal de uma tela ativa: "Ativo"');
+
+    await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '3 hours' WHERE id = $1", [
+      tela1.id,
+    ]);
+    await pontosRepo.sincronizarStatusPonto(pontoId);
+    assert.strictEqual(
+      await statusDoPonto(),
+      'em_operacao',
+      'sem sinal agora é alerta de saúde, não muda o estado do ponto',
+    );
 
     await dispositivosRepo.atualizar(tela1.id, { status: 'reparo' });
     assert.strictEqual(await statusDoPonto(), 'em_reparo', 'única tela foi pra reparo, ninguém mais ativa');
@@ -144,14 +160,19 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     await dispositivosRepo.atualizar(tela1.id, { status: 'inativo' });
     assert.strictEqual(await statusDoPonto(), 'inativo', 'tem tela cadastrada, nenhuma ativa nem em reparo');
 
-    const tela2 = await dispositivosRepo.criar(pontoId, { apelido: 'Tela 2' });
-    await dispositivosRepo.atualizar(tela2.id, { status: 'ativo' });
-    assert.strictEqual(await statusDoPonto(), 'em_operacao', 'segunda tela ativa reabre o ponto');
+    const tela2 = await dispositivosRepo.criar(pontoId, {});
+    assert.strictEqual(tela2.nome, 'Tela 2');
+    assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela nova ativa, sem sinal: aguardando instalação');
+    await deuSinal(tela2.id);
+    assert.strictEqual(await statusDoPonto(), 'em_operacao', 'segunda tela deu sinal: reabre o ponto');
 
     await dispositivosRepo.deletar(tela1.id);
     assert.strictEqual(await statusDoPonto(), 'em_operacao', 'apagar a tela inativa não mexe — a outra segue ativa');
+    const tela3 = await dispositivosRepo.criar(pontoId, {});
+    assert.strictEqual(tela3.nome, 'Tela 3', 'número nunca é reaproveitado (Tela 1 apagada não libera o 1)');
 
     await dispositivosRepo.deletar(tela2.id);
+    await dispositivosRepo.deletar(tela3.id);
     assert.strictEqual(await statusDoPonto(), 'a_instalar', 'apagou a última tela — volta a aguardando instalação');
   } finally {
     await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [pontoId]);

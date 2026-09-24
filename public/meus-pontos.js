@@ -60,6 +60,8 @@
     }).join('')}</ol>`;
   }
 
+  // Visão simplificada (Player V2): situação, como a tela opera e o último
+  // sinal. Nada técnico — o que é de operador fica no admin.
   function htmlTela(t) {
     const sinal = t.ultimoSinal ? ` · último sinal ${tempoDesde(t.ultimoSinal)}` : '';
     const curto = t.nivel === 'atencao' ? 'Precisa de atenção' : t.situacaoTexto;
@@ -67,7 +69,7 @@
       <span class="tela-dot" aria-hidden="true"></span>
       <div class="tela-id">
         <b>${esc(t.nome)}</b>
-        <span>${esc(curto)}${sinal}</span>
+        <span>${esc(curto)} · ${esc(t.operacao)}${sinal}</span>
         ${t.nivel === 'atencao' ? `<span class="tela-alerta">${esc(t.situacaoTexto)}</span>` : ''}
       </div>
       <span class="tela-num"><b>${t.exibicoes30d.toLocaleString('pt-BR')}</b> exibições em 30 dias</span>
@@ -375,11 +377,10 @@
         </div>`
             : ''
         }
-        <p class="form-sep-titulo u-mt-14">PIN desta tela</p>
-        <p class="form-hint u-m-0">É o número que abre este mesmo painel na própria TV: 5 toques no canto superior direito da tela e o PIN.
-          Serve pra você conferir o que rodou sem sair do balcão. Quem define é você.</p>
+        <p class="form-sep-titulo u-mt-14">PIN de manutenção</p>
+        <p class="form-hint u-m-0">É o número que abre o painel de manutenção na própria TV. Quem define é você; ele nunca aparece aqui depois de salvo.</p>
         <form class="field-row u-ai-c u-mt-8" id="formPin">
-          <input class="u-col" id="pinTela" inputmode="numeric" pattern="\\d{4,6}" maxlength="6" placeholder="4 a 6 dígitos" aria-label="PIN da tela" required>
+          <input class="u-col" id="pinTela" inputmode="numeric" pattern="\\d{4}" maxlength="4" placeholder="4 dígitos" aria-label="PIN de manutenção" required>
           <button class="btn primary" type="submit">Salvar PIN</button>
         </form>
         <p class="form-msg" id="msgPin" role="status">${tela.temPin ? 'Esta tela já tem um PIN. Salvar de novo troca o número.' : 'Esta tela ainda não tem PIN.'}</p>`;
@@ -401,7 +402,7 @@
     });
     const resposta = await r.json().catch(() => ({}));
     msg.textContent = r.ok
-      ? 'PIN salvo. Use ele na própria TV: 5 toques no canto superior direito.'
+      ? 'PIN salvo. A TV recebe o número novo na próxima sincronização.'
       : window.frase(resposta.erro || 'não foi possível salvar o PIN agora');
     msg.className = r.ok ? 'form-msg ok' : 'form-msg err';
     if (r.ok) {

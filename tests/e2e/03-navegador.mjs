@@ -132,43 +132,37 @@ await shot(adm, 'admin-candidaturas-aprovada');
 
 console.log('== admin: ficha do ponto → tela, chave e PIN ==');
 await irPara(adm, `rede/pontos/${pontoId}`);
-await adm.waitForSelector('#btnNovaTela');
+await adm.waitForSelector('[data-nova-tela]');
 check('ficha do ponto aguardando instalação', (await adm.textContent('.ficha-titulo')).includes('Aguardando instalação'));
 check('sem tela ainda — mensagem certa', (await adm.textContent('#pontoTelas')).includes('Nenhuma tela'));
-// "+ Tela" abre um modal com o nome já preenchido ("Tela 1").
-await adm.click('#btnNovaTela');
-await adm.waitForSelector('dialog.modal-admin[open] #novaTelaApelido');
+// "+ Adicionar tela": sem nome manual, sem chave, sem URL — o sistema gera.
+await adm.click('[data-nova-tela]');
+check('modal de tela nova sem "Nome da tela"', !(await adm.$('dialog.modal-admin[open] #novaTelaApelido')));
 await adm.click('dialog.modal-admin[open] button[type=submit]');
-const cardTela = adm.locator('#pontoTelas .tela-card').first();
-await cardTela.waitFor({ timeout: 8000 });
-check('tela criada na ficha do ponto', (await adm.locator('#pontoTelas .tela-card').count()) === 1);
-// A chave sai num modal com o link do player (antes era um prompt()).
-await cardTela.locator('[data-chave]').click();
+await adm.waitForSelector('.tela-ficha');
+check('tela criada: Tela 1, Ativa, aguardando primeiro sinal', /Tela 1[\s\S]*Ativa[\s\S]*Aguardando primeiro sinal/.test(await adm.textContent('.tela-ficha-topo')));
+// compat-v1: TV com o player de navegador recebe a chave num link, uma vez.
+await adm.click('.ficha-avancado summary');
+await adm.click('[data-acao="chave-legada"]');
+await adm.click('dialog.modal-admin[open] [data-confirmar]');
 const campoLink = adm.locator('dialog.modal-admin[open] #linkPlayerCampo');
 await campoLink.waitFor({ timeout: 8000 });
 const linkPlayer = await campoLink.inputValue();
 check('chave gerada e link do player mostrado', /player\.html\?tela=\d+&chave=/.test(linkPlayer), linkPlayer);
 await adm.click('dialog.modal-admin[open] .modal-rodape [data-fechar]');
-// Espera o card refeito (renderPontoTelas, depois de duas chamadas de rede)
-// dizer "Chave configurada" antes de abrir o PIN, não um relógio.
-await adm.locator('#pontoTelas .tela-grupo-valor', { hasText: 'Chave configurada' }).waitFor({ timeout: 10000 }).catch(() => {});
-await adm.locator('#pontoTelas .tela-card [data-pin]').click();
+await adm.locator('dialog.modal-admin[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
+// Espera a ficha refeita com a credencial nova (fingerprint "…XXXXXX").
+await adm.locator('.tela-ficha code', { hasText: /^…[0-9A-F]{6}$/ }).first().waitFor({ timeout: 10000 }).catch(() => {});
+check('ficha mostra só o fingerprint, nunca a chave', !(await adm.textContent('.tela-ficha')).includes(new URL(linkPlayer).searchParams.get('chave')));
+await adm.click('[data-acao="pin"]');
+await adm.locator('dialog.modal-admin[open] #pinTela').waitFor({ timeout: 5000 });
 await adm.fill('dialog.modal-admin[open] #pinTela', '4321');
 await adm.click('dialog.modal-admin[open] button[type=submit]');
-const seloPin = adm.locator('#pontoTelas .tela-grupo-valor', { hasText: 'Definido' });
-await seloPin.waitFor({ timeout: 10000 }).catch(() => {});
-check('PIN definido', (await seloPin.count()) === 1);
-// Status do ponto é automático (migration 069): marcar a tela como Ativa
-// põe o ponto em operação sozinho — é o que faz a playlist responder.
-const telaId = Number(new URL(linkPlayer).searchParams.get('tela'));
-await adm.selectOption(`select[data-tela="status"][data-id="${telaId}"]`, 'ativo');
-await adm.waitForFunction(
-  (id) => document.querySelector(`select[data-tela="status"][data-id="${id}"]`)?.value === 'ativo',
-  telaId,
-  { timeout: 8000 },
-).catch(() => {});
-await adm.waitForTimeout(400);
-check('tela ativa põe o ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'em_operacao');
+// hasText não diferencia maiúsculas: "Não configurado" também casaria com
+// "Configurado" — espera o texto que só existe depois de salvo.
+await adm.locator('.tela-ficha', { hasText: /alterado agora/ }).waitFor({ timeout: 10000 }).catch(() => {});
+check('PIN de manutenção configurado', /Configurado\s*alterado/.test(await adm.textContent('.tela-ficha')));
+check('tela ativa sem sinal ainda não põe o ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'a_instalar');
 await shot(adm, 'admin-telas');
 
 console.log('== player + painel por PIN ==');
@@ -177,6 +171,7 @@ console.log('== player + painel por PIN ==');
   await p.waitForTimeout(1200);
   const msg = await p.textContent('#msg');
   check('player carregou a playlist (ok ou sem anúncios)', /playlist ok|sem anúncios/.test(msg), msg);
+  check('heartbeat do boot é o primeiro sinal: ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'em_operacao');
   await p.keyboard.press('p'); await p.waitForTimeout(300);
   check('tecla P abre o painel da tela', !!(await p.$('.painel-tela')));
   // scrypt do PIN leva ~0,5–1 s — espera o texto, não um tempo fixo.

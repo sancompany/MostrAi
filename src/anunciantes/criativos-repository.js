@@ -17,6 +17,9 @@ const CAMPOS_ATUALIZAVEIS = [
   // precisam ser editáveis.
   'arquivo_original_url',
   'duracao_segundos',
+  // SHA-256 e tamanho do MP4 servido (migration 081, contentHash do Player V2).
+  'conteudo_sha256',
+  'conteudo_bytes',
 ];
 
 async function criar(dados) {
@@ -76,7 +79,14 @@ async function listarPorStatus(status) {
   return rows;
 }
 
-async function atualizar(id, dados) {
+async function atualizar(id, dadosRecebidos) {
+  // URL nova sem o hash do arquivo novo: o hash antigo mentiria sobre o
+  // conteúdo (o Player rejeitaria o download e pularia a peça). Sem hash, o
+  // Player cai no cache por criativoId — pior, mas não errado.
+  const dados =
+    'arquivo_normalizado_url' in dadosRecebidos && !('conteudo_sha256' in dadosRecebidos)
+      ? { ...dadosRecebidos, conteudo_sha256: null, conteudo_bytes: null }
+      : dadosRecebidos;
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (!campos.length) return buscarPorId(id);
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');

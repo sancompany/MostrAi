@@ -1072,12 +1072,12 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
     // `::date` (dia de calendário puro, que o parser do pool entrega como
     // texto), o dia sai certo dos dois lados e sem passar por fuso de novo.
     `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, p.nome AS ponto, p.cidade,
-            d.apelido AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
+            'Tela ' || d.numero AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
      FROM exibicoes_contador e
      JOIN dispositivos d ON d.id = e.dispositivo_id
      JOIN pontos p ON p.id = d.ponto_id
      WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
-     GROUP BY dia, p.nome, p.cidade, d.apelido
+     GROUP BY dia, p.nome, p.cidade, d.numero
      HAVING SUM(e.vezes_confirmadas) > 0
      ORDER BY dia DESC, p.nome`,
     [req.params.id, dias],

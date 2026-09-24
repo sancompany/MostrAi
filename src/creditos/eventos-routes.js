@@ -9,11 +9,7 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 // evento — EventSource ignora linhas começando com `:`.
 const INTERVALO_PING_MS = 25_000;
 
-// GET /conta/eventos — stream de eventos da conta logada. Autenticado por
-// sessão (cookie), igual toda rota de `/anunciantes/me/*` — nunca por
-// token na URL, que vazaria em log de acesso e no histórico do navegador.
-router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => {
-  const contaId = req.session.anuncianteId;
+function abrirStream(req, res, registrar, remover) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -23,7 +19,7 @@ router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => {
     'X-Accel-Buffering': 'no',
   });
   res.write(': conectado\n\n');
-  sse.registrarCliente(contaId, res);
+  registrar(res);
 
   const ping = setInterval(() => {
     try {
@@ -35,8 +31,27 @@ router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => {
 
   req.on('close', () => {
     clearInterval(ping);
-    sse.removerCliente(contaId, res);
+    remover(res);
   });
+}
+
+// GET /conta/eventos — stream de eventos da conta logada. Autenticado por
+// sessão (cookie), igual toda rota de `/anunciantes/me/*` — nunca por
+// token na URL, que vazaria em log de acesso e no histórico do navegador.
+router.get('/conta/eventos', exigirAnuncianteLogado, (req, res) => {
+  const contaId = req.session.anuncianteId;
+  abrirStream(
+    req,
+    res,
+    (r) => sse.registrarCliente(contaId, r),
+    (r) => sse.removerCliente(contaId, r),
+  );
+});
+
+// GET /admin/eventos — mesmo stream para o admin (sessão de admin, via
+// requireAdminSession em /admin): tela e ponto mudando sem F5.
+router.get('/admin/eventos', (req, res) => {
+  abrirStream(req, res, sse.registrarAdmin, sse.removerAdmin);
 });
 
 module.exports = router;

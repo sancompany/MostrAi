@@ -162,7 +162,8 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
 
   console.log('== A. trocar ajuda de custo por tela, no Financeiro ==');
   await p.waitForSelector('[data-acao="trocar-comodato"]', { timeout: 8000 });
-  p.once('dialog', (d) => d.accept());
+  // O handler global de `pagina()` já aceita o confirm — um segundo accept
+  // no mesmo diálogo derruba o roteiro ("already handled").
   await p.click('[data-acao="trocar-comodato"]');
   await p.waitForFunction(() => !document.querySelector('[data-acao="trocar-comodato"]'), null, { timeout: 8000 }).catch(() => {});
   check('oferta some depois da troca', !(await p.$('[data-acao="trocar-comodato"]')));

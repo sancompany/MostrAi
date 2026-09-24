@@ -93,6 +93,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
            array_agg(c.arquivo_normalizado_url ORDER BY c.created_at DESC) AS urls,
            array_agg(c.duracao_segundos ORDER BY c.created_at DESC) AS duracoes,
            array_agg(c.id ORDER BY c.created_at DESC) AS criativo_ids,
+           array_agg(c.conteudo_sha256 ORDER BY c.created_at DESC) AS hashes,
            COALESCE(
              (SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
                 FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id),
@@ -133,9 +134,12 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     const limite = limiteDeCriativos(r.conta_propria, r.limite_criativos, r.urls.length);
     return {
       ...r,
-      criativos: r.urls
-        .slice(0, limite)
-        .map((url, i) => ({ url, duracaoSegundos: r.duracoes[i], criativoId: r.criativo_ids[i] })),
+      criativos: r.urls.slice(0, limite).map((url, i) => ({
+        url,
+        duracaoSegundos: r.duracoes[i],
+        criativoId: r.criativo_ids[i],
+        contentHash: r.hashes[i],
+      })),
     };
   });
 }
@@ -153,7 +157,9 @@ async function midiasElegiveis(pontoId) {
     frequenciaBase: Number(r.frequencia_hora) || 0,
     deficit: 0,
     duracaoSegundos: r.duracao_segundos,
-    criativos: [{ url: r.url, duracaoSegundos: r.duracao_segundos, criativoId: r.criativo_id }],
+    criativos: [
+      { url: r.url, duracaoSegundos: r.duracao_segundos, criativoId: r.criativo_id, contentHash: r.conteudo_sha256 },
+    ],
   }));
 }
 
@@ -163,7 +169,8 @@ async function midiasElegiveis(pontoId) {
 async function criativosDoDono(contaId) {
   if (!contaId) return [];
   const { rows } = await pool.query(
-    `SELECT id AS "criativoId", arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos"
+    `SELECT id AS "criativoId", arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos",
+            conteudo_sha256 AS "contentHash"
      FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
      ORDER BY created_at DESC LIMIT 3`,
     [contaId],
@@ -524,6 +531,11 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         contabiliza: !autoanuncio && !midiaPropria,
         url: criativo.url,
         duracaoSegundos: criativo.duracaoSegundos,
+        // SHA-256 do arquivo servido (contrato V2 §6.1): o Player guarda por
+        // conteúdo e confere o download. Sem hash (criativo anterior à
+        // migration 081, ou URL trocada à mão) o campo não vai, e o Player
+        // cai no cache por criativoId (V1).
+        ...(criativo.contentHash ? { contentHash: criativo.contentHash } : {}),
       };
     })
     .filter(Boolean);
@@ -632,7 +644,9 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
   // filtra isso do próprio lado (`FilaProofOfPlay.registrarInicio` não cria
   // execução pra item com `contabiliza=false`), então chegar aqui com um
   // desses é o app tentando confirmar algo que não devia existir.
-  if (!Number.isInteger(anuncianteId)) return 'item_invalido';
+  // Teto do int4: um número maior passava daqui e estourava na query (500
+  // eterno para um evento que nunca vai ser válido).
+  if (!Number.isInteger(anuncianteId) || anuncianteId <= 0 || anuncianteId > 2147483647) return 'item_invalido';
 
   // Mesma folga da virada de hora do contrato antigo — a peça pode terminar
   // minutos depois da hora virar, e o `janelaId` já diz exatamente qual hora

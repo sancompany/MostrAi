@@ -718,6 +718,8 @@ const MODULOS = [
       // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
       // de "entrada" (encerrada 22/09/2026, pedido do dono).
       { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
+      // Releases do Player para atualização remota (OTA fase 1, Player V2).
+      { id: 'player', nome: 'Versões do Player', render: renderPlayerReleases },
     ],
   },
   {
@@ -825,7 +827,8 @@ const SUBTITULOS = {
   // Chave nova e não "pontos": o alias reverso de "rede/pontos" é
   // "bancohoras" (último dos 4 hashes antigos que caem aqui), então a frase
   // em "pontos" nunca aparecia.
-  'rede/pontos': 'Comércios da rede, com status automático pelas telas de cada um.',
+  'rede/pontos': 'Rede → pontos → telas: o estado de cada comércio e a saúde de cada tela, ao vivo.',
+  'rede/player': 'Versões do aplicativo Player anunciadas às telas para atualização remota.',
   anunciantes: 'Toda conta pode anunciar; quem tem ponto aparece como dono de ponto.',
   ofertas: 'Os 3 planos comerciais, as 2 modalidades de comodato e as promoções.',
   'ofertas/precos': 'O que o cliente paga em cada plano e ciclo. Salvar publica o valor novo na vitrine.',
@@ -2688,30 +2691,215 @@ async function _renderMeusAnuncios(el) {
   );
 }
 
-// ---------- pontos ----------
-// O ponto virou a entidade central (21/09/2026, pedido do dono). A aba
-// Pontos mostra uma grade de cards; clicar num ponto abre o detalhe dele,
-// com sub-abas Resumo/Telas/Ocupação — Telas e Ocupação deixaram de ser
-// destinos próprios no menu.
+// ---------- rede: pontos e telas (Player V2, 24/09/2026) ----------
+// Rede → Ponto → Tela → Player, cada um com o seu lugar:
+//   #rede/pontos              visão operacional da rede (resumo + cards de ponto)
+//   #rede/pontos/17           ficha do ponto + cards das telas dele
+//   #rede/pontos/17/telas/42  ficha completa da tela, em cinco blocos
+// Saúde, alertas, situação da config e da fila vêm PRONTAS do backend
+// (src/lib/status-tela.js) — aqui só existe rótulo e cor, nunca a regra.
 //
 // Mesmo padrão de sempre: a Visão geral seta este global antes de navegar
 // pra cá, quando o clique veio de um status específico em "Pontos por
 // status" — consumido uma vez só.
 let FILTRO_PONTOS_STATUS = null;
 
-// A chave do aparelho é o que autentica a TV (ver src/lib/aparelho.js).
-// O link completo é o que se abre no navegador da tela — ele guarda a
-// chave e continua funcionando depois de reiniciar.
-const linkDoPlayer = (telaId, chave) =>
-  `${window.location.origin}/player.html?tela=${telaId}&chave=${encodeURIComponent(chave)}`;
+const TELA_STATUS_CLASSE = { ativo: 'badge-neutro', reparo: 'badge-info', inativo: 'badge-neutro' };
+const SAUDE_TELA = {
+  operando: { rotulo: 'Operando', classe: 'badge-ok' },
+  fora_do_horario: { rotulo: 'Fora do horário', classe: 'badge-neutro' },
+  aguardando_primeiro_sinal: { rotulo: 'Aguardando primeiro sinal', classe: 'badge-neutro' },
+  sem_sinal: { rotulo: 'Sem sinal', classe: 'badge-err' },
+  erro_do_player: { rotulo: 'Erro do player', classe: 'badge-err' },
+  player_revogado: { rotulo: 'Player revogado', classe: 'badge-pendente' },
+  em_reparo: { rotulo: 'Em reparo', classe: 'badge-info' },
+  inativa: { rotulo: 'Inativa', classe: 'badge-neutro' },
+};
+// Ordem em que a saúde aparece no resumo do card do ponto.
+const ORDEM_SAUDE = [
+  'operando',
+  'sem_sinal',
+  'erro_do_player',
+  'fora_do_horario',
+  'aguardando_primeiro_sinal',
+  'player_revogado',
+  'em_reparo',
+  'inativa',
+];
+const SAUDE_NO_RESUMO = {
+  operando: 'operando',
+  sem_sinal: 'sem sinal',
+  erro_do_player: 'com erro',
+  fora_do_horario: 'fora do horário',
+  aguardando_primeiro_sinal: 'aguardando sinal',
+  player_revogado: 'revogada',
+  em_reparo: 'em reparo',
+  inativa: 'inativa',
+};
+const MODO_OPERACAO = { ponto: 'Segue horário do estabelecimento', '24h': '24 horas', personalizado: 'Personalizado' };
+const CONFIG_SITUACAO = {
+  atualizada: { rotulo: 'Atualizada', classe: 'badge-ok' },
+  sincronizando: { rotulo: 'Sincronizando', classe: 'badge-neutro' },
+  pendente: { rotulo: 'Pendente', classe: 'badge-pendente' },
+  indisponivel: { rotulo: 'Não versionada (Player V1)', classe: 'badge-neutro' },
+};
+const PLAYER_ESTADO = {
+  PLAYING: 'Exibindo anúncio',
+  IDLE: 'Sem anúncio no ar (peça institucional)',
+  OUT_OF_SCHEDULE: 'Fora do horário (tela apagada pelo Player)',
+  NO_PLAYLIST: 'Sem playlist utilizável',
+  DOWNLOAD_ERROR: 'Mídia rejeitada (hash não conferiu)',
+  PLAYBACK_ERROR: 'Falha ao reproduzir',
+  AUTH_ERROR: 'Credencial recusada pelo servidor',
+  NOT_PROVISIONED: 'Aparelho sem identidade',
+  CONFIG_ERROR: 'Config não aplicada',
+  UPDATE_PENDING: 'Atualização pronta, aguardando instalação',
+};
+const UPDATE_ESTADO = {
+  NONE: 'Sem atualização',
+  AVAILABLE: 'Disponível',
+  DOWNLOADING: 'Baixando',
+  READY: 'Baixada — aguardando OK no controle',
+  INSTALL_REQUESTED: 'Instalação solicitada',
+  DEFERRED: 'Adiada no controle',
+  FAILED: 'Falhou (nova tentativa em 6 h)',
+};
+const EVENTO_TELA = {
+  SCREEN_CREATED: 'Tela criada',
+  PROVISIONING_PREPARED: 'Arquivo de instalação gerado',
+  PROVISIONING_CANCELLED: 'Provisionamento cancelado',
+  PLAYER_PROVISIONED: 'Player provisionado',
+  FIRST_SEEN: 'Primeiro sinal',
+  OFFLINE: 'Ficou sem sinal',
+  ONLINE: 'Voltou a dar sinal',
+  ERROR_STARTED: 'Erro do player',
+  ERROR_RESOLVED: 'Erro resolvido',
+  CONFIG_APPLIED: 'Configuração aplicada',
+  CREDENTIAL_ROTATION_REQUESTED: 'Rotação de credencial pedida',
+  CREDENTIAL_ROTATION_CANCELLED: 'Rotação de credencial cancelada',
+  CREDENTIAL_ROTATED: 'Credencial rotacionada',
+  CREDENTIAL_REVOKED: 'Player revogado',
+  CREDENTIAL_LEGACY_ISSUED: 'Chave do player web (V1) gerada',
+  UPDATE_STARTED: 'Atualização: download começou',
+  UPDATE_READY: 'Atualização baixada',
+  UPDATE_FAILED: 'Atualização falhou',
+  UPDATE_INSTALLED: 'Atualização instalada',
+  ADMIN_STATE_CHANGED: 'Estado administrativo alterado',
+};
+const DIAS_HORARIO_TELA = [
+  { id: 'seg', rotulo: 'Segunda' },
+  { id: 'ter', rotulo: 'Terça' },
+  { id: 'qua', rotulo: 'Quarta' },
+  { id: 'qui', rotulo: 'Quinta' },
+  { id: 'sex', rotulo: 'Sexta' },
+  { id: 'sab', rotulo: 'Sábado' },
+  { id: 'dom', rotulo: 'Domingo' },
+  { id: 'feriados', rotulo: 'Feriados' },
+];
+const FUSOS_BR = [
+  'America/Sao_Paulo',
+  'America/Bahia',
+  'America/Fortaleza',
+  'America/Recife',
+  'America/Belem',
+  'America/Manaus',
+  'America/Cuiaba',
+  'America/Campo_Grande',
+  'America/Porto_Velho',
+  'America/Boa_Vista',
+  'America/Rio_Branco',
+  'America/Noronha',
+];
 
-// `resto` vem cru do roteador (ver resolverAlvo): "" pra grade, "42" pro
-// detalhe de um ponto. Sem sub-abas desde o redesenho de 22/09/2026 (a
-// ficha virou somente-leitura e cabe na mesma página que Telas) — um hash
-// antigo tipo "42/telas" ainda abre o ponto certo, só ignora o resto.
+const naoInformado = (texto = 'Não informado') => `<span class="u-dim">${texto}</span>`;
+const dataHora = (v) =>
+  v
+    ? new Date(v).toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+const quando = (v, nunca = 'Nunca recebido') =>
+  v ? `${esc(tempoDesde(v))}<span class="dado-sub">${esc(dataHora(v))}</span>` : naoInformado(nunca);
+const badge = (b) => `<span class="badge ${b.classe}">${esc(b.rotulo)}</span>`;
+const vmin = (n) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+// Dado técnico com o que ele É dito na própria linha (pedido do dono: nada de
+// "ID", "Chave", "Código" solto). `ajuda` vira texto de apoio visível.
+function linhaDado(rotulo, valor, ajuda = '') {
+  return `<div><dt>${rotulo}${ajuda ? `<span class="dado-ajuda">${ajuda}</span>` : ''}</dt><dd>${valor}</dd></div>`;
+}
+
+function versaoDoPlayer(t) {
+  const id = t.identidade;
+  if (id.versao || id.build) return `${esc(id.versao || '?')}${id.build ? ` · build ${id.build}` : ''}`;
+  if (t.operacao.primeiroSinalEm) return 'Player V1 (sem versão informada)';
+  if (id.provisionamento?.estado === 'aguardando_instalacao') return 'Instalação preparada';
+  return naoInformado('Não instalado');
+}
+
+// ---------- tempo real ----------
+// Canal do admin (GET /admin/eventos): hello, heartbeat, erro, config
+// aplicada e qualquer mudança feita por outra aba/admin chegam como
+// "screen.updated"/"point.updated" — a vista aberta refaz o GET dela. Um
+// timer de 60 s cobre o que muda só com o relógio ("Sem sinal" depois de
+// 15 min de silêncio). Nunca location.reload().
+let VISTA_REDE = null; // { hash, recarregar }
+let eventosAdmin = null;
+let recargaAgendada = null;
+
+function definirVistaRede(recarregar) {
+  VISTA_REDE = { hash: location.hash, recarregar };
+  ligarEventosAdmin();
+}
+
+function agendarRecargaRede(atraso = 400) {
+  clearTimeout(recargaAgendada);
+  recargaAgendada = setTimeout(async () => {
+    if (!VISTA_REDE || VISTA_REDE.hash !== location.hash) {
+      VISTA_REDE = null;
+      return;
+    }
+    if (document.visibilityState !== 'visible') return;
+    // Não refaz a vista embaixo de quem está editando: modal aberto ou campo
+    // com foco dentro do conteúdo — tenta de novo daqui a pouco.
+    const ativo = document.activeElement;
+    const editando =
+      document.querySelector('dialog[open]') ||
+      (ativo?.closest('#conteudo') && ['INPUT', 'SELECT', 'TEXTAREA'].includes(ativo.tagName));
+    if (editando) return agendarRecargaRede(3000);
+    try {
+      await VISTA_REDE.recarregar();
+    } catch (err) {
+      console.error('rede: falha ao atualizar a vista', err);
+    }
+  }, atraso);
+}
+
+function ligarEventosAdmin() {
+  if (eventosAdmin) return;
+  eventosAdmin = new EventSource(`${API_BASE_URL}/admin/eventos`, { withCredentials: true });
+  for (const evento of ['screen.updated', 'point.updated']) {
+    eventosAdmin.addEventListener(evento, () => agendarRecargaRede());
+  }
+  // Reconexão: o que mudou enquanto o canal estava fora chega pelo GET.
+  eventosAdmin.addEventListener('open', () => agendarRecargaRede());
+  setInterval(() => agendarRecargaRede(0), 60_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') agendarRecargaRede(0);
+  });
+}
+
+// `resto` vem cru do roteador (ver resolverAlvo): "" pra grade, "17" pra
+// ficha do ponto, "17/telas/42" pra ficha da tela.
 async function renderPontos(el, resto) {
-  const [pontoIdBruto] = (resto || '').split('/');
+  const [pontoIdBruto, sub, telaIdBruto] = (resto || '').split('/');
   const pontoId = pontoIdBruto ? Number(pontoIdBruto) : null;
+  if (pontoId && sub === 'telas' && telaIdBruto) return renderTelaFicha(el, pontoId, Number(telaIdBruto));
   if (pontoId) return renderPontoDetalhe(el, pontoId);
   return renderPontosGrade(el);
 }
@@ -2734,92 +2922,103 @@ function fotoOuPlaceholder(url, nome) {
 }
 
 // Card de ponto e de candidatura: um molde só (polimento final, 23/09/2026).
-// Nome domina, estado fica no mesmo cabeçalho (menor, à direita), cidade e
-// segmento numa linha de apoio e o rodapé com o dado que muda de card pra
-// card (telas, movimento/data).
-function cardEntidade({ href, filtro = '', foto, nome, badge, meta, rodape }) {
+function cardEntidade({ href, filtro = '', foto, nome, badge: selo, meta, rodape }) {
   return `<a class="ponto-card ponto-card-link com-corpo" href="${href}" ${filtro ? `data-filtro="${filtro}"` : ''}>
     <div class="ponto-card-media">${foto}</div>
     <div class="ponto-card-corpo">
-      <div class="ponto-card-topo"><h4>${nome}</h4>${badge}</div>
+      <div class="ponto-card-topo"><h4>${nome}</h4>${selo}</div>
       ${meta ? `<p class="ponto-card-meta">${meta}</p>` : ''}
       ${rodape ? `<p class="ponto-card-pe">${rodape}</p>` : ''}
     </div>
   </a>`;
 }
 
-function montarPontoCard(p) {
+// "2 telas · 1 operando · 1 sem sinal" — a contagem por saúde vem da saúde
+// que o backend já calculou em cada tela.
+function resumoDasTelas(telas) {
+  if (!telas.length) return 'Nenhuma tela ainda';
+  const porSaude = {};
+  for (const t of telas) porSaude[t.saude] = (porSaude[t.saude] || 0) + 1;
+  const partes = ORDEM_SAUDE.filter((s) => porSaude[s]).map((s) => `${porSaude[s]} ${SAUDE_NO_RESUMO[s]}`);
+  return `${plural(telas.length, 'tela')} · ${partes.join(' · ')}`;
+}
+
+function montarPontoCard(p, telas) {
   const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
+  const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
-    filtro: p.status,
+    filtro: `${p.status}${problema ? ' problema' : ''}`,
     foto: fotoOuPlaceholder(p.foto_instalacao_url, p.nome),
     nome: esc(p.nome),
     badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`,
-    meta: `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${segmento ? ` · ${esc(segmento)}` : ''}`,
-    rodape: p.telas ? plural(p.telas, 'tela') : 'Nenhuma tela ainda',
+    meta: `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}${segmento ? `<br>${esc(segmento)}` : ''}`,
+    rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>`,
   });
+}
+
+// Só números que fazem alguém agir: quantos pontos e telas, quantas
+// operando, quantas com problema e quantos pontos esperam instalação.
+function resumoDaRede(pontos, telas) {
+  const operando = telas.filter((t) => t.saude === 'operando').length;
+  const problema = telas.filter((t) => t.alertas.some((a) => a.nivel === 'alerta')).length;
+  const aguardando = pontos.filter((p) => p.status === 'a_instalar').length;
+  const item = (valor, rotulo, classe = '') =>
+    `<div class="rede-resumo-item ${classe}"><b>${num(valor)}</b><span>${rotulo}</span></div>`;
+  return `<div class="rede-resumo" aria-label="Resumo da rede">
+    ${item(pontos.length, pontos.length === 1 ? 'ponto' : 'pontos')}
+    ${item(telas.length, telas.length === 1 ? 'tela' : 'telas')}
+    ${item(operando, 'operando', operando ? 'ok' : '')}
+    ${item(problema, 'com problema', problema ? 'alerta' : '')}
+    ${item(aguardando, 'aguardando instalação')}
+  </div>`;
 }
 
 async function renderPontosGrade(el) {
   // Vem da Visão geral ("Pontos por status" → clique num status real do
-  // banco) — status do ponto é automático desde 22/09/2026, então o valor
-  // já bate 1:1 com o chip.
+  // banco) — consumido na primeira montagem, não a cada atualização.
   const filtroStatus = FILTRO_PONTOS_STATUS;
   FILTRO_PONTOS_STATUS = null;
-  const pontos = await pegar('/admin/pontos');
 
-  el.innerHTML = pontos.length
-    ? caixaCards({
-        chips: [{ valor: '', nome: 'Todos' }, ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n }))],
-        html: pontos.map(montarPontoCard).join(''),
-        ativo: filtroStatus,
-        unidade: 'ponto|pontos',
-      })
-    : vazio(
-        'Nenhum ponto cadastrado ainda.',
-        'Pedido de ponto feito no painel de uma conta chega em Candidaturas — aprovado, o ponto nasce aqui.',
-      );
-
-  if (pontos.length) {
-    turbinarCards(el.querySelector('.colecao'), '.ponto-card');
-    ajustarFotos(el);
-  }
-}
-
-// ---------- detalhe do ponto ----------
-// Sem abas (redesenho de 22/09/2026): a ficha do estabelecimento é
-// somente-leitura, então não compete mais por espaço com a tabela de telas —
-// as duas cabem na mesma página, em blocos. Sem endpoint "GET
-// /admin/pontos/:id" — reaproveita a listagem (que já junta categoria,
-// comodato, dono e contagem de telas) e acha o ponto nela, igual sempre foi;
-// por isso também não precisa mais buscar `/admin/categorias` nem
-// `/admin/planos-ponto` à parte: os nomes já vêm prontos na própria linha do
-// ponto (`categoria_nome`/`plano_ponto_nome`), e o formulário que precisava
-// das opções cruas saiu (fluxo morto a menos, pedido da seção 13).
-async function renderPontoDetalhe(el, pontoId) {
-  const pontos = await pegar('/admin/pontos');
-  const ponto = pontos.find((p) => p.id === pontoId);
-  if (!ponto) {
-    el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Rede</a></p>';
-    return;
+  async function montar() {
+    const [pontos, telas] = await Promise.all([pegar('/admin/pontos'), pegar('/admin/dispositivos')]);
+    const telasPorPonto = new Map();
+    for (const t of telas) {
+      if (!telasPorPonto.has(t.pontoId)) telasPorPonto.set(t.pontoId, []);
+      telasPorPonto.get(t.pontoId).push(t);
+    }
+    const chipAtivo = el.querySelector('.chip.active')?.dataset.filtro ?? filtroStatus;
+    const busca = el.querySelector('.busca')?.value || '';
+    el.innerHTML = pontos.length
+      ? `${resumoDaRede(pontos, telas)}${caixaCards({
+          chips: [
+            { valor: '', nome: 'Todos' },
+            { valor: 'problema', nome: 'Com problema' },
+            ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+          ],
+          html: pontos.map((p) => montarPontoCard(p, telasPorPonto.get(p.id) || [])).join(''),
+          ativo: chipAtivo,
+          unidade: 'ponto|pontos',
+        })}`
+      : vazio(
+          'Nenhum ponto cadastrado ainda.',
+          'Pedido de ponto feito no painel de uma conta chega em Candidaturas — aprovado, o ponto nasce aqui.',
+        );
+    if (pontos.length) {
+      const campoBusca = el.querySelector('.busca');
+      if (campoBusca && busca) campoBusca.value = busca;
+      turbinarCards(el.querySelector('.colecao'), '.ponto-card');
+      ajustarFotos(el);
+    }
   }
 
-  el.innerHTML = `
-    ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
-    <div class="ponto-detalhe-grid">
-      <section class="panel ponto-ficha" id="pontoInformacoes"></section>
-      <section class="panel" id="pontoTelas"></section>
-    </div>`;
-
-  renderPontoInformacoes(document.getElementById('pontoInformacoes'), ponto);
-  renderPontoTelas(document.getElementById('pontoTelas'), ponto);
+  await montar();
+  definirVistaRede(montar);
 }
 
+// ---------- ficha do ponto ----------
 // Horário em linhas curtas ("Seg–sex 07:00–20:00" / "Sáb 07:00–14:00" /
-// "Dom fechado") em vez de uma frase corrida que quebrava no meio de um
-// horário. Mesmo agrupamento de resumoHorarioSemanal (seg-sex iguais viram
-// uma linha só).
+// "Dom fechado"). Mesmo agrupamento de resumoHorarioSemanal.
 function horarioEmLinhas(horario) {
   const texto = resumoHorarioSemanal(horario);
   if (!texto) return '';
@@ -2834,13 +3033,12 @@ function horarioEmLinhas(horario) {
 }
 
 // Cabeçalho de ficha (ponto e candidatura): foto, nome, estado e endereço
-// juntos, como um bloco só — antes o nome e a foto ficavam de um lado e o
-// resto dos dados solto em duas colunas embaixo.
-function fichaCabecalho({ foto, nome, badge, endereco, meta }) {
+// juntos, como um bloco só.
+function fichaCabecalho({ foto, nome, badge: selo, endereco, meta }) {
   return `<div class="ficha-topo">
     <div class="ficha-foto">${foto}</div>
     <div class="ficha-titulo">
-      <div class="ficha-nome"><h3>${nome}</h3>${badge}</div>
+      <div class="ficha-nome"><h3>${nome}</h3>${selo}</div>
       ${endereco ? `<p class="ficha-endereco">${endereco}</p>` : ''}
       ${meta ? `<p class="ficha-meta">${meta}</p>` : ''}
     </div>
@@ -2848,106 +3046,603 @@ function fichaCabecalho({ foto, nome, badge, endereco, meta }) {
 }
 
 // Endereço de ficha em duas linhas deliberadas: rua e número numa, bairro
-// junto da cidade na outra — em vez do "·" pendurado no fim da linha.
+// junto da cidade na outra.
 function enderecoFicha(x) {
   const cidade = `${esc(x.cidade || '')}${x.uf ? `/${esc(x.uf)}` : ''}`;
   const linhaCidade = [x.bairro ? esc(x.bairro) : '', cidade].filter(Boolean).join(' · ');
   return `${x.endereco ? `${esc(x.endereco)}<br>` : ''}${linhaCidade}`;
 }
 
-// Ficha do estabelecimento — SOMENTE LEITURA (pedido do dono: "dados
-// fornecidos pelo estabelecimento devem ser tratados como ficha", não
-// formulário). Quem fornece os dados é a candidatura (liberarPapelNaConta,
-// src/conta/modos.js); o admin consulta, não edita. Status é automático
-// (deriva das telas, src/pontos/repository.js#sincronizarStatusPonto) — não
-// tem controle nenhum aqui. Molde ACM saiu do admin de vez (rodada final da
-// Rede, 22/09/2026): passou a ser operado fora deste painel, sem sistema
-// novo — se precisar consultar o valor antigo, é direto no banco.
-// Comodato aparece como informação simples de propósito — a estrutura de
-// planos/benefícios de comodato é revisão futura (tela Planos/Benefícios),
-// não desta rodada.
-function renderPontoInformacoes(el, ponto) {
-  // Mesma prioridade do card (montarPontoCard): categoria do catálogo
-  // primeiro, senão categoria livre, senão o texto puro de `segmento` — o
-  // único que a candidatura de fato grava hoje.
+async function renderPontoDetalhe(el, pontoId) {
+  async function montar() {
+    const [pontos, telas] = await Promise.all([pegar('/admin/pontos'), pegar(`/admin/pontos/${pontoId}/dispositivos`)]);
+    const ponto = pontos.find((p) => p.id === pontoId);
+    if (!ponto) {
+      el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Rede</a></p>';
+      return;
+    }
+    el.innerHTML = `
+      ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
+      <div class="ponto-detalhe-grid">
+        <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+        <section class="panel" id="pontoTelas"></section>
+      </div>`;
+    renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas);
+    renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
+  }
+  await montar();
+  definirVistaRede(montar);
+}
+
+// Ficha do estabelecimento — SOMENTE LEITURA (dados vêm da candidatura).
+// Estado do ponto é automático (src/pontos/repository.js
+// sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
+function renderPontoInformacoes(el, ponto, telas) {
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
-  const naoInformado = '<span class="u-dim">não informado</span>';
+  const primeiroSinal = telas
+    .map((t) => t.operacao.primeiroSinalEm)
+    .filter(Boolean)
+    .sort()[0];
   el.innerHTML = `
     ${fichaCabecalho({
       foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
       nome: esc(ponto.nome),
       badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
       endereco: enderecoFicha(ponto),
-      meta: `${segmento ? esc(segmento) : 'Sem segmento informado'} · ${ponto.telas ? plural(ponto.telas, 'tela') : 'nenhuma tela'}`,
+      meta: `<span class="id-tecnico" title="Registro deste ponto no Mostraí">ID do Ponto #${ponto.id}</span>`,
     })}
     <dl class="dados dados-2">
-      <div><dt>Responsável</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
-      <div><dt>Dono (conta)</dt><dd>${ponto.dono_nome ? (ponto.anunciante_id ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>` : esc(ponto.dono_nome)) : '<span class="u-dim">sem conta</span>'}</dd></div>
-      <div><dt>Movimento estimado</dt><dd>${ponto.fluxo_estimado_mensal ? `${num(ponto.fluxo_estimado_mensal)} pessoas/mês` : naoInformado}</dd></div>
-      <div><dt>Comodato</dt><dd>${ponto.plano_ponto_nome ? `${esc(ponto.plano_ponto_nome)}${Number(ponto.valor_pago_mensal) > 0 ? `<span class="dado-sub">${fmt(ponto.valor_pago_mensal)}/mês</span>` : ''}` : '<span class="u-dim">sem comodato</span>'}</dd></div>
-      <div class="dados-largo"><dt>Horário de funcionamento</dt><dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : naoInformado}</dd></div>
+      <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
+      <div><dt>Proprietário (conta)</dt><dd>${ponto.dono_nome ? (ponto.anunciante_id ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>` : esc(ponto.dono_nome)) : naoInformado('Sem conta vinculada')}</dd></div>
+      <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
+      ${ponto.plano_ponto_nome ? `<div><dt>Comodato</dt><dd>${esc(ponto.plano_ponto_nome)}${Number(ponto.valor_pago_mensal) > 0 ? `<span class="dado-sub">${fmt(ponto.valor_pago_mensal)}/mês</span>` : ''}</dd></div>` : ''}
+      <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
+      <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
+      ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
+      <div class="dados-largo"><dt>Horário de funcionamento</dt><dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : naoInformado()}</dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
-      <div><dt>Cadastrado em</dt><dd>${data(ponto.created_at)}</dd></div>
     </dl>`;
   ajustarFotos(el);
 }
 
-// Mesma tabela e as mesmas ações de sempre (chave, PIN, custo/prazo de
-// amortização, painel de exibições, exclusão) — só que sempre escondida
-// dentro de UM ponto agora, em vez de "todas as telas da rede" com um
-// filtro opcional por cima. A rota já aceitava esse filtro desde sempre.
-// Cards horizontais em vez de tabela (rodada final da Rede, 22/09/2026) —
-// menos colunas (Tela/Contrato/Custo/Meses/Amort./Painel saíram, seção 12
-// do pedido: sem player de terceiro pra configurar contrato, sem custo
-// nesta tela) sobraram só ID/status/sinal/chave/PIN/instalação + margens
-// novas, e cabem melhor num card do que espremidas numa linha de tabela —
-// funciona igual com 1 tela (o caso comum hoje) ou várias.
-// Texto/badge do sinal (revisão final da Visão geral, 23/09/2026) — antes era
-// só "sem sinal" (2h sem heartbeat, sem olhar horário). `situacaoOperacional`
-// já vem calculado do backend (src/lib/status-tela.js), única régua.
-// Situação operacional como um selo só no cabeçalho da tela (polimento
-// final, 23/09/2026) — antes eram três elementos soltos ("Tela #1", o
-// select de estado e um "desde 23/09/2026, 14:30:29" que era, na verdade, o
-// último sinal). `detalhe` é a linha de apoio ao lado do selo.
-const SINAL_TELA = {
-  aguardando_primeiro_sinal: () => ({ rotulo: 'Aguardando primeiro sinal', classe: 'badge-neutro', detalhe: '' }),
-  fora_do_horario: (t) => ({
-    rotulo: 'Fora do horário',
-    classe: 'badge-neutro',
-    detalhe: t.ultima_vez_online ? `último sinal ${tempoDesde(t.ultima_vez_online)}` : '',
-  }),
-  sem_sinal: (t) => ({
-    rotulo: 'Sem sinal',
-    classe: 'badge-err',
-    detalhe: t.ultima_vez_online ? `último sinal ${tempoDesde(t.ultima_vez_online)}` : '',
-  }),
-  erro_do_player: (t) => ({ rotulo: 'Erro do player', classe: 'badge-err', detalhe: t.ultimo_erro || '' }),
-  em_reparo: () => ({ rotulo: 'Em reparo', classe: 'badge-info', detalhe: '' }),
-  inativa: () => ({ rotulo: 'Inativa', classe: 'badge-neutro', detalhe: '' }),
-  operando: (t) => ({
-    rotulo: 'Operando',
-    classe: 'badge-ok',
-    detalhe: t.ultima_vez_online ? `sinal ${tempoDesde(t.ultima_vez_online)}` : '',
-  }),
+// Card fechado da tela: o que o operador precisa em dois segundos.
+function montarTelaCard(t) {
+  const saude = SAUDE_TELA[t.saude] || SAUDE_TELA.operando;
+  const cfg = CONFIG_SITUACAO[t.configuracao.situacao];
+  const alerta = t.alertas.some((a) => a.nivel === 'alerta');
+  return `<a class="tela-card tela-card-v2 ${alerta ? 'com-alerta' : ''}" href="#rede/pontos/${t.pontoId}/telas/${t.id}">
+    <header class="tela-card-topo">
+      <h4>${esc(t.nome)}</h4>
+      <span class="tela-card-selos">
+        <span class="badge ${TELA_STATUS_CLASSE[t.status]}">${TELA_STATUS[t.status]}</span>
+        ${t.status === 'ativo' ? badge(saude) : ''}
+      </span>
+    </header>
+    <dl class="tela-card-dados">
+      <div><dt>Player</dt><dd>${versaoDoPlayer(t)}</dd></div>
+      <div><dt>Último sinal</dt><dd>${t.operacao.ultimoSinalEm ? esc(tempoDesde(t.operacao.ultimoSinalEm)) : naoInformado('Nunca')}</dd></div>
+      <div><dt>Operação</dt><dd>${esc(MODO_OPERACAO[t.configuracao.modoHorario] || '')}</dd></div>
+      <div><dt>Configuração</dt><dd>${cfg ? esc(cfg.rotulo) : '—'}</dd></div>
+    </dl>
+  </a>`;
+}
+
+function renderPontoTelas(el, ponto, telas) {
+  el.innerHTML = `
+    <div class="secao-topo">
+      <h3>Telas</h3>${telas.length ? `<span class="contagem">${telas.length}</span>` : ''}
+      <div class="secao-acoes"><button class="btn primary mini" data-nova-tela ${ponto.status === 'arquivado' ? 'disabled' : ''}>+ Adicionar tela</button></div>
+    </div>
+    ${
+      telas.length
+        ? `<div class="telas-lista">${telas.map(montarTelaCard).join('')}</div>`
+        : vazio(
+            'Nenhuma tela neste ponto ainda.',
+            'Crie a tela e use "Preparar instalação" para gerar o arquivo do pendrive.',
+          )
+    }`;
+  el.querySelector('[data-nova-tela]').addEventListener('click', () => abrirNovaTela(ponto));
+}
+
+// Nova tela: nada técnico pra digitar — o nome é derivado (Tela N), e
+// dispositivoId, chave, token e URL da API o sistema gera. Só o que é
+// decisão de operação antes da instalação.
+function abrirNovaTela(ponto) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Adicionar tela',
+    corpo: `<form id="formNovaTela" class="modal-form">
+        <div><label for="novaTelaStatus">Estado administrativo inicial</label>
+          ${selectStatus(TELA_STATUS, 'ativo', 'id="novaTelaStatus" name="status"')}</div>
+        <div><label for="novaTelaModo">Operação</label>
+          ${selectStatus(MODO_OPERACAO, 'ponto', 'id="novaTelaModo" name="modo_horario"')}</div>
+        <div><label for="novaTelaRotacao">Rotação da imagem</label>
+          ${selectStatus({ 0: '0° (normal)', 90: '90°', 180: '180°', 270: '270°' }, '0', 'id="novaTelaRotacao" name="rotacao_tela"')}</div>
+        <p class="u-dim u-fs-85 u-m-0">O nome (Tela N) e toda a identidade técnica do Player são gerados pelo sistema. Área segura e horário próprio se ajustam na ficha da tela.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formNovaTela" class="btn primary">Criar tela</button>',
+  });
+  dlg.querySelector('#formNovaTela').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, {
+      method: 'POST',
+      body: JSON.stringify({
+        status: f.status.value,
+        modo_horario: f.modo_horario.value,
+        rotacao_tela: Number(f.rotacao_tela.value),
+      }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível criar a tela.');
+    const tela = await r.json();
+    fechar();
+    toast(`${tela.nome} criada.`);
+    // A ficha nova já nasce com "Preparar instalação" à mão.
+    irPara(`rede/pontos/${ponto.id}/telas/${tela.id}`);
+  });
+}
+
+// ---------- ficha da tela ----------
+async function renderTelaFicha(el, pontoId, telaId) {
+  async function montar() {
+    const r = await api(`/admin/dispositivos/${telaId}`);
+    if (!r.ok) {
+      el.innerHTML = `<p class="form-msg err">Tela não encontrada. <a href="#rede/pontos/${pontoId}">Voltar pro ponto</a></p>`;
+      return;
+    }
+    const t = await r.json();
+    const historicoAberto = el.querySelector('[data-bloco="historico"]')?.open;
+    const diagnosticoAberto = el.querySelector('[data-bloco="diagnostico"]')?.open;
+    el.innerHTML = `
+      ${migalha([
+        { rotulo: 'Pontos', href: '#rede/pontos' },
+        { rotulo: t.pontoNome, href: `#rede/pontos/${t.pontoId}` },
+        { rotulo: t.nome },
+      ])}
+      <div class="tela-ficha">
+        <header class="panel tela-ficha-topo">
+          <div>
+            <h3>${esc(t.nome)} <span class="u-dim tela-ficha-ponto">· ${esc(t.pontoNome)}</span></h3>
+            <p class="tela-card-selos">
+              <span class="badge ${TELA_STATUS_CLASSE[t.status]}">${TELA_STATUS[t.status]}</span>
+              ${t.status === 'ativo' ? badge(SAUDE_TELA[t.saude] || SAUDE_TELA.operando) : ''}
+              ${t.alertas.map((a) => `<span class="badge ${a.nivel === 'alerta' ? 'badge-err' : 'badge-pendente'}">${esc(TEXTO_ALERTA[a.codigo] || a.codigo)}</span>`).join('')}
+            </p>
+          </div>
+          <div class="acoes">${acoesPrincipais(t)}</div>
+        </header>
+        ${blocoOperacao(t)}
+        ${blocoConfiguracao(t)}
+        ${blocoIdentidade(t)}
+        ${blocoDiagnostico(t, diagnosticoAberto)}
+        <details class="panel ficha-bloco" data-bloco="historico" ${historicoAberto ? 'open' : ''}>
+          <summary><h4>5. Histórico</h4><span class="u-dim">transições relevantes, nunca cada heartbeat</span></summary>
+          <div data-historico></div>
+        </details>
+        <footer class="tela-ficha-pe">
+          <button class="btn perigo-sutil mini" data-acao="excluir">Excluir tela</button>
+        </footer>
+      </div>`;
+    ligarFichaTela(el, t, montar);
+    if (historicoAberto) carregarHistorico(el, t.id);
+  }
+  await montar();
+  definirVistaRede(montar);
+}
+
+const TEXTO_ALERTA = {
+  SEM_SINAL: 'Deveria operar e está sem sinal',
+  ERRO_PLAYER: 'Erro do player',
+  INSTALACAO_ATRASADA: 'Aguardando primeiro sinal há mais de 7 dias',
+  FILA_CRITICA: 'Comprovantes acumulados',
+  FILA_ALTA: 'Fila de comprovantes alta',
+  CONFIG_PENDENTE: 'Config pendente há mais de 1 h',
+  UPDATE_OBRIGATORIO_ATRASADO: 'Atualização obrigatória atrasada',
 };
-// Só essas duas entram no filtro "Sem sinal" e no alerta da Visão geral —
-// as outras são estado esperado (fora do horário, nunca instalada, manual).
-const SITUACOES_DE_ALERTA_TELA = new Set(['sem_sinal', 'erro_do_player']);
 
-const MODO_HORARIO_TELA = { ponto: 'Segue o horário do ponto', '24h': '24 horas', personalizado: 'Horário próprio' };
-const DIAS_HORARIO_TELA = [
-  { id: 'seg', rotulo: 'Segunda' },
-  { id: 'ter', rotulo: 'Terça' },
-  { id: 'qua', rotulo: 'Quarta' },
-  { id: 'qui', rotulo: 'Quinta' },
-  { id: 'sex', rotulo: 'Sexta' },
-  { id: 'sab', rotulo: 'Sábado' },
-  { id: 'dom', rotulo: 'Domingo' },
-  { id: 'feriados', rotulo: 'Feriados' },
-];
+function acoesPrincipais(t) {
+  const cred = t.identidade.credencial;
+  const prov = t.identidade.provisionamento;
+  if (cred.estado !== 'ativa' && prov?.estado !== 'aguardando_instalacao') {
+    return '<button class="btn primary mini" data-acao="provisionar">Preparar instalação</button>';
+  }
+  return '';
+}
 
-// Mesma geometria do widget público (public/candidatura-ponto.js): dia
-// fechado mantém os campos no lugar, desabilitados.
+function blocoOperacao(t) {
+  const o = t.operacao;
+  const v2 = Number(t.identidade.contrato) >= 2;
+  const operacao = `${esc(MODO_OPERACAO[t.configuracao.modoHorario] || '')}${t.configuracao.horarioResumo ? `<span class="dado-sub">${esc(t.configuracao.horarioResumo)}</span>` : ''}<span class="dado-sub">${o.deveriaOperarAgora ? 'Deveria estar operando agora' : 'Fora do horário agora'}</span>`;
+  return `<section class="panel ficha-bloco">
+    <h4>1. Operação</h4>
+    <dl class="dados dados-3">
+      ${linhaDado(
+        'Estado administrativo',
+        `${selectStatus(TELA_STATUS, t.status, 'data-campo="status" aria-label="Estado administrativo"')}`,
+        'Definido por você. Nunca muda sozinho.',
+      )}
+      ${linhaDado('Saúde operacional', t.status === 'ativo' ? badge(SAUDE_TELA[t.saude]) : naoInformado('Não avaliada fora de "Ativa"'), 'Calculada pelo servidor a partir do último sinal e do horário.')}
+      ${linhaDado('Operação', operacao)}
+      ${linhaDado('Primeiro sinal', o.primeiroSinalEm ? esc(dataHora(o.primeiroSinalEm)) : naoInformado('Nunca recebido'))}
+      ${linhaDado('Último sinal', quando(o.ultimoSinalEm))}
+      ${
+        v2
+          ? linhaDado(
+              'Última playlist válida',
+              quando(o.ultimaPlaylistOkEm),
+              'Informada pelo Player: última busca bem-sucedida.',
+            )
+          : linhaDado(
+              'Última playlist entregue',
+              quando(o.playlistEntregueEm, 'Nunca entregue'),
+              'Registrada pelo servidor.',
+            )
+      }
+      ${v2 ? linhaDado('Estado do Player', o.playerEstado ? esc(PLAYER_ESTADO[o.playerEstado] || o.playerEstado) : naoInformado()) : ''}
+      ${v2 && o.criativoAtual ? linhaDado('Mídia no ar', `Criativo #${esc(o.criativoAtual)}`) : ''}
+      ${linhaDado('Última reprodução confirmada', o.ultimaConfirmacaoEm ? quando(o.ultimaConfirmacaoEm) : naoInformado('Nenhuma ainda'))}
+    </dl>
+  </section>`;
+}
+
+function blocoConfiguracao(t) {
+  const c = t.configuracao;
+  const v2 = c.situacao !== 'indisponivel';
+  const m = c.margens;
+  const cfg = CONFIG_SITUACAO[c.situacao];
+  const linha = (rotulo, valor, acao, ajuda = '') =>
+    `<div class="config-linha"><dt>${rotulo}${ajuda ? `<span class="dado-ajuda">${ajuda}</span>` : ''}</dt><dd>${valor}</dd>${acao ? `<dd class="config-acao"><button class="btn ghost mini" data-acao="${acao}">${acao === 'pin' ? (c.pin.configurado ? 'Alterar' : 'Definir') : 'Editar'}</button></dd>` : '<dd></dd>'}</div>`;
+  return `<section class="panel ficha-bloco">
+    <h4>2. Configuração</h4>
+    ${
+      v2
+        ? `<dl class="dados dados-3 config-versoes">
+            ${linhaDado('Versão desejada', `v${c.desejada}`, 'O que o servidor quer que a tela use.')}
+            ${linhaDado('Versão aplicada', c.aplicada ? `v${c.aplicada}${c.aplicadaEm ? `<span class="dado-sub">${esc(tempoDesde(c.aplicadaEm))}</span>` : ''}` : naoInformado('Nenhuma ainda'), 'O que o Player confirmou no heartbeat.')}
+            ${linhaDado('Situação', badge(cfg))}
+          </dl>`
+        : `<p class="u-dim u-fs-85">Config versionada não disponível neste Player (contrato V1): margens chegam pelo heartbeat, o resto só vale para o Player V2.</p>`
+    }
+    <dl class="config-lista">
+      ${linha('Operação', `${esc(MODO_OPERACAO[c.modoHorario])}${c.horarioResumo ? `<span class="dado-sub">${esc(c.horarioResumo)}</span>` : ''}`, 'operacao')}
+      ${linha('Fuso horário', esc(c.timezone), 'operacao')}
+      ${linha('Rotação da imagem', `${c.rotacao}°`, 'rotacao')}
+      ${linha('Área segura', `Superior ${vmin(m.superior)} · Direita ${vmin(m.direita)} · Inferior ${vmin(m.inferior)} · Esquerda ${vmin(m.esquerda)} <span class="u-dim">vmin</span>`, 'area', 'Parte da tela coberta pela moldura; a mídia encolhe pra dentro dela.')}
+      ${linha('PIN de manutenção do Player', c.pin.configurado ? `Configurado<span class="dado-sub">alterado ${esc(tempoDesde(c.pin.alteradoEm))}</span>` : c.pin.soPlayerWeb ? 'Só no player web (V1)<span class="dado-sub">redefina para enviar ao Player V2</span>' : naoInformado('Não configurado'), 'pin', 'Abre o painel de manutenção na própria TV. Nunca exibido aqui.')}
+      ${linha('Atualização do Player', `${c.update.baixarAutomaticamente ? 'Baixa sozinho' : 'Só baixa quando liberado'}<span class="dado-sub">depois de um "cancelar" no controle, tenta de novo em ${c.update.horasEntreTentativas} h</span>`, 'update')}
+    </dl>
+  </section>`;
+}
+
+function blocoIdentidade(t) {
+  const id = t.identidade;
+  const cred = id.credencial;
+  const prov = id.provisionamento;
+  const ESTADO_CRED = {
+    ativa: { rotulo: 'Ativa', classe: 'badge-ok' },
+    revogada: { rotulo: 'Revogada', classe: 'badge-err' },
+    sem_credencial: { rotulo: 'Sem credencial', classe: 'badge-neutro' },
+  };
+  const ESTADO_PROV = {
+    aguardando_instalacao: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
+    usado: { rotulo: 'Usado na instalação', classe: 'badge-ok' },
+    cancelado: { rotulo: 'Cancelado', classe: 'badge-neutro' },
+    expirado: { rotulo: 'Expirado', classe: 'badge-neutro' },
+  };
+  const rotacao = cred.nova
+    ? `Nova credencial …${esc(cred.nova.fingerprint)} aguardando confirmação<span class="dado-sub">pedida ${esc(tempoDesde(cred.nova.criadaEm))} — vai no próximo heartbeat e vale quando o Player usar</span>`
+    : 'Não programada';
+  const acoesCred = [];
+  if (cred.estado === 'ativa' && !cred.nova)
+    acoesCred.push('<button class="btn ghost mini" data-acao="rotacionar">Rotacionar credencial</button>');
+  if (cred.nova)
+    acoesCred.push('<button class="btn ghost mini" data-acao="cancelar-rotacao">Cancelar rotação</button>');
+  if (cred.estado === 'ativa')
+    acoesCred.push('<button class="btn perigo-sutil mini" data-acao="revogar">Revogar Player</button>');
+  const acoesProv = [];
+  if (prov?.estado === 'aguardando_instalacao') {
+    acoesProv.push('<button class="btn ghost mini" data-acao="provisionar">Gerar novo arquivo</button>');
+    acoesProv.push(
+      '<button class="btn ghost mini" data-acao="cancelar-provisionamento">Cancelar provisionamento</button>',
+    );
+  } else if (cred.estado === 'ativa') {
+    acoesProv.push('<button class="btn ghost mini" data-acao="provisionar">Reprovisionar</button>');
+  }
+  // Sem Player e sem arquivo pendente: "Preparar instalação" fica no topo da
+  // ficha (acoesPrincipais), uma vez só.
+  return `<section class="panel ficha-bloco">
+    <h4>3. Identidade e segurança</h4>
+    <dl class="dados dados-3">
+      ${linhaDado('ID da Tela', `<code>${id.telaId}</code>`, 'Registro interno desta tela no Mostraí.')}
+      ${linhaDado('ID do Ponto', `<code>${id.pontoId}</code>`, 'Estabelecimento ao qual a tela pertence.')}
+      ${linhaDado(
+        'ID do dispositivo (dispositivoId)',
+        id.dispositivoId
+          ? `<code class="id-copiavel">${esc(id.dispositivoId)}</code>`
+          : cred.estado === 'ativa'
+            ? `<code>${id.telaId}</code><span class="dado-sub">legado: o Player usa o ID da Tela</span>`
+            : naoInformado('Gerado na instalação'),
+        'Identidade que o aplicativo Player usa nas APIs.',
+      )}
+      ${linhaDado('Versão do contrato', id.contrato ? `V${id.contrato}` : naoInformado('Nunca informado'), 'Protocolo que o Player fala com o servidor.')}
+      ${linhaDado('Versão do Player', id.versao ? esc(id.versao) : naoInformado())}
+      ${linhaDado('Build do Player', id.build ? String(id.build) : naoInformado())}
+      ${linhaDado('Provisionado em', id.provisionadoEm ? esc(dataHora(id.provisionadoEm)) : naoInformado('Nunca por token'))}
+    </dl>
+    <div class="ficha-subbloco">
+      <h5>Credencial do Player</h5>
+      <dl class="dados dados-3">
+        ${linhaDado('Situação', badge(ESTADO_CRED[cred.estado]))}
+        ${linhaDado('Fingerprint', cred.fingerprint ? `<code>…${esc(cred.fingerprint)}</code>` : naoInformado('—'), 'Identificador não secreto da chave atual. A chave em si nunca é exibida.')}
+        ${linhaDado('Criada em', cred.criadaEm ? esc(dataHora(cred.criadaEm)) : naoInformado(cred.estado === 'ativa' ? 'Antes do registro (chave V1)' : '—'))}
+        ${linhaDado('Última autenticação', cred.ultimoUsoEm ? esc(tempoDesde(cred.ultimoUsoEm)) : naoInformado('Nunca'))}
+        ${linhaDado('Rotação', rotacao)}
+        ${cred.anterior ? linhaDado('Credencial anterior', `Ainda aceita<span class="dado-sub">expira ${esc(dataHora(cred.anterior.expiraEm))}</span>`, 'Janela de sobreposição de 24 h.') : ''}
+        ${cred.revogadaEm ? linhaDado('Revogada em', esc(dataHora(cred.revogadaEm))) : ''}
+      </dl>
+      <div class="acoes">${acoesCred.join('')}</div>
+    </div>
+    <div class="ficha-subbloco">
+      <h5>Provisionamento</h5>
+      ${
+        prov
+          ? `<dl class="dados dados-3">
+              ${linhaDado('Arquivo', badge(ESTADO_PROV[prov.estado]))}
+              ${linhaDado('Gerado em', esc(dataHora(prov.geradoEm)))}
+              ${linhaDado(prov.estado === 'usado' ? 'Usado em' : 'Expira em', esc(dataHora(prov.estado === 'usado' ? prov.usadoEm : prov.expiraEm)))}
+            </dl>`
+          : '<p class="u-dim u-fs-85">Nenhum arquivo de instalação gerado ainda.</p>'
+      }
+      <p class="u-dim u-fs-85">O arquivo leva um token de uso único (vale 7 dias). O token não fica guardado: perdeu o arquivo, gere outro — o anterior deixa de valer. Gerar um arquivo novo não desliga o Player atual; só a instalação com ele substitui a identidade.</p>
+      <div class="acoes">${acoesProv.join('')}</div>
+    </div>
+    <details class="ficha-avancado">
+      <summary>Player web (V1) — compatibilidade</summary>
+      <p class="u-dim u-fs-85">Só para TV que roda o player no navegador (public/player.html). Gera uma chave nova (a atual para de valer) e mostra o link uma única vez.</p>
+      <button class="btn ghost mini" data-acao="chave-legada">Gerar link do player web</button>
+    </details>
+  </section>`;
+}
+
+function blocoDiagnostico(t, aberto) {
+  const d = t.diagnostico;
+  const v2 = Number(t.identidade.contrato) >= 2;
+  const FILA = { em_dia: 'Em dia', atencao: 'Alta', critica: 'Crítica', desconhecida: 'Não informado' };
+  const erro = d.erro
+    ? `${d.erro.codigo ? `<code>${esc(d.erro.codigo)}</code> ` : ''}${d.erro.em ? `<span class="dado-sub">${esc(dataHora(d.erro.em))}</span>` : ''}${d.erro.mensagem ? `<span class="dado-sub">${esc(d.erro.mensagem)}</span>` : ''}`
+    : 'Nenhum';
+  let corpo;
+  if (!v2) {
+    corpo = `<p class="u-dim u-fs-85">Este Player fala o contrato V1: não informa aparelho, fila de comprovantes, erro estruturado nem atualização. O que existe está abaixo.</p>
+      <dl class="dados dados-3">${linhaDado('Último erro relatado', erro)}</dl>`;
+  } else {
+    const desvio = d.desvioRelogioMs;
+    corpo = `<dl class="dados dados-3">
+      ${linhaDado('Player', `${esc(t.identidade.versao || '?')} · build ${t.identidade.build ?? '?'}`)}
+      ${linhaDado('Contrato', `V${t.identidade.contrato}`)}
+      ${linhaDado('Fabricante / modelo', d.fabricante || d.modelo ? esc([d.fabricante, d.modelo].filter(Boolean).join(' ')) : naoInformado())}
+      ${linhaDado('Android', d.android ? esc(d.android) : naoInformado())}
+      ${linhaDado('Resolução', d.resolucao ? esc(d.resolucao) : naoInformado())}
+      ${linhaDado('Fuso do aparelho', d.timezoneAparelho ? esc(d.timezoneAparelho) : naoInformado())}
+      ${linhaDado('Comprovantes na fila', d.fila.pendentes != null ? `${num(d.fila.pendentes)} pendentes<span class="dado-sub">${esc(FILA[d.fila.situacao])}</span>` : naoInformado(), 'Exibições terminadas que o Player ainda não conseguiu enviar.')}
+      ${linhaDado('Comprovante mais antigo', d.fila.maisAntigoEm ? quando(d.fila.maisAntigoEm) : d.fila.pendentes === 0 ? 'Fila vazia' : naoInformado())}
+      ${linhaDado('Último erro', erro)}
+      ${linhaDado('Desvio do relógio', desvio == null ? naoInformado() : Math.abs(desvio) < 60000 ? 'Em dia' : `${desvio > 0 ? 'Adiantado' : 'Atrasado'} ${Math.round(Math.abs(desvio) / 60000)} min`, 'Relógio da TV menos o do servidor. Relógio errado desloca o horário de operação.')}
+      ${linhaDado('Atualização', d.update ? `${esc(UPDATE_ESTADO[d.update.estado] || d.update.estado)}<span class="dado-sub">${esc(tempoDesde(d.update.em))}</span>` : 'Sem atualização em andamento')}
+      ${linhaDado('Hello', d.helloUltimoEm ? `último ${esc(tempoDesde(d.helloUltimoEm))}<span class="dado-sub">primeiro em ${esc(dataHora(d.helloPrimeiroEm))}</span>` : naoInformado('Nunca recebido'))}
+    </dl>`;
+  }
+  return `<details class="panel ficha-bloco" data-bloco="diagnostico" ${aberto ? 'open' : ''}>
+    <summary><h4>4. Diagnóstico</h4><span class="u-dim">informações técnicas do Player e do aparelho</span></summary>
+    ${corpo}
+  </details>`;
+}
+
+async function carregarHistorico(el, telaId) {
+  const alvo = el.querySelector('[data-historico]');
+  if (!alvo) return;
+  const eventosTela = await pegar(`/admin/dispositivos/${telaId}/eventos`);
+  alvo.innerHTML = eventosTela.length
+    ? `<ol class="tela-historico">${eventosTela
+        .map((e) => {
+          const d = e.detalhe || {};
+          const extra =
+            d.codigo || d.versao || d.fingerprint || d.paraBuild || d.para
+              ? ` <span class="u-dim">${esc(
+                  [
+                    d.codigo,
+                    d.versao ? `v${d.versao}` : '',
+                    d.fingerprint ? `…${d.fingerprint}` : '',
+                    d.paraBuild ? `build ${d.deBuild} → ${d.paraBuild}` : '',
+                    d.para ? `${TELA_STATUS[d.de] || d.de} → ${TELA_STATUS[d.para] || d.para}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
+                )}</span>`
+              : '';
+          return `<li><time>${esc(dataHora(e.ocorrido_em))}</time><span>${esc(EVENTO_TELA[e.tipo] || e.tipo)}${extra}</span></li>`;
+        })
+        .join('')}</ol>`
+    : '<p class="u-dim u-fs-85">Nenhum evento registrado ainda.</p>';
+}
+
+function ligarFichaTela(el, t, remontar) {
+  const ficha = el.querySelector('.tela-ficha');
+  const patch = async (corpo) => {
+    const r = await api(`/admin/dispositivos/${t.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+    if (!r.ok) {
+      toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.', 'err');
+      return false;
+    }
+    toast('Salvo.');
+    return true;
+  };
+  const posAcao = async () => {
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    await remontar();
+  };
+
+  ficha.querySelector('[data-campo="status"]').addEventListener('change', async (e) => {
+    const novo = e.target.value;
+    if (novo !== 'ativo') {
+      const ok = await confirmarModal({
+        titulo: novo === 'reparo' ? 'Colocar em reparo?' : 'Inativar a tela?',
+        texto: `<p>A tela para de receber programação e de gerar cobrança enquanto não voltar para "Ativa". O Player continua falando com o servidor (a ficha segue atualizando), mas não gera alerta de sinal.</p>`,
+        botao: novo === 'reparo' ? 'Colocar em reparo' : 'Inativar',
+        perigo: true,
+      });
+      if (!ok) return remontar();
+    }
+    if (await patch({ status: novo })) await posAcao();
+    else remontar();
+  });
+
+  const historico = ficha.querySelector('[data-bloco="historico"]');
+  historico.addEventListener('toggle', () => {
+    if (historico.open) carregarHistorico(el, t.id);
+  });
+
+  ficha.querySelectorAll('[data-acao]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const acao = btn.dataset.acao;
+      if (acao === 'operacao') return editarOperacao(t, remontar);
+      if (acao === 'rotacao') return editarRotacao(t, patch, remontar);
+      if (acao === 'area') return editarAreaSegura(t, patch, remontar);
+      if (acao === 'update') return editarUpdate(t, patch, remontar);
+      if (acao === 'pin') return editarPin(t, remontar);
+      if (acao === 'provisionar') return prepararInstalacao(t, remontar);
+      if (acao === 'chave-legada') return gerarChaveLegada(t, remontar);
+      if (acao === 'excluir') {
+        const ok = await confirmarModal({
+          titulo: `Excluir ${t.nome}?`,
+          texto:
+            '<p>Só faça isso se ela nunca rodou nada — o histórico de exibições dela vai junto e não volta. O número dela não é reaproveitado.</p>',
+          botao: 'Excluir tela',
+          perigo: true,
+        });
+        if (!ok) return;
+        const r = await api(`/admin/dispositivos/${t.id}`, { method: 'DELETE' });
+        if (!r.ok) return toast('Não foi possível excluir.', 'err');
+        toast(`${t.nome} excluída.`);
+        return irPara(`rede/pontos/${t.pontoId}`);
+      }
+      const CONFIRMAR = {
+        rotacionar: {
+          titulo: 'Rotacionar a credencial?',
+          texto:
+            '<p>Uma credencial nova vai para o Player no próximo heartbeat. A atual continua valendo até o Player confirmar a nova, e depois ainda por 24 h — a tela não fica sem chave em nenhum momento.</p>',
+          botao: 'Rotacionar',
+          metodo: 'POST',
+          caminho: 'credencial/rotacionar',
+        },
+        'cancelar-rotacao': {
+          titulo: 'Cancelar a rotação?',
+          texto: '<p>A credencial nova pendente é descartada; a atual continua valendo.</p>',
+          botao: 'Cancelar rotação',
+          metodo: 'DELETE',
+          caminho: 'credencial/rotacao',
+        },
+        revogar: {
+          titulo: 'Revogar o Player desta tela?',
+          texto:
+            '<p>Nenhuma credencial desta tela vale mais, a partir de agora: a TV para de receber programação até ser reprovisionada com um arquivo novo. Use quando o aparelho sumir ou for trocado.</p>',
+          botao: 'Revogar Player',
+          perigo: true,
+          metodo: 'POST',
+          caminho: 'credencial/revogar',
+        },
+        'cancelar-provisionamento': {
+          titulo: 'Cancelar o arquivo de instalação?',
+          texto: '<p>O token do arquivo gerado deixa de valer. O Player atual (se houver) não é afetado.</p>',
+          botao: 'Cancelar arquivo',
+          metodo: 'DELETE',
+          caminho: 'provisionamento',
+        },
+      }[acao];
+      if (!CONFIRMAR) return;
+      const ok = await confirmarModal({
+        titulo: CONFIRMAR.titulo,
+        texto: CONFIRMAR.texto,
+        botao: CONFIRMAR.botao,
+        perigo: !!CONFIRMAR.perigo,
+      });
+      if (!ok) return;
+      const r = await api(`/admin/dispositivos/${t.id}/${CONFIRMAR.caminho}`, { method: CONFIRMAR.metodo });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível concluir.', 'err');
+      toast('Feito.');
+      await posAcao();
+    }),
+  );
+}
+
+// Preparar instalação: gera o mostrai-config.json do contrato V2 §2.1 e
+// baixa na hora. O token só existe nesta resposta — fechar o modal é
+// perder o arquivo (gera-se outro).
+async function prepararInstalacao(t, remontar) {
+  if (t.identidade.credencial.estado === 'ativa') {
+    const ok = await confirmarModal({
+      titulo: 'Gerar arquivo para reprovisionar?',
+      texto:
+        '<p>O Player atual continua funcionando. Quando o arquivo novo for usado numa TV, ela recebe uma identidade nova e a atual deixa de valer.</p>',
+      botao: 'Gerar arquivo',
+    });
+    if (!ok) return;
+  }
+  const r = await api(`/admin/dispositivos/${t.id}/provisionamento`, { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o arquivo.', 'err');
+  const { nomeArquivo, arquivo, expiraEm } = await r.json();
+  const conteudo = `${JSON.stringify(arquivo, null, 2)}\n`;
+  const baixar = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([conteudo], { type: 'application/json' }));
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
+  };
+  baixar();
+  const { dlg } = abrirModal({
+    titulo: 'Arquivo de instalação gerado',
+    corpo: `<p class="u-mt-0">Copie <b>${esc(nomeArquivo)}</b> para a raiz do pendrive, junto do APK do Player. Na primeira vez que a TV ligar com ele, o Player troca o token pela credencial definitiva.</p>
+      <dl class="dados dados-2">
+        <div><dt>Servidor (baseUrl)</dt><dd><code>${esc(arquivo.baseUrl)}</code></dd></div>
+        <div><dt>Rotação inicial</dt><dd>${arquivo.rotacaoTela}°</dd></div>
+        <div><dt>Token de uso único</dt><dd><code>${esc(arquivo.tokenProvisionamento.slice(0, 8))}…</code><span class="dado-sub">só dentro do arquivo</span></dd></div>
+        <div><dt>Válido até</dt><dd>${esc(dataHora(expiraEm))}</dd></div>
+      </dl>
+      <p class="u-dim u-fs-85">O token não fica guardado no Mostraí. Fechou esta janela sem salvar o arquivo? Gere outro — este deixa de valer.</p>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-baixar>Baixar de novo</button><button type="button" class="btn primary" data-fechar>Pronto</button>',
+  });
+  dlg.querySelector('[data-baixar]').addEventListener('click', baixar);
+  dlg.addEventListener('close', () => remontar());
+}
+
+async function gerarChaveLegada(t, remontar) {
+  const ok = await confirmarModal({
+    titulo: 'Gerar link do player web?',
+    texto:
+      '<p>Gera uma chave nova para o player de navegador (V1). A credencial atual desta tela deixa de valer na hora — use só em TV que roda o player web.</p>',
+    botao: 'Gerar link',
+    perigo: true,
+  });
+  if (!ok) return;
+  const r = await api(`/admin/dispositivos/${t.id}/chave-legada`, { method: 'POST' });
+  if (!r.ok) return toast('Não foi possível gerar o link.', 'err');
+  const { link } = await r.json();
+  mostrarLink({
+    titulo: 'Link do player web (V1)',
+    texto: 'Abra este link no navegador da TV. A chave aparece só agora — o Mostraí guarda apenas o hash dela.',
+    link,
+  });
+  remontar();
+}
+
 function horarioTelaCampos(horario) {
   return `<div class="horario-semanal">
     ${DIAS_HORARIO_TELA.map((d) => {
@@ -2966,201 +3661,30 @@ function horarioTelaCampos(horario) {
   </div>`;
 }
 
-// Campo de uma margem da safe area: rótulo por extenso na mesma linha do
-// número, com a unidade colada ("Topo [2] vmin") — leitura imediata.
-function campoMargem(t, campo, rotulo, lado) {
-  const id = `margem_${campo}_${t.id}`;
-  return `<label class="safe-lado safe-${lado}" for="${id}">
-    <span class="safe-rotulo">${rotulo}</span>
-    <span class="campo-unidade"><input class="mini" type="number" min="0" step="0.5" id="${id}" data-tela="margem_${campo}" data-id="${t.id}" value="${Number(t[`margem_${campo}`] ?? 0)}"><span>vmin</span></span>
-  </label>`;
-}
-
-// Tela em blocos (polimento final, 23/09/2026, pedido do dono): cabeçalho
-// operacional (nome, situação, último sinal, estado), depois Player, PIN,
-// Instalação/horário e Safe area — cada ação com o nome do que faz ("Gerar
-// nova chave", "Trocar PIN"), nunca dois "Trocar" soltos. Excluir no rodapé,
-// com a cor de ação destrutiva.
-function montarTelaCard(t) {
-  const alerta = SITUACOES_DE_ALERTA_TELA.has(t.situacaoOperacional);
-  const modoHorario = t.modo_horario || 'ponto';
-  const sinal = (SINAL_TELA[t.situacaoOperacional] || SINAL_TELA.operando)(t);
-  const nome = t.apelido && t.apelido !== 'Tela' ? t.apelido : `Tela ${t.id}`;
-  return `<article class="tela-card" data-filtro="${t.status}${alerta ? ' offline' : ''}${t.aparelho_id ? '' : ' semchave'}">
-    <header class="tela-card-topo">
-      <div class="tela-card-titulo">
-        <h4>${esc(nome)}</h4>
-        <span class="badge ${sinal.classe}">${sinal.rotulo}</span>
-        ${sinal.detalhe ? `<span class="tela-card-sinal" ${t.situacaoOperacional === 'erro_do_player' ? `title="${esc(sinal.detalhe)}"` : ''}>${esc(sinal.detalhe)}</span>` : ''}
-      </div>
-      <label class="tela-estado"><span>Estado</span>${selectStatus(TELA_STATUS, t.status, `data-tela="status" data-id="${t.id}"`)}</label>
-    </header>
-    <div class="tela-grupos">
-      <section class="tela-grupo">
-        <h5>Player</h5>
-        <p class="tela-grupo-valor">${t.aparelho_id ? '<i class="ponto-status badge-ok" aria-hidden="true"></i>Chave configurada' : '<i class="ponto-status badge-pendente" aria-hidden="true"></i>Sem chave'}</p>
-        <div class="acoes">
-          ${
-            t.aparelho_id
-              ? `<button class="btn ghost mini" data-copiar="${esc(t.aparelho_id)}" data-tela-id="${t.id}">Copiar link</button>
-                 <button class="btn ghost mini" data-chave="${t.id}" data-trocar="1" title="Gera uma chave nova e desconecta o aparelho atual">Gerar nova chave</button>`
-              : `<button class="btn ghost mini" data-chave="${t.id}">Gerar chave</button>`
-          }
+function editarOperacao(t, remontar) {
+  const c = t.configuracao;
+  const { dlg, fechar } = abrirModal({
+    titulo: `Operação — ${t.nome}`,
+    largo: true,
+    corpo: `<form id="formOperacao" class="modal-form">
+        <div><label for="opModo">Quando a tela opera</label>
+          ${selectStatus(MODO_OPERACAO, c.modoHorario, 'id="opModo" name="modo_horario"')}</div>
+        <div data-horario-proprio ${c.modoHorario === 'personalizado' ? '' : 'hidden'}>
+          <p class="u-dim u-fs-85 u-m-0">A tela pode operar além do horário comercial. Janela que passa da meia-noite (22:00–02:00) vale até a madrugada seguinte.</p>
+          ${horarioTelaCampos(c.horarioSemanal)}
         </div>
-      </section>
-      <section class="tela-grupo">
-        <h5>PIN do painel</h5>
-        <p class="tela-grupo-valor">${t.tem_pin ? '<i class="ponto-status badge-ok" aria-hidden="true"></i>Definido' : '<i class="ponto-status badge-pendente" aria-hidden="true"></i>Sem PIN'}</p>
-        <div class="acoes"><button class="btn ghost mini" data-pin="${t.id}">${t.tem_pin ? 'Trocar PIN' : 'Definir PIN'}</button></div>
-      </section>
-      <section class="tela-grupo">
-        <h5>Instalação</h5>
-        <label class="tela-campo" for="instalada${t.id}"><span>Data</span>
-          <input class="mini" type="date" id="instalada${t.id}" data-tela="instalado_em" data-id="${t.id}" value="${t.instalado_em ? String(t.instalado_em).slice(0, 10) : ''}"></label>
-        <label class="tela-campo" for="modoHorario${t.id}" title="Quando essa tela deveria estar online — decide o que vira alerta de 'sem sinal'"><span>Horário</span>
-          ${selectStatus(MODO_HORARIO_TELA, modoHorario, `id="modoHorario${t.id}" data-tela="modo_horario" data-id="${t.id}"`)}</label>
-      </section>
-    </div>
-    <div class="horario-tela-editor" data-horario-tela="${t.id}" ${modoHorario === 'personalizado' ? '' : 'hidden'}>
-      ${horarioTelaCampos(t.horario_semanal)}
-      <div class="acoes"><button type="button" class="btn ghost mini" data-salvar-horario-tela="${t.id}">Salvar horário</button></div>
-    </div>
-    <section class="tela-safe">
-      <h5>Safe area <span>área coberta pela moldura — o player encolhe a mídia pra dentro dela</span></h5>
-      <div class="safe-area">
-        ${campoMargem(t, 'superior', 'Topo', 'topo')}
-        ${campoMargem(t, 'esquerda', 'Esquerda', 'esquerda')}
-        <div class="safe-tela" aria-hidden="true"><div class="safe-miolo">mídia</div></div>
-        ${campoMargem(t, 'direita', 'Direita', 'direita')}
-        ${campoMargem(t, 'inferior', 'Baixo', 'baixo')}
-      </div>
-      <p class="campo-ajuda">1 vmin = 1% do menor lado da área visível da tela.</p>
-    </section>
-    <footer class="tela-card-pe">
-      <button class="btn perigo-sutil mini" data-excluir-tela="${t.id}" title="Só se essa tela nunca rodou nada">Excluir tela</button>
-    </footer>
-  </article>`;
-}
-
-async function renderPontoTelas(el, ponto) {
-  // `situacaoOperacional` já vem pronta em cada tela (src/dispositivos/
-  // repository.js) — não precisa mais de uma segunda chamada só pra saber
-  // quem está sem sinal.
-  const telas = await pegar(`/admin/pontos/${ponto.id}/dispositivos`);
-
-  // Filtros só aparecem quando há o que filtrar (3+ telas): com 1 ou 2, a
-  // busca e os 6 chips ocupavam mais espaço que as próprias telas.
-  const comFiltros = telas.length > 2;
-  el.innerHTML = `
-    <div class="secao-topo">
-      <h3>Telas</h3>${telas.length ? `<span class="contagem">${telas.length}</span>` : ''}
-      <div class="secao-acoes"><button class="btn ghost mini" id="btnNovaTela">+ Tela</button></div>
-    </div>
-    ${
-      telas.length
-        ? `${
-            comFiltros
-              ? `<div class="telas-topo">
-              <input class="busca" type="search" placeholder="Buscar tela..." aria-label="Buscar tela">
-              <div class="chips">
-                <button type="button" class="chip active" data-filtro="">Todas</button>
-                <button type="button" class="chip" data-filtro="offline">Sem sinal</button>
-                <button type="button" class="chip" data-filtro="semchave">Sem chave</button>
-                ${Object.entries(TELA_STATUS)
-                  .map(([v, n]) => `<button type="button" class="chip" data-filtro="${v}">${n}</button>`)
-                  .join('')}
-              </div>
-              <span class="colecao-contagem" data-contagem></span>
-            </div>`
-              : ''
-          }
-            <div class="telas-lista">${telas.map((t) => montarTelaCard(t)).join('')}</div>`
-        : vazio('Nenhuma tela instalada ainda.', 'Crie a tela no dia da instalação — a chave do player sai dela.')
-    }`;
-
-  document.getElementById('btnNovaTela').addEventListener('click', () => {
-    const { dlg, fechar } = abrirModal({
-      titulo: 'Nova tela',
-      corpo: `<form id="formNovaTela" class="modal-form">
-          <div><label for="novaTelaApelido">Nome da tela <span class="u-dim">(só interno)</span></label>
-          <input id="novaTelaApelido" name="apelido" required value="Tela ${telas.length + 1}" placeholder="ex.: Tela 2 — balcão"></div>
-          <p class="u-dim u-fs-85 u-m-0">A tela nasce inativa. Gere a chave do player e marque como ativa na instalação.</p>
-          <p class="form-msg" data-msg role="status"></p>
-        </form>`,
-      rodape:
-        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formNovaTela" class="btn primary">Criar tela</button>',
-    });
-    const campo = dlg.querySelector('#novaTelaApelido');
-    campo.select();
-    dlg.querySelector('#formNovaTela').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const r = await api(`/admin/pontos/${ponto.id}/dispositivos`, {
-        method: 'POST',
-        body: JSON.stringify({ apelido: campo.value.trim() }),
-      });
-      if (!r.ok) return erroNoModal(dlg, 'Não foi possível criar a tela.');
-      toast('Tela criada. Gere a chave do player nela.');
-      fechar();
-      renderPontoTelas(el, ponto);
-    });
+        <div><label for="opFuso">Fuso horário</label>
+          ${selectStatus(Object.fromEntries(FUSOS_BR.map((f) => [f, f])), c.timezone, 'id="opFuso" name="timezone"')}</div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formOperacao" class="btn primary">Salvar</button>',
   });
-
-  if (!telas.length) return;
-
-  const busca = el.querySelector('.busca');
-  const contagem = el.querySelector('[data-contagem]');
-  const cartoes = () => [...el.querySelectorAll('.tela-card')];
-  function aplicarFiltro() {
-    const termo = (busca?.value || '').toLowerCase().trim();
-    const chipAtivo = el.querySelector('.chip.active');
-    const filtro = chipAtivo ? chipAtivo.dataset.filtro : '';
-    let visiveis = 0;
-    cartoes().forEach((card) => {
-      const casaTermo = !termo || card.textContent.toLowerCase().includes(termo);
-      const casaFiltro = !filtro || (card.dataset.filtro || '').split(' ').includes(filtro);
-      card.hidden = !(casaTermo && casaFiltro);
-      if (!card.hidden) visiveis += 1;
-    });
-    if (contagem)
-      contagem.textContent =
-        visiveis === cartoes().length ? plural(visiveis, 'tela') : `${visiveis} de ${plural(cartoes().length, 'tela')}`;
-  }
-  if (comFiltros) {
-    busca.addEventListener('input', aplicarFiltro);
-    el.querySelectorAll('.chip').forEach((chip) =>
-      chip.addEventListener('click', () => {
-        el.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
-        chip.classList.add('active');
-        aplicarFiltro();
-      }),
-    );
-    aplicarFiltro();
-  }
-
-  el.querySelectorAll('[data-tela]').forEach((campo) =>
-    campo.addEventListener('change', async () => {
-      const numerico = ['margem_superior', 'margem_direita', 'margem_inferior', 'margem_esquerda'].includes(
-        campo.dataset.tela,
-      );
-      const valor = campo.value === '' ? null : numerico ? Number(campo.value) : campo.value;
-      if (await salvar(`/admin/dispositivos/${campo.dataset.id}`, { [campo.dataset.tela]: valor }, campo)) {
-        // status e modo_horario podem os dois mudar a situação operacional da
-        // tela (src/lib/status-tela.js) — e com ela o alerta "sem sinal" da
-        // Visão geral (achado em revisão de PR: só `status` recarregava
-        // RESUMO, `modo_horario` só re-renderizava o card local e deixava o
-        // contador do menu desatualizado até um Atualizar manual). As duas
-        // recarregam RESUMO e o próprio card, pro editor mostrar/esconder e o
-        // contador bater com o que acabou de ser salvo.
-        if (campo.dataset.tela === 'status' || campo.dataset.tela === 'modo_horario') {
-          RESUMO = await pegar('/admin/resumo');
-          pintarContadores();
-          renderPontoTelas(el, ponto);
-        }
-      }
-    }),
-  );
-
-  el.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+  const form = dlg.querySelector('#formOperacao');
+  form.modo_horario.addEventListener('change', () => {
+    dlg.querySelector('[data-horario-proprio]').hidden = form.modo_horario.value !== 'personalizado';
+  });
+  dlg.querySelectorAll('[data-horario-dia]').forEach((linha) => {
     const chk = linha.querySelector('[data-horario-fechado]');
     chk.addEventListener('change', () => {
       linha.classList.toggle('fechado', chk.checked);
@@ -3169,125 +3693,137 @@ async function renderPontoTelas(el, ponto) {
       });
     });
   });
-
-  el.querySelectorAll('[data-salvar-horario-tela]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const editor = el.querySelector(`[data-horario-tela="${btn.dataset.salvarHorarioTela}"]`);
-      const horario_semanal = {};
-      editor.querySelectorAll('[data-horario-dia]').forEach((linha) => {
-        const fechado = linha.querySelector('[data-horario-fechado]').checked;
-        horario_semanal[linha.dataset.horarioDia] = fechado
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const corpo = { modo_horario: form.modo_horario.value, timezone: form.timezone.value };
+    if (corpo.modo_horario === 'personalizado') {
+      corpo.horario_semanal = {};
+      dlg.querySelectorAll('[data-horario-dia]').forEach((linha) => {
+        corpo.horario_semanal[linha.dataset.horarioDia] = linha.querySelector('[data-horario-fechado]').checked
           ? null
           : {
               abre: linha.querySelector('[data-horario-abre]').value,
               fecha: linha.querySelector('[data-horario-fecha]').value,
             };
       });
-      const r = await api(`/admin/dispositivos/${btn.dataset.salvarHorarioTela}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ horario_semanal }),
-      });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o horário.', 'err');
-      toast('Horário salvo.');
-      // Mesmo motivo do listener de `[data-tela]` acima: um horário
-      // personalizado novo pode mudar a situação operacional da tela na
-      // hora (ex.: tela que estava fora_do_horario passa a estar dentro) —
-      // sem recarregar RESUMO o alerta da Visão geral ficava com o número
-      // de antes até um Atualizar manual (achado em revisão de PR).
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-      renderPontoTelas(el, ponto);
-    }),
-  );
+    }
+    const r = await api(`/admin/dispositivos/${t.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
+    toast('Operação salva.');
+    fechar();
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    remontar();
+  });
+}
 
-  el.querySelectorAll('[data-chave]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (btn.dataset.trocar) {
-        const ok = await confirmarModal({
-          titulo: 'Gerar nova chave?',
-          texto:
-            '<p>A TV que usa a chave atual para de funcionar até você abrir o link novo no navegador dela. Use quando o aparelho for trocado ou sumir.</p>',
-          botao: 'Gerar nova chave',
-          perigo: true,
-        });
-        if (!ok) return;
-      }
-      const r = await api(`/admin/dispositivos/${btn.dataset.chave}/chave`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível gerar a chave.', 'err');
-      const { aparelho_id } = await r.json();
-      mostrarLinkPlayer(linkDoPlayer(btn.dataset.chave, aparelho_id), 'Chave gerada');
-      renderPontoTelas(el, ponto);
-    }),
-  );
+function editarRotacao(t, patch, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: `Rotação — ${t.nome}`,
+    corpo: `<form id="formRotacao" class="modal-form">
+        <div><label for="rotValor">Rotação da imagem</label>
+          ${selectStatus({ 0: '0° (normal)', 90: '90°', 180: '180°', 270: '270°' }, String(t.configuracao.rotacao), 'id="rotValor" name="rotacao"')}</div>
+        <p class="u-dim u-fs-85 u-m-0">Para TV montada de lado. O Player aplica na próxima sincronização de config.</p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formRotacao" class="btn primary">Salvar</button>',
+  });
+  dlg.querySelector('#formRotacao').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (await patch({ rotacao_tela: Number(e.target.rotacao.value) })) {
+      fechar();
+      remontar();
+    }
+  });
+}
 
-  el.querySelectorAll('[data-copiar]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const link = linkDoPlayer(btn.dataset.telaId, btn.dataset.copiar);
-      copiarTexto(link).then(
-        () => toast('Link copiado.'),
-        () => mostrarLinkPlayer(link, 'Link do player'),
-      );
-    }),
-  );
+// Área segura: resumo fechado na ficha, os quatro campos só aqui.
+function editarAreaSegura(t, patch, remontar) {
+  const m = t.configuracao.margens;
+  const campo = (lado, rotulo, classe) =>
+    `<label class="safe-lado safe-${classe}" for="area_${lado}"><span class="safe-rotulo">${rotulo}</span>
+      <span class="campo-unidade"><input class="mini" type="number" min="0" max="10" step="0.5" id="area_${lado}" name="${lado}" value="${m[lado]}"><span>vmin</span></span></label>`;
+  const { dlg, fechar } = abrirModal({
+    titulo: `Área segura — ${t.nome}`,
+    corpo: `<form id="formArea" class="modal-form">
+        <div class="safe-area">
+          ${campo('superior', 'Superior', 'topo')}
+          ${campo('esquerda', 'Esquerda', 'esquerda')}
+          <div class="safe-tela" aria-hidden="true"><div class="safe-miolo">mídia</div></div>
+          ${campo('direita', 'Direita', 'direita')}
+          ${campo('inferior', 'Inferior', 'baixo')}
+        </div>
+        <p class="u-dim u-fs-85 u-m-0">De 0 a 10 vmin por lado, em termos visuais (o Player compensa a rotação). 1 vmin = 1% do menor lado da tela.</p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formArea" class="btn primary">Salvar</button>',
+  });
+  dlg.querySelector('#formArea').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const corpo = {};
+    for (const lado of ['superior', 'direita', 'inferior', 'esquerda'])
+      corpo[`margem_${lado}`] = Number(f[lado].value || 0);
+    if (await patch(corpo)) {
+      fechar();
+      remontar();
+    }
+  });
+}
 
-  el.querySelectorAll('[data-pin]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const tela = telas.find((t) => t.id === Number(btn.dataset.pin));
-      const { dlg, fechar } = abrirModal({
-        titulo: tela?.tem_pin ? 'Trocar PIN' : 'Definir PIN',
-        corpo: `<form id="formPinTela" class="modal-form">
-            <div><label for="pinTela">PIN do painel da tela <span class="u-dim">(4 a 6 dígitos)</span></label>
-            <input id="pinTela" name="pin" inputmode="numeric" autocomplete="off" pattern="\\d{4,6}" maxlength="6" ${tela?.tem_pin ? '' : 'required'}></div>
-            <p class="u-dim u-fs-85 u-m-0">Protege só o painel aberto na própria TV.${tela?.tem_pin ? ' Deixe vazio e salve pra remover o PIN atual.' : ''}</p>
-            <p class="form-msg" data-msg role="status"></p>
-          </form>`,
-        rodape:
-          '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPinTela" class="btn primary">Salvar PIN</button>',
-      });
-      const campo = dlg.querySelector('#pinTela');
-      campo.focus();
-      dlg.querySelector('#formPinTela').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pin = campo.value.trim();
-        const r = await api(`/admin/dispositivos/${btn.dataset.pin}/pin`, {
-          method: 'POST',
-          body: JSON.stringify({ pin: pin || null }),
-        });
-        if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.');
-        toast(pin ? 'PIN definido.' : 'PIN removido.');
-        fechar();
-        renderPontoTelas(el, ponto);
-      });
-    }),
-  );
+function editarUpdate(t, patch, remontar) {
+  const u = t.configuracao.update;
+  const { dlg, fechar } = abrirModal({
+    titulo: `Atualização do Player — ${t.nome}`,
+    corpo: `<form id="formUpdate" class="modal-form">
+        ${alternar({ nome: 'auto', marcado: u.baixarAutomaticamente, texto: 'Baixar versão nova sozinho (a instalação sempre pede OK no controle)' })}
+        <div><label for="updHoras">Depois de "cancelar" no controle, oferecer de novo em</label>
+          <span class="campo-unidade"><input id="updHoras" name="horas" type="number" min="1" max="72" value="${u.horasEntreTentativas}"><span>horas</span></span></div>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formUpdate" class="btn primary">Salvar</button>',
+  });
+  dlg.querySelector('#formUpdate').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (await patch({ update_baixar_auto: f.auto.checked, update_horas_entre_tentativas: Number(f.horas.value) })) {
+      fechar();
+      remontar();
+    }
+  });
+}
 
-  el.querySelectorAll('[data-excluir-tela]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const ok = await confirmarModal({
-        titulo: 'Excluir esta tela?',
-        texto: '<p>Só faça isso se ela nunca rodou nada — o histórico de exibições dela vai junto e não volta.</p>',
-        botao: 'Excluir tela',
-        perigo: true,
-      });
-      if (!ok) return;
-      const r = await api(`/admin/dispositivos/${btn.dataset.excluirTela}`, { method: 'DELETE' });
-      if (!r.ok) return toast('Não foi possível excluir.', 'err');
-      toast('Tela excluída.');
-      renderPontoTelas(el, ponto);
-    }),
-  );
+function editarPin(t, remontar) {
+  const configurado = t.configuracao.pin.configurado;
+  const { dlg, fechar } = abrirModal({
+    titulo: 'PIN de manutenção do Player',
+    corpo: `<form id="formPinTela" class="modal-form">
+        <div><label for="pinTela">Novo PIN <span class="u-dim">(4 dígitos)</span></label>
+        <input id="pinTela" name="pin" inputmode="numeric" autocomplete="off" pattern="\\d{4}" maxlength="4" ${configurado ? '' : 'required'}></div>
+        <p class="u-dim u-fs-85 u-m-0">Abre o painel de manutenção na própria TV. O PIN atual nunca é exibido.${configurado ? ' Deixe vazio e salve para remover.' : ''}</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPinTela" class="btn primary">Salvar PIN</button>',
+  });
+  const campo = dlg.querySelector('#pinTela');
+  campo.focus();
+  dlg.querySelector('#formPinTela').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pin = campo.value.trim();
+    const r = await api(`/admin/dispositivos/${t.id}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin: pin || null }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.');
+    toast(pin ? 'PIN alterado.' : 'PIN removido.');
+    fechar();
+    remontar();
+  });
 }
 
 // Link num modal com campo só-leitura e botão de copiar — no lugar do
 // prompt() nativo, que no celular nem deixava selecionar direito.
-function mostrarLinkPlayer(link, titulo) {
-  mostrarLink({
-    titulo,
-    texto: 'Abra este link no navegador da TV. Ele guarda a chave e continua funcionando depois de reiniciar.',
-    link,
-  });
-}
-
 function mostrarLink({ titulo, texto, link }) {
   const { dlg } = abrirModal({
     titulo,
@@ -3305,6 +3841,112 @@ function mostrarLink({ titulo, texto, link }) {
       () => toast('Link copiado.'),
       () => erroNoModal(dlg, 'Não deu pra copiar sozinho — selecione o link e copie.'),
     );
+  });
+}
+
+// ---------- versões do Player (OTA fase 1) ----------
+// Release só é anunciada às telas quando ATIVA, e só pode ser ativada depois
+// que alguém confere que o APK foi assinado com o keystore definitivo — o
+// Android recusa assinatura diferente da instalada, e o servidor não prova
+// isso sozinho (contrato V2 §8.4, src/player/releases.js).
+async function renderPlayerReleases(el) {
+  async function montar() {
+    const releasesLista = await pegar('/admin/player-releases');
+    el.innerHTML = `
+      <section class="panel">
+        <div class="secao-topo"><h3>Versões do Player</h3>
+          <div class="secao-acoes"><button class="btn primary mini" data-nova-release>+ Registrar versão</button></div></div>
+        <p class="u-dim u-fs-85">O Player baixa em segundo plano, confere o SHA-256 e pede instalação entre anúncios; sem Device Owner, alguém confirma no controle. Nenhuma versão deve ser ativada antes do keystore definitivo do APK de produção.</p>
+        ${
+          releasesLista.length
+            ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr><th>Versão</th><th>Build</th><th>Tipo</th><th>Assinatura</th><th>Situação</th><th></th></tr></thead><tbody>
+              ${releasesLista
+                .map(
+                  (r) => `<tr>
+                  <td>${esc(r.versao)}<span class="dado-sub"><code>${esc(r.sha256.slice(0, 12))}…</code>${r.tamanho_bytes ? ` · ${(Number(r.tamanho_bytes) / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : ''}</span></td>
+                  <td>${r.build}${r.build_minimo ? `<span class="dado-sub">a partir do build ${r.build_minimo}</span>` : ''}</td>
+                  <td>${r.obrigatoria ? 'Obrigatória' : 'Recomendada'}</td>
+                  <td>${r.assinatura_conferida_em ? `Conferida<span class="dado-sub">${esc(dataHora(r.assinatura_conferida_em))}</span>` : '<span class="badge badge-pendente">Não conferida</span>'}</td>
+                  <td>${r.ativa ? '<span class="badge badge-ok">Liberada</span>' : '<span class="badge badge-neutro">Segurada</span>'}</td>
+                  <td class="acoes">${
+                    r.assinatura_conferida_em
+                      ? `<button class="btn ghost mini" data-release-ativa="${r.id}" data-valor="${r.ativa ? 'false' : 'true'}">${r.ativa ? 'Segurar' : 'Liberar'}</button>`
+                      : `<button class="btn ghost mini" data-release-assinatura="${r.id}">Assinatura conferida</button>`
+                  }</td></tr>`,
+                )
+                .join('')}</tbody></table></div></div>`
+            : vazio(
+                'Nenhuma versão registrada.',
+                'Registre o APK publicado (URL https, SHA-256 e build) quando houver keystore definitivo.',
+              )
+        }
+      </section>`;
+    el.querySelector('[data-nova-release]').addEventListener('click', () => novaRelease(montar));
+    el.querySelectorAll('[data-release-assinatura]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const ok = await confirmarModal({
+          titulo: 'Assinatura conferida?',
+          texto:
+            '<p>Confirme só se o APK desta versão foi assinado com o keystore definitivo — o mesmo das TVs instaladas. Assinatura diferente o Android recusa, e a tela fica tentando.</p>',
+          botao: 'Confirmo',
+        });
+        if (!ok) return;
+        const r = await api(`/admin/player-releases/${b.dataset.releaseAssinatura}/assinatura-conferida`, {
+          method: 'POST',
+        });
+        if (!r.ok) return toast('Não foi possível registrar.', 'err');
+        montar();
+      }),
+    );
+    el.querySelectorAll('[data-release-ativa]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = await api(`/admin/player-releases/${b.dataset.releaseAtiva}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ ativa: b.dataset.valor === 'true' }),
+        });
+        if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível alterar.', 'err');
+        montar();
+      }),
+    );
+  }
+  await montar();
+}
+
+function novaRelease(remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Registrar versão do Player',
+    corpo: `<form id="formRelease" class="modal-form">
+        <div><label for="relVersao">Versão (versionName)</label><input id="relVersao" name="versao" required placeholder="1.1.0"></div>
+        <div><label for="relBuild">Build (versionCode)</label><input id="relBuild" name="build" type="number" min="1" required></div>
+        <div><label for="relUrl">URL do APK (https)</label><input id="relUrl" name="url" type="url" required placeholder="https://…/player-1.1.0.apk"></div>
+        <div><label for="relSha">SHA-256 do APK</label><input id="relSha" name="sha256" required pattern="[0-9a-fA-F]{64}" maxlength="64"></div>
+        <div><label for="relTam">Tamanho em bytes <span class="u-dim">(opcional)</span></label><input id="relTam" name="tamanho_bytes" type="number" min="1"></div>
+        <div><label for="relMin">Build mínimo para receber <span class="u-dim">(opcional)</span></label><input id="relMin" name="build_minimo" type="number" min="1"></div>
+        ${alternar({ nome: 'obrigatoria', texto: 'Obrigatória (informativo no Player: a instalação sempre pede OK)' })}
+        <p class="u-dim u-fs-85 u-m-0">Entra segurada. Só é anunciada às telas depois de "Assinatura conferida" e "Liberar".</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formRelease" class="btn primary">Registrar</button>',
+  });
+  dlg.querySelector('#formRelease').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const r = await api('/admin/player-releases', {
+      method: 'POST',
+      body: JSON.stringify({
+        versao: f.versao.value.trim(),
+        build: Number(f.build.value),
+        url: f.url.value.trim(),
+        sha256: f.sha256.value.trim(),
+        tamanho_bytes: f.tamanho_bytes.value ? Number(f.tamanho_bytes.value) : null,
+        build_minimo: f.build_minimo.value ? Number(f.build_minimo.value) : null,
+        obrigatoria: f.obrigatoria.checked,
+      }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível registrar.');
+    fechar();
+    remontar();
   });
 }
 

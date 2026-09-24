@@ -75,6 +75,33 @@ function emitirParaConta(contaId, evento, dado = {}) {
     .catch((err) => console.error('sse: não deu pra publicar no canal (outras instâncias não recebem)', err.message));
 }
 
+// Canal do ADMIN (Player V2, 23/09/2026): a Rede muda sem ninguém do admin
+// clicar em nada — hello, heartbeat, erro, config aplicada. Mesmo desenho do
+// canal por conta (evento leve, quem recebe refaz o GET), um conjunto só,
+// porque todo admin logado pode ver toda a rede.
+const clientesAdmin = new Set();
+const registrarAdmin = (res) => clientesAdmin.add(res);
+const removerAdmin = (res) => clientesAdmin.delete(res);
+
+function emitirLocalAdmin(evento, dado) {
+  if (!clientesAdmin.size) return;
+  const linha = `event: ${evento}\ndata: ${JSON.stringify(dado)}\n\n`;
+  for (const res of clientesAdmin) {
+    try {
+      res.write(linha);
+    } catch {
+      // idem emitirLocal: o 'close' remove.
+    }
+  }
+}
+
+function emitirParaAdmin(evento, dado = {}) {
+  emitirLocalAdmin(evento, dado);
+  pool
+    .query('SELECT pg_notify($1, $2)', [CANAL, JSON.stringify({ admin: true, evento, dado })])
+    .catch((err) => console.error('sse: não deu pra publicar no canal do admin', err.message));
+}
+
 function contaTemClientes(contaId) {
   return clientesPorConta.has(contaId);
 }
@@ -90,8 +117,9 @@ async function iniciarListener() {
   cliente.on('notification', (msg) => {
     if (msg.channel !== CANAL) return;
     try {
-      const { contaId, evento, dado } = JSON.parse(msg.payload);
-      emitirLocal(contaId, evento, dado);
+      const { admin, contaId, evento, dado } = JSON.parse(msg.payload);
+      if (admin) emitirLocalAdmin(evento, dado);
+      else emitirLocal(contaId, evento, dado);
     } catch (err) {
       console.error('sse: payload de NOTIFY ilegível', err.message);
     }
@@ -126,4 +154,12 @@ function reconectar() {
 
 if (process.env.NODE_ENV !== 'test') iniciarListener();
 
-module.exports = { registrarCliente, removerCliente, emitirParaConta, contaTemClientes };
+module.exports = {
+  registrarCliente,
+  removerCliente,
+  emitirParaConta,
+  contaTemClientes,
+  registrarAdmin,
+  removerAdmin,
+  emitirParaAdmin,
+};
