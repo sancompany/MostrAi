@@ -47,6 +47,10 @@ async function subirApp() {
 }
 
 const pontosCriados = [];
+// compat V1 (só teste): chave gravada na tela, identificada pela PK — como
+// as TVs V1 em campo têm. O admin não gera mais chave legada (410).
+const chaveV1 = (telaId) => require('../src/player/credencial').gerarChaveLegada(telaId);
+
 async function novoPonto(extra = {}) {
   const { rows } = await pool.query(
     `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, horario_semanal)
@@ -81,6 +85,119 @@ let app;
 test.before(async () => {
   app = await subirApp();
 });
+
+// ---------------------------------------------------------------------------
+// Consolidação (24/09/2026): [Preparar Player], dispositivoId de 5 dígitos,
+// olho do PIN auditado, exclusão bloqueada com exibição confirmada.
+// ---------------------------------------------------------------------------
+test('preparar-player: dispositivoId de 5 dígitos + chave, uma vez; Player autentica com a credencial direta', async () => {
+  const pid = await novoPonto();
+  const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
+  const r = await app.chamar('POST', `/admin/dispositivos/${tela.id}/preparar-player`);
+  assert.equal(r.status, 201);
+  const { arquivo } = r.json;
+  assert.match(arquivo.dispositivoId, /^[1-9]\d{4}$/);
+  assert.ok(arquivo.chaveAparelho.length >= 40);
+  assert.ok(/^https?:\/\//.test(arquivo.baseUrl));
+  assert.equal(arquivo.rotacaoTela, 0);
+  assert.equal(await statusDoPonto(pid), 'aguardando_primeiro_sinal');
+  const { rows } = await pool.query('SELECT * FROM dispositivos WHERE id = $1', [tela.id]);
+  assert.ok(!JSON.stringify(rows[0]).includes(arquivo.chaveAparelho), 'chave em claro no banco');
+  assert.equal(rows[0].dispositivo_uid, arquivo.dispositivoId);
+  // Ficha: dispositivoId aparece, chave não; baseUrl vem no bloco CONEXÃO.
+  const ficha = (await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json;
+  assert.equal(ficha.identidade.dispositivoId, arquivo.dispositivoId);
+  assert.equal(ficha.conexao.baseUrl, arquivo.baseUrl);
+  assert.ok(!JSON.stringify(ficha).includes(arquivo.chaveAparelho));
+  // O Player usa a credencial direta pelo dispositivoId; a PK não autentica.
+  const hbOk = await app.chamar('POST', `/player/${arquivo.dispositivoId}/heartbeat`, {
+    corpo: hb(),
+    chave: arquivo.chaveAparelho,
+  });
+  assert.equal(hbOk.status, 200);
+  assert.equal(await statusDoPonto(pid), 'em_operacao');
+  const porPk = await app.chamar('POST', `/player/${tela.id}/heartbeat`, { corpo: hb(), chave: arquivo.chaveAparelho });
+  assert.equal(porPk.status, 401, 'tela com dispositivoId não responde pela PK');
+  assert.equal(await eventosDe(tela.id, 'PLAYER_PREPARED'), 1);
+  // Preparar de novo troca a identidade: a anterior deixa de valer.
+  const r2 = (await app.chamar('POST', `/admin/dispositivos/${tela.id}/preparar-player`)).json.arquivo;
+  assert.notEqual(r2.dispositivoId, arquivo.dispositivoId);
+  assert.equal(
+    (
+      await app.chamar('POST', `/player/${arquivo.dispositivoId}/heartbeat`, {
+        corpo: hb(),
+        chave: arquivo.chaveAparelho,
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (await app.chamar('POST', `/player/${r2.dispositivoId}/heartbeat`, { corpo: hb(), chave: r2.chaveAparelho }))
+      .status,
+    200,
+  );
+  // Fluxo antigo de chave aposentado.
+  assert.equal((await app.chamar('POST', `/admin/dispositivos/${tela.id}/chave-legada`)).status, 410);
+});
+
+test('PIN: olho devolve o PIN só pelo cofre e registra PIN_REVEALED; tela sem PIN → 404', async () => {
+  const pid = await novoPonto();
+  const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}/pin`)).status, 404);
+  assert.equal(
+    (await app.chamar('POST', `/admin/dispositivos/${tela.id}/pin`, { corpo: { pin: '4321' } })).status,
+    200,
+  );
+  const ficha = (await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json;
+  assert.ok(!JSON.stringify(ficha).includes('4321'), 'PIN em claro na ficha');
+  const olho = await app.chamar('GET', `/admin/dispositivos/${tela.id}/pin`);
+  assert.equal(olho.status, 200);
+  assert.equal(olho.json.pin, '4321');
+  assert.equal(await eventosDe(tela.id, 'PIN_REVEALED'), 1);
+});
+
+test('excluir tela: bloqueado (409) quando já há exibição confirmada; livre sem histórico', async () => {
+  const pid = await novoPonto();
+  const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
+  const {
+    rows: [conta],
+  } = await pool.query(
+    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em)
+     VALUES ('Excluir Tela', '00000000000191', $1, '16999990000', 'x', now()) RETURNING id`,
+    [`excluir-tela-${randomUUID().slice(0, 8)}@teste.com`],
+  );
+  try {
+    await pool.query(
+      `INSERT INTO exibicoes_contador (janela_hora, dispositivo_id, anunciante_id, vezes_programadas, vezes_confirmadas)
+       VALUES (date_trunc('hour', now()), $1, $2, 4, 3)`,
+      [tela.id, conta.id],
+    );
+    const r = await app.chamar('DELETE', `/admin/dispositivos/${tela.id}`);
+    assert.equal(r.status, 409);
+    assert.match(r.json.erro, /inative/);
+    await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [tela.id]);
+    assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${tela.id}`)).status, 200);
+  } finally {
+    await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [conta.id]);
+    await pool.query('DELETE FROM anunciantes WHERE id = $1', [conta.id]);
+  }
+});
+
+test('número da tela: menor número livre por ponto (excluir a 2 de [1,2,3] e criar → Tela 2)', async () => {
+  const pid = await novoPonto();
+  const criar = async () => (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
+  const t1 = await criar();
+  const t2 = await criar();
+  const t3 = await criar();
+  assert.deepEqual([t1.nome, t2.nome, t3.nome], ['Tela 1', 'Tela 2', 'Tela 3']);
+  assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${t2.id}`)).status, 200);
+  const t4 = await criar();
+  assert.equal(t4.nome, 'Tela 2', 'o número livre é reaproveitado');
+  assert.notEqual(t4.id, t2.id, 'a PK é outra — identidade operacional não depende dela');
+  const t5 = await criar();
+  assert.equal(t5.nome, 'Tela 4');
+});
+
 test.after(async () => {
   await app.fechar();
   for (const id of pontosCriados) {
@@ -108,7 +225,7 @@ test.after(async () => {
 // ---------------------------------------------------------------------------
 test('provisionamento: token válido vira dispositivoId + chave; nada disso fica em claro no banco', async () => {
   const { tela, cred, token } = await telaProvisionada(app);
-  assert.match(cred.dispositivoId, /^tela_[0-9a-f]{20}$/);
+  assert.match(cred.dispositivoId, /^[1-9]\d{4}$/, 'dispositivoId: 5 dígitos, 10000–99999');
   assert.ok(cred.chaveAparelho.length >= 40);
   const { rows } = await pool.query('SELECT * FROM dispositivos WHERE id = $1', [tela.id]);
   const linha = JSON.stringify(rows[0]);
@@ -236,8 +353,7 @@ test('auth: chave certa passa; errada, vazia, ausente, de outra tela e por query
 test('auth V1: player web pelo ID numérico com a chave legada; V2 no mesmo backend', async () => {
   const pid = await novoPonto();
   const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
-  const { link } = (await app.chamar('POST', `/admin/dispositivos/${tela.id}/chave-legada`)).json;
-  const chave = new URL(link).searchParams.get('chave');
+  const chave = await chaveV1(tela.id);
   const pl = await app.chamar('GET', `/playlist/${tela.id}`, { chave, v2: false });
   assert.equal(pl.status, 200);
   assert.ok(Array.isArray(pl.json), 'V1 continua recebendo o array');
@@ -861,9 +977,10 @@ test('V1: chave antiga em texto (backfill da 083) autentica só com X-Aparelho-I
 test('V1: primeiro contato pela playlist conta como sinal (ponto entra no ar), um FIRST_SEEN só', async () => {
   const pid = await novoPonto();
   const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
-  const { link } = (await app.chamar('POST', `/admin/dispositivos/${tela.id}/chave-legada`)).json;
-  const chave = new URL(link).searchParams.get('chave');
-  assert.equal(await statusDoPonto(pid), 'a_instalar');
+  const chave = await chaveV1(tela.id);
+  // Chave V1 gravada = Player preparado; sem sinal ainda é "aguardando
+  // primeiro sinal" (migration 088), não "aguardando instalação".
+  assert.equal(await statusDoPonto(pid), 'aguardando_primeiro_sinal');
   assert.equal((await app.chamar('GET', `/playlist/${tela.id}`, { chave, v2: false, legado: true })).status, 200);
   assert.equal(await statusDoPonto(pid), 'em_operacao');
   await app.chamar('POST', `/player/${tela.id}/heartbeat`, { cru: '', chave, v2: false, legado: true });
@@ -873,8 +990,7 @@ test('V1: primeiro contato pela playlist conta como sinal (ponto entra no ar), u
 test('V1: heartbeat {erro:texto}, played {anuncianteId} string/número, painel por PIN, envelope por contrato_playlist', async () => {
   const pid = await novoPonto();
   const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
-  const { link } = (await app.chamar('POST', `/admin/dispositivos/${tela.id}/chave-legada`)).json;
-  const chave = new URL(link).searchParams.get('chave');
+  const chave = await chaveV1(tela.id);
   const v1 = { chave, v2: false, legado: true };
 
   const hbErro = await app.chamar('POST', `/player/${tela.id}/heartbeat`, { ...v1, corpo: { erro: 'vídeo travou' } });
@@ -951,7 +1067,9 @@ test('margens: valor antigo acima de 10 segue intacto para o V1; o V2 recebe no 
   assert.deepEqual(v2.json.margens, { superior: 10, direita: 0, inferior: 0, esquerda: 4 });
   const cfg = await app.chamar('GET', `/player/${cred.dispositivoId}/config`, { chave: cred.chaveAparelho });
   assert.equal(cfg.json.margens.superior, 10);
-  const v1 = await app.chamar('POST', `/player/${tela.id}/heartbeat`, {
+  // Comportamento V1 é decidido pelos headers (sem X-Player-Contract), não
+  // pela forma do id: a tela com dispositivoId só responde por ele.
+  const v1 = await app.chamar('POST', `/player/${cred.dispositivoId}/heartbeat`, {
     cru: '',
     chave: cred.chaveAparelho,
     v2: false,

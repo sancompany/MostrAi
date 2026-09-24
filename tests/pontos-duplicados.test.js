@@ -212,27 +212,40 @@ test('status automático não ressuscita um ponto arquivado', async () => {
 test('migration 080: mescla só a duplicata órfã, e é idempotente', async () => {
   const conta = await criarConta();
   const nome = `Estab ${randomUUID().slice(0, 6)}`;
+  // Tudo numa transação que termina em ROLLBACK: a 080 recria o CHECK de
+  // status do ponto SEM os valores das migrations seguintes (088), e os
+  // outros arquivos de teste rodam em paralelo no mesmo banco — reaplicá-la
+  // pra valer derrubava qualquer teste que gravasse um status novo no meio.
+  const cliente = await pool.connect();
   try {
+    await cliente.query('BEGIN');
     const inserir = (n, endereco) =>
-      pool.query(
+      cliente.query(
         `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id)
          VALUES ($1, $2, 'Matão', 'SP', '15997-078', 'outro', 'x', 'x', $3) RETURNING id`,
         [n, endereco, conta.id],
       );
     const canonico = (await inserir(nome, 'Av. Teste, 1')).rows[0].id;
     // O canônico tem vínculo real (uma tela); a cópia não tem nada.
-    await pool.query(`INSERT INTO dispositivos (ponto_id, apelido, status) VALUES ($1, 'Tela 1', 'ativo')`, [canonico]);
+    await cliente.query(`INSERT INTO dispositivos (ponto_id, apelido, status) VALUES ($1, 'Tela 1', 'ativo')`, [
+      canonico,
+    ]);
     const duplicata = (await inserir(nome, 'Av. Teste, 1')).rows[0].id;
     const vizinho = (await inserir(`${nome} Vizinho`, 'Av. Teste, 1')).rows[0].id;
 
-    const sql = fs.readFileSync(
-      path.join(__dirname, '../src/db/migrations/080_vinculo_candidatura_ponto_e_arquivamento.sql'),
-      'utf8',
-    );
-    await pool.query(sql);
-    await pool.query(sql); // segunda vez: nada muda, nada estoura
+    // Sem o CHECK de status da 080: ele lista só os valores da época, e um
+    // banco com pontos em `aguardando_primeiro_sinal` (088) recusaria
+    // recriá-lo. O que este teste prova é a mesclagem, não o CHECK.
+    const sql = fs
+      .readFileSync(
+        path.join(__dirname, '../src/db/migrations/080_vinculo_candidatura_ponto_e_arquivamento.sql'),
+        'utf8',
+      )
+      .replace(/ALTER TABLE pontos ADD CONSTRAINT pontos_status_check[^;]*;/, '');
+    await cliente.query(sql);
+    await cliente.query(sql); // segunda vez: nada muda, nada estoura
 
-    const { rows } = await pool.query(
+    const { rows } = await cliente.query(
       'SELECT id, status, mesclado_em_ponto_id, motivo_arquivamento FROM pontos WHERE anunciante_id = $1',
       [conta.id],
     );
@@ -243,10 +256,8 @@ test('migration 080: mescla só a duplicata órfã, e é idempotente', async () 
     assert.notEqual(por[canonico].status, 'arquivado', 'o canônico fica');
     assert.notEqual(por[vizinho].status, 'arquivado', 'nome diferente no mesmo endereço é outro comércio');
   } finally {
-    await pool.query('DELETE FROM dispositivos WHERE ponto_id IN (SELECT id FROM pontos WHERE anunciante_id = $1)', [
-      conta.id,
-    ]);
-    await pool.query('UPDATE pontos SET mesclado_em_ponto_id = NULL WHERE anunciante_id = $1', [conta.id]);
+    await cliente.query('ROLLBACK').catch(() => {});
+    cliente.release();
     await limpar(conta.id);
   }
 });

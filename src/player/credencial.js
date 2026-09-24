@@ -17,7 +17,24 @@ const { sincronizarStatusPonto } = require('../pontos/repository');
 const SOBREPOSICAO_MS = 24 * 3600 * 1000;
 
 const gerarChave = () => crypto.randomBytes(32).toString('base64url');
-const gerarUid = () => `tela_${crypto.randomBytes(10).toString('hex')}`;
+
+// dispositivoId (regra canônica, consolidação 24/09/2026): 5 dígitos
+// aleatórios, 10000–99999, único, gerado por RNG seguro. Não é segredo — a
+// segurança é a chave. Retenta em colisão; também recusa um número igual à
+// PK de alguma tela, porque o roteamento V1 (compat) ainda aceita a PK
+// numérica: `buscarComPonto` procura o uid primeiro, e uma PK igual a um
+// uid alheio ficaria inalcançável pelo Player V1.
+async function gerarDispositivoId(db = pool) {
+  for (let tentativa = 0; tentativa < 25; tentativa++) {
+    const id = String(crypto.randomInt(10000, 100000));
+    const { rows } = await db.query(
+      'SELECT 1 FROM dispositivos WHERE dispositivo_uid = $1::text OR id = $2::int LIMIT 1',
+      [id, Number(id)],
+    );
+    if (!rows.length) return id;
+  }
+  throw new Error('não foi possível gerar um dispositivoId livre');
+}
 const hashDaChave = (chave) => crypto.createHash('sha256').update(String(chave), 'utf8').digest('hex');
 // Identificador não secreto da chave, para o admin reconhecer "é a mesma?".
 const fingerprintDoHash = (hash) => (hash ? hash.slice(-6).toUpperCase() : null);
@@ -138,12 +155,11 @@ async function revogar(telaId) {
   return true;
 }
 
-// compat-v1: o player web (public/player.html) não conhece provisionamento
-// por token — recebe a chave pela URL que o admin abre na TV. Gera uma chave
-// nova (derruba a anterior na hora, como sempre foi) e devolve o valor UMA
-// vez, para o link; o banco guarda só o hash. O `dispositivo_uid` sai: a
-// tela deixa de ter Player V2 (a rota por uid passa a dar 401) e a rotação,
-// que só existe no V2, não pode ser pedida para ela.
+// compat-v1 (SÓ testes da compatibilidade V1 — o admin não gera mais chave
+// legada desde a consolidação de 24/09/2026; a rota responde 410): grava
+// uma chave V1 na tela, identificada pela PK numérica, como as TVs V1 em
+// campo têm. Gera uma chave nova (derruba a anterior na hora) e devolve o
+// valor UMA vez; o banco guarda só o hash. O `dispositivo_uid` sai.
 async function gerarChaveLegada(telaId) {
   const chave = gerarChave();
   const hash = hashDaChave(chave);
@@ -177,7 +193,7 @@ async function registrarUso(telaId) {
 module.exports = {
   SOBREPOSICAO_MS,
   gerarChave,
-  gerarUid,
+  gerarDispositivoId,
   hashDaChave,
   fingerprintDoHash,
   identificarChave,

@@ -57,28 +57,34 @@ r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "tela ativa sem 
 esperar "dono vê a tela aguardando a primeira conexão" '"situacao":"aguardando_primeiro_sinal"' "$r"
 r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"custo_equipamento":2400}'); esperar "segunda tela criada, número estável" '"nome":"Tela 2"' "$r"
 DISP2=$(echo $r | sed 's/^{"id":\([0-9]*\).*/\1/')
-# compat-v1: chave do player web, mostrada uma vez só dentro do link.
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave-legada); esperar "chave legada gerada (link do player web)" 'player\.html\?tela=' "$r"
-CHAVE=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP2/chave-legada); CHAVE2=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
+# [Preparar Player]: dispositivoId (5 dígitos) + chave, mostrados uma vez só.
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/preparar-player); esperar "Preparar Player devolve dispositivoId de 5 dígitos" '"dispositivoId":"[1-9][0-9]{4}"' "$r"
+esperar "Preparar Player devolve a baseUrl" '"baseUrl":"http' "$r"
+CHAVE=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/'); DID=$(echo $r | sed 's/.*"dispositivoId":"\([0-9]*\)".*/\1/')
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP2/preparar-player); CHAVE2=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/'); DID2=$(echo $r | sed 's/.*"dispositivoId":"\([0-9]*\)".*/\1/')
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave-legada -o /dev/null -w "%{http_code}"); esperar "fluxo antigo de chave aposentado (410)" '^410$' "$r"
+r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "Player preparado sem sinal: ponto aguardando primeiro sinal" '"estado":"aguardando_primeiro_sinal"' "$r"
 r=$(curl -s -b adm.txt $B/admin/dispositivos/$DISP); esperar "admin não recebe a chave de volta" '"fingerprint":"[0-9A-F]{6}"' "$r"
 if echo "$r" | grep -q "$CHAVE"; then falha "chave em claro na ficha" "$CHAVE"; else ok "chave em claro nunca volta pro admin"; fi
 r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/pin -H "$J" -d '{"pin":"12345"}'); esperar "PIN de 5 dígitos recusado (Player V2 aceita 4)" 'exatamente 4' "$r"
 r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/pin -H "$J" -d '{"pin":"1234"}'); esperar "PIN de manutenção configurado" '"pin":{"configurado":true' "$r"
-if echo "$r" | grep -q '1234'; then falha "PIN em claro na ficha" ''; else ok "PIN nunca volta pro admin"; fi
+if echo "$r" | grep -q '1234'; then falha "PIN em claro na ficha" ''; else ok "PIN nunca volta na ficha"; fi
+r=$(curl -s -b adm.txt $B/admin/dispositivos/$DISP/pin); esperar "olho do PIN: revelação auditada devolve o PIN" '"pin":"1234"' "$r"
+r=$(curl -s -b adm.txt $B/admin/dispositivos/$DISP/eventos); esperar "revelação do PIN fica no histórico" 'PIN_REVEALED' "$r"
 r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"custo_equipamento":2400,"meses_amortizacao":36}'); esperar "custo por tela salvo" '"custoEquipamento":2400' "$r"
 
-echo "== player V1 (web): sem chave 401, com chave 200, primeiro sinal =="
-r=$(curl -s -o /dev/null -w "%{http_code}" $B/playlist/$DISP); esperar "playlist sem chave é 401" '^401$' "$r"
-r=$(curl -s -o /dev/null -w "%{http_code}" "$B/playlist/$DISP?chave=$CHAVE"); esperar "chave na URL não autentica (vai pra log)" '^401$' "$r"
-r=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Aparelho-Id: $CHAVE" $B/playlist/$DISP); esperar "playlist com chave no header é 200" '^200$' "$r"
-r=$(curl -s -X POST $B/player/$DISP/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "heartbeat V1 vazio" '"ok":true' "$r"
-r=$(curl -s -X POST $B/player/$DISP2/heartbeat -H "X-Aparelho-Id: $CHAVE2"); esperar "heartbeat da Tela 2" '"ok":true' "$r"
+echo "== player: sem chave 401, com chave 200, primeiro sinal =="
+r=$(curl -s -o /dev/null -w "%{http_code}" $B/playlist/$DID); esperar "playlist sem chave é 401" '^401$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" "$B/playlist/$DID?chave=$CHAVE"); esperar "chave na URL não autentica (vai pra log)" '^401$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Aparelho-Key: $CHAVE" $B/playlist/$DID); esperar "playlist pelo dispositivoId com chave no header é 200" '^200$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Aparelho-Id: $CHAVE" $B/playlist/$DISP); esperar "PK numérica não autentica a tela que tem dispositivoId" '^401$' "$r"
+r=$(curl -s -X POST $B/player/$DID/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "heartbeat V1 vazio" '"ok":true' "$r"
+r=$(curl -s -X POST $B/player/$DID2/heartbeat -H "X-Aparelho-Id: $CHAVE2"); esperar "heartbeat da Tela 2" '"ok":true' "$r"
 r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "primeiro sinal põe o ponto em operação" '"estado":"ativo"' "$r"
 r=$(curl -s -b adm.txt $B/admin/resumo); esperar "amortização real no resumo (2 telas x 66,67)" '"amortizacaoMensal":133' "$r"
-r=$(curl -s -X POST $B/player/$DISP/played -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"anuncianteId":999}'); esperar "played de quem não está na playlist é recusado" 'não está programado' "$r"
-r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"0000"}'); esperar "PIN errado 401" 'PIN incorreto' "$r"
-r=$(curl -s -X POST $B/player/$DISP/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"1234"}'); esperar "PIN certo abre painel da tela" 'porAnunciante' "$r"
+r=$(curl -s -X POST $B/player/$DID/played -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"anuncianteId":999}'); esperar "played de quem não está na playlist é recusado" 'não está programado' "$r"
+r=$(curl -s -X POST $B/player/$DID/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"0000"}'); esperar "PIN errado 401" 'PIN incorreto' "$r"
+r=$(curl -s -X POST $B/player/$DID/painel -H "X-Aparelho-Id: $CHAVE" -H "$J" -d '{"pin":"1234"}'); esperar "PIN certo abre painel da tela" 'porAnunciante' "$r"
 
 echo "== anunciante: cadastro aberto, plano inválido =="
 r=$(curl -s -c ana.txt -X POST $B/anunciantes/cadastro -H "$J" -d "{\"nome_empresa\":\"Padaria Ana\",\"cpf_cnpj\":\"11.222.333/0001-81\",\"endereco\":\"R\",\"cidade\":\"Matão\",\"uf\":\"SP\",\"cep\":\"15990-000\",\"contato_email\":\"ana@x.com\",\"contato_telefone\":\"16 99463-5946\",\"senha\":\"Senha12@\",\"aceitou_termos\":true,\"indicado_por_cupom\":\"$CUPOM\"}")

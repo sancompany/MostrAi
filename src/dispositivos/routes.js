@@ -12,6 +12,12 @@ const credencial = require('../player/credencial');
 const telaEventos = require('../player/tela-eventos');
 const releases = require('../player/releases');
 const sse = require('../lib/sse');
+const { exigirAparelho } = require('../lib/aparelho');
+
+// URL da API que vai no aparelho (bloco CONEXÃO da ficha e no JSON do
+// [Preparar Player]). Fonte canônica: SITE_URL; o host da requisição só
+// serve em dev sem .env.
+const baseUrlDoPlayer = (req) => (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
 
 // Tela mudou: admin (canal próprio) e dono do ponto ("Meus pontos") refazem
 // o GET sem F5. `point.updated` junto: o estado do ponto é derivado das
@@ -91,7 +97,7 @@ router.get('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
 router.get('/admin/dispositivos/:id', async (req, res) => {
   const tela = await repo.buscarPorId(req.params.id);
   if (!tela) return res.status(404).json({ erro: 'tela não encontrada' });
-  res.json(tela);
+  res.json({ ...tela, conexao: { baseUrl: baseUrlDoPlayer(req) } });
 });
 
 router.get('/admin/dispositivos/:id/eventos', async (req, res) => {
@@ -127,7 +133,12 @@ router.patch('/admin/dispositivos/:id', async (req, res) => {
 
 router.delete('/admin/dispositivos/:id', async (req, res) => {
   const existente = await repo.buscarLinha(req.params.id);
-  await repo.deletar(req.params.id);
+  try {
+    await repo.deletar(req.params.id);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
   if (existente) await avisarMudanca(existente.ponto_id, existente.id);
   res.json({ ok: true });
 });
@@ -135,14 +146,41 @@ router.delete('/admin/dispositivos/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Admin — provisionamento e credencial
 // ---------------------------------------------------------------------------
-// Preparar instalação: gera o `mostrai-config.json` do contrato V2 §2.1. O
-// token em claro só existe nesta resposta (o banco guarda o hash) — perdeu o
-// arquivo, gera outro (o anterior deixa de valer).
+// [Preparar Player] — o fluxo canônico (consolidação, 24/09/2026): gera
+// dispositivoId (5 dígitos) + chaveAparelho e devolve o `mostrai-config.json`
+// pronto, UMA vez. A chave não fica guardada (só o hash): fechou sem copiar,
+// prepara de novo — a anterior deixa de valer.
+router.post('/admin/dispositivos/:id/preparar-player', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  let r;
+  try {
+    r = await repo.prepararPlayer(tela.id);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.status(201).json({
+    nomeArquivo: 'mostrai-config.json',
+    arquivo: {
+      dispositivoId: r.dispositivoId,
+      chaveAparelho: r.chaveAparelho,
+      baseUrl: baseUrlDoPlayer(req),
+      rotacaoTela: tela.rotacao_tela,
+    },
+    geradoEm: new Date().toISOString(),
+  });
+});
+
+// Provisionamento por token (contrato V2 §2.1) — caminho alternativo que o
+// Player continua aceitando; o admin usa o [Preparar Player] acima. Fica
+// como capacidade do backend (testada), não como tela.
 router.post('/admin/dispositivos/:id/provisionamento', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;
   const gerado = await repo.gerarTokenProvisionamento(tela.id, 'admin');
-  const baseUrl = (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  const baseUrl = baseUrlDoPlayer(req);
   await avisarMudanca(tela.ponto_id, tela.id);
   res.status(201).json({
     nomeArquivo: 'mostrai-config.json',
@@ -186,16 +224,26 @@ router.post('/admin/dispositivos/:id/credencial/revogar', async (req, res) => {
   res.json(await repo.buscarPorId(tela.id));
 });
 
-// compat-v1: link do player web (public/player.html?tela=ID&chave=…). A chave
-// aparece só nesta resposta; o banco guarda o hash. Some quando o player web
-// for aposentado.
-router.post('/admin/dispositivos/:id/chave-legada', async (req, res) => {
+// Fluxo antigo de chave (link do player web com a chave na URL) aposentado
+// na consolidação de 24/09/2026: um clique apagava o Player V2 da tela. As
+// TVs V1 em campo continuam autenticando com a chave que já têm; instalação
+// nova é sempre pelo [Preparar Player] (o player web aceita a mesma
+// credencial em ?tela=<dispositivoId>&chave=…).
+router.post('/admin/dispositivos/:id/chave-legada', (_req, res) =>
+  res.status(410).json({ erro: 'fluxo antigo de chave aposentado — use Preparar Player' }),
+);
+
+// PIN em claro pro admin (ficha: •••• + olho). Auditado: cada revelação vira
+// PIN_REVEALED no histórico da tela. Tela só com o hash V1 não tem PIN
+// legível — 404 com o motivo, e o admin redefine.
+router.get('/admin/dispositivos/:id/pin', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;
-  const chave = await credencial.gerarChaveLegada(tela.id);
-  const base = (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json({ link: `${base}/player.html?tela=${tela.id}&chave=${encodeURIComponent(chave)}` });
+  const pin = await repo.revelarPin(tela.id);
+  if (!pin) return res.status(404).json({ erro: 'esta tela não tem PIN legível — defina um PIN de 4 dígitos' });
+  await telaEventos.registrar(tela.id, 'PIN_REVEALED', { por: 'admin' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ pin });
 });
 
 // PIN de manutenção do Player: exatamente 4 dígitos (contrato §5 descarta
@@ -318,14 +366,19 @@ router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnunciante
 
 // compat-v1: painel aberto a partir do player web — chave do aparelho + PIN.
 // Não dá acesso a nada além desta tela (CONSTRAINTS.md). O Player V2 tem o
-// painel local (PIN na config), sem rota no servidor.
+// painel local (PIN na config), sem rota no servidor. A autenticação é a
+// mesma das outras rotas do Player (exigirAparelho: ponto arquivado, chave
+// vazia, rotação), não uma cópia.
 // limiteTentativas: PIN de 4 dígitos sem limite é força bruta em minutos.
-router.post('/player/:dispositivoId/painel', limiteTentativas, async (req, res) => {
-  const tela = await repo.buscarComPonto(req.params.dispositivoId);
-  const qual = tela && credencial.identificarChave(tela, req.get('x-aparelho-key') || req.get('x-aparelho-id'));
-  if (!qual) return res.status(401).json({ erro: 'aparelho não autorizado' });
-  if (!(await repo.conferirPin(tela.id, req.body?.pin))) return res.status(401).json({ erro: 'PIN incorreto' });
-  res.json(await painelDaTela(tela.id));
-});
+router.post(
+  '/player/:dispositivoId/painel',
+  limiteTentativas,
+  exigirAparelho({ operacao: false }),
+  async (req, res) => {
+    if (!(await repo.conferirPin(req.dispositivo.id, req.body?.pin)))
+      return res.status(401).json({ erro: 'PIN incorreto' });
+    res.json(await painelDaTela(req.dispositivo.id));
+  },
+);
 
 module.exports = router;

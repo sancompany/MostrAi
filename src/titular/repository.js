@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const { removerAvatar } = require('../lib/avatar');
 
 // Tudo que a conta gerou, numa leitura só. É a base do direito de acesso e de
 // portabilidade (LGPD art. 18, II e V): o titular tem que conseguir ver e levar
@@ -35,6 +36,14 @@ async function exportarConta(anuncianteId) {
     candidaturas,
     eventosDaConta,
     telas,
+    creditos,
+    beneficios,
+    notificacoes,
+    arrependimentos,
+    pontosEscolhidos,
+    bancoHoras,
+    ciclosContratados,
+    pedidosAvulsos,
   ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
@@ -69,6 +78,23 @@ async function exportarConta(anuncianteId) {
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id
         WHERE p.anunciante_id = $1 ORDER BY d.id`),
+    // Consolidação (24/09/2026): o que faltava na exportação — tudo que a
+    // conta gerou depois do modelo de créditos, e o que ela pediu (LGPD art.
+    // 18: o titular leva TUDO, não só o que existia quando a rota nasceu).
+    q(`SELECT id, tipo, quantidade, ponto_id, competencia, observacao, criado_em
+         FROM creditos_ledger WHERE anunciante_id = $1 ORDER BY criado_em`),
+    q(`SELECT id, plano_id, origem, status, inicio, valido_ate, ativado_em, encerrado_em, encerrado_motivo, observacao, criado_em
+         FROM planos_administrativos WHERE anunciante_id = $1 ORDER BY criado_em`),
+    q(`SELECT id, tipo, titulo, descricao, lida_em, criado_em
+         FROM notificacoes WHERE anunciante_id = $1 ORDER BY criado_em`),
+    q(`SELECT id, assinatura_id, plano_id, valor_a_estornar, contratado_em, pedido_em, status, estornado_em
+         FROM arrependimentos WHERE anunciante_id = $1 ORDER BY pedido_em`),
+    q(`SELECT ap.ponto_id, p.nome AS ponto, ap.escolhido_em
+         FROM anunciantes_pontos ap JOIN pontos p ON p.id = ap.ponto_id
+        WHERE ap.anunciante_id = $1 ORDER BY ap.escolhido_em`),
+    q('SELECT * FROM banco_horas WHERE anunciante_id = $1 ORDER BY 1'),
+    q('SELECT * FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY 1'),
+    q('SELECT * FROM pedidos_avulsos WHERE anunciante_id = $1 ORDER BY 1'),
   ]);
 
   return {
@@ -89,11 +115,21 @@ async function exportarConta(anuncianteId) {
     cadastro_de_vendedor: vendedor,
     candidaturas_de_ponto: candidaturas,
     eventos_registrados: eventosDaConta,
+    creditos: creditos,
+    beneficios_por_creditos: beneficios,
+    notificacoes,
+    pedidos_de_arrependimento: arrependimentos,
+    pontos_escolhidos_para_anunciar: pontosEscolhidos,
+    banco_de_horas: bancoHoras,
+    ciclos_contratados: ciclosContratados,
+    pedidos_avulsos: pedidosAvulsos,
   };
 }
 
 // Apaga o que é opcional e nulo pro serviço. Não toca em nada que a execução
-// do contrato ou a obrigação fiscal exija — isso só sai com a conta.
+// do contrato ou a obrigação fiscal exija — isso só sai com a conta. A foto
+// sai do bucket junto (src/lib/avatar.js) — zerar só a URL deixava o arquivo
+// público.
 async function apagarDadosOpcionais(anuncianteId) {
   const { rows } = await pool.query(
     `
@@ -104,7 +140,37 @@ async function apagarDadosOpcionais(anuncianteId) {
      WHERE id = $1 RETURNING dados_opcionais_apagados_em`,
     [anuncianteId],
   );
+  await removerAvatar(anuncianteId);
   return rows[0];
+}
+
+// Conta excluída há mais de 60 dias (prazo prometido em POST
+// /anunciantes/me/excluir pra recuperação pelo suporte) perde o dado
+// pessoal que não sustenta obrigação nenhuma: contato, endereço,
+// responsável, senha, consentimentos. Nome e documento FICAM — são o que a
+// cobrança confirmada e a nota exigem (obrigação fiscal). O e-mail vira um
+// marcador único e a pessoa pode se cadastrar de novo com o mesmo endereço
+// (antes ficava preso pra sempre no índice único). Roda no job diário
+// (scripts/conciliar.js); idempotente por `anonimizada_em`.
+const DIAS_ATE_ANONIMIZAR = 60;
+async function anonimizarExcluidas(agora = new Date()) {
+  const { rows } = await pool.query(
+    `UPDATE anunciantes
+        SET contato_email = 'excluida-' || id || '@anonimo.mostrai.invalid',
+            contato_telefone = '',
+            senha_hash = 'anonimizada',
+            endereco = NULL, logradouro = NULL, numero = NULL, complemento = NULL, bairro = NULL,
+            responsavel_nome = NULL, responsavel_cpf = NULL, responsavel_email = NULL, responsavel_telefone = NULL,
+            foto_url = NULL, categoria_livre = NULL,
+            comunicacoes_revogado_em = COALESCE(comunicacoes_revogado_em, now()),
+            anonimizada_em = now()
+      WHERE excluido_em IS NOT NULL AND excluido_em < $1::timestamptz - make_interval(days => $2)
+        AND anonimizada_em IS NULL
+      RETURNING id`,
+    [agora, DIAS_ATE_ANONIMIZAR],
+  );
+  for (const { id } of rows) await removerAvatar(id);
+  return rows.map((r) => r.id);
 }
 
 async function definirComunicacoes(anuncianteId, aceita) {
@@ -182,6 +248,8 @@ async function marcarEstornado(id, comprovante) {
 module.exports = {
   exportarConta,
   apagarDadosOpcionais,
+  anonimizarExcluidas,
+  DIAS_ATE_ANONIMIZAR,
   definirComunicacoes,
   primeiraCobranca,
   totalPago,

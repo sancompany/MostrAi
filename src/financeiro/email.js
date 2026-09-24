@@ -323,7 +323,7 @@ async function enviarCandidaturaNova(candidatura) {
       candidatura.contato_email ? `E-mail: ${candidatura.contato_email}` : '',
       candidatura.endereco ? `Endereço: ${linhaEndereco(candidatura, { comCidade: true })}` : '',
       candidatura.cep ? `CEP: ${candidatura.cep}` : '',
-      candidatura.observacao ? `Observação: ${candidatura.observacao}` : '',
+      candidatura.mensagem ? `Observação: ${candidatura.mensagem}` : '',
       '',
       'A página prometeu retorno em até 2 dias úteis.',
       `Fila: ${process.env.SITE_URL}/admin/#candidaturas`,

@@ -252,8 +252,9 @@ await admin.waitForSelector('.tela-ficha');
 const telaNovaId = admin.url().split('/').pop();
 check('tela criada: Tela 1 aguardando primeiro sinal', /Tela 1[\s\S]*Aguardando primeiro sinal/.test(await admin.textContent('.tela-ficha-topo')));
 check('ponto continua aguardando instalação (tela sem sinal)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'a_instalar');
-const linkV1 = await admin.evaluate(async (id) => (await (await fetch(`/admin/dispositivos/${id}/chave-legada`, { method: 'POST' })).json()).link, telaNovaId);
-await fetch(`${B}/player/${telaNovaId}/heartbeat`, { method: 'POST', headers: { 'X-Aparelho-Id': new URL(linkV1).searchParams.get('chave') } });
+const cfgPlayer = await admin.evaluate(async (id) => (await (await fetch(`/admin/dispositivos/${id}/preparar-player`, { method: 'POST' })).json()).arquivo, telaNovaId);
+check('Player preparado: ponto aguardando primeiro sinal', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'aguardando_primeiro_sinal');
+await fetch(`${B}/player/${cfgPlayer.dispositivoId}/heartbeat`, { method: 'POST', headers: { 'X-Aparelho-Key': cfgPlayer.chaveAparelho } });
 check('primeiro sinal vira "Ativo" no ponto', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'em_operacao');
 await admin.evaluate(() => {
   location.hash = 'rede/pontos';

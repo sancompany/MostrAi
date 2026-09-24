@@ -256,7 +256,7 @@
 .estab-foto .ponto-foto-placeholder { height: 100%; }
 .estab-id h3 { margin: 0; font-size: 1.02rem; line-height: 1.25; overflow-wrap: anywhere; }
 .estab-end, .estab-meta { margin: 3px 0 0; color: var(--text-dim); font-size: .82rem; overflow-wrap: anywhere; }
-.estab-etapas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: etapa; }
+.estab-etapas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: etapa; }
 .estab-etapas li { position: relative; padding-top: 10px; color: var(--text-dim); font-size: .74rem; line-height: 1.25; }
 .estab-etapas li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 4px; background: #e8ebf0; }
 .estab-etapas li.feita::before { background: #9bd6b0; }

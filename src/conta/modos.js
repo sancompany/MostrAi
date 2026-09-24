@@ -14,9 +14,10 @@ const anunciantesRepo = require('../anunciantes/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const indicacoesRepo = require('../indicacoes/repository');
+const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
+const eventos = require('../lib/eventos');
 const { enviarCandidaturaNova } = require('../financeiro/email');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
@@ -41,84 +42,15 @@ async function adicionarPapel(contaId, papel, db = pool) {
 // aqui não faz mais nada — nem papel novo, nem perfil de vendedor. É o ponto
 // único por onde convite aceito, candidatura antiga e o admin chegavam, então
 // fechar aqui fecha todos. Vendedor que já existe fica como está.
+// O papel 'ponto' em `papeis` é só um espelho legado: "dono de ponto" é
+// derivado do ponto materializado (src/anunciantes/situacao.js,
+// src/pontos/routes.js) — a materialização em si mora em
+// src/pontos/materializar.js, compartilhada com o cadastro por convite.
 async function liberarPapelNaConta(conta, papel, cand, db) {
   if (papel === 'vendedor') return;
   await adicionarPapel(conta.id, papel, db);
   if (papel === 'ponto' && cand && cand.tipo === 'ponto') {
-    // Uma candidatura materializa no máximo UM ponto (23/09/2026, auditoria
-    // do ponto duplicado). Já materializada = nada a criar, é o mesmo lugar.
-    // O índice único `pontos_candidatura_unica` (migration 080) é a trava de
-    // banco para a corrida; esta checagem é o caminho normal, sem erro.
-    const { rows: jaExiste } = await db.query('SELECT id FROM pontos WHERE candidatura_id = $1', [cand.id]);
-    if (jaExiste.length) return;
-    // E uma candidatura NOVA do mesmo estabelecimento (mesma conta, nome e
-    // endereço) também não vira segundo ponto — era assim que "Bruno H
-    // Sanches" aparecia duas vezes em produção. Sem olhar pedidos em análise:
-    // a candidatura que está sendo aprovada É um pedido em análise.
-    const motivo = await pontosRepo.estabelecimentoJaCadastrado(
-      conta.id,
-      { nome: cand.nome_comercio || conta.nome_empresa, endereco: cand.endereco, cep: cand.cep },
-      db,
-      { incluirPedidos: false },
-    );
-    if (motivo) {
-      throw Object.assign(new Error(`${motivo} — recuse esta candidatura em vez de aprovar`), { status: 409 });
-    }
-    await pontosRepo.criar(
-      {
-        nome: cand.nome_comercio || conta.nome_empresa,
-        endereco: cand.endereco,
-        logradouro: cand.logradouro,
-        numero: cand.numero,
-        bairro: cand.bairro,
-        complemento: cand.complemento,
-        cidade: cand.cidade || 'Matão',
-        uf: cand.uf || 'SP',
-        cep: cand.cep || '',
-        segmento: cand.segmento || 'outro',
-        // A categoria é da CONTA (quem cede a parede), não da candidatura —
-        // candidaturas nunca teve essas colunas, só o `segmento` resolvido
-        // em texto (ver POST /conta/modos/ponto/pedir). Sem isso, todo ponto
-        // nascido daqui nascia com categoria_id NULL e a regra de bloqueio de
-        // concorrente (src/playlist/gerador.js:112) ficava inoperante nele —
-        // achado no mapeamento de 22/09/2026, não um comportamento novo.
-        categoria_id: conta.categoria_id || null,
-        categoria_livre: conta.categoria_livre || null,
-        responsavel_nome: cand.nome,
-        responsavel_contato: cand.contato_telefone,
-        fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
-        horario_semanal: cand.horario_semanal || null,
-        // Migration 067 — os dois furos do redesenho da Rede: a foto da
-        // fachada e o "algo a mais" da candidatura nascem com o ponto, no
-        // mesmo INSERT (mesmo raciocínio do horário semanal acima).
-        foto_instalacao_url: cand.foto_fachada_url || null,
-        observacoes: cand.mensagem || null,
-        // Sem modalidade de comodato nem repasse (24/09/2026, ADR-016): o
-        // ponto nasce só como ponto. Quando ganhar tela ativa, passa a gerar
-        // 1 crédito por mês (creditos/ponto.js) — nada a escolher aqui.
-        anunciante_id: conta.id,
-        candidatura_id: cand.id,
-        // Nasce sem nenhuma tela — o status automático (rodada final da
-        // Rede, migration 069) lê 0 dispositivos como "aguardando
-        // instalação", que é exatamente o que um ponto recém-aprovado é: o
-        // admin cria a tela de verdade (botão "+ tela") só quando for
-        // instalar de fato. Criar uma "Tela 1" vazia aqui (como antes desta
-        // rodada) fazia esse ponto nascer com 1 dispositivo 'inativo' e o
-        // status automático virava "Inativo" — errado pra quem nunca teve
-        // tela nenhuma.
-        aceitou_termos_em: new Date(),
-      },
-      db,
-    );
-
-    // Cupom de indicação do ponto (migration 062, pedido do dono,
-    // 19/09/2026): toda conta de ponto ganha um, na mesma transação que cria
-    // o ponto — o benefício nasce junto com o papel, não numa rotina à parte. Guarda de existência
-    // (como vendedoresRepo.buscarPorConta acima) porque um dono pode ceder
-    // mais de um ponto: o cupom é por CONTA, não por ponto.
-    if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
-      await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
-    }
+    await materializarPontoDaCandidatura(cand, conta, db);
   }
 }
 
@@ -310,13 +242,15 @@ async function criarCandidaturaPonto(conta, entrada) {
   return cand;
 }
 
+// Toda conta pode pedir um ponto, tenha ou não outro já aprovado (o segundo
+// endereço entra pela mesma candidatura; a régua de duplicidade é por
+// estabelecimento, não por conta). `POST /anunciantes/me/pontos` é o mesmo
+// caminho com outro nome (src/pontos/routes.js).
 router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res) => {
   const papel = req.params.papel;
   if (papel !== 'ponto') return res.status(400).json({ erro: 'modo inválido' });
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  if ((conta.papeis || []).includes(papel))
-    return res.status(409).json({ erro: 'esse modo já está liberado na sua conta' });
   // Mesma régua de `POST /anunciantes/me/pontos` — uma função só
   // (pontosRepo.estabelecimentoJaCadastrado), nunca "já tem qualquer pedido
   // em aberto", que barrava candidatar um segundo endereço diferente.
@@ -390,11 +324,19 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
     if (err.status) return res.status(err.status).json({ erro: err.message });
     throw err;
   }
-  // Esta é a aprovação que o admin de verdade usa (candidatura com conta) —
-  // e ela não avisava ninguém: o aviso e o SSE só existiam no PATCH de
-  // status, que o botão "Aprovar" não chama. O dono via "Em análise" até dar
-  // F5. Depois do COMMIT, pra quem recarregar já ler o ponto novo.
+  // Esta é a ÚNICA aprovação (o PATCH de status recusa 'aprovada' desde a
+  // consolidação de 24/09/2026). Depois do COMMIT: métrica, aviso à conta,
+  // SSE pra conta (Meus pontos) e pro admin (Rede/Candidaturas, sem F5).
+  eventos.registrar('ponto:candidatura_aprova', {
+    tipo: cand.tipo,
+    cidade: cand.cidade,
+    uf: cand.uf,
+    ramo: cand.segmento,
+    dias_ate_aprovar: eventos.diasEntre(cand.criado_em),
+  });
+  sse.emitirParaAdmin('application.updated', { id: cand.id, status: 'aprovada' });
   if (cand.tipo === 'ponto') {
+    sse.emitirParaAdmin('point.updated', {});
     await notificacoesRepo
       .registrar(conta.id, {
         tipo: 'ponto_aprovado',

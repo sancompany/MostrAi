@@ -120,7 +120,7 @@ async function criar(dados, db = pool) {
       end.cidade ?? null,
       end.uf ?? null,
       end.cep ?? null,
-      dados.contato_email,
+      normalizarEmail(dados.contato_email),
       dados.contato_telefone,
       senha_hash,
       dados.indicado_por_cupom ? String(dados.indicado_por_cupom).toUpperCase() : null,
@@ -147,9 +147,21 @@ async function criar(dados, db = pool) {
   return rows[0];
 }
 
+// E-mail é identidade e login: uma forma só (minúsculas, sem espaço nas
+// pontas). Cadastro grava assim; login, redefinição e a busca por e-mail
+// comparam assim — "Bruno@x.com" e "bruno@x.com" são a mesma conta
+// (índice único em lower(trim()) na migration 088).
+function normalizarEmail(email) {
+  return String(email || '')
+    .trim()
+    .toLowerCase();
+}
+
 // Uso interno (login/webhook) — inclui senha_hash pra comparar.
 async function buscarPorEmailComSenha(email) {
-  const { rows } = await pool.query('SELECT * FROM anunciantes WHERE contato_email = $1', [email]);
+  const { rows } = await pool.query('SELECT * FROM anunciantes WHERE lower(trim(contato_email)) = $1', [
+    normalizarEmail(email),
+  ]);
   return rows[0] || null;
 }
 
@@ -188,7 +200,9 @@ async function atualizar(id, entrada) {
   // Mesma normalização de `criar` — quem editar cpf_cnpj por aqui (hoje
   // ninguém no admin, mas a rota genérica de PATCH aceita) não reabre a
   // porta pra documento sem padrão.
-  const valores = campos.map((c) => (c === 'cpf_cnpj' ? limparDocumento(dados[c]) : dados[c]));
+  const valores = campos.map((c) =>
+    c === 'cpf_cnpj' ? limparDocumento(dados[c]) : c === 'contato_email' ? normalizarEmail(dados[c]) : dados[c],
+  );
   await pool.query(`UPDATE anunciantes SET ${sets} WHERE id = $1`, [id, ...valores]);
   return buscarPorId(id);
 }
@@ -231,6 +245,7 @@ module.exports = {
   buscarContaPropria,
   ensureContaMostrai,
   criar,
+  normalizarEmail,
   buscarPorEmailComSenha,
   buscarPorId,
   validarSenha,

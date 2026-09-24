@@ -141,14 +141,14 @@ check('modal de tela nova sem "Nome da tela"', !(await adm.$('dialog.modal-admin
 await adm.click('dialog.modal-admin[open] button[type=submit]');
 await adm.waitForSelector('.tela-ficha');
 check('tela criada: Tela 1, Ativa, aguardando primeiro sinal', /Tela 1[\s\S]*Ativa[\s\S]*Aguardando primeiro sinal/.test(await adm.textContent('.tela-ficha-topo')));
-// compat-v1: TV com o player de navegador recebe a chave num link, uma vez.
-await adm.click('.ficha-avancado summary');
-await adm.click('[data-acao="chave-legada"]');
-await adm.click('dialog.modal-admin[open] [data-confirmar]');
-const campoLink = adm.locator('dialog.modal-admin[open] #linkPlayerCampo');
-await campoLink.waitFor({ timeout: 8000 });
-const linkPlayer = await campoLink.inputValue();
-check('chave gerada e link do player mostrado', /player\.html\?tela=\d+&chave=/.test(linkPlayer), linkPlayer);
+// [Preparar Player]: o JSON {dispositivoId, chaveAparelho, baseUrl} aparece uma
+// vez; o player web aceita a mesma credencial em ?tela=<dispositivoId>&chave=.
+await adm.click('[data-acao="preparar"]');
+const campoJson = adm.locator('dialog.modal-admin[open] #playerConfigJson');
+await campoJson.waitFor({ timeout: 8000 });
+const cfg = JSON.parse(await campoJson.inputValue());
+check('Preparar Player: dispositivoId de 5 dígitos, chave e baseUrl', /^[1-9]\d{4}$/.test(cfg.dispositivoId) && cfg.chaveAparelho?.length > 30 && /^http/.test(cfg.baseUrl), JSON.stringify(cfg));
+const linkPlayer = `${B}/player.html?tela=${cfg.dispositivoId}&chave=${encodeURIComponent(cfg.chaveAparelho)}`;
 await adm.click('dialog.modal-admin[open] .modal-rodape [data-fechar]');
 await adm.locator('dialog.modal-admin[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
 // Espera a ficha refeita com a credencial nova (fingerprint "…XXXXXX").
@@ -160,9 +160,13 @@ await adm.fill('dialog.modal-admin[open] #pinTela', '4321');
 await adm.click('dialog.modal-admin[open] button[type=submit]');
 // hasText não diferencia maiúsculas: "Não configurado" também casaria com
 // "Configurado" — espera o texto que só existe depois de salvo.
-await adm.locator('.tela-ficha', { hasText: /alterado agora/ }).waitFor({ timeout: 10000 }).catch(() => {});
-check('PIN de manutenção configurado', /Configurado\s*alterado/.test(await adm.textContent('.tela-ficha')));
-check('tela ativa sem sinal ainda não põe o ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'a_instalar');
+await adm.locator('.tela-ficha [data-pin-valor]').waitFor({ timeout: 10000 }).catch(() => {});
+const fichaPin = await adm.textContent('.tela-ficha');
+check('PIN de manutenção configurado (mascarado, com Mostrar e Trocar)', /••••/.test(fichaPin) && /Trocar PIN/.test(fichaPin) && !/4321/.test(fichaPin));
+await adm.click('[data-acao="pin-ver"]');
+await adm.locator('.tela-ficha [data-pin-valor]', { hasText: '4321' }).waitFor({ timeout: 8000 }).catch(() => {});
+check('olho do PIN mostra 4321', (await adm.textContent('.tela-ficha [data-pin-valor]')) === '4321');
+check('tela preparada sem sinal: ponto aguardando primeiro sinal, não em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'aguardando_primeiro_sinal');
 await shot(adm, 'admin-telas');
 
 console.log('== player + painel por PIN ==');

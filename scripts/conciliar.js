@@ -12,6 +12,7 @@ require('dotenv').config();
 const { conciliarAssinaturas, registrarRelato } = require('../src/financeiro/conciliacao');
 const { ativarBeneficiosAgendados, encerrarBeneficiosVencidos } = require('../src/financeiro/plano-administrativo');
 const { concederCreditosMensais } = require('../src/creditos/ponto');
+const { anonimizarExcluidas } = require('../src/titular/repository');
 const comecouEm = new Date();
 
 conciliarAssinaturas()
@@ -45,6 +46,15 @@ conciliarAssinaturas()
       );
     } catch (err) {
       console.error('crédito mensal dos pontos falhou:', err.message);
+    }
+
+    // Conta excluída há mais de 60 dias perde o dado pessoal (LGPD) — ver
+    // src/titular/repository.js#anonimizarExcluidas.
+    try {
+      const ids = await anonimizarExcluidas();
+      if (ids.length) console.log(`contas anonimizadas: ${ids.join(', ')}`);
+    } catch (err) {
+      console.error('anonimização de contas excluídas falhou:', err.message);
     }
 
     process.exit(r.falhas.length ? 1 : 0);
