@@ -3,10 +3,18 @@
 ## Updated
 2026-09-24
 
-## Estação final de consolidação (24/09/2026, este agente) — em curso
-Estado curto e sempre atual em `docs/CONSOLIDATION_STATE.md` (ler primeiro).
-Checkpoints mergeados em `main` e no ar: C+D (PR #49, migration 088), G+E
-(PR #50, migration 089, SHA `89d73d4`). H (legado) nesta branch:
+## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
+Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de
+19 seções em `docs/relatorio-consolidacao-final-2026-09-24.md`. Tudo
+mergeado em `main` e no ar (`c6287fd` + PR #54): C+D (#49, migration 088),
+G+E (#50, migration 089), H+F (#51), I-1 (#52), I-2 (#53). Validação online
+contra a produção: `tests/e2e/19-online-producao.mjs` (Access fechado de
+novo no fim; nenhum service token restante). **Banco NÃO resetado** — o
+reset final só depois da auditoria Codex/Jules. Regras novas que não se
+desfazem sem contexto: `src/lib/vigencia.js` (RN-32-B), assinatura nasce
+`pendente_pagamento`, `dispositivoId` de 5 dígitos + Preparar Player,
+`aguardando_primeiro_sinal`, banco de horas drena só na geração que
+congela a hora. Detalhe de H abaixo:
 - Removidos do código executável (410 com motivo, tabelas ficam como
   histórico): programa de vendedores inteiro (`/vendedor/*`,
   `/admin/comissoes*`, `/admin/vendedores*`, `vendedores-repository.js`,

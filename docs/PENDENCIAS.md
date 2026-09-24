@@ -4742,3 +4742,12 @@ deploy: 2 snapshots preenchidos a partir das cobranças de ciclo inteiro.
   R$ 0,01375/exibição) ficou registrado; a troca pra Pro (acerto de R$ 405)
   não tem valor de ciclo registrado e não virou snapshot — a conta está em
   benefício por créditos hoje, então o card mostra "Benefício por créditos".
+
+## L. Estação final de consolidação — o que ficou pro dono (24/09/2026)
+
+Relatório completo em `docs/relatorio-consolidacao-final-2026-09-24.md`;
+estado curto em `docs/CONSOLIDATION_STATE.md`. As decisões abertas (12,
+seção 18 do relatório) não bloqueiam o que está no ar — cada uma é
+reversível e está registrada com o efeito de escolher cada lado. O reset
+final do banco e a virada sandbox→produção do San Checkout (RUNBOOK §3.1)
+só acontecem depois da auditoria externa.
