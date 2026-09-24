@@ -3192,6 +3192,43 @@ com dados simulados cobrindo oito pontos, três criativos, pagamentos, uma tela
 offline e compensação de rede. Sem erros no console e sem overflow horizontal
 da página; o gráfico usa rolagem interna no celular quando necessário.
 
+### F — card "Exibições" do painel cortava o número (24/09/2026)
+
+**[x] Reportado pelo dono (print do painel em produção): "11 / 32.400"
+cortado no card Exibições.** Causa medida, não suposta: com o painel em duas
+colunas (≥1100px, a coluna lateral de 340–400px entra) cada card do resumo
+fica com 177px (131px úteis) em 1280, 1366, 1440 e 1920 — o `max-width` do
+painel trava a largura. Nessa caixa, quatro coisas somadas: (1) o número tinha
+`white-space: nowrap` (style.css) e não podia quebrar; (2) o card tinha
+`overflow: hidden` (painel.css) — cortava o excesso e, num item de grid,
+zerava a largura mínima, deixando a coluna encolher abaixo do número; (3) a
+fonte `clamp(1.45rem, 2.4vw, 2rem)` segue a largura da JANELA, não do card: é
+máxima (32px) justo onde o card é mais estreito, e mínima no celular, onde o
+card é o mais largo; (4) o texto era uma string única "11 / 32.400". Medido
+antes: "11 / 32.400" passava 19px; "R$ 138,60" no Custo por mil também
+cortava; "100.000 / 1.000.000" cortava até em 1024px.
+
+Correção (painel.css + painel.page.js, só o painel do anunciante): sem
+`overflow: hidden` — a faixa de baixo do card virou sombra interna (segue o
+raio sozinha) —, `min-width: 0` no card, e o número se encaixa
+(`encaixarNumero`): encolhe no máximo 15% pra caber numa linha; a fração que
+ainda não cabe vira "11" em cima e "de 32.400" embaixo, menor e em cinza;
+valor longo encolhe até 60%; um valor absurdo quebra visível no meio, nunca
+cortado. Cada card é observado (ResizeObserver, só largura): o card de Horas
+nasce escondido e, quando aparece, estreita os outros sem mudar a grade.
+
+Achados no mesmo resumo e corrigidos junto: "ainda por rodar" era subtração
+crua (180 − 178,9 saía "1.0999999999999943h"); média diária e horas saíam com
+ponto decimal e sem milhar ("3.7", "1234.5h") — agora formato brasileiro.
+
+**Validação:** 5 valores (11 / 32.400, 1.234 / 32.400, 12.500 / 32.400,
+32.400 / 32.400, 100.000 / 1.000.000, com custo, média e horas grandes
+junto) × 9 resoluções (1920×1080, 1440×900, 1366×768, 1280×800, 1024×768,
+820×1180, 390×844, 360×800, 320×700) na rota real, com a resposta real de
+`/exibicoes` e só os números trocados: 0 corte, 0 rolagem horizontal, 0 erro
+de console; redimensionando ao vivo a fração alterna entre uma linha e "de
+32.400". `npm run check` limpo.
+
 ### G — admin: Rede e Anunciantes reorganizados por entidade (21/09/2026)
 
 **[x] Rede — o ponto virou a entidade central**, seguindo o item 5 de
