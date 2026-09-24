@@ -240,4 +240,40 @@ test('intenções antigas morrem ao emitir link novo: só um link pagável por c
   }
 });
 
+test('pagamento de intenção já cancelada (link antigo) vira pendência, não credita ciclo', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    const mock = comCheckoutRespondendo({ 'consultar-assinatura': { ultimaCobranca: { status: 'confirmado' } } });
+    try {
+      await sc.processarWebhookAssinatura({
+        versao: 1,
+        tipo: 'assinatura',
+        planoId: velha.id,
+        documento: c.cpf_cnpj,
+        evento: 'criada',
+        chargeId: `pay_${rodada}`,
+      });
+    } finally {
+      mock.restaurar();
+    }
+    assert.equal((await assinaturasRepo.buscarPorId(velha.id)).status, 'cancelada', 'continua cancelada');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [velha.id],
+    );
+    assert.equal(pend.length, 1);
+    assert.match(pend[0].motivo, /intenção de compra já cancelada/);
+    const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(cob.length, 0, 'nenhuma cobrança registrada');
+    const contaDepois = (await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id])).rows[0];
+    assert.equal(contaDepois.plano_id, null, 'nenhuma cobertura concedida');
+    await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1", [velha.id]);
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
 test.after(() => pool.end());

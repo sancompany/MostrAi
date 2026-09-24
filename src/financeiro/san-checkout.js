@@ -432,6 +432,25 @@ async function processarWebhookAssinatura(payload) {
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
+  // Intenção cancelada AQUI (link antigo morto por um link novo, ou pela
+  // exclusão da conta) que nunca teve ciclo pago: o Checkout já tinha a tela
+  // carregada e o pagador concluiu mesmo assim. Creditar criaria cobertura e
+  // uma assinatura na Asaas POR CIMA da nova — cobrança em dobro (revisão
+  // Codex do PR #55). Vira pendência pra devolver. Assinatura que JÁ pagou e
+  // foi cancelada depois (`ciclos_contratados` tem linha dela) continua
+  // creditando o ciclo que a Asaas cobrou: o dinheiro entrou, a cobertura
+  // vale.
+  if (
+    assinatura.status === 'cancelada' &&
+    EVENTOS_QUE_CREDITAM.has(payload.evento) &&
+    (await cicloContratado.origemDoCicloPago(pool, assinatura.id)) === 'compra'
+  ) {
+    return registrarPendencia(
+      payload,
+      'pagamento de uma intenção de compra já cancelada (link antigo) — devolver no Checkout, nada foi creditado',
+    );
+  }
+
   // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
   // a troca não teve acerto a cobrar (200 imediato), a aplicação já
   // aconteceu na própria chamada de POST /anunciantes/me/trocar-plano, e
