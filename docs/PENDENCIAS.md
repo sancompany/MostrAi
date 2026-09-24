@@ -4344,14 +4344,26 @@ do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
   cobrança (`POST /anunciantes/:id/assinar` → `condicaoVigente`,
   `src/financeiro/routes.js`) aplicam o desconto promocional; a confirmação
   calculava só com `valor_mensal`. Pro trimestral: vitrine R$ 597,60,
-  confirmação **R$ 672,30**, Checkout R$ 597,60. Agora a confirmação usa a
-  mesma promoção (com a sessão, mesma elegibilidade) e a mesma conta de
-  centavos, e diz a validade da condição. Nenhuma regra mudou.
+  confirmação **R$ 672,30**, Checkout R$ 597,60. **Correção final
+  (24/09/2026, depois da revisão contra o ADR-014):** a primeira versão
+  repetia a conta da promoção no navegador — ainda deixava de fora o
+  crédito de comodato e o desconto de parceiro, que o ADR-014 manda somar.
+  Agora o servidor cota (`GET /anunciantes/me/cotacao/:planoId`,
+  `src/financeiro/cotacao.js`) com as MESMAS funções do `POST /assinar`
+  (`condicaoVigente` + `valorMensalDaConta`), e a tela só desenha: subtotal,
+  desconto do ciclo ou da promoção, "desconto da sua conta" (comodato/
+  parceiro) e a validade da condição. Conferido: conta comum R$ 597,60;
+  dona de ponto com R$ 50 de crédito + parceiro 10% R$ 387,84 — o mesmo
+  número da função de cobrança. Teste novo: `tests/cotacao.test.js`.
+  Nenhuma regra mudou.
 - **T2 [x] FAQ "E se eu não pagar a renovação?"** dizia "a conta fica
   suspensa até a regularização" — a migration 078 (decisão do dono) tirou a
   suspensão automática: o plano é encerrado e volta com a cobrança paga
   (`aplicarCicloPago`). Texto: "A conta não é suspensa: o acesso ao painel,
-  o histórico e os vídeos continuam lá."
+  o histórico e os vídeos continuam lá." Ajustado depois contra as regras do
+  #40 (`planoVigenteId`, `ativarBeneficiosAgendados`): quem tem o plano do
+  comodato ou um benefício de créditos programado continua no ar — a
+  resposta passou a dizer isso.
 - **T3 [x] FAQ "Já tenho conta como ponto"** falava nos "modos Anúncios e
   Meu ponto" — o painel é único desde a Fatia 6.
 - **T4 [x] Login:** "anúncios, ponto ou vendas" — programa de vendedor
@@ -4385,9 +4397,31 @@ do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
   pública (`/anunciantes/me`, a sondagem de sessão do cabeçalho). É esperado
   e não é exceção de JS; some se um dia a sondagem virar uma rota que
   responda 204 pra quem não está logado.
+- **D6 [ ] Erro de console em TODA página de produção: Cloudflare Web
+  Analytics barrado pela CSP.** Achado validando em produção (24/09/2026): o
+  Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js` (Web
+  Analytics com instalação automática ligada na zona), e a CSP do site
+  (`script-src 'self'`, ADR-011) recusa — "Refused to load the script…" no
+  console de todas as rotas, e a métrica nunca foi coletada. Não aparece no
+  local (não há Cloudflare na frente). Dois caminhos, decisão do dono:
+  (a) desligar a instalação automática do Web Analytics no painel da
+  Cloudflare (nada no código); ou (b) liberar `https://static.cloudflareinsights.com`
+  no `script-src` e `https://cloudflareinsights.com` no `connect-src`
+  (`src/server.js`) — é um terceiro executando script no site, então passa
+  pelo inventário de dados/política de privacidade antes.
 - **D5 [ ] Cadastro: "Rua e bairro" com CEP preenche só a rua** — o
   formulário não tem campo de bairro, e o `ligarCep` não cola mais o bairro
   na rua (Parte W). Quem não digitar o bairro fica sem ele.
+
+**Deploy misto (achado em produção, 24/09/2026):** na primeira passada em
+produção logo depois do deploy, a Home a 360px veio com o `layout.js`
+antigo e o `style.css` novo (o serviço roda em 2 instâncias no Northflank e,
+no rolling deploy, cada arquivo pode vir de uma) — o menu, sem a classe nova,
+ficou aberto na horizontal e empurrou a página 256px. Minutos depois as duas
+instâncias serviam o novo e a Home deu 0 rolagem nos 14 viewports. Mesmo
+transitório, o CSS passou a colapsar o menu por PADRÃO e só o layout mínimo
+sai dessa regra (`.nav-simples`): JS antigo + CSS novo agora cai no menu de
+antes — simulado no local, 0 rolagem.
 
 **Verificado:** medidor (15 rotas × 14 viewports, 210 combinações) antes e
 depois; screenshots comparadas (antes × depois) em 1366px das 7 rotas

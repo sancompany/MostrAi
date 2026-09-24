@@ -21,8 +21,12 @@ D1–D5 achados que são decisão do dono) em `docs/PENDENCIAS.md`, seção
   `<nav class="footer-links">` (separador "·" é CSS). "Criar conta"/"Entrar"
   num grupo `.nav-acoes` (`display: contents` no desktop).
 - **Achado T1 (preço):** `confirmar-plano.page.js` ignorava a promoção que o
-  `POST /assinar` aplica (confirmação dizia R$ 672,30, cobrança R$ 597,60).
-  Agora usa `/promocoes/vigentes` com sessão e a mesma conta de centavos.
+  `POST /assinar` aplica (confirmação dizia R$ 672,30, cobrança R$ 597,60),
+  e nunca mostrou crédito de comodato nem desconto de parceiro (ADR-014).
+  Agora a tela só desenha a cotação do servidor —
+  `GET /anunciantes/me/cotacao/:planoId` (`src/financeiro/cotacao.js`, mesmas
+  funções da cobrança; teste em `tests/cotacao.test.js`). Quem mexer na regra
+  de preço mexe em `valorMensalDaConta`/`condicaoVigente` e a cotação segue.
 - **Como medir de novo:** o medidor e o roteiro de interação desta rodada
   ficaram fora do repositório (descartáveis, como manda o OPERATIONS.md);
   o método está descrito na seção da PENDENCIAS. Pegadinhas: rodar os

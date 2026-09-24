@@ -134,7 +134,11 @@
   // mínimo a barra tem no máximo UM botão — "Voltar ao site", "Já tenho
   // conta", "Entrar" — e escondê-lo atrás de um hambúrguer era pior que
   // mostrar; no login e no cadastro, sem botão nenhum, o hambúrguer abria um
-  // menu vazio.
+  // menu vazio. A exceção é marcada (`nav-simples`), não a regra: colapsar
+  // continua sendo o padrão do CSS, então um `layout.js` antigo servido junto
+  // com o `style.css` novo (o serviço roda em 2 instâncias, e no deploy cada
+  // arquivo pode vir de uma) cai no menu de antes, e não num menu aberto que
+  // empurra a página 256px pro lado — visto em produção em 24/09/2026.
   const colapsa = layout === 'publico' || layout === 'conta';
 
   document.body.insertAdjacentHTML(
@@ -153,7 +157,7 @@
         </button>`
             : ''
         }
-        <nav class="main${colapsa ? ' nav-colapsavel' : ''}" id="navPrincipal" aria-label="Principal">${(NAVS[layout] || navMinimo)()}</nav>
+        <nav class="main${colapsa ? '' : ' nav-simples'}" id="navPrincipal" aria-label="Principal">${(NAVS[layout] || navMinimo)()}</nav>
       </div>
     </header>
     ${colapsa ? '<div class="menu-veu" id="menuVeu" hidden></div>' : ''}`,

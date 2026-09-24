@@ -141,10 +141,10 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
   header.site .wrap { height: 60px; padding: 0 16px; }
   .menu-botao { display: flex; }
   /* Fora da tela até abrir. `hidden` não serve: o menu precisa animar e
-     precisa continuar no fluxo de foco quando aberto. Só o menu que tem
-     hambúrguer colapsa (`.nav-colapsavel`, layout.js) — o do layout mínimo é
-     um botão só e fica à vista. */
-  nav.nav-colapsavel {
+     precisa continuar no fluxo de foco quando aberto. Todo menu colapsa,
+     menos o do layout mínimo (`.nav-simples`, layout.js), que é um botão só
+     e fica à vista. */
+  nav.main:not(.nav-simples) {
     position: absolute; left: 0; right: 0; top: 100%;
     flex-direction: column; align-items: stretch; gap: 0;
     background: var(--card); border-bottom: 1px solid var(--border);
@@ -154,26 +154,26 @@ nav.main a.btn[aria-current="page"]::after { display: none; }
   /* Altura da janela menos o cabeçalho, não 80vh: com o celular deitado
      (375px de altura) 80vh cortava o fim do menu; agora ele usa tudo o que
      sobra e só rola se ainda assim não couber. */
-  nav.nav-colapsavel.aberto { max-height: calc(100vh - 60px); overflow-y: auto; visibility: visible; }
+  nav.main:not(.nav-simples).aberto { max-height: calc(100vh - 60px); overflow-y: auto; visibility: visible; }
   /* 48px de altura por item: alvo de dedo de verdade, não 20px. */
-  nav.nav-colapsavel a {
+  nav.main:not(.nav-simples) a {
     font-size: 1rem; min-height: 48px; display: flex; align-items: center;
     border-bottom: 1px solid var(--border);
   }
-  nav.nav-colapsavel a:last-child { border-bottom: 0; }
-  nav.nav-colapsavel a[aria-current="page"]::after { display: none; }
-  nav.nav-colapsavel a[aria-current="page"] { color: var(--brand-text); }
-  nav.nav-colapsavel a.btn { justify-content: center; margin-top: 10px; min-height: 48px; }
+  nav.main:not(.nav-simples) a:last-child { border-bottom: 0; }
+  nav.main:not(.nav-simples) a[aria-current="page"]::after { display: none; }
+  nav.main:not(.nav-simples) a[aria-current="page"] { color: var(--brand-text); }
+  nav.main:not(.nav-simples) a.btn { justify-content: center; margin-top: 10px; min-height: 48px; }
   /* "Criar conta" e "Entrar" lado a lado, cada um com metade da largura. */
-  .nav-colapsavel .nav-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-  .nav-colapsavel .nav-acoes a.btn { margin-top: 0; border-bottom: 1px solid var(--border); }
+  nav.main:not(.nav-simples) .nav-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  nav.main:not(.nav-simples) .nav-acoes a.btn { margin-top: 0; border-bottom: 1px solid var(--border); }
   /* Véu atrás do menu aberto: escurece a página e pega o toque "fora", que
      fecha o menu sem acionar o link que estivesse embaixo do dedo. Fica logo
      abaixo do cabeçalho (z 20) na pilha. */
   .menu-veu { position: fixed; inset: 0; z-index: 19; background: rgba(20,23,31,.35); }
   /* Layout mínimo: o único botão fica na barra, mais compacto — "Ir pro meu
      painel" ao lado do logo precisa caber em 320px. */
-  nav.main:not(.nav-colapsavel) a.btn { padding: 10px 14px; min-height: 44px; white-space: nowrap; }
+  nav.main.nav-simples a.btn { padding: 10px 14px; min-height: 44px; white-space: nowrap; }
 }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -1550,6 +1550,11 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 }
 .pedido-linha span:first-child { color: var(--text-dim); }
 .pedido-linha span:last-child { font-weight: 600; text-align: right; }
+/* Valor em dinheiro não quebra: "-R$ 209,76" saía com o sinal numa linha e
+   o número na outra, e desconto lido assim parece outro valor. Quem quebra é
+   o rótulo, à esquerda. Só nas linhas de dinheiro — texto longo como "pelo
+   menos 15.120 vezes na rede" precisa poder quebrar a 320px. */
+.pedido-linha.dinheiro span:last-child { white-space: nowrap; }
 .pedido-linha.desconto span:last-child { color: var(--ok); }
 .pedido-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; }
 .pedido-total .rotulo { color: var(--text-dim); font-size: .92rem; }

@@ -12,6 +12,9 @@
   3h antes do digitado — conserto no admin.
 - D4 (opcional) sondagem de sessão que não gere 401 no console do visitante.
 - D5 cadastro sem campo de bairro (o CEP só preenche a rua).
+- D6 Cloudflare Web Analytics injetado pela zona e barrado pela CSP: erro de
+  console em toda página de produção — desligar a instalação automática no
+  painel da Cloudflare ou liberar o domínio na CSP (decisão de privacidade).
 
 **Atualizado 21/09/2026 — plano do dono pros próximos ~2 dias, antes de
 começar a vender:**
