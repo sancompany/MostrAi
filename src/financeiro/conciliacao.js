@@ -176,7 +176,18 @@ async function conciliarAssinaturas() {
       // revelar o chargeId (chave `criada|assinatura`): a cobrança já está
       // registrada, minutos depois da hora em que a Asaas a criou. Creditar
       // de novo seria cobertura em dobro por um pagamento só.
-      if (await cobrancaJaRegistrada(assinatura, ultima)) {
+      let jaRegistrada;
+      try {
+        jaRegistrada = await cobrancaJaRegistrada(assinatura, ultima);
+      } catch (err) {
+        // A chave já está gravada: se a conferência falha (banco fora por um
+        // instante), a próxima varredura cairia em `jaProcessadas` e o ciclo
+        // nunca entraria. Solta a chave antes de subir o erro — mesmo cuidado
+        // que aplicarCicloPago tem com o próprio ROLLBACK.
+        await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+        throw err;
+      }
+      if (jaRegistrada) {
         relato.jaProcessadas += 1;
         continue;
       }

@@ -186,10 +186,11 @@ erro). Migrations 088 e 089 aplicadas (release `npm run migrate`).
 
 Ligado durante toda a estação. Para o bloco do admin do roteiro online foi
 criado um service token (`consolidacao-e2e-temporario`, 1 h) e uma policy
-`non_identity` só pra ele na app `818c814f`; os dois foram apagados no
-mesmo minuto em que o teste acabou. Estado final conferido pela API: as
-duas apps (`818c814f` /admin, `24de0141` checkout admin) só com "Somente o
-operador"; zero service tokens; `/admin` → 302 com e sem o token antigo.
+`non_identity` só pra ele na app do `/admin` do Mostraí; os dois foram
+apagados no mesmo minuto em que o teste acabou. Estado final conferido pela
+API: as duas apps (`/admin` do Mostraí e admin do Checkout) só com "Somente
+o operador"; zero service tokens; `/admin` → 302 com e sem o token antigo.
+(IDs das apps ficam fora do repositório — CONSTRAINTS.md.)
 
 ## 16. Banco
 

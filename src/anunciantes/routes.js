@@ -319,6 +319,10 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       });
     }
   }
+  // Link gerado e não pago também morre: senão continuava pagável depois da
+  // exclusão (GET /plano ainda servia a linha). Só local — na Asaas não
+  // existe nada antes do primeiro pagamento.
+  if (conta) await assinaturasRepo.cancelarPendentesDePagamento(conta.id);
 
   // A foto de perfil sai do bucket público na hora (era pública pela URL
   // antiga mesmo depois da exclusão). O resto dos dados pessoais sai na
@@ -394,6 +398,10 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
     plano,
     plano_origem: origem,
     plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,
+    // Vigência decidida AQUI (RN-32-B, último dia inclusivo em Matão), não
+    // pelo relógio do navegador: o painel só rotula o que o servidor decidiu.
+    plano_vigente: !!repo.planoVigenteId(anunciante),
+    dias_ate_vencer: vigencia.diasAteVencer(anunciante.data_expiracao),
   });
 });
 

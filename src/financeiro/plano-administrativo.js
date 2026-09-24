@@ -477,7 +477,9 @@ async function ativarBeneficiosAgendados() {
        JOIN anunciantes a ON a.id = ha.anunciante_id
       WHERE ha.status = 'agendado'
         AND (ha.plano_anterior_valido_ate IS NULL
-             OR ha.plano_anterior_valido_ate <= current_date
+             -- estrito: o último dia do plano pago é inclusivo (RN-32-B), o
+             -- benefício começa no dia seguinte, em Matão
+             OR ha.plano_anterior_valido_ate < ${vigencia.HOJE_SQL}
              -- o ciclo pago acabou antes (cancelado, cobrança falhou e a
              -- conciliação limpou): o benefício não espera a data antiga.
              OR NOT (a.plano_id IS NOT NULL AND NOT a.plano_cortesia AND a.data_expiracao >= ${vigencia.HOJE_SQL}))`,

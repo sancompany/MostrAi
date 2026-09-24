@@ -324,6 +324,9 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   // mesma linha). Sem isso cada clique em "Assinar" abria outra intenção.
   if (!assinatura) assinatura = await assinaturasRepo.buscarPendenteDePagamento(conta.id, plano.id);
   if (!assinatura) {
+    // O que sobrou de intenções antigas (outro plano, ou mais de 24 h) morre
+    // aqui: um link só pagável por conta.
+    await assinaturasRepo.cancelarPendentesDePagamento(conta.id);
     // Condição promocional vigente E elegível pra essa CONTA (Parte T do
     // pedido de Ofertas/Promoções; elegibilidade comercial adicionada
     // 23/09/2026) — o snapshot trava aqui, no instante da adesão: editar ou

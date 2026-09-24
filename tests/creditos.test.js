@@ -286,9 +286,10 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
     let { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
     assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'antes da data, continua no pago');
 
-    // Chegou a data de início (simulada: o início programado já passou).
+    // Chegou a data de início (simulada: o último dia do ciclo pago foi ontem —
+    // o último dia é inclusivo, RN-32-B, então o benefício entra no seguinte).
     await pool.query(
-      `UPDATE planos_administrativos SET plano_anterior_valido_ate = current_date, valido_ate = current_date + 30
+      `UPDATE planos_administrativos SET plano_anterior_valido_ate = current_date - 1, valido_ate = current_date + 30
         WHERE anunciante_id = $1 AND status = 'agendado'`,
       [contaBase.id],
     );

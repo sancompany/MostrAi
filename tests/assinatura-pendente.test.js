@@ -222,4 +222,22 @@ test('link pendente é reaproveitado por 24 h para o mesmo plano', async () => {
   }
 });
 
+test('intenções antigas morrem ao emitir link novo: só um link pagável por conta', async () => {
+  const c = await conta();
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    assert.ok(await sc.montarRespostaPlano(velha.id), 'antes: o Checkout ainda servia o link antigo');
+    const canceladas = await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    assert.deepEqual(canceladas, [velha.id]);
+    assert.equal((await assinaturasRepo.buscarPorId(velha.id)).status, 'cancelada');
+    assert.equal(await sc.montarRespostaPlano(velha.id), null, 'depois: o link antigo não é mais pagável');
+    // Só o que está pendente de pagamento: uma assinatura ativa não é tocada.
+    const ativa = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    assert.deepEqual(await assinaturasRepo.cancelarPendentesDePagamento(c.id), []);
+    assert.equal((await assinaturasRepo.buscarPorId(ativa.id)).status, 'ativa');
+  } finally {
+    await apagar(c.id);
+  }
+});
+
 test.after(() => pool.end());

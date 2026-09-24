@@ -19,6 +19,18 @@ const TOKEN_SECRET = process.env.CF_ACCESS_CLIENT_SECRET || '';
 const ADMIN_USER = process.env.ADMIN_USER_PROD || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD_PROD || '';
 const ACCESS_HEADERS = TOKEN_ID ? { 'CF-Access-Client-Id': TOKEN_ID, 'CF-Access-Client-Secret': TOKEN_SECRET } : {};
+// O service token só vai pra origem da aplicação. `extraHTTPHeaders` no
+// contexto mandava a credencial em TODA requisição — inclusive fotos e vídeos
+// servidos pelo storage (outra origem), que não têm por que conhecê-la.
+const ORIGEM_APP = new URL(BASE).origin;
+async function comAccess(ctx) {
+  if (!TOKEN_ID) return ctx;
+  await ctx.route(
+    (url) => url.origin === ORIGEM_APP,
+    (route) => route.continue({ headers: { ...route.request().headers(), ...ACCESS_HEADERS } }),
+  );
+  return ctx;
+}
 
 const falhas = [];
 const ok = (t) => console.log('  ok ', t);
@@ -158,7 +170,7 @@ for (const [nome, width, height] of VIEWPORTS) {
 // ---------------------------------------------------------------------------
 if (TOKEN_ID && ADMIN_USER) {
   console.log('== admin (service token temporário do Access): só leitura ==');
-  const ctx = await b.newContext({ viewport: { width: 1366, height: 768 }, extraHTTPHeaders: ACCESS_HEADERS });
+  const ctx = await comAccess(await b.newContext({ viewport: { width: 1366, height: 768 } }));
   const p = await ctx.newPage();
   const erros = [];
   p.on('console', (m) => {
@@ -175,18 +187,33 @@ if (TOKEN_ID && ADMIN_USER) {
   erros.length = 0;
   check('admin: login entra na Visão geral (gate some)', (await p.locator('#gate').isHidden()) && /Visão geral|Pendências/i.test(await p.locator('body').innerText()));
   await p.screenshot({ path: saida('admin-1366-visaogeral'), fullPage: true });
-  for (const [hash, esperado] of [
-    ['#rede/pontos', /Pontos|Rede/],
-    ['#contas/contas', /Contas/],
-    ['#ofertas/precos', /Essencial|Pro|Prime/],
-    ['#ofertas/promocoes', /Promo/],
-    ['#financeiro/eventos', /Eventos do Checkout|Nenhum evento/i],
-    ['#midiamostrai', /Mídia Mostraí/],
+  // Cada tela prova a si mesma: o hash ativo, o título do módulo (só o
+  // roteador escreve em #tituloSecao) e um termo dentro de #abaConteudo — a
+  // sidebar e as abas repetem "Rede", "Contas", "Mídia Mostraí" em toda
+  // página, então `body` inteiro passava com a tela anterior ainda no ar
+  // (revisão Codex do PR #54).
+  for (const [hash, titulo, esperado] of [
+    ['#rede/pontos', 'Rede', /Aguardando|Operando|Sem sinal|Nenhum ponto/i],
+    ['#contas/contas', 'Contas', /Essencial|Pro|Prime|Sem plano|Nenhuma conta/i],
+    ['#ofertas/precos', 'Ofertas', /Essencial.*Pro.*Prime/s],
+    ['#ofertas/promocoes', 'Ofertas', /promoç/i],
+    ['#financeiro/eventos', 'Financeiro', /evento/i],
+    ['#midiamostrai', 'Mídia Mostraí', /Mídia Mostraí|criativo|vídeo|nenhum/i],
   ]) {
     await p.goto(`${BASE}/admin/${hash}`, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
     await p.waitForTimeout(1200);
-    const texto = await p.locator('body').innerText().catch(() => '');
-    check(`admin ${hash} renderiza`, esperado.test(texto), texto.slice(0, 120));
+    const hashAtivo = await p.evaluate(() => location.hash);
+    const tituloAtivo = (await p.locator('#tituloSecao').innerText().catch(() => '')).trim();
+    // Módulo sem abas (Mídia Mostraí) desenha direto em #conteudo.
+    const alvo = (await p.locator('#abaConteudo').count()) ? '#abaConteudo' : '#conteudo';
+    const texto = await p.locator(alvo).innerText().catch(() => '');
+    check(`admin ${hash}: hash ativo`, hashAtivo === hash, hashAtivo);
+    check(`admin ${hash}: título "${titulo}"`, tituloAtivo === titulo, tituloAtivo);
+    check(
+      `admin ${hash}: conteúdo da aba renderizado`,
+      esperado.test(texto) && !/Não foi possível carregar/.test(texto),
+      texto.slice(0, 120),
+    );
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(`admin ${hash}: sem rolagem horizontal`, overflow <= 1, `sobra ${overflow}px`);
   }
@@ -213,7 +240,9 @@ if (TOKEN_ID && ADMIN_USER) {
       await p.screenshot({ path: saida('admin-1366-tela'), fullPage: true });
     }
   }
-  const mobile = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, extraHTTPHeaders: ACCESS_HEADERS, storageState: await ctx.storageState() });
+  const mobile = await comAccess(
+    await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, storageState: await ctx.storageState() }),
+  );
   const pm = await mobile.newPage();
   await pm.goto(`${BASE}/admin/`, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
   await pm.waitForTimeout(1500);
