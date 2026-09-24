@@ -5,6 +5,8 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
+const { registrarHeartbeat } = require('../src/player/sinal');
+const { gerarChaveLegada } = require('../src/player/credencial');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -34,6 +36,7 @@ async function criarPontoTeste() {
 }
 
 async function apagarPonto(id) {
+  await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [id]);
   await pool.query('DELETE FROM pontos WHERE id = $1', [id]);
 }
 
@@ -65,7 +68,17 @@ async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2, status: 'ativo' });
+  // Primeiro sinal: ponto só entra na cobertura depois dele (Player V2).
+  // Tela que fala está autenticada: tem credencial (a do player web aqui).
+  await gerarChaveLegada(dispositivo.id);
+  await registrarHeartbeat(dispositivo.id, {}, {});
   return dispositivosRepo.buscarComPonto(dispositivo.id);
+}
+
+// Escolha explícita do ponto: com outros arquivos rodando em paralelo a rede
+// tem vários pontos em operação, e a cobertura automática poderia cair noutro.
+async function escolherPonto(contaId, pontoId) {
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [contaId, pontoId]);
 }
 
 async function limparDispositivo(id, pontoId) {
@@ -74,6 +87,7 @@ async function limparDispositivo(id, pontoId) {
 }
 
 async function apagarConta(id) {
+  await pool.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
@@ -82,6 +96,13 @@ async function apagarConta(id) {
 test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criativoId estáveis', async () => {
   const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
+  // Escolha explícita do ponto: com outros arquivos de teste rodando em
+  // paralelo a rede tem vários pontos em operação, e a cobertura automática
+  // do plano poderia cair noutro.
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [
+    conta.id,
+    dispositivo.ponto_id,
+  ]);
   try {
     const hora = new Date();
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, hora);
@@ -91,7 +112,10 @@ test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criati
     assert.ok(envelope.itens.length > 0, 'devia ter pelo menos um item programado');
 
     const item = envelope.itens.find((i) => i.anuncianteId === conta.id);
-    assert.ok(item, 'a conta de teste devia estar programada nesta tela');
+    assert.ok(
+      item,
+      `a conta de teste devia estar programada nesta tela: ${JSON.stringify(envelope.itens.map((i) => i.anuncianteId))} conta=${conta.id}`,
+    );
     assert.strictEqual(item.contabiliza, true);
     assert.strictEqual(item.autoanuncio, false);
     assert.strictEqual(item.institucional, false);
@@ -201,6 +225,7 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
 test('gerarPlaylistDaHora: comodato legado não segura a conta quando o comercial vence', async () => {
   const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
+  await escolherPonto(conta.id, dispositivo.ponto_id);
   try {
     const hora = new Date();
     const vigente = await gerador.gerarPlaylistDaHora(dispositivo, hora);

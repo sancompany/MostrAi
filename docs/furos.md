@@ -773,11 +773,6 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · evidência: (1) `grep -rn "exibicoes.csv" docs/` = zero: GET /anunciantes/:id/exibicoes.csv (src/anunciantes/routes.js:380), que é o comprovante de veiculação da RN-19 e é chamado por public/anunciante/painel.page.js:169, não está em lugar nenhum do doc. (2) `grep -n "extrato" docs/api.md` só acha o título da seção 'Pagamento ao…
   · conserto: Acrescentar as quatro linhas ao docs/api.md: exibicoes.csv na tabela 'Conta logada', /anunciantes/me/pontos/extrato na seção de pagamento ao ponto, e os três 410 de /afiliados junto do 410 de /seja-um-ponto.
 
-**POST /admin/pontos/:id/aparelho continua viva e gera chave no PONTO — nada mais lê essa coluna** *(rota órfã)*
-  · onde: src/pontos/routes.js:137
-  · evidência: A rota existe em src/pontos/routes.js:137 e grava em `pontos.aparelho_id`. Mas a autenticação da TV lê `dispositivos.aparelho_id`: src/lib/aparelho.js carrega `dispositivosRepo.buscarComPonto(...)` e compara com `dispositivo.aparelho_id`. O admin usa POST /admin/dispositivos/:id/chave (public/admin/index.page.js:709)…
-  · conserto: Remover o handler de src/pontos/routes.js:137 (ou devolver 410 apontando POST /admin/dispositivos/:id/chave), como já foi feito com /seja-um-ponto.
-
 **POST /admin/planos-ponto (criar opção de comodato) não tem formulário em lugar nenhum do admin** *(rota órfã)*
   · onde: src/pontos/routes.js:149 vs renderComodato em public/admin/index.page.js:1479
   · evidência: src/pontos/routes.js:149 registra POST /admin/planos-ponto (409 em id duplicado) e docs/api.md:151 a documenta como 'cria'. Mas `renderComodato` (public/admin/index.page.js:1479) só faz `pegar('/admin/planos-ponto')` e `pegar('/admin/planos')` e edita inline por `salvar('/admin/planos-ponto/${id}', ...)` (linha 1515)…
@@ -817,16 +812,6 @@ balcão (virar anunciante pelo painel não exigia ramo) e esse foi consertado.
   · onde: public/admin/index.page.js:333 (renderResumo) · src/admin/routes.js:57-90 (filas)
   · evidência: `${pendentes.length ? ...alertas... : '<div class="tudo-em-dia"><b>Tudo em dia.</b> Nenhuma fila esperando você agora.</div>'}` — `pendentes` é ALERTAS filtrado por `filas[a.fila] > 0`, e com banco limpo as oito contagens de GET /admin/resumo (criativos, eventos, anunciantes, pontos, notas, candidaturas,…
   · conserto: Em public/admin/index.page.js:333, quando `rede.pontosAtivos === 0 && rede.novosAnunciantes30d === 0`, trocar o bloco 'tudo-em-dia' por um roteiro de primeira configuração com links para as abas Meus anúncios, Candidaturas e Pontos.
-
-**GET /admin/pontos-offline devolve a lista pronta de telas sem sinal e nenhuma tela a consome** *(rota órfã)*
-  · onde: src/admin/routes.js:185
-  · evidência: `grep -rn "pontos-offline" public/` = zero ocorrências (só docs/api.md:130 e docs/PENDENCIAS.md:349). A rota existe e aplica HORAS_OFFLINE_ALERTA = 2 (src/admin/routes.js:10). A aba Telas refaz a mesma regra no cliente: `estaOffline(t)` em public/admin/index.page.js:653, usando GET /admin/dispositivos +…
-  · conserto: Ou fazer renderTelas (public/admin/index.page.js:651) consumir GET /admin/pontos-offline para marcar as linhas, ou apagar a rota de src/admin/routes.js:185 — não manter as duas.
-
-**GET /admin/pontos/:pontoId/dispositivos existe e o admin baixa a lista inteira e filtra no navegador** *(rota órfã)*
-  · onde: src/dispositivos/routes.js:17
-  · evidência: src/dispositivos/routes.js:17 registra GET /admin/pontos/:pontoId/dispositivos e docs/api.md:131 a documenta. No front, a única chamada a esse caminho é o POST de criação (public/admin/index.page.js:616, `api(`/admin/pontos/${...}/dispositivos`, { method: 'POST' })`); a listagem faz `pegar('/admin/dispositivos')`…
-  · conserto: Usar GET /admin/pontos/:pontoId/dispositivos quando FILTRO_TELAS_PONTO estiver setado em public/admin/index.page.js:651, ou remover a rota.
 
 **public/nav-auth.js continua versionado, chama GET /anunciantes/me e nenhum HTML o carrega** *(rota órfã)*
   · onde: public/nav-auth.js

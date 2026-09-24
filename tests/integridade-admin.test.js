@@ -141,31 +141,34 @@ test('Ofertas não expõe mais o desconto comodato em percentual', async () => {
   for (const p of produtos) assert.ok(!('descontoComodato' in p), `${p.tier} sem descontoComodato`);
 });
 
-// marcarOnline com erro (migration 074 + player heartbeat, seção 2 do
+// Heartbeat com erro (migration 074 + player heartbeat, seção 2 do
 // pedido): o player manda `erro` só quando algo real deu errado (ex.: 403
 // "tela fora do ar"); o próximo heartbeat limpo (sem `erro`) tem que apagar
 // o que ficou gravado — senão a tela fica presa em "erro_do_player" mesmo
 // depois de o player voltar a funcionar.
-test('marcarOnline: erro grava junto do heartbeat, heartbeat limpo apaga o erro', async () => {
+test('heartbeat V1 com erro grava o erro; heartbeat limpo apaga', async () => {
   const pool = require('../src/db/pool');
   const dispositivosRepo = require('../src/dispositivos/repository');
+  const { registrarHeartbeat } = require('../src/player/sinal');
   const { rows: pontoRows } = await pool.query(
     `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status)
      VALUES ('Ponto Heartbeat Integridade', 'Rua Teste', 'Matão', 'SP', '00000000', 'teste', 'Fulano', '16999990000', 'em_operacao')
      RETURNING id`,
   );
   const pontoId = pontoRows[0].id;
-  const dispositivo = await dispositivosRepo.criar(pontoId, { apelido: 'Tela Integridade' });
+  const dispositivo = await dispositivosRepo.criar(pontoId, {});
   try {
-    await dispositivosRepo.marcarOnline(dispositivo.id, 'falha ao baixar playlist');
-    const comErro = await dispositivosRepo.buscarPorId(dispositivo.id);
-    assert.strictEqual(comErro.ultimo_erro, 'falha ao baixar playlist');
-    assert.ok(comErro.ultimo_erro_em, 'ultimo_erro_em fica preenchido junto');
+    await registrarHeartbeat(dispositivo.id, { erro: 'falha ao baixar playlist' }, {});
+    const comErro = (await dispositivosRepo.buscarPorId(dispositivo.id)).diagnostico.erro;
+    assert.strictEqual(comErro.mensagem, 'falha ao baixar playlist');
+    assert.ok(comErro.em, 'hora do erro fica preenchida junto');
 
-    await dispositivosRepo.marcarOnline(dispositivo.id, null);
-    const semErro = await dispositivosRepo.buscarPorId(dispositivo.id);
-    assert.strictEqual(semErro.ultimo_erro, null, 'heartbeat limpo apaga o erro anterior');
-    assert.strictEqual(semErro.ultimo_erro_em, null, 'e a data do erro junto — nada fica preso');
+    await registrarHeartbeat(dispositivo.id, {}, {});
+    assert.strictEqual(
+      (await dispositivosRepo.buscarPorId(dispositivo.id)).diagnostico.erro,
+      null,
+      'heartbeat limpo apaga o erro anterior — nada fica preso',
+    );
   } finally {
     await dispositivosRepo.deletar(dispositivo.id);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
@@ -184,7 +187,7 @@ test('listarPorPonto devolve as margens da safe area salvas', async () => {
      RETURNING id`,
   );
   const pontoId = pontoRows[0].id;
-  const dispositivo = await dispositivosRepo.criar(pontoId, { apelido: 'Tela Margens' });
+  const dispositivo = await dispositivosRepo.criar(pontoId, {});
   try {
     await dispositivosRepo.atualizar(dispositivo.id, {
       margem_superior: 2,
@@ -193,10 +196,7 @@ test('listarPorPonto devolve as margens da safe area salvas', async () => {
       margem_esquerda: 0.5,
     });
     const [tela] = await dispositivosRepo.listarPorPonto(pontoId);
-    assert.deepStrictEqual(
-      [tela.margem_superior, tela.margem_direita, tela.margem_inferior, tela.margem_esquerda].map(Number),
-      [2, 1.5, 4, 0.5],
-    );
+    assert.deepStrictEqual(tela.configuracao.margens, { superior: 2, direita: 1.5, inferior: 4, esquerda: 0.5 });
   } finally {
     await dispositivosRepo.deletar(dispositivo.id);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
@@ -292,14 +292,24 @@ test('resumo: novas contas em 30 dias não conta a conta própria', async () => 
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   try {
+    const contar = async () =>
+      (
+        await pool.query(
+          `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria
+             FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL`,
+        )
+      ).rows[0].sem_propria;
+    // Outros arquivos de teste criam e apagam contas em paralelo: o número do
+    // resumo tem que bater com a contagem de antes OU de depois da chamada.
+    const antes = await contar();
     const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/resumo`);
     assert.strictEqual(r.status, 200);
     const resumo = await r.json();
-    const { rows } = await pool.query(
-      `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria
-         FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL`,
+    const depois = await contar();
+    assert.ok(
+      [antes, depois].includes(resumo.rede.novosAnunciantes30d),
+      `${resumo.rede.novosAnunciantes30d} ∉ {${antes}, ${depois}}`,
     );
-    assert.strictEqual(resumo.rede.novosAnunciantes30d, rows[0].sem_propria);
   } finally {
     await new Promise((r) => server.close(r));
   }

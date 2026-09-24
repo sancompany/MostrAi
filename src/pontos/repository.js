@@ -191,20 +191,35 @@ async function atualizar(id, dados) {
 // status, ou é excluída, pra nunca existir um momento em que o status do
 // ponto e o das telas dele contem histórias diferentes.
 //
-//   0 telas                -> a_instalar   (Aguardando instalação)
-//   >=1 tela ativa         -> em_operacao  (Ativo)
-//   0 ativa, >=1 reparo    -> em_reparo    (Em reparo)
-//   0 ativa, 0 reparo      -> inativo      (Inativo, mas tem tela cadastrada)
+//   0 telas                             -> a_instalar   (Aguardando instalação)
+//   >=1 tela ativa que já deu sinal     -> em_operacao  (Ativo)
+//       e tem credencial
+//   tela ativa que nunca deu sinal, ou  -> a_instalar   (Player V2, 23/09/2026:
+//   com o Player revogado                  tela cadastrada não é tela operando;
+//                                          o primeiro sinal, a revogação e o
+//                                          reprovisionamento chamam isto de novo)
+//   0 ativa, >=1 reparo                 -> em_reparo    (Em reparo)
+//   0 ativa, 0 reparo                   -> inativo      (Inativo, mas tem tela cadastrada)
+// É estado do ponto, não saúde: uma tela que já operou e está sem sinal
+// agora não tira o ponto de "Ativo" (isso é alerta, src/lib/status-tela.js).
 async function sincronizarStatusPonto(pontoId, db = pool) {
   const { rows } = await db.query(
-    `SELECT COUNT(*) FILTER (WHERE status = 'ativo')::int AS ativas,
+    `SELECT COUNT(*) FILTER (WHERE status = 'ativo' AND primeiro_sinal_em IS NOT NULL AND chave_hash IS NOT NULL)::int AS operando,
+            COUNT(*) FILTER (WHERE status = 'ativo')::int AS ativas,
             COUNT(*) FILTER (WHERE status = 'reparo')::int AS em_reparo,
             COUNT(*)::int AS total
        FROM dispositivos WHERE ponto_id = $1`,
     [pontoId],
   );
-  const { ativas, em_reparo, total } = rows[0];
-  const status = total === 0 ? 'a_instalar' : ativas > 0 ? 'em_operacao' : em_reparo > 0 ? 'em_reparo' : 'inativo';
+  const { operando, ativas, em_reparo, total } = rows[0];
+  const status =
+    total === 0 || (ativas > 0 && operando === 0)
+      ? 'a_instalar'
+      : operando > 0
+        ? 'em_operacao'
+        : em_reparo > 0
+          ? 'em_reparo'
+          : 'inativo';
   // Arquivado é decisão explícita e auditável (migration 080), nunca
   // derivada das telas — o status automático não pode ressuscitar um ponto
   // mesclado só porque alguém mexeu numa tela dele.

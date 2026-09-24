@@ -120,7 +120,25 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   Aceito para este porte.
 - **PIN da tela tem 4 dígitos (10 mil combinações).** Protege o painel
   daquela tela contra o curioso, não contra ataque. Não dá acesso a nada
-  além daquele painel. Guardado com hash mesmo assim.
+  além daquele painel. Guardado com hash para conferência e, desde o Player
+  V2 (24/09/2026), também cifrado (AES-256-GCM, `src/lib/cofre.js`), porque
+  o contrato entrega `pinPainel` ao Player na config — é o único segredo que
+  o servidor precisa recuperar. Nunca vai para o admin nem para log.
+- **Credencial da tela só existe como hash** (SHA-256 de 256 bits aleatórios;
+  o admin vê a impressão digital de 6 caracteres). O cofre guarda cifrado só
+  o que precisa voltar: o PIN, a chave candidata de uma rotação até o Player
+  confirmá-la, e a credencial de um provisionamento durante os 10 min de
+  repetição. A chave do cofre deriva do `SESSION_SECRET` (HKDF): trocá-lo
+  torna esses três ilegíveis — nada quebra, mas o PIN precisa ser definido
+  de novo e rotação em andamento precisa ser refeita (`RUNBOOK.md` §2).
+- **Telemetria do Player é estado do parque, não analytics.** O heartbeat V2
+  traz o estado operacional da própria TV (o que toca, versão, fila de
+  comprovantes, erro, desvio de relógio) para o próprio backend — sem dado
+  pessoal, sem comportamento de usuário, sem serviço de terceiro. O servidor
+  guarda o **último retrato** (sobrescrito) e só **eventos de transição**
+  (`tela_eventos`: primeiro sinal, caiu/voltou, erro começou/resolveu,
+  config aplicada, update), nunca um log por heartbeat. Mesma categoria do
+  proof-of-play.
 - **Sessão do admin por usuário/senha continua existindo como segunda camada**
   até o `/admin` estar atrás do Cloudflare Access. Quando o Access entrar, a
   senha vira camada extra, não porta.

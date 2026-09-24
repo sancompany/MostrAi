@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { exigirAparelho } = require('../lib/aparelho');
 const { gerarPlaylistDaHora } = require('./gerador');
+const pool = require('../db/pool');
+const { registrarPrimeiroContato } = require('../player/sinal');
 
 // O CACHE EM MEMÓRIA SAIU EM 17/09/2026, pra o serviço poder rodar em mais de
 // uma instância (item 4 de docs/PENDENCIAS.md).
@@ -21,16 +23,39 @@ const { gerarPlaylistDaHora } = require('./gerador');
 // Gerar de novo também não infla contador: `gravarProgramados` é um upsert com
 // `DO UPDATE SET` (não incrementa), e com a ordem estável o valor gravado é o
 // mesmo.
-// `gerarPlaylistDaHora` sempre devolve o envelope novo (contrato 2, migration
-// 065) — quem decide qual forma sai daqui é `contrato_playlist`, POR TELA
-// (docs/api.md). O player web (`public/player.page.js`) só sabe ler o array
-// de sempre, então toda tela nasce em 1 e continua assim até alguém marcar
-// o contrato novo no admin (telas com o app Android nativo instalado).
-router.get('/playlist/:dispositivoId', exigirAparelho, async (req, res) => {
+// `gerarPlaylistDaHora` sempre devolve o envelope (contrato 2, migration
+// 065). O formato de saída sai do próprio Player: quem manda
+// `X-Player-Contract` >= 2 (Player V2) recebe o envelope com `contentHash`;
+// sem o header, compat-v1 — `contrato_playlist` da tela (padrão 1, o array
+// que o player web `public/player.page.js` e o Android antigo leem).
+
+// Folga contra a corrida entre a geração e uma mudança commitada durante ela
+// (o gatilho da migration 083 marca com o relógio do statement, antes do
+// commit): só limpa marcas feitas antes do início da geração menos isto.
+const FOLGA_DESATUALIZADA_MS = 5000;
+
+router.get('/playlist/:dispositivoId', exigirAparelho(), async (req, res) => {
+  // Início pelo relógio do BANCO: as marcas de "desatualizada" são
+  // `clock_timestamp()` do gatilho; comparar com o relógio do Node deixaria a
+  // folga à mercê do desvio entre as duas máquinas.
+  const {
+    rows: [{ inicio }],
+  } = await pool.query('SELECT clock_timestamp() AS inicio');
+  if (!req.dispositivo.primeiro_sinal_em) await registrarPrimeiroContato(req.dispositivo.id);
   const hora = new Date();
   hora.setMinutes(0, 0, 0);
   const envelope = await gerarPlaylistDaHora(req.dispositivo, hora);
-  if (req.dispositivo.contrato_playlist === 2) return res.json(envelope);
+  // Entregue: a marca de "playlist desatualizada" anterior a esta geração
+  // está resolvida — nunca fica true pra sempre.
+  await pool.query(
+    `UPDATE dispositivos
+        SET playlist_entregue_em = now(),
+            playlist_desatualizada_em = CASE WHEN playlist_desatualizada_em <= $2::timestamptz - ($3::int * interval '1 millisecond')
+                                             THEN NULL ELSE playlist_desatualizada_em END
+      WHERE id = $1`,
+    [req.dispositivo.id, inicio, FOLGA_DESATUALIZADA_MS],
+  );
+  if ((req.player.contrato || 0) >= 2 || req.dispositivo.contrato_playlist === 2) return res.json(envelope);
   res.json(
     envelope.itens.map((item) => ({
       anuncianteId: item.anuncianteId,

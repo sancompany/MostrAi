@@ -213,18 +213,6 @@ router.post('/admin/pontos/foto-exemplo', upload.single('arquivo'), async (req, 
   }
 });
 
-// Chave por PONTO: rota morta desde a migration 019, quando a chave passou a
-// ser por TELA (um ponto pode ter várias). Quem autentica o player lê
-// `dispositivos.aparelho_id` (src/lib/aparelho.js) — esta aqui escrevia numa
-// coluna que ninguém mais lê. Pior que inútil: gerava uma chave com cara de
-// válida, que a TV recusaria, e o admin passaria a tarde procurando o defeito
-// na tela errada. 410 como o /seja-um-ponto, dizendo qual é o caminho.
-router.post('/admin/pontos/:id/aparelho', (_req, res) => {
-  res.status(410).json({
-    erro: 'a chave agora é por tela, não por ponto — use POST /admin/dispositivos/:id/chave',
-  });
-});
-
 // Modalidades de comodato e repasses (24/09/2026, ADR-016): ser ponto não é
 // plano e não recebe dinheiro — gera 1 crédito por mês (creditos/ponto.js).
 // Nenhuma rota cria modalidade nem repasse novo. O que já foi pago continua

@@ -498,9 +498,10 @@ function tempoDesde(dataISO) {
 // Estado operacional no hero (21/09/2026, revisão de design): "campanha
 // ativa" não pode significar só "tem plano" — a tela pode estar apagada há
 // horas com o plano em dia, e é exatamente esse caso que o anunciante mais
-// precisa ver primeiro, antes de qualquer KPI. Mesmo limiar de
-// HORAS_OFFLINE_ALERTA que a tabela "Exibições por ponto" já usa
-// (statusOnline), pras duas leituras nunca divergirem.
+// precisa ver primeiro, antes de qualquer KPI. A situação de cada ponto vem
+// pronta do servidor (`situacao`, régua única do Player V2 em
+// src/lib/status-tela.js), a mesma que a tabela "Exibições por ponto" usa.
+// Ponto fora do horário não é alerta: a loja fechada não é TV desligada.
 function pintarStatusOperacional(porPonto) {
   const el = document.getElementById('heroStatus');
   if (!el) return;
@@ -508,16 +509,13 @@ function pintarStatusOperacional(porPonto) {
     el.hidden = true;
     return;
   }
-  const agora = Date.now();
-  const online = (p) =>
-    p.ultima_vez_online && agora - new Date(p.ultima_vez_online).getTime() < HORAS_OFFLINE_ALERTA * 3600 * 1000;
-  const noAr = porPonto.filter(online);
+  const noAr = porPonto.filter((p) => p.situacao === 'no_ar');
   const n = porPonto.length;
   const itens = [
     `<span class="hero-status-item"><span class="dot" aria-hidden="true"></span>${noAr.length} de ${n} ${n === 1 ? 'ponto no ar' : 'pontos no ar'}</span>`,
   ];
-  if (noAr.length < n) {
-    const foraDoAr = porPonto.filter((p) => !online(p));
+  const foraDoAr = porPonto.filter((p) => p.situacao === 'fora_do_ar');
+  if (foraDoAr.length) {
     const maisAntigo = foraDoAr
       .map((p) => p.ultima_vez_online)
       .filter(Boolean)
@@ -824,22 +822,19 @@ function desenharPorPonto(porPonto) {
       .map((p) => {
         const prog = Number(p.programadas) || 0;
         const conf = Number(p.confirmadas) || 0;
-        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td><td>${statusOnline(p.ultima_vez_online)}</td></tr>`;
+        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td><td>${statusOnline(p.situacao)}</td></tr>`;
       })
       .join('')}
   </tbody></table></div>`;
 }
 
 // "A propaganda tá passando mesmo, ou a TV tá desligada?" (19/09/2026,
-// pedido do dono) — mesma janela de 2h que o admin já usa pra alertar tela
-// offline (HORAS_OFFLINE_ALERTA, src/admin/routes.js). Sem
-// `ultima_vez_online` nenhuma, a tela nunca chegou a pedir playlist — trata
-// como offline também, não como "sem dado".
-const HORAS_OFFLINE_ALERTA = 2;
-function statusOnline(ultimaVezOnline) {
-  const online =
-    ultimaVezOnline && Date.now() - new Date(ultimaVezOnline).getTime() < HORAS_OFFLINE_ALERTA * 3600 * 1000;
-  return online ? '<span class="badge badge-ok">🟢 Online</span>' : '<span class="badge badge-err">🔴 Offline</span>';
+// pedido do dono) — `situacao` vem do servidor, pela régua única de saúde da
+// tela (Player V2): no ar, fora do horário do ponto, ou fora do ar.
+function statusOnline(situacao) {
+  if (situacao === 'no_ar') return '<span class="badge badge-ok">🟢 No ar</span>';
+  if (situacao === 'fora_do_horario') return '<span class="badge badge-neutro">Fora do horário</span>';
+  return '<span class="badge badge-err">🔴 Fora do ar</span>';
 }
 
 carregar().catch(() => {

@@ -238,7 +238,8 @@ async function previewOcupacao({ pontosAlvo, frequenciaHora, duracaoSegundos, ex
 // cada mídia já diz exatamente quantas vezes por hora, em quais pontos.
 async function elegiveisNoPonto(pontoId) {
   const { rows } = await pool.query(
-    `SELECT mp.id, mp.frequencia_hora, c.id AS criativo_id, c.arquivo_normalizado_url AS url, c.duracao_segundos
+    `SELECT mp.id, mp.frequencia_hora, c.id AS criativo_id, c.arquivo_normalizado_url AS url, c.duracao_segundos,
+            c.conteudo_sha256
        FROM midias_proprias mp
        JOIN criativos c ON c.id = mp.criativo_id
       WHERE mp.situacao = 'ativa'

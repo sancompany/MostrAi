@@ -19,35 +19,8 @@ const NOME_DIA = {
 };
 const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-// Fuso de Matão, não do servidor (mesmo `FUSO` de src/br/formato.js, cuja
-// própria doc explica o motivo: "o servidor roda em UTC e o cliente está em
-// Brasília"). Achado em revisão de PR (23/09/2026): `estaAbertoAgora` usava
-// `Date#getDay/getHours/getMinutes`, que leem o fuso do PROCESSO Node, não
-// de São Paulo — em produção (container sem `TZ` setado, UTC) isso desloca
-// toda comparação em 3h, classificando errado tanto pra mais (alerta falso
-// de manhã) quanto pra menos (falha real da tarde escondida). `Intl` (já o
-// padrão deste arquivo/projeto) lê o relógio na wall-clock de São Paulo
-// direto, sem depender do fuso do processo.
-const FUSO = 'America/Sao_Paulo';
-const DIA_SEMANA_INTL = { Mon: 'seg', Tue: 'ter', Wed: 'qua', Thu: 'qui', Fri: 'sex', Sat: 'sab', Sun: 'dom' };
-const formatoRelogioMatao = new Intl.DateTimeFormat('en-US', {
-  timeZone: FUSO,
-  weekday: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-const formatoDataMatao = new Intl.DateTimeFormat('en-CA', { timeZone: FUSO }); // en-CA = YYYY-MM-DD
-
-function relogioEmMatao(agora) {
-  const partes = Object.fromEntries(formatoRelogioMatao.formatToParts(agora).map((p) => [p.type, p.value]));
-  // `hour12: false` do Intl pode devolver "24" pra meia-noite dependendo do
-  // ICU do runtime — normaliza pra 0, senão vira minuto 1440 (fora da
-  // faixa 0-1439 que `minutos()` espera).
-  return { dia: DIA_SEMANA_INTL[partes.weekday], horas: Number(partes.hour) % 24, minutos: Number(partes.minute) };
-}
-
-// Feriados NACIONAIS (fixos + móveis pela Páscoa, algoritmo de Meeus/Jones/
+// Feriados NACIONAIS (fixos + móveis pela Páscoa — usados pela config do
+// Player V2 em src/lib/operacao-tela.js, algoritmo de Meeus/Jones/
 // Butcher — mesmo usado por qualquer calendário de feriado brasileiro).
 // limite: só federal. Feriado municipal (aniversário da cidade, padroeiro)
 // não está mapeado em lugar nenhum do projeto — cada ponto fica numa
@@ -92,11 +65,6 @@ function feriadosNacionais(ano) {
   ]);
   CACHE_FERIADOS.set(ano, set);
   return set;
-}
-
-function ehFeriadoNacional(agora) {
-  const ymd = formatoDataMatao.format(agora); // já em YYYY-MM-DD, fuso de Matão
-  return feriadosNacionais(Number(ymd.slice(0, 4))).has(ymd);
 }
 
 // `null`/`undefined` passam batido (campo opcional em quem chama sem exigir
@@ -154,38 +122,4 @@ function resumo(horario) {
   return partes.join(' · ');
 }
 
-// "Está aberto agora?" (revisão final da Visão Geral, 23/09/2026) — não
-// existia: até aqui `horario_semanal` só alimentava texto (`resumo`), nunca
-// entrou em cálculo nenhum. `null`/objeto sem a chave do dia devolve `null`
-// ("não dá pra saber" — ponto sem horário cadastrado), não `false`, porque
-// quem chama trata "não sei" como "deveria estar online" (mesma suposição de
-// sempre, antes de existir este cálculo). Dia/hora sempre lidos na wall-clock
-// de Matão (`relogioEmMatao`), nunca no fuso do processo — e feriado nacional
-// usa `horario.feriados` (quando informado) em vez do dia da semana.
-// limite: janela que passa da meia-noite (ex. 18:00-02:00) só é reconhecida
-// no dia em que COMEÇA — não olha o dia anterior. Cobre o caso pedido (tela
-// além do horário do comércio, mesmo dia); virada de dia por instalação
-// aberta a noite toda é caso raro o suficiente pra ficar de fora desta rodada.
-function estaAbertoAgora(horario, agora = new Date()) {
-  if (!horario) return null;
-  const { dia, horas, minutos: minutoAtual } = relogioEmMatao(agora);
-  // Feriado usa a chave própria só quando alguém de fato preencheu (mesma
-  // regra do `resumo()` acima) — registro antigo sem "feriados" continua
-  // pelo dia da semana normal, igual sempre foi.
-  const chave = horario.feriados !== undefined && ehFeriadoNacional(agora) ? 'feriados' : dia;
-  const janela = horario[chave];
-  if (janela === undefined) return null;
-  if (!janela) return false;
-  const minutos = (hhmm) => {
-    const [h, m] = hhmm.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const agoraMin = horas * 60 + minutoAtual;
-  const abre = minutos(janela.abre);
-  const fecha = minutos(janela.fecha);
-  // `abre > fecha` = janela vira a noite (validado como caso legítimo em
-  // `validar`, ex. bar 18:00-02:00) — aberto fora do intervalo [fecha,abre).
-  return abre < fecha ? agoraMin >= abre && agoraMin < fecha : agoraMin >= abre || agoraMin < fecha;
-}
-
-module.exports = { DIAS, NOME_DIA, validar, resumo, estaAbertoAgora };
+module.exports = { DIAS, NOME_DIA, validar, resumo, feriadosNacionais };

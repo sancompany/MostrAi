@@ -1,4 +1,5 @@
 const { execFile } = require('node:child_process');
+const crypto = require('node:crypto');
 const util = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -46,8 +47,7 @@ async function probeMidia(caminho) {
 // `origem = 'storage'` nos erros daqui: quem chama precisa distinguir "o
 // arquivo do cliente e ruim" de "o nosso armazenamento esta fora do ar". As
 // duas coisas caiam na mesma frase, e a frase culpava o cliente.
-async function subirParaStorage(caminhoLocal, nomeArquivo, contentType) {
-  const buffer = fs.readFileSync(caminhoLocal);
+async function subirParaStorage(buffer, nomeArquivo, contentType) {
   const bucket = process.env.SUPABASE_STORAGE_BUCKET;
   try {
     const { error } = await supabase.storage.from(bucket).upload(nomeArquivo, buffer, { contentType, upsert: true });
@@ -67,7 +67,7 @@ async function subirParaStorage(caminhoLocal, nomeArquivo, contentType) {
 // pra esticar; imagem é escolha nossa, então usa o teto inteiro que o
 // plano já vende, em vez do padrão fixo. `null` (conta própria/plano sem
 // duração cadastrada) cai no padrão de sempre.
-// Retorna { arquivo_normalizado_url, thumbnail_url, duracao_segundos }.
+// Retorna { arquivo_normalizado_url, thumbnail_url, duracao_segundos, conteudo_sha256, conteudo_bytes }.
 async function normalizar(caminhoEntrada, criativoId, duracaoMaximaImagem = null) {
   const probado = await probeMidia(caminhoEntrada);
   const { width, height, ehImagem } = probado;
@@ -98,15 +98,20 @@ async function normalizar(caminhoEntrada, criativoId, duracaoMaximaImagem = null
   ]);
   await execFileAsync('ffmpeg', ['-y', '-ss', '00:00:01', '-i', saidaVideo, '-frames:v', '1', saidaThumb]);
 
+  // contentHash (Player V2, contrato §6.1): SHA-256 dos MESMOS bytes que
+  // vão para o Storage e que o Player baixa — o MP4 normalizado, nunca o
+  // arquivo que o cliente subiu (que nem é guardado).
+  const video = fs.readFileSync(saidaVideo);
+  const conteudo_sha256 = crypto.createHash('sha256').update(video).digest('hex');
   const [arquivo_normalizado_url, thumbnail_url] = await Promise.all([
-    subirParaStorage(saidaVideo, `${criativoId}.mp4`, 'video/mp4'),
-    subirParaStorage(saidaThumb, `${criativoId}-thumb.jpg`, 'image/jpeg'),
+    subirParaStorage(video, `${criativoId}.mp4`, 'video/mp4'),
+    subirParaStorage(fs.readFileSync(saidaThumb), `${criativoId}-thumb.jpg`, 'image/jpeg'),
   ]);
 
   fs.unlinkSync(saidaVideo);
   fs.unlinkSync(saidaThumb);
 
-  return { arquivo_normalizado_url, thumbnail_url, duracao_segundos };
+  return { arquivo_normalizado_url, thumbnail_url, duracao_segundos, conteudo_sha256, conteudo_bytes: video.length };
 }
 
 module.exports = { normalizar, probeMidia };

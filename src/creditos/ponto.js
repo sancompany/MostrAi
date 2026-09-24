@@ -17,9 +17,10 @@ const sse = require('../lib/sse');
 //   · o ponto existe (só nasce depois da candidatura aprovada) e não está
 //     arquivado/mesclado;
 //   · tem conta dona válida (não excluída, não a conta interna do Mostraí);
-//   · tem pelo menos UMA tela provisionada (chave de aparelho vinculada ou já
-//     conectou alguma vez) e ADMINISTRATIVAMENTE ativa (`dispositivos.status
-//     = 'ativo'`).
+//   · tem pelo menos UMA tela provisionada (credencial de aparelho vinculada —
+//     `chave_hash`, Player V2 ou chave V1, migration 083 — ou já conectou
+//     alguma vez) e ADMINISTRATIVAMENTE ativa (`dispositivos.status =
+//     'ativo'`).
 // De propósito, NÃO olha heartbeat/uptime: uma queda de internet não tira o
 // crédito do mês do dono. Saúde técnica (status-tela.js) e elegibilidade
 // comercial são coisas separadas — tela em reparo ou desligada pelo admin é
@@ -41,7 +42,7 @@ const SQL_PONTOS_ELEGIVEIS = `
        SELECT 1 FROM dispositivos d
         WHERE d.ponto_id = p.id
           AND d.status = 'ativo'
-          AND (d.aparelho_id IS NOT NULL OR d.ultima_vez_online IS NOT NULL)
+          AND (d.chave_hash IS NOT NULL OR d.ultima_vez_online IS NOT NULL)
      )`;
 
 const MESES = [

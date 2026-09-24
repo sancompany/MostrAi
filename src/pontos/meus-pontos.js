@@ -1,5 +1,5 @@
 const pool = require('../db/pool');
-const { statusOperacionalTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
+const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { situacaoDosPontos } = require('../creditos/ponto');
 
 // "Meus pontos" (Fatia 2 do painel único, 23/09/2026): UMA entidade visual
@@ -36,21 +36,29 @@ const SITUACAO_DA_TELA = {
   aguardando_primeiro_sinal: { nivel: 'neutro', texto: 'Aguardando a primeira conexão' },
   sem_sinal: {
     nivel: 'atencao',
-    texto: 'Deveria estar funcionando, mas está sem comunicação. A equipe Mostraí já vê esse alerta.',
+    texto: 'A tela deveria estar operando e está sem comunicação. A equipe Mostraí foi avisada.',
   },
   erro_do_player: {
     nivel: 'atencao',
-    texto: 'A tela relatou um problema. A equipe Mostraí já vê esse alerta.',
+    texto: 'A tela relatou um problema. A equipe Mostraí foi avisada.',
   },
+  player_revogado: { nivel: 'neutro', texto: 'Aguardando reinstalação pela equipe Mostraí' },
   em_reparo: { nivel: 'neutro', texto: 'Em manutenção' },
   inativa: { nivel: 'neutro', texto: 'Desligada' },
 };
 
+// Como a tela opera, em palavras de dono de loja (sem regime/timezone).
+const OPERACAO = { '24h': '24 horas', ponto: 'Horário do estabelecimento', personalizado: 'Horário próprio da tela' };
+
+// Visão SIMPLIFICADA do Player V2 para o dono: situação, operação e último
+// sinal. Nada técnico — sem ID do dispositivo, credencial, contrato, fila,
+// Android, hash, versões de config ou detalhes de atualização.
 function telaPublica(t, horarioDoPonto, agora) {
-  const situacao = statusOperacionalTela(t, horarioDoPonto, agora);
+  const situacao = saudeDaTela(t, horarioDoPonto, agora);
   return {
     id: t.id,
-    nome: t.apelido,
+    nome: `Tela ${t.numero}`,
+    operacao: OPERACAO[t.modo_horario] || OPERACAO.ponto,
     situacao,
     nivel: SITUACAO_DA_TELA[situacao].nivel,
     situacaoTexto: SITUACAO_DA_TELA[situacao].texto,
@@ -76,15 +84,17 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
       [contaId],
     ),
     pool.query(
-      `SELECT d.id, d.ponto_id, d.apelido, d.status, d.ultima_vez_online, d.instalado_em,
-              d.modo_horario, d.horario_semanal, d.ultimo_erro, (d.pin_hash IS NOT NULL) AS tem_pin,
+      `SELECT d.id, d.ponto_id, d.numero, d.status, d.ultima_vez_online, d.primeiro_sinal_em, d.instalado_em,
+              d.modo_horario, d.horario_semanal, d.timezone, d.player_estado,
+              d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
+              (d.pin_manutencao_cifrado IS NOT NULL OR d.pin_hash IS NOT NULL) AS tem_pin,
               COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
               COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id
          LEFT JOIN exibicoes_contador e ON e.dispositivo_id = d.id
         WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
-        GROUP BY d.id ORDER BY d.id`,
+        GROUP BY d.id ORDER BY d.numero`,
       [contaId],
     ),
     pool.query(

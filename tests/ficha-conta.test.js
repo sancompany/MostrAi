@@ -1,7 +1,7 @@
 require('express-async-errors');
 const test = require('node:test');
 const assert = require('node:assert');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
@@ -196,8 +196,9 @@ test('ponto aprovado mostra o benefício "+1 crédito/mês": elegível só com t
     let s = await situacaoDaConta(c.id);
     assert.equal(s.pontos[0].beneficio.elegivel, false);
     await pool.query(
-      `INSERT INTO dispositivos (ponto_id, apelido, status, aparelho_id) VALUES ($1, 'Tela 1', 'ativo', $2)`,
-      [id, `ap-${randomUUID()}`],
+      // Provisionada = credencial vinculada (só o hash fica no banco, Player V2).
+      `INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash) VALUES ($1, 'Tela 1', 'ativo', $2)`,
+      [id, createHash('sha256').update(`ap-${randomUUID()}`).digest('hex')],
     );
     s = await situacaoDaConta(c.id);
     assert.equal(s.pontos[0].beneficio.elegivel, true);

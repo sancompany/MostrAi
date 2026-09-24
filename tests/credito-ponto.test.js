@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const pool = require('../src/db/pool');
 const creditosPonto = require('../src/creditos/ponto');
 const creditosRepo = require('../src/creditos/repository');
@@ -44,10 +44,11 @@ async function ponto(contaId, nome, status = 'em_operacao') {
 }
 
 async function tela(pontoId, { status = 'ativo', provisionada = true } = {}) {
-  await pool.query(`INSERT INTO dispositivos (ponto_id, apelido, status, aparelho_id) VALUES ($1, 'Tela', $2, $3)`, [
+  // Provisionada = tem credencial (só o hash fica no banco, Player V2).
+  await pool.query(`INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash) VALUES ($1, 'Tela', $2, $3)`, [
     pontoId,
     status,
-    provisionada ? `ap-${randomUUID()}` : null,
+    provisionada ? createHash('sha256').update(`ap-${randomUUID()}`).digest('hex') : null,
   ]);
 }
 

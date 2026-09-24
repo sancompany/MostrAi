@@ -30,6 +30,7 @@ const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
+const { saudeDaTela } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const {
   enviarContaAprovada,
@@ -1068,12 +1069,12 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
     // `::date` (dia de calendário puro, que o parser do pool entrega como
     // texto), o dia sai certo dos dois lados e sem passar por fuso de novo.
     `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, p.nome AS ponto, p.cidade,
-            d.apelido AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
+            'Tela ' || d.numero AS tela, SUM(e.vezes_confirmadas)::int AS exibicoes
      FROM exibicoes_contador e
      JOIN dispositivos d ON d.id = e.dispositivo_id
      JOIN pontos p ON p.id = d.ponto_id
      WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
-     GROUP BY dia, p.nome, p.cidade, d.apelido
+     GROUP BY dia, p.nome, p.cidade, d.numero
      HAVING SUM(e.vezes_confirmadas) > 0
      ORDER BY dia DESC, p.nome`,
     [req.params.id, dias],
@@ -1095,6 +1096,34 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
   res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`);
   res.send('\uFEFF' + linhas.join('\r\n') + '\r\n');
 });
+
+// "A propaganda está passando ou a TV está desligada?" pela MESMA régua do
+// admin e do dono do ponto (src/lib/status-tela.js) — antes o painel tinha a
+// sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
+// mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
+// se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
+// Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
+async function comSituacaoNoAr(pontos) {
+  if (!pontos.length) return pontos;
+  const { rows: telas } = await pool.query(
+    `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
+            d.ultima_vez_online, d.player_estado, d.modo_horario, d.horario_semanal, d.timezone,
+            d.ultimo_erro_codigo, d.ultimo_erro, p.horario_semanal AS ponto_horario_semanal
+       FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+      WHERE d.ponto_id = ANY($1::int[])`,
+    [pontos.map((p) => p.id)],
+  );
+  const agora = new Date();
+  return pontos.map((p) => {
+    const saudes = telas.filter((t) => t.ponto_id === p.id).map((t) => saudeDaTela(t, t.ponto_horario_semanal, agora));
+    const situacao = saudes.includes('operando')
+      ? 'no_ar'
+      : saudes.includes('fora_do_horario')
+        ? 'fora_do_horario'
+        : 'fora_do_ar';
+    return { ...p, situacao };
+  });
+}
 
 router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
@@ -1246,7 +1275,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     totalConfirmadas: confirmadas,
     confirmadasMes,
     criativosAprovados: aprovados[0].n,
-    porPonto: porPonto.rows,
+    porPonto: await comSituacaoNoAr(porPonto.rows),
     porDia: porDia.rows,
     porDiaPonto: porDiaPonto.rows,
     cobrancas: cobrancas.rows,

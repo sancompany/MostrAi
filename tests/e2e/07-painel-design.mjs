@@ -164,8 +164,8 @@ const ponto2 = Number(
 );
 const disp2 = Number(
   PG(
-    `WITH ins AS (INSERT INTO dispositivos (ponto_id, aparelho_id, status, ultima_vez_online)
-     VALUES (${ponto2}, 'chave-teste-07b', 'ativo', now()) RETURNING id)
+    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, modo_horario, primeiro_sinal_em, ultima_vez_online)
+     VALUES (${ponto2}, encode(sha256('chave-teste-07b'), 'hex'), 'ativo', '24h', now() - interval '1 day', now()) RETURNING id)
      SELECT id FROM ins`,
   ),
 );
@@ -182,8 +182,8 @@ const ponto3 = Number(
 );
 const disp3 = Number(
   PG(
-    `WITH ins AS (INSERT INTO dispositivos (ponto_id, aparelho_id, status, ultima_vez_online)
-     VALUES (${ponto3}, 'chave-teste-07c', 'ativo', now() - interval '5 hours') RETURNING id)
+    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, modo_horario, primeiro_sinal_em, ultima_vez_online)
+     VALUES (${ponto3}, encode(sha256('chave-teste-07c'), 'hex'), 'ativo', '24h', now() - interval '1 day', now() - interval '5 hours') RETURNING id)
      SELECT id FROM ins`,
   ),
 );

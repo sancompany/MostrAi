@@ -7,22 +7,78 @@ const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 const horarioSemanal = require('../lib/horario-semanal');
+const { timezoneValida } = require('../lib/operacao-tela');
+const credencial = require('../player/credencial');
+const telaEventos = require('../player/tela-eventos');
+const releases = require('../player/releases');
 const sse = require('../lib/sse');
 
-// Tela nasceu, mudou ou saiu: o dono do ponto vê em "Meus pontos" sem F5.
-// `point.updated` junto porque o estado do ponto é derivado das telas
-// (sincronizarStatusPonto) — a primeira tela ativa é o que o tira de
-// "Aguardando instalação".
-async function avisarDonoDaTela(pontoId) {
+// Tela mudou: admin (canal próprio) e dono do ponto ("Meus pontos") refazem
+// o GET sem F5. `point.updated` junto: o estado do ponto é derivado das
+// telas, e o contador de telas do card do ponto também.
+async function avisarMudanca(pontoId, telaId = null) {
+  sse.emitirParaAdmin('screen.updated', { id: telaId, pontoId: Number(pontoId) });
+  sse.emitirParaAdmin('point.updated', { id: Number(pontoId) });
   const { rows } = await pool.query('SELECT anunciante_id FROM pontos WHERE id = $1', [pontoId]);
   const dono = rows[0]?.anunciante_id;
   if (!dono) return;
-  sse.emitirParaConta(dono, 'screen.updated', { pontoId });
-  sse.emitirParaConta(dono, 'point.updated', { id: pontoId });
+  sse.emitirParaConta(dono, 'screen.updated', { pontoId: Number(pontoId) });
+  sse.emitirParaConta(dono, 'point.updated', { id: Number(pontoId) });
+}
+
+const erro400 = (res, msg) => res.status(400).json({ erro: msg });
+
+// Validação dos campos editáveis. Nada de "Nome da tela": o nome é
+// derivado (Tela N), e o que é técnico (dispositivoId, chave, token, URL
+// da API) o sistema gera.
+function validarCampos(corpo) {
+  const dados = {};
+  for (const campo of repo.CAMPOS_ATUALIZAVEIS) if (campo in corpo) dados[campo] = corpo[campo];
+  if ('status' in dados && !repo.STATUS.includes(dados.status)) return { erro: 'estado administrativo inválido' };
+  for (const lado of ['margem_superior', 'margem_direita', 'margem_inferior', 'margem_esquerda']) {
+    if (lado in dados) {
+      const v = Number(dados[lado]);
+      if (!Number.isFinite(v) || v < 0 || v > 10) return { erro: 'cada lado da área segura vai de 0 a 10 vmin' };
+      dados[lado] = v;
+    }
+  }
+  if ('rotacao_tela' in dados) {
+    dados.rotacao_tela = Number(dados.rotacao_tela);
+    if (![0, 90, 180, 270].includes(dados.rotacao_tela)) return { erro: 'rotação precisa ser 0, 90, 180 ou 270' };
+  }
+  if ('modo_horario' in dados && !['ponto', '24h', 'personalizado'].includes(dados.modo_horario)) {
+    return { erro: 'modo de operação inválido' };
+  }
+  if ('horario_semanal' in dados) {
+    try {
+      dados.horario_semanal = horarioSemanal.validar(dados.horario_semanal);
+    } catch (err) {
+      return { erro: err.message };
+    }
+  }
+  if ('timezone' in dados && !timezoneValida(dados.timezone)) return { erro: 'fuso horário inválido' };
+  if ('update_baixar_auto' in dados && typeof dados.update_baixar_auto !== 'boolean') {
+    return { erro: 'baixar automaticamente precisa ser sim ou não' };
+  }
+  if ('update_horas_entre_tentativas' in dados) {
+    const h = Number(dados.update_horas_entre_tentativas);
+    if (!Number.isInteger(h) || h < 1 || h > 72) return { erro: 'intervalo entre tentativas vai de 1 a 72 horas' };
+    dados.update_horas_entre_tentativas = h;
+  }
+  if ('contrato_playlist' in dados && ![1, 2].includes(Number(dados.contrato_playlist))) {
+    return { erro: 'contrato de playlist inválido' };
+  }
+  return { dados };
+}
+
+async function telaOu404(req, res) {
+  const tela = await repo.buscarLinha(req.params.id);
+  if (!tela) res.status(404).json({ erro: 'tela não encontrada' });
+  return tela;
 }
 
 // ---------------------------------------------------------------------------
-// Admin
+// Admin — telas
 // ---------------------------------------------------------------------------
 router.get('/admin/dispositivos', async (_req, res) => {
   res.json(await repo.listarTodos());
@@ -32,68 +88,181 @@ router.get('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
   res.json(await repo.listarPorPonto(req.params.pontoId));
 });
 
+router.get('/admin/dispositivos/:id', async (req, res) => {
+  const tela = await repo.buscarPorId(req.params.id);
+  if (!tela) return res.status(404).json({ erro: 'tela não encontrada' });
+  res.json(tela);
+});
+
+router.get('/admin/dispositivos/:id/eventos', async (req, res) => {
+  if (!(await telaOu404(req, res))) return;
+  res.json(await telaEventos.listar(req.params.id, 100));
+});
+
 router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
   const ponto = await pontosRepo.buscarPorId(req.params.pontoId);
   if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
-  const tela = await repo.criar(ponto.id, req.body);
-  await avisarDonoDaTela(ponto.id);
+  if (ponto.status === 'arquivado') return erro400(res, 'ponto arquivado não recebe tela nova');
+  const { erro, dados } = validarCampos(req.body || {});
+  if (erro) return erro400(res, erro);
+  const tela = await repo.criar(ponto.id, dados);
+  await avisarMudanca(ponto.id, tela.id);
   res.status(201).json(tela);
 });
 
 router.patch('/admin/dispositivos/:id', async (req, res) => {
-  try {
-    if ('horario_semanal' in req.body) req.body.horario_semanal = horarioSemanal.validar(req.body.horario_semanal);
-    const antes = await repo.buscarPorId(req.params.id);
-    const dispositivo = await repo.atualizar(req.params.id, req.body);
-    if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });
-
-    // Só na transição pra ativo: uma tela que volta do reparo conta como
-    // rede crescendo, uma que é salva de novo já ativa não.
-    if (dispositivo.status === 'ativo' && antes && antes.status !== 'ativo') {
-      eventos.registrar('tela:dispositivo_ativa', {
-        ponto_id: dispositivo.ponto_id,
-        custo_aparelho: dispositivo.custo_equipamento,
-      });
-    }
-    await avisarDonoDaTela(dispositivo.ponto_id);
-    res.json(dispositivo);
-  } catch (err) {
-    if (err.code === '23514') return res.status(400).json({ erro: 'valor inválido' });
-    if (err.code === '23502') return res.status(400).json({ erro: 'esse campo não pode ficar em branco' });
-    throw err;
+  const antes = await telaOu404(req, res);
+  if (!antes) return;
+  const { erro, dados } = validarCampos(req.body || {});
+  if (erro) return erro400(res, erro);
+  const tela = await repo.atualizar(antes.id, dados);
+  // Só na transição pra ativo: uma tela que volta do reparo conta como rede
+  // crescendo, uma que é salva de novo já ativa não.
+  if (tela.status === 'ativo' && antes.status !== 'ativo') {
+    eventos.registrar('tela:dispositivo_ativa', { ponto_id: tela.pontoId, custo_aparelho: tela.custoEquipamento });
   }
-});
-
-router.post('/admin/dispositivos/:id/chave', async (req, res) => {
-  const dispositivo = await repo.gerarChave(req.params.id);
-  if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });
-  res.json({ aparelho_id: dispositivo.aparelho_id });
-});
-
-router.post('/admin/dispositivos/:id/pin', async (req, res) => {
-  const pin = req.body.pin == null ? null : String(req.body.pin);
-  if (pin !== null && !/^\d{4,6}$/.test(pin)) return res.status(400).json({ erro: 'PIN precisa ter de 4 a 6 dígitos' });
-  const dispositivo = await repo.definirPin(req.params.id, pin);
-  if (!dispositivo) return res.status(404).json({ erro: 'dispositivo não encontrado' });
-  res.json(dispositivo);
+  await avisarMudanca(tela.pontoId, tela.id);
+  res.json(tela);
 });
 
 router.delete('/admin/dispositivos/:id', async (req, res) => {
-  const existente = await repo.buscarPorId(req.params.id);
+  const existente = await repo.buscarLinha(req.params.id);
   await repo.deletar(req.params.id);
-  if (existente) await avisarDonoDaTela(existente.ponto_id);
+  if (existente) await avisarMudanca(existente.ponto_id, existente.id);
   res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
-// Dono do ponto: as telas dos pontos dele, com o que rodou em cada uma.
+// Admin — provisionamento e credencial
 // ---------------------------------------------------------------------------
-// A lista de telas do dono (GET /anunciantes/:id/dispositivos) saiu com a
-// página antiga do ponto (Fatia 6, 23/09/2026): as telas vêm dentro de cada
-// ponto em GET /anunciantes/me/meus-pontos, já com a situação em texto.
+// Preparar instalação: gera o `mostrai-config.json` do contrato V2 §2.1. O
+// token em claro só existe nesta resposta (o banco guarda o hash) — perdeu o
+// arquivo, gera outro (o anterior deixa de valer).
+router.post('/admin/dispositivos/:id/provisionamento', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  const gerado = await repo.gerarTokenProvisionamento(tela.id, 'admin');
+  const baseUrl = (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.status(201).json({
+    nomeArquivo: 'mostrai-config.json',
+    arquivo: { baseUrl, tokenProvisionamento: gerado.token, rotacaoTela: tela.rotacao_tela },
+    geradoEm: gerado.criadoEm,
+    expiraEm: gerado.expiraEm,
+  });
+});
 
-// O que rodou numa tela específica (dono do ponto ou admin), para o painel
-// por tela.
+router.delete('/admin/dispositivos/:id/provisionamento', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  await repo.cancelarProvisionamento(tela.id);
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json(await repo.buscarPorId(tela.id));
+});
+
+router.post('/admin/dispositivos/:id/credencial/rotacionar', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  if (!(await credencial.iniciarRotacao(tela.id))) {
+    return erro400(res, 'rotação só existe para Player V2 provisionado — no player web, gere um link novo ou revogue');
+  }
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json(await repo.buscarPorId(tela.id));
+});
+
+router.delete('/admin/dispositivos/:id/credencial/rotacao', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  await credencial.cancelarRotacao(tela.id);
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json(await repo.buscarPorId(tela.id));
+});
+
+router.post('/admin/dispositivos/:id/credencial/revogar', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  await credencial.revogar(tela.id);
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json(await repo.buscarPorId(tela.id));
+});
+
+// compat-v1: link do player web (public/player.html?tela=ID&chave=…). A chave
+// aparece só nesta resposta; o banco guarda o hash. Some quando o player web
+// for aposentado.
+router.post('/admin/dispositivos/:id/chave-legada', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  const chave = await credencial.gerarChaveLegada(tela.id);
+  const base = (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json({ link: `${base}/player.html?tela=${tela.id}&chave=${encodeURIComponent(chave)}` });
+});
+
+// PIN de manutenção do Player: exatamente 4 dígitos (contrato §5 descarta
+// qualquer outra coisa). null remove — mas não de tela com Player V2: sem
+// `pinPainel` na config o aparelho mantém o PIN que já tem
+// (ConfigAparelho.kt: campo ausente = não mexe), e o admin mostraria "sem
+// PIN" com a TV ainda pedindo o antigo.
+function lerPin(corpo, tela) {
+  const pin = corpo?.pin == null ? null : String(corpo.pin);
+  if (pin !== null && !/^\d{4}$/.test(pin)) return { erro: 'o PIN de manutenção do Player tem exatamente 4 dígitos' };
+  if (pin === null && tela.dispositivo_uid) {
+    return { erro: 'o Player desta tela não fica sem PIN de manutenção — troque por outro PIN de 4 dígitos' };
+  }
+  return { pin };
+}
+
+router.post('/admin/dispositivos/:id/pin', async (req, res) => {
+  const tela = await telaOu404(req, res);
+  if (!tela) return;
+  const { erro, pin } = lerPin(req.body, tela);
+  if (erro) return erro400(res, erro);
+  await repo.definirPin(tela.id, pin);
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json(await repo.buscarPorId(tela.id));
+});
+
+// ---------------------------------------------------------------------------
+// Admin — releases do Player (OTA fase 1)
+// ---------------------------------------------------------------------------
+router.get('/admin/player-releases', async (_req, res) => {
+  res.json(await releases.listar());
+});
+
+router.post('/admin/player-releases', async (req, res) => {
+  const d = req.body || {};
+  const dados = {
+    ...d,
+    build: Number(d.build),
+    tamanho_bytes: d.tamanho_bytes == null || d.tamanho_bytes === '' ? null : Number(d.tamanho_bytes),
+    build_minimo: d.build_minimo == null || d.build_minimo === '' ? null : Number(d.build_minimo),
+  };
+  const erros = releases.validar(dados);
+  if (erros.length) return erro400(res, erros.join('; '));
+  try {
+    res.status(201).json(await releases.criar(dados, 'admin'));
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ erro: 'já existe uma release com esse build' });
+    throw err;
+  }
+});
+
+router.post('/admin/player-releases/:id/assinatura-conferida', async (req, res) => {
+  const r = await releases.conferirAssinatura(req.params.id, 'admin');
+  if (!r) return res.status(404).json({ erro: 'release não encontrada' });
+  res.json(r);
+});
+
+router.patch('/admin/player-releases/:id', async (req, res) => {
+  if (typeof req.body?.ativa !== 'boolean') return erro400(res, 'informe ativa: true ou false');
+  const r = await releases.definirAtiva(req.params.id, req.body.ativa);
+  if (!r) return erro400(res, 'release inexistente, ou assinatura do APK ainda não conferida');
+  res.json(r);
+});
+
+// ---------------------------------------------------------------------------
+// O que rodou numa tela (dono do ponto ou admin)
+// ---------------------------------------------------------------------------
 async function painelDaTela(dispositivoId) {
   const [porAnunciante, porDia] = await Promise.all([
     pool.query(
@@ -115,59 +284,48 @@ async function painelDaTela(dispositivoId) {
   return { porAnunciante: porAnunciante.rows, porDia: porDia.rows };
 }
 
+async function telaDoDono(req, res) {
+  if (Number(req.params.id) !== req.session.anuncianteId) {
+    res.status(403).json({ erro: 'só pode ver as próprias telas' });
+    return null;
+  }
+  const { rows } = await pool.query(
+    `SELECT d.id, d.ponto_id, d.dispositivo_uid FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+     WHERE d.id = $1 AND p.anunciante_id = $2`,
+    [req.params.dispositivoId, req.session.anuncianteId],
+  );
+  if (!rows[0]) res.status(404).json({ erro: 'tela não encontrada' });
+  return rows[0] || null;
+}
+
 router.get('/anunciantes/:id/dispositivos/:dispositivoId/painel', exigirAnuncianteLogado, async (req, res) => {
-  if (Number(req.params.id) !== req.session.anuncianteId) {
-    return res.status(403).json({ erro: 'só pode ver as próprias telas' });
-  }
-  const { rows } = await pool.query(
-    `SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.id = $1 AND p.anunciante_id = $2`,
-    [req.params.dispositivoId, req.session.anuncianteId],
-  );
-  if (!rows[0]) return res.status(404).json({ erro: 'tela não encontrada' });
-  res.json(await painelDaTela(req.params.dispositivoId));
+  const tela = await telaDoDono(req, res);
+  if (tela) res.json(await painelDaTela(tela.id));
 });
 
-router.get('/admin/dispositivos/:id/painel', async (req, res) => {
-  res.json(await painelDaTela(req.params.id));
-});
-
-// PIN pelo próprio dono do ponto. A documentação funcional sempre disse que é
-// ele quem define ("o dono do ponto define o PIN da tela") e a única rota que
-// existia era a do admin: na prática o lojista tinha que combinar o número por
-// WhatsApp e esperar alguém digitar por ele — para abrir um painel que só
-// mostra a tela DELE, no aparelho DELE. Mesma validação e mesmo hash da rota
-// do admin; a diferença é só quem pode chamar.
+// PIN de manutenção pelo próprio dono do ponto (docs/funcional.md: "o dono
+// do ponto define o PIN da tela") — mesma regra e mesmo armazenamento da
+// rota do admin.
 router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnuncianteLogado, async (req, res) => {
-  if (Number(req.params.id) !== req.session.anuncianteId) {
-    return res.status(403).json({ erro: 'só pode mexer nas próprias telas' });
-  }
-  const pin = req.body.pin == null ? null : String(req.body.pin);
-  if (pin !== null && !/^\d{4,6}$/.test(pin))
-    return res.status(400).json({ erro: 'o PIN precisa ter de 4 a 6 dígitos' });
-  const { rows } = await pool.query(
-    `SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-     WHERE d.id = $1 AND p.anunciante_id = $2`,
-    [req.params.dispositivoId, req.session.anuncianteId],
-  );
-  if (!rows[0]) return res.status(404).json({ erro: 'tela não encontrada' });
-  const dispositivo = await repo.definirPin(req.params.dispositivoId, pin);
-  res.json({ ok: true, tem_pin: !!dispositivo.tem_pin });
+  const tela = await telaDoDono(req, res);
+  if (!tela) return;
+  const { erro, pin } = lerPin(req.body, tela);
+  if (erro) return erro400(res, erro);
+  await repo.definirPin(tela.id, pin);
+  await avisarMudanca(tela.ponto_id, tela.id);
+  res.json({ ok: true, tem_pin: pin != null });
 });
 
-// Painel aberto a partir da própria TV: chave do aparelho + PIN. Não dá
-// acesso a nada além desta tela (CONSTRAINTS.md).
+// compat-v1: painel aberto a partir do player web — chave do aparelho + PIN.
+// Não dá acesso a nada além desta tela (CONSTRAINTS.md). O Player V2 tem o
+// painel local (PIN na config), sem rota no servidor.
 // limiteTentativas: PIN de 4 dígitos sem limite é força bruta em minutos.
 router.post('/player/:dispositivoId/painel', limiteTentativas, async (req, res) => {
-  const dispositivo = await repo.buscarComPonto(req.params.dispositivoId);
-  const chave = req.headers['x-aparelho-id'];
-  if (!dispositivo?.aparelho_id || chave !== dispositivo.aparelho_id) {
-    return res.status(401).json({ erro: 'aparelho não autorizado' });
-  }
-  if (!(await repo.conferirPin(dispositivo.id, req.body.pin))) {
-    return res.status(401).json({ erro: 'PIN incorreto' });
-  }
-  res.json(await painelDaTela(dispositivo.id));
+  const tela = await repo.buscarComPonto(req.params.dispositivoId);
+  const qual = tela && credencial.identificarChave(tela, req.get('x-aparelho-key') || req.get('x-aparelho-id'));
+  if (!qual) return res.status(401).json({ erro: 'aparelho não autorizado' });
+  if (!(await repo.conferirPin(tela.id, req.body?.pin))) return res.status(401).json({ erro: 'PIN incorreto' });
+  res.json(await painelDaTela(tela.id));
 });
 
 module.exports = router;

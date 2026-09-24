@@ -64,7 +64,7 @@ async function exportarConta(anuncianteId) {
     // e não entregar quando ela pede.
     q(`SELECT nome, propriedades, criado_em FROM eventos
         WHERE anunciante_id = $1 ORDER BY criado_em`),
-    q(`SELECT d.id, d.ponto_id, d.apelido, d.status, d.ultima_vez_online,
+    q(`SELECT d.id, d.ponto_id, 'Tela ' || d.numero AS tela, d.status, d.ultima_vez_online,
               d.custo_equipamento, d.meses_amortizacao, d.instalado_em, d.created_at
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id

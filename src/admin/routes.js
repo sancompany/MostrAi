@@ -12,10 +12,9 @@ const metrica = require('./metrica');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 
-// HORAS_OFFLINE_ALERTA morreu como filtro fixo de "sem heartbeat" (rodada
-// horário operacional da tela, 23/09/2026) — virou TOLERANCIA_OFFLINE_MS
-// dentro de src/lib/status-tela.js, a única régua de "sem sinal" agora
-// (soma horário de funcionamento + modo da tela, não só o relógio).
+// "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
+// 3 ciclos de heartbeat, contrato do Player V2 §10), que soma horário de
+// funcionamento + modo da tela, não só o relógio.
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
 // constante igual pra todo ponto, ver docs/erros/2026-09-amortizacao-constante-no-codigo.md
 
@@ -437,25 +436,6 @@ router.get('/admin/resumo', async (_req, res) => {
         }
       : null,
   });
-});
-
-// Alerta de tela com sinal comprometido — a aba "Rede" usa a mesma lista;
-// isso aqui fica como o endpoint pronto, pra quando alguém quiser só ela.
-// Substituiu a checagem fixa "sem heartbeat há 2h" (rodada horário
-// operacional da tela, 23/09/2026): agora só entra quem deveria estar
-// online e não está (src/lib/status-tela.js).
-router.get('/admin/pontos-offline', async (_req, res) => {
-  const telas = await dispositivosRepo.listarComProblemaDeSinal();
-  res.json(
-    telas.map((t) => ({
-      id: t.id,
-      apelido: t.apelido,
-      ultima_vez_online: t.ultima_vez_online,
-      ponto_id: t.ponto_id,
-      ponto_nome: t.ponto_nome,
-      situacaoOperacional: t.situacaoOperacional,
-    })),
-  );
 });
 
 // Custos fixos da operação — entram na margem do resumo.

@@ -2162,145 +2162,262 @@ button.pend-bloco:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.telas-topo {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  margin-bottom: 14px;
-}
 .telas-lista {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-/* Tela: cabeçalho operacional + blocos (player, PIN, instalação, horário),
-   safe area com o desenho da tela e o rodapé com a ação destrutiva. */
-.tela-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
+
+/* ---------- Rede: resumo da rede (Player V2) ---------- */
+.rede-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--e-3);
+  margin-bottom: var(--e-5);
+}
+.rede-resumo-item {
+  padding: var(--e-3) var(--e-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
+}
+.rede-resumo-item b {
+  display: block;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.rede-resumo-item span {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.rede-resumo-item.ok b {
+  color: var(--ok);
+}
+.rede-resumo-item.alerta {
+  border-color: var(--err);
+  background: var(--err-tint);
+}
+.rede-resumo-item.alerta b {
+  color: var(--err-texto);
+}
+.txt-alerta {
+  color: var(--err-texto);
+  font-weight: 600;
+}
+.id-tecnico {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Rede: card fechado da tela ---------- */
+.tela-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: inherit;
+  text-decoration: none;
   overflow: hidden;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+a.tela-card:hover {
+  border-color: var(--borda-forte);
+  box-shadow: var(--sombra-hover);
+}
+a.tela-card:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.tela-card.com-alerta {
+  border-color: var(--err);
 }
 .tela-card-topo {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px 16px;
-  padding: 12px 16px;
+  gap: var(--e-2) var(--e-4);
+  padding: var(--e-3) var(--e-4);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.tela-card-titulo {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  min-width: 0;
-}
-.tela-card-titulo h4 {
+.tela-card-topo h4 {
   margin: 0;
   font-size: 0.96rem;
 }
-.tela-card-sinal {
-  font-size: 0.78rem;
-  color: var(--text-dim);
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tela-estado {
+.tela-card-selos {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
-  font-size: 0.78rem;
+}
+.tela-card-dados {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--e-3) var(--e-4);
+  margin: 0;
+  padding: var(--e-3) var(--e-4);
+}
+.tela-card-dados dt {
+  font-size: 0.72rem;
   color: var(--text-dim);
 }
-/* Três blocos numa linha só — Player, PIN, Instalação (data + horário
-   operacional juntos); nenhum bloco sobra sozinho numa segunda linha. */
-.tela-grupos {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.tela-card-dados dd {
+  margin: 2px 0 0;
+  font-size: 0.86rem;
 }
-@media (max-width: 640px) {
-  .tela-grupos {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 720px) {
+  .tela-card-dados {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.tela-campo {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--text-dim);
-}
-.tela-campo input,
-.tela-campo select {
-  width: 100%;
-  min-width: 0;
-}
-.tela-grupo {
+
+/* ---------- Rede: ficha completa da tela ---------- */
+.tela-ficha {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--e-4);
 }
-.tela-grupo + .tela-grupo {
-  border-left: 1px solid var(--border);
+.tela-ficha-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-3) var(--e-5);
 }
-.tela-grupo h5,
-.tela-safe h5 {
-  margin: 0;
-  font-size: 0.72rem;
+.tela-ficha-topo h3 {
+  margin: 0 0 var(--e-2);
+}
+.tela-ficha-ponto {
+  font-weight: 400;
+  font-size: 0.95rem;
+}
+.ficha-bloco h4 {
+  margin: 0 0 var(--e-4);
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.tela-grupo h5 label {
+details.ficha-bloco > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--e-3);
   cursor: pointer;
+  list-style: none;
 }
-.tela-grupo-valor {
+details.ficha-bloco > summary::-webkit-details-marker {
+  display: none;
+}
+details.ficha-bloco > summary::before {
+  content: "▸";
+  color: var(--text-dim);
+}
+details.ficha-bloco[open] > summary::before {
+  content: "▾";
+}
+details.ficha-bloco > summary h4 {
   margin: 0;
+}
+details.ficha-bloco > summary span {
+  font-size: 0.82rem;
+}
+details.ficha-bloco[open] > summary {
+  margin-bottom: var(--e-4);
+}
+.dado-ajuda {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  opacity: 0.85;
+  margin-top: 1px;
+}
+.ficha-bloco code {
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+.config-versoes {
+  margin-bottom: var(--e-4);
+  padding-bottom: var(--e-4);
+  border-bottom: 1px solid var(--border);
+}
+.config-lista {
+  margin: 0;
+}
+.config-linha {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--e-2) var(--e-4);
+  padding: var(--e-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.config-linha:last-child {
+  border-bottom: 0;
+}
+.config-linha dt {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.config-linha dd {
+  margin: 0;
+  font-size: 0.9rem;
+}
+@media (max-width: 640px) {
+  .config-linha {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .config-linha dt {
+    grid-column: 1 / -1;
+  }
+}
+.ficha-subbloco {
+  margin-top: var(--e-5);
+  padding-top: var(--e-4);
+  border-top: 1px solid var(--border);
+}
+.ficha-subbloco h5 {
+  margin: 0 0 var(--e-3);
   font-size: 0.86rem;
 }
-.tela-grupo .acoes {
-  gap: 6px;
+.ficha-subbloco .acoes {
+  margin-top: var(--e-3);
 }
-.tela-grupo select.mini,
-.tela-grupo input.mini {
-  max-width: 100%;
+.ficha-avancado {
+  margin-top: var(--e-5);
+  font-size: 0.86rem;
 }
-.horario-tela-editor {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
+.ficha-avancado summary {
+  cursor: pointer;
+  color: var(--text-dim);
 }
-.horario-tela-editor .acoes {
-  margin-top: 10px;
+.tela-historico {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--e-2);
 }
-.tela-safe {
-  padding: 14px 16px;
+.tela-historico li {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: var(--e-3);
+  font-size: 0.86rem;
+}
+.tela-historico time {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tela-ficha-pe {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  justify-content: flex-end;
 }
-.tela-safe h5 span {
-  margin-left: 6px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-}
+
+/* Área segura (modal "Área segura" da ficha da tela). */
 /* Safe area em cruz: cada campo do lado que ele representa, com a tela no
    meio — leitura imediata de "o que é Topo, o que é Esquerda". Rótulo na
    mesma linha do número e a tela em miniatura: a cruz cabe em ~150px de
@@ -2365,19 +2482,6 @@ button.pend-bloco:focus-visible {
   border-radius: 4px;
   font-size: 0.66rem;
   color: rgba(255, 255, 255, 0.7);
-}
-.tela-card-pe {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--border);
-}
-@media (max-width: 640px) {
-  .tela-grupo + .tela-grupo {
-    border-left: 0;
-  }
 }
 @media (max-width: 420px) {
   .safe-area {

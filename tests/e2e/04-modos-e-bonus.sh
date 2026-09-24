@@ -55,7 +55,7 @@ esperar "ponto nasce sem modalidade nem R\$ 50" '"beneficio":\{' "$r"
 if echo "$r" | grep -q 'ajudaCustoMensal\|modalidade'; then falha "sem campos do modelo antigo" "$r"; else ok "sem campos do modelo antigo"; fi
 PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
 # Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"apelido":"Tela 1"}'); esperar "Tela 1 criada" 'Tela 1' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "Tela 1 criada" '"nome":"Tela 1"' "$r"
 DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
 
 echo "== convite aceito por conta logada =="

@@ -3,6 +3,29 @@
 ## Updated
 2026-09-24
 
+## Player V2 — integração definitiva (24/09/2026)
+O dono RETOMOU o Player V2 com o pedido "INTEGRAÇÃO DEFINITIVA DO MOSTRAÍ COM
+O MOSTRAÍ PLAYER" (77 seções). Fonte de verdade do protocolo: o CÓDIGO do
+Player (`sancompany/Playlist.MostrAi`, main), depois `player-v2-contract.md`,
+depois o checklist. Plano e tabela de divergências:
+`docs/specs/2026-09-23-player-v2-backend.md`. Entregue (branch
+`claude/busy-noether-hheir2`): migration 083 (aditiva; 081 e 082 são do ledger de créditos, de outros PRs), `src/player/`
+(credencial, sinal, config, releases, tela-eventos), `src/lib/cofre.js`,
+`src/lib/operacao-tela.js`, saúde única em `src/lib/status-tela.js`, admin
+Rede → Ponto → Tela (ficha em 5 blocos, SSE `admin:true`), visão do dono
+simplificada, V1 intacto. Regras em `docs/funcional.md` RN-58/59/60; operação
+em `RUNBOOK.md` §6.1; o que falta em `docs/PENDENCIAS.md`, seção "Player V2".
+**Não desfazer sem contexto:**
+- Credencial só como hash; cofre (AES-GCM, chave do `SESSION_SECRET`) só
+  para PIN, chave candidata e janela de repetição do token.
+- `aparelho_id` (chave V1 em texto) ficou na 083 de propósito: a 084 zera
+  depois de validar produção (rollback seguro).
+- Regime `HORAS_24` (não `24_HOURS`): o Player usa esse nome.
+- `played` nunca responde 400 por conteúdo (o Player põe em quarentena
+  permanente) — status por item.
+- Release só ativa com `assinatura_conferida_em` (CHECK no banco).
+- Ponto "em operação" exige tela que já deu sinal (`primeiro_sinal_em`).
+
 ## Reestruturação do benefício dos pontos (24/09/2026, este agente)
 Pedido do dono (69 seções): "SER PONTO DA MOSTRAÍ NÃO É UM PLANO". Decisão
 no **ADR-016**. NÃO MEXER respeitado: Player V2, heartbeat, proof-of-play,

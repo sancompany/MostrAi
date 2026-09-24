@@ -4491,3 +4491,95 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   sempre e os dias pagos ficam GUARDADOS (`plano_pago_guardado_*`) até o
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
+
+## Player V2 — integração definitiva com o Mostraí Player (24/09/2026)
+
+Plano, divergências e ordem de trabalho em
+`docs/specs/2026-09-23-player-v2-backend.md`. Fonte de verdade do protocolo:
+o código do Player (`sancompany/Playlist.MostrAi`, main) — onde o contrato ou
+o checklist divergem dele, vale o código (ex.: regime `HORAS_24`, não
+`24_HOURS`; o Player não reporta Device Owner/capacidades/watchdog, então a
+ficha não mostra).
+
+**[x] Construído e testado** (migration 083, `src/player/`, `src/lib/cofre.js`,
+`src/lib/operacao-tela.js`, `src/lib/status-tela.js`, admin Rede):
+provisionamento por token de uso único; credencial só como hash com
+rotação/sobreposição e revogação; hello; heartbeat como retrato com eventos
+de transição; saúde derivada numa régua só; config desejada × aplicada;
+playlist marcada como desatualizada por trigger e `contentHash` do MP4
+normalizado; `played` em lote sem 400 de conteúdo; OTA com release só ativável
+depois de assinatura conferida; UI Rede → Ponto → Tela (ficha em 5 blocos,
+SSE); visão simplificada do dono; V1 (`/player.html`) continua funcionando.
+Testes: `tests/player-v2.test.js`, `tests/operacao-tela.test.js`,
+`tests/status-tela.test.js`, e2e `tests/e2e/18-rede-player-v2.mjs`.
+
+**Efeito no negócio que aparece no deploy:** a regra de status do ponto
+mudou — "em operação" exige uma tela ativa que **já deu sinal** alguma vez.
+Ponto marcado em operação cuja tela nunca falou passa a aparecer como
+"Aguardando instalação". É correção, não regressão: antes o admin afirmava
+operação que nunca foi vista.
+
+**[ ] Depende do aparelho real (só testável com a TV):**
+- Provisionar um Player V2 de verdade com o `mostrai-config.json` baixado do
+  admin de produção e ver a ficha passar de "Aguardando primeiro sinal" a
+  "Operando" sem recarregar.
+- Conferir que `desvioRelogioMs`, `fila` e `update.estado` chegam com os
+  valores que o Player manda em campo (os testes usam o formato do código).
+- Rotação de credencial com a TV ligada: a chave nova chega no heartbeat e a
+  antiga para de valer depois do primeiro uso da nova.
+- OTA ponta a ponta: publicar um APK, conferir a assinatura, ativar, ver
+  `update.estado` ir de `DOWNLOADING` a `READY`/instalado.
+
+**[ ] Só o dono faz:**
+- Guardar o keystore de assinatura do APK e conferir a assinatura de cada
+  release antes de ativá-la (o sistema nunca ativa sozinho — CHECK no banco).
+- Decidir se as telas V1 em campo migram para o app V2 (o V1 segue aceito
+  sem prazo).
+
+**[ ] Depois da validação em produção:**
+- Migration 084: zerar `dispositivos.aparelho_id` (a chave V1 em texto puro).
+  A 083 já gravou o hash de todas e a autenticação só lê o hash; a coluna
+  ficou só para poder voltar o deploy sem perder a chave das TVs V1.
+- `contentHash` só existe para criativo normalizado depois da 083. Os antigos
+  vão sem hash (o Player aceita — o campo é opcional); preencher exige baixar
+  cada MP4 do storage e calcular — script de uma vez, fora do deploy.
+
+**[ ] Encontrado de passagem, fora do escopo (hipótese com endereço):**
+- `tests/e2e/02-assinatura-webhook-comissao.sh` já falhava na main (roteiro da
+  era do vendedor) — não mexido.
+- `DELETE` de criativo (`src/anunciantes/routes.js`, remoção no storage) apaga
+  `${id}.mp4`; conferir se, depois de "substituir", o arquivo vivo continua
+  com esse nome ou fica órfão no bucket.
+- Upload de foto na candidatura dá 500 no ambiente local sem Supabase
+  configurado (esperado localmente; em produção funciona).
+
+**[x] Auditorias A/B/C (24/09/2026)** — dois revisores independentes (A:
+protocolo contra o código Kotlin do Player, credencial, corridas; B:
+compatibilidade V1) e o smoke completo (C). Corrigido, cada um com teste em
+`tests/player-v2.test.js`:
+- chave candidata era promovida antes do 403 de tela fora do ar — o Player
+  descartava a nova e ficava trancado quando a sobreposição vencia;
+- promoção que perdia a corrida para o admin (cancelar/trocar rotação)
+  respondia 200 — o aparelho oficializava chave que o servidor não aceitava;
+- rotação pedida numa TV V1 ficava pendente para sempre com a chave suspeita
+  valendo — agora só para Player V2 provisionado (botão some, 400 no backend);
+- revogar/link novo/reprovisionar não apagavam `aparelho_id` — um revert do
+  código ressuscitaria chave revogada (RUNBOOK §4 ganhou o procedimento);
+- status do ponto dentro da transação do heartbeat podia travar (deadlock)
+  com outro primeiro sinal — agora depois do commit; a visão do dono passou
+  a não perder aviso que chega durante uma recarga (achado do e2e 12);
+- folga da playlist "desatualizada" comparava relógio do Node com o do banco;
+- Player revogado seguia contando o ponto como "em operação";
+- PIN removido não chegava ao Player V2 (campo ausente = não mexe) — V2 não
+  fica sem PIN;
+- painel do anunciante tinha régua própria (2 h) e dizia "Online" para tela
+  que o admin mostrava sem sinal — agora a régua única;
+- visão do dono não percebia tela que para de falar (nenhum evento) —
+  recarga a cada 60 s;
+- TV V1 nova ficava até 15 min sem anúncio (ponto fora da cobertura até o
+  heartbeat) — o primeiro GET de playlist conta como sinal;
+- a 083 cortava margens > 10 que o player web V1 respeita — não corta mais;
+  o teto de 10 vale para a escrita nova e para o que vai ao V2.
+Replay da 083 num banco com formato de produção (TVs V1 com chave em texto,
+margem 15, tela sem sinal): hash confere, numeração estável, ponto sem sinal
+vira "Aguardando instalação", reaplicar não muda nada.

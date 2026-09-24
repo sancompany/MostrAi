@@ -3,6 +3,14 @@
 Mapa de todas as **387 funções** do produto e de como se ligam. Lido do código
 em 15/09/2026 por doze leituras independentes, uma por superfície.
 
+> **24/09/2026 — Player V2:** tudo o que este mapa diz sobre a **tela e o
+> player** (chave de aparelho em `aparelho_id`, `gerarChave`, `/admin/dispositivos/:id/chave`,
+> `/admin/pontos-offline`, comparação da chave fora de tempo constante, painel
+> da TV conferindo a chave à mão) foi substituído: credencial por hash com
+> provisionamento e rotação (`src/player/credencial.js`), autenticação única
+> em `src/lib/aparelho.js`, rotas em `docs/api.md` e regras RN-58/59/60 em
+> `docs/funcional.md`. As outras superfícies seguem como lidas em 15/09.
+
 Cada função traz de onde a pessoa chega, para onde vai, e **o que ela fica
 sabendo** — é nessa última coluna que mora a maior parte dos furos de
 informação, catalogados em `docs/furos.md`.

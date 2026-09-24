@@ -192,7 +192,7 @@ check('migalha "Pontos / <nome>"', migalhaTexto.includes('Pontos') && migalhaTex
 check('voltar pela migalha leva pra grade', await admin.locator('.breadcrumb a:has-text("Pontos")').isVisible());
 check('foto grande no cabeçalho', await admin.locator('.ficha-foto img').isVisible());
 check('nome grande aparece por inteiro', (await admin.textContent('.ficha-nome h3')).includes('Academia Corpo em Movimento'));
-check('segmento aparece', (await admin.textContent('.ficha-titulo')).includes('academia'));
+check('segmento aparece', (await admin.textContent('#pontoInformacoes')).includes('academia'));
 check('responsável somente-leitura (sem input)', (await admin.locator('#pontoInformacoes input, #pontoInformacoes select').count()) === 0);
 check('horário de funcionamento mostrado como texto', (await admin.textContent('#pontoInformacoes')).includes('06:00'));
 check('observações aparecem', (await admin.textContent('#pontoInformacoes')).includes('estacionamento'));
@@ -207,7 +207,9 @@ check('3 telas em cards (não tabela)', (await admin.locator('#pontoTelas .tela-
 check('sem tabela de telas', (await admin.locator('#pontoTelas table').count()) === 0);
 check('sem coluna/campo "Contrato" nas telas', !(await admin.locator('#pontoTelas').locator('text=Contrato').count()));
 check('sem coluna/campo "Custo" nas telas', !(await admin.locator('#pontoTelas').locator('text=Custo').count()));
-check('campos de margem (4 lados) na 1ª tela', (await admin.locator('.tela-card').first().locator('.safe-area input').count()) === 4);
+// Player V2: card fechado e simples — área segura, PIN e credencial moram na
+// ficha da tela, nunca em campos sempre abertos no card.
+check('card da tela sem campos abertos', (await admin.locator('#pontoTelas .tela-card input, #pontoTelas .tela-card select').count()) === 0);
 await admin.screenshot({ path: `${SAIDA}v26-ponto-detalhe-desktop.png`, fullPage: true });
 await admin.setViewportSize({ width: 390, height: 844 });
 await admin.waitForTimeout(400);
@@ -218,13 +220,17 @@ check('colunas empilham no mobile (grid vira 1 coluna)', await admin.evaluate(()
 await admin.screenshot({ path: `${SAIDA}v26-ponto-detalhe-mobile.png`, fullPage: true });
 await admin.setViewportSize({ width: 1400, height: 960 });
 
-console.log('== margens da safe area — salvar no banco ==');
-const inputMargemSup = admin.locator('.tela-card').first().locator('input[data-tela="margem_superior"]');
-const telaIdC1 = await inputMargemSup.getAttribute('data-id');
-await inputMargemSup.fill('6');
-await inputMargemSup.dispatchEvent('change');
-await admin.waitForTimeout(400);
+console.log('== área segura — resumo fechado, edita em modal, salva no banco ==');
+await admin.locator('#pontoTelas .tela-card').first().click();
+await admin.waitForSelector('.tela-ficha');
+const telaIdC1 = admin.url().split('/').pop();
+check('ficha da tela sem inputs de margem abertos', (await admin.locator('.tela-ficha input[type=number]').count()) === 0);
+await admin.click('[data-acao="area"]');
+await admin.fill('#area_superior', '6');
+await admin.click('dialog.modal-admin[open] button[type=submit]');
+await admin.waitForFunction(() => /Superior 6/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
 check('margem superior salva no banco', PG(`SELECT margem_superior FROM dispositivos WHERE id=${telaIdC1}`) === '6');
+check('config desejada subiu com a margem', Number(PG(`SELECT config_versao_desejada FROM dispositivos WHERE id=${telaIdC1}`)) >= 2);
 
 console.log('== ponto sem tela — aguardando instalação, sem Instalação/ACM ==');
 await admin.evaluate((id) => {
@@ -236,23 +242,23 @@ check('badge "Aguardando instalação" no detalhe', (await admin.textContent('.f
 check('nenhuma tela — mensagem certa', (await admin.textContent('#pontoTelas')).includes('Nenhuma tela'));
 check('sem botão de instalação manual', !(await admin.locator('text=/Colocar em operação|Voltar.*instalação/i').count()));
 
-console.log('== criar tela pelo botão "+ Tela" — ponto sai de aguardando instalação ==');
-// "+ Tela" abre um modal com o nome já preenchido ("Tela 1"), não mais o
-// prompt() nativo — confirmar é o botão "Criar tela" do rodapé.
-await admin.click('#btnNovaTela');
-await admin.waitForSelector('dialog.modal-admin[open] #novaTelaApelido');
+console.log('== criar tela pelo "+ Adicionar tela" — ponto só vira Ativo com o primeiro sinal ==');
+// Player V2: nada de nome manual; a tela nasce Ativa e "Aguardando primeiro
+// sinal", e o ponto continua aguardando instalação até a TV falar.
+await admin.click('[data-nova-tela]');
+check('modal sem campo "Nome da tela"', !(await admin.locator('dialog.modal-admin[open]').locator('text=/Nome da tela/i').count()));
 await admin.click('dialog.modal-admin[open] button[type=submit]');
-await admin.waitForTimeout(400);
-check('tela criada aparece', (await admin.locator('#pontoTelas .tela-card').count()) === 1);
-check('status automático já não é "a_instalar" (tela cadastrada, ainda inativa)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'inativo');
-const telaNovaId = await admin.locator('.tela-card select[data-tela="status"]').first().getAttribute('data-id');
-await admin.selectOption(`select[data-tela="status"][data-id="${telaNovaId}"]`, 'ativo');
-await admin.waitForTimeout(400);
-check('marcar a tela como Ativa vira "Ativo" no ponto', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'em_operacao');
+await admin.waitForSelector('.tela-ficha');
+const telaNovaId = admin.url().split('/').pop();
+check('tela criada: Tela 1 aguardando primeiro sinal', /Tela 1[\s\S]*Aguardando primeiro sinal/.test(await admin.textContent('.tela-ficha-topo')));
+check('ponto continua aguardando instalação (tela sem sinal)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'a_instalar');
+const linkV1 = await admin.evaluate(async (id) => (await (await fetch(`/admin/dispositivos/${id}/chave-legada`, { method: 'POST' })).json()).link, telaNovaId);
+await fetch(`${B}/player/${telaNovaId}/heartbeat`, { method: 'POST', headers: { 'X-Aparelho-Id': new URL(linkV1).searchParams.get('chave') } });
+check('primeiro sinal vira "Ativo" no ponto', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'em_operacao');
 await admin.evaluate(() => {
   location.hash = 'rede/pontos';
 });
-await admin.waitForTimeout(400);
+await admin.waitForSelector(`a.ponto-card[href="#rede/pontos/${idA}"]`);
 check('badge do card A virou "Ativo" na grade', (await admin.locator(`a.ponto-card[href="#rede/pontos/${idA}"] .badge`).textContent()) === 'Ativo');
 
 console.log('== ocupação da rede — tabela operacional na Visão geral ==');

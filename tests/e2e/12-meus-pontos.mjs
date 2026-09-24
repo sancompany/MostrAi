@@ -127,13 +127,18 @@ check('sino recebeu o aviso de aprovação', /aprovado/i.test(await p.textConten
 await shot(p, '3-aguardando');
 
 console.log('== admin cria e liga a tela ==');
-const tela = await api(`/admin/pontos/${pontoId}/dispositivos`, 'POST', { apelido: 'Tela do balcão' });
+// Player V2: sem nome manual — a tela é "Tela 1"; nasce Ativa, e o ponto só
+// vira "Ativo" com o primeiro sinal da TV (aqui, o heartbeat do player web).
+const tela = await api(`/admin/pontos/${pontoId}/dispositivos`, 'POST', { modo_horario: '24h' });
 check('tela criada', tela.status === 201, JSON.stringify(tela));
-PG(`UPDATE dispositivos SET modo_horario = '24h', ultima_vez_online = now() WHERE id = ${tela.json.id}`);
-await api(`/admin/dispositivos/${tela.json.id}`, 'PATCH', { status: 'ativo' });
+const { link } = (await api(`/admin/dispositivos/${tela.json.id}/chave-legada`, 'POST')).json;
+await fetch(`${B}/player/${tela.json.id}/heartbeat`, {
+  method: 'POST',
+  headers: { 'X-Aparelho-Id': new URL(link).searchParams.get('chave') },
+});
 await p.waitForSelector('.estab-card.estado-ativo', { timeout: 8000 }).catch(() => {});
-check('card virou "Ativo" sem F5', !!(await p.$('.estab-card.estado-ativo')));
-check('a tela aparece DENTRO do ponto', (await p.textContent('.estab-card .estab-telas')).includes('Tela do balcão'));
+check('card virou "Ativo" sem F5 (primeiro sinal)', !!(await p.$('.estab-card.estado-ativo')));
+check('a tela aparece DENTRO do ponto', (await p.textContent('.estab-card .estab-telas')).includes('Tela 1'));
 check('tela funcionando', (await p.textContent('.estab-card .tela-linha')).includes('Funcionando'));
 check('resumo do cabeçalho', (await p.textContent('#pontosResumo')).includes('1 de 1 tela funcionando'));
 await shot(p, '4-ativo');

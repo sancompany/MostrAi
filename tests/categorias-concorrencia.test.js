@@ -4,6 +4,8 @@ const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const dispositivosRepo = require('../src/dispositivos/repository');
+const { registrarHeartbeat } = require('../src/player/sinal');
+const { gerarChaveLegada } = require('../src/player/credencial');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -46,10 +48,18 @@ async function dispositivoDoPonto(pontoId) {
   // Nasce 'inativo' (default da coluna) — precisa virar 'ativo' pra contar
   // como tela em operação (o ponto acompanha via sincronizarStatusPonto).
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
+  // Primeiro sinal (heartbeat V1 vazio): só assim o ponto vira "Ativo" e entra
+  // na cobertura (Player V2, src/pontos/repository.js sincronizarStatusPonto).
+  // Tela que fala está autenticada: tem credencial (a do player web aqui).
+  await gerarChaveLegada(dispositivo.id);
+  await registrarHeartbeat(dispositivo.id, {}, {});
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 
-async function contaComPlanoEAnuncioAprovado(campos) {
+// `pontoId`: escolha explícita do ponto — com outros arquivos rodando em
+// paralelo a rede tem vários pontos em operação, e a cobertura automática do
+// plano poderia cair noutro. A regra de categoria vale igual com escolha.
+async function contaComPlanoEAnuncioAprovado(campos, pontoId) {
   const conta = await anunciantesRepo.criar({
     nome_empresa: `Teste Bloqueio ${randomUUID()}`,
     cpf_cnpj: randomUUID().replace(/-/g, '').slice(0, 11),
@@ -71,11 +81,16 @@ async function contaComPlanoEAnuncioAprovado(campos) {
     duracao_segundos: 15,
   });
   await criativosRepo.atualizar(criativo.id, { status: 'aprovado' });
+  if (pontoId) {
+    await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
+  }
   return conta;
 }
 
 async function limpar({ pontoId, dispositivoId, contaId }) {
   if (dispositivoId) await dispositivosRepo.deletar(dispositivoId);
+  if (contaId) await pool.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [contaId]);
+  if (pontoId) await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [pontoId]);
   if (pontoId) await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
   if (contaId) {
     await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [contaId]);
@@ -87,7 +102,7 @@ test('mesma categoria: anunciante NÃO aparece na playlist do ponto concorrente'
   const catBarbearia = await idDaCategoria('Barbearia');
   const ponto = await criarPontoTeste(catBarbearia);
   const dispositivo = await dispositivoDoPonto(ponto.id);
-  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catBarbearia });
+  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catBarbearia }, ponto.id);
   try {
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(
@@ -104,7 +119,7 @@ test('categorias diferentes: os dois entram na playlist', async () => {
   const catAcademia = await idDaCategoria('Academia');
   const ponto = await criarPontoTeste(catBarbearia);
   const dispositivo = await dispositivoDoPonto(ponto.id);
-  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catAcademia });
+  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catAcademia }, ponto.id);
   try {
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(
@@ -120,7 +135,7 @@ test('ponto sem categoria definida: ninguém é bloqueado', async () => {
   const catBarbearia = await idDaCategoria('Barbearia');
   const ponto = await criarPontoTeste(null);
   const dispositivo = await dispositivoDoPonto(ponto.id);
-  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catBarbearia });
+  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: catBarbearia }, ponto.id);
   try {
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(envelope.itens.find((i) => i.anuncianteId === conta.id));
@@ -133,7 +148,7 @@ test('anunciante sem categoria_id (só categoria_livre): nunca é bloqueado, mes
   const catBarbearia = await idDaCategoria('Barbearia');
   const ponto = await criarPontoTeste(catBarbearia);
   const dispositivo = await dispositivoDoPonto(ponto.id);
-  const conta = await contaComPlanoEAnuncioAprovado({ categoria_livre: 'Barbearia da esquina' });
+  const conta = await contaComPlanoEAnuncioAprovado({ categoria_livre: 'Barbearia da esquina' }, ponto.id);
   try {
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(
@@ -151,7 +166,7 @@ test('categoria legada continua bloqueando quem já a usa (legado só tira do ca
   assert.ok(legado, 'precisa de ao menos uma categoria legado no catálogo pra este teste fazer sentido');
   const ponto = await criarPontoTeste(legado.id);
   const dispositivo = await dispositivoDoPonto(ponto.id);
-  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: legado.id });
+  const conta = await contaComPlanoEAnuncioAprovado({ categoria_id: legado.id }, ponto.id);
   try {
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
     assert.ok(

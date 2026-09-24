@@ -60,7 +60,7 @@ Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
 |---|---|
 | Senha do Postgres | Supabase → Settings → Database → Reset database password |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
-| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado |
+| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado. **Também é a raiz do cofre** (`src/lib/cofre.js`): depois de trocar, redefinir o PIN de manutenção de cada tela e refazer rotação de credencial que estava pela metade. As credenciais das TVs não mudam (são hash, não cifra) |
 | `ADMIN_PASSWORD` | escolha do dono. Comparado em tempo constante (`src/lib/segredo.js`) |
 | `SAN_CHECKOUT_KEY` | painel do San Checkout, no cadastro do contratante. **É também o segredo que assina os webhooks** — trocar sem avisar o Checkout derruba a cobrança |
 | `SMTP_PASS` | Google Account → Segurança → Senhas de app |
@@ -107,6 +107,15 @@ código novo quebrou e o banco não mudou. Leva o tempo de um deploy.
 git revert <sha>        # nunca reescrever histórico da main
 git push origin main
 ```
+
+**Reverter para antes da migration 083 (Player V2):** o código antigo
+autentica as TVs pela chave V1 em texto (`dispositivos.aparelho_id`), que a
+083 manteve de propósito. Toda tela cuja credencial mudou depois do deploy
+(provisionada, revogada, link novo do player web) teve essa coluna apagada:
+depois do revert, gere o link de novo para cada uma pelo admin antigo. Players
+V2 não funcionam no código antigo (as rotas V2 dão 404 e o app volta ao modo
+V1, sem credencial válida). Depois da migration 084 (que apaga a coluna de
+todas), reverter para antes da 083 exige gerar o link de todas as TVs V1.
 
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma
@@ -161,6 +170,22 @@ backup hipotético (Lei 6). O ensaio, com data e resultado, entra aqui.
 que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga.
 
 ---
+
+## 6.1 Telas e Player (V2)
+
+Tudo pelo admin: **Rede → o ponto → Tela N**. Nenhuma credencial aparece em
+tela, JSON ou log — só a impressão digital (6 caracteres).
+
+| Situação | O que fazer |
+|---|---|
+| Instalar uma TV nova | Rede → ponto → **+ Tela** → na ficha, **Preparar instalação** → baixar o `mostrai-config.json` e levar para o técnico. O token vale 7 dias e uma vez só; gerar outro cancela o anterior. A ficha passa sozinha para "Operando" no primeiro sinal |
+| Reinstalar (TV trocada, app reinstalado) | Ficha → Identidade e segurança → **Reprovisionar** (gera arquivo novo; a credencial atual vale até o aparelho novo usar o token) ou, se o aparelho antigo não deve mais falar, **Revogar Player** primeiro. Aparelho revogado leva 401 |
+| Credencial pode ter vazado | **Rotacionar credencial**: a chave nova vai no próximo heartbeat; a antiga ainda vale até o Player usar a nova e mais 24 h. Se a TV está desligada, a rotação fica pendente (a ficha mostra) — **Cancelar rotação** ou esperar. Se o vazamento é certo, **Revogar Player** |
+| Tela "Sem sinal" | só é alerta dentro do horário dela. Olhar Diagnóstico (último erro, desvio de relógio) e Histórico (quando caiu). Primeira ação no local: energia e rede |
+| Config "pendente" há mais de 1 h | o Player não está aplicando: conferir versão do Player no Diagnóstico (V1 não tem config versionada — aparece "indisponível") |
+| Fila de comprovantes alta (≥ 2.000 ou > 48 h) | a TV está tocando sem conseguir enviar `played`: rede instável ou erro no servidor; ver logs de `/player/:id/played` |
+| TV antiga V1 (`/player.html`) | continua funcionando. Chave nova: ficha → **Gerar link do player web** (o link com a chave aparece uma vez só; guarde na hora) |
+| Publicar versão do app | Rede → **Versões do Player** → nova versão (URL https do APK, SHA-256, tamanho) → alguém confere o APK contra o keystore da San & Co. e clica **Assinatura conferida** (o sistema registra quando) → **Liberar**. O banco recusa liberar sem assinatura conferida. Voltar atrás: **Segurar** |
 
 ## 7. Incidente com dado pessoal
 

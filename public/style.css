@@ -796,6 +796,578 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .badge-pendente { background: rgba(255,122,26,.12); color: #8a3d05; }
 .badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
 .badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
+.badge-neutro { background: rgba(100,116,139,.12); color: #475569; }
+
+/* Confirmação de e-mail obrigatória (migration 061, pop-up a pedido do dono
+   19/09/2026) — cobre a página inteira, sem fechar, até o código certo
+   entrar. Antes era uma barra que só avisava; agora trava o painel de
+   verdade, não só sugere. */
+.modal-email { position: fixed; inset: 0; z-index: 50; background: rgba(20,23,31,.68); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-email .caixa { background: #fff; border-radius: 14px; padding: 32px 28px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modal-email h2 { margin: 0 0 8px; font-size: 1.3rem; }
+.modal-email p { margin: 0 0 20px; color: var(--text-dim); font-size: .92rem; }
+.modal-email form { display: flex; flex-direction: column; gap: 12px; }
+.modal-email input { padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 1.4rem; letter-spacing: .3em; text-align: center; }
+.modal-email .btn { width: 100%; }
+.modal-email .reenviar { margin-top: 14px; background: none; border: 0; color: var(--blue); font-size: .85rem; cursor: pointer; text-decoration: underline; }
+.modal-email .reenviar:disabled { color: var(--text-dim); cursor: default; text-decoration: none; }
+.modal-email .msg { min-height: 1.2em; font-size: .85rem; margin-top: 10px; }
+/* Cronômetro do código (2min, mesma validade do servidor) — fica acima do
+   campo onde a pessoa digita, pra ela ver o prazo sem precisar perguntar. */
+.modal-email .expira { margin: -8px 0 16px; font-size: .8rem; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.modal-email .expira.expirado { color: #a51b1b; }
+.modal-email .msg.err { color: #a51b1b; }
+.modal-email .msg.ok { color: #0f5c2e; }
+
+.criativos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 12px; }
+.criativo-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-alt); }
+/* `contain`, nao `cover`: a miniatura e a unica previa que o anunciante ve do
+   proprio anuncio e a unica que o admin ve antes de aprovar. Com `cover`, tudo
+   que nao fosse exatamente 9:16 aparecia cortado em cima e embaixo — dava pra
+   aprovar uma peca cujo texto principal estava fora do quadro sem ninguem ver.
+   O fundo escuro mostra a sobra, que e o que a TV tambem faz. */
+.criativo-card img, .criativo-card video {
+  width: 100%; aspect-ratio: 9/16; object-fit: contain; display: block;
+  background: var(--escuro-fundo);
+}
+.criativo-placeholder { width: 100%; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: .8rem; }
+.criativo-card .badge { position: absolute; bottom: 8px; left: 8px; }
+.upload-label { cursor: pointer; }
+
+/* Olhinho de mostrar/esconder senha — some sobre o input, sem tirar espaço
+   do layout em flex (.field-row já cuida da largura). */
+.senha-wrap { position: relative; }
+.card .senha-wrap input, #dlgPerfil .senha-wrap input { padding-right: 40px; }
+.senha-olho {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; padding: 6px; cursor: pointer; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.senha-olho.ativo { color: var(--blue); }
+/* O olho da senha tinha 30px de alvo (18px de ícone + 6px de padding). 44px é
+   o piso de toque das duas referências de celular, e é o que o menu do próprio
+   site já usa. Fica DEPOIS da regra acima de propósito: mesma especificidade,
+   então quem vence é quem vem por último — colocada antes, ela não valia. */
+@media (max-width: 640px) {
+  .senha-olho { padding: 13px; }
+}
+
+/* Painel do anunciante/ponto: avatar no cabeçalho e popup de perfil nativo
+   (<dialog>) — sem lib de modal, o navegador já cuida de backdrop e ESC. */
+.avatar-btn {
+  width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-alt); color: var(--text-dim); font-weight: 700; font-size: .85rem;
+  display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+  overflow: hidden; flex-shrink: 0; text-decoration: none;
+}
+.avatar-btn img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Sino de Atualizações (Fase 4, 23/09/2026) — botão + popover ancorado nele,
+   mesmo raio/altura do avatar-btn ao lado pra ficarem no mesmo eixo. Popover
+   flutuante de verdade (não <dialog>): não bloqueia a página, fecha ao
+   clicar fora ou Esc — texto de notificação nunca é decisão que pede o
+   cuidado extra de um modal. */
+.sino-wrap { position: relative; }
+.sino-btn {
+  width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-alt); color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; padding: 0; cursor: pointer; position: relative; flex-shrink: 0;
+}
+.sino-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--err); color: #fff; font-size: .68rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; line-height: 1; border: 2px solid var(--card);
+}
+.central-notif {
+  position: absolute; top: calc(100% + 10px); right: 0; width: 340px; max-width: calc(100vw - 32px);
+  max-height: 70vh; overflow-y: auto; background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 28px rgba(20,23,31,.16); z-index: 60;
+}
+.central-notif-topo {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card);
+}
+.central-notif-topo h3 { margin: 0; font-size: .95rem; }
+.link-sutil { background: none; border: none; color: var(--blue); font-size: .78rem; cursor: pointer; padding: 0; }
+.central-notif-lista .texto-vazio { padding: 20px 16px; margin: 0; }
+.central-notif-item {
+  display: flex; gap: 10px; width: 100%; text-align: left; padding: 12px 16px; border: none;
+  border-bottom: 1px solid var(--border); background: none; cursor: pointer; font: inherit; color: var(--text);
+}
+.central-notif-item:last-child { border-bottom: none; }
+.central-notif-item.nao-lida { background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.central-notif-icone { font-size: 1.1rem; line-height: 1.3; flex-shrink: 0; }
+.central-notif-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.central-notif-corpo b { font-size: .85rem; font-weight: 600; }
+.central-notif-corpo span { font-size: .8rem; color: var(--text-dim); }
+.central-notif-corpo time { font-size: .72rem; color: var(--text-dim); margin-top: 2px; }
+@media (max-width: 480px) {
+  .central-notif { position: fixed; top: 64px; right: 16px; left: 16px; width: auto; }
+}
+/* Abaixo de 960px o .sino-wrap vive dentro de nav.main, que fica
+   `visibility:hidden`/`max-height:0` até o hambúrguer abrir (achado do
+   revisor automático da PR nº 30, 23/09/2026) — o aviso de não lida
+   desaparecia por completo, quando o objetivo dele é ser visto sem
+   precisar abrir nada. Destacado do fluxo da nav com position:fixed,
+   ancorado à esquerda do botão de menu, sempre visível — igual em
+   nav.main fechada ou aberta, porque não é cópia, é o mesmo elemento
+   só reposicionado. */
+@media (max-width: 960px) {
+  .sino-wrap { position: fixed; top: 13px; right: 68px; z-index: 70; visibility: visible; }
+}
+
+dialog#dlgPerfil {
+  border: none; border-radius: var(--radius); padding: 24px; max-width: 460px; width: 92vw;
+  background: var(--card); color: var(--text);
+}
+dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
+/* 44px, nao 28: o reservado no cabecalho foi dimensionado pro botao de
+   fechar antigo e nao acompanhou quando ele virou alvo de toque de 40px —
+   titulo longo passava por baixo do X. */
+.dlg-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; position: relative; padding-right: 44px; }
+.dlg-head h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.dlg-close {
+  position: absolute; right: 0; top: -4px; background: none; border: none; font-size: 1.5rem;
+  min-width: 40px; min-height: 40px;
+  line-height: 1; cursor: pointer; color: var(--text-dim);
+}
+.dlg-foto, .dlg-foto-inicial { width: 56px; height: 56px; border-radius: 999px; flex-shrink: 0; }
+.dlg-foto { object-fit: cover; background: var(--bg-alt); }
+.dlg-foto-inicial { background: var(--bg-alt); color: var(--text-dim); font-weight: 800; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; }
+#dlgPerfil label { font-size: .85rem; color: var(--text-dim); display: block; margin-bottom: 5px; }
+#dlgPerfil input {
+  width: 100%; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 10px 12px; font-size: .95rem; margin-bottom: 10px;
+}
+#dlgPerfil input:disabled { opacity: .65; }
+#dlgPerfil input:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+.dlg-actions { display: flex; gap: 10px; margin-top: 6px; }
+.btn-sair {
+  display: block; width: 100%; margin-top: 22px; background: none; border: none; color: var(--err);
+  font-weight: 700; padding: 10px; cursor: pointer; text-align: center; font-size: .95rem;
+}
+.btn-sair:hover { text-decoration: underline; }
+
+dialog#dlgPlano, dialog.dlg-resgate {
+  border: none; border-radius: var(--radius); padding: 24px; max-width: 420px; width: 92vw;
+  background: var(--card); color: var(--text);
+}
+dialog.dlg-resgate { max-width: 480px; }
+dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop { background: rgba(20,23,31,.5); }
+.dlg-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+/* Engrenagem "Gerenciar plano" que abre o dialog — mesmo visual de .btn.ghost,
+   ícone + texto, só que sem herdar o padding maior de .btn (fica discreta na
+   linha do banner, ao lado do texto do plano, não competindo com ele). */
+.btn-engrenagem {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-btn);
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  padding: 8px 14px; font-size: .88rem; font-weight: 600; cursor: pointer; flex-shrink: 0;
+}
+.btn-engrenagem:hover { color: var(--text); border-color: var(--text-dim); }
+
+.dash-status {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 20px; font-size: .92rem;
+}
+
+/* Cartões de KPI no topo dos dashboards — número grande + rótulo, o padrão
+   de qualquer painel SaaS. */
+/* 200px e não 160px: com cinco cartões, a coluna do painel cabia quatro e
+   deixava o quinto sozinho numa fileira, com um vão do lado — lê como
+   "faltou alguma coisa". Em três colunas a quebra vira 3+2, que lê como
+   bloco. */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
+@media (max-width: 460px) { .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; } }
+.kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+/* Card de horas (19/09/2026): é o número que o cliente comprou, então ocupa
+   o dobro da largura dos outros — mesma ideia do "big number" que qualquer
+   dashboard de billing usa pro dado que decide se o cliente está satisfeito. */
+.kpi-destaque { grid-column: span 2; }
+@media (max-width: 460px) { .kpi-destaque { grid-column: span 1; } }
+.kpi-card .kpi-label { display: block; color: var(--text-dim); font-size: .8rem; margin-bottom: 6px; }
+/* O numero nao quebra: "- R$ 561,71" saia com o sinal de menos sozinho numa
+   linha e o valor na outra, e a margem negativa lida assim parece outro
+   numero. Encolhe a fonte em tela estreita em vez de quebrar. */
+.kpi-card b { display: block; font-size: clamp(1.25rem, 6vw, 1.7rem); line-height: 1.2; white-space: nowrap; }
+.kpi-card span { display: block; color: var(--text-dim); font-size: .82rem; margin-top: 2px; }
+.kpi-card .delta { font-weight: 700; margin-top: 4px; }
+.kpi-card .delta.up { color: var(--ok); }
+.kpi-card .delta.down { color: var(--err); }
+.kpi-card .kpi-caption { font-size: .75rem; }
+.kpi-card .link-secundario { display: inline-block; margin-top: 8px; font-size: .82rem; }
+/* Barrinha de progresso do card de horas (19/09/2026) — mesmo .track/.fill
+   do gráfico por ponto (.bar-chart-h), só que fora dele: sem esse par de
+   regras, a regra genérica "kpi-card span" acima (cor de texto, sem altura)
+   ganharia e a barra sumiria, viraria só um traço de texto vazio. */
+.kpi-card .track { background: var(--bg-alt); border-radius: 6px; height: 8px; overflow: hidden; margin-top: 8px; }
+.kpi-card .fill { display: block; background: var(--brand); height: 100%; border-radius: 6px; min-width: 3px; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.panel-head h3 { margin: 0; }
+/* No celular a linha "titulo | descricao" espremia o titulo em duas linhas e
+   deixava a descricao numa coluna de 150px ao lado. Empilhado, cada um usa a
+   largura inteira — que e a unica que existe ali. */
+@media (max-width: 640px) {
+  .panel-head { flex-direction: column; align-items: stretch; gap: 6px; }
+  .panel-head .btn { align-self: flex-start; }
+}
+
+/* Gráfico de barras verticais (exibições por dia) — sem lib, só divs com
+   altura proporcional ao valor. */
+.bar-chart { display: flex; align-items: flex-end; gap: 5px; height: 140px; margin-top: 16px; }
+.bar-chart .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+.bar-chart .bar { width: 100%; max-width: 26px; background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; }
+.bar-chart .bar-label { font-size: .7rem; color: var(--text-dim); margin-top: 6px; white-space: nowrap; }
+
+/* "Exibições por dia" empilhada por ponto (19/09/2026, pedido do dono) —
+   .bar-pilha é o mesmo .bar de antes (mesma altura proporcional via
+   data-pct/aplicarBarras), só que agora é um contêiner: cada .bar-seg
+   dentro dela também tem seu próprio data-pct, relativo à altura JÁ
+   resolvida da pilha — por isso as duas percentagens (pilha e segmento)
+   coexistem sem conflito. O espaçador de 2px entre segmentos (skill
+   dataviz) usa border-top + box-sizing:border-box em vez de gap, pra não
+   somar altura além da pilha em barras baixas. */
+.bar-chart .bar-pilha { width: 100%; max-width: 26px; display: flex; flex-direction: column; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 2px; }
+.bar-chart .bar-seg { width: 100%; box-sizing: border-box; border-top: 2px solid var(--card); }
+.bar-chart .bar-seg:first-child { border-top: none; }
+.bar-chart .bar-seg.serie-1 { background: var(--serie-1); }
+.bar-chart .bar-seg.serie-2 { background: var(--serie-2); }
+.bar-chart .bar-seg.serie-3 { background: var(--serie-3); }
+.bar-chart .bar-seg.serie-4 { background: var(--serie-4); }
+.bar-chart .bar-seg.serie-5 { background: var(--serie-5); }
+.bar-chart .bar-seg.serie-outros { background: var(--serie-outros); }
+
+.legenda-serie { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 14px; font-size: .78rem; color: var(--text-dim); }
+.legenda-serie .chip { display: inline-flex; align-items: center; gap: 6px; }
+.legenda-serie .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.legenda-serie .swatch.serie-1 { background: var(--serie-1); }
+.legenda-serie .swatch.serie-2 { background: var(--serie-2); }
+.legenda-serie .swatch.serie-3 { background: var(--serie-3); }
+.legenda-serie .swatch.serie-4 { background: var(--serie-4); }
+.legenda-serie .swatch.serie-5 { background: var(--serie-5); }
+.legenda-serie .swatch.serie-outros { background: var(--serie-outros); }
+
+/* Gráfico de barras horizontais (exibições por ponto). */
+.bar-chart-h { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.bar-chart-h .row { display: grid; grid-template-columns: 1fr 3fr auto; align-items: center; gap: 10px; font-size: .85rem; }
+.bar-chart-h .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-chart-h .track { background: var(--bg-alt); border-radius: 6px; height: 10px; overflow: hidden; }
+.bar-chart-h .fill { display: block; background: var(--brand); height: 100%; border-radius: 6px; min-width: 3px; }
+.bar-chart-h .valor { font-weight: 700; font-size: .82rem; }
+
+/* Criativos ao lado do dashboard, empilhados e maiores — sem tocar sozinho,
+   só quando o anunciante clicar no play. */
+/* Grade em vez de coluna: em coluna, cada peca ocupava a largura inteira do
+   cartao e 420px de altura — duas pecas ja exigiam rolagem pra comparar, que e
+   exatamente o que se quer fazer com elas. Lado a lado, tres cabem na largura
+   de um cartao e a peca continua no formato da tela (9:16). */
+.criativos-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 190px)); gap: 16px; margin-top: 14px; }
+.criativos-lista .criativo-card { max-width: none; }
+.criativos-lista .criativo-card img, .criativos-lista .criativo-card video { aspect-ratio: 9/16; max-height: 420px; }
+/* O mesmo teto pro placeholder: sem ele, uma peca ainda em processamento
+   (ou uma cujo processamento falhou) virava um retangulo de mil pixels de
+   altura, porque so a midia real tinha limite. */
+.criativos-lista .criativo-placeholder { max-height: 420px; }
+.criativo-card { position: relative; }
+.criativo-play {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 46px; height: 46px; border-radius: 999px; background: rgba(20,23,31,.55);
+  border: none; color: var(--escuro-texto); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.criativo-card.tocando .criativo-play { display: none; }
+.criativo-excluir {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 999px;
+  background: rgba(20,23,31,.55); border: none; color: var(--escuro-texto); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.criativo-excluir:hover { background: rgba(220,38,38,.85); }
+/* Area de toque de 44px sem mexer no desenho: o circulo continua com 26px e o
+   dedo acerta um quadrado de 44 ao redor dele (WCAG 2.5.5). Vale a pena
+   justamente aqui, que e o botao que APAGA a peca — errar o alvo por 3px, num
+   botao destrutivo, e o pior tipo de erro de toque. O mesmo pros outros dois
+   controles pequenos do site. */
+.criativo-excluir::after, .dlg-foto-cam::after, .senha-olho::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%);
+}
+
+/* Foto no popup de perfil — ícone de câmera sobreposto no canto, em vez de
+   um botão de texto separado. */
+.dlg-foto-wrap { position: relative; flex-shrink: 0; }
+.dlg-foto-cam {
+  position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px; border-radius: 999px;
+  background: var(--brand); border: 2px solid var(--card); color: var(--sobre-brand); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; padding: 0;
+}
+.dlg-foto-cam:hover { background: var(--brand-dim); }
+
+.btn-excluir {
+  display: block; width: 100%; margin-top: 6px; background: none; border: none; color: var(--text-dim);
+  font-size: .82rem; padding: 6px; cursor: pointer; text-align: center;
+}
+.btn-excluir:hover { color: var(--err); text-decoration: underline; }
+
+/* Direitos do titular dentro do popup de perfil. Fica num <details> fechado
+   porque é coisa que se usa uma vez e não pode roubar a tela de quem só veio
+   corrigir o telefone — mas tem que estar AQUI, junto de "excluir conta", e
+   não escondido numa página de política que ninguém abre. */
+.bloco-titular { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.bloco-titular > summary {
+  cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--text-dim); padding: 4px 0;
+}
+.bloco-titular > summary:hover { color: var(--text); }
+.bloco-titular .btn { margin-top: 8px; text-align: center; text-decoration: none; }
+/* O checkbox do consentimento está fora do form.card, então a regra de lá não
+   o alcança e ele herdaria o width:100% dos campos do diálogo — virava barra. */
+.bloco-titular .check-row input[type="checkbox"] {
+  width: 17px; height: 17px; min-width: 17px; flex: 0 0 17px;
+  margin: 2px 0 0; padding: 0; border-radius: 4px; accent-color: var(--brand); cursor: pointer;
+}
+.bloco-titular .check-row label { display: inline; margin: 0; line-height: 1.6; cursor: pointer; }
+
+/* Cards de endereço no dashboard do ponto. */
+.ponto-endereco-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;
+}
+.pontos-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+
+.mini-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: 4px; }
+.mini-table th, .mini-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+/* Cabeçalho que fica à vista enquanto a lista rola: sem isto, na décima linha
+   ninguém lembra de qual coluna é qual. O `position: sticky` só vale dentro de
+   um contêiner com rolagem — quem usa envolve a tabela num overflow-x:auto. */
+.mini-table th { color: var(--text-dim); font-weight: 600; position: sticky; top: 0; background: var(--card); z-index: 1; }
+/* Número alinhado à direita compara de relance; à esquerda, não. */
+.mini-table td.num, .mini-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mini-table tbody tr:last-child td { border-bottom: none; }
+
+.legal-doc { max-width: 760px; margin: 0 auto; }
+.legal-doc h2 { font-size: 1.15rem; margin: 32px 0 10px; }
+.legal-doc h2:first-child { margin-top: 0; }
+.legal-doc p, .legal-doc li { color: var(--text-dim); font-size: .95rem; line-height: 1.7; }
+.legal-doc ol, .legal-doc ul { padding-left: 22px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.legal-doc strong { color: var(--text); }
+.legal-doc .atualizado { color: var(--text-dim); font-size: .85rem; margin-bottom: 32px; }
+
+.whatsapp-fab {
+  position: fixed; bottom: 20px; right: 20px; z-index: 50;
+  width: 56px; height: 56px; border-radius: 999px;
+  background: var(--whatsapp); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35); text-decoration: none;
+}
+.whatsapp-fab svg { width: 28px; height: 28px; fill: var(--escuro-texto); }
+.whatsapp-fab:hover { filter: brightness(1.08); }
+@media (max-width: 640px) {
+  .whatsapp-fab { width: 50px; height: 50px; bottom: 16px; right: 16px; }
+  .whatsapp-fab svg { width: 25px; height: 25px; }
+  /* O botao flutuante e fixo no canto e ficava por cima do ultimo conteudo da
+     pagina — inclusive por cima do "Ativar modo anuncios", que e o botao que
+     a pessoa veio apertar. O respiro embaixo tira todo mundo de baixo dele. */
+  main { padding-bottom: 76px; }
+}
+
+.whatsapp-note { text-align: center; font-size: .88rem; color: var(--text-dim); }
+.whatsapp-note a { color: var(--whatsapp); font-weight: 600; text-decoration: none; }
+.whatsapp-note a:hover { text-decoration: underline; }
+
+.map-embed { max-width: 860px; margin: 0 auto 20px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.map-embed iframe { width: 100%; height: 560px; display: block; border: 0; }
+@media (max-width: 700px) { .map-embed iframe { height: 380px; } }
+
+/* Mapa + exemplo de ponto completo lado a lado no desktop; no celular o
+   flex-wrap já empilha na ordem do HTML (mapa, depois exemplo). */
+.mapa-e-exemplo { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; margin: 0 auto 20px; max-width: 1100px; }
+.mapa-e-exemplo .map-embed { flex: 2; min-width: 280px; margin: 0; }
+.exemplo-ponto { flex: 1; min-width: 220px; margin: 0; }
+.exemplo-ponto img { width: 100%; display: block; border: 1px solid var(--border); border-radius: var(--radius); }
+.exemplo-ponto figcaption { font-size: .82rem; color: var(--text-dim); margin-top: 8px; text-align: center; }
+.ponto-card .mapa-link { display: inline-block; margin-top: 8px; font-size: .82rem; color: var(--blue); text-decoration: none; }
+.ponto-card .mapa-link:hover { text-decoration: underline; }
+
+/* A escolha do comodato usa input escondido (opacity:0) — sem isso, quem
+   navega por teclado não vê onde está numa decisão que envolve dinheiro. */
+.escolha input:focus-visible + * { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 8px; }
+
+/* Candidatura / convite (v2: ponto e vendedor entram por convite do dono) */
+.passos { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; color: var(--text-dim); font-size: .92rem; line-height: 1.5; }
+.passos li::marker { color: var(--brand); font-weight: 800; }
+.convite-papeis { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+.convite-papel { flex: 1 1 160px; background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--brand); border-radius: 10px; padding: 10px 14px; }
+.convite-papel b { display: block; font-size: .95rem; }
+.convite-papel span { color: var(--text-dim); font-size: .82rem; }
+
+.chave-box { flex-basis: 100%; }
+  /* Respiro pro botão de ação não nascer embaixo do balão do WhatsApp. */
+  main { padding-bottom: 72px; }
+}
+
+.contato-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .contato-grid { grid-template-columns: 1fr; } }
+.contato-lado { display: flex; flex-direction: column; gap: 16px; }
+.contato-lado a { color: var(--blue); }
+/* Aceite dos termos: caixinha de 16px de verdade (o input herdava o
+   width:100% dos campos do formulário e virava uma barra), texto respirando
+   ao lado e a linha inteira separada do botão de enviar. */
+.check-row { display: flex; align-items: flex-start; gap: 10px; margin: 6px 0 2px; }
+.card .check-row input[type="checkbox"] {
+  width: 17px; height: 17px; min-width: 17px; flex: 0 0 17px;
+  margin: 2px 0 0; padding: 0; border-radius: 4px; accent-color: var(--brand); cursor: pointer;
+}
+.card .check-row input[type="checkbox"]:focus { outline: 2px solid var(--brand); outline-offset: 2px; }
+.check-row label { margin: 0; font-size: .85rem; line-height: 1.6; color: var(--text-dim); cursor: pointer; }
+.check-row label a { color: var(--blue); text-decoration: underline; }
+.form-hint { font-size: .8rem; color: var(--text-dim); margin: -6px 0 0; }
+.form-sep { border: 0; border-top: 1px solid var(--border); margin: 8px 0 2px; }
+
+/* Horário de funcionamento — 7 dias + feriados, uma linha cada (rodada
+   final da Rede, 22/09/2026, substitui o agrupamento em 3 blocos). Grade de
+   colunas fixas — dia | abre – fecha | Fechado —, então toda linha tem a
+   mesma geometria: dia fechado mantém os campos no lugar, desabilitados, em
+   vez de sumir com eles (polimento final, 23/09/2026). Usada também no
+   horário da tela, no admin. */
+.horario-semanal { display: flex; flex-direction: column; }
+.horario-dia {
+  display: grid; grid-template-columns: 76px auto 1fr; align-items: center; column-gap: 14px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+.horario-dia:last-child { border-bottom: none; }
+.horario-dia-nome { font-weight: 600; font-size: .85rem; }
+.horario-dia-campos { display: flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.horario-dia-campos input[type="time"] { width: auto; min-width: 96px; padding-top: 7px; padding-bottom: 7px; }
+.horario-dia-campos input:disabled { opacity: .4; cursor: not-allowed; }
+.horario-dia.fechado .horario-dia-nome { color: var(--text-dim); }
+/* (0,2,0) de propósito: vence `.card label` (display:block, cor, margem), que
+   separava a caixinha do texto e empurrava o "Fechado" pra fora da linha. */
+.horario-dia .horario-dia-fechado {
+  justify-self: end; display: inline-flex; align-items: center; gap: 8px; margin: 0;
+  font-size: .85rem; color: var(--text-dim); cursor: pointer;
+}
+.horario-dia .horario-dia-fechado input[type="checkbox"] {
+  width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; accent-color: var(--brand); cursor: pointer;
+}
+.horario-dia .horario-dia-fechado input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 420px) {
+  .horario-dia { grid-template-columns: 1fr auto; row-gap: 6px; padding: 8px 0; }
+  .horario-dia-campos { grid-column: 1 / -1; grid-row: 2; }
+}
+.form-sep-titulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 4px 0 0; }
+.link-secundario { display: inline-block; margin-top: 2px; font-size: .85rem; color: var(--blue); text-decoration: none; }
+.link-secundario:hover { text-decoration: underline; }
+
+/* Foto da fachada com preview real (formulário canônico de candidatura,
+   22/09/2026, Parte X) — miniatura de verdade em vez de só o nome do
+   arquivo escolhido; substitui .campo-foto nos 3 pontos de entrada. */
+/* Uploader (polimento final, 23/09/2026): miniatura 4:3 com a foto de
+   verdade, e ao lado o rótulo, o nome do arquivo (secundário, cortado com
+   reticências) e as ações — Escolher, ou Trocar/Remover depois de escolher. */
+.campo-foto-preview { display: flex; align-items: center; gap: 14px; }
+.campo-foto-preview-img {
+  width: 104px; aspect-ratio: 4 / 3; flex: none; border-radius: var(--radius-campo);
+  overflow: hidden; background: var(--bg-alt); border: 1px solid var(--border); color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+}
+.campo-foto-preview-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.campo-foto-preview-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.campo-foto-preview-rotulo { font-size: .85rem; font-weight: 600; }
+.campo-foto-preview-legenda {
+  font-size: .8rem; color: var(--text-dim); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.campo-foto-preview-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Imagem inteira dentro da moldura (logo quadrado ou em pé): ver
+   candidaturaAjustarFoto/ajustarFotos. !important porque cada moldura
+   (card, miniatura, ficha) declara o próprio `cover` com peso maior. */
+.foto-contida { object-fit: contain !important; padding: 8px; background: var(--bg-alt); }
+/* No card, o logo ocupa pouco mais da metade da altura — é marca, não foto;
+   sem essa folga ele encostava em cima e embaixo e dominava o card. */
+.ponto-card-media .foto-contida { padding: 11% 14%; }
+
+/* Formulário em blocos: um assunto por bloco, separados por linha. */
+.form-bloco { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.form-bloco + .form-bloco { border-top: 1px solid var(--border); padding-top: 18px; }
+.form-bloco > .form-sep-titulo { margin: 0; }
+.form-blocos { display: flex; flex-direction: column; gap: 18px; }
+.form-acoes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.form-acoes + .form-msg { margin: 0; }
+
+/* Formulário de candidatura ao lado do preview do card (Parte Y) — lado a
+   lado no desktop, empilhado no celular/tablet. A ordem no DOM já é
+   formulário → preview, o grid só reposiciona a segunda coluna. */
+.candidatura-layout { display: grid; grid-template-columns: minmax(0, 640px) minmax(240px, 280px); gap: 24px; align-items: start; justify-content: center; }
+.candidatura-preview { width: 100%; max-width: 280px; }
+@media (min-width: 901px) {
+  /* Acompanha a rolagem do formulário comprido — continua à vista perto do
+     botão de enviar, que é onde ela ajuda. */
+  .candidatura-preview { position: sticky; top: 88px; }
+}
+@media (max-width: 900px) {
+  .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
+}
+.candidatura-preview-titulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 0 0 10px; }
+.candidatura-preview-card { pointer-events: none; }
+
+/* Escolha entre as opções de comodato (ajuda de custo x mais cota) */
+.escolha-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (max-width: 620px) { .escolha-grid { grid-template-columns: 1fr; } }
+.escolha { position: relative; }
+.escolha input { position: absolute; opacity: 0; pointer-events: none; }
+.escolha span.box {
+  display: block; height: 100%; border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; background: var(--bg-alt); cursor: pointer;
+}
+.escolha input:checked + span.box { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue); background: var(--card); }
+.escolha b { display: block; font-size: .98rem; margin-bottom: 4px; }
+.escolha small { color: var(--text-dim); font-size: .84rem; line-height: 1.5; display: block; }
+.escolha ul { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.escolha li { font-size: .82rem; color: var(--text-dim); padding-left: 18px; position: relative; }
+.escolha li::before { content: "✓"; position: absolute; left: 0; color: var(--ok); font-weight: 800; }
+
+.endereco-bloco { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
+.endereco-bloco + .endereco-bloco { border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 14px; }
+.endereco-topo { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; font-weight: 700; color: var(--text-dim); }
+.form-msg { font-size: .9rem; min-height: 1.2em; }
+.form-msg.err { color: var(--err); }
+.form-msg.ok { color: var(--ok); }
+
+.stat-row { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; text-align: center; }
+.stat-row .stat b { display: block; font-size: 1.8rem; color: var(--text); }
+.stat-row .stat span { color: var(--text-dim); font-size: .85rem; }
+
+footer.site { border-top: 1px solid var(--border); padding: 40px 0; color: var(--text-dim); font-size: .85rem; }
+footer.site .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
+footer.site .footer-links a { color: var(--text-dim); text-decoration: none; }
+footer.site .footer-links a:hover { color: var(--text); }
+
+.dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
+/* Item de grid tem min-width:auto por padrão — sem isso, o conteúdo mais
+   largo (a grade de KPIs) empurrava a coluna e a página inteira rolava na
+   horizontal no celular. */
+.dashboard-grid > * { min-width: 0; }
+@media (max-width: 800px) { .dashboard-grid { grid-template-columns: 1fr; } }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+.panel h3 { margin-top: 0; }
+.soon { color: var(--text-dim); font-style: italic; font-size: .9rem; }
+
+select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: .8rem; }
+
+.upload-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.upload-row input[type=file] { flex: 1; min-width: 200px; color: var(--text-dim); font-size: .85rem; }
+
+/* `align-self` junto com o inline-block: dentro de um cartao em coluna
+   (flex/grid com stretch), o inline-block sozinho virava uma faixa da largura
+   inteira — a etiqueta "Ativo" saia como uma barra verde atravessando o
+   cartao da tela. */
+.badge { display: inline-block; align-self: flex-start; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+/* Cor propria, mais escura que a do texto corrido, porque aqui o fundo ja e
+   colorido: medido sobre o fundo composto, o par antigo dava 4,02 / 4,39 /
+   4,01 — abaixo do minimo AA de 4,5:1, e o badge e o sinal de estado de todo
+   o produto (11px em negrito nao conta como texto grande). Agora: 6,8 / 7,1 /
+   6,3. */
+.badge-pendente { background: rgba(255,122,26,.12); color: #8a3d05; }
+.badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
+.badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
 
 /* Confirmação de e-mail obrigatória (migration 061, pop-up a pedido do dono
    19/09/2026) — cobre a página inteira, sem fechar, até o código certo
@@ -1242,17 +1814,6 @@ body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
 .convite-papel b { display: block; font-size: .95rem; }
 .convite-papel span { color: var(--text-dim); font-size: .82rem; }
 
-/* Telas do ponto (v2: cada dispositivo tem chave, PIN e painel próprio) */
-.telas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-.tela-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
-.tela-card .tela-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tela-card .tela-topo b { font-size: 1.02rem; }
-.tela-card .online { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--text-dim); }
-.tela-card .online::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--err); }
-.tela-card .online.on::before { background: var(--ok); }
-.tela-card .tela-meta { color: var(--text-dim); font-size: .84rem; line-height: 1.5; }
-.tela-card .tela-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.tela-card .tela-acoes .btn { padding: 6px 12px; font-size: .82rem; }
 .chave-box { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
 .aviso-fundador { background: linear-gradient(135deg, rgba(255,122,26,.12), rgba(255,122,26,.03)); border: 1px solid rgba(255,122,26,.35); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: .92rem; }
 .aviso-fundador b { color: var(--brand-text); }
