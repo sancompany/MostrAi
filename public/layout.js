@@ -492,13 +492,16 @@ window.ROTULOS = {
   // Créditos e benefícios. As chaves de tier são as do banco (planos.tier);
   // o nome que o cliente vê é outro desde a grade nova.
   tier: { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' },
+  // Ciclo comercial — o MESMO nome pro plano pago e pro benefício por
+  // créditos (ADR-018, espelho de src/lib/ciclos.js). Chave = meses.
+  ciclo: { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' },
   movimentoCredito: {
     indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
     indicacao_renovacao: 'Indicação · renovação',
     credito_mensal_ponto: 'Crédito mensal do ponto',
     concessao_admin: 'Crédito da Mostraí',
     estorno_admin: 'Ajuste da Mostraí',
-    resgate_beneficio: 'Resgate de benefício',
+    resgate_beneficio: 'Resgate',
     estorno_resgate: 'Estorno de resgate',
   },
 };

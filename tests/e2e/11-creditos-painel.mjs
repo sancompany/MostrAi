@@ -87,7 +87,7 @@ await p.click('[data-acao="resgatar"][data-tier="essencial"][data-meses="3"]');
 await p.waitForSelector('#dlgResgate[open]');
 const preview = await p.textContent('#previewResgate');
 check('preview mostra o agora', /Agora[\s\S]*Sem plano ativo/.test(preview), preview);
-check('preview mostra o que será ativado', /Será ativado[\s\S]*Essencial por 3 meses/.test(preview), preview);
+check('preview mostra o que será ativado', /Será ativado[\s\S]*Essencial · Trimestral[\s\S]*período: 3 meses/.test(preview), preview);
 check('preview mostra o depois', /Depois[\s\S]*termina/.test(preview), preview);
 check('preview mostra o saldo antes e depois', /12 créditos[\s\S]*3 créditos/.test(preview), preview);
 await shot(p, '2-preview');

@@ -1,16 +1,19 @@
 // Regras do resgate de créditos por benefício (23/09/2026, reconstrução do
 // painel da conta). Mesma escada de sempre (RN-43.1: 3→Essencial,
-// 7→Pro, 10→Prime), agora estendida pros 4 ciclos que o plano comercial já
-// usa — custo = limiar do tier × meses do período escolhido. A tabela
+// 7→Pro, 10→Prime), nos MESMOS 4 ciclos do plano pago (ADR-018: o benefício
+// é um ciclo — "Prime · Semestral", não "Prime · 6 meses"). Custo LINEAR =
+// custo mensal do tier × meses do ciclo, sem desconto por ciclo. A tabela
 // abaixo é a MESMA coisa que a fórmula, só escrita por extenso: é o que
 // aparece na tela, e número que o cliente vê tem que bater exatamente com
 // o que está aqui, sem cálculo escondido.
 //
-//   ESSENCIAL   1 mês=3   3 meses=9    6 meses=18   12 meses=36
-//   PRO         1 mês=7   3 meses=21   6 meses=42   12 meses=84
-//   PRIME       1 mês=10  3 meses=30   6 meses=60   12 meses=120
+//               Mensal   Trimestral   Semestral   Anual
+//   ESSENCIAL      3          9           18        36
+//   PRO            7         21           42        84
+//   PRIME         10         30           60       120
+const { CICLOS_VALIDOS, nomeDoCiclo } = require('../lib/ciclos');
+
 const CUSTO_BASE_POR_MES = { essencial: 3, destaque: 7, maximo: 10 };
-const CICLOS_VALIDOS = [1, 3, 6, 12];
 const NOME_TIER = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' };
 
 function custoDoBeneficio(tier, meses) {
@@ -31,6 +34,7 @@ function opcoesDisponiveis(saldoCreditos) {
         tier,
         nomeTier: NOME_TIER[tier],
         meses,
+        ciclo: nomeDoCiclo(meses),
         custo,
         disponivel: saldoCreditos >= custo,
         faltam: Math.max(0, custo - saldoCreditos),

@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const repo = require('./repository');
 const notificacoesRepo = require('./notificacoes');
 const { custoDoBeneficio, opcoesDisponiveis, NOME_TIER } = require('./regras');
+const { nomeDoCiclo, comNomeDeCiclo } = require('../lib/ciclos');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const anunciantesRepo = require('../anunciantes/repository');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -50,6 +51,9 @@ const beneficioPublico = (h) =>
   h && {
     tier: h.tier,
     nomeTier: NOME_TIER[h.tier] || h.tier,
+    // Benefício é um CICLO (ADR-018): "Prime · Semestral".
+    ciclo: nomeDoCiclo(h.compromisso_meses),
+    nome: `${NOME_TIER[h.tier] || h.tier} · ${nomeDoCiclo(h.compromisso_meses)}`,
     planoNome: h.plano_nome,
     validoAte: h.valido_ate,
     comecaEm: h.status === 'agendado' ? h.plano_anterior_valido_ate : null,
@@ -69,7 +73,7 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
     repo.saldo(contaId),
     repo.movimentacoes(contaId, 20),
     planoAdministrativo.historicoDaConta(contaId),
-    conta.plano_id ? pool.query('SELECT nome FROM planos WHERE id = $1', [conta.plano_id]) : null,
+    conta.plano_id ? pool.query('SELECT nome, compromisso_meses FROM planos WHERE id = $1', [conta.plano_id]) : null,
   ]);
   const bloqueio = await bloqueioDoResgate(conta, historico);
   // Opções de nível menor que o plano pago aparecem, mas indisponíveis — com
@@ -94,13 +98,18 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
       origem_nome: m.origem_nome,
       ponto_nome: m.ponto_nome,
       competencia: m.competencia,
-      observacao: m.observacao,
+      // Resgate antigo gravado como "Prime · 6 meses" aparece como
+      // "Prime · Semestral" — o registro no ledger não muda.
+      observacao: m.tipo === 'resgate_beneficio' ? comNomeDeCiclo(m.observacao) : m.observacao,
       criado_em: m.criado_em,
     })),
     beneficioAtivo: beneficioPublico(historico.find((h) => h.status === 'ativo')),
     beneficioAgendado: beneficioPublico(historico.find((h) => h.status === 'agendado')),
     situacaoAtual: {
-      planoNome: planoAtual?.rows[0]?.nome || null,
+      // Plano · Ciclo ("Pro · Trimestral"), ADR-018.
+      planoNome: planoAtual?.rows[0]
+        ? `${planoAtual.rows[0].nome} · ${nomeDoCiclo(planoAtual.rows[0].compromisso_meses)}`
+        : null,
       cortesia: !!conta.plano_cortesia,
       validoAte: conta.data_expiracao,
       pagandoEmDia: pagandoEmDia(conta),
@@ -151,7 +160,7 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     const debito = await repo.debitarResgate(
       contaId,
       custo,
-      `Resgate: ${NOME_TIER[tier]} · ${meses} ${meses === 1 ? 'mês' : 'meses'}`,
+      `Resgate: ${NOME_TIER[tier]} · ${nomeDoCiclo(meses)}`,
       cliente,
     );
     resultado = await planoAdministrativo.resgatarOuConcederBeneficio(
@@ -178,13 +187,18 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
   await notificacoesRepo.registrar(contaId, {
     tipo: status === 'ativo' ? 'beneficio_iniciado' : 'beneficio_programado',
     titulo:
-      status === 'ativo' ? `${NOME_TIER[tier]} ativado por créditos` : `${NOME_TIER[tier]} programado por créditos`,
+      status === 'ativo'
+        ? `${NOME_TIER[tier]} · ${nomeDoCiclo(meses)} ativado por créditos`
+        : `${NOME_TIER[tier]} · ${nomeDoCiclo(meses)} programado por créditos`,
     descricao:
       status === 'ativo'
         ? `Válido até ${dataBR(historico.valido_ate)}.`
         : `Começa em ${dataBR(historico.plano_anterior_valido_ate)}, quando seu plano pago atual terminar, e vale até ${dataBR(historico.valido_ate)}.`,
   });
   sse.emitirParaConta(contaId, 'credits.updated', {});
+  // O plano em vigor pode ter mudado: o card Plano e o de custo por
+  // exibição prevista se refazem sem F5 (em outras abas também).
+  sse.emitirParaConta(contaId, 'plan.updated', {});
   res.json({
     conta: atualizada,
     status,

@@ -4154,7 +4154,7 @@ const TIPO_CREDITO = {
   indicacao_renovacao: 'Indicação · renovação',
   concessao_admin: 'Concedido pelo admin',
   estorno_admin: 'Estorno (admin)',
-  resgate_beneficio: 'Resgate de benefício',
+  resgate_beneficio: 'Resgate',
   estorno_resgate: 'Estorno de resgate',
   credito_mensal_ponto: 'Crédito mensal do ponto',
 };
@@ -4882,7 +4882,7 @@ function abrirConcederCreditos(ctx) {
           .map((r) => `<b>${esc(r.nome)}</b> ${plural(r.porMes, 'crédito')}`)
           .join(
             ' · ',
-          )}. Ex.: ${esc(ref[ref.length - 1]?.nome || 'Prime')} por 12 meses = ${num(ref[ref.length - 1]?.anual || 120)} créditos.</p>
+          )}. Ex.: ${esc(ref[ref.length - 1]?.nome || 'Prime')} · Anual = ${num(ref[ref.length - 1]?.anual || 120)} créditos.</p>
         <div><label for="creditosMotivo">Motivo <span class="u-dim">(o cliente lê no extrato)</span></label><input type="text" id="creditosMotivo" name="motivo" maxlength="200" required placeholder="ex.: parceria de lançamento"></div>
         <div><label for="creditosNota">Nota interna <span class="u-dim">(opcional, só o time vê)</span></label><textarea id="creditosNota" name="nota_interna" rows="2" maxlength="500" placeholder="ex.: combinado por WhatsApp em 20/09"></textarea></div>
         <p class="campo-ajuda" data-previa>Saldo agora: <b>${plural(s.creditos.saldo, 'crédito')}</b>.</p>

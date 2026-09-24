@@ -65,8 +65,14 @@ async function preencherEndereco(p, prefixo, rua, numero) {
     (id) => !/Buscando/.test(document.getElementById(id).closest('form').querySelector('[data-cep-msg]').textContent),
     `${prefixo}cep`,
   );
-  await p.fill(`#${prefixo}endereco`, rua);
+  // Endereço em partes desde a D5 (24/09/2026): o campo da rua é `logradouro`.
+  const campoRua = (await p.$(`#${prefixo}logradouro`)) ? 'logradouro' : 'endereco';
+  await p.fill(`#${prefixo}${campoRua}`, rua);
   await p.fill(`#${prefixo}numero`, numero);
+  // Bairro também é parte obrigatória desde a D5; a ViaCEP falsa do roteiro
+  // não devolve bairro pra este CEP.
+  const bairro = await p.$(`#${prefixo}bairro`);
+  if (bairro && !(await bairro.inputValue())) await bairro.fill('Centro');
 }
 
 // Ramo/segmento é um campo de busca por cima do <select> escondido

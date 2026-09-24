@@ -19,6 +19,8 @@ const eventos = require('../lib/eventos');
 const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
 const planoAdministrativo = require('./plano-administrativo');
 const { cotarPlano } = require('./cotacao');
+const cicloContratado = require('./ciclo-contratado');
+const { multiplicar } = require('../lib/dinheiro');
 const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
 
 const uploadNota = multer({ dest: os.tmpdir() });
@@ -639,6 +641,18 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     await assinaturasRepo.marcarTrocada(assinaturaAtiva.id, cliente);
     await assinaturasRepo.marcarAtiva(assinaturaNova.id, cliente);
     await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [conta.id, planoNovo.id]);
+    // Troca = ciclo novo (migration 087): snapshot do ciclo do plano novo,
+    // pelo valor que a assinatura nova cobra — nunca o acerto proporcional.
+    await cicloContratado.registrar(cliente, {
+      anuncianteId: conta.id,
+      plano: planoNovo,
+      assinaturaId: assinaturaNova.id,
+      origem: 'troca',
+      valorCiclo: multiplicar(
+        sanCheckout.valorMensalDaConta(conta, planoNovo, assinaturaNova),
+        planoNovo.compromisso_meses,
+      ),
+    });
     if (corpo.acerto?.cobrado) {
       // `plano_anterior_id` é o que permite a aba "Trocas de plano" do
       // admin continuar existindo: sem ele, esta linha ficaria idêntica a

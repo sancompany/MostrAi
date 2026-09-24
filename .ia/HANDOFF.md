@@ -3,6 +3,23 @@
 ## Updated
 2026-09-24
 
+## Custo por exibição prevista + benefício por ciclo (24/09/2026, este agente)
+Última alteração estrutural da rodada no modelo comercial — **ADR-018**;
+depois disso, congelado salvo bug real.
+- `ciclos_contratados` (migration 087): snapshot por ciclo pago (compra,
+  renovação, troca), gravado em `san-checkout.js#aplicarCicloPago`, no
+  webhook `plano_trocado`, em `POST /anunciantes/me/trocar-plano` e no pedido
+  avulso legado. Leitura: `src/financeiro/ciclo-contratado.js#situacaoDoCusto`
+  → `GET /anunciantes/:id/exibicoes` → `custoPrevisto`. Card "Custo por
+  exibição prevista" (`painel.page.js#desenharCustoPrevisto`,
+  `window.fmtMicroBRL` em config.js).
+- Ciclos: `src/lib/ciclos.js` (`nomeDoCiclo`, `comNomeDeCiclo`) e
+  `ROTULOS.ciclo` (layout.js). Créditos, resgate, fila da ficha, card Plano
+  e Financeiro do cliente dizem "Prime · Semestral".
+- Testes: `tests/custo-previsto.test.js`, `tests/ciclos-beneficio.test.js`;
+  e2e 17 estendido (card, ciclos, diálogo de resgate), 07/11 atualizados,
+  05 adaptado ao endereço em partes (D5).
+
 ## Decisões D1–D6 do dono (24/09/2026, este agente)
 Continuação da rodada mobile. ADR-017; detalhe e achados classificados
 (C1–C4 comerciais abertas, A1–A6) em `docs/PENDENCIAS.md`, "Decisões D1–D6

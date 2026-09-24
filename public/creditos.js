@@ -20,7 +20,11 @@
   const esc = (s) => window.esc(s);
   const data = (iso) => window.dataBR(iso);
   const nomeTier = (t) => window.ROTULOS.tier[t] || t;
-  const periodo = (m) => (m === 1 ? '1 mês' : `${m} meses`);
+  // Benefício é um CICLO, com o mesmo nome do plano pago (ADR-018):
+  // Mensal/Trimestral/Semestral/Anual. A duração em meses fica como
+  // explicação secundária ("Período: 6 meses").
+  const nomeCiclo = (m) => window.ROTULOS.ciclo[m] || `${m} meses`;
+  const duracao = (m) => (m === 1 ? '1 mês' : `${m} meses`);
   const creditos = (n) => `${n} ${Math.abs(n) === 1 ? 'crédito' : 'créditos'}`;
   const hoje = () => new Date().toISOString().slice(0, 10);
   function somarDias(iso, dias) {
@@ -36,13 +40,13 @@
     if (d.beneficioAtivo) {
       const b = d.beneficioAtivo;
       partes.push(
-        `<p><span class="badge badge-ok">Em vigor</span> <b>${esc(b.nomeTier)}</b> por créditos até <b>${data(b.validoAte)}</b>.</p>`,
+        `<p><span class="badge badge-ok">Em vigor</span> <b>${esc(b.nome || b.nomeTier)}</b> · Benefício por créditos · até <b>${data(b.validoAte)}</b>.</p>`,
       );
     }
     if (d.beneficioAgendado) {
       const b = d.beneficioAgendado;
       partes.push(
-        `<p><span class="badge badge-pendente">Programado</span> <b>${esc(b.nomeTier)}</b> de <b>${data(b.comecaEm)}</b> a <b>${data(b.validoAte)}</b>, quando o plano pago atual terminar.</p>`,
+        `<p><span class="badge badge-pendente">Programado</span> <b>${esc(b.nome || b.nomeTier)}</b> · Benefício por créditos · <b>${data(b.comecaEm)}</b> → <b>${data(b.validoAte)}</b>, quando o plano pago atual terminar.</p>`,
       );
     }
     if (!d.resgate.permitido && d.resgate.motivo)
@@ -77,14 +81,14 @@
       if (!o) return '<td>—</td>';
       const acao =
         o.disponivel && d.resgate.permitido
-          ? `<button type="button" class="btn primary mini" data-acao="resgatar" data-tier="${tier}" data-meses="${meses}">Resgatar</button>`
+          ? `<button type="button" class="btn primary mini" data-acao="resgatar" data-tier="${tier}" data-meses="${meses}" aria-label="Resgatar ${esc(nomeTier(tier))} · ${nomeCiclo(meses)}">Resgatar</button>`
           : o.bloqueio
             ? `<span class="creditos-faltam" title="${esc(o.bloqueio)}">abaixo do seu plano</span>`
             : `<span class="creditos-faltam">${o.disponivel ? 'indisponível agora' : `faltam ${o.faltam}`}</span>`;
       return `<td><span class="creditos-custo">${creditos(o.custo)}</span>${acao}</td>`;
     };
     return `<div class="u-ox-auto"><table class="creditos-tabela">
-      <thead><tr><th scope="col">Plano</th>${PERIODOS.map((m) => `<th scope="col">${periodo(m)}</th>`).join('')}</tr></thead>
+      <thead><tr><th scope="col">Plano</th>${PERIODOS.map((m) => `<th scope="col">${nomeCiclo(m)}</th>`).join('')}</tr></thead>
       <tbody>${TIERS.map((t) => `<tr><th scope="row">${esc(nomeTier(t))}</th>${PERIODOS.map((m) => celula(t, m)).join('')}</tr>`).join('')}</tbody>
     </table></div>`;
   }
@@ -101,7 +105,13 @@
               ? ` ${esc(m.ponto_nome)}`
               : '';
         const sinal = m.quantidade > 0 ? `+${m.quantidade}` : String(m.quantidade);
-        return `<li><time>${data(m.criado_em)}</time><span>${esc(rotulo)}${origem}</span><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${sinal}</b></li>`;
+        // Resgate diz o QUE foi resgatado: "Resgate · Prime · Semestral"
+        // (o servidor já traduz registros antigos "6 meses" pro ciclo).
+        const oQue =
+          m.tipo === 'resgate_beneficio' && m.observacao
+            ? ` · ${esc(String(m.observacao).replace(/^Resgate:\s*/, ''))}`
+            : '';
+        return `<li><time>${data(m.criado_em)}</time><span>${esc(rotulo)}${origem}${oQue}</span><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${sinal}</b></li>`;
       })
       .join('')}</ul>`;
   }
@@ -156,8 +166,8 @@
     return `
       <ol class="resgate-etapas">
         <li><span class="resgate-rotulo">Agora</span><b>${agora}</b></li>
-        <li><span class="resgate-rotulo">Será ativado</span><b>${esc(nomeTier(tier))} por ${periodo(meses)}</b>
-          <span>de ${data(inicio)} a ${data(fim)}. ${detalheInicio}</span></li>
+        <li><span class="resgate-rotulo">Será ativado</span><b>${esc(nomeTier(tier))} · ${nomeCiclo(meses)}</b>
+          <span>Benefício por créditos · ${creditos(o.custo)} · período: ${duracao(meses)}, de ${data(inicio)} a ${data(fim)}. ${detalheInicio}</span></li>
         <li><span class="resgate-rotulo">Depois</span><b>Em ${data(fim)} o benefício termina.</b>
           <span>${
             s.pagandoEmDia
@@ -173,6 +183,9 @@
   function abrirResgate(tier, meses) {
     if (!dados) return;
     escolha = { tier, meses };
+    const o = dados.opcoes.find((x) => x.tier === tier && x.meses === meses);
+    $('tituloResgate').textContent = `Resgatar ${nomeTier(tier)} · ${nomeCiclo(meses)}`;
+    $('btnConfirmarResgate').textContent = o ? `Usar ${creditos(o.custo)}` : 'Confirmar resgate';
     $('previewResgate').innerHTML = htmlPreview(tier, meses);
     $('msgResgate').textContent = '';
     $('msgResgate').className = 'form-msg';

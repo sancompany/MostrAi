@@ -13,6 +13,7 @@ const creditosRepo = require('../creditos/repository');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const planoAdministrativo = require('./plano-administrativo');
+const cicloContratado = require('./ciclo-contratado');
 
 // Protege as rotas que o San Checkout chama de volta e as que a Vitrina
 // chama nele (mesma chave nos dois sentidos — INTEGRACAO.md seção 6/6.1).
@@ -471,6 +472,16 @@ async function processarWebhookAssinatura(payload) {
       await assinaturasRepo.marcarTrocada(assinaturaAntiga.id, cliente);
       await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
       await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [anunciante.id, planoNovo.id]);
+      // Troca = ciclo novo (migration 087): o snapshot é do CICLO do plano
+      // novo (o valor que a assinatura nova cobra por ciclo), não do acerto
+      // proporcional abaixo. Nunca reaproveita o snapshot do plano antigo.
+      await cicloContratado.registrar(cliente, {
+        anuncianteId: anunciante.id,
+        plano: planoNovo,
+        assinaturaId: assinatura.id,
+        origem: 'troca',
+        valorCiclo: multiplicar(valorMensalDaConta(anunciante, planoNovo, assinatura), planoNovo.compromisso_meses),
+      });
       if (payload.acertoCobrado > 0) {
         await cliente.query(
           `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, plano_anterior_id, valor, nota_fiscal_status)
@@ -628,6 +639,17 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
        VALUES ($1,$2,$3,'pendente') RETURNING id`,
       [anunciante.id, plano.id, valorCiclo],
     ));
+    // Snapshot do ciclo (migration 087): o valor que ACABOU de ser cobrado e
+    // as exibições previstas do plano — é daqui que sai o "Custo por
+    // exibição prevista" do painel, sem nunca ser recalculado depois.
+    await cicloContratado.registrar(cliente, {
+      anuncianteId: anunciante.id,
+      plano,
+      assinaturaId: assinatura.id,
+      cobrancaId: cobrancaRows[0].id,
+      origem: await cicloContratado.origemDoCicloPago(cliente, assinatura.id),
+      valorCiclo,
+    });
     await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
     creditoIndicacao = await registrarCreditoIndicacaoSeHouver(anunciante, cobrancaRows[0].id, cliente);
     await cliente.query('COMMIT');
@@ -782,10 +804,21 @@ async function aplicarTrocaDePlano(pedido, payload) {
     plano_cortesia: false,
     cortesia_motivo: null,
   });
-  await pool.query(
-    `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1,$2,$3,'pendente')`,
+  const {
+    rows: [cobranca],
+  } = await pool.query(
+    `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1,$2,$3,'pendente') RETURNING id`,
     [anunciante.id, planoNovo.id, pedido.valor],
   );
+  // Pedido avulso (fluxo legado, sem tela que o crie hoje): o pedido pagou o
+  // ciclo inteiro do plano novo — é o snapshot desse ciclo (migration 087).
+  await cicloContratado.registrar(pool, {
+    anuncianteId: anunciante.id,
+    plano: planoNovo,
+    cobrancaId: cobranca.id,
+    origem: 'troca',
+    valorCiclo: Number(pedido.valor),
+  });
   await pedidosRepo.marcarPago(pedido.id);
 
   eventos.registrar('plano:troca_paga', { plano_id: planoNovo.id, valor_confirmado: Number(pedido.valor) }, anunciante);
