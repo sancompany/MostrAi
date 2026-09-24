@@ -6,11 +6,9 @@ const router = express.Router();
 const planosRepo = require('./planos-repository');
 const promocoesRepo = require('./promocoes-repository');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
-const cobrancasRepo = require('./cobrancas-repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
 const sanCheckout = require('./san-checkout');
-const drive = require('./drive');
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
@@ -851,24 +849,14 @@ router.get('/admin/cobrancas', async (_req, res) => {
   res.json(rows);
 });
 
-// Admin sobe o PDF de nota fiscal (emissão em si é manual — ver SPEC.md
-// módulo 6) — o upload pro Drive é automático a partir daqui.
-router.patch('/admin/cobrancas/:id/nota-fiscal', uploadNota.single('arquivo'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
-  try {
-    const cobranca = await cobrancasRepo.buscarPorId(req.params.id);
-    if (!cobranca) return res.status(404).json({ erro: 'cobrança não encontrada' });
-
-    const { driveFileId, url } = await drive.subirNotaFiscal(req.file.path, `nota-fiscal-${req.params.id}.pdf`);
-    const atualizada = await cobrancasRepo.marcarNotaFiscal(req.params.id, {
-      nota_fiscal_url: url,
-      drive_file_id: driveFileId,
-    });
-    res.json(atualizada);
-  } finally {
-    fs.unlink(req.file.path, () => {});
-  }
-});
+// Nota fiscal por upload (PDF → Google Drive): a tela saiu em 19/09/2026
+// (nenhuma nota é emitida hoje; quando for, o envio será automático) e o
+// código saiu na consolidação final (24/09/2026) — `drive.js` e a
+// dependência `googleapis` foram removidos. As colunas `nota_fiscal_*` de
+// `cobrancas_confirmadas` ficam como histórico.
+router.patch('/admin/cobrancas/:id/nota-fiscal', (_req, res) =>
+  res.status(410).json({ erro: 'nota fiscal por upload saiu do admin (19/09/2026) — não há mais envio por aqui' }),
+);
 
 // ---------------------------------------------------------------------------
 // Programa de vendedores — aposentado em 23/09/2026 (pedido do dono). Na

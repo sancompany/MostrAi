@@ -1092,6 +1092,12 @@ document.getElementById('formLogin').addEventListener('submit', async (e) => {
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
   await fetch(`${API_BASE_URL}/admin/logout`, { method: 'POST', credentials: 'include' });
+  // Fecha o canal de eventos antes de recarregar: sem isso o EventSource
+  // tentava reconectar já sem sessão e enchia o console de 401.
+  if (eventosAdmin) {
+    eventosAdmin.close();
+    eventosAdmin = null;
+  }
   location.hash = '';
   location.reload();
 });
@@ -1133,7 +1139,9 @@ const ALERTAS = [
   // não entra aqui (revisão final da Visão geral, 23/09/2026).
   {
     fila: 'offline',
-    aba: 'telas',
+    aba: 'pontos',
+    // Abre a grade já filtrada em "Com problema" (o mesmo chip da lista).
+    filtroPontos: 'problema',
     acao: 'Ver pontos',
     texto: (n) =>
       n === 1
@@ -1327,7 +1335,7 @@ function painelIndicadoresRede(rede, financeiro) {
       <dl class="indicadores">
         <div><dt>Alcance estimado<small>pessoas/mês</small></dt><dd>${num(rede.fluxoMensal)}</dd></div>
         <div><dt>Novas contas<small>últimos 30 dias</small></dt><dd>${num(rede.novosAnunciantes30d)}</dd></div>
-        <div><dt>Conversão cadastro → pagamento<small>${conversao === null ? 'nenhuma conta ainda' : `${financeiro.contasPagantes} de ${financeiro.totalContas} contas · sem cortesia e suspensas`}</small></dt><dd>${conversao === null ? '—' : pct(conversao, 0)}</dd></div>
+        <div><dt>Conversão cadastro → pagamento<small>${conversao === null ? 'nenhuma conta ainda' : `${financeiro.contasPagantes} de ${financeiro.totalContas} contas · sem benefício e sem suspensas`}</small></dt><dd>${conversao === null ? '—' : pct(conversao, 0)}</dd></div>
       </dl>
     </section>`;
 }
@@ -1338,6 +1346,10 @@ function botaoAlerta(a, qtd) {
   if (a.semLink) return `<div class="${classe}" title="${esc(a.semLink)}">${texto}</div>`;
   const acao = `<span class="alerta-acao">${a.acao || 'Abrir'} <span aria-hidden="true">→</span></span>`;
   if (a.rolar) return `<button type="button" class="${classe}" data-rolar="${a.rolar}">${texto}${acao}</button>`;
+  // `filtroPontos`: abre a grade de pontos já filtrada (mesmo caminho do
+  // clique num status do resumo compacto — `[data-status-clique]`).
+  if (a.filtroPontos)
+    return `<button type="button" class="${classe}" data-status-clique="${a.filtroPontos}">${texto}${acao}</button>`;
   return `<button type="button" class="${classe}" data-ir="${a.aba}">${texto}${acao}</button>`;
 }
 
@@ -1362,8 +1374,8 @@ async function renderResumo(el) {
       !pendentes.length && redeVazia(rede)
         ? `<div class="aviso-bloco u-mb-16"><b>Rede em montagem.</b> Nenhum ponto no ar ainda.
              Os primeiros passos: aprovar a primeira candidatura em
-             <a href="#rede/candidaturas">Rede › Candidaturas</a>, instalar a tela (a chave fica na ficha do ponto,
-             em <a href="#rede/pontos">Rede › Pontos</a>) e pôr a mídia da própria Mostraí no ar em
+             <a href="#rede/candidaturas">Rede › Candidaturas</a>, instalar a tela (a credencial sai de
+             "Preparar Player", na ficha da tela em <a href="#rede/pontos">Rede › Pontos</a>) e pôr a mídia da própria Mostraí no ar em
              <a href="#midiamostrai">Mídia Mostraí</a>. Tela vazia é tela sem prova social.</div>`
         : ''
     }
@@ -1397,8 +1409,13 @@ async function renderResumo(el) {
     }),
   );
 
-  renderOcupacaoRede(document.getElementById('ocupacaoRede'));
-  renderPromocaoAtivaResumo(document.getElementById('promocaoAtivaResumo'));
+  // Sem await de propósito (não seguram a Visão geral), mas com catch: um
+  // erro aqui deixava o bloco em "Carregando..." pra sempre e sumia do
+  // console.
+  renderOcupacaoRede(document.getElementById('ocupacaoRede')).catch((err) => console.error('ocupação da rede', err));
+  renderPromocaoAtivaResumo(document.getElementById('promocaoAtivaResumo')).catch((err) =>
+    console.error('promoção ativa', err),
+  );
 }
 
 // Bloco de promoção ativa na Visão geral (reconstrução de Ofertas/

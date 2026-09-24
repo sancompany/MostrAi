@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-  statusOperacionalTela,
+  saudeDaTela,
   TOLERANCIA_SEM_SINAL_MS,
   situacaoConfig,
   situacaoFila,
@@ -23,38 +23,38 @@ const RECENTE = new Date(QUARTA_MEIO_DIA.getTime() - 5 * 60 * 1000).toISOString(
 const EXPIRADO = new Date(QUARTA_MEIO_DIA.getTime() - TOLERANCIA_SEM_SINAL_MS - 60 * 1000).toISOString();
 
 test('em_reparo/inativa vêm do status manual, nunca viram alerta', () => {
-  assert.strictEqual(statusOperacionalTela({ status: 'reparo' }, null, QUARTA_MEIO_DIA), 'em_reparo');
-  assert.strictEqual(statusOperacionalTela({ status: 'inativo' }, null, QUARTA_MEIO_DIA), 'inativa');
+  assert.strictEqual(saudeDaTela({ status: 'reparo' }, null, QUARTA_MEIO_DIA), 'em_reparo');
+  assert.strictEqual(saudeDaTela({ status: 'inativo' }, null, QUARTA_MEIO_DIA), 'inativa');
 });
 
 test('nunca conectou -> aguardando_primeiro_sinal, mesmo fora do horário', () => {
   const tela = { status: 'ativo', modo_horario: 'ponto', ultima_vez_online: null };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'aguardando_primeiro_sinal');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'aguardando_primeiro_sinal');
 });
 
 test('modo "ponto": dentro do horário + heartbeat recente -> operando', () => {
   const tela = { status: 'ativo', modo_horario: 'ponto', primeiro_sinal_em: RECENTE, ultima_vez_online: RECENTE };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'operando');
 });
 
 test('modo "ponto": fora do horário -> fora_do_horario, não alerta', () => {
   const tela = { status: 'ativo', modo_horario: 'ponto', primeiro_sinal_em: EXPIRADO, ultima_vez_online: EXPIRADO };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
 test('modo "ponto": dentro do horário + heartbeat expirado -> sem_sinal', () => {
   const tela = { status: 'ativo', modo_horario: 'ponto', primeiro_sinal_em: EXPIRADO, ultima_vez_online: EXPIRADO };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('modo "24h": heartbeat expirado -> sem_sinal independente do horário do ponto', () => {
   const tela = { status: 'ativo', modo_horario: '24h', primeiro_sinal_em: EXPIRADO, ultima_vez_online: EXPIRADO };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('modo "24h": heartbeat recente -> operando mesmo com o ponto fechado', () => {
   const tela = { status: 'ativo', modo_horario: '24h', primeiro_sinal_em: RECENTE, ultima_vez_online: RECENTE };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
 });
 
 test('modo "personalizado": usa o horário PRÓPRIO da tela, ignora o do ponto', () => {
@@ -66,7 +66,7 @@ test('modo "personalizado": usa o horário PRÓPRIO da tela, ignora o do ponto',
     ultima_vez_online: RECENTE,
   };
   // ponto fechado, mas a tela tem horário próprio aberto agora.
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
 });
 
 test('modo "personalizado": fora da janela própria -> fora_do_horario mesmo com o ponto aberto', () => {
@@ -77,12 +77,12 @@ test('modo "personalizado": fora da janela própria -> fora_do_horario mesmo com
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'fora_do_horario');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
 test('sem horário cadastrado (null): trata como "deveria estar online" (nunca suprime por omissão)', () => {
   const tela = { status: 'ativo', modo_horario: 'ponto', primeiro_sinal_em: EXPIRADO, ultima_vez_online: EXPIRADO };
-  assert.strictEqual(statusOperacionalTela(tela, null, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(tela, null, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('player relatou erro -> erro_do_player, quando por outro lado estaria operando', () => {
@@ -93,7 +93,7 @@ test('player relatou erro -> erro_do_player, quando por outro lado estaria opera
     ultima_vez_online: RECENTE,
     ultimo_erro: 'falha ao baixar playlist',
   };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'erro_do_player');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'erro_do_player');
 });
 
 test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (parou de falar de vez)', () => {
@@ -104,7 +104,7 @@ test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (paro
     ultima_vez_online: EXPIRADO,
     ultimo_erro: 'falha antiga',
   };
-  assert.strictEqual(statusOperacionalTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 // ---------------------------------------------------------------------------
@@ -122,50 +122,47 @@ const viva = (extra = {}) => ({
 test('tolerância de "sem sinal" é de 3 ciclos (15 min), não 2 h', () => {
   assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 15 * 60 * 1000);
   const ha16min = new Date(QUARTA_MEIO_DIA.getTime() - 16 * 60 * 1000).toISOString();
-  assert.strictEqual(statusOperacionalTela(viva({ ultima_vez_online: ha16min }), null, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha16min }), null, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('ultima_vez_online sem primeiro_sinal_em nunca vira operando: primeiro sinal é o marco', () => {
   assert.strictEqual(
-    statusOperacionalTela(viva({ primeiro_sinal_em: null }), null, QUARTA_MEIO_DIA),
+    saudeDaTela(viva({ primeiro_sinal_em: null }), null, QUARTA_MEIO_DIA),
     'aguardando_primeiro_sinal',
   );
 });
 
 test('Player V2 reporta OUT_OF_SCHEDULE -> fora_do_horario, mesmo com 24h no servidor', () => {
-  assert.strictEqual(
-    statusOperacionalTela(viva({ player_estado: 'OUT_OF_SCHEDULE' }), null, QUARTA_MEIO_DIA),
-    'fora_do_horario',
-  );
+  assert.strictEqual(saudeDaTela(viva({ player_estado: 'OUT_OF_SCHEDULE' }), null, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
 test('estados de erro do contrato §10 -> erro_do_player; PLAYING/IDLE -> operando', () => {
   for (const e of ['PLAYBACK_ERROR', 'DOWNLOAD_ERROR', 'AUTH_ERROR', 'CONFIG_ERROR', 'NO_PLAYLIST']) {
-    assert.strictEqual(statusOperacionalTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'erro_do_player', e);
+    assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'erro_do_player', e);
   }
   for (const e of ['PLAYING', 'IDLE', 'UPDATE_PENDING']) {
-    assert.strictEqual(statusOperacionalTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'operando', e);
+    assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'operando', e);
   }
   assert.strictEqual(
-    statusOperacionalTela(viva({ ultimo_erro_codigo: 'CONFIG_FALHOU' }), null, QUARTA_MEIO_DIA),
+    saudeDaTela(viva({ ultimo_erro_codigo: 'CONFIG_FALHOU' }), null, QUARTA_MEIO_DIA),
     'erro_do_player',
   );
 });
 
 test('heartbeat volta / erro resolve -> operando de novo (derivado, nada gravado)', () => {
   const t = viva({ ultimo_erro_codigo: 'X' });
-  assert.strictEqual(statusOperacionalTela(t, null, QUARTA_MEIO_DIA), 'erro_do_player');
+  assert.strictEqual(saudeDaTela(t, null, QUARTA_MEIO_DIA), 'erro_do_player');
   t.ultimo_erro_codigo = null;
-  assert.strictEqual(statusOperacionalTela(t, null, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(t, null, QUARTA_MEIO_DIA), 'operando');
 });
 
 test('credencial revogada sem chave -> player_revogado; em reparo/inativa vencem tudo', () => {
   assert.strictEqual(
-    statusOperacionalTela(viva({ revogado_em: RECENTE, chave_hash: null }), null, QUARTA_MEIO_DIA),
+    saudeDaTela(viva({ revogado_em: RECENTE, chave_hash: null }), null, QUARTA_MEIO_DIA),
     'player_revogado',
   );
   assert.strictEqual(
-    statusOperacionalTela(viva({ status: 'reparo', ultima_vez_online: EXPIRADO }), null, QUARTA_MEIO_DIA),
+    saudeDaTela(viva({ status: 'reparo', ultima_vez_online: EXPIRADO }), null, QUARTA_MEIO_DIA),
     'em_reparo',
   );
 });

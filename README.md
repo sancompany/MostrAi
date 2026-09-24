@@ -1,6 +1,6 @@
 # Mostraí
 
-Rede de telas de anúncio em comércios de Matão-SP. Anunciante assina um plano e o vídeo dele roda em todas as telas da rede; o comércio que cede a parede (ponto) recebe ajuda de custo ou cota pra anunciar o próprio negócio; vendedores indicam anunciantes e recebem comissão. Projeto próprio do ecossistema San & Co. (consome San Checkout, Cloudflare, e-mail do workspace).
+Rede de telas de anúncio em comércios de Matão-SP. Anunciante assina um plano e o vídeo dele roda nos pontos que o plano cobre; o comércio que cede a parede (ponto) acumula 1 crédito por mês, trocável por benefício de anúncio (Essencial/Pro/Prime). O programa de vendedores foi aposentado em 23/09/2026. Projeto próprio do ecossistema San & Co. (consome San Checkout, Cloudflare, e-mail do workspace).
 
 ## Rodar local
 
@@ -30,7 +30,7 @@ ponta está em `tests/e2e/README.md` e na seção de verificação de
 - **Ponto ≠ tela.** `pontos` é o comércio/endereço; `dispositivos` é cada TV. Cada tela tem chave de aparelho (autentica o player), PIN (abre um painel só daquela tela na própria TV), playlist própria, custo e prazo de amortização. A cota de autoanúncio é do ponto e é dividida entre as telas dele.
 - **Planos modulares no banco.** Além de preço/frequência/ciclo: `preco_travado` (a conta paga o valor de quando entrou), `vagas` (teto opcional, com reserva de 15 minutos pra pagar), `desconto_comodato_percentual` (aposentado desde 24/09/2026 — ser ponto gera créditos, não desconto; ADR-016). Fundador não é plano — é status de conta (`anunciantes.fundador`), marcado à mão pelo administrador, com desconto e piso de compromisso próprios (migration 033). Não há mais nenhuma regra de plano em variável de ambiente. **Benefício comercial se dá no preço, nunca no tempo**: a assinatura do San Checkout não tem carência, mês grátis nem pular ciclo (migration 021, `CONSTRAINTS.md`). **Módulos cruzados** entre os dois catálogos: plano de anunciante com `ponto_apos_meses` ("ao completar N meses ganhe uma tela no seu comércio" — o resgate vira candidatura de ponto) e opção de comodato com `plano_bonus_*` ("ponto ativo há N meses ganha M meses do plano X" — o resgate ativa o plano na conta).
 - **Pagamento pelo San Checkout.** Webhook fail-closed, idempotente, transacional. Nada de cartão passa por aqui.
-- **Margem real no admin.** Receita − ajuda de custo aos pontos − amortização (custo de cada tela ÷ prazo) − custos fixos lançados pelo dono.
+- **Margem real no admin.** Receita − amortização (custo de cada tela ÷ prazo) − custos fixos já lançados (a tela de custos saiu do admin em 22/09/2026).
 
 Mapa completo das rotas em `docs/api.md`. Limites e vetos em `CONSTRAINTS.md`. Spec da versão em `docs/specs/`. Pesquisa de preço/custeio em `docs/precificacao.md`. O que fica pra depois em `docs/proximas-versoes.md`.
 

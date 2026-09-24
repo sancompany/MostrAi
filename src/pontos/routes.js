@@ -4,7 +4,6 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const repo = require('./repository');
-const pagamentosRepo = require('./pagamentos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { criarCandidaturaPonto } = require('../conta/modos');
@@ -223,10 +222,11 @@ router.get('/admin/pagamentos-ponto/pendentes', (_req, res) => res.status(410).j
 router.post('/admin/pontos/:pontoId/pagamentos', (_req, res) => res.status(410).json(APOSENTADO));
 router.patch('/admin/pagamentos-ponto/:id', (_req, res) => res.status(410).json(APOSENTADO));
 
-// Histórico de repasses já pagos de um ponto — só leitura.
-router.get('/admin/pontos/:pontoId/pagamentos', async (req, res) => {
-  res.json(await pagamentosRepo.listarPorPonto(req.params.pontoId));
-});
+// Histórico de repasses (modelo antigo): sem tela desde 24/09/2026 (ADR-016)
+// e sem código executável desde a consolidação final — a tabela
+// `pagamentos_ponto` fica como histórico (o extrato do cliente em
+// src/conta/financeiro.js ainda a lê).
+router.get('/admin/pontos/:pontoId/pagamentos', (_req, res) => res.status(410).json(APOSENTADO));
 
 // Export no fim do arquivo, depois da ultima rota: estava no meio, e as tres
 // rotas de pagamento ao ponto ficavam abaixo dele. Funcionava (o router e o

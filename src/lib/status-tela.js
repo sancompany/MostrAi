@@ -107,10 +107,6 @@ function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = nul
   return alertas;
 }
 
-// Nome antigo (src/pontos/meus-pontos.js e o resto do código até esta
-// rodada) — mesma função.
-const statusOperacionalTela = saudeDaTela;
-
 module.exports = {
   TOLERANCIA_SEM_SINAL_MS,
   CONFIG_PENDENTE_APOS_MS,
@@ -119,7 +115,6 @@ module.exports = {
   ESTADOS_DE_ERRO,
   SITUACOES_DE_ALERTA,
   saudeDaTela,
-  statusOperacionalTela,
   situacaoConfig,
   situacaoFila,
   alertasDaTela,

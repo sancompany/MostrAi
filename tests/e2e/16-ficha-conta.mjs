@@ -54,8 +54,10 @@ function ponto(contaId, nome, { modalidade = null, status = 'a_instalar', repass
                 ${modalidade ? `'${modalidade}'` : 'NULL'}, '${status}', ${repasse}) RETURNING id`),
   );
   if (tela) {
-    PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online)
-        VALUES (${id}, 'Tela 1', '${tela}', '24h', ${tela === 'ativo' ? 'now()' : 'NULL'})`);
+    // `chave_hash`: desde a consolidação (24/09/2026) o crédito mensal exige
+    // credencial viva do Player — tela sem Preparar Player não conta.
+    PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online, chave_hash)
+        VALUES (${id}, 'Tela 1', '${tela}', '24h', ${tela === 'ativo' ? 'now()' : 'NULL'}, 'e2e-hash-${randomUUID()}')`);
   }
   return id;
 }
