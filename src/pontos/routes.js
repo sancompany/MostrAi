@@ -41,33 +41,28 @@ router.get('/pontos/config', async (_req, res) => {
 // dois, com projeção fechada.
 // "Meus pontos" do painel único — pedido em análise, ponto e telas na MESMA
 // entidade, com projeção segura (ver src/pontos/meus-pontos.js). `ehPonto`
-// diz ao painel por qual porta um estabelecimento novo entra: a conta que já
-// é ponto usa POST /anunciantes/me/pontos; a que ainda não é, POST
-// /conta/modos/ponto/pedir. As duas criam a mesma candidatura.
+// é DERIVADO do ponto materializado (regra canônica: dono de ponto = tem
+// ponto aprovado; nunca candidatura, nunca o papel legado em `papeis`).
 router.get('/anunciantes/me/meus-pontos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  const estabelecimentos = await meusPontosDaConta(conta.id);
   res.json({
-    ehPonto: (conta.papeis || []).includes('ponto'),
-    estabelecimentos: await meusPontosDaConta(conta.id),
+    ehPonto: estabelecimentos.some((e) => e.tipo === 'ponto'),
+    estabelecimentos,
   });
 });
 
-// Dono de ponto (papel vindo do convite) cadastra outro endereço pela conta
-// — "+ Cadastrar outro endereço" em Meus endereços. ENTRA COMO CANDIDATURA
+// "+ Cadastrar outro endereço" em Meus pontos. ENTRA COMO CANDIDATURA
 // (rodada de candidatura canônica, 22/09/2026), igual ao caminho "Você
-// também possui um comércio?": aparece em Candidaturas pro admin Aprovar/
-// Recusar, e só vira ponto de verdade quando aprovada (liberarPapelNaConta).
-// Achado real, corrigido nesta rodada: antes esta rota criava o PONTO
-// direto (`repo.criar`), sem passar pelo admin — apesar do comentário aqui
-// sempre ter dito "entra como lead, o dono aprova". Mesmo contrato de dados
-// do outro caminho (`criarCandidaturaPonto`, src/conta/modos.js) — os dois
-// formulários têm que pedir e mandar exatamente os mesmos campos.
+// também possui um comércio?" (`POST /conta/modos/ponto/pedir`): aparece em
+// Candidaturas pro admin Aprovar/Recusar, e só vira ponto de verdade quando
+// aprovada. Mesmo contrato de dados e mesma guarda (qualquer conta logada;
+// a régua de duplicidade é por estabelecimento) — os dois nomes existem
+// porque o painel os chama de lugares diferentes.
 router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
-  if (!conta || !(conta.papeis || []).includes('ponto')) {
-    return res.status(403).json({ erro: 'só contas de dono de ponto cadastram endereço' });
-  }
+  if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   // Mesma régua das outras duas portas (repo.estabelecimentoJaCadastrado):
   // pedido em análise no mesmo endereço, ou o mesmo estabelecimento já
   // materializado como ponto desta conta. Antes só a primeira metade existia
@@ -90,10 +85,11 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
 });
 
 // `GET /planos-ponto` (as duas modalidades de comodato pra escolher no
-// cadastro) respondia a lista; desde 24/09/2026 (ADR-016) não há escolha
-// nenhuma — o ponto só pede pra entrar na rede. Lista vazia pra tela antiga
-// que ainda chame não quebrar.
-router.get('/planos-ponto', (_req, res) => res.json([]));
+// cadastro) foi aposentada em 24/09/2026 (ADR-016): não há escolha nenhuma,
+// o ponto só pede pra entrar na rede. Nenhuma tela viva chama.
+router.get('/planos-ponto', (_req, res) =>
+  res.status(410).json({ erro: 'não há modalidades de ponto: seu ponto gera créditos todo mês' }),
+);
 
 // Pública — "seja um ponto": cria lead, cai na fila do admin (módulo 5).
 // Aceita mais de um endereço no mesmo envio (quem tem duas lojas manda as

@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('node:crypto');
 const router = express.Router();
 const { conferirSenha, gerarHash } = require('../lib/senha');
+const { normalizarEmail } = require('../anunciantes/repository');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 const pool = require('../db/pool');
 const email = require('../financeiro/email');
@@ -28,12 +29,12 @@ const VALIDADE_MS = 60 * 60 * 1000;
 
 async function pedirRedefinicao(req, res, tipo) {
   const cfg = TIPOS[tipo];
-  const { email: destino } = req.body;
+  const destino = normalizarEmail(req.body.email);
   if (!destino) return res.status(400).json({ erro: 'e-mail obrigatório' });
 
   const { rows } = await pool.query(
     `SELECT id, ${cfg.colunaNome} AS nome, ${cfg.colunaEmail} AS email
-     FROM ${cfg.tabela} WHERE ${cfg.colunaEmail} = $1`,
+     FROM ${cfg.tabela} WHERE lower(trim(${cfg.colunaEmail})) = $1`,
     [destino],
   );
 
@@ -60,7 +61,12 @@ async function pedirRedefinicao(req, res, tipo) {
 }
 
 router.post('/anunciantes/esqueci-senha', limiteTentativas, (req, res) => pedirRedefinicao(req, res, 'anunciante'));
-router.post('/afiliados/esqueci-senha', limiteTentativas, (req, res) => pedirRedefinicao(req, res, 'afiliado'));
+// Afiliado (programa de vendedor) aposentado: link antigo recebe o caminho
+// atual. O tipo 'afiliado' em TIPOS fica só pra token de redefinição já
+// emitido (1h de validade) não quebrar no deploy.
+router.post('/afiliados/esqueci-senha', (_req, res) =>
+  res.status(410).json({ erro: 'use a redefinição de senha da conta em /anunciante/esqueci-senha.html' }),
+);
 
 router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
   const { token, senha } = req.body;

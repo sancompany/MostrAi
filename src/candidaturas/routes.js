@@ -4,13 +4,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const repo = require('./repository');
-const eventos = require('../lib/eventos');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 const STATUS_TITULO = {
-  aprovada: 'Seu pedido de ponto foi aprovado',
   recusada: 'Seu pedido de ponto não foi aprovado desta vez',
 };
 
@@ -75,22 +73,24 @@ router.post(
 // Admin
 router.get('/admin/candidaturas', async (_req, res) => res.json(await repo.listar()));
 
+// Aprovar NÃO é um status que se grava aqui (consolidação, 24/09/2026):
+// aprovação é `POST /admin/candidaturas/:id/liberar` (src/conta/modos.js),
+// que materializa o ponto na mesma transação. Marcar 'aprovada' pelo PATCH
+// deixava a candidatura "aprovada" sem ponto nenhum — a conta via "Seu
+// pedido foi aprovado" e "Meus pontos" continuava vazio.
 router.patch('/admin/candidaturas/:id', async (req, res) => {
   if (req.body.status && !repo.STATUS.includes(req.body.status))
     return res.status(400).json({ erro: 'status inválido' });
+  if (req.body.status === 'aprovada') {
+    return res
+      .status(400)
+      .json({ erro: 'para aprovar, use a liberação na conta (POST /admin/candidaturas/:id/liberar)' });
+  }
   const antes = await repo.buscarPorId(req.params.id);
   const c = await repo.atualizar(req.params.id, req.body);
   if (!c) return res.status(404).json({ erro: 'candidatura não encontrada' });
 
-  if (c.status === 'aprovada' && antes && antes.status !== 'aprovada') {
-    eventos.registrar('ponto:candidatura_aprova', {
-      tipo: c.tipo,
-      cidade: c.cidade,
-      uf: c.uf,
-      ramo: c.segmento,
-      dias_ate_aprovar: eventos.diasEntre(c.criado_em),
-    });
-  }
+  if (antes && antes.status !== c.status) sse.emitirParaAdmin('application.updated', { id: c.id, status: c.status });
   // Avisa a conta dona da candidatura (Fase 3, SSE) quando o status muda de
   // verdade — "Em análise" nunca gera aviso, só a decisão. `c.conta_id`
   // sempre existe desde que a candidatura sem conta foi aposentada (v3,
@@ -99,10 +99,8 @@ router.patch('/admin/candidaturas/:id', async (req, res) => {
   if (c.conta_id && antes && antes.status !== c.status && STATUS_TITULO[c.status]) {
     notificacoesRepo
       .registrar(c.conta_id, {
-        tipo: c.status === 'aprovada' ? 'ponto_aprovado' : 'ponto_recusado',
+        tipo: 'ponto_recusado',
         titulo: STATUS_TITULO[c.status],
-        descricao:
-          c.status === 'aprovada' ? 'A gente chama no WhatsApp pra combinar a visita e a instalação.' : undefined,
         entidadeTipo: 'candidatura',
         entidadeId: c.id,
       })

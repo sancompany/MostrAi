@@ -7,6 +7,7 @@ const { operacaoDaTela, deveriaOperar } = require('../lib/operacao-tela');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
+const credencial = require('../player/credencial');
 
 // Tela = `dispositivos` (migration 019); Ponto = o comércio. O Player é a
 // identidade provisionada numa tela (migration 083). Nomes de coluna em
@@ -63,26 +64,38 @@ const SELECT_BASE = `
 const SELECT_TELA = SELECT_BASE.replace('__EXTRA__', '');
 // Só para o admin (fora do caminho quente das rotas do Player): última
 // exibição confirmada, pelo ledger do V2 ou pelo contador por hora (V1).
+// Função como substituto: o texto tem `$'` (fim da regex), que um
+// replace com string interpretaria como "o resto do SELECT".
 const SELECT_TELA_ADMIN = SELECT_BASE.replace(
   '__EXTRA__',
-  `, GREATEST(
+  () => `, GREATEST(
        (SELECT max(ec.confirmado_em) FROM execucoes_confirmadas ec
          WHERE ec.dispositivo_id = d.id AND ec.status = 'contabilizado'),
        (SELECT max(ex.janela_hora) FROM exibicoes_contador ex
          WHERE ex.dispositivo_id = d.id AND ex.vezes_confirmadas > 0)
-     ) AS ultima_confirmacao_em`,
+     ) AS ultima_confirmacao_em,
+     (SELECT a.nome_empresa FROM criativos c JOIN anunciantes a ON a.id = c.anunciante_id
+       WHERE d.criativo_atual ~ '^[0-9]{1,9}$' AND c.id = d.criativo_atual::int) AS criativo_atual_anunciante`,
 );
 
 // Uso interno do Player (autenticação, playlist, config) — nunca vai para
-// resposta HTTP inteiro.
+// resposta HTTP inteiro. O `dispositivoId` público (5 dígitos, ou o
+// `tela_<hex>` de quem foi provisionado antes da consolidação) é procurado
+// PRIMEIRO; a PK numérica só vale se nenhum uid casar — é o caminho de
+// compatibilidade das TVs V1 (player web / Android anterior ao V2), que se
+// identificam pelo ID da Tela.
 async function buscarComPonto(chave) {
-  const texto = String(chave);
-  let where;
-  if (/^\d{1,9}$/.test(texto)) where = 'd.id = $1::int';
-  else if (/^tela_[0-9a-f]{20}$/.test(texto)) where = 'd.dispositivo_uid = $1';
-  else return null;
-  const { rows } = await pool.query(`${SELECT_TELA} WHERE ${where}`, [texto]);
-  return rows[0] || null;
+  const texto = String(chave ?? '').trim();
+  if (!texto || texto.length > 64) return null;
+  const { rows } = await pool.query(`${SELECT_TELA} WHERE d.dispositivo_uid = $1`, [texto]);
+  if (rows[0]) return rows[0];
+  // PK só para tela SEM dispositivoId (V1): quem já tem identidade pública
+  // não responde pelo registro interno.
+  if (!/^\d{1,9}$/.test(texto)) return null;
+  const { rows: porPk } = await pool.query(`${SELECT_TELA} WHERE d.id = $1::int AND d.dispositivo_uid IS NULL`, [
+    texto,
+  ]);
+  return porPk[0] || null;
 }
 
 async function buscarLinha(id) {
@@ -148,6 +161,8 @@ function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
       deveriaOperarAgora: deveriaOperar(operacaoDaTela(t, t.ponto_horario_semanal, agora), agora),
       playerEstado: v2 ? t.player_estado : null,
       criativoAtual: v2 ? t.criativo_atual : null,
+      // Quem está no ar, pelo nome — o id do criativo é registro interno.
+      midiaNoAr: v2 && t.criativo_atual ? t.criativo_atual_anunciante || null : null,
       ultimaPlaylistOkEm: v2 ? t.ultima_playlist_ok_em : null,
       playlistEntregueEm: t.playlist_entregue_em,
       ultimaConfirmacaoEm: t.ultima_confirmacao_em || null,
@@ -313,6 +328,16 @@ async function definirPin(id, pin) {
   return rowCount > 0;
 }
 
+// PIN em claro, só pelo caminho auditado do admin (GET .../pin registra
+// PIN_REVEALED no histórico da tela). Sai do cofre AES-GCM — nunca do hash
+// (o hash V1 não abre; tela só com hash devolve null e o admin redefine).
+async function revelarPin(id) {
+  const { rows } = await pool.query('SELECT pin_manutencao_cifrado FROM dispositivos WHERE id = $1', [id]);
+  if (!rows[0]) return undefined;
+  const pin = cofre.abrir(rows[0].pin_manutencao_cifrado);
+  return pin && /^\d{4}$/.test(pin) ? pin : null;
+}
+
 // compat-v1: painel do player web (POST /player/:id/painel).
 async function conferirPin(id, pin) {
   const { rows } = await pool.query('SELECT pin_hash FROM dispositivos WHERE id = $1', [id]);
@@ -320,9 +345,26 @@ async function conferirPin(id, pin) {
   return (await conferirHash(String(pin), rows[0].pin_hash)).ok;
 }
 
+// Tela que já rodou anúncio de verdade não se apaga: o comprovante de
+// exibição dos anunciantes (execucoes_confirmadas / exibicoes_contador) é
+// deles, não da tela. O caminho é inativar (status), que preserva tudo.
+async function temExibicaoConfirmada(id, db = pool) {
+  const { rows } = await db.query(
+    `SELECT 1 WHERE EXISTS (SELECT 1 FROM execucoes_confirmadas WHERE dispositivo_id = $1 AND status = 'contabilizado')
+                OR EXISTS (SELECT 1 FROM exibicoes_contador WHERE dispositivo_id = $1 AND vezes_confirmadas > 0)`,
+    [id],
+  );
+  return rows.length > 0;
+}
+
 async function deletar(id) {
   const existente = await buscarLinha(id);
   if (!existente) return;
+  if (await temExibicaoConfirmada(id)) {
+    throw Object.assign(new Error('esta tela já exibiu anúncios confirmados — inative em vez de excluir'), {
+      status: 409,
+    });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -396,7 +438,7 @@ async function cancelarProvisionamento(telaId) {
 // repetição, recebendo as mesmas credenciais.
 // Devolve { dispositivoId, chaveAparelho, novo } ou null (token inválido,
 // expirado, cancelado, já usado fora da janela, ponto arquivado).
-async function trocarToken(token, credencial) {
+async function trocarToken(token) {
   if (typeof token !== 'string' || !token.trim()) return null;
   const hash = hashDoToken(token.trim());
   const client = await pool.connect();
@@ -428,7 +470,7 @@ async function trocarToken(token, credencial) {
     );
     if (consumido[0]) {
       const telaId = consumido[0].dispositivo_id;
-      const uid = credencial.gerarUid();
+      const uid = await credencial.gerarDispositivoId(client);
       const chave = credencial.gerarChave();
       const chaveHash = credencial.hashDaChave(chave);
       await client.query(
@@ -486,6 +528,62 @@ async function trocarToken(token, credencial) {
   }
 }
 
+// [Preparar Player] (consolidação, 24/09/2026 — o fluxo canônico do admin):
+// gera a identidade e a credencial AQUI, sem token: o admin recebe UMA vez
+// o JSON {dispositivoId, chaveAparelho, baseUrl} que vai no
+// mostrai-config.json do aparelho (o Player aceita credencial direta —
+// ConfigExterna.kt). O banco guarda só o hash; a chave em claro existe só
+// na resposta. Reprovisionar troca a identidade: a anterior deixa de valer
+// na hora (uma tela = um Player). Token pendente da tela é cancelado.
+async function prepararPlayer(telaId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: tela } = await client.query(
+      `SELECT d.id, d.ponto_id, p.status AS ponto_status FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+        WHERE d.id = $1 FOR UPDATE OF d`,
+      [telaId],
+    );
+    if (!tela[0]) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    if (tela[0].ponto_status === 'arquivado') {
+      await client.query('ROLLBACK');
+      throw Object.assign(new Error('ponto arquivado não recebe Player'), { status: 400 });
+    }
+    await client.query(
+      `UPDATE tokens_provisionamento SET cancelado_em = now()
+        WHERE dispositivo_id = $1 AND usado_em IS NULL AND cancelado_em IS NULL`,
+      [telaId],
+    );
+    const dispositivoId = await credencial.gerarDispositivoId(client);
+    const chave = credencial.gerarChave();
+    const chaveHash = credencial.hashDaChave(chave);
+    const fingerprint = credencial.fingerprintDoHash(chaveHash);
+    await client.query(
+      `UPDATE dispositivos
+          SET aparelho_id = NULL, chave_atual_cifrada = NULL,
+              dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
+              chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
+              chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
+              chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
+              config_versao_aplicada = NULL, config_aplicada_em = NULL
+        WHERE id = $1`,
+      [telaId, dispositivoId, chaveHash, fingerprint],
+    );
+    await telaEventos.registrar(telaId, 'PLAYER_PREPARED', { dispositivoId, fingerprint }, client);
+    await sincronizarStatusPonto(tela[0].ponto_id, client);
+    await client.query('COMMIT');
+    return { telaId, pontoId: tela[0].ponto_id, dispositivoId, chaveAparelho: chave };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // O Player provou que recebeu a credencial (primeira requisição autenticada
 // com ela): a janela de repetição do token fecha na hora.
 async function fecharJanelaDoToken(telaId) {
@@ -510,10 +608,13 @@ module.exports = {
   criar,
   atualizar,
   definirPin,
+  revelarPin,
   conferirPin,
+  temExibicaoConfirmada,
   deletar,
   gerarTokenProvisionamento,
   cancelarProvisionamento,
   trocarToken,
+  prepararPlayer,
   fecharJanelaDoToken,
 };

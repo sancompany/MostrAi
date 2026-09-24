@@ -3,11 +3,16 @@ const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL } = require('../lib/capacidade');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
-// Quatro status desde 22/09/2026 (migration 069, rodada final da Rede) —
+// Cinco status (migration 069 + `aguardando_primeiro_sinal` na 088) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
-// abaixo) deriva de `dispositivos.status` sempre que uma tela muda. Por
-// isso `status` saiu de CAMPOS_ATUALIZAVEIS — só essa função grava a coluna.
-const STATUS = ['a_instalar', 'em_operacao', 'em_reparo', 'inativo'];
+// abaixo) deriva das telas sempre que uma tela muda. Por isso `status` saiu
+// de CAMPOS_ATUALIZAVEIS — só essa função grava a coluna. `arquivado` é
+// decisão explícita (migration 080), fora desta lista.
+const STATUS = ['a_instalar', 'aguardando_primeiro_sinal', 'em_operacao', 'em_reparo', 'inativo'];
+// Os status em que o ponto é um lugar real da rede (aparece no site, conta
+// como vaga do plano — RN-49). Só `inativo` (tela cadastrada, nenhuma
+// funcionando) e `arquivado` ficam de fora.
+const STATUS_NA_REDE = ['em_operacao', 'aguardando_primeiro_sinal', 'a_instalar', 'em_reparo'];
 
 // Whitelist de colunas editáveis via PATCH — nunca monta SET a partir de
 // chave arbitrária vinda do body.
@@ -40,14 +45,12 @@ const CAMPOS_ATUALIZAVEIS = [
   'responsavel_nome',
   'responsavel_contato',
   'cota_autoanuncio_slots_hora',
-  'horario_abertura',
-  'horario_fechamento',
-  // Horário de funcionamento por dia da semana (migration 066) — os dois
-  // campos acima são de antes, nunca tiveram tela nem uso; este é o de
-  // verdade, ver src/lib/horario-semanal.js.
+  // Horário de funcionamento por dia da semana (migration 066) — ver
+  // src/lib/horario-semanal.js. (`horario_abertura`/`horario_fechamento` e
+  // `acabamento_completo` saíram daqui na consolidação de 24/09/2026: colunas
+  // sem tela e sem leitor, não eram para continuar graváveis pela API.)
   'horario_semanal',
   'anunciante_id',
-  'acabamento_completo',
   'foto_instalacao_url',
   'fluxo_estimado_mensal',
   // Migration 067 — "algo a mais" da candidatura, copiado no nascimento do
@@ -133,10 +136,13 @@ async function estabelecimentoJaCadastrado(
   { incluirPedidos = true } = {},
 ) {
   if (incluirPedidos) {
+    // CEP comparado só pelos dígitos: "15990-000" e "15990000" são o mesmo
+    // lugar (o formulário grava com hífen, a API pode receber sem).
     const { rows: pedidos } = await db.query(
       `SELECT id FROM candidaturas
          WHERE conta_id = $1 AND tipo = 'ponto' AND status IN ('nova', 'em_contato')
-           AND lower(trim(endereco)) = lower(trim($2)) AND trim(COALESCE(cep, '')) = trim($3)`,
+           AND lower(trim(endereco)) = lower(trim($2))
+           AND regexp_replace(COALESCE(cep, ''), '\\D', '', 'g') = regexp_replace($3, '\\D', '', 'g')`,
       [contaId, endereco || '', cep || ''],
     );
     if (pedidos.length) return 'Já existe uma solicitação em análise para este endereço';
@@ -209,35 +215,42 @@ async function atualizar(id, entrada) {
 // status, ou é excluída, pra nunca existir um momento em que o status do
 // ponto e o das telas dele contem histórias diferentes.
 //
-//   0 telas                             -> a_instalar   (Aguardando instalação)
-//   >=1 tela ativa que já deu sinal     -> em_operacao  (Ativo)
-//       e tem credencial
-//   tela ativa que nunca deu sinal, ou  -> a_instalar   (Player V2, 23/09/2026:
-//   com o Player revogado                  tela cadastrada não é tela operando;
-//                                          o primeiro sinal, a revogação e o
-//                                          reprovisionamento chamam isto de novo)
-//   0 ativa, >=1 reparo                 -> em_reparo    (Em reparo)
-//   0 ativa, 0 reparo                   -> inativo      (Inativo, mas tem tela cadastrada)
+// Regra canônica (consolidação, 24/09/2026), na ordem em que é decidida:
+//   0 telas                                   -> a_instalar (Aguardando instalação)
+//   >=1 tela ativa, provisionada, com sinal   -> em_operacao (Ativo)
+//   >=1 tela ativa provisionada sem 1º sinal  -> aguardando_primeiro_sinal
+//   >=1 tela ativa sem Player (sem chave —    -> a_instalar (tela cadastrada não é
+//       nunca provisionada ou revogada)          tela operando; o reprovisionamento
+//                                                chama isto de novo)
+//   0 ativa, >=1 reparo                       -> em_reparo
+//   0 ativa, 0 reparo                         -> inativo (tem tela, nenhuma ligada)
 // É estado do ponto, não saúde: uma tela que já operou e está sem sinal
 // agora não tira o ponto de "Ativo" (isso é alerta, src/lib/status-tela.js).
+// "Ponto Inativo com tela Operando" é impossível por construção: tela
+// operando é tela ativa, e tela ativa nunca leva a `inativo`.
 async function sincronizarStatusPonto(pontoId, db = pool) {
   const { rows } = await db.query(
     `SELECT COUNT(*) FILTER (WHERE status = 'ativo' AND primeiro_sinal_em IS NOT NULL AND chave_hash IS NOT NULL)::int AS operando,
+            COUNT(*) FILTER (WHERE status = 'ativo' AND chave_hash IS NOT NULL)::int AS provisionadas,
             COUNT(*) FILTER (WHERE status = 'ativo')::int AS ativas,
             COUNT(*) FILTER (WHERE status = 'reparo')::int AS em_reparo,
             COUNT(*)::int AS total
        FROM dispositivos WHERE ponto_id = $1`,
     [pontoId],
   );
-  const { operando, ativas, em_reparo, total } = rows[0];
+  const { operando, provisionadas, ativas, em_reparo, total } = rows[0];
   const status =
-    total === 0 || (ativas > 0 && operando === 0)
+    total === 0
       ? 'a_instalar'
       : operando > 0
         ? 'em_operacao'
-        : em_reparo > 0
-          ? 'em_reparo'
-          : 'inativo';
+        : provisionadas > 0
+          ? 'aguardando_primeiro_sinal'
+          : ativas > 0
+            ? 'a_instalar'
+            : em_reparo > 0
+              ? 'em_reparo'
+              : 'inativo';
   // Arquivado é decisão explícita e auditável (migration 080), nunca
   // derivada das telas — o status automático não pode ressuscitar um ponto
   // mesclado só porque alguém mexeu numa tela dele.
@@ -265,8 +278,9 @@ async function listarPublicos() {
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
-     WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
+     WHERE p.status = ANY($1::text[])
      ORDER BY (p.status = 'em_operacao') DESC, p.nome`,
+    [STATUS_NA_REDE],
   );
   return rows;
 }
@@ -407,4 +421,5 @@ module.exports = {
   LIMITE_OCUPACAO_BLOQUEIA,
   FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS,
   STATUS,
+  STATUS_NA_REDE,
 };

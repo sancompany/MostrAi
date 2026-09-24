@@ -143,7 +143,16 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     // tela operando — o ponto só vira "Ativo" com o primeiro sinal.
     const tela1 = await dispositivosRepo.criar(pontoId, {});
     assert.strictEqual(tela1.nome, 'Tela 1');
-    assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela ativa que nunca falou: ainda aguardando instalação');
+    assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela ativa sem Player: ainda aguardando instalação');
+    // Player preparado (chave gravada) mas nunca ligou: é outro estado — o
+    // dono precisa distinguir "falta instalar" de "instalada, só não ligou".
+    await pool.query('UPDATE dispositivos SET chave_hash = md5(random()::text) WHERE id = $1', [tela1.id]);
+    await pontosRepo.sincronizarStatusPonto(pontoId);
+    assert.strictEqual(
+      await statusDoPonto(),
+      'aguardando_primeiro_sinal',
+      'provisionada sem sinal: aguardando primeiro sinal',
+    );
 
     await deuSinal(tela1.id);
     assert.strictEqual(await statusDoPonto(), 'em_operacao', 'primeiro sinal de uma tela ativa: "Ativo"');
@@ -173,7 +182,10 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     await dispositivosRepo.deletar(tela1.id);
     assert.strictEqual(await statusDoPonto(), 'em_operacao', 'apagar a tela inativa não mexe — a outra segue ativa');
     const tela3 = await dispositivosRepo.criar(pontoId, {});
-    assert.strictEqual(tela3.nome, 'Tela 3', 'número nunca é reaproveitado (Tela 1 apagada não libera o 1)');
+    assert.strictEqual(tela3.nome, 'Tela 1', 'menor número livre: a Tela 1 apagada libera o 1 (migration 088)');
+    const tela4 = await dispositivosRepo.criar(pontoId, {});
+    assert.strictEqual(tela4.nome, 'Tela 3', 'com 1 e 2 ocupados, a próxima é a 3');
+    await dispositivosRepo.deletar(tela4.id);
 
     await dispositivosRepo.deletar(tela2.id);
     await dispositivosRepo.deletar(tela3.id);

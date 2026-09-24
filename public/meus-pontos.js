@@ -2,7 +2,7 @@
 // lugares que mostravam o mesmo comércio: "Meu ponto" (cards de endereço),
 // "Minhas telas" (telas soltas) e "Meus endereços" (pedidos em análise). Agora
 // é UM card por estabelecimento, com o ciclo inteiro:
-//   Em análise → Aguardando instalação → Ativo (ou Em manutenção / Inativo)
+//   Em análise → Aguardando instalação → Aguardando primeiro sinal → Ativo (ou Em reparo / Inativo)
 // e as telas dentro do ponto a que pertencem.
 //
 // Uso: montarMeusPontos({ obterConta }) — `obterConta()` devolve a conta já
@@ -16,14 +16,17 @@
   const ETAPAS = [
     ['em_analise', 'Em análise'],
     ['aguardando_instalacao', 'Aguardando instalação'],
+    ['aguardando_primeiro_sinal', 'Aguardando primeiro sinal'],
     ['ativo', 'Ativo'],
   ];
   const EXPLICACAO = {
     em_analise: (e) =>
       `Pedido enviado em ${window.dataBR(e.desde)}. A gente confere e chama no WhatsApp pra combinar a visita.`,
     aguardando_instalacao: () => 'Pedido aprovado. A instalação da tela está sendo combinada com você.',
+    aguardando_primeiro_sinal: () =>
+      'A tela foi preparada e ainda não se conectou. Assim que ligar, o ponto fica ativo.',
     ativo: () => '',
-    em_manutencao: () => 'A tela deste ponto está em manutenção. A equipe Mostraí está cuidando disso.',
+    em_manutencao: () => 'A tela deste ponto está em reparo. A equipe Mostraí está cuidando disso.',
     inativo: () => 'As telas deste ponto estão desligadas. Se isso não era esperado, fale com a gente.',
   };
 
@@ -48,14 +51,16 @@
     return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Sem foto')}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
   }
 
-  // As três etapas do caminho normal. Manutenção e inativo são desvios do
-  // "Ativo" (o ponto já foi instalado), então marcam a terceira etapa com o
-  // nome do desvio em vez de inventar uma quarta.
+  // As quatro etapas do caminho normal. Reparo e inativo são desvios do
+  // "Ativo" (o ponto já foi instalado), então marcam a última etapa com o
+  // nome do desvio em vez de inventar uma quinta.
   function htmlEtapas(estado) {
-    const atual = estado === 'em_manutencao' || estado === 'inativo' ? 2 : ETAPAS.findIndex(([e]) => e === estado);
+    const ultima = ETAPAS.length - 1;
+    const atual = estado === 'em_manutencao' || estado === 'inativo' ? ultima : ETAPAS.findIndex(([e]) => e === estado);
     return `<ol class="estab-etapas" aria-label="Andamento">${ETAPAS.map(([, rotulo], i) => {
       const classe = i < atual ? 'feita' : i === atual ? 'atual' : '';
-      const texto = i === 2 && atual === 2 && estado !== 'ativo' ? window.ROTULOS.estabelecimento[estado] : rotulo;
+      const texto =
+        i === ultima && atual === ultima && estado !== 'ativo' ? window.ROTULOS.estabelecimento[estado] : rotulo;
       return `<li class="${classe}"${i === atual ? ' aria-current="step"' : ''}>${esc(texto)}</li>`;
     }).join('')}</ol>`;
   }

@@ -21,8 +21,10 @@ const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
+const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
+const { removerAvatar } = require('../lib/avatar');
 const eventos = require('../lib/eventos');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
@@ -78,63 +80,8 @@ const upload = multer({
 //   - aberto: cria conta de ANUNCIANTE (único papel com cadastro público);
 //   - por convite (?convite=token no corpo): a conta nasce com os papéis que o
 //     dono pôs no link — ponto e vendedor só entram assim (CONSTRAINTS.md).
-// Ponto que nasce de uma candidatura aprovada: endereço e contato vêm dela.
-// Sem modalidade de comodato nem repasse desde 24/09/2026 (ADR-016) — o
-// ponto passa a gerar créditos quando ganhar tela ativa (creditos/ponto.js).
-async function criarPontoDaCandidatura(cand, conta, db) {
-  const ponto = await pontosRepo.criar(
-    {
-      nome: cand.nome_comercio || conta.nome_empresa,
-      endereco: cand.endereco,
-      logradouro: cand.logradouro,
-      numero: cand.numero,
-      bairro: cand.bairro,
-      complemento: cand.complemento,
-      cidade: cand.cidade || 'Matão',
-      uf: cand.uf || 'SP',
-      cep: cand.cep || '',
-      segmento: cand.segmento || 'outro',
-      // Mesma correção de src/conta/modos.js#liberarPapelNaConta: a categoria
-      // é da CONTA (quem cede a parede), candidatura nunca teve essas
-      // colunas. Sem isso a regra de bloqueio de concorrente
-      // (src/playlist/gerador.js:112) ficava inoperante em todo ponto criado
-      // por este caminho.
-      categoria_id: conta.categoria_id || null,
-      categoria_livre: conta.categoria_livre || null,
-      responsavel_nome: cand.nome,
-      responsavel_contato: cand.contato_telefone,
-      fluxo_estimado_mensal: cand.fluxo_estimado_mensal,
-      // Horário/foto/observações não eram copiados aqui (achado na rodada de
-      // candidatura canônica, 22/09/2026) — este é o caminho de quem aceita
-      // um convite virando conta nova, `liberarPapelNaConta` é o de conta já
-      // existente; os dois têm que copiar os mesmos dados da candidatura.
-      horario_semanal: cand.horario_semanal || null,
-      foto_instalacao_url: cand.foto_fachada_url || null,
-      observacoes: cand.mensagem || null,
-      anunciante_id: conta.id,
-      // Vínculo candidatura → ponto (migration 080): sem ele, "Meus pontos"
-      // não sabe que o pedido já virou ponto, e o índice único não protege
-      // este caminho contra materializar a mesma candidatura duas vezes.
-      candidatura_id: cand.id,
-      // Sem `status`: nasce sem tela nenhuma (default da coluna é
-      // 'a_instalar'), e o status automático (migration 069) lê 0
-      // dispositivos exatamente como "aguardando instalação". Criar aqui uma
-      // "Tela 1" vazia, como antes desta rodada, fazia esse ponto nascer com
-      // 1 dispositivo 'inativo' e o status virava "Inativo" — errado pra
-      // quem nunca teve tela nenhuma (mesma correção de
-      // src/conta/modos.js#liberarPapelNaConta).
-      aceitou_termos_em: new Date(),
-    },
-    db,
-  );
-  // Cupom de indicação do ponto (migration 062) — mesmo ato de criar o
-  // ponto, não uma rotina à parte (ver liberarPapelNaConta em
-  // src/conta/modos.js, que segue essa mesma regra pro caminho de conta já
-  // existente). Sem guarda de existência aqui: conta acabou de nascer, não
-  // tem como já ter cupom.
-  await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
-  return ponto;
-}
+// Ponto que nasce de uma candidatura aprovada: endereço e contato vêm dela
+// (src/pontos/materializar.js — a mesma função da liberação pelo admin).
 
 router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const {
@@ -288,7 +235,7 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       if (papeis.includes('ponto') && convite.candidatura_id) {
         const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id);
         if (cand && cand.tipo === 'ponto') {
-          await criarPontoDaCandidatura(cand, anunciante, cliente);
+          await materializarPontoDaCandidatura(cand, anunciante, cliente);
         }
       }
       await cliente.query('COMMIT');
@@ -379,7 +326,11 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
     }
   }
 
-  await repo.atualizar(req.session.anuncianteId, { excluido_em: new Date() });
+  // A foto de perfil sai do bucket público na hora (era pública pela URL
+  // antiga mesmo depois da exclusão). O resto dos dados pessoais sai na
+  // anonimização automática depois de 60 dias (src/titular/repository.js).
+  await repo.atualizar(req.session.anuncianteId, { excluido_em: new Date(), foto_url: null });
+  await removerAvatar(req.session.anuncianteId);
   if (conta) {
     eventos.registrar(
       'conta:exclusao_pede',
@@ -524,10 +475,10 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
-      WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
+      WHERE p.status = ANY($2::text[])
       GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
       ORDER BY p.status DESC, p.nome`,
-    [conta.id],
+    [conta.id, pontosRepo.STATUS_NA_REDE],
   );
 
   // A conta do bônus é a MESMA do gerador da playlist, com as mesmas funções:
@@ -608,10 +559,10 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
   // não veicula o tempo dele volta pros pontos no ar. O que continua
   // recusado é ponto que não existe (ou `inativo`).
   if (pedidos.length) {
-    const { rows } = await pool.query(
-      `SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status IN ('em_operacao', 'a_instalar', 'em_reparo')`,
-      [pedidos],
-    );
+    const { rows } = await pool.query(`SELECT id FROM pontos WHERE id = ANY($1::int[]) AND status = ANY($2::text[])`, [
+      pedidos,
+      pontosRepo.STATUS_NA_REDE,
+    ]);
     if (rows.length !== pedidos.length) {
       return res.status(400).json({ erro: 'um dos pontos escolhidos não existe na rede' });
     }
@@ -1424,8 +1375,43 @@ router.post('/admin/anunciantes', async (req, res) => {
   res.status(201).json({ ...anunciante, senhaGerada });
 });
 
+// O que o admin edita numa conta (consolidação, 24/09/2026). Antes o corpo
+// ia inteiro pra allowlist genérica do repository — que também aceita
+// `plano_id`, `plano_cortesia`, `papeis`, `conta_propria`, `excluido_em`,
+// `email_confirmado`: um PATCH forjado concedia plano sem passar por
+// nenhuma regra (conceder plano está aposentado; plano vem do pagamento ou
+// do benefício por créditos). Aqui só o que tem tela: suspensão, parceiro,
+// dados cadastrais e a frequência da conta própria.
+const CAMPOS_ADMIN_EDITA = [
+  'nome_empresa',
+  'cpf_cnpj',
+  'contato_email',
+  'contato_telefone',
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
+  'cidade',
+  'uf',
+  'cep',
+  'categoria_id',
+  'categoria_livre',
+  'responsavel_nome',
+  'responsavel_cpf',
+  'responsavel_email',
+  'responsavel_telefone',
+  'status',
+  'parceiro_desconto_percentual',
+  'parceiro_compromisso_minimo',
+  'suspenso',
+  'frequencia_hora_propria',
+];
 router.patch('/admin/anunciantes/:id', async (req, res) => {
   try {
+    const recusados = Object.keys(req.body || {}).filter((c) => !CAMPOS_ADMIN_EDITA.includes(c));
+    if (recusados.length) {
+      return res.status(400).json({ erro: `campo não editável por aqui: ${recusados.join(', ')}` });
+    }
     const antes = await repo.buscarPorId(req.params.id);
     const anunciante = await repo.atualizar(req.params.id, req.body);
     if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });

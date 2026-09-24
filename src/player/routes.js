@@ -50,7 +50,7 @@ router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, re
   if (typeof token !== 'string' || !token.trim() || token.length > 200) {
     return res.status(400).json({ erro: 'tokenProvisionamento obrigatório' });
   }
-  const r = await dispositivosRepo.trocarToken(token, credencial);
+  const r = await dispositivosRepo.trocarToken(token);
   // Inválido, expirado, cancelado ou já usado: 401 (nunca 404, que para o
   // Player significa "backend V1"; nunca fallback para outra credencial).
   if (!r) return res.status(401).json({ erro: 'token de provisionamento inválido, expirado ou já usado' });
@@ -58,7 +58,7 @@ router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, re
   if (r.novo) {
     // Reprovisionar devolve a credencial a uma tela que pode ter sido
     // revogada: o status do ponto volta a considerá-la.
-    const tela = await dispositivosRepo.buscarComPonto(r.telaId);
+    const tela = await dispositivosRepo.buscarLinha(r.telaId);
     if (tela) {
       await sincronizarStatusPonto(tela.ponto_id);
       avisarMudanca(tela, { transicao: true });

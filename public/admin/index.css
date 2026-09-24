@@ -2387,6 +2387,17 @@ details.ficha-bloco[open] > summary {
 .ficha-subbloco .acoes {
   margin-top: var(--e-3);
 }
+.pin-mascara {
+  font-family: var(--mono, ui-monospace, monospace);
+  letter-spacing: 0.2em;
+  font-size: 1.05rem;
+}
+#playerConfigJson {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  resize: vertical;
+}
 .ficha-avancado {
   margin-top: var(--e-5);
   font-size: 0.86rem;

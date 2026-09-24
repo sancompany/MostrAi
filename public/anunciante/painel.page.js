@@ -270,7 +270,7 @@ async function carregarPontos() {
   // busca do Google Maps que a vitrine pública já usa em pontos.page.js.
   lista.innerHTML = dados.pontos
     .map((p) => {
-      const instalando = p.status === 'a_instalar';
+      const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
       // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
       // ainda. Bloquear ele por ocupação seria bloquear por um zero que
       // significa "ainda não existe", não "tem espaço de sobra".

@@ -59,6 +59,7 @@ const ORIGENS = planoAdministrativo.ORIGENS_DO_DIREITO;
 
 const STATUS_DO_PONTO = {
   a_instalar: 'Aguardando instalação',
+  aguardando_primeiro_sinal: 'Aguardando primeiro sinal',
   em_operacao: 'Ativo',
   em_reparo: 'Em reparo',
   inativo: 'Inativo',

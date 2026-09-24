@@ -125,20 +125,20 @@ const topo = await admin.textContent('.tela-ficha-topo');
 check('Tela 1 criada Ativa + Aguardando primeiro sinal', /Tela 1[\s\S]*Ativa[\s\S]*Aguardando primeiro sinal/.test(topo), topo);
 const telaId = Number(admin.url().split('/').pop());
 
-console.log('== Preparar instalação → arquivo ==');
-const [download] = await Promise.all([admin.waitForEvent('download'), admin.click('[data-acao="provisionar"]')]);
+console.log('== Preparar Player → JSON uma vez + download ==');
+const [download] = await Promise.all([admin.waitForEvent('download'), admin.click('[data-acao="preparar"]')]);
 check('arquivo se chama mostrai-config.json', download.suggestedFilename() === 'mostrai-config.json');
 const arquivo = JSON.parse(readFileSync(await download.path(), 'utf8'));
-check('arquivo tem baseUrl, token e rotação — e nada de chave', !!arquivo.baseUrl && /^tok_/.test(arquivo.tokenProvisionamento) && arquivo.rotacaoTela === 0 && !('chaveAparelho' in arquivo));
-check('modal mostra o token só abreviado', !(await admin.textContent('dialog[open]')).includes(arquivo.tokenProvisionamento));
+check('arquivo tem dispositivoId (5 dígitos), chaveAparelho, baseUrl e rotação', /^[1-9]\d{4}$/.test(arquivo.dispositivoId) && arquivo.chaveAparelho?.length > 30 && !!arquivo.baseUrl && arquivo.rotacaoTela === 0);
+check('modal mostra o mesmo JSON (copiar)', (await admin.inputValue('dialog[open] #playerConfigJson')).includes(arquivo.chaveAparelho));
 await admin.click('dialog[open] [data-fechar]');
 await admin.waitForTimeout(300);
-check('ficha: provisionamento aguardando instalação', (await admin.textContent('.tela-ficha')).includes('Aguardando instalação'));
+const fichaPreparada = await admin.textContent('.tela-ficha');
+check('ficha: dispositivoId aparece, chave nunca', fichaPreparada.includes(arquivo.dispositivoId) && !fichaPreparada.includes(arquivo.chaveAparelho));
+check('ponto: aguardando primeiro sinal', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'aguardando_primeiro_sinal');
 
-console.log('== Player provisiona + hello → primeiro sinal sem F5 ==');
-const prov = await chamar('POST', '/player/provisionar', { tokenProvisionamento: arquivo.tokenProvisionamento }, null);
-credencial = await prov.json();
-check('provisionar devolve dispositivoId e chaveAparelho', prov.status === 200 && /^tela_/.test(credencial.dispositivoId) && credencial.chaveAparelho?.length > 30);
+console.log('== Player usa a credencial direta + hello → primeiro sinal sem F5 ==');
+credencial = { dispositivoId: arquivo.dispositivoId, chaveAparelho: arquivo.chaveAparelho };
 const hello = await chamar('POST', `/player/${credencial.dispositivoId}/hello`, {
   contrato: 2,
   versaoApp: '1.0.0',
@@ -158,8 +158,8 @@ await admin.waitForFunction(() => /Operando/.test(document.querySelector('.tela-
 });
 const ficha = await admin.textContent('.tela-ficha');
 check('Operando sem F5', /Operando/.test(ficha));
-check('versão/build do Player aparecem', /1\.0\.0/.test(ficha) && /Build do Player[\s\S]*2/.test(ficha));
-check('ID do dispositivo aparece rotulado', ficha.includes(credencial.dispositivoId) && ficha.includes('ID do dispositivo'));
+check('versão/build do Player aparecem', /1\.0\.0/.test(ficha) && /build 2/.test(ficha));
+check('dispositivoId aparece rotulado', ficha.includes(credencial.dispositivoId) && /ID do dispositivo/i.test(ficha));
 check('chave do aparelho NUNCA aparece', !ficha.includes(credencial.chaveAparelho));
 check('fingerprint aparece', /Fingerprint[\s\S]*…[0-9A-F]{6}/.test(ficha));
 
@@ -177,7 +177,7 @@ await admin.click('dialog[open] button[type=submit]');
 await admin.waitForFunction(() => /Sincronizando|Pendente/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, {
   timeout: 8000,
 });
-check('área segura editada → versão desejada sobe, situação sincronizando', /Versão desejada[\s\S]*v2/.test(await admin.textContent('.tela-ficha')));
+check('área segura editada → versão desejada sobe, situação sincronizando', /desejada v2/.test(await admin.textContent('.tela-ficha')));
 const cfg = await (await chamar('GET', `/player/${credencial.dispositivoId}/config`)).json();
 check('GET /config entrega a margem nova e o horário', cfg.configVersion === 2 && cfg.margens.superior === 2.5 && cfg.operacao.regime === 'FOLLOW_POINT');
 await heartbeat({ configVersionAplicada: 2 });
@@ -209,7 +209,7 @@ check('erro resolvido → Operando de novo', true);
 await admin.click('[data-bloco="historico"] summary');
 await admin.waitForSelector('.tela-historico');
 const hist = await admin.textContent('.tela-historico');
-check('histórico com transições (provisionou, primeiro sinal, erro, resolvido, config)', /Player provisionado/.test(hist) && /Primeiro sinal/.test(hist) && /Erro do player/.test(hist) && /Erro resolvido/.test(hist) && /Configuração aplicada/.test(hist));
+check('histórico com transições (provisionou, primeiro sinal, erro, resolvido, config)', /Player preparado/.test(hist) && /Primeiro sinal/.test(hist) && /Erro do player/.test(hist) && /Erro resolvido/.test(hist) && /Configuração aplicada/.test(hist));
 check('histórico sem uma linha por heartbeat', (await admin.locator('.tela-historico li').count()) < 15);
 await admin.screenshot({ path: `${SAIDA}player-v2-ficha-tela.png`, fullPage: true });
 
@@ -262,17 +262,15 @@ check('dono não vê nada técnico', !/tela_[0-9a-f]|dispositivoId|Fingerprint|c
 const apiDono = await (await dono.request.get(`${B}/anunciantes/me/meus-pontos`)).text();
 check('API do dono sem dado técnico', !/tela_[0-9a-f]{20}|chave|fingerprint|player_|hash|fila_|contrato/i.test(apiDono));
 
-console.log('== V1 continua (player web, ID numérico, chave legada) ==');
-const linkResp = await admin.request.post(`${B}/admin/dispositivos/${telaId}/chave-legada`);
-const { link } = await linkResp.json();
-const chaveV1 = new URL(link).searchParams.get('chave');
-const v1 = { 'X-Aparelho-Id': chaveV1, 'Content-Type': 'application/json' };
-const plV1 = await fetch(`${B}/playlist/${telaId}`, { headers: v1 });
-check('playlist V1 (array) pelo ID numérico', plV1.status === 200 && Array.isArray(await plV1.json()));
-const hbV1 = await fetch(`${B}/player/${telaId}/heartbeat`, { method: 'POST', headers: v1, body: '{}' });
+console.log('== fluxo antigo de chave aposentado; V1 em campo continua pelo ID numérico ==');
+check('chave-legada responde 410', (await admin.request.post(`${B}/admin/dispositivos/${telaId}/chave-legada`)).status() === 410);
+const v1 = { 'X-Aparelho-Id': credencial.chaveAparelho, 'Content-Type': 'application/json' };
+const plV1 = await fetch(`${B}/playlist/${credencial.dispositivoId}`, { headers: v1 });
+check('playlist V1 (array) sem X-Player-Contract', plV1.status === 200 && Array.isArray(await plV1.json()));
+const hbV1 = await fetch(`${B}/player/${credencial.dispositivoId}/heartbeat`, { method: 'POST', headers: v1, body: '{}' });
 const hbV1j = await hbV1.json();
 check('heartbeat V1 vazio: 200 com margens, sem campos V2', hbV1.status === 200 && hbV1j.margens && !('configVersion' in hbV1j));
-check('chave V2 antiga caiu com a chave legada nova', (await heartbeat({}, credencial.chaveAparelho)).status === 401);
+check('PK numérica não autentica a tela que tem dispositivoId', (await fetch(`${B}/playlist/${telaId}`, { headers: v1 })).status === 401);
 
 check('console limpo', erros.length === 0, erros.join(' | '));
 check('sem 5xx', ruins.length === 0, ruins.join(' | '));

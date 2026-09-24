@@ -587,12 +587,14 @@ function turbinarCards(caixa, seletorItem, substantivo = 'ponto') {
 // Ninguém edita isso à mão em lugar nenhum do admin.
 const PONTO_STATUS = {
   a_instalar: 'Aguardando instalação',
+  aguardando_primeiro_sinal: 'Aguardando primeiro sinal',
   em_operacao: 'Ativo',
   em_reparo: 'Em reparo',
   inativo: 'Inativo',
 };
 const PONTO_STATUS_CLASSE = {
   a_instalar: 'badge-pendente',
+  aguardando_primeiro_sinal: 'badge-pendente',
   em_operacao: 'badge-ok',
   em_reparo: 'badge-info',
   inativo: 'badge-err',
@@ -1246,6 +1248,7 @@ function _barrasHorizontais(linhas, mapa, paraAba = null) {
 // Plural do status pra contagem ("2 ativos", não "2 ativo").
 const PONTO_STATUS_PLURAL = {
   a_instalar: ['aguardando instalação', 'aguardando instalação'],
+  aguardando_primeiro_sinal: ['aguardando primeiro sinal', 'aguardando primeiro sinal'],
   em_operacao: ['ativo', 'ativos'],
   em_reparo: ['em reparo', 'em reparo'],
   inativo: ['inativo', 'inativos'],
@@ -2763,7 +2766,9 @@ const EVENTO_TELA = {
   SCREEN_CREATED: 'Tela criada',
   PROVISIONING_PREPARED: 'Arquivo de instalação gerado',
   PROVISIONING_CANCELLED: 'Provisionamento cancelado',
-  PLAYER_PROVISIONED: 'Player provisionado',
+  PLAYER_PROVISIONED: 'Player provisionado (token)',
+  PLAYER_PREPARED: 'Player preparado',
+  PIN_REVEALED: 'PIN de manutenção mostrado no admin',
   FIRST_SEEN: 'Primeiro sinal',
   OFFLINE: 'Ficou sem sinal',
   ONLINE: 'Voltou a dar sinal',
@@ -2774,7 +2779,7 @@ const EVENTO_TELA = {
   CREDENTIAL_ROTATION_CANCELLED: 'Rotação de credencial cancelada',
   CREDENTIAL_ROTATED: 'Credencial rotacionada',
   CREDENTIAL_REVOKED: 'Player revogado',
-  CREDENTIAL_LEGACY_ISSUED: 'Chave do player web (V1) gerada',
+  CREDENTIAL_LEGACY_ISSUED: 'Chave V1 gerada (fluxo antigo)',
   UPDATE_STARTED: 'Atualização: download começou',
   UPDATE_READY: 'Atualização baixada',
   UPDATE_FAILED: 'Atualização falhou',
@@ -2957,7 +2962,7 @@ function montarPontoCard(p, telas) {
 function resumoDaRede(pontos, telas) {
   const operando = telas.filter((t) => t.saude === 'operando').length;
   const problema = telas.filter((t) => t.alertas.some((a) => a.nivel === 'alerta')).length;
-  const aguardando = pontos.filter((p) => p.status === 'a_instalar').length;
+  const aguardando = pontos.filter((p) => p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal').length;
   const item = (valor, rotulo, classe = '') =>
     `<div class="rede-resumo-item ${classe}"><b>${num(valor)}</b><span>${rotulo}</span></div>`;
   return `<div class="rede-resumo" aria-label="Resumo da rede">
@@ -3194,6 +3199,12 @@ function abrirNovaTela(ponto) {
 }
 
 // ---------- ficha da tela ----------
+// Estrutura canônica (consolidação, 24/09/2026): PLAYER / CONEXÃO / PIN DE
+// MANUTENÇÃO / OPERAÇÃO / ÁREA SEGURA / DIAGNÓSTICO (colapsado) / HISTÓRICO
+// (colapsado). Identidade operacional é o dispositivoId (5 dígitos); a PK
+// interna da tela e do ponto não aparecem. A chave do aparelho e o token
+// nunca aparecem — só o fingerprint. O PIN aparece mascarado, com o olho
+// (revelação auditada no histórico) e o "Trocar".
 async function renderTelaFicha(el, pontoId, telaId) {
   async function montar() {
     const r = await api(`/admin/dispositivos/${telaId}`);
@@ -3222,12 +3233,14 @@ async function renderTelaFicha(el, pontoId, telaId) {
           </div>
           <div class="acoes">${acoesPrincipais(t)}</div>
         </header>
+        ${blocoPlayer(t)}
+        ${blocoConexao(t)}
+        ${blocoPin(t)}
         ${blocoOperacao(t)}
-        ${blocoConfiguracao(t)}
-        ${blocoIdentidade(t)}
+        ${blocoAreaSegura(t)}
         ${blocoDiagnostico(t, diagnosticoAberto)}
         <details class="panel ficha-bloco" data-bloco="historico" ${historicoAberto ? 'open' : ''}>
-          <summary><h4>5. Histórico</h4><span class="u-dim">transições relevantes, nunca cada heartbeat</span></summary>
+          <summary><h4>Histórico</h4><span class="u-dim">transições relevantes, nunca cada heartbeat</span></summary>
           <div data-historico></div>
         </details>
         <footer class="tela-ficha-pe">
@@ -3251,31 +3264,38 @@ const TEXTO_ALERTA = {
   UPDATE_OBRIGATORIO_ATRASADO: 'Atualização obrigatória atrasada',
 };
 
+// Sem Player: o botão fica no topo, uma vez só. Com Player, "Reprovisionar"
+// mora no bloco CONEXÃO.
 function acoesPrincipais(t) {
-  const cred = t.identidade.credencial;
-  const prov = t.identidade.provisionamento;
-  if (cred.estado !== 'ativa' && prov?.estado !== 'aguardando_instalacao') {
-    return '<button class="btn primary mini" data-acao="provisionar">Preparar instalação</button>';
+  if (t.identidade.credencial.estado !== 'ativa') {
+    return '<button class="btn primary mini" data-acao="preparar">Preparar Player</button>';
   }
   return '';
 }
 
-function blocoOperacao(t) {
+function blocoPlayer(t) {
+  const id = t.identidade;
   const o = t.operacao;
-  const v2 = Number(t.identidade.contrato) >= 2;
-  const operacao = `${esc(MODO_OPERACAO[t.configuracao.modoHorario] || '')}${t.configuracao.horarioResumo ? `<span class="dado-sub">${esc(t.configuracao.horarioResumo)}</span>` : ''}<span class="dado-sub">${o.deveriaOperarAgora ? 'Deveria estar operando agora' : 'Fora do horário agora'}</span>`;
+  const v2 = Number(id.contrato) >= 2;
   return `<section class="panel ficha-bloco">
-    <h4>1. Operação</h4>
+    <h4>Player</h4>
     <dl class="dados dados-3">
       ${linhaDado(
-        'Estado administrativo',
-        `${selectStatus(TELA_STATUS, t.status, 'data-campo="status" aria-label="Estado administrativo"')}`,
-        'Definido por você. Nunca muda sozinho.',
+        'ID do dispositivo (dispositivoId)',
+        id.dispositivoId
+          ? `<code class="id-copiavel">${esc(id.dispositivoId)}</code> <button type="button" class="btn ghost mini" data-copiar="${esc(id.dispositivoId)}" aria-label="Copiar ID do dispositivo">Copiar</button>`
+          : id.credencial.estado === 'ativa'
+            ? `${naoInformado('Player V1')}<span class="dado-sub">TV antiga: identifica-se pelo registro da tela</span>`
+            : naoInformado('Gerado no "Preparar Player"'),
+        'Identidade pública do aparelho nas APIs. Não é segredo.',
       )}
+      ${linhaDado('Versão do Player', id.versao ? `${esc(id.versao)}${id.build ? `<span class="dado-sub">build ${id.build}</span>` : ''}` : naoInformado('Nunca informou'))}
+      ${linhaDado('Contrato', id.contrato ? `V${id.contrato}` : naoInformado('Nunca informado'), 'Protocolo que o Player fala com o servidor.')}
       ${linhaDado('Saúde operacional', t.status === 'ativo' ? badge(SAUDE_TELA[t.saude]) : naoInformado('Não avaliada fora de "Ativa"'), 'Calculada pelo servidor a partir do último sinal e do horário.')}
-      ${linhaDado('Operação', operacao)}
       ${linhaDado('Primeiro sinal', o.primeiroSinalEm ? esc(dataHora(o.primeiroSinalEm)) : naoInformado('Nunca recebido'))}
       ${linhaDado('Último sinal', quando(o.ultimoSinalEm))}
+      ${v2 ? linhaDado('Estado do Player', o.playerEstado ? esc(PLAYER_ESTADO[o.playerEstado] || o.playerEstado) : naoInformado()) : ''}
+      ${v2 && o.criativoAtual ? linhaDado('Mídia no ar', o.midiaNoAr ? esc(o.midiaNoAr) : naoInformado('Peça não identificada')) : ''}
       ${
         v2
           ? linhaDado(
@@ -3289,129 +3309,113 @@ function blocoOperacao(t) {
               'Registrada pelo servidor.',
             )
       }
-      ${v2 ? linhaDado('Estado do Player', o.playerEstado ? esc(PLAYER_ESTADO[o.playerEstado] || o.playerEstado) : naoInformado()) : ''}
-      ${v2 && o.criativoAtual ? linhaDado('Mídia no ar', `Criativo #${esc(o.criativoAtual)}`) : ''}
       ${linhaDado('Última reprodução confirmada', o.ultimaConfirmacaoEm ? quando(o.ultimaConfirmacaoEm) : naoInformado('Nenhuma ainda'))}
     </dl>
   </section>`;
 }
 
-function blocoConfiguracao(t) {
-  const c = t.configuracao;
-  const v2 = c.situacao !== 'indisponivel';
-  const m = c.margens;
-  const cfg = CONFIG_SITUACAO[c.situacao];
-  const linha = (rotulo, valor, acao, ajuda = '') =>
-    `<div class="config-linha"><dt>${rotulo}${ajuda ? `<span class="dado-ajuda">${ajuda}</span>` : ''}</dt><dd>${valor}</dd>${acao ? `<dd class="config-acao"><button class="btn ghost mini" data-acao="${acao}">${acao === 'pin' ? (c.pin.configurado ? 'Alterar' : 'Definir') : 'Editar'}</button></dd>` : '<dd></dd>'}</div>`;
-  return `<section class="panel ficha-bloco">
-    <h4>2. Configuração</h4>
-    ${
-      v2
-        ? `<dl class="dados dados-3 config-versoes">
-            ${linhaDado('Versão desejada', `v${c.desejada}`, 'O que o servidor quer que a tela use.')}
-            ${linhaDado('Versão aplicada', c.aplicada ? `v${c.aplicada}${c.aplicadaEm ? `<span class="dado-sub">${esc(tempoDesde(c.aplicadaEm))}</span>` : ''}` : naoInformado('Nenhuma ainda'), 'O que o Player confirmou no heartbeat.')}
-            ${linhaDado('Situação', badge(cfg))}
-          </dl>`
-        : `<p class="u-dim u-fs-85">Config versionada não disponível neste Player (contrato V1): margens chegam pelo heartbeat, o resto só vale para o Player V2.</p>`
-    }
-    <dl class="config-lista">
-      ${linha('Operação', `${esc(MODO_OPERACAO[c.modoHorario])}${c.horarioResumo ? `<span class="dado-sub">${esc(c.horarioResumo)}</span>` : ''}`, 'operacao')}
-      ${linha('Fuso horário', esc(c.timezone), 'operacao')}
-      ${linha('Rotação da imagem', `${c.rotacao}°`, 'rotacao')}
-      ${linha('Área segura', `Superior ${vmin(m.superior)} · Direita ${vmin(m.direita)} · Inferior ${vmin(m.inferior)} · Esquerda ${vmin(m.esquerda)} <span class="u-dim">vmin</span>`, 'area', 'Parte da tela coberta pela moldura; a mídia encolhe pra dentro dela.')}
-      ${linha('PIN de manutenção do Player', c.pin.configurado ? `Configurado<span class="dado-sub">alterado ${esc(tempoDesde(c.pin.alteradoEm))}</span>` : c.pin.soPlayerWeb ? 'Só no player web (V1)<span class="dado-sub">redefina para enviar ao Player V2</span>' : naoInformado('Não configurado'), 'pin', 'Abre o painel de manutenção na própria TV. Nunca exibido aqui.')}
-      ${linha('Atualização do Player', `${c.update.baixarAutomaticamente ? 'Baixa sozinho' : 'Só baixa quando liberado'}<span class="dado-sub">depois de um "cancelar" no controle, tenta de novo em ${c.update.horasEntreTentativas} h</span>`, 'update')}
-    </dl>
-  </section>`;
-}
-
-function blocoIdentidade(t) {
-  const id = t.identidade;
-  const cred = id.credencial;
-  const prov = id.provisionamento;
+function blocoConexao(t) {
+  const cred = t.identidade.credencial;
+  const prov = t.identidade.provisionamento;
   const ESTADO_CRED = {
     ativa: { rotulo: 'Ativa', classe: 'badge-ok' },
     revogada: { rotulo: 'Revogada', classe: 'badge-err' },
     sem_credencial: { rotulo: 'Sem credencial', classe: 'badge-neutro' },
   };
-  const ESTADO_PROV = {
-    aguardando_instalacao: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
-    usado: { rotulo: 'Usado na instalação', classe: 'badge-ok' },
-    cancelado: { rotulo: 'Cancelado', classe: 'badge-neutro' },
-    expirado: { rotulo: 'Expirado', classe: 'badge-neutro' },
-  };
   const rotacao = cred.nova
     ? `Nova credencial …${esc(cred.nova.fingerprint)} aguardando confirmação<span class="dado-sub">pedida ${esc(tempoDesde(cred.nova.criadaEm))} — vai no próximo heartbeat e vale quando o Player usar</span>`
     : 'Não programada';
-  const acoesCred = [];
+  const acoes = [];
+  if (cred.estado === 'ativa') acoes.push('<button class="btn ghost mini" data-acao="preparar">Reprovisionar</button>');
   if (cred.rotacionavel && !cred.nova)
-    acoesCred.push('<button class="btn ghost mini" data-acao="rotacionar">Rotacionar credencial</button>');
-  if (cred.nova)
-    acoesCred.push('<button class="btn ghost mini" data-acao="cancelar-rotacao">Cancelar rotação</button>');
-  if (cred.estado === 'ativa')
-    acoesCred.push('<button class="btn perigo-sutil mini" data-acao="revogar">Revogar Player</button>');
-  const acoesProv = [];
-  if (prov?.estado === 'aguardando_instalacao') {
-    acoesProv.push('<button class="btn ghost mini" data-acao="provisionar">Gerar novo arquivo</button>');
-    acoesProv.push(
-      '<button class="btn ghost mini" data-acao="cancelar-provisionamento">Cancelar provisionamento</button>',
+    acoes.push('<button class="btn ghost mini" data-acao="rotacionar">Rotacionar credencial</button>');
+  if (cred.nova) acoes.push('<button class="btn ghost mini" data-acao="cancelar-rotacao">Cancelar rotação</button>');
+  if (prov?.estado === 'aguardando_instalacao')
+    acoes.push(
+      '<button class="btn ghost mini" data-acao="cancelar-provisionamento">Cancelar arquivo por token</button>',
     );
-  } else if (cred.estado === 'ativa') {
-    acoesProv.push('<button class="btn ghost mini" data-acao="provisionar">Reprovisionar</button>');
-  }
-  // Sem Player e sem arquivo pendente: "Preparar instalação" fica no topo da
-  // ficha (acoesPrincipais), uma vez só.
+  if (cred.estado === 'ativa')
+    acoes.push('<button class="btn perigo-sutil mini" data-acao="revogar">Revogar Player</button>');
   return `<section class="panel ficha-bloco">
-    <h4>3. Identidade e segurança</h4>
+    <h4>Conexão</h4>
     <dl class="dados dados-3">
-      ${linhaDado('ID da Tela', `<code>${id.telaId}</code>`, 'Registro interno desta tela no Mostraí.')}
-      ${linhaDado('ID do Ponto', `<code>${id.pontoId}</code>`, 'Estabelecimento ao qual a tela pertence.')}
-      ${linhaDado(
-        'ID do dispositivo (dispositivoId)',
-        id.dispositivoId
-          ? `<code class="id-copiavel">${esc(id.dispositivoId)}</code>`
-          : cred.estado === 'ativa'
-            ? `<code>${id.telaId}</code><span class="dado-sub">legado: o Player usa o ID da Tela</span>`
-            : naoInformado('Gerado na instalação'),
-        'Identidade que o aplicativo Player usa nas APIs.',
-      )}
-      ${linhaDado('Versão do contrato', id.contrato ? `V${id.contrato}` : naoInformado('Nunca informado'), 'Protocolo que o Player fala com o servidor.')}
-      ${linhaDado('Versão do Player', id.versao ? esc(id.versao) : naoInformado())}
-      ${linhaDado('Build do Player', id.build ? String(id.build) : naoInformado())}
-      ${linhaDado('Provisionado em', id.provisionadoEm ? esc(dataHora(id.provisionadoEm)) : naoInformado('Nunca por token'))}
+      ${linhaDado('URL da API (baseUrl)', `<code>${esc(t.conexao?.baseUrl || '')}</code>`, 'Vai no mostrai-config.json. Fonte única: o servidor.')}
+      ${linhaDado('Credencial', badge(ESTADO_CRED[cred.estado]), 'A chave do aparelho nunca é exibida — só o fingerprint.')}
+      ${linhaDado('Fingerprint', cred.fingerprint ? `<code>…${esc(cred.fingerprint)}</code>` : naoInformado('—'), 'Identificador não secreto da chave atual.')}
+      ${linhaDado('Criada em', cred.criadaEm ? esc(dataHora(cred.criadaEm)) : naoInformado(cred.estado === 'ativa' ? 'Antes do registro (chave V1)' : '—'))}
+      ${linhaDado('Última autenticação', cred.ultimoUsoEm ? esc(tempoDesde(cred.ultimoUsoEm)) : naoInformado('Nunca'))}
+      ${linhaDado('Rotação', rotacao)}
+      ${cred.anterior ? linhaDado('Credencial anterior', `Ainda aceita<span class="dado-sub">expira ${esc(dataHora(cred.anterior.expiraEm))}</span>`, 'Janela de sobreposição de 24 h.') : ''}
+      ${cred.revogadaEm ? linhaDado('Revogada em', esc(dataHora(cred.revogadaEm))) : ''}
+      ${prov?.estado === 'aguardando_instalacao' ? linhaDado('Arquivo por token', `Aguardando instalação<span class="dado-sub">expira ${esc(dataHora(prov.expiraEm))}</span>`) : ''}
     </dl>
-    <div class="ficha-subbloco">
-      <h5>Credencial do Player</h5>
-      <dl class="dados dados-3">
-        ${linhaDado('Situação', badge(ESTADO_CRED[cred.estado]))}
-        ${linhaDado('Fingerprint', cred.fingerprint ? `<code>…${esc(cred.fingerprint)}</code>` : naoInformado('—'), 'Identificador não secreto da chave atual. A chave em si nunca é exibida.')}
-        ${linhaDado('Criada em', cred.criadaEm ? esc(dataHora(cred.criadaEm)) : naoInformado(cred.estado === 'ativa' ? 'Antes do registro (chave V1)' : '—'))}
-        ${linhaDado('Última autenticação', cred.ultimoUsoEm ? esc(tempoDesde(cred.ultimoUsoEm)) : naoInformado('Nunca'))}
-        ${linhaDado('Rotação', rotacao)}
-        ${cred.anterior ? linhaDado('Credencial anterior', `Ainda aceita<span class="dado-sub">expira ${esc(dataHora(cred.anterior.expiraEm))}</span>`, 'Janela de sobreposição de 24 h.') : ''}
-        ${cred.revogadaEm ? linhaDado('Revogada em', esc(dataHora(cred.revogadaEm))) : ''}
-      </dl>
-      <div class="acoes">${acoesCred.join('')}</div>
-    </div>
-    <div class="ficha-subbloco">
-      <h5>Provisionamento</h5>
+    <div class="acoes">${acoes.join('')}</div>
+  </section>`;
+}
+
+function blocoPin(t) {
+  const pin = t.configuracao.pin;
+  const valor = pin.configurado
+    ? `<span class="pin-mascara" data-pin-valor aria-label="PIN oculto">••••</span> <button type="button" class="btn ghost mini" data-acao="pin-ver" aria-label="Mostrar PIN">Mostrar</button>`
+    : pin.soPlayerWeb
+      ? `${naoInformado('Só no player web (V1)')}<span class="dado-sub">defina um PIN de 4 dígitos para o Player receber</span>`
+      : naoInformado('Não definido');
+  return `<section class="panel ficha-bloco">
+    <h4>PIN de manutenção</h4>
+    <dl class="dados dados-3">
+      ${linhaDado('PIN', valor, 'Abre o painel de manutenção na própria TV. Exatamente 4 dígitos. Mostrar fica registrado no histórico.')}
+      ${linhaDado('Alterado em', pin.alteradoEm ? esc(dataHora(pin.alteradoEm)) : naoInformado('—'))}
+    </dl>
+    <div class="acoes"><button class="btn ghost mini" data-acao="pin">${pin.configurado ? 'Trocar PIN' : 'Definir PIN'}</button></div>
+  </section>`;
+}
+
+function blocoOperacao(t) {
+  const c = t.configuracao;
+  const o = t.operacao;
+  const v2 = c.situacao !== 'indisponivel';
+  const cfg = CONFIG_SITUACAO[c.situacao];
+  const linha = (rotulo, valor, acao, ajuda = '') =>
+    `<div class="config-linha"><dt>${rotulo}${ajuda ? `<span class="dado-ajuda">${ajuda}</span>` : ''}</dt><dd>${valor}</dd>${acao ? `<dd class="config-acao"><button class="btn ghost mini" data-acao="${acao}">Editar</button></dd>` : '<dd></dd>'}</div>`;
+  const equipamento = `${t.custoEquipamento ? `R$ ${num(t.custoEquipamento)} em ${t.mesesAmortizacao} meses` : naoInformado('Custo não informado')}${t.instaladoEm ? `<span class="dado-sub">instalada em ${esc(dataHora(t.instaladoEm))}</span>` : ''}`;
+  return `<section class="panel ficha-bloco">
+    <h4>Operação</h4>
+    <dl class="dados dados-3">
+      ${linhaDado(
+        'Estado administrativo',
+        `${selectStatus(TELA_STATUS, t.status, 'data-campo="status" aria-label="Estado administrativo"')}`,
+        'Definido por você. Nunca muda sozinho.',
+      )}
+      ${linhaDado('Agora', o.deveriaOperarAgora ? 'Deveria estar operando' : 'Fora do horário', 'Pelo horário de operação abaixo.')}
       ${
-        prov
-          ? `<dl class="dados dados-3">
-              ${linhaDado('Arquivo', badge(ESTADO_PROV[prov.estado]))}
-              ${linhaDado('Gerado em', esc(dataHora(prov.geradoEm)))}
-              ${linhaDado(prov.estado === 'usado' ? 'Usado em' : 'Expira em', esc(dataHora(prov.estado === 'usado' ? prov.usadoEm : prov.expiraEm)))}
-            </dl>`
-          : '<p class="u-dim u-fs-85">Nenhum arquivo de instalação gerado ainda.</p>'
+        v2
+          ? linhaDado(
+              'Config no Player',
+              `${badge(cfg)}<span class="dado-sub">desejada v${c.desejada} · aplicada ${c.aplicada ? `v${c.aplicada}` : 'nenhuma'}</span>`,
+              'O Player confirma a versão aplicada no heartbeat.',
+            )
+          : linhaDado('Config no Player', naoInformado('Player V1: só margens, pelo heartbeat'))
       }
-      <p class="u-dim u-fs-85">O arquivo leva um token de uso único (vale 7 dias). O token não fica guardado: perdeu o arquivo, gere outro — o anterior deixa de valer. Gerar um arquivo novo não desliga o Player atual; só a instalação com ele substitui a identidade.</p>
-      <div class="acoes">${acoesProv.join('')}</div>
-    </div>
-    <details class="ficha-avancado">
-      <summary>Player web (V1) — compatibilidade</summary>
-      <p class="u-dim u-fs-85">Só para TV que roda o player no navegador (public/player.html). Gera uma chave nova (a atual para de valer) e mostra o link uma única vez.</p>
-      <button class="btn ghost mini" data-acao="chave-legada">Gerar link do player web</button>
-    </details>
+    </dl>
+    <dl class="config-lista">
+      ${linha('Horário de operação', `${esc(MODO_OPERACAO[c.modoHorario])}${c.horarioResumo ? `<span class="dado-sub">${esc(c.horarioResumo)}</span>` : ''}`, 'operacao')}
+      ${linha('Fuso horário', esc(c.timezone), 'operacao')}
+      ${linha('Rotação da imagem', `${c.rotacao}°`, 'rotacao')}
+      ${linha('Atualização do Player', `${c.update.baixarAutomaticamente ? 'Baixa sozinho' : 'Só baixa quando liberado'}<span class="dado-sub">depois de um "cancelar" no controle, tenta de novo em ${c.update.horasEntreTentativas} h</span>`, 'update')}
+      ${linha('Equipamento', equipamento, 'equipamento', 'Alimenta a amortização da Visão geral.')}
+    </dl>
+  </section>`;
+}
+
+// Área segura: sempre visível como resumo; os quatro lados só no modal.
+function blocoAreaSegura(t) {
+  const m = t.configuracao.margens;
+  return `<section class="panel ficha-bloco">
+    <h4>Área segura</h4>
+    <dl class="dados dados-3">
+      ${linhaDado('Margens', `Superior ${vmin(m.superior)} · Direita ${vmin(m.direita)} · Inferior ${vmin(m.inferior)} · Esquerda ${vmin(m.esquerda)} <span class="u-dim">vmin</span>`, 'Parte da tela coberta pela moldura; a mídia encolhe pra dentro dela.')}
+    </dl>
+    <div class="acoes"><button class="btn ghost mini" data-acao="area">Editar área segura</button></div>
   </section>`;
 }
 
@@ -3429,8 +3433,6 @@ function blocoDiagnostico(t, aberto) {
   } else {
     const desvio = d.desvioRelogioMs;
     corpo = `<dl class="dados dados-3">
-      ${linhaDado('Player', `${esc(t.identidade.versao || '?')} · build ${t.identidade.build ?? '?'}`)}
-      ${linhaDado('Contrato', `V${t.identidade.contrato}`)}
       ${linhaDado('Fabricante / modelo', d.fabricante || d.modelo ? esc([d.fabricante, d.modelo].filter(Boolean).join(' ')) : naoInformado())}
       ${linhaDado('Android', d.android ? esc(d.android) : naoInformado())}
       ${linhaDado('Resolução', d.resolucao ? esc(d.resolucao) : naoInformado())}
@@ -3441,10 +3443,11 @@ function blocoDiagnostico(t, aberto) {
       ${linhaDado('Desvio do relógio', desvio == null ? naoInformado() : Math.abs(desvio) < 60000 ? 'Em dia' : `${desvio > 0 ? 'Adiantado' : 'Atrasado'} ${Math.round(Math.abs(desvio) / 60000)} min`, 'Relógio da TV menos o do servidor. Relógio errado desloca o horário de operação.')}
       ${linhaDado('Atualização', d.update ? `${esc(UPDATE_ESTADO[d.update.estado] || d.update.estado)}<span class="dado-sub">${esc(tempoDesde(d.update.em))}</span>` : 'Sem atualização em andamento')}
       ${linhaDado('Hello', d.helloUltimoEm ? `último ${esc(tempoDesde(d.helloUltimoEm))}<span class="dado-sub">primeiro em ${esc(dataHora(d.helloPrimeiroEm))}</span>` : naoInformado('Nunca recebido'))}
+      ${linhaDado('Provisionado em', t.identidade.provisionadoEm ? esc(dataHora(t.identidade.provisionadoEm)) : naoInformado('—'))}
     </dl>`;
   }
   return `<details class="panel ficha-bloco" data-bloco="diagnostico" ${aberto ? 'open' : ''}>
-    <summary><h4>4. Diagnóstico</h4><span class="u-dim">informações técnicas do Player e do aparelho</span></summary>
+    <summary><h4>Diagnóstico</h4><span class="u-dim">informações técnicas do Player e do aparelho</span></summary>
     ${corpo}
   </details>`;
 }
@@ -3458,11 +3461,12 @@ async function carregarHistorico(el, telaId) {
         .map((e) => {
           const d = e.detalhe || {};
           const extra =
-            d.codigo || d.versao || d.fingerprint || d.paraBuild || d.para
+            d.codigo || d.versao || d.fingerprint || d.paraBuild || d.para || d.dispositivoId
               ? ` <span class="u-dim">${esc(
                   [
                     d.codigo,
                     d.versao ? `v${d.versao}` : '',
+                    d.dispositivoId ? `ID ${d.dispositivoId}` : '',
                     d.fingerprint ? `…${d.fingerprint}` : '',
                     d.paraBuild ? `build ${d.deBuild} → ${d.paraBuild}` : '',
                     d.para ? `${TELA_STATUS[d.de] || d.de} → ${TELA_STATUS[d.para] || d.para}` : '',
@@ -3499,7 +3503,7 @@ function ligarFichaTela(el, t, remontar) {
     if (novo !== 'ativo') {
       const ok = await confirmarModal({
         titulo: novo === 'reparo' ? 'Colocar em reparo?' : 'Inativar a tela?',
-        texto: `<p>A tela para de receber programação e de gerar cobrança enquanto não voltar para "Ativa". O Player continua falando com o servidor (a ficha segue atualizando), mas não gera alerta de sinal.</p>`,
+        texto: `<p>A tela para de receber programação enquanto não voltar para "Ativa" — o que já foi exibido fica registrado. O Player continua falando com o servidor (a ficha segue atualizando), mas não gera alerta de sinal.</p>`,
         botao: novo === 'reparo' ? 'Colocar em reparo' : 'Inativar',
         perigo: true,
       });
@@ -3514,6 +3518,15 @@ function ligarFichaTela(el, t, remontar) {
     if (historico.open) carregarHistorico(el, t.id);
   });
 
+  ficha.querySelectorAll('[data-copiar]').forEach((btn) =>
+    btn.addEventListener('click', () =>
+      copiarTexto(btn.dataset.copiar).then(
+        () => toast('Copiado.'),
+        () => toast('Não deu pra copiar sozinho — selecione e copie.', 'err'),
+      ),
+    ),
+  );
+
   ficha.querySelectorAll('[data-acao]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const acao = btn.dataset.acao;
@@ -3521,20 +3534,21 @@ function ligarFichaTela(el, t, remontar) {
       if (acao === 'rotacao') return editarRotacao(t, patch, remontar);
       if (acao === 'area') return editarAreaSegura(t, patch, remontar);
       if (acao === 'update') return editarUpdate(t, patch, remontar);
+      if (acao === 'equipamento') return editarEquipamento(t, patch, remontar);
       if (acao === 'pin') return editarPin(t, remontar);
-      if (acao === 'provisionar') return prepararInstalacao(t, remontar);
-      if (acao === 'chave-legada') return gerarChaveLegada(t, remontar);
+      if (acao === 'pin-ver') return mostrarPin(t, ficha);
+      if (acao === 'preparar') return prepararPlayer(t, remontar);
       if (acao === 'excluir') {
         const ok = await confirmarModal({
           titulo: `Excluir ${t.nome}?`,
           texto:
-            '<p>Só faça isso se ela nunca rodou nada — o histórico de exibições dela vai junto e não volta. O número dela não é reaproveitado.</p>',
+            '<p>Só faça isso se ela nunca rodou nada — tela com exibição confirmada não pode ser excluída (inative). O número dela fica livre pra próxima tela deste ponto.</p>',
           botao: 'Excluir tela',
           perigo: true,
         });
         if (!ok) return;
         const r = await api(`/admin/dispositivos/${t.id}`, { method: 'DELETE' });
-        if (!r.ok) return toast('Não foi possível excluir.', 'err');
+        if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
         toast(`${t.nome} excluída.`);
         return irPara(`rede/pontos/${t.pontoId}`);
       }
@@ -3557,14 +3571,14 @@ function ligarFichaTela(el, t, remontar) {
         revogar: {
           titulo: 'Revogar o Player desta tela?',
           texto:
-            '<p>Nenhuma credencial desta tela vale mais, a partir de agora: a TV para de receber programação até ser reprovisionada com um arquivo novo. Use quando o aparelho sumir ou for trocado.</p>',
+            '<p>Nenhuma credencial desta tela vale mais, a partir de agora: a TV para de receber programação até um novo "Preparar Player". Use quando o aparelho sumir ou for trocado.</p>',
           botao: 'Revogar Player',
           perigo: true,
           metodo: 'POST',
           caminho: 'credencial/revogar',
         },
         'cancelar-provisionamento': {
-          titulo: 'Cancelar o arquivo de instalação?',
+          titulo: 'Cancelar o arquivo por token?',
           texto: '<p>O token do arquivo gerado deixa de valer. O Player atual (se houver) não é afetado.</p>',
           botao: 'Cancelar arquivo',
           metodo: 'DELETE',
@@ -3587,22 +3601,24 @@ function ligarFichaTela(el, t, remontar) {
   );
 }
 
-// Preparar instalação: gera o mostrai-config.json do contrato V2 §2.1 e
-// baixa na hora. O token só existe nesta resposta — fechar o modal é
-// perder o arquivo (gera-se outro).
-async function prepararInstalacao(t, remontar) {
+// [Preparar Player]: o servidor gera dispositivoId + chave e devolve o
+// mostrai-config.json pronto, UMA vez. Baixa na hora e mostra o JSON pra
+// copiar. Fechar sem guardar é perder a chave (prepara-se de novo; a anterior
+// deixa de valer).
+async function prepararPlayer(t, remontar) {
   if (t.identidade.credencial.estado === 'ativa') {
     const ok = await confirmarModal({
-      titulo: 'Gerar arquivo para reprovisionar?',
+      titulo: 'Preparar o Player de novo?',
       texto:
-        '<p>O Player atual continua funcionando. Quando o arquivo novo for usado numa TV, ela recebe uma identidade nova e a atual deixa de valer.</p>',
-      botao: 'Gerar arquivo',
+        '<p>Esta tela ganha uma identidade e uma chave novas. O Player que está instalado hoje deixa de valer na hora — use quando for trocar o aparelho ou reinstalar.</p>',
+      botao: 'Preparar de novo',
+      perigo: true,
     });
     if (!ok) return;
   }
-  const r = await api(`/admin/dispositivos/${t.id}/provisionamento`, { method: 'POST' });
-  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível gerar o arquivo.', 'err');
-  const { nomeArquivo, arquivo, expiraEm } = await r.json();
+  const r = await api(`/admin/dispositivos/${t.id}/preparar-player`, { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível preparar o Player.', 'err');
+  const { nomeArquivo, arquivo } = await r.json();
   const conteudo = `${JSON.stringify(arquivo, null, 2)}\n`;
   const baixar = () => {
     const a = document.createElement('a');
@@ -3617,40 +3633,77 @@ async function prepararInstalacao(t, remontar) {
   };
   baixar();
   const { dlg } = abrirModal({
-    titulo: 'Arquivo de instalação gerado',
-    corpo: `<p class="u-mt-0">Copie <b>${esc(nomeArquivo)}</b> para a raiz do pendrive, junto do APK do Player. Na primeira vez que a TV ligar com ele, o Player troca o token pela credencial definitiva.</p>
+    titulo: 'Player preparado',
+    corpo: `<p class="u-mt-0">Coloque <b>${esc(nomeArquivo)}</b> na raiz do pendrive, junto do APK do Player. Este é o único momento em que a chave aparece: o Mostraí guarda só o hash.</p>
       <dl class="dados dados-2">
+        <div><dt>ID do dispositivo</dt><dd><code>${esc(arquivo.dispositivoId)}</code></dd></div>
         <div><dt>Servidor (baseUrl)</dt><dd><code>${esc(arquivo.baseUrl)}</code></dd></div>
-        <div><dt>Rotação inicial</dt><dd>${arquivo.rotacaoTela}°</dd></div>
-        <div><dt>Token de uso único</dt><dd><code>${esc(arquivo.tokenProvisionamento.slice(0, 8))}…</code><span class="dado-sub">só dentro do arquivo</span></dd></div>
-        <div><dt>Válido até</dt><dd>${esc(dataHora(expiraEm))}</dd></div>
       </dl>
-      <p class="u-dim u-fs-85">O token não fica guardado no Mostraí. Fechou esta janela sem salvar o arquivo? Gere outro — este deixa de valer.</p>`,
+      <label for="playerConfigJson">Configuração (JSON)</label>
+      <textarea id="playerConfigJson" readonly rows="7" spellcheck="false">${esc(conteudo)}</textarea>
+      <p class="form-msg" data-msg role="status"></p>`,
     rodape:
-      '<button type="button" class="btn ghost" data-baixar>Baixar de novo</button><button type="button" class="btn primary" data-fechar>Pronto</button>',
+      '<button type="button" class="btn ghost" data-copiar-json>Copiar JSON</button><button type="button" class="btn ghost" data-baixar>Baixar configuração</button><button type="button" class="btn primary" data-fechar>Pronto</button>',
   });
   dlg.querySelector('[data-baixar]').addEventListener('click', baixar);
+  dlg.querySelector('[data-copiar-json]').addEventListener('click', () =>
+    copiarTexto(conteudo).then(
+      () => toast('JSON copiado.'),
+      () => erroNoModal(dlg, 'Não deu pra copiar sozinho — selecione o texto e copie.'),
+    ),
+  );
   dlg.addEventListener('close', () => remontar());
 }
 
-async function gerarChaveLegada(t, remontar) {
-  const ok = await confirmarModal({
-    titulo: 'Gerar link do player web?',
-    texto:
-      '<p>Gera uma chave nova para o player de navegador (V1). A credencial atual desta tela deixa de valer na hora — use só em TV que roda o player web.</p>',
-    botao: 'Gerar link',
-    perigo: true,
+// Olho do PIN: pede ao servidor (fica no histórico como PIN_REVEALED) e
+// mostra por 20 s; depois volta a ••••.
+async function mostrarPin(t, ficha) {
+  if (!ficha.querySelector('[data-pin-valor]')) return;
+  const r = await api(`/admin/dispositivos/${t.id}/pin`);
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível mostrar o PIN.', 'err');
+  const { pin } = await r.json();
+  // Reconsulta o elemento: a ficha pode ter sido remontada (SSE) entre o
+  // clique e a resposta, e o nó capturado antes já não estaria na página.
+  const alvo = document.querySelector('.tela-ficha [data-pin-valor]');
+  if (!alvo) return;
+  alvo.textContent = pin;
+  alvo.setAttribute('aria-label', 'PIN visível');
+  setTimeout(() => {
+    if (alvo.isConnected) {
+      alvo.textContent = '••••';
+      alvo.setAttribute('aria-label', 'PIN oculto');
+    }
+  }, 20000);
+}
+
+function editarEquipamento(t, patch, remontar) {
+  const dia = t.instaladoEm ? String(t.instaladoEm).slice(0, 10) : '';
+  const { dlg, fechar } = abrirModal({
+    titulo: `Equipamento — ${t.nome}`,
+    corpo: `<form id="formEquip" class="modal-form">
+        <div><label for="eqCusto">Custo do equipamento</label>
+          <span class="campo-unidade"><span>R$</span><input id="eqCusto" name="custo" type="number" min="0" step="0.01" value="${t.custoEquipamento || 0}"></span></div>
+        <div><label for="eqMeses">Prazo de amortização</label>
+          <span class="campo-unidade"><input id="eqMeses" name="meses" type="number" min="1" max="120" value="${t.mesesAmortizacao || 36}"><span>meses</span></span></div>
+        <div><label for="eqData">Instalada em</label><input id="eqData" name="data" type="date" value="${dia}"></div>
+        <p class="u-dim u-fs-85 u-m-0">Custo ÷ meses entra na amortização mensal da Visão geral enquanto a tela estiver Ativa.</p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formEquip" class="btn primary">Salvar</button>',
   });
-  if (!ok) return;
-  const r = await api(`/admin/dispositivos/${t.id}/chave-legada`, { method: 'POST' });
-  if (!r.ok) return toast('Não foi possível gerar o link.', 'err');
-  const { link } = await r.json();
-  mostrarLink({
-    titulo: 'Link do player web (V1)',
-    texto: 'Abra este link no navegador da TV. A chave aparece só agora — o Mostraí guarda apenas o hash dela.',
-    link,
+  dlg.querySelector('#formEquip').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const corpo = {
+      custo_equipamento: Number(f.custo.value || 0),
+      meses_amortizacao: Number(f.meses.value || 36),
+      instalado_em: f.data.value || null,
+    };
+    if (await patch(corpo)) {
+      fechar();
+      remontar();
+    }
   });
-  remontar();
 }
 
 function horarioTelaCampos(horario) {
@@ -3804,15 +3857,13 @@ function editarUpdate(t, patch, remontar) {
 }
 
 function editarPin(t, remontar) {
-  // Player V2 não fica sem PIN (o servidor recusa): remover não teria efeito
-  // no aparelho, que segue com o que já recebeu.
-  const configurado = t.configuracao.pin.configurado && !t.identidade.dispositivoId;
+  const configurado = t.configuracao.pin.configurado;
   const { dlg, fechar } = abrirModal({
-    titulo: 'PIN de manutenção do Player',
+    titulo: configurado ? 'Trocar o PIN de manutenção' : 'Definir o PIN de manutenção',
     corpo: `<form id="formPinTela" class="modal-form">
-        <div><label for="pinTela">Novo PIN <span class="u-dim">(4 dígitos)</span></label>
-        <input id="pinTela" name="pin" inputmode="numeric" autocomplete="off" pattern="\\d{4}" maxlength="4" ${configurado ? '' : 'required'}></div>
-        <p class="u-dim u-fs-85 u-m-0">Abre o painel de manutenção na própria TV. O PIN atual nunca é exibido.${configurado ? ' Deixe vazio e salve para remover.' : ''}</p>
+        <div><label for="pinTela">Novo PIN <span class="u-dim">(exatamente 4 dígitos)</span></label>
+        <input id="pinTela" name="pin" inputmode="numeric" autocomplete="off" pattern="\\d{4}" maxlength="4" required></div>
+        <p class="u-dim u-fs-85 u-m-0">Abre o painel de manutenção na própria TV. O Player recebe o PIN novo na próxima configuração.</p>
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape:
@@ -3823,12 +3874,10 @@ function editarPin(t, remontar) {
   dlg.querySelector('#formPinTela').addEventListener('submit', async (e) => {
     e.preventDefault();
     const pin = campo.value.trim();
-    const r = await api(`/admin/dispositivos/${t.id}/pin`, {
-      method: 'POST',
-      body: JSON.stringify({ pin: pin || null }),
-    });
+    if (!/^\d{4}$/.test(pin)) return erroNoModal(dlg, 'O PIN tem exatamente 4 dígitos.');
+    const r = await api(`/admin/dispositivos/${t.id}/pin`, { method: 'POST', body: JSON.stringify({ pin }) });
     if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.');
-    toast(pin ? 'PIN alterado.' : 'PIN removido.');
+    toast(configurado ? 'PIN trocado.' : 'PIN definido.');
     fechar();
     remontar();
   });

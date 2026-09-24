@@ -433,12 +433,14 @@ window.ROTULOS = {
   // reparo aparecia com a chave crua do banco.
   ponto: {
     a_instalar: 'Aguardando instalação',
+    aguardando_primeiro_sinal: 'Aguardando primeiro sinal',
     em_operacao: 'Ativo',
-    em_reparo: 'Em manutenção',
+    em_reparo: 'Em reparo',
     inativo: 'Inativo',
   },
   pontoClasse: {
     a_instalar: 'badge-pendente',
+    aguardando_primeiro_sinal: 'badge-pendente',
     em_operacao: 'badge-ok',
     em_reparo: 'badge-pendente',
     inativo: 'badge-neutro',
@@ -448,13 +450,15 @@ window.ROTULOS = {
   estabelecimento: {
     em_analise: 'Em análise',
     aguardando_instalacao: 'Aguardando instalação',
+    aguardando_primeiro_sinal: 'Aguardando primeiro sinal',
     ativo: 'Ativo',
-    em_manutencao: 'Em manutenção',
+    em_manutencao: 'Em reparo',
     inativo: 'Inativo',
   },
   estabelecimentoClasse: {
     em_analise: 'badge-pendente',
     aguardando_instalacao: 'badge-pendente',
+    aguardando_primeiro_sinal: 'badge-pendente',
     ativo: 'badge-ok',
     em_manutencao: 'badge-pendente',
     inativo: 'badge-neutro',

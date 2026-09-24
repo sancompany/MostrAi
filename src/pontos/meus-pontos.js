@@ -11,6 +11,7 @@ const { situacaoDosPontos } = require('../creditos/ponto');
 // Ciclo de um estabelecimento, na ordem em que acontece:
 //   candidatura aberta (nova/em_contato)  -> em_analise
 //   ponto sem tela ativa (a_instalar)     -> aguardando_instalacao
+//   tela provisionada sem 1º sinal        -> aguardando_primeiro_sinal
 //   ponto com tela ativa (em_operacao)    -> ativo
 //   ponto com tela só em reparo           -> em_manutencao
 //   ponto com telas desligadas            -> inativo
@@ -23,6 +24,7 @@ const { situacaoDosPontos } = require('../creditos/ponto');
 // custo do equipamento, margens ou o texto cru do erro do player.
 const ESTADO_DO_PONTO = {
   a_instalar: 'aguardando_instalacao',
+  aguardando_primeiro_sinal: 'aguardando_primeiro_sinal',
   em_operacao: 'ativo',
   em_reparo: 'em_manutencao',
   inativo: 'inativo',
@@ -43,7 +45,7 @@ const SITUACAO_DA_TELA = {
     texto: 'A tela relatou um problema. A equipe Mostraí foi avisada.',
   },
   player_revogado: { nivel: 'neutro', texto: 'Aguardando reinstalação pela equipe Mostraí' },
-  em_reparo: { nivel: 'neutro', texto: 'Em manutenção' },
+  em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
   inativa: { nivel: 'neutro', texto: 'Desligada' },
 };
 

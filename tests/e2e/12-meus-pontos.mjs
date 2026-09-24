@@ -131,10 +131,10 @@ console.log('== admin cria e liga a tela ==');
 // vira "Ativo" com o primeiro sinal da TV (aqui, o heartbeat do player web).
 const tela = await api(`/admin/pontos/${pontoId}/dispositivos`, 'POST', { modo_horario: '24h' });
 check('tela criada', tela.status === 201, JSON.stringify(tela));
-const { link } = (await api(`/admin/dispositivos/${tela.json.id}/chave-legada`, 'POST')).json;
-await fetch(`${B}/player/${tela.json.id}/heartbeat`, {
+const { arquivo: cfgPlayer } = (await api(`/admin/dispositivos/${tela.json.id}/preparar-player`, 'POST')).json;
+await fetch(`${B}/player/${cfgPlayer.dispositivoId}/heartbeat`, {
   method: 'POST',
-  headers: { 'X-Aparelho-Id': new URL(link).searchParams.get('chave') },
+  headers: { 'X-Aparelho-Key': cfgPlayer.chaveAparelho },
 });
 await p.waitForSelector('.estab-card.estado-ativo', { timeout: 8000 }).catch(() => {});
 check('card virou "Ativo" sem F5 (primeiro sinal)', !!(await p.$('.estab-card.estado-ativo')));
@@ -203,8 +203,9 @@ await p.fill('#np_nome_comercio', 'Filial Centro');
 await p.fill('#np_cep', '15990-000');
 await p.locator('#np_cep').blur();
 await p.waitForTimeout(400);
-await p.fill('#np_endereco', 'Avenida Central');
+await p.fill('#np_logradouro', 'Avenida Central');
 await p.fill('#np_numero', '900');
+await p.fill('#np_bairro', 'Centro');
 await p.fill('#formNovoPonto .categoria-busca', 'Padaria');
 await p.locator('#formNovoPonto .categoria-resultados li[role=option]').first().click();
 await p.fill('#np_fluxo', '1200');

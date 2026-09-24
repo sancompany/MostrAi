@@ -686,7 +686,7 @@ test('modalidade e repasse aposentados: PATCH ignora modalidade, trocar-por-tela
     });
     assert.strictEqual(troca.status, 410);
     const publica = await fetch(`${app.base}/planos-ponto`);
-    assert.deepStrictEqual(await publica.json(), [], 'cadastro não oferece modalidade');
+    assert.strictEqual(publica.status, 410, 'cadastro não oferece modalidade');
   } finally {
     await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
     await app.fechar();
