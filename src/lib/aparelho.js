@@ -38,18 +38,32 @@ function lerPlayer(req) {
 
 function exigirAparelho({ operacao = true } = {}) {
   return async (req, res, next) => {
-    const tela = await dispositivosRepo.buscarComPonto(req.params.dispositivoId);
+    let tela = await dispositivosRepo.buscarComPonto(req.params.dispositivoId);
     if (!tela || tela.ponto_status === 'arquivado') return res.status(401).json(NAO_AUTORIZADO);
 
     const enviada = req.get('x-aparelho-key') || req.get('x-aparelho-id');
-    const qual = credencial.identificarChave(tela, enviada);
+    let qual = credencial.identificarChave(tela, enviada);
     if (!qual) return res.status(401).json(NAO_AUTORIZADO);
 
-    if (qual === 'nova') {
-      await credencial.promoverChaveNova(tela.id, tela.chave_nova_hash);
-    }
+    // 403 ANTES de promover: o Player descarta a candidata em qualquer
+    // resposta que não seja sucesso (contrato §1.1). Promover e responder 403
+    // deixaria o servidor com a chave nova e o aparelho só com a antiga —
+    // trancado quando a sobreposição vence. Sem promover, o próximo heartbeat
+    // reenvia a candidata.
     if (operacao && tela.status !== 'ativo') {
       return res.status(403).json({ erro: 'esta tela está fora do ar no cadastro — fale com a Mostraí pra reativar' });
+    }
+    if (qual === 'nova' && !(await credencial.promoverChaveNova(tela.id, tela.chave_nova_hash))) {
+      // A promoção não casou: outra requisição já promoveu esta mesma chave
+      // (segue valendo) ou o admin cancelou/trocou a rotação no meio. No
+      // segundo caso, responder 200 faria o aparelho oficializar uma chave
+      // que o servidor não aceita mais.
+      // Segue com a linha relida: a antiga ainda carrega a candidata, que o
+      // heartbeat reenviaria como "chave nova" sendo já a atual.
+      const agora = await dispositivosRepo.buscarComPonto(tela.id);
+      qual = agora && credencial.identificarChave(agora, enviada) === 'atual' ? 'atual' : null;
+      if (!qual) return res.status(401).json(NAO_AUTORIZADO);
+      tela = agora;
     }
     // Primeira requisição com a credencial do provisionamento: o Player
     // provou que a recebeu, a janela de repetição do token fecha.

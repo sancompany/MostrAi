@@ -30,6 +30,7 @@ const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const sanCheckout = require('../financeiro/san-checkout');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
+const { saudeDaTela } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const {
   enviarContaAprovada,
@@ -1100,6 +1101,34 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
   res.send('\uFEFF' + linhas.join('\r\n') + '\r\n');
 });
 
+// "A propaganda está passando ou a TV está desligada?" pela MESMA régua do
+// admin e do dono do ponto (src/lib/status-tela.js) — antes o painel tinha a
+// sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
+// mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
+// se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
+// Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
+async function comSituacaoNoAr(pontos) {
+  if (!pontos.length) return pontos;
+  const { rows: telas } = await pool.query(
+    `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
+            d.ultima_vez_online, d.player_estado, d.modo_horario, d.horario_semanal, d.timezone,
+            d.ultimo_erro_codigo, d.ultimo_erro, p.horario_semanal AS ponto_horario_semanal
+       FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+      WHERE d.ponto_id = ANY($1::int[])`,
+    [pontos.map((p) => p.id)],
+  );
+  const agora = new Date();
+  return pontos.map((p) => {
+    const saudes = telas.filter((t) => t.ponto_id === p.id).map((t) => saudeDaTela(t, t.ponto_horario_semanal, agora));
+    const situacao = saudes.includes('operando')
+      ? 'no_ar'
+      : saudes.includes('fora_do_horario')
+        ? 'fora_do_horario'
+        : 'fora_do_ar';
+    return { ...p, situacao };
+  });
+}
+
 router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
     return res.status(403).json({ erro: 'só pode ver exibições da própria conta' });
@@ -1250,7 +1279,7 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     totalConfirmadas: confirmadas,
     confirmadasMes,
     criativosAprovados: aprovados[0].n,
-    porPonto: porPonto.rows,
+    porPonto: await comSituacaoNoAr(porPonto.rows),
     porDia: porDia.rows,
     porDiaPonto: porDiaPonto.rows,
     cobrancas: cobrancas.rows,

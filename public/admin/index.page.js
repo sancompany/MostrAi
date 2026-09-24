@@ -3334,7 +3334,7 @@ function blocoIdentidade(t) {
     ? `Nova credencial …${esc(cred.nova.fingerprint)} aguardando confirmação<span class="dado-sub">pedida ${esc(tempoDesde(cred.nova.criadaEm))} — vai no próximo heartbeat e vale quando o Player usar</span>`
     : 'Não programada';
   const acoesCred = [];
-  if (cred.estado === 'ativa' && !cred.nova)
+  if (cred.rotacionavel && !cred.nova)
     acoesCred.push('<button class="btn ghost mini" data-acao="rotacionar">Rotacionar credencial</button>');
   if (cred.nova)
     acoesCred.push('<button class="btn ghost mini" data-acao="cancelar-rotacao">Cancelar rotação</button>');
@@ -3794,7 +3794,9 @@ function editarUpdate(t, patch, remontar) {
 }
 
 function editarPin(t, remontar) {
-  const configurado = t.configuracao.pin.configurado;
+  // Player V2 não fica sem PIN (o servidor recusa): remover não teria efeito
+  // no aparelho, que segue com o que já recebeu.
+  const configurado = t.configuracao.pin.configurado && !t.identidade.dispositivoId;
   const { dlg, fechar } = abrirModal({
     titulo: 'PIN de manutenção do Player',
     corpo: `<form id="formPinTela" class="modal-form">

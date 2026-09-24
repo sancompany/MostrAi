@@ -657,6 +657,7 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .badge-pendente { background: rgba(255,122,26,.12); color: #8a3d05; }
 .badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
 .badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
+.badge-neutro { background: rgba(100,116,139,.12); color: #475569; }
 
 /* Confirmação de e-mail obrigatória (migration 061, pop-up a pedido do dono
    19/09/2026) — cobre a página inteira, sem fechar, até o código certo

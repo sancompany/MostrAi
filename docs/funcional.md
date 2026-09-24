@@ -955,8 +955,15 @@ credencial, e log não a contém. Repetir o mesmo token em até 10 min devolve a
 mesma credencial (o Player pode ter perdido a resposta); depois disso, 401.
 **Rotação:** o admin pede, a próxima resposta de heartbeat entrega a chave
 nova, e as duas valem até o Player usar a nova (a antiga ainda vale 24 h de
-sobreposição). **Revogação:** apaga a credencial na hora; o Player recebe 401
-e a tela vira "Player revogado". Players V1 (`/player.html`) continuam com a
+sobreposição). A candidata só é promovida numa resposta de sucesso — se a
+tela está em reparo e a playlist responde 403, a chave atual segue e a
+candidata volta no heartbeat seguinte. Rotação só existe para Player V2
+provisionado (o player web nunca receberia a candidata). **Revogação:** apaga
+a credencial na hora (inclusive a chave V1 que a migration 081 guardou para
+rollback); o Player recebe 401, a tela vira "Player revogado" e deixa de
+contar para o ponto estar "em operação" até ser reprovisionada. O PIN de
+manutenção de um Player V2 pode ser trocado, nunca removido: sem ele na
+config o aparelho mantém o antigo. Players V1 (`/player.html`) continuam com a
 chave legada, também guardada só como hash — gerar uma nova mostra a chave
 uma única vez. *Violada:* token usado/expirado/cancelado → 401; chave errada
 ou vazia → 401. *Quem vê:* o administrador.

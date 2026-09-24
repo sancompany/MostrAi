@@ -139,6 +139,15 @@ async function comTela(telaId, fn) {
   }
 }
 
+// O status do ponto sai DEPOIS do commit, em transação própria: mudar o
+// ponto dispara o gatilho que marca a playlist de todas as telas dele — com a
+// linha desta tela ainda travada pelo FOR UPDATE, dois primeiros sinais (ou
+// um primeiro sinal e uma edição do admin) podiam travar um ao outro.
+async function depoisDoCommit(r) {
+  if (r.primeiroSinal) await sincronizarStatusPonto(r.pontoId);
+  return r;
+}
+
 async function gravarEventos(client, telaId, eventos) {
   for (const [tipo, detalhe, em] of eventos) await telaEventos.registrar(telaId, tipo, detalhe, client, em || null);
 }
@@ -165,9 +174,8 @@ async function registrarHello(telaId, corpo, player) {
       [telaId, contrato, versao, build, h.fabricante, h.modelo, h.android, h.largura, h.altura, h.timezone],
     );
     await gravarEventos(client, telaId, eventos);
-    if (!antes.primeiro_sinal_em) await sincronizarStatusPonto(antes.ponto_id, client);
-    return { primeiroSinal: !antes.primeiro_sinal_em, eventos: eventos.map((e) => e[0]) };
-  });
+    return { primeiroSinal: !antes.primeiro_sinal_em, pontoId: antes.ponto_id, eventos: eventos.map((e) => e[0]) };
+  }).then(depoisDoCommit);
 }
 
 async function registrarHeartbeat(telaId, corpo, player) {
@@ -231,9 +239,39 @@ async function registrarHeartbeat(telaId, corpo, player) {
 
     await client.query(`UPDATE dispositivos SET ${sets.join(', ')} WHERE id = $1`, valores);
     await gravarEventos(client, telaId, eventos);
-    if (!antes.primeiro_sinal_em) await sincronizarStatusPonto(antes.ponto_id, client);
-    return { v2: hb.v2, primeiroSinal: !antes.primeiro_sinal_em, eventos: eventos.map((e) => e[0]) };
-  });
+    return {
+      v2: hb.v2,
+      primeiroSinal: !antes.primeiro_sinal_em,
+      pontoId: antes.ponto_id,
+      eventos: eventos.map((e) => e[0]),
+    };
+  }).then(depoisDoCommit);
 }
 
-module.exports = { ESTADOS, ESTADOS_UPDATE, lerHello, lerHeartbeat, registrarHello, registrarHeartbeat };
+// compat-v1: o player web pede a playlist e manda o heartbeat ao mesmo tempo
+// no boot. Sem isto, a primeira playlist de uma TV nova sai com o ponto
+// ainda "Aguardando instalação" — fora da cobertura — e só se corrige no
+// próximo poll (15 min). Uma requisição autenticada é contato; o FOR UPDATE
+// do heartbeat e o `IS NULL` daqui garantem um FIRST_SEEN só.
+async function registrarPrimeiroContato(telaId) {
+  const { rows } = await pool.query(
+    `UPDATE dispositivos SET primeiro_sinal_em = now(), ultima_vez_online = now()
+      WHERE id = $1 AND primeiro_sinal_em IS NULL
+      RETURNING ponto_id`,
+    [telaId],
+  );
+  if (!rows[0]) return false;
+  await telaEventos.registrar(telaId, 'FIRST_SEEN', { via: 'playlist' });
+  await sincronizarStatusPonto(rows[0].ponto_id);
+  return true;
+}
+
+module.exports = {
+  ESTADOS,
+  ESTADOS_UPDATE,
+  lerHello,
+  lerHeartbeat,
+  registrarHello,
+  registrarHeartbeat,
+  registrarPrimeiroContato,
+};

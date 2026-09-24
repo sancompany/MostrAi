@@ -7,12 +7,13 @@ const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const credencial = require('./credencial');
 const sinal = require('./sinal');
-const { montarConfig, margensDaTela } = require('./config');
+const { montarConfig, margensDaTela, TETO_MARGEM_V2 } = require('./config');
 const releases = require('./releases');
 const cofre = require('../lib/cofre');
 const pool = require('../db/pool');
 const eventos = require('../lib/eventos');
 const sse = require('../lib/sse');
+const { sincronizarStatusPonto } = require('../pontos/repository');
 
 // API do Player — contraparte de docs/player-v2-contract.md
 // (sancompany/Playlist.MostrAi, main 28bc93d). V1 continua: o player web
@@ -55,8 +56,13 @@ router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, re
   if (!r) return res.status(401).json({ erro: 'token de provisionamento inválido, expirado ou já usado' });
   await zerarTentativas(req);
   if (r.novo) {
+    // Reprovisionar devolve a credencial a uma tela que pode ter sido
+    // revogada: o status do ponto volta a considerá-la.
     const tela = await dispositivosRepo.buscarComPonto(r.telaId);
-    if (tela) avisarMudanca(tela, { transicao: true });
+    if (tela) {
+      await sincronizarStatusPonto(tela.ponto_id);
+      avisarMudanca(tela, { transicao: true });
+    }
   }
   res.json({ dispositivoId: r.dispositivoId, chaveAparelho: r.chaveAparelho });
 });
@@ -87,7 +93,7 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
     servidorAgora: new Date().toISOString(),
     // compat-v1 (migration 069): o player web e o Android sem /config tiram
     // as margens daqui; o V2 aplica a de /config quando ela vem (§4.3).
-    margens: margensDaTela(tela),
+    margens: r.v2 ? margensDaTela(tela, TETO_MARGEM_V2) : margensDaTela(tela),
   };
   if (!r.v2) return res.json(resposta);
 

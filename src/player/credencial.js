@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const telaEventos = require('./tela-eventos');
+const { sincronizarStatusPonto } = require('../pontos/repository');
 
 // Credencial do Player (contrato V2 §1). O servidor guarda só o SHA-256 da
 // chave: a chave tem 256 bits aleatórios, então hash rápido basta (não é
@@ -66,14 +67,18 @@ async function promoverChaveNova(telaId, hashNova, db = pool) {
 }
 
 // Admin pede rotação: a candidata fica pendente até o Player usá-la. Só para
-// tela com Player provisionado (sem chave atual, não há o que rotacionar).
+// Player V2 provisionado (`dispositivo_uid` — só o V2 passa por token, e a
+// chave legada o apaga): a candidata viaja na resposta do heartbeat V2, e um
+// Player V1 nunca a receberia — a rotação ficaria pendente para sempre com a
+// chave suspeita ainda valendo. Para V1, o caminho é gerar link novo ou
+// revogar.
 async function iniciarRotacao(telaId) {
   const chave = gerarChave();
   const hash = hashDaChave(chave);
   const { rows } = await pool.query(
     `UPDATE dispositivos
         SET chave_nova_hash = $2, chave_nova_fingerprint = $3, chave_nova_cifrada = $4, chave_nova_criada_em = now()
-      WHERE id = $1 AND chave_hash IS NOT NULL
+      WHERE id = $1 AND chave_hash IS NOT NULL AND dispositivo_uid IS NOT NULL
       RETURNING id`,
     [telaId, hash, fingerprintDoHash(hash), cofre.fechar(chave)],
   );
@@ -95,38 +100,48 @@ async function cancelarRotacao(telaId, motivo = 'cancelada no admin') {
 
 // Revogar: nenhuma chave desta tela vale mais, a partir de agora. O Player
 // passa a receber 401 (AUTH_ERROR no aparelho) até ser reprovisionado.
+// `aparelho_id` (a chave V1 em claro que a migration 081 manteve só para
+// rollback) sai junto: senão um revert do código ressuscitaria a chave.
 async function revogar(telaId) {
-  const { rowCount } = await pool.query(
+  const { rows } = await pool.query(
     `UPDATE dispositivos
-        SET chave_hash = NULL, chave_fingerprint = NULL, chave_criada_em = NULL, chave_ultimo_uso_em = NULL,
+        SET aparelho_id = NULL, chave_hash = NULL, chave_fingerprint = NULL, chave_criada_em = NULL, chave_ultimo_uso_em = NULL,
             chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
             chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
             revogado_em = now()
-      WHERE id = $1 AND (chave_hash IS NOT NULL OR chave_nova_hash IS NOT NULL OR chave_anterior_hash IS NOT NULL)`,
+      WHERE id = $1 AND (chave_hash IS NOT NULL OR chave_nova_hash IS NOT NULL OR chave_anterior_hash IS NOT NULL)
+      RETURNING ponto_id`,
     [telaId],
   );
-  if (rowCount) await telaEventos.registrar(telaId, 'CREDENTIAL_REVOKED', null);
-  return rowCount > 0;
+  if (!rows[0]) return false;
+  await telaEventos.registrar(telaId, 'CREDENTIAL_REVOKED', null);
+  // Tela sem credencial não exibe: o ponto pode deixar de estar em operação.
+  await sincronizarStatusPonto(rows[0].ponto_id);
+  return true;
 }
 
 // compat-v1: o player web (public/player.html) não conhece provisionamento
 // por token — recebe a chave pela URL que o admin abre na TV. Gera uma chave
 // nova (derruba a anterior na hora, como sempre foi) e devolve o valor UMA
-// vez, para o link; o banco guarda só o hash.
+// vez, para o link; o banco guarda só o hash. O `dispositivo_uid` sai: a
+// tela deixa de ter Player V2 (a rota por uid passa a dar 401) e a rotação,
+// que só existe no V2, não pode ser pedida para ela.
 async function gerarChaveLegada(telaId) {
   const chave = gerarChave();
   const hash = hashDaChave(chave);
   const { rows } = await pool.query(
     `UPDATE dispositivos
-        SET chave_hash = $2, chave_fingerprint = $3, chave_criada_em = now(), chave_ultimo_uso_em = NULL,
+        SET aparelho_id = NULL, dispositivo_uid = NULL,
+            chave_hash = $2, chave_fingerprint = $3, chave_criada_em = now(), chave_ultimo_uso_em = NULL,
             chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
             chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
             revogado_em = NULL
-      WHERE id = $1 RETURNING id`,
+      WHERE id = $1 RETURNING ponto_id`,
     [telaId, hash, fingerprintDoHash(hash)],
   );
   if (!rows[0]) return null;
   await telaEventos.registrar(telaId, 'CREDENTIAL_LEGACY_ISSUED', { fingerprint: fingerprintDoHash(hash) });
+  await sincronizarStatusPonto(rows[0].ponto_id);
   return chave;
 }
 

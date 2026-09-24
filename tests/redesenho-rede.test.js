@@ -129,9 +129,13 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
   try {
     assert.strictEqual(await statusDoPonto(), 'a_instalar', '0 telas nasce aguardando instalação');
     const deuSinal = async (telaId) => {
-      await pool.query('UPDATE dispositivos SET primeiro_sinal_em = now(), ultima_vez_online = now() WHERE id = $1', [
-        telaId,
-      ]);
+      // Tela que fala está autenticada: sinal vem junto com credencial.
+      await pool.query(
+        `UPDATE dispositivos SET primeiro_sinal_em = now(), ultima_vez_online = now(),
+                chave_hash = COALESCE(chave_hash, md5(random()::text) || md5(random()::text))
+          WHERE id = $1`,
+        [telaId],
+      );
       await pontosRepo.sincronizarStatusPonto(pontoId);
     };
 

@@ -4275,3 +4275,34 @@ operação que nunca foi vista.
   com esse nome ou fica órfão no bucket.
 - Upload de foto na candidatura dá 500 no ambiente local sem Supabase
   configurado (esperado localmente; em produção funciona).
+
+**[x] Auditorias A/B/C (24/09/2026)** — dois revisores independentes (A:
+protocolo contra o código Kotlin do Player, credencial, corridas; B:
+compatibilidade V1) e o smoke completo (C). Corrigido, cada um com teste em
+`tests/player-v2.test.js`:
+- chave candidata era promovida antes do 403 de tela fora do ar — o Player
+  descartava a nova e ficava trancado quando a sobreposição vencia;
+- promoção que perdia a corrida para o admin (cancelar/trocar rotação)
+  respondia 200 — o aparelho oficializava chave que o servidor não aceitava;
+- rotação pedida numa TV V1 ficava pendente para sempre com a chave suspeita
+  valendo — agora só para Player V2 provisionado (botão some, 400 no backend);
+- revogar/link novo/reprovisionar não apagavam `aparelho_id` — um revert do
+  código ressuscitaria chave revogada (RUNBOOK §4 ganhou o procedimento);
+- status do ponto dentro da transação do heartbeat podia travar (deadlock)
+  com outro primeiro sinal — agora depois do commit; a visão do dono passou
+  a não perder aviso que chega durante uma recarga (achado do e2e 12);
+- folga da playlist "desatualizada" comparava relógio do Node com o do banco;
+- Player revogado seguia contando o ponto como "em operação";
+- PIN removido não chegava ao Player V2 (campo ausente = não mexe) — V2 não
+  fica sem PIN;
+- painel do anunciante tinha régua própria (2 h) e dizia "Online" para tela
+  que o admin mostrava sem sinal — agora a régua única;
+- visão do dono não percebia tela que para de falar (nenhum evento) —
+  recarga a cada 60 s;
+- TV V1 nova ficava até 15 min sem anúncio (ponto fora da cobertura até o
+  heartbeat) — o primeiro GET de playlist conta como sinal;
+- a 081 cortava margens > 10 que o player web V1 respeita — não corta mais;
+  o teto de 10 vale para a escrita nova e para o que vai ao V2.
+Replay da 081 num banco com formato de produção (TVs V1 com chave em texto,
+margem 15, tela sem sinal): hash confere, numeração estável, ponto sem sinal
+vira "Aguardando instalação", reaplicar não muda nada.

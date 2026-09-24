@@ -116,6 +116,9 @@ function situacaoCredencial(t, agora) {
     revogadaEm: t.revogado_em,
     nova: t.chave_nova_hash ? { fingerprint: t.chave_nova_fingerprint, criadaEm: t.chave_nova_criada_em } : null,
     anterior: anteriorValida ? { expiraEm: t.chave_anterior_expira_em } : null,
+    // Mesma condição de credencial.iniciarRotacao: a candidata só chega a um
+    // Player V2 provisionado (viaja na resposta do heartbeat V2).
+    rotacionavel: !!t.chave_hash && !!t.dispositivo_uid,
   };
 }
 
@@ -420,7 +423,7 @@ async function trocarToken(token, credencial) {
       const chaveHash = credencial.hashDaChave(chave);
       await client.query(
         `UPDATE dispositivos
-            SET dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
+            SET aparelho_id = NULL, dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
                 chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
                 chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
                 chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,

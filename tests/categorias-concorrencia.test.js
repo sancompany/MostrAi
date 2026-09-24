@@ -5,6 +5,7 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const { registrarHeartbeat } = require('../src/player/sinal');
+const { gerarChaveLegada } = require('../src/player/credencial');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -49,6 +50,8 @@ async function dispositivoDoPonto(pontoId) {
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   // Primeiro sinal (heartbeat V1 vazio): só assim o ponto vira "Ativo" e entra
   // na cobertura (Player V2, src/pontos/repository.js sincronizarStatusPonto).
+  // Tela que fala está autenticada: tem credencial (a do player web aqui).
+  await gerarChaveLegada(dispositivo.id);
   await registrarHeartbeat(dispositivo.id, {}, {});
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }

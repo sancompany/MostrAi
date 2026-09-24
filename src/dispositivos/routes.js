@@ -163,7 +163,9 @@ router.delete('/admin/dispositivos/:id/provisionamento', async (req, res) => {
 router.post('/admin/dispositivos/:id/credencial/rotacionar', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;
-  if (!(await credencial.iniciarRotacao(tela.id))) return erro400(res, 'esta tela não tem Player com credencial ativa');
+  if (!(await credencial.iniciarRotacao(tela.id))) {
+    return erro400(res, 'rotação só existe para Player V2 provisionado — no player web, gere um link novo ou revogue');
+  }
   await avisarMudanca(tela.ponto_id, tela.id);
   res.json(await repo.buscarPorId(tela.id));
 });
@@ -197,17 +199,23 @@ router.post('/admin/dispositivos/:id/chave-legada', async (req, res) => {
 });
 
 // PIN de manutenção do Player: exatamente 4 dígitos (contrato §5 descarta
-// qualquer outra coisa). null remove.
-function lerPin(corpo) {
+// qualquer outra coisa). null remove — mas não de tela com Player V2: sem
+// `pinPainel` na config o aparelho mantém o PIN que já tem
+// (ConfigAparelho.kt: campo ausente = não mexe), e o admin mostraria "sem
+// PIN" com a TV ainda pedindo o antigo.
+function lerPin(corpo, tela) {
   const pin = corpo?.pin == null ? null : String(corpo.pin);
   if (pin !== null && !/^\d{4}$/.test(pin)) return { erro: 'o PIN de manutenção do Player tem exatamente 4 dígitos' };
+  if (pin === null && tela.dispositivo_uid) {
+    return { erro: 'o Player desta tela não fica sem PIN de manutenção — troque por outro PIN de 4 dígitos' };
+  }
   return { pin };
 }
 
 router.post('/admin/dispositivos/:id/pin', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;
-  const { erro, pin } = lerPin(req.body);
+  const { erro, pin } = lerPin(req.body, tela);
   if (erro) return erro400(res, erro);
   await repo.definirPin(tela.id, pin);
   await avisarMudanca(tela.ponto_id, tela.id);
@@ -282,7 +290,7 @@ async function telaDoDono(req, res) {
     return null;
   }
   const { rows } = await pool.query(
-    `SELECT d.id, d.ponto_id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+    `SELECT d.id, d.ponto_id, d.dispositivo_uid FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
      WHERE d.id = $1 AND p.anunciante_id = $2`,
     [req.params.dispositivoId, req.session.anuncianteId],
   );
@@ -301,7 +309,7 @@ router.get('/anunciantes/:id/dispositivos/:dispositivoId/painel', exigirAnuncian
 router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnuncianteLogado, async (req, res) => {
   const tela = await telaDoDono(req, res);
   if (!tela) return;
-  const { erro, pin } = lerPin(req.body);
+  const { erro, pin } = lerPin(req.body, tela);
   if (erro) return erro400(res, erro);
   await repo.definirPin(tela.id, pin);
   await avisarMudanca(tela.ponto_id, tela.id);

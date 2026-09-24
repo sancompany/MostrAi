@@ -444,12 +444,23 @@
   // ---------- Carga ----------
   // Uma carga por vez: SSE de tela e de ponto chegam juntos (a mesma mudança
   // emite os dois), e sem isto viravam duas requisições iguais em paralelo.
+  // Mas aviso que chega DURANTE uma carga não pode se perder: ela pode ter
+  // lido o banco antes da mudança que ele anuncia (ex.: a tela já com sinal e
+  // o ponto ainda não atualizado). Então vale uma — e só uma — carga a mais
+  // no fim.
+  let carregarDeNovo = false;
   function carregar() {
-    if (!carregando) {
-      carregando = desenhar().finally(() => {
-        carregando = null;
-      });
+    if (carregando) {
+      carregarDeNovo = true;
+      return carregando;
     }
+    carregando = desenhar().finally(() => {
+      carregando = null;
+      if (carregarDeNovo) {
+        carregarDeNovo = false;
+        carregar();
+      }
+    });
     return carregando;
   }
 
@@ -518,5 +529,12 @@
         'screen.updated': carregar,
       });
     }
+    // Tela que para de falar não gera evento nenhum (não há quem avise):
+    // sem isto, a página aberta seguiria "Funcionando" enquanto o admin já
+    // mostra "Sem sinal". Mesma cadência do admin; pula aba escondida e o
+    // modal da tela aberto (a recarga não mexe no formulário de ponto novo).
+    setInterval(() => {
+      if (!document.hidden && !$('modalTela')?.open) carregar();
+    }, 60 * 1000);
   };
 })();

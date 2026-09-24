@@ -13,7 +13,7 @@ const { operacaoDaTela } = require('../lib/operacao-tela');
 function montarConfig(tela, agora = new Date()) {
   const config = {
     configVersion: tela.config_versao_desejada,
-    margens: margensDaTela(tela),
+    margens: margensDaTela(tela, TETO_MARGEM_V2),
     rotacaoTela: tela.rotacao_tela,
     operacao: operacaoDaTela(tela, tela.ponto_horario_semanal, agora),
     update: {
@@ -27,14 +27,18 @@ function montarConfig(tela, agora = new Date()) {
 }
 
 // Termos visuais, em vmin (RN-17). Também vai no heartbeat, por
-// compatibilidade com o V1 (contrato §4.3).
-function margensDaTela(tela) {
+// compatibilidade com o V1 (contrato §4.3). O Player V2 aceita 0–10 por lado
+// (contrato §5): para ele sai com teto; o player web V1 respeita até 20 e
+// recebe o valor gravado (telas antigas podem ter mais de 10 — migration 081).
+const TETO_MARGEM_V2 = 10;
+function margensDaTela(tela, teto = Number.POSITIVE_INFINITY) {
+  const lado = (v) => Math.min(Number(v) || 0, teto);
   return {
-    superior: Number(tela.margem_superior) || 0,
-    direita: Number(tela.margem_direita) || 0,
-    inferior: Number(tela.margem_inferior) || 0,
-    esquerda: Number(tela.margem_esquerda) || 0,
+    superior: lado(tela.margem_superior),
+    direita: lado(tela.margem_direita),
+    inferior: lado(tela.margem_inferior),
+    esquerda: lado(tela.margem_esquerda),
   };
 }
 
-module.exports = { montarConfig, margensDaTela };
+module.exports = { montarConfig, margensDaTela, TETO_MARGEM_V2 };

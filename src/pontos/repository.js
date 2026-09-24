@@ -206,16 +206,18 @@ async function atualizar(id, dados) {
 //
 //   0 telas                             -> a_instalar   (Aguardando instalação)
 //   >=1 tela ativa que já deu sinal     -> em_operacao  (Ativo)
-//   tela ativa que nunca deu sinal      -> a_instalar   (Player V2, 23/09/2026:
-//                                          tela cadastrada não é tela operando;
-//                                          o primeiro heartbeat chama isto de novo)
+//       e tem credencial
+//   tela ativa que nunca deu sinal, ou  -> a_instalar   (Player V2, 23/09/2026:
+//   com o Player revogado                  tela cadastrada não é tela operando;
+//                                          o primeiro sinal, a revogação e o
+//                                          reprovisionamento chamam isto de novo)
 //   0 ativa, >=1 reparo                 -> em_reparo    (Em reparo)
 //   0 ativa, 0 reparo                   -> inativo      (Inativo, mas tem tela cadastrada)
 // É estado do ponto, não saúde: uma tela que já operou e está sem sinal
 // agora não tira o ponto de "Ativo" (isso é alerta, src/lib/status-tela.js).
 async function sincronizarStatusPonto(pontoId, db = pool) {
   const { rows } = await db.query(
-    `SELECT COUNT(*) FILTER (WHERE status = 'ativo' AND primeiro_sinal_em IS NOT NULL)::int AS operando,
+    `SELECT COUNT(*) FILTER (WHERE status = 'ativo' AND primeiro_sinal_em IS NOT NULL AND chave_hash IS NOT NULL)::int AS operando,
             COUNT(*) FILTER (WHERE status = 'ativo')::int AS ativas,
             COUNT(*) FILTER (WHERE status = 'reparo')::int AS em_reparo,
             COUNT(*)::int AS total

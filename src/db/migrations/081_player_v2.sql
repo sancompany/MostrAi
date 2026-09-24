@@ -150,16 +150,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dispositivos_update_horas_check') THEN
     ALTER TABLE dispositivos ADD CONSTRAINT dispositivos_update_horas_check CHECK (update_horas_entre_tentativas BETWEEN 1 AND 72);
   END IF;
-  -- Contrato §5: cada lado da margem é limitado a 0–10 vmin no Player. Valor
-  -- acima disso já era cortado em 10 lá; aqui só deixa de fingir o contrário.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'dispositivos_margens_teto_check') THEN
-    UPDATE dispositivos
-       SET margem_superior = LEAST(margem_superior, 10), margem_direita = LEAST(margem_direita, 10),
-           margem_inferior = LEAST(margem_inferior, 10), margem_esquerda = LEAST(margem_esquerda, 10)
-     WHERE GREATEST(margem_superior, margem_direita, margem_inferior, margem_esquerda) > 10;
-    ALTER TABLE dispositivos ADD CONSTRAINT dispositivos_margens_teto_check
-      CHECK (margem_superior <= 10 AND margem_direita <= 10 AND margem_inferior <= 10 AND margem_esquerda <= 10);
-  END IF;
+  -- Margens: SEM teto no banco e sem cortar valor existente. O Player V2
+  -- aceita 0–10 vmin (contrato §5) e o /config manda no máximo isso
+  -- (src/player/config.js); o player web V1 respeita até 20, e uma TV V1
+  -- configurada com 15 não pode perder a moldura no deploy. O teto de 10 vale
+  -- para a escrita nova (validarCampos em src/dispositivos/routes.js). Um CHECK
+  -- NOT VALID não serve: barraria qualquer UPDATE da linha — o heartbeat.
 END $$;
 
 -- Versão desejada sobe sozinha quando muda qualquer campo que vai na config.
@@ -342,15 +338,17 @@ CREATE TABLE IF NOT EXISTS player_releases (
 );
 
 -- ---------------------------------------------------------------------------
--- 9. Estado do ponto: "Ativo" só com tela ativa que já deu sinal (o resto da
---     regra é a de sempre — src/pontos/repository.js sincronizarStatusPonto).
+-- 9. Estado do ponto: "Ativo" só com tela ativa, com credencial, que já deu
+--     sinal (o resto da regra é a de sempre — src/pontos/repository.js
+--     sincronizarStatusPonto).
 -- ---------------------------------------------------------------------------
 UPDATE pontos p SET status = x.status
   FROM (
     SELECT p2.id,
            CASE
              WHEN COUNT(d.id) = 0 THEN 'a_instalar'
-             WHEN COUNT(d.id) FILTER (WHERE d.status = 'ativo' AND d.primeiro_sinal_em IS NOT NULL) > 0 THEN 'em_operacao'
+             WHEN COUNT(d.id) FILTER (WHERE d.status = 'ativo' AND d.primeiro_sinal_em IS NOT NULL
+                                      AND d.chave_hash IS NOT NULL) > 0 THEN 'em_operacao'
              WHEN COUNT(d.id) FILTER (WHERE d.status = 'ativo') > 0 THEN 'a_instalar'
              WHEN COUNT(d.id) FILTER (WHERE d.status = 'reparo') > 0 THEN 'em_reparo'
              ELSE 'inativo'
