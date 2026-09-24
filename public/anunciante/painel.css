@@ -39,9 +39,15 @@
 .anunciante-dashboard .panel, .anunciante-dashboard .kpi-card { border-color: var(--border); border-radius: var(--dash-radius); box-shadow: var(--dash-shadow); }
 .anunciante-dashboard .kpi-grid { grid-template-columns: 1.35fr repeat(3, 1fr); gap: 14px; margin: 0; }
 .anunciante-dashboard .kpi-destaque { grid-column: auto; }
-.anunciante-dashboard .kpi-card { position: relative; min-height: 172px; padding: 22px; overflow: hidden; }
-.anunciante-dashboard .kpi-card::after { content: ""; position: absolute; inset: auto 0 0; height: 3px; background: #f0ddc9; }
-.anunciante-dashboard .kpi-card:first-child::after { background: var(--brand); }
+/* Sem `overflow: hidden` (24/09/2026, "11 / 32.400" cortado no card
+   Exibições): ele cortava o número e, num item de grid, ainda zerava a
+   largura mínima — a coluna encolhia abaixo do conteúdo. A faixa de baixo,
+   que era o motivo do recorte (::after com cantos arredondados), virou
+   sombra interna: segue o raio da borda sozinha. `min-width: 0` deixa as
+   colunas com a proporção do grid; quem se adapta é o número
+   (painel.page.js#encaixarNumero). */
+.anunciante-dashboard .kpi-card { position: relative; min-width: 0; min-height: 172px; padding: 22px; box-shadow: inset 0 -3px 0 #f0ddc9, var(--dash-shadow); }
+.anunciante-dashboard .kpi-card:first-child { box-shadow: inset 0 -3px 0 var(--brand), var(--dash-shadow); }
 /* Ícone neutro por padrão, laranja só no card de destaque (.kpi-icon-orange)
    — era azul nos dois, gastando cor de identidade em todo card e não
    destacando nenhum. */
@@ -49,10 +55,26 @@
 .anunciante-dashboard .kpi-icon-orange { background: #fff0e5; color: var(--brand-text); }
 .anunciante-dashboard .kpi-card .kpi-label { margin-bottom: 5px; font-size: .76rem; font-weight: 650; letter-spacing: .025em; text-transform: uppercase; }
 .anunciante-dashboard .kpi-card b { font-size: clamp(1.45rem, 2.4vw, 2rem); letter-spacing: -.025em; }
+/* Fração "confirmadas / previstas": numa linha ("11 / 32.400") quando cabe;
+   quando não cabe, o total desce como "de 32.400", menor e em cinza — o
+   número principal continua sendo o das confirmadas. Cada parte nunca se
+   parte no meio. */
+.anunciante-dashboard .kpi-card .kpi-fracao { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: .25em; }
+.anunciante-dashboard .kpi-card .kpi-fracao > span { display: inline; margin: 0; color: inherit; font-size: inherit; white-space: nowrap; }
+.anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-sep, .anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-de { display: inline; margin: 0; color: inherit; font-size: inherit; }
+.anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-de { display: none; }
+.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado { flex-wrap: wrap; }
+.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-total { flex-basis: 100%; margin-top: 3px; color: var(--text-dim); font-size: .56em; font-weight: 700; letter-spacing: 0; }
+.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-sep { display: none; }
+.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-de { display: inline; }
+/* Último recurso pra um valor absurdo que nem a 60% cabe: quebra visível no
+   meio do número, nunca recorte. */
+.anunciante-dashboard .kpi-card b.kpi-extremo { white-space: normal; overflow-wrap: anywhere; }
+.anunciante-dashboard .kpi-card b.kpi-extremo.kpi-fracao > span { white-space: normal; overflow-wrap: anywhere; }
 .anunciante-dashboard .kpi-card .kpi-caption { margin-top: 5px; line-height: 1.4; }
 .anunciante-dashboard .kpi-card .track { margin-top: 14px; height: 6px; background: var(--bg-alt); }
 .anunciante-dashboard .kpi-secondary { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; min-height: auto; padding: 15px 20px; }
-.anunciante-dashboard .kpi-secondary::after { height: 0; }
+.anunciante-dashboard .kpi-secondary { box-shadow: var(--dash-shadow); }
 .anunciante-dashboard .kpi-secondary .kpi-icon { grid-row: 1 / 3; margin: 0; }
 .anunciante-dashboard .kpi-secondary .kpi-label { align-self: end; margin: 0; }
 .anunciante-dashboard .kpi-secondary b { grid-row: 1 / 3; grid-column: 3; font-size: 1.3rem; }

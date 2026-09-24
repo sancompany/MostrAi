@@ -558,11 +558,72 @@ async function carregarBancoHoras() {
     card.querySelector('[data-kpi-banco-legenda]').textContent =
       `${dados.saldo} exibições · prioridade nos próximos dias`;
     card.hidden = false;
+    encaixarNumero(card.querySelector('b'));
   } catch {
     /* aviso extra — sem ele, o painel continua completo */
     card.hidden = true;
   }
 }
+
+// Números dos cards do resumo (24/09/2026, bug reportado pelo dono: "11 /
+// 32.400" cortado no card Exibições). Causa, medida: com o painel em duas
+// colunas (≥1100px) cada card tem 177px, o número tinha 32px, não podia
+// quebrar (`white-space: nowrap`) e o card cortava o excesso (`overflow:
+// hidden` — que ainda deixava a coluna do grid encolher abaixo do número).
+// Agora nada é cortado nem escondido: o número encolhe no máximo 15% pra
+// caber numa linha; a fração que ainda não cabe vira "11" em cima e "de
+// 32.400" embaixo; valor longo encolhe até 60%; e só um valor absurdo quebra
+// no meio (último recurso, visível). Mede de novo quando a largura muda.
+const numeroBR = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+function montarFracao(el, feitas, total) {
+  el.classList.add('kpi-fracao');
+  el.innerHTML =
+    `<span class="kpi-fracao-feitas">${esc(feitas)}</span>` +
+    `<span class="kpi-fracao-total"><span class="kpi-fracao-sep">/ </span><span class="kpi-fracao-de">de </span>${esc(total)}</span>`;
+}
+
+function encaixarNumero(el) {
+  const cabe = () => el.scrollWidth <= el.clientWidth + 0.5;
+  el.classList.remove('kpi-quebrado', 'kpi-extremo');
+  el.style.fontSize = '';
+  const base = parseFloat(getComputedStyle(el).fontSize);
+  const reduzir = (piso) => {
+    for (let tamanho = base; !cabe() && tamanho - 1 >= piso; tamanho -= 1) el.style.fontSize = `${tamanho - 1}px`;
+  };
+  reduzir(base * 0.85);
+  if (cabe()) return;
+  if (el.classList.contains('kpi-fracao')) {
+    el.style.fontSize = '';
+    el.classList.add('kpi-quebrado');
+    if (cabe()) return;
+  }
+  reduzir(base * 0.6);
+  if (!cabe()) el.classList.add('kpi-extremo');
+}
+
+function encaixarKpis() {
+  document.querySelectorAll('#kpiGrid .kpi-card:not([hidden]) > b').forEach(encaixarNumero);
+}
+
+// Cada card é observado, não a grade: a largura de um card muda sem a grade
+// mudar (o card de Horas nasce escondido e, quando aparece, empurra os outros
+// pra colunas mais estreitas). Só largura: a altura muda quando o número
+// desce de linha, e reagir a ela faria o observador chamar a si mesmo.
+if (window.ResizeObserver) {
+  const larguraAnterior = new WeakMap();
+  const observador = new ResizeObserver((entradas) => {
+    for (const { target, contentRect } of entradas) {
+      const largura = Math.round(contentRect.width);
+      if (largura === larguraAnterior.get(target)) continue;
+      larguraAnterior.set(target, largura);
+      const numero = target.querySelector(':scope > b');
+      if (numero && largura > 0) encaixarNumero(numero);
+    }
+  });
+  document.querySelectorAll('#kpiGrid .kpi-card').forEach((card) => observador.observe(card));
+}
+if (document.fonts?.ready) document.fonts.ready.then(encaixarKpis);
 
 // Horas contratadas x entregues no mês corrente (19/09/2026, pedido do
 // dono) — é a métrica que a conta realmente vende, então é o PRIMEIRO
@@ -576,9 +637,11 @@ function desenharHorasMes(contratadas, entregues) {
   if (contratadas == null || !card) return;
   const restantes = Math.max(0, contratadas - entregues);
   const pct = contratadas > 0 ? Math.min(100, (entregues / contratadas) * 100) : 0;
-  card.querySelector('b').textContent = `${entregues}h`;
+  // Formato brasileiro e sem resto de ponto flutuante: 180 − 178,9 saía
+  // "1.0999999999999943h ainda por rodar".
+  card.querySelector('b').textContent = `${numeroBR(entregues)}h`;
   card.querySelector('[data-kpi-horas-legenda]').textContent =
-    `de ${contratadas}h contratadas · ${restantes}h ainda por rodar`;
+    `de ${numeroBR(contratadas)}h contratadas · ${numeroBR(restantes)}h ainda por rodar`;
   const fill = card.querySelector('.fill');
   fill.dataset.pct = pct;
   // A barra já existe no HTML (data-pct="0") desde o carregamento — o
@@ -587,6 +650,7 @@ function desenharHorasMes(contratadas, entregues) {
   fill.removeAttribute('data-pct-ok');
   window.aplicarBarras(card);
   card.hidden = false;
+  encaixarNumero(card.querySelector('b'));
 }
 
 async function carregarExibicoes() {
@@ -599,17 +663,20 @@ async function carregarExibicoes() {
     // — antes eram duas legendas de prosa; agora é a mesma resposta num
     // formato que se lê num olhar só.
     const concluidas = (dados.confirmadasMes ?? 0).toLocaleString('pt-BR');
-    kpi('exibicoes').textContent =
-      dados.exibicoesContratadasMes != null
-        ? `${concluidas} / ${dados.exibicoesContratadasMes.toLocaleString('pt-BR')}`
-        : concluidas;
+    if (dados.exibicoesContratadasMes != null) {
+      montarFracao(kpi('exibicoes'), concluidas, dados.exibicoesContratadasMes.toLocaleString('pt-BR'));
+    } else {
+      kpi('exibicoes').classList.remove('kpi-fracao');
+      kpi('exibicoes').textContent = concluidas;
+    }
     // Por MIL exibições, não por exibição só (21/09/2026, revisão de
     // design): a mesma fórmula (plano ÷ previstas) em duas casas decimais
     // colapsava pra R$ 0,01 em qualquer plano — número que não se move não
     // informa nada. Não é CPM: CPM é custo por mil PESSOAS impactadas, e o
     // Mostraí não mede audiência, só reprodução na tela.
     kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao * 1000) : '-';
-    kpi('media').textContent = dados.mediaDiariaMes ?? '-';
+    kpi('media').textContent = dados.mediaDiariaMes != null ? numeroBR(dados.mediaDiariaMes) : '-';
+    encaixarKpis();
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorPonto(dados.porPonto || []);
