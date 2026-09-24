@@ -274,3 +274,40 @@ test('substituir arquivo (mesmo mecanismo de routes.js #substituir): preserva o 
     await limpar({ criativoIds: [idOriginal] });
   }
 });
+
+test('período digitado no admin é horário de Matão, e salvar sem mexer não anda (D3, 24/09/2026)', async () => {
+  // Antes o formulário relia o período em UTC e o navegador convertia de novo
+  // na ida: cada "salvar" empurrava o período 3h pra frente.
+  const { paredeComercial } = require('../src/lib/fuso-comercial');
+  const conta = await anunciantesRepo.ensureContaMostrai();
+  const criativo = await criativoDeTeste(conta.id);
+  const midia = await midiasRepo.criar({
+    criativoId: criativo.id,
+    nomeInterno: 'Período no fuso de Matão',
+    frequenciaHora: 1,
+    coberturaTipo: 'rede',
+    pontosIds: [],
+    periodoInicio: '2026-12-01T00:00',
+    periodoFim: '2026-12-31T23:59',
+  });
+  try {
+    let atual = await midiasRepo.buscarPorId(midia.id);
+    assert.strictEqual(new Date(atual.periodo_inicio).toISOString(), '2026-12-01T03:00:00.000Z');
+    assert.strictEqual(new Date(atual.periodo_fim).toISOString(), '2027-01-01T02:59:59.999Z');
+    for (let i = 0; i < 3; i++) {
+      await midiasRepo.atualizar(midia.id, {
+        periodo_inicio: paredeComercial(atual.periodo_inicio),
+        periodo_fim: paredeComercial(atual.periodo_fim),
+      });
+      atual = await midiasRepo.buscarPorId(midia.id);
+    }
+    assert.strictEqual(paredeComercial(atual.periodo_inicio), '2026-12-01T00:00');
+    assert.strictEqual(paredeComercial(atual.periodo_fim), '2026-12-31T23:59');
+    await midiasRepo.atualizar(midia.id, { periodo_inicio: '', periodo_fim: null });
+    atual = await midiasRepo.buscarPorId(midia.id);
+    assert.strictEqual(atual.periodo_inicio, null);
+    assert.strictEqual(atual.periodo_fim, null);
+  } finally {
+    await limpar({ midiaIds: [midia.id], criativoIds: [criativo.id] });
+  }
+});

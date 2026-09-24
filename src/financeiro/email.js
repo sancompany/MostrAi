@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { linhaEndereco } = require('../lib/endereco');
 
 function transportador() {
   return nodemailer.createTransport({
@@ -320,7 +321,8 @@ async function enviarCandidaturaNova(candidatura) {
       candidatura.nome_comercio ? `Comércio: ${candidatura.nome_comercio}` : '',
       `WhatsApp: ${candidatura.contato_telefone}`,
       candidatura.contato_email ? `E-mail: ${candidatura.contato_email}` : '',
-      candidatura.endereco ? `Endereço: ${candidatura.endereco}` : '',
+      candidatura.endereco ? `Endereço: ${linhaEndereco(candidatura, { comCidade: true })}` : '',
+      candidatura.cep ? `CEP: ${candidatura.cep}` : '',
       candidatura.observacao ? `Observação: ${candidatura.observacao}` : '',
       '',
       'A página prometeu retorno em até 2 dias úteis.',

@@ -78,7 +78,7 @@ let LOGADO = false;
 // A troca do cabeçalho pelo menu da conta é do /layout.js — aqui só
 // interessa saber se está logado, pra o botão do plano ir pro painel
 // (que gera a cobrança) em vez de pedir cadastro de novo.
-const carregarLogin = carregarConta().then((a) => {
+const carregarLogin = carregarSessao().then((a) => {
   LOGADO = !!a;
 });
 
@@ -173,6 +173,12 @@ function render(meses) {
 // ciclo na conta (mesma régua do backend, san-checkout.js#valorMensalDaConta)
 // — é o preço de tabela daquele ciclo enquanto a promoção vale, não mais um
 // desconto em cima do desconto.
+//
+// O selo e o "preço válido por N meses" só aparecem quando a célula tem
+// vantagem de verdade (`temVantagem`, calculado no servidor — D1,
+// 24/09/2026): no Anual a pré-venda dá 20% e o ciclo já dá 20%, o preço é o
+// mesmo, e o card anunciava uma promoção que não muda nada. O número
+// continua seguindo a régua da cobrança (a promoção substitui o ciclo).
 function montarPreco(p, meses, promo) {
   const cheioBase = Number(p.valor_mensal_cheio ?? p.valor_mensal);
   const desconto = promo ? Number(promo.descontoPercentual) : Number(p.desconto_percentual) || 0;
@@ -181,13 +187,14 @@ function montarPreco(p, meses, promo) {
   const totalCiclo = Math.round(porMes * meses * 100) / 100;
   const economia = Math.round((cheioCiclo - totalCiclo) * 100) / 100;
   const temRiscado = cheioCiclo > totalCiclo;
+  const anunciaPromo = promo && promo.temVantagem !== false;
   return `
-      ${promo ? `<div class="price-selo-promo">${esc(promo.promocao?.selo || promo.promocao?.titulo_publico || 'Promoção')}</div>` : ''}
+      ${anunciaPromo ? `<div class="price-selo-promo">${esc(promo.promocao?.selo || promo.promocao?.titulo_publico || 'Promoção')}</div>` : ''}
       <div class="price-riscado ${temRiscado ? '' : 'price-linha-vazia'}">${temRiscado ? `<span>${fmt(cheioCiclo)}</span> <span class="badge-desconto">-${desconto}%</span>` : '&nbsp;'}</div>
       <div class="price">${fmt(totalCiclo)}${meses === 1 ? '/mês' : ''}</div>
       <div class="price-economia ${economia > 0 ? '' : 'price-linha-vazia'}">${economia > 0 ? `Você economizou ${fmt(economia)}.` : '&nbsp;'}</div>
       <div class="price-equivalente ${meses > 1 ? '' : 'price-linha-vazia'}">${meses > 1 ? `Equivalente a ${fmt(porMes)}/mês.` : '&nbsp;'}</div>
-      ${promo ? `<div class="price-promo-duracao">Preço válido por ${promo.promocao?.duracao_beneficio_meses} meses a partir da adesão.</div>` : ''}`;
+      ${anunciaPromo ? `<div class="price-promo-duracao">Preço válido por ${promo.promocao?.duracao_beneficio_meses} meses a partir da adesão.</div>` : ''}`;
 }
 
 // `aria-pressed` acompanha a classe: pro leitor de tela, as quatro abas
@@ -265,9 +272,12 @@ function pintarBannerPlanos(promo) {
   const secao = document.getElementById('promocaoPlanosBanner');
   const el = document.getElementById('promocaoPlanosTopo');
   const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
-  const prazo = promo.compra_fim
-    ? `<p class="promo-home-prazo">Condição válida até ${new Date(promo.compra_fim).toLocaleDateString('pt-BR')}.</p>`
-    : '';
+  // Em que ciclos vale e até quando (D1/D3, 24/09/2026 — config.js).
+  // Sem vantagem em ciclo nenhum, não há banner: seria anunciar desconto
+  // que não existe.
+  const condicao = window.condicaoDaPromocao(promo);
+  if (condicao === null) return;
+  const prazo = condicao ? `<p class="promo-home-prazo">${esc(condicao)}</p>` : '';
   el.innerHTML = `
     <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
       ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}

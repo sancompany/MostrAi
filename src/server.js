@@ -9,6 +9,7 @@ const PgSession = require('connect-pg-simple')(session);
 const pool = require('./db/pool');
 const { limiteTentativas } = require('./lib/limite-tentativas');
 const { segredoConfere } = require('./lib/segredo');
+const { comSemTransformacao, setHeadersEstaticos } = require('./lib/html-sem-transformacao');
 
 const pontosRoutes = require('./pontos/routes');
 const anunciantesRoutes = require('./anunciantes/routes');
@@ -178,7 +179,7 @@ app.use((req, res, proximo) => {
   return res.redirect(301, `${req.path}.html${busca}`);
 });
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), { setHeaders: setHeadersEstaticos }));
 
 // Login do admin por usuário/senha (env ADMIN_USER/ADMIN_PASSWORD) + sessão
 // cookie — mesmo padrão já usado por anunciantes/afiliados. Registrado antes
@@ -257,7 +258,10 @@ const paginaDeErro = (arquivo) => path.join(__dirname, '..', 'public', arquivo);
 // "não existe" nunca é fato estável o bastante pra ir pra cache.
 app.use((req, res) => {
   res.set('Cache-Control', 'no-store');
-  if (querHtml(req)) return res.status(404).sendFile(paginaDeErro('404.html'));
+  if (querHtml(req)) {
+    res.set('Cache-Control', comSemTransformacao('no-store'));
+    return res.status(404).sendFile(paginaDeErro('404.html'));
+  }
   res.status(404).json({ erro: 'não encontrado' });
 });
 
@@ -279,7 +283,10 @@ app.use((err, req, res, next) => {
   console.error(err);
   // A 500.html não depende de nada da aplicação — é justamente quando ela
   // falhou que a página precisa abrir.
-  if (querHtml(req)) return res.status(500).sendFile(paginaDeErro('500.html'));
+  if (querHtml(req)) {
+    res.set('Cache-Control', comSemTransformacao('no-store'));
+    return res.status(500).sendFile(paginaDeErro('500.html'));
+  }
   res.status(500).json({ erro: 'erro interno' });
 });
 

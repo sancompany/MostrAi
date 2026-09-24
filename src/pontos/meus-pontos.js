@@ -74,7 +74,8 @@ function telaPublica(t, horarioDoPonto, agora) {
 async function meusPontosDaConta(contaId, agora = new Date()) {
   const [pontos, telas, candidaturas] = await Promise.all([
     pool.query(
-      `SELECT p.id, p.candidatura_id, p.nome, p.endereco, p.bairro, p.cidade, p.uf, p.status,
+      `SELECT p.id, p.candidatura_id, p.nome, p.endereco, p.logradouro, p.numero, p.complemento, p.bairro,
+              p.cidade, p.uf, p.status,
               p.foto_instalacao_url, p.horario_semanal, p.created_at,
               c.nome AS categoria_nome
          FROM pontos p
@@ -98,7 +99,8 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
       [contaId],
     ),
     pool.query(
-      `SELECT c.id, c.nome_comercio, c.endereco, c.bairro, c.cidade, c.uf, c.foto_fachada_url, c.criado_em
+      `SELECT c.id, c.nome_comercio, c.endereco, c.logradouro, c.numero, c.complemento, c.bairro,
+              c.cidade, c.uf, c.foto_fachada_url, c.criado_em
          FROM candidaturas c
         WHERE c.conta_id = $1 AND c.tipo = 'ponto' AND c.status IN ('nova', 'em_contato')
           AND NOT EXISTS (SELECT 1 FROM pontos p WHERE p.candidatura_id = c.id)
@@ -127,6 +129,9 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
       id: p.id,
       nome: p.nome,
       endereco: p.endereco,
+      logradouro: p.logradouro,
+      numero: p.numero,
+      complemento: p.complemento,
       bairro: p.bairro,
       cidade: p.cidade,
       uf: p.uf,
@@ -146,6 +151,9 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     id: c.id,
     nome: c.nome_comercio,
     endereco: c.endereco,
+    logradouro: c.logradouro,
+    numero: c.numero,
+    complemento: c.complemento,
     bairro: c.bairro,
     cidade: c.cidade,
     uf: c.uf,

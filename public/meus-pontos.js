@@ -105,7 +105,7 @@
   }
 
   function htmlEstabelecimento(e) {
-    const local = [e.endereco, e.bairro].filter(Boolean).map(esc).join(', ');
+    const local = esc(window.linhaEndereco(e));
     const cidade = `${esc(e.cidade || '')}${e.uf ? `/${esc(e.uf)}` : ''}`;
     const explica = EXPLICACAO[e.estado]?.(e) || '';
     return `<article class="estab-card estado-${e.estado}" data-estab="${e.tipo}-${e.id}">
@@ -143,9 +143,13 @@
   // estão na conta, então pede só o que é do ponto. Sem endereço na conta
   // (conta criada por convite de ponto, por exemplo), cai no formulário
   // completo — não dá pra reaproveitar o que não existe.
+  // Endereço em partes (D5, 24/09/2026): conta com logradouro precisa de
+  // número e bairro pra reaproveitar; conta antiga, só com a linha
+  // `endereco`, segue valendo como antes.
   function contaTemEndereco() {
     const c = obterConta();
-    return !!(c?.endereco && c.cidade && c.uf && c.cep);
+    if (!c?.cidade || !c.uf || !c.cep) return false;
+    return c.logradouro ? !!(c.numero && c.bairro) : !!c.endereco;
   }
 
   function htmlOportunidade() {
@@ -203,7 +207,9 @@
       const c = obterConta();
       enviarPedido(form, 'cp_', $('cardPontoMsg'), {
         nome_comercio: c.nome_empresa,
-        endereco: c.endereco,
+        ...(c.logradouro
+          ? { logradouro: c.logradouro, numero: c.numero, complemento: c.complemento, bairro: c.bairro }
+          : { endereco: c.endereco }),
         cidade: c.cidade,
         uf: c.uf,
         cep: c.cep,

@@ -1,4 +1,6 @@
 const pool = require('../db/pool');
+const { instanteComercial } = require('../lib/fuso-comercial');
+const { arredondar, percentual } = require('../lib/dinheiro');
 
 // Promoções (reformulação comercial, 22/09/2026) — condição comercial
 // temporária, separada do produto (Essencial/Pro/Prime continuam sendo os
@@ -30,6 +32,17 @@ const CAMPOS_IDENTIDADE = [
   'mostrar_home',
   'mostrar_planos',
 ];
+
+// Janela de compra digitada no admin é horário de Matão, não do banco (D3,
+// 24/09/2026 — ver src/lib/fuso-comercial.js): antes "31/10 23:59" virava
+// 23:59 UTC e a promoção encerrava às 20:59 daqui.
+function comDatasComerciais(dados) {
+  return {
+    ...dados,
+    compra_inicio: instanteComercial(dados.compra_inicio, { campo: 'início da compra' }),
+    compra_fim: instanteComercial(dados.compra_fim, { campo: 'fim da compra', fim: true }),
+  };
+}
 
 async function listarTodas() {
   const { rows } = await pool.query(`
@@ -90,10 +103,11 @@ async function definirItens(promocaoId, itens, db = pool) {
   }
 }
 
-async function criar(dados) {
-  if (!dados.nome_interno || !dados.titulo_publico) {
+async function criar(entrada) {
+  if (!entrada.nome_interno || !entrada.titulo_publico) {
     throw Object.assign(new Error('nome interno e título público são obrigatórios'), { status: 400 });
   }
+  const dados = comDatasComerciais(entrada);
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
@@ -113,7 +127,8 @@ async function criar(dados) {
   }
 }
 
-async function atualizar(id, dados) {
+async function atualizar(id, entrada) {
+  const dados = comDatasComerciais(entrada);
   const campos = CAMPOS_IDENTIDADE.filter((c) => dados[c] !== undefined);
   const cliente = await pool.connect();
   try {
@@ -220,6 +235,41 @@ async function condicaoVigente(tier, compromissoMeses, estado = { temPlanoAtivo:
   return null;
 }
 
+// Vantagem promocional (D1, rodada de 24/09/2026). A regra de preço NÃO
+// muda: a promoção substitui o desconto do ciclo (ADR-014, a mesma conta de
+// san-checkout.js#valorMensalDaConta). O que muda é o que se ANUNCIA: a
+// pré-venda de produção dá 20% em todos os ciclos, e o Anual já tem 20%
+// normais — ali o preço é o mesmo com ou sem promoção, e o site dizia
+// "pré-venda" e "mais desconto" num ciclo que não ganha nada a mais. Decisão
+// do dono: preservar a regra, não inventar percentual, e não anunciar
+// vantagem onde não há. A célula só "tem vantagem" quando o preço
+// promocional fica ABAIXO do preço normal daquele plano — comparação de
+// preço, não de percentual, pra valer mesmo se um dia o plano tiver preço
+// fora da régua do desconto. Se a promoção der MENOS que o ciclo, a regra
+// atual cobraria mais caro com ela: não é anunciada, e fica registrado em
+// docs/PENDENCIAS.md como decisão comercial em aberto.
+function temVantagem(descontoPromocional, plano) {
+  const cheio = Number(plano.valor_mensal_cheio ?? plano.valor_mensal);
+  const promocional = arredondar(cheio - percentual(cheio, Number(descontoPromocional || 0)));
+  return promocional < Number(plano.valor_mensal);
+}
+
+// Marca cada célula da promoção com `temVantagem` contra os planos à venda e
+// resume os ciclos em que ela vale de fato (`ciclosComVantagem`) — é o que a
+// Home e a página de Planos usam pra não prometer desconto a mais no ciclo
+// errado. Célula sem plano à venda correspondente não tem vantagem nenhuma
+// (não dá pra comprar).
+function comVantagem(promocao, planos) {
+  const itens = (promocao.itens || []).map((i) => {
+    const plano = planos.find((p) => p.tier === i.tier && Number(p.compromisso_meses) === Number(i.compromissoMeses));
+    return { ...i, temVantagem: plano ? temVantagem(i.descontoPercentual, plano) : false };
+  });
+  const ciclosComVantagem = [
+    ...new Set(itens.filter((i) => i.temVantagem).map((i) => Number(i.compromissoMeses))),
+  ].sort((a, b) => a - b);
+  return { ...promocao, itens, ciclosComVantagem };
+}
+
 module.exports = {
   listarTodas,
   buscarPorId,
@@ -230,4 +280,6 @@ module.exports = {
   estadoComercialDaConta,
   elegivel,
   condicaoVigente,
+  temVantagem,
+  comVantagem,
 };

@@ -21,10 +21,9 @@ form.addEventListener('submit', async (e) => {
   form.querySelectorAll('.campo-err').forEach((c) => c.classList.remove('campo-err'));
   const dados = Object.fromEntries(new FormData(form));
   dados.aceitou_termos = form.aceitou_termos.checked;
-  // O número é campo separado só pra facilitar o preenchimento por CEP —
-  // no banco o endereço continua sendo uma linha só.
-  dados.endereco = `${dados.endereco}, ${dados.numero}`;
-  delete dados.numero;
+  // Endereço vai em partes (CEP, logradouro, número, complemento, bairro,
+  // cidade, UF — D5, 24/09/2026); quem compõe a linha é o servidor
+  // (src/lib/endereco.js), não esta página.
   const ref = new URLSearchParams(window.location.search).get('ref');
   if (ref) dados.indicado_por_cupom = ref;
   try {

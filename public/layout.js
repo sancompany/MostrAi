@@ -236,11 +236,27 @@
     return window.__conta;
   };
 
+  // Sessão pra páginas PÚBLICAS (decisão D4 do dono, 24/09/2026): só diz se
+  // há alguém logado e o mínimo pro cabeçalho (nome, foto, papéis). Antes a
+  // vitrine perguntava isso a /anunciantes/me — rota privada —, e todo
+  // visitante anônimo via um 401 no console. `GET /conta/sessao` responde 200
+  // com `logado: false` pra quem não entrou. A conta completa continua em
+  // `carregarConta`, só nas páginas da conta.
+  window.carregarSessao = function carregarSessao() {
+    if (!window.__sessao) {
+      window.__sessao = fetch(`${API_BASE_URL}/conta/sessao`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((s) => (s?.logado ? s.conta : null))
+        .catch(() => null);
+    }
+    return window.__sessao;
+  };
+
   // No site público, quem já está logado vê o menu da conta em vez de "Entrar"
   // e do menu de marketing inteiro — as informações dele já estão nas abas da
   // própria conta. (Isso substituiu o antigo nav-auth.js.)
   if (layout === 'publico') {
-    window.carregarConta().then((conta) => {
+    window.carregarSessao().then((conta) => {
       if (!conta) return;
       const papeis = conta.papeis || ['anunciante'];
       const inicial = (conta.nome_empresa || '?').trim().charAt(0).toUpperCase();

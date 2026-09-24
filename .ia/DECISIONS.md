@@ -541,3 +541,41 @@ SQL). Toda regra de convivência pago × benefício mora em
 é coberta por `tests/prioridade-planos.test.js` (matriz 3×3). Nenhuma nova
 operação no modelo antigo: reintroduzir modalidade, repasse ou plano de
 ponto exige rever este ADR.
+
+## ADR-017 — Data comercial é horário de Matão; endereço em partes; vantagem promocional só se anuncia onde existe (24/09/2026)
+
+Contexto: decisões D1–D6 do dono sobre os achados da rodada mobile
+(docs/PENDENCIAS.md, "Decisões D1–D6 do dono e auditoria seguinte").
+
+Decisão:
+1. **Data/hora comercial digitada no admin é horário de America/Sao_Paulo**,
+   convertida no SERVIDOR (`src/lib/fuso-comercial.js#instanteComercial`):
+   parede sem fuso = Matão; valor com fuso passa como veio; fim de janela é
+   inclusivo no minuto. Vale pra `promocoes.compra_inicio/compra_fim` e
+   `midias_proprias.periodo_inicio/periodo_fim`. O navegador manda a parede
+   crua e relê com `window.paredeSP`; o site exibe com `window.prazoBR`.
+   Nunca `toISOString().slice(0, 16)` em campo de data comercial.
+2. **Endereço em partes** (CEP, logradouro, número, complemento, bairro,
+   cidade, UF) em `anunciantes`, `pontos` e `candidaturas` (migration 086).
+   `endereco` segue existindo como a linha "logradouro, número" composta SÓ
+   por `src/lib/endereco.js#colunasDoEndereco` (repositórios de conta, ponto
+   e candidatura chamam; rota e formulário nunca compõem). Exibição por
+   `linhaEndereco` (servidor) / `window.linhaEndereco` (navegador).
+   Complemento é o único opcional.
+3. **Regra de preço da promoção intocada (ADR-014)**; o que se anuncia
+   depende de `temVantagem` (preço promocional abaixo do preço normal do
+   plano). Célula sem vantagem não leva selo nem "preço válido por N meses";
+   banners dizem os `ciclosComVantagem`; sem vantagem em ciclo nenhum, sem
+   banner. Percentual e escolha de ciclos são decisão comercial (C1–C3).
+4. **Sessão pública sem 401**: páginas públicas perguntam por
+   `GET /conta/sessao` (200 sempre, só nome/foto/papéis). Rota privada
+   continua 401.
+5. **Sem injeção de terceiros no HTML**: todo HTML sai com
+   `Cache-Control: no-transform` (Cloudflare não injeta o Web Analytics da
+   zona). Liberar analytics na CSP exige decisão explícita de privacidade.
+
+Consequências: quem criar outro campo de data comercial usa
+`instanteComercial` na gravação e `paredeSP`/`prazoBR` na tela. Quem criar
+outro formulário de endereço usa os 7 campos e deixa a linha pro servidor.
+Mudar "promoção substitui" pra "o maior dos dois" é rever o ADR-014, não
+este.

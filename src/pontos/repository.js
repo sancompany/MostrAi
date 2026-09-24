@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { LIMITE_COMERCIAL } = require('../lib/capacidade');
+const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
 // Quatro status desde 22/09/2026 (migration 069, rodada final da Rede) —
 // e AUTOMÁTICO: ninguém escreve aqui direto, `sincronizarStatusPonto` (mais
@@ -20,6 +21,11 @@ const CAMPOS_ATUALIZAVEIS = [
   // campos novos preenchidos.
   'bairro',
   'complemento',
+  // Logradouro e número separados (migration 086, D5 de 24/09/2026):
+  // `endereco` passa a ser a linha "logradouro, número" composta por
+  // src/lib/endereco.js, nunca escrita à mão.
+  'logradouro',
+  'numero',
   'cidade',
   'uf',
   'cep',
@@ -52,14 +58,11 @@ const CAMPOS_ATUALIZAVEIS = [
 ];
 
 async function criar(dados, db = pool) {
+  // Partes do endereço e a linha composta num lugar só (D5). `cidade`, `uf` e
+  // `cep` são NOT NULL aqui: vazio continua indo como veio.
+  const end = colunasDoEndereco(dados);
+  const { nome, cidade, uf, cep } = dados;
   const {
-    nome,
-    endereco,
-    bairro,
-    complemento,
-    cidade,
-    uf,
-    cep,
     segmento,
     categoria_id,
     categoria_livre,
@@ -82,17 +85,17 @@ async function criar(dados, db = pool) {
        (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
-        horario_semanal, foto_instalacao_url, observacoes, candidatura_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        horario_semanal, foto_instalacao_url, observacoes, candidatura_id, logradouro, numero)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
      RETURNING *`,
     [
       nome,
-      endereco,
-      bairro || null,
-      complemento || null,
-      cidade,
-      uf,
-      cep,
+      end.endereco,
+      end.bairro ?? null,
+      end.complemento ?? null,
+      end.cidade ?? cidade,
+      end.uf ?? uf,
+      end.cep ?? cep,
       segmento,
       categoria_id || null,
       categoria_livre || null,
@@ -107,6 +110,8 @@ async function criar(dados, db = pool) {
       foto_instalacao_url || null,
       observacoes || null,
       candidatura_id || null,
+      end.logradouro ?? null,
+      end.numero ?? null,
     ],
   );
   return rows[0];
@@ -171,7 +176,20 @@ async function buscarPorId(id) {
   return rows[0] || null;
 }
 
-async function atualizar(id, dados) {
+async function atualizar(id, entrada) {
+  // Mexeu no endereço: as partes e a linha composta saem juntas daqui (D5).
+  let dados = entrada;
+  if (PARTES.some((p) => entrada[p] !== undefined) || entrada.endereco !== undefined) {
+    const atual = await buscarPorId(id);
+    const { cidade, uf, cep, ...end } = colunasDoEndereco(entrada, atual);
+    dados = { ...entrada, ...end };
+    // NOT NULL na tabela: limpar não apaga, fica o que estava.
+    for (const [campo, valor] of Object.entries({ cidade, uf, cep })) {
+      if (valor) dados[campo] = valor;
+      else delete dados[campo];
+    }
+    if (!dados.endereco) delete dados.endereco;
+  }
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (!campos.length) return buscarPorId(id);
 
@@ -244,7 +262,7 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
 // nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
 async function listarPublicos() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')

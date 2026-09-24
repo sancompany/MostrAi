@@ -2,19 +2,19 @@
 
 ## NOW
 
-**Decisões do dono abertas pela rodada mobile (24/09/2026)** — detalhe em
-`docs/PENDENCIAS.md`, "Rodada de responsividade…", itens D1–D5:
-- D1 promoção "pré venda" no Anual (20%) empata com o desconto normal do
-  Anual (20%): tirar o Anual ou subir o percentual (admin, Ofertas).
-- D2 corrigir o texto da promoção no admin ("apré venda", "Valido",
-  "periodo", "mostrai").
-- D3 admin grava o fim da promoção em UTC (datetime-local sem fuso): acaba
-  3h antes do digitado — conserto no admin.
-- D4 (opcional) sondagem de sessão que não gere 401 no console do visitante.
-- D5 cadastro sem campo de bairro (o CEP só preenche a rua).
-- D6 Cloudflare Web Analytics injetado pela zona e barrado pela CSP: erro de
-  console em toda página de produção — desligar a instalação automática no
-  painel da Cloudflare ou liberar o domínio na CSP (decisão de privacidade).
+**Decisões D1–D6 resolvidas (24/09/2026)** — ADR-017; detalhe em
+`docs/PENDENCIAS.md`, "Decisões D1–D6 do dono e auditoria seguinte".
+Continuam com o dono (nada mudado sozinho):
+- C1 pré-venda com 20% em 3/6/12 meses: compromisso maior não dá desconto
+  maior; o Anual ficou sem vantagem nenhuma.
+- C2 promoção menor que o desconto do ciclo cobraria mais caro (ADR-014
+  substitui) — impedir/avisar no admin ou mudar a regra.
+- C3 adesão ao Anual grava a promoção sem vantagem (gastaria vaga se houver
+  limite de adesões).
+- C4 pré-venda termina 31/10 às 00:00 (o digitado) — trocar pra 23:59 se a
+  intenção era o dia inteiro.
+- A1 conferir o período da mídia própria 1; A2 completar bairro dos pontos
+  1 e 2; A3 limpar a descrição de teste da pré-venda (tudo no admin).
 
 **Atualizado 21/09/2026 — plano do dono pros próximos ~2 dias, antes de
 começar a vender:**

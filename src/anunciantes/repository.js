@@ -1,6 +1,7 @@
 const { gerarHash, conferirHash } = require('../lib/senha');
 const { limpar: limparDocumento } = require('../br/documento');
 const pool = require('../db/pool');
+const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
 // `status` deixou de ser estado operacional (decisão do dono, 16/09/2026) —
 // hoje só distingue comum de parceiro (substitui o antigo flag `fundador`).
@@ -11,6 +12,12 @@ const CAMPOS_ATUALIZAVEIS = [
   'nome_empresa',
   'cpf_cnpj',
   'endereco',
+  // Partes do endereço (migration 086, D5 de 24/09/2026) — `endereco` vira a
+  // linha "logradouro, número" composta por src/lib/endereco.js.
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
   'cidade',
   'uf',
   'cep',
@@ -55,7 +62,7 @@ const CAMPOS_ATUALIZAVEIS = [
 // a tela do perfil lia undefined e remarcava o "quero receber novidades" de
 // quem tinha acabado de revogar — a pessoa via o oposto do que estava no banco.
 const CAMPOS_PUBLICOS = `
-  id, nome_empresa, cpf_cnpj, endereco, cidade, uf, cep,
+  id, nome_empresa, cpf_cnpj, endereco, logradouro, numero, complemento, bairro, cidade, uf, cep,
   contato_email, contato_telefone, status, plano_id,
   data_inicio_cobertura, data_expiracao, indicado_por_cupom, categoria_id, categoria_livre,
   responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone, foto_url, created_at, excluido_em,
@@ -95,21 +102,24 @@ function planoVigenteId(conta, agora = new Date()) {
 // docs/PENDENCIAS.md pra o que fazer com as duplicidades que já existem.
 async function criar(dados, db = pool) {
   const senha_hash = await gerarHash(dados.senha);
+  // Partes do endereço e a linha `endereco` composta num lugar só (D5).
+  const end = colunasDoEndereco(dados);
   const { rows } = await db.query(
     `INSERT INTO anunciantes
        (nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone,
         senha_hash, indicado_por_cupom, categoria_id, categoria_livre,
         responsavel_nome, responsavel_cpf, responsavel_email,
-        responsavel_telefone, aceitou_termos_em, papeis, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        responsavel_telefone, aceitou_termos_em, papeis, status,
+        logradouro, numero, complemento, bairro)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
      RETURNING ${CAMPOS_PUBLICOS}`,
     [
       dados.nome_empresa,
       limparDocumento(dados.cpf_cnpj),
-      dados.endereco || null,
-      dados.cidade || null,
-      dados.uf || null,
-      dados.cep || null,
+      end.endereco ?? null,
+      end.cidade ?? null,
+      end.uf ?? null,
+      end.cep ?? null,
       dados.contato_email,
       dados.contato_telefone,
       senha_hash,
@@ -128,6 +138,10 @@ async function criar(dados, db = pool) {
       // `status` virou só comum/parceiro (16/09/2026) — toda conta nova é
       // 'comum'; quem bloqueia é o campo `suspenso`, não este.
       dados.status || 'comum',
+      end.logradouro ?? null,
+      end.numero ?? null,
+      end.complemento ?? null,
+      end.bairro ?? null,
     ],
   );
   return rows[0];
@@ -160,7 +174,13 @@ async function listar() {
   return rows;
 }
 
-async function atualizar(id, dados) {
+async function atualizar(id, entrada) {
+  // Mexeu no endereço: as partes e a linha `endereco` composta saem juntas
+  // daqui (D5, src/lib/endereco.js) — nenhuma rota compõe por conta própria.
+  let dados = entrada;
+  if (PARTES.some((p) => entrada[p] !== undefined) || entrada.endereco !== undefined) {
+    dados = { ...entrada, ...colunasDoEndereco(entrada, await buscarPorId(id)) };
+  }
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (!campos.length) return buscarPorId(id);
 

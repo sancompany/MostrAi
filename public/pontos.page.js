@@ -77,7 +77,10 @@ fetch(`${API_BASE_URL}/pontos`)
     };
     grid.innerHTML = pontos
       .map((p) => {
-        const enderecoCompleto = `${p.endereco ? p.endereco + ', ' : ''}${p.cidade}`;
+        // Linha do endereço com a mesma regra do resto do sistema
+        // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
+        const linha = window.linhaEndereco(p);
+        const enderecoCompleto = `${linha ? linha + ', ' : ''}${p.cidade}`;
         const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
         const st = STATUS_LABEL[p.status] || STATUS_LABEL.em_operacao;
         return `
@@ -85,7 +88,7 @@ fetch(`${API_BASE_URL}/pontos`)
         <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
         <span class="badge ${st.classe}">${st.texto}</span>
         <h4>${esc(p.nome)}</h4>
-        <p>${esc(p.cidade)}${p.endereco ? ', ' + esc(p.endereco) : ''}</p>
+        <p>${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}</p>
         <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
       </div>
     `;
