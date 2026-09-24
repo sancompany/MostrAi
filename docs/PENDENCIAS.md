@@ -4344,14 +4344,26 @@ do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
   cobrança (`POST /anunciantes/:id/assinar` → `condicaoVigente`,
   `src/financeiro/routes.js`) aplicam o desconto promocional; a confirmação
   calculava só com `valor_mensal`. Pro trimestral: vitrine R$ 597,60,
-  confirmação **R$ 672,30**, Checkout R$ 597,60. Agora a confirmação usa a
-  mesma promoção (com a sessão, mesma elegibilidade) e a mesma conta de
-  centavos, e diz a validade da condição. Nenhuma regra mudou.
+  confirmação **R$ 672,30**, Checkout R$ 597,60. **Correção final
+  (24/09/2026, depois da revisão contra o ADR-014):** a primeira versão
+  repetia a conta da promoção no navegador — ainda deixava de fora o
+  crédito de comodato e o desconto de parceiro, que o ADR-014 manda somar.
+  Agora o servidor cota (`GET /anunciantes/me/cotacao/:planoId`,
+  `src/financeiro/cotacao.js`) com as MESMAS funções do `POST /assinar`
+  (`condicaoVigente` + `valorMensalDaConta`), e a tela só desenha: subtotal,
+  desconto do ciclo ou da promoção, "desconto da sua conta" (comodato/
+  parceiro) e a validade da condição. Conferido: conta comum R$ 597,60;
+  dona de ponto com R$ 50 de crédito + parceiro 10% R$ 387,84 — o mesmo
+  número da função de cobrança. Teste novo: `tests/cotacao.test.js`.
+  Nenhuma regra mudou.
 - **T2 [x] FAQ "E se eu não pagar a renovação?"** dizia "a conta fica
   suspensa até a regularização" — a migration 078 (decisão do dono) tirou a
   suspensão automática: o plano é encerrado e volta com a cobrança paga
   (`aplicarCicloPago`). Texto: "A conta não é suspensa: o acesso ao painel,
-  o histórico e os vídeos continuam lá."
+  o histórico e os vídeos continuam lá." Ajustado depois contra as regras do
+  #40 (`planoVigenteId`, `ativarBeneficiosAgendados`): quem tem o plano do
+  comodato ou um benefício de créditos programado continua no ar — a
+  resposta passou a dizer isso.
 - **T3 [x] FAQ "Já tenho conta como ponto"** falava nos "modos Anúncios e
   Meu ponto" — o painel é único desde a Fatia 6.
 - **T4 [x] Login:** "anúncios, ponto ou vendas" — programa de vendedor

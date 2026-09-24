@@ -19,6 +19,7 @@ const eventos = require('../lib/eventos');
 const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
 const planoAdministrativo = require('./plano-administrativo');
 const comodato = require('../pontos/comodato');
+const { cotarPlano } = require('./cotacao');
 
 const uploadNota = multer({ dest: os.tmpdir() });
 
@@ -329,6 +330,18 @@ router.delete('/admin/beneficios/:id', async (req, res) => {
 // san-checkout.js sobre por que não é mais um id de catálogo genérico) e
 // devolve o link de checkout. Se já existir uma assinatura ativa, reusa —
 // não deixa acumular assinatura duplicada por clique duplo.
+// Cotação da tela de confirmação do pedido: o valor que ESTA conta pagaria
+// neste plano, calculado pelas mesmas funções da cobrança (ver cotacao.js).
+// Só leitura — não cria assinatura nem reserva vaga; quem decide de verdade
+// continua sendo o POST /assinar logo abaixo.
+router.get('/anunciantes/me/cotacao/:planoId', exigirAnuncianteLogado, async (req, res) => {
+  const plano = await planosRepo.buscarPorId(req.params.planoId);
+  if (!plano?.ativo) return res.status(404).json({ erro: 'plano não encontrado' });
+  const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
+  if (!conta || conta.excluido_em) return res.status(403).json({ erro: 'conta indisponível' });
+  res.json(await cotarPlano(conta, plano));
+});
+
 router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
     return res.status(403).json({ erro: 'só pode assinar plano na própria conta' });

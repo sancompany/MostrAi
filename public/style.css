@@ -1550,6 +1550,11 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 }
 .pedido-linha span:first-child { color: var(--text-dim); }
 .pedido-linha span:last-child { font-weight: 600; text-align: right; }
+/* Valor em dinheiro não quebra: "-R$ 209,76" saía com o sinal numa linha e
+   o número na outra, e desconto lido assim parece outro valor. Quem quebra é
+   o rótulo, à esquerda. Só nas linhas de dinheiro — texto longo como "pelo
+   menos 15.120 vezes na rede" precisa poder quebrar a 320px. */
+.pedido-linha.dinheiro span:last-child { white-space: nowrap; }
 .pedido-linha.desconto span:last-child { color: var(--ok); }
 .pedido-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 2px; }
 .pedido-total .rotulo { color: var(--text-dim); font-size: .92rem; }
