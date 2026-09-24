@@ -35,16 +35,22 @@
 
     <section class="tight">
       <div class="wrap">
-        <div class="mapa-e-exemplo">
-          <div class="map-embed">
-            <iframe src="https://www.google.com/maps?q=Mat%C3%A3o,SP&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa da região de Matão-SP"></iframe>
+        <!-- Ordem do HTML = ordem do celular: mapa, pontos, foto de exemplo.
+             No desktop a foto sobe pra coluna ao lado do mapa (style.css,
+             .rede-layout). -->
+        <div class="rede-layout">
+          <div class="rede-mapa">
+            <div class="map-embed">
+              <iframe src="https://www.google.com/maps?q=Mat%C3%A3o,SP&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa da região de Matão-SP"></iframe>
+            </div>
+            <a class="mapa-abrir" href="https://www.google.com/maps/search/?api=1&amp;query=Mat%C3%A3o%2C%20SP" target="_blank" rel="noopener">📍 Abrir no Google Maps</a>
           </div>
-          <figure class="exemplo-ponto">
-            <img src="/img/exemplo-ponto-completo.jpg" alt="Exemplo de um ponto Mostraí com o molde de acabamento instalado">
+          <div id="pontosGrid" class="pontos-grid rede-pontos"><p class="empty-state">Carregando os pontos...</p>
+          </div>
+          <figure class="exemplo-ponto rede-foto">
+            <img src="/img/exemplo-ponto-completo.jpg" srcset="/img/exemplo-ponto-completo-720.jpg 720w, /img/exemplo-ponto-completo.jpg 1086w" sizes="(max-width: 767px) 340px, 360px" width="1086" height="1448" loading="lazy" decoding="async" alt="Exemplo de um ponto Mostraí com o molde de acabamento instalado">
             <figcaption>Assim fica nosso totem completo.</figcaption>
           </figure>
-        </div>
-        <div id="pontosGrid" class="pontos-grid"><p class="empty-state">Carregando os pontos...</p>
         </div>
       </div>
     </section>

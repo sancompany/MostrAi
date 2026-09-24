@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#ff7a1a">
   <link rel="manifest" href="/site.webmanifest">
 </head>
-<body data-layout="minimo">
+<body data-layout="minimo" data-layout-botao="Entrar|/anunciante/login.html">
 
   <main>
     <section class="tight u-ta-c">
@@ -36,12 +36,12 @@
           <p class="form-sep-titulo">Seu negócio</p>
           <div>
             <label for="nome_empresa">Nome da empresa</label>
-            <input id="nome_empresa" name="nome_empresa" required>
+            <input id="nome_empresa" name="nome_empresa" autocomplete="organization" maxlength="160" required>
           </div>
           <div class="field-row">
             <div class="u-col">
               <label for="cpf_cnpj">CPF ou CNPJ</label>
-              <input id="cpf_cnpj" name="cpf_cnpj" required>
+              <input id="cpf_cnpj" name="cpf_cnpj" autocapitalize="characters" autocomplete="off" maxlength="18" required>
             </div>
             <div class="u-col">
               <label for="categoria_id">Ramo de atividade</label>
@@ -59,26 +59,26 @@
           <div class="field-row">
             <div class="u-col">
               <label for="cep">CEP</label>
-              <input id="cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required>
+              <input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" required>
             </div>
             <div class="u-col-2">
               <label for="endereco">Rua e bairro</label>
-              <input id="endereco" name="endereco" required>
+              <input id="endereco" name="endereco" autocomplete="address-line1" maxlength="200" required>
             </div>
             <div class="u-col">
               <label for="numero">Número</label>
-              <input id="numero" name="numero" required>
+              <input id="numero" name="numero" maxlength="20" required>
             </div>
           </div>
           <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido, só o número é com você.</p>
-          <div class="field-row">
+          <div class="field-row linha-curta">
             <div class="u-col-2">
               <label for="cidade">Cidade</label>
-              <input id="cidade" name="cidade" required>
+              <input id="cidade" name="cidade" autocomplete="address-level2" maxlength="120" required>
             </div>
-            <div class="u-col">
+            <div class="u-col campo-uf">
               <label for="uf">UF</label>
-              <input id="uf" name="uf" maxlength="2" required>
+              <input id="uf" name="uf" autocomplete="address-level1" autocapitalize="characters" maxlength="2" required>
             </div>
           </div>
 
@@ -87,11 +87,11 @@
           <div class="field-row">
             <div class="u-col-2">
               <label for="contato_email">E-mail</label>
-              <input id="contato_email" name="contato_email" type="email" autocomplete="email" required>
+              <input id="contato_email" name="contato_email" type="email" autocomplete="email" maxlength="254" required>
             </div>
             <div class="u-col">
               <label for="contato_telefone">Telefone (WhatsApp)</label>
-              <input id="contato_telefone" name="contato_telefone" autocomplete="tel" required>
+              <input id="contato_telefone" name="contato_telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(16) 99999-9999" required>
             </div>
           </div>
           <div class="field-row">
@@ -105,26 +105,33 @@
             </div>
           </div>
 
-          <hr class="form-sep">
-          <p class="form-sep-titulo">Responsável <span class="u-tt-none u-fw-500 u-ls-0">*opcional</span></p>
-          <div>
-            <label for="responsavel_nome">Nome do responsável</label>
-            <input id="responsavel_nome" name="responsavel_nome">
-          </div>
-          <div class="field-row">
-            <div class="u-col">
-              <label for="responsavel_cpf">CPF</label>
-              <input id="responsavel_cpf" name="responsavel_cpf">
+          <!-- Responsável é opcional e fica recolhido: aberto, eram quatro
+               campos a mais no fim de um formulário que já é o mais longo do
+               site, com cara de obrigatório. Campo recolhido continua no
+               formulário e vai no envio normalmente. -->
+          <details class="bloco-opcional" id="blocoResponsavel">
+            <summary><span>Responsável <span class="bloco-opcional-nota">(opcional)</span></span></summary>
+            <div class="bloco-opcional-corpo">
+              <div>
+                <label for="responsavel_nome">Nome do responsável</label>
+                <input id="responsavel_nome" name="responsavel_nome" autocomplete="name" maxlength="160">
+              </div>
+              <div class="field-row">
+                <div class="u-col">
+                  <label for="responsavel_cpf">CPF</label>
+                  <input id="responsavel_cpf" name="responsavel_cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00">
+                </div>
+                <div class="u-col">
+                  <label for="responsavel_telefone">Telefone (WhatsApp)</label>
+                  <input id="responsavel_telefone" name="responsavel_telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
+                </div>
+              </div>
+              <div>
+                <label for="responsavel_email">E-mail do responsável</label>
+                <input id="responsavel_email" name="responsavel_email" type="email" maxlength="254">
+              </div>
             </div>
-            <div class="u-col">
-              <label for="responsavel_telefone">Telefone (WhatsApp)</label>
-              <input id="responsavel_telefone" name="responsavel_telefone" autocomplete="tel">
-            </div>
-          </div>
-          <div>
-            <label for="responsavel_email">E-mail do responsável</label>
-            <input id="responsavel_email" name="responsavel_email" type="email">
-          </div>
+          </details>
 
           <hr class="form-sep">
           <div class="check-row">
@@ -132,8 +139,8 @@
             <label for="aceitou_termos">Li e aceito os <a href="/termos-de-uso.html" target="_blank">Termos de Uso</a>, a <a href="/politica-de-privacidade.html" target="_blank">Política de Privacidade</a> e o <a href="/contrato-anunciante.html" target="_blank">Contrato de Prestação de Serviços</a>.</label>
           </div>
           <button class="btn primary block" type="submit">Criar minha conta</button>
-          <p class="form-hint u-ta-c">Depois do cadastro a gente confere seus dados e libera a conta, e o aviso vai por e-mail. Isso não trava nada: dá pra escolher o plano e subir o vídeo na hora.</p>
-          <p class="form-msg" id="msg"></p>
+          <p class="form-hint u-ta-c">A conta já nasce liberada: é só confirmar o e-mail com o código que a gente manda, escolher o plano e subir o seu anúncio.</p>
+          <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
         </form>
       </div>
     </section>

@@ -4214,3 +4214,158 @@ categoria, repasse, mensagem respondida, aprovação e recusa); screenshots
 em 1920/1440/1024/390 sem rolagem horizontal; estado vazio em todas as
 telas; nenhum erro de console além dos esperados no ambiente local sem
 Supabase (upload de arquivo recusado pelo storage).
+
+## Rodada de responsividade e experiência mobile do site público — 23–24/09/2026
+
+Pedido do dono: rodada final de RESPONSIVIDADE do site público, sem redesign,
+sem trocar identidade, texto ou regra comercial. Auditoria → correção →
+reauditoria, medida no navegador (Playwright + Chromium do ambiente), não
+lida no código. Admin e painel da conta fora do escopo (o cabeçalho, o rodapé
+e o botão do WhatsApp são compartilhados e mudaram junto — conferido que o
+painel e a confirmação de plano continuam sem rolagem lateral e sem erro).
+
+**Rotas auditadas (15):** `/`, `/planos.html`, `/pontos.html`,
+`/contato.html`, `/anunciante/login.html`, `/anunciante/cadastro.html`,
+`/esqueci-senha.html`, `/redefinir-senha.html`, `/termos-de-uso.html`,
+`/politica-de-privacidade.html`, `/comodato.html`,
+`/contrato-anunciante.html`, `/obrigado.html`, `/convite.html`, 404.
+**Viewports (14):** 320x568, 360x800, 375x812, 390x844, 412x915, 430x932,
+667x375, 844x390 (deitado), 768x1024, 820x1180, 1280x720, 1366x768,
+1440x900, 1920x1080. Banco local espelhando os dados públicos de produção
+(1 ponto, 1.000 pessoas/mês, a promoção "pré venda"), mais uma passada com
+dados de estresse (nome de 60 caracteres sem espaço, endereço longo, 4
+pontos).
+
+**Resultado final (210 combinações):** 0 rolagem horizontal
+(`scrollWidth ≤ clientWidth` em todas, sem `overflow-x: hidden`), 0 campo
+com fonte < 16px, 0 item de menu fora da tela ou atrás do WhatsApp, 0 caso
+do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
+(WCAG 2.1 A/AA) sem violação nas 8 rotas principais em 390 e 1366px.
+
+### Corrigido
+
+- **R1 [x] Menu atrás do WhatsApp no celular deitado.** Em 667x375 e 844x390
+  "Criar conta" e "Entrar" ficavam embaixo do botão flutuante (z 50 > z 20
+  do cabeçalho). Agora o botão some com o menu aberto; "Criar conta" e
+  "Entrar" ficam lado a lado (o menu encolheu 58px) e a altura máxima é a da
+  janela menos o cabeçalho.
+- **R2 [x] Menu não fechava ao tocar fora.** Véu escurecido atrás do menu
+  pega o toque (fecha sem acionar o link que estivesse embaixo); Esc devolve
+  o foco ao botão; foco de teclado saindo do cabeçalho fecha; girar pra
+  desktop fecha. Rolagem não é travada.
+- **R3 [x] Hambúrguer abrindo menu vazio** no login e no cadastro (layout
+  mínimo sem botão), e escondendo o único botão em "Voltar ao site",
+  "Ir pro meu painel". Layout mínimo não tem mais hambúrguer: o botão fica
+  na barra. Login ganhou "Criar conta" e cadastro ganhou "Entrar" no
+  cabeçalho (mesmo mecanismo do `convite.html`), levando o `?plano=` junto.
+- **R4 [x] Campos com 15,2px no iPad e no iPhone deitado** (a regra de 16px
+  valia só até 640px — zoom automático do Safari em 667/768/820/844px).
+  16px em qualquer largura no site público.
+- **R5 [x] Alvos de toque < 44px:** perguntas do FAQ (28px — o preenchimento
+  estava no `<details>`, só o texto abria), links do rodapé (15px), seletor
+  de ciclo no tablet (36px), "Esqueci minha senha"/"Voltar ao login" (20px),
+  olho da senha no tablet (30px), "Ver no mapa" (20px). Todos ≥ 44px.
+- **R6 [x] Botão `<button>` 6px mais baixo que `<a class="btn">`** (não herda
+  fonte nem entrelinha): "Enviar mensagem" 43px ao lado de "Chamar no
+  WhatsApp" 49px, desktop incluso. Mesma altura agora.
+- **R7 [x] Banner de pré-venda ocupava a primeira tela inteira** a 360px
+  (420px de altura, botão quebrando em 2 linhas): compacto no celular; a
+  dobra da Home agora mostra banner, título, proposta, preço e "Ver planos".
+- **R8 [x] Contraste:** texto branco sobre o laranja de marca puro no
+  começo do degradê do banner (2,6:1). O degradê passou a começar no
+  `--brand-dim` e passar pelo `--brand-text` (os dois da paleta). O laranja
+  de texto sobre o fundo cinza-claro dava 4,24:1 (mínimo 4,5) — no site
+  público o token fica um fio mais escuro (`#b3500a`, 4,86:1); painel e admin
+  seguem com o valor-base. "Como isso funciona" do aviso: 4,2 → 7,2:1.
+- **R9 [x] Selo "pré venda" virava uma faixa laranja da largura do card**
+  (inline-block esticado pelo flex em coluna) — desktop também. Pílula agora.
+- **R10 [x] Onde estamos:** celular na ordem mapa → pontos → foto (a foto do
+  totem vinha antes dos pontos de verdade); mapa com 300px no celular (não
+  prende o dedo) e link "Abrir no Google Maps" com 44px; métricas em 2x2;
+  com um ponto só, o card fica centralizado em vez de colado à esquerda;
+  foto de exemplo com versão de 720px (307 KB → 78 KB no celular) e
+  dimensões reservadas.
+- **R11 [x] "Como funciona" no celular:** sequência vertical com o número ao
+  lado do título e um trilho ligando 1 → 2 → 3 → 4; 2x2 do tablet até 959px.
+- **R12 [x] Formulários:** uma coluna abaixo de 600px (Nome + WhatsApp e
+  Senha + Confirmar ficavam lado a lado com 160px em 412–430px), Cidade + UF
+  na mesma linha; `type="tel"`/`inputmode`/`autocomplete`/`maxlength` nos
+  campos (o WhatsApp do contato e o telefone do cadastro eram texto comum);
+  CPF/CNPJ SEM teclado numérico de propósito (CNPJ alfanumérico); mensagem
+  do formulário com `role="status"`; o `<p>` vazio da mensagem deixava 60px
+  de vão embaixo do botão; botão trava enquanto envia (evita cadastro e
+  mensagem duplicados); Responsável recolhido em `<details>` "(opcional)",
+  e um erro do servidor num campo dele abre o bloco antes de focar.
+- **R13 [x] Rodapé:** no celular, links em duas colunas com 44px cada (era
+  uma linha de 15px de altura); respiro embaixo dele pro WhatsApp (cobria o
+  e-mail no fim de toda página abaixo de 1280px); desktop numa linha como
+  antes.
+- **R14 [x] Botão do WhatsApp:** `env(safe-area-inset-*)`, 52px no celular e
+  48px abaixo de 360px, some com campo focado em tela de toque (o teclado
+  sobe e ele cairia sobre o campo/"Enviar").
+- **R15 [x] Planos no tablet:** um card por linha com no máximo 560px (antes
+  esticava até 700px); seletor de ciclo em 2x2 até 599px (entre 461 e 599
+  quebrava torto) com `aria-pressed`.
+- **R16 [x] Escala responsiva** (`clamp()`) de h1/h2/lead/títulos de página,
+  espaçamento de seção compacto até 767px, margem lateral de 16px no
+  celular (alinhada com o logo). Desktop idêntico acima de ~1200px.
+
+### Inconsistências de texto e preço — corrigidas com evidência no código
+
+- **T1 [x] Tela de confirmação do pedido ignorava a promoção.** A vitrine e a
+  cobrança (`POST /anunciantes/:id/assinar` → `condicaoVigente`,
+  `src/financeiro/routes.js`) aplicam o desconto promocional; a confirmação
+  calculava só com `valor_mensal`. Pro trimestral: vitrine R$ 597,60,
+  confirmação **R$ 672,30**, Checkout R$ 597,60. Agora a confirmação usa a
+  mesma promoção (com a sessão, mesma elegibilidade) e a mesma conta de
+  centavos, e diz a validade da condição. Nenhuma regra mudou.
+- **T2 [x] FAQ "E se eu não pagar a renovação?"** dizia "a conta fica
+  suspensa até a regularização" — a migration 078 (decisão do dono) tirou a
+  suspensão automática: o plano é encerrado e volta com a cobrança paga
+  (`aplicarCicloPago`). Texto: "A conta não é suspensa: o acesso ao painel,
+  o histórico e os vídeos continuam lá."
+- **T3 [x] FAQ "Já tenho conta como ponto"** falava nos "modos Anúncios e
+  Meu ponto" — o painel é único desde a Fatia 6.
+- **T4 [x] Login:** "anúncios, ponto ou vendas" — programa de vendedor
+  aposentado (CONSTRAINTS) e painel único.
+- **T5 [x] Cadastro:** "a gente confere seus dados e libera a conta" — não
+  existe mais aprovação de conta (`src/anunciantes/routes.js:261`, decisão
+  de 15/09). Texto: a conta nasce liberada; confirmar o e-mail, escolher o
+  plano, subir o anúncio.
+
+### Achado e NÃO alterado — decisão do dono
+
+- **D1 [ ] Promoção "pré venda" no Anual não dá vantagem.** Ela dá 20% nos
+  ciclos de 3, 6 e 12 meses, e o desconto normal do Anual já é 20%: o card
+  anual mostra o selo "pré venda" e "Preço válido por 12 meses", com o mesmo
+  preço de sem promoção (R$ 950,40 / 2.390,40 / 4.310,40) — e a promoção
+  SUBSTITUI o desconto do ciclo, não soma. Caminhos: tirar o Anual da
+  promoção, ou dar a ele um percentual maior que 20%. Configuração no admin
+  (Ofertas), sem código.
+- **D2 [ ] Texto da promoção no banco** (editável no admin): "durante **apré**
+  venda da **mostrai**", "**Valido** somente um curto **periodo**". A
+  descrição interna tem texto de teste ("fw2enw5…") — não aparece no site.
+- **D3 [ ] Fim da promoção um dia antes do digitado.** O admin manda o
+  `datetime-local` sem fuso; o banco grava como UTC. "31/10 00:00" virou
+  31/10 00:00 UTC = 30/10 21:00 em Matão, e quem compra no dia 30 à noite já
+  não pega a condição. O site formata a data no fuso de quem vê: medido com o
+  navegador no fuso de São Paulo, a Home e a Planos dizem **"válida até
+  30/10/2026"** (no fuso UTC, 31/10) — coerente com o instante real em que a
+  promoção acaba, mas não com o que foi digitado. Correção é no admin (fora
+  desta rodada); até lá, digitar "01/11 03:00" dá o fim do dia 31 em Matão.
+- **D4 [ ] Console de visitante anônimo mostra um 401** em toda página
+  pública (`/anunciantes/me`, a sondagem de sessão do cabeçalho). É esperado
+  e não é exceção de JS; some se um dia a sondagem virar uma rota que
+  responda 204 pra quem não está logado.
+- **D5 [ ] Cadastro: "Rua e bairro" com CEP preenche só a rua** — o
+  formulário não tem campo de bairro, e o `ligarCep` não cola mais o bairro
+  na rua (Parte W). Quem não digitar o bairro fica sem ele.
+
+**Verificado:** medidor (15 rotas × 14 viewports, 210 combinações) antes e
+depois; screenshots comparadas (antes × depois) em 1366px das 7 rotas
+principais — desktop sem regressão, só as correções R6/R8/R9/R13 de
+propósito; roteiro de interação (menu por toque e teclado, FAQ, FAB com
+campo focado e menu aberto, `?plano=` entre cadastro e login, erro em campo
+recolhido, preço anual com promoção) — 70 checagens, todas ok; axe-core sem
+violação; `npm run check` limpo (263/263 testes, 16 avisos de lint =
+linha de base anterior).

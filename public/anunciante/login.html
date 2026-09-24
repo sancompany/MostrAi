@@ -21,13 +21,13 @@
   <meta name="theme-color" content="#ff7a1a">
   <link rel="manifest" href="/site.webmanifest">
 </head>
-<body data-layout="minimo">
+<body data-layout="minimo" data-layout-botao="Criar conta|/anunciante/cadastro.html">
 
   <main>
     <section class="tight u-ta-c">
       <div class="wrap">
         <h1 class="u-fs-220">Entrar na sua conta</h1>
-        <p class="lead u-m-0 u-centro">Acesse seu painel — anúncios, ponto ou vendas, o que já estiver ativo na sua conta.</p>
+        <p class="lead u-m-0 u-centro">Acesse seu painel: seus anúncios e seus pontos ficam na mesma conta.</p>
       </div>
     </section>
 
@@ -36,7 +36,7 @@
         <form class="card" id="formLogin">
           <div>
             <label for="email">E-mail</label>
-            <input id="email" name="email" type="email" autocomplete="username" required>
+            <input id="email" name="email" type="email" autocomplete="username" maxlength="254" required>
           </div>
           <div>
             <label for="senha">Senha</label>
@@ -44,7 +44,7 @@
           </div>
           <button class="btn primary block" type="submit">Entrar</button>
           <p class="u-ta-c u-m-0"><a class="link-secundario" href="/esqueci-senha.html?tipo=anunciante">Esqueci minha senha</a></p>
-          <p class="form-msg" id="msg"></p>
+          <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
         </form>
       </div>
     </section>

@@ -2,6 +2,17 @@
 
 ## NOW
 
+**Decisões do dono abertas pela rodada mobile (24/09/2026)** — detalhe em
+`docs/PENDENCIAS.md`, "Rodada de responsividade…", itens D1–D5:
+- D1 promoção "pré venda" no Anual (20%) empata com o desconto normal do
+  Anual (20%): tirar o Anual ou subir o percentual (admin, Ofertas).
+- D2 corrigir o texto da promoção no admin ("apré venda", "Valido",
+  "periodo", "mostrai").
+- D3 admin grava o fim da promoção em UTC (datetime-local sem fuso): acaba
+  3h antes do digitado — conserto no admin.
+- D4 (opcional) sondagem de sessão que não gere 401 no console do visitante.
+- D5 cadastro sem campo de bairro (o CEP só preenche a rua).
+
 **Atualizado 21/09/2026 — plano do dono pros próximos ~2 dias, antes de
 começar a vender:**
 1. **Revisão visual do painel do anunciante — primeira rodada feita

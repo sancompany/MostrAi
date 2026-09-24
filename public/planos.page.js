@@ -190,11 +190,15 @@ function montarPreco(p, meses, promo) {
       ${promo ? `<div class="price-promo-duracao">Preço válido por ${promo.promocao?.duracao_beneficio_meses} meses a partir da adesão.</div>` : ''}`;
 }
 
+// `aria-pressed` acompanha a classe: pro leitor de tela, as quatro abas
+// eram quatro botões iguais, sem dizer qual ciclo estava escolhido.
 document.getElementById('cycleToggle').addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  document.querySelectorAll('#cycleToggle button').forEach((b) => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#cycleToggle button').forEach((b) => {
+    b.classList.toggle('active', b === btn);
+    b.setAttribute('aria-pressed', String(b === btn));
+  });
   render(Number(btn.dataset.meses));
 });
 
