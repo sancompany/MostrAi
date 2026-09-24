@@ -46,13 +46,12 @@ const CAMPOS_CRIACAO = [
   'desconto_percentual',
 ];
 
-// Criar um plano novo (id novo) em vez de editar um existente é o jeito de
-// mudar preço pra clientes futuros sem mexer no que quem já assinou está
-// pagando (ver migration 014).
-// A guarda fica AQUI e não nas rotas: `criar` e `novaVersao` são os dois
-// únicos caminhos que gravam um plano, e uma guarda por caminho é uma guarda
-// que a terceira rota vai esquecer. Erro nomeado, com o teto na mensagem —
-// "valor inválido" manda o dono adivinhar qual.
+// Criar uma versão nova (id novo) em vez de editar a linha existente é o
+// jeito de mudar preço pra clientes futuros sem mexer no que quem já assinou
+// está pagando (ver migration 014). Desde a consolidação final (24/09/2026)
+// `novaVersao` (via `atualizarProduto`) é o ÚNICO caminho que grava um plano
+// — a grade antiga com `criar`/PATCH livre saiu do código. A guarda fica
+// aqui, não na rota. Erro nomeado, com o teto na mensagem.
 function conferirLimiteCriativos(dados) {
   if (dados.limite_criativos == null) return;
   const n = Number(dados.limite_criativos);
@@ -63,20 +62,6 @@ function conferirLimiteCriativos(dados) {
     erro.code = 'LIMITE_CRIATIVOS';
     throw erro;
   }
-}
-
-async function criar(dados) {
-  conferirLimiteCriativos(dados);
-  const preparado = { ...dados };
-  if (preparado.valor_mensal_cheio != null) {
-    preparado.valor_mensal = calcularValorMensal(preparado.valor_mensal_cheio, preparado.desconto_percentual);
-  }
-  const campos = CAMPOS_CRIACAO.filter((c) => preparado[c] !== undefined);
-  const colunas = campos.join(', ');
-  const marcadores = campos.map((_, i) => `$${i + 1}`).join(', ');
-  const valores = campos.map((c) => preparado[c]);
-  const { rows } = await pool.query(`INSERT INTO planos (${colunas}) VALUES (${marcadores}) RETURNING *`, valores);
-  return rows[0];
 }
 
 // vagas_restantes: só faz sentido em plano com teto de vagas (fundador) —
@@ -101,24 +86,26 @@ async function listarAtivos({ incluirFundador = true } = {}) {
 // que nunca pagou solta a vaga sozinho depois desse prazo — sem isso um
 // curioso travaria a vaga pra sempre. 15 minutos é o bastante pra completar
 // o pagamento; não há por que seguar por dias (decisão do dono, 15/09/2026 —
-// era 7 dias).
+// era 7 dias). Desde a migration 089 a assinatura recém-criada é
+// 'pendente_pagamento' (só vira 'ativa' com o primeiro ciclo pago) — a
+// reserva de 15 min é exatamente ela.
 const MINUTOS_RESERVA_VAGA = 15;
 
 async function contarVagasOcupadas(planoId, ignorarAnuncianteId) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM assinaturas s
-     WHERE s.plano_id = $1 AND s.status = 'ativa' AND s.anunciante_id <> COALESCE($2, -1)
-       AND (s.created_at > now() - ($3 || ' minutes')::interval
-            OR EXISTS (SELECT 1 FROM cobrancas_confirmadas c
-                       WHERE c.anunciante_id = s.anunciante_id AND c.plano_id = s.plano_id))`,
+     WHERE s.plano_id = $1 AND s.anunciante_id <> COALESCE($2, -1)
+       AND ((s.status = 'pendente_pagamento' AND s.created_at > now() - ($3 || ' minutes')::interval)
+            OR (s.status = 'ativa' AND EXISTS (SELECT 1 FROM cobrancas_confirmadas c
+                       WHERE c.anunciante_id = s.anunciante_id AND c.plano_id = s.plano_id)))`,
     [planoId, ignorarAnuncianteId || null, MINUTOS_RESERVA_VAGA],
   );
   return rows[0].total;
 }
 
-// A grade do admin. Versão aposentada sai daqui e vai pra `listarArquivados()`
-// — misturada, a tela mostraria dois "Essencial anual" e o dono editaria o
-// errado.
+// Todas as linhas em uso (a ficha de Conta lê pelo GET /admin/planos). Versão
+// aposentada (`arquivado_em`) fica fora — misturada, apareceriam dois
+// "Essencial anual".
 async function listarTodos() {
   // Mesma ordem da vitrine (por preço, não pelo nome do tier): o editor do
   // admin mostra os planos na posição em que o cliente vai vê-los.
@@ -131,29 +118,6 @@ async function listarTodos() {
 async function buscarPorId(id) {
   const { rows } = await pool.query(`${SELECT_PLANO} WHERE p.id = $1 GROUP BY p.id`, [id]);
   return rows[0] || null;
-}
-
-// Vitrine tem 3 vagas por modalidade (mensal/trimestral/semestral/anual) —
-// mais que isso vira parede de card. Desativar não cancela quem já assinou:
-// o plano continua existindo e cobrando igual, só sai da vitrine e não aceita
-// assinante novo.
-//
-// Plano fundador fica fora dessa conta: ele não entra na grade de 3 tiers da
-// vitrine (aparece como card próprio, só enquanto o programa está aberto).
-const MAX_ATIVOS_POR_CICLO = 3;
-
-async function contarAtivosDoCiclo(compromissoMeses, ignorarId) {
-  const { rows } = await pool.query(
-    `SELECT COUNT(*)::int AS total FROM planos
-     WHERE ativo AND NOT fundador AND compromisso_meses = $1 AND id <> COALESCE($2, '')`,
-    [compromissoMeses, ignorarId || null],
-  );
-  return rows[0].total;
-}
-
-async function vagaOcupada(compromissoMeses, ignorarId, ehFundador) {
-  if (ehFundador) return false;
-  return (await contarAtivosDoCiclo(compromissoMeses, ignorarId)) >= MAX_ATIVOS_POR_CICLO;
 }
 
 // Os dois grupos de campo, e a linha entre eles é o item 9 da spec.
@@ -185,31 +149,6 @@ const CAMPOS_CONTRATO = [
   'desconto_comodato_percentual',
   'desconto_percentual',
 ];
-
-const CAMPOS_ATUALIZAVEIS = CAMPOS_VITRINE;
-
-async function atualizar(id, dados) {
-  const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
-  if (!campos.length) return buscarPorId(id);
-  const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const valores = campos.map((c) => dados[c]);
-  await pool.query(`UPDATE planos SET ${sets} WHERE id = $1`, [id, ...valores]);
-  return buscarPorId(id);
-}
-
-// Substitui a lista de benefícios do plano de uma vez (o admin manda o
-// conjunto marcado inteiro, não um diff).
-async function definirBeneficios(planoId, beneficioIds) {
-  await pool.query('DELETE FROM planos_beneficios WHERE plano_id = $1', [planoId]);
-  if (beneficioIds.length) {
-    await pool.query(
-      `INSERT INTO planos_beneficios (plano_id, beneficio_id)
-       SELECT $1, unnest($2::int[])`,
-      [planoId, beneficioIds],
-    );
-  }
-  return buscarPorId(planoId);
-}
 
 // Id da versão seguinte: `essencial-12m` vira `essencial-12m-v2`, e `-v2` vira
 // `-v3`. Conta a partir do que existe no banco, não do id recebido, senão duas
@@ -274,32 +213,6 @@ async function novaVersao(idAtual, mudancas) {
     cliente.release();
   }
   return buscarPorId(novo.id);
-}
-
-// Versões aposentadas, com quantos assinantes ativos cada uma ainda tem — é
-// esse número que um dia torna seguro apagar uma versão antiga. Zero não
-// significa "pode apagar já": cobrança confirmada guarda `plano_id` por
-// obrigação fiscal.
-async function listarArquivados() {
-  const { rows } = await pool.query(`
-    ${SELECT_PLANO}
-    WHERE p.arquivado_em IS NOT NULL
-    GROUP BY p.id
-    ORDER BY p.arquivado_em DESC`);
-  for (const p of rows) {
-    const { rows: c } = await pool.query(
-      `
-      SELECT
-        (SELECT COUNT(*)::int FROM anunciantes
-          WHERE plano_id = $1 AND NOT suspenso AND excluido_em IS NULL
-            AND (data_expiracao IS NULL OR data_expiracao >= now())) AS contas_ativas,
-        (SELECT COUNT(*)::int FROM cobrancas_confirmadas WHERE plano_id = $1) AS cobrancas`,
-      [p.id],
-    );
-    p.contas_ativas = c[0].contas_ativas;
-    p.cobrancas = c[0].cobrancas;
-  }
-  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -409,18 +322,12 @@ async function atualizarProduto(tier, { precoBase, descontos }) {
 }
 
 module.exports = {
-  criar,
   listarAtivos,
   listarTodos,
   buscarPorId,
-  atualizar,
   novaVersao,
-  listarArquivados,
   proximoId,
-  definirBeneficios,
-  vagaOcupada,
   contarVagasOcupadas,
-  MAX_ATIVOS_POR_CICLO,
   CAMPOS_VITRINE,
   CAMPOS_CONTRATO,
   listarProdutos,

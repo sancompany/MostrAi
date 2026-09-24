@@ -58,14 +58,15 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
    Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
 
-### 2.3 Vendedor — do convite à comissão
+### 2.3 Vendedor — programa aposentado
 
-1. Fala direto com a Mostraí por um canal oficial (não existe pedido self-service — o card do modo no painel e o card da home só apontam pro contato) e, se fechar, recebe convite do administrador.
-2. Abre `/convite.html?t=…`, a conta nasce com o papel **vendedor** e um cupom.
-3. Manda `/anunciante/cadastro.html?ref=CUPOM` para o interessado.
-4. O indicado assina e paga.
-5. A comissão é gerada sobre o valor confirmado, no percentual da conta do vendedor.
-6. Acompanha em `/anunciante/vendedor.html`; o administrador marca como paga.
+Aposentado em 23/09/2026 (pedido do dono) e removido do código executável
+na consolidação final (24/09/2026): não existe mais convite de vendedor,
+cupom de vendedor, painel de vendas nem comissão. Produção não tinha nenhum
+vendedor nem comissão quando o código saiu. As tabelas `vendedores` e
+`comissoes` ficam no banco como histórico; todas as rotas antigas respondem
+410. A indicação que vale hoje é a do **dono de ponto** (cupom `PT-…`, vira
+crédito — seção 2.2).
 
 ### 2.4 Administrador — o dia a dia
 
@@ -151,7 +152,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
 | Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela e definir o PIN, trocar a ajuda de custo por tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
 | ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas e PIN estão em **Meus pontos**, o autoanúncio em **Meus criativos**, extrato e troca da ajuda de custo em **Financeiro** | — | — |
-| Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
+| ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | app Mostraí Player (V2) · `/player.html?tela=ID` (V1, compat) | a TV, com credencial | o vídeo da vez | tocar; PIN de manutenção abre o painel técnico | — |
 | Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (grade de pontos → ponto → ficha da tela, e a aba **Versões do Player**), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
@@ -831,12 +832,12 @@ renovação cobra. O valor só muda se o próprio anunciante trocar de plano.
 > direito que ela prometia. Saiu junto o rótulo "Preço fundador, nunca muda",
 > que 9 dos 12 planos exibiam na vitrine.
 
-**RN-12 — Comissão do vendedor é gerada a cada cobrança confirmada**, inclusive
-renovação, no percentual da conta dele — **confirmado pelo dono em
-15/09/2026: mantém**. O percentual é do VENDEDOR (`vendedores.comissao_percentual`),
-não do plano, então troca de plano de quem ele indicou nunca muda a comissão.
-O dono define o valor entre **10% e 30%** (migration 035); fora da faixa a
-rota recusa. *Violada:* não há caminho. *Quem vê:* vendedor e administrador.
+**RN-12 — Comissão de vendedor: não existe mais.** A regra valeu de
+15/09/2026 a 23/09/2026 (percentual do vendedor, 10–30%, a cada cobrança
+confirmada). Com o programa aposentado, nenhuma cobrança gera comissão — o
+código que gerava saiu em 24/09/2026 (`tests/contas-reconstrucao.test.js`
+prova que um ciclo pago de quem veio por cupom antigo não cria linha em
+`comissoes`). *Quem vê:* ninguém; a tabela é só histórico.
 
 **RN-13 — Troca de plano de quem já paga é recusada.** O sistema manda falar
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar

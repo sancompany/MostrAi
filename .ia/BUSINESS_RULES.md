@@ -6,9 +6,11 @@ julgamento (não fórmula), está dito.
 
 ## Papéis e conta
 
-- Uma conta (`anunciantes`) nasce sempre com o papel `anunciante`. Papéis
-  `ponto` e `vendedor` só entram por decisão do dono (candidatura aprovada
-  ou convite direto) — nunca autodeclaração (`CONSTRAINTS.md`, veto).
+- Uma conta (`anunciantes`) nasce sempre com o papel `anunciante`. O papel
+  `ponto` só entra por decisão do dono (candidatura liberada, ou convite
+  antigo) — nunca autodeclaração (`CONSTRAINTS.md`, veto). O papel
+  `vendedor` foi aposentado (23/09/2026; código removido em 24/09/2026 —
+  todas as rotas respondem 410, tabelas ficam como histórico).
 - `status` da conta é só `comum`/`parceiro` (desconto especial, marcado à
   mão pelo admin) — não é estado operacional. Quem bloqueia acesso é
   `suspenso` (booleano).

@@ -17,8 +17,9 @@ não atende outras cidades hoje — ver veto de segunda cidade em
 - **Para o comércio (ponto)**: monetiza uma parede sem custo de instalação —
   cede o espaço e recebe ajuda de custo mensal ou cota para anunciar o
   próprio negócio nas telas (comodato).
-- **Para quem indica clientes (vendedor)**: comissão sobre o valor confirmado
-  de quem ele trouxe.
+- **Para quem indica clientes**: o dono de ponto indica com o cupom `PT-…`
+  e ganha crédito (não dinheiro). O programa de vendedores com comissão foi
+  aposentado em 23/09/2026 e removido do código em 24/09/2026.
 
 ## Público-alvo
 

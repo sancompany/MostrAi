@@ -446,35 +446,15 @@ router.get('/admin/resumo', async (_req, res) => {
   });
 });
 
-// Custos fixos da operação — entram na margem do resumo.
-router.get('/admin/custos-fixos', async (_req, res) => {
-  const { rows } = await pool.query('SELECT * FROM custos_fixos ORDER BY ativo DESC, nome');
-  res.json(rows);
-});
-router.post('/admin/custos-fixos', async (req, res) => {
-  const { nome, valor_mensal, observacao } = req.body;
-  if (!nome) return res.status(400).json({ erro: 'nome obrigatório' });
-  const { rows } = await pool.query(
-    'INSERT INTO custos_fixos (nome, valor_mensal, observacao) VALUES ($1,$2,$3) RETURNING *',
-    [nome, Number(valor_mensal) || 0, observacao || null],
-  );
-  res.status(201).json(rows[0]);
-});
-router.patch('/admin/custos-fixos/:id', async (req, res) => {
-  const campos = ['nome', 'valor_mensal', 'ativo', 'observacao'].filter((c) => req.body[c] !== undefined);
-  if (!campos.length) return res.status(400).json({ erro: 'nada pra atualizar' });
-  const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(`UPDATE custos_fixos SET ${sets} WHERE id = $1 RETURNING *`, [
-    req.params.id,
-    ...campos.map((c) => (c === 'valor_mensal' ? Number(req.body[c]) : req.body[c])),
-  ]);
-  if (!rows[0]) return res.status(404).json({ erro: 'custo não encontrado' });
-  res.json(rows[0]);
-});
-router.delete('/admin/custos-fixos/:id', async (req, res) => {
-  await pool.query('DELETE FROM custos_fixos WHERE id = $1', [req.params.id]);
-  res.json({ ok: true });
-});
+// Custos fixos: a tela saiu na rodada Financeiro (22/09/2026 — a Mostraí não
+// vira sistema contábil) e o CRUD saiu do código na consolidação final
+// (24/09/2026). A tabela `custos_fixos` continua no banco e o resumo continua
+// somando o que há nela (`custosFixosMensal`), só não há mais porta pra editar.
+const CUSTOS_APOSENTADOS = { erro: 'custos fixos saíram do admin (22/09/2026) — não há mais cadastro aqui' };
+router.get('/admin/custos-fixos', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.post('/admin/custos-fixos', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.patch('/admin/custos-fixos/:id', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.delete('/admin/custos-fixos/:id', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
 
 // Anexado no próprio router (não num export nomeado): server.js espera
 // `require('./admin/routes')` como o router pronto, sem quebrar isso só

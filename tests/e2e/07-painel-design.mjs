@@ -75,20 +75,22 @@ await cadastro.evaluate(
   codigo,
 );
 
-console.log('== admin libera plano de cortesia (Pro, cobre vários pontos) ==');
+console.log('== admin concede benefício administrativo (Pro, cobre vários pontos) ==');
+// `liberar-plano` → 410 desde 24/09/2026; `plano-administrativo` é o caminho.
+const validoAte = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 const liberado = await adm.evaluate(
-  async (id) =>
+  async ([id, valido_ate]) =>
     await (
-      await fetch(`/admin/anunciantes/${id}/liberar-plano`, {
+      await fetch(`/admin/anunciantes/${id}/plano-administrativo`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plano_id: 'destaque-1m', meses: 1, motivo: 'teste e2e (script 07)' }),
+        body: JSON.stringify({ plano_id: 'destaque-1m', valido_ate, observacao: 'teste e2e (script 07)' }),
       })
     ).json(),
-  conta.id,
+  [conta.id, validoAte],
 );
-check('admin liberou o plano', !!liberado.plano_id, JSON.stringify(liberado));
+check('admin concedeu o benefício', !!liberado.conta?.plano_id, JSON.stringify(liberado));
 
 console.log('== semeando um ponto OFFLINE (nunca esteve online) com programação ==');
 // CTE (WITH ... SELECT) em vez de INSERT solto: com -t, psql ainda imprime a

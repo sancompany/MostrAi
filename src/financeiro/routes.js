@@ -6,7 +6,6 @@ const router = express.Router();
 const planosRepo = require('./planos-repository');
 const promocoesRepo = require('./promocoes-repository');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
-const beneficiosRepo = require('./beneficios-repository');
 const cobrancasRepo = require('./cobrancas-repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
@@ -180,152 +179,25 @@ router.post('/admin/ofertas/promocoes/:id/imagem', uploadNota.single('arquivo'),
   }
 });
 
-function descontoInvalido(valor) {
-  if (valor === undefined || valor === null || valor === '') return false;
-  const n = Number(valor);
-  return Number.isNaN(n) || n < 0 || n >= 100;
+// Grade antiga de planos (uma linha solta por plano, versão nova por edição
+// de contrato, catálogo de benefícios editável) — a tela saiu em 22/09/2026
+// (Ofertas = 3 produtos × 4 ciclos, `/admin/ofertas/*`) e o CRUD saiu do
+// código na consolidação final (24/09/2026). O que continua: `GET
+// /admin/planos` (leitura, a ficha de Conta usa), a tabela `planos` com as
+// versões aposentadas (assinaturas antigas apontam pra elas) e a tabela
+// `beneficios` (texto dos cards da vitrine — hoje só muda por SQL, decisão
+// registrada em docs/CONSOLIDATION_STATE.md).
+const GRADE_APOSENTADA = {
+  erro: 'a grade antiga de planos saiu do admin (22/09/2026) — preço e desconto ficam em /admin/ofertas/produtos',
+};
+for (const rota of ['/admin/planos', '/admin/beneficios']) {
+  router.post(rota, (_req, res) => res.status(410).json(GRADE_APOSENTADA));
+  router.patch(`${rota}/:id`, (_req, res) => res.status(410).json(GRADE_APOSENTADA));
 }
-
-// Cria um plano novo — usado pra lançar preço/promoção sem mexer no que
-// quem já assinou um plano existente está pagando (ver migration 014).
-router.post('/admin/planos', async (req, res) => {
-  const { id, tier, nome, valor_mensal_cheio, compromisso_meses, frequencia_hora, cobertura } = req.body;
-  if (!id || !tier || !nome || !valor_mensal_cheio || !compromisso_meses || !frequencia_hora || !cobertura) {
-    return res.status(400).json({ erro: 'campos obrigatórios faltando' });
-  }
-  if (descontoInvalido(req.body.desconto_percentual)) {
-    return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
-  }
-  const ativo = req.body.ativo === undefined ? true : req.body.ativo;
-  if (ativo && (await planosRepo.vagaOcupada(Number(compromisso_meses), null, !!req.body.fundador))) {
-    return res.status(409).json({
-      erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes (quem já assina continua pagando igual)`,
-    });
-  }
-  try {
-    const plano = await planosRepo.criar({ ...req.body, ativo });
-    if (Array.isArray(req.body.beneficio_ids)) {
-      await planosRepo.definirBeneficios(plano.id, req.body.beneficio_ids.map(Number));
-    }
-    res.status(201).json(await planosRepo.buscarPorId(plano.id));
-  } catch (err) {
-    if (err.code === 'LIMITE_CRIATIVOS') return res.status(400).json({ erro: err.message });
-    if (err.code === '23505') return res.status(409).json({ erro: 'já existe um plano com esse id' });
-    throw err;
-  }
-});
-
-// Edição no lugar, só do que NÃO alcança quem já assinou: tirar da vitrine,
-// mexer em vagas, destaque e rótulo. Campo de contrato aqui é recusado com o
-// caminho certo na mensagem — silenciar e ignorar seria pior, o dono acharia
-// que salvou.
-router.patch('/admin/planos/:id', async (req, res) => {
-  const atual = await planosRepo.buscarPorId(req.params.id);
-  if (!atual) return res.status(404).json({ erro: 'plano não encontrado' });
-  if (atual.arquivado_em) {
-    return res.status(409).json({ erro: 'essa versão está aposentada — edite a versão em uso' });
-  }
-
-  const deContrato = planosRepo.CAMPOS_CONTRATO.filter((c) => c in req.body);
-  if (deContrato.length) {
-    return res.status(409).json({
-      erro: `${deContrato.join(', ')} muda o contrato de quem já assinou — use "nova versão" (POST /admin/planos/${req.params.id}/nova-versao)`,
-      campos: deContrato,
-    });
-  }
-
-  // Reativar só passa se ainda houver vaga na vitrine daquela modalidade.
-  // Desativar nunca é barrado.
-  if (
-    req.body.ativo === true &&
-    (await planosRepo.vagaOcupada(Number(atual.compromisso_meses), req.params.id, !!atual.fundador))
-  ) {
-    return res.status(409).json({
-      erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
-    });
-  }
-
-  res.json(await planosRepo.atualizar(req.params.id, req.body));
-});
-
-// Item 9 da spec: editar campo de contrato não altera o plano — cria uma
-// versão nova, com id novo, e aposenta a atual. Quem já assinou continua na
-// versão antiga, com o preço, a frequência, a cobertura, o limite de
-// criativos e os benefícios que contratou.
-router.post('/admin/planos/:id/nova-versao', async (req, res) => {
-  const atual = await planosRepo.buscarPorId(req.params.id);
-  if (!atual) return res.status(404).json({ erro: 'plano não encontrado' });
-  if (atual.arquivado_em) {
-    return res.status(409).json({ erro: 'essa versão já está aposentada — parta da versão em uso' });
-  }
-
-  if (descontoInvalido(req.body.desconto_percentual)) {
-    return res.status(400).json({ erro: 'desconto precisa ser entre 0 e 99' });
-  }
-  // Campo NOT NULL apagado na tela chegaria como null e viraria 500 no
-  // constraint do banco — devolve o motivo em vez do erro genérico.
-  const vazio = ['nome', 'valor_mensal_cheio', 'frequencia_hora', 'compromisso_meses', 'limite_criativos'].find(
-    (c) => c in req.body && (req.body[c] === null || req.body[c] === ''),
-  );
-  if (vazio) return res.status(400).json({ erro: `${vazio} não pode ficar em branco` });
-
-  const mudou = [...planosRepo.CAMPOS_CONTRATO, ...planosRepo.CAMPOS_VITRINE].some((c) => c in req.body);
-  if (!mudou) return res.status(400).json({ erro: 'nada mudou — não faz versão nova à toa' });
-
-  // A versão nova nasce ativa e a antiga sai da vitrine na mesma transação,
-  // então o total do ciclo não muda. Só precisa conferir se o ciclo MUDOU:
-  // aí ela entra num ciclo onde talvez já haja três.
-  const cicloNovo = Number(req.body.compromisso_meses || atual.compromisso_meses);
-  const ehFundador = 'fundador' in req.body ? !!req.body.fundador : !!atual.fundador;
-  if (
-    cicloNovo !== Number(atual.compromisso_meses) &&
-    (await planosRepo.vagaOcupada(cicloNovo, req.params.id, ehFundador))
-  ) {
-    return res.status(409).json({
-      erro: `já tem ${planosRepo.MAX_ATIVOS_POR_CICLO} planos ativos nessa modalidade — desative um antes`,
-    });
-  }
-
-  try {
-    const novo = await planosRepo.novaVersao(req.params.id, req.body);
-    res.status(201).json(novo);
-  } catch (err) {
-    if (err.code === 'LIMITE_CRIATIVOS') return res.status(400).json({ erro: err.message });
-    throw err;
-  }
-});
-
-// Versões aposentadas, com quantos assinantes ativos cada uma ainda tem.
-router.get('/admin/planos-arquivados', async (_req, res) => {
-  res.json(await planosRepo.listarArquivados());
-});
-
-// Catálogo de benefícios — criado/editado uma vez, marcado por plano.
-router.get('/admin/beneficios', async (_req, res) => {
-  res.json(await beneficiosRepo.listar());
-});
-
-router.post('/admin/beneficios', async (req, res) => {
-  if (!req.body.texto) return res.status(400).json({ erro: 'texto obrigatório' });
-  try {
-    res.status(201).json(await beneficiosRepo.criar(req.body));
-  } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ erro: 'esse benefício já existe' });
-    throw err;
-  }
-});
-
-router.patch('/admin/beneficios/:id', async (req, res) => {
-  const beneficio = await beneficiosRepo.atualizar(req.params.id, req.body);
-  if (!beneficio) return res.status(404).json({ erro: 'benefício não encontrado' });
-  res.json(beneficio);
-});
-
-router.delete('/admin/beneficios/:id', async (req, res) => {
-  const ok = await beneficiosRepo.excluir(req.params.id);
-  if (!ok) return res.status(404).json({ erro: 'benefício não encontrado' });
-  res.json({ ok: true });
-});
+router.post('/admin/planos/:id/nova-versao', (_req, res) => res.status(410).json(GRADE_APOSENTADA));
+router.get('/admin/planos-arquivados', (_req, res) => res.status(410).json(GRADE_APOSENTADA));
+router.get('/admin/beneficios', (_req, res) => res.status(410).json(GRADE_APOSENTADA));
+router.delete('/admin/beneficios/:id', (_req, res) => res.status(410).json(GRADE_APOSENTADA));
 
 // Assinatura de plano — cria uma linha em `assinaturas` (o id dela é o que
 // vai no link, ver src/financeiro/assinaturas-repository.js e
@@ -706,66 +578,16 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     .catch((err) => console.error('e-mail de troca de plano', err));
 });
 
-// Admin aciona cancelamento (Vitrina → San Checkout, nunca o pagador direto)
-// Liberar plano de graça. Uma ação só, em vez de o dono editar `plano_id` e
-// `data_expiracao` à mão em dois campos e esquecer de anotar que era cortesia.
-//
-// Não cria assinatura nem cobrança: o San Checkout não fica sabendo, e por isso
-// nada é cobrado nem agora nem na renovação. A cobertura simplesmente vence na
-// data, e o dono decide se estende.
-router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
-  const { plano_id, meses, motivo } = req.body;
-  if (!plano_id) return res.status(400).json({ erro: 'escolha o plano' });
-
-  const plano = await planosRepo.buscarPorId(plano_id);
-  if (!plano) return res.status(404).json({ erro: 'plano não encontrado' });
-  // Legado (Parte 15 da reconstrução de Contas, 23/09/2026 — sem tela
-  // chamando, ver /admin/anunciantes/:id/plano-administrativo). Reforçado
-  // aqui: plano fora de venda (os antigos Inicial/Básico, `ativo=false` no
-  // catálogo — ADR-016) nunca entra numa conta por esta porta.
-  if (plano.ativo === false) {
-    return res.status(400).json({ erro: 'esse plano não está à venda — não dá pra liberar como cortesia' });
-  }
-
-  const anunciante = await anunciantesRepo.buscarPorId(req.params.id);
-  if (!anunciante) return res.status(404).json({ erro: 'conta não encontrada' });
-
-  // Liberar de graça por cima de quem PAGA apagaria a cobertura comprada e
-  // pareceria um upgrade. Quem já paga, cancela primeiro.
-  if (
-    anunciante.plano_id &&
-    !anunciante.plano_cortesia &&
-    anunciante.data_expiracao &&
-    new Date(anunciante.data_expiracao) > new Date()
-  ) {
-    return res
-      .status(409)
-      .json({ erro: 'essa conta tem plano pago ativo — cancele a assinatura antes de liberar cortesia' });
-  }
-  // Esta rota não conhece o histórico de benefícios: gravar por cima de um
-  // benefício aberto deixava a linha 'ativo'/'agendado' órfã, contradizendo
-  // o plano gravado na conta (revisão da ficha de Conta, 23/09/2026).
-  const { rows: abertos } = await pool.query(
-    `SELECT 1 FROM planos_administrativos WHERE anunciante_id = $1 AND status IN ('ativo', 'agendado') LIMIT 1`,
-    [anunciante.id],
-  );
-  if (abertos.length) {
-    return res
-      .status(409)
-      .json({ erro: 'essa conta tem benefício em vigor ou programado — não dá pra liberar por cima' });
-  }
-
-  const duracao = Number(meses) > 0 ? Number(meses) : plano.compromisso_meses;
-  const atualizado = await anunciantesRepo.atualizar(anunciante.id, {
-    plano_id,
-    suspenso: false,
-    data_inicio_cobertura: anunciante.data_inicio_cobertura || new Date(),
-    data_expiracao: new Date(Date.now() + duracao * 30 * 24 * 60 * 60 * 1000),
-    plano_cortesia: true,
-    cortesia_motivo: motivo || null,
-  });
-  res.json(atualizado);
-});
+// "Liberar plano" (cortesia gravada direto em `anunciantes.plano_id`, sem
+// histórico) saiu da tela em 23/09/2026 e do código na consolidação final
+// (24/09/2026): cortesia comercial é crédito (`creditos/conceder`) e correção
+// técnica excepcional é `plano-administrativo` abaixo, que registra o
+// benefício no histórico e nunca passa por cima de crédito já debitado.
+router.post('/admin/anunciantes/:id/liberar-plano', (_req, res) =>
+  res.status(410).json({
+    erro: 'liberar plano foi aposentado — conceda créditos (creditos/conceder) ou use plano-administrativo',
+  }),
+);
 
 router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
   const anunciante = await anunciantesRepo.buscarPorId(req.params.id);
@@ -1040,92 +862,28 @@ router.patch('/admin/cobrancas/:id/nota-fiscal', uploadNota.single('arquivo'), a
 });
 
 // ---------------------------------------------------------------------------
-// Vendedor — desde a v2 é um PAPEL da conta única (migration 019), não um
-// login à parte. Entra só por convite (src/convites). As rotas antigas de
-// /afiliados/* ficam respondendo 410 por um tempo pra quem tiver link salvo.
+// Programa de vendedores — aposentado em 23/09/2026 (pedido do dono). Na
+// consolidação final (24/09/2026) o código executável saiu: produção sem
+// nenhum vendedor, nenhuma comissão, nenhuma conta com o papel. As tabelas
+// `vendedores`/`comissoes` ficam no banco (histórico; a exportação LGPD ainda
+// as lê). Cada rota antiga responde 410 com o motivo, pra quem tiver link ou
+// script salvo saber por quê.
 // ---------------------------------------------------------------------------
-const vendedoresRepo = require('./vendedores-repository');
-
-function exigirVendedorLogado(req, res, next) {
-  if (!req.session.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
-  vendedoresRepo
-    .buscarPorConta(req.session.anuncianteId)
-    .then((v) => {
-      if (!v) return res.status(403).json({ erro: 'esta conta não é de vendedor' });
-      req.vendedor = v;
-      next();
-    })
-    .catch(next);
+const VENDEDOR_APOSENTADO = {
+  erro: 'o programa de vendedores foi aposentado — não há mais vendedor, cupom nem comissão',
+};
+for (const rota of [
+  '/afiliados/cadastro',
+  '/afiliados/login',
+  '/afiliados/logout',
+  '/admin/anunciantes/:id/ativar-vendedor',
+]) {
+  router.post(rota, (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
 }
+router.get('/vendedor/painel', (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
+router.get('/admin/comissoes', (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
+router.patch('/admin/comissoes/:id', (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
+router.get('/admin/vendedores', (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
+router.patch('/admin/vendedores/:contaId', (_req, res) => res.status(410).json(VENDEDOR_APOSENTADO));
 
-['/afiliados/cadastro', '/afiliados/login', '/afiliados/logout'].forEach((rota) => {
-  router.post(rota, (_req, res) =>
-    res.status(410).json({ erro: 'vendedor agora usa a conta única — entre em /anunciante/login.html' }),
-  );
-});
-
-router.get('/vendedor/painel', exigirVendedorLogado, async (req, res) => {
-  const { rows: comissoes } = await pool.query(
-    `SELECT c.*, a.nome_empresa FROM comissoes c
-     JOIN anunciantes a ON a.id = c.anunciante_id
-     WHERE c.vendedor_conta_id = $1 ORDER BY c.criado_em DESC`,
-    [req.vendedor.conta_id],
-  );
-  const totalComissionado = comissoes.reduce((soma, c) => soma + Number(c.comissao_valor), 0);
-  const totalPago = comissoes.filter((c) => c.pago_em).reduce((soma, c) => soma + Number(c.comissao_valor), 0);
-  res.json({
-    vendedor: req.vendedor,
-    comissoes,
-    totalComissionado,
-    totalPago,
-    totalAReceber: totalComissionado - totalPago,
-  });
-});
-
-// Admin — quanto se deve a cada vendedor, e marcar como pago.
-router.get('/admin/comissoes', async (_req, res) => {
-  const { rows } = await pool.query(
-    `SELECT c.*, va.nome_empresa AS vendedor_nome, v.chave_pix, an.nome_empresa
-     FROM comissoes c
-     LEFT JOIN vendedores v ON v.conta_id = c.vendedor_conta_id
-     LEFT JOIN anunciantes va ON va.id = c.vendedor_conta_id
-     JOIN anunciantes an ON an.id = c.anunciante_id
-     ORDER BY c.pago_em NULLS FIRST, c.criado_em DESC`,
-  );
-  res.json(rows);
-});
-
-router.patch('/admin/comissoes/:id', async (req, res) => {
-  const { rows } = await pool.query('UPDATE comissoes SET pago_em = $2 WHERE id = $1 RETURNING *', [
-    req.params.id,
-    req.body.pago ? new Date() : null,
-  ]);
-  if (!rows[0]) return res.status(404).json({ erro: 'comissão não encontrada' });
-  res.json(rows[0]);
-});
-
-router.get('/admin/vendedores', async (_req, res) => res.json(await vendedoresRepo.listar()));
-
-// Papel Vendedor aposentado (reconstrução de Contas, 23/09/2026, pedido do
-// dono): nenhum vendedor novo nasce. A rota fica respondendo 410 em vez de
-// sumir, pra quem chamar por engano saber o porquê. Vendedores, comissões e
-// cupons que já existem continuam no banco (histórico).
-router.post('/admin/anunciantes/:id/ativar-vendedor', (_req, res) => {
-  res.status(410).json({ erro: 'o papel Vendedor foi aposentado — não há mais vendedor novo' });
-});
-
-router.patch('/admin/vendedores/:contaId', async (req, res) => {
-  try {
-    const v = await vendedoresRepo.atualizar(req.params.contaId, req.body);
-    if (!v) return res.status(404).json({ erro: 'vendedor não encontrado' });
-    res.json(v);
-  } catch (err) {
-    if (err.constraint === 'vendedores_comissao_percentual_faixa') {
-      return res.status(400).json({ erro: 'comissão precisa ficar entre 10% e 30%' });
-    }
-    if (err.code === '23514') return res.status(400).json({ erro: 'status inválido' });
-    throw err;
-  }
-});
-
-module.exports = { router, exigirVendedorLogado };
+module.exports = { router };

@@ -69,8 +69,8 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | POST | `/anunciantes/me/notificacoes/:id/lida` | marca uma notificação como lida. 404 se não é desta conta ou já estava lida. |
 | POST | `/anunciantes/me/notificacoes/marcar-todas-lidas` | marca todas as não lidas da conta. |
 | GET | `/conta/eventos` | Server-Sent Events (`text/event-stream`) — eventos em tempo real da conta logada. Conjunto fechado (Fase 3, 23/09/2026): `payment.updated`/`credits.updated`/`notification.created` (confirmação de pagamento, resgate/concessão de crédito, qualquer notificação nova), `application.updated` (candidatura de ponto aprovada/recusada), `creative.updated` (criativo aprovado/recusado), `account.updated` (conta suspensa/reativada). `plan.updated`/`point.updated`/`screen.updated`/`finance.updated` existem no cliente (`public/eventos.js`) mas ainda sem emissor no backend — ver `.ia/HANDOFF.md`. Heartbeat a cada 25s. Isolado por `anuncianteId` da sessão — nunca vaza evento de outra conta. Publicado por `src/lib/sse.js` via Postgres LISTEN/NOTIFY — alcança as duas instâncias do serviço (Northflank), não só a que recebeu a ação. |
-| GET | `/vendedor/painel` | Papel `vendedor`: `{vendedor, comissoes, totalComissionado, totalPago, totalAReceber}`. |
-| PATCH | `/vendedor/me` | `{chave_pix}` — vendedor completa/troca a própria chave. |
+| GET | `/vendedor/painel` | **410** — programa de vendedores aposentado (23/09/2026; código removido em 24/09/2026, produção sem nenhum vendedor). |
+| PATCH | `/vendedor/me` | **410** — idem. |
 
 ### Direitos do titular (LGPD / CDC)
 
@@ -241,7 +241,7 @@ pede.
 | POST | `/admin/anunciantes/:id/plano-administrativo` | `{plano_id, valido_ate: 'AAAA-MM-DD', observacao?}` — concede/troca por BENEFÍCIO **diretamente** (cortesia administrativa: sem cobrança, sem receita), sem passar por crédito. Desde 23/09/2026 é o caminho TÉCNICO (correção pontual), **sem tela** (saiu da ficha na revisão de Contas) — ver `creditos/conceder` acima. 409 se houver benefício pago com créditos em vigor ou programado (nunca substitui créditos já debitados). Só Essencial/Pro/Prime ativos. Assinatura paga ativa é cancelada antes pelo San Checkout (502 e nada muda se ele recusar). Sem diferença, troca paga ou reembolso. Encerra o benefício anterior no histórico (`planos_administrativos`, migration 075). 409 com a conta suspensa ou excluída. 409 se a conta está no comodato Inicial (`planos_ponto.permite_assinar=false`) — plano comercial não acumula com Inicial; primeiro troca a modalidade pra Básico (23/09/2026, decisão do dono e do GPT) |
 | POST | `/admin/anunciantes/:id/plano-administrativo/encerrar` | encerra só o plano COMERCIAL concedido agora. Se houver plano PAGO guardado por baixo da cortesia (`plano_pago_guardado_*`, migration 082), ele volta com os dias pagos — nunca é apagado. |
 | POST | `/admin/anunciantes/:id/ativar-vendedor` | **410** desde 23/09/2026 — papel Vendedor aposentado (dados antigos intactos) |
-| POST | `/admin/anunciantes/:id/liberar-plano` | legado (sem tela chamando desde 23/09/2026 — ver `plano-administrativo`). `{plano_id, meses?, motivo?}` — põe a conta no ar de graça, sem assinatura nem cobrança. 409 se já houver plano pago ativo, ou benefício em vigor/programado no histórico |
+| POST | `/admin/anunciantes/:id/liberar-plano` | **410 desde 24/09/2026** (consolidação final) — cortesia comercial é crédito (`creditos/conceder`); correção técnica é `plano-administrativo` |
 | POST | `/admin/anunciantes/:id/cancelar-assinatura` | chama o Checkout. Mesma ação de `POST /anunciantes/me/cancelar-assinatura`, pelo admin em nome do cliente (16/09/2026: o pagador também pode cancelar sozinho, ver Conta logada) |
 
 ### Pontos e telas
@@ -275,18 +275,15 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/planos` | os 12 da grade + o fundador, ativos e desativados |
-| POST | `/admin/planos` | nova versão de preço/promoção — não mexe no que já existe |
-| PATCH | `/admin/planos/:id` | **só campo de vitrine** (`ativo`, `vagas`, `rotulo`, `destaque_no_site`) — não alcança quem já assinou. Campo de contrato responde 409 apontando a rota abaixo. Máximo 3 ativos por ciclo; o fundador fica fora dessa conta |
-| POST | `/admin/planos/:id/nova-versao` | RN-27: cria a versão nova (id `-vN`) com os campos de contrato mudados e aposenta a atual, numa transação. 400 sem mudança nenhuma, 409 partindo de versão aposentada ou sem vaga no ciclo novo |
-| GET | `/admin/planos-arquivados` | versões aposentadas, com `contas_ativas` e `cobrancas` de cada uma |
+| POST | `/admin/planos` | **410 desde 24/09/2026** — a grade antiga (uma linha solta por plano) saiu do admin em 22/09/2026 e do código na consolidação final; preço e desconto ficam em `/admin/ofertas/produtos/:tier` (que por baixo continua versionando a linha, RN-27) |
+| PATCH | `/admin/planos/:id` | **410** — idem |
+| POST | `/admin/planos/:id/nova-versao` | **410** — idem |
+| GET | `/admin/planos-arquivados` | **410** — idem (as versões aposentadas continuam na tabela `planos`; assinaturas antigas apontam pra elas) |
 | GET | `/admin/metrica` | as três consultas salvas da métrica (funcional §9): `margem` mês a mês, `funil` e `filas`, mais `eventos` (contagem por nome, pra saber se a instrumentação está viva). Tudo com `NOT interno` |
 | GET | `/admin/planos-ponto` | **410 desde 24/09/2026 (ADR-016)** |
 | POST | `/admin/planos-ponto` | **410** |
 | PATCH | `/admin/planos-ponto/:id` | **410** |
-| GET | `/admin/beneficios` | lista |
-| POST | `/admin/beneficios` | cria |
-| PATCH | `/admin/beneficios/:id` | edita |
-| DELETE | `/admin/beneficios/:id` | remove |
+| GET/POST/PATCH/DELETE | `/admin/beneficios*` | **410 desde 24/09/2026** — catálogo de benefícios sem tela desde 22/09/2026; os textos continuam na tabela `beneficios` e saem em `GET /planos` (hoje só mudam por SQL — decisão em aberto em `docs/CONSOLIDATION_STATE.md`) |
 | GET | `/admin/categorias` | lista todas (ativa, inativa e legado — `GET /categorias` pública mostra só o que sobra depois do filtro), com `uso_contas`, `uso_pontos` e `canonica_nome` (23/09/2026) |
 | POST | `/admin/categorias` | cria: `{nome (obrigatório), grupo?, aliases?, ativo?, legado?}` |
 | PATCH | `/admin/categorias/:id` | edita `nome`, `ativo`, `grupo`, `aliases` (array) ou `legado` (legado força `ativo = false`) |
@@ -328,14 +325,9 @@ só sem tela.
 | PATCH | `/admin/mensagens-contato/:id` | `{respondida}` — marca ou desmarca como respondida. 404 se a mensagem não existe |
 | GET | `/admin/pedidos-avulsos` | trocas de plano em lista própria: quem trocou, de qual plano pra qual, o valor da diferença e a situação. Leitura pura; o pago também aparece em `/admin/cobrancas`. Desde RN-52 (17/09/2026) é um `UNION ALL` de duas origens — os `pedidos_avulsos` de antes (`pendente`/`pago`/`cancelado`) e as trocas novas, lidas de `cobrancas_confirmadas.plano_anterior_id`. **Limite conhecido, não corrigido:** downgrade sem cobrança não grava `cobrancas_confirmadas`, então não aparece nesta lista — mesma limitação que o pedido avulso sempre teve com downgrade. |
 | PATCH | `/admin/cobrancas/:id/nota-fiscal` | marca a nota como emitida |
-| GET | `/admin/comissoes` | comissões geradas |
-| PATCH | `/admin/comissoes/:id` | `{pago}` |
-| GET | `/admin/vendedores` | lista |
-| PATCH | `/admin/vendedores/:contaId` | `status`, `comissao_percentual`, `chave_pix` |
-| GET | `/admin/custos-fixos` | lista |
-| POST | `/admin/custos-fixos` | cria |
-| PATCH | `/admin/custos-fixos/:id` | edita |
-| DELETE | `/admin/custos-fixos/:id` | remove |
+| GET/PATCH | `/admin/comissoes*` | **410 desde 24/09/2026** — programa de vendedores aposentado; as tabelas `comissoes`/`vendedores` ficam no banco como histórico (a exportação LGPD ainda as lê) |
+| GET/PATCH | `/admin/vendedores*` | **410** — idem |
+| GET/POST/PATCH/DELETE | `/admin/custos-fixos*` | **410 desde 24/09/2026** — a tela saiu em 22/09/2026 (sem mini-ERP no admin); o resumo continua somando o que há em `custos_fixos` |
 | GET | `/admin/eventos-pendentes` | webhooks que chegaram e não foram aplicados, com o motivo |
 | PATCH | `/admin/eventos-pendentes/:id` | marca como resolvido (só arquiva — **não credita nada**) |
 | POST | `/admin/eventos-pendentes/:id/aplicar` | credita o ciclo daquele evento de verdade. Confere a cobrança no San Checkout ANTES (`consultarAssinatura`): um evento de "cobrança falhou" também traz `planoId`, e sem a conferência o botão daria cobertura por dinheiro que não entrou. 400 se o evento não aponta pra assinatura conhecida, se a conta sumiu ou se já foi resolvido |

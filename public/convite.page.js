@@ -1,15 +1,16 @@
-// Página de cadastro por convite: o único caminho de entrada de dono de
-// ponto e de vendedor. O token diz quais papéis a conta nasce tendo; o
-// formulário só mostra o que cada papel precisa (Pix pra vendedor, o que o
-// ponto ganha — créditos, sem escolha de modalidade desde 24/09/2026 — pra
-// ponto, endereço comercial pra anunciante).
+// Página de cadastro por convite: caminho de entrada de dono de ponto sem
+// conta (candidatura antiga) ou de conta que o dono convida à mão. O token
+// diz quais papéis a conta nasce tendo; o formulário só mostra o que cada
+// papel precisa (o que o ponto ganha — créditos, sem escolha de modalidade
+// desde 24/09/2026 — pra ponto, endereço comercial pra anunciante). O papel
+// vendedor foi aposentado (23/09/2026): convite antigo que ainda o traga é
+// tratado só pelos outros papéis, igual ao servidor.
 const token = new URLSearchParams(window.location.search).get('t');
 const form = document.getElementById('formConvite');
 const msg = document.getElementById('msg');
 const TEXTO_PAPEL = {
   anunciante: ['Anunciante', 'Sua marca nas telas da cidade.'],
   ponto: ['Dono de ponto', 'Uma tela da Mostraí no seu comércio.'],
-  vendedor: ['Vendedor', 'Comissão em cada assinatura que você indicar.'],
 };
 let PAPEIS = [];
 
@@ -32,9 +33,6 @@ async function carregar() {
     return mostrarInvalido('Não deu pra conferir o convite agora. Tente de novo em instantes.');
   }
 
-  // 'vendedor' não conta mais (programa aposentado, 23/09/2026) — convite
-  // antigo que ainda o traga é tratado só pelos outros papéis, igual ao
-  // servidor (src/anunciantes/routes.js, src/conta/modos.js).
   PAPEIS = (convite.papeis || []).filter((p) => p !== 'vendedor');
   if (!PAPEIS.length) PAPEIS = ['anunciante'];
   const nomes = PAPEIS.map((p) => (TEXTO_PAPEL[p] || [p])[0].toLowerCase());
@@ -54,7 +52,6 @@ async function carregar() {
       const [t, d] = TEXTO_PAPEL[p] || [p, ''];
       return `<div class="convite-papel"><b>${esc(t)}</b><span>${esc(d)}</span></div>`;
     }).join('');
-    document.getElementById('logadoPix').hidden = !novos.includes('vendedor');
     document.getElementById('jaLogado').hidden = false;
     document.getElementById('btnAceitar').disabled = !novos.length;
     document.getElementById('btnAceitar').addEventListener('click', async () => {
@@ -66,7 +63,7 @@ async function carregar() {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chave_pix: document.getElementById('logado_chave_pix').value.trim() || null }),
+          body: '{}',
         });
         const corpo = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(corpo.erro || 'Não foi possível liberar agora.');
@@ -99,11 +96,8 @@ async function carregar() {
   if (convite.nome_sugerido) form.nome_empresa.value = convite.nome_sugerido;
   if (convite.email_sugerido) form.contato_email.value = convite.email_sugerido;
 
-  const ehVendedor = PAPEIS.includes('vendedor');
   const ehPonto = PAPEIS.includes('ponto');
   const ehAnunciante = PAPEIS.includes('anunciante');
-  document.getElementById('secaoPix').hidden = !ehVendedor;
-  form.chave_pix.required = ehVendedor;
   document.getElementById('secaoPlanoPonto').hidden = !ehPonto;
   document.getElementById('secaoEndereco').hidden = !ehAnunciante;
   ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'uf'].forEach((n) => {
@@ -139,7 +133,6 @@ form.addEventListener('submit', async (e) => {
     senha: form.senha.value,
     aceitou_termos: form.aceitou_termos.checked,
   };
-  if (PAPEIS.includes('vendedor')) dados.chave_pix = form.chave_pix.value.trim();
   if (PAPEIS.includes('anunciante')) {
     // Em partes (D5, 24/09/2026): a linha composta é o servidor que monta.
     Object.assign(dados, {

@@ -41,7 +41,10 @@ r=$(curl -s -b lia.txt -X POST $B/anunciantes/$LIA/assinar -H "$J" -d '{"planoId
 echo "== pede outro estabelecimento de dentro do painel; admin libera =="
 # Conta que já é ponto pede pela porta de "Meus pontos"; a do modo ponto é só
 # pra quem ainda não tem o papel.
-r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"x","endereco":"y"}'); esperar "modo ponto já liberado não é pedido de novo" 'já está liberado' "$r"
+# Consolidação (24/09/2026): quem já é ponto PODE pedir outro estabelecimento
+# — o papel liberado não bloqueia mais; o que barra aqui é o endereço
+# incompleto (mesma validação de qualquer pedido).
+r=$(curl -s -b lia.txt -X POST $B/conta/modos/ponto/pedir -H "$J" -d '{"nome_comercio":"x","endereco":"y"}'); esperar "segundo pedido de ponto passa pela validação de endereço (papel liberado não bloqueia)" 'endereço incompleto' "$r"
 r=$(curl -s -b lia.txt -X POST $B/anunciantes/me/pontos -H "$J" -d '{"nome_comercio":"Loja da Lia","endereco":"Rua C, 3","cidade":"Matão","uf":"SP","cep":"15990-000","segmento":"loja","fluxo_estimado_mensal":2000,"plano_ponto_id":"ajuda-custo","horario_semanal":{"seg":{"abre":"09:00","fecha":"18:00"},"ter":{"abre":"09:00","fecha":"18:00"},"qua":{"abre":"09:00","fecha":"18:00"},"qui":{"abre":"09:00","fecha":"18:00"},"sex":{"abre":"09:00","fecha":"18:00"},"sab":{"abre":"09:00","fecha":"15:00"},"dom":null}}')
 esperar "pedido de ponto criado" '"ok":true' "$r"; CAND=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/')
 r=$(curl -s -b lia.txt -X POST $B/anunciantes/me/pontos -H "$J" -d '{"nome_comercio":"Loja da Lia","endereco":"Rua C, 3","cep":"15990-000","fluxo_estimado_mensal":2000}'); esperar "segundo pedido do mesmo endereço é recusado" 'em análise' "$r"
@@ -74,11 +77,14 @@ r=$(curl -s -b lia.txt $B/anunciantes/me/financeiro)
 if echo "$r" | grep -q 'recebimentos\|troca'; then falha "Financeiro sem Recebimentos" "$r"; else ok "Financeiro sem Recebimentos"; fi
 r=$(curl -s -o /dev/null -w '%{http_code}' -b lia.txt -X POST $B/anunciantes/me/comodato/trocar-por-tela); esperar "troca por tela aposentada (410)" '^410$' "$r"
 r=$(curl -s -o /dev/null -w '%{http_code}' -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}'); esperar "módulo 2 aposentado (410)" '^410$' "$r"
-r=$(curl -s $B/planos-ponto); esperar "nenhuma modalidade oferecida" '^\[\]$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" $B/planos-ponto); esperar "modalidades de ponto: rota aposentada (410)" '^410$' "$r"
 
 echo "== crédito mensal do ponto: tela ativa = +1 crédito no mês =="
 r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"status":"ativo"}'); esperar "tela ativada" '"status":"ativo"' "$r"
-# Tela provisionada: o job exige chave de aparelho ou uma conexão já feita.
+# Tela provisionada: desde a consolidação (24/09/2026) o job exige credencial
+# viva (`chave_hash`) — tela sem Preparar Player não gera crédito, mesmo
+# "online". Preparar Player grava a chave; o UPDATE simula a conexão.
+curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/preparar-player >/dev/null
 $PG -c "UPDATE dispositivos SET ultima_vez_online = now() WHERE id=$DISP" >/dev/null
 (cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
 (cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
@@ -87,7 +93,7 @@ r=$(curl -s -b lia.txt $B/anunciantes/me/creditos); esperar "saldo na mesma cart
 r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "Meus pontos: crédito do mês já concedido" '"creditoDoMesConcedido":true' "$r"
 
 echo "== vendedor aposentado: conta sem perfil de vendedor não mexe em Pix =="
-r=$(curl -s -b lia.txt -X PATCH $B/vendedor/me -H "$J" -d '{"chave_pix":"lia2@pix"}'); esperar "Pix de vendedor recusado pra conta comum" 'não é de vendedor' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -b lia.txt -X PATCH $B/vendedor/me -H "$J" -d '{"chave_pix":"lia2@pix"}'); esperar "PATCH /vendedor/me é 410 (programa aposentado)" '^410$' "$r"
 
 echo; echo "falhas: $falhas"
 [ "$falhas" -eq 0 ]
