@@ -62,7 +62,7 @@
               <span class="track" aria-hidden="true"><span class="fill" data-pct="0"></span></span>
             </article>
             <article class="kpi-card" data-kpi="exibicoes"><span class="kpi-icon" aria-hidden="true">▶</span><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">confirmadas / previstas no mês</span></article>
-            <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por 1.000 exibições</span><b>-</b><span class="kpi-caption">plano ÷ exibições previstas no mês, por mil</span></article>
+            <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por exibição prevista</span><b>-</b><span class="kpi-caption" data-kpi-custo-legenda>Valor contratado ÷ exibições previstas no ciclo</span></article>
             <article class="kpi-card" data-kpi="media"><span class="kpi-icon" aria-hidden="true">↗</span><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia, desde o início da campanha no mês</span></article>
             <!-- Banco de horas: lugar FIXO no grid, preenchido por
                  carregarBancoHoras(). Antes o card era criado por
@@ -206,7 +206,7 @@
     <!-- Confirmação do resgate: mostra antes o que muda (agora → ativado →
          depois). Nada é debitado até o clique em Confirmar. -->
     <dialog id="dlgResgate" class="dlg-resgate">
-      <div class="dlg-head"><h3>Confirmar resgate</h3><button type="button" class="dlg-close" id="btnFecharResgate" aria-label="Fechar">&times;</button></div>
+      <div class="dlg-head"><h3 id="tituloResgate">Confirmar resgate</h3><button type="button" class="dlg-close" id="btnFecharResgate" aria-label="Fechar">&times;</button></div>
       <div id="previewResgate"></div>
       <p class="form-msg" id="msgResgate" role="status"></p>
       <div class="dlg-acoes">

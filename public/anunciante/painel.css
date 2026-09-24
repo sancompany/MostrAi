@@ -72,6 +72,9 @@
 .anunciante-dashboard .kpi-card b.kpi-extremo { white-space: normal; overflow-wrap: anywhere; }
 .anunciante-dashboard .kpi-card b.kpi-extremo.kpi-fracao > span { white-space: normal; overflow-wrap: anywhere; }
 .anunciante-dashboard .kpi-card .kpi-caption { margin-top: 5px; line-height: 1.4; }
+/* Card de custo sem dinheiro envolvido (benefício por créditos, cortesia):
+   texto no lugar do número, no tamanho de um título curto. */
+.anunciante-dashboard .kpi-card b.kpi-texto { font-size: 1.05rem; letter-spacing: 0; line-height: 1.3; white-space: normal; }
 .anunciante-dashboard .kpi-card .track { margin-top: 14px; height: 6px; background: var(--bg-alt); }
 .anunciante-dashboard .kpi-secondary { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; min-height: auto; padding: 15px 20px; }
 .anunciante-dashboard .kpi-secondary { box-shadow: var(--dash-shadow); }

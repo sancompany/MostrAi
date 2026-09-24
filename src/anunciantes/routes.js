@@ -29,6 +29,7 @@ const sse = require('../lib/sse');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
+const cicloContratado = require('../financeiro/ciclo-contratado');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { saudeDaTela } = require('../lib/status-tela');
@@ -436,7 +437,24 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
   // pode estar numa versão aposentada.
   const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
-  res.json({ ...anunciante, vendedor, plano });
+  // Origem do direito em vigor (ADR-018): o painel mostra "Prime · Semestral
+  // · Benefício por créditos" com a MESMA régua da ficha do admin.
+  const {
+    rows: [beneficioAtivo],
+  } = anunciante.plano_cortesia
+    ? await pool.query(
+        `SELECT plano_id, origem FROM planos_administrativos WHERE anunciante_id = $1 AND status = 'ativo' ORDER BY id DESC LIMIT 1`,
+        [anunciante.id],
+      )
+    : { rows: [] };
+  const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
+  res.json({
+    ...anunciante,
+    vendedor,
+    plano,
+    plano_origem: origem,
+    plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,
+  });
 });
 
 // Confirmação de e-mail por código (migration 061). `limiteTentativas` conta
@@ -1232,11 +1250,6 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
-  // Mesmo motivo do comentário abaixo, em "custoPorExibicao": preço de
-  // cobrança só pode ter uma fonte. Sem a assinatura aqui, quem está numa
-  // condição promocional (Ofertas/Promoções, 22/09/2026) veria um custo por
-  // exibição maior do que o que paga de verdade.
-  const assinaturaAtiva = await assinaturasRepo.buscarAtivaDoAnunciante(anuncianteId);
   const confirmadasMes = Number(confirmadasMesRows.rows[0].confirmadas);
 
   // Horas contratadas x entregues no mês (pedido do dono, 19/09/2026, card
@@ -1299,31 +1312,14 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     exibicoesContratadasMes,
     exibicoesRestantesMes,
     mediaDiariaMes,
-    // Custo por EXIBIÇÃO (19/09/2026, pedido do dono): por hora "parece
-    // caro" (poucas dezenas de reais), por exibição "parece barato" (poucos
-    // centavos) — mesmo valor, leitura diferente, e é a leitura que ele
-    // quer na tela. Divide por `exibicoesContratadasMes`, não por
-    // `confirmadasMes` (19/09/2026, mesmo dia, segunda correção: "deve ser
-    // um preço fixo desde o início, não pelas exibições realizadas") — o
-    // contratado é fixo assim que existe plano, então o número não some no
-    // dia 1 nem oscila conforme o mês avança; `null` só em cortesia ou sem
-    // plano.
-    //
-    // O que a conta PAGA, nao o preco de tabela: quem esta em cortesia nao paga
-    // nada — mostrar custo por exibição pra quem recebeu o plano de graca seria
-    // numero inventado.
-    //
-    // O valor sai de `valorMensalDaConta`, a MESMA funcao que decide o que o
-    // San Checkout cobra. A conta inline que estava aqui so enxergava o preco
-    // travado; nao enxergava o desconto de parceiro (RN-31), que nasceu
-    // depois. Resultado: o parceiro via, na propria tela, um custo maior do
-    // que o que paga. E o furo M11 de
-    // volta, por outra porta — preco de cobranca so pode ter uma fonte, e ela
-    // e a do motor de pagamento.
-    custoPorExibicao:
-      plano && exibicoesContratadasMes > 0 && !anunciante.plano_cortesia
-        ? sanCheckout.valorMensalDaConta(anunciante, plano, assinaturaAtiva) / exibicoesContratadasMes
-        : null,
+    // "Custo por exibição prevista" (24/09/2026, ADR-018): valor contratado
+    // no ciclo ÷ exibições previstas no ciclo, lidos do SNAPSHOT do ciclo
+    // pago em vigor (financeiro/ciclo-contratado.js). Não depende de
+    // exibição realizada, nem do preço atual do admin, nem da duração dos
+    // criativos da conta — nasce da contratação e só muda na próxima
+    // compra/troca/renovação. Benefício por créditos e cortesia legada vêm
+    // com `tipo` próprio e SEM valor (nunca "R$ 0,00").
+    custoPrevisto: await cicloContratado.situacaoDoCusto(anunciante),
   });
 });
 

@@ -144,15 +144,24 @@ function situacaoDoPlano() {
   if (ANUNCIANTE.suspenso) return ['suspensa', 'badge-err', 'Suspensa'];
   if (ANUNCIANTE.data_expiracao && new Date(ANUNCIANTE.data_expiracao) <= new Date())
     return ['vencida', 'badge-pendente', 'Vencida'];
-  if (ANUNCIANTE.plano_cortesia) return ['cortesia', 'badge-neutro', 'Cortesia'];
-  return ['ativa', 'badge-ok', 'Ativa'];
+  // A origem do direito é o rótulo (ADR-018): Assinatura paga, Benefício
+  // por créditos ou Cortesia administrativa legada — a mesma régua da ficha
+  // do admin (plano-administrativo.js#origemDoDireito).
+  if (ANUNCIANTE.plano_cortesia)
+    return ['cortesia', 'badge-neutro', ANUNCIANTE.plano_origem_texto || 'Cortesia administrativa legada'];
+  return ['ativa', 'badge-ok', 'Assinatura paga'];
 }
 
 function desenharPlano() {
   const secao = document.getElementById('modPlano');
   if (!secao || !ANUNCIANTE) return;
   const [situacao, classe, rotulo] = situacaoDoPlano();
-  const nome = ANUNCIANTE.plano_id ? ANUNCIANTE.plano?.nome || 'Seu plano' : 'Nenhum plano comercial';
+  // Plano · Ciclo — "Prime · Semestral", a mesma linguagem do plano pago e
+  // do benefício por créditos (ADR-018).
+  const ciclo = window.ROTULOS.ciclo[ANUNCIANTE.plano?.compromisso_meses];
+  const nome = ANUNCIANTE.plano_id
+    ? `${ANUNCIANTE.plano?.nome || 'Seu plano'}${ciclo ? ` · ${ciclo}` : ''}`
+    : 'Nenhum plano comercial';
   const validade =
     ANUNCIANTE.plano_id && ANUNCIANTE.data_expiracao
       ? `<p class="plano-validade">${situacao === 'vencida' ? 'Venceu em' : 'Até'} ${window.dataBR(ANUNCIANTE.data_expiracao)}${ANUNCIANTE.plano_cortesia ? ' · sem cobrança, não renova sozinho' : ''}</p>`
@@ -382,9 +391,12 @@ function preencherAssinatura() {
     !ANUNCIANTE.suspenso &&
     ANUNCIANTE.data_expiracao &&
     new Date(ANUNCIANTE.data_expiracao) > new Date();
-  const nomePlano = ANUNCIANTE.plano?.nome || 'seu plano';
+  const cicloPlano = window.ROTULOS.ciclo[ANUNCIANTE.plano?.compromisso_meses];
+  const nomePlano = ANUNCIANTE.plano?.nome
+    ? `${ANUNCIANTE.plano.nome}${cicloPlano ? ` · ${cicloPlano}` : ''}`
+    : 'seu plano';
   const ate = ANUNCIANTE.data_expiracao
-    ? `${ativo ? 'Ativa' : ANUNCIANTE.plano_cortesia ? 'Cortesia' : 'Vencida'} até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>`
+    ? `${ativo ? 'Ativa' : ANUNCIANTE.plano_cortesia ? esc(ANUNCIANTE.plano_origem_texto || 'Cortesia') : 'Vencida'} até <b>${window.dataBR(ANUNCIANTE.data_expiracao)}</b>`
     : ativo
       ? 'Ativa'
       : 'Sem data de expiração';
@@ -584,6 +596,13 @@ function montarFracao(el, feitas, total) {
 }
 
 function encaixarNumero(el) {
+  // Texto no lugar do número (custo sem dinheiro envolvido) quebra linha
+  // normalmente — encolher fonte é só pra número.
+  if (el.classList.contains('kpi-texto')) {
+    el.style.fontSize = '';
+    el.classList.remove('kpi-quebrado', 'kpi-extremo');
+    return;
+  }
   const cabe = () => el.scrollWidth <= el.clientWidth + 0.5;
   el.classList.remove('kpi-quebrado', 'kpi-extremo');
   el.style.fontSize = '';
@@ -653,6 +672,38 @@ function desenharHorasMes(contratadas, entregues) {
   encaixarNumero(card.querySelector('b'));
 }
 
+// "Custo por exibição prevista" (24/09/2026, ADR-018): valor contratado no
+// ciclo ÷ exibições previstas no ciclo, do snapshot da contratação — não
+// muda conforme o anúncio roda. Microvalor com 4 casas (fmtMicroBRL), nunca
+// "R$ 0,00". Benefício por créditos e cortesia legada não têm dinheiro
+// envolvido: o card diz isso em vez de inventar um custo. Não é CPM (custo
+// por mil pessoas impactadas) — o Mostraí não mede audiência.
+const LEGENDA_CUSTO = 'Valor contratado ÷ exibições previstas no ciclo';
+function desenharCustoPrevisto(c) {
+  const card = document.querySelector('#kpiGrid [data-kpi="custo"]');
+  if (!card) return;
+  const valor = card.querySelector('b');
+  const legenda = card.querySelector('[data-kpi-custo-legenda]');
+  valor.classList.remove('kpi-texto');
+  card.removeAttribute('title');
+  if (c?.tipo === 'pago' && c.custoPorExibicaoPrevista) {
+    valor.textContent = window.fmtMicroBRL(c.custoPorExibicaoPrevista);
+    legenda.textContent = LEGENDA_CUSTO;
+    card.title = `${c.plano}: ${fmt(c.valorCiclo)} ÷ ${Number(c.exibicoesPrevistasCiclo).toLocaleString('pt-BR')} exibições previstas no ciclo`;
+  } else if (c?.tipo === 'beneficio') {
+    valor.textContent = 'Benefício por créditos';
+    valor.classList.add('kpi-texto');
+    legenda.textContent = 'Sem valor monetário neste ciclo.';
+  } else if (c?.tipo === 'cortesia') {
+    valor.textContent = 'Cortesia';
+    valor.classList.add('kpi-texto');
+    legenda.textContent = 'Sem cobrança neste ciclo.';
+  } else {
+    valor.textContent = '-';
+    legenda.textContent = LEGENDA_CUSTO;
+  }
+}
+
 async function carregarExibicoes() {
   try {
     const dados = await (
@@ -669,12 +720,7 @@ async function carregarExibicoes() {
       kpi('exibicoes').classList.remove('kpi-fracao');
       kpi('exibicoes').textContent = concluidas;
     }
-    // Por MIL exibições, não por exibição só (21/09/2026, revisão de
-    // design): a mesma fórmula (plano ÷ previstas) em duas casas decimais
-    // colapsava pra R$ 0,01 em qualquer plano — número que não se move não
-    // informa nada. Não é CPM: CPM é custo por mil PESSOAS impactadas, e o
-    // Mostraí não mede audiência, só reprodução na tela.
-    kpi('custo').textContent = dados.custoPorExibicao ? fmt(dados.custoPorExibicao * 1000) : '-';
+    desenharCustoPrevisto(dados.custoPrevisto);
     kpi('media').textContent = dados.mediaDiariaMes != null ? numeroBR(dados.mediaDiariaMes) : '-';
     encaixarKpis();
 

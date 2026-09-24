@@ -423,11 +423,29 @@ prioridade do tier.** *(ADR-016.)* Essencial (1) < Pro (2) < Prime (3).
   plano Pro já oferece mais recursos que o benefício Essencial."). Resgate
   igual/acima entra depois do ciclo pago e o pago volta depois dele.
 · Conta sem plano pago: benefício, depois "Sem plano" — nada é cobrado.
-Tabela de resgate: Essencial 3/9/18/36, Pro 7/21/42/84, Prime 10/30/60/120
-créditos (1/3/6/12 meses de 30 dias). *Quem vê:* o cliente (confirmação de
-compra, Créditos e benefícios) e o admin (fila Agora → Próximo → Depois, com
-a origem: Assinatura paga / Benefício por créditos / Cortesia administrativa
-legada).
+Tabela de resgate, por CICLO (ADR-018 — o benefício usa os mesmos ciclos do
+plano pago): Essencial Mensal 3 · Trimestral 9 · Semestral 18 · Anual 36;
+Pro 7/21/42/84; Prime 10/30/60/120 créditos — custo linear (mensal × meses,
+meses de 30 dias). Nome visível sempre "Prime · Semestral", nunca "6 meses";
+a duração aparece só como explicação ("período: 6 meses"). Benefício nunca
+renova sozinho nem consome crédito automaticamente: no fim vem o benefício
+programado, o plano pago guardado ou "Sem plano". *Quem vê:* o cliente
+(confirmação de compra, Créditos e benefícios — "Resgatar Prime · Semestral",
+"Usar 60 créditos") e o admin (fila Agora → Próximo → Depois, com a origem:
+Assinatura paga / Benefício por créditos / Cortesia administrativa legada).
+
+**RN-43.3 — Custo por exibição prevista nasce da contratação.** *(ADR-018,
+24/09/2026 — substitui "Custo por 1.000 exibições".)* Card do painel:
+**valor contratado no ciclo ÷ exibições previstas no ciclo**, lido do
+snapshot `ciclos_contratados` gravado quando o ciclo começa (compra,
+renovação, troca). Exibições previstas = a régua da vitrine (horas de tela do
+plano ÷ duração máxima da peça) × meses do ciclo — ex.: Pro Trimestral,
+R$ 672,30 ÷ 45.360 = R$ 0,0148. Não muda conforme o anúncio roda, nem quando
+o admin muda o preço, nem quando a conta troca a peça; o próximo ciclo grava
+o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00".
+Benefício por créditos: "Benefício por créditos · Sem valor monetário neste
+ciclo"; cortesia legada: "Cortesia · Sem cobrança neste ciclo". Não é CPM
+(o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
 *(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom

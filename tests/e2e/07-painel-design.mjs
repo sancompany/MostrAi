@@ -1,6 +1,6 @@
 // Verificação visual/funcional do redesenho de 21/09/2026: marca (Mostraí),
 // paleta (sem azul-marinho no hero), hero sem KPI duplicado + estado
-// operacional (ponto online/offline), custo por 1.000 exibições, "previstas"
+// operacional (ponto online/offline), custo por exibição prevista, "previstas"
 // no lugar de "contratadas", média diária corrigida e barra de distribuição
 // escondida com 1 ponto só. Assume banco zerado e servidor na 3999.
 import { chromium } from 'playwright';
@@ -137,11 +137,13 @@ const capExibicoes = await p.textContent('[data-kpi="exibicoes"] .kpi-caption');
 check('caption usa "previstas"', capExibicoes.includes('previstas'), capExibicoes);
 check('caption não usa mais "contratado"', !capExibicoes.includes('contratado'), capExibicoes);
 
-console.log('== card de custo: por 1.000 exibições, não CPM nem "por exibição" ==');
+console.log('== card de custo: "Custo por exibição prevista" (ADR-018) ==');
 const labelCusto = await p.textContent('[data-kpi="custo"] .kpi-label');
-check('label é "Custo por 1.000 exibições"', labelCusto.includes('1.000'), labelCusto);
+check('label é "Custo por exibição prevista"', /Custo por exibição prevista/i.test(labelCusto) && !labelCusto.includes('1.000'), labelCusto);
+// Plano liberado pelo admin (cortesia legada): sem dinheiro, sem "R$ 0,00".
 const valorCusto = await p.textContent('[data-kpi="custo"] b');
-check('valor de custo não é mais R$ 0,01 (moveu de escala)', valorCusto.trim() !== 'R$ 0,01', valorCusto);
+const legendaCusto = await p.textContent('[data-kpi="custo"] .kpi-caption');
+check('cortesia não finge custo: "Cortesia · Sem cobrança neste ciclo"', valorCusto.trim() === 'Cortesia' && /Sem cobrança neste ciclo/.test(legendaCusto), `${valorCusto} | ${legendaCusto}`);
 
 console.log('== média diária: não usa mais "dia do mês" como divisor ==');
 const valorMedia = await p.textContent('[data-kpi="media"] b');

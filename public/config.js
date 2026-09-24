@@ -165,6 +165,25 @@ window.fmtBRL = function fmtBRL(v) {
   return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
+// Microvalor em reais (custo por exibição prevista, ADR-018). Regra única:
+// a partir de R$ 1, duas casas; abaixo, QUATRO casas (R$ 0,0125) — e, se
+// ainda assim arredondar pra zero, até seis. Valor positivo nunca aparece
+// como "R$ 0,00" nem "R$ 0,01" arredondado; zero, negativo ou ausente é "-".
+window.fmtMicroBRL = function fmtMicroBRL(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return '-';
+  if (n >= 1) return window.fmtBRL(n);
+  let casas = 4;
+  while (casas < 6 && Number(n.toFixed(casas)) === 0) casas += 1;
+  if (Number(n.toFixed(casas)) === 0) return '< R$ 0,000001';
+  return n.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  });
+};
+
 // Trava de duplo clique em qualquer formulário do site. Antes, dois cliques
 // no botão de cadastro criavam duas contas / dois pontos / duas mensagens —
 // e no caso do plano, duas cobranças. Libera quando não há mais requisição em

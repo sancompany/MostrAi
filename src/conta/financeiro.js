@@ -9,6 +9,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
+const { nomeDoCiclo } = require('../lib/ciclos');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 const router = express.Router();
@@ -29,13 +30,14 @@ router.get('/anunciantes/me/financeiro', exigirAnuncianteLogado, async (req, res
       'SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC LIMIT 36',
       [conta.id],
     ),
-    conta.plano_id ? pool.query('SELECT nome FROM planos WHERE id = $1', [conta.plano_id]) : null,
+    conta.plano_id ? pool.query('SELECT nome, compromisso_meses FROM planos WHERE id = $1', [conta.plano_id]) : null,
   ]);
   res.json({
     pagamentos: {
       mostrar: !!conta.plano_id || cobrancas.rows.length > 0,
       plano: {
-        nome: plano?.rows[0]?.nome || null,
+        // Plano · Ciclo ("Pro · Trimestral"), ADR-018.
+        nome: plano?.rows[0] ? `${plano.rows[0].nome} · ${nomeDoCiclo(plano.rows[0].compromisso_meses)}` : null,
         situacao: situacaoDoPlano(conta),
         validoAte: conta.data_expiracao,
       },

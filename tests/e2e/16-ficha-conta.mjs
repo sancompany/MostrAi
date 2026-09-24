@@ -229,7 +229,7 @@ await abrir(P.F);
 check('F: 0 créditos — o crédito monetário antigo não virou crédito', /0 créditos/.test(await admin.locator('#contaCreditos').innerText()));
 await abrir(P.D);
 t = await admin.locator('#contaPlano').innerText();
-check('D: Depois volta ao Pro pago, sem perder dia pago', /Volta ao Pro[\s\S]*nenhum dia pago se perde/.test(t), t);
+check('D: Depois retorna ao Pro · Mensal, sem perder dia pago', /Retorna ao Pro · Mensal[\s\S]*nenhum dia pago se perde/.test(t), t);
 await abrir(P.L);
 t = await admin.locator('#contaPlano').innerText();
 check('L: Agora benefício Prime, Próximo o Pro pago guardado com os dias', /Prime[\s\S]*Próximo[\s\S]*Pro[\s\S]*Guardado[\s\S]*30 dias pagos/i.test(t), t);

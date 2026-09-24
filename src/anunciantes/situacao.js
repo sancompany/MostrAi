@@ -51,7 +51,9 @@ const { linhaEndereco } = require('../lib/endereco');
 // SELO "Dono de ponto": ≥ 1 ponto aprovado. Não lê `papeis` (legado), nem
 //   candidatura. Não existe selo "Anunciante" — toda conta anuncia.
 
-const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+// Nome do ciclo: a mesma linguagem pro plano pago e pro benefício por
+// créditos (ADR-018, src/lib/ciclos.js).
+const { nomeDoCiclo, comNomeDeCiclo } = require('../lib/ciclos');
 
 const ORIGENS = planoAdministrativo.ORIGENS_DO_DIREITO;
 
@@ -71,7 +73,7 @@ const MOTIVO_ENCERRAMENTO = {
 
 function nomeDoPlano(plano) {
   if (!plano) return null;
-  return `${plano.nome} · ${CICLOS[plano.compromisso_meses] || `${plano.compromisso_meses} meses`}`;
+  return `${plano.nome} · ${nomeDoCiclo(plano.compromisso_meses)}`;
 }
 
 // O que o plano entrega, em números que o admin reconhece.
@@ -185,7 +187,7 @@ function linhaDoTempo({ conta, comercial, assinaturaAtiva, beneficioAtivo, benef
     depois = {
       tipo: 'volta_pago',
       em: proximo.validoAte,
-      texto: `Volta ao ${agoraItem.nome} pago. O que for pago durante o benefício fica guardado — nenhum dia pago se perde.`,
+      texto: `Retorna ao ${agoraItem.nome}. O que for pago durante o benefício fica guardado — nenhum dia pago se perde.`,
     };
   } else {
     const fimDaFila = proximo ? proximo.validoAte : agoraItem?.validoAte || null;
@@ -363,7 +365,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       id: m.id,
       tipo: m.tipo,
       quantidade: m.quantidade,
-      motivo: m.observacao,
+      motivo: m.tipo === 'resgate_beneficio' ? comNomeDeCiclo(m.observacao) : m.observacao,
       notaInterna: m.nota_interna || null,
       concedidoPor: m.concedido_por,
       origemNome: m.origem_nome,

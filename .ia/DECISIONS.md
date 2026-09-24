@@ -579,3 +579,48 @@ Consequências: quem criar outro campo de data comercial usa
 outro formulário de endereço usa os 7 campos e deixa a linha pro servidor.
 Mudar "promoção substitui" pra "o maior dos dois" é rever o ADR-014, não
 este.
+
+## ADR-018 — Custo por exibição prevista vem do snapshot do ciclo; benefício por créditos é um ciclo (24/09/2026)
+
+Status: Ativa. Última alteração estrutural da rodada no modelo comercial —
+depois dela, o modelo fica congelado salvo bug real (pedido do dono).
+
+Contexto: o card "Custo por 1.000 exibições" dividia o valor mensal da conta
+pelas exibições previstas calculadas com a DURAÇÃO MÉDIA dos criativos
+aprovados da conta — o número mudava quando o cliente trocava a peça, e
+usava o preço atual (não o do contrato). E o benefício por créditos falava
+"1 mês / 3 meses / 6 meses / 12 meses" enquanto o plano pago falava
+"Mensal / Trimestral / Semestral / Anual".
+
+Decisão:
+1. **Custo por exibição prevista = valor contratado no ciclo ÷ exibições
+   previstas no ciclo.** Nunca exibição realizada (proof-of-play), nunca preço
+   atual do admin, nunca duração dos criativos.
+2. **Snapshot por ciclo** em `ciclos_contratados` (migration 087): uma linha
+   por ciclo pago que começa — `compra` e `renovacao` (em
+   `san-checkout.js#aplicarCicloPago`, com o MESMO `valorCiclo` que vai pra
+   cobrança: preço-base → desconto do ciclo ou promoção travada na
+   assinatura → parceiro) e `troca` (webhook `plano_trocado`,
+   `POST /anunciantes/me/trocar-plano` e o pedido avulso legado — o ciclo do
+   plano novo, nunca o acerto proporcional). Exibições previstas = régua
+   canônica da vitrine (`exibicoesPorMes`: horas de tela do plano ÷ duração
+   máxima da peça) × meses do ciclo. Nada é recalculado depois; histórico
+   anterior foi preenchido a partir das cobranças de ciclo inteiro.
+3. **Benefício por créditos e cortesia legada nunca mostram valor**: o card
+   diz "Benefício por créditos · Sem valor monetário neste ciclo" ou
+   "Cortesia · Sem cobrança neste ciclo". Microvalor com 4 casas decimais
+   (`fmtMicroBRL`, até 6 se precisar); positivo nunca vira "R$ 0,00".
+4. **Ciclo único pra pago e benefício**: código canônico = meses
+   (`planos.compromisso_meses` 1/3/6/12, equivalente ao ciclo do San
+   Checkout); nome visível `src/lib/ciclos.js` / `ROTULOS.ciclo`
+   (Mensal/Trimestral/Semestral/Anual). "Prime · Semestral", não
+   "Prime · 6 meses"; a duração fica como explicação secundária. Tabela de
+   créditos intacta e linear (3/7/10 por mês × meses). Registros antigos do
+   ledger ("Resgate: Prime · 6 meses") são mostrados com o nome do ciclo só
+   quando inequívoco — o registro gravado não muda.
+5. Benefício por créditos nunca renova sozinho e nunca consome crédito
+   automaticamente; a prioridade pago × benefício do ADR-016 não mudou.
+
+Consequências: quem mexer em preço, promoção ou exibições previstas não
+precisa tocar o card — o próximo ciclo grava o snapshot novo. Qualquer
+tela nova que precise do nome de um ciclo usa `nomeDoCiclo`/`ROTULOS.ciclo`.

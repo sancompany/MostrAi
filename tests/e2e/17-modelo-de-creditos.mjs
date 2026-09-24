@@ -216,6 +216,95 @@ console.log('== benefício Essencial ativo + compra do Prime: aviso antes de pag
   await p.close();
 }
 
+// ---------------------------------------------------------------------------
+// ADR-018 (24/09/2026): custo por exibição prevista do SNAPSHOT do ciclo, e
+// benefício por créditos com o nome do ciclo (Mensal/Trimestral/...).
+console.log('== custo por exibição prevista: plano pago lê o snapshot do ciclo ==');
+{
+  const conta = await contaPainel(
+    'custo',
+    ", plano_id = 'destaque-3m', plano_cortesia = false, data_inicio_cobertura = current_date, data_expiracao = current_date + 90",
+  );
+  contas.push(conta.id);
+  // Pro · Trimestral: 120 s/h × 7 pontos × 12 h × 30 d = 84 h/mês ÷ 20 s =
+  // 15.120 exibições/mês → 45.360 no ciclo. R$ 672,30 ÷ 45.360 = R$ 0,0148.
+  PG(`INSERT INTO ciclos_contratados (anunciante_id, plano_id, origem, ciclo_meses, valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+      VALUES (${conta.id}, 'destaque-3m', 'compra', 3, 672.30, 15120, 45360)`);
+  const p = await entrar(conta);
+  await p.waitForFunction(() => /R\$/.test(document.querySelector('[data-kpi="custo"] b')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  const card = await p.locator('[data-kpi="custo"]').innerText();
+  check('card "Custo por exibição prevista"', /Custo por exibição prevista/i.test(card) && !/1\.000/.test(card), card);
+  check('microvalor com 4 casas: R$ 0,0148', /R\$\s?0,0148/.test(card), card);
+  check('legenda: valor contratado ÷ exibições previstas no ciclo', /Valor contratado ÷ exibições previstas no ciclo/.test(card), card);
+  check(
+    'tooltip com a conta do ciclo',
+    /Pro · Trimestral: R\$\s?672,30 ÷ 45\.360 exibições previstas no ciclo/.test((await p.locator('[data-kpi="custo"]').getAttribute('title')) || ''),
+  );
+  check('card Plano: "Pro · Trimestral" + Assinatura paga', /Pro · Trimestral[\s\S]*Assinatura paga/.test(await p.locator('#modPlano').innerText()));
+  // Preço do admin mudando depois não mexe no ciclo contratado.
+  PG(`UPDATE planos SET valor_mensal = valor_mensal WHERE id = 'destaque-3m'`);
+  await p.reload({ waitUntil: 'networkidle' });
+  await p.waitForTimeout(1200);
+  check('recarregado: mesmo custo', /R\$\s?0,0148/.test(await p.locator('[data-kpi="custo"]').innerText()));
+  await p.screenshot({ path: `${SAIDA}custo-previsto-pago.png`, fullPage: true });
+  await p.close();
+}
+
+console.log('== benefício por créditos: sem R$, e ciclos com nome ==');
+{
+  const conta = await contaPainel(
+    'ciclo',
+    ", plano_id = 'maximo-6m', plano_cortesia = true, cortesia_motivo = 'Benefício por créditos', data_inicio_cobertura = current_date, data_expiracao = current_date + 180",
+  );
+  contas.push(conta.id);
+  PG(`INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
+      VALUES (${conta.id}, 'maximo-6m', current_date + 180, 'ativo', 'indicacao', now())`);
+  PG(`INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, observacao) VALUES (${conta.id}, 'concessao_admin', 60, 'e2e')`);
+  const p = await entrar(conta);
+  await p.waitForTimeout(800);
+  const card = await p.locator('[data-kpi="custo"]').innerText();
+  const valorCusto = await p.locator('[data-kpi="custo"] b').innerText();
+  check(
+    'custo: "Benefício por créditos · Sem valor monetário neste ciclo", nunca R$ 0,00',
+    valorCusto.trim() === 'Benefício por créditos' && /Sem valor monetário neste ciclo/.test(card) && !/R\$\s?\d/.test(card),
+    card,
+  );
+  const plano = await p.locator('#modPlano').innerText();
+  check('card Plano: "Prime · Semestral" + Benefício por créditos', /Prime · Semestral[\s\S]*Benefício por créditos/.test(plano), plano);
+  const creditosTxt = await p.locator('#modCreditos').innerText();
+  check('Créditos e benefícios: em vigor "Prime · Semestral"', /Prime · Semestral · Benefício por créditos/.test(creditosTxt), creditosTxt.slice(0, 300));
+  const cabecalho = await p.locator('.creditos-tabela thead').innerText();
+  check('tabela com colunas Mensal/Trimestral/Semestral/Anual', /Mensal[\s\S]*Trimestral[\s\S]*Semestral[\s\S]*Anual/.test(cabecalho) && !/\bmeses?\b/.test(cabecalho), cabecalho);
+  const linhaPrime = await p.locator('.creditos-tabela tbody tr', { hasText: 'Prime' }).innerText();
+  check('Prime: 10 / 30 / 60 / 120 créditos', /10 créditos[\s\S]*30 créditos[\s\S]*60 créditos[\s\S]*120 créditos/.test(linhaPrime), linhaPrime);
+  await p.screenshot({ path: `${SAIDA}ciclos-beneficio.png`, fullPage: true });
+  await p.close();
+}
+
+console.log('== confirmação de resgate: "Resgatar Prime · Semestral" · "Usar 60 créditos" ==');
+{
+  const conta = await contaPainel('resgate');
+  contas.push(conta.id);
+  PG(`INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, observacao) VALUES (${conta.id}, 'concessao_admin', 60, 'e2e')`);
+  const p = await entrar(conta);
+  await p.waitForSelector('[data-acao="resgatar"][data-tier="maximo"][data-meses="6"]', { timeout: 8000 });
+  await p.click('[data-acao="resgatar"][data-tier="maximo"][data-meses="6"]');
+  await p.waitForSelector('#dlgResgate[open]');
+  check('título "Resgatar Prime · Semestral"', (await p.textContent('#tituloResgate')).trim() === 'Resgatar Prime · Semestral');
+  check('CTA "Usar 60 créditos"', (await p.textContent('#btnConfirmarResgate')).trim() === 'Usar 60 créditos');
+  check('duração como explicação: "período: 6 meses"', /60 créditos · período: 6 meses/.test(await p.textContent('#previewResgate')));
+  await p.click('#btnConfirmarResgate');
+  await p.waitForFunction(() => !document.querySelector('#dlgResgate[open]'), null, { timeout: 8000 });
+  await p.waitForTimeout(1200);
+  // O histórico mora num <details> recolhido: textContent, não innerText.
+  const historico = (await p.locator('#creditosHistorico').textContent()) || '';
+  check('histórico: "Resgate · Prime · Semestral -60"', /Resgate · Prime · Semestral\s*-60/.test(historico), historico.slice(0, 300));
+  check('card Plano sem F5: "Prime · Semestral"', /Prime · Semestral/.test(await p.locator('#modPlano').innerText()));
+  check('custo sem F5: benefício, sem R$', /Benefício por créditos/.test(await p.locator('[data-kpi="custo"]').innerText()));
+  await p.waitForTimeout(1500);
+  await p.close();
+}
+
 check('sem erro de console', erros.length === 0, erros.join(' | '));
 await b.close();
 
@@ -223,8 +312,9 @@ await b.close();
 // de geração do `npm test` no mesmo banco).
 for (const id of contas) {
   PG(`DELETE FROM notificacoes WHERE anunciante_id = ${id};
-      DELETE FROM creditos_ledger WHERE anunciante_id = ${id};
       DELETE FROM planos_administrativos WHERE anunciante_id = ${id};
+      DELETE FROM creditos_ledger WHERE anunciante_id = ${id};
+      DELETE FROM ciclos_contratados WHERE anunciante_id = ${id};
       DELETE FROM assinaturas WHERE anunciante_id = ${id};
       DELETE FROM eventos WHERE anunciante_id = ${id};
       DELETE FROM cupons_ponto WHERE conta_id = ${id};
