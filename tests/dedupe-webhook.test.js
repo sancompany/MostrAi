@@ -156,7 +156,7 @@ test('evento sem dinheiro não consulta o checkout', async () => {
   }
 });
 
-// Se um dia o checkout passar a mandar id próprio, ele vence sem consulta.
+// Contrato v2 do Checkout (24/09/2026): `eventoId` é a chave, sem consulta.
 test('id próprio do checkout, se vier, é a chave', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => {
@@ -167,4 +167,52 @@ test('id próprio do checkout, se vier, é a chave', async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+// O payload v2 traz chargeId, statusFinanceiro e valor: `ultima` sai DELE,
+// para o valor gravado ser o cobrado e o `chargeId|status` entrar em
+// webhooks_processados (é por ele que a conciliação diária reconhece a
+// cobrança). Sem isto, o v2 creditava o ciclo duas vezes: uma pelo webhook
+// (chave eventoId) e outra pela conciliação (chave chargeId|status).
+const PAGAMENTO_V2 = {
+  ...PAGAMENTO,
+  versao: 2,
+  eventoId: '3f2b1c9e-7d4a-4e0b-9c1d-5a6b7c8d9e0f',
+  ocorridoEm: '2026-10-24T13:00:02.000Z',
+  assinaturaId: 'sub_000123456789',
+  chargeId: 'pay_5566778899',
+  statusFinanceiro: 'confirmado',
+  valor: 267.3,
+  ciclo: 'QUARTERLY',
+  cicloCanonico: 'trimestral',
+};
+
+test('v2: eventoId é a chave e `ultima` vem do próprio payload (chargeId, status, valor)', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('v2 não consulta o checkout de volta');
+  };
+  try {
+    const r = await chaveDoEvento(PAGAMENTO_V2);
+    assert.strictEqual(r.chave, PAGAMENTO_V2.eventoId);
+    assert.deepStrictEqual(r.ultima, { chargeId: 'pay_5566778899', status: 'confirmado', valorCobrado: 267.3 });
+    // `criada` v2 também: chargeId já vem no evento de pagamento
+    const c = await chaveDoEvento({ ...PAGAMENTO_V2, evento: 'criada', eventoId: 'evt_criada' });
+    assert.strictEqual(c.chave, 'evt_criada');
+    assert.strictEqual(c.ultima.chargeId, 'pay_5566778899');
+    // sem chargeId (cancelada pedida pelo contratante): ultima é null, chave continua o eventoId
+    const s = await chaveDoEvento({ ...PAGAMENTO_V2, evento: 'cancelada', chargeId: null, eventoId: 'evt_canc' });
+    assert.strictEqual(s.chave, 'evt_canc');
+    assert.strictEqual(s.ultima, null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('v2: a mesma notificação reentregue (mesmo eventoId) dá a mesma chave; dois ciclos, chaves diferentes', async () => {
+  const a = await chaveDoEvento(PAGAMENTO_V2);
+  const b = await chaveDoEvento({ ...PAGAMENTO_V2 });
+  assert.strictEqual(a.chave, b.chave);
+  const outroCiclo = await chaveDoEvento({ ...PAGAMENTO_V2, eventoId: 'evt_outro', chargeId: 'pay_outro' });
+  assert.notStrictEqual(a.chave, outroCiclo.chave);
 });

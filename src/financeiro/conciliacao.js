@@ -93,10 +93,9 @@ async function avisarRenovacao(assinatura, ultima) {
 
 async function cobrancaJaRegistrada(assinatura, ultima) {
   if (!ultima?.criadoEm) return false;
-  const { rows: criada } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [
-    `criada|${assinatura.id}`,
-  ]);
-  if (!criada.length) return false;
+  // Sem a pré-condição `criada|<assinatura>` (24/09/2026): com o contrato
+  // v2 o webhook deduplica pelo `eventoId` e nunca grava essa chave — a
+  // cobrança registrada perto da hora da Asaas é a prova que importa.
   const { rows } = await pool.query(
     `SELECT 1 FROM cobrancas_confirmadas
       WHERE anunciante_id = $1 AND plano_id = $2
@@ -189,6 +188,7 @@ async function conciliarAssinaturas() {
 
   relato.avisados = await avisarCoberturaAcabando();
   relato.expiradas = await encerrarCoberturaVencida();
+  relato.trocasAbandonadas = await limparTrocasAbandonadas();
   await registrarRelato(comecouEm, relato);
   return relato;
 }
@@ -317,8 +317,20 @@ async function encerrarCoberturaVencida() {
   return rows;
 }
 
+// Uma troca com acerto cria a linha `pendente_troca` ANTES de o pagador
+// aprovar; se ele nunca aprovar, o Checkout expira a intenção em 15 min
+// SEM webhook (só `plano_trocado` confirma). A linha ficava para sempre e
+// continuava servindo `GET /plano`. Um dia depois, some.
+async function limparTrocasAbandonadas() {
+  const { rowCount } = await pool.query(
+    `DELETE FROM assinaturas WHERE status = 'pendente_troca' AND created_at < now() - interval '1 day'`,
+  );
+  return rowCount;
+}
+
 module.exports = {
   conciliarAssinaturas,
+  limparTrocasAbandonadas,
   decidirPorEstado,
   encerrarCoberturaVencida,
   avisarCoberturaAcabando,

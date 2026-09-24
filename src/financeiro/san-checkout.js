@@ -148,11 +148,15 @@ function linkRenovarAssinatura(assinaturaId, cpfCnpj) {
 // Toda rota de servidor do checkout vive sob /api/checkout (API.md seção 12).
 // O endereço nunca é montado à mão fora daqui — é a nota da seção 2.1, e foi
 // uma troca de endereço não propagada que quebrou a integração antes.
+// Teto de 20 s: sem `signal`, um Checkout pendurado segura o worker do
+// webhook para sempre (o 200 já foi dado; o que trava é o processamento).
+const TIMEOUT_CHECKOUT_MS = 20_000;
 async function chamarApiCheckout(rota, corpo) {
   return fetch(`${process.env.SAN_CHECKOUT_API_URL}/api/checkout/${rota}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Checkout-Key': process.env.SAN_CHECKOUT_KEY },
     body: JSON.stringify(corpo),
+    signal: AbortSignal.timeout(TIMEOUT_CHECKOUT_MS),
   });
 }
 
@@ -209,7 +213,10 @@ async function montarRespostaPlano(assinaturaId) {
     // duplicado, e travessão que não pode aparecer em texto nenhum do site.
     descricao: 'Espaço publicitário na rede Mostraí.',
     valor: multiplicar(valorMensalDaConta(anunciante, plano, assinatura), plano.compromisso_meses),
-    ciclo: CICLO_ASAAS[plano.compromisso_meses] || 'MONTHLY',
+    // Sem default silencioso (24/09/2026): compromisso fora de {1,3,6,12}
+    // vira `null`, e o Checkout recusa o plano com `ciclo_invalido` em vez
+    // de vender um ciclo que não existe no catálogo como se fosse mensal.
+    ciclo: CICLO_ASAAS[plano.compromisso_meses] || null,
     pagador: {
       nome: anunciante.nome_empresa,
       email: anunciante.contato_email,
@@ -379,7 +386,22 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 // Devolve { chave, ultima } — `ultima` (cobrança da consulta 5.3) traz o
 // valor que a Asaas cobrou de fato, usado em aplicarCicloPago.
 async function chaveDoEvento(payload) {
-  if (payload.eventoId || payload.cobrancaId) return { chave: String(payload.eventoId || payload.cobrancaId) };
+  // Contrato v2 do Checkout (24/09/2026): `eventoId` identifica a
+  // notificação e o payload já traz `chargeId`, `statusFinanceiro` e o
+  // `valor` cobrado — não há mais o que consultar de volta. `ultima` é
+  // montada daqui para `aplicarCicloPago` gravar o valor real e para o
+  // `chargeId|status` entrar em `webhooks_processados` (é por ele que a
+  // conciliação diária reconhece a cobrança e não credita de novo).
+  if (payload.eventoId || payload.cobrancaId) {
+    const ultima = payload.chargeId
+      ? {
+          chargeId: payload.chargeId,
+          status: payload.statusFinanceiro || payload.status || 'confirmado',
+          valorCobrado: payload.valor ?? null,
+        }
+      : null;
+    return { chave: String(payload.eventoId || payload.cobrancaId), ultima };
+  }
 
   if (payload.evento === 'criada') {
     let ultima = null;
@@ -596,15 +618,45 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, 'chargeback — conta suspensa automaticamente, revisar antes de reativar');
   }
 
+  // troca_revertida (contrato v2, 24/09/2026): o ACERTO de uma troca já
+  // aplicada foi estornado ou contestado no Checkout. O assinante está no
+  // plano novo com o dinheiro do acerto de volta. Chargeback suspende como
+  // `cobranca_contestada`; estorno vira pendência para alguém decidir se
+  // volta ao plano anterior (`payload.planoAnterior`) — nunca automático:
+  // reverter plano é decisão de operação, não de webhook.
+  if (payload.evento === 'troca_revertida') {
+    const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
+    if (payload.statusFinanceiro === 'chargeback' && anunciante && !anunciante.suspenso) {
+      await anunciantesRepo.atualizar(anunciante.id, { suspenso: true });
+      eventos.registrar('pagamento:chargeback_suspende', { plano_id: assinatura.plano_id }, anunciante);
+    }
+    return registrarPendencia(
+      payload,
+      `acerto da troca de plano revertido (${payload.statusFinanceiro}, R$ ${payload.valorEstornado ?? '?'}) — ` +
+        `decidir se a conta volta de '${payload.planoId}' para '${payload.planoAnterior}'`,
+    );
+  }
+
+  if (payload.evento === 'cobranca_estornada') {
+    // Total ou parcial: a diferença está no payload (v2). Parcial não
+    // derruba cobertura sozinho; total é pendência para revisar a cobertura.
+    const detalhe = payload.estornoParcial
+      ? `estorno PARCIAL de R$ ${payload.valorEstornado} sobre R$ ${payload.valor}`
+      : `estorno total (${payload.statusFinanceiro || 'estornado'})`;
+    return registrarPendencia(payload, `${detalhe} — conferir a cobertura desta assinatura`);
+  }
+
   if (!EVENTOS_QUE_CREDITAM.has(payload.evento)) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 
   const cobranca = await aplicarCicloPago(assinatura, chave, payload, { valorCobrado: ultima?.valorCobrado });
-  // 'criada' entrou pela chave da assinatura; o chargeId (se a Asaas já o
-  // revelou) fica registrado também, para a conciliação diária reconhecer
-  // essa cobrança como aplicada e não creditar o primeiro ciclo de novo.
-  if (cobranca && payload.evento === 'criada' && ultima?.chargeId) {
+  // A chave `chargeId|status` fica registrada também — para TODO evento
+  // que credita, não só `criada` (até 24/09 era só ele): com o contrato v2
+  // a dedupe passou a ser pelo `eventoId`, e sem esta linha a conciliação
+  // diária (chaveada por `chargeId|status`) não reconheceria a cobrança e
+  // creditaria o ciclo de novo.
+  if (cobranca && ultima?.chargeId && chave !== `${ultima.chargeId}|${ultima.status}`) {
     await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
       `${ultima.chargeId}|${ultima.status}`,
     ]);
@@ -816,7 +868,8 @@ async function processarWebhookPedido(payload) {
   if (!payload.pedidoId) {
     return registrarPendencia(payload, 'webhook de pedido sem pedidoId');
   }
-  const chave = `${payload.chargeId || payload.pedidoId}|${payload.status}`;
+  // v2: `eventoId` é a identidade da notificação; sem ele (v1), a chave natural.
+  const chave = payload.eventoId ? String(payload.eventoId) : `${payload.chargeId || payload.pedidoId}|${payload.status}`;
   const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
     chave,
   ]);
