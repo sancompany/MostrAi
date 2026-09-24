@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const {
   montarHoraDeTv,
   pontosDoAnunciante,
@@ -105,7 +106,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     -- dar direito de veicular em 24/09/2026 (ADR-016): ser ponto gera
     -- créditos, não plano. comodato_plano_id fica no banco como legado.
     JOIN planos p ON p.id = a.plano_id
-      AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
+      AND ${vigencia.vigenteSql('a.data_expiracao')}
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -435,17 +436,24 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // drena por inteiro; se cortou, drena só a fração — o resto continua no
   // banco pra próxima hora tentar de novo. `Math.round` porque o banco é
   // em exibições inteiras, não fração de exibição.
-  await Promise.all(
-    entrada
-      .filter((e) => e.prioridadeBanco > 0)
-      .map((e) => {
-        const quer = pedidos[e.id] || 0;
-        const cabe = contagem[e.id] || 0;
-        const fracaoAtendida = quer > 0 ? Math.min(1, cabe / quer) : 0;
-        const drenar = Math.round(e.prioridadeBanco * fracaoAtendida);
-        return drenar > 0 ? bancoHorasRepo.drenar(Number(e.id), drenar) : null;
-      }),
-  );
+  //
+  // Drena UMA vez por hora — na geração que congelou a hora. Cada poll do
+  // Player (e cada tela do mesmo ponto) gera a playlist de novo e reprocessa
+  // a mesma base; sem esta trava o saldo era drenado a cada poll (achado da
+  // consolidação final, 24/09/2026 — o banco esvaziava em minutos). Quem
+  // entra no meio da hora (extras) drena a partir da hora seguinte.
+  if (congelada.criadaAgora)
+    await Promise.all(
+      entrada
+        .filter((e) => e.prioridadeBanco > 0)
+        .map((e) => {
+          const quer = pedidos[e.id] || 0;
+          const cabe = contagem[e.id] || 0;
+          const fracaoAtendida = quer > 0 ? Math.min(1, cabe / quer) : 0;
+          const drenar = Math.round(e.prioridadeBanco * fracaoAtendida);
+          return drenar > 0 ? bancoHorasRepo.drenar(Number(e.id), drenar) : null;
+        }),
+    );
 
   // Ponto de partida do revezamento gira por hora (19/09/2026, furo real
   // encontrado a partir de um relato do dono: "rodou só uma vez e não rodou

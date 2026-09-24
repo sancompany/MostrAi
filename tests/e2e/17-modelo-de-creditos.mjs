@@ -66,7 +66,9 @@ console.log('== site público ==');
     publicos.every((x) => ['essencial', 'destaque', 'maximo'].includes(x.tier)),
     JSON.stringify(publicos.map((x) => x.id)),
   );
-  check('GET /planos-ponto vazio', (await p.evaluate(async () => (await fetch('/planos-ponto')).json())).length === 0);
+  // 410 desde 24/09/2026 (modalidades de ponto aposentadas). `p.request`
+  // (fora da página) pra não deixar um "Failed to load resource" no console.
+  check('GET /planos-ponto aposentado (410)', (await p.request.get(`${B}/planos-ponto`)).status() === 410);
   await p.close();
 }
 
@@ -161,8 +163,10 @@ const contas = [];
     `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status, plano_ponto_id, valor_pago_mensal)
      VALUES ('Santos unio', 'Rua Quatro, 4', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${dono.id}, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
   );
-  PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online, aparelho_id)
-      VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now(), 'ap-e2e-${randomUUID()}')`);
+  // `chave_hash`: desde a consolidação (24/09/2026) o crédito mensal exige
+  // credencial viva do Player V2 — tela só com a chave V1 não conta.
+  PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online, aparelho_id, chave_hash)
+      VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now(), 'ap-e2e-${randomUUID()}', 'e2e-hash-${randomUUID()}')`);
   PG(`INSERT INTO pagamentos_ponto (ponto_id, competencia, valor, pago_em, forma) VALUES (${ponto}, date_trunc('month', now() - interval '1 month'), 50, now(), 'pix')`);
   const p = await entrar(dono);
   const texto = await p.locator('main').innerText();

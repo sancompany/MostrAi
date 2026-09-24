@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const { nomeDoCiclo } = require('../lib/ciclos');
 
@@ -66,7 +67,7 @@ function custoPorExibicaoPrevista(ciclo) {
 // Benefício e cortesia NUNCA mostram R$ 0,00: não há dinheiro envolvido.
 async function situacaoDoCusto(conta, db = pool) {
   if (!conta?.plano_id) return { tipo: 'sem_plano' };
-  if (conta.data_expiracao && new Date(conta.data_expiracao) < new Date(new Date().toISOString().slice(0, 10))) {
+  if (vigencia.coberturaVencida(conta.data_expiracao)) {
     return { tipo: 'sem_plano' };
   }
   if (conta.plano_cortesia) {

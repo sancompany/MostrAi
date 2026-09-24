@@ -600,7 +600,6 @@ const PONTO_STATUS_CLASSE = {
   inativo: 'badge-err',
 };
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
-const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 
 function selectStatus(mapa, atual, attrs) {
@@ -5002,21 +5001,26 @@ async function renderCandidaturaDetalhe(el, id) {
       botao: 'Aprovar ponto',
     });
     if (!ok) return;
+    // Linha antiga de candidatura a VENDEDOR (programa aposentado em
+    // 23/09/2026): não há papel pra liberar nem convite que o backend
+    // aceite — só resta recusar.
+    if (!c.conta_id && c.tipo === 'vendedor') {
+      msg.textContent = 'Candidatura antiga a vendedor: o programa foi aposentado — use Recusar.';
+      msg.className = 'form-msg err';
+      return;
+    }
     btn.disabled = true;
     // Candidatura de conta existente (caminho de hoje): liga o papel direto
     // na conta, cria o ponto. Candidatura antiga sem conta (aposentada
     // 18/09/2026, pode sobrar linha de antes): cai no convite, único jeito
     // de uma pessoa sem conta ainda virar ponto — POST /admin/convites já
     // marca a candidatura como aprovada sozinho (src/convites/routes.js).
-    // `c.tipo` preserva o papel real da linha antiga (achado do review:
-    // linha de vendedor pré-18/09 caindo aqui não pode nascer com o papel
-    // de ponto).
     const r = c.conta_id
       ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST' })
       : await api('/admin/convites', {
           method: 'POST',
           body: JSON.stringify({
-            papeis: [c.tipo === 'vendedor' ? 'vendedor' : 'ponto'],
+            papeis: ['ponto'],
             candidatura_id: c.id,
             nome_sugerido: c.nome,
             email_sugerido: c.contato_email || null,

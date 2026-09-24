@@ -1,6 +1,7 @@
 const { gerarHash, conferirHash } = require('../lib/senha');
 const { limpar: limparDocumento } = require('../br/documento');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { PARTES, colunasDoEndereco } = require('../lib/endereco');
 
 // `status` deixou de ser estado operacional (decisão do dono, 16/09/2026) —
@@ -89,7 +90,7 @@ function planoEfetivoId(conta) {
 // cadastro; pra dizer "está no ar" / "veicula agora", é esta.
 function planoVigenteId(conta, agora = new Date()) {
   if (!conta?.plano_id) return null;
-  return !conta.data_expiracao || new Date(conta.data_expiracao) >= agora ? conta.plano_id : null;
+  return vigencia.coberturaVigente(conta.data_expiracao, agora) ? conta.plano_id : null;
 }
 
 // `db` opcional: o cadastro por convite passa o client da transação.

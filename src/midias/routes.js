@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const router = express.Router();
 const midiasRepo = require('./repository');
 const anunciantesRepo = require('../anunciantes/repository');
+const planosRepo = require('../financeiro/planos-repository');
 const criativosRepo = require('../anunciantes/criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
 
@@ -18,7 +19,7 @@ const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 95 * 1024 * 1024 
 // HTTP ela mesma, e aqui ainda falta criar a linha de midias_proprias por
 // cima, então não dava pra reaproveitar sem reescrever as duas). Devolve o
 // criativo pronto, sem sujeira em /tmp nos dois caminhos (sucesso ou erro).
-async function processarArquivo(req, contaId) {
+async function processarArquivo(req, contaId, duracaoMaxima = null) {
   if (!req.file) throw Object.assign(new Error('arquivo obrigatório'), { status: 400 });
   try {
     const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
@@ -32,6 +33,17 @@ async function processarArquivo(req, contaId) {
         status: 400,
       });
     }
+    // Mesmo teto do plano que o upload do anunciante aplica
+    // (src/anunciantes/routes.js#subirCriativo): trocar o arquivo pelo admin
+    // não pode entregar uma peça mais longa do que o plano vende.
+    if (!midia.ehImagem && duracaoMaxima && midia.duracao_segundos > duracaoMaxima) {
+      throw Object.assign(
+        new Error(
+          `esse vídeo tem ${midia.duracao_segundos}s e o plano dessa conta aceita peça de até ${duracaoMaxima}s`,
+        ),
+        { status: 400 },
+      );
+    }
     const criativoTemp = await criativosRepo.criar({
       anunciante_id: contaId,
       arquivo_original_url: req.file.originalname,
@@ -40,7 +52,7 @@ async function processarArquivo(req, contaId) {
       duracao_segundos: null,
     });
     try {
-      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, null);
+      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima);
       return await criativosRepo.atualizar(criativoTemp.id, {
         ...normalizado,
         editado_pelo_operador: true,
@@ -155,6 +167,11 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
   Object.keys(dados).forEach((k) => {
     if (dados[k] === undefined) delete dados[k];
   });
+  // O CHECK do banco (migration 071: frequencia_hora > 0) recusaria com 500;
+  // aqui vira 400 com o motivo, como qualquer entrada inválida.
+  if (dados.frequencia_hora != null && (!Number.isInteger(dados.frequencia_hora) || dados.frequencia_hora < 1)) {
+    return res.status(400).json({ erro: 'frequência por hora precisa ser um número inteiro maior que zero' });
+  }
   const coberturaTipo = req.body.cobertura_tipo || midia.cobertura_tipo;
   if (req.body.cobertura_tipo) {
     dados.coberturaTipo = req.body.cobertura_tipo;
@@ -240,7 +257,10 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
     // `processarArquivo` cria uma linha TEMPORÁRIA pra rodar o ffmpeg (mesmo
     // padrão de subirCriativo) — o criativo de verdade continua sendo o
     // ORIGINAL, a temporária só empresta os dados prontos e é descartada.
-    const temp = await processarArquivo(req, criativoAtual.anunciante_id);
+    const conta = await anunciantesRepo.buscarPorId(criativoAtual.anunciante_id);
+    const planoId = conta && !conta.conta_propria ? anunciantesRepo.planoVigenteId(conta) : null;
+    const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
+    const temp = await processarArquivo(req, criativoAtual.anunciante_id, plano?.duracao_maxima_segundos || null);
     const atualizado = await criativosRepo.atualizar(req.params.id, {
       arquivo_original_url: temp.arquivo_original_url,
       arquivo_normalizado_url: temp.arquivo_normalizado_url,
