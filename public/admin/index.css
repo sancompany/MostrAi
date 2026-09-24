@@ -2504,7 +2504,7 @@ details.ficha-bloco[open] > summary {
 .tabela-contas td {
   vertical-align: top;
 }
-/* A lista tem 7 colunas: o selo (suspensa/excluída) desce pra baixo do nome
+/* A lista tem 6 colunas: o selo (suspensa/excluída) desce pra baixo do nome
    e a categoria quebra linha — sem isso a tabela passava da largura do
    notebook e a coluna "Entrou" saía cortada na borda. */
 .tabela-contas .conta-sinal {
@@ -2542,17 +2542,13 @@ details.ficha-bloco[open] > summary {
   margin-left: 0;
 }
 /* Ficha da conta (revisão de 23/09/2026): duas colunas proporcionais —
-   [Dados][Plano] e [Comodato][Créditos e benefícios] — do mesmo tamanho,
-   sem buraco embaixo do card mais curto. Sem comodato, Créditos ocupa a
-   linha inteira (`conta-grade-uma`). No celular, uma coluna. */
+   [Dados][Plano] — do mesmo tamanho, sem buraco embaixo do card mais curto;
+   Créditos e benefícios ocupa a linha inteira. No celular, uma coluna. */
 .conta-grade {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
-}
-.conta-grade-uma {
-  grid-template-columns: minmax(0, 1fr);
 }
 @media (max-width: 860px) {
   .conta-grade {
@@ -2607,7 +2603,7 @@ details.ficha-bloco[open] > summary {
   padding-left: 18px;
   line-height: 1.55;
 }
-/* ---------- ficha da conta: Plano em fila, Comodato por ponto, Créditos ----------
+/* ---------- ficha da conta: Plano em fila, Créditos ----------
    (revisão de 23/09/2026) */
 .plano-fila {
   list-style: none;
@@ -2666,67 +2662,8 @@ details.ficha-bloco[open] > summary {
   line-height: 1.45;
   color: var(--text-dim);
 }
-.comodato-lista {
-  list-style: none;
-  margin: 10px 0 0;
-  padding: 0;
-}
-.comodato-ponto {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
-  gap: 6px 14px;
-  align-items: center;
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
-}
-.comodato-ponto-nome,
-.comodato-ponto-corpo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.comodato-ponto-nome b,
-.comodato-modalidade {
-  font-size: 0.88rem;
-  overflow-wrap: anywhere;
-}
-.comodato-sem b {
-  color: var(--err-texto);
-}
-@media (max-width: 560px) {
-  .comodato-ponto {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.modalidade-opcoes {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.modalidade-opcao {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-controle);
-  cursor: pointer;
-}
-.modalidade-opcao:has(input:checked) {
-  border-color: var(--brand);
-  background: var(--brand-tint);
-}
-.modalidade-opcao input {
-  margin-top: 3px;
-}
-.modalidade-opcao > span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 /* Saldo e "Conceder créditos" juntos, no começo da linha — com o card na
-   largura toda (conta sem comodato), o botão no canto oposto ficava a um
+   largura toda, o botão no canto oposto ficava a um
    monitor de distância do número que ele muda. */
 .creditos-topo {
   display: flex;
@@ -3090,68 +3027,6 @@ details.ficha-bloco[open] > summary {
     order: 0;
     margin-right: auto;
   }
-}
-/* Comodato: informativo, mais leve que os planos — dois cards dividindo a
-   largura (não uma grade de 3 com um buraco no fim). */
-.oferta-comodato-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (max-width: 760px) {
-  .oferta-comodato-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.oferta-comodato-card {
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.oferta-comodato-topo {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-.oferta-comodato-topo h4 {
-  margin: 0;
-  font-size: 1rem;
-}
-.fatos {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 0.86rem;
-}
-.fatos li {
-  position: relative;
-  padding-left: 22px;
-  line-height: 1.45;
-}
-.fatos li::before {
-  position: absolute;
-  left: 0;
-  top: 0;
-  font-weight: 800;
-}
-.fato-sim::before {
-  content: "✓";
-  color: var(--ok);
-}
-.fato-nao::before {
-  content: "✕";
-  color: var(--err);
-}
-.oferta-comodato-ficha {
-  margin: 0;
-  font-size: 0.76rem;
-  color: var(--text-dim);
-  line-height: 1.5;
 }
 
 /* ---------- Ofertas > Promoções ---------- */

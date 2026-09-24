@@ -6,7 +6,6 @@ const notificacoesRepo = require('./notificacoes');
 const { custoDoBeneficio, opcoesDisponiveis, NOME_TIER } = require('./regras');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const anunciantesRepo = require('../anunciantes/repository');
-const comodato = require('../pontos/comodato');
 const indicacoesRepo = require('../indicacoes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const sse = require('../lib/sse');
@@ -23,9 +22,6 @@ const dataBR = (iso) =>
 // fora os dias que faltavam (ou, se agendado, os créditos já debitados dele).
 async function bloqueioDoResgate(conta, historico) {
   if (conta.suspenso) return 'Sua conta está suspensa — fale com a gente antes de resgatar.';
-  if (await comodato.bloqueiaPlanoComercial(conta.id)) {
-    return 'Sua modalidade de comodato ("Recebe os R$ 50") não acumula com plano comercial. Troque para "Troca os R$ 50 por tela" antes de resgatar.';
-  }
   const ativo = historico.find((h) => h.status === 'ativo');
   if (ativo)
     return `Você já tem um benefício em vigor até ${dataBR(ativo.valido_ate)}. Resgate outro quando ele terminar.`;
@@ -33,6 +29,18 @@ async function bloqueioDoResgate(conta, historico) {
     return 'Você já tem um benefício programado. Resgate outro depois que ele começar e terminar.';
   }
   return null;
+}
+
+// Benefício de nível MENOR que o plano pago em dia não se resgata (regra 31
+// do pedido, ADR-016): o plano pago já dá mais, e o benefício nunca
+// entraria. Devolve a frase de recusa, ou null.
+async function bloqueioPorNivel(conta, tier) {
+  if (!pagandoEmDia(conta)) return null;
+  const {
+    rows: [pago],
+  } = await pool.query('SELECT tier, nome FROM planos WHERE id = $1', [conta.plano_id]);
+  if (!pago || planoAdministrativo.nivelDoTier(tier) >= planoAdministrativo.nivelDoTier(pago.tier)) return null;
+  return `Seu plano ${pago.nome} já oferece mais recursos que o benefício ${NOME_TIER[tier] || tier}.`;
 }
 
 const pagandoEmDia = (conta) =>
@@ -64,6 +72,11 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
     conta.plano_id ? pool.query('SELECT nome FROM planos WHERE id = $1', [conta.plano_id]) : null,
   ]);
   const bloqueio = await bloqueioDoResgate(conta, historico);
+  // Opções de nível menor que o plano pago aparecem, mas indisponíveis — com
+  // o motivo (mesma régua do POST, bloqueioPorNivel).
+  const bloqueiosPorTier = Object.fromEntries(
+    await Promise.all(Object.keys(NOME_TIER).map(async (t) => [t, await bloqueioPorNivel(conta, t)])),
+  );
   let indicacao = null;
   if (!conta.conta_propria) {
     const cupom = await indicacoesRepo.garantirCupom(contaId, conta.nome_empresa);
@@ -71,12 +84,16 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
   }
   res.json({
     saldo: saldoAtual,
-    opcoes: opcoesDisponiveis(saldoAtual),
+    opcoes: opcoesDisponiveis(saldoAtual).map((o) =>
+      bloqueiosPorTier[o.tier] ? { ...o, disponivel: false, bloqueio: bloqueiosPorTier[o.tier] } : o,
+    ),
     movimentacoes: movimentacoes.map((m) => ({
       id: m.id,
       tipo: m.tipo,
       quantidade: m.quantidade,
       origem_nome: m.origem_nome,
+      ponto_nome: m.ponto_nome,
+      competencia: m.competencia,
       observacao: m.observacao,
       criado_em: m.criado_em,
     })),
@@ -123,7 +140,9 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     const { rows: travada } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [contaId]);
     const conta = travada[0];
     if (!conta) throw Object.assign(new Error('conta não encontrada'), { status: 404 });
-    const bloqueio = await bloqueioDoResgate(conta, await planoAdministrativo.historicoDaConta(contaId));
+    const bloqueio =
+      (await bloqueioDoResgate(conta, await planoAdministrativo.historicoDaConta(contaId))) ||
+      (await bloqueioPorNivel(conta, tier));
     if (bloqueio) throw Object.assign(new Error(bloqueio), { status: 409 });
     const saldoAtual = await repo.saldo(contaId, cliente);
     if (saldoAtual < custo) {

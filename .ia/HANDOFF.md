@@ -9,7 +9,7 @@ O MOSTRAÍ PLAYER" (77 seções). Fonte de verdade do protocolo: o CÓDIGO do
 Player (`sancompany/Playlist.MostrAi`, main), depois `player-v2-contract.md`,
 depois o checklist. Plano e tabela de divergências:
 `docs/specs/2026-09-23-player-v2-backend.md`. Entregue (branch
-`claude/busy-noether-hheir2`): migration 082 (aditiva; a 081 é a nota interna do ledger de créditos, de outro PR), `src/player/`
+`claude/busy-noether-hheir2`): migration 083 (aditiva; 081 e 082 são do ledger de créditos, de outros PRs), `src/player/`
 (credencial, sinal, config, releases, tela-eventos), `src/lib/cofre.js`,
 `src/lib/operacao-tela.js`, saúde única em `src/lib/status-tela.js`, admin
 Rede → Ponto → Tela (ficha em 5 blocos, SSE `admin:true`), visão do dono
@@ -18,13 +18,43 @@ em `RUNBOOK.md` §6.1; o que falta em `docs/PENDENCIAS.md`, seção "Player V2".
 **Não desfazer sem contexto:**
 - Credencial só como hash; cofre (AES-GCM, chave do `SESSION_SECRET`) só
   para PIN, chave candidata e janela de repetição do token.
-- `aparelho_id` (chave V1 em texto) ficou na 082 de propósito: a 083 zera
+- `aparelho_id` (chave V1 em texto) ficou na 083 de propósito: a 084 zera
   depois de validar produção (rollback seguro).
 - Regime `HORAS_24` (não `24_HOURS`): o Player usa esse nome.
 - `played` nunca responde 400 por conteúdo (o Player põe em quarentena
   permanente) — status por item.
 - Release só ativa com `assinatura_conferida_em` (CHECK no banco).
 - Ponto "em operação" exige tela que já deu sinal (`primeiro_sinal_em`).
+
+## Reestruturação do benefício dos pontos (24/09/2026, este agente)
+Pedido do dono (69 seções): "SER PONTO DA MOSTRAÍ NÃO É UM PLANO". Decisão
+no **ADR-016**. NÃO MEXER respeitado: Player V2, heartbeat, proof-of-play,
+Tela API, OTA (só a SQL de elegibilidade LÊ `dispositivos.status/
+aparelho_id/ultima_vez_online`).
+- **Crédito mensal do ponto** — migration 082 + `src/creditos/ponto.js`:
+  tipo `credito_mensal_ponto` no mesmo ledger, `ponto_id` + `competencia`,
+  índice único (ponto, competência). Concedido por `scripts/conciliar.js`
+  (job diário). Notificação + SSE `credits.updated`.
+- **Prioridade pago × benefício** — `plano-administrativo.js`:
+  `NIVEL_TIER`, `preverPagamento`, `aplicarPagamentoNaFila` (chamado por
+  `san-checkout.js#aplicarCicloPago`), pago guardado em
+  `anunciantes.plano_pago_guardado_id/_dias`, devolvido por
+  `encerrarBeneficiosVencidos` e por `encerrar`. `/assinar` → 409 com
+  `confirmacao` se há benefício em vigor; `confirmar-plano.page.js` mostra o
+  diálogo. Resgate abaixo do pago em dia → 409 sem consumir crédito.
+  `encerrarCoberturaVencida` deixa benefício com linha 'ativo' pra rotina de
+  benefícios (antes apagaria o pago guardado e o programado).
+- **Modelo antigo fora do fluxo ativo** (histórico preservado): apagados
+  `src/pontos/comodato.js` e `planos-ponto-repository.js`; rotas de
+  modalidade/repasse/troca/bônus → 410; `GET /planos-ponto` → `[]`; ficha
+  sem card Comodato; Contas sem coluna Comodato; Ofertas só 3 tiers;
+  Financeiro sem aba Repasses; Visão geral sem custo de pontos; painel sem
+  Recebimentos/bônus; convite sem escolha de modalidade; site com o texto
+  novo. `/comodato.html` (jurídico) NÃO reescrito — PENDENCIAS §J.
+- Testes: `tests/credito-ponto.test.js`, `tests/prioridade-planos.test.js`
+  (matriz 3×3 + job diário), e2e `17-modelo-de-creditos.mjs` (varredura de
+  texto antigo em admin/painel/site + diálogo de compra). e2e 16/17 precisam
+  do servidor com `NODE_ENV=development` (LISTEN/NOTIFY do SSE).
 
 ## Rodada de responsividade/mobile do site público (24/09/2026, este agente)
 Pedido do dono: rodada final de RESPONSIVIDADE do site público — sem

@@ -1,9 +1,10 @@
 #!/bin/bash
 # Painel único: conta que nasce só com o papel ponto (convite) ativa o modo
 # anúncios sozinha, pede outro estabelecimento de dentro do painel e o admin
-# libera; convite aceito por conta logada; troca da ajuda de custo por tela;
-# módulo 2 (anúncio grátis após N meses como ponto). O programa de vendedor
-# foi aposentado em 23/09/2026 — o roteiro confere que ele não volta.
+# libera; convite aceito por conta logada; crédito mensal do ponto (ADR-016,
+# 24/09/2026 — substituiu a ajuda de custo, a troca por tela e o módulo 2).
+# O programa de vendedor foi aposentado em 23/09/2026 — o roteiro confere
+# que ele não volta.
 # Assume: banco zerado (reset-db.sh).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
@@ -50,7 +51,8 @@ r=$(curl -s -b adm.txt -X POST $B/admin/candidaturas/$CAND/liberar); esperar "ad
 # "Meus pontos" (painel único) substitui /anunciantes/:id/pontos e
 # /anunciantes/:id/dispositivos, que saíram.
 r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "ponto criado com endereço do pedido" 'Loja da Lia' "$r"
-esperar "ajuda de custo copiada da opção de comodato" '"ajudaCustoMensal":[1-9]' "$r"
+esperar "ponto nasce sem modalidade nem R\$ 50" '"beneficio":\{' "$r"
+if echo "$r" | grep -q 'ajudaCustoMensal\|modalidade'; then falha "sem campos do modelo antigo" "$r"; else ok "sem campos do modelo antigo"; fi
 PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
 # Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
 r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "Tela 1 criada" '"nome":"Tela 1"' "$r"
@@ -67,31 +69,22 @@ r=$(curl -s $B/convites/$TOK2); esperar "convite ficou usado" 'inválido' "$r"
 # Módulo 1 (tela após N meses) removido em 17/09/2026 a pedido do dono —
 # ver src/db/migrations/046. O módulo 2, logo abaixo, continua.
 
-echo "== troca da ajuda de custo por tela (mão única, pelo painel) =="
-# "Recebe os R$ 50" (Inicial) não acumula com plano comercial — o bônus de
-# anúncio abaixo só é resgatável depois de trocar pra "Troca os R$ 50 por tela".
-r=$(curl -s -b lia.txt $B/anunciantes/me/financeiro); esperar "Financeiro oferece a troca" '"troca":\{"totalMensal":[1-9]' "$r"
-r=$(curl -s -b lia.txt -X POST $B/anunciantes/me/comodato/trocar-por-tela); esperar "troca feita" '"ok":true' "$r"
-r=$(curl -s -b lia.txt $B/anunciantes/me/financeiro); esperar "sem dinheiro a trocar, sem oferta" '"troca":null' "$r"
-r=$(curl -s -b lia.txt -X POST $B/anunciantes/me/comodato/trocar-por-tela); esperar "não troca duas vezes" 'já trocou' "$r"
+echo "== modelo antigo aposentado: sem troca, sem repasse, sem módulo 2 =="
+r=$(curl -s -b lia.txt $B/anunciantes/me/financeiro)
+if echo "$r" | grep -q 'recebimentos\|troca'; then falha "Financeiro sem Recebimentos" "$r"; else ok "Financeiro sem Recebimentos"; fi
+r=$(curl -s -o /dev/null -w '%{http_code}' -b lia.txt -X POST $B/anunciantes/me/comodato/trocar-por-tela); esperar "troca por tela aposentada (410)" '^410$' "$r"
+r=$(curl -s -o /dev/null -w '%{http_code}' -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}'); esperar "módulo 2 aposentado (410)" '^410$' "$r"
+r=$(curl -s $B/planos-ponto); esperar "nenhuma modalidade oferecida" '^\[\]$' "$r"
 
-echo "== módulo 2: anúncio grátis após N meses como ponto =="
-$PG -c "UPDATE planos_ponto SET plano_bonus_id='destaque-1m', plano_bonus_apos_meses=6, plano_bonus_meses=2 WHERE id='mais-cota'" >/dev/null
-# Status do ponto é automático (migration 069): a tela ativa, instalada há 7
-# meses, é o que põe o ponto em operação e conta o tempo de casa.
-INSTALADO=$(date -d '7 months ago' +%F)
-r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d "{\"status\":\"ativo\",\"instalado_em\":\"$INSTALADO\"}"); esperar "tela ativada, instalada há 7 meses" '"status":"ativo"' "$r"
-# Player V2: o ponto só entra em operação com o primeiro sinal da tela.
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/chave-legada); CHAVE=$(echo $r | sed 's/.*chave=\([^"]*\)".*/\1/')
-r=$(curl -s -X POST $B/player/$DISP/heartbeat -H "X-Aparelho-Id: $CHAVE"); esperar "primeiro sinal da tela" '"ok":true' "$r"
-$PG -c "UPDATE anunciantes SET plano_id=NULL, data_expiracao=NULL WHERE id=$LIA" >/dev/null
-r=$(curl -s -b lia.txt $B/conta/modos); esperar "7 meses como ponto com módulo de 6 → bônus de anúncio disponível" '"anuncio":\{[^}]*"disponivel":true' "$r"
-r=$(curl -s -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}')
-esperar "resgate ativa o plano na conta" '"plano_id":"destaque-1m","data_inicio_cobertura"' "$r"
-esperar "conta fica ativa (não suspensa)" '"suspenso":false' "$r"
-esperar "bônus entra como cortesia (não vira receita no resumo)" '"plano_cortesia":true' "$r"
-dias=$($PG -c "select data_expiracao::date - now()::date from anunciantes where id=$LIA"); esperar "cobertura de ~2 meses (>= 58 dias)" '^(5[8-9]|6[0-9])$' "$dias"
-r=$(curl -s -b lia.txt -X POST $B/conta/bonus/anuncio/resgatar -H "$J" -d '{}'); esperar "não resgata duas vezes" 'não está disponível|já tem um plano' "$r"
+echo "== crédito mensal do ponto: tela ativa = +1 crédito no mês =="
+r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"status":"ativo"}'); esperar "tela ativada" '"status":"ativo"' "$r"
+# Tela provisionada: o job exige chave de aparelho ou uma conexão já feita.
+$PG -c "UPDATE dispositivos SET ultima_vez_online = now() WHERE id=$DISP" >/dev/null
+(cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
+(cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
+n=$($PG -c "select count(*) from creditos_ledger where ponto_id=$PONTO and tipo='credito_mensal_ponto'"); esperar "1 crédito no mês, mesmo rodando o job duas vezes" '^1$' "$n"
+r=$(curl -s -b lia.txt $B/anunciantes/me/creditos); esperar "saldo na mesma carteira" '"saldo":1' "$r"
+r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "Meus pontos: crédito do mês já concedido" '"creditoDoMesConcedido":true' "$r"
 
 echo "== vendedor aposentado: conta sem perfil de vendedor não mexe em Pix =="
 r=$(curl -s -b lia.txt -X PATCH $B/vendedor/me -H "$J" -d '{"chave_pix":"lia2@pix"}'); esperar "Pix de vendedor recusado pra conta comum" 'não é de vendedor' "$r"

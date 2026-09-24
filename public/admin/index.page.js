@@ -669,7 +669,6 @@ const ALIASES_ANTIGOS = {
   planosarquivados: 'ofertas/precos',
   beneficios: 'ofertas/precos',
   categorias: 'contas/categorias',
-  comodato: 'configuracoes/comodato',
   eventos: 'configuracoes/diagnostico',
   // Financeiro (rodada 22/09/2026): Receitas/Repasses saem de página
   // permanente e viram drill-down oculto — os hashes antigos continuam
@@ -679,7 +678,9 @@ const ALIASES_ANTIGOS = {
   cobrancas: 'financeiro/cobrancas',
   trocas: 'financeiro/trocas',
   arrependimentos: 'financeiro/devolucoes',
-  pagamentospontos: 'financeiro/repasses',
+  // `pagamentospontos`/`#financeiro/repasses` e `#comodato` saíram em
+  // 24/09/2026 (ADR-016): ser ponto gera créditos, não repasse. Os hashes
+  // antigos caem na Visão geral, igual todo alias sem módulo.
 };
 // Reverso: de "módulo/aba" novo pro id antigo — só pra reaproveitar o texto
 // de SUBTITULOS sem duplicar nenhuma frase.
@@ -743,11 +744,9 @@ const MODULOS = [
     // (Parte K/D) — `renderPlanos`/`renderPlanosArquivados`/
     // `renderBeneficios` continuam definidas mais abaixo, só sem aba que
     // chame, por enquanto (limpeza fica pra outra rodada, pedido
-    // explícito: não gastar esta rodada removendo código legado). Comodato
-    // (saiu de Configurações nesta rodada de Navegação) pertence
-    // conceitualmente aqui também, mas a implementação comercial correta
-    // está sendo tratada em outra frente — não reimplementado nesta rodada,
-    // de propósito.
+    // explícito: não gastar esta rodada removendo código legado). Inicial e
+    // Básico (os produtos de comodato) saíram de vez em 24/09/2026 (ADR-016):
+    // ser ponto não é plano, gera créditos.
     id: 'ofertas',
     nome: 'Ofertas',
     abas: [
@@ -785,9 +784,10 @@ const MODULOS = [
   // 22/09/2026, pedido do dono: "normalidade não ocupa espaço, pendência
   // aparece") — Receitas/Repasses/Custos como páginas permanentes saíram.
   // O que sobra é drill-down: a Visão geral mostra receita e pendências
-  // reais (repasses/comissões/trocas/devoluções) e cada uma leva pra cá
-  // por clique. `oculto` mantém a rota (`#financeiro/repasses` etc.) sem
-  // nenhum botão na sidebar — mesmo padrão de "mensagens"/"vendedores".
+  // reais (trocas/devoluções) e cada uma leva pra cá por clique. `oculto`
+  // mantém a rota (`#financeiro/trocas` etc.) sem nenhum botão na sidebar —
+  // mesmo padrão de "mensagens"/"vendedores". A aba Repasses saiu em
+  // 24/09/2026 (ADR-016): não existe repasse mensal ao ponto.
   {
     // Comissões saiu das abas (revisão final da Visão geral, 23/09/2026,
     // pedido do dono: "o conceito de vendedor foi retirado do projeto").
@@ -800,7 +800,6 @@ const MODULOS = [
     oculto: true,
     abas: [
       { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
-      { id: 'repasses', nome: 'Repasses', render: renderFilaRepasses },
       { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
       { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
     ],
@@ -830,16 +829,13 @@ const SUBTITULOS = {
   'rede/pontos': 'Rede → pontos → telas: o estado de cada comércio e a saúde de cada tela, ao vivo.',
   'rede/player': 'Versões do aplicativo Player anunciadas às telas para atualização remota.',
   anunciantes: 'Toda conta pode anunciar; quem tem ponto aparece como dono de ponto.',
-  ofertas: 'Os 3 planos comerciais, as 2 modalidades de comodato e as promoções.',
+  ofertas: 'Os 3 planos comerciais — Essencial, Pro e Prime — e as promoções.',
   'ofertas/precos': 'O que o cliente paga em cada plano e ciclo. Salvar publica o valor novo na vitrine.',
   'ofertas/promocoes': 'Condições temporárias por plano e ciclo, exibidas na Home e na página de Planos.',
   categorias: 'Segmentos do cadastro. É a categoria que impede concorrente direto na mesma tela.',
-  comodato:
-    'O que o dono do ponto escolhe no "Seja um ponto": receber os R$ 50 com o plano Inicial junto, ou trocar os R$ 50 pelo plano Básico.',
   cobrancas: 'Histórico de pagamentos confirmados.',
   trocas: 'Quem trocou de plano no meio do período e ainda não pagou a diferença.',
   comissoes: 'Comissões de vendedor em aberto. Marcar como paga só registra aqui — o Pix é por fora.',
-  pagamentospontos: 'Quem tem ajuda de custo de comodato pra pagar este mês.',
   eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
@@ -1131,7 +1127,7 @@ pegar('/admin/resumo')
 // ---------- visão geral ----------
 // Alertas de EXCEÇÃO operacional (rodada de integridade, 23/09/2026): só o
 // que foge da rotina e só aparece quando existe. O trabalho pendente normal
-// (candidaturas, criativos, mensagens, repasses, comissões, trocas,
+// (candidaturas, criativos, mensagens, comissões, trocas,
 // devoluções, falhas fiscais) saiu daqui e mora no resumo operacional fixo
 // (`PENDENCIAS_OPERACIONAIS`, logo abaixo), que mostra também o zero.
 //
@@ -1181,7 +1177,7 @@ const ALERTAS = [
 // 4 cards, não 8 (revisão final da Visão geral, 23/09/2026, seção 3 do
 // pedido): Comissões e Falhas fiscais saíram — "o conceito de vendedor foi
 // retirado do projeto", e falha fiscal nunca teve automação nenhuma que
-// pudesse falhar de verdade. Repasses/Trocas/Devoluções deixaram de ser
+// pudesse falhar de verdade. Trocas/Devoluções deixaram de ser
 // cards próprios e viram UM "Financeiro" agregado (financeiro.
 // pendenciasFinanceiras, já somado no backend) — clique abre a Central
 // Financeira, que aí sim detalha cada fila na aba dela.
@@ -1191,7 +1187,7 @@ const PENDENCIAS_OPERACIONAIS = [
   { nome: 'Mensagens', aba: 'mensagens', qtd: (r) => r.filas?.contato },
   {
     nome: 'Financeiro',
-    aba: 'financeiro/repasses',
+    aba: 'financeiro/trocas',
     qtd: (r) => r.financeiro?.pendenciasFinanceiras?.qtd,
     valor: (r) => r.financeiro?.pendenciasFinanceiras?.total,
   },
@@ -1320,8 +1316,8 @@ function redeVazia(rede) {
 // Bloco Financeiro da Visão geral — card único e compacto (revisão final da
 // Visão geral, 23/09/2026, seção 6 do pedido): antes eram 2 cards grandes
 // (Receita recorrente + Confirmado no mês) soltos no meio da tela. Agora é
-// um só, com as pendências financeiras agregadas (repasse + troca com
-// problema + devolução — nunca mais comissão, seção 3/4) e a conciliação
+// um só, com as pendências financeiras agregadas (troca com problema +
+// devolução — nunca mais comissão, seção 3/4; nem repasse, ADR-016) e a conciliação
 // discreta dentro (seção 10) — "normalidade não ocupa espaço".
 function painelFinanceiroResumo(financeiro, conciliacaoResumoHtml) {
   const pend = financeiro.pendenciasFinanceiras || { qtd: 0, total: 0 };
@@ -1340,7 +1336,7 @@ function painelFinanceiroResumo(financeiro, conciliacaoResumoHtml) {
       </div>
       ${
         pend.qtd
-          ? `<button type="button" class="fin-pendencia" data-ir="financeiro/repasses"><span><b>${plural(pend.qtd, 'pendência')}</b> · ${fmt(pend.total)}</span><span aria-hidden="true">→</span></button>`
+          ? `<button type="button" class="fin-pendencia" data-ir="financeiro/trocas"><span><b>${plural(pend.qtd, 'pendência')}</b> · ${fmt(pend.total)}</span><span aria-hidden="true">→</span></button>`
           : '<p class="fin-sem-pendencia">Nenhuma pendência financeira.</p>'
       }
       ${conciliacaoResumoHtml || ''}
@@ -3077,6 +3073,19 @@ async function renderPontoDetalhe(el, pontoId) {
   definirVistaRede(montar);
 }
 
+// Benefício do ponto (ADR-016, 24/09/2026): +1 crédito por mês enquanto o
+// ponto tem tela instalada e ativa. Não é plano nem repasse.
+function textoBeneficioPonto(b) {
+  if (!b) return '<span class="u-dim">—</span>';
+  const ultimo = b.ultimaCompetencia ? `último: ${esc(b.ultimaCompetencia)}` : 'nenhum crédito ainda';
+  const proximo = b.creditoDoMesConcedido
+    ? `próximo: ${esc(b.proximaCompetencia)}`
+    : b.elegivel
+      ? `${esc(b.competenciaAtual)} sai no próximo job diário`
+      : 'fora do programa até ter tela instalada e ativa';
+  return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>`;
+}
+
 // Ficha do estabelecimento — SOMENTE LEITURA (dados vêm da candidatura).
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
@@ -3098,7 +3107,7 @@ function renderPontoInformacoes(el, ponto, telas) {
       <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
       <div><dt>Proprietário (conta)</dt><dd>${ponto.dono_nome ? (ponto.anunciante_id ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>` : esc(ponto.dono_nome)) : naoInformado('Sem conta vinculada')}</dd></div>
       <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
-      ${ponto.plano_ponto_nome ? `<div><dt>Comodato</dt><dd>${esc(ponto.plano_ponto_nome)}${Number(ponto.valor_pago_mensal) > 0 ? `<span class="dado-sub">${fmt(ponto.valor_pago_mensal)}/mês</span>` : ''}</dd></div>` : ''}
+      <div><dt>Benefício do ponto</dt><dd>${textoBeneficioPonto(ponto.beneficio)}</dd></div>
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
       <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
@@ -3966,21 +3975,17 @@ function novaRelease(remontar) {
 //
 // TODA CONTA JÁ PODE ANUNCIAR — "anunciante" não é papel, status nem badge.
 // O que a tela mostra de uma conta sai de FATOS, nunca de rótulo gravado:
-// tem ponto → "Dono de ponto"; tem ponto em comodato → coluna Comodato; tem
-// plano comercial vigente → coluna Plano. Vendedor e Parceiro saíram da
+// tem ponto → "Dono de ponto" (e o benefício de +1 crédito/mês); tem plano
+// vigente → coluna Plano. Vendedor e Parceiro saíram da
 // experiência (os dados antigos continuam no banco, intocados). A conta
 // interna do Mostraí (`conta_propria`) não aparece aqui: ela é gerida em
 // Mídia Mostraí e não é cliente.
 //
 // A tabela continua sendo `anunciantes` — só a UI chama de conta.
 
-// Comodato (Inicial/Básico) e plano comercial (Essencial/Pro/Prime) são
-// entitlements INDEPENDENTES desde 23/09/2026 — decisão do dono e do GPT,
-// migration 077: dois campos próprios (`plano_id` e `comodato_plano_id`),
-// nunca mais um sobrescrevendo o outro. Básico coexiste com qualquer plano
-// comercial; Inicial bloqueia conceder/vender um (o backend recusa —
-// `pontos/comodato.js#bloqueiaPlanoComercial` — as duas telas de plano
-// abaixo só mostram o erro que ele mandar).
+// Só existem três planos comerciais — Essencial, Pro e Prime (ADR-016,
+// 24/09/2026). Inicial e Básico (comodato) saíram do fluxo ativo; os ids
+// antigos só aparecem em histórico, traduzidos por `humanizarPlanoId`.
 
 function nomeDoPlano(plano) {
   if (!plano) return '';
@@ -3994,10 +3999,10 @@ function nomeDoPlano(plano) {
 const TIER_POR_PREFIXO = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime', fundador: 'Pro' };
 function humanizarPlanoId(id) {
   if (!id) return '';
-  if (id === 'comodato-basico') return 'Básico';
+  if (id === 'comodato-basico') return 'Básico (legado)';
   const m = /^([a-z]+)-(\d+)m(?:-v\d+)?$/.exec(id);
   if (!m) return 'Plano';
-  if (m[1] === 'inicial') return 'Plano Inicial';
+  if (m[1] === 'inicial') return 'Inicial (legado)';
   const tier = TIER_POR_PREFIXO[m[1]] || 'Plano';
   return `${tier} · ${CICLOS[m[2]] || `${m[2]} meses`}${m[1] === 'fundador' ? ' (fundador)' : ''}`;
 }
@@ -4029,23 +4034,6 @@ const ORIGEM_PLANO = {
   bonus_ponto: 'Bônus de ponto legado',
 };
 
-// Comodato é direito do PONTO (modalidade + produto Inicial/Básico),
-// espelhado em `conta.comodato_plano_id` (sincronizado por
-// `pontos/comodato.js#sincronizarComodato` toda vez que a modalidade de um
-// ponto muda). A lista de pontos só entra aqui pra mostrar QUAL modalidade
-// ("Troca os R$ 50 por tela") — o produto em si vem do campo da conta.
-function comodatoDaConta(conta, pontosDaConta, planosPorId) {
-  if (!conta.comodato_plano_id) return null;
-  const ponto =
-    pontosDaConta.find(
-      (p) => p.plano_ponto_id && p.comodato_produto_nome === planosPorId[conta.comodato_plano_id]?.nome,
-    ) || pontosDaConta.find((p) => p.plano_ponto_nome);
-  return {
-    produto: planosPorId[conta.comodato_plano_id]?.nome || ponto?.comodato_produto_nome || 'Comodato',
-    modalidade: ponto?.plano_ponto_nome || null,
-  };
-}
-
 async function renderContasAba(el, resto) {
   const contaId = resto ? Number(resto) : null;
   if (contaId) return renderContaDetalhe(el, contaId);
@@ -4073,11 +4061,9 @@ async function renderContasLista(el) {
     .map((a) => {
       const pts = pontosPorConta[a.id] || [];
       const comercial = planoComercialDaConta(a, planosPorId);
-      const comodato = comodatoDaConta(a, pts, planosPorId);
       const filtro = [
         comercial && !comercial.vencido ? 'com-plano' : 'sem-plano',
         pts.length ? 'dono-ponto' : '',
-        comodato ? 'comodato' : '',
         a.suspenso ? 'suspensa' : '',
       ]
         .filter(Boolean)
@@ -4101,7 +4087,6 @@ async function renderContasLista(el) {
         <td><div class="celula-contato">${esc(a.contato_email)}</div><div class="celula-sub">${esc(a.contato_telefone)}</div></td>
         <td>${categoria}</td>
         <td>${plano}</td>
-        <td>${comodato ? esc(comodato.produto || comodato.modalidade) : '<span class="u-dim">—</span>'}</td>
         <td class="num">${pts.length}</td>
         <td class="num" data-valor="${new Date(a.created_at).getTime()}">${data(a.created_at)}</td>
       </tr>`;
@@ -4115,12 +4100,11 @@ async function renderContasLista(el) {
           { valor: 'com-plano', nome: 'Com plano' },
           { valor: 'sem-plano', nome: 'Sem plano' },
           { valor: 'dono-ponto', nome: 'Donos de ponto' },
-          { valor: 'comodato', nome: 'Com comodato' },
           { valor: 'suspensa', nome: 'Suspensas' },
         ],
         html: `<table class="tabela-contas"><thead><tr>
             <th data-ord>Conta</th><th>Contato</th><th data-ord>Categoria</th><th data-ord>Plano</th>
-            <th data-ord>Comodato</th><th data-ord class="num">Pontos</th><th data-ord class="num">Entrou</th>
+            <th data-ord class="num">Pontos</th><th data-ord class="num">Entrou</th>
           </tr></thead><tbody>${linhas}</tbody></table>`,
         unidade: 'conta|contas',
       })
@@ -4142,14 +4126,16 @@ async function renderContasLista(el) {
 // domínio da Mostraí, não a estrutura das tabelas"). A ficha lê UMA fonte —
 // GET /admin/anunciantes/:id/situacao (src/anunciantes/situacao.js), onde
 // cada regra é decidida uma vez: origem do plano, fila Agora → Próximo →
-// Depois, comodato por ponto + modalidade, ponto × solicitação, selo "Dono de
-// ponto", invariantes. Antes cada card tirava a própria conclusão de uma
-// lista crua diferente, e dois cards chegaram a se contradizer ("Sem ponto em
-// comodato" ao lado de "Pontos: 1"). Aqui só se desenha.
+// Depois, benefício de cada ponto (+1 crédito/mês), ponto × solicitação,
+// selo "Dono de ponto", invariantes. Antes cada card tirava a própria
+// conclusão de uma lista crua diferente, e dois cards chegaram a se
+// contradizer. Aqui só se desenha.
 //
-// Cards condicionais: Plano, Dados, Créditos e Criativos sempre; Comodato e
-// Pontos só com ponto aprovado; Solicitações de ponto só com pedido em
-// análise. Históricos recolhidos. Ações destrutivas discretas, no fim.
+// Cards condicionais: Plano, Dados, Créditos e Criativos sempre; Pontos só
+// com ponto aprovado; Solicitações de ponto só com pedido em análise. Não
+// existe card "Comodato" comercial desde 24/09/2026 (ADR-016): ser ponto
+// gera créditos, não plano nem repasse. Históricos recolhidos. Ações
+// destrutivas discretas, no fim.
 //
 // Reatividade sem F5: a ficha assina os eventos da própria conta
 // (GET /admin/anunciantes/:id/eventos, o mesmo barramento SSE do painel do
@@ -4161,7 +4147,6 @@ const ORIGEM_CLASSE = {
   beneficio_creditos: 'badge-info',
   cortesia_legada: 'badge-neutro',
   bonus_ponto: 'badge-neutro',
-  comodato: 'badge-neutro',
 };
 
 // Rótulos do tipo de movimentação do ledger (migration 079) — mesmos valores
@@ -4173,6 +4158,7 @@ const TIPO_CREDITO = {
   estorno_admin: 'Estorno (admin)',
   resgate_beneficio: 'Resgate de benefício',
   estorno_resgate: 'Estorno de resgate',
+  credito_mensal_ponto: 'Crédito mensal do ponto',
 };
 
 let EVENTOS_FICHA = null; // { contaId, fonte: EventSource, timer }
@@ -4306,10 +4292,7 @@ function desenharFicha(el, s, categorias) {
       <section class="panel conta-secao" id="contaDados"></section>
       <section class="panel conta-secao" id="contaPlano"></section>
     </div>
-    <div class="conta-grade${s.comodato ? '' : ' conta-grade-uma'}">
-      ${s.comodato ? '<section class="panel conta-secao" id="contaComodato"></section>' : ''}
-      <section class="panel conta-secao" id="contaCreditos"></section>
-    </div>
+    <section class="panel conta-secao" id="contaCreditos"></section>
     <section class="panel conta-secao" id="contaCriativos"></section>
     ${s.pontos.length ? '<section class="panel conta-secao" id="contaPontos"></section>' : ''}
     ${s.solicitacoes.length ? '<section class="panel conta-secao conta-secao-discreta" id="contaSolicitacoes"></section>' : ''}
@@ -4317,7 +4300,6 @@ function desenharFicha(el, s, categorias) {
 
   desenharContaDados(el.querySelector('#contaDados'), ctx);
   desenharContaPlano(el.querySelector('#contaPlano'), ctx);
-  if (s.comodato) desenharContaComodato(el.querySelector('#contaComodato'), ctx);
   desenharContaCreditos(el.querySelector('#contaCreditos'), ctx);
   desenharContaCriativos(el.querySelector('#contaCriativos'), {
     ...ctx,
@@ -4454,17 +4436,22 @@ function desenharContaPlano(el, ctx) {
     agora = `<div class="plano-linha"><b class="conta-plano-nome">${esc(a.nome)}</b><span class="badge ${ORIGEM_CLASSE[a.origem] || 'badge-neutro'}">${esc(a.origemTexto)}</span></div>
       <p class="plano-meta">${prazo}${a.desde ? ` · desde ${data(a.desde)}` : ''}</p>
       ${a.direitos ? `<p class="plano-direitos">${esc(direitosTexto(a.direitos))}</p>` : ''}`;
-  } else if (p.agora?.tipo === 'comodato') {
-    agora = `<div class="plano-linha"><b class="conta-plano-nome">${esc(p.agora.nome)}</b><span class="badge badge-neutro">Comodato</span></div>
-      <p class="plano-meta">Vem da modalidade do ponto — sem cobrança, sem prazo.</p>
-      ${p.agora.direitos ? `<p class="plano-direitos">${esc(direitosTexto(p.agora.direitos))}</p>` : ''}`;
   } else {
     agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano</b></div>
       <p class="plano-meta">A conta não veicula na rede. Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
   }
 
   const etapas = [etapa('Agora', agora)];
-  if (p.proximo) {
+  if (p.proximo?.tipo === 'pago_guardado') {
+    const x = p.proximo;
+    etapas.push(
+      etapa(
+        'Próximo',
+        `<div class="plano-linha"><b>${esc(x.nome)}</b><span class="badge ${ORIGEM_CLASSE.assinatura}">${esc(x.origemTexto)}</span></div>
+        <p class="plano-meta">Guardado por baixo do benefício: volta ${x.comecaEm ? `em ${data(x.comecaEm)}` : 'quando ele acabar'} com ${plural(x.dias, 'dia pago', 'dias pagos')}${x.validoAte ? ` · até ${data(x.validoAte)}` : ''}</p>`,
+      ),
+    );
+  } else if (p.proximo) {
     const x = p.proximo;
     etapas.push(
       etapa(
@@ -4504,102 +4491,6 @@ function desenharContaPlano(el, ctx) {
   el.querySelector('[data-cancelar-assinatura]')?.addEventListener('click', () => abrirCancelarAssinatura(ctx));
 }
 
-// Comodato: direito do PONTO. Uma linha por ponto aprovado, com a modalidade
-// e o que o dono recebe — ponto sem modalidade aparece como o furo que é, com
-// a ação pra resolver, em vez de "sem comodato".
-function desenharContaComodato(el, ctx) {
-  const { s, bloqueada } = ctx;
-  const c = s.comodato;
-  const contrapartida = [
-    c.repasseMensal ? `${fmt(c.repasseMensal)}/mês de repasse` : '',
-    c.creditoMensal ? `${fmt(c.creditoMensal)}/mês de crédito na mensalidade` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const linhas = c.pontos
-    .map((pt) => {
-      const m = pt.modalidade;
-      const corpo = m
-        ? `<span class="comodato-modalidade"><b>${esc(m.produto || m.nome)}</b> · ${esc(m.nome)}</span>
-           <span class="item-meta">${esc(m.recebe)}${m.acumulaComComercial ? '' : ' · não acumula com plano comercial'}</span>`
-        : '<span class="comodato-modalidade comodato-sem"><b>Modalidade não definida</b></span><span class="item-meta">O dono não recebe repasse nem crédito até definir.</span>';
-      const acao = bloqueada
-        ? ''
-        : `<button type="button" class="btn ${m ? 'ghost' : 'primary'} mini" data-modalidade="${pt.id}">${m ? 'Alterar' : 'Definir modalidade'}</button>`;
-      return `<li class="comodato-ponto">
-        <div class="comodato-ponto-nome"><b>${esc(pt.nome)}</b><span class="item-meta">Ponto ${esc(pt.statusTexto.toLowerCase())}</span></div>
-        <div class="comodato-ponto-corpo">${corpo}</div>
-        ${acao}
-      </li>`;
-    })
-    .join('');
-  el.innerHTML = `
-    <div class="secao-topo"><h3>Comodato</h3>${contrapartida ? `<span class="secao-nota">${esc(contrapartida)}</span>` : ''}</div>
-    ${
-      c.produto
-        ? `<p class="plano-meta u-mt-0"><b>${esc(c.produto.nome)}</b> vigente${c.produto.direitos ? ` — ${esc(direitosTexto(c.produto.direitos))}` : ''}${c.pontos.length > 1 ? '. Vale o melhor entre os pontos, nunca a soma.' : '.'}</p>`
-        : ''
-    }
-    <ul class="comodato-lista">${linhas}</ul>
-    ${c.naoAcumulaComComercial ? '<p class="campo-ajuda">Inicial (recebe o repasse) não acumula com plano comercial — pra assinar ou resgatar, o ponto precisa estar no Básico.</p>' : ''}`;
-  el.querySelectorAll('[data-modalidade]').forEach((b) =>
-    b.addEventListener('click', () =>
-      abrirModalidadeDoPonto(
-        ctx,
-        c.pontos.find((pt) => String(pt.id) === b.dataset.modalidade),
-      ),
-    ),
-  );
-}
-
-// Definir/alterar a modalidade de comodato de um ponto — o mesmo PATCH de
-// sempre (`/admin/pontos/:id` com `plano_ponto_id` → comodato.
-// aplicarModalidade, numa transação: modalidade, repasse e crédito juntos).
-// É o único caminho pra VOLTAR a receber o repasse (despesa nova: decisão do
-// dono), e o servidor recusa Inicial em conta com plano comercial.
-async function abrirModalidadeDoPonto(ctx, ponto) {
-  const modalidades = (await pegar('/admin/planos-ponto')).filter((m) => m.ativo);
-  const atual = ponto.modalidade?.id || '';
-  const { dlg, fechar } = abrirModal({
-    titulo: ponto.modalidade ? 'Alterar modalidade do comodato' : 'Definir modalidade do comodato',
-    corpo: `<p class="u-mt-0">Ponto <b>${esc(ponto.nome)}</b>. A modalidade decide o que o dono recebe por ceder a parede.</p>
-      <div class="modalidade-opcoes">${modalidades
-        .map(
-          (m) => `<label class="modalidade-opcao">
-            <input type="radio" name="modalidade" value="${esc(m.id)}" ${m.id === atual ? 'checked' : ''}>
-            <span><b>${esc(m.nome)}</b>
-              <span class="item-meta">${Number(m.ajuda_custo_mensal) > 0 ? `Recebe ${fmt(m.ajuda_custo_mensal)}/mês de repasse` : `${fmt(m.desconto_assinatura_reais)}/mês de crédito na mensalidade`} · ${m.permite_assinar ? 'acumula com plano comercial' : 'não acumula com plano comercial'}</span>
-            </span>
-          </label>`,
-        )
-        .join('')}</div>
-      <p class="form-msg" data-msg role="status"></p>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn primary" data-confirmar>Salvar modalidade</button>',
-  });
-  const botao = dlg.querySelector('[data-confirmar]');
-  botao.addEventListener('click', async () => {
-    const escolhida = dlg.querySelector('[name="modalidade"]:checked')?.value;
-    if (!escolhida) return erroNoModal(dlg, 'Escolha uma modalidade.');
-    if (escolhida === atual) return fechar();
-    botao.disabled = true;
-    const r = await api(`/admin/pontos/${ponto.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ plano_ponto_id: escolhida }),
-    });
-    if (!r.ok) {
-      botao.disabled = false;
-      return erroNoModal(
-        dlg,
-        window.frase((await r.json().catch(() => ({}))).erro || 'Não foi possível salvar a modalidade.'),
-      );
-    }
-    toast('Modalidade salva.');
-    fechar();
-    ctx.recarregar();
-  });
-}
-
 // Créditos e benefícios: o jeito NORMAL de dar cortesia comercial. Saldo,
 // concessão (quantidade + motivo + nota interna, com o admin e a hora
 // gravados no ledger imutável) e os dois históricos, recolhidos.
@@ -4625,7 +4516,7 @@ function desenharContaCreditos(el, ctx) {
                   : '',
                 m.notaInterna ? `<span class="u-dim">Nota interna: ${esc(m.notaInterna)}</span>` : '',
               ].filter(Boolean);
-              return `<li><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${m.quantidade > 0 ? '+' : '−'}${num(Math.abs(m.quantidade))}</b> · ${esc(TIPO_CREDITO[m.tipo] || m.tipo)}${m.origemNome ? ` · ${esc(m.origemNome)}` : ''} · ${data(m.criadoEm)}${m.concedidoPor ? ` · por ${esc(m.concedidoPor)}` : ''}${detalhes.length ? `<br>${detalhes.join('<br>')}` : ''}</li>`;
+              return `<li><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${m.quantidade > 0 ? '+' : '−'}${num(Math.abs(m.quantidade))}</b> · ${esc(TIPO_CREDITO[m.tipo] || m.tipo)}${m.pontoNome ? ` · ${esc(m.pontoNome)}` : ''}${m.origemNome ? ` · ${esc(m.origemNome)}` : ''} · ${data(m.criadoEm)}${m.concedidoPor ? ` · por ${esc(m.concedidoPor)}` : ''}${detalhes.length ? `<br>${detalhes.join('<br>')}` : ''}</li>`;
             })
             .join('')}</ul></details>`
         : '<p class="texto-vazio u-mt-8">Nenhuma movimentação ainda.</p>'
@@ -4661,6 +4552,7 @@ function desenharContaPontos(el, pontos) {
             ${endereco ? `<span class="item-linha-meta">${esc(endereco)}</span>` : ''}
             <span class="item-linha-meta">${esc(p.cidade || '')}${p.uf ? `/${esc(p.uf)}` : ''} · ${p.telas ? plural(p.telas, 'tela') : 'sem tela'}</span>
             <span class="item-linha-meta saude-${p.saude.nivel}">${esc(p.saude.texto)}</span>
+            <span class="item-linha-meta">Benefício: ${textoBeneficioPonto(p.beneficio)}</span>
           </span>
         </a>`;
       })
@@ -4669,7 +4561,7 @@ function desenharContaPontos(el, pontos) {
 }
 
 // Solicitações de ponto em análise — separadas de Pontos, discretas: pedido
-// não é ponto, não dá selo, não entra em comodato. Abre a candidatura em Rede.
+// não é ponto, não dá selo, não gera crédito. Abre a candidatura em Rede.
 function desenharContaSolicitacoes(el, solicitacoes) {
   el.innerHTML = `<div class="secao-topo"><h3>Solicitações de ponto</h3><span class="secao-nota">${plural(solicitacoes.length, 'em análise', 'em análise')}</span></div>
     <ul class="solicitacoes-lista">${solicitacoes
@@ -5439,7 +5331,6 @@ async function _renderCustos(el) {
     <div class="kpi-grid">
       <div class="kpi-card"><span class="kpi-label">Custos fixos ativos</span><b>${fmt(total)}</b><span class="kpi-caption">por mês, somados na margem da visão geral</span></div>
       <div class="kpi-card"><span class="kpi-label">Amortização das telas</span><b>${fmt(RESUMO.financeiro.amortizacaoMensal)}</b><span class="kpi-caption">vem do custo de cada tela (aba Telas)</span></div>
-      <div class="kpi-card"><span class="kpi-label">Ajuda de custo aos pontos</span><b>${fmt(RESUMO.financeiro.custoPontosMensal)}</b><span class="kpi-caption">vem de cada ponto ativo</span></div>
     </div>
     <details class="bloco-novo">
       <summary class="btn ghost mini">+ Novo custo fixo</summary>
@@ -5662,50 +5553,12 @@ function montarCardProduto(p) {
     </section>`;
 }
 
-// Card somente-leitura dos 2 produtos de comodato (rodada de integridade,
-// 23/09/2026) — sumiram da UI quando Configurações > Comodato saiu. Não têm
-// preço nem botão: não se compram, chegam pela modalidade do ponto. Tudo que
-// aparece aqui vem do banco (`GET /admin/ofertas/comodato`), nada fixo no
-// front.
-// Comodato informativo (polimento final, 23/09/2026): card menor, e os dois
-// fatos que decidem a modalidade em destaque — o que o dono recebe e se dá
-// pra ter plano pago junto; a ficha técnica (s/hora, pontos, criativo,
-// horas) desce pra uma linha de apoio.
-function montarCardComodato(c) {
-  const pontos = c.pontosIncluidos === 1 ? '1 ponto' : `até ${c.pontosIncluidos} pontos`;
-  const criativos = plural(c.limiteCriativos, 'criativo');
-  const contrapartida =
-    c.ajudaCustoMensal > 0
-      ? `<b>Dono recebe ${fmt(c.ajudaCustoMensal)}/mês</b> em dinheiro`
-      : '<b>Troca os R$ 50 pela mídia</b> — sem ajuda de custo em dinheiro';
-  const assinatura = c.permiteAssinar
-    ? `<b>Pode assinar plano comercial</b>${c.creditoAssinatura > 0 ? `, com ${fmt(c.creditoAssinatura)}/mês de crédito` : ''}`
-    : '<b>Não pode ter plano pago</b> enquanto estiver nesta modalidade';
-  return `
-    <section class="panel oferta-comodato-card" data-comodato="${esc(c.planoId)}">
-      <div class="oferta-comodato-topo"><h4>${esc(c.nome)}</h4><span class="secao-nota">${esc(c.modalidadeNome)}</span></div>
-      <ul class="fatos">
-        <li class="fato-sim">${contrapartida}</li>
-        <li class="${c.permiteAssinar ? 'fato-sim' : 'fato-nao'}">${assinatura}</li>
-      </ul>
-      <p class="oferta-comodato-ficha">${c.segundosPorHora}s por hora · ${pontos} · criativo de até ${c.duracaoMaximaSegundos}s · ${criativos} · cerca de ${c.horasMes}h de tela/mês (${num(c.exibicoesMes)} exibições)</p>
-    </section>`;
-}
-
 async function renderPrecos(el) {
-  const [produtos, comodato] = await Promise.all([pegar('/admin/ofertas/produtos'), pegar('/admin/ofertas/comodato')]);
+  const produtos = await pegar('/admin/ofertas/produtos');
   el.innerHTML = `
     <section class="secao-pagina">
       <div class="secao-topo"><h3>Planos comerciais</h3><span class="secao-nota">o desconto de cada ciclo incide sobre o preço-base</span></div>
       <div class="oferta-produtos-grid">${produtos.map(montarCardProduto).join('')}</div>
-    </section>
-    <section class="secao-pagina">
-      <div class="secao-topo"><h3>Comodato</h3><span class="secao-nota">Inicial e Básico não se vendem — chegam pela modalidade que o dono do ponto escolhe.</span></div>
-      ${
-        comodato.length
-          ? `<div class="oferta-comodato-grid">${comodato.map(montarCardComodato).join('')}</div>`
-          : vazio('Nenhum produto de comodato encontrado.', 'Confira as modalidades ativas do comodato.')
-      }
     </section>`;
 
   // Recalcula os 4 previews ao vivo, sem esperar salvar — mesma régua da
@@ -6660,83 +6513,6 @@ async function renderPlanos(el) {
   });
 }
 
-// ---------- fila financeira: repasses de pontos ----------
-// Rodada Financeiro (22/09/2026): "eu preciso saber QUEM devo pagar no mês"
-// — a fila se monta sozinha a partir de `pontos.valor_pago_mensal` (a
-// modalidade "troca por tela" do comodato tem esse valor zerado, então ela
-// nunca aparece aqui — regra de comodato não foi recriada, só consumida) e
-// de `GET /admin/pagamentos-ponto/pendentes` (quem ainda não tem lançamento
-// pago pra este mês). Sumiu o formulário manual "Lançar o mês": um clique
-// em "Pagar" lança e quita no mesmo passo; quem já tinha lançamento em
-// aberto (lançado por fora, ou de um mês anterior) usa "Marcar como pago".
-// "2026-09" → "Setembro de 2026" (competência saía crua, no formato do banco).
-function mesPorExtenso(anoMes) {
-  const texto = new Date(`${anoMes}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
-// Filas do Financeiro em tabela, no mesmo padrão das outras listas do admin
-// (polimento final, 23/09/2026) — antes eram cartões de 520px centralizados
-// no meio da página. Ação de linha é secundária: várias linhas não viram
-// vários botões laranja.
-async function renderFilaRepasses(el) {
-  const pendentes = await pegar('/admin/pagamentos-ponto/pendentes');
-  const mesAtual = new Date().toISOString().slice(0, 7);
-
-  if (!pendentes.length) {
-    el.innerHTML = vazio(
-      'Nenhum repasse pendente.',
-      'Ponto em comodato que recebe os R$ 50 aparece aqui quando o mês ainda não foi pago.',
-    );
-    return;
-  }
-
-  el.innerHTML = caixaTabela({
-    busca: false,
-    unidade: 'repasse|repasses',
-    html: `<table><thead><tr>
-        <th>Ponto</th><th>Recebe</th><th>Competência</th><th class="num">Valor</th><th><span class="u-sr">Ação</span></th>
-      </tr></thead><tbody>
-      ${pendentes
-        .map(
-          (p) => `<tr data-linha="${p.pagamento_id || `novo-${p.ponto_id}`}">
-          <td><a class="celula-titulo" href="#rede/pontos/${p.ponto_id}">${esc(p.ponto_nome)}</a></td>
-          <td>${esc(p.conta_nome || p.responsavel_nome || 'sem responsável cadastrado')}${p.forma ? `<span class="celula-sub">${esc(p.forma)}</span>` : ''}</td>
-          <td>${mesPorExtenso(mesAtual)}</td>
-          <td class="num"><b>${fmt(p.valor_pago_mensal)}</b></td>
-          <td class="u-ta-r"><button class="btn ghost mini" data-pagar="${p.ponto_id}" data-pagamento="${p.pagamento_id || ''}">${p.pagamento_id ? 'Marcar como pago' : 'Registrar pagamento'}</button></td>
-        </tr>`,
-        )
-        .join('')}
-      </tbody></table>`,
-  });
-  turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-pagar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      const pagamentoId = btn.dataset.pagamento;
-      const r = pagamentoId
-        ? await api(`/admin/pagamentos-ponto/${pagamentoId}`, { method: 'PATCH', body: JSON.stringify({ pago: true }) })
-        : await api(`/admin/pontos/${btn.dataset.pagar}/pagamentos`, {
-            method: 'POST',
-            body: JSON.stringify({
-              competencia: mesAtual,
-              valor: pendentes.find((p) => p.ponto_id === Number(btn.dataset.pagar)).valor_pago_mensal,
-              pago_em: new Date().toISOString(),
-            }),
-          });
-      if (!r.ok) {
-        btn.disabled = false;
-        return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível registrar o pagamento.', 'err');
-      }
-      toast('Repasse pago.');
-      RESUMO = await pegar('/admin/resumo');
-      renderFilaRepasses(el);
-    }),
-  );
-}
-
 // ---------- planos arquivados ----------
 // Versão aposentada não some: quem assinou nela continua pagando o que
 // contratou, e é essa tela que responde "quantas contas ainda dependem desta
@@ -7088,101 +6864,6 @@ function abrirMesclarCategoria(c, categorias, aoSalvar) {
     fechar();
     aoSalvar();
   });
-}
-
-// ---------- opções de comodato ----------
-async function _renderComodato(el) {
-  const [opcoes, planos] = await Promise.all([pegar('/admin/planos-ponto'), pegar('/admin/planos')]);
-  const selectPlano = (o) => `<select class="mini u-w-140" data-pp="plano_bonus_id" data-id="${o.id}">
-      <option value="">(sem bônus)</option>
-      ${planos.map((p) => `<option value="${esc(p.id)}" ${p.id === o.plano_bonus_id ? 'selected' : ''}>${esc(p.nome)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</option>`).join('')}
-    </select>`;
-  el.innerHTML = `
-    ${avisoDivergencia(planos)}
-    <p class="empty-state u-ta-l u-p-0 u-pb-12">
-      <b>O produto é do tier; a oferta é do ciclo.</b>
-      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
-      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
-      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
-      <b>Mais escolhido</b> são deste ciclo e desse cartão.
-      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
-      planos ao mesmo tempo.
-    </p>
-    <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Nova opção de comodato</summary>
-      <form class="card u-mt-12 u-mw-420" id="formNovaOpcao">
-        <div><label>Id (sem espaço, ex.: ajuda-custo)</label><input class="mini" name="id" required pattern="[a-z0-9-]+"></div>
-        <div><label>Nome</label><input class="mini" name="nome" required></div>
-        <div><label>Chamada no site</label><textarea class="mini u-resize-v" name="chamada" rows="2" required></textarea></div>
-        <div class="field-row">
-          <div class="u-col"><label>Ajuda de custo (R$/mês)</label><input class="mini" type="number" step="0.01" min="0" name="ajuda_custo_mensal" value="0"></div>
-          <div class="u-col"><label>Cota (espaços/hora)</label><input class="mini" type="number" min="0" name="cota_slots_hora" value="1"></div>
-          <div class="u-col"><label>Ordem</label><input class="mini" type="number" name="ordem" value="10"></div>
-        </div>
-        <button class="btn primary" type="submit">Criar opção</button>
-        <p class="form-msg" id="msgNovaOpcao"></p>
-      </form>
-    </details>
-    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>Opção</th><th>Ajuda de custo (R$/mês)</th><th>Cota (espaços/hora)</th><th>Chamada no site</th><th>Benefícios (1 por linha)</th>
-      <th>Bônus: plano de anúncio</th><th>após (meses)</th><th>por (meses)</th><th>Ordem</th><th>Ativa</th>
-    </tr></thead><tbody>
-      ${opcoes
-        .map(
-          (o) => `<tr>
-        <td class="u-ws-normal"><input class="mini u-w-120" data-pp="nome" data-id="${o.id}" value="${esc(o.nome)}">
-          <div class="u-dim u-fs-72 u-mt-2">${esc(o.id)}</div></td>
-        <td><input class="mini u-w-80" type="number" step="0.01" min="0" data-pp="ajuda_custo_mensal" data-id="${o.id}" value="${o.ajuda_custo_mensal}"></td>
-        <td><input class="mini u-w-60" type="number" min="0" data-pp="cota_slots_hora" data-id="${o.id}" value="${o.cota_slots_hora}"></td>
-        <td><textarea class="mini u-w-260 u-resize-v" data-pp="chamada" data-id="${o.id}" rows="3">${esc(o.chamada)}</textarea></td>
-        <td><textarea class="mini u-w-240 u-resize-v" data-pp="beneficios" data-id="${o.id}" rows="4">${esc((o.beneficios || []).join('\n'))}</textarea></td>
-        <td>${selectPlano(o)}</td>
-        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_apos_meses" data-id="${o.id}" value="${o.plano_bonus_apos_meses ?? ''}" placeholder="-"></td>
-        <td><input class="mini u-w-60" type="number" min="1" data-pp="plano_bonus_meses" data-id="${o.id}" value="${o.plano_bonus_meses ?? ''}" placeholder="-"></td>
-        <td><input class="mini u-w-60" type="number" data-pp="ordem" data-id="${o.id}" value="${o.ordem}"></td>
-        <td class="u-ta-c"><input type="checkbox" data-pp="ativo" data-id="${o.id}" ${o.ativo ? 'checked' : ''}></td>
-      </tr>`,
-        )
-        .join('')}
-    </tbody></table></div></div>
-    <p class="empty-state u-ta-l u-p-0 u-pt-12">Ajuda de custo e cota são copiadas pro ponto no momento em que ele entra. Mudar aqui não altera o que já foi combinado com quem já está na rede. "Bônus": módulo cruzado. Ponto ativo há N meses ganha M meses do plano de anúncio escolhido, sem pagar (o dono resgata no painel dele).</p>`;
-
-  // A rota de criar opção de comodato existia desde sempre e não tinha
-  // formulário em lugar nenhum: dava pra editar as duas opções nascidas na
-  // migration, nunca criar uma terceira (nem recriar uma apagada).
-  document.getElementById('formNovaOpcao').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgNovaOpcao');
-    const dados = Object.fromEntries(new FormData(e.target));
-    dados.ajuda_custo_mensal = Number(dados.ajuda_custo_mensal || 0);
-    dados.cota_slots_hora = Number(dados.cota_slots_hora || 0);
-    dados.ordem = Number(dados.ordem || 0);
-    const r = await api('/admin/planos-ponto', { method: 'POST', body: JSON.stringify(dados) });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    toast('Opção de comodato criada.');
-    _renderComodato(el);
-  });
-
-  el.querySelectorAll('[data-pp]').forEach((inp) =>
-    inp.addEventListener(inp.type === 'checkbox' || inp.tagName === 'SELECT' ? 'change' : 'blur', () => {
-      let valor;
-      if (inp.type === 'checkbox') valor = inp.checked;
-      else if (inp.dataset.pp === 'beneficios')
-        valor = inp.value
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean);
-      else if (['nome', 'chamada', 'plano_bonus_id'].includes(inp.dataset.pp)) valor = inp.value || null;
-      else if (['plano_bonus_apos_meses', 'plano_bonus_meses'].includes(inp.dataset.pp))
-        valor = inp.value === '' ? null : Number(inp.value);
-      else valor = Number(inp.value);
-      salvar(`/admin/planos-ponto/${inp.dataset.id}`, { [inp.dataset.pp]: valor }, inp);
-    }),
-  );
 }
 
 // ---------- mensagens do site ----------

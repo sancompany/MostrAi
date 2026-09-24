@@ -11,6 +11,7 @@
 require('dotenv').config();
 const { conciliarAssinaturas, registrarRelato } = require('../src/financeiro/conciliacao');
 const { ativarBeneficiosAgendados, encerrarBeneficiosVencidos } = require('../src/financeiro/plano-administrativo');
+const { concederCreditosMensais } = require('../src/creditos/ponto');
 const comecouEm = new Date();
 
 conciliarAssinaturas()
@@ -32,6 +33,18 @@ conciliarAssinaturas()
       console.log(`benefícios: ${ativ.verificados} agendados verificados · ${ativ.ativados} ativado(s)`);
     } catch (err) {
       console.error('ciclo de vida de benefícios por créditos falhou:', err.message);
+    }
+
+    // Crédito mensal do ponto (migration 082): +1 por ponto elegível por mês.
+    // Idempotente pelo índice único (ponto, competência) — rodar todo dia só
+    // concede quem ficou elegível no mês e ainda não recebeu.
+    try {
+      const cred = await concederCreditosMensais();
+      console.log(
+        `créditos de ponto: competência ${cred.competencia} · ${cred.elegiveis} ponto(s) elegível(is) · ${cred.concedidos} crédito(s) novo(s)`,
+      );
+    } catch (err) {
+      console.error('crédito mensal dos pontos falhou:', err.message);
     }
 
     process.exit(r.falhas.length ? 1 : 0);

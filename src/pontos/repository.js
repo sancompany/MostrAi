@@ -33,8 +33,6 @@ const CAMPOS_ATUALIZAVEIS = [
   'categoria_livre',
   'responsavel_nome',
   'responsavel_contato',
-  'plano_ponto_id',
-  'valor_pago_mensal',
   'cota_autoanuncio_slots_hora',
   'horario_abertura',
   'horario_fechamento',
@@ -65,14 +63,12 @@ async function criar(dados, db = pool) {
     segmento,
     categoria_id,
     categoria_livre,
-    plano_ponto_id,
     responsavel_nome,
     responsavel_contato,
     anunciante_id,
     fluxo_estimado_mensal,
     status,
     aceitou_termos_em,
-    valor_pago_mensal,
     cota_autoanuncio_slots_hora,
     horario_semanal,
     foto_instalacao_url,
@@ -83,11 +79,11 @@ async function criar(dados, db = pool) {
 
   const { rows } = await db.query(
     `INSERT INTO pontos
-       (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre, plano_ponto_id,
+       (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
-        valor_pago_mensal, cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
+        cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
         horario_semanal, foto_instalacao_url, observacoes, candidatura_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      RETURNING *`,
     [
       nome,
@@ -100,12 +96,10 @@ async function criar(dados, db = pool) {
       segmento,
       categoria_id || null,
       categoria_livre || null,
-      plano_ponto_id || null,
       responsavel_nome,
       responsavel_contato,
       status || 'a_instalar',
       aceitou_termos_em || null,
-      valor_pago_mensal || 0,
       cota_autoanuncio_slots_hora || 0,
       anunciante_id || null,
       fluxo_estimado_mensal || null,
@@ -159,19 +153,12 @@ async function estabelecimentoJaCadastrado(
 // qual registro canônico ele foi.
 async function listar() {
   const { rows } = await pool.query(
-    // `comodato_produto_nome` (rodada de integridade, 23/09/2026): o PRODUTO
-    // que a modalidade dá (Inicial/Básico, via plano_incluido_id), pra Contas
-    // mostrar o comodato pelo nome do produto e não só pelo nome da
-    // modalidade ("Recebe os R$ 50" / "Troca os R$ 50 por tela").
-    `SELECT p.*, c.nome AS categoria_nome, pp.nome AS plano_ponto_nome,
-            pl.nome AS comodato_produto_nome,
+    `SELECT p.*, c.nome AS categoria_nome,
             a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
-     LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-     LEFT JOIN planos pl ON pl.id = pp.plano_incluido_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
      WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
@@ -306,17 +293,14 @@ async function ocupacaoPorAnunciante() {
          FROM pontos p
          LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id
          LEFT JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-         -- COALESCE: comercial manda quando existe, comodato cobre o resto
-         -- (23/09/2026, migration 077) — sem isso, anunciante só-comodato
-         -- ocupando ponto via escolha sumia da ocupação (plano_id ficou null).
-         LEFT JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
+         LEFT JOIN planos pl ON pl.id = a.plano_id
         GROUP BY p.id
      )
      SELECT a.id AS anunciante_id, a.nome_empresa, p.id AS ponto_id, p.nome AS ponto_nome,
             pl.segundos_por_hora, o.segundos_vendidos, p.escolha_bloqueada_em, ap.escolhido_em
        FROM anunciantes_pontos ap
        JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-       JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
+       JOIN planos pl ON pl.id = a.plano_id
        JOIN pontos p ON p.id = ap.ponto_id
        JOIN ocupacao o ON o.ponto_id = p.id
       ORDER BY o.segundos_vendidos DESC, p.nome, a.nome_empresa`,
@@ -338,7 +322,7 @@ async function avaliarBloqueios() {
          AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-                JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
+                JOIN planos pl ON pl.id = a.plano_id
                WHERE ap.ponto_id = pontos.id) >= $1::numeric * 3600
      RETURNING id`,
     [LIMITE_OCUPACAO_BLOQUEIA],
@@ -355,7 +339,7 @@ async function liberarEscolha(id) {
          AND (SELECT COALESCE(SUM(pl.segundos_por_hora), 0)
                 FROM anunciantes_pontos ap
                 JOIN anunciantes a ON a.id = ap.anunciante_id AND NOT a.suspenso AND a.excluido_em IS NULL
-                JOIN planos pl ON pl.id = COALESCE(a.plano_id, a.comodato_plano_id)
+                JOIN planos pl ON pl.id = a.plano_id
                WHERE ap.ponto_id = pontos.id) <= (3600 - $2)
      RETURNING id`,
     [id, FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS],

@@ -2,7 +2,7 @@ const dispositivosRepo = require('../dispositivos/repository');
 const credencial = require('../player/credencial');
 
 // Autenticação das rotas do Player (contrato V2 §1). Sem sessão web: a
-// credencial é a chave do aparelho, conferida por hash (migration 082).
+// credencial é a chave do aparelho, conferida por hash (migration 083).
 //
 // - `:dispositivoId` é o `dispositivoId` do provisionamento (`tela_<hex>`)
 //   ou, compat-v1, o ID numérico da Tela (player web e Android legado).

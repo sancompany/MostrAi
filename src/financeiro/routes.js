@@ -18,8 +18,8 @@ const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
 const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
 const planoAdministrativo = require('./plano-administrativo');
-const comodato = require('../pontos/comodato');
 const { cotarPlano } = require('./cotacao');
+const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
 
 const uploadNota = multer({ dest: os.tmpdir() });
 
@@ -64,13 +64,9 @@ router.get('/admin/ofertas/produtos', async (_req, res) => {
   res.json(await planosRepo.listarProdutos());
 });
 
-// Os 2 produtos fixos de comodato (Inicial e Básico) — rodada de
-// integridade, 23/09/2026. Somente leitura: não são compráveis e não têm
-// preço; sumiram da UI quando Configurações > Comodato saiu e voltam aqui,
-// em Ofertas, que é onde os produtos moram. Ver planosRepo#listarProdutosComodato.
-router.get('/admin/ofertas/comodato', async (_req, res) => {
-  res.json(await planosRepo.listarProdutosComodato());
-});
+// `GET /admin/ofertas/comodato` (Inicial e Básico em Ofertas) SAIU em
+// 24/09/2026 (ADR-016): os dois deixaram de ser produto — o benefício de ser
+// ponto agora é crédito. Catálogo ativo: Essencial, Pro e Prime.
 
 const TIERS_VALIDOS = new Set(['essencial', 'destaque', 'maximo']);
 
@@ -365,30 +361,28 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
   }
 
-  // A TRAVA DO COMODATO (migration 049, desenho do dono de 17/09/2026,
-  // centralizada em `pontos/comodato.js#bloqueiaPlanoComercial` em
-  // 23/09/2026 — a mesma régua agora também vale pra concessão administrativa
-  // e pros créditos automáticos, que passavam batido por essa trava antes de
-  // a separação comodato/plano comercial existir): quem está RECEBENDO a
-  // ajuda de custo não assina plano de catálogo. Ou leva o dinheiro e fica
-  // no Inicial que vem junto, ou troca o dinheiro por tela — e aí sobe pro
-  // que quiser, com o crédito abatendo a mensalidade.
-  //
-  // Sem a trava, dava pra receber R$ 50 por mês E assinar o Máximo: o Mostraí
-  // pagaria o comerciante e cobraria dele no mesmo ciclo, com o dinheiro indo
-  // e voltando por dois caminhos que ninguém concilia.
-  //
-  // A recusa diz o que fazer, não só que não pode — mas só promete o caminho
-  // que EXISTE. A troca de opção ainda não tem controle no painel (está em
-  // docs/PENDENCIAS.md), então a mensagem manda falar com a gente. Mandar pra
-  // um botão que não está lá é a mesma mentira da vitrine, só que na tela de
-  // pagamento, que é onde ela custa mais caro.
-  if (await comodato.bloqueiaPlanoComercial(req.session.anuncianteId)) {
-    return res.status(400).json({
-      erro:
-        'você está recebendo a ajuda de custo do comodato, e por isso fica no plano Inicial que vem junto. ' +
-        'Pra assinar um plano pago (Essencial, Pro ou Prime) é só trocar a ajuda de custo por tela: fale com a gente ' +
-        'que a gente troca, e aí os R$ 50 viram abatimento na sua mensalidade.',
+  // Benefício em vigor (por créditos, ou cortesia legada): a compra muda a
+  // fila, e o cliente precisa saber como ANTES de pagar (regras 25-27 do
+  // pedido, ADR-016). Sem `confirmarBeneficio: true`, responde 409 com o
+  // texto exato do que vai acontecer — a tela mostra e reenvia.
+  const previsao = await planoAdministrativo.preverPagamento(conta, plano);
+  if (previsao.beneficio && req.body.confirmarBeneficio !== true) {
+    const b = previsao.beneficio;
+    const ate = b.validoAte ? dataBR(b.validoAte) : 'o fim do período';
+    return res.status(409).json({
+      erro: 'confirme como fica o seu benefício',
+      confirmacao:
+        previsao.tipo === 'encerra_beneficio'
+          ? {
+              titulo: `Ativar o ${plano.nome} agora?`,
+              texto: `Você tem um benefício ${b.planoNome} ativo até ${ate}. Ao ativar o ${plano.nome} agora, esse benefício será encerrado e ${b.porCreditos ? 'os créditos utilizados não serão devolvidos' : 'ele não volta depois'}. O ${plano.nome} começa imediatamente.`,
+              botao: `Continuar com ${plano.nome}`,
+            }
+          : {
+              titulo: `O ${plano.nome} começa depois do benefício`,
+              texto: `Você tem um benefício ${b.planoNome} ativo até ${ate}, que já oferece o mesmo ou mais que o ${plano.nome}. Ele continua até o fim; o período que você pagar agora fica guardado e o ${plano.nome} começa logo depois — nenhum dia pago se perde.`,
+              botao: 'Continuar',
+            },
     });
   }
   // Conta parceira só assina o que o dono liberou pra parceiro — ex.: só
@@ -447,7 +441,7 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // 23/09/2026) — o snapshot trava aqui, no instante da adesão: editar ou
     // encerrar a promoção depois não muda o que essa assinatura já tem
     // direito até o prazo acabar. `conta` já foi carregada acima — mesmo
-    // objeto usado nas travas de endereço/comodato logo ali em cima.
+    // objeto usado na trava de endereço logo ali em cima.
     const estadoComercial = await promocoesRepo.estadoComercialDaConta(conta);
     const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses, estadoComercial);
     let promocaoValidoAte = null;
@@ -703,10 +697,8 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
   if (!plano) return res.status(404).json({ erro: 'plano não encontrado' });
   // Legado (Parte 15 da reconstrução de Contas, 23/09/2026 — sem tela
   // chamando, ver /admin/anunciantes/:id/plano-administrativo). Reforçado
-  // aqui pelo mesmo motivo da separação de comodato/plano comercial
-  // (migration 077): sem esta trava, um `plano_id` de comodato (Inicial ou
-  // Básico, ambos `ativo=false` no catálogo — nunca vendáveis) passando por
-  // aqui reintroduziria exatamente o bug que a separação corrigiu.
+  // aqui: plano fora de venda (os antigos Inicial/Básico, `ativo=false` no
+  // catálogo — ADR-016) nunca entra numa conta por esta porta.
   if (plano.ativo === false) {
     return res.status(400).json({ erro: 'esse plano não está à venda — não dá pra liberar como cortesia' });
   }
@@ -725,11 +717,6 @@ router.post('/admin/anunciantes/:id/liberar-plano', async (req, res) => {
     return res
       .status(409)
       .json({ erro: 'essa conta tem plano pago ativo — cancele a assinatura antes de liberar cortesia' });
-  }
-  if (await comodato.bloqueiaPlanoComercial(anunciante.id)) {
-    return res.status(409).json({
-      erro: 'essa conta está na modalidade "Recebe os R$ 50" do comodato, que não acumula com plano comercial',
-    });
   }
   // Esta rota não conhece o histórico de benefícios: gravar por cima de um
   // benefício aberto deixava a linha 'ativo'/'agendado' órfã, contradizendo
@@ -833,18 +820,6 @@ router.post('/admin/anunciantes/:id/plano-administrativo', async (req, res) => {
   }
   if (conta.excluido_em) return res.status(409).json({ erro: 'conta excluída — restaure antes de conceder plano' });
   if (conta.suspenso) return res.status(409).json({ erro: 'conta suspensa — reative antes de conceder plano' });
-  // A mesma trava do comodato que vale pra quem compra (POST
-  // /anunciantes/:id/assinar) — conceder por cima seria a MESMA conversão
-  // silenciosa que a separação de comodato/plano comercial existe pra evitar
-  // (23/09/2026, decisão do dono e do GPT: "Não faria conversão automática
-  // escondida").
-  if (await comodato.bloqueiaPlanoComercial(conta.id)) {
-    return res.status(409).json({
-      erro:
-        'essa conta está na modalidade "Recebe os R$ 50" do comodato, que não acumula com plano comercial — ' +
-        'troque a modalidade pra "Troca os R$ 50 por tela" antes de conceder Essencial, Pro ou Prime',
-    });
-  }
   if (await planoAdministrativo.beneficioPorCreditosAberto(conta.id)) {
     return res.status(409).json({
       erro:

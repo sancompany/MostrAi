@@ -267,15 +267,22 @@ async function avisarCoberturaAcabando() {
 // Agora esta rotina ENCERRA o plano comercial — mesma ação do botão
 // "Cancelar plano" da ficha (`plano-administrativo.js#encerrar`, reusado,
 // não duplicado) — sem tocar `suspenso`. Conta em cortesia entra na regra
-// igual — cortesia também tem prazo. O comodato (campo próprio desde a
-// migration 077) nunca é afetado: nunca esteve em `plano_id`.
+// igual — cortesia também tem prazo.
+//
+// Benefício com linha 'ativo' no histórico fica de fora: quem fecha ele é
+// `encerrarBeneficiosVencidos` (logo depois, no mesmo job), que devolve o
+// plano pago guardado por baixo (migration 082) e deixa o programado entrar.
+// Encerrar por aqui antes fechava também o programado e esquecia o pago.
 async function encerrarCoberturaVencida() {
   const { rows } = await pool.query(`
-    SELECT id, nome_empresa, data_expiracao FROM anunciantes
-     WHERE plano_id IS NOT NULL
-       AND excluido_em IS NULL
-       AND data_expiracao IS NOT NULL
-       AND data_expiracao < current_date`);
+    SELECT a.id, a.nome_empresa, a.data_expiracao FROM anunciantes a
+     WHERE a.plano_id IS NOT NULL
+       AND a.excluido_em IS NULL
+       AND a.data_expiracao IS NOT NULL
+       AND a.data_expiracao < current_date
+       AND NOT (a.plano_cortesia AND EXISTS (
+         SELECT 1 FROM planos_administrativos ha
+          WHERE ha.anunciante_id = a.id AND ha.status = 'ativo' AND ha.plano_id = a.plano_id))`);
   for (const conta of rows) {
     await planoAdministrativo.encerrar({ conta, motivo: 'vencido' });
   }

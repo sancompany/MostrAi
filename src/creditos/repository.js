@@ -92,8 +92,9 @@ async function saldo(contaId, db = pool) {
 // indicou quando for o caso.
 async function movimentacoes(contaId, limite = 50, db = pool) {
   const { rows } = await db.query(
-    `SELECT l.*, o.nome_empresa AS origem_nome
+    `SELECT l.*, o.nome_empresa AS origem_nome, pt.nome AS ponto_nome
        FROM creditos_ledger l LEFT JOIN anunciantes o ON o.id = l.origem_conta_id
+       LEFT JOIN pontos pt ON pt.id = l.ponto_id
       WHERE l.anunciante_id = $1
       ORDER BY l.criado_em DESC, l.id DESC LIMIT $2`,
     [contaId, limite],

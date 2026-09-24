@@ -117,7 +117,7 @@ async function cancelarRotacao(telaId, motivo = 'cancelada no admin') {
 
 // Revogar: nenhuma chave desta tela vale mais, a partir de agora. O Player
 // passa a receber 401 (AUTH_ERROR no aparelho) até ser reprovisionado.
-// `aparelho_id` (a chave V1 em claro que a migration 082 manteve só para
+// `aparelho_id` (a chave V1 em claro que a migration 083 manteve só para
 // rollback) sai junto: senão um revert do código ressuscitaria a chave.
 async function revogar(telaId) {
   const { rows } = await pool.query(

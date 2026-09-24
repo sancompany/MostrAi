@@ -1,5 +1,6 @@
 // Meus criativos na rota real (/anunciante/painel.html), Fatia 3.
-// Comercial e comodato numa biblioteca só, com a situação que o cliente
+// Anúncio na rede e na tela do próprio comércio numa biblioteca só, com a
+// situação que o cliente
 // entende (Em análise / Aprovado / No ar / Fora do ar / Recusado), e a troca
 // sem sair do ar: a substituta aprovada tira a atual, sem F5. A página antiga
 // do ponto não tem mais "Meu anúncio na minha tela". Assume servidor na 3999.
@@ -196,7 +197,7 @@ await p.waitForTimeout(400);
 check('celular: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
 await shot(p, '3-celular');
 
-console.log('== só comodato (sem plano comercial) também vê o módulo ==');
+console.log('== ser ponto não dá plano: comodato legado sem plano não vê o módulo (ADR-016) ==');
 const dono = await novaConta('comodato');
 PG(`UPDATE anunciantes SET comodato_plano_id = 'comodato-basico', papeis = ARRAY['anunciante','ponto'] WHERE id = ${dono.id}`);
 PG(
@@ -205,8 +206,7 @@ PG(
 );
 p = await entrar(dono);
 await p.waitForSelector('#modCriativos:not([hidden])', { timeout: 8000 }).catch(() => {});
-check('dono só com comodato vê Meus criativos', await p.isVisible('#modCriativos'));
-check('roda só na tela do comércio', /rodam na tela do seu comércio/.test(await p.textContent('#criativosSubtitulo')));
+check('dono sem plano (só o comodato legado) não vê Meus criativos', !(await p.isVisible('#modCriativos')));
 await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
 check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#arquivoAutoanuncio')), p.url());
 

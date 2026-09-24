@@ -100,20 +100,12 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
              ARRAY[]::int[]
            ) AS pontos_escolhidos
     FROM anunciantes a
-    -- COALESCE: plano comercial manda quando existe E ainda está dentro da
-    -- validade; sem ele (nunca teve, ou passou e a conciliação ainda não
-    -- rodou), o comodato (Inicial/Básico) governa sozinho — os dois nunca se
-    -- somam (23/09/2026, migration 077, mesma regra de
-    -- src/anunciantes/repository.js#planoEfetivoId). Achado real (revisão de
-    -- 23/09/2026): antes o WHERE abaixo excluía a conta INTEIRA quando o
-    -- comercial vencia, mesmo com comodato ativo — o comodato nunca tem
-    -- data_expiracao própria (é ligado à modalidade do ponto, não a um
-    -- ciclo), então um Básico com plano pago vencido sumia da playlist até o
-    -- próximo encerrarCoberturaVencida, um dia depois.
-    JOIN planos p ON p.id = COALESCE(
-      CASE WHEN a.data_expiracao IS NULL OR a.data_expiracao >= now() THEN a.plano_id END,
-      a.comodato_plano_id
-    )
+    -- Só o plano COMERCIAL dentro da validade (Essencial/Pro/Prime — pago,
+    -- benefício por créditos ou cortesia legada). Inicial/Básico deixaram de
+    -- dar direito de veicular em 24/09/2026 (ADR-016): ser ponto gera
+    -- créditos, não plano. comodato_plano_id fica no banco como legado.
+    JOIN planos p ON p.id = a.plano_id
+      AND (a.data_expiracao IS NULL OR a.data_expiracao >= now())
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -533,7 +525,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         duracaoSegundos: criativo.duracaoSegundos,
         // SHA-256 do arquivo servido (contrato V2 §6.1): o Player guarda por
         // conteúdo e confere o download. Sem hash (criativo anterior à
-        // migration 082, ou URL trocada à mão) o campo não vai, e o Player
+        // migration 083, ou URL trocada à mão) o campo não vai, e o Player
         // cai no cache por criativoId (V1).
         ...(criativo.contentHash ? { contentHash: criativo.contentHash } : {}),
       };

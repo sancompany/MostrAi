@@ -90,14 +90,18 @@
     </div>`;
   }
 
+  // Benefício do ponto (ADR-016): +1 crédito por mês enquanto o ponto
+  // participa da rede. Não é plano nem dinheiro — é crédito, o mesmo de
+  // "Créditos e benefícios".
   function htmlRodape(e) {
-    if (e.tipo !== 'ponto') return '';
-    const partes = [];
-    if (e.modalidade) partes.push(`Comodato: <b>${esc(e.modalidade)}</b>`);
-    if (e.ajudaCustoMensal > 0) partes.push(`ajuda de custo <b>${fmtBRL(e.ajudaCustoMensal)}/mês</b>`);
-    if (e.cotaAutoanuncioPorHora > 0)
-      partes.push(`seu anúncio <b>${e.cotaAutoanuncioPorHora}x por hora</b>, somando as telas`);
-    return partes.length ? `<p class="estab-pe">${partes.join(' · ')}</p>` : '';
+    if (e.tipo !== 'ponto' || !e.beneficio) return '';
+    const b = e.beneficio;
+    let situacao;
+    if (b.creditoDoMesConcedido)
+      situacao = `Crédito de ${esc(b.competenciaAtual.split('/')[0])} já concedido · próximo em ${esc(b.proximaCompetencia)}`;
+    else if (b.elegivel) situacao = `Próximo crédito: ${esc(b.proximaCompetencia)}`;
+    else situacao = 'Começa quando a tela estiver instalada e ativa';
+    return `<p class="estab-pe">Benefício do ponto: <b>+1 crédito por mês</b> · ${situacao}</p>`;
   }
 
   function htmlEstabelecimento(e) {
@@ -527,6 +531,9 @@
         'application.updated': carregar,
         'point.updated': carregar,
         'screen.updated': carregar,
+        // Crédito mensal do ponto (ADR-016): o rodapé "crédito de setembro já
+        // concedido" muda junto com o saldo.
+        'credits.updated': carregar,
       });
     }
     // Tela que para de falar não gera evento nenhum (não há quem avise):

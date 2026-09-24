@@ -40,7 +40,7 @@ async function irPara(adm, hash) {
 async function shot(p, nome) { await p.screenshot({ path: new URL(`./saida/v2-${nome}.png`, import.meta.url).pathname, fullPage: true }); }
 
 console.log('== conta direta (Farmácia Central) nasce anunciante; pede o modo ponto pelo painel ==');
-// A interação com o FORMULÁRIO desse pedido (campos, opções de comodato) é
+// A interação com o FORMULÁRIO desse pedido (campos, horário, foto) é
 // coberta a fundo por 05-navegador-modos.mjs e 08-candidatura-ponto.mjs; aqui
 // só falta ter uma conta com ponto pra alimentar o resto deste arquivo
 // (aprovação, tela, chave, PIN, player).

@@ -14,9 +14,6 @@ const anunciantesRepo = require('../anunciantes/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const planosPontoRepo = require('../pontos/planos-ponto-repository');
-const comodato = require('../pontos/comodato');
-const planosRepo = require('../financeiro/planos-repository');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
@@ -66,7 +63,6 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
     if (motivo) {
       throw Object.assign(new Error(`${motivo} — recuse esta candidatura em vez de aprovar`), { status: 409 });
     }
-    const opcao = cand.plano_ponto_id ? await planosPontoRepo.buscarPorId(cand.plano_ponto_id) : null;
     await pontosRepo.criar(
       {
         nome: cand.nome_comercio || conta.nome_empresa,
@@ -94,9 +90,9 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
         // mesmo INSERT (mesmo raciocínio do horário semanal acima).
         foto_instalacao_url: cand.foto_fachada_url || null,
         observacoes: cand.mensagem || null,
-        plano_ponto_id: opcao ? opcao.id : null,
-        valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
-        cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
+        // Sem modalidade de comodato nem repasse (24/09/2026, ADR-016): o
+        // ponto nasce só como ponto. Quando ganhar tela ativa, passa a gerar
+        // 1 crédito por mês (creditos/ponto.js) — nada a escolher aqui.
         anunciante_id: conta.id,
         candidatura_id: cand.id,
         // Nasce sem nenhuma tela — o status automático (rodada final da
@@ -114,30 +110,12 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
 
     // Cupom de indicação do ponto (migration 062, pedido do dono,
     // 19/09/2026): toda conta de ponto ganha um, na mesma transação que cria
-    // o ponto — mesmo raciocínio do comodato logo abaixo, o benefício nasce
-    // junto com o papel, não numa rotina à parte. Guarda de existência
+    // o ponto — o benefício nasce junto com o papel, não numa rotina à parte. Guarda de existência
     // (como vendedoresRepo.buscarPorConta acima) porque um dono pode ceder
     // mais de um ponto: o cupom é por CONTA, não por ponto.
     if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
       await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
     }
-
-    // A CONTRAPARTIDA DO COMODATO (migration 049, desenho do dono de
-    // 17/09/2026). Quem cede a parede escolhe uma das duas opções, e as duas
-    // dão tela: a opção "Recebe os R$ 50" traz o Inicial junto, e a "Troca
-    // os R$ 50 por tela" traz o Básico, mais um crédito de R$ 50 pra quem
-    // depois quiser assinar Essencial, Pro ou Máximo.
-    //
-    // Sincronizado AQUI, na mesma transação que cria o ponto, e não numa
-    // rotina à parte: comodato assinado e contrapartida concedida têm que ser
-    // o mesmo ato, senão existe um intervalo em que ele cedeu a parede e não
-    // recebeu nada — e é justo nesse intervalo que alguém abre um chamado.
-    //
-    // Comodato mora em campo PRÓPRIO desde 23/09/2026 (migration 077,
-    // `comodato.sincronizarComodato`) — independente de plano comercial.
-    // Cliente pagante que também cede um ponto mantém o plano que paga E
-    // ganha o comodato junto; os dois nunca se sobrescrevem.
-    if (opcao?.plano_incluido_id) await comodato.sincronizarComodato(conta.id, db);
   }
 }
 
@@ -183,7 +161,9 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
       // `ponto` continua na resposta como null: o painel lê `bonus.ponto` e
       // tirar a chave quebraria a tela de quem estiver com a página aberta.
       ponto: null,
-      anuncio: await bonusAnuncioDaConta(conta),
+      // Bônus de anúncio por tempo de ponto (módulo 2) aposentado em
+      // 24/09/2026 — o tempo de ponto agora vira crédito mensal.
+      anuncio: null,
     },
   });
 });
@@ -253,9 +233,9 @@ async function criarCandidaturaPonto(conta, dados) {
   if (!dados.fluxo_estimado_mensal || Number(dados.fluxo_estimado_mensal) <= 0) {
     throw Object.assign(new Error('movimento médio mensal é obrigatório'), { status: 400 });
   }
-  if (dados.plano_ponto_id && !(await planosPontoRepo.buscarPorId(dados.plano_ponto_id))) {
-    throw Object.assign(new Error('opção de comodato inválida'), { status: 400 });
-  }
+  // Sem escolha de benefício (24/09/2026, ADR-016): o estabelecimento só
+  // pede pra entrar na rede. Um `plano_ponto_id` que ainda chegue de tela
+  // antiga é ignorado (ver `plano_ponto_id: null` na gravação).
   // Horário de funcionamento — pedido do dono, 22/09/2026: quem cede a
   // parede diz o horário do próprio comércio nesta mesma tela, junto do
   // resto do cadastro (não numa tela separada depois). Obrigatório aqui —
@@ -402,93 +382,17 @@ router.patch('/vendedor/me', exigirAnuncianteLogado, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Módulo 1 — REMOVIDO em 17/09/2026, a pedido do dono.
+// Bônus de ponto (módulos 1 e 2) — REMOVIDOS.
 // ---------------------------------------------------------------------------
-// Era o bônus "ganhe uma tela no seu comércio ao completar N meses de plano"
-// (`planos.ponto_apos_meses` + `anunciantes.ponto_bonus_resgatado_em`). Saiu
-// junto com a grade nova: o dono decidiu que o degrau de cima se vende por
-// pontos, tempo de tela e duração da peça, e não por um brinde de longo prazo
-// que ninguém tinha ligado em plano nenhum.
-//
-// O módulo 2 (o inverso: dono de ponto ganha plano de anúncio pelo tempo de
-// comodato) CONTINUA — é a contrapartida do comodato, não um brinde. Por isso
-// `mesesEntre` fica: era do módulo 1, mas quem conta o tempo de casa do ponto
-// também precisa dela.
-function mesesEntre(inicio, fim) {
-  const a = new Date(inicio);
-  const b = new Date(fim);
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
-}
-
-// ---------------------------------------------------------------------------
-// Módulo 2 — opção de comodato com plano de anúncio grátis por tempo de casa
-// (planos_ponto.plano_bonus_*). Resgate ativa o plano na conta do dono.
-// ---------------------------------------------------------------------------
-async function bonusAnuncioDaConta(conta) {
-  if (!(conta.papeis || []).includes('ponto')) return null;
-  const { rows } = await pool.query(
-    `SELECT pp.plano_bonus_id, pp.plano_bonus_apos_meses, pp.plano_bonus_meses, pp.nome AS opcao_nome,
-            MIN(COALESCE(d.instalado_em, p.created_at::date)) AS desde
-     FROM pontos p JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
-     JOIN dispositivos d ON d.ponto_id = p.id AND d.status = 'ativo'
-     WHERE p.anunciante_id = $1 AND p.status = 'em_operacao' AND pp.plano_bonus_id IS NOT NULL
-     GROUP BY pp.id ORDER BY pp.plano_bonus_apos_meses LIMIT 1`,
-    [conta.id],
-  );
-  const b = rows[0];
-  if (!b) return null;
-  const meses = b.desde ? Math.max(0, mesesEntre(b.desde, new Date())) : 0;
-  const plano = await planosRepo.buscarPorId(b.plano_bonus_id);
-  return {
-    opcao: b.opcao_nome,
-    plano_nome: plano ? plano.nome : b.plano_bonus_id,
-    plano_id: b.plano_bonus_id,
-    apos_meses: b.plano_bonus_apos_meses,
-    meses_ativo: meses,
-    meses_gratis: b.plano_bonus_meses,
-    disponivel: meses >= b.plano_bonus_apos_meses && !conta.anuncio_bonus_resgatado_em,
-    resgatado_em: conta.anuncio_bonus_resgatado_em,
-  };
-}
-
-router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, async (req, res) => {
-  const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
-  const bonus = conta && (await bonusAnuncioDaConta(conta));
-  if (!bonus?.disponivel) return res.status(400).json({ erro: 'esse bônus não está disponível pra sua conta' });
-  if (conta.suspenso || conta.excluido_em)
-    return res.status(403).json({ erro: 'conta indisponível — fale com o suporte' });
-  if (conta.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date()) {
-    return res
-      .status(409)
-      .json({ erro: 'você já tem um plano ativo — o bônus pode ser resgatado quando ele terminar' });
-  }
-  // Mesma trava de qualquer concessão de plano comercial (Parte da separação
-  // de comodato, 23/09/2026): o bônus concede um plano de verdade, e conta
-  // em Inicial não pode ter os dois. Quem está em Inicial resgata assim que
-  // trocar a modalidade (o crédito não se perde — fica esperando).
-  if (await comodato.bloqueiaPlanoComercial(conta.id)) {
-    return res.status(409).json({
-      erro: 'sua conta está na modalidade "Recebe os R$ 50" do comodato, que não acumula com plano comercial — troque pra "Troca os R$ 50 por tela" pra resgatar o bônus',
-    });
-  }
-  await emTransacao(async (cliente) => {
-    await adicionarPapel(conta.id, 'anunciante', cliente);
-    await cliente.query(
-      // plano_cortesia: o bônus é anúncio de graça por ser ponto, não venda.
-      // Sem isso a conta entrava na receita recorrente do resumo como cliente
-      // pagante e inflava a margem — o caminho equivalente do admin
-      // (liberar-plano) já gravava cortesia.
-      `UPDATE anunciantes
-       SET plano_id = $2, suspenso = false,
-           plano_cortesia = true, cortesia_motivo = 'bônus de ponto',
-           data_inicio_cobertura = COALESCE(data_inicio_cobertura, now()),
-           data_expiracao = now() + ($3 || ' months')::interval,
-           anuncio_bonus_resgatado_em = now()
-       WHERE id = $1 AND anuncio_bonus_resgatado_em IS NULL`,
-      [conta.id, bonus.plano_id, bonus.meses_gratis],
-    );
-  });
-  res.json(await anunciantesRepo.buscarPorId(conta.id));
+// Módulo 1 (tela grátis por tempo de plano) saiu em 17/09/2026. Módulo 2
+// (plano de anúncio grátis por tempo de ponto, `planos_ponto.plano_bonus_*`)
+// saiu em 24/09/2026 junto com as modalidades de comodato (ADR-016): o tempo
+// de ponto na rede agora rende 1 crédito por mês, resgatável em qualquer
+// benefício. Quem já resgatou o bônus antigo fica com o registro
+// (`anuncio_bonus_resgatado_em`, cortesia 'bônus de ponto' — a ficha mostra
+// como "Bônus de ponto legado") e com o plano até o fim do prazo.
+router.post('/conta/bonus/anuncio/resgatar', exigirAnuncianteLogado, (_req, res) => {
+  res.status(410).json({ erro: 'esse bônus foi substituído pelos créditos mensais do ponto' });
 });
 
 module.exports = { router, adicionarPapel, liberarPapelNaConta, criarCandidaturaPonto, emTransacao };

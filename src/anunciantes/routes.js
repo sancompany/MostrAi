@@ -20,7 +20,6 @@ const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const planosPontoRepo = require('../pontos/planos-ponto-repository');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
 const eventos = require('../lib/eventos');
@@ -77,11 +76,10 @@ const upload = multer({
 //   - aberto: cria conta de ANUNCIANTE (único papel com cadastro público);
 //   - por convite (?convite=token no corpo): a conta nasce com os papéis que o
 //     dono pôs no link — ponto e vendedor só entram assim (CONSTRAINTS.md).
-// Ponto que nasce de uma candidatura aprovada: endereço e contato vêm dela;
-// ajuda de custo e cota vêm da opção de comodato escolhida (senão ficariam
-// em zero e o dono do ponto escolheu à toa).
-async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
-  const opcao = planoPontoId ? await planosPontoRepo.buscarPorId(planoPontoId) : null;
+// Ponto que nasce de uma candidatura aprovada: endereço e contato vêm dela.
+// Sem modalidade de comodato nem repasse desde 24/09/2026 (ADR-016) — o
+// ponto passa a gerar créditos quando ganhar tela ativa (creditos/ponto.js).
+async function criarPontoDaCandidatura(cand, conta, db) {
   const ponto = await pontosRepo.criar(
     {
       nome: cand.nome_comercio || conta.nome_empresa,
@@ -109,9 +107,6 @@ async function criarPontoDaCandidatura(cand, conta, planoPontoId, db) {
       horario_semanal: cand.horario_semanal || null,
       foto_instalacao_url: cand.foto_fachada_url || null,
       observacoes: cand.mensagem || null,
-      plano_ponto_id: opcao ? opcao.id : null,
-      valor_pago_mensal: opcao ? opcao.ajuda_custo_mensal : 0,
-      cota_autoanuncio_slots_hora: opcao ? opcao.cota_slots_hora : 0,
       anunciante_id: conta.id,
       // Vínculo candidatura → ponto (migration 080): sem ele, "Meus pontos"
       // não sabe que o pedido já virou ponto, e o índice único não protege
@@ -298,7 +293,7 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       if (papeis.includes('ponto') && convite.candidatura_id) {
         const cand = await candidaturasRepo.buscarPorId(convite.candidatura_id);
         if (cand && cand.tipo === 'ponto') {
-          await criarPontoDaCandidatura(cand, anunciante, req.body.plano_ponto_id, cliente);
+          await criarPontoDaCandidatura(cand, anunciante, cliente);
         }
       }
       await cliente.query('COMMIT');
@@ -515,10 +510,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        FROM pontos p
        LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
-       -- COALESCE: plano efetivo de quem ocupa (23/09/2026, migration 077) —
-       -- sem isso, outro anunciante só-comodato escolhido no mesmo ponto
-       -- desaparecia da ocupação mostrada aqui.
-       LEFT JOIN planos pl ON pl.id = COALESCE(ao.plano_id, ao.comodato_plano_id)
+       LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status IN ('em_operacao', 'a_instalar', 'em_reparo')
       GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
@@ -820,9 +812,8 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
   // do cadastro" — decisão revertida pelo dono, 19/09/2026: o painel agora
   // trava a tela inteira sem plano (ver front), então subir criativo sem
   // plano nem deveria ser alcançável por ali; isso é a segunda trava, direto
-  // no servidor, pra quem tentar pela API sem passar pela tela. "Plano"
-  // aqui é o EFETIVO (comercial ou comodato, 23/09/2026) — dono de ponto
-  // sem plano pago nenhum sobe o autoanúncio pela cota do comodato.
+  // no servidor, pra quem tentar pela API sem passar pela tela. Ser ponto
+  // não libera plano (ADR-016, 24/09/2026).
   const planoId = planoEfetivoId(anunciante);
   if (!planoId) {
     if (req.file) fs.unlink(req.file.path, () => {});
@@ -943,10 +934,9 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
 // admin e pro "Meus criativos" do painel — as duas telas nunca podem
 // discordar sobre o que está no ar.
 //
-// O plano é o VIGENTE (`planoVigenteId`, o mesmo COALESCE do gerador), não o
-// efetivo cru: comercial vencido com comodato ativo continua veiculando pelo
-// comodato — antes esta função dizia "fora da rotação" nesse caso enquanto a
-// TV tocava a peça (revisão da ficha de Conta, 23/09/2026).
+// O plano é o VIGENTE (`planoVigenteId`, a mesma regra do gerador: plano
+// que não venceu), não o efetivo cru — um plano vencido não veicula, e esta
+// função não pode dizer "no ar" enquanto a TV não toca a peça.
 async function criativosComSituacao(conta) {
   const criativos = await criativosRepo.listarPorAnunciante(conta.id);
   // `plano` (devolvido) continua o EFETIVO — é dele que o painel do cliente
@@ -976,9 +966,9 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
   });
 });
 
-// "Meus criativos" do painel único (Fatia 3, 23/09/2026) — o comercial e o
-// do comodato (autoanúncio na tela do próprio comércio) são a MESMA tabela e
-// a mesma cota da conta; antes eram duas telas, uma em cada página. Cada peça
+// "Meus criativos" do painel único (Fatia 3, 23/09/2026) — o anúncio na rede
+// e o da tela do próprio comércio são a MESMA tabela e a mesma cota da
+// conta; antes eram duas telas, uma em cada página. Cada peça
 // vem com a situação que o cliente entende:
 //   em_analise · aprovado (pronto, fora do rodízio agora) · no_ar ·
 //   fora_do_ar (retirado) · recusado
@@ -1013,8 +1003,8 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
       enviadoEm: c.created_at,
     })),
     temPlano: !!plano,
-    // Plano comercial (anúncio na rede) e/ou comodato (a cota na tela do
-    // próprio comércio) — o painel explica onde a peça aprovada roda.
+    // Plano (anúncio na rede) e/ou ponto no ar (a tela do próprio
+    // comércio) — o painel explica onde a peça aprovada roda.
     rodaNaRede: !!conta.plano_id,
     rodaNoProprioPonto: pontos[0].n > 0,
     contaVeicula,
@@ -1310,9 +1300,9 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     //
     // O valor sai de `valorMensalDaConta`, a MESMA funcao que decide o que o
     // San Checkout cobra. A conta inline que estava aqui so enxergava o preco
-    // travado; nao enxergava o desconto de parceiro (RN-31) nem o de comodato
-    // (RN-32), que nasceram depois. Resultado: parceiro e dono de ponto viam,
-    // na propria tela, um custo maior do que o que pagam. E o furo M11 de
+    // travado; nao enxergava o desconto de parceiro (RN-31), que nasceu
+    // depois. Resultado: o parceiro via, na propria tela, um custo maior do
+    // que o que paga. E o furo M11 de
     // volta, por outra porta — preco de cobranca so pode ter uma fonte, e ela
     // e a do motor de pagamento.
     custoPorExibicao:

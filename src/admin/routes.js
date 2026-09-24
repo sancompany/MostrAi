@@ -5,7 +5,6 @@ const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
-const pagamentosPontoRepo = require('../pontos/pagamentos-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const { valorMensalDaConta } = require('../financeiro/san-checkout');
 const eventos = require('../lib/eventos');
@@ -141,7 +140,7 @@ router.get('/admin/metrica', async (_req, res) => {
 // executável). Cada linha de `receita.rows` já traz conta + plano + a
 // assinatura ativa (se houver) juntos — aqui só soma por ciclo, chamando
 // `valorMensalDaConta` linha a linha pra respeitar promoção travada,
-// desconto de parceiro e crédito de comodato (seção 6.1 do pedido).
+// e desconto de parceiro (seção 6.1 do pedido).
 function agregarReceitaPorCiclo(linhas) {
   // Ciclo sem nenhuma conta pagando não vem linha nenhuma do banco, por
   // isso o default de 0 pra cada um (1/3/6/12 meses).
@@ -151,7 +150,6 @@ function agregarReceitaPorCiclo(linhas) {
       {
         status: r.status,
         papeis: r.papeis,
-        credito_comodato_mensal: r.credito_comodato_mensal,
         parceiro_desconto_percentual: r.parceiro_desconto_percentual,
         parceiro_compromisso_minimo: r.parceiro_compromisso_minimo,
       },
@@ -182,7 +180,6 @@ router.get('/admin/resumo', async (_req, res) => {
     exibicoes,
     novos,
     conversao,
-    repassesPendentes,
     trocasPendentes,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
@@ -197,33 +194,38 @@ router.get('/admin/resumo', async (_req, res) => {
     // geral, 23/09/2026, seção 6.1 do pedido): `p.valor_mensal` sozinho é só
     // o preço de TABELA do ciclo — não carrega promoção travada na adesão
     // (`assinaturas.promocao_*`, snapshot da rodada de Ofertas/Promoções),
-    // nem o desconto de parceiro, nem o crédito de comodato da conta
-    // (`credito_comodato_mensal`). Somar `valor_mensal` direto inflava o MRR
-    // de qualquer conta com um desses três. `valorMensalDaConta()` (mesma
+    // nem o desconto de parceiro. Somar `valor_mensal` direto inflava o MRR
+    // de qualquer conta com um desses. `valorMensalDaConta()` (mesma
     // função que já monta a cobrança de verdade em san-checkout.js) resolve
-    // os três — reaproveitada aqui, não reimplementada. Plano Inicial/Básico
-    // já têm `valor_mensal = 0` na tabela, então nem precisam de exclusão à
-    // parte: entram na conta e somam zero.
+    // os dois — reaproveitada aqui, não reimplementada. Créditos não são
+    // receita (ADR-016): benefício por créditos não entra; o plano pago
+    // guardado sob um benefício entra, porque a assinatura dele segue ativa.
+    // MRR = só assinatura PAGA (ADR-016, regra 42): benefício por créditos
+    // e cortesia não entram; o crédito mensal do ponto não mexe aqui. Plano
+    // pago GUARDADO por baixo de um benefício (a assinatura segue cobrando,
+    // migration 082) entra pelo plano guardado — a conta continua pagando.
     pool.query(
-      `SELECT a.id, a.status, a.papeis, a.credito_comodato_mensal,
+      `SELECT a.id, a.status, a.papeis,
               a.parceiro_desconto_percentual, a.parceiro_compromisso_minimo,
               p.tier, p.valor_mensal, p.valor_mensal_cheio, p.compromisso_meses,
               s.promocao_valido_ate, s.promocao_desconto_percentual
        FROM anunciantes a
-       JOIN planos p ON p.id = a.plano_id
+       JOIN planos p ON p.id = CASE WHEN a.plano_cortesia THEN a.plano_pago_guardado_id ELSE a.plano_id END
        LEFT JOIN LATERAL (
          SELECT promocao_valido_ate, promocao_desconto_percentual FROM assinaturas
          WHERE anunciante_id = a.id AND status = 'ativa' ORDER BY created_at DESC LIMIT 1
        ) s ON true
-       WHERE a.plano_id IS NOT NULL
-         AND NOT a.suspenso
-         AND NOT a.plano_cortesia
+       WHERE NOT a.suspenso
          AND a.excluido_em IS NULL
-         AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date)`,
+         AND (
+           (NOT a.plano_cortesia AND a.plano_id IS NOT NULL
+              AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date))
+           OR (a.plano_cortesia AND a.plano_pago_guardado_id IS NOT NULL
+               AND EXISTS (SELECT 1 FROM assinaturas x WHERE x.anunciante_id = a.id AND x.status = 'ativa'))
+         )`,
     ),
     pool.query(
-      `SELECT COALESCE(SUM(valor_pago_mensal), 0) AS total, COUNT(*) AS qtd,
-              COALESCE(SUM(fluxo_estimado_mensal), 0) AS fluxo
+      `SELECT COUNT(*) AS qtd, COALESCE(SUM(fluxo_estimado_mensal), 0) AS fluxo
        FROM pontos WHERE status = 'em_operacao'`,
     ),
     // Amortização real: custo de cada tela dividido pelo prazo dela, só das
@@ -318,12 +320,9 @@ router.get('/admin/resumo', async (_req, res) => {
              AND excluido_em IS NULL AND (data_expiracao IS NULL OR data_expiracao >= current_date)) AS pagantes`,
     ),
     // Bloco financeiro da Visão geral (rodada Financeiro, 22/09/2026):
-    // "normalidade não ocupa espaço, pendência aparece" — as três filas de
-    // dinheiro a pagar, com contador e total, só pra virar o card quando
-    // qtd > 0. A lista completa de repasses (com ponto/responsável/forma)
-    // é a mesma usada pela fila #financeiro/repasses — uma função só, sem
-    // duas consultas divergindo.
-    pagamentosPontoRepo.listarPendentesDoMes(),
+    // "normalidade não ocupa espaço, pendência aparece". Repasses de ponto
+    // SAÍRAM em 24/09/2026 (ADR-016) — ponto gera créditos, não recebe
+    // dinheiro; sobram trocas de plano e devoluções.
     pool.query(
       `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor), 0) AS total FROM pedidos_avulsos WHERE status = 'pendente'`,
     ),
@@ -332,7 +331,6 @@ router.get('/admin/resumo', async (_req, res) => {
   const ultima = await ultimaConciliacao();
   const receitaPorCiclo = agregarReceitaPorCiclo(receita.rows);
   const receitaMensal = Object.values(receitaPorCiclo).reduce((soma, v) => soma + v, 0);
-  const custoPontosMensal = Number(pontosAtivos.rows[0].total);
   const amortizacaoMensal = Number(amortizacao.rows[0].amortizacao);
   const custosFixosMensal = Number(custosFixos.rows[0].total);
   const totalContas = Number(conversao.rows[0].total);
@@ -340,15 +338,11 @@ router.get('/admin/resumo', async (_req, res) => {
   const percentualPagantes = totalContas > 0 ? (contasPagantes / totalContas) * 100 : null;
 
   // Pendências financeiras (revisão final da Visão geral, 23/09/2026,
-  // seção 3/4 do pedido): repasse pendente + troca de plano com problema +
+  // seção 3/4 do pedido): troca de plano com problema +
   // devolução pendente viram UM card agregado ("Financeiro / N · R$ X"),
   // não mais três cards separados. Comissão de vendedor SAIU da conta — o
   // conceito de vendedor não é mais parte do pedido; a tabela/rota
   // `comissoes` continua existindo dentro de Contas, só não soma mais aqui.
-  const repassesPendentesInfo = {
-    qtd: repassesPendentes.length,
-    total: repassesPendentes.reduce((s, r) => s + Number(r.valor_pago_mensal), 0),
-  };
   const trocasPendentesInfo = {
     qtd: Number(trocasPendentes.rows[0].qtd),
     total: Number(trocasPendentes.rows[0].total),
@@ -376,10 +370,9 @@ router.get('/admin/resumo', async (_req, res) => {
     financeiro: {
       receitaMensal,
       receitaPorCiclo,
-      custoPontosMensal,
       amortizacaoMensal,
       custosFixosMensal,
-      margemMensal: receitaMensal - custoPontosMensal - amortizacaoMensal - custosFixosMensal,
+      margemMensal: receitaMensal - amortizacaoMensal - custosFixosMensal,
       faturamentoPorMes: faturamento.rows,
       // Confirmado no mês corrente = a própria linha de `faturamentoPorMes`
       // (cobrancas_confirmadas agrupado por mês) — sem consulta nova, só
@@ -392,15 +385,14 @@ router.get('/admin/resumo', async (_req, res) => {
       percentualPagantes,
       totalContas,
       contasPagantes,
-      repassesPendentes: repassesPendentesInfo,
       trocasPendentes: trocasPendentesInfo,
       devolucoesPendentes: devolucoesPendentesInfo,
-      // O card único da Visão geral (seção 3/4) — soma dos três acima.
+      // O card único da Visão geral (seção 3/4) — soma das duas acima.
       // Detalhe de cada um mora na Central Financeira (`#financeiro`), aba a
       // aba, não aqui.
       pendenciasFinanceiras: {
-        qtd: repassesPendentesInfo.qtd + trocasPendentesInfo.qtd + devolucoesPendentesInfo.qtd,
-        total: repassesPendentesInfo.total + trocasPendentesInfo.total + devolucoesPendentesInfo.total,
+        qtd: trocasPendentesInfo.qtd + devolucoesPendentesInfo.qtd,
+        total: trocasPendentesInfo.total + devolucoesPendentesInfo.total,
       },
     },
     rede: {

@@ -29,8 +29,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 ## Funcionalidades concluídas (confirmadas no código, testadas)
 
 - Cadastro/login de conta única, três papéis possíveis.
-- Catálogo de planos no banco (Inicial/Básico/Essencial/Pro/Prime +
-  variações de comodato), sem regra em variável de ambiente.
+- Catálogo de planos no banco: Essencial/Pro/Prime × 4 ciclos, sem regra em
+  variável de ambiente (Inicial/Básico ficaram `ativo=false`, só histórico —
+  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082).
 - Assinatura, troca de plano e cancelamento via San Checkout (webhook
   fail-closed/idempotente/transacional).
 - Upload de criativo com validação síncrona (ffmpeg), normalização de
@@ -240,7 +241,7 @@ desta, só ajustes pontuais que o dono pedir).
 ## Player V2 — integração definitiva (24/09/2026)
 
 Backend do contrato V2 do Mostraí Player construído, V1 mantido. Migration
-082 (a mais recente; a 081 é a nota interna do ledger de créditos). Rotas do Player: `/player/provisionar`,
+083 (a mais recente; 081 e 082 são do ledger de créditos, de outros PRs). Rotas do Player: `/player/provisionar`,
 `/player/:id/hello`, `/heartbeat`, `/config`, `/played` (lote),
 `/playlist/:id` (envelope V2 com `contentHash`). Admin: Rede → Ponto → Tela
 (ficha em 5 blocos) e Rede → Versões do Player. Saúde da tela só em

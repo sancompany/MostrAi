@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
+const { situacaoDosPontos } = require('../creditos/ponto');
 
 // "Meus pontos" (Fatia 2 do painel único, 23/09/2026): UMA entidade visual
 // por estabelecimento. Antes eram três lugares para a mesma coisa — "Meu
@@ -75,11 +76,9 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     pool.query(
       `SELECT p.id, p.candidatura_id, p.nome, p.endereco, p.bairro, p.cidade, p.uf, p.status,
               p.foto_instalacao_url, p.horario_semanal, p.created_at,
-              p.valor_pago_mensal, p.cota_autoanuncio_slots_hora,
-              c.nome AS categoria_nome, pp.nome AS modalidade_nome
+              c.nome AS categoria_nome
          FROM pontos p
          LEFT JOIN categorias c ON c.id = p.categoria_id
-         LEFT JOIN planos_ponto pp ON pp.id = p.plano_ponto_id
         WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
         ORDER BY p.created_at`,
       [contaId],
@@ -114,6 +113,13 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     telasPorPonto.get(t.ponto_id).push(t);
   }
 
+  // Benefício do ponto (ADR-016): +1 crédito por mês quando elegível —
+  // mesma regra do job (creditos/ponto.js), nunca recalculada aqui.
+  const beneficios = await situacaoDosPontos(
+    pontos.rows.map((p) => p.id),
+    agora,
+  );
+
   const materializados = pontos.rows.map((p) => {
     const suas = (telasPorPonto.get(p.id) || []).map((t) => telaPublica(t, p.horario_semanal, agora));
     return {
@@ -128,9 +134,7 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
       categoria: p.categoria_nome,
       estado: ESTADO_DO_PONTO[p.status] || 'inativo',
       desde: p.created_at,
-      modalidade: p.modalidade_nome,
-      ajudaCustoMensal: Number(p.valor_pago_mensal) || 0,
-      cotaAutoanuncioPorHora: p.cota_autoanuncio_slots_hora || 0,
+      beneficio: beneficios.get(p.id) || null,
       telas: suas,
       exibicoes30d: suas.reduce((s, t) => s + t.exibicoes30d, 0),
       alertas: suas.filter((t) => t.alerta).length,

@@ -108,14 +108,14 @@ git revert <sha>        # nunca reescrever histórico da main
 git push origin main
 ```
 
-**Reverter para antes da migration 082 (Player V2):** o código antigo
+**Reverter para antes da migration 083 (Player V2):** o código antigo
 autentica as TVs pela chave V1 em texto (`dispositivos.aparelho_id`), que a
-082 manteve de propósito. Toda tela cuja credencial mudou depois do deploy
+083 manteve de propósito. Toda tela cuja credencial mudou depois do deploy
 (provisionada, revogada, link novo do player web) teve essa coluna apagada:
 depois do revert, gere o link de novo para cada uma pelo admin antigo. Players
 V2 não funcionam no código antigo (as rotas V2 dão 404 e o app volta ao modo
-V1, sem credencial válida). Depois da migration 083 (que apaga a coluna de
-todas), reverter para antes da 082 exige gerar o link de todas as TVs V1.
+V1, sem credencial válida). Depois da migration 084 (que apaga a coluna de
+todas), reverter para antes da 083 exige gerar o link de todas as TVs V1.
 
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma

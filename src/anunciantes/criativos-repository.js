@@ -17,7 +17,7 @@ const CAMPOS_ATUALIZAVEIS = [
   // precisam ser editáveis.
   'arquivo_original_url',
   'duracao_segundos',
-  // SHA-256 e tamanho do MP4 servido (migration 082, contentHash do Player V2).
+  // SHA-256 e tamanho do MP4 servido (migration 083, contentHash do Player V2).
   'conteudo_sha256',
   'conteudo_bytes',
 ];

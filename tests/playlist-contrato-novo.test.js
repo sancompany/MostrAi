@@ -218,46 +218,31 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
   }
 });
 
-// Achado real em revisão (Codex, PR #20, 23/09/2026): anunciantesElegiveis
-// junta COALESCE(plano_id, comodato_plano_id), mas o WHERE ainda excluía a
-// conta INTEIRA quando `data_expiracao` (do plano COMERCIAL) tinha passado —
-// mesmo com comodato ativo, que não tem validade própria (é ligado à
-// modalidade do ponto, não a um ciclo). Um Básico com plano pago vencido
-// sumia da playlist até o próximo encerrarCoberturaVencida, um dia depois.
-test('gerarPlaylistDaHora: cai pro comodato quando o plano comercial venceu, sem sumir da playlist', async () => {
-  const comodato = require('../src/pontos/comodato');
+// Reestruturação de 24/09/2026 (ADR-016): Inicial/Básico não dão mais
+// direito de veicular. Um comodato LEGADO na conta (`comodato_plano_id`)
+// não segura a conta na playlist quando o plano comercial vence — só o
+// comercial vigente veicula.
+test('gerarPlaylistDaHora: comodato legado não segura a conta quando o comercial vence', async () => {
   const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
   await escolherPonto(conta.id, dispositivo.ponto_id);
   try {
-    // O próprio dono do ponto também cede a parede (Básico) — dá o
-    // comodato_plano_id independente que o plano comercial vencido devia
-    // ceder lugar.
-    await pontosRepo.atualizar(dispositivo.ponto_id, { anunciante_id: conta.id, plano_ponto_id: 'mais-cota' });
-    await comodato.sincronizarComodato(conta.id);
-    // Plano comercial VENCIDO — como fica entre a cobrança recorrente falhar
-    // e a conciliação diária ainda não ter rodado.
-    await anunciantesRepo.atualizar(conta.id, { data_expiracao: '2020-01-01' });
-
     const hora = new Date();
-    const envelope = await gerador.gerarPlaylistDaHora(dispositivo, hora);
-    const item = envelope.itens.find((i) => i.anuncianteId === conta.id);
-    assert.ok(item, 'comodato (Básico) mantém a conta elegível mesmo com o comercial vencido');
-
-    // Controle: sem comodato nenhum (só o plano comercial, vencido), a conta
-    // continua de fora — o achado não é "nunca mais expira", é só "cai pro
-    // comodato quando ele existir".
-    await pontosRepo.atualizar(dispositivo.ponto_id, { anunciante_id: null, plano_ponto_id: null });
-    await pool.query('UPDATE anunciantes SET comodato_plano_id = NULL WHERE id = $1', [conta.id]);
-    const envelopeSemComodato = await gerador.gerarPlaylistDaHora(dispositivo, hora);
+    const vigente = await gerador.gerarPlaylistDaHora(dispositivo, hora);
     assert.ok(
-      !envelopeSemComodato.itens.some((i) => i.anuncianteId === conta.id),
-      'sem comodato nenhum, plano comercial vencido continua de fora',
+      vigente.itens.some((i) => i.anuncianteId === conta.id),
+      'com o comercial vigente, a conta está na playlist',
+    );
+    await pool.query(
+      `UPDATE anunciantes SET comodato_plano_id = 'comodato-basico', data_expiracao = '2020-01-01' WHERE id = $1`,
+      [conta.id],
+    );
+    const vencido = await gerador.gerarPlaylistDaHora(dispositivo, new Date(hora.getTime() + 3600 * 1000));
+    assert.ok(
+      !vencido.itens.some((i) => i.anuncianteId === conta.id),
+      'comercial vencido + comodato legado: fora da playlist',
     );
   } finally {
-    await pool.query('UPDATE pontos SET anunciante_id = NULL, plano_ponto_id = NULL WHERE id = $1', [
-      dispositivo.ponto_id,
-    ]);
     await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
   }
