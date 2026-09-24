@@ -4751,3 +4751,29 @@ seção 18 do relatório) não bloqueiam o que está no ar — cada uma é
 reversível e está registrada com o efeito de escolher cada lado. O reset
 final do banco e a virada sandbox→produção do San Checkout (RUNBOOK §3.1)
 só acontecem depois da auditoria externa.
+
+### L.1 Revisão Codex dos PRs #50–#54 — o que foi corrigido e o que ficou (24/09/2026)
+
+Corrigido na mesma tarde (PR de acompanhamento): intenção de compra antiga
+cancelada ao emitir link novo e ao excluir a conta (um link pagável por
+conta); chave de dedupe da conciliação solta quando a conferência do
+primeiro ciclo falha; anonimização também apaga `cidade`/`uf`/`cep`;
+benefício agendado só entra no dia SEGUINTE ao último dia do plano pago
+(RN-32-B, estrito); painel do anunciante deixa de comparar `data_expiracao`
+com o relógio do navegador (`plano_vigente`/`dias_ate_vencer` vêm do
+servidor); `docs/api.md` marca `GET .../pagamentos` e `PATCH .../nota-fiscal`
+como 410; roteiro online manda o service token do Access só pra origem da
+aplicação e prova cada tela do admin pelo hash + título + conteúdo da aba;
+IDs das apps do Access saíram do relatório (ficam no histórico do git — não
+são segredo, mas CONSTRAINTS.md pede fora do repositório).
+
+- [ ] **Banco de horas: drenagem retentável.** Hoje o gerador drena o banco
+  só na geração que congelou a hora (`criadaAgora`). Se essa geração falhar
+  DEPOIS de congelar (gravarProgramados, ou no meio do `Promise.all` de
+  drenagem), a tentativa seguinte não drena — a playlist congelada entrega a
+  prioridade e o saldo fica intacto (perda pra nós, pequena, nunca pro
+  anunciante). Correção certa: marcador persistente na linha do
+  congelamento (`banco_drenado_em`), drenar enquanto NULL, marcar ao fim —
+  precisa de migration. Fica pra depois da decisão "manter ou aposentar o
+  banco de horas" (seção 18 do relatório), pra não gastar migration numa
+  função que pode sair.

@@ -73,5 +73,10 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 - Virada sandbox→produção do San Checkout (RUNBOOK §3.1) e o reset final do
   banco — só depois da auditoria Codex/Jules.
 
+## Depois do fecho
+- Revisão Codex dos PRs #50–#54 (24/09, mesma tarde): 8 achados corrigidos
+  em PR de acompanhamento; 1 ficou registrado (PENDENCIAS L.1, drenagem do
+  banco de horas retentável — espera a decisão de manter o banco).
+
 ## Bloqueios reais
 - Nenhum.

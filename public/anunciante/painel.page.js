@@ -142,8 +142,9 @@ function preencherStatusBanner() {
 function situacaoDoPlano() {
   if (!ANUNCIANTE.plano_id) return ['sem_plano', 'badge-neutro', 'Sem plano'];
   if (ANUNCIANTE.suspenso) return ['suspensa', 'badge-err', 'Suspensa'];
-  if (ANUNCIANTE.data_expiracao && new Date(ANUNCIANTE.data_expiracao) <= new Date())
-    return ['vencida', 'badge-pendente', 'Vencida'];
+  // Vigência decidida pelo servidor (`plano_vigente`, RN-32-B: último dia
+  // inclusivo em Matão) — o relógio do navegador vencia o plano na véspera.
+  if (ANUNCIANTE.plano_vigente === false) return ['vencida', 'badge-pendente', 'Vencida'];
   // A origem do direito é o rótulo (ADR-018): Assinatura paga, Benefício
   // por créditos ou Cortesia administrativa legada — a mesma régua da ficha
   // do admin (plano-administrativo.js#origemDoDireito).
@@ -188,13 +189,11 @@ function desenharPlano() {
     });
   if (situacao === 'suspensa')
     alertas.push({ nivel: 'atencao', texto: 'Sua conta está suspensa: o anúncio não está no ar.', alvo: 'modPlano' });
-  const diasRestantes = ANUNCIANTE.data_expiracao
-    ? Math.ceil((new Date(ANUNCIANTE.data_expiracao) - Date.now()) / 86400000)
-    : null;
+  const diasRestantes = ANUNCIANTE.dias_ate_vencer ?? null;
   if (situacao === 'cortesia' && diasRestantes !== null && diasRestantes <= 7)
     alertas.push({
       nivel: 'info',
-      texto: `Sua cortesia termina em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'} e não renova sozinha.`,
+      texto: `Sua cortesia termina ${diasRestantes === 0 ? 'hoje' : `em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'}`} e não renova sozinha.`,
       alvo: 'modPlano',
     });
   window.publicarResumo?.('plano', {
@@ -386,11 +385,8 @@ async function carregarPontos() {
 // (o botão de "Escolher plano" no banner já cobre esse caso).
 function preencherAssinatura() {
   const el = document.getElementById('resumoAssinatura');
-  const ativo =
-    !ANUNCIANTE.plano_cortesia &&
-    !ANUNCIANTE.suspenso &&
-    ANUNCIANTE.data_expiracao &&
-    new Date(ANUNCIANTE.data_expiracao) > new Date();
+  // `plano_vigente` vem decidido do servidor (RN-32-B) — sem relógio local.
+  const ativo = !ANUNCIANTE.plano_cortesia && !ANUNCIANTE.suspenso && ANUNCIANTE.plano_vigente === true;
   const cicloPlano = window.ROTULOS.ciclo[ANUNCIANTE.plano?.compromisso_meses];
   const nomePlano = ANUNCIANTE.plano?.nome
     ? `${ANUNCIANTE.plano.nome}${cicloPlano ? ` · ${cicloPlano}` : ''}`
