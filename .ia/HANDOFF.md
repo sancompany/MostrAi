@@ -3,6 +3,27 @@
 ## Updated
 2026-09-24
 
+## Estação final de consolidação (24/09/2026, este agente) — em curso
+Estado curto e sempre atual em `docs/CONSOLIDATION_STATE.md` (ler primeiro).
+Checkpoints mergeados em `main` e no ar: C+D (PR #49, migration 088), G+E
+(PR #50, migration 089, SHA `89d73d4`). H (legado) nesta branch:
+- Removidos do código executável (410 com motivo, tabelas ficam como
+  histórico): programa de vendedores inteiro (`/vendedor/*`,
+  `/admin/comissoes*`, `/admin/vendedores*`, `vendedores-repository.js`,
+  `vendedor.html/.page.js`, `registrarComissaoSeHouver`), grade antiga de
+  planos (`POST/PATCH /admin/planos*`, `nova-versao`, `planos-arquivados`,
+  `/admin/beneficios*`, `beneficios-repository.js`, `planosRepo.criar/
+  atualizar/vagaOcupada/definirBeneficios/listarArquivados`),
+  `liberar-plano`, `/admin/custos-fixos*`, e ~1.100 linhas de renderers
+  mortos do admin (+ CSS). Produção conferida antes: 0 vendedores, 0
+  comissões, 0 contas com o papel.
+- O que NÃO saiu (decisão do dono pendente): convites (`POST /admin/convites`
+  ainda aprova candidatura antiga sem conta), `POST /admin/anunciantes`,
+  `plano-administrativo` (ferramenta técnica com teste), textos de
+  `beneficios` (só por SQL agora).
+- e2e 02/06/07 reescritos pro fluxo atual (assinatura nasce
+  `pendente_pagamento`; cortesia via `plano-administrativo`).
+
 ## Custo por exibição prevista + benefício por ciclo (24/09/2026, este agente)
 Última alteração estrutural da rodada no modelo comercial — **ADR-018**;
 depois disso, congelado salvo bug real.

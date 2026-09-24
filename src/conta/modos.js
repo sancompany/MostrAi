@@ -11,7 +11,6 @@
 const express = require('express');
 const pool = require('../db/pool');
 const anunciantesRepo = require('../anunciantes/repository');
-const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -354,14 +353,9 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
   res.json({ ok: true, conta: await anunciantesRepo.buscarPorId(conta.id) });
 });
 
-// Vendedor completa/troca a própria chave Pix (liberado pelo painel pode
-// ter entrado sem ela).
-router.patch('/vendedor/me', exigirAnuncianteLogado, async (req, res) => {
-  const v = await vendedoresRepo.buscarPorConta(req.session.anuncianteId);
-  if (!v) return res.status(403).json({ erro: 'esta conta não é de vendedor' });
-  if (!req.body.chave_pix) return res.status(400).json({ erro: 'chave Pix obrigatória' });
-  res.json(await vendedoresRepo.atualizar(req.session.anuncianteId, { chave_pix: String(req.body.chave_pix).trim() }));
-});
+// Programa de vendedores aposentado (23/09/2026); código executável removido
+// na consolidação final (24/09/2026) — produção sem nenhum vendedor.
+router.patch('/vendedor/me', (_req, res) => res.status(410).json({ erro: 'o programa de vendedores foi aposentado' }));
 
 // ---------------------------------------------------------------------------
 // Bônus de ponto (módulos 1 e 2) — REMOVIDOS.

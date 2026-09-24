@@ -1,14 +1,20 @@
 const pool = require('../db/pool');
-const vendedoresRepo = require('../financeiro/vendedores-repository');
 
-// Cupom de indicação da conta (migration 062). Mesmo algoritmo de gerarCupom()
-// (financeiro/vendedores-repository.js), prefixado com "PT-" — gerarCupom()
-// só produz letras e dígitos, então o hífen garante que este código nunca
-// colide com codigo_cupom de vendedor: são tabelas UNIQUE separadas, e a
-// validação no cadastro precisa resolver sem ambiguidade entre as duas.
-// Cada pagamento de quem usou o cupom vira crédito no ledger (src/creditos).
+// Cupom de indicação da conta (migration 062): até 6 letras do nome (sem
+// acento) + 3 dígitos, prefixado com "PT-". O prefixo veio da época em que
+// existia cupom de vendedor (só letras e dígitos, tabela UNIQUE separada) —
+// o programa foi aposentado, mas o formato fica: cupons já impressos e
+// gravados em `anunciantes.indicado_por_cupom` continuam válidos. Cada
+// pagamento de quem usou o cupom vira crédito no ledger (src/creditos).
 function gerarCupomPonto(nome) {
-  return `PT-${vendedoresRepo.gerarCupom(nome)}`;
+  const slug =
+    String(nome || 'ponto')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z]/g, '')
+      .toUpperCase()
+      .slice(0, 6) || 'PONTO';
+  return `PT-${slug}${Math.floor(100 + Math.random() * 900)}`;
 }
 
 // Precisa de transação (usa SAVEPOINT): um 23505 por colisão de código

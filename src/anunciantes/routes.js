@@ -18,7 +18,6 @@ const { cepValido, telefoneE164, data } = require('../br/formato');
 const { PARTES: PARTES_DO_ENDERECO, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
-const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -97,7 +96,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     responsavel_email,
     responsavel_telefone,
     convite: tokenConvite,
-    chave_pix,
   } = req.body;
 
   let convite = null;
@@ -148,9 +146,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     }
   }
 
-  if (papeis.includes('vendedor') && !chave_pix) {
-    return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
-  }
   // O documento vai daqui pro San Checkout e de lá pra Asaas como documento do
   // pagador. Documento inválido só quebra na hora de cobrar — depois que a
   // pessoa já foi embora. Conferir aqui é o único momento barato.
@@ -228,8 +223,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       }
       anunciante = await repo.criar(dadosConta, cliente);
       await cliente.query('UPDATE convites SET conta_id = $2 WHERE id = $1', [consumido.id, anunciante.id]);
-      if (papeis.includes('vendedor'))
-        await vendedoresRepo.criar(anunciante.id, { chave_pix, nome: nome_empresa }, cliente);
       // Convite que nasceu de uma candidatura de ponto já traz o endereço: o
       // ponto é criado agora, ligado à conta nova, com a primeira tela.
       if (papeis.includes('ponto') && convite.candidatura_id) {
@@ -380,9 +373,6 @@ async function derrubarSessaoSuspensa(req, _res, next) {
 router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
-  const vendedor = (anunciante.papeis || []).includes('vendedor')
-    ? await vendedoresRepo.buscarPorConta(anunciante.id)
-    : null;
   // `plano` junto de propósito: o painel precisa dele pra dizer a duração
   // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
   // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
@@ -401,7 +391,6 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
   res.json({
     ...anunciante,
-    vendedor,
     plano,
     plano_origem: origem,
     plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,

@@ -5,8 +5,9 @@
 # vagas de um plano com teto (mecanismo genérico, agora com reserva de 15 min
 # em vez de 7 dias — item 5), webhook (assinatura HMAC, fail-closed, replay,
 # idempotência, preço travado), 1ª cobrança (`criada`) ativando a conta,
-# renovação estendendo a cobertura, evento sem ação virando pendência,
-# comissão do vendedor.
+# renovação estendendo a cobertura, evento sem ação virando pendência.
+# Comissão de vendedor: programa aposentado (23/09/2026) — aqui só se prova
+# que NADA nasce e que as rotas antigas respondem 410.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B=${B:-http://localhost:3999}
 cd "$ROOT/tests/e2e/saida"
@@ -41,16 +42,21 @@ r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId
 esperar "plano abaixo do piso de compromisso do parceiro é recusado" 'não está liberado' "$r"
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"essencial-12m"}')
 esperar "assinar plano elegível pra parceiro devolve link de checkout" 'checkoutUrl' "$r"
-ASS=$($PG -c "select id from assinaturas where anunciante_id=$ANA and status='ativa' order by id desc limit 1")
-esperar "assinatura criada no banco" '^[0-9a-f-]{8,}$|^[0-9]+$' "$ASS"
+# Desde a migration 089 a assinatura nasce 'pendente_pagamento' — só o
+# primeiro ciclo pago (webhook `criada`, mais abaixo) a torna 'ativa'.
+ASS=$($PG -c "select id from assinaturas where anunciante_id=$ANA and status='pendente_pagamento' order by id desc limit 1")
+esperar "assinatura criada no banco, pendente de pagamento" '^[0-9a-f-]{8,}$|^[0-9]+$' "$ASS"
 r=$(curl -s -H "X-Checkout-Key: $KEY" $B/plano/$ASS)
 esperar "preço que o Checkout cobra já sai com os 10% de desconto (79,20 -> 71,28 x12 = 855,36)" '"valor":855\.36' "$r"
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/assinar -H "$J" -d '{"planoId":"essencial-12m"}')
-ASS2=$($PG -c "select count(*) from assinaturas where anunciante_id=$ANA and status='ativa'")
-esperar "clique duplo não duplica assinatura" '^1$' "$ASS2"
+ASS2=$($PG -c "select count(*) from assinaturas where anunciante_id=$ANA and status in ('pendente_pagamento','ativa')")
+esperar "clique duplo não duplica assinatura (reusa o link pendente)" '^1$' "$ASS2"
 
 echo "== vagas: plano com teto esgota (mecanismo genérico, agora 15 min de reserva — item 5) =="
-curl -s -b adm.txt -X PATCH $B/admin/planos/destaque-1m -H "$J" -d '{"vagas":1}' >/dev/null
+# PATCH /admin/planos/:id respondeu 410 desde 24/09/2026 (grade antiga
+# aposentada) — o teto de vagas é ajustado direto no banco só pra provar o
+# mecanismo.
+$PG -c "update planos set vagas=1 where id='destaque-1m'" >/dev/null
 r=$(curl -s -c beto.txt -X POST $B/anunciantes/cadastro -H "$J" -d '{"nome_empresa":"Beto Lanches","cpf_cnpj":"12.ABC.345/01DE-35","endereco":"R","cidade":"Matão","uf":"SP","cep":"15990-000","contato_email":"beto@x.com","contato_telefone":"16 99463-5946","senha":"Senha12@","aceitou_termos":true}')
 BETO=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b beto.txt -X POST $B/anunciantes/$BETO/assinar -H "$J" -d '{"planoId":"destaque-1m"}')
@@ -60,7 +66,9 @@ CARLA=$(echo $r | sed 's/.*"id":\([0-9]*\),.*/\1/' | head -c 5)
 r=$(curl -s -b carla.txt -X POST $B/anunciantes/$CARLA/assinar -H "$J" -d '{"planoId":"destaque-1m"}')
 esperar "segunda conta não entra: vagas acabaram" 'vagas desse plano acabaram' "$r"
 r=$(curl -s $B/planos); if echo "$r" | grep -q '"id":"destaque-1m"'; then falha "vitrine esconde plano sem vaga" "ainda aparece"; else ok "vitrine esconde plano sem vaga"; fi
-curl -s -b adm.txt -X PATCH $B/admin/planos/destaque-1m -H "$J" -d '{"vagas":null}' >/dev/null
+$PG -c "update planos set vagas=null where id='destaque-1m'" >/dev/null
+r=$(curl -s -o /dev/null -w "%{http_code}" -b adm.txt -X PATCH $B/admin/planos/destaque-1m -H "$J" -d '{"vagas":null}')
+esperar "PATCH /admin/planos/:id é 410 (grade antiga aposentada)" '^410$' "$r"
 
 echo "== webhook: fail-closed =="
 CORPO_FC='{"tipo":"assinatura"}'
@@ -94,8 +102,10 @@ esperar "conta fica ativa (não suspensa) na primeira cobrança" '^ativa\|' "$st
 esperar "expiração ≈ 12 meses à frente (>= 360 dias)" '\|(3[6-9][0-9]|4[0-9][0-9])$' "$st"
 cob=$($PG -c "select count(*)||'|'||sum(valor) from cobrancas_confirmadas where anunciante_id=$ANA")
 esperar "cobrança registrada (71,28 x 12 = 855,36)" '^1\|855\.36' "$cob"
-com=$($PG -c "select count(*)||'|'||comissao_valor from comissoes where anunciante_id=$ANA group by comissao_valor")
-esperar "comissão do vendedor gerada (12% de 855,36 = 102,64)" '^1\|102.64' "$com"
+st=$($PG -c "select status from assinaturas where id='$ASS'")
+esperar "assinatura virou 'ativa' com o primeiro ciclo pago" '^ativa$' "$st"
+com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA")
+esperar "nenhuma comissão nasce (programa de vendedores aposentado)" '^0$' "$com"
 
 echo "== painel com plano: upload liberado, horas do mês numéricas =="
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/$ANA/criativos -F "arquivo=@/dev/null;filename=x.mp4;type=video/mp4")
@@ -107,7 +117,7 @@ esperar "com plano, horasEntreguesMes já sai numérico" '"horasEntreguesMes":[0
 echo "== webhook: reentrega idêntica não duplica =="
 enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"documento\":\"11222333000181\",\"evento\":\"criada\",\"eventoId\":\"ev-1\"}" >/dev/null; sleep 1
 cob=$($PG -c "select count(*) from cobrancas_confirmadas where anunciante_id=$ANA"); esperar "só 1 cobrança" '^1$' "$cob"
-com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA"); esperar "só 1 comissão" '^1$' "$com"
+com=$($PG -c "select count(*) from comissoes where anunciante_id=$ANA"); esperar "segue sem comissão" '^0$' "$com"
 exp1=$($PG -c "select data_expiracao::date from anunciantes where id=$ANA")
 
 echo "== renovação (cobranca_confirmada) estende a cobertura =="
@@ -121,16 +131,20 @@ enviar_webhook "{\"versao\":1,\"tipo\":\"assinatura\",\"planoId\":\"$ASS\",\"doc
 st=$($PG -c "select suspenso from anunciantes where id=$ANA"); esperar "conta segue ativa depois de cobranca_falhou" '^f$' "$st"
 pend=$($PG -c "select count(*) from eventos_assinatura_pendentes"); esperar "cobranca_falhou virou pendência pro admin" '^[1-9]' "$pend"
 
-echo "== vendedor vê a comissão =="
-# Duas comissões: a da 1ª cobrança e a da renovação. Comissão sobre renovação
-# é o comportamento de hoje e é decisão de produto em aberto (PENDENCIAS, B).
-r=$(curl -s -b joao.txt $B/vendedor/painel); esperar "painel do vendedor soma as duas comissões" '"totalAReceber":"?205\.28' "$r"
-r=$(curl -s -b adm.txt $B/admin/comissoes); esperar "admin lista comissão com nome do vendedor" 'João' "$r"
-r=$(curl -s -b adm.txt $B/admin/vendedores); esperar "admin lista vendedores" '"codigo_cupom"' "$r"
+echo "== programa de vendedores aposentado: rotas antigas respondem 410 =="
+for rota in /vendedor/painel /admin/comissoes /admin/vendedores; do
+  r=$(curl -s -o /dev/null -w "%{http_code}" -b adm.txt $B$rota); esperar "$rota é 410" '^410$' "$r"
+done
+r=$(curl -s -o /dev/null -w "%{http_code}" -b adm.txt -X POST $B/admin/anunciantes/$ANA/liberar-plano -H "$J" -d '{"plano_id":"essencial-1m"}')
+esperar "liberar-plano é 410 (cortesia é crédito ou plano-administrativo)" '^410$' "$r"
+r=$(curl -s -o /dev/null -w "%{http_code}" -b adm.txt $B/admin/custos-fixos); esperar "custos-fixos é 410" '^410$' "$r"
 
 echo "== playlist do dispositivo com anunciante ativo =="
-CHAVE=$($PG -c "select aparelho_id from dispositivos where apelido='Tela 1'")
-DISP=$($PG -c "select id from dispositivos where apelido='Tela 1'")
-r=$(curl -s "$B/playlist/$DISP?chave=$CHAVE"); esperar "playlist responde com itens ou vazio válido" '"itens"|"playlist"|\[' "$r"
+# Credencial V2 (Preparar Player, 24/09/2026): a chave só existe em hash no
+# banco, então a tela é reprovisionada aqui pra obter uma credencial nova.
+DISP=$($PG -c "select id from dispositivos where apelido='Tela 1' order by id limit 1")
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/preparar-player)
+CHAVE=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/'); DID=$(echo $r | sed 's/.*"dispositivoId":"\([0-9]*\)".*/\1/')
+r=$(curl -s -H "X-Aparelho-Id: $DID" -H "X-Aparelho-Key: $CHAVE" -H "X-Player-Contract: 2" "$B/playlist/$DID"); esperar "playlist responde com itens ou vazio válido" '"itens"|"playlist"|\[' "$r"
 
 echo; echo "falhas: $falhas"

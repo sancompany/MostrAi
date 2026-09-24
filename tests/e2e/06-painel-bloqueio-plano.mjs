@@ -62,12 +62,16 @@ check('CTA leva pra vitrine de planos', await p.$eval('#bloqueioPlano a.btn', (e
 check('grid de KPIs não é visível nesse estado', !(await p.isVisible('#kpiGrid')));
 await shot(p, 'bloqueado');
 
-console.log('== admin libera plano de cortesia; bloqueio some, KPIs de horas aparecem ==');
-const liberado = await adm.evaluate(async (id) => (await (await fetch(`/admin/anunciantes/${id}/liberar-plano`, {
+console.log('== admin concede benefício administrativo; bloqueio some, KPIs de horas aparecem ==');
+// `liberar-plano` responde 410 desde a consolidação final (24/09/2026): o
+// caminho técnico é `plano-administrativo`, que registra o benefício no
+// histórico (planos_administrativos) em vez de gravar plano_id à mão.
+const validoAte = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+const liberado = await adm.evaluate(async ([id, valido_ate]) => (await (await fetch(`/admin/anunciantes/${id}/plano-administrativo`, {
   method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ plano_id: 'essencial-1m', meses: 1, motivo: 'teste e2e (script 06)' }),
-})).json()), conta.id);
-check('admin liberou o plano de cortesia', liberado.plano_id === 'essencial-1m', JSON.stringify(liberado));
+  body: JSON.stringify({ plano_id: 'essencial-1m', valido_ate, observacao: 'teste e2e (script 06)' }),
+})).json()), [conta.id, validoAte]);
+check('admin concedeu o benefício', liberado.conta?.plano_id === 'essencial-1m', JSON.stringify(liberado));
 
 await p.reload({ waitUntil: 'networkidle' });
 await p.waitForTimeout(1000);

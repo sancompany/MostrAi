@@ -270,47 +270,14 @@ async function registrarPendencia(payload, motivo) {
 }
 
 // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
-// pedido do dono: "sem novas comissões"). Nenhuma comissão NOVA nasce daqui
-// em diante — nem de cadastro novo, nem da renovação de quem já tinha vindo
-// por cupom. As comissões que já existem ficam na tabela como estão (histórico
-// e fila de pagamento). A função fica inteira atrás da chave pra que
-// religar, se o dono um dia quiser, seja trocar uma constante — não
-// reescrever a regra.
-const COMISSAO_DE_VENDEDOR_ATIVA = false;
-
-// `db` é o pool por padrão, mas o webhook passa o client da transação pra
-// que a comissão entre junto com a cobrança — ou não entre nenhuma das duas.
-async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
-  if (!COMISSAO_DE_VENDEDOR_ATIVA) return;
-  if (!anunciante.indicado_por_cupom || !valor) return;
-  // Vendedor é papel da conta única (migration 019). Cupom em maiúsculas pra
-  // não perder comissão por caixa diferente.
-  const { rows } = await db.query(
-    `SELECT v.* FROM vendedores v JOIN anunciantes a ON a.id = v.conta_id
-     WHERE v.codigo_cupom = upper($1) AND v.status = 'aprovado' AND a.excluido_em IS NULL`,
-    [anunciante.indicado_por_cupom],
-  );
-  const vendedor = rows[0];
-  if (!vendedor || vendedor.conta_id === anunciante.id) return; // ninguém ganha comissão de si mesmo
-
-  const comissaoValor = percentual(valor, vendedor.comissao_percentual);
-  await db.query(
-    `INSERT INTO comissoes (vendedor_conta_id, anunciante_id, valor_confirmado, comissao_valor)
-     VALUES ($1,$2,$3,$4)`,
-    [vendedor.conta_id, anunciante.id, valor, comissaoValor],
-  );
-  // Dono do evento é o VENDEDOR, não quem comprou: a pergunta é "quanto a
-  // indicação custa", e ela se responde por vendedor.
-  eventos.registrar('comissao:vendedor_gera', {
-    anunciante_id: vendedor.conta_id,
-    vendedor_id: vendedor.conta_id,
-    comissao_valor: comissaoValor,
-    valor_confirmado: valor,
-  });
-}
+// pedido do dono: "sem novas comissões"). A função que gerava comissão ficou
+// desligada atrás de uma constante até a consolidação final (24/09/2026) e
+// saiu do código: produção sem nenhum vendedor, nenhuma comissão. As tabelas
+// `vendedores`/`comissoes` ficam no banco como histórico (exportação LGPD
+// ainda as lê, src/titular/repository.js).
 
 // Crédito de indicação do dono de ponto (migration 062, pedido do dono,
-// 19/09/2026) — irmã de registrarComissaoSeHouver, mas nunca move dinheiro:
+// 19/09/2026) — nunca move dinheiro:
 // quem indica com cupom "PT-..." ganha crédito no ledger, pra resgate
 // explícito depois (src/creditos/, migration 079) — CADA cobrança confirmada
 // gera crédito, a primeira e toda renovação. `db` é o pool por
@@ -713,7 +680,6 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
       origem: await cicloContratado.origemDoCicloPago(cliente, assinatura.id),
       valorCiclo,
     });
-    await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
     creditoIndicacao = await registrarCreditoIndicacaoSeHouver(anunciante, cobrancaRows[0].id, cliente);
     await cliente.query('COMMIT');
   } catch (err) {

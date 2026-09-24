@@ -602,16 +602,6 @@ const PONTO_STATUS_CLASSE = {
 const TELA_STATUS = { ativo: 'Ativa', reparo: 'Em reparo', inativo: 'Inativa' };
 const PAPEIS = { anunciante: 'Anunciante', ponto: 'Dono de ponto', vendedor: 'Vendedor' };
 const CICLOS = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
-// Mesma conta da vitrine (public/planos.page.js): o número grande que o
-// cliente vê sai do dado, não de texto guardado. Aqui ele aparece ao lado do
-// campo pra o dono conferir o efeito do que está digitando.
-const HORAS_ABERTO_DIA = 12;
-const DIAS_MES = 30;
-function horasDeTelaPorMes(p) {
-  if (!p.segundos_por_hora || !p.pontos_incluidos) return '';
-  const h = Math.round((p.segundos_por_hora * p.pontos_incluidos * HORAS_ABERTO_DIA * DIAS_MES) / 3600);
-  return `= até ${h}h de tela/mês`;
-}
 
 function selectStatus(mapa, atual, attrs) {
   return `<select class="mini" ${attrs}>
@@ -635,11 +625,12 @@ const ALIASES_ANTIGOS = {
   // Entrada foi encerrada como área da navegação (22/09/2026, pedido do
   // dono): Candidaturas virou aba de Rede (pertence conceitualmente a
   // pontos, não a "gente entrando"), Mensagens virou rota sem menu própria
-  // (aberta pelo aviso da Visão geral), Convites saiu da interface —
-  // `renderConvites`/`/admin/convites` continuam existindo no código
-  // (legado, sem UI) só não navega mais lá; o hash antigo `#convites` cai
-  // sozinho em visaogeral (resolverAlvo já degrada assim quando o módulo
-  // não existe mais).
+  // (aberta pelo aviso da Visão geral), Convites saiu da interface — a tela
+  // foi removida do código na consolidação final (24/09/2026); `POST
+  // /admin/convites` continua no backend só pra aprovar candidatura antiga
+  // sem conta (ver `data-aprovar` em Candidaturas). O hash antigo `#convites`
+  // cai sozinho em visaogeral (resolverAlvo já degrada assim quando o
+  // módulo não existe mais).
   candidaturas: 'rede/candidaturas',
   contato: 'mensagens',
   criativos: 'aprovacao',
@@ -653,17 +644,12 @@ const ALIASES_ANTIGOS = {
   bancohoras: 'rede/pontos',
   // "Anunciantes" virou a aba "Contas" de Contas (rodada Contas, 22/09/2026).
   anunciantes: 'contas/contas',
-  // Comissões saiu de aba da Central Financeira (revisão final da Visão
-  // geral, 23/09/2026) e, na mesma data, a reconstrução de Contas + Categorias
-  // (outro agente, mergeada nesta branch) removeu de vez a lista global de
-  // vendedores (`renderVendedores`/módulo `vendedores`) — vendedor/parceiro
-  // saiu de toda a UI, o cadastro de comissões da conta agora vive na ficha
-  // dela em Contas. Sem alias explícito daqui pra baixo: `#comissoes`,
-  // `#vendedores` e `#financeiro/comissoes` caem sozinhos em `visaogeral`
-  // (resolverAlvo já degrada assim quando `buscarModulo()` não acha o id —
-  // mesmo padrão do alias "custos"). Backend (`GET/PATCH /admin/comissoes`,
-  // `/admin/vendedores`) e as tabelas continuam intactos, só sem tela que
-  // os chame.
+  // Programa de vendedores aposentado (23/09/2026): Comissões e Vendedores
+  // saíram da UI, e na consolidação final (24/09/2026) as telas e as rotas
+  // (`/admin/comissoes`, `/admin/vendedores` → 410) saíram do código. Sem
+  // alias explícito daqui pra baixo: `#comissoes`, `#vendedores`,
+  // `#financeiro/comissoes` e `#custos` caem sozinhos em `visaogeral`
+  // (resolverAlvo já degrada assim quando `buscarModulo()` não acha o id).
   // "Planos" virou "Ofertas" (reformulação comercial, 22/09/2026) —
   // Arquivados e Benefícios não têm mais aba própria, caem em Preços (mesmo
   // padrão de telas/ocupação acima).
@@ -743,12 +729,10 @@ const MODULOS = [
     // "Ofertas" (reformulação comercial, 22/09/2026) — substitui "Planos"
     // na navegação. Essencial/Pro/Prime são produtos fixos (Parte B do
     // pedido do dono); Arquivados e Benefícios saíram da UI de propósito
-    // (Parte K/D) — `renderPlanos`/`renderPlanosArquivados`/
-    // `renderBeneficios` continuam definidas mais abaixo, só sem aba que
-    // chame, por enquanto (limpeza fica pra outra rodada, pedido
-    // explícito: não gastar esta rodada removendo código legado). Inicial e
-    // Básico (os produtos de comodato) saíram de vez em 24/09/2026 (ADR-016):
-    // ser ponto não é plano, gera créditos.
+    // (Parte K/D) e o código delas saiu na consolidação final (24/09/2026,
+    // rotas de escrita → 410). Inicial e Básico (os produtos de comodato)
+    // saíram de vez em 24/09/2026 (ADR-016): ser ponto não é plano, gera
+    // créditos.
     id: 'ofertas',
     nome: 'Ofertas',
     abas: [
@@ -760,10 +744,9 @@ const MODULOS = [
   // dono): Anúncios próprios virou página própria — Mídia Mostraí —, e
   // Aprovação perdeu item de menu (mesmo padrão de Mensagens abaixo: o
   // aviso mora na Visão geral, `oculto` tira o botão sem tirar o módulo
-  // de `buscarModulo`, a rota `#aprovacao` continua funcionando).
-  // `renderCriativos`/`renderMeusAnuncios` (a versão antiga, com "Criar
-  // conta própria") continuam definidas mais abaixo como legado sem
-  // chamador — `renderMeusAnuncios` foi substituída por `renderMidiaMostrai`.
+  // de `buscarModulo`, a rota `#aprovacao` continua funcionando). A versão
+  // antiga de "Meus anúncios" (com "Criar conta própria") foi substituída
+  // por `renderMidiaMostrai` e removida do código em 24/09/2026.
   { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
   // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
   // pendência mora na Visão geral (PENDENCIAS_OPERACIONAIS) e leva pra cá. `oculto`
@@ -792,11 +775,8 @@ const MODULOS = [
   // 24/09/2026 (ADR-016): não existe repasse mensal ao ponto.
   {
     // Comissões saiu das abas (revisão final da Visão geral, 23/09/2026,
-    // pedido do dono: "o conceito de vendedor foi retirado do projeto").
-    // `_renderFilaComissoes` e a tabela `comissoes` continuam existindo —
-    // vendedor/comissão ainda vive dentro de Contas (rodada Contas,
-    // 22/09/2026) e não foi tocado aqui; só a Central Financeira parou de
-    // expor um separado pra ela. Ver ALIASES_ANTIGOS pro hash antigo.
+    // pedido do dono: "o conceito de vendedor foi retirado do projeto") e a
+    // fila saiu do código na consolidação final. Ver ALIASES_ANTIGOS.
     id: 'financeiro',
     nome: 'Financeiro',
     oculto: true,
@@ -841,7 +821,6 @@ const SUBTITULOS = {
   categorias: 'Segmentos do cadastro. É a categoria que impede concorrente direto na mesma tela.',
   cobrancas: 'Histórico de pagamentos confirmados.',
   trocas: 'Quem trocou de plano no meio do período e ainda não pagou a diferença.',
-  comissoes: 'Comissões de vendedor em aberto. Marcar como paga só registra aqui — o Pix é por fora.',
   eventos:
     'Eventos do San Checkout que não deram pra aplicar sozinhos: confira no Checkout e aplique o ciclo, ou marque resolvido.',
   arrependimentos:
@@ -1223,26 +1202,6 @@ function painelPendenciasOperacionais(resumo, alertasHtml) {
       ${alertasHtml ? `<div class="alertas-lista">${alertasHtml}</div>` : ''}
       <div class="pend-grade">${blocos}</div>
     </section>`;
-}
-
-// `_` (revisão final da Visão geral, 23/09/2026, seção 9 do pedido): a
-// seção grande com barra horizontal por status de ponto saiu — virou resumo
-// de uma linha (`resumoPontosCompacto`, mais abaixo). Fica marcada como
-// morta, não apagada (`paraAba` era só usado por esta chamada).
-function _barrasHorizontais(linhas, mapa, paraAba = null) {
-  if (!linhas.length) return '<p class="empty-state u-py-8">Nada cadastrado ainda.</p>';
-  const max = Math.max(...linhas.map((l) => l.qtd)) || 1;
-  const tag = paraAba ? 'button' : 'div';
-  return `<div class="bar-chart-h">${linhas
-    .map(
-      (l) => `
-    <${tag} ${paraAba ? `type="button" class="row row-clicavel" data-status-clique="${esc(l.status)}"` : 'class="row"'}>
-      <span class="nome">${esc(mapa[l.status] || l.status)}</span>
-      <span class="track"><span class="fill" data-pct="${(l.qtd / max) * 100}"></span></span>
-      <span class="valor">${l.qtd}</span>
-    </${tag}>`,
-    )
-    .join('')}</div>`;
 }
 
 // Resumo compacto de pontos por status (substitui a barra horizontal acima,
@@ -1631,25 +1590,6 @@ async function renderOcupacaoRede(el) {
       renderOcupacaoRede(el);
     }),
   );
-}
-
-// ---------- pendências ----------
-// Mesmas filas da Visão geral (ALERTAS, RESUMO.filas já carregados por
-// irPara) — nenhum dado novo, só uma lista dedicada sem os KPIs e o gráfico
-// que "Hoje" também mostra, pra quando a pergunta é só "o que eu resolvo".
-async function _renderPendencias(el) {
-  const { filas } = RESUMO;
-  const pendentes = ALERTAS.filter((a) => (filas[a.fila] || 0) > 0);
-  el.innerHTML = pendentes.length
-    ? `<div class="alertas">${pendentes
-        .map(
-          (a) => `<button type="button" class="alerta-linha ${a.urgente ? 'urgente' : ''}" data-ir="${a.aba}">
-        <span class="alerta-texto">${a.texto(filas[a.fila])}</span>
-      </button>`,
-        )
-        .join('')}</div>`
-    : '<p class="tudo-em-dia"><b>Nada pendente agora.</b> Assim que alguma fila tiver algo esperando você, aparece aqui.</p>';
-  el.querySelectorAll('[data-ir]').forEach((btn) => btn.addEventListener('click', () => irPara(btn.dataset.ir)));
 }
 
 // ---------- fila de criativos ----------
@@ -2533,164 +2473,6 @@ async function renderMidiaMostrai(el) {
       if (!r.ok) return toast('Não foi possível retirar do ar.', 'err');
       toast('Mídia retirada do ar.');
       renderMidiaMostrai(el);
-    }),
-  );
-}
-
-// ---------- meus anúncios (conta própria do Mostraí) ----------
-// A rede anunciando a si mesma. É uma conta comum em `anunciantes` com a
-// marca `conta_propria` (migration 023): entra na mesma playlist e gera os
-// mesmos contadores, mas dispensa plano e nunca gera cobrança — por isso
-// não aparece na receita nem na margem. Só pode existir uma; o índice
-// único do banco garante isso mesmo com dois cliques.
-async function _renderMeusAnuncios(el) {
-  const contas = await pegar('/admin/anunciantes');
-  const conta = contas.find((c) => c.conta_propria);
-
-  if (!conta) {
-    el.innerHTML = `
-      <div class="tabela-caixa">
-        <div class="tabela-topo"><b>Nenhuma conta própria ainda</b></div>
-        <div class="u-p-14">
-          <p class="sub u-mt-0">Crie a conta do Mostraí para anunciar a própria rede nas telas. Ela não assina plano, não é cobrada e não entra na receita.</p>
-          <form id="formContaPropria" class="card u-mw-420">
-            <label for="cpNome">Nome que aparece</label>
-            <input id="cpNome" value="Mostraí" required>
-            <label for="cpDoc">CNPJ do Mostraí</label>
-            <input id="cpDoc" placeholder="00.000.000/0000-00" required>
-            <label for="cpFreq">Vezes por hora, por tela</label>
-            <input id="cpFreq" type="number" min="1" max="60" value="1" required>
-            <button class="btn primary" type="submit">Criar conta própria</button>
-          </form>
-        </div>
-      </div>`;
-    document.getElementById('formContaPropria').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const r = await api('/admin/anunciantes', {
-        method: 'POST',
-        body: JSON.stringify({
-          nome_empresa: document.getElementById('cpNome').value,
-          cpf_cnpj: document.getElementById('cpDoc').value,
-          contato_email: 'rede+propria@mostrai.local',
-          contato_telefone: '+5516000000000',
-          status: 'ativo',
-          conta_propria: true,
-          frequencia_hora_propria: Number(document.getElementById('cpFreq').value),
-        }),
-      });
-      if (!r.ok) return toast((await r.json()).erro || 'não deu pra criar', 'err');
-      toast('conta própria criada');
-      _renderMeusAnuncios(el);
-    });
-    return;
-  }
-
-  const criativos = await pegar('/admin/criativos?status=todos');
-  const meus = criativos.filter((c) => c.anunciante_id === conta.id);
-  const aprovados = meus.filter((c) => c.status === 'aprovado').length;
-
-  el.innerHTML = `
-    <div class="tabela-caixa">
-      <div class="tabela-topo">
-        <b>${esc(conta.nome_empresa)}</b>
-        <span class="sub u-m-0">${aprovados} no ar · ${meus.length} no total · sem teto de criativos</span>
-      </div>
-      <div class="u-p-14">
-        <form id="formFreq" class="card u-mw-420 u-mb-14">
-          <label for="cpFreq2">Vezes por hora, por tela</label>
-          <input id="cpFreq2" type="number" min="1" max="60" value="${conta.frequencia_hora_propria || 1}">
-          <label for="cpStatus">Situação</label>
-          <select id="cpStatus">
-            <option value="nao"${!conta.suspenso ? ' selected' : ''}>No ar</option>
-            <option value="sim"${conta.suspenso ? ' selected' : ''}>Pausada</option>
-          </select>
-          <button class="btn ghost" type="submit">Salvar</button>
-        </form>
-
-        <form id="formSubir" class="card u-mw-420">
-          <label>Novo anúncio (vídeo ou imagem)</label>
-          <label class="btn ghost u-mb-8">Escolher arquivo<input id="cpArquivo" type="file" accept="video/*,image/*" hidden required></label>
-          <span class="u-dim u-fs-78 u-d-block u-mb-8" id="cpArquivoNome">nenhum arquivo escolhido</span>
-          <button class="btn primary" type="submit">Subir</button>
-        </form>
-        <p class="sub u-m-0 u-mt-8" id="cpMsg"></p>
-      </div>
-    </div>
-
-    <div class="tabela-caixa">
-      <table>
-        <thead><tr><th>Anúncio</th><th>Duração</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${
-          meus
-            .map(
-              (c) => `
-          <tr>
-            <td>${esc(c.arquivo_original_url || '-')}</td>
-            <td>${c.duracao_segundos ? c.duracao_segundos + 's' : '-'}</td>
-            <td>${c.status === 'aprovado' ? 'No ar' : esc(c.status)}</td>
-            <td>${
-              c.status === 'aprovado'
-                ? `<button class="btn ghost mini" data-tirar="${c.id}">Tirar do ar</button>`
-                : `<button class="btn ghost mini" data-por="${c.id}">Pôr no ar</button>`
-            }</td>
-          </tr>`,
-            )
-            .join('') || '<tr><td colspan="4">Nenhum anúncio ainda.</td></tr>'
-        }</tbody>
-      </table>
-    </div>`;
-
-  document.getElementById('formFreq').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const r = await api(`/admin/anunciantes/${conta.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        frequencia_hora_propria: Number(document.getElementById('cpFreq2').value),
-        suspenso: document.getElementById('cpStatus').value === 'sim',
-      }),
-    });
-    toast(r.ok ? 'salvo' : 'não deu pra salvar', r.ok ? 'ok' : 'err');
-  });
-
-  // O botão que escolhe o arquivo é um <label> estilizado escondendo o
-  // <input type="file"> de verdade (mesmo truque de "Subir anúncio" em
-  // Anunciantes) — sem isto o navegador desenha o próprio botão cinza
-  // "Choose File", fora do desenho do resto da tela (achado na varredura
-  // visual de 21/09/2026). Como o nome do arquivo escolhido não aparece mais
-  // sozinho, este span substitui.
-  document.getElementById('cpArquivo').addEventListener('change', (e) => {
-    document.getElementById('cpArquivoNome').textContent = e.target.files[0]?.name || 'nenhum arquivo escolhido';
-  });
-
-  // Upload vai em multipart, então não passa pelo `api()`, que manda JSON.
-  document.getElementById('formSubir').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const arquivo = document.getElementById('cpArquivo').files[0];
-    if (!arquivo) return;
-    const msg = document.getElementById('cpMsg');
-    msg.textContent = 'Enviando e normalizando o vídeo... isso leva alguns segundos.';
-    const dados = new FormData();
-    dados.append('arquivo', arquivo);
-    const r = await fetch(`${API_BASE_URL}/admin/anunciantes/${conta.id}/criativos`, {
-      method: 'POST',
-      body: dados,
-      credentials: 'include',
-    });
-    if (!r.ok) {
-      msg.textContent = '';
-      return toast((await r.json()).erro || 'falhou', 'err');
-    }
-    toast('anúncio enviado');
-    _renderMeusAnuncios(el);
-  });
-
-  el.querySelectorAll('[data-tirar],[data-por]').forEach((b) =>
-    b.addEventListener('click', async () => {
-      const id = b.dataset.tirar || b.dataset.por;
-      const status = b.dataset.tirar ? 'reprovado' : 'aprovado';
-      const r = await api(`/admin/criativos/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-      if (!r.ok) return toast('não deu pra mudar', 'err');
-      _renderMeusAnuncios(el);
     }),
   );
 }
@@ -5285,290 +5067,12 @@ async function renderCandidaturaDetalhe(el, id) {
   });
 }
 
-// ---------- convites ----------
-// Sem rota na UI desde a reorganização da Entrada (22/09/2026) — mantido
-// como código morto autorizado, não referenciado pelo router.
-async function _renderConvites(el) {
-  const convites = await pegar('/admin/convites');
-  const corpo = `<table><thead><tr>
-      <th data-ord>Criado</th><th>Papéis</th><th data-ord>Pra quem</th><th data-ord>Vale até</th><th data-ord>Situação</th><th>Conta criada</th><th></th>
-    </tr></thead><tbody>
-    ${convites
-      .map(
-        (c) => `<tr data-filtro="${c.situacao}">
-      <td>${data(c.criado_em)}</td>
-      <td>${(c.papeis || []).map((x) => `<span class="badge badge-ok">${esc(PAPEIS[x] || x)}</span>`).join(' ')}</td>
-      <td>${esc(c.nome_sugerido || '-')}<div class="u-dim u-fs-72">${esc(c.email_sugerido || '')}${c.candidatura_id ? ` · candidatura #${c.candidatura_id}` : ''}</div></td>
-      <td>${data(c.expira_em)}</td>
-      <td>${c.situacao === 'aberto' ? '<span class="badge badge-pendente">aberto</span>' : c.situacao === 'usado' ? `<span class="badge badge-ok">usado ${data(c.usado_em)}</span>` : '<span class="badge badge-err">expirado/revogado</span>'}</td>
-      <td>${c.conta_nome ? esc(c.conta_nome) : '-'}</td>
-      <td>${c.situacao === 'aberto' ? `<button class="btn ghost mini" data-copiar-link="${esc(c.link)}">Copiar link</button> <button class="btn ghost mini u-txt-erro" data-revogar="${c.id}">Revogar</button>` : ''}</td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = `
-    <details class="bloco-novo" open>
-      <summary class="btn ghost mini">+ Novo convite (sem candidatura)</summary>
-      <form class="card u-mt-12 u-mw-520" id="formNovoConvite">
-        <div><label>Papéis da conta que vai nascer</label>
-          <div class="benef-lista">
-            ${Object.entries(PAPEIS)
-              .map(
-                ([v, n]) =>
-                  `<label class="benef-check"><input type="checkbox" name="papeis" value="${v}" ${v === 'ponto' ? 'checked' : ''}><span>${n}</span></label>`,
-              )
-              .join('')}
-          </div></div>
-        <div class="field-row">
-          <div class="u-col"><label>Nome (sugestão, opcional)</label><input class="mini" name="nome_sugerido"></div>
-          <div class="u-col"><label>E-mail (sugestão, opcional)</label><input class="mini" type="email" name="email_sugerido"></div>
-          <div class="u-col-fixa-90"><label>Validade (dias)</label><input class="mini" type="number" name="validade_dias" value="7" min="1" max="60"></div>
-        </div>
-        <button class="btn primary" type="submit">Gerar link</button>
-        <p class="form-msg" id="msgNovoConvite"></p>
-      </form>
-    </details>
-    ${
-      convites.length
-        ? caixaTabela({
-            chips: [
-              { valor: 'aberto', nome: 'Abertos' },
-              { valor: 'usado', nome: 'Usados' },
-              { valor: 'expirado', nome: 'Expirados' },
-              { valor: '', nome: 'Todos' },
-            ],
-            html: corpo,
-            dica: 'Convite é o único caminho de entrada de dono de ponto e de vendedor. Convite de ponto vindo de candidatura já cria o ponto e a Tela 1 quando a pessoa se cadastra.',
-          })
-        : '<p class="empty-state">Nenhum convite gerado ainda.</p>'
-    }`;
-
-  if (convites.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-  document.getElementById('formNovoConvite').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgNovoConvite');
-    const papeis = [...e.target.querySelectorAll('input[name="papeis"]:checked')].map((i) => i.value);
-    if (!papeis.length) {
-      msg.textContent = 'Marque ao menos um papel.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    const r = await api('/admin/convites', {
-      method: 'POST',
-      body: JSON.stringify({
-        papeis,
-        nome_sugerido: e.target.nome_sugerido.value || null,
-        email_sugerido: e.target.email_sugerido.value || null,
-        validade_dias: Number(e.target.validade_dias.value) || 7,
-      }),
-    });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao gerar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    const { link } = await r.json();
-    copiarTexto(link).catch(() => {});
-    prompt('Convite gerado (já copiado). Mande esse link pra pessoa:', link);
-    _renderConvites(el);
-  });
-  el.querySelectorAll('[data-copiar-link]').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      copiarTexto(btn.dataset.copiarLink).then(
-        () => toast('Link copiado.'),
-        () => prompt('Link:', btn.dataset.copiarLink),
-      );
-    }),
-  );
-  el.querySelectorAll('[data-revogar]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Revogar esse convite? O link para de funcionar na hora.')) return;
-      const r = await api(`/admin/convites/${btn.dataset.revogar}/revogar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível revogar.', 'err');
-      toast('Convite revogado.');
-      _renderConvites(el);
-    }),
-  );
-}
-
-// ---------- custos fixos ----------
-// Sem rota na UI desde a rodada Financeiro (22/09/2026, pedido do dono: a
-// Mostraí não vira sistema de controle contábil) — mantido como código
-// morto autorizado, não referenciado pelo router. `custos_fixos` segue no
-// banco, `margemMensal` (GET /admin/resumo) segue calculada com o último
-// valor gravado — nenhuma tela deste admin lê `margemMensal` (conferido:
-// só `receitaMensal`/`receitaConfirmadaMes` aparecem na Visão geral), então
-// não há métrica visível ficando enganosa por custo desatualizado.
-async function _renderCustos(el) {
-  const custos = await pegar('/admin/custos-fixos');
-  const total = custos.filter((c) => c.ativo).reduce((t, c) => t + Number(c.valor_mensal), 0);
-  const corpo = `<table><thead><tr><th data-ord>Nome</th><th data-ord>R$/mês</th><th>Observação</th><th data-ord>Entra na margem</th><th></th></tr></thead><tbody>
-    ${custos
-      .map(
-        (c) => `<tr data-filtro="${c.ativo ? 'ativo' : 'inativo'}">
-      <td><input class="mini u-w-200" data-custo="nome" data-id="${c.id}" value="${esc(c.nome)}"></td>
-      <td><input class="mini u-w-100" type="number" step="0.01" min="0" data-custo="valor_mensal" data-id="${c.id}" value="${c.valor_mensal}"></td>
-      <td><input class="mini u-w-280" data-custo="observacao" data-id="${c.id}" value="${esc(c.observacao || '')}"></td>
-      <td class="u-ta-c"><input type="checkbox" data-custo="ativo" data-id="${c.id}" ${c.ativo ? 'checked' : ''}></td>
-      <td><button class="btn ghost mini u-txt-erro" data-excluir-custo="${c.id}">×</button></td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Custos fixos ativos</span><b>${fmt(total)}</b><span class="kpi-caption">por mês, somados na margem da visão geral</span></div>
-      <div class="kpi-card"><span class="kpi-label">Amortização das telas</span><b>${fmt(RESUMO.financeiro.amortizacaoMensal)}</b><span class="kpi-caption">vem do custo de cada tela (aba Telas)</span></div>
-    </div>
-    <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Novo custo fixo</summary>
-      <form class="card u-mt-12 u-mw-420" id="formNovoCusto">
-        <div><label>Nome (ex.: DAS MEI, Contador, Domínio, Deslocamento)</label><input class="mini" name="nome" required></div>
-        <div><label>Valor por mês (R$)</label><input class="mini" type="number" step="0.01" min="0" name="valor_mensal" required></div>
-        <div><label>Observação</label><input class="mini" name="observacao"></div>
-        <button class="btn primary" type="submit">Adicionar</button>
-        <p class="form-msg" id="msgNovoCusto"></p>
-      </form>
-    </details>
-    ${
-      custos.length
-        ? caixaTabela({
-            chips: [
-              { valor: '', nome: 'Todos' },
-              { valor: 'ativo', nome: 'Ativos' },
-              { valor: 'inativo', nome: 'Desligados' },
-            ],
-            html: corpo,
-            dica: 'Salva ao sair do campo. Custo anual? Lance o valor ÷ 12.',
-          })
-        : '<p class="empty-state">Nenhum custo lançado.</p>'
-    }`;
-
-  if (custos.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-  el.querySelectorAll('[data-custo]').forEach((campo) =>
-    campo.addEventListener('change', async () => {
-      const valor =
-        campo.type === 'checkbox'
-          ? campo.checked
-          : campo.dataset.custo === 'valor_mensal'
-            ? Number(campo.value)
-            : campo.value;
-      if (await salvar(`/admin/custos-fixos/${campo.dataset.id}`, { [campo.dataset.custo]: valor }, campo)) {
-        RESUMO = await pegar('/admin/resumo');
-        if (campo.dataset.custo !== 'nome' && campo.dataset.custo !== 'observacao') _renderCustos(el);
-      }
-    }),
-  );
-  el.querySelectorAll('[data-excluir-custo]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Excluir esse custo?')) return;
-      const r = await api(`/admin/custos-fixos/${btn.dataset.excluirCusto}`, { method: 'DELETE' });
-      if (r.ok) {
-        RESUMO = await pegar('/admin/resumo');
-        _renderCustos(el);
-      }
-    }),
-  );
-  document.getElementById('formNovoCusto').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgNovoCusto');
-    const r = await api('/admin/custos-fixos', {
-      method: 'POST',
-      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
-    });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    RESUMO = await pegar('/admin/resumo');
-    _renderCustos(el);
-  });
-}
-
-// ---------- planos ----------
-// O QUE VALE PRO TIER INTEIRO E O QUE VALE SÓ PRA ESTE CICLO.
-//
-// Uma linha de `planos` é um tier × um ciclo — "Essencial trimestral" é uma
-// linha, "Essencial anual" é outra. O admin mostra as quatro como cartões
-// separados, e todo campo aparece editável nos quatro. Isso esconde a regra:
-//
-//   O PRODUTO é do tier. A OFERTA é do ciclo.
-//
-// O que o cliente COMPRA (nome, subtítulo, tempo de tela, pontos, duração da
-// peça, criativos, benefícios, preço cheio) tem que ser igual nos quatro
-// ciclos — senão a vitrine promete 90s de tela na aba Mensal e 120s na
-// Trimestral, com o mesmo nome e o mesmo card. O que MUDA por ciclo é só como
-// aquilo é vendido: o desconto, e os controles de vitrine.
-//
-// Mexer num campo de tier num cartão só NÃO propaga pros outros três — essa é
-// a armadilha. A única coisa que muda em todos de uma vez é o TEXTO de um
-// benefício, porque `beneficios` é catálogo compartilhado: editar lá reescreve
-// o card dos 12 planos ao mesmo tempo, sem versão nova.
-//
-// Não dá pra travar isso no banco sem quebrar a versão de plano (RN-27: cada
-// edição de contrato publica um id novo, e os quatro ciclos não versionam
-// juntos). Então a defesa é ver: o painel compara os quatro e reclama em cima
-// quando eles discordam.
-const CAMPOS_DO_TIER = {
-  nome: 'Nome',
-  rotulo: 'Subtítulo',
-  valor_mensal_cheio: 'Preço cheio',
-  segundos_por_hora: 'Segundos de tela por hora',
-  pontos_incluidos: 'Pontos incluídos',
-  duracao_maxima_segundos: 'Duração da peça',
-  limite_criativos: 'Criativos',
-  desconto_comodato_percentual: 'Desconto comodato',
-};
-
-// Compara os campos de tier entre os ciclos do mesmo tier. Só planos que ainda
-// estão de pé: versão arquivada guarda o contrato antigo de propósito, e
-// comparar com ela acusaria divergência em toda edição legítima.
-function divergenciasPorTier(planos) {
-  const porTier = {};
-  for (const p of planos) {
-    if (p.arquivado_em || p.fundador) continue;
-    porTier[p.tier] = porTier[p.tier] || [];
-    porTier[p.tier].push(p);
-  }
-  const achados = [];
-  for (const [tier, linhas] of Object.entries(porTier)) {
-    if (linhas.length < 2) continue;
-    for (const [campo, rotulo] of Object.entries(CAMPOS_DO_TIER)) {
-      const vistos = new Map();
-      for (const p of linhas) {
-        const v = p[campo] == null ? '' : String(p[campo]);
-        vistos.set(v, [...(vistos.get(v) || []), CICLOS[p.compromisso_meses] || p.compromisso_meses]);
-      }
-      if (vistos.size > 1) achados.push({ tier, rotulo, vistos });
-    }
-  }
-  return achados;
-}
-
-function avisoDivergencia(planos) {
-  const achados = divergenciasPorTier(planos);
-  if (!achados.length) return '';
-  return `
-    <div class="aviso-rede u-mb-16">
-      <b>Os ciclos do mesmo plano estão diferentes entre si.</b>
-      O cliente vê o mesmo nome nas quatro abas da vitrine, então o que está abaixo ele lê como promessa
-      diferente pro mesmo plano. Acerte nos quatro cartões:
-      <ul class="u-mt-6">
-        ${achados
-          .map(
-            (a) =>
-              `<li><b>${esc(a.tier)} · ${esc(a.rotulo)}</b>: ` +
-              [...a.vistos].map(([v, ciclos]) => `${esc(ciclos.join('/'))} = ${esc(v || '(vazio)')}`).join(' · ') +
-              '</li>',
-          )
-          .join('')}
-      </ul>
-    </div>`;
-}
+// ---------- ofertas ----------
+// Uma linha de `planos` é um tier × um ciclo. O PRODUTO (nome, tempo de
+// tela, pontos, duração, criativos, benefícios, preço-base) é do tier e vale
+// igual nos quatro ciclos; a OFERTA (desconto) é do ciclo. A grade antiga,
+// que editava as 12 linhas soltas, saiu do código em 24/09/2026 — o que
+// resta é esta tela, que só mexe em preço-base e desconto por ciclo.
 
 // ---------- OFERTAS > PREÇOS (reformulação comercial, 22/09/2026) ----------
 // 3 produtos fixos (Essencial/Pro/Prime — chave `tier`, não editável aqui:
@@ -6328,401 +5832,6 @@ async function renderPromocoes(el) {
   });
 }
 
-async function renderPlanos(el) {
-  const [planos, beneficios] = await Promise.all([pegar('/admin/planos'), pegar('/admin/beneficios')]);
-
-  // Lista todos, inclusive os indisponíveis: um benefício desativado
-  // continua vinculado ao plano (só não aparece no site), e some daqui
-  // significaria apagar esse vínculo no próximo clique.
-  const opcoesBeneficio = (marcadosIds) =>
-    beneficios
-      .map(
-        (b) => `
-    <label class="benef-check">
-      <input type="checkbox" value="${b.id}" ${marcadosIds.includes(b.id) ? 'checked' : ''}>
-      <span class="u-op-55"${b.ativo ? '' : ''}>${esc(b.texto)}${b.ativo ? '' : ' <i>(indisponível)</i>'}</span>
-    </label>`,
-      )
-      .join('');
-
-  const porCiclo = {};
-  planos.forEach((p) => {
-    porCiclo[p.compromisso_meses] = porCiclo[p.compromisso_meses] || [];
-    porCiclo[p.compromisso_meses].push(p);
-  });
-
-  // Item 9 da spec: os campos se dividem em dois. `data-grupo="vitrine"` salva
-  // na hora, porque não alcança quem já assinou. `data-grupo="contrato"` não
-  // salva sozinho: acende o botão da linha, e sair de lá é publicar uma versão
-  // nova. Um input que parece salvar e devolve 409 seria pior que não ter.
-  const contrato = (campo, p) => `data-campo="${campo}" data-grupo="contrato" data-id="${p.id}"`;
-  const vitrine = (campo, p) => `data-campo="${campo}" data-grupo="vitrine" data-id="${p.id}"`;
-
-  // Preço cheio e desconto são o que o admin digita; valor_mensal (o que é
-  // cobrado de verdade) é sempre calculado a partir dos dois, no servidor —
-  // por isso aqui é só leitura, recalculado ao vivo pra conferência.
-  const valorComDesconto = (p) => {
-    const cheio = Number(p.valor_mensal_cheio ?? p.valor_mensal);
-    const desconto = Number(p.desconto_percentual) || 0;
-    return Math.round(cheio * (1 - desconto / 100) * 100) / 100;
-  };
-  // O cartão do admin é o cartão da vitrine com os campos abertos: mesma
-  // ordem (nome, subtítulo, preço riscado + desconto, preço grande, lista de
-  // benefícios) e o mesmo botão embaixo, só que salvando em vez de assinar.
-  // A tabela de 15 colunas que havia aqui mostrava tudo e não parecia nada:
-  // o dono editava preço sem ver o que o cliente ia ver.
-  const cartaoPlano = (p) => `
-    <div class="plano-edit ${p.destaque_no_site ? 'popular' : ''} ${p.ativo ? '' : 'fora'}" data-linha="${p.id}" data-ciclo="${p.compromisso_meses}">
-      <div class="plano-edit-chips">
-        <label class="chip-check" title="Marca como 'Mais escolhido' na vitrine">
-          <input type="checkbox" ${vitrine('destaque_no_site', p)} ${p.destaque_no_site ? 'checked' : ''}> Mais escolhido
-        </label>
-        <label class="chip-check" title="Desmarcado, o plano some da vitrine — quem já assinou continua pagando igual">
-          <input type="checkbox" ${vitrine('ativo', p)} ${p.ativo ? 'checked' : ''}> Na vitrine
-        </label>
-      </div>
-
-      <input class="ed-nome" ${contrato('nome', p)} value="${esc(p.nome)}" aria-label="Nome do plano">
-      <input class="ed-rotulo" ${vitrine('rotulo', p)} value="${esc(p.rotulo)}" placeholder="Subtítulo (opcional)" aria-label="Subtítulo">
-
-      <div class="ed-precos">
-        <label class="ed-campo">Preço cheio
-          <span class="ed-moeda">R$<input type="number" step="0.01" min="0" ${contrato('valor_mensal_cheio', p)} data-preco-cheio="${p.id}" value="${p.valor_mensal_cheio ?? p.valor_mensal}"></span>
-        </label>
-        <label class="ed-campo">Desconto
-          <span class="ed-moeda"><input type="number" step="0.01" min="0" max="99" ${contrato('desconto_percentual', p)} data-desconto="${p.id}" value="${p.desconto_percentual ?? ''}" placeholder="0">%</span>
-        </label>
-      </div>
-      <div class="ed-preco-final">
-        <b data-valor-final="${p.id}">${fmt(valorComDesconto(p))}</b>/mês
-        <span class="u-dim">${p.compromisso_meses === 1 ? 'cobrado todo mês' : `· cobrado <b data-total-ciclo="${p.id}">${fmt(valorComDesconto(p) * p.compromisso_meses)}</b> a cada ${p.compromisso_meses} meses`}</span>
-      </div>
-
-      <ul class="ed-lista">
-        <li class="ed-freq">
-          <input type="number" min="10" max="3600" step="10" ${contrato('segundos_por_hora', p)} value="${p.segundos_por_hora ?? ''}" aria-label="Segundos de tela por hora">s de tela por hora, em cada ponto
-          <span class="u-dim" data-horas-mes="${p.id}">${horasDeTelaPorMes(p)}</span>
-        </li>
-        <li class="ed-freq">
-          <input type="number" min="1" max="999" ${contrato('pontos_incluidos', p)} value="${p.pontos_incluidos ?? ''}" aria-label="Pontos incluídos">pontos da rede, escolhidos pelo cliente
-        </li>
-        <li class="ed-freq">
-          peça de até <input type="number" min="5" max="60" ${contrato('duracao_maxima_segundos', p)} value="${p.duracao_maxima_segundos ?? ''}" aria-label="Duração máxima da peça">segundos
-        </li>
-      </ul>
-      <div class="benef-lista" data-beneficios-de="${p.id}">${opcoesBeneficio(p.beneficio_ids || [])}</div>
-
-      <div class="ed-tecnicos">
-        <label>Criativos<input type="number" min="1" max="3" ${contrato('limite_criativos', p)} value="${p.limite_criativos}"></label>
-        <label title="Vazio = sem teto de vagas">Vagas<input type="number" min="1" ${vitrine('vagas', p)} value="${p.vagas ?? ''}" placeholder="∞"></label>
-        <label title="Desconto extra (%) pra conta que também é dona de ponto (comodato), só nesse plano">Comodato %<input type="number" min="1" max="100" ${contrato('desconto_comodato_percentual', p)} value="${p.desconto_comodato_percentual ?? ''}" placeholder="-"></label>
-      </div>
-
-      <button class="btn primary block" data-nova-versao="${p.id}" disabled>Salvar novo plano</button>
-      <p class="ed-id">${esc(p.id)} · ${CICLOS[p.compromisso_meses] || p.compromisso_meses + 'x'}</p>
-    </div>`;
-
-  el.innerHTML = `
-    ${avisoDivergencia(planos)}
-    <p class="empty-state u-ta-l u-p-0 u-pb-12">
-      <b>O produto é do tier; a oferta é do ciclo.</b>
-      Nome, subtítulo, preço cheio, tempo de tela, pontos, duração da peça, criativos, benefícios e desconto
-      comodato descrevem o mesmo plano nas quatro abas da vitrine — mudar num cartão só faz as abas
-      discordarem, então mude nos quatro. Só <b>desconto</b>, <b>vagas</b>, <b>Na vitrine</b> e
-      <b>Mais escolhido</b> são deste ciclo e desse cartão.
-      O <b>texto</b> de um benefício é a exceção: ele é do catálogo, e editar lá reescreve o card de todos os
-      planos ao mesmo tempo.
-    </p>
-    <details class="bloco-novo">
-      <summary class="btn ghost mini">+ Novo plano (novo preço/promoção, não mexe no que já existe)</summary>
-      <form class="card u-mt-12 u-mw-520" id="formNovoPlano">
-        <div><label>ID único (ex.: destaque-black-friday)</label><input class="mini" name="id" required></div>
-        <div><label>Tier</label><select class="mini" name="tier" required>
-          <!-- rótulo = nome comercial de hoje; value = tier, que é chave de
-               regra no código e não muda quando o nome muda. -->
-          <option value="essencial">Essencial</option><option value="destaque">Pro</option><option value="maximo">Prime</option>
-        </select></div>
-        <div><label>Nome exibido</label><input class="mini" name="nome" required></div>
-        <div class="field-row">
-          <div class="u-col"><label>Compromisso</label><select class="mini" name="compromisso_meses" required>
-            ${Object.entries(CICLOS)
-              .map(([m, nome]) => `<option value="${m}" ${m === '3' ? 'selected' : ''}>${nome} (${m}x)</option>`)
-              .join('')}
-          </select></div>
-          <div class="u-col"><label>Segundos de tela/hora</label><input class="mini" type="number" name="segundos_por_hora" value="90" min="10" max="3600" step="10" required></div>
-        </div>
-        <div class="field-row">
-          <div class="u-col"><label>Pontos incluídos</label><input class="mini" type="number" name="pontos_incluidos" value="3" min="1" required></div>
-          <div class="u-col"><label>Peça até (segundos)</label><input class="mini" type="number" name="duracao_maxima_segundos" value="15" min="5" max="60" required></div>
-        </div>
-        <div class="field-row">
-          <div class="u-col"><label>Preço cheio (R$)</label><input class="mini" type="number" step="0.01" name="valor_mensal_cheio" required></div>
-          <div class="u-col"><label>Desconto (%, vazio = sem desconto)</label><input class="mini" type="number" step="0.01" min="0" max="99" name="desconto_percentual"></div>
-        </div>
-        <div><label>Limite de criativos</label><input class="mini" type="number" name="limite_criativos" value="1" min="1" max="3" required></div>
-        <!-- Cobertura virou rótulo histórico: quem manda agora é o campo de
-             pontos incluídos, logo acima. Fica oculto porque o INSERT ainda
-             exige a coluna. -->
-        <div hidden><label>Cobertura</label><select class="mini" name="cobertura" required>
-          <option value="todos_pontos">Todos os pontos</option><option value="tres_pontos_dia">3 pontos/dia</option><option value="um_ponto_dia">1 ponto/dia</option>
-        </select></div>
-        <div><label>Rótulo (ex.: "Preço promocional, travado pelo compromisso")</label><input class="mini" name="rotulo"></div>
-        <div class="field-row">
-          <div class="u-col"><label>Vagas (vazio = sem teto)</label><input class="mini" type="number" name="vagas" min="1"></div>
-        </div>
-        <div><label>Desconto comodato (%, vazio = nenhum)</label><input class="mini" type="number" name="desconto_comodato_percentual" min="1" max="100" title="Desconto extra pra conta que também é dona de ponto, só nesse plano"></div>
-        <div class="field-row">
-        </div>
-        <div><label>Benefícios do plano</label><div class="benef-lista" id="novoPlanoBeneficios">${opcoesBeneficio([])}</div></div>
-        <button class="btn primary" type="submit">Criar plano</button>
-        <p class="form-msg" id="msgNovoPlano"></p>
-      </form>
-    </details>
-
-    ${Object.keys(CICLOS)
-      .map((meses) => {
-        const doCiclo = porCiclo[meses] || [];
-        const ativos = doCiclo.filter((p) => p.ativo).length;
-        return `
-      <div class="panel-head u-m-0 u-mt-24 u-mb-10">
-        <h3>${CICLOS[meses]} <span class="badge ${ativos >= 3 ? 'badge-err' : 'badge-ok'} u-ml-6">${ativos}/3 na vitrine</span></h3>
-      </div>
-      ${doCiclo.length ? `<div class="planos-edit-grade">${doCiclo.map(cartaoPlano).join('')}</div>` : '<p class="empty-state u-py-6">Nenhum plano nessa modalidade.</p>'}`;
-      })
-      .join('')}
-
-    <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      <b>Plano assinado é imutável pra quem assinou.</b> Nome, preço cheio, desconto, frequência, criativos, "tela após", desconto comodato e benefícios mudam o contrato:
-      editar um deles acende "Salvar novo plano", que aposenta a versão atual e cria outra com id novo. Quem já assinou fica na antiga, pagando o mesmo.
-      O valor cobrado é sempre calculado (preço cheio menos o desconto). Sem desconto, o preço cheio é o valor cobrado, e o site não mostra preço riscado.
-      Vagas, rótulo, destaque e Ativo são só vitrine. Salvam na hora e não alcançam ninguém que já é cliente.
-      Desativar um plano só tira ele do site; quem já assinou continua pagando o mesmo valor até cancelar.
-      "Tela após": módulo cruzado. Ao completar esse nº de meses de cobertura, o anunciante ganha direito a uma tela no comércio dele (aparece como bônus no painel; o resgate cai em Candidaturas). O módulo inverso (ponto que ganha anúncio grátis) fica em Opções de comodato.
-      "Desconto comodato": desconto extra pra conta que também é dona de ponto, por plano, que some do valor cobrado quando a conta tem o papel "ponto".
-      Parceiro (antigo "fundador") não é plano de catálogo: é status de conta, marcado à mão em Anunciantes → "Marcar parceiro".
-    </p>`;
-
-  const valorDo = (inp) => {
-    if (inp.type === 'checkbox') return inp.checked;
-    if (inp.dataset.campo === 'nome' || inp.dataset.campo === 'rotulo') return inp.value || null;
-    return inp.value === '' ? null : Number(inp.value);
-  };
-  // O botão fica sempre no pé do cartão (como o "Assinar" da vitrine), só
-  // que desligado até algo de contrato mudar — botão que some é botão que o
-  // dono procura, e botão sempre clicável convida a publicar versão à toa.
-  const acenderBotao = (id) => {
-    const btn = el.querySelector(`[data-nova-versao="${id}"]`);
-    if (btn) btn.disabled = false;
-  };
-
-  el.querySelectorAll('[data-grupo="vitrine"]').forEach((inp) => {
-    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', async () => {
-      if (!(await salvar(`/admin/planos/${inp.dataset.id}`, { [inp.dataset.campo]: valorDo(inp) }, inp)))
-        renderPlanos(el);
-    });
-  });
-
-  el.querySelectorAll('[data-grupo="contrato"]').forEach((inp) => {
-    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => acenderBotao(inp.dataset.id));
-  });
-
-  // Preço cheio e desconto recalculam o valor final ao vivo, antes mesmo de
-  // publicar a versão nova — pra conferir o resultado sem chute.
-  el.querySelectorAll('[data-preco-cheio], [data-desconto]').forEach((inp) => {
-    inp.addEventListener('input', () => {
-      const id = inp.dataset.precoCheio || inp.dataset.desconto;
-      const linha = el.querySelector(`[data-linha="${id}"]`);
-      const cheio = Number(linha.querySelector('[data-preco-cheio]').value) || 0;
-      const desconto = Number(linha.querySelector('[data-desconto]').value) || 0;
-      const final = Math.round(cheio * (1 - desconto / 100) * 100) / 100;
-      linha.querySelector('[data-valor-final]').textContent = fmt(final);
-      // Plano mensal não imprime total do ciclo (seria o mesmo número duas
-      // vezes), então aqui o elemento pode não existir.
-      const total = linha.querySelector('[data-total-ciclo]');
-      if (total) total.textContent = fmt(final * Number(linha.dataset.ciclo));
-    });
-  });
-
-  el.querySelectorAll('[data-beneficios-de]').forEach((caixa) => {
-    caixa.addEventListener('change', () => acenderBotao(caixa.dataset.beneficiosDe));
-  });
-
-  el.querySelectorAll('[data-nova-versao]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.novaVersao;
-      const linha = el.querySelector(`[data-linha="${id}"]`);
-      const mudancas = {};
-      linha.querySelectorAll('[data-grupo="contrato"]').forEach((inp) => {
-        mudancas[inp.dataset.campo] = valorDo(inp);
-      });
-      const caixa = linha.querySelector('[data-beneficios-de]');
-      if (caixa) mudancas.beneficio_ids = [...caixa.querySelectorAll('input:checked')].map((i) => Number(i.value));
-
-      if (
-        !confirm(
-          `Publicar uma versão nova de "${id}"?\n\n` +
-            'A versão atual é aposentada e vai pra "Planos arquivados". ' +
-            'Quem já assinou continua nela, pagando o mesmo e com os mesmos benefícios. Nada muda pra essas contas. ' +
-            'A versão nova vale só pra quem assinar daqui pra frente, e nasce com um id novo.',
-        )
-      )
-        return;
-
-      const r = await api(`/admin/planos/${id}/nova-versao`, { method: 'POST', body: JSON.stringify(mudancas) });
-      if (!r.ok) {
-        toast((await r.json().catch(() => ({}))).erro || 'Não deu pra publicar.', true);
-        return;
-      }
-      toast(`Versão nova publicada: ${(await r.json()).id}`);
-      renderPlanos(el);
-    });
-  });
-
-  document.getElementById('formNovoPlano').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const dados = Object.fromEntries(new FormData(e.target));
-    dados.beneficio_ids = [...document.querySelectorAll('#novoPlanoBeneficios input:checked')].map((i) =>
-      Number(i.value),
-    );
-    if (dados.vagas === '') delete dados.vagas;
-    if (dados.desconto_comodato_percentual === '') delete dados.desconto_comodato_percentual;
-    if (dados.desconto_percentual === '') delete dados.desconto_percentual;
-    const msg = document.getElementById('msgNovoPlano');
-    const r = await api('/admin/planos', { method: 'POST', body: JSON.stringify(dados) });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    toast('Plano criado.');
-    renderPlanos(el);
-  });
-}
-
-// ---------- planos arquivados ----------
-// Versão aposentada não some: quem assinou nela continua pagando o que
-// contratou, e é essa tela que responde "quantas contas ainda dependem desta
-// versão" — a pergunta que precede qualquer limpeza.
-async function renderPlanosArquivados(el) {
-  const planos = await pegar('/admin/planos-arquivados');
-  if (!planos.length) {
-    el.innerHTML =
-      '<p class="empty-state">Nenhuma versão aposentada ainda. Quando você publicar uma versão nova de um plano, a anterior aparece aqui.</p>';
-    return;
-  }
-  const emUso = planos.filter((p) => p.contas_ativas > 0).length;
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi-card"><span class="kpi-label">Versões aposentadas</span><b>${planos.length}</b><span class="kpi-caption">${emUso} ainda com conta ativa</span></div>
-    </div>
-    <div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th data-ord>ID</th><th data-ord>Nome</th><th data-ord>Ciclo</th><th data-ord>Valor mensal</th>
-      <th data-ord>Criativos</th><th data-ord>Tela/hora</th><th data-ord>Pontos</th><th>Benefícios</th>
-      <th data-ord>Aposentada em</th><th>Substituída por</th><th data-ord>Contas ativas</th><th data-ord>Cobranças</th>
-    </tr></thead><tbody>
-    ${planos
-      .map(
-        (p) => `<tr>
-      <td><b>${esc(p.id)}</b></td>
-      <td>${esc(p.nome)}</td>
-      <td>${CICLOS[p.compromisso_meses] || `${p.compromisso_meses}x`}</td>
-      <td>${fmt(p.valor_mensal)}</td>
-      <td class="num">${p.limite_criativos}</td>
-      <td class="num">${p.segundos_por_hora ?? '-'}s/h</td>
-      <td class="num">${p.pontos_incluidos ?? 'todos'}</td>
-      <td class="u-fs-72 u-ws-normal u-mw-240">${(p.beneficios || []).map(esc).join(' · ') || '-'}</td>
-      <td>${data(p.arquivado_em)}</td>
-      <td>${esc(p.substituido_por || '-')}</td>
-      <td class="num">${
-        p.contas_ativas > 0 ? `<span class="badge badge-ok">${p.contas_ativas}</span>` : '<span class="u-dim">0</span>'
-      }</td>
-      <td class="num">${p.cobrancas}</td>
-    </tr>`,
-      )
-      .join('')}
-    </tbody></table></div></div>
-    <p class="empty-state u-ta-l u-p-0 u-pt-16">
-      Zero contas ativas não quer dizer "pode apagar já": cobrança confirmada guarda o <code>plano_id</code> por obrigação fiscal,
-      e apagar a versão levaria junto a referência da nota. Drop de linha aqui é decisão do dono, em migration própria (Lei das migrations aditivas).
-    </p>`;
-  turbinarTabela(el.querySelector('.tabela-caixa'));
-}
-
-// ---------- benefícios ----------
-async function renderBeneficios(el) {
-  const beneficios = await pegar('/admin/beneficios');
-  const corpo = `<table><thead><tr><th data-ord>Texto</th><th data-ord>Ordem</th><th data-ord>Disponível</th><th></th></tr></thead><tbody>
-    ${beneficios
-      .map(
-        (b) => `<tr data-filtro="${b.ativo ? 'ativo' : 'inativo'}">
-      <td><input class="mini u-w-360" data-benef="texto" data-id="${b.id}" value="${esc(b.texto)}"></td>
-      <td><input class="mini u-w-60" type="number" data-benef="ordem" data-id="${b.id}" value="${b.ordem}"></td>
-      <td class="u-ta-c"><input type="checkbox" data-benef="ativo" data-id="${b.id}" ${b.ativo ? 'checked' : ''} title="Desmarcado some da lista dos planos sem apagar nada"></td>
-      <td><button class="btn ghost mini" data-excluir="${b.id}">Excluir</button></td>
-    </tr>`,
-      )
-      .join('')}
-  </tbody></table>`;
-
-  el.innerHTML = `
-    <form class="card bloco-novo u-mw-520" id="formNovoBeneficio">
-      <div><label>Novo benefício</label><input class="mini" name="texto" placeholder="ex.: Até 3 criativos ativos, revezando entre si" required></div>
-      <div><label>Ordem (menor aparece primeiro)</label><input class="mini" type="number" name="ordem" value="0"></div>
-      <button class="btn primary" type="submit">Criar benefício</button>
-      <p class="form-msg" id="msgNovoBeneficio"></p>
-    </form>
-    ${
-      beneficios.length
-        ? caixaTabela({
-            chips: [
-              { valor: '', nome: 'Todos' },
-              { valor: 'ativo', nome: 'Disponíveis' },
-              { valor: 'inativo', nome: 'Indisponíveis' },
-            ],
-            html: corpo,
-            dica: 'Excluir tira o benefício de todos os planos que o usavam.',
-          })
-        : '<p class="empty-state">Nenhum benefício cadastrado.</p>'
-    }`;
-
-  if (beneficios.length) turbinarTabela(el.querySelector('.tabela-caixa'));
-
-  el.querySelectorAll('[data-benef]').forEach((inp) =>
-    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'blur', () => {
-      const valor =
-        inp.type === 'checkbox' ? inp.checked : inp.dataset.benef === 'ordem' ? Number(inp.value) : inp.value;
-      salvar(`/admin/beneficios/${inp.dataset.id}`, { [inp.dataset.benef]: valor }, inp);
-    }),
-  );
-
-  el.querySelectorAll('[data-excluir]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      if (!confirm('Excluir esse benefício de todos os planos?')) return;
-      const r = await api(`/admin/beneficios/${btn.dataset.excluir}`, { method: 'DELETE' });
-      toast(
-        r.ok ? 'Benefício excluído.' : (await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.',
-        r.ok ? '' : 'err',
-      );
-      renderBeneficios(el);
-    }),
-  );
-
-  document.getElementById('formNovoBeneficio').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('msgNovoBeneficio');
-    const r = await api('/admin/beneficios', {
-      method: 'POST',
-      body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
-    });
-    if (!r.ok) {
-      msg.textContent = (await r.json().catch(() => ({}))).erro || 'Erro ao criar.';
-      msg.className = 'form-msg err';
-      return;
-    }
-    renderBeneficios(el);
-  });
-}
-
 // ---------- categorias ----------
 // Categoria = o que impede concorrente direto na mesma tela (pontos e
 // anunciantes com o mesmo categoria_id, ver src/playlist/gerador.js). Grupo
@@ -7134,55 +6243,6 @@ async function renderHistoricoCobrancas(el) {
     ${caixaTabela({ html: corpo, unidade: 'cobrança|cobranças' })}`;
 
   turbinarTabela(el.querySelector('.tabela-caixa'));
-}
-
-// ---------- fila financeira: comissões de vendedor (SEM aba, ver abaixo) ----------
-// Rodada Financeiro (22/09/2026): só o que está em aberto — "normalidade não
-// ocupa espaço". Histórico de comissões pagas continua em `comissoes`, sem
-// aba pra navegar por ele aqui (pedido explícito: nada de abas de concluídos).
-// Perdeu a aba na Central Financeira (revisão final da Visão geral,
-// 23/09/2026: "o conceito de vendedor foi retirado do projeto") — a tabela
-// `comissoes` e a rota `/admin/comissoes` continuam intactas (vendedor ainda
-// existe dentro de Contas), só esta fila específica ficou sem chamador.
-// `_` no nome pelo mesmo motivo de sempre neste arquivo: função morta que
-// não se apaga, só marca.
-async function _renderFilaComissoes(el) {
-  const comissoes = (await pegar('/admin/comissoes')).filter((c) => !c.pago_em);
-
-  if (!comissoes.length) {
-    el.innerHTML = '<p class="empty-state">Nenhuma comissão pendente.</p>';
-    return;
-  }
-
-  el.innerHTML = `<div class="card u-mw-680">
-    ${comissoes
-      .map(
-        (c) => `<div class="linha-financeira" data-linha="${c.id}">
-        <div>
-          <b>${esc(c.vendedor_nome)}</b>
-          <p class="u-dim u-m-0 u-fs-85">indicou ${esc(c.nome_empresa)} · venda de ${fmt(c.valor_confirmado)} · ${data(c.criado_em)}</p>
-          ${c.chave_pix ? `<p class="u-dim u-m-0 u-fs-72">Pix: ${esc(c.chave_pix)}</p>` : ''}
-        </div>
-        <div class="u-ta-r">
-          <b>${fmt(c.comissao_valor)}</b>
-          <button class="btn primary mini u-d-block u-mt-4" data-pago="${c.id}">Marcar como paga</button>
-        </div>
-      </div>`,
-      )
-      .join('<hr class="ponto-info-sep">')}
-  </div>`;
-
-  el.querySelectorAll('[data-pago]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      if (!(await salvar(`/admin/comissoes/${btn.dataset.pago}`, { pago: true }))) {
-        btn.disabled = false;
-        return;
-      }
-      RESUMO = await pegar('/admin/resumo');
-      _renderFilaComissoes(el);
-    }),
-  );
 }
 
 // ---------- fila financeira: devoluções por arrependimento ----------
