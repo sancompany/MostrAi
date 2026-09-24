@@ -26,20 +26,28 @@ router.get('/admin/criativos', async (req, res) => {
 router.patch('/admin/criativos/:id', async (req, res) => {
   try {
     const antes = await criativosRepo.buscarPorId(req.params.id);
-    const criativo = await criativosRepo.atualizar(req.params.id, req.body);
-    if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
-
+    if (!antes) return res.status(404).json({ erro: 'criativo não encontrado' });
+    let criativo;
     // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
     // tira A do ar no mesmo gesto — A vira 'retirado' (continua cadastrado,
-    // sai da playlist). Vale pra aprovação vinda da ficha da conta ou da fila
-    // global: é o mesmo PATCH. Se esta segunda escrita falhar, os dois ficam
-    // aprovados por um instante e o gerador já toca o mais recente (B) —
-    // nada quebra, só fica um a mais até alguém retirar.
-    if (criativo.status === 'aprovado' && antes?.status === 'pendente' && criativo.substitui_criativo_id) {
-      await pool.query(`UPDATE criativos SET status = 'retirado' WHERE id = $1 AND status = 'aprovado'`, [
-        criativo.substitui_criativo_id,
-      ]);
+    // sai da playlist). SWAP ATÔMICO (consolidação, 24/09/2026): um comando
+    // só — nunca existe um instante com A e B aprovados, nem A retirado sem
+    // B aprovado.
+    if (req.body.status === 'aprovado' && antes.status === 'pendente' && antes.substitui_criativo_id) {
+      await pool.query(
+        `WITH nova AS (
+           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status = 'pendente' RETURNING substitui_criativo_id
+         )
+         UPDATE criativos SET status = 'retirado'
+          WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
+        [antes.id],
+      );
+      criativo = await criativosRepo.buscarPorId(antes.id);
+    } else {
+      criativo = await criativosRepo.atualizar(req.params.id, req.body);
     }
+    if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
+    if (antes.status !== criativo.status) sse.emitirParaAdmin('creative.updated', { id: criativo.id });
 
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia

@@ -265,6 +265,8 @@ async function registrarPendencia(payload, motivo) {
     JSON.stringify(payload),
     motivo,
   ]);
+  // Fila "Eventos do Checkout" do admin muda de tamanho.
+  sse.emitirParaAdmin('payment.updated', {});
 }
 
 // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
@@ -767,6 +769,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     })
     .catch((err) => console.error('falha ao registrar notificação de pagamento', err));
   sse.emitirParaConta(anunciante.id, 'payment.updated', {});
+  sse.emitirParaAdmin('payment.updated', { anuncianteId: anunciante.id });
   // O que o ciclo fez com a fila de benefícios (ADR-016) — o cliente sabe
   // na hora por que o plano mudou (ou por que ainda não mudou).
   for (const ev of eventosDaFila) {

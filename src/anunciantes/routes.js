@@ -830,7 +830,11 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
     duracaoMaxima: plano.duracao_maxima_segundos,
     substitui,
   });
-  if (res.statusCode === 201) sse.emitirParaConta(anunciante.id, 'creative.updated', {});
+  if (res.statusCode === 201) {
+    sse.emitirParaConta(anunciante.id, 'creative.updated', {});
+    // Fila de Aprovação do admin cresce sem F5.
+    sse.emitirParaAdmin('creative.updated', {});
+  }
   return enviou;
 });
 
@@ -1018,6 +1022,7 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
   }
   await criativosRepo.deletar(req.params.criativoId);
   sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', { id: criativo.id });
+  sse.emitirParaAdmin('creative.updated', {});
   // Best-effort: limpa os arquivos do storage. Se falhar, não impede a
   // exclusão do registro — só fica lixo no bucket pra limpar depois.
   try {
@@ -1290,6 +1295,9 @@ router.get('/admin/anunciantes', async (_req, res) => {
     anunciantes.map((a) => ({
       ...a,
       plano_origem: planoAdministrativo.origemDoDireito(a, beneficioPorConta.get(a.id)),
+      // Vigência decidida AQUI (mesma régua do gerador, repo.planoVigenteId),
+      // não pelo relógio do navegador.
+      plano_vigente: !!repo.planoVigenteId(a),
     })),
   );
 });

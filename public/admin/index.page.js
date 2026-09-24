@@ -671,7 +671,7 @@ const ALIASES_ANTIGOS = {
   planosarquivados: 'ofertas/precos',
   beneficios: 'ofertas/precos',
   categorias: 'contas/categorias',
-  eventos: 'configuracoes/diagnostico',
+  eventos: 'financeiro/eventos',
   // Financeiro (rodada 22/09/2026): Receitas/Repasses saem de página
   // permanente e viram drill-down oculto — os hashes antigos continuam
   // abrindo a tela certa, só que agora escondida da sidebar. Custos não tem
@@ -804,6 +804,10 @@ const MODULOS = [
       { id: 'cobrancas', nome: 'Cobranças', render: renderHistoricoCobrancas },
       { id: 'trocas', nome: 'Trocas', render: renderFilaTrocas },
       { id: 'devolucoes', nome: 'Devoluções', render: renderFilaDevolucoes },
+      // Webhooks do San Checkout que não deram pra aplicar sozinhos
+      // (consolidação, 24/09/2026: a fila existia no backend e não tinha
+      // tela — pendência de dinheiro invisível).
+      { id: 'eventos', nome: 'Eventos do Checkout', fila: 'eventos', render: renderEventosPendentes },
     ],
   },
   // Último item de propósito (rodada Navegação, 22/09/2026): Mídia Mostraí é
@@ -838,7 +842,8 @@ const SUBTITULOS = {
   cobrancas: 'Histórico de pagamentos confirmados.',
   trocas: 'Quem trocou de plano no meio do período e ainda não pagou a diferença.',
   comissoes: 'Comissões de vendedor em aberto. Marcar como paga só registra aqui — o Pix é por fora.',
-  eventos: 'Eventos do San Checkout que não deram pra correlacionar sozinhos.',
+  eventos:
+    'Eventos do San Checkout que não deram pra aplicar sozinhos: confira no Checkout e aplique o ciclo, ou marque resolvido.',
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
   meusanuncios: 'Conteúdo institucional da própria rede.',
@@ -1193,6 +1198,7 @@ const PENDENCIAS_OPERACIONAIS = [
     qtd: (r) => r.financeiro?.pendenciasFinanceiras?.qtd,
     valor: (r) => r.financeiro?.pendenciasFinanceiras?.total,
   },
+  { nome: 'Eventos do Checkout', aba: 'financeiro/eventos', qtd: (r) => r.filas?.eventos, forte: true },
 ];
 
 // Pendências como UMA unidade (polimento final, 23/09/2026): os alertas de
@@ -2880,11 +2886,48 @@ function agendarRecargaRede(atraso = 400) {
   }, atraso);
 }
 
+// Abas que se refazem sozinhas quando o evento semântico chega (fora de
+// Rede, que tem o próprio VISTA_REDE). Só listas: uma ficha aberta com
+// modal/campo em edição não é refeita por baixo de quem edita.
+const ABAS_REATIVAS = {
+  'application.updated': ['rede/candidaturas', 'visaogeral'],
+  'creative.updated': ['aprovacao', 'visaogeral'],
+  'payment.updated': ['financeiro', 'visaogeral', 'contas/contas'],
+  'plan.updated': ['contas/contas', 'visaogeral'],
+  'credits.updated': ['contas/contas'],
+};
+let recargaAbaAgendada = null;
+function agendarRecargaAba(evento) {
+  clearTimeout(recargaAbaAgendada);
+  recargaAbaAgendada = setTimeout(async () => {
+    try {
+      RESUMO = await pegar('/admin/resumo');
+      pintarContadores();
+    } catch (err) {
+      console.error('resumo: falha ao atualizar', err);
+    }
+    const atual = [ABA_ATUAL.modulo, ABA_ATUAL.aba].filter(Boolean).join('/');
+    const alvos = ABAS_REATIVAS[evento] || [];
+    const bate = alvos.some((a) => atual === a || atual.startsWith(`${a}/`) || ABA_ATUAL.modulo === a);
+    if (!bate || ABA_ATUAL.resto) return; // ficha aberta: não refaz por baixo
+    const ativo = document.activeElement;
+    const editando =
+      document.querySelector('dialog[open]') ||
+      (ativo?.closest('#conteudo') && ['INPUT', 'SELECT', 'TEXTAREA'].includes(ativo.tagName));
+    if (editando) return;
+    const modulo = buscarModulo(ABA_ATUAL.modulo);
+    if (modulo) await renderModulo(document.getElementById('conteudo'), modulo, ABA_ATUAL.aba, ABA_ATUAL.resto);
+  }, 800);
+}
+
 function ligarEventosAdmin() {
   if (eventosAdmin) return;
   eventosAdmin = new EventSource(`${API_BASE_URL}/admin/eventos`, { withCredentials: true });
   for (const evento of ['screen.updated', 'point.updated']) {
     eventosAdmin.addEventListener(evento, () => agendarRecargaRede());
+  }
+  for (const evento of Object.keys(ABAS_REATIVAS)) {
+    eventosAdmin.addEventListener(evento, () => agendarRecargaAba(evento));
   }
   // Reconexão: o que mudou enquanto o canal estava fora chega pelo GET.
   eventosAdmin.addEventListener('open', () => agendarRecargaRede());
@@ -3104,7 +3147,6 @@ function renderPontoInformacoes(el, ponto, telas) {
       nome: esc(ponto.nome),
       badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
       endereco: enderecoFicha(ponto),
-      meta: `<span class="id-tecnico" title="Registro deste ponto no Mostraí">ID do Ponto #${ponto.id}</span>`,
     })}
     <dl class="dados dados-2">
       <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
@@ -4069,7 +4111,8 @@ function planoComercialDaConta(conta, planosPorId) {
     plano: planosPorId[conta.plano_id] || null,
     id: conta.plano_id,
     origem: conta.plano_origem || (conta.plano_cortesia ? 'cortesia_legada' : 'assinatura'),
-    vencido: !!(conta.data_expiracao && new Date(conta.data_expiracao) < new Date()),
+    // Decidido no servidor (`plano_vigente`, mesma régua do gerador).
+    vencido: conta.plano_vigente === false,
     expira: conta.data_expiracao,
   };
 }
@@ -5683,18 +5726,17 @@ const NOME_TIER = { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' };
 // pra calcular pelas datas (Parte F do pedido: "Encerrada (ou calculada
 // automaticamente conforme datas)") — sem exigir que o admin lembre de virar
 // o status manualmente quando o prazo passa ou quando esgota as vagas.
+// Situação vem do servidor (`situacao_exibicao`, promocoes-repository.js#
+// situacaoExibicao) — o relógio do navegador não decide se a promoção vale.
+const SITUACAO_PROMOCAO = {
+  rascunho: { rotulo: 'Rascunho', badge: 'badge-pendente' },
+  encerrada: { rotulo: 'Encerrada', badge: 'badge-neutro' },
+  agendada: { rotulo: 'Agendada', badge: 'badge-info' },
+  esgotada: { rotulo: 'Esgotada', badge: 'badge-neutro' },
+  ativa: { rotulo: 'Ativa', badge: 'badge-ok' },
+};
 function statusExibicaoPromocao(promo) {
-  const agora = new Date();
-  if (promo.status !== 'ativa')
-    return {
-      rotulo: STATUS_PROMOCAO[promo.status] || promo.status,
-      badge: promo.status === 'rascunho' ? 'badge-pendente' : 'badge-neutro',
-    };
-  if (promo.compra_fim && new Date(promo.compra_fim) < agora) return { rotulo: 'Encerrada', badge: 'badge-neutro' };
-  if (promo.compra_inicio && new Date(promo.compra_inicio) > agora) return { rotulo: 'Agendada', badge: 'badge-info' };
-  if (promo.limite_adesoes != null && promo.adesoes >= promo.limite_adesoes)
-    return { rotulo: 'Esgotada', badge: 'badge-neutro' };
-  return { rotulo: 'Ativa', badge: 'badge-ok' };
+  return SITUACAO_PROMOCAO[promo.situacao_exibicao] || { rotulo: promo.status || '?', badge: 'badge-neutro' };
 }
 
 // Grupo da listagem (polimento final, 23/09/2026): vigentes, futuras,
@@ -5707,12 +5749,7 @@ const GRUPOS_PROMOCAO = [
   ['encerrada', 'Encerradas'],
 ];
 function grupoPromocao(promo) {
-  if (promo.status === 'rascunho') return 'rascunho';
-  if (promo.status === 'encerrada') return 'encerrada';
-  const { rotulo } = statusExibicaoPromocao(promo);
-  if (rotulo === 'Agendada') return 'futura';
-  if (rotulo === 'Encerrada' || rotulo === 'Esgotada') return 'encerrada';
-  return 'vigente';
+  return promo.grupo || 'vigente';
 }
 
 function periodoPromocao(promo) {
@@ -7208,13 +7245,13 @@ async function renderFilaDevolucoes(el) {
   );
 }
 
-// ---------- eventos pendentes ----------
-async function _renderEventos(el) {
+// ---------- eventos pendentes (Financeiro › Eventos do Checkout) ----------
+async function renderEventosPendentes(el) {
   const eventos = await pegar('/admin/eventos-pendentes');
   // Teste do e-mail aqui dentro de propósito: quando um evento fica pendente
   // por falha de envio, esta é a tela onde você está. O botão faz o login no
   // servidor de SMTP e diz na hora se a senha de app está valendo — sem
-  // mandar mensagem nenhuma e sem esperar um pagamento real acontecer.
+  // mandar mensagem nenhuma e sem mostrar a senha.
   const smtp = `<div class="tabela-caixa u-mb-16 u-p-14">
     <b>E-mail (SMTP)</b>
     <p class="u-fs-84 u-mt-8 u-mb-8">Confere se o servidor aceita a senha de app. Não envia e-mail e não mostra a senha.</p>
@@ -7225,25 +7262,25 @@ async function _renderEventos(el) {
     smtp +
     (eventos.length
       ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr>
-      <th>ID</th><th>Motivo</th><th>Quando</th><th>Dados recebidos</th><th></th>
+      <th>Quando</th><th>Motivo</th><th>Evento</th><th>Dados recebidos</th><th></th>
     </tr></thead><tbody>
     ${eventos
       .map(
         (e) => `<tr>
-      <td>${e.id}</td>
-      <td><b>${esc(e.motivo)}</b></td>
-      <td>${new Date(e.criado_em).toLocaleString('pt-BR')}</td>
+      <td>${esc(dataHora(e.criado_em))}</td>
+      <td class="u-ws-normal"><b>${esc(e.motivo)}</b></td>
+      <td>${esc(e.payload?.evento || '—')}</td>
       <td class="u-ws-normal"><details><summary class="u-pointer u-txt-link">ver payload</summary>
         <pre class="u-fs-72 u-bg-alt u-p-8 u-r-6 u-o-auto u-mw-460">${esc(JSON.stringify(e.payload, null, 2))}</pre></details></td>
       <td class="u-ws-normal">
         ${e.payload?.planoId ? `<button class="btn primary mini" data-aplicar="${e.id}">Aplicar este ciclo</button> ` : ''}
-        <button class="btn ghost mini" data-resolver="${e.id}">Só marcar resolvido</button>
+        <button class="btn ghost mini" data-resolver="${e.id}">Marcar resolvido</button>
       </td>
     </tr>`,
       )
       .join('')}
   </tbody></table></div></div>`
-      : '<p class="empty-state">Nenhum evento pendente de revisão.</p>');
+      : '<p class="empty-state">Nenhum evento do Checkout esperando revisão.</p>');
 
   el.querySelector('#testarSmtp')?.addEventListener('click', async (ev) => {
     const alvo = el.querySelector('#resultadoSmtp');
@@ -7261,39 +7298,37 @@ async function _renderEventos(el) {
     ev.target.disabled = false;
   });
 
+  const depois = async () => {
+    RESUMO = await pegar('/admin/resumo');
+    pintarContadores();
+    renderEventosPendentes(el);
+  };
   el.querySelectorAll('button[data-resolver]').forEach((btn) =>
     btn.addEventListener('click', async () => {
-      if (
-        !window.confirm(
-          'Marcar resolvido NÃO credita ciclo nenhum: só tira o item da fila. Use isto quando já tiver resolvido por fora. Continuar?',
-        )
-      )
-        return;
-      if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) {
-        RESUMO = await pegar('/admin/resumo');
-        pintarContadores();
-        _renderEventos(el);
-      }
+      const ok = await confirmarModal({
+        titulo: 'Marcar como resolvido?',
+        texto:
+          '<p>Isso NÃO credita ciclo nenhum: só tira o item da fila. Use quando já tiver resolvido por fora (no Checkout ou na ficha da conta).</p>',
+        botao: 'Marcar resolvido',
+      });
+      if (!ok) return;
+      if (await salvar(`/admin/eventos-pendentes/${btn.dataset.resolver}`, {})) await depois();
     }),
   );
-
   el.querySelectorAll('button[data-aplicar]').forEach((btn) =>
     btn.addEventListener('click', async () => {
-      if (
-        !window.confirm(
-          'Aplicar o ciclo desta assinatura: estende a cobertura, registra a cobrança e a comissão. Continuar?',
-        )
-      )
-        return;
-      const r = await fetch(`${API_BASE_URL}/admin/eventos-pendentes/${btn.dataset.aplicar}/aplicar`, {
-        method: 'POST',
-        credentials: 'include',
+      const ok = await confirmarModal({
+        titulo: 'Aplicar o ciclo desta assinatura?',
+        texto:
+          '<p>O servidor confere no Checkout se a última cobrança está confirmada. Se estiver, estende a cobertura e registra a cobrança — pela mesma chave do webhook, sem duplicar.</p>',
+        botao: 'Aplicar ciclo',
       });
+      if (!ok) return;
+      const r = await api(`/admin/eventos-pendentes/${btn.dataset.aplicar}/aplicar`, { method: 'POST' });
       const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) return window.alert(corpo.erro || 'não foi possível aplicar esse ciclo agora');
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-      _renderEventos(el);
+      if (!r.ok) return toast(corpo.erro || 'Não foi possível aplicar esse ciclo agora.', 'err');
+      toast('Ciclo aplicado.');
+      await depois();
     }),
   );
 }

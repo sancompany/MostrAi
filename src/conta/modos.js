@@ -239,6 +239,8 @@ async function criarCandidaturaPonto(conta, entrada) {
   // ser aposentado — sem ele, o pedido só aparece pra quem abrir o admin
   // por acaso (a fila "Candidaturas" ainda avisa, mas o e-mail chega antes).
   enviarCandidaturaNova(cand).catch((err) => console.error('e-mail de candidatura nova', err));
+  // Rede/Candidaturas e o contador do admin, sem F5.
+  sse.emitirParaAdmin('application.updated', { id: cand.id, status: cand.status });
   return cand;
 }
 

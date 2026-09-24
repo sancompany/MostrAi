@@ -44,6 +44,22 @@ function comDatasComerciais(dados) {
   };
 }
 
+// Situação de exibição da promoção decidida no servidor (consolidação,
+// 24/09/2026 — antes o admin calculava no navegador, com o relógio local):
+// rascunho | encerrada | agendada | esgotada | ativa, e o grupo da listagem.
+function situacaoExibicao(promo, agora = new Date()) {
+  if (promo.status === 'rascunho') return { situacao_exibicao: 'rascunho', grupo: 'rascunho' };
+  if (promo.status === 'encerrada') return { situacao_exibicao: 'encerrada', grupo: 'encerrada' };
+  if (promo.compra_fim && new Date(promo.compra_fim) < agora)
+    return { situacao_exibicao: 'encerrada', grupo: 'encerrada' };
+  if (promo.compra_inicio && new Date(promo.compra_inicio) > agora)
+    return { situacao_exibicao: 'agendada', grupo: 'futura' };
+  if (promo.limite_adesoes != null && Number(promo.adesoes) >= Number(promo.limite_adesoes)) {
+    return { situacao_exibicao: 'esgotada', grupo: 'encerrada' };
+  }
+  return { situacao_exibicao: 'ativa', grupo: 'vigente' };
+}
+
 async function listarTodas() {
   const { rows } = await pool.query(`
     SELECT p.*,
@@ -55,7 +71,8 @@ async function listarTodas() {
     LEFT JOIN promocoes_itens i ON i.promocao_id = p.id
     GROUP BY p.id
     ORDER BY p.created_at DESC`);
-  return rows;
+  const agora = new Date();
+  return rows.map((p) => ({ ...p, ...situacaoExibicao(p, agora) }));
 }
 
 async function buscarPorId(id) {
@@ -271,6 +288,7 @@ function comVantagem(promocao, planos) {
 }
 
 module.exports = {
+  situacaoExibicao,
   listarTodas,
   buscarPorId,
   criar,
