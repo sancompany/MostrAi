@@ -4,9 +4,9 @@ Arquivo curto de retomada. Não é diário: só o necessário para outra sessão
 continuar com segurança.
 
 ## Fase atual
-Checkpoint **I (polimento), parte 1** implementado localmente — em
-commit/PR. Próximo: I parte 2 (admin miúdo, código morto, docs), J (E2E
-online com bypass controlado), K (Access + smoke + relatório).
+Checkpoint **I (polimento), parte 2** implementado localmente — em
+commit/PR. I-1 mergeado (PR #52 → `08ea4e8`). Próximo: J (E2E online com
+bypass controlado), K (Access + smoke + relatório).
 
 ## Último commit / deploy
 - MostrAi `main` = **`1411abd`** (PR #51, H+F) — deployed SHA no Northflank
@@ -68,18 +68,27 @@ online com bypass controlado), K (Access + smoke + relatório).
   servidor; 409 do /assinar sem "WhatsApp"; RUNBOOK §3.1 (virada
   sandbox→produção, gate do dono). e2e 17 atualizado (chave_hash, 410).
 
+- I parte 2 (esta branch): admin — alerta de telas abre a grade já em
+  "Com problema", blocos da Visão geral com catch, logout fecha o
+  EventSource, textos ("credencial sai do Preparar Player", "sem
+  benefício"), index.html sem canonical/robots duplicado; código morto
+  removido (`pagamentos-repository.js`, `drive.js` + dependência
+  `googleapis`, `cobrancas-repository.js`, `listarContasComMovimentacao`,
+  alias `statusOperacionalTela`); `GET /admin/pontos/:id/pagamentos` e
+  `PATCH /admin/cobrancas/:id/nota-fiscal` → 410; docs (api, funcional,
+  README, BUSINESS_RULES) sem "Tela 1 no cadastro", "ajuda de custo",
+  vendedor e `custoPorExibicao`.
+
 ## Item atual
-- Commit I-1 → PR → CI → merge → deploy → validar online.
+- Commit I-2 → PR → CI → merge → deploy → validar online.
 
 ## Próximos
-- I parte 2: admin miúdo (P128 alias subtítulo, P130 renderResumo sem
-  await/catch, P131/P132/P138 textos, P133 copiar dispositivoId, P134
-  filtro "Com problema", P135 logout fecha EventSource, P136 cargas
-  duplicadas, P137 metas do index.html); código morto (pagamentos-
-  repository, listarContasComMovimentacao, statusOperacionalTela, nota
-  fiscal por upload/drive.js); docs (P18/P55/P86/P101/P116).
 - J (E2E online com bypass controlado do Access; matriz do Checkout no
   sandbox), K (Access restaurado + smoke + relatório de 19 seções).
+- Não feito em I (decisão ou baixo valor): P58 preço em 4 lugares, P77
+  "pagando em dia" em 10 lugares, P92 5 cópias de cancelar, P66 nomes de
+  ciclo duplicados no front, P69/P84 colunas internas expostas, P136
+  cargas duplicadas, P128 subtítulo dos aliases.
 
 ## Decisões aplicadas nesta rodada (reversíveis, registrar no relatório)
 - Estado "Aguardando primeiro sinal" no ponto; número da tela = menor livre.

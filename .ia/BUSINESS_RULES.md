@@ -149,13 +149,13 @@ cortesia, quando marcado):
 - `mediaDiariaMes = round(confirmadasMes ÷ dia-do-mês-atual, 1 casa)` —
   aproximação pelo relógio do servidor, não pelo fuso de Matão (aceito de
   propósito, é só ilustrativo).
-- **`custoPorExibicao` = `valorMensalDaConta(anunciante, plano) ÷
-  exibicoesContratadasMes`** — divide pelo **contratado**, não pelo
-  confirmado (decisão explícita de 19/09/2026: "deve ser um preço fixo
-  desde o início, não pelas exibições realizadas"). `null` se a conta está
-  em cortesia (não paga nada) ou sem plano. `valorMensalDaConta` é a MESMA
-  função que decide o que o San Checkout cobra — inclui desconto de
-  parceiro (o crédito de comodato saiu em 24/09/2026, ADR-016).
+- **Custo por exibição prevista** (ADR-018, 24/09/2026 — substituiu o
+  `custoPorExibicao` calculado ao vivo): `valorCiclo ÷
+  exibicoesPrevistasCiclo`, lido do **snapshot** `ciclos_contratados` do
+  ciclo pago em vigor (`src/financeiro/ciclo-contratado.js`). O valor do
+  ciclo é o que a Asaas cobrou (`valorCobrado`), gravado uma vez; nunca é
+  recalculado pelo preço atual do plano nem pelas exibições realizadas.
+  Sem valor em benefício por créditos, cortesia ou sem plano.
 
 ## Categoria/concorrência
 

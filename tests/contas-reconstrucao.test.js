@@ -671,6 +671,9 @@ test('modalidade e repasse aposentados: PATCH ignora modalidade, trocar-por-tela
       ['POST', '/admin/planos-ponto'],
       ['GET', '/admin/pagamentos-ponto/pendentes'],
       ['POST', `/admin/pontos/${ponto.id}/pagamentos`],
+      // Histórico de repasses saiu do código na consolidação final
+      // (24/09/2026): a tabela fica, a rota não.
+      ['GET', `/admin/pontos/${ponto.id}/pagamentos`],
     ]) {
       assert.strictEqual(
         (await app.chamar(metodo, url, metodo === 'GET' ? undefined : {})).status,
@@ -678,8 +681,6 @@ test('modalidade e repasse aposentados: PATCH ignora modalidade, trocar-por-tela
         `${metodo} ${url}`,
       );
     }
-    const historico = await app.chamar('GET', `/admin/pontos/${ponto.id}/pagamentos`);
-    assert.strictEqual(historico.status, 200, 'histórico de repasses continua legível');
     const troca = await fetch(`${app.base}/anunciantes/me/comodato/trocar-por-tela`, {
       method: 'POST',
       headers: { 'x-conta': String(conta.id) },
