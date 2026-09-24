@@ -352,4 +352,43 @@ test('assinatura paga antes da migration 087 (ciclo sem assinatura_id) e cancela
   }
 });
 
+test('ciclo legado só conta pra assinatura em cuja janela foi cobrado (intenção abandonada antes da 087 continua sem pagamento)', async () => {
+  const c = await conta();
+  try {
+    // A: intenção abandonada há 3 dias; B: assinatura do MESMO plano, criada
+    // ontem e paga hoje (ciclo do backfill, sem assinatura_id).
+    const a = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await pool.query(
+      "UPDATE assinaturas SET status = 'cancelada', created_at = now() - interval '3 days' WHERE id = $1",
+      [a.id],
+    );
+    const b = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    await pool.query("UPDATE assinaturas SET created_at = now() - interval '1 day' WHERE id = $1", [b.id]);
+    const {
+      rows: [cobranca],
+    } = await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 10, 'pendente') RETURNING id`,
+      [c.id, PLANO],
+    );
+    await pool.query(
+      `INSERT INTO ciclos_contratados (anunciante_id, plano_id, cobranca_confirmada_id, origem, ciclo_meses, valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+       VALUES ($1, $2, $3, 'compra', 1, 10, 0, 0)`,
+      [c.id, PLANO, cobranca.id],
+    );
+    assert.equal(await cicloContratado.jaTeveCicloPago(await assinaturasRepo.buscarPorId(b.id)), true, 'B pagou');
+    assert.equal(
+      await cicloContratado.jaTeveCicloPago(await assinaturasRepo.buscarPorId(a.id)),
+      false,
+      'a cobrança é de B, não de A',
+    );
+    assert.equal(
+      await sc.intencaoCanceladaSemPagamento(await assinaturasRepo.buscarPorId(a.id)),
+      true,
+      'pagamento tardio de A é recusado',
+    );
+  } finally {
+    await apagar(c.id);
+  }
+});
+
 test.after(() => pool.end());
