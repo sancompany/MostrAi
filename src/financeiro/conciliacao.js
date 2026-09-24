@@ -13,6 +13,7 @@
 // chaveada por chargeId), então um ciclo nunca entra duas vezes — não importa
 // se o aviso veio pelo webhook, por aqui, ou pelos dois.
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { consultarAssinatura, aplicarCicloPago, linkRenovarAssinatura } = require('./san-checkout');
 const planoAdministrativo = require('./plano-administrativo');
 const { enviarCoberturaAcabando, enviarCobrancaFalhou } = require('./email');
@@ -250,8 +251,8 @@ async function avisarCoberturaAcabando() {
         AND NOT a.plano_cortesia
         AND a.contato_email IS NOT NULL
         AND a.data_expiracao IS NOT NULL
-        AND a.data_expiracao >= now()
-        AND a.data_expiracao < now() + ($1 || ' days')::interval
+        AND a.data_expiracao >= ${vigencia.HOJE_SQL}
+        AND a.data_expiracao < ${vigencia.HOJE_SQL} + ($1 || ' days')::interval
         AND a.aviso_fim_cobertura_para IS DISTINCT FROM a.data_expiracao
         AND NOT EXISTS (
           SELECT 1 FROM assinaturas s
@@ -262,7 +263,7 @@ async function avisarCoberturaAcabando() {
 
   const avisados = [];
   for (const conta of rows) {
-    const dias = Math.ceil((new Date(conta.data_expiracao) - Date.now()) / 86400000);
+    const dias = vigencia.diasAteVencer(conta.data_expiracao);
     try {
       await enviarCoberturaAcabando(
         conta,
@@ -307,7 +308,7 @@ async function encerrarCoberturaVencida() {
      WHERE a.plano_id IS NOT NULL
        AND a.excluido_em IS NULL
        AND a.data_expiracao IS NOT NULL
-       AND a.data_expiracao < current_date
+       AND a.data_expiracao < ${vigencia.HOJE_SQL}
        AND NOT (a.plano_cortesia AND EXISTS (
          SELECT 1 FROM planos_administrativos ha
           WHERE ha.anunciante_id = a.id AND ha.status = 'ativo' AND ha.plano_id = a.plano_id))`);

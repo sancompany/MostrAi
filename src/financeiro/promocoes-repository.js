@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { instanteComercial } = require('../lib/fuso-comercial');
 const { arredondar, percentual } = require('../lib/dinheiro');
 
@@ -208,7 +209,7 @@ async function listarVigentes() {
 // plano — nenhum dos dois tem histórico de assinatura pra excluir).
 function temPlanoAtivo(conta) {
   if (!conta?.plano_id || conta.suspenso || conta.excluido_em) return false;
-  return !conta.data_expiracao || new Date(conta.data_expiracao) >= new Date();
+  return vigencia.coberturaVigente(conta.data_expiracao);
 }
 
 async function jaAssinouAntes(anuncianteId) {

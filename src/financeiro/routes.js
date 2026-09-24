@@ -12,6 +12,7 @@ const pedidosRepo = require('./pedidos-repository');
 const sanCheckout = require('./san-checkout');
 const drive = require('./drive');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
@@ -147,7 +148,13 @@ router.get('/promocoes/vigentes', async (req, res) => {
 // anunciante, então reusar a rota pública aqui sempre trataria o pedido como
 // "visitante novo" e escondia promoção de "assinantes".
 router.get('/admin/ofertas/promocoes-vigentes', async (_req, res) => {
-  res.json(await promocoesRepo.listarVigentes());
+  // Mesma régua de vantagem do site (D1): a Visão geral não lista um ciclo
+  // em que a promoção é pior que o desconto normal.
+  const [vigentes, planos] = await Promise.all([
+    promocoesRepo.listarVigentes(),
+    planosRepo.listarAtivos({ incluirFundador: false }),
+  ]);
+  res.json(vigentes.map((p) => promocoesRepo.comVantagem(p, planos)));
 });
 
 // Upload da mídia da promoção (Parte B do pedido) — mesmo padrão de
@@ -284,9 +291,11 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // (cancela no Checkout e assina de novo). Se nunca foi paga, é só um
     // clique antigo: cancela localmente e segue.
     const pagou =
-      conta.plano_id === assinatura.plano_id && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
+      conta.plano_id === assinatura.plano_id && conta.data_expiracao && vigencia.coberturaVigente(conta.data_expiracao);
     if (pagou)
-      return res.status(409).json({ erro: 'você já tem um plano ativo — pra trocar, fale com a gente pelo WhatsApp' });
+      return res
+        .status(409)
+        .json({ erro: 'você já tem esse plano ativo — pra mudar de plano, use "Trocar de plano" no painel' });
     // Achado real (revisão de 23/09/2026): `pagou` só olha o `plano_id`
     // ATUAL da conta — que a conciliação diária (encerrarCoberturaVencida)
     // agora pode limpar sozinha quando a cobrança recorrente falha e a
@@ -460,7 +469,7 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     !conta.plano_id ||
     conta.plano_cortesia ||
     !conta.data_expiracao ||
-    new Date(conta.data_expiracao) <= new Date()
+    vigencia.coberturaVencida(conta.data_expiracao)
   ) {
     return res.status(400).json({ erro: 'só dá pra trocar quem tem um plano pago ativo agora' });
   }

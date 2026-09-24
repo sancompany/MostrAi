@@ -9,6 +9,7 @@ const { planoEfetivoId } = repo;
 const criativosRepo = require('./criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
@@ -36,7 +37,7 @@ const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { saudeDaTela } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const {
-  enviarContaAprovada,
+  enviarContaReativada,
   enviarContaCriada,
   enviarContaExcluida,
   enviarCodigoConfirmacaoEmail,
@@ -329,8 +330,7 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       'conta:exclusao_pede',
       {
         dias_de_vida: eventos.diasEntre(conta.created_at),
-        tinha_plano_ativo:
-          !!conta.plano_id && !conta.suspenso && (!conta.data_expiracao || new Date(conta.data_expiracao) > new Date()),
+        tinha_plano_ativo: !!conta.plano_id && !conta.suspenso && vigencia.coberturaVigente(conta.data_expiracao),
       },
       conta,
     );
@@ -1429,7 +1429,7 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         anunciante,
       );
       // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
-      enviarContaAprovada(anunciante).catch((err) => console.error('e-mail de conta aprovada', err));
+      enviarContaReativada(anunciante).catch((err) => console.error('e-mail de conta reativada', err));
     }
     // Aviso em tempo real nas duas transições (Fase 3, SSE) — a conta
     // suspensa não pode descobrir só porque um botão parou de funcionar

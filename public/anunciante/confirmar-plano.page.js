@@ -319,27 +319,33 @@ async function carregar() {
   // acontece com contas que entraram pelo convite de outro papel (ponto,
   // vendedor) e ainda não ativaram anúncios.
   await montarModo('anunciante', document.getElementById('dashboardConfirmacao'), async () => {
-    const temPlanoPagoAtivo =
-      ANUNCIANTE.plano_id &&
-      !ANUNCIANTE.plano_cortesia &&
-      ANUNCIANTE.data_expiracao &&
-      new Date(ANUNCIANTE.data_expiracao) > new Date();
+    // Assinatura nova, troca ou "já tem esse plano"? Quem decide é o
+    // SERVIDOR (`acao` da cotação, src/financeiro/cotacao.js — mesma régua
+    // de vigência do gerador e da cobrança). Até 24/09/2026 esta tela
+    // comparava `data_expiracao` com o relógio do navegador, e vencia o
+    // plano um dia antes do que o resto do sistema. Sem cotação (rede caiu),
+    // trata como pedido novo — o POST /assinar é quem decide de verdade.
+    let acao = 'assinar';
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/cotacao/${encodeURIComponent(planoUrl)}`, {
+        credentials: 'include',
+      });
+      if (r.ok) acao = (await r.json()).acao || 'assinar';
+    } catch {
+      /* fica 'assinar' */
+    }
+    if (acao === 'ja_tem') {
+      // Já tem esse plano pago — nada a confirmar, volta pro painel.
+      window.location.href = '/anunciante/painel.html';
+      return;
+    }
     // Sem plano, ou num benefício (cortesia — por créditos ou legado): o
     // pedido é uma assinatura nova. Como ela convive com o benefício quem
     // decide é o servidor (ADR-016): pago maior entra na hora e encerra o
     // benefício; igual ou menor começa depois dele — o /assinar devolve o
     // texto e o cliente confirma antes de pagar (confirmarTroca, abaixo).
-    const vencido = ANUNCIANTE.data_expiracao && new Date(ANUNCIANTE.data_expiracao) <= new Date();
-    if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia || vencido) {
-      montarConfirmacaoPedido(planoUrl);
-      return;
-    }
-    if (temPlanoPagoAtivo && planoUrl !== ANUNCIANTE.plano_id) {
-      montarConfirmacaoTroca(planoUrl);
-      return;
-    }
-    // Já tem esse plano pago — nada a confirmar, volta pro painel.
-    window.location.href = '/anunciante/painel.html';
+    if (acao === 'trocar') montarConfirmacaoTroca(planoUrl);
+    else montarConfirmacaoPedido(planoUrl);
   });
 }
 

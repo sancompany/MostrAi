@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
@@ -227,7 +228,7 @@ router.get('/admin/resumo', async (_req, res) => {
          AND a.excluido_em IS NULL
          AND (
            (NOT a.plano_cortesia AND a.plano_id IS NOT NULL
-              AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date))
+              AND ${vigencia.vigenteSql('a.data_expiracao')})
            OR (a.plano_cortesia AND a.plano_pago_guardado_id IS NOT NULL
                AND EXISTS (SELECT 1 FROM assinaturas x WHERE x.anunciante_id = a.id AND x.status = 'ativa'))
          )`,
@@ -286,7 +287,7 @@ router.get('/admin/resumo', async (_req, res) => {
     pool.query(`SELECT
                   CASE
                     WHEN suspenso THEN 'suspenso'
-                    WHEN plano_id IS NOT NULL AND (data_expiracao IS NULL OR data_expiracao >= now()) THEN 'ativo'
+                    WHEN plano_id IS NOT NULL AND ${vigencia.vigenteSql('data_expiracao')} THEN 'ativo'
                     ELSE 'sem_plano'
                   END AS situacao,
                   plano_cortesia, COUNT(*)::int AS qtd
@@ -325,7 +326,7 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM anunciantes WHERE NOT conta_propria) AS total,
         (SELECT COUNT(*) FROM anunciantes
            WHERE NOT conta_propria AND plano_id IS NOT NULL AND NOT suspenso AND NOT plano_cortesia
-             AND excluido_em IS NULL AND (data_expiracao IS NULL OR data_expiracao >= current_date)) AS pagantes`,
+             AND excluido_em IS NULL AND ${vigencia.vigenteSql('data_expiracao')}) AS pagantes`,
     ),
     // Bloco financeiro da Visão geral (rodada Financeiro, 22/09/2026):
     // "normalidade não ocupa espaço, pendência aparece". Repasses de ponto

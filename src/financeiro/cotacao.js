@@ -16,6 +16,20 @@
 const promocoesRepo = require('./promocoes-repository');
 const { valorMensalDaConta } = require('./san-checkout');
 const { multiplicar } = require('../lib/dinheiro');
+const vigencia = require('../lib/vigencia');
+
+// O que este pedido É pra esta conta — decidido aqui, não no navegador
+// (consolidação final, 24/09/2026: o frontend não calcula regra):
+//   'assinar' — sem plano pago vigente (sem plano, benefício/cortesia, ou
+//               pago vencido): o pedido é uma assinatura nova (quem decide
+//               como ela convive com benefício é o POST /assinar);
+//   'trocar'  — plano pago vigente e o pedido é OUTRO plano;
+//   'ja_tem'  — plano pago vigente e é o MESMO plano: nada a confirmar.
+function acaoDoPedido(conta, plano) {
+  const pagoVigente = !!conta.plano_id && !conta.plano_cortesia && vigencia.coberturaVigente(conta.data_expiracao);
+  if (!pagoVigente) return 'assinar';
+  return plano.id === conta.plano_id ? 'ja_tem' : 'trocar';
+}
 
 async function cotarPlano(conta, plano) {
   const estado = await promocoesRepo.estadoComercialDaConta(conta);
@@ -38,6 +52,7 @@ async function cotarPlano(conta, plano) {
 
   return {
     planoId: plano.id,
+    acao: acaoDoPedido(conta, plano),
     meses,
     cheioMensal,
     tabelaMensal,
@@ -60,4 +75,4 @@ async function cotarPlano(conta, plano) {
   };
 }
 
-module.exports = { cotarPlano };
+module.exports = { cotarPlano, acaoDoPedido };

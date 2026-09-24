@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { arredondar, multiplicar, percentual } = require('../lib/dinheiro');
 const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
@@ -629,7 +630,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
   const mesesDoCiclo = plano.compromisso_meses;
   const baseExpiracao =
-    anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
+    anunciante.data_expiracao && vigencia.coberturaVigente(anunciante.data_expiracao)
       ? new Date(anunciante.data_expiracao)
       : new Date();
   const novaExpiracao = new Date(baseExpiracao);

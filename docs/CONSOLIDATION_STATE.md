@@ -4,16 +4,18 @@ Arquivo curto de retomada. Não é diário: só o necessário para outra sessão
 continuar com segurança.
 
 ## Fase atual
-Checkpoint **H (legado)** implementado localmente, `npm run check` 385/385,
-e2e 01/02/04/06/07 verdes — em commit/PR. Próximo: F (site público), I
-(polimento), J (E2E online), K (Access + smoke + relatório).
+Checkpoint **I (polimento), parte 1** implementado localmente — em
+commit/PR. Próximo: I parte 2 (admin miúdo, código morto, docs), J (E2E
+online com bypass controlado), K (Access + smoke + relatório).
 
 ## Último commit / deploy
-- MostrAi `main` = **`89d73d4`** (PR #50, G+E) — deployed SHA no Northflank
+- MostrAi `main` = **`1411abd`** (PR #51, H+F) — deployed SHA no Northflank
   `mostrai/mostrai` (2 instâncias), `/health` ok, cache purgado. Antes:
-  `63952fb` (PR #49, C+D). Branch de trabalho `claude/busy-noether-hheir2`.
+  `89d73d4` (PR #50, G+E), `63952fb` (PR #49, C+D). Branch de trabalho
+  `claude/busy-noether-hheir2` (rebaseada sobre `main` a cada merge —
+  squash na origem; push `--force-with-lease` só nesse caso).
 - Migrations em produção: até **089** (constraint `assinaturas_status_check`
-  confirmada com `pendente_pagamento`). Nenhuma migration nova em H.
+  confirmada com `pendente_pagamento`). Nenhuma migration nova em H/F/I.
 - Player (`sancompany/Playlist.MostrAi`): `28bc93d` (main).
 - San Checkout (`sancompany/san_checkout`): `f7b1cb9`, `ASAAS_AMBIENTE=sandbox`
   — NÃO virar para produção sem gate explícito do dono.
@@ -48,15 +50,36 @@ e2e 01/02/04/06/07 verdes — em commit/PR. Próximo: F (site público), I
   legado removidos; e2e 02/06/07 atualizados; docs/api.md, funcional.md,
   teia.md, .ia/* ajustados.
 
+- F/site (PR #51): convite sem Pix/vendedor; site conferido sem
+  Inicial/Básico/R$ 50; `/conta/sessao` já evita 401; CSP em vigor; sem
+  analytics. Legal (Termos §6, Política, comodato §3) = decisão do dono.
+- I/polimento parte 1 (esta branch): **régua única de vigência**
+  (`src/lib/vigencia.js`, RN-32-B: último dia inclusivo em Matão — gerador,
+  planoVigenteId, cotação, conciliação, admin, jobs de benefício);
+  cotação devolve `acao` (assinar/trocar/ja_tem) e a confirmação do pedido
+  só desenha; banco de horas drena UMA vez por hora (`criadaAgora` do
+  congelamento — antes drenava a cada poll); heartbeat sem transição não
+  emite SSE pro admin; substituir arquivo pelo admin respeita a duração do
+  plano; PATCH mídia própria valida frequência (400, não 500); proof-of-play
+  com execucaoId > 100 chars responde `item_invalido`; job de benefício
+  notifica início/fim (+ `plan.updated`); e-mail de reativação próprio (não
+  "aprovada"); admin: promoções vigentes com régua de vantagem, candidatura
+  antiga de vendedor não aprova; vitrine usa `desconto_percentual` do
+  servidor; 409 do /assinar sem "WhatsApp"; RUNBOOK §3.1 (virada
+  sandbox→produção, gate do dono). e2e 17 atualizado (chave_hash, 410).
+
 ## Item atual
-- Commit H → PR → CI → merge → deploy (sem migration) → validar online
-  (health, 410 nas rotas aposentadas, admin abre).
+- Commit I-1 → PR → CI → merge → deploy → validar online.
 
 ## Próximos
-- F (site: textos, 401 em página pública, CSP/analytics; comodato.html §3 =
-  decisão), I (polimento: banco de horas por poll, ocupação, vigência UTC ×
-  Matão), J (E2E online com bypass controlado do Access; matriz do Checkout
-  no sandbox), K (Access restaurado + smoke + relatório de 19 seções).
+- I parte 2: admin miúdo (P128 alias subtítulo, P130 renderResumo sem
+  await/catch, P131/P132/P138 textos, P133 copiar dispositivoId, P134
+  filtro "Com problema", P135 logout fecha EventSource, P136 cargas
+  duplicadas, P137 metas do index.html); código morto (pagamentos-
+  repository, listarContasComMovimentacao, statusOperacionalTela, nota
+  fiscal por upload/drive.js); docs (P18/P55/P86/P101/P116).
+- J (E2E online com bypass controlado do Access; matriz do Checkout no
+  sandbox), K (Access restaurado + smoke + relatório de 19 seções).
 
 ## Decisões aplicadas nesta rodada (reversíveis, registrar no relatório)
 - Estado "Aguardando primeiro sinal" no ponto; número da tela = menor livre.

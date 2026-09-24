@@ -23,6 +23,12 @@ Checkpoints mergeados em `main` e no ar: C+D (PR #49, migration 088), G+E
   `beneficios` (só por SQL agora).
 - e2e 02/06/07 reescritos pro fluxo atual (assinatura nasce
   `pendente_pagamento`; cortesia via `plano-administrativo`).
+- **I parte 1 (polimento)** — `src/lib/vigencia.js` é a régua única de
+  vigência (RN-32-B, último dia inclusivo em Matão): NUNCA comparar
+  `new Date(data_expiracao)` com o relógio; usar `coberturaVigente`/
+  `vigenteSql`. Cotação devolve `acao`; banco de horas drena só na geração
+  que congelou a hora (`congelada.criadaAgora`); heartbeat só emite SSE em
+  transição; job de benefícios notifica início/fim.
 
 ## Custo por exibição prevista + benefício por ciclo (24/09/2026, este agente)
 Última alteração estrutural da rodada no modelo comercial — **ADR-018**;

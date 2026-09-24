@@ -93,6 +93,33 @@ continua no ar — é o comportamento desejado.
 
 ---
 
+## 3.1 San Checkout: virada de sandbox para produção (gate do dono)
+
+Hoje o Checkout roda com `ASAAS_AMBIENTE=sandbox` e o Mostraí aponta pra ele
+(`SAN_CHECKOUT_API_URL`, `SAN_CHECKOUT_BASE_URL`, `SAN_CHECKOUT_KEY`). A
+virada é decisão do dono, nunca automática — e é uma sequência, não um
+toggle. Registrado na consolidação final (24/09/2026):
+
+1. **Antes** — no Mostraí, listar o que é de sandbox: `assinaturas` com
+   `status IN ('ativa','pendente_pagamento','pendente_troca')`,
+   `cobrancas_confirmadas` e `ciclos_contratados` gerados por cobrança de
+   teste, `eventos_assinatura_pendentes` abertos. Nada disso pode ser
+   apagado sem o dono dizer o que fica (histórico) e o que sai; assinaturas
+   de teste que sobrarem viram pendência na conciliação diária (404 no
+   Checkout de produção).
+2. **Checkout** — trocar `ASAAS_AMBIENTE` e a chave da Asaas no serviço
+   `san-checkout`; conferir que o contratante `mostrai` existe lá com a
+   MESMA `SAN_CHECKOUT_KEY` (ela assina o webhook — divergiu, tudo dá 401).
+3. **Mostraí** — só mudam variáveis se a URL do Checkout mudar. Deploy
+   normal (seção 3). Não há migration.
+4. **Prova** — uma assinatura real de valor mínimo, de ponta a ponta:
+   `POST /assinar` → link → pagamento → webhook `criada` → conta ativa
+   (`assinaturas.status='ativa'`, cobrança, ciclo) → `GET
+   /admin/eventos-pendentes` vazio → cancelamento pelo painel → `cancelada`.
+   Depois, `npm run conciliar` à mão e conferir que não gerou pendência.
+5. **Reverter** — voltar `ASAAS_AMBIENTE=sandbox` no Checkout; o Mostraí
+   não precisa de deploy. O que foi cobrado de verdade fica registrado.
+
 ## 4. Reverter
 
 Duas formas, da mais rápida para a mais completa.

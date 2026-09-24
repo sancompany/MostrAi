@@ -906,6 +906,17 @@ fale com o suporte antes de assinar". *Quem vê:* o anunciante (painel e
 perfil) e o administrador (coluna "Suspensa" na aba Anunciantes, separada da
 coluna "Status").
 
+**RN-32-B — Vigência tem uma régua só: o último dia é inclusivo, no relógio
+de Matão** (consolidação final, 24/09/2026 — `src/lib/vigencia.js`).
+`data_expiracao` é uma data; quem tem cobertura até 30/09 roda o dia 30
+inteiro e sai do ar à meia-noite de Matão (America/Sao_Paulo). Gerador de
+playlist, `planoVigenteId`, cotação (`acao`), conciliação, Visão geral do
+admin e o job de benefícios usam a mesma função (`coberturaVigente` no JS,
+`vigenteSql` no SQL). Antes cada lugar comparava de um jeito e o mesmo plano
+"vencia" até 27 horas antes na TV do que na ficha do admin. *Violada:* não
+há caminho — nenhum código compara `new Date(data_expiracao)` com o relógio.
+*Quem vê:* todo mundo, sem perceber (é o que torna a regra certa).
+
 **RN-32-A — Cobertura vencida cancela o plano comercial, nunca suspende a
 conta.** *(23/09/2026, decisão do dono — ver RN-35.)* A conciliação diária
 (`src/financeiro/conciliacao.js#encerrarCoberturaVencida`) varre as contas com

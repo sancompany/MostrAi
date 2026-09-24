@@ -1,4 +1,18 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
+const notificacoesRepo = require('../creditos/notificacoes');
+const sse = require('../lib/sse');
+
+const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
+
+// Notificação + SSE depois do COMMIT, sem derrubar o job se o aviso falhar.
+function avisarConta(contaId, notificacao) {
+  notificacoesRepo
+    .registrar(contaId, notificacao)
+    .catch((err) => console.error('falha ao notificar benefício', err.message));
+  sse.emitirParaConta(contaId, 'plan.updated', {});
+  sse.emitirParaConta(contaId, 'credits.updated', {});
+}
 
 // PLANO ADMINISTRATIVO (reconstrução de Contas, 23/09/2026, Partes 12-17).
 //
@@ -62,7 +76,7 @@ function validadeValida(validoAte) {
   const dia = new Date(Date.UTC(a, m - 1, d));
   // 30/02 vira 02/03 no Date — data que não existe é recusada, não "corrigida".
   if (dia.getUTCFullYear() !== a || dia.getUTCMonth() !== m - 1 || dia.getUTCDate() !== d) return null;
-  return new Date(`${texto}T23:59:59-03:00`) > new Date() ? texto : null;
+  return texto >= hojeISO() ? texto : null;
 }
 
 // Encerra as linhas de histórico ainda abertas da conta.
@@ -154,7 +168,7 @@ async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
     if (motivo === 'vencido') {
       const { rows: aindaVencido } = await db.query(
         `SELECT id FROM anunciantes
-          WHERE id = $1 AND plano_id IS NOT NULL AND data_expiracao IS NOT NULL AND data_expiracao < current_date
+          WHERE id = $1 AND plano_id IS NOT NULL AND ${vigencia.vencidaSql('data_expiracao')}
           FOR UPDATE`,
         [conta.id],
       );
@@ -245,7 +259,10 @@ async function resgatarOuConcederBeneficio(
     // Mesma fórmula de "pagando em dia" de financeiro/routes.js — um ciclo
     // pago (não cortesia) ainda não vencido.
     const pagandoEmDia =
-      conta.plano_id && !conta.plano_cortesia && conta.data_expiracao && new Date(conta.data_expiracao) > new Date();
+      conta.plano_id &&
+      !conta.plano_cortesia &&
+      conta.data_expiracao &&
+      vigencia.coberturaVigente(conta.data_expiracao);
     const status = pagandoEmDia ? 'agendado' : 'ativo';
     // Duração em dias (resgate de créditos): a validade conta a partir do dia
     // em que o benefício COMEÇA, não do dia do resgate. Antes o agendado
@@ -309,13 +326,11 @@ async function resgatarOuConcederBeneficio(
 const NIVEL_TIER = { essencial: 1, destaque: 2, maximo: 3 };
 const nivelDoTier = (tier) => NIVEL_TIER[tier] || 0;
 
-const diaTexto = (v) => String(v instanceof Date ? v.toISOString() : v).slice(0, 10);
+const { diaTexto } = vigencia;
 
-// Dias inteiros de hoje até `dataISO` (0 se já passou).
+// Dias inteiros de hoje (Matão) até `dataISO` (0 se já passou).
 function diasAte(dataISO) {
-  const fim = new Date(`${diaTexto(dataISO)}T00:00:00Z`);
-  const hoje = new Date(`${hojeISO()}T00:00:00Z`);
-  return Math.max(0, Math.round((fim - hoje) / 86400000));
+  return Math.max(0, vigencia.diasAteVencer(dataISO));
 }
 
 // Dias que `meses` de calendário valem a partir de hoje (mesma aritmética de
@@ -430,15 +445,9 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
 }
 
 // Datas em 'AAAA-MM-DD' (as colunas são `date`; o pool devolve texto — ver
-// src/db/pool.js). Aritmética em UTC pra não escorregar um dia no fuso.
-function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-function somarDias(dataISO, dias) {
-  const base = new Date(`${String(dataISO).slice(0, 10)}T00:00:00Z`);
-  base.setUTCDate(base.getUTCDate() + Number(dias));
-  return base.toISOString().slice(0, 10);
-}
+// src/db/pool.js). "Hoje" é o dia de Matão e o último dia é inclusivo — a
+// régua única de src/lib/vigencia.js.
+const { hojeComercial: hojeISO, somarDias } = vigencia;
 
 // Reavaliação diária (mesma rotina de sempre, scripts/conciliar.js) — duas
 // passadas independentes, cada uma resolvendo um lado do ciclo de vida.
@@ -471,7 +480,7 @@ async function ativarBeneficiosAgendados() {
              OR ha.plano_anterior_valido_ate <= current_date
              -- o ciclo pago acabou antes (cancelado, cobrança falhou e a
              -- conciliação limpou): o benefício não espera a data antiga.
-             OR NOT (a.plano_id IS NOT NULL AND NOT a.plano_cortesia AND a.data_expiracao > now()))`,
+             OR NOT (a.plano_id IS NOT NULL AND NOT a.plano_cortesia AND a.data_expiracao >= ${vigencia.HOJE_SQL}))`,
   );
   let ativados = 0;
   for (const linha of pendentes) {
@@ -499,7 +508,10 @@ async function ativarBeneficiosAgendados() {
       );
       // Plano PAGO em dia por baixo: guarda com os dias que ainda restam.
       const pagoEmDia =
-        conta.plano_id && !conta.plano_cortesia && conta.data_expiracao && diasAte(conta.data_expiracao) > 0;
+        conta.plano_id &&
+        !conta.plano_cortesia &&
+        conta.data_expiracao &&
+        vigencia.coberturaVigente(conta.data_expiracao);
       await cliente.query(
         `UPDATE anunciantes SET plano_id=$2, plano_cortesia=true,
                 cortesia_motivo=$3, data_inicio_cobertura=now(), data_expiracao=$4,
@@ -518,6 +530,14 @@ async function ativarBeneficiosAgendados() {
       );
       await cliente.query('COMMIT');
       ativados += 1;
+      // O cliente fica sabendo que o benefício começou (sino + painel sem
+      // F5) — antes o job ativava em silêncio e só o resgate imediato
+      // avisava (consolidação final, 24/09/2026).
+      avisarConta(linha.anunciante_id, {
+        tipo: 'beneficio_iniciado',
+        titulo: 'Seu benefício começou',
+        descricao: `Válido até ${dataBR(validoAte)}. Seu anúncio já está na rotação.`,
+      });
     } catch (err) {
       await cliente.query('ROLLBACK').catch(() => {});
       throw err;
@@ -538,7 +558,7 @@ async function ativarBeneficiosAgendados() {
 async function encerrarBeneficiosVencidos() {
   const { rows: vencidos } = await pool.query(
     `SELECT ha.id, ha.anunciante_id, ha.plano_id FROM planos_administrativos ha
-      WHERE ha.status = 'ativo' AND ha.valido_ate < current_date`,
+      WHERE ha.status = 'ativo' AND ha.valido_ate < ${vigencia.HOJE_SQL}`,
   );
   let encerrados = 0;
   for (const linha of vencidos) {
@@ -566,9 +586,9 @@ async function encerrarBeneficiosVencidos() {
             SET plano_id = plano_pago_guardado_id,
                 plano_cortesia = false,
                 cortesia_motivo = NULL,
-                data_inicio_cobertura = CASE WHEN plano_pago_guardado_id IS NULL THEN data_inicio_cobertura ELSE current_date END,
+                data_inicio_cobertura = CASE WHEN plano_pago_guardado_id IS NULL THEN data_inicio_cobertura ELSE ${vigencia.HOJE_SQL} END,
                 data_expiracao = CASE WHEN plano_pago_guardado_id IS NULL THEN NULL
-                                      ELSE current_date + plano_pago_guardado_dias END,
+                                      ELSE ${vigencia.HOJE_SQL} + plano_pago_guardado_dias END,
                 plano_pago_guardado_id = NULL,
                 plano_pago_guardado_dias = NULL
           WHERE id=$1 AND plano_cortesia AND plano_id = $2`,
@@ -576,6 +596,14 @@ async function encerrarBeneficiosVencidos() {
       );
     });
     encerrados += 1;
+    const voltouPago = !!conta.rows[0].plano_pago_guardado_id;
+    avisarConta(linha.anunciante_id, {
+      tipo: 'beneficio_encerrado',
+      titulo: 'Seu benefício terminou',
+      descricao: voltouPago
+        ? 'Seu plano pago voltou com os dias que ainda tinha.'
+        : 'Pra continuar no ar, resgate créditos ou escolha um plano.',
+    });
   }
   return { verificados: vencidos.length, encerrados };
 }

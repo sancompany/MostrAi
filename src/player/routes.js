@@ -31,15 +31,19 @@ const ehObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const corpoObjeto = (req, res, next) =>
   ehObjeto(req.body) ? next() : res.status(400).json({ erro: 'corpo precisa ser um objeto JSON' });
 
-// Avisa quem está olhando (admin sempre; dono do ponto só em transição) que
-// a tela mudou — o navegador refaz o GET, nunca recebe o dado pelo canal.
+// Avisa quem está olhando que a tela mudou de ESTADO (transição de saúde,
+// primeiro sinal) — o navegador refaz o GET, nunca recebe o dado pelo canal.
+// Heartbeat sem transição não avisa ninguém: cada tela bate a cada 5 min, e
+// avisar o admin em todos eles fazia a Rede inteira recarregar sem nada ter
+// mudado (consolidação final, 24/09/2026).
 function avisarMudanca(tela, { transicao }) {
+  if (!transicao) return;
   sse.emitirParaAdmin('screen.updated', { id: tela.id, pontoId: tela.ponto_id });
-  if (transicao && tela.dono_conta_id) {
+  sse.emitirParaAdmin('point.updated', { id: tela.ponto_id });
+  if (tela.dono_conta_id) {
     sse.emitirParaConta(tela.dono_conta_id, 'screen.updated', { pontoId: tela.ponto_id });
     sse.emitirParaConta(tela.dono_conta_id, 'point.updated', { id: tela.ponto_id });
   }
-  if (transicao) sse.emitirParaAdmin('point.updated', { id: tela.ponto_id });
 }
 
 // ---------------------------------------------------------------------------
@@ -170,8 +174,14 @@ async function confirmarLote(dispositivo, eventosRecebidos) {
   const resultados = [];
   for (const evento of eventosRecebidos) {
     const execucaoId = ehObjeto(evento) && typeof evento.execucaoId === 'string' ? evento.execucaoId.trim() : '';
-    if (!execucaoId || execucaoId.length > 100) continue;
-    if (typeof evento.itemProgramacaoId !== 'string' || typeof evento.janelaId !== 'string') {
+    if (!execucaoId) continue;
+    // Id longo demais pra coluna: responde `item_invalido` (definitivo) em
+    // vez de silêncio — sem resposta o Player reenviaria o evento por 7 dias.
+    if (
+      execucaoId.length > 100 ||
+      typeof evento.itemProgramacaoId !== 'string' ||
+      typeof evento.janelaId !== 'string'
+    ) {
       resultados.push({ execucaoId, status: 'item_invalido' });
       continue;
     }
