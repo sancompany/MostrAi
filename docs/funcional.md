@@ -969,9 +969,10 @@ credencial, e log não a contém. Repetir o mesmo token em até 10 min devolve a
 mesma credencial (o Player pode ter perdido a resposta); depois disso, 401.
 **Rotação:** o admin pede, a próxima resposta de heartbeat entrega a chave
 nova, e as duas valem até o Player usar a nova (a antiga ainda vale 24 h de
-sobreposição). A candidata só é promovida numa resposta de sucesso — se a
-tela está em reparo e a playlist responde 403, a chave atual segue e a
-candidata volta no heartbeat seguinte. Rotação só existe para Player V2
+sobreposição). A candidata só é promovida numa resposta de sucesso (2xx), no
+instante em que ela sai — 400, 403 ou erro do servidor não promovem, e a
+candidata volta no heartbeat seguinte; se a resposta que promoveu se perder
+na rede e o aparelho voltar com a chave anterior, a atual é reenviada. Rotação só existe para Player V2
 provisionado (o player web nunca receberia a candidata). **Revogação:** apaga
 a credencial na hora (inclusive a chave V1 que a migration 082 guardou para
 rollback); o Player recebe 401, a tela vira "Player revogado" e deixa de

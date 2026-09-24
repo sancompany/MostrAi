@@ -38,32 +38,40 @@ function lerPlayer(req) {
 
 function exigirAparelho({ operacao = true } = {}) {
   return async (req, res, next) => {
-    let tela = await dispositivosRepo.buscarComPonto(req.params.dispositivoId);
+    const tela = await dispositivosRepo.buscarComPonto(req.params.dispositivoId);
     if (!tela || tela.ponto_status === 'arquivado') return res.status(401).json(NAO_AUTORIZADO);
 
     const enviada = req.get('x-aparelho-key') || req.get('x-aparelho-id');
-    let qual = credencial.identificarChave(tela, enviada);
+    const qual = credencial.identificarChave(tela, enviada);
     if (!qual) return res.status(401).json(NAO_AUTORIZADO);
 
-    // 403 ANTES de promover: o Player descarta a candidata em qualquer
-    // resposta que não seja sucesso (contrato §1.1). Promover e responder 403
-    // deixaria o servidor com a chave nova e o aparelho só com a antiga —
-    // trancado quando a sobreposição vence. Sem promover, o próximo heartbeat
-    // reenvia a candidata.
     if (operacao && tela.status !== 'ativo') {
       return res.status(403).json({ erro: 'esta tela está fora do ar no cadastro — fale com a Mostraí pra reativar' });
     }
-    if (qual === 'nova' && !(await credencial.promoverChaveNova(tela.id, tela.chave_nova_hash))) {
-      // A promoção não casou: outra requisição já promoveu esta mesma chave
-      // (segue valendo) ou o admin cancelou/trocou a rotação no meio. No
-      // segundo caso, responder 200 faria o aparelho oficializar uma chave
-      // que o servidor não aceita mais.
-      // Segue com a linha relida: a antiga ainda carrega a candidata, que o
-      // heartbeat reenviaria como "chave nova" sendo já a atual.
-      const agora = await dispositivosRepo.buscarComPonto(tela.id);
-      qual = agora && credencial.identificarChave(agora, enviada) === 'atual' ? 'atual' : null;
-      if (!qual) return res.status(401).json(NAO_AUTORIZADO);
-      tela = agora;
+    // Candidata de rotação: o Player só a oficializa numa resposta de
+    // sucesso e a descarta em qualquer outra (contrato §1.1). Então o
+    // servidor promove exatamente aí: na hora de mandar uma resposta 2xx e
+    // antes de ela sair. 400/403/500 do handler não promovem; promoção que
+    // falha vira 503 (o Player repete 5xx com a chave antiga, a candidata
+    // segue pendente). Se a resposta 2xx se perder na rede, a chave
+    // promovida volta no heartbeat seguinte (credencial.promoverChaveNova).
+    if (qual === 'nova') {
+      const responder = res.json.bind(res);
+      const hashAtualLido = tela.chave_hash;
+      res.json = (corpo) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return responder(corpo);
+        credencial.promoverChaveNova(tela.id, enviada, hashAtualLido).then(
+          () => responder(corpo),
+          (err) => {
+            console.error('promoção da chave candidata falhou:', err.code || err.name);
+            res.status(503);
+            responder({ erro: 'tente de novo em instantes' });
+          },
+        );
+        return res;
+      };
+    } else if (qual === 'atual' && tela.chave_atual_cifrada) {
+      await credencial.esquecerCopiaDaAtual(tela.id);
     }
     // Primeira requisição com a credencial do provisionamento: o Player
     // provou que a recebeu, a janela de repetição do token fecha.

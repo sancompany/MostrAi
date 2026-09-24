@@ -66,6 +66,10 @@ ALTER TABLE dispositivos
   ADD COLUMN IF NOT EXISTS chave_nova_fingerprint text,
   ADD COLUMN IF NOT EXISTS chave_nova_cifrada text,
   ADD COLUMN IF NOT EXISTS chave_nova_criada_em timestamptz,
+  -- Cópia cifrada da chave recém-promovida, até o Player usá-la uma vez: se a
+  -- resposta que a oficializou se perdeu na rede, o aparelho segue com a
+  -- anterior e o heartbeat a reenvia (senão ele trancaria ao fim das 24h).
+  ADD COLUMN IF NOT EXISTS chave_atual_cifrada text,
   -- Sobreposição: a anterior vale até expirar (24h), para requisições que já
   -- tinham saído com ela.
   ADD COLUMN IF NOT EXISTS chave_anterior_hash text,

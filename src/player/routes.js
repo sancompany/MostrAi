@@ -110,8 +110,14 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
   if (sinalizar[0]) resposta.playlist = { atualizar: true };
 
   // Rotação: a candidata vai até o Player usá-la. Chegou pela própria
-  // candidata? Então já foi promovida (src/lib/aparelho.js) — nada a mandar.
-  if (tela.chave_nova_cifrada && req.chaveUsada !== 'nova') {
+  // candidata? Então é promovida nesta resposta (src/lib/aparelho.js) — nada
+  // a mandar. Chegou pela ANTERIOR? A resposta que promoveu a atual se perdeu
+  // e o aparelho ficou com a velha: a atual volta como chave nova, antes que
+  // a sobreposição de 24h acabe e o tranque.
+  if (req.chaveUsada === 'anterior' && tela.chave_atual_cifrada) {
+    const atual = cofre.abrir(tela.chave_atual_cifrada);
+    if (atual) resposta.novaChave = atual;
+  } else if (tela.chave_nova_cifrada && req.chaveUsada !== 'nova') {
     const nova = cofre.abrir(tela.chave_nova_cifrada);
     if (nova) resposta.novaChave = nova;
     else await credencial.cancelarRotacao(tela.id, 'candidata ilegível (segredo do servidor trocado)');

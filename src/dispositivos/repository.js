@@ -408,6 +408,16 @@ async function trocarToken(token, credencial) {
         WHERE credencial_cifrada IS NOT NULL AND usado_em < now() - ($1::int * interval '1 minute')`,
       [PROVISIONAMENTO_REPETICAO_MIN],
     );
+    // Mesma ordem de travas de gerarTokenProvisionamento — tela, depois
+    // token: consumir o token enquanto o admin gera outro arquivo para a
+    // mesma tela não pode virar deadlock (token→tela contra tela→token).
+    await client.query(
+      `SELECT d.id FROM dispositivos d
+         JOIN tokens_provisionamento t ON t.dispositivo_id = d.id
+        WHERE t.token_hash = $1
+          FOR UPDATE OF d`,
+      [hash],
+    );
     const { rows: consumido } = await client.query(
       `UPDATE tokens_provisionamento t SET usado_em = now()
          FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
@@ -423,7 +433,8 @@ async function trocarToken(token, credencial) {
       const chaveHash = credencial.hashDaChave(chave);
       await client.query(
         `UPDATE dispositivos
-            SET aparelho_id = NULL, dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
+            SET aparelho_id = NULL, chave_atual_cifrada = NULL,
+                dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
                 chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
                 chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
                 chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,

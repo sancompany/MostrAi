@@ -738,34 +738,90 @@ test('rotação: 403 (tela fora do ar) NÃO promove a candidata — ela volta no
   assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: nova })).status, 200);
 });
 
-test('rotação: promoção que perde a corrida para o admin → 401; para outra requisição com a mesma chave → 200', async () => {
+test('rotação: só resposta 2xx promove; 400/500 com a candidata não a oficializam (Codex P1)', async () => {
   const { tela, cred } = await telaProvisionada(app);
   const url = `/player/${cred.dispositivoId}/heartbeat`;
+  await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
+  const k1 = (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave;
+  // Corpo estruturalmente inválido: 400 — o Player descarta a candidata.
+  assert.equal((await app.chamar('POST', url, { cru: '[1]', chave: k1 })).status, 400);
+  const { rows } = await pool.query('SELECT chave_nova_hash FROM dispositivos WHERE id = $1', [tela.id]);
+  assert.ok(rows[0].chave_nova_hash, 'candidata segue pendente');
+  const r = await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.novaChave, k1, 'e volta no heartbeat seguinte');
+  // Promoção que falha no banco vira 503 (o Player repete), nunca 200.
   const original = credencialMod.promoverChaveNova;
+  credencialMod.promoverChaveNova = async () => {
+    throw Object.assign(new Error('banco fora'), { code: '57P01' });
+  };
   try {
-    await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
-    const k1 = (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave;
-    // Admin cancela entre a leitura da tela e o UPDATE da promoção.
-    credencialMod.promoverChaveNova = async (id, hash, db) => {
-      await credencialMod.cancelarRotacao(id);
-      return original(id, hash, db);
-    };
-    assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 401);
-    credencialMod.promoverChaveNova = original;
-    assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).status, 200);
-
-    await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
-    const k2 = (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave;
-    // Outra requisição com K2 promove primeiro: esta segue valendo.
-    credencialMod.promoverChaveNova = async (id, hash, db) => {
-      await original(id, hash, db);
-      return original(id, hash, db);
-    };
-    const r = await app.chamar('POST', url, { corpo: hb(), chave: k2 });
-    assert.equal(r.status, 200);
-    assert.ok(!r.json.novaChave, 'já promovida: não reenvia a própria chave como nova');
+    assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 503);
   } finally {
     credencialMod.promoverChaveNova = original;
+  }
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 200);
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).json.novaChave, undefined);
+});
+
+test('rotação: admin cancela no meio de uma resposta 2xx → a chave que o aparelho recebeu "sim" vale', async () => {
+  const { tela, cred } = await telaProvisionada(app);
+  const url = `/player/${cred.dispositivoId}/heartbeat`;
+  await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
+  const k1 = (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave;
+  const original = credencialMod.promoverChaveNova;
+  credencialMod.promoverChaveNova = async (...args) => {
+    await credencialMod.cancelarRotacao(tela.id);
+    return original(...args);
+  };
+  try {
+    assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 200);
+  } finally {
+    credencialMod.promoverChaveNova = original;
+  }
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 200, 'nunca tranca');
+  // Revogação no meio vence: nenhuma chave ressuscita.
+  await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
+  const k2 = (await app.chamar('POST', url, { corpo: hb(), chave: k1 })).json.novaChave;
+  credencialMod.promoverChaveNova = async (...args) => {
+    await credencialMod.revogar(tela.id);
+    return original(...args);
+  };
+  try {
+    await app.chamar('POST', url, { corpo: hb(), chave: k2 });
+  } finally {
+    credencialMod.promoverChaveNova = original;
+  }
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k2 })).status, 401);
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 401);
+});
+
+test('rotação: resposta que promoveu se perdeu → aparelho volta com a anterior e recebe a atual de novo', async () => {
+  const { tela, cred } = await telaProvisionada(app);
+  const url = `/player/${cred.dispositivoId}/heartbeat`;
+  await app.chamar('POST', `/admin/dispositivos/${tela.id}/credencial/rotacionar`);
+  const k1 = (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave;
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 200); // "perdida"
+  const r = await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho });
+  assert.equal(r.status, 200, 'anterior ainda vale');
+  assert.equal(r.json.novaChave, k1, 'a atual é reenviada');
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: k1 })).status, 200);
+  const { rows } = await pool.query('SELECT chave_atual_cifrada FROM dispositivos WHERE id = $1', [tela.id]);
+  assert.equal(rows[0].chave_atual_cifrada, null, 'usada uma vez, a cópia cifrada some');
+  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.novaChave, undefined);
+});
+
+test('provisionamento: gerar arquivo novo enquanto o token é trocado não trava (Codex P2)', async () => {
+  const pid = await novoPonto();
+  const tela = (await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} })).json;
+  for (let i = 0; i < 5; i++) {
+    const arq = (await app.chamar('POST', `/admin/dispositivos/${tela.id}/provisionamento`)).json.arquivo;
+    const [troca, gerar] = await Promise.all([
+      app.chamar('POST', '/player/provisionar', { corpo: { tokenProvisionamento: arq.tokenProvisionamento } }),
+      app.chamar('POST', `/admin/dispositivos/${tela.id}/provisionamento`),
+    ]);
+    assert.ok([200, 401].includes(troca.status), `troca: ${troca.status}`);
+    assert.equal(gerar.status, 201, `gerar: ${gerar.status}`);
   }
 });
 

@@ -45,25 +45,42 @@ function identificarChave(tela, enviada, agora = new Date()) {
   return null;
 }
 
-// Primeira requisição bem-sucedida com a candidata: ela vira a oficial e a
-// antiga passa a valer só pela janela de sobreposição. Condicional ao hash
-// da candidata: duas requisições simultâneas com ela promovem uma vez só.
-async function promoverChaveNova(telaId, hashNova, db = pool) {
+// Resposta 2xx a uma requisição feita com a candidata: o Player vai
+// oficializá-la (contrato §1.1), então o servidor também — ANTES de a
+// resposta sair (src/lib/aparelho.js). A antiga passa a valer só pela
+// sobreposição, e a nova fica cifrada até o primeiro uso, para ser reenviada
+// se a resposta se perder.
+//
+// Condição: a candidata ainda pendente, OU a chave atual ainda a mesma de
+// quando a requisição foi autenticada (`hashAtualLido`) — o admin pode ter
+// cancelado a rotação no meio, mas a resposta já disse "sim" ao aparelho.
+// Revogação (chave atual nula) e chave legada nova (atual trocada) vencem.
+// Uma rotação nova pedida no meio (outra candidata) continua pendente.
+async function promoverChaveNova(telaId, chave, hashAtualLido, db = pool) {
+  const hash = hashDaChave(chave);
   const { rowCount } = await db.query(
     `UPDATE dispositivos
         SET chave_anterior_hash = chave_hash,
-            chave_anterior_expira_em = now() + ($3::bigint * interval '1 millisecond'),
-            chave_hash = chave_nova_hash,
-            chave_fingerprint = chave_nova_fingerprint,
-            chave_criada_em = chave_nova_criada_em,
-            chave_nova_hash = NULL, chave_nova_fingerprint = NULL,
-            chave_nova_cifrada = NULL, chave_nova_criada_em = NULL
-      WHERE id = $1 AND chave_nova_hash = $2`,
-    [telaId, hashNova, SOBREPOSICAO_MS],
+            chave_anterior_expira_em = now() + ($4::bigint * interval '1 millisecond'),
+            chave_hash = $2,
+            chave_fingerprint = $3,
+            chave_criada_em = CASE WHEN chave_nova_hash = $2 THEN chave_nova_criada_em ELSE now() END,
+            chave_atual_cifrada = $5,
+            chave_nova_fingerprint = CASE WHEN chave_nova_hash = $2 THEN NULL ELSE chave_nova_fingerprint END,
+            chave_nova_cifrada = CASE WHEN chave_nova_hash = $2 THEN NULL ELSE chave_nova_cifrada END,
+            chave_nova_criada_em = CASE WHEN chave_nova_hash = $2 THEN NULL ELSE chave_nova_criada_em END,
+            chave_nova_hash = CASE WHEN chave_nova_hash = $2 THEN NULL ELSE chave_nova_hash END
+      WHERE id = $1 AND chave_hash IS NOT NULL AND chave_hash <> $2
+        AND (chave_nova_hash = $2 OR chave_hash = $6)`,
+    [telaId, hash, fingerprintDoHash(hash), SOBREPOSICAO_MS, cofre.fechar(chave), hashAtualLido],
   );
-  if (rowCount)
-    await telaEventos.registrar(telaId, 'CREDENTIAL_ROTATED', { fingerprint: fingerprintDoHash(hashNova) }, db);
+  if (rowCount) await telaEventos.registrar(telaId, 'CREDENTIAL_ROTATED', { fingerprint: fingerprintDoHash(hash) }, db);
   return rowCount > 0;
+}
+
+// O Player usou a chave atual: ele a tem, a cópia cifrada não serve mais.
+async function esquecerCopiaDaAtual(telaId) {
+  await pool.query('UPDATE dispositivos SET chave_atual_cifrada = NULL WHERE id = $1', [telaId]);
 }
 
 // Admin pede rotação: a candidata fica pendente até o Player usá-la. Só para
@@ -106,6 +123,7 @@ async function revogar(telaId) {
   const { rows } = await pool.query(
     `UPDATE dispositivos
         SET aparelho_id = NULL, chave_hash = NULL, chave_fingerprint = NULL, chave_criada_em = NULL, chave_ultimo_uso_em = NULL,
+            chave_atual_cifrada = NULL,
             chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
             chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
             revogado_em = now()
@@ -131,7 +149,7 @@ async function gerarChaveLegada(telaId) {
   const hash = hashDaChave(chave);
   const { rows } = await pool.query(
     `UPDATE dispositivos
-        SET aparelho_id = NULL, dispositivo_uid = NULL,
+        SET aparelho_id = NULL, dispositivo_uid = NULL, chave_atual_cifrada = NULL,
             chave_hash = $2, chave_fingerprint = $3, chave_criada_em = now(), chave_ultimo_uso_em = NULL,
             chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
             chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
@@ -164,6 +182,7 @@ module.exports = {
   fingerprintDoHash,
   identificarChave,
   promoverChaveNova,
+  esquecerCopiaDaAtual,
   iniciarRotacao,
   cancelarRotacao,
   revogar,
