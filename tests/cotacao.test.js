@@ -11,7 +11,8 @@ const { cotarPlano } = require('../src/financeiro/cotacao');
 // /anunciantes/me/cotacao). Ela não pode divergir da cobrança: até
 // 23/09/2026 a tela mostrava R$ 672,30 pra uma cobrança de R$ 597,60. Estes
 // testes provam que ela segue a mesma régua do POST /assinar — promoção
-// substitui o desconto do ciclo, comodato e parceiro somam por cima (ADR-014).
+// substitui o desconto do ciclo, parceiro soma por cima (ADR-014; o comodato
+// saiu em 24/09/2026, ADR-016).
 //
 // Célula própria (máximo × 12 meses): os arquivos de teste rodam em paralelo
 // no mesmo banco, e o de elegibilidade cria promoção no essencial × 3.
@@ -53,14 +54,14 @@ test('cotarPlano: sem promoção, é o preço do ciclo — igual à cobrança', 
     assert.strictEqual(c.valorMensal, valorMensalDaConta(conta, plano, null));
     assert.strictEqual(c.valorCiclo, 960);
     assert.strictEqual(c.descontoParceiro, false);
-    assert.strictEqual(c.creditoComodato, false);
+    assert.strictEqual(c.creditoComodato, undefined);
   } finally {
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [conta.id]);
     await pool.query('DELETE FROM planos WHERE id = $1', [plano.id]);
   }
 });
 
-test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e comodato + parceiro somam por cima', async () => {
+test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e parceiro soma por cima (comodato legado não desconta — ADR-016)', async () => {
   const plano = await planoDeTeste();
   const conta = await contaDeTeste();
   const promo = await promocoesRepo.criar({
@@ -86,8 +87,8 @@ test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e comodato +
     const assinatura = { promocao_valido_ate: new Date(Date.now() + 86400000), promocao_desconto_percentual: 25 };
     assert.strictEqual(comum.valorMensal, valorMensalDaConta(conta, plano, assinatura));
 
-    // Dona de ponto com R$ 50 de crédito e parceira com 10%: 75 − 10% = 67,50;
-    // − 50 = 17,50 por mês.
+    // Dona de ponto com R$ 50 de crédito LEGADO e parceira com 10%: 75 − 10%
+    // = 67,50. O crédito de comodato saiu em 24/09/2026 (ADR-016): não abate.
     await pool.query(
       `UPDATE anunciantes SET papeis = ARRAY['anunciante','ponto'], credito_comodato_mensal = 50,
                               status = 'parceiro', parceiro_desconto_percentual = 10, parceiro_compromisso_minimo = 1
@@ -97,11 +98,11 @@ test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e comodato +
     const comDireitos = await anunciantesRepo.buscarPorId(conta.id);
     const c = await cotarPlano(comDireitos, plano);
     assert.strictEqual(c.tabelaMensal, 75, 'o preço de tabela não depende da conta');
-    assert.strictEqual(c.valorMensal, 17.5);
+    assert.strictEqual(c.valorMensal, 67.5);
     assert.strictEqual(c.valorMensal, valorMensalDaConta(comDireitos, plano, assinatura));
-    assert.strictEqual(c.valorCiclo, 210);
+    assert.strictEqual(c.valorCiclo, 810);
     assert.strictEqual(c.descontoParceiro, true);
-    assert.strictEqual(c.creditoComodato, true);
+    assert.strictEqual(c.creditoComodato, undefined, 'crédito de comodato não existe mais na cotação');
   } finally {
     await pool.query('DELETE FROM promocoes WHERE id = $1', [promo.id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [conta.id]);

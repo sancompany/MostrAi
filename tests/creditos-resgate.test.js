@@ -117,8 +117,14 @@ test('com ciclo pago em curso: agenda e conta a validade a partir do FIM do cicl
   const c = await conta({ plano_id: 'destaque-1m', plano_cortesia: false, data_expiracao: fimPago });
   const app = await subirApp();
   try {
-    await repo.concederAdmin(c.id, 3, { motivo: 'teste' });
-    const r = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'essencial', meses: 1 });
+    // Resgate abaixo do plano pago é recusado (ADR-016, regra 31) sem gastar
+    // crédito; igual ou acima agenda.
+    await repo.concederAdmin(c.id, 7, { motivo: 'teste' });
+    const menor = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'essencial', meses: 1 });
+    assert.equal(menor.status, 409);
+    assert.match(menor.corpo.erro, /já oferece mais recursos que o benefício Essencial/);
+    assert.equal(await repo.saldo(c.id), 7, 'nenhum crédito consumido na recusa');
+    const r = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'destaque', meses: 1 });
     assert.equal(r.status, 200, JSON.stringify(r.corpo));
     assert.equal(r.corpo.status, 'agendado');
     assert.equal(r.corpo.comecaEm, fimPago);

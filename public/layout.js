@@ -479,6 +479,7 @@ window.ROTULOS = {
   movimentoCredito: {
     indicacao_primeiro_pagamento: 'Indicação · primeiro pagamento',
     indicacao_renovacao: 'Indicação · renovação',
+    credito_mensal_ponto: 'Crédito mensal do ponto',
     concessao_admin: 'Crédito da Mostraí',
     estorno_admin: 'Ajuste da Mostraí',
     resgate_beneficio: 'Resgate de benefício',

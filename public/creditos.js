@@ -1,6 +1,7 @@
-// Créditos e benefícios — módulo do painel único. Cada pagamento confirmado
-// de quem a conta indicou vale 1 crédito; créditos viram um plano por tempo
-// limitado.
+// Créditos e benefícios — módulo do painel único. Crédito vem de três
+// lugares (24/09/2026, ADR-016): pagamento confirmado de quem a conta indicou,
+// cada mês de ponto elegível na rede, e concessão da Mostraí. Créditos viram
+// um plano por tempo limitado.
 //
 // Uso: montarCreditos({ aoResgatar }) — `aoResgatar` recarrega o que depende
 // do plano da conta. Requer /config.js, /layout.js e /eventos.js antes.
@@ -77,7 +78,9 @@
       const acao =
         o.disponivel && d.resgate.permitido
           ? `<button type="button" class="btn primary mini" data-acao="resgatar" data-tier="${tier}" data-meses="${meses}">Resgatar</button>`
-          : `<span class="creditos-faltam">${o.disponivel ? 'indisponível agora' : `faltam ${o.faltam}`}</span>`;
+          : o.bloqueio
+            ? `<span class="creditos-faltam" title="${esc(o.bloqueio)}">abaixo do seu plano</span>`
+            : `<span class="creditos-faltam">${o.disponivel ? 'indisponível agora' : `faltam ${o.faltam}`}</span>`;
       return `<td><span class="creditos-custo">${creditos(o.custo)}</span>${acao}</td>`;
     };
     return `<div class="u-ox-auto"><table class="creditos-tabela">
@@ -91,7 +94,12 @@
     return `<ul class="creditos-movimentos">${movs
       .map((m) => {
         const rotulo = window.ROTULOS.movimentoCredito[m.tipo] || m.tipo;
-        const origem = m.origem_nome && m.tipo.startsWith('indicacao') ? ` · ${esc(m.origem_nome)}` : '';
+        const origem =
+          m.origem_nome && m.tipo.startsWith('indicacao')
+            ? ` · ${esc(m.origem_nome)}`
+            : m.ponto_nome && m.tipo === 'credito_mensal_ponto'
+              ? ` ${esc(m.ponto_nome)}`
+              : '';
         const sinal = m.quantidade > 0 ? `+${m.quantidade}` : String(m.quantidade);
         return `<li><time>${data(m.criado_em)}</time><span>${esc(rotulo)}${origem}</span><b class="${m.quantidade > 0 ? 'creditos-entrada' : 'creditos-saida'}">${sinal}</b></li>`;
       })
@@ -143,7 +151,7 @@
         ? 'Começa hoje e substitui o plano atual.'
         : 'Começa hoje.';
     const renovacao = s.pagandoEmDia
-      ? '<li>Se a sua assinatura renovar antes disso, o benefício começa no fim do novo ciclo, com a mesma duração.</li>'
+      ? '<li>Se a sua assinatura renovar enquanto o benefício vale, o período pago fica guardado e volta depois dele.</li>'
       : '';
     return `
       <ol class="resgate-etapas">
@@ -151,7 +159,11 @@
         <li><span class="resgate-rotulo">Será ativado</span><b>${esc(nomeTier(tier))} por ${periodo(meses)}</b>
           <span>de ${data(inicio)} a ${data(fim)}. ${detalheInicio}</span></li>
         <li><span class="resgate-rotulo">Depois</span><b>Em ${data(fim)} o benefício termina.</b>
-          <span>A conta fica sem plano. Nada é cobrado automaticamente — você assina quando quiser.</span></li>
+          <span>${
+            s.pagandoEmDia
+              ? `Seu plano ${esc(s.planoNome || 'pago')} volta com o tempo pago que ainda tinha — nenhum dia pago se perde.`
+              : 'A conta fica sem plano. Nada é cobrado automaticamente — você assina quando quiser.'
+          }</span></li>
       </ol>
       <ul class="resgate-notas">${renovacao}
         <li>Saldo: <b>${creditos(dados.saldo)}</b> → <b>${creditos(dados.saldo - o.custo)}</b></li>

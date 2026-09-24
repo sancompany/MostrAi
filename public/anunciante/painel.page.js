@@ -35,12 +35,7 @@ async function carregar() {
 
   // Painel único (modos.js): sem o papel "anunciante" o dashboard dá
   // lugar ao card de ativação. Com o papel, segue o fluxo normal.
-  const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async (estado) => {
-    // Bônus de comodato (plano de anúncio grátis por tempo de ponto no ar):
-    // antes só aparecia na página separada do ponto.
-    const bonus = document.getElementById('bonusAnuncios');
-    bonus.innerHTML = cardBonus(estado, 'ponto') + cardBonus(estado, 'anuncio');
-    ligarResgateAnuncio(bonus, carregar);
+  const estado = await montarModo('anunciante', document.getElementById('dashboardAnuncios'), async () => {
     // Sem plano ainda, a tela inteira (KPIs, gráficos e o upload de
     // criativo) fica bloqueada — pedido do dono, 19/09/2026. Antes dava
     // pra subir 1 criativo mesmo sem plano "pra não travar o meio do
@@ -48,12 +43,9 @@ async function carregar() {
     // escolher plano (o back também passou a recusar isso, defesa em
     // profundidade — ver POST /anunciantes/:id/criativos).
     //
-    // "Plano" aqui é o EFETIVO — comercial OU comodato (23/09/2026,
-    // separação dos dois campos, migration 077). Dono de ponto sem nenhum
-    // plano pago continua liberado pelo comodato (Inicial/Básico), que
-    // sempre deu direito a subir o autoanúncio — só nunca tinha campo
-    // próprio antes.
-    if (!ANUNCIANTE.plano_id && !ANUNCIANTE.comodato_plano_id) {
+    // Ser ponto não libera plano (ADR-016, 24/09/2026): só plano pago ou
+    // benefício por créditos liberam o anúncio.
+    if (!ANUNCIANTE.plano_id) {
       montarBloqueioPlano();
       return;
     }
@@ -146,9 +138,7 @@ function preencherStatusBanner() {
 }
 
 // "Plano comercial" (Fatia 5): o que a conta tem pra anunciar na rede —
-// situação, validade e as ações (escolher, trocar, gerenciar). O comodato
-// aparece junto quando existe, porque é ele que põe o anúncio do dono na
-// tela do próprio comércio mesmo sem plano pago.
+// situação, validade e as ações (escolher, trocar, gerenciar).
 function situacaoDoPlano() {
   if (!ANUNCIANTE.plano_id) return ['sem_plano', 'badge-neutro', 'Sem plano'];
   if (ANUNCIANTE.suspenso) return ['suspensa', 'badge-err', 'Suspensa'];
@@ -167,10 +157,6 @@ function desenharPlano() {
     ANUNCIANTE.plano_id && ANUNCIANTE.data_expiracao
       ? `<p class="plano-validade">${situacao === 'vencida' ? 'Venceu em' : 'Até'} ${window.dataBR(ANUNCIANTE.data_expiracao)}${ANUNCIANTE.plano_cortesia ? ' · sem cobrança, não renova sozinho' : ''}</p>`
       : '';
-  const comodato =
-    ANUNCIANTE.comodato_plano_id && !ANUNCIANTE.plano_id
-      ? '<p class="plano-comodato">Pelo comodato, o seu anúncio já roda na tela do seu comércio.</p>'
-      : '';
   const acoes = [];
   if (ANUNCIANTE.plano_id) {
     acoes.push('<button type="button" class="btn ghost mini" data-acao="gerenciar-plano">Gerenciar plano</button>');
@@ -179,7 +165,7 @@ function desenharPlano() {
   }
   document.getElementById('planoResumo').innerHTML = `
     <p class="plano-nome"><b>${esc(nome)}</b> <span class="badge ${classe}">${rotulo}</span></p>
-    ${validade}${comodato}
+    ${validade}
     ${acoes.length ? `<div class="plano-acoes">${acoes.join('')}</div>` : ''}`;
   secao.hidden = false;
   if (ANUNCIANTE.plano_id) preencherAssinatura();
@@ -413,7 +399,7 @@ function preencherAssinatura() {
     </div>
     <p class="form-msg" id="msgCancelarAssinatura"></p>`
         : ANUNCIANTE.plano_cortesia
-          ? '<p class="form-hint u-m-0">Plano de cortesia, sem cobrança — não há assinatura para cancelar ou trocar por aqui.</p>'
+          ? '<p class="form-hint u-m-0">Benefício sem cobrança. Quer assinar um plano pago? <a href="/planos.html">Ver planos</a> — antes de pagar você vê como ele fica junto com o benefício.</p>'
           : '<p class="form-hint u-m-0">Cobertura vencida. <a href="/planos.html">Escolha um plano</a> para voltar ao ar.</p>'
     }
   `;
@@ -867,10 +853,10 @@ if (window.montarCreditos) window.montarCreditos({ aoResgatar: carregar });
 // Meus pontos: independente do modo anúncios e do plano (dono de ponto sem
 // plano comercial também vê o próprio comércio).
 if (window.montarMeusPontos) window.montarMeusPontos({ obterConta: () => ANUNCIANTE });
-// Meus criativos: o comercial e o do comodato, fora do bloqueio de plano
-// comercial (o módulo se esconde sozinho quando não há plano nenhum).
+// Meus criativos: fora do bloqueio de plano comercial (o módulo se esconde
+// sozinho quando não há plano nenhum).
 if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => ANUNCIANTE });
-// Financeiro: pagamentos do plano e recebimentos do comodato.
+// Financeiro: pagamentos do plano.
 if (window.montarFinanceiro) window.montarFinanceiro();
 
 // Promoção pra quem está logado (reconstrução de Ofertas/Promoções,

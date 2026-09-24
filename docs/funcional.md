@@ -52,8 +52,9 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 7. O dono do ponto define o **PIN** da tela no próprio painel
    (Painel → Meus pontos → a tela → "Ver o que rodou" → "PIN desta tela") e passa a acompanhar
    ali — ou pelo painel da própria TV, com 5 toques no canto e o PIN.
-8. Sobe o **próprio anúncio** na cota do comodato, em "Meu anúncio na minha
-   tela": mesma conferência de conteúdo que vale para qualquer anúncio da rede.
+8. A partir do mês em que a tela fica ativa, a conta ganha **+1 crédito por
+   mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
+   Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
 
 ### 2.3 Vendedor — do convite à comissão
 
@@ -73,7 +74,8 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    Mensagens/Financeiro, resumo de pontos por status, Ocupação da rede) e
    coluna de negócio (card único Financeiro — receita recorrente mensal
    calculada linha a linha por conta, respeitando promoção travada/desconto
-   de parceiro/crédito de comodato, recebido no mês, conciliação discreta
+   de parceiro, recebido no mês —
+   crédito não é receita (ADR-016) —, conciliação discreta
    quando saudável, pendências financeiras agregadas —, promoção ativa,
    indicadores de rede). Mobile empilha as duas colunas na ordem natural.
    Comissão de vendedor não soma mais nesse agregado — o conceito de
@@ -84,12 +86,12 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    conta e o que ela tem — Dados (categoria antiga com troca em um clique),
    Plano em fila **Agora → Próximo → Depois** com a ORIGEM do direito
    (assinatura paga, benefício por créditos, cortesia administrativa
-   legada, comodato), Comodato só com ponto aprovado (modalidade por ponto:
-   Inicial = repasse de R$ 50 e não acumula com plano comercial; Básico =
-   crédito de R$ 50 na mensalidade, um por conta), Créditos e benefícios
+   legada; plano pago guardado por baixo de um benefício aparece em Próximo),
+   Créditos e benefícios (inclui "Crédito mensal do ponto · <nome>")
    (saldo, **Conceder créditos** com motivo e nota interna — o jeito normal
    de dar cortesia; conceder plano direto saiu da ficha), Criativos (limite
-   da conta × simultâneos do plano), Pontos aprovados (nunca candidatura) e
+   da conta × simultâneos do plano), Pontos aprovados (nunca candidatura,
+   cada um com "Benefício: +1 crédito/mês · último · próximo") e
    Solicitações de ponto à parte. Selo "Dono de ponto" só com ponto
    aprovado. Atualiza sozinha (SSE) quando o cliente resgata créditos ou uma
    candidatura é aprovada.
@@ -98,8 +100,8 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    próprio).
 5. Edita a grade de planos e os benefícios.
 6. Clica na pendência Financeiro pra abrir a Central Financeira (Cobranças/
-   Repasses/Trocas/Devoluções — sem aba de Comissões desde 23/09/2026) e
-   resolver: paga o repasse do ponto, acompanha a troca ou registra a
+   Trocas/Devoluções — sem Comissões desde 23/09/2026 e sem Repasses desde
+   24/09/2026, ADR-016) e resolver: acompanha a troca ou registra a
    devolução. Cada fila é um drill-down (fora da sidebar, com "← Visão
    geral" no topo), aberto só pelo clique na pendência — pendência resolvida
    sai da fila na hora e some da Visão geral.
@@ -123,7 +125,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Início | `/` | público | o que é a rede, pontos, chamada, card de ponto e de vendedor | conhecer | planos, cadastro, contato |
 | Planos | `/planos.html` | público | grade de 3 níveis × 4 ciclos, e o plano fundador se aberto | escolher plano | cadastro |
 | Pontos | `/pontos.html` | público | os comércios da rede | ver onde o anúncio roda | cadastro |
-| Comodato | `/comodato.html` | público | as opções de quem cede a parede | entender a contrapartida | — |
+| Comodato | `/comodato.html` | público | contrato de comodato do EQUIPAMENTO (documento jurídico; o texto ainda descreve as modalidades antigas — pendência do dono, PENDENCIAS §J) | ler o contrato | — |
 | Contato | `/contato.html` | público | formulário | mandar mensagem | — |
 | Cadastro | `/anunciante/cadastro.html` | público | formulário de conta (aceita `?ref=CUPOM`) | criar conta de anunciante | painel |
 | Login | `/anunciante/login.html` | público | e-mail e senha | entrar | painel |
@@ -329,72 +331,66 @@ rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
 > seria vender o que não existe; "cobre até 10" é verdade no primeiro dia e
 > continua verdade no centésimo.
 
-**RN-43 — O comodato é uma escolha entre dinheiro e tela, e as duas dão
-tela.** Quem cede a parede escolhe uma das duas opções, na candidatura:
-· **"Recebe os R$ 50"** — R$ 50/mês na conta mais o **Plano Inicial**
-  incluído (`inicial-1m`: 60 s/hora, `pontos_incluidos=1`, peça de 15s, 1
-  criativo) = 6 horas de tela por mês. A intenção do dono é que esse ponto
-  único seja a própria tela instalada no comércio dele — mas
-  `pontos_incluidos=1` sozinho **não garante isso**: a escolha de QUAL ponto
-  cobre a conta segue a RN-42 (embaralhamento estável entre TODOS os pontos
-  `em_operacao` da rede, se o dono não escolher manualmente em
-  `PUT /anunciantes/me/pontos`), então com 1 vaga só, o sorteio automático
-  pode cair num ponto que não é o dele. **Furo em aberto, não corrigido
-  nesta rodada** — falta decidir se a concessão do Plano Inicial deveria
-  pré-selecionar o próprio ponto do dono (gravando em `anunciantes_pontos` na
-  mesma transação de `ajustarPlanoIncluido`), ou se o dono só resolve isso
-  escolhendo manualmente depois de virar ponto. Benefício reduzido de
-  propósito, à parte desse furo: é a troca pelos R$ 50 em caixa, não um
-  segundo presente cheio (decisão do dono, 19/09/2026). **Não pode assinar
-  plano de catálogo** enquanto estiver recebendo: `POST /anunciantes/:id/assinar`
-  recusa e explica a troca.
-· **"Troca os R$ 50 por tela"** — sem dinheiro, e o **Plano Básico** inteiro
-  incluído (`comodato-basico`: 45 s/hora em até 3 pontos, peça de 15s, 1
-  criativo) = 14 horas de tela por mês, mais que o dobro do Inicial. **Pode**
-  assinar um plano pago (Essencial, Pro ou Prime), com `credito_comodato_mensal`
-  de R$ 50 abatendo a mensalidade.
-**O crédito vale nos três planos pagos** desde a rodada de integridade do admin
-(23/09/2026, decisão comercial do dono). A regra antiga deixava o Essencial de
-fora porque, no desenho da migration 049, quem trocava ganhava o Essencial de
-cortesia; desde a 063 ganha o Básico, então o Essencial pago é um degrau acima
-como os outros. O percentual de comodato por plano (`desconto_comodato_percentual`)
-está aposentado: não entra em cálculo nenhum e não aparece mais em Ofertas —
-comodato é só o crédito em reais. **Corrigido em 23/09/2026 (decisão do dono e
-do GPT, correção do modelo de domínio):** comodato e plano comercial são dois
-direitos INDEPENDENTES na conta — `anunciantes.comodato_plano_id` (Inicial/
-Básico, migration 077, sincronizado pelos pontos da conta) e
-`anunciantes.plano_id` (Essencial/Pro/Prime, pago ou cortesia) nunca mais
-compartilham campo. Quem tem o Básico e assina um plano pago mantém os dois ao
-mesmo tempo — cancelar ou encerrar o plano comercial nunca mexe no comodato,
-que nunca "volta" porque nunca sai. Quem está no Inicial (`permite_assinar
-=false` na modalidade) é bloqueado ao tentar comprar ou receber Essencial/Pro/
-Prime — primeiro troca pra Básico, sem conversão automática escondida
-(`comodato.bloqueiaPlanoComercial`, checado em `/assinar`, na concessão
-administrativa, no `liberar-plano` legado e na indicação premiada).
-**A troca de modalidade tem mão única no autoatendimento:** trocar a ajuda de
-custo POR TELA o dono do ponto faz sozinho e na hora
-(`POST /anunciantes/me/comodato/trocar-por-tela`); VOLTAR a receber os R$ 50
-só sai pelo admin (`PATCH /admin/pontos/:id`). Abrir mão do dinheiro não custa
-nada à Mostraí — ela para de pagar e ele ganha mais tela. Voltar a
-receber é despesa nova e recorrente, e entra no caixa do mês. Sem a
-assimetria, dava pra pingar entre as modalidades e sacar a ajuda de custo só
-nos meses em que ela valesse mais, o que ninguém concilia.
-O plano incluído é concedido na MESMA transação que cria o ponto, e nunca por
-cima de plano que a conta já tenha — dono de ponto que já era cliente pagante
-continua no plano que paga. *Violada:* a rota de assinar recusa. *Quem vê:* o
-dono do ponto, no painel e na fatura.
-> **O que SAIU:** a cota de autoanúncio (`cota_slots_hora`) foi a zero nas
-> duas opções. Ela rodava só na tela do próprio dono e valia ~R$ 16,50/mês na
-> melhor das hipóteses — trocar R$ 50 por aquilo era um negócio ruim contra o
-> comerciante. O plano incluído põe ele na REDE (mesmo que só na própria
-> tela, no caso do Inicial), e é o que substitui aquilo.
-> **Antes da migration 063 (19/09/2026)** as duas opções entregavam,
-> respectivamente, o próprio `comodato-basico` e o `essencial-1m` inteiro —
-> dois degraus, não quatro. O dono pediu uma escada de cinco (Inicial,
-> Básico, Essencial, Pro, Prime) com o Inicial reduzido de propósito; como o
-> que ele descreveu pro degrau do meio já era, byte a byte, o
-> `comodato-basico` existente, só o Inicial precisou de plano novo — a
-> migration só criou esse e repontou as duas modalidades um degrau acima.
+**RN-43 — Ser ponto não é plano: o ponto gera créditos.** *(Reestruturação
+de 24/09/2026, ADR-016 — substitui a escolha "Recebe os R$ 50" (Inicial) ×
+"Troca os R$ 50 por tela" (Básico), o repasse mensal, o crédito de R$ 50 na
+mensalidade e o bônus de anúncio por tempo de ponto.)*
+Fluxo: candidatura → em análise → aprovado → ponto materializado → tela
+instalada → tela ativa. Nenhuma etapa antes da tela ativa gera crédito.
+· **+1 crédito por mês por PONTO elegível** (não por tela: três telas no
+  mesmo ponto = 1; três pontos = 3), no MESMO ledger de créditos de
+  indicação e de concessão do admin (`creditos_ledger`, tipo
+  `credito_mensal_ponto`, descrição "Crédito mensal do ponto <nome>", com o
+  ponto e a competência de origem).
+· **Elegível** (`src/creditos/ponto.js#SQL_PONTOS_ELEGIVEIS`, a mesma SQL pro
+  job, o painel e o admin): ponto não arquivado/mesclado, conta dona válida
+  (não excluída, não a interna do Mostraí) e ao menos uma tela
+  administrativamente ativa já provisionada (chave de aparelho ou uma
+  conexão feita). Heartbeat/uptime NÃO entra: uma queda de internet não tira
+  o mês; tela desligada ou em reparo tira.
+· **Competência** = mês corrente em Matão. O job diário (`npm run
+  conciliar`) concede assim que o ponto fica elegível no mês. O índice único
+  (ponto, competência) impede o mesmo mês duas vezes — rodar de novo, rodar
+  em paralelo, trocar o dono ou trocar a tela no meio do mês não duplica.
+· Crédito não é dinheiro, não se saca, não é recebível e não entra como
+  receita nem despesa. Resgata-se em benefício temporário Essencial/Pro/Prime
+  (tabela de RN-43.2). Saldo monetário antigo não foi convertido.
+· Notificação única por crédito ("Seu ponto X gerou 1 crédito" — com o saldo
+  na descrição) e SSE `credits.updated`: saldo e "Meus pontos" atualizam sem F5.
+*Violada:* não há caminho — é o job. *Quem vê:* o dono (Créditos e
+benefícios; Meus pontos: "Benefício do ponto: +1 crédito por mês · Próximo
+crédito / Crédito de setembro já concedido") e o admin (ficha da conta, card
+Pontos e ficha do ponto: "+1 crédito/mês · último · próximo").
+> **Legado preservado, sem operação nova:** `planos_ponto` (todas
+> `ativo=false`), `pontos.plano_ponto_id/valor_pago_mensal`,
+> `anunciantes.comodato_plano_id/credito_comodato_mensal`, `pagamentos_ponto`
+> (repasses antigos) e os planos `inicial-1m`/`comodato-basico`
+> (`ativo=false`). As rotas antigas respondem 410. O contrato de comodato do
+> EQUIPAMENTO (`/comodato.html`) é documento jurídico e continua publicado —
+> revisão do texto é pendência do dono (docs/PENDENCIAS.md §J).
+
+**RN-43.2 — Plano pago × benefício por créditos: um plano efetivo, pela
+prioridade do tier.** *(ADR-016.)* Essencial (1) < Pro (2) < Prime (3).
+· Pago MAIOR que o benefício em vigor → começa na hora; o benefício fecha
+  como "plano pago maior entrou" (`superado_por_plano_pago`), sem devolver
+  créditos. Antes de pagar o cliente vê: "Você tem um benefício Essencial
+  ativo até 30/11/2026. Ao ativar o Prime agora, esse benefício será
+  encerrado e os créditos utilizados não serão devolvidos. O Prime começa
+  imediatamente." [Voltar] [Continuar com Prime].
+· Pago IGUAL ou MENOR → o benefício segue até o fim; o período pago fica
+  guardado (`plano_pago_guardado_*`) e começa logo depois, com todos os dias
+  (renovações durante o benefício somam dias — "a cobrança é adiada").
+· Benefício programado abaixo do novo pago fecha como superado; igual ou
+  acima continua na fila (Pro pago → Prime benefício → volta ao Pro).
+· Resgate abaixo do plano pago em dia: recusado sem consumir crédito ("Seu
+  plano Pro já oferece mais recursos que o benefício Essencial."). Resgate
+  igual/acima entra depois do ciclo pago e o pago volta depois dele.
+· Conta sem plano pago: benefício, depois "Sem plano" — nada é cobrado.
+Tabela de resgate: Essencial 3/9/18/36, Pro 7/21/42/84, Prime 10/30/60/120
+créditos (1/3/6/12 meses de 30 dias). *Quem vê:* o cliente (confirmação de
+compra, Créditos e benefícios) e o admin (fila Agora → Próximo → Depois, com
+a origem: Assinatura paga / Benefício por créditos / Cortesia administrativa
+legada).
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
 *(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom
@@ -421,8 +417,8 @@ trava atômica. *Quem vê:* o dono do ponto, num card no próprio painel
 
 **RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
 17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto
-como qualquer anunciante que escolheu aquele ponto, pelo plano que o comodato
-lhe deu. A exclusão antiga (`anunciantesElegiveis` tirava `dono_conta_id`)
+como qualquer anunciante que escolheu aquele ponto, pelo plano que ele tem
+(pago ou benefício — ser ponto não dá plano desde 24/09/2026, ADR-016). A exclusão antiga (`anunciantesElegiveis` tirava `dono_conta_id`)
 só continua valendo enquanto aquela tela tiver cota de autoanúncio maior que
 zero, que é o único caso em que ele apareceria em dobro. *Violada:* não há
 caminho. *Quem vê:* o dono do ponto, na própria TV, e os clientes dele.
@@ -802,7 +798,9 @@ compromisso em meses, ex.: só trimestral pra cima). Fora do piso, a
 assinatura é recusada. *Violada:* "esse plano não está liberado para conta
 parceira". *Quem vê:* o anunciante.
 
-**RN-32 — Desconto de comodato por plano (item 8 da spec).** Conta com papel
+**RN-32 — Desconto de comodato por plano (item 8 da spec). APOSENTADA** — sem
+efeito desde 23/09/2026 e fora do modelo desde 24/09/2026 (ADR-016); texto
+original mantido como histórico. Conta com papel
 `ponto` (comodato) recebe o desconto que o administrador definiu pra aquele
 plano de anunciante especificamente (`planos.desconto_comodato_percentual`,
 campo de contrato — só muda por versão nova). Some com o desconto de
@@ -857,8 +855,9 @@ conta.** *(23/09/2026, decisão do dono — ver RN-35.)* A conciliação diária
 (`src/financeiro/conciliacao.js#encerrarCoberturaVencida`) varre as contas com
 plano comercial vencido e chama o mesmo `plano-administrativo.js#encerrar()`
 do botão manual do admin, com `motivo:'vencido'` — distinção só no histórico
-(`planos_administrativos.encerrado_motivo`). O comodato (`comodato_plano_id`)
-nunca é tocado por essa rotina. *Violada:* nenhuma — é rotina automática, sem
+(`planos_administrativos.encerrado_motivo`). Benefício com linha 'ativo' no
+histórico fica pra `encerrarBeneficiosVencidos`, que devolve o plano pago
+guardado por baixo dele (ADR-016). *Violada:* nenhuma — é rotina automática, sem
 caminho de usuário. *Quem vê:* o admin, no histórico de benefícios da ficha e
 no resumo da Visão Geral ("plano(s) encerrado(s) por cobertura vencida").
 

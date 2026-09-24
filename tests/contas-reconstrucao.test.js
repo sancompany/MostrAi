@@ -158,80 +158,43 @@ test('conceder → trocar → encerrar: um plano vigente, histórico guardado, n
   }
 });
 
-test('encerrar plano comercial de dono de ponto em comodato NUNCA toca o comodato', async () => {
-  // Decisão do dono e do GPT, 23/09/2026: comodato e plano comercial são
-  // entitlements independentes (migration 077). Não existe mais "devolver
-  // comodato" ao encerrar — ele nunca sai, porque nunca esteve em plano_id.
-  const conta = await criarConta({ papeis: '{anunciante,ponto}' });
-  try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Teste Contas', 'Rua X', 'Matão', 'SP', '15990000', 'x', 'X', '16999990000', $1, 'mais-cota')`,
-      [conta.id],
-    );
-    await require('../src/pontos/comodato').sincronizarComodato(conta.id);
-    const antes = await require('../src/anunciantes/repository').buscarPorId(conta.id);
-    assert.strictEqual(antes.comodato_plano_id, 'comodato-basico', 'comodato sincronizado a partir do ponto (Básico)');
+// Reestruturação de 24/09/2026 (ADR-016): Inicial/Básico deixaram de ser
+// plano. Um ponto que ainda carrega a modalidade antiga (`plano_ponto_id`,
+// legado) não dá direito de veicular, não trava plano comercial e não mexe
+// em nada da conta.
+async function pontoComModalidadeLegada(conta, nome, modalidade) {
+  await pool.query(
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id, valor_pago_mensal)
+       VALUES ($2, 'Rua X', 'Matão', 'SP', '15990000', 'x', 'X', '16999990000', $1, $3, $4)`,
+    [conta.id, nome, modalidade, modalidade === 'ajuda-custo' ? 50 : 0],
+  );
+}
 
-    const plano = (await pool.query("SELECT * FROM planos WHERE id = 'essencial-1m'")).rows[0];
-    const { conta: comBeneficio } = await planoAdm.conceder({ conta: antes, plano, validoAte: daqui(30) });
-    assert.strictEqual(comBeneficio.comodato_plano_id, 'comodato-basico', 'conceder não mexe no comodato');
-
-    const depois = await planoAdm.encerrar({ conta: comBeneficio });
-    assert.strictEqual(depois.plano_id, null, 'plano comercial encerrado');
-    assert.strictEqual(depois.plano_cortesia, false);
-    assert.strictEqual(depois.comodato_plano_id, 'comodato-basico', 'comodato continua — nunca saiu');
-  } finally {
-    await apagarConta(conta.id);
-  }
-});
-
-test('sincronizarComodato: Básico coexiste com plano pago; cancelar o pago não mexe no comodato', async () => {
-  const conta = await criarConta({
-    papeis: '{anunciante,ponto}',
-    plano_id: 'destaque-3m',
-    plano_cortesia: false,
-    data_expiracao: daqui(60),
-  });
-  try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Furo', 'Rua Y', 'Matão', 'SP', '15990000', 'x', 'Y', '16999990000', $1, 'mais-cota')`,
-      [conta.id],
-    );
-    await require('../src/pontos/comodato').sincronizarComodato(conta.id);
-    const { rows } = await pool.query('SELECT plano_id, comodato_plano_id FROM anunciantes WHERE id = $1', [conta.id]);
-    assert.strictEqual(rows[0].plano_id, 'destaque-3m', 'plano pago intacto');
-    assert.strictEqual(rows[0].comodato_plano_id, 'comodato-basico', 'comodato coexiste (o furo original corrigido)');
-  } finally {
-    await apagarConta(conta.id);
-  }
-});
-
-test('bloqueiaPlanoComercial: Inicial bloqueia, Básico libera, sem ponto não bloqueia', async () => {
-  const comodato = require('../src/pontos/comodato');
+test('modalidade legada no ponto (Inicial/Básico) não vira plano nem direito de veicular', async () => {
+  const repo = require('../src/anunciantes/repository');
+  const { situacaoDaConta } = require('../src/anunciantes/situacao');
   const inicial = await criarConta({ papeis: '{anunciante,ponto}' });
-  const basico = await criarConta({ papeis: '{anunciante,ponto}' });
-  const semPonto = await criarConta();
+  const basico = await criarConta({ papeis: '{anunciante,ponto}', comodato_plano_id: 'comodato-basico' });
   try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Inicial', 'Rua A', 'Matão', 'SP', '15990000', 'x', 'A', '16999990000', $1, 'ajuda-custo')`,
-      [inicial.id],
-    );
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Básico', 'Rua B', 'Matão', 'SP', '15990000', 'x', 'B', '16999990000', $1, 'mais-cota')`,
-      [basico.id],
-    );
-    assert.strictEqual(await comodato.bloqueiaPlanoComercial(inicial.id), true);
-    assert.strictEqual(await comodato.bloqueiaPlanoComercial(basico.id), false);
-    assert.strictEqual(await comodato.bloqueiaPlanoComercial(semPonto.id), false);
+    await pontoComModalidadeLegada(inicial, 'Loja Um', 'ajuda-custo');
+    await pontoComModalidadeLegada(basico, 'Loja Dois', 'mais-cota');
+    for (const c of [inicial, basico]) {
+      const conta = await repo.buscarPorId(c.id);
+      assert.strictEqual(
+        repo.planoEfetivoId(conta),
+        null,
+        'sem plano comercial = sem plano, mesmo com comodato legado',
+      );
+      assert.strictEqual(repo.planoVigenteId(conta), null);
+      const s = await situacaoDaConta(c.id);
+      assert.strictEqual(s.plano.agora, null, 'a ficha diz "Sem plano", nunca Inicial/Básico');
+      assert.strictEqual(s.comodato, undefined, 'não existe mais bloco de comodato comercial');
+      assert.ok(!JSON.stringify(s).match(/Inicial|Básico|repasse/i), 'nada do modelo antigo na situação');
+    }
   } finally {
     await pool.query('DELETE FROM pontos WHERE anunciante_id = ANY($1)', [[inicial.id, basico.id]]);
     await apagarConta(inicial.id);
     await apagarConta(basico.id);
-    await apagarConta(semPonto.id);
   }
 });
 
@@ -269,24 +232,18 @@ test('rota de plano administrativo: recusa o que não é benefício válido', as
   }
 });
 
-test('rota de plano administrativo: recusa conceder plano comercial pra conta em Inicial', async () => {
+test('rota técnica de plano: modalidade legada "Recebe os R$ 50" não trava mais nada', async () => {
   const financeiro = require('../src/financeiro/routes');
   const app = await subirApp((a) => a.use(financeiro.router));
   const conta = await criarConta({ papeis: '{anunciante,ponto}' });
   try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Concessão Inicial', 'Rua K', 'Matão', 'SP', '15990000', 'x', 'K', '16999990000', $1, 'ajuda-custo')`,
-      [conta.id],
-    );
+    await pontoComModalidadeLegada(conta, 'Ponto Concessão Legado', 'ajuda-custo');
     const r = await app.chamar('POST', `/admin/anunciantes/${conta.id}/plano-administrativo`, {
       plano_id: 'essencial-1m',
       valido_ate: daqui(30),
     });
-    assert.strictEqual(r.status, 409);
-    assert.match(r.corpo.erro, /Recebe os R\$ 50/);
-    const { rows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [conta.id]);
-    assert.strictEqual(rows[0].plano_id, null, 'nada foi concedido');
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    assert.strictEqual(r.corpo.conta.plano_id, 'essencial-1m');
   } finally {
     await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
     await app.fechar();
@@ -599,18 +556,12 @@ test('ciclo pago de quem veio por cupom de vendedor não gera comissão nova', a
 });
 
 // ---------- suspensão só manual; plano vencido cancela sozinho ----------
-test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende, comodato intacto', async () => {
+test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende', async () => {
   const conciliacao = require('../src/financeiro/conciliacao');
-  const comodato = require('../src/pontos/comodato');
   const vencida = await criarConta({ papeis: '{anunciante,ponto}' });
   const emDia = await criarConta({ plano_id: 'essencial-1m', plano_cortesia: false, data_expiracao: daqui(30) });
+  const pagaVencida = await criarConta();
   try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Vencido', 'Rua V', 'Matão', 'SP', '15990000', 'x', 'V', '16999990000', $1, 'mais-cota')`,
-      [vencida.id],
-    );
-    await comodato.sincronizarComodato(vencida.id);
     // Concedido de verdade (via conceder, não SQL direto) pra existir linha
     // de histórico pra fechar — `encerrar()` só FECHA histórico aberto,
     // nunca cria um novo. `conceder()` aqui é chamado direto (sem passar
@@ -620,25 +571,38 @@ test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende, comod
     const contaAtualizada = await require('../src/anunciantes/repository').buscarPorId(vencida.id);
     await planoAdm.conceder({ conta: contaAtualizada, plano, validoAte: '2020-01-01', observacao: 'teste' });
 
+    // Plano pago vencido (sem linha de histórico): é a varredura que encerra.
+    await pool.query(
+      `UPDATE anunciantes SET plano_id = 'essencial-1m', plano_cortesia = false, data_expiracao = '2020-01-01' WHERE id = $1`,
+      [pagaVencida.id],
+    );
     const resultado = await conciliacao.encerrarCoberturaVencida();
     const idsEncerrados = resultado.map((r) => r.id);
-    assert.ok(idsEncerrados.includes(vencida.id), 'a vencida entra no lote encerrado');
+    assert.ok(idsEncerrados.includes(pagaVencida.id), 'o pago vencido entra no lote encerrado');
     assert.ok(!idsEncerrados.includes(emDia.id), 'quem está em dia não é tocado');
-
-    const depois = await pool.query(
-      'SELECT plano_id, plano_cortesia, suspenso, comodato_plano_id FROM anunciantes WHERE id = $1',
-      [vencida.id],
+    // Cortesia com linha 'ativo' no histórico é da rotina de benefícios
+    // (roda logo depois no mesmo job) — ela devolve o pago guardado, se
+    // houver, e deixa o programado entrar (migration 082).
+    assert.ok(!idsEncerrados.includes(vencida.id), 'cortesia com histórico fica pra rotina de benefícios');
+    await planoAdm.encerrarBeneficiosVencidos();
+    assert.strictEqual(
+      (await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [pagaVencida.id])).rows[0].plano_id,
+      null,
     );
+
+    const depois = await pool.query('SELECT plano_id, plano_cortesia, suspenso FROM anunciantes WHERE id = $1', [
+      vencida.id,
+    ]);
     assert.strictEqual(depois.rows[0].plano_id, null, 'plano comercial encerrado');
     assert.strictEqual(depois.rows[0].plano_cortesia, false);
     assert.strictEqual(depois.rows[0].suspenso, false, 'NUNCA suspende — só o admin suspende (pedido do dono)');
-    assert.strictEqual(depois.rows[0].comodato_plano_id, 'comodato-basico', 'comodato nunca é tocado');
 
     const historico = await planoAdm.historicoDaConta(vencida.id);
     assert.strictEqual(historico[0].encerrado_motivo, 'vencido', 'motivo distingue de um cancelamento manual do admin');
   } finally {
     await apagarConta(vencida.id);
     await apagarConta(emDia.id);
+    await apagarConta(pagaVencida.id);
   }
 });
 
@@ -673,50 +637,67 @@ test('encerrar(motivo=vencido): reconfere a validade dentro da transação — n
   }
 });
 
-// Achado real em revisão (Codex, PR #20, 23/09/2026): a régua de
-// bloqueiaPlanoComercial (acima) trava CONCEDER/VENDER plano comercial pra
-// quem está no Inicial, mas o caminho contrário — o admin trocar a
-// modalidade PRA Inicial de uma conta que já tem plano comercial vigente —
-// não tinha trava nenhuma, deixando "Inicial + plano comercial" coexistir
-// pela porta dos fundos.
-test('aplicarModalidade: recusa trocar pra Inicial quando a conta tem plano comercial vigente', async () => {
-  const comodato = require('../src/pontos/comodato');
-  const conta = await criarConta({ plano_id: 'essencial-1m', plano_cortesia: false, data_expiracao: daqui(30) });
+test('modalidade e repasse aposentados: PATCH ignora modalidade, trocar-por-tela/planos-ponto/repasses respondem 410', async () => {
+  const pontosRoutes = require('../src/pontos/routes');
+  const app = await subirApp((a) => {
+    a.use((req, _res, next) => {
+      if (req.headers['x-conta']) req.session.anuncianteId = Number(req.headers['x-conta']);
+      next();
+    });
+    a.use(pontosRoutes);
+  });
+  const conta = await criarConta({ papeis: '{anunciante,ponto}' });
   try {
-    const { rows } = await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Comercial+Basico', 'Rua Z', 'Matão', 'SP', '15990000', 'x', 'Z', '16999990000', $1, 'mais-cota')
-       RETURNING id`,
+    const {
+      rows: [ponto],
+    } = await pool.query(
+      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id)
+       VALUES ('Ponto Sem Modalidade', 'Rua Z', 'Matão', 'SP', '15990000', 'x', 'Z', '16999990000', $1) RETURNING id`,
       [conta.id],
     );
-    const pontoId = rows[0].id;
-    await comodato.sincronizarComodato(conta.id);
-
-    await assert.rejects(
-      () => comodato.aplicarModalidade(pontoId, 'ajuda-custo'),
-      /plano comercial vigente/,
-      'não deixa trocar pra Inicial com plano comercial ativo',
-    );
-    const depois = await pool.query('SELECT plano_ponto_id FROM pontos WHERE id = $1', [pontoId]);
-    assert.strictEqual(depois.rows[0].plano_ponto_id, 'mais-cota', 'modalidade do ponto não mudou');
-
-    // Controle: sem plano comercial, a mesma troca é permitida — a trava é
-    // só pra quem realmente acumularia os dois.
-    await pool.query('UPDATE anunciantes SET plano_id = NULL, data_expiracao = NULL WHERE id = $1', [conta.id]);
-    const opcao = await comodato.aplicarModalidade(pontoId, 'ajuda-custo');
-    assert.strictEqual(opcao.id, 'ajuda-custo', 'sem plano comercial, a troca pra Inicial funciona normalmente');
+    const patch = await app.chamar('PATCH', `/admin/pontos/${ponto.id}`, {
+      plano_ponto_id: 'ajuda-custo',
+      nome: 'Renomeado',
+    });
+    assert.strictEqual(patch.status, 200);
+    const { rows } = await pool.query('SELECT nome, plano_ponto_id, valor_pago_mensal FROM pontos WHERE id = $1', [
+      ponto.id,
+    ]);
+    assert.strictEqual(rows[0].nome, 'Renomeado', 'o resto do PATCH continua valendo');
+    assert.strictEqual(rows[0].plano_ponto_id, null, 'modalidade nunca mais é gravada');
+    assert.strictEqual(Number(rows[0].valor_pago_mensal), 0, 'nenhum repasse nasce');
+    for (const [metodo, url] of [
+      ['GET', '/admin/planos-ponto'],
+      ['POST', '/admin/planos-ponto'],
+      ['GET', '/admin/pagamentos-ponto/pendentes'],
+      ['POST', `/admin/pontos/${ponto.id}/pagamentos`],
+    ]) {
+      assert.strictEqual(
+        (await app.chamar(metodo, url, metodo === 'GET' ? undefined : {})).status,
+        410,
+        `${metodo} ${url}`,
+      );
+    }
+    const historico = await app.chamar('GET', `/admin/pontos/${ponto.id}/pagamentos`);
+    assert.strictEqual(historico.status, 200, 'histórico de repasses continua legível');
+    const troca = await fetch(`${app.base}/anunciantes/me/comodato/trocar-por-tela`, {
+      method: 'POST',
+      headers: { 'x-conta': String(conta.id) },
+    });
+    assert.strictEqual(troca.status, 410);
+    const publica = await fetch(`${app.base}/planos-ponto`);
+    assert.deepStrictEqual(await publica.json(), [], 'cadastro não oferece modalidade');
   } finally {
     await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
+    await app.fechar();
     await apagarConta(conta.id);
   }
 });
 
-test('POST /assinar: bloqueado por Inicial usa a régua compartilhada (bloqueiaPlanoComercial)', async () => {
+test('POST /assinar: ponto com modalidade legada "Recebe os R$ 50" não bloqueia mais a compra', async () => {
   const financeiro = require('../src/financeiro/routes');
   const app = await subirApp((a) => {
     a.use((req, _res, next) => {
-      // Simula sessão de anunciante (o middleware exigirAnuncianteLogado real
-      // está fora deste app mínimo — assinar exige req.session.anuncianteId).
       req.session.anuncianteId = Number(req.headers['x-conta']);
       next();
     });
@@ -730,20 +711,17 @@ test('POST /assinar: bloqueado por Inicial usa a régua compartilhada (bloqueiaP
     cep: '15990000',
   });
   try {
-    await pool.query(
-      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, plano_ponto_id)
-       VALUES ('Ponto Assinar Inicial', 'Rua W', 'Matão', 'SP', '15990000', 'x', 'W', '16999990000', $1, 'ajuda-custo')`,
-      [conta.id],
-    );
+    await pontoComModalidadeLegada(conta, 'Ponto Assinar Legado', 'ajuda-custo');
     const r = await fetch(`${app.base}/anunciantes/${conta.id}/assinar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-conta': String(conta.id) },
       body: JSON.stringify({ planoId: 'essencial-1m' }),
     });
-    assert.strictEqual(r.status, 400);
     const corpo = await r.json();
-    assert.match(corpo.erro, /ajuda de custo do comodato/);
+    assert.strictEqual(r.status, 200, JSON.stringify(corpo));
+    assert.ok(corpo.checkoutUrl, 'segue pro checkout normalmente');
   } finally {
+    await pool.query('DELETE FROM assinaturas WHERE anunciante_id = $1', [conta.id]);
     await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [conta.id]);
     await apagarConta(conta.id);
     await app.fechar();

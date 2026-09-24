@@ -4,10 +4,11 @@
 //
 // Parte A — conta que entra por convite de ponto, sem o papel anunciante:
 // candidatura antiga (sem conta) → admin aprova na ficha e o convite sai num
-// modal → cadastro pelo convite escolhendo a ajuda de custo → cai no PAINEL
-// ÚNICO (Fatia 6: a página separada do ponto saiu) com o ponto em "Meus
-// pontos" aguardando instalação → troca da ajuda de custo por tela no
-// Financeiro → card de ativação do modo anúncios → modo ligado.
+// modal → cadastro pelo convite (sem escolha de modalidade: ser ponto gera
+// créditos, ADR-016) → cai no PAINEL ÚNICO com o ponto em "Meus pontos"
+// aguardando instalação e o benefício de +1 crédito/mês → card de ativação
+// do modo anúncios → modo ligado, com o bloqueio de plano (ser ponto não
+// libera plano).
 //
 // Parte B — o endereço antigo da página do ponto redireciona pro painel, e a
 // conta que só anuncia pede o ponto pelo convite de "Meus pontos". (Aprovar a
@@ -128,16 +129,15 @@ check('candidatura sai da fila como aprovada', PG(`SELECT status FROM candidatur
 await shot(adm, 'admin-convite-gerado');
 await adm.click('dialog.modal-admin[open] .modal-rodape [data-fechar]');
 
-console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de custo ==');
+console.log('== A. cadastro pelo convite: conta só de ponto, sem modalidade ==');
 {
   const p = await pagina(linkConvite);
   await p.waitForSelector('#formConvite:not([hidden])');
   check('convite traz o nome e o e-mail da candidatura', (await p.textContent('#titulo')).includes('Nina') && (await p.inputValue('#contato_email')) === 'nina@x.com');
   check('convite de ponto não pede endereço comercial', await p.isHidden('#secaoEndereco'));
-  const opcaoAjuda = p.locator('#escolhaPlano label.escolha', { has: p.locator('input[value="ajuda-custo"]') });
-  await opcaoAjuda.waitFor({ timeout: 8000 });
-  check('convite de ponto oferece as opções de comodato', (await p.locator('#escolhaPlano .escolha').count()) >= 2);
-  await opcaoAjuda.click();
+  check('convite de ponto não pergunta modalidade', !(await p.$('#escolhaPlano')) && !(await p.$('input[name="plano_ponto_id"]')));
+  const textoPonto = await p.textContent('#secaoPlanoPonto');
+  check('convite explica os créditos, sem R$ 50', /acumula créditos/.test(textoPonto) && !/R\$ ?50|ajuda de custo|repasse/i.test(textoPonto), textoPonto);
   await p.fill('#cpf_cnpj', '111.444.777-35'); await p.fill('#contato_telefone', '16 99463-5946');
   await p.fill('#senha', 'Senha12@'); await p.fill('#senha_confirma', 'Senha12@');
   await p.check('#aceitou_termos');
@@ -155,19 +155,13 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
   await p.locator('#pontosLista .estab-card', { hasText: 'Doceria Nina' }).waitFor({ timeout: 8000 }).catch(() => {});
   const estab = await p.textContent('#pontosLista');
   check('o ponto aparece em "Meus pontos", aguardando instalação', estab.includes('Doceria Nina') && estab.includes('Aguardando instalação'), estab.slice(0, 200));
-  check('ajuda de custo no rodapé do ponto', estab.includes('ajuda de custo'), estab.slice(0, 200));
+  check('benefício do ponto no rodapé, sem R$ 50', estab.includes('+1 crédito por mês') && !/ajuda de custo|R\$ ?50|Comodato/.test(estab), estab.slice(0, 300));
   check('Painel sem cadeado (serve toda conta)', await p.$eval('#navDashboard', (e) => !e.classList.contains('bloqueado')));
   check('card de ativação do modo anúncios no lugar da campanha', !!(await p.$('form.modo-card#formModo')));
   await shot(p, 'ponto-liberado');
 
-  console.log('== A. trocar ajuda de custo por tela, no Financeiro ==');
-  await p.waitForSelector('[data-acao="trocar-comodato"]', { timeout: 8000 });
-  p.once('dialog', (d) => d.accept());
-  await p.click('[data-acao="trocar-comodato"]');
-  await p.waitForFunction(() => !document.querySelector('[data-acao="trocar-comodato"]'), null, { timeout: 8000 }).catch(() => {});
-  check('oferta some depois da troca', !(await p.$('[data-acao="trocar-comodato"]')));
-  check('ajuda de custo deixa de ser paga', Number(PG(`SELECT valor_pago_mensal FROM pontos WHERE nome='Doceria Nina'`)) === 0);
-  await shot(p, 'ponto-trocou-por-tela');
+  check('sem Recebimentos nem troca por tela', !(await p.$('#finRecebimentos')) && !(await p.$('[data-acao="trocar-comodato"]')));
+  check('ponto nasce sem modalidade nem repasse', PG(`SELECT coalesce(plano_ponto_id, '-') || '|' || coalesce(valor_pago_mensal, 0) FROM pontos WHERE nome='Doceria Nina'`) === '-|0');
 
   console.log('== A. card de ativação → modo anúncios ==');
   await p.waitForSelector('form.modo-card#formModo');
@@ -176,16 +170,11 @@ console.log('== A. cadastro pelo convite: conta só de ponto, com a ajuda de cus
   await preencherEndereco(p, 'm_', 'Rua Doce', '1');
   await escolherRamo(p, '#formModo', 'Confeitaria');
   await p.click('#formModo button[type=submit]');
-  // Ativar recarrega a página. Conta de ponto já tem plano pelo comodato (o
-  // Básico, depois da troca acima), então o painel abre direto, com as horas
-  // dele — sem o bloqueio de plano, que é de conta sem plano nenhum (06).
-  const kpiHoras = p.locator('#kpiGrid [data-kpi="horas"]');
-  await kpiHoras.waitFor({ timeout: 10000 }).catch(() => {});
+  // Ativar recarrega a página. Ser ponto não dá plano (ADR-016): sem plano
+  // pago nem benefício por créditos, o painel abre com o bloqueio de plano.
+  await p.waitForSelector('#bloqueioPlano', { timeout: 10000 }).catch(() => {});
   check('card de ativação some depois de ativar', !(await p.$('#formModo')));
-  check(
-    'painel abre com as horas do plano do comodato, sem bloqueio de plano',
-    (await p.$eval('#dashboardAnuncios', (e) => !e.hidden)) && !(await p.$('#bloqueioPlano')) && /contratadas/.test(await kpiHoras.textContent()),
-  );
+  check('ser ponto não libera plano: painel pede pra escolher um', !!(await p.$('#bloqueioPlano')));
   check('conta ganha o papel anunciante', PG(`SELECT 'anunciante' = ANY(papeis) FROM anunciantes WHERE contato_email='nina@x.com'`) === 't');
   await shot(p, 'anuncios-ativado');
   await p.close();

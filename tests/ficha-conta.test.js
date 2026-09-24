@@ -117,14 +117,13 @@ const somar = (dias) => {
 
 // ---------- ponto × candidatura × selo ----------
 
-test('candidatura em análise NÃO dá selo, NÃO vira ponto e NÃO afirma comodato', async () => {
+test('candidatura em análise NÃO dá selo e NÃO vira ponto', async () => {
   const c = await criarConta({ papeis: '{anunciante,ponto}' }); // papel legado não conta
   try {
     await candidatura(c.id, 'Loja Pedida');
     const s = await situacaoDaConta(c.id);
     assert.equal(s.donoDePonto, false, 'selo só com ponto aprovado — nunca por candidatura nem por papel legado');
     assert.equal(s.pontos.length, 0);
-    assert.equal(s.comodato, null, 'sem ponto, sem card de comodato');
     assert.deepEqual(
       s.solicitacoes.map((x) => x.nome),
       ['Loja Pedida'],
@@ -157,7 +156,7 @@ test('candidatura aprovada materializa UM ponto: aparece em Pontos, sai de Solic
 test('ponto arquivado/mesclado não aparece; ponto inativo continua aparecendo', async () => {
   const c = await criarConta();
   try {
-    const canonico = await ponto(c.id, 'Mercado', { status: 'inativo', modalidade: 'mais-cota' });
+    const canonico = await ponto(c.id, 'Mercado', { status: 'inativo' });
     const duplicata = await ponto(c.id, 'Mercado');
     await pool.query(
       `UPDATE pontos SET status = 'arquivado', arquivado_em = now(), motivo_arquivamento = 'teste',
@@ -170,73 +169,54 @@ test('ponto arquivado/mesclado não aparece; ponto inativo continua aparecendo',
       [[canonico, 'Inativo']],
     );
     assert.equal(s.donoDePonto, true, 'inativo é estado do ponto, não ausência de ponto');
-    assert.equal(s.comodato.pontos.length, 1);
+    assert.equal(s.pontos[0].beneficio.elegivel, false, 'ponto sem tela ativa não gera crédito');
   } finally {
     await apagar(c.id);
   }
 });
 
-// ---------- comodato ----------
+// ---------- benefício do ponto (ADR-016) ----------
 
-test('conta sem ponto não afirma comodato em lugar nenhum', async () => {
+test('conta sem ponto: sem plano, sem benefício de ponto, nada de comodato', async () => {
   const c = await criarConta();
   try {
     const s = await situacaoDaConta(c.id);
-    assert.equal(s.comodato, null);
-    assert.equal(s.plano.agora, null, 'sem plano e sem comodato: "Sem plano", nunca "comodato"');
+    assert.equal(s.comodato, undefined, 'não existe mais bloco de comodato comercial');
+    assert.equal(s.plano.agora, null, '"Sem plano"');
     assert.equal(s.alertas.length, 0);
   } finally {
     await apagar(c.id);
   }
 });
 
-test('ponto aprovado SEM modalidade: aparece no comodato como furo, com alerta — nunca "sem comodato"', async () => {
-  // O caso real de produção ("SAntos unio"): ponto inativo, 1 tela, sem
-  // modalidade — a ficha dizia "Sem ponto em comodato" ao lado de "Pontos: 1".
+test('ponto aprovado mostra o benefício "+1 crédito/mês": elegível só com tela ativa provisionada', async () => {
   const c = await criarConta();
   try {
-    await ponto(c.id, 'Santos', { status: 'inativo' });
-    const s = await situacaoDaConta(c.id);
-    assert.equal(s.comodato.pontos.length, 1);
-    assert.equal(s.comodato.pontos[0].modalidade, null);
-    assert.equal(s.comodato.pontosSemModalidade, 1);
-    assert.ok(s.alertas.some((a) => a.codigo === 'ponto_sem_modalidade'));
+    const id = await ponto(c.id, 'Santos', { status: 'inativo' });
+    let s = await situacaoDaConta(c.id);
+    assert.equal(s.pontos[0].beneficio.elegivel, false);
+    await pool.query(
+      `INSERT INTO dispositivos (ponto_id, apelido, status, aparelho_id) VALUES ($1, 'Tela 1', 'ativo', $2)`,
+      [id, `ap-${randomUUID()}`],
+    );
+    s = await situacaoDaConta(c.id);
+    assert.equal(s.pontos[0].beneficio.elegivel, true);
+    assert.equal(s.pontos[0].beneficio.creditoDoMesConcedido, false);
+    assert.ok(!JSON.stringify(s).match(/Inicial|Básico|repasse|R\$ ?50/), 'nada do modelo antigo');
   } finally {
     await apagar(c.id);
   }
 });
 
-test('Inicial: repasse de R$ 50, não acumula com comercial; Básico: crédito de R$ 50, acumula', async () => {
-  const inicial = await criarConta();
-  const basico = await criarConta();
+test('comodato legado (Inicial/Básico na conta) não vira plano nem crédito monetário', async () => {
+  const c = await criarConta({ comodato_plano_id: 'comodato-basico', credito_comodato_mensal: 50 });
   try {
-    await ponto(inicial.id, 'Loja Inicial', { modalidade: 'ajuda-custo', repasse: 50 });
-    await pool.query(`UPDATE anunciantes SET comodato_plano_id = 'inicial-1m' WHERE id = $1`, [inicial.id]);
-    await ponto(basico.id, 'Loja Básico', { modalidade: 'mais-cota' });
-    await pool.query(
-      `UPDATE anunciantes SET comodato_plano_id = 'comodato-basico', credito_comodato_mensal = 50 WHERE id = $1`,
-      [basico.id],
-    );
-    const si = await situacaoDaConta(inicial.id);
-    assert.equal(si.comodato.repasseMensal, 50);
-    assert.equal(si.comodato.creditoMensal, 0);
-    assert.equal(si.comodato.naoAcumulaComComercial, true);
-    assert.equal(si.comodato.pontos[0].modalidade.acumulaComComercial, false);
-    assert.equal(si.plano.agora.tipo, 'comodato');
-    assert.equal(si.plano.agora.nome, 'Inicial');
-    assert.equal(si.plano.agora.direitos.segundosPorHora, 60);
-
-    const sb = await situacaoDaConta(basico.id);
-    assert.equal(sb.comodato.repasseMensal, 0);
-    assert.equal(sb.comodato.creditoMensal, 50, 'crédito monetário do Básico — não é crédito de indicação');
-    assert.equal(sb.creditos.saldo, 0, 'os R$ 50 do Básico nunca entram no saldo de créditos');
-    assert.equal(sb.comodato.naoAcumulaComComercial, false);
-    assert.equal(sb.plano.agora.nome, 'Básico');
-    assert.equal(sb.plano.agora.direitos.pontos, 3);
-    assert.equal(sb.alertas.length, 0);
+    await ponto(c.id, 'Loja Legada', { modalidade: 'mais-cota' });
+    const s = await situacaoDaConta(c.id);
+    assert.equal(s.plano.agora, null, 'Básico legado não é plano');
+    assert.equal(s.creditos.saldo, 0, 'os R$ 50 antigos nunca viram créditos sozinhos');
   } finally {
-    await apagar(inicial.id);
-    await apagar(basico.id);
+    await apagar(c.id);
   }
 });
 
@@ -264,11 +244,18 @@ test('plano pago + benefício por créditos respeitam a fila: Agora = pago, Pró
   const c = await criarConta({ plano_id: 'destaque-1m', plano_cortesia: false, data_expiracao: somar(20) });
   const app = await subirApp();
   try {
-    await creditosRepo.concederAdmin(c.id, 9, { motivo: 'teste' });
-    const r = await app.chamar(
+    await creditosRepo.concederAdmin(c.id, 30, { motivo: 'teste' });
+    const menor = await app.chamar(
       'POST',
       '/anunciantes/me/creditos/resgatar',
       { tier: 'essencial', meses: 3 },
+      { conta: c.id },
+    );
+    assert.equal(menor.status, 409, 'benefício menor que o plano pago é recusado');
+    const r = await app.chamar(
+      'POST',
+      '/anunciantes/me/creditos/resgatar',
+      { tier: 'maximo', meses: 1 },
       { conta: c.id },
     );
     assert.equal(r.status, 200, JSON.stringify(r.corpo));
@@ -277,8 +264,8 @@ test('plano pago + benefício por créditos respeitam a fila: Agora = pago, Pró
     assert.equal(s.plano.agora.origem, 'assinatura', 'o ciclo pago continua sendo o Agora');
     assert.equal(s.plano.proximo.origem, 'beneficio_creditos');
     assert.equal(s.plano.proximo.comecaEm, somar(20));
-    assert.equal(s.plano.depois.tipo, 'sem_plano');
-    // A rotina diária NÃO ativa enquanto o pago está em dia.
+    assert.equal(s.plano.depois.tipo, 'sem_plano', 'sem assinatura ativa: depois do benefício, sem plano');
+    // A rotina diária NÃO ativa antes do fim do ciclo pago.
     await planoAdm.ativarBeneficiosAgendados();
     const depois = await situacaoDaConta(c.id);
     assert.equal(depois.plano.agora.origem, 'assinatura');
@@ -429,15 +416,15 @@ test('benefício "ativo" esquecido por baixo de um plano PAGO vence sem zerar o 
   }
 });
 
-test('ciclo pago por cima de benefício em vigor fecha o benefício como substituído (e não mexe no programado)', async () => {
+test('ciclo pago MAIOR por cima de benefício em vigor encerra o benefício (superado), sem devolver créditos', async () => {
   process.env.SAN_CHECKOUT_KEY = process.env.SAN_CHECKOUT_KEY || 'chave-de-teste';
   const sc = require('../src/financeiro/san-checkout');
   const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
-  const c = await criarConta({ plano_id: 'maximo-12m', plano_cortesia: true, data_expiracao: somar(50) });
+  const c = await criarConta({ plano_id: 'essencial-1m', plano_cortesia: true, data_expiracao: somar(50) });
   try {
     await pool.query(
       `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
-       VALUES ($1, 'maximo-12m', $2, 'ativo', 'admin', now())`,
+       VALUES ($1, 'essencial-1m', $2, 'ativo', 'indicacao', now())`,
       [c.id, somar(50)],
     );
     const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m', status: 'ativa' });
@@ -446,9 +433,10 @@ test('ciclo pago por cima de benefício em vigor fecha o benefício como substit
       'SELECT status, encerrado_motivo FROM planos_administrativos WHERE anunciante_id = $1',
       [c.id],
     );
-    assert.deepEqual(rows, [{ status: 'encerrado', encerrado_motivo: 'substituido' }]);
+    assert.deepEqual(rows, [{ status: 'encerrado', encerrado_motivo: 'superado_por_plano_pago' }]);
     const s = await situacaoDaConta(c.id);
     assert.equal(s.plano.agora.origem, 'assinatura');
+    assert.equal(s.creditos.movimentacoes.filter((m) => m.tipo === 'estorno_resgate').length, 0, 'sem devolução');
     assert.ok(!s.alertas.some((a) => a.codigo === 'beneficio_orfao'), 'nenhum benefício órfão sobra');
   } finally {
     await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
@@ -459,9 +447,14 @@ test('ciclo pago por cima de benefício em vigor fecha o benefício como substit
 
 // ---------- criativos ----------
 
-test('criativo respeita o direito vigente: sem plano nunca "no ar"; comercial vencido + Básico continua no ar', async () => {
+test('criativo respeita o direito vigente: sem plano nunca "no ar"; comercial vencido não segura pelo comodato legado', async () => {
   const sem = await criarConta();
-  const vencido = await criarConta({ plano_id: 'destaque-3m', plano_cortesia: false, data_expiracao: somar(-2) });
+  const vencido = await criarConta({
+    plano_id: 'destaque-3m',
+    plano_cortesia: false,
+    data_expiracao: somar(-2),
+    comodato_plano_id: 'comodato-basico',
+  });
   try {
     await criativo(sem.id);
     const s1 = await situacaoDaConta(sem.id);
@@ -469,16 +462,12 @@ test('criativo respeita o direito vigente: sem plano nunca "no ar"; comercial ve
     assert.equal(s1.criativos.resumo.aprovadosForaDoAr, 1);
     assert.equal(s1.plano.veicula, false);
 
-    await ponto(vencido.id, 'Loja', { modalidade: 'mais-cota' });
-    await pool.query(`UPDATE anunciantes SET comodato_plano_id = 'comodato-basico' WHERE id = $1`, [vencido.id]);
     await criativo(vencido.id);
     const s2 = await situacaoDaConta(vencido.id);
-    assert.equal(s2.plano.agora.tipo, 'comodato', 'o gerador cai pro comodato quando o comercial vence');
+    assert.equal(s2.plano.agora, null, 'comercial vencido: sem plano, mesmo com Básico legado');
     assert.ok(s2.plano.vencido);
-    assert.equal(s2.criativos.resumo.noAr, 1, 'ficha e gerador concordam: está no ar pelo Básico');
-    assert.equal(s2.criativos.resumo.limiteNoAr, 1);
+    assert.equal(s2.criativos.resumo.noAr, 0, 'ficha e gerador concordam: fora do ar');
     assert.ok(s2.alertas.some((a) => a.codigo === 'plano_vencido'));
-    assert.ok(!s2.alertas.some((a) => a.codigo === 'criativo_no_ar_sem_plano'));
   } finally {
     await apagar(sem.id);
     await apagar(vencido.id);

@@ -3,6 +3,36 @@
 ## Updated
 2026-09-24
 
+## Reestruturação do benefício dos pontos (24/09/2026, este agente)
+Pedido do dono (69 seções): "SER PONTO DA MOSTRAÍ NÃO É UM PLANO". Decisão
+no **ADR-016**. NÃO MEXER respeitado: Player V2, heartbeat, proof-of-play,
+Tela API, OTA (só a SQL de elegibilidade LÊ `dispositivos.status/
+aparelho_id/ultima_vez_online`).
+- **Crédito mensal do ponto** — migration 082 + `src/creditos/ponto.js`:
+  tipo `credito_mensal_ponto` no mesmo ledger, `ponto_id` + `competencia`,
+  índice único (ponto, competência). Concedido por `scripts/conciliar.js`
+  (job diário). Notificação + SSE `credits.updated`.
+- **Prioridade pago × benefício** — `plano-administrativo.js`:
+  `NIVEL_TIER`, `preverPagamento`, `aplicarPagamentoNaFila` (chamado por
+  `san-checkout.js#aplicarCicloPago`), pago guardado em
+  `anunciantes.plano_pago_guardado_id/_dias`, devolvido por
+  `encerrarBeneficiosVencidos` e por `encerrar`. `/assinar` → 409 com
+  `confirmacao` se há benefício em vigor; `confirmar-plano.page.js` mostra o
+  diálogo. Resgate abaixo do pago em dia → 409 sem consumir crédito.
+  `encerrarCoberturaVencida` deixa benefício com linha 'ativo' pra rotina de
+  benefícios (antes apagaria o pago guardado e o programado).
+- **Modelo antigo fora do fluxo ativo** (histórico preservado): apagados
+  `src/pontos/comodato.js` e `planos-ponto-repository.js`; rotas de
+  modalidade/repasse/troca/bônus → 410; `GET /planos-ponto` → `[]`; ficha
+  sem card Comodato; Contas sem coluna Comodato; Ofertas só 3 tiers;
+  Financeiro sem aba Repasses; Visão geral sem custo de pontos; painel sem
+  Recebimentos/bônus; convite sem escolha de modalidade; site com o texto
+  novo. `/comodato.html` (jurídico) NÃO reescrito — PENDENCIAS §J.
+- Testes: `tests/credito-ponto.test.js`, `tests/prioridade-planos.test.js`
+  (matriz 3×3 + job diário), e2e `17-modelo-de-creditos.mjs` (varredura de
+  texto antigo em admin/painel/site + diálogo de compra). e2e 16/17 precisam
+  do servidor com `NODE_ENV=development` (LISTEN/NOTIFY do SSE).
+
 ## Rodada de responsividade/mobile do site público (24/09/2026, este agente)
 Pedido do dono: rodada final de RESPONSIVIDADE do site público — sem
 redesign, sem mexer em regra comercial, admin ou painel da conta. Detalhe

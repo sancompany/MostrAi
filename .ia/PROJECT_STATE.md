@@ -29,8 +29,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 ## Funcionalidades concluídas (confirmadas no código, testadas)
 
 - Cadastro/login de conta única, três papéis possíveis.
-- Catálogo de planos no banco (Inicial/Básico/Essencial/Pro/Prime +
-  variações de comodato), sem regra em variável de ambiente.
+- Catálogo de planos no banco: Essencial/Pro/Prime × 4 ciclos, sem regra em
+  variável de ambiente (Inicial/Básico ficaram `ativo=false`, só histórico —
+  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082).
 - Assinatura, troca de plano e cancelamento via San Checkout (webhook
   fail-closed/idempotente/transacional).
 - Upload de criativo com validação síncrona (ffmpeg), normalização de

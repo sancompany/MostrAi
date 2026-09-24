@@ -64,34 +64,25 @@ const CAMPOS_PUBLICOS = `
   anuncio_bonus_resgatado_em,
   comunicacoes_revogado_em, dados_opcionais_apagados_em,
   suspenso, parceiro_desconto_percentual, parceiro_compromisso_minimo,
-  credito_comodato_mensal, comodato_plano_id, email_confirmado
+  credito_comodato_mensal, comodato_plano_id, email_confirmado,
+  plano_pago_guardado_id, plano_pago_guardado_dias
 `;
 
-// Comodato (Inicial/Básico) e plano comercial (Essencial/Pro/Prime) são
-// entitlements INDEPENDENTES desde 23/09/2026 (migration 077) — nunca mais
-// no mesmo campo. Mas pra tudo que é COTA/DIREITO DE VEICULAR (quantos
-// criativos cabem, quantos pontos a conta escolhe, a duração máxima da
-// peça, a frequência por hora), o que importa é: a conta tem ALGUM plano
-// que dê esse direito? O comercial manda quando existe (é sempre igual ou
-// melhor); o comodato cobre quem só tem ele. `comodato_plano_id` é apenas
-// espelho de dado (sincronizado por `pontos/comodato.js`), nunca editável
-// direto — por isso não entra em CAMPOS_ATUALIZAVEIS, mesmo tratamento de
-// `credito_comodato_mensal`.
+// O plano da conta é SÓ o comercial (`plano_id`): Essencial, Pro ou Prime —
+// pago, benefício por créditos ou cortesia legada. Inicial/Básico deixaram de
+// ser plano em 24/09/2026 (ADR-016): `comodato_plano_id` fica no banco como
+// legado e nada mais o lê pra dar direito de veicular.
 function planoEfetivoId(conta) {
-  return conta?.plano_id || conta?.comodato_plano_id || null;
+  return conta?.plano_id || null;
 }
 
 // O plano que o GERADOR honra AGORA (src/playlist/gerador.js#
-// anunciantesElegiveis, mesmo COALESCE): o comercial enquanto estiver dentro
-// da validade; vencido (a conciliação diária ainda não limpou), cai pro
-// comodato. `planoEfetivoId` acima ignora a validade — serve pra cota de
-// cadastro; pra dizer "está no ar" / "veicula agora", é esta (revisão da
-// ficha de Conta, 23/09/2026: a ficha dizia "fora da rotação" pra conta com
-// comercial vencido e Básico ativo, enquanto a TV tocava o criativo).
+// anunciantesElegiveis, mesma condição): o comercial enquanto estiver dentro
+// da validade. `planoEfetivoId` acima ignora a validade — serve pra cota de
+// cadastro; pra dizer "está no ar" / "veicula agora", é esta.
 function planoVigenteId(conta, agora = new Date()) {
-  if (!conta) return null;
-  const comercialVale = conta.plano_id && (!conta.data_expiracao || new Date(conta.data_expiracao) >= agora);
-  return (comercialVale ? conta.plano_id : null) || conta.comodato_plano_id || null;
+  if (!conta?.plano_id) return null;
+  return !conta.data_expiracao || new Date(conta.data_expiracao) >= agora ? conta.plano_id : null;
 }
 
 // `db` opcional: o cadastro por convite passa o client da transação.

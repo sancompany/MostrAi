@@ -286,12 +286,6 @@
 .fin-lista li { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: .85rem; }
 .fin-lista time { color: var(--text-dim); }
 .fin-lista b { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.fin-resumo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-.fin-resumo > div { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 12px; background: #f9fafb; }
-.fin-resumo span, .fin-resumo small { color: var(--text-dim); font-size: .76rem; }
-.fin-resumo b { font-size: 1.15rem; }
-.fin-troca { margin-top: 14px; padding: 12px 14px; border: 1px dashed #ffc391; border-radius: 12px; background: #fffaf6; font-size: .86rem; }
-.fin-troca p { margin: 0 0 8px; }
 @media (max-width: 520px) {
   .fin-lista li { grid-template-columns: minmax(0, 1fr) auto; }
   .fin-lista time { grid-column: 1 / -1; }
@@ -351,5 +345,5 @@
 /* Plano comercial (coluna lateral). */
 .painel-plano h2 { margin: 2px 0 10px; font-size: 1.15rem; }
 .plano-nome { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
-.plano-validade, .plano-comodato { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
+.plano-validade { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
 .plano-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

@@ -254,41 +254,63 @@ test('ativarBeneficiosAgendados: ativa só quando o ciclo pago anterior já pass
   }
 });
 
-test('ativarBeneficiosAgendados: NÃO ativa se o ciclo pago foi renovado no meio-tempo (corrida com webhook)', async () => {
+// Regra 32 do pedido de 24/09/2026 (ADR-016): o benefício resgatado com
+// plano pago em dia começa NO FIM do ciclo em que foi resgatado, mesmo que a
+// assinatura renove — o pago fica GUARDADO com os dias que tinha e volta
+// depois do benefício. Antes, a renovação empurrava o benefício pra sempre.
+test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefício — o pago fica guardado', async () => {
   const contaBase = await contaDeTeste('beneficio-4');
   try {
-    // Plano pago em dia no momento do resgate — nasce agendado.
     const futuroPerto = new Date(Date.now() + 2 * 24 * 3600 * 1000).toISOString();
     await pool.query(
       `UPDATE anunciantes SET plano_id='destaque-1m', plano_cortesia=false, data_expiracao=$2 WHERE id=$1`,
       [contaBase.id, futuroPerto],
     );
     const { rows } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
-    const conta = rows[0];
     const alvo = await plano('maximo-1m');
     const { status } = await planoAdministrativo.resgatarOuConcederBeneficio({
-      conta,
+      conta: rows[0],
       plano: alvo,
-      validoAte: '2099-01-01',
+      diasDeBeneficio: 30,
       observacao: 'agendado',
       origem: 'indicacao',
     });
     assert.strictEqual(status, 'agendado');
 
-    // Um webhook renovou a assinatura paga por mais tempo, entre o
-    // agendamento e o dia em que a conciliação rodaria.
+    // Webhook renovou a assinatura (+20 dias) antes do fim do ciclo.
     const futuroLonge = new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString();
     await pool.query(`UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1`, [contaBase.id, futuroLonge]);
 
+    // Ainda não chegou o fim do ciclo em que o resgate foi feito: espera.
     await planoAdministrativo.ativarBeneficiosAgendados();
+    let { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
+    assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'antes da data, continua no pago');
 
-    const { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
-    assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'continua no plano pago renovado, não virou Prime');
+    // Chegou a data de início (simulada: o início programado já passou).
+    await pool.query(
+      `UPDATE planos_administrativos SET plano_anterior_valido_ate = current_date, valido_ate = current_date + 30
+        WHERE anunciante_id = $1 AND status = 'agendado'`,
+      [contaBase.id],
+    );
+    await planoAdministrativo.ativarBeneficiosAgendados();
+    ({ rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]));
+    assert.strictEqual(agora[0].plano_id, 'maximo-1m', 'o benefício entrou na data, mesmo com a renovação');
+    assert.strictEqual(agora[0].plano_pago_guardado_id, 'destaque-1m', 'o pago ficou guardado');
+    assert.ok(agora[0].plano_pago_guardado_dias >= 19, 'com os dias pagos que ainda tinha');
+
+    // Benefício acaba: o pago volta com os dias guardados.
+    await pool.query(
+      `UPDATE planos_administrativos SET valido_ate = current_date - 1 WHERE anunciante_id = $1 AND status = 'ativo'`,
+      [contaBase.id],
+    );
+    const dias = agora[0].plano_pago_guardado_dias;
+    await planoAdministrativo.encerrarBeneficiosVencidos();
+    ({ rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]));
+    assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'voltou ao pago');
     assert.strictEqual(agora[0].plano_cortesia, false);
-
-    const historico = await planoAdministrativo.historicoDaConta(contaBase.id);
-    const linha = historico.find((h) => h.plano_id === 'maximo-1m');
-    assert.strictEqual(linha.status, 'agendado', 'o benefício continua esperando, não foi perdido');
+    assert.strictEqual(agora[0].plano_pago_guardado_id, null);
+    const esperado = new Date(Date.now() + dias * 86400000).toISOString().slice(0, 10);
+    assert.strictEqual(String(agora[0].data_expiracao).slice(0, 10), esperado, 'nenhum dia pago se perdeu');
   } finally {
     await apagarContas([contaBase.id]);
   }
