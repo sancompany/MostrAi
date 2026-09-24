@@ -4718,3 +4718,27 @@ compatibilidade V1) e o smoke completo (C). Corrigido, cada um com teste em
 Replay da 083 num banco com formato de produção (TVs V1 com chave em texto,
 margem 15, tela sem sinal): hash confere, numeração estável, ponto sem sinal
 vira "Aguardando instalação", reaplicar não muda nada.
+
+## K. Custo por exibição prevista — contrato em versão antiga de plano (24/09/2026)
+
+ADR-018 em `.ia/DECISIONS.md`: o card "Custo por exibição prevista" lê o
+snapshot do ciclo (`ciclos_contratados`, migration 087). Produção depois do
+deploy: 2 snapshots preenchidos a partir das cobranças de ciclo inteiro.
+
+- **K.1 [ ] Conta 3 (Essencial Trimestral, R$ 267,30, até 16/12/2026) está
+  na versão ANTIGA do plano, `essencial-3m`** (arquivada em 17/09/2026,
+  anterior ao modelo de segundos por hora). Essa versão não tem segundos por
+  hora, pontos incluídos nem duração máxima — vende "3 inserções por hora em
+  todos os pontos no ar", então a quantidade prevista muda com o tamanho da
+  rede e não existe como número fixo de contrato. O snapshot guarda 0
+  exibições previstas e o card mostra "-" (o card antigo também mostrava
+  "-" pra essa conta; nada piorou). A renovação de 16/12 continua na mesma
+  versão (é o `plano_id` da assinatura), então o "-" continua até a conta
+  trocar de plano. Decisão sua: deixar como está até ela trocar, ou
+  oferecer a migração pra versão atual (`essencial-3m-v2`: 90 s/h × 3
+  pontos × peça de 15 s = 6.480 exibições/mês → R$ 267,30 ÷ 19.440 =
+  R$ 0,0138). Nada foi alterado no contrato dela.
+- **K.2 [ ] Conta 5**: o snapshot da compra (Essencial Trimestral v2,
+  R$ 0,01375/exibição) ficou registrado; a troca pra Pro (acerto de R$ 405)
+  não tem valor de ciclo registrado e não virou snapshot — a conta está em
+  benefício por créditos hoje, então o card mostra "Benefício por créditos".
