@@ -52,6 +52,9 @@ async function cotarPlano(conta, plano) {
           titulo: condicao.promocao.titulo_publico,
           descontoPercentual: Number(condicao.descontoPercentual),
           duracaoMeses: condicao.promocao.duracao_beneficio_meses,
+          // Mesmo preço do ciclo normal (ou pior): a tela não chama isso de
+          // desconto promocional (D1, 24/09/2026 — promocoes-repository.js).
+          temVantagem: promocoesRepo.temVantagem(condicao.descontoPercentual, plano),
         }
       : null,
   };

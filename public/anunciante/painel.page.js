@@ -867,6 +867,10 @@ fetch(`${API_BASE_URL}/promocoes/vigentes`)
   .then((promocoes) => {
     const promo = (Array.isArray(promocoes) ? promocoes : [])[0];
     if (!promo) return;
+    // Mesma linha de condição da Home e de Planos: em que ciclos a promoção
+    // baixa o preço de verdade (D1, 24/09/2026 — config.js).
+    const condicao = window.condicaoDaPromocao(promo);
+    if (condicao === null) return;
     const el = document.getElementById('promocaoLogado');
     el.innerHTML = `
       <div class="promo-logado">
@@ -874,6 +878,7 @@ fetch(`${API_BASE_URL}/promocoes/vigentes`)
           ${promo.selo ? `<span class="badge badge-pendente">${esc(promo.selo)}</span>` : ''}
           <b>${esc(promo.titulo_publico)}</b>
           ${promo.subtitulo ? `<p class="u-m-0 u-dim">${esc(promo.subtitulo)}</p>` : ''}
+          ${condicao ? `<p class="u-m-0 u-dim">${esc(condicao)}</p>` : ''}
         </div>
         <a class="btn primary mini" href="/planos.html">Ver condição</a>
       </div>`;

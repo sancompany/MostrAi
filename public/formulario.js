@@ -3,7 +3,8 @@
 // Sem dependência externa — ViaCEP é público e o resto é DOM puro.
 
 // data-cep no input do CEP; os campos preenchidos são procurados pelo name
-// dentro do mesmo formulário (endereco/cidade/uf/bairro).
+// dentro do mesmo formulário (logradouro/bairro/cidade/uf — D5, 24/09/2026:
+// endereço em campos separados em todo o sistema, src/lib/endereco.js).
 function ligarCep(escopo) {
   (escopo || document).querySelectorAll('[data-cep]').forEach((input) => {
     const form = input.closest('form') || document;
@@ -19,13 +20,14 @@ function ligarCep(escopo) {
       const aviso = form.querySelector('[data-cep-msg]');
       if (cep.length !== 8) return;
       if (aviso) {
+        aviso.hidden = false;
         aviso.textContent = 'Buscando endereço...';
         aviso.className = 'form-hint';
       }
       try {
         const dados = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
         if (dados.erro) throw new Error();
-        const rua = achar('endereco');
+        const rua = achar('logradouro') || achar('endereco');
         // Rua e bairro são campos separados (Parte W, migration 070) — nunca
         // mais concatenados. Quando a ViaCEP não devolve um dos dois (CEP de
         // faixa, sem logradouro/bairro fixo), o campo fica vazio, pro cliente

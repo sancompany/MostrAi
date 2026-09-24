@@ -33,9 +33,12 @@ fetch(`${API_BASE_URL}/promocoes/vigentes`)
     const secao = document.getElementById('promocaoHomeSecao');
     const el = document.getElementById('promocaoHome');
     const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
-    const prazo = promo.compra_fim
-      ? `<p class="promo-home-prazo">Condição válida até ${new Date(promo.compra_fim).toLocaleDateString('pt-BR')}.</p>`
-      : '';
+    // Em que ciclos vale e até quando (D1/D3, 24/09/2026 — config.js).
+    // Sem vantagem em ciclo nenhum, não há banner: seria anunciar desconto
+    // que não existe.
+    const condicao = window.condicaoDaPromocao(promo);
+    if (condicao === null) return;
+    const prazo = condicao ? `<p class="promo-home-prazo">${esc(condicao)}</p>` : '';
     el.innerHTML = `
       <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
         ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}

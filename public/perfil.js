@@ -7,12 +7,13 @@
 // Uso: montarPerfil() depois de ter a conta carregada. Requer /config.js e
 // /layout.js (avatar do cabeçalho e window.ROTULOS) antes.
 (function () {
+  // Endereço em partes (D5, 24/09/2026 — src/lib/endereco.js): CEP,
+  // logradouro, número, complemento, bairro, cidade e UF. O servidor compõe a
+  // linha `endereco`; o perfil não mexe nela.
+  const CAMPOS_ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
   const CAMPOS_EDITAVEIS = [
     'nome_empresa',
-    'endereco',
-    'cidade',
-    'uf',
-    'cep',
+    ...CAMPOS_ENDERECO,
     'contato_telefone',
     'responsavel_nome',
     'responsavel_cpf',
@@ -45,11 +46,19 @@
       <div><label for="cpfCnpjFixo">CPF/CNPJ (fixo)</label><input id="cpfCnpjFixo" disabled></div>
       <div><label for="emailFixo">E-mail de acesso (fixo)</label><input id="emailFixo" disabled></div>
       <div><label for="nome_empresa">Nome da empresa</label><input id="nome_empresa" name="nome_empresa" disabled required></div>
-      <div><label for="endereco">Endereço completo</label><input id="endereco" name="endereco" disabled required></div>
       <div class="field-row">
-        <div class="u-col-2"><label for="cidade">Cidade</label><input id="cidade" name="cidade" disabled required></div>
-        <div class="u-col"><label for="uf">UF</label><input id="uf" name="uf" maxlength="2" disabled required></div>
-        <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" disabled required></div>
+        <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" disabled data-endereco-obrigatorio></div>
+        <div class="u-col-2"><label for="logradouro">Logradouro</label><input id="logradouro" name="logradouro" autocomplete="address-line1" maxlength="200" disabled data-endereco-obrigatorio></div>
+      </div>
+      <p class="form-hint" data-cep-msg hidden></p>
+      <div class="field-row">
+        <div class="u-col"><label for="numero">Número</label><input id="numero" name="numero" maxlength="20" disabled data-endereco-obrigatorio></div>
+        <div class="u-col-2"><label for="complemento">Complemento</label><input id="complemento" name="complemento" autocomplete="address-line2" maxlength="120" placeholder="Opcional" disabled></div>
+      </div>
+      <div><label for="bairro">Bairro</label><input id="bairro" name="bairro" autocomplete="address-level3" maxlength="120" disabled data-endereco-obrigatorio></div>
+      <div class="field-row">
+        <div class="u-col-2"><label for="cidade">Cidade</label><input id="cidade" name="cidade" autocomplete="address-level2" disabled data-endereco-obrigatorio></div>
+        <div class="u-col"><label for="uf">UF</label><input id="uf" name="uf" autocomplete="address-level1" maxlength="2" disabled data-endereco-obrigatorio></div>
       </div>
       <div><label for="contato_telefone">WhatsApp</label><input id="contato_telefone" name="contato_telefone" autocomplete="tel" disabled required></div>
       <p class="eyebrow u-mt-8">Responsável (opcional)</p>
@@ -105,6 +114,9 @@
     document.body.insertAdjacentHTML('beforeend', MARCACAO);
     const $ = (id) => document.getElementById(id);
     const dlg = $('dlgPerfil');
+    // CEP preenche logradouro, bairro, cidade e UF (public/formulario.js) —
+    // o diálogo nasce depois do `ligarCep()` da página, então liga aqui.
+    if (window.ligarCep) window.ligarCep(dlg);
 
     function pintarAvatar() {
       const img = $('avatarFoto');
@@ -142,6 +154,16 @@
       const form = $('formPerfil');
       CAMPOS_EDITAVEIS.forEach((campo) => {
         if (form[campo]) form[campo].value = conta[campo] || '';
+      });
+      // Conta de antes das partes (linha única que não deu pra separar com
+      // segurança, migration 086): a linha vai pro logradouro e o número fica
+      // em branco pra pessoa completar — nada é adivinhado.
+      if (!conta.logradouro && conta.endereco) form.logradouro.value = conta.endereco;
+      // Endereço só é obrigatório pra quem anuncia (vai na nota fiscal) —
+      // conta só de ponto salva o perfil sem ele, como o servidor aceita.
+      const exige = (conta.papeis || []).includes('anunciante');
+      form.querySelectorAll('[data-endereco-obrigatorio]').forEach((campo) => {
+        campo.required = exige;
       });
       pintarAvatar();
     }

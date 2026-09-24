@@ -133,7 +133,10 @@ router.get('/promocoes/vigentes', async (req, res) => {
   const conta = req.session.anuncianteId ? await anunciantesRepo.buscarPorId(req.session.anuncianteId) : null;
   const estado = await promocoesRepo.estadoComercialDaConta(conta);
   const vigentes = await promocoesRepo.listarVigentes();
-  res.json(vigentes.filter((p) => promocoesRepo.elegivel(p, estado)));
+  // Cada célula vai marcada com `temVantagem` e a promoção com
+  // `ciclosComVantagem` (D1, 24/09/2026 — ver promocoes-repository.js).
+  const planos = await planosRepo.listarAtivos({ incluirFundador: false });
+  res.json(vigentes.filter((p) => promocoesRepo.elegivel(p, estado)).map((p) => promocoesRepo.comVantagem(p, planos)));
 });
 
 // Admin — todas as vigentes, SEM filtro de elegibilidade (a Visão Geral

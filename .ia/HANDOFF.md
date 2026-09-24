@@ -3,6 +3,28 @@
 ## Updated
 2026-09-24
 
+## Decisões D1–D6 do dono (24/09/2026, este agente)
+Continuação da rodada mobile. ADR-017; detalhe e achados classificados
+(C1–C4 comerciais abertas, A1–A6) em `docs/PENDENCIAS.md`, "Decisões D1–D6
+do dono e auditoria seguinte".
+- **Data comercial** — `src/lib/fuso-comercial.js` (servidor) +
+  `window.paredeSP`/`window.prazoBR` (`public/config.js`). Promoção e mídia
+  própria. Migration 085 relê as janelas de promoção gravadas.
+- **Endereço em partes** — `src/lib/endereco.js` (compõe `endereco`,
+  valida, exibe) + `window.linhaEndereco`. Migration 086 (colunas +
+  separação conservadora do legado). Formulários: cadastro, convite,
+  perfil (`public/perfil.js`), `candidaturaCampoEndereco`
+  (`public/candidatura-ponto.js`, usado por Meus pontos e modo anúncios).
+  Pegadinha: `colunasDoEndereco` só devolve chave pro que veio no corpo;
+  PATCH que manda uma parte só recompõe com a linha gravada.
+- **Vantagem promocional** — `promocoesRepo.temVantagem/comVantagem`;
+  `GET /promocoes/vigentes` devolve `itens[].temVantagem` e
+  `ciclosComVantagem`; `cotacao.promocao.temVantagem`;
+  `window.condicaoDaPromocao` monta a linha dos banners.
+- **Sessão pública** — `GET /conta/sessao` + `window.carregarSessao`.
+- **HTML sem transformação** — `src/lib/html-sem-transformacao.js`
+  (`express.static` `setHeaders` + 404/500).
+
 ## Player V2 — integração definitiva (24/09/2026)
 O dono RETOMOU o Player V2 com o pedido "INTEGRAÇÃO DEFINITIVA DO MOSTRAÍ COM
 O MOSTRAÍ PLAYER" (77 seções). Fonte de verdade do protocolo: o CÓDIGO do

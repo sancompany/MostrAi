@@ -1459,7 +1459,7 @@ async function renderPromocaoAtivaResumo(el) {
         const ciclos = [...new Set((p.itens || []).map((i) => CICLOS[i.compromissoMeses] || i.compromissoMeses))];
         return `<div class="promocao-ativa-item">
           <p class="promocao-ativa-titulo"><b>${esc(p.titulo_publico)}</b>${p.selo ? ` <span class="badge badge-neutro">${esc(p.selo)}</span>` : ''}</p>
-          <p class="promocao-ativa-meta">${p.compra_fim ? `Até ${data(p.compra_fim)}` : 'Sem prazo pra comprar'} · ${esc(ciclos.join(', ')) || 'nenhum ciclo'}</p>
+          <p class="promocao-ativa-meta">${p.compra_fim ? `Até ${window.prazoBR(p.compra_fim)}` : 'Sem prazo pra comprar'} · ${esc(ciclos.join(', ')) || 'nenhum ciclo'}</p>
           <p class="promocao-ativa-meta">${plural(p.duracao_beneficio_meses, 'mês', 'meses')} de desconto · ${p.limite_adesoes != null ? `${p.adesoes} de ${plural(p.limite_adesoes, 'adesão', 'adesões')}` : plural(p.adesoes, 'adesão', 'adesões')}</p>
         </div>`;
       })
@@ -1856,7 +1856,7 @@ function montarCardMidia(m) {
   const cobertura = m.cobertura_tipo === 'rede' ? 'Toda a rede' : plural(m.qtd_pontos, 'ponto');
   const periodo =
     m.periodo_inicio || m.periodo_fim
-      ? `${m.periodo_inicio ? data(m.periodo_inicio) : 'Desde já'} até ${m.periodo_fim ? data(m.periodo_fim) : 'sem fim'}`
+      ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} até ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
       : 'Sempre no ar';
   return `<article class="criativo-item mm-item">
     <div class="criativo-item-midia">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
@@ -2024,7 +2024,8 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     };
   });
   const pontosSelecionados = new Set(midia?.pontosIds || []);
-  const isoLocal = (v) => (v ? new Date(v).toISOString().slice(0, 16) : '');
+  // Relógio de Matão, não UTC (D3, 24/09/2026 — ver window.paredeSP).
+  const isoLocal = (v) => window.paredeSP(v);
   let duracaoEstimada = midia?.duracao_segundos || 0;
   const temPeriodo = !!(midia?.periodo_inicio || midia?.periodo_fim);
 
@@ -2394,9 +2395,10 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       dados.append('cobertura_tipo', form.cobertura_tipo.value);
       if (idsMarcados.length) dados.append('pontos_ids', idsMarcados.join(','));
       if (document.getElementById('mmAgendada').checked) {
-        if (form.periodo_inicio.value)
-          dados.append('periodo_inicio', new Date(form.periodo_inicio.value).toISOString());
-        if (form.periodo_fim.value) dados.append('periodo_fim', new Date(form.periodo_fim.value).toISOString());
+        // Vai a parede digitada; o servidor lê como horário de Matão
+        // (src/lib/fuso-comercial.js), qualquer que seja o fuso deste navegador.
+        if (form.periodo_inicio.value) dados.append('periodo_inicio', form.periodo_inicio.value);
+        if (form.periodo_fim.value) dados.append('periodo_fim', form.periodo_fim.value);
       }
       if (form.situacao_pausada?.checked) dados.append('situacao', 'pausada');
       const r = await fetch(`${API_BASE_URL}/admin/midias-proprias`, {
@@ -2419,14 +2421,8 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       nome_interno: form.nome_interno.value,
       frequencia_hora: Number(form.frequencia_hora.value),
       cobertura_tipo: form.cobertura_tipo.value,
-      periodo_inicio:
-        document.getElementById('mmAgendada').checked && form.periodo_inicio.value
-          ? new Date(form.periodo_inicio.value).toISOString()
-          : null,
-      periodo_fim:
-        document.getElementById('mmAgendada').checked && form.periodo_fim.value
-          ? new Date(form.periodo_fim.value).toISOString()
-          : null,
+      periodo_inicio: (document.getElementById('mmAgendada').checked && form.periodo_inicio.value) || null,
+      periodo_fim: (document.getElementById('mmAgendada').checked && form.periodo_fim.value) || null,
     };
     if (form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
     const r = await api(`/admin/midias-proprias/${midia.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
@@ -3044,12 +3040,14 @@ function fichaCabecalho({ foto, nome, badge: selo, endereco, meta }) {
   </div>`;
 }
 
-// Endereço de ficha em duas linhas deliberadas: rua e número numa, bairro
-// junto da cidade na outra.
+// Endereço de ficha em duas linhas deliberadas: rua, número e complemento
+// numa, bairro junto da cidade na outra — em vez do "·" pendurado no fim da
+// linha. Partes separadas desde 24/09/2026 (D5, src/lib/endereco.js).
 function enderecoFicha(x) {
   const cidade = `${esc(x.cidade || '')}${x.uf ? `/${esc(x.uf)}` : ''}`;
   const linhaCidade = [x.bairro ? esc(x.bairro) : '', cidade].filter(Boolean).join(' · ');
-  return `${x.endereco ? `${esc(x.endereco)}<br>` : ''}${linhaCidade}`;
+  const rua = window.linhaEndereco({ ...x, bairro: null });
+  return `${rua ? `${esc(rua)}<br>` : ''}${linhaCidade}`;
 }
 
 async function renderPontoDetalhe(el, pontoId) {
@@ -4343,6 +4341,7 @@ function desenharContaDados(el, { s, categorias, bloqueada, recarregar }) {
       <div><dt>Entrou em</dt><dd>${data(d.entrouEm)}</dd></div>
       <div><dt>E-mail</dt><dd>${esc(d.email)}</dd></div>
       <div><dt>WhatsApp</dt><dd class="u-nowrap">${esc(d.telefone)}</dd></div>
+      <div class="dados-largo"><dt>Endereço</dt><dd>${d.endereco ? `${esc(d.endereco)}${d.cep ? ` · CEP ${esc(d.cep)}` : ''}` : '<span class="u-dim">não informado</span>'}</dd></div>
       <div class="dados-largo"><dt><label for="fichaCategoriaBusca">Categoria</label></dt><dd>
         ${categoriaBuscaHtml('fichaCategoria', atual, { placeholder: antiga ? 'Escolha a categoria atual...' : 'Pesquise a categoria...' })}
         ${aviso}
@@ -4544,7 +4543,7 @@ function desenharContaPontos(el, pontos) {
   el.innerHTML = `<div class="secao-topo"><h3>Pontos</h3><span class="contagem">${pontos.length}</span></div>
     <div class="itens-grade">${pontos
       .map((p) => {
-        const endereco = [p.endereco, p.bairro].filter(Boolean).join(' · ');
+        const endereco = window.linhaEndereco(p);
         return `<a class="item-linha" href="#rede/pontos/${p.id}">
           <span class="item-linha-foto">${fotoOuPlaceholder(p.fotoUrl, p.nome)}</span>
           <span class="item-linha-corpo">
@@ -4566,7 +4565,7 @@ function desenharContaSolicitacoes(el, solicitacoes) {
   el.innerHTML = `<div class="secao-topo"><h3>Solicitações de ponto</h3><span class="secao-nota">${plural(solicitacoes.length, 'em análise', 'em análise')}</span></div>
     <ul class="solicitacoes-lista">${solicitacoes
       .map((c) => {
-        const endereco = [c.endereco, c.bairro, c.cidade].filter(Boolean).join(' · ');
+        const endereco = window.linhaEndereco(c, { comCidade: true });
         return `<li><a href="#rede/candidaturas/${c.id}"><b>${esc(c.nome || 'Sem nome')}</b>${endereco ? `<span class="item-meta">${esc(endereco)}</span>` : ''}</a><span class="item-meta">Enviada em ${data(c.enviadaEm)}</span></li>`;
       })
       .join('')}</ul>`;
@@ -5034,7 +5033,7 @@ async function renderCandidaturas(el, resto) {
 
 function montarCandidaturaCard(c) {
   const nome = c.nome_comercio || c.nome;
-  const endereco = [c.endereco, c.bairro].filter(Boolean).join(' · ');
+  const endereco = window.linhaEndereco(c);
   return cardEntidade({
     href: `#rede/candidaturas/${c.id}`,
     foto: fotoOuPlaceholder(c.foto_fachada_url, nome),
@@ -5668,8 +5667,8 @@ function grupoPromocao(promo) {
 }
 
 function periodoPromocao(promo) {
-  const ini = promo.compra_inicio ? data(promo.compra_inicio) : null;
-  const fim = promo.compra_fim ? data(promo.compra_fim) : null;
+  const ini = promo.compra_inicio ? window.prazoBR(promo.compra_inicio, { inicio: true }) : null;
+  const fim = promo.compra_fim ? window.prazoBR(promo.compra_fim) : null;
   if (ini && fim) return `${ini} até ${fim}`;
   if (fim) return `até ${fim}`;
   if (ini) return `a partir de ${ini}`;
@@ -5780,7 +5779,8 @@ function montarFormularioPromocao(promo) {
   // "Encerrada" não é um estado de criação — só aparece editando uma que
   // já existe (e aí serve pra reabrir/encerrar pelo próprio formulário).
   const opcoesStatus = promo ? STATUS_PROMOCAO : { rascunho: STATUS_PROMOCAO.rascunho, ativa: STATUS_PROMOCAO.ativa };
-  const isoLocal = (v) => (v ? new Date(v).toISOString().slice(0, 16) : '');
+  // Relógio de Matão, não UTC (D3, 24/09/2026 — ver window.paredeSP).
+  const isoLocal = (v) => window.paredeSP(v);
   return `
     <form class="panel promo-form painel-form" id="formPromocao">
       <div class="secao-topo">
@@ -6058,7 +6058,7 @@ async function renderPromocoes(el) {
       const titulo = form.titulo_publico.value.trim() || 'Título da promoção';
       const subtitulo = form.subtitulo.value.trim();
       const selo = form.selo.value.trim();
-      const fim = form.compra_fim.value ? new Date(form.compra_fim.value) : null;
+      const fim = window.prazoBR(form.compra_fim.value);
       const src = imagemAtual();
       const comFundo = src && formatoAtual() === 'horizontal';
       const naHome = form.mostrar_home.checked;
@@ -6069,7 +6069,7 @@ async function renderPromocoes(el) {
               ${selo ? `<span class="previa-selo">${esc(selo)}</span>` : ''}
               <b>${esc(titulo)}</b>
               ${subtitulo ? `<span>${esc(subtitulo)}</span>` : ''}
-              ${fim ? `<small>Condição válida até ${fim.toLocaleDateString('pt-BR')}.</small>` : ''}
+              ${fim ? `<small>Condição válida até ${fim}.</small>` : ''}
               <span class="previa-banner-botao">Ver condição na página de planos</span>
             </div>
           </div>`

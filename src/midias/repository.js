@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { SEGUNDOS_DA_HORA, quebraCapacidade } = require('../lib/capacidade');
+const { instanteComercial } = require('../lib/fuso-comercial');
 
 // Mídia Mostraí (reorganização de Conteúdo, 22/09/2026, pedido do dono):
 // cada peça institucional é uma linha aqui, 1-pra-1 com um `criativo`
@@ -70,7 +71,16 @@ async function criar({ criativoId, nomeInterno, frequenciaHora, coberturaTipo, p
       `INSERT INTO midias_proprias
          (criativo_id, nome_interno, frequencia_hora, cobertura_tipo, periodo_inicio, periodo_fim)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [criativoId, nomeInterno, frequenciaHora, coberturaTipo, periodoInicio || null, periodoFim || null],
+      [
+        criativoId,
+        nomeInterno,
+        frequenciaHora,
+        coberturaTipo,
+        // Período digitado no admin é horário de Matão (D3, 24/09/2026 —
+        // src/lib/fuso-comercial.js), convertido aqui, não no navegador.
+        instanteComercial(periodoInicio, { campo: 'início do período' }) ?? null,
+        instanteComercial(periodoFim, { campo: 'fim do período', fim: true }) ?? null,
+      ],
     );
     const midiaId = rows[0].id;
     await definirCobertura(midiaId, coberturaTipo, pontosIds, client);
@@ -86,7 +96,14 @@ async function criar({ criativoId, nomeInterno, frequenciaHora, coberturaTipo, p
 
 const CAMPOS_ATUALIZAVEIS = ['nome_interno', 'frequencia_hora', 'periodo_inicio', 'periodo_fim'];
 
-async function atualizar(id, dados) {
+async function atualizar(id, entrada) {
+  const dados = { ...entrada };
+  if ('periodo_inicio' in dados) {
+    dados.periodo_inicio = instanteComercial(dados.periodo_inicio, { campo: 'início do período' });
+  }
+  if ('periodo_fim' in dados) {
+    dados.periodo_fim = instanteComercial(dados.periodo_fim, { campo: 'fim do período', fim: true });
+  }
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
   if (campos.length) {
     const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');

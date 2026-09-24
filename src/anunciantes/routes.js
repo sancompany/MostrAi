@@ -15,6 +15,7 @@ const { validarCpfOuCnpj } = require('../br/documento');
 const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
 const { resumo: resumoHorarioSemanal } = require('../lib/horario-semanal');
 const { cepValido, telefoneE164, data } = require('../br/formato');
+const { PARTES: PARTES_DO_ENDERECO, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const vendedoresRepo = require('../financeiro/vendedores-repository');
@@ -84,6 +85,8 @@ async function criarPontoDaCandidatura(cand, conta, db) {
     {
       nome: cand.nome_comercio || conta.nome_empresa,
       endereco: cand.endereco,
+      logradouro: cand.logradouro,
+      numero: cand.numero,
       bairro: cand.bairro,
       complemento: cand.complemento,
       cidade: cand.cidade || 'Matão',
@@ -136,10 +139,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const {
     nome_empresa,
     cpf_cnpj,
-    endereco,
-    cidade,
-    uf,
-    cep,
     contato_email,
     contato_telefone,
     senha,
@@ -168,17 +167,15 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const ehAnunciante = papeis.includes('anunciante');
 
   // Endereço comercial só é obrigatório pra quem anuncia; dono de ponto tem o
-  // endereço no próprio ponto, vendedor não tem.
-  if (
-    !nome_empresa ||
-    !cpf_cnpj ||
-    !contato_email ||
-    !contato_telefone ||
-    !senha ||
-    !aceitou_termos ||
-    (ehAnunciante && (!endereco || !cidade || !uf || !cep))
-  ) {
+  // endereço no próprio ponto, vendedor não tem. Em partes desde 24/09/2026
+  // (D5, src/lib/endereco.js): CEP, logradouro, número, bairro, cidade e UF.
+  const endereco = colunasDoEndereco(req.body);
+  if (!nome_empresa || !cpf_cnpj || !contato_email || !contato_telefone || !senha || !aceitou_termos) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
+  }
+  const faltaNoEndereco = ehAnunciante && parteQueFalta(endereco);
+  if (faltaNoEndereco) {
+    return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${faltaNoEndereco}` });
   }
   // Cupom era gravado como texto livre e so conferido na hora de pagar a
   // comissao. Cupom errado (digitado errado, de vendedor que saiu, ou o
@@ -216,7 +213,7 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       .status(400)
       .json({ erro: 'CPF do responsável inválido — confira os números.', campo: 'responsavel_cpf' });
   }
-  if (ehAnunciante && !cepValido(cep)) {
+  if (ehAnunciante && !cepValido(endereco.cep)) {
     return res.status(400).json({ erro: 'CEP inválido — use 8 dígitos.', campo: 'cep' });
   }
   const telefone = telefoneE164(contato_telefone);
@@ -240,10 +237,7 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   const dadosConta = {
     nome_empresa,
     cpf_cnpj,
-    endereco,
-    cidade,
-    uf,
-    cep,
+    ...endereco,
     contato_email,
     contato_telefone: telefone,
     senha,
@@ -657,6 +651,11 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
 const CAMPOS_AUTOEDITAVEIS = [
   'nome_empresa',
   'endereco',
+  // Partes do endereço (D5, 24/09/2026 — migration 086).
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
   'cidade',
   'uf',
   'cep',
@@ -672,6 +671,22 @@ router.patch('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const dados = {};
   for (const campo of CAMPOS_AUTOEDITAVEIS) {
     if (req.body[campo] !== undefined) dados[campo] = req.body[campo];
+  }
+  // Endereço editado no perfil vem inteiro, em partes (D5): começou a
+  // preencher, preenche tudo (complemento é o único opcional) e o CEP tem que
+  // ser um CEP. Quem anuncia não pode ficar sem endereço (vai na nota); conta
+  // só de ponto pode salvar o perfil com o endereço em branco.
+  const partes = PARTES_DO_ENDERECO.filter((p) => dados[p] !== undefined);
+  if (partes.length) {
+    const algumPreenchido = partes.some((p) => String(dados[p] ?? '').trim());
+    const conta = await repo.buscarPorId(req.session.anuncianteId);
+    if (algumPreenchido || (conta?.papeis || []).includes('anunciante')) {
+      const falta = parteQueFalta(colunasDoEndereco(dados));
+      if (falta) return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${falta}` });
+      if (!cepValido(dados.cep)) return res.status(400).json({ erro: 'CEP inválido — use 8 dígitos.', campo: 'cep' });
+    } else {
+      for (const p of partes) delete dados[p];
+    }
   }
   res.json(await repo.atualizar(req.session.anuncianteId, dados));
 });
@@ -1338,20 +1353,19 @@ router.get('/admin/anunciantes', async (_req, res) => {
 // resposta pro admin repassar por WhatsApp. Não há tela de "trocar senha"
 // ainda — fica pro anunciante pedir reset por fora, se precisar.
 router.post('/admin/anunciantes', async (req, res) => {
-  const { nome_empresa, cpf_cnpj, endereco, cidade, uf, cep, contato_email, contato_telefone } = req.body;
+  const { nome_empresa, cpf_cnpj, contato_email, contato_telefone } = req.body;
 
   // Endereço é exigido de quem vai receber nota — a CONTA PRÓPRIA do Mostraí
   // não recebe nota nenhuma: ela é a própria rede anunciando. Pedir endereço
-  // dela só produziria endereço de mentira no cadastro.
+  // dela só produziria endereço de mentira no cadastro. Em partes desde
+  // 24/09/2026 (D5, src/lib/endereco.js).
   const ehPropria = req.body.conta_propria === true;
-  if (
-    !nome_empresa ||
-    !cpf_cnpj ||
-    !contato_email ||
-    !contato_telefone ||
-    (!ehPropria && (!endereco || !cidade || !uf || !cep))
-  ) {
+  if (!nome_empresa || !cpf_cnpj || !contato_email || !contato_telefone) {
     return res.status(400).json({ erro: 'campos obrigatórios faltando' });
+  }
+  const faltaNoEndereco = !ehPropria && parteQueFalta(colunasDoEndereco(req.body));
+  if (faltaNoEndereco) {
+    return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${faltaNoEndereco}` });
   }
   const docInvalido = validarCpfOuCnpj(cpf_cnpj);
   if (docInvalido) return res.status(400).json({ erro: docInvalido, campo: 'cpf_cnpj' });

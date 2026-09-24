@@ -132,4 +132,27 @@ router.patch('/admin/mensagens-contato/:id', async (req, res) => {
   res.json(rows[0]);
 });
 
+// Sessão pública (24/09/2026, decisão D4 do dono): as páginas públicas só
+// precisam saber SE há alguém logado (pra trocar "Entrar" pelo menu da conta
+// e levar o "Assinar" direto pra confirmação). Antes elas perguntavam isso a
+// `GET /anunciantes/me`, que é privada — e todo visitante anônimo via um 401
+// no console, em toda página. Aqui "não logado" é resposta normal (200), e o
+// que volta é o mínimo pra desenhar o cabeçalho: nada de e-mail, documento,
+// telefone ou plano. A autenticação não afrouxa: `/anunciantes/me` e o resto
+// das rotas da conta continuam respondendo 401 sem sessão. Conta suspensa já
+// teve a sessão derrubada antes de chegar aqui (derrubarSessaoSuspensa).
+router.get('/conta/sessao', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.session?.anuncianteId) return res.json({ logado: false });
+  const { rows } = await pool.query(
+    'SELECT nome_empresa, foto_url, papeis FROM anunciantes WHERE id = $1 AND excluido_em IS NULL',
+    [req.session.anuncianteId],
+  );
+  if (!rows[0]) return res.json({ logado: false });
+  res.json({
+    logado: true,
+    conta: { nome_empresa: rows[0].nome_empresa, foto_url: rows[0].foto_url, papeis: rows[0].papeis },
+  });
+});
+
 module.exports = router;

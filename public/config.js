@@ -65,6 +65,91 @@ window.dataBR = function dataBR(valor, opcoes) {
   return new Date(valor).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', ...(opcoes || {}) });
 };
 
+// Prazo comercial (fim de promoção, de período): a data no relógio de Matão,
+// com a hora quando não é o fim do dia — "31/10/2026" se termina 23:59,
+// "31/10/2026 às 00:00" se não (no início, `{ inicio: true }`, é o
+// contrário: 00:00 some, qualquer outra hora aparece). Antes o site mostrava só a data no fuso do
+// navegador, e uma pré-venda que acabava à meia-noite do dia 31 aparecia
+// como "válida até 30/10" (D3, 24/09/2026; a regra do servidor está em
+// src/lib/fuso-comercial.js). Aceita também a parede sem fuso que o
+// `datetime-local` do admin produz, pra prévia dizer o mesmo que o site.
+const PAREDE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+window.prazoBR = function prazoBR(valor, { inicio = false } = {}) {
+  if (!valor) return '';
+  const parede = !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(valor)) && PAREDE.exec(String(valor));
+  let dia;
+  let hora;
+  if (parede) {
+    dia = `${parede[3]}/${parede[2]}/${parede[1]}`;
+    hora = `${parede[4]}:${parede[5]}`;
+  } else {
+    const d = new Date(valor);
+    if (Number.isNaN(d.getTime())) return '';
+    dia = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    hora = d.toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+  }
+  return hora === (inicio ? '00:00' : '23:59') ? dia : `${dia} às ${hora}`;
+};
+
+// Linha de condição dos banners de promoção (Home e Planos): em que ciclos
+// ela vale de verdade e até quando. `ciclosComVantagem` vem do servidor (GET
+// /promocoes/vigentes): só os ciclos em que o preço promocional fica abaixo
+// do preço normal — o título da campanha diz "mais desconto", e o Anual, que
+// já tem 20% normais, não ganha nada a mais com a pré-venda de 20% (D1,
+// 24/09/2026). Devolve null quando a promoção não tem vantagem em ciclo
+// nenhum: aí o banner não aparece, porque anunciaria um desconto que não
+// existe.
+const NOME_CICLO_PROMO = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+window.condicaoDaPromocao = function condicaoDaPromocao(promo) {
+  const ciclos = Array.isArray(promo?.ciclosComVantagem) ? promo.ciclosComVantagem : null;
+  if (ciclos && !ciclos.length) return null;
+  const nomes = (ciclos || []).map((m) => NOME_CICLO_PROMO[m] || `${m} meses`);
+  const ondeVale = nomes.length
+    ? ` ${nomes.length === 1 ? 'no ciclo' : 'nos ciclos'} ${nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`}`
+    : '';
+  const ate = promo.compra_fim ? `${ondeVale ? ',' : ''} até ${window.prazoBR(promo.compra_fim)}` : '';
+  return ondeVale || ate ? `Condição válida${ondeVale}${ate}.` : '';
+};
+
+// Endereço em uma linha, com a mesma regra do servidor (src/lib/endereco.js,
+// D5 de 24/09/2026): "Avenida 28 de Agosto, 2502 - Sala 3 - Alto" e, com
+// `comCidade`, ", Matão/SP". Registro antigo sem as partes sai como foi
+// gravado em `endereco`.
+window.linhaEndereco = function linhaEndereco(e, { comCidade = false } = {}) {
+  if (!e) return '';
+  const rua = e.logradouro ? [e.logradouro, e.numero].filter(Boolean).join(', ') : e.endereco || '';
+  const partes = [rua, e.complemento, e.bairro].filter(Boolean).join(' - ');
+  if (!comCidade) return partes;
+  return [partes, [e.cidade, e.uf].filter(Boolean).join('/')].filter(Boolean).join(', ');
+};
+
+// O instante como o `datetime-local` do admin espera ("2026-10-31T23:59"),
+// no relógio de Matão — não em UTC, que era o que fazia a mídia própria
+// andar 3h a cada "salvar", nem no fuso do navegador de quem edita.
+window.paredeSP = function paredeSP(valor) {
+  if (!valor) return '';
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = {};
+  for (const parte of new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d)) {
+    p[parte.type] = parte.value;
+  }
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
+
 // Mensagem de erro que o servidor manda vira frase de tela: maiúscula na
 // primeira letra e ponto final só se ainda não tiver um. Sem isto saía
 // "CPF inválido — confira os números.." em toda mensagem que já terminava

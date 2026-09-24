@@ -62,8 +62,8 @@
               <input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" required>
             </div>
             <div class="u-col-2">
-              <label for="endereco">Rua e bairro</label>
-              <input id="endereco" name="endereco" autocomplete="address-line1" maxlength="200" required>
+              <label for="logradouro">Logradouro</label>
+              <input id="logradouro" name="logradouro" autocomplete="address-line1" maxlength="200" placeholder="Rua, avenida..." required>
             </div>
             <div class="u-col">
               <label for="numero">Número</label>
@@ -71,6 +71,16 @@
             </div>
           </div>
           <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido, só o número é com você.</p>
+          <div class="field-row">
+            <div class="u-col-2">
+              <label for="complemento">Complemento</label>
+              <input id="complemento" name="complemento" autocomplete="address-line2" maxlength="120" placeholder="Opcional">
+            </div>
+            <div class="u-col-2">
+              <label for="bairro">Bairro</label>
+              <input id="bairro" name="bairro" autocomplete="address-level3" maxlength="120" required>
+            </div>
+          </div>
           <div class="field-row linha-curta">
             <div class="u-col-2">
               <label for="cidade">Cidade</label>

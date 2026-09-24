@@ -180,7 +180,14 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
       });
     }
   }
-  res.json(await midiasRepo.atualizar(req.params.id, dados));
+  try {
+    res.json(await midiasRepo.atualizar(req.params.id, dados));
+  } catch (err) {
+    // Data inválida no período (src/lib/fuso-comercial.js) é erro de quem
+    // digitou, não nosso.
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
 });
 
 router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {

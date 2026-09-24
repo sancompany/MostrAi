@@ -4378,43 +4378,22 @@ do WhatsApp cobrindo controle no fim da página, 0 exceção de JS, axe-core
 
 ### Achado e NÃO alterado — decisão do dono
 
-- **D1 [ ] Promoção "pré venda" no Anual não dá vantagem.** Ela dá 20% nos
-  ciclos de 3, 6 e 12 meses, e o desconto normal do Anual já é 20%: o card
-  anual mostra o selo "pré venda" e "Preço válido por 12 meses", com o mesmo
-  preço de sem promoção (R$ 950,40 / 2.390,40 / 4.310,40) — e a promoção
-  SUBSTITUI o desconto do ciclo, não soma. Caminhos: tirar o Anual da
-  promoção, ou dar a ele um percentual maior que 20%. Configuração no admin
-  (Ofertas), sem código.
-- **D2 [ ] Texto da promoção no banco** (editável no admin): "durante **apré**
-  venda da **mostrai**", "**Valido** somente um curto **periodo**". A
-  descrição interna tem texto de teste ("fw2enw5…") — não aparece no site.
-- **D3 [ ] Fim da promoção um dia antes do digitado.** O admin manda o
-  `datetime-local` sem fuso; o banco grava como UTC. "31/10 00:00" virou
-  31/10 00:00 UTC = 30/10 21:00 em Matão, e quem compra no dia 30 à noite já
-  não pega a condição. O site formata a data no fuso de quem vê: medido com o
-  navegador no fuso de São Paulo, a Home e a Planos dizem **"válida até
-  30/10/2026"** (no fuso UTC, 31/10) — coerente com o instante real em que a
-  promoção acaba, mas não com o que foi digitado. Correção é no admin (fora
-  desta rodada); até lá, digitar "01/11 03:00" dá o fim do dia 31 em Matão.
-- **D4 [ ] Console de visitante anônimo mostra um 401** em toda página
-  pública (`/anunciantes/me`, a sondagem de sessão do cabeçalho). É esperado
-  e não é exceção de JS; some se um dia a sondagem virar uma rota que
-  responda 204 pra quem não está logado.
-- **D6 [ ] Erro de console em TODA página de produção: Cloudflare Web
-  Analytics barrado pela CSP.** Achado validando em produção (24/09/2026): o
-  Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js` (Web
-  Analytics com instalação automática ligada na zona), e a CSP do site
-  (`script-src 'self'`, ADR-011) recusa — "Refused to load the script…" no
-  console de todas as rotas, e a métrica nunca foi coletada. Não aparece no
-  local (não há Cloudflare na frente). Dois caminhos, decisão do dono:
-  (a) desligar a instalação automática do Web Analytics no painel da
-  Cloudflare (nada no código); ou (b) liberar `https://static.cloudflareinsights.com`
-  no `script-src` e `https://cloudflareinsights.com` no `connect-src`
-  (`src/server.js`) — é um terceiro executando script no site, então passa
-  pelo inventário de dados/política de privacidade antes.
-- **D5 [ ] Cadastro: "Rua e bairro" com CEP preenche só a rua** — o
-  formulário não tem campo de bairro, e o `ligarCep` não cola mais o bairro
-  na rua (Parte W). Quem não digitar o bairro fica sem ele.
+As seis foram decididas pelo dono em 24/09/2026 e resolvidas na rodada
+seguinte — detalhe em "Decisões D1–D6 do dono e auditoria seguinte", logo
+abaixo.
+
+- **D1 [x] Promoção "pré venda" no Anual não dá vantagem.** Regra e
+  percentual preservados (decisão comercial separada); o site deixou de
+  anunciar a promoção onde ela não baixa o preço.
+- **D2 [x] Texto da promoção no banco** — corrigido em produção.
+- **D3 [x] Fim da promoção 3h antes do digitado** — data comercial do admin
+  agora é horário de Matão, convertido no servidor.
+- **D4 [x] 401 no console do visitante anônimo** — sondagem pública
+  `GET /conta/sessao`.
+- **D5 [x] "Rua e bairro" num campo só** — endereço em 7 campos em todo o
+  sistema.
+- **D6 [x] Cloudflare Web Analytics barrado pela CSP** — injeção desligada
+  para este site, CSP intacta.
 
 **Deploy misto (achado em produção, 24/09/2026):** na primeira passada em
 produção logo depois do deploy, a Home a 360px veio com o `layout.js`
@@ -4434,6 +4413,125 @@ campo focado e menu aberto, `?plano=` entre cadastro e login, erro em campo
 recolhido, preço anual com promoção) — 70 checagens, todas ok; axe-core sem
 violação; `npm run check` limpo (263/263 testes, 16 avisos de lint =
 linha de base anterior).
+
+### Decisões D1–D6 do dono e auditoria seguinte (24/09/2026)
+
+Decisões do dono sobre os achados D1–D6 da rodada mobile, e o que foi feito
+com cada uma. Regra da rodada: decisão comercial não vira correção
+automática. ADR-017 em `.ia/DECISIONS.md`.
+
+- **D1 [x] — preservar a regra, não anunciar vantagem que não existe.**
+  Percentual NÃO mexido (decisão comercial separada, abaixo). A promoção
+  continua substituindo o desconto do ciclo (ADR-014) e o preço cobrado não
+  mudou em nada. O que mudou é o que se anuncia: cada célula da promoção
+  leva `temVantagem` (preço promocional ABAIXO do preço normal daquele
+  plano — `promocoes-repository.js#temVantagem`, comparação de preço, não
+  de percentual) e a promoção leva `ciclosComVantagem`
+  (`GET /promocoes/vigentes`). Na Planos, o card do Anual não tem mais o
+  selo "pré-venda" nem "Preço válido por 12 meses" (preço igual, R$ 950,40
+  / 2.390,40 / 4.310,40); Trimestral e Semestral continuam com os dois. Os
+  banners (Home, Planos, painel da conta) dizem onde vale: "Condição válida
+  nos ciclos Trimestral e Semestral, até 31/10/2026 às 00:00." A confirmação
+  do pedido (`cotacao.promocao.temVantagem`) mostra o desconto do Anual como
+  "Desconto do ciclo", sem a nota de preço promocional. Promoção sem
+  vantagem em ciclo nenhum não mostra banner. Testes em
+  `tests/cotacao.test.js` e `tests/fuso-comercial.test.js`.
+- **D2 [x] — textos corrigidos.** Busca global no código e no banco de
+  produção: "apré venda" → "pré-venda", "Valido" → "Válido", "periodo" →
+  "período", "mostrai" → "Mostraí" (título, subtítulo e selo da promoção 1,
+  conferidos com `RETURNING`). Nenhuma outra ocorrência em texto de tela. O
+  campo `descricao` ainda tem texto de teste — não aparece no site (achado
+  A3 abaixo).
+- **D3 [x] — bug corrigido.** Toda data/hora comercial digitada no admin
+  (janela de compra da promoção, período da mídia própria) é horário de
+  Matão, convertido de forma explícita no servidor
+  (`src/lib/fuso-comercial.js#instanteComercial`, independente do fuso do
+  processo, do banco e do navegador); valor com fuso (`Z`, `-03:00`) passa
+  como veio; data impossível é 400. O fim é inclusivo no minuto ("termina
+  31/10 23:59" vale até 23:59:59,999). O formulário relê em horário de
+  Matão (`window.paredeSP`) — a mídia própria parou de andar +3h a cada
+  "salvar" — e o site mostra o prazo no relógio de Matão, com a hora quando
+  não é o fim do dia (`window.prazoBR`). Migration 085 relê as janelas de
+  promoção já gravadas como horário de Matão: a pré-venda passa a valer de
+  22/09 00:00 até **31/10 00:00:59** de Matão, exatamente o que foi
+  digitado (antes acabava 30/10 21:00). Testes: início, fim, 00:00, 23:59,
+  persistência, releitura sem deslocamento, vigência no minuto final e
+  renderização (`tests/fuso-comercial.test.js`, `tests/midias.test.js`).
+- **D4 [x] — sem 401 no console público, sem afrouxar nada.**
+  `GET /conta/sessao` responde 200 sempre (`{logado:false}` ou nome, foto e
+  papéis — nada de documento, e-mail ou endereço), `Cache-Control:
+  no-store`. Cabeçalho do site, Planos e convite usam essa rota
+  (`window.carregarSessao`); `/anunciantes/me` e toda rota privada seguem
+  401 sem sessão (`tests/sessao-publica.test.js`).
+- **D5 [x] — endereço em 7 campos em todo o sistema.** CEP, logradouro,
+  número, complemento, bairro, cidade e UF no cadastro, no convite, no
+  perfil da conta, no "ativar modo anúncios", nas duas candidaturas de
+  ponto e no cadastro manual do admin; o CEP preenche logradouro, bairro,
+  cidade e UF. Migration 086: `logradouro`/`numero` nas três tabelas,
+  `bairro`/`complemento` também na conta; `endereco` continua existindo
+  como a linha "logradouro, número", composta SÓ no servidor
+  (`src/lib/endereco.js`) — busca de ponto duplicado, lista pública e mapa
+  continuam lendo a mesma coluna. Os registros antigos foram separados
+  apenas no formato que o sistema gravava (", número" no fim; o pedaço do
+  meio com letra, sem bairro gravado, é o bairro do `ligarCep` antigo);
+  qualquer outra coisa fica inteira no logradouro, com número vazio, e o
+  formulário pede na próxima edição. Exibição com a mesma regra no servidor
+  e no navegador (`linhaEndereco`): fichas e listas do admin, Meus pontos,
+  lista pública de pontos, e-mail de candidatura; a ficha de Conta do admin
+  passou a mostrar o endereço (não mostrava nenhum). Complemento é o único
+  opcional; conta só de ponto salva o perfil sem endereço (quem anuncia,
+  não — nota fiscal). Testes: `tests/endereco.test.js`.
+- **D6 [x] — injeção desligada para este site; CSP intacta.** Nenhum
+  domínio de analytics liberado. O Web Analytics da Cloudflare é da ZONA
+  `sancocore.com.br` inteira (outros projetos do dono estão nela) e a regra
+  por host não cabe no plano (limite de 1 regra, já usada) — então o
+  próprio site pede pra não ser transformado: todo HTML sai com
+  `Cache-Control: no-transform` (`src/lib/html-sem-transformacao.js`, inclui
+  404/500), que a Cloudflare respeita e não injeta o beacon. CSS/JS/imagem
+  não mudam. Analytics fica pra decisão consciente junto de privacidade/CSP.
+
+**Decisões comerciais que continuam abertas (nada foi mudado sozinho):**
+
+- **C1 [ ] Na pré-venda, compromisso maior não dá desconto maior.** Com 20%
+  em Trimestral, Semestral e Anual, quem assina 12 meses paga o mesmo por
+  mês que quem assina 3 — a escada normal (10/15/20%) some durante a
+  campanha. O Anual ficou sem vantagem nenhuma (D1). Caminhos: percentuais
+  escalonados na promoção, tirar o Anual dela, ou manter como está.
+- **C2 [ ] Promoção menor que o desconto do ciclo cobraria MAIS caro.** A
+  regra do ADR-014 é substituir, não escolher o melhor: se um dia uma célula
+  tiver, por exemplo, 15% num ciclo de 20%, quem aderir paga mais que sem
+  promoção. Hoje não acontece (nenhuma célula assim). O site já não anuncia
+  essa célula (D1); o admin não avisa ao salvar. Decidir: impedir no admin,
+  avisar, ou mudar a regra pra "o maior dos dois".
+- **C3 [ ] A adesão ao Anual grava a promoção mesmo sem vantagem**
+  (`assinaturas.promocao_id`). Sem efeito hoje (a promoção não tem limite de
+  adesões e o preço é igual), mas com `limite_adesoes` preenchido o Anual
+  gastaria vagas da campanha sem ganhar nada.
+- **C4 [ ] A pré-venda termina 31/10 às 00:00** (o que foi digitado). Se a
+  intenção era o dia 31 inteiro, é trocar pra 23:59 no admin — o site agora
+  mostra "até 31/10/2026 às 00:00", então a diferença fica visível.
+
+**Achados novos da auditoria (classificados):**
+
+- **A1 — ROBUSTEZ [ ] Mídia própria 1: período provavelmente deslocado.**
+  Gravado 23/09 01:30 → 01/12 01:30 (Matão). É o padrão do defeito de
+  releitura em UTC (+3h por edição), mas não dá pra saber daqui o horário
+  pretendido — não migrado. Conferir no admin (Mídia Mostraí), que agora
+  mostra a hora.
+- **A2 — ROBUSTEZ [ ] Pontos 1 e 2 sem bairro.** A linha antiga deles era
+  "Avenida 28 de Agosto, 2502", sem bairro nenhum — a migration 086 não
+  inventa. Completar pelo admin quando editar o ponto.
+- **A3 — TEXTO/UX [ ] Descrição da pré-venda é texto de teste**
+  ("fw2enw5…"). Não aparece no site hoje; aparece se algum dia a descrição
+  for exibida. Limpar no admin.
+- **A4 — INCONSISTÊNCIA DE PRODUTO [x] Ficha de Conta do admin sem
+  endereço.** A conta guarda o endereço da nota fiscal e o admin não tinha
+  onde vê-lo. Agora aparece (só leitura) em Dados.
+- **A5 — BUG [x] Site anunciava "válida até 30/10"** pra uma pré-venda
+  digitada até 31/10 (a data no fuso do navegador de um instante que já
+  estava 3h adiantado). Resolvido com o D3.
+- **A6 — ROBUSTEZ [x] PATCH de mídia própria com data inválida dava 500**
+  (a data ia crua pro Postgres). Agora é 400 com a mensagem do campo.
 
 ## J. Reestruturação do benefício dos pontos — o que ficou pro dono (24/09/2026)
 

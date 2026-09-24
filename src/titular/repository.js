@@ -12,7 +12,7 @@ async function exportarConta(anuncianteId) {
   const q = (sql, p = [anuncianteId]) => pool.query(sql, p).then((r) => r.rows);
 
   const [conta] = await q(`
-    SELECT id, nome_empresa, cpf_cnpj, endereco, cidade, uf, cep,
+    SELECT id, nome_empresa, cpf_cnpj, endereco, logradouro, numero, complemento, bairro, cidade, uf, cep,
            contato_email, contato_telefone, status, plano_id,
            data_inicio_cobertura, data_expiracao, indicado_por_cupom,
            responsavel_nome, responsavel_cpf, responsavel_email, responsavel_telefone,

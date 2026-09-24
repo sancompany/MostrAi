@@ -75,7 +75,10 @@ async function montarConfirmacaoPedido(planoId) {
   // comodato e/ou o desconto de parceiro, que somam por cima.
   const descontoTabela = cotacao ? Math.round((cotacao.cheioCiclo - cotacao.tabelaCiclo) * 100) / 100 : 0;
   const descontoConta = cotacao ? Math.round((cotacao.tabelaCiclo - cotacao.valorCiclo) * 100) / 100 : 0;
-  const promo = cotacao?.promocao;
+  // Promoção que não baixa o preço do ciclo (Anual 20% × pré-venda 20%) não
+  // é chamada de promoção aqui: o desconto aparece como o do ciclo, sem a
+  // nota de "preço promocional" (D1, 24/09/2026 — cotacao.js#temVantagem).
+  const promo = cotacao?.promocao && cotacao.promocao.temVantagem !== false ? cotacao.promocao : null;
   // Cada característica do plano em uma linha, como um resumo de compra, em
   // vez da frase corrida que existia antes. `horas_por_mes` vem calculado
   // pelo servidor (GET /planos), com a mesma função da vitrine — não

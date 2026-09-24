@@ -31,7 +31,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 
 1. Chega em `/` ou `/planos.html` e vê a grade de planos com preço e frequência.
 2. Escolhe um plano e clica em assinar → vai para `/anunciante/cadastro.html`.
-3. Preenche empresa, CNPJ/CPF, endereço, contato e senha; aceita os termos.
+3. Preenche empresa, CNPJ/CPF, endereço (CEP, logradouro, número, complemento, bairro, cidade e UF, em campos separados — o CEP preenche logradouro, bairro, cidade e UF; D5, 24/09/2026), contato e senha; aceita os termos.
 4. A conta nasce com o papel **anunciante** e status `aprovado` — não existe
    mais aprovação de conta (RN-34); o painel abre na hora.
 5. Escolhe o plano e assina → é levado ao San Checkout.

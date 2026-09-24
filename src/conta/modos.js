@@ -20,6 +20,7 @@ const convitesRepo = require('../convites/repository');
 const { enviarCandidaturaNova } = require('../financeiro/email');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
+const { colunasDoEndereco, parteQueFalta, temEndereco } = require('../lib/endereco');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 
@@ -67,6 +68,8 @@ async function liberarPapelNaConta(conta, papel, cand, db) {
       {
         nome: cand.nome_comercio || conta.nome_empresa,
         endereco: cand.endereco,
+        logradouro: cand.logradouro,
+        numero: cand.numero,
         bairro: cand.bairro,
         complemento: cand.complemento,
         cidade: cand.cidade || 'Matão',
@@ -152,7 +155,7 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
     modos: {
       anunciante: {
         liberado: papeis.includes('anunciante'),
-        precisaEndereco: !(conta.endereco && conta.cidade && conta.uf && conta.cep),
+        precisaEndereco: !temEndereco(conta),
       },
       ponto: { liberado: papeis.includes('ponto'), pedido: pedidos.find((p) => p.tipo === 'ponto') || null },
       vendedor: { liberado: papeis.includes('vendedor'), pedido: pedidos.find((p) => p.tipo === 'vendedor') || null },
@@ -174,15 +177,29 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
 router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  const { endereco, cidade, uf, cep, categoria_id, categoria_livre } = req.body;
+  const { categoria_id, categoria_livre } = req.body;
+  // Endereço em partes (D5, 24/09/2026 — src/lib/endereco.js). Quem já tem
+  // endereço na conta não precisa mandar de novo; quem manda, manda completo.
+  const enviado = colunasDoEndereco(req.body, conta);
   const dados = {
-    endereco: endereco || conta.endereco,
-    cidade: cidade || conta.cidade,
-    uf: uf || conta.uf,
-    cep: cep || conta.cep,
+    endereco: conta.endereco,
+    logradouro: conta.logradouro,
+    numero: conta.numero,
+    complemento: conta.complemento,
+    bairro: conta.bairro,
+    cidade: conta.cidade,
+    uf: conta.uf,
+    cep: conta.cep,
+    ...enviado,
   };
-  if (!dados.endereco || !dados.cidade || !dados.uf || !dados.cep) {
-    return res.status(400).json({ erro: 'endereço completo da empresa é obrigatório pra anunciar' });
+  const falta = enviado.logradouro !== undefined ? parteQueFalta(dados) : !temEndereco(dados);
+  if (falta) {
+    return res.status(400).json({
+      erro:
+        typeof falta === 'string'
+          ? `endereço incompleto — preencha o campo ${falta}`
+          : 'endereço completo da empresa é obrigatório pra anunciar',
+    });
   }
   // O ramo não é enfeite de cadastro: é ele que o gerador da playlist usa pra
   // não pôr o anúncio dentro de um concorrente direto (src/playlist/gerador.js,
@@ -200,9 +217,22 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   await pool.query(
     `UPDATE anunciantes SET endereco = $2, cidade = $3, uf = $4, cep = $5,
        categoria_id = COALESCE($6, categoria_id), categoria_livre = COALESCE($7, categoria_livre),
-       papeis = CASE WHEN 'anunciante' = ANY(papeis) THEN papeis ELSE array_append(papeis, 'anunciante') END
+       papeis = CASE WHEN 'anunciante' = ANY(papeis) THEN papeis ELSE array_append(papeis, 'anunciante') END,
+       logradouro = $8, numero = $9, complemento = $10, bairro = $11
      WHERE id = $1`,
-    [conta.id, dados.endereco, dados.cidade, dados.uf, dados.cep, categoria_id || null, categoria_livre || null],
+    [
+      conta.id,
+      dados.endereco,
+      dados.cidade,
+      dados.uf,
+      dados.cep,
+      categoria_id || null,
+      categoria_livre || null,
+      dados.logradouro ?? null,
+      dados.numero ?? null,
+      dados.complemento ?? null,
+      dados.bairro ?? null,
+    ],
   );
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
@@ -221,9 +251,16 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
 // sem passar pelo Aprovar/Recusar do admin (achado real, corrigido aqui).
 // Os dois têm o MESMO contrato de dados a partir daqui; a diferença entre
 // eles é só a guarda de quem pode chamar (ver as duas rotas).
-async function criarCandidaturaPonto(conta, dados) {
+async function criarCandidaturaPonto(conta, entrada) {
+  // Endereço em partes (D5, 24/09/2026): a linha `endereco` é composta aqui,
+  // e o endereço vem completo — CEP, logradouro, número, bairro, cidade, UF.
+  const dados = { ...entrada, ...colunasDoEndereco(entrada) };
   if (!dados.nome_comercio || !dados.endereco) {
     throw Object.assign(new Error('nome do comércio e endereço são obrigatórios'), { status: 400 });
+  }
+  const faltaNoEndereco = parteQueFalta(dados);
+  if (faltaNoEndereco) {
+    throw Object.assign(new Error(`endereço incompleto — preencha o campo ${faltaNoEndereco}`), { status: 400 });
   }
   // Defesa em profundidade (21/09/2026, pedido do dono: campo virou
   // obrigatório na tela) — o card do painel já exige no HTML, mas quem
@@ -285,7 +322,8 @@ router.post('/conta/modos/:papel/pedir', exigirAnuncianteLogado, async (req, res
   // em aberto", que barrava candidatar um segundo endereço diferente.
   const motivo = await pontosRepo.estabelecimentoJaCadastrado(conta.id, {
     nome: req.body.nome_comercio,
-    endereco: req.body.endereco,
+    // A mesma linha "logradouro, número" que fica gravada (D5).
+    endereco: colunasDoEndereco(req.body).endereco,
     cep: req.body.cep,
   });
   if (motivo) return res.status(409).json({ erro: motivo });

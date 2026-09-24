@@ -41,7 +41,7 @@ async function carregar() {
 
   // Já logado: oferece ligar os papéis nesta conta (painel único) em vez
   // de nascer uma conta nova.
-  const conta = await carregarConta();
+  const conta = await carregarSessao();
   if (conta) {
     const novos = PAPEIS.filter((p) => !(conta.papeis || []).includes(p));
     document.getElementById('titulo').textContent =
@@ -106,7 +106,7 @@ async function carregar() {
   form.chave_pix.required = ehVendedor;
   document.getElementById('secaoPlanoPonto').hidden = !ehPonto;
   document.getElementById('secaoEndereco').hidden = !ehAnunciante;
-  ['cep', 'endereco', 'numero', 'cidade', 'uf'].forEach((n) => {
+  ['cep', 'logradouro', 'numero', 'bairro', 'cidade', 'uf'].forEach((n) => {
     form[n].required = ehAnunciante;
   });
   document.getElementById('rotuloNome').textContent = ehAnunciante
@@ -141,11 +141,15 @@ form.addEventListener('submit', async (e) => {
   };
   if (PAPEIS.includes('vendedor')) dados.chave_pix = form.chave_pix.value.trim();
   if (PAPEIS.includes('anunciante')) {
+    // Em partes (D5, 24/09/2026): a linha composta é o servidor que monta.
     Object.assign(dados, {
-      endereco: `${form.endereco.value.trim()}, ${form.numero.value.trim()}`,
+      cep: form.cep.value.trim(),
+      logradouro: form.logradouro.value.trim(),
+      numero: form.numero.value.trim(),
+      complemento: form.complemento.value.trim(),
+      bairro: form.bairro.value.trim(),
       cidade: form.cidade.value.trim(),
       uf: form.uf.value.trim().toUpperCase(),
-      cep: form.cep.value.trim(),
     });
   }
   try {

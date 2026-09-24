@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
+const { colunasDoEndereco } = require('../lib/endereco');
 
 // Candidatura = formulário público de "quero ser ponto" / "quero ser
 // vendedor". Não cria conta; o dono fala com a pessoa e gera um convite.
@@ -10,24 +11,26 @@ const CAMPOS_ATUALIZAVEIS = ['status', 'convite_id'];
 // conta_id/origem: pedido feito de dentro do painel (migration 020).
 async function criar(dados, db = pool) {
   const horarioValidado = validarHorarioSemanal(dados.horario_semanal);
+  // Partes do endereço e a linha composta num lugar só (D5, migration 086).
+  const end = colunasDoEndereco(dados);
   const { rows } = await db.query(
     `INSERT INTO candidaturas
        (tipo, nome, nome_comercio, contato_telefone, contato_email, endereco, bairro, complemento, cidade, uf, cep,
         segmento, fluxo_estimado_mensal, mensagem, conta_id, origem, chave_pix, plano_ponto_id,
-        horario_semanal)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+        horario_semanal, logradouro, numero)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
     [
       dados.tipo,
       dados.nome,
       dados.nome_comercio || null,
       dados.contato_telefone,
       dados.contato_email || null,
-      dados.endereco || null,
-      dados.bairro || null,
-      dados.complemento || null,
-      dados.cidade || null,
-      dados.uf || null,
-      dados.cep || null,
+      end.endereco ?? null,
+      end.bairro ?? null,
+      end.complemento ?? null,
+      end.cidade ?? null,
+      end.uf ?? null,
+      end.cep ?? null,
       dados.segmento || null,
       dados.fluxo_estimado_mensal ? Number(dados.fluxo_estimado_mensal) : null,
       dados.mensagem || null,
@@ -38,6 +41,8 @@ async function criar(dados, db = pool) {
       // mantida pelo histórico, nunca mais preenchida.
       null,
       horarioValidado ? JSON.stringify(horarioValidado) : null,
+      end.logradouro ?? null,
+      end.numero ?? null,
     ],
   );
   return rows[0];

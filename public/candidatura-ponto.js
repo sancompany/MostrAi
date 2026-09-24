@@ -45,37 +45,38 @@ function candidaturaAjustarFoto(img) {
   else img.addEventListener('load', aplicar, { once: true });
 }
 
-// ---------- Endereço (Parte W: rua e bairro separados) ----------
-// `ligarCep` (public/formulario.js) já busca `logradouro`/`bairro`
-// SEPARADOS na ViaCEP — só nunca tinha campo próprio pra `bairro` preencher
-// (o formulário antigo concatenava os dois num campo só "Rua e bairro").
-// Migration 070 deu a `pontos`/`candidaturas` a coluna que faltava.
+// ---------- Endereço (D5, 24/09/2026: todas as partes separadas) ----------
+// CEP, logradouro, número, complemento, bairro, cidade e UF — o mesmo modelo
+// do cadastro, do convite e do perfil (src/lib/endereco.js). `ligarCep`
+// (public/formulario.js) preenche logradouro, bairro, cidade e UF; o número
+// é com a pessoa. A linha "logradouro, número" é composta no servidor.
 function candidaturaCampoEndereco(prefixo) {
   return `
     <div class="field-row">
-      <div class="u-col"><label for="${prefixo}cep">CEP</label><input id="${prefixo}cep" name="cep" data-cep inputmode="numeric" placeholder="00000-000" required></div>
-      <div class="u-col-2"><label for="${prefixo}endereco">Rua</label><input id="${prefixo}endereco" name="endereco" required></div>
-      <div class="u-col"><label for="${prefixo}numero">Número</label><input id="${prefixo}numero" name="numero" required></div>
+      <div class="u-col"><label for="${prefixo}cep">CEP</label><input id="${prefixo}cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" required></div>
+      <div class="u-col-2"><label for="${prefixo}logradouro">Logradouro</label><input id="${prefixo}logradouro" name="logradouro" autocomplete="address-line1" maxlength="200" placeholder="Rua, avenida..." required></div>
+      <div class="u-col"><label for="${prefixo}numero">Número</label><input id="${prefixo}numero" name="numero" maxlength="20" required></div>
     </div>
     <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido.</p>
     <div class="field-row">
-      <div class="u-col-2"><label for="${prefixo}bairro">Bairro</label><input id="${prefixo}bairro" name="bairro"></div>
-      <div class="u-col-2"><label for="${prefixo}complemento">Complemento</label><input id="${prefixo}complemento" name="complemento" placeholder="Opcional"></div>
+      <div class="u-col-2"><label for="${prefixo}complemento">Complemento</label><input id="${prefixo}complemento" name="complemento" autocomplete="address-line2" maxlength="120" placeholder="Opcional"></div>
+      <div class="u-col-2"><label for="${prefixo}bairro">Bairro</label><input id="${prefixo}bairro" name="bairro" autocomplete="address-level3" maxlength="120" required></div>
     </div>
     <div class="field-row">
-      <div class="u-col-2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" value="Matão" required></div>
-      <div class="u-col"><label for="${prefixo}uf">UF</label><input id="${prefixo}uf" name="uf" maxlength="2" value="SP" required></div>
+      <div class="u-col-2"><label for="${prefixo}cidade">Cidade</label><input id="${prefixo}cidade" name="cidade" autocomplete="address-level2" value="Matão" required></div>
+      <div class="u-col"><label for="${prefixo}uf">UF</label><input id="${prefixo}uf" name="uf" autocomplete="address-level1" maxlength="2" value="SP" required></div>
     </div>`;
 }
 
 function candidaturaEnderecoDoForm(form) {
   return {
-    endereco: `${form.endereco.value.trim()}, ${form.numero.value.trim()}`,
-    bairro: form.bairro.value.trim() || null,
+    cep: form.cep.value.trim(),
+    logradouro: form.logradouro.value.trim(),
+    numero: form.numero.value.trim(),
     complemento: form.complemento.value.trim() || null,
+    bairro: form.bairro.value.trim() || null,
     cidade: form.cidade.value.trim(),
     uf: form.uf.value.trim().toUpperCase(),
-    cep: form.cep.value.trim(),
   };
 }
 

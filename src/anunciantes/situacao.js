@@ -10,6 +10,7 @@ const { horasDeTelaPorMes } = require('../lib/pacing');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { criativosComSituacao } = require('./routes');
+const { linhaEndereco } = require('../lib/endereco');
 
 // SITUAÇÃO DA CONTA — a leitura de domínio da ficha de Conta do admin
 // (revisão de 23/09/2026, pedido do dono: "a interface precisa representar o
@@ -282,6 +283,9 @@ async function situacaoDaConta(contaId, agora = new Date()) {
         id: e.id,
         nome: e.nome,
         endereco: e.endereco,
+        logradouro: e.logradouro,
+        numero: e.numero,
+        complemento: e.complemento,
         bairro: e.bairro,
         cidade: e.cidade,
         uf: e.uf,
@@ -302,6 +306,9 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       id: e.id,
       nome: e.nome,
       endereco: e.endereco,
+      logradouro: e.logradouro,
+      numero: e.numero,
+      complemento: e.complemento,
       bairro: e.bairro,
       cidade: e.cidade,
       uf: e.uf,
@@ -398,6 +405,11 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     documento: conta.cpf_cnpj,
     email: conta.contato_email,
     telefone: conta.contato_telefone,
+    // Endereço da conta (vai na nota fiscal), numa linha só com a regra de
+    // src/lib/endereco.js — a ficha não mostrava endereço nenhum (D5,
+    // 24/09/2026).
+    endereco: linhaEndereco(conta, { comCidade: true }) || null,
+    cep: conta.cep || null,
     entrouEm: conta.created_at,
     categoria: cat
       ? {

@@ -11,6 +11,7 @@ const { criarCandidaturaPonto } = require('../conta/modos');
 const { meusPontosDaConta } = require('./meus-pontos');
 const { situacaoDosPontos } = require('../creditos/ponto');
 const sse = require('../lib/sse');
+const { colunasDoEndereco } = require('../lib/endereco');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -73,7 +74,8 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   // — depois de aprovado, o mesmo lugar passava livre e virava ponto duplicado.
   const motivo = await repo.estabelecimentoJaCadastrado(conta.id, {
     nome: req.body.nome_comercio,
-    endereco: req.body.endereco,
+    // A mesma linha "logradouro, número" que fica gravada (D5).
+    endereco: colunasDoEndereco(req.body).endereco,
     cep: req.body.cep,
   });
   if (motivo) return res.status(409).json({ erro: motivo });
