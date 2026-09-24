@@ -107,14 +107,23 @@ async function situacaoDoCusto(conta, db = pool) {
 // (`cobranca_confirmada_id`), sem `assinatura_id` — olhar só a coluna
 // direta tratava assinatura paga antes de 087 como "nunca pagou" (revisão
 // Codex do PR #56). Legado = ciclo sem assinatura_id, da mesma conta e do
-// mesmo plano, cobrado depois de a assinatura nascer.
+// mesmo plano, cobrado na JANELA desta assinatura: depois de ela nascer e
+// antes de a próxima assinatura do mesmo plano nascer — sem o teto, a
+// cobrança de uma assinatura posterior (a que de fato pagou) contava pra
+// uma intenção abandonada anterior (revisão Codex do PR #57).
 async function jaTeveCicloPago(assinatura, db = pool) {
   const { rows } = await db.query(
     `SELECT 1
        FROM ciclos_contratados c
        LEFT JOIN cobrancas_confirmadas cc ON cc.id = c.cobranca_confirmada_id
       WHERE c.assinatura_id = $1
-         OR (c.assinatura_id IS NULL AND cc.anunciante_id = $2 AND cc.plano_id = $3 AND cc.criado_em >= $4)
+         OR (c.assinatura_id IS NULL
+             AND cc.anunciante_id = $2 AND cc.plano_id = $3
+             AND cc.criado_em >= $4
+             AND cc.criado_em < COALESCE(
+               (SELECT min(s.created_at) FROM assinaturas s
+                 WHERE s.anunciante_id = $2 AND s.plano_id = $3 AND s.id <> $1 AND s.created_at > $4),
+               'infinity'::timestamptz))
       LIMIT 1`,
     [assinatura.id, assinatura.anunciante_id, assinatura.plano_id, assinatura.created_at],
   );

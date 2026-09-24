@@ -6,9 +6,9 @@
 ## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
 Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de
 19 seções em `docs/relatorio-consolidacao-final-2026-09-24.md`. Tudo
-mergeado em `main` e no ar (`4b25c0e`): C+D (#49, migration 088),
+mergeado em `main` e no ar (`632d7bf`): C+D (#49, migration 088),
 G+E (#50, migration 089), H+F (#51), I-1 (#52), I-2 (#53), J+K (#54), e a
-rodada de revisão do Codex (#55 + #56: um link pagável por conta, pagamento
+rodada de revisão do Codex (#55, #56 e #57: um link pagável por conta, pagamento
 de intenção cancelada vira pendência, dedupe da conciliação solta na falha,
 vigência do painel decidida no servidor — PENDENCIAS L.1). Validação online
 contra a produção: `tests/e2e/19-online-producao.mjs` (Access fechado de
