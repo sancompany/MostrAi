@@ -619,21 +619,32 @@ test('playlist: V2 recebe envelope; mudança marca desatualizada, heartbeat avis
       'UPDATE dispositivos SET playlist_desatualizada_em = NULL, playlist_sinalizada_em = NULL WHERE id = $1',
       [tela.id],
     );
-  await semMarca();
-  assert.equal((await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist, undefined);
+  const heartbeat = async () =>
+    (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist;
+  // Outros arquivos de teste mudam criativos em paralelo e o gatilho do banco
+  // marca TODAS as telas ativas — uma marca nova pode cair entre duas chamadas
+  // daqui. Por isso cada cenário tenta algumas vezes: só é defeito quando o
+  // heartbeat avisa SEMPRE (nunca consegue ficar em silêncio sem marca).
+  const TENTATIVAS = 5;
+  let silencio = false;
+  for (let i = 0; i < TENTATIVAS && !silencio; i++) {
+    await semMarca();
+    silencio = (await heartbeat()) === undefined;
+  }
+  assert.ok(silencio, 'sem marca, o heartbeat não avisa');
 
   // Marca feita há 10 s (o GET só limpa o que é anterior à geração, com folga).
-  await pool.query(`UPDATE dispositivos SET playlist_desatualizada_em = now() - interval '10 seconds' WHERE id = $1`, [
-    tela.id,
-  ]);
-  assert.deepEqual((await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist, {
-    atualizar: true,
-  });
-  assert.equal(
-    (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist,
-    undefined,
-    'uma vez só',
-  );
+  let umaVez = false;
+  for (let i = 0; i < TENTATIVAS && !umaVez; i++) {
+    await semMarca();
+    await pool.query(
+      `UPDATE dispositivos SET playlist_desatualizada_em = now() - interval '10 seconds' WHERE id = $1`,
+      [tela.id],
+    );
+    assert.deepEqual(await heartbeat(), { atualizar: true }, 'com marca, o heartbeat avisa');
+    umaVez = (await heartbeat()) === undefined;
+  }
+  assert.ok(umaVez, 'uma vez só');
   const antesDoGet = new Date();
   await app.chamar('GET', `/playlist/${cred.dispositivoId}`, { chave: cred.chaveAparelho });
   const { rows } = await pool.query('SELECT playlist_desatualizada_em FROM dispositivos WHERE id = $1', [tela.id]);

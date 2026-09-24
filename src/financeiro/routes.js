@@ -21,6 +21,7 @@ const planoAdministrativo = require('./plano-administrativo');
 const { cotarPlano } = require('./cotacao');
 const cicloContratado = require('./ciclo-contratado');
 const { multiplicar } = require('../lib/dinheiro');
+const sse = require('../lib/sse');
 const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
 
 const uploadNota = multer({ dest: os.tmpdir() });
@@ -440,6 +441,9 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
   }
+  // Link gerado há pouco e ainda não pago: o mesmo link (o Checkout lê a
+  // mesma linha). Sem isso cada clique em "Assinar" abria outra intenção.
+  if (!assinatura) assinatura = await assinaturasRepo.buscarPendenteDePagamento(conta.id, plano.id);
   if (!assinatura) {
     // Condição promocional vigente E elegível pra essa CONTA (Parte T do
     // pedido de Ofertas/Promoções; elegibilidade comercial adicionada
@@ -546,6 +550,8 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
     await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
     await assinaturasRepo.marcarCancelada(assinatura.id);
     res.json({ ok: true });
+    // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
+    sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     // Fire-and-forget, depois de responder: e-mail que falha não desfaz o
     // cancelamento (pedido do dono, 18/09/2026).
     planosRepo
@@ -689,6 +695,7 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   );
 
   res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
+  sse.emitirParaConta(conta.id, 'plan.updated', {});
 
   // Fire-and-forget: e-mail que falha não desfaz a troca (pedido do dono,
   // 18/09/2026). `conta.plano_id` aqui ainda é o plano ANTIGO — a variável
@@ -771,6 +778,8 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
     await sanCheckout.cancelarAssinatura(assinatura.id, anunciante.cpf_cnpj);
     await assinaturasRepo.marcarCancelada(assinatura.id);
     res.json({ ok: true });
+    // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
+    sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     // Fire-and-forget: mesmo aviso do cancelamento pedido pelo próprio
     // anunciante — quem cancelou não muda o que o cliente precisa saber.
     planosRepo

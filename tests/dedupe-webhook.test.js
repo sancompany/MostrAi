@@ -31,7 +31,7 @@ test('cobrança confirmada deduplica pelo chargeId, não pelo corpo', async () =
     ultimaCobranca: { chargeId: 'pay_8392017465', status: 'confirmado' },
   });
   try {
-    assert.strictEqual(await chaveDoEvento(PAGAMENTO), 'pay_8392017465|confirmado');
+    assert.strictEqual((await chaveDoEvento(PAGAMENTO)).chave, 'pay_8392017465|confirmado');
   } finally {
     restaurar();
   }
@@ -45,7 +45,7 @@ test('duas entregas do mesmo pagamento dão a mesma chave, mesmo virando o dia',
   let restaurar = comCheckoutRespondendo(resposta);
   let antes;
   try {
-    antes = await chaveDoEvento(PAGAMENTO);
+    antes = (await chaveDoEvento(PAGAMENTO)).chave;
   } finally {
     restaurar();
   }
@@ -53,7 +53,7 @@ test('duas entregas do mesmo pagamento dão a mesma chave, mesmo virando o dia',
   restaurar = comCheckoutRespondendo(resposta);
   let depois;
   try {
-    depois = await chaveDoEvento({ ...PAGAMENTO });
+    depois = (await chaveDoEvento({ ...PAGAMENTO })).chave;
   } finally {
     restaurar();
   }
@@ -66,7 +66,7 @@ test('cobranças diferentes dão chaves diferentes', async () => {
   let restaurar = comCheckoutRespondendo({ ultimaCobranca: { chargeId: 'pay_1', status: 'confirmado' } });
   let primeira;
   try {
-    primeira = await chaveDoEvento(PAGAMENTO);
+    primeira = (await chaveDoEvento(PAGAMENTO)).chave;
   } finally {
     restaurar();
   }
@@ -74,7 +74,7 @@ test('cobranças diferentes dão chaves diferentes', async () => {
   restaurar = comCheckoutRespondendo({ ultimaCobranca: { chargeId: 'pay_2', status: 'confirmado' } });
   let segunda;
   try {
-    segunda = await chaveDoEvento(PAGAMENTO);
+    segunda = (await chaveDoEvento(PAGAMENTO)).chave;
   } finally {
     restaurar();
   }
@@ -85,10 +85,49 @@ test('cobranças diferentes dão chaves diferentes', async () => {
 // Sem chargeId não dá pra garantir idempotência, e creditar sem garantia é
 // dar cobertura que talvez já tenha sido dada. Tem que estourar, pra virar
 // pendência e esperar a conciliação.
-test('sem chargeId, a chave estoura em vez de inventar uma', async () => {
-  const restaurar = comCheckoutRespondendo({ ultimaCobranca: null });
+test('sem chargeId, a chave estoura em vez de inventar uma (depois de 3 tentativas)', async () => {
+  let chamadas = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    chamadas += 1;
+    return { ok: true, status: 200, json: async () => ({ ultimaCobranca: null }) };
+  };
+  const restaurar = () => {
+    globalThis.fetch = original;
+  };
   try {
     await assert.rejects(() => chaveDoEvento(PAGAMENTO), /chargeId/);
+    assert.strictEqual(chamadas, 3, 'reconsulta antes de desistir: a Asaas revela o id com atraso');
+  } finally {
+    restaurar();
+  }
+});
+
+// 'criada' (primeira cobrança) chega ANTES de a Asaas revelar o chargeId: a
+// chave é a própria assinatura, e a consulta é só pra pegar o valor cobrado
+// quando já existe — sem ela, o evento segue mesmo assim.
+test("'criada' deduplica pela assinatura e não depende do chargeId", async () => {
+  let restaurar = comCheckoutRespondendo({ ultimaCobranca: null });
+  try {
+    const r = await chaveDoEvento({ ...PAGAMENTO, evento: 'criada' });
+    assert.strictEqual(r.chave, 'criada|assinatura-abc');
+    assert.strictEqual(r.ultima, null);
+  } finally {
+    restaurar();
+  }
+  restaurar = comCheckoutRespondendo({}, 503);
+  try {
+    assert.strictEqual((await chaveDoEvento({ ...PAGAMENTO, evento: 'criada' })).chave, 'criada|assinatura-abc');
+  } finally {
+    restaurar();
+  }
+  restaurar = comCheckoutRespondendo({
+    ultimaCobranca: { chargeId: 'pay_9', status: 'confirmado', valorCobrado: 149.9 },
+  });
+  try {
+    const r = await chaveDoEvento({ ...PAGAMENTO, evento: 'criada' });
+    assert.strictEqual(r.chave, 'criada|assinatura-abc');
+    assert.strictEqual(r.ultima.valorCobrado, 149.9);
   } finally {
     restaurar();
   }
@@ -110,7 +149,7 @@ test('evento sem dinheiro não consulta o checkout', async () => {
     throw new Error('não deveria ter chamado o checkout');
   };
   try {
-    const chave = await chaveDoEvento({ ...PAGAMENTO, evento: 'cobranca_falhou' });
+    const { chave } = await chaveDoEvento({ ...PAGAMENTO, evento: 'cobranca_falhou' });
     assert.match(chave, /^[0-9a-f]{64}$/);
   } finally {
     globalThis.fetch = original;
@@ -124,7 +163,7 @@ test('id próprio do checkout, se vier, é a chave', async () => {
     throw new Error('não deveria ter chamado o checkout');
   };
   try {
-    assert.strictEqual(await chaveDoEvento({ ...PAGAMENTO, eventoId: 'evt_9' }), 'evt_9');
+    assert.strictEqual((await chaveDoEvento({ ...PAGAMENTO, eventoId: 'evt_9' })).chave, 'evt_9');
   } finally {
     globalThis.fetch = original;
   }

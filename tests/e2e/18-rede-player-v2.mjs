@@ -114,7 +114,7 @@ await admin.screenshot({ path: `${SAIDA}player-v2-rede.png`, fullPage: true });
 console.log('== ficha do ponto → + Adicionar tela ==');
 await card.click();
 await admin.waitForSelector('#pontoTelas');
-check('ficha do ponto mostra ID do Ponto', (await admin.textContent('#pontoInformacoes')).includes(`ID do Ponto #${pontoId}`));
+check('ficha do ponto não expõe o registro interno', !/ID do Ponto #/.test(await admin.textContent('#pontoInformacoes')));
 await admin.click('[data-nova-tela]');
 const modal = admin.locator('dialog[open]');
 const textoModal = await modal.textContent();

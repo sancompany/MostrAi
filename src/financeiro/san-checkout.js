@@ -186,7 +186,10 @@ const CICLO_ASAAS = { 1: 'MONTHLY', 3: 'QUARTERLY', 6: 'SEMIANNUALLY', 12: 'YEAR
 // da linha nova, criada ANTES de chamar POST /trocar-plano — o Checkout lê
 // o preço/ciclo de destino por aqui (`resolverPlano`, do lado dele) antes
 // de cobrar o acerto. Só não é servida quando a troca falha e a linha some.
-const STATUS_QUE_SERVEM_PLANO = new Set(['ativa', 'pendente_troca']);
+// 'pendente_pagamento' (migration 089): é o estado normal entre gerar o
+// link e o Checkout confirmar a primeira cobrança — o GET /plano acontece
+// exatamente nessa janela.
+const STATUS_QUE_SERVEM_PLANO = new Set(['pendente_pagamento', 'ativa', 'pendente_troca']);
 
 async function montarRespostaPlano(assinaturaId) {
   const assinatura = await assinaturasRepo.buscarPorId(assinaturaId);
@@ -262,6 +265,8 @@ async function registrarPendencia(payload, motivo) {
     JSON.stringify(payload),
     motivo,
   ]);
+  // Fila "Eventos do Checkout" do admin muda de tamanho.
+  sse.emitirParaAdmin('payment.updated', {});
 }
 
 // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
@@ -358,21 +363,54 @@ const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
 // o chargeId é buscado na rota de conciliação (5.3) e a chave é a que o
 // contrato pede. Os outros eventos só gravam pendência, não movem dinheiro,
 // e seguem com o hash do corpo + dia.
+//
+// 'criada' (consolidação, 24/09/2026): o Checkout manda esse evento no
+// CHECKOUT_PAID, ~300 ms ANTES de a Asaas revelar o chargeId — a consulta
+// 5.3 voltava sem `ultimaCobranca.chargeId`, o evento caía em pendência e o
+// assinante novo só entrava no ar na conciliação do dia seguinte (aconteceu
+// em produção, 15/09). A chave natural de 'criada' é a própria assinatura:
+// a primeira cobrança paga de uma linha de `assinaturas` acontece uma vez
+// só. O chargeId, quando já existir, é registrado DEPOIS (ver
+// processarWebhookAssinatura) só para a conciliação não creditar de novo.
+const chaveDaCriacao = (assinaturaId) => `criada|${assinaturaId}`;
+
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Devolve { chave, ultima } — `ultima` (cobrança da consulta 5.3) traz o
+// valor que a Asaas cobrou de fato, usado em aplicarCicloPago.
 async function chaveDoEvento(payload) {
-  if (payload.eventoId || payload.cobrancaId) return String(payload.eventoId || payload.cobrancaId);
+  if (payload.eventoId || payload.cobrancaId) return { chave: String(payload.eventoId || payload.cobrancaId) };
+
+  if (payload.evento === 'criada') {
+    let ultima = null;
+    try {
+      ultima = (await consultarAssinatura(payload.planoId, payload.documento))?.ultimaCobranca || null;
+    } catch (err) {
+      console.error('consulta do chargeId da primeira cobrança falhou (segue pela chave da assinatura):', err.message);
+    }
+    return { chave: chaveDaCriacao(payload.planoId), ultima };
+  }
 
   if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
-    const estado = await consultarAssinatura(payload.planoId, payload.documento);
-    const ultima = estado?.ultimaCobranca;
-    if (!ultima?.chargeId) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
-    return `${ultima.chargeId}|${ultima.status}`;
+    // Renovação: a chave é chargeId|status (contrato 4.3.6). A Asaas pode
+    // ainda não ter revelado o id no primeiro instante — três tentativas
+    // curtas antes de virar pendência.
+    for (let tentativa = 1; ; tentativa++) {
+      const estado = await consultarAssinatura(payload.planoId, payload.documento);
+      const ultima = estado?.ultimaCobranca;
+      if (ultima?.chargeId) return { chave: `${ultima.chargeId}|${ultima.status}`, ultima };
+      if (tentativa >= 3) throw new Error('checkout não devolveu ultimaCobranca.chargeId');
+      await dormir(1500);
+    }
   }
 
   const dia = new Date().toISOString().slice(0, 10);
-  return crypto
-    .createHash('sha256')
-    .update(`${dia}|${JSON.stringify(payload)}`)
-    .digest('hex');
+  return {
+    chave: crypto
+      .createHash('sha256')
+      .update(`${dia}|${JSON.stringify(payload)}`)
+      .digest('hex'),
+  };
 }
 
 async function processarWebhookAssinatura(payload) {
@@ -381,8 +419,9 @@ async function processarWebhookAssinatura(payload) {
   }
 
   let chave;
+  let ultima = null;
   try {
-    chave = await chaveDoEvento(payload);
+    ({ chave, ultima } = await chaveDoEvento(payload));
   } catch (err) {
     // Sem a chave natural não há como garantir idempotência, e creditar sem
     // garantia é dar cobertura que talvez já tenha sido dada. Fica pendente:
@@ -403,7 +442,9 @@ async function processarWebhookAssinatura(payload) {
     // entre Asaas e Checkout faz a chave `chargeId|status` do ciclo novo
     // colidir com a do anterior — o ciclo pago some, sem cobertura e sem
     // rastro. Vira pendencia pra alguem olhar.
-    if (EVENTOS_QUE_CREDITAM.has(payload.evento)) {
+    // 'criada' reentregue é limpo por construção (chave = a assinatura): só
+    // a renovação, chaveada por chargeId, pode esconder um ciclo novo.
+    if (payload.evento === 'cobranca_confirmada') {
       await registrarPendencia(
         payload,
         `evento que credita ciclo descartado pela deduplicacao (chave ${chave}) — conferir se o ciclo entrou`,
@@ -419,6 +460,7 @@ async function processarWebhookAssinatura(payload) {
 
   if (payload.evento === 'cancelada') {
     await assinaturasRepo.marcarCancelada(assinatura.id);
+    sse.emitirParaConta(assinatura.anunciante_id, 'plan.updated', {});
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
   }
 
@@ -509,6 +551,7 @@ async function processarWebhookAssinatura(payload) {
       cobrado: payload.acertoCobrado > 0,
       valor: payload.acertoCobrado,
     }).catch((err) => console.error('e-mail de troca de plano', err));
+    sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     return;
   }
 
@@ -557,14 +600,28 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 
-  return aplicarCicloPago(assinatura, chave, payload);
+  const cobranca = await aplicarCicloPago(assinatura, chave, payload, { valorCobrado: ultima?.valorCobrado });
+  // 'criada' entrou pela chave da assinatura; o chargeId (se a Asaas já o
+  // revelou) fica registrado também, para a conciliação diária reconhecer
+  // essa cobrança como aplicada e não creditar o primeiro ciclo de novo.
+  if (cobranca && payload.evento === 'criada' && ultima?.chargeId) {
+    await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
+      `${ultima.chargeId}|${ultima.status}`,
+    ]);
+  }
+  return cobranca;
 }
 
 // Credita um ciclo pago na conta: estende a cobertura, registra a cobrança e
 // a comissão. Chamado pelo webhook e pela conciliação diária — as duas rotas
 // passam pela mesma dedupe (`chave`), então um ciclo nunca entra duas vezes,
 // venha o aviso por webhook ou pela varredura.
-async function aplicarCicloPago(assinatura, chave, payload = null) {
+// `valorCobrado` (consolidação, 24/09/2026): o que a Asaas debitou de fato,
+// lido da consulta 5.3 (`ultimaCobranca.valorCobrado`). Quando vem, é ele
+// que entra na cobrança, no snapshot do ciclo e na receita — recalcular pelo
+// catálogo do dia divergia do dinheiro real quando uma promoção com prazo
+// vencia entre um ciclo e outro (a Asaas cobra o valor congelado na adesão).
+async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrado = null } = {}) {
   const contexto = payload || {
     tipo: 'assinatura',
     planoId: assinatura.id,
@@ -590,8 +647,11 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
 
   // O que a conta paga é o valor do plano, com os descontos que ela tem
   // direito (comodato, parceiro, e promocional se a assinatura carregar um).
-  const valorMensal = valorMensalDaConta(anunciante, plano, assinatura);
-  const valorCiclo = multiplicar(valorMensal, plano.compromisso_meses);
+  const cobradoDeFato = Number(valorCobrado);
+  const valorCiclo =
+    Number.isFinite(cobradoDeFato) && cobradoDeFato > 0
+      ? arredondar(cobradoDeFato)
+      : multiplicar(valorMensalDaConta(anunciante, plano, assinatura), plano.compromisso_meses);
 
   // Cobertura e cobrança andam pelo MESMO calendário, e é o único desenho
   // que o motor de pagamento suporta: o San Checkout cobra no ato da
@@ -634,6 +694,9 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
       rows: [contaTravada],
     } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [anunciante.id]);
     eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao);
+    // Primeiro ciclo pago: a assinatura deixa de ser só um link gerado
+    // (migration 089). Na mesma transação da cobrança.
+    if (assinatura.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
        VALUES ($1,$2,$3,'pendente') RETURNING id`,
@@ -706,6 +769,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null) {
     })
     .catch((err) => console.error('falha ao registrar notificação de pagamento', err));
   sse.emitirParaConta(anunciante.id, 'payment.updated', {});
+  sse.emitirParaAdmin('payment.updated', { anuncianteId: anunciante.id });
   // O que o ciclo fez com a fila de benefícios (ADR-016) — o cliente sabe
   // na hora por que o plano mudou (ou por que ainda não mudou).
   for (const ev of eventosDaFila) {
@@ -827,8 +891,15 @@ async function aplicarTrocaDePlano(pedido, payload) {
 // Cancelamento é sempre a Vitrina quem aciona (nunca o pagador direto no
 // checkout — INTEGRACAO.md 6.1). Formato do corpo confirmado com quem
 // administra o San Checkout (v2, campo `documento` — CPF ou CNPJ).
+// 404 (API.md 5.5: nenhuma assinatura nesse estado — nunca paga, ou já
+// cancelada) não é falha: não há o que cancelar, e o registro local pode
+// fechar. Antes virava 502 em todo cancelamento, inclusive na exclusão da
+// conta. 409 (outra operação em andamento) e 5xx continuam sendo erro —
+// quem chama tenta de novo.
 async function cancelarAssinatura(assinaturaId, documento) {
   const r = await chamarApiCheckout('cancelar-assinatura', { planoId: assinaturaId, documento: soDigitos(documento) });
+  if (r.status === 404) return { cancelada: false, inexistente: true };
+  if (r.status === 409) throw new Error('outra operação em andamento nessa assinatura no San Checkout — tente de novo');
   if (!r.ok) throw new Error('falha ao cancelar assinatura no San Checkout');
   return r.json();
 }
