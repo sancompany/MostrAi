@@ -15,7 +15,31 @@ process.env.SAN_CHECKOUT_KEY = process.env.SAN_CHECKOUT_KEY || 'chave-teste';
 process.env.SAN_CHECKOUT_API_URL = process.env.SAN_CHECKOUT_API_URL || 'https://checkout.exemplo';
 const sc = require('../src/financeiro/san-checkout');
 const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
+const cicloContratado = require('../src/financeiro/ciclo-contratado');
 const { conciliarAssinaturas } = require('../src/financeiro/conciliacao');
+
+// Rotas do financeiro montadas direto (a proteção do /admin é do server.js,
+// não do router) — só pra bater no botão "Aplicar este ciclo".
+async function subirAdmin() {
+  const express = require('express');
+  require('express-async-errors');
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, proximo) => {
+    req.session = { adminUsuario: 'teste' };
+    proximo();
+  });
+  app.use(require('../src/financeiro/routes').router);
+  app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const chamar = async (metodo, caminho) => {
+    const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { 'Content-Type': 'application/json' } });
+    return { status: r.status, corpo: await r.json().catch(() => null) };
+  };
+  return { chamar, fechar: () => new Promise((r) => server.close(r)) };
+}
 
 const PLANO = 'essencial-1m';
 
@@ -217,6 +241,151 @@ test('link pendente é reaproveitado por 24 h para o mesmo plano', async () => {
     assert.equal(await assinaturasRepo.buscarPendenteDePagamento(c.id, 'destaque-1m'), null);
     await pool.query("UPDATE assinaturas SET created_at = now() - interval '2 days' WHERE id = $1", [a.id]);
     assert.equal(await assinaturasRepo.buscarPendenteDePagamento(c.id, PLANO), null, 'depois de 24 h é outra compra');
+  } finally {
+    await apagar(c.id);
+  }
+});
+
+test('intenções antigas morrem ao emitir link novo: só um link pagável por conta', async () => {
+  const c = await conta();
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    assert.ok(await sc.montarRespostaPlano(velha.id), 'antes: o Checkout ainda servia o link antigo');
+    const canceladas = await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    assert.deepEqual(canceladas, [velha.id]);
+    assert.equal((await assinaturasRepo.buscarPorId(velha.id)).status, 'cancelada');
+    assert.equal(await sc.montarRespostaPlano(velha.id), null, 'depois: o link antigo não é mais pagável');
+    // Só o que está pendente de pagamento: uma assinatura ativa não é tocada.
+    const ativa = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    assert.deepEqual(await assinaturasRepo.cancelarPendentesDePagamento(c.id), []);
+    assert.equal((await assinaturasRepo.buscarPorId(ativa.id)).status, 'ativa');
+  } finally {
+    await apagar(c.id);
+  }
+});
+
+test('pagamento de intenção já cancelada (link antigo) vira pendência, não credita ciclo', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    const mock = comCheckoutRespondendo({ 'consultar-assinatura': { ultimaCobranca: { status: 'confirmado' } } });
+    try {
+      await sc.processarWebhookAssinatura({
+        versao: 1,
+        tipo: 'assinatura',
+        planoId: velha.id,
+        documento: c.cpf_cnpj,
+        evento: 'criada',
+        chargeId: `pay_${rodada}`,
+      });
+    } finally {
+      mock.restaurar();
+    }
+    assert.equal((await assinaturasRepo.buscarPorId(velha.id)).status, 'cancelada', 'continua cancelada');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [velha.id],
+    );
+    assert.equal(pend.length, 1);
+    assert.match(pend[0].motivo, /intenção de compra já cancelada/);
+    const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(cob.length, 0, 'nenhuma cobrança registrada');
+    const contaDepois = (await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id])).rows[0];
+    assert.equal(contaDepois.plano_id, null, 'nenhuma cobertura concedida');
+
+    // O botão do admin também recusa (chave diferente — a dedupe não seguraria).
+    const admin = await subirAdmin();
+    try {
+      const {
+        rows: [pendencia],
+      } = await pool.query(
+        "SELECT id FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+        [velha.id],
+      );
+      const lista = await admin.chamar('GET', '/admin/eventos-pendentes');
+      assert.equal(lista.status, 200);
+      assert.equal(lista.corpo.find((e) => e.id === pendencia.id)?.aplicavel, false, 'lista marca como não aplicável');
+      const aplicar = await admin.chamar('POST', `/admin/eventos-pendentes/${pendencia.id}/aplicar`);
+      assert.equal(aplicar.status, 409);
+      assert.match(aplicar.corpo.erro, /intenção de compra já cancelada/);
+      assert.equal(
+        (await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id])).rows.length,
+        0,
+      );
+    } finally {
+      await admin.fechar();
+    }
+    await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1", [velha.id]);
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+test('assinatura paga antes da migration 087 (ciclo sem assinatura_id) e cancelada depois NÃO é intenção sem pagamento', async () => {
+  const c = await conta();
+  try {
+    const a = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const {
+      rows: [cobranca],
+    } = await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 10, 'pendente') RETURNING id`,
+      [c.id, PLANO],
+    );
+    // Linha como o backfill da 087 gravou: ligada só à cobrança.
+    await pool.query(
+      `INSERT INTO ciclos_contratados (anunciante_id, plano_id, cobranca_confirmada_id, origem, ciclo_meses, valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+       VALUES ($1, $2, $3, 'compra', 1, 10, 0, 0)`,
+      [c.id, PLANO, cobranca.id],
+    );
+    await assinaturasRepo.marcarCancelada(a.id);
+    const cancelada = await assinaturasRepo.buscarPorId(a.id);
+    assert.equal(await cicloContratado.jaTeveCicloPago(cancelada), true, 'o ciclo legado conta como pago');
+    assert.equal(await sc.intencaoCanceladaSemPagamento(cancelada), false, 'renovação em trânsito continua creditando');
+    // E uma intenção nova, cancelada sem pagar, continua sendo recusada.
+    const nova = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    assert.equal(await sc.intencaoCanceladaSemPagamento(await assinaturasRepo.buscarPorId(nova.id)), true);
+  } finally {
+    await apagar(c.id);
+  }
+});
+
+test('ciclo legado só conta pra assinatura em cuja janela foi cobrado (intenção abandonada antes da 087 continua sem pagamento)', async () => {
+  const c = await conta();
+  try {
+    // A: intenção abandonada há 3 dias; B: assinatura do MESMO plano, criada
+    // ontem e paga hoje (ciclo do backfill, sem assinatura_id).
+    const a = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    await pool.query(
+      "UPDATE assinaturas SET status = 'cancelada', created_at = now() - interval '3 days' WHERE id = $1",
+      [a.id],
+    );
+    const b = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    await pool.query("UPDATE assinaturas SET created_at = now() - interval '1 day' WHERE id = $1", [b.id]);
+    const {
+      rows: [cobranca],
+    } = await pool.query(
+      `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 10, 'pendente') RETURNING id`,
+      [c.id, PLANO],
+    );
+    await pool.query(
+      `INSERT INTO ciclos_contratados (anunciante_id, plano_id, cobranca_confirmada_id, origem, ciclo_meses, valor_ciclo, exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+       VALUES ($1, $2, $3, 'compra', 1, 10, 0, 0)`,
+      [c.id, PLANO, cobranca.id],
+    );
+    assert.equal(await cicloContratado.jaTeveCicloPago(await assinaturasRepo.buscarPorId(b.id)), true, 'B pagou');
+    assert.equal(
+      await cicloContratado.jaTeveCicloPago(await assinaturasRepo.buscarPorId(a.id)),
+      false,
+      'a cobrança é de B, não de A',
+    );
+    assert.equal(
+      await sc.intencaoCanceladaSemPagamento(await assinaturasRepo.buscarPorId(a.id)),
+      true,
+      'pagamento tardio de A é recusado',
+    );
   } finally {
     await apagar(c.id);
   }

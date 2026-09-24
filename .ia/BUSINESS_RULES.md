@@ -6,9 +6,11 @@ julgamento (não fórmula), está dito.
 
 ## Papéis e conta
 
-- Uma conta (`anunciantes`) nasce sempre com o papel `anunciante`. Papéis
-  `ponto` e `vendedor` só entram por decisão do dono (candidatura aprovada
-  ou convite direto) — nunca autodeclaração (`CONSTRAINTS.md`, veto).
+- Uma conta (`anunciantes`) nasce sempre com o papel `anunciante`. O papel
+  `ponto` só entra por decisão do dono (candidatura liberada, ou convite
+  antigo) — nunca autodeclaração (`CONSTRAINTS.md`, veto). O papel
+  `vendedor` foi aposentado (23/09/2026; código removido em 24/09/2026 —
+  todas as rotas respondem 410, tabelas ficam como histórico).
 - `status` da conta é só `comum`/`parceiro` (desconto especial, marcado à
   mão pelo admin) — não é estado operacional. Quem bloqueia acesso é
   `suspenso` (booleano).
@@ -147,13 +149,13 @@ cortesia, quando marcado):
 - `mediaDiariaMes = round(confirmadasMes ÷ dia-do-mês-atual, 1 casa)` —
   aproximação pelo relógio do servidor, não pelo fuso de Matão (aceito de
   propósito, é só ilustrativo).
-- **`custoPorExibicao` = `valorMensalDaConta(anunciante, plano) ÷
-  exibicoesContratadasMes`** — divide pelo **contratado**, não pelo
-  confirmado (decisão explícita de 19/09/2026: "deve ser um preço fixo
-  desde o início, não pelas exibições realizadas"). `null` se a conta está
-  em cortesia (não paga nada) ou sem plano. `valorMensalDaConta` é a MESMA
-  função que decide o que o San Checkout cobra — inclui desconto de
-  parceiro (o crédito de comodato saiu em 24/09/2026, ADR-016).
+- **Custo por exibição prevista** (ADR-018, 24/09/2026 — substituiu o
+  `custoPorExibicao` calculado ao vivo): `valorCiclo ÷
+  exibicoesPrevistasCiclo`, lido do **snapshot** `ciclos_contratados` do
+  ciclo pago em vigor (`src/financeiro/ciclo-contratado.js`). O valor do
+  ciclo é o que a Asaas cobrou (`valorCobrado`), gravado uma vez; nunca é
+  recalculado pelo preço atual do plano nem pelas exibições realizadas.
+  Sem valor em benefício por créditos, cortesia ou sem plano.
 
 ## Categoria/concorrência
 

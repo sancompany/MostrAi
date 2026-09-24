@@ -39,7 +39,9 @@ test('primeira requisição congela a base dentro do lock e não cria extras', a
   const base = [{ id: 1, frequenciaBase: 3 }];
   const resultado = await congelamentoRepo.resolver(7, new Date('2026-09-20T18:00:00Z'), base, () => []);
 
-  assert.deepStrictEqual(resultado, { base, extras: [] });
+  // `criadaAgora`: só a primeira geração da hora drena o banco de horas
+  // (consolidação final, 24/09/2026).
+  assert.deepStrictEqual(resultado, { base, extras: [], criadaAgora: true });
   assert.ok(chamadas.some((sql) => sql.includes('pg_advisory_xact_lock')));
   assert.ok(chamadas.some((sql) => sql.includes('INSERT INTO playlist_hora_congelada')));
   assert.ok(chamadas.indexOf('COMMIT') < chamadas.indexOf('RELEASE'));

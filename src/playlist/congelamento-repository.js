@@ -29,6 +29,10 @@ async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras) 
       [dispositivoId, horaAtual],
     );
 
+    // `criadaAgora`: esta é a PRIMEIRA geração da hora — quem drena o banco
+    // de horas (src/playlist/gerador.js) só o faz nessa passada; as outras
+    // gerações da mesma hora reprocessam a mesma base e não drenam de novo.
+    let criadaAgora = false;
     if (!rows[0]) {
       const criada = await client.query(
         `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras)
@@ -37,6 +41,7 @@ async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras) 
         [dispositivoId, horaAtual, JSON.stringify(baseProposta)],
       );
       rows = criada.rows;
+      criadaAgora = true;
     }
 
     const congelada = rows[0];
@@ -52,7 +57,7 @@ async function resolver(dispositivoId, horaAtual, baseProposta, calcularExtras) 
     }
 
     await client.query('COMMIT');
-    return rows[0];
+    return { ...rows[0], criadaAgora };
   } catch (erro) {
     await client.query('ROLLBACK');
     throw erro;

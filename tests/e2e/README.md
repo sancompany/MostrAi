@@ -25,6 +25,12 @@ PW_CHROME=... node tests/e2e/08-candidatura-ponto.mjs  # card "Faça parte da re
 PW_CHROME=... node tests/e2e/17-modelo-de-creditos.mjs  # sem Inicial/Básico/R$ 50/repasse/comodato em admin, painel e site; crédito do ponto sem F5; aviso antes de pagar por cima de benefício
 PW_CHROME=... node tests/e2e/09-rede-redesenho.mjs # Rede: status automático (grade/filtros/detalhe/site público), telas em cards + margens, ocupação como tabela, candidatura com foto
 PW_CHROME=... node tests/e2e/18-rede-player-v2.mjs # Player V2: + Tela → Preparar instalação (download do mostrai-config.json) → provisionar → hello → Operando sem recarregar → config desejada × aplicada → erro no Diagnóstico → Histórico → rotação com sobreposição → nenhum segredo na UI/JSON → visão do dono → V1 ainda funciona
+# ONLINE, contra a produção (só leitura): saúde, cabeçalhos, /planos canônico, 410 das rotas
+# aposentadas, 301, adversarial (webhook sem assinatura, rotas sem credencial, Access fechado),
+# site público em 5 tamanhos sem overflow/erro de console. Com CF_ACCESS_CLIENT_ID/SECRET
+# (service token TEMPORÁRIO do Access — apagar depois) + ADMIN_USER_PROD/ADMIN_PASSWORD_PROD,
+# também percorre o admin sem gravar nada. Nunca cria conta, pedido, tela ou cobrança.
+PW_CHROME=... node tests/e2e/19-online-producao.mjs
 ```
 
 O limite de tentativas vive no banco desde a migration 051 (`tentativas_acesso`,

@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { arredondar, multiplicar, percentual } = require('../lib/dinheiro');
 const { segredoConfere } = require('../lib/segredo');
 const planosRepo = require('./planos-repository');
@@ -277,47 +278,14 @@ async function registrarPendencia(payload, motivo) {
 }
 
 // Programa de vendedores aposentado (reconstrução de Contas, 23/09/2026,
-// pedido do dono: "sem novas comissões"). Nenhuma comissão NOVA nasce daqui
-// em diante — nem de cadastro novo, nem da renovação de quem já tinha vindo
-// por cupom. As comissões que já existem ficam na tabela como estão (histórico
-// e fila de pagamento). A função fica inteira atrás da chave pra que
-// religar, se o dono um dia quiser, seja trocar uma constante — não
-// reescrever a regra.
-const COMISSAO_DE_VENDEDOR_ATIVA = false;
-
-// `db` é o pool por padrão, mas o webhook passa o client da transação pra
-// que a comissão entre junto com a cobrança — ou não entre nenhuma das duas.
-async function registrarComissaoSeHouver(anunciante, valor, db = pool) {
-  if (!COMISSAO_DE_VENDEDOR_ATIVA) return;
-  if (!anunciante.indicado_por_cupom || !valor) return;
-  // Vendedor é papel da conta única (migration 019). Cupom em maiúsculas pra
-  // não perder comissão por caixa diferente.
-  const { rows } = await db.query(
-    `SELECT v.* FROM vendedores v JOIN anunciantes a ON a.id = v.conta_id
-     WHERE v.codigo_cupom = upper($1) AND v.status = 'aprovado' AND a.excluido_em IS NULL`,
-    [anunciante.indicado_por_cupom],
-  );
-  const vendedor = rows[0];
-  if (!vendedor || vendedor.conta_id === anunciante.id) return; // ninguém ganha comissão de si mesmo
-
-  const comissaoValor = percentual(valor, vendedor.comissao_percentual);
-  await db.query(
-    `INSERT INTO comissoes (vendedor_conta_id, anunciante_id, valor_confirmado, comissao_valor)
-     VALUES ($1,$2,$3,$4)`,
-    [vendedor.conta_id, anunciante.id, valor, comissaoValor],
-  );
-  // Dono do evento é o VENDEDOR, não quem comprou: a pergunta é "quanto a
-  // indicação custa", e ela se responde por vendedor.
-  eventos.registrar('comissao:vendedor_gera', {
-    anunciante_id: vendedor.conta_id,
-    vendedor_id: vendedor.conta_id,
-    comissao_valor: comissaoValor,
-    valor_confirmado: valor,
-  });
-}
+// pedido do dono: "sem novas comissões"). A função que gerava comissão ficou
+// desligada atrás de uma constante até a consolidação final (24/09/2026) e
+// saiu do código: produção sem nenhum vendedor, nenhuma comissão. As tabelas
+// `vendedores`/`comissoes` ficam no banco como histórico (exportação LGPD
+// ainda as lê, src/titular/repository.js).
 
 // Crédito de indicação do dono de ponto (migration 062, pedido do dono,
-// 19/09/2026) — irmã de registrarComissaoSeHouver, mas nunca move dinheiro:
+// 19/09/2026) — nunca move dinheiro:
 // quem indica com cupom "PT-..." ganha crédito no ledger, pra resgate
 // explícito depois (src/creditos/, migration 079) — CADA cobrança confirmada
 // gera crédito, a primeira e toda renovação. `db` é o pool por
@@ -355,6 +323,21 @@ async function registrarCreditoIndicacaoSeHouver(anunciante, cobrancaConfirmadaI
 // abaixo) só ficam registrados pro admin revisar, pra nunca derrubar o
 // acesso de alguém sem intervenção humana.
 const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
+
+// Intenção de compra cancelada AQUI (link antigo morto por um link novo, ou
+// pela exclusão da conta) que nunca teve ciclo pago. Um pagamento que chega
+// pra ela (a tela do Checkout já estava aberta) NÃO pode creditar: criaria
+// cobertura e uma assinatura na Asaas por cima da nova — cobrança em dobro
+// (revisão Codex dos PRs #55/#56). Vale pro webhook E pro botão "Aplicar
+// este ciclo" do admin — a mesma pergunta, respondida num lugar só.
+// Assinatura que JÁ pagou (inclusive antes da migration 087) e foi cancelada
+// depois não é isso: o ciclo que a Asaas cobrou entra, o dinheiro entrou.
+const MOTIVO_INTENCAO_CANCELADA =
+  'pagamento de uma intenção de compra já cancelada (link antigo) — devolver no Checkout, nada foi creditado';
+async function intencaoCanceladaSemPagamento(assinatura) {
+  if (assinatura?.status !== 'cancelada') return false;
+  return !(await cicloContratado.jaTeveCicloPago(assinatura));
+}
 // Chave de deduplicação do evento. O contrato manda tratar o processamento
 // como idempotente pela chave natural `chargeId` + `status` (API.md do
 // Checkout, 4.3.6) — só que o payload de assinatura NÃO carrega chargeId
@@ -484,6 +467,18 @@ async function processarWebhookAssinatura(payload) {
     await assinaturasRepo.marcarCancelada(assinatura.id);
     sse.emitirParaConta(assinatura.anunciante_id, 'plan.updated', {});
     return; // cobertura já paga continua valendo até data_expiracao — não derruba na hora
+  }
+
+  // Intenção cancelada AQUI (link antigo morto por um link novo, ou pela
+  // exclusão da conta) que nunca teve ciclo pago: o Checkout já tinha a tela
+  // carregada e o pagador concluiu mesmo assim. Creditar criaria cobertura e
+  // uma assinatura na Asaas POR CIMA da nova — cobrança em dobro (revisão
+  // Codex do PR #55). Vira pendência pra devolver. Assinatura que JÁ pagou e
+  // foi cancelada depois (`ciclos_contratados` tem linha dela) continua
+  // creditando o ciclo que a Asaas cobrou: o dinheiro entrou, a cobertura
+  // vale.
+  if (EVENTOS_QUE_CREDITAM.has(payload.evento) && (await intencaoCanceladaSemPagamento(assinatura))) {
+    return registrarPendencia(payload, MOTIVO_INTENCAO_CANCELADA);
   }
 
   // plano_trocado: desde 21/09/2026 nem sempre é aviso redundante. Quando
@@ -714,7 +709,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
   const mesesDoCiclo = plano.compromisso_meses;
   const baseExpiracao =
-    anunciante.data_expiracao && new Date(anunciante.data_expiracao) > new Date()
+    anunciante.data_expiracao && vigencia.coberturaVigente(anunciante.data_expiracao)
       ? new Date(anunciante.data_expiracao)
       : new Date();
   const novaExpiracao = new Date(baseExpiracao);
@@ -765,7 +760,6 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
       origem: await cicloContratado.origemDoCicloPago(cliente, assinatura.id),
       valorCiclo,
     });
-    await registrarComissaoSeHouver(anunciante, valorCiclo, cliente);
     creditoIndicacao = await registrarCreditoIndicacaoSeHouver(anunciante, cobrancaRows[0].id, cliente);
     await cliente.query('COMMIT');
   } catch (err) {
@@ -1000,4 +994,6 @@ module.exports = {
   consultarAssinatura,
   chaveDoEvento,
   aplicarCicloPago,
+  intencaoCanceladaSemPagamento,
+  MOTIVO_INTENCAO_CANCELADA,
 };

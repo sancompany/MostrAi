@@ -1,5 +1,6 @@
 const express = require('express');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const repo = require('./repository');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
@@ -106,7 +107,7 @@ function diaISO(valor) {
 
 // Linha do tempo do direito de veicular: Agora → Próximo → Depois.
 function linhaDoTempo({ conta, comercial, assinaturaAtiva, beneficioAtivo, beneficioAgendado, planos, agora }) {
-  const comercialVigente = !!conta.plano_id && (!conta.data_expiracao || new Date(conta.data_expiracao) >= agora);
+  const comercialVigente = !!conta.plano_id && vigencia.coberturaVigente(conta.data_expiracao, agora);
   const origem = origemDoComercial(conta, beneficioAtivo);
 
   let agoraItem = null;

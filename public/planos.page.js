@@ -222,9 +222,10 @@ function atualizarDescontos() {
     const descontos = PLANOS.filter((p) => p.compromisso_meses === meses)
       .map((p) => {
         const promo = condicaoPromocionalVigente(p.tier, meses);
+        // O desconto do ciclo é o que o servidor publica no plano, não uma
+        // conta refeita aqui a partir do preço mensal (arredondava diferente).
         if (promo) return Number(promo.descontoPercentual);
-        const base = mensalDoTier(p.tier);
-        return base ? Math.round((1 - p.valor_mensal / base) * 100) : 0;
+        return Number(p.desconto_percentual) || 0;
       })
       .filter((d) => d > 0);
     rotulo.textContent = descontos.length ? `-${Math.max(...descontos)}%` : '';

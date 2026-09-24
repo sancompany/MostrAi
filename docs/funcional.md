@@ -16,7 +16,7 @@ Vizinhos: `docs/specs/2026-09-12-mostrai.md` diz **por que** o projeto existe;
 | Papel | O que quer resolver | O que sabe fazer sozinho |
 |---|---|---|
 | **Anunciante** | aparecer nas telas da cidade sem produzir campanha nem entender mídia; paga um valor fixo por mês | se cadastra, assina plano e sobe um vídeo pelo celular. Não lê manual |
-| **Dono de ponto** | ganhar ajuda de custo ou anunciar o próprio negócio cedendo uma parede | liga a TV e não mexe mais. Usa o painel raramente, pelo celular |
+| **Dono de ponto** | acumular créditos (1 por mês com a tela ativa, trocáveis por benefício de anúncio) cedendo uma parede | liga a TV e não mexe mais. Usa o painel raramente, pelo celular |
 | **Vendedor** | indicar anunciantes e receber comissão | manda o link com o cupom dele pelo WhatsApp. Acompanha o que tem a receber |
 | **Administrador** (o dono do Mostraí) | aprovar quem entra, ver margem real, operar a rede | conhece o sistema inteiro. Usa no computador |
 | **Tela** (aparelho, não pessoa) | tocar a playlist da própria tela sem ninguém por perto | nada. É um navegador em modo quiosque numa TV de comércio de terceiro |
@@ -46,7 +46,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
 2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
-4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto (com a Tela 1) nasce ali.
+4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação, com o Preparar Player).
 5. O administrador cadastra as telas extras (Rede → o ponto → **+ Tela**; o nome é sempre "Tela N", numerado por ponto e estável) e, em cada uma, clica **Preparar instalação**: baixa o `mostrai-config.json` com um token de provisionamento de uso único (7 dias) — RN-59.
 6. O técnico instala o Mostraí Player na TV com esse arquivo; o Player troca o token pela credencial dele e passa a falar sozinho. A credencial nunca aparece para ninguém: o admin vê só a impressão digital (6 caracteres).
 7. O dono do ponto acompanha as telas em **Meus pontos** numa visão simplificada
@@ -58,14 +58,15 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
    Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
 
-### 2.3 Vendedor — do convite à comissão
+### 2.3 Vendedor — programa aposentado
 
-1. Fala direto com a Mostraí por um canal oficial (não existe pedido self-service — o card do modo no painel e o card da home só apontam pro contato) e, se fechar, recebe convite do administrador.
-2. Abre `/convite.html?t=…`, a conta nasce com o papel **vendedor** e um cupom.
-3. Manda `/anunciante/cadastro.html?ref=CUPOM` para o interessado.
-4. O indicado assina e paga.
-5. A comissão é gerada sobre o valor confirmado, no percentual da conta do vendedor.
-6. Acompanha em `/anunciante/vendedor.html`; o administrador marca como paga.
+Aposentado em 23/09/2026 (pedido do dono) e removido do código executável
+na consolidação final (24/09/2026): não existe mais convite de vendedor,
+cupom de vendedor, painel de vendas nem comissão. Produção não tinha nenhum
+vendedor nem comissão quando o código saiu. As tabelas `vendedores` e
+`comissoes` ficam no banco como histórico; todas as rotas antigas respondem
+410. A indicação que vale hoje é a do **dono de ponto** (cupom `PT-…`, vira
+crédito — seção 2.2).
 
 ### 2.4 Administrador — o dia a dia
 
@@ -149,9 +150,9 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela e definir o PIN, trocar a ajuda de custo por tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
-| ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas e PIN estão em **Meus pontos**, o autoanúncio em **Meus criativos**, extrato e troca da ajuda de custo em **Financeiro** | — | — |
-| Vendas | `/anunciante/vendedor.html` | conta com papel vendedor | cupom, indicados, comissões | copiar link, informar Pix | — |
+| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela e definir o PIN, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
+| ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas e PIN estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |
+| ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | app Mostraí Player (V2) · `/player.html?tela=ID` (V1, compat) | a TV, com credencial | o vídeo da vez | tocar; PIN de manutenção abre o painel técnico | — |
 | Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (grade de pontos → ponto → ficha da tela, e a aba **Versões do Player**), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
@@ -831,12 +832,12 @@ renovação cobra. O valor só muda se o próprio anunciante trocar de plano.
 > direito que ela prometia. Saiu junto o rótulo "Preço fundador, nunca muda",
 > que 9 dos 12 planos exibiam na vitrine.
 
-**RN-12 — Comissão do vendedor é gerada a cada cobrança confirmada**, inclusive
-renovação, no percentual da conta dele — **confirmado pelo dono em
-15/09/2026: mantém**. O percentual é do VENDEDOR (`vendedores.comissao_percentual`),
-não do plano, então troca de plano de quem ele indicou nunca muda a comissão.
-O dono define o valor entre **10% e 30%** (migration 035); fora da faixa a
-rota recusa. *Violada:* não há caminho. *Quem vê:* vendedor e administrador.
+**RN-12 — Comissão de vendedor: não existe mais.** A regra valeu de
+15/09/2026 a 23/09/2026 (percentual do vendedor, 10–30%, a cada cobrança
+confirmada). Com o programa aposentado, nenhuma cobrança gera comissão — o
+código que gerava saiu em 24/09/2026 (`tests/contas-reconstrucao.test.js`
+prova que um ciclo pago de quem veio por cupom antigo não cria linha em
+`comissoes`). *Quem vê:* ninguém; a tabela é só histórico.
 
 **RN-13 — Troca de plano de quem já paga é recusada.** O sistema manda falar
 com o administrador, para evitar cobrança dupla na Asaas. O caminho é cancelar
@@ -904,6 +905,17 @@ histórico em vez de `'cancelado'` — RN-32-A). *Violada:* "conta suspensa —
 fale com o suporte antes de assinar". *Quem vê:* o anunciante (painel e
 perfil) e o administrador (coluna "Suspensa" na aba Anunciantes, separada da
 coluna "Status").
+
+**RN-32-B — Vigência tem uma régua só: o último dia é inclusivo, no relógio
+de Matão** (consolidação final, 24/09/2026 — `src/lib/vigencia.js`).
+`data_expiracao` é uma data; quem tem cobertura até 30/09 roda o dia 30
+inteiro e sai do ar à meia-noite de Matão (America/Sao_Paulo). Gerador de
+playlist, `planoVigenteId`, cotação (`acao`), conciliação, Visão geral do
+admin e o job de benefícios usam a mesma função (`coberturaVigente` no JS,
+`vigenteSql` no SQL). Antes cada lugar comparava de um jeito e o mesmo plano
+"vencia" até 27 horas antes na TV do que na ficha do admin. *Violada:* não
+há caminho — nenhum código compara `new Date(data_expiracao)` com o relógio.
+*Quem vê:* todo mundo, sem perceber (é o que torna a regra certa).
 
 **RN-32-A — Cobertura vencida cancela o plano comercial, nunca suspende a
 conta.** *(23/09/2026, decisão do dono — ver RN-35.)* A conciliação diária

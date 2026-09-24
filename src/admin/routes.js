@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const anunciantesRepo = require('../anunciantes/repository');
 const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
@@ -227,7 +228,7 @@ router.get('/admin/resumo', async (_req, res) => {
          AND a.excluido_em IS NULL
          AND (
            (NOT a.plano_cortesia AND a.plano_id IS NOT NULL
-              AND (a.data_expiracao IS NULL OR a.data_expiracao >= current_date))
+              AND ${vigencia.vigenteSql('a.data_expiracao')})
            OR (a.plano_cortesia AND a.plano_pago_guardado_id IS NOT NULL
                AND EXISTS (SELECT 1 FROM assinaturas x WHERE x.anunciante_id = a.id AND x.status = 'ativa'))
          )`,
@@ -286,7 +287,7 @@ router.get('/admin/resumo', async (_req, res) => {
     pool.query(`SELECT
                   CASE
                     WHEN suspenso THEN 'suspenso'
-                    WHEN plano_id IS NOT NULL AND (data_expiracao IS NULL OR data_expiracao >= now()) THEN 'ativo'
+                    WHEN plano_id IS NOT NULL AND ${vigencia.vigenteSql('data_expiracao')} THEN 'ativo'
                     ELSE 'sem_plano'
                   END AS situacao,
                   plano_cortesia, COUNT(*)::int AS qtd
@@ -325,7 +326,7 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM anunciantes WHERE NOT conta_propria) AS total,
         (SELECT COUNT(*) FROM anunciantes
            WHERE NOT conta_propria AND plano_id IS NOT NULL AND NOT suspenso AND NOT plano_cortesia
-             AND excluido_em IS NULL AND (data_expiracao IS NULL OR data_expiracao >= current_date)) AS pagantes`,
+             AND excluido_em IS NULL AND ${vigencia.vigenteSql('data_expiracao')}) AS pagantes`,
     ),
     // Bloco financeiro da Visão geral (rodada Financeiro, 22/09/2026):
     // "normalidade não ocupa espaço, pendência aparece". Repasses de ponto
@@ -446,35 +447,15 @@ router.get('/admin/resumo', async (_req, res) => {
   });
 });
 
-// Custos fixos da operação — entram na margem do resumo.
-router.get('/admin/custos-fixos', async (_req, res) => {
-  const { rows } = await pool.query('SELECT * FROM custos_fixos ORDER BY ativo DESC, nome');
-  res.json(rows);
-});
-router.post('/admin/custos-fixos', async (req, res) => {
-  const { nome, valor_mensal, observacao } = req.body;
-  if (!nome) return res.status(400).json({ erro: 'nome obrigatório' });
-  const { rows } = await pool.query(
-    'INSERT INTO custos_fixos (nome, valor_mensal, observacao) VALUES ($1,$2,$3) RETURNING *',
-    [nome, Number(valor_mensal) || 0, observacao || null],
-  );
-  res.status(201).json(rows[0]);
-});
-router.patch('/admin/custos-fixos/:id', async (req, res) => {
-  const campos = ['nome', 'valor_mensal', 'ativo', 'observacao'].filter((c) => req.body[c] !== undefined);
-  if (!campos.length) return res.status(400).json({ erro: 'nada pra atualizar' });
-  const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-  const { rows } = await pool.query(`UPDATE custos_fixos SET ${sets} WHERE id = $1 RETURNING *`, [
-    req.params.id,
-    ...campos.map((c) => (c === 'valor_mensal' ? Number(req.body[c]) : req.body[c])),
-  ]);
-  if (!rows[0]) return res.status(404).json({ erro: 'custo não encontrado' });
-  res.json(rows[0]);
-});
-router.delete('/admin/custos-fixos/:id', async (req, res) => {
-  await pool.query('DELETE FROM custos_fixos WHERE id = $1', [req.params.id]);
-  res.json({ ok: true });
-});
+// Custos fixos: a tela saiu na rodada Financeiro (22/09/2026 — a Mostraí não
+// vira sistema contábil) e o CRUD saiu do código na consolidação final
+// (24/09/2026). A tabela `custos_fixos` continua no banco e o resumo continua
+// somando o que há nela (`custosFixosMensal`), só não há mais porta pra editar.
+const CUSTOS_APOSENTADOS = { erro: 'custos fixos saíram do admin (22/09/2026) — não há mais cadastro aqui' };
+router.get('/admin/custos-fixos', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.post('/admin/custos-fixos', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.patch('/admin/custos-fixos/:id', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
+router.delete('/admin/custos-fixos/:id', (_req, res) => res.status(410).json(CUSTOS_APOSENTADOS));
 
 // Anexado no próprio router (não num export nomeado): server.js espera
 // `require('./admin/routes')` como o router pronto, sem quebrar isso só

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const repo = require('./repository');
 const notificacoesRepo = require('./notificacoes');
 const { custoDoBeneficio, opcoesDisponiveis, NOME_TIER } = require('./regras');
@@ -45,7 +46,12 @@ async function bloqueioPorNivel(conta, tier) {
 }
 
 const pagandoEmDia = (conta) =>
-  !!(conta.plano_id && !conta.plano_cortesia && conta.data_expiracao && new Date(conta.data_expiracao) > new Date());
+  !!(
+    conta.plano_id &&
+    !conta.plano_cortesia &&
+    conta.data_expiracao &&
+    vigencia.coberturaVigente(conta.data_expiracao)
+  );
 
 const beneficioPublico = (h) =>
   h && {

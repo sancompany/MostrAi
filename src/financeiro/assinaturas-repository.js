@@ -74,6 +74,22 @@ async function buscarPendenteDePagamento(anuncianteId, planoId, db = pool) {
   return rows[0] || null;
 }
 
+// Intenções de compra que sobraram (outro plano, ou o mesmo plano há mais
+// de 24 h) — cancela antes de emitir um link novo e ao excluir a conta.
+// Sem isso cada link antigo continuava pagável: GET /plano servia a linha
+// (`STATUS_QUE_SERVEM_PLANO`) e dois pagamentos viravam duas assinaturas na
+// Asaas pra uma conta só (revisão Codex do PR #50, 24/09/2026). Não há nada
+// a cancelar no Checkout: a assinatura na Asaas só nasce com o primeiro
+// pagamento (webhook `criada`), e é ele que faz a linha virar 'ativa'.
+async function cancelarPendentesDePagamento(anuncianteId, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE assinaturas SET status = 'cancelada'
+      WHERE anunciante_id = $1 AND status = 'pendente_pagamento' RETURNING id`,
+    [anuncianteId],
+  );
+  return rows.map((r) => r.id);
+}
+
 async function buscarAtivaDoAnunciante(anuncianteId) {
   const { rows } = await pool.query(
     `SELECT * FROM assinaturas WHERE anunciante_id = $1 AND status = 'ativa' ORDER BY created_at DESC LIMIT 1`,
@@ -90,5 +106,6 @@ module.exports = {
   marcarTrocada,
   marcarAtiva,
   buscarPendenteDePagamento,
+  cancelarPendentesDePagamento,
   buscarAtivaDoAnunciante,
 };

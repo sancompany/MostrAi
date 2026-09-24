@@ -489,10 +489,6 @@ window.ROTULOS = {
     fora_do_ar: 'badge-neutro',
     recusado: 'badge-err',
   },
-  // So dois estados: o CHECK da migration 019 e ('aprovado','inativo'). O
-  // 'pendente_aprovacao' que estava aqui vinha do modelo antigo de afiliado e
-  // nao existe no banco — rotulo pra um estado impossivel.
-  vendedor: { aprovado: 'Aprovado', inativo: 'Inativo' },
   // Créditos e benefícios. As chaves de tier são as do banco (planos.tier);
   // o nome que o cliente vê é outro desde a grade nova.
   tier: { essencial: 'Essencial', destaque: 'Pro', maximo: 'Prime' },

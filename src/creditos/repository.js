@@ -102,15 +102,6 @@ async function movimentacoes(contaId, limite = 50, db = pool) {
   return rows;
 }
 
-// Toda conta com QUALQUER linha no ledger — usada pela reavaliação diária
-// (não é o mesmo uso de antes: hoje o saldo nunca aplica sozinho, só
-// alimenta a tela; a reavaliação diária é só pra ativar benefício agendado
-// e encerrar o vencido, ver plano-administrativo.js).
-async function listarContasComMovimentacao(db = pool) {
-  const { rows } = await db.query('SELECT DISTINCT anunciante_id FROM creditos_ledger');
-  return rows.map((r) => r.anunciante_id);
-}
-
 module.exports = {
   registrarCreditoIndicacao,
   concederAdmin,
@@ -118,5 +109,4 @@ module.exports = {
   debitarResgate,
   saldo,
   movimentacoes,
-  listarContasComMovimentacao,
 };

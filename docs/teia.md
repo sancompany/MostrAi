@@ -690,7 +690,7 @@ O papel VENDEDOR é um dos três papéis da conta única (`anunciantes.papeis te
   · **cliente sabe:** `convite.page.js` mostra o card do papel: 'Vendedor — Comissão em cada assinatura que você indicar.' Uma linha. Sem percentual, sem periodicidade.
 
 **Cadastro por convite → criação do perfil de vendedor e do cupom** — `POST /anunciantes/cadastro` com `convite`: consome o token ANTES de criar a conta (transação), cria a conta já com status 'aprovado' e os papéis do convite, e — se papeis inclui 'vendedor' — exige `chave_pix` (400 'chave Pix é obrigatória pra receber…
-  · `src/anunciantes/routes.js`, `src/financeiro/vendedores-repository.js`, `src/db/migrations/019_v2_contas_dispositivos_convites_planos.sql` · rotas: `POST /anunciantes/cadastro` · papéis: público com token de convite
+  · `src/anunciantes/routes.js`, `src/db/migrations/019_v2_contas_dispositivos_convites_planos.sql` · rotas: `POST /anunciantes/cadastro` · papéis: público com token de convite (perfil de vendedor não nasce mais — programa aposentado, repositório removido em 24/09/2026)
   · ← /convite.html?t=TOKEN  → /anunciante/vendedor.html (convite só-vendedor cai direto lá — convite.page.js linha do `destino`)
   · **cliente sabe:** O formulário mostra a seção Pix com a legenda 'Sua comissão de vendedor é paga nessa chave. Pode ser CPF, e-mail, telefone ou chave aleatória.' O cupom NÃO é mostrado no momento do cadastro — o…
 

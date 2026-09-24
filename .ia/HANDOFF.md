@@ -3,6 +3,44 @@
 ## Updated
 2026-09-24
 
+## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
+Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de
+19 seções em `docs/relatorio-consolidacao-final-2026-09-24.md`. Tudo
+mergeado em `main` e no ar (`632d7bf`): C+D (#49, migration 088),
+G+E (#50, migration 089), H+F (#51), I-1 (#52), I-2 (#53), J+K (#54), e a
+rodada de revisão do Codex (#55, #56 e #57: um link pagável por conta, pagamento
+de intenção cancelada vira pendência, dedupe da conciliação solta na falha,
+vigência do painel decidida no servidor — PENDENCIAS L.1). Validação online
+contra a produção: `tests/e2e/19-online-producao.mjs` (Access fechado de
+novo no fim; nenhum service token restante). **Banco NÃO resetado** — o
+reset final só depois da auditoria Codex/Jules. Regras novas que não se
+desfazem sem contexto: `src/lib/vigencia.js` (RN-32-B), assinatura nasce
+`pendente_pagamento`, `dispositivoId` de 5 dígitos + Preparar Player,
+`aguardando_primeiro_sinal`, banco de horas drena só na geração que
+congela a hora. Detalhe de H abaixo:
+- Removidos do código executável (410 com motivo, tabelas ficam como
+  histórico): programa de vendedores inteiro (`/vendedor/*`,
+  `/admin/comissoes*`, `/admin/vendedores*`, `vendedores-repository.js`,
+  `vendedor.html/.page.js`, `registrarComissaoSeHouver`), grade antiga de
+  planos (`POST/PATCH /admin/planos*`, `nova-versao`, `planos-arquivados`,
+  `/admin/beneficios*`, `beneficios-repository.js`, `planosRepo.criar/
+  atualizar/vagaOcupada/definirBeneficios/listarArquivados`),
+  `liberar-plano`, `/admin/custos-fixos*`, e ~1.100 linhas de renderers
+  mortos do admin (+ CSS). Produção conferida antes: 0 vendedores, 0
+  comissões, 0 contas com o papel.
+- O que NÃO saiu (decisão do dono pendente): convites (`POST /admin/convites`
+  ainda aprova candidatura antiga sem conta), `POST /admin/anunciantes`,
+  `plano-administrativo` (ferramenta técnica com teste), textos de
+  `beneficios` (só por SQL agora).
+- e2e 02/06/07 reescritos pro fluxo atual (assinatura nasce
+  `pendente_pagamento`; cortesia via `plano-administrativo`).
+- **I parte 1 (polimento)** — `src/lib/vigencia.js` é a régua única de
+  vigência (RN-32-B, último dia inclusivo em Matão): NUNCA comparar
+  `new Date(data_expiracao)` com o relógio; usar `coberturaVigente`/
+  `vigenteSql`. Cotação devolve `acao`; banco de horas drena só na geração
+  que congelou a hora (`congelada.criadaAgora`); heartbeat só emite SSE em
+  transição; job de benefícios notifica início/fim.
+
 ## Custo por exibição prevista + benefício por ciclo (24/09/2026, este agente)
 Última alteração estrutural da rodada no modelo comercial — **ADR-018**;
 depois disso, congelado salvo bug real.

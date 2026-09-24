@@ -9,6 +9,7 @@ const { planoEfetivoId } = repo;
 const criativosRepo = require('./criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
@@ -18,7 +19,6 @@ const { cepValido, telefoneE164, data } = require('../br/formato');
 const { PARTES: PARTES_DO_ENDERECO, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
-const vendedoresRepo = require('../financeiro/vendedores-repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
@@ -37,7 +37,7 @@ const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { saudeDaTela } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const {
-  enviarContaAprovada,
+  enviarContaReativada,
   enviarContaCriada,
   enviarContaExcluida,
   enviarCodigoConfirmacaoEmail,
@@ -97,7 +97,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     responsavel_email,
     responsavel_telefone,
     convite: tokenConvite,
-    chave_pix,
   } = req.body;
 
   let convite = null;
@@ -148,9 +147,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     }
   }
 
-  if (papeis.includes('vendedor') && !chave_pix) {
-    return res.status(400).json({ erro: 'chave Pix é obrigatória pra receber comissão' });
-  }
   // O documento vai daqui pro San Checkout e de lá pra Asaas como documento do
   // pagador. Documento inválido só quebra na hora de cobrar — depois que a
   // pessoa já foi embora. Conferir aqui é o único momento barato.
@@ -228,8 +224,6 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
       }
       anunciante = await repo.criar(dadosConta, cliente);
       await cliente.query('UPDATE convites SET conta_id = $2 WHERE id = $1', [consumido.id, anunciante.id]);
-      if (papeis.includes('vendedor'))
-        await vendedoresRepo.criar(anunciante.id, { chave_pix, nome: nome_empresa }, cliente);
       // Convite que nasceu de uma candidatura de ponto já traz o endereço: o
       // ponto é criado agora, ligado à conta nova, com a primeira tela.
       if (papeis.includes('ponto') && convite.candidatura_id) {
@@ -325,6 +319,10 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       });
     }
   }
+  // Link gerado e não pago também morre: senão continuava pagável depois da
+  // exclusão (GET /plano ainda servia a linha). Só local — na Asaas não
+  // existe nada antes do primeiro pagamento.
+  if (conta) await assinaturasRepo.cancelarPendentesDePagamento(conta.id);
 
   // A foto de perfil sai do bucket público na hora (era pública pela URL
   // antiga mesmo depois da exclusão). O resto dos dados pessoais sai na
@@ -336,8 +334,7 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       'conta:exclusao_pede',
       {
         dias_de_vida: eventos.diasEntre(conta.created_at),
-        tinha_plano_ativo:
-          !!conta.plano_id && !conta.suspenso && (!conta.data_expiracao || new Date(conta.data_expiracao) > new Date()),
+        tinha_plano_ativo: !!conta.plano_id && !conta.suspenso && vigencia.coberturaVigente(conta.data_expiracao),
       },
       conta,
     );
@@ -380,9 +377,6 @@ async function derrubarSessaoSuspensa(req, _res, next) {
 router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
-  const vendedor = (anunciante.papeis || []).includes('vendedor')
-    ? await vendedoresRepo.buscarPorConta(anunciante.id)
-    : null;
   // `plano` junto de propósito: o painel precisa dele pra dizer a duração
   // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
   // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
@@ -401,10 +395,13 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
   res.json({
     ...anunciante,
-    vendedor,
     plano,
     plano_origem: origem,
     plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,
+    // Vigência decidida AQUI (RN-32-B, último dia inclusivo em Matão), não
+    // pelo relógio do navegador: o painel só rotula o que o servidor decidiu.
+    plano_vigente: !!repo.planoVigenteId(anunciante),
+    dias_ate_vencer: vigencia.diasAteVencer(anunciante.data_expiracao),
   });
 });
 
@@ -1440,7 +1437,7 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         anunciante,
       );
       // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
-      enviarContaAprovada(anunciante).catch((err) => console.error('e-mail de conta aprovada', err));
+      enviarContaReativada(anunciante).catch((err) => console.error('e-mail de conta reativada', err));
     }
     // Aviso em tempo real nas duas transições (Fase 3, SSE) — a conta
     // suspensa não pode descobrir só porque um botão parou de funcionar

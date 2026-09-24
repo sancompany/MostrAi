@@ -160,6 +160,7 @@ async function anonimizarExcluidas(agora = new Date()) {
             contato_telefone = '',
             senha_hash = 'anonimizada',
             endereco = NULL, logradouro = NULL, numero = NULL, complemento = NULL, bairro = NULL,
+            cidade = NULL, uf = NULL, cep = NULL,
             responsavel_nome = NULL, responsavel_cpf = NULL, responsavel_email = NULL, responsavel_telefone = NULL,
             foto_url = NULL, categoria_livre = NULL,
             comunicacoes_revogado_em = COALESCE(comunicacoes_revogado_em, now()),

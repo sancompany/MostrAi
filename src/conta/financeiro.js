@@ -8,6 +8,7 @@
 // repasses antigos continuam em `pagamentos_ponto` (histórico).
 const express = require('express');
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const anunciantesRepo = require('../anunciantes/repository');
 const { nomeDoCiclo } = require('../lib/ciclos');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
@@ -18,7 +19,7 @@ function situacaoDoPlano(conta) {
   if (!conta.plano_id) return 'sem_plano';
   if (conta.suspenso) return 'suspensa';
   if (conta.plano_cortesia) return 'cortesia';
-  if (conta.data_expiracao && new Date(conta.data_expiracao) <= new Date()) return 'vencida';
+  if (vigencia.coberturaVencida(conta.data_expiracao)) return 'vencida';
   return 'ativa';
 }
 

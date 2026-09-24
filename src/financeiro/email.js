@@ -82,20 +82,18 @@ async function enviarCoberturaAcabando(anunciante, plano, diasRestantes) {
   });
 }
 
-// A conta nasce "pendente de aprovação" e o dono libera no admin — e ate agora
-// isso nao avisava ninguem. A pessoa se cadastrava, via "aguardando aprovacao"
-// e ia embora; quando era liberada, nada acontecia. O momento em que ela PODE
-// comprar era justamente o unico que ninguem contava pra ela.
-async function enviarContaAprovada(anunciante) {
+// Conta suspensa que o admin reativou (consolidação final, 24/09/2026 —
+// antes recebia "Sua conta foi aprovada", texto do fluxo de aprovação de
+// conta que não existe desde 15/09/2026: toda conta nasce liberada).
+async function enviarContaReativada(anunciante) {
   await transportador().sendMail({
     from: remetente(),
     to: anunciante.contato_email,
-    subject: 'Sua conta foi aprovada — Mostraí',
+    subject: 'Sua conta foi reativada — Mostraí',
     text:
       `Olá, ${anunciante.nome_empresa}!\n\n` +
-      `Sua conta na Mostraí foi aprovada. Já dá pra escolher um plano e colocar seu anúncio na rotina da cidade.\n\n` +
-      `${process.env.SITE_URL}/planos.html\n\n` +
-      `Depois de contratar, é só subir um vídeo ou imagem em pé (9:16), na duração do seu plano — a gente ajusta o formato.\n\n` +
+      `Sua conta na Mostraí foi reativada. O acesso ao painel voltou ao normal e, se você tem plano em vigor, seu anúncio volta pra rotação.\n\n` +
+      `${process.env.SITE_URL}/anunciante/painel.html\n\n` +
       `Equipe Mostraí.`,
   });
 }
@@ -419,7 +417,7 @@ module.exports = {
   enviarConfirmacaoPagamento,
   enviarLinkRedefinicaoSenha,
   enviarCodigoConfirmacaoEmail,
-  enviarContaAprovada,
+  enviarContaReativada,
   enviarContaCriada,
   enviarContaExcluida,
   enviarTrocaDePlano,
