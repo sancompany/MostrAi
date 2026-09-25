@@ -104,15 +104,16 @@ também expôs `DATABASE_URL` na resposta de criação do job
   nova criada, aplicada ao serviço, validada com uma chamada real
   (`storage.listBuckets()`), só então a chave antiga foi revogada.
 
-**Pendente, aguardando ação do dono** (nenhuma das duas pode ser feita por
-um agente):
+**Encerrado por decisão do operador (25/09/2026, mesmo dia): `OPERATOR_ACCEPTED_NO_ROTATION`.**
+O dono decidiu manter os 4 segredos já rotacionados como estão, não
+rotacionar os 3 abaixo por causa deste incidente, e seguir com o resto do
+trabalho da sessão. Motivo dos 3, registrado para quem for decidir rotacionar
+depois:
 - `SMTP_PASS` — é uma senha de app do Google, e a criação exige login
   interativo com 2FA em myaccount.google.com/apppasswords. Não existe API.
 - `GOOGLE_SERVICE_ACCOUNT_KEY` — exige acesso ao Google Cloud Console
   (IAM → Contas de serviço) ou `gcloud` autenticado; nenhum dos dois estava
   disponível na sessão do agente.
-
-**Pendente, em andamento com o dono:**
 - `SAN_CHECKOUT_KEY` — é uma credencial **compartilhada** entre Mostraí e o
   San Checkout (a `api_key` do contratante `mostrai`, armazenada no banco do
   San Checkout, não num secret comum). O próprio San Checkout já tem uma
@@ -124,6 +125,16 @@ um agente):
 **Contenção:** arquivos de scratchpad de sessão que continham o dump
 completo (inclusive de um agente anterior) foram apagados; nenhum segredo
 foi encontrado em `git status`/`git diff`/commits deste repositório.
+
+**Atenção operacional:** o novo valor de `ADMIN_PASSWORD` gerado nesta
+rotação nunca foi mostrado a ninguém — nem ao dono — de propósito, pra não
+repetir o padrão do incidente. Login no `/admin` com usuário/senha está,
+portanto, **sem senha conhecida** até o dono definir uma nova ("`ADMIN_PASSWORD` —
+escolha do dono", tabela acima) direto no ambiente do serviço `mostrai` no
+Northflank. Isso não bloqueou o resto do trabalho: o upload do vídeo
+institucional (seção M de `docs/PENDENCIAS.md`) foi feito executando a
+mesma lógica da rota direto dentro do container (`northflank exec`), sem
+depender de login nenhum.
 
 **Nunca fazer:** editar `contratantes.api_key` direto no banco do San
 Checkout — existe rota própria pra isso, e o `README.md` de lá proíbe

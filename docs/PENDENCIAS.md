@@ -4827,30 +4827,38 @@ K.2 (custo por exibição prevista dessas contas) ficam sem objeto.
 Relatório completo: `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`. Os itens A–E
 existiam só na conversa com o dono e ficam registrados aqui.
 
-- **A. Vídeo institucional — CÓDIGO_PRONTO_AGUARDA_UPLOAD_EM_PRODUÇÃO
-  (25/09/2026).** ARQUIVO RECEBIDO do dono (vídeo vertical, 15s). O caminho
-  inteiro da especificação original foi implementado: upload/armazenamento
-  (`POST /admin/video-institucional`, mesmo pipeline `normalizar()` dos
-  criativos — ffmpeg 1080x1920, thumbnail, `conteudo_sha256` do arquivo
-  final, upload pro Storage) → configuração (`configuracoes_site`, chave
-  `video_institucional`, mesma tabela da foto de exemplo do ponto, migration
-  055) → backend (`src/playlist/gerador.js#obterVideoInstitucional`; o
-  gerador usa a duração real do vídeo em vez dos 10s fixos —
-  `src/lib/pacing.js#montarHoraDeTv` ganhou parâmetro de duração) → playlist
-  (item do contrato V2 leva `url`, `duracaoSegundos` real e `contentHash` —
-  ver `docs/api.md`) → Player (V2 baixa e toca como mídia; V1 ignora
-  `url`/`duracaoSegundos` desse item de propósito e continua sempre com o
-  cartão — zero mudança de código no V1). Testado: 422/422 testes
-  automatizados (`tests/video-institucional.test.js`, novo; mais um teste em
-  `tests/pacing.test.js`) e verificação manual via Playwright da tela nova em
-  `Mídia Mostraí` (upload, preview, estado vazio). **Falta:** subir esse
-  código pra produção e então fazer o upload de verdade do arquivo que o
-  dono enviou (não dá pra testar upload real localmente — `.env` local não
-  tem credencial do Supabase Storage) → validação numa TV real.
-- **B. Job `ApuracaoBancoHoras` — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK.**
-  Especificação: `docs/job-apuracao-banco-horas.md`. Faz parte da decisão
-  MANTER o banco de horas (25/09), inclusive a flexibilidade de a dívida voltar
-  em qualquer tempo ocioso futuro, sem expirar.
+- **A. Vídeo institucional — FEITO E NO AR (25/09/2026).** O vídeo que o
+  dono enviou (vertical, 15s, 1440x2560) está publicado em produção: subiu
+  pelo mesmo pipeline `normalizar()` dos criativos (ffmpeg, thumbnail,
+  `conteudo_sha256`, upload pro Storage real do Supabase), configuração
+  gravada em `configuracoes_site` (chave `video_institucional`), servida
+  publicamente e conferida com HEAD real (`200`, `video/mp4`,
+  4.420.205 bytes — bate exato com o normalizado; thumbnail também `200`).
+  Caminho completo: upload/armazenamento → configuração → backend
+  (`src/playlist/gerador.js#obterVideoInstitucional` alimenta
+  `src/lib/pacing.js#montarHoraDeTv` com a duração real, 15s, em vez dos 10s
+  fixos do cartão) → playlist (item do contrato V2 leva `url`,
+  `duracaoSegundos` e `contentHash` — ver `docs/api.md`) → Player (V2 baixa
+  e toca como mídia; V1 ignora esses campos de propósito e continua sempre
+  com o cartão — zero mudança de código no V1). Testado: 422/422 testes
+  automatizados (`tests/video-institucional.test.js`) e verificação manual
+  via Playwright da tela em `Mídia Mostraí`. **Falta só:** validação numa TV
+  real com Player V2 em campo (nenhuma tela de produção está nesse contrato
+  ainda — ver seção H).
+- **B. Job `ApuracaoBancoHoras` — FEITO E OPERACIONAL (25/09/2026).**
+  Especificação: `docs/job-apuracao-banco-horas.md`. Confirmado hoje, direto
+  no Northflank: nome `ApuracaoBancoHoras`, habilitado, cron `0 6 1 * *` UTC,
+  `concurrencyPolicy: Forbid`, comando `npm run apurar-banco-horas`, imagem
+  buildada do mesmo repo/branch `main` (SHA em paridade com produção e com
+  os outros dois jobs), envs `DATABASE_URL`+`NODE_ENV` presentes, sem
+  duplicata (só 3 jobs no projeto: `Conciliacao`/`Backup`/
+  `ApuracaoBancoHoras`), 1 execução registrada (`--dry-run`, sucesso, nada
+  gravado — nenhuma apuração real rodou ainda). Lock via
+  `pg_try_advisory_lock` (chave fixa) + `Forbid` do próprio Northflank;
+  idempotência via `ON CONFLICT (anunciante_id, mes_referencia) DO NOTHING`
+  em `banco_horas`. Faz parte da decisão MANTER o banco de horas (25/09),
+  inclusive a flexibilidade de a dívida voltar em qualquer tempo ocioso
+  futuro, sem expirar.
 - **C. E-mails transacionais — FEITO (PR #62):** HTML + texto puro em todos os
   e-mails ao cliente, pelo SMTP do Mostraí (o Checkout nunca manda e-mail por
   nós). Falta só o dono ver um de verdade chegar numa caixa real (SMTP de
@@ -4867,12 +4875,12 @@ existiam só na conversa com o dono e ficam registrados aqui.
 ### Gates do operador (só ele faz)
 
 1. ~~Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).~~ —
-   **FEITO em 25/09/2026**, ver item 14 (seção A) para o detalhe da
-   configuração e da 1ª execução (`--dry-run`).
-2. ~~Enviar o vídeo institucional.~~ — Arquivo **recebido** em 25/09/2026 e
-   já **implementado** (código pronto, testado, aguardando deploy — item A).
-   Falta o upload de verdade em produção depois do deploy, e a validação
-   numa TV real.
+   **FEITO em 25/09/2026**, ver item B acima. Confirmado operacional (não
+   só criado) na mesma data.
+2. ~~Enviar o vídeo institucional.~~ — **FEITO em 25/09/2026**: arquivo
+   recebido, implementado e já publicado em produção — ver item A acima.
+   Falta só a validação numa TV real com Player V2 (depende de uma tela
+   estar nesse contrato, seção H).
 3. Fazer o último teste de ponta a ponta com compra real (inclui ver o e-mail
    HTML e o comprovante PDF chegarem, e o acerto proporcional de uma troca).
 4. Autorizar o reset do banco ("pode resetar") — os dados atuais são de teste
