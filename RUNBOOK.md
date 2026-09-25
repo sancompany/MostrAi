@@ -76,6 +76,59 @@ usava saiu do ar.
 `?` ou `/` quebra a string de conexão silenciosamente. Use o *Session pooler*
 (porta 5432), não o host direto — ele é IPv6 e nem toda rede alcança.
 
+### 2.1 Incidente de exposição de credenciais — 25/09/2026
+
+Um comando de diagnóstico (`northflank get service ... -o json`) imprimiu o
+`runtimeEnvironment` inteiro do serviço `mostrai` em texto puro na saída de
+uma ferramenta, dentro de uma sessão de agente — não em log público, não
+commitado, mas visto pelo agente. Um incidente anterior, no mesmo dia,
+também expôs `DATABASE_URL` na resposta de criação do job
+`ApuracaoBancoHoras` (ver seção 14 de `docs/PENDENCIAS.md`).
+
+**Segredos afetados:** `DATABASE_URL` (senha do Postgres), `SUPABASE_SERVICE_ROLE_KEY`,
+`ADMIN_PASSWORD`, `SESSION_SECRET`, `SAN_CHECKOUT_KEY`, `SMTP_PASS`,
+`GOOGLE_SERVICE_ACCOUNT_KEY`.
+
+**Rotacionados e validados no mesmo dia** (sem indisponibilidade observada):
+- `ADMIN_PASSWORD` — nova senha aplicada ao serviço `mostrai`; validado
+  comparando o hash SHA-256 do valor aplicado (nunca o valor em si) contra o
+  valor gerado, e revendo a lógica de comparação em `src/server.js`.
+- `SESSION_SECRET` — idem. Efeito colateral aceito: sessões admin abertas
+  antes da troca precisam logar de novo.
+- Senha do Postgres (`DATABASE_URL`) — trocada via Management API do
+  Supabase; propagada aos 4 consumidores (serviço `mostrai` + jobs
+  `conciliacao`/`backup`/`apuracaobancohoras`) e validada com uma consulta
+  real (`select 1`) de dentro do container já com o novo valor.
+- `SUPABASE_SERVICE_ROLE_KEY` — projeto já estava no sistema novo de chaves
+  (`sb_secret_...`), o que permitiu rotação **sem indisponibilidade**: chave
+  nova criada, aplicada ao serviço, validada com uma chamada real
+  (`storage.listBuckets()`), só então a chave antiga foi revogada.
+
+**Pendente, aguardando ação do dono** (nenhuma das duas pode ser feita por
+um agente):
+- `SMTP_PASS` — é uma senha de app do Google, e a criação exige login
+  interativo com 2FA em myaccount.google.com/apppasswords. Não existe API.
+- `GOOGLE_SERVICE_ACCOUNT_KEY` — exige acesso ao Google Cloud Console
+  (IAM → Contas de serviço) ou `gcloud` autenticado; nenhum dos dois estava
+  disponível na sessão do agente.
+
+**Pendente, em andamento com o dono:**
+- `SAN_CHECKOUT_KEY` — é uma credencial **compartilhada** entre Mostraí e o
+  San Checkout (a `api_key` do contratante `mostrai`, armazenada no banco do
+  San Checkout, não num secret comum). O próprio San Checkout já tem uma
+  rota feita sob medida pra isso — `POST
+  /api/admin/contratantes/:id/rotacionar-chave` (troca imediata, sem janela
+  de duas chaves válidas) — só falta o dono acionar com o login de admin do
+  San Checkout, que o agente não tem.
+
+**Contenção:** arquivos de scratchpad de sessão que continham o dump
+completo (inclusive de um agente anterior) foram apagados; nenhum segredo
+foi encontrado em `git status`/`git diff`/commits deste repositório.
+
+**Nunca fazer:** editar `contratantes.api_key` direto no banco do San
+Checkout — existe rota própria pra isso, e o `README.md` de lá proíbe
+edição direta por SQL Editor.
+
 ---
 
 ## 3. Deploy
