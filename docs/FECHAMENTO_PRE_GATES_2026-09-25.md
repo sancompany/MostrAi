@@ -678,3 +678,13 @@ indisponibilidade, e o operador decidiu encerrar o incidente sem rotacionar
 os outros 3 (`OPERATOR_ACCEPTED_NO_ROTATION`). Detalhe completo, sem nenhum
 valor de segredo: `RUNBOOK.md` §2.1. Estado atualizado em
 `docs/PENDENCIAS.md` (seção M) e `.ia/PROJECT_STATE.md`.
+
+**Terceiro adendo (25/09/2026, 21:00 UTC):** RESET FINAL DE DADOS DE TESTE
+EXECUTADO — gate 4 cumprido, com autorização do dono. Backup pré-reset
+verificado (`/backups/mostrai-20260925-205316.sql.gz`, 73.990 bytes, sha256
+`805a18b5…81249`). 132 linhas de teste removidas numa transação com guarda
+contra dado real; 9 arquivos de teste removidos do Storage. Estrutura,
+planos, configuração, vídeo institucional e jobs preservados; 0 linha
+órfã, 0 arquivo órfão. As afirmações da seção "Confirmações" acima ("nenhum
+reset foi executado") valiam na data do relatório e continuam registradas
+como estavam. Detalhe: `RUNBOOK.md` §5.1.

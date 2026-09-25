@@ -4883,15 +4883,24 @@ existiam só na conversa com o dono e ficam registrados aqui.
    estar nesse contrato, seção H).
 3. Fazer o último teste de ponta a ponta com compra real (inclui ver o e-mail
    HTML e o comprovante PDF chegarem, e o acerto proporcional de uma troca).
-4. Autorizar o reset do banco ("pode resetar") — os dados atuais são de teste
-   (`DADOS_DE_TESTE_AGUARDANDO_RESET`: CPF repetido nas contas 3/4/5, ponto 1
-   sem dono, ponto 3 inativo, 120 créditos na conta 5, categoria antiga na
-   conta 5, plano antigo na conta 3, snapshot da conta 5) — nada disso foi
-   corrigido à mão.
+4. ~~Autorizar o reset do banco ("pode resetar").~~ — **FEITO em
+   25/09/2026 21:00 UTC** (autorizado pelo dono): RESET FINAL DE DADOS DE
+   TESTE EXECUTADO. Backup pré-reset
+   `/backups/mostrai-20260925-205316.sql.gz` (73.990 bytes, sha256
+   `805a18b5…81249`, `gzip -t` ok, marcador de fim do `pg_dump` presente).
+   132 linhas removidas numa transação só, com guarda que abortaria se
+   aparecesse conta, candidatura, mensagem ou dado financeiro fora do
+   inventário; 9 arquivos de teste removidos do Storage. Preservados:
+   esquema, migrations, planos (12 ativos: Essencial/Pro/Prime × 4 ciclos),
+   benefícios, categorias, promoção, custos fixos, `configuracoes_site`
+   (vídeo institucional), a conta interna do Mostraí (singleton de
+   `conta_propria`, sem dado de teste pendurado) e os 3 jobs do Northflank.
+   Verificação: 0 linha órfã (66 FKs), 0 arquivo órfão no Storage, vídeo e
+   thumbnail `200`. Detalhe e contagens: `RUNBOOK.md` §5.1.
 5. Decidir o Player V1 (aposentar o player web e rodar a migration 084, ou
    manter) — superfície completa no relatório §7.
-6. Decidir o esquema legado antes do reset (tabelas/colunas históricas que
-   ficaram só para leitura).
+6. Decidir o esquema legado (tabelas/colunas históricas que ficaram só para
+   leitura) — o reset de 25/09 limpou dados, não mexeu em esquema.
 7. Decisões comerciais abertas (seção L, relatório §16) e as do banco de horas
    (ordem FIFO/LIFO, conta encerrada com saldo, teto diário, mudança de plano).
    Da revisão dos PRs #55–#58 (relatório §4): cancelar sozinho, no Checkout, a
