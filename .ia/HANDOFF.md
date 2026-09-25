@@ -1,7 +1,9 @@
 # Current Handoff
 
 ## Updated
-2026-09-24
+2026-09-25 — reconciliação dos vínculos sandbox órfãos (PENDENCIAS L.2):
+assinaturas/cobranças/ciclos/webhooks do sandbox saíram do banco com
+snapshot no evento `sandbox:reconciliacao` (id 35); conta 3 sem plano.
 
 ## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
 Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de

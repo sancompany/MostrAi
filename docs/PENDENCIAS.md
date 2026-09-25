@@ -4783,3 +4783,29 @@ têm `assinatura_id` (`cicloContratado.jaTeveCicloPago`).
   precisa de migration. Fica pra depois da decisão "manter ou aposentar o
   banco de horas" (seção 18 do relatório), pra não gastar migration numa
   função que pode sair.
+
+### L.2 Reconciliação dos vínculos sandbox órfãos (25/09/2026)
+
+Pedido do dono: limpar no Mostraí só os vínculos sandbox órfãos
+(`sub_j87cq5u50g6jqv6t`, `sub_xjsad6cpqor5pars` e cobrança/intenção
+relacionada), sem apagar conta, plano, catálogo, configuração ou dado
+estrutural. Investigação antes de mexer: os dois `sub_*` não existem em
+tabela nenhuma do Mostraí (ele só guarda o UUID próprio da assinatura); o
+banco do San Checkout (sandbox) já estava vazio — sem assinatura, cobrança,
+intenção de troca nem evento de webhook com esses ids ou com os cinco UUIDs
+daqui — e a consulta 5.3 respondia 404 pras cinco. Ou seja: TODO vínculo com
+o Checkout no Mostraí era órfão.
+
+Saiu, numa transação só, com snapshot completo gravado antes como evento
+interno `sandbox:reconciliacao` (`eventos` id 35, sem CPF) — reversível a
+partir dele: 5 `assinaturas` (contas 3 e 5: 1 ativa, 3 canceladas, 1
+trocada), 3 `cobrancas_confirmadas` (R$ 267,30 ×2 e acerto de R$ 405) e
+os 2 `ciclos_contratados` delas (cascade), 1 evento pendente já resolvido,
+4 chaves de `webhooks_processados` e os 6 eventos de analytics
+`plano:assinatura_inicia`/`pagamento:cobranca_confirma` desses testes. A
+conta 3 (San Company) ficou sem `plano_id`/`data_expiracao`: a cobertura
+vinha só da cobrança sandbox apagada e ela não tinha criativo aprovado —
+nada saiu do ar. Ficaram intactos: 4 contas, 18 planos, 3 criativos, 3
+planos administrativos (o Prime da conta 5 é cortesia, não vem do Checkout),
+2 linhas do ledger de créditos, pontos, telas e toda configuração. K.1 e
+K.2 (custo por exibição prevista dessas contas) ficam sem objeto.
