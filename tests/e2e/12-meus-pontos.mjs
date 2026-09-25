@@ -5,13 +5,14 @@
 // "Ativo" com a tela dentro; tela sem sinal → texto humano de atenção. Pedir
 // o mesmo estabelecimento de novo é recusado. Assume servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
   execSync(`psql "${process.env.DATABASE_URL}" -tAc "${sql.replace(/"/g, '\\"')}"`)
     .toString()
     .trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
 await ctx.route('https://viacep.com.br/**', (route) =>
   route.fulfill({
@@ -65,7 +66,7 @@ p.on('request', (r) => {
 p.on('response', (r) => {
   if (r.status() >= 400 && r.url().startsWith(B) && r.status() !== 409) respostasRuins.push(`${r.status()} ${r.url()}`);
 });
-await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+await irQuieto(p, `${B}/anunciante/login.html`);
 await p.fill('#email', email);
 await p.fill('#senha', senha);
 await p.click('button[type="submit"]');

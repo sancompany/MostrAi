@@ -10,6 +10,12 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 (Codex/Jules) antes do reset final do banco — **banco NÃO resetado**.
 
 ## Último commit / deploy
+> **Atualização 25/09/2026 (fechamento pré-gates):** `main` = `ff970a2`
+> (PR #62) no ar; migrations até **090**; San Checkout **em produção**;
+> `npm run check` 412/412; `npm audit` 0. Relatório:
+> `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`. O que segue abaixo é o retrato
+> de 24/09.
+
 - MostrAi `main` = **`632d7bf`** (PR #57) — deployed SHA no Northflank
   `mostrai/mostrai` (2 instâncias), `/health` ok, cache purgado. Sequência
   da estação: `63952fb` (#49 C+D, migration 088) → `89d73d4` (#50 G+E,
@@ -20,8 +26,8 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
   `git log -1 origin/main` e no relatório da sessão).
 - Migrations em produção: até **089** (conferido em `schema_migrations`).
 - Player (`sancompany/Playlist.MostrAi`): `28bc93d` (main).
-- San Checkout (`sancompany/san_checkout`): `f7b1cb9`, `ASAAS_AMBIENTE=sandbox`
-  — NÃO virar para produção sem gate explícito do dono (RUNBOOK §3.1).
+- San Checkout (`sancompany/san_checkout`): `f7b1cb9` — hoje em produção
+  (`ASAAS_AMBIENTE=producao`, Pix e cartão reais homologados; RUNBOOK §3.1).
 - Baseline `npm run check`: 389/389; lint 14 avisos (era 16).
 
 ## Ambiente
@@ -58,7 +64,8 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 - Legado fora do código executável: vendedor, grade antiga de planos,
   benefícios, liberar-plano, custos fixos, repasses, nota fiscal por upload.
 - Vigência: último dia inclusivo em Matão (RN-32-B); cotação decide o
-  pedido; banco de horas drena uma vez por hora.
+  pedido; banco de horas: desde 25/09 a geração só programa e a liquidação
+  abate o confirmado (migration 090).
 
 ## Decisões necessárias (do dono)
 - comodato.html §3 (texto jurídico) — PENDENCIAS J.1; Termos §6 e Política
@@ -71,17 +78,20 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
 - Confirmação de e-mail como portão do backend; consentimento de novidades
   (opt-in ou legítimo interesse).
 - Promoção com prazo: preço sobe na Asaas ao vencer ou é vitalícia.
-- Banco de horas: manter (agendar apuração, dar tela à fila) ou aposentar.
+- ~~Banco de horas: manter ou aposentar~~ — **decidido MANTER** (25/09);
+  fila/válvula removida; falta só criar o job `ApuracaoBancoHoras`.
 - Teto de cadastro de criativos: 3 fixos ou limite do plano.
 - Ponto 1 sem conta dona (crédito mensal sem destino); ponto 3 sem tela
   preparada.
-- Virada sandbox→produção do San Checkout (RUNBOOK §3.1) e o reset final do
-  banco — só depois da auditoria Codex/Jules.
+- O reset final do banco — só depois da auditoria Codex/Jules e com o
+  "pode resetar" do dono. (A virada do San Checkout para produção já foi
+  feita.)
 
 ## Depois do fecho
 - Revisão Codex dos PRs #50–#54 (24/09, mesma tarde): 8 achados corrigidos
-  nos PRs #55, #56 e #57 (cada volta do Codex fechada na seguinte); 1 ficou registrado (PENDENCIAS L.1, drenagem do
-  banco de horas retentável — espera a decisão de manter o banco).
+  nos PRs #55, #56 e #57 (cada volta do Codex fechada na seguinte); o
+  registrado em PENDENCIAS L.1 (drenagem retentável do banco de horas) foi
+  resolvido em 25/09 pela migration 090.
 
 ## Bloqueios reais
 - Nenhum.

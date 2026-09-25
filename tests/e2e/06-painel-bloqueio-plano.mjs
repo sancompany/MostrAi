@@ -8,10 +8,11 @@
 // card "Horas entregues no mês" até o commit 152d03d). Assume banco zerado e
 // servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto, recarregarQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) => execSync(`PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "${sql.replace(/"/g, '\\"')}"`).toString().trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctxAdmin = await b.newContext({ viewport: { width: 1280, height: 900 } });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
 const falhas = [];
@@ -24,7 +25,7 @@ async function pagina(url, contexto = ctx) {
   p.on('pageerror', (e) => erros.push(`${url}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/status of (401|404|409)/.test(m.text())) erros.push(`${url} console: ${m.text()}`); });
   p.on('dialog', async (d) => d.accept(d.defaultValue()));
-  await p.goto(B + url, { waitUntil: 'networkidle' });
+  await irQuieto(p, B + url);
   return p;
 }
 const shot = (p, n) => p.screenshot({ path: new URL(`./saida/v22-${n}.png`, import.meta.url).pathname, fullPage: true });
@@ -73,7 +74,7 @@ const liberado = await adm.evaluate(async ([id, valido_ate]) => (await (await fe
 })).json()), [conta.id, validoAte]);
 check('admin concedeu o benefício', liberado.conta?.plano_id === 'essencial-1m', JSON.stringify(liberado));
 
-await p.reload({ waitUntil: 'networkidle' });
+await recarregarQuieto(p);
 await p.waitForTimeout(1000);
 check('bloqueio de plano some', !(await p.$('#bloqueioPlano')));
 check('dashboard de anúncios reaparece', !(await p.$eval('#dashboardAnuncios', (e) => e.hidden)));

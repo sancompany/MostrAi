@@ -92,8 +92,8 @@ router.get('/conta/modos', exigirAnuncianteLogado, async (req, res) => {
       vendedor: { liberado: papeis.includes('vendedor'), pedido: pedidos.find((p) => p.tipo === 'vendedor') || null },
     },
     bonus: {
-      // `ponto` continua na resposta como null: o painel lê `bonus.ponto` e
-      // tirar a chave quebraria a tela de quem estiver com a página aberta.
+      // Campo morto (conferido em 25/09/2026: nenhuma tela lê `bonus`) —
+      // fica null só pra não mudar o formato da resposta.
       ponto: null,
       // Bônus de anúncio por tempo de ponto (módulo 2) aposentado em
       // 24/09/2026 — o tempo de ponto agora vira crédito mensal.

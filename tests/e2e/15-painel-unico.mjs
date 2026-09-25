@@ -6,6 +6,7 @@
 // cada endpoint é chamado uma vez na carga e o resync não duplica nada.
 // Assume servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto, redeQuieta } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
@@ -13,7 +14,7 @@ const PG = (sql) =>
     .toString()
     .trim()
     .split('\n')[0];
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const falhas = [];
 const ok = (t) => console.log('  ok ', t);
 const falha = (t, d) => {
@@ -80,12 +81,12 @@ async function abrir(conta, nome, largura = 1280) {
     const u = new URL(r.url());
     if (u.origin === B && r.resourceType() === 'fetch') chamadas[u.pathname] = (chamadas[u.pathname] || 0) + 1;
   });
-  await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/anunciante/login.html`);
   await p.fill('#email', conta.email);
   await p.fill('#senha', 'Senha123!');
   await p.click('button[type="submit"]');
   await p.waitForURL(/painel\.html/, { timeout: 10000 });
-  await p.waitForLoadState('networkidle');
+  await redeQuieta(p);
   await p.waitForTimeout(800);
   await p.screenshot({ path: new URL(`./saida/painel-unico-${nome}.png`, import.meta.url).pathname, fullPage: true });
   // Foto das chamadas da CARGA, antes de qualquer resync do teste.

@@ -1,4 +1,8 @@
-# Mostraí — pendências (atualizado 15/09/2026, Estação 5 — Construção)
+# Mostraí — pendências (cabeçalho de 15/09/2026, Estação 5 — Construção)
+
+> **Estado atual (25/09/2026):** a lista viva do que falta está na seção
+> **M** (fim do arquivo) e no relatório `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`.
+> O texto abaixo guarda o histórico da estação.
 
 Projeto em `D:\SanCo\MostrAi`, espelhado em
 `github.com/sancompany/MostrAi` (branch `main`), repositório **público** por
@@ -131,8 +135,10 @@ responde 404, e um clone novo não tem `.env` em commit nenhum.
 
 **Decisão do dono (13/09/2026):** o repositório **continua público** (a
 organização usa vários recursos que só são gratuitos assim), e a rotação das
-credenciais fica para quando ele estiver no PC. Enquanto ela não for feita, os
-valores antigos continuam válidos em qualquer cópia feita antes da reescrita.
+credenciais fica para quando ele estiver no PC. *(Depois: o dono confirmou em
+15/09/2026 que todas as credenciais vazadas foram rotacionadas — item 5 do
+topo. A checklist A.0.1 abaixo ficou sem as caixas marcadas e sem a data do
+passo 7; ver seção M.)*
 
 ### A.0.0 — RESOLVIDA em 15/09/2026 — o domínio agora serve a aplicação
 
@@ -319,7 +325,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     removeu `meses_gratis` e a regra "benefício no preço, nunca no tempo" do
     `CONSTRAINTS.md` fechou o assunto. O `INTEGRACAO.md` do Checkout é só um
     redirecionamento hoje; a fonte é o `API.md`.
-12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
+12. [x] **Backup** — job `Backup` ativo (`0 8 * * 0`); ensaio de restauração feito em 25/09/2026 (RUNBOOK §5). Texto original: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
 14. [ ] **Criar o job `ApuracaoBancoHoras` no Northflank** — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK (25/09/2026). Especificação completa (cron `0 6 1 * *`, comando, variáveis, tentativas, primeira execução em `--dry-run`): `docs/job-apuracao-banco-horas.md`. Sem o job, nenhum déficit mensal entra no banco de horas (a liquidação diária já roda dentro do `Conciliacao`).
 
@@ -2101,6 +2107,9 @@ mesmo motivo do N=3 abaixo: **o dono não sancionou nenhuma delas ainda**.
   migration 057) pra guardar o pedido ANTES do corte — sem ela, "não coube
   porque a hora vendeu demais" e "não coube porque a tela caiu" eram
   indistinguíveis.
+- *(25/09/2026: a válvula abaixo foi REMOVIDA — decisão MANTER, banco de
+  horas sem expiração e nunca crédito em dinheiro; RN-53 em
+  `docs/funcional.md`. Os dois itens seguintes ficam como histórico.)*
 - **A válvula não devolve dinheiro por conta própria — nunca.** A ressalva
   original propunha "crédito em dinheiro" automático depois de N meses. Não
   construí isso: saldo velho vira `status='aguardando_credito'`, uma fila
@@ -4725,7 +4734,7 @@ ADR-018 em `.ia/DECISIONS.md`: o card "Custo por exibição prevista" lê o
 snapshot do ciclo (`ciclos_contratados`, migration 087). Produção depois do
 deploy: 2 snapshots preenchidos a partir das cobranças de ciclo inteiro.
 
-- **K.1 [ ] Conta 3 (Essencial Trimestral, R$ 267,30, até 16/12/2026) está
+- **K.1 [x] — sem objeto desde 25/09/2026 (L.2).** Conta 3 (Essencial Trimestral, R$ 267,30, até 16/12/2026) está
   na versão ANTIGA do plano, `essencial-3m`** (arquivada em 17/09/2026,
   anterior ao modelo de segundos por hora). Essa versão não tem segundos por
   hora, pontos incluídos nem duração máxima — vende "3 inserções por hora em
@@ -4738,7 +4747,7 @@ deploy: 2 snapshots preenchidos a partir das cobranças de ciclo inteiro.
   oferecer a migração pra versão atual (`essencial-3m-v2`: 90 s/h × 3
   pontos × peça de 15 s = 6.480 exibições/mês → R$ 267,30 ÷ 19.440 =
   R$ 0,0138). Nada foi alterado no contrato dela.
-- **K.2 [ ] Conta 5**: o snapshot da compra (Essencial Trimestral v2,
+- **K.2 [x] — sem objeto desde 25/09/2026 (L.2).** Conta 5: o snapshot da compra (Essencial Trimestral v2,
   R$ 0,01375/exibição) ficou registrado; a troca pra Pro (acerto de R$ 405)
   não tem valor de ciclo registrado e não virou snapshot — a conta está em
   benefício por créditos hoje, então o card mostra "Benefício por créditos".
@@ -4749,8 +4758,8 @@ Relatório completo em `docs/relatorio-consolidacao-final-2026-09-24.md`;
 estado curto em `docs/CONSOLIDATION_STATE.md`. As decisões abertas (12,
 seção 18 do relatório) não bloqueiam o que está no ar — cada uma é
 reversível e está registrada com o efeito de escolher cada lado. O reset
-final do banco e a virada sandbox→produção do San Checkout (RUNBOOK §3.1)
-só acontecem depois da auditoria externa.
+final do banco só acontece depois da auditoria externa e do "pode resetar"
+do dono. (A virada do San Checkout para produção já foi feita.)
 
 ### L.1 Revisão Codex dos PRs #50–#54 — o que foi corrigido e o que ficou (24/09/2026)
 
@@ -4812,3 +4821,65 @@ nada saiu do ar. Ficaram intactos: 4 contas, 18 planos, 3 criativos, 3
 planos administrativos (o Prime da conta 5 é cortesia, não vem do Checkout),
 2 linhas do ledger de créditos, pontos, telas e toda configuração. K.1 e
 K.2 (custo por exibição prevista dessas contas) ficam sem objeto.
+
+## M. Fechamento pré-gates — o que está com o operador (25/09/2026)
+
+Relatório completo: `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`. Os itens A–E
+existiam só na conversa com o dono e ficam registrados aqui.
+
+- **A. Vídeo institucional — AGUARDA_OPERADOR (`ENVIAR_VIDEO_INSTITUCIONAL`).**
+  Nada foi implementado. Especificação curta do caminho, na ordem:
+  ARQUIVO RECEBIDO (o dono envia o vídeo final) → upload/armazenamento (mesmo
+  bucket público dos criativos, com `conteudo_sha256`) → configuração (qual
+  vídeo é o institucional e quanto dura — hoje o institucional é o cartão HTML
+  de 10 s do player, `DURACAO_INSTITUCIONAL` em `src/lib/pacing.js`) → backend
+  (o gerador passa a usar a duração real e o item do contrato V2 leva a URL e o
+  hash) → playlist → Player (V2 baixa e toca como mídia; V1 continua com o
+  cartão) → validação numa TV real.
+- **B. Job `ApuracaoBancoHoras` — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK.**
+  Especificação: `docs/job-apuracao-banco-horas.md`. Faz parte da decisão
+  MANTER o banco de horas (25/09), inclusive a flexibilidade de a dívida voltar
+  em qualquer tempo ocioso futuro, sem expirar.
+- **C. E-mails transacionais — FEITO (PR #62):** HTML + texto puro em todos os
+  e-mails ao cliente, pelo SMTP do Mostraí (o Checkout nunca manda e-mail por
+  nós). Falta só o dono ver um de verdade chegar numa caixa real (SMTP de
+  produção) no teste final.
+- **D. Comprovante de pagamento em PDF — FEITO (PR #62):** anexo do
+  "Pagamento confirmado", um por ciclo confirmado, não é nota fiscal.
+  **DECISAO_DO_OPERADOR:** como o recebedor aparece enquanto não há CNPJ
+  (`MOSTRAI_COMPROVANTE_RECEBEDOR`; sem ela, "Mostraí — San & Co."; o contrato
+  público cita nome e CPF do dono). Extensão não feita: comprovante do acerto
+  de troca de plano e do pedido avulso legado.
+- **E. Ideias NÃO aprovadas — não implementar:** (1) conta própria preenchendo
+  todo o tempo vago; (2) reserva de ~20% da hora para o institucional.
+
+### Gates do operador (só ele faz)
+
+1. Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).
+2. Enviar o vídeo institucional (item A).
+3. Fazer o último teste de ponta a ponta com compra real (inclui ver o e-mail
+   HTML e o comprovante PDF chegarem, e o acerto proporcional de uma troca).
+4. Autorizar o reset do banco ("pode resetar") — os dados atuais são de teste
+   (`DADOS_DE_TESTE_AGUARDANDO_RESET`: CPF repetido nas contas 3/4/5, ponto 1
+   sem dono, ponto 3 inativo, 120 créditos na conta 5, categoria antiga na
+   conta 5, plano antigo na conta 3, snapshot da conta 5) — nada disso foi
+   corrigido à mão.
+5. Decidir o Player V1 (aposentar o player web e rodar a migration 084, ou
+   manter) — superfície completa no relatório §7.
+6. Decidir o esquema legado antes do reset (tabelas/colunas históricas que
+   ficaram só para leitura).
+7. Decisões comerciais abertas (seção L, relatório §16) e as do banco de horas
+   (ordem FIFO/LIFO, conta encerrada com saldo, teto diário, mudança de plano).
+8. Revisão jurídica dos textos públicos (termos, privacidade, contrato do
+   anunciante, comodato e os PDFs de `contratos/`) — inventário no relatório
+   §16.
+9. Apagar as 11 branches remotas já mergeadas (a sessão não tem permissão de
+   apagar branch; lista com SHA no relatório §14).
+10. Ligar Secret scanning e Push protection no GitHub (Settings → Code
+    security) e marcar a data da rotação no A.0.1.
+11. Conferir no painel do Asaas **sandbox** as assinaturas
+    `sub_j87cq5u50g6jqv6t` e `sub_xjsad6cpqor5pars` (nenhuma chave de sandbox
+    está acessível desta sessão; o Checkout só tem a de produção) e cancelá-las
+    lá se ainda estiverem ativas — são testes abandonados, sem dinheiro real.
+12. Apagar do volume de backup o arquivo vazio
+    `mostrai-20260920-080036.sql.gz` (ou só nunca restaurar dele).

@@ -11,6 +11,7 @@
 // Sem essas variáveis, o bloco do admin é pulado e o roteiro prova que o
 // Access está fechado (302 pra página de login do Cloudflare).
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { createHmac } from 'node:crypto';
 
 const BASE = (process.env.BASE || 'https://mostrai.sancocore.com.br').replace(/\/+$/, '');
@@ -133,11 +134,11 @@ const proxy = proxyEnv
       };
     })()
   : undefined;
-const b = await chromium.launch({
+const b = acompanharRede(await chromium.launch({
   executablePath: process.env.PW_CHROME,
   proxy,
   args: proxy ? ['--ignore-certificate-errors'] : [],
-});
+}));
 const VIEWPORTS = [
   ['1366x768', 1366, 768],
   ['1440x900', 1440, 900],
@@ -150,12 +151,14 @@ for (const [nome, width, height] of VIEWPORTS) {
   const ctx = await b.newContext({ viewport: { width, height }, isMobile: width < 500, ignoreHTTPSErrors: !!proxy });
   const p = await ctx.newPage();
   const erros = [];
+  // Com o endereço: "Failed to load resource" sozinho não diz de quem é o
+  // 503 — e o filtro de ruído abaixo (mapa, ViaCEP) só funciona sabendo.
   p.on('console', (m) => {
-    if (m.type() === 'error') erros.push(m.text());
+    if (m.type() === 'error') erros.push(`${m.text()} [${m.location()?.url || '?'}]`);
   });
   p.on('pageerror', (e) => erros.push(String(e)));
   for (const caminho of PAGINAS) {
-    await p.goto(`${BASE}${caminho}`, { waitUntil: 'networkidle', timeout: 45000 }).catch((e) => erros.push(`goto ${caminho}: ${e.message}`));
+    await irQuieto(p, `${BASE}${caminho}`, { timeout: 45000 }).catch((e) => erros.push(`goto ${caminho}: ${e.message}`));
     await p.waitForTimeout(400);
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(`${nome} ${caminho}: sem rolagem horizontal`, overflow <= 1, `sobra ${overflow}px`);
@@ -177,7 +180,7 @@ if (TOKEN_ID && ADMIN_USER) {
     if (m.type() === 'error') erros.push(m.text());
   });
   p.on('pageerror', (e) => erros.push(String(e)));
-  await p.goto(`${BASE}/admin/`, { waitUntil: 'networkidle', timeout: 45000 });
+  await irQuieto(p, `${BASE}/admin/`, { timeout: 45000 });
   check('admin: com o token o gate de login do Mostraí aparece (não o do Cloudflare)', await p.locator('#gate').count() === 1);
   await p.fill('#usuario', ADMIN_USER);
   await p.fill('#senha', ADMIN_PASSWORD);
@@ -198,9 +201,11 @@ if (TOKEN_ID && ADMIN_USER) {
     ['#ofertas/precos', 'Ofertas', /Essencial.*Pro.*Prime/s],
     ['#ofertas/promocoes', 'Ofertas', /promoç/i],
     ['#financeiro/eventos', 'Financeiro', /evento/i],
-    ['#midiamostrai', 'Mídia Mostraí', /Mídia Mostraí|criativo|vídeo|nenhum/i],
+    // "Mídias próprias" é o cabeçalho da seção, com ou sem mídia cadastrada —
+    // "nenhum" só batia enquanto a produção não tinha nenhuma (24/09/2026).
+    ['#midiamostrai', 'Mídia Mostraí', /Capacidade da rede[\s\S]*Mídias próprias/i],
   ]) {
-    await p.goto(`${BASE}/admin/${hash}`, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
+    await irQuieto(p, `${BASE}/admin/${hash}`, { timeout: 45000 }).catch(() => {});
     await p.waitForTimeout(1200);
     const hashAtivo = await p.evaluate(() => location.hash);
     const tituloAtivo = (await p.locator('#tituloSecao').innerText().catch(() => '')).trim();
@@ -217,7 +222,7 @@ if (TOKEN_ID && ADMIN_USER) {
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check(`admin ${hash}: sem rolagem horizontal`, overflow <= 1, `sobra ${overflow}px`);
   }
-  await p.goto(`${BASE}/admin/#rede/pontos`, { waitUntil: 'networkidle' }).catch(() => {});
+  await irQuieto(p, `${BASE}/admin/#rede/pontos`).catch(() => {});
   await p.waitForTimeout(1200);
   await p.screenshot({ path: saida('admin-1366-rede'), fullPage: true });
   // Ficha do primeiro ponto e da primeira tela (só GET).
@@ -234,8 +239,10 @@ if (TOKEN_ID && ADMIN_USER) {
       await p.waitForTimeout(1500);
       const fichaTela = await p.locator('body').innerText().catch(() => '');
       // Tela ainda sem credencial mostra o bloco Player com "Preparar Player"
-      // e Operação; Conexão/PIN só aparecem depois de preparada.
-      check('admin: ficha da Tela nos blocos canônicos (Player / Operação; Conexão e PIN quando preparada)', /Preparar Player|Conex/.test(fichaTela) && /Opera/.test(fichaTela), fichaTela.slice(-300));
+      // e Operação; Conexão/PIN só aparecem depois de preparada. Sem
+      // diferenciar maiúscula: `.ficha-bloco h4` é text-transform: uppercase,
+      // e o innerText devolve "OPERAÇÃO", não "Operação".
+      check('admin: ficha da Tela nos blocos canônicos (Player / Operação; Conexão e PIN quando preparada)', /Preparar Player|Conex/i.test(fichaTela) && /Opera/i.test(fichaTela), fichaTela.slice(-300));
       check('admin: ficha da Tela não mostra o PIN em claro nem a chave', !/\b\d{4}\b(?=[^\n]*PIN)/.test(fichaTela.split('PIN de manutenção')[1] || '') && !/chaveAparelho/.test(fichaTela));
       await p.screenshot({ path: saida('admin-1366-tela'), fullPage: true });
     }
@@ -244,7 +251,7 @@ if (TOKEN_ID && ADMIN_USER) {
     await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, storageState: await ctx.storageState() }),
   );
   const pm = await mobile.newPage();
-  await pm.goto(`${BASE}/admin/`, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
+  await irQuieto(pm, `${BASE}/admin/`, { timeout: 45000 }).catch(() => {});
   await pm.waitForTimeout(1500);
   const overflowM = await pm.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check('admin 390x844: sem rolagem horizontal', overflowM <= 1, `sobra ${overflowM}px`);

@@ -33,10 +33,9 @@ começar a vender:**
 2. Terminar o app Android TV da playlist —
    `docs/proximas-versoes.md`, "App Android TV nativo..." (projeto à
    parte, fora deste repositório).
-3. Trocar o San Checkout de sandbox pra produção — **não investigado
-   ainda** se é algo que se mexe daqui (`SAN_CHECKOUT_*` no Northflank já
-   parecem apontar pra `sancocore.com.br`, não claramente sandbox) ou
-   decisão só de quem administra o Checkout.
+3. ~~Trocar o San Checkout de sandbox pra produção~~ — **FEITO**: o San
+   Checkout está em produção (`ASAAS_AMBIENTE=producao`, Pix e cartão reais
+   homologados; conferido em 25/09/2026).
 4. Finalizar os testes (checar se `npm run check` e os e2e cobrem o
    redesign do Codex).
 
@@ -135,35 +134,28 @@ pelo Codex — explícito, não assumir o contrário.**
     `src/playlist/congelamento-repository.js`, `tests/`.
   - Critério de conclusão: teste roda em `npm test`/`npm run check` e falha
     se a garantia for quebrada.
-- **Criar o job `ApuracaoBancoHoras` no Northflank — confirmado que NÃO
-  existe** (20/09/2026, checado via API do Northflank durante o incidente
-  de senha do Postgres: só há `Conciliacao` e `Backup` no projeto
-  `mostrai`; `docs/PENDENCIAS.md`, item A.14; `RUNBOOK.md` já registrava
-  isso como incerteza, agora é fato). O déficit mensal do banco de horas
-  nunca fecha sozinho sem esse job.
-  - Critério de conclusão: job criado (cron mensal, `npm run
-    apurar-banco-horas`) e uma primeira execução manual bem-sucedida —
-    **lembrar de configurar a `DATABASE_URL` (e os outros env vars que o
-    script precisar) direto nesse job**, já que jobs no Northflank não
-    herdam a variável do serviço (ver
-    `docs/erros/2026-09-20-senha-do-postgres-divergente-entre-supabase-e-northflank.md`).
-- **Investigar se `bonus.ponto` sempre `null` em `GET /conta/modos` é
-  intencional** (`src/conta/modos.js`) — o banner "você ganhou uma tela"
-  nunca aparece no Painel hoje.
-  - Critério de conclusão: confirmado como intencional (documentar por
-    quê) ou corrigido para refletir o bônus real de quem já cumpriu a
-    condição.
+- **Criar o job `ApuracaoBancoHoras` no Northflank** — gate do operador
+  (confirmado que não existe, 25/09/2026). Código pronto
+  (`scripts/apurar-banco-horas.js`: `--dry-run`, `--mes=AAAA-MM`, trava,
+  códigos 0/1/2/3) e especificação completa em
+  `docs/job-apuracao-banco-horas.md` (cron, variáveis — `DATABASE_URL`
+  direto no job —, primeira execução em `--dry-run`).
+- ~~Investigar se `bonus.ponto` sempre `null` é intencional~~ — **resolvido
+  (25/09/2026)**: é intencional e o campo `bonus` de `GET /conta/modos` é
+  morto (nenhuma tela lê; o módulo de bônus foi aposentado). Detalhe em
+  `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`.
 
 ## LATER
 
 - Regenerar `docs/teia.md` e `docs/furos.md` (dívida já reconhecida em
   `docs/PENDENCIAS.md` — várias entradas descrevem fluxos aposentados em
   18/09/2026).
-- Ensaiar a restauração de um backup (`RUNBOOK.md`, seção 5) — nunca foi
-  feito; "backup não restaurado é backup hipotético".
-- Investigar a branch `claude/mostrai-estacao-1-pipeline-y2vgr5`
-  (Dockerfile de produção para o Northflank) — entender se é trabalho ainda
-  relevante ou pode ser descartada.
+- ~~Ensaiar a restauração de um backup~~ — **FEITO em 25/09/2026**
+  (`RUNBOOK.md` §5: restauração isolada, RTO/RPO medidos, backup vazio de
+  20/09 achado e corrigido no `scripts/backup.sh`).
+- ~~Investigar a branch `claude/mostrai-estacao-1-pipeline-y2vgr5`~~ —
+  **resolvido**: já está inteira no `main` (0 commits próprios); listada
+  para exclusão em `docs/FECHAMENTO_PRE_GATES_2026-09-25.md` §14.
 - Cronometrar um revert completo (`RUNBOOK.md`, seção 4 — "[Estação 6]").
 
 ## BUGS
@@ -187,7 +179,7 @@ de horas. As condições de corrida do congelamento foram corrigidas em
 - **Fechar integridade `player → confirmação → métrica`**: revisar a TV física; decidir o que constitui conclusão; implementar confirmação durável/idempotente/retry e alinhar dashboard/contador. O anúncio investigado foi programado; a lacuna está depois da playlist. Decidir em item separado se falha física deve criar saldo diferente do banco de capacidade atual.
 - **Fechado em 20/09/2026 — concorrência do congelamento**: resolução serializada por `(dispositivo, hora)` com advisory lock transacional; a perdedora relê a base vencedora e extras são calculados/anexados na mesma seção crítica. Coberto por `tests/playlist-congelamento.test.js`. Não confundir repetições legítimas da frequência com duplicação de leva.
 - **Corrigir registro de categoria na documentação**: código atual e produção gravam `categoria_id`; falta teste ponta a ponta do bloqueio e regenerar `docs/furos.md`.
-- **Triar dependências** em mudança separada, sem `--force`: 1 crítica, 3 altas e 6 moderadas no audit atual.
+- ~~**Triar dependências**~~ — **FEITO (PR #61, 25/09/2026)**: `npm audit` em 0 sem `--force` (bcrypt 6, nodemailer 10, express 4.22.3).
 
 ## PLAYER/TV — próximo passo após investigação de 20/09/2026
 

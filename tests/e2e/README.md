@@ -11,8 +11,8 @@ os testes assinam o webhook, como o Checkout assina), `openssl` no PATH,
 tests/e2e/reset-db.sh                              # zera as tabelas de dados (não os planos)
 tests/e2e/restart.sh                               # sobe o servidor na 3999
 bash tests/e2e/01-fluxo-api.sh                     # pedido de ponto → admin libera → Meus pontos → telas ativadas → player → anunciante indicado pelo cupom PT- → e-mail
+bash tests/e2e/02-assinatura-webhook-comissao.sh   # CONTINUA o 01 (contas e cookies dele — sem reset no meio): parceiro, vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && bash tests/e2e/04-modos-e-bonus.sh  # conta só-ponto (convite) → modo anúncios → outro estabelecimento → rotas antigas 410 → crédito mensal do ponto
-bash tests/e2e/02-assinatura-webhook-comissao.sh   # parceiro (status de conta), vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && tests/e2e/restart.sh
 # Cada roteiro de navegador assume banco zerado (repetem e-mails entre si):
 # rode tests/e2e/reset-db.sh antes de cada um. Screenshots em tests/e2e/saida/.
@@ -21,6 +21,13 @@ PW_CHROME=... node tests/e2e/05-navegador-modos.mjs  # candidatura sem conta →
 PW_CHROME=... node tests/e2e/06-painel-bloqueio-plano.mjs  # sem plano trava o painel; admin libera cortesia e destrava
 PW_CHROME=... node tests/e2e/07-painel-design.mjs  # marca, paleta, hero sem KPI duplicado + estado operacional, "previstas", custo por 1.000, média diária, barra de 1 ponto
 PW_CHROME=... node tests/e2e/08-candidatura-ponto.mjs  # card "Faça parte da rede": movimento médio obrigatório, segmento resolvido por categoria_id OU categoria_livre
+PW_CHROME=... node tests/e2e/10-painel-sem-render-acumulativo.mjs  # resync do SSE não empilha cards no painel
+PW_CHROME=... node tests/e2e/11-creditos-painel.mjs  # créditos e benefícios: resgate com preview, painel destrava sem F5
+PW_CHROME=... node tests/e2e/12-meus-pontos.mjs    # um estabelecimento = um card, do pedido ao ponto no ar, sem F5 e sem duplicar
+PW_CHROME=... node tests/e2e/13-meus-criativos.mjs # anúncio na rede e na tela do próprio comércio numa biblioteca só
+PW_CHROME=... node tests/e2e/14-financeiro.mjs     # só Pagamentos (Recebimentos saiu com o ADR-016)
+PW_CHROME=... node tests/e2e/15-painel-unico.mjs   # quatro perfis de conta, módulos conforme o papel
+PW_CHROME=... node tests/e2e/16-ficha-conta.mjs    # ficha de Conta do admin nos 11 perfis (A–K) — sobe com NODE_ENV=development, ver abaixo
 # 16 e 17: suba com `tests/e2e/restart.sh NODE_ENV=development ...` — o crédito do ponto vem de outro processo via LISTEN/NOTIFY
 PW_CHROME=... node tests/e2e/17-modelo-de-creditos.mjs  # sem Inicial/Básico/R$ 50/repasse/comodato em admin, painel e site; crédito do ponto sem F5; aviso antes de pagar por cima de benefício
 PW_CHROME=... node tests/e2e/09-rede-redesenho.mjs # Rede: status automático (grade/filtros/detalhe/site público), telas em cards + margens, ocupação como tabela, candidatura com foto
@@ -32,6 +39,13 @@ PW_CHROME=... node tests/e2e/18-rede-player-v2.mjs # Player V2: + Tela → Prepa
 # também percorre o admin sem gravar nada. Nunca cria conta, pedido, tela ou cobrança.
 PW_CHROME=... node tests/e2e/19-online-producao.mjs
 ```
+
+**Espera de página:** nada de `waitUntil: 'networkidle'`. O painel e o admin
+mantêm um EventSource aberto (SSE), que o Playwright conta como requisição em
+voo — a espera nunca terminava (rodada de 25/09/2026). Os roteiros usam
+`espera.mjs`: `acompanharRede(navegador)` no launch e `irQuieto(pagina, url)` /
+`recarregarQuieto(pagina)` no lugar do `goto`/`reload` — mesma regra (500 ms
+sem requisição), menos o SSE.
 
 O limite de tentativas vive no banco desde a migration 051 (`tentativas_acesso`,
 não mais um `Map` em memória — ver `src/lib/limite-tentativas.js`). Reiniciar

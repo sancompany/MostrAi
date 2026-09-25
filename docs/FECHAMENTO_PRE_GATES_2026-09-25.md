@@ -4,7 +4,7 @@
 > AUTÔNOMO"). Em construção durante a execução; a versão final substitui este
 > aviso.
 
-## 12. Branches
+## 14. Branches
 
 Inventário das branches remotas (origem `sancompany/MostrAi`), conferido em
 25/09/2026 contra o `main` e contra os PRs mergeados. Registrado **antes** de

@@ -1,5 +1,11 @@
 # Furos do Mostraí
 
+> **Documento histórico** (levantamento de 15–16/09/2026). Muitas entradas
+> descrevem fluxos aposentados depois — programa de vendedores, comodato com
+> R$ 50/repasse, `/planos-ponto` (410 desde ADR-016), `src/pontos/comodato.js`
+> (apagado). Não use como lista viva: o que está aberto hoje está em
+> `docs/PENDENCIAS.md` (seção M) e em `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`.
+
 132 furos levantados em 15/09/2026 por oito lentes sobre a teia inteira
 (`docs/teia.md`): **31 críticos, 51 altos, 39 médios, 11 baixos**.
 

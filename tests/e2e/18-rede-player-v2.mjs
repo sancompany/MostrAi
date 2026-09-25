@@ -10,6 +10,7 @@
 //
 // Assume banco zerado (reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -82,7 +83,7 @@ const pontoId = PG(
    RETURNING id`,
 );
 
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1366, height: 900 }, acceptDownloads: true });
 const admin = await ctx.newPage();
 const erros = [];
@@ -96,7 +97,7 @@ admin.on('response', (r) => {
 });
 
 console.log('== login admin → Rede ==');
-await admin.goto(`${B}/admin/index.html`, { waitUntil: 'networkidle' });
+await irQuieto(admin, `${B}/admin/index.html`);
 await admin.fill('#usuario', process.env.ADMIN_USER || 'admin');
 await admin.fill('#senha', process.env.ADMIN_PASSWORD || 'Admin12@teste');
 await admin.click('button[type=submit]');
@@ -250,7 +251,7 @@ await admin.screenshot({ path: `${SAIDA}player-v2-ponto.png`, fullPage: true });
 
 console.log('== dono do ponto: visão simplificada ==');
 const dono = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
-await dono.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+await irQuieto(dono, `${B}/anunciante/login.html`);
 await dono.fill('#email', email);
 await dono.fill('#senha', 'Senha123!');
 await dono.click('button[type="submit"]');

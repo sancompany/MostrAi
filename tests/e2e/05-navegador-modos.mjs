@@ -16,6 +16,7 @@
 //
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto, recarregarQuieto, redeQuieta } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 // Primeira linha: com RETURNING o psql ainda imprime "INSERT 0 1" depois do valor.
@@ -24,7 +25,7 @@ const PG = (sql) =>
     .toString()
     .split('\n')[0]
     .trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 // Admin e cada conta em contextos separados: o cookie de sessão é um só por
 // contexto, e o cadastro regenera a sessão.
 const ctxAdmin = await b.newContext({ viewport: { width: 1280, height: 900 } });
@@ -38,7 +39,7 @@ async function pagina(url, contexto = ctx) {
   p.on('pageerror', (e) => erros.push(`${url}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/status of (401|404|409)/.test(m.text())) erros.push(`${url} console: ${m.text()}`); });
   p.on('dialog', async (d) => d.accept(d.defaultValue()));
-  await p.goto(B + url, { waitUntil: 'networkidle' });
+  await irQuieto(p, B + url);
   return p;
 }
 const shot = (p, n) => p.screenshot({ path: new URL(`./saida/v21-${n}.png`, import.meta.url).pathname, fullPage: true });
@@ -151,11 +152,11 @@ console.log('== A. cadastro pelo convite: conta só de ponto, sem modalidade =='
   await p.waitForURL('**/anunciante/painel.html**', { timeout: 8000 }).catch(() => {});
   // Deixa a página terminar de carregar antes do reload abaixo — recarregar
   // no meio aborta os fetches em voo, e cada um vira um erro de console.
-  await p.waitForLoadState('networkidle');
+  await redeQuieta(p);
   check('cadastro pelo convite cai no painel único, em Meus pontos', /\/anunciante\/painel\.html#modPontos/.test(p.url()), p.url());
   check('conta nasce só com o papel de ponto', PG(`SELECT papeis::text FROM anunciantes WHERE contato_email='nina@x.com'`) === '{ponto}');
   await confirmarEmail(p, 'nina@x.com');
-  await p.reload({ waitUntil: 'networkidle' });
+  await recarregarQuieto(p);
 
   console.log('== A. Meus pontos: o ponto aguardando instalação ==');
   await p.locator('#pontosLista .estab-card', { hasText: 'Doceria Nina' }).waitFor({ timeout: 8000 }).catch(() => {});
@@ -200,7 +201,7 @@ console.log('== B. endereço antigo da página do ponto → painel; conta que s�
   })).json()));
   check('conta direta nasce só com anunciante', JSON.stringify(conta.papeis) === '["anunciante"]', JSON.stringify(conta));
   await confirmarEmail(p, 'lia@x.com');
-  await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/anunciante/ponto.html`);
   check('ponto.html redireciona pro painel, em Meus pontos', /\/anunciante\/painel\.html#modPontos$/.test(p.url()), p.url());
   await p.waitForSelector('[data-acao="abrir-oportunidade"]', { timeout: 8000 });
   await shot(p, 'ponto-bloqueado');

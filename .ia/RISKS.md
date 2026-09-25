@@ -50,37 +50,36 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   base vencedora, anexação e rollback, mas uma regressão que altere a posição
   final no payload do gerador ainda depende dos testes de pacing e da revisão
   manual. Criticidade: média.
-- **`GET /conta/modos` sempre devolve `bonus.ponto: null`** por comentário
-  explícito no código — o banner de "você ganhou uma tela" nunca aparece no
-  Painel. Não investigado se é intencional; risco de ser um benefício de
-  plano vendido que não está sendo comunicado a quem já cumpriu a condição.
-  Criticidade: a confirmar.
+- ~~`GET /conta/modos` sempre devolve `bonus.ponto: null`~~ — resolvido
+  (25/09/2026): intencional. O bônus por tempo de ponto foi aposentado (o
+  ponto rende crédito mensal, ADR-016) e nenhuma tela lê o campo `bonus`;
+  o comentário do código que dizia o contrário estava velho.
 
 ## Deploy / infraestrutura
 
-- **Uma instância só do serviço web** — troca de deploy deixa uma janela de
-  alguns segundos com 503 (medido, `RUNBOOK.md`). Aceito como decisão de
-  custo, não bug — mas é um risco real de disponibilidade a cada deploy.
+- ~~**Uma instância só do serviço web**~~ — desatualizado: o serviço roda
+  com **2 instâncias** (`nf-compute-50`, conferido no Northflank em
+  25/09/2026; item 4, preparação para 2 instâncias).
 - **Supabase no plano Free**: sem backup automático do lado do provedor — a
-  mitigação é o job próprio `Backup` (dump semanal, 26 retenções). **O
-  backup nunca foi restaurado de teste** (`RUNBOOK.md`, seção 5: "Este
-  backup nunca foi restaurado. Backup não restaurado é backup hipotético").
-  Criticidade: alta até o primeiro ensaio de restauração acontecer.
-- **Job `ApuracaoBancoHoras` confirmado que NÃO existe no Northflank**
-  (20/09/2026, checado via API durante o incidente de senha do Postgres —
-  só há `Conciliacao` e `Backup`). O déficit mensal do banco de horas nunca
-  fecha e ninguém ganha prioridade — silencioso, sem erro visível até
-  alguém notar que o banco de horas não está funcionando. Ver `.ia/TODO.md`.
+  mitigação é o job próprio `Backup` (dump semanal, 26 retenções).
+  **Ensaio de restauração feito em 25/09/2026** (`RUNBOOK.md` §5): banco
+  isolado, `public` íntegro, app no ar; RPO semanal (até 7 dias). Achado no
+  ensaio: um backup vazio de 20/09 ficou no volume — corrigido no
+  `scripts/backup.sh`; o arquivo vazio continua lá (não restaurar dele).
+- **Job `ApuracaoBancoHoras` ainda não criado no Northflank** (gate do
+  operador; código e especificação prontos em
+  `docs/job-apuracao-banco-horas.md`). Sem ele nenhum déficit mensal entra
+  no banco de horas — silencioso. A liquidação diária do confirmado já roda
+  dentro do `Conciliacao`.
 - **Segredos do Northflank não usam secret group compartilhado** — cada
   serviço/job guarda sua própria cópia de cada variável
   (`DATABASE_URL` incluída). Trocar um segredo exige lembrar de atualizar
   em cada recurso separadamente; esquecer um já derrubou produção uma vez
   (20/09/2026, ver `docs/erros/2026-09-20-senha-do-postgres-divergente-entre-supabase-e-northflank.md`).
   Migrar pra um secret group do projeto eliminaria essa classe de erro.
-- **Branch `claude/mostrai-estacao-1-pipeline-y2vgr5` não investigada** —
-  pode ser trabalho relevante esquecido ou experimento morto. Risco de
-  algum agente futuro divergir dela sem saber que existe, ou de conflito se
-  alguém tentar mesclá-la sem entender o que é.
+- ~~Branch `claude/mostrai-estacao-1-pipeline-y2vgr5` não investigada~~ —
+  resolvido (25/09/2026): já está inteira no `main`; listada para exclusão
+  em `docs/FECHAMENTO_PRE_GATES_2026-09-25.md` §14.
 
 ## Segurança
 
@@ -103,10 +102,10 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 ## Atualização — auditoria de 20/09/2026
 
 - **Crítico — integridade de confirmação:** `/played` sai no começo da tentativa e falhas são ignoradas, sem identidade, retry ou idempotência por execução. Métricas podem divergir da reprodução real.
-- **Decisão de produto — banco de horas:** ele foi implementado deliberadamente para déficit de capacidade (`pedidas - programadas`), não falha física. A drenagem também ocorre quando a recuperação cabe na programação. Decidir se falha da TV cria mecanismo separado; não classificar o cálculo atual isoladamente como bug.
+- **Decisão de produto — banco de horas:** decidido MANTER em 25/09/2026 (obrigação de veiculação). Déficit de capacidade (`pedidas - programadas normais`) vira saldo; o saldo volta só no tempo ocioso; **só a exibição confirmada abate o saldo** (migration 090 — a geração não drena mais). Falha da TV na entrega normal continua voltando como déficit da hora seguinte.
 - **Mitigado em 20/09/2026 — concorrência do congelamento:** base e extras passaram a ser resolvidos sob lock transacional por tela/hora. A base perdedora é descartada antes da resposta e uma nova leva não pode ser anexada duas vezes. Manter o teste dedicado e não retirar a seção crítica ao otimizar o gerador.
 - **Correção de risco antigo:** categoria do ponto é gravável e existe em produção. O risco real restante é ausência de teste ponta a ponta do bloqueio, não ausência do dado.
-- **Dependências:** audit atual contém 1 vulnerabilidade crítica, 3 altas e 6 moderadas.
+- **Dependências:** ~~1 crítica, 3 altas, 6 moderadas~~ — `npm audit` em 0 desde 25/09/2026 (PR #61).
 
 ## Mapa funcional — achado de 20/09/2026
 

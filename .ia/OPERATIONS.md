@@ -89,7 +89,7 @@ reinicia o servidor local.
 
 ```bash
 npm run conciliar             # conciliação diária das assinaturas
-npm run apurar-banco-horas    # apuração mensal do déficit de banco de horas
+npm run apurar-banco-horas    # apuração mensal do banco de horas — job AINDA NÃO criado no Northflank (docs/job-apuracao-banco-horas.md); rodar primeiro com -- --dry-run
 npm run backup                 # scripts/backup.sh — pg_dump gzipado
 ```
 

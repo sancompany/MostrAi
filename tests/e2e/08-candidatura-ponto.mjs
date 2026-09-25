@@ -4,13 +4,14 @@
 // conta já informou — seja categoria_id (catálogo fixo) ou categoria_livre
 // (texto). Assume banco zerado e servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
   execSync(`PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "${sql.replace(/"/g, '\\"')}"`)
     .toString()
     .trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1280, height: 1000 } });
 const falhas = [];
 const erros = [];
@@ -29,7 +30,7 @@ async function pagina(url) {
     // provar que o backend recusa — a resposta é 400, não um bug.
     if (m.type() === 'error' && !/status of (400|401|404|409)/.test(m.text())) erros.push(`${url} console: ${m.text()}`);
   });
-  await p.goto(B + url, { waitUntil: 'networkidle' });
+  await irQuieto(p, B + url);
   return p;
 }
 
@@ -143,7 +144,17 @@ const semFluxo = await painelC.evaluate(
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome_comercio: 'Teste', endereco: 'Rua X, 1' }),
+        // Endereço em partes e completo (D5, 24/09/2026): o único campo
+        // obrigatório faltando é o movimento — é ele que a recusa tem de citar.
+        body: JSON.stringify({
+          nome_comercio: 'Teste',
+          cep: '15990-000',
+          logradouro: 'Rua X',
+          numero: '1',
+          bairro: 'Centro',
+          cidade: 'Matão',
+          uf: 'SP',
+        }),
       })
     ).json(),
 );
