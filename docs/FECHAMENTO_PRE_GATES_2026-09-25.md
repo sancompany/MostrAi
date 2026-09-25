@@ -664,3 +664,17 @@ o job `ApuracaoBancoHoras` foi criado no Northflank pela especificação deste
 relatório e de `docs/job-apuracao-banco-horas.md`, e a 1ª execução manual em
 `--dry-run` rodou com sucesso. Estado atualizado em `docs/PENDENCIAS.md`
 (item 14 e seção M).
+
+**Segundo adendo (25/09/2026, mesmo dia):** o gate 2 também foi cumprido —
+o vídeo institucional que o dono enviou está implementado e publicado em
+produção (não só o código: o arquivo real, normalizado, servindo do
+Storage, confirmado com `HEAD` real na URL pública). Confirmado também que
+o job `ApuracaoBancoHoras` está operacional (não só criado): habilitado,
+sem duplicata, mesma SHA de produção, lock e idempotência no código. No
+meio do caminho houve um incidente de exposição de credenciais (todos os
+segredos do serviço `mostrai` apareceram em texto puro na saída de uma
+ferramenta de diagnóstico); 4 segredos foram rotacionados e validados sem
+indisponibilidade, e o operador decidiu encerrar o incidente sem rotacionar
+os outros 3 (`OPERATOR_ACCEPTED_NO_ROTATION`). Detalhe completo, sem nenhum
+valor de segredo: `RUNBOOK.md` §2.1. Estado atualizado em
+`docs/PENDENCIAS.md` (seção M) e `.ia/PROJECT_STATE.md`.

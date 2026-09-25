@@ -248,23 +248,40 @@ Backend do contrato V2 do Mostraí Player construído, V1 mantido. Migration
 `src/lib/status-tela.js`. Detalhe e o que falta: `.ia/HANDOFF.md` (topo) e
 `docs/PENDENCIAS.md`, seção "Player V2".
 
-## Vídeo institucional — código pronto, aguarda deploy + upload real (25/09/2026)
+## Vídeo institucional — FEITO E NO AR (25/09/2026)
 
-Gate 2 de `docs/PENDENCIAS.md` seção M: o dono enviou o arquivo final do
-vídeo institucional (vertical, 15s). Implementado o caminho inteiro:
+Gate 2 de `docs/PENDENCIAS.md` seção M, fechado. Caminho inteiro:
 `POST`/`GET /admin/video-institucional` (`src/pontos/routes.js`, reusa o
 pipeline `normalizar()` de `src/lib/ffmpeg.js`, mesmo dos criativos) →
 config em `configuracoes_site` (chave `video_institucional`, migration 055,
 mesmo padrão da foto de exemplo do ponto) → `src/playlist/gerador.js#obterVideoInstitucional`
 alimenta `src/lib/pacing.js#montarHoraDeTv` com a duração real do vídeo em
 vez dos 10s fixos do cartão → item do contrato V2 leva `url`/`duracaoSegundos`/
-`contentHash`. Player V1 não mudou nada — ignora esses campos de propósito e
-continua sempre com o cartão HTML. UI nova em `Mídia Mostraí` (admin),
-reusando CSS existente. Testado: `npm run check` 422/422 (novo
-`tests/video-institucional.test.js` concentra TODOS os testes que tocam
-essa chave global, de propósito — evita corrida entre arquivos de teste em
-paralelo) + verificação manual via Playwright. **Não foi possível testar o
-upload real localmente** (`.env` local sem credencial do Supabase Storage).
-**Falta:** commit/PR/merge/deploy, depois o upload de verdade do arquivo do
-dono em produção, e validação numa TV real. Nada disso foi feito ainda —
-só o código, testado e revisado.
+`contentHash`. Player V1 não mudou nada. Testado: `npm run check` 422/422 +
+Playwright manual. PRs #66/#67 mergeados, deploy confirmado (SHA de
+produção == SHA do `main`). O arquivo que o dono enviou (vertical, 15s,
+1440x2560) foi normalizado e publicado no Storage real — confirmado com
+`HEAD` real na URL pública (`200`, `video/mp4`, bytes exatos) e no
+`configuracoes_site` de produção. Como o admin ficou sem senha conhecida no
+meio da sessão (ver `.ia/PROJECT_STATE.md` mais abaixo, "Incidente de
+credenciais"), o upload foi feito rodando a mesma lógica da rota direto
+dentro do container (`northflank exec` + a função `normalizar()`/
+`definirConfiguracao()` do próprio código), sem depender de login HTTP.
+**Falta só:** validação numa TV real — nenhuma tela de produção está no
+contrato V2 do Player ainda (seção H de `docs/PENDENCIAS.md`).
+
+## Incidente de credenciais — exposto e encerrado no mesmo dia (25/09/2026)
+
+Um comando de diagnóstico imprimiu o `runtimeEnvironment` inteiro do
+serviço `mostrai` (todos os 7 segredos de produção) na saída de uma
+ferramenta, dentro desta sessão. Rotacionados e validados sem
+indisponibilidade: `ADMIN_PASSWORD`, `SESSION_SECRET`, `DATABASE_URL`
+(Postgres), `SUPABASE_SERVICE_ROLE_KEY`. Por decisão do operador
+(`OPERATOR_ACCEPTED_NO_ROTATION`), `SAN_CHECKOUT_KEY`/`SMTP_PASS`/
+`GOOGLE_SERVICE_ACCOUNT_KEY` **não** foram rotacionados e o incidente foi
+encerrado — não reabrir por conta própria. Detalhe completo, sem nenhum
+valor de segredo: `RUNBOOK.md` §2.1. **Único ponto operacional que ficou
+em aberto:** o novo `ADMIN_PASSWORD` nunca foi mostrado a ninguém de
+propósito — o dono precisa definir uma senha nova direto no Northflank
+antes de usar o login usuário/senha do `/admin` (Cloudflare Access, a outra
+camada, continua funcionando normalmente).
