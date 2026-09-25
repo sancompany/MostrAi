@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
+const vigencia = require('../src/lib/vigencia');
 const repo = require('../src/creditos/repository');
 const { custoDoBeneficio, opcoesDisponiveis } = require('../src/creditos/regras');
 const planoAdministrativo = require('../src/financeiro/plano-administrativo');
@@ -236,7 +237,9 @@ test('ativarBeneficiosAgendados: ativa só quando o ciclo pago anterior já pass
 
     // O tempo passa: o ciclo pago que estava em dia agora já venceu — é o
     // que a conciliação diária encontraria sozinha no dia seguinte.
-    const ontem = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    // Ontem em Matão (RN-32-B): um timestamp UTC de 24 h atrás ainda pode
+    // cair no dia comercial de hoje entre 21:00 e 00:00 UTC.
+    const ontem = vigencia.somarDias(vigencia.hojeComercial(), -1);
     await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [contaBase.id, ontem]);
 
     const resultado = await planoAdministrativo.ativarBeneficiosAgendados();
@@ -289,7 +292,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
     // Chegou a data de início (simulada: o último dia do ciclo pago foi ontem —
     // o último dia é inclusivo, RN-32-B, então o benefício entra no seguinte).
     await pool.query(
-      `UPDATE planos_administrativos SET plano_anterior_valido_ate = current_date - 1, valido_ate = current_date + 30
+      `UPDATE planos_administrativos SET plano_anterior_valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1, valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date + 30
         WHERE anunciante_id = $1 AND status = 'agendado'`,
       [contaBase.id],
     );
@@ -301,7 +304,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
 
     // Benefício acaba: o pago volta com os dias guardados.
     await pool.query(
-      `UPDATE planos_administrativos SET valido_ate = current_date - 1 WHERE anunciante_id = $1 AND status = 'ativo'`,
+      `UPDATE planos_administrativos SET valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE anunciante_id = $1 AND status = 'ativo'`,
       [contaBase.id],
     );
     const dias = agora[0].plano_pago_guardado_dias;
@@ -310,7 +313,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
     assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'voltou ao pago');
     assert.strictEqual(agora[0].plano_cortesia, false);
     assert.strictEqual(agora[0].plano_pago_guardado_id, null);
-    const esperado = new Date(Date.now() + dias * 86400000).toISOString().slice(0, 10);
+    const esperado = vigencia.somarDias(vigencia.hojeComercial(), dias);
     assert.strictEqual(String(agora[0].data_expiracao).slice(0, 10), esperado, 'nenhum dia pago se perdeu');
   } finally {
     await apagarContas([contaBase.id]);

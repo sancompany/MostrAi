@@ -186,7 +186,7 @@ async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
               plano_cortesia = false,
               cortesia_motivo = NULL,
               data_expiracao = CASE WHEN plano_pago_guardado_id IS NULL THEN NULL
-                                    ELSE current_date + plano_pago_guardado_dias END,
+                                    ELSE ${vigencia.HOJE_SQL} + plano_pago_guardado_dias END,
               plano_pago_guardado_id = NULL,
               plano_pago_guardado_dias = NULL
         WHERE id = $1 RETURNING *`,
@@ -421,7 +421,7 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
       `UPDATE anunciantes
           SET plano_id = $2, suspenso = false,
               plano_cortesia = false, cortesia_motivo = NULL,
-              data_inicio_cobertura = CASE WHEN $4 THEN current_date ELSE COALESCE(data_inicio_cobertura, now()) END,
+              data_inicio_cobertura = CASE WHEN $4 THEN ${vigencia.HOJE_SQL} ELSE COALESCE(data_inicio_cobertura, now()) END,
               data_expiracao = $3::timestamptz,
               plano_pago_guardado_id = NULL, plano_pago_guardado_dias = NULL
         WHERE id = $1`,
@@ -503,7 +503,7 @@ async function ativarBeneficiosAgendados() {
       } = await cliente.query(
         `UPDATE planos_administrativos
             SET valido_ate = CASE WHEN plano_anterior_valido_ate IS NULL THEN valido_ate
-                                  ELSE GREATEST(valido_ate, current_date + (valido_ate - plano_anterior_valido_ate)) END,
+                                  ELSE GREATEST(valido_ate, ${vigencia.HOJE_SQL} + (valido_ate - plano_anterior_valido_ate)) END,
                 status = 'ativo', ativado_em = now()
           WHERE id = $1 RETURNING valido_ate`,
         [linha.historico_id],

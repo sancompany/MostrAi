@@ -50,7 +50,10 @@ async function conta() {
 }
 
 async function apagar(id, rodada) {
-  await pool.query('DELETE FROM webhooks_processados WHERE id LIKE $1 OR id LIKE $2', [`%${rodada}%`, `evt_%${rodada}%`]);
+  await pool.query('DELETE FROM webhooks_processados WHERE id LIKE $1 OR id LIKE $2', [
+    `%${rodada}%`,
+    `evt_%${rodada}%`,
+  ]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM cobrancas_confirmadas WHERE anunciante_id = $1', [id]);
@@ -128,14 +131,20 @@ test("v2: 'criada' credita uma vez com o valor do evento; conciliação reconhec
     assert.equal(cobs.length, 1, 'a conciliação reconhece a cobrança que o webhook v2 já creditou');
 
     // Ciclo novo (chargeId novo, eventoId novo): credita com o valor dele.
-    const ciclo2 = v2(assinatura, c, rodada, { evento: 'cobranca_confirmada', chargeId: `pay_2_${rodada}`, valor: 99.9 });
+    const ciclo2 = v2(assinatura, c, rodada, {
+      evento: 'cobranca_confirmada',
+      chargeId: `pay_2_${rodada}`,
+      valor: 99.9,
+    });
     mock = semCheckout();
     try {
       await sc.processarWebhookAssinatura(ciclo2);
     } finally {
       mock.restaurar();
     }
-    ({ rows: cobs } = await pool.query('SELECT valor FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY id', [c.id]));
+    ({ rows: cobs } = await pool.query('SELECT valor FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY id', [
+      c.id,
+    ]));
     assert.equal(cobs.length, 2);
     assert.equal(Number(cobs[1].valor), 99.9);
 
