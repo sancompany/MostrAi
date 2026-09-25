@@ -166,7 +166,14 @@ function caberEm(pedidos, capacidade) {
 // livre, DEPOIS do corte da RN-30: pedir banco nunca muda o `cabe` de
 // ninguém, nem o do próprio dono da dívida (decisão do dono, 25/09/2026 —
 // "entrega corrente não deve ser destruída para satisfazer dívida antiga").
-function montarHoraDeTv(anunciantes, semente) {
+//
+// `duracaoInstitucional` (opcional, padrão `DURACAO_INSTITUCIONAL`): quando
+// existe vídeo institucional configurado (25/09/2026,
+// `src/playlist/gerador.js`), a duração real dele decide quantas peças cabem
+// no tempo livre — sem isso, o cartão HTML de 10s e um vídeo de 47s dividiam
+// a mesma hora em números bem diferentes de peças, e o resto da conta
+// (`qtdInstitucional`, `segundosInstitucionais`) mentia.
+function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INSTITUCIONAL) {
   const todos = embaralhar(
     anunciantes.map((a) => ({
       id: a.id,
@@ -197,7 +204,7 @@ function montarHoraDeTv(anunciantes, semente) {
   const programados = Object.fromEntries(vezesPorId);
 
   const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco);
-  const qtdInstitucional = Math.floor(segundosLivres / DURACAO_INSTITUCIONAL);
+  const qtdInstitucional = Math.floor(segundosLivres / duracaoInstitucional);
 
   const grupos = [...vezesPorId].map(([id, quantidade]) => ({ id, quantidade }));
   const itensPagos = grupos.reduce((soma, g) => soma + g.quantidade, 0);
@@ -220,7 +227,7 @@ function montarHoraDeTv(anunciantes, semente) {
     pedidosPorAnunciante,
     segundosContratados,
     segundosBanco,
-    segundosInstitucionais: qtdInstitucional * DURACAO_INSTITUCIONAL,
+    segundosInstitucionais: qtdInstitucional * duracaoInstitucional,
     qtdInstitucional,
     pedidoSegundos,
     cabeSegundos: Math.min(pedidoSegundos, SEGUNDOS_DA_HORA),

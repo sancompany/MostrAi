@@ -40,7 +40,7 @@ documento só aponta onde.
 | Serviço | Para que serve | Onde administrar | Plano |
 |---|---|---|---|
 | **GitHub** | repositório `sancompany/MostrAi`, público, e o CI | github.com/sancompany | gratuito |
-| **Northflank** | serviço web `mostrai` e os dois jobs, no projeto `MostrAi` do time `san-co`, região South America East | app.northflank.com | `nf-compute-50`, ~US$12/mês + volume 6 GB (~US$0,90) |
+| **Northflank** | serviço web `mostrai` e os três jobs (`Conciliacao`, `Backup`, `ApuracaoBancoHoras`), no projeto `MostrAi` do time `san-co`, região South America East | app.northflank.com | `nf-compute-50`, ~US$12/mês + volume 6 GB (~US$0,90) |
 | **Supabase** | Postgres 17 e o Storage (`criativos`), projeto `MostrAi`, região sa-east-1 | supabase.com/dashboard | **Free** — sem backup automático (exceção da Lei 6, `CONSTRAINTS.md`) |
 | **Cloudflare** | DNS de `sancocore.com.br` e o Access na frente de `/admin` | dash.cloudflare.com | gratuito |
 | **San Checkout** | cobrança (estrutura da San & Co.) — o Mostraí é o contratante `mostrai` | painel admin do Checkout | — |
@@ -54,7 +54,9 @@ cada conta, e onde vive o segundo fator de cada login.
 ## 2. Onde estão os segredos, e como rotacionar
 
 Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
-`mostrai` → Environment**, e nos jobs `Conciliacao`, `Backup` e (quando for criado) `ApuracaoBancoHoras` — este só leva `DATABASE_URL` e `NODE_ENV`.
+`mostrai` → Environment**, e nos jobs `Conciliacao`, `Backup` e
+`ApuracaoBancoHoras` (criado em 25/09/2026) — este último só leva
+`DATABASE_URL` e `NODE_ENV`.
 
 | Segredo | Onde se gera um novo |
 |---|---|
@@ -216,7 +218,7 @@ não foi tocada).**
 | `/health` não responde | container caiu ou não sobe | Northflank → Observe → logs. Erro no boot costuma ser variável faltando |
 | Job `Conciliacao` falhou | alguma assinatura não conciliou (sai com código 1) | ler o log: ele nomeia a assinatura e o erro. Cliente pagante pode estar sem cobertura |
 | Job `Backup` falhou | sem backup desta semana | conferir se o volume `/backups` está montado e se o `pg_dump` alcança o banco |
-| Job `ApuracaoBancoHoras` falhou (ou não existe ainda) | o déficit do mês anterior não entrou no banco de horas — essa dívida não volta em exibição até o job rodar | ler o log e o código de saída (1 falhou, 2 argumento, 3 já em execução — `docs/job-apuracao-banco-horas.md`); rodar de novo é seguro (idempotente). Se o job nunca foi criado, a especificação está no mesmo arquivo |
+| Job `ApuracaoBancoHoras` falhou | o déficit do mês anterior não entrou no banco de horas — essa dívida não volta em exibição até o job rodar | ler o log e o código de saída (1 falhou, 2 argumento, 3 já em execução — `docs/job-apuracao-banco-horas.md`); rodar de novo é seguro (idempotente) |
 | Webhook do Checkout dando 401 | assinatura HMAC não fecha | a `SAN_CHECKOUT_KEY` dos dois lados divergiu. Comparar com o painel do Checkout |
 | Fila `eventos_assinatura_pendentes` crescendo | eventos chegando e não sendo aplicados | admin → a fila mostra o motivo de cada um |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |
@@ -288,7 +290,7 @@ parou de pagar:
 1. Cancelar as assinaturas ativas pelo admin (chama o Checkout).
 2. Pedir a quem administra o Checkout para arquivar o contratante `mostrai`.
 3. Rodar `npm run backup` e **guardar o dump fora do Northflank**.
-4. Pausar os jobs `Conciliacao` e `Backup`.
+4. Pausar os jobs `Conciliacao`, `Backup` e `ApuracaoBancoHoras`.
 5. Pausar o serviço `mostrai`.
 6. Só então mexer no Supabase e no DNS.
 

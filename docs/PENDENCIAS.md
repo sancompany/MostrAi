@@ -327,7 +327,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     redirecionamento hoje; a fonte é o `API.md`.
 12. [x] **Backup** — job `Backup` ativo (`0 8 * * 0`); ensaio de restauração feito em 25/09/2026 (RUNBOOK §5). Texto original: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
-14. [ ] **Criar o job `ApuracaoBancoHoras` no Northflank** — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK (25/09/2026). Especificação completa (cron `0 6 1 * *`, comando, variáveis, tentativas, primeira execução em `--dry-run`): `docs/job-apuracao-banco-horas.md`. Sem o job, nenhum déficit mensal entra no banco de horas (a liquidação diária já roda dentro do `Conciliacao`).
+14. [x] **Criar o job `ApuracaoBancoHoras` no Northflank** — FEITO em 25/09/2026, exatamente pela especificação de `docs/job-apuracao-banco-horas.md`: cron `0 6 1 * *` (UTC), `Forbid`, `backoffLimit 2`, `activeDeadlineSeconds 600`, plano `nf-compute-20`, imagem construída do mesmo repositório/branch (`main`) que o `Conciliacao`, variáveis só `DATABASE_URL` e `NODE_ENV=production`. 1ª execução manual com `--dry-run` rodou com sucesso (código 0, as duas linhas de log da simulação, nada gravado). Próximo disparo: 01/10/2026 06:00 UTC.
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
 
@@ -4827,15 +4827,26 @@ K.2 (custo por exibição prevista dessas contas) ficam sem objeto.
 Relatório completo: `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`. Os itens A–E
 existiam só na conversa com o dono e ficam registrados aqui.
 
-- **A. Vídeo institucional — AGUARDA_OPERADOR (`ENVIAR_VIDEO_INSTITUCIONAL`).**
-  Nada foi implementado. Especificação curta do caminho, na ordem:
-  ARQUIVO RECEBIDO (o dono envia o vídeo final) → upload/armazenamento (mesmo
-  bucket público dos criativos, com `conteudo_sha256`) → configuração (qual
-  vídeo é o institucional e quanto dura — hoje o institucional é o cartão HTML
-  de 10 s do player, `DURACAO_INSTITUCIONAL` em `src/lib/pacing.js`) → backend
-  (o gerador passa a usar a duração real e o item do contrato V2 leva a URL e o
-  hash) → playlist → Player (V2 baixa e toca como mídia; V1 continua com o
-  cartão) → validação numa TV real.
+- **A. Vídeo institucional — CÓDIGO_PRONTO_AGUARDA_UPLOAD_EM_PRODUÇÃO
+  (25/09/2026).** ARQUIVO RECEBIDO do dono (vídeo vertical, 15s). O caminho
+  inteiro da especificação original foi implementado: upload/armazenamento
+  (`POST /admin/video-institucional`, mesmo pipeline `normalizar()` dos
+  criativos — ffmpeg 1080x1920, thumbnail, `conteudo_sha256` do arquivo
+  final, upload pro Storage) → configuração (`configuracoes_site`, chave
+  `video_institucional`, mesma tabela da foto de exemplo do ponto, migration
+  055) → backend (`src/playlist/gerador.js#obterVideoInstitucional`; o
+  gerador usa a duração real do vídeo em vez dos 10s fixos —
+  `src/lib/pacing.js#montarHoraDeTv` ganhou parâmetro de duração) → playlist
+  (item do contrato V2 leva `url`, `duracaoSegundos` real e `contentHash` —
+  ver `docs/api.md`) → Player (V2 baixa e toca como mídia; V1 ignora
+  `url`/`duracaoSegundos` desse item de propósito e continua sempre com o
+  cartão — zero mudança de código no V1). Testado: 422/422 testes
+  automatizados (`tests/video-institucional.test.js`, novo; mais um teste em
+  `tests/pacing.test.js`) e verificação manual via Playwright da tela nova em
+  `Mídia Mostraí` (upload, preview, estado vazio). **Falta:** subir esse
+  código pra produção e então fazer o upload de verdade do arquivo que o
+  dono enviou (não dá pra testar upload real localmente — `.env` local não
+  tem credencial do Supabase Storage) → validação numa TV real.
 - **B. Job `ApuracaoBancoHoras` — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK.**
   Especificação: `docs/job-apuracao-banco-horas.md`. Faz parte da decisão
   MANTER o banco de horas (25/09), inclusive a flexibilidade de a dívida voltar
@@ -4855,8 +4866,13 @@ existiam só na conversa com o dono e ficam registrados aqui.
 
 ### Gates do operador (só ele faz)
 
-1. Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).
-2. Enviar o vídeo institucional (item A).
+1. ~~Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).~~ —
+   **FEITO em 25/09/2026**, ver item 14 (seção A) para o detalhe da
+   configuração e da 1ª execução (`--dry-run`).
+2. ~~Enviar o vídeo institucional.~~ — Arquivo **recebido** em 25/09/2026 e
+   já **implementado** (código pronto, testado, aguardando deploy — item A).
+   Falta o upload de verdade em produção depois do deploy, e a validação
+   numa TV real.
 3. Fazer o último teste de ponta a ponta com compra real (inclui ver o e-mail
    HTML e o comprovante PDF chegarem, e o acerto proporcional de uma troca).
 4. Autorizar o reset do banco ("pode resetar") — os dados atuais são de teste

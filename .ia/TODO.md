@@ -134,12 +134,13 @@ pelo Codex — explícito, não assumir o contrário.**
     `src/playlist/congelamento-repository.js`, `tests/`.
   - Critério de conclusão: teste roda em `npm test`/`npm run check` e falha
     se a garantia for quebrada.
-- **Criar o job `ApuracaoBancoHoras` no Northflank** — gate do operador
-  (confirmado que não existe, 25/09/2026). Código pronto
-  (`scripts/apurar-banco-horas.js`: `--dry-run`, `--mes=AAAA-MM`, trava,
-  códigos 0/1/2/3) e especificação completa em
-  `docs/job-apuracao-banco-horas.md` (cron, variáveis — `DATABASE_URL`
-  direto no job —, primeira execução em `--dry-run`).
+- ~~Criar o job `ApuracaoBancoHoras` no Northflank~~ — **FEITO em
+  25/09/2026**, pela especificação de `docs/job-apuracao-banco-horas.md`
+  (cron `0 6 1 * *` UTC, `Forbid`, `backoffLimit 2`,
+  `activeDeadlineSeconds 600`, `nf-compute-20`, imagem do mesmo
+  repositório/branch `main` que o `Conciliacao`, variáveis só
+  `DATABASE_URL` e `NODE_ENV`). 1ª execução manual com `--dry-run`: código
+  0, nada gravado.
 - ~~Investigar se `bonus.ponto` sempre `null` é intencional~~ — **resolvido
   (25/09/2026)**: é intencional e o campo `bonus` de `GET /conta/modos` é
   morto (nenhuma tela lê; o módulo de bônus foi aposentado). Detalhe em

@@ -171,6 +171,18 @@ test('hora sem nenhum anunciante é hora institucional inteira', () => {
   assert.ok(hora.itens.every((i) => i === ID_INSTITUCIONAL));
 });
 
+// Vídeo institucional (25/09/2026): a duração de verdade decide quantas
+// peças cabem no tempo livre — sem o 3º argumento (rede sem vídeo
+// configurado), o comportamento de sempre não muda.
+test('duração do institucional é configurável — menos peças de vídeo longo cabem na mesma hora livre', () => {
+  const cartao = montarHoraDeTv([]);
+  const video = montarHoraDeTv([], undefined, 47);
+  assert.strictEqual(cartao.qtdInstitucional, SEGUNDOS_DA_HORA / DURACAO_INSTITUCIONAL);
+  assert.strictEqual(video.qtdInstitucional, Math.floor(SEGUNDOS_DA_HORA / 47));
+  assert.strictEqual(video.segundosInstitucionais, video.qtdInstitucional * 47);
+  assert.notStrictEqual(video.qtdInstitucional, cartao.qtdInstitucional);
+});
+
 test('ocupação diz quanto da hora está vendido', () => {
   const vazia = montarHoraDeTv([{ id: 1, frequenciaBase: 3, deficit: 0, duracaoSegundos: 20 }]);
   assert.strictEqual(vazia.ocupacao, 2, '60s de 3600 = 2%');

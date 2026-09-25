@@ -339,12 +339,21 @@ entregam menos, na mesma proporção. *Quem vê:* o anunciante, no painel.
 > quando enche — a mesma degradação, só que combinada.
 
 **RN-40 — Espaço vago da hora anuncia a própria rede.** Os segundos que
-ninguém comprou são preenchidos com a peça institucional do player (`#vazio`
-em `public/player.html`, a mesma que aparece quando não há playlist): "Este
-espaço pode ser do seu negócio". Dez segundos por peça. Não tem url, não é de
-ninguém, não conta exibição e não entra em relatório de entrega. *Violada:*
-não há caminho — a tela nunca fica preta nem parada. *Quem vê:* quem está na
-frente da TV, que é exatamente o público que a Mostraí quer vender.
+ninguém comprou são preenchidos com a peça institucional. Por padrão é o
+cartão do player (`#vazio` em `public/player.html`, a mesma peça que aparece
+quando não há playlist): "Este espaço pode ser do seu negócio", 10s por
+peça, sem url. Desde 25/09/2026 o admin pode subir um vídeo institucional
+real (`Mídia Mostraí` → "Vídeo institucional", `POST
+/admin/video-institucional`, doc completa em `docs/api.md`): configurado,
+o **Player V2** baixa e toca esse vídeo no lugar do cartão (duração real do
+arquivo, não mais 10s fixos — quem decide quantas peças cabem na hora vaga
+é a duração configurada, `src/lib/pacing.js`); o **Player V1** ignora o
+vídeo de propósito e continua sempre mostrando o cartão HTML — não há UI
+pra trocar isso, é o comportamento do contrato 1. Em ambos os casos: não é
+de ninguém, não conta exibição e não entra em relatório de entrega.
+*Violada:* não há caminho — a tela nunca fica preta nem parada. *Quem vê:*
+quem está na frente da TV, que é exatamente o público que a Mostraí quer
+vender.
 
 **RN-41 — Cada plano tem um teto de duração da peça.** `duracao_maxima_segundos`
 define até quantos segundos a peça pode ter: 15s no Essencial, 20s no Destaque,
