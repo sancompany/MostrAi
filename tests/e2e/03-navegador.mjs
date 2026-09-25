@@ -9,10 +9,11 @@
 // Contas com o dono de ponto e cadastro no celular.
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) => execSync(`PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "${sql.replace(/"/g, '\\"')}"`).toString().trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 // Admin e usuários em contextos separados: o cookie de sessão é um só por
 // contexto, e o cadastro regenera a sessão (derrubaria o admin).
 const ctxAdmin = await b.newContext({ viewport: { width: 1280, height: 900 } });
@@ -29,7 +30,7 @@ async function pagina(url, vp, contexto = ctx) {
   // 401/404 esperados (sem login, PIN errado) não contam.
   p.on('console', (m) => { if (m.type() === 'error' && !/status of (401|404)/.test(m.text())) erros.push(`${url} console: ${m.text()}`); });
   p.on('dialog', async (d) => { d.type() === 'prompt' ? await d.accept(d.defaultValue()) : await d.accept(); });
-  await p.goto(B + url, { waitUntil: 'networkidle' });
+  await irQuieto(p, B + url);
   return p;
 }
 async function irPara(adm, hash) {

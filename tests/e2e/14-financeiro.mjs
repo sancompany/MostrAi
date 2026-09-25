@@ -5,6 +5,7 @@
 // anotação interna do repasse nunca sai do servidor. A página antiga do
 // ponto não tem mais extrato. Assume servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
@@ -12,7 +13,7 @@ const PG = (sql) =>
     .toString()
     .trim()
     .split('\n')[0];
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
 const falhas = [];
 const erros = [];
@@ -59,7 +60,7 @@ async function entrar(conta) {
   p.on('response', (r) => {
     if (r.status() >= 400 && r.url().startsWith(B)) respostasRuins.push(`${r.status()} ${r.url()}`);
   });
-  await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/anunciante/login.html`);
   await p.fill('#email', conta.email);
   await p.fill('#senha', 'Senha123!');
   await p.click('button[type="submit"]');
@@ -112,7 +113,7 @@ await p.waitForTimeout(400);
 check('celular: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
 await shot(p, '2-celular');
 
-await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
+await irQuieto(p, `${B}/anunciante/ponto.html`);
 check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#extratoPonto')), p.url());
 
 check('sem erro de console', erros.length === 0, erros.join(' | '));

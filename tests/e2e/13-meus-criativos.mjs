@@ -6,13 +6,14 @@
 // do ponto não tem mais "Meu anúncio na minha tela". Assume servidor na 3999.
 // Os arquivos são semeados no banco (o upload real precisa do Storage).
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
   execSync(`psql "${process.env.DATABASE_URL}" -tAc "${sql.replace(/"/g, '\\"')}"`)
     .toString()
     .trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
 const falhas = [];
 const erros = [];
@@ -60,7 +61,7 @@ async function entrar(conta) {
       respostasRuins.push(`${r.status()} ${r.url()}`);
   });
   await ctx.clearCookies();
-  await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/anunciante/login.html`);
   await p.fill('#email', conta.email);
   await p.fill('#senha', 'Senha123!');
   await p.click('button[type="submit"]');
@@ -207,7 +208,7 @@ PG(
 p = await entrar(dono);
 await p.waitForSelector('#modCriativos:not([hidden])', { timeout: 8000 }).catch(() => {});
 check('dono sem plano (só o comodato legado) não vê Meus criativos', !(await p.isVisible('#modCriativos')));
-await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
+await irQuieto(p, `${B}/anunciante/ponto.html`);
 check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#arquivoAutoanuncio')), p.url());
 
 check('sem erro de console', erros.length === 0, erros.join(' | '));

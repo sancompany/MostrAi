@@ -1,9 +1,14 @@
 # Current Handoff
 
 ## Updated
-2026-09-25 — reconciliação dos vínculos sandbox órfãos (PENDENCIAS L.2):
-assinaturas/cobranças/ciclos/webhooks do sandbox saíram do banco com
-snapshot no evento `sandbox:reconciliacao` (id 35); conta 3 sem plano.
+2026-09-25 — **fechamento pré-gates** (relatório completo em
+`docs/FECHAMENTO_PRE_GATES_2026-09-25.md`): PR #60 (main verde, dois bugs
+do 299f3e5, heartbeat V2 determinístico), #61 (banco de horas como
+obrigação de veiculação — migration 090, válvula removida, job pronto e
+NÃO criado no Northflank; `npm audit` 0), #62 (e-mails HTML + texto,
+comprovante de pagamento em PDF, backup sem arquivo vazio) e o ensaio de
+restauração (RUNBOOK §5). San Checkout em produção. Antes, no mesmo dia:
+reconciliação dos vínculos sandbox órfãos (PENDENCIAS L.2).
 
 ## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
 Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de
@@ -18,8 +23,9 @@ novo no fim; nenhum service token restante). **Banco NÃO resetado** — o
 reset final só depois da auditoria Codex/Jules. Regras novas que não se
 desfazem sem contexto: `src/lib/vigencia.js` (RN-32-B), assinatura nasce
 `pendente_pagamento`, `dispositivoId` de 5 dígitos + Preparar Player,
-`aguardando_primeiro_sinal`, banco de horas drena só na geração que
-congela a hora. Detalhe de H abaixo:
+`aguardando_primeiro_sinal`, banco de horas: a geração só programa
+(`vezes_banco`) e a liquidação abate o confirmado uma vez por hora fechada
+(`banco_liquidado_em`, migration 090, 25/09/2026). Detalhe de H abaixo:
 - Removidos do código executável (410 com motivo, tabelas ficam como
   histórico): programa de vendedores inteiro (`/vendedor/*`,
   `/admin/comissoes*`, `/admin/vendedores*`, `vendedores-repository.js`,
@@ -39,8 +45,8 @@ congela a hora. Detalhe de H abaixo:
 - **I parte 1 (polimento)** — `src/lib/vigencia.js` é a régua única de
   vigência (RN-32-B, último dia inclusivo em Matão): NUNCA comparar
   `new Date(data_expiracao)` com o relógio; usar `coberturaVigente`/
-  `vigenteSql`. Cotação devolve `acao`; banco de horas drena só na geração
-  que congelou a hora (`congelada.criadaAgora`); heartbeat só emite SSE em
+  `vigenteSql`. Cotação devolve `acao`; banco de horas: geração só programa,
+  liquidação abate o confirmado (migration 090 — `criadaAgora` saiu); heartbeat só emite SSE em
   transição; job de benefícios notifica início/fim.
 
 ## Custo por exibição prevista + benefício por ciclo (24/09/2026, este agente)
@@ -125,7 +131,7 @@ aparelho_id/ultima_vez_online`).
   benefícios (antes apagaria o pago guardado e o programado).
 - **Modelo antigo fora do fluxo ativo** (histórico preservado): apagados
   `src/pontos/comodato.js` e `planos-ponto-repository.js`; rotas de
-  modalidade/repasse/troca/bônus → 410; `GET /planos-ponto` → `[]`; ficha
+  modalidade/repasse/troca/bônus → 410; `GET /planos-ponto` → 410 (era `[]`); ficha
   sem card Comodato; Contas sem coluna Comodato; Ofertas só 3 tiers;
   Financeiro sem aba Repasses; Visão geral sem custo de pontos; painel sem
   Recebimentos/bônus; convite sem escolha de modalidade; site com o texto
@@ -1680,7 +1686,7 @@ Em 20/09/2026 a produção caiu porque a senha do Postgres foi trocada no Supaba
 `src/admin/metrica.js` usa o status antigo `p.status = 'ativo'` na amortização histórica. Pontos atuais usam `em_operacao`; a aba Métrica zera amortização e pode inflar margem. Visão geral está correta. Tratar quando o dono chegar nessa tela ou autorizar.
 
 ## Paused until explicit request
-Player/proof-of-play, banco de horas/déficit físico e troca proporcional. A ideia de banco de horas nos dois sentidos está em `docs/proximas-versoes.md`. Manter tudo registrado e não trabalhar espontaneamente. A concorrência da playlist saiu desta lista porque o dono autorizou e ela foi corrigida nesta sessão.
+Player/proof-of-play e troca proporcional. (O banco de horas foi retomado e fechado em 25/09/2026 — decisão MANTER.) A ideia de banco de horas nos dois sentidos está em `docs/proximas-versoes.md`. Manter tudo registrado e não trabalhar espontaneamente. A concorrência da playlist saiu desta lista porque o dono autorizou e ela foi corrigida nesta sessão.
 
 ## Existing temporary diagnostic
 `?debug=1` no player permanece disponível, mas não retomar teste/correção sem pedido.
@@ -1698,7 +1704,7 @@ Após o dono confirmar que `&debug=1` funcionou na TV e autorizar retomar o cami
 Aguardar a próxima tela/observação do dono. Classificar como bug, inconsistência, melhoria visual, decisão, legado ou não confirmado; checar impactos laterais antes de alterar.
 
 ## Plano do dono para os próximos dias (21/09/2026)
-Ordem que ele deu: (1) terminar a revisão do painel admin e do painel do anunciante — o redesign do Codex "melhorou muito" mas não bateu 100%, **principalmente a parte visual**; ele pediu explicitamente pra ESTE agente (Claude) corrigir isso, não o Codex — em especial **voltar as cores pra paleta própria do Mostraí** (laranja `#ff7a1a`, ver `theme-color` nos HTMLs e `public/style.css`) onde o redesign tiver se afastado dela; (2) terminar o app Android TV da playlist (`docs/proximas-versoes.md`, "App Android TV nativo..."); (3) **trocar o San Checkout de sandbox pra produção** — não investigado ainda se é config do lado do Mostraí (`SAN_CHECKOUT_*` já parecem apontar pra domínio de produção, `sancocore.com.br` — conferir antes de assumir) ou decisão só do lado de quem administra o Checkout; (4) finalizar os testes. Estimativa dele: ~2 dias de trabalho até poder vender; depois disso "só vai sobrar ir atrás do anunciante" (prospecção, fora do escopo de código).
+Ordem que ele deu: (1) terminar a revisão do painel admin e do painel do anunciante — o redesign do Codex "melhorou muito" mas não bateu 100%, **principalmente a parte visual**; ele pediu explicitamente pra ESTE agente (Claude) corrigir isso, não o Codex — em especial **voltar as cores pra paleta própria do Mostraí** (laranja `#ff7a1a`, ver `theme-color` nos HTMLs e `public/style.css`) onde o redesign tiver se afastado dela; (2) terminar o app Android TV da playlist (`docs/proximas-versoes.md`, "App Android TV nativo..."); (3) ~~trocar o San Checkout de sandbox pra produção~~ — **FEITO** (em produção, Pix e cartão reais homologados; conferido em 25/09/2026); (4) finalizar os testes. Estimativa dele: ~2 dias de trabalho até poder vender; depois disso "só vai sobrar ir atrás do anunciante" (prospecção, fora do escopo de código).
 
 ## Item em aberto, agora especificado mas DEFERIDO — não implementar sem novo pedido (21/09/2026)
 A "promoção de trazer gente de fora" mencionada antes (e que ficava sem detalhe) foi explicada pelo dono: dá um **crédito pro comodato**, e **quanto mais crédito, mais o plano do ponto sobe de nível**. Ele foi explícito: "**fica pendente também**" — não construir agora. Antes de começar quando ele pedir, checar contra o que já existe (pode ser extensão do `src/indicacoes/` — que já libera upgrade de plano por indicação em 3 limiares — ou algo separado ligado ao comodato/`credito_comodato_mensal`); não assumir qual dos dois sem perguntar, o mecanismo exato (o que conta como "trazer gente de fora", quanto vale cada crédito, a curva de nível) não foi dado.

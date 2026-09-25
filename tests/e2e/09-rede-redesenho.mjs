@@ -8,6 +8,7 @@
 // visual final do admin (23/09/2026, PR #22): ficha em `.ficha-*`, migalha
 // "Pontos / <nome>", safe area em cruz, "+ Tela" e "Liberar" em modal.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
@@ -22,7 +23,7 @@ const PG = (sql) =>
     .trim();
 const SAIDA = new URL('./saida/', import.meta.url).pathname;
 
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctxAdmin = await b.newContext({ viewport: { width: 1400, height: 960 } });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 1000 } });
 const falhas = [];
@@ -38,10 +39,18 @@ async function pagina(url, contexto = ctx) {
   const p = await contexto.newPage();
   p.on('pageerror', (e) => erros.push(`${url}: ${e.message}`));
   p.on('console', (m) => {
-    if (m.type() === 'error' && !/status of (400|401|404|409|502)/.test(m.text())) erros.push(`${url} console: ${m.text()}`);
+    if (m.type() !== 'error' || /status of (400|401|404|409|502)/.test(m.text())) return;
+    // O upload da foto da candidatura falha DE PROPÓSITO neste ambiente (sem
+    // Supabase Storage: o cliente nem monta, e a rota devolve 500) — o
+    // roteiro confere justamente que o pedido segue mesmo assim. Só esse
+    // pedido é perdoado; qualquer outro 500 continua contando.
+    const doUploadDaFoto =
+      /\/conta\/modos\/ponto\/candidaturas\/\d+\/foto$/.test(m.location()?.url || '') ||
+      m.text().startsWith('falha ao enviar foto da candidatura');
+    if (!(doUploadDaFoto && !process.env.SUPABASE_URL)) erros.push(`${url} console: ${m.text()}`);
   });
   p.on('dialog', async (d) => (d.type() === 'prompt' ? await d.accept(d.defaultValue()) : await d.accept()));
-  await p.goto(B + url, { waitUntil: 'networkidle' });
+  await irQuieto(p, B + url);
   return p;
 }
 

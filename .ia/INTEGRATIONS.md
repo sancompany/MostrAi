@@ -68,28 +68,24 @@ código. Fonte: `.env.example`, `RUNBOOK.md`, código.
 ## Northflank
 
 - **Finalidade**: hospedagem do serviço web `mostrai` (a aplicação Node) e
-  dos jobs agendados (`Conciliacao`, `Backup`, `ApuracaoBancoHoras` — este
-  último com status incerto, ver abaixo).
+  dos jobs agendados (`Conciliacao`, `Backup`; `ApuracaoBancoHoras` ainda
+  não criado — ver abaixo).
 - **Onde aparece**: `Dockerfile` (a imagem que o Northflank constrói e
   roda), `scripts/backup.sh`/`conciliar.js`/`apurar-banco-horas.js` (o que
   cada job executa).
 - **Variáveis de ambiente**: todas as de `.env.example` são configuradas no
   painel do serviço Northflank, nunca em arquivo — não há arquivo de config
-  do Northflank versionado neste repositório (confirmar se isso muda;
-  existe uma branch separada `claude/mostrai-estacao-1-pipeline-y2vgr5`
-  com um commit "Adiciona Dockerfile de producao para o Northflank" que
-  **não foi investigada nesta sessão** — não presuma o conteúdo dela).
+  do Northflank versionado neste repositório (a branch
+  `claude/mostrai-estacao-1-pipeline-y2vgr5` já está inteira no `main`).
 - **Como verificar status**: app.northflank.com, projeto `MostrAi`, time
   `san-co`, região South America East; ou a skill/plugin `northflank`
   quando disponível no ambiente do agente (API/CLI/JS client).
 - **Estado atual**: deploy automático ativo (push na `main` → build →
-  migrations no arranque do container → troca do container). Uma instância
-  só hoje (ver `.ia/RISKS.md` — janela de 503 na troca de deploy, medida e
-  aceita como custo, não bug).
-- **Job `ApuracaoBancoHoras`**: `RUNBOOK.md` registra que ele "falhou (ou
-  não existe ainda)" como um dos sinais de alerta — **não confirmado nesta
-  sessão se o job já foi criado no Northflank**. Ver `docs/PENDENCIAS.md`,
-  item A.14, e `.ia/RISKS.md`.
+  migrations no arranque do container → troca do container). **2
+  instâncias** (`nf-compute-50`, conferido em 25/09/2026).
+- **Job `ApuracaoBancoHoras`**: não criado ainda (conferido em
+  25/09/2026). Especificação completa em `docs/job-apuracao-banco-horas.md`
+  — gate do operador.
 
 ## San Checkout
 
@@ -112,7 +108,8 @@ código. Fonte: `.env.example`, `RUNBOOK.md`, código.
   o contrato de API real em vez de supor (ver
   `docs/erros/2026-09-14-contrato-do-checkout-suposto-em-vez-de-lido.md` —
   erro registrado exatamente por não fazer isso antes).
-- **Estado atual**: webhook fail-closed, idempotente (`webhooks_processados`)
+- **Estado atual**: **em produção** (`ASAAS_AMBIENTE=producao`; Pix e
+  cartão reais homologados). Webhook fail-closed, idempotente (`webhooks_processados`)
   e transacional — regra dura, não afrouxar (`CONSTRAINTS.md`). Um caso de
   troca de plano falhando ("não foi possível calcular o acerto proporcional
   desta troca") foi investigado nesta sessão e apontado como problema do
@@ -122,11 +119,13 @@ código. Fonte: `.env.example`, `RUNBOOK.md`, código.
 
 ## Google Workspace
 
-- **Finalidade**: e-mail transacional (SMTP, confirmação de conta,
-  redefinição de senha, avisos de criativo aprovado/reprovado) e backup de
-  nota fiscal no Google Drive.
+- **Finalidade**: e-mail transacional (SMTP; HTML + texto desde
+  25/09/2026, com o comprovante de pagamento em PDF anexado ao "Pagamento
+  confirmado"). O backup de nota fiscal no Google Drive saiu do código em
+  24/09/2026 (`src/financeiro/drive.js` removido) — as variáveis `GOOGLE_*`
+  abaixo são legado.
 - **Onde aparece**: `src/financeiro/email.js` (SMTP via `nodemailer`),
-  `src/financeiro/drive.js` (`googleapis`, conta de serviço).
+  `src/financeiro/comprovante.js` (PDF).
 - **Variáveis de ambiente**: `MOSTRAI_EMAIL_FROM`, `MOSTRAI_EMAIL_CONTATO`,
   `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`,
   `GOOGLE_DRIVE_FOLDER_ID`, `GOOGLE_SERVICE_ACCOUNT_KEY` (produção — JSON

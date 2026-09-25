@@ -21,11 +21,11 @@ comando de release: **as migrations rodam no arranque do próprio contêiner**
 (`Dockerfile`, `node src/db/migrate.js && node src/server.js`). Se a migration
 falhar, o contêiner não sobe e o anterior continua servindo.
 
-O serviço tem **uma instância** e uma sonda de prontidão em `/health`
-(readinessProbe, 10s de espera inicial). Com uma instância só, a troca ainda
-deixa uma janela de poucos segundos em que o domínio responde 503 — foi medido.
-Se um dia isso incomodar, a saída é subir para duas instâncias; é decisão de
-custo, não de código.
+O serviço tem **duas instâncias** (`nf-compute-50`, conferido em
+25/09/2026) e uma sonda de prontidão em `/health` (readinessProbe, 10s de
+espera inicial). A troca é rolante: uma instância nova só recebe tráfego
+depois do `/health`. A janela de 503 medida quando havia uma instância só
+não se aplica mais.
 
 **Como conferir que um deploy deu certo:** `curl https://mostrai.sancocore.com.br/health`
 deve devolver `{"ok":true}`; a aba Visão geral do admin mostra a última
@@ -93,12 +93,13 @@ continua no ar — é o comportamento desejado.
 
 ---
 
-## 3.1 San Checkout: virada de sandbox para produção (gate do dono)
+## 3.1 San Checkout: virada de sandbox para produção — FEITA
 
-Hoje o Checkout roda com `ASAAS_AMBIENTE=sandbox` e o Mostraí aponta pra ele
-(`SAN_CHECKOUT_API_URL`, `SAN_CHECKOUT_BASE_URL`, `SAN_CHECKOUT_KEY`). A
-virada é decisão do dono, nunca automática — e é uma sequência, não um
-toggle. Registrado na consolidação final (24/09/2026):
+**Histórico.** A virada aconteceu: o Checkout roda com
+`ASAAS_AMBIENTE=producao` (conferido no contêiner em 25/09/2026) e Pix e
+cartão reais foram homologados pelo dono. A sequência abaixo fica como
+referência de como foi feita e de como reverter. Registrado na consolidação
+final (24/09/2026):
 
 1. **Antes** — no Mostraí, listar o que é de sandbox: `assinaturas` com
    `status IN ('ativa','pendente_pagamento','pendente_troca')`,

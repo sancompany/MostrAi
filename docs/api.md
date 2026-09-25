@@ -85,7 +85,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/conta/modos` | `{papeis, modos:{anunciante:{liberado, precisaEndereco}, ponto:{liberado, pedido}, vendedor:{liberado, pedido}}, bonus:{ponto, anuncio}}` — o que o painel usa pra desenhar as três abas e os cards de bônus. `vendedor.pedido` fica sempre `null` daqui pra frente (18/09/2026) — só existe pra linha antiga de quem pediu antes disso. |
+| GET | `/conta/modos` | `{papeis, modos:{anunciante:{liberado, precisaEndereco}, ponto:{liberado, pedido}, vendedor:{liberado, pedido}}, bonus:{ponto, anuncio}}` — o que o painel usa pra desenhar os modos. `bonus` vem sempre `{ponto:null, anuncio:null}`: os bônus foram aposentados (ponto rende crédito, ADR-016) e nenhuma tela lê o campo (conferido em 25/09/2026). `vendedor.pedido` fica sempre `null` daqui pra frente (18/09/2026) — só existe pra linha antiga de quem pediu antes disso. |
 | POST | `/conta/modos/anunciante` | Ativa o modo anúncios na própria conta: exige endereço completo — em partes desde 24/09/2026 (`cep`, `logradouro`, `numero`, `bairro`, `cidade`, `uf`; `complemento` opcional; D5, `src/lib/endereco.js`), ou o que a conta já tiver gravado (aceita `categoria_id`/`categoria_livre`). Acrescenta o papel. |
 | POST | `/conta/modos/ponto/pedir` | Pedido de tela de dentro do painel → candidatura `origem=painel` com `conta_id` (`nome_comercio`, endereço em partes — `cep`, `logradouro`, `numero`, `bairro`, `cidade`, `uf`, `complemento` opcional, D5 de 24/09/2026; 400 dizendo qual parte falta —, `fluxo_estimado_mensal` e `horario_semanal` obrigatórios — este último desde 22/09/2026; `plano_ponto_id` opcional, `mensagem` opcional). `segmento` não precisa vir no corpo: resolvido no servidor a partir de `categoria_livre` da conta ou, se ela usa o catálogo fixo, do nome de `categoria_id`. `horario_semanal` é `{seg,ter,qua,qui,sex,sab,dom}`, cada dia `null` (fechado) ou `{abre,fecha}` em `HH:MM` (`src/lib/horario-semanal.js#validar`) — a tela só pede 3 grupos (seg-sex/sáb/dom) e replica seg-sex pros 5 dias. 409 se já houver pedido em análise. E-mail de aviso pro dono (`enviarCandidaturaNova`), fire-and-forget. Retorna `{ok, id}` — o `id` alimenta o upload de foto abaixo. |
 | POST | `/conta/modos/ponto/candidaturas/:id/foto` | **Conta logada, dona da candidatura** (migration 067, 22/09/2026). Segundo passo, opcional — multipart (`arquivo`), mesmo padrão de storage das demais fotos do projeto. Sem foto, candidatura e ponto continuam válidos (placeholder assume). Copiada pro `pontos.foto_instalacao_url` quando `liberarPapelNaConta` cria o ponto. |
@@ -124,10 +124,10 @@ exibição — só aceita quem está programado nesta tela nesta hora. `200
 
 ### Contrato 2 — envelope (app Android nativo, `sancompany/playlist.mostrai`, 21/09/2026)
 
-`contrato_playlist = 2`, marcado por tela direto na aba Telas do admin (select
-"Contrato", 22/09/2026 — antes só dava pra mudar por `PATCH
-/admin/dispositivos/:id {"contrato_playlist":2}` na unha, sem controle na UI)
-— pra quem instalar o app nativo naquela TV. `GET /playlist/:dispositivoId`
+`contrato_playlist = 2` por tela, via `PATCH /admin/dispositivos/:id
+{"contrato_playlist":2}` (o select "Contrato" da aba Telas saiu no redesenho
+da Rede — conferido em 25/09/2026: não há controle na UI; o Player V2 manda
+`X-Player-Contract: 2` e recebe o envelope sem precisar da marca). `GET /playlist/:dispositivoId`
 devolve:
 
 ```json

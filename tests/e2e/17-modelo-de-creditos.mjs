@@ -13,6 +13,7 @@
 // painel pelo LISTEN/NOTIFY do barramento SSE — desligado com NODE_ENV=test,
 // então suba o servidor com `tests/e2e/restart.sh NODE_ENV=development ...`.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto, recarregarQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
@@ -34,7 +35,7 @@ const check = (t, cond, d) => (cond ? ok(t) : falha(t, d));
 const ANTIGO =
   /\bInicial\b|Básico|Basico|R\$ ?50\b|50 reais|repasses?\b|ajuda de custo|cr[eé]dito monet[aá]rio|receber dinheiro|Comodato|comodato|Conceder plano|Liberar plano|modalidade/i;
 
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1366, height: 900 } });
 const erros = [];
 
@@ -51,13 +52,13 @@ console.log('== site público ==');
   const p = await ctx.newPage();
   vigiar(p);
   for (const pagina of ['/', '/pontos.html', '/planos.html', '/contato.html']) {
-    await p.goto(`${B}${pagina}`, { waitUntil: 'networkidle' });
+    await irQuieto(p, `${B}${pagina}`);
     const texto = await p.locator('main').innerText();
     check(`${pagina}: sem oferta ou texto do modelo antigo`, !ANTIGO.test(texto), (texto.match(ANTIGO) || [])[0]);
   }
-  await p.goto(`${B}/`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/`);
   check('home: ponto acumula créditos, sem prometer dinheiro', /acumula créditos/.test(await p.locator('main').innerText()));
-  await p.goto(`${B}/planos.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/planos.html`);
   const planos = await p.locator('main').innerText();
   check('planos: Essencial, Pro e Prime', /Essencial/.test(planos) && /\bPro\b/.test(planos) && /Prime/.test(planos));
   const publicos = await p.evaluate(async () => (await fetch('/planos')).json());
@@ -144,7 +145,7 @@ async function entrar(conta, destino = '/anunciante/painel.html') {
   await ctx.clearCookies();
   const p = await ctx.newPage();
   vigiar(p);
-  await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+  await irQuieto(p, `${B}/anunciante/login.html`);
   await p.fill('#email', conta.email);
   await p.fill('#senha', 'Senha123!');
   await p.click('button[type="submit"]');
@@ -152,7 +153,7 @@ async function entrar(conta, destino = '/anunciante/painel.html') {
   // O painel termina de carregar antes de sair dele — navegar no meio das
   // buscas vira "Failed to fetch" no console.
   await p.waitForTimeout(1500);
-  if (destino !== '/anunciante/painel.html') await p.goto(`${B}${destino}`, { waitUntil: 'networkidle' });
+  if (destino !== '/anunciante/painel.html') await irQuieto(p, `${B}${destino}`);
   return p;
 }
 const contas = [];
@@ -247,7 +248,7 @@ console.log('== custo por exibição prevista: plano pago lê o snapshot do cicl
   check('card Plano: "Pro · Trimestral" + Assinatura paga', /Pro · Trimestral[\s\S]*Assinatura paga/.test(await p.locator('#modPlano').innerText()));
   // Preço do admin mudando depois não mexe no ciclo contratado.
   PG(`UPDATE planos SET valor_mensal = valor_mensal WHERE id = 'destaque-3m'`);
-  await p.reload({ waitUntil: 'networkidle' });
+  await recarregarQuieto(p);
   await p.waitForTimeout(1200);
   check('recarregado: mesmo custo', /R\$\s?0,0148/.test(await p.locator('[data-kpi="custo"]').innerText()));
   await p.screenshot({ path: `${SAIDA}custo-previsto-pago.png`, fullPage: true });

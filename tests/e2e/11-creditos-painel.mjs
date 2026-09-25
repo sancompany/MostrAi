@@ -4,13 +4,14 @@
 // antiga do ponto não pode mais mostrar o cupom de indicação.
 // Assume servidor na 3999.
 import { chromium } from 'playwright';
+import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
   execSync(`psql "${process.env.DATABASE_URL}" -tAc "${sql.replace(/"/g, '\\"')}"`)
     .toString()
     .trim();
-const b = await chromium.launch({ executablePath: process.env.PW_CHROME });
+const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
 const falhas = [];
 const erros = [];
@@ -54,7 +55,7 @@ p.on('console', (m) => {
 p.on('response', (r) => {
   if (r.status() >= 400 && r.url().startsWith(B)) respostasRuins.push(`${r.status()} ${r.url()}`);
 });
-await p.goto(`${B}/anunciante/login.html`, { waitUntil: 'networkidle' });
+await irQuieto(p, `${B}/anunciante/login.html`);
 await p.fill('#email', email);
 await p.fill('#senha', senha);
 await p.click('button[type="submit"]');
@@ -122,7 +123,7 @@ const culpados = await p.evaluate(() =>
 check('celular: a página não rola na horizontal', larguraExtra <= 1, `${larguraExtra}px sobrando: ${culpados.join(', ')}`);
 await shot(p, '4-celular');
 
-await p.goto(`${B}/anunciante/ponto.html`, { waitUntil: 'networkidle' });
+await irQuieto(p, `${B}/anunciante/ponto.html`);
 check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()), p.url());
 check('sem o cupom antigo em lugar nenhum', !/Meu cupom de indicação|indicados pagantes/.test(await p.textContent('body')));
 

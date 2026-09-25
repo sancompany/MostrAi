@@ -44,7 +44,7 @@ src/server.js          Entrada da aplicação: sessão, CORS, CSP, headers, mont
 src/<domínio>/         routes.js (+ repository.js) por assunto:
   admin/               painel administrativo (rotas /admin/*), métricas
   anunciantes/          conta, criativos, exibições, escolha de pontos
-  bancohoras/           saldo de exibição não entregue, apuração mensal, válvula
+  bancohoras/           saldo de exibição não entregue, apuração mensal, liquidação do confirmado
   candidaturas/         pedidos de virar ponto/vendedor
   categorias/           catálogo de ramos de atividade (bloqueio de concorrente)
   conta/                modos (ativação de papel), rotas de sessão/senha

@@ -12,8 +12,8 @@ retrato, não o próximo passo.
   ponto ganha card de candidatura simplificado").
 - Existe uma terceira branch remota, `claude/mostrai-estacao-1-pipeline-y2vgr5`
   (commit `44929d6`, "Adiciona Dockerfile de producao para o Northflank"),
-  **não investigada nesta sessão** — pode ser trabalho paralelo ou
-  experimento abandonado; confirmar antes de mexer ou descartar.
+  — conferida em 25/09/2026: já está inteira no `main` (0 commits próprios);
+  listada para exclusão em `docs/FECHAMENTO_PRE_GATES_2026-09-25.md` §14.
 - `npm run check` (sintaxe + lint + formato + 122 testes unitários) verde no
   commit acima.
 - CI (`.github/workflows/ci.yml`) roda o mesmo `npm run check` a cada push/PR
@@ -37,8 +37,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - Upload de criativo com validação síncrona (ffmpeg), normalização de
   imagem para vídeo na duração do plano, aprovação manual pelo admin.
 - Geração de playlist por hora com orçamento em segundos, cobertura de
-  pontos com compensação de rede incompleta, banco de horas com prioridade
-  e válvula de expiração.
+  pontos com compensação de rede incompleta, banco de horas como obrigação
+  de veiculação (25/09/2026: volta só no tempo ocioso, só o confirmado abate
+  o saldo, sem expiração — a válvula saiu).
 - **Congelamento da hora da playlist** (19/09/2026, o mais recente) —
   escolha de ponto ou criativo aprovado entra na hora corrente sem
   reposicionar quem já estava programado. Testado manualmente
@@ -69,10 +70,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
   ponto), mas **nenhum caminho de criação de ponto grava `categoria_id`**
   hoje — na prática o filtro nunca exclui ninguém. Furo já catalogado em
   `docs/furos.md`. Ver `.ia/RISKS.md` e `.ia/TODO.md`.
-- **Job `ApuracaoBancoHoras` no Northflank** — existe o script
-  (`npm run apurar-banco-horas`), mas não está confirmado nesta sessão se o
-  job foi de fato criado no painel do Northflank (`RUNBOOK.md` já registra
-  essa incerteza). Ver `docs/PENDENCIAS.md`, item A.14.
+- **Job `ApuracaoBancoHoras` no Northflank** — não existe (conferido em
+  25/09/2026); código e especificação prontos em
+  `docs/job-apuracao-banco-horas.md`. Gate do operador.
 - **Bônus "ganhou uma tela" (`cardBonus`, qual='ponto') no Painel** —
   `GET /conta/modos` sempre devolve `bonus.ponto: null` por design atual
   (comentário no próprio código, `src/conta/modos.js`), então esse banner
@@ -153,7 +153,7 @@ Relatório completo: `docs/auditoria-estacao-5-2026-09-20.md`.
 - As corridas antes identificadas no congelamento 064 foram fechadas em
   20/09/2026 com lock transacional por tela/hora e teste dedicado.
 - O ponto de produção possui `categoria_id`, e o código atual o grava por cadastro/admin. A afirmação anterior de que nenhum caminho gravava categoria está desatualizada.
-- `npm audit` reporta 10 vulnerabilidades (1 crítica, 3 altas, 6 moderadas).
+- ~~`npm audit` reporta 10 vulnerabilidades~~ — 0 desde 25/09/2026 (PR #61).
 
 ## Investigação player/TV — 20/09/2026
 
