@@ -863,7 +863,9 @@ async function processarWebhookPedido(payload) {
     return registrarPendencia(payload, 'webhook de pedido sem pedidoId');
   }
   // v2: `eventoId` é a identidade da notificação; sem ele (v1), a chave natural.
-  const chave = payload.eventoId ? String(payload.eventoId) : `${payload.chargeId || payload.pedidoId}|${payload.status}`;
+  const chave = payload.eventoId
+    ? String(payload.eventoId)
+    : `${payload.chargeId || payload.pedidoId}|${payload.status}`;
   const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
     chave,
   ]);

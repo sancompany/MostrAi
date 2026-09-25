@@ -113,7 +113,7 @@ test('resgate: "Prime · Semestral", 60 créditos, 6 meses de duração; histór
       'o registro antigo não é reescrito; o novo já nasce com o ciclo',
     );
     const { rows: plano } = await pool.query(
-      `SELECT p.compromisso_meses, h.valido_ate - current_date AS dias
+      `SELECT p.compromisso_meses, h.valido_ate - (now() AT TIME ZONE 'America/Sao_Paulo')::date AS dias
          FROM planos_administrativos h JOIN planos p ON p.id = h.plano_id WHERE h.anunciante_id = $1`,
       [c.id],
     );
@@ -143,10 +143,14 @@ test('benefício por créditos NUNCA renova sozinho nem consome crédito no fim'
     assert.equal(r.status, 200);
     const saldoDepoisDoResgate = await creditosRepo.saldo(c.id);
     assert.equal(saldoDepoisDoResgate, 97);
-    await pool.query(`UPDATE planos_administrativos SET valido_ate = current_date - 1 WHERE anunciante_id = $1`, [
-      c.id,
-    ]);
-    await pool.query(`UPDATE anunciantes SET data_expiracao = current_date - 1 WHERE id = $1`, [c.id]);
+    await pool.query(
+      `UPDATE planos_administrativos SET valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE anunciante_id = $1`,
+      [c.id],
+    );
+    await pool.query(
+      `UPDATE anunciantes SET data_expiracao = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE id = $1`,
+      [c.id],
+    );
     await planoAdm.encerrarBeneficiosVencidos();
     await planoAdm.ativarBeneficiosAgendados();
     const {

@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
+const vigencia = require('../src/lib/vigencia');
 
 // Reconstrução de Contas + Categorias (23/09/2026, pedido do dono): plano
 // administrativo (benefício, nunca cobrança), suspensão que tira o acesso,
@@ -76,9 +77,9 @@ async function apagarConta(id) {
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
 }
 
+// Dia de Matão (RN-32-B), não UTC: entre 21:00 e 00:00 UTC os dois divergem.
 function daqui(dias) {
-  const d = new Date(Date.now() + dias * 24 * 3600 * 1000);
-  return d.toISOString().slice(0, 10);
+  return vigencia.somarDias(vigencia.hojeComercial(), dias);
 }
 
 // ---------- plano administrativo ----------

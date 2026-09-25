@@ -31,11 +31,13 @@ O que resta é decisão do dono (lista abaixo) e a auditoria externa
   apps só com a policy "Somente o operador"; nenhum service token; `/admin`
   → 302 com e sem token. O bypass da validação online (service token +
   policy temporária) foi criado e apagado na mesma hora.
-- Produção (leitura, fim da estação): 4 contas (2 com plano vigente), 1
-  assinatura ativa (sandbox, consulta ao Checkout responde `ativa` com
-  cobrança confirmada), 0 eventos pendentes, pontos 1 em operação + 1
-  aguardando instalação, telas: 1 V1 com credencial e sinal, 1 sem
-  credencial (a preparar), 3 criativos aprovados.
+- Produção (leitura, 25/09 depois da reconciliação sandbox — PENDENCIAS
+  L.2): 4 contas (1 com plano vigente, cortesia), 0 assinaturas, 0
+  cobranças, 0 eventos pendentes, 0 chaves de webhook (o sandbox do
+  Checkout foi zerado e os vínculos daqui saíram com snapshot no evento
+  `sandbox:reconciliacao`), pontos 1 em operação + 1 aguardando instalação,
+  telas: 1 V1 com credencial e sinal, 1 sem credencial (a preparar), 3
+  criativos aprovados.
 
 ## Concluído nesta consolidação
 - A inventário (8/12 domínios, 138 achados, `scratchpad` da sessão).

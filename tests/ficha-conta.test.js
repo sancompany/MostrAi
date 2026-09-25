@@ -5,6 +5,7 @@ const { randomUUID, createHash } = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
+const vigencia = require('../src/lib/vigencia');
 const { situacaoDaConta } = require('../src/anunciantes/situacao');
 const creditosRepo = require('../src/creditos/repository');
 const planoAdm = require('../src/financeiro/plano-administrativo');
@@ -109,11 +110,8 @@ async function apagar(id) {
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
 }
 
-const somar = (dias) => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-};
+// Dia de Matão (RN-32-B), não UTC: entre 21:00 e 00:00 UTC os dois divergem.
+const somar = (dias) => vigencia.somarDias(vigencia.hojeComercial(), dias);
 
 // ---------- ponto × candidatura × selo ----------
 

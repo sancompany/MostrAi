@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
 const pool = require('../src/db/pool');
+const vigencia = require('../src/lib/vigencia');
 
 // Prioridade entre plano PAGO e BENEFÍCIO por créditos (24/09/2026, ADR-016,
 // regras 23-33 do pedido do dono). Níveis: Essencial 1, Pro 2, Prime 3.
@@ -19,11 +20,8 @@ const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
 
 const PLANO = { essencial: 'essencial-1m', pro: 'destaque-1m', prime: 'maximo-1m' };
 
-const somar = (dias) => {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-};
+// Dia de Matão (RN-32-B), não UTC: entre 21:00 e 00:00 UTC os dois divergem.
+const somar = (dias) => vigencia.somarDias(vigencia.hojeComercial(), dias);
 
 async function contaComBeneficio(tierBeneficio, extra = {}) {
   const planoId = PLANO[tierBeneficio];
@@ -138,10 +136,14 @@ test('benefício termina → o pago guardado assume com os dias pagos intactos; 
     await pagar(c, 'pro'); // renovou enquanto o Prime valia
     const { conta: meio } = await estado(c.id);
     assert.ok(meio.plano_pago_guardado_dias >= 56, 'dois ciclos guardados');
-    await pool.query(`UPDATE planos_administrativos SET valido_ate = current_date - 1 WHERE anunciante_id = $1`, [
-      c.id,
-    ]);
-    await pool.query(`UPDATE anunciantes SET data_expiracao = current_date - 1 WHERE id = $1`, [c.id]);
+    await pool.query(
+      `UPDATE planos_administrativos SET valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE anunciante_id = $1`,
+      [c.id],
+    );
+    await pool.query(
+      `UPDATE anunciantes SET data_expiracao = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE id = $1`,
+      [c.id],
+    );
     await planoAdm.encerrarBeneficiosVencidos();
     const { conta } = await estado(c.id);
     assert.equal(conta.plano_id, PLANO.pro, 'voltou pro Pro pago');
@@ -158,10 +160,14 @@ test('job diário: a varredura de cobertura vencida não apaga o pago guardado s
   const c = await contaComBeneficio('prime');
   try {
     await pagar(c, 'pro');
-    await pool.query(`UPDATE planos_administrativos SET valido_ate = current_date - 1 WHERE anunciante_id = $1`, [
-      c.id,
-    ]);
-    await pool.query(`UPDATE anunciantes SET data_expiracao = current_date - 1 WHERE id = $1`, [c.id]);
+    await pool.query(
+      `UPDATE planos_administrativos SET valido_ate = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE anunciante_id = $1`,
+      [c.id],
+    );
+    await pool.query(
+      `UPDATE anunciantes SET data_expiracao = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE id = $1`,
+      [c.id],
+    );
     // Mesma ordem do scripts/conciliar.js: a varredura roda antes.
     const varridas = await encerrarCoberturaVencida();
     assert.ok(!varridas.some((v) => v.id === c.id), 'o benefício é da rotina de benefícios');
