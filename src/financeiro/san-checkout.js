@@ -771,7 +771,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     if (assinatura.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
-       VALUES ($1,$2,$3,'pendente') RETURNING id`,
+       VALUES ($1,$2,$3,'pendente') RETURNING id, criado_em`,
       [anunciante.id, plano.id, valorCiclo],
     ));
     // Snapshot do ciclo (migration 087): o valor que ACABOU de ser cobrado e
@@ -823,9 +823,17 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     anunciante,
   );
 
-  enviarConfirmacaoPagamento(anunciante, plano, valorCiclo).catch((err) => {
-    console.error('falha ao enviar e-mail de confirmação', err);
-  });
+  // O comprovante de pagamento (PDF) nasce desta cobrança confirmada e vai
+  // anexado (src/financeiro/comprovante.js). `email_confirmacao_enviado_em`
+  // é a evidência de que o e-mail do ciclo saiu.
+  const cobranca = cobrancaRows[0];
+  enviarConfirmacaoPagamento(anunciante, plano, valorCiclo, cobranca)
+    .then(() =>
+      pool.query('UPDATE cobrancas_confirmadas SET email_confirmacao_enviado_em = now() WHERE id = $1', [cobranca.id]),
+    )
+    .catch((err) => {
+      console.error('falha ao enviar e-mail de confirmação', err);
+    });
 
   // Notificação + evento em tempo real — só depois do COMMIT, mesmo
   // raciocínio do evento de métrica acima: nunca anunciar um dado que

@@ -1189,10 +1189,18 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Playlist vazia | *(tela institucional do Mostraí, sem texto de erro)* |
 | Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |
-| E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o valor e até quando a cobertura vale. |
+| E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o ciclo e o valor cobrado, com o **comprovante de pagamento em PDF anexado** (25/09/2026). O comprovante nasce só da cobrança confirmada (`cobrancas_confirmadas`; número `MST-` + id, um por ciclo), traz data e hora da confirmação, valor, plano e ciclo, pagador (CPF mascarado; CNPJ inteiro) e recebedor, e termina com: "Este documento comprova o pagamento da contratação indicada e não substitui documento fiscal quando sua emissão for aplicável." Não é nota fiscal e nunca se apresenta como tal. Sem cobrança confirmada, o e-mail sai sem anexo. `email_confirmacao_enviado_em` registra que o e-mail do ciclo saiu. |
 | E-mail de anúncio no ar | Assunto: **Seu anúncio está no ar — Mostraí**. Corpo: o vídeo foi aprovado e entrou na playlist, com o link do painel para acompanhar as exibições. |
 | Extrato vazio | Nenhum pagamento lançado ainda. Assim que o primeiro mês for fechado, ele aparece aqui. |
 | Exclusão de conta | Sua conta foi excluída. Você tem 60 dias para pedir a volta pelo nosso contato. |
+
+Todo e-mail ao cliente sai em **HTML e em texto puro**, com o mesmo conteúdo
+(25/09/2026, `src/financeiro/email.js#mensagem`): layout em tabela, estilo
+inline, até 600 px, sem imagem; botão no laranja escuro da marca (#c2570a —
+o laranja claro com texto branco não tem contraste de leitura); o que vem do
+cadastro é escapado. Os dois e-mails internos (contato pelo site e
+candidatura nova, que vão pro dono) continuam só em texto. O San Checkout
+nunca envia e-mail por nós: todo SMTP é do Mostraí.
 
 ---
 
