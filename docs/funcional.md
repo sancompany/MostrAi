@@ -1210,6 +1210,7 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 |---|---|---|
 | San Checkout fora do ar ao assinar | não cria assinatura local órfã; devolve erro | "não conseguimos abrir o pagamento agora" |
 | Webhook não chega | a conciliação diária encontra a cobrança e credita | nada — a conta ativa sozinha em até 24h |
+| Webhook não chega e o cliente gerou outro link antes da conciliação | a conciliação também olha o link antigo (cancelado há até 30 dias, nunca pago): achou pagamento, vira a MESMA pendência do webhook — cancelar a assinatura e devolver no Checkout; nada é creditado (25/09/2026) | administrador vê na fila de eventos pendentes |
 | Cobertura de troca de plano perto do fim | a conciliação diária manda o aviso 7 dias antes (RN-36) | e-mail convidando a contratar de novo |
 | Webhook chega duas vezes | dedupe por `chargeId|status`; o segundo não faz nada | nada |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |

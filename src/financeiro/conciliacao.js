@@ -14,7 +14,14 @@
 // se o aviso veio pelo webhook, por aqui, ou pelos dois.
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
-const { consultarAssinatura, aplicarCicloPago, linkRenovarAssinatura } = require('./san-checkout');
+const {
+  consultarAssinatura,
+  aplicarCicloPago,
+  linkRenovarAssinatura,
+  registrarPendencia,
+  intencaoCanceladaSemPagamento,
+  MOTIVO_INTENCAO_CANCELADA,
+} = require('./san-checkout');
 const planoAdministrativo = require('./plano-administrativo');
 const { enviarCoberturaAcabando, enviarCobrancaFalhou } = require('./email');
 const anunciantesRepo = require('../anunciantes/repository');
@@ -120,12 +127,18 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
   // 'pendente_pagamento' recente entra também (migration 089): é o link
   // cujo webhook `criada` pode ter se perdido — a consulta 5.3 diz se a
   // primeira cobrança entrou; depois de 30 dias sem pagar, é abandono.
+  // 'cancelada' recente também, pelo mesmo motivo: um link novo mata o
+  // antigo (`cancelarPendentesDePagamento`), e se o antigo tinha sido pago
+  // com o webhook perdido, ninguém mais olharia pra ele — dinheiro dentro,
+  // nenhum ciclo e nenhuma pendência (revisão do PR #55, 25/09/2026). Só a
+  // intenção que nunca teve ciclo pago interessa (filtrada no laço).
   const { rows: assinaturas } = await pool.query(
-    `SELECT s.id, s.anunciante_id, s.plano_id, s.status, a.cpf_cnpj
+    `SELECT s.id, s.anunciante_id, s.plano_id, s.status, s.created_at, a.cpf_cnpj
        FROM assinaturas s
        JOIN anunciantes a ON a.id = s.anunciante_id
       WHERE a.excluido_em IS NULL
-        AND (s.status = 'ativa' OR (s.status = 'pendente_pagamento' AND s.created_at > now() - interval '30 days'))
+        AND (s.status = 'ativa'
+             OR (s.status IN ('pendente_pagamento', 'cancelada') AND s.created_at > now() - interval '30 days'))
         AND ($1::int[] IS NULL OR s.anunciante_id = ANY($1))`,
     [apenasContas],
   );
@@ -137,13 +150,58 @@ async function conciliarAssinaturas({ apenasContas = null } = {}) {
     semCobranca: 0,
     canceladasFora: 0,
     renovacoesAvisadas: 0,
+    intencoesCanceladasPagas: 0,
     falhas: [],
   };
 
   for (const assinatura of assinaturas) {
-    relato.verificadas += 1;
     try {
+      // Assinatura que já pagou e foi cancelada depois não é intenção morta:
+      // o vínculo acabou de verdade e não há nada a conciliar nela.
+      const intencaoCancelada = assinatura.status === 'cancelada';
+      if (intencaoCancelada && !(await intencaoCanceladaSemPagamento(assinatura))) continue;
+      relato.verificadas += 1;
       const decisao = decidirPorEstado(await consultarAssinatura(assinatura.id, assinatura.cpf_cnpj));
+
+      if (intencaoCancelada) {
+        // Pagamento de intenção já cancelada: a MESMA pendência do webhook
+        // (#56) — devolver no Checkout, nunca creditar (creditaria cobertura
+        // por cima do link novo). Nada de e-mail de renovação nem de evento
+        // "cancelada fora do fluxo" pra um link que já está morto aqui.
+        if (decisao.acao === 'aplicar_ciclo') {
+          const { ultima } = decisao;
+          const chave = `${ultima.chargeId}|${ultima.status}`;
+          const { rowCount } = await pool.query(
+            'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
+            [chave],
+          );
+          if (rowCount) {
+            try {
+              await registrarPendencia(
+                {
+                  evento: 'pagamento_achado_pela_conciliacao',
+                  origem: 'conciliacao',
+                  planoId: assinatura.id,
+                  chargeId: ultima.chargeId,
+                  status: ultima.status,
+                },
+                MOTIVO_INTENCAO_CANCELADA,
+              );
+            } catch (err) {
+              // Sem soltar a chave, a próxima varredura veria "já processada"
+              // e a pendência nunca nasceria.
+              await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]);
+              throw err;
+            }
+            relato.intencoesCanceladasPagas += 1;
+          } else {
+            relato.jaProcessadas += 1;
+          }
+        } else {
+          relato.semCobranca += 1;
+        }
+        continue;
+      }
 
       if (decisao.acao === 'vinculo_encerrado') {
         if (decisao.cancelar) {

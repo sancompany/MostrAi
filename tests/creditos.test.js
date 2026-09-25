@@ -257,6 +257,62 @@ test('ativarBeneficiosAgendados: ativa só quando o ciclo pago anterior já pass
   }
 });
 
+// Revisão do PR #55 (25/09/2026): com a ativação estrita (o benefício começa
+// no dia SEGUINTE ao último dia pago), a varredura de cobertura vencida da
+// conciliação chega na conta em D+1 ANTES de `ativarBeneficiosAgendados` —
+// é a ordem de scripts/conciliar.js. Quando o plano pago não renova, ela
+// fechava o benefício agendado junto com o pago: créditos gastos, benefício
+// que nunca começou, conta sem plano. O teste roda o job NA ORDEM REAL.
+test('job diário em D+1: plano pago que não renovou dá lugar ao benefício agendado, não o apaga', async () => {
+  const { encerrarCoberturaVencida } = require('../src/financeiro/conciliacao');
+  const contaBase = await contaDeTeste('beneficio-d1');
+  try {
+    const hoje = vigencia.hojeComercial();
+    await pool.query(
+      `UPDATE anunciantes SET plano_id='destaque-1m', plano_cortesia=false, data_expiracao=$2 WHERE id=$1`,
+      [contaBase.id, vigencia.somarDias(hoje, 2)],
+    );
+    const { rows } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
+    const { status } = await planoAdministrativo.resgatarOuConcederBeneficio({
+      conta: rows[0],
+      plano: await plano('maximo-1m'),
+      diasDeBeneficio: 30,
+      observacao: 'resgate de créditos',
+      origem: 'indicacao',
+    });
+    assert.strictEqual(status, 'agendado');
+
+    // D+1: o último dia pago (D) foi ontem e a assinatura não renovou.
+    const ontem = vigencia.somarDias(hoje, -1);
+    await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [contaBase.id, ontem]);
+    await pool.query(
+      `UPDATE planos_administrativos SET plano_anterior_valido_ate = $2, valido_ate = $3
+        WHERE anunciante_id = $1 AND status = 'agendado'`,
+      [contaBase.id, ontem, vigencia.somarDias(hoje, 30)],
+    );
+
+    await encerrarCoberturaVencida({ apenasContas: [contaBase.id] });
+    await planoAdministrativo.encerrarBeneficiosVencidos({ apenasContas: [contaBase.id] });
+    const ativ = await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [contaBase.id] });
+    assert.strictEqual(ativ.ativados, 1, 'o benefício agendado começou');
+
+    const { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
+    assert.strictEqual(agora[0].plano_id, 'maximo-1m', 'a conta está no benefício, não sem plano');
+    assert.strictEqual(agora[0].plano_cortesia, true);
+    // Ativado no dia certo, termina no dia que a tela prometeu (início + 30,
+    // a mesma régua do benefício que ativa na hora) — nem um dia a mais.
+    assert.strictEqual(vigencia.diaTexto(agora[0].data_expiracao), vigencia.somarDias(hoje, 30));
+    const historico = await planoAdministrativo.historicoDaConta(contaBase.id);
+    assert.deepStrictEqual(
+      historico.map((h) => h.status),
+      ['ativo'],
+      'nenhuma linha encerrada por "vencido": o agendado virou ativo',
+    );
+  } finally {
+    await apagarContas([contaBase.id]);
+  }
+});
+
 // Regra 32 do pedido de 24/09/2026 (ADR-016): o benefício resgatado com
 // plano pago em dia começa NO FIM do ciclo em que foi resgatado, mesmo que a
 // assinatura renove — o pago fica GUARDADO com os dias que tinha e volta

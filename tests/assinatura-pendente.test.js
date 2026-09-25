@@ -323,6 +323,81 @@ test('pagamento de intenção já cancelada (link antigo) vira pendência, não 
   }
 });
 
+// Revisão do PR #55 (25/09/2026): link pago com o webhook `criada` perdido,
+// e o cliente pediu outro link antes da conciliação — o antigo virou
+// 'cancelada' e a conciliação só olhava 'ativa'/'pendente_pagamento'. O
+// pagamento sumia: nem ciclo, nem pendência. Agora ela vê a intenção
+// cancelada recente e registra a MESMA pendência do webhook, uma vez só.
+test('conciliação: pagamento de link já cancelado (webhook perdido) vira pendência, uma vez, sem creditar', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const velha = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id);
+    await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    const mock = comCheckoutRespondendo(
+      {
+        'consultar-assinatura': {
+          status: 'ativa',
+          ultimaCobranca: { status: 'confirmado', chargeId: `pay_${rodada}`, criadoEm: new Date().toISOString() },
+        },
+      },
+      velha.id,
+    );
+    let primeira;
+    let segunda;
+    try {
+      primeira = await conciliarAssinaturas({ apenasContas: [c.id] });
+      segunda = await conciliarAssinaturas({ apenasContas: [c.id] });
+    } finally {
+      mock.restaurar();
+    }
+    assert.equal(primeira.intencoesCanceladasPagas, 1, 'a 1ª varredura acha o pagamento');
+    assert.equal(segunda.intencoesCanceladasPagas, 0, 'a 2ª não duplica');
+    assert.equal(primeira.aplicadas + segunda.aplicadas, 0, 'nenhum ciclo creditado');
+    const { rows: pend } = await pool.query(
+      "SELECT motivo, payload FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [velha.id],
+    );
+    assert.equal(pend.length, 1);
+    assert.match(pend[0].motivo, /intenção de compra já cancelada/);
+    assert.equal(pend[0].payload.chargeId, `pay_${rodada}`);
+    assert.equal((await assinaturasRepo.buscarPorId(velha.id)).status, 'cancelada', 'continua cancelada');
+    const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(cob.length, 0, 'nenhuma cobrança registrada');
+    await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1", [velha.id]);
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+// Revisão dos PRs #56/#57 (25/09/2026): quem chama `aplicarCicloPago` leu a
+// assinatura ANTES (a conciliação carrega a lista inteira e consulta o
+// Checkout uma por uma). Se um link novo cancelou esta no meio, o status em
+// memória está velho — o crédito tem de olhar a linha travada, não a cópia.
+test('aplicarCicloPago relê a assinatura travada: cancelada no meio do caminho vira pendência, não ciclo', async () => {
+  const c = await conta();
+  try {
+    const lida = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m' });
+    assert.equal(lida.status, 'pendente_pagamento');
+    await assinaturasRepo.cancelarPendentesDePagamento(c.id); // o link novo chegou antes do crédito
+    await sc.aplicarCicloPago(lida, `pay_corrida_${lida.id}|confirmado`);
+    const { rows: cob } = await pool.query('SELECT 1 FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id]);
+    assert.equal(cob.length, 0, 'nenhum ciclo creditado pela cópia velha');
+    assert.equal((await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id])).rows[0].plano_id, null);
+    const { rows: pend } = await pool.query(
+      "SELECT motivo FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1 AND NOT resolvido",
+      [lida.id],
+    );
+    assert.equal(pend.length, 1);
+    assert.match(pend[0].motivo, /intenção de compra já cancelada/);
+    assert.equal((await assinaturasRepo.buscarPorId(lida.id)).status, 'cancelada');
+    await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'planoId' = $1", [lida.id]);
+  } finally {
+    await apagar(c.id);
+  }
+});
+
 test('assinatura paga antes da migration 087 (ciclo sem assinatura_id) e cancelada depois NÃO é intenção sem pagamento', async () => {
   const c = await conta();
   try {

@@ -206,6 +206,33 @@ test('perfil de conta só de ponto salva com o endereço em branco (quem anuncia
   }
 });
 
+// Revisão do PR #55 (25/09/2026): o painel troca a conta inteira pela
+// resposta do PATCH — se ela vier sem `plano_vigente`, o card do plano diz
+// "Cobertura vencida" pra quem está em dia até o próximo recarregar.
+test('PATCH do perfil devolve a conta na mesma forma do GET (vigência decidida no servidor)', async () => {
+  const app = await subirApp();
+  const vigencia = require('../src/lib/vigencia');
+  const { rows } = await pool.query(
+    `INSERT INTO anunciantes (aceitou_termos_em, nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, papeis,
+                              plano_id, data_expiracao)
+     VALUES (now(), 'Em dia', $1, $2, '16999990000', 'x', ARRAY['ponto'], 'essencial-1m', $3) RETURNING id`,
+    [cpfValido(), `emdia-${randomUUID()}@example.com`, vigencia.somarDias(vigencia.hojeComercial(), 10)],
+  );
+  const contaId = rows[0].id;
+  try {
+    const get = await app.chamar('GET', '/anunciantes/me', undefined, contaId);
+    const patch = await app.chamar('PATCH', '/anunciantes/me', { nome_empresa: 'Em dia (novo)' }, contaId);
+    assert.strictEqual(patch.status, 200, JSON.stringify(patch.corpo));
+    assert.strictEqual(patch.corpo.nome_empresa, 'Em dia (novo)');
+    assert.strictEqual(patch.corpo.plano_vigente, true);
+    assert.strictEqual(patch.corpo.dias_ate_vencer, get.corpo.dias_ate_vencer);
+    assert.deepStrictEqual(Object.keys(patch.corpo).sort(), Object.keys(get.corpo).sort());
+  } finally {
+    await app.fechar();
+    await limparConta(contaId);
+  }
+});
+
 test('candidatura de ponto guarda as partes e a aprovação leva todas pro ponto', async () => {
   const app = await subirApp();
   const { rows } = await pool.query(

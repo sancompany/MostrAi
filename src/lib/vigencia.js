@@ -66,6 +66,14 @@ function somarDias(dataISO, dias) {
   return base.toISOString().slice(0, 10);
 }
 
+// O benefício agendado começa no dia SEGUINTE ao último dia pago (o último
+// dia é inclusivo — RN-32-B; ativação estrita desde o PR #55). Um lugar só
+// pra dizer isso: a data mostrada e a data em que ele de fato entra não
+// podem divergir (revisão do PR #55, 25/09/2026).
+function inicioDepoisDoPago(ultimoDiaPago) {
+  return diaTexto(ultimoDiaPago) ? somarDias(ultimoDiaPago, 1) : null;
+}
+
 // A mesma régua no SQL: "hoje" é o dia de Matão, e a comparação é por dia.
 const HOJE_SQL = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
 const vigenteSql = (coluna) => `(${coluna} IS NULL OR ${coluna} >= ${HOJE_SQL})`;
@@ -78,6 +86,7 @@ module.exports = {
   coberturaVencida,
   diasAteVencer,
   somarDias,
+  inicioDepoisDoPago,
   HOJE_SQL,
   vigenteSql,
   vencidaSql,

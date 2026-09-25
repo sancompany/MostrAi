@@ -377,6 +377,14 @@ async function derrubarSessaoSuspensa(req, _res, next) {
 router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
+  res.json(await contaParaOPainel(anunciante));
+});
+
+// A conta como o painel lê: GET, PATCH do perfil e foto respondem a MESMA
+// forma. O PATCH e a foto devolviam a linha crua, e o painel troca o objeto
+// inteiro pela resposta — o card do plano perdia `plano_vigente` e dizia
+// "Cobertura vencida" pra quem estava em dia (revisão do PR #55, 25/09/2026).
+async function contaParaOPainel(anunciante) {
   // `plano` junto de propósito: o painel precisa dele pra dizer a duração
   // máxima da peça e quantos pontos a conta pode escolher, e sem isso teria
   // que adivinhar ou buscar na vitrine — que só lista plano ATIVO, e a conta
@@ -393,7 +401,7 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
       )
     : { rows: [] };
   const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
-  res.json({
+  return {
     ...anunciante,
     plano,
     plano_origem: origem,
@@ -402,8 +410,8 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
     // pelo relógio do navegador: o painel só rotula o que o servidor decidiu.
     plano_vigente: !!repo.planoVigenteId(anunciante),
     dias_ate_vencer: vigencia.diasAteVencer(anunciante.data_expiracao),
-  });
-});
+  };
+}
 
 // Confirmação de e-mail por código (migration 061). `limiteTentativas` conta
 // tentativa errada pra não virar força-bruta num código de 6 dígitos.
@@ -654,7 +662,9 @@ router.patch('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
       for (const p of partes) delete dados[p];
     }
   }
-  res.json(await repo.atualizar(req.session.anuncianteId, dados));
+  const conta = await repo.atualizar(req.session.anuncianteId, dados);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  res.json(await contaParaOPainel(conta));
 });
 
 router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arquivo'), async (req, res) => {
@@ -671,7 +681,9 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
     });
     if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
     const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-    res.json(await repo.atualizar(req.session.anuncianteId, { foto_url: data.publicUrl }));
+    const conta = await repo.atualizar(req.session.anuncianteId, { foto_url: data.publicUrl });
+    if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+    res.json(await contaParaOPainel(conta));
   } finally {
     fs.unlink(req.file.path, () => {});
   }
