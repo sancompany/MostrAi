@@ -176,8 +176,35 @@ gunzip -c mostrai-AAAAMMDD-HHMMSS.sql.gz | psql "$DATABASE_URL"
 **Restaurar num banco limpo antes de restaurar no de verdade.** Restauração
 por cima de banco com dado é a operação que transforma um incidente em dois.
 
-**[Estação 6] Este backup nunca foi restaurado.** Backup não restaurado é
-backup hipotético (Lei 6). O ensaio, com data e resultado, entra aqui.
+**Ensaio de restauração — 25/09/2026 (feito, em banco isolado; produção
+não foi tocada).**
+
+| Etapa | Resultado | Tempo |
+|---|---|---|
+| Listar o volume (execução do job `backup` só com `ls` + `sleep`, sem dump novo) | 2 arquivos: `mostrai-20260920-080036.sql.gz` (**20 bytes, dump vazio** — ver abaixo) e `mostrai-20260920-164029.sql.gz` (47 KB) | ~40 s até o contêiner aceitar `exec` |
+| Baixar o dump bom (`northflank download job file`) | íntegro (`gzip -t`) | 8 s |
+| Restaurar num banco novo e vazio (Postgres local, `psql`) | esquema `public` inteiro (36 tabelas); contagem de linhas igual à do dump em todas as tabelas conferidas; 4 erros, todos fora do app: `transaction_timeout` (parâmetro só do PG17) e a extensão `supabase_vault` (cofre interno do Supabase) | 0,7 s |
+| Migrations novas por cima (`node src/db/migrate.js`) | 25 aplicadas (065 → 090), sem erro | 0,3 s |
+| App contra o banco restaurado | `/health` → `ok:true`, `/planos` com os 12 planos, login inválido → 401 | 0,6 s |
+
+- **RTO medido (técnico):** ~1 min do "achar o arquivo" ao app respondendo,
+  com o banco de destino já existindo. Numa restauração de verdade, somar o
+  tempo de criar o projeto novo no Supabase, trocar a `DATABASE_URL` no
+  serviço e nos três jobs (§2) e o deploy — estimativa de 30–60 min.
+- **RPO:** o backup é semanal (domingo 08:00 UTC). Perda máxima esperada: 7
+  dias. **No dia do ensaio o último backup válido tinha 4 dias e 13 h** (20/09
+  16:40 UTC); o de 20/09 08:00 falhou.
+- **Achado 1 — backup vazio com cara de backup.** Em 20/09 08:00 o `pg_dump`
+  falhou (senha do banco trocada, `docs/erros/2026-09-20-…`), o job saiu com
+  erro, mas o `.sql.gz` vazio ficou no volume. Corrigido em
+  `scripts/backup.sh`: o dump vai pra um arquivo `.parcial` e só vira backup
+  se terminar com o marcador do `pg_dump`. **O arquivo vazio de 20/09 08:00
+  continua no volume — não restaurar a partir dele.**
+- **Achado 2 — restaurar no Supabase, não num Postgres comum.** O dump traz
+  os esquemas internos do Supabase (`auth`, `storage`, `vault`…). Num
+  Postgres comum só o `public` volta (é o que o app usa); num projeto
+  Supabase novo, volta tudo.
+- O dump baixado e o banco de ensaio foram apagados no fim (dado pessoal).
 
 ---
 
