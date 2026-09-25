@@ -273,6 +273,63 @@ não foi tocada).**
   Supabase novo, volta tudo.
 - O dump baixado e o banco de ensaio foram apagados no fim (dado pessoal).
 
+### 5.1 Reset final dos dados de teste — 25/09/2026
+
+**RESET FINAL DE DADOS DE TESTE EXECUTADO**, autorizado pelo dono, pra
+deixar o banco no estado de lançamento. Commit da transação:
+`2026-09-25T21:00:40Z`. SHA em produção no momento: `aa94fc3`.
+
+**Backup pré-reset** (job `Backup` disparado à mão; é o arquivo a usar se
+precisar voltar — NÃO o vazio de 20/09 08:00):
+`/backups/mostrai-20260925-205316.sql.gz` — 73.990 bytes, sha256
+`805a18b5a23fd657d38fccdf2b589379803c37b374f5771bd393eab74ec81249`,
+`gzip -t` ok, termina com o marcador do `pg_dump`, 49 tabelas `public`.
+
+**Como foi feito:** inventário do esquema e das 66 FKs; conferência de que
+nenhum dado era de cliente real (5 contas: 4 de teste do dono + a conta
+interna do Mostraí; 3 candidaturas, 5 mensagens de contato e 1 repasse
+manual, todos de teste; 0 assinatura, 0 cobrança, 0 webhook); uma
+transação só, filhos antes dos pais, com guarda que dava `ROLLBACK` se
+aparecesse qualquer conta/candidatura/mensagem/dado financeiro fora do
+inventário. Sem `TRUNCATE`, sem `CASCADE` às cegas, sem mexer em
+constraint. Sequences **não** foram reiniciadas (o próximo id segue o
+último; os arquivos do Storage têm o id no nome e os antigos foram
+apagados, então não há colisão). Storage limpo pela API do Supabase, não
+por SQL.
+
+| Entidade | Antes | Removidos | Depois |
+|---|---|---|---|
+| contas (`anunciantes`) | 5 | 4 | 1 (conta interna do Mostraí) |
+| candidaturas / convites / cupons de ponto | 3 / 2 / 2 | 3 / 2 / 2 | 0 / 0 / 0 |
+| pontos / telas (`dispositivos`) / eventos de tela | 5 / 5 / 6 | 5 / 5 / 6 | 0 / 0 / 0 |
+| criativos / mídia própria (+ pontos) | 3 / 1 (+1) | 3 / 1 (+1) | 0 / 0 |
+| playlist congelada / contadores de exibição | 5 / 2 | 5 / 2 | 0 / 0 |
+| vínculo conta↔ponto / repasse manual | 2 / 1 | 2 / 1 | 0 / 0 |
+| ledger de créditos / planos administrativos | 4 / 4 | 4 / 4 | 0 / 0 |
+| eventos (analytics) / notificações | 29 / 6 | 29 / 6 | 0 / 0 |
+| mensagens de contato / conciliações | 5 / 10 | 5 / 10 | 0 / 0 |
+| sessões / tentativas de acesso / token de senha | 9 / 22 / 1 | 9 / 22 / 1 | 0 / 0 / 0 |
+| assinaturas, cobranças, ciclos, banco de horas, comissões, webhooks | 0 | 0 | 0 |
+| **Total** | | **132** | |
+| planos / benefícios / planos×benefícios / modalidades de ponto | 18 / 16 / 36 / 2 | 0 | preservados |
+| categorias / promoção (+itens) / custos fixos / `configuracoes_site` | 251 / 1 (+9) / 5 / 1 | 0 | preservados |
+| `schema_migrations` | 88 | 0 | preservado |
+
+**Storage (bucket `criativos`):** 11 → 2 arquivos. Removidos os 9 de teste
+(3 vídeos + 3 thumbnails de criativo, 3 fotos de fachada de candidatura,
+~5,8 MB). Ficaram só `institucional.mp4` e `institucional-thumb.jpg`.
+
+**Verificado depois:** 0 linha órfã nas 66 FKs; 0 arquivo órfão no
+Storage; `configuracoes_site` aponta pro vídeo institucional, vídeo e
+thumbnail respondem `200`; 12 planos ativos (Essencial/Pro/Prime × 4
+ciclos) na API pública; `/health` 200; páginas públicas, cadastro, login e
+painel 200 (painel sem sessão → 401); `/admin` atrás do Access (302); 3
+jobs ativos, `ApuracaoBancoHoras` com `0 6 1 * *`; sem erro nos logs.
+Todas as sessões foram derrubadas (efeito esperado).
+
+**Não tocado:** banco do San Checkout, Asaas, Northflank, Cloudflare,
+segredos, código, repositório do Player.
+
 ---
 
 ## 6. Alerta → o que significa → primeira ação

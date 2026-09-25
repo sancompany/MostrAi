@@ -285,3 +285,18 @@ em aberto:** o novo `ADMIN_PASSWORD` nunca foi mostrado a ninguém de
 propósito — o dono precisa definir uma senha nova direto no Northflank
 antes de usar o login usuário/senha do `/admin` (Cloudflare Access, a outra
 camada, continua funcionando normalmente).
+
+## Reset final dos dados de teste — banco limpo pra lançamento (25/09/2026)
+
+Autorizado pelo dono e executado às 21:00 UTC: todo dado de
+desenvolvimento/teste saiu do banco de produção (132 linhas, 4 contas de
+teste, pontos, telas, criativos, créditos, eventos, sessões…) e 9 arquivos
+de teste saíram do Storage. Ficaram só estrutura e configuração: planos
+(12 ativos), benefícios, categorias, promoção, custos fixos, o vídeo
+institucional e a conta interna do Mostraí (`conta_propria`, singleton
+recriado sozinho se sumir — `ensureContaMostrai`). Backup pré-reset
+verificado no volume do job `Backup`
+(`/backups/mostrai-20260925-205316.sql.gz`, sha256 `805a18b5…81249`).
+Detalhe, contagens antes/depois e verificações: `RUNBOOK.md` §5.1.
+**A partir daqui, toda linha no banco é de cliente real** — não rodar E2E
+contra produção sem limpar depois, nem "semear" dado de demonstração.
