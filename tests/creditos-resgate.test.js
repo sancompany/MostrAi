@@ -129,9 +129,11 @@ test('com ciclo pago em curso: agenda e conta a validade a partir do FIM do cicl
     const r = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'destaque', meses: 1 });
     assert.equal(r.status, 200, JSON.stringify(r.corpo));
     assert.equal(r.corpo.status, 'agendado');
-    assert.equal(r.corpo.comecaEm, fimPago);
+    // Último dia pago é inclusivo: o benefício começa no dia SEGUINTE.
+    assert.equal(r.corpo.comecaEm, somar(fimPago, 1));
     // Antes: hoje + 30 — antes mesmo de o ciclo pago acabar, nascia vencido.
-    assert.equal(r.corpo.validoAte, somar(fimPago, 30));
+    // Fim = início + 30, a mesma régua do benefício que ativa na hora.
+    assert.equal(r.corpo.validoAte, somar(fimPago, 31));
   } finally {
     await app.fechar();
     await apagar(c.id);
@@ -146,7 +148,9 @@ test('ativação atrasada (assinatura renovou) preserva a duração comprada', a
     await pool.query(
       `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, plano_anterior_valido_ate, status, origem)
        VALUES ($1, 'essencial-1m', $2, $3, 'agendado', 'indicacao')`,
-      [c.id, somar(inicioPrevisto, 30), inicioPrevisto],
+      // `plano_anterior_valido_ate` é o último dia pago; o benefício começaria
+      // no dia seguinte e iria até início + 30.
+      [c.id, somar(inicioPrevisto, 31), inicioPrevisto],
     );
     await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [c.id] });
     const { rows } = await pool.query('SELECT data_expiracao FROM anunciantes WHERE id = $1', [c.id]);

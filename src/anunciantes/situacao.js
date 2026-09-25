@@ -148,9 +148,11 @@ function linhaDoTempo({ conta, comercial, assinaturaAtiva, beneficioAtivo, benef
       nome: nomeDoPlano(plano) || 'Plano',
       origem: o,
       origemTexto: ORIGENS[o],
-      // Começa no fim do ciclo pago em curso, mesmo que a assinatura renove
+      // Começa no dia seguinte ao fim do ciclo pago em curso, mesmo que a assinatura renove
       // (o pago fica guardado — plano-administrativo.js#ativarBeneficiosAgendados).
-      comecaEm: diaISO(beneficioAgendado.plano_anterior_valido_ate || conta.data_expiracao),
+      comecaEm: vigencia.inicioDepoisDoPago(
+        diaISO(beneficioAgendado.plano_anterior_valido_ate || conta.data_expiracao),
+      ),
       validoAte: diaISO(beneficioAgendado.valido_ate),
       esperaAssinatura: !!assinaturaAtiva,
     };
@@ -353,7 +355,7 @@ async function situacaoDaConta(contaId, agora = new Date()) {
       status: h.status,
       statusTexto,
       inicio: h.ativado_em || h.inicio,
-      comecaEm: h.status === 'agendado' ? diaISO(h.plano_anterior_valido_ate) : null,
+      comecaEm: h.status === 'agendado' ? vigencia.inicioDepoisDoPago(diaISO(h.plano_anterior_valido_ate)) : null,
       validoAte: diaISO(h.valido_ate),
       encerradoEm: h.encerrado_em || null,
       concedidoPor: h.concedido_por || null,

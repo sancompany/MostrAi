@@ -332,8 +332,11 @@ const EVENTOS_QUE_CREDITAM = new Set(['criada', 'cobranca_confirmada']);
 // este ciclo" do admin — a mesma pergunta, respondida num lugar só.
 // Assinatura que JÁ pagou (inclusive antes da migration 087) e foi cancelada
 // depois não é isso: o ciclo que a Asaas cobrou entra, o dinheiro entrou.
+// A assinatura desse link continua viva na Asaas e cobra de novo todo ciclo
+// — nada no Mostraí a cancela sozinho (os botões de cancelar só olham a
+// assinatura 'ativa'). Por isso o texto pede as DUAS coisas.
 const MOTIVO_INTENCAO_CANCELADA =
-  'pagamento de uma intenção de compra já cancelada (link antigo) — devolver no Checkout, nada foi creditado';
+  'pagamento de uma intenção de compra já cancelada (link antigo) — no Checkout, cancelar essa assinatura E devolver o valor; nada foi creditado';
 async function intencaoCanceladaSemPagamento(assinatura) {
   if (assinatura?.status !== 'cancelada') return false;
   return !(await cicloContratado.jaTeveCicloPago(assinatura));
@@ -765,10 +768,27 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     const {
       rows: [contaTravada],
     } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [anunciante.id]);
+    // A assinatura relida travada (revisão dos PRs #56/#57, 25/09/2026): o
+    // status que o chamador leu pode estar velho — um link novo cancela este
+    // no meio (`cancelarPendentesDePagamento`), e a conciliação carregou a
+    // lista antes de consultar o Checkout, uma assinatura por vez. Intenção
+    // cancelada que nunca pagou não credita, venha de onde vier: vira a
+    // mesma pendência do webhook. Travar depois da conta mantém a ordem de
+    // sempre (conta → assinatura).
+    const {
+      rows: [assinaturaTravada],
+    } = await cliente.query('SELECT * FROM assinaturas WHERE id = $1 FOR UPDATE', [assinatura.id]);
+    if (
+      assinaturaTravada?.status === 'cancelada' &&
+      !(await cicloContratado.jaTeveCicloPago(assinaturaTravada, cliente))
+    ) {
+      await cliente.query('ROLLBACK');
+      return registrarPendencia(contexto, MOTIVO_INTENCAO_CANCELADA);
+    }
     eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao);
     // Primeiro ciclo pago: a assinatura deixa de ser só um link gerado
     // (migration 089). Na mesma transação da cobrança.
-    if (assinatura.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
+    if (assinaturaTravada?.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
     ({ rows: cobrancaRows } = await cliente.query(
       `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status)
        VALUES ($1,$2,$3,'pendente') RETURNING id, criado_em`,

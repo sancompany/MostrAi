@@ -771,7 +771,7 @@ router.post('/admin/eventos-pendentes/:id/aplicar', async (req, res) => {
   // botão (`chargeId|status`) são diferentes, então a dedupe não seguraria.
   if (await sanCheckout.intencaoCanceladaSemPagamento(assinatura)) {
     return res.status(409).json({
-      erro: 'essa assinatura é uma intenção de compra já cancelada e nunca paga — devolva no Checkout e marque resolvido; creditar daria cobertura em dobro',
+      erro: 'essa assinatura é uma intenção de compra já cancelada e nunca paga — no Checkout, cancele essa assinatura e devolva o valor, depois marque resolvido; creditar daria cobertura em dobro',
     });
   }
 

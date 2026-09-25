@@ -262,7 +262,8 @@ test('plano pago + benefício por créditos respeitam a fila: Agora = pago, Pró
     const s = await situacaoDaConta(c.id);
     assert.equal(s.plano.agora.origem, 'assinatura', 'o ciclo pago continua sendo o Agora');
     assert.equal(s.plano.proximo.origem, 'beneficio_creditos');
-    assert.equal(s.plano.proximo.comecaEm, somar(20));
+    // Último dia pago é inclusivo: o benefício começa no dia SEGUINTE.
+    assert.equal(s.plano.proximo.comecaEm, somar(21));
     assert.equal(s.plano.depois.tipo, 'sem_plano', 'sem assinatura ativa: depois do benefício, sem plano');
     // A rotina diária NÃO ativa antes do fim do ciclo pago.
     await planoAdm.ativarBeneficiosAgendados({ apenasContas: [c.id] });

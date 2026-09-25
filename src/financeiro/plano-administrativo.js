@@ -83,7 +83,14 @@ function validadeValida(validoAte) {
 }
 
 // Encerra as linhas de histórico ainda abertas da conta.
-async function fecharAbertos(db, contaId, motivo, adminUsuario) {
+//
+// `manterAgendado`: o benefício AGENDADO já foi pago (com créditos) e só
+// espera o ciclo pago acabar — quando esse ciclo vence, ele é exatamente o
+// que entra no lugar, não algo a descartar. Fechar o agendado junto com o
+// pago vencido apagava o benefício antes de ele começar, e os créditos iam
+// junto (revisão do PR #55, 25/09/2026: com a ativação estrita, a varredura
+// de D+1 chega ANTES de `ativarBeneficiosAgendados`, no mesmo job).
+async function fecharAbertos(db, contaId, motivo, adminUsuario, { manterAgendado = false } = {}) {
   // `status = 'encerrado'` (migration 079) tem que andar junto de
   // `encerrado_em` sempre — os dois eram uma coisa só até essa migration
   // (linha aberta = `encerrado_em IS NULL`); agora que `status` também
@@ -93,8 +100,9 @@ async function fecharAbertos(db, contaId, motivo, adminUsuario) {
   await db.query(
     `UPDATE planos_administrativos
         SET encerrado_em = now(), encerrado_por = $3, encerrado_motivo = $2, status = 'encerrado'
-      WHERE anunciante_id = $1 AND encerrado_em IS NULL`,
-    [contaId, motivo, adminUsuario || null],
+      WHERE anunciante_id = $1 AND encerrado_em IS NULL
+        AND NOT ($4::boolean AND status = 'agendado')`,
+    [contaId, motivo, adminUsuario || null, manterAgendado],
   );
 }
 
@@ -180,7 +188,10 @@ async function encerrar({ conta, adminUsuario, motivo = 'cancelado' }) {
         return fresca[0] || null;
       }
     }
-    await fecharAbertos(db, conta.id, motivo, adminUsuario);
+    // Vencimento sozinho (conciliação) não mexe no benefício agendado: ele
+    // entra logo em seguida, no mesmo job (`ativarBeneficiosAgendados`). O
+    // botão do admin ('cancelado') continua fechando tudo — é decisão dele.
+    await fecharAbertos(db, conta.id, motivo, adminUsuario, { manterAgendado: motivo === 'vencido' });
     // Plano pago guardado por baixo de uma cortesia (migration 082): os dias
     // são do cliente — encerrar a cortesia devolve o pago, nunca apaga.
     const { rows } = await db.query(
@@ -271,8 +282,12 @@ async function resgatarOuConcederBeneficio(
     // em que o benefício COMEÇA, não do dia do resgate. Antes o agendado
     // recebia "hoje + N dias" e, se o ciclo pago terminasse depois disso,
     // nascia já vencido — a conta pagava os créditos e não recebia nada.
+    // A mesma régua nos dois caminhos: fim = dia em que começa + N. O
+    // agendado começa no dia SEGUINTE ao último dia pago (inclusivo); contar
+    // a partir do último dia pago prometia na tela um dia a menos do que a
+    // ativação entregava (revisão do PR #55, 25/09/2026).
     const validoAte = diasDeBeneficio
-      ? somarDias(pagandoEmDia ? conta.data_expiracao : hojeISO(), diasDeBeneficio)
+      ? somarDias(pagandoEmDia ? vigencia.inicioDepoisDoPago(conta.data_expiracao) : hojeISO(), diasDeBeneficio)
       : validoAteInformado;
     const { rows: historico } = await db.query(
       `INSERT INTO planos_administrativos
@@ -506,13 +521,17 @@ async function ativarBeneficiosAgendados({ apenasContas = null } = {}) {
         continue;
       }
       // A duração comprada é preservada mesmo se a ativação atrasou: a
-      // validade anda junto com o início real.
+      // validade anda junto com o início real. O início previsto é o dia
+      // seguinte ao último dia pago (`plano_anterior_valido_ate + 1`), então o
+      // atraso é hoje − (último dia pago + 1) e o fim anda o mesmo tanto — no
+      // dia certo, `valido_ate` fica exatamente como a tela prometeu (e a data
+      // que o admin digitou é respeitada ao dia). Revisão do PR #55, 25/09/2026.
       const {
         rows: [{ valido_ate: validoAte }],
       } = await cliente.query(
         `UPDATE planos_administrativos
             SET valido_ate = CASE WHEN plano_anterior_valido_ate IS NULL THEN valido_ate
-                                  ELSE GREATEST(valido_ate, ${vigencia.HOJE_SQL} + (valido_ate - plano_anterior_valido_ate)) END,
+                                  ELSE GREATEST(valido_ate, ${vigencia.HOJE_SQL} + (valido_ate - plano_anterior_valido_ate) - 1) END,
                 status = 'ativo', ativado_em = now()
           WHERE id = $1 RETURNING valido_ate`,
         [linha.historico_id],

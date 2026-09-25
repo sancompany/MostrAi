@@ -62,7 +62,7 @@ const beneficioPublico = (h) =>
     nome: `${NOME_TIER[h.tier] || h.tier} · ${nomeDoCiclo(h.compromisso_meses)}`,
     planoNome: h.plano_nome,
     validoAte: h.valido_ate,
-    comecaEm: h.status === 'agendado' ? h.plano_anterior_valido_ate : null,
+    comecaEm: h.status === 'agendado' ? vigencia.inicioDepoisDoPago(h.plano_anterior_valido_ate) : null,
   };
 
 // ---------- autoatendimento (conta logada) ----------
@@ -199,7 +199,7 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     descricao:
       status === 'ativo'
         ? `Válido até ${dataBR(historico.valido_ate)}.`
-        : `Começa em ${dataBR(historico.plano_anterior_valido_ate)}, quando seu plano pago atual terminar, e vale até ${dataBR(historico.valido_ate)}.`,
+        : `Começa em ${dataBR(vigencia.inicioDepoisDoPago(historico.plano_anterior_valido_ate))}, quando seu plano pago atual terminar, e vale até ${dataBR(historico.valido_ate)}.`,
   });
   sse.emitirParaConta(contaId, 'credits.updated', {});
   // O plano em vigor pode ter mudado: o card Plano e o de custo por
@@ -209,7 +209,7 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     conta: atualizada,
     status,
     validoAte: historico.valido_ate,
-    comecaEm: historico.plano_anterior_valido_ate,
+    comecaEm: vigencia.inicioDepoisDoPago(historico.plano_anterior_valido_ate),
   });
 });
 
