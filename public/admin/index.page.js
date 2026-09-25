@@ -2407,7 +2407,11 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
 // da grade de mídias; como ela é o "quanto ainda cabe" antes de decidir
 // criar uma peça nova, faz mais sentido vir primeiro.
 async function renderMidiaMostrai(el) {
-  const [midias, capacidade] = await Promise.all([pegar('/admin/midias-proprias'), pegar('/admin/capacidade-rede')]);
+  const [midias, capacidade, videoInstitucional] = await Promise.all([
+    pegar('/admin/midias-proprias'),
+    pegar('/admin/capacidade-rede'),
+    pegar('/admin/video-institucional'),
+  ]);
   const porSituacao = (s) => midias.filter((m) => m.situacaoDerivada === s).length;
 
   const resumo = [
@@ -2426,6 +2430,30 @@ async function renderMidiaMostrai(el) {
       ${resumo.map(([n, um, varios]) => `<div class="mini-indicador"><b>${n}</b><span>${n === 1 ? um : varios}</span></div>`).join('')}
     </div>
     <div id="editorMidiaWrap" hidden></div>
+
+    <section class="secao-pagina">
+      <div class="secao-topo">
+        <h3>Vídeo institucional</h3>
+        <span class="secao-nota">roda no tempo vago da rede, pro Player V2 — o Player V1 continua sempre com o cartão "este espaço pode ser do seu negócio"</span>
+        <div class="secao-acoes">
+          <button type="button" class="btn ghost mini" data-escolher-arquivo="viArquivo">${videoInstitucional ? 'Trocar vídeo' : 'Enviar vídeo'}</button>
+          <input type="file" id="viArquivo" accept="video/*" hidden>
+        </div>
+      </div>
+      ${
+        videoInstitucional
+          ? `<div class="tela-moldura">
+               <div class="mm-editor-preview-box">
+                 <video class="mm-card-asset" src="${esc(videoInstitucional.url)}" muted loop playsinline controls poster="${esc(videoInstitucional.thumbnailUrl || '')}"></video>
+               </div>
+             </div>
+             <p class="mm-preview-info">${videoInstitucional.duracaoSegundos}s · atualizado em ${window.dataBR(videoInstitucional.atualizadoEm, { hour: '2-digit', minute: '2-digit' })}</p>`
+          : vazio(
+              'Nenhum vídeo institucional configurado.',
+              'Enquanto não tiver, o cartão "este espaço pode ser do seu negócio" continua rodando no tempo vago da rede.',
+            )
+      }
+    </section>
 
     <section class="secao-pagina">
       <div class="secao-topo"><h3>Capacidade da rede</h3><span class="secao-nota">quanto ainda cabe em cada ponto em operação</span></div>
@@ -2448,6 +2476,29 @@ async function renderMidiaMostrai(el) {
     </section>`;
 
   montarTabelaCapacidade(document.getElementById('mmCapacidadeWrap'), capacidade);
+
+  // Envio direto, sem editor (é UM vídeo só pra rede inteira — nada a
+  // escolher além do arquivo). `fetch` cru, não `api()`: FormData precisa do
+  // Content-Type de multipart com boundary que o navegador gera sozinho, e
+  // `api()` força `application/json` (mesmo motivo de "Alterar mídia" acima).
+  document.getElementById('viArquivo').addEventListener('change', async (e) => {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+    toast('Enviando e normalizando... isso leva alguns segundos.');
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    const r = await fetch(`${API_BASE_URL}/admin/video-institucional`, {
+      method: 'POST',
+      body: dados,
+      credentials: 'include',
+    });
+    if (!r.ok) {
+      toast((await r.json().catch(() => ({}))).erro || 'não foi possível enviar o vídeo institucional', 'err');
+      return;
+    }
+    toast('Vídeo institucional atualizado.');
+    renderMidiaMostrai(el);
+  });
 
   const wrap = document.getElementById('editorMidiaWrap');
   document

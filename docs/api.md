@@ -152,6 +152,16 @@ devolve:
 }
 ```
 
+Item com `institucional:true` preenche o tempo vago da hora. Sem vídeo
+institucional configurado, vem sem `url` (Player V1 mostra o cartão HTML
+"este espaço pode ser do seu negócio"; Player V2 mostra a peça `#vazio`,
+`duracaoSegundos` fixo em 10). Configurado (`POST
+/admin/video-institucional`, ver Catálogo), o item leva `url`,
+`duracaoSegundos` real do vídeo e `contentHash` — Player V2 baixa e toca
+como qualquer mídia; Player V1 ignora `url`/`duracaoSegundos` desse item de
+propósito e continua sempre com o cartão (não muda de comportamento com ou
+sem vídeo configurado, 25/09/2026).
+
 `itemProgramacaoId` é opaco pro app (só compara igualdade) mas tem forma fixa —
 `indice` é a posição na sequência congelada da hora (`playlist_hora_congelada`,
 migration 064), **antes** de remover vagas que saíram de elegibilidade no meio
@@ -268,6 +278,8 @@ pede.
 | GET | `/admin/player-releases` · POST · POST `/:id/assinatura-conferida` · PATCH `/:id {ativa}` | releases do Player (OTA fase 1). Só ativa com assinatura conferida por humano (keystore) |
 | GET | `/admin/eventos` | SSE do admin: `screen.updated`/`point.updated` |
 | POST | `/admin/pontos/foto-exemplo` | Foto de exemplo do "ponto completo" mostrada em `pontos.html` — ilustração genérica ao lado do mapa, não é foto de nenhum ponto real. Chave fixa no bucket (upsert sobrescreve); a URL salva leva `?v=` pra não ficar em cache. |
+| GET | `/admin/video-institucional` | Configuração atual (`{url, thumbnailUrl, duracaoSegundos, contentHash, tamanhoBytes, atualizadoEm}`) ou `null` — nunca configurado, ou JSON corrompido na config (a tela existe pra consertar isso, não derruba). |
+| POST | `/admin/video-institucional` | `multipart/form-data` (`arquivo`, até 95MB). Vídeo de 3–60s; passa pelo mesmo `normalizar()` dos criativos (ffmpeg → 1080x1920, thumbnail, hash do arquivo final, upload pro Storage) e grava em `configuracoes_site` (chave `video_institucional`, mesma tabela da foto de exemplo do ponto, migration 055). Preenche o tempo vago da rede pro Player V2 — ver Contrato 2. 400 se não é vídeo, ou fora de 3–60s. |
 | GET | `/admin/pontos-ocupacao` | RN-55 (G.7): uma linha por (ponto, anunciante) — `nome_empresa`, `ponto_nome`, `segundos_por_hora` (dessa conta), `segundos_vendidos` (total do ponto), `escolha_bloqueada_em`. Reavalia o bloqueio antes de responder — é aqui que o admin de fato olha isso. |
 | POST | `/admin/pontos/:id/liberar-escolha` | Libera um ponto travado pra escolha nova. 409 se ainda não sobrar `FOLGA_MINIMA_PARA_LIBERAR_SEGUNDOS` (15 min) de espaço real — sem isso o próximo anunciante a entrar travaria de novo minutos depois. |
 

@@ -239,6 +239,30 @@ async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {},
   );
 }
 
+// Vídeo institucional (25/09/2026): configuração ÚNICA pra rede inteira,
+// gravada por `POST /admin/video-institucional` na MESMA `configuracoes_site`
+// que já guarda a foto de exemplo do ponto (migration 055; `src/pontos/
+// repository.js#definirConfiguracao`) — não é criativo (não tem
+// `anunciante_id`, não é de ninguém pra aprovar) nem mídia própria
+// (`midias_proprias`, que compete por frequência: este só preenche o que
+// sobrou, igual ao cartão que substitui).
+//
+// Roda em TODA geração de playlist de TODA tela da rede — nunca pode
+// derrubar isso por causa de um valor gravado errado à mão. `null` (nunca
+// configurado, JSON quebrado, ou campos faltando) cai no cartão de sempre.
+async function obterVideoInstitucional() {
+  const bruto = await pontosRepo.obterConfiguracao('video_institucional');
+  if (!bruto) return null;
+  try {
+    const { url, duracaoSegundos, contentHash } = JSON.parse(bruto);
+    if (typeof url !== 'string' || !url) return null;
+    if (!Number.isFinite(duracaoSegundos) || duracaoSegundos <= 0) return null;
+    return { url, duracaoSegundos, contentHash: typeof contentHash === 'string' ? contentHash : null };
+  } catch {
+    return null;
+  }
+}
+
 // `dispositivo` é o objeto de dispositivosRepo.buscarComPonto (já traz a
 // categoria, o horário, a cota e o dono do ponto).
 async function gerarPlaylistDaHora(dispositivo, hora) {
@@ -265,15 +289,17 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias] = await Promise.all([
-    anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
-    deficitHoraAnterior(dispositivo.id, horaAnterior),
-    criativosDoDono(dispositivo.dono_conta_id),
-    pontosEmOperacao(),
-    bancoHorasRepo.saldosAtivos(),
-    pontosRepo.idsBloqueadosParaEscolha(),
-    midiasElegiveis(dispositivo.ponto_id),
-  ]);
+  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias, videoInstitucional] =
+    await Promise.all([
+      anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
+      deficitHoraAnterior(dispositivo.id, horaAnterior),
+      criativosDoDono(dispositivo.dono_conta_id),
+      pontosEmOperacao(),
+      bancoHorasRepo.saldosAtivos(),
+      pontosRepo.idsBloqueadosParaEscolha(),
+      midiasElegiveis(dispositivo.ponto_id),
+      obterVideoInstitucional(),
+    ]);
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele.
   //
@@ -394,7 +420,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     const idsConhecidos = new Set([...base.map((e) => e.id), ...extras]);
     return sequenciaAdicional(entrada.filter((e) => !idsConhecidos.has(e.id)));
   });
-  const daHora = montarHoraDeTv(congelada.base, semente);
+  const daHora = montarHoraDeTv(congelada.base, semente, videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL);
   const idsExtras = congelada.extras;
 
   // A hora não coube em todo mundo: todos entregam menos do que contrataram.
@@ -479,9 +505,14 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // quem chegou no meio da hora nunca disputa posição com quem já rodava.
   const itens = [...daHora.itens, ...idsExtras]
     .map((id, indice) => {
-      // Inventário vago: o player mostra a própria peça institucional (#vazio em
-      // public/player.html) pelo tempo do item. Não tem url, não é de ninguém e
-      // não conta exibição.
+      // Inventário vago: sem vídeo institucional configurado, o player mostra
+      // a própria peça institucional (#vazio em public/player.html) pelo tempo
+      // do item — não tem url, não é de ninguém e não conta exibição. Com o
+      // vídeo configurado (25/09/2026, `POST /admin/video-institucional`), o
+      // Player V2 baixa e toca ele como qualquer mídia (`url`/`contentHash`);
+      // o Player V1 IGNORA esses dois campos quando `institucional: true`
+      // (public/player.page.js) e continua mostrando só o cartão — o vídeo
+      // nunca é forçado num player antigo sem esse suporte.
       if (id === ID_INSTITUCIONAL) {
         return {
           itemProgramacaoId: `${janelaId}|${indice}|inst`,
@@ -490,8 +521,9 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
           autoanuncio: false,
           institucional: true,
           contabiliza: false,
-          url: null,
-          duracaoSegundos: DURACAO_INSTITUCIONAL,
+          url: videoInstitucional?.url ?? null,
+          duracaoSegundos: videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL,
+          ...(videoInstitucional?.contentHash ? { contentHash: videoInstitucional.contentHash } : {}),
         };
       }
       // Congelou numa hora e saiu da elegibilidade depois (ponto desmarcado

@@ -247,3 +247,24 @@ Backend do contrato V2 do Mostraí Player construído, V1 mantido. Migration
 (ficha em 5 blocos) e Rede → Versões do Player. Saúde da tela só em
 `src/lib/status-tela.js`. Detalhe e o que falta: `.ia/HANDOFF.md` (topo) e
 `docs/PENDENCIAS.md`, seção "Player V2".
+
+## Vídeo institucional — código pronto, aguarda deploy + upload real (25/09/2026)
+
+Gate 2 de `docs/PENDENCIAS.md` seção M: o dono enviou o arquivo final do
+vídeo institucional (vertical, 15s). Implementado o caminho inteiro:
+`POST`/`GET /admin/video-institucional` (`src/pontos/routes.js`, reusa o
+pipeline `normalizar()` de `src/lib/ffmpeg.js`, mesmo dos criativos) →
+config em `configuracoes_site` (chave `video_institucional`, migration 055,
+mesmo padrão da foto de exemplo do ponto) → `src/playlist/gerador.js#obterVideoInstitucional`
+alimenta `src/lib/pacing.js#montarHoraDeTv` com a duração real do vídeo em
+vez dos 10s fixos do cartão → item do contrato V2 leva `url`/`duracaoSegundos`/
+`contentHash`. Player V1 não mudou nada — ignora esses campos de propósito e
+continua sempre com o cartão HTML. UI nova em `Mídia Mostraí` (admin),
+reusando CSS existente. Testado: `npm run check` 422/422 (novo
+`tests/video-institucional.test.js` concentra TODOS os testes que tocam
+essa chave global, de propósito — evita corrida entre arquivos de teste em
+paralelo) + verificação manual via Playwright. **Não foi possível testar o
+upload real localmente** (`.env` local sem credencial do Supabase Storage).
+**Falta:** commit/PR/merge/deploy, depois o upload de verdade do arquivo do
+dono em produção, e validação numa TV real. Nada disso foi feito ainda —
+só o código, testado e revisado.

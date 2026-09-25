@@ -13,6 +13,9 @@ const sse = require('../lib/sse');
 const { colunasDoEndereco } = require('../lib/endereco');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
+// Vídeo, não foto — mesmo teto de src/midias/routes.js (upload de vídeo pra
+// mídia própria), bem maior que o das fotos deste arquivo.
+const uploadVideo = multer({ dest: os.tmpdir(), limits: { fileSize: 95 * 1024 * 1024 } });
 
 // Pública — "onde estamos" (módulo 7)
 router.get('/pontos', async (_req, res) => {
@@ -205,6 +208,65 @@ router.post('/admin/pontos/foto-exemplo', upload.single('arquivo'), async (req, 
     const url = `${data.publicUrl}?v=${Date.now()}`;
     await repo.definirConfiguracao('foto_exemplo_ponto_url', url);
     res.json({ url });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+});
+
+// Vídeo institucional (25/09/2026, pedido do dono): o que preenche o tempo
+// vago da rede pro Player V2 baixar e tocar, no lugar do cartão HTML "este
+// espaço pode ser do seu negócio" — que continua valendo pro Player V1 e pra
+// rede sem vídeo configurado nenhum (src/playlist/gerador.js
+// #obterVideoInstitucional). Configuração ÚNICA pra rede inteira: reenviar
+// substitui, não acumula (mesma chave de storage e de `configuracoes_site`).
+router.get('/admin/video-institucional', async (_req, res) => {
+  const bruto = await repo.obterConfiguracao('video_institucional');
+  // Mesma defesa de src/playlist/gerador.js#obterVideoInstitucional: um
+  // valor gravado à mão errado não pode derrubar a própria tela que existe
+  // pra consertar isso.
+  try {
+    res.json(bruto ? JSON.parse(bruto) : null);
+  } catch {
+    res.json(null);
+  }
+});
+
+router.post('/admin/video-institucional', uploadVideo.single('arquivo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
+  try {
+    const ffmpeg = require('../lib/ffmpeg');
+    const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
+    if (!midia) {
+      return res.status(400).json({ erro: 'não foi possível ler esse arquivo — confira se é um vídeo válido' });
+    }
+    if (midia.ehImagem) return res.status(400).json({ erro: 'vídeo institucional precisa ser um vídeo, não uma foto' });
+    // Mesma faixa de src/midias/routes.js — teto que já vale pra qualquer
+    // vídeo que preenche tempo de tela, institucional ou não.
+    if (midia.duracao_segundos > 60 || midia.duracao_segundos < 3) {
+      return res
+        .status(400)
+        .json({ erro: `esse vídeo tem ${midia.duracao_segundos}s — o institucional aceita de 3 a 60 segundos` });
+    }
+    // `'institucional'` como id: chave de storage fixa (upsert sobrescreve),
+    // nunca colide com um criativoId de verdade (serial numérico).
+    const normalizado = await ffmpeg.normalizar(req.file.path, 'institucional');
+    // `?v=` cache-busting na URL salva, mesmo padrão da foto-exemplo acima —
+    // o Player V2 confere pelo `contentHash`, mas a URL sozinha (CDN,
+    // pré-visualização no admin) também não pode ficar presa no arquivo
+    // antigo depois de uma troca.
+    const configuracao = {
+      url: `${normalizado.arquivo_normalizado_url}?v=${Date.now()}`,
+      thumbnailUrl: normalizado.thumbnail_url,
+      duracaoSegundos: normalizado.duracao_segundos,
+      contentHash: normalizado.conteudo_sha256,
+      tamanhoBytes: normalizado.conteudo_bytes,
+      atualizadoEm: new Date().toISOString(),
+    };
+    await repo.definirConfiguracao('video_institucional', JSON.stringify(configuracao));
+    res.json(configuracao);
+  } catch (err) {
+    console.error('falha ao processar vídeo institucional', err);
+    res.status(400).json({ erro: 'não foi possível processar esse arquivo — confira se é um vídeo válido' });
   } finally {
     fs.unlink(req.file.path, () => {});
   }
