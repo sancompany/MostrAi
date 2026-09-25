@@ -327,7 +327,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     redirecionamento hoje; a fonte é o `API.md`.
 12. [x] **Backup** — job `Backup` ativo (`0 8 * * 0`); ensaio de restauração feito em 25/09/2026 (RUNBOOK §5). Texto original: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
-14. [ ] **Criar o job `ApuracaoBancoHoras` no Northflank** — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK (25/09/2026). Especificação completa (cron `0 6 1 * *`, comando, variáveis, tentativas, primeira execução em `--dry-run`): `docs/job-apuracao-banco-horas.md`. Sem o job, nenhum déficit mensal entra no banco de horas (a liquidação diária já roda dentro do `Conciliacao`).
+14. [x] **Criar o job `ApuracaoBancoHoras` no Northflank** — FEITO em 25/09/2026, exatamente pela especificação de `docs/job-apuracao-banco-horas.md`: cron `0 6 1 * *` (UTC), `Forbid`, `backoffLimit 2`, `activeDeadlineSeconds 600`, plano `nf-compute-20`, imagem construída do mesmo repositório/branch (`main`) que o `Conciliacao`, variáveis só `DATABASE_URL` e `NODE_ENV=production`. 1ª execução manual com `--dry-run` rodou com sucesso (código 0, as duas linhas de log da simulação, nada gravado). Próximo disparo: 01/10/2026 06:00 UTC.
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
 
@@ -4855,7 +4855,9 @@ existiam só na conversa com o dono e ficam registrados aqui.
 
 ### Gates do operador (só ele faz)
 
-1. Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).
+1. ~~Criar o job `ApuracaoBancoHoras` no Northflank (spec pronta).~~ —
+   **FEITO em 25/09/2026**, ver item 14 (seção A) para o detalhe da
+   configuração e da 1ª execução (`--dry-run`).
 2. Enviar o vídeo institucional (item A).
 3. Fazer o último teste de ponta a ponta com compra real (inclui ver o e-mail
    HTML e o comprovante PDF chegarem, e o acerto proporcional de uma troca).

@@ -70,9 +70,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
   ponto), mas **nenhum caminho de criação de ponto grava `categoria_id`**
   hoje — na prática o filtro nunca exclui ninguém. Furo já catalogado em
   `docs/furos.md`. Ver `.ia/RISKS.md` e `.ia/TODO.md`.
-- **Job `ApuracaoBancoHoras` no Northflank** — não existe (conferido em
-  25/09/2026); código e especificação prontos em
-  `docs/job-apuracao-banco-horas.md`. Gate do operador.
+- ~~**Job `ApuracaoBancoHoras` no Northflank** — não existe~~ — **criado em
+  25/09/2026**, pela especificação de `docs/job-apuracao-banco-horas.md`;
+  1ª execução manual (`--dry-run`) rodou com sucesso.
 - **Bônus "ganhou uma tela" (`cardBonus`, qual='ponto') no Painel** —
   `GET /conta/modos` sempre devolve `bonus.ponto: null` por design atual
   (comentário no próprio código, `src/conta/modos.js`), então esse banner

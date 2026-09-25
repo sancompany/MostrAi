@@ -658,3 +658,9 @@ endereço.
 - nenhuma cobrança, estorno ou cancelamento real foi feito;
 - o Checkout não foi alterado;
 - o Access nunca ficou desligado.
+
+**Adendo (25/09/2026, depois do fechamento acima):** o gate 1 foi cumprido —
+o job `ApuracaoBancoHoras` foi criado no Northflank pela especificação deste
+relatório e de `docs/job-apuracao-banco-horas.md`, e a 1ª execução manual em
+`--dry-run` rodou com sucesso. Estado atualizado em `docs/PENDENCIAS.md`
+(item 14 e seção M).
