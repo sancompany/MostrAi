@@ -4870,6 +4870,10 @@ existiam só na conversa com o dono e ficam registrados aqui.
    ficaram só para leitura).
 7. Decisões comerciais abertas (seção L, relatório §16) e as do banco de horas
    (ordem FIFO/LIFO, conta encerrada com saldo, teto diário, mudança de plano).
+   Da revisão dos PRs #55–#58 (relatório §4): cancelar sozinho, no Checkout, a
+   assinatura de um link já cancelado que foi pago (hoje vira pendência pedindo
+   cancelar + devolver); a janela noturna de ~6 h entre o fim do pago e o
+   início do benefício; a mensagem do timeout de 20 s na troca de plano.
 8. Revisão jurídica dos textos públicos (termos, privacidade, contrato do
    anunciante, comodato e os PDFs de `contratos/`) — inventário no relatório
    §16.
