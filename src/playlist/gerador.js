@@ -13,7 +13,6 @@ const {
 const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const bancoHorasRepo = require('../bancohoras/repository');
-const { MESES_PARA_FILA_DE_CREDITO } = require('../bancohoras/apuracao');
 const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
@@ -34,17 +33,18 @@ function sequenciaAdicional(novosEntrada) {
   return espalhar(pedidos, total).filter((id) => id !== null);
 }
 
-// Quanto mais perto a dívida chega da válvula (MESES_PARA_FILA_DE_CREDITO),
-// mais peso ela ganha na hora — pedido do dono, 18/09/2026: "quanto mais
-// tempo no banco tiver, mais prioridade tem", pra tentar drenar sozinha
-// antes de precisar virar decisão do admin. Escala de 1x (dívida deste mês,
-// mesmo teto de sempre: nunca mais que dobrar o pedido) até
-// MULTIPLICADOR_MAXIMO_BANCO (dívida na borda da válvula) — número meu, o
-// dono não pediu nestes termos, documentado como tal em docs/PENDENCIAS.md.
+// Quanto mais velha a dívida, mais peso ela ganha na hora — pedido do dono,
+// 18/09/2026: "quanto mais tempo no banco tiver, mais prioridade tem". Escala
+// de 1x (dívida deste mês: nunca mais que o próprio pedido da hora) até
+// MULTIPLICADOR_MAXIMO_BANCO (dívida com IDADE_DE_PESO_MAXIMO_MESES ou mais)
+// — números nossos, o dono não pediu nestes termos (docs/PENDENCIAS.md). Até
+// 25/09/2026 a idade máxima era a da válvula de expiração; a válvula saiu
+// (banco de horas não expira) e a escala ficou com o mesmo formato.
 const MULTIPLICADOR_MAXIMO_BANCO = 3;
+const IDADE_DE_PESO_MAXIMO_MESES = 3;
 
 function multiplicadorPorIdade(idadeMeses) {
-  const fracao = Math.min((idadeMeses || 0) / MESES_PARA_FILA_DE_CREDITO, 1);
+  const fracao = Math.min((idadeMeses || 0) / IDADE_DE_PESO_MAXIMO_MESES, 1);
   return 1 + fracao * (MULTIPLICADOR_MAXIMO_BANCO - 1);
 }
 
@@ -194,9 +194,14 @@ function duracaoMedia(criativos) {
   return Math.round(soma / criativos.length);
 }
 
+// Só a entrega NORMAL da hora anterior que a TV não confirmou volta como
+// déficit. A exibição do banco (`vezes_banco`, migration 090) que não rodou
+// continua no saldo do banco — carregar ela aqui também a devolveria duas
+// vezes. A confirmada conta primeiro pra entrega normal (mesma regra da
+// liquidação, src/bancohoras/apuracao.js).
 async function deficitHoraAnterior(dispositivoId, horaAnterior) {
   const { rows } = await pool.query(
-    `SELECT anunciante_id, GREATEST(vezes_programadas - vezes_confirmadas, 0) AS deficit
+    `SELECT anunciante_id, GREATEST(vezes_programadas - vezes_banco - vezes_confirmadas, 0) AS deficit
      FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2`,
     [dispositivoId, horaAnterior],
   );
@@ -211,19 +216,24 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior) {
 // ter chave que não está em `contagem` (quem não coube em nada, `cabe=0`,
 // e por isso nem aparece na entrega). `vezes_pedidas` some do banco de
 // horas quem não pediu mais nada naquela hora (conta cancelada, criativo
-// removido): sem pedido não há déficit a apurar.
-async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {}) {
+// removido): sem pedido não há déficit a apurar. `banco` é quanto de
+// `contagem` veio do banco de horas (entra em `vezes_programadas` — é o teto
+// da confirmação — e separado em `vezes_banco`). `banco_liquidado_em` nunca é
+// regravado aqui: a base da hora é congelada, então `vezes_banco` não muda
+// entre as gerações da mesma hora.
+async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {}, banco = {}) {
   const anunciantes = new Set([...Object.keys(contagem), ...Object.keys(pedidos)]);
   await Promise.all(
     [...anunciantes].map((anuncianteId) => {
       const vezes = contagem[anuncianteId] || 0;
-      const pedidas = pedidos[anuncianteId] ?? vezes;
+      const doBanco = banco[anuncianteId] || 0;
+      const pedidas = pedidos[anuncianteId] ?? vezes - doBanco;
       return pool.query(
-        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas)
-     VALUES ($1,$2,$3,$4,$5)
+        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco)
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
-     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5`,
-        [anuncianteId, dispositivo.id, horaAtual, vezes, pedidas],
+     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6`,
+        [anuncianteId, dispositivo.id, horaAtual, vezes, pedidas, doBanco],
       );
     }),
   );
@@ -310,14 +320,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
     // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
     const frequenciaBase = quantasInsercoes(a, segundos, duracaoSegundos);
-    // Banco de horas (G.3): quem tem saldo (déficit de mês anterior que
-    // ainda não foi devolvido) ganha prioridade aqui, em cima do déficit
-    // normal de hora anterior. Capado no próprio pedido da hora — sem
-    // teto, uma dívida grande dominaria a hora inteira, o que a RN-49 já
-    // evita do outro lado. O teto cresce com `multiplicadorPorIdade` conforme a
-    // dívida envelhece (ver acima) — dívida nova nunca passa do dobro do
-    // pedido normal; dívida perto da válvula pode chegar a
-    // MULTIPLICADOR_MAXIMO_BANCO vezes isso.
+    // Banco de horas (G.3): quem tem saldo DISPONÍVEL (déficit de mês
+    // anterior ainda não devolvido, menos o que outra hora já programou e
+    // ainda não liquidou) pede exibições a mais — mas só no tempo que a hora
+    // vendida deixou livre (`banco` em src/lib/pacing.js#montarHoraDeTv):
+    // nunca tira a entrega corrente de ninguém. Capado no próprio pedido da
+    // hora, crescendo com a idade da dívida (`multiplicadorPorIdade`).
     //
     // O saldo é da conta, não da tela — mas a playlist é gerada UMA TELA
     // por vez, e quem cobre vários pontos tem esta função rodando em
@@ -327,17 +335,24 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     // partilha aquelas telas. Divide por `cobertura.get(a.id).length`, a
     // mesma fatia que a RN-49 já usa pra ratear segundos entre pontos —
     // ela existe pra resolver exatamente este problema, com outro número.
+    // Arredonda pra cima: saldo menor que o número de pontos (2 exibições em
+    // 3 pontos) nunca podia virar 0 pra sempre; a sobra é de no máximo uma
+    // exibição por ponto, e a liquidação nunca abate mais que o saldo.
+    //
+    // O multiplicador de idade acelera o RITMO (teto por hora), nunca o
+    // tamanho da dívida: até 25/09/2026 ele multiplicava também a fatia do
+    // saldo, e 10 exibições devidas viravam 16 programadas.
     const bancoDaConta = saldosBanco[a.id];
     const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
     const prioridadeBanco = Math.min(
-      Math.floor(((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length) * multiplicadorBanco),
+      Math.ceil((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length),
       Math.floor(frequenciaBase * multiplicadorBanco),
     );
     return {
       id: a.id,
       frequenciaBase,
-      deficit: (deficits[a.id] || 0) + prioridadeBanco,
-      prioridadeBanco,
+      deficit: deficits[a.id] || 0,
+      banco: prioridadeBanco,
       duracaoSegundos,
     };
   });
@@ -429,31 +444,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     contagem[id] = (contagem[id] || 0) + 1;
     pedidos[id] = (pedidos[id] || 0) + 1;
   }
-  await gravarProgramados(dispositivo, horaAtual, contagem, pedidos);
-
-  // Banco de horas (G.3): drena na proporção do que a hora entregou. Se a
-  // hora coube em tudo (cabe === quer), a prioridade toda foi entregue e
-  // drena por inteiro; se cortou, drena só a fração — o resto continua no
-  // banco pra próxima hora tentar de novo. `Math.round` porque o banco é
-  // em exibições inteiras, não fração de exibição.
-  //
-  // Drena UMA vez por hora — na geração que congelou a hora. Cada poll do
-  // Player (e cada tela do mesmo ponto) gera a playlist de novo e reprocessa
-  // a mesma base; sem esta trava o saldo era drenado a cada poll (achado da
-  // consolidação final, 24/09/2026 — o banco esvaziava em minutos). Quem
-  // entra no meio da hora (extras) drena a partir da hora seguinte.
-  if (congelada.criadaAgora)
-    await Promise.all(
-      entrada
-        .filter((e) => e.prioridadeBanco > 0)
-        .map((e) => {
-          const quer = pedidos[e.id] || 0;
-          const cabe = contagem[e.id] || 0;
-          const fracaoAtendida = quer > 0 ? Math.min(1, cabe / quer) : 0;
-          const drenar = Math.round(e.prioridadeBanco * fracaoAtendida);
-          return drenar > 0 ? bancoHorasRepo.drenar(Number(e.id), drenar) : null;
-        }),
-    );
+  // Banco de horas: a hora só PROGRAMA (`vezes_banco`); o saldo é abatido
+  // pela liquidação, com o que a TV confirmou, depois que a hora fecha
+  // (src/bancohoras/apuracao.js#liquidarBancoConfirmado — job diário e
+  // mensal). Até 25/09/2026 drenava aqui, no programado: TV desligada
+  // consumia a dívida sem entregar nada.
+  const banco = { ...daHora.bancoProgramados };
+  await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco);
 
   // Ponto de partida do revezamento gira por hora (19/09/2026, furo real
   // encontrado a partir de um relato do dono: "rodou só uma vez e não rodou

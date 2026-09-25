@@ -321,7 +321,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     redirecionamento hoje; a fonte é o `API.md`.
 12. [ ] **Backup**: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
 13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
-14. [ ] **Banco de horas (G.3, construído em 18/09/2026)**: `npm run apurar-banco-horas` fecha o déficit do mês anterior e roda a válvula — **precisa de um cron job novo no Northflank**, mensal (ex.: `0 6 1 * *`, dia 1 de cada mês), do mesmo jeito que A.11/A.12 já pedem pro `conciliar` e pro `backup`. Sem o cron, o saldo nunca fecha e a prioridade do mês seguinte nunca existe — a rota de consulta (`GET /admin/banco-horas`) fica sempre vazia.
+14. [ ] **Criar o job `ApuracaoBancoHoras` no Northflank** — CÓDIGO_PRONTO_AGUARDA_CRIAÇÃO_NO_NORTHFLANK (25/09/2026). Especificação completa (cron `0 6 1 * *`, comando, variáveis, tentativas, primeira execução em `--dry-run`): `docs/job-apuracao-banco-horas.md`. Sem o job, nenhum déficit mensal entra no banco de horas (a liquidação diária já roda dentro do `Conciliacao`).
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
 
@@ -4773,7 +4773,10 @@ recusa vale pro botão "Aplicar este ciclo" do admin (409, botão escondido);
 "já pagou" enxerga também os ciclos do backfill da migration 087, que não
 têm `assinatura_id` (`cicloContratado.jaTeveCicloPago`).
 
-- [ ] **Banco de horas: drenagem retentável.** Hoje o gerador drena o banco
+- [x] ~~**Banco de horas: drenagem retentável.**~~ — **RESOLVIDO em
+  25/09/2026** de outro jeito: o gerador não drena mais nada; a liquidação
+  abate o banco confirmado, uma vez por hora fechada (`banco_liquidado_em`,
+  migration 090). Texto original: Hoje o gerador drena o banco
   só na geração que congelou a hora (`criadaAgora`). Se essa geração falhar
   DEPOIS de congelar (gravarProgramados, ou no meio do `Promise.all` de
   drenagem), a tentativa seguinte não drena — a playlist congelada entrega a

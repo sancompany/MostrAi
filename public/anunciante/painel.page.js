@@ -564,7 +564,7 @@ async function carregarBancoHoras() {
     }
     card.querySelector('b').textContent = duracaoLegivel(dados.segundos);
     card.querySelector('[data-kpi-banco-legenda]').textContent =
-      `${dados.saldo} exibições · prioridade nos próximos dias`;
+      `${dados.saldo} exibições a devolver · entram no tempo livre das telas`;
     card.hidden = false;
     encaixarNumero(card.querySelector('b'));
   } catch {

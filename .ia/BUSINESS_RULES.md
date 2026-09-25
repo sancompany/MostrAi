@@ -116,14 +116,20 @@ migration `064_playlist_hora_congelada.sql`.
 
 ## Banco de horas
 
-`src/bancohoras/`. Quando a hora não coube em tudo que o plano pedia
-(corte proporcional), a diferença vira déficit acumulado por conta/mês.
-Prioridade na hora seguinte cresce conforme a dívida envelhece
-(`multiplicadorPorIdade` em `src/playlist/gerador.js`): de 1x (dívida deste
-mês) até `MULTIPLICADOR_MAXIMO_BANCO = 3` (dívida na borda da válvula de
-expiração, `MESES_PARA_FILA_DE_CREDITO` em `src/bancohoras/apuracao.js`).
-A válvula nunca move dinheiro sozinha — vira decisão do admin quando chega
-ao limite.
+`src/bancohoras/` — obrigação de veiculação (decisão do dono, 25/09/2026:
+MANTER; regra completa em `docs/funcional.md`, RN-53). Capacidade contratada
+que não coube (corte proporcional da RN-30) vira saldo na apuração mensal
+(mês de Matão; job `ApuracaoBancoHoras`, `docs/job-apuracao-banco-horas.md`).
+O saldo volta só no tempo OCIOSO da hora (`banco` em
+`src/lib/pacing.js#montarHoraDeTv`), nunca tirando a entrega corrente de
+ninguém; o ritmo por hora cresce com a idade da dívida
+(`multiplicadorPorIdade`, 1x até 3x). A geração só programa
+(`exibicoes_contador.vezes_banco`); a liquidação abate o banco CONFIRMADO,
+uma vez por hora fechada (`banco_liquidado_em`, diário no `Conciliacao` e
+mensal no `ApuracaoBancoHoras`). Sem expiração, sem zerar no mês, nunca
+crédito em dinheiro — a válvula de 3 meses saiu em 25/09/2026. Em aberto
+(decisão do operador): ordem FIFO/LIFO, conta encerrada/cancelada com saldo,
+teto diário, mudança de plano.
 
 ## Exibições, métricas do painel (`GET /anunciantes/:id/exibicoes`)
 
