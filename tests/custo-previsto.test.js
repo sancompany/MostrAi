@@ -73,7 +73,7 @@ async function situacao(contaId) {
 }
 
 async function apagar(id) {
-  await new Promise((r) => setTimeout(r, 80));
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   for (const t of ['ciclos_contratados', 'notificacoes', 'planos_administrativos', 'creditos_ledger', 'eventos']) {
     await pool.query(`DELETE FROM ${t} WHERE anunciante_id = $1`, [id]);
   }

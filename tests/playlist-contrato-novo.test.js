@@ -40,7 +40,13 @@ async function apagarPonto(id) {
   await pool.query('DELETE FROM pontos WHERE id = $1', [id]);
 }
 
-async function contaComPlanoEAnuncioAprovado() {
+// A escolha do ponto entra ANTES do plano e do criativo aprovado: sem ela a
+// conta cai na cobertura automática, que alcança os pontos em operação de
+// OUTROS arquivos de teste rodando em paralelo — a playlist deles grava
+// `exibicoes_contador` desta conta e o DELETE do teardown bate na FK. E a
+// escolha só vale com o ponto já em operação (pacing.pontosDoAnunciante),
+// por isso quem chama cria a tela primeiro.
+async function contaComPlanoEAnuncioAprovado(pontoId) {
   const conta = await anunciantesRepo.criar({
     nome_empresa: `Teste Contrato ${randomUUID()}`,
     cpf_cnpj: randomUUID().replace(/-/g, '').slice(0, 11),
@@ -52,6 +58,7 @@ async function contaComPlanoEAnuncioAprovado() {
     contato_telefone: '16999990000',
     senha: 'x',
   });
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
   const criativo = await criativosRepo.criar({
     anunciante_id: conta.id,
@@ -75,12 +82,6 @@ async function dispositivoContratoNovo() {
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 
-// Escolha explícita do ponto: com outros arquivos rodando em paralelo a rede
-// tem vários pontos em operação, e a cobertura automática poderia cair noutro.
-async function escolherPonto(contaId, pontoId) {
-  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [contaId, pontoId]);
-}
-
 async function limparDispositivo(id, pontoId) {
   // Limpeza de teste: o comprovante confirmado bloqueia a exclusão pela
   // aplicação (409, consolidação 24/09/2026) — aqui ele é lixo de teste.
@@ -90,23 +91,20 @@ async function limparDispositivo(id, pontoId) {
   if (pontoId) await apagarPonto(pontoId);
 }
 
+// Antes da tela: o criativo sai primeiro (a conta deixa de ser programada em
+// qualquer playlist) e só depois a escolha do ponto some — na ordem inversa,
+// a conta voltaria à cobertura automática por um instante.
 async function apagarConta(id) {
-  await pool.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [id]);
+  await pool.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
 }
 
 test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criativoId estáveis', async () => {
-  const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
-  // Escolha explícita do ponto: com outros arquivos de teste rodando em
-  // paralelo a rede tem vários pontos em operação, e a cobertura automática
-  // do plano poderia cair noutro.
-  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [
-    conta.id,
-    dispositivo.ponto_id,
-  ]);
+  const conta = await contaComPlanoEAnuncioAprovado(dispositivo.ponto_id);
   try {
     const hora = new Date();
     const envelope = await gerador.gerarPlaylistDaHora(dispositivo, hora);
@@ -135,8 +133,8 @@ test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criati
     assert.strictEqual(item2.itemProgramacaoId, item.itemProgramacaoId);
     assert.strictEqual(item2.criativoId, item.criativoId);
   } finally {
-    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
   }
 });
 
@@ -152,8 +150,8 @@ test('dispositivo com contrato_playlist=1 (padrão) não muda — array de sempr
 });
 
 test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId devolve duplicado', async () => {
-  const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
+  const conta = await contaComPlanoEAnuncioAprovado(dispositivo.ponto_id);
   const hora = new Date();
   hora.setMinutes(0, 0, 0);
   try {
@@ -192,14 +190,14 @@ test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId 
     );
     assert.strictEqual(depois[0].vezes_confirmadas, 1, 'não pode dobrar o crédito na retentativa');
   } finally {
-    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
   }
 });
 
 test('confirmarComDedup: teto atingido quando já confirmou tudo que foi programado', async () => {
-  const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
+  const conta = await contaComPlanoEAnuncioAprovado(dispositivo.ponto_id);
   const hora = new Date();
   hora.setMinutes(0, 0, 0);
   try {
@@ -217,8 +215,8 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
     const resultado = await execucoesRepo.confirmarComDedup(dispositivo.id, evento, new Date());
     assert.strictEqual(resultado.status, 'teto_atingido');
   } finally {
-    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
   }
 });
 
@@ -227,9 +225,8 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
 // não segura a conta na playlist quando o plano comercial vence — só o
 // comercial vigente veicula.
 test('gerarPlaylistDaHora: comodato legado não segura a conta quando o comercial vence', async () => {
-  const conta = await contaComPlanoEAnuncioAprovado();
   const dispositivo = await dispositivoContratoNovo();
-  await escolherPonto(conta.id, dispositivo.ponto_id);
+  const conta = await contaComPlanoEAnuncioAprovado(dispositivo.ponto_id);
   try {
     const hora = new Date();
     const vigente = await gerador.gerarPlaylistDaHora(dispositivo, hora);
@@ -247,8 +244,8 @@ test('gerarPlaylistDaHora: comodato legado não segura a conta quando o comercia
       'comercial vencido + comodato legado: fora da playlist',
     );
   } finally {
-    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
     await apagarConta(conta.id);
+    await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
   }
 });
 

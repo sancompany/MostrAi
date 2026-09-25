@@ -1444,7 +1444,7 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
     // (pedido original: "on reactivation, interface must update
     // automatically"). Símetrico: suspender também avisa.
     if (!!antes?.suspenso !== !!anunciante.suspenso) {
-      notificacoesRepo
+      await notificacoesRepo
         .registrar(anunciante.id, {
           tipo: anunciante.suspenso ? 'conta_suspensa' : 'conta_reativada',
           titulo: anunciante.suspenso ? 'Sua conta foi suspensa' : 'Sua conta foi reativada',

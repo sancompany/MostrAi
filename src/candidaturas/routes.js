@@ -97,7 +97,7 @@ router.patch('/admin/candidaturas/:id', async (req, res) => {
   // comentário no topo do arquivo); a checagem continua por segurança
   // contra linha legada.
   if (c.conta_id && antes && antes.status !== c.status && STATUS_TITULO[c.status]) {
-    notificacoesRepo
+    await notificacoesRepo
       .registrar(c.conta_id, {
         tipo: 'ponto_recusado',
         titulo: STATUS_TITULO[c.status],

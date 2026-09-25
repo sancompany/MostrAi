@@ -97,17 +97,25 @@ async function cobrancaJaRegistrada(assinatura, ultima) {
   // Sem a pré-condição `criada|<assinatura>` (24/09/2026): com o contrato
   // v2 o webhook deduplica pelo `eventoId` e nunca grava essa chave — a
   // cobrança registrada perto da hora da Asaas é a prova que importa.
+  // Amarrada à ASSINATURA pelo ciclo registrado (25/09/2026): sem isso, a
+  // cobrança de outra assinatura do mesmo plano no mesmo dia (recompra) fazia
+  // o ciclo desta sumir. Ciclo sem `assinatura_id` (backfill da 087) ou
+  // cobrança sem ciclo continuam contando — é o comportamento de antes.
   const { rows } = await pool.query(
-    `SELECT 1 FROM cobrancas_confirmadas
-      WHERE anunciante_id = $1 AND plano_id = $2
-        AND criado_em BETWEEN $3::timestamptz - interval '10 minutes' AND $3::timestamptz + interval '1 day'
+    `SELECT 1 FROM cobrancas_confirmadas cc
+       LEFT JOIN ciclos_contratados cic ON cic.cobranca_confirmada_id = cc.id
+      WHERE cc.anunciante_id = $1 AND cc.plano_id = $2
+        AND cc.criado_em BETWEEN $3::timestamptz - interval '10 minutes' AND $3::timestamptz + interval '1 day'
+        AND (cic.assinatura_id IS NULL OR cic.assinatura_id = $4)
       LIMIT 1`,
-    [assinatura.anunciante_id, assinatura.plano_id, ultima.criadoEm],
+    [assinatura.anunciante_id, assinatura.plano_id, ultima.criadoEm, assinatura.id],
   );
   return rows.length > 0;
 }
 
-async function conciliarAssinaturas() {
+// `apenasContas` (opcional): mesmo escopo de teste dos jobs de benefício —
+// o job diário (scripts/conciliar.js) não passa nada e varre tudo.
+async function conciliarAssinaturas({ apenasContas = null } = {}) {
   const comecouEm = new Date();
   // 'pendente_pagamento' recente entra também (migration 089): é o link
   // cujo webhook `criada` pode ter se perdido — a consulta 5.3 diz se a
@@ -117,7 +125,9 @@ async function conciliarAssinaturas() {
        FROM assinaturas s
        JOIN anunciantes a ON a.id = s.anunciante_id
       WHERE a.excluido_em IS NULL
-        AND (s.status = 'ativa' OR (s.status = 'pendente_pagamento' AND s.created_at > now() - interval '30 days'))`,
+        AND (s.status = 'ativa' OR (s.status = 'pendente_pagamento' AND s.created_at > now() - interval '30 days'))
+        AND ($1::int[] IS NULL OR s.anunciante_id = ANY($1))`,
+    [apenasContas],
   );
 
   const relato = {
@@ -198,9 +208,9 @@ async function conciliarAssinaturas() {
     }
   }
 
-  relato.avisados = await avisarCoberturaAcabando();
-  relato.expiradas = await encerrarCoberturaVencida();
-  relato.trocasAbandonadas = await limparTrocasAbandonadas();
+  relato.avisados = await avisarCoberturaAcabando({ apenasContas });
+  relato.expiradas = await encerrarCoberturaVencida({ apenasContas });
+  relato.trocasAbandonadas = await limparTrocasAbandonadas({ apenasContas });
   await registrarRelato(comecouEm, relato);
   return relato;
 }
@@ -251,7 +261,7 @@ async function ultimaConciliacao() {
 // no dia seguinte a varredura tenta de novo enquanto a janela durar.
 const DIAS_DE_AVISO = 7;
 
-async function avisarCoberturaAcabando() {
+async function avisarCoberturaAcabando({ apenasContas = null } = {}) {
   const { rows } = await pool.query(
     `SELECT a.id, a.nome_empresa, a.contato_email, a.data_expiracao,
             p.nome AS plano_nome, p.compromisso_meses
@@ -268,8 +278,9 @@ async function avisarCoberturaAcabando() {
         AND NOT EXISTS (
           SELECT 1 FROM assinaturas s
            WHERE s.anunciante_id = a.id AND s.status = 'ativa'
-        )`,
-    [String(DIAS_DE_AVISO)],
+        )
+        AND ($2::int[] IS NULL OR a.id = ANY($2))`,
+    [String(DIAS_DE_AVISO), apenasContas],
   );
 
   const avisados = [];
@@ -313,16 +324,22 @@ async function avisarCoberturaAcabando() {
 // `encerrarBeneficiosVencidos` (logo depois, no mesmo job), que devolve o
 // plano pago guardado por baixo (migration 082) e deixa o programado entrar.
 // Encerrar por aqui antes fechava também o programado e esquecia o pago.
-async function encerrarCoberturaVencida() {
-  const { rows } = await pool.query(`
+// `apenasContas` (opcional): mesmo escopo de teste de
+// plano-administrativo.js#encerrarBeneficiosVencidos — produção não passa nada.
+async function encerrarCoberturaVencida({ apenasContas = null } = {}) {
+  const { rows } = await pool.query(
+    `
     SELECT a.id, a.nome_empresa, a.data_expiracao FROM anunciantes a
      WHERE a.plano_id IS NOT NULL
+       AND ($1::int[] IS NULL OR a.id = ANY($1))
        AND a.excluido_em IS NULL
        AND a.data_expiracao IS NOT NULL
        AND a.data_expiracao < ${vigencia.HOJE_SQL}
        AND NOT (a.plano_cortesia AND EXISTS (
          SELECT 1 FROM planos_administrativos ha
-          WHERE ha.anunciante_id = a.id AND ha.status = 'ativo' AND ha.plano_id = a.plano_id))`);
+          WHERE ha.anunciante_id = a.id AND ha.status = 'ativo' AND ha.plano_id = a.plano_id))`,
+    [apenasContas],
+  );
   for (const conta of rows) {
     await planoAdministrativo.encerrar({ conta, motivo: 'vencido' });
   }
@@ -333,9 +350,11 @@ async function encerrarCoberturaVencida() {
 // aprovar; se ele nunca aprovar, o Checkout expira a intenção em 15 min
 // SEM webhook (só `plano_trocado` confirma). A linha ficava para sempre e
 // continuava servindo `GET /plano`. Um dia depois, some.
-async function limparTrocasAbandonadas() {
+async function limparTrocasAbandonadas({ apenasContas = null } = {}) {
   const { rowCount } = await pool.query(
-    `DELETE FROM assinaturas WHERE status = 'pendente_troca' AND created_at < now() - interval '1 day'`,
+    `DELETE FROM assinaturas WHERE status = 'pendente_troca' AND created_at < now() - interval '1 day'
+        AND ($1::int[] IS NULL OR anunciante_id = ANY($1))`,
+    [apenasContas],
   );
   return rowCount;
 }

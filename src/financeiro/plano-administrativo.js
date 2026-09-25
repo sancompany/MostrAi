@@ -6,8 +6,11 @@ const sse = require('../lib/sse');
 const dataBR = (iso) => `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}/${String(iso).slice(0, 4)}`;
 
 // Notificação + SSE depois do COMMIT, sem derrubar o job se o aviso falhar.
-function avisarConta(contaId, notificacao) {
-  notificacoesRepo
+// Esperada (não solta): quem chama só termina com o aviso gravado — antes
+// a gravação corria depois do retorno, e uma exclusão logo em seguida
+// (teste, ou limpeza) esbarrava na FK (achado de 25/09/2026, CI do main).
+async function avisarConta(contaId, notificacao) {
+  await notificacoesRepo
     .registrar(contaId, notificacao)
     .catch((err) => console.error('falha ao notificar benefício', err.message));
   sse.emitirParaConta(contaId, 'plan.updated', {});
@@ -458,7 +461,11 @@ const { hojeComercial: hojeISO, somarDias } = vigencia;
 // `encerrar(motivo='vencido')` já usa vale aqui — um webhook pode ter
 // renovado a cobertura paga entre o agendamento e hoje, e nesse caso o
 // benefício espera mais um ciclo, não atropela.
-async function ativarBeneficiosAgendados() {
+// `apenasContas` (opcional): restringe a varredura a essas contas — mesmo
+// padrão do `apenasPontos` do crédito mensal. Produção não passa nada; os
+// testes passam as próprias contas pra não mexer nas de outro arquivo que
+// roda em paralelo no mesmo banco (achado do CI de 25/09/2026).
+async function ativarBeneficiosAgendados({ apenasContas = null } = {}) {
   // `ha.plano_id` vem apelidado (`beneficio_plano_id`) de propósito: sem
   // isso colidiria com `anunciantes.plano_id` (o plano ATUAL da conta, não
   // o do benefício agendado) — os dois se chamam igual, e `a.*` depois de
@@ -482,7 +489,9 @@ async function ativarBeneficiosAgendados() {
              OR ha.plano_anterior_valido_ate < ${vigencia.HOJE_SQL}
              -- o ciclo pago acabou antes (cancelado, cobrança falhou e a
              -- conciliação limpou): o benefício não espera a data antiga.
-             OR NOT (a.plano_id IS NOT NULL AND NOT a.plano_cortesia AND a.data_expiracao >= ${vigencia.HOJE_SQL}))`,
+             OR NOT (a.plano_id IS NOT NULL AND NOT a.plano_cortesia AND a.data_expiracao >= ${vigencia.HOJE_SQL}))
+        AND ($1::int[] IS NULL OR ha.anunciante_id = ANY($1))`,
+    [apenasContas],
   );
   let ativados = 0;
   for (const linha of pendentes) {
@@ -535,7 +544,7 @@ async function ativarBeneficiosAgendados() {
       // O cliente fica sabendo que o benefício começou (sino + painel sem
       // F5) — antes o job ativava em silêncio e só o resgate imediato
       // avisava (consolidação final, 24/09/2026).
-      avisarConta(linha.anunciante_id, {
+      await avisarConta(linha.anunciante_id, {
         tipo: 'beneficio_iniciado',
         titulo: 'Seu benefício começou',
         descricao: `Válido até ${dataBR(validoAte)}. Seu anúncio já está na rotação.`,
@@ -557,10 +566,12 @@ async function ativarBeneficiosAgendados() {
 // aceitável porque o benefício expira à meia-noite do fuso do servidor,
 // mesma granularidade de `valido_ate date` que todo o resto do projeto usa
 // pra plano administrativo).
-async function encerrarBeneficiosVencidos() {
+async function encerrarBeneficiosVencidos({ apenasContas = null } = {}) {
   const { rows: vencidos } = await pool.query(
     `SELECT ha.id, ha.anunciante_id, ha.plano_id FROM planos_administrativos ha
-      WHERE ha.status = 'ativo' AND ha.valido_ate < ${vigencia.HOJE_SQL}`,
+      WHERE ha.status = 'ativo' AND ha.valido_ate < ${vigencia.HOJE_SQL}
+        AND ($1::int[] IS NULL OR ha.anunciante_id = ANY($1))`,
+    [apenasContas],
   );
   let encerrados = 0;
   for (const linha of vencidos) {
@@ -599,7 +610,7 @@ async function encerrarBeneficiosVencidos() {
     });
     encerrados += 1;
     const voltouPago = !!conta.rows[0].plano_pago_guardado_id;
-    avisarConta(linha.anunciante_id, {
+    await avisarConta(linha.anunciante_id, {
       tipo: 'beneficio_encerrado',
       titulo: 'Seu benefício terminou',
       descricao: voltouPago

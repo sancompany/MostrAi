@@ -614,37 +614,42 @@ test('playlist: V2 recebe envelope; mudança marca desatualizada, heartbeat avis
   assert.deepEqual((await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist, {
     atualizar: true,
   });
-  const semMarca = () =>
-    pool.query(
+  // Silêncio e "uma vez só" com a linha da tela travada nesta transação.
+  // Pelo HTTP isso não é determinístico: outros arquivos de teste mudam
+  // criativos em paralelo e o gatilho do banco (migration 083) marca TODAS as
+  // telas ativas — uma marca de verdade caindo entre duas chamadas daqui faz
+  // o heartbeat avisar, e com razão. Travada, o gatilho de quem mudar algo
+  // espera o fim desta transação; é a mesma função que o heartbeat usa.
+  const { sinalizarPlaylist } = require('../src/player/sinal');
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    await db.query('SELECT 1 FROM dispositivos WHERE id = $1 FOR UPDATE', [tela.id]);
+    await db.query(
       'UPDATE dispositivos SET playlist_desatualizada_em = NULL, playlist_sinalizada_em = NULL WHERE id = $1',
       [tela.id],
     );
-  const heartbeat = async () =>
-    (await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho })).json.playlist;
-  // Outros arquivos de teste mudam criativos em paralelo e o gatilho do banco
-  // marca TODAS as telas ativas — uma marca nova pode cair entre duas chamadas
-  // daqui. Por isso cada cenário tenta algumas vezes: só é defeito quando o
-  // heartbeat avisa SEMPRE (nunca consegue ficar em silêncio sem marca).
-  const TENTATIVAS = 5;
-  let silencio = false;
-  for (let i = 0; i < TENTATIVAS && !silencio; i++) {
-    await semMarca();
-    silencio = (await heartbeat()) === undefined;
+    assert.equal(await sinalizarPlaylist(tela.id, db), false, 'sem marca, o heartbeat não avisa');
+    // Marca feita há 10 s (o GET só limpa o que é anterior à geração, com folga).
+    await db.query(`UPDATE dispositivos SET playlist_desatualizada_em = now() - interval '10 seconds' WHERE id = $1`, [
+      tela.id,
+    ]);
+    assert.equal(await sinalizarPlaylist(tela.id, db), true, 'com marca, o heartbeat avisa');
+    assert.equal(await sinalizarPlaylist(tela.id, db), false, 'uma vez só');
+    await db.query('COMMIT');
+  } catch (err) {
+    await db.query('ROLLBACK');
+    throw err;
+  } finally {
+    db.release();
   }
-  assert.ok(silencio, 'sem marca, o heartbeat não avisa');
-
-  // Marca feita há 10 s (o GET só limpa o que é anterior à geração, com folga).
-  let umaVez = false;
-  for (let i = 0; i < TENTATIVAS && !umaVez; i++) {
-    await semMarca();
-    await pool.query(
-      `UPDATE dispositivos SET playlist_desatualizada_em = now() - interval '10 seconds' WHERE id = $1`,
-      [tela.id],
-    );
-    assert.deepEqual(await heartbeat(), { atualizar: true }, 'com marca, o heartbeat avisa');
-    umaVez = (await heartbeat()) === undefined;
-  }
-  assert.ok(umaVez, 'uma vez só');
+  // E a rota consulta esse estado: com o aviso gravado "depois" de qualquer
+  // marca possível (nenhum clock_timestamp() do gatilho passa de infinity), o
+  // heartbeat fica em silêncio mesmo com mudanças em paralelo.
+  await pool.query(`UPDATE dispositivos SET playlist_sinalizada_em = 'infinity' WHERE id = $1`, [tela.id]);
+  const jaAvisado = await app.chamar('POST', url, { corpo: hb(), chave: cred.chaveAparelho });
+  assert.equal(jaAvisado.json.playlist, undefined, 'já avisado, o heartbeat não avisa de novo');
+  await pool.query('UPDATE dispositivos SET playlist_sinalizada_em = NULL WHERE id = $1', [tela.id]);
   const antesDoGet = new Date();
   await app.chamar('GET', `/playlist/${cred.dispositivoId}`, { chave: cred.chaveAparelho });
   const { rows } = await pool.query('SELECT playlist_desatualizada_em FROM dispositivos WHERE id = $1', [tela.id]);
@@ -656,7 +661,7 @@ test('playlist: V2 recebe envelope; mudança marca desatualizada, heartbeat avis
   assert.ok(marca === null || new Date(marca) > new Date(antesDoGet.getTime() - 5000), 'nunca fica true pra sempre');
   // V1 (sem X-Player-Contract) recebe o array de sempre, sem contentHash.
   const v1 = await app.chamar('GET', `/playlist/${cred.dispositivoId}`, { chave: cred.chaveAparelho, v2: false });
-  assert.ok(Array.isArray(v1.json));
+  assert.ok(Array.isArray(v1.json), `V1 devia receber array: ${v1.status} ${JSON.stringify(v1.json)}`);
 });
 
 test('playlist: gatilho do banco marca as telas ativas quando um criativo muda', async () => {

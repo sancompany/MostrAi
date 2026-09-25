@@ -63,7 +63,7 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // (ensureContaMostrai), não um anunciante de verdade esperando aviso.
       if (dono && !dono.conta_propria) {
         enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
-        notificacoesRepo
+        await notificacoesRepo
           .registrar(dono.id, {
             tipo: 'criativo_aprovado',
             titulo: 'Seu criativo foi aprovado',
@@ -92,7 +92,7 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // Mesma exclusão de conta própria do bloco de aprovado acima.
       if (dono && !dono.conta_propria) {
         enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
-        notificacoesRepo
+        await notificacoesRepo
           .registrar(dono.id, {
             tipo: 'criativo_recusado',
             titulo: 'Seu criativo não foi aprovado desta vez',

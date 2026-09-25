@@ -62,7 +62,7 @@ async function creditosDoPonto(contaId) {
 }
 
 async function apagar(id) {
-  await new Promise((r) => setTimeout(r, 50));
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM creditos_ledger WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM dispositivos WHERE ponto_id IN (SELECT id FROM pontos WHERE anunciante_id = $1)', [id]);

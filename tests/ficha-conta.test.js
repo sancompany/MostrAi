@@ -95,7 +95,7 @@ async function criativo(contaId, status = 'aprovado') {
 }
 
 async function apagar(id) {
-  await new Promise((r) => setTimeout(r, 80)); // eventos/notificações fire-and-forget
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
   await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [id]);
@@ -265,7 +265,7 @@ test('plano pago + benefício por créditos respeitam a fila: Agora = pago, Pró
     assert.equal(s.plano.proximo.comecaEm, somar(20));
     assert.equal(s.plano.depois.tipo, 'sem_plano', 'sem assinatura ativa: depois do benefício, sem plano');
     // A rotina diária NÃO ativa antes do fim do ciclo pago.
-    await planoAdm.ativarBeneficiosAgendados();
+    await planoAdm.ativarBeneficiosAgendados({ apenasContas: [c.id] });
     const depois = await situacaoDaConta(c.id);
     assert.equal(depois.plano.agora.origem, 'assinatura');
     assert.ok(depois.plano.proximo);
@@ -384,7 +384,7 @@ test('cortesia administrativa legada é respeitada até o fim e dita como legada
     assert.equal(s.plano.agora.validoAte, somar(100));
     assert.equal(s.plano.veicula, true);
     // A rotina diária não encerra antes do prazo.
-    await planoAdm.encerrarBeneficiosVencidos();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
     const { rows } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id]);
     assert.equal(rows[0].plano_id, 'maximo-12m');
   } finally {
@@ -402,7 +402,7 @@ test('benefício "ativo" esquecido por baixo de um plano PAGO vence sem zerar o 
     );
     const antes = await situacaoDaConta(c.id);
     assert.ok(antes.alertas.some((a) => a.codigo === 'beneficio_orfao'));
-    await planoAdm.encerrarBeneficiosVencidos();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
     const { rows } = await pool.query(
       'SELECT plano_id, plano_cortesia, data_expiracao FROM anunciantes WHERE id = $1',
       [c.id],

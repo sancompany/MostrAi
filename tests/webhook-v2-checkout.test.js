@@ -32,7 +32,7 @@ function semCheckout() {
 
 function comConciliacaoRespondendo(ultima, soPara) {
   const original = globalThis.fetch;
-  globalThis.fetch = async (url, opcoes) => {
+  globalThis.fetch = async (_url, opcoes) => {
     const corpoPedido = opcoes?.body ? JSON.parse(opcoes.body) : {};
     if (corpoPedido.planoId !== soPara) return { ok: false, status: 404, json: async () => ({}) };
     return { ok: true, status: 200, json: async () => ({ status: 'ativa', ultimaCobranca: ultima }) };
@@ -123,7 +123,7 @@ test("v2: 'criada' credita uma vez com o valor do evento; conciliação reconhec
       assinatura.id,
     );
     try {
-      await conciliarAssinaturas();
+      await conciliarAssinaturas({ apenasContas: [c.id] });
     } finally {
       restaurar();
     }
@@ -154,7 +154,7 @@ test("v2: 'criada' credita uma vez com o valor do evento; conciliação reconhec
       assinatura.id,
     );
     try {
-      await conciliarAssinaturas();
+      await conciliarAssinaturas({ apenasContas: [c.id] });
     } finally {
       restaurar();
     }
@@ -229,6 +229,140 @@ test('v2: troca_revertida vira pendência com o plano anterior; chargeback suspe
       0,
       'nada disso credita ciclo',
     );
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+// Revisão do commit 299f3e5 (25/09/2026): o v2 deduplicava SÓ pelo
+// `eventoId` e gravava `chargeId|status` DEPOIS de creditar, sem conferir
+// antes. Qualquer caminho que creditasse a mesma cobrança primeiro (a
+// conciliação diária, ou outro evento da mesma cobrança) era ignorado e o
+// ciclo entrava duas vezes — cobertura dobrada por um pagamento só.
+test('v2: conciliação creditou primeiro → o webhook v2 atrasado da MESMA cobrança não credita de novo', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const restaurar = comConciliacaoRespondendo(
+      { chargeId: `pay_a_${rodada}`, status: 'confirmado', valorCobrado: 99.9, criadoEm: new Date().toISOString() },
+      assinatura.id,
+    );
+    try {
+      await conciliarAssinaturas({ apenasContas: [c.id] });
+    } finally {
+      restaurar();
+    }
+    const contar = async () =>
+      (await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [c.id])).rows[0]
+        .n;
+    assert.equal(await contar(), 1, 'a conciliação creditou o ciclo');
+    const expAntes = (await pool.query('SELECT data_expiracao FROM anunciantes WHERE id = $1', [c.id])).rows[0]
+      .data_expiracao;
+
+    // O webhook do mesmo ciclo chega depois (fila do Checkout reentregando
+    // horas mais tarde, ou reenvio pelo operador) — `eventoId` nunca visto.
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(
+        v2(assinatura, c, rodada, { evento: 'cobranca_confirmada', chargeId: `pay_a_${rodada}`, valor: 99.9 }),
+      );
+    } finally {
+      mock.restaurar();
+    }
+    assert.equal(await contar(), 1, 'a mesma cobrança não vira segundo ciclo');
+    const expDepois = (await pool.query('SELECT data_expiracao FROM anunciantes WHERE id = $1', [c.id])).rows[0]
+      .data_expiracao;
+    assert.equal(String(expDepois), String(expAntes), 'a cobertura não foi estendida de novo');
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+test('v2: dois eventoIds sobre a mesma cobrança confirmada creditam UMA vez; reserva liberada se nada foi creditado', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const assinatura = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO });
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(
+        v2(assinatura, c, rodada, { evento: 'criada', chargeId: `pay_b_${rodada}`, valor: 50 }),
+      );
+      // Baixa desfeita e refeita na Asaas: fato novo (eventoId novo) sobre a
+      // MESMA cobrança — o ciclo já foi creditado, não entra de novo.
+      await sc.processarWebhookAssinatura(
+        v2(assinatura, c, rodada, { evento: 'cobranca_confirmada', chargeId: `pay_b_${rodada}`, valor: 50 }),
+      );
+    } finally {
+      mock.restaurar();
+    }
+    const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+      c.id,
+    ]);
+    assert.equal(rows[0].n, 1);
+
+    // Conta excluída: `aplicarCicloPago` não credita (vira pendência de
+    // devolução). A reserva de `chargeId|status` não pode ficar presa —
+    // senão nenhum outro caminho aplicaria essa cobrança depois.
+    const outra = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: 'destaque-1m', status: 'ativa' });
+    await pool.query('UPDATE anunciantes SET excluido_em = now() WHERE id = $1', [c.id]);
+    const mock2 = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(
+        v2(outra, c, rodada, { evento: 'cobranca_confirmada', chargeId: `pay_f_${rodada}`, valor: 10 }),
+      );
+    } finally {
+      mock2.restaurar();
+    }
+    const { rows: depois } = await pool.query(
+      'SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1',
+      [c.id],
+    );
+    assert.equal(depois[0].n, 1, 'conta excluída não recebe ciclo');
+    const { rowCount } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [
+      `pay_f_${rodada}|confirmado`,
+    ]);
+    assert.equal(rowCount, 0, 'reserva liberada quando nada foi creditado');
+  } finally {
+    await apagar(c.id, rodada);
+  }
+});
+
+// Também do commit 299f3e5: `cobrancaJaRegistrada` perdeu a amarra com a
+// assinatura (a chave `criada|<id>`) e passou a reconhecer QUALQUER cobrança
+// do mesmo plano perto da hora. Recompra do mesmo plano no mesmo dia (cancelou
+// e assinou de novo) com o webhook perdido: a conciliação achava a cobrança
+// da assinatura ANTIGA e pulava o ciclo da nova — pagamento sem cobertura.
+test('conciliação: cobrança de OUTRA assinatura do mesmo plano no mesmo dia não esconde o ciclo desta', async () => {
+  const c = await conta();
+  const rodada = randomUUID().slice(0, 8);
+  try {
+    const antiga = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    const mock = semCheckout();
+    try {
+      await sc.processarWebhookAssinatura(
+        v2(antiga, c, rodada, { evento: 'criada', chargeId: `pay_old_${rodada}`, valor: 30 }),
+      );
+    } finally {
+      mock.restaurar();
+    }
+    await assinaturasRepo.marcarCancelada(antiga.id);
+    const nova = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO, status: 'ativa' });
+    // O webhook da nova se perdeu; a conciliação acha a primeira cobrança dela.
+    const restaurar = comConciliacaoRespondendo(
+      { chargeId: `pay_new_${rodada}`, status: 'confirmado', valorCobrado: 30, criadoEm: new Date().toISOString() },
+      nova.id,
+    );
+    try {
+      await conciliarAssinaturas({ apenasContas: [c.id] });
+    } finally {
+      restaurar();
+    }
+    const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+      c.id,
+    ]);
+    assert.equal(rows[0].n, 2, 'o ciclo pago da assinatura nova entra');
   } finally {
     await apagar(c.id, rodada);
   }
