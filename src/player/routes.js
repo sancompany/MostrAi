@@ -10,7 +10,6 @@ const sinal = require('./sinal');
 const { montarConfig, margensDaTela, TETO_MARGEM_V2 } = require('./config');
 const releases = require('./releases');
 const cofre = require('../lib/cofre');
-const pool = require('../db/pool');
 const eventos = require('../lib/eventos');
 const sse = require('../lib/sse');
 const { sincronizarStatusPonto } = require('../pontos/repository');
@@ -103,15 +102,7 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
 
   resposta.configVersion = tela.config_versao_desejada;
 
-  // `playlist.atualizar` UMA vez por mudança (§6.2): marca que já avisou.
-  const { rows: sinalizar } = await pool.query(
-    `UPDATE dispositivos SET playlist_sinalizada_em = now()
-      WHERE id = $1 AND playlist_desatualizada_em IS NOT NULL
-        AND (playlist_sinalizada_em IS NULL OR playlist_sinalizada_em < playlist_desatualizada_em)
-      RETURNING id`,
-    [tela.id],
-  );
-  if (sinalizar[0]) resposta.playlist = { atualizar: true };
+  if (await sinal.sinalizarPlaylist(tela.id)) resposta.playlist = { atualizar: true };
 
   // Rotação: a candidata vai até o Player usá-la. Chegou pela própria
   // candidata? Então é promovida nesta resposta (src/lib/aparelho.js) — nada

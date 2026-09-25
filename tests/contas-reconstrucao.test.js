@@ -59,7 +59,7 @@ async function criarConta(extra = {}) {
 }
 
 async function apagarConta(id) {
-  await new Promise((r) => setTimeout(r, 100)); // eventos.registrar é fire-and-forget
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   await pool.query('DELETE FROM eventos WHERE anunciante_id = $1', [id]);
   // notificacoes/creditos_ledger (migration 079): mesmo raciocínio de
   // eventos acima — pagamento confirmado grava notificação, e crédito de
@@ -577,7 +577,9 @@ test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende', asyn
       `UPDATE anunciantes SET plano_id = 'essencial-1m', plano_cortesia = false, data_expiracao = '2020-01-01' WHERE id = $1`,
       [pagaVencida.id],
     );
-    const resultado = await conciliacao.encerrarCoberturaVencida();
+    const resultado = await conciliacao.encerrarCoberturaVencida({
+      apenasContas: [vencida.id, emDia.id, pagaVencida.id],
+    });
     const idsEncerrados = resultado.map((r) => r.id);
     assert.ok(idsEncerrados.includes(pagaVencida.id), 'o pago vencido entra no lote encerrado');
     assert.ok(!idsEncerrados.includes(emDia.id), 'quem está em dia não é tocado');
@@ -585,7 +587,7 @@ test('encerrarCoberturaVencida: encerra o plano comercial, nunca suspende', asyn
     // (roda logo depois no mesmo job) — ela devolve o pago guardado, se
     // houver, e deixa o programado entrar (migration 082).
     assert.ok(!idsEncerrados.includes(vencida.id), 'cortesia com histórico fica pra rotina de benefícios');
-    await planoAdm.encerrarBeneficiosVencidos();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [vencida.id, pagaVencida.id] });
     assert.strictEqual(
       (await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [pagaVencida.id])).rows[0].plano_id,
       null,

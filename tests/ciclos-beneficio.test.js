@@ -56,7 +56,7 @@ async function conta() {
 }
 
 async function apagar(id) {
-  await new Promise((r) => setTimeout(r, 80));
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   for (const t of ['notificacoes', 'planos_administrativos', 'creditos_ledger', 'eventos']) {
     await pool.query(`DELETE FROM ${t} WHERE anunciante_id = $1`, [id]);
   }
@@ -151,8 +151,8 @@ test('benefício por créditos NUNCA renova sozinho nem consome crédito no fim'
       `UPDATE anunciantes SET data_expiracao = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE id = $1`,
       [c.id],
     );
-    await planoAdm.encerrarBeneficiosVencidos();
-    await planoAdm.ativarBeneficiosAgendados();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
+    await planoAdm.ativarBeneficiosAgendados({ apenasContas: [c.id] });
     const {
       rows: [depois],
     } = await pool.query('SELECT plano_id FROM anunciantes WHERE id = $1', [c.id]);

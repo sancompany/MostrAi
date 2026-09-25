@@ -266,6 +266,18 @@ async function registrarPrimeiroContato(telaId) {
   return true;
 }
 
+// `playlist.atualizar` UMA vez por mudança (contrato §6.2): true só se há
+// marca de "desatualizada" que ainda não foi avisada, e já grava que avisou.
+async function sinalizarPlaylist(telaId, db = pool) {
+  const { rowCount } = await db.query(
+    `UPDATE dispositivos SET playlist_sinalizada_em = now()
+      WHERE id = $1 AND playlist_desatualizada_em IS NOT NULL
+        AND (playlist_sinalizada_em IS NULL OR playlist_sinalizada_em < playlist_desatualizada_em)`,
+    [telaId],
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   ESTADOS,
   ESTADOS_UPDATE,
@@ -274,4 +286,5 @@ module.exports = {
   registrarHello,
   registrarHeartbeat,
   registrarPrimeiroContato,
+  sinalizarPlaylist,
 };

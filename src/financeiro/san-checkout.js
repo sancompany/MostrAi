@@ -645,17 +645,42 @@ async function processarWebhookAssinatura(payload) {
     return registrarPendencia(payload, `evento '${payload.evento}' recebido, sem ação automática nesta fase`);
   }
 
-  const cobranca = await aplicarCicloPago(assinatura, chave, payload, { valorCobrado: ultima?.valorCobrado });
-  // A chave `chargeId|status` fica registrada também — para TODO evento
-  // que credita, não só `criada` (até 24/09 era só ele): com o contrato v2
-  // a dedupe passou a ser pelo `eventoId`, e sem esta linha a conciliação
-  // diária (chaveada por `chargeId|status`) não reconheceria a cobrança e
-  // creditaria o ciclo de novo.
-  if (cobranca && ultima?.chargeId && chave !== `${ultima.chargeId}|${ultima.status}`) {
-    await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
-      `${ultima.chargeId}|${ultima.status}`,
-    ]);
+  // Uma COBRANÇA credita um ciclo uma vez só, venha por onde vier. O
+  // `eventoId` (v2) identifica a NOTIFICAÇÃO; a mesma cobrança pode chegar
+  // por outro caminho — a conciliação diária (chaveada por `chargeId|status`),
+  // o botão "Aplicar este ciclo" do admin, ou outro evento sobre ela (baixa
+  // desfeita e refeita, API.md 4.3.6). Por isso a chave da cobrança é
+  // RESERVADA antes de creditar: se já estava lá, o ciclo já entrou e esta
+  // notificação só confirma. Até 25/09/2026 ela era gravada DEPOIS, sem
+  // conferir — conciliação primeiro e webhook atrasado depois creditavam o
+  // ciclo duas vezes (revisão do commit 299f3e5, teste em
+  // webhook-v2-checkout.test.js).
+  const chaveDaCobranca = ultima?.chargeId ? `${ultima.chargeId}|${ultima.status}` : null;
+  const reservou = chaveDaCobranca && chaveDaCobranca !== chave;
+  if (reservou) {
+    const { rowCount: livre } = await pool.query(
+      'INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING',
+      [chaveDaCobranca],
+    );
+    if (!livre) {
+      eventos.registrar(
+        'pagamento:cobranca_ja_creditada',
+        { plano_id: assinatura.plano_id, evento: payload.evento },
+        await anunciantesRepo.buscarPorId(assinatura.anunciante_id),
+      );
+      return null;
+    }
   }
+  let cobranca;
+  try {
+    cobranca = await aplicarCicloPago(assinatura, chave, payload, { valorCobrado: ultima?.valorCobrado });
+  } catch (err) {
+    if (reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
+    throw err;
+  }
+  // Nada creditado (virou pendência): a reserva sai, senão a conciliação
+  // nunca mais aplicaria essa cobrança.
+  if (!cobranca && reservou) await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chaveDaCobranca]);
   return cobranca;
 }
 
@@ -807,7 +832,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   // ainda pode dar ROLLBACK. `.catch` porque uma falha aqui é aviso extra,
   // nunca motivo pra derrubar um pagamento que já entrou de verdade.
   const valorFormatado = Number(valorCiclo).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  notificacoesRepo
+  await notificacoesRepo
     .registrar(anunciante.id, {
       tipo: 'pagamento_confirmado',
       titulo: `Pagamento confirmado: ${plano.nome}`,
@@ -835,13 +860,13 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
               titulo: `Benefício programado ${nomeBeneficio} cancelado`,
               descricao: `Seu plano ${plano.nome} pago já oferece mais recursos.`,
             };
-    notificacoesRepo
+    await notificacoesRepo
       .registrar(anunciante.id, { tipo: `fila_${ev.tipo}`, ...aviso })
       .catch((err) => console.error('falha ao notificar mudança na fila de benefícios', err));
   }
   if (eventosDaFila.length) sse.emitirParaConta(anunciante.id, 'plan.updated', {});
   if (creditoIndicacao) {
-    notificacoesRepo
+    await notificacoesRepo
       .registrar(creditoIndicacao.pontoContaId, {
         tipo: 'credito_indicacao',
         titulo: 'Você ganhou 1 crédito por indicação',

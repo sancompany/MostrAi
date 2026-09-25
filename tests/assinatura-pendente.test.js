@@ -162,7 +162,7 @@ test("assinatura nasce pendente; 'criada' sem chargeId ativa na hora com o valor
       assinatura.id,
     );
     try {
-      await conciliarAssinaturas();
+      await conciliarAssinaturas({ apenasContas: [c.id] });
     } finally {
       mock.restaurar();
     }

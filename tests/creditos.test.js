@@ -242,8 +242,8 @@ test('ativarBeneficiosAgendados: ativa só quando o ciclo pago anterior já pass
     const ontem = vigencia.somarDias(vigencia.hojeComercial(), -1);
     await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [contaBase.id, ontem]);
 
-    const resultado = await planoAdministrativo.ativarBeneficiosAgendados();
-    assert.ok(resultado.ativados >= 1, 'ativou pelo menos o benefício desta conta');
+    const resultado = await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [contaBase.id] });
+    assert.strictEqual(resultado.ativados, 1, 'ativou exatamente o benefício desta conta');
 
     const { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
     assert.strictEqual(agora[0].plano_id, 'maximo-1m', 'a conta virou Prime');
@@ -285,7 +285,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
     await pool.query(`UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1`, [contaBase.id, futuroLonge]);
 
     // Ainda não chegou o fim do ciclo em que o resgate foi feito: espera.
-    await planoAdministrativo.ativarBeneficiosAgendados();
+    await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [contaBase.id] });
     let { rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]);
     assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'antes da data, continua no pago');
 
@@ -296,7 +296,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
         WHERE anunciante_id = $1 AND status = 'agendado'`,
       [contaBase.id],
     );
-    await planoAdministrativo.ativarBeneficiosAgendados();
+    await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [contaBase.id] });
     ({ rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]));
     assert.strictEqual(agora[0].plano_id, 'maximo-1m', 'o benefício entrou na data, mesmo com a renovação');
     assert.strictEqual(agora[0].plano_pago_guardado_id, 'destaque-1m', 'o pago ficou guardado');
@@ -308,7 +308,7 @@ test('ativarBeneficiosAgendados: renovação no meio-tempo não segura o benefí
       [contaBase.id],
     );
     const dias = agora[0].plano_pago_guardado_dias;
-    await planoAdministrativo.encerrarBeneficiosVencidos();
+    await planoAdministrativo.encerrarBeneficiosVencidos({ apenasContas: [contaBase.id] });
     ({ rows: agora } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [contaBase.id]));
     assert.strictEqual(agora[0].plano_id, 'destaque-1m', 'voltou ao pago');
     assert.strictEqual(agora[0].plano_cortesia, false);
@@ -332,8 +332,8 @@ test('encerrarBeneficiosVencidos: benefício vencido encerra e a conta volta pra
       origem: 'indicacao',
     });
 
-    const resultado = await planoAdministrativo.encerrarBeneficiosVencidos();
-    assert.ok(resultado.encerrados >= 1);
+    const resultado = await planoAdministrativo.encerrarBeneficiosVencidos({ apenasContas: [conta.id] });
+    assert.strictEqual(resultado.encerrados, 1);
 
     const { rows } = await pool.query('SELECT * FROM anunciantes WHERE id = $1', [conta.id]);
     assert.strictEqual(rows[0].plano_id, null, 'sem benefício e sem assinatura-base, a conta fica sem plano');

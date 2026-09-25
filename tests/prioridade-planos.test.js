@@ -73,7 +73,7 @@ async function estado(contaId) {
 }
 
 async function apagar(id) {
-  await new Promise((r) => setTimeout(r, 80));
+  await require('../src/lib/eventos').aguardarGravacoes(); // métrica grava solta; espera terminar antes de apagar
   for (const tabela of [
     'notificacoes',
     'planos_administrativos',
@@ -144,7 +144,7 @@ test('benefício termina → o pago guardado assume com os dias pagos intactos; 
       `UPDATE anunciantes SET data_expiracao = (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1 WHERE id = $1`,
       [c.id],
     );
-    await planoAdm.encerrarBeneficiosVencidos();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
     const { conta } = await estado(c.id);
     assert.equal(conta.plano_id, PLANO.pro, 'voltou pro Pro pago');
     assert.equal(conta.plano_cortesia, false);
@@ -169,9 +169,9 @@ test('job diário: a varredura de cobertura vencida não apaga o pago guardado s
       [c.id],
     );
     // Mesma ordem do scripts/conciliar.js: a varredura roda antes.
-    const varridas = await encerrarCoberturaVencida();
+    const varridas = await encerrarCoberturaVencida({ apenasContas: [c.id] });
     assert.ok(!varridas.some((v) => v.id === c.id), 'o benefício é da rotina de benefícios');
-    await planoAdm.encerrarBeneficiosVencidos();
+    await planoAdm.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
     const { conta } = await estado(c.id);
     assert.equal(conta.plano_id, PLANO.pro, 'voltou pro Pro pago');
     assert.equal(conta.plano_pago_guardado_id, null);

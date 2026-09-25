@@ -148,7 +148,7 @@ test('ativação atrasada (assinatura renovou) preserva a duração comprada', a
        VALUES ($1, 'essencial-1m', $2, $3, 'agendado', 'indicacao')`,
       [c.id, somar(inicioPrevisto, 30), inicioPrevisto],
     );
-    await planoAdministrativo.ativarBeneficiosAgendados();
+    await planoAdministrativo.ativarBeneficiosAgendados({ apenasContas: [c.id] });
     const { rows } = await pool.query('SELECT data_expiracao FROM anunciantes WHERE id = $1', [c.id]);
     assert.equal(rows[0].data_expiracao, somar(hoje(), 30), 'os 30 dias contam de hoje, não de 10 dias atrás');
   } finally {

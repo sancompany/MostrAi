@@ -25,13 +25,22 @@ function ehInterno(conta) {
   return contasInternasDoAmbiente().includes(Number(conta.id));
 }
 
+// Gravações ainda em voo. Quem chama continua sem `await` (regra de ouro
+// acima); `aguardarGravacoes` existe pra quem PRECISA saber que terminaram —
+// hoje, os testes antes de apagar uma conta, no lugar de dormir 80 ms e
+// torcer (a espera fixa perdia a corrida sob carga no CI, 25/09/2026).
+const emVoo = new Set();
+function aguardarGravacoes() {
+  return Promise.allSettled([...emVoo]);
+}
+
 // `conta` é o registro de anunciantes quando existe — dele saem o id e a marca
 // de interno, sem quem chama ter de lembrar dos dois.
 function registrar(nome, propriedades = {}, conta = null) {
   const anuncianteId = conta ? conta.id : (propriedades.anunciante_id ?? null);
   const props = { ...propriedades };
   delete props.anunciante_id;
-  pool
+  const gravacao = pool
     .query('INSERT INTO eventos (nome, anunciante_id, propriedades, interno) VALUES ($1, $2, $3, $4)', [
       nome,
       anuncianteId,
@@ -42,7 +51,9 @@ function registrar(nome, propriedades = {}, conta = null) {
       // Sai no log e morre aqui. Um evento perdido é um buraco no gráfico;
       // uma exceção aqui seria um buraco no dinheiro.
       console.error(`evento ${nome} não registrado:`, err.message);
-    });
+    })
+    .finally(() => emVoo.delete(gravacao));
+  emVoo.add(gravacao);
 }
 
 // Horas inteiras entre dois instantes, pra `horas_ate_aprovar` e afins. Uma
@@ -57,4 +68,4 @@ function diasEntre(inicio, fim = new Date()) {
   return Math.floor((new Date(fim) - new Date(inicio)) / 86400000);
 }
 
-module.exports = { registrar, horasEntre, diasEntre, ehInterno };
+module.exports = { registrar, aguardarGravacoes, horasEntre, diasEntre, ehInterno };
