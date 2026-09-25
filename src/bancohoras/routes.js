@@ -4,9 +4,9 @@ const repo = require('./repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 // Autoatendimento: o anunciante vê o próprio saldo, se tiver — nunca o de
-// outra conta. Só as linhas 'ativo' (o que ainda pode virar prioridade);
-// linha 'drenado' já foi entregue, e 'aguardando_credito' é conversa que
-// só o admin tem com ele fora do sistema.
+// outra conta. Só as linhas 'ativo' (o que ainda vai voltar em exibição);
+// linha 'drenado' já foi entregue. 'aguardando_credito' é histórico da
+// válvula que saiu em 25/09/2026 (banco de horas não expira).
 router.get('/anunciantes/me/banco-horas', exigirAnuncianteLogado, async (req, res) => {
   const minhas = await repo.listarAtivasDoAnunciante(req.session.anuncianteId);
   const saldo = minhas.reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0);
@@ -29,9 +29,10 @@ router.get('/admin/banco-horas', async (_req, res) => {
   res.json(await repo.listarTodos());
 });
 
-// Admin — fila de quem passou de N meses sem drenar tudo (G.3, a válvula).
-// Resolver é ação humana: crédito manual, desconto na próxima fatura, ou
-// nada — a rota só registra QUE foi decidido, nunca decide o quê.
+// Admin — fila 'aguardando_credito': HISTÓRICO da válvula de 3 meses, que
+// saiu em 25/09/2026 (decisão do dono: banco de horas é obrigação de
+// veiculação, sem expiração, nunca crédito em dinheiro). Nenhum código põe
+// linha nova aqui; a rota fica só pra resolver alguma linha antiga.
 router.get('/admin/banco-horas/aguardando-credito', async (_req, res) => {
   res.json(await repo.listarAguardandoCredito());
 });

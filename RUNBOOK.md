@@ -54,7 +54,7 @@ cada conta, e onde vive o segundo fator de cada login.
 ## 2. Onde estão os segredos, e como rotacionar
 
 Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
-`mostrai` → Environment**, e nos jobs `Conciliacao` e `Backup`.
+`mostrai` → Environment**, e nos jobs `Conciliacao`, `Backup` e (quando for criado) `ApuracaoBancoHoras` — este só leva `DATABASE_URL` e `NODE_ENV`.
 
 | Segredo | Onde se gera um novo |
 |---|---|
@@ -188,7 +188,7 @@ backup hipotético (Lei 6). O ensaio, com data e resultado, entra aqui.
 | `/health` não responde | container caiu ou não sobe | Northflank → Observe → logs. Erro no boot costuma ser variável faltando |
 | Job `Conciliacao` falhou | alguma assinatura não conciliou (sai com código 1) | ler o log: ele nomeia a assinatura e o erro. Cliente pagante pode estar sem cobertura |
 | Job `Backup` falhou | sem backup desta semana | conferir se o volume `/backups` está montado e se o `pg_dump` alcança o banco |
-| Job `ApuracaoBancoHoras` falhou (ou não existe ainda) | o déficit do mês anterior não fechou — ninguém ganha prioridade no mês seguinte, e o saldo antigo não avança pra fila da válvula | ler o log (`npm run apurar-banco-horas`, sai com código 1 no erro); se o job nunca foi criado no Northflank, ver `docs/PENDENCIAS.md`, item A.14 |
+| Job `ApuracaoBancoHoras` falhou (ou não existe ainda) | o déficit do mês anterior não entrou no banco de horas — essa dívida não volta em exibição até o job rodar | ler o log e o código de saída (1 falhou, 2 argumento, 3 já em execução — `docs/job-apuracao-banco-horas.md`); rodar de novo é seguro (idempotente). Se o job nunca foi criado, a especificação está no mesmo arquivo |
 | Webhook do Checkout dando 401 | assinatura HMAC não fecha | a `SAN_CHECKOUT_KEY` dos dois lados divergiu. Comparar com o painel do Checkout |
 | Fila `eventos_assinatura_pendentes` crescendo | eventos chegando e não sendo aplicados | admin → a fila mostra o motivo de cada um |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |

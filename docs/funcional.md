@@ -663,69 +663,62 @@ plano".
 > pra plano mais barato não aparece na lista, mesma limitação que o pedido
 > avulso sempre teve com downgrade. Registrado, não corrigido.
 
-**RN-53 — Banco de horas: quem não coube este mês tem prioridade no
-próximo.** *(Pendência G.3, `docs/PENDENCIAS.md` — o mecanismo é decisão do
-dono; a unidade e o prazo da válvula, abaixo, não foram.)* Quando a hora
-está vendida além do que a rede aguenta, o corte proporcional da RN-30 sobra
-pra todo mundo igual — mas quem sempre sobra é sempre o mesmo. Agora a
-diferença entre o que o anunciante pediu (`vezes_pedidas`, novo, guarda o
-pedido ANTES do corte) e o que ele recebeu (`vezes_programadas`) fecha em
-saldo no fim do mês anterior (`apurarMesAnterior`), e esse saldo entra como
-prioridade extra na próxima geração de playlist.
+**RN-53 — Banco de horas: obrigação de veiculação.** *(Decisão do dono,
+25/09/2026 — MANTER. Substitui a versão de 18/09/2026, que deixava a
+prioridade tomar o lugar de outro anunciante e mandava saldo velho pra uma
+fila de crédito.)* Capacidade contratada que não coube vira saldo; o saldo
+volta em capacidade **ociosa** de horas futuras; só a exibição **confirmada**
+abate o saldo. Sem expiração automática, sem zerar na virada do mês, e nunca
+crédito em dinheiro.
 
-**Dívida mais velha, prioridade maior — pedido do dono, 18/09/2026: "quanto
-mais tempo no banco tiver, mais prioridade tem", pra tentar drenar antes de
-bater a válvula.** O teto (antes fixo em "nunca mais que dobrar o pedido
-normal") agora cresce com a idade da linha mais antiga ainda ativa: dobra
-pra dívida deste mês e sobe até `MULTIPLICADOR_MAXIMO_BANCO` (3, número meu)
-vezes o pedido normal conforme ela se aproxima dos
-`MESES_PARA_FILA_DE_CREDITO` (3) meses da válvula. Verificado ao vivo: a
-mesma dívida de 10 exibições, com 1 mês de idade, entregou 10 no total (4
-normais + 6 de prioridade); com 3 meses, entregou 16 (4 + 12) — dobra e
-depois quase triplica o que a dívida nova ganhava.
+- **Apuração (mensal, job `ApuracaoBancoHoras`).** Fecha o mês anterior no
+  relógio de Matão: `déficit = Σ vezes_pedidas − Σ (vezes_programadas −
+  vezes_banco)` por conta pagante (`vezes_pedidas` guarda o pedido ANTES do
+  corte da RN-30; `vezes_banco` é a parte da hora que já era devolução de
+  dívida e não conta como entrega do mês). Conta própria nunca acumula.
+  Especificação do job: `docs/job-apuracao-banco-horas.md`.
+- **Devolução (a cada hora).** O saldo disponível da conta entra na hora só
+  no tempo que a hora vendida deixou livre (`montarHoraDeTv`, depois do corte
+  da RN-30): pedir banco nunca muda a entrega de ninguém, nem a do próprio
+  dono da dívida. Toma o lugar do institucional, nunca o de quem pagou. Hora
+  cortada não devolve nada.
+- **Ritmo.** Por hora, no máximo o pedido normal da conta × um multiplicador
+  que cresce com a idade da dívida (1× pra dívida do mês, até 3× com 3 meses
+  ou mais — números do código, não do dono; pedido dele de 18/09: "quanto mais
+  tempo no banco tiver, mais prioridade tem"). O saldo é dividido pelos
+  pontos cobertos (mesma fatia da RN-49), arredondando pra cima, e nunca se
+  programa mais do que a dívida.
+- **Abatimento (liquidação).** A geração só PROGRAMA. Depois que a janela de
+  prova da hora fecha (60 min + a folga da virada), a liquidação abate do
+  saldo o banco que a TV confirmou — a confirmada conta primeiro pra entrega
+  normal, e só o que passar dela é do banco (na dúvida, a dívida fica). Cada
+  hora é abatida uma vez. Roda todo dia no job `Conciliacao` e todo mês no
+  `ApuracaoBancoHoras`. Enquanto uma hora não é liquidada, o banco que ela
+  programou fica reservado — outra tela não programa a mesma dívida de novo.
+  Até 25/09/2026 o saldo era abatido na geração: TV desligada consumia a
+  dívida sem entregar nada.
+- **Ordem.** O abatimento é FIFO (mês mais antigo primeiro).
 
 A unidade é EXIBIÇÃO, não segundo: a duração do criativo hoje
 (`criativos.duracao_segundos`) é o valor ATUAL, sem histórico — calcular em
-segundos seria estimar sobre estimativa. Escolha minha, não pedida por ele
-nestes termos.
-
-O saldo drena por ordem de idade (mês mais antigo primeiro, `FOR UPDATE` pra
-não drenar duas vezes a mesma linha em paralelo) e só proporcionalmente ao
-quanto a hora sobrou pra ele: se a hora ainda corta, uma parte do saldo fica
-pra próxima. Conta própria (`conta_propria`) nunca acumula banco — não paga,
-não tem o que compensar.
-
-O saldo é da conta, não da tela — mas a playlist é gerada uma tela por vez, e
-quem cobre vários pontos gera a hora em paralelo em cada um. Sem dividir, o
-mesmo saldo dava prioridade cheia em CADA ponto, e uma conta em 2 pontos
-pagava 1 de dívida e recebia o dobro de volta. A prioridade da hora divide o
-saldo pelos pontos cobertos (mesma fatia que a RN-49 já usa pra ratear
-segundos) antes de aplicar o teto — o dono nunca falou desse caso; é
-inferência de como o resto do motor já resolve o mesmo problema.
+segundos seria estimar sobre estimativa. Escolha do código, não pedida nestes
+termos.
 
 **Uma peça nunca roda duas vezes seguidas** (pedido do dono, 18/09/2026),
-prioridade boostada ou não — `espalhar` (`src/lib/pacing.js`) procura vaga
-livre SEM vizinho do mesmo anunciante antes de aceitar qualquer vizinho
-igual; só aceita quando não sobra alternativa (um anunciante tomando quase
-a hora inteira), e mesmo aí a entrega nunca é cortada por causa disso — o
-que muda é só a ordem.
+banco ou não — `espalhar` (`src/lib/pacing.js`) procura vaga livre SEM
+vizinho do mesmo anunciante antes de aceitar qualquer vizinho igual; só
+aceita quando não sobra alternativa, e mesmo aí a entrega nunca é cortada
+por causa disso — o que muda é só a ordem.
 
-**A prioridade PODE tomar o lugar de outro anunciante na mesma hora — de
-propósito, e sem perda pra quem cedeu.** O dono confirmou: não precisa se
-limitar ao espaço vago da hora. Quando isso corta quem não tem dívida
-nenhuma, o RN-30 já registra a diferença (`vezes_pedidas` maior que
-`vezes_programadas` DAQUELE anunciante, não só de quem furou a fila), e a
-apuração do mês seguinte credita ESSE déficit no banco de horas de quem
-cedeu — o mesmo mecanismo, fechando o ciclo sozinho. Nenhum código novo
-precisou entrar pra isso: é a mesma conta que já fecha o mês de qualquer
-corte por hora vendida.
+A fila `aguardando_credito` (válvula de 3 meses) saiu com a decisão de
+25/09/2026: nenhum código põe linha nova lá; a rota do admin continua só
+pra resolver alguma linha antiga (em produção: nenhuma).
 
-Saldo que não drena em `MESES_PARA_FILA_DE_CREDITO` (3, prazo meu — o dono
-nunca fixou um número) meses vira `status='aguardando_credito'`: uma fila
-que o admin decide, nunca um crédito automático — nenhuma linha desta
-feature move dinheiro ou desconta fatura por conta própria. *Violada:* não
-há caminho de usuário. *Quem vê:* o anunciante, no painel, quando tem saldo
-ativo; e o admin, na aba "Banco de horas", incluindo a fila de decisão.
+*Em aberto — DECISAO_DO_OPERADOR:* ordem de abatimento (FIFO hoje), saldo de
+conta encerrada ou cancelada, teto diário de devolução, e o que acontece com
+o saldo numa mudança de plano. *Violada:* não há caminho de usuário. *Quem
+vê:* o anunciante, no painel, quando tem saldo ativo; e o admin, em
+`GET /admin/banco-horas`.
 
 **RN-55 — Ponto que cruza 80% da hora vendida para de aceitar escolha
 nova.** *(G.7, `docs/PENDENCIAS.md` — pedido do dono, 18/09/2026; os dois

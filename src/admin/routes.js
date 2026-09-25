@@ -270,9 +270,9 @@ router.get('/admin/resumo', async (_req, res) => {
         -- (LGPD art. 18) — pedido com prazo legal não pode depender de
         -- alguém lembrar de abrir uma aba.
         (SELECT COUNT(*) FROM mensagens_contato WHERE respondida_em IS NULL) AS contato,
-        -- Banco de horas (G.3): saldo que passou de N meses sem drenar,
-        -- esperando o admin decidir (crédito manual, desconto, ou nada —
-        -- nunca automático). Ver src/bancohoras/apuracao.js.
+        -- Banco de horas: fila 'aguardando_credito' é histórico da válvula
+        -- que saiu em 25/09/2026 (banco de horas não expira) — só conta
+        -- linha antiga ainda não resolvida (src/bancohoras/routes.js).
         (SELECT COUNT(*) FROM banco_horas WHERE status = 'aguardando_credito' AND resolvido_em IS NULL) AS bancohoras,
         -- Pontos travados pra escolha nova por ocupação (G.7) — só sai daqui
         -- quando o admin libera (src/pontos/repository.js).

@@ -3,7 +3,15 @@ const assert = require('node:assert');
 const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const bancoHorasRepo = require('../src/bancohoras/repository');
-const { apurarMesAnterior, MESES_PARA_FILA_DE_CREDITO } = require('../src/bancohoras/apuracao');
+const { apurarMes, liquidarBancoConfirmado } = require('../src/bancohoras/apuracao');
+const { montarHoraDeTv, SEGUNDOS_DA_HORA } = require('../src/lib/pacing');
+const gerador = require('../src/playlist/gerador');
+const pontosRepo = require('../src/pontos/repository');
+const dispositivosRepo = require('../src/dispositivos/repository');
+const anunciantesRepo = require('../src/anunciantes/repository');
+const criativosRepo = require('../src/anunciantes/criativos-repository');
+const { registrarHeartbeat } = require('../src/player/sinal');
+const { gerarChaveLegada } = require('../src/player/credencial');
 
 // Banco de horas (G.3 de docs/PENDENCIAS.md). Unidade é EXIBIÇÃO (vezes),
 // não segundos — ver migration 058. Cada teste cria e apaga a própria
@@ -146,7 +154,7 @@ test('saldosAtivos traz a idade da linha MAIS ANTIGA ainda ativa, não da mais n
   }
 });
 
-test('apurarMesAnterior fecha o déficit do mês anterior por vezes_programadas, não por vezes_confirmadas', async () => {
+test('apurarMes (padrão: mês anterior) fecha o déficit do mês anterior por vezes_programadas, não por vezes_confirmadas', async () => {
   // Sem dispositivo nenhum no banco de teste, pula: é falta de fixture,
   // não bug real (exibicoes_contador exige um dispositivo_id válido).
   const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
@@ -170,8 +178,8 @@ test('apurarMesAnterior fecha o déficit do mês anterior por vezes_programadas,
       [id, dispositivo[0].id, janela],
     );
 
-    const resultado = await apurarMesAnterior();
-    assert.ok(resultado.anunciantesComDeficit >= 1);
+    const resultado = await apurarMes({ apenasContas: [id] });
+    assert.strictEqual(resultado.anunciantesComDeficit, 1);
     assert.strictEqual(
       await bancoHorasRepo.saldoAtivoDoAnunciante(id),
       1,
@@ -182,34 +190,26 @@ test('apurarMesAnterior fecha o déficit do mês anterior por vezes_programadas,
   }
 });
 
-test('a válvula move pra aguardando_credito só depois de N meses, e resolverCredito tira da fila', async () => {
+test('banco de horas não expira: saldo de 6 meses atrás continua ativo depois da apuração e da liquidação', async () => {
   const id = await contaDeTeste();
   try {
-    const meses = MESES_PARA_FILA_DE_CREDITO;
     const antigo = new Date();
-    antigo.setMonth(antigo.getMonth() - (meses + 1));
+    antigo.setMonth(antigo.getMonth() - 6, 1);
     await bancoHorasRepo.registrarDeficit({
       anuncianteId: id,
       mesReferencia: antigo.toISOString().slice(0, 10),
       exibicoesPedidas: 10,
       exibicoesEntregues: 5,
     });
-
-    const { rows: antesQuery } = await pool.query('SELECT id FROM banco_horas WHERE anunciante_id = $1', [id]);
-    const linhaId = antesQuery[0].id;
-
-    const { linhasMovidas } = await require('../src/bancohoras/apuracao').aplicarValvula();
-    assert.ok(linhasMovidas >= 1);
-
-    const fila = await bancoHorasRepo.listarAguardandoCredito();
-    assert.ok(
-      fila.some((l) => l.id === linhaId),
-      'a linha antiga entrou na fila do admin',
+    await apurarMes({ apenasContas: [id] });
+    await liquidarBancoConfirmado({ apenasContas: [id] });
+    const { rows } = await pool.query('SELECT status FROM banco_horas WHERE anunciante_id = $1', [id]);
+    assert.deepStrictEqual(
+      rows.map((r) => r.status),
+      ['ativo'],
+      'sem válvula: nada vira aguardando_credito',
     );
-
-    await bancoHorasRepo.resolverCredito(linhaId);
-    const filaDepois = await bancoHorasRepo.listarAguardandoCredito();
-    assert.ok(!filaDepois.some((l) => l.id === linhaId), 'resolvida, sai da fila');
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(id), 5);
   } finally {
     await apagarConta(id);
   }
@@ -238,5 +238,219 @@ test('duracaoMediaDoAnunciante lê a duração dos criativos aprovados, e cai no
     );
   } finally {
     await apagarConta(id);
+  }
+});
+
+// ---------- banco de horas como obrigação (decisão do dono, 25/09/2026) ----------
+
+test('montarHoraDeTv: banco só ocupa o tempo que a hora vendida deixou livre — a entrega corrente não muda', () => {
+  // Hora quase cheia: 170 × 20s = 3400s vendidos, sobram 200s.
+  const normal = [
+    { id: 1, frequenciaBase: 100, duracaoSegundos: 20 },
+    { id: 2, frequenciaBase: 70, duracaoSegundos: 20 },
+  ];
+  const semBanco = montarHoraDeTv(normal, 'semente');
+  const comBanco = montarHoraDeTv(
+    normal.map((a) => (a.id === 2 ? { ...a, banco: 500 } : a)),
+    'semente',
+  );
+  assert.strictEqual(comBanco.programados[1], semBanco.programados[1], 'a conta 1 não perde nada pro banco da 2');
+  assert.strictEqual(comBanco.programados[2] - comBanco.bancoProgramados[2], semBanco.programados[2]);
+  assert.strictEqual(comBanco.bancoProgramados[2], 10, 'banco pediu 500, coube só nos 200s livres (10 × 20s)');
+  assert.strictEqual(comBanco.segundosBanco, 200);
+  assert.strictEqual(comBanco.qtdInstitucional, 0, 'o banco toma o lugar do institucional, não o de quem pagou');
+  assert.strictEqual(comBanco.ocupacao, semBanco.ocupacao, 'banco não conta como hora vendida');
+  assert.deepStrictEqual(comBanco.pedidosPorAnunciante, semBanco.pedidosPorAnunciante, 'banco não é pedido novo');
+});
+
+test('montarHoraDeTv: hora cortada (RN-30) não tem espaço pro banco — o corte proporcional fica igual', () => {
+  const lotada = [
+    { id: 1, frequenciaBase: 150, duracaoSegundos: 20 },
+    { id: 2, frequenciaBase: 100, duracaoSegundos: 20, banco: 40 },
+  ];
+  const hora = montarHoraDeTv(lotada, 'x');
+  const semBanco = montarHoraDeTv(
+    lotada.map(({ banco, ...a }) => a),
+    'x',
+  );
+  assert.ok(hora.cortou);
+  assert.deepStrictEqual(hora.bancoProgramados, {});
+  assert.deepStrictEqual(hora.programados, semBanco.programados);
+  assert.ok(hora.segundosContratados <= SEGUNDOS_DA_HORA);
+});
+
+async function inicioDoMesEmMatao() {
+  const { rows } = await pool.query(
+    "SELECT date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AS inicio",
+  );
+  return rows[0].inicio;
+}
+
+test('apuração: mês de Matão (não UTC) e exibição do banco não conta como entrega do mês', async () => {
+  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
+  if (!dispositivo.length) return;
+  const id = await contaDeTeste();
+  try {
+    const inicio = await inicioDoMesEmMatao();
+    // 22h do último dia do mês anterior em Matão = 01h UTC do dia 1: é do mês
+    // ANTERIOR. 5 pedidas, 6 programadas das quais 2 do banco → entrega
+    // normal 4, déficit 1 (a conta antiga, 5 − 6, não via déficit nenhum).
+    await pool.query(
+      `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco)
+       VALUES ($1, $2, $3, 6, 5, 2)`,
+      [id, dispositivo[0].id, new Date(inicio.getTime() - 2 * 3600 * 1000)],
+    );
+    // 00h do dia 1 em Matão: já é o mês corrente — fora da apuração.
+    await pool.query(
+      `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas)
+       VALUES ($1, $2, $3, 0, 9)`,
+      [id, dispositivo[0].id, inicio],
+    );
+
+    const simulado = await apurarMes({ apenasContas: [id], simular: true });
+    assert.strictEqual(simulado.exibicoesDevidas, 1);
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(id), 0, 'simulação não grava');
+
+    const real = await apurarMes({ apenasContas: [id] });
+    assert.strictEqual(real.novasLinhas, 1);
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(id), 1);
+  } finally {
+    await apagarConta(id);
+  }
+});
+
+test('apuração recusa mês que ainda não fechou em Matão', async () => {
+  const { rows } = await pool.query("SELECT to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS mes");
+  await assert.rejects(apurarMes({ mes: rows[0].mes, apenasContas: [0] }), (err) => err.argumentoInvalido === true);
+});
+
+test('liquidação abate só o banco CONFIRMADO, uma vez por hora fechada; o resto fica reservado até lá', async () => {
+  const { rows: dispositivo } = await pool.query('SELECT id FROM dispositivos LIMIT 1');
+  if (!dispositivo.length) return;
+  const id = await contaDeTeste();
+  try {
+    const mesPassado = new Date();
+    mesPassado.setMonth(mesPassado.getMonth() - 1, 1);
+    await bancoHorasRepo.registrarDeficit({
+      anuncianteId: id,
+      mesReferencia: mesPassado.toISOString().slice(0, 10),
+      exibicoesPedidas: 20,
+      exibicoesEntregues: 10,
+    }); // saldo 10
+    const horaFechada = new Date(Date.now() - 3 * 3600 * 1000);
+    horaFechada.setMinutes(0, 0, 0);
+    const outraHoraFechada = new Date(horaFechada.getTime() - 3600 * 1000);
+    const horaAberta = new Date();
+    horaAberta.setMinutes(0, 0, 0);
+    // Hora fechada A: 5 programadas (2 do banco), 4 confirmadas → a normal
+    // (3) foi toda, e 1 do banco. Hora fechada B: 2 confirmadas de 5 → nada
+    // do banco. Hora aberta: 3 do banco ainda podem ser confirmadas.
+    await pool.query(
+      `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco, vezes_confirmadas)
+       VALUES ($1, $2, $3, 5, 3, 2, 4), ($1, $2, $4, 5, 3, 2, 2), ($1, $2, $5, 3, 0, 3, 0)`,
+      [id, dispositivo[0].id, horaFechada, outraHoraFechada, horaAberta],
+    );
+    assert.strictEqual(
+      (await bancoHorasRepo.saldosAtivos())[id].saldo,
+      3,
+      'disponível = 10 − 7 programadas do banco ainda não liquidadas',
+    );
+
+    const simulado = await liquidarBancoConfirmado({ apenasContas: [id], simular: true });
+    assert.deepStrictEqual(simulado, { contas: 1, linhas: 2, exibicoesAbatidas: 1 });
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(id), 10, 'simulação não abate');
+
+    const [a, b] = await Promise.all([
+      liquidarBancoConfirmado({ apenasContas: [id] }),
+      liquidarBancoConfirmado({ apenasContas: [id] }),
+    ]);
+    assert.strictEqual(a.exibicoesAbatidas + b.exibicoesAbatidas, 1, 'duas execuções juntas abatem a hora uma vez só');
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(id), 9);
+    assert.strictEqual((await liquidarBancoConfirmado({ apenasContas: [id] })).linhas, 0, 'hora liquidada não volta');
+    assert.strictEqual(
+      (await bancoHorasRepo.saldosAtivos())[id].saldo,
+      6,
+      'o banco não confirmado das horas fechadas volta a ficar disponível (9 − 3 da hora aberta)',
+    );
+  } finally {
+    await apagarConta(id);
+  }
+});
+
+test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geração', async () => {
+  const ponto = await pontosRepo.criar({
+    nome: `Ponto Banco ${randomUUID()}`,
+    endereco: 'Rua B, 1',
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    segmento: 'Teste',
+    responsavel_nome: 'Fulano',
+    responsavel_contato: '16999990000',
+  });
+  const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco ${randomUUID()}` });
+  await dispositivosRepo.atualizar(tela.id, { contrato_playlist: 2, status: 'ativo' });
+  await gerarChaveLegada(tela.id);
+  await registrarHeartbeat(tela.id, {}, {});
+  const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
+  // Ponto escolhido antes do plano e do criativo aprovado: a conta nunca
+  // cai na cobertura automática de outro arquivo (playlist-contrato-novo).
+  const conta = await anunciantesRepo.criar({
+    nome_empresa: `Banco ${randomUUID()}`,
+    cpf_cnpj: randomUUID().replace(/-/g, '').slice(0, 11),
+    endereco: 'Rua X, 1',
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    contato_email: `banco-gerador-${randomUUID()}@example.com`,
+    contato_telefone: '16999990000',
+    senha: 'x',
+  });
+  try {
+    await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, ponto.id]);
+    await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
+    const mesPassado = new Date();
+    mesPassado.setMonth(mesPassado.getMonth() - 1, 1);
+    await bancoHorasRepo.registrarDeficit({
+      anuncianteId: conta.id,
+      mesReferencia: mesPassado.toISOString().slice(0, 10),
+      exibicoesPedidas: 12,
+      exibicoesEntregues: 2,
+    }); // saldo 10
+    const criativo = await criativosRepo.criar({
+      anunciante_id: conta.id,
+      arquivo_original_url: 'original.mp4',
+      arquivo_normalizado_url: 'https://exemplo.test/banco.mp4',
+      thumbnail_url: null,
+      duracao_segundos: 15,
+    });
+    await criativosRepo.atualizar(criativo.id, { status: 'aprovado' });
+
+    const hora = new Date();
+    hora.setMinutes(0, 0, 0);
+    await gerador.gerarPlaylistDaHora(dispositivo, hora);
+    await gerador.gerarPlaylistDaHora(dispositivo, hora); // poll de novo: mesma hora congelada
+    const { rows } = await pool.query(
+      'SELECT vezes_banco, vezes_programadas, vezes_pedidas FROM exibicoes_contador WHERE anunciante_id = $1 AND dispositivo_id = $2',
+      [conta.id, dispositivo.id],
+    );
+    assert.strictEqual(rows.length, 1);
+    assert.ok(rows[0].vezes_banco > 0, 'a hora tinha espaço livre: o banco entrou');
+    assert.ok(rows[0].vezes_banco <= 10, `nunca programa mais que a dívida (programou ${rows[0].vezes_banco})`);
+    assert.strictEqual(rows[0].vezes_programadas - rows[0].vezes_banco, rows[0].vezes_pedidas, 'normal + banco');
+    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(conta.id), 10, 'geração não abate saldo');
+    assert.strictEqual(
+      (await bancoHorasRepo.saldosAtivos())[conta.id]?.saldo ?? 0,
+      10 - rows[0].vezes_banco,
+      'o programado fica reservado até a liquidação',
+    );
+  } finally {
+    await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [conta.id]);
+    await apagarConta(conta.id);
+    await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [tela.id]);
+    await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [tela.id]);
+    await dispositivosRepo.deletar(tela.id);
+    await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [ponto.id]);
+    await pool.query('DELETE FROM pontos WHERE id = $1', [ponto.id]);
   }
 });

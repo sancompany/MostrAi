@@ -17,7 +17,10 @@
 // Agora a hora é um orçamento de 3600 segundos, gasto nesta ordem:
 //   1. exibição contratada (frequência do plano + déficit da hora anterior);
 //   2. cota de autoanúncio do dono do ponto (permuta do comodato);
-//   3. o que sobrar vira a peça institucional do próprio player, que já
+//   3. banco de horas — só no tempo que SOBROU de 1 e 2 (decisão do dono,
+//      25/09/2026: a dívida volta em capacidade ociosa, nunca tirando a
+//      entrega corrente de ninguém);
+//   4. o que sobrar vira a peça institucional do próprio player, que já
 //      existe (#vazio em public/player.html) e já diz "este espaço pode ser
 //      do seu negócio" — inventário vago que anuncia a si mesmo.
 //
@@ -128,76 +131,95 @@ function espalhar(grupos, total) {
   return vagas;
 }
 
-// anunciantes: [{ id, frequenciaBase, deficit, duracaoSegundos }]
+// Corta `pedidos` ({ quer, duracao }) pra caberem em `capacidade` segundos.
+// O corte é proporcional (cada um perde a mesma fração do que pediu) e a sobra
+// vai pros maiores restos — medida em segundos, que é o que a hora realmente
+// tem. Grava `cabe` em cada pedido.
+function caberEm(pedidos, capacidade) {
+  const pedidoSegundos = pedidos.reduce((soma, p) => soma + p.quer * p.duracao, 0);
+  if (pedidoSegundos <= capacidade) {
+    for (const p of pedidos) p.cabe = p.quer;
+    return;
+  }
+  const fator = capacidade / pedidoSegundos;
+  for (const p of pedidos) {
+    const exato = p.quer * fator;
+    p.cabe = Math.floor(exato);
+    p.resto = exato - p.cabe;
+  }
+  let livres = capacidade - pedidos.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
+  for (const p of [...pedidos].sort((x, y) => y.resto - x.resto)) {
+    if (p.duracao <= livres) {
+      p.cabe += 1;
+      livres -= p.duracao;
+    }
+  }
+}
+
+// anunciantes: [{ id, frequenciaBase, deficit, banco, duracaoSegundos }]
 //
 // Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
 // `programados` conta só quem ocupa inventário de verdade — o institucional
 // fica de fora de propósito, porque ele não é entrega de ninguém.
+//
+// `banco` (banco de horas) disputa só o tempo que a hora vendida deixou
+// livre, DEPOIS do corte da RN-30: pedir banco nunca muda o `cabe` de
+// ninguém, nem o do próprio dono da dívida (decisão do dono, 25/09/2026 —
+// "entrega corrente não deve ser destruída para satisfazer dívida antiga").
 function montarHoraDeTv(anunciantes, semente) {
-  const pedidos = embaralhar(
+  const todos = embaralhar(
     anunciantes.map((a) => ({
       id: a.id,
       duracao: duracaoValida(a.duracaoSegundos),
       quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
+      banco: Math.max(0, a.banco || 0),
     })),
     semente,
-  ).filter((p) => p.quer > 0);
+  );
+  const pedidos = todos.filter((p) => p.quer > 0);
 
   const pedidoSegundos = pedidos.reduce((soma, p) => soma + p.quer * p.duracao, 0);
   const cortou = pedidoSegundos > SEGUNDOS_DA_HORA;
+  caberEm(pedidos, SEGUNDOS_DA_HORA);
+  const segundosContratados = pedidos.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
 
-  if (cortou) {
-    // A hora não cabe em todo mundo. O corte é proporcional (cada um perde a
-    // mesma fração do que pediu) e a sobra vai pros maiores restos, como já
-    // era — só que medida em segundos, que é o que a hora realmente tem.
-    const fator = SEGUNDOS_DA_HORA / pedidoSegundos;
-    for (const p of pedidos) {
-      const exato = p.quer * fator;
-      p.cabe = Math.floor(exato);
-      p.resto = exato - p.cabe;
-    }
-    let livres = SEGUNDOS_DA_HORA - pedidos.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
-    for (const p of [...pedidos].sort((x, y) => y.resto - x.resto)) {
-      if (p.duracao <= livres) {
-        p.cabe += 1;
-        livres -= p.duracao;
-      }
-    }
-  } else {
-    for (const p of pedidos) p.cabe = p.quer;
-  }
+  const pedidosBanco = todos.filter((p) => p.banco > 0).map((p) => ({ id: p.id, duracao: p.duracao, quer: p.banco }));
+  caberEm(pedidosBanco, SEGUNDOS_DA_HORA - segundosContratados);
+  const bancoProgramados = {};
+  for (const p of pedidosBanco) if (p.cabe > 0) bancoProgramados[p.id] = p.cabe;
+  const segundosBanco = pedidosBanco.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
 
-  const comExibicao = pedidos.filter((p) => p.cabe > 0);
-  const segundosContratados = comExibicao.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
-  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados);
+  // Map e não objeto: guarda o id com o tipo original (número de anunciante,
+  // 'dono', 'midia:N'), que é o que vai nos itens da playlist.
+  const vezesPorId = new Map();
+  for (const p of pedidos) if (p.cabe > 0) vezesPorId.set(p.id, p.cabe);
+  for (const p of pedidosBanco) if (p.cabe > 0) vezesPorId.set(p.id, (vezesPorId.get(p.id) || 0) + p.cabe);
+  const programados = Object.fromEntries(vezesPorId);
+
+  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco);
   const qtdInstitucional = Math.floor(segundosLivres / DURACAO_INSTITUCIONAL);
 
-  const itensPagos = comExibicao.reduce((soma, p) => soma + p.cabe, 0);
+  const grupos = [...vezesPorId].map(([id, quantidade]) => ({ id, quantidade }));
+  const itensPagos = grupos.reduce((soma, g) => soma + g.quantidade, 0);
   const total = itensPagos + qtdInstitucional;
-
-  const vagas = total
-    ? espalhar(
-        comExibicao.map((p) => ({ id: p.id, quantidade: p.cabe })),
-        total,
-      )
-    : [];
-
-  const programados = {};
-  for (const p of comExibicao) programados[p.id] = p.cabe;
+  const vagas = total ? espalhar(grupos, total) : [];
 
   // O que cada um QUERIA antes do corte proporcional (`p.quer`, calculado
   // antes de `cabe`) — é o que o banco de horas (G.3) precisa pra apurar o
   // que não coube por causa da hora estar vendida, não por tela offline.
   // Vai de todo mundo que pediu, mesmo quem não coube em nada (`cabe`
-  // ausente vira 0 na leitura, não some da conta do déficit).
+  // ausente vira 0 na leitura, não some da conta do déficit). O banco NÃO
+  // entra aqui: devolver dívida não é pedido novo.
   const pedidosPorAnunciante = {};
   for (const p of pedidos) pedidosPorAnunciante[p.id] = p.quer;
 
   return {
     itens: vagas.map((id) => id ?? ID_INSTITUCIONAL),
     programados,
+    bancoProgramados,
     pedidosPorAnunciante,
     segundosContratados,
+    segundosBanco,
     segundosInstitucionais: qtdInstitucional * DURACAO_INSTITUCIONAL,
     qtdInstitucional,
     pedidoSegundos,
