@@ -1,12 +1,15 @@
 // Rodada final da tela Rede do admin (22/09/2026): status do ponto 100%
 // automático (derivado das telas, sem Instalação/ACM/foto no admin), ficha
-// somente-leitura + Telas em cards + margens de safe area, Ocupação da rede
+// somente-leitura + Telas em linhas + margens de safe area, Ocupação da rede
 // como tabela operacional, candidatura com foto no topo. Assume banco zerado
 // e servidor na 3999 (NODE_ENV=test). Substitui o roteiro da rodada anterior
 // (v25) — badges/painéis daquela versão (Instalação, ACM, "TV instalada",
 // tabela de telas) não existem mais. Seletores e textos acompanham o polimento
-// visual final do admin (23/09/2026, PR #22): ficha em `.ficha-*`, migalha
-// "Pontos / <nome>", safe area em cruz, "+ Tela" e "Liberar" em modal.
+// visual final do admin (23/09/2026, PR #22) e a ficha da tela do Player MVP
+// (26/09/2026, docs/player-mvp-contract.md): ficha em `.ficha-*`, migalha
+// "Pontos / <nome>", tela em `.tela-linha` (M-xxxx + selo + Abrir/Excluir),
+// ficha da tela em Resumo/Instalação/Área segura/Estado/Ações, "+ Adicionar
+// tela" sem formulário, instalação por código, "Liberar" em modal.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
@@ -68,6 +71,11 @@ const idA = PG(
    RETURNING id`,
 );
 
+// Tela ativa "instalada" (sem Player de verdade): credencial = hash aleatório
+// de 64 hex + primeiro sinal, que é o que põe o ponto em operação
+// (src/pontos/repository.js#sincronizarStatusPonto).
+const INSTALADA = `md5(random()::text) || md5(random()::text), now(), now()`;
+
 // Ponto B: 1 tela ativa -> ativo.
 const idB = PG(
   `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, status, fluxo_estimado_mensal)
@@ -75,7 +83,7 @@ const idB = PG(
    RETURNING id`,
 );
 PG(
-  `INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, instalado_em, status) VALUES (${idB}, 'Tela 1', gen_random_uuid(), current_date, 'ativo')`,
+  `INSERT INTO dispositivos (ponto_id, instalado_em, status, chave_hash, primeiro_sinal_em, ultima_vez_online) VALUES (${idB}, current_date, 'ativo', ${INSTALADA})`,
 );
 
 // Ponto C: nome/endereço grandes, foto, observações, horário — 3 telas
@@ -90,12 +98,12 @@ const idC = PG(
    RETURNING id`,
 );
 PG(
-  `INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, instalado_em, status) VALUES (${idC}, 'Tela 1', gen_random_uuid(), current_date, 'ativo')`,
+  `INSERT INTO dispositivos (ponto_id, instalado_em, status, chave_hash, primeiro_sinal_em, ultima_vez_online) VALUES (${idC}, current_date, 'ativo', ${INSTALADA})`,
 );
 PG(
-  `INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, instalado_em, status) VALUES (${idC}, 'Tela 2', gen_random_uuid(), current_date, 'reparo')`,
+  `INSERT INTO dispositivos (ponto_id, instalado_em, status) VALUES (${idC}, current_date, 'reparo')`,
 );
-PG(`INSERT INTO dispositivos (ponto_id, apelido) VALUES (${idC}, 'Tela 3 (sem chave ainda)')`);
+PG(`INSERT INTO dispositivos (ponto_id) VALUES (${idC})`); // sem Player ainda
 
 // Ponto E: 1 tela em reparo, nenhuma ativa -> em reparo.
 const idE = PG(
@@ -103,7 +111,7 @@ const idE = PG(
    VALUES ('Loja Em Reparo', 'Rua Baixa, 9', 'Matão', 'SP', '15990000', 'loja', 'Elis', '16999990005', 'em_reparo')
    RETURNING id`,
 );
-PG(`INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, status) VALUES (${idE}, 'Tela 1', gen_random_uuid(), 'reparo')`);
+PG(`INSERT INTO dispositivos (ponto_id, status) VALUES (${idE}, 'reparo')`);
 
 // Ponto F: tem tela cadastrada, nenhuma ativa/reparo -> inativo. Não deve
 // aparecer no site público (só `inativo` fica de fora, ver
@@ -113,7 +121,7 @@ const idF = PG(
    VALUES ('Oficina Inativa', 'Rua Funda, 3', 'Matão', 'SP', '15990000', 'oficina', 'Fabio', '16999990006', 'inativo')
    RETURNING id`,
 );
-PG(`INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, status) VALUES (${idF}, 'Tela 1', gen_random_uuid(), 'inativo')`);
+PG(`INSERT INTO dispositivos (ponto_id, status) VALUES (${idF}, 'inativo')`);
 
 // Ponto D: em operação, ocupação alta o bastante pra ficar "travado" (G.7,
 // LIMITE_OCUPACAO_BLOQUEIA=0.8), mas com folga suficiente pra liberar de
@@ -124,7 +132,7 @@ const idD = PG(
    VALUES ('Farmácia Ocupação', 'Rua Central, 50', 'Matão', 'SP', '15990000', 'farmacia', 'Duda', '16999990004', 'em_operacao')
    RETURNING id`,
 );
-PG(`INSERT INTO dispositivos (ponto_id, apelido, aparelho_id, status) VALUES (${idD}, 'Tela 1', gen_random_uuid(), 'ativo')`);
+PG(`INSERT INTO dispositivos (ponto_id, status, chave_hash, primeiro_sinal_em, ultima_vez_online) VALUES (${idD}, 'ativo', ${INSTALADA})`);
 PG(`DELETE FROM planos WHERE id = 'plano-teste-e2e-rede'`);
 PG(
   `INSERT INTO planos (id, tier, nome, valor_mensal, compromisso_meses, frequencia_hora, cobertura, segundos_por_hora, pontos_incluidos, duracao_maxima_segundos, limite_criativos)
@@ -212,13 +220,22 @@ check(
   !(await admin.locator('text=/ACM|molde/i').count()) &&
     !(await admin.locator('#pontoInformacoes').locator('text=/Instalação/i').count()),
 );
-check('3 telas em cards (não tabela)', (await admin.locator('#pontoTelas .tela-card').count()) === 3);
+check('3 telas em linhas (não tabela)', (await admin.locator('#pontoTelas .tela-linha').count()) === 3);
 check('sem tabela de telas', (await admin.locator('#pontoTelas table').count()) === 0);
 check('sem coluna/campo "Contrato" nas telas', !(await admin.locator('#pontoTelas').locator('text=Contrato').count()));
 check('sem coluna/campo "Custo" nas telas', !(await admin.locator('#pontoTelas').locator('text=Custo').count()));
-// Player V2: card fechado e simples — área segura, PIN e credencial moram na
-// ficha da tela, nunca em campos sempre abertos no card.
-check('card da tela sem campos abertos', (await admin.locator('#pontoTelas .tela-card input, #pontoTelas .tela-card select').count()) === 0);
+// Player MVP: a linha é o código da tela (M-xxxx), o selo de saúde e as duas
+// ações rápidas — área segura e instalação moram na ficha da tela.
+const linhasTela = await admin.locator('#pontoTelas .tela-linha').allTextContents();
+check(
+  'cada linha: M-xxxx + selo + Abrir + Excluir',
+  linhasTela.length === 3 &&
+    linhasTela.every((l) => /M-\d{4,}/.test(l) && /Abrir/.test(l) && /Excluir/.test(l)) &&
+    (await admin.locator('#pontoTelas .tela-linha .badge').count()) === 3,
+  linhasTela,
+);
+check('nenhuma tela chamada "Tela N"', !linhasTela.some((l) => /Tela \d/.test(l)), linhasTela);
+check('linha da tela sem campos abertos', (await admin.locator('#pontoTelas .tela-linha input, #pontoTelas .tela-linha select').count()) === 0);
 await admin.screenshot({ path: `${SAIDA}v26-ponto-detalhe-desktop.png`, fullPage: true });
 await admin.setViewportSize({ width: 390, height: 844 });
 await admin.waitForTimeout(400);
@@ -229,17 +246,30 @@ check('colunas empilham no mobile (grid vira 1 coluna)', await admin.evaluate(()
 await admin.screenshot({ path: `${SAIDA}v26-ponto-detalhe-mobile.png`, fullPage: true });
 await admin.setViewportSize({ width: 1400, height: 960 });
 
-console.log('== área segura — resumo fechado, edita em modal, salva no banco ==');
-await admin.locator('#pontoTelas .tela-card').first().click();
+console.log('== ficha da tela — blocos do Player MVP; área segura salva no banco ==');
+await admin.locator('#pontoTelas .tela-linha').first().locator('a:has-text("Abrir")').click();
 await admin.waitForSelector('.tela-ficha');
 const telaIdC1 = admin.url().split('/').pop();
-check('ficha da tela sem inputs de margem abertos', (await admin.locator('.tela-ficha input[type=number]').count()) === 0);
-await admin.click('[data-acao="area"]');
+const blocos = (await admin.locator('.tela-ficha .ficha-bloco h4').allTextContents()).map((h) => h.trim());
+check(
+  'ficha da tela: Resumo, Instalação, Área segura, Estado e Ações',
+  ['Resumo', 'Instalação', 'Área segura', 'Estado', 'Ações'].every((b) => blocos.includes(b)),
+  blocos,
+);
+const fichaTexto = await admin.textContent('.tela-ficha');
+check('ficha sem Preparar Player, PIN por tela, rotação, diagnóstico ou histórico', !/Preparar Player|PIN|Rota[çc]ão|Diagnóstico|Histórico/i.test(fichaTexto), fichaTexto.slice(0, 300));
+check('sem botão [data-acao="preparar"]', (await admin.locator('[data-acao="preparar"]').count()) === 0);
+const versaoAntes = Number(PG(`SELECT config_versao_desejada FROM dispositivos WHERE id=${telaIdC1}`));
 await admin.fill('#area_superior', '6');
-await admin.click('dialog.modal-admin[open] button[type=submit]');
-await admin.waitForFunction(() => /Superior 6/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
-check('margem superior salva no banco', PG(`SELECT margem_superior FROM dispositivos WHERE id=${telaIdC1}`) === '6');
-check('config desejada subiu com a margem', Number(PG(`SELECT config_versao_desejada FROM dispositivos WHERE id=${telaIdC1}`)) >= 2);
+await admin.click('[data-form-area] button[type=submit]');
+await admin.waitForSelector('.toast', { timeout: 5000 }).catch(() => {});
+let margem = '';
+for (let i = 0; i < 25 && Number(margem) !== 6; i++) {
+  await admin.waitForTimeout(200);
+  margem = PG(`SELECT margem_superior FROM dispositivos WHERE id=${telaIdC1}`);
+}
+check('margem superior salva no banco', Number(margem) === 6, margem);
+check('config desejada subiu com a margem', Number(PG(`SELECT config_versao_desejada FROM dispositivos WHERE id=${telaIdC1}`)) === versaoAntes + 1);
 
 console.log('== ponto sem tela — aguardando instalação, sem Instalação/ACM ==');
 await admin.evaluate((id) => {
@@ -251,20 +281,51 @@ check('badge "Aguardando instalação" no detalhe', (await admin.textContent('.f
 check('nenhuma tela — mensagem certa', (await admin.textContent('#pontoTelas')).includes('Nenhuma tela'));
 check('sem botão de instalação manual', !(await admin.locator('text=/Colocar em operação|Voltar.*instalação/i').count()));
 
-console.log('== criar tela pelo "+ Adicionar tela" — ponto só vira Ativo com o primeiro sinal ==');
-// Player V2: nada de nome manual; a tela nasce Ativa e "Aguardando primeiro
-// sinal", e o ponto continua aguardando instalação até a TV falar.
+console.log('== criar tela pelo "+ Adicionar tela" — ponto só vira Ativo com o Player instalado ==');
+// Player MVP: nada a preencher; a tela nasce Ativa, com o código M-xxxx e
+// "Aguardando instalação", e o ponto continua aguardando até a TV se instalar
+// pelo código (a instalação conta como primeiro sinal).
 await admin.click('[data-nova-tela]');
-check('modal sem campo "Nome da tela"', !(await admin.locator('dialog.modal-admin[open]').locator('text=/Nome da tela/i').count()));
-await admin.click('dialog.modal-admin[open] button[type=submit]');
 await admin.waitForSelector('.tela-ficha');
+check('"+ Adicionar tela" não abre formulário (sem "Nome da tela")', (await admin.locator('dialog.modal-admin[open]').count()) === 0);
 const telaNovaId = admin.url().split('/').pop();
-check('tela criada: Tela 1 aguardando primeiro sinal', /Tela 1[\s\S]*Aguardando primeiro sinal/.test(await admin.textContent('.tela-ficha-topo')));
-check('ponto continua aguardando instalação (tela sem sinal)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'a_instalar');
-const cfgPlayer = await admin.evaluate(async (id) => (await (await fetch(`/admin/dispositivos/${id}/preparar-player`, { method: 'POST' })).json()).arquivo, telaNovaId);
-check('Player preparado: ponto aguardando primeiro sinal', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'aguardando_primeiro_sinal');
-await fetch(`${B}/player/${cfgPlayer.dispositivoId}/heartbeat`, { method: 'POST', headers: { 'X-Aparelho-Key': cfgPlayer.chaveAparelho } });
-check('primeiro sinal vira "Ativo" no ponto', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'em_operacao');
+const codigoTelaNova = `M-${String(telaNovaId).padStart(4, '0')}`;
+const topoNova = await admin.textContent('.tela-ficha-topo');
+check('tela criada: M-xxxx aguardando instalação', topoNova.includes(codigoTelaNova) && /Aguardando instalação/.test(topoNova), topoNova);
+check('ponto continua aguardando instalação (tela sem Player)', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'a_instalar');
+// PIN de saída global (sem ele não há código — a UI de Rede é coberta pelo
+// 18-rede-player-mvp.mjs).
+const pinStatus = await admin.evaluate(
+  async () =>
+    (
+      await fetch('/admin/player/pin-saida', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: '48213' }),
+      })
+    ).status,
+);
+check('PIN de saída definido', pinStatus === 200, pinStatus);
+await admin.click('[data-acao="gerar-codigo"]');
+await admin.waitForSelector('[data-expira]', { timeout: 8000 }).catch(() => {});
+const codigoInstalacao = (await admin.textContent('.tela-ficha')).match(/[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}/)?.[0];
+check('ficha mostra o código de instalação XXXX-XXXX', !!codigoInstalacao);
+const prov = await fetch(`${B}/player/provisionar`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ codigoTela: codigoTelaNova, codigoInstalacao }),
+});
+const credencial = await prov.json();
+check('Player instalado com ID da tela + código', prov.status === 200 && credencial.dispositivoId === codigoTelaNova);
+check('instalação é o primeiro sinal: ponto vira "Ativo"', PG(`SELECT status FROM pontos WHERE id=${idA}`) === 'em_operacao');
+const hb = await fetch(`${B}/player/${credencial.dispositivoId}/heartbeat`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Aparelho-Key': credencial.chaveAparelho },
+  body: '{}',
+});
+check('heartbeat com X-Aparelho-Key responde configVersion', hb.status === 200 && 'configVersion' in (await hb.json()));
+await admin.waitForFunction(() => /Player conectado/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+check('ficha: "Player conectado" sem F5, sem a chave na página', /Player conectado/.test(await admin.textContent('.tela-ficha')) && !(await admin.textContent('body')).includes(credencial.chaveAparelho));
 await admin.evaluate(() => {
   location.hash = 'rede/pontos';
 });

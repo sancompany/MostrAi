@@ -1,9 +1,11 @@
 // Meus pontos na rota real (/anunciante/painel.html), Fatia 2.
 // Um estabelecimento = um card, do pedido ao ponto no ar, sem F5 e sem
 // duplicar: pedido pelo card compacto → "Em análise"; admin aprova →
-// "Aguardando instalação" (o MESMO card, não um segundo); admin liga a tela →
-// "Ativo" com a tela dentro; tela sem sinal → texto humano de atenção. Pedir
-// o mesmo estabelecimento de novo é recusado. Assume servidor na 3999.
+// "Aguardando instalação" (o MESMO card, não um segundo); admin cria a tela e
+// o Player se instala pelo código (docs/player-mvp-contract.md) → "Ativo" com
+// a tela M-xxxx dentro; tela sem sinal → texto humano de atenção; o diálogo
+// da tela não tem PIN (o PIN de saída é global, só no admin). Pedir o mesmo
+// estabelecimento de novo é recusado. Assume servidor na 3999.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';
 import { execSync } from 'node:child_process';
@@ -127,19 +129,43 @@ await p.waitForTimeout(500);
 check('sino recebeu o aviso de aprovação', /aprovado/i.test(await p.textContent('body')) || PG(`SELECT count(*) FROM notificacoes WHERE anunciante_id = ${id} AND tipo = 'ponto_aprovado'`) === '1');
 await shot(p, '3-aguardando');
 
-console.log('== admin cria e liga a tela ==');
-// Player V2: sem nome manual — a tela é "Tela 1"; nasce Ativa, e o ponto só
-// vira "Ativo" com o primeiro sinal da TV (aqui, o heartbeat do player web).
-const tela = await api(`/admin/pontos/${pontoId}/dispositivos`, 'POST', { modo_horario: '24h' });
-check('tela criada', tela.status === 201, JSON.stringify(tela));
-const { arquivo: cfgPlayer } = (await api(`/admin/dispositivos/${tela.json.id}/preparar-player`, 'POST')).json;
-await fetch(`${B}/player/${cfgPlayer.dispositivoId}/heartbeat`, {
+console.log('== admin cria a tela; o Player se instala pelo código ==');
+// Player MVP: sem nome manual — a tela é o código M-xxxx; nasce Ativa, e o
+// ponto só vira "Ativo" quando um Player se instala nela (a instalação é o
+// primeiro sinal). Toda tela segue o horário do PONTO: 24 h aqui, para a tela
+// estar "Funcionando" a qualquer hora que o roteiro rode.
+const h24 = { abre: '00:00', fecha: '24:00' };
+const horario = await api(`/admin/pontos/${pontoId}`, 'PATCH', {
+  horario_semanal: { seg: h24, ter: h24, qua: h24, qui: h24, sex: h24, sab: h24, dom: h24 },
+});
+check('horário do ponto: 24 h', horario.status === 200, JSON.stringify(horario).slice(0, 200));
+const tela = await api(`/admin/pontos/${pontoId}/dispositivos`, 'POST', {});
+check('tela criada com o código M-xxxx', tela.status === 201 && /^M-\d{4,}$/.test(tela.json?.codigo), JSON.stringify(tela));
+const codigoTela = tela.json.codigo;
+const pin = await api('/admin/player/pin-saida', 'PUT', { pin: '48213' });
+check('PIN de saída global definido', pin.status === 200, JSON.stringify(pin));
+const instalacao = await api(`/admin/dispositivos/${tela.json.id}/codigo-instalacao`, 'POST');
+check(
+  'código de instalação XXXX-XXXX para a tela',
+  instalacao.status === 201 && instalacao.json.codigoTela === codigoTela && /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/.test(instalacao.json.codigo),
+  JSON.stringify(instalacao),
+);
+// A "TV": troca ID da tela + código pela chave e dá o primeiro heartbeat.
+const prov = await fetch(`${B}/player/provisionar`, {
   method: 'POST',
-  headers: { 'X-Aparelho-Key': cfgPlayer.chaveAparelho },
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ codigoTela, codigoInstalacao: instalacao.json.codigo }),
+});
+const credencial = await prov.json();
+check('Player provisionado', prov.status === 200 && credencial.dispositivoId === codigoTela && !!credencial.chaveAparelho);
+await fetch(`${B}/player/${credencial.dispositivoId}/heartbeat`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Aparelho-Key': credencial.chaveAparelho, 'X-Player-Version': '1.0.0+12' },
+  body: JSON.stringify({ estado: 'PLAYING', configVersionAplicada: 0, erro: null, fila: { pendentes: 0, maisAntigoEm: null } }),
 });
 await p.waitForSelector('.estab-card.estado-ativo', { timeout: 8000 }).catch(() => {});
 check('card virou "Ativo" sem F5 (primeiro sinal)', !!(await p.$('.estab-card.estado-ativo')));
-check('a tela aparece DENTRO do ponto', (await p.textContent('.estab-card .estab-telas')).includes('Tela 1'));
+check('a tela aparece DENTRO do ponto, pelo código', (await p.textContent('.estab-card .estab-telas')).includes(codigoTela));
 check('tela funcionando', (await p.textContent('.estab-card .tela-linha')).includes('Funcionando'));
 check('resumo do cabeçalho', (await p.textContent('#pontosResumo')).includes('1 de 1 tela funcionando'));
 await shot(p, '4-ativo');
@@ -158,23 +184,25 @@ check('um card depois dos resyncs', (await p.$$('.estab-card')).length === 1);
 check('uma linha de tela depois dos resyncs', (await p.$$('.tela-linha')).length === 1);
 const linha = await p.textContent('.tela-linha');
 check('sem sinal vira "Precisa de atenção"', linha.includes('Precisa de atenção'), linha);
-check('explica que a equipe já vê o alerta', linha.includes('equipe Mostraí'), linha);
+check('explica a situação em texto humano', linha.includes('sem comunicação'), linha);
 const resposta = await p.evaluate(async () => (await fetch('/anunciantes/me/meus-pontos', { credentials: 'include' })).text());
 check(
   'resposta não vaza chave, PIN, contato ou erro cru',
-  !/aparelho_id|pin_hash|responsavel_contato|observacoes|ultimo_erro|custo_equipamento/.test(resposta),
+  !resposta.includes(credencial.chaveAparelho) &&
+    !/chave|pin_|pinSaida|responsavel_contato|observacoes|ultimo_erro|custo_equipamento|margem/i.test(resposta),
   resposta.slice(0, 300),
 );
 await shot(p, '5-atencao');
 
-console.log('== o que rodou na tela + PIN ==');
+console.log('== o que rodou na tela — sem PIN (o PIN de saída é global, do admin) ==');
 await p.click('[data-acao="ver-tela"]');
-await p.waitForSelector('#modalTela[open] #formPin');
-check('diálogo explica a situação', (await p.textContent('#modalTelaCorpo')).includes('equipe Mostraí'));
-await p.fill('#pinTela', '4321');
-await p.click('#formPin button[type=submit]');
-await p.waitForFunction(() => document.getElementById('msgPin').textContent.includes('PIN salvo'));
-check('PIN salvo pelo dono', PG(`SELECT (pin_hash IS NOT NULL) FROM dispositivos WHERE id = ${tela.json.id}`) === 't');
+await p.waitForSelector('#modalTela[open]');
+await p.waitForFunction(() => !/Carregando/.test(document.getElementById('modalTelaCorpo').textContent), null, { timeout: 8000 });
+const dialogo = await p.textContent('#modalTela');
+check('diálogo explica a situação', dialogo.includes('sem comunicação'), dialogo);
+check('diálogo mostra o que rodou (30 dias)', dialogo.includes('Últimos 30 dias'), dialogo);
+check('diálogo sem formulário de PIN', !(await p.$('#modalTela form, #modalTela input, #formPin, #pinTela, #msgPin')));
+check('diálogo não fala de PIN', !/\bPIN\b/i.test(dialogo), dialogo);
 await p.click('#fecharModalTela');
 
 console.log('== o mesmo estabelecimento não entra de novo ==');

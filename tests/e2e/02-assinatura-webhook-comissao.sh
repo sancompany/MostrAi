@@ -140,11 +140,18 @@ esperar "liberar-plano é 410 (cortesia é crédito ou plano-administrativo)" '^
 r=$(curl -s -o /dev/null -w "%{http_code}" -b adm.txt $B/admin/custos-fixos); esperar "custos-fixos é 410" '^410$' "$r"
 
 echo "== playlist do dispositivo com anunciante ativo =="
-# Credencial V2 (Preparar Player, 24/09/2026): a chave só existe em hash no
-# banco, então a tela é reprovisionada aqui pra obter uma credencial nova.
-DISP=$($PG -c "select id from dispositivos where apelido='Tela 1' order by id limit 1")
-r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/preparar-player)
-CHAVE=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/'); DID=$(echo $r | sed 's/.*"dispositivoId":"\([0-9]*\)".*/\1/')
-r=$(curl -s -H "X-Aparelho-Id: $DID" -H "X-Aparelho-Key: $CHAVE" -H "X-Player-Contract: 2" "$B/playlist/$DID"); esperar "playlist responde com itens ou vazio válido" '"itens"|"playlist"|\[' "$r"
+# Player MVP (docs/player-mvp-contract.md): a chave só existe em hash no
+# banco, então a primeira tela do João (instalada no 01) é reinstalada aqui
+# pra obter uma credencial nova — revogar → código de instalação →
+# provisionar, como o técnico faz. O PIN de saída ficou definido pelo 01.
+DISP=$($PG -c "select d.id from dispositivos d join pontos p on p.id = d.ponto_id where p.anunciante_id = $JOAO order by d.id limit 1")
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/credencial/revogar); esperar "revogar volta a tela a aguardar instalação" '"saude":"aguardando_instalacao"' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/codigo-instalacao)
+DID=$(echo $r | sed 's/.*"codigoTela":"\([^"]*\)".*/\1/'); COD=$(echo $r | sed 's/.*"codigo":"\([^"]*\)".*/\1/')
+esperar "código de instalação novo para a tela" '"codigo":"[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}"' "$r"
+r=$(curl -s -X POST $B/player/provisionar -H "$J" -d "{\"codigoTela\":\"$DID\",\"codigoInstalacao\":\"$COD\"}")
+esperar "Player reinstalado com o ID da tela" "\"dispositivoId\":\"$DID\"" "$r"
+CHAVE=$(echo $r | sed 's/.*"chaveAparelho":"\([^"]*\)".*/\1/')
+r=$(curl -s -H "X-Aparelho-Key: $CHAVE" -H "X-Player-Version: 1.0.0+12" "$B/playlist/$DID"); esperar "playlist responde no envelope do contrato (versaoContrato 2 + itens)" '^\{"versaoContrato":2,.*"itens":\[' "$r"
 
 echo; echo "falhas: $falhas"

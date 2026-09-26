@@ -94,6 +94,9 @@ const liberado = await adm.evaluate(
 check('admin concedeu o benefício', !!liberado.conta?.plano_id, JSON.stringify(liberado));
 
 console.log('== semeando um ponto OFFLINE (nunca esteve online) com programação ==');
+// Tela sem Player instalado (sem `chave_hash`) nem sinal: "Aguardando
+// instalação", que para o anunciante é fora do ar. Ponto sem horário
+// cadastrado = 24 h (toda tela segue o horário do ponto).
 // CTE (WITH ... SELECT) em vez de INSERT solto: com -t, psql ainda imprime a
 // tag "INSERT 0 1" antes da linha do RETURNING, e só um SELECT some com ela.
 const pontoId = Number(
@@ -105,7 +108,7 @@ const pontoId = Number(
 );
 const dispositivoId = Number(
   PG(
-    `WITH ins AS (INSERT INTO dispositivos (ponto_id, aparelho_id, status) VALUES (${pontoId}, 'chave-teste-07', 'ativo') RETURNING id)
+    `WITH ins AS (INSERT INTO dispositivos (ponto_id, status) VALUES (${pontoId}, 'ativo') RETURNING id)
      SELECT id FROM ins`,
   ),
 );
@@ -169,8 +172,8 @@ const ponto2 = Number(
 );
 const disp2 = Number(
   PG(
-    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, modo_horario, primeiro_sinal_em, ultima_vez_online)
-     VALUES (${ponto2}, encode(sha256('chave-teste-07b'), 'hex'), 'ativo', '24h', now() - interval '1 day', now()) RETURNING id)
+    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, primeiro_sinal_em, ultima_vez_online)
+     VALUES (${ponto2}, encode(sha256('chave-teste-07b'), 'hex'), 'ativo', now() - interval '1 day', now()) RETURNING id)
      SELECT id FROM ins`,
   ),
 );
@@ -187,8 +190,8 @@ const ponto3 = Number(
 );
 const disp3 = Number(
   PG(
-    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, modo_horario, primeiro_sinal_em, ultima_vez_online)
-     VALUES (${ponto3}, encode(sha256('chave-teste-07c'), 'hex'), 'ativo', '24h', now() - interval '1 day', now() - interval '5 hours') RETURNING id)
+    `WITH ins AS (INSERT INTO dispositivos (ponto_id, chave_hash, status, primeiro_sinal_em, ultima_vez_online)
+     VALUES (${ponto3}, encode(sha256('chave-teste-07c'), 'hex'), 'ativo', now() - interval '1 day', now() - interval '5 hours') RETURNING id)
      SELECT id FROM ins`,
   ),
 );

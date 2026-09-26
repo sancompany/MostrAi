@@ -1,11 +1,13 @@
 // Fluxo principal no navegador, contra o servidor local real (porta 3999),
 // como existe hoje (reescrito em 23/09/2026 — vendedor, custos, "Marcar
 // parceiro" e a aba de telas em tabela saíram do produto, e as checagens
-// deles saíram junto): conta direta nasce anunciante → pede o modo ponto →
-// a Visão geral mostra a pendência → admin aprova na ficha da candidatura →
-// o ponto nasce aguardando instalação → admin cria a tela na ficha do ponto,
-// gera a chave e define o PIN → marcar a tela como ativa põe o ponto em
-// operação → o player carrega e abre o painel por PIN; vitrine de planos,
+// deles saíram junto; Player MVP em 26/09/2026 — o player web, o "Preparar
+// Player" e o PIN por tela saíram, ver docs/player-mvp-contract.md): conta
+// direta nasce anunciante → pede o modo ponto → a Visão geral mostra a
+// pendência → admin aprova na ficha da candidatura → o ponto nasce
+// aguardando instalação → admin cria a tela (M-xxxx) na ficha do ponto e
+// gera o código de instalação (XXXX-XXXX, nenhuma chave na página) → a TV
+// se instala com ID + código e o ponto entra em operação; vitrine de planos,
 // Contas com o dono de ponto e cadastro no celular.
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
@@ -44,7 +46,7 @@ console.log('== conta direta (Farmácia Central) nasce anunciante; pede o modo p
 // A interação com o FORMULÁRIO desse pedido (campos, horário, foto) é
 // coberta a fundo por 05-navegador-modos.mjs e 08-candidatura-ponto.mjs; aqui
 // só falta ter uma conta com ponto pra alimentar o resto deste arquivo
-// (aprovação, tela, chave, PIN, player).
+// (aprovação, tela, código de instalação).
 const farm = await pagina('/');
 const rCad = await farm.evaluate(async () =>
   (
@@ -131,64 +133,57 @@ const pontoId = Number(PG(`SELECT id FROM pontos WHERE anunciante_id=${rCad.id}`
 check('ponto nasce aguardando instalação, sem tela', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'a_instalar' && PG(`SELECT count(*) FROM dispositivos WHERE ponto_id=${pontoId}`) === '0');
 await shot(adm, 'admin-candidaturas-aprovada');
 
-console.log('== admin: ficha do ponto → tela, chave e PIN ==');
+console.log('== admin: ficha do ponto → tela e código de instalação ==');
 await irPara(adm, `rede/pontos/${pontoId}`);
 await adm.waitForSelector('[data-nova-tela]');
 check('ficha do ponto aguardando instalação', (await adm.textContent('.ficha-titulo')).includes('Aguardando instalação'));
 check('sem tela ainda — mensagem certa', (await adm.textContent('#pontoTelas')).includes('Nenhuma tela'));
-// "+ Adicionar tela": sem nome manual, sem chave, sem URL — o sistema gera.
+// "+ Adicionar tela": nada a preencher — sem nome manual, sem chave, sem URL;
+// a tela nasce com o código humano M-xxxx e a ficha dela já abre.
 await adm.click('[data-nova-tela]');
-check('modal de tela nova sem "Nome da tela"', !(await adm.$('dialog.modal-admin[open] #novaTelaApelido')));
-await adm.click('dialog.modal-admin[open] button[type=submit]');
 await adm.waitForSelector('.tela-ficha');
-check('tela criada: Tela 1, Ativa, aguardando primeiro sinal', /Tela 1[\s\S]*Ativa[\s\S]*Aguardando primeiro sinal/.test(await adm.textContent('.tela-ficha-topo')));
-// [Preparar Player]: o JSON {dispositivoId, chaveAparelho, baseUrl} aparece uma
-// vez; o player web aceita a mesma credencial em ?tela=<dispositivoId>&chave=.
-await adm.click('[data-acao="preparar"]');
-const campoJson = adm.locator('dialog.modal-admin[open] #playerConfigJson');
-await campoJson.waitFor({ timeout: 8000 });
-const cfg = JSON.parse(await campoJson.inputValue());
-check('Preparar Player: dispositivoId de 5 dígitos, chave e baseUrl', /^[1-9]\d{4}$/.test(cfg.dispositivoId) && cfg.chaveAparelho?.length > 30 && /^http/.test(cfg.baseUrl), JSON.stringify(cfg));
-const linkPlayer = `${B}/player.html?tela=${cfg.dispositivoId}&chave=${encodeURIComponent(cfg.chaveAparelho)}`;
-await adm.click('dialog.modal-admin[open] .modal-rodape [data-fechar]');
-await adm.locator('dialog.modal-admin[open]').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
-// Espera a ficha refeita com a credencial nova (fingerprint "…XXXXXX").
-await adm.locator('.tela-ficha code', { hasText: /^…[0-9A-F]{6}$/ }).first().waitFor({ timeout: 10000 }).catch(() => {});
-check('ficha mostra só o fingerprint, nunca a chave', !(await adm.textContent('.tela-ficha')).includes(new URL(linkPlayer).searchParams.get('chave')));
-await adm.click('[data-acao="pin"]');
-await adm.locator('dialog.modal-admin[open] #pinTela').waitFor({ timeout: 5000 });
-await adm.fill('dialog.modal-admin[open] #pinTela', '4321');
-await adm.click('dialog.modal-admin[open] button[type=submit]');
-// hasText não diferencia maiúsculas: "Não configurado" também casaria com
-// "Configurado" — espera o texto que só existe depois de salvo.
-await adm.locator('.tela-ficha [data-pin-valor]').waitFor({ timeout: 10000 }).catch(() => {});
-const fichaPin = await adm.textContent('.tela-ficha');
-check('PIN de manutenção configurado (mascarado, com Mostrar e Trocar)', /••••/.test(fichaPin) && /Trocar PIN/.test(fichaPin) && !/4321/.test(fichaPin));
-await adm.click('[data-acao="pin-ver"]');
-await adm.locator('.tela-ficha [data-pin-valor]', { hasText: '4321' }).waitFor({ timeout: 8000 }).catch(() => {});
-check('olho do PIN mostra 4321', (await adm.textContent('.tela-ficha [data-pin-valor]')) === '4321');
-check('tela preparada sem sinal: ponto aguardando primeiro sinal, não em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'aguardando_primeiro_sinal');
+check('"+ Adicionar tela" não abre formulário', !(await adm.$('dialog.modal-admin[open]')));
+const telaId = Number(adm.url().split('/').pop());
+const codigoTela = `M-${String(telaId).padStart(4, '0')}`;
+const topo = await adm.textContent('.tela-ficha-topo');
+check('tela criada: M-xxxx, aguardando instalação', topo.includes(codigoTela) && /Aguardando instalação/.test(topo), topo);
+check('tela nasce Ativa', (await adm.$eval('.tela-ficha [data-campo="status"]', (el) => el.value)) === 'ativo');
+check('sem "Preparar Player" nem PIN por tela na ficha', (await adm.locator('[data-acao="preparar"], [data-acao="pin"], [data-acao="pin-ver"]').count()) === 0 && !/Preparar Player|PIN/.test(await adm.textContent('.tela-ficha')));
+// PIN de saída global: sem ele o admin não gera código (a UI de Rede que o
+// define é coberta pelo 18-rede-player-mvp.mjs).
+const pin = await adm.request.put(`${B}/admin/player/pin-saida`, { data: { pin: '48213' } });
+check('PIN de saída global definido', pin.status() === 200, pin.status());
+await adm.click('[data-acao="gerar-codigo"]');
+await adm.waitForSelector('[data-expira]', { timeout: 8000 }).catch(() => {});
+const instalacao = await adm.textContent('.tela-ficha');
+const codigoInstalacao = instalacao.match(/[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}/)?.[0];
+check('Instalação: ID da tela + código XXXX-XXXX + Copiar', instalacao.includes(codigoTela) && !!codigoInstalacao && (await adm.locator('[data-acao="copiar-instalacao"]').count()) === 1, instalacao.slice(0, 300));
+check('tela sem Player: ponto continua aguardando instalação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'a_instalar');
 await shot(adm, 'admin-telas');
 
-console.log('== player + painel por PIN ==');
-{
-  const p = await pagina(linkPlayer.replace(/^https?:\/\/[^/]+/, ''), { width: 1920, height: 1080 });
-  await p.waitForTimeout(1200);
-  const msg = await p.textContent('#msg');
-  check('player carregou a playlist (ok ou sem anúncios)', /playlist ok|sem anúncios/.test(msg), msg);
-  check('heartbeat do boot é o primeiro sinal: ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'em_operacao');
-  await p.keyboard.press('p'); await p.waitForTimeout(300);
-  check('tecla P abre o painel da tela', !!(await p.$('.painel-tela')));
-  // scrypt do PIN leva ~0,5–1 s — espera o texto, não um tempo fixo.
-  await p.fill('#pin', '0000'); await p.click('#formPin button');
-  await p.waitForFunction(() => document.getElementById('erroPin').textContent.includes('PIN'), null, { timeout: 8000 }).catch(() => {});
-  check('PIN errado é recusado', (await p.textContent('#erroPin')).includes('PIN'));
-  await p.fill('#pin', '4321'); await p.click('#formPin button');
-  await p.waitForFunction(() => document.getElementById('conteudoPainel').textContent.includes('Exibições'), null, { timeout: 8000 }).catch(() => {});
-  check('PIN certo mostra o painel', (await p.textContent('#conteudoPainel')).includes('Exibições em 30 dias'));
-  await shot(p, 'player-painel');
-  await p.close();
-}
+console.log('== a TV se instala com ID + código ==');
+// O Player (Android TV) é simulado por HTTP, como o 18-rede-player-mvp.mjs.
+const prov = await fetch(`${B}/player/provisionar`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ codigoTela, codigoInstalacao }),
+});
+const credencial = await prov.json();
+check('provisionar devolve dispositivoId M-xxxx + chave', prov.status === 200 && credencial.dispositivoId === codigoTela && credencial.chaveAparelho?.length === 43);
+await adm.waitForFunction(() => /Player conectado/.test(document.querySelector('.tela-ficha')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+check('ficha: "Player conectado" sem F5', /Player conectado/.test(await adm.textContent('.tela-ficha')));
+check('a chave nunca aparece na página', !(await adm.textContent('body')).includes(credencial.chaveAparelho));
+check('instalação é o primeiro sinal: ponto em operação', PG(`SELECT status FROM pontos WHERE id=${pontoId}`) === 'em_operacao');
+const hb = await fetch(`${B}/player/${credencial.dispositivoId}/heartbeat`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Aparelho-Key': credencial.chaveAparelho, 'X-Player-Version': '1.0.0+12' },
+  body: JSON.stringify({ estado: 'PLAYING', configVersionAplicada: 0, erro: null }),
+});
+check('heartbeat com X-Aparelho-Key responde configVersion', hb.status === 200 && 'configVersion' in (await hb.json()));
+const lista = await fetch(`${B}/playlist/${credencial.dispositivoId}`, { headers: { 'X-Aparelho-Key': credencial.chaveAparelho } });
+check('playlist no envelope do contrato', lista.status === 200 && (await lista.json()).versaoContrato === 2);
+check('player web não existe mais (/player.html → 404)', (await fetch(`${B}/player.html`)).status === 404);
+await shot(adm, 'admin-tela-conectada');
 
 console.log('== planos: vitrine ==');
 {

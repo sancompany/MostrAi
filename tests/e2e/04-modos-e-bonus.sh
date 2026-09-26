@@ -57,9 +57,10 @@ r=$(curl -s -b lia.txt $B/anunciantes/me/meus-pontos); esperar "ponto criado com
 esperar "ponto nasce sem modalidade nem R\$ 50" '"beneficio":\{' "$r"
 if echo "$r" | grep -q 'ajudaCustoMensal\|modalidade'; then falha "sem campos do modelo antigo" "$r"; else ok "sem campos do modelo antigo"; fi
 PONTO=$(echo $r | sed 's/[^{]*{[^{]*{"tipo":"ponto","id":\([0-9]*\).*/\1/')
-# Ponto nasce sem tela desde a migration 069: o admin cria a primeira.
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "Tela 1 criada" '"nome":"Tela 1"' "$r"
-DISP=$(echo $r | sed 's/.*"id":\([0-9]*\).*/\1/' | head -c 5)
+# Ponto nasce sem tela desde a migration 069: o admin cria a primeira; o
+# nome dela é o código M-xxxx (Player MVP).
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}'); esperar "tela criada com o código M-xxxx" '"codigo":"M-[0-9]{4,}"' "$r"
+DISP=$(echo $r | sed 's/^{"id":\([0-9]*\).*/\1/')
 
 echo "== convite aceito por conta logada =="
 r=$(curl -s -b adm.txt -X POST $B/admin/convites -H "$J" -d '{"papeis":["ponto"],"nome_sugerido":"Beto"}')
@@ -82,10 +83,13 @@ r=$(curl -s -o /dev/null -w "%{http_code}" $B/planos-ponto); esperar "modalidade
 echo "== crédito mensal do ponto: tela ativa = +1 crédito no mês =="
 r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"status":"ativo"}'); esperar "tela ativada" '"status":"ativo"' "$r"
 # Tela provisionada: desde a consolidação (24/09/2026) o job exige credencial
-# viva (`chave_hash`) — tela sem Preparar Player não gera crédito, mesmo
-# "online". Preparar Player grava a chave; o UPDATE simula a conexão.
-curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/preparar-player >/dev/null
-$PG -c "UPDATE dispositivos SET ultima_vez_online = now() WHERE id=$DISP" >/dev/null
+# viva (`chave_hash`) — tela sem Player instalado não gera crédito. Instala
+# como o técnico faz (docs/player-mvp-contract.md §3): PIN de saída global
+# definido → código de instalação → a TV troca ID + código pela chave.
+r=$(curl -s -b adm.txt -X PUT $B/admin/player/pin-saida -H "$J" -d '{"pin":"48213"}'); esperar "PIN de saída definido" '"definido":true' "$r"
+r=$(curl -s -b adm.txt -X POST $B/admin/dispositivos/$DISP/codigo-instalacao)
+DID=$(echo $r | sed 's/.*"codigoTela":"\([^"]*\)".*/\1/'); COD=$(echo $r | sed 's/.*"codigo":"\([^"]*\)".*/\1/')
+r=$(curl -s -X POST $B/player/provisionar -H "$J" -d "{\"codigoTela\":\"$DID\",\"codigoInstalacao\":\"$COD\"}"); esperar "Player instalado na tela" '"chaveAparelho":"' "$r"
 (cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
 (cd "$ROOT" && node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [$PONTO] }).then(r => { console.log(JSON.stringify(r)); setTimeout(() => process.exit(0), 300); })") >/dev/null
 n=$($PG -c "select count(*) from creditos_ledger where ponto_id=$PONTO and tipo='credito_mensal_ponto'"); esperar "1 crédito no mês, mesmo rodando o job duas vezes" '^1$' "$n"
