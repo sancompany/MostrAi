@@ -395,6 +395,16 @@ UPDATE webhooks_recebidos SET status = 'tentando_de_novo', tentativas = 0,
  WHERE id = <id> AND status = 'morto';
 ```
 
+Exceção: **pedido avulso** (formato sem `tipo`, hoje só histórico) não é
+repetido. Os passos dele não ficam numa transação só, e repetir poderia
+aplicar duas vezes o que já entrou. Se falhar no meio, o evento fica
+`processado` e vira pendência "falha ao aplicar o pedido (pode ter ficado
+pela metade — conferir à mão)". A conferência é manual.
+
+Chave da linha: `evento:<eventoId>` (contrato v2 — reentrega = mesma linha)
+ou `entrega:<uuid>` (v1, sem `eventoId` — cada entrega é uma linha; quem
+deduplica o v1 é a lógica financeira, em `webhooks_processados`).
+
 Retenção: `processado` sai depois de 30 dias e `morto` depois de 90 (expurgo
 de hora em hora pelo próprio processador).
 

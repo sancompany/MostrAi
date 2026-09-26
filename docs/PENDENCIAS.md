@@ -4646,7 +4646,10 @@ rota `POST /webhook/san-checkout`).
   - um processador por instância, a cada 30 s, trava cada evento com `SKIP LOCKED` e tenta de novo até 6 vezes (30 s → 2 h);
   - depois disso o evento fica `morto` e vira pendência no admin;
   - uma instância que morre no meio é retomada em 5 min;
-  - a falha depois da reserva de deduplicação agora libera a reserva, então a nova tentativa aplica o efeito uma vez;
+  - chave: `evento:<eventoId>` (v2; reentrega = mesma linha) ou `entrega:<uuid>` (v1; cada entrega é uma linha, porque duas renovações v1 podem ter o corpo idêntico — a dedupe do v1 continua em `webhooks_processados`);
+  - assinatura: se falhar depois da reserva de deduplicação, a reserva é liberada e a nova tentativa aplica o efeito uma vez (a escrita é uma transação só);
+  - pedido avulso: se falhar no meio, a reserva fica e o evento vira pendência pra conferir à mão; não é repetido, porque os passos não estão numa transação só;
+  - nada depois do COMMIT do crédito lança erro, então uma nova tentativa não credita de novo;
   - a lógica de cada evento não mudou.
 - **Testes:** `tests/webhook-inbox.test.js`. RUNBOOK §6.2 explica como recuperar um evento `morto`.
 

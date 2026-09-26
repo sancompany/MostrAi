@@ -291,8 +291,11 @@ webhook só responde 200 depois de gravar o evento em `webhooks_recebidos`; se
 não conseguir gravar, responde 503 e o Checkout reentrega. O efeito é
 aplicado depois, por um processador com nova tentativa (até 6, espera
 crescente), trava entre instâncias (`SKIP LOCKED`) e retomada depois de
-restart. Falha no meio libera a reserva de deduplicação, então a nova
-tentativa aplica o efeito — uma vez. *Violada:* depois de 6 falhas o evento
+restart. Na assinatura, falha no meio libera a reserva de deduplicação e a
+nova tentativa aplica o efeito uma vez; no pedido avulso (passos fora de uma
+transação só), falha no meio vira pendência pra conferir à mão, sem repetir.
+Payload v1 (sem `eventoId`) ganha uma linha por entrega, e a dedupe dele
+continua na lógica financeira. *Violada:* depois de 6 falhas o evento
 fica `morto` e vira pendência. *Quem vê:* administrador, na fila de eventos
 pendentes. Isso vale principalmente para chargeback, estorno e troca
 revertida, que a conciliação diária não recupera.

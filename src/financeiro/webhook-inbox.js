@@ -33,12 +33,16 @@ const processadores = {
   pedido: (payload) => require('./san-checkout').processarWebhookPedido(payload),
 };
 
-// Identidade do EVENTO (não da entrega): `eventoId` do contrato v2; sem ele,
-// o hash do corpo cru — a reentrega do mesmo evento traz o mesmo corpo.
-function chaveDoEvento(payload, corpoCru) {
+// Identidade do EVENTO: `eventoId` do contrato v2 — reentrega do mesmo
+// evento = uma linha. Sem `eventoId` (v1), cada ENTREGA ganha a própria
+// linha: no v1, duas renovações diferentes podem ter o corpo idêntico byte a
+// byte (planoId + evento), então deduplicar pelo corpo aqui barraria uma
+// renovação legítima (revisão Codex do PR #76). Quem deduplica o v1 é a
+// lógica financeira, pela chave natural (`chargeId|status` consultado no
+// Checkout) em `webhooks_processados` — como sempre foi.
+function chaveDoEvento(payload) {
   if (payload.eventoId) return `evento:${String(payload.eventoId).slice(0, 200)}`;
-  const bytes = Buffer.isBuffer(corpoCru) ? corpoCru : Buffer.from(JSON.stringify(payload), 'utf8');
-  return `corpo:${crypto.createHash('sha256').update(bytes).digest('hex')}`;
+  return `entrega:${crypto.randomUUID()}`;
 }
 
 // Erro pra log/banco: primeira linha, curta, sem e-mail nem número de
@@ -56,10 +60,10 @@ const curta = (chave) => (chave.length > 24 ? `${chave.slice(0, 24)}…` : chave
 // Grava o evento autenticado. Devolve { chave, novo }; `novo: false` é a
 // reentrega de um evento que já está aqui (a rota responde 200 do mesmo
 // jeito). Erro de banco SOBE — a rota responde 5xx e o Checkout tenta de novo.
-async function receber(payload, corpoCru) {
+async function receber(payload) {
   const tipo = payload.tipo === 'assinatura' ? 'assinatura' : 'pedido';
   const evento = String(payload.evento || payload.status || '').slice(0, 60) || null;
-  const chave = chaveDoEvento(payload, corpoCru);
+  const chave = chaveDoEvento(payload);
   const { rows } = await pool.query(
     `INSERT INTO webhooks_recebidos (chave, tipo, evento, payload) VALUES ($1, $2, $3, $4)
      ON CONFLICT (chave) DO NOTHING RETURNING id`,

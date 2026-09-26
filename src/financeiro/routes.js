@@ -416,7 +416,7 @@ router.post('/webhook/san-checkout', async (req, res) => {
     return res.status(400).json({ erro: 'corpo inválido' });
   }
   try {
-    await webhookInbox.receber(req.body, req.rawBody);
+    await webhookInbox.receber(req.body);
   } catch (err) {
     console.error('webhook san-checkout: evento NÃO gravado, respondendo 503:', webhookInbox.sanitizar(err));
     return res.status(503).json({ erro: 'indisponível — tente novamente' });

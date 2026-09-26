@@ -217,10 +217,10 @@ test('5 e 6. evento gravado e instância reiniciada antes de processar: o proces
     valorEstornado: 40,
   });
   // Gravado, e a instância "morreu" antes de processar (nenhum processador rodou).
-  await inbox.receber(ev, Buffer.from(JSON.stringify(ev)));
+  await inbox.receber(ev);
   // Outra, "morta" no MEIO: ficou processando e ninguém terminou.
   const ev2 = evento(assinatura, conta, { evento: 'cobranca_estornada' });
-  await inbox.receber(ev2, Buffer.from(JSON.stringify(ev2)));
+  await inbox.receber(ev2);
   await pool.query(
     "UPDATE webhooks_recebidos SET status = 'processando', tentativas = 1, processando_desde = now() - interval '10 minutes' WHERE chave = $1",
     [`evento:${ev2.eventoId}`],
@@ -241,7 +241,7 @@ test('7 e 8. falha transitória: nova tentativa com espera crescente; depois pro
     if (falhas-- > 0) throw new Error('ECONNRESET (simulado)');
     return processadoresOriginais.assinatura(payload);
   };
-  await inbox.receber(ev, Buffer.from(JSON.stringify(ev)));
+  await inbox.receber(ev);
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     await inbox.processarPendentes();
     const l = await linha(ev.eventoId);
@@ -269,7 +269,7 @@ test('9. depois do limite o evento vai para "morto" e vira pendência no admin',
   inbox.processadores.assinatura = async () => {
     throw new Error('erro permanente (simulado)');
   };
-  await inbox.receber(ev, Buffer.from(JSON.stringify(ev)));
+  await inbox.receber(ev);
   for (let i = 0; i < inbox.MAX_TENTATIVAS; i++) {
     await inbox.processarPendentes();
     await vencerEspera(ev.eventoId);
@@ -290,7 +290,7 @@ test('10. duas instâncias ao mesmo tempo: o evento é processado uma vez só', 
     chamadas++;
     await new Promise((r) => setTimeout(r, 200));
   };
-  await inbox.receber(ev, Buffer.from(JSON.stringify(ev)));
+  await inbox.receber(ev);
   // processarUm direto (sem a trava da instância): cada um usa a própria conexão.
   const resultados = await Promise.all([inbox.processarUm(), inbox.processarUm(), inbox.processarUm()]);
   assert.equal(chamadas, 1, 'só uma "instância" pegou o evento');
@@ -445,19 +445,118 @@ test('15. troca_revertida por chargeback: falha no meio e a nova tentativa suspe
   assert.equal(await pendencias(assinatura, 'acerto da troca de plano revertido'), 1);
 });
 
-test('corpo sem eventoId (contrato v1): chave pelo hash do corpo; reentrega idêntica = uma linha', async () => {
-  const corpo = { tipo: 'pedido', pedidoId: `ped_${crypto.randomUUID()}`, status: 'em_analise', chargeId: 'x' };
-  inbox.processadores.pedido = async () => {};
-  assert.equal(await entregar(corpo), 200);
-  assert.equal(await entregar(corpo), 200);
-  const chave = inbox.chaveDoEvento(corpo, Buffer.from(JSON.stringify(corpo)));
-  assert.match(chave, /^corpo:[0-9a-f]{64}$/);
-  const { rows } = await pool.query(
-    'SELECT tipo, count(*)::int n FROM webhooks_recebidos WHERE chave = $1 GROUP BY tipo',
-    [chave],
-  );
-  assert.deepEqual(rows, [{ tipo: 'pedido', n: 1 }]);
+test('sem eventoId (v1): cada entrega é uma linha; renovação de corpo idêntico chega à lógica; efeito deduplicado lá', async () => {
+  const { conta, assinatura } = await contaComAssinatura();
+  // v1 sem eventoId: duas entregas com o MESMO corpo (reentrega, ou duas
+  // renovações que por acaso têm o corpo igual) — nenhuma é barrada na porta.
+  const v1 = {
+    versao: 1,
+    tipo: 'assinatura',
+    planoId: assinatura.id,
+    documento: conta.cpf_cnpj,
+    evento: 'cobranca_estornada',
+  };
+  let processados = 0;
+  inbox.processadores.assinatura = async (payload) => {
+    processados++;
+    return processadoresOriginais.assinatura(payload);
+  };
+  assert.equal(await entregar(v1), 200);
+  assert.equal(await entregar(v1), 200);
   await esperarProcessador();
+  const { rows } = await pool.query(
+    "SELECT chave, status FROM webhooks_recebidos WHERE payload->>'planoId' = $1 AND payload->>'versao' = '1'",
+    [assinatura.id],
+  );
+  assert.equal(rows.length, 2, 'cada entrega v1 vira uma linha');
+  assert.ok(rows.every((r) => /^entrega:[0-9a-f-]{36}$/.test(r.chave) && r.status === 'processado'));
+  assert.equal(processados, 2, 'as duas chegam à lógica financeira');
+  assert.equal(await pendencias(assinatura, 'estorno total'), 1, 'a lógica deduplica pela chave natural: um efeito');
+});
+
+test('pedido avulso que falha no meio NÃO é reaplicado (gravações não são transacionais): vira pendência', async () => {
+  const pedidosRepo = require('../src/financeiro/pedidos-repository');
+  const cicloContratado = require('../src/financeiro/ciclo-contratado');
+  const { conta } = await contaComAssinatura();
+  const pedido = await pedidosRepo.criar({
+    anuncianteId: conta.id,
+    tipo: 'troca_plano',
+    planoAtualId: PLANO,
+    planoNovoId: PLANO,
+    valor: 10,
+    descricao: 'teste inbox',
+  });
+  const corpo = {
+    pedidoId: pedido.id,
+    status: 'confirmado',
+    chargeId: `pay_ped_${crypto.randomUUID()}`,
+    eventoId: `evt_ped_${crypto.randomUUID()}`,
+  };
+  const original = cicloContratado.registrar;
+  cicloContratado.registrar = async () => {
+    throw new Error('falha depois da cobrança gravada (simulado)');
+  };
+  try {
+    assert.equal(await entregar(corpo), 200);
+    await esperarProcessador();
+  } finally {
+    cicloContratado.registrar = original;
+  }
+  assert.equal((await linha(corpo.eventoId)).status, 'processado', 'decidido: vira pendência, não repete');
+  const { rows: cobs } = await pool.query(
+    'SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1',
+    [conta.id],
+  );
+  assert.equal(cobs[0].n, 1, 'a cobrança parcial não se repete');
+  const { rows: pend } = await pool.query(
+    "SELECT count(*)::int n FROM eventos_assinatura_pendentes WHERE payload->>'pedidoId' = $1 AND motivo LIKE 'falha ao aplicar o pedido%'",
+    [pedido.id],
+  );
+  assert.equal(pend[0].n, 1);
+  // Reentrega do mesmo evento: continua sem repetir.
+  assert.equal(await entregar({ ...corpo }), 200);
+  await esperarProcessador();
+  const { rows: cobs2 } = await pool.query(
+    'SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1',
+    [conta.id],
+  );
+  assert.equal(cobs2[0].n, 1);
+  await pool.query("DELETE FROM eventos_assinatura_pendentes WHERE payload->>'pedidoId' = $1", [pedido.id]);
+  await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [corpo.eventoId]);
+  await pool.query('DELETE FROM pedidos_avulsos WHERE id = $1', [pedido.id]);
+});
+
+test('ciclo pago: falha DEPOIS do COMMIT não libera a reserva nem credita de novo', async () => {
+  const { conta, assinatura } = await contaComAssinatura();
+  const rodada = crypto.randomUUID().slice(0, 8);
+  const ev = evento(assinatura, conta, { evento: 'criada', chargeId: `pay_pos_${rodada}`, valor: 70 });
+  const queryOriginal = pool.query.bind(pool);
+  pool.query = (sql, ...resto) => {
+    if (typeof sql === 'string' && sql.startsWith('SELECT COUNT(*)::int AS n FROM cobrancas_confirmadas')) {
+      return Promise.reject(new Error('conexão caiu depois do COMMIT (simulado)'));
+    }
+    return queryOriginal(sql, ...resto);
+  };
+  try {
+    assert.equal(await entregar(ev), 200);
+    await esperarProcessador();
+  } finally {
+    pool.query = queryOriginal;
+  }
+  assert.equal((await linha(ev.eventoId)).status, 'processado', 'o ciclo entrou: processado, sem nova tentativa');
+  const { rows } = await pool.query('SELECT count(*)::int n FROM cobrancas_confirmadas WHERE anunciante_id = $1', [
+    conta.id,
+  ]);
+  assert.equal(rows[0].n, 1);
+  const { rows: reservas } = await pool.query('SELECT id FROM webhooks_processados WHERE id IN ($1, $2)', [
+    ev.eventoId,
+    `pay_pos_${rodada}|confirmado`,
+  ]);
+  assert.equal(reservas.length, 2, 'as duas reservas ficaram — nenhuma nova tentativa credita de novo');
+  await pool.query('DELETE FROM webhooks_processados WHERE id IN ($1, $2)', [
+    ev.eventoId,
+    `pay_pos_${rodada}|confirmado`,
+  ]);
 });
 
 test('erro gravado na inbox é sanitizado (sem e-mail nem documento)', () => {

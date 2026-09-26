@@ -848,10 +848,20 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
 
   // Só depois do COMMIT: evento de receita que existisse sem a cobrança no
   // banco mentiria o número mais importante do projeto.
-  const { rows: ciclos } = await pool.query(
-    'SELECT COUNT(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1 AND plano_id = $2',
-    [anunciante.id, plano.id],
-  );
+  //
+  // Daqui pra baixo o ciclo JÁ ENTROU: nada pode lançar erro pra cima. Um
+  // erro aqui liberaria as reservas de dedupe (webhook-inbox) e a nova
+  // tentativa creditaria o ciclo de novo (revisão Codex do PR #76) — por
+  // isso a contagem, que só alimenta a métrica, cai pra null se falhar.
+  const { rows: ciclos } = await pool
+    .query('SELECT COUNT(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1 AND plano_id = $2', [
+      anunciante.id,
+      plano.id,
+    ])
+    .catch((err) => {
+      console.error('contagem de ciclos para a métrica falhou (ciclo já creditado):', err.message);
+      return { rows: [{ n: null }] };
+    });
   eventos.registrar(
     'pagamento:cobranca_confirma',
     {
@@ -943,13 +953,22 @@ async function processarWebhookPedido(payload) {
   ]);
   if (!rowCount) return; // reentrega do mesmo evento, nada a fazer de novo
 
-  // Mesma regra da assinatura (inbox, migration 096): erro libera a reserva
-  // pra nova tentativa não cair na dedupe.
+  // Diferente da assinatura: aqui a reserva NÃO é liberada em erro. As
+  // gravações de `aplicarTrocaDePlano` não são uma transação só (conta,
+  // cobrança, ciclo, pedido pago) — repetir depois de uma falha no meio
+  // gravaria outra cobrança. Falha vira pendência pra alguém conferir à mão
+  // (revisão Codex do PR #76). Fluxo legado: nenhuma tela cria pedido hoje.
+  // limite: se a própria pendência não gravar (banco fora), o erro sobe, a
+  // nova tentativa cai na reserva e o aviso fica só no log da inbox
+  // ("falhou (tentativa 1/6)") — virar marca própria na reserva se o pedido
+  // avulso voltar a ser usado.
   try {
     return await aplicarEventoPedido(payload);
   } catch (err) {
-    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]).catch(() => {});
-    throw err;
+    return registrarPendencia(
+      payload,
+      `falha ao aplicar o pedido (pode ter ficado pela metade — conferir à mão): ${String(err.message).slice(0, 200)}`,
+    );
   }
 }
 

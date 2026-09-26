@@ -13,10 +13,11 @@
 -- resultado. É a porta de ENTRADA de eventos externos — não é a fila de
 -- e-mails (essa, quando existir, é outra tabela).
 --
--- `chave`: identidade do EVENTO, não da entrega. `eventoId` do contrato v2
--- quando vem; sem ele, SHA-256 do corpo cru (a reentrega do mesmo evento
--- traz o mesmo corpo — a assinatura e o timestamp vão nos headers). Mesma
--- entrega duas vezes = uma linha, um processamento.
+-- `chave`: `evento:<eventoId>` (contrato v2) — reentrega do mesmo evento =
+-- uma linha, um processamento. Sem `eventoId` (v1), `entrega:<uuid>`: cada
+-- entrega é uma linha, porque duas renovações v1 podem ter o corpo idêntico;
+-- a dedupe do v1 continua na lógica financeira (`webhooks_processados`, pela
+-- chave natural), como sempre foi.
 --
 -- `payload` tem dado pessoal (CPF/CNPJ do pagador em `documento`, que a
 -- lógica usa pra consultar o Checkout): fica só enquanto serve — ver a
