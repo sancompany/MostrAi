@@ -26,7 +26,6 @@ const CAMPOS_IDENTIDADE = [
   'formato_midia',
   'compra_inicio',
   'compra_fim',
-  'duracao_beneficio_meses',
   'limite_adesoes',
   'publico_elegivel',
   'status',

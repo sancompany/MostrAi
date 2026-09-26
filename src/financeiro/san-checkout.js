@@ -228,9 +228,8 @@ async function montarRespostaPlano(assinaturaId) {
 }
 
 // `assinatura` é opcional (várias chamadas antigas não tinham como passar) —
-// quando vem, e carrega uma condição promocional ainda dentro do prazo
-// prometido (`promocao_valido_ate`, rodada de Ofertas/Promoções,
-// 22/09/2026), o desconto promocional SUBSTITUI o desconto do ciclo na base
+// quando vem, e carrega uma condição promocional (rodada de Ofertas/
+// Promoções, 22/09/2026), o desconto promocional SUBSTITUI o desconto do ciclo na base
 // (mesma régua da vitrine pública, public/planos.page.js: a promoção é o
 // preço de tabela daquele ciclo enquanto vale, não mais um percentual em
 // cima do preço de tabela normal) — o desconto de parceiro continua entrando
@@ -238,10 +237,17 @@ async function montarRespostaPlano(assinaturaId) {
 // É um SNAPSHOT da assinatura, travado no instante da adesão (ver
 // promocoes-repository.js#condicaoVigente e o ponto de criação em
 // financeiro/routes.js) — preço-base mudando depois, ou a promoção sendo
-// editada/encerrada, não afeta quem já aderiu até o prazo acabar (Parte T
-// do pedido: nunca recalcula retroativamente).
+// editada/encerrada, não afeta quem já aderiu (Parte T do pedido: nunca
+// recalcula retroativamente).
+//
+// Sem prazo (26/09/2026): o San Checkout não altera o valor de uma
+// assinatura de cartão já paga, então o preço promocional vale ENQUANTO
+// AQUELA ASSINATURA EXISTIR — nunca "N meses e depois volta ao preço
+// normal". Cancelou e contratou de novo = assinatura nova, com o preço
+// vigente na nova contratação. `promocao_valido_ate` não é mais gravado nem
+// lido (a coluna fica no banco como legado; produção tinha 0 linhas).
 function valorMensalDaConta(anunciante, plano, assinatura) {
-  const promoAtiva = assinatura?.promocao_valido_ate && new Date(assinatura.promocao_valido_ate) > new Date();
+  const promoAtiva = Number(assinatura?.promocao_desconto_percentual) > 0;
   const base = promoAtiva
     ? arredondar(
         Number(plano.valor_mensal_cheio ?? plano.valor_mensal) -

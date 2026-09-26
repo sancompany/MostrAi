@@ -3265,6 +3265,10 @@ button.pend-bloco:focus-visible {
   font-size: 0.76rem;
   color: var(--text-dim);
 }
+.promo-condicao-valor {
+  margin: 0;
+  font-weight: 600;
+}
 .previa-plano-duracao,
 .previa-plano-mais {
   margin-top: 4px;

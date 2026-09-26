@@ -67,7 +67,6 @@ test('promoção: janela digitada no admin persiste no relógio de Matão e vale
     titulo_publico: 'Janela de teste',
     publico_elegivel: 'todos',
     status: 'ativa',
-    duracao_beneficio_meses: 1,
     itens: [{ tier: 'maximo', compromissoMeses: 6, descontoPercentual: 5 }],
   };
   // Fim no minuto corrente: ainda vale (fim inclusivo); com a regra antiga

@@ -624,3 +624,28 @@ Decisão:
 Consequências: quem mexer em preço, promoção ou exibições previstas não
 precisa tocar o card — o próximo ciclo grava o snapshot novo. Qualquer
 tela nova que precise do nome de um ciclo usa `nomeDoCiclo`/`ROTULOS.ciclo`.
+
+## ADR-019 — Preço promocional vale enquanto a assinatura existir, sem prazo (26/09/2026)
+
+Contexto: o San Checkout confirmou em produção que uma assinatura de cartão
+já paga não aceita alteração posterior do valor. A promoção prometia "N
+meses de desconto e depois volta ao preço normal" (`duracao_beneficio_meses`
+→ `assinaturas.promocao_valido_ate`), o que o produto não consegue cumprir.
+
+Decisão (pedido do dono):
+1. Condição FIXA para as promoções de assinatura: quem aderir durante a
+   janela de compra mantém o preço promocional enquanto AQUELA assinatura
+   permanecer ativa. Cancelou e contratou de novo = assinatura nova, preço
+   vigente na nova contratação.
+2. A janela de compra (Começa em / Termina em) só decide até quando entram
+   adesões novas. Limite de adesões, público, produtos/ciclos, desconto,
+   exposição e status não mudam.
+3. `san-checkout.js#valorMensalDaConta` aplica a promoção sempre que a
+   assinatura carrega `promocao_desconto_percentual` (snapshot da adesão).
+   `promocao_valido_ate` não é mais gravada nem lida; `duracao_beneficio_meses`
+   saiu do admin e da API. As colunas ficam no banco, sem efeito (produção
+   tinha 0 promoções e 0 assinaturas com promoção).
+
+Consequências: não existe seletor de modalidade de duração. Se um dia o
+Checkout passar a permitir mudar o valor de uma assinatura paga, uma
+modalidade "N meses" volta como decisão nova, não reativando a coluna antiga.

@@ -331,21 +331,16 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     // pedido de Ofertas/Promoções; elegibilidade comercial adicionada
     // 23/09/2026) — o snapshot trava aqui, no instante da adesão: editar ou
     // encerrar a promoção depois não muda o que essa assinatura já tem
-    // direito até o prazo acabar. `conta` já foi carregada acima — mesmo
-    // objeto usado na trava de endereço logo ali em cima.
+    // direito, enquanto ela existir (sem prazo — ver
+    // san-checkout.js#valorMensalDaConta). `conta` já foi carregada acima —
+    // mesmo objeto usado na trava de endereço logo ali em cima.
     const estadoComercial = await promocoesRepo.estadoComercialDaConta(conta);
     const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses, estadoComercial);
-    let promocaoValidoAte = null;
-    if (condicao) {
-      promocaoValidoAte = new Date();
-      promocaoValidoAte.setMonth(promocaoValidoAte.getMonth() + condicao.promocao.duracao_beneficio_meses);
-    }
     assinatura = await assinaturasRepo.criar({
       anuncianteId: req.session.anuncianteId,
       planoId: plano.id,
       promocaoId: condicao?.promocao.id,
       promocaoDescontoPercentual: condicao?.descontoPercentual,
-      promocaoValidoAte,
     });
   }
 

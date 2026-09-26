@@ -34,14 +34,8 @@ function acaoDoPedido(conta, plano) {
 async function cotarPlano(conta, plano) {
   const estado = await promocoesRepo.estadoComercialDaConta(conta);
   const condicao = await promocoesRepo.condicaoVigente(plano.tier, plano.compromisso_meses, estado);
-  // A adesão grava a promoção com validade no futuro; pra calcular AGORA
-  // basta que ela esteja dentro do prazo.
-  const simulada = condicao
-    ? {
-        promocao_valido_ate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        promocao_desconto_percentual: condicao.descontoPercentual,
-      }
-    : null;
+  // A assinatura que nasceria agora, com o desconto travado na adesão.
+  const simulada = condicao ? { promocao_desconto_percentual: condicao.descontoPercentual } : null;
 
   const meses = plano.compromisso_meses;
   const cheioMensal = Number(plano.valor_mensal_cheio ?? plano.valor_mensal);
@@ -66,7 +60,6 @@ async function cotarPlano(conta, plano) {
           selo: condicao.promocao.selo || null,
           titulo: condicao.promocao.titulo_publico,
           descontoPercentual: Number(condicao.descontoPercentual),
-          duracaoMeses: condicao.promocao.duracao_beneficio_meses,
           // Mesmo preço do ciclo normal (ou pior): a tela não chama isso de
           // desconto promocional (D1, 24/09/2026 — promocoes-repository.js).
           temVantagem: promocoesRepo.temVantagem(condicao.descontoPercentual, plano),
