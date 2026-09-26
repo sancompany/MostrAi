@@ -14,8 +14,8 @@ const {
 } = require('../lib/codigo-tela');
 
 // Tela = `dispositivos` (migration 019); Ponto = o comércio. O Player é a
-// identidade provisionada numa tela (migration 083). Nomes de coluna em
-// docs/specs/2026-09-23-player-v2-backend.md.
+// credencial instalada numa tela pelo código de instalação
+// (docs/player-mvp-contract.md §3).
 
 // O que o admin edita numa tela. Margem vai na config do Player e sobe a
 // versão desejada sozinha, por gatilho no banco (migration 093). Horário é

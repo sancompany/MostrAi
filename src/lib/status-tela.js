@@ -4,8 +4,8 @@ const { operacaoDoPonto, deveriaOperar } = require('./operacao-tela');
 // administrativo (Ativa / Em reparo / Inativa, `dispositivos.status`) é do
 // admin e nunca muda por heartbeat; saúde é DERIVADA, nunca gravada, e só
 // este arquivo calcula — admin, Visão geral, "Meus pontos" do dono e o status
-// do ponto leem daqui. Contrato V2 §10: o Player reporta fato, a
-// classificação é do backend.
+// do ponto leem daqui. O Player reporta fato, a classificação é do backend
+// (docs/player-mvp-contract.md §9).
 //
 // Ordem de avaliação (docs/player-mvp-contract.md §9):
 //   em_reparo / inativa        estado administrativo; nunca alerta
