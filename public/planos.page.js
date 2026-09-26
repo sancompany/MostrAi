@@ -174,7 +174,7 @@ function render(meses) {
 // — é o preço de tabela daquele ciclo enquanto a promoção vale, não mais um
 // desconto em cima do desconto.
 //
-// O selo e o "preço válido por N meses" só aparecem quando a célula tem
+// O selo e o "preço mantido enquanto a assinatura permanecer ativa" só aparecem quando a célula tem
 // vantagem de verdade (`temVantagem`, calculado no servidor — D1,
 // 24/09/2026): no Anual a pré-venda dá 20% e o ciclo já dá 20%, o preço é o
 // mesmo, e o card anunciava uma promoção que não muda nada. O número
@@ -194,7 +194,7 @@ function montarPreco(p, meses, promo) {
       <div class="price">${fmt(totalCiclo)}${meses === 1 ? '/mês' : ''}</div>
       <div class="price-economia ${economia > 0 ? '' : 'price-linha-vazia'}">${economia > 0 ? `Você economizou ${fmt(economia)}.` : '&nbsp;'}</div>
       <div class="price-equivalente ${meses > 1 ? '' : 'price-linha-vazia'}">${meses > 1 ? `Equivalente a ${fmt(porMes)}/mês.` : '&nbsp;'}</div>
-      ${anunciaPromo ? `<div class="price-promo-duracao">Preço válido por ${promo.promocao?.duracao_beneficio_meses} meses a partir da adesão.</div>` : ''}`;
+      ${anunciaPromo ? `<div class="price-promo-duracao">Preço mantido enquanto a assinatura permanecer ativa.</div>` : ''}`;
 }
 
 // `aria-pressed` acompanha a classe: pro leitor de tela, as quatro abas

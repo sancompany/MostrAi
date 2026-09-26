@@ -70,7 +70,6 @@ test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e parceiro s
     selo: 'pré-venda',
     publico_elegivel: 'todos',
     status: 'ativa',
-    duracao_beneficio_meses: 12,
     itens: [{ tier: 'maximo', compromissoMeses: 12, descontoPercentual: 25 }],
   });
   try {
@@ -78,14 +77,14 @@ test('cotarPlano: promoção vigente SUBSTITUI o desconto do ciclo, e parceiro s
     assert.ok(comum.promocao, 'a promoção vigente pra essa célula entra na cotação');
     assert.strictEqual(comum.promocao.descontoPercentual, 25);
     assert.strictEqual(comum.promocao.selo, 'pré-venda');
-    assert.strictEqual(comum.promocao.duracaoMeses, 12);
+    assert.strictEqual(comum.promocao.duracaoMeses, undefined, 'sem prazo: vale enquanto a assinatura existir');
     assert.strictEqual(comum.promocao.temVantagem, true, '25% da promoção bate os 20% do ciclo');
     // 25% sobre o CHEIO (100), não 25% em cima dos 20% do ciclo.
     assert.strictEqual(comum.tabelaMensal, 75);
     assert.strictEqual(comum.valorCiclo, 900);
     // Mesma régua do POST /assinar: a assinatura que ele gravaria, cobrada
     // pela função da cobrança.
-    const assinatura = { promocao_valido_ate: new Date(Date.now() + 86400000), promocao_desconto_percentual: 25 };
+    const assinatura = { promocao_desconto_percentual: 25 };
     assert.strictEqual(comum.valorMensal, valorMensalDaConta(conta, plano, assinatura));
 
     // Dona de ponto com R$ 50 de crédito LEGADO e parceira com 10%: 75 − 10%
@@ -123,7 +122,6 @@ test('cotarPlano: promoção igual ao desconto do ciclo não muda o preço e sai
     selo: 'pré-venda',
     publico_elegivel: 'todos',
     status: 'ativa',
-    duracao_beneficio_meses: 12,
     itens: [{ tier: 'maximo', compromissoMeses: 12, descontoPercentual: 20 }],
   });
   try {

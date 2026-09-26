@@ -4636,6 +4636,22 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Promoções sem prazo de desconto (26/09/2026)
+
+**[x] Feito.** O San Checkout confirmou que uma assinatura de cartão já paga
+não tem o valor alterado depois. Por isso saiu o campo "Duração da condição
+[12] meses" do admin e toda regra que dependia dele (`promocao_valido_ate`
+não é mais gravada nem lida; `duracao_beneficio_meses` não é mais aceito pela
+API — as duas colunas ficam no banco, sem efeito). Regra fixa: quem aderir
+durante a janela de compra mantém o preço promocional **enquanto aquela
+assinatura permanecer ativa**; cancelou e contratou de novo, vale o preço
+vigente na nova contratação. A janela (Começa em / Termina em) só controla
+até quando entram adesões novas. Limite de adesões, público, produtos e
+ciclos, desconto, exposição e status não mudaram. Textos do admin, da
+página de Planos e da confirmação de plano atualizados. Produção tinha 0
+promoções e 0 assinaturas com promoção — nenhuma assinatura mudou. Testes:
+`tests/promocoes-sem-prazo.test.js` e e2e `tests/e2e/20-promocao-sem-prazo.mjs`.
+
 ## Player MVP — reestruturação do backend + admin (26/09/2026)
 
 Contrato oficial: `docs/player-mvp-contract.md`. Substitui a seção "Player

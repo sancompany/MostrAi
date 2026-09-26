@@ -127,7 +127,6 @@ test('condicaoVigente: promoção "novos" aparece pra quem nunca assinou, não p
     titulo_publico: 'Pré-venda de teste',
     publico_elegivel: 'novos',
     status: 'ativa',
-    duracao_beneficio_meses: 12,
     itens: [{ tier: 'essencial', compromissoMeses: 3, descontoPercentual: 20 }],
   });
   try {
@@ -154,7 +153,6 @@ test('condicaoVigente: promoção "assinantes" nunca aparece pra quem não tem p
     titulo_publico: 'Upgrade de teste',
     publico_elegivel: 'assinantes',
     status: 'ativa',
-    duracao_beneficio_meses: 12,
     itens: [{ tier: 'destaque', compromissoMeses: 6, descontoPercentual: 15 }],
   });
   try {
@@ -179,14 +177,12 @@ test('listarVigentes: só promoções com status=ativa dentro da janela de compr
     nome_interno: `Teste rascunho ${randomUUID()}`,
     titulo_publico: 'Rascunho',
     status: 'rascunho',
-    duracao_beneficio_meses: 12,
     itens: [],
   });
   const ativa = await promocoesRepo.criar({
     nome_interno: `Teste ativa ${randomUUID()}`,
     titulo_publico: 'Ativa',
     status: 'ativa',
-    duracao_beneficio_meses: 12,
     itens: [],
   });
   try {

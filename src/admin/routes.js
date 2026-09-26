@@ -168,7 +168,7 @@ function agregarReceitaPorCiclo(linhas) {
         valor_mensal_cheio: r.valor_mensal_cheio,
         compromisso_meses: r.compromisso_meses,
       },
-      { promocao_valido_ate: r.promocao_valido_ate, promocao_desconto_percentual: r.promocao_desconto_percentual },
+      { promocao_desconto_percentual: r.promocao_desconto_percentual },
     );
     receitaPorCiclo[r.compromisso_meses] = (receitaPorCiclo[r.compromisso_meses] || 0) + valor;
   }
@@ -217,11 +217,11 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT a.id, a.status, a.papeis,
               a.parceiro_desconto_percentual, a.parceiro_compromisso_minimo,
               p.tier, p.valor_mensal, p.valor_mensal_cheio, p.compromisso_meses,
-              s.promocao_valido_ate, s.promocao_desconto_percentual
+              s.promocao_desconto_percentual
        FROM anunciantes a
        JOIN planos p ON p.id = CASE WHEN a.plano_cortesia THEN a.plano_pago_guardado_id ELSE a.plano_id END
        LEFT JOIN LATERAL (
-         SELECT promocao_valido_ate, promocao_desconto_percentual FROM assinaturas
+         SELECT promocao_desconto_percentual FROM assinaturas
          WHERE anunciante_id = a.id AND status = 'ativa' ORDER BY created_at DESC LIMIT 1
        ) s ON true
        WHERE NOT a.suspenso

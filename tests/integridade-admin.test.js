@@ -218,18 +218,18 @@ test('MRR: promoção travada usa o valor real da condição, nunca o preço-bas
   const linhas = [
     // Sem promoção: paga o preço de tabela do ciclo mensal (Essencial 1m).
     { compromisso_meses: 1, tier: 'essencial', valor_mensal: 99, valor_mensal_cheio: 99, papeis: [] },
-    // Promoção trimestral ainda válida: 30% sobre o CHEIO, travado — mesmo
-    // que o preço de tabela atual (valor_mensal) já tenha mudado.
+    // Promoção trimestral travada na adesão: 30% sobre o CHEIO — mesmo que o
+    // preço de tabela atual (valor_mensal) já tenha mudado.
     {
       compromisso_meses: 3,
       tier: 'essencial',
       valor_mensal: 89.1,
       valor_mensal_cheio: 99,
       papeis: [],
-      promocao_valido_ate: new Date(Date.now() + 86400000),
       promocao_desconto_percentual: 30,
     },
-    // Promoção já vencida: cai pro preço de tabela normal do ciclo (semestral).
+    // Promoção sem prazo (26/09/2026): uma `promocao_valido_ate` antiga no
+    // passado não derruba o desconto — ele vale enquanto a assinatura existe.
     {
       compromisso_meses: 6,
       tier: 'essencial',
@@ -243,7 +243,7 @@ test('MRR: promoção travada usa o valor real da condição, nunca o preço-bas
   const porCiclo = agregarReceitaPorCiclo(linhas);
   assert.strictEqual(porCiclo[1], 99, 'sem promoção: preço de tabela');
   assert.strictEqual(porCiclo[3], 99 - 99 * 0.3, 'promoção ativa: 30% sobre o CHEIO, não o preço-base atual');
-  assert.strictEqual(porCiclo[6], 84.15, 'promoção vencida: preço de tabela do ciclo, não mais o desconto');
+  assert.strictEqual(porCiclo[6], 49.5, 'promoção não vence: 50% sobre o cheio enquanto a assinatura existir');
   assert.strictEqual(porCiclo[12], 0, 'ciclo sem nenhuma conta continua zerado');
 });
 

@@ -130,7 +130,7 @@ async function montarConfirmacaoPedido(planoId) {
       : null,
   ].filter(Boolean);
   const notaPromo = promo
-    ? `<p class="form-hint u-m-0">Preço promocional válido por ${promo.duracaoMeses} meses a partir da adesão.</p>`
+    ? '<p class="form-hint u-m-0">Preço promocional mantido enquanto esta assinatura permanecer ativa. Se cancelar e contratar de novo, vale o preço vigente na nova contratação.</p>'
     : '';
   const totalHtml =
     total != null

@@ -4,25 +4,19 @@ const pool = require('../db/pool');
 // `promocao*` (rodada de Ofertas/Promoções, 22/09/2026) — snapshot travado
 // no instante da adesão, não referência viva. Quem chama já resolveu a
 // condição vigente antes (ver promocoesRepo#condicaoVigente em
-// financeiro/routes.js); esta função só grava o que recebeu.
+// financeiro/routes.js); esta função só grava o que recebeu. Sem data de
+// fim: o preço promocional vale enquanto esta assinatura existir
+// (san-checkout.js#valorMensalDaConta) — `promocao_valido_ate` ficou nula.
 //
 // Nasce 'pendente_pagamento' (migration 089, consolidação 24/09/2026): o
 // link foi gerado, ninguém pagou ainda. Vira 'ativa' com o primeiro ciclo
 // pago (aplicarCicloPago) — nunca pelo navegador voltar do Checkout.
-async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual, promocaoValidoAte }) {
+async function criar({ anuncianteId, planoId, status, promocaoId, promocaoDescontoPercentual }) {
   const id = randomUUID();
   const { rows } = await pool.query(
-    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual, promocao_valido_ate)
-     VALUES ($1,$2,$3, COALESCE($4, 'pendente_pagamento'), $5, $6, $7) RETURNING *`,
-    [
-      id,
-      anuncianteId,
-      planoId,
-      status || null,
-      promocaoId || null,
-      promocaoDescontoPercentual || null,
-      promocaoValidoAte || null,
-    ],
+    `INSERT INTO assinaturas (id, anunciante_id, plano_id, status, promocao_id, promocao_desconto_percentual)
+     VALUES ($1,$2,$3, COALESCE($4, 'pendente_pagamento'), $5, $6) RETURNING *`,
+    [id, anuncianteId, planoId, status || null, promocaoId || null, promocaoDescontoPercentual || null],
   );
   return rows[0];
 }

@@ -1443,7 +1443,7 @@ async function renderPromocaoAtivaResumo(el) {
         return `<div class="promocao-ativa-item">
           <p class="promocao-ativa-titulo"><b>${esc(p.titulo_publico)}</b>${p.selo ? ` <span class="badge badge-neutro">${esc(p.selo)}</span>` : ''}</p>
           <p class="promocao-ativa-meta">${p.compra_fim ? `Até ${window.prazoBR(p.compra_fim)}` : 'Sem prazo pra comprar'} · ${esc(ciclos.join(', ')) || 'nenhum ciclo'}</p>
-          <p class="promocao-ativa-meta">${plural(p.duracao_beneficio_meses, 'mês', 'meses')} de desconto · ${p.limite_adesoes != null ? `${p.adesoes} de ${plural(p.limite_adesoes, 'adesão', 'adesões')}` : plural(p.adesoes, 'adesão', 'adesões')}</p>
+          <p class="promocao-ativa-meta">Enquanto a assinatura permanecer ativa · ${p.limite_adesoes != null ? `${p.adesoes} de ${plural(p.limite_adesoes, 'adesão', 'adesões')}` : plural(p.adesoes, 'adesão', 'adesões')}</p>
         </div>`;
       })
       .join('')}
@@ -4966,7 +4966,7 @@ function montarCardPromocao(promo) {
         <div><dt>Período de compra</dt><dd>${periodoPromocao(promo)}</dd></div>
         <div><dt>Público</dt><dd>${PUBLICO_ELEGIVEL[promo.publico_elegivel] || promo.publico_elegivel}</dd></div>
         <div><dt>Exposição</dt><dd>${onde}</dd></div>
-        <div><dt>Duração</dt><dd>${plural(promo.duracao_beneficio_meses, 'mês', 'meses')} de desconto</dd></div>
+        <div><dt>Benefício</dt><dd>${BENEFICIO_PROMOCAO}</dd></div>
         <div><dt>Adesões</dt><dd>${promo.limite_adesoes != null ? `${promo.adesoes} de ${promo.limite_adesoes}` : num(promo.adesoes)}</dd></div>
       </dl>
       <div class="promo-ciclos"><span class="promo-ciclos-rotulo">Ciclos</span>${ciclosPromocaoHtml(promo.itens)}</div>
@@ -4983,6 +4983,14 @@ const FORMATO_MIDIA = {
 };
 const PUBLICO_ELEGIVEL = { novos: 'Novos usuários', assinantes: 'Assinantes atuais', todos: 'Todos' };
 const STATUS_PROMOCAO = { rascunho: 'Rascunho', ativa: 'Ativa', encerrada: 'Encerrada' };
+
+// Condição FIXA do preço promocional (26/09/2026): o San Checkout não altera
+// o valor de uma assinatura de cartão já paga, então não existe "N meses de
+// desconto e depois volta ao normal". A janela de compra só decide até
+// quando entram adesões novas.
+const BENEFICIO_PROMOCAO = 'enquanto a assinatura permanecer ativa';
+const TEXTO_CONDICAO_PROMOCAO =
+  'O cliente que aderir durante a janela da promoção mantém o preço promocional enquanto essa assinatura permanecer ativa. Se cancelar e contratar novamente no futuro, valerá o preço vigente na nova contratação.';
 
 // Formulário em duas colunas (polimento final, 23/09/2026): à esquerda os
 // blocos (identidade, mídia, janela, público e condição, produtos e ciclos,
@@ -5053,24 +5061,29 @@ function montarFormularioPromocao(promo) {
 
           <fieldset class="form-bloco">
             <legend>Janela de compra</legend>
+            <p class="campo-ajuda u-mt-0">Controla só até quando entram adesões novas. Quem aderiu antes do fim continua com o preço promocional enquanto a assinatura permanecer ativa.</p>
             <div class="campos">
               <div class="campo-grupo"><label for="pInicio">Começa em</label><input id="pInicio" type="datetime-local" name="compra_inicio" value="${isoLocal(promo?.compra_inicio)}"><span class="campo-ajuda">Vazio: já vale.</span></div>
-              <div class="campo-grupo"><label for="pFim">Termina em</label><input id="pFim" type="datetime-local" name="compra_fim" value="${isoLocal(promo?.compra_fim)}"><span class="campo-ajuda">Vazio: sem prazo.</span></div>
+              <div class="campo-grupo"><label for="pFim">Termina em</label><input id="pFim" type="datetime-local" name="compra_fim" value="${isoLocal(promo?.compra_fim)}"><span class="campo-ajuda">Vazio: sem prazo para novas adesões.</span></div>
             </div>
           </fieldset>
 
           <fieldset class="form-bloco">
             <legend>Público e condição</legend>
             <div class="campo-grupo"><span class="campo-rotulo">Público elegível</span>${segmentado('publico_elegivel', PUBLICO_ELEGIVEL, publicoElegivel)}</div>
+            <div class="campo-grupo promo-condicao-preco" id="promoCondicaoPreco">
+              <span class="campo-rotulo">Condição do preço promocional</span>
+              <p class="promo-condicao-valor">Enquanto a assinatura permanecer ativa</p>
+              <span class="campo-ajuda">${TEXTO_CONDICAO_PROMOCAO}</span>
+            </div>
             <div class="campos">
-              <div class="campo-grupo"><label for="pDuracao">Duração da condição</label><span class="campo-unidade"><input id="pDuracao" type="number" min="1" name="duracao_beneficio_meses" value="${promo?.duracao_beneficio_meses ?? 12}" required><span>meses</span></span><span class="campo-ajuda">Conta a partir da adesão de cada conta.</span></div>
               <div class="campo-grupo"><label for="pLimite">Limite de adesões</label><input id="pLimite" type="number" min="1" name="limite_adesoes" value="${promo?.limite_adesoes ?? ''}" placeholder="sem teto"></div>
             </div>
           </fieldset>
 
           <fieldset class="form-bloco">
             <legend>Produtos e ciclos</legend>
-            <p class="campo-ajuda u-mt-0">Marque a célula pra incluir o produto naquele ciclo e dê o desconto da promoção — ele substitui o desconto normal do ciclo enquanto a condição vale.</p>
+            <p class="campo-ajuda u-mt-0">Marque a célula pra incluir o produto naquele ciclo e dê o desconto da promoção — ele substitui o desconto normal do ciclo nas assinaturas feitas durante a janela de compra.</p>
             <div class="rolagem">
               <table class="promo-matriz"><thead><tr><th><span class="u-sr">Produto</span></th>${Object.values(CICLOS)
                 .map((n) => `<th>${n}</th>`)
@@ -5290,14 +5303,13 @@ async function renderPromocoes(el) {
               ${selo ? `<span class="previa-selo">${esc(selo)}</span>` : ''}
               <b>${esc(titulo)}</b>
               ${subtitulo ? `<span>${esc(subtitulo)}</span>` : ''}
-              ${fim ? `<small>Condição válida até ${fim}.</small>` : ''}
+              ${fim ? `<small>Adesões até ${fim}.</small>` : ''}
               <span class="previa-banner-botao">Ver condição na página de planos</span>
             </div>
           </div>`
         : '<p class="promo-previa-fora">Não aparece na Home.</p>';
 
       const itens = itensMarcados().filter((i) => i.descontoPercentual > 0);
-      const duracao = Number(form.duracao_beneficio_meses.value) || 0;
       const naPlanos = chkMostrarPlanos.checked;
       if (!naPlanos) {
         document.getElementById('previaPlanos').innerHTML = '<p class="promo-previa-fora">Não aparece em Planos.</p>';
@@ -5318,7 +5330,7 @@ async function renderPromocoes(el) {
             <span class="previa-plano-cheio"><s>${fmt(cheio)}</s> −${pct(i.descontoPercentual, 2)}</span>
             <b class="previa-plano-preco">${fmt(total)}${i.compromissoMeses === 1 ? '<small>/mês</small>' : ''}</b>
             ${i.compromissoMeses > 1 ? `<span class="previa-plano-mes">equivale a ${fmt(porMes)}/mês</span>` : ''}
-            ${duracao ? `<small class="previa-plano-duracao">Preço válido por ${plural(duracao, 'mês', 'meses')} a partir da adesão.</small>` : ''}
+            <small class="previa-plano-duracao">Preço mantido enquanto a assinatura permanecer ativa.</small>
             ${itens.length > 1 ? `<small class="previa-plano-mais">+ ${plural(itens.length - 1, 'outra combinação', 'outras combinações')} com desconto</small>` : ''}
           </div>`;
       }
@@ -5338,7 +5350,7 @@ async function renderPromocoes(el) {
         <div><dt>Ciclos</dt><dd>${ciclosMarcados.join(', ') || '—'}</dd></div>
         <div><dt>Desconto</dt><dd>${descontos.length ? (minD === maxD ? pct(minD, 2) : `${pct(minD, 2)} a ${pct(maxD, 2)}`) : '—'}</dd></div>
         <div><dt>Exposição</dt><dd>${exposicao}</dd></div>
-        <div><dt>Duração</dt><dd>${duracao ? `${plural(duracao, 'mês', 'meses')} de desconto` : '—'}</dd></div>`;
+        <div><dt>Benefício</dt><dd>${BENEFICIO_PROMOCAO}</dd></div>`;
       pintarBotaoSalvar();
     }
 
@@ -5388,7 +5400,6 @@ async function renderPromocoes(el) {
         formato_midia: fd.get('formato_midia') || null,
         compra_inicio: fd.get('compra_inicio') || null,
         compra_fim: fd.get('compra_fim') || null,
-        duracao_beneficio_meses: Number(fd.get('duracao_beneficio_meses')),
         limite_adesoes: fd.get('limite_adesoes') || null,
         publico_elegivel: fd.get('publico_elegivel') || 'todos',
         mostrar_home: fd.get('mostrar_home') === 'on',
