@@ -4636,6 +4636,26 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Estação da conta — painel por estado, créditos, indicação e troca de benefício (26/09/2026)
+
+**[x] Construído e testado** (RN-61, ADR-020). Em PR, aguardando aprovação.
+- **Conta nova:** um bloco só, "Comece sua primeira campanha", com [Escolher meu plano] e os 4 primeiros passos (1 de 4). Sem card de plano repetindo "sem plano", sem créditos, sem indicação.
+- **Primeiros passos** saem do estado real (`GET /anunciantes/me/primeiros-passos`); com plano, viram uma faixa no topo até o primeiro criativo e a primeira exibição.
+- **Hero:** "Anúncios, pontos, criativos e benefícios da sua conta, num só lugar.", menor. "Dinheiro" saiu do painel (o Financeiro virou "Pagamentos do plano").
+- **Meus pontos:** o convite ficou em pé (título, descrição e botão embaixo), sem palavra por linha. Quem já é ponto vê o ponto (nome, status, telas e benefício), nunca o convite.
+- **Créditos:** aparecem só pra ponto, saldo > 0 ou histórico. Anunciante com saldo zero que já usou créditos vê a versão compacta. Texto neutro, "saldo de créditos".
+- **Indicações:** card próprio, só pra conta com ponto aprovado não arquivado. Crédito não libera indicação.
+- **Benefício por créditos:** "Válido até", sem cobrança automática; ao terminar, "Nenhuma cobrança foi realizada".
+- **Troca:** crédito → crédito agora é permitida, com aviso (plano, validade, créditos gastos, "não serão devolvidos") e Manter/Continuar. Crédito → pago usa o mesmo aviso. Pago → pago e pago → crédito continuam como estavam.
+- **Testes:** `tests/conta-experiencia.test.js` (contas A–D, troca, aviso do pago, onboarding) e e2e `tests/e2e/22-conta-experiencia.mjs` (320/375/390/768/1366 px, 66 checagens). e2e 11, 15 e 17 foram atualizados às regras novas.
+
+**[ ] Decisão do dono — crédito → pago de nível igual ou menor:** o pedido diz que a troca encerra o benefício. Hoje (ADR-016) só o pago de nível MAIOR encerra o benefício; igual ou menor começa depois dele, sem perder dia pago. A tela descreve o comportamento real. Mudar é regra financeira, fica pra você decidir.
+
+**[ ] Achados fora do escopo (não mexidos):**
+- benefício e assinatura com o MESMO plano (mesmo tier e ciclo): `/assinar` manda usar "Trocar de plano", e `trocar-plano` recusa porque a conta está em benefício. É um beco sem saída.
+- `trocar-plano` pra um tier maior deixa na fila um benefício programado de tier menor, que pode ativar por cima do pago.
+- e2e 05 (cadastro por convite) e 07 (token de e-mail) falham igual no main. No 17, o crédito mensal do ponto não sai no roteiro, também igual no main; o check de saldo novo ficou estrito e mostra isso.
+
 ## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
 
 **[x] Construído e testado** (migration 096, `src/financeiro/webhook-inbox.js`,
