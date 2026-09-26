@@ -6,9 +6,8 @@
 //
 // Até 16/09/2026 este arquivo contava slots: montava uma lista com
 // `frequencia_hora` cópias de cada anunciante e devolvia. A lista não tinha
-// nenhuma relação com os 3600 segundos da hora, e o player
-// (public/player.page.js) toca a lista em LAÇO — `indice = (indice + 1) %
-// playlist.length`. O resultado, medido: com um anunciante só na rede, o
+// nenhuma relação com os 3600 segundos da hora, e o player web da época
+// tocava a lista em LAÇO — `indice = (indice + 1) % playlist.length`. O resultado, medido: com um anunciante só na rede, o
 // plano Essencial vendia 3 exibições por hora e a tela entregava 180. Com a
 // rede cheia, o MESMO plano entregava 5. Ou seja, o que o cliente recebia não
 // era o que ele comprou, e piorava conforme a rede desse certo — o pior
@@ -20,9 +19,9 @@
 //   3. banco de horas — só no tempo que SOBROU de 1 e 2 (decisão do dono,
 //      25/09/2026: a dívida volta em capacidade ociosa, nunca tirando a
 //      entrega corrente de ninguém);
-//   4. o que sobrar vira a peça institucional do próprio player, que já
-//      existe (#vazio em public/player.html) e já diz "este espaço pode ser
-//      do seu negócio" — inventário vago que anuncia a si mesmo.
+//   4. o que sobrar vira a peça institucional (vídeo institucional da rede,
+//      ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
+//      — inventário vago que anuncia a si mesmo.
 //
 // Com a hora cheia, a lista tem a duração da hora e o laço do player deixa de
 // inflar nada: `vezes_programadas` volta a ser comparável com

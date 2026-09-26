@@ -62,7 +62,7 @@ Nenhum segredo mora no repositório. Eles vivem em **Northflank → serviço
 |---|---|
 | Senha do Postgres | Supabase → Settings → Database → Reset database password |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API |
-| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado. **Também é a raiz do cofre** (`src/lib/cofre.js`): depois de trocar, redefinir o PIN de manutenção de cada tela e refazer rotação de credencial que estava pela metade. As credenciais das TVs não mudam (são hash, não cifra) |
+| `SESSION_SECRET` | `openssl rand -base64 48`. Trocar derruba todas as sessões — é o efeito desejado. **Também é a raiz do cofre** (`src/lib/cofre.js`): depois de trocar, redefinir o **PIN de saída do Player** em Rede (o antigo não decifra mais e a config passa a mandar `pinSaida: null`) e gerar de novo os códigos de instalação pendentes. As credenciais das TVs não mudam (são hash, não cifra) |
 | `ADMIN_PASSWORD` | escolha do dono. Comparado em tempo constante (`src/lib/segredo.js`) |
 | `SAN_CHECKOUT_KEY` | painel do San Checkout, no cadastro do contratante. **É também o segredo que assina os webhooks** — trocar sem avisar o Checkout derruba a cobrança |
 | `SMTP_PASS` | Google Account → Segurança → Senhas de app |
@@ -202,7 +202,7 @@ git revert <sha>        # nunca reescrever histórico da main
 git push origin main
 ```
 
-**Reverter para antes da migration 083 (Player V2):** o código antigo
+**Reverter para antes da migration 083 (Player V2 — histórico; depois da 094 vale o parágrafo seguinte):** o código antigo
 autentica as TVs pela chave V1 em texto (`dispositivos.aparelho_id`), que a
 083 manteve de propósito. Toda tela cuja credencial mudou depois do deploy
 (provisionada, revogada, link novo do player web) teve essa coluna apagada:
@@ -210,6 +210,14 @@ depois do revert, gere o link de novo para cada uma pelo admin antigo. Players
 V2 não funcionam no código antigo (as rotas V2 dão 404 e o app volta ao modo
 V1, sem credencial válida). Depois da migration 084 (que apaga a coluna de
 todas), reverter para antes da 083 exige gerar o link de todas as TVs V1.
+
+**Reverter para antes do Player MVP (migrations 092–094, 26/09/2026):** a
+094 é destrutiva (apaga `player_releases` e 34 colunas de `dispositivos`: V1,
+horário/PIN por tela, rotação, OTA, `/hello`, rotação de credencial). O código
+anterior lê essas colunas e não sobe contra o banco novo. Reverter o código
+exige restaurar o backup tirado antes do deploy da 094 (seção 5) — e as TVs
+instaladas depois dele precisam ser reinstaladas. Produção tinha 0 telas no
+deploy.
 
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma
@@ -349,21 +357,23 @@ que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga
 
 ---
 
-## 6.1 Telas e Player (V2)
+## 6.1 Telas e Player (MVP)
 
-Tudo pelo admin: **Rede → o ponto → Tela N**. Nenhuma credencial aparece em
-tela, JSON ou log — só a impressão digital (6 caracteres).
+Tudo pelo admin: **Rede → o ponto → M-0235** (o ID da tela). Contrato do
+Player: `docs/player-mvp-contract.md`. Nenhuma chave aparece em tela, JSON ou
+log.
 
 | Situação | O que fazer |
 |---|---|
-| Instalar uma TV nova | Rede → ponto → **+ Tela** → na ficha, **Preparar instalação** → baixar o `mostrai-config.json` e levar para o técnico. O token vale 7 dias e uma vez só; gerar outro cancela o anterior. A ficha passa sozinha para "Operando" no primeiro sinal |
-| Reinstalar (TV trocada, app reinstalado) | Ficha → Identidade e segurança → **Reprovisionar** (gera arquivo novo; a credencial atual vale até o aparelho novo usar o token) ou, se o aparelho antigo não deve mais falar, **Revogar Player** primeiro. Aparelho revogado leva 401 |
-| Credencial pode ter vazado | **Rotacionar credencial**: a chave nova vai no próximo heartbeat; a antiga ainda vale até o Player usar a nova e mais 24 h. Se a TV está desligada, a rotação fica pendente (a ficha mostra) — **Cancelar rotação** ou esperar. Se o vazamento é certo, **Revogar Player** |
-| Tela "Sem sinal" | só é alerta dentro do horário dela. Olhar Diagnóstico (último erro, desvio de relógio) e Histórico (quando caiu). Primeira ação no local: energia e rede |
-| Config "pendente" há mais de 1 h | o Player não está aplicando: conferir versão do Player no Diagnóstico (V1 não tem config versionada — aparece "indisponível") |
-| Fila de comprovantes alta (≥ 2.000 ou > 48 h) | a TV está tocando sem conseguir enviar `played`: rede instável ou erro no servidor; ver logs de `/player/:id/played` |
-| TV antiga V1 (`/player.html`) | continua funcionando. Chave nova: ficha → **Gerar link do player web** (o link com a chave aparece uma vez só; guarde na hora) |
-| Publicar versão do app | Rede → **Versões do Player** → nova versão (URL https do APK, SHA-256, tamanho) → alguém confere o APK contra o keystore da San & Co. e clica **Assinatura conferida** (o sistema registra quando) → **Liberar**. O banco recusa liberar sem assinatura conferida. Voltar atrás: **Segurar** |
+| Antes da primeira TV | Rede → **PIN de saída do Player** → **Definir PIN** (4 a 8 dígitos; não aceita repetido nem sequência). É o mesmo PIN em todas as TVs e só serve para sair do modo quiosque na própria TV. Sem PIN o admin não gera código de instalação |
+| Instalar uma TV nova | Rede → ponto → **+ Adicionar tela** → na ficha, **Gerar código** → passar ao técnico o **ID da tela** (`M-0235`) e o **código** (`XXXX-XXXX`) — **Copiar** leva os dois. O código vale 30 min e uma vez só; gerar outro cancela o anterior; 5 erros para a tela cancelam o código. A ficha passa sozinha para "Player conectado" e "Operando" |
+| Reinstalar (TV trocada, app reinstalado, chave suspeita) | Ficha → **Revogar Player** (a TV antiga para na hora, com 401) → **Gerar código** → instalar de novo. Não existe rotação de chave |
+| Tela "Sem sinal" | só é alerta dentro do horário do ponto, e depois de 2 min sem heartbeat (a TV bate a cada 15 s). Suporte mostra o último erro, se houver. Primeira ação no local: energia e rede |
+| Config "pendente" há mais de 15 min | a TV não está aplicando a área segura/horário/PIN novos: conferir se está ligada e com rede; o Player aplica no próximo heartbeat |
+| Fila de comprovantes alta (≥ 2.000 ou > 48 h) | a TV está tocando sem conseguir enviar `played`: rede instável ou erro no servidor; ver logs de `/player/:id/played`. O servidor aceita comprovante até 7 dias depois da hora |
+| Horário do ponto | Ficha do ponto → **Editar horário** (por dia: Horário, 24 horas ou Fechado; "Aberto 24 horas todos os dias"). Vale para todas as telas do ponto; as TVs recebem em até 15 s |
+| Excluir tela | Ficha ou linha da tela → **Excluir** → confirmar. Tela que já exibiu anúncio não é excluída (o comprovante é do anunciante): deixe **Inativa** |
+| Versão nova do app | instalação manual na TV (não há atualização remota). A ficha mostra a versão que a TV informa |
 
 ## 7. Incidente com dado pessoal
 
@@ -397,9 +407,10 @@ donos de ponto e vendedores (`docs/inventario-de-dados.md`).
 A playlist **não tem cache em memória do processo** desde 17/09/2026 (cada
 poll recalcula, estabilizado por embaralhamento determinístico — ver
 `.ia/DECISIONS.md`, ADR-004). Quem faz uma queda curta não interromper a
-tela na hora é o **player**: ele guarda a última playlist recebida e o
-arquivo de cada criativo em cache local (Cache API), e só some depois de
-`TOLERANCIA_OFFLINE_MS` sem contato bem-sucedido com o servidor.
+tela na hora é o **Player**: ele guarda a última playlist recebida e o
+arquivo de cada criativo em cache local, e os comprovantes numa fila durável
+(o servidor aceita até 7 dias depois da hora — `docs/player-mvp-contract.md`
+§8).
 
 ---
 

@@ -1,12 +1,10 @@
 // Aponta pra API certa em dev (Express local) vs produção (Render).
 // ponytail: sem build step, então isso é JS puro incluído antes dos outros
 // scripts — não precisa de bundler pra trocar a URL por ambiente.
-// Localhost E IP de rede local: quando a TV do ponto abre o player pelo IP do
-// computador (ex.: http://192.168.0.10:3000/player.html), o hostname não é
-// "localhost" — antes disso cair aqui, ela ia tentar falar com a API de
-// produção e o player ficava eternamente em "offline, tocando o cache" sem
-// dizer o porquê. Como o próprio Express serve o site, mesma origem resolve
-// os dois casos (e leva a porta junto).
+// Localhost E IP de rede local: quem abre o site pelo IP do computador na
+// rede (ex.: http://192.168.0.10:3000/), o hostname não é "localhost" — sem
+// isto a página falaria com a API de produção. Como o próprio Express serve
+// o site, mesma origem resolve os dois casos (e leva a porta junto).
 const REDE_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 // Sem build step, `const` no topo de um <script> clássico vai pro escopo global
 // e é assim que as outras páginas leem esta constante. O lint só enxerga este

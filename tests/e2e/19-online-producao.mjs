@@ -111,6 +111,8 @@ console.log('== adversarial (sem efeito colateral): tudo que exige credencial re
   check('GET /anunciantes/me/creditos sem sessão → 401', (await http('/anunciantes/me/creditos')).status === 401);
   check('GET /playlist/12345 sem credencial → 401', (await http('/playlist/12345')).status === 401);
   check('POST /player/12345/heartbeat sem credencial → 401', (await http('/player/12345/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status === 401);
+  check('POST /player/provisionar com código errado → 401', (await http('/player/provisionar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"codigoTela":"M-9999","codigoInstalacao":"AAAA-AAAA"}' })).status === 401);
+  check('/player.html saiu → 404', (await http('/player.html')).status === 404);
   check('GET /plano/x sem X-Checkout-Key → 401', (await http('/plano/nao-existe')).status === 401);
   check('GET /convites/token-invalido → 404', (await http('/convites/nao-existe')).status === 404);
   const admSemAccess = await http('/admin/pontos', { headers: {} });
@@ -233,17 +235,20 @@ if (TOKEN_ID && ADMIN_USER) {
     const ficha = await p.locator('body').innerText().catch(() => '');
     check('admin: ficha do ponto sem "ID do Ponto #" nem chave em texto', !/ID do Ponto #/.test(ficha) && !/chaveAparelho/.test(ficha));
     await p.screenshot({ path: saida('admin-1366-ponto'), fullPage: true });
-    const primeiraTela = p.locator('a.tela-card').first();
+    const primeiraTela = p.locator('.tela-linha a.tela-linha-codigo').first();
     if (await primeiraTela.count()) {
       await primeiraTela.click();
       await p.waitForTimeout(1500);
       const fichaTela = await p.locator('body').innerText().catch(() => '');
-      // Tela ainda sem credencial mostra o bloco Player com "Preparar Player"
-      // e Operação; Conexão/PIN só aparecem depois de preparada. Sem
-      // diferenciar maiúscula: `.ficha-bloco h4` é text-transform: uppercase,
-      // e o innerText devolve "OPERAÇÃO", não "Operação".
-      check('admin: ficha da Tela nos blocos canônicos (Player / Operação; Conexão e PIN quando preparada)', /Preparar Player|Conex/i.test(fichaTela) && /Opera/i.test(fichaTela), fichaTela.slice(-300));
-      check('admin: ficha da Tela não mostra o PIN em claro nem a chave', !/\b\d{4}\b(?=[^\n]*PIN)/.test(fichaTela.split('PIN de manutenção')[1] || '') && !/chaveAparelho/.test(fichaTela));
+      // Ficha do Player MVP: Resumo, Instalação, Área segura, Estado, Ações.
+      // Sem diferenciar maiúscula: `.ficha-bloco h4` é text-transform:
+      // uppercase, e o innerText devolve "INSTALAÇÃO".
+      check(
+        'admin: ficha da tela nos blocos do MVP (Resumo / Instalação / Área segura / Estado / Ações)',
+        /Resumo/i.test(fichaTela) && /Instala/i.test(fichaTela) && /rea segura/i.test(fichaTela) && /Estado/i.test(fichaTela) && /A[cç][oõ]es/i.test(fichaTela),
+        fichaTela.slice(-300),
+      );
+      check('admin: ficha da tela sem chave, sem Preparar Player, sem PIN por tela', !/chaveAparelho|Preparar Player|PIN de manutenção/i.test(fichaTela));
       await p.screenshot({ path: saida('admin-1366-tela'), fullPage: true });
     }
   }

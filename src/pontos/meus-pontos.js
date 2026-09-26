@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { situacaoDosPontos } = require('../creditos/ponto');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // "Meus pontos" (Fatia 2 do painel único, 23/09/2026): UMA entidade visual
 // por estabelecimento. Antes eram três lugares para a mesma coisa — "Meu
@@ -11,7 +12,7 @@ const { situacaoDosPontos } = require('../creditos/ponto');
 // Ciclo de um estabelecimento, na ordem em que acontece:
 //   candidatura aberta (nova/em_contato)  -> em_analise
 //   ponto sem tela ativa (a_instalar)     -> aguardando_instalacao
-//   tela provisionada sem 1º sinal        -> aguardando_primeiro_sinal
+//   tela instalada sem sinal ainda        -> aguardando_primeiro_sinal
 //   ponto com tela ativa (em_operacao)    -> ativo
 //   ponto com tela só em reparo           -> em_manutencao
 //   ponto com telas desligadas            -> inativo
@@ -35,39 +36,27 @@ const ESTADO_DO_PONTO = {
 const SITUACAO_DA_TELA = {
   operando: { nivel: 'ok', texto: 'Funcionando' },
   fora_do_horario: { nivel: 'neutro', texto: 'Fora do horário de funcionamento' },
-  aguardando_primeiro_sinal: { nivel: 'neutro', texto: 'Aguardando a primeira conexão' },
-  sem_sinal: {
-    nivel: 'atencao',
-    texto: 'A tela deveria estar operando e está sem comunicação. A equipe Mostraí foi avisada.',
-  },
-  erro_do_player: {
-    nivel: 'atencao',
-    texto: 'A tela relatou um problema. A equipe Mostraí foi avisada.',
-  },
-  player_revogado: { nivel: 'neutro', texto: 'Aguardando reinstalação pela equipe Mostraí' },
+  aguardando_instalacao: { nivel: 'neutro', texto: 'Aguardando instalação pela equipe Mostraí' },
+  sem_sinal: { nivel: 'atencao', texto: 'A tela deveria estar operando e está sem comunicação.' },
+  erro_do_player: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
   em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
   inativa: { nivel: 'neutro', texto: 'Desligada' },
 };
 
-// Como a tela opera, em palavras de dono de loja (sem regime/timezone).
-const OPERACAO = { '24h': '24 horas', ponto: 'Horário do estabelecimento', personalizado: 'Horário próprio da tela' };
-
-// Visão SIMPLIFICADA do Player V2 para o dono: situação, operação e último
-// sinal. Nada técnico — sem ID do dispositivo, credencial, contrato, fila,
-// Android, hash, versões de config ou detalhes de atualização.
+// Visão SIMPLIFICADA da tela para o dono: situação e último sinal. Toda tela
+// segue o horário do estabelecimento. Nada técnico — sem credencial, fila,
+// Android, hash, PIN ou versões de config.
 function telaPublica(t, horarioDoPonto, agora) {
   const situacao = saudeDaTela(t, horarioDoPonto, agora);
   return {
     id: t.id,
-    nome: `Tela ${t.numero}`,
-    operacao: OPERACAO[t.modo_horario] || OPERACAO.ponto,
+    nome: formatarCodigoTela(t.id),
     situacao,
     nivel: SITUACAO_DA_TELA[situacao].nivel,
     situacaoTexto: SITUACAO_DA_TELA[situacao].texto,
     alerta: SITUACOES_DE_ALERTA.has(situacao),
     ultimoSinal: t.ultima_vez_online,
     instaladaEm: t.instalado_em,
-    temPin: t.tem_pin,
     exibicoes30d: t.exibicoes_30d,
     anunciantes30d: t.anunciantes_30d,
   };
@@ -88,16 +77,14 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     ),
     pool.query(
       `SELECT d.id, d.ponto_id, d.numero, d.status, d.ultima_vez_online, d.primeiro_sinal_em, d.instalado_em,
-              d.modo_horario, d.horario_semanal, d.timezone, d.player_estado,
-              d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
-              (d.pin_manutencao_cifrado IS NOT NULL OR d.pin_hash IS NOT NULL) AS tem_pin,
+              d.player_estado, d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
               COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
               COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id
          LEFT JOIN exibicoes_contador e ON e.dispositivo_id = d.id
         WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
-        GROUP BY d.id ORDER BY d.numero`,
+        GROUP BY d.id ORDER BY d.id`,
       [contaId],
     ),
     pool.query(

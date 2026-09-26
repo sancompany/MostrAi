@@ -76,7 +76,7 @@ function emitirParaConta(contaId, evento, dado = {}) {
 }
 
 // Canal do ADMIN (Player V2, 23/09/2026): a Rede muda sem ninguém do admin
-// clicar em nada — hello, heartbeat, erro, config aplicada. Mesmo desenho do
+// clicar em nada — instalação, sinal, erro, config aplicada. Mesmo desenho do
 // canal por conta (evento leve, quem recebe refaz o GET), um conjunto só,
 // porque todo admin logado pode ver toda a rede.
 const clientesAdmin = new Set();

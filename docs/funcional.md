@@ -46,14 +46,13 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
 2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
-4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação, com o Preparar Player).
-5. O administrador cadastra as telas extras (Rede → o ponto → **+ Tela**; o nome é sempre "Tela N", numerado por ponto e estável) e, em cada uma, clica **Preparar instalação**: baixa o `mostrai-config.json` com um token de provisionamento de uso único (7 dias) — RN-59.
-6. O técnico instala o Mostraí Player na TV com esse arquivo; o Player troca o token pela credencial dele e passa a falar sozinho. A credencial nunca aparece para ninguém: o admin vê só a impressão digital (6 caracteres).
+4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação).
+5. O administrador cadastra as telas (Rede → o ponto → **+ Adicionar tela**; o nome é o ID da tela, `M-0235`, que nunca muda) e, na ficha de cada uma, clica **Gerar código**: o código de instalação (`XXXX-XXXX`) vale 30 minutos, uma vez só, só para aquela tela — RN-59.
+6. O técnico instala o Mostraí Player na TV e digita o **ID da tela + o código**; o Player troca os dois pela credencial dele e passa a falar sozinho. A ficha muda para "Player conectado" sem recarregar. A credencial nunca aparece para ninguém.
 7. O dono do ponto acompanha as telas em **Meus pontos** numa visão simplificada
-   (Operando / Fora do horário / Sem sinal / Com problema — "a equipe Mostraí foi
-   avisada"), sem ID técnico, versão nem credencial. O **PIN de manutenção do
-   Player** (4 dígitos) é definido pelo dono ali ou pelo admin na ficha da tela,
-   e abre o painel da própria TV.
+   (Funcionando / Fora do horário / Sem comunicação / Relatou um problema /
+   Aguardando instalação), sem chave, versão nem PIN. Toda tela segue o horário
+   do estabelecimento.
 8. A partir do mês em que a tela fica ativa, a conta ganha **+1 crédito por
    mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
    Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
@@ -98,10 +97,11 @@ crédito — seção 2.2).
    Solicitações de ponto à parte. Selo "Dono de ponto" só com ponto
    aprovado. Atualiza sozinha (SSE) quando o cliente resgata créditos ou uma
    candidatura é aprovada.
-4. Gera convites, cadastra pontos e telas, prepara a instalação de cada tela
-   (RN-59), roda/revoga a credencial, define o PIN de manutenção, e escolhe o
-   horário operacional, rotação, área segura e política de atualização de
-   cada tela (RN-58/RN-60) — tudo na ficha da tela, em Rede → ponto → Tela N.
+4. Gera convites, cadastra pontos e telas, gera o código de instalação de cada
+   tela (RN-59), revoga o Player, ajusta a área segura (RN-60) e o estado
+   (Ativa/Em reparo/Inativa) na ficha da tela (Rede → ponto → M-0235); edita o
+   horário do ponto (vale para todas as telas dele, RN-58); e define o **PIN de
+   saída do Player**, um só para a rede, em Rede.
 5. Edita a grade de planos e os benefícios.
 6. Clica na pendência Financeiro pra abrir a Central Financeira (Cobranças/
    Trocas/Devoluções — sem Comissões desde 23/09/2026 e sem Repasses desde
@@ -112,24 +112,26 @@ crédito — seção 2.2).
 
 ### 2.5 Tela — o ciclo do player
 
-O aparelho é o **Mostraí Player** (app Android, repositório próprio; contrato
-V2). O `/player.html` web continua existindo como Player V1 (compat-v1).
+O aparelho é o **Mostraí Player** (app Android, repositório próprio). Contrato
+oficial: `docs/player-mvp-contract.md`. Endereço do servidor, orientação (90°)
+e intervalo do heartbeat (15 s) são fixos no APK.
 
-1. Instalado com o `mostrai-config.json`, troca o token por credencial em
-   `POST /player/provisionar` — uma vez só.
-2. `POST /player/:id/hello` ao abrir (versão, aparelho, tela física); a ficha
-   no admin muda sozinha (SSE).
-3. `GET /player/:id/config` (margens, rotação, horário, PIN, política de
-   update) e `GET /playlist/:id` (envelope V2 com `contentHash`).
-4. A cada 5 min, `POST /player/:id/heartbeat` com um retrato do estado (o que
+1. Na primeira abertura, o técnico digita o ID da tela (`M-0235`) e o código
+   de instalação; `POST /player/provisionar` troca os dois pela credencial —
+   uma vez só. A instalação já conta como primeiro sinal.
+2. A cada 15 s, `POST /player/:id/heartbeat` com o retrato do estado (o que
    está tocando, versão de config aplicada, fila de comprovantes, erro). A
-   resposta diz se há config nova, playlist nova, atualização do app ou
-   chave nova (rotação).
-5. `POST /player/:id/played` em lote com cada exibição; nada de conteúdo vira
-   400 (o Player descartaria o comprovante para sempre).
-6. Sem credencial válida, 401 e o Player para; tela em reparo/inativa, 403
-   (RN-28).
-7. O PIN de manutenção (4 dígitos) abre o painel técnico da própria TV.
+   resposta diz só se há config nova e playlist nova.
+3. Config nova → `GET /player/:id/config` (margens da tela, horário do ponto,
+   PIN de saída). Playlist nova ou virada da hora → `GET /playlist/:id`.
+4. `POST /player/:id/played` em lote com cada exibição concluída; aceita até
+   7 dias depois do fim da hora (TV sem rede manda tudo depois). Evento ruim
+   responde `item_invalido` e não derruba o lote.
+5. Credencial revogada ou tela excluída → 401, e o Player volta para a tela de
+   instalação; tela em reparo/inativa → 403 só em playlist/played (RN-28).
+6. O **PIN de saída** (global, definido em Rede) libera a saída do modo
+   quiosque na própria TV; sem PIN definido, o admin não gera código de
+   instalação.
 
 **Jornadas secundárias:** redefinir senha, editar perfil, excluir conta, pedir
 ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
@@ -150,12 +152,12 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela e definir o PIN, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
-| ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas e PIN estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |
+| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
+| ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |
 | ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
-| Player | app Mostraí Player (V2) · `/player.html?tela=ID` (V1, compat) | a TV, com credencial | o vídeo da vez | tocar; PIN de manutenção abre o painel técnico | — |
-| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (grade de pontos → ponto → ficha da tela, e a aba **Versões do Player**), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
+| Player | app Mostraí Player (Android) | a TV, com credencial | o vídeo da vez | tocar; o PIN de saída (global) libera sair do modo quiosque | — |
+| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (PIN de saída do Player, grade de pontos → ponto → ficha da tela), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Meus anúncios** (a conta do próprio Mostraí). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
 | Termos de uso | `/termos-de-uso.html` | público | o contrato | ler | — |
 | Política de privacidade | `/politica-de-privacidade.html` | público | uso de dados | ler | — |
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
@@ -198,13 +200,13 @@ Escrito por grupo, porque o padrão se repete.
 - *Sem permissão:* sessão expirada → volta para o login.
 - *Lista longa:* criativos e exibições paginam a partir de 50 linhas.
 
-**Player (`/player.html`)**
-- *Vazio:* playlist sem itens → tela institucional do Mostraí, nunca tela preta.
+**Player (app Android — `docs/player-mvp-contract.md` §10)**
+- *Vazio:* playlist sem itens → cartão institucional do Mostraí, nunca tela preta.
 - *Carregando:* logo enquanto o primeiro vídeo carrega.
-- *Erro:* sem rede → toca o que está em cache e tenta de novo a cada ciclo.
+- *Erro:* sem rede → toca o que está em cache, guarda os comprovantes (até 7 dias) e tenta de novo.
 - *Sucesso:* o vídeo.
-- *Sem permissão:* chave inválida → "tela não autorizada — fale com o Mostraí".
-- *Credencial revogada:* 401 no Player; no admin a tela aparece como "Player revogado" até ser provisionada de novo.
+- *Sem permissão:* 401 → volta para a tela de instalação (ID da tela + código).
+- *Credencial revogada:* 401 no Player; no admin a tela volta para "Aguardando instalação".
 - *Lista longa:* o gerador corta em 200 slots por hora (trava de segurança).
 
 **Admin (`/admin/`)**
@@ -220,19 +222,20 @@ Escrito por grupo, porque o padrão se repete.
   "+ Tela" em destaque.
 - *Carregando:* grade/ficha em esqueleto.
 - *Erro:* mensagem na seção; a ficha aberta não é trocada por página de erro.
-- *Sucesso:* grade de pontos com resumo da rede e chip "Com problema"; ponto
-  com "ID do Ponto #N" e cards das telas (nome, saúde, último sinal, versão);
-  ficha da tela em 5 blocos — **Operação** (saúde, último sinal, o que está
-  tocando, fila), **Configuração** (status, horário, rotação, área segura como
-  resumo fechado, atualização, PIN de manutenção do Player — cada linha com
-  "desejada × aplicada"), **Identidade e segurança** (ID da Tela, ID do
-  Player, impressão digital da credencial, rotação/revogação), **Diagnóstico**
-  (fechado: aparelho, Android, tela física, fuso, desvio de relógio, último
-  erro) e **Histórico** (fechado: eventos da tela). Tudo se refaz pelo SSE,
-  sem recarregar, e não interrompe um campo em edição nem um diálogo aberto.
+- *Sucesso:* no topo, o **PIN de saída do Player** (definido em X · Ver PIN ·
+  Alterar PIN; sem PIN, aviso para definir antes da primeira TV); grade de
+  pontos com resumo da rede e chip "Com problema"; card do ponto com endereço,
+  estado, horário e a saúde das telas; ficha do ponto com o horário
+  (**Editar horário**: por dia Horário/24 horas/Fechado, e "Aberto 24 horas
+  todos os dias") e as telas em linhas (`M-0235` · situação · Abrir ·
+  Excluir); ficha da tela em blocos — **Resumo** (último sinal, versão do
+  Player, mídia atual), **Instalação** (ID da tela, código com contagem
+  regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
+  (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, equipamento),
+  **Suporte** (só com erro ou comprovante pendente) e **Ações** (Revogar
+  Player, Excluir tela). Tudo se refaz pelo SSE, sem recarregar.
 - *Sem permissão:* 401 → login do admin.
-- *Lista longa:* a grade filtra por status/busca; o histórico mostra os 50
-  eventos mais recentes.
+- *Lista longa:* a grade filtra por status/busca.
 
 **Formulários públicos (cadastro, candidatura, contato, convite)**
 - *Vazio:* campos limpos com rótulo visível.
@@ -283,13 +286,15 @@ valor que `GET /plano/{id}` devolve. *Violada:* não há caminho no código.
 janela de 300s, sobre o corpo cru, é 401. *Violada:* nada é creditado.
 *Quem vê:* ninguém na hora; a conciliação diária corrige.
 
-**RN-07 — Tela ≠ ponto.** Playlist, chave, PIN, sinal e custo vivem em
-`dispositivos`. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota é
+**RN-07 — Tela ≠ ponto.** Playlist, chave, margens, sinal e custo vivem em
+`dispositivos`; horário é do ponto e vale para todas as telas dele; o PIN de
+saída é da rede. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota é
 dividida entre as telas dele. *Violada:* não há caminho. *Quem vê:* —
 
 **RN-08 — Nada de usuário e senha na TV.** A tela autentica por chave de
-aparelho, revogável no admin. O PIN de 4 a 6 dígitos abre **apenas** o painel
-daquela tela. *Violada:* 401 no player. *Quem vê:* quem está na frente da TV.
+aparelho, revogável no admin. O PIN de saída (4 a 8 dígitos, um para a rede)
+só libera sair do modo quiosque na própria TV. *Violada:* 401 no player.
+*Quem vê:* quem está na frente da TV.
 
 **RN-09 — A hora da tela é um orçamento de 3600 segundos.** A playlist de cada
 hora é montada gastando esse orçamento, nesta ordem: exibição contratada
@@ -340,16 +345,13 @@ entregam menos, na mesma proporção. *Quem vê:* o anunciante, no painel.
 
 **RN-40 — Espaço vago da hora anuncia a própria rede.** Os segundos que
 ninguém comprou são preenchidos com a peça institucional. Por padrão é o
-cartão do player (`#vazio` em `public/player.html`, a mesma peça que aparece
-quando não há playlist): "Este espaço pode ser do seu negócio", 10s por
-peça, sem url. Desde 25/09/2026 o admin pode subir um vídeo institucional
+cartão do próprio Player (a mesma peça que aparece quando não há playlist):
+"Este espaço pode ser do seu negócio", 10s por peça, sem url. Desde 25/09/2026 o admin pode subir um vídeo institucional
 real (`Mídia Mostraí` → "Vídeo institucional", `POST
 /admin/video-institucional`, doc completa em `docs/api.md`): configurado,
-o **Player V2** baixa e toca esse vídeo no lugar do cartão (duração real do
+o Player baixa e toca esse vídeo no lugar do cartão (duração real do
 arquivo, não mais 10s fixos — quem decide quantas peças cabem na hora vaga
-é a duração configurada, `src/lib/pacing.js`); o **Player V1** ignora o
-vídeo de propósito e continua sempre mostrando o cartão HTML — não há UI
-pra trocar isso, é o comportamento do contrato 1. Em ambos os casos: não é
+é a duração configurada, `src/lib/pacing.js`). Em ambos os casos: não é
 de ninguém, não conta exibição e não entra em relatório de entrega.
 *Violada:* não há caminho — a tela nunca fica preta nem parada. *Quem vê:*
 quem está na frente da TV, que é exatamente o público que a Mostraí quer
@@ -968,65 +970,56 @@ caminho de usuário; do lado de quem escreveu nada falha. *Quem vê:* o
 administrador.
 
 **RN-58 — Uma tela só vira alerta quando deveria estar online e não está.**
-*(Revisão final da Visão geral, 23/09/2026; refeita no Player V2, 24/09/2026.)*
-Cada tela tem um `modo_horario` (migration 076): `ponto` (segue o
-`horario_semanal` do ponto, o padrão), `24h` ou `personalizado` (horário
-próprio da tela). O mesmo horário vai para o Player no `/config`
-(`operacao.regime` = `FOLLOW_POINT`/`HORAS_24`/`CUSTOM`, com feriados
-nacionais materializados) e o backend decide "deveria operar agora" com a
-mesma regra do Player (`src/lib/operacao-tela.js`, espelho de
-`HorarioOperacional.kt`: início inclusivo, fim exclusivo, faixa que cruza a
+*(Revisão final da Visão geral, 23/09/2026; refeita no Player MVP, 26/09/2026.)*
+Toda tela segue o **horário do ponto** (`pontos.horario_semanal`; sem horário
+= 24 h; `{abre:"00:00", fecha:"24:00"}` = dia inteiro). O mesmo horário vai
+para o Player no `/config` (`operacao`: fuso, os 7 dias, feriados nacionais
+materializados) e o backend decide "deveria operar agora" com a mesma regra
+(`src/lib/operacao-tela.js`: início inclusivo, fim exclusivo, faixa que cruza a
 meia-noite pertence ao dia em que começa, feriado vence o dia). A saúde é
 derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
 nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
-`player_revogado` → `aguardando_primeiro_sinal` (nunca falou) →
+`aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
 `fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 15 min — 3 ciclos de
-heartbeat; `TELA_SEM_SINAL_MIN`) → `erro_do_player` (sinal recente com erro)
-→ `operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
-"pendente" depois de 10 min sem aplicar (2 ciclos) e vira alerta com 60 min;
-fila de comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de
-idade. *Violada:* o backend nunca afirma sinal que não chegou. *Quem vê:* o
+`sem_sinal` (deveria operar e o último sinal passou de 2 min — heartbeat de
+15 s; `TELA_SEM_SINAL_MIN`) → `erro_do_player` (sinal recente com erro) →
+`operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
+"pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
+comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.
+*Violada:* o backend nunca afirma sinal que não chegou. *Quem vê:* o
 administrador (Visão geral, grade da Rede, ficha da tela) e, em linguagem
 simples, o dono do ponto.
 
 **RN-59 — A credencial da tela nunca existe em texto puro no servidor.**
-*(Player V2, 24/09/2026.)* Instalar é: o admin gera um **token de
-provisionamento** (uso único, 7 dias, só o hash é guardado; gerar outro
-cancela o anterior) e o Player troca por uma credencial de 256 bits em
-`POST /player/provisionar`. O banco guarda só o SHA-256 da credencial e a
-impressão digital (últimos 6 hex); o admin e o frontend nunca recebem a
-credencial, e log não a contém. Repetir o mesmo token em até 10 min devolve a
-mesma credencial (o Player pode ter perdido a resposta); depois disso, 401.
-**Rotação:** o admin pede, a próxima resposta de heartbeat entrega a chave
-nova, e as duas valem até o Player usar a nova (a antiga ainda vale 24 h de
-sobreposição). A candidata só é promovida numa resposta de sucesso (2xx), no
-instante em que ela sai — 400, 403 ou erro do servidor não promovem, e a
-candidata volta no heartbeat seguinte; se a resposta que promoveu se perder
-na rede e o aparelho voltar com a chave anterior, a atual é reenviada. Rotação só existe para Player V2
-provisionado (o player web nunca receberia a candidata). **Revogação:** apaga
-a credencial na hora (inclusive a chave V1 que a migration 083 guardou para
-rollback); o Player recebe 401, a tela vira "Player revogado" e deixa de
-contar para o ponto estar "em operação" até ser reprovisionada. O PIN de
-manutenção de um Player V2 pode ser trocado, nunca removido: sem ele na
-config o aparelho mantém o antigo. Players V1 (`/player.html`) continuam com a
-chave legada, também guardada só como hash — gerar uma nova mostra a chave
-uma única vez. *Violada:* token usado/expirado/cancelado → 401; chave errada
-ou vazia → 401. *Quem vê:* o administrador.
+*(Player MVP, 26/09/2026.)* Instalar é: o admin gera o **código de
+instalação** da tela (8 caracteres sem ambíguos, `XXXX-XXXX`; vale 30 min,
+uma vez só, só para aquela tela; gerar outro cancela o anterior; 5 erros para
+a tela cancelam o código; guardado só como HMAC, com uma cópia cifrada para a
+ficha mostrar enquanto vale) e o técnico digita na TV o **ID da tela** + o
+código. O Player troca os dois por uma credencial de 256 bits em
+`POST /player/provisionar`; o banco guarda só o SHA-256 dela, o admin e o
+frontend nunca a recebem, e log não a contém. Repetir o mesmo par em até
+5 min devolve a mesma credencial (o Player pode ter perdido a resposta), até
+o primeiro uso da chave. Tela com Player conectado não gera código (409):
+**Revogar** primeiro — a chave deixa de valer na hora (o Player recebe 401),
+o código pendente é cancelado e a tela volta a "Aguardando instalação". Não
+há rotação de chave: chave suspeita = revogar e instalar de novo. Sem **PIN de
+saída** definido em Rede, o admin não gera código (409) — nunca existe PIN
+padrão. *Violada:* código errado/expirado/usado → 401; chave errada, vazia ou
+revogada → 401. *Quem vê:* o administrador.
 
 **RN-60 — Configuração da tela é versionada: desejada × aplicada.**
-*(Player V2, 24/09/2026.)* Mudar margens, rotação, horário (inclusive o do
-ponto, quando a tela o segue), PIN ou política de atualização sobe
-`config_versao_desejada` por trigger no banco; o heartbeat devolve a versão e o
-Player informa qual aplicou. O admin mostra as duas e só chama de "pendente"
-depois de 10 min. Playlist funciona igual: qualquer mudança que altere o que
-uma tela deve tocar (criativo, anunciante, cota, ponto, vínculo) marca a
-playlist como desatualizada, e o próximo heartbeat pede ao Player que busque
-de novo — sem esperar a virada da hora. Atualização do app (OTA) só é
-oferecida quando existe uma **versão ativa**, e uma versão só pode ser ativada
-depois que a assinatura do APK foi conferida por alguém (registrado quem e
-quando). *Violada:* versão sem assinatura conferida não ativa (400). *Quem
-vê:* o administrador.
+*(Player MVP, 26/09/2026.)* A config é margens da tela + horário do ponto +
+PIN de saída global. Mudar a área segura sobe `config_versao_desejada` por
+gatilho no banco (migration 093); mudar o horário do ponto sobe a de todas as
+telas dele; trocar o PIN de saída sobe a de todas as telas da rede. O
+heartbeat devolve a versão e o Player informa qual aplicou; a ficha só chama
+de "pendente" depois de 2 min. Playlist funciona igual: qualquer mudança que
+altere o que uma tela deve tocar (criativo, anunciante, cota, ponto, vínculo)
+marca a playlist como desatualizada, e o próximo heartbeat pede ao Player que
+busque de novo — sem esperar a virada da hora. Não existe atualização remota
+do app (OTA): instalar versão nova do APK é trabalho de campo. *Violada:* —
+*Quem vê:* o administrador.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
@@ -1194,7 +1187,6 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Fundador sem vaga | As vagas desse plano acabaram. |
 | Troca de plano | Para trocar de plano, fale com a gente — evitamos cobrança duplicada. |
 | Player sem chave | Tela não autorizada — fale com o Mostraí. |
-| PIN errado | PIN incorreto. |
 | Playlist vazia | *(tela institucional do Mostraí, sem texto de erro)* |
 | Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |

@@ -14,8 +14,8 @@ const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 
 // "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
-// 3 ciclos de heartbeat, contrato do Player V2 §10), que soma horário de
-// funcionamento + modo da tela, não só o relógio.
+// 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
+// horário do ponto, não só o relógio.
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
 // constante igual pra todo ponto, ver docs/erros/2026-09-amortizacao-constante-no-codigo.md
 
@@ -294,7 +294,7 @@ router.get('/admin/resumo', async (_req, res) => {
                 FROM anunciantes WHERE excluido_em IS NULL
                 GROUP BY situacao, plano_cortesia`),
     // Só telas em sem_sinal/erro_do_player (src/lib/status-tela.js) — nunca
-    // fora_do_horario nem aguardando_primeiro_sinal, que não são falha.
+    // fora_do_horario nem aguardando_instalacao, que não são falha.
     dispositivosRepo.listarComProblemaDeSinal(),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total

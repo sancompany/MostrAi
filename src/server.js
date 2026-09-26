@@ -61,9 +61,9 @@ const CSP = [
   "font-src 'self'",
   // data: para as imagens embutidas; o Storage serve os criativos.
   `img-src 'self' data: ${MIDIA.slice(1).join(' ')}`.trim(),
-  // blob: é o player tocando do cache offline (URL.createObjectURL).
+  // blob: é a prévia local do vídeo antes do upload (admin, URL.createObjectURL).
   `media-src ${MIDIA.join(' ')} blob:`,
-  // viacep preenche endereço no cadastro; o player busca o criativo pra cachear.
+  // viacep preenche endereço no cadastro; o Storage serve mídia pras prévias.
   `connect-src ${MIDIA.join(' ')} https://viacep.com.br`,
   // o mapa de Matão na página de pontos.
   'frame-src https://www.google.com',

@@ -10,8 +10,7 @@ const pontosRepo = require('../src/pontos/repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
-const { registrarHeartbeat } = require('../src/player/sinal');
-const { gerarChaveLegada } = require('../src/player/credencial');
+const { instalarPlayer } = require('./apoio-player');
 
 // Banco de horas (G.3 de docs/PENDENCIAS.md). Unidade é EXIBIÇÃO (vezes),
 // não segundos — ver migration 058. Cada teste cria e apaga a própria
@@ -337,14 +336,16 @@ test('liquidação abate só o banco CONFIRMADO, uma vez por hora fechada; o res
       exibicoesPedidas: 20,
       exibicoesEntregues: 10,
     }); // saldo 10
-    const horaFechada = new Date(Date.now() - 3 * 3600 * 1000);
+    // Fechada = passou o prazo do proof-of-play offline (7 dias depois do
+    // fim da hora). Uma hora de 6 dias atrás ainda pode receber confirmação.
+    const horaFechada = new Date(Date.now() - 8 * 24 * 3600 * 1000);
     horaFechada.setMinutes(0, 0, 0);
     const outraHoraFechada = new Date(horaFechada.getTime() - 3600 * 1000);
-    const horaAberta = new Date();
+    const horaAberta = new Date(Date.now() - 6 * 24 * 3600 * 1000);
     horaAberta.setMinutes(0, 0, 0);
     // Hora fechada A: 5 programadas (2 do banco), 4 confirmadas → a normal
     // (3) foi toda, e 1 do banco. Hora fechada B: 2 confirmadas de 5 → nada
-    // do banco. Hora aberta: 3 do banco ainda podem ser confirmadas.
+    // do banco. Hora aberta (6 dias): 3 do banco ainda podem ser confirmadas.
     await pool.query(
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco, vezes_confirmadas)
        VALUES ($1, $2, $3, 5, 3, 2, 4), ($1, $2, $4, 5, 3, 2, 2), ($1, $2, $5, 3, 0, 3, 0)`,
@@ -389,9 +390,8 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
     responsavel_contato: '16999990000',
   });
   const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco ${randomUUID()}` });
-  await dispositivosRepo.atualizar(tela.id, { contrato_playlist: 2, status: 'ativo' });
-  await gerarChaveLegada(tela.id);
-  await registrarHeartbeat(tela.id, {}, {});
+  await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
+  await instalarPlayer(tela.id);
   const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
   // Ponto escolhido antes do plano e do criativo aprovado: a conta nunca
   // cai na cobertura automática de outro arquivo (playlist-contrato-novo).

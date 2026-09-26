@@ -1105,8 +1105,7 @@ async function comSituacaoNoAr(pontos) {
   if (!pontos.length) return pontos;
   const { rows: telas } = await pool.query(
     `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
-            d.ultima_vez_online, d.player_estado, d.modo_horario, d.horario_semanal, d.timezone,
-            d.ultimo_erro_codigo, d.ultimo_erro, p.horario_semanal AS ponto_horario_semanal
+            d.ultima_vez_online, d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro, p.horario_semanal AS ponto_horario_semanal
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
       WHERE d.ponto_id = ANY($1::int[])`,
     [pontos.map((p) => p.id)],

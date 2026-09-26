@@ -1,22 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { operacaoDaTela, deveriaOperar } = require('../src/lib/operacao-tela');
+const { operacaoDoPonto, deveriaOperar } = require('../src/lib/operacao-tela');
 
-// Espelho de HorarioOperacional.estaDentro (Player V2, main 28bc93d): o
-// backend precisa dizer "fora do horário" exatamente quando o Player apaga.
+// Mesma regra que o contrato pede ao Player (docs/player-mvp-contract.md §6):
+// o backend precisa dizer "fora do horário" exatamente quando o Player apaga.
 // 2026-09-25 é sexta; 2026-12-25 (Natal) é sexta.
 const SP = (iso) => new Date(`${iso}-03:00`);
 const op = (porDiaDaSemana, feriados = {}, timezone = 'America/Sao_Paulo') => ({
-  regime: 'CUSTOM',
   timezone,
   porDiaDaSemana,
   feriados,
 });
 
-test('HORAS_24, regime desconhecido e sem faixa nenhuma: sempre dentro (na dúvida, acende)', () => {
+test('sem faixa nenhuma ou sem operação: sempre dentro (na dúvida, acende)', () => {
   const agora = SP('2026-09-25T03:00:00');
-  assert.equal(deveriaOperar({ regime: 'HORAS_24' }, agora), true);
-  assert.equal(deveriaOperar({ regime: '24_HOURS' }, agora), true);
   assert.equal(deveriaOperar(op({}), agora), true);
   assert.equal(deveriaOperar(null, agora), true);
 });
@@ -58,33 +55,55 @@ test('faixas presentes mas ilegíveis = dia aceso; HH:MM:SS aceito; início = fi
   assert.equal(deveriaOperar(op({ sex: [{ inicio: '09:00', fim: '09:00' }] }), SP('2026-09-25T09:00:00')), false);
 });
 
-test('fuso da tela vale: 09:00 em Manaus é 10:00 em São Paulo', () => {
+test('o fuso do bloco vale: 09:00 em Manaus é 10:00 em São Paulo', () => {
   const o = op({ sex: [{ inicio: '09:00', fim: '10:00' }] }, {}, 'America/Manaus');
   assert.equal(deveriaOperar(o, SP('2026-09-25T10:30:00')), true);
   assert.equal(deveriaOperar(o, SP('2026-09-25T09:30:00')), false);
 });
 
-test('operacaoDaTela: modos do admin viram o bloco do contrato, com o ponto materializado', () => {
-  const horario = { seg: { abre: '09:00', fecha: '18:00' }, ter: null, feriados: null };
+test('operacaoDoPonto: horário do ponto vira o bloco do contrato, 7 dias + feriados', () => {
+  const horario = {
+    seg: { abre: '09:00', fecha: '18:00' },
+    ter: null,
+    sex: { abre: '20:00', fecha: '02:00' },
+    feriados: null,
+  };
   const agora = SP('2026-09-25T12:00:00');
-  assert.deepEqual(operacaoDaTela({ modo_horario: '24h', timezone: 'America/Sao_Paulo' }, horario, agora), {
-    regime: 'HORAS_24',
-    timezone: 'America/Sao_Paulo',
-  });
-  const p = operacaoDaTela({ modo_horario: 'ponto', timezone: 'Nada/Disso' }, horario, agora);
-  assert.equal(p.regime, 'FOLLOW_POINT');
-  assert.equal(p.timezone, 'America/Sao_Paulo', 'fuso inválido cai no padrão');
+  const p = operacaoDoPonto(horario, agora);
+  assert.deepEqual(Object.keys(p).sort(), ['feriados', 'porDiaDaSemana', 'timezone'], 'sem regime');
+  assert.equal(p.timezone, 'America/Sao_Paulo');
+  assert.deepEqual(Object.keys(p.porDiaDaSemana), ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']);
   assert.deepEqual(p.porDiaDaSemana.seg, [{ inicio: '09:00', fim: '18:00' }]);
   assert.deepEqual(p.porDiaDaSemana.ter, [], 'null = fechado, lista vazia explícita');
   assert.deepEqual(p.porDiaDaSemana.qua, [{ inicio: '00:00', fim: '24:00' }], 'dia não informado não apaga a tela');
+  assert.deepEqual(p.porDiaDaSemana.sex, [{ inicio: '20:00', fim: '02:00' }]);
   assert.deepEqual(p.feriados['2026-12-25'], [], 'feriados nacionais materializados');
   assert.ok(p.feriados['2028-01-01'], 'dois anos à frente');
-  const c = operacaoDaTela(
-    { modo_horario: 'personalizado', horario_semanal: { sex: { abre: '20:00', fecha: '02:00' } } },
-    horario,
-    agora,
-  );
-  assert.equal(c.regime, 'CUSTOM');
-  assert.deepEqual(c.porDiaDaSemana.sex, [{ inicio: '20:00', fim: '02:00' }]);
-  assert.deepEqual(c.feriados, {}, 'sem "feriados" no horário, nenhum dia é sobreposto');
+  const semFeriado = operacaoDoPonto({ sex: { abre: '20:00', fecha: '02:00' } }, agora);
+  assert.deepEqual(semFeriado.feriados, {}, 'sem "feriados" no horário, nenhum dia é sobreposto');
+});
+
+test('ponto sem horário cadastrado = aberto 24 h, todos os dias', () => {
+  const p = operacaoDoPonto(null, SP('2026-09-25T12:00:00'));
+  for (const dia of ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']) {
+    assert.deepEqual(p.porDiaDaSemana[dia], [{ inicio: '00:00', fim: '24:00' }]);
+  }
+  assert.deepEqual(p.feriados, {});
+  assert.equal(deveriaOperar(p, SP('2026-09-27T03:00:00')), true, 'domingo de madrugada');
+});
+
+test('ponto 24 h (00:00–24:00) opera o dia inteiro, inclusive 23:59 e 00:00', () => {
+  const vinte4 = { abre: '00:00', fecha: '24:00' };
+  const horario = Object.fromEntries(['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'].map((d) => [d, vinte4]));
+  const p = operacaoDoPonto(horario, SP('2026-09-25T12:00:00'));
+  assert.equal(deveriaOperar(p, SP('2026-09-25T00:00:00')), true);
+  assert.equal(deveriaOperar(p, SP('2026-09-25T23:59:00')), true);
+  assert.equal(deveriaOperar(p, SP('2026-09-26T00:00:00')), true);
+});
+
+test('fechar à meia-noite (18:00 → 00:00) opera até 23:59 e fecha à 00:00', () => {
+  const p = operacaoDoPonto({ sex: { abre: '18:00', fecha: '00:00' }, sab: null }, SP('2026-09-25T12:00:00'));
+  assert.equal(deveriaOperar(p, SP('2026-09-25T17:59:00')), false);
+  assert.equal(deveriaOperar(p, SP('2026-09-25T23:59:00')), true);
+  assert.equal(deveriaOperar(p, SP('2026-09-26T00:00:00')), false);
 });

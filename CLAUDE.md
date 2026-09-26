@@ -12,6 +12,8 @@ Projeto da San & Co. Segue as leis do plugin `san-co` (Leis, estações,
   o que vale, o que saiu, e as decisões abertas; relatório em
   `docs/relatorio-consolidacao-final-2026-09-24.md`
 - `docs/api.md` — o mapa das rotas
+- `docs/player-mvp-contract.md` — o contrato oficial backend ↔ Player (instalação,
+  heartbeat, config, playlist, proof-of-play)
 - `README.md` — como rodar e testar
 - `RUNBOOK.md` — como operar, reverter e restaurar
 - `docs/funcional.md` — o que o sistema faz, tela por tela

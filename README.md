@@ -27,7 +27,7 @@ ponta está em `tests/e2e/README.md` e na seção de verificação de
 ## Como o sistema é
 
 - **Uma conta, um painel.** A tabela `anunciantes` é a tabela de contas (nome histórico). `papeis` ∈ {anunciante, ponto, vendedor (aposentado)}. O painel (`/anunciante/painel.html`) é único desde as Fatias 1–6 (23/09/2026): resumo e alertas no topo, campanha, Meus criativos, Plano comercial, Meus pontos, Financeiro e Créditos e benefícios na mesma página — a antiga `ponto.html` redireciona pra ele. Sem o papel anunciante, só a área da campanha mostra o card de ativação (`public/modos.js`). Anunciante se cadastra sozinho ou ativa o modo pelo card (só falta o endereço); **dono de ponto só entra com liberação do dono**: convite ou aprovação do pedido feito em "Meus pontos".
-- **Ponto ≠ tela.** `pontos` é o comércio/endereço; `dispositivos` é cada TV. Cada tela tem chave de aparelho (autentica o player), PIN (abre um painel só daquela tela na própria TV), playlist própria, custo e prazo de amortização. A cota de autoanúncio é do ponto e é dividida entre as telas dele.
+- **Ponto ≠ tela.** `pontos` é o comércio/endereço; `dispositivos` é cada TV. Cada tela tem um ID humano (`M-0235`), chave de aparelho (autentica o Player, entregue pelo código de instalação), área segura, playlist própria, custo e prazo de amortização; segue o horário do ponto. O PIN de saída do Player é um só para a rede. A cota de autoanúncio é do ponto e é dividida entre as telas dele.
 - **Planos modulares no banco.** Além de preço/frequência/ciclo: `preco_travado` (a conta paga o valor de quando entrou), `vagas` (teto opcional, com reserva de 15 minutos pra pagar), `desconto_comodato_percentual` (aposentado desde 24/09/2026 — ser ponto gera créditos, não desconto; ADR-016). Fundador não é plano — é status de conta (`anunciantes.fundador`), marcado à mão pelo administrador, com desconto e piso de compromisso próprios (migration 033). Não há mais nenhuma regra de plano em variável de ambiente. **Benefício comercial se dá no preço, nunca no tempo**: a assinatura do San Checkout não tem carência, mês grátis nem pular ciclo (migration 021, `CONSTRAINTS.md`). Os módulos cruzados antigos (`ponto_apos_meses`, `plano_bonus_*`) foram aposentados: ser ponto rende 1 crédito por mês (ADR-016) e as rotas de resgate antigas respondem 410.
 - **Pagamento pelo San Checkout.** Webhook fail-closed, idempotente, transacional. Nada de cartão passa por aqui.
 - **Margem real no admin.** Receita − amortização (custo de cada tela ÷ prazo) − custos fixos já lançados (a tela de custos saiu do admin em 22/09/2026).
@@ -37,7 +37,7 @@ Mapa completo das rotas em `docs/api.md`. Limites e vetos em `CONSTRAINTS.md`. S
 ## Pastas
 
 ```
-public/            site estático (sem build): páginas, layout.js, style.css, player.html, admin/
+public/            site estático (sem build): páginas, layout.js, style.css, admin/
 src/server.js      Express: sessão (Postgres), CORS, headers, rotas
 src/<domínio>/     routes.js + repository.js por assunto (anunciantes, pontos, dispositivos,
                    convites, candidaturas, financeiro, playlist, player, admin, conta, categorias)
@@ -51,4 +51,4 @@ docs/              api, spec, precificação, inventário de dados, erros regist
 
 ## Produção (resumo — passo a passo em `docs/PENDENCIAS.md`)
 
-Northflank (região sul-americana, deploy da `main`) + Supabase (projeto próprio, mesma região) + Cloudflare (DNS, proxy, **Access na frente de `/admin`**). Variáveis do `.env.example` no painel do Northflank. TV: navegador/kiosk abrindo o link do player gerado na aba Telas do admin.
+Northflank (região sul-americana, deploy da `main`) + Supabase (projeto próprio, mesma região) + Cloudflare (DNS, proxy, **Access na frente de `/admin`**). Variáveis do `.env.example` no painel do Northflank. TV: o app Mostraí Player (Android, repositório próprio), instalado com o ID da tela + o código de instalação gerado na ficha da tela — contrato em `docs/player-mvp-contract.md`.

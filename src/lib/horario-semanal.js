@@ -18,6 +18,10 @@ const NOME_DIA = {
   feriados: 'feriados',
 };
 const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
+// "24:00" só como fechamento = até o fim do dia. 00:00–24:00 é o dia
+// inteiro — é assim que um ponto 24 h se cadastra (docs/player-mvp-contract.md
+// §6: toda tela segue o horário do ponto).
+const FECHA_VALIDA = (v) => v === '24:00' || HORA_VALIDA.test(v);
 
 // Feriados NACIONAIS (fixos + móveis pela Páscoa — usados pela config do
 // Player V2 em src/lib/operacao-tela.js, algoritmo de Meeus/Jones/
@@ -83,13 +87,13 @@ function validar(horario) {
       limpo[dia] = null;
       continue;
     }
-    if (typeof v !== 'object' || !HORA_VALIDA.test(v.abre) || !HORA_VALIDA.test(v.fecha)) {
+    if (typeof v !== 'object' || !HORA_VALIDA.test(v.abre) || !FECHA_VALIDA(v.fecha)) {
       throw erro(`horário de ${NOME_DIA[dia]} inválido`);
     }
     // `abre > fecha` é válido de propósito — vira madrugada (bar/balada
     // 18:00-02:00, por exemplo). Só a igualdade exata é ambígua (nunca abre,
-    // ou abre 24h — nenhum dos dois é o que o campo "Fechado" já representa)
-    // e por isso é recusada.
+    // ou abre 24h?) e por isso é recusada: fechado é `null`, 24 h é
+    // 00:00–24:00.
     if (v.abre === v.fecha) {
       throw erro(`${NOME_DIA[dia]}: horário de abertura não pode ser igual ao de fechamento`);
     }
@@ -104,7 +108,7 @@ function validar(horario) {
 // futura mais fina, direto no banco ou numa tela que ainda não existe).
 function resumo(horario) {
   if (!horario) return null;
-  const fmt = (v) => (v ? `${v.abre}-${v.fecha}` : 'fechado');
+  const fmt = (v) => (!v ? 'fechado' : v.abre === '00:00' && v.fecha === '24:00' ? '24h' : `${v.abre}-${v.fecha}`);
   const partes = [];
   const semana = ['seg', 'ter', 'qua', 'qui', 'sex'].map((d) => horario[d]);
   const semanaIgual = semana.every((v) => JSON.stringify(v) === JSON.stringify(semana[0]));

@@ -38,9 +38,10 @@ conciliarAssinaturas()
     }
 
     // Banco de horas: abate do saldo o que as TVs confirmaram nas horas já
-    // fechadas (src/bancohoras/apuracao.js). Diário pra que o banco
-    // programado e não confirmado volte a ficar disponível no dia seguinte,
-    // sem esperar o job mensal.
+    // fechadas — fechada = passou o prazo de 7 dias do proof-of-play offline
+    // (src/bancohoras/apuracao.js). Diário pra que o banco programado e não
+    // confirmado volte a ficar disponível assim que o prazo vence, sem
+    // esperar o job mensal.
     try {
       const liq = await liquidarBancoConfirmado();
       console.log(

@@ -165,9 +165,11 @@ const contas = [];
      VALUES ('Santos unio', 'Rua Quatro, 4', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${dono.id}, 'em_operacao', 'ajuda-custo', 50) RETURNING id`,
   );
   // `chave_hash`: desde a consolidação (24/09/2026) o crédito mensal exige
-  // credencial viva do Player V2 — tela só com a chave V1 não conta.
-  PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online, aparelho_id, chave_hash)
-      VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now(), 'ap-e2e-${randomUUID()}', 'e2e-hash-${randomUUID()}')`);
+  // credencial viva do Player — tela sem Player instalado não conta. Aqui
+  // basta "uma tela com credencial" (sem Player de verdade): hash aleatório
+  // de 64 hex, único. Horário é do ponto (sem horário = 24 h).
+  PG(`INSERT INTO dispositivos (ponto_id, status, primeiro_sinal_em, ultima_vez_online, chave_hash)
+      VALUES (${ponto}, 'ativo', now(), now(), md5(random()::text) || md5(random()::text))`);
   PG(`INSERT INTO pagamentos_ponto (ponto_id, competencia, valor, pago_em, forma) VALUES (${ponto}, date_trunc('month', now() - interval '1 month'), 50, now(), 'pix')`);
   const p = await entrar(dono);
   const texto = await p.locator('main').innerText();

@@ -5,8 +5,7 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { registrarHeartbeat } = require('../src/player/sinal');
-const { gerarChaveLegada } = require('../src/player/credencial');
+const { instalarPlayer } = require('./apoio-player');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -74,12 +73,21 @@ async function contaComPlanoEAnuncioAprovado(pontoId) {
 async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
-  await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2, status: 'ativo' });
-  // Primeiro sinal: ponto só entra na cobertura depois dele (Player V2).
-  // Tela que fala está autenticada: tem credencial (a do player web aqui).
-  await gerarChaveLegada(dispositivo.id);
-  await registrarHeartbeat(dispositivo.id, {}, {});
+  await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
+  // Player instalado (conta como primeiro sinal): ponto só entra na
+  // cobertura depois dele.
+  await instalarPlayer(dispositivo.id);
   return dispositivosRepo.buscarComPonto(dispositivo.id);
+}
+
+// A hora servida fica congelada (migration 064); o proof-of-play só credita
+// quem estava nela (docs/player-mvp-contract.md §8).
+async function congelar(dispositivoId, hora, anuncianteId) {
+  await pool.query(
+    `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras)
+     VALUES ($1, $2, $3::jsonb, '[]'::jsonb) ON CONFLICT DO NOTHING`,
+    [dispositivoId, hora, JSON.stringify([{ id: anuncianteId }])],
+  );
 }
 
 async function limparDispositivo(id, pontoId) {
@@ -87,6 +95,7 @@ async function limparDispositivo(id, pontoId) {
   // aplicação (409, consolidação 24/09/2026) — aqui ele é lixo de teste.
   await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [id]);
+  await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1', [id]);
   await dispositivosRepo.deletar(id);
   if (pontoId) await apagarPonto(pontoId);
 }
@@ -138,17 +147,6 @@ test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criati
   }
 });
 
-test('dispositivo com contrato_playlist=1 (padrão) não muda — array de sempre', async () => {
-  const ponto = await criarPontoTeste();
-  const criado = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` }); // sem tocar contrato_playlist — fica no padrão
-  try {
-    const dispositivo = await dispositivosRepo.buscarComPonto(criado.id);
-    assert.strictEqual(dispositivo.contrato_playlist, 1);
-  } finally {
-    await limparDispositivo(criado.id, ponto.id);
-  }
-});
-
 test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId devolve duplicado', async () => {
   const dispositivo = await dispositivoContratoNovo();
   const conta = await contaComPlanoEAnuncioAprovado(dispositivo.ponto_id);
@@ -160,6 +158,7 @@ test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId 
        VALUES ($1, $2, $3, 1)`,
       [conta.id, dispositivo.id, hora],
     );
+    await congelar(dispositivo.id, hora, conta.id);
     const janelaId = `${dispositivo.id}|${hora.toISOString()}`;
     const evento = {
       execucaoId: randomUUID(),
@@ -206,6 +205,7 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
        VALUES ($1, $2, $3, 1, 1)`,
       [conta.id, dispositivo.id, hora],
     );
+    await congelar(dispositivo.id, hora, conta.id);
     const janelaId = `${dispositivo.id}|${hora.toISOString()}`;
     const evento = {
       execucaoId: randomUUID(),

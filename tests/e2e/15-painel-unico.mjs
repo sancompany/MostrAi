@@ -58,10 +58,14 @@ const comPonto = (id, nome, telaSemSinal) => {
     `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id, status)
      VALUES ('${nome}', 'Rua Cinco, 5', 'Matão', 'SP', '15990000', 'outro', 'R', '16', ${id}, 'em_operacao') RETURNING id`,
   );
-  PG(
-    `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, primeiro_sinal_em, ultima_vez_online, chave_hash)
-     VALUES (${ponto}, 'Tela 1', 'ativo', '24h', now() - interval '1 day', now() - interval '${telaSemSinal ? '5 hours' : '1 minute'}', encode(sha256(random()::text::bytea), 'hex'))`,
+  // Ponto sem horário cadastrado = 24 h (toda tela segue o horário do ponto).
+  const tela = PG(
+    `INSERT INTO dispositivos (ponto_id, status, primeiro_sinal_em, ultima_vez_online, chave_hash)
+     VALUES (${ponto}, 'ativo', now() - interval '1 day', now() - interval '${telaSemSinal ? '5 hours' : '1 minute'}', encode(sha256(random()::text::bytea), 'hex'))
+     RETURNING id`,
   );
+  // Nome da tela = código humano (M-0235), o mesmo do admin e da TV.
+  return `M-${String(tela).padStart(4, '0')}`;
 };
 
 async function abrir(conta, nome, largura = 1280) {
@@ -109,7 +113,7 @@ async function comum(nome, s) {
 console.log('== as duas coisas: anuncia e cede a parede ==');
 const ambos = await novaConta('unico-ambos', "ARRAY['anunciante','ponto']");
 comPlano(ambos.id);
-comPonto(ambos.id, 'Padaria Grade', true);
+const telaAmbos = comPonto(ambos.id, 'Padaria Grade', true);
 PG(`INSERT INTO creditos_ledger (anunciante_id, tipo, quantidade, observacao) VALUES (${ambos.id}, 'concessao_admin', 5, 'e2e')`);
 let s = await abrir(ambos, 'ambos');
 for (const m of ['#modPlano', '#modPontos', '#modCriativos', '#modFinanceiro', '#modCreditos', '#dashboardAnuncios'])
@@ -119,7 +123,7 @@ check('ambos: benefício do ponto em Meus pontos', (await s.p.textContent('#pont
 const chips = await s.p.textContent('#resumoConta');
 check('ambos: resumo com plano, pontos, criativos e créditos', /Plano[\s\S]*Essencial[\s\S]*Pontos[\s\S]*1 de 1[\s\S]*Criativos[\s\S]*Créditos[\s\S]*5/.test(chips), chips);
 const alertas = await s.p.textContent('#alertasConta');
-check('ambos: alerta da tela sem comunicação', /Tela 1 \(Padaria Grade\)[\s\S]*sem comunicação/.test(alertas), alertas);
+check('ambos: alerta da tela sem comunicação', new RegExp(`${telaAmbos} \\(Padaria Grade\\)[\\s\\S]*sem comunicação`).test(alertas), alertas);
 check('ambos: alerta de criativo faltando', /Falta o seu criativo/.test(alertas));
 check('ambos: aviso "Falta o seu vídeo" não repete dentro da campanha', !(await s.p.textContent('#dashboardAnuncios')).includes('Falta o seu vídeo'));
 const campanha = await box(s.p, '#dashboardAnuncios');

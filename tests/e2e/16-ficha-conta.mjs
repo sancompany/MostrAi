@@ -55,9 +55,11 @@ function ponto(contaId, nome, { modalidade = null, status = 'a_instalar', repass
   );
   if (tela) {
     // `chave_hash`: desde a consolidação (24/09/2026) o crédito mensal exige
-    // credencial viva do Player — tela sem Preparar Player não conta.
-    PG(`INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, ultima_vez_online, chave_hash)
-        VALUES (${id}, 'Tela 1', '${tela}', '24h', ${tela === 'ativo' ? 'now()' : 'NULL'}, 'e2e-hash-${randomUUID()}')`);
+    // credencial viva do Player — tela sem Player instalado não conta. Aqui
+    // basta "uma tela com credencial" (sem Player de verdade): hash aleatório
+    // de 64 hex, único. Horário é do ponto (sem horário = 24 h).
+    PG(`INSERT INTO dispositivos (ponto_id, status, primeiro_sinal_em, ultima_vez_online, chave_hash)
+        VALUES (${id}, '${tela}', ${tela === 'ativo' ? 'now(), now()' : 'NULL, NULL'}, md5(random()::text) || md5(random()::text))`);
   }
   return id;
 }
@@ -99,7 +101,6 @@ PG(`INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, sta
     VALUES (${P.D}, 'maximo-3m', ${dias(110)}, 'agendado', 'indicacao', 'destaque-1m', 'assinatura', ${dias(20)})`);
 P.E = conta('E · Dono de ponto (legado 1)', { comodato_plano_id: "'inicial-1m'" });
 const pontoE = ponto(P.E, 'Loja E', { modalidade: 'ajuda-custo', status: 'em_operacao', repasse: 50, tela: 'ativo' });
-PG(`UPDATE dispositivos SET aparelho_id = 'ap-e2e-${randomUUID()}' WHERE ponto_id = ${pontoE}`);
 criativo(P.E);
 P.F = conta('F · Dono de ponto (legado 2)', { comodato_plano_id: "'comodato-basico'", credito_comodato_mensal: '50' });
 ponto(P.F, 'Loja F', { modalidade: 'mais-cota', status: 'em_operacao', tela: 'ativo' });

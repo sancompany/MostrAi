@@ -1,31 +1,34 @@
-const { operacaoDaTela, deveriaOperar } = require('./operacao-tela');
+const { operacaoDoPonto, deveriaOperar } = require('./operacao-tela');
 
 // Régua ÚNICA de saúde operacional da tela (Player V2, 23/09/2026). Estado
 // administrativo (Ativa / Em reparo / Inativa, `dispositivos.status`) é do
 // admin e nunca muda por heartbeat; saúde é DERIVADA, nunca gravada, e só
 // este arquivo calcula — admin, Visão geral, "Meus pontos" do dono e o status
-// do ponto leem daqui. Contrato V2 §10: o Player reporta fato, a
-// classificação é do backend.
+// do ponto leem daqui. O Player reporta fato, a classificação é do backend
+// (docs/player-mvp-contract.md §9).
 //
-// Ordem de avaliação:
+// Ordem de avaliação (docs/player-mvp-contract.md §9):
 //   em_reparo / inativa        estado administrativo; nunca alerta
-//   player_revogado            credencial revogada no admin, aguardando reprovisionar
-//   aguardando_primeiro_sinal  nunca falou
+//   aguardando_instalacao      sem Player instalado (nunca instalado, ou revogado)
 //   fora_do_horario            o Player diz OUT_OF_SCHEDULE, ou o horário diz fechado
 //   sem_sinal                  deveria operar e o último sinal passou da tolerância
 //   erro_do_player             sinal recente com erro/estado de erro
 //   operando                   sinal recente, sem erro
 //
+// A instalação conta como primeiro sinal (src/dispositivos/repository.js
+// #trocarCodigoPorCredencial): Player instalado que some vira "Sem sinal".
 // "Sem sinal" vence um erro antigo: com o último heartbeat vencido, o erro
 // que ele trazia já não descreve o agora.
 
-// Contrato §10: "Tolerância sugerida para 'Sem sinal': 3 ciclos (15 min)".
-const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 15) * 60 * 1000;
-// Contrato §5 (armadilha de UX): com heartbeat de 5 min, toda alteração fica
-// "pendente" por até 5 min, sempre. Só vira pendência depois de 2 ciclos.
-const CONFIG_PENDENTE_APOS_MS = 10 * 60 * 1000;
-const CONFIG_ALERTA_APOS_MS = 60 * 60 * 1000;
-const PRAZO_PRIMEIRO_SINAL_MS = 7 * 24 * 3600 * 1000;
+// docs/player-mvp-contract.md §9: heartbeat a cada 15 s; "Sem sinal" depois
+// de 2 min (8 batidas perdidas) — tolera uma rede que oscila, sem esconder
+// uma TV desligada.
+const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 2) * 60 * 1000;
+// Alteração de config chega na próxima batida (15 s) + GET /config. Até 2 min
+// é "sincronizando"; alerta só se passar de 15 min.
+const CONFIG_PENDENTE_APOS_MS = 2 * 60 * 1000;
+const CONFIG_ALERTA_APOS_MS = 15 * 60 * 1000;
+const PRAZO_INSTALACAO_MS = 7 * 24 * 3600 * 1000;
 // Contrato §9.3.
 const FILA_ATENCAO = 2000;
 const FILA_ALERTA = 10000;
@@ -39,22 +42,20 @@ const ms = (v) => (v ? new Date(v).getTime() : null);
 function saudeDaTela(tela, horarioDoPonto, agora = new Date()) {
   if (tela.status === 'reparo') return 'em_reparo';
   if (tela.status === 'inativo') return 'inativa';
-  if (tela.revogado_em && !tela.chave_hash) return 'player_revogado';
-  if (!tela.primeiro_sinal_em) return 'aguardando_primeiro_sinal';
+  if (!tela.chave_hash) return 'aguardando_instalacao';
 
   const ultimo = ms(tela.ultima_vez_online);
   const recente = ultimo != null && agora.getTime() - ultimo <= TOLERANCIA_SEM_SINAL_MS;
   if (recente && tela.player_estado === 'OUT_OF_SCHEDULE') return 'fora_do_horario';
-  if (!deveriaOperar(operacaoDaTela(tela, horarioDoPonto, agora), agora)) return 'fora_do_horario';
+  if (!deveriaOperar(operacaoDoPonto(horarioDoPonto, agora), agora)) return 'fora_do_horario';
   if (!recente) return 'sem_sinal';
   if (tela.ultimo_erro_codigo || tela.ultimo_erro || ESTADOS_DE_ERRO.has(tela.player_estado)) return 'erro_do_player';
   return 'operando';
 }
 
-// Config versionada só existe em Player com contrato >= 2; num V1 ela não é
-// "pendente", é indisponível.
+// Sem Player instalado a config não é "pendente", é indisponível.
 function situacaoConfig(tela, agora = new Date()) {
-  if (!(Number(tela.player_contrato) >= 2)) return 'indisponivel';
+  if (!tela.chave_hash) return 'indisponivel';
   if (tela.config_versao_aplicada != null && tela.config_versao_aplicada === tela.config_versao_desejada) {
     return 'atualizada';
   }
@@ -63,7 +64,7 @@ function situacaoConfig(tela, agora = new Date()) {
 }
 
 // Comprovantes (proof-of-play) na fila do Player. Desconhecido nunca vira
-// zero: V1 não informa, e V2 antes do primeiro heartbeat também não.
+// zero: antes do primeiro heartbeat com a fila o Player não informou nada.
 function situacaoFila(tela, agora = new Date()) {
   if (tela.fila_pendentes == null) return 'desconhecida';
   const antigo = ms(tela.fila_mais_antigo_em);
@@ -76,13 +77,12 @@ function situacaoFila(tela, agora = new Date()) {
 
 // Alertas só do que é operacionalmente relevante — nunca de tela fora do
 // horário, em reparo ou inativa (o próprio estado já diz o que é).
-// `releaseObrigatoria`: a release obrigatória ativa mais nova (ou null).
-function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = null) {
+function alertasDaTela(tela, saude, agora = new Date()) {
   if (tela.status !== 'ativo' || saude === 'fora_do_horario') return [];
   const alertas = [];
   if (saude === 'sem_sinal') alertas.push({ codigo: 'SEM_SINAL', nivel: 'alerta' });
   if (saude === 'erro_do_player') alertas.push({ codigo: 'ERRO_PLAYER', nivel: 'alerta' });
-  if (saude === 'aguardando_primeiro_sinal' && agora.getTime() - ms(tela.created_at) > PRAZO_PRIMEIRO_SINAL_MS) {
+  if (saude === 'aguardando_instalacao' && agora.getTime() - ms(tela.created_at) > PRAZO_INSTALACAO_MS) {
     alertas.push({ codigo: 'INSTALACAO_ATRASADA', nivel: 'atencao' });
   }
   const fila = situacaoFila(tela, agora);
@@ -94,15 +94,6 @@ function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = nul
     agora.getTime() - ms(tela.config_alterada_em) > CONFIG_ALERTA_APOS_MS
   ) {
     alertas.push({ codigo: 'CONFIG_PENDENTE', nivel: 'atencao' });
-  }
-  if (
-    releaseObrigatoria &&
-    tela.player_build != null &&
-    Number(tela.player_contrato) >= 2 &&
-    tela.player_build < releaseObrigatoria.build &&
-    agora.getTime() - ms(releaseObrigatoria.assinatura_conferida_em) > 24 * 3600 * 1000
-  ) {
-    alertas.push({ codigo: 'UPDATE_OBRIGATORIO_ATRASADO', nivel: 'atencao' });
   }
   return alertas;
 }
