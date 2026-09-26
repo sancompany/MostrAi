@@ -3,10 +3,10 @@ const telaEventos = require('./tela-eventos');
 const { TOLERANCIA_SEM_SINAL_MS } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 
-// Sinal de vida do Player: hello (dados que não mudam) e heartbeat (estado de
-// agora, a cada 15 s — docs/player-mvp-contract.md §5). Os dois viram
-// SNAPSHOT nas colunas da própria tela — uma linha, sobrescrita — e só as
-// transições viram linha em `tela_eventos`.
+// Sinal de vida do Player: o heartbeat (estado de agora, a cada 15 s —
+// docs/player-mvp-contract.md §5). Vira SNAPSHOT nas colunas da própria
+// tela — uma linha, sobrescrita — e só as transições viram linha em
+// `tela_eventos`.
 //
 // Leitura tolerante, campo a campo: um campo com tipo errado é ignorado, o
 // resto vale, e o sinal de vida (`ultima_vez_online`) é gravado de qualquer
@@ -43,20 +43,6 @@ const ehObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 // ---------------------------------------------------------------------------
 // Leitura dos corpos
 // ---------------------------------------------------------------------------
-function lerHello(corpo) {
-  return {
-    contrato: inteiro(corpo.contrato, 1, 99),
-    versao: texto(corpo.versaoApp, 32),
-    build: inteiro(corpo.buildNumber, 1, 2_000_000_000),
-    fabricante: texto(corpo.fabricante, 64),
-    modelo: texto(corpo.modelo, 64),
-    android: texto(corpo.android, 32),
-    largura: inteiro(corpo.largura, 1, 20000),
-    altura: inteiro(corpo.altura, 1, 20000),
-    timezone: texto(corpo.timezone, 64),
-  };
-}
-
 // Snapshot (contrato §5): `estado` e `criativoId` valem para AGORA —
 // ausentes, ficam "não informado"/"nenhum". `erro` e `fila` ausentes não
 // mexem no que estava; `erro: null` limpa. A versão do Player vem só do
@@ -86,8 +72,8 @@ function lerHeartbeat(corpo) {
 // ---------------------------------------------------------------------------
 // Gravação
 // ---------------------------------------------------------------------------
-// Transições comuns aos dois sinais: primeiro sinal e volta depois de sumir.
-// Devolve os eventos a gravar.
+// Transições de vida: primeiro sinal e volta depois de sumir. Devolve os
+// eventos a gravar.
 function transicoesDeVida(antes, agora) {
   const eventos = [];
   if (!antes.primeiro_sinal_em) eventos.push(['FIRST_SEEN', null]);
@@ -126,32 +112,6 @@ async function depoisDoCommit(r) {
 
 async function gravarEventos(client, telaId, eventos) {
   for (const [tipo, detalhe, em] of eventos) await telaEventos.registrar(telaId, tipo, detalhe, client, em || null);
-}
-
-async function registrarHello(telaId, corpo, player) {
-  const h = lerHello(corpo);
-  // Header é o que o Player manda em toda requisição; o corpo do hello vence
-  // quando os dois existem (é o dado declarado para isso).
-  const contrato = h.contrato ?? player.contrato;
-  const versao = h.versao ?? player.versao;
-  const build = h.build ?? player.build;
-  const agora = new Date();
-  return comTela(telaId, async (client, antes) => {
-    const eventos = transicoesDeVida(antes, agora);
-    await client.query(
-      `UPDATE dispositivos
-          SET player_contrato = COALESCE($2, player_contrato), player_versao = COALESCE($3, player_versao),
-              player_build = COALESCE($4, player_build),
-              aparelho_fabricante = $5, aparelho_modelo = $6, aparelho_android = $7,
-              aparelho_largura = $8, aparelho_altura = $9, aparelho_timezone = $10,
-              hello_primeiro_em = COALESCE(hello_primeiro_em, now()), hello_ultimo_em = now(),
-              primeiro_sinal_em = COALESCE(primeiro_sinal_em, now()), ultima_vez_online = now()
-        WHERE id = $1`,
-      [telaId, contrato, versao, build, h.fabricante, h.modelo, h.android, h.largura, h.altura, h.timezone],
-    );
-    await gravarEventos(client, telaId, eventos);
-    return { primeiroSinal: !antes.primeiro_sinal_em, pontoId: antes.ponto_id, eventos: eventos.map((e) => e[0]) };
-  }).then(depoisDoCommit);
 }
 
 async function registrarHeartbeat(telaId, corpo, player) {
@@ -222,9 +182,7 @@ async function sinalizarPlaylist(telaId, db = pool) {
 
 module.exports = {
   ESTADOS,
-  lerHello,
   lerHeartbeat,
-  registrarHello,
   registrarHeartbeat,
   sinalizarPlaylist,
 };

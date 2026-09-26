@@ -68,16 +68,6 @@ router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, re
 });
 
 // ---------------------------------------------------------------------------
-// POST /player/:dispositivoId/hello — dados técnicos que não mudam (§3)
-// ---------------------------------------------------------------------------
-router.post('/player/:dispositivoId/hello', exigirAparelho({ operacao: false }), corpoObjeto, async (req, res) => {
-  const r = await sinal.registrarHello(req.dispositivo.id, req.body, req.player);
-  avisarMudanca(req.dispositivo, { transicao: r.eventos.length > 0 });
-  // Poupa um ciclo: com a versão aqui, o Player já busca a config (§3).
-  res.json({ configVersion: req.dispositivo.config_versao_desejada });
-});
-
-// ---------------------------------------------------------------------------
 // POST /player/:dispositivoId/heartbeat — sinal de vida a cada 15 s (§5)
 // ---------------------------------------------------------------------------
 // Sem limite de tentativas nem SSE por batida: 4 por minuto por tela é o
