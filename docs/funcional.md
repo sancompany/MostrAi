@@ -286,6 +286,20 @@ valor que `GET /plano/{id}` devolve. *Violada:* não há caminho no código.
 janela de 300s, sobre o corpo cru, é 401. *Violada:* nada é creditado.
 *Quem vê:* ninguém na hora; a conciliação diária corrige.
 
+**RN-06-A — Evento autenticado nunca se perde (inbox, migration 096).** O
+webhook só responde 200 depois de gravar o evento em `webhooks_recebidos`; se
+não conseguir gravar, responde 503 e o Checkout reentrega. O efeito é
+aplicado depois, por um processador com nova tentativa (até 6, espera
+crescente), trava entre instâncias (`SKIP LOCKED`) e retomada depois de
+restart. Na assinatura, falha no meio libera a reserva de deduplicação e a
+nova tentativa aplica o efeito uma vez; no pedido avulso (passos fora de uma
+transação só), falha no meio vira pendência pra conferir à mão, sem repetir.
+Payload v1 (sem `eventoId`) ganha uma linha por entrega, e a dedupe dele
+continua na lógica financeira. *Violada:* depois de 6 falhas o evento
+fica `morto` e vira pendência. *Quem vê:* administrador, na fila de eventos
+pendentes. Isso vale principalmente para chargeback, estorno e troca
+revertida, que a conciliação diária não recupera.
+
 **RN-07 — Tela ≠ ponto.** Playlist, chave, margens, sinal e custo vivem em
 `dispositivos`; horário é do ponto e vale para todas as telas dele; o PIN de
 saída é da rede. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota é

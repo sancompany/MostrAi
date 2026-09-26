@@ -4636,6 +4636,25 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
+
+**[x] Construído e testado** (migration 096, `src/financeiro/webhook-inbox.js`,
+rota `POST /webhook/san-checkout`).
+- **Antes:** o 200 saía e só depois o evento era processado em memória, então uma falha perdia o evento de vez. A conciliação diária recupera ciclo pago, falha e cancelamento, mas não chargeback, estorno nem troca revertida.
+- **Agora:**
+  - o evento é gravado em `webhooks_recebidos` (chave única) antes do 200; se a gravação falhar, a resposta é 503;
+  - um processador por instância, a cada 30 s, trava cada evento com `SKIP LOCKED` e tenta de novo até 6 vezes (30 s → 2 h);
+  - depois disso o evento fica `morto` e vira pendência no admin;
+  - uma instância que morre no meio é retomada em 5 min;
+  - chave: `evento:<eventoId>` (v2; reentrega = mesma linha) ou `entrega:<uuid>` (v1; cada entrega é uma linha, porque duas renovações v1 podem ter o corpo idêntico — a dedupe do v1 continua em `webhooks_processados`);
+  - assinatura: se falhar depois da reserva de deduplicação, a reserva é liberada e a nova tentativa aplica o efeito uma vez (a escrita é uma transação só);
+  - pedido avulso: se falhar no meio, a reserva fica e o evento vira pendência pra conferir à mão; não é repetido, porque os passos não estão numa transação só;
+  - nada depois do COMMIT do crédito lança erro, então uma nova tentativa não credita de novo;
+  - a lógica de cada evento não mudou.
+- **Testes:** `tests/webhook-inbox.test.js`. RUNBOOK §6.2 explica como recuperar um evento `morto`.
+
+**[ ] Falta:** conferir em produção depois do merge (evento sintético sem efeito financeiro) — a estação de e-mails vem depois.
+
 ## Página de Planos — fechada (26/09/2026)
 
 **[x] Fechada.** Só textos, sem mudança de layout, preço ou benefício:

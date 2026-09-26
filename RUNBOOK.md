@@ -353,12 +353,60 @@ segredos, código, repositório do Player.
 | Job `ApuracaoBancoHoras` falhou | o déficit do mês anterior não entrou no banco de horas — essa dívida não volta em exibição até o job rodar | ler o log e o código de saída (1 falhou, 2 argumento, 3 já em execução — `docs/job-apuracao-banco-horas.md`); rodar de novo é seguro (idempotente) |
 | Webhook do Checkout dando 401 | assinatura HMAC não fecha | a `SAN_CHECKOUT_KEY` dos dois lados divergiu. Comparar com o painel do Checkout |
 | Fila `eventos_assinatura_pendentes` crescendo | eventos chegando e não sendo aplicados | admin → a fila mostra o motivo de cada um |
+| Pendência "webhook não processado depois de 6 tentativas" | um evento do Checkout foi gravado na inbox (`webhooks_recebidos`) mas a lógica falhou 6 vezes seguidas: estado `morto` | ver §6.2: ler `ultimo_erro`, corrigir a causa e recolocar na fila |
+| Webhook do Checkout recebendo 503 | a rota não conseguiu gravar o evento na inbox (banco fora) — o Checkout tenta de novo sozinho | conferir o banco; nada se perde enquanto o Checkout reentrega |
 | Migration abortou o deploy | SQL falhou no banco real | o container antigo segue no ar. Corrigir com migration nova, nunca editando a aplicada |
 
 **[Estação 6]** Faltam: alerta externo de "caiu" que chega ao celular, monitor
 que avisa quando o job **não rodou**, e alerta de orçamento em cada conta paga.
 
 ---
+
+## 6.2 Inbox do webhook financeiro (migration 096)
+
+`POST /webhook/san-checkout` só responde 200 **depois** de gravar o evento em
+`webhooks_recebidos`. O processador roda em cada instância a cada 30 s (e logo
+depois de cada 200): pega um evento com `FOR UPDATE SKIP LOCKED`, roda a mesma
+lógica de sempre e marca o resultado. A conciliação diária continua como
+segunda camada — webhook = rapidez, inbox = não perder, conciliação = reparo.
+
+| Estado | Significa |
+|---|---|
+| `recebido` | gravado, ainda não processado |
+| `processando` | uma instância pegou; se ela morrer, outra retoma depois de 5 min |
+| `tentando_de_novo` | falhou; nova tentativa em 30 s, 2 min, 10 min, 30 min, 2 h |
+| `processado` | efeito aplicado (ou decidido: pendência, "já aplicado") |
+| `morto` | falhou 6 vezes — vira pendência no admin ("webhook não processado…") |
+
+Diagnóstico (sem imprimir o payload, que tem CPF/CNPJ):
+
+```sql
+SELECT status, count(*) FROM webhooks_recebidos GROUP BY 1;
+SELECT id, evento, status, tentativas, ultimo_erro, recebido_em, processado_em
+  FROM webhooks_recebidos WHERE status IN ('tentando_de_novo','morto') ORDER BY recebido_em;
+```
+
+Recolocar um evento `morto` na fila, depois de corrigir a causa (a lógica é
+idempotente — reprocessar não credita, suspende nem cancela de novo):
+
+```sql
+UPDATE webhooks_recebidos SET status = 'tentando_de_novo', tentativas = 0,
+       proxima_tentativa_em = now(), atualizado_em = now()
+ WHERE id = <id> AND status = 'morto';
+```
+
+Exceção: **pedido avulso** (formato sem `tipo`, hoje só histórico) não é
+repetido. Os passos dele não ficam numa transação só, e repetir poderia
+aplicar duas vezes o que já entrou. Se falhar no meio, o evento fica
+`processado` e vira pendência "falha ao aplicar o pedido (pode ter ficado
+pela metade — conferir à mão)". A conferência é manual.
+
+Chave da linha: `evento:<eventoId>` (contrato v2 — reentrega = mesma linha)
+ou `entrega:<uuid>` (v1, sem `eventoId` — cada entrega é uma linha; quem
+deduplica o v1 é a lógica financeira, em `webhooks_processados`).
+
+Retenção: `processado` sai depois de 30 dias e `morto` depois de 90 (expurgo
+de hora em hora pelo próprio processador).
 
 ## 6.1 Telas e Player (MVP)
 

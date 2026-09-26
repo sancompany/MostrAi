@@ -9,6 +9,7 @@ const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
 const sanCheckout = require('./san-checkout');
+const webhookInbox = require('./webhook-inbox');
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
@@ -399,19 +400,31 @@ router.get('/pedido/:id', sanCheckout.exigirChaveCheckout, async (req, res) => {
 
 // Confirmação/eventos de assinatura E de pedido avulso (API.md do Checkout,
 // seção 4.3): o MESMO webhook_url recebe os dois formatos, diferenciados
-// pelo campo `tipo` — payload de pedido não tem esse campo (4.3.2). Responde
-// 200 rápido, processa depois, exatamente como o contrato permite. A
+// pelo campo `tipo` — payload de pedido não tem esse campo (4.3.2). A
 // autorização é a assinatura HMAC dos headers, conferida em `webhookAutorizado`.
-router.post('/webhook/san-checkout', (req, res) => {
+//
+// Inbox durável (migration 096, 26/09/2026): o 200 só sai DEPOIS de o evento
+// estar gravado em `webhooks_recebidos`. Antes o 200 saía primeiro e o
+// processamento corria em memória — uma falha ali perdia o evento de vez
+// (o Checkout já tinha o 200 e não reenviava). Se a gravação falhar, 503: o
+// Checkout tenta de novo. Reentrega do mesmo evento também recebe 200.
+router.post('/webhook/san-checkout', async (req, res) => {
   if (!sanCheckout.webhookAutorizado(req)) {
     return res.status(401).json({ erro: 'não autorizado' });
   }
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    return res.status(400).json({ erro: 'corpo inválido' });
+  }
+  try {
+    await webhookInbox.receber(req.body);
+  } catch (err) {
+    console.error('webhook san-checkout: evento NÃO gravado, respondendo 503:', webhookInbox.sanitizar(err));
+    return res.status(503).json({ erro: 'indisponível — tente novamente' });
+  }
   res.json({ ok: true });
-  const processar =
-    req.body.tipo === 'assinatura' ? sanCheckout.processarWebhookAssinatura : sanCheckout.processarWebhookPedido;
-  processar(req.body).catch((err) => {
-    console.error('erro processando webhook san-checkout', err);
-  });
+  // Processa já (baixa latência); se falhar, a linha continua na inbox e o
+  // timer do processador tenta de novo.
+  webhookInbox.processarPendentes().catch((err) => console.error('inbox do webhook:', webhookInbox.sanitizar(err)));
 });
 
 // Autoatendimento: o próprio cliente cancela, sem passar pelo admin. A
