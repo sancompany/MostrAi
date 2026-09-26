@@ -4636,6 +4636,27 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Página de Planos — fechada (26/09/2026)
+
+**[x] Fechada.** Só textos, sem mudança de layout, preço ou benefício:
+- **Textos alterados:**
+  - frase principal: "Escolha o plano, os pontos da rede e a duração do seu anúncio dentro das condições contratadas.";
+  - selo do Pro: "Recomendado", mantendo o destaque azul;
+  - subtítulo do Prime: "A experiência mais completa da Mostraí." (migration 095, só `rotulo`).
+- **FAQ:**
+  - preço: permanece nas renovações dessa assinatura; nova contratação paga o valor vigente;
+  - aprovação: "Você acompanha a aprovação pelo painel". O código manda e-mail e notificação no painel, mas a entrega de e-mail real ainda não foi confirmada pelo dono;
+  - créditos: reescrito em linguagem simples;
+  - novo item "Quantas vezes meu anúncio aparece?" explicando o mínimo.
+- **Horas × exibições comprovada no gerador real** (`tests/planos-grade-final.test.js`):
+  - na duração máxima do plano sai exatamente o mínimo anunciado (6.480 / 15.120 / 21.600);
+  - peça mais curta cabe mais vezes nas mesmas horas (Essencial 10 s → 9.720, 5 s → 19.440; Pro 15 s → 20.160, 10 s → 30.240; Prime 20 s → 32.400, 15 s → 43.200);
+  - os segundos usados nunca passam dos contratados.
+- **Paridade vitrine × Checkout** nos 12 ciclos com a grade de produção: mesmo arredondamento em centavos. Essencial anual: 127,99 × 12 = R$ 1.535,88 nos dois, economia R$ 384,00.
+- **Aviso da rede:** dinâmico e sem mudança. 0 pontos mostra "nenhum ponto ainda."; de 1 a 9 mostra a contagem, com o bônus quando há ponto no ar; a partir de 10 some (e2e `21-planos-final.mjs`).
+
+**[ ] Para revisão jurídica, sem mudança de texto:** o FAQ e os Termos dizem "7 dias corridos da confirmação do pagamento". O código conta da **primeira** cobrança confirmada, e renovação não abre prazo novo. Os textos não dizem isso explicitamente.
+
 ## Promoções sem prazo de desconto (26/09/2026)
 
 **[x] Feito.** O San Checkout confirmou que uma assinatura de cartão já paga

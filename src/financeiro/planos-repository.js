@@ -322,6 +322,7 @@ async function atualizarProduto(tier, { precoBase, descontos }) {
 }
 
 module.exports = {
+  calcularValorMensal,
   listarAtivos,
   listarTodos,
   buscarPorId,
