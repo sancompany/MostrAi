@@ -2205,48 +2205,44 @@ button.pend-bloco:focus-visible {
   color: var(--err-texto);
   font-weight: 600;
 }
-.id-tecnico {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---------- Rede: card fechado da tela ---------- */
-.tela-card {
-  display: flex;
-  flex-direction: column;
+/* ---------- Rede: linha da tela dentro do ponto ---------- */
+.tela-linha {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--e-2) var(--e-4);
+  padding: var(--e-3) var(--e-4);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
-  color: inherit;
-  text-decoration: none;
-  overflow: hidden;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
-a.tela-card:hover {
-  border-color: var(--borda-forte);
-  box-shadow: var(--sombra-hover);
-}
-a.tela-card:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-.tela-card.com-alerta {
+.tela-linha.com-alerta {
   border-color: var(--err);
 }
-.tela-card-topo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--e-2) var(--e-4);
-  padding: var(--e-3) var(--e-4);
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+.tela-linha-codigo {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  text-decoration: none;
 }
-.tela-card-topo h4 {
-  margin: 0;
-  font-size: 0.96rem;
+.tela-linha-codigo:hover {
+  text-decoration: underline;
+}
+.tela-linha-situacao {
+  font-size: 0.86rem;
+}
+.tela-linha-acoes {
+  display: inline-flex;
+  gap: 6px;
+}
+@media (max-width: 560px) {
+  .tela-linha {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .tela-linha-situacao {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }
 .tela-card-selos {
   display: inline-flex;
@@ -2254,25 +2250,11 @@ a.tela-card:focus-visible {
   gap: 6px;
   margin: 0;
 }
-.tela-card-dados {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--e-3) var(--e-4);
-  margin: 0;
-  padding: var(--e-3) var(--e-4);
-}
-.tela-card-dados dt {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-}
-.tela-card-dados dd {
-  margin: 2px 0 0;
-  font-size: 0.86rem;
-}
-@media (max-width: 720px) {
-  .tela-card-dados {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.codigo-instalacao {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 1.25rem !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 /* ---------- Rede: ficha completa da tela ---------- */
@@ -2303,32 +2285,6 @@ a.tela-card:focus-visible {
   text-transform: uppercase;
   color: var(--text-dim);
 }
-details.ficha-bloco > summary {
-  display: flex;
-  align-items: baseline;
-  gap: var(--e-3);
-  cursor: pointer;
-  list-style: none;
-}
-details.ficha-bloco > summary::-webkit-details-marker {
-  display: none;
-}
-details.ficha-bloco > summary::before {
-  content: "▸";
-  color: var(--text-dim);
-}
-details.ficha-bloco[open] > summary::before {
-  content: "▾";
-}
-details.ficha-bloco > summary h4 {
-  margin: 0;
-}
-details.ficha-bloco > summary span {
-  font-size: 0.82rem;
-}
-details.ficha-bloco[open] > summary {
-  margin-bottom: var(--e-4);
-}
 .dado-ajuda {
   display: block;
   font-size: 0.72rem;
@@ -2340,95 +2296,7 @@ details.ficha-bloco[open] > summary {
   font-size: 0.84rem;
   overflow-wrap: anywhere;
 }
-.config-versoes {
-  margin-bottom: var(--e-4);
-  padding-bottom: var(--e-4);
-  border-bottom: 1px solid var(--border);
-}
-.config-lista {
-  margin: 0;
-}
-.config-linha {
-  display: grid;
-  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--e-2) var(--e-4);
-  padding: var(--e-3) 0;
-  border-bottom: 1px solid var(--border);
-}
-.config-linha:last-child {
-  border-bottom: 0;
-}
-.config-linha dt {
-  font-size: 0.82rem;
-  color: var(--text-dim);
-}
-.config-linha dd {
-  margin: 0;
-  font-size: 0.9rem;
-}
-@media (max-width: 640px) {
-  .config-linha {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .config-linha dt {
-    grid-column: 1 / -1;
-  }
-}
-.ficha-subbloco {
-  margin-top: var(--e-5);
-  padding-top: var(--e-4);
-  border-top: 1px solid var(--border);
-}
-.ficha-subbloco h5 {
-  margin: 0 0 var(--e-3);
-  font-size: 0.86rem;
-}
-.ficha-subbloco .acoes {
-  margin-top: var(--e-3);
-}
-.pin-mascara {
-  font-family: var(--mono, ui-monospace, monospace);
-  letter-spacing: 0.2em;
-  font-size: 1.05rem;
-}
-#playerConfigJson {
-  width: 100%;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.82rem;
-  resize: vertical;
-}
-.ficha-avancado {
-  margin-top: var(--e-5);
-  font-size: 0.86rem;
-}
-.ficha-avancado summary {
-  cursor: pointer;
-  color: var(--text-dim);
-}
-.tela-historico {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--e-2);
-}
-.tela-historico li {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: var(--e-3);
-  font-size: 0.86rem;
-}
-.tela-historico time {
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.tela-ficha-pe {
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* Área segura (modal "Área segura" da ficha da tela). */
+/* Área segura (bloco "Área segura" da ficha da tela). */
 /* Safe area em cruz: cada campo do lado que ele representa, com a tela no
    meio — leitura imediata de "o que é Topo, o que é Esquerda". Rótulo na
    mesma linha do número e a tela em miniatura: a cruz cabe em ~150px de

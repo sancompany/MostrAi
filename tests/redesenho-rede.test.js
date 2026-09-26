@@ -126,6 +126,9 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
   );
   const pontoId = pontoRows[0].id;
   const statusDoPonto = async () => (await pontosRepo.buscarPorId(pontoId)).status;
+  // O nome da tela é o código humano (M-0042); o número dentro do ponto
+  // (gatilho da migration 088) continua existindo para relatórios.
+  const numero = async (id) => (await pool.query('SELECT numero FROM dispositivos WHERE id = $1', [id])).rows[0].numero;
   try {
     assert.strictEqual(await statusDoPonto(), 'a_instalar', '0 telas nasce aguardando instalação');
     const deuSinal = async (telaId) => {
@@ -142,7 +145,8 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     // Player V2 (24/09/2026): tela nasce Ativa, mas tela cadastrada não é
     // tela operando — o ponto só vira "Ativo" com o primeiro sinal.
     const tela1 = await dispositivosRepo.criar(pontoId, {});
-    assert.strictEqual(tela1.nome, 'Tela 1');
+    assert.strictEqual(tela1.codigo, `M-${String(tela1.id).padStart(4, '0')}`);
+    assert.strictEqual(await numero(tela1.id), 1);
     assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela ativa sem Player: ainda aguardando instalação');
     // Player preparado (chave gravada) mas nunca ligou: é outro estado — o
     // dono precisa distinguir "falta instalar" de "instalada, só não ligou".
@@ -174,7 +178,7 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     assert.strictEqual(await statusDoPonto(), 'inativo', 'tem tela cadastrada, nenhuma ativa nem em reparo');
 
     const tela2 = await dispositivosRepo.criar(pontoId, {});
-    assert.strictEqual(tela2.nome, 'Tela 2');
+    assert.strictEqual(await numero(tela2.id), 2);
     assert.strictEqual(await statusDoPonto(), 'a_instalar', 'tela nova ativa, sem sinal: aguardando instalação');
     await deuSinal(tela2.id);
     assert.strictEqual(await statusDoPonto(), 'em_operacao', 'segunda tela deu sinal: reabre o ponto');
@@ -182,9 +186,9 @@ test('status do ponto acompanha as telas sozinho, sem estado residual', async ()
     await dispositivosRepo.deletar(tela1.id);
     assert.strictEqual(await statusDoPonto(), 'em_operacao', 'apagar a tela inativa não mexe — a outra segue ativa');
     const tela3 = await dispositivosRepo.criar(pontoId, {});
-    assert.strictEqual(tela3.nome, 'Tela 1', 'menor número livre: a Tela 1 apagada libera o 1 (migration 088)');
+    assert.strictEqual(await numero(tela3.id), 1, 'menor número livre: a Tela 1 apagada libera o 1 (migration 088)');
     const tela4 = await dispositivosRepo.criar(pontoId, {});
-    assert.strictEqual(tela4.nome, 'Tela 3', 'com 1 e 2 ocupados, a próxima é a 3');
+    assert.strictEqual(await numero(tela4.id), 3, 'com 1 e 2 ocupados, a próxima é a 3');
     await dispositivosRepo.deletar(tela4.id);
 
     await dispositivosRepo.deletar(tela2.id);

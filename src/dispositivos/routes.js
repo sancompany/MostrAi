@@ -101,11 +101,6 @@ router.get('/admin/dispositivos/:id', async (req, res) => {
   res.json({ ...tela, conexao: { baseUrl: baseUrlDoPlayer(req) } });
 });
 
-router.get('/admin/dispositivos/:id/eventos', async (req, res) => {
-  if (!(await telaOu404(req, res))) return;
-  res.json(await telaEventos.listar(req.params.id, 100));
-});
-
 router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
   const ponto = await pontosRepo.buscarPorId(req.params.pontoId);
   if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
@@ -133,14 +128,15 @@ router.patch('/admin/dispositivos/:id', async (req, res) => {
 });
 
 router.delete('/admin/dispositivos/:id', async (req, res) => {
-  const existente = await repo.buscarLinha(req.params.id);
+  const existente = await telaOu404(req, res);
+  if (!existente) return;
   try {
-    await repo.deletar(req.params.id);
+    if (!(await repo.deletar(existente.id))) return res.status(404).json({ erro: 'tela não encontrada' });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ erro: err.message });
     throw err;
   }
-  if (existente) await avisarMudanca(existente.ponto_id, existente.id);
+  await avisarMudanca(existente.ponto_id, existente.id);
   res.json({ ok: true });
 });
 

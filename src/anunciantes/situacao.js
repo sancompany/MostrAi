@@ -228,7 +228,7 @@ function dataBR(iso) {
 const GRUPOS_DE_SAUDE = [
   { chave: 'operando', um: 'funcionando', varios: 'funcionando' },
   { chave: 'fora_do_horario', um: 'fora do horário', varios: 'fora do horário' },
-  { chave: 'aguardando_primeiro_sinal', um: 'aguardando a primeira conexão', varios: 'aguardando a primeira conexão' },
+  { chave: 'aguardando_instalacao', um: 'aguardando instalação', varios: 'aguardando instalação' },
   { chave: 'sem_sinal', um: 'sem sinal', varios: 'sem sinal' },
   { chave: 'erro_do_player', um: 'com erro relatado', varios: 'com erro relatado' },
   { chave: 'em_reparo', um: 'em reparo', varios: 'em reparo' },

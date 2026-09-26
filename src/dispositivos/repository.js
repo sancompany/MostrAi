@@ -2,8 +2,6 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const { gerarHash, conferirHash } = require('../lib/senha');
 const cofre = require('../lib/cofre');
-const horarioSemanal = require('../lib/horario-semanal');
-const { operacaoDaTela, deveriaOperar } = require('../lib/operacao-tela');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
@@ -47,42 +45,36 @@ const INSTALACAO_VALIDADE_MIN = 30;
 const INSTALACAO_TENTATIVAS = 5;
 const INSTALACAO_REPETICAO_MIN = 5;
 
-const nomeDaTela = (t) => `Tela ${t.numero}`;
-
 // SELECT interno: a linha inteira da tela + o que o ponto empresta a ela.
-// Tem hash de chave e PIN cifrado — só sai deste módulo pelas projeções
-// abaixo, que escolhem campo a campo o que pode sair.
-const SELECT_BASE = `
+// Tem hash de chave — só sai deste módulo pelas projeções abaixo, que
+// escolhem campo a campo o que pode sair. É o caminho quente do Player (toda
+// requisição autenticada, heartbeat a cada 15 s): nada além do necessário.
+const SELECT_TELA = `
   SELECT d.*,
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
          p.horario_semanal AS ponto_horario_semanal, p.anunciante_id AS dono_conta_id,
-         p.categoria_id, p.horario_abertura, p.horario_fechamento, p.cota_autoanuncio_slots_hora,
-         (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto,
-         tk.criado_em AS prov_criado_em, tk.expira_em AS prov_expira_em, tk.usado_em AS prov_usado_em,
-         tk.cancelado_em AS prov_cancelado_em, tk.codigo_cifrado AS prov_codigo_cifrado
-         __EXTRA__
+         p.categoria_id, p.cota_autoanuncio_slots_hora,
+         (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d
-    JOIN pontos p ON p.id = d.ponto_id
+    JOIN pontos p ON p.id = d.ponto_id`;
+
+// Só para o admin (fora do caminho quente): o código de instalação mais
+// recente (cópia cifrada, para reexibir enquanto vale) e quem está no ar,
+// pelo nome do anunciante.
+// Função como substituto: o texto tem `$'` (fim da regex), que um replace
+// com string interpretaria como "o resto do SELECT".
+const SELECT_TELA_ADMIN = SELECT_TELA.replace(
+  '    FROM dispositivos d',
+  () => `,
+         tk.criado_em AS prov_criado_em, tk.expira_em AS prov_expira_em, tk.usado_em AS prov_usado_em,
+         tk.cancelado_em AS prov_cancelado_em, tk.codigo_cifrado AS prov_codigo_cifrado,
+         (SELECT a.nome_empresa FROM criativos c JOIN anunciantes a ON a.id = c.anunciante_id
+           WHERE d.criativo_atual ~ '^[0-9]{1,9}$' AND c.id = d.criativo_atual::int) AS criativo_atual_anunciante
+    FROM dispositivos d
     LEFT JOIN LATERAL (
       SELECT criado_em, expira_em, usado_em, cancelado_em, codigo_cifrado FROM tokens_provisionamento
        WHERE dispositivo_id = d.id ORDER BY criado_em DESC, id DESC LIMIT 1
-    ) tk ON true`;
-
-const SELECT_TELA = SELECT_BASE.replace('__EXTRA__', '');
-// Só para o admin (fora do caminho quente das rotas do Player): última
-// exibição confirmada, pelo ledger do V2 ou pelo contador por hora (V1).
-// Função como substituto: o texto tem `$'` (fim da regex), que um
-// replace com string interpretaria como "o resto do SELECT".
-const SELECT_TELA_ADMIN = SELECT_BASE.replace(
-  '__EXTRA__',
-  () => `, GREATEST(
-       (SELECT max(ec.confirmado_em) FROM execucoes_confirmadas ec
-         WHERE ec.dispositivo_id = d.id AND ec.status = 'contabilizado'),
-       (SELECT max(ex.janela_hora) FROM exibicoes_contador ex
-         WHERE ex.dispositivo_id = d.id AND ex.vezes_confirmadas > 0)
-     ) AS ultima_confirmacao_em,
-     (SELECT a.nome_empresa FROM criativos c JOIN anunciantes a ON a.id = c.anunciante_id
-       WHERE d.criativo_atual ~ '^[0-9]{1,9}$' AND c.id = d.criativo_atual::int) AS criativo_atual_anunciante`,
+    ) tk ON true`,
 );
 
 // Uso interno do Player (autenticação, playlist, config) — nunca vai para
@@ -105,54 +97,31 @@ async function buscarLinha(id) {
 // ---------------------------------------------------------------------------
 // Projeções
 // ---------------------------------------------------------------------------
-function situacaoProvisionamento(t, agora) {
-  if (!t.prov_criado_em) return null;
-  let estado = 'aguardando_instalacao';
-  if (t.prov_usado_em) estado = 'usado';
-  else if (t.prov_cancelado_em) estado = 'cancelado';
-  else if (new Date(t.prov_expira_em) <= agora) estado = 'expirado';
-  // O código só volta enquanto vale — expirado, usado ou cancelado não tem
-  // o que mostrar (e a cópia cifrada já foi ou será apagada).
-  const codigo = estado === 'aguardando_instalacao' ? cofre.abrir(t.prov_codigo_cifrado) : null;
+// Instalação do Player (docs/player-mvp-contract.md §3): "aguardando" até
+// haver credencial, "conectado" depois. O código só volta enquanto vale —
+// expirado, usado ou cancelado não tem o que mostrar.
+function situacaoInstalacao(t, agora) {
+  if (t.chave_hash) return { estado: 'conectado', conectadoEm: t.provisionado_em, codigo: null, expiraEm: null };
+  const pendente = t.prov_criado_em && !t.prov_usado_em && !t.prov_cancelado_em && new Date(t.prov_expira_em) > agora;
+  const codigo = pendente ? cofre.abrir(t.prov_codigo_cifrado) : null;
   return {
-    estado,
+    estado: 'aguardando',
+    conectadoEm: null,
     codigo: codigo ? formatarCodigoInstalacao(codigo) : null,
-    geradoEm: t.prov_criado_em,
-    expiraEm: t.prov_expira_em,
-    usadoEm: t.prov_usado_em,
+    expiraEm: codigo ? t.prov_expira_em : null,
   };
 }
 
-function situacaoCredencial(t, agora) {
-  const anteriorValida = t.chave_anterior_hash && new Date(t.chave_anterior_expira_em) > agora;
-  let estado = 'sem_credencial';
-  if (t.chave_hash) estado = 'ativa';
-  else if (t.revogado_em) estado = 'revogada';
-  return {
-    estado,
-    fingerprint: t.chave_fingerprint,
-    criadaEm: t.chave_criada_em,
-    ultimoUsoEm: t.chave_ultimo_uso_em,
-    revogadaEm: t.revogado_em,
-    nova: t.chave_nova_hash ? { fingerprint: t.chave_nova_fingerprint, criadaEm: t.chave_nova_criada_em } : null,
-    anterior: anteriorValida ? { expiraEm: t.chave_anterior_expira_em } : null,
-    // Mesma condição de credencial.iniciarRotacao: a candidata só chega a um
-    // Player V2 provisionado (viaja na resposta do heartbeat V2).
-    rotacionavel: !!t.chave_hash && !!t.dispositivo_uid,
-  };
-}
-
-// Tudo que o admin precisa para administrar a tela sem abrir o banco — e
-// nada que sirva para se passar por ela (sem chave, sem hash inteiro, sem
-// token, sem PIN).
+// O que o admin precisa para operar a tela — e nada que sirva para se passar
+// por ela (sem chave, sem hash, sem PIN) nem jargão de engenharia.
 function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
   const saude = saudeDaTela(t, t.ponto_horario_semanal, agora);
-  const v2 = Number(t.player_contrato) >= 2;
+  const temErro = t.ultimo_erro_codigo || t.ultimo_erro;
   return {
     id: t.id,
     pontoId: t.ponto_id,
-    numero: t.numero,
-    nome: nomeDaTela(t),
+    codigo: formatarCodigoTela(t.id),
+    nome: formatarCodigoTela(t.id),
     pontoNome: t.ponto_nome,
     pontoCidade: t.ponto_cidade,
     status: t.status,
@@ -162,80 +131,27 @@ function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
     instaladoEm: t.instalado_em,
     custoEquipamento: Number(t.custo_equipamento),
     mesesAmortizacao: t.meses_amortizacao,
-    operacao: {
-      primeiroSinalEm: t.primeiro_sinal_em,
-      ultimoSinalEm: t.ultima_vez_online,
-      deveriaOperarAgora: deveriaOperar(operacaoDaTela(t, t.ponto_horario_semanal, agora), agora),
-      playerEstado: v2 ? t.player_estado : null,
-      criativoAtual: v2 ? t.criativo_atual : null,
-      // Quem está no ar, pelo nome — o id do criativo é registro interno.
-      midiaNoAr: v2 && t.criativo_atual ? t.criativo_atual_anunciante || null : null,
-      ultimaPlaylistOkEm: v2 ? t.ultima_playlist_ok_em : null,
-      playlistEntregueEm: t.playlist_entregue_em,
-      ultimaConfirmacaoEm: t.ultima_confirmacao_em || null,
+    ultimoSinalEm: t.chave_hash ? t.ultima_vez_online : null,
+    player: t.chave_hash ? { versao: t.player_versao, build: t.player_build } : null,
+    // Quem está no ar, pelo nome — o id do criativo é registro interno.
+    midiaAtual: t.chave_hash && t.criativo_atual ? t.criativo_atual_anunciante || null : null,
+    instalacao: situacaoInstalacao(t, agora),
+    margens: {
+      superior: Number(t.margem_superior),
+      direita: Number(t.margem_direita),
+      inferior: Number(t.margem_inferior),
+      esquerda: Number(t.margem_esquerda),
     },
+    // Só para alerta ("a TV ainda não recebeu a mudança"); versão não é
+    // assunto do operador.
     configuracao: {
-      desejada: t.config_versao_desejada,
-      aplicada: v2 ? t.config_versao_aplicada : null,
       situacao: situacaoConfig(t, agora),
-      alteradaEm: t.config_alterada_em,
-      aplicadaEm: v2 ? t.config_aplicada_em : null,
-      modoHorario: t.modo_horario,
-      horarioSemanal: t.horario_semanal,
-      horarioResumo:
-        t.modo_horario === '24h'
-          ? '24 horas'
-          : horarioSemanal.resumo(t.modo_horario === 'personalizado' ? t.horario_semanal : t.ponto_horario_semanal),
-      timezone: t.timezone,
-      rotacao: t.rotacao_tela,
-      margens: {
-        superior: Number(t.margem_superior),
-        direita: Number(t.margem_direita),
-        inferior: Number(t.margem_inferior),
-        esquerda: Number(t.margem_esquerda),
-      },
-      pin: {
-        configurado: !!t.pin_manutencao_cifrado,
-        alteradoEm: t.pin_manutencao_alterado_em,
-        // compat-v1: só o PIN do player web existe (hash, 4–6 dígitos) — o
-        // Player V2 não o recebe até ser redefinido.
-        soPlayerWeb: !t.pin_manutencao_cifrado && !!t.pin_hash,
-      },
-      update: { baixarAutomaticamente: t.update_baixar_auto, horasEntreTentativas: t.update_horas_entre_tentativas },
+      desejada: t.config_versao_desejada,
+      aplicada: t.config_versao_aplicada,
     },
-    identidade: {
-      telaId: t.id,
-      pontoId: t.ponto_id,
-      dispositivoId: t.dispositivo_uid || null,
-      // Tela que nunca passou por provisionamento: o Player (web ou Android
-      // legado) fala pelo ID da Tela mesmo.
-      dispositivoIdLegado: !t.dispositivo_uid,
-      contrato: t.player_contrato,
-      versao: t.player_versao,
-      build: t.player_build,
-      provisionadoEm: t.provisionado_em,
-      credencial: situacaoCredencial(t, agora),
-      provisionamento: situacaoProvisionamento(t, agora),
-    },
-    diagnostico: {
-      fabricante: t.aparelho_fabricante,
-      modelo: t.aparelho_modelo,
-      android: t.aparelho_android,
-      resolucao: t.aparelho_largura && t.aparelho_altura ? `${t.aparelho_largura}×${t.aparelho_altura}` : null,
-      timezoneAparelho: t.aparelho_timezone,
-      helloPrimeiroEm: t.hello_primeiro_em,
-      helloUltimoEm: t.hello_ultimo_em,
-      fila: {
-        pendentes: v2 ? t.fila_pendentes : null,
-        maisAntigoEm: v2 ? t.fila_mais_antigo_em : null,
-        situacao: v2 ? situacaoFila(t, agora) : 'desconhecida',
-      },
-      erro:
-        t.ultimo_erro_codigo || t.ultimo_erro
-          ? { codigo: t.ultimo_erro_codigo, mensagem: t.ultimo_erro, em: t.ultimo_erro_em }
-          : null,
-      desvioRelogioMs: v2 && t.desvio_relogio_ms != null ? Number(t.desvio_relogio_ms) : null,
-      update: v2 && t.update_estado ? { estado: t.update_estado, em: t.update_estado_em } : null,
+    suporte: {
+      erro: temErro ? { codigo: t.ultimo_erro_codigo, mensagem: t.ultimo_erro, em: t.ultimo_erro_em } : null,
+      fila: { pendentes: t.fila_pendentes, maisAntigoEm: t.fila_mais_antigo_em, situacao: situacaoFila(t, agora) },
     },
   };
 }
@@ -250,7 +166,7 @@ async function releaseObrigatoriaAtiva() {
 async function listarParaAdmin(where = '', params = []) {
   const agora = new Date();
   const [{ rows }, release] = await Promise.all([
-    pool.query(`${SELECT_TELA_ADMIN} ${where} ORDER BY p.nome, d.numero`, params),
+    pool.query(`${SELECT_TELA_ADMIN} ${where} ORDER BY p.nome, d.id`, params),
     releaseObrigatoriaAtiva(),
   ]);
   return rows.map((t) => paraAdmin(t, agora, release));
@@ -364,13 +280,19 @@ async function temExibicaoConfirmada(id, db = pool) {
   return rows.length > 0;
 }
 
+// Exclusão de tela SEM histórico de exibição. O código de instalação
+// pendente e a credencial somem com a linha (tokens_provisionamento e
+// tela_eventos por ON DELETE CASCADE); contador, hora congelada e ledger
+// dela são só programação que nunca virou exibição. Devolve false se a tela
+// não existe.
 async function deletar(id) {
   const existente = await buscarLinha(id);
-  if (!existente) return;
+  if (!existente) return false;
   if (await temExibicaoConfirmada(id)) {
-    throw Object.assign(new Error('esta tela já exibiu anúncios confirmados — inative em vez de excluir'), {
-      status: 409,
-    });
+    throw Object.assign(
+      new Error('Esta tela possui histórico de exibições e não pode ser excluída permanentemente. Deixe-a Inativa.'),
+      { status: 409 },
+    );
   }
   const client = await pool.connect();
   try {
@@ -382,6 +304,7 @@ async function deletar(id) {
     await client.query('DELETE FROM dispositivos WHERE id = $1', [id]);
     await sincronizarStatusPonto(existente.ponto_id, client);
     await client.query('COMMIT');
+    return true;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -597,7 +520,6 @@ module.exports = {
   STATUS,
   INSTALACAO_VALIDADE_MIN,
   INSTALACAO_TENTATIVAS,
-  nomeDaTela,
   buscarComPonto,
   buscarLinha,
   buscarPorId,

@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { situacaoDosPontos } = require('../creditos/ponto');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // "Meus pontos" (Fatia 2 do painel único, 23/09/2026): UMA entidade visual
 // por estabelecimento. Antes eram três lugares para a mesma coisa — "Meu
@@ -11,7 +12,7 @@ const { situacaoDosPontos } = require('../creditos/ponto');
 // Ciclo de um estabelecimento, na ordem em que acontece:
 //   candidatura aberta (nova/em_contato)  -> em_analise
 //   ponto sem tela ativa (a_instalar)     -> aguardando_instalacao
-//   tela provisionada sem 1º sinal        -> aguardando_primeiro_sinal
+//   tela instalada sem sinal ainda        -> aguardando_primeiro_sinal
 //   ponto com tela ativa (em_operacao)    -> ativo
 //   ponto com tela só em reparo           -> em_manutencao
 //   ponto com telas desligadas            -> inativo
@@ -35,16 +36,9 @@ const ESTADO_DO_PONTO = {
 const SITUACAO_DA_TELA = {
   operando: { nivel: 'ok', texto: 'Funcionando' },
   fora_do_horario: { nivel: 'neutro', texto: 'Fora do horário de funcionamento' },
-  aguardando_primeiro_sinal: { nivel: 'neutro', texto: 'Aguardando a primeira conexão' },
-  sem_sinal: {
-    nivel: 'atencao',
-    texto: 'A tela deveria estar operando e está sem comunicação. A equipe Mostraí foi avisada.',
-  },
-  erro_do_player: {
-    nivel: 'atencao',
-    texto: 'A tela relatou um problema. A equipe Mostraí foi avisada.',
-  },
-  player_revogado: { nivel: 'neutro', texto: 'Aguardando reinstalação pela equipe Mostraí' },
+  aguardando_instalacao: { nivel: 'neutro', texto: 'Aguardando instalação pela equipe Mostraí' },
+  sem_sinal: { nivel: 'atencao', texto: 'A tela deveria estar operando e está sem comunicação.' },
+  erro_do_player: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
   em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
   inativa: { nivel: 'neutro', texto: 'Desligada' },
 };
@@ -59,7 +53,7 @@ function telaPublica(t, horarioDoPonto, agora) {
   const situacao = saudeDaTela(t, horarioDoPonto, agora);
   return {
     id: t.id,
-    nome: `Tela ${t.numero}`,
+    nome: formatarCodigoTela(t.id),
     operacao: OPERACAO[t.modo_horario] || OPERACAO.ponto,
     situacao,
     nivel: SITUACAO_DA_TELA[situacao].nivel,

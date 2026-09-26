@@ -159,13 +159,13 @@ test('heartbeat V1 com erro grava o erro; heartbeat limpo apaga', async () => {
   const dispositivo = await dispositivosRepo.criar(pontoId, {});
   try {
     await registrarHeartbeat(dispositivo.id, { erro: 'falha ao baixar playlist' }, {});
-    const comErro = (await dispositivosRepo.buscarPorId(dispositivo.id)).diagnostico.erro;
+    const comErro = (await dispositivosRepo.buscarPorId(dispositivo.id)).suporte.erro;
     assert.strictEqual(comErro.mensagem, 'falha ao baixar playlist');
     assert.ok(comErro.em, 'hora do erro fica preenchida junto');
 
     await registrarHeartbeat(dispositivo.id, {}, {});
     assert.strictEqual(
-      (await dispositivosRepo.buscarPorId(dispositivo.id)).diagnostico.erro,
+      (await dispositivosRepo.buscarPorId(dispositivo.id)).suporte.erro,
       null,
       'heartbeat limpo apaga o erro anterior — nada fica preso',
     );
@@ -196,7 +196,7 @@ test('listarPorPonto devolve as margens da safe area salvas', async () => {
       margem_esquerda: 0.5,
     });
     const [tela] = await dispositivosRepo.listarPorPonto(pontoId);
-    assert.deepStrictEqual(tela.configuracao.margens, { superior: 2, direita: 1.5, inferior: 4, esquerda: 0.5 });
+    assert.deepStrictEqual(tela.margens, { superior: 2, direita: 1.5, inferior: 4, esquerda: 0.5 });
   } finally {
     await dispositivosRepo.deletar(dispositivo.id);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);

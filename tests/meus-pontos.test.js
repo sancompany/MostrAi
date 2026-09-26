@@ -101,17 +101,19 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
        VALUES ($1, 'x', 'ativo', '24h', now(), now(), 'chave-secreta', NULL,
                'tela_00000000000000000001', repeat('a', 64), 'AAAAAA', '1.0.0', 2),
               ($1, 'y', 'ativo', '24h', now() - interval '3 hours', now() - interval '3 hours', 'outra-chave', 'stack trace cru',
-               NULL, NULL, NULL, NULL, NULL)`,
+               NULL, repeat('b', 64), NULL, NULL, NULL)`,
       [id],
     );
     await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [id]);
     const [estab] = await meusPontosDaConta(conta.id);
     assert.equal(estab.estado, 'ativo');
+    const { rows: ids } = await pool.query('SELECT id FROM dispositivos WHERE ponto_id = $1 ORDER BY numero', [id]);
+    const codigo = (n) => `M-${String(ids[n].id).padStart(4, '0')}`;
     assert.deepEqual(
       estab.telas.map((t) => [t.nome, t.situacao, t.nivel]),
       [
-        ['Tela 1', 'operando', 'ok'],
-        ['Tela 2', 'sem_sinal', 'atencao'],
+        [codigo(0), 'operando', 'ok'],
+        [codigo(1), 'sem_sinal', 'atencao'],
       ],
     );
     assert.equal(estab.alertas, 1);

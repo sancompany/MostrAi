@@ -294,7 +294,7 @@ router.get('/admin/resumo', async (_req, res) => {
                 FROM anunciantes WHERE excluido_em IS NULL
                 GROUP BY situacao, plano_cortesia`),
     // Só telas em sem_sinal/erro_do_player (src/lib/status-tela.js) — nunca
-    // fora_do_horario nem aguardando_primeiro_sinal, que não são falha.
+    // fora_do_horario nem aguardando_instalacao, que não são falha.
     dispositivosRepo.listarComProblemaDeSinal(),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total

@@ -7,15 +7,16 @@ const { operacaoDaTela, deveriaOperar } = require('./operacao-tela');
 // do ponto leem daqui. Contrato V2 §10: o Player reporta fato, a
 // classificação é do backend.
 //
-// Ordem de avaliação:
+// Ordem de avaliação (docs/player-mvp-contract.md §9):
 //   em_reparo / inativa        estado administrativo; nunca alerta
-//   player_revogado            credencial revogada no admin, aguardando reprovisionar
-//   aguardando_primeiro_sinal  nunca falou
+//   aguardando_instalacao      sem Player instalado (nunca instalado, ou revogado)
 //   fora_do_horario            o Player diz OUT_OF_SCHEDULE, ou o horário diz fechado
 //   sem_sinal                  deveria operar e o último sinal passou da tolerância
 //   erro_do_player             sinal recente com erro/estado de erro
 //   operando                   sinal recente, sem erro
 //
+// A instalação conta como primeiro sinal (src/dispositivos/repository.js
+// #trocarCodigoPorCredencial): Player instalado que some vira "Sem sinal".
 // "Sem sinal" vence um erro antigo: com o último heartbeat vencido, o erro
 // que ele trazia já não descreve o agora.
 
@@ -25,7 +26,7 @@ const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 15) *
 // "pendente" por até 5 min, sempre. Só vira pendência depois de 2 ciclos.
 const CONFIG_PENDENTE_APOS_MS = 10 * 60 * 1000;
 const CONFIG_ALERTA_APOS_MS = 60 * 60 * 1000;
-const PRAZO_PRIMEIRO_SINAL_MS = 7 * 24 * 3600 * 1000;
+const PRAZO_INSTALACAO_MS = 7 * 24 * 3600 * 1000;
 // Contrato §9.3.
 const FILA_ATENCAO = 2000;
 const FILA_ALERTA = 10000;
@@ -39,8 +40,7 @@ const ms = (v) => (v ? new Date(v).getTime() : null);
 function saudeDaTela(tela, horarioDoPonto, agora = new Date()) {
   if (tela.status === 'reparo') return 'em_reparo';
   if (tela.status === 'inativo') return 'inativa';
-  if (tela.revogado_em && !tela.chave_hash) return 'player_revogado';
-  if (!tela.primeiro_sinal_em) return 'aguardando_primeiro_sinal';
+  if (!tela.chave_hash) return 'aguardando_instalacao';
 
   const ultimo = ms(tela.ultima_vez_online);
   const recente = ultimo != null && agora.getTime() - ultimo <= TOLERANCIA_SEM_SINAL_MS;
@@ -51,10 +51,9 @@ function saudeDaTela(tela, horarioDoPonto, agora = new Date()) {
   return 'operando';
 }
 
-// Config versionada só existe em Player com contrato >= 2; num V1 ela não é
-// "pendente", é indisponível.
+// Sem Player instalado a config não é "pendente", é indisponível.
 function situacaoConfig(tela, agora = new Date()) {
-  if (!(Number(tela.player_contrato) >= 2)) return 'indisponivel';
+  if (!tela.chave_hash) return 'indisponivel';
   if (tela.config_versao_aplicada != null && tela.config_versao_aplicada === tela.config_versao_desejada) {
     return 'atualizada';
   }
@@ -63,7 +62,7 @@ function situacaoConfig(tela, agora = new Date()) {
 }
 
 // Comprovantes (proof-of-play) na fila do Player. Desconhecido nunca vira
-// zero: V1 não informa, e V2 antes do primeiro heartbeat também não.
+// zero: antes do primeiro heartbeat com a fila o Player não informou nada.
 function situacaoFila(tela, agora = new Date()) {
   if (tela.fila_pendentes == null) return 'desconhecida';
   const antigo = ms(tela.fila_mais_antigo_em);
@@ -82,7 +81,7 @@ function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = nul
   const alertas = [];
   if (saude === 'sem_sinal') alertas.push({ codigo: 'SEM_SINAL', nivel: 'alerta' });
   if (saude === 'erro_do_player') alertas.push({ codigo: 'ERRO_PLAYER', nivel: 'alerta' });
-  if (saude === 'aguardando_primeiro_sinal' && agora.getTime() - ms(tela.created_at) > PRAZO_PRIMEIRO_SINAL_MS) {
+  if (saude === 'aguardando_instalacao' && agora.getTime() - ms(tela.created_at) > PRAZO_INSTALACAO_MS) {
     alertas.push({ codigo: 'INSTALACAO_ATRASADA', nivel: 'atencao' });
   }
   const fila = situacaoFila(tela, agora);
@@ -98,7 +97,6 @@ function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = nul
   if (
     releaseObrigatoria &&
     tela.player_build != null &&
-    Number(tela.player_contrato) >= 2 &&
     tela.player_build < releaseObrigatoria.build &&
     agora.getTime() - ms(releaseObrigatoria.assinatura_conferida_em) > 24 * 3600 * 1000
   ) {

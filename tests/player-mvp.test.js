@@ -86,7 +86,7 @@ test('instalação: validade de 30 min, código só volta em claro enquanto vale
   const minutos = (new Date(g.expiraEm) - new Date(g.criadoEm)) / 60000;
   assert.ok(Math.abs(minutos - 30) < 0.1, `validade ${minutos} min`);
   const ficha = (await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json;
-  assert.equal(ficha.identidade.provisionamento.codigo, g.codigo, 'admin reexibe o código pendente');
+  assert.equal(ficha.instalacao.codigo, g.codigo, 'admin reexibe o código pendente');
   const { rows } = await pool.query('SELECT * FROM tokens_provisionamento WHERE dispositivo_id = $1', [tela.id]);
   const semHifen = g.codigo.replace('-', '');
   assert.ok(!JSON.stringify(rows).includes(semHifen), 'código em claro no banco');
@@ -95,7 +95,8 @@ test('instalação: validade de 30 min, código só volta em claro enquanto vale
 
   const cred = (await provisionar({ codigoTela: codigoDaTela(tela.id), codigoInstalacao: g.codigo })).json;
   const depois = (await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json;
-  assert.equal(depois.identidade.provisionamento.codigo, null, 'código usado não volta');
+  assert.equal(depois.instalacao.codigo, null, 'código usado não volta');
+  assert.equal(depois.instalacao.estado, 'conectado');
   assert.ok(!JSON.stringify(depois).includes(cred.chaveAparelho), 'chave permanente nunca vai ao admin');
   const { rows: tela2 } = await pool.query('SELECT * FROM dispositivos WHERE id = $1', [tela.id]);
   assert.ok(!JSON.stringify(tela2).includes(cred.chaveAparelho), 'chave em claro no banco');
@@ -260,4 +261,148 @@ test('credencial e código nunca vão para o log', async () => {
   const tudo = escrito.join('\n');
   assert.ok(!tudo.includes(cred.chaveAparelho));
   assert.ok(!tudo.includes(codigo) && !tudo.includes(codigo.replace('-', '')));
+});
+
+// ---------------------------------------------------------------------------
+// Admin: Rede → Ponto → Tela (§9 do contrato; ficha simplificada)
+// ---------------------------------------------------------------------------
+test('admin: tela nasce com código M-xxxx, "Aguardando instalação", sem dado técnico; vira "Conectado"', async () => {
+  const pid = await novoPonto();
+  const criada = await app.chamar('POST', `/admin/pontos/${pid}/dispositivos`, { corpo: {} });
+  assert.equal(criada.status, 201);
+  const t = criada.json;
+  assert.equal(t.codigo, codigoDaTela(t.id));
+  assert.equal(t.nome, t.codigo);
+  assert.equal(t.status, 'ativo');
+  assert.equal(t.saude, 'aguardando_instalacao');
+  assert.deepEqual(t.instalacao, { estado: 'aguardando', conectadoEm: null, codigo: null, expiraEm: null });
+  for (const proibido of [
+    'identidade',
+    'diagnostico',
+    'dispositivoId',
+    'fingerprint',
+    'contrato',
+    'rotacao',
+    'baseUrl',
+  ]) {
+    assert.ok(!JSON.stringify(t).includes(`"${proibido}"`), `campo técnico na ficha: ${proibido}`);
+  }
+
+  const g = (await gerarCodigo(t.id)).json;
+  const aguardando = (await app.chamar('GET', `/admin/dispositivos/${t.id}`)).json;
+  assert.equal(aguardando.instalacao.codigo, g.codigo);
+  assert.equal(new Date(aguardando.instalacao.expiraEm).toISOString(), new Date(g.expiraEm).toISOString());
+
+  // Código expirado não volta mais na ficha.
+  await pool.query(
+    `UPDATE tokens_provisionamento SET expira_em = now() - interval '1 second' WHERE dispositivo_id = $1`,
+    [t.id],
+  );
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${t.id}`)).json.instalacao.codigo, null);
+
+  const novo = (await gerarCodigo(t.id)).json;
+  await provisionar({ codigoTela: t.codigo, codigoInstalacao: novo.codigo });
+  const conectada = (await app.chamar('GET', `/admin/dispositivos/${t.id}`)).json;
+  assert.equal(conectada.instalacao.estado, 'conectado');
+  assert.ok(conectada.instalacao.conectadoEm);
+  assert.equal(conectada.saude, 'operando', 'a instalação é o primeiro contato');
+  assert.ok(conectada.ultimoSinalEm);
+
+  // Margem e estado.
+  const m = await app.chamar('PATCH', `/admin/dispositivos/${t.id}`, {
+    corpo: { margem_superior: 2, margem_direita: 1.5, margem_inferior: 0, margem_esquerda: 10 },
+  });
+  assert.equal(m.status, 200);
+  assert.deepEqual(m.json.margens, { superior: 2, direita: 1.5, inferior: 0, esquerda: 10 });
+  assert.equal(
+    (await app.chamar('PATCH', `/admin/dispositivos/${t.id}`, { corpo: { margem_superior: 11 } })).status,
+    400,
+    'teto de 10 por lado',
+  );
+  const reparo = await app.chamar('PATCH', `/admin/dispositivos/${t.id}`, { corpo: { status: 'reparo' } });
+  assert.equal(reparo.json.saude, 'em_reparo');
+  await app.chamar('PATCH', `/admin/dispositivos/${t.id}`, { corpo: { status: 'ativo' } });
+
+  // Revogar → volta a "Aguardando instalação" e aceita código novo.
+  const revogada = await app.chamar('POST', `/admin/dispositivos/${t.id}/credencial/revogar`);
+  assert.equal(revogada.json.saude, 'aguardando_instalacao');
+  assert.equal(revogada.json.instalacao.estado, 'aguardando');
+  assert.equal((await gerarCodigo(t.id)).status, 201);
+});
+
+test('admin: excluir tela sem histórico (recém-criada, com código pendente, instalada) e bloquear com histórico', async () => {
+  const pid = await novoPonto();
+  const existe = async (id) => (await pool.query('SELECT 1 FROM dispositivos WHERE id = $1', [id])).rows.length > 0;
+  const tokens = async (id) =>
+    (await pool.query('SELECT COUNT(*)::int AS n FROM tokens_provisionamento WHERE dispositivo_id = $1', [id])).rows[0]
+      .n;
+
+  const recem = await novaTela(pid);
+  assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${recem.id}`)).status, 200);
+  assert.equal(await existe(recem.id), false);
+  assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${recem.id}`)).status, 404, 'exclusão repetida');
+
+  const comCodigo = await novaTela(pid);
+  const pendente = (await gerarCodigo(comCodigo.id)).json.codigo;
+  assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${comCodigo.id}`)).status, 200);
+  assert.equal(await tokens(comCodigo.id), 0, 'nenhum código órfão');
+  assert.equal((await provisionar({ codigoTela: codigoDaTela(comCodigo.id), codigoInstalacao: pendente })).status, 401);
+
+  const instalada = await novaTela(pid);
+  const cred = await instalarPlayer(instalada.id);
+  assert.equal((await app.chamar('DELETE', `/admin/dispositivos/${instalada.id}`)).status, 200);
+  assert.equal(
+    (await app.chamar('GET', `/player/${cred.dispositivoId}/config`, { chave: cred.chaveAparelho })).status,
+    401,
+    'credencial some com a tela',
+  );
+  assert.equal(
+    (await pool.query('SELECT COUNT(*)::int AS n FROM tela_eventos WHERE dispositivo_id = $1', [instalada.id])).rows[0]
+      .n,
+    0,
+  );
+
+  // Com proof-of-play: evidência não se apaga.
+  const comPop = await novaTela(pid);
+  const {
+    rows: [conta],
+  } = await pool.query(
+    `INSERT INTO anunciantes (nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, aceitou_termos_em)
+     VALUES ('Excluir Tela MVP', '00000000000191', $1, '16999990000', 'x', now()) RETURNING id`,
+    [`excluir-mvp-${Date.now()}-${Math.random().toString(36).slice(2)}@teste.com`],
+  );
+  try {
+    await pool.query(
+      `INSERT INTO exibicoes_contador (janela_hora, dispositivo_id, anunciante_id, vezes_programadas, vezes_confirmadas)
+       VALUES (date_trunc('hour', now()), $1, $2, 4, 3)`,
+      [comPop.id, conta.id],
+    );
+    const r = await app.chamar('DELETE', `/admin/dispositivos/${comPop.id}`);
+    assert.equal(r.status, 409);
+    assert.match(r.json.erro, /possui histórico de exibições e não pode ser excluída permanentemente/);
+    assert.equal(await existe(comPop.id), true);
+    const inativa = await app.chamar('PATCH', `/admin/dispositivos/${comPop.id}`, { corpo: { status: 'inativo' } });
+    assert.equal(inativa.json.saude, 'inativa', 'o caminho é inativar');
+  } finally {
+    await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [conta.id]);
+    await pool.query('DELETE FROM anunciantes WHERE id = $1', [conta.id]);
+  }
+});
+
+test('admin: fluxo antigo de instalação não existe mais (JSON, token longo, histórico técnico)', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  for (const [metodo, caminho] of [
+    ['POST', `/admin/dispositivos/${tela.id}/preparar-player`],
+    ['POST', `/admin/dispositivos/${tela.id}/provisionamento`],
+    ['DELETE', `/admin/dispositivos/${tela.id}/provisionamento`],
+    ['GET', `/admin/dispositivos/${tela.id}/eventos`],
+  ]) {
+    assert.equal((await app.chamar(metodo, caminho)).status, 404, `${metodo} ${caminho}`);
+  }
+  const velho = await app.chamar('POST', '/player/provisionar', {
+    corpo: { tokenProvisionamento: 'tok_qualquer' },
+    ip: ipDeTeste(),
+  });
+  assert.equal(velho.status, 400, 'token longo não é mais aceito');
 });
