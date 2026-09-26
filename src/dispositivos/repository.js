@@ -1,11 +1,12 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
-const { gerarHash, conferirHash } = require('../lib/senha');
+const { conferirHash } = require('../lib/senha');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
+const pinSaida = require('../player/pin-saida');
 const {
   formatarCodigoTela,
   normalizarCodigoTela,
@@ -17,8 +18,9 @@ const {
 // identidade provisionada numa tela (migration 083). Nomes de coluna em
 // docs/specs/2026-09-23-player-v2-backend.md.
 
-// O que o admin edita numa tela. Tudo que vai na config do Player sobe a
-// versão desejada sozinho, por gatilho no banco (migration 083).
+// O que o admin edita numa tela. Margem vai na config do Player e sobe a
+// versão desejada sozinha, por gatilho no banco (migration 093). Horário é
+// do ponto; PIN de saída é global (src/player/pin-saida.js).
 const CAMPOS_ATUALIZAVEIS = [
   'status',
   'custo_equipamento',
@@ -31,10 +33,7 @@ const CAMPOS_ATUALIZAVEIS = [
   'margem_direita',
   'margem_inferior',
   'margem_esquerda',
-  'modo_horario',
-  'horario_semanal',
   'rotacao_tela',
-  'timezone',
   'update_baixar_auto',
   'update_horas_entre_tentativas',
 ];
@@ -131,6 +130,7 @@ function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
     instaladoEm: t.instalado_em,
     custoEquipamento: Number(t.custo_equipamento),
     mesesAmortizacao: t.meses_amortizacao,
+    primeiroSinalEm: t.primeiro_sinal_em,
     ultimoSinalEm: t.chave_hash ? t.ultima_vez_online : null,
     player: t.chave_hash ? { versao: t.player_versao, build: t.player_build } : null,
     // Quem está no ar, pelo nome — o id do criativo é registro interno.
@@ -199,12 +199,11 @@ async function criar(pontoId, dados = {}) {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, rotacao_tela, custo_equipamento, meses_amortizacao)
-       VALUES ($1, 'Tela', $2, $3, $4, $5, $6) RETURNING id, numero`,
+      `INSERT INTO dispositivos (ponto_id, apelido, status, rotacao_tela, custo_equipamento, meses_amortizacao)
+       VALUES ($1, 'Tela', $2, $3, $4, $5) RETURNING id, numero`,
       [
         pontoId,
         STATUS.includes(dados.status) ? dados.status : 'ativo',
-        ['ponto', '24h', 'personalizado'].includes(dados.modo_horario) ? dados.modo_horario : 'ponto',
         [0, 90, 180, 270].includes(Number(dados.rotacao_tela)) ? Number(dados.rotacao_tela) : 0,
         Number(dados.custo_equipamento) || 0,
         Number(dados.meses_amortizacao) || 36,
@@ -236,29 +235,6 @@ async function atualizar(id, dados) {
     }
   }
   return buscarPorId(id);
-}
-
-// PIN de manutenção do Player (4 dígitos, contrato §5 `pinPainel`): cifrado
-// para ir na config do V2, e com hash para o painel do player web (V1), que
-// confere no servidor. Um PIN só, as duas formas. null apaga.
-async function definirPin(id, pin) {
-  const cifrado = pin ? cofre.fechar(pin) : null;
-  const hash = pin ? await gerarHash(String(pin)) : null;
-  const { rowCount } = await pool.query(
-    `UPDATE dispositivos SET pin_manutencao_cifrado = $2, pin_hash = $3, pin_manutencao_alterado_em = now() WHERE id = $1`,
-    [id, cifrado, hash],
-  );
-  return rowCount > 0;
-}
-
-// PIN em claro, só pelo caminho auditado do admin (GET .../pin registra
-// PIN_REVEALED no histórico da tela). Sai do cofre AES-GCM — nunca do hash
-// (o hash V1 não abre; tela só com hash devolve null e o admin redefine).
-async function revelarPin(id) {
-  const { rows } = await pool.query('SELECT pin_manutencao_cifrado FROM dispositivos WHERE id = $1', [id]);
-  if (!rows[0]) return undefined;
-  const pin = cofre.abrir(rows[0].pin_manutencao_cifrado);
-  return pin && /^\d{4}$/.test(pin) ? pin : null;
 }
 
 // compat-v1: painel do player web (POST /player/:id/painel).
@@ -349,10 +325,15 @@ async function gerarCodigo(telaId, criadoPor = 'admin') {
     if (tela[0].chave_hash) {
       throw Object.assign(
         new Error('esta tela já tem um Player conectado — revogue o Player antes de instalar outro'),
-        {
-          status: 409,
-        },
+        { status: 409 },
       );
+    }
+    // Sem PIN de saída, um Player instalado não teria como sair do modo
+    // quiosque de forma autorizada (contrato §6) — nunca existe PIN padrão.
+    if (!(await pinSaida.obter(client))) {
+      throw Object.assign(new Error('defina o PIN de saída do Player (Rede → PIN de saída) antes de instalar uma TV'), {
+        status: 409,
+      });
     }
     await client.query(
       `UPDATE tokens_provisionamento SET cancelado_em = now(), codigo_cifrado = NULL
@@ -529,8 +510,6 @@ module.exports = {
   listarComProblemaDeSinal,
   criar,
   atualizar,
-  definirPin,
-  revelarPin,
   conferirPin,
   temExibicaoConfirmada,
   deletar,

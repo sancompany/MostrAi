@@ -119,7 +119,9 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
     assert.equal(estab.alertas, 1);
     assert.match(estab.telas[1].situacaoTexto, /sem comunicação/);
     const json = JSON.stringify(estab);
-    assert.equal(estab.telas[0].operacao, '24 horas');
+    // Toda tela segue o horário do ponto; PIN é global (fica no admin).
+    assert.equal('operacao' in estab.telas[0], false);
+    assert.equal('temPin' in estab.telas[0], false);
     // Visão simplificada do dono (Player V2): nada de identidade técnica.
     for (const proibido of [
       'chave-secreta',

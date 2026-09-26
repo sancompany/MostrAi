@@ -3,6 +3,7 @@ const { randomUUID } = require('node:crypto');
 const express = require('express');
 const pool = require('../src/db/pool');
 const dispositivosRepo = require('../src/dispositivos/repository');
+const pinSaida = require('../src/player/pin-saida');
 const { normalizarCodigoInstalacao } = require('../src/lib/codigo-tela');
 
 // Apoio comum dos testes do Player MVP (docs/player-mvp-contract.md): o app
@@ -66,9 +67,18 @@ async function novoPonto({ horario = null, status = null } = {}) {
   return rows[0].id;
 }
 
+// Sem PIN de saída o admin não gera código de instalação (contrato §6). O
+// PIN é global: se outro teste já definiu, fica o dele.
+const PIN_DE_TESTE = '482715';
+async function garantirPinSaida() {
+  if (!(await pinSaida.obter())) await pinSaida.definir(PIN_DE_TESTE);
+  return pinSaida.obter();
+}
+
 // Player instalado pelo caminho da TV: gera o código (como o admin) e troca
 // pela credencial (como POST /player/provisionar).
 async function instalarPlayer(telaId) {
+  await garantirPinSaida();
   const { codigo } = await dispositivosRepo.gerarCodigo(telaId, 'teste');
   const r = await dispositivosRepo.trocarCodigoPorCredencial(telaId, normalizarCodigoInstalacao(codigo));
   return { dispositivoId: r.dispositivoId, chaveAparelho: r.chaveAparelho };
@@ -97,4 +107,13 @@ async function eventosDe(telaId, tipo) {
   return rows[0].n;
 }
 
-module.exports = { subirApp, ipDeTeste, novoPonto, novaTela, instalarPlayer, limparPontos, eventosDe };
+module.exports = {
+  subirApp,
+  ipDeTeste,
+  novoPonto,
+  novaTela,
+  instalarPlayer,
+  garantirPinSaida,
+  limparPontos,
+  eventosDe,
+};

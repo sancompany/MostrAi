@@ -7,7 +7,8 @@ const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const credencial = require('./credencial');
 const sinal = require('./sinal');
-const { montarConfig, margensDaTela, TETO_MARGEM_V2 } = require('./config');
+const { montarConfig, margensDaTela } = require('./config');
+const pinSaida = require('./pin-saida');
 const releases = require('./releases');
 const cofre = require('../lib/cofre');
 const eventos = require('../lib/eventos');
@@ -96,7 +97,7 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
     servidorAgora: new Date().toISOString(),
     // compat-v1 (migration 069): o player web e o Android sem /config tiram
     // as margens daqui; o V2 aplica a de /config quando ela vem (§4.3).
-    margens: r.v2 ? margensDaTela(tela, TETO_MARGEM_V2) : margensDaTela(tela),
+    margens: margensDaTela(tela),
   };
   if (!r.v2) return res.json(resposta);
 
@@ -125,10 +126,12 @@ router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false
 });
 
 // ---------------------------------------------------------------------------
-// GET /player/:dispositivoId/config — config versionada (§5)
+// GET /player/:dispositivoId/config — config versionada (contrato §6)
 // ---------------------------------------------------------------------------
 router.get('/player/:dispositivoId/config', exigirAparelho({ operacao: false }), async (req, res) => {
-  res.json(montarConfig(req.dispositivo));
+  // Leva o PIN de saída: nada de cache no caminho.
+  res.set('Cache-Control', 'no-store');
+  res.json(montarConfig(req.dispositivo, await pinSaida.obter()));
 });
 
 // ---------------------------------------------------------------------------

@@ -151,23 +151,25 @@ function ajustarFotos(raiz) {
 }
 
 // ---------- horário de funcionamento (migration 066) ----------
-// Mesmo formato de src/lib/horario-semanal.js: um objeto por dia da semana,
-// `null` (fechado) ou `{abre,fecha}`. O admin só LÊ (a ficha do ponto é
-// somente-leitura desde o redesenho de 22/09/2026 — quem preenche é a
-// candidatura, public/modos.js/painel.page.js, que mantêm a própria cópia
-// editável do widget, convenção do projeto sem bundler).
+// Mesmo formato de src/lib/horario-semanal.js: um objeto por dia da semana
+// (+ feriados), `null` (fechado) ou `{abre,fecha}`; 00:00–24:00 = 24 h.
+// Toda tela segue o horário do ponto (docs/player-mvp-contract.md §6) — o
+// admin edita aqui (editarHorarioPonto); a candidatura preenche o primeiro.
+// Ponto sem horário cadastrado = aberto 24 h.
 //
 // Texto curto pro card ("Seg-sex 09:00-18:00 · Sáb 09:00-15:00 · Dom
 // fechado") — mesma regra de src/lib/horario-semanal.js#resumo.
+const eh24h = (v) => Boolean(v) && v.abre === '00:00' && v.fecha === '24:00';
 function resumoHorarioSemanal(horario) {
   if (!horario) return null;
-  const f = (v) => (v ? `${v.abre}-${v.fecha}` : 'fechado');
+  const f = (v) => (!v ? 'fechado' : eh24h(v) ? '24h' : `${v.abre}-${v.fecha}`);
   const semana = ['seg', 'ter', 'qua', 'qui', 'sex'].map((d) => horario[d]);
   const semanaIgual = semana.every((v) => JSON.stringify(v) === JSON.stringify(semana[0]));
   const partes = semanaIgual
     ? [`Seg-sex ${f(semana[0])}`]
     : ['seg', 'ter', 'qua', 'qui', 'sex'].map((d, i) => `${['Seg', 'Ter', 'Qua', 'Qui', 'Sex'][i]} ${f(horario[d])}`);
   partes.push(`Sáb ${f(horario.sab)}`, `Dom ${f(horario.dom)}`);
+  if (horario.feriados !== undefined) partes.push(`Feriados ${f(horario.feriados)}`);
   return partes.join(' · ');
 }
 
@@ -2811,6 +2813,66 @@ function resumoDaRede(pontos, telas) {
   </div>`;
 }
 
+// ---------- PIN de saída do Player (global) ----------
+// Um PIN para todas as TVs (docs/player-mvp-contract.md §6). O status nunca
+// traz o número; "Ver PIN" é um clique deliberado e fica registrado. Sem
+// PIN, o sistema não gera código de instalação.
+function blocoPinSaida(p) {
+  const texto = p.definido
+    ? `O mesmo em todas as TVs · alterado em ${esc(dataHora(p.alteradoEm))}`
+    : 'Nenhum PIN definido. Defina antes de instalar a primeira TV.';
+  return `<section class="pin-saida ${p.definido ? '' : 'pin-saida-pendente'}" aria-label="PIN de saída do Player">
+    <div class="pin-saida-texto"><b>PIN de saída do Player</b><span>${texto}</span></div>
+    <span class="pin-saida-acoes">
+      ${p.definido ? '<button type="button" class="btn ghost mini" data-pin-ver>Ver PIN</button>' : ''}
+      <button type="button" class="btn ${p.definido ? 'ghost' : 'primary'} mini" data-pin-alterar>${p.definido ? 'Alterar PIN' : 'Definir PIN'}</button>
+    </span>
+  </section>`;
+}
+
+function ligarPinSaida(el, remontar) {
+  el.querySelector('[data-pin-ver]')?.addEventListener('click', verPinSaida);
+  el.querySelector('[data-pin-alterar]')?.addEventListener('click', () => alterarPinSaida(remontar));
+}
+
+async function verPinSaida() {
+  const r = await api('/admin/player/pin-saida/revelar', { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível mostrar o PIN.', 'err');
+  const { pin } = await r.json();
+  abrirModal({
+    titulo: 'PIN de saída do Player',
+    corpo: `<p class="pin-saida-numero">${esc(pin)}</p>
+      <p class="u-dim u-fs-85 u-m-0">Digite este PIN na TV para sair do Player. Esta consulta fica registrada.</p>`,
+    rodape: '<button type="button" class="btn primary" data-fechar>Fechar</button>',
+  });
+}
+
+function alterarPinSaida(remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'PIN de saída do Player',
+    corpo: `<form id="formPinSaida" class="modal-form" autocomplete="off">
+        <div><label for="pinNovo">Novo PIN</label>
+          <input id="pinNovo" name="pin" type="password" inputmode="numeric" pattern="\\d{4,8}" minlength="4" maxlength="8" required></div>
+        <div><label for="pinConfirma">Repita o PIN</label>
+          <input id="pinConfirma" name="confirma" type="password" inputmode="numeric" pattern="\\d{4,8}" minlength="4" maxlength="8" required></div>
+        <p class="u-dim u-fs-85 u-m-0">De 4 a 8 números. Vale para todas as TVs: as que estão ligadas recebem o PIN novo em até 15 segundos.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPinSaida" class="btn primary">Salvar PIN</button>',
+  });
+  dlg.querySelector('#formPinSaida').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.pin.value !== f.confirma.value) return erroNoModal(dlg, 'Os dois PINs não são iguais.');
+    const r = await api('/admin/player/pin-saida', { method: 'PUT', body: JSON.stringify({ pin: f.pin.value }) });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o PIN.');
+    fechar();
+    toast('PIN salvo. As TVs recebem o novo PIN em até 15 segundos.');
+    remontar();
+  });
+}
+
 async function renderPontosGrade(el) {
   // Vem da Visão geral ("Pontos por status" → clique num status real do
   // banco) — consumido na primeira montagem, não a cada atualização.
@@ -2818,7 +2880,11 @@ async function renderPontosGrade(el) {
   FILTRO_PONTOS_STATUS = null;
 
   async function montar() {
-    const [pontos, telas] = await Promise.all([pegar('/admin/pontos'), pegar('/admin/dispositivos')]);
+    const [pontos, telas, pin] = await Promise.all([
+      pegar('/admin/pontos'),
+      pegar('/admin/dispositivos'),
+      pegar('/admin/player/pin-saida'),
+    ]);
     const telasPorPonto = new Map();
     for (const t of telas) {
       if (!telasPorPonto.has(t.pontoId)) telasPorPonto.set(t.pontoId, []);
@@ -2826,21 +2892,24 @@ async function renderPontosGrade(el) {
     }
     const chipAtivo = el.querySelector('.chip.active')?.dataset.filtro ?? filtroStatus;
     const busca = el.querySelector('.busca')?.value || '';
-    el.innerHTML = pontos.length
-      ? `${resumoDaRede(pontos, telas)}${caixaCards({
-          chips: [
-            { valor: '', nome: 'Todos' },
-            { valor: 'problema', nome: 'Com problema' },
-            ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
-          ],
-          html: pontos.map((p) => montarPontoCard(p, telasPorPonto.get(p.id) || [])).join(''),
-          ativo: chipAtivo,
-          unidade: 'ponto|pontos',
-        })}`
-      : vazio(
-          'Nenhum ponto cadastrado ainda.',
-          'Pedido de ponto feito no painel de uma conta chega em Candidaturas — aprovado, o ponto nasce aqui.',
-        );
+    el.innerHTML = `${blocoPinSaida(pin)}${
+      pontos.length
+        ? `${resumoDaRede(pontos, telas)}${caixaCards({
+            chips: [
+              { valor: '', nome: 'Todos' },
+              { valor: 'problema', nome: 'Com problema' },
+              ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
+            ],
+            html: pontos.map((p) => montarPontoCard(p, telasPorPonto.get(p.id) || [])).join(''),
+            ativo: chipAtivo,
+            unidade: 'ponto|pontos',
+          })}`
+        : vazio(
+            'Nenhum ponto cadastrado ainda.',
+            'Pedido de ponto feito no painel de uma conta chega em Candidaturas — aprovado, o ponto nasce aqui.',
+          )
+    }`;
+    ligarPinSaida(el, montar);
     if (pontos.length) {
       const campoBusca = el.querySelector('.busca');
       if (campoBusca && busca) campoBusca.value = busca;
@@ -2906,7 +2975,7 @@ async function renderPontoDetalhe(el, pontoId) {
         <section class="panel ponto-ficha" id="pontoInformacoes"></section>
         <section class="panel" id="pontoTelas"></section>
       </div>`;
-    renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas);
+    renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
     renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
   }
   await montar();
@@ -2926,13 +2995,14 @@ function textoBeneficioPonto(b) {
   return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>`;
 }
 
-// Ficha do estabelecimento — SOMENTE LEITURA (dados vêm da candidatura).
+// Ficha do estabelecimento — dados vêm da candidatura; só o horário se
+// edita aqui, porque é o horário de todas as telas do ponto.
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
-function renderPontoInformacoes(el, ponto, telas) {
+function renderPontoInformacoes(el, ponto, telas, remontar) {
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
   const primeiroSinal = telas
-    .map((t) => t.operacao.primeiroSinalEm)
+    .map((t) => t.primeiroSinalEm)
     .filter(Boolean)
     .sort()[0];
   el.innerHTML = `
@@ -2950,10 +3020,81 @@ function renderPontoInformacoes(el, ponto, telas) {
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
       <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
-      <div class="dados-largo"><dt>Horário de funcionamento</dt><dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : naoInformado()}</dd></div>
+      <div class="dados-largo"><dt>Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span></dt>
+        <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
+          <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
     </dl>`;
   ajustarFotos(el);
+  el.querySelector('[data-editar-horario]').addEventListener('click', () => editarHorarioPonto(ponto, remontar));
+}
+
+// Editor do horário do ponto: por dia, "Horário" (abre/fecha), "24 horas" ou
+// "Fechado". Fechar depois da meia-noite (18:00 → 02:00) vale: a madrugada
+// fica com o dia em que abriu. Para fechar à meia-noite, use 00:00.
+function editarHorarioPonto(ponto, remontar) {
+  const h = ponto.horario_semanal;
+  const modoDe = (v) => (!h || v === undefined || eh24h(v) ? '24h' : v === null ? 'fechado' : 'faixa');
+  const linha = (d) => {
+    const v = h ? h[d.id] : undefined;
+    const modo = modoDe(v);
+    const abre = modo === 'faixa' ? v.abre : '08:00';
+    const fecha = modo === 'faixa' ? v.fecha : '18:00';
+    const opcao = (valor, rotulo) => `<option value="${valor}" ${modo === valor ? 'selected' : ''}>${rotulo}</option>`;
+    return `<div class="horario-editor-linha" data-dia="${d.id}" data-modo="${modo}">
+      <span>${d.rotulo}</span>
+      <select aria-label="${d.rotulo}">${opcao('faixa', 'Horário')}${opcao('24h', '24 horas')}${opcao('fechado', 'Fechado')}</select>
+      <span class="horario-editor-faixa">
+        <input type="time" data-abre value="${abre}" aria-label="${d.rotulo}, abre">
+        <span aria-hidden="true">às</span>
+        <input type="time" data-fecha value="${fecha}" aria-label="${d.rotulo}, fecha">
+      </span>
+    </div>`;
+  };
+  const { dlg, fechar } = abrirModal({
+    titulo: `Horário — ${ponto.nome}`,
+    largo: true,
+    corpo: `<form id="formHorarioPonto" class="horario-editor">
+        ${DIAS_HORARIO.map(linha).join('')}
+        <button type="button" class="btn ghost mini" data-tudo-24h>Aberto 24 horas todos os dias</button>
+        <p class="u-dim u-fs-85 u-m-0">Todas as telas deste ponto seguem este horário. Fora dele, a TV não exibe anúncios. As TVs ligadas recebem a mudança em até 15 segundos.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formHorarioPonto" class="btn primary">Salvar horário</button>',
+  });
+  const form = dlg.querySelector('#formHorarioPonto');
+  form.addEventListener('change', (e) => {
+    if (e.target.tagName === 'SELECT') e.target.closest('.horario-editor-linha').dataset.modo = e.target.value;
+  });
+  form.querySelector('[data-tudo-24h]').addEventListener('click', () => {
+    for (const l of form.querySelectorAll('.horario-editor-linha')) {
+      l.dataset.modo = '24h';
+      l.querySelector('select').value = '24h';
+    }
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const horario = {};
+    for (const l of form.querySelectorAll('.horario-editor-linha')) {
+      const modo = l.querySelector('select').value;
+      const abre = l.querySelector('[data-abre]').value;
+      const fecha = l.querySelector('[data-fecha]').value;
+      if (modo === 'faixa' && (!abre || !fecha)) {
+        return erroNoModal(dlg, `Preencha abertura e fechamento de ${l.firstElementChild.textContent}.`);
+      }
+      horario[l.dataset.dia] =
+        modo === 'fechado' ? null : modo === '24h' ? { abre: '00:00', fecha: '24:00' } : { abre, fecha };
+    }
+    const r = await api(`/admin/pontos/${ponto.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ horario_semanal: horario }),
+    });
+    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar o horário.');
+    fechar();
+    toast('Horário salvo. As TVs do ponto recebem a mudança em até 15 segundos.');
+    remontar();
+  });
 }
 
 // Linha da tela dentro do ponto: código, situação e as duas ações rápidas.

@@ -6,14 +6,12 @@ const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { limiteTentativas } = require('../lib/limite-tentativas');
-const horarioSemanal = require('../lib/horario-semanal');
-const { timezoneValida } = require('../lib/operacao-tela');
 const credencial = require('../player/credencial');
-const telaEventos = require('../player/tela-eventos');
 const releases = require('../player/releases');
 const sse = require('../lib/sse');
 const { exigirAparelho } = require('../lib/aparelho');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
+const pinSaida = require('../player/pin-saida');
 
 // URL da API que vai no aparelho (bloco CONEXÃO da ficha e no JSON do
 // [Preparar Player]). Fonte canônica: SITE_URL; o host da requisição só
@@ -53,17 +51,6 @@ function validarCampos(corpo) {
     dados.rotacao_tela = Number(dados.rotacao_tela);
     if (![0, 90, 180, 270].includes(dados.rotacao_tela)) return { erro: 'rotação precisa ser 0, 90, 180 ou 270' };
   }
-  if ('modo_horario' in dados && !['ponto', '24h', 'personalizado'].includes(dados.modo_horario)) {
-    return { erro: 'modo de operação inválido' };
-  }
-  if ('horario_semanal' in dados) {
-    try {
-      dados.horario_semanal = horarioSemanal.validar(dados.horario_semanal);
-    } catch (err) {
-      return { erro: err.message };
-    }
-  }
-  if ('timezone' in dados && !timezoneValida(dados.timezone)) return { erro: 'fuso horário inválido' };
   if ('update_baixar_auto' in dados && typeof dados.update_baixar_auto !== 'boolean') {
     return { erro: 'baixar automaticamente precisa ser sim ou não' };
   }
@@ -200,41 +187,33 @@ router.post('/admin/dispositivos/:id/chave-legada', (_req, res) =>
   res.status(410).json({ erro: 'fluxo antigo de chave aposentado — use Preparar Player' }),
 );
 
-// PIN em claro pro admin (ficha: •••• + olho). Auditado: cada revelação vira
-// PIN_REVEALED no histórico da tela. Tela só com o hash V1 não tem PIN
-// legível — 404 com o motivo, e o admin redefine.
-router.get('/admin/dispositivos/:id/pin', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  const pin = await repo.revelarPin(tela.id);
-  if (!pin) return res.status(404).json({ erro: 'esta tela não tem PIN legível — defina um PIN de 4 dígitos' });
-  await telaEventos.registrar(tela.id, 'PIN_REVEALED', { por: 'admin' });
-  res.set('Cache-Control', 'no-store');
-  res.json({ pin });
+// ---------------------------------------------------------------------------
+// Admin — PIN de saída do Player (global, docs/player-mvp-contract.md §6)
+// ---------------------------------------------------------------------------
+// O status nunca traz o número; ver é o POST de revelar, auditado.
+router.get('/admin/player/pin-saida', async (_req, res) => {
+  res.json(await pinSaida.situacao());
 });
 
-// PIN de manutenção do Player: exatamente 4 dígitos (contrato §5 descarta
-// qualquer outra coisa). null remove — mas não de tela com Player V2: sem
-// `pinPainel` na config o aparelho mantém o PIN que já tem
-// (ConfigAparelho.kt: campo ausente = não mexe), e o admin mostraria "sem
-// PIN" com a TV ainda pedindo o antigo.
-function lerPin(corpo, tela) {
-  const pin = corpo?.pin == null ? null : String(corpo.pin);
-  if (pin !== null && !/^\d{4}$/.test(pin)) return { erro: 'o PIN de manutenção do Player tem exatamente 4 dígitos' };
-  if (pin === null && tela.dispositivo_uid) {
-    return { erro: 'o Player desta tela não fica sem PIN de manutenção — troque por outro PIN de 4 dígitos' };
+router.put('/admin/player/pin-saida', async (req, res) => {
+  let r;
+  try {
+    r = await pinSaida.definir(req.body?.pin);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
   }
-  return { pin };
-}
+  // Toda ficha aberta mostra a config "sincronizando" até o próximo
+  // heartbeat de cada TV.
+  sse.emitirParaAdmin('screen.updated', { id: null, pontoId: null });
+  res.json({ definido: r.definido, alteradoEm: r.alteradoEm });
+});
 
-router.post('/admin/dispositivos/:id/pin', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  const { erro, pin } = lerPin(req.body, tela);
-  if (erro) return erro400(res, erro);
-  await repo.definirPin(tela.id, pin);
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json(await repo.buscarPorId(tela.id));
+router.post('/admin/player/pin-saida/revelar', async (_req, res) => {
+  const pin = await pinSaida.revelar();
+  if (!pin) return res.status(404).json({ erro: 'nenhum PIN de saída definido — defina um em Rede' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ pin });
 });
 
 // ---------------------------------------------------------------------------
@@ -316,19 +295,6 @@ async function telaDoDono(req, res) {
 router.get('/anunciantes/:id/dispositivos/:dispositivoId/painel', exigirAnuncianteLogado, async (req, res) => {
   const tela = await telaDoDono(req, res);
   if (tela) res.json(await painelDaTela(tela.id));
-});
-
-// PIN de manutenção pelo próprio dono do ponto (docs/funcional.md: "o dono
-// do ponto define o PIN da tela") — mesma regra e mesmo armazenamento da
-// rota do admin.
-router.post('/anunciantes/:id/dispositivos/:dispositivoId/pin', exigirAnuncianteLogado, async (req, res) => {
-  const tela = await telaDoDono(req, res);
-  if (!tela) return;
-  const { erro, pin } = lerPin(req.body, tela);
-  if (erro) return erro400(res, erro);
-  await repo.definirPin(tela.id, pin);
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json({ ok: true, tem_pin: pin != null });
 });
 
 // compat-v1: painel aberto a partir do player web — chave do aparelho + PIN.

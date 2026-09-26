@@ -43,25 +43,20 @@ const SITUACAO_DA_TELA = {
   inativa: { nivel: 'neutro', texto: 'Desligada' },
 };
 
-// Como a tela opera, em palavras de dono de loja (sem regime/timezone).
-const OPERACAO = { '24h': '24 horas', ponto: 'Horário do estabelecimento', personalizado: 'Horário próprio da tela' };
-
-// Visão SIMPLIFICADA do Player V2 para o dono: situação, operação e último
-// sinal. Nada técnico — sem ID do dispositivo, credencial, contrato, fila,
-// Android, hash, versões de config ou detalhes de atualização.
+// Visão SIMPLIFICADA da tela para o dono: situação e último sinal. Toda tela
+// segue o horário do estabelecimento. Nada técnico — sem credencial, fila,
+// Android, hash, PIN ou versões de config.
 function telaPublica(t, horarioDoPonto, agora) {
   const situacao = saudeDaTela(t, horarioDoPonto, agora);
   return {
     id: t.id,
     nome: formatarCodigoTela(t.id),
-    operacao: OPERACAO[t.modo_horario] || OPERACAO.ponto,
     situacao,
     nivel: SITUACAO_DA_TELA[situacao].nivel,
     situacaoTexto: SITUACAO_DA_TELA[situacao].texto,
     alerta: SITUACOES_DE_ALERTA.has(situacao),
     ultimoSinal: t.ultima_vez_online,
     instaladaEm: t.instalado_em,
-    temPin: t.tem_pin,
     exibicoes30d: t.exibicoes_30d,
     anunciantes30d: t.anunciantes_30d,
   };
@@ -82,16 +77,14 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     ),
     pool.query(
       `SELECT d.id, d.ponto_id, d.numero, d.status, d.ultima_vez_online, d.primeiro_sinal_em, d.instalado_em,
-              d.modo_horario, d.horario_semanal, d.timezone, d.player_estado,
-              d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
-              (d.pin_manutencao_cifrado IS NOT NULL OR d.pin_hash IS NOT NULL) AS tem_pin,
+              d.player_estado, d.ultimo_erro, d.ultimo_erro_codigo, d.revogado_em, d.chave_hash,
               COALESCE(SUM(e.vezes_confirmadas) FILTER (WHERE e.janela_hora > now() - interval '30 days'), 0)::int AS exibicoes_30d,
               COUNT(DISTINCT e.anunciante_id) FILTER (WHERE e.janela_hora > now() - interval '30 days')::int AS anunciantes_30d
          FROM dispositivos d
          JOIN pontos p ON p.id = d.ponto_id
          LEFT JOIN exibicoes_contador e ON e.dispositivo_id = d.id
         WHERE p.anunciante_id = $1 AND p.status <> 'arquivado'
-        GROUP BY d.id ORDER BY d.numero`,
+        GROUP BY d.id ORDER BY d.id`,
       [contaId],
     ),
     pool.query(

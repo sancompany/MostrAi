@@ -1,4 +1,4 @@
-const { operacaoDaTela, deveriaOperar } = require('./operacao-tela');
+const { operacaoDoPonto, deveriaOperar } = require('./operacao-tela');
 
 // Régua ÚNICA de saúde operacional da tela (Player V2, 23/09/2026). Estado
 // administrativo (Ativa / Em reparo / Inativa, `dispositivos.status`) é do
@@ -45,7 +45,7 @@ function saudeDaTela(tela, horarioDoPonto, agora = new Date()) {
   const ultimo = ms(tela.ultima_vez_online);
   const recente = ultimo != null && agora.getTime() - ultimo <= TOLERANCIA_SEM_SINAL_MS;
   if (recente && tela.player_estado === 'OUT_OF_SCHEDULE') return 'fora_do_horario';
-  if (!deveriaOperar(operacaoDaTela(tela, horarioDoPonto, agora), agora)) return 'fora_do_horario';
+  if (!deveriaOperar(operacaoDoPonto(horarioDoPonto, agora), agora)) return 'fora_do_horario';
   if (!recente) return 'sem_sinal';
   if (tela.ultimo_erro_codigo || tela.ultimo_erro || ESTADOS_DE_ERRO.has(tela.player_estado)) return 'erro_do_player';
   return 'operando';

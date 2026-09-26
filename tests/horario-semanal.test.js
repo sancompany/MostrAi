@@ -77,6 +77,16 @@ test('resumo() cai pra dia a dia quando a semana diverge', () => {
   );
 });
 
+test('24 h: "24:00" vale só como fechamento; 00:00–24:00 é o dia inteiro e o resumo diz 24h', () => {
+  const vinte4 = { abre: '00:00', fecha: '24:00' };
+  const horario = Object.fromEntries(DIAS.map((d) => [d, vinte4]));
+  assert.deepStrictEqual(validar(horario), horario);
+  assert.strictEqual(resumo(horario), 'Seg-sex 24h · Sáb 24h · Dom 24h · Feriados 24h');
+  assert.deepStrictEqual(validar({ sex: { abre: '18:00', fecha: '24:00' } }).sex, { abre: '18:00', fecha: '24:00' });
+  assert.throws(() => validar({ seg: { abre: '24:00', fecha: '08:00' } }), /inválido/);
+  assert.throws(() => validar({ seg: { abre: '08:00', fecha: '24:30' } }), /inválido/);
+});
+
 test('resumo() de null é null (ponto sem horário informado)', () => {
   assert.strictEqual(resumo(null), null);
 });

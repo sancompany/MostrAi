@@ -1,13 +1,24 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const pool = require('../src/db/pool');
-const { subirApp, ipDeTeste, novoPonto, novaTela, instalarPlayer, limparPontos, eventosDe } = require('./apoio-player');
+const {
+  subirApp,
+  ipDeTeste,
+  novoPonto,
+  novaTela,
+  instalarPlayer,
+  garantirPinSaida,
+  limparPontos,
+  eventosDe,
+} = require('./apoio-player');
+const pinSaida = require('../src/player/pin-saida');
 
 // Contraparte do Player MVP (docs/player-mvp-contract.md), pelas rotas reais.
 
 let app;
 test.before(async () => {
   app = await subirApp();
+  await garantirPinSaida();
 });
 test.after(async () => {
   await app.fechar();
@@ -405,4 +416,159 @@ test('admin: fluxo antigo de instalação não existe mais (JSON, token longo, h
     ip: ipDeTeste(),
   });
   assert.equal(velho.status, 400, 'token longo não é mais aceito');
+});
+
+// ---------------------------------------------------------------------------
+// Config: margens + horário do ponto + PIN de saída global (§6)
+// ---------------------------------------------------------------------------
+const versaoDesejada = async (telaId) =>
+  (await pool.query('SELECT config_versao_desejada AS v FROM dispositivos WHERE id = $1', [telaId])).rows[0].v;
+const configDe = (p) => app.chamar('GET', `/player/${p.dispositivoId}/config`, { chave: p.chaveAparelho });
+const SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+
+test('config: exatamente configVersion, margens, operacao e pinSaida — sem rotação, OTA, URL, PIN por tela', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const r = await configDe(p);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('cache-control'), 'no-store', 'leva o PIN: nada de cache');
+  assert.deepEqual(Object.keys(r.json).sort(), ['configVersion', 'margens', 'operacao', 'pinSaida']);
+  assert.equal(r.json.configVersion, await versaoDesejada(tela.id));
+  assert.deepEqual(r.json.margens, { superior: 0, direita: 0, inferior: 0, esquerda: 0 });
+  assert.deepEqual(Object.keys(r.json.operacao).sort(), ['feriados', 'porDiaDaSemana', 'timezone']);
+  assert.equal(r.json.pinSaida, await pinSaida.obter());
+  for (const proibido of ['rotacao', 'update', 'baseUrl', 'pinPainel', 'versaoMinima', 'cache', 'regime']) {
+    assert.ok(!r.texto.includes(proibido), `config não fala de ${proibido}`);
+  }
+});
+
+test('config: margem muda a versão e chega na config; campo que não vai na config não muda a versão', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const v0 = await versaoDesejada(tela.id);
+
+  const patch = (corpo) => app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo });
+  assert.equal((await patch({ custo_equipamento: 900, meses_amortizacao: 24 })).status, 200);
+  assert.equal(await versaoDesejada(tela.id), v0, 'equipamento não é config');
+  // Horário, modo e fuso por tela não existem mais: ignorados, sem versão nova.
+  await patch({ modo_horario: 'personalizado', horario_semanal: { seg: null }, timezone: 'America/Manaus' });
+  assert.equal(await versaoDesejada(tela.id), v0);
+
+  assert.equal((await patch({ margem_superior: 2.5, margem_esquerda: 1 })).status, 200);
+  const r = await configDe(p);
+  assert.equal(r.json.configVersion, v0 + 1);
+  assert.deepEqual(r.json.margens, { superior: 2.5, direita: 0, inferior: 0, esquerda: 1 });
+  assert.equal((await patch({ margem_direita: 10.5 })).status, 400, 'teto de 10 vmin por lado');
+  assert.equal(await versaoDesejada(tela.id), v0 + 1);
+});
+
+test('config: toda tela segue o horário do ponto; mudar o horário sobe a versão de TODAS as telas dele', async () => {
+  const semana9a18 = Object.fromEntries(SEMANA.map((d) => [d, { abre: '09:00', fecha: '18:00' }]));
+  const pid = await novoPonto({ horario: { ...semana9a18, dom: null } });
+  const outroPonto = await novoPonto();
+  const [t1, t2, t3] = [await novaTela(pid), await novaTela(pid), await novaTela(outroPonto)];
+  const p1 = await instalarPlayer(t1.id);
+  const antes = { t1: await versaoDesejada(t1.id), t2: await versaoDesejada(t2.id), t3: await versaoDesejada(t3.id) };
+
+  let r = await configDe(p1);
+  assert.deepEqual(r.json.operacao.porDiaDaSemana.seg, [{ inicio: '09:00', fim: '18:00' }]);
+  assert.deepEqual(r.json.operacao.porDiaDaSemana.dom, []);
+
+  // Ponto passa a ser 24 h (00:00–24:00).
+  const vinte4 = Object.fromEntries([...SEMANA, 'feriados'].map((d) => [d, { abre: '00:00', fecha: '24:00' }]));
+  const pontosRepo = require('../src/pontos/repository');
+  await pontosRepo.atualizar(pid, { horario_semanal: vinte4 });
+  assert.equal(await versaoDesejada(t1.id), antes.t1 + 1);
+  assert.equal(await versaoDesejada(t2.id), antes.t2 + 1, 'tela sem Player também');
+  assert.equal(await versaoDesejada(t3.id), antes.t3, 'tela de outro ponto não muda');
+  r = await configDe(p1);
+  assert.equal(r.json.configVersion, antes.t1 + 1);
+  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], [{ inicio: '00:00', fim: '24:00' }]);
+
+  // Salvar o mesmo horário não sobe versão.
+  await pontosRepo.atualizar(pid, { horario_semanal: vinte4 });
+  assert.equal(await versaoDesejada(t1.id), antes.t1 + 1);
+
+  // Ponto sem horário cadastrado = 24 h todos os dias, sem feriados especiais.
+  const p3 = await instalarPlayer(t3.id);
+  r = await configDe(p3);
+  for (const dia of SEMANA) assert.deepEqual(r.json.operacao.porDiaDaSemana[dia], [{ inicio: '00:00', fim: '24:00' }]);
+  assert.deepEqual(r.json.operacao.feriados, {});
+});
+
+test('PIN de saída: 4 a 8 dígitos, recusa óbvio; trocar sobe a versão de todas as telas; status nunca traz o número', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const anterior = await pinSaida.obter();
+  const logs = [];
+  const orig = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+  for (const k of Object.keys(orig)) console[k] = (...a) => logs.push(a.join(' '));
+  try {
+    for (const ruim of ['123', '123456789', 'abcd', '12a4', '0000', '1111', '1234', '4321', '7890', 12, null]) {
+      const r = await app.chamar('PUT', '/admin/player/pin-saida', { corpo: { pin: ruim } });
+      assert.equal(r.status, 400, `PIN ${ruim}`);
+    }
+    const v0 = await versaoDesejada(tela.id);
+    const r = await app.chamar('PUT', '/admin/player/pin-saida', { corpo: { pin: '90517' } });
+    assert.equal(r.status, 200);
+    assert.deepEqual(Object.keys(r.json).sort(), ['alteradoEm', 'definido']);
+    assert.equal(await versaoDesejada(tela.id), v0 + 1, 'PIN novo = config nova em todas as telas');
+
+    const status = await app.chamar('GET', '/admin/player/pin-saida');
+    assert.equal(status.json.definido, true);
+    assert.ok(!status.texto.includes('90517'), 'status não mostra o PIN');
+    const { rows } = await pool.query("SELECT valor FROM configuracoes_site WHERE chave = 'player_pin_saida'");
+    assert.ok(!rows[0].valor.includes('90517'), 'nunca em claro no banco');
+
+    const cfg = await configDe(p);
+    assert.equal(cfg.json.pinSaida, '90517');
+    assert.equal(cfg.json.configVersion, v0 + 1);
+
+    const ver = await app.chamar('POST', '/admin/player/pin-saida/revelar');
+    assert.equal(ver.status, 200);
+    assert.equal(ver.json.pin, '90517');
+    assert.equal(ver.headers.get('cache-control'), 'no-store');
+    await require('../src/lib/eventos').aguardarGravacoes();
+    const { rows: aud } = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM eventos WHERE nome = 'player:pin_saida_revelado' AND criado_em > now() - interval '1 minute'",
+    );
+    assert.ok(aud[0].n >= 1, 'revelar fica registrado');
+    assert.ok(!logs.some((l) => l.includes('90517')), 'PIN nunca no log');
+  } finally {
+    Object.assign(console, orig);
+    await pinSaida.definir(anterior);
+  }
+});
+
+test('PIN de saída: sem PIN definido, o admin não gera código de instalação (409), e /config manda null', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer((await novaTela(pid)).id);
+  const obterReal = pinSaida.obter;
+  pinSaida.obter = async () => null; // sem mexer no PIN global que outros arquivos usam
+  try {
+    const g = await gerarCodigo(tela.id);
+    assert.equal(g.status, 409);
+    assert.match(g.json.erro, /PIN de saída/);
+    const cfg = await configDe(p);
+    assert.equal(cfg.json.pinSaida, null, 'nunca um PIN padrão');
+  } finally {
+    pinSaida.obter = obterReal;
+  }
+  assert.equal((await gerarCodigo(tela.id)).status, 201);
+});
+
+test('PIN por tela não existe mais: rotas antigas somem', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}/pin`)).status, 404);
+  assert.equal(
+    (await app.chamar('POST', `/admin/dispositivos/${tela.id}/pin`, { corpo: { pin: '4821' } })).status,
+    404,
+  );
+  const dono = await app.chamar('POST', `/anunciantes/1/dispositivos/${tela.id}/pin`, { corpo: { pin: '4821' } });
+  assert.equal(dono.status, 404);
 });

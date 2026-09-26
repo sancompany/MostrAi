@@ -2205,6 +2205,78 @@ button.pend-bloco:focus-visible {
   color: var(--err-texto);
   font-weight: 600;
 }
+/* ---------- Rede: PIN de saída do Player (global) ---------- */
+.pin-saida {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-2) var(--e-4);
+  padding: var(--e-3) var(--e-4);
+  margin-bottom: var(--e-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.pin-saida.pin-saida-pendente {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+.pin-saida-texto {
+  display: grid;
+  gap: 2px;
+}
+.pin-saida-texto span {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.pin-saida-acoes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+}
+.pin-saida-numero {
+  margin: 0 0 var(--e-3);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Rede: editor do horário do ponto ---------- */
+.horario-editor {
+  display: grid;
+  gap: var(--e-2);
+}
+.horario-editor-linha {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 130px) auto;
+  align-items: center;
+  gap: var(--e-2) var(--e-3);
+}
+.horario-editor-faixa {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+}
+.horario-editor-linha:not([data-modo="faixa"]) .horario-editor-faixa {
+  visibility: hidden;
+}
+.horario-editor > .btn {
+  justify-self: start;
+  margin-top: var(--e-2);
+}
+@media (max-width: 560px) {
+  .horario-editor-linha {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .horario-editor-faixa {
+    grid-column: 2;
+  }
+  .horario-editor-linha:not([data-modo="faixa"]) .horario-editor-faixa {
+    display: none;
+  }
+}
 /* ---------- Rede: linha da tela dentro do ponto ---------- */
 .tela-linha {
   display: grid;

@@ -19,6 +19,7 @@ const { DIAS } = require('../src/lib/horario-semanal');
 const QUARTA_MEIO_DIA = new Date('2026-09-23T12:00:00-03:00');
 const HORARIO_9_18 = { ...Object.fromEntries(DIAS.map((d) => [d, null])), qua: { abre: '09:00', fecha: '18:00' } };
 const HORARIO_FECHADO_QUARTA = { ...Object.fromEntries(DIAS.map((d) => [d, null])) };
+const HORARIO_24H = Object.fromEntries(DIAS.map((d) => [d, { abre: '00:00', fecha: '24:00' }]));
 const RECENTE = new Date(QUARTA_MEIO_DIA.getTime() - 5 * 60 * 1000).toISOString();
 const EXPIRADO = new Date(QUARTA_MEIO_DIA.getTime() - TOLERANCIA_SEM_SINAL_MS - 60 * 1000).toISOString();
 
@@ -28,95 +29,62 @@ test('em_reparo/inativa vêm do status manual, nunca viram alerta', () => {
 });
 
 test('sem Player instalado -> aguardando_instalacao, mesmo fora do horário', () => {
-  const tela = { status: 'ativo', modo_horario: 'ponto', ultima_vez_online: null };
+  const tela = { status: 'ativo', ultima_vez_online: null };
   assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'aguardando_instalacao');
 });
 
-test('modo "ponto": dentro do horário + heartbeat recente -> operando', () => {
+test('horário do ponto: dentro do horário + heartbeat recente -> operando', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: RECENTE,
     ultima_vez_online: RECENTE,
   };
   assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'operando');
 });
 
-test('modo "ponto": fora do horário -> fora_do_horario, não alerta', () => {
+test('horário do ponto: fora do horário -> fora_do_horario, não alerta', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
   assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
-test('modo "ponto": dentro do horário + heartbeat expirado -> sem_sinal', () => {
+test('horário do ponto: dentro do horário + heartbeat expirado -> sem_sinal', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
   assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
-test('modo "24h": heartbeat expirado -> sem_sinal independente do horário do ponto', () => {
-  const tela = {
-    status: 'ativo',
-    chave_hash: 'h',
-    modo_horario: '24h',
-    primeiro_sinal_em: EXPIRADO,
-    ultima_vez_online: EXPIRADO,
-  };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'sem_sinal');
+test('ponto 24 h (00:00–24:00): heartbeat expirado -> sem_sinal a qualquer hora', () => {
+  const madrugada = new Date('2026-09-23T03:00:00-03:00');
+  const expirado = new Date(madrugada.getTime() - TOLERANCIA_SEM_SINAL_MS - 60 * 1000).toISOString();
+  const tela = { status: 'ativo', chave_hash: 'h', primeiro_sinal_em: expirado, ultima_vez_online: expirado };
+  assert.strictEqual(saudeDaTela(tela, HORARIO_24H, madrugada), 'sem_sinal');
 });
 
-test('modo "24h": heartbeat recente -> operando mesmo com o ponto fechado', () => {
+test('horário/modo gravados na TELA são ignorados: vale sempre o do ponto', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: '24h',
-    primeiro_sinal_em: RECENTE,
-    ultima_vez_online: RECENTE,
-  };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
-});
-
-test('modo "personalizado": usa o horário PRÓPRIO da tela, ignora o do ponto', () => {
-  const tela = {
-    status: 'ativo',
-    chave_hash: 'h',
-    modo_horario: 'personalizado',
     horario_semanal: HORARIO_9_18,
-    primeiro_sinal_em: RECENTE,
-    ultima_vez_online: RECENTE,
-  };
-  // ponto fechado, mas a tela tem horário próprio aberto agora.
-  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'operando');
-});
-
-test('modo "personalizado": fora da janela própria -> fora_do_horario mesmo com o ponto aberto', () => {
-  const tela = {
-    status: 'ativo',
-    chave_hash: 'h',
-    modo_horario: 'personalizado',
-    horario_semanal: HORARIO_FECHADO_QUARTA,
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
-  assert.strictEqual(saudeDaTela(tela, HORARIO_9_18, QUARTA_MEIO_DIA), 'fora_do_horario');
+  assert.strictEqual(saudeDaTela(tela, HORARIO_FECHADO_QUARTA, QUARTA_MEIO_DIA), 'fora_do_horario');
 });
 
 test('sem horário cadastrado (null): trata como "deveria estar online" (nunca suprime por omissão)', () => {
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
   };
@@ -127,7 +95,6 @@ test('player relatou erro -> erro_do_player, quando por outro lado estaria opera
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: RECENTE,
     ultima_vez_online: RECENTE,
     ultimo_erro: 'falha ao baixar playlist',
@@ -139,7 +106,6 @@ test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (paro
   const tela = {
     status: 'ativo',
     chave_hash: 'h',
-    modo_horario: 'ponto',
     primeiro_sinal_em: EXPIRADO,
     ultima_vez_online: EXPIRADO,
     ultimo_erro: 'falha antiga',
@@ -153,7 +119,6 @@ test('erro relatado, mas heartbeat já expirou -> sem_sinal tem prioridade (paro
 const viva = (extra = {}) => ({
   status: 'ativo',
   chave_hash: 'h',
-  modo_horario: '24h',
   primeiro_sinal_em: RECENTE,
   ultima_vez_online: RECENTE,
   created_at: RECENTE,
