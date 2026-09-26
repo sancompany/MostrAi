@@ -17,6 +17,8 @@ const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
 const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
 const planoAdministrativo = require('./plano-administrativo');
+const creditosRepo = require('../creditos/repository');
+const { nomeDoCiclo } = require('../lib/ciclos');
 const { cotarPlano } = require('./cotacao');
 const cicloContratado = require('./ciclo-contratado');
 const { multiplicar } = require('../lib/dinheiro');
@@ -253,19 +255,39 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   if (previsao.beneficio && req.body.confirmarBeneficio !== true) {
     const b = previsao.beneficio;
     const ate = b.validoAte ? dataBR(b.validoAte) : 'o fim do período';
+    // O aviso diz o que a conta tem (plano, origem, validade, créditos
+    // gastos) e o que a troca faz com isso — nunca um "tem certeza?"
+    // genérico (estação da conta, 26/09/2026). O comportamento é o de
+    // sempre (ADR-016): pago MAIOR encerra o benefício na hora; IGUAL ou
+    // MENOR começa depois dele. O benefício só encerra quando o pagamento
+    // é confirmado (aplicarPagamentoNaFila), nunca neste clique.
+    const creditosGastos = b.porCreditos ? await creditosRepo.creditosDoResgate(b.linha?.ledger_id) : null;
+    const atual = {
+      plano: `${b.planoNome || 'Benefício'}${b.compromissoMeses ? ` · ${nomeDoCiclo(b.compromissoMeses)}` : ''}`,
+      origem: b.porCreditos ? 'Benefício por créditos' : 'Cortesia da Mostraí',
+      validoAte: b.validoAte || null,
+      creditosGastos,
+    };
+    const gastos = creditosGastos ? ` (${creditosGastos} ${creditosGastos === 1 ? 'crédito utilizado' : 'créditos utilizados'})` : '';
     return res.status(409).json({
       erro: 'confirme como fica o seu benefício',
       confirmacao:
         previsao.tipo === 'encerra_beneficio'
           ? {
-              titulo: `Ativar o ${plano.nome} agora?`,
-              texto: `Você tem um benefício ${b.planoNome} ativo até ${ate}. Ao ativar o ${plano.nome} agora, esse benefício será encerrado e ${b.porCreditos ? 'os créditos utilizados não serão devolvidos' : 'ele não volta depois'}. O ${plano.nome} começa imediatamente.`,
-              botao: `Continuar com ${plano.nome}`,
+              titulo: 'Você já possui um benefício ativo',
+              texto: `Seu ${atual.plano} (${atual.origem.toLowerCase()})${gastos} está vigente até ${ate}. Se você contratar o ${plano.nome} agora, o benefício atual será encerrado e ${b.porCreditos ? 'os créditos utilizados não serão devolvidos' : 'ele não volta depois'}. O encerramento acontece quando o pagamento for confirmado: o ${plano.nome} começa na hora, nas condições apresentadas nesta contratação.`,
+              botao: 'Continuar com a troca',
+              botaoManter: 'Manter plano atual',
+              atual,
+              encerraBeneficio: true,
             }
           : {
               titulo: `O ${plano.nome} começa depois do benefício`,
-              texto: `Você tem um benefício ${b.planoNome} ativo até ${ate}, que já oferece o mesmo ou mais que o ${plano.nome}. Ele continua até o fim; o período que você pagar agora fica guardado e o ${plano.nome} começa logo depois — nenhum dia pago se perde.`,
+              texto: `Seu ${atual.plano} (${atual.origem.toLowerCase()})${gastos} está vigente até ${ate} e já oferece o mesmo ou mais que o ${plano.nome}. Ele continua até o fim; o período que você pagar agora fica guardado e o ${plano.nome} começa logo depois — nenhum dia pago se perde.`,
               botao: 'Continuar',
+              botaoManter: 'Voltar',
+              atual,
+              encerraBeneficio: false,
             },
     });
   }

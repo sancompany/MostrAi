@@ -403,7 +403,19 @@ async function definirConfiguracao(chave, valor) {
   );
 }
 
+// A conta é ponto: tem ao menos um ponto aprovado não arquivado — a mesma
+// regra de "Meus pontos" (`ehPonto`, meus-pontos.js) e do selo "Dono de
+// ponto" da ficha (situacao.js). Candidatura em análise não conta.
+async function contaEhPonto(contaId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT EXISTS (SELECT 1 FROM pontos WHERE anunciante_id = $1 AND status <> 'arquivado') AS eh`,
+    [contaId],
+  );
+  return rows[0].eh;
+}
+
 module.exports = {
+  contaEhPonto,
   criar,
   estabelecimentoJaCadastrado,
   listar,
