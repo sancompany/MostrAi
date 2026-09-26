@@ -215,9 +215,12 @@ todas), reverter para antes da 083 exige gerar o link de todas as TVs V1.
 094 é destrutiva (apaga `player_releases` e 34 colunas de `dispositivos`: V1,
 horário/PIN por tela, rotação, OTA, `/hello`, rotação de credencial). O código
 anterior lê essas colunas e não sobe contra o banco novo. Reverter o código
-exige restaurar o backup tirado antes do deploy da 094 (seção 5) — e as TVs
-instaladas depois dele precisam ser reinstaladas. Produção tinha 0 telas no
-deploy.
+exige restaurar o backup tirado antes do deploy da 094 (seção 5):
+`/backups/mostrai-20260926-031630.sql.gz` (volume do job `backup`, 66.279
+bytes, sha256 terminando em `d09a`, conferido: gzip íntegro, dump completo,
+91 migrations). As TVs instaladas depois dele precisam ser reinstaladas.
+Produção tinha 0 telas no deploy (#71 com 092/093 às 03:12 UTC, #72 com a
+094 às 03:22 UTC).
 
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma

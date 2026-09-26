@@ -4655,6 +4655,11 @@ credencial, `baseUrl`, PIN e horário por tela. Testes:
 1/10/50 telas, POP), `tests/codigo-tela.test.js`, e2e
 `tests/e2e/18-rede-player-mvp.mjs`.
 
+**[x] No ar (26/09/2026):** #71 (092/093) e #72 (094, depois do backup
+`mostrai-20260926-031630.sql.gz`). Conferido em produção: main = deploy,
+`/health` 200, as 34 colunas e `player_releases` fora, admin Rede/Pontos
+respondendo, jobs verdes.
+
 **[ ] Falta (fora deste repositório):** o Player Android implementar o
 contrato (`sancompany/Playlist.MostrAi`) e a primeira instalação numa TV
 real — definir o PIN de saída em Rede antes.
