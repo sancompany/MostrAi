@@ -27,6 +27,7 @@ notas fiscais no Google Drive da San & Co. (pasta do Mostraí).
 | Exibições por tela e hora | gerado pelo sistema | entrega, pacing, comprovante | `exibicoes_contador` | anunciante (agregado) | 2 anos | purga por job |
 | Cobranças confirmadas, nota fiscal (PDF) | anunciante | fiscal | `cobrancas_confirmadas`, Drive | contador do dono | 5 anos (fiscal) | não se apaga no prazo |
 | Eventos de pagamento pendentes (payload do webhook) | anunciante | reconciliação | `eventos_assinatura_pendentes` | — | até resolver + 1 ano | purga |
+| Eventos recebidos do webhook do Checkout (payload completo: id da assinatura, CPF/CNPJ do pagador em `documento`, valores) | anunciante (via San Checkout) | não perder evento financeiro entre o 200 e o efeito; reprocessar depois de falha | `webhooks_recebidos` (migration 096) | — | processado: 30 dias; morto: 90 dias | expurgo automático de hora em hora (src/financeiro/webhook-inbox.js) |
 | Candidatura (nome, comércio, contato, endereço) | pessoa que se candidata a ponto ou vendedor | triagem pelo dono | `candidaturas.*` | — | 6 meses se recusada; vira conta se aprovada | purga por job |
 | Convite (token, papéis, validade) | gerado pelo dono | cadastro por convite | `convites.*` | a pessoa convidada (link) | até usar ou expirar + 30 dias | purga |
 | Chave de aparelho e PIN da tela | gerado pelo dono | autenticar a TV | `dispositivos.aparelho_id`, `dispositivos.pin_hash` | a TV | enquanto o dispositivo existir | trocar/apagar no admin |

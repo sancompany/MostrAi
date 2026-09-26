@@ -467,6 +467,19 @@ async function processarWebhookAssinatura(payload) {
     return;
   }
 
+  // Inbox do webhook (migration 096): se o efeito abaixo LANÇAR, a reserva
+  // da chave sai — senão a nova tentativa da inbox cairia na dedupe acima e
+  // o evento se perderia do mesmo jeito que antes. Os caminhos que decidem
+  // (pendência, "já aplicado") retornam normalmente e mantêm a reserva.
+  try {
+    return await aplicarEventoAssinatura(payload, chave, ultima);
+  } catch (err) {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]).catch(() => {});
+    throw err;
+  }
+}
+
+async function aplicarEventoAssinatura(payload, chave, ultima) {
   const assinatura = await assinaturasRepo.buscarPorId(payload.planoId);
   if (!assinatura) {
     return registrarPendencia(payload, `assinatura '${payload.planoId}' não encontrada`);
@@ -930,6 +943,17 @@ async function processarWebhookPedido(payload) {
   ]);
   if (!rowCount) return; // reentrega do mesmo evento, nada a fazer de novo
 
+  // Mesma regra da assinatura (inbox, migration 096): erro libera a reserva
+  // pra nova tentativa não cair na dedupe.
+  try {
+    return await aplicarEventoPedido(payload);
+  } catch (err) {
+    await pool.query('DELETE FROM webhooks_processados WHERE id = $1', [chave]).catch(() => {});
+    throw err;
+  }
+}
+
+async function aplicarEventoPedido(payload) {
   const pedido = await pedidosRepo.buscarPorId(payload.pedidoId);
   if (!pedido) return registrarPendencia(payload, `pedido '${payload.pedidoId}' não encontrado`);
   if (pedido.status !== 'pendente') return; // já processado (pago ou cancelado) por outra entrega

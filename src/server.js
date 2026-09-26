@@ -297,4 +297,7 @@ process.on('unhandledRejection', (err) => console.error('unhandledRejection', er
 
 app.listen(process.env.PORT, () => {
   console.log(`mostrai rodando na porta ${process.env.PORT}`);
+  // Processador da inbox do webhook (migration 096): retoma o que ficou
+  // pendente de antes de um restart e segue a cada 30 s.
+  require('./financeiro/webhook-inbox').iniciar();
 });

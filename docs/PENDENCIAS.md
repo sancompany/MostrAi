@@ -4636,6 +4636,22 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
+
+**[x] Construído e testado** (migration 096, `src/financeiro/webhook-inbox.js`,
+rota `POST /webhook/san-checkout`).
+- **Antes:** o 200 saía e só depois o evento era processado em memória, então uma falha perdia o evento de vez. A conciliação diária recupera ciclo pago, falha e cancelamento, mas não chargeback, estorno nem troca revertida.
+- **Agora:**
+  - o evento é gravado em `webhooks_recebidos` (chave única) antes do 200; se a gravação falhar, a resposta é 503;
+  - um processador por instância, a cada 30 s, trava cada evento com `SKIP LOCKED` e tenta de novo até 6 vezes (30 s → 2 h);
+  - depois disso o evento fica `morto` e vira pendência no admin;
+  - uma instância que morre no meio é retomada em 5 min;
+  - a falha depois da reserva de deduplicação agora libera a reserva, então a nova tentativa aplica o efeito uma vez;
+  - a lógica de cada evento não mudou.
+- **Testes:** `tests/webhook-inbox.test.js`. RUNBOOK §6.2 explica como recuperar um evento `morto`.
+
+**[ ] Falta:** conferir em produção depois do merge (evento sintético sem efeito financeiro) — a estação de e-mails vem depois.
+
 ## Promoções sem prazo de desconto (26/09/2026)
 
 **[x] Feito.** O San Checkout confirmou que uma assinatura de cartão já paga
