@@ -256,11 +256,19 @@ creditar(D.id, 40);
 
 check('sem erro de console/página', erros.length === 0, erros.join(' | '));
 
+// Limpeza completa: a conta D tem plano em vigor e entraria na playlist e
+// nas métricas se ficasse (revisão Codex do PR #77) — apaga as contas também.
 for (const id of criadas) {
-  for (const t of ['notificacoes', 'planos_administrativos', 'creditos_ledger', 'eventos'])
-    PG(`DELETE FROM ${t} WHERE anunciante_id = ${id}`);
-  PG(`DELETE FROM cupons_ponto WHERE conta_id = ${id}`);
-  PG(`DELETE FROM pontos WHERE anunciante_id = ${id}`);
+  PG(`DELETE FROM notificacoes WHERE anunciante_id = ${id};
+      DELETE FROM planos_administrativos WHERE anunciante_id = ${id};
+      DELETE FROM creditos_ledger WHERE anunciante_id = ${id};
+      DELETE FROM ciclos_contratados WHERE anunciante_id = ${id};
+      DELETE FROM assinaturas WHERE anunciante_id = ${id};
+      DELETE FROM eventos WHERE anunciante_id = ${id};
+      DELETE FROM tokens_confirmacao_email WHERE anunciante_id = ${id};
+      DELETE FROM cupons_ponto WHERE conta_id = ${id};
+      DELETE FROM pontos WHERE anunciante_id = ${id};
+      DELETE FROM anunciantes WHERE id = ${id}`);
 }
 await b.close();
 console.log(falhas.length ? `\n${falhas.length} FALHA(S)` : '\nTUDO OK');

@@ -16,6 +16,7 @@ function etapasDosPrimeirosPassos({
   beneficio,
   criativosEnviados,
   criativosAprovados,
+  criativosRecusados = 0,
   pontosEscolhidos,
   exibicoes,
 }) {
@@ -26,7 +27,14 @@ function etapasDosPrimeirosPassos({
       titulo: 'Envie seu criativo',
       feito: criativosEnviados > 0,
       opcional: false,
-      detalhe: criativosEnviados > 0 && criativosAprovados === 0 ? 'Em análise pela Mostraí' : null,
+      // Recusado não conta como enviado: nunca vai ao ar, então o passo
+      // continua sendo mandar uma peça que sirva (revisão Codex do PR #77).
+      detalhe:
+        criativosEnviados > 0 && criativosAprovados === 0
+          ? 'Em análise pela Mostraí'
+          : criativosEnviados === 0 && criativosRecusados > 0
+            ? 'Seu criativo foi recusado: envie uma nova peça'
+            : null,
     },
     {
       id: 'pontos',
@@ -54,8 +62,9 @@ function etapasDosPrimeirosPassos({
 async function primeirosPassosDaConta(conta) {
   const [criativos, escolhidos, exibicoes, passado] = await Promise.all([
     pool.query(
-      `SELECT COUNT(*) FILTER (WHERE status <> 'retirado')::int AS enviados,
-              COUNT(*) FILTER (WHERE status = 'aprovado')::int AS aprovados
+      `SELECT COUNT(*) FILTER (WHERE status IN ('pendente', 'aprovado'))::int AS enviados,
+              COUNT(*) FILTER (WHERE status = 'aprovado')::int AS aprovados,
+              COUNT(*) FILTER (WHERE status = 'reprovado')::int AS recusados
          FROM criativos WHERE anunciante_id = $1`,
       [conta.id],
     ),
@@ -78,6 +87,7 @@ async function primeirosPassosDaConta(conta) {
       beneficio: !!conta.plano_cortesia,
       criativosEnviados: criativos.rows[0].enviados,
       criativosAprovados: criativos.rows[0].aprovados,
+      criativosRecusados: criativos.rows[0].recusados,
       pontosEscolhidos: escolhidos.rows[0].n,
       exibicoes: exibicoes.rows[0].n,
     }),

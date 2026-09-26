@@ -305,4 +305,15 @@ test('onboarding: exibição confirmada fecha o fluxo; pontos opcionais nunca se
   assert.equal(pronto.proxima, null);
   const emAnalise = etapasDosPrimeirosPassos({ ...base, criativosEnviados: 1, criativosAprovados: 0, exibicoes: 0 });
   assert.equal(emAnalise.etapas[1].detalhe, 'Em análise pela Mostraí');
+  // Só criativo recusado: o passo continua sendo enviar uma peça (nunca vai ao ar).
+  const recusado = etapasDosPrimeirosPassos({
+    ...base,
+    criativosEnviados: 0,
+    criativosAprovados: 0,
+    criativosRecusados: 1,
+    exibicoes: 0,
+  });
+  assert.equal(recusado.proxima, 'criativo');
+  assert.equal(recusado.etapas[1].feito, false);
+  assert.equal(recusado.etapas[1].detalhe, 'Seu criativo foi recusado: envie uma nova peça');
 });
