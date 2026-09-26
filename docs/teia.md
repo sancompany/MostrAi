@@ -3,6 +3,12 @@
 Mapa de todas as **387 funções** do produto e de como se ligam. Lido do código
 em 15/09/2026 por doze leituras independentes, uma por superfície.
 
+> **26/09/2026 — Player MVP:** o player web (`public/player.html`,
+> `player.page.js`, `player.css`), o painel por PIN da TV, `/hello`, OTA,
+> rotação de tela e de credencial, PIN e horário por tela SAÍRAM do código.
+> Toda entrada abaixo que cita esses arquivos ou rotas é histórica. O
+> contrato vigente da tela está em `docs/player-mvp-contract.md`.
+>
 > **24/09/2026 — Player V2:** tudo o que este mapa diz sobre a **tela e o
 > player** (chave de aparelho em `aparelho_id`, `gerarChave`, `/admin/dispositivos/:id/chave`,
 > `/admin/pontos-offline`, comparação da chave fora de tempo constante, painel

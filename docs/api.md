@@ -6,7 +6,7 @@ Autenticação, três tipos:
 
 - **Sessão de conta** (cookie httpOnly, tabela `session` no Postgres) — criada por `POST /anunciantes/login` ou por cadastro. Uma conta pode ter os papéis `anunciante`, `ponto`, `vendedor` (campo `papeis`).
 - **Sessão de admin** (mesmo cookie, flag separada) — `POST /admin/login`. Tudo em `/admin/*` exige. Em produção a porta é o Cloudflare Access; a senha é segunda camada.
-- **Chave de aparelho** (Player) — header `X-Aparelho-Key` (ou `X-Aparelho-Id`, nome legado, mesmo valor). Nunca por query string. O servidor guarda só o SHA-256 (migration 083); vazia, errada ou de outra tela → 401. `:dispositivoId` é o `dispositivoId` do provisionamento (`tela_<hex>`) ou, compat-v1, o ID numérico da Tela. Contrato completo: `docs/specs/2026-09-23-player-v2-backend.md` e `docs/player-v2-contract.md` em `sancompany/Playlist.MostrAi`.
+- **Chave de aparelho** (Player) — header `X-Aparelho-Key`, só ele. Nunca por query string. O servidor guarda só o SHA-256; vazia, errada, revogada ou de outra tela → 401. `:dispositivoId` é o ID da tela (`M-0235`; `0235` e `235` também valem). Contrato oficial: `docs/player-mvp-contract.md`.
 
 Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `Map` em memória) em: login, cadastro, candidatura, esqueci-senha, confirmação de e-mail, PIN da tela.
 
@@ -57,7 +57,7 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 | GET | `/anunciantes/me/criativos` | **Conta logada** (Fatia 3 do painel único, 23/09/2026): "Meus criativos" — a peça comercial e a do comodato (autoanúncio na tela do próprio comércio) numa lista só. `criativos[]` com `situacao` (`em_analise` · `aprovado` = pronta mas fora do rodízio agora · `no_ar` · `fora_do_ar` · `recusado`), `arquivoUrl`, `thumbnailUrl`, `duracaoSegundos`, `motivoRecusa`, `feitoPelaMostrai`, `substitui` (id da peça que esta troca) e `substitutaEmAnalise` (id da substituta pendente). Mais `temPlano` (efetivo: comercial ou comodato), `rodaNaRede`, `rodaNoProprioPonto`, `contaVeicula`, `limiteNoAr`, `limiteCadastro`, `emUso`, `duracaoMaxima`. `no_ar` é o mesmo motor da ficha do admin (`criativosComSituacao`). |
 | GET | `/anunciantes/me/financeiro` | **Conta logada** (Fatia 4 do painel único): só `pagamentos` — `mostrar` (tem plano ou já pagou algo), `plano` `{nome, situacao: ativa/cortesia/vencida/suspensa/sem_plano, validoAte}`, `cobrancas[]` `{id, data, valor}` (últimas 36). `recebimentos` **saiu em 24/09/2026 (ADR-016)**: ser ponto gera créditos, não dinheiro; os repasses antigos ficam em `pagamentos_ponto` só como histórico. |
 | — | ~~`GET /anunciantes/:id/pontos`, `GET /anunciantes/me/pontos/candidaturas`, `GET /anunciantes/:id/dispositivos`, `GET /anunciantes/me/pontos/extrato`~~ | **Removidas** com a página antiga do ponto (Fatia 6, 23/09/2026) — sem consumidor. Substitutas: `GET /anunciantes/me/meus-pontos` (pedidos, pontos e telas, projeção fechada; a primeira devolvia a linha inteira do ponto) e `GET /anunciantes/me/financeiro` (extrato sem a anotação interna). `/anunciante/ponto.html` responde 301 pra `/anunciante/painel.html#modPontos`. |
-| GET | `/anunciantes/me/meus-pontos` | **Conta logada** (Fatia 2 do painel único, 23/09/2026): "Meus pontos" — `{ehPonto, estabelecimentos[]}`, UM item por estabelecimento. `tipo: 'candidatura'` (pedido aberto que ainda não virou ponto — a candidatura com `pontos.candidatura_id` nunca aparece de novo) ou `tipo: 'ponto'` (não arquivado). `estado`: `em_analise` · `aguardando_instalacao` · `ativo` · `em_manutencao` · `inativo`. Ponto traz `telas[]` com `situacao` (régua de `src/lib/status-tela.js`), `nivel` (`ok`/`neutro`/`atencao`), `situacaoTexto` humano, `ultimoSinal`, `temPin`, `exibicoes30d`, `anunciantes30d`; e `beneficio` `{elegivel, creditoDoMesConcedido, competenciaAtual, proximaCompetencia, ultimoCreditoEm, ultimaCompetencia}` (ADR-016 — substituiu `modalidade`/`ajudaCustoMensal`/`cotaAutoanuncioPorHora`). Projeção fechada: nunca chave do aparelho, PIN, contato do responsável, observação interna, custo ou texto cru do erro do player. `ehPonto` diz qual rota o painel usa pra pedir outro estabelecimento. SSE: `application.updated`, `point.updated`, `screen.updated`, `credits.updated`. |
+| GET | `/anunciantes/me/meus-pontos` | **Conta logada** (Fatia 2 do painel único, 23/09/2026): "Meus pontos" — `{ehPonto, estabelecimentos[]}`, UM item por estabelecimento. `tipo: 'candidatura'` (pedido aberto que ainda não virou ponto — a candidatura com `pontos.candidatura_id` nunca aparece de novo) ou `tipo: 'ponto'` (não arquivado). `estado`: `em_analise` · `aguardando_instalacao` · `ativo` · `em_manutencao` · `inativo`. Ponto traz `telas[]` com `situacao` (régua de `src/lib/status-tela.js`), `nivel` (`ok`/`neutro`/`atencao`), `situacaoTexto` humano, `ultimoSinal`, `exibicoes30d`, `anunciantes30d`; e `beneficio` `{elegivel, creditoDoMesConcedido, competenciaAtual, proximaCompetencia, ultimoCreditoEm, ultimaCompetencia}` (ADR-016 — substituiu `modalidade`/`ajudaCustoMensal`/`cotaAutoanuncioPorHora`). Projeção fechada: nunca chave do aparelho, PIN, contato do responsável, observação interna, custo ou texto cru do erro do player. `ehPonto` diz qual rota o painel usa pra pedir outro estabelecimento. SSE: `application.updated`, `point.updated`, `screen.updated`, `credits.updated`. |
 | POST | `/anunciantes/me/pontos` | Dono de ponto cadastra outro endereço — entra como CANDIDATURA (não cria ponto direto; o admin aprova em Rede/Candidaturas, `liberarPapelNaConta` cria o ponto só então, sem tela). Sem guarda por papel desde 24/09/2026 (quem já é ponto pode pedir outro estabelecimento). Mesmo contrato de dados do `POST /conta/modos/ponto/pedir` (endereço em partes). 409 se já existir uma candidatura em aberto pro MESMO endereço (linha "logradouro, número" composta no servidor + `cep`) — `"Já existe uma solicitação em análise para este endereço"` — ou se o mesmo estabelecimento (conta + nome + endereço) já for ponto da conta. Emite `application.updated` pra conta. |
 | GET | `/anunciantes/:id/dispositivos/:dispositivoId/painel` | O que rodou naquela tela: `{porAnunciante, porDia}`. |
 | POST | `/anunciantes/:id/dispositivos/:dispositivoId/pin` | Dono do ponto define o PIN de manutenção da própria tela (4 dígitos, mesma regra do `/admin/dispositivos/:id/pin`). |
@@ -95,110 +95,81 @@ Rate limit no banco (10 por 15 min por IP+rota, migration 051 — não é mais `
 
 Admin: `POST /admin/candidaturas/:id/liberar` — candidatura com `conta_id` (origem painel/bônus) liga o papel direto na conta (cria o ponto, sem tela) e marca `aprovada`. Depois do COMMIT avisa o dono: notificação `ponto_aprovado` + SSE `point.updated` e `application.updated` (antes só o PATCH de status avisava, e o botão Aprovar não passa por ele). Ponto herda `categoria_id`/`categoria_livre` da conta (RN-57, corrigido 22/09/2026 — antes nascia sem categoria nenhuma, bloqueio de concorrente inoperante).
 
-## Tela (chave de aparelho)
+## Tela (Player MVP — `docs/player-mvp-contract.md`)
+
+Contrato oficial, campo a campo, em `docs/player-mvp-contract.md`. Aqui, o
+resumo de cada rota. URL do servidor, orientação (90°) e intervalo do
+heartbeat (15 s) são fixos no APK — nada disso vem do backend.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/playlist/:dispositivoId` | A HORA INTEIRA desta tela. Player com `X-Player-Contract` >= 2 recebe o envelope (com `contentHash` por item quando o criativo tem hash); sem o header, compat-v1 — `contrato_playlist` da tela (1 = array). Entregar limpa a marca de playlist desatualizada. Tela não Ativa → 403. |
-| POST | `/player/:dispositivoId/played` | Lote V2 `{eventos:[…]}` (até 500) → 200 com `resultados[{execucaoId,status}]`; status: `contabilizado`, `duplicado`, `teto_atingido`, `janela_desconhecida`, `item_invalido`, `janela_expirada`. 400 só para envelope inválido (JSON quebrado, `eventos` que não é lista, mais de 500); erro interno é 500 (o Player retenta; 400 vira quarentena permanente lá). compat-v1: `{anuncianteId}`. |
-| POST | `/player/:dispositivoId/heartbeat` | Snapshot do Player (contrato V2 §4): estado, config aplicada, criativo no ar, última playlist ok, fila de comprovantes, erro (`null` limpa), desvio de relógio, estado do update. Grava UMA linha (a tela); histórico só de transição (`tela_eventos`). Resposta: `{ok, servidorAgora, margens}` + no V2 `configVersion`, `playlist.atualizar` (uma vez por mudança), `novaChave` (rotação pendente), `update` (release aplicável). compat-v1: corpo vazio ou `{erro:"texto"}`. |
-| POST | `/player/:dispositivoId/painel` | compat-v1 (player web): `{pin}` → painel da tela. Rate-limited. |
-| POST | `/player/provisionar` | `{tokenProvisionamento}` → `{dispositivoId, chaveAparelho}`. Token de uso único (hash no banco, 7 dias), consumo atômico; repetir o MESMO token por 10 min devolve as mesmas credenciais (a janela fecha no 1º uso da chave). Inválido/expirado/usado → 401. Rate-limited. |
-| POST | `/player/:dispositivoId/hello` | Dados que não mudam: versão/build, contrato, fabricante, modelo, Android, resolução, timezone. Resposta `{configVersion}`. |
-| GET | `/player/:dispositivoId/config` | Config versionada: `configVersion`, `margens`, `rotacaoTela`, `operacao` (`HORAS_24`/`FOLLOW_POINT` materializado/`CUSTOM`, fuso, faixas, feriados), `update`, `pinPainel` (só quando configurado). Campo ausente = "não mexa". |
+| POST | `/player/provisionar` | `{codigoTela, codigoInstalacao}` → `{dispositivoId, chaveAparelho}`. `codigoTela` aceita `M-0235`, `M0235`, `0235`, `235`; `codigoInstalacao` são 8 caracteres (`XXXX-XXXX`, maiúscula/minúscula e hífen tanto faz). Código vale 30 min, uma vez só, só para aquela tela; 5 erros para a tela cancelam o código. Formato ruim → 400; tela inexistente, código errado/expirado/usado → 401 igual para todos. Repetir o mesmo par em até 5 min devolve a MESMA credencial (até o 1º uso da chave). Limite de 10 tentativas por origem em 15 min → 429. A instalação conta como primeiro sinal. |
+| POST | `/player/:dispositivoId/heartbeat` | A cada 15 s, sem limite de frequência. `{estado, configVersionAplicada, criativoId, erro, fila}` — tudo opcional, tipo errado é ignorado campo a campo; `erro: null` limpa, ausente mantém. Versão do Player só pelo header `X-Player-Version`. Resposta: `{configVersion, playlist: {atualizar}}` (`atualizar: true` uma vez por mudança). Grava UMA linha (a tela); histórico só de transição (`tela_eventos`). Nunca 403. Corpo que não é objeto → 400. |
+| GET | `/player/:dispositivoId/config` | `{configVersion, margens{superior,direita,inferior,esquerda}, operacao{timezone, porDiaDaSemana (7 dias), feriados}, pinSaida}`. Margens da tela (0–10 vmin); horário do PONTO (sem horário = 24 h; `fim: "24:00"` = fim do dia); `pinSaida` global (ou `null` se ninguém definiu). `Cache-Control: no-store`. Nunca 403. |
+| GET | `/playlist/:dispositivoId` | A hora inteira desta tela, sempre no envelope (abaixo). Entregar limpa a marca de playlist desatualizada. Tela não Ativa → 403. |
+| POST | `/player/:dispositivoId/played` | Lote `{eventos:[…]}` (até 500) → 200 `{resultados:[{execucaoId,status}]}`. Aceita até **7 dias depois do fim da janela**. 400 só para lote malformado (não objeto, `eventos` ausente/não lista, mais de 500); corpo > 100 KB → 413; evento ruim nunca derruba o lote (`item_invalido`). Tela não Ativa → 403. |
 
-### Contrato 1 — array (padrão, player web)
-
-`contrato_playlist = 1` (padrão de toda tela nova). `GET /playlist/:dispositivoId`
-devolve um array puro de itens `{anuncianteId, url, duracaoSegundos, autoanuncio,
-institucional}` — exibição contratada primeiro, cota do dono depois, espaço vago
-preenchido com `institucional: true` (sem url — o player mostra a peça `#vazio`).
-Autoanúncio do dono e institucional vêm com `anuncianteId: null` e não são
-contados. Programa os contadores da hora (`exibicoes_contador`).
-
-`POST /player/:dispositivoId/played` recebe `{anuncianteId}` e confirma uma
-exibição — só aceita quem está programado nesta tela nesta hora. `200
-{ok:true, janela}` credita; `200 {ok:true, contou:false, motivo:"ja_completo"}`
-é a própria TV reenviando o que já contou (não é erro); `400` é pedido inválido
-(anunciante não programado).
-
-### Contrato 2 — envelope (app Android nativo, `sancompany/playlist.mostrai`, 21/09/2026)
-
-`contrato_playlist = 2` por tela, via `PATCH /admin/dispositivos/:id
-{"contrato_playlist":2}` (o select "Contrato" da aba Telas saiu no redesenho
-da Rede — conferido em 25/09/2026: não há controle na UI; o Player V2 manda
-`X-Player-Contract: 2` e recebe o envelope sem precisar da marca). `GET /playlist/:dispositivoId`
-devolve:
+### Envelope da playlist
 
 ```json
 {
   "versaoContrato": 2,
-  "janelaId": "<dispositivoId>|<horaISO>",
+  "janelaId": "<id da tela>|<horaISO>",
   "janelaInicio": "2026-09-21T22:00:00.000Z",
   "janelaFim": "2026-09-21T23:00:00.000Z",
   "servidorAgora": "2026-09-21T22:00:07.123Z",
   "itens": [
     {
-      "itemProgramacaoId": "<janelaId>|<indice>|<anuncianteId|dono|inst>",
+      "itemProgramacaoId": "<janelaId>|<indice>|<anuncianteId|dono|inst|midia:N>",
       "criativoId": "42",
-      "anuncianteId": "7",
+      "anuncianteId": 7,
       "autoanuncio": false,
       "institucional": false,
       "contabiliza": true,
       "url": "https://.../normalizado.mp4",
-      "duracaoSegundos": 15
+      "duracaoSegundos": 15,
+      "contentHash": "<sha-256 do arquivo>"
     }
   ]
 }
 ```
 
-Item com `institucional:true` preenche o tempo vago da hora. Sem vídeo
-institucional configurado, vem sem `url` (Player V1 mostra o cartão HTML
-"este espaço pode ser do seu negócio"; Player V2 mostra a peça `#vazio`,
-`duracaoSegundos` fixo em 10). Configurado (`POST
-/admin/video-institucional`, ver Catálogo), o item leva `url`,
-`duracaoSegundos` real do vídeo e `contentHash` — Player V2 baixa e toca
-como qualquer mídia; Player V1 ignora `url`/`duracaoSegundos` desse item de
-propósito e continua sempre com o cartão (não muda de comportamento com ou
-sem vídeo configurado, 25/09/2026).
+Item com `institucional: true` preenche o tempo vago da hora: com o vídeo
+institucional configurado (`POST /admin/video-institucional`) leva `url`,
+`duracaoSegundos` real e `contentHash`; sem ele, vem sem `url` e o Player
+mostra o próprio cartão pelo tempo do item. `itemProgramacaoId` tem forma fixa
+— `indice` é a posição na sequência congelada da hora
+(`playlist_hora_congelada`, migration 064), estável entre buscas da mesma hora.
+`criativoId` é o id real de `criativos`.
 
-`itemProgramacaoId` é opaco pro app (só compara igualdade) mas tem forma fixa —
-`indice` é a posição na sequência congelada da hora (`playlist_hora_congelada`,
-migration 064), **antes** de remover vagas que saíram de elegibilidade no meio
-da hora, pra não deslocar o índice de quem vem depois a cada poll. Estável
-entre polls da mesma hora (é o que permite ao app reancorar sem reiniciar a
-exibição em andamento). `criativoId` é o id real de `criativos` — muda só
-quando o criativo muda de verdade (upload novo, nunca edição do mesmo id).
+### Proof-of-play
 
-`POST /player/:dispositivoId/played` recebe `{"eventos":[{execucaoId,
-janelaId, itemProgramacaoId, criativoId, iniciadoEm, terminadoEm}, ...]}` (até
-50 por lote) e devolve `{"resultados":[{execucaoId, status}, ...]}`. `status`
-é sempre um destes (vocabulário fixo, definido do lado do app —
-`FilaProofOfPlay.STATUS_DEFINITIVOS` em `playlist.mostrai` — mudar aqui sem
-mudar lá quebra a fila de retentativa):
+Evento: `{execucaoId, janelaId, itemProgramacaoId, criativoId, iniciadoEm,
+terminadoEm}` — `execucaoId` é o UUID do Player (até 100 caracteres entre
+letras, números, `.`, `_`, `:`, `-`), igual em toda retentativa. Os 6 status
+são finais:
 
 - `contabilizado` — creditado.
-- `duplicado` — `execucaoId` já visto antes (retentativa depois de resposta
-  perdida); não credita de novo.
-- `teto_atingido` — a hora já tinha `vezes_confirmadas = vezes_programadas`
-  pra este anunciante quando este `execucaoId` (novo) chegou.
-- `janela_desconhecida` — `itemProgramacaoId` aponta pra outra tela, ou pra
-  uma janela que nunca existiu nesta.
-- `item_invalido` — `itemProgramacaoId`/`janelaId` malformado.
-- `janela_expirada` — a hora referenciada é velha demais (mesma folga de 15
-  minutos da virada de hora do contrato 1, `FOLGA_VIRADA_MIN`).
+- `duplicado` — `execucaoId` já processado (da mesma TV ou de outra); nada
+  conta duas vezes.
+- `teto_atingido` — a hora já tem todas as exibições programadas confirmadas.
+- `janela_desconhecida` — janela/item de outra tela, ou anunciante que não
+  estava na playlist congelada daquela tela e hora.
+- `janela_expirada` — chegou mais de 7 dias depois do fim da janela, ou a
+  janela está no futuro.
+- `item_invalido` — campo ausente, vazio ou de tipo errado; `execucaoId` fora
+  do formato; ids que não são exatamente os da playlist (hora cheia, ISO
+  canônico); item que não conta (institucional, autoanúncio, mídia própria).
 
-Deduplicação por `execucaoId` é obrigatória e durável — ledger em
-`execucoes_confirmadas` (migration 065), reserva e crédito na MESMA
-transação (`src/playlist/execucoes-repository.js`), pra um crash no meio
-nunca deixar "já visto" gravado sem ter creditado. `criativoId`/`janelaId`
-que o app manda de volta não são cross-checados contra o banco além do
-prefixo de `itemProgramacaoId` — a confiança é a mesma chave de aparelho de
-sempre (`X-Aparelho-Id`), igual ao contrato 1.
+Validação só com fatos do servidor: a tela autenticada, o `janelaId`, o
+`itemProgramacaoId`, a playlist congelada daquela hora, o teto programado
+(`exibicoes_contador`) e o ledger de `execucaoId` (`execucoes_confirmadas`,
+migration 065 — reserva e crédito na MESMA transação). A liquidação do banco
+de horas espera o mesmo prazo de 7 dias (`src/bancohoras/apuracao.js`): hora
+que ainda aceita POP não liquida, e hora liquidada não aceita mais POP.
 
 Registra 1 evento por LOTE em `eventos` (`playlist:proofofplay_lote`, com a
-contagem por status) — não por execução, mesmo motivo do comentário em
-`src/player/routes.js` sobre `exibicao:video_toca` nunca virar linha própria.
+contagem por status) — não por execução.
 
 ## Admin (`/admin/*`, sessão de admin)
 
@@ -258,24 +229,18 @@ pede.
 | Método | Rota | O que faz |
 |---|---|---|
 | GET | `/admin/pontos` | lista. `status` é 100% automático desde a rodada final da Rede (22/09/2026, migration 069) — deriva de `dispositivos.status` (`sincronizarStatusPonto`, `src/pontos/repository.js`): 0 telas → `a_instalar`; ≥1 ativa provisionada com primeiro sinal → `em_operacao`; ativa provisionada sem sinal → `aguardando_primeiro_sinal` (migration 088); ativa sem Player → `a_instalar`; 0 ativa e ≥1 em `reparo` → `em_reparo`; tem tela(s), nenhuma ativa/reparo → `inativo`. Ninguém escreve a coluna fora dessa função — nunca duas fontes de verdade. Cada ponto traz `beneficio` (mesma situação do crédito mensal de `meus-pontos`, ADR-016). |
-| PATCH | `/admin/pontos/:id` | endereço, `horario_semanal`, `observacoes` (migration 067), cota de autoanúncio (legado, decisão pendente) — ajuda de custo e colunas mortas saíram da allowlist em 24/09/2026. **Não aceita `status`** — a ficha do ponto é somente-leitura na tela desde o redesenho de 22/09/2026, e desde a rodada final também não tem mais painel de Instalação/ACM nenhum: quem muda o status é a tela (`PATCH /admin/dispositivos/:id`), nunca o ponto direto. |
-| GET | `/admin/pontos/:pontoId/dispositivos` | telas do ponto, projeção do admin: `nome` (Tela N), `status` (administrativo), `saude` (derivada, `src/lib/status-tela.js`), `alertas`, e os blocos `operacao`, `configuracao` (desejada × aplicada), `identidade` (IDs, credencial por fingerprint, provisionamento) e `diagnostico`. Nunca chave, hash inteiro, token ou PIN. |
-| POST | `/admin/pontos/:pontoId/dispositivos` | cria tela — `{status?, modo_horario?, rotacao_tela?}`; nada técnico. Nasce Ativa, "Tela N" (número estável do ponto, gatilho da migration 081). |
+| PATCH | `/admin/pontos/:id` | endereço, `horario_semanal`, `observacoes` (migration 067), cota de autoanúncio (legado, decisão pendente) — ajuda de custo e colunas mortas saíram da allowlist em 24/09/2026. `horario_semanal` é o horário de TODAS as telas do ponto (editado na ficha do ponto; `null` = 24 h; `{abre:"00:00", fecha:"24:00"}` = dia inteiro) e mudar sobe a versão da config de todas elas (migration 093). **Não aceita `status`** — quem muda o status é a tela (`PATCH /admin/dispositivos/:id`), nunca o ponto direto. |
+| GET | `/admin/pontos/:pontoId/dispositivos` | telas do ponto, projeção do admin: `codigo`/`nome` (`M-0235`), `status` (Ativa/Em reparo/Inativa), `saude` (derivada, `src/lib/status-tela.js`: `aguardando_instalacao`, `operando`, `fora_do_horario`, `sem_sinal` — 2 min —, `erro_do_player`, `em_reparo`, `inativa`), `alertas`, `ultimoSinalEm`, `player {versao, build}`, `midiaAtual`, `instalacao {estado: aguardando|conectado, codigo, expiraEm, conectadoEm}` (o código de instalação aparece só enquanto vale), `margens`, `configuracao {situacao, desejada, aplicada}` (só para alerta), `suporte {erro, fila}`. Nunca chave, hash ou PIN. |
+| POST | `/admin/pontos/:pontoId/dispositivos` | cria tela — nada a preencher. Nasce Ativa e "Aguardando instalação"; o nome é o ID (`M-0235`). |
 | GET | `/admin/dispositivos` | todas as telas, mesmo formato |
-| GET | `/admin/dispositivos/:id` | ficha completa de uma tela + `conexao.baseUrl` (SITE_URL — o que vai no aparelho). `identidade.dispositivoId` é a identidade pública (5 dígitos desde a consolidação de 24/09/2026; `tela_<hex>` só em Player provisionado antes). Nunca a chave, o token ou o PIN. |
-| GET | `/admin/dispositivos/:id/eventos` | histórico de transições (provisionou, primeiro sinal, sem sinal/voltou, erro/resolvido, config aplicada, rotação, update) |
-| PATCH | `/admin/dispositivos/:id` | `status`, `modo_horario`, `horario_semanal`, `timezone`, `rotacao_tela`, `margem_*` (0–10 vmin), `update_baixar_auto`, `update_horas_entre_tentativas`, custo/amortização, `instalado_em`, `contrato_playlist` (compat-v1). Campo da config sobe `config_versao_desejada` por gatilho. |
-| DELETE | `/admin/dispositivos/:id` | remove. **409** se a tela já tem exibição confirmada (comprovante de anunciante) — inative em vez de excluir. O número dela fica livre pro próximo `+ tela` do ponto (menor número livre, migration 088). |
-| POST | `/admin/dispositivos/:id/preparar-player` | **[Preparar Player]** (canônico, 24/09/2026): gera `dispositivoId` (5 dígitos aleatórios, único) + `chaveAparelho`, devolve `{nomeArquivo, arquivo: {dispositivoId, chaveAparelho, baseUrl, rotacaoTela}}` UMA vez (o banco guarda só o hash). Reprovisionar troca a identidade e derruba o Player anterior. Token pendente é cancelado. |
-| POST | `/admin/dispositivos/:id/provisionamento` | caminho alternativo por token (`{baseUrl, tokenProvisionamento, rotacaoTela}`, contrato V2 §2.1) — o Player ainda aceita; sem botão no admin |
-| DELETE | `/admin/dispositivos/:id/provisionamento` | cancela o arquivo pendente |
-| POST | `/admin/dispositivos/:id/credencial/rotacionar` | cria credencial candidata (vai no heartbeat até o Player usar; a atual vale até lá e a anterior por 24 h). Só para Player V2 provisionado — tela com player web responde 400 |
-| DELETE | `/admin/dispositivos/:id/credencial/rotacao` | descarta a candidata |
-| POST | `/admin/dispositivos/:id/credencial/revogar` | nenhuma chave da tela vale mais (reprovisionar) |
-| POST | `/admin/dispositivos/:id/chave-legada` | **410** desde 24/09/2026 (fluxo antigo de chave aposentado). TV V1 em campo continua autenticando pela PK numérica com a chave que tem; instalação nova é sempre pelo `preparar-player` (o player web aceita `?tela=<dispositivoId>&chave=`). |
-| GET | `/admin/dispositivos/:id/pin` | PIN em claro (olho da ficha), só do cofre AES-GCM; cada chamada grava `PIN_REVEALED` no histórico da tela. 404 se a tela só tem o hash V1. |
-| POST | `/admin/dispositivos/:id/pin` | PIN de manutenção do Player (exatamente 4 dígitos; cifrado para a config do V2 e com hash para o player web). `null` remove — só em tela sem Player V2 (o aparelho manteria o PIN antigo), senão 400 |
-| GET | `/admin/player-releases` · POST · POST `/:id/assinatura-conferida` · PATCH `/:id {ativa}` | releases do Player (OTA fase 1). Só ativa com assinatura conferida por humano (keystore) |
+| GET | `/admin/dispositivos/:id` | ficha de uma tela, mesmo formato. Nunca a chave, o código em hash ou o PIN. |
+| PATCH | `/admin/dispositivos/:id` | `status`, `margem_*` (0–10 vmin), `custo_equipamento`, `meses_amortizacao`, `instalado_em`. Margem sobe `config_versao_desejada` por gatilho (migration 093); o resto é ignorado (horário é do ponto, PIN é global, orientação e servidor são fixos no APK). |
+| DELETE | `/admin/dispositivos/:id` | exclui (com código pendente e Player instalado, o Player para de funcionar). **409** "Esta tela possui histórico de exibições e não pode ser excluída permanentemente." se a tela já tem exibição confirmada — deixe Inativa. 404 se não existe. |
+| POST | `/admin/dispositivos/:id/codigo-instalacao` | gera o código de instalação: 201 `{codigoTela, codigo: "XXXX-XXXX", criadoEm, expiraEm}` (30 min, uma vez). Gerar de novo cancela o anterior. **409** se a tela já tem Player conectado (revogue antes) ou se o PIN de saída ainda não foi definido. `Cache-Control: no-store`. |
+| POST | `/admin/dispositivos/:id/credencial/revogar` | a chave da tela deixa de valer na hora (o Player recebe 401), o código pendente é cancelado e a tela volta a "Aguardando instalação". |
+| GET | `/admin/player/pin-saida` | `{definido, alteradoEm}` — nunca o número. |
+| PUT | `/admin/player/pin-saida` | `{pin}`: 4 a 8 dígitos; recusa todos iguais e sequência (1234, 4321). Guarda cifrado; sobe a versão da config de TODAS as telas. |
+| POST | `/admin/player/pin-saida/revelar` | `{pin}` — consulta deliberada, registrada em `eventos` (`player:pin_saida_revelado`). 404 sem PIN. `Cache-Control: no-store`. |
 | GET | `/admin/eventos` | SSE do admin: `screen.updated`/`point.updated` |
 | POST | `/admin/pontos/foto-exemplo` | Foto de exemplo do "ponto completo" mostrada em `pontos.html` — ilustração genérica ao lado do mapa, não é foto de nenhum ponto real. Chave fixa no bucket (upsert sobrescreve); a URL salva leva `?v=` pra não ficar em cache. |
 | GET | `/admin/video-institucional` | Configuração atual (`{url, thumbnailUrl, duracaoSegundos, contentHash, tamanhoBytes, atualizadoEm}`) ou `null` — nunca configurado, ou JSON corrompido na config (a tela existe pra consertar isso, não derruba). |

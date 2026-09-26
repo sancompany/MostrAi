@@ -326,7 +326,7 @@ Feito isso, as chaves novas vão para o painel do Northflank no passo A.9, e
     `CONSTRAINTS.md` fechou o assunto. O `INTEGRACAO.md` do Checkout é só um
     redirecionamento hoje; a fonte é o `API.md`.
 12. [x] **Backup** — job `Backup` ativo (`0 8 * * 0`); ensaio de restauração feito em 25/09/2026 (RUNBOOK §5). Texto original: enquanto o Supabase for Free (sem backup automático), rode `npm run backup` semanalmente (precisa de `pg_dump` no PATH) ou crie um cron job no Northflank. Exceção registrada no `CONSTRAINTS.md`.
-13. [ ] **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
+13. [~] **Substituído pelo Player MVP (26/09/2026)** — o player web saiu; instalar TV é pelo app Android com ID da tela + código de instalação (`RUNBOOK.md` §6.1). Texto antigo: **TV Stick**: no admin → Telas → "Gerar chave" → copie o link → abra no navegador/kiosk da TV. Defina o PIN da tela. O link guarda a chave no aparelho; depois disso pode abrir só `/player.html?tela=ID`. Tela vertical é o padrão; `?orientacao=paisagem` desliga o giro. `?margem=N` (vmin, 0-20) encolhe o palco igual nos 4 lados pra moldura física que cobre a borda do vidro virar preto em vez de cortar anúncio — fica guardado no aparelho igual à chave, só precisa passar uma vez. O app kiosk (Fully Kiosk ou similar) é quem trava a tela cheia — o player não promete isso.
 14. [x] **Criar o job `ApuracaoBancoHoras` no Northflank** — FEITO em 25/09/2026, exatamente pela especificação de `docs/job-apuracao-banco-horas.md`: cron `0 6 1 * *` (UTC), `Forbid`, `backoffLimit 2`, `activeDeadlineSeconds 600`, plano `nf-compute-20`, imagem construída do mesmo repositório/branch (`main`) que o `Conciliacao`, variáveis só `DATABASE_URL` e `NODE_ENV=production`. 1ª execução manual com `--dry-run` rodou com sucesso (código 0, as duas linhas de log da simulação, nada gravado). Próximo disparo: 01/10/2026 06:00 UTC.
 
 ## B. Decisões que só você toma (o código já suporta os dois lados)
@@ -4636,7 +4636,30 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
-## Player V2 — integração definitiva com o Mostraí Player (24/09/2026)
+## Player MVP — reestruturação do backend + admin (26/09/2026)
+
+Contrato oficial: `docs/player-mvp-contract.md`. Substitui a seção "Player
+V2" abaixo, que fica como histórico.
+
+**[x] Construído e testado** (migrations 092–094; `src/lib/codigo-tela.js`,
+`src/player/pin-saida.js`, `src/player/credencial.js`, `src/player/sinal.js`,
+`src/player/config.js`, `src/playlist/gerador.js#confirmarExecucao`, admin
+Rede): ID humano da tela (`M-0235`); código de instalação (30 min, uma vez,
+5 erros); PIN de saída global; config = margens + horário do ponto + PIN;
+heartbeat de 15 s; "Sem sinal" com 2 min; proof-of-play até 7 dias com
+validação na playlist congelada e liquidação do banco de horas no mesmo
+prazo; credencial simples (revogar e reinstalar); excluir tela sem histórico.
+Saíram player web/V1, `/hello`, OTA e a aba Versões, rotação de tela e de
+credencial, `baseUrl`, PIN e horário por tela. Testes:
+`tests/player-mvp.test.js` (provisionamento, admin, config, PIN, heartbeat
+1/10/50 telas, POP), `tests/codigo-tela.test.js`, e2e
+`tests/e2e/18-rede-player-mvp.mjs`.
+
+**[ ] Falta (fora deste repositório):** o Player Android implementar o
+contrato (`sancompany/Playlist.MostrAi`) e a primeira instalação numa TV
+real — definir o PIN de saída em Rede antes.
+
+## Player V2 — integração definitiva com o Mostraí Player (24/09/2026) — HISTÓRICO
 
 Plano, divergências e ordem de trabalho em
 `docs/specs/2026-09-23-player-v2-backend.md`. Fonte de verdade do protocolo:

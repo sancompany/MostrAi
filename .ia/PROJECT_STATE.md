@@ -238,7 +238,19 @@ aguardando revisão do dono — por pedido explícito do prompt, esta é a
 ÚLTIMA rodada de redesenho da Rede (não propor novo redesenho depois
 desta, só ajustes pontuais que o dono pedir).
 
-## Player V2 — integração definitiva (24/09/2026)
+## Player MVP (26/09/2026) — substitui o Player V2 abaixo
+
+Contrato oficial `docs/player-mvp-contract.md`. Rotas do Player:
+`/player/provisionar` (ID da tela `M-0235` + código de instalação),
+`/player/:id/heartbeat` (15 s), `/config` (margens, horário do ponto, PIN de
+saída global), `/playlist/:id` (envelope), `/played` (lote, até 7 dias depois
+da janela). Admin: Rede com PIN de saída, ponto com editor de horário, tela
+em linhas `M-xxxx` e ficha em Resumo/Instalação/Área segura/Estado/Suporte/
+Ações. Saíram player web/V1, `/hello`, OTA e a aba Versões, rotação de tela e
+de credencial, PIN e horário por tela. Migrations 092–094 (094 destrutiva).
+Detalhe e regras em `.ia/HANDOFF.md`.
+
+## Player V2 — integração definitiva (24/09/2026) — HISTÓRICO, substituído pelo Player MVP
 
 Backend do contrato V2 do Mostraí Player construído, V1 mantido. Migration
 083 (a mais recente; 081 e 082 são do ledger de créditos, de outros PRs). Rotas do Player: `/player/provisionar`,

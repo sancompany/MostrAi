@@ -52,8 +52,9 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 
 - **`anunciantes` é a tabela de contas.** Papéis em `papeis text[]`. O veto ao
   rename está acima.
-- **Tela ≠ ponto.** Playlist, chave de aparelho, PIN, sinal e custo vivem em
-  `dispositivos`. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota
+- **Tela ≠ ponto.** Playlist, chave de aparelho, margens, sinal e custo vivem
+  em `dispositivos`; o horário é do ponto (vale para todas as telas dele) e o
+  PIN de saída do Player é um só para a rede. Ajuda de custo e cota de autoanúncio vivem no ponto, e a cota
   é dividida entre as telas dele (`dividirCota`).
 - **Webhook do San Checkout: fail-closed, idempotente (`webhooks_processados`)
   e transacional.** Não afrouxar nenhuma das três. O erro que originou a regra
@@ -118,26 +119,32 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 
 - **Ponto único de falha:** um serviço no Northflank e um banco no Supabase.
   Aceito para este porte.
-- **PIN da tela tem 4 dígitos (10 mil combinações).** Protege o painel
-  daquela tela contra o curioso, não contra ataque. Não dá acesso a nada
-  além daquele painel. Guardado com hash para conferência e, desde o Player
-  V2 (24/09/2026), também cifrado (AES-256-GCM, `src/lib/cofre.js`), porque
-  o contrato entrega `pinPainel` ao Player na config — é o único segredo que
-  o servidor precisa recuperar. Nunca vai para o admin nem para log.
+- **PIN de saída do Player é UM para a rede (4 a 8 dígitos).** Só libera
+  sair do modo quiosque na própria TV — protege contra o curioso, não contra
+  ataque, e não dá acesso a nada no servidor. Um PIN por rede (e não por
+  tela) é simplificação deliberada do Player MVP (26/09/2026): quem sabe o PIN
+  de uma TV sabe o de todas. limite: vira PIN por ponto se a rede crescer ou
+  se um PIN vazar com frequência. Guardado cifrado (AES-256-GCM,
+  `src/lib/cofre.js`), porque a config entrega `pinSaida` ao Player; trocar
+  sobe a config de todas as telas. Nunca vai para log; o admin só vê o número
+  num clique deliberado e registrado. Sem PIN definido não se instala TV.
 - **Credencial da tela só existe como hash** (SHA-256 de 256 bits aleatórios;
-  o admin vê a impressão digital de 6 caracteres). O cofre guarda cifrado só
-  o que precisa voltar: o PIN, a chave candidata de uma rotação até o Player
-  confirmá-la, e a credencial de um provisionamento durante os 10 min de
-  repetição. A chave do cofre deriva do `SESSION_SECRET` (HKDF): trocá-lo
-  torna esses três ilegíveis — nada quebra, mas o PIN precisa ser definido
-  de novo e rotação em andamento precisa ser refeita (`RUNBOOK.md` §2).
-- **Telemetria do Player é estado do parque, não analytics.** O heartbeat V2
-  traz o estado operacional da própria TV (o que toca, versão, fila de
-  comprovantes, erro, desvio de relógio) para o próprio backend — sem dado
+  nunca aparece no admin). Uma chave por tela, sem rotação: chave suspeita =
+  revogar e instalar de novo. O código de instalação (8 caracteres, ~40 bits)
+  fica como HMAC e morre em 30 min, no 1º uso ou na 5ª tentativa errada. O
+  cofre guarda cifrado só o que precisa voltar: o PIN de saída, o código de
+  instalação enquanto vale (para a ficha mostrar) e a credencial durante os
+  5 min de repetição da instalação. A chave do cofre deriva do
+  `SESSION_SECRET` (HKDF): trocá-lo torna esses três ilegíveis — nada quebra,
+  mas o PIN precisa ser definido de novo e os códigos pendentes gerados de
+  novo (`RUNBOOK.md` §2).
+- **Telemetria do Player é estado do parque, não analytics.** O heartbeat
+  (15 s) traz o estado operacional da própria TV (o que toca, versão, fila de
+  comprovantes, erro) para o próprio backend — sem dado
   pessoal, sem comportamento de usuário, sem serviço de terceiro. O servidor
   guarda o **último retrato** (sobrescrito) e só **eventos de transição**
-  (`tela_eventos`: primeiro sinal, caiu/voltou, erro começou/resolveu,
-  config aplicada, update), nunca um log por heartbeat. Mesma categoria do
+  (`tela_eventos`: instalou, primeiro sinal, caiu/voltou, erro
+  começou/resolveu, config aplicada, revogou), nunca um log por heartbeat. Mesma categoria do
   proof-of-play.
 - **Sessão do admin por usuário/senha continua existindo como segunda camada**
   até o `/admin` estar atrás do Cloudflare Access. Quando o Access entrar, a

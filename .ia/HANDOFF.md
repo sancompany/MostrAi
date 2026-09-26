@@ -1,7 +1,8 @@
 # Current Handoff
 
 ## Updated
-2026-09-25 — **fechamento pré-gates** (relatório completo em
+2026-09-26 — **Player MVP**: reestruturação do backend + admin para o
+Player MVP (seção abaixo). Antes, 2026-09-25 — **fechamento pré-gates** (relatório completo em
 `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`): PR #60 (main verde, dois bugs
 do 299f3e5, heartbeat V2 determinístico), #61 (banco de horas como
 obrigação de veiculação — migration 090, válvula removida, job pronto e
@@ -9,6 +10,34 @@ NÃO criado no Northflank; `npm audit` 0), #62 (e-mails HTML + texto,
 comprovante de pagamento em PDF, backup sem arquivo vazio) e o ensaio de
 restauração (RUNBOOK §5). San Checkout em produção. Antes, no mesmo dia:
 reconciliação dos vínculos sandbox órfãos (PENDENCIAS L.2).
+
+## Player MVP — reestruturação do backend + admin (26/09/2026, este agente)
+Contrato oficial: `docs/player-mvp-contract.md` (substitui o contrato V2 —
+`docs/specs/2026-09-23-player-v2-backend.md` e o `player-v2-contract.md` do
+repositório do Player ficam como histórico). Uma fase por commit (A–M) na
+branch `claude/busy-noether-hheir2`. Migrations 092 (código de instalação),
+093 (config: margens + horário do ponto; PIN sobe todas) e 094 (DESTRUTIVA:
+`player_releases` e 34 colunas de `dispositivos`). Regras que não se desfazem
+sem contexto:
+- **ID da tela = `M-0235`** (a PK formatada, `src/lib/codigo-tela.js`); é o
+  `dispositivoId` do contrato. Não existe `dispositivo_uid` nem "Tela N".
+- **Instalação = ID da tela + código de instalação** (8 chars, 30 min, uma
+  vez, 5 erros cancelam; HMAC + cópia cifrada) → `POST /player/provisionar`.
+  A instalação conta como primeiro sinal. Tela com Player conectado não gera
+  código: revogar antes. Sem **PIN de saída global** (Rede) não gera código.
+- **Config** = `{configVersion, margens, operacao (horário do PONTO), pinSaida}`.
+  Toda tela segue o horário do ponto (`null` = 24 h, "24:00" aceito). Não há
+  rotação, OTA, URL do servidor nem PIN por tela.
+- **Heartbeat de 15 s** → `{configVersion, playlist:{atualizar}}`; "Sem
+  sinal" com 2 min. Sem limite de frequência nem SSE por batida.
+- **Proof-of-play até 7 dias** depois do fim da janela, validado contra a
+  playlist congelada; a liquidação do banco de horas espera o MESMO prazo
+  (`PRAZO_PROOF_OF_PLAY_MIN`). Evento ruim = `item_invalido`, nunca 500.
+- **Uma chave por tela, sem rotação** (`src/player/credencial.js`).
+- Saiu: player web, V1 inteiro, `/hello`, OTA + aba Versões, rotação de tela
+  e de credencial, `baseUrl`, PIN por tela, horário por tela.
+- Próximo: implementar o Player Android contra o contrato (outro repositório,
+  outra sessão). O backend não se adapta ao Player antigo.
 
 ## Estação final de consolidação (24/09/2026, este agente) — CONCLUÍDA
 Estado curto em `docs/CONSOLIDATION_STATE.md` (ler primeiro); relatório de
