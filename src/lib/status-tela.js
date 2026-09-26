@@ -77,8 +77,7 @@ function situacaoFila(tela, agora = new Date()) {
 
 // Alertas só do que é operacionalmente relevante — nunca de tela fora do
 // horário, em reparo ou inativa (o próprio estado já diz o que é).
-// `releaseObrigatoria`: a release obrigatória ativa mais nova (ou null).
-function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = null) {
+function alertasDaTela(tela, saude, agora = new Date()) {
   if (tela.status !== 'ativo' || saude === 'fora_do_horario') return [];
   const alertas = [];
   if (saude === 'sem_sinal') alertas.push({ codigo: 'SEM_SINAL', nivel: 'alerta' });
@@ -95,14 +94,6 @@ function alertasDaTela(tela, saude, agora = new Date(), releaseObrigatoria = nul
     agora.getTime() - ms(tela.config_alterada_em) > CONFIG_ALERTA_APOS_MS
   ) {
     alertas.push({ codigo: 'CONFIG_PENDENTE', nivel: 'atencao' });
-  }
-  if (
-    releaseObrigatoria &&
-    tela.player_build != null &&
-    tela.player_build < releaseObrigatoria.build &&
-    agora.getTime() - ms(releaseObrigatoria.assinatura_conferida_em) > 24 * 3600 * 1000
-  ) {
-    alertas.push({ codigo: 'UPDATE_OBRIGATORIO_ATRASADO', nivel: 'atencao' });
   }
   return alertas;
 }

@@ -6,7 +6,6 @@ const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const credencial = require('../player/credencial');
-const releases = require('../player/releases');
 const sse = require('../lib/sse');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
 const pinSaida = require('../player/pin-saida');
@@ -48,14 +47,6 @@ function validarCampos(corpo) {
   if ('rotacao_tela' in dados) {
     dados.rotacao_tela = Number(dados.rotacao_tela);
     if (![0, 90, 180, 270].includes(dados.rotacao_tela)) return { erro: 'rotação precisa ser 0, 90, 180 ou 270' };
-  }
-  if ('update_baixar_auto' in dados && typeof dados.update_baixar_auto !== 'boolean') {
-    return { erro: 'baixar automaticamente precisa ser sim ou não' };
-  }
-  if ('update_horas_entre_tentativas' in dados) {
-    const h = Number(dados.update_horas_entre_tentativas);
-    if (!Number.isInteger(h) || h < 1 || h > 72) return { erro: 'intervalo entre tentativas vai de 1 a 72 horas' };
-    dados.update_horas_entre_tentativas = h;
   }
   return { dados };
 }
@@ -200,44 +191,6 @@ router.post('/admin/player/pin-saida/revelar', async (_req, res) => {
   if (!pin) return res.status(404).json({ erro: 'nenhum PIN de saída definido — defina um em Rede' });
   res.set('Cache-Control', 'no-store');
   res.json({ pin });
-});
-
-// ---------------------------------------------------------------------------
-// Admin — releases do Player (OTA fase 1)
-// ---------------------------------------------------------------------------
-router.get('/admin/player-releases', async (_req, res) => {
-  res.json(await releases.listar());
-});
-
-router.post('/admin/player-releases', async (req, res) => {
-  const d = req.body || {};
-  const dados = {
-    ...d,
-    build: Number(d.build),
-    tamanho_bytes: d.tamanho_bytes == null || d.tamanho_bytes === '' ? null : Number(d.tamanho_bytes),
-    build_minimo: d.build_minimo == null || d.build_minimo === '' ? null : Number(d.build_minimo),
-  };
-  const erros = releases.validar(dados);
-  if (erros.length) return erro400(res, erros.join('; '));
-  try {
-    res.status(201).json(await releases.criar(dados, 'admin'));
-  } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ erro: 'já existe uma release com esse build' });
-    throw err;
-  }
-});
-
-router.post('/admin/player-releases/:id/assinatura-conferida', async (req, res) => {
-  const r = await releases.conferirAssinatura(req.params.id, 'admin');
-  if (!r) return res.status(404).json({ erro: 'release não encontrada' });
-  res.json(r);
-});
-
-router.patch('/admin/player-releases/:id', async (req, res) => {
-  if (typeof req.body?.ativa !== 'boolean') return erro400(res, 'informe ativa: true ou false');
-  const r = await releases.definirAtiva(req.params.id, req.body.ativa);
-  if (!r) return erro400(res, 'release inexistente, ou assinatura do APK ainda não conferida');
-  res.json(r);
 });
 
 // ---------------------------------------------------------------------------

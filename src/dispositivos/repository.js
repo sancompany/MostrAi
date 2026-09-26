@@ -30,8 +30,6 @@ const CAMPOS_ATUALIZAVEIS = [
   'margem_inferior',
   'margem_esquerda',
   'rotacao_tela',
-  'update_baixar_auto',
-  'update_horas_entre_tentativas',
 ];
 const STATUS = ['ativo', 'reparo', 'inativo'];
 // Código de instalação (docs/player-mvp-contract.md §3): 30 min, 5 erros e
@@ -109,7 +107,7 @@ function situacaoInstalacao(t, agora) {
 
 // O que o admin precisa para operar a tela — e nada que sirva para se passar
 // por ela (sem chave, sem hash, sem PIN) nem jargão de engenharia.
-function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
+function paraAdmin(t, agora = new Date()) {
   const saude = saudeDaTela(t, t.ponto_horario_semanal, agora);
   const temErro = t.ultimo_erro_codigo || t.ultimo_erro;
   return {
@@ -121,7 +119,7 @@ function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
     pontoCidade: t.ponto_cidade,
     status: t.status,
     saude,
-    alertas: alertasDaTela(t, saude, agora, releaseObrigatoria),
+    alertas: alertasDaTela(t, saude, agora),
     criadaEm: t.created_at,
     instaladoEm: t.instalado_em,
     custoEquipamento: Number(t.custo_equipamento),
@@ -152,20 +150,10 @@ function paraAdmin(t, agora = new Date(), releaseObrigatoria = null) {
   };
 }
 
-async function releaseObrigatoriaAtiva() {
-  const { rows } = await pool.query(
-    `SELECT build, assinatura_conferida_em FROM player_releases WHERE ativa AND obrigatoria ORDER BY build DESC LIMIT 1`,
-  );
-  return rows[0] || null;
-}
-
 async function listarParaAdmin(where = '', params = []) {
   const agora = new Date();
-  const [{ rows }, release] = await Promise.all([
-    pool.query(`${SELECT_TELA_ADMIN} ${where} ORDER BY p.nome, d.id`, params),
-    releaseObrigatoriaAtiva(),
-  ]);
-  return rows.map((t) => paraAdmin(t, agora, release));
+  const { rows } = await pool.query(`${SELECT_TELA_ADMIN} ${where} ORDER BY p.nome, d.id`, params);
+  return rows.map((t) => paraAdmin(t, agora));
 }
 
 const listarPorPonto = (pontoId) => listarParaAdmin('WHERE d.ponto_id = $1', [pontoId]);
@@ -173,11 +161,8 @@ const listarTodos = () => listarParaAdmin();
 
 async function buscarPorId(id) {
   if (!/^\d{1,9}$/.test(String(id))) return null;
-  const [{ rows }, release] = await Promise.all([
-    pool.query(`${SELECT_TELA_ADMIN} WHERE d.id = $1`, [id]),
-    releaseObrigatoriaAtiva(),
-  ]);
-  return rows[0] ? paraAdmin(rows[0], new Date(), release) : null;
+  const { rows } = await pool.query(`${SELECT_TELA_ADMIN} WHERE d.id = $1`, [id]);
+  return rows[0] ? paraAdmin(rows[0], new Date()) : null;
 }
 
 // Visão geral / alertas: só quem deveria operar e não está.

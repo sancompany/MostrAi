@@ -708,8 +708,6 @@ const MODULOS = [
       // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
       // de "entrada" (encerrada 22/09/2026, pedido do dono).
       { id: 'candidaturas', nome: 'Candidaturas', fila: 'candidaturas', render: renderCandidaturas },
-      // Releases do Player para atualização remota (OTA fase 1, Player V2).
-      { id: 'player', nome: 'Versões do Player', render: renderPlayerReleases },
     ],
   },
   {
@@ -814,7 +812,6 @@ const SUBTITULOS = {
   // "bancohoras" (último dos 4 hashes antigos que caem aqui), então a frase
   // em "pontos" nunca aparecia.
   'rede/pontos': 'Rede → pontos → telas: o estado de cada comércio e a saúde de cada tela, ao vivo.',
-  'rede/player': 'Versões do aplicativo Player anunciadas às telas para atualização remota.',
   anunciantes: 'Toda conta pode anunciar; quem tem ponto aparece como dono de ponto.',
   ofertas: 'Os 3 planos comerciais — Essencial, Pro e Prime — e as promoções.',
   'ofertas/precos': 'O que o cliente paga em cada plano e ciclo. Salvar publica o valor novo na vitrine.',
@@ -2595,7 +2592,6 @@ const TEXTO_ALERTA = {
   FILA_CRITICA: 'Comprovantes acumulados na TV',
   FILA_ALTA: 'Muitos comprovantes esperando envio',
   CONFIG_PENDENTE: 'A TV ainda não recebeu a última alteração',
-  UPDATE_OBRIGATORIO_ATRASADO: 'Atualização obrigatória atrasada',
 };
 const DIAS_HORARIO = [
   { id: 'seg', rotulo: 'Segunda' },
@@ -3462,112 +3458,6 @@ function mostrarLink({ titulo, texto, link }) {
       () => toast('Link copiado.'),
       () => erroNoModal(dlg, 'Não deu pra copiar sozinho — selecione o link e copie.'),
     );
-  });
-}
-
-// ---------- versões do Player (OTA fase 1) ----------
-// Release só é anunciada às telas quando ATIVA, e só pode ser ativada depois
-// que alguém confere que o APK foi assinado com o keystore definitivo — o
-// Android recusa assinatura diferente da instalada, e o servidor não prova
-// isso sozinho (contrato V2 §8.4, src/player/releases.js).
-async function renderPlayerReleases(el) {
-  async function montar() {
-    const releasesLista = await pegar('/admin/player-releases');
-    el.innerHTML = `
-      <section class="panel">
-        <div class="secao-topo"><h3>Versões do Player</h3>
-          <div class="secao-acoes"><button class="btn primary mini" data-nova-release>+ Registrar versão</button></div></div>
-        <p class="u-dim u-fs-85">O Player baixa em segundo plano, confere o SHA-256 e pede instalação entre anúncios; sem Device Owner, alguém confirma no controle. Nenhuma versão deve ser ativada antes do keystore definitivo do APK de produção.</p>
-        ${
-          releasesLista.length
-            ? `<div class="tabela-caixa"><div class="rolagem"><table><thead><tr><th>Versão</th><th>Build</th><th>Tipo</th><th>Assinatura</th><th>Situação</th><th></th></tr></thead><tbody>
-              ${releasesLista
-                .map(
-                  (r) => `<tr>
-                  <td>${esc(r.versao)}<span class="dado-sub"><code>${esc(r.sha256.slice(0, 12))}…</code>${r.tamanho_bytes ? ` · ${(Number(r.tamanho_bytes) / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : ''}</span></td>
-                  <td>${r.build}${r.build_minimo ? `<span class="dado-sub">a partir do build ${r.build_minimo}</span>` : ''}</td>
-                  <td>${r.obrigatoria ? 'Obrigatória' : 'Recomendada'}</td>
-                  <td>${r.assinatura_conferida_em ? `Conferida<span class="dado-sub">${esc(dataHora(r.assinatura_conferida_em))}</span>` : '<span class="badge badge-pendente">Não conferida</span>'}</td>
-                  <td>${r.ativa ? '<span class="badge badge-ok">Liberada</span>' : '<span class="badge badge-neutro">Segurada</span>'}</td>
-                  <td class="acoes">${
-                    r.assinatura_conferida_em
-                      ? `<button class="btn ghost mini" data-release-ativa="${r.id}" data-valor="${r.ativa ? 'false' : 'true'}">${r.ativa ? 'Segurar' : 'Liberar'}</button>`
-                      : `<button class="btn ghost mini" data-release-assinatura="${r.id}">Assinatura conferida</button>`
-                  }</td></tr>`,
-                )
-                .join('')}</tbody></table></div></div>`
-            : vazio(
-                'Nenhuma versão registrada.',
-                'Registre o APK publicado (URL https, SHA-256 e build) quando houver keystore definitivo.',
-              )
-        }
-      </section>`;
-    el.querySelector('[data-nova-release]').addEventListener('click', () => novaRelease(montar));
-    el.querySelectorAll('[data-release-assinatura]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        const ok = await confirmarModal({
-          titulo: 'Assinatura conferida?',
-          texto:
-            '<p>Confirme só se o APK desta versão foi assinado com o keystore definitivo — o mesmo das TVs instaladas. Assinatura diferente o Android recusa, e a tela fica tentando.</p>',
-          botao: 'Confirmo',
-        });
-        if (!ok) return;
-        const r = await api(`/admin/player-releases/${b.dataset.releaseAssinatura}/assinatura-conferida`, {
-          method: 'POST',
-        });
-        if (!r.ok) return toast('Não foi possível registrar.', 'err');
-        montar();
-      }),
-    );
-    el.querySelectorAll('[data-release-ativa]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        const r = await api(`/admin/player-releases/${b.dataset.releaseAtiva}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ ativa: b.dataset.valor === 'true' }),
-        });
-        if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível alterar.', 'err');
-        montar();
-      }),
-    );
-  }
-  await montar();
-}
-
-function novaRelease(remontar) {
-  const { dlg, fechar } = abrirModal({
-    titulo: 'Registrar versão do Player',
-    corpo: `<form id="formRelease" class="modal-form">
-        <div><label for="relVersao">Versão (versionName)</label><input id="relVersao" name="versao" required placeholder="1.1.0"></div>
-        <div><label for="relBuild">Build (versionCode)</label><input id="relBuild" name="build" type="number" min="1" required></div>
-        <div><label for="relUrl">URL do APK (https)</label><input id="relUrl" name="url" type="url" required placeholder="https://…/player-1.1.0.apk"></div>
-        <div><label for="relSha">SHA-256 do APK</label><input id="relSha" name="sha256" required pattern="[0-9a-fA-F]{64}" maxlength="64"></div>
-        <div><label for="relTam">Tamanho em bytes <span class="u-dim">(opcional)</span></label><input id="relTam" name="tamanho_bytes" type="number" min="1"></div>
-        <div><label for="relMin">Build mínimo para receber <span class="u-dim">(opcional)</span></label><input id="relMin" name="build_minimo" type="number" min="1"></div>
-        ${alternar({ nome: 'obrigatoria', texto: 'Obrigatória (informativo no Player: a instalação sempre pede OK)' })}
-        <p class="u-dim u-fs-85 u-m-0">Entra segurada. Só é anunciada às telas depois de "Assinatura conferida" e "Liberar".</p>
-        <p class="form-msg" data-msg role="status"></p>
-      </form>`,
-    rodape:
-      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formRelease" class="btn primary">Registrar</button>',
-  });
-  dlg.querySelector('#formRelease').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const f = e.target;
-    const r = await api('/admin/player-releases', {
-      method: 'POST',
-      body: JSON.stringify({
-        versao: f.versao.value.trim(),
-        build: Number(f.build.value),
-        url: f.url.value.trim(),
-        sha256: f.sha256.value.trim(),
-        tamanho_bytes: f.tamanho_bytes.value ? Number(f.tamanho_bytes.value) : null,
-        build_minimo: f.build_minimo.value ? Number(f.build_minimo.value) : null,
-        obrigatoria: f.obrigatoria.checked,
-      }),
-    });
-    if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível registrar.');
-    fechar();
-    remontar();
   });
 }
 
