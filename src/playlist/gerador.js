@@ -505,14 +505,11 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // quem chegou no meio da hora nunca disputa posição com quem já rodava.
   const itens = [...daHora.itens, ...idsExtras]
     .map((id, indice) => {
-      // Inventário vago: sem vídeo institucional configurado, o player mostra
-      // a própria peça institucional (#vazio em public/player.html) pelo tempo
-      // do item — não tem url, não é de ninguém e não conta exibição. Com o
-      // vídeo configurado (25/09/2026, `POST /admin/video-institucional`), o
-      // Player V2 baixa e toca ele como qualquer mídia (`url`/`contentHash`);
-      // o Player V1 IGNORA esses dois campos quando `institucional: true`
-      // (public/player.page.js) e continua mostrando só o cartão — o vídeo
-      // nunca é forçado num player antigo sem esse suporte.
+      // Inventário vago: sem vídeo institucional configurado, o Player mostra
+      // o próprio cartão institucional pelo tempo do item — não tem url, não
+      // é de ninguém e não conta exibição. Com o vídeo configurado
+      // (25/09/2026, `POST /admin/video-institucional`), o Player baixa e
+      // toca ele como qualquer mídia (`url`/`contentHash`).
       if (id === ID_INSTITUCIONAL) {
         return {
           itemProgramacaoId: `${janelaId}|${indice}|inst`,
@@ -560,10 +557,10 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         contabiliza: !autoanuncio && !midiaPropria,
         url: criativo.url,
         duracaoSegundos: criativo.duracaoSegundos,
-        // SHA-256 do arquivo servido (contrato V2 §6.1): o Player guarda por
-        // conteúdo e confere o download. Sem hash (criativo anterior à
-        // migration 083, ou URL trocada à mão) o campo não vai, e o Player
-        // cai no cache por criativoId (V1).
+        // SHA-256 do arquivo servido (docs/player-mvp-contract.md §7): o
+        // Player guarda por conteúdo e confere o download. Sem hash (criativo
+        // anterior à migration 083, ou URL trocada à mão) o campo não vai, e
+        // o Player guarda por criativoId.
         ...(criativo.contentHash ? { contentHash: criativo.contentHash } : {}),
       };
     })

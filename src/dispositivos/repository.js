@@ -1,6 +1,5 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
-const { conferirHash } = require('../lib/senha');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
@@ -26,9 +25,6 @@ const CAMPOS_ATUALIZAVEIS = [
   'custo_equipamento',
   'meses_amortizacao',
   'instalado_em',
-  // compat-v1: formato da playlist para quem não manda X-Player-Contract
-  // (Player Android anterior ao V2). O V2 escolhe o envelope pelo header.
-  'contrato_playlist',
   'margem_superior',
   'margem_direita',
   'margem_inferior',
@@ -235,13 +231,6 @@ async function atualizar(id, dados) {
     }
   }
   return buscarPorId(id);
-}
-
-// compat-v1: painel do player web (POST /player/:id/painel).
-async function conferirPin(id, pin) {
-  const { rows } = await pool.query('SELECT pin_hash FROM dispositivos WHERE id = $1', [id]);
-  if (!rows[0]?.pin_hash) return false;
-  return (await conferirHash(String(pin), rows[0].pin_hash)).ok;
 }
 
 // Tela que já rodou anúncio de verdade não se apaga: o comprovante de
@@ -510,7 +499,6 @@ module.exports = {
   listarComProblemaDeSinal,
   criar,
   atualizar,
-  conferirPin,
   temExibicaoConfirmada,
   deletar,
   gerarCodigo,

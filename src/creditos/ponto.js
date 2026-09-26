@@ -18,7 +18,7 @@ const sse = require('../lib/sse');
 //     arquivado/mesclado;
 //   · tem conta dona válida (não excluída, não a conta interna do Mostraí);
 //   · tem pelo menos UMA tela provisionada (credencial de aparelho vinculada —
-//     `chave_hash`, Player V2 ou chave V1, migration 083; revogar a credencial
+//     `chave_hash`, instalada pelo código de instalação; revogar a credencial
 //     zera a chave e tira a tela daqui, mesma régua do status do ponto em
 //     src/pontos/repository.js) e ADMINISTRATIVAMENTE ativa
 //     (`dispositivos.status = 'ativo'`).

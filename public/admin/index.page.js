@@ -2436,7 +2436,7 @@ async function renderMidiaMostrai(el) {
     <section class="secao-pagina">
       <div class="secao-topo">
         <h3>Vídeo institucional</h3>
-        <span class="secao-nota">roda no tempo vago da rede, pro Player V2 — o Player V1 continua sempre com o cartão "este espaço pode ser do seu negócio"</span>
+        <span class="secao-nota">roda nas TVs no tempo que não foi vendido; sem vídeo, a TV mostra o cartão "este espaço pode ser do seu negócio"</span>
         <div class="secao-acoes">
           <button type="button" class="btn ghost mini" data-escolher-arquivo="viArquivo">${videoInstitucional ? 'Trocar vídeo' : 'Enviar vídeo'}</button>
           <input type="file" id="viArquivo" accept="video/*" hidden>

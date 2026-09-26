@@ -214,10 +214,9 @@ router.post('/admin/pontos/foto-exemplo', upload.single('arquivo'), async (req, 
 });
 
 // Vídeo institucional (25/09/2026, pedido do dono): o que preenche o tempo
-// vago da rede pro Player V2 baixar e tocar, no lugar do cartão HTML "este
-// espaço pode ser do seu negócio" — que continua valendo pro Player V1 e pra
-// rede sem vídeo configurado nenhum (src/playlist/gerador.js
-// #obterVideoInstitucional). Configuração ÚNICA pra rede inteira: reenviar
+// vago da rede pro Player baixar e tocar, no lugar do cartão "este espaço
+// pode ser do seu negócio" — que continua valendo pra rede sem vídeo
+// configurado nenhum (src/playlist/gerador.js#obterVideoInstitucional). Configuração ÚNICA pra rede inteira: reenviar
 // substitui, não acumula (mesma chave de storage e de `configuracoes_site`).
 router.get('/admin/video-institucional', async (_req, res) => {
   const bruto = await repo.obterConfiguracao('video_institucional');

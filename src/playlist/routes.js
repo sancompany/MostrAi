@@ -3,7 +3,6 @@ const router = express.Router();
 const { exigirAparelho } = require('../lib/aparelho');
 const { gerarPlaylistDaHora } = require('./gerador');
 const pool = require('../db/pool');
-const { registrarPrimeiroContato } = require('../player/sinal');
 
 // O CACHE EM MEMÓRIA SAIU EM 17/09/2026, pra o serviço poder rodar em mais de
 // uma instância (item 4 de docs/PENDENCIAS.md).
@@ -23,11 +22,9 @@ const { registrarPrimeiroContato } = require('../player/sinal');
 // Gerar de novo também não infla contador: `gravarProgramados` é um upsert com
 // `DO UPDATE SET` (não incrementa), e com a ordem estável o valor gravado é o
 // mesmo.
-// `gerarPlaylistDaHora` sempre devolve o envelope (contrato 2, migration
-// 065). O formato de saída sai do próprio Player: quem manda
-// `X-Player-Contract` >= 2 (Player V2) recebe o envelope com `contentHash`;
-// sem o header, compat-v1 — `contrato_playlist` da tela (padrão 1, o array
-// que o player web `public/player.page.js` e o Android antigo leem).
+
+// Sempre o envelope da hora (docs/player-mvp-contract.md §7). A tela já deu
+// sinal na instalação — a playlist não precisa registrar primeiro contato.
 
 // Folga contra a corrida entre a geração e uma mudança commitada durante ela
 // (o gatilho da migration 083 marca com o relógio do statement, antes do
@@ -41,7 +38,6 @@ router.get('/playlist/:dispositivoId', exigirAparelho(), async (req, res) => {
   const {
     rows: [{ inicio }],
   } = await pool.query('SELECT clock_timestamp() AS inicio');
-  if (!req.dispositivo.primeiro_sinal_em) await registrarPrimeiroContato(req.dispositivo.id);
   const hora = new Date();
   hora.setMinutes(0, 0, 0);
   const envelope = await gerarPlaylistDaHora(req.dispositivo, hora);
@@ -55,16 +51,7 @@ router.get('/playlist/:dispositivoId', exigirAparelho(), async (req, res) => {
       WHERE id = $1`,
     [req.dispositivo.id, inicio, FOLGA_DESATUALIZADA_MS],
   );
-  if ((req.player.contrato || 0) >= 2 || req.dispositivo.contrato_playlist === 2) return res.json(envelope);
-  res.json(
-    envelope.itens.map((item) => ({
-      anuncianteId: item.anuncianteId,
-      autoanuncio: item.autoanuncio,
-      institucional: item.institucional,
-      url: item.url,
-      duracaoSegundos: item.duracaoSegundos,
-    })),
-  );
+  res.json(envelope);
 });
 
 module.exports = router;

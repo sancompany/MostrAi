@@ -117,7 +117,7 @@ async function criarPontoTeste() {
 async function dispositivoDeTeste() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
-  await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2, status: 'ativo' });
+  await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   await gerarChaveLegada(dispositivo.id);
   await registrarHeartbeat(dispositivo.id, {}, {});
   return dispositivosRepo.buscarComPonto(dispositivo.id);

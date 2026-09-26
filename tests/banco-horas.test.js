@@ -391,7 +391,7 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
     responsavel_contato: '16999990000',
   });
   const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco ${randomUUID()}` });
-  await dispositivosRepo.atualizar(tela.id, { contrato_playlist: 2, status: 'ativo' });
+  await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
   await gerarChaveLegada(tela.id);
   await registrarHeartbeat(tela.id, {}, {});
   const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);

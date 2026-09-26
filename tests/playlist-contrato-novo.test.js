@@ -74,7 +74,7 @@ async function contaComPlanoEAnuncioAprovado(pontoId) {
 async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
-  await dispositivosRepo.atualizar(dispositivo.id, { contrato_playlist: 2, status: 'ativo' });
+  await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   // Primeiro sinal: ponto só entra na cobertura depois dele (Player V2).
   // Tela que fala está autenticada: tem credencial (a do player web aqui).
   await gerarChaveLegada(dispositivo.id);
@@ -146,17 +146,6 @@ test('gerarPlaylistDaHora devolve o envelope novo com itemProgramacaoId e criati
   } finally {
     await apagarConta(conta.id);
     await limparDispositivo(dispositivo.id, dispositivo.ponto_id);
-  }
-});
-
-test('dispositivo com contrato_playlist=1 (padrão) não muda — array de sempre', async () => {
-  const ponto = await criarPontoTeste();
-  const criado = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` }); // sem tocar contrato_playlist — fica no padrão
-  try {
-    const dispositivo = await dispositivosRepo.buscarComPonto(criado.id);
-    assert.strictEqual(dispositivo.contrato_playlist, 1);
-  } finally {
-    await limparDispositivo(criado.id, ponto.id);
   }
 });
 

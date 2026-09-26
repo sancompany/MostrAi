@@ -4,7 +4,6 @@
 # Bloqueio aqui fica só para o que não deve nem ser visitado por robô.
 User-agent: *
 Disallow: /admin/
-Disallow: /player.html
 Allow: /
 
 Sitemap: https://mostrai.sancocore.com.br/sitemap.xml

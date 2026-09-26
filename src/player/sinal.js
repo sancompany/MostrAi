@@ -208,24 +208,6 @@ async function registrarHeartbeat(telaId, corpo, player) {
   }).then(depoisDoCommit);
 }
 
-// compat-v1: o player web pede a playlist e manda o heartbeat ao mesmo tempo
-// no boot. Sem isto, a primeira playlist de uma TV nova sai com o ponto
-// ainda "Aguardando instalação" — fora da cobertura — e só se corrige no
-// próximo poll (15 min). Uma requisição autenticada é contato; o FOR UPDATE
-// do heartbeat e o `IS NULL` daqui garantem um FIRST_SEEN só.
-async function registrarPrimeiroContato(telaId) {
-  const { rows } = await pool.query(
-    `UPDATE dispositivos SET primeiro_sinal_em = now(), ultima_vez_online = now()
-      WHERE id = $1 AND primeiro_sinal_em IS NULL
-      RETURNING ponto_id`,
-    [telaId],
-  );
-  if (!rows[0]) return false;
-  await telaEventos.registrar(telaId, 'FIRST_SEEN', { via: 'playlist' });
-  await sincronizarStatusPonto(rows[0].ponto_id);
-  return true;
-}
-
 // `playlist.atualizar` UMA vez por mudança (contrato §6.2): true só se há
 // marca de "desatualizada" que ainda não foi avisada, e já grava que avisou.
 async function sinalizarPlaylist(telaId, db = pool) {
@@ -244,6 +226,5 @@ module.exports = {
   lerHeartbeat,
   registrarHello,
   registrarHeartbeat,
-  registrarPrimeiroContato,
   sinalizarPlaylist,
 };

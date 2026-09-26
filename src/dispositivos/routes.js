@@ -5,11 +5,9 @@ const eventos = require('../lib/eventos');
 const pontosRepo = require('../pontos/repository');
 const pool = require('../db/pool');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
-const { limiteTentativas } = require('../lib/limite-tentativas');
 const credencial = require('../player/credencial');
 const releases = require('../player/releases');
 const sse = require('../lib/sse');
-const { exigirAparelho } = require('../lib/aparelho');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
 const pinSaida = require('../player/pin-saida');
 
@@ -58,9 +56,6 @@ function validarCampos(corpo) {
     const h = Number(dados.update_horas_entre_tentativas);
     if (!Number.isInteger(h) || h < 1 || h > 72) return { erro: 'intervalo entre tentativas vai de 1 a 72 horas' };
     dados.update_horas_entre_tentativas = h;
-  }
-  if ('contrato_playlist' in dados && ![1, 2].includes(Number(dados.contrato_playlist))) {
-    return { erro: 'contrato de playlist inválido' };
   }
   return { dados };
 }
@@ -178,15 +173,6 @@ router.post('/admin/dispositivos/:id/credencial/revogar', async (req, res) => {
   res.json(await repo.buscarPorId(tela.id));
 });
 
-// Fluxo antigo de chave (link do player web com a chave na URL) aposentado
-// na consolidação de 24/09/2026: um clique apagava o Player V2 da tela. As
-// TVs V1 em campo continuam autenticando com a chave que já têm; instalação
-// nova é sempre pelo [Preparar Player] (o player web aceita a mesma
-// credencial em ?tela=<dispositivoId>&chave=…).
-router.post('/admin/dispositivos/:id/chave-legada', (_req, res) =>
-  res.status(410).json({ erro: 'fluxo antigo de chave aposentado — use Preparar Player' }),
-);
-
 // ---------------------------------------------------------------------------
 // Admin — PIN de saída do Player (global, docs/player-mvp-contract.md §6)
 // ---------------------------------------------------------------------------
@@ -255,7 +241,7 @@ router.patch('/admin/player-releases/:id', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// O que rodou numa tela (dono do ponto ou admin)
+// O que rodou numa tela (dono do ponto, em "Meus pontos")
 // ---------------------------------------------------------------------------
 async function painelDaTela(dispositivoId) {
   const [porAnunciante, porDia] = await Promise.all([
@@ -284,7 +270,7 @@ async function telaDoDono(req, res) {
     return null;
   }
   const { rows } = await pool.query(
-    `SELECT d.id, d.ponto_id, d.dispositivo_uid FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+    `SELECT d.id, d.ponto_id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
      WHERE d.id = $1 AND p.anunciante_id = $2`,
     [req.params.dispositivoId, req.session.anuncianteId],
   );
@@ -296,22 +282,5 @@ router.get('/anunciantes/:id/dispositivos/:dispositivoId/painel', exigirAnuncian
   const tela = await telaDoDono(req, res);
   if (tela) res.json(await painelDaTela(tela.id));
 });
-
-// compat-v1: painel aberto a partir do player web — chave do aparelho + PIN.
-// Não dá acesso a nada além desta tela (CONSTRAINTS.md). O Player V2 tem o
-// painel local (PIN na config), sem rota no servidor. A autenticação é a
-// mesma das outras rotas do Player (exigirAparelho: ponto arquivado, chave
-// vazia, rotação), não uma cópia.
-// limiteTentativas: PIN de 4 dígitos sem limite é força bruta em minutos.
-router.post(
-  '/player/:dispositivoId/painel',
-  limiteTentativas,
-  exigirAparelho({ operacao: false }),
-  async (req, res) => {
-    if (!(await repo.conferirPin(req.dispositivo.id, req.body?.pin)))
-      return res.status(401).json({ erro: 'PIN incorreto' });
-    res.json(await painelDaTela(req.dispositivo.id));
-  },
-);
 
 module.exports = router;
