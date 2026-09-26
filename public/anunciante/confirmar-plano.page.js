@@ -351,14 +351,27 @@ async function carregar() {
 
 carregar();
 
-// Diálogo nativo (<dialog>) com o texto que o servidor mandou — Voltar ou
-// Continuar. Resolve true só em Continuar.
-function confirmarTroca({ titulo, texto, botao }) {
+// Diálogo nativo (<dialog>) com o texto que o servidor mandou — manter o
+// plano atual ou continuar. Resolve true só em Continuar. Com benefício em
+// vigor (estação da conta, 26/09/2026), mostra o que a conta tem hoje —
+// plano, origem, validade e créditos gastos — antes da consequência: nada de
+// "tem certeza?" genérico. O benefício só encerra quando o pagamento é
+// confirmado; aqui nada muda.
+function confirmarTroca({ titulo, texto, botao, botaoManter, atual }) {
   return new Promise((resolve) => {
     const dlg = document.createElement('dialog');
     dlg.className = 'dlg-resgate';
-    dlg.innerHTML = `<h3 class="u-mt-0">${esc(titulo)}</h3><p>${esc(texto)}</p>
-      <div class="dlg-acoes"><button type="button" class="btn ghost" data-voltar>Voltar</button>
+    dlg.setAttribute('aria-labelledby', 'dlgTrocaTitulo');
+    dlg.setAttribute('aria-describedby', 'dlgTrocaTexto');
+    const itens = atual
+      ? `<ul class="aviso-troca-itens">
+          <li>Plano atual: <b>${esc(atual.plano)}</b> · ${esc(atual.origem)}</li>
+          ${atual.validoAte ? `<li>Válido até <b>${window.dataBR(atual.validoAte)}</b></li>` : ''}
+          ${atual.creditosGastos != null ? `<li>Créditos utilizados: <b>${atual.creditosGastos}</b></li>` : ''}
+        </ul>`
+      : '';
+    dlg.innerHTML = `<h3 class="u-mt-0" id="dlgTrocaTitulo">${esc(titulo)}</h3>${itens}<p id="dlgTrocaTexto">${esc(texto)}</p>
+      <div class="dlg-acoes"><button type="button" class="btn ghost" data-voltar>${esc(botaoManter || 'Voltar')}</button>
       <button type="button" class="btn primary" data-continuar>${esc(botao)}</button></div>`;
     document.body.appendChild(dlg);
     let ok = false;

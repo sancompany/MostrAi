@@ -35,7 +35,7 @@ function etapasDosPrimeirosPassos({
       opcional: true,
       detalhe: beneficio
         ? 'No benefício, a Mostraí distribui seu anúncio pelos pontos'
-        : 'Opcional: sem escolha, a Mostraí distribui seu anúncio',
+        : 'Sem escolha, a Mostraí distribui seu anúncio',
     },
     { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0, opcional: false },
   ];
@@ -60,9 +60,10 @@ async function primeirosPassosDaConta(conta) {
       [conta.id],
     ),
     pool.query('SELECT COUNT(*)::int AS n FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]),
-    pool.query('SELECT COALESCE(SUM(vezes_confirmadas), 0)::int AS n FROM exibicoes_contador WHERE anunciante_id = $1', [
-      conta.id,
-    ]),
+    pool.query(
+      'SELECT COALESCE(SUM(vezes_confirmadas), 0)::int AS n FROM exibicoes_contador WHERE anunciante_id = $1',
+      [conta.id],
+    ),
     // Já teve plano (pago ou benefício) alguma vez: o convite deixa de ser
     // "primeira campanha" e vira "volte a anunciar".
     pool.query(

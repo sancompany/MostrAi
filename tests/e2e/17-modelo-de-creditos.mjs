@@ -175,7 +175,7 @@ const contas = [];
   const texto = await p.locator('main').innerText();
   check('painel: sem Inicial/Básico/R$ 50/Recebimentos', !ANTIGO.test(texto) && !/Recebimentos/.test(texto), (texto.match(ANTIGO) || texto.match(/Recebimentos/) || [])[0]);
   check('painel: Meus pontos mostra o benefício do ponto', /Benefício do ponto: \+1 crédito por mês/.test(texto));
-  check('painel: ser ponto não dá plano', /Nenhum plano comercial/.test(await p.locator('#modPlano').innerText()));
+  check('painel: ser ponto não dá plano', (await p.locator('#modPlano').isHidden()) && (await p.isVisible('#bloqueioPlano')));
   // Job do mês: o crédito aparece no painel sozinho (SSE), com o ponto.
   await p.evaluate(() => {
     window.__semReload = true;
@@ -184,9 +184,9 @@ const contas = [];
     `node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [${ponto}] }).then(() => setTimeout(() => process.exit(0), 600))"`,
     { cwd: new URL('../..', import.meta.url).pathname, env: process.env },
   );
-  await p.waitForFunction(() => /\b1\b/.test(document.querySelector('#modCreditos')?.innerText || ''), null, { timeout: 8000 }).catch(() => {});
+  await p.waitForFunction(() => document.querySelector('#creditosSaldo')?.textContent.trim() === '1', null, { timeout: 8000 }).catch(() => {});
   const creditos = await p.locator('#modCreditos').innerText();
-  check('créditos: saldo 1 sem F5', /\b1 crédito\b/.test(creditos) && (await p.evaluate(() => window.__semReload === true)), creditos.slice(0, 300));
+  check('créditos: saldo 1 sem F5', (await p.textContent('#creditosSaldo')).trim() === '1' && (await p.evaluate(() => window.__semReload === true)), creditos.slice(0, 300));
   await p.waitForTimeout(800);
   const listaPontos = await p.locator('#pontosLista').innerText();
   check('Meus pontos: crédito do mês já concedido', /já concedido/.test(listaPontos), listaPontos.replace(/\s+/g, ' ').slice(0, 600));
@@ -214,8 +214,8 @@ console.log('== benefício Essencial ativo + compra do Prime: aviso antes de pag
   await p.waitForSelector('dialog.dlg-resgate[open]', { timeout: 8000 });
   const aviso = await p.locator('dialog.dlg-resgate[open]').innerText();
   check('aviso diz que o benefício termina e os créditos não voltam', /será encerrado/.test(aviso) && /não serão devolvidos/.test(aviso), aviso);
-  check('aviso diz que o Prime começa na hora', /começa imediatamente/.test(aviso));
-  check('botões Voltar e Continuar com Prime', /Voltar/.test(aviso) && /Continuar com Prime/.test(aviso));
+  check('aviso diz que o Prime começa na hora', /começa na hora/.test(aviso));
+  check('botões Manter plano atual e Continuar com a troca', /Manter plano atual/.test(aviso) && /Continuar com a troca/.test(aviso));
   await p.screenshot({ path: `${SAIDA}creditos-aviso-prime.png`, fullPage: true });
   await p.click('dialog.dlg-resgate [data-voltar]');
   check('Voltar não compra nada', PG(`SELECT count(*) FROM assinaturas WHERE anunciante_id = ${conta.id}`) === '0');

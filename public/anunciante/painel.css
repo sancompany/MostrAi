@@ -1,7 +1,7 @@
 /* Dashboard do anunciante — escopo local para não alterar os demais painéis. */
 .anunciante-dashboard { --dash-radius: 18px; --dash-shadow: 0 10px 32px rgba(25, 39, 64, .055); background: var(--bg); }
 .anunciante-dashboard .painel-wrap { max-width: 1280px; }
-.dashboard-hero-section { padding: 36px 0 26px; background: linear-gradient(135deg, #fbf8f5 0%, #fff4ea 100%); border-bottom: 1px solid var(--border); }
+.dashboard-hero-section { padding: 24px 0 20px; background: linear-gradient(135deg, #fbf8f5 0%, #fff4ea 100%); border-bottom: 1px solid var(--border); }
 /* Superfície escura do hero em laranja queimado, não azul — azul-marinho
    não existe em nenhum outro lugar do produto, e a paleta da marca é
    --brand (#ff7a1a). Não é o --brand puro: texto branco sobre #ff7a1a dá
@@ -9,12 +9,12 @@
    já tem --sobre-brand pro caso contrário). Esta rampa para em #9c4506,
    que dá 6,4:1 no branco. O laranja da marca entra pelo brilho do
    ::after, onde é decoração, não carrega texto. */
-.painel-hero { position: relative; overflow: hidden; display: block; padding: 32px; border: 0; border-radius: var(--dash-radius); color: #fff; background: linear-gradient(122deg, #4a1f00 0%, #7c3404 58%, #9c4506 100%); box-shadow: 0 18px 45px rgba(92, 41, 4, .18); }
+.painel-hero { position: relative; overflow: hidden; display: block; padding: 24px 28px; border: 0; border-radius: var(--dash-radius); color: #fff; background: linear-gradient(122deg, #4a1f00 0%, #7c3404 58%, #9c4506 100%); box-shadow: 0 18px 45px rgba(92, 41, 4, .18); }
 .painel-hero::after { content: ""; position: absolute; width: 280px; height: 280px; right: -90px; top: -150px; border-radius: 50%; background: rgba(255, 122, 26, .3); }
 .hero-main { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 28px; }
 .hero-copy { max-width: 660px; }
 .hero-kicker { margin: 0 0 7px; color: #ffd7b5; font-size: .76rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.hero-copy h1 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.35rem); line-height: 1.12; letter-spacing: -.025em; }
+.hero-copy h1 { margin: 0; font-size: clamp(1.45rem, 2.4vw, 1.95rem); line-height: 1.12; letter-spacing: -.025em; }
 .hero-copy > p { margin: 10px 0 0; color: rgba(255,255,255,.78); }
 .hero-plan { display: inline-flex; gap: 8px; align-items: center; margin-top: 18px; padding: 7px 11px; border-radius: 999px; background: rgba(255,255,255,.1); color: #fff; font-size: .82rem; }
 .hero-plan-dot { width: 8px; height: 8px; border-radius: 50%; background: #55d98b; box-shadow: 0 0 0 4px rgba(85,217,139,.14); }
@@ -131,11 +131,10 @@
 .dashboard-opportunity #cardPonto > .card { max-width: none; }
 .dashboard-opportunity #cardPonto > .modo-card { max-width: none; border-radius: var(--dash-radius); box-shadow: var(--dash-shadow); }
 .ponto-opportunity { overflow: hidden; border: 0 !important; border-radius: var(--dash-radius) !important; background: linear-gradient(105deg, #fff 0%, #fff8f2 100%) !important; box-shadow: var(--dash-shadow); }
-.ponto-opportunity-summary { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 26px 28px; }
-.ponto-opportunity-copy { display: flex; align-items: center; gap: 17px; }
-.ponto-opportunity-icon { display: grid; flex: 0 0 48px; place-items: center; height: 48px; border-radius: 14px; background: #fff0e4; color: var(--brand-text); font-size: 1.25rem; }
-.ponto-opportunity h3 { margin: 0 0 3px; font-size: 1.15rem; }
+.ponto-opportunity-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px 24px; }
+.ponto-opportunity h3 { margin: 0; font-size: 1.12rem; line-height: 1.3; overflow-wrap: normal; }
 .ponto-opportunity p { margin: 0; }
+.ponto-opportunity .btn { margin-top: 8px; min-width: 200px; }
 .ponto-opportunity-form { padding: 0 28px 26px; border-top: 1px solid #f0e5dc; }
 .ponto-opportunity-form[hidden] { display: none; }
 .ponto-opportunity-form form { max-width: 460px; padding-top: 20px; }
@@ -149,7 +148,8 @@
 @media (max-width: 720px) {
   .dashboard-hero-section { padding: 20px 0; }
   .painel-hero { padding: 24px 20px; }
-  .hero-main, .section-heading, .ponto-opportunity-summary { align-items: stretch; flex-direction: column; }
+  .hero-main, .section-heading { align-items: stretch; flex-direction: column; }
+  .ponto-opportunity .btn { width: 100%; min-width: 0; }
   .painel-hero .btn-engrenagem { align-self: flex-start; }
   .section-heading > p { text-align: left; }
   .anunciante-dashboard .panel { padding: 20px; }
@@ -177,7 +177,6 @@
   .anunciante-dashboard .criativo-card img, .anunciante-dashboard .criativo-card video, .anunciante-dashboard .criativo-placeholder { max-height: none; }
   .criativo-meta { align-items: flex-start; flex-direction: column; }
   .ponto-opportunity-summary { padding: 22px 20px; }
-  .ponto-opportunity-copy { align-items: flex-start; }
   .ponto-opportunity-form { padding: 0 20px 22px; }
 }
 
@@ -203,7 +202,8 @@
 .creditos-situacao { margin: 4px 0 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #f9fafb; font-size: .9rem; }
 .creditos-situacao p { margin: 4px 0; }
 .creditos-motivo { color: var(--text-dim); }
-.creditos-colunas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 24px; }
+.creditos-colunas { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.creditos-colunas[hidden] { display: none; }
 /* Sem isso a tabela (larga por natureza) define a largura mínima do item e
    empurra a página pra fora da tela no celular; ela rola no .u-ox-auto. */
 .creditos-colunas > * { min-width: 0; }
@@ -347,6 +347,11 @@
   .area-lateral .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .panel-head { flex-wrap: wrap; }
   .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
+  /* Coluna estreita: o selo de status desce pra baixo do nome, em vez de
+     roubar a largura dele (nome e endereço quebravam palavra por palavra). */
+  .area-lateral .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
+  .area-lateral .estab-foto { width: 52px; height: 52px; }
+  .area-lateral .estab-topo .badge { grid-column: 2; justify-self: start; }
 }
 
 /* Resumo da conta e alertas, no hero. */
@@ -372,3 +377,51 @@
 .plano-nome { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 .plano-validade { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
 .plano-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+/* Primeiros passos (estação da conta, 26/09/2026). Sem plano: o bloco
+   principal do painel, com UM botão. Com plano: faixa compacta no topo da
+   campanha até o primeiro criativo e a primeira exibição. O estado de cada
+   etapa vai escrito ("Concluído", "Próximo passo"), não só na cor. */
+.onboarding.card { max-width: none; margin: 0; padding: 28px; border: 0; border-radius: var(--dash-radius); box-shadow: var(--dash-shadow); background: linear-gradient(105deg, #fff 0%, #fff8f2 100%); }
+.onboarding h2 { margin: 4px 0 8px; font-size: clamp(1.3rem, 2.2vw, 1.65rem); line-height: 1.2; letter-spacing: -.015em; }
+.onboarding-texto { max-width: 560px; margin: 0 0 18px; color: var(--text-dim); }
+.onboarding .onboarding-cta { display: inline-flex; justify-content: center; width: auto; min-width: 220px; }
+.onboarding-etapas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 22px 0 0; padding: 0; list-style: none; }
+.onboarding-etapas li { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.onboarding-etapas .etapa-num { display: grid; flex: 0 0 28px; place-items: center; height: 28px; border-radius: 50%; background: #f1f3f6; color: var(--text-dim); font-size: .85rem; font-weight: 800; }
+.onboarding-etapas .etapa-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.onboarding-etapas .etapa-texto b { font-size: .9rem; line-height: 1.25; }
+.onboarding-etapas .etapa-texto span { color: var(--text-dim); font-size: .78rem; }
+.onboarding-etapas .etapa-proximo { border-color: #ffb27a; box-shadow: 0 0 0 3px rgba(255, 122, 26, .12); }
+.onboarding-etapas .etapa-proximo .etapa-num { background: var(--brand); color: #fff; }
+.onboarding-etapas .etapa-feito .etapa-num { background: #e3f6ea; color: #1c7a45; }
+.onboarding-etapas .etapa-pendente, .onboarding-etapas .etapa-opcional { opacity: .78; }
+.onboarding-faixa { margin-bottom: 26px; padding: 20px 22px; border-radius: var(--dash-radius); background: #fff; box-shadow: var(--dash-shadow); }
+.onboarding-faixa[hidden] { display: none; }
+.onboarding-faixa-topo { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.onboarding-faixa h2 { margin: 2px 0 0; font-size: 1.2rem; }
+.onboarding-faixa .onboarding-etapas { margin-top: 14px; }
+@media (max-width: 900px) {
+  .onboarding-etapas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .onboarding.card { padding: 20px 16px; }
+  .onboarding-etapas { grid-template-columns: minmax(0, 1fr); }
+  .onboarding .onboarding-cta { width: 100%; min-width: 0; }
+}
+
+/* Card do plano: benefício temporário explicado em uma linha. */
+.plano-nota { margin: 4px 0 0; color: var(--text-dim); font-size: .84rem; }
+
+/* Indicações: card próprio, só pra ponto. Link longo quebra dentro do card
+   em vez de alargar a coluna lateral. */
+.painel-indicacao h2 { margin: 2px 0 6px; font-size: 1.2rem; }
+.painel-indicacao .panel-subtitle { display: block; margin-bottom: 12px; }
+.painel-indicacao .creditos-link { flex-wrap: wrap; }
+.painel-indicacao .creditos-link code { min-width: 0; overflow-wrap: anywhere; }
+
+/* Aviso de troca de benefício, dentro do diálogo de resgate. */
+.aviso-troca { margin: 0 0 14px; padding: 12px 14px; border: 1px solid #f3c49b; border-radius: 12px; background: #fff7ef; }
+.aviso-troca p { margin: 6px 0 0; }
+.aviso-troca .aviso-troca-titulo { margin: 0; }
+.aviso-troca ul { margin: 8px 0 0; padding-left: 18px; }

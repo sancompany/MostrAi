@@ -268,7 +268,9 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
       validoAte: b.validoAte || null,
       creditosGastos,
     };
-    const gastos = creditosGastos ? ` (${creditosGastos} ${creditosGastos === 1 ? 'crédito utilizado' : 'créditos utilizados'})` : '';
+    const gastos = creditosGastos
+      ? ` (${creditosGastos} ${creditosGastos === 1 ? 'crédito utilizado' : 'créditos utilizados'})`
+      : '';
     return res.status(409).json({
       erro: 'confirme como fica o seu benefício',
       confirmacao:
