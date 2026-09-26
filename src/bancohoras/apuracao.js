@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const bancoHorasRepo = require('./repository');
-const { FOLGA_VIRADA_MIN } = require('../playlist/gerador');
+const { PRAZO_PROOF_OF_PLAY_MIN } = require('../playlist/gerador');
 
 // Banco de horas como OBRIGAÇÃO DE VEICULAÇÃO (decisão do dono, 25/09/2026 —
 // MANTER): capacidade contratada que não coube vira saldo; o saldo volta em
@@ -13,10 +13,14 @@ const { FOLGA_VIRADA_MIN } = require('../playlist/gerador');
 // dia do mês no mês seguinte.
 const FUSO = 'America/Sao_Paulo';
 
-// A prova de uma exibição só é aceita até 60 min + a folga da virada depois
-// do início da hora dela (src/playlist/gerador.js#confirmarExecucao). Depois
-// disso a linha da hora não muda mais, e a parte do banco pode ser abatida.
-const MINUTOS_ATE_A_HORA_FECHAR = 60 + FOLGA_VIRADA_MIN;
+// A prova de uma exibição é aceita até 7 dias depois do fim da hora dela
+// (proof-of-play offline, src/playlist/gerador.js#confirmarExecucao). Só
+// depois disso a linha da hora não muda mais e a parte do banco pode ser
+// abatida — liquidar antes deixaria uma confirmação atrasada cair numa hora
+// já liquidada (dívida abatida a menos, e reservada de novo). O banco
+// programado e não confirmado fica reservado esse tempo antes de voltar a
+// ficar disponível.
+const MINUTOS_ATE_A_HORA_FECHAR = PRAZO_PROOF_OF_PLAY_MIN;
 
 // `mes`: 'YYYY-MM' (validado por quem chama) ou null = o mês anterior ao
 // corrente em Matão. Só mês FECHADO: o corrente ainda tem horas por rodar e

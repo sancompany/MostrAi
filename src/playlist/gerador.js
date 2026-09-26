@@ -579,25 +579,23 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   };
 }
 
-// Só confirma se havia programação pra esse anunciante nesta tela nesta
-// hora — uma chave válida não pode inflar quem não estava na playlist.
-// A FOLGA DA VIRADA DA HORA (regra do dono, esclarecida em 17/09/2026): "não
-// pode passar de 1 hora, mas digamos que passe alguns minutos, aí sim pode
-// deixar passar". A hora é um orçamento fechado de 3600s, mas a peça que
-// começou às 13h59m50s termina depois das 14h — e o `played` dela chega numa
-// hora que não é a dela. Sem a folga, essa exibição REAL era recusada e
-// entrava como déficit, que a hora seguinte tentava repor: um atraso de
-// segundos virava exibição a mais no dia seguinte.
-const FOLGA_VIRADA_MIN = 15;
+// Proof-of-play offline (docs/player-mvp-contract.md §8): o evento vale até
+// 7 DIAS depois do FIM da janela original — não pela hora de chegada. Uma
+// TV pode ficar dias sem rede e mandar tudo depois; a exibição aconteceu e é
+// do anunciante. Contado do início da hora: os 60 min dela + 7 dias. A
+// liquidação do banco de horas espera o mesmo prazo
+// (src/bancohoras/apuracao.js), senão uma confirmação atrasada cairia numa
+// hora já liquidada e contaria duas vezes.
+const PRAZO_PROOF_OF_PLAY_DIAS = 7;
+const PRAZO_PROOF_OF_PLAY_MIN = 60 + PRAZO_PROOF_OF_PLAY_DIAS * 24 * 60;
+// Evento de uma hora que ainda nem começou só pode ser relógio adulterado;
+// 1 min cobre a diferença entre o relógio do banco e o do processo.
+const TOLERANCIA_FUTURO_MIN = 1;
 
-// As duas operações que tanto `confirmarExibicao` (contrato antigo, por
-// anunciante+momento) quanto `confirmarExecucao` (contrato novo, por
-// itemProgramacaoId já decodificado) precisam: creditar com teto, e saber se
-// a linha existe (pra distinguir "já completou" de "nunca foi programado").
-// `db` opcional (padrão `pool`): `execucoes-repository.js` passa o client de
-// uma transação, pra creditar e reservar o `execucaoId` (dedup) atomicamente
-// — sem isso, um crash bem no meio (entre creditar e gravar o ledger) credita
-// sem deixar rastro de dedup, e a próxima retentativa credita nas de novo.
+// Credita com TETO: `vezes_confirmadas` nunca passa de `vezes_programadas`
+// (o que aquela hora prometeu). Qualquer reenvio da TV que escape da
+// deduplicação por `execucaoId` bate aqui. `db`: o client da transação de
+// `execucoes-repository.js`, que reserva o `execucaoId` e credita juntos.
 async function creditarConfirmacao(anuncianteId, dispositivoId, janela, db = pool) {
   const { rowCount } = await db.query(
     `UPDATE exibicoes_contador SET vezes_confirmadas = vezes_confirmadas + 1
@@ -617,72 +615,49 @@ async function existeConfirmacao(anuncianteId, dispositivoId, janela, db = pool)
   return rows.length > 0;
 }
 
-// Confirma uma exibição, com TETO. Era `vezes_confirmadas + 1` sem limite
-// nenhum, e por isso qualquer reenvio da TV (queda de rede e retentativa,
-// recarregar a página, player travar e reiniciar) contava a mesma exibição
-// duas vezes. Não é o plano entregando a mais: é o COMPROVANTE ficando falso
-// — e o comprovante é o que se entrega a quem pagou. O teto é
-// `vezes_programadas`, que é exatamente o que aquela hora prometeu.
-//
-// Devolve `{ ok, motivo }` em vez de booleano porque os dois "não" são
-// diferentes e o player precisa distinguir: `nao_programado` é pedido
-// inválido (chave certa tentando confirmar anunciante que não está na hora);
-// `ja_completo` é a própria TV reenviando, que é normal e não é erro.
-async function confirmarExibicao(dispositivoId, anuncianteId, momento) {
-  const horaAtual = new Date(momento);
-  horaAtual.setMinutes(0, 0, 0);
-
-  // Hora corrente primeiro: é o caso normal, e a folga é exceção.
-  if (await creditarConfirmacao(anuncianteId, dispositivoId, horaAtual)) return { ok: true, janela: 'atual' };
-
-  // Sobrou da hora anterior? Só nos primeiros minutos, e só se aquela hora
-  // ainda tiver o que confirmar.
-  const minutos = new Date(momento).getMinutes();
-  if (minutos < FOLGA_VIRADA_MIN) {
-    const anterior = new Date(horaAtual);
-    anterior.setHours(anterior.getHours() - 1);
-    if (await creditarConfirmacao(anuncianteId, dispositivoId, anterior)) return { ok: true, janela: 'anterior' };
-  }
-
-  if (await existeConfirmacao(anuncianteId, dispositivoId, horaAtual)) return { ok: false, motivo: 'ja_completo' };
-  return { ok: false, motivo: 'nao_programado' };
+// O anunciante estava na playlist CONGELADA desta tela nesta hora (base ou
+// extras, migration 064)? Fato do servidor, gravado quando a hora foi
+// servida — não depende de nada que a TV mande além do id.
+async function estavaNaHoraCongelada(dispositivoId, janela, anuncianteId, db = pool) {
+  const { rows } = await db.query(
+    `SELECT 1 FROM playlist_hora_congelada
+      WHERE dispositivo_id = $1 AND janela_hora = $2
+        AND (EXISTS (SELECT 1 FROM jsonb_array_elements(base) b WHERE b->>'id' = $3)
+             OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(extras) x WHERE x = $3))`,
+    [dispositivoId, janela, String(anuncianteId)],
+  );
+  return rows.length > 0;
 }
 
-// Decodifica um `itemProgramacaoId` do contrato novo (formato montado em
-// `gerarPlaylistDaHora`: `dispositivoId|horaISO|indice|tipo`) e credita —
-// sem reconstruir a hora congelada: o índice existe pra identidade estável
-// entre polls (RN-09 do app), o `tipo` já traz quem creditar embutido, então
-// não precisa reler `playlist_hora_congelada` pra saber a resposta.
-//
-// Devolve exatamente um dos status que `playlist.mostrai`
-// (`FilaProofOfPlay.STATUS_DEFINITIVOS`) reconhece como definitivo — qualquer
-// string fora dessa lista faz o app manter o item na fila e tentar de novo,
-// então esta função nunca deve inventar um status novo sem atualizar os dois
-// lados (ver docs/api.md).
+// Decodifica o `itemProgramacaoId` (formato montado em `gerarPlaylistDaHora`:
+// `dispositivoId|horaISO|indice|tipo`) e credita. Devolve SEMPRE um dos 6
+// status finais do contrato (§8) — nunca lança por conteúdo do evento: um
+// evento ruim responde `item_invalido` e o resto do lote segue.
 async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janelaId, agora, db = pool) {
-  const partes = String(itemProgramacaoId || '').split('|');
+  if (typeof itemProgramacaoId !== 'string' || typeof janelaId !== 'string') return 'item_invalido';
+  const partes = itemProgramacaoId.split('|');
   if (partes.length !== 4) return 'item_invalido';
   const [dispositivoIdStr, horaISO, indiceStr, tipo] = partes;
-  if (Number(dispositivoIdStr) !== Number(dispositivoIdEsperado)) return 'janela_desconhecida';
+  if (!/^\d{1,10}$/.test(dispositivoIdStr) || !/^\d{1,6}$/.test(indiceStr)) return 'item_invalido';
   if (janelaId !== `${dispositivoIdStr}|${horaISO}`) return 'item_invalido';
   const horaJanela = new Date(horaISO);
-  if (Number.isNaN(horaJanela.getTime()) || !/^\d+$/.test(indiceStr)) return 'item_invalido';
+  // Só a forma exata que o servidor emitiu: hora cheia, ISO com ms e Z.
+  if (Number.isNaN(horaJanela.getTime()) || horaJanela.toISOString() !== horaISO) return 'item_invalido';
+  if (horaJanela.getTime() % 3_600_000 !== 0) return 'item_invalido';
+  if (Number(dispositivoIdStr) !== Number(dispositivoIdEsperado)) return 'janela_desconhecida';
 
+  // `dono` (autoanúncio), `inst` (institucional) e `midia:N` nunca contam —
+  // o Player não cria execução para item com `contabiliza: false`.
+  if (!/^\d{1,10}$/.test(tipo)) return 'item_invalido';
   const anuncianteId = Number(tipo);
-  // `dono` (autoanúncio) e `inst` (institucional) nunca contam — o app já
-  // filtra isso do próprio lado (`FilaProofOfPlay.registrarInicio` não cria
-  // execução pra item com `contabiliza=false`), então chegar aqui com um
-  // desses é o app tentando confirmar algo que não devia existir.
-  // Teto do int4: um número maior passava daqui e estourava na query (500
-  // eterno para um evento que nunca vai ser válido).
-  if (!Number.isInteger(anuncianteId) || anuncianteId <= 0 || anuncianteId > 2147483647) return 'item_invalido';
+  if (anuncianteId <= 0 || anuncianteId > 2147483647) return 'item_invalido';
 
-  // Mesma folga da virada de hora do contrato antigo — a peça pode terminar
-  // minutos depois da hora virar, e o `janelaId` já diz exatamente qual hora
-  // era a dela (não precisa adivinhar pela hora "agora").
   const diffMin = (new Date(agora).getTime() - horaJanela.getTime()) / 60_000;
-  if (diffMin < -1 || diffMin > 60 + FOLGA_VIRADA_MIN) return 'janela_expirada';
+  if (diffMin < -TOLERANCIA_FUTURO_MIN || diffMin > PRAZO_PROOF_OF_PLAY_MIN) return 'janela_expirada';
 
+  if (!(await estavaNaHoraCongelada(dispositivoIdEsperado, horaJanela, anuncianteId, db))) {
+    return 'janela_desconhecida';
+  }
   if (await creditarConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'contabilizado';
   if (await existeConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'teto_atingido';
   return 'janela_desconhecida';
@@ -690,8 +665,8 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
 
 module.exports = {
   gerarPlaylistDaHora,
-  confirmarExibicao,
   confirmarExecucao,
   limiteDeCriativos,
-  FOLGA_VIRADA_MIN,
+  PRAZO_PROOF_OF_PLAY_DIAS,
+  PRAZO_PROOF_OF_PLAY_MIN,
 };

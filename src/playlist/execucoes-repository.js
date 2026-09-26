@@ -13,9 +13,13 @@ const { confirmarExecucao } = require('./gerador');
 // `execucaoId` (retentativa do aparelho depois de resposta perdida) só a
 // primeira reserva — a segunda vê a linha já lá e devolve `duplicado` sem
 // tocar em `exibicoes_contador` de novo.
+//
+// Sempre devolve `{execucaoId, status}` com um dos 6 status do contrato
+// (docs/player-mvp-contract.md §8) — quem chama (src/player/routes.js) já
+// validou a forma do evento. Um `execucaoId` repetido, venha da mesma TV ou
+// de outra, é `duplicado`: nada conta duas vezes.
 async function confirmarComDedup(dispositivoId, evento, agora) {
-  const { execucaoId, itemProgramacaoId, janelaId } = evento || {};
-  if (!execucaoId || !itemProgramacaoId || !janelaId) return null;
+  const { execucaoId, itemProgramacaoId, janelaId } = evento;
 
   const client = await pool.connect();
   try {

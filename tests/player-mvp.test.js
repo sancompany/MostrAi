@@ -20,9 +20,15 @@ test.before(async () => {
   app = await subirApp();
   await garantirPinSaida();
 });
+const contasCriadas = [];
 test.after(async () => {
   await app.fechar();
   await limparPontos();
+  for (const id of contasCriadas) {
+    await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [id]);
+    await pool.query('DELETE FROM banco_horas WHERE anunciante_id = $1', [id]);
+    await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
+  }
   await pool.query("DELETE FROM tentativas_acesso WHERE chave LIKE '10.%'");
   await pool.end();
 });
@@ -745,3 +751,319 @@ for (const quantas of [1, 10, 50]) {
     assert.equal(rows[0].ultima_rodada, quantas, 'o snapshot é o da última batida');
   });
 }
+
+// ---------------------------------------------------------------------------
+// Proof-of-play offline: até 7 dias depois do fim da janela (§8)
+// ---------------------------------------------------------------------------
+const { randomUUID } = require('node:crypto');
+const gerador = require('../src/playlist/gerador');
+
+async function novaConta() {
+  const anunciantesRepo = require('../src/anunciantes/repository');
+  const conta = await anunciantesRepo.criar({
+    nome_empresa: `PMVP POP ${randomUUID().slice(0, 8)}`,
+    cpf_cnpj: randomUUID().replace(/-/g, '').slice(0, 11),
+    endereco: 'Rua X, 1',
+    cidade: 'Matão',
+    uf: 'SP',
+    cep: '15990000',
+    contato_email: `pmvp-${randomUUID()}@example.com`,
+    contato_telefone: '16999990000',
+    senha: 'x',
+  });
+  contasCriadas.push(conta.id);
+  return conta.id;
+}
+
+const horaCheia = (ms) => new Date(Math.floor(ms / 3_600_000) * 3_600_000);
+
+// Hora servida à tela: linha do contador (o que foi prometido) + playlist
+// congelada (quem estava nela). É o que o gerador grava de verdade.
+async function horaServida(telaId, contaId, hora, { programadas = 3, banco = 0, confirmadas = 0 } = {}) {
+  await pool.query(
+    `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco, vezes_confirmadas)
+     VALUES ($1, $2, $3, $4::int, $4::int - $5::int, $5::int, $6::int)`,
+    [contaId, telaId, hora, programadas, banco, confirmadas],
+  );
+  await pool.query(
+    `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras)
+     VALUES ($1, $2, $3::jsonb, '[]'::jsonb)
+     ON CONFLICT (dispositivo_id, janela_hora) DO UPDATE SET base = playlist_hora_congelada.base || EXCLUDED.base`,
+    [telaId, hora, JSON.stringify([{ id: contaId }])],
+  );
+  const janelaId = `${telaId}|${hora.toISOString()}`;
+  return { janelaId, item: (indice = 0, tipo = contaId) => `${janelaId}|${indice}|${tipo}` };
+}
+
+const evento = (janelaId, itemProgramacaoId, extra = {}) => ({
+  execucaoId: randomUUID(),
+  janelaId,
+  itemProgramacaoId,
+  criativoId: '1',
+  iniciadoEm: new Date().toISOString(),
+  terminadoEm: new Date().toISOString(),
+  ...extra,
+});
+const enviar = (p, eventos, extra = {}) =>
+  app.chamar('POST', `/player/${p.dispositivoId}/played`, { chave: p.chaveAparelho, corpo: { eventos }, ...extra });
+const confirmadas = async (telaId, hora, contaId) =>
+  (
+    await pool.query(
+      'SELECT vezes_confirmadas AS n FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2 AND anunciante_id = $3',
+      [telaId, hora, contaId],
+    )
+  ).rows[0].n;
+
+test('POP: atraso desde o fim da janela — imediato até 7 dias conta; passou de 7 dias expira', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const conta = await novaConta();
+  const MIN = 60_000;
+  const casos = [
+    ['imediato', 0, 'contabilizado'],
+    ['30 min', 30 * MIN, 'contabilizado'],
+    ['74 min', 74 * MIN, 'contabilizado'],
+    ['2 h', 120 * MIN, 'contabilizado'],
+    ['8 h', 8 * 60 * MIN, 'contabilizado'],
+    ['24 h', 24 * 60 * MIN, 'contabilizado'],
+    ['6 dias', 6 * 1440 * MIN, 'contabilizado'],
+    ['> 7 dias', 7 * 1440 * MIN + 60 * MIN, 'janela_expirada'],
+    ['30 dias', 30 * 1440 * MIN, 'janela_expirada'],
+  ];
+  for (const [nome, atraso, esperado] of casos) {
+    // Janela que TERMINOU há `atraso` (hora cheia anterior a isso). Conta
+    // própria por caso: dois atrasos podem cair na mesma hora cheia.
+    const contaDoCaso = await novaConta();
+    const hora = horaCheia(Date.now() - atraso - 60 * MIN);
+    const h = await horaServida(tela.id, contaDoCaso, hora);
+    const r = await enviar(p, [evento(h.janelaId, h.item())]);
+    assert.equal(r.status, 200, nome);
+    assert.equal(r.json.resultados[0].status, esperado, nome);
+    assert.equal(await confirmadas(tela.id, hora, contaDoCaso), esperado === 'contabilizado' ? 1 : 0, nome);
+  }
+  // Limite: a última hora do 7º dia ainda vale.
+  const limite = horaCheia(Date.now() - 7 * 1440 * MIN);
+  const h = await horaServida(tela.id, conta, limite);
+  assert.equal((await enviar(p, [evento(h.janelaId, h.item())])).json.resultados[0].status, 'contabilizado', '7 dias');
+  // Janela futura = relógio adulterado.
+  const futura = horaCheia(Date.now() + 2 * 60 * MIN);
+  const f = await horaServida(tela.id, conta, futura);
+  assert.equal((await enviar(p, [evento(f.janelaId, f.item())])).json.resultados[0].status, 'janela_expirada');
+});
+
+test('POP: virada de dia, de mês e de ano não muda nada — só o tempo desde o fim da janela', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const conta = await novaConta();
+  const casos = [
+    ['virada de dia', '2026-03-10T23:00:00-03:00', '2026-03-11T00:20:00-03:00', 'contabilizado'],
+    ['virada de mês', '2026-01-31T23:00:00-03:00', '2026-02-06T10:00:00-03:00', 'contabilizado'],
+    ['virada de ano, 7 dias menos 30 min', '2026-12-31T23:00:00-03:00', '2027-01-07T23:30:00-03:00', 'contabilizado'],
+    ['virada de ano, 7 dias e 1 min', '2026-12-31T23:00:00-03:00', '2027-01-08T00:01:00-03:00', 'janela_expirada'],
+  ];
+  for (const [nome, inicio, chegada, esperado] of casos) {
+    const hora = new Date(inicio);
+    await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2', [tela.id, hora]);
+    const h = await horaServida(tela.id, conta, hora);
+    const status = await gerador.confirmarExecucao(tela.id, h.item(), h.janelaId, new Date(chegada));
+    assert.equal(status, esperado, nome);
+  }
+});
+
+test('POP: duplicata, UUID repetido em outra tela, outra tela, item fora da hora congelada, outra janela, teto', async () => {
+  const pid = await novoPonto();
+  const [ta, tb] = [await novaTela(pid), await novaTela(pid)];
+  const [pa, pb] = [await instalarPlayer(ta.id), await instalarPlayer(tb.id)];
+  const conta = await novaConta();
+  const outraConta = await novaConta();
+  const hora = horaCheia(Date.now() - 3 * 3_600_000);
+  const ha = await horaServida(ta.id, conta, hora, { programadas: 2 });
+  const hb = await horaServida(tb.id, conta, hora, { programadas: 2 });
+
+  // Mesmo execucaoId: retentativa noutro lote e repetido no mesmo lote.
+  const e1 = evento(ha.janelaId, ha.item(0));
+  let r = await enviar(pa, [e1, { ...e1 }]);
+  assert.deepEqual(
+    r.json.resultados.map((x) => x.status),
+    ['contabilizado', 'duplicado'],
+  );
+  r = await enviar(pa, [e1]);
+  assert.equal(r.json.resultados[0].status, 'duplicado');
+  assert.equal(await confirmadas(ta.id, hora, conta), 1);
+
+  // UUID repetido vindo de OUTRA tela (com item válido dela): não conta.
+  r = await enviar(pb, [{ ...evento(hb.janelaId, hb.item(0)), execucaoId: e1.execucaoId }]);
+  assert.equal(r.json.resultados[0].status, 'duplicado');
+  assert.equal(await confirmadas(tb.id, hora, conta), 0);
+
+  // Janela/item de outra tela mandado pela tela A.
+  r = await enviar(pa, [evento(hb.janelaId, hb.item(0))]);
+  assert.equal(r.json.resultados[0].status, 'janela_desconhecida');
+  assert.equal(await confirmadas(tb.id, hora, conta), 0);
+
+  // Anunciante que não estava na hora congelada (mesmo com linha no contador).
+  await pool.query(
+    `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas) VALUES ($1, $2, $3, 5)`,
+    [outraConta, ta.id, hora],
+  );
+  r = await enviar(pa, [evento(ha.janelaId, ha.item(1, outraConta)), evento(ha.janelaId, ha.item(1, 2147480000))]);
+  assert.deepEqual(
+    r.json.resultados.map((x) => x.status),
+    ['janela_desconhecida', 'janela_desconhecida'],
+  );
+
+  // Hora sem playlist servida (nunca congelou) e item de outra janela.
+  const semPlaylist = horaCheia(Date.now() - 5 * 3_600_000);
+  const jSem = `${ta.id}|${semPlaylist.toISOString()}`;
+  const outraHora = horaCheia(Date.now() - 4 * 3_600_000).toISOString();
+  r = await enviar(pa, [evento(jSem, `${jSem}|0|${conta}`), evento(ha.janelaId, `${ta.id}|${outraHora}|0|${conta}`)]);
+  assert.deepEqual(
+    r.json.resultados.map((x) => x.status),
+    ['janela_desconhecida', 'item_invalido'],
+  );
+
+  // Teto: 2 programadas; a 2ª conta, a 3ª não.
+  r = await enviar(pa, [evento(ha.janelaId, ha.item(2)), evento(ha.janelaId, ha.item(3))]);
+  assert.deepEqual(
+    r.json.resultados.map((x) => x.status),
+    ['contabilizado', 'teto_atingido'],
+  );
+  assert.equal(await confirmadas(ta.id, hora, conta), 2);
+});
+
+test('POP: payload adulterado vira item_invalido, um a um, sem derrubar o lote', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const conta = await novaConta();
+  const hora = horaCheia(Date.now() - 2 * 3_600_000);
+  const h = await horaServida(tela.id, conta, hora, { programadas: 10 });
+  const iso = hora.toISOString();
+  const semMs = iso.replace('.000Z', 'Z');
+  const meiaHora = new Date(hora.getTime() + 30 * 60_000).toISOString();
+  const adulterados = [
+    evento(h.janelaId, `${h.janelaId}|0|inst`),
+    evento(h.janelaId, `${h.janelaId}|0|dono`),
+    evento(h.janelaId, `${h.janelaId}|0|midia:3`),
+    evento(h.janelaId, `${h.janelaId}|-1|${conta}`),
+    evento(h.janelaId, `${h.janelaId}|x|${conta}`),
+    evento(h.janelaId, `${h.janelaId}|0|${conta}|extra`),
+    evento(h.janelaId, `${h.janelaId}|0|99999999999`),
+    evento(h.janelaId, `${h.janelaId}|0|0`),
+    evento(`${tela.id}|${semMs}`, `${tela.id}|${semMs}|0|${conta}`),
+    evento(`${tela.id}|${meiaHora}`, `${tela.id}|${meiaHora}|0|${conta}`),
+    evento(`${tela.id}|lixo`, `${tela.id}|lixo|0|${conta}`),
+    evento(h.janelaId, `${h.janelaId}|0|${conta}`, { janelaId: `${h.janelaId} ` }),
+    evento(h.janelaId, ''),
+    evento('', h.item()),
+    evento(h.janelaId, 42),
+    evento(h.janelaId, h.item(), { janelaId: ['x'] }),
+    evento(h.janelaId, h.item(), { execucaoId: 'a\u0000b' }),
+    evento(h.janelaId, h.item(), { execucaoId: 'x'.repeat(101) }),
+    evento(h.janelaId, h.item(), { execucaoId: 'com espaço' }),
+    evento(h.janelaId, h.item(), { itemProgramacaoId: 'y'.repeat(201) }),
+  ];
+  const valido = evento(h.janelaId, h.item(5));
+  const r = await enviar(p, [...adulterados, valido]);
+  assert.equal(r.status, 200);
+  const status = r.json.resultados.map((x) => x.status);
+  assert.equal(status.length, adulterados.length + 1, 'um resultado por evento com execucaoId');
+  assert.deepEqual(status.slice(0, -1), Array(adulterados.length).fill('item_invalido'));
+  assert.equal(status.at(-1), 'contabilizado', 'o evento bom do mesmo lote conta');
+  assert.equal(await confirmadas(tela.id, hora, conta), 1);
+});
+
+test('POP: /played inválido nunca é 500 — lote malformado é 400, grande demais 413, sem execucaoId fica sem resposta', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const played = (extra) =>
+    app.chamar('POST', `/player/${p.dispositivoId}/played`, { chave: p.chaveAparelho, ...extra });
+  for (const cru of [
+    '[]',
+    '"x"',
+    '1',
+    'null',
+    '{quebrado',
+    '{"eventos":"x"}',
+    '{"eventos":{}}',
+    '{"anuncianteId":1}',
+    '{}',
+  ]) {
+    const r = await played({ cru });
+    assert.equal(r.status, 400, `corpo ${cru}`);
+  }
+  const muitos = Array.from({ length: 501 }, () => ({ execucaoId: 'a' }));
+  assert.equal((await played({ corpo: { eventos: muitos } })).status, 400, 'mais de 500');
+  const grande = [{ execucaoId: randomUUID(), janelaId: 'j'.repeat(150_000), itemProgramacaoId: 'x' }];
+  assert.equal((await played({ corpo: { eventos: grande } })).status, 413, 'corpo > 100 KB');
+
+  const semId = [
+    null,
+    1,
+    'x',
+    [],
+    {},
+    { execucaoId: '' },
+    { execucaoId: '   ' },
+    { execucaoId: 7 },
+    { execucaoId: null },
+  ];
+  const r = await played({ corpo: { eventos: semId } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json.resultados, [], 'sem execucaoId não há como responder');
+  const vazio = await played({ corpo: { eventos: [] } });
+  assert.deepEqual(vazio.json, { resultados: [] });
+});
+
+test('POP x banco de horas: hora que ainda aceita POP não liquida; hora liquidada não aceita mais POP', async () => {
+  const apuracao = require('../src/bancohoras/apuracao');
+  assert.equal(apuracao.MINUTOS_ATE_A_HORA_FECHAR, gerador.PRAZO_PROOF_OF_PLAY_MIN, 'mesmo prazo');
+  assert.equal(gerador.PRAZO_PROOF_OF_PLAY_MIN, 60 + 7 * 24 * 60);
+
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const conta = await novaConta();
+  const bancoHorasRepo = require('../src/bancohoras/repository');
+  const mesPassado = new Date();
+  mesPassado.setMonth(mesPassado.getMonth() - 1, 1);
+  await bancoHorasRepo.registrarDeficit({
+    anuncianteId: conta,
+    mesReferencia: mesPassado.toISOString().slice(0, 10),
+    exibicoesPedidas: 10,
+    exibicoesEntregues: 0,
+  });
+
+  // Hora de 6 dias atrás: 2 programadas, as 2 do banco, nenhuma confirmada.
+  const seisDias = horaCheia(Date.now() - 6 * 24 * 3_600_000);
+  const h6 = await horaServida(tela.id, conta, seisDias, { programadas: 2, banco: 2 });
+  let liq = await apuracao.liquidarBancoConfirmado({ apenasContas: [conta] });
+  assert.equal(liq.linhas, 0, 'ainda dentro do prazo do POP: não liquida');
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 10);
+
+  // A TV volta e manda os dois POPs atrasados: contam.
+  const r = await enviar(p, [evento(h6.janelaId, h6.item(0)), evento(h6.janelaId, h6.item(1))]);
+  assert.deepEqual(
+    r.json.resultados.map((x) => x.status),
+    ['contabilizado', 'contabilizado'],
+  );
+
+  // Hora de 8 dias atrás: prazo vencido — liquida uma vez e não aceita POP.
+  const oitoDias = horaCheia(Date.now() - 8 * 24 * 3_600_000);
+  const h8 = await horaServida(tela.id, conta, oitoDias, { programadas: 2, banco: 2, confirmadas: 1 });
+  liq = await apuracao.liquidarBancoConfirmado({ apenasContas: [conta] });
+  assert.equal(liq.linhas, 1);
+  assert.equal(liq.exibicoesAbatidas, 1);
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 9);
+  const tarde = await enviar(p, [evento(h8.janelaId, h8.item(1))]);
+  assert.equal(tarde.json.resultados[0].status, 'janela_expirada');
+  assert.equal(await confirmadas(tela.id, oitoDias, conta), 1, 'hora liquidada não muda');
+  assert.equal(
+    (await apuracao.liquidarBancoConfirmado({ apenasContas: [conta] })).linhas,
+    0,
+    'nada liquida duas vezes',
+  );
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 9);
+});

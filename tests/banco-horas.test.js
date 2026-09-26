@@ -337,14 +337,16 @@ test('liquidação abate só o banco CONFIRMADO, uma vez por hora fechada; o res
       exibicoesPedidas: 20,
       exibicoesEntregues: 10,
     }); // saldo 10
-    const horaFechada = new Date(Date.now() - 3 * 3600 * 1000);
+    // Fechada = passou o prazo do proof-of-play offline (7 dias depois do
+    // fim da hora). Uma hora de 6 dias atrás ainda pode receber confirmação.
+    const horaFechada = new Date(Date.now() - 8 * 24 * 3600 * 1000);
     horaFechada.setMinutes(0, 0, 0);
     const outraHoraFechada = new Date(horaFechada.getTime() - 3600 * 1000);
-    const horaAberta = new Date();
+    const horaAberta = new Date(Date.now() - 6 * 24 * 3600 * 1000);
     horaAberta.setMinutes(0, 0, 0);
     // Hora fechada A: 5 programadas (2 do banco), 4 confirmadas → a normal
     // (3) foi toda, e 1 do banco. Hora fechada B: 2 confirmadas de 5 → nada
-    // do banco. Hora aberta: 3 do banco ainda podem ser confirmadas.
+    // do banco. Hora aberta (6 dias): 3 do banco ainda podem ser confirmadas.
     await pool.query(
       `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco, vezes_confirmadas)
        VALUES ($1, $2, $3, 5, 3, 2, 4), ($1, $2, $4, 5, 3, 2, 2), ($1, $2, $5, 3, 0, 3, 0)`,

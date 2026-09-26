@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { exigirAparelho } = require('../lib/aparelho');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
-const gerador = require('../playlist/gerador');
 const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const sinal = require('./sinal');
@@ -103,48 +102,36 @@ router.get('/player/:dispositivoId/config', exigirAparelho({ operacao: false }),
 });
 
 // ---------------------------------------------------------------------------
-// POST /player/:dispositivoId/played — proof-of-play (§9)
+// POST /player/:dispositivoId/played — proof-of-play em lote (§8)
 // ---------------------------------------------------------------------------
+// 400 só para o LOTE malformado (o Player divide e põe em quarentena). Um
+// evento ruim nunca derruba o lote: responde `item_invalido` e o resto
+// segue. 5xx fica para falha real do servidor (o Player tenta de novo).
 const TETO_LOTE = 500;
+// UUID do Player (e qualquer id curto e imprimível). Byte nulo ou texto
+// arbitrário chegariam no Postgres e virariam 500 eterno.
+const EXECUCAO_ID = /^[A-Za-z0-9._:-]{1,100}$/;
 
 router.post('/player/:dispositivoId/played', exigirAparelho(), corpoObjeto, async (req, res) => {
-  if ('eventos' in req.body) {
-    if (!Array.isArray(req.body.eventos) || req.body.eventos.length > TETO_LOTE) {
-      return res.status(400).json({ erro: `eventos precisa ser uma lista de até ${TETO_LOTE} itens` });
-    }
-    return res.json(await confirmarLote(req.dispositivo, req.body.eventos));
+  const lista = req.body.eventos;
+  if (!Array.isArray(lista) || lista.length > TETO_LOTE) {
+    return res.status(400).json({ erro: `eventos precisa ser uma lista de até ${TETO_LOTE} itens` });
   }
-
-  // compat-v1: um evento por requisição, `{anuncianteId}` (player web).
-  const { anuncianteId } = req.body;
-  const id = Number(anuncianteId);
-  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) {
-    return res.status(400).json({ erro: 'anuncianteId obrigatório' });
-  }
-  const r = await gerador.confirmarExibicao(req.dispositivo.id, id, new Date());
-  if (r.ok) return res.json({ ok: true, janela: r.janela });
-  // `ja_completo` NÃO é erro: é a TV reenviando o que já contou.
-  if (r.motivo === 'ja_completo') return res.json({ ok: true, contou: false, motivo: 'ja_completo' });
-  return res.status(400).json({ erro: 'anunciante não está programado nesta tela nesta hora' });
+  res.json(await confirmarLote(req.dispositivo, lista));
 });
 
-// Um por um (o lote nunca passa de 50 no app). Evento sem `execucaoId` não
-// tem como ser respondido — fica sem resultado e o Player reenvia depois;
-// evento com `execucaoId` mas sem o resto é `item_invalido` (definitivo).
+const textoNaoVazio = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
+
+// Um por um, na ordem. Evento sem `execucaoId` string não tem como ser
+// respondido (o Player casa a resposta por ele): fica sem resultado.
 async function confirmarLote(dispositivo, eventosRecebidos) {
   const agora = new Date();
   const resultados = [];
   for (const evento of eventosRecebidos) {
     const execucaoId = ehObjeto(evento) && typeof evento.execucaoId === 'string' ? evento.execucaoId.trim() : '';
     if (!execucaoId) continue;
-    // Id longo demais pra coluna: responde `item_invalido` (definitivo) em
-    // vez de silêncio — sem resposta o Player reenviaria o evento por 7 dias.
-    if (
-      execucaoId.length > 100 ||
-      typeof evento.itemProgramacaoId !== 'string' ||
-      typeof evento.janelaId !== 'string'
-    ) {
-      resultados.push({ execucaoId, status: 'item_invalido' });
+    if (!EXECUCAO_ID.test(execucaoId) || !textoNaoVazio(evento.itemProgramacaoId) || !textoNaoVazio(evento.janelaId)) {
+      resultados.push({ execucaoId: execucaoId.slice(0, 100), status: 'item_invalido' });
       continue;
     }
     resultados.push(await execucoesRepo.confirmarComDedup(dispositivo.id, { ...evento, execucaoId }, agora));

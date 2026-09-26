@@ -314,7 +314,8 @@ envia em lotes.
 
 - até **500** eventos por lote;
 - `execucaoId`: UUID gerado pelo Player, **igual em todas as retentativas**
-  do mesmo evento (é a chave de idempotência);
+  do mesmo evento (é a chave de idempotência); até 100 caracteres entre
+  letras, números, `.`, `_`, `:` e `-`;
 - `janelaId` e `itemProgramacaoId`: exatamente os recebidos na playlist;
 - `criativoId`, `iniciadoEm`, `terminadoEm`: informativos (o servidor não
   confia no relógio da TV).
@@ -335,7 +336,7 @@ resultado. Os 6 status são **finais** — o evento sai da fila:
 | `teto_atingido` | a hora já tem todas as exibições programadas confirmadas |
 | `janela_desconhecida` | a janela/item não pertence a esta tela, ou o item não estava na playlist congelada daquela hora |
 | `janela_expirada` | chegou mais de **7 dias** depois do fim da janela (ou a janela está no futuro) |
-| `item_invalido` | evento malformado (campo ausente, vazio ou de tipo errado; item que não conta, como institucional) |
+| `item_invalido` | evento malformado (campo ausente, vazio ou de tipo errado; `execucaoId` fora do formato; ids que não são exatamente os da playlist; item que não conta, como institucional) |
 
 ### Offline e atraso
 

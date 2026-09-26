@@ -82,11 +82,22 @@ async function dispositivoContratoNovo() {
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 
+// A hora servida fica congelada (migration 064); o proof-of-play só credita
+// quem estava nela (docs/player-mvp-contract.md §8).
+async function congelar(dispositivoId, hora, anuncianteId) {
+  await pool.query(
+    `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base, extras)
+     VALUES ($1, $2, $3::jsonb, '[]'::jsonb) ON CONFLICT DO NOTHING`,
+    [dispositivoId, hora, JSON.stringify([{ id: anuncianteId }])],
+  );
+}
+
 async function limparDispositivo(id, pontoId) {
   // Limpeza de teste: o comprovante confirmado bloqueia a exclusão pela
   // aplicação (409, consolidação 24/09/2026) — aqui ele é lixo de teste.
   await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [id]);
+  await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1', [id]);
   await dispositivosRepo.deletar(id);
   if (pontoId) await apagarPonto(pontoId);
 }
@@ -160,6 +171,7 @@ test('confirmarComDedup credita uma vez, e a retentativa com o mesmo execucaoId 
        VALUES ($1, $2, $3, 1)`,
       [conta.id, dispositivo.id, hora],
     );
+    await congelar(dispositivo.id, hora, conta.id);
     const janelaId = `${dispositivo.id}|${hora.toISOString()}`;
     const evento = {
       execucaoId: randomUUID(),
@@ -206,6 +218,7 @@ test('confirmarComDedup: teto atingido quando já confirmou tudo que foi program
        VALUES ($1, $2, $3, 1, 1)`,
       [conta.id, dispositivo.id, hora],
     );
+    await congelar(dispositivo.id, hora, conta.id);
     const janelaId = `${dispositivo.id}|${hora.toISOString()}`;
     const evento = {
       execucaoId: randomUUID(),
