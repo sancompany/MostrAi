@@ -20,7 +20,7 @@ const QUARTA_MEIO_DIA = new Date('2026-09-23T12:00:00-03:00');
 const HORARIO_9_18 = { ...Object.fromEntries(DIAS.map((d) => [d, null])), qua: { abre: '09:00', fecha: '18:00' } };
 const HORARIO_FECHADO_QUARTA = { ...Object.fromEntries(DIAS.map((d) => [d, null])) };
 const HORARIO_24H = Object.fromEntries(DIAS.map((d) => [d, { abre: '00:00', fecha: '24:00' }]));
-const RECENTE = new Date(QUARTA_MEIO_DIA.getTime() - 5 * 60 * 1000).toISOString();
+const RECENTE = new Date(QUARTA_MEIO_DIA.getTime() - 30 * 1000).toISOString();
 const EXPIRADO = new Date(QUARTA_MEIO_DIA.getTime() - TOLERANCIA_SEM_SINAL_MS - 60 * 1000).toISOString();
 
 test('em_reparo/inativa vêm do status manual, nunca viram alerta', () => {
@@ -125,10 +125,12 @@ const viva = (extra = {}) => ({
   ...extra,
 });
 
-test('tolerância de "sem sinal" é de 3 ciclos (15 min), não 2 h', () => {
-  assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 15 * 60 * 1000);
-  const ha16min = new Date(QUARTA_MEIO_DIA.getTime() - 16 * 60 * 1000).toISOString();
-  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha16min }), null, QUARTA_MEIO_DIA), 'sem_sinal');
+test('tolerância de "sem sinal" é de 2 min (heartbeat de 15 s)', () => {
+  assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 2 * 60 * 1000);
+  const ha = (s) => new Date(QUARTA_MEIO_DIA.getTime() - s * 1000).toISOString();
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(15) }), null, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(119) }), null, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(121) }), null, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('Player V2 reporta OUT_OF_SCHEDULE -> fora_do_horario, mesmo com 24h no servidor', () => {
@@ -139,7 +141,7 @@ test('estados de erro do contrato §10 -> erro_do_player; PLAYING/IDLE -> operan
   for (const e of ['PLAYBACK_ERROR', 'DOWNLOAD_ERROR', 'AUTH_ERROR', 'CONFIG_ERROR', 'NO_PLAYLIST']) {
     assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'erro_do_player', e);
   }
-  for (const e of ['PLAYING', 'IDLE', 'UPDATE_PENDING']) {
+  for (const e of ['PLAYING', 'IDLE']) {
     assert.strictEqual(saudeDaTela(viva({ player_estado: e }), null, QUARTA_MEIO_DIA), 'operando', e);
   }
   assert.strictEqual(

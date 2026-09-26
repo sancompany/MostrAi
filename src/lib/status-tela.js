@@ -20,12 +20,14 @@ const { operacaoDoPonto, deveriaOperar } = require('./operacao-tela');
 // "Sem sinal" vence um erro antigo: com o último heartbeat vencido, o erro
 // que ele trazia já não descreve o agora.
 
-// Contrato §10: "Tolerância sugerida para 'Sem sinal': 3 ciclos (15 min)".
-const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 15) * 60 * 1000;
-// Contrato §5 (armadilha de UX): com heartbeat de 5 min, toda alteração fica
-// "pendente" por até 5 min, sempre. Só vira pendência depois de 2 ciclos.
-const CONFIG_PENDENTE_APOS_MS = 10 * 60 * 1000;
-const CONFIG_ALERTA_APOS_MS = 60 * 60 * 1000;
+// docs/player-mvp-contract.md §9: heartbeat a cada 15 s; "Sem sinal" depois
+// de 2 min (8 batidas perdidas) — tolera uma rede que oscila, sem esconder
+// uma TV desligada.
+const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 2) * 60 * 1000;
+// Alteração de config chega na próxima batida (15 s) + GET /config. Até 2 min
+// é "sincronizando"; alerta só se passar de 15 min.
+const CONFIG_PENDENTE_APOS_MS = 2 * 60 * 1000;
+const CONFIG_ALERTA_APOS_MS = 15 * 60 * 1000;
 const PRAZO_INSTALACAO_MS = 7 * 24 * 3600 * 1000;
 // Contrato §9.3.
 const FILA_ATENCAO = 2000;

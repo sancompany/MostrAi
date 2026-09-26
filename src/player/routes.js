@@ -5,12 +5,9 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const gerador = require('../playlist/gerador');
 const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
-const credencial = require('./credencial');
 const sinal = require('./sinal');
-const { montarConfig, margensDaTela } = require('./config');
+const { montarConfig } = require('./config');
 const pinSaida = require('./pin-saida');
-const releases = require('./releases');
-const cofre = require('../lib/cofre');
 const eventos = require('../lib/eventos');
 const sse = require('../lib/sse');
 const { sincronizarStatusPonto } = require('../pontos/repository');
@@ -31,8 +28,8 @@ const corpoObjeto = (req, res, next) =>
 
 // Avisa quem está olhando que a tela mudou de ESTADO (transição de saúde,
 // primeiro sinal) — o navegador refaz o GET, nunca recebe o dado pelo canal.
-// Heartbeat sem transição não avisa ninguém: cada tela bate a cada 5 min, e
-// avisar o admin em todos eles fazia a Rede inteira recarregar sem nada ter
+// Heartbeat sem transição não avisa ninguém: cada tela bate a cada 15 s, e
+// avisar o admin em todos eles faria a Rede inteira recarregar sem nada ter
 // mudado (consolidação final, 24/09/2026).
 function avisarMudanca(tela, { transicao }) {
   if (!transicao) return;
@@ -82,47 +79,18 @@ router.post('/player/:dispositivoId/hello', exigirAparelho({ operacao: false }),
 });
 
 // ---------------------------------------------------------------------------
-// POST /player/:dispositivoId/heartbeat — snapshot do estado (§4)
+// POST /player/:dispositivoId/heartbeat — sinal de vida a cada 15 s (§5)
 // ---------------------------------------------------------------------------
-router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false }), async (req, res) => {
-  // Corpo vazio é o heartbeat do Android V1 — válido (checklist §1).
-  const corpo = req.body === undefined || req.body === null ? {} : req.body;
-  if (!ehObjeto(corpo)) return res.status(400).json({ erro: 'corpo precisa ser um objeto JSON' });
+// Sem limite de tentativas nem SSE por batida: 4 por minuto por tela é o
+// ritmo normal. A resposta diz só se há config nova e playlist nova.
+router.post('/player/:dispositivoId/heartbeat', exigirAparelho({ operacao: false }), corpoObjeto, async (req, res) => {
   const tela = req.dispositivo;
-  const r = await sinal.registrarHeartbeat(tela.id, corpo, req.player);
+  const r = await sinal.registrarHeartbeat(tela.id, req.body, req.player);
   avisarMudanca(tela, { transicao: r.eventos.length > 0 });
-
-  const resposta = {
-    ok: true,
-    servidorAgora: new Date().toISOString(),
-    // compat-v1 (migration 069): o player web e o Android sem /config tiram
-    // as margens daqui; o V2 aplica a de /config quando ela vem (§4.3).
-    margens: margensDaTela(tela),
-  };
-  if (!r.v2) return res.json(resposta);
-
-  resposta.configVersion = tela.config_versao_desejada;
-
-  if (await sinal.sinalizarPlaylist(tela.id)) resposta.playlist = { atualizar: true };
-
-  // Rotação: a candidata vai até o Player usá-la. Chegou pela própria
-  // candidata? Então é promovida nesta resposta (src/lib/aparelho.js) — nada
-  // a mandar. Chegou pela ANTERIOR? A resposta que promoveu a atual se perdeu
-  // e o aparelho ficou com a velha: a atual volta como chave nova, antes que
-  // a sobreposição de 24h acabe e o tranque.
-  if (req.chaveUsada === 'anterior' && tela.chave_atual_cifrada) {
-    const atual = cofre.abrir(tela.chave_atual_cifrada);
-    if (atual) resposta.novaChave = atual;
-  } else if (tela.chave_nova_cifrada && req.chaveUsada !== 'nova') {
-    const nova = cofre.abrir(tela.chave_nova_cifrada);
-    if (nova) resposta.novaChave = nova;
-    else await credencial.cancelarRotacao(tela.id, 'candidata ilegível (segredo do servidor trocado)');
-  }
-
-  const manifesto = releases.manifesto(await releases.aplicavelA(req.player.build ?? tela.player_build));
-  if (manifesto) resposta.update = manifesto;
-
-  res.json(resposta);
+  res.json({
+    configVersion: tela.config_versao_desejada,
+    playlist: { atualizar: await sinal.sinalizarPlaylist(tela.id) },
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -141,12 +141,11 @@ test('Ofertas não expõe mais o desconto comodato em percentual', async () => {
   for (const p of produtos) assert.ok(!('descontoComodato' in p), `${p.tier} sem descontoComodato`);
 });
 
-// Heartbeat com erro (migration 074 + player heartbeat, seção 2 do
-// pedido): o player manda `erro` só quando algo real deu errado (ex.: 403
-// "tela fora do ar"); o próximo heartbeat limpo (sem `erro`) tem que apagar
-// o que ficou gravado — senão a tela fica presa em "erro_do_player" mesmo
-// depois de o player voltar a funcionar.
-test('heartbeat V1 com erro grava o erro; heartbeat limpo apaga', async () => {
+// Heartbeat com erro (docs/player-mvp-contract.md §5): `erro` objeto grava;
+// `erro: null` apaga o que ficou — senão a tela fica presa em
+// "erro_do_player" depois de o Player voltar a funcionar. `erro` ausente
+// não mexe (a batida só não informou).
+test('heartbeat com erro grava o erro; erro null apaga; ausente mantém', async () => {
   const pool = require('../src/db/pool');
   const dispositivosRepo = require('../src/dispositivos/repository');
   const { registrarHeartbeat } = require('../src/player/sinal');
@@ -158,12 +157,17 @@ test('heartbeat V1 com erro grava o erro; heartbeat limpo apaga', async () => {
   const pontoId = pontoRows[0].id;
   const dispositivo = await dispositivosRepo.criar(pontoId, {});
   try {
-    await registrarHeartbeat(dispositivo.id, { erro: 'falha ao baixar playlist' }, {});
+    const erro = { codigo: 'DOWNLOAD_FALHOU', mensagem: 'falha ao baixar playlist' };
+    await registrarHeartbeat(dispositivo.id, { erro }, {});
     const comErro = (await dispositivosRepo.buscarPorId(dispositivo.id)).suporte.erro;
     assert.strictEqual(comErro.mensagem, 'falha ao baixar playlist');
+    assert.strictEqual(comErro.codigo, 'DOWNLOAD_FALHOU');
     assert.ok(comErro.em, 'hora do erro fica preenchida junto');
 
     await registrarHeartbeat(dispositivo.id, {}, {});
+    assert.ok((await dispositivosRepo.buscarPorId(dispositivo.id)).suporte.erro, 'ausente não apaga');
+
+    await registrarHeartbeat(dispositivo.id, { erro: null }, {});
     assert.strictEqual(
       (await dispositivosRepo.buscarPorId(dispositivo.id)).suporte.erro,
       null,

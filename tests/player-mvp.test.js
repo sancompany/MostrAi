@@ -572,3 +572,176 @@ test('PIN por tela não existe mais: rotas antigas somem', async () => {
   const dono = await app.chamar('POST', `/anunciantes/1/dispositivos/${tela.id}/pin`, { corpo: { pin: '4821' } });
   assert.equal(dono.status, 404);
 });
+
+// ---------------------------------------------------------------------------
+// Heartbeat a cada 15 s (§5)
+// ---------------------------------------------------------------------------
+const bater = (p, corpo = {}, extra = {}) =>
+  app.chamar('POST', `/player/${p.dispositivoId}/heartbeat`, { chave: p.chaveAparelho, corpo, ...extra });
+const linhaDaTela = async (id) => (await pool.query('SELECT * FROM dispositivos WHERE id = $1', [id])).rows[0];
+
+test('heartbeat: resposta é só {configVersion, playlist.atualizar}; corpo {} vale; não-objeto é 400', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const r = await bater(p, {});
+  assert.equal(r.status, 200);
+  assert.deepEqual(Object.keys(r.json).sort(), ['configVersion', 'playlist']);
+  assert.deepEqual(Object.keys(r.json.playlist), ['atualizar']);
+  assert.equal(typeof r.json.playlist.atualizar, 'boolean');
+  assert.equal(r.json.configVersion, await versaoDesejada(tela.id));
+  for (const proibido of ['margens', 'novaChave', 'update', 'servidorAgora', 'ok']) {
+    assert.ok(!(proibido in r.json), `sem ${proibido}`);
+  }
+  assert.equal((await bater(p, undefined, { cru: '[1,2]' })).status, 400);
+  assert.equal((await bater(p, undefined, { cru: '"texto"' })).status, 400);
+  assert.equal((await bater(p, undefined, { cru: '{quebrado' })).status, 400);
+  assert.equal((await bater({ ...p, chaveAparelho: 'x'.repeat(43) })).status, 401);
+});
+
+test('heartbeat: snapshot do estado, fila, erro e config aplicada; versão só pelo header; tipo errado ignorado', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const desejada = await versaoDesejada(tela.id);
+
+  await bater(
+    p,
+    {
+      estado: 'PLAYING',
+      configVersionAplicada: desejada,
+      criativoId: '123',
+      erro: null,
+      fila: { pendentes: 4, maisAntigoEm: new Date(Date.now() - 60000).toISOString() },
+      versaoApp: '9.9.9',
+      buildNumber: 999,
+    },
+    { versao: '1.4.0+21' },
+  );
+  let t = await linhaDaTela(tela.id);
+  assert.equal(t.player_estado, 'PLAYING');
+  assert.equal(t.criativo_atual, '123');
+  assert.equal(t.fila_pendentes, 4);
+  assert.equal(t.config_versao_aplicada, desejada);
+  assert.equal(t.player_versao, '1.4.0', 'versão vem do header, não do corpo');
+  assert.equal(t.player_build, 21);
+  assert.equal(await eventosDe(tela.id, 'CONFIG_APPLIED'), 1);
+
+  // Mesma config de novo: nenhuma transição nova.
+  await bater(p, { estado: 'PLAYING', configVersionAplicada: desejada });
+  assert.equal(await eventosDe(tela.id, 'CONFIG_APPLIED'), 1);
+
+  // Tipos errados: ignorados um a um, o resto vale.
+  const r = await bater(p, { estado: 42, configVersionAplicada: 'sete', fila: { pendentes: -1 }, erro: 'texto' });
+  assert.equal(r.status, 200);
+  t = await linhaDaTela(tela.id);
+  assert.equal(t.player_estado, null, 'estado inválido = não informado');
+  assert.equal(t.config_versao_aplicada, desejada, 'versão inválida não mexe');
+  assert.equal(t.fila_pendentes, 4, 'fila inválida não mexe');
+  assert.equal(t.ultimo_erro_codigo, null, 'erro que não é objeto é ignorado');
+
+  // Erro começa, muda de código e termina: uma transição por mudança.
+  await bater(p, { estado: 'PLAYBACK_ERROR', erro: { codigo: 'PLAYBACK_FALHOU', mensagem: 'x\u0007y' } });
+  t = await linhaDaTela(tela.id);
+  assert.equal(t.ultimo_erro, 'x y', 'caractere de controle sai');
+  await bater(p, { estado: 'PLAYBACK_ERROR', erro: { codigo: 'PLAYBACK_FALHOU', mensagem: 'x' } });
+  assert.equal(await eventosDe(tela.id, 'ERROR_STARTED'), 1, 'mesmo código = mesma transição');
+  const admin = await app.chamar('GET', `/admin/dispositivos/${tela.id}`);
+  assert.equal(admin.json.saude, 'erro_do_player');
+  await bater(p, { estado: 'PLAYING', erro: null });
+  assert.equal(await eventosDe(tela.id, 'ERROR_RESOLVED'), 1);
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
+
+  await bater(p, { estado: 'OUT_OF_SCHEDULE' });
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'fora_do_horario');
+});
+
+test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois de 2 min', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  await app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo: { status: 'reparo' } });
+  assert.equal((await bater(p, { estado: 'IDLE' })).status, 200);
+  assert.equal((await app.chamar('GET', `/player/${p.dispositivoId}/config`, { chave: p.chaveAparelho })).status, 200);
+  await app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo: { status: 'ativo' } });
+
+  await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '90 seconds' WHERE id = $1", [
+    tela.id,
+  ]);
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
+  await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '3 minutes' WHERE id = $1", [tela.id]);
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_sinal');
+  await bater(p, { estado: 'PLAYING' });
+  assert.equal(await eventosDe(tela.id, 'OFFLINE'), 1);
+  assert.equal(await eventosDe(tela.id, 'ONLINE'), 1);
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
+});
+
+test('heartbeat: playlist.atualizar vem UMA vez por mudança', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  await bater(p); // consome qualquer marca da instalação
+  await pool.query('UPDATE dispositivos SET playlist_desatualizada_em = now() WHERE id = $1', [tela.id]);
+  assert.equal((await bater(p)).json.playlist.atualizar, true);
+  assert.equal((await bater(p)).json.playlist.atualizar, false);
+});
+
+test('heartbeat: 15 s não esbarra em limite — 40 batidas seguidas da mesma origem, todas 200', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const ip = ipDeTeste();
+  for (let i = 0; i < 40; i++) {
+    const r = await bater(p, { estado: 'PLAYING' }, { ip });
+    assert.equal(r.status, 200, `batida ${i + 1}`);
+  }
+  // Nenhuma linha de histórico por batida (só transições).
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM tela_eventos WHERE dispositivo_id = $1', [tela.id]);
+  assert.ok(rows[0].n <= 5, `histórico só de transições (${rows[0].n})`);
+});
+
+for (const quantas of [1, 10, 50]) {
+  test(`heartbeat: ${quantas} tela(s) batendo juntas por 1 minuto simulado (4 rodadas)`, async () => {
+    const pid = await novoPonto();
+    const players = [];
+    for (let i = 0; i < quantas; i++) {
+      const tela = await novaTela(pid);
+      players.push({ ...(await instalarPlayer(tela.id)), telaId: tela.id, ip: ipDeTeste() });
+    }
+    const tempos = [];
+    for (let rodada = 0; rodada < 4; rodada++) {
+      const respostas = await Promise.all(
+        players.map(async (p) => {
+          const inicio = performance.now();
+          const r = await bater(
+            p,
+            {
+              estado: 'PLAYING',
+              configVersionAplicada: await versaoDesejada(p.telaId),
+              criativoId: String(rodada),
+              erro: null,
+              fila: { pendentes: rodada, maisAntigoEm: null },
+            },
+            { ip: p.ip },
+          );
+          tempos.push(performance.now() - inicio);
+          return r.status;
+        }),
+      );
+      assert.deepEqual([...new Set(respostas)], [200], `rodada ${rodada + 1}`);
+    }
+    tempos.sort((a, b) => a - b);
+    const p95 = tempos[Math.floor(tempos.length * 0.95) - 1] ?? tempos[0];
+    // Folga generosa para CI: o que se mede é "não trava nem enfileira".
+    assert.ok(p95 < 2000, `p95 ${Math.round(p95)} ms`);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) FILTER (WHERE ultima_vez_online > now() - interval '1 minute')::int AS vivas,
+              COUNT(*) FILTER (WHERE fila_pendentes = 3 AND criativo_atual = '3')::int AS ultima_rodada
+         FROM dispositivos WHERE ponto_id = $1`,
+      [pid],
+    );
+    assert.equal(rows[0].vivas, quantas);
+    assert.equal(rows[0].ultima_rodada, quantas, 'o snapshot é o da última batida');
+  });
+}

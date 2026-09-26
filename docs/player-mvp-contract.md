@@ -153,8 +153,10 @@ fila de comprovantes, versão do Player e confirmação da config aplicada.
 | `erro` | objeto ou `null` | `{ "codigo": "PLAYBACK_FALHOU", "mensagem": "…", "ocorreuEm": "<ISO-8601>" }`. `null` = sem erro (limpa o anterior). Ausente = não informado (mantém). |
 | `fila` | objeto | `pendentes` (inteiro) e `maisAntigoEm` (ISO-8601 ou `null`) dos proof-of-play ainda não enviados. Ausente = não informado. |
 
-Corpo `{}` é válido: só registra o sinal de vida. Campo com tipo errado é
-ignorado; o resto vale. Corpo que não é objeto JSON → 400.
+Corpo `{}` é válido: registra o sinal de vida; `estado` e `criativoId`
+ficam "não informado"/"nenhum" (são o retrato de agora), `erro` e `fila`
+ficam como estavam. Campo com tipo errado é ignorado; o resto vale. Corpo
+que não é objeto JSON → 400. Sem limite de frequência: 15 s é o ritmo normal.
 
 A versão do Player vem **só** do header `X-Player-Version`.
 
