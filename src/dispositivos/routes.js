@@ -10,11 +10,6 @@ const sse = require('../lib/sse');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
 const pinSaida = require('../player/pin-saida');
 
-// URL da API que vai no aparelho (bloco CONEXÃO da ficha e no JSON do
-// [Preparar Player]). Fonte canônica: SITE_URL; o host da requisição só
-// serve em dev sem .env.
-const baseUrlDoPlayer = (req) => (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
-
 // Tela mudou: admin (canal próprio) e dono do ponto ("Meus pontos") refazem
 // o GET sem F5. `point.updated` junto: o estado do ponto é derivado das
 // telas, e o contador de telas do card do ponto também.
@@ -30,9 +25,9 @@ async function avisarMudanca(pontoId, telaId = null) {
 
 const erro400 = (res, msg) => res.status(400).json({ erro: msg });
 
-// Validação dos campos editáveis. Nada de "Nome da tela": o nome é
-// derivado (Tela N), e o que é técnico (dispositivoId, chave, token, URL
-// da API) o sistema gera.
+// Validação dos campos editáveis. Nada de "Nome da tela": o nome é o ID
+// (M-0235), e o que é técnico (chave, código de instalação) o sistema gera.
+// Orientação e endereço do servidor são fixos no APK.
 function validarCampos(corpo) {
   const dados = {};
   for (const campo of repo.CAMPOS_ATUALIZAVEIS) if (campo in corpo) dados[campo] = corpo[campo];
@@ -43,10 +38,6 @@ function validarCampos(corpo) {
       if (!Number.isFinite(v) || v < 0 || v > 10) return { erro: 'cada lado da área segura vai de 0 a 10 vmin' };
       dados[lado] = v;
     }
-  }
-  if ('rotacao_tela' in dados) {
-    dados.rotacao_tela = Number(dados.rotacao_tela);
-    if (![0, 90, 180, 270].includes(dados.rotacao_tela)) return { erro: 'rotação precisa ser 0, 90, 180 ou 270' };
   }
   return { dados };
 }
@@ -71,7 +62,7 @@ router.get('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
 router.get('/admin/dispositivos/:id', async (req, res) => {
   const tela = await repo.buscarPorId(req.params.id);
   if (!tela) return res.status(404).json({ erro: 'tela não encontrada' });
-  res.json({ ...tela, conexao: { baseUrl: baseUrlDoPlayer(req) } });
+  res.json(tela);
 });
 
 router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {

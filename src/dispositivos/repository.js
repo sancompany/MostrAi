@@ -29,7 +29,6 @@ const CAMPOS_ATUALIZAVEIS = [
   'margem_direita',
   'margem_inferior',
   'margem_esquerda',
-  'rotacao_tela',
 ];
 const STATUS = ['ativo', 'reparo', 'inativo'];
 // Código de instalação (docs/player-mvp-contract.md §3): 30 min, 5 erros e
@@ -180,12 +179,11 @@ async function criar(pontoId, dados = {}) {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO dispositivos (ponto_id, apelido, status, rotacao_tela, custo_equipamento, meses_amortizacao)
-       VALUES ($1, 'Tela', $2, $3, $4, $5) RETURNING id, numero`,
+      `INSERT INTO dispositivos (ponto_id, apelido, status, custo_equipamento, meses_amortizacao)
+       VALUES ($1, 'Tela', $2, $3, $4) RETURNING id, numero`,
       [
         pontoId,
         STATUS.includes(dados.status) ? dados.status : 'ativo',
-        [0, 90, 180, 270].includes(Number(dados.rotacao_tela)) ? Number(dados.rotacao_tela) : 0,
         Number(dados.custo_equipamento) || 0,
         Number(dados.meses_amortizacao) || 36,
       ],

@@ -458,9 +458,21 @@ test('config: margem muda a versão e chega na config; campo que não vai na con
   const patch = (corpo) => app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo });
   assert.equal((await patch({ custo_equipamento: 900, meses_amortizacao: 24 })).status, 200);
   assert.equal(await versaoDesejada(tela.id), v0, 'equipamento não é config');
-  // Horário, modo e fuso por tela não existem mais: ignorados, sem versão nova.
-  await patch({ modo_horario: 'personalizado', horario_semanal: { seg: null }, timezone: 'America/Manaus' });
+  // Horário/fuso por tela, rotação e update remoto não existem mais:
+  // ignorados, sem versão nova.
+  await patch({
+    modo_horario: 'personalizado',
+    horario_semanal: { seg: null },
+    timezone: 'America/Manaus',
+    rotacao_tela: 90,
+    update_baixar_auto: false,
+    contrato_playlist: 1,
+  });
   assert.equal(await versaoDesejada(tela.id), v0);
+  const ficha = await app.chamar('GET', `/admin/dispositivos/${tela.id}`);
+  for (const proibido of ['conexao', 'baseUrl', 'rotacao', 'update', 'pin']) {
+    assert.ok(!ficha.texto.includes(proibido), `ficha sem ${proibido}`);
+  }
 
   assert.equal((await patch({ margem_superior: 2.5, margem_esquerda: 1 })).status, 200);
   const r = await configDe(p);
