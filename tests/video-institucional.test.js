@@ -8,8 +8,7 @@ const pool = require('../src/db/pool');
 const repo = require('../src/pontos/repository');
 const gerador = require('../src/playlist/gerador');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { registrarHeartbeat } = require('../src/player/sinal');
-const { gerarChaveLegada } = require('../src/player/credencial');
+const { instalarPlayer } = require('./apoio-player');
 
 // Vídeo institucional (25/09/2026, pedido do dono): o que preenche o tempo
 // vago da rede pro Player V2 baixar e tocar, no lugar do cartão HTML "este
@@ -118,8 +117,7 @@ async function dispositivoDeTeste() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
-  await gerarChaveLegada(dispositivo.id);
-  await registrarHeartbeat(dispositivo.id, {}, {});
+  await instalarPlayer(dispositivo.id);
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 

@@ -33,37 +33,10 @@ function exigirAparelho({ operacao = true } = {}) {
     const tela = await dispositivosRepo.buscarComPonto(req.params.dispositivoId);
     if (!tela || tela.ponto_status === 'arquivado') return res.status(401).json(NAO_AUTORIZADO);
 
-    const enviada = req.get('x-aparelho-key');
-    const qual = credencial.identificarChave(tela, enviada);
-    if (!qual) return res.status(401).json(NAO_AUTORIZADO);
+    if (!credencial.chaveConfere(tela, req.get('x-aparelho-key'))) return res.status(401).json(NAO_AUTORIZADO);
 
     if (operacao && tela.status !== 'ativo') {
       return res.status(403).json({ erro: 'esta tela está fora do ar no cadastro — fale com a Mostraí pra reativar' });
-    }
-    // Candidata de rotação: o Player só a oficializa numa resposta de
-    // sucesso e a descarta em qualquer outra (contrato §1.1). Então o
-    // servidor promove exatamente aí: na hora de mandar uma resposta 2xx e
-    // antes de ela sair. 400/403/500 do handler não promovem; promoção que
-    // falha vira 503 (o Player repete 5xx com a chave antiga, a candidata
-    // segue pendente). Se a resposta 2xx se perder na rede, a chave
-    // promovida volta no heartbeat seguinte (credencial.promoverChaveNova).
-    if (qual === 'nova') {
-      const responder = res.json.bind(res);
-      const hashAtualLido = tela.chave_hash;
-      res.json = (corpo) => {
-        if (res.statusCode < 200 || res.statusCode >= 300) return responder(corpo);
-        credencial.promoverChaveNova(tela.id, enviada, hashAtualLido).then(
-          () => responder(corpo),
-          (err) => {
-            console.error('promoção da chave candidata falhou:', err.code || err.name);
-            res.status(503);
-            responder({ erro: 'tente de novo em instantes' });
-          },
-        );
-        return res;
-      };
-    } else if (qual === 'atual' && tela.chave_atual_cifrada) {
-      await credencial.esquecerCopiaDaAtual(tela.id);
     }
     // Primeira requisição com a credencial do provisionamento: o Player
     // provou que a recebeu, a janela de repetição do token fecha.
@@ -71,7 +44,6 @@ function exigirAparelho({ operacao = true } = {}) {
     await credencial.registrarUso(tela.id);
 
     req.dispositivo = tela;
-    req.chaveUsada = qual;
     req.player = lerPlayer(req);
     next();
   };

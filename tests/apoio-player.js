@@ -4,6 +4,7 @@ const express = require('express');
 const pool = require('../src/db/pool');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const pinSaida = require('../src/player/pin-saida');
+const { sincronizarStatusPonto } = require('../src/pontos/repository');
 const { normalizarCodigoInstalacao } = require('../src/lib/codigo-tela');
 
 // Apoio comum dos testes do Player MVP (docs/player-mvp-contract.md): o app
@@ -81,6 +82,8 @@ async function instalarPlayer(telaId) {
   await garantirPinSaida();
   const { codigo } = await dispositivosRepo.gerarCodigo(telaId, 'teste');
   const r = await dispositivosRepo.trocarCodigoPorCredencial(telaId, normalizarCodigoInstalacao(codigo));
+  // Como a rota: instalação é contato, o status do ponto passa a contar a tela.
+  if (r.novo) await sincronizarStatusPonto(r.pontoId);
   return { dispositivoId: r.dispositivoId, chaveAparelho: r.chaveAparelho };
 }
 

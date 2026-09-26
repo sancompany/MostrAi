@@ -96,12 +96,11 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
   try {
     const id = await ponto(conta.id, 'Bar do Zé');
     await pool.query(
-      `INSERT INTO dispositivos (ponto_id, apelido, status, modo_horario, primeiro_sinal_em, ultima_vez_online, aparelho_id,
-                                 ultimo_erro, dispositivo_uid, chave_hash, chave_fingerprint, player_versao, player_build)
-       VALUES ($1, 'x', 'ativo', '24h', now(), now(), 'chave-secreta', NULL,
-               'tela_00000000000000000001', repeat('a', 64), 'AAAAAA', '1.0.0', 2),
-              ($1, 'y', 'ativo', '24h', now() - interval '3 hours', now() - interval '3 hours', 'outra-chave', 'stack trace cru',
-               NULL, repeat('b', 64), NULL, NULL, NULL)`,
+      `INSERT INTO dispositivos (ponto_id, apelido, status, primeiro_sinal_em, ultima_vez_online,
+                                 ultimo_erro, ultimo_erro_codigo, chave_hash, player_versao, player_build, fila_pendentes)
+       VALUES ($1, 'x', 'ativo', now(), now(), NULL, NULL, repeat('a', 64), '1.0.0', 2, 17),
+              ($1, 'y', 'ativo', now() - interval '3 hours', now() - interval '3 hours', 'stack trace cru',
+               'PLAYBACK_FALHOU', repeat('b', 64), NULL, NULL, NULL)`,
       [id],
     );
     await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [id]);
@@ -124,15 +123,14 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
     assert.equal('temPin' in estab.telas[0], false);
     // Visão simplificada do dono (Player V2): nada de identidade técnica.
     for (const proibido of [
-      'chave-secreta',
-      'outra-chave',
       'stack trace',
+      'PLAYBACK_FALHOU',
       '16 90000-0000',
       'nota interna',
-      'tela_000',
-      'AAAAAA',
       'aaaaaaaa',
+      'bbbbbbbb',
       '1.0.0',
+      'fila',
     ]) {
       assert.ok(!json.includes(proibido), `vazou: ${proibido}`);
     }

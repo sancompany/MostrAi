@@ -126,27 +126,6 @@ router.post('/admin/dispositivos/:id/codigo-instalacao', async (req, res) => {
   res.status(201).json({ codigoTela: formatarCodigoTela(tela.id), ...gerado });
 });
 
-router.post('/admin/dispositivos/:id/credencial/rotacionar', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  if (!(await credencial.iniciarRotacao(tela.id))) {
-    return erro400(
-      res,
-      'rotação só existe para Player V2 provisionado — tela no player web: revogue e use Preparar Player',
-    );
-  }
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json(await repo.buscarPorId(tela.id));
-});
-
-router.delete('/admin/dispositivos/:id/credencial/rotacao', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  await credencial.cancelarRotacao(tela.id);
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json(await repo.buscarPorId(tela.id));
-});
-
 router.post('/admin/dispositivos/:id/credencial/revogar', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;

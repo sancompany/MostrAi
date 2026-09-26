@@ -6,26 +6,20 @@ const pool = require('../db/pool');
 // que o dono vetou. O estado atual mora nas colunas da própria
 // tela; aqui só o que mudou e quando.
 //
-// `detalhe` nunca leva segredo (chave, token, PIN) — só fingerprint, código,
+// `detalhe` nunca leva segredo (chave, código, PIN) — só código de erro,
 // versão, horário.
 const TIPOS = new Set([
   'SCREEN_CREATED',
   'PROVISIONING_PREPARED',
-  'PROVISIONING_CANCELLED',
   'PROVISIONING_FAILED',
   'PLAYER_PROVISIONED',
-  'PLAYER_PREPARED',
   'FIRST_SEEN',
   'OFFLINE',
   'ONLINE',
   'ERROR_STARTED',
   'ERROR_RESOLVED',
   'CONFIG_APPLIED',
-  'CREDENTIAL_ROTATION_REQUESTED',
-  'CREDENTIAL_ROTATION_CANCELLED',
-  'CREDENTIAL_ROTATED',
   'CREDENTIAL_REVOKED',
-  'CREDENTIAL_LEGACY_ISSUED',
   'ADMIN_STATE_CHANGED',
 ]);
 

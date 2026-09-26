@@ -10,8 +10,7 @@ const pontosRepo = require('../src/pontos/repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
-const { registrarHeartbeat } = require('../src/player/sinal');
-const { gerarChaveLegada } = require('../src/player/credencial');
+const { instalarPlayer } = require('./apoio-player');
 
 // Banco de horas (G.3 de docs/PENDENCIAS.md). Unidade é EXIBIÇÃO (vezes),
 // não segundos — ver migration 058. Cada teste cria e apaga a própria
@@ -392,8 +391,7 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
   });
   const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco ${randomUUID()}` });
   await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
-  await gerarChaveLegada(tela.id);
-  await registrarHeartbeat(tela.id, {}, {});
+  await instalarPlayer(tela.id);
   const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
   // Ponto escolhido antes do plano e do criativo aprovado: a conta nunca
   // cai na cobertura automática de outro arquivo (playlist-contrato-novo).

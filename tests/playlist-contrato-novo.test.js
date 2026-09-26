@@ -5,8 +5,7 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { registrarHeartbeat } = require('../src/player/sinal');
-const { gerarChaveLegada } = require('../src/player/credencial');
+const { instalarPlayer } = require('./apoio-player');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -75,10 +74,9 @@ async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
-  // Primeiro sinal: ponto só entra na cobertura depois dele (Player V2).
-  // Tela que fala está autenticada: tem credencial (a do player web aqui).
-  await gerarChaveLegada(dispositivo.id);
-  await registrarHeartbeat(dispositivo.id, {}, {});
+  // Player instalado (conta como primeiro sinal): ponto só entra na
+  // cobertura depois dele.
+  await instalarPlayer(dispositivo.id);
   return dispositivosRepo.buscarComPonto(dispositivo.id);
 }
 
