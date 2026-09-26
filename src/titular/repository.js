@@ -59,8 +59,12 @@ async function exportarConta(anuncianteId) {
          FROM comissoes WHERE vendedor_conta_id = $1 ORDER BY id`),
     q(`SELECT id, valor_confirmado, comissao_valor, criado_em
          FROM comissoes WHERE anunciante_id = $1 ORDER BY id`),
-    q(`SELECT janela_hora, ponto_id, dispositivo_id, vezes_programadas, vezes_confirmadas
-         FROM exibicoes_contador WHERE anunciante_id = $1 ORDER BY janela_hora`),
+    // `ponto_id` saiu do contador na 036 (a tela já diz o ponto); vem da tela,
+    // pra exportação manter o mesmo formato.
+    q(`SELECT e.janela_hora, d.ponto_id, e.dispositivo_id, e.vezes_programadas, e.vezes_confirmadas
+         FROM exibicoes_contador e
+         JOIN dispositivos d ON d.id = e.dispositivo_id
+        WHERE e.anunciante_id = $1 ORDER BY e.janela_hora`),
     q(`SELECT pp.* FROM pagamentos_ponto pp
          JOIN pontos p ON p.id = pp.ponto_id
         WHERE p.anunciante_id = $1 ORDER BY pp.competencia`),
@@ -83,8 +87,11 @@ async function exportarConta(anuncianteId) {
     // 18: o titular leva TUDO, não só o que existia quando a rota nasceu).
     q(`SELECT id, tipo, quantidade, ponto_id, competencia, observacao, criado_em
          FROM creditos_ledger WHERE anunciante_id = $1 ORDER BY criado_em`),
-    q(`SELECT id, plano_id, origem, status, inicio, valido_ate, ativado_em, encerrado_em, encerrado_motivo, observacao, criado_em
-         FROM planos_administrativos WHERE anunciante_id = $1 ORDER BY criado_em`),
+    // A coluna é `created_at` (migration 075); sai como `criado_em`, igual às
+    // outras listas da exportação.
+    q(`SELECT id, plano_id, origem, status, inicio, valido_ate, ativado_em, encerrado_em, encerrado_motivo, observacao,
+              created_at AS criado_em
+         FROM planos_administrativos WHERE anunciante_id = $1 ORDER BY created_at`),
     q(`SELECT id, tipo, titulo, descricao, lida_em, criado_em
          FROM notificacoes WHERE anunciante_id = $1 ORDER BY criado_em`),
     q(`SELECT id, assinatura_id, plano_id, valor_a_estornar, contratado_em, pedido_em, status, estornado_em
