@@ -31,6 +31,7 @@ PW_CHROME=... node tests/e2e/16-ficha-conta.mjs    # ficha de Conta do admin nos
 # 16 e 17: suba com `tests/e2e/restart.sh NODE_ENV=development ...` — o crédito do ponto vem de outro processo via LISTEN/NOTIFY
 PW_CHROME=... node tests/e2e/17-modelo-de-creditos.mjs  # sem Inicial/Básico/R$ 50/repasse/comodato em admin, painel e site; crédito do ponto sem F5; aviso antes de pagar por cima de benefício
 PW_CHROME=... node tests/e2e/09-rede-redesenho.mjs # Rede: status automático (grade/filtros/detalhe/site público), telas em cards + margens, ocupação como tabela, candidatura com foto
+PW_CHROME=... node tests/e2e/21-planos-final.mjs # Planos: textos finais, mínimo de exibições nos cards, CTA, aviso de rede (0 pontos / rede pequena / rede completa), desktop e celular
 PW_CHROME=... node tests/e2e/20-promocao-sem-prazo.mjs # Promoções: sem campo de duração, condição fixa "enquanto a assinatura permanecer ativa", janela só para adesões novas, resumo "Benefício"
 PW_CHROME=... node tests/e2e/18-rede-player-mvp.mjs # Player MVP: PIN de saída → horário do ponto → + Tela → código de instalação → provisionar → heartbeat/config → área segura → erro no Suporte → revogar → excluir → rotas antigas 404
 # ONLINE, contra a produção (só leitura): saúde, cabeçalhos, /planos canônico, 410 das rotas

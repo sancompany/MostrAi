@@ -126,7 +126,7 @@ function render(meses) {
       const promo = condicaoPromocionalVigente(p.tier, meses);
       return `
     <div class="plan-card ${p.destaque_no_site ? 'popular' : ''}">
-      ${p.destaque_no_site ? '<span class="badge">Mais escolhido</span>' : ''}
+      ${p.destaque_no_site ? '<span class="badge">Recomendado</span>' : ''}
       <div class="tier">${esc(p.nome)}</div>
       ${p.rotulo ? `<div class="rotulo">${esc(p.rotulo)}</div>` : ''}
       ${montarPreco(p, meses, promo)}
