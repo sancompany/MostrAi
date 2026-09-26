@@ -531,7 +531,7 @@ test('PIN de saída: 4 a 8 dígitos, recusa óbvio; trocar sobe a versão de tod
     }
     const v0 = await versaoDesejada(tela.id);
     const r = await app.chamar('PUT', '/admin/player/pin-saida', { corpo: { pin: '90517' } });
-    assert.equal(r.status, 200);
+    assert.equal(r.status, 200, r.texto);
     assert.deepEqual(Object.keys(r.json).sort(), ['alteradoEm', 'definido']);
     assert.equal(await versaoDesejada(tela.id), v0 + 1, 'PIN novo = config nova em todas as telas');
 

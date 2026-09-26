@@ -59,8 +59,24 @@ async function situacao() {
   return { definido, alteradoEm: definido ? registro.alteradoEm : null };
 }
 
+// Sobe a versão de TODAS as telas: trava as linhas em ordem de id, a mesma
+// para qualquer chamada, e repete se o banco ainda assim escolher esta
+// transação para desfazer um impasse com outra que atualiza várias telas
+// (ex.: o gatilho que marca playlists de um ponto). Trocar o PIN é raro; um
+// 500 por impasse, não.
+const IMPASSE = '40P01';
 async function definir(entrada) {
   const pin = validar(entrada);
+  for (let tentativa = 1; ; tentativa++) {
+    try {
+      return await gravar(pin);
+    } catch (err) {
+      if (err.code !== IMPASSE || tentativa >= 3) throw err;
+    }
+  }
+}
+
+async function gravar(pin) {
   const alteradoEm = new Date().toISOString();
   const cliente = await pool.connect();
   try {
@@ -72,7 +88,9 @@ async function definir(entrada) {
     );
     // Toda tela recebe a config nova no próximo heartbeat (15 s).
     const { rowCount } = await cliente.query(
-      'UPDATE dispositivos SET config_versao_desejada = config_versao_desejada + 1, config_alterada_em = now()',
+      `UPDATE dispositivos d SET config_versao_desejada = d.config_versao_desejada + 1, config_alterada_em = now()
+         FROM (SELECT id FROM dispositivos ORDER BY id FOR UPDATE) t
+        WHERE d.id = t.id`,
     );
     await cliente.query('COMMIT');
     eventos.registrar('player:pin_saida_alterado', { telas: rowCount });
