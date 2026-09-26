@@ -403,4 +403,198 @@ test('webhook plano_trocado (troca com acerto aprovada) também encerra o benef�
   }
 });
 
+// ---------------------------------------------------------------------------
+// Caso 1 do mapa de pago × benefício (26/09/2026, decisão do dono): conta em
+// benefício por créditos com a assinatura paga GUARDADA por baixo. Antes, se
+// os dois eram o mesmo plano, /assinar mandava "use Trocar de plano" e
+// trocar-plano recusava conta em benefício — um beco. Agora:
+//   · mesmo plano/ciclo que já paga → 409 claro, nada muda;
+//   · outro plano → o caminho que já valia pra planos diferentes: cancela a
+//     assinatura cobrada no Checkout, cria a nova; os dias guardados somam no
+//     plano novo quando ele for pago; o ADR-016 decide quando ele entra; o
+//     benefício na frente continua.
+const creditosRepoFila = require('../src/creditos/repository');
+const planoAdministrativo = require('../src/financeiro/plano-administrativo');
+const diasDeUmMes = () => {
+  const hoje = new Date(`${vigencia.hojeComercial()}T00:00:00Z`);
+  const fim = new Date(hoje);
+  fim.setUTCMonth(fim.getUTCMonth() + 1);
+  return Math.round((fim - hoje) / 86400000);
+};
+
+async function beneficioSobrePago(tierBeneficio, tierPago) {
+  const c = await contaComBeneficio(tierBeneficio, {
+    plano_pago_guardado_id: PLANO[tierPago],
+    plano_pago_guardado_dias: 30,
+  });
+  // O benefício foi pago com créditos: débito real no ledger, ligado a ele.
+  await creditosRepoFila.concederAdmin(c.id, 7, { motivo: 'teste' });
+  const debito = await creditosRepoFila.debitarResgate(c.id, 7, 'Resgate: teste');
+  await pool.query('UPDATE planos_administrativos SET ledger_id = $2 WHERE anunciante_id = $1', [c.id, debito.id]);
+  const paga = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO[tierPago], status: 'ativa' });
+  await pool.query(
+    `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 199.99, 'pendente')`,
+    [c.id, PLANO[tierPago]],
+  );
+  return { c, paga };
+}
+
+async function retrato(contaId) {
+  const q = async (sql) => (await pool.query(sql, [contaId])).rows;
+  return {
+    conta: await q(
+      `SELECT plano_id, plano_cortesia, data_expiracao, plano_pago_guardado_id, plano_pago_guardado_dias
+         FROM anunciantes WHERE id = $1`,
+    ),
+    assinaturas: await q(
+      'SELECT id, plano_id, status FROM assinaturas WHERE anunciante_id = $1 ORDER BY created_at, id',
+    ),
+    beneficios: await q(
+      'SELECT id, plano_id, status, encerrado_motivo, valido_ate FROM planos_administrativos WHERE anunciante_id = $1 ORDER BY id',
+    ),
+    cobrancas: await q('SELECT count(*)::int AS n FROM cobrancas_confirmadas WHERE anunciante_id = $1'),
+    ledger: await q('SELECT tipo, quantidade FROM creditos_ledger WHERE anunciante_id = $1 ORDER BY id'),
+  };
+}
+
+function contandoCancelamentos() {
+  const original = sc.cancelarAssinatura;
+  const chamadas = [];
+  sc.cancelarAssinatura = async (id) => {
+    chamadas.push(id);
+  };
+  return { chamadas, restaurar: () => (sc.cancelarAssinatura = original) };
+}
+
+test('benefício + MESMO plano pago guardado: /assinar → 409 claro, sem nenhuma mutação', async () => {
+  const { c } = await beneficioSobrePago('pro', 'pro');
+  const cancel = contandoCancelamentos();
+  const app = await subirApp();
+  try {
+    const antes = await retrato(c.id);
+    for (const extra of [{}, { confirmarBeneficio: true }]) {
+      const r = await app.assinar(c.id, PLANO.pro, extra);
+      assert.equal(r.status, 409);
+      assert.equal(
+        r.corpo.erro,
+        'Você já possui o Pro · Mensal pago. Ele voltará automaticamente quando seu benefício atual terminar.',
+      );
+    }
+    assert.deepEqual(await retrato(c.id), antes, 'nada criado, cancelado, cobrado ou mexido');
+    assert.equal(cancel.chamadas.length, 0, 'nada cancelado no Checkout');
+  } finally {
+    cancel.restaurar();
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
+test('benefício + pago A (mesmo plano) → contratar B: troca no plano guardado, benefício intacto, dias somados uma vez, sem estorno, fim do benefício traz B', async () => {
+  const { c, paga } = await beneficioSobrePago('pro', 'pro');
+  const cancel = contandoCancelamentos();
+  const app = await subirApp();
+  try {
+    const antes = await retrato(c.id);
+    // Antes: "use Trocar de plano" (beco). Agora: o aviso do benefício e,
+    // confirmado, o link da assinatura NOVA.
+    const aviso = await app.assinar(c.id, PLANO.essencial);
+    assert.equal(aviso.status, 409);
+    assert.ok(aviso.corpo.confirmacao, 'o aviso do benefício vem antes');
+    const r = await app.assinar(c.id, PLANO.essencial, { confirmarBeneficio: true });
+    assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    assert.ok(r.corpo.checkoutUrl);
+
+    // A assinatura A (já cobrada) foi cancelada no Checkout UMA vez; B nasceu
+    // pendente de pagamento. Nada cobrado ainda.
+    assert.deepEqual(cancel.chamadas, [paga.id]);
+    const pedido = await retrato(c.id);
+    assert.deepEqual(
+      pedido.assinaturas.map((a) => [a.plano_id, a.status]),
+      [
+        [PLANO.pro, 'cancelada'],
+        [PLANO.essencial, 'pendente_pagamento'],
+      ],
+    );
+    assert.deepEqual(pedido.conta, antes.conta, 'conta intacta até o pagamento: benefício na frente, A guardado');
+    assert.deepEqual(pedido.beneficios, antes.beneficios, 'o benefício não é encerrado pelo pedido');
+    assert.equal(pedido.cobrancas[0].n, antes.cobrancas[0].n);
+
+    // Pagamento de B (webhook v2, entregue duas vezes): um ciclo só.
+    const nova = pedido.assinaturas[1];
+    const eventoId = `evt-beco-${randomUUID()}`;
+    const payload = {
+      versao: 2,
+      tipo: 'assinatura',
+      eventoId,
+      ocorridoEm: new Date().toISOString(),
+      planoId: nova.id,
+      documento: '11144477735',
+      assinaturaId: `sub-beco-${randomUUID()}`,
+      chargeId: `pay-beco-${randomUUID()}`,
+      statusFinanceiro: 'confirmado',
+      ciclo: 'MONTHLY',
+      cicloCanonico: 'mensal',
+      metodoPagamento: 'assinatura',
+      evento: 'criada',
+      valor: 99.99,
+    };
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      throw new Error(`o pagamento v2 não consulta o Checkout: ${url}`);
+    };
+    try {
+      await sc.processarWebhookAssinatura(payload);
+      await sc.processarWebhookAssinatura(payload);
+      await sc.processarWebhookAssinatura({ ...payload, eventoId: `${eventoId}-2` });
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+
+    const pago = await retrato(c.id);
+    assert.equal(pago.cobrancas[0].n, antes.cobrancas[0].n + 1, 'uma cobrança só, mesmo com reentrega');
+    const [conta] = pago.conta;
+    assert.equal(conta.plano_id, PLANO.pro, 'o benefício Pro continua valendo agora');
+    assert.equal(conta.plano_cortesia, true);
+    assert.equal(conta.plano_pago_guardado_id, PLANO.essencial, 'o plano guardado agora é B');
+    assert.equal(conta.plano_pago_guardado_dias, 30 + diasDeUmMes(), 'os 30 dias de A + o mês de B, uma vez');
+    assert.deepEqual(
+      pago.beneficios.map((b) => [b.status, b.encerrado_motivo]),
+      [['ativo', null]],
+      'benefício intacto',
+    );
+    assert.deepEqual(pago.ledger, antes.ledger, 'nenhum crédito devolvido nem mexido');
+
+    // Fim do benefício: entra exatamente B, com os dias guardados.
+    await pool.query(
+      `UPDATE planos_administrativos SET valido_ate = $2 WHERE anunciante_id = $1 AND status = 'ativo'`,
+      [c.id, somar(-1)],
+    );
+    await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [c.id, somar(-1)]);
+    await planoAdministrativo.encerrarBeneficiosVencidos({ apenasContas: [c.id] });
+    const [fim] = (await retrato(c.id)).conta;
+    assert.equal(fim.plano_id, PLANO.essencial, 'entra o plano pago B');
+    assert.equal(fim.plano_cortesia, false);
+    assert.equal(String(fim.data_expiracao).slice(0, 10), somar(30 + diasDeUmMes()));
+    assert.equal(fim.plano_pago_guardado_id, null);
+  } finally {
+    cancel.restaurar();
+    await app.fechar();
+    await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [c.id]);
+    await pool.query("DELETE FROM webhooks_processados WHERE id LIKE '%beco%'");
+    await apagar(c.id);
+  }
+});
+
+test('trocar-plano continua recusando conta em benefício (sem segundo caminho financeiro)', async () => {
+  const { c } = await beneficioSobrePago('pro', 'pro');
+  const app = await subirApp();
+  try {
+    const r = await app.trocar(c.id, PLANO.prime);
+    assert.equal(r.status, 400);
+  } finally {
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
 test.after(() => pool.end());
