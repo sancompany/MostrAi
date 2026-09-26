@@ -13,6 +13,7 @@ const telaEventos = require('../player/tela-eventos');
 const releases = require('../player/releases');
 const sse = require('../lib/sse');
 const { exigirAparelho } = require('../lib/aparelho');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 // URL da API que vai no aparelho (bloco CONEXÃO da ficha e no JSON do
 // [Preparar Player]). Fonte canônica: SITE_URL; o host da requisição só
@@ -146,56 +147,23 @@ router.delete('/admin/dispositivos/:id', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Admin — provisionamento e credencial
 // ---------------------------------------------------------------------------
-// [Preparar Player] — o fluxo canônico (consolidação, 24/09/2026): gera
-// dispositivoId (5 dígitos) + chaveAparelho e devolve o `mostrai-config.json`
-// pronto, UMA vez. A chave não fica guardada (só o hash): fechou sem copiar,
-// prepara de novo — a anterior deixa de valer.
-router.post('/admin/dispositivos/:id/preparar-player', async (req, res) => {
+// Código de instalação (docs/player-mvp-contract.md §3): o operador digita
+// na TV o ID da tela + este código, que vale 30 min e uma vez só. Gerar de
+// novo cancela o anterior. Tela com Player conectado → 409 (revogar antes).
+// O código volta em claro só aqui e na ficha, enquanto vale (cópia cifrada).
+router.post('/admin/dispositivos/:id/codigo-instalacao', async (req, res) => {
   const tela = await telaOu404(req, res);
   if (!tela) return;
-  let r;
+  let gerado;
   try {
-    r = await repo.prepararPlayer(tela.id);
+    gerado = await repo.gerarCodigo(tela.id, 'admin');
   } catch (err) {
     if (err.status) return res.status(err.status).json({ erro: err.message });
     throw err;
   }
   await avisarMudanca(tela.ponto_id, tela.id);
-  res.status(201).json({
-    nomeArquivo: 'mostrai-config.json',
-    arquivo: {
-      dispositivoId: r.dispositivoId,
-      chaveAparelho: r.chaveAparelho,
-      baseUrl: baseUrlDoPlayer(req),
-      rotacaoTela: tela.rotacao_tela,
-    },
-    geradoEm: new Date().toISOString(),
-  });
-});
-
-// Provisionamento por token (contrato V2 §2.1) — caminho alternativo que o
-// Player continua aceitando; o admin usa o [Preparar Player] acima. Fica
-// como capacidade do backend (testada), não como tela.
-router.post('/admin/dispositivos/:id/provisionamento', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  const gerado = await repo.gerarTokenProvisionamento(tela.id, 'admin');
-  const baseUrl = baseUrlDoPlayer(req);
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.status(201).json({
-    nomeArquivo: 'mostrai-config.json',
-    arquivo: { baseUrl, tokenProvisionamento: gerado.token, rotacaoTela: tela.rotacao_tela },
-    geradoEm: gerado.criadoEm,
-    expiraEm: gerado.expiraEm,
-  });
-});
-
-router.delete('/admin/dispositivos/:id/provisionamento', async (req, res) => {
-  const tela = await telaOu404(req, res);
-  if (!tela) return;
-  await repo.cancelarProvisionamento(tela.id);
-  await avisarMudanca(tela.ponto_id, tela.id);
-  res.json(await repo.buscarPorId(tela.id));
+  res.set('Cache-Control', 'no-store');
+  res.status(201).json({ codigoTela: formatarCodigoTela(tela.id), ...gerado });
 });
 
 router.post('/admin/dispositivos/:id/credencial/rotacionar', async (req, res) => {

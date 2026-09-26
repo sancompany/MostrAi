@@ -18,23 +18,6 @@ const SOBREPOSICAO_MS = 24 * 3600 * 1000;
 
 const gerarChave = () => crypto.randomBytes(32).toString('base64url');
 
-// dispositivoId (regra canônica, consolidação 24/09/2026): 5 dígitos
-// aleatórios, 10000–99999, único, gerado por RNG seguro. Não é segredo — a
-// segurança é a chave. Retenta em colisão; também recusa um número igual à
-// PK de alguma tela, porque o roteamento V1 (compat) ainda aceita a PK
-// numérica: `buscarComPonto` procura o uid primeiro, e uma PK igual a um
-// uid alheio ficaria inalcançável pelo Player V1.
-async function gerarDispositivoId(db = pool) {
-  for (let tentativa = 0; tentativa < 25; tentativa++) {
-    const id = String(crypto.randomInt(10000, 100000));
-    const { rows } = await db.query(
-      'SELECT 1 FROM dispositivos WHERE dispositivo_uid = $1::text OR id = $2::int LIMIT 1',
-      [id, Number(id)],
-    );
-    if (!rows.length) return id;
-  }
-  throw new Error('não foi possível gerar um dispositivoId livre');
-}
 const hashDaChave = (chave) => crypto.createHash('sha256').update(String(chave), 'utf8').digest('hex');
 // Identificador não secreto da chave, para o admin reconhecer "é a mesma?".
 const fingerprintDoHash = (hash) => (hash ? hash.slice(-6).toUpperCase() : null);
@@ -148,7 +131,18 @@ async function revogar(telaId) {
       RETURNING ponto_id`,
     [telaId],
   );
-  if (!rows[0]) return false;
+  // Código de instalação pendente morre junto (senão um código visto antes
+  // da revogação reinstalaria a tela), e a credencial guardada para
+  // repetição da instalação também.
+  const { rowCount: cancelados } = await pool.query(
+    `UPDATE tokens_provisionamento
+        SET cancelado_em = CASE WHEN usado_em IS NULL AND cancelado_em IS NULL THEN now() ELSE cancelado_em END,
+            codigo_cifrado = NULL, credencial_cifrada = NULL
+      WHERE dispositivo_id = $1
+        AND ((usado_em IS NULL AND cancelado_em IS NULL) OR codigo_cifrado IS NOT NULL OR credencial_cifrada IS NOT NULL)`,
+    [telaId],
+  );
+  if (!rows[0]) return cancelados > 0;
   await telaEventos.registrar(telaId, 'CREDENTIAL_REVOKED', null);
   // Tela sem credencial não exibe: o ponto pode deixar de estar em operação.
   await sincronizarStatusPonto(rows[0].ponto_id);
@@ -193,7 +187,6 @@ async function registrarUso(telaId) {
 module.exports = {
   SOBREPOSICAO_MS,
   gerarChave,
-  gerarDispositivoId,
   hashDaChave,
   fingerprintDoHash,
   identificarChave,

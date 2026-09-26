@@ -13,11 +13,9 @@ const cofre = require('../lib/cofre');
 const eventos = require('../lib/eventos');
 const sse = require('../lib/sse');
 const { sincronizarStatusPonto } = require('../pontos/repository');
+const { normalizarCodigoTela, normalizarCodigoInstalacao } = require('../lib/codigo-tela');
 
-// API do Player — contraparte de docs/player-v2-contract.md
-// (sancompany/Playlist.MostrAi, main 28bc93d). V1 continua: o player web
-// (public/player.html) e o Android legado usam o ID numérico da Tela, o
-// heartbeat de corpo vazio/{erro} e o /played de {anuncianteId}.
+// API do Player — contrato oficial em docs/player-mvp-contract.md.
 //
 // Códigos (o Player decide o que fazer por eles — contrato §4.4, §9.2):
 // - 400 só para corpo estruturalmente inválido. Um evento de proof-of-play
@@ -46,26 +44,28 @@ function avisarMudanca(tela, { transicao }) {
 }
 
 // ---------------------------------------------------------------------------
-// POST /player/provisionar — troca o token de uso único por credenciais
+// POST /player/provisionar — ID da tela + código de instalação → credencial
+// (docs/player-mvp-contract.md §3)
 // ---------------------------------------------------------------------------
+const INSTALACAO_INVALIDA = { erro: 'ID da tela ou código de instalação inválido, expirado ou já usado' };
+
 router.post('/player/provisionar', limiteTentativas, corpoObjeto, async (req, res) => {
-  const token = req.body.tokenProvisionamento;
-  if (typeof token !== 'string' || !token.trim() || token.length > 200) {
-    return res.status(400).json({ erro: 'tokenProvisionamento obrigatório' });
+  const telaId = normalizarCodigoTela(req.body.codigoTela);
+  if (!telaId) return res.status(400).json({ erro: 'codigoTela inválido — use o ID da tela, ex.: M-0235' });
+  const codigo = normalizarCodigoInstalacao(req.body.codigoInstalacao);
+  if (!codigo) {
+    return res.status(400).json({ erro: 'codigoInstalacao inválido — são 8 letras e números, ex.: 7K4M-9Q2W' });
   }
-  const r = await dispositivosRepo.trocarToken(token);
-  // Inválido, expirado, cancelado ou já usado: 401 (nunca 404, que para o
-  // Player significa "backend V1"; nunca fallback para outra credencial).
-  if (!r) return res.status(401).json({ erro: 'token de provisionamento inválido, expirado ou já usado' });
+  const r = await dispositivosRepo.trocarCodigoPorCredencial(telaId, codigo);
+  // Tela inexistente, código errado, expirado, cancelado ou usado: 401 igual
+  // para todos (quem tenta adivinhar não aprende qual foi).
+  if (!r) return res.status(401).json(INSTALACAO_INVALIDA);
   await zerarTentativas(req);
   if (r.novo) {
-    // Reprovisionar devolve a credencial a uma tela que pode ter sido
-    // revogada: o status do ponto volta a considerá-la.
+    // Instalação é contato: o status do ponto passa a considerar a tela.
+    await sincronizarStatusPonto(r.pontoId);
     const tela = await dispositivosRepo.buscarLinha(r.telaId);
-    if (tela) {
-      await sincronizarStatusPonto(tela.ponto_id);
-      avisarMudanca(tela, { transicao: true });
-    }
+    if (tela) avisarMudanca(tela, { transicao: true });
   }
   res.json({ dispositivoId: r.dispositivoId, chaveAparelho: r.chaveAparelho });
 });

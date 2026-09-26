@@ -1,9 +1,10 @@
 const crypto = require('node:crypto');
 
-// Cofre para o pouco que o servidor precisa guardar E recuperar (Player V2):
-// o PIN do painel (o contrato entrega `pinPainel` em claro na config), a chave
-// candidata de uma rotação até o Player confirmá-la, e a credencial de uma
-// troca de token durante a janela de repetição. Todo o resto é hash.
+// Cofre para o pouco que o servidor precisa guardar E recuperar do Player
+// (docs/player-mvp-contract.md): o PIN de saída global (vai em claro na
+// config), o código de instalação enquanto ele vale (o admin o reexibe com a
+// contagem regressiva) e a credencial de uma instalação durante a janela de
+// repetição. Todo o resto é hash.
 //
 // AES-256-GCM (autenticado: texto adulterado não decifra). Chave derivada por
 // HKDF-SHA256 do SESSION_SECRET — sem variável nova para o dono configurar.
@@ -11,13 +12,25 @@ const crypto = require('node:crypto');
 // 'aes-256-gcm', IV de 12 bytes, tag de 16), 23/09/2026.
 // limite: trocar o SESSION_SECRET torna ilegível o que já foi cifrado. Nada
 // quebra — `abrir` devolve null e quem chama trata como ausente (PIN pede
-// redefinição, rotação pendente é refeita, retry de token deixa de valer).
+// redefinição, código de instalação pendente precisa ser gerado de novo).
 const ROTULO = 'v1';
 
-function chave() {
+function derivar(uso) {
   const segredo = process.env.SESSION_SECRET;
   if (!segredo) throw new Error('SESSION_SECRET ausente — o cofre não tem de onde derivar a chave');
-  return Buffer.from(crypto.hkdfSync('sha256', segredo, 'mostrai-cofre', 'player-v2', 32));
+  return Buffer.from(crypto.hkdfSync('sha256', segredo, 'mostrai-cofre', uso, 32));
+}
+
+// Rótulo HKDF 'player-v2' mantido: é o que decifra o que já foi guardado.
+const chave = () => derivar('player-v2');
+
+// Assinatura (HMAC-SHA256) para segredo CURTO que precisa ser achado por
+// igualdade sem ficar recuperável: o código de instalação tem ~40 bits, e um
+// SHA-256 simples dele cai por força bruta offline em minutos se o banco
+// vazar. Com a chave do servidor, o hash sozinho não serve pra nada. Chave
+// própria (outro rótulo HKDF), nunca a mesma da cifra.
+function assinar(texto) {
+  return crypto.createHmac('sha256', derivar('codigo-instalacao')).update(String(texto), 'utf8').digest('hex');
 }
 
 function fechar(texto) {
@@ -43,4 +56,4 @@ function abrir(fechado) {
   }
 }
 
-module.exports = { fechar, abrir };
+module.exports = { fechar, abrir, assinar };

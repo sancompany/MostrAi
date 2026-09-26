@@ -8,6 +8,12 @@ const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_A
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
+const {
+  formatarCodigoTela,
+  normalizarCodigoTela,
+  gerarCodigoInstalacao,
+  formatarCodigoInstalacao,
+} = require('../lib/codigo-tela');
 
 // Tela = `dispositivos` (migration 019); Ponto = o comércio. O Player é a
 // identidade provisionada numa tela (migration 083). Nomes de coluna em
@@ -35,10 +41,11 @@ const CAMPOS_ATUALIZAVEIS = [
   'update_horas_entre_tentativas',
 ];
 const STATUS = ['ativo', 'reparo', 'inativo'];
-const PROVISIONAMENTO_VALIDADE_DIAS = 7;
-// Contrato §2.3: repetir a troca do mesmo token por alguns minutos devolve
-// as mesmas credenciais.
-const PROVISIONAMENTO_REPETICAO_MIN = 10;
+// Código de instalação (docs/player-mvp-contract.md §3): 30 min, 5 erros e
+// repetição curta de 5 min (a resposta 200 pode se perder na rede).
+const INSTALACAO_VALIDADE_MIN = 30;
+const INSTALACAO_TENTATIVAS = 5;
+const INSTALACAO_REPETICAO_MIN = 5;
 
 const nomeDaTela = (t) => `Tela ${t.numero}`;
 
@@ -52,12 +59,12 @@ const SELECT_BASE = `
          p.categoria_id, p.horario_abertura, p.horario_fechamento, p.cota_autoanuncio_slots_hora,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto,
          tk.criado_em AS prov_criado_em, tk.expira_em AS prov_expira_em, tk.usado_em AS prov_usado_em,
-         tk.cancelado_em AS prov_cancelado_em
+         tk.cancelado_em AS prov_cancelado_em, tk.codigo_cifrado AS prov_codigo_cifrado
          __EXTRA__
     FROM dispositivos d
     JOIN pontos p ON p.id = d.ponto_id
     LEFT JOIN LATERAL (
-      SELECT criado_em, expira_em, usado_em, cancelado_em FROM tokens_provisionamento
+      SELECT criado_em, expira_em, usado_em, cancelado_em, codigo_cifrado FROM tokens_provisionamento
        WHERE dispositivo_id = d.id ORDER BY criado_em DESC, id DESC LIMIT 1
     ) tk ON true`;
 
@@ -79,23 +86,14 @@ const SELECT_TELA_ADMIN = SELECT_BASE.replace(
 );
 
 // Uso interno do Player (autenticação, playlist, config) — nunca vai para
-// resposta HTTP inteiro. O `dispositivoId` público (5 dígitos, ou o
-// `tela_<hex>` de quem foi provisionado antes da consolidação) é procurado
-// PRIMEIRO; a PK numérica só vale se nenhum uid casar — é o caminho de
-// compatibilidade das TVs V1 (player web / Android anterior ao V2), que se
-// identificam pelo ID da Tela.
-async function buscarComPonto(chave) {
-  const texto = String(chave ?? '').trim();
-  if (!texto || texto.length > 64) return null;
-  const { rows } = await pool.query(`${SELECT_TELA} WHERE d.dispositivo_uid = $1`, [texto]);
-  if (rows[0]) return rows[0];
-  // PK só para tela SEM dispositivoId (V1): quem já tem identidade pública
-  // não responde pelo registro interno.
-  if (!/^\d{1,9}$/.test(texto)) return null;
-  const { rows: porPk } = await pool.query(`${SELECT_TELA} WHERE d.id = $1::int AND d.dispositivo_uid IS NULL`, [
-    texto,
-  ]);
-  return porPk[0] || null;
+// resposta HTTP inteiro. O `dispositivoId` do contrato é o código da tela
+// ("M-0235"), que é o id interno formatado: "235", "0235" e "M0235" também
+// servem (src/lib/codigo-tela.js).
+async function buscarComPonto(dispositivoId) {
+  const id = normalizarCodigoTela(dispositivoId);
+  if (!id) return null;
+  const { rows } = await pool.query(`${SELECT_TELA} WHERE d.id = $1`, [id]);
+  return rows[0] || null;
 }
 
 async function buscarLinha(id) {
@@ -113,7 +111,16 @@ function situacaoProvisionamento(t, agora) {
   if (t.prov_usado_em) estado = 'usado';
   else if (t.prov_cancelado_em) estado = 'cancelado';
   else if (new Date(t.prov_expira_em) <= agora) estado = 'expirado';
-  return { estado, geradoEm: t.prov_criado_em, expiraEm: t.prov_expira_em, usadoEm: t.prov_usado_em };
+  // O código só volta enquanto vale — expirado, usado ou cancelado não tem
+  // o que mostrar (e a cópia cifrada já foi ou será apagada).
+  const codigo = estado === 'aguardando_instalacao' ? cofre.abrir(t.prov_codigo_cifrado) : null;
+  return {
+    estado,
+    codigo: codigo ? formatarCodigoInstalacao(codigo) : null,
+    geradoEm: t.prov_criado_em,
+    expiraEm: t.prov_expira_em,
+    usadoEm: t.prov_usado_em,
+  };
 }
 
 function situacaoCredencial(t, agora) {
@@ -384,163 +391,28 @@ async function deletar(id) {
 }
 
 // ---------------------------------------------------------------------------
-// Provisionamento por token (contrato §2.1)
+// Instalação por código (docs/player-mvp-contract.md §3)
 // ---------------------------------------------------------------------------
-const hashDoToken = (token) => crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
+// HMAC sobre (tela, código): o mesmo código em outra tela não casa, e o hash
+// sozinho (se o banco vazar) não serve pra adivinhar o código.
+const assinaturaDoCodigo = (telaId, codigo) => cofre.assinar(`instalacao:${telaId}:${codigo}`);
 
-// Token novo invalida o anterior ainda não usado. Não mexe na credencial
-// atual: gerar instalador para uma tela que já tem Player funcionando não
-// derruba nada — só a troca do token, na TV nova, substitui a identidade.
-async function gerarTokenProvisionamento(telaId, criadoPor = 'admin') {
-  const token = `tok_${crypto.randomBytes(24).toString('base64url')}`;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows: tela } = await client.query('SELECT id FROM dispositivos WHERE id = $1 FOR UPDATE', [telaId]);
-    if (!tela[0]) {
-      await client.query('ROLLBACK');
-      return null;
-    }
-    await client.query(
-      `UPDATE tokens_provisionamento SET cancelado_em = now()
-        WHERE dispositivo_id = $1 AND usado_em IS NULL AND cancelado_em IS NULL`,
-      [telaId],
-    );
-    const { rows } = await client.query(
-      `INSERT INTO tokens_provisionamento (dispositivo_id, token_hash, criado_por, expira_em)
-       VALUES ($1, $2, $3, now() + ($4::int * interval '1 day')) RETURNING criado_em, expira_em`,
-      [telaId, hashDoToken(token), criadoPor, PROVISIONAMENTO_VALIDADE_DIAS],
-    );
-    await telaEventos.registrar(telaId, 'PROVISIONING_PREPARED', { expiraEm: rows[0].expira_em }, client);
-    await client.query('COMMIT');
-    return { token, criadoEm: rows[0].criado_em, expiraEm: rows[0].expira_em };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+function assinaturasIguais(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
 }
 
-async function cancelarProvisionamento(telaId) {
-  const { rowCount } = await pool.query(
-    `UPDATE tokens_provisionamento SET cancelado_em = now()
-      WHERE dispositivo_id = $1 AND usado_em IS NULL AND cancelado_em IS NULL`,
-    [telaId],
-  );
-  if (rowCount) await telaEventos.registrar(telaId, 'PROVISIONING_CANCELLED', null);
-  return rowCount > 0;
-}
-
-// Troca token → credencial. Consumo atômico (`UPDATE … WHERE usado_em IS
-// NULL`): duas trocas simultâneas do mesmo token geram UMA identidade — a
-// segunda espera a trava da linha, não casa mais, e cai na janela de
-// repetição, recebendo as mesmas credenciais.
-// Devolve { dispositivoId, chaveAparelho, novo } ou null (token inválido,
-// expirado, cancelado, já usado fora da janela, ponto arquivado).
-async function trocarToken(token) {
-  if (typeof token !== 'string' || !token.trim()) return null;
-  const hash = hashDoToken(token.trim());
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // Limpeza oportunista: credencial cifrada não passa da janela.
-    await client.query(
-      `UPDATE tokens_provisionamento SET credencial_cifrada = NULL
-        WHERE credencial_cifrada IS NOT NULL AND usado_em < now() - ($1::int * interval '1 minute')`,
-      [PROVISIONAMENTO_REPETICAO_MIN],
-    );
-    // Mesma ordem de travas de gerarTokenProvisionamento — tela, depois
-    // token: consumir o token enquanto o admin gera outro arquivo para a
-    // mesma tela não pode virar deadlock (token→tela contra tela→token).
-    await client.query(
-      `SELECT d.id FROM dispositivos d
-         JOIN tokens_provisionamento t ON t.dispositivo_id = d.id
-        WHERE t.token_hash = $1
-          FOR UPDATE OF d`,
-      [hash],
-    );
-    const { rows: consumido } = await client.query(
-      `UPDATE tokens_provisionamento t SET usado_em = now()
-         FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-        WHERE t.token_hash = $1 AND t.usado_em IS NULL AND t.cancelado_em IS NULL AND t.expira_em > now()
-          AND d.id = t.dispositivo_id AND p.status <> 'arquivado'
-        RETURNING t.id, t.dispositivo_id`,
-      [hash],
-    );
-    if (consumido[0]) {
-      const telaId = consumido[0].dispositivo_id;
-      const uid = await credencial.gerarDispositivoId(client);
-      const chave = credencial.gerarChave();
-      const chaveHash = credencial.hashDaChave(chave);
-      await client.query(
-        `UPDATE dispositivos
-            SET aparelho_id = NULL, chave_atual_cifrada = NULL,
-                dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
-                chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
-                chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
-                chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
-                -- Player novo começa do zero: o que o aparelho anterior
-                -- relatou não descreve este.
-                config_versao_aplicada = NULL, config_aplicada_em = NULL
-          WHERE id = $1`,
-        [telaId, uid, chaveHash, credencial.fingerprintDoHash(chaveHash)],
-      );
-      await client.query(`UPDATE tokens_provisionamento SET credencial_cifrada = $2 WHERE id = $1`, [
-        consumido[0].id,
-        cofre.fechar(JSON.stringify({ dispositivoId: uid, chaveAparelho: chave })),
-      ]);
-      await telaEventos.registrar(
-        telaId,
-        'PLAYER_PROVISIONED',
-        { dispositivoId: uid, fingerprint: credencial.fingerprintDoHash(chaveHash) },
-        client,
-      );
-      await client.query('COMMIT');
-      return { telaId, dispositivoId: uid, chaveAparelho: chave, novo: true };
-    }
-
-    // Repetição dentro da janela: mesmas credenciais, desde que continuem
-    // sendo as desta tela (não houve outra troca nem revogação depois).
-    const { rows: repetido } = await client.query(
-      `SELECT t.dispositivo_id, t.credencial_cifrada, d.chave_hash, d.dispositivo_uid
-         FROM tokens_provisionamento t JOIN dispositivos d ON d.id = t.dispositivo_id
-        WHERE t.token_hash = $1 AND t.credencial_cifrada IS NOT NULL
-          AND t.usado_em > now() - ($2::int * interval '1 minute')`,
-      [hash, PROVISIONAMENTO_REPETICAO_MIN],
-    );
-    await client.query('COMMIT');
-    const r = repetido[0];
-    const dados = r && JSON.parse(cofre.abrir(r.credencial_cifrada) || 'null');
-    if (
-      !dados ||
-      dados.dispositivoId !== r.dispositivo_uid ||
-      credencial.hashDaChave(dados.chaveAparelho) !== r.chave_hash
-    ) {
-      return null;
-    }
-    return { telaId: r.dispositivo_id, ...dados, novo: false };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
-// [Preparar Player] (consolidação, 24/09/2026 — o fluxo canônico do admin):
-// gera a identidade e a credencial AQUI, sem token: o admin recebe UMA vez
-// o JSON {dispositivoId, chaveAparelho, baseUrl} que vai no
-// mostrai-config.json do aparelho (o Player aceita credencial direta —
-// ConfigExterna.kt). O banco guarda só o hash; a chave em claro existe só
-// na resposta. Reprovisionar troca a identidade: a anterior deixa de valer
-// na hora (uma tela = um Player). Token pendente da tela é cancelado.
-async function prepararPlayer(telaId) {
+// Código novo cancela o pendente. Só para tela SEM Player conectado: gerar
+// código numa tela que já tem Player deixaria qualquer um que o visse trocar
+// o aparelho dela — o caminho é revogar antes (a tela volta a "Aguardando
+// instalação"). Devolve { codigo: 'XXXX-XXXX', criadoEm, expiraEm } ou null
+// (tela inexistente); lança 400 (ponto arquivado) e 409 (Player conectado).
+async function gerarCodigo(telaId, criadoPor = 'admin') {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows: tela } = await client.query(
-      `SELECT d.id, d.ponto_id, p.status AS ponto_status FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+      `SELECT d.id, d.chave_hash, p.status AS ponto_status FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
         WHERE d.id = $1 FOR UPDATE OF d`,
       [telaId],
     );
@@ -549,33 +421,160 @@ async function prepararPlayer(telaId) {
       return null;
     }
     if (tela[0].ponto_status === 'arquivado') {
-      await client.query('ROLLBACK');
       throw Object.assign(new Error('ponto arquivado não recebe Player'), { status: 400 });
     }
+    if (tela[0].chave_hash) {
+      throw Object.assign(
+        new Error('esta tela já tem um Player conectado — revogue o Player antes de instalar outro'),
+        {
+          status: 409,
+        },
+      );
+    }
     await client.query(
-      `UPDATE tokens_provisionamento SET cancelado_em = now()
+      `UPDATE tokens_provisionamento SET cancelado_em = now(), codigo_cifrado = NULL
         WHERE dispositivo_id = $1 AND usado_em IS NULL AND cancelado_em IS NULL`,
       [telaId],
     );
-    const dispositivoId = await credencial.gerarDispositivoId(client);
-    const chave = credencial.gerarChave();
-    const chaveHash = credencial.hashDaChave(chave);
-    const fingerprint = credencial.fingerprintDoHash(chaveHash);
+    // O hash é único na tabela; um código repetido desta mesma tela (1 em
+    // 31^8 por código antigo) só pede outro sorteio.
+    for (let tentativa = 0; ; tentativa++) {
+      const codigo = gerarCodigoInstalacao();
+      await client.query('SAVEPOINT codigo');
+      try {
+        const { rows } = await client.query(
+          `INSERT INTO tokens_provisionamento (dispositivo_id, token_hash, criado_por, expira_em, codigo_cifrado)
+           VALUES ($1, $2, $3, now() + ($4::int * interval '1 minute'), $5) RETURNING criado_em, expira_em`,
+          [telaId, assinaturaDoCodigo(telaId, codigo), criadoPor, INSTALACAO_VALIDADE_MIN, cofre.fechar(codigo)],
+        );
+        await telaEventos.registrar(telaId, 'PROVISIONING_PREPARED', { expiraEm: rows[0].expira_em }, client);
+        await client.query('COMMIT');
+        return { codigo: formatarCodigoInstalacao(codigo), criadoEm: rows[0].criado_em, expiraEm: rows[0].expira_em };
+      } catch (err) {
+        if (err.code !== '23505' || tentativa >= 4) throw err;
+        await client.query('ROLLBACK TO SAVEPOINT codigo');
+      }
+    }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// Troca (código da tela + código de instalação) → credencial permanente.
+// `telaId` e `codigo` já normalizados por quem chama. Devolve
+// { telaId, pontoId, dispositivoId, chaveAparelho, novo, primeiroSinal } ou
+// null — tela inexistente, ponto arquivado, código errado, expirado,
+// cancelado ou usado dão o MESMO null (o Player não aprende qual foi).
+//
+// A tela fica travada (FOR UPDATE) do começo ao fim: duas trocas
+// simultâneas do mesmo código geram UMA credencial — a segunda espera, não
+// acha mais código pendente e cai na repetição, recebendo a mesma.
+async function trocarCodigoPorCredencial(telaId, codigo) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Limpeza oportunista: credencial para repetição não passa da janela, e
+    // cópia reexibível não sobrevive ao código.
     await client.query(
-      `UPDATE dispositivos
-          SET aparelho_id = NULL, chave_atual_cifrada = NULL,
-              dispositivo_uid = $2, chave_hash = $3, chave_fingerprint = $4, chave_criada_em = now(),
-              chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
-              chave_nova_hash = NULL, chave_nova_fingerprint = NULL, chave_nova_cifrada = NULL, chave_nova_criada_em = NULL,
-              chave_anterior_hash = NULL, chave_anterior_expira_em = NULL,
-              config_versao_aplicada = NULL, config_aplicada_em = NULL
-        WHERE id = $1`,
-      [telaId, dispositivoId, chaveHash, fingerprint],
+      `UPDATE tokens_provisionamento SET credencial_cifrada = NULL
+        WHERE credencial_cifrada IS NOT NULL AND usado_em < now() - ($1::int * interval '1 minute')`,
+      [INSTALACAO_REPETICAO_MIN],
     );
-    await telaEventos.registrar(telaId, 'PLAYER_PREPARED', { dispositivoId, fingerprint }, client);
-    await sincronizarStatusPonto(tela[0].ponto_id, client);
+    await client.query(
+      `UPDATE tokens_provisionamento SET codigo_cifrado = NULL WHERE codigo_cifrado IS NOT NULL AND expira_em <= now()`,
+    );
+    const { rows: tela } = await client.query(
+      `SELECT d.id, d.ponto_id, d.chave_hash, d.primeiro_sinal_em, p.status AS ponto_status
+         FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id WHERE d.id = $1 FOR UPDATE OF d`,
+      [telaId],
+    );
+    if (!tela[0] || tela[0].ponto_status === 'arquivado') {
+      await client.query('COMMIT');
+      return null;
+    }
+    const assinatura = assinaturaDoCodigo(telaId, codigo);
+    const { rows: pendentes } = await client.query(
+      `SELECT id, token_hash FROM tokens_provisionamento
+        WHERE dispositivo_id = $1 AND usado_em IS NULL AND cancelado_em IS NULL AND expira_em > now()
+        ORDER BY criado_em DESC, id DESC LIMIT 1 FOR UPDATE`,
+      [telaId],
+    );
+    const pendente = pendentes[0];
+
+    if (pendente && assinaturasIguais(pendente.token_hash, assinatura)) {
+      await client.query(`UPDATE tokens_provisionamento SET usado_em = now(), codigo_cifrado = NULL WHERE id = $1`, [
+        pendente.id,
+      ]);
+      const chave = credencial.gerarChave();
+      const dispositivoId = formatarCodigoTela(telaId);
+      // Player novo começa do zero: o que um aparelho anterior relatou não
+      // descreve este. A troca em si é o primeiro contato — a tela nasce
+      // "Operando" e vira "Sem sinal" se o Player sumir depois.
+      await client.query(
+        `UPDATE dispositivos
+            SET chave_hash = $2, chave_ultimo_uso_em = NULL, provisionado_em = now(), revogado_em = NULL,
+                config_versao_aplicada = NULL, config_aplicada_em = NULL,
+                player_estado = NULL, criativo_atual = NULL, fila_pendentes = NULL, fila_mais_antigo_em = NULL,
+                ultimo_erro_codigo = NULL, ultimo_erro = NULL, ultimo_erro_em = NULL,
+                primeiro_sinal_em = COALESCE(primeiro_sinal_em, now()), ultima_vez_online = now()
+          WHERE id = $1`,
+        [telaId, credencial.hashDaChave(chave)],
+      );
+      await client.query(`UPDATE tokens_provisionamento SET credencial_cifrada = $2 WHERE id = $1`, [
+        pendente.id,
+        cofre.fechar(JSON.stringify({ dispositivoId, chaveAparelho: chave })),
+      ]);
+      await telaEventos.registrar(telaId, 'PLAYER_PROVISIONED', null, client);
+      if (!tela[0].primeiro_sinal_em) await telaEventos.registrar(telaId, 'FIRST_SEEN', null, client);
+      await client.query('COMMIT');
+      return {
+        telaId,
+        pontoId: tela[0].ponto_id,
+        dispositivoId,
+        chaveAparelho: chave,
+        novo: true,
+        primeiroSinal: !tela[0].primeiro_sinal_em,
+      };
+    }
+
+    // Repetição dentro da janela: mesma credencial, desde que continue
+    // sendo a desta tela (não houve revogação nem outra instalação depois).
+    const { rows: repetido } = await client.query(
+      `SELECT credencial_cifrada FROM tokens_provisionamento
+        WHERE dispositivo_id = $1 AND token_hash = $2 AND credencial_cifrada IS NOT NULL
+          AND usado_em > now() - ($3::int * interval '1 minute')`,
+      [telaId, assinatura, INSTALACAO_REPETICAO_MIN],
+    );
+    const dados = repetido[0] && JSON.parse(cofre.abrir(repetido[0].credencial_cifrada) || 'null');
+    if (dados && tela[0].chave_hash && credencial.hashDaChave(dados.chaveAparelho) === tela[0].chave_hash) {
+      await client.query('COMMIT');
+      return { telaId, pontoId: tela[0].ponto_id, ...dados, novo: false, primeiroSinal: false };
+    }
+
+    // Erro: conta contra o código pendente desta tela; na 5ª ele morre.
+    if (pendente) {
+      const { rows } = await client.query(
+        `UPDATE tokens_provisionamento
+            SET tentativas_erradas = tentativas_erradas + 1,
+                cancelado_em = CASE WHEN tentativas_erradas + 1 >= $2 THEN now() END,
+                codigo_cifrado = CASE WHEN tentativas_erradas + 1 >= $2 THEN NULL ELSE codigo_cifrado END
+          WHERE id = $1 RETURNING tentativas_erradas, cancelado_em`,
+        [pendente.id, INSTALACAO_TENTATIVAS],
+      );
+      await telaEventos.registrar(
+        telaId,
+        'PROVISIONING_FAILED',
+        { tentativa: rows[0].tentativas_erradas, bloqueado: !!rows[0].cancelado_em },
+        client,
+      );
+    } else {
+      await telaEventos.registrar(telaId, 'PROVISIONING_FAILED', { semCodigoValido: true }, client);
+    }
     await client.query('COMMIT');
-    return { telaId, pontoId: tela[0].ponto_id, dispositivoId, chaveAparelho: chave };
+    return null;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -596,7 +595,8 @@ async function fecharJanelaDoToken(telaId) {
 module.exports = {
   CAMPOS_ATUALIZAVEIS,
   STATUS,
-  PROVISIONAMENTO_VALIDADE_DIAS,
+  INSTALACAO_VALIDADE_MIN,
+  INSTALACAO_TENTATIVAS,
   nomeDaTela,
   buscarComPonto,
   buscarLinha,
@@ -612,9 +612,7 @@ module.exports = {
   conferirPin,
   temExibicaoConfirmada,
   deletar,
-  gerarTokenProvisionamento,
-  cancelarProvisionamento,
-  trocarToken,
-  prepararPlayer,
+  gerarCodigo,
+  trocarCodigoPorCredencial,
   fecharJanelaDoToken,
 };
