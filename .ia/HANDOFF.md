@@ -17,8 +17,11 @@ Contrato oficial: `docs/player-mvp-contract.md` (substitui o contrato V2 —
 repositório do Player ficam como histórico). Uma fase por commit (A–M) na
 branch `claude/busy-noether-hheir2`. Migrations 092 (código de instalação),
 093 (config: margens + horário do ponto; PIN sobe todas) e 094 (DESTRUTIVA:
-`player_releases` e 34 colunas de `dispositivos`). Regras que não se desfazem
-sem contexto:
+`player_releases` e 34 colunas de `dispositivos`). **No ar:** #71 (`50eb0fb`,
+código + 092/093) e depois #72 (`34c9f00`, só a 094, com backup antes — nome do
+arquivo em RUNBOOK §4 "Reverter"). Dois PRs porque o serviço tem 2 instâncias: o
+DROP só entrou com o código que não lê as colunas já servindo. Regras que
+não se desfazem sem contexto:
 - **ID da tela = `M-0235`** (a PK formatada, `src/lib/codigo-tela.js`); é o
   `dispositivoId` do contrato. Não existe `dispositivo_uid` nem "Tela N".
 - **Instalação = ID da tela + código de instalação** (8 chars, 30 min, uma
