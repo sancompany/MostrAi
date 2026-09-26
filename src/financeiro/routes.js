@@ -531,12 +531,16 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   // Checkout — as escritas locais têm que ser tudo ou nada, e uma falha
   // aqui não pode desaparecer sem deixar rastro (mesmo raciocínio de
   // aplicarCicloPago, acima).
+  let programadosSuperados = [];
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
     await assinaturasRepo.marcarTrocada(assinaturaAtiva.id, cliente);
     await assinaturasRepo.marcarAtiva(assinaturaNova.id, cliente);
     await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [conta.id, planoNovo.id]);
+    // Benefício programado de nível menor que o pago novo sai da fila, como
+    // num ciclo pago (ADR-016) — senão ativaria por cima do Prime/Pro pago.
+    programadosSuperados = await planoAdministrativo.encerrarProgramadosAbaixo(cliente, conta.id, planoNovo.tier);
     // Troca = ciclo novo (migration 087): snapshot do ciclo do plano novo,
     // pelo valor que a assinatura nova cobra — nunca o acerto proporcional.
     await cicloContratado.registrar(cliente, {
@@ -586,6 +590,9 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
 
   res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
   sse.emitirParaConta(conta.id, 'plan.updated', {});
+  await planoAdministrativo
+    .avisarProgramadosSuperados(conta.id, programadosSuperados, planoNovo.nome)
+    .catch((err) => console.error('aviso de benefício programado encerrado na troca', err.message));
 
   // Fire-and-forget: e-mail que falha não desfaz a troca (pedido do dono,
   // 18/09/2026). `conta.plano_id` aqui ainda é o plano ANTIGO — a variável

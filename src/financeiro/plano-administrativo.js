@@ -449,17 +449,42 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
 
   // Fila: benefício PROGRAMADO de nível menor que o pago nunca fica pra
   // reduzir o plano depois.
-  const { rows: programadosMenores } = await db.query(
+  for (const linha of await encerrarProgramadosAbaixo(db, conta.id, plano.tier))
+    eventos.push({ tipo: 'programado_superado', linha });
+  return eventos;
+}
+
+// Benefício PROGRAMADO de nível menor que o plano pago que acabou de entrar
+// é encerrado ('superado_por_plano_pago', créditos não voltam — ADR-016):
+// ele ativaria por cima do pago maior quando o ciclo acabasse, e
+// `ativarBeneficiosAgendados` não compara nível. Roda DENTRO da transação de
+// quem chama: o ciclo pago (acima) e as duas trocas de plano pago
+// (POST /anunciantes/me/trocar-plano e o webhook `plano_trocado`) — antes só
+// o ciclo pago fazia isso (26/09/2026). Devolve as linhas encerradas pra
+// quem chama avisar DEPOIS do COMMIT (avisarProgramadosSuperados).
+async function encerrarProgramadosAbaixo(db, contaId, tierPago) {
+  const { rows } = await db.query(
     `UPDATE planos_administrativos h
         SET status = 'encerrado', encerrado_em = now(), encerrado_motivo = 'superado_por_plano_pago'
        FROM planos p
       WHERE p.id = h.plano_id AND h.anunciante_id = $1 AND h.status = 'agendado'
         AND (CASE p.tier WHEN 'essencial' THEN 1 WHEN 'destaque' THEN 2 WHEN 'maximo' THEN 3 ELSE 0 END) < $2
       RETURNING h.id, p.nome AS plano_nome`,
-    [conta.id, nivelDoTier(plano.tier)],
+    [contaId, nivelDoTier(tierPago)],
   );
-  for (const linha of programadosMenores) eventos.push({ tipo: 'programado_superado', linha });
-  return eventos;
+  return rows;
+}
+
+// O mesmo aviso que o ciclo pago dá (san-checkout.js#aplicarCicloPago) pra
+// quem teve um benefício programado encerrado por uma troca de plano pago.
+async function avisarProgramadosSuperados(contaId, linhas, planoPagoNome) {
+  for (const linha of linhas) {
+    await avisarConta(contaId, {
+      tipo: 'fila_programado_superado',
+      titulo: `Benefício programado ${linha.plano_nome || ''} cancelado`.replace(/\s+/g, ' '),
+      descricao: `Seu plano ${planoPagoNome} pago já oferece mais recursos.`,
+    });
+  }
 }
 
 // Datas em 'AAAA-MM-DD' (as colunas são `date`; o pool devolve texto — ver
@@ -655,6 +680,8 @@ module.exports = {
   nivelDoTier,
   preverPagamento,
   aplicarPagamentoNaFila,
+  encerrarProgramadosAbaixo,
+  avisarProgramadosSuperados,
   ativarBeneficiosAgendados,
   encerrarBeneficiosVencidos,
 };

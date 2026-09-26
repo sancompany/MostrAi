@@ -242,6 +242,14 @@ async function subirApp() {
       });
       return { status: r.status, corpo: await r.json().catch(() => null) };
     },
+    trocar: async (conta, planoNovoId) => {
+      const r = await fetch(`${base}/anunciantes/me/trocar-plano`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-conta': String(conta) },
+        body: JSON.stringify({ planoNovoId }),
+      });
+      return { status: r.status, corpo: await r.json().catch(() => null) };
+    },
     fechar: () => new Promise((r) => server.close(r)),
   };
 }
@@ -303,6 +311,94 @@ test('resgate enquanto paga: menor que o plano base é recusado sem consumir cr�
   } finally {
     await new Promise((r) => server.close(r));
     await pool.query('DELETE FROM cupons_ponto WHERE conta_id = $1', [c.id]);
+    await apagar(c.id);
+  }
+});
+
+// Conta PAGANDO `tierPago` em dia, com a assinatura ativa, e um benefício
+// por créditos PROGRAMADO (`tierProgramado`) pra quando o pago acabar — o
+// estado que o resgate "igual ou maior que o pago" deixa (ADR-016).
+async function pagandoComProgramado(tierPago, tierProgramado) {
+  const c = await contaComBeneficio(tierPago, { plano_cortesia: false, cortesia_motivo: null });
+  await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [c.id]);
+  await pool.query(
+    `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, plano_anterior_id,
+                                         plano_anterior_origem, plano_anterior_valido_ate)
+     VALUES ($1, $2, $3, 'agendado', 'indicacao', $4, 'assinatura', $5)`,
+    [c.id, PLANO[tierProgramado], somar(70), PLANO[tierPago], somar(40)],
+  );
+  const antiga = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO[tierPago], status: 'ativa' });
+  return { c, antiga };
+}
+
+// Caso 2 do mapa de pago × benefício (26/09/2026): a troca de plano pago
+// (síncrona ou aprovada pelo webhook `plano_trocado`) passa pelo mesmo passo
+// do ciclo pago — benefício PROGRAMADO de nível menor que o novo pago é
+// encerrado, senão ele ativaria por cima do pago maior quando o ciclo
+// acabasse (`ativarBeneficiosAgendados` não compara nível).
+test('trocar-plano pra um nível maior encerra o benefício PROGRAMADO menor (troca sem acerto, síncrona)', async () => {
+  const { c } = await pagandoComProgramado('pro', 'pro');
+  const original = sc.trocarPlano;
+  sc.trocarPlano = async () => ({
+    status: 200,
+    corpo: { valor: 199.99, ciclo: 'MONTHLY', acerto: { cobrado: false } },
+  });
+  const app = await subirApp();
+  try {
+    const r = await app.trocar(c.id, PLANO.prime);
+    assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    const { conta, historico } = await estado(c.id);
+    assert.equal(conta.plano_id, PLANO.prime, 'o Prime pago entrou');
+    assert.deepEqual(historico, [
+      { plano_id: PLANO.pro, status: 'encerrado', encerrado_motivo: 'superado_por_plano_pago' },
+    ]);
+  } finally {
+    sc.trocarPlano = original;
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
+test('trocar-plano pra um nível menor mantém o benefício programado igual ou maior na fila', async () => {
+  const { c } = await pagandoComProgramado('pro', 'prime');
+  const original = sc.trocarPlano;
+  sc.trocarPlano = async () => ({ status: 200, corpo: { valor: 99.99, ciclo: 'MONTHLY', acerto: { cobrado: false } } });
+  const app = await subirApp();
+  try {
+    const r = await app.trocar(c.id, PLANO.essencial);
+    assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    const { historico } = await estado(c.id);
+    assert.deepEqual(historico, [{ plano_id: PLANO.prime, status: 'agendado', encerrado_motivo: null }]);
+  } finally {
+    sc.trocarPlano = original;
+    await app.fechar();
+    await apagar(c.id);
+  }
+});
+
+test('webhook plano_trocado (troca com acerto aprovada) também encerra o benefício programado menor', async () => {
+  const { c, antiga } = await pagandoComProgramado('pro', 'pro');
+  const nova = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO.prime, status: 'pendente_troca' });
+  try {
+    await sc.processarWebhookAssinatura({
+      versao: 2,
+      eventoId: `evt-troca-${randomUUID()}`,
+      tipo: 'assinatura',
+      planoId: nova.id,
+      planoAnterior: antiga.id,
+      documento: '11144477735',
+      evento: 'plano_trocado',
+      valor: 199.99,
+      ciclo: 'MONTHLY',
+      acertoCobrado: 0,
+    });
+    const { conta, historico } = await estado(c.id);
+    assert.equal(conta.plano_id, PLANO.prime, 'a troca aprovada foi aplicada');
+    assert.deepEqual(historico, [
+      { plano_id: PLANO.pro, status: 'encerrado', encerrado_motivo: 'superado_por_plano_pago' },
+    ]);
+  } finally {
+    await pool.query('DELETE FROM webhooks_processados WHERE id LIKE $1', ['%evt-troca-%']);
     await apagar(c.id);
   }
 });
