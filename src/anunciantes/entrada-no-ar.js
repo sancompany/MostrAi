@@ -172,14 +172,17 @@ async function entradaNoArDasPecas({ conta, plano, contaVeicula, criativos, agor
   const relogio = criarRelogioDaCobertura(cobertura);
 
   for (const c of aprovadas) {
+    const aprovadoEm = c.aprovado_em ? new Date(c.aprovado_em) : new Date(c.created_at);
     const base = {
-      primeiraExibicaoEm: c.primeira_exibicao_em || null,
+      // A primeira exibição é a do contexto atual: a de antes de uma
+      // reaprovação não é mostrada como se fosse desta.
+      primeiraExibicaoEm:
+        c.primeira_exibicao_em && new Date(c.primeira_exibicao_em) >= aprovadoEm ? c.primeira_exibicao_em : null,
       ultimaExibicaoEm: c.ultima_exibicao_em || null,
       primeiraJanelaPrevista: null,
       prazoPrimeiraExibicao: null,
       motivo: null,
     };
-    const aprovadoEm = c.aprovado_em ? new Date(c.aprovado_em) : new Date(c.created_at);
     if (!c.em_rodizio) {
       resultado.set(c.id, {
         ...base,

@@ -605,6 +605,43 @@ test('17. criativo sem ponto elegível não vira No ar (diz o motivo); comprovan
   assert.equal((await app.chamar('POST', '/admin/criativos/abc/atualizar-telas')).status, 400);
 });
 
+test('16.1 relógio da TV errado (legível, fora da hora): vale a chegada — a peça aprovada no meio da hora entra no ar', async () => {
+  const { conta, ponto } = await contaNoPonto(HORARIO_24H);
+  const c = await criativoAprovado(conta.id);
+  const pl = await playlistAgora(ponto.telaId);
+  const item = pl.itens.find((i) => i.anuncianteId === conta.id);
+  const pop = await enviarPop(ponto.player, [evento(item, { iniciadoEm: '2020-01-01T00:00:00.000Z' })]);
+  assert.equal(pop.json.resultados[0].status, 'contabilizado');
+  const linha = await criativosRepo.buscarPorId(c.id);
+  assert.ok(linha.primeira_exibicao_em >= linha.aprovado_em, 'o instante não fica antes da aprovação');
+  const e = (await entradaDe(conta, [peca(linha)], new Date())).get(c.id);
+  assert.equal(e.estado, ESTADOS.NO_AR);
+});
+
+test('16.2 reaprovar recomeça a primeira exibição: a do contexto antigo não é mostrada nem mantida', async () => {
+  const { conta, ponto } = await contaNoPonto(HORARIO_24H);
+  const c = await criativoAprovado(conta.id);
+  const antiga = new Date(Date.now() - 2 * 24 * HORA);
+  await pool.query('UPDATE criativos SET primeira_exibicao_em = $2, ultima_exibicao_em = $2 WHERE id = $1', [
+    c.id,
+    antiga,
+  ]);
+  await criativosRepo.atualizar(c.id, { status: 'retirado' });
+  await criativosRepo.atualizar(c.id, { status: 'aprovado' });
+  let e = (await entradaDe(conta, [peca(await criativosRepo.buscarPorId(c.id))], new Date())).get(c.id);
+  assert.equal(e.primeiraExibicaoEm, null, 'a primeira do contexto antigo não é a deste');
+  const pl = await playlistAgora(ponto.telaId);
+  await enviarPop(ponto.player, [evento(pl.itens.find((i) => i.anuncianteId === conta.id))]);
+  const linha = await criativosRepo.buscarPorId(c.id);
+  assert.ok(linha.primeira_exibicao_em >= linha.aprovado_em, 'a primeira passa a ser a do contexto novo');
+  e = (await entradaDe(conta, [peca(linha)], new Date())).get(c.id);
+  assert.equal(e.estado, ESTADOS.NO_AR);
+  assert.equal(
+    e.primeiraExibicaoEm.getTime?.() ?? new Date(e.primeiraExibicaoEm).getTime(),
+    linha.primeira_exibicao_em.getTime(),
+  );
+});
+
 // ===========================================================================
 // 27. Mídia Mostraí (18–31)
 // ===========================================================================

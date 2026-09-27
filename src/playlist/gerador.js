@@ -695,12 +695,18 @@ async function estavaNaHoraCongelada(dispositivoId, janela, anuncianteId, db = p
 // começou no último minuto) e nunca no futuro. Sem ele (ou ilegível), a
 // chegada — também presa na janela, pro lote offline de dias depois não
 // virar "tocou hoje".
+//
+// `iniciadoEm` legível mas FORA da janela (relógio da TV errado) conta como
+// ausente — vale a chegada (revisão Codex do PR #83): preso ao início da
+// hora, ele caía antes da aprovação de uma peça aprovada no meio da hora, e
+// ela nunca virava "no ar" apesar de creditada.
 function instanteDaExibicao(iniciadoEm, horaJanela, agora) {
   const inicio = horaJanela.getTime();
-  const teto = Math.min(new Date(agora).getTime(), inicio + 65 * 60_000);
+  const chegada = new Date(agora).getTime();
+  const teto = Math.max(Math.min(chegada, inicio + 65 * 60_000), inicio);
   const informado = typeof iniciadoEm === 'string' ? new Date(iniciadoEm).getTime() : Number.NaN;
-  const base = Number.isFinite(informado) ? informado : new Date(agora).getTime();
-  return new Date(Math.min(Math.max(base, inicio), Math.max(teto, inicio)));
+  const base = Number.isFinite(informado) && informado >= inicio && informado <= teto ? informado : chegada;
+  return new Date(Math.min(Math.max(base, inicio), teto));
 }
 
 // Criativo que tocou de verdade: é isto que separa "aprovado" de "no ar"
@@ -715,9 +721,19 @@ function instanteDaExibicao(iniciadoEm, horaJanela, agora) {
 // como estava antes deste UPDATE.
 async function marcarExibicaoDoCriativo(criativoId, anuncianteId, instante, db) {
   if (criativoId == null || !/^\d{1,10}$/.test(String(criativoId))) return false;
+  // `primeira_exibicao_em` é do CONTEXTO atual (desde `aprovado_em`):
+  // reaprovar recomeça — a primeira de antes é substituída pela primeira
+  // exibição depois da nova aprovação, e comprovante atrasado do contexto
+  // anterior não mexe nela (revisão Codex do PR #83). `ultima` é o fato
+  // mais recente, de qualquer contexto.
   const { rows } = await db.query(
     `UPDATE criativos c
-        SET primeira_exibicao_em = LEAST(COALESCE(c.primeira_exibicao_em, $3), $3),
+        SET primeira_exibicao_em = CASE
+              WHEN $3 < COALESCE(c.aprovado_em, c.created_at) THEN c.primeira_exibicao_em
+              WHEN c.primeira_exibicao_em IS NULL
+                OR c.primeira_exibicao_em < COALESCE(c.aprovado_em, c.created_at) THEN $3
+              ELSE LEAST(c.primeira_exibicao_em, $3)
+            END,
             ultima_exibicao_em = GREATEST(COALESCE(c.ultima_exibicao_em, $3), $3)
        FROM (SELECT id, ultima_exibicao_em FROM criativos WHERE id = $1) antes
       WHERE c.id = antes.id AND c.anunciante_id = $2
