@@ -306,83 +306,113 @@
     });
   }
 
+  // Confirmação do e-mail do cadastro (estação de e-mail, 27/09/2026). O
+  // PRAZO vem do servidor (`expiraEm`, GET /anunciantes/me/verificacao-email):
+  // recarregar a página mostra o mesmo relógio, não reinicia. Reenviar gera
+  // um código novo (o anterior deixa de valer) e o servidor diz quando dá pra
+  // pedir de novo. "Corrigir e-mail" resolve quem digitou o endereço errado
+  // no cadastro — nunca receberia o código — com a senha da conta como prova.
   function mostrarModalEmailNaoConfirmado(conta) {
-    // Mesma validade do código no servidor (VALIDADE_CODIGO_EMAIL_MS, em
-    // src/anunciantes/routes.js) — só pra contar aqui, o servidor é quem
-    // decide de verdade se o código ainda vale.
-    const VALIDADE_CODIGO_S = 120;
-    const COOLDOWN_REENVIO_S = 30;
-
     document.body.style.overflow = 'hidden';
     const el = document.createElement('div');
     el.className = 'modal-email';
     el.innerHTML = `
-      <div class="caixa">
-        <h2>Confirme seu e-mail</h2>
-        <p>Mandamos um código pra <b>${window.esc(conta.contato_email || '')}</b>. Digite ele aqui pra continuar.</p>
-        <p class="expira" id="expiraEmail"></p>
-        <form id="formConfirmarEmail">
-          <input id="codigoConfirmarEmail" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" required autofocus>
-          <button type="submit" class="btn primary">Confirmar</button>
-        </form>
-        <button type="button" class="reenviar" id="btnReenviarCodigoEmail">Reenviar código</button>
-        <p class="msg" id="msgConfirmarEmail"></p>
+      <div class="caixa" role="dialog" aria-modal="true" aria-labelledby="tituloConfirmarEmail">
+        <div data-etapa="codigo">
+          <h2 id="tituloConfirmarEmail">Confirme seu e-mail</h2>
+          <p id="textoConfirmarEmail">Mandamos um código pra <b id="emailConfirmar">${window.esc(conta.contato_email || '')}</b>. Digite ele aqui pra continuar.</p>
+          <p class="expira" id="expiraEmail" aria-live="polite"></p>
+          <form id="formConfirmarEmail">
+            <input id="codigoConfirmarEmail" name="codigo" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="one-time-code" aria-label="Código de 6 dígitos" required autofocus>
+            <button type="submit" class="btn primary">Confirmar</button>
+          </form>
+          <button type="button" class="reenviar" id="btnReenviarCodigoEmail">Reenviar código</button>
+          <button type="button" class="reenviar" id="btnCorrigirEmail">O e-mail está errado? Corrigir e-mail</button>
+        </div>
+        <div data-etapa="corrigir" hidden>
+          <h2>Corrigir e-mail</h2>
+          <p>Digite o e-mail certo e a senha que você criou no cadastro. O código vai pro endereço novo.</p>
+          <form id="formCorrigirEmail" class="corrigir">
+            <label for="novoEmailCadastro">E-mail certo</label>
+            <input id="novoEmailCadastro" name="email" type="email" autocomplete="username" maxlength="254" required>
+            <label for="senhaCorrigirEmail">Sua senha</label>
+            <input id="senhaCorrigirEmail" name="senha" type="password" autocomplete="current-password" required>
+            <button type="submit" class="btn primary">Salvar e enviar código</button>
+          </form>
+          <button type="button" class="reenviar" id="btnVoltarCodigo">Voltar</button>
+        </div>
+        <p class="msg" id="msgConfirmarEmail" role="status"></p>
       </div>`;
     document.body.appendChild(el);
 
-    const msg = el.querySelector('#msgConfirmarEmail');
-    const expiraEl = el.querySelector('#expiraEmail');
-    const btnReenviar = el.querySelector('#btnReenviarCodigoEmail');
+    const $ = (sel) => el.querySelector(sel);
+    const msg = $('#msgConfirmarEmail');
+    const expiraEl = $('#expiraEmail');
+    const btnReenviar = $('#btnReenviarCodigoEmail');
+    const avisar = (texto, tipo = '') => {
+      msg.textContent = texto;
+      msg.className = `msg ${tipo}`.trim();
+    };
+    const etapa = (nome) =>
+      el.querySelectorAll('[data-etapa]').forEach((d) => {
+        d.hidden = d.dataset.etapa !== nome;
+      });
 
-    // Cronômetro do código atual (topo da caixa, acima do campo). Reinicia a
-    // cada código novo — o de agora, ou qualquer reenvio.
-    let timerExpira = null;
-    function contarExpiracao() {
-      clearInterval(timerExpira);
-      let restante = VALIDADE_CODIGO_S;
-      const atualizar = () => {
-        const m = Math.floor(restante / 60);
-        const s = String(restante % 60).padStart(2, '0');
-        expiraEl.textContent = restante > 0 ? `Expira em ${m}:${s}` : 'Código expirado — peça um novo';
-        expiraEl.classList.toggle('expirado', restante <= 0);
-      };
-      atualizar();
-      timerExpira = setInterval(() => {
-        restante--;
-        atualizar();
-        if (restante <= 0) clearInterval(timerExpira);
-      }, 1000);
+    // Relógio do código e trava do botão, os dois a partir do que o servidor
+    // disse — o navegador só conta o tempo que falta.
+    let expiraEm = null;
+    let podeReenviarEm = null;
+    let tique = null;
+    const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    function pintarRelogio() {
+      const agora = Date.now();
+      const resta = expiraEm ? Math.max(0, Math.ceil((expiraEm - agora) / 1000)) : 0;
+      if (!expiraEm) expiraEl.textContent = 'Nenhum código valendo agora — peça um novo.';
+      else expiraEl.textContent = resta > 0 ? `Expira em ${mmss(resta)}` : 'Código expirado — peça um novo';
+      expiraEl.classList.toggle('expirado', !expiraEm || resta <= 0);
+      const espera = podeReenviarEm ? Math.max(0, Math.ceil((podeReenviarEm - agora) / 1000)) : 0;
+      btnReenviar.disabled = espera > 0;
+      btnReenviar.textContent =
+        espera > 0 ? `Reenviar código (${espera}s)` : expiraEm && resta > 0 ? 'Reenviar código' : 'Enviar código';
     }
-    contarExpiracao();
+    function aplicarPrazos(d) {
+      expiraEm = d.expiraEm ? new Date(d.expiraEm).getTime() : null;
+      podeReenviarEm = d.podeReenviarEm ? new Date(d.podeReenviarEm).getTime() : null;
+      if (d.email) $('#emailConfirmar').textContent = d.email;
+      clearInterval(tique);
+      pintarRelogio();
+      tique = setInterval(pintarRelogio, 1000);
+    }
 
-    // Trava de reenvio: a primeira vez é livre (nada bloqueando ainda); a
-    // cada reenvio depois dessa, o botão fica 30s desabilitado antes do
-    // próximo — impede clicar em Reenviar 10x seguidas e lotar a caixa da
-    // pessoa de código.
-    function iniciarCooldownReenvio() {
-      let restante = COOLDOWN_REENVIO_S;
-      btnReenviar.disabled = true;
-      const atualizar = () => {
-        btnReenviar.textContent = `Reenviar código (${restante}s)`;
-      };
-      atualizar();
-      const iv = setInterval(() => {
-        restante--;
-        if (restante <= 0) {
-          clearInterval(iv);
-          btnReenviar.disabled = false;
-          btnReenviar.textContent = 'Reenviar código';
-          return;
+    async function lerEstado() {
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/verificacao-email`, { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.confirmado) return fechar();
+        aplicarPrazos({ ...(d.cadastro || {}), email: d.email });
+        // O que aconteceu com o envio: "abandonado" = o servidor desistiu de
+        // entregar (endereço provavelmente errado ou e-mail fora do ar).
+        if (d.cadastro?.envio === 'abandonado') {
+          avisar('Não conseguimos entregar o código nesse endereço. Confira se o e-mail está certo.', 'err');
+        } else if (d.cadastro?.envio === 'tentando_de_novo') {
+          avisar('O envio atrasou — estamos tentando de novo. Se não chegar, confira o spam.');
         }
-        atualizar();
-      }, 1000);
+      } catch {
+        avisar('sem conexão com o servidor', 'err');
+      }
     }
 
-    el.querySelector('#formConfirmarEmail').addEventListener('submit', async (ev) => {
+    function fechar() {
+      clearInterval(tique);
+      document.body.style.overflow = '';
+      el.remove();
+    }
+
+    $('#formConfirmarEmail').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      msg.textContent = '';
-      msg.className = 'msg';
-      const codigo = el.querySelector('#codigoConfirmarEmail').value.trim();
+      avisar('');
+      const codigo = $('#codigoConfirmarEmail').value.trim();
       try {
         const r = await fetch(`${API_BASE_URL}/anunciantes/me/confirmar-email`, {
           method: 'POST',
@@ -390,34 +420,82 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ codigo }),
         });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
         if (!r.ok) {
-          msg.textContent = d.erro || 'não deu pra confirmar';
-          msg.className = 'msg err';
+          avisar(d.erro || 'não deu pra confirmar', 'err');
+          if (d.motivo === 'esgotado' || d.motivo === 'expirado') lerEstado();
           return;
         }
-        clearInterval(timerExpira);
-        document.body.style.overflow = '';
-        el.remove();
+        conta.email_confirmado = true;
+        fechar();
+        // Quem depende disso na mesma página (o perfil libera a troca de
+        // e-mail) se atualiza sem F5.
+        window.dispatchEvent(new CustomEvent('mostrai:email-confirmado', { detail: { email: conta.contato_email } }));
       } catch {
-        msg.textContent = 'sem conexão com o servidor';
-        msg.className = 'msg err';
+        avisar('sem conexão com o servidor', 'err');
       }
     });
+
     btnReenviar.addEventListener('click', async () => {
-      msg.className = 'msg';
-      msg.textContent = 'enviando...';
+      avisar('enviando...');
+      btnReenviar.disabled = true;
       try {
-        await fetch(`${API_BASE_URL}/anunciantes/me/reenviar-codigo-email`, { method: 'POST', credentials: 'include' });
-        msg.className = 'msg ok';
-        msg.textContent = 'código reenviado, confere seu e-mail';
-        contarExpiracao();
-        iniciarCooldownReenvio();
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/reenviar-codigo-email`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          if (d.podeReenviarEm) aplicarPrazos({ expiraEm, podeReenviarEm: d.podeReenviarEm });
+          else pintarRelogio();
+          return avisar(d.erro || 'não deu pra reenviar agora', 'err');
+        }
+        aplicarPrazos(d);
+        avisar('código novo enviado — o anterior não vale mais. Confira também o spam.', 'ok');
       } catch {
-        msg.className = 'msg err';
-        msg.textContent = 'sem conexão com o servidor';
+        pintarRelogio();
+        avisar('sem conexão com o servidor', 'err');
       }
     });
+
+    $('#btnCorrigirEmail').addEventListener('click', () => {
+      avisar('');
+      etapa('corrigir');
+      $('#novoEmailCadastro').focus();
+    });
+    $('#btnVoltarCodigo').addEventListener('click', () => {
+      avisar('');
+      etapa('codigo');
+    });
+    $('#formCorrigirEmail').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      avisar('salvando...');
+      try {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/corrigir-email`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: $('#novoEmailCadastro').value.trim(), senha: $('#senhaCorrigirEmail').value }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok && !d.email) return avisar(d.erro || 'não deu pra corrigir', 'err');
+        $('#senhaCorrigirEmail').value = '';
+        etapa('codigo');
+        if (d.email) conta.contato_email = d.email;
+        if (r.ok) {
+          aplicarPrazos(d);
+          avisar('e-mail corrigido — mandamos um código novo pra ele.', 'ok');
+        } else {
+          await lerEstado();
+          avisar(d.erro, 'err');
+        }
+      } catch {
+        avisar('sem conexão com o servidor', 'err');
+      }
+    });
+
+    pintarRelogio();
+    lerEstado();
   }
 })();
 

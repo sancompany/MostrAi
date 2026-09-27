@@ -2,12 +2,53 @@ const nodemailer = require('nodemailer');
 const { linhaEndereco } = require('../lib/endereco');
 const { gerarComprovante } = require('./comprovante');
 
+// Um transporte só, reaproveitado (27/09/2026). Antes cada e-mail abria a
+// própria conexão SMTP — o cadastro abria duas ao mesmo tempo contra o mesmo
+// login do Gmail, e sem prazo nenhum uma conexão pendurada segurava o envio
+// pra sempre. Com `pool` as mensagens reusam a conexão, e os prazos fazem a
+// falha virar erro (que a outbox tenta de novo) em vez de espera infinita.
+// Conferido na doc do Nodemailer 6+/7 (SMTP transport: pool, maxConnections,
+// connectionTimeout, greetingTimeout, socketTimeout), 27/09/2026.
+let transporteCompartilhado = null;
 function transportador() {
-  return nodemailer.createTransport({
+  if (transporteCompartilhado) return transporteCompartilhado;
+  // Teste automatizado NUNCA fala com SMTP de verdade: sem um transporte
+  // falso instalado (`usarTransporte`), o envio falha aqui.
+  if (process.env.NODE_ENV === 'test') {
+    throw new Error('SMTP real bloqueado em teste — instale um transporte falso');
+  }
+  // Ambiente local/e2e: `EMAIL_CAPTURA=<arquivo>` grava cada mensagem como
+  // uma linha JSON em vez de mandar — é assim que os roteiros e2e leem o
+  // código de verificação (que no banco só existe como hash). Nunca em
+  // produção, nem por engano de variável.
+  if (process.env.EMAIL_CAPTURA && process.env.NODE_ENV !== 'production') {
+    const arquivo = process.env.EMAIL_CAPTURA;
+    transporteCompartilhado = {
+      sendMail: async (m) => {
+        const linha = { em: new Date().toISOString(), to: m.to, cc: m.cc, subject: m.subject, text: m.text };
+        await require('node:fs/promises').appendFile(arquivo, `${JSON.stringify(linha)}\n`);
+        return { messageId: `captura-${Date.now()}` };
+      },
+    };
+    return transporteCompartilhado;
+  }
+  if (!process.env.SMTP_HOST) throw new Error('SMTP não configurado (SMTP_HOST ausente)');
+  transporteCompartilhado = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT),
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    pool: true,
+    maxConnections: 2,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
   });
+  return transporteCompartilhado;
+}
+
+// Troca o transporte (testes: SMTP falso que só guarda a mensagem).
+function usarTransporte(t) {
+  transporteCompartilhado = t;
 }
 
 function remetente() {
@@ -215,9 +256,10 @@ async function enviarContaReativada(anunciante) {
   });
 }
 
-// Boas-vindas no cadastro (pedido do dono, 18/09/2026) — o primeiro contato
-// por e-mail depois de criar a conta, antes até de escolher plano (conta
-// nova nunca nasce com plano — RN-34/RN-35, sem aprovação nem plano prévio).
+// Boas-vindas (pedido do dono, 18/09/2026). Desde 27/09/2026 sai DEPOIS que
+// o e-mail é confirmado, não no cadastro: no cadastro a prioridade é o
+// código, e dar "bem-vindo" a um endereço que talvez esteja errado era
+// competir com ele pelo mesmo SMTP.
 async function enviarContaCriada(anunciante) {
   await enviar({
     to: anunciante.contato_email,
@@ -302,18 +344,106 @@ async function enviarCancelamento(anunciante, plano) {
 // Código de 6 dígitos pra confirmar que o e-mail digitado no cadastro é de
 // verdade — ele é o login e o único canal de recuperação de senha, então um
 // e-mail errado tranca a pessoa fora da própria conta sem volta.
-async function enviarCodigoConfirmacaoEmail(anunciante, codigo) {
+//
+// `troca: true` é o código mandado pro endereço NOVO numa troca de e-mail de
+// uma conta já confirmada — o texto diz que é troca, e quem não pediu sabe
+// que pode ignorar sem que nada mude na conta.
+async function enviarCodigoConfirmacaoEmail(anunciante, codigo, { validadeMinutos = 10, troca = false } = {}) {
   await enviar({
     to: anunciante.contato_email,
-    subject: 'Confirme seu e-mail — Mostraí',
+    subject: troca ? 'Confirme seu novo e-mail — Mostraí' : 'Confirme seu e-mail — Mostraí',
     conteudo: mensagem({
       previa: `Seu código de confirmação é ${codigo}.`,
-      titulo: 'Confirme seu e-mail',
+      titulo: troca ? 'Confirme seu novo e-mail' : 'Confirme seu e-mail',
       saudacao: `Olá, ${anunciante.nome_empresa}!`,
-      paragrafos: ['Seu código de confirmação é:'],
+      paragrafos: [
+        troca
+          ? 'Recebemos um pedido pra trocar o e-mail de acesso da sua conta na Mostraí para este endereço. Seu código é:'
+          : 'Seu código de confirmação é:',
+      ],
       destaque: codigo,
-      depois: ['Digite esse código na sua conta pra confirmar o e-mail. Ele vale por 2 minutos.'],
-      nota: 'Se não foi você que criou essa conta, pode ignorar este e-mail.',
+      depois: [
+        troca
+          ? `Digite esse código na sua conta pra concluir a troca. Ele vale por ${validadeMinutos} minutos. Até lá, o login continua pelo e-mail antigo.`
+          : `Digite esse código na sua conta pra confirmar o e-mail. Ele vale por ${validadeMinutos} minutos.`,
+      ],
+      nota: troca
+        ? 'Se não foi você que pediu, pode ignorar este e-mail: nada muda na conta.'
+        : 'Se não foi você que criou essa conta, pode ignorar este e-mail.',
+    }),
+  });
+}
+
+// Aviso de segurança depois que a senha mudou (pela redefinição por link).
+// Sai pro e-mail de login: se não foi a pessoa, é por aqui que ela descobre.
+async function enviarSenhaAlterada(anunciante) {
+  await enviar({
+    to: anunciante.contato_email,
+    subject: 'Sua senha foi alterada — Mostraí',
+    conteudo: mensagem({
+      previa: 'A senha da sua conta acabou de mudar.',
+      titulo: 'Sua senha foi alterada',
+      saudacao: `Olá, ${anunciante.nome_empresa}!`,
+      paragrafos: ['A senha da sua conta na Mostraí acabou de ser alterada.'],
+      nota: 'Se não foi você, responda este e-mail ou chame no WhatsApp agora — e peça uma senha nova em "Esqueci minha senha".',
+    }),
+  });
+}
+
+// Aviso ao endereço ANTIGO depois que o e-mail de login mudou (troca pelo
+// próprio usuário ou correção pelo admin). É o único jeito de o dono de
+// verdade da conta perceber uma troca que não foi ele que fez. Mostra o
+// endereço novo mascarado — o bastante pra reconhecer, não pra expor.
+async function enviarEmailAlterado(anunciante, { emailNovoMascarado, peloSuporte = false }) {
+  await enviar({
+    to: anunciante.contato_email,
+    subject: 'O e-mail da sua conta foi alterado — Mostraí',
+    conteudo: mensagem({
+      previa: 'O login da sua conta passou a ser outro e-mail.',
+      titulo: 'O e-mail da sua conta foi alterado',
+      saudacao: `Olá, ${anunciante.nome_empresa}!`,
+      paragrafos: [
+        peloSuporte
+          ? `A pedido seu, nosso suporte trocou o e-mail de acesso da sua conta na Mostraí para ${emailNovoMascarado}.`
+          : `O e-mail de acesso da sua conta na Mostraí foi trocado para ${emailNovoMascarado}.`,
+        'A partir de agora, o login e a recuperação de senha passam a usar o endereço novo. Este endereço não recebe mais os avisos da conta.',
+      ],
+      nota: 'Se não foi você, responda este e-mail ou chame no WhatsApp agora.',
+    }),
+  });
+}
+
+// Decisão sobre o pedido de ponto feito de dentro do painel. Antes só havia
+// a notificação dentro da conta — quem não abria o painel não sabia.
+async function enviarPontoAprovado(anunciante) {
+  await enviar({
+    to: anunciante.contato_email,
+    subject: 'Seu pedido de ponto foi aprovado — Mostraí',
+    conteudo: mensagem({
+      previa: 'A gente chama no WhatsApp pra combinar a instalação.',
+      titulo: 'Seu pedido de ponto foi aprovado',
+      saudacao: `Olá, ${anunciante.nome_empresa}!`,
+      paragrafos: [
+        'Seu pedido pra ter uma tela da Mostraí no seu comércio foi aprovado.',
+        'A gente chama no WhatsApp pra combinar a visita e a instalação.',
+      ],
+      botao: { texto: 'Abrir o painel', url: painel() },
+    }),
+  });
+}
+
+async function enviarPontoRecusado(anunciante) {
+  await enviar({
+    to: anunciante.contato_email,
+    subject: 'Sobre o seu pedido de ponto — Mostraí',
+    conteudo: mensagem({
+      previa: 'Seu pedido de ponto não foi aprovado desta vez.',
+      titulo: 'Seu pedido de ponto não foi aprovado desta vez',
+      saudacao: `Olá, ${anunciante.nome_empresa}!`,
+      paragrafos: [
+        'Analisamos seu pedido pra ter uma tela da Mostraí no seu comércio e, desta vez, não conseguimos seguir com ele.',
+        'Se quiser entender o motivo ou tentar de novo mais pra frente, é só responder este e-mail.',
+      ],
     }),
   });
 }
@@ -338,10 +468,10 @@ async function enviarLinkRedefinicaoSenha(email, nome, link) {
 // Formulário de contato do site — cai na caixa da própria Mostraí, com o
 // e-mail de quem escreveu no reply-to pra responder direto. Interno: texto
 // puro, é o dono que lê.
-async function enviarMensagemContato({ nome, email, telefone, mensagem: texto }) {
+async function enviarMensagemContato({ nome, email, telefone, mensagem: texto }, para = null) {
   await transportador().sendMail({
     from: remetente(),
-    to: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
+    to: para || process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
     replyTo: email,
     subject: `Mostraí — Contato pelo site — ${nome}`,
     text: `Nome: ${nome}\nE-mail: ${email}\nTelefone: ${telefone || '-'}\n\n${texto}`,
@@ -435,11 +565,11 @@ async function enviarArrependimentoRecebido(anunciante, pedido) {
 // As páginas prometem contato em 2 dias úteis e nada avisava ninguém: a
 // candidatura ficava esperando alguém abrir o admin e reparar na fila.
 // Interno: texto puro.
-async function enviarCandidaturaNova(candidatura) {
+async function enviarCandidaturaNova(candidatura, para = null) {
   const tipo = candidatura.tipo === 'ponto' ? 'ponto (quer uma tela no comércio)' : 'vendedor parceiro';
   await transportador().sendMail({
     from: remetente(),
-    to: process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
+    to: para || process.env.MOSTRAI_EMAIL_CONTATO || remetente(),
     subject: `Mostraí — Candidatura nova de ${tipo}`,
     text: [
       `Tipo: ${tipo}`,
@@ -538,6 +668,11 @@ async function diagnosticarSmtp() {
 
 module.exports = {
   mensagem,
+  usarTransporte,
+  enviarSenhaAlterada,
+  enviarEmailAlterado,
+  enviarPontoAprovado,
+  enviarPontoRecusado,
   enviarCobrancaFalhou,
   enviarCoberturaAcabando,
   enviarCandidaturaNova,

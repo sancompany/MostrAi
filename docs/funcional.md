@@ -1090,6 +1090,57 @@ tela só desenha):
 *Violada:* conta nova vê funções vazias, ou alguém perde créditos sem ter
 visto o aviso. *Quem vê:* o cliente.
 
+**RN-62 — E-mail é fila durável, e a conta é do dono do e-mail.**
+*(Estação de e-mail, 27/09/2026.)* Nenhuma regra de negócio manda e-mail
+direto: ela grava a mensagem na fila (`email_outbox`, migration 097) e
+segue; um processador (`src/email/outbox.js`) envia, com nova tentativa
+em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
+**abandonado** — visível no admin (Financeiro › Eventos do Checkout, card
+"E-mail (SMTP)"). Regras:
+- **E-mail nunca desfaz negócio.** Crédito concedido, pagamento aplicado,
+  conta criada, cancelamento feito: se a mensagem não entrar na fila, a
+  operação continua valendo (vira log). O mesmo vale pra notificação dentro
+  da conta (`registrarSemFalhar`).
+- **Um e-mail por EVENTO de negócio, venha por onde vier.** A chave é o
+  evento (`cobranca_falhou:<chargeId>`, `pagamento_confirmado:<cobrança>`,
+  `troca_de_plano:<assinatura nova>`, `assinatura_cancelada:<assinatura>`,
+  `desistencia_registrada:<pedido>`...), não a fonte — webhook e
+  conciliação avisando a mesma cobrança recusada = um e-mail.
+- **Cadastro manda um e-mail só: o código.** Boas-vindas saem depois que
+  o e-mail é confirmado (uma vez na vida da conta, só pra quem anuncia).
+- **Código de verificação:** 6 dígitos, vale **10 minutos** (o servidor
+  decide e devolve `expiraEm`; recarregar a tela não reinicia), guardado
+  só como HMAC (`codigos_email`), cifrado na fila e apagado dela quando o
+  e-mail sai. Reenviar = código novo (o anterior morre), no mínimo 60 s
+  entre um e outro e no máximo 5 por hora por conta. 5 palpites errados
+  matam o código.
+- **Corrigir antes de confirmar:** quem digitou o e-mail errado no
+  cadastro corrige no próprio aviso, com a senha da conta (a sessão do
+  cadastro + a senha são a prova; o endereço errado nunca é exigido). O
+  código antigo morre e um novo vai pro endereço certo.
+- **Trocar depois de confirmar:** no perfil, com a senha atual. O endereço
+  novo recebe o código e só vira login quando ele é confirmado — até lá o
+  login continua o antigo. Depois da troca, o endereço antigo recebe um
+  aviso (com o novo mascarado).
+- **Troca pelo admin:** continua possível (é o socorro de quem perdeu o
+  acesso ao endereço antigo), mas fica na trilha (`alteracoes_email`, com o
+  usuário do admin), o endereço novo precisa ser confirmado por código, e
+  o antigo — se já estava confirmado — é avisado.
+- **Senha:** o link de redefinição vale 1 hora e vai pela fila; depois de
+  trocar, todos os links pendentes da conta morrem e sai o aviso "sua senha
+  foi alterada".
+- **Classes:** crítico (código, redefinição, senha alterada, e-mail
+  alterado, conta excluída); transacional (pagamento, cobrança falhada,
+  cobertura acabando, troca de plano, cancelamento, desistência);
+  operacional (boas-vindas, conta reativada, criativo aprovado/recusado,
+  ponto aprovado/recusado, avisos internos de contato e candidatura);
+  opcional (novidades — nenhum hoje).
+- **Não há** confirmação automática ao remetente do formulário de contato:
+  o formulário é público, e responder a qualquer endereço digitado ali
+  faria do site um jeito de mandar e-mail da Mostraí pra terceiros.
+- **Retenção da fila:** mensagem com segredo (código, link) some em 2 dias;
+  enviada, em 30; abandonada/descartada, em 90.
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
@@ -1283,6 +1334,8 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 | Webhook não chega e o cliente gerou outro link antes da conciliação | a conciliação também olha o link antigo (cancelado há até 30 dias, nunca pago): achou pagamento, vira a MESMA pendência do webhook — cancelar a assinatura e devolver no Checkout; nada é creditado (25/09/2026) | administrador vê na fila de eventos pendentes |
 | Cobertura de troca de plano perto do fim | a conciliação diária manda o aviso 7 dias antes (RN-36) | e-mail convidando a contratar de novo |
 | Webhook chega duas vezes | dedupe por `chargeId|status`; o segundo não faz nada | nada |
+| SMTP fora do ar / recusando | a mensagem fica na fila e é tentada de novo (30 s → 2 h, 6 vezes); depois, "abandonado" no admin. A operação que gerou o e-mail já valeu (RN-62) | o e-mail chega atrasado; código vencido não é enviado (a pessoa pede outro) |
+| Pessoa digitou o e-mail errado no cadastro | "Corrigir e-mail" no próprio aviso, com a senha; código novo pro endereço certo (RN-62) | o aviso volta com o endereço novo e o prazo do código novo |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |
 | Rede cai no meio do upload | o criativo não é criado; nada meio-gravado | "o envio falhou, tente de novo" |
 | ffmpeg falha ao normalizar | o criativo fica pendente, sem entrar na playlist | "estamos processando seu vídeo" |

@@ -5,6 +5,7 @@
 // (texto). Assume banco zerado e servidor na 3999.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';
+import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
@@ -59,7 +60,7 @@ async function novaConta(nome, email, categoriaId) {
       ).json(),
     { nome, email, categoriaId },
   );
-  const codigo = PG(`SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=${conta.id}`);
+  const codigo = await codigoPara(email);
   await cadastro.evaluate(
     async (codigo) =>
       await fetch('/anunciantes/me/confirmar-email', {

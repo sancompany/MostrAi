@@ -263,13 +263,13 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
 
   const { conta: atualizada, historico, status } = resultado;
   if (substituido) {
-    await notificacoesRepo.registrar(contaId, {
+    await notificacoesRepo.registrarSemFalhar(contaId, {
       tipo: 'beneficio_encerrado',
       titulo: `${substituido.nome} encerrado pela troca`,
       descricao: 'Você trocou de benefício. Os créditos usados no benefício anterior não são devolvidos.',
     });
   }
-  await notificacoesRepo.registrar(contaId, {
+  await notificacoesRepo.registrarSemFalhar(contaId, {
     tipo: status === 'ativo' ? 'beneficio_iniciado' : 'beneficio_programado',
     titulo:
       status === 'ativo'
@@ -346,7 +346,7 @@ router.post('/admin/anunciantes/:id/creditos/conceder', async (req, res) => {
       notaInterna,
       adminUsuario: req.session.adminUsuario,
     });
-    await notificacoesRepo.registrar(conta.id, {
+    await notificacoesRepo.registrarSemFalhar(conta.id, {
       tipo: 'creditos_recebidos',
       titulo: `Você recebeu ${linha.quantidade} ${linha.quantidade === 1 ? 'crédito' : 'créditos'}`,
       descricao: motivo,

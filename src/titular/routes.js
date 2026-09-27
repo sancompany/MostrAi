@@ -4,7 +4,7 @@ const repo = require('./repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const checkout = require('../financeiro/san-checkout');
 const pool = require('../db/pool');
-const email = require('../financeiro/email');
+const outbox = require('../email/outbox');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 // Prazo de arrependimento: 7 dias corridos da contratação (CDC art. 49). Conta
@@ -140,9 +140,21 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     data_expiracao: null,
   });
 
-  // Fire-and-forget: e-mail que falha não pode desfazer um direito já
-  // exercido — o registro no banco é o que vale.
-  email.enviarArrependimentoRecebido(anunciante, pedido).catch(() => {});
+  // E-mail que falha não pode desfazer um direito já exercido — o registro
+  // no banco é o que vale. Pela fila: antes o erro era engolido em silêncio
+  // (`.catch(() => {})`), e a caixa da Mostraí (em cópia) nunca sabia que
+  // havia uma devolução a fazer. Agora falha vira nova tentativa e, no fim,
+  // "abandonado" visível no admin.
+  await outbox.enfileirarSemFalhar({
+    tipo: 'desistencia_registrada',
+    chave: `desistencia_registrada:${pedido.id}`,
+    para: anunciante.contato_email,
+    anuncianteId: anunciante.id,
+    dados: {
+      conta: { nome_empresa: anunciante.nome_empresa },
+      pedido: { id: pedido.id, valor_a_estornar: pedido.valor_a_estornar },
+    },
+  });
 
   res.status(201).json({ ok: true, pedido });
 });

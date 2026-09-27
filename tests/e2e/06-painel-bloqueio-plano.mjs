@@ -9,6 +9,7 @@
 // servidor na 3999.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto, recarregarQuieto } from './espera.mjs';
+import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) => execSync(`PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "${sql.replace(/"/g, '\\"')}"`).toString().trim();
@@ -49,7 +50,7 @@ check('conta nasce só com anunciante, sem plano', JSON.stringify(conta.papeis) 
 // senão ele fica por cima do dashboard nos dois estados e atrapalha a
 // screenshot (a checagem por texto continuaria passando, mas a foto não
 // mostraria o redesenho de verdade).
-const codigo = PG(`SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=${conta.id}`);
+const codigo = await codigoPara(conta.contato_email);
 await cadastro.evaluate(async (codigo) => (await fetch('/anunciantes/me/confirmar-email', {
   method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo }),
 })).json(), codigo);

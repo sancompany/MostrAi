@@ -178,7 +178,15 @@ async function anonimizarExcluidas(agora = new Date()) {
     [agora, DIAS_ATE_ANONIMIZAR],
   );
   for (const { id } of rows) await removerAvatar(id);
-  return rows.map((r) => r.id);
+  // Endereços antigos e o que ainda estiver na fila de e-mails da conta
+  // também são dado pessoal sem obrigação por trás (migration 097).
+  const ids = rows.map((r) => r.id);
+  if (ids.length) {
+    await pool.query('DELETE FROM alteracoes_email WHERE anunciante_id = ANY($1)', [ids]);
+    await pool.query('DELETE FROM codigos_email WHERE anunciante_id = ANY($1)', [ids]);
+    await pool.query('DELETE FROM email_outbox WHERE anunciante_id = ANY($1)', [ids]);
+  }
+  return ids;
 }
 
 async function definirComunicacoes(anuncianteId, aceita) {

@@ -6,6 +6,8 @@ const router = express.Router();
 const repo = require('./repository');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
+const outbox = require('../email/outbox');
+const anunciantesRepo = require('../anunciantes/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 const STATUS_TITULO = {
@@ -105,6 +107,18 @@ router.patch('/admin/candidaturas/:id', async (req, res) => {
         entidadeId: c.id,
       })
       .catch((err) => console.error('falha ao notificar candidatura', err.message));
+    // E-mail da decisão (só pedido de ponto): quem não abre o painel não
+    // via a notificação.
+    const dono = c.tipo === 'ponto' ? await anunciantesRepo.buscarPorId(c.conta_id).catch(() => null) : null;
+    if (dono && !dono.excluido_em) {
+      await outbox.enfileirarSemFalhar({
+        tipo: 'ponto_recusado',
+        chave: `ponto_recusado:${c.id}`,
+        para: dono.contato_email,
+        anuncianteId: dono.id,
+        dados: { conta: { nome_empresa: dono.nome_empresa } },
+      });
+    }
     sse.emitirParaConta(c.conta_id, 'application.updated', { id: c.id, status: c.status });
   }
   res.json(c);

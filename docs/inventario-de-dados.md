@@ -34,7 +34,10 @@ notas fiscais no Google Drive da San & Co. (pasta do Mostraí).
 | Último sinal da tela | gerado pela TV | alerta de offline | `dispositivos.ultima_vez_online` | — | só o último | sobrescrito |
 | Sessão (cookie) | todos | manter login | tabela `session` (connect-pg-simple) | — | 7 dias | expira |
 | Endereço IP em tentativas de login | todos | limitar tentativas | memória do processo | — | 15 minutos | expira |
-| Tokens de redefinição de senha | todos | recuperação | `tokens_senha` | — | 1 hora | uso único / expira |
+| Tokens de redefinição de senha | todos | recuperação | `tokens_senha` | — | 1 hora | uso único / expira; trocar a senha apaga todos os da conta |
+| Código de verificação de e-mail (só o HMAC, nunca o código) + endereço que o recebeu | todos | provar que o e-mail de login é da pessoa (cadastro e troca) | `codigos_email` (migration 097) | — | 10 minutos de validade; apagado ao confirmar ou 1 dia depois de vencer | expurgo automático (src/email/outbox.js) |
+| Fila de e-mails: destinatário, nome da empresa, dados mínimos do aviso (plano, valor); código/link CIFRADO enquanto não sai | todos | entregar os e-mails com nova tentativa | `email_outbox` (migration 097) | provedor de e-mail (na entrega) | com código/link: 2 dias (o segredo some assim que a mensagem termina); enviada: 30 dias; abandonada/descartada: 90 dias | expurgo automático de hora em hora (src/email/outbox.js) |
+| Trilha de troca de e-mail de login (anterior, novo, origem, usuário do admin) | todos | segurança da conta e suporte | `alteracoes_email` (migration 097) | — | enquanto a conta existir | apagada na anonimização da conta excluída (60 dias), junto com os códigos e a fila de e-mails da conta |
 
 **Terceiros que recebem dado:** San Checkout e Asaas (pagador: nome,
 documento, e-mail, telefone); Supabase (tudo, como hospedagem); Google Drive

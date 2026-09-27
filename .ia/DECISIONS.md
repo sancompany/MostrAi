@@ -689,3 +689,38 @@ nível MAIOR — igual ou menor começa depois do benefício, sem perder dia
 pago. A tela descreve o real. O dono confirmou em 26/09/2026 (PR #78):
 o benefício por créditos continua intacto até a data final e o ADR-016
 decide quando o pago entra.
+
+## ADR-021 — E-mail por fila durável; código com hash e prazo do servidor; troca de e-mail em duas etapas (27/09/2026)
+
+Contexto: e-mail saía "fire-and-forget" de cada rota. O primeiro código do
+cadastro às vezes não chegava (duas conexões SMTP simultâneas, sem nova
+tentativa, perdido num restart); a cobrança falhada podia ser avisada duas
+vezes (webhook e conciliação com dedupes diferentes); erros eram engolidos;
+o código de 6 dígitos vivia em texto puro, valia 2 minutos contados pelo
+navegador; não havia como corrigir um e-mail digitado errado nem trocar o
+e-mail com segurança; o admin trocava o login de um cliente sem rastro.
+
+Decisão:
+1. **Outbox** (`email_outbox`, `src/email/outbox.js`): regra de negócio só
+   grava; processador com `FOR UPDATE SKIP LOCKED`, prazo de 5 min pra
+   instância que morreu, 6 tentativas (30 s → 2 h), depois `abandonado`
+   visível no admin. Pelo menos uma vez (nunca zero; na pior hipótese, dois).
+2. **Chave = evento de negócio**, não a fonte (`cobranca_falhou:<chargeId>`
+   serve pro webhook e pra conciliação). Marca antiga `renovacao|<chargeId>`
+   continua respeitada.
+3. **E-mail nunca quebra negócio**: depois de concluída a operação,
+   `enfileirarSemFalhar` (e `registrarSemFalhar` pra notificação).
+4. **Código**: 10 min, HMAC (`cofre.assinar`, rótulo próprio), cifrado na
+   fila e apagado ao terminar; 60 s entre reenvios, 5 por hora, 5 erros.
+5. **Troca de e-mail**: antes de confirmar, corrige na hora com a senha;
+   depois de confirmar, só com o código no endereço novo, e o antigo é
+   avisado. Admin: trilha + confirmação do novo + aviso ao antigo.
+6. **Testes nunca falam com SMTP real** (`NODE_ENV=test` bloqueia); e2e usa
+   `EMAIL_CAPTURA` (arquivo), ignorado em produção.
+
+Consequências: nenhum `enviarX` é chamado fora de `src/email/outbox.js`.
+Templates não mudaram (só o texto do código e 4 modelos novos: senha
+alterada, e-mail alterado, ponto aprovado, ponto recusado). A tabela 061
+fica pra uma migration de limpeza. Sem confirmação automática ao remetente
+do formulário de contato (formulário público = vetor de e-mail pra terceiros).
+

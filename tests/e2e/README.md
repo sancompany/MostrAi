@@ -9,7 +9,7 @@ os testes assinam o webhook, como o Checkout assina), `openssl` no PATH,
 
 ```bash
 tests/e2e/reset-db.sh                              # zera as tabelas de dados (não os planos)
-tests/e2e/restart.sh                               # sobe o servidor na 3999
+tests/e2e/restart.sh                               # sobe o servidor na 3999 (e-mails vão pra saida/emails.jsonl)
 bash tests/e2e/01-fluxo-api.sh                     # pedido de ponto → admin libera → Meus pontos → telas M-xxxx → PIN de saída → código de instalação → provisionar → playlist/heartbeat/config/played → rotas do Player antigo 404 → anunciante indicado pelo cupom PT- → e-mail
 bash tests/e2e/02-assinatura-webhook-comissao.sh   # CONTINUA o 01 (contas e cookies dele — sem reset no meio): parceiro, vagas, webhook, cobertura, comissão
 tests/e2e/reset-db.sh && bash tests/e2e/04-modos-e-bonus.sh  # conta só-ponto (convite) → modo anúncios → outro estabelecimento → rotas antigas 410 → crédito mensal do ponto
@@ -59,3 +59,12 @@ o servidor (`restart.sh`) NÃO zera o contador. Se um teste bater em "muitas
 tentativas", rode `reset-db.sh` de novo (já trunca `tentativas_acesso`) ou
 espere a janela de 15 min passar. Cookies e screenshots vão em
 `tests/e2e/saida/` (ignorado no git).
+
+**E-mails nos roteiros (27/09/2026).** `restart.sh` sobe o servidor com
+`EMAIL_CAPTURA=tests/e2e/saida/emails.jsonl`: nenhum e-mail sai de verdade,
+cada mensagem vira uma linha JSON ali. O código de verificação só existe como
+hash no banco (migration 097), então os roteiros o leem de lá com
+`codigoPara(email)` (`tests/e2e/emails.mjs`). `reset-db.sh` apaga o arquivo.
+O `23-email-verificacao.mjs` cobre o modal (prazo do servidor, recarregar não
+reinicia, corrigir e-mail), a troca no perfil e o autocomplete dos formulários.
+
