@@ -54,13 +54,13 @@ router.patch('/admin/criativos/:id', async (req, res) => {
 
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia
-    // "seu anúncio está no ar" várias vezes pelo mesmo vídeo. Voltar do
+    // "seu anúncio foi aprovado" várias vezes pelo mesmo vídeo. Voltar do
     // 'retirado' (Colocar no ar, na ficha) também não é aprovação nova: sem
     // e-mail, sem evento de tempo-até-aprovar.
     if (criativo.status === 'aprovado' && antes?.status !== 'aprovado' && antes?.status !== 'retirado') {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // fire-and-forget: e-mail que falha não pode impedir a aprovação, que é
-      // o que coloca o vídeo no ar. Conta própria (Mídia Mostraí) não recebe
+      // o que libera o vídeo para a programação. Conta própria (Mídia Mostraí) não recebe
       // — o `contato_email` dela é um endereço interno sem caixa de entrada
       // (ensureContaMostrai), não um anunciante de verdade esperando aviso.
       if (dono && !dono.conta_propria) {

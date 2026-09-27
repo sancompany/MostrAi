@@ -1392,7 +1392,7 @@ nominal do dono, em migration própria. Migration aplicada nunca é editada.
 | Muitas tentativas | Muitas tentativas. Tente de novo em alguns minutos. |
 | Erro genérico | Não conseguimos completar agora. Tente de novo em instantes. |
 | E-mail de pagamento | Assunto: **Pagamento confirmado — Mostraí**. Corpo: o plano, o ciclo e o valor cobrado, com o **comprovante de pagamento em PDF anexado** (25/09/2026). O comprovante nasce só da cobrança confirmada (`cobrancas_confirmadas`; número `MST-` + id, um por ciclo), traz data e hora da confirmação, valor, plano e ciclo, pagador (CPF mascarado; CNPJ inteiro) e recebedor, e termina com: "Este documento comprova o pagamento da contratação indicada e não substitui documento fiscal quando sua emissão for aplicável." Não é nota fiscal e nunca se apresenta como tal. Sem cobrança confirmada, o e-mail sai sem anexo. `email_confirmacao_enviado_em` registra que o e-mail do ciclo saiu. |
-| E-mail de anúncio no ar | Assunto: **Seu anúncio está no ar — Mostraí**. Corpo: o vídeo foi aprovado e entrou na playlist, com o link do painel para acompanhar as exibições. |
+| E-mail de anúncio aprovado | Assunto: **Seu anúncio foi aprovado — Mostraí**. Corpo: o anúncio foi aprovado e está liberado para entrar na programação; o painel mostra quando a primeira exibição for confirmada (aprovado ≠ no ar — "No ar" só com proof-of-play). Sem horário prometido. |
 | Extrato vazio | Nenhum pagamento lançado ainda. Assim que o primeiro mês for fechado, ele aparece aqui. |
 | Exclusão de conta | Sua conta foi excluída. Você tem 60 dias para pedir a volta pelo nosso contato. |
 

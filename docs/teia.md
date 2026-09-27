@@ -458,7 +458,7 @@ Papel PONTO (dono do comércio que cede a parede) no Mostraí. Caminho completo:
 **Liberar o papel ponto numa conta existente (admin)** — Botão 'Liberar na conta' do admin. Exige cand.conta_id (400 'essa candidatura não é de uma conta existente — gere um convite'), recusa 409 se já aprovada, recusa conta excluída, e em transação chama liberarPapelNaConta(conta,'ponto',cand,cliente) + UPDATE…
   · `src/conta/modos.js`, `public/admin/index.page.js` · rotas: `POST /admin/candidaturas/:id/liberar` · papéis: admin
   · ← candidatura com origem 'painel' ou 'bonus_plano'  → /anunciante/ponto.html do cliente (modo liberado na próxima carga)
-  · **cliente sabe:** Não. A liberação é silenciosa: nenhum e-mail, e o cliente só descobre que o modo abriu se voltar ao painel por conta própria. Diferente da aprovação de criativo (RN-18, enviarCriativoNoAr), que manda…
+  · **cliente sabe:** Não. A liberação é silenciosa: nenhum e-mail, e o cliente só descobre que o modo abriu se voltar ao painel por conta própria. Diferente da aprovação de criativo (RN-18, enviarCriativoAprovado), que manda…
 
 **Bônus 'tela após N meses' (módulo cruzado do plano do anunciante)** — bonusPontoDaConta() em modos.js lê planos.ponto_apos_meses, conta os meses cobertos por mesesEntre(data_inicio_cobertura, hoje ou data_expiracao) e devolve {apos_meses, meses_cobertos, disponivel, resgatado_em, ja_e_ponto}. window.cardBonus(estado,'ponto')…
   · `src/conta/modos.js`, `public/modos.js`, `public/anunciante/painel.page.js` · rotas: `GET /conta/modos`, `POST /conta/bonus/ponto/resgatar` · papéis: anunciante que ainda não é ponto
@@ -833,7 +833,7 @@ Painel administrativo de página única em `/admin/index.html`. Três arquivos: 
 
 **Fila de criativos** — `renderCriativos(el, status='pendente')` (linha 371). Não é tabela: é uma grade de cartões `.criativo-fila`, cada um com o vídeo (`<video controls muted loop>` quando a URL termina em mp4/webm/mov/m4v, senão `<img>`) usando `arquivo_normalizado_url ||…
   · `public/admin/index.page.js`, `src/admin/routes.js`, `src/anunciantes/criativos-repository.js` · rotas: `GET /admin/criativos?status= (src/admin/routes.js:15)`, `GET /admin/anunciantes (src/anunciantes/routes.js:464 — só para o nome)`, `PATCH /admin/criativos/:id (src/admin/routes.js:19)` · papéis: admin, anunciante
-  · ← Visão geral (alerta urgente 'criativo(s) esperando aprovação')  → playlist/player (aprovado entra no ar) / Métrica (o PATCH para 'aprovado' emite o evento criativo:video_aprova com horas_ate_aprovar) / e-mail 'seu anúncio está no ar' ao dono, só na transição para aprovado
+  · ← Visão geral (alerta urgente 'criativo(s) esperando aprovação')  → playlist/player (aprovado entra no ar) / Métrica (o PATCH para 'aprovado' emite o evento criativo:video_aprova com horas_ate_aprovar) / e-mail 'seu anúncio foi aprovado' ao dono, só na transição para aprovado
   · **cliente sabe:** Não diz na tela que aprovar dispara e-mail para o anunciante, nem que a peça entra na playlist imediatamente. E, crucial: criativo subido pelo admin em Anunciantes ou em Meus anúncios nasce com…
 
 **Meus anúncios** — `renderMeusAnuncios(el)` (linha 425). A conta de anunciante do próprio Mostraí (`conta_propria`, migration 023): anuncia a rede nas telas da rede, sem plano, sem cobrança, criativos ilimitados. Se não existe, mostra `#formContaPropria` (nome, CNPJ, vezes por…
@@ -1167,7 +1167,7 @@ Caminho do dinheiro do Mostraí, ponta a ponta: vitrine pública de planos (publ
   · `src/lib/eventos.js`, `src/db/migrations/027_eventos_da_metrica.sql` · rotas: `GET /admin/metrica` · papéis: admin
   · **cliente sabe:** Aba Métrica: a distância entre assinatura_inicia e cobranca_confirma é quem desistiu no checkout.
 
-**E-mails do caminho do dinheiro** — enviarConfirmacaoPagamento (disparado após o COMMIT do crédito), enviarArrependimentoRecebido (titular + cópia para a Mostraí), enviarCriativoNoAr, enviarNovidade (bloqueia quem tem comunicacoes_revogado_em). Todos por SMTP via nodemailer.
+**E-mails do caminho do dinheiro** — enviarConfirmacaoPagamento (disparado após o COMMIT do crédito), enviarArrependimentoRecebido (titular + cópia para a Mostraí), enviarCriativoAprovado, enviarNovidade (bloqueia quem tem comunicacoes_revogado_em). Todos por SMTP via nodemailer.
   · `src/financeiro/email.js` · papéis: anunciante
   · **cliente sabe:** É a única confirmação escrita que o cliente recebe de que o dinheiro entrou.
 
@@ -1823,10 +1823,10 @@ Mapa dos pontos de contato FORA do site do Mostraí, lido no código real (não 
 
 **enviarConfirmacaoPagamento(anunciante, plano, valorCobrado)** — Assunto "Pagamento confirmado — Mostraí". Único aviso que o cliente recebe depois de pagar em outro domínio. Disparado DENTRO de aplicarCicloPago (src/financeiro/san-checkout.js L348), depois do COMMIT, em fire-and-forget com .catch(console.error). Duas…
   · `src/financeiro/email.js (L19-30)`, `src/financeiro/san-checkout.js (L348-350, dentro de aplicarCicloPago L267)`, `src/financeiro/conciliacao.js (L51, chama aplicarCicloPago)` · rotas: `POST /webhook/san-checkout`, `(sem rota) npm run conciliar → conciliarAssinaturas()` · papéis: anunciante
-  · ← San Checkout (webhook HMAC) / conciliação diária  → lugar nenhum — o corpo do e-mail cita "seu painel" mas NÃO tem URL; é o único e-mail transacional do sistema sem link clicável (compare com enviarCriativoNoAr, que monta ${SITE_URL}/anunciante/painel.html)
+  · ← San Checkout (webhook HMAC) / conciliação diária  → lugar nenhum — o corpo do e-mail cita "seu painel" mas NÃO tem URL; é o único e-mail transacional do sistema sem link clicável (compare com enviarCriativoAprovado, que monta ${SITE_URL}/anunciante/painel.html)
   · **cliente sabe:** "Assim que o primeiro ponto da rede estiver no ar, seu anúncio começa a rodar automaticamente." — texto FALSO para o fluxo atual: o anúncio só roda depois de o cliente SUBIR o vídeo e o admin APROVAR…
 
-**enviarCriativoNoAr(anunciante, criativo)** — Assunto "Seu anúncio está no ar — Mostraí". Disparado SÓ na transição de status para 'aprovado' (compara com o estado anterior para não reenviar a cada save do admin). Fire-and-forget com .catch.
+**enviarCriativoAprovado(anunciante, criativo)** — Assunto "Seu anúncio foi aprovado — Mostraí" (27/09/2026: aprovado ≠ no ar; o texto diz que a peça está liberada para a programação e que o painel mostra quando a primeira exibição for confirmada). Disparado SÓ na transição de status para 'aprovado' (compara com o estado anterior para não reenviar a cada save do admin). Fire-and-forget com .catch.
   · `src/financeiro/email.js (L60-82)`, `src/admin/routes.js (L19-43, envio na L32)` · rotas: `PATCH /admin/criativos/:id` · papéis: admin (dispara), anunciante (recebe)
   · → ${process.env.SITE_URL}/anunciante/painel.html
   · **cliente sabe:** É o ÚNICO e-mail do sistema que traz um caminho de volta explícito. Se SITE_URL estiver vazia o texto vira "undefined/anunciante/painel.html" — não há guarda.

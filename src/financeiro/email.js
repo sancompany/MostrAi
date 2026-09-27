@@ -501,18 +501,21 @@ async function enviarCriativoReprovado(anunciante, criativo) {
   });
 }
 
-async function enviarCriativoNoAr(anunciante, criativo) {
+// Sai na aprovação, que NÃO é exibição: aprovado só libera a peça para a
+// programação. "No ar" é estado que só o proof-of-play confirma (painel), por
+// isso este e-mail não promete que a peça já está rodando nem dá horário.
+async function enviarCriativoAprovado(anunciante, criativo) {
   await enviar({
     to: anunciante.contato_email,
-    subject: 'Seu anúncio está no ar — Mostraí',
+    subject: 'Seu anúncio foi aprovado — Mostraí',
     conteudo: mensagem({
-      previa: 'Seu vídeo foi aprovado e já entrou na playlist.',
-      titulo: 'Seu anúncio está no ar',
+      previa: 'Seu anúncio foi aprovado e está liberado para a programação.',
+      titulo: 'Seu anúncio foi aprovado',
       saudacao: `Olá, ${anunciante.nome_empresa}!`,
       paragrafos: [
-        'Seu vídeo foi aprovado e já entrou na playlist das telas da rede.',
+        'Seu anúncio foi aprovado e está liberado para entrar na programação da Mostraí.',
         ...(criativo?.duracao_segundos ? [`Duração do vídeo: ${criativo.duracao_segundos} segundos.`] : []),
-        'Você acompanha quantas vezes ele apareceu, e em quais pontos, na aba Anúncios do seu painel.',
+        'Você pode acompanhar pelo painel quando a primeira exibição for confirmada.',
       ],
       botao: { texto: 'Abrir o painel', url: painel() },
       depois: ['Qualquer dúvida, é só responder este e-mail.'],
@@ -676,7 +679,7 @@ module.exports = {
   enviarCobrancaFalhou,
   enviarCoberturaAcabando,
   enviarCandidaturaNova,
-  enviarCriativoNoAr,
+  enviarCriativoAprovado,
   enviarCriativoReprovado,
   enviarConfirmacaoPagamento,
   enviarLinkRedefinicaoSenha,

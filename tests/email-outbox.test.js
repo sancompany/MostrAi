@@ -327,3 +327,27 @@ test('11. retenção: mensagem com segredo some em 2 dias; enviada, em 30', asyn
   assert.strictEqual(await linha(velhoEnviado), undefined);
   assert.ok(await linha(recente));
 });
+
+test('12. criativo aprovado: um aviso só, que fala de aprovação e nunca promete "no ar"', async () => {
+  // Mesmo formato que o admin enfileira na transição para 'aprovado'; nenhum
+  // proof-of-play existe — aprovado ≠ exibido, e o aviso sai mesmo assim.
+  const msg = {
+    tipo: 'criativo_aprovado',
+    chave: `criativo_aprovado:t12:${rodada}`,
+    para: para(12),
+    dados: { conta: { nome_empresa: 'Doze' }, criativo: { duracao_segundos: 15 } },
+  };
+  assert.strictEqual((await outbox.enfileirar(msg)).novo, true);
+  assert.strictEqual((await outbox.enfileirar(msg)).novo, false, 'segunda aprovação do mesmo criativo não duplica');
+  await processarTudo();
+  assert.strictEqual((await linha(msg.chave)).classe, 'operacional');
+  const [m, ...resto] = chegaram(para(12));
+  assert.strictEqual(resto.length, 0);
+  assert.match(m.subject, /aprovado/i);
+  for (const corpo of [m.subject, m.text, m.html]) {
+    assert.doesNotMatch(corpo, /no ar|começou a rodar|sendo exibid|já entrou na playlist/i);
+  }
+  assert.ok(m.text.includes('liberado para entrar na programação'), m.text);
+  assert.ok(m.text.includes('primeira exibição for confirmada'), 'remete ao painel para o estado real');
+  assert.ok(m.text.includes('15 segundos'));
+});

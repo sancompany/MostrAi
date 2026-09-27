@@ -137,7 +137,7 @@ const MODELOS = {
   },
   criativo_aprovado: {
     classe: 'operacional',
-    enviar: (l) => email.enviarCriativoNoAr(conta(l), l.dados.criativo),
+    enviar: (l) => email.enviarCriativoAprovado(conta(l), l.dados.criativo),
   },
   criativo_recusado: {
     classe: 'operacional',

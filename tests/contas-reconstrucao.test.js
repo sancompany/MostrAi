@@ -373,6 +373,12 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     const aprovado = await app.chamar('PATCH', `/admin/criativos/${b.id}`, { status: 'aprovado' });
     assert.strictEqual(aprovado.status, 200);
     assert.strictEqual((await criativosRepo.buscarPorId(a.id)).status, 'retirado', 'A sai do ar, fica cadastrado');
+    // A aprovação enfileira o aviso de APROVADO (não de "no ar"), sem esperar
+    // proof-of-play nenhum — B nunca foi exibido.
+    const avisoDeB = async () =>
+      (await pool.query('SELECT tipo, anunciante_id FROM email_outbox WHERE chave = $1', [`criativo_aprovado:${b.id}`]))
+        .rows;
+    assert.deepStrictEqual(await avisoDeB(), [{ tipo: 'criativo_aprovado', anunciante_id: conta.id }]);
     lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
     assert.deepStrictEqual(
       lista.criativos.filter((c) => c.em_rodizio).map((c) => c.id),
@@ -391,7 +397,9 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     assert.strictEqual(lista.criativos.filter((c) => c.em_rodizio).length, 0, 'retirado não roda');
     await app.chamar('PATCH', `/admin/criativos/${b.id}`, { status: 'aprovado' });
     assert.strictEqual((await criativosRepo.buscarPorId(b.id)).status, 'aprovado');
+    assert.strictEqual((await avisoDeB()).length, 1, 'voltar do retirado não reenvia o aviso');
   } finally {
+    await pool.query('DELETE FROM email_outbox WHERE anunciante_id = $1', [conta.id]);
     await app.fechar();
     await apagarConta(conta.id);
   }
