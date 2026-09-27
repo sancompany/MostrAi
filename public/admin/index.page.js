@@ -1031,7 +1031,7 @@ async function irPara(alvoBruto, forcarResumo) {
   // Se a atualização falhar, os dados anteriores voltam (com um aviso) em vez
   // de a tela inteira virar erro.
   const anterior =
-    mesmaTela && forcarResumo && !conteudoEl.querySelector('.erro-carga') && conteudoEl.childElementCount
+    mesmaTela && forcarResumo && conteudoEl.childElementCount && !telaInteiraEmErro(conteudoEl)
       ? [...conteudoEl.childNodes]
       : null;
   if (!RESUMO || forcarResumo) {
@@ -1060,6 +1060,16 @@ async function irPara(alvoBruto, forcarResumo) {
   if (resultado === 'erro' && anterior && palco.querySelector('.erro-carga [data-tentar-de-novo]')) {
     restaurarTela(conteudoEl, anterior);
   }
+}
+
+// A tela INTEIRA é um erro (nada pra preservar)? O aviso de "não deu pra
+// atualizar" e o erro local de um bloco (Visão geral) não contam — a tela
+// ainda tem dados, e uma segunda falha seguida não pode apagá-los (revisão
+// Codex do PR #81).
+function telaInteiraEmErro(conteudoEl) {
+  return !!conteudoEl.querySelector(
+    ':scope > .erro-carga:not(.aviso-atualizacao), :scope > .palco-tela > .erro-carga, #abaConteudo > .erro-carga',
+  );
 }
 
 // Devolve à tela o que estava nela antes de um Atualizar que falhou, com um

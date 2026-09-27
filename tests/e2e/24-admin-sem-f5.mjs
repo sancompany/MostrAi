@@ -180,9 +180,19 @@ console.log('== Atualizar que falha com dados na tela: dados preservados ==');
   check('os dados de antes continuam na tela', (await p.$$('#conteudo .oferta-produto')).length > 0);
   await shot('dados-preservados');
   await soltar();
+  // Segunda falha seguida: os dados continuam (o aviso não conta como tela
+  // em erro — revisão Codex do PR #81).
+  const soltar2 = await falharProximas('**/admin/resumo', 2);
+  await p.click('#conteudo .aviso-atualizacao [data-tentar-de-novo]');
+  await p.waitForSelector('#conteudo .aviso-atualizacao');
+  await esperar(300);
+  check('segunda falha seguida: os dados continuam', (await p.$$('#conteudo .oferta-produto')).length > 0);
+  check('um aviso só (não empilha)', (await p.$$('#conteudo .aviso-atualizacao')).length === 1);
+  await soltar2();
   await p.click('#conteudo .aviso-atualizacao [data-tentar-de-novo]');
   await p.waitForFunction(() => !document.querySelector('#conteudo .aviso-atualizacao'));
-  check('Tentar novamente atualiza e tira o aviso', (await p.$$('#conteudo .oferta-produto')).length > 0);
+  await p.waitForSelector('#conteudo .oferta-produto');
+  check('Tentar novamente atualiza e tira o aviso', !(await p.$('#conteudo .aviso-atualizacao')));
 }
 
 console.log('== campo de preço-base legível ==');
@@ -206,6 +216,13 @@ console.log('== Visão geral: falha da ocupação fica só no bloco ==');
   check('o resto da Visão geral continua na tela', (await p.$$('#conteudo .coluna-negocio .panel')).length > 0);
   check('sem erro da tela inteira', !(await p.$('#conteudo > .erro-carga')));
   await shot('bloco-isolado');
+  // Com o bloco em erro local, um Atualizar da tela que falha ainda
+  // preserva a Visão geral (erro de bloco não é tela em erro).
+  const soltarResumo = await falharProximas('**/admin/resumo', 2);
+  await p.click('#btnRecarregar');
+  await p.waitForSelector('#conteudo .aviso-atualizacao');
+  check('Atualizar que falha com bloco em erro: Visão geral preservada', (await p.$$('#conteudo .coluna-negocio .panel')).length > 0);
+  await soltarResumo();
   await soltar();
   await p.click('#ocupacaoRede [data-tentar-de-novo]');
   await p.waitForFunction(() => !document.querySelector('#ocupacaoRede .erro-carga'));
