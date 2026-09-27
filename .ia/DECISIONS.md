@@ -803,3 +803,34 @@ mantidos — renomear tabela e job em produção é risco sem ganho; o cliente v
 equivalentes informativos. `vezes_pedidas` deixou de alimentar a apuração
 (fica como registro de auditoria da hora).
 
+
+## ADR-024 — QR institucional: rota permanente no próprio site, destino em configuração, imagem gerada no servidor (27/09/2026)
+
+Status: Ativa. Sem migration. Regra: RN-66. Código:
+`src/midias/qr-institucional.js` (regra) e `src/midias/routes.js` (HTTP).
+
+Contexto: o dono quer um QR para vídeo institucional, flyer e material
+impresso que nunca precise ser trocado quando a página de destino mudar.
+
+Decisão:
+1. **O QR codifica `SITE_URL/q/anuncie`, nunca o destino.** Para onde a rota
+   leva é configuração em `configuracoes_site` (chave `qr_institucional`,
+   JSON com destino, quem e quando) — a mesma tabela do vídeo institucional
+   e da foto de exemplo; nada de tabela nova para um valor só.
+2. **302 + `Cache-Control: no-store`, nunca 301**: redirecionamento
+   permanente fica guardado no navegador e na Cloudflare, e o destino novo
+   deixaria de valer para quem já escaneou.
+3. **Validação na gravação e de novo na leitura**: só `https://` (http só
+   quando o próprio site é http — ambiente local), sem usuário/senha, com
+   domínio, até 2048 caracteres, nunca o próprio link. Qualquer falha na rota
+   pública leva à página de planos, com log — o QR impresso nunca mostra erro.
+4. **Imagem gerada no servidor com `qrcode`** (que já estava instalada como
+   dependência de build e passou a dependência de produção): nenhum serviço
+   externo recebe o link. Correção Q, margem de 4 módulos, tinta da marca
+   sobre branco; marca só na moldura do preview. PNG 1024/2048 px (4096
+   travava o processo ~2 s) e SVG; gerado uma vez por processo.
+
+Consequências: o domínio `SITE_URL` vira parte do material impresso — se um
+dia o site mudar de endereço, o antigo precisa continuar respondendo (ou
+redirecionando) `/q/anuncie`. QR por ponto, de indicação ou com contagem de
+acessos é outra estação (não reaproveita esta chave).

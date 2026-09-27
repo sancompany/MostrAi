@@ -5176,3 +5176,26 @@ Fica registrado (não mexido — decisão do dono): Mídia Mostraí disputa a ba
 "Horas de tela no mês" ainda mostra o contratado da vitrine; demais riscos
 em `.ia/RISKS.md` ("Saldo de Veiculação — riscos que ficaram").
 
+## P. QR Code institucional (27/09/2026)
+
+Estação pequena, PR próprio, **sem merge até o dono autorizar**. Regra: RN-66
+em `docs/funcional.md`; decisão: ADR-024; rotas em `docs/api.md`.
+
+Feito:
+
+- [x] Admin → Mídia Mostraí → "QR Code institucional": preview, link
+      permanente (copiar e testar), destino editável com quem/quando, baixar
+      PNG 1024 px, PNG de impressão 2048 px e SVG.
+- [x] `/q/anuncie` público: 302 `no-store` para o destino; falha ou valor
+      inválido → página de planos. O QR nunca carrega o destino.
+- [x] Destino validado na gravação e na leitura (só `https://`, sem
+      usuário/senha, com domínio, até 2048, nunca o próprio link).
+- [x] Imagem gerada no servidor (`qrcode`), nenhum serviço externo; sem
+      migration (reaproveita `configuracoes_site`).
+- [x] 15 testes em `tests/qr-institucional.test.js` (QR decodificado com
+      `jsqr`) + e2e `tests/e2e/27-qr-institucional.mjs`.
+
+Depois do merge (e só então a estação fecha): ver `.ia/TODO.md`, seção "QR
+CODE INSTITUCIONAL". Fora do escopo, para outra estação: QR por ponto, de
+indicação, com contagem de acessos.
+

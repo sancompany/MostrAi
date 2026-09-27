@@ -39,6 +39,8 @@ PW_CHROME=... node tests/e2e/21-planos-final.mjs # Planos: textos finais, mínim
 PW_CHROME=... node tests/e2e/20-promocao-sem-prazo.mjs # Promoções: sem campo de duração, condição fixa "enquanto a assinatura permanecer ativa", janela só para adesões novas, resumo "Benefício"
 # 26: com o .env carregado (DATABASE_URL e credenciais do admin local): set -a; . ./.env; set +a
 PW_CHROME=... node tests/e2e/26-distribuicao.mjs # pontos com "Seu ponto" (opcional, conta no limite) → aprovação = Programado com janela → TV pede a hora = Aguardando → proof-of-play = No ar por SSE (sem F5), duplicado não conta; Visão geral com os 2 indicadores + lista; Mídia Mostraí: plays simulados → card e detalhe com confirmadas/esperadas/por tela
+# 27: também com o .env carregado (SITE_URL e credenciais do admin local)
+PW_CHROME=... node tests/e2e/27-qr-institucional.mjs # Mídia Mostraí → QR institucional: preview lido pelos pixels, copiar = link permanente, trocar destino → o MESMO /q/anuncie seguido pelo navegador chega no novo, destino inválido recusado, PNG/PNG de impressão/SVG baixados e decodificados (jsqr), bloco do QR falhando sem derrubar a página
 PW_CHROME=... node tests/e2e/18-rede-player-mvp.mjs # Player MVP: PIN de saída → horário do ponto → + Tela → código de instalação → provisionar → heartbeat/config → área segura → erro no Suporte → revogar → excluir → rotas antigas 404
 # ONLINE, contra a produção (só leitura): saúde, cabeçalhos, /planos canônico, 410 das rotas
 # aposentadas, 301, adversarial (webhook sem assinatura, rotas sem credencial, Access fechado),

@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
+mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
+institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só
+o destino (padrão: planos), gravado em `configuracoes_site` (chave
+`qr_institucional`, com quem e quando). `/q/anuncie` responde 302 com
+`no-store` (nunca 301); qualquer falha leva à página de planos. PNG
+1024/2048 px e SVG gerados no servidor pela `qrcode` (passou de dependência
+de build a dependência de produção); testes decodificam o QR com `jsqr`
+(dev). RN-66, ADR-024, sem migration. De quebra: a espera fixa de 200 ms dos
+testes de senha (`tests/email-verificacao.test.js`) virou espera pelo
+token/fila — falhou 1 em 3 rodadas com a suíte em paralelo. **Depois do
+merge:** CI do commit mergeado, SHA no ar, `/q/anuncie` → 302 em produção e
+um QR impresso escaneado de verdade (`.ia/TODO.md`). **Não iniciar** QR por
+ponto, de indicação ou com contagem de acessos sem o dono.
 2026-09-27 (fechamento) — **ESTAÇÃO SALDO DE VEICULAÇÃO = CONCLUÍDA.** #85
 mergeado com autorização do dono, depois de e2e 07/10/26 verdes no estado
 final, `npm run check` 599/599 em banco limpo (98 migrations do zero, lint
