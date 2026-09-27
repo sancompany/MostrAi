@@ -12,7 +12,9 @@ google-*.json
 *-service-account.json
 
 # Dependências e build
-node_modules/
+# Sem barra: pega também um link simbólico chamado node_modules (um entrou
+# por engano num commit de 27/09/2026 — link de worktree local).
+node_modules
 
 # Saídas de teste e backup
 tests/e2e/saida/
