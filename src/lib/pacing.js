@@ -13,15 +13,24 @@
 // era o que ele comprou, e piorava conforme a rede desse certo — o pior
 // desenho possível pra um produto que se vende por frequência.
 //
-// Agora a hora é um orçamento de 3600 segundos, gasto nesta ordem:
-//   1. exibição contratada (frequência do plano + déficit da hora anterior);
-//   2. cota de autoanúncio do dono do ponto (permuta do comodato);
-//   3. banco de horas — só no tempo que SOBROU de 1 e 2 (decisão do dono,
-//      25/09/2026: a dívida volta em capacidade ociosa, nunca tirando a
-//      entrega corrente de ninguém);
-//   4. o que sobrar vira a peça institucional (vídeo institucional da rede,
-//      ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
-//      — inventário vago que anuncia a si mesmo.
+// Agora a hora é um orçamento de 3600 segundos, gasto em CAMADAS (estação
+// do Saldo de Veiculação, 27/09/2026 — docs/specs/2026-09-27-saldo-de-veiculacao.md).
+// Cada camada só usa o que a de cima deixou; dentro dela, se não cabe, o
+// corte é proporcional (RN-30):
+//   T1. base contratada de cada conta (segundos do plano no ponto), a cota
+//       de autoanúncio do dono do ponto e a Mídia Mostraí (como já era);
+//   T2. o que é da conta mas vai além da base: a compensação da RN-49
+//       (tempo dos pontos que a rede ainda não tem) e a reposição do que a
+//       TV não confirmou na hora anterior (RN-10). Até 27/09/2026 isto
+//       disputava a T1 — numa hora cheia, a compensação de A cortava a base
+//       de B, que é "pagar a dívida de um com o contrato do outro";
+//   T3. saldo antigo (banco de horas) — só no tempo que SOBROU de T1 e T2
+//       (decisão do dono, 25/09/2026: a dívida volta em capacidade ociosa,
+//       nunca tirando a entrega corrente de ninguém, nem o mês corrente do
+//       próprio dono da dívida);
+//   T4. o que sobrar vira a peça institucional (vídeo institucional da rede,
+//       ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
+//       — inventário vago que anuncia a si mesmo.
 //
 // Com a hora cheia, a lista tem a duração da hora e o laço do player deixa de
 // inflar nada: `vezes_programadas` volta a ser comparável com
@@ -155,16 +164,19 @@ function caberEm(pedidos, capacidade) {
   }
 }
 
-// anunciantes: [{ id, frequenciaBase, deficit, banco, duracaoSegundos }]
+// anunciantes: [{ id, frequenciaBase, compensacao, deficit, banco, duracaoSegundos }]
+//   frequenciaBase — T1 (inserções da base contratada);
+//   compensacao, deficit — T2 (RN-49 além da base; reposição da hora anterior);
+//   banco — T3 (saldo antigo).
 //
 // Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
 // `programados` conta só quem ocupa inventário de verdade — o institucional
 // fica de fora de propósito, porque ele não é entrega de ninguém.
 //
-// `banco` (banco de horas) disputa só o tempo que a hora vendida deixou
-// livre, DEPOIS do corte da RN-30: pedir banco nunca muda o `cabe` de
-// ninguém, nem o do próprio dono da dívida (decisão do dono, 25/09/2026 —
-// "entrega corrente não deve ser destruída para satisfazer dívida antiga").
+// `banco` (banco de horas) disputa só o tempo que T1 e T2 deixaram livre:
+// pedir banco nunca muda o `cabe` de ninguém, nem o do próprio dono da
+// dívida (decisão do dono, 25/09/2026 — "entrega corrente não deve ser
+// destruída para satisfazer dívida antiga").
 //
 // `duracaoInstitucional` (opcional, padrão `DURACAO_INSTITUCIONAL`): quando
 // existe vídeo institucional configurado (25/09/2026,
@@ -177,29 +189,41 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
     anunciantes.map((a) => ({
       id: a.id,
       duracao: duracaoValida(a.duracaoSegundos),
-      quer: Math.max(0, (a.frequenciaBase || 0) + (a.deficit || 0)),
+      quer: Math.max(0, a.frequenciaBase || 0),
+      alem: Math.max(0, a.compensacao || 0) + Math.max(0, a.deficit || 0),
       banco: Math.max(0, a.banco || 0),
     })),
     semente,
   );
-  const pedidos = todos.filter((p) => p.quer > 0);
+  const camada = (campo) =>
+    todos.filter((p) => p[campo] > 0).map((p) => ({ id: p.id, duracao: p.duracao, quer: p[campo] }));
+  const somaCabe = (lista) => lista.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
 
-  const pedidoSegundos = pedidos.reduce((soma, p) => soma + p.quer * p.duracao, 0);
-  const cortou = pedidoSegundos > SEGUNDOS_DA_HORA;
+  // T1: a base de todo mundo.
+  const pedidos = camada('quer');
   caberEm(pedidos, SEGUNDOS_DA_HORA);
-  const segundosContratados = pedidos.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
+  const segundosBase = somaCabe(pedidos);
+  // T2: compensação (RN-49) e reposição (RN-10), no que T1 deixou.
+  const pedidosAlem = camada('alem');
+  caberEm(pedidosAlem, SEGUNDOS_DA_HORA - segundosBase);
+  const segundosContratados = segundosBase + somaCabe(pedidosAlem);
 
-  const pedidosBanco = todos.filter((p) => p.banco > 0).map((p) => ({ id: p.id, duracao: p.duracao, quer: p.banco }));
+  const pedidoSegundos = [...pedidos, ...pedidosAlem].reduce((soma, p) => soma + p.quer * p.duracao, 0);
+  const cortou = pedidoSegundos > SEGUNDOS_DA_HORA;
+
+  // T3: saldo antigo, no que T1 e T2 deixaram.
+  const pedidosBanco = camada('banco');
   caberEm(pedidosBanco, SEGUNDOS_DA_HORA - segundosContratados);
   const bancoProgramados = {};
   for (const p of pedidosBanco) if (p.cabe > 0) bancoProgramados[p.id] = p.cabe;
-  const segundosBanco = pedidosBanco.reduce((soma, p) => soma + p.cabe * p.duracao, 0);
+  const segundosBanco = somaCabe(pedidosBanco);
 
   // Map e não objeto: guarda o id com o tipo original (número de anunciante,
   // 'dono', 'midia:N'), que é o que vai nos itens da playlist.
   const vezesPorId = new Map();
-  for (const p of pedidos) if (p.cabe > 0) vezesPorId.set(p.id, p.cabe);
-  for (const p of pedidosBanco) if (p.cabe > 0) vezesPorId.set(p.id, (vezesPorId.get(p.id) || 0) + p.cabe);
+  for (const p of [...pedidos, ...pedidosAlem, ...pedidosBanco]) {
+    if (p.cabe > 0) vezesPorId.set(p.id, (vezesPorId.get(p.id) || 0) + p.cabe);
+  }
   const programados = Object.fromEntries(vezesPorId);
 
   const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco);
@@ -210,14 +234,15 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
   const total = itensPagos + qtdInstitucional;
   const vagas = total ? espalhar(grupos, total) : [];
 
-  // O que cada um QUERIA antes do corte proporcional (`p.quer`, calculado
-  // antes de `cabe`) — é o que o banco de horas (G.3) precisa pra apurar o
-  // que não coube por causa da hora estar vendida, não por tela offline.
-  // Vai de todo mundo que pediu, mesmo quem não coube em nada (`cabe`
-  // ausente vira 0 na leitura, não some da conta do déficit). O banco NÃO
-  // entra aqui: devolver dívida não é pedido novo.
+  // O que cada um QUERIA antes do corte (T1 + T2) — vai de todo mundo que
+  // pediu, mesmo quem não coube em nada. Registro de auditoria da hora
+  // (`vezes_pedidas`); desde 27/09/2026 a apuração do saldo não usa mais
+  // este número (usa obrigação × confirmado). O banco NÃO entra aqui:
+  // devolver dívida não é pedido novo.
   const pedidosPorAnunciante = {};
-  for (const p of pedidos) pedidosPorAnunciante[p.id] = p.quer;
+  for (const p of [...pedidos, ...pedidosAlem]) {
+    pedidosPorAnunciante[p.id] = (pedidosPorAnunciante[p.id] || 0) + p.quer;
+  }
 
   return {
     itens: vagas.map((id) => id ?? ID_INSTITUCIONAL),
@@ -315,6 +340,12 @@ function pontosDoAnunciante(conta, pontosEmOperacao, pontosBloqueados = []) {
 // dele. Um sexto é onde a promessa ainda se cumpre: seis contas compensadas
 // enchem a hora, e antes disso ninguém é cortado. Acima do teto o anunciante
 // para de ganhar — não perde nada do que já tinha.
+//
+// Desde 27/09/2026 (Saldo de Veiculação) a parte acima da base entra na
+// camada T2 de `montarHoraDeTv` — só no tempo que a base de todo mundo
+// deixou livre, nunca cortando a de outro —, e o que o teto (ou a falta de
+// espaço) não deixar entregar NÃO some: a obrigação é contada sem o teto
+// (`segundosDeObrigacao`) e a diferença vira saldo na apuração.
 const TETO_COMPENSACAO_SEGUNDOS = SEGUNDOS_DA_HORA / 6;
 
 function segundosCompensados(segundosPorHora, pontosIncluidos, pontosCobertos) {
@@ -325,6 +356,42 @@ function segundosCompensados(segundosPorHora, pontosIncluidos, pontosCobertos) {
   // cobertura nenhuma, ou rede já do tamanho do plano: nada a compensar.
   if (!base || !contratados || cobertos <= 0 || cobertos >= contratados) return base;
   return Math.min(TETO_COMPENSACAO_SEGUNDOS, Math.floor((base * contratados) / cobertos));
+}
+
+// OBRIGAÇÃO da conta numa tela, por hora inteira aberta, em segundos
+// (Saldo de Veiculação, 27/09/2026). É o contrato concentrado da RN-49 SEM o
+// teto: o teto limita quanto a tela programa numa hora (decisão de
+// 17/09/2026), não quanto se deve — o que passa dele e não couber em lugar
+// nenhum vira saldo, em vez de sumir. Inserções inteiras da peça (RN-39: o
+// plano vende floor(segundos ÷ duração) inserções), divididas pelas telas
+// ativas do ponto (a obrigação é do PONTO; cada tela recebe a base inteira e
+// a entrega a mais de um ponto com duas telas compensa a falta em outro).
+//
+// Plano sem `segundos_por_hora` (legado, `frequencia_hora`): a obrigação é a
+// frequência × duração, sem compensação — o mesmo que o gerador pede.
+function segundosDeObrigacao({
+  segundosPorHora,
+  frequenciaHora,
+  pontosIncluidos,
+  pontosCobertos,
+  duracaoSegundos,
+  telasDoPonto = 1,
+  minutosAbertos = 60,
+}) {
+  const duracao = duracaoValida(duracaoSegundos);
+  const base = Math.max(0, Number(segundosPorHora) || 0);
+  const contratados = Number(pontosIncluidos) || 0;
+  const cobertos = Number(pontosCobertos) || 0;
+  let porHora;
+  if (base > 0) {
+    const concentrado = contratados && cobertos > 0 && cobertos < contratados ? (base * contratados) / cobertos : base;
+    porHora = Math.floor(concentrado / duracao) * duracao;
+  } else {
+    porHora = Math.max(0, Number(frequenciaHora) || 0) * duracao;
+  }
+  const minutos = Math.min(60, Math.max(0, Number(minutosAbertos) || 0));
+  const telas = Math.max(1, Number(telasDoPonto) || 1);
+  return Math.round((porHora * minutos) / 60 / telas);
 }
 
 // Horas de tela por mês, a partir dos segundos por hora e dos pontos.
@@ -381,6 +448,7 @@ module.exports = {
   espalhar,
   SEGUNDOS_DA_HORA,
   segundosCompensados,
+  segundosDeObrigacao,
   horasDeTelaPorMes,
   exibicoesPorMes,
   TETO_COMPENSACAO_SEGUNDOS,

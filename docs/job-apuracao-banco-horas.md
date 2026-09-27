@@ -1,28 +1,42 @@
 # Job `ApuracaoBancoHoras` — especificação para criar no Northflank
 
-Estado: **CÓDIGO PRONTO — AGUARDA CRIAÇÃO NO NORTHFLANK** (gate do operador).
-O código é o `scripts/apurar-banco-horas.js`, que chama `src/bancohoras/apuracao.js`.
-A regra de produto está em `docs/funcional.md` (banco de horas); esta página
-cobre só a operação.
+Estado: **CRIADO E OPERANDO no Northflank desde 25/09/2026** (1ª execução
+real agendada: 01/10/2026 06:00 UTC). O código é o `scripts/apurar-banco-horas.js`,
+que chama `src/bancohoras/apuracao.js`. A regra de produto está em
+`docs/funcional.md` (RN-53, Saldo de Veiculação); o mapa, os defeitos
+corrigidos e as invariantes em `docs/specs/2026-09-27-saldo-de-veiculacao.md`.
+Esta página cobre só a operação.
 
-## O que o job faz (cada execução)
+## O que o job faz (cada execução) — desde 27/09/2026, em TEMPO
 
-1. **Apura** o mês fechado (padrão: o mês anterior no relógio de Matão,
-   `America/Sao_Paulo`). Para cada conta pagante:
-   `déficit = Σ vezes_pedidas − Σ (vezes_programadas − vezes_banco)`. A parte
-   positiva vira uma linha `ativo` em `banco_horas`. Rodar de novo o mesmo mês
-   não duplica (`UNIQUE anunciante_id + mes_referencia`).
-2. **Liquida** as horas já fechadas (mais de 75 min depois do início da hora):
-   abate do saldo **só** o banco que a TV confirmou. Cada hora é abatida uma
-   vez (`banco_liquidado_em`), numa transação por conta.
-3. **Registra** a execução em `banco_horas_execucoes` (menos na simulação).
+1. **Registra as horas abertas sem sinal** do mês apurado: hora em que o ponto
+   estava aberto e a tela não pediu playlist ganha a obrigação que tinha
+   (`src/bancohoras/obrigacao.js`; rede de segurança — o registro normal é
+   diário, no `Conciliacao`).
+2. **Apura** o mês fechado (padrão: o mês anterior no relógio de Matão,
+   `America/Sao_Paulo`). Para cada conta pagante com obrigação no mês:
+   `saldo = Σ segundos_obrigacao − Σ entrega CONFIRMADA × duração da hora`. Toda
+   conta com obrigação ganha a linha do mês (saldo 0 = `drenado`, auditoria).
+   **Idempotente:** uma linha por conta × mês; rodar de novo recompõe a mesma
+   linha com os mesmos dados. Enquanto ainda chegam comprovantes offline (até
+   7 dias + 1 h depois do fim do mês), a linha se recompõe; depois de uma
+   apuração nesse prazo, congela. Nunca abaixo do que já voltou.
+3. **Liquida** as horas já fechadas (passado o prazo do comprovante): abate
+   do saldo, em segundos da duração de cada hora, **só** o banco que a TV
+   confirmou. Cada hora é abatida uma vez (`banco_liquidado_em`), numa
+   transação por conta.
+4. **Registra** a execução em `banco_horas_execucoes` (menos na simulação),
+   com `segundos_devidos`, `segundos_abatidos`, `horas_sem_pedido` e
+   `linhas_recompostas`.
 
 O job não faz nada disto: não expira saldo, não zera nada na virada do mês,
 não gera crédito em dinheiro e não mexe em cobrança.
 
-A liquidação também roda **todo dia** dentro do job `Conciliacao` que já
-existe (`scripts/conciliar.js`). Sem este job mensal, a apuração não acontece:
-nenhum déficit novo entra no banco.
+**Todo dia**, dentro do job `Conciliacao` que já existe (`scripts/conciliar.js`),
+rodam as mesmas funções: registro das horas sem sinal das últimas 48 h,
+recomposição do mês anterior enquanto ele ainda recebe comprovantes, e a
+liquidação. Não há job novo nem apuração paralela: é a mesma `apurarMes`,
+idempotente.
 
 ## Configuração (igual à do job `conciliacao` em produção, conferida em 25/09/2026)
 
@@ -55,7 +69,7 @@ lista de lugares a atualizar (lição de 20/09/2026,
 ## Opções e códigos de saída
 
 ```
-npm run apurar-banco-horas                  # apura o mês anterior e liquida
+npm run apurar-banco-horas                  # apura (ou recompõe) o mês anterior e liquida
 npm run apurar-banco-horas -- --dry-run     # calcula e mostra; não grava nada
 npm run apurar-banco-horas -- --mes=2026-10 # apura um mês fechado específico
 ```
@@ -86,7 +100,8 @@ O log só tem números e ids de conta — nunca `DATABASE_URL`, e-mail ou nome.
 
 ## Observabilidade
 
-- Log do job no Northflank (duas linhas por execução).
+- Log do job no Northflank (duas linhas por execução; a primeira diz se o mês
+  ainda é provisório — "ainda chegam comprovantes").
 - `banco_horas_execucoes`: uma linha por execução real, com `abortou`
   preenchido quando falha.
 - `GET /admin/banco-horas`: as linhas do banco por conta.
@@ -102,7 +117,8 @@ O log só tem números e ids de conta — nunca `DATABASE_URL`, e-mail ou nome.
   deve ao cliente nesse caso → decisão.
 - **Teto diário de devolução**: hoje o teto é por hora (pedido da hora ×
   multiplicador de idade, até 3×) e só no tempo ocioso. Teto por dia → decisão.
-- **Mudança de plano com saldo**: hoje o saldo é em exibições e segue a conta
-  com a duração da peça atual. Converter pelo plano novo → decisão.
+- **Mudança de plano com saldo**: o saldo é em SEGUNDOS (desde 27/09/2026) e
+  segue a conta; volta em inserções da peça que ela tiver no dia. Converter
+  pelo plano novo → decisão.
 - **Idade de peso máximo e multiplicador** (3 meses, 3×): números escolhidos
   pelo código, não pelo dono.

@@ -66,11 +66,10 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   isolado, `public` íntegro, app no ar; RPO semanal (até 7 dias). Achado no
   ensaio: um backup vazio de 20/09 ficou no volume — corrigido no
   `scripts/backup.sh`; o arquivo vazio continua lá (não restaurar dele).
-- **Job `ApuracaoBancoHoras` ainda não criado no Northflank** (gate do
-  operador; código e especificação prontos em
-  `docs/job-apuracao-banco-horas.md`). Sem ele nenhum déficit mensal entra
-  no banco de horas — silencioso. A liquidação diária do confirmado já roda
-  dentro do `Conciliacao`.
+- ~~Job `ApuracaoBancoHoras` ainda não criado no Northflank~~ — criado em
+  25/09/2026 (`docs/job-apuracao-banco-horas.md`); 1ª execução real em
+  01/10/2026. Desde 27/09/2026 o `Conciliacao` diário também registra horas
+  sem sinal e recompõe o mês anterior no prazo do comprovante.
 - **Segredos do Northflank não usam secret group compartilhado** — cada
   serviço/job guarda sua própria cópia de cada variável
   (`DATABASE_URL` incluída). Trocar um segredo exige lembrar de atualizar
@@ -102,7 +101,7 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 ## Atualização — auditoria de 20/09/2026
 
 - **Crítico — integridade de confirmação:** `/played` sai no começo da tentativa e falhas são ignoradas, sem identidade, retry ou idempotência por execução. Métricas podem divergir da reprodução real.
-- **Decisão de produto — banco de horas:** decidido MANTER em 25/09/2026 (obrigação de veiculação). Déficit de capacidade (`pedidas - programadas normais`) vira saldo; o saldo volta só no tempo ocioso; **só a exibição confirmada abate o saldo** (migration 090 — a geração não drena mais). Falha da TV na entrega normal continua voltando como déficit da hora seguinte.
+- **Decisão de produto — banco de horas:** decidido MANTER em 25/09/2026 (obrigação de veiculação). **Desde 27/09/2026 (Saldo de Veiculação, RN-53):** saldo = obrigação da hora aberta − entrega CONFIRMADA, em segundos; ponto fechado não deve; o saldo volta só no tempo ocioso; só a exibição confirmada abate.
 - **Mitigado em 20/09/2026 — concorrência do congelamento:** base e extras passaram a ser resolvidos sob lock transacional por tela/hora. A base perdedora é descartada antes da resposta e uma nova leva não pode ser anexada duas vezes. Manter o teste dedicado e não retirar a seção crítica ao otimizar o gerador.
 - **Correção de risco antigo:** categoria do ponto é gravável e existe em produção. O risco real restante é ausência de teste ponta a ponta do bloqueio, não ausência do dado.
 - **Dependências:** ~~1 crítica, 3 altas, 6 moderadas~~ — `npm audit` em 0 desde 25/09/2026 (PR #61).
@@ -110,3 +109,27 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 ## Mapa funcional — achado de 20/09/2026
 
 - **Métrica financeira (P1):** a consulta histórica de margem em `src/admin/metrica.js` filtra o status antigo `p.status = 'ativo'`; desde a migration 045 o ponto operacional é `em_operacao`. A amortização histórica fica zerada e pode superestimar margem. A Visão geral usa o status correto. Não corrigido durante o inventário.
+
+## Saldo de Veiculação — riscos que ficaram (27/09/2026)
+
+- **Mídia Mostraí na camada da base (T1).** Regra existente, preservada: numa
+  hora cheia a Mídia é cortada junto com a base comercial, na mesma
+  proporção — e o tempo que ela ocupa deixa de estar livre pra compensação e
+  saldo antigo. Conflito de produto a decidir (Mídia antes ou depois do
+  comercial); a reserva de 20% da Mostraí NÃO foi transformada em regra da
+  playlist.
+- **Hora sem sinal usa a cobertura de HOJE.** Conta que saiu do ponto depois
+  da hora sem sinal perde aquela hora (erro a favor da Mostraí); conta que
+  chegou depois não é cobrada. Roda diário (48 h) pra a diferença ser pequena.
+  Ponto em operação SEM tela ativa não gera obrigação (não há linha onde
+  gravá-la) — hoje, produção: 0 pontos assim.
+- **Teto de 1/6 da hora (RN-49) mantido.** A parte da obrigação acima dele
+  vira saldo (não some mais), mas só volta em capacidade ociosa de outras
+  horas — numa rede muito menor que o plano, o saldo pode crescer mais rápido
+  que a capacidade de devolver.
+- **Card "Horas de tela no mês" do painel** continua mostrando o contratado
+  da vitrine (12 h/dia × 30 dias, "até"), não a obrigação real por horário do
+  ponto. Não mexido nesta estação (sem redesenho); o saldo é o número exato.
+- **Apuração de 01/10 é provisória** até 08/10 (comprovante offline); o
+  cliente pode ver um saldo que diminui nesses dias.
+

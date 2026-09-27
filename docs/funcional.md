@@ -343,7 +343,10 @@ abrir ponto.
 > que a hora seguinte nunca quitava.
 
 **RN-10 — A frequência compensa déficit da hora anterior.** Quem ficou devendo
-exibição recebe a mais na hora seguinte, dentro do orçamento da RN-09.
+exibição recebe a mais na hora seguinte, dentro do orçamento da RN-09 — desde
+27/09/2026 só no tempo que a base de todos deixou livre (camada T2 da RN-53),
+só a parte que caberia nos minutos abertos da hora anterior, e nunca de uma
+competência pra outra nem pra dentro de hora fechada.
 *Violada:* não há caminho. *Quem vê:* o anunciante, na contagem de exibições.
 
 **RN-39 — O que se vende é TEMPO DE TELA por hora, não número de repetições.**
@@ -722,46 +725,72 @@ plano".
 > pra plano mais barato não aparece na lista, mesma limitação que o pedido
 > avulso sempre teve com downgrade. Registrado, não corrigido.
 
-**RN-53 — Banco de horas: obrigação de veiculação.** *(Decisão do dono,
-25/09/2026 — MANTER. Substitui a versão de 18/09/2026, que deixava a
-prioridade tomar o lugar de outro anunciante e mandava saldo velho pra uma
-fila de crédito.)* Capacidade contratada que não coube vira saldo; o saldo
-volta em capacidade **ociosa** de horas futuras; só a exibição **confirmada**
-abate o saldo. Sem expiração automática, sem zerar na virada do mês, e nunca
-crédito em dinheiro.
+**RN-53 — Saldo de Veiculação (banco de horas): o tempo contratado que não foi
+entregue.** *(Decisão do dono de 25/09/2026 — MANTER, obrigação de veiculação;
+modelo em TEMPO desde 27/09/2026, estação do Saldo de Veiculação —
+`docs/specs/2026-09-27-saldo-de-veiculacao.md`.)* A Mostraí vende tempo de
+presença nas telas. O saldo é o que ela ainda deve em tempo:
 
-- **Apuração (mensal, job `ApuracaoBancoHoras`).** Fecha o mês anterior no
-  relógio de Matão: `déficit = Σ vezes_pedidas − Σ (vezes_programadas −
-  vezes_banco)` por conta pagante (`vezes_pedidas` guarda o pedido ANTES do
-  corte da RN-30; `vezes_banco` é a parte da hora que já era devolução de
-  dívida e não conta como entrega do mês). Conta própria nunca acumula.
-  Especificação do job: `docs/job-apuracao-banco-horas.md`.
-- **Devolução (a cada hora).** O saldo disponível da conta entra na hora só
-  no tempo que a hora vendida deixou livre (`montarHoraDeTv`, depois do corte
-  da RN-30): pedir banco nunca muda a entrega de ninguém, nem a do próprio
-  dono da dívida. Toma o lugar do institucional, nunca o de quem pagou. Hora
-  cortada não devolve nada.
+    tempo contratado − tempo confirmado − compensação confirmada = saldo pendente
+
+Sem expiração automática, sem zerar na virada do mês, e nunca crédito em
+dinheiro. Nome para o cliente: **Saldo de veiculação**; nomes internos
+(`banco_horas`, `src/bancohoras/`, job `ApuracaoBancoHoras`) mantidos.
+
+- **Obrigação (por hora, por tela).** Nasce quando o ponto está ABERTO: as
+  inserções inteiras de `base × pontos do plano ÷ pontos cobertos` (RN-49
+  **sem** o teto de 1/6 — o teto limita o que a tela programa, não o que se
+  deve), × minutos abertos ÷ 60, ÷ telas ativas do ponto
+  (`segundosDeObrigacao`, `exibicoes_contador.segundos_obrigacao`). **Ponto
+  fechado não deve nada**: a hora sem minuto aberto não grava programada,
+  obrigação, reposição nem banco (a TV continua pedindo playlist a noite
+  toda). Hora parcial deve só os minutos abertos. Hora ABERTA em que a tela
+  não pediu playlist (sem sinal) ganha a obrigação pela apuração
+  (`src/bancohoras/obrigacao.js`) — só para conta que já tinha sido servida
+  naquela tela e com o plano válido naquela hora.
+- **Entrega.** Só o comprovante (proof-of-play aceito, uma vez por
+  `execucaoId`): `LEAST(confirmadas, programadas − banco) × duração daquela
+  hora`. Playlist gerada, servida, baixada ou `PLAYING` no heartbeat não
+  entrega nada.
+- **Apuração (competência = mês de Matão; job `ApuracaoBancoHoras` no dia 1 e
+  recomposição diária no `Conciliacao` enquanto chegam comprovantes).** Saldo
+  do mês = obrigação − entrega, em segundos, se positivo. Toda conta com
+  obrigação ganha a linha do mês — inclusive quem entregou tudo (saldo 0,
+  trilha de auditoria). Dentro do prazo do comprovante offline (7 dias + 1 h
+  depois do fim do mês) a apuração se RECOMPÕE com o que chegou; depois de
+  uma apuração nesse prazo ou além, a linha congela. Rodar de novo nunca soma
+  (uma linha por conta × mês), e o saldo nunca fica abaixo do que já voltou.
+  Conta própria (Mídia Mostraí) e conta excluída nunca acumulam.
+- **Redistribuição antes do saldo.** A compensação da RN-49 e a reposição da
+  hora anterior (RN-10) entram na hora na camada T2 — só no tempo que a base
+  de todo mundo deixou livre. Se tocaram, já são entrega; só o que não coube e
+  não tocou vira saldo.
+- **Devolução (a cada hora, camada T3).** O saldo disponível entra na hora só
+  no tempo que T1 (base de todos) e T2 (compensação e reposição correntes)
+  deixaram livre: nunca tira a entrega corrente de ninguém — nem o mês
+  corrente do próprio dono da dívida. Toma o lugar do institucional. Hora
+  fechada não programa banco.
 - **Ritmo.** Por hora, no máximo o pedido normal da conta × um multiplicador
   que cresce com a idade da dívida (1× pra dívida do mês, até 3× com 3 meses
-  ou mais — números do código, não do dono; pedido dele de 18/09: "quanto mais
-  tempo no banco tiver, mais prioridade tem"). O saldo é dividido pelos
-  pontos cobertos (mesma fatia da RN-49), arredondando pra cima, e nunca se
-  programa mais do que a dívida.
-- **Abatimento (liquidação).** A geração só PROGRAMA. Depois que a janela de
-  prova da hora fecha (60 min + a folga da virada), a liquidação abate do
-  saldo o banco que a TV confirmou — a confirmada conta primeiro pra entrega
-  normal, e só o que passar dela é do banco (na dúvida, a dívida fica). Cada
-  hora é abatida uma vez. Roda todo dia no job `Conciliacao` e todo mês no
-  `ApuracaoBancoHoras`. Enquanto uma hora não é liquidada, o banco que ela
-  programou fica reservado — outra tela não programa a mesma dívida de novo.
-  Até 25/09/2026 o saldo era abatido na geração: TV desligada consumia a
-  dívida sem entregar nada.
+  ou mais — números do código, não do dono). O saldo (segundos) é dividido
+  pelos pontos cobertos e convertido em inserções da peça de hoje,
+  arredondando pra cima; nunca se programa mais do que a dívida.
+- **Abatimento (liquidação).** A geração só PROGRAMA. Depois que o prazo do
+  comprovante da hora fecha, a liquidação abate do saldo, em segundos da
+  duração daquela hora, o banco que a TV confirmou — a confirmada conta
+  primeiro pra entrega normal, e só o que passar dela é do banco (na dúvida,
+  a dívida fica). Cada hora é abatida uma vez (`banco_liquidado_em`). Roda
+  todo dia no `Conciliacao` e todo mês no `ApuracaoBancoHoras`. Enquanto não
+  liquida, o banco programado fica reservado.
 - **Ordem.** O abatimento é FIFO (mês mais antigo primeiro).
+- **Exibições equivalentes.** Derivadas na leitura: segundos pendentes ÷
+  duração da peça que roda HOJE. Trocar a peça muda as exibições equivalentes,
+  nunca o tempo devido — cada hora guarda a duração que usou
+  (`exibicoes_contador.duracao_segundos`).
 
-A unidade é EXIBIÇÃO, não segundo: a duração do criativo hoje
-(`criativos.duracao_segundos`) é o valor ATUAL, sem histórico — calcular em
-segundos seria estimar sobre estimativa. Escolha do código, não pedida nestes
-termos.
+*Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no card "Saldo
+de veiculação" do painel (tempo pendente + exibições equivalentes); o admin,
+em `GET /admin/banco-horas`.
 
 **Uma peça nunca roda duas vezes seguidas** (pedido do dono, 18/09/2026),
 banco ou não — `espalhar` (`src/lib/pacing.js`) procura vaga livre SEM
@@ -860,6 +889,11 @@ lugares que precisam concordar: o gerador da playlist e o painel do anunciante.
 *Violada:* não há caminho de usuário — a função nunca devolve menos que o
 contratado. *Quem vê:* o anunciante, no painel, com o número exato de horas a
 mais; e a vitrine, no aviso de rede em montagem.
+> **Desde 27/09/2026 (Saldo de Veiculação, RN-53):** o tempo além da base
+> entra na hora na camada T2 — só no que a base de todas as contas deixou
+> livre; numa hora cheia a compensação de uma conta nunca corta a base de
+> outra. E o que o teto (ou a falta de espaço) não deixar entregar não some
+> mais: a obrigação é contada sem o teto e a diferença vira saldo.
 
 **RN-38 — O dia da exibição é o dia de Matão, não o do servidor.** O
 agrupamento por dia de `exibicoes_contador` converte `janela_hora` para

@@ -1,13 +1,25 @@
 # Current Handoff
 
 ## Updated
+2026-09-27 (tarde) — **Estação do SALDO DE VEICULAÇÃO (banco de horas)**
+(PR aberto, NÃO mergeado, aguardando o dono). O saldo passou a ser o tempo
+contratado que não foi entregue, em SEGUNDOS: obrigação por hora aberta
+(RN-49 sem o teto, só minutos abertos, dividida pelas telas do ponto) −
+entrega CONFIRMADA por proof-of-play. Ponto fechado não grava nada (era o
+bug: a madrugada virava dívida). Hora de TV sem sinal ganha a obrigação.
+Camadas da hora: base de todos (T1) → compensação RN-49 e reposição (T2) →
+saldo antigo (T3). Apuração idempotente que se recompõe no prazo do
+comprovante. Migration 100 (aditiva), mesmo job `ApuracaoBancoHoras`
+(recomposição diária no `Conciliacao`). Mapa/invariantes:
+`docs/specs/2026-09-27-saldo-de-veiculacao.md`; regra: RN-53. **Não iniciar
+outra estação sem o dono.**
 2026-09-27 (fechamento) — **ESTAÇÃO DISTRIBUIÇÃO REAL = CONCLUÍDA.** #83
 mergeado (squash `38afc8e`) e no ar; o e-mail de aprovação deixou de dizer
 "está no ar" (`enviarCriativoAprovado`: "Seu anúncio foi aprovado", liberado
 para a programação, o painel mostra a primeira exibição) num PR próprio,
 porque o #83 já estava mergeado. Nenhum e-mail de "primeira exibição" foi
-criado. **Próxima estação crítica: BANCO DE HORAS** (seção N de
-`docs/PENDENCIAS.md`, item 1) — não iniciada; aguardar o dono.
+criado. Próxima estação crítica era BANCO DE HORAS — feita logo depois
+(entrada acima).
 2026-09-27 (noite, depois do #82) — **Estação de distribuição real** (#83,
 mergeado depois): escolha de pontos restaurada (com
 o próprio ponto destacado e opcional, benefício incluído), dono do mesmo

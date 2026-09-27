@@ -6,9 +6,11 @@ const {
   dividirCota,
   duracaoValida,
   segundosCompensados,
+  segundosDeObrigacao,
   espalhar,
   ID_INSTITUCIONAL,
   DURACAO_INSTITUCIONAL,
+  DURACAO_PADRAO,
 } = require('../lib/pacing');
 const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
@@ -95,10 +97,20 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // com a escolha explícita (`anunciantes_pontos`): o próprio ponto é opcional
 // e nunca entra por ser do dono — no modo automático a trava continua como
 // era. A cota de autoanúncio continua saindo por `excluirContaId`.
-async function anunciantesElegiveis(categoriaDoPonto, excluirContaId, donoDoPonto = null, pontoId = null) {
+//
+// `qualquerValidade`: a obrigação de hora sem sinal (src/bancohoras/obrigacao.js)
+// olha horas que já passaram — a validade é conferida hora a hora lá, com a
+// `data_expiracao` devolvida aqui, não pela data de hoje.
+async function anunciantesElegiveis(
+  categoriaDoPonto,
+  excluirContaId,
+  donoDoPonto = null,
+  pontoId = null,
+  { qualquerValidade = false } = {},
+) {
   const { rows } = await pool.query(
     `
-    SELECT a.id, a.conta_propria,
+    SELECT a.id, a.conta_propria, a.data_expiracao,
            p.frequencia_hora,
            p.segundos_por_hora, p.pontos_incluidos,
            p.limite_criativos,
@@ -117,7 +129,7 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId, donoDoPont
     -- dar direito de veicular em 24/09/2026 (ADR-016): ser ponto gera
     -- créditos, não plano. comodato_plano_id fica no banco como legado.
     JOIN planos p ON p.id = a.plano_id
-      AND ${vigencia.vigenteSql('a.data_expiracao')}
+      AND ($5::boolean OR ${vigencia.vigenteSql('a.data_expiracao')})
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -132,9 +144,10 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId, donoDoPont
                  SELECT 1 FROM anunciantes_pontos proprio
                   WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = $4::int)))
       AND ($2::int IS NULL OR a.id <> $2)
-    GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos, p.limite_criativos
+    GROUP BY a.id, a.conta_propria, a.data_expiracao, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
+             p.limite_criativos
   `,
-    [categoriaDoPonto || null, excluirContaId || null, donoDoPonto || null, pontoId || null],
+    [categoriaDoPonto || null, excluirContaId || null, donoDoPonto || null, pontoId || null, qualquerValidade],
   );
 
   return rows.map((r) => {
@@ -213,9 +226,22 @@ function duracaoMedia(criativos) {
 // continua no saldo do banco — carregar ela aqui também a devolveria duas
 // vezes. A confirmada conta primeiro pra entrega normal (mesma regra da
 // liquidação, src/bancohoras/apuracao.js).
-async function deficitHoraAnterior(dispositivoId, horaAnterior) {
+//
+// Saldo de Veiculação (27/09/2026):
+// - hora anterior FECHADA não tem linha (não grava programada) — nada rola
+//   pra dentro da madrugada, e o não entregue da última hora aberta fica
+//   como não entregue daquela hora (vira saldo na apuração), em vez de rolar
+//   a noite inteira e estourar na abertura;
+// - hora anterior PARCIAL só devolve o que caberia nos minutos abertos dela
+//   (a peça programada no pedaço fechado não tocou porque a tela estava
+//   apagada, não porque falhou);
+// - não cruza competência: o não entregue da última hora do mês fica no mês.
+async function deficitHoraAnterior(dispositivoId, horaAnterior, horaAtual) {
+  if (vigencia.hojeComercial(horaAnterior).slice(0, 7) !== vigencia.hojeComercial(horaAtual).slice(0, 7)) return {};
   const { rows } = await pool.query(
-    `SELECT anunciante_id, GREATEST(vezes_programadas - vezes_banco - vezes_confirmadas, 0) AS deficit
+    `SELECT anunciante_id,
+            GREATEST(FLOOR((vezes_programadas - vezes_banco) * COALESCE(minutos_abertos, 60) / 60.0)
+                     - vezes_confirmadas, 0)::int AS deficit
      FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2`,
     [dispositivoId, horaAnterior],
   );
@@ -235,22 +261,82 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior) {
 // da confirmação — e separado em `vezes_banco`). `banco_liquidado_em` nunca é
 // regravado aqui: a base da hora é congelada, então `vezes_banco` não muda
 // entre as gerações da mesma hora.
-async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {}, banco = {}) {
+//
+// `obrigacao` ({ [anuncianteId]: { segundos, duracao } }) e `minutosAbertos`
+// (Saldo de Veiculação, migration 100): o tempo que a conta tinha direito
+// nesta tela nesta hora e a duração usada. Gravados UMA vez — a primeira
+// geração da hora fixa o número, e os polls seguintes não reescrevem
+// (COALESCE), como a base congelada da hora.
+async function gravarProgramados(
+  dispositivo,
+  horaAtual,
+  contagem,
+  pedidos = {},
+  banco = {},
+  obrigacao = {},
+  minutosAbertos = 60,
+) {
   const anunciantes = new Set([...Object.keys(contagem), ...Object.keys(pedidos)]);
   await Promise.all(
     [...anunciantes].map((anuncianteId) => {
       const vezes = contagem[anuncianteId] || 0;
       const doBanco = banco[anuncianteId] || 0;
       const pedidas = pedidos[anuncianteId] ?? vezes - doBanco;
+      const devida = obrigacao[anuncianteId] || {};
       return pool.query(
-        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco)
-     VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
+                                         segundos_obrigacao, duracao_segundos, minutos_abertos)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
-     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6`,
-        [anuncianteId, dispositivo.id, horaAtual, vezes, pedidas, doBanco],
+     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6,
+                   segundos_obrigacao = COALESCE(exibicoes_contador.segundos_obrigacao, EXCLUDED.segundos_obrigacao),
+                   duracao_segundos = COALESCE(exibicoes_contador.duracao_segundos, EXCLUDED.duracao_segundos),
+                   minutos_abertos = COALESCE(exibicoes_contador.minutos_abertos, EXCLUDED.minutos_abertos)`,
+        [
+          anuncianteId,
+          dispositivo.id,
+          horaAtual,
+          vezes,
+          pedidas,
+          doBanco,
+          devida.segundos ?? 0,
+          devida.duracao ?? DURACAO_PADRAO,
+          minutosAbertos,
+        ],
       );
     }),
   );
+}
+
+// Quantos minutos da hora o ponto desta tela opera — a mesma régua que o
+// Player usa pra apagar a tela (src/lib/operacao-tela.js).
+function minutosAbertosNaHora(dispositivo, de, ate) {
+  return Math.round(minutosOperando(operacaoDoPonto(dispositivo.ponto_horario_semanal, de), de, ate));
+}
+
+// Os números de uma conta numa tela: duração da hora, inserções pedidas na
+// base (T1) e além dela (T2, compensação da RN-49 até o teto) e a obrigação
+// por hora cheia (RN-49 sem teto — `segundosDeObrigacao`). Um lugar só, usado
+// pela geração e pela obrigação da hora sem sinal: as duas nunca divergem.
+function numerosDaConta(conta, pontosCobertos, telasDoPonto) {
+  const duracaoSegundos = duracaoMedia(conta.criativos);
+  // RN-49: enquanto a rede for menor que o plano, o tempo dos pontos que
+  // faltam volta pros que veiculam (até o teto por tela).
+  const segundos = segundosCompensados(conta.segundos_por_hora, conta.pontos_incluidos, pontosCobertos);
+  // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
+  // da peça que o cliente subiu (RN-39). `frequencia_hora * duração` é a
+  // ponte pra plano legado sem `segundos_por_hora`.
+  const total = quantasInsercoes(conta, segundos, duracaoSegundos);
+  const base = Math.min(total, quantasInsercoes(conta, Number(conta.segundos_por_hora) || 0, duracaoSegundos));
+  const obrigacaoHoraCheia = {
+    segundosPorHora: conta.segundos_por_hora,
+    frequenciaHora: conta.frequencia_hora,
+    pontosIncluidos: conta.pontos_incluidos,
+    pontosCobertos,
+    duracaoSegundos,
+    telasDoPonto,
+  };
+  return { duracaoSegundos, base, compensacao: total - base, total, obrigacaoHoraCheia };
 }
 
 // Mídia Mostraí: quantas vezes cada mídia foi PROGRAMADA nesta tela nesta
@@ -316,11 +402,24 @@ async function obterVideoInstitucional() {
 
 // `dispositivo` é o objeto de dispositivosRepo.buscarComPonto (já traz a
 // categoria, o horário, a cota e o dono do ponto).
-async function gerarPlaylistDaHora(dispositivo, hora) {
+//
+// `agora` (relógio injetável dos testes; padrão, o de verdade): só decide
+// quanto da hora sobra pra quem chega no meio dela (obrigação de `extras`).
+async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const horaAtual = new Date(hora);
   horaAtual.setMinutes(0, 0, 0);
   const horaAnterior = new Date(horaAtual);
   horaAnterior.setHours(horaAnterior.getHours() - 1);
+  const fimDaHora = new Date(horaAtual.getTime() + 3_600_000);
+  // PONTO FECHADO ≠ FALHA DE ENTREGA (Saldo de Veiculação, 27/09/2026). O
+  // Player continua pedindo playlist com a loja fechada (só não toca), e
+  // até aqui a hora fechada gravava programada comercial: o não confirmado
+  // rolava a madrugada inteira e virava saldo falso na abertura. Hora sem
+  // nenhum minuto aberto responde a playlist (técnico), mas não nasce
+  // obrigação, programada, reposição nem banco. Hora parcial deve só os
+  // minutos abertos.
+  const minutosAbertos = minutosAbertosNaHora(dispositivo, horaAtual, fimDaHora);
+  const aberta = minutosAbertos > 0;
 
   // O DONO DO PONTO PASSA NA PRÓPRIA TELA (decisão do dono, 17/09/2026 —
   // fecha o item 28 de docs/PENDENCIAS.md).
@@ -348,7 +447,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         dispositivo.dono_conta_id,
         dispositivo.ponto_id,
       ),
-      deficitHoraAnterior(dispositivo.id, horaAnterior),
+      aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
       criativosDoDono(dispositivo.dono_conta_id),
       pontosEmOperacao(),
       bancoHorasRepo.saldosAtivos(),
@@ -384,58 +483,53 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   const porId = Object.fromEntries(anunciantes.map((a) => [a.id, a]));
 
   // Frequência é por hora direto agora (migration 037) — sem conversão por
-  // horário do ponto. O que o plano diz é o que roda, hora a hora.
+  // horário do ponto. O que o plano diz é o que roda, hora a hora (RN-39: o
+  // plano compra SEGUNDOS da hora; quantas inserções isso vira depende da
+  // peça que o cliente subiu — `numerosDaConta`).
   //
-  // A duração entra junto porque a hora passou a ser orçada em SEGUNDOS
-  // (src/lib/pacing.js): quem revezar entre peças de durações diferentes ocupa
-  // a média delas, que é o que de fato acontece ao longo da hora.
+  // Camadas da hora (src/lib/pacing.js#montarHoraDeTv): `frequenciaBase` é a
+  // base (T1); `compensacao` (RN-49 além da base) e `deficit` (reposição da
+  // hora anterior) são T2; `banco` é T3.
   const entrada = anunciantes.map((a) => {
-    const duracaoSegundos = duracaoMedia(a.criativos);
-    // RN-49: enquanto a rede for menor que o plano, o tempo dos pontos que
-    // faltam volta pros que veiculam.
-    const segundos = segundosCompensados(a.segundos_por_hora, a.pontos_incluidos, cobertura.get(a.id).length);
-    // O plano compra SEGUNDOS da hora; quantas inserções isso vira depende
-    // da peça que o cliente subiu. Seis de 15s e três de 30s ocupam o mesmo
-    // lugar, e é por isso que a duração deixou de ser eixo de inventário.
-    //
-    // `frequencia_hora * duração` é a ponte pra quem ainda não tem
-    // `segundos_por_hora` preenchido: mantém o comportamento de antes até a
-    // grade nova ser publicada, em vez de zerar a playlist de todo mundo.
-    const frequenciaBase = quantasInsercoes(a, segundos, duracaoSegundos);
-    // Banco de horas (G.3): quem tem saldo DISPONÍVEL (déficit de mês
-    // anterior ainda não devolvido, menos o que outra hora já programou e
-    // ainda não liquidou) pede exibições a mais — mas só no tempo que a hora
-    // vendida deixou livre (`banco` em src/lib/pacing.js#montarHoraDeTv):
-    // nunca tira a entrega corrente de ninguém. Capado no próprio pedido da
-    // hora, crescendo com a idade da dívida (`multiplicadorPorIdade`).
+    const cobertos = cobertura.get(a.id).length;
+    const n = numerosDaConta(a, cobertos, dispositivo.telas_do_ponto);
+    // Saldo de Veiculação (banco de horas): quem tem saldo DISPONÍVEL (dívida
+    // de mês anterior ainda não devolvida, menos o que outra hora já
+    // programou e ainda não liquidou) pede exibições a mais — mas só no tempo
+    // que T1 e T2 deixaram livre: nunca tira a entrega corrente de ninguém.
+    // Capado no próprio pedido da hora, crescendo com a idade da dívida
+    // (`multiplicadorPorIdade`). O saldo é em SEGUNDOS (migration 100);
+    // aqui vira inserções da peça de hoje.
     //
     // O saldo é da conta, não da tela — mas a playlist é gerada UMA TELA
     // por vez, e quem cobre vários pontos tem esta função rodando em
     // paralelo pra cada um, todas lendo o MESMO saldo ainda intacto. Sem
     // dividir, uma conta em 3 pontos puxaria o saldo inteiro 3 vezes na
-    // mesma hora — a dívida "paga" triplicada, à custa de quem mais
-    // partilha aquelas telas. Divide por `cobertura.get(a.id).length`, a
-    // mesma fatia que a RN-49 já usa pra ratear segundos entre pontos —
-    // ela existe pra resolver exatamente este problema, com outro número.
-    // Arredonda pra cima: saldo menor que o número de pontos (2 exibições em
-    // 3 pontos) nunca podia virar 0 pra sempre; a sobra é de no máximo uma
-    // exibição por ponto, e a liquidação nunca abate mais que o saldo.
+    // mesma hora. Divide pelos pontos cobertos (a mesma fatia da RN-49).
+    // Arredonda pra cima: saldo menor que o número de pontos nunca podia
+    // virar 0 pra sempre; a sobra é de no máximo uma exibição por ponto, e a
+    // liquidação nunca abate mais que o saldo.
     //
     // O multiplicador de idade acelera o RITMO (teto por hora), nunca o
-    // tamanho da dívida: até 25/09/2026 ele multiplicava também a fatia do
-    // saldo, e 10 exibições devidas viravam 16 programadas.
+    // tamanho da dívida. Hora fechada não programa banco (nada toca).
     const bancoDaConta = saldosBanco[a.id];
     const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
-    const prioridadeBanco = Math.min(
-      Math.ceil((bancoDaConta?.saldo || 0) / cobertura.get(a.id).length),
-      Math.floor(frequenciaBase * multiplicadorBanco),
-    );
+    const prioridadeBanco = aberta
+      ? Math.min(
+          Math.ceil((bancoDaConta?.segundos || 0) / cobertos / duracaoValida(n.duracaoSegundos)),
+          Math.floor(n.total * multiplicadorBanco),
+        )
+      : 0;
     return {
       id: a.id,
-      frequenciaBase,
+      frequenciaBase: n.base,
+      compensacao: n.compensacao,
       deficit: deficits[a.id] || 0,
       banco: prioridadeBanco,
-      duracaoSegundos,
+      duracaoSegundos: n.duracaoSegundos,
+      // Congelada junto com a hora: a obrigação desta tela nesta hora não
+      // muda entre os polls (nem se a rede mudar no meio da hora).
+      obrigacaoSegundos: segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos }),
     };
   });
 
@@ -535,7 +629,30 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   // mensal). Até 25/09/2026 drenava aqui, no programado: TV desligada
   // consumia a dívida sem entregar nada.
   const banco = { ...daHora.bancoProgramados };
-  await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco);
+  if (aberta) {
+    // Obrigação de cada conta nesta tela nesta hora: a da base congelada (a
+    // primeira geração da hora fixa o número); quem chegou depois (`extras`)
+    // deve só o que sobra da hora aberta a partir de agora.
+    const obrigacao = {};
+    const atualPorId = new Map(entrada.map((e) => [String(e.id), e]));
+    for (const e of congelada.base) {
+      if (e.id === 'dono' || String(e.id).startsWith('midia:')) continue;
+      const segundos = e.obrigacaoSegundos ?? atualPorId.get(String(e.id))?.obrigacaoSegundos ?? 0;
+      obrigacao[e.id] = { segundos, duracao: e.duracaoSegundos };
+    }
+    const desde = new Date(Math.min(Math.max(new Date(agora).getTime(), horaAtual.getTime()), fimDaHora.getTime()));
+    const restantes = minutosAbertosNaHora(dispositivo, desde, fimDaHora);
+    for (const id of new Set(idsExtras)) {
+      if (id === 'dono' || String(id).startsWith('midia:') || obrigacao[id]) continue;
+      const atual = atualPorId.get(String(id));
+      if (!atual) continue;
+      obrigacao[id] = {
+        segundos: Math.round((atual.obrigacaoSegundos * restantes) / minutosAbertos),
+        duracao: atual.duracaoSegundos,
+      };
+    }
+    await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco, obrigacao, minutosAbertos);
+  }
 
   // Ponto de partida do revezamento gira por hora (19/09/2026, furo real
   // encontrado a partir de um relato do dono: "rodou só uma vez e não rodou
@@ -637,6 +754,43 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
     servidorAgora: new Date().toISOString(),
     itens,
   };
+}
+
+// Obrigação por hora cheia de cada conta que cobre esta tela HOJE — para a
+// hora aberta em que a tela não pediu playlist (sem sinal): a obrigação
+// existia, a entrega não (src/bancohoras/obrigacao.js). Mesma elegibilidade,
+// cobertura e conta da geração (`numerosDaConta`); a validade do plano é
+// conferida hora a hora por quem chama (`dataExpiracao`).
+async function obrigacoesDaTela(dispositivo) {
+  const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
+  const [todos, pontosNoAr, pontosBloqueados] = await Promise.all([
+    anunciantesElegiveis(
+      dispositivo.categoria_id,
+      cotaDaTela > 0 ? dispositivo.dono_conta_id : null,
+      dispositivo.dono_conta_id,
+      dispositivo.ponto_id,
+      { qualquerValidade: true },
+    ),
+    pontosEmOperacao(),
+    pontosRepo.idsBloqueadosParaEscolha(),
+  ]);
+  const contas = [];
+  for (const a of todos) {
+    const cobertura = pontosDoAnunciante(
+      { id: a.id, pontosIncluidos: a.pontos_incluidos, escolhidos: a.pontos_escolhidos },
+      pontosNoAr,
+      pontosBloqueados,
+    );
+    if (!cobertura.includes(dispositivo.ponto_id)) continue;
+    const n = numerosDaConta(a, cobertura.length, dispositivo.telas_do_ponto);
+    contas.push({
+      anuncianteId: a.id,
+      dataExpiracao: a.data_expiracao,
+      duracaoSegundos: n.duracaoSegundos,
+      obrigacaoHoraCheia: n.obrigacaoHoraCheia,
+    });
+  }
+  return contas;
 }
 
 // Proof-of-play offline (docs/player-mvp-contract.md §8): o evento vale até
@@ -827,6 +981,8 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
 
 module.exports = {
   gerarPlaylistDaHora,
+  obrigacoesDaTela,
+  minutosAbertosNaHora,
   confirmarExecucao,
   limiteDeCriativos,
   PRAZO_PROOF_OF_PLAY_DIAS,

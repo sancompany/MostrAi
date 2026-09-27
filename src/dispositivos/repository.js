@@ -80,6 +80,20 @@ async function buscarComPonto(dispositivoId) {
   return rows[0] || null;
 }
 
+// Telas que deveriam estar veiculando: ativas, não revogadas, num ponto em
+// operação — com a mesma projeção do gerador (buscarComPonto). Usada pela
+// obrigação da hora sem sinal (src/bancohoras/obrigacao.js).
+async function listarAtivasComPonto({ apenasTelas = null } = {}) {
+  const { rows } = await pool.query(
+    `${SELECT_TELA}
+      WHERE d.status = 'ativo' AND d.revogado_em IS NULL AND p.status = 'em_operacao'
+        AND ($1::int[] IS NULL OR d.id = ANY($1))
+      ORDER BY d.id`,
+    [apenasTelas],
+  );
+  return rows;
+}
+
 async function buscarLinha(id) {
   if (!/^\d{1,9}$/.test(String(id))) return null;
   const { rows } = await pool.query(`${SELECT_TELA} WHERE d.id = $1`, [id]);
@@ -474,6 +488,7 @@ module.exports = {
   INSTALACAO_VALIDADE_MIN,
   INSTALACAO_TENTATIVAS,
   buscarComPonto,
+  listarAtivasComPonto,
   buscarLinha,
   buscarPorId,
   paraAdmin,

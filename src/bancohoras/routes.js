@@ -7,19 +7,28 @@ const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 // outra conta. Só as linhas 'ativo' (o que ainda vai voltar em exibição);
 // linha 'drenado' já foi entregue. 'aguardando_credito' é histórico da
 // válvula que saiu em 25/09/2026 (banco de horas não expira).
+//
+// Saldo de Veiculação (27/09/2026): a conta é em TEMPO (`segundos`, a
+// autoridade). `exibicoesEquivalentes` é derivado — quantas vezes a peça que
+// roda HOJE (`duracaoReferencia`) precisa tocar pra devolver esse tempo; muda
+// se a peça mudar, o tempo não. `saldo` (exibições) continua no corpo pra
+// leitura antiga e é o mesmo número de `exibicoesEquivalentes`.
 router.get('/anunciantes/me/banco-horas', exigirAnuncianteLogado, async (req, res) => {
   const minhas = await repo.listarAtivasDoAnunciante(req.session.anuncianteId);
-  const saldo = minhas.reduce((soma, l) => soma + (l.exibicoes_banco - l.exibicoes_drenadas), 0);
-  // `segundos` é só pra virar tempo na tela (pedido do dono, 18/09/2026) —
-  // exibições × duração ATUAL da peça, a mesma estimativa sem histórico que
-  // já vale em toda esta feature (ver RN-53). Zero saldo não busca duração.
-  const duracaoMedia = saldo > 0 ? await repo.duracaoMediaDoAnunciante(req.session.anuncianteId) : 0;
+  const segundos = minhas.reduce((soma, l) => soma + (l.segundos_banco - l.segundos_drenados), 0);
+  const duracaoReferencia = segundos > 0 ? await repo.duracaoMediaDoAnunciante(req.session.anuncianteId) : 0;
+  const exibicoesEquivalentes = segundos > 0 ? Math.ceil(segundos / duracaoReferencia) : 0;
   res.json({
-    saldo,
-    segundos: saldo * duracaoMedia,
+    segundos,
+    exibicoesEquivalentes,
+    duracaoReferencia,
+    saldo: exibicoesEquivalentes,
     linhas: minhas.map((l) => ({
       mesReferencia: l.mes_referencia,
-      saldo: l.exibicoes_banco - l.exibicoes_drenadas,
+      segundosContratados: l.segundos_obrigacao,
+      segundosEntregues: l.segundos_entregues,
+      segundosPendentes: l.segundos_banco - l.segundos_drenados,
+      segundosCompensados: l.segundos_drenados,
     })),
   });
 });
