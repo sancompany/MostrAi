@@ -4663,6 +4663,29 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 - **Renovação atrasada da assinatura antiga** (revisão Codex): se uma renovação da assinatura que o cliente trocou chega depois do plano novo pago, os dias contam mas o plano escolhido depois continua (com ou sem benefício); o benefício não é encerrado por ela.
 - **Nota:** se o plano pago novo for de nível MAIOR que o benefício em vigor, o pagamento dele encerra o benefício (ADR-016, com o aviso que já existe antes de pagar). O caso "benefício continua" é o do pago igual ou menor.
 
+## Admin — recuperação de loading e erro sem F5 (27/09/2026)
+
+**[x] Construído e testado — PR aberto, NÃO mergeado, aguardando o dono** (`public/admin/carga.js`).
+- **Causa raiz do "Atualizar não resolve, F5 resolve":** todo `/admin/*` passa pelo Cloudflare Access. Com a sessão do Access vencida, a API responde **302** pro login em `cloudflareaccess.com` (conferido com um GET anônimo em produção). O `fetch` seguia o redirect, esbarrava no CORS e virava "sem conexão"; o Atualizar repetia a mesma falha pra sempre, e só o F5 (uma navegação) passava pelo login. Agora a leitura não segue redirect: o 302 vira "Sua sessão de acesso ao admin expirou" com [Entrar de novo].
+- **Outras causas achadas:**
+  - nenhuma leitura tinha prazo (loading infinito);
+  - trocar de rota ou atualizar não cancelava a leitura anterior, e a resposta que voltasse por último desenhava, às vezes a da tela que já tinha sido deixada;
+  - o erro só dizia "Clique em Atualizar", sem retry local;
+  - falha na abertura ("verificar sessão") mandava recarregar a página;
+  - blocos da Visão geral (ocupação, promoção) ficavam em "Carregando..." pra sempre se falhassem;
+  - a ficha da tela tratava qualquer erro (até 500) como "Tela não encontrada".
+- **Agora:**
+  - cada navegação é uma geração com o próprio `AbortController` e o próprio contêiner;
+  - toda leitura tem prazo de 20 s e uma nova tentativa só pro que reenviar resolve (rede, 5xx, 429);
+  - erro mostra [Tentar novamente], que refaz só aquela carga;
+  - Atualizar que falha com dados na tela mantém os dados, com aviso;
+  - 401 volta pro login da própria página, e 403 não oferece repetir;
+  - evento SSE refaz a tela pelo mesmo caminho do Atualizar;
+  - 200 + [] continua vazio, e erro nunca vira "nenhum item".
+- **Pequenos:** o campo de preço-base (Ofertas › Preços) deixou de cortar "159,99"; a descrição da Mídia Mostraí agora é "Conteúdo próprio e capacidade de veiculação da rede." (menu não mudou).
+- **Testes:** `tests/admin-carga.test.js` (12, fetch falso) e e2e `tests/e2e/24-admin-sem-f5.mjs` (falhas simuladas com `page.route`; nenhum `page.reload()`, e o roteiro confere que não houve recarga). O mesmo e2e contra o admin da main trava já no primeiro caso (não existe [Tentar novamente]).
+- **Não mexido:** layout das telas aprovadas, Pontos/Telas, Contas, promoções, preços (valor/cálculo/salvamento), créditos, benefícios, Player, Checkout, e-mails, webhook.
+
 ## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
 
 **[x] Construído e testado** (migration 096, `src/financeiro/webhook-inbox.js`,

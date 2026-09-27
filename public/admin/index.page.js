@@ -7,48 +7,15 @@ function api(caminho, opts = {}) {
   });
 }
 
-// Erro tipado de leitura — carrega o status HTTP (0 = rede fora do ar/sem
-// resposta) pra quem chama decidir o que fazer sem reabrir o corpo.
-class ErroApi extends Error {
-  constructor(status, corpo) {
-    super(corpo?.erro || `erro ${status}`);
-    this.status = status;
-  }
-}
-
-// GET com JSON — achado na investigação do bug "admin abre com mensagem de
-// erro, F5 resolve" (Fase 2, 23/09/2026): esta função nunca conferia
-// `response.ok`, então uma falha transitória (cold start, blip de rede,
-// sessão ainda não propagada) devolvia o CORPO DE ERRO (`{erro:'...'}`) como
-// se fosse o dado esperado — o primeiro código que desmontava esse objeto
-// (ex.: `const {filas} = RESUMO` em renderResumo) quebrava com TypeError,
-// pego pelo catch genérico de `renderModulo`, que é exatamente a mensagem
-// que aparecia. F5 "resolvia" só por recarregar do zero, quando a segunda
-// tentativa já pegava o backend aquecido — não é conserto, é sorte.
-// Retry de uma tentativa só, sem backoff longo, e só pra falha que reenviar
-// pode resolver (rede caiu no meio, 5xx de cold start, 429): erro de
-// autenticação/validação (401/403/404) nunca tenta de novo, porque reenviar
-// não muda o resultado.
-async function pegar(caminho, tentativasRestantes = 1) {
-  let resposta;
-  try {
-    resposta = await api(caminho);
-  } catch {
-    if (tentativasRestantes > 0) {
-      await new Promise((r) => setTimeout(r, 700));
-      return pegar(caminho, tentativasRestantes - 1);
-    }
-    throw new ErroApi(0, { erro: 'sem conexão com o servidor' });
-  }
-  if (!resposta.ok) {
-    const corpo = await resposta.json().catch(() => ({}));
-    if (tentativasRestantes > 0 && (resposta.status >= 500 || resposta.status === 429)) {
-      await new Promise((r) => setTimeout(r, 700));
-      return pegar(caminho, tentativasRestantes - 1);
-    }
-    throw new ErroApi(resposta.status, corpo);
-  }
-  return resposta.json();
+// Leitura (GET): passa por public/admin/carga.js — prazo de 20 s, sem seguir
+// redirect (sessão do Cloudflare Access vencida vira erro "entre de novo",
+// não "sem conexão"), uma nova tentativa só pro que reenviar resolve, e
+// cancelada quando a navegação muda (NAVEGACAO, abaixo). Histórico: a Fase 2
+// (23/09/2026) já tinha feito esta função conferir `response.ok` — antes o
+// corpo de erro virava "dado" e quebrava a tela com TypeError.
+const NAVEGACAO = window.CargaAdmin.criarNavegacao();
+function pegar(caminho) {
+  return window.CargaAdmin.pegarJson(`${API_BASE_URL}${caminho}`, { sinal: NAVEGACAO.sinal });
 }
 
 function fmt(v) {
@@ -823,7 +790,7 @@ const SUBTITULOS = {
     'Eventos do San Checkout que não deram pra aplicar sozinhos: confira no Checkout e aplique o ciclo, ou marque resolvido.',
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
-  meusanuncios: 'Conteúdo institucional da própria rede.',
+  meusanuncios: 'Conteúdo próprio e capacidade de veiculação da rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
 };
@@ -926,16 +893,66 @@ function subtituloDe(moduloId, abaId) {
 // não pisca, e cada função de render continua recebendo o mesmo tipo de `el`
 // que sempre recebeu, só que agora pode ser o container da aba em vez do
 // container da página inteira.
-async function renderModulo(el, modulo, abaId, resto) {
+// Estado de erro de uma tela ou bloco (estação Admin sem F5, 27/09/2026):
+// toda carga termina em PRONTO/VAZIO (a própria tela desenha) ou ERRO (aqui).
+// O desfecho vem de carga.js: sessão caída pede "Entrar de novo" (nunca
+// repetir a leitura), sem permissão não oferece nada, o resto oferece
+// [Tentar novamente], que refaz só esta carga — sem recarregar a página.
+function mostrarErroDeCarga(el, err, tentar) {
+  const d = window.CargaAdmin.desfecho(err);
+  if (!d) return; // leitura cancelada: a tela nova já está chegando
+  if (d.acao === 'entrar') return sessaoCaiu(d);
+  el.innerHTML = `<div class="erro-carga" role="alert">
+    <p class="form-msg err">${esc(d.texto)}</p>
+    ${d.acao === 'tentar' && tentar ? '<button type="button" class="btn ghost mini" data-tentar-de-novo>Tentar novamente</button>' : ''}
+  </div>`;
+  el.querySelector('[data-tentar-de-novo]')?.addEventListener('click', () => tentar());
+}
+
+// Sessão caiu no meio do uso. Sessão do ADMIN (401 da nossa API): volta pro
+// formulário de login que já existe nesta página, sem perder o endereço.
+// Sessão do CLOUDFLARE ACCESS (302 pro login dele): o único jeito de
+// renovar é uma navegação — o botão abre a mesma rota de novo, e o Access
+// devolve a pessoa pra cá. Nunca repete leitura (repetir não muda nada).
+function sessaoCaiu(d) {
+  NAVEGACAO.nova(); // cancela o que ainda estiver voando
+  document.getElementById('app').hidden = true;
+  document.getElementById('gate').hidden = false;
+  const msg = document.getElementById('gateMsg');
+  msg.className = 'form-msg err';
+  if (d.acesso) {
+    msg.innerHTML = `${esc(d.texto)} <button type="button" class="btn ghost mini" id="btnEntrarDeNovo">Entrar de novo</button>`;
+    document.getElementById('btnEntrarDeNovo').addEventListener('click', () => location.assign(location.href));
+  } else {
+    msg.textContent = d.texto;
+  }
+}
+
+// Módulo sem abas (Anunciantes, Vendedores, Custos, Pendências) renderiza
+// direto no container, igual sempre foi. Módulo com abas monta a fileira de
+// abas uma vez e só troca o conteúdo de dentro ao mudar de aba — a fileira
+// não pisca, e cada função de render continua recebendo o mesmo tipo de `el`
+// que sempre recebeu, só que agora pode ser o container da aba em vez do
+// container da página inteira.
+//
+// Devolve 'ok' | 'erro' | 'velha'. `geracao`: a navegação que pediu esta
+// carga — se outra começou no meio, o resultado desta não desenha nada
+// (resposta velha nunca pinta por cima da tela nova).
+async function renderModulo(el, modulo, abaId, resto, geracao = NAVEGACAO.geracao) {
+  const falhou = (alvo, err, rotulo) => {
+    if (!NAVEGACAO.vigente(geracao)) return 'velha';
+    if (!err?.cancelada) console.error(`falha ao montar ${rotulo}`, err);
+    mostrarErroDeCarga(alvo, err, () => recarregarTela());
+    return 'erro';
+  };
   if (!modulo.abas) {
     el.textContent = 'Carregando...';
     try {
       await modulo.render(el, resto);
     } catch (err) {
-      console.error(`falha ao montar o módulo ${modulo.id}`, err);
-      el.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
+      return falhou(el, err, `o módulo ${modulo.id}`);
     }
-    return;
+    return NAVEGACAO.vigente(geracao) ? 'ok' : 'velha';
   }
 
   const abaAtiva = modulo.abas.find((a) => a.id === abaId) || modulo.abas[0];
@@ -956,20 +973,32 @@ async function renderModulo(el, modulo, abaId, resto) {
     btn.addEventListener('click', () => irPara(`${modulo.id}/${btn.dataset.aba}`)),
   );
 
-  const subEl = document.getElementById('abaConteudo');
+  // Dentro DESTE `el` (não no documento): um render velho, num palco já
+  // desanexado, acharia pelo id o conteúdo da aba da tela nova.
+  const subEl = el.querySelector('#abaConteudo');
   try {
     await abaAtiva.render(subEl, resto);
   } catch (err) {
-    console.error(`falha ao montar a aba ${modulo.id}/${abaAtiva.id}`, err);
-    subEl.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
+    return falhou(subEl, err, `a aba ${modulo.id}/${abaAtiva.id}`);
   }
+  return NAVEGACAO.vigente(geracao) ? 'ok' : 'velha';
+}
+
+// Refaz a tela atual (botão Atualizar, [Tentar novamente], evento SSE):
+// mesma rota, dados novos, sem recarregar a página.
+function recarregarTela() {
+  return irPara(location.hash.slice(1) || 'visaogeral', true);
 }
 
 async function irPara(alvoBruto, forcarResumo) {
   const { moduloId, abaId, resto } = resolverAlvo(alvoBruto);
+  // Nova geração: as leituras da tela anterior (ou do Atualizar anterior)
+  // são canceladas aqui, e nada que ainda volte delas desenha.
+  const geracao = NAVEGACAO.nova();
   // Saindo da ficha de uma conta: fecha o canal de eventos dela (a ficha abre
   // o próprio ao desenhar — ver ligarEventosDaFicha).
   if (EVENTOS_FICHA && !(moduloId === 'contas' && resto === String(EVENTOS_FICHA.contaId))) fecharEventosDaFicha();
+  const mesmaTela = ABA_ATUAL.modulo === moduloId && ABA_ATUAL.aba === abaId && ABA_ATUAL.resto === resto;
   ABA_ATUAL = { modulo: moduloId, aba: abaId, resto };
   const canonico = [moduloId, abaId, resto].filter(Boolean).join('/');
   const modulo = buscarModulo(moduloId);
@@ -998,27 +1027,59 @@ async function irPara(alvoBruto, forcarResumo) {
   if (location.hash !== `#${canonico}`) location.hash = canonico;
 
   const conteudoEl = document.getElementById('conteudo');
+  // Atualizar a MESMA tela que já tinha dados: guarda o que estava na tela.
+  // Se a atualização falhar, os dados anteriores voltam (com um aviso) em vez
+  // de a tela inteira virar erro.
+  const anterior =
+    mesmaTela && forcarResumo && !conteudoEl.querySelector('.erro-carga') && conteudoEl.childElementCount
+      ? [...conteudoEl.childNodes]
+      : null;
   if (!RESUMO || forcarResumo) {
+    if (anterior) conteudoEl.replaceChildren(document.createTextNode('Carregando...'));
     try {
-      RESUMO = await pegar('/admin/resumo');
+      const resumo = await pegar('/admin/resumo');
+      if (!NAVEGACAO.vigente(geracao)) return;
+      RESUMO = resumo;
     } catch (err) {
-      console.error('falha ao carregar /admin/resumo', err);
-      conteudoEl.innerHTML = '<p class="form-msg err">Não foi possível carregar esta seção. Clique em Atualizar.</p>';
-      return;
+      if (!NAVEGACAO.vigente(geracao)) return;
+      if (!err?.cancelada) console.error('falha ao carregar /admin/resumo', err);
+      if (anterior && window.CargaAdmin.desfecho(err)?.acao === 'tentar') return restaurarTela(conteudoEl, anterior);
+      return mostrarErroDeCarga(conteudoEl, err, () => recarregarTela());
     }
     pintarContadores();
   }
 
-  await renderModulo(conteudoEl, modulo, abaId, resto);
+  // Cada navegação desenha no PRÓPRIO palco. Um render de uma tela anterior
+  // que ainda termine (uma segunda leitura feita depois da troca, fora do
+  // alcance do cancelamento) escreve num nó já fora da página — ninguém vê.
+  const palco = document.createElement('div');
+  palco.className = 'palco-tela';
+  conteudoEl.replaceChildren(palco);
+  const resultado = await renderModulo(palco, modulo, abaId, resto, geracao);
+  // Falha recuperável depois de já ter dados: os dados anteriores voltam.
+  if (resultado === 'erro' && anterior && palco.querySelector('.erro-carga [data-tentar-de-novo]')) {
+    restaurarTela(conteudoEl, anterior);
+  }
+}
+
+// Devolve à tela o que estava nela antes de um Atualizar que falhou, com um
+// aviso no topo — os dados continuam lá, só não estão atualizados.
+function restaurarTela(conteudoEl, anterior) {
+  const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const aviso = document.createElement('div');
+  aviso.className = 'erro-carga aviso-atualizacao';
+  aviso.setAttribute('role', 'alert');
+  aviso.innerHTML = `<p class="form-msg err">Não foi possível atualizar agora (${hora}) — estes são os dados de antes.</p>
+    <button type="button" class="btn ghost mini" data-tentar-de-novo>Tentar novamente</button>`;
+  aviso.querySelector('[data-tentar-de-novo]').addEventListener('click', () => recarregarTela());
+  conteudoEl.replaceChildren(aviso, ...anterior.filter((n) => !n.classList?.contains('aviso-atualizacao')));
 }
 
 document.getElementById('nav').addEventListener('click', (e) => {
   const btn = e.target.closest('.nav-item');
   if (btn) irPara(btn.dataset.modulo);
 });
-document
-  .getElementById('btnRecarregar')
-  .addEventListener('click', () => irPara(location.hash.slice(1) || 'visaogeral', true));
+document.getElementById('btnRecarregar').addEventListener('click', () => recarregarTela());
 window.addEventListener('hashchange', () => {
   const alvo = location.hash.slice(1) || 'visaogeral';
   const { moduloId, abaId, resto } = resolverAlvo(alvo);
@@ -1105,14 +1166,29 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 // gate. 401 é o caso normal de quem não está logado — fica no gate, sem
 // mensagem nenhuma. Qualquer outra falha (rede, 5xx mesmo depois do retry
 // de `pegar`) agora avisa em vez de deixar o gate parado sem explicação.
-pegar('/admin/resumo')
-  .then((resumo) => mostrarApp(resumo))
-  .catch((err) => {
-    if (err.status === 401) return;
-    const msg = document.getElementById('gateMsg');
-    msg.textContent = 'Não foi possível verificar sua sessão agora. Recarregue a página.';
-    msg.className = 'form-msg err';
-  });
+// Falha que não é "não logado" oferece [Tentar novamente] ali mesmo — antes
+// o texto mandava recarregar a página. Sessão do Access vencida pede
+// "Entrar de novo" (a navegação que o Access exige).
+function verificarSessao() {
+  const msg = document.getElementById('gateMsg');
+  pegar('/admin/resumo')
+    .then((resumo) => {
+      msg.textContent = '';
+      mostrarApp(resumo);
+    })
+    .catch((err) => {
+      if (err.status === 401 && !err.acesso) return;
+      if (err.acesso) return sessaoCaiu(window.CargaAdmin.desfecho(err));
+      msg.className = 'form-msg err';
+      msg.innerHTML = `Não foi possível verificar sua sessão agora. <button type="button" class="btn ghost mini" id="btnVerificarDeNovo">Tentar novamente</button>`;
+      document.getElementById('btnVerificarDeNovo').addEventListener('click', () => {
+        msg.className = 'form-msg';
+        msg.textContent = 'Verificando...';
+        verificarSessao();
+      });
+    });
+}
+verificarSessao();
 
 // ---------- visão geral ----------
 // Alertas de EXCEÇÃO operacional (rodada de integridade, 23/09/2026): só o
@@ -1408,13 +1484,29 @@ async function renderResumo(el) {
     }),
   );
 
-  // Sem await de propósito (não seguram a Visão geral), mas com catch: um
-  // erro aqui deixava o bloco em "Carregando..." pra sempre e sumia do
-  // console.
-  renderOcupacaoRede(document.getElementById('ocupacaoRede')).catch((err) => console.error('ocupação da rede', err));
-  renderPromocaoAtivaResumo(document.getElementById('promocaoAtivaResumo')).catch((err) =>
-    console.error('promoção ativa', err),
-  );
+  // Sem await de propósito (não seguram a Visão geral). Cada bloco falha
+  // SOZINHO: erro na ocupação mostra o erro e [Tentar novamente] só naquele
+  // bloco — o resto da Visão geral continua de pé. Antes o bloco ficava em
+  // "Carregando..." pra sempre (o erro só ia pro console).
+  blocoIndependente(document.getElementById('ocupacaoRede'), renderOcupacaoRede, 'ocupação da rede');
+  blocoIndependente(document.getElementById('promocaoAtivaResumo'), renderPromocaoAtivaResumo, 'promoção ativa');
+}
+
+// Carrega um bloco da tela por conta própria; se falhar, o erro e o
+// [Tentar novamente] ficam no bloco (refaz só ele). Resposta de uma tela que
+// já foi trocada não desenha nada.
+function blocoIndependente(el, render, rotulo) {
+  if (!el) return;
+  const geracao = NAVEGACAO.geracao;
+  render(el).catch((err) => {
+    if (!NAVEGACAO.vigente(geracao) || !el.isConnected) return;
+    if (!err?.cancelada) console.error(rotulo, err);
+    el.hidden = false;
+    mostrarErroDeCarga(el, err, () => {
+      el.innerHTML = '<p class="carregando">Carregando...</p>';
+      blocoIndependente(el, render, rotulo);
+    });
+  });
 }
 
 // Bloco de promoção ativa na Visão geral (reconstrução de Ofertas/
@@ -2673,7 +2765,9 @@ function agendarRecargaRede(atraso = 400) {
     try {
       await VISTA_REDE.recarregar();
     } catch (err) {
-      console.error('rede: falha ao atualizar a vista', err);
+      // Atualização silenciosa: falhou, a vista continua com os dados que
+      // já tinha (e o próximo evento/minuto tenta de novo).
+      if (!err?.cancelada) console.error('rede: falha ao atualizar a vista', err);
     }
   }, atraso);
 }
@@ -2692,23 +2786,27 @@ let recargaAbaAgendada = null;
 function agendarRecargaAba(evento) {
   clearTimeout(recargaAbaAgendada);
   recargaAbaAgendada = setTimeout(async () => {
-    try {
-      RESUMO = await pegar('/admin/resumo');
-      pintarContadores();
-    } catch (err) {
-      console.error('resumo: falha ao atualizar', err);
-    }
     const atual = [ABA_ATUAL.modulo, ABA_ATUAL.aba].filter(Boolean).join('/');
     const alvos = ABAS_REATIVAS[evento] || [];
     const bate = alvos.some((a) => atual === a || atual.startsWith(`${a}/`) || ABA_ATUAL.modulo === a);
-    if (!bate || ABA_ATUAL.resto) return; // ficha aberta: não refaz por baixo
+    // Ficha aberta (`resto`) não é refeita por baixo de quem está nela.
     const ativo = document.activeElement;
     const editando =
       document.querySelector('dialog[open]') ||
       (ativo?.closest('#conteudo') && ['INPUT', 'SELECT', 'TEXTAREA'].includes(ativo.tagName));
-    if (editando) return;
-    const modulo = buscarModulo(ABA_ATUAL.modulo);
-    if (modulo) await renderModulo(document.getElementById('conteudo'), modulo, ABA_ATUAL.aba, ABA_ATUAL.resto);
+    // Só os contadores quando a tela aberta não é a afetada (ou alguém está
+    // editando); senão refaz a tela pelo MESMO caminho do Atualizar — nova
+    // geração, leituras antigas canceladas, dados preservados se falhar.
+    if (!bate || ABA_ATUAL.resto || editando) {
+      try {
+        RESUMO = await pegar('/admin/resumo');
+        pintarContadores();
+      } catch (err) {
+        if (!err?.cancelada) console.error('resumo: falha ao atualizar', err);
+      }
+      return;
+    }
+    await recarregarTela();
   }, 800);
 }
 
@@ -3169,12 +3267,17 @@ let relogioInstalacao = null;
 
 async function renderTelaFicha(el, pontoId, telaId) {
   async function montar() {
-    const r = await api(`/admin/dispositivos/${telaId}`);
-    if (!r.ok) {
+    // Só 404 é "não encontrada"; erro de servidor/rede é ERRO (sobe pro
+    // estado de erro com [Tentar novamente]) — antes todo !ok virava "Tela
+    // não encontrada", e um 500 passava por tela apagada.
+    let t;
+    try {
+      t = await pegar(`/admin/dispositivos/${telaId}`);
+    } catch (err) {
+      if (err.status !== 404) throw err;
       el.innerHTML = `<p class="form-msg err">Tela não encontrada. <a href="#rede/pontos/${pontoId}">Voltar pro ponto</a></p>`;
       return;
     }
-    const t = await r.json();
     const { selo, texto } = situacaoDaTela(t);
     el.innerHTML = `
       ${migalha([
