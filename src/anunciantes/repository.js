@@ -166,8 +166,8 @@ async function buscarPorEmailComSenha(email) {
   return rows[0] || null;
 }
 
-async function buscarPorId(id) {
-  const { rows } = await pool.query(`SELECT ${CAMPOS_PUBLICOS} FROM anunciantes WHERE id = $1`, [id]);
+async function buscarPorId(id, db = pool) {
+  const { rows } = await db.query(`SELECT ${CAMPOS_PUBLICOS} FROM anunciantes WHERE id = $1`, [id]);
   return rows[0] || null;
 }
 
@@ -187,15 +187,17 @@ async function listar() {
   return rows;
 }
 
-async function atualizar(id, entrada) {
+// `db`: transação de quem chama (troca de e-mail grava a conta e a trilha
+// juntas); sem ela, o pool.
+async function atualizar(id, entrada, db = pool) {
   // Mexeu no endereço: as partes e a linha `endereco` composta saem juntas
   // daqui (D5, src/lib/endereco.js) — nenhuma rota compõe por conta própria.
   let dados = entrada;
   if (PARTES.some((p) => entrada[p] !== undefined) || entrada.endereco !== undefined) {
-    dados = { ...entrada, ...colunasDoEndereco(entrada, await buscarPorId(id)) };
+    dados = { ...entrada, ...colunasDoEndereco(entrada, await buscarPorId(id, db)) };
   }
   const campos = Object.keys(dados).filter((c) => CAMPOS_ATUALIZAVEIS.includes(c));
-  if (!campos.length) return buscarPorId(id);
+  if (!campos.length) return buscarPorId(id, db);
 
   const sets = campos.map((campo, i) => `${campo} = $${i + 2}`).join(', ');
   // Mesma normalização de `criar` — quem editar cpf_cnpj por aqui (hoje
@@ -204,8 +206,8 @@ async function atualizar(id, entrada) {
   const valores = campos.map((c) =>
     c === 'cpf_cnpj' ? limparDocumento(dados[c]) : c === 'contato_email' ? normalizarEmail(dados[c]) : dados[c],
   );
-  await pool.query(`UPDATE anunciantes SET ${sets} WHERE id = $1`, [id, ...valores]);
-  return buscarPorId(id);
+  await db.query(`UPDATE anunciantes SET ${sets} WHERE id = $1`, [id, ...valores]);
+  return buscarPorId(id, db);
 }
 
 // Só pode existir uma conta própria (migration 023). Quem pergunta é a rota de

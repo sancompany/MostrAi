@@ -29,8 +29,10 @@ const chave = () => derivar('player-v2');
 // SHA-256 simples dele cai por força bruta offline em minutos se o banco
 // vazar. Com a chave do servidor, o hash sozinho não serve pra nada. Chave
 // própria (outro rótulo HKDF), nunca a mesma da cifra.
-function assinar(texto) {
-  return crypto.createHmac('sha256', derivar('codigo-instalacao')).update(String(texto), 'utf8').digest('hex');
+// `uso` separa as famílias de segredo (código de instalação, código de
+// e-mail): o hash de uma nunca serve na outra.
+function assinar(texto, uso = 'codigo-instalacao') {
+  return crypto.createHmac('sha256', derivar(uso)).update(String(texto), 'utf8').digest('hex');
 }
 
 function fechar(texto) {

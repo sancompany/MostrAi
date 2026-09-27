@@ -812,7 +812,7 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .modal-email .reenviar { margin-top: 14px; background: none; border: 0; color: var(--blue); font-size: .85rem; cursor: pointer; text-decoration: underline; }
 .modal-email .reenviar:disabled { color: var(--text-dim); cursor: default; text-decoration: none; }
 .modal-email .msg { min-height: 1.2em; font-size: .85rem; margin-top: 10px; }
-/* Cronômetro do código (2min, mesma validade do servidor) — fica acima do
+/* Cronômetro do código (prazo que o servidor devolve) — fica acima do
    campo onde a pessoa digita, pra ela ver o prazo sem precisar perguntar. */
 .modal-email .expira { margin: -8px 0 16px; font-size: .8rem; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .modal-email .expira.expirado { color: #a51b1b; }
@@ -1383,12 +1383,19 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
 .modal-email .reenviar { margin-top: 14px; background: none; border: 0; color: var(--blue); font-size: .85rem; cursor: pointer; text-decoration: underline; }
 .modal-email .reenviar:disabled { color: var(--text-dim); cursor: default; text-decoration: none; }
 .modal-email .msg { min-height: 1.2em; font-size: .85rem; margin-top: 10px; }
-/* Cronômetro do código (2min, mesma validade do servidor) — fica acima do
+/* Cronômetro do código (prazo que o servidor devolve) — fica acima do
    campo onde a pessoa digita, pra ela ver o prazo sem precisar perguntar. */
 .modal-email .expira { margin: -8px 0 16px; font-size: .8rem; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .modal-email .expira.expirado { color: #a51b1b; }
 .modal-email .msg.err { color: #a51b1b; }
 .modal-email .msg.ok { color: #0f5c2e; }
+/* Correção do e-mail do cadastro: campos de texto comuns, não o campo
+   grande e espaçado do código. */
+.modal-email .corrigir { text-align: left; gap: 6px; }
+.modal-email .corrigir label { font-size: .85rem; font-weight: 600; }
+.modal-email .corrigir input { font-size: 1rem; letter-spacing: normal; text-align: left; margin-bottom: 6px; }
+.modal-email .corrigir .btn { margin-top: 6px; }
+.modal-email .reenviar { display: block; margin-left: auto; margin-right: auto; }
 
 .criativos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 12px; }
 .criativo-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-alt); }

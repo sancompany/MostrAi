@@ -17,6 +17,7 @@
 // Assume banco zerado (tests/e2e/reset-db.sh) e servidor na 3999.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto, recarregarQuieto, redeQuieta } from './espera.mjs';
+import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 // Primeira linha: com RETURNING o psql ainda imprime "INSERT 0 1" depois do valor.
@@ -94,9 +95,7 @@ async function escolherRamo(p, form, termo) {
 // E-mail sem confirmar trava toda página da conta num modal (migration 061).
 // Confirma pela API, como o 06, pra o modal não cobrir o que este roteiro testa.
 async function confirmarEmail(p, email) {
-  const codigo = PG(
-    `SELECT t.codigo FROM tokens_confirmacao_email t JOIN anunciantes a ON a.id = t.anunciante_id WHERE a.contato_email = '${email}'`,
-  );
+  const codigo = await codigoPara(email);
   const r = await p.evaluate(
     async (codigo) =>
       (

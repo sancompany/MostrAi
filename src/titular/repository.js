@@ -161,8 +161,16 @@ async function apagarDadosOpcionais(anuncianteId) {
 // (scripts/conciliar.js); idempotente por `anonimizada_em`.
 const DIAS_ATE_ANONIMIZAR = 60;
 async function anonimizarExcluidas(agora = new Date()) {
-  const { rows } = await pool.query(
-    `UPDATE anunciantes
+  // Tudo numa transação (revisão Codex do PR #80): se a limpeza da trilha de
+  // e-mails falhasse depois do UPDATE, a conta já sairia marcada como
+  // anonimizada e a próxima rodada (que filtra `anonimizada_em IS NULL`)
+  // nunca mais apagaria os endereços antigos.
+  const cliente = await pool.connect();
+  let rows;
+  try {
+    await cliente.query('BEGIN');
+    ({ rows } = await cliente.query(
+      `UPDATE anunciantes
         SET contato_email = 'excluida-' || id || '@anonimo.mostrai.invalid',
             contato_telefone = '',
             senha_hash = 'anonimizada',
@@ -175,8 +183,25 @@ async function anonimizarExcluidas(agora = new Date()) {
       WHERE excluido_em IS NOT NULL AND excluido_em < $1::timestamptz - make_interval(days => $2)
         AND anonimizada_em IS NULL
       RETURNING id`,
-    [agora, DIAS_ATE_ANONIMIZAR],
-  );
+      [agora, DIAS_ATE_ANONIMIZAR],
+    ));
+    // Endereços antigos e o que ainda estiver na fila de e-mails da conta
+    // também são dado pessoal sem obrigação por trás (migration 097).
+    const ids = rows.map((r) => r.id);
+    if (ids.length) {
+      await cliente.query('DELETE FROM alteracoes_email WHERE anunciante_id = ANY($1)', [ids]);
+      await cliente.query('DELETE FROM codigos_email WHERE anunciante_id = ANY($1)', [ids]);
+      await cliente.query('DELETE FROM email_outbox WHERE anunciante_id = ANY($1)', [ids]);
+    }
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  // Fora da transação: o storage não participa dela (e remover de novo é
+  // inofensivo).
   for (const { id } of rows) await removerAvatar(id);
   return rows.map((r) => r.id);
 }

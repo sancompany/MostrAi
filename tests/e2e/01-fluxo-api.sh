@@ -153,8 +153,12 @@ esperar "categoria_id inválido no cadastro é 400, não 500" 'ramo inválido' "
 
 echo "== confirmação de e-mail por código (migration 061) =="
 r=$(curl -s -b ana.txt $B/anunciantes/me); esperar "conta nova nasce sem confirmar" '"email_confirmado":false' "$r"
-r=$(curl -s -b ana.txt -X POST $B/anunciantes/me/confirmar-email -H "$J" -d '{"codigo":"000000"}'); esperar "código errado recusado" 'inválido ou expirado' "$r"
-CODIGO=$(PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=$ANA")
+r=$(curl -s -b ana.txt $B/anunciantes/me/verificacao-email); esperar "prazo do código vem do servidor" '"expiraEm":"' "$r"
+r=$(curl -s -b ana.txt -X POST $B/anunciantes/me/confirmar-email -H "$J" -d '{"codigo":"000000"}'); esperar "código errado recusado" 'código errado' "$r"
+# O código só existe como hash no banco (migration 097): lê do e-mail
+# capturado pelo servidor dos roteiros (EMAIL_CAPTURA, restart.sh).
+EMAIL_ANA=$(PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "SELECT contato_email FROM anunciantes WHERE id=$ANA")
+CODIGO=$(node --input-type=module -e "import { codigoPara } from '$ROOT/tests/e2e/emails.mjs'; console.log(await codigoPara('$EMAIL_ANA'))")
 r=$(curl -s -b ana.txt -X POST $B/anunciantes/me/confirmar-email -H "$J" -d "{\"codigo\":\"$CODIGO\"}"); esperar "código certo confirma" '"ok":true' "$r"
 r=$(curl -s -b ana.txt $B/anunciantes/me); esperar "conta marcada confirmada" '"email_confirmado":true' "$r"
 

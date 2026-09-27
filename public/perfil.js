@@ -44,7 +44,7 @@
 
     <form id="formPerfil">
       <div><label for="cpfCnpjFixo">CPF/CNPJ (fixo)</label><input id="cpfCnpjFixo" disabled></div>
-      <div><label for="emailFixo">E-mail de acesso (fixo)</label><input id="emailFixo" disabled></div>
+      <div><label for="emailFixo">E-mail de acesso</label><input id="emailFixo" disabled></div>
       <div><label for="nome_empresa">Nome da empresa</label><input id="nome_empresa" name="nome_empresa" disabled required></div>
       <div class="field-row">
         <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" disabled data-endereco-obrigatorio></div>
@@ -75,6 +75,24 @@
       </div>
       <p class="form-msg" id="msgPerfil"></p>
     </form>
+
+    <details class="bloco-titular" id="blocoTrocarEmail">
+      <summary>Trocar e-mail de acesso</summary>
+      <p class="form-hint u-mt-8">O e-mail novo só passa a valer depois que você digitar o código que vamos mandar pra ele. Até lá, o login continua pelo e-mail atual — e ele recebe um aviso quando a troca acontecer.</p>
+      <form id="formTrocarEmail">
+        <div><label for="novoEmailAcesso">E-mail novo</label><input id="novoEmailAcesso" name="email" type="email" autocomplete="email" maxlength="254" required></div>
+        <div><label for="senhaTrocarEmail">Senha atual</label><input id="senhaTrocarEmail" name="senha" type="password" autocomplete="current-password" required></div>
+        <button type="submit" class="btn primary block">Enviar código pro e-mail novo</button>
+      </form>
+      <form id="formConfirmarTroca" hidden>
+        <p class="form-hint" id="textoTrocaPendente"></p>
+        <p class="form-hint" id="expiraTroca" aria-live="polite"></p>
+        <div><label for="codigoTroca">Código</label><input id="codigoTroca" name="codigo" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" required></div>
+        <button type="submit" class="btn primary block">Confirmar troca</button>
+        <button type="button" class="btn ghost block" id="btnCancelarTroca">Cancelar troca</button>
+      </form>
+      <p class="form-msg" id="msgTrocarEmail" role="status"></p>
+    </details>
 
     <details class="bloco-titular">
       <summary>Seus dados e seus direitos</summary>
@@ -110,7 +128,16 @@
 
   // `conta` é o objeto de /anunciantes/me; `aoAtualizar` recebe a conta nova
   // depois de salvar, pra a página redesenhar o que depender dela.
-  window.montarPerfil = function montarPerfil(conta, aoAtualizar) {
+  //
+  // Idempotente: o painel chama de novo a cada `carregar()` (que roda de novo
+  // por SSE). Antes cada chamada inseria OUTRO diálogo com os mesmos ids e
+  // ligava os botões de novo — um clique virava dois envios. Agora a segunda
+  // chamada só troca a conta e redesenha.
+  let montado = null;
+  window.montarPerfil = function montarPerfil(contaNova, aoAtualizarNovo) {
+    if (montado && document.getElementById('dlgPerfil')) return montado(contaNova, aoAtualizarNovo);
+    let conta = contaNova;
+    let aoAtualizar = aoAtualizarNovo;
     document.body.insertAdjacentHTML('beforeend', MARCACAO);
     const $ = (id) => document.getElementById(id);
     const dlg = $('dlgPerfil');
@@ -178,6 +205,122 @@
     }
 
     preencher();
+    ligarTrocaDeEmail();
+    montado = (nova, cb) => {
+      conta = nova;
+      aoAtualizar = cb;
+      // Não apaga o que a pessoa está digitando: com o formulário aberto pra
+      // edição, só o cabeçalho e a foto se refazem.
+      if ($('btnSalvarPerfil').hidden) preencher();
+      else pintarAvatar();
+      $('blocoTrocarEmail').hidden = !conta.email_confirmado;
+    };
+
+    // Troca do e-mail de login (estação de e-mail, 27/09/2026): o novo fica
+    // pendente até o código; o prazo mostrado é o do servidor. Conta ainda
+    // não confirmada corrige o e-mail pelo aviso de confirmação — a troca
+    // aparece assim que ela confirmar (evento do layout.js), sem F5.
+    function ligarTrocaDeEmail() {
+      const msg = $('msgTrocarEmail');
+      const avisar = (texto, tipo = '') => {
+        msg.textContent = texto;
+        msg.className = `form-msg ${tipo}`.trim();
+      };
+      let tique = null;
+      function mostrarPendente(emailNovo, expiraEm) {
+        $('formTrocarEmail').hidden = true;
+        $('formConfirmarTroca').hidden = false;
+        $('textoTrocaPendente').textContent = `Mandamos um código pra ${emailNovo}.`;
+        const fim = new Date(expiraEm).getTime();
+        clearInterval(tique);
+        const pintar = () => {
+          const resta = Math.max(0, Math.ceil((fim - Date.now()) / 1000));
+          $('expiraTroca').textContent =
+            resta > 0
+              ? `Expira em ${Math.floor(resta / 60)}:${String(resta % 60).padStart(2, '0')}`
+              : 'Código expirado — cancele e peça de novo.';
+        };
+        pintar();
+        tique = setInterval(pintar, 1000);
+      }
+      function voltarAoPedido() {
+        clearInterval(tique);
+        $('formTrocarEmail').hidden = false;
+        $('formConfirmarTroca').hidden = true;
+        $('codigoTroca').value = '';
+      }
+
+      $('blocoTrocarEmail').hidden = !conta.email_confirmado;
+      window.addEventListener('mostrai:email-confirmado', (ev) => {
+        conta.email_confirmado = true;
+        if (ev.detail?.email) {
+          conta.contato_email = ev.detail.email;
+          $('emailFixo').value = ev.detail.email;
+        }
+        $('blocoTrocarEmail').hidden = false;
+      });
+      if (conta.email_confirmado) {
+        fetch(`${API_BASE_URL}/anunciantes/me/verificacao-email`, { credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.troca?.pendente) mostrarPendente(d.troca.email, d.troca.expiraEm);
+          })
+          .catch(() => {});
+      }
+
+      $('formTrocarEmail').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        avisar('Enviando...');
+        try {
+          const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-email`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: $('novoEmailAcesso').value.trim(), senha: $('senhaTrocarEmail').value }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) return avisar(d.erro || 'Não deu pra pedir a troca.', 'err');
+          $('senhaTrocarEmail').value = '';
+          mostrarPendente(d.emailPendente, d.expiraEm);
+          avisar('Código enviado. Confira também o spam.', 'ok');
+        } catch {
+          avisar('Sem conexão com o servidor.', 'err');
+        }
+      });
+
+      $('formConfirmarTroca').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        avisar('Confirmando...');
+        try {
+          const r = await fetch(`${API_BASE_URL}/anunciantes/me/confirmar-troca-email`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ codigo: $('codigoTroca').value.trim() }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            if (d.motivo === 'expirado' || d.motivo === 'esgotado') voltarAoPedido();
+            return avisar(d.erro || 'Não deu pra confirmar.', 'err');
+          }
+          conta.contato_email = d.email;
+          $('emailFixo').value = d.email;
+          voltarAoPedido();
+          $('novoEmailAcesso').value = '';
+          avisar('Pronto: seu e-mail de acesso agora é o novo.', 'ok');
+        } catch {
+          avisar('Sem conexão com o servidor.', 'err');
+        }
+      });
+
+      $('btnCancelarTroca').addEventListener('click', async () => {
+        await fetch(`${API_BASE_URL}/anunciantes/me/trocar-email`, { method: 'DELETE', credentials: 'include' }).catch(
+          () => {},
+        );
+        voltarAoPedido();
+        avisar('Troca cancelada. Nada mudou na sua conta.');
+      });
+    }
 
     const abrir = () => dlg.showModal();
     if ($('btnPerfil')) $('btnPerfil').addEventListener('click', abrir);

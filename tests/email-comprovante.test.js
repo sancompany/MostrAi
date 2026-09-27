@@ -1,23 +1,20 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const nodemailer = require('nodemailer');
 const { gerarComprovante, TEXTO_OBRIGATORIO } = require('../src/financeiro/comprovante');
 
 // E-mails transacionais (HTML + texto) e o comprovante de pagamento em PDF.
 // Nada aqui fala com SMTP: o transporte é trocado por um que só guarda a
 // mensagem montada.
+const email = require('../src/financeiro/email');
+
 const enviados = [];
-const criarTransporteOriginal = nodemailer.createTransport;
-nodemailer.createTransport = () => ({
+email.usarTransporte({
   sendMail: async (m) => {
     enviados.push(m);
     return { messageId: 'teste' };
   },
 });
-test.after(() => {
-  nodemailer.createTransport = criarTransporteOriginal;
-});
-const email = require('../src/financeiro/email');
+test.after(() => email.usarTransporte(null));
 
 const conta = {
   id: 1,
@@ -129,13 +126,21 @@ test('todo e-mail ao cliente sai em HTML e texto; os internos, só texto', async
   await email.enviarCriativoNoAr(conta, { duracao_segundos: 15 });
   await email.enviarArrependimentoRecebido(conta, { id: 7, valor_a_estornar: 267.3 });
   await email.enviarNovidade(conta, { assunto: 'Novidade', texto: 'Texto.' });
-  assert.strictEqual(enviados.length, 14);
+  await email.enviarSenhaAlterada(conta);
+  await email.enviarEmailAlterado(conta, { emailNovoMascarado: 'no***@example.com' });
+  await email.enviarPontoAprovado(conta);
+  await email.enviarPontoRecusado(conta);
+  await email.enviarCodigoConfirmacaoEmail(conta, '654321', { troca: true });
+  assert.strictEqual(enviados.length, 19);
   for (const m of enviados) {
     assert.ok(m.text && m.html, `${m.subject}: HTML e texto`);
     assert.ok(m.html.startsWith('<!doctype html>'), m.subject);
     assert.ok(!m.html.includes('<script>'), `${m.subject}: nome escapado`);
   }
   assert.ok(enviados[8].html.includes('123456') && enviados[8].text.includes('123456'), 'código visível nos dois');
+  assert.ok(enviados[8].text.includes('10 minutos'), 'validade do código no texto');
+  assert.ok(enviados[15].text.includes('no***@example.com') && !enviados[15].text.includes('novo@'), 'novo mascarado');
+  assert.ok(enviados[18].subject.includes('novo e-mail') && enviados[18].text.includes('login continua'));
 
   enviados.length = 0;
   await email.enviarMensagemContato({ nome: 'A', email: 'a@example.com', telefone: '', mensagem: 'oi' });

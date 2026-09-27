@@ -24,6 +24,20 @@ async function registrar(contaId, { tipo, titulo, descricao, entidadeTipo, entid
   return rows[0];
 }
 
+// Para quem chama DEPOIS de a operação de negócio ter sido gravada (crédito
+// concedido, benefício ativado): a notificação é aviso, e aviso que falha
+// nunca vira 500 de uma operação que já aconteceu. Devolve null na falha.
+async function registrarSemFalhar(contaId, dados) {
+  try {
+    // Pelo `module.exports` (e não a função local): o teste troca `registrar`
+    // pra simular a falha.
+    return await module.exports.registrar(contaId, dados);
+  } catch (err) {
+    console.error(`notificação ${dados?.tipo} não gravada (a operação segue valendo): ${err.message}`);
+    return null;
+  }
+}
+
 async function listar(contaId, { apenasNaoLidas = false, limite = 30 } = {}) {
   const { rows } = await pool.query(
     `SELECT * FROM notificacoes WHERE anunciante_id = $1 ${apenasNaoLidas ? 'AND lida_em IS NULL' : ''}
@@ -53,4 +67,11 @@ async function marcarTodasLidas(contaId) {
   await pool.query('UPDATE notificacoes SET lida_em = now() WHERE anunciante_id = $1 AND lida_em IS NULL', [contaId]);
 }
 
-module.exports = { registrar, listar, contarNaoLidas, marcarLida, marcarTodasLidas };
+module.exports = {
+  registrarSemFalhar,
+  registrar,
+  listar,
+  contarNaoLidas,
+  marcarLida,
+  marcarTodasLidas,
+};

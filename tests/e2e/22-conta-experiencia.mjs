@@ -265,7 +265,7 @@ for (const id of criadas) {
       DELETE FROM ciclos_contratados WHERE anunciante_id = ${id};
       DELETE FROM assinaturas WHERE anunciante_id = ${id};
       DELETE FROM eventos WHERE anunciante_id = ${id};
-      DELETE FROM tokens_confirmacao_email WHERE anunciante_id = ${id};
+      DELETE FROM codigos_email WHERE anunciante_id = ${id};
       DELETE FROM cupons_ponto WHERE conta_id = ${id};
       DELETE FROM pontos WHERE anunciante_id = ${id};
       DELETE FROM anunciantes WHERE id = ${id}`);

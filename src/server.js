@@ -300,4 +300,7 @@ app.listen(process.env.PORT, () => {
   // Processador da inbox do webhook (migration 096): retoma o que ficou
   // pendente de antes de um restart e segue a cada 30 s.
   require('./financeiro/webhook-inbox').iniciar();
+  // Outbox de e-mails (migration 097): envia o que ficou na fila (inclusive
+  // de antes de um restart) e segue a cada 30 s.
+  require('./email/outbox').iniciar();
 });
