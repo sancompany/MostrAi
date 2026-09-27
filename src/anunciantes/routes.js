@@ -50,6 +50,20 @@ async function emitirPrimeiroCodigo(anunciante) {
   }
 }
 
+// O e-mail de login mudou: tudo que foi mandado pro endereço ANTIGO e ainda
+// vale deixa de valer — link de redefinição de senha (senão quem tem a caixa
+// antiga ainda troca a senha por 1 hora — revisão Codex do PR #80) e o que
+// ainda está na fila pra ele. Na MESMA transação da troca.
+async function invalidarEnviosDoEmailAntigo(contaId, db) {
+  await db.query("DELETE FROM tokens_senha WHERE usuario_id = $1 AND tipo IN ('anunciante', 'afiliado')", [contaId]);
+  await outbox.descartarPendentes(
+    contaId,
+    ['redefinir_senha', 'codigo_confirmacao', 'codigo_troca_email'],
+    'o e-mail de login da conta mudou',
+    db,
+  );
+}
+
 const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')) && String(e).length <= 254;
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
@@ -536,6 +550,7 @@ router.post('/anunciantes/me/corrigir-email', exigirAnuncianteLogado, limiteTent
       [conta.id, conta.contato_email, pedido.novo],
     );
     await codigosEmail.descartar(conta.id, 'cadastro', cliente);
+    await invalidarEnviosDoEmailAntigo(conta.id, cliente);
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
@@ -600,6 +615,7 @@ router.post('/anunciantes/me/confirmar-troca-email', exigirAnuncianteLogado, lim
       [conta.id, conta.contato_email, r.email],
     );
     alteracaoId = rows[0].id;
+    await invalidarEnviosDoEmailAntigo(conta.id, cliente);
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
@@ -1649,6 +1665,7 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         alteracaoId = rows[0].id;
         await codigosEmail.descartar(antes.id, 'cadastro', cliente);
         await codigosEmail.descartar(antes.id, 'troca', cliente);
+        await invalidarEnviosDoEmailAntigo(antes.id, cliente);
       }
       await cliente.query('COMMIT');
     } catch (err) {

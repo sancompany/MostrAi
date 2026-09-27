@@ -128,11 +128,16 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
     `UPDATE ${cfg.tabela} SET senha_hash = $1 WHERE id = $2 RETURNING id, ${cfg.colunaNome} AS nome, ${cfg.colunaEmail} AS email`,
     [hash, registro.usuario_id],
   );
-  // O link usado e qualquer outro pendente da mesma conta deixam de valer.
+  // O link usado e qualquer outro pendente da mesma conta deixam de valer —
+  // e os e-mails de link que ainda estão na fila não saem mais (revisão
+  // Codex do PR #80: sairiam com um link já morto).
   await pool.query('DELETE FROM tokens_senha WHERE usuario_id = $1 AND tipo = $2', [
     registro.usuario_id,
     registro.tipo,
   ]);
+  await outbox
+    .descartarPendentes(registro.usuario_id, ['redefinir_senha'], 'senha já foi trocada')
+    .catch((err) => console.error('fila: descartar links de senha pendentes falhou', outbox.sanitizar(err)));
   // Aviso de segurança: se não foi a pessoa, é por aqui que ela descobre.
   if (conta) {
     await outbox.enfileirarSemFalhar({

@@ -457,3 +457,77 @@ test('13. notificação que falha não vira 500 de crédito já concedido', asyn
   );
   assert.strictEqual(rows[0].s, 2, 'o crédito ficou');
 });
+
+test('14. trocar o e-mail mata o link de senha que foi pro endereço antigo (e o e-mail dele na fila)', async () => {
+  const c = await contaPronta('link-antigo', { email_confirmado: true });
+  await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
+  await new Promise((r) => setTimeout(r, 200));
+  const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1', [c.id]);
+  assert.strictEqual(tokens.length, 1);
+  assert.strictEqual((await naFila(c.id, 'redefinir_senha'))[0].status, 'na_fila');
+
+  await chamar('POST', '/anunciantes/me/trocar-email', {
+    conta: c.id,
+    corpo: { email: endereco('link-novo'), senha: SENHA },
+  });
+  await processar();
+  const codigo = ultimoCodigoPara(endereco('link-novo'));
+  assert.strictEqual(
+    (await chamar('POST', '/anunciantes/me/confirmar-troca-email', { conta: c.id, corpo: { codigo } })).status,
+    200,
+  );
+  const velho = await chamar('POST', '/redefinir-senha', { corpo: { token: tokens[0].token, senha: 'Outra12@senha' } });
+  assert.strictEqual(velho.status, 400, 'link do endereço antigo não troca mais a senha');
+  const [envio] = await naFila(c.id, 'redefinir_senha');
+  assert.ok(['descartado', 'enviado'].includes(envio.status), `e-mail do link não fica pendente (${envio.status})`);
+  const { rows } = await pool.query('SELECT segredo FROM email_outbox WHERE chave = $1', [envio.chave]);
+  assert.strictEqual(rows[0].segredo, null);
+});
+
+test('15. admin troca o e-mail: link de senha pendente também morre', async () => {
+  const c = await contaPronta('admin-link', { email_confirmado: true });
+  await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
+  await new Promise((r) => setTimeout(r, 200));
+  const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1', [c.id]);
+  await chamar('PATCH', `/admin/anunciantes/${c.id}`, {
+    admin: true,
+    corpo: { contato_email: endereco('admin-link-novo') },
+  });
+  const velho = await chamar('POST', '/redefinir-senha', { corpo: { token: tokens[0].token, senha: 'Outra12@senha' } });
+  assert.strictEqual(velho.status, 400);
+});
+
+test('16. senha trocada: os outros e-mails de link na fila são descartados', async () => {
+  const c = await contaPronta('dois-links', { email_confirmado: true });
+  await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
+  await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
+  await new Promise((r) => setTimeout(r, 300));
+  const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1 ORDER BY criado_em', [
+    c.id,
+  ]);
+  assert.strictEqual(tokens.length, 2);
+  assert.strictEqual(
+    (await chamar('POST', '/redefinir-senha', { corpo: { token: tokens[0].token, senha: 'Nova12@senha' } })).status,
+    200,
+  );
+  const fila = await naFila(c.id, 'redefinir_senha');
+  assert.strictEqual(fila.length, 2);
+  assert.ok(
+    fila.every((f) => f.status === 'descartado'),
+    fila.map((f) => f.status).join(','),
+  );
+});
+
+test('17. anonimização apaga a trilha de e-mails junto, numa transação só', async () => {
+  const { anonimizarExcluidas } = require('../src/titular/repository');
+  const c = await contaPronta('anonimizar', { email_confirmado: true });
+  await pool.query(
+    `INSERT INTO alteracoes_email (anunciante_id, email_anterior, email_novo, origem) VALUES ($1, 'velho@example.com', $2, 'admin')`,
+    [c.id, c.contato_email],
+  );
+  await pool.query("UPDATE anunciantes SET excluido_em = now() - interval '61 days' WHERE id = $1", [c.id]);
+  const ids = await anonimizarExcluidas();
+  assert.ok(ids.includes(c.id));
+  const { rows } = await pool.query('SELECT 1 FROM alteracoes_email WHERE anunciante_id = $1', [c.id]);
+  assert.strictEqual(rows.length, 0);
+});

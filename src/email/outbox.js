@@ -198,6 +198,21 @@ async function enfileirar(
   return { id: rows[0]?.id ?? null, novo: !!rows[0] };
 }
 
+// Mensagens desta conta que ainda não saíram e deixaram de fazer sentido
+// (link de senha depois que a senha mudou; código ou link mandado pro e-mail
+// que a conta deixou de usar): viram "descartado" e o segredo sai junto.
+// A que já está "enviando" não dá pra segurar — o link/código dela já foi
+// invalidado por quem chama. Revisão Codex do PR #80.
+async function descartarPendentes(anuncianteId, tipos, motivo, db = pool) {
+  const { rowCount } = await db.query(
+    `UPDATE email_outbox
+        SET status = 'descartado', segredo = NULL, ultimo_erro = $3, atualizado_em = now()
+      WHERE anunciante_id = $1 AND tipo = ANY($2::text[]) AND status IN ('na_fila', 'tentando_de_novo')`,
+    [anuncianteId, tipos, motivo],
+  );
+  return rowCount;
+}
+
 // Para quem chama DEPOIS da operação de negócio concluída: nunca lança.
 async function enfileirarSemFalhar(msg) {
   try {
@@ -397,6 +412,7 @@ module.exports = {
   sanitizar,
   enfileirar,
   enfileirarSemFalhar,
+  descartarPendentes,
   pegarProxima,
   enviarUma,
   processarPendentes,
