@@ -123,7 +123,7 @@ test('todo e-mail ao cliente sai em HTML e texto; os internos, só texto', async
   await email.enviarCodigoConfirmacaoEmail(conta, '123456');
   await email.enviarLinkRedefinicaoSenha(conta.contato_email, 'Fulano', 'https://mostrai.example/senha?t=abc');
   await email.enviarCriativoReprovado(conta, { motivo_reprovacao: 'texto ilegível' });
-  await email.enviarCriativoNoAr(conta, { duracao_segundos: 15 });
+  await email.enviarCriativoAprovado(conta, { duracao_segundos: 15 });
   await email.enviarArrependimentoRecebido(conta, { id: 7, valor_a_estornar: 267.3 });
   await email.enviarNovidade(conta, { assunto: 'Novidade', texto: 'Texto.' });
   await email.enviarSenhaAlterada(conta);

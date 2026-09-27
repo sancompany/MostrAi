@@ -1,8 +1,15 @@
 # Current Handoff
 
 ## Updated
-2026-09-27 (noite, depois do #82) — **Estação de distribuição real** (PR
-aberto, NÃO mergeado, aguardando o dono): escolha de pontos restaurada (com
+2026-09-27 (fechamento) — **ESTAÇÃO DISTRIBUIÇÃO REAL = CONCLUÍDA.** #83
+mergeado (squash `38afc8e`) e no ar; o e-mail de aprovação deixou de dizer
+"está no ar" (`enviarCriativoAprovado`: "Seu anúncio foi aprovado", liberado
+para a programação, o painel mostra a primeira exibição) num PR próprio,
+porque o #83 já estava mergeado. Nenhum e-mail de "primeira exibição" foi
+criado. **Próxima estação crítica: BANCO DE HORAS** (seção N de
+`docs/PENDENCIAS.md`, item 1) — não iniciada; aguardar o dono.
+2026-09-27 (noite, depois do #82) — **Estação de distribuição real** (#83,
+mergeado depois): escolha de pontos restaurada (com
 o próprio ponto destacado e opcional, benefício incluído), dono do mesmo
 ramo veicula no próprio ponto quando escolhe, "No ar" só com proof-of-play
 (Programado → Aguardando → No ar/Atrasado, janela e prazo do servidor,

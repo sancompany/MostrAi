@@ -5094,8 +5094,11 @@ existiam só na conversa com o dono e ficam registrados aqui.
 
 ## N. Distribuição real — pontos, primeira entrada e Mídia Mostraí (27/09/2026)
 
-Feito (PR "Distribuição: seleção de pontos, primeira entrada e métricas da
-Mídia Mostraí", sem merge — decisão do dono):
+**ESTAÇÃO DISTRIBUIÇÃO REAL = CONCLUÍDA** (#83 mergeado em `main`, squash
+`38afc8e`, no ar; e-mail de aprovação corrigido num PR próprio logo depois).
+
+Feito (PR #83 "Distribuição: seleção de pontos, primeira entrada e métricas
+da Mídia Mostraí"):
 
 - [x] Escolha de pontos restaurada pra toda conta com plano (inclusive
       benefício), com o próprio ponto destacado e opcional (RN-63).
@@ -5110,7 +5113,8 @@ Mídia Mostraí", sem merge — decisão do dono):
 
 Fica registrado (fora do escopo da estação — não mexido):
 
-1. **Banco de horas (BANK_HOURS_FOLLOWUP_REQUIRED).** O gerador grava
+1. **BANCO DE HORAS — próxima estação crítica, pendência separada, NÃO
+   corrigida.** (BANK_HOURS_FOLLOWUP_REQUIRED) O gerador grava
    `vezes_programadas` comerciais também em hora com o ponto FECHADO (a TV
    continua pedindo a playlist fora do horário e só não toca). Com isso o
    `deficitHoraAnterior` e a apuração mensal contam como "déficit" horas em
@@ -5118,10 +5122,12 @@ Fica registrado (fora do escopo da estação — não mexido):
    junto com a estação do banco de horas (sem mexer em fórmula agora).
 2. **ADR-005 (doc) desatualizada** sobre déficit/banco congelados na base da
    hora — conferir na mesma estação.
-3. **E-mail "Seu anúncio está no ar"** (`enviarCriativoNoAr`) é enviado na
-   aprovação — o texto promete o que só o comprovante confirma. E-mails
-   estavam fora do escopo; trocar o texto (ex.: "aprovado — entra na
-   programação") ou mover o envio para a primeira exibição.
+3. [x] **E-mail de aprovação** — era "Seu anúncio está no ar" na
+   aprovação, prometendo o que só o comprovante confirma. Agora
+   `enviarCriativoAprovado`: assunto "Seu anúncio foi aprovado", texto
+   "liberado para entrar na programação" e "acompanhe pelo painel quando a
+   primeira exibição for confirmada", sem horário. Nenhum e-mail novo de
+   "primeira exibição" (não pedido).
 4. **Métricas da Mídia Mostraí**: telas, pontos, cobertura e frequência
    entram como estão hoje (não há histórico deles) — mudar a frequência
    reescreve o esperado do passado. Se virar necessidade, guardar histórico.
