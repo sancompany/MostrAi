@@ -11,6 +11,14 @@ const PG = (sql) =>
   execSync(`PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -tAc "${sql.replace(/"/g, '\\"')}"`)
     .toString()
     .trim();
+// Pré-condição: banco zerado (tests/e2e/reset-db.sh). Este roteiro cadastra
+// e-mails fixos; se eles sobraram de uma rodada anterior, o cadastro falha e
+// o erro aparece bem depois, sem dizer por quê (26/09/2026: as falhas
+// "cadastro pelo convite…" e `anunciante_id=undefined` eram só isto).
+if (PG(`SELECT count(*) FROM anunciantes WHERE contato_email IN ('lu@x.com')`) !== '0') {
+  console.error('Banco não está zerado: rode tests/e2e/reset-db.sh antes deste roteiro.');
+  process.exit(2);
+}
 const b = acompanharRede(await chromium.launch({ executablePath: process.env.PW_CHROME }));
 const ctxAdmin = await b.newContext({ viewport: { width: 1280, height: 1000 } });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 1000 } });
