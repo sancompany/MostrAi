@@ -13,6 +13,7 @@ const planosRepo = require('../financeiro/planos-repository');
 const { conferirSenha } = require('../lib/senha');
 const { validarCpfOuCnpj } = require('../br/documento');
 const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('../lib/pacing');
+const { entradaNoArDasPecas, ESTADOS: ESTADOS_ENTRADA } = require('./entrada-no-ar');
 const { resumo: resumoHorarioSemanal } = require('../lib/horario-semanal');
 const { cepValido, telefoneE164, data } = require('../br/formato');
 const { PARTES: PARTES_DO_ENDERECO, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
@@ -680,15 +681,17 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
-            (ap.ponto_id IS NOT NULL) AS escolhido
+            (ap.ponto_id IS NOT NULL) AS escolhido, ap.escolhido_em,
+            (p.anunciante_id IS NOT DISTINCT FROM $1) AS seu_ponto
        FROM pontos p
        LEFT JOIN anunciantes_pontos outros ON outros.ponto_id = p.id
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status = ANY($2::text[])
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id
-      ORDER BY p.status DESC, p.nome`,
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id,
+               ap.escolhido_em, p.anunciante_id
+      ORDER BY (p.anunciante_id IS NOT DISTINCT FROM $1) DESC, p.status DESC, p.nome`,
     [conta.id, pontosRepo.STATUS_NA_REDE],
   );
 
@@ -698,21 +701,28 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // número no painel diferente do que a tela executa.
   const noAr = rows.filter((r) => r.status === 'em_operacao').map((r) => r.id);
   const bloqueados = rows.filter((r) => r.bloqueado).map((r) => r.id);
+  // Mesma ordem do gerador (`ORDER BY escolhido_em`): se o plano encolheu e
+  // sobrou escolha acima do teto, a fatia corta os mesmos pontos aqui e lá.
+  const escolhidos = rows
+    .filter((r) => r.escolhido)
+    .sort((a, b) => new Date(a.escolhido_em) - new Date(b.escolhido_em))
+    .map((r) => r.id);
   const cobertos = pontosDoAnunciante(
-    {
-      id: conta.id,
-      pontosIncluidos: plano.pontos_incluidos,
-      escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
-    },
+    { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
     noAr,
     bloqueados,
   );
+  const naCobertura = new Set(cobertos);
   const base = Number(plano.segundos_por_hora) || 0;
   const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
 
   res.json({
     limite: plano.pontos_incluidos,
-    escolhidos: rows.filter((r) => r.escolhido).map((r) => r.id),
+    escolhidos,
+    // Sem escolha nenhuma a Mostraí distribui sozinha (RN-44): a fatia
+    // estável de `pontosDoAnunciante` entre os pontos no ar com espaço. O
+    // painel explica isso em vez de mostrar "0 de N" como se faltasse algo.
+    modoAutomatico: escolhidos.length === 0,
     // O que o plano compra, o que a rede entrega hoje, e a diferença — que é
     // o número que o dono pediu pra ficar escrito ("a hora que ele vai ganhar
     // a mais"), em vez de um bônus que ninguém consegue conferir.
@@ -748,6 +758,13 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Cruzou 80% (G.7) — fechado pra escolha nova, mas continua exibindo
       // pra quem já tinha escolhido (esse nunca é tirado por isso).
       bloqueado: r.bloqueado && !r.escolhido,
+      // O ponto é desta conta (ela é a dona do comércio). Só destaque: nunca
+      // vem marcado por isso — veicular nele é escolha, e se marcado conta
+      // no limite do plano como qualquer outro.
+      seuPonto: r.seu_ponto,
+      // Entra na distribuição da campanha hoje (escolhido e no ar, ou
+      // sorteado no modo automático). É a mesma conta do gerador.
+      naCobertura: naCobertura.has(r.id),
     })),
   });
 });
@@ -802,15 +819,25 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
 
   // Troca a lista inteira numa transação: metade salva seria pior que nada,
   // porque o anunciante ficaria numa cobertura que ele não escolheu.
+  //
+  // Ponto que continua na lista MANTÉM o `escolhido_em` (27/09/2026): apagar
+  // e reinserir tudo dava o mesmo `now()` a todos (é o relógio da
+  // transação), e a ordem da escolha — que decide quem fica se o plano
+  // encolher (`pontosDoAnunciante` corta pela ordem) — virava sorteio. Os
+  // novos entram com `clock_timestamp()`, na ordem em que vieram.
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
-    await cliente.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1', [conta.id]);
+    await cliente.query('DELETE FROM anunciantes_pontos WHERE anunciante_id = $1 AND NOT (ponto_id = ANY($2::int[]))', [
+      conta.id,
+      pedidos,
+    ]);
     for (const pontoId of pedidos) {
-      await cliente.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1,$2)', [
-        conta.id,
-        pontoId,
-      ]);
+      await cliente.query(
+        `INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1,$2, clock_timestamp())
+         ON CONFLICT (anunciante_id, ponto_id) DO NOTHING`,
+        [conta.id, pontoId],
+      );
     }
     await cliente.query('COMMIT');
   } catch (err) {
@@ -1274,8 +1301,23 @@ async function criativosComSituacao(conta) {
   const contaVeicula = !!vigente && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
   const limite = vigente ? limiteDeCriativos(false, vigente.limite_criativos, prontos.length) : 0;
-  const noAr = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
-  return { criativos: criativos.map((c) => ({ ...c, no_ar: noAr.has(c.id) })), plano, limite, contaVeicula };
+  // `em_rodizio`: a peça ENTRA na playlist (conta veiculando, dentro do
+  // limite de peças simultâneas, mesma ordem do gerador). Até 27/09/2026
+  // isto se chamava `no_ar` — e era o que o painel mostrava como "No ar"
+  // sem nenhuma exibição ter acontecido. "No ar" agora é comprovante
+  // confirmado (src/anunciantes/entrada-no-ar.js).
+  const rodizio = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
+  const comRodizio = criativos.map((c) => ({ ...c, em_rodizio: rodizio.has(c.id) }));
+  const entradas = await entradaNoArDasPecas({ conta, plano: vigente, contaVeicula, criativos: comRodizio });
+  return {
+    criativos: comRodizio.map((c) => {
+      const entrada = entradas.get(c.id) || null;
+      return { ...c, entrada, no_ar: entrada?.estado === ESTADOS_ENTRADA.NO_AR };
+    }),
+    plano,
+    limite,
+    contaVeicula,
+  };
 }
 
 // Criativos de UMA conta pra ficha do admin (Parte 18-24). Mesmo motor da
@@ -1301,6 +1343,15 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
 // e o vínculo de substituição nos dois sentidos (a peça atual sabe que tem
 // substituta em análise; a substituta sabe quem ela troca).
 const SITUACAO_CRIATIVO = { pendente: 'em_analise', reprovado: 'recusado', retirado: 'fora_do_ar' };
+// Peça aprovada: a situação é a da entrada no ar (entrada-no-ar.js), nunca
+// "no ar" só por estar aprovada.
+const SITUACAO_DA_ENTRADA = {
+  APROVADO: 'aprovado',
+  PROGRAMADO: 'programado',
+  AGUARDANDO_PRIMEIRA_EXIBICAO: 'aguardando_primeira_exibicao',
+  NO_AR: 'no_ar',
+  ATRASADO: 'atrasado',
+};
 // O que aconteceu com um envio cuja resposta se perdeu (proxy devolveu 524,
 // rede caiu, aba perdeu a conexão): a chave é a mesma que o painel mandou no
 // `Idempotency-Key`. `pronto` = criativo criado; `processando` = chegou e o
@@ -1333,7 +1384,20 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
   res.json({
     criativos: criativos.map((c) => ({
       id: c.id,
-      situacao: c.status === 'aprovado' ? (c.no_ar ? 'no_ar' : 'aprovado') : SITUACAO_CRIATIVO[c.status],
+      situacao:
+        c.status === 'aprovado' ? SITUACAO_DA_ENTRADA[c.entrada?.estado] || 'aprovado' : SITUACAO_CRIATIVO[c.status],
+      // Quando a primeira exibição deve acontecer e quando vira atraso — o
+      // servidor calcula (o painel não adivinha horário de ponto nem regra
+      // de playlist); e o que o comprovante confirmou.
+      entrada: c.entrada
+        ? {
+            primeiraJanelaPrevista: c.entrada.primeiraJanelaPrevista,
+            prazoPrimeiraExibicao: c.entrada.prazoPrimeiraExibicao,
+            primeiraExibicaoEm: c.entrada.primeiraExibicaoEm,
+            ultimaExibicaoEm: c.entrada.ultimaExibicaoEm,
+            motivo: c.entrada.motivo,
+          }
+        : null,
       arquivoUrl: c.arquivo_normalizado_url,
       thumbnailUrl: c.thumbnail_url,
       duracaoSegundos: c.duracao_segundos,

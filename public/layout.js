@@ -617,17 +617,26 @@ window.ROTULOS = {
   // "Meus criativos" do painel (GET /anunciantes/me/criativos): a situação
   // que o cliente entende, com "No ar" separado de "Aprovado" (aprovada mas
   // fora do rodízio agora — plano sem vaga pra mais uma peça, ou sem plano).
+  // "No ar" é comprovante de exibição confirmado (27/09/2026); entre a
+  // aprovação e ele, a peça está Programada ou Aguardando a primeira
+  // exibição — rótulos iguais aos do admin (window.ENTRADA_NO_AR, config.js).
   criativoSituacao: {
     em_analise: 'Em análise',
     aprovado: 'Aprovado',
+    programado: 'Programado',
+    aguardando_primeira_exibicao: 'Aguardando primeira exibição',
     no_ar: 'No ar',
+    atrasado: 'Entrada atrasada',
     fora_do_ar: 'Fora do ar',
     recusado: 'Recusado',
   },
   criativoSituacaoClasse: {
     em_analise: 'badge-pendente',
     aprovado: 'badge-neutro',
+    programado: 'badge-info',
+    aguardando_primeira_exibicao: 'badge-pendente',
     no_ar: 'badge-ok',
+    atrasado: 'badge-err',
     fora_do_ar: 'badge-neutro',
     recusado: 'badge-err',
   },

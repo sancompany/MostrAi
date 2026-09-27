@@ -714,6 +714,10 @@ const MODULOS = [
   // antiga de "Meus anúncios" (com "Criar conta própria") foi substituída
   // por `renderMidiaMostrai` e removida do código em 24/09/2026.
   { id: 'aprovacao', nome: 'Aprovação de criativos', oculto: true, fila: 'criativos', render: renderCriativos },
+  // Entre "Aprovado" e "No ar" (27/09/2026): peças esperando a primeira
+  // exibição confirmada e as atrasadas. Sem item na sidebar — chega-se pelos
+  // dois indicadores da Visão geral.
+  { id: 'entrada', nome: 'Entrada no ar', oculto: true, render: renderEntradaNoAr },
   // Mensagens (22/09/2026): sem item próprio na sidebar — o aviso de
   // pendência mora na Visão geral (PENDENCIAS_OPERACIONAIS) e leva pra cá. `oculto`
   // tira o botão do menu sem tirar o módulo de `buscarModulo`, então a rota
@@ -1288,11 +1292,21 @@ function painelPendenciasOperacionais(resumo, alertasHtml) {
       ? `<button type="button" class="pend-bloco ${estado}" data-ir="${p.aba}">${conteudo}</button>`
       : `<div class="pend-bloco ${estado}">${conteudo}</div>`;
   }).join('');
+  // Os dois indicadores da entrada no ar (27/09/2026) — só contagem e link;
+  // o zero aparece, como nos blocos acima.
+  const aguardando = resumo.filas?.entradaAguardando;
+  const atrasados = resumo.filas?.entradaAtrasada;
+  const n = (v) => (typeof v === 'number' ? v : '—');
+  const entrada = `<div class="entrada-indicadores">
+      <button type="button" class="entrada-ind" data-ir="entrada">Anúncios aguardando primeira exibição: <b>${n(aguardando)}</b></button>
+      <button type="button" class="entrada-ind${atrasados > 0 ? ' entrada-atrasada' : ''}" data-ir="entrada">Anúncios atrasados: <b>${n(atrasados)}</b></button>
+    </div>`;
   return `
     <section class="panel">
       <div class="secao-topo"><h3>Pendências operacionais</h3></div>
       ${alertasHtml ? `<div class="alertas-lista">${alertasHtml}</div>` : ''}
       <div class="pend-grade">${blocos}</div>
+      ${entrada}
     </section>`;
 }
 
@@ -1917,8 +1931,47 @@ const SITUACAO_MIDIA_BADGE = {
 // sozinho). Agora: miniatura 9:16 fixa à esquerda, nome como título com o
 // estado no mesmo cabeçalho, frequência/período como metadado e as ações
 // numa linha — Retirar do ar com a cor de ação destrutiva.
+// Estado de exibição (src/midias/metricas.js): o controle manual (pausada,
+// agendada, encerrada) e, quando ativa, se já tocou, se está tocando ou se a
+// entrega atrasou — tudo pelo comprovante de exibição, nunca pela playlist.
+const ESTADO_MIDIA = {
+  ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO: ['Ativa — aguardando primeira exibição', 'badge-pendente'],
+  ATIVA_REPRODUZINDO: ['Ativa — reproduzindo normalmente', 'badge-ok'],
+  ATIVA_ENTREGA_ATRASADA: ['Ativa — entrega atrasada', 'badge-err'],
+  PAUSADA: ['Pausada', 'badge-pendente'],
+  AGENDADA: ['Agendada', 'badge-info'],
+  ENCERRADA: ['Encerrada', 'badge-err'],
+};
+
+// "hoje 10:42", "ontem 18:05" ou "25/09 09:12" — relógio de Matão.
+function quandoBR(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const fuso = { timeZone: 'America/Sao_Paulo' };
+  const dia = (x) => x.toLocaleDateString('pt-BR', { ...fuso, day: '2-digit', month: '2-digit' });
+  const hora = d.toLocaleTimeString('pt-BR', { ...fuso, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const nome =
+    dia(d) === dia(new Date()) ? 'hoje' : dia(d) === dia(new Date(Date.now() - 86_400_000)) ? 'ontem' : dia(d);
+  return `${nome} ${hora}`;
+}
+
+// Resumo do card: confirmadas, entrega esperada e última exibição.
+function resumoExibicoesMidia(mt) {
+  if (!mt) return '';
+  const entrega = mt.entregaPct?.d30;
+  return `<p class="mm-metricas" data-mm-metricas>
+      <span><b>${num(mt.confirmadas.total)}</b> ${mt.confirmadas.total === 1 ? 'exibição confirmada' : 'exibições confirmadas'}</span>
+      <span>${entrega == null ? 'sem entrega esperada ainda' : `<b>${entrega}%</b> da entrega esperada (30 dias)`}</span>
+      <span>Última: ${quandoBR(mt.ultimaExibicaoEm)}</span>
+    </p>`;
+}
+
 function montarCardMidia(m) {
   const sit = m.situacaoDerivada;
+  const [rotuloEstado, classeEstado] = ESTADO_MIDIA[m.metricas?.estado] || [
+    SITUACAO_MIDIA_ROTULO[sit] || sit,
+    SITUACAO_MIDIA_BADGE[sit] || '',
+  ];
   const cobertura = m.cobertura_tipo === 'rede' ? 'Toda a rede' : plural(m.qtd_pontos, 'ponto');
   const periodo =
     m.periodo_inicio || m.periodo_fim
@@ -1927,9 +1980,10 @@ function montarCardMidia(m) {
   return `<article class="criativo-item mm-item">
     <div class="criativo-item-midia">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
     <div class="criativo-item-corpo">
-      <div class="item-topo"><h4>${esc(m.nome_interno)}</h4><span class="badge ${SITUACAO_MIDIA_BADGE[sit] || ''}">${SITUACAO_MIDIA_ROTULO[sit] || sit}</span></div>
+      <div class="item-topo"><h4>${esc(m.nome_interno)}</h4><span class="badge ${classeEstado}" data-mm-estado>${rotuloEstado}</span></div>
       <p class="item-meta">${m.duracao_segundos ? `${m.duracao_segundos}s` : '—'} · ${m.frequencia_hora}×/hora · ${cobertura}</p>
       <p class="item-meta">${periodo}</p>
+      ${resumoExibicoesMidia(m.metricas)}
       ${m.aprovacao_status !== 'aprovado' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
       <div class="acoes item-acoes">
         <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
@@ -2055,6 +2109,51 @@ function montarPontoPickerCard(p, marcado) {
   </label>`;
 }
 
+// Detalhe das exibições na edição: PROGRAMADAS (o que as playlists
+// prometeram) × CONFIRMADAS (o que a TV comprovou) × ESPERADAS (frequência ×
+// horas em que cada tela deveria exibir), por período, ponto e tela.
+function blocoExibicoesMidia(mt) {
+  const [rotulo, classe] = ESTADO_MIDIA[mt.estado] || [mt.estado, 'badge-neutro'];
+  const linhaPeriodo = (nome, chave) => `<tr>
+      <td>${nome}</td>
+      <td class="num">${num(mt.programadas[chave])}</td>
+      <td class="num"><b>${num(mt.confirmadas[chave])}</b></td>
+      <td class="num">${chave === 'total' ? '—' : num(Math.round(mt.esperadas[chave]))}</td>
+      <td class="num">${chave === 'total' || mt.entregaPct[chave] == null ? '—' : `${mt.entregaPct[chave]}%`}</td>
+    </tr>`;
+  const linhaLocal = (nome, l) => `<tr>
+      <td>${nome}</td>
+      <td class="num">${num(l.programadas30d)}</td>
+      <td class="num"><b>${num(l.confirmadas30d)}</b></td>
+      <td class="num">${num(Math.round(l.esperadas30d))}</td>
+      <td class="num">${l.esperadas30d >= 1 ? `${Math.min(100, Math.round((l.confirmadas30d / l.esperadas30d) * 100))}%` : '—'}</td>
+    </tr>`;
+  const cab = (primeira) =>
+    `<thead><tr><th>${primeira}</th><th class="num">Programadas</th><th class="num">Confirmadas</th><th class="num">Esperadas</th><th class="num">Entrega</th></tr></thead>`;
+  return `<fieldset class="form-bloco mm-exibicoes" data-mm-exibicoes>
+      <legend>Exibições</legend>
+      <p class="mm-exibicoes-topo"><span class="badge ${classe}">${rotulo}</span>
+        <span>Frequência: ${mt.frequenciaHora}×/hora por tela</span>
+        <span>Primeira: ${quandoBR(mt.primeiraExibicaoEm)}</span>
+        <span>Última: ${quandoBR(mt.ultimaExibicaoEm)}</span>
+        ${mt.estado === 'ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO' && mt.primeiraJanelaPrevista ? `<span>Primeira janela: ${esc(window.janelaBR(mt.primeiraJanelaPrevista))}</span>` : ''}</p>
+      <table class="mini-table">${cab('Período')}<tbody>
+        ${linhaPeriodo('Hoje', 'hoje')}${linhaPeriodo('7 dias', 'd7')}${linhaPeriodo('30 dias', 'd30')}${linhaPeriodo('Total', 'total')}
+      </tbody></table>
+      ${
+        mt.porPonto?.length
+          ? `<table class="mini-table">${cab('Ponto (30 dias)')}<tbody>${mt.porPonto.map((p) => linhaLocal(esc(p.pontoNome || `Ponto ${p.pontoId}`), p)).join('')}</tbody></table>`
+          : ''
+      }
+      ${
+        mt.porTela?.length
+          ? `<table class="mini-table">${cab('Tela (30 dias)')}<tbody>${mt.porTela.map((t) => linhaLocal(`${esc(t.codigo)}${t.pontoNome ? ` · ${esc(t.pontoNome)}` : ''}`, t)).join('')}</tbody></table>`
+          : ''
+      }
+      <p class="campo-ajuda">Só conta exibição confirmada pela TV. Esperadas = frequência × horas em que cada tela da cobertura deveria exibir (ponto aberto, dentro do período, mídia ativa), até 10 min atrás.</p>
+    </fieldset>`;
+}
+
 // Mesmo default de src/lib/ffmpeg.js#DURACAO_PADRAO_IMAGEM — só pra estimar
 // o preview de capacidade ANTES do upload real (Parte 7: frequência entra no
 // cálculo de verdade). O servidor sempre revalida com a duração normalizada
@@ -2139,6 +2238,8 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
               <legend>Conteúdo</legend>
               <div class="campo-grupo"><label for="mmNome">Nome interno</label><input id="mmNome" name="nome_interno" required value="${esc(midia?.nome_interno || '')}" placeholder="ex.: Institucional — seja um ponto"></div>
             </fieldset>
+
+            ${midia?.metricas ? blocoExibicoesMidia(midia.metricas) : ''}
 
             <fieldset class="form-bloco">
               <legend>Veiculação</legend>
@@ -2787,7 +2888,7 @@ function agendarRecargaRede(atraso = 400) {
 // modal/campo em edição não é refeita por baixo de quem edita.
 const ABAS_REATIVAS = {
   'application.updated': ['rede/candidaturas', 'visaogeral'],
-  'creative.updated': ['aprovacao', 'visaogeral'],
+  'creative.updated': ['aprovacao', 'visaogeral', 'entrada'],
   'payment.updated': ['financeiro', 'visaogeral', 'contas/contas'],
   'plan.updated': ['contas/contas', 'visaogeral'],
   'credits.updated': ['contas/contas'],
@@ -4083,14 +4184,19 @@ function desenharContaPlano(el, ctx) {
     );
   }
 
-  // "Veiculando" só com peça rodando de fato — plano sem criativo no ar não
-  // passa nada na tela.
-  const noAr = s.criativos.resumo.noAr;
+  // "Veiculando" só com peça rodando de fato (exibição confirmada pela TV,
+  // 27/09/2026). Aprovada esperando a primeira exibição, ou atrasada, diz
+  // isso — não é "sem peça", nem ainda "veiculando".
+  const { noAr, aguardandoEntrada, atrasados } = s.criativos.resumo;
   const veicula = !p.veicula
     ? `<span class="badge badge-neutro" title="${s.dados.suspensa ? 'Conta suspensa: fora da rotação.' : 'Sem plano vigente.'}">Não veicula</span>`
     : noAr
       ? '<span class="badge badge-ok">Veiculando</span>'
-      : '<span class="badge badge-pendente" title="O plano está vigente, mas nenhum criativo aprovado está no ar.">Sem peça no ar</span>';
+      : atrasados
+        ? '<span class="badge badge-err" title="A primeira exibição passou do prazo sem comprovante da TV.">Entrada atrasada</span>'
+        : aguardandoEntrada
+          ? '<span class="badge badge-pendente" title="Peça aprovada e programada; falta a TV confirmar a primeira exibição.">Aguardando primeira exibição</span>'
+          : '<span class="badge badge-pendente" title="O plano está vigente, mas nenhum criativo aprovado está no ar.">Sem peça no ar</span>';
   const podeCancelarAssinatura = !bloqueada && p.agora?.origem === 'assinatura' && p.assinaturaAtiva;
   el.innerHTML = `
     <div class="secao-topo"><h3>Plano</h3><div class="secao-acoes">${veicula}</div></div>
@@ -4194,11 +4300,26 @@ function estadoCriativo(c, info) {
   if (c.status === 'pendente') return { nome: 'Em análise', classe: 'badge-pendente' };
   if (c.status === 'reprovado') return { nome: 'Recusado', classe: 'badge-err' };
   if (c.status === 'retirado') return { nome: 'Fora do ar', classe: 'badge-neutro' };
-  if (c.no_ar) return { nome: 'No ar', classe: 'badge-ok' };
-  const motivo = !info.conta_veicula
-    ? 'a conta não está veiculando (sem plano vigente ou suspensa)'
-    : `o plano põe ${info.limite_no_ar} no ar por vez`;
-  return { nome: 'Aprovado', classe: 'badge-info', dica: `Aprovado, mas fora da rotação: ${motivo}.` };
+  // Peça aprovada: o estado da entrada no ar vem do servidor
+  // (src/anunciantes/entrada-no-ar.js) — "No ar" só com exibição confirmada.
+  const e = c.entrada;
+  const rotulo = window.ENTRADA_NO_AR[e?.estado];
+  if (e && rotulo && e.estado !== 'APROVADO') {
+    const janela = e.primeiraJanelaPrevista ? window.janelaBR(e.primeiraJanelaPrevista) : '';
+    const dica =
+      e.estado === 'NO_AR'
+        ? `Última exibição confirmada: ${window.prazoBR(e.ultimaExibicaoEm, { inicio: true })}.`
+        : e.estado === 'ATRASADO'
+          ? `Janela prevista ${janela}; prazo passou (${window.prazoBR(e.prazoPrimeiraExibicao, { inicio: true })}) sem comprovante.`
+          : `Janela prevista: ${janela}.`;
+    return { nome: rotulo.rotulo, classe: rotulo.classe, dica };
+  }
+  const motivo =
+    window.ENTRADA_NO_AR.motivo[e?.motivo] ||
+    (!info.conta_veicula
+      ? 'a conta não está veiculando (sem plano vigente ou suspensa)'
+      : `o plano põe ${info.limite_no_ar} no ar por vez`);
+  return { nome: 'Aprovado', classe: 'badge-info', dica: `Aprovado, mas sem horário: ${motivo}.` };
 }
 
 function desenharContaCriativos(el, ctx) {
@@ -4278,6 +4399,10 @@ function desenharContaCriativos(el, ctx) {
     r.contaVeicula
       ? `<span><b>${r.noAr} de ${r.limiteNoAr}</b> no ar <span class="u-dim">(simultâneos do plano)</span></span>`
       : `<span class="u-dim">Nenhum no ar — ${semAr}</span>`,
+    r.aguardandoEntrada
+      ? `<span>${plural(r.aguardandoEntrada, 'aguardando primeira exibição', 'aguardando primeira exibição')}</span>`
+      : '',
+    r.atrasados ? `<span><b>${plural(r.atrasados, 'com entrada atrasada', 'com entrada atrasada')}</b></span>` : '',
     r.emAnalise ? `<span>${plural(r.emAnalise, 'em análise', 'em análise')}</span>` : '',
     r.substituicoesPendentes
       ? `<span>${plural(r.substituicoesPendentes, 'substituição pendente', 'substituições pendentes')}</span>`
@@ -5831,6 +5956,52 @@ function abrirMesclarCategoria(c, categorias, aoSalvar) {
 // (`respondida_em` preenchido, LGPD preservada) mas não tinha mais tela que
 // mostrasse. Mesmo endpoint pras duas abas (`GET /admin/mensagens-contato`
 // já devolve tudo, sem filtro no servidor) — cada aba filtra do seu lado.
+// Entrada no ar: peças aprovadas sem a primeira exibição confirmada. O
+// estado, a janela e o prazo vêm prontos do servidor (entrada-no-ar.js).
+async function renderEntradaNoAr(el) {
+  const itens = await pegar('/admin/criativos/entrada');
+  const linha = (i) => {
+    const r = window.ENTRADA_NO_AR[i.estado] || { rotulo: i.estado, classe: 'badge-neutro' };
+    return `<tr>
+      <td>${i.thumbnailUrl ? `<img class="entrada-thumb" src="${esc(i.thumbnailUrl)}" alt="">` : ''}<span class="celula-sub">#${i.criativoId}</span></td>
+      <td><a class="celula-titulo" href="#contas/contas/${i.contaId}">${esc(i.conta)}</a></td>
+      <td><span class="badge ${r.classe}">${esc(r.rotulo)}</span></td>
+      <td data-valor="${new Date(i.primeiraJanelaPrevista).getTime()}">${esc(window.janelaBR(i.primeiraJanelaPrevista))}</td>
+      <td data-valor="${new Date(i.prazoPrimeiraExibicao).getTime()}">${esc(window.prazoBR(i.prazoPrimeiraExibicao, { inicio: true }))}</td>
+      <td class="u-ta-r"><button class="btn ghost mini" type="button" data-atualizar-telas="${i.criativoId}" title="Pede às telas da cobertura que busquem a playlist de novo. Não reinicia o Player.">Pedir atualização às telas</button></td>
+    </tr>`;
+  };
+  const corpo = `<table class="tabela-entrada"><thead><tr>
+      <th>Peça</th><th data-ord>Conta</th><th data-ord>Estado</th><th data-ord>Janela prevista</th><th data-ord>Prazo</th><th><span class="u-sr">Ação</span></th>
+    </tr></thead><tbody>${itens.map(linha).join('')}</tbody></table>`;
+  el.innerHTML = itens.length
+    ? caixaTabela({
+        html: corpo,
+        unidade: 'peça|peças',
+        dica: 'Prazo = janela + horas de rodízio das peças da conta + 10 min pro comprovante chegar.',
+      })
+    : vazio(
+        'Nenhum anúncio esperando a primeira exibição.',
+        'Peça aprovada aparece aqui até a TV confirmar a primeira exibição.',
+      );
+  if (!itens.length) return;
+  turbinarTabela(el.querySelector('.tabela-caixa'));
+  el.querySelectorAll('[data-atualizar-telas]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const r = await api(`/admin/criativos/${btn.dataset.atualizarTelas}/atualizar-telas`, { method: 'POST' });
+      const corpoResp = await r.json().catch(() => ({}));
+      btn.disabled = false;
+      if (!r.ok) return toast('Não deu pra pedir a atualização.', 'err');
+      toast(
+        corpoResp.telas
+          ? `${plural(corpoResp.telas, 'tela vai', 'telas vão')} buscar a playlist no próximo sinal.`
+          : 'Nenhuma tela ativa na cobertura desta peça.',
+      );
+    });
+  });
+}
+
 async function renderMensagensPendentes(el) {
   const todas = await pegar('/admin/mensagens-contato');
   const pendentes = todas.filter((m) => !m.respondida_em);

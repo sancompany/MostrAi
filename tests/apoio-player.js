@@ -96,6 +96,7 @@ async function limparPontos() {
     const telas = 'SELECT id FROM dispositivos WHERE ponto_id = $1';
     await pool.query(`DELETE FROM execucoes_confirmadas WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
+    await pool.query(`DELETE FROM midias_exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM playlist_hora_congelada WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [id]);

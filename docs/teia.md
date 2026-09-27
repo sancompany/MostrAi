@@ -3,6 +3,21 @@
 Mapa de todas as **387 funções** do produto e de como se ligam. Lido do código
 em 15/09/2026 por doze leituras independentes, uma por superfície.
 
+> **27/09/2026 — Distribuição real:** funções novas e onde se ligam —
+> `src/anunciantes/entrada-no-ar.js` (`entradaNoArDasPecas`: Aprovado →
+> Programado → Aguardando → No ar/Atrasado, a partir de `criativos.aprovado_em`
+> e do proof-of-play; ← `criativosComSituacao` → `GET /anunciantes/me/criativos`,
+> ficha do admin, `situacao.js`), `src/anunciantes/fila-entrada.js`
+> (`pecasSemPrimeiraExibicao` → `/admin/resumo` e `GET /admin/criativos/entrada`;
+> `pedirAtualizacaoDasTelas` → `POST /admin/criativos/:id/atualizar-telas`),
+> `src/midias/metricas.js` (`metricasDasMidias` → `GET /admin/midias-proprias[/:id]`)
+> e, no gerador, `gravarProgramadasDaMidia`/`creditarMidia`/`marcarExibicaoDoCriativo`
+> (← `GET /playlist` e `POST /player/:id/played`). `anunciantesElegiveis` isenta
+> da trava de ramo o dono que escolheu o próprio ponto. O cliente fica sabendo:
+> "Programado · primeira exibição prevista: hoje, 15:00–16:00", "Aguardando
+> primeira exibição", "No ar" (só com comprovante) e "Seu ponto" na escolha
+> de pontos (RN-63/64/65 em `docs/funcional.md`).
+>
 > **26/09/2026 — Player MVP:** o player web (`public/player.html`,
 > `player.page.js`, `player.css`), o painel por PIN da TV, `/hello`, OTA,
 > rotação de tela e de credencial, PIN e horário por tela SAÍRAM do código.

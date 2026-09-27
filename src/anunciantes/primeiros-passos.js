@@ -7,13 +7,13 @@ const { planoVigenteId } = require('./repository');
 // A ordem é a do fluxo que o sistema aplica: criativo e escolha de pontos
 // exigem plano (o servidor recusa antes disso — POST /anunciantes/:id/
 // criativos e /pontos-disponiveis). Escolher pontos é OPCIONAL (sem escolha,
-// a Mostraí distribui) e, no benefício por créditos, a escolha não existe
-// (o painel já não oferece — painel.page.js#carregarPontos): por isso ela
-// nunca segura o passo seguinte. "Acompanhe suas exibições" se completa
+// a Mostraí distribui) — por isso nunca segura o passo seguinte. Vale também
+// pro benefício por créditos desde 27/09/2026: o servidor sempre aceitou a
+// escolha dele, só o painel é que escondia a lista (e com ela o próprio
+// ponto de quem é dono de comércio). "Acompanhe suas exibições" se completa
 // sozinho, na primeira exibição confirmada por uma tela.
 function etapasDosPrimeirosPassos({
   temPlano,
-  beneficio,
   criativosEnviados,
   criativosAprovados,
   criativosRecusados = 0,
@@ -41,14 +41,12 @@ function etapasDosPrimeirosPassos({
       titulo: 'Escolha os pontos',
       feito: pontosEscolhidos > 0,
       opcional: true,
-      detalhe: beneficio
-        ? 'No benefício, a Mostraí distribui seu anúncio pelos pontos'
-        : 'Sem escolha, a Mostraí distribui seu anúncio',
+      detalhe: 'Sem escolha, a Mostraí distribui seu anúncio',
     },
     { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0, opcional: false },
   ];
   // Disponível = o sistema já deixa fazer agora. Sem plano, só o plano.
-  for (const e of etapas) e.disponivel = e.id === 'plano' || (temPlano && !(e.id === 'pontos' && beneficio));
+  for (const e of etapas) e.disponivel = e.id === 'plano' || temPlano;
   const proxima = etapas.find((e) => !e.feito && !e.opcional) || null;
   return {
     etapas,
@@ -84,7 +82,6 @@ async function primeirosPassosDaConta(conta) {
   return {
     ...etapasDosPrimeirosPassos({
       temPlano: !!planoVigenteId(conta),
-      beneficio: !!conta.plano_cortesia,
       criativosEnviados: criativos.rows[0].enviados,
       criativosAprovados: criativos.rows[0].aprovados,
       criativosRecusados: criativos.rows[0].recusados,

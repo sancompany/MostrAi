@@ -13,6 +13,7 @@ const eventos = require('../lib/eventos');
 const metrica = require('./metrica');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
+const filaEntrada = require('../anunciantes/fila-entrada');
 
 // "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
 // 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
@@ -77,7 +78,11 @@ router.patch('/admin/criativos/:id', async (req, res) => {
           .registrar(dono.id, {
             tipo: 'criativo_aprovado',
             titulo: 'Seu criativo foi aprovado',
-            descricao: 'Já está no ar.',
+            // Aprovado ≠ no ar (27/09/2026): a peça entra na programação da
+            // próxima hora cheia de um ponto aberto da cobertura, e "No ar"
+            // só aparece com a primeira exibição confirmada pela TV.
+            descricao:
+              'Ele entra na programação das telas e aparece como "No ar" quando a TV confirmar a primeira exibição.',
             entidadeTipo: 'criativo',
             entidadeId: criativo.id,
           })
@@ -215,6 +220,7 @@ router.get('/admin/resumo', async (_req, res) => {
     novos,
     conversao,
     trocasPendentes,
+    entradaNoAr,
   ] = await Promise.all([
     // Receita recorrente = o que ENTRA de verdade todo mês. O filtro era só
     // `status = 'ativo'`, então somava três coisas que não pagam nada:
@@ -360,6 +366,17 @@ router.get('/admin/resumo', async (_req, res) => {
     pool.query(
       `SELECT COUNT(*)::int AS qtd, COALESCE(SUM(valor), 0) AS total FROM pedidos_avulsos WHERE status = 'pendente'`,
     ),
+    // Entre "Aprovado" e "No ar" (27/09/2026): peças esperando a primeira
+    // exibição confirmada e as que passaram do prazo — o mesmo estado que o
+    // cliente vê (src/anunciantes/entrada-no-ar.js).
+    // Falhar aqui não derruba a Visão geral: o indicador mostra "—".
+    filaEntrada
+      .pecasSemPrimeiraExibicao()
+      .then(filaEntrada.contarEntrada)
+      .catch((err) => {
+        console.error('falha ao contar a entrada no ar', err.message);
+        return { aguardando: null, atrasados: null };
+      }),
   ]);
 
   const ultima = await ultimaConciliacao();
@@ -400,6 +417,8 @@ router.get('/admin/resumo', async (_req, res) => {
       offline: telasComProblemaDeSinal.length,
       bancohoras: Number(filas.rows[0].bancohoras),
       pontosocupados: Number(filas.rows[0].pontosocupados),
+      entradaAguardando: entradaNoAr.aguardando,
+      entradaAtrasada: entradaNoAr.atrasados,
     },
     financeiro: {
       receitaMensal,
@@ -470,6 +489,22 @@ router.get('/admin/resumo', async (_req, res) => {
         }
       : null,
   });
+});
+
+// Lista da Visão geral: "Anúncios aguardando primeira exibição" e "Anúncios
+// atrasados" levam pra cá — peça, conta, janela prevista e prazo.
+router.get('/admin/criativos/entrada', async (_req, res) => {
+  res.json(await filaEntrada.pecasSemPrimeiraExibicao());
+});
+
+// "Pedir atualização às telas": o mesmo sinal de playlist desatualizada que
+// a aprovação já manda, só pras telas da cobertura desta peça. Nunca
+// reinicia o Player.
+router.post('/admin/criativos/:id/atualizar-telas', async (req, res) => {
+  if (!/^\d{1,10}$/.test(req.params.id)) return res.status(400).json({ erro: 'criativo inválido' });
+  const r = await filaEntrada.pedirAtualizacaoDasTelas(Number(req.params.id));
+  if (!r) return res.status(404).json({ erro: 'criativo não encontrado' });
+  res.json(r);
 });
 
 // Custos fixos: a tela saiu na rodada Financeiro (22/09/2026 — a Mostraí não

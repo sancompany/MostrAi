@@ -4,7 +4,8 @@
 // anúncio na minha tela" na página do ponto.
 //
 // Situações (GET /anunciantes/me/criativos): Em análise · Aprovado (pronto,
-// fora do rodízio agora) · No ar · Fora do ar · Recusado. Substituir uma peça
+// sem horário agora) · Programado · Aguardando primeira exibição · No ar
+// (comprovante confirmado) · Entrada atrasada · Fora do ar · Recusado. Substituir uma peça
 // aprovada manda a nova pra análise e a atual SEGUE no ar até ela ser
 // aprovada.
 //
@@ -29,14 +30,28 @@
         return c.substitui
           ? 'Substitui uma peça que está no ar — a atual continua rodando até esta ser aprovada.'
           : 'A gente confere antes de ir pro ar, normalmente no mesmo dia útil.';
-      case 'no_ar':
+      case 'no_ar': {
+        const ultima = c.entrada?.ultimaExibicaoEm
+          ? ` Última exibição: ${window.prazoBR(c.entrada.ultimaExibicaoEm, { inicio: true })}.`
+          : '';
         return c.substitutaEmAnalise
-          ? 'Rodando nas telas. A substituta está em análise; esta continua no ar até ela ser aprovada.'
-          : 'Rodando nas telas.';
-      case 'aprovado':
-        return dados.contaVeicula
-          ? `Aprovada. Seu plano roda ${plural(dados.limiteNoAr, 'peça', 'peças')} ao mesmo tempo — esta entra quando outra sair.`
-          : 'Aprovada. Entra no ar quando o seu plano estiver ativo.';
+          ? `Rodando nas telas. A substituta está em análise; esta continua no ar até ela ser aprovada.${ultima}`
+          : `Rodando nas telas — exibição confirmada pela TV.${ultima}`;
+      }
+      // Entre a aprovação e o primeiro comprovante: a janela vem do servidor.
+      case 'programado':
+        return `Aprovada e programada. Primeira exibição prevista: ${window.janelaBR(c.entrada?.primeiraJanelaPrevista)}.`;
+      case 'aguardando_primeira_exibicao':
+        return `Já está na programação da tela (${window.janelaBR(c.entrada?.primeiraJanelaPrevista)}). "No ar" aparece quando a TV confirmar a primeira exibição.`;
+      case 'atrasado':
+        return 'A primeira exibição está demorando mais que o previsto. A equipe Mostraí já foi avisada e está verificando a tela.';
+      case 'aprovado': {
+        const motivo = window.ENTRADA_NO_AR.motivo[c.entrada?.motivo];
+        if (c.entrada?.motivo === 'fora_do_limite_de_pecas')
+          return `Aprovada. Seu plano roda ${plural(dados.limiteNoAr, 'peça', 'peças')} ao mesmo tempo — esta entra quando outra sair.`;
+        if (!dados.contaVeicula) return 'Aprovada. Entra no ar quando o seu plano estiver ativo.';
+        return motivo ? `Aprovada, mas ainda sem horário: ${motivo}.` : 'Aprovada.';
+      }
       case 'fora_do_ar':
         return 'Fora do ar. Continua na sua conta.';
       case 'recusado':
@@ -56,7 +71,9 @@
   function htmlCriativo(c) {
     const tipo = c.arquivoUrl && ehVideo(c.arquivoUrl) ? 'Vídeo' : 'Imagem';
     const duracao = c.duracaoSegundos ? `${Number(c.duracaoSegundos)}s` : 'Processando';
-    const podeSubstituir = (c.situacao === 'no_ar' || c.situacao === 'aprovado') && !c.substitutaEmAnalise;
+    const podeSubstituir =
+      ['no_ar', 'aprovado', 'programado', 'aguardando_primeira_exibicao', 'atrasado'].includes(c.situacao) &&
+      !c.substitutaEmAnalise;
     const rotulo = window.ROTULOS.criativoSituacao[c.situacao] || c.situacao;
     return `<div class="criativo-card situacao-${c.situacao}" data-id="${c.id}">
       <div class="criativo-media">

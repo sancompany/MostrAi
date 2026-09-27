@@ -143,9 +143,13 @@ function htmlEtapas(etapas, proxima) {
       const estado = e.feito ? 'feito' : e.id === proxima ? 'proximo' : e.opcional ? 'opcional' : 'pendente';
       // O estado vai por escrito, não só pela cor (acessibilidade).
       const rotulo = { feito: 'Concluído', proximo: 'Próximo passo', opcional: 'Opcional', pendente: 'Depois' }[estado];
+      // A etapa opcional nunca vira "Próximo passo" (não segura o fluxo), e
+      // por isso o atalho de `ACAO_DA_ETAPA.pontos` nunca aparecia: o link
+      // mora na própria etapa, enquanto ela estiver disponível.
+      const atalho = estado === 'opcional' && e.disponivel && e.id === 'pontos' ? ACAO_DA_ETAPA.pontos : '';
       return `<li class="etapa-${estado}"${estado === 'proximo' ? ' aria-current="step"' : ''}>
         <span class="etapa-num" aria-hidden="true">${e.feito ? '✓' : i + 1}</span>
-        <span class="etapa-texto"><b>${esc(e.titulo)}</b><span>${rotulo}${e.detalhe ? ` · ${esc(e.detalhe)}` : ''}</span></span>
+        <span class="etapa-texto"><b>${esc(e.titulo)}</b><span>${rotulo}${e.detalhe ? ` · ${esc(e.detalhe)}` : ''}</span>${atalho}</span>
       </li>`;
     })
     .join('')}</ol>`;
@@ -365,69 +369,126 @@ function pintarCompensacao(c) {
   el.hidden = false;
 }
 
-async function carregarPontos() {
-  if (!ANUNCIANTE.plano_id || ANUNCIANTE.plano_cortesia) return;
-  let dados;
-  try {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos-disponiveis`, { credentials: 'include' });
-    if (!r.ok) return;
-    dados = await r.json();
-  } catch {
-    return;
-  }
-  const limite = dados.limite;
-  document.getElementById('painelPontos').hidden = false;
-  pintarCompensacao(dados.cobertura);
+// Texto da regra, uma vez só (é o que o dono pediu escrito na tela).
+const TEXTO_MODO_AUTOMATICO =
+  'Se você não escolher pontos, a Mostraí distribui sua campanha automaticamente entre os pontos disponíveis dentro da cobertura do seu plano.';
+const TEXTO_SEU_PONTO =
+  'Este estabelecimento pertence à sua conta. Você pode incluí-lo na cobertura da campanha ou anunciar somente em outros pontos da rede.';
 
-  const lista = document.getElementById('listaPontos');
-  if (!dados.pontos.length) {
-    lista.innerHTML =
-      '<div class="empty-state dashboard-empty">A rede ainda não tem pontos disponíveis para seleção. Sua cobertura aparecerá aqui conforme eles entrarem no ar.</div>';
-    return;
-  }
-  // Uma linha por ponto, sem o cartão grande de antes (19/09/2026, pedido
-  // do dono: "se existir muitos pontos cadastrados ele se perde") — nome,
-  // cidade e status cabem numa linha só; o link do mapa reaproveita a MESMA
-  // busca do Google Maps que a vitrine pública já usa em pontos.page.js.
-  lista.innerHTML = dados.pontos
-    .map((p) => {
-      const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
-      // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
-      // ainda. Bloquear ele por ocupação seria bloquear por um zero que
-      // significa "ainda não existe", não "tem espaço de sobra".
-      const cheio = !instalando && p.ocupacao >= 100;
-      const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
-      const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
-      // <a> fica FORA do <label> de propósito: um link dentro de um label
-      // ainda ativa o checkbox quando o clique borbulha até o label (é o
-      // label que decide isso, não dá pra impedir com stopPropagation numa
-      // camada acima). O <label> vira `display:contents` no CSS — some da
-      // caixa, mas continua marcando/desmarcando o checkbox normalmente —
-      // e os dois (label e link) viram irmãos dentro do mesmo grid da
-      // linha, então o alinhamento continua igual.
-      // Horário de funcionamento (22/09/2026, pedido do dono) vai no title
-      // do nome — a linha já é enxuta de propósito (19/09/2026, "se existir
-      // muitos pontos ele se perde"), sem espaço pra mais uma coluna visível.
-      // `title` sozinho não é acessível (não existe pra quem navega por
-      // teclado, e leitor de tela não anuncia de forma confiável) — o span
-      // também ganha `tabindex`/`aria-label`, que resolve teclado e leitor
-      // de tela nos dois; toque-e-segure no celular sem leitor de tela
-      // continua sem revelar o texto (limite conhecido do `title`, aceito
-      // pelo dono junto da compactação: "mais excluso"). `null` (ponto
-      // antigo, sem horário informado ainda) não aparece — mostrar "não
-      // informado" por hover de todo ponto seria mais ruído que ajuda.
-      const tituloNome = p.horario ? `${p.nome} · ${p.horario}` : p.nome;
-      return `<div class="ponto-escolha${cheio ? ' cheio' : ''}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
+// Uma linha por ponto: nome, localização, estado operacional, horário,
+// ocupação e se está selecionado. O próprio ponto (a conta é dona do
+// comércio) vem na MESMA lista, com destaque — nunca marcado por isso: se
+// marcado, conta no limite do plano como qualquer outro.
+function htmlPontoEscolha(p) {
+  const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
+  // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
+  // ainda. Bloquear ele por ocupação seria bloquear por um zero que
+  // significa "ainda não existe", não "tem espaço de sobra".
+  const cheio = !instalando && p.ocupacao >= 100;
+  // G.7: cruzou 80% e parou de aceitar escolha NOVA (quem já tinha fica).
+  const fechado = !p.escolhido && (cheio || p.bloqueado);
+  const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
+  const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
+  const ocupacao = instalando
+    ? 'Ainda sem hora vendida'
+    : cheio
+      ? 'Sem espaço agora'
+      : p.bloqueado && !p.escolhido
+        ? `${p.ocupacao}% vendido · não aceita novas escolhas`
+        : `${p.ocupacao}% vendido`;
+  const estado = window.ROTULOS.ponto[p.status] || p.status;
+  const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  // <a> fica FORA do <label> de propósito: um link dentro de um label ainda
+  // ativa o checkbox quando o clique borbulha até ele. O <label> é
+  // `display:contents` no CSS — os filhos viram itens do grid da linha.
+  return `<div class="ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${cheio && !p.escolhido ? 'disabled' : ''}>
-        <span class="ponto-nome" title="${esc(tituloNome)}" ${p.horario ? `tabindex="0" aria-label="${esc(tituloNome)}"` : ''}>${esc(p.nome)}</span>
+        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''}>
+        <span class="ponto-info">
+          <span class="ponto-nome">${esc(p.nome)}</span>${p.seuPonto ? ' <span class="selo-seu-ponto">Seu ponto</span>' : ''}
+          <span class="ponto-horario">${p.horario ? esc(p.horario) : 'Horário não informado'}</span>
+          ${p.seuPonto ? '<span class="ponto-proprio-rotulo">Veicular no próprio ponto</span>' : ''}
+        </span>
         <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
-        <span class="ponto-ocupacao">${instalando ? window.ROTULOS.ponto.a_instalar : cheio ? 'Sem espaço agora' : `${p.ocupacao}% vendido`}</span>
+        <span class="ponto-estado badge ${classeEstado}">${esc(estado)}</span>
+        <span class="ponto-ocupacao">${esc(ocupacao)}</span>
+        ${p.seuPonto ? `<span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span>` : ''}
       </label>
       <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
     </div>`;
-    })
-    .join('');
+}
+
+// Estado da seleção (contador e modo), repintado depois de cada salvamento
+// com a resposta NOVA do servidor — "quantos pontos veiculam hoje" muda com a
+// escolha, e o número velho na tela seria mentira.
+function pintarResumoPontos(dados, marcados) {
+  const n = marcados.length;
+  const limite = dados.limite;
+  const contador = document.getElementById('contadorPontos');
+  contador.textContent = limite
+    ? `${n} de ${limite} ${limite === 1 ? 'ponto selecionado' : 'pontos selecionados'}`
+    : `${n} ${n === 1 ? 'ponto selecionado' : 'pontos selecionados'}`;
+  contador.className = n > 0 ? 'badge badge-ok' : 'badge badge-neutro';
+  const modo = document.getElementById('modoPontos');
+  const veiculando = dados.cobertura?.veiculando;
+  const hoje =
+    veiculando != null
+      ? ` Hoje sua campanha ${veiculando === 1 ? 'roda em 1 ponto no ar' : `roda em ${veiculando} pontos no ar`}.`
+      : '';
+  modo.textContent = n === 0 ? `Distribuição automática ativa.${hoje}` : `Você escolheu os pontos da campanha.${hoje}`;
+}
+
+let carregandoPontos = null;
+async function carregarPontos() {
+  if (!ANUNCIANTE.plano_id) {
+    document.getElementById('painelPontos').hidden = true;
+    return;
+  }
+  if (carregandoPontos) return carregandoPontos;
+  carregandoPontos = desenharPontos().finally(() => {
+    carregandoPontos = null;
+  });
+  return carregandoPontos;
+}
+
+async function buscarPontosDisponiveis() {
+  const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos-disponiveis`, { credentials: 'include' });
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(corpo.erro || 'não deu pra carregar os pontos');
+  return corpo;
+}
+
+async function desenharPontos() {
+  const painel = document.getElementById('painelPontos');
+  const lista = document.getElementById('listaPontos');
+  const msg = document.getElementById('msgPontos');
+  painel.hidden = false;
+  document.getElementById('explicaAutomatico').textContent = TEXTO_MODO_AUTOMATICO;
+  let dados;
+  try {
+    dados = await buscarPontosDisponiveis();
+  } catch (erro) {
+    // Falha nunca some em silêncio (antes o painel inteiro ficava escondido
+    // e a pessoa não sabia que a escolha existia): diz o que houve e oferece
+    // tentar de novo, sem recarregar a página.
+    lista.innerHTML = `<div class="empty-state dashboard-empty" role="alert">
+        Não deu pra carregar os pontos agora (${esc(window.frase(erro.message))}).
+        <button type="button" class="btn ghost mini" id="btnTentarPontos">Tentar de novo</button>
+      </div>`;
+    document.getElementById('contadorPontos').textContent = '';
+    document.getElementById('modoPontos').textContent = '';
+    document.getElementById('btnTentarPontos').onclick = () => carregarPontos();
+    return;
+  }
+  pintarCompensacao(dados.cobertura);
+
+  if (!dados.pontos.length) {
+    lista.innerHTML =
+      '<div class="empty-state dashboard-empty">A rede ainda não tem pontos disponíveis para seleção. Sua cobertura aparecerá aqui conforme eles entrarem no ar.</div>';
+    pintarResumoPontos(dados, []);
+    return;
+  }
+  lista.innerHTML = dados.pontos.map(htmlPontoEscolha).join('');
 
   // Busca só aparece quando faz diferença — poucos pontos não precisam de
   // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.
@@ -446,35 +507,25 @@ async function carregarPontos() {
     };
   }
 
-  const msg = document.getElementById('msgPontos');
-  const contador = document.getElementById('contadorPontos');
   const marcados = () => [...lista.querySelectorAll('input:checked')].map((i) => Number(i.value));
-
-  function pintarContador() {
+  // Passar do limite não é erro de servidor: é uma caixa que não devia ter
+  // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
+  // depois do clique em salvar. O próprio ponto conta igual.
+  function travarNoLimite() {
     const n = marcados().length;
-    const base = limite ? `${n} de ${limite} escolhidos` : `${n} escolhido${n === 1 ? '' : 's'}`;
-    // "Escolhidos" e "em operação" são contagens diferentes (o cliente pode
-    // escolher um ponto que ainda está em instalação, ou não escolher nada e
-    // ainda assim aparecer nos que estão no ar) — juntar os dois números no
-    // mesmo badge evita a leitura de que "1 de 7" já diz tudo sobre a
-    // cobertura real de hoje.
-    const veiculando = dados.cobertura?.veiculando;
-    contador.textContent = veiculando != null ? `${base} · ${veiculando} em operação` : base;
-    contador.className = !limite || n >= limite ? 'badge badge-ok' : 'badge badge-pendente';
-    // Passar do limite não é erro de servidor: é uma caixa que não devia ter
-    // deixado marcar. Desligar as outras é mais honesto que aceitar e recusar
-    // depois do clique em salvar.
-    if (limite) {
-      lista.querySelectorAll('input:not(:checked)').forEach((i) => {
-        if (!i.closest('.ponto-escolha').classList.contains('cheio')) i.disabled = n >= limite;
-      });
-    }
+    if (!dados.limite) return;
+    lista.querySelectorAll('input:not(:checked)').forEach((i) => {
+      if (!i.closest('.ponto-escolha').classList.contains('cheio')) i.disabled = n >= dados.limite;
+    });
   }
-  pintarContador();
+  pintarResumoPontos(dados, marcados());
+  travarNoLimite();
 
   lista.onchange = async (e) => {
     if (e.target.tagName !== 'INPUT') return;
-    pintarContador();
+    const escolha = marcados();
+    pintarResumoPontos(dados, escolha);
+    travarNoLimite();
     msg.textContent = 'Salvando...';
     msg.className = 'form-msg';
     try {
@@ -482,7 +533,7 @@ async function carregarPontos() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ pontos: marcados() }),
+        body: JSON.stringify({ pontos: escolha }),
       });
       const corpo = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -490,8 +541,17 @@ async function carregarPontos() {
         msg.className = 'form-msg err';
         return;
       }
-      msg.textContent = marcados().length ? 'Pronto. Salvo.' : 'Pronto. Sem marcação, a gente distribui seus pontos.';
+      msg.textContent = escolha.length ? 'Pronto. Salvo.' : 'Pronto. Sem escolha, a Mostraí distribui sua campanha.';
       msg.className = 'form-msg ok';
+      // Cobertura e compensação dependem da escolha: relê do servidor (só o
+      // resumo — a lista fica, pra não roubar o foco de quem está marcando).
+      try {
+        dados = { ...dados, ...(await buscarPontosDisponiveis()) };
+        pintarCompensacao(dados.cobertura);
+        pintarResumoPontos(dados, marcados());
+      } catch {
+        // O salvamento já deu certo; o resumo fica com o número da tela.
+      }
     } catch {
       msg.textContent = 'Sem conexão. Tente de novo.';
       msg.className = 'form-msg err';

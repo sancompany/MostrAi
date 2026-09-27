@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const sse = require('../lib/sse');
 const { confirmarExecucao } = require('./gerador');
 
 // Deduplicação do proof-of-play em lote (contrato novo, migration 065). Ver
@@ -35,9 +36,22 @@ async function confirmarComDedup(dispositivoId, evento, agora) {
       return { execucaoId, status: 'duplicado' };
     }
 
-    const status = await confirmarExecucao(dispositivoId, itemProgramacaoId, janelaId, agora, client);
+    const entradas = [];
+    const status = await confirmarExecucao(dispositivoId, itemProgramacaoId, janelaId, agora, client, {
+      criativoId: evento.criativoId,
+      iniciadoEm: evento.iniciadoEm,
+      entradas,
+    });
     await client.query('UPDATE execucoes_confirmadas SET status = $2 WHERE execucao_id = $1', [execucaoId, status]);
     await client.query('COMMIT');
+    // Peça que acabou de entrar no ar (primeiro comprovante do contexto):
+    // o painel do cliente e o admin trocam "Aguardando" por "No ar" sem
+    // recarregar. Depois do COMMIT — antes, quem relesse ainda veria o
+    // estado velho. Só na transição: um aviso por peça, não por exibição.
+    for (const e of entradas) {
+      sse.emitirParaConta(e.anuncianteId, 'creative.updated', { id: e.criativoId, noAr: true });
+      sse.emitirParaAdmin('creative.updated', { id: e.criativoId, noAr: true });
+    }
     return { execucaoId, status };
   } catch (erro) {
     await client.query('ROLLBACK');

@@ -795,6 +795,8 @@ select.mini, input.mini { background: var(--bg-alt); border: 1px solid var(--bor
    6,3. */
 .badge-pendente { background: rgba(255,122,26,.12); color: #8a3d05; }
 .badge-ok { background: rgba(22,163,74,.12); color: #0f5c2e; }
+/* Programado (entrada no ar, 27/09/2026): azul, igual ao admin. */
+.badge-info { background: rgba(29,78,216,.1); color: #1e3a8a; }
 .badge-err { background: rgba(220,38,38,.12); color: #a51b1b; }
 .badge-neutro { background: rgba(100,116,139,.12); color: #475569; }
 
@@ -2136,8 +2138,8 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
    sumir — saber que existe e está cheio é informação, some não é. */
 .ponto-escolha {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
-  grid-template-areas: "check nome cidade ocupacao mapa";
+  grid-template-columns: auto 1fr auto auto auto auto;
+  grid-template-areas: "check nome cidade estado ocupacao mapa" ". texto texto texto texto texto";
   gap: 4px 10px;
   align-items: center;
   padding: 8px 10px;
@@ -2156,15 +2158,29 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
    checkbox junto — ver comentário em painel.page.js. */
 .ponto-marcar { display: contents; cursor: pointer; }
 .ponto-escolha input { grid-area: check; width: 18px; height: 18px; accent-color: var(--brand); flex: none; }
-.ponto-nome { grid-area: nome; font-weight: 600; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nome + horário (27/09/2026: o horário deixou de morar só no `title` —
+   quem escolhe o ponto precisa ver quando ele funciona). */
+.ponto-info { grid-area: nome; min-width: 0; }
+.ponto-nome { font-weight: 600; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ponto-horario { display: block; font-size: .74rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ponto-estado { grid-area: estado; white-space: nowrap; }
+/* O próprio ponto da conta: mesma lista, destaque laranja — nunca marcado
+   por isso (a escolha é da pessoa). */
+.ponto-escolha.seu-ponto { border-left: 4px solid var(--brand); }
+.selo-seu-ponto { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #fff1e4; color: var(--brand-text); font-size: .7rem; font-weight: 700; vertical-align: 1px; }
+.ponto-proprio-rotulo { display: block; font-size: .78rem; font-weight: 600; color: var(--brand-text); }
+.ponto-proprio-texto { grid-area: texto; font-size: .78rem; color: var(--text-dim); line-height: 1.45; }
+.pontos-modo { margin: 0 0 4px; font-weight: 600; font-size: .88rem; }
+.pontos-explica { margin: 0 0 14px; }
 .ponto-end { grid-area: cidade; font-size: .78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ponto-ocupacao { grid-area: ocupacao; font-size: .74rem; color: var(--text-dim); white-space: nowrap; }
 .ponto-mapa { grid-area: mapa; text-decoration: none; font-size: .9rem; line-height: 1; padding: 2px; }
 @media (max-width: 560px) {
   .ponto-escolha {
     grid-template-columns: auto 1fr auto;
-    grid-template-areas: "check nome mapa" "check ocupacao mapa";
+    grid-template-areas: "check nome mapa" ". estado ." ". ocupacao ." ". texto .";
   }
+  .ponto-estado { justify-self: start; }
   .ponto-end { display: none; }
 }
 

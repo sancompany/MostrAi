@@ -5091,3 +5091,40 @@ existiam só na conversa com o dono e ficam registrados aqui.
     lá se ainda estiverem ativas — são testes abandonados, sem dinheiro real.
 12. Apagar do volume de backup o arquivo vazio
     `mostrai-20260920-080036.sql.gz` (ou só nunca restaurar dele).
+
+## N. Distribuição real — pontos, primeira entrada e Mídia Mostraí (27/09/2026)
+
+Feito (PR "Distribuição: seleção de pontos, primeira entrada e métricas da
+Mídia Mostraí", sem merge — decisão do dono):
+
+- [x] Escolha de pontos restaurada pra toda conta com plano (inclusive
+      benefício), com o próprio ponto destacado e opcional (RN-63).
+- [x] Dono do mesmo ramo que escolhe o próprio ponto veicula nele
+      (`docs/erros/2026-09-27-dono-barrado-no-proprio-ponto.md`).
+- [x] "No ar" só com proof-of-play confirmado; Programado/Aguardando/Atrasado
+      com janela e prazo do servidor; indicadores e lista no admin (RN-64).
+- [x] Mídia Mostraí com comprovante, programadas × confirmadas × esperadas,
+      por ponto e por tela, e estado derivado (RN-65).
+- [x] Mídia pausada no meio da hora não derruba mais a playlist
+      (`docs/erros/2026-09-27-midia-pausada-derrubava-playlist.md`).
+
+Fica registrado (fora do escopo da estação — não mexido):
+
+1. **Banco de horas (BANK_HOURS_FOLLOWUP_REQUIRED).** O gerador grava
+   `vezes_programadas` comerciais também em hora com o ponto FECHADO (a TV
+   continua pedindo a playlist fora do horário e só não toca). Com isso o
+   `deficitHoraAnterior` e a apuração mensal contam como "déficit" horas em
+   que nada podia tocar. A Mídia Mostraí já grava só em hora aberta. Rever
+   junto com a estação do banco de horas (sem mexer em fórmula agora).
+2. **ADR-005 (doc) desatualizada** sobre déficit/banco congelados na base da
+   hora — conferir na mesma estação.
+3. **E-mail "Seu anúncio está no ar"** (`enviarCriativoNoAr`) é enviado na
+   aprovação — o texto promete o que só o comprovante confirma. E-mails
+   estavam fora do escopo; trocar o texto (ex.: "aprovado — entra na
+   programação") ou mover o envio para a primeira exibição.
+4. **Métricas da Mídia Mostraí**: telas, pontos, cobertura e frequência
+   entram como estão hoje (não há histórico deles) — mudar a frequência
+   reescreve o esperado do passado. Se virar necessidade, guardar histórico.
+5. **Previsão da primeira janela** sem hora programada usa a cobertura de
+   hoje a partir da aprovação: conta que volta a veicular (plano renovado)
+   com peça aprovada antes aparece "atrasada" até a primeira hora programada.

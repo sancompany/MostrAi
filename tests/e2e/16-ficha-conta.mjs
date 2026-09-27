@@ -84,6 +84,9 @@ P.A = conta('A · Conta comum', { categoria_id: '4' }); // e categoria antiga
 P.B = conta('B · Plano pago', { plano_id: "'destaque-3m'", plano_cortesia: 'false', data_expiracao: dias(40) });
 assinatura(P.B, 'destaque-3m');
 criativo(P.B);
+// Veicula DE VERDADE: a TV já confirmou uma exibição (desde 27/09/2026,
+// aprovação sozinha não é "no ar").
+PG(`UPDATE criativos SET primeira_exibicao_em = now(), ultima_exibicao_em = now() WHERE anunciante_id = ${P.B}`);
 P.C = conta('C · Benefício por créditos', {
   plano_id: "'maximo-12m'",
   plano_cortesia: 'true',

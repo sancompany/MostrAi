@@ -367,7 +367,7 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     assert.strictEqual(await criativosRepo.contarNaoReprovados(conta.id), 1, 'substituto em análise não ocupa vaga');
 
     let lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
-    assert.strictEqual(lista.criativos.find((c) => c.id === a.id).no_ar, true, 'A no ar enquanto B espera');
+    assert.strictEqual(lista.criativos.find((c) => c.id === a.id).em_rodizio, true, 'A no rodízio enquanto B espera');
     assert.strictEqual(lista.limite_cadastro, 3);
 
     const aprovado = await app.chamar('PATCH', `/admin/criativos/${b.id}`, { status: 'aprovado' });
@@ -375,9 +375,9 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     assert.strictEqual((await criativosRepo.buscarPorId(a.id)).status, 'retirado', 'A sai do ar, fica cadastrado');
     lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
     assert.deepStrictEqual(
-      lista.criativos.filter((c) => c.no_ar).map((c) => c.id),
+      lista.criativos.filter((c) => c.em_rodizio).map((c) => c.id),
       [b.id],
-      'só B no ar',
+      'só B no rodízio',
     );
 
     // B' recusado: B (agora no ar) não é tocado.
@@ -388,7 +388,7 @@ test('substituição: A segue no ar com B em análise; aprovar B retira A; recus
     // Retirar e colocar no ar de novo.
     await app.chamar('PATCH', `/admin/criativos/${b.id}`, { status: 'retirado' });
     lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
-    assert.strictEqual(lista.criativos.filter((c) => c.no_ar).length, 0, 'retirado não roda');
+    assert.strictEqual(lista.criativos.filter((c) => c.em_rodizio).length, 0, 'retirado não roda');
     await app.chamar('PATCH', `/admin/criativos/${b.id}`, { status: 'aprovado' });
     assert.strictEqual((await criativosRepo.buscarPorId(b.id)).status, 'aprovado');
   } finally {
@@ -408,14 +408,17 @@ test('no ar respeita o limite do plano e a conta suspensa não veicula', async (
     const recente = await criativo(conta.id);
     let lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
     assert.deepStrictEqual(
-      lista.criativos.filter((c) => c.no_ar).map((c) => c.id),
+      lista.criativos.filter((c) => c.em_rodizio).map((c) => c.id),
       [recente.id],
       'o mais recente, como o gerador',
     );
+    // Rodízio não é "no ar" (27/09/2026): sem comprovante confirmado, nada
+    // está no ar ainda.
+    assert.strictEqual(lista.criativos.filter((c) => c.no_ar).length, 0, 'no ar só com exibição confirmada');
     await pool.query('UPDATE anunciantes SET suspenso = true WHERE id = $1', [conta.id]);
     lista = (await app.chamar('GET', `/admin/anunciantes/${conta.id}/criativos`)).corpo;
     assert.strictEqual(lista.conta_veicula, false);
-    assert.strictEqual(lista.criativos.filter((c) => c.no_ar).length, 0);
+    assert.strictEqual(lista.criativos.filter((c) => c.em_rodizio).length, 0);
   } finally {
     await app.fechar();
     await apagarConta(conta.id);

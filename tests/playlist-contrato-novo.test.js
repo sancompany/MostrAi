@@ -95,6 +95,7 @@ async function limparDispositivo(id, pontoId) {
   // aplicação (409, consolidação 24/09/2026) — aqui ele é lixo de teste.
   await pool.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = $1', [id]);
+  await pool.query('DELETE FROM midias_exibicoes_contador WHERE dispositivo_id = $1', [id]);
   await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1', [id]);
   await dispositivosRepo.deletar(id);
   if (pontoId) await apagarPonto(pontoId);

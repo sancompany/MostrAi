@@ -38,7 +38,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 6. Paga. O webhook `criada` chega, a conta vira `ativo` e a cobertura começa.
 7. Sobe o vídeo na aba **Painel**. O sistema normaliza com ffmpeg e gera a thumb.
 8. O administrador aprova o criativo — esse é o único portão que existe.
-9. O vídeo entra na playlist de todas as telas ativas, na frequência do plano — e é essa frequência que a tela entrega, com a rede vazia ou cheia (RN-39).
+9. O vídeo entra na playlist das telas da cobertura (os pontos escolhidos, ou a distribuição automática — RN-63), na frequência do plano — e é essa frequência que a tela entrega, com a rede vazia ou cheia (RN-39). O painel mostra **Programado** com a primeira janela prevista, depois **Aguardando primeira exibição**, e só vira **No ar** quando a TV confirma a primeira exibição (RN-64).
 10. O anunciante acompanha exibições na própria aba.
 
 ### 2.2 Dono de ponto — do painel à tela no ar
@@ -1158,6 +1158,69 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
   faria do site um jeito de mandar e-mail da Mostraí pra terceiros.
 - **Retenção da fila:** mensagem com segredo (código, link) some em 2 dias;
   enviada, em 30; abandonada/descartada, em 90.
+
+**RN-63 — O anunciante escolhe os pontos; o próprio ponto é opcional.**
+*(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
+cada ponto da rede com localização, estado operacional, horário, ocupação e
+se está selecionado, e o contador "X de N pontos selecionados" (N =
+`pontos_incluidos` do plano, do servidor). Vale pra plano pago **e** pra
+benefício (créditos/cortesia) — até 27/09/2026 o painel escondia a lista pro
+benefício. O ponto da própria conta aparece na mesma lista com destaque
+laranja, selo **Seu ponto**, rótulo "Veicular no próprio ponto" e o texto
+"Este estabelecimento pertence à sua conta. Você pode incluí-lo na
+cobertura da campanha ou anunciar somente em outros pontos da rede." Ele
+**nunca** vem marcado por ser da conta; marcado, conta no limite como
+qualquer outro, e a trava de ramo (concorrente do mesmo ramo do ponto)
+não barra o dono na própria tela — só com a escolha explícita. Sem
+escolha, vale a distribuição automática (RN-42), escrita na tela: "Se você
+não escolher pontos, a Mostraí distribui sua campanha automaticamente
+entre os pontos disponíveis dentro da cobertura do seu plano." Salvar de
+novo mantém a ordem de quem já estava escolhido (ela decide quem fica se o
+plano encolher). Falha ao carregar a lista mostra o erro com [Tentar de
+novo] — nunca some em silêncio.
+
+**RN-64 — Aprovado não é "no ar": no ar é exibição confirmada.**
+*(Estação de distribuição, 27/09/2026.)* O estado da peça aprovada é
+derivado no servidor (`src/anunciantes/entrada-no-ar.js`), o painel e o
+admin só exibem:
+- **Aprovado** — sem horário possível agora, com o motivo (sem plano
+  vigente, conta suspensa, fora do limite de peças simultâneas, nenhum ponto
+  da cobertura no ar ou aberto);
+- **Programado** — com a **primeira janela prevista**: a primeira hora cheia
+  depois da aprovação em que um ponto da cobertura funciona a hora inteira
+  (a playlist é por hora e congela no primeiro pedido da TV; peça aprovada
+  no meio da hora entra no fim dela, e tocar ali é sorte, não promessa);
+- **Aguardando primeira exibição** — a hora chegou e a conta está na
+  playlist servida à TV;
+- **No ar** — a TV confirmou pelo menos uma exibição da peça depois da
+  aprovação (proof-of-play). O painel muda sozinho (SSE) quando o primeiro
+  comprovante chega;
+- **Entrada atrasada** — passou a janela + tolerância sem comprovante. A
+  tolerância é **horas de rodízio × 60 min + 10 min**, contando só horas em
+  que a cobertura funciona: com N peças e k inserções por hora, uma peça
+  aparece em até ⌈N/k⌉ horas; 10 min cobrem a peça terminar e o lote de
+  comprovantes sair (a cada 60 s, com recuo de 5 s → 15 s → 60 s → 5 min).
+A Visão geral do admin mostra "Anúncios aguardando primeira exibição: N" e
+"Anúncios atrasados: N", com a lista (conta, janela, prazo) e a ação
+"Pedir atualização às telas", que só sinaliza a playlist como desatualizada
+— nunca reinicia o Player. Reaprovar uma peça (depois de retirar) recomeça
+o contexto.
+
+**RN-65 — Mídia Mostraí conta pelo comprovante, no contador dela.**
+*(Estação de distribuição, 27/09/2026.)* O item da Mídia Mostraí na
+playlist gera proof-of-play (`contabiliza: true`); o crédito vai pra
+`midias_exibicoes_contador` (programadas × confirmadas por mídia, tela e
+hora), nunca pra entrega de anunciante nem pro banco de horas, e sem
+anunciante de mentira. As métricas (card e edição): confirmadas hoje, 7 e
+30 dias e total; programadas × confirmadas × **esperadas** (frequência ×
+horas em que cada tela da cobertura deveria exibir — ponto aberto, dentro do
+período, mídia ativa segundo o histórico de pausa, tela com primeiro sinal,
+ponto em operação —, até 10 min atrás); % da entrega; primeira e última
+exibição; por ponto e por tela. Estados: **Ativa — aguardando primeira
+exibição**, **Ativa — reproduzindo normalmente**, **Ativa — entrega
+atrasada** (a última hora aberta já fechada não teve comprovante),
+**Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
+frequência entram como estão hoje (não há histórico deles).
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

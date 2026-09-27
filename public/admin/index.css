@@ -1950,6 +1950,27 @@ button.alerta-linha:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Entrada no ar (27/09/2026): dois indicadores em linha, abaixo das filas. */
+.entrada-indicadores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.entrada-ind {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.entrada-ind:hover { border-color: var(--borda-forte); }
+.entrada-ind:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.entrada-ind.entrada-atrasada { border-color: var(--err-texto); color: var(--err-texto); }
+.entrada-thumb { width: 36px; height: 64px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
 .pend-bloco {
   display: flex;
   flex-direction: column;
@@ -3778,3 +3799,13 @@ button.pend-bloco:focus-visible {
 .aviso-atualizacao {
   margin-bottom: 12px;
 }
+
+/* Mídia Mostraí: exibições confirmadas no card e na edição (27/09/2026). */
+.mm-metricas { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 0; font-size: 0.8rem; color: var(--text-dim); }
+.mm-metricas b { color: var(--text); }
+.mm-exibicoes .mini-table { width: 100%; margin: 8px 0; }
+.mm-exibicoes-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 4px; font-size: 0.82rem; color: var(--text-dim); }
+/* O estado de exibição ("Ativa — reproduzindo normalmente") é longo: vai
+   pra linha de baixo do nome, em vez de espremer o título letra a letra. */
+.mm-item .item-topo { flex-wrap: wrap; gap: 4px 10px; }
+.mm-item .item-topo h4 { flex: 1 1 100%; }

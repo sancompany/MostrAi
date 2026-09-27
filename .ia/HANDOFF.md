@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-09-27 (noite, depois do #82) — **Estação de distribuição real** (PR
+aberto, NÃO mergeado, aguardando o dono): escolha de pontos restaurada (com
+o próprio ponto destacado e opcional, benefício incluído), dono do mesmo
+ramo veicula no próprio ponto quando escolhe, "No ar" só com proof-of-play
+(Programado → Aguardando → No ar/Atrasado, janela e prazo do servidor,
+indicadores + lista no admin), métricas da Mídia Mostraí (programadas ×
+confirmadas × esperadas, por ponto/tela, estado). Migration 099. Regras
+RN-63/64/65 e ADR-022; erros em `docs/erros/2026-09-27-*`; pendências na
+seção N de `docs/PENDENCIAS.md` (banco de horas: programadas em hora
+fechada; e-mail "está no ar"). **Não iniciar** banco de horas, simulador de
+frota nem Indicações sem o dono.
 2026-09-27 (noite) — **Estação sessão do anunciante + upload confiável**
 (PR aberto, NÃO mergeado, aguardando o dono; #80 e #81 já mergeados e no
 ar). Sessão: admin e conta tinham UM cookie e o login de um derrubava o
