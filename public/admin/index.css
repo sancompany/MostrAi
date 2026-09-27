@@ -2858,6 +2858,23 @@ button.pend-bloco:focus-visible {
 .campo-moeda-caixa small {
   font-size: 0.74rem;
 }
+/* Preço-base do plano (Ofertas › Preços): com 64 px o "159,99" cortava —
+   o campo numérico ainda reserva espaço pras setinhas. Largura por
+   caractere (cabe 9999,99) e sem as setinhas; o valor e o salvamento não
+   mudam. Só este campo: o % de desconto dos ciclos continua estreito. */
+.campo-moeda-caixa input.oferta-preco-base {
+  width: 8.5ch;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.campo-moeda-caixa input.oferta-preco-base::-webkit-inner-spin-button,
+.campo-moeda-caixa input.oferta-preco-base::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.campo-moeda-caixa:has(.oferta-preco-base) {
+  white-space: nowrap;
+}
 .oferta-ciclos {
   grid-area: ciclos;
   display: grid;
@@ -3744,4 +3761,20 @@ button.pend-bloco:focus-visible {
 .gate {
   max-width: 360px;
   margin: 90px auto;
+}
+
+/* Estado de erro de uma tela/bloco (estação Admin sem F5, 27/09/2026): a
+   mensagem e o [Tentar novamente] na mesma linha, sem redesenho. */
+.erro-carga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 0;
+}
+.erro-carga .form-msg {
+  margin: 0;
+}
+.aviso-atualizacao {
+  margin-bottom: 12px;
 }

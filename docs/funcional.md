@@ -1345,6 +1345,7 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 | Chave de aparelho revogada | 401 na playlist | "tela não autorizada" |
 | Migration falha no deploy | aborta o deploy; o container antigo continua | nada — o site não cai |
 | Storage fora do ar | o vídeo não carrega; a playlist continua | tela institucional |
+| Admin: leitura falha, demora ou a sessão cai (27/09/2026) | toda leitura tem prazo de 20 s; erro mostra [Tentar novamente] que refaz só aquela tela/bloco; Atualizar que falha mantém os dados de antes; trocar de tela cancela a leitura anterior (resposta velha não pinta por cima); sessão do admin vencida volta pro login; sessão do Cloudflare Access vencida pede "Entrar de novo" | nunca precisa de F5 |
 
 ---
 
