@@ -547,12 +547,19 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
     // Mesma escrita tudo-ou-nada da chamada síncrona (ver
     // POST /anunciantes/me/trocar-plano) — só que disparada pelo webhook
     // em vez da resposta HTTP original.
+    let programadosSuperados = [];
     const cliente = await pool.connect();
     try {
       await cliente.query('BEGIN');
       await assinaturasRepo.marcarTrocada(assinaturaAntiga.id, cliente);
       await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
       await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [anunciante.id, planoNovo.id]);
+      // Mesma regra do ciclo pago e da troca síncrona (ADR-016).
+      programadosSuperados = await planoAdministrativo.encerrarProgramadosAbaixo(
+        cliente,
+        anunciante.id,
+        planoNovo.tier,
+      );
       // Troca = ciclo novo (migration 087): o snapshot é do CICLO do plano
       // novo (o valor que a assinatura nova cobra por ciclo), não do acerto
       // proporcional abaixo. Nunca reaproveita o snapshot do plano antigo.
@@ -591,6 +598,9 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       valor: payload.acertoCobrado,
     }).catch((err) => console.error('e-mail de troca de plano', err));
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
+    await planoAdministrativo
+      .avisarProgramadosSuperados(anunciante.id, programadosSuperados, planoNovo.nome)
+      .catch((err) => console.error('aviso de benefício programado encerrado na troca', err.message));
     return;
   }
 
@@ -804,7 +814,11 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
       await cliente.query('ROLLBACK');
       return registrarPendencia(contexto, MOTIVO_INTENCAO_CANCELADA);
     }
-    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao);
+    // Renovação atrasada de uma assinatura que o cliente já trocou por outra
+    // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
+    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao, {
+      substituida: ['cancelada', 'trocada'].includes(assinaturaTravada?.status),
+    });
     // Primeiro ciclo pago: a assinatura deixa de ser só um link gerado
     // (migration 089). Na mesma transação da cobrança.
     if (assinaturaTravada?.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);

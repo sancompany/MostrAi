@@ -444,7 +444,23 @@ prioridade do tier.** *(ADR-016.)* Essencial (1) < Pro (2) < Prime (3).
   guardado (`plano_pago_guardado_*`) e começa logo depois, com todos os dias
   (renovações durante o benefício somam dias — "a cobrança é adiada").
 · Benefício programado abaixo do novo pago fecha como superado; igual ou
-  acima continua na fila (Pro pago → Prime benefício → volta ao Pro).
+  acima continua na fila (Pro pago → Prime benefício → volta ao Pro). Vale
+  pro ciclo pago E pra troca de plano pago (`trocar-plano` síncrono e o
+  webhook `plano_trocado`, desde 26/09/2026 — antes a troca pra um nível
+  maior deixava o programado menor na fila, e ele ativaria por cima do pago).
+· Em benefício com a assinatura paga guardada por baixo (decisão do dono,
+  26/09/2026): assinar o MESMO plano/ciclo que já paga → "Você já possui o
+  Pro · Mensal pago. Ele voltará automaticamente quando seu benefício atual
+  terminar." (nada é criado, cancelado ou cobrado); assinar OUTRO plano →
+  cancela a assinatura cobrada no Checkout, cria a nova, os dias guardados
+  somam no plano novo quando ele for pago, e as regras acima decidem quando
+  ele entra — o pedido em si nunca encerra o benefício. `trocar-plano`
+  continua recusando conta em benefício (um caminho financeiro só).
+· Renovação ATRASADA de uma assinatura já trocada por outra (cancelada com
+  ciclo pago, que estava em trânsito): os dias pagos contam, mas nunca
+  desfazem a escolha mais nova — o plano guardado (ou o plano pago em
+  vigor) continua o escolhido depois, e o benefício não é encerrado
+  (revisão Codex do PR #78).
 · Resgate abaixo do plano pago em dia: recusado sem consumir crédito ("Seu
   plano Pro já oferece mais recursos que o benefício Essencial."). Resgate
   igual/acima entra depois do ciclo pago e o pago volta depois dele.

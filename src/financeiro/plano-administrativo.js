@@ -401,21 +401,43 @@ async function preverPagamento(conta, plano, db = pool) {
 // ciclo daria sem benefício nenhum no caminho (a conta de sempre: soma a
 // partir do fim da cobertura paga, se ainda vale). Devolve o que aconteceu,
 // pra quem chama notificar DEPOIS do COMMIT.
-async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
+//
+// `substituida` (revisão Codex do PR #78): o ciclo é de uma assinatura que o
+// cliente já trocou por outra (cancelada ao assinar outro plano) — uma
+// renovação que estava em trânsito e chegou atrasada. O dinheiro entrou, então
+// os dias contam; mas ela nunca desfaz a escolha mais nova (o plano guardado
+// ou o plano pago em vigor continuam os mesmos) nem encerra o benefício.
+async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio, { substituida = false } = {}) {
   const meses = Number(plano.compromisso_meses) || 1;
   const beneficio = await beneficioEmVigor(db, conta);
   const eventos = [];
 
-  if (beneficio && nivelDoTier(plano.tier) <= beneficio.nivel) {
+  if (beneficio && (substituida || nivelDoTier(plano.tier) <= beneficio.nivel)) {
     // Benefício igual ou maior segue; o pago espera, com o tempo guardado.
+    // Ciclo atrasado de assinatura substituída: soma os dias no plano que
+    // já está guardado (o escolhido depois), sem trocá-lo.
     await db.query(
       `UPDATE anunciantes
-          SET plano_pago_guardado_id = $2,
+          SET plano_pago_guardado_id = CASE WHEN $4 THEN COALESCE(plano_pago_guardado_id, $2) ELSE $2 END,
               plano_pago_guardado_dias = COALESCE(plano_pago_guardado_dias, 0) + $3
         WHERE id = $1`,
-      [conta.id, plano.id, diasDeMeses(meses)],
+      [conta.id, plano.id, diasDeMeses(meses), substituida],
     );
     eventos.push({ tipo: 'pago_depois_do_beneficio', beneficio });
+  } else if (
+    substituida &&
+    conta.plano_id &&
+    !conta.plano_cortesia &&
+    conta.data_expiracao &&
+    vigencia.coberturaVigente(conta.data_expiracao)
+  ) {
+    // Sem benefício, com outro plano pago em vigor: a cobertura estende pelos
+    // meses pagos, e o plano continua o escolhido depois.
+    await db.query('UPDATE anunciantes SET data_expiracao = $2::timestamptz WHERE id = $1', [
+      conta.id,
+      expiracaoSemBeneficio,
+    ]);
+    return eventos;
   } else {
     if (beneficio) {
       // Pago de nível maior: entra na hora e o benefício acaba. Créditos não
@@ -449,17 +471,42 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
 
   // Fila: benefício PROGRAMADO de nível menor que o pago nunca fica pra
   // reduzir o plano depois.
-  const { rows: programadosMenores } = await db.query(
+  for (const linha of await encerrarProgramadosAbaixo(db, conta.id, plano.tier))
+    eventos.push({ tipo: 'programado_superado', linha });
+  return eventos;
+}
+
+// Benefício PROGRAMADO de nível menor que o plano pago que acabou de entrar
+// é encerrado ('superado_por_plano_pago', créditos não voltam — ADR-016):
+// ele ativaria por cima do pago maior quando o ciclo acabasse, e
+// `ativarBeneficiosAgendados` não compara nível. Roda DENTRO da transação de
+// quem chama: o ciclo pago (acima) e as duas trocas de plano pago
+// (POST /anunciantes/me/trocar-plano e o webhook `plano_trocado`) — antes só
+// o ciclo pago fazia isso (26/09/2026). Devolve as linhas encerradas pra
+// quem chama avisar DEPOIS do COMMIT (avisarProgramadosSuperados).
+async function encerrarProgramadosAbaixo(db, contaId, tierPago) {
+  const { rows } = await db.query(
     `UPDATE planos_administrativos h
         SET status = 'encerrado', encerrado_em = now(), encerrado_motivo = 'superado_por_plano_pago'
        FROM planos p
       WHERE p.id = h.plano_id AND h.anunciante_id = $1 AND h.status = 'agendado'
         AND (CASE p.tier WHEN 'essencial' THEN 1 WHEN 'destaque' THEN 2 WHEN 'maximo' THEN 3 ELSE 0 END) < $2
       RETURNING h.id, p.nome AS plano_nome`,
-    [conta.id, nivelDoTier(plano.tier)],
+    [contaId, nivelDoTier(tierPago)],
   );
-  for (const linha of programadosMenores) eventos.push({ tipo: 'programado_superado', linha });
-  return eventos;
+  return rows;
+}
+
+// O mesmo aviso que o ciclo pago dá (san-checkout.js#aplicarCicloPago) pra
+// quem teve um benefício programado encerrado por uma troca de plano pago.
+async function avisarProgramadosSuperados(contaId, linhas, planoPagoNome) {
+  for (const linha of linhas) {
+    await avisarConta(contaId, {
+      tipo: 'fila_programado_superado',
+      titulo: `Benefício programado ${linha.plano_nome || ''} cancelado`.replace(/\s+/g, ' '),
+      descricao: `Seu plano ${planoPagoNome} pago já oferece mais recursos.`,
+    });
+  }
 }
 
 // Datas em 'AAAA-MM-DD' (as colunas são `date`; o pool devolve texto — ver
@@ -655,6 +702,8 @@ module.exports = {
   nivelDoTier,
   preverPagamento,
   aplicarPagamentoNaFila,
+  encerrarProgramadosAbaixo,
+  avisarProgramadosSuperados,
   ativarBeneficiosAgendados,
   encerrarBeneficiosVencidos,
 };
