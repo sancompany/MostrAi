@@ -686,5 +686,6 @@ exibicaoDosCreditos`, `pontos/repository.js#contaEhPonto`) e é coberta por
 registrada: o pedido do dono dizia que crédito → pago "encerra o
 benefício"; o comportamento real (ADR-016) só encerra quando o pago é de
 nível MAIOR — igual ou menor começa depois do benefício, sem perder dia
-pago. A tela descreve o real; mudar isso é decisão do dono, não desta
-estação.
+pago. A tela descreve o real. O dono confirmou em 26/09/2026 (PR #78):
+o benefício por créditos continua intacto até a data final e o ADR-016
+decide quando o pago entra.

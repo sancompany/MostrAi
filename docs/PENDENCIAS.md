@@ -4649,12 +4649,11 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 - **Troca:** crédito → crédito agora é permitida, com aviso (plano, validade, créditos gastos, "não serão devolvidos") e Manter/Continuar. Crédito → pago usa o mesmo aviso. Pago → pago e pago → crédito continuam como estavam.
 - **Testes:** `tests/conta-experiencia.test.js` (contas A–D, troca, aviso do pago, onboarding) e e2e `tests/e2e/22-conta-experiencia.mjs` (320/375/390/768/1366 px, 66 checagens). e2e 11, 15 e 17 foram atualizados às regras novas.
 
-**[ ] Decisão do dono — crédito → pago de nível igual ou menor:** o pedido diz que a troca encerra o benefício. Hoje (ADR-016) só o pago de nível MAIOR encerra o benefício; igual ou menor começa depois dele, sem perder dia pago. A tela descreve o comportamento real. Mudar é regra financeira, fica pra você decidir.
+**[x] Crédito → pago de nível igual ou menor — mantido o ADR-016.** O pedido dizia que a troca encerra o benefício. O dono respondeu em 26/09/2026, ao decidir o caso do beco sem saída (PR #78): o benefício por créditos continua intacto até a data final, e o ADR-016 decide quando o pago entra. Pago de nível igual ou menor começa depois do benefício, sem perder dia pago; pago de nível MAIOR encerra o benefício quando é pago, com o aviso antes.
 
-**[ ] Achados fora do escopo (não mexidos):**
-- benefício e assinatura com o MESMO plano (mesmo tier e ciclo): `/assinar` manda usar "Trocar de plano", e `trocar-plano` recusa porque a conta está em benefício. É um beco sem saída.
-- `trocar-plano` pra um tier maior deixa na fila um benefício programado de tier menor, que pode ativar por cima do pago.
-- e2e 05 (cadastro por convite) e 07 (token de e-mail) falham igual no main. No 17, o crédito mensal do ponto não sai no roteiro, também igual no main; o check de saldo novo ficou estrito e mostra isso.
+**[x] Achados fora do escopo — resolvidos em PRs separados:**
+- beco sem saída (benefício e assinatura paga com o MESMO plano) e benefício programado menor sobrevivendo a uma troca pra cima: PR #78;
+- e2e 05, 07 e 17: não eram falha do produto. O 05 e o 07 foram rodados sem `reset-db.sh`, e o servidor do 17 subiu com `NODE_ENV=test`, sem o LISTEN do SSE. O diagnóstico "falham igual no main" estava errado; as causas estão no PR #79.
 
 ## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
 
