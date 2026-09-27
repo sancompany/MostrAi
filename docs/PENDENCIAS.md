@@ -4638,7 +4638,7 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 
 ## Estação da conta — painel por estado, créditos, indicação e troca de benefício (26/09/2026)
 
-**[x] Construído e testado** (RN-61, ADR-020). Em PR, aguardando aprovação.
+**[x] Construído e testado** (RN-61, ADR-020). Mergeado com aprovação do dono (#77).
 - **Conta nova:** um bloco só, "Comece sua primeira campanha", com [Escolher meu plano] e os 4 primeiros passos (1 de 4). Sem card de plano repetindo "sem plano", sem créditos, sem indicação.
 - **Primeiros passos** saem do estado real (`GET /anunciantes/me/primeiros-passos`); com plano, viram uma faixa no topo até o primeiro criativo e a primeira exibição.
 - **Hero:** "Anúncios, pontos, criativos e benefícios da sua conta, num só lugar.", menor. "Dinheiro" saiu do painel (o Financeiro virou "Pagamentos do plano").
@@ -4654,6 +4654,14 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 **[x] Achados fora do escopo — resolvidos em PRs separados:**
 - beco sem saída (benefício e assinatura paga com o MESMO plano) e benefício programado menor sobrevivendo a uma troca pra cima: PR #78;
 - e2e 05, 07 e 17: não eram falha do produto. O 05 e o 07 foram rodados sem `reset-db.sh`, e o servidor do 17 subiu com `NODE_ENV=test`, sem o LISTEN do SSE. O diagnóstico "falham igual no main" estava errado; as causas estão no PR #79.
+
+## Plano pago × benefício por créditos — dois casos de borda (26/09/2026)
+
+**[x] Corrigido e testado** (`tests/prioridade-planos.test.js`, RN-43.2).
+- **Beco sem saída:** conta em benefício com a assinatura paga do MESMO plano guardada por baixo. `/assinar` outro plano respondia "use Trocar de plano", e `trocar-plano` recusava conta em benefício. Decisão do dono: seguir o caminho que já valia pra planos diferentes. Cancela a assinatura cobrada no Checkout, cria a nova, e os dias guardados somam no plano novo quando ele for pago; o ADR-016 decide quando ele entra; o benefício continua. Assinar o mesmo plano/ciclo que já paga vira 409 "Você já possui o Pro · Mensal pago. Ele voltará automaticamente quando seu benefício atual terminar.", sem nenhuma mutação (antes devolvia o link da assinatura já paga). `trocar-plano` continua recusando conta em benefício.
+- **Benefício programado menor sobrevivendo a uma troca pra cima:** `trocar-plano` (síncrono) e o webhook `plano_trocado` agora encerram o benefício programado de nível menor, como o ciclo pago já fazia (`encerrarProgramadosAbaixo`), com o mesmo aviso ao cliente.
+- **Renovação atrasada da assinatura antiga** (revisão Codex): se uma renovação da assinatura que o cliente trocou chega depois do plano novo pago, os dias contam mas o plano escolhido depois continua (com ou sem benefício); o benefício não é encerrado por ela.
+- **Nota:** se o plano pago novo for de nível MAIOR que o benefício em vigor, o pagamento dele encerra o benefício (ADR-016, com o aviso que já existe antes de pagar). O caso "benefício continua" é o do pago igual ou menor.
 
 ## Webhook financeiro: inbox durável antes do 200 (26/09/2026)
 

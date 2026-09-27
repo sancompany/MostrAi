@@ -247,6 +247,21 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     return res.status(400).json({ erro: 'complete o endereço da empresa no seu perfil antes de assinar' });
   }
 
+  // Conta em BENEFÍCIO com a assinatura paga por baixo (ADR-016: os dias
+  // pagos ficam em `plano_pago_guardado_*`). Assinar o MESMO plano/ciclo que
+  // ela já paga não tem o que trocar (decisão do dono, 26/09/2026): 409 claro,
+  // ANTES do aviso do benefício, sem criar, cancelar, cobrar nem mexer em
+  // nada — antes devolvia o link da assinatura já paga, e cobrar de novo
+  // era um clique.
+  if (conta.plano_cortesia) {
+    const paga = await assinaturasRepo.buscarAtivaDoAnunciante(conta.id);
+    if (paga?.plano_id === plano.id) {
+      return res.status(409).json({
+        erro: `Você já possui o ${plano.nome} · ${nomeDoCiclo(plano.compromisso_meses)} pago. Ele voltará automaticamente quando seu benefício atual terminar.`,
+      });
+    }
+  }
+
   // Benefício em vigor (por créditos, ou cortesia legada): a compra muda a
   // fila, e o cliente precisa saber como ANTES de pagar (regras 25-27 do
   // pedido, ADR-016). Sem `confirmarBeneficio: true`, responde 409 com o
@@ -308,13 +323,27 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
   }
 
   let assinatura = await assinaturasRepo.buscarAtivaDoAnunciante(req.session.anuncianteId);
+  const emBeneficio = !!conta.plano_cortesia;
   if (assinatura && assinatura.plano_id !== plano.id) {
     // Assinatura de outro plano: se já foi paga, a Asaas está cobrando ela —
     // criar outra viraria cobrança dupla. Troca de plano pago é pelo admin
     // (cancela no Checkout e assina de novo). Se nunca foi paga, é só um
     // clique antigo: cancela localmente e segue.
+    //
+    // Em BENEFÍCIO, `conta.plano_id` é o plano do benefício, não o da
+    // assinatura: compará-los só batia quando os dois eram o mesmo plano, e
+    // a conta caía num beco (aqui "use Trocar de plano", que recusa conta em
+    // benefício — achado de 26/09/2026). Decisão do dono: em benefício, nunca
+    // é "pagou → use Trocar de plano"; segue o caminho que já valia quando
+    // os planos eram diferentes —
+    // cancela a assinatura cobrada no Checkout (as renovações param; os dias
+    // já pagos continuam guardados e somam no plano novo quando ele for
+    // pago, aplicarPagamentoNaFila) e cria a nova.
     const pagou =
-      conta.plano_id === assinatura.plano_id && conta.data_expiracao && vigencia.coberturaVigente(conta.data_expiracao);
+      !emBeneficio &&
+      conta.plano_id === assinatura.plano_id &&
+      conta.data_expiracao &&
+      vigencia.coberturaVigente(conta.data_expiracao);
     if (pagou)
       return res
         .status(409)
@@ -555,12 +584,16 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   // Checkout — as escritas locais têm que ser tudo ou nada, e uma falha
   // aqui não pode desaparecer sem deixar rastro (mesmo raciocínio de
   // aplicarCicloPago, acima).
+  let programadosSuperados = [];
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
     await assinaturasRepo.marcarTrocada(assinaturaAtiva.id, cliente);
     await assinaturasRepo.marcarAtiva(assinaturaNova.id, cliente);
     await cliente.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [conta.id, planoNovo.id]);
+    // Benefício programado de nível menor que o pago novo sai da fila, como
+    // num ciclo pago (ADR-016) — senão ativaria por cima do Prime/Pro pago.
+    programadosSuperados = await planoAdministrativo.encerrarProgramadosAbaixo(cliente, conta.id, planoNovo.tier);
     // Troca = ciclo novo (migration 087): snapshot do ciclo do plano novo,
     // pelo valor que a assinatura nova cobra — nunca o acerto proporcional.
     await cicloContratado.registrar(cliente, {
@@ -608,6 +641,11 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
     conta,
   );
 
+  // Aviso gravado ANTES da resposta (depois do COMMIT): quem recebe o 200
+  // já encontra a notificação, e nada fica escrevendo solto depois.
+  await planoAdministrativo
+    .avisarProgramadosSuperados(conta.id, programadosSuperados, planoNovo.nome)
+    .catch((err) => console.error('aviso de benefício programado encerrado na troca', err.message));
   res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
   sse.emitirParaConta(conta.id, 'plan.updated', {});
 

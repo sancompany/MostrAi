@@ -15,7 +15,9 @@ bash tests/e2e/02-assinatura-webhook-comissao.sh   # CONTINUA o 01 (contas e coo
 tests/e2e/reset-db.sh && bash tests/e2e/04-modos-e-bonus.sh  # conta só-ponto (convite) → modo anúncios → outro estabelecimento → rotas antigas 410 → crédito mensal do ponto
 tests/e2e/reset-db.sh && tests/e2e/restart.sh
 # Cada roteiro de navegador assume banco zerado (repetem e-mails entre si):
-# rode tests/e2e/reset-db.sh antes de cada um. Screenshots em tests/e2e/saida/.
+# rode tests/e2e/reset-db.sh antes de cada um — 05 e 07 param logo no início
+# com essa instrução se acharem as contas fixas de uma rodada anterior.
+# Screenshots em tests/e2e/saida/.
 PW_CHROME=... node tests/e2e/03-navegador.mjs      # conta pede ponto → admin aprova na ficha → + Tela (M-xxxx) → código de instalação na ficha (sem chave na página) → TV provisiona → ponto em operação; planos, Contas, celular
 PW_CHROME=... node tests/e2e/05-navegador-modos.mjs  # candidatura sem conta → convite de ponto (sem modalidade) → Meus pontos com +1 crédito/mês, ativação do modo anúncios; card do modo Meu ponto (a ViaCEP é respondida pelo roteiro)
 PW_CHROME=... node tests/e2e/06-painel-bloqueio-plano.mjs  # sem plano trava o painel; admin libera cortesia e destrava
@@ -27,8 +29,10 @@ PW_CHROME=... node tests/e2e/12-meus-pontos.mjs    # um estabelecimento = um car
 PW_CHROME=... node tests/e2e/13-meus-criativos.mjs # anúncio na rede e na tela do próprio comércio numa biblioteca só
 PW_CHROME=... node tests/e2e/14-financeiro.mjs     # só Pagamentos (Recebimentos saiu com o ADR-016)
 PW_CHROME=... node tests/e2e/15-painel-unico.mjs   # quatro perfis de conta, módulos conforme o papel
-PW_CHROME=... node tests/e2e/16-ficha-conta.mjs    # ficha de Conta do admin nos 11 perfis (A–K) — sobe com NODE_ENV=development, ver abaixo
-# 16 e 17: suba com `tests/e2e/restart.sh NODE_ENV=development ...` — o crédito do ponto vem de outro processo via LISTEN/NOTIFY
+PW_CHROME=... node tests/e2e/16-ficha-conta.mjs    # ficha de Conta do admin nos 11 perfis (A–K)
+# 16 e 17: o crédito do ponto vem de outro processo via LISTEN/NOTIFY — por isso
+# restart.sh sobe o servidor com NODE_ENV=development por padrão (com o `test`
+# do .env o LISTEN não abre e o evento nunca chega; desde 26/09/2026)
 PW_CHROME=... node tests/e2e/17-modelo-de-creditos.mjs  # sem Inicial/Básico/R$ 50/repasse/comodato em admin, painel e site; crédito do ponto sem F5; aviso antes de pagar por cima de benefício
 PW_CHROME=... node tests/e2e/09-rede-redesenho.mjs # Rede: status automático (grade/filtros/detalhe/site público), telas em cards + margens, ocupação como tabela, candidatura com foto
 PW_CHROME=... node tests/e2e/21-planos-final.mjs # Planos: textos finais, mínimo de exibições nos cards, CTA, aviso de rede (0 pontos / rede pequena / rede completa), desktop e celular

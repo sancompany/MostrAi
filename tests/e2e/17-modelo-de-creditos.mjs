@@ -184,10 +184,15 @@ const contas = [];
     `node -e "require('./src/creditos/ponto').concederCreditosMensais({ apenasPontos: [${ponto}] }).then(() => setTimeout(() => process.exit(0), 600))"`,
     { cwd: new URL('../..', import.meta.url).pathname, env: process.env },
   );
+  // Espera o SALDO virar 1 (o `\b1\b` no texto do card casava com qualquer
+  // "1" da tabela, e o check passava por coincidência com "vale 1 crédito"
+  // do texto de indicação — mesmo sem o evento chegar; achado de 26/09/2026).
   await p.waitForFunction(() => document.querySelector('#creditosSaldo')?.textContent.trim() === '1', null, { timeout: 8000 }).catch(() => {});
   const creditos = await p.locator('#modCreditos').innerText();
   check('créditos: saldo 1 sem F5', (await p.textContent('#creditosSaldo')).trim() === '1' && (await p.evaluate(() => window.__semReload === true)), creditos.slice(0, 300));
-  await p.waitForTimeout(800);
+  // O rodapé do ponto se refaz pelo mesmo evento, numa requisição mais pesada
+  // que a dos créditos: espera o texto, não um tempo fixo.
+  await p.waitForFunction(() => /já concedido/.test(document.querySelector('#pontosLista')?.innerText || ''), null, { timeout: 8000 }).catch(() => {});
   const listaPontos = await p.locator('#pontosLista').innerText();
   check('Meus pontos: crédito do mês já concedido', /já concedido/.test(listaPontos), listaPontos.replace(/\s+/g, ' ').slice(0, 600));
   check('notificação do crédito do ponto', PG(`SELECT titulo FROM notificacoes WHERE anunciante_id = ${dono.id} AND tipo = 'credito_mensal_ponto'`) === 'Seu ponto Santos unio gerou 1 crédito');
