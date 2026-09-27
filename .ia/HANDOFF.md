@@ -1,6 +1,12 @@
 # Current Handoff
 
 ## Updated
+2026-09-27 — **Estação de e-mail (PR A, NÃO mergeado)**: fila durável de
+e-mails (migration 097, `src/email/outbox.js`), código de verificação com
+hash e prazo de 10 min do servidor (`src/email/codigos.js`), corrigir/trocar
+e-mail, troca pelo admin com trilha, autocomplete dos formulários. Regras em
+RN-62 e ADR-021. Nenhum `enviarX` fora da outbox. Em seguida: PR B (admin
+loading/erro/retry sem F5), em branch separada da main.
 2026-09-26 (noite) — **Estação da conta** (PR aberto, NÃO mergeado, aguardando o
 dono): painel por estado (conta nova com um CTA e primeiros passos), créditos
 relacionais, indicação só pra ponto, troca crédito → crédito com aviso e sem

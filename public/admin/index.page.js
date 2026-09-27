@@ -6060,9 +6060,46 @@ async function renderFilaDevolucoes(el) {
   );
 }
 
+// Fila de e-mails (migration 097): quantos estão em cada estado e os que
+// estão falhando. Destinatário já vem mascarado do servidor; conteúdo e
+// código nunca vêm.
+const ESTADOS_EMAIL = {
+  na_fila: 'na fila',
+  enviando: 'enviando',
+  tentando_de_novo: 'tentando de novo',
+  enviado: 'enviados',
+  abandonado: 'abandonados',
+  descartado: 'descartados',
+};
+function filaDeEmails(fila) {
+  if (!fila) return '<p class="u-fs-84 u-mt-8">Não deu pra ler a fila de e-mails agora.</p>';
+  const c = fila.contagem || {};
+  const linha = Object.entries(ESTADOS_EMAIL)
+    .map(([k, rotulo]) => `${c[k] || 0} ${rotulo}`)
+    .join(' · ');
+  const problemas = fila.problemas || [];
+  return `<p class="u-fs-84 u-mt-8"><b>Fila de e-mails:</b> ${esc(linha)}</p>${
+    problemas.length
+      ? `<details class="u-fs-84"><summary class="u-pointer u-txt-link">${problemas.length} com problema</summary>
+      <div class="rolagem"><table><thead><tr><th>Quando</th><th>Tipo</th><th>Para</th><th>Estado</th><th>Tentativas</th><th>Último erro</th></tr></thead><tbody>
+      ${problemas
+        .map(
+          (p) => `<tr><td>${esc(dataHora(p.atualizado_em))}</td><td>${esc(p.tipo)}</td><td>${esc(p.destinatario)}</td>
+        <td><span class="badge ${p.status === 'abandonado' ? 'badge-err' : 'badge-pendente'}">${esc(ESTADOS_EMAIL[p.status] || p.status)}</span></td>
+        <td>${p.tentativas}</td><td class="u-ws-normal">${esc(p.ultimo_erro || '—')}</td></tr>`,
+        )
+        .join('')}
+      </tbody></table></div></details>`
+      : ''
+  }`;
+}
+
 // ---------- eventos pendentes (Financeiro › Eventos do Checkout) ----------
 async function renderEventosPendentes(el) {
-  const eventos = await pegar('/admin/eventos-pendentes');
+  const [eventos, fila] = await Promise.all([
+    pegar('/admin/eventos-pendentes'),
+    pegar('/admin/emails').catch(() => null),
+  ]);
   // Teste do e-mail aqui dentro de propósito: quando um evento fica pendente
   // por falha de envio, esta é a tela onde você está. O botão faz o login no
   // servidor de SMTP e diz na hora se a senha de app está valendo — sem
@@ -6072,6 +6109,7 @@ async function renderEventosPendentes(el) {
     <p class="u-fs-84 u-mt-8 u-mb-8">Confere se o servidor aceita a senha de app. Não envia e-mail e não mostra a senha.</p>
     <button class="btn ghost mini" id="testarSmtp">Testar agora</button>
     <div id="resultadoSmtp" class="u-fs-84 u-mt-8"></div>
+    ${filaDeEmails(fila)}
   </div>`;
   el.innerHTML =
     smtp +

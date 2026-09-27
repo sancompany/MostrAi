@@ -5,6 +5,7 @@
 // escondida com 1 ponto só. Assume banco zerado e servidor na 3999.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto, recarregarQuieto } from './espera.mjs';
+import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 const B = 'http://localhost:3999';
 const PG = (sql) =>
@@ -72,7 +73,7 @@ const conta = await cadastro.evaluate(
       })
     ).json(),
 );
-const codigo = PG(`SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=${conta.id}`);
+const codigo = await codigoPara(conta.contato_email);
 await cadastro.evaluate(
   async (codigo) =>
     await fetch('/anunciantes/me/confirmar-email', {

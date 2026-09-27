@@ -4,7 +4,8 @@ const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const anunciantesRepo = require('../anunciantes/repository');
-const { enviarCriativoNoAr, enviarCriativoReprovado, diagnosticarSmtp } = require('../financeiro/email');
+const { diagnosticarSmtp } = require('../financeiro/email');
+const outbox = require('../email/outbox');
 const { ultimaConciliacao } = require('../financeiro/conciliacao');
 const dispositivosRepo = require('../dispositivos/repository');
 const { valorMensalDaConta } = require('../financeiro/san-checkout');
@@ -62,7 +63,16 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       // — o `contato_email` dela é um endereço interno sem caixa de entrada
       // (ensureContaMostrai), não um anunciante de verdade esperando aviso.
       if (dono && !dono.conta_propria) {
-        enviarCriativoNoAr(dono, criativo).catch((err) => console.error('e-mail criativo no ar', err));
+        await outbox.enfileirarSemFalhar({
+          tipo: 'criativo_aprovado',
+          chave: `criativo_aprovado:${criativo.id}`,
+          para: dono.contato_email,
+          anuncianteId: dono.id,
+          dados: {
+            conta: { nome_empresa: dono.nome_empresa },
+            criativo: { duracao_segundos: criativo.duracao_segundos || null },
+          },
+        });
         await notificacoesRepo
           .registrar(dono.id, {
             tipo: 'criativo_aprovado',
@@ -91,7 +101,16 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       const dono = await anunciantesRepo.buscarPorId(criativo.anunciante_id);
       // Mesma exclusão de conta própria do bloco de aprovado acima.
       if (dono && !dono.conta_propria) {
-        enviarCriativoReprovado(dono, criativo).catch((err) => console.error('e-mail criativo reprovado', err));
+        await outbox.enfileirarSemFalhar({
+          tipo: 'criativo_recusado',
+          chave: `criativo_recusado:${criativo.id}`,
+          para: dono.contato_email,
+          anuncianteId: dono.id,
+          dados: {
+            conta: { nome_empresa: dono.nome_empresa },
+            criativo: { motivo_reprovacao: criativo.motivo_reprovacao || null },
+          },
+        });
         await notificacoesRepo
           .registrar(dono.id, {
             tipo: 'criativo_recusado',
@@ -138,6 +157,12 @@ router.patch('/admin/criativos/:id', async (req, res) => {
 // espaços que o Google mostra na tela são separação visual e não entram.
 router.get('/admin/diagnostico/smtp', async (_req, res) => {
   res.json(await diagnosticarSmtp());
+});
+
+// Fila de e-mails (migration 097): contagem por estado e os que estão
+// falhando/abandonados — destinatário mascarado, sem conteúdo nem código.
+router.get('/admin/emails', async (_req, res) => {
+  res.json(await require('../email/outbox').resumo());
 });
 
 router.get('/admin/metrica', async (_req, res) => {

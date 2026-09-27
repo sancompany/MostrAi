@@ -4636,6 +4636,24 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Estação de e-mail — entrega confiável e verificação de e-mail (27/09/2026)
+
+**[x] Construído e testado — PR aberto, NÃO mergeado, aguardando o dono** (RN-62, ADR-021, migration 097).
+- **Fila durável (`email_outbox`):** nenhuma rota manda e-mail direto. Grava na fila e segue; o processador envia com `SKIP LOCKED` (seguro com as 2 instâncias), tenta de novo em 30 s → 2 min → 10 min → 30 min → 2 h e marca **abandonado** depois de 6. A contagem e os que falharam aparecem no admin (Financeiro › Eventos do Checkout, card "E-mail (SMTP)"), com o destinatário mascarado.
+- **Por que o primeiro código às vezes não chegava:** o cadastro abria DUAS conexões SMTP ao mesmo tempo (boas-vindas + código), "fire-and-forget" — erro virava só log, sem nova tentativa, e um restart no meio perdia o envio. Agora sai um e-mail só (o código), pela fila, com nova tentativa. As boas-vindas saem depois da confirmação.
+- **Código:** 10 minutos (era 2); prazo decidido no servidor (`expiraEm`); recarregar não reinicia; guardado só como HMAC; cifrado na fila e apagado quando sai; reenviar = código novo com 60 s de intervalo e no máximo 5 por hora; 5 erros matam o código.
+- **Corrigir e-mail antes de confirmar** (no próprio aviso, com a senha) e **trocar depois de confirmar** (perfil, com a senha; o login só muda com o código; o endereço antigo é avisado).
+- **Troca pelo admin:** trilha (`alteracoes_email`), confirmação do novo por código e aviso ao antigo.
+- **Chrome salvando o telefone como usuário:** o e-mail do cadastro (e do convite e do esqueci a senha) agora é `autocomplete="username"`; a página de nova senha mostra a conta num campo `username`.
+- **Defeitos corrigidos:** (1) cobrança falhada avisada 2× (webhook + conciliação) → chave `cobranca_falhou:<chargeId>`; (2) cadastro com 2 e-mails simultâneos; (3) e-mail da desistência engolido (`.catch(() => {})`); (4) conciliação marcava a falha como avisada ANTES de enviar; (5) notificação de crédito transformava concessão/resgate já gravados em 500. Também: troca de plano podia mandar e-mail pelo caminho síncrono e pelo webhook (mesma chave agora) e o diálogo de perfil era montado de novo a cada recarga por SSE (um clique = dois envios).
+- **Testes:** `tests/email-outbox.test.js` (11), `tests/email-verificacao.test.js` (13), `tests/email-comprovante.test.js` (atualizado), e2e `tests/e2e/23-email-verificacao.mjs`. Nenhum teste fala com SMTP real: em `NODE_ENV=test` o envio sem transporte falso falha; o servidor dos e2e grava os e-mails em `tests/e2e/saida/emails.jsonl` (`EMAIL_CAPTURA`, nunca em produção).
+
+**[ ] Só o dono:** fazer a jornada real de criação de conta em produção depois do merge (cadastro → código → confirmar → boas-vindas; e "Corrigir e-mail"). Nenhuma conta nem e-mail real foi criado nesta estação.
+
+**[ ] Asaas também manda e-mail ao cliente?** Não dá pra conferir deste repositório: quem cria o cliente na Asaas é o San Checkout (que não foi tocado). Os e-mails financeiros da Mostraí continuam os mesmos (pagamento confirmado com comprovante, cobrança falhada com o link de renovação — o contrato do Checkout pede este); nenhum e-mail financeiro NOVO foi criado. Estorno concluído não tem evento automático aqui (quem estorna é uma pessoa no Checkout), então não ganhou e-mail. Se a Asaas estiver notificando o cliente também, a decisão (desligar lá ou aqui) é do dono.
+
+**[ ] Limpeza futura:** a tabela `tokens_confirmacao_email` (061) ficou sem uso — a 097 só apagou os códigos em texto puro dela, pra não quebrar o processo antigo durante o deploy em rolagem. Dropar numa migration de limpeza depois do merge.
+
 ## Estação da conta — painel por estado, créditos, indicação e troca de benefício (26/09/2026)
 
 **[x] Construído e testado** (RN-61, ADR-020). Mergeado com aprovação do dono (#77).

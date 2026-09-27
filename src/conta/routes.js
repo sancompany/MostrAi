@@ -5,7 +5,7 @@ const { conferirSenha, gerarHash } = require('../lib/senha');
 const { normalizarEmail } = require('../anunciantes/repository');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 const pool = require('../db/pool');
-const email = require('../financeiro/email');
+const outbox = require('../email/outbox');
 
 // Redefinição de senha por link. Desde a v2 existe uma conta só por pessoa
 // (tabela anunciantes, papéis no convite) — o tipo 'afiliado' fica aceito
@@ -46,19 +46,59 @@ async function pedirRedefinicao(req, res, tipo) {
   if (!conta) return;
 
   const token = crypto.randomBytes(32).toString('hex');
-  await pool.query('INSERT INTO tokens_senha (token, tipo, usuario_id, expira_em) VALUES ($1,$2,$3,$4)', [
-    token,
-    tipo,
-    conta.id,
-    new Date(Date.now() + VALIDADE_MS),
-  ]);
-
+  const expiraEm = new Date(Date.now() + VALIDADE_MS);
   const base = process.env.SITE_URL || process.env.CORS_ORIGIN || '';
   const link = `${base}/redefinir-senha.html?token=${token}&tipo=${tipo}`;
-  email
-    .enviarLinkRedefinicaoSenha(conta.email, conta.nome, link)
-    .catch((err) => console.error('falha ao enviar link de redefinição', err));
+  // Token e e-mail juntos: o link vai CIFRADO na fila (outbox) e sai dela
+  // assim que o e-mail é enviado; nunca vai pra log.
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query('INSERT INTO tokens_senha (token, tipo, usuario_id, expira_em) VALUES ($1,$2,$3,$4)', [
+      token,
+      tipo,
+      conta.id,
+      expiraEm,
+    ]);
+    await outbox.enfileirar(
+      {
+        tipo: 'redefinir_senha',
+        chave: `redefinir_senha:${conta.id}:${crypto.randomUUID()}`,
+        para: conta.email,
+        anuncianteId: conta.id,
+        dados: { conta: { nome_empresa: conta.nome } },
+        segredo: { link },
+        validoAte: expiraEm,
+      },
+      cliente,
+    );
+    await cliente.query('COMMIT');
+    outbox.despachar();
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    console.error('pedido de redefinição de senha não entrou na fila:', outbox.sanitizar(err));
+  } finally {
+    cliente.release();
+  }
 }
+
+// A página de nova senha pergunta de quem é o link antes de a pessoa digitar:
+// com o e-mail num campo `autocomplete="username"`, o gerenciador de senhas
+// do navegador salva a senha nova na conta CERTA (em vez de criar uma
+// entrada sem usuário, ou pegar o telefone). Só quem tem o token (256 bits,
+// chegou no e-mail da própria conta) descobre o endereço.
+router.get('/redefinir-senha/conta', limiteTentativas, async (req, res) => {
+  const token = String(req.query.token || '');
+  if (!token) return res.status(400).json({ erro: 'token obrigatório' });
+  const { rows } = await pool.query(
+    `SELECT a.contato_email AS email FROM tokens_senha t JOIN anunciantes a ON a.id = t.usuario_id
+      WHERE t.token = $1 AND t.expira_em > now()`,
+    [token],
+  );
+  if (!rows[0]) return res.status(400).json({ erro: 'link inválido ou expirado — peça um novo' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ email: rows[0].email });
+});
 
 router.post('/anunciantes/esqueci-senha', limiteTentativas, (req, res) => pedirRedefinicao(req, res, 'anunciante'));
 // Afiliado (programa de vendedor) aposentado: link antigo recebe o caminho
@@ -82,8 +122,32 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
 
   const cfg = TIPOS[registro.tipo];
   const hash = await gerarHash(senha);
-  await pool.query(`UPDATE ${cfg.tabela} SET senha_hash = $1 WHERE id = $2`, [hash, registro.usuario_id]);
-  await pool.query('DELETE FROM tokens_senha WHERE token = $1', [token]);
+  const {
+    rows: [conta],
+  } = await pool.query(
+    `UPDATE ${cfg.tabela} SET senha_hash = $1 WHERE id = $2 RETURNING id, ${cfg.colunaNome} AS nome, ${cfg.colunaEmail} AS email`,
+    [hash, registro.usuario_id],
+  );
+  // O link usado e qualquer outro pendente da mesma conta deixam de valer —
+  // e os e-mails de link que ainda estão na fila não saem mais (revisão
+  // Codex do PR #80: sairiam com um link já morto).
+  await pool.query('DELETE FROM tokens_senha WHERE usuario_id = $1 AND tipo = $2', [
+    registro.usuario_id,
+    registro.tipo,
+  ]);
+  await outbox
+    .descartarPendentes(registro.usuario_id, ['redefinir_senha'], 'senha já foi trocada')
+    .catch((err) => console.error('fila: descartar links de senha pendentes falhou', outbox.sanitizar(err)));
+  // Aviso de segurança: se não foi a pessoa, é por aqui que ela descobre.
+  if (conta) {
+    await outbox.enfileirarSemFalhar({
+      tipo: 'senha_alterada',
+      chave: `senha_alterada:${conta.id}:${crypto.randomUUID()}`,
+      para: conta.email,
+      anuncianteId: conta.id,
+      dados: { conta: { nome_empresa: conta.nome } },
+    });
+  }
 
   res.json({ ok: true, login: cfg.login });
 });
@@ -99,14 +163,22 @@ router.post('/contato', limiteTentativas, async (req, res) => {
     'INSERT INTO mensagens_contato (nome, email, telefone, mensagem) VALUES ($1,$2,$3,$4) RETURNING id',
     [nome, remetente, telefone || null, mensagem],
   );
-  try {
-    await email.enviarMensagemContato(req.body);
-    await pool.query('UPDATE mensagens_contato SET email_enviado = true WHERE id = $1', [rows[0].id]);
-  } catch (err) {
-    // A mensagem já está gravada (id acima) — o aviso por e-mail é só um
-    // extra pra quem olha a caixa de entrada primeiro. Quem escreveu não
-    // fica sabendo que o SMTP falhou, porque do lado dele nada falhou.
-    console.error('mensagem de contato gravada, mas aviso por e-mail falhou (id ' + rows[0].id + ')', err);
+  // A mensagem já está gravada (id acima); o aviso por e-mail vai pela fila
+  // e marca `email_enviado` quando sair. Quem escreveu não depende do SMTP.
+  // Sem confirmação automática pra quem escreveu: o formulário é público e
+  // sem login — responder por e-mail a qualquer endereço digitado ali
+  // transformaria o site num jeito de mandar e-mail da Mostraí pra terceiros.
+  const destino = outbox.remetenteInterno();
+  if (destino) {
+    await outbox.enfileirarSemFalhar({
+      tipo: 'contato_interno',
+      chave: `contato:${rows[0].id}`,
+      para: destino,
+      dados: {
+        mensagemId: rows[0].id,
+        mensagem: { nome, email: remetente, telefone: telefone || '', mensagem },
+      },
+    });
   }
   res.json({ ok: true });
 });

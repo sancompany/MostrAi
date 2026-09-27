@@ -7,7 +7,7 @@ const planosRepo = require('./planos-repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const pedidosRepo = require('./pedidos-repository');
-const { enviarConfirmacaoPagamento, enviarCobrancaFalhou, enviarTrocaDePlano } = require('./email');
+const outbox = require('../email/outbox');
 const eventos = require('../lib/eventos');
 const indicacoesRepo = require('../indicacoes/repository');
 const creditosRepo = require('../creditos/repository');
@@ -427,6 +427,40 @@ async function chaveDoEvento(payload) {
   };
 }
 
+// Aviso de "não conseguimos cobrar" — UM por cobrança, venha do webhook
+// `cobranca_falhou` ou da conciliação diária (estação de e-mail, 27/09/2026).
+// A chave é o EVENTO DE NEGÓCIO (`cobranca_falhou:<chargeId>`), não a fonte:
+// antes o webhook mandava sem dedupe nenhum e a conciliação mandava de novo,
+// com a própria marca (`renovacao|<chargeId>`), gravada ANTES de tentar o
+// envio — SMTP fora = aviso marcado como dado e nunca entregue. Agora a
+// marca É a mensagem na fila durável.
+//
+// Sem `chargeId` (webhook v1 que a consulta não revelou) a chave cai pra
+// assinatura + dia: no pior caso, um aviso a mais — nunca um a menos.
+// Devolve true quando este chamado é o que pôs o aviso na fila.
+async function avisarCobrancaFalhou(assinatura, anunciante, chargeId) {
+  if (chargeId) {
+    // Cobrança já avisada pela conciliação antes desta versão.
+    const { rows } = await pool.query('SELECT 1 FROM webhooks_processados WHERE id = $1', [`renovacao|${chargeId}`]);
+    if (rows[0]) return { novo: false, comLink: false };
+  }
+  // `null` quando não dá pra assinar o token: o e-mail sai sem link, pedindo
+  // contato. Link sem token válido cria uma SEGUNDA assinatura na Asaas sem
+  // cancelar a primeira (API.md 7.3) — cobrança dobrada, calada.
+  const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
+  const r = await outbox.enfileirar({
+    tipo: 'cobranca_falhou',
+    chave: chargeId
+      ? `cobranca_falhou:${chargeId}`
+      : `cobranca_falhou:assinatura:${assinatura.id}:${new Date().toISOString().slice(0, 10)}`,
+    para: anunciante.contato_email,
+    anuncianteId: anunciante.id,
+    dados: { conta: { nome_empresa: anunciante.nome_empresa }, comLink: !!link },
+    segredo: link ? { link } : null,
+  });
+  return { novo: r.novo, comLink: !!link };
+}
+
 async function processarWebhookAssinatura(payload) {
   if (payload.tipo !== 'assinatura') {
     return registrarPendencia(payload, 'formato de webhook não reconhecido (esperava tipo=assinatura)');
@@ -593,10 +627,20 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
       { plano_id: planoNovo.id, valor_confirmado: Number(payload.acertoCobrado || 0) },
       anunciante,
     );
-    enviarTrocaDePlano(anunciante, planoAntigo, planoNovo, {
-      cobrado: payload.acertoCobrado > 0,
-      valor: payload.acertoCobrado,
-    }).catch((err) => console.error('e-mail de troca de plano', err));
+    // Mesma chave da troca síncrona (a assinatura nova): um e-mail por troca,
+    // venha por onde vier.
+    await outbox.enfileirarSemFalhar({
+      tipo: 'troca_de_plano',
+      chave: `troca_de_plano:${assinatura.id}`,
+      para: anunciante.contato_email,
+      anuncianteId: anunciante.id,
+      dados: {
+        conta: { nome_empresa: anunciante.nome_empresa },
+        planoAntigo: { nome: planoAntigo?.nome || '' },
+        planoNovo: { nome: planoNovo.nome },
+        acerto: { cobrado: payload.acertoCobrado > 0, valor: payload.acertoCobrado },
+      },
+    });
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
     await planoAdministrativo
       .avisarProgramadosSuperados(anunciante.id, programadosSuperados, planoNovo.nome)
@@ -613,18 +657,27 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
     const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
     let comLink = false;
     if (anunciante) {
-      // Sem token assinado o link cobraria em dobro (ver `tokenRenovacao`), e
-      // aí é melhor um e-mail que manda falar com a gente do que um link que
-      // cria uma segunda assinatura sem cancelar a primeira.
-      const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
-      comLink = !!link;
-      enviarCobrancaFalhou(anunciante, link).catch((err) => console.error('e-mail de cobrança falhou', err));
+      // O chargeId identifica a COBRANÇA (a mesma que a conciliação vê). No
+      // v2 ele vem no payload; no v1, pergunta ao Checkout — e se não vier,
+      // o aviso sai assim mesmo (chave por dia, ver avisarCobrancaFalhou).
+      let chargeId = ultima?.chargeId || payload.chargeId || null;
+      if (!chargeId) {
+        chargeId = await consultarAssinatura(payload.planoId, payload.documento)
+          .then((estado) => estado?.ultimaCobranca?.chargeId || null)
+          .catch(() => null);
+      }
+      // E-mail nunca derruba o processamento do evento (já registrado).
+      const aviso = await avisarCobrancaFalhou(assinatura, anunciante, chargeId).catch((err) => {
+        console.error('aviso de cobrança falhou não entrou na fila:', outbox.sanitizar(err));
+        return null;
+      });
+      comLink = !!aviso?.comLink;
     }
     return registrarPendencia(
       payload,
       comLink
-        ? 'cobrança falhou — link de renovação enviado por e-mail'
-        : 'cobrança falhou — e-mail enviado SEM link: não foi possível assinar o token de renovação (confira SAN_CHECKOUT_KEY e o cpf_cnpj da conta)',
+        ? 'cobrança falhou — e-mail com o link de renovação na fila de envio'
+        : 'cobrança falhou — e-mail SEM link na fila de envio: não foi possível assinar o token de renovação (confira SAN_CHECKOUT_KEY e o cpf_cnpj da conta)',
     );
   }
 
@@ -889,14 +942,17 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   // O comprovante de pagamento (PDF) nasce desta cobrança confirmada e vai
   // anexado (src/financeiro/comprovante.js). `email_confirmacao_enviado_em`
   // é a evidência de que o e-mail do ciclo saiu.
+  // Pela fila: chave = a cobrança confirmada (uma por ciclo, venha do
+  // webhook, da conciliação ou do botão do admin). `email_confirmacao_enviado_em`
+  // é marcado quando o e-mail sai de fato (outbox.js).
   const cobranca = cobrancaRows[0];
-  enviarConfirmacaoPagamento(anunciante, plano, valorCiclo, cobranca)
-    .then(() =>
-      pool.query('UPDATE cobrancas_confirmadas SET email_confirmacao_enviado_em = now() WHERE id = $1', [cobranca.id]),
-    )
-    .catch((err) => {
-      console.error('falha ao enviar e-mail de confirmação', err);
-    });
+  await outbox.enfileirarSemFalhar({
+    tipo: 'pagamento_confirmado',
+    chave: `pagamento_confirmado:${cobranca.id}`,
+    para: anunciante.contato_email,
+    anuncianteId: anunciante.id,
+    dados: { cobrancaId: cobranca.id, planoId: plano.id, valor: valorCiclo },
+  });
 
   // Notificação + evento em tempo real — só depois do COMMIT, mesmo
   // raciocínio do evento de métrica acima: nunca anunciar um dado que
@@ -1110,6 +1166,7 @@ module.exports = {
   processarWebhookPedido,
   cancelarAssinatura,
   consultarAssinatura,
+  avisarCobrancaFalhou,
   chaveDoEvento,
   aplicarCicloPago,
   intencaoCanceladaSemPagamento,

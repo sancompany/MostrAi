@@ -15,7 +15,21 @@ const vigencia = require('../lib/vigencia');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const anunciantesRepo = require('../anunciantes/repository');
 const eventos = require('../lib/eventos');
-const { enviarTrocaDePlano, enviarCancelamento } = require('./email');
+const outbox = require('../email/outbox');
+
+// Aviso de cancelamento pela fila (chave = a assinatura: um aviso por
+// cancelamento, pelo cliente ou pelo admin). Chamado depois da resposta —
+// nunca lança.
+async function avisarCancelamento(anunciante, assinatura) {
+  const plano = await planosRepo.buscarPorId(assinatura.plano_id).catch(() => null);
+  await outbox.enfileirarSemFalhar({
+    tipo: 'assinatura_cancelada',
+    chave: `assinatura_cancelada:${assinatura.id}`,
+    para: anunciante.contato_email,
+    anuncianteId: anunciante.id,
+    dados: { conta: { nome_empresa: anunciante.nome_empresa }, plano: { nome: plano?.nome || '' } },
+  });
+}
 const planoAdministrativo = require('./plano-administrativo');
 const creditosRepo = require('../creditos/repository');
 const { nomeDoCiclo } = require('../lib/ciclos');
@@ -495,12 +509,9 @@ router.post('/anunciantes/me/cancelar-assinatura', exigirAnuncianteLogado, async
     res.json({ ok: true });
     // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
-    // Fire-and-forget, depois de responder: e-mail que falha não desfaz o
-    // cancelamento (pedido do dono, 18/09/2026).
-    planosRepo
-      .buscarPorId(assinatura.plano_id)
-      .then((plano) => enviarCancelamento(anunciante, plano))
-      .catch((err) => console.error('e-mail de cancelamento', err));
+    // E-mail que falha não desfaz o cancelamento (pedido do dono,
+    // 18/09/2026): vai pela fila, uma vez por assinatura.
+    await avisarCancelamento(anunciante, assinatura);
   } catch {
     res.status(502).json({ erro: 'falha ao cancelar no San Checkout. Tente de novo em alguns minutos.' });
   }
@@ -649,13 +660,23 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
   res.json({ ok: true, valor: corpo.valor, ciclo: corpo.ciclo, acerto: corpo.acerto });
   sse.emitirParaConta(conta.id, 'plan.updated', {});
 
-  // Fire-and-forget: e-mail que falha não desfaz a troca (pedido do dono,
-  // 18/09/2026). `conta.plano_id` aqui ainda é o plano ANTIGO — a variável
-  // local não muda com o UPDATE que acabou de rodar no banco.
-  planosRepo
-    .buscarPorId(conta.plano_id)
-    .then((planoAntigo) => enviarTrocaDePlano(conta, planoAntigo, planoNovo, corpo.acerto))
-    .catch((err) => console.error('e-mail de troca de plano', err));
+  // E-mail que falha não desfaz a troca (pedido do dono, 18/09/2026): vai
+  // pela fila, com a MESMA chave do webhook plano_trocado (a assinatura
+  // nova) — um aviso por troca. `conta.plano_id` aqui ainda é o plano
+  // ANTIGO — a variável local não muda com o UPDATE que acabou de rodar.
+  const planoAntigo = await planosRepo.buscarPorId(conta.plano_id).catch(() => null);
+  await outbox.enfileirarSemFalhar({
+    tipo: 'troca_de_plano',
+    chave: `troca_de_plano:${assinaturaNova.id}`,
+    para: conta.contato_email,
+    anuncianteId: conta.id,
+    dados: {
+      conta: { nome_empresa: conta.nome_empresa },
+      planoAntigo: { nome: planoAntigo?.nome || '' },
+      planoNovo: { nome: planoNovo.nome },
+      acerto: corpo.acerto || null,
+    },
+  });
 });
 
 // "Liberar plano" (cortesia gravada direto em `anunciantes.plano_id`, sem
@@ -682,12 +703,9 @@ router.post('/admin/anunciantes/:id/cancelar-assinatura', async (req, res) => {
     res.json({ ok: true });
     // Outras abas e o painel: a assinatura deixou de renovar (sem F5).
     sse.emitirParaConta(anunciante.id, 'plan.updated', {});
-    // Fire-and-forget: mesmo aviso do cancelamento pedido pelo próprio
-    // anunciante — quem cancelou não muda o que o cliente precisa saber.
-    planosRepo
-      .buscarPorId(assinatura.plano_id)
-      .then((plano) => enviarCancelamento(anunciante, plano))
-      .catch((err) => console.error('e-mail de cancelamento', err));
+    // Mesmo aviso do cancelamento pedido pelo próprio anunciante — quem
+    // cancelou não muda o que o cliente precisa saber.
+    await avisarCancelamento(anunciante, assinatura);
   } catch {
     res.status(502).json({ erro: 'falha ao cancelar no San Checkout' });
   }

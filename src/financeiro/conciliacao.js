@@ -17,13 +17,13 @@ const vigencia = require('../lib/vigencia');
 const {
   consultarAssinatura,
   aplicarCicloPago,
-  linkRenovarAssinatura,
+  avisarCobrancaFalhou,
   registrarPendencia,
   intencaoCanceladaSemPagamento,
   MOTIVO_INTENCAO_CANCELADA,
 } = require('./san-checkout');
 const planoAdministrativo = require('./plano-administrativo');
-const { enviarCoberturaAcabando, enviarCobrancaFalhou } = require('./email');
+const outbox = require('../email/outbox');
 const anunciantesRepo = require('../anunciantes/repository');
 const assinaturasRepo = require('./assinaturas-repository');
 const eventos = require('../lib/eventos');
@@ -70,30 +70,21 @@ function decidirPorEstado(estado) {
 }
 
 // Manda o link de renovação pra quem tem o vínculo vivo e o último ciclo
-// falhado. Deduplicado pelo MESMO `webhooks_processados` do resto, com
-// prefixo próprio: sem isso o anunciante receberia o mesmo e-mail todo dia
-// até trocar o cartão, que é a melhor forma de ensinar alguém a ignorar os
-// nossos e-mails. Uma vez por cobrança falhada, e pronto.
+// falhado. Uma vez por cobrança falhada — sem isso o anunciante receberia o
+// mesmo e-mail todo dia até trocar o cartão. A dedupe é a chave do evento
+// na fila de e-mails (`cobranca_falhou:<chargeId>`, a MESMA do webhook):
+// webhook e conciliação nunca avisam duas vezes a mesma cobrança, e o aviso
+// só conta como dado quando está na fila durável, não antes de tentar.
 async function avisarRenovacao(assinatura, ultima) {
-  const { rowCount } = await pool.query('INSERT INTO webhooks_processados (id) VALUES ($1) ON CONFLICT DO NOTHING', [
-    `renovacao|${ultima.chargeId}`,
-  ]);
-  if (!rowCount) return false;
-
   const anunciante = await anunciantesRepo.buscarPorId(assinatura.anunciante_id);
   if (!anunciante) return false;
-  // `null` quando não dá pra assinar o token: o e-mail sai sem link, pedindo
-  // contato. Link sem token válido cria uma SEGUNDA assinatura na Asaas sem
-  // cancelar a primeira (API.md 7.3) — cobrança dobrada, calada.
-  const link = linkRenovarAssinatura(assinatura.id, anunciante.cpf_cnpj);
-  await enviarCobrancaFalhou(anunciante, link).catch((err) =>
-    console.error('e-mail de renovação pela conciliação', err),
-  );
+  const { novo, comLink } = await avisarCobrancaFalhou(assinatura, anunciante, ultima.chargeId);
+  if (!novo) return false;
   eventos.registrar('assinatura:renovacao_avisada', {
     anunciante_id: assinatura.anunciante_id,
     assinatura_id: assinatura.id,
     cobranca: ultima.status,
-    com_link: !!link,
+    com_link: comLink,
     origem: 'conciliacao',
   });
   return true;
@@ -311,12 +302,13 @@ async function ultimaConciliacao() {
 // 16). Quem trocou de plano pagou um pedido avulso: a cobertura vale pelo
 // período e some sozinha, porque não há próxima cobrança pra acontecer.
 // Quem tem assinatura ativa não entra aqui — pra esse o motor cobra de novo
-// sozinho, e se a cobrança falhar quem avisa é `enviarCobrancaFalhou`.
+// sozinho, e se a cobrança falhar quem avisa é `avisarCobrancaFalhou`.
 //
 // Roda junto da conciliação porque a pergunta é a mesma ("o que vence nos
 // próximos dias") e o cron já existe, uma vez por dia. Falha de e-mail não
-// derruba a conciliação: o aviso só é marcado como dado depois do envio, e
-// no dia seguinte a varredura tenta de novo enquanto a janela durar.
+// derruba a conciliação: o aviso só é marcado como dado depois de entrar na
+// fila durável (que tenta de novo sozinha); se nem a fila aceitar, no dia
+// seguinte a varredura tenta de novo enquanto a janela durar.
 const DIAS_DE_AVISO = 7;
 
 async function avisarCoberturaAcabando({ apenasContas = null } = {}) {
@@ -345,12 +337,18 @@ async function avisarCoberturaAcabando({ apenasContas = null } = {}) {
   for (const conta of rows) {
     const dias = vigencia.diasAteVencer(conta.data_expiracao);
     try {
-      await enviarCoberturaAcabando(
-        conta,
-        { nome: conta.plano_nome, compromisso_meses: conta.compromisso_meses },
-        dias,
-      );
-      // Só depois do envio: marcar antes transformaria uma falha de SMTP em
+      await outbox.enfileirar({
+        tipo: 'cobertura_acabando',
+        chave: `cobertura_acabando:${conta.id}:${new Date(conta.data_expiracao).toISOString().slice(0, 10)}`,
+        para: conta.contato_email,
+        anuncianteId: conta.id,
+        dados: {
+          conta: { nome_empresa: conta.nome_empresa },
+          plano: { nome: conta.plano_nome, compromisso_meses: conta.compromisso_meses },
+          dias,
+        },
+      });
+      // Só depois de entrar na fila: marcar antes transformaria uma falha em
       // aviso que nunca sai.
       await pool.query('UPDATE anunciantes SET aviso_fim_cobertura_para = $2 WHERE id = $1', [
         conta.id,

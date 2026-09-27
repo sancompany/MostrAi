@@ -5,3 +5,4 @@ PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -qc "UPDATE planos SE
 # mesmo tier/ciclo do Essencial mensal, embaralhava buscarPlanoAtivoDoTier nos
 # testes de unidade (tests/indicacoes.test.js) rodados depois do e2e.
 PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -qc "DELETE FROM planos WHERE id = 'plano-teste-e2e-rede';"
+rm -f "$(cd "$(dirname "$0")" && pwd)/saida/emails.jsonl"

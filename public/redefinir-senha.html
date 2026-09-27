@@ -37,6 +37,13 @@
     <section class="tight">
       <div class="wrap">
         <form class="card" id="formSenha">
+          <!-- O e-mail da conta num campo "username": é por ele que o
+               gerenciador de senhas do navegador salva a senha nova na conta
+               certa. Só leitura — vem do link, não se digita. -->
+          <div id="blocoContaSenha" hidden>
+            <label for="emailConta">Conta</label>
+            <input id="emailConta" name="username" type="email" autocomplete="username" readonly>
+          </div>
           <div>
             <label for="senha">Nova senha</label>
             <input id="senha" type="password" autocomplete="new-password" data-senha required>

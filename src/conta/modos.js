@@ -17,7 +17,7 @@ const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const categoriasRepo = require('../categorias/repository');
 const convitesRepo = require('../convites/repository');
 const eventos = require('../lib/eventos');
-const { enviarCandidaturaNova } = require('../financeiro/email');
+const outbox = require('../email/outbox');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
 const { colunasDoEndereco, parteQueFalta, temEndereco } = require('../lib/endereco');
@@ -234,10 +234,35 @@ async function criarCandidaturaPonto(conta, entrada) {
     conta_id: conta.id,
     origem: 'painel',
   });
-  // Fire-and-forget: mesmo aviso que o formulário público mandava antes de
-  // ser aposentado — sem ele, o pedido só aparece pra quem abrir o admin
-  // por acaso (a fila "Candidaturas" ainda avisa, mas o e-mail chega antes).
-  enviarCandidaturaNova(cand).catch((err) => console.error('e-mail de candidatura nova', err));
+  // Mesmo aviso que o formulário público mandava antes de ser aposentado —
+  // sem ele, o pedido só aparece pra quem abrir o admin por acaso (a fila
+  // "Candidaturas" ainda avisa, mas o e-mail chega antes). Pela fila.
+  const destino = outbox.remetenteInterno();
+  if (destino) {
+    await outbox.enfileirarSemFalhar({
+      tipo: 'candidatura_interna',
+      chave: `candidatura_interna:${cand.id}`,
+      para: destino,
+      dados: {
+        candidatura: {
+          tipo: cand.tipo,
+          nome: cand.nome,
+          nome_comercio: cand.nome_comercio,
+          contato_telefone: cand.contato_telefone,
+          contato_email: cand.contato_email,
+          endereco: cand.endereco,
+          logradouro: cand.logradouro,
+          numero: cand.numero,
+          bairro: cand.bairro,
+          complemento: cand.complemento,
+          cidade: cand.cidade,
+          uf: cand.uf,
+          cep: cand.cep,
+          mensagem: cand.mensagem,
+        },
+      },
+    });
+  }
   // Rede/Candidaturas e o contador do admin, sem F5.
   sse.emitirParaAdmin('application.updated', { id: cand.id, status: cand.status });
   return cand;
@@ -347,6 +372,14 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
         entidadeId: cand.id,
       })
       .catch((err) => console.error('falha ao notificar aprovação de ponto', err.message));
+    // E-mail também: quem não abre o painel não via a notificação.
+    await outbox.enfileirarSemFalhar({
+      tipo: 'ponto_aprovado',
+      chave: `ponto_aprovado:${cand.id}`,
+      para: conta.contato_email,
+      anuncianteId: conta.id,
+      dados: { conta: { nome_empresa: conta.nome_empresa } },
+    });
     sse.emitirParaConta(conta.id, 'point.updated', {});
   }
   sse.emitirParaConta(conta.id, 'application.updated', { id: cand.id, status: 'aprovada' });

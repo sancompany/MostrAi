@@ -2,7 +2,6 @@ const express = require('express');
 const multer = require('multer');
 const os = require('node:os');
 const fs = require('node:fs');
-const crypto = require('node:crypto');
 const router = express.Router();
 const repo = require('./repository');
 const { planoEfetivoId } = repo;
@@ -37,27 +36,35 @@ const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { saudeDaTela } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
-const {
-  enviarContaReativada,
-  enviarContaCriada,
-  enviarContaExcluida,
-  enviarCodigoConfirmacaoEmail,
-} = require('../financeiro/email');
+const outbox = require('../email/outbox');
+const codigosEmail = require('../email/codigos');
 
-// Confirmação de e-mail por código (migration 061). Apaga o código anterior
-// antes de gerar outro: só o último vale, pedir de novo não deve deixar dois
-// códigos válidos ao mesmo tempo.
-const VALIDADE_CODIGO_EMAIL_MS = 2 * 60 * 1000;
-async function enviarNovoCodigoConfirmacao(anunciante) {
-  const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-  await pool.query('DELETE FROM tokens_confirmacao_email WHERE anunciante_id = $1', [anunciante.id]);
-  await pool.query('INSERT INTO tokens_confirmacao_email (anunciante_id, codigo, expira_em) VALUES ($1,$2,$3)', [
-    anunciante.id,
-    codigo,
-    new Date(Date.now() + VALIDADE_CODIGO_EMAIL_MS),
-  ]);
-  return enviarCodigoConfirmacaoEmail(anunciante, codigo);
+// Primeiro código de uma conta nova (cadastro aberto ou pelo admin). Nunca
+// derruba o cadastro: a conta já existe, e o modal da conta oferece "Enviar
+// código" quando não há código valendo.
+async function emitirPrimeiroCodigo(anunciante) {
+  try {
+    await codigosEmail.emitir(anunciante, { respeitarIntervalo: false });
+  } catch (err) {
+    console.error(`código de confirmação da conta ${anunciante.id} não entrou na fila: ${outbox.sanitizar(err)}`);
+  }
 }
+
+// O e-mail de login mudou: tudo que foi mandado pro endereço ANTIGO e ainda
+// vale deixa de valer — link de redefinição de senha (senão quem tem a caixa
+// antiga ainda troca a senha por 1 hora — revisão Codex do PR #80) e o que
+// ainda está na fila pra ele. Na MESMA transação da troca.
+async function invalidarEnviosDoEmailAntigo(contaId, db) {
+  await db.query("DELETE FROM tokens_senha WHERE usuario_id = $1 AND tipo IN ('anunciante', 'afiliado')", [contaId]);
+  await outbox.descartarPendentes(
+    contaId,
+    ['redefinir_senha', 'codigo_confirmacao', 'codigo_troca_email'],
+    'o e-mail de login da conta mudou',
+    db,
+  );
+}
+
+const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')) && String(e).length <= 254;
 
 // fileFilter: sem ele dava pra subir um .html como "avatar" declarando
 // text/html e o bucket público servia HTML executável no nosso domínio.
@@ -252,14 +259,12 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
     },
     anunciante,
   );
-  // Fire-and-forget: e-mail que falha não pode desfazer um cadastro (pedido
-  // do dono, 18/09/2026). Só pra quem anuncia — o texto fala em "escolher
-  // plano" e "colocar seu anúncio", que não faz sentido pra quem entrou só
-  // como vendedor ou dono de ponto (convite sem o papel 'anunciante').
-  if (ehAnunciante) enviarContaCriada(anunciante).catch((err) => console.error('e-mail de conta criada', err));
-  // Código de confirmação vai pra toda conta nova, qualquer papel — o e-mail
-  // é sempre o login, não só de quem anuncia.
-  enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('código de confirmação de e-mail', err));
+  // No cadastro sai UM e-mail só: o código (toda conta nova, qualquer papel
+  // — o e-mail é sempre o login). As boas-vindas saem depois que o código
+  // for confirmado (POST /anunciantes/me/confirmar-email). Antes as duas
+  // saíam juntas, em duas conexões SMTP simultâneas, e o código às vezes
+  // não chegava. Um e-mail que falha nunca desfaz o cadastro.
+  await emitirPrimeiroCodigo(anunciante);
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -339,9 +344,15 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
       },
       conta,
     );
-    // Fire-and-forget: e-mail que falha não pode desfazer a exclusão (pedido
-    // do dono, 18/09/2026).
-    enviarContaExcluida(conta).catch((err) => console.error('e-mail de conta excluída', err));
+    // E-mail que falha não pode desfazer a exclusão (pedido do dono,
+    // 18/09/2026) — vai pra fila e a operação segue.
+    await outbox.enfileirarSemFalhar({
+      tipo: 'conta_excluida',
+      chave: `conta_excluida:${conta.id}:${Date.now()}`,
+      para: conta.contato_email,
+      anuncianteId: conta.id,
+      dados: { conta: { nome_empresa: conta.nome_empresa } },
+    });
   }
   req.session.destroy(() => res.json({ ok: true }));
 });
@@ -422,28 +433,213 @@ async function contaParaOPainel(anunciante) {
   };
 }
 
-// Confirmação de e-mail por código (migration 061). `limiteTentativas` conta
-// tentativa errada pra não virar força-bruta num código de 6 dígitos.
+// ---------------------------------------------------------------------------
+// Verificação e troca do e-mail de login (estação de e-mail, 27/09/2026)
+// ---------------------------------------------------------------------------
+// Código de 6 dígitos com prazo decidido AQUI (src/email/codigos.js): a tela
+// mostra `expiraEm`, e recarregar a página não reinicia nada. Três caminhos:
+//   · confirmar o e-mail do cadastro (código pro próprio login);
+//   · CORRIGIR o e-mail antes de confirmar — quem digitou errado no cadastro
+//     nunca receberia o código; prova de que é a mesma pessoa: a sessão do
+//     cadastro + a senha. Não precisa (nem pode precisar) do endereço errado;
+//   · TROCAR o e-mail de uma conta já confirmada — o novo começa pendente,
+//     recebe o código, e só vira login depois de confirmado; o antigo é
+//     avisado. Até lá o login continua pelo antigo.
+
+// Estado da verificação pra tela (sem o código, nunca).
+router.get('/anunciantes/me/verificacao-email', exigirAnuncianteLogado, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  const [cadastro, troca] = await Promise.all([
+    conta.email_confirmado ? null : codigosEmail.estado(conta.id, 'cadastro'),
+    codigosEmail.estado(conta.id, 'troca'),
+  ]);
+  res.json({
+    email: conta.contato_email,
+    confirmado: !!conta.email_confirmado,
+    validadeMinutos: codigosEmail.VALIDADE_MIN,
+    intervaloReenvioSegundos: codigosEmail.INTERVALO_REENVIO_S,
+    cadastro,
+    troca: troca?.pendente ? troca : null,
+  });
+});
+
+// `limiteTentativas` (por IP) + o limite do próprio código (5 erros e ele
+// morre, src/email/codigos.js): força bruta num código de 6 dígitos não passa.
 router.post('/anunciantes/me/confirmar-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
-  const codigo = String(req.body.codigo || '').trim();
-  if (!codigo) return res.status(400).json({ erro: 'código obrigatório' });
-  const { rows } = await pool.query(
-    'SELECT id FROM tokens_confirmacao_email WHERE anunciante_id = $1 AND codigo = $2 AND expira_em > now()',
-    [req.session.anuncianteId, codigo],
-  );
-  if (!rows[0]) return res.status(400).json({ erro: 'código inválido ou expirado — peça um novo' });
+  if (!String(req.body.codigo || '').trim()) return res.status(400).json({ erro: 'código obrigatório' });
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  if (conta.email_confirmado) return res.json({ ok: true, jaConfirmado: true });
+  const r = await codigosEmail.conferir(conta.id, 'cadastro', req.body.codigo);
+  if (!r.ok) return res.status(400).json({ erro: codigosEmail.MENSAGEM_DO_ERRO[r.motivo], motivo: r.motivo });
+  // O código confirma o endereço PARA O QUAL foi mandado: se o login mudou
+  // no meio (correção, admin), ele não confirma o endereço novo.
+  if (repo.normalizarEmail(r.email) !== repo.normalizarEmail(conta.contato_email)) {
+    return res.status(400).json({ erro: 'esse código era de outro endereço — peça um novo', motivo: 'expirado' });
+  }
   zerarTentativas(req);
-  await pool.query('DELETE FROM tokens_confirmacao_email WHERE anunciante_id = $1', [req.session.anuncianteId]);
-  await repo.atualizar(req.session.anuncianteId, { email_confirmado: true });
+  await repo.atualizar(conta.id, { email_confirmado: true });
+  // Boas-vindas só DEPOIS da confirmação, uma vez na vida da conta, e só pra
+  // quem anuncia — o texto fala em escolher plano e colocar anúncio, o que
+  // não faz sentido pra quem entrou só como ponto (convite).
+  if ((conta.papeis || []).includes('anunciante') && !conta.conta_propria) {
+    await outbox.enfileirarSemFalhar({
+      tipo: 'boas_vindas',
+      chave: `boas_vindas:${conta.id}`,
+      para: conta.contato_email,
+      anuncianteId: conta.id,
+      dados: { conta: { nome_empresa: conta.nome_empresa } },
+    });
+  }
+  sse.emitirParaConta(conta.id, 'account.updated', { email_confirmado: true });
   res.json({ ok: true });
 });
 
+// Reenviar = código NOVO (o anterior deixa de valer). 60 s entre um e outro
+// e no máximo 5 por hora; a resposta traz o prazo real pra tela.
 router.post('/anunciantes/me/reenviar-codigo-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
-  const anunciante = await repo.buscarPorId(req.session.anuncianteId);
-  if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
-  if (!anunciante.email_confirmado) {
-    enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('reenvio de código de confirmação', err));
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  if (conta.email_confirmado) return res.status(409).json({ erro: 'seu e-mail já está confirmado' });
+  try {
+    const r = await codigosEmail.emitir(conta);
+    res.json({ ok: true, email: conta.contato_email, ...r });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message, podeReenviarEm: err.podeReenviarEm });
+    throw err;
   }
+});
+
+// Confere e-mail novo + senha atual; devolve o erro pronto pra tela ou null.
+async function conferirPedidoDeEmail(conta, req) {
+  const novo = repo.normalizarEmail(req.body.email);
+  if (!emailValido(novo)) return { status: 400, erro: 'e-mail inválido', campo: 'email' };
+  if (novo === repo.normalizarEmail(conta.contato_email)) {
+    return { status: 400, erro: 'esse já é o e-mail da sua conta', campo: 'email' };
+  }
+  const comSenha = await repo.buscarPorEmailComSenha(conta.contato_email);
+  if (!comSenha || !(await repo.validarSenha(comSenha, String(req.body.senha || '')))) {
+    return { status: 401, erro: 'senha incorreta', campo: 'senha' };
+  }
+  if (await repo.buscarPorEmailComSenha(novo)) {
+    return { status: 409, erro: 'esse e-mail já é usado por outra conta', campo: 'email' };
+  }
+  return { novo };
+}
+
+// Corrigir o e-mail ANTES de confirmar: troca na hora (o endereço atual nunca
+// foi provado), apaga o código antigo e manda um novo pro endereço certo.
+router.post('/anunciantes/me/corrigir-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  if (conta.email_confirmado) {
+    return res.status(409).json({ erro: 'seu e-mail já está confirmado — use a troca de e-mail no perfil' });
+  }
+  const pedido = await conferirPedidoDeEmail(conta, req);
+  if (pedido.erro) return res.status(pedido.status).json({ erro: pedido.erro, campo: pedido.campo });
+
+  const cliente = await pool.connect();
+  let atualizada;
+  try {
+    await cliente.query('BEGIN');
+    atualizada = await repo.atualizar(conta.id, { contato_email: pedido.novo }, cliente);
+    await cliente.query(
+      `INSERT INTO alteracoes_email (anunciante_id, email_anterior, email_novo, origem)
+       VALUES ($1, $2, $3, 'correcao_antes_de_confirmar')`,
+      [conta.id, conta.contato_email, pedido.novo],
+    );
+    await codigosEmail.descartar(conta.id, 'cadastro', cliente);
+    await invalidarEnviosDoEmailAntigo(conta.id, cliente);
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505') return res.status(409).json({ erro: 'esse e-mail já é usado por outra conta' });
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  try {
+    const r = await codigosEmail.emitir(atualizada, { respeitarIntervalo: false });
+    res.json({ ok: true, email: atualizada.contato_email, ...r });
+  } catch (err) {
+    // O e-mail já foi corrigido; só o código não saiu (teto por hora). A
+    // tela mostra o endereço novo e oferece reenviar quando puder.
+    if (err.status) return res.status(err.status).json({ erro: err.message, email: atualizada.contato_email });
+    throw err;
+  }
+});
+
+// Trocar o e-mail DEPOIS de confirmado: o novo fica pendente até o código.
+router.post('/anunciantes/me/trocar-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  if (!conta.email_confirmado) {
+    return res.status(409).json({ erro: 'confirme seu e-mail atual primeiro, ou corrija o endereço na confirmação' });
+  }
+  const pedido = await conferirPedidoDeEmail(conta, req);
+  if (pedido.erro) return res.status(pedido.status).json({ erro: pedido.erro, campo: pedido.campo });
+  try {
+    // Pedir de novo pra OUTRO endereço substitui o pendente na hora; pro
+    // mesmo, respeita o intervalo de reenvio.
+    const atual = await codigosEmail.estado(conta.id, 'troca');
+    const r = await codigosEmail.emitir(conta, {
+      finalidade: 'troca',
+      email: pedido.novo,
+      respeitarIntervalo: atual.email === pedido.novo,
+    });
+    res.json({ ok: true, emailPendente: pedido.novo, ...r });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message, podeReenviarEm: err.podeReenviarEm });
+    throw err;
+  }
+});
+
+router.post('/anunciantes/me/confirmar-troca-email', exigirAnuncianteLogado, limiteTentativas, async (req, res) => {
+  if (!String(req.body.codigo || '').trim()) return res.status(400).json({ erro: 'código obrigatório' });
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  const r = await codigosEmail.conferir(conta.id, 'troca', req.body.codigo);
+  if (!r.ok) return res.status(400).json({ erro: codigosEmail.MENSAGEM_DO_ERRO[r.motivo], motivo: r.motivo });
+  zerarTentativas(req);
+
+  const cliente = await pool.connect();
+  let atualizada;
+  let alteracaoId;
+  try {
+    await cliente.query('BEGIN');
+    atualizada = await repo.atualizar(conta.id, { contato_email: r.email, email_confirmado: true }, cliente);
+    const { rows } = await cliente.query(
+      `INSERT INTO alteracoes_email (anunciante_id, email_anterior, email_novo, origem)
+       VALUES ($1, $2, $3, 'troca_confirmada') RETURNING id`,
+      [conta.id, conta.contato_email, r.email],
+    );
+    alteracaoId = rows[0].id;
+    await invalidarEnviosDoEmailAntigo(conta.id, cliente);
+    await cliente.query('COMMIT');
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    // Outra conta ficou com o endereço entre o pedido e a confirmação.
+    if (err.code === '23505') return res.status(409).json({ erro: 'esse e-mail passou a ser usado por outra conta' });
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  // Aviso ao endereço ANTIGO — é por ele que o dono de verdade percebe uma
+  // troca que não fez. A troca já valeu; o aviso vai pela fila.
+  await outbox.enfileirarSemFalhar({
+    tipo: 'email_alterado',
+    chave: `email_alterado:${alteracaoId}`,
+    para: conta.contato_email,
+    anuncianteId: conta.id,
+    dados: { conta: { nome_empresa: conta.nome_empresa }, emailNovoMascarado: outbox.mascararEmail(r.email) },
+  });
+  sse.emitirParaConta(conta.id, 'account.updated', {});
+  res.json({ ok: true, email: atualizada.contato_email });
+});
+
+router.delete('/anunciantes/me/trocar-email', exigirAnuncianteLogado, async (req, res) => {
+  await codigosEmail.descartar(req.session.anuncianteId, 'troca');
   res.json({ ok: true });
 });
 
@@ -1380,7 +1576,7 @@ router.post('/admin/anunciantes', async (req, res) => {
     // nascia com email_confirmado=false igual o cadastro aberto, mas nunca
     // recebia o código — o cliente logava pela primeira vez, via o aviso
     // preso, e não tinha como saber que precisava clicar "Reenviar código".
-    enviarNovoCodigoConfirmacao(anunciante).catch((err) => console.error('código de confirmação de e-mail', err));
+    await emitirPrimeiroCodigo(anunciante);
   }
   // Conta criada pelo dono também é aquisição: o negócio fecha por WhatsApp e
   // o admin cadastra o cliente depois. Deixar de fora furaria o funil
@@ -1438,8 +1634,64 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
       return res.status(400).json({ erro: `campo não editável por aqui: ${recusados.join(', ')}` });
     }
     const antes = await repo.buscarPorId(req.params.id);
-    const anunciante = await repo.atualizar(req.params.id, req.body);
-    if (!anunciante) return res.status(404).json({ erro: 'anunciante não encontrado' });
+    if (!antes) return res.status(404).json({ erro: 'anunciante não encontrado' });
+
+    // E-mail de login trocado pelo suporte (estação de e-mail, 27/09/2026).
+    // Continua possível — é o caminho de quem perdeu o acesso ao endereço
+    // antigo —, mas não mais silencioso: fica na trilha (alteracoes_email),
+    // o endereço NOVO precisa ser confirmado por código (o suporte pode ter
+    // digitado errado, ou atendido quem não era o dono), e o ANTIGO recebe o
+    // aviso se já tinha sido confirmado.
+    const emailNovo = req.body.contato_email !== undefined ? repo.normalizarEmail(req.body.contato_email) : null;
+    const trocouEmail = emailNovo !== null && emailNovo !== repo.normalizarEmail(antes.contato_email);
+    if (trocouEmail && !emailValido(emailNovo)) return res.status(400).json({ erro: 'e-mail inválido' });
+
+    let anunciante;
+    let alteracaoId = null;
+    const cliente = await pool.connect();
+    try {
+      await cliente.query('BEGIN');
+      anunciante = await repo.atualizar(
+        req.params.id,
+        trocouEmail && !antes.conta_propria ? { ...req.body, email_confirmado: false } : req.body,
+        cliente,
+      );
+      if (trocouEmail) {
+        const { rows } = await cliente.query(
+          `INSERT INTO alteracoes_email (anunciante_id, email_anterior, email_novo, origem, admin_usuario)
+           VALUES ($1, $2, $3, 'admin', $4) RETURNING id`,
+          [antes.id, antes.contato_email, emailNovo, req.session?.adminUsuario || null],
+        );
+        alteracaoId = rows[0].id;
+        await codigosEmail.descartar(antes.id, 'cadastro', cliente);
+        await codigosEmail.descartar(antes.id, 'troca', cliente);
+        await invalidarEnviosDoEmailAntigo(antes.id, cliente);
+      }
+      await cliente.query('COMMIT');
+    } catch (err) {
+      await cliente.query('ROLLBACK').catch(() => {});
+      if (err.code === '23505') return res.status(409).json({ erro: 'esse e-mail já é usado por outra conta' });
+      throw err;
+    } finally {
+      cliente.release();
+    }
+    if (trocouEmail && !antes.conta_propria) {
+      if (antes.email_confirmado) {
+        await outbox.enfileirarSemFalhar({
+          tipo: 'email_alterado',
+          chave: `email_alterado:${alteracaoId}`,
+          para: antes.contato_email,
+          anuncianteId: antes.id,
+          dados: {
+            conta: { nome_empresa: antes.nome_empresa },
+            emailNovoMascarado: outbox.mascararEmail(emailNovo),
+            peloSuporte: true,
+          },
+        });
+      }
+      await emitirPrimeiroCodigo(anunciante);
+      sse.emitirParaConta(antes.id, 'account.updated', { email_confirmado: false });
+    }
 
     // Só na TRANSIÇÃO de suspensa pra liberada. Sem comparar com o estado
     // anterior, todo salvamento do admin numa conta já liberada contaria
@@ -1456,8 +1708,14 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         },
         anunciante,
       );
-      // Fire-and-forget: e-mail que falha nao pode desfazer uma aprovacao.
-      enviarContaReativada(anunciante).catch((err) => console.error('e-mail de conta reativada', err));
+      // E-mail que falha não pode desfazer a reativação — vai pela fila.
+      await outbox.enfileirarSemFalhar({
+        tipo: 'conta_reativada',
+        chave: `conta_reativada:${anunciante.id}:${Date.now()}`,
+        para: anunciante.contato_email,
+        anuncianteId: anunciante.id,
+        dados: { conta: { nome_empresa: anunciante.nome_empresa } },
+      });
     }
     // Aviso em tempo real nas duas transições (Fase 3, SSE) — a conta
     // suspensa não pode descobrir só porque um botão parou de funcionar

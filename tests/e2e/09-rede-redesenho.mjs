@@ -12,6 +12,7 @@
 // tela" sem formulário, instalação por código, "Liberar" em modal.
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';
+import { codigoPara } from './emails.mjs';
 import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
@@ -399,7 +400,7 @@ const conta = await cadastro.evaluate(
       })
     ).json(),
 );
-const codigo = PG(`SELECT codigo FROM tokens_confirmacao_email WHERE anunciante_id=${conta.id}`);
+const codigo = await codigoPara(conta.contato_email);
 await cadastro.evaluate(
   async (codigo) =>
     await fetch('/anunciantes/me/confirmar-email', {
