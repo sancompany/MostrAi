@@ -358,8 +358,9 @@ router.post('/anunciantes/me/excluir', exigirAnuncianteLogado, async (req, res) 
 });
 
 router.post('/anunciantes/logout', (req, res) => {
-  // destroy, não só zerar o campo: antes a sessão continuava válida no store
-  // e sair como anunciante não derrubava afiliado/admin no mesmo cookie.
+  // destroy, não só zerar o campo: a sessão não pode continuar válida no
+  // store depois do "Sair". Desde 27/09/2026 o admin tem cookie próprio
+  // (src/lib/sessao.js) — sair da conta não sai do admin, e vice-versa.
   req.session.destroy(() => res.json({ ok: true }));
 });
 
@@ -907,12 +908,35 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // operador, apontando pra A — A segue no ar até B ser aprovado (ver PATCH
 // /admin/criativos/:id em src/admin/routes.js). Não passa pelo limite: B só
 // entra tirando A, então o total cadastrado depois da troca é o mesmo.
+//
+// `envioChave` (migration 098): idempotência do upload do cliente — ver
+// `responderEnvioExistente` e a rota do anunciante. `avisar`: chamado quando
+// a linha temporária nasce e quando o trabalho termina (ok ou falha), pra o
+// painel mostrar o card "processando" e tirá-lo/atualizá-lo sem F5.
+//
+// Tempos por etapa (estação upload, 27/09/2026) vão pro log em uma linha, só
+// números: sem eles, "o upload está lento" era palpite.
 async function subirCriativo(
   req,
   res,
-  { contaId, limite, duracaoMaxima = null, peloOperador = false, substitui = null },
+  { contaId, limite, duracaoMaxima = null, peloOperador = false, substitui = null, envioChave = null, avisar = null },
 ) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
+  const inicio = Date.now();
+  const tempos = { receber_ms: req.inicioUpload ? inicio - req.inicioUpload : null };
+  const medir = async (etapa, fn) => {
+    const t = Date.now();
+    try {
+      return await fn();
+    } finally {
+      tempos[etapa] = Date.now() - t;
+    }
+  };
+  const registrar = (criativoId, resultado, extra = {}) =>
+    console.log(
+      'upload de criativo',
+      JSON.stringify({ criativo: criativoId, resultado, ...tempos, ...extra, total_ms: Date.now() - inicio }),
+    );
   // Tudo dentro do try: o multer já gravou o arquivo em disco antes de
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
   // até 95 MB de lixo em /tmp por request recusada.
@@ -939,7 +963,7 @@ async function subirCriativo(
     // vídeo (19/09/2026, pedido do dono: antes ficava sempre em 10s fixos,
     // mesmo quem pagava plano de 30s recebia menos do que comprou; ver
     // ffmpeg.normalizar). Sem plano (conta própria/admin), cai no padrão.
-    const midia = await ffmpeg.probeMidia(req.file.path).catch(() => null);
+    const midia = await medir('ffprobe_ms', () => ffmpeg.probeMidia(req.file.path).catch(() => null));
     if (!midia) {
       return res
         .status(400)
@@ -956,27 +980,52 @@ async function subirCriativo(
       });
     }
 
-    const criativoTemp = await criativosRepo.criar({
-      anunciante_id: contaId,
-      arquivo_original_url: req.file.originalname,
-      arquivo_normalizado_url: null,
-      thumbnail_url: null,
-      duracao_segundos: null,
-      substitui_criativo_id: substitui ? substitui.id : null,
-    });
+    let criativoTemp;
+    try {
+      criativoTemp = await medir('db_criar_ms', () =>
+        criativosRepo.criar({
+          anunciante_id: contaId,
+          arquivo_original_url: req.file.originalname,
+          arquivo_normalizado_url: null,
+          thumbnail_url: null,
+          duracao_segundos: null,
+          substitui_criativo_id: substitui ? substitui.id : null,
+          envio_chave: envioChave,
+        }),
+      );
+    } catch (err) {
+      // Duas requisições com a mesma chave ao mesmo tempo (o navegador repetiu
+      // enquanto a primeira ainda rodava): o índice único deixa uma só criar.
+      if (envioChave && err.code === '23505') {
+        const existente = await criativosRepo.buscarPorEnvio(contaId, envioChave);
+        if (existente) return responderEnvioExistente(res, existente);
+      }
+      throw err;
+    }
+    avisar?.();
 
     try {
-      const normalizado = await ffmpeg.normalizar(req.file.path, criativoTemp.id, duracaoMaxima);
+      const { tempos: temposMidia, ...normalizado } = await ffmpeg.normalizar(
+        req.file.path,
+        criativoTemp.id,
+        duracaoMaxima,
+        midia,
+      );
+      Object.assign(tempos, temposMidia);
       // Peça que o operador subiu já entra aprovada: quem aprovaria é quem
       // acabou de subir. Fazer o dono aprovar o próprio upload seria um clique
       // sem decisão nenhuma por trás. Substituto é a exceção: a troca só
       // acontece na aprovação, então ele espera em análise.
-      const criativo = await criativosRepo.atualizar(criativoTemp.id, {
-        ...normalizado,
-        ...(peloOperador ? { editado_pelo_operador: true } : {}),
-        ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
-      });
+      const criativo = await medir('db_finalizar_ms', () =>
+        criativosRepo.atualizar(criativoTemp.id, {
+          ...normalizado,
+          ...(peloOperador ? { editado_pelo_operador: true } : {}),
+          ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
+        }),
+      );
+      registrar(criativoTemp.id, 'ok');
       res.status(201).json(criativo);
+      avisar?.();
     } catch (err) {
       // Se o ffmpeg falhar (arquivo corrompido, vídeo mais curto que 1s), a
       // linha já criada ficava no banco como "pendente" e ocupava a cota do
@@ -985,7 +1034,11 @@ async function subirCriativo(
       // bucket errado) e arquivo ruim do cliente viravam a mesma frase, e não
       // dava pra saber qual dos dois era sem reproduzir na mão.
       console.error('falha ao processar criativo', err);
+      Object.assign(tempos, err?.tempos);
+      registrar(criativoTemp.id, err?.origem === 'storage' ? 'falha_storage' : 'falha_midia');
       await criativosRepo.deletar(criativoTemp.id);
+      // O card "processando" some sem F5.
+      avisar?.();
       if (err && err.origem === 'storage') {
         return res.status(502).json({
           erro: 'o problema foi nosso: o armazenamento não respondeu agora. Tente de novo em alguns minutos — o seu arquivo está ok',
@@ -1000,10 +1053,57 @@ async function subirCriativo(
   }
 }
 
-router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single('arquivo'), async (req, res) => {
-  if (Number(req.params.id) !== req.session.anuncianteId) {
+// Repetição de um envio que já chegou (mesma `Idempotency-Key`): devolve o
+// que existe em vez de criar outro criativo. 200 = pronto; 202 = ainda
+// processando (a primeira requisição segue trabalhando — o painel espera o
+// card atualizar pelo SSE ou perguntando em /anunciantes/me/criativos/envios).
+function responderEnvioExistente(res, criativo) {
+  if (criativo.arquivo_normalizado_url) return res.status(200).json({ ...criativo, repetido: true });
+  return res.status(202).json({ processando: true, id: criativo.id });
+}
+
+// Chave de idempotência: gerada pelo navegador por arquivo escolhido
+// (crypto.randomUUID). Opcional — sem ela o upload funciona como antes.
+const CHAVE_ENVIO = /^[A-Za-z0-9-]{16,64}$/;
+
+// Marca quando a requisição chegou, antes do multer ler o corpo: a diferença
+// até o handler é o tempo de receber o arquivo (UPLOAD_RECEIVE no log).
+const marcarInicioUpload = (req, _res, next) => {
+  req.inicioUpload = Date.now();
+  next();
+};
+
+router.post(
+  '/anunciantes/:id/criativos',
+  exigirAnuncianteLogado,
+  marcarInicioUpload,
+  upload.single('arquivo'),
+  async (req, res) => {
+    if (Number(req.params.id) !== req.session.anuncianteId) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(403).json({ erro: 'só pode subir criativo pra própria conta' });
+    }
+    return subirCriativoDoCliente(req, res);
+  },
+);
+
+async function subirCriativoDoCliente(req, res) {
+  const envioChave = req.get('idempotency-key') || null;
+  if (envioChave && !CHAVE_ENVIO.test(envioChave)) {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(403).json({ erro: 'só pode subir criativo pra própria conta' });
+    return res.status(400).json({ erro: 'chave de envio inválida' });
+  }
+  // Upload interrompido por restart (deploy) no meio do FFmpeg não ocupa a
+  // cota pra sempre.
+  await criativosRepo.descartarProcessamentosOrfaos(req.session.anuncianteId);
+  // Antes de plano e limite: repetir um envio que já chegou não pode esbarrar
+  // no "limite atingido" que ele mesmo causou.
+  if (envioChave) {
+    const existente = await criativosRepo.buscarPorEnvio(req.session.anuncianteId, envioChave);
+    if (existente) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return responderEnvioExistente(res, existente);
+    }
   }
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   // Antes liberava 1 criativo sem plano, "pra não travar quem está no meio
@@ -1038,19 +1138,22 @@ router.post('/anunciantes/:id/criativos', exigirAnuncianteLogado, upload.single(
     if (rows.length) return recusa(409, 'essa peça já tem uma substituta em análise');
     substitui = atual;
   }
-  const enviou = await subirCriativo(req, res, {
+  return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: plano.limite_criativos,
     duracaoMaxima: plano.duracao_maxima_segundos,
     substitui,
+    envioChave,
+    // Quando a linha nasce (card "processando") e quando o trabalho termina
+    // (pronto, ou falhou e a linha saiu): o painel refaz a lista sem F5. O
+    // admin só é avisado no fim — a fila de aprovação não mostra peça sem
+    // arquivo pronto.
+    avisar: () => {
+      sse.emitirParaConta(anunciante.id, 'creative.updated', {});
+      if (res.headersSent) sse.emitirParaAdmin('creative.updated', {});
+    },
   });
-  if (res.statusCode === 201) {
-    sse.emitirParaConta(anunciante.id, 'creative.updated', {});
-    // Fila de Aprovação do admin cresce sem F5.
-    sse.emitirParaAdmin('creative.updated', {});
-  }
-  return enviou;
-});
+}
 
 // Admin subindo criativo na conta de um anunciante.
 //
@@ -1177,9 +1280,24 @@ router.get('/admin/anunciantes/:id/criativos', async (req, res) => {
 // e o vínculo de substituição nos dois sentidos (a peça atual sabe que tem
 // substituta em análise; a substituta sabe quem ela troca).
 const SITUACAO_CRIATIVO = { pendente: 'em_analise', reprovado: 'recusado', retirado: 'fora_do_ar' };
+// O que aconteceu com um envio cuja resposta se perdeu (proxy devolveu 524,
+// rede caiu, aba perdeu a conexão): a chave é a mesma que o painel mandou no
+// `Idempotency-Key`. `pronto` = criativo criado; `processando` = chegou e o
+// vídeo ainda está sendo processado; 404 `nao_encontrado` = não existe (não
+// chegou, ou o processamento falhou e a linha saiu) — aí reenviar com a
+// MESMA chave é seguro.
+router.get('/anunciantes/me/criativos/envios/:chave', exigirAnuncianteLogado, async (req, res) => {
+  if (!CHAVE_ENVIO.test(req.params.chave)) return res.status(400).json({ erro: 'chave de envio inválida' });
+  await criativosRepo.descartarProcessamentosOrfaos(req.session.anuncianteId);
+  const criativo = await criativosRepo.buscarPorEnvio(req.session.anuncianteId, req.params.chave);
+  if (!criativo) return res.status(404).json({ estado: 'nao_encontrado' });
+  res.json({ estado: criativo.arquivo_normalizado_url ? 'pronto' : 'processando', id: criativo.id });
+});
+
 router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res) => {
   const conta = await repo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+  await criativosRepo.descartarProcessamentosOrfaos(conta.id);
   const { criativos, plano, limite, contaVeicula } = await criativosComSituacao(conta);
   const substitutaDe = new Map(
     criativos

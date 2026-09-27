@@ -10,8 +10,10 @@
 
   async function estadoDosModos() {
     const r = await fetch(`${API_BASE_URL}/conta/modos`, { credentials: 'include' });
+    // Só o 401 é sessão acabada (layout.js); o resto é erro recuperável de
+    // quem chamou, nunca login.
     if (r.status === 401) {
-      window.location.href = '/anunciante/login.html';
+      window.sessaoExpirada();
       return null;
     }
     if (!r.ok) throw new Error('modos');

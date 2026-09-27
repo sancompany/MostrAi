@@ -4,9 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const cors = require('cors');
-const session = require('express-session');
-const PgSession = require('connect-pg-simple')(session);
 const pool = require('./db/pool');
+const { montarSessoes } = require('./lib/sessao');
 const { limiteTentativas } = require('./lib/limite-tentativas');
 const { segredoConfere } = require('./lib/segredo');
 const { comSemTransformacao, setHeadersEstaticos } = require('./lib/html-sem-transformacao');
@@ -104,22 +103,9 @@ app.use(
     },
   }),
 );
-// Sessão no Postgres (tabela `session`, migration 019). Com o MemoryStore
-// padrão todo deploy deslogava todo mundo — docs/erros/2026-09-sessao-em-memoria.md
-app.use(
-  session({
-    store: new PgSession({ pool, tableName: 'session', createTableIfMissing: false }),
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 3600 * 1000,
-    },
-  }),
-);
+// Sessão no Postgres, com cookie do admin separado do cookie da conta do
+// cliente — o porquê está em src/lib/sessao.js.
+montarSessoes(app, pool);
 
 // Serve o site (public/) no mesmo servidor da API — um terminal só, sem
 // precisar de Live Server ou outro serviço separado na 8080. Tem que vir
@@ -193,6 +179,8 @@ app.post('/admin/login', limiteTentativas, (req, res) => {
   if (!ok) return res.status(401).json({ erro: 'usuário ou senha inválidos' });
   // Sessão nova a cada login: sem isso, quem conseguisse plantar um cookie de
   // sessão na vítima ficava com uma sessão de admin válida assim que ela logasse.
+  // É a sessão do cookie do admin (src/lib/sessao.js): regenerar aqui não
+  // derruba mais a conta de anunciante aberta no mesmo navegador.
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
     req.session.isAdmin = true;
@@ -295,12 +283,20 @@ app.use((err, req, res, next) => {
 // morrer sozinho.
 process.on('unhandledRejection', (err) => console.error('unhandledRejection', err));
 
-app.listen(process.env.PORT, () => {
-  console.log(`mostrai rodando na porta ${process.env.PORT}`);
-  // Processador da inbox do webhook (migration 096): retoma o que ficou
-  // pendente de antes de um restart e segue a cada 30 s.
-  require('./financeiro/webhook-inbox').iniciar();
-  // Outbox de e-mails (migration 097): envia o que ficou na fila (inclusive
-  // de antes de um restart) e segue a cada 30 s.
-  require('./email/outbox').iniciar();
-});
+// Só abre a porta (e os processadores) quando é o processo principal — o
+// Dockerfile e o `npm start` rodam `node src/server.js`. Importado, entrega o
+// `app` montado: os testes de sessão (tests/sessao-anunciante.test.js)
+// exercitam as rotas de login reais, sem subir processador de fila nenhum.
+if (require.main === module) {
+  app.listen(process.env.PORT, () => {
+    console.log(`mostrai rodando na porta ${process.env.PORT}`);
+    // Processador da inbox do webhook (migration 096): retoma o que ficou
+    // pendente de antes de um restart e segue a cada 30 s.
+    require('./financeiro/webhook-inbox').iniciar();
+    // Outbox de e-mails (migration 097): envia o que ficou na fila (inclusive
+    // de antes de um restart) e segue a cada 30 s.
+    require('./email/outbox').iniciar();
+  });
+}
+
+module.exports = app;

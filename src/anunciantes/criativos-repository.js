@@ -22,11 +22,15 @@ const CAMPOS_ATUALIZAVEIS = [
   'conteudo_bytes',
 ];
 
+// `envio_chave` (migration 098): a chave de idempotência do upload. Duas
+// requisições com a mesma chave na mesma conta esbarram no índice único —
+// quem chama trata o 23505 como "já existe".
 async function criar(dados) {
   const { rows } = await pool.query(
     `INSERT INTO criativos
-       (anunciante_id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url, duracao_segundos, substitui_criativo_id)
-     VALUES ($1,$2,$3,$4,$5,$6)
+       (anunciante_id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url, duracao_segundos,
+        substitui_criativo_id, envio_chave)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      RETURNING *`,
     [
       dados.anunciante_id,
@@ -35,6 +39,7 @@ async function criar(dados) {
       dados.thumbnail_url,
       dados.duracao_segundos,
       dados.substitui_criativo_id || null,
+      dados.envio_chave || null,
     ],
   );
   return rows[0];
@@ -43,6 +48,32 @@ async function criar(dados) {
 async function buscarPorId(id) {
   const { rows } = await pool.query('SELECT * FROM criativos WHERE id = $1', [id]);
   return rows[0] || null;
+}
+
+async function buscarPorEnvio(anuncianteId, envioChave) {
+  const { rows } = await pool.query('SELECT * FROM criativos WHERE anunciante_id = $1 AND envio_chave = $2', [
+    anuncianteId,
+    envioChave,
+  ]);
+  return rows[0] || null;
+}
+
+// Linha temporária de um upload que nunca terminou: o processo reiniciou
+// (deploy) no meio do FFmpeg, e nem o sucesso nem a limpeza do erro rodaram.
+// Ficava "processando" pra sempre e ocupando a cota. Nenhum processamento
+// real dura 30 min (o maior medido em produção foi ~2 min).
+// limite: janela fixa de 30 min; com fila assíncrona de mídia, vira estado
+// explícito (processando/falhou) em vez de idade.
+async function descartarProcessamentosOrfaos(anuncianteId) {
+  const { rows } = await pool.query(
+    `DELETE FROM criativos c
+      WHERE c.anunciante_id = $1 AND c.status = 'pendente' AND c.arquivo_normalizado_url IS NULL
+        AND c.created_at < now() - interval '30 minutes'
+        AND NOT EXISTS (SELECT 1 FROM midias_proprias m WHERE m.criativo_id = c.id)
+      RETURNING c.id`,
+    [anuncianteId],
+  );
+  return rows.length;
 }
 
 // Conta pra aplicar o limite de criativos do plano (não conta reprovado —
@@ -102,6 +133,8 @@ async function deletar(id) {
 module.exports = {
   criar,
   buscarPorId,
+  buscarPorEnvio,
+  descartarProcessamentosOrfaos,
   listarPorAnunciante,
   listarPorStatus,
   atualizar,

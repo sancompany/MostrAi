@@ -1,7 +1,17 @@
 # Current Handoff
 
 ## Updated
-2026-09-27 — **Estação de e-mail (PR A, NÃO mergeado)**: fila durável de
+2026-09-27 (noite) — **Estação sessão do anunciante + upload confiável**
+(PR aberto, NÃO mergeado, aguardando o dono; #80 e #81 já mergeados e no
+ar). Sessão: admin e conta tinham UM cookie e o login de um derrubava o
+outro — agora `mostrai.admin` (`Path=/admin`) separado (`src/lib/sessao.js`,
+ADR-003 complementado); o painel só vai pro login num 401 real. Upload:
+processamento real em produção passava dos 100 s da Cloudflare (524 com o
+criativo criado) — idempotência por `Idempotency-Key` (migration 098),
+reconciliação pela chave, FFmpeg mais rápido com a mesma saída. **Aberto
+para o dono:** fila assíncrona de mídia (`docs/PENDENCIAS.md`, seção
+"Anunciante — sessão estável…"). Registros em `docs/erros/2026-09-27-*`.
+2026-09-27 — **Estação de e-mail (PR A — mergeado depois, #80)**: fila durável de
 e-mails (migration 097, `src/email/outbox.js`), código de verificação com
 hash e prazo de 10 min do servidor (`src/email/codigos.js`), corrigir/trocar
 e-mail, troca pelo admin com trilha, autocomplete dos formulários. Regras em

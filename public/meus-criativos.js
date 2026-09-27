@@ -123,19 +123,34 @@
     });
   }
 
-  function carregar() {
-    if (!carregando) {
-      carregando = desenhar().finally(() => {
-        carregando = null;
-      });
+  // Uma leitura por vez: pedidos que chegam com uma leitura em andamento
+  // (resync do SSE em rajada) ficam com ela. Só o fim do upload pede
+  // `fresco` — aí ganha UMA leitura nova depois da que estava no ar, que
+  // podia ter saído antes de o criativo ficar pronto.
+  // Resolve true/false: a lista foi atualizada ou não.
+  let proxima = null;
+  function carregar({ fresco = false } = {}) {
+    if (carregando) {
+      if (!fresco) return carregando;
+      if (!proxima) {
+        proxima = carregando.then(() => {
+          proxima = null;
+          return carregar();
+        });
+      }
+      return proxima;
     }
+    carregando = desenhar().finally(() => {
+      carregando = null;
+    });
     return carregando;
   }
 
   async function desenhar() {
     const secao = $('modCriativos');
     const lista = $('listaCriativos');
-    if (!secao) return;
+    if (!secao) return true;
+    let ok = true;
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos`, { credentials: 'include' });
       if (!r.ok) throw new Error();
@@ -145,7 +160,7 @@
       if (!dados.temPlano) {
         secao.hidden = true;
         window.publicarResumo?.('criativos', {});
-        return;
+        return true;
       }
       publicar();
       desenharCabecalho();
@@ -154,10 +169,12 @@
         : '<p class="empty-state">Nenhum criativo enviado ainda.</p>';
     } catch (err) {
       console.error('falha ao carregar os criativos', err);
+      ok = false;
       lista.innerHTML =
         '<p class="form-msg err">Não foi possível carregar seus criativos agora. Tente atualizar a página.</p>';
     }
     secao.hidden = false;
+    return ok;
   }
 
   function mensagem(texto, tipo) {
@@ -166,34 +183,217 @@
     msg.className = `form-msg ${tipo || ''}`.trim();
   }
 
-  async function enviar(arquivo, substitui) {
+  // Botão ao lado da mensagem do envio: "Tentar de novo", "Verificar de
+  // novo", "Atualizar lista" — ou nenhum.
+  let acaoAtual = null;
+  function acao(rotulo, fn) {
+    acaoAtual = rotulo ? fn : null;
+    $('uploadAcao').textContent = rotulo || '';
+    $('uploadAcao').hidden = !rotulo;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Envio confiável (estação upload, 27/09/2026)
+  // ---------------------------------------------------------------------------
+  // O processamento do vídeo pode passar dos 100 s do proxy da Cloudflare, que
+  // então devolve 524 — e o servidor termina o trabalho e cria o criativo
+  // mesmo assim. A tela dizia "Não foi possível enviar" e o cliente enviava de
+  // novo: dois criativos. Regras daqui:
+  //   - cada arquivo escolhido ganha UMA chave (`Idempotency-Key`); repetir a
+  //     tentativa manda a mesma chave, e o servidor devolve o que já existe;
+  //   - "falhou" só quando o SERVIDOR disse por quê (4xx com `erro`, ou o 502
+  //     do nosso armazenamento) — nada foi criado;
+  //   - qualquer outro desfecho (rede caiu, 524/504 do proxy, 500 sem corpo)
+  //     é RESULTADO INCERTO: o painel pergunta ao servidor o que aconteceu com
+  //     aquela chave antes de dizer qualquer coisa;
+  //   - upload concluído e lista que não atualizou são duas coisas: a lista
+  //     falhar nunca vira "o envio falhou".
+  // Estados na tela: ENVIANDO (com %), PROCESSANDO, ENVIADO/EM ANÁLISE,
+  // ERRO REAL, RESULTADO INCERTO.
+  const ESPERA_PROCESSAMENTO_MS = 8 * 60 * 1000; // maior processamento medido em produção: ~2 min
+  const INTERVALO_CONFERENCIA_MS = 10000;
+
+  function novaChave() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const textoEnviado = (t) =>
+    t.substitui
+      ? 'Substituta enviada. A peça atual continua no ar até a nova ser aprovada.'
+      : 'Criativo enviado! Ele entra em análise antes de ir pro ar.';
+
+  // XHR e não fetch: só ele diz quando o ARQUIVO terminou de subir — é o que
+  // separa "enviando" de "processando" na tela. Nunca rejeita: status 0 é
+  // "não houve resposta" (rede, conexão encerrada).
+  function postar(t) {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/anunciantes/${t.contaId}/criativos`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Idempotency-Key', t.chave);
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && e.loaded < e.total) {
+          mensagem(`Enviando o arquivo... ${Math.floor((e.loaded / e.total) * 100)}%`);
+        }
+      });
+      xhr.upload.addEventListener('load', () =>
+        mensagem('Arquivo recebido. Processando o vídeo, pode levar um minuto...'),
+      );
+      xhr.addEventListener('load', () => {
+        let corpo = null;
+        try {
+          corpo = JSON.parse(xhr.responseText);
+        } catch {}
+        resolve({ status: xhr.status, corpo });
+      });
+      for (const evento of ['error', 'abort', 'timeout']) {
+        xhr.addEventListener(evento, () => resolve({ status: 0, corpo: null }));
+      }
+      const form = new FormData();
+      form.append('arquivo', t.arquivo);
+      if (t.substitui) form.append('substitui', String(t.substitui));
+      xhr.send(form);
+    });
+  }
+
+  function desfechoDoEnvio({ status, corpo }) {
+    if (status === 200 || status === 201) return 'enviado';
+    if (status === 202) return 'processando';
+    if (status === 401) return 'sessao';
+    // O servidor recusou e disse por quê: nada foi criado (a linha
+    // temporária de um processamento que falhou já saiu antes da resposta).
+    if (status >= 400 && status < 500 && corpo?.erro) return 'erro';
+    if (status === 502 && corpo?.erro) return 'erro';
+    return 'incerto';
+  }
+
+  async function consultarEnvio(chave) {
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos/envios/${encodeURIComponent(chave)}`, {
+        credentials: 'include',
+      });
+      if (r.status === 404) return 'nao_encontrado';
+      if (r.status === 401) return 'sessao';
+      if (!r.ok) return 'desconhecido';
+      return (await r.json()).estado === 'pronto' ? 'pronto' : 'processando';
+    } catch {
+      return 'desconhecido';
+    }
+  }
+
+  // Envio que terminou sem resposta clara: pergunta ao servidor. "Não
+  // encontrado" só vale depois de duas respostas iguais com uns segundos de
+  // intervalo (a primeira pode chegar antes de a linha nascer). Enquanto
+  // processa, espera o SSE (`creative.updated`) ou confere a cada 10 s, até
+  // 8 min — nunca uma espera sem fim.
+  let aguardando = null;
+  async function conferir(t) {
+    aguardando = t;
+    t.desde = t.desde || Date.now();
+    let naoEncontrado = 0;
+    let desconhecido = 0;
+    while (aguardando === t) {
+      const estado = await consultarEnvio(t.chave);
+      if (aguardando !== t) return;
+      if (estado === 'sessao') return window.sessaoExpirada();
+      if (estado === 'pronto') return concluir(t);
+      if (estado === 'processando') {
+        naoEncontrado = 0;
+        mensagem(
+          'Recebemos o seu arquivo e ele ainda está sendo processado. O card atualiza sozinho, não precisa enviar de novo.',
+        );
+        acao(null);
+        if (Date.now() - t.desde > ESPERA_PROCESSAMENTO_MS) {
+          aguardando = null;
+          mensagem('Seu arquivo chegou e ainda está sendo processado. Confira a lista daqui a pouco.');
+          acao('Verificar de novo', () => conferir(t));
+          return;
+        }
+      } else if (estado === 'nao_encontrado') {
+        naoEncontrado += 1;
+        if (naoEncontrado >= 2) {
+          aguardando = null;
+          // Verdade: não existe criativo com esta chave. Reenviar usa a
+          // MESMA chave — se o primeiro aparecer depois, não duplica.
+          mensagem('O envio não foi concluído. Nenhum criativo foi criado.', 'err');
+          acao('Tentar de novo', () => enviarTentativa(t));
+          return;
+        }
+      } else {
+        desconhecido += 1;
+        if (desconhecido >= 3) {
+          aguardando = null;
+          mensagem('Não conseguimos confirmar se o envio chegou. Verifique antes de enviar de novo.', 'err');
+          acao('Verificar de novo', () => conferir(t));
+          return;
+        }
+      }
+      await esperar(estado === 'processando' ? INTERVALO_CONFERENCIA_MS : 3000, t);
+    }
+  }
+
+  // Espera que o SSE pode encurtar: `creative.updated` acorda a conferência.
+  let acordar = null;
+  function esperar(ms, t) {
+    return new Promise((resolve) => {
+      const fim = () => {
+        clearTimeout(timer);
+        if (acordar === fim) acordar = null;
+        resolve();
+      };
+      const timer = setTimeout(fim, ms);
+      if (aguardando === t) acordar = fim;
+    });
+  }
+
+  async function concluir(t) {
+    if (aguardando === t) aguardando = null;
+    mensagem(textoEnviado(t), 'ok');
+    acao(null);
+    const antes = performance.now();
+    const listaOk = await carregar({ fresco: true });
+    window.__tempoRefreshCriativosMs = Math.round(performance.now() - antes);
+    if (!listaOk) {
+      // O envio deu certo; só a lista não veio. Nunca "o envio falhou".
+      mensagem(`${textoEnviado(t)} Não conseguimos atualizar a lista agora.`, 'ok');
+      acao('Atualizar lista', async () => {
+        if (await carregar({ fresco: true })) acao(null);
+      });
+    }
+  }
+
+  async function enviarTentativa(t) {
+    if (enviando) return;
+    enviando = true;
+    aguardando = null;
+    acao(null);
+    $('arquivoCriativo').disabled = true;
+    mensagem('Enviando o arquivo...');
+    const resposta = await postar(t);
+    enviando = false;
+    if (dados) desenharCabecalho();
+    else $('arquivoCriativo').disabled = false;
+    const desfecho = desfechoDoEnvio(resposta);
+    if (desfecho === 'sessao') return window.sessaoExpirada();
+    if (desfecho === 'enviado') return concluir(t);
+    if (desfecho === 'erro') {
+      mensagem(window.frase(resposta.corpo.erro), 'err');
+      return carregar();
+    }
+    if (desfecho === 'processando') carregar();
+    else mensagem('A resposta não chegou. Conferindo se o seu arquivo foi recebido...');
+    return conferir(t);
+  }
+
+  function enviar(arquivo, substitui) {
     const conta = obterConta();
     if (!arquivo || !conta || enviando) return;
-    enviando = true;
-    $('arquivoCriativo').disabled = true;
-    mensagem('Enviando e processando, pode levar um minuto...');
-    const form = new FormData();
-    form.append('arquivo', arquivo);
-    if (substitui) form.append('substitui', String(substitui));
-    try {
-      const r = await fetch(`${API_BASE_URL}/anunciantes/${conta.id}/criativos`, {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-      });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || '');
-      mensagem(
-        substitui
-          ? 'Substituta enviada. A peça atual continua no ar até a nova ser aprovada.'
-          : 'Criativo enviado! Ele entra em análise antes de ir pro ar.',
-        'ok',
-      );
-    } catch (err) {
-      mensagem(err.message ? window.frase(err.message) : 'Não foi possível enviar agora. Tente de novo.', 'err');
-    } finally {
-      enviando = false;
-      await carregar();
-    }
+    // Uma chave por arquivo escolhido: escolher de novo (mesmo o mesmo
+    // arquivo) é um envio novo, de propósito.
+    enviarTentativa({ arquivo, substitui, contaId: conta.id, chave: novaChave() });
   }
 
   async function excluir(id) {
@@ -253,13 +453,22 @@
       ev.target.value = '';
       enviar(arquivo, alvo);
     });
+    $('uploadAcao')?.addEventListener('click', () => acaoAtual?.());
+    // A MESMA função nos quatro eventos: o resync do eventos.js deduplica por
+    // função, e cada volta pra aba vira uma leitura só (e2e 15).
+    const aoMudar = () => {
+      // Criativo nasceu "processando", ficou pronto ou saiu: acorda a
+      // conferência de um envio incerto, se houver.
+      acordar?.();
+      return carregar();
+    };
     if (window.ligarEventosDaConta) {
       window.ligarEventosDaConta({
-        'creative.updated': carregar,
+        'creative.updated': aoMudar,
         // Plano mudou (assinatura, resgate de créditos): muda o que roda e o teto.
-        'plan.updated': carregar,
-        'payment.updated': carregar,
-        'credits.updated': carregar,
+        'plan.updated': aoMudar,
+        'payment.updated': aoMudar,
+        'credits.updated': aoMudar,
       });
     }
   };

@@ -60,6 +60,14 @@ mundo.
 Consequências: nunca trocar por `MemoryStore` "para simplificar" nem por
 outro store sem entender esse motivo primeiro.
 
+Complemento (27/09/2026, erro `docs/erros/2026-09-27-sessao-do-admin-derrubava-o-anunciante.md`):
+**admin e conta do cliente têm cookies separados** — `mostrai.admin`
+(`Path=/admin`) e `connect.sid` — na mesma tabela `session`, montados por
+`src/lib/sessao.js`, um store por sessão. Com um cookie só, cada login
+(`regenerate`) derrubava a outra identidade no mesmo navegador. Não juntar
+de novo "pra simplificar"; e toda rota que usa `isAdmin`/`adminUsuario` fica
+debaixo de `/admin` (é só lá que o cookie do admin viaja).
+
 ## ADR-004 — Playlist sem cache em memória; ordem por semente determinística
 
 Status: Ativa desde 17/09/2026. Complementada pelo congelamento (ADR-005).

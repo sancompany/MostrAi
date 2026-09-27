@@ -227,13 +227,61 @@
 
   // Conta logada: uma requisição só, compartilhada por quem precisar (o
   // painel usa a mesma promessa em vez de pedir /anunciantes/me de novo).
-  window.carregarConta = function carregarConta() {
-    if (!window.__conta) {
-      window.__conta = fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+  //
+  // Sessão estável (27/09/2026): a promessa REJEITA quando não deu pra ler a
+  // conta, e diz por quê — `err.sessaoExpirada` só num 401 (a sessão
+  // realmente acabou); qualquer outra coisa (500, 503, rede, prazo de 20 s,
+  // resposta que não é JSON) é `err.transitorio` e nunca pede login. Antes
+  // tudo virava `null` e ficava guardado pela vida da página: um 500 na
+  // abertura contaminava todo mundo que perguntasse depois. Agora só o
+  // SUCESSO fica guardado; a falha se apaga e a próxima chamada tenta de
+  // novo. `{ recarregar: true }` pede de novo mesmo com uma conta guardada
+  // (plano, suspensão ou e-mail podem ter mudado).
+  const PRAZO_CONTA_MS = 20000;
+  function erroConta(tipo, status) {
+    const err = new Error(tipo === 'sessao' ? 'sessão expirada' : 'conta indisponível');
+    err.sessaoExpirada = tipo === 'sessao';
+    err.transitorio = tipo !== 'sessao';
+    err.status = status || 0;
+    return err;
+  }
+  async function lerConta() {
+    const controle = new AbortController();
+    const prazo = setTimeout(() => controle.abort(), PRAZO_CONTA_MS);
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include', signal: controle.signal });
+      if (r.status === 401) throw erroConta('sessao', 401);
+      if (!r.ok) throw erroConta('transitorio', r.status);
+      const conta = await r.json().catch(() => null);
+      if (!conta || typeof conta !== 'object' || !conta.id) throw erroConta('transitorio', r.status);
+      aplicarContaNoLayout(conta);
+      return conta;
+    } catch (err) {
+      if (err.sessaoExpirada || err.transitorio) throw err;
+      throw erroConta('transitorio', 0); // rede caiu, prazo estourou, leitura abortada
+    } finally {
+      clearTimeout(prazo);
+    }
+  }
+  window.carregarConta = function carregarConta({ recarregar = false } = {}) {
+    if (recarregar || !window.__conta) {
+      const leitura = lerConta();
+      window.__conta = leitura;
+      leitura.catch(() => {
+        if (window.__conta === leitura) window.__conta = null;
+      });
     }
     return window.__conta;
+  };
+
+  // Sessão que acabou de verdade (401): um aviso e o login, uma vez só por
+  // página. O login não pergunta pela conta, então não tem como voltar pra
+  // cá sozinho — sem loop.
+  let saindoPorSessao = false;
+  window.sessaoExpirada = function sessaoExpirada() {
+    if (saindoPorSessao) return;
+    saindoPorSessao = true;
+    window.location.href = '/anunciante/login.html?expirou=1';
   };
 
   // Sessão pra páginas PÚBLICAS (decisão D4 do dono, 24/09/2026): só diz se
@@ -294,16 +342,24 @@
 
   // Páginas da conta: esconde/mostra abas pelos papéis assim que a conta
   // carregar (o painel chama montarPerfil, que já usa a mesma promessa).
+  // Roda a CADA leitura da conta que deu certo (lerConta), não só na primeira:
+  // se a abertura falhou e o [Tentar novamente] do painel funcionou, o menu e
+  // a trava do e-mail ainda precisam acontecer — antes era um `.then` único,
+  // e uma primeira leitura com erro deixava a trava de fora.
+  function aplicarContaNoLayout(conta) {
+    if (document.body.dataset.layout !== 'conta') return;
+    window.aplicarPapeisNoMenu(conta);
+    // E-mail não confirmado (migration 061): pop-up obrigatório em toda
+    // página de conta — a pessoa pode entrar direto por outra página da
+    // conta sem nunca passar pelo painel. Pedido do
+    // dono, 19/09/2026: virou trava de verdade, não só aviso — antes era
+    // uma barra que dava pra ignorar e continuar navegando.
+    if (!conta.email_confirmado && !document.querySelector('.modal-email')) mostrarModalEmailNaoConfirmado(conta);
+  }
   if (document.body.dataset.layout === 'conta') {
-    window.carregarConta().then((conta) => {
-      if (conta) window.aplicarPapeisNoMenu(conta);
-      // E-mail não confirmado (migration 061): pop-up obrigatório em toda
-      // página de conta — a pessoa pode entrar direto por outra página da
-      // conta sem nunca passar pelo painel. Pedido do
-      // dono, 19/09/2026: virou trava de verdade, não só aviso — antes era
-      // uma barra que dava pra ignorar e continuar navegando.
-      if (conta && !conta.email_confirmado) mostrarModalEmailNaoConfirmado(conta);
-    });
+    // Falha aqui não decide nada: a página (painel) trata o 401 e a falha
+    // transitória com a mensagem dela.
+    window.carregarConta().catch(() => {});
   }
 
   // Confirmação do e-mail do cadastro (estação de e-mail, 27/09/2026). O
