@@ -60,14 +60,15 @@ async function principal() {
       // novo depois de uma falha no meio termina o que faltou.
       apuracao = await apurarMes({ mes: opcoes.mes, simular: opcoes.simular });
       console.log(
-        `banco de horas${modo}: mês ${apuracao.mesApurado.slice(0, 7)} · ` +
-          `${apuracao.anunciantesComDeficit} conta(s) com déficit · ${apuracao.exibicoesDevidas} exibição(ões) devida(s) · ` +
-          `${apuracao.novasLinhas} linha(s) nova(s)`,
+        `banco de horas${modo}: mês ${apuracao.mesApurado.slice(0, 7)}${apuracao.definitivo ? '' : ' (provisório: ainda chegam comprovantes)'} · ` +
+          `${apuracao.horasSemPedido} hora(s) aberta(s) sem sinal registrada(s) · ` +
+          `${apuracao.anunciantesComDeficit} conta(s) com saldo · ${apuracao.segundosDevidos} s devido(s) · ` +
+          `${apuracao.novasLinhas} linha(s) nova(s) · ${apuracao.linhasRecompostas} recomposta(s)`,
       );
       liquidacao = await liquidarBancoConfirmado({ simular: opcoes.simular });
       console.log(
         `banco de horas${modo}: ${liquidacao.linhas} hora(s) liquidada(s) em ${liquidacao.contas} conta(s) · ` +
-          `${liquidacao.exibicoesAbatidas} exibição(ões) confirmada(s) abatida(s) do saldo`,
+          `${liquidacao.segundosAbatidos} s (${liquidacao.exibicoesAbatidas} exibição(ões)) confirmado(s) abatido(s) do saldo`,
       );
       if (!opcoes.simular) await registrarExecucao(comecouEm, { apuracao, liquidacao });
       return 0;

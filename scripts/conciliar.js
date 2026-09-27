@@ -12,7 +12,8 @@ require('dotenv').config();
 const { conciliarAssinaturas, registrarRelato } = require('../src/financeiro/conciliacao');
 const { ativarBeneficiosAgendados, encerrarBeneficiosVencidos } = require('../src/financeiro/plano-administrativo');
 const { concederCreditosMensais } = require('../src/creditos/ponto');
-const { liquidarBancoConfirmado } = require('../src/bancohoras/apuracao');
+const { liquidarBancoConfirmado, recomporMesAnteriorEmPrazo } = require('../src/bancohoras/apuracao');
+const { registrarHorasSemPedido } = require('../src/bancohoras/obrigacao');
 const { anonimizarExcluidas } = require('../src/titular/repository');
 const comecouEm = new Date();
 
@@ -37,18 +38,34 @@ conciliarAssinaturas()
       console.error('ciclo de vida de benefícios por créditos falhou:', err.message);
     }
 
-    // Banco de horas: abate do saldo o que as TVs confirmaram nas horas já
-    // fechadas — fechada = passou o prazo de 7 dias do proof-of-play offline
-    // (src/bancohoras/apuracao.js). Diário pra que o banco programado e não
-    // confirmado volte a ficar disponível assim que o prazo vence, sem
-    // esperar o job mensal.
+    // Saldo de Veiculação (banco de horas), três passos idempotentes:
+    // 1. hora ABERTA das últimas 48 h em que a tela não pediu playlist (sem
+    //    sinal) ganha a obrigação que tinha (src/bancohoras/obrigacao.js) —
+    //    diário pra que a cobertura usada seja a de horas atrás, não de semanas;
+    // 2. enquanto ainda chegam comprovantes do mês anterior (7 dias + 1 h), a
+    //    MESMA apuração do job ApuracaoBancoHoras recompõe o saldo dele;
+    // 3. abate do saldo o que as TVs confirmaram nas horas já fechadas —
+    //    fechada = passou o prazo do proof-of-play offline. Diário pra que o
+    //    banco programado e não confirmado volte a ficar disponível assim que
+    //    o prazo vence, sem esperar o job mensal.
     try {
-      const liq = await liquidarBancoConfirmado();
+      const agora = new Date();
+      const semSinal = await registrarHorasSemPedido({ de: new Date(agora.getTime() - 48 * 3_600_000), ate: agora });
+      console.log(`saldo de veiculação: ${semSinal.horas} hora(s) aberta(s) sem sinal registrada(s)`);
+      const recomposta = await recomporMesAnteriorEmPrazo({ agora });
+      if (recomposta) {
+        console.log(
+          `saldo de veiculação: mês ${recomposta.mesApurado.slice(0, 7)} recomposto · ` +
+            `${recomposta.anunciantesComDeficit} conta(s) com saldo · ${recomposta.segundosDevidos} s devidos`,
+        );
+      }
+      const liq = await liquidarBancoConfirmado({ agora });
       console.log(
-        `banco de horas: ${liq.linhas} hora(s) liquidada(s) em ${liq.contas} conta(s) · ${liq.exibicoesAbatidas} exibição(ões) abatida(s)`,
+        `saldo de veiculação: ${liq.linhas} hora(s) liquidada(s) em ${liq.contas} conta(s) · ` +
+          `${liq.segundosAbatidos} s (${liq.exibicoesAbatidas} exibição(ões)) abatido(s)`,
       );
     } catch (err) {
-      console.error('liquidação do banco de horas falhou:', err.message);
+      console.error('saldo de veiculação falhou:', err.message);
     }
 
     // Crédito mensal do ponto (migration 082): +1 por ponto elegível por mês.

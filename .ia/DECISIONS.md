@@ -127,11 +127,12 @@ Consequências: isto NÃO é o "cache em memória" antigo (ADR-004) voltando —
 só para congelar a ORDEM, não para evitar reconsultar o banco. Um agente
 que veja `playlist_hora_congelada` e pense "ah, voltou o cache que a
 ADR-004 proibiu" está enganado — são mecanismos diferentes, resolvendo
-problemas diferentes. Efeito colateral aceito: banco de horas e déficit
-para participantes já congelados continuam sendo recalculados a cada poll
-com base em dado fresco (não congelado) — só a ORDEM/composição da base é
-que fica fixa; ver `docs/teia.md`, entrada "Congelamento da hora da
-playlist".
+problemas diferentes. Efeito colateral aceito: a base congelada guarda o
+PEDIDO da hora de cada participante (base, compensação, déficit, banco e,
+desde 27/09/2026, a obrigação da hora — ADR-023), e os polls seguintes da
+mesma hora reprocessam essa mesma base; só quem entra depois (`extras`) é
+calculado com dado fresco. (Até 27/09/2026 este parágrafo dizia que banco e
+déficit eram recalculados a cada poll — não era o que o código fazia.)
 
 **Reforço de concorrência (20/09/2026):** criação da base e anexação de
 extras são serializadas por um `pg_advisory_xact_lock` transacional com a
@@ -767,3 +768,38 @@ Consequências: o e-mail "Seu anúncio está no ar" (fora do escopo) ainda
 sai na aprovação — pendência. Programadas comerciais em hora fechada
 distorcem o déficit do banco de horas — pendência da estação do banco de
 horas, sem mudança de fórmula aqui.
+
+## ADR-023 — Saldo de Veiculação em tempo, por comprovante e só em hora aberta (27/09/2026)
+
+Status: Ativa. Migration `100_saldo_de_veiculacao.sql`. Regra: RN-53.
+Mapa, defeitos e invariantes: `docs/specs/2026-09-27-saldo-de-veiculacao.md`.
+
+Contexto: o banco de horas contava "o que não coube" (pedidas − programadas)
+em EXIBIÇÕES, confiando no déficit hora a hora pro que foi programado e não
+tocou. Produziu dívida falsa em hora fechada (a TV pede playlist a noite
+toda), perdia o não entregue na virada de hora fechada, de mês e com a TV
+sem sinal, deixava a compensação da RN-49 cortar a base de outra conta numa
+hora cheia, fazia sumir a parte do contrato acima do teto da RN-49, e
+reescrevia a dívida em tempo quando a peça mudava.
+
+Decisão:
+1. **Unidade = segundo.** Cada hora do contador guarda a duração que usou;
+   exibições equivalentes são derivadas com a peça de hoje.
+2. **Obrigação explícita por hora aberta** (`segundos_obrigacao`), sem o teto
+   da RN-49; hora fechada não grava; hora parcial deve os minutos abertos;
+   hora aberta sem sinal ganha a obrigação (só para conta já servida naquela
+   tela).
+3. **Entrega = comprovante** (`LEAST(confirmadas, programadas − banco)`).
+4. **Camadas da hora**: base de todos (T1) → compensação e reposição do mês
+   (T2) → saldo antigo (T3). A Mídia Mostraí continua na T1 (regra
+   existente; conflito sinalizado em `.ia/RISKS.md`).
+5. **Mesmo job**, mesma tabela, mesma função: `ApuracaoBancoHoras` apura; o
+   `Conciliacao` recompõe no prazo do comprovante. Idempotente: uma linha por
+   conta × mês, recomposta (nunca somada) até congelar.
+
+Consequências: nomes internos (`banco_horas`, `src/bancohoras/`, o job)
+mantidos — renomear tabela e job em produção é risco sem ganho; o cliente vê
+"Saldo de veiculação". As colunas `exibicoes_*` de `banco_horas` viram
+equivalentes informativos. `vezes_pedidas` deixou de alimentar a apuração
+(fica como registro de auditoria da hora).
+

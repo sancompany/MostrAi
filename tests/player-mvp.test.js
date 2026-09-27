@@ -1045,19 +1045,21 @@ test('POP x banco de horas: hora que ainda aceita POP não liquida; hora liquida
   const bancoHorasRepo = require('../src/bancohoras/repository');
   const mesPassado = new Date();
   mesPassado.setMonth(mesPassado.getMonth() - 1, 1);
-  await bancoHorasRepo.registrarDeficit({
-    anuncianteId: conta,
-    mesReferencia: mesPassado.toISOString().slice(0, 10),
-    exibicoesPedidas: 10,
-    exibicoesEntregues: 0,
-  });
+  // Saldo de 200 s (10 exibições de 20 s — a hora de teste não grava
+  // duração, então vale a de reserva, DURACAO_PADRAO).
+  await pool.query(
+    `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco,
+                              segundos_obrigacao, segundos_entregues, segundos_banco)
+     VALUES ($1, $2, 10, 0, 10, 200, 0, 200)`,
+    [conta, mesPassado.toISOString().slice(0, 10)],
+  );
 
   // Hora de 6 dias atrás: 2 programadas, as 2 do banco, nenhuma confirmada.
   const seisDias = horaCheia(Date.now() - 6 * 24 * 3_600_000);
   const h6 = await horaServida(tela.id, conta, seisDias, { programadas: 2, banco: 2 });
   let liq = await apuracao.liquidarBancoConfirmado({ apenasContas: [conta] });
   assert.equal(liq.linhas, 0, 'ainda dentro do prazo do POP: não liquida');
-  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 10);
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 200);
 
   // A TV volta e manda os dois POPs atrasados: contam.
   const r = await enviar(p, [evento(h6.janelaId, h6.item(0)), evento(h6.janelaId, h6.item(1))]);
@@ -1072,7 +1074,8 @@ test('POP x banco de horas: hora que ainda aceita POP não liquida; hora liquida
   liq = await apuracao.liquidarBancoConfirmado({ apenasContas: [conta] });
   assert.equal(liq.linhas, 1);
   assert.equal(liq.exibicoesAbatidas, 1);
-  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 9);
+  assert.equal(liq.segundosAbatidos, 20);
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 180);
   const tarde = await enviar(p, [evento(h8.janelaId, h8.item(1))]);
   assert.equal(tarde.json.resultados[0].status, 'janela_expirada');
   assert.equal(await confirmadas(tela.id, oitoDias, conta), 1, 'hora liquidada não muda');
@@ -1081,5 +1084,5 @@ test('POP x banco de horas: hora que ainda aceita POP não liquida; hora liquida
     0,
     'nada liquida duas vezes',
   );
-  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 9);
+  assert.equal(await bancoHorasRepo.saldoAtivoDoAnunciante(conta), 180);
 });

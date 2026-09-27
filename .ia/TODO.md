@@ -177,7 +177,7 @@ de horas. As condições de corrida do congelamento foram corrigidas em
 
 ## AUDITORIA 20/09/2026 — prioridade acima da fila anterior
 
-- **Fechar integridade `player → confirmação → métrica`**: revisar a TV física; decidir o que constitui conclusão; implementar confirmação durável/idempotente/retry e alinhar dashboard/contador. O anúncio investigado foi programado; a lacuna está depois da playlist. Decidir em item separado se falha física deve criar saldo diferente do banco de capacidade atual.
+- **Fechar integridade `player → confirmação → métrica`**: revisar a TV física; decidir o que constitui conclusão; implementar confirmação durável/idempotente/retry e alinhar dashboard/contador. O anúncio investigado foi programado; a lacuna está depois da playlist. ~~Decidir em item separado se falha física deve criar saldo diferente do banco de capacidade atual.~~ **Decidido na estação do Saldo de Veiculação (27/09/2026):** um saldo só, em tempo — obrigação da hora aberta − entrega confirmada; falha física em hora aberta (inclusive TV sem sinal) entra nele (RN-53).
 - **Fechado em 20/09/2026 — concorrência do congelamento**: resolução serializada por `(dispositivo, hora)` com advisory lock transacional; a perdedora relê a base vencedora e extras são calculados/anexados na mesma seção crítica. Coberto por `tests/playlist-congelamento.test.js`. Não confundir repetições legítimas da frequência com duplicação de leva.
 - **Corrigir registro de categoria na documentação**: código atual e produção gravam `categoria_id`; falta teste ponta a ponta do bloqueio e regenerar `docs/furos.md`.
 - ~~**Triar dependências**~~ — **FEITO (PR #61, 25/09/2026)**: `npm audit` em 0 sem `--force` (bcrypt 6, nodemailer 10, express 4.22.3).
@@ -186,7 +186,7 @@ de horas. As condições de corrida do congelamento foram corrigidas em
 
 - Executar o roteiro da TV em `docs/investigacao-player-confirmacao-2026-09-20.md`, capturando playlist, mídia, eventos, heartbeat e status/body de `/played`.
 - O modo temporário `?debug=1` já está pronto e não muda a contagem; usá-lo se DevTools remoto não estiver disponível.
-- Depois do diagnóstico, aprovar contrato `playing` = iniciada, `ended` = concluída, aceite idempotente = confirmada; definir separadamente se falha física alimenta outro saldo ou o banco atual.
+- Depois do diagnóstico, aprovar contrato `playing` = iniciada, `ended` = concluída, aceite idempotente = confirmada; ~~definir separadamente se falha física alimenta outro saldo ou o banco atual~~ — alimenta o Saldo de Veiculação (RN-53, 27/09/2026).
 
 ## DEBUG DO PLAYER PRONTO — próximo passo é teste físico
 
@@ -201,3 +201,24 @@ de horas. As condições de corrida do congelamento foram corrigidas em
 - **Novo bug confirmado, não corrigido:** `src/admin/metrica.js` usa `p.status = 'ativo'` na amortização histórica; status atual é `em_operacao`, então a aba Métrica zera esse custo. Tratar quando o dono chegar nessa tela ou autorizar.
 - Continuar da metade atual da revisão indicada pelo dono; não reiniciar auditoria nem retomar espontaneamente os bugs técnicos pausados.
 - **Fechado:** Termos públicos sincronizados com cadastro multipapel, cobertura imediata, cancelamento pelo painel e orçamento por hora/estimativa de 12h por dia.
+
+## SALDO DE VEICULAÇÃO — estação CONCLUÍDA (#85 mergeado, 27/09/2026)
+
+Validações operacionais que ficam (não bloqueiam; só observar e reportar):
+
+- [ ] Uma noite real com o ponto fechado: nenhuma linha comercial nas horas
+  fechadas (`exibicoes_contador` sem linha fora do horário do ponto).
+- [ ] Um período aberto com a TV desligada: a hora ganha a obrigação
+  (`obrigacao_sem_pedido = true`) e, sem comprovante, vira saldo.
+- [ ] Primeira apuração real do `ApuracaoBancoHoras` (01/10/2026, 06:00 UTC):
+  log com "hora(s) aberta(s) sem sinal" e "provisório"; linha em
+  `banco_horas_execucoes` sem `abortou`; card "Saldo de veiculação" no painel
+  só se houver saldo.
+- [ ] Recomposição na janela de comprovantes atrasados (até 00:00 de
+  08/10/2026 em Matão): o `Conciliacao` diário recompõe a linha de setembro; depois
+  disso ela congela (`apurado_em` para de mudar).
+
+Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
+camada da base (T1) com o comercial numa hora cheia — comportamento atual
+preservado; ver `.ia/RISKS.md`.
+

@@ -5113,15 +5113,18 @@ da Mídia Mostraí"):
 
 Fica registrado (fora do escopo da estação — não mexido):
 
-1. **BANCO DE HORAS — próxima estação crítica, pendência separada, NÃO
-   corrigida.** (BANK_HOURS_FOLLOWUP_REQUIRED) O gerador grava
+1. [x] **BANCO DE HORAS — corrigido na estação do Saldo de Veiculação
+   (seção O, 27/09/2026).** (era BANK_HOURS_FOLLOWUP_REQUIRED) O gerador grava
    `vezes_programadas` comerciais também em hora com o ponto FECHADO (a TV
    continua pedindo a playlist fora do horário e só não toca). Com isso o
    `deficitHoraAnterior` e a apuração mensal contam como "déficit" horas em
    que nada podia tocar. A Mídia Mostraí já grava só em hora aberta. Rever
    junto com a estação do banco de horas (sem mexer em fórmula agora).
-2. **ADR-005 (doc) desatualizada** sobre déficit/banco congelados na base da
-   hora — conferir na mesma estação.
+2. [x] **ADR-005 (doc)** sobre déficit/banco na base da hora — conferido na
+   estação do Saldo de Veiculação: a base congelada guarda o pedido da hora
+   (inclusive déficit, banco e agora a obrigação), e os polls da mesma hora
+   reprocessam a mesma base; o texto "recalculados a cada poll" da ADR-005
+   vale só pra quem entra depois (`extras`).
 3. [x] **E-mail de aprovação** — era "Seu anúncio está no ar" na
    aprovação, prometendo o que só o comprovante confirma. Agora
    `enviarCriativoAprovado`: assunto "Seu anúncio foi aprovado", texto
@@ -5134,3 +5137,42 @@ Fica registrado (fora do escopo da estação — não mexido):
 5. **Previsão da primeira janela** sem hora programada usa a cobertura de
    hoje a partir da aprovação: conta que volta a veicular (plano renovado)
    com peça aprovada antes aparece "atrasada" até a primeira hora programada.
+
+## O. Saldo de Veiculação — banco de horas em tempo (27/09/2026)
+
+Estação crítica (P0). **CONCLUÍDA em 27/09/2026** — #85 mergeado com
+autorização do dono (e2e 07/10/26 verdes no estado final; `npm run check`
+599/599 em banco limpo). Validações operacionais que ficam: `.ia/TODO.md`,
+seção "SALDO DE VEICULAÇÃO". Mapa do
+mecanismo, defeitos e invariantes: `docs/specs/2026-09-27-saldo-de-veiculacao.md`;
+regra: RN-53 em `docs/funcional.md`; ADR-023; erro registrado em
+`docs/erros/2026-09-27-ponto-fechado-virava-divida.md`.
+
+Feito:
+
+- [x] Ponto fechado não gera dívida: hora sem minuto aberto não grava
+      programada, obrigação, reposição nem banco; hora parcial deve só os
+      minutos abertos; a reposição não rola pra hora fechada nem pro mês
+      seguinte.
+- [x] Saldo em TEMPO: obrigação por hora aberta (`segundos_obrigacao`, RN-49
+      sem o teto) − entrega CONFIRMADA × duração daquela hora (migration 100).
+- [x] Camadas da hora: base de todos → compensação RN-49 e reposição →
+      saldo antigo → institucional. A compensação de uma conta nunca corta a
+      base de outra; o saldo antigo nunca tira o mês corrente.
+- [x] Hora aberta com a TV sem sinal gera obrigação (só pra conta já servida
+      naquela tela) — vira saldo se não for entregue.
+- [x] Apuração idempotente que se recompõe no prazo do comprovante offline e
+      congela depois; linha de auditoria mesmo com saldo 0. Mesmo job
+      `ApuracaoBancoHoras`; recomposição diária no `Conciliacao`.
+- [x] Painel: card "Saldo de veiculação" com tempo pendente + exibições
+      equivalentes (peça de hoje). Sem redesenho.
+- [x] 33 testes em `tests/saldo-veiculacao.test.js` (horário, capacidade,
+      saldo, POP, criativos, rede/planos, 3 regressões da revisão do Codex)
+      + os de `tests/banco-horas.test.js`
+      migrados pra segundos; e2e 10 estendido com o card.
+
+Fica registrado (não mexido — decisão do dono): Mídia Mostraí disputa a base
+(T1) com o comercial numa hora cheia; teto de 1/6 da RN-49 mantido; card
+"Horas de tela no mês" ainda mostra o contratado da vitrine; demais riscos
+em `.ia/RISKS.md` ("Saldo de Veiculação — riscos que ficaram").
+

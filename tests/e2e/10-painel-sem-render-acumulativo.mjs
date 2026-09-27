@@ -101,6 +101,33 @@ await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 await p.waitForTimeout(1500);
 check('resync busca exibições uma vez, não uma por evento', buscas <= 1, `foram ${buscas} buscas`);
 
+// Saldo de Veiculação (27/09/2026): sem saldo o card fica escondido; com
+// saldo, o TEMPO é o número principal e as exibições equivalentes (peça de
+// hoje) vão na legenda. 30 h pendentes com peça de 15 s = 7.200 exibições.
+check('sem saldo, o card do saldo fica escondido', await p.$eval('#kpiGrid [data-kpi="banco"]', (c) => c.hidden));
+const contaId = PG(`SELECT id FROM anunciantes WHERE contato_email = '${email}'`);
+PG(
+  `INSERT INTO criativos (anunciante_id, status, arquivo_normalizado_url, arquivo_original_url, duracao_segundos) VALUES (${contaId}, 'aprovado', '/e2e-saldo-inexistente.mp4', '/e2e-saldo-inexistente-orig.mp4', 15)`,
+);
+PG(
+  `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco, segundos_obrigacao, segundos_entregues, segundos_banco, apurado_em) VALUES (${contaId}, '2026-08-01', 7200, 0, 7200, 108000, 0, 108000, now())`,
+);
+await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+await p.waitForTimeout(1500);
+const saldo = await p.$eval('#kpiGrid [data-kpi="banco"]', (c) => ({
+  visivel: !c.hidden,
+  rotulo: c.querySelector('.kpi-label').textContent,
+  numero: c.querySelector('b').textContent,
+  legenda: c.querySelector('[data-kpi-banco-legenda]').textContent,
+}));
+check('com saldo, o card aparece', saldo.visivel);
+check('rótulo "Saldo de veiculação"', saldo.rotulo === 'Saldo de veiculação', saldo.rotulo);
+check('tempo pendente é o número principal', /30\s*h pendentes/.test(saldo.numero), saldo.numero);
+check('exibições equivalentes na legenda', /7\.200 exibições equivalentes \(peça de 15s\)/.test(saldo.legenda), saldo.legenda);
+check('banco de horas continua único depois do saldo', (await contarBanco()) === 1);
+const grid = await p.$('#kpiGrid');
+await grid.screenshot({ path: new URL('./saida/10-saldo-de-veiculacao.png', import.meta.url).pathname });
+
 check('sem erro de console', erros.length === 0, erros.join(' | '));
 await b.close();
 console.log(falhas.length ? `\nFALHAS: ${falhas.length}` : '\ntudo ok');

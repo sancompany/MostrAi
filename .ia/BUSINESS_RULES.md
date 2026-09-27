@@ -49,17 +49,18 @@ julgamento (não fórmula), está dito.
 ## Orçamento da hora da tela (o motor central)
 
 `src/lib/pacing.js`, função `montarHoraDeTv`. A hora é um orçamento de
-**3600 segundos** (`SEGUNDOS_DA_HORA`), gasto nesta ordem de prioridade:
+**3600 segundos** (`SEGUNDOS_DA_HORA`), gasto em CAMADAS (desde 27/09/2026,
+Saldo de Veiculação — cada camada só usa o que a de cima deixou):
 
-1. **Exibição contratada**: `frequenciaBase + déficit da hora anterior +
-   prioridade do banco de horas`.
-2. **Cota de autoanúncio** do dono do ponto (permuta do comodato antigo) —
-   zerada em todos os pontos desde a migration 049 (produção: 0 pontos com
-   cota em 24/09/2026); só rodaria se alguém repusesse a cota no banco.
-3. **Peça institucional** (`ID_INSTITUCIONAL`, duração fixa
-   `DURACAO_INSTITUCIONAL = 10` segundos) preenche o que sobra.
+1. **T1 — base**: `frequenciaBase` de cada conta (segundos do plano no ponto),
+   a cota de autoanúncio do dono (zerada desde a 049) e a Mídia Mostraí.
+2. **T2 — além da base, do mês corrente**: compensação da RN-49
+   (`compensacao`) e reposição da hora anterior (`deficit`, RN-10).
+3. **T3 — saldo antigo** (banco de horas / Saldo de Veiculação).
+4. **Peça institucional** (`ID_INSTITUCIONAL`, `DURACAO_INSTITUCIONAL = 10`
+   segundos ou o vídeo institucional) preenche o que sobra.
 
-Se o total pedido (`pedidoSegundos`) passa de 3600s, o corte é
+Dentro de uma camada, se não cabe, o corte é
 **proporcional**: cada participante perde a mesma fração do que pediu
 (`fator = SEGUNDOS_DA_HORA / pedidoSegundos`), sobra de arredondamento vai
 pros maiores restos primeiro. Esse corte é o gatilho do evento
@@ -116,20 +117,27 @@ migration `064_playlist_hora_congelada.sql`.
 
 ## Banco de horas
 
-`src/bancohoras/` — obrigação de veiculação (decisão do dono, 25/09/2026:
-MANTER; regra completa em `docs/funcional.md`, RN-53). Capacidade contratada
-que não coube (corte proporcional da RN-30) vira saldo na apuração mensal
-(mês de Matão; job `ApuracaoBancoHoras`, `docs/job-apuracao-banco-horas.md`).
-O saldo volta só no tempo OCIOSO da hora (`banco` em
-`src/lib/pacing.js#montarHoraDeTv`), nunca tirando a entrega corrente de
-ninguém; o ritmo por hora cresce com a idade da dívida
-(`multiplicadorPorIdade`, 1x até 3x). A geração só programa
-(`exibicoes_contador.vezes_banco`); a liquidação abate o banco CONFIRMADO,
-uma vez por hora fechada (`banco_liquidado_em`, diário no `Conciliacao` e
-mensal no `ApuracaoBancoHoras`). Sem expiração, sem zerar no mês, nunca
-crédito em dinheiro — a válvula de 3 meses saiu em 25/09/2026. Em aberto
-(decisão do operador): ordem FIFO/LIFO, conta encerrada/cancelada com saldo,
-teto diário, mudança de plano.
+`src/bancohoras/` — **Saldo de Veiculação** para o cliente (nomes internos
+mantidos). Obrigação de veiculação (decisão do dono, 25/09/2026: MANTER),
+contada em TEMPO desde 27/09/2026 (RN-53 em `docs/funcional.md`; mapa e
+invariantes em `docs/specs/2026-09-27-saldo-de-veiculacao.md`):
+
+- **Obrigação** por hora ABERTA do ponto, por tela: inserções inteiras de
+  `base × pontos do plano ÷ pontos cobertos` (RN-49 sem teto) × minutos
+  abertos ÷ 60 ÷ telas ativas do ponto (`segundosDeObrigacao`). Ponto fechado
+  não grava linha nenhuma. Hora aberta sem sinal ganha a obrigação pela
+  apuração (`obrigacao.js`).
+- **Entrega** só por comprovante: `LEAST(confirmadas, programadas − banco) ×
+  duração da hora` (a hora guarda a duração que usou).
+- **Saldo do mês** = obrigação − entrega (segundos), apurado por
+  `ApuracaoBancoHoras` (dia 1) e recomposto todo dia no `Conciliacao` enquanto
+  chegam comprovantes (7 dias + 1 h); depois congela. Idempotente.
+- **Devolução** só na camada T3 (tempo ocioso), ritmo 1×–3× pela idade;
+  **abatimento** só do banco confirmado, uma vez por hora, em segundos.
+- Exibições equivalentes = segundos ÷ duração da peça de HOJE (derivado).
+- Sem expiração, sem zerar no mês, nunca crédito em dinheiro. Em aberto
+  (decisão do operador): ordem FIFO/LIFO, conta encerrada com saldo, teto
+  diário, mudança de plano.
 
 ## Exibições, métricas do painel (`GET /anunciantes/:id/exibicoes`)
 

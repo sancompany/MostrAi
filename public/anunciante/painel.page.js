@@ -730,10 +730,11 @@ function pintarStatusOperacional(porPonto) {
 // carregou tudo (exibições, criativos) não deveria mostrar erro por causa
 // deste card.
 //
-// O tempo (`dados.segundos`) é ilustrativo — exibições × duração ATUAL da
-// peça (RN-53), não um histórico exato — por isso o número exato de
-// exibições fica do lado, entre parênteses: quem quiser conferir a conta
-// tem o dado que a apuração realmente usa.
+// Saldo de Veiculação (27/09/2026): o TEMPO (`dados.segundos`) é a conta de
+// verdade — o que se vende é tempo de tela, e cada hora apurada guarda a
+// duração que usou. As exibições são o equivalente com a peça de hoje
+// (`exibicoesEquivalentes`, `duracaoReferencia`): mudam se a peça mudar, o
+// tempo não.
 async function carregarBancoHoras() {
   const card = document.querySelector('#kpiGrid [data-kpi="banco"]');
   if (!card) return;
@@ -743,13 +744,13 @@ async function carregarBancoHoras() {
     // o "card sempre visível" de 19/09): sem déficit, um card dizendo "0s ·
     // sem déficit acumulado" ocupa espaço do resumo sem informar nada. Com
     // déficit, é a informação de que a entrega atrasada será compensada.
-    if (!dados.saldo) {
+    if (!dados.segundos) {
       card.hidden = true;
       return;
     }
-    card.querySelector('b').textContent = duracaoLegivel(dados.segundos);
+    card.querySelector('b').textContent = `${duracaoLegivel(dados.segundos)} pendentes`;
     card.querySelector('[data-kpi-banco-legenda]').textContent =
-      `${dados.saldo} exibições a devolver · entram no tempo livre das telas`;
+      `${numeroBR(dados.exibicoesEquivalentes)} exibições equivalentes (peça de ${dados.duracaoReferencia}s) · entram no tempo livre das telas`;
     card.hidden = false;
     encaixarNumero(card.querySelector('b'));
   } catch {

@@ -2,8 +2,9 @@ let ANUNCIANTE = null;
 
 // Aviso de cobertura da rede (RN-49), reaproveitado da vitrine e do painel
 // com plano ativo: quantos pontos existem hoje e, quando o plano cobre mais
-// pontos do que a rede tem no ar, a explicação de que essas horas entram no
-// banco de horas e se concentram nos pontos já ligados. Quem chama decide se
+// pontos do que a rede tem no ar, a explicação de que essas horas se
+// concentram nos pontos já ligados (o que não couber vai pro saldo de
+// veiculação). Quem chama decide se
 // mostra (ver limite de 10 pontos em montarConfirmacaoPedido).
 function montarAvisoRede(plano, pontos) {
   const naRede = pontos.length;
@@ -16,7 +17,7 @@ function montarAvisoRede(plano, pontos) {
         }.`;
   const cobreMaisQueARede = plano.pontos_incluidos && veiculando > 0 && plano.pontos_incluidos > veiculando;
   const explicacaoBancoHoras = cobreMaisQueARede
-    ? ' Enquanto a rede não chega no tamanho do seu plano, as horas dos pontos que faltam entram no banco de horas e se concentram nos pontos que já estão no ar, até a rede completar essa cobertura. Conforme novos pontos entram no ar, o tempo se espalha de volta.'
+    ? ' Enquanto a rede não chega no tamanho do seu plano, as horas dos pontos que faltam se concentram nos pontos que já estão no ar, no tempo livre das telas; o que não couber fica no seu saldo de veiculação e volta depois, até a rede completar essa cobertura. Conforme novos pontos entram no ar, o tempo se espalha de volta.'
     : '';
   return `<div class="aviso-rede u-m-0"><b>${situacaoRede}</b>${explicacaoBancoHoras}</div>`;
 }
