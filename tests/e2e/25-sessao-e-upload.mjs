@@ -167,12 +167,13 @@ await p.close();
 // jeito pedido; as seguintes passam.
 async function aberturaComFalha(nome, falhar) {
   const q = vigiar(await ctx.newPage());
-  let primeira = true;
+  // Falha TODA leitura até o clique em [Tentar novamente]: um resync
+  // automático (volta da rede, reconexão do SSE) que buscasse a conta de
+  // novo e desse certo trocaria o erro pelo painel antes da conferência —
+  // bom pro usuário, mas deixava o roteiro dependente de tempo.
+  let falhando = true;
   await q.route('**/anunciantes/me', async (route) => {
-    if (primeira && route.request().method() === 'GET') {
-      primeira = false;
-      return falhar(route);
-    }
+    if (falhando && route.request().method() === 'GET') return falhar(route);
     return route.continue();
   });
   await q.goto(`${B}/anunciante/painel.html`);
@@ -187,6 +188,7 @@ async function aberturaComFalha(nome, falhar) {
   await q.evaluate(() => {
     window.__semReload = true;
   });
+  falhando = false;
   await q.click('#btnTentarConta');
   await q.waitForSelector('#statusBanner .hero-kicker', { timeout: 10000 });
   check(`${nome}: [Tentar novamente] carrega a conta sem F5`, await semReload(q));

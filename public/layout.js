@@ -254,7 +254,6 @@
       if (!r.ok) throw erroConta('transitorio', r.status);
       const conta = await r.json().catch(() => null);
       if (!conta || typeof conta !== 'object' || !conta.id) throw erroConta('transitorio', r.status);
-      aplicarContaNoLayout(conta);
       return conta;
     } catch (err) {
       if (err.sessaoExpirada || err.transitorio) throw err;
@@ -263,9 +262,18 @@
       clearTimeout(prazo);
     }
   }
+  // Numeração das leituras: menu e trava do e-mail só mudam com a leitura
+  // MAIS RECENTE. Duas recargas sobrepostas (SSE + ativação de modo, por
+  // exemplo) não podem deixar a velha, chegando por último, repor o menu ou o
+  // aviso de antes (revisão Codex do PR #82).
+  let leituraAtual = 0;
   window.carregarConta = function carregarConta({ recarregar = false } = {}) {
     if (recarregar || !window.__conta) {
-      const leitura = lerConta();
+      const numero = ++leituraAtual;
+      const leitura = lerConta().then((conta) => {
+        if (numero === leituraAtual) aplicarContaNoLayout(conta);
+        return conta;
+      });
       window.__conta = leitura;
       leitura.catch(() => {
         if (window.__conta === leitura) window.__conta = null;

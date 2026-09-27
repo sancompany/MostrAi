@@ -1023,6 +1023,15 @@ async function subirCriativo(
           ...(peloOperador && !substitui ? { status: 'aprovado' } : {}),
         }),
       );
+      if (!criativo) {
+        // A linha saiu no meio do processamento (a exclusão do cliente
+        // recusa isso; aqui é a rede de segurança). Nunca 201 de um criativo
+        // que não existe, e os arquivos que acabaram de subir não ficam órfãos.
+        registrar(criativoTemp.id, 'excluido_durante_processamento');
+        removerArquivosDoStorage(criativoTemp.id);
+        avisar?.();
+        return res.status(409).json({ erro: 'esse criativo foi excluído enquanto era processado — envie de novo' });
+      }
       registrar(criativoTemp.id, 'ok');
       res.status(201).json(criativo);
       avisar?.();
@@ -1050,6 +1059,18 @@ async function subirCriativo(
     }
   } finally {
     fs.unlink(req.file.path, () => {});
+  }
+}
+
+// Best-effort: limpa os arquivos do criativo no Storage. Se falhar, não
+// impede nada — só fica lixo no bucket pra limpar depois.
+async function removerArquivosDoStorage(criativoId) {
+  try {
+    const supabase = require('../lib/supabase');
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    await supabase.storage.from(bucket).remove([`${criativoId}.mp4`, `${criativoId}-thumb.jpg`]);
+  } catch {
+    /* ignora */
   }
 }
 
@@ -1352,18 +1373,17 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
   if (!criativo || criativo.anunciante_id !== req.session.anuncianteId) {
     return res.status(404).json({ erro: 'criativo não encontrado' });
   }
+  // Linha sem arquivo = upload ainda no FFmpeg (a órfã de mais de 30 min já
+  // saiu pelo descarte). Apagar agora não cancela o processamento: ele subia
+  // os arquivos pro Storage, não achava a linha e respondia 201 de um
+  // criativo que não existe (revisão Codex do PR #82).
+  if (criativo.status === 'pendente' && !criativo.arquivo_normalizado_url) {
+    return res.status(409).json({ erro: 'esse criativo ainda está sendo processado — espere terminar pra excluir' });
+  }
   await criativosRepo.deletar(req.params.criativoId);
   sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', { id: criativo.id });
   sse.emitirParaAdmin('creative.updated', {});
-  // Best-effort: limpa os arquivos do storage. Se falhar, não impede a
-  // exclusão do registro — só fica lixo no bucket pra limpar depois.
-  try {
-    const supabase = require('../lib/supabase');
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-    await supabase.storage.from(bucket).remove([`${req.params.criativoId}.mp4`, `${req.params.criativoId}-thumb.jpg`]);
-  } catch {
-    /* ignora */
-  }
+  await removerArquivosDoStorage(criativo.id);
   res.json({ ok: true });
 });
 

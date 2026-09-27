@@ -61,7 +61,13 @@
     return `<div class="criativo-card situacao-${c.situacao}" data-id="${c.id}">
       <div class="criativo-media">
         ${htmlMidia(c)}
-        <button type="button" class="criativo-excluir" data-acao="excluir" aria-label="Excluir criativo">&times;</button>
+        ${
+          // Processando (sem arquivo ainda): não dá pra excluir — o servidor
+          // recusa (409), porque apagar não cancela o FFmpeg em andamento.
+          c.arquivoUrl
+            ? '<button type="button" class="criativo-excluir" data-acao="excluir" aria-label="Excluir criativo">&times;</button>'
+            : ''
+        }
         <span class="badge ${window.ROTULOS.criativoSituacaoClasse[c.situacao] || 'badge-pendente'}">${esc(rotulo)}</span>
       </div>
       <div class="criativo-meta"><strong>${tipo}</strong><span>${duracao}${c.feitoPelaMostrai ? ' · feito pela Mostraí' : ''}</span></div>

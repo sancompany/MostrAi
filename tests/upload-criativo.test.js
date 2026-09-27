@@ -196,6 +196,54 @@ test('D. resposta perdida depois do commit: o servidor conclui, a chave reconcil
   }
 });
 
+test('criativo processando não pode ser excluído; se a linha sumir no meio, o upload nunca responde 201', async () => {
+  preparar();
+  const conta = await criarConta();
+  const app = await subirApp();
+  const removidos = [];
+  const supabase = require('../src/lib/supabase');
+  const storageDeVerdade = Object.getOwnPropertyDescriptor(supabase, 'storage');
+  Object.defineProperty(supabase, 'storage', {
+    configurable: true,
+    get: () => ({ from: () => ({ remove: async (nomes) => removidos.push(...nomes) }) }),
+  });
+  try {
+    let soltar = travar();
+    const envio = app.enviar(conta, randomUUID());
+    await esperarLinha(conta);
+    const [{ id }] = (await pool.query('SELECT id FROM criativos WHERE anunciante_id = $1', [conta.id])).rows;
+    const r = await fetch(`${app.base}/anunciantes/${conta.id}/criativos/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-conta': String(conta.id) },
+    });
+    assert.strictEqual(r.status, 409, 'excluir no meio do FFmpeg é recusado');
+    soltar();
+    assert.strictEqual((await envio).status, 201);
+    assert.strictEqual(await contar(conta), 1);
+
+    // Rede de segurança: a linha sai por outro caminho no meio do trabalho.
+    await pool.query('DELETE FROM criativos WHERE anunciante_id = $1', [conta.id]);
+    soltar = travar();
+    const outro = app.enviar(conta, randomUUID());
+    await esperarLinha(conta);
+    const [{ id: idOutro }] = (await pool.query('SELECT id FROM criativos WHERE anunciante_id = $1', [conta.id])).rows;
+    await pool.query('DELETE FROM criativos WHERE id = $1', [idOutro]);
+    soltar();
+    const resposta = await outro;
+    assert.strictEqual(resposta.status, 409, 'nunca 201 de um criativo que não existe');
+    assert.match(resposta.corpo.erro, /excluído enquanto era processado/);
+    assert.deepStrictEqual(
+      removidos,
+      [`${idOutro}.mp4`, `${idOutro}-thumb.jpg`],
+      'arquivos que subiram não ficam órfãos',
+    );
+  } finally {
+    Object.defineProperty(supabase, 'storage', storageDeVerdade);
+    await app.fechar();
+    await limpar(conta);
+  }
+});
+
 test('duas requisições com a mesma chave ao mesmo tempo: o índice único deixa uma só criar', async () => {
   preparar();
   const conta = await criarConta();
