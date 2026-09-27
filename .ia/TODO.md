@@ -202,15 +202,23 @@ de horas. As condições de corrida do congelamento foram corrigidas em
 - Continuar da metade atual da revisão indicada pelo dono; não reiniciar auditoria nem retomar espontaneamente os bugs técnicos pausados.
 - **Fechado:** Termos públicos sincronizados com cadastro multipapel, cobertura imediata, cancelamento pelo painel e orçamento por hora/estimativa de 12h por dia.
 
-## SALDO DE VEICULAÇÃO — depois do PR da estação (27/09/2026)
+## SALDO DE VEICULAÇÃO — estação CONCLUÍDA (#85 mergeado, 27/09/2026)
 
-- Validar em TV física (ponto real, horário real): uma noite fechada não gera
-  linha comercial; um dia com a TV desligada em horário aberto vira saldo; o
-  card "Saldo de veiculação" aparece depois da 1ª apuração (01/10/2026).
-- Conferir no log do job `ApuracaoBancoHoras` de 01/10 a linha nova ("hora(s)
-  aberta(s) sem sinal", "provisório") e, até 09/10, a recomposição diária no
-  `Conciliacao`.
-- Decisão de produto pendente: Mídia Mostraí disputa a camada da base (T1)
-  com o comercial numa hora cheia (regra existente, preservada) — ver
-  `.ia/RISKS.md`.
+Validações operacionais que ficam (não bloqueiam; só observar e reportar):
+
+- [ ] Uma noite real com o ponto fechado: nenhuma linha comercial nas horas
+  fechadas (`exibicoes_contador` sem linha fora do horário do ponto).
+- [ ] Um período aberto com a TV desligada: a hora ganha a obrigação
+  (`obrigacao_sem_pedido = true`) e, sem comprovante, vira saldo.
+- [ ] Primeira apuração real do `ApuracaoBancoHoras` (01/10/2026, 06:00 UTC):
+  log com "hora(s) aberta(s) sem sinal" e "provisório"; linha em
+  `banco_horas_execucoes` sem `abortou`; card "Saldo de veiculação" no painel
+  só se houver saldo.
+- [ ] Recomposição na janela de comprovantes atrasados (até 00:00 de
+  08/10/2026 em Matão): o `Conciliacao` diário recompõe a linha de setembro; depois
+  disso ela congela (`apurado_em` para de mudar).
+
+Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
+camada da base (T1) com o comercial numa hora cheia — comportamento atual
+preservado; ver `.ia/RISKS.md`.
 

@@ -5140,7 +5140,10 @@ Fica registrado (fora do escopo da estação — não mexido):
 
 ## O. Saldo de Veiculação — banco de horas em tempo (27/09/2026)
 
-Estação crítica (P0). PR próprio, **sem merge — decisão do dono**. Mapa do
+Estação crítica (P0). **CONCLUÍDA em 27/09/2026** — #85 mergeado com
+autorização do dono (e2e 07/10/26 verdes no estado final; `npm run check`
+599/599 em banco limpo). Validações operacionais que ficam: `.ia/TODO.md`,
+seção "SALDO DE VEICULAÇÃO". Mapa do
 mecanismo, defeitos e invariantes: `docs/specs/2026-09-27-saldo-de-veiculacao.md`;
 regra: RN-53 em `docs/funcional.md`; ADR-023; erro registrado em
 `docs/erros/2026-09-27-ponto-fechado-virava-divida.md`.
@@ -5163,8 +5166,9 @@ Feito:
       `ApuracaoBancoHoras`; recomposição diária no `Conciliacao`.
 - [x] Painel: card "Saldo de veiculação" com tempo pendente + exibições
       equivalentes (peça de hoje). Sem redesenho.
-- [x] 30 testes em `tests/saldo-veiculacao.test.js` (horário, capacidade,
-      saldo, POP, criativos, rede/planos) + os de `tests/banco-horas.test.js`
+- [x] 33 testes em `tests/saldo-veiculacao.test.js` (horário, capacidade,
+      saldo, POP, criativos, rede/planos, 3 regressões da revisão do Codex)
+      + os de `tests/banco-horas.test.js`
       migrados pra segundos; e2e 10 estendido com o card.
 
 Fica registrado (não mexido — decisão do dono): Mídia Mostraí disputa a base

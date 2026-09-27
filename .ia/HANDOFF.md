@@ -1,8 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-09-27 (fechamento) — **ESTAÇÃO SALDO DE VEICULAÇÃO = CONCLUÍDA.** #85
+mergeado com autorização do dono, depois de e2e 07/10/26 verdes no estado
+final, `npm run check` 599/599 em banco limpo (98 migrations do zero, lint
+nos 14 avisos de base) e as 3 revisões do Codex corrigidas com regressão.
+Ficam só validações operacionais (`.ia/TODO.md`, seção "SALDO DE
+VEICULAÇÃO") e a decisão de produto da Mídia Mostraí × comercial numa hora
+cheia (comportamento atual preservado). **Não iniciar a próxima estação sem
+o dono.**
 2026-09-27 (tarde) — **Estação do SALDO DE VEICULAÇÃO (banco de horas)**
-(PR aberto, NÃO mergeado, aguardando o dono). O saldo passou a ser o tempo
+(#85; mergeado no fechamento acima). O saldo passou a ser o tempo
 contratado que não foi entregue, em SEGUNDOS: obrigação por hora aberta
 (RN-49 sem o teto, só minutos abertos, dividida pelas telas do ponto) −
 entrega CONFIRMADA por proof-of-play. Ponto fechado não grava nada (era o
