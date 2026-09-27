@@ -296,6 +296,10 @@ if (require.main === module) {
     // Outbox de e-mails (migration 097): envia o que ficou na fila (inclusive
     // de antes de um restart) e segue a cada 30 s.
     require('./email/outbox').iniciar();
+    // Saldo de Veiculação: hora aberta em que a tela não pediu playlist ganha
+    // a obrigação minutos depois de fechar, com o plano daquela hora
+    // (src/bancohoras/obrigacao.js), a cada 10 min.
+    require('./bancohoras/obrigacao').iniciar();
   });
 }
 

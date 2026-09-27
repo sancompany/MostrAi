@@ -100,8 +100,10 @@ com 1 tela.
 9. **Histórico não muda.** Cada linha guarda a duração usada; trocar a peça
    muda só as exibições equivalentes do saldo que ainda falta.
 10. **Tela sem sinal em hora aberta deve.** Hora aberta sem pedido de
-    playlist ganha a obrigação da última hora servida àquela conta naquela
-    tela.
+    playlist ganha a obrigação minutos depois de fechar, com o plano e a
+    cobertura daquela hora (gravada uma vez; mudar o plano depois não a
+    reescreve), só para conta já servida naquela tela e, na hora da
+    instalação, só a partir do instante instalada.
 11. **Sem plano, sem obrigação.** Conta própria, suspensa, excluída, sem
     plano, plano vencido, ponto fora da cobertura ou não `em_operacao`: nada.
 12. **Mídia Mostraí isolada.** Nunca entra em `exibicoes_contador` nem em

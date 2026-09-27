@@ -118,9 +118,10 @@ projeto. Criticidade indicada quando ajuda a priorizar.
   saldo antigo. Conflito de produto a decidir (Mídia antes ou depois do
   comercial); a reserva de 20% da Mostraí NÃO foi transformada em regra da
   playlist.
-- **Hora sem sinal usa a cobertura de HOJE.** Conta que saiu do ponto depois
-  da hora sem sinal perde aquela hora (erro a favor da Mostraí); conta que
-  chegou depois não é cobrada. Roda diário (48 h) pra a diferença ser pequena.
+- **Hora sem sinal é gravada minutos depois de fechar** (processo do servidor,
+  a cada 10 min), com o estado daquela hora. Só a rede de segurança (diário
+  48 h, mensal) usa o estado de quando roda — pra hora em que o servidor
+  esteve fora do ar; não há histórico com hora de troca de plano/suspensão.
   Ponto em operação SEM tela ativa não gera obrigação (não há linha onde
   gravá-la) — hoje, produção: 0 pontos assim.
 - **Teto de 1/6 da hora (RN-49) mantido.** A parte da obrigação acima dele

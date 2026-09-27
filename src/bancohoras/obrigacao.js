@@ -22,12 +22,18 @@ const { obrigacoesDaTela, minutosAbertosNaHora } = require('../playlist/gerador'
 // nada dela — senão a mesma hora seria cobrada aqui e no ponto de antes. A
 // tela só deve depois de instalada (`provisionado_em`).
 //
-// limite: a cobertura conferida é a de HOJE, não a da hora — conta que saiu
-// deste ponto depois da hora sem sinal perde essa hora (erro a favor da
-// Mostraí, nunca dívida inventada). Roda todo dia (Conciliacao, janela das
-// últimas 48 h) pra essa diferença ser de horas; a apuração mensal roda de
-// novo sobre o mês inteiro só como rede de segurança. Guardar a cobertura de
-// cada hora é o caminho se a aproximação um dia pesar.
+// QUANDO RODA: minutos depois de a hora fechar (`iniciar`, no processo do
+// servidor, a cada 10 min sobre as últimas 3 h) — plano, peça, suspensão e
+// cobertura usados são os daquela hora, e a linha gravada não muda mais
+// (ON CONFLICT DO NOTHING): trocar de plano, suspender ou tirar a peça
+// depois não apaga nem reduz a obrigação que já existia (revisão Codex do
+// PR #85). O diário (Conciliacao, 48 h) e a apuração mensal (o mês inteiro)
+// são rede de segurança pra hora que o servidor passou fora do ar.
+//
+// limite: só nessa rede de segurança o estado usado é o de quando ela roda,
+// não o da hora — não existe histórico com hora de troca de plano, suspensão
+// ou remoção de peça. Guardar isso é o caminho se a rede de segurança um dia
+// precisar cobrir janelas longas.
 //
 // Idempotente: ON CONFLICT DO NOTHING na chave (conta, tela, hora) — e hora
 // que a tela pediu (linha em playlist_hora_congelada) nunca é tocada.
@@ -40,10 +46,8 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
   let horas = 0;
   for (const tela of telas) {
     if (!tela.provisionado_em) continue;
-    const inicio = Math.max(
-      Math.ceil(new Date(de).getTime() / HORA) * HORA,
-      inicioDaHora(tela.provisionado_em).getTime(),
-    );
+    const instalada = new Date(tela.provisionado_em).getTime();
+    const inicio = Math.max(Math.ceil(new Date(de).getTime() / HORA) * HORA, inicioDaHora(instalada).getTime());
     if (inicio >= limiteFim) continue;
     const { rows: pedidas } = await pool.query(
       `SELECT janela_hora FROM playlist_hora_congelada
@@ -54,7 +58,9 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
     const semSinal = [];
     for (let h = inicio; h < limiteFim; h += HORA) {
       if (servidas.has(h)) continue;
-      const minutos = minutosAbertosNaHora(tela, new Date(h), new Date(h + HORA));
+      // Na hora da instalação, só a partir do instante instalada (revisão
+      // Codex do PR #85): antes disso a tela não existia pra dever nada.
+      const minutos = minutosAbertosNaHora(tela, new Date(Math.max(h, instalada)), new Date(h + HORA));
       if (minutos > 0) semSinal.push({ hora: new Date(h), minutos });
     }
     if (!semSinal.length) continue;
@@ -99,4 +105,24 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
   return { horas };
 }
 
-module.exports = { registrarHorasSemPedido };
+// Registro contínuo, logo depois de cada hora fechar. Janela de 3 h: cobre
+// um restart ou um atraso do timer sem perder hora. Duas instâncias rodando
+// juntas só disputam o mesmo ON CONFLICT DO NOTHING.
+const INTERVALO_MS = 10 * 60 * 1000;
+const JANELA_MS = 3 * HORA;
+
+// `filtros` ({ apenasContas, apenasTelas }): escopo de teste; produção não passa.
+function registrarHorasRecemFechadas(agora = new Date(), filtros = {}) {
+  return registrarHorasSemPedido({ ...filtros, de: new Date(agora.getTime() - JANELA_MS), ate: agora });
+}
+
+let timer = null;
+function iniciar() {
+  const rodar = () =>
+    registrarHorasRecemFechadas().catch((err) => console.error('saldo de veiculação (hora sem sinal):', err.message));
+  rodar();
+  timer = setInterval(rodar, INTERVALO_MS);
+  timer.unref();
+}
+
+module.exports = { registrarHorasSemPedido, registrarHorasRecemFechadas, iniciar };

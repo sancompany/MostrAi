@@ -745,9 +745,12 @@ dinheiro. Nome para o cliente: **Saldo de veiculação**; nomes internos
   fechado não deve nada**: a hora sem minuto aberto não grava programada,
   obrigação, reposição nem banco (a TV continua pedindo playlist a noite
   toda). Hora parcial deve só os minutos abertos. Hora ABERTA em que a tela
-  não pediu playlist (sem sinal) ganha a obrigação pela apuração
-  (`src/bancohoras/obrigacao.js`) — só para conta que já tinha sido servida
-  naquela tela e com o plano válido naquela hora.
+  não pediu playlist (sem sinal) ganha a obrigação minutos depois de fechar
+  (`src/bancohoras/obrigacao.js`, no processo do servidor, a cada 10 min),
+  com o plano e a cobertura daquela hora — só para conta que já tinha sido
+  servida naquela tela; na hora da instalação, só a partir do instante
+  instalada. O diário e o mensal só preenchem a hora que o servidor passou
+  fora do ar.
 - **Entrega.** Só o comprovante (proof-of-play aceito, uma vez por
   `execucaoId`): `LEAST(confirmadas, programadas − banco) × duração daquela
   hora`. Playlist gerada, servida, baixada ou `PLAYING` no heartbeat não

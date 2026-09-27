@@ -27,9 +27,16 @@ const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 // início): o pedido do dono foi "não precisa separar por hora, só bater a
 // meta do mês", e o déficit de uma hora cheia demais se resolve sozinho na
 // hora seguinte, como qualquer déficit.
+//
+// A compensação da RN-49 (`compensacao`, separada da base desde 27/09/2026)
+// entra junto: a obrigação de quem chega conta com ela, e deixá-la de fora
+// virava saldo evitável mesmo com a tela ociosa (revisão Codex do PR #85).
 function sequenciaAdicional(novosEntrada) {
   const pedidos = novosEntrada
-    .map((n) => ({ id: n.id, quantidade: Math.max(0, (n.frequenciaBase || 0) + (n.deficit || 0)) }))
+    .map((n) => ({
+      id: n.id,
+      quantidade: Math.max(0, (n.frequenciaBase || 0) + (n.compensacao || 0) + (n.deficit || 0)),
+    }))
     .filter((p) => p.quantidade > 0);
   if (!pedidos.length) return [];
   const total = pedidos.reduce((soma, p) => soma + p.quantidade, 0);

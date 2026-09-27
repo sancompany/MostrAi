@@ -11,8 +11,9 @@ Esta página cobre só a operação.
 
 1. **Registra as horas abertas sem sinal** do mês apurado: hora em que o ponto
    estava aberto e a tela não pediu playlist ganha a obrigação que tinha
-   (`src/bancohoras/obrigacao.js`; rede de segurança — o registro normal é
-   diário, no `Conciliacao`).
+   (`src/bancohoras/obrigacao.js`). Rede de segurança: o registro normal é
+   feito pelo próprio servidor, minutos depois de cada hora fechar; aqui e no
+   `Conciliacao` só entra a hora em que o servidor esteve fora do ar.
 2. **Apura** o mês fechado (padrão: o mês anterior no relógio de Matão,
    `America/Sao_Paulo`). Para cada conta pagante com obrigação no mês:
    `saldo = Σ segundos_obrigacao − Σ entrega CONFIRMADA × duração da hora`. Toda

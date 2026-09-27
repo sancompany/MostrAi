@@ -9,7 +9,7 @@ const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 const bancoHorasRepo = require('../src/bancohoras/repository');
 const { apurarMes, liquidarBancoConfirmado, recomporMesAnteriorEmPrazo } = require('../src/bancohoras/apuracao');
-const { registrarHorasSemPedido } = require('../src/bancohoras/obrigacao');
+const { registrarHorasSemPedido, registrarHorasRecemFechadas } = require('../src/bancohoras/obrigacao');
 const midiasRepo = require('../src/midias/repository');
 const sinal = require('../src/player/sinal');
 const { montarHoraDeTv, segundosDeObrigacao, segundosCompensados } = require('../src/lib/pacing');
@@ -768,4 +768,70 @@ test('tela sem sinal: conta que chegou ao ponto depois da hora não deve aquela 
     apenasTelas: [depois.telaId],
   });
   assert.strictEqual(r.horas, 0, 'nunca foi servida naquela tela antes: não deve as horas dela');
+});
+
+// ---------------------------------------------------------------------------
+// Revisão Codex do PR #85
+// ---------------------------------------------------------------------------
+
+test('Codex #85: quem entra no meio da hora recebe também a compensação da RN-49, não só a base', async () => {
+  const ponto = await novoPonto();
+  const a = await novaConta({ plano: await novoPlano({ segundos: 600 }) });
+  const b = await novaConta({ plano: await novoPlano({ segundos: 120, pontos: 2 }) }); // 1 de 2 pontos: concentra
+  await escolher(a.id, ponto.pontoId);
+  await gerar(ponto.telaId, emMatao(11, 10), emMatao(11, 10));
+  await escolher(b.id, ponto.pontoId);
+  const playlist = await gerar(ponto.telaId, emMatao(11, 10), emMatao(11, 10, { minuto: 30 }));
+  const itensDeB = playlist.itens.filter((i) => i.anuncianteId === b.id).length;
+  assert.strictEqual(itensDeB, 16, '8 de base + 8 de compensação (240 s ÷ 15 s)');
+  assert.strictEqual((await linhaDa(b.id, emMatao(11, 10))).segundos_obrigacao, 120, 'deve só a meia hora restante');
+});
+
+test('Codex #85: a hora da instalação só deve a partir do instante em que a tela foi instalada', async () => {
+  const conta = await novaConta({ plano: await novoPlano({ segundos: 600 }) });
+  const ponto = await novoPonto({ horario: HORARIO_COMERCIAL });
+  await escolher(conta.id, ponto.pontoId);
+  await pool.query(`UPDATE dispositivos SET provisionado_em = '2026-08-01' WHERE id = $1`, [ponto.telaId]);
+  await gerar(ponto.telaId, emMatao(3, 10)); // servida na segunda
+  // Reinstalada na terça às 10:30; não pediu playlist o resto do dia.
+  await pool.query('UPDATE dispositivos SET provisionado_em = $2 WHERE id = $1', [
+    ponto.telaId,
+    emMatao(4, 10, { minuto: 30 }),
+  ]);
+  await registrarHorasSemPedido({
+    de: emMatao(4, 0),
+    ate: emMatao(5, 0),
+    apenasContas: [conta.id],
+    apenasTelas: [ponto.telaId],
+  });
+  const dez = await linhaDa(conta.id, emMatao(4, 10));
+  assert.strictEqual(dez.minutos_abertos, 30);
+  assert.strictEqual(dez.segundos_obrigacao, 300, 'antes das 10:30 a tela não existia');
+  assert.strictEqual((await linhaDa(conta.id, emMatao(4, 11))).segundos_obrigacao, 600);
+});
+
+test('Codex #85: a hora sem sinal é gravada logo depois de fechar, com o plano daquela hora — mudar o plano ou suspender depois não reescreve', async () => {
+  const conta = await novaConta({ plano: await novoPlano({ segundos: 600 }) });
+  const ponto = await novoPonto({ horario: HORARIO_COMERCIAL });
+  await escolher(conta.id, ponto.pontoId);
+  await pool.query(`UPDATE dispositivos SET provisionado_em = '2026-08-01' WHERE id = $1`, [ponto.telaId]);
+  await gerar(ponto.telaId, emMatao(3, 10));
+  const filtros = { apenasContas: [conta.id], apenasTelas: [ponto.telaId] };
+  // O servidor roda isto a cada 10 min: às 12:05, a hora das 11 (sem sinal) já fechou.
+  await registrarHorasRecemFechadas(emMatao(3, 12, { minuto: 5 }), filtros);
+  assert.strictEqual((await linhaDa(conta.id, emMatao(3, 11))).segundos_obrigacao, 600);
+
+  // Depois: plano menor e conta suspensa. A rede de segurança roda o dia todo.
+  await pool.query('UPDATE anunciantes SET plano_id = $2 WHERE id = $1', [
+    conta.id,
+    await novoPlano({ segundos: 300 }),
+  ]);
+  await registrarHorasSemPedido({ de: emMatao(3, 0), ate: emMatao(4, 0), ...filtros });
+  await pool.query('UPDATE anunciantes SET suspenso = true WHERE id = $1', [conta.id]);
+  await registrarHorasSemPedido({ de: emMatao(3, 0), ate: emMatao(4, 0), ...filtros });
+  assert.strictEqual(
+    (await linhaDa(conta.id, emMatao(3, 11))).segundos_obrigacao,
+    600,
+    'a obrigação das 11h é a do plano que valia às 11h',
+  );
 });
