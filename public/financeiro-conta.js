@@ -24,7 +24,10 @@
   };
 
   function htmlPagamentos(p) {
-    const [classe, rotulo] = SITUACAO_PLANO[p.plano.situacao] || SITUACAO_PLANO.sem_plano;
+    const [classe, rotulo] =
+      p.plano.situacao === 'cortesia' && p.plano.porCreditos
+        ? ['badge-neutro', 'Benefício por créditos · sem cobrança']
+        : SITUACAO_PLANO[p.plano.situacao] || SITUACAO_PLANO.sem_plano;
     const validade = p.plano.validoAte && p.plano.situacao !== 'sem_plano' ? ` · até ${data(p.plano.validoAte)}` : '';
     const lista = p.cobrancas.length
       ? `<ul class="fin-lista">${p.cobrancas

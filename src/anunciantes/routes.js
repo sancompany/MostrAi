@@ -28,6 +28,7 @@ const { removerAvatar } = require('../lib/avatar');
 const eventos = require('../lib/eventos');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
+const { primeirosPassosDaConta } = require('./primeiros-passos');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
@@ -378,6 +379,14 @@ router.get('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   const anunciante = await repo.buscarPorId(req.session.anuncianteId);
   if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
   res.json(await contaParaOPainel(anunciante));
+});
+
+// Onboarding do painel: as quatro etapas lidas do estado real da conta
+// (src/anunciantes/primeiros-passos.js).
+router.get('/anunciantes/me/primeiros-passos', exigirAnuncianteLogado, async (req, res) => {
+  const anunciante = await repo.buscarPorId(req.session.anuncianteId);
+  if (!anunciante) return res.status(401).json({ erro: 'não autenticado' });
+  res.json(await primeirosPassosDaConta(anunciante));
 });
 
 // A conta como o painel lê: GET, PATCH do perfil e foto respondem a MESMA

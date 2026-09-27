@@ -9,6 +9,7 @@ const { nomeDoCiclo, comNomeDeCiclo } = require('../lib/ciclos');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const anunciantesRepo = require('../anunciantes/repository');
 const indicacoesRepo = require('../indicacoes/repository');
+const pontosRepo = require('../pontos/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const sse = require('../lib/sse');
 
@@ -20,17 +21,48 @@ const dataBR = (iso) =>
 
 // Por que a conta não pode resgatar agora — a MESMA função responde o GET
 // (a tela explica antes de o cliente tentar) e o POST (o servidor recusa).
-// Benefício aberto bloqueia: resgatar por cima fechava o anterior e jogava
-// fora os dias que faltavam (ou, se agendado, os créditos já debitados dele).
+//
+// Benefício POR CRÉDITOS em vigor não bloqueia mais (estação da conta,
+// 26/09/2026, regra aprovada pelo dono): o cliente pode trocar por outro,
+// mas só depois de ver o que perde — ver `substituicaoDoResgate` e a
+// confirmação no POST. Continuam bloqueando: benefício PROGRAMADO (já pago
+// com créditos, esperando o ciclo pago acabar) e benefício da Mostraí
+// (cortesia administrativa legada), que não é do cliente pra trocar.
 async function bloqueioDoResgate(conta, historico) {
   if (conta.suspenso) return 'Sua conta está suspensa — fale com a gente antes de resgatar.';
-  const ativo = historico.find((h) => h.status === 'ativo');
-  if (ativo)
-    return `Você já tem um benefício em vigor até ${dataBR(ativo.valido_ate)}. Resgate outro quando ele terminar.`;
   if (historico.some((h) => h.status === 'agendado')) {
     return 'Você já tem um benefício programado. Resgate outro depois que ele começar e terminar.';
   }
+  const ativo = historico.find((h) => h.status === 'ativo');
+  if (ativo && ativo.origem !== 'indicacao')
+    return `Você tem um benefício da Mostraí em vigor até ${dataBR(ativo.valido_ate)}. Resgate outro quando ele terminar.`;
   return null;
+}
+
+// O benefício por créditos em vigor que um resgate novo ENCERRARIA — com os
+// créditos que ele consumiu, que não voltam. `null` quando não há troca.
+async function substituicaoDoResgate(historico) {
+  const ativo = historico.find((h) => h.status === 'ativo' && h.origem === 'indicacao');
+  if (!ativo) return null;
+  return {
+    id: ativo.id,
+    nome: `${NOME_TIER[ativo.tier] || ativo.tier} · ${nomeDoCiclo(ativo.compromisso_meses)}`,
+    validoAte: ativo.valido_ate,
+    creditosGastos: await repo.creditosDoResgate(ativo.ledger_id),
+  };
+}
+
+// Quando a área de créditos aparece no painel (estação da conta, 26/09/2026):
+// crédito é RELACIONAL, não produto de todo anunciante. Aparece pra quem é
+// ponto (gera crédito todo mês), pra quem tem saldo, e pra quem já tem
+// histórico de créditos (recebeu, usou, ou tem benefício por créditos).
+// Conta nova sem nada disso não vê "0 créditos" nem a tabela inteira.
+// `compacto`: quem não é ponto e está com saldo zero vê só a situação e o
+// histórico — sem a tabela de resgate, que não tem o que oferecer.
+function exibicaoDosCreditos({ ehPonto, saldo, movimentacoes, historico }) {
+  const historicoRelevante = movimentacoes.length > 0 || historico.some((h) => h.origem === 'indicacao');
+  const mostrar = ehPonto || saldo > 0 || historicoRelevante;
+  return { mostrar, compacto: mostrar && !ehPonto && saldo <= 0 };
 }
 
 // Benefício de nível MENOR que o plano pago em dia não se resgata (regra 31
@@ -55,6 +87,7 @@ const pagandoEmDia = (conta) =>
 
 const beneficioPublico = (h) =>
   h && {
+    id: h.id,
     tier: h.tier,
     nomeTier: NOME_TIER[h.tier] || h.tier,
     // Benefício é um CICLO (ADR-018): "Prime · Semestral".
@@ -75,20 +108,27 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
   const contaId = req.session.anuncianteId;
   const conta = await anunciantesRepo.buscarPorId(contaId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  const [saldoAtual, movimentacoes, historico, planoAtual] = await Promise.all([
+  const [saldoAtual, movimentacoes, historico, planoAtual, ehPonto] = await Promise.all([
     repo.saldo(contaId),
     repo.movimentacoes(contaId, 20),
     planoAdministrativo.historicoDaConta(contaId),
     conta.plano_id ? pool.query('SELECT nome, compromisso_meses FROM planos WHERE id = $1', [conta.plano_id]) : null,
+    pontosRepo.contaEhPonto(contaId),
   ]);
   const bloqueio = await bloqueioDoResgate(conta, historico);
+  const substituicao = bloqueio ? null : await substituicaoDoResgate(historico);
   // Opções de nível menor que o plano pago aparecem, mas indisponíveis — com
   // o motivo (mesma régua do POST, bloqueioPorNivel).
   const bloqueiosPorTier = Object.fromEntries(
     await Promise.all(Object.keys(NOME_TIER).map(async (t) => [t, await bloqueioPorNivel(conta, t)])),
   );
+  // Indicação é do PONTO (estação da conta, 26/09/2026): o programa é pra
+  // quem já faz parte da rede trazer anunciante — crédito sozinho não libera
+  // (anunciante com compensação da Mostraí não vira indicador). Cupom já
+  // emitido antes pra conta que não é ponto continua valendo no cadastro;
+  // só não é mais oferecido aqui.
   let indicacao = null;
-  if (!conta.conta_propria) {
+  if (ehPonto && !conta.conta_propria) {
     const cupom = await indicacoesRepo.garantirCupom(contaId, conta.nome_empresa);
     indicacao = { codigo: cupom.codigo, ...(await indicacoesRepo.resumoIndicacoes(cupom.codigo)) };
   }
@@ -110,6 +150,19 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
       criado_em: m.criado_em,
     })),
     beneficioAtivo: beneficioPublico(historico.find((h) => h.status === 'ativo')),
+    // Benefício por créditos que TERMINOU (venceu) há até 30 dias, sem outro
+    // aberto: o painel diz que terminou e que nada foi cobrado (RN-58).
+    beneficioEncerrado: historico.some((h) => h.status === 'ativo' || h.status === 'agendado')
+      ? null
+      : beneficioPublico(
+          historico.find(
+            (h) =>
+              h.origem === 'indicacao' &&
+              h.encerrado_motivo === 'vencido' &&
+              h.encerrado_em &&
+              Date.now() - new Date(h.encerrado_em).getTime() <= 30 * 86400000,
+          ),
+        ),
     beneficioAgendado: beneficioPublico(historico.find((h) => h.status === 'agendado')),
     situacaoAtual: {
       // Plano · Ciclo ("Pro · Trimestral"), ADR-018.
@@ -121,7 +174,9 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
       pagandoEmDia: pagandoEmDia(conta),
     },
     diasPorMes: DIAS_POR_MES,
-    resgate: { permitido: !bloqueio, motivo: bloqueio },
+    resgate: { permitido: !bloqueio, motivo: bloqueio, substituicao },
+    ehPonto,
+    exibicao: exibicaoDosCreditos({ ehPonto, saldo: saldoAtual, movimentacoes, historico }),
     indicacao,
   });
 });
@@ -147,6 +202,7 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
 
   const cliente = await pool.connect();
   let resultado;
+  let substituido = null;
   try {
     await cliente.query('BEGIN');
     // Trava a conta: dois resgates simultâneos conferiam o saldo antes da
@@ -155,10 +211,22 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     const { rows: travada } = await cliente.query('SELECT * FROM anunciantes WHERE id = $1 FOR UPDATE', [contaId]);
     const conta = travada[0];
     if (!conta) throw Object.assign(new Error('conta não encontrada'), { status: 404 });
-    const bloqueio =
-      (await bloqueioDoResgate(conta, await planoAdministrativo.historicoDaConta(contaId))) ||
-      (await bloqueioPorNivel(conta, tier));
+    const historico = await planoAdministrativo.historicoDaConta(contaId);
+    const bloqueio = (await bloqueioDoResgate(conta, historico)) || (await bloqueioPorNivel(conta, tier));
     if (bloqueio) throw Object.assign(new Error(bloqueio), { status: 409 });
+    // Troca de benefício por créditos (crédito → crédito): só com a
+    // confirmação explícita DAQUELE benefício (`substituirBeneficioId`). Sem
+    // ela, 409 com o que se perde — a tela mostra e o cliente confirma. O id
+    // (e não um "sim" genérico) faz o duplo clique ser inofensivo: o segundo
+    // pedido chega com o id do benefício que o primeiro já encerrou, e para
+    // aqui em vez de trocar de novo e debitar outra vez.
+    substituido = await substituicaoDoResgate(historico);
+    if (substituido && Number(req.body.substituirBeneficioId) !== substituido.id) {
+      throw Object.assign(new Error('confirme a troca do seu benefício atual'), {
+        status: 409,
+        substituicao: substituido,
+      });
+    }
     const saldoAtual = await repo.saldo(contaId, cliente);
     if (saldoAtual < custo) {
       throw Object.assign(new Error(`Saldo insuficiente — faltam ${custo - saldoAtual} créditos.`), { status: 409 });
@@ -183,13 +251,24 @@ router.post('/anunciantes/me/creditos/resgatar', exigirAnuncianteLogado, async (
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
-    if (err.status) return res.status(err.status).json({ erro: err.message });
+    if (err.status) {
+      return res
+        .status(err.status)
+        .json(err.substituicao ? { erro: err.message, substituicao: err.substituicao } : { erro: err.message });
+    }
     throw err;
   } finally {
     cliente.release();
   }
 
   const { conta: atualizada, historico, status } = resultado;
+  if (substituido) {
+    await notificacoesRepo.registrar(contaId, {
+      tipo: 'beneficio_encerrado',
+      titulo: `${substituido.nome} encerrado pela troca`,
+      descricao: 'Você trocou de benefício. Os créditos usados no benefício anterior não são devolvidos.',
+    });
+  }
   await notificacoesRepo.registrar(contaId, {
     tipo: status === 'ativo' ? 'beneficio_iniciado' : 'beneficio_programado',
     titulo:

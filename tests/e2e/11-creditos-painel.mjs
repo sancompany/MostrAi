@@ -73,8 +73,10 @@ await p.waitForTimeout(600);
 check('resync não empilha cards de bloqueio', (await p.$$('#bloqueioPlano')).length === 1, `${(await p.$$('#bloqueioPlano')).length}`);
 check('e ainda assim vê Créditos e benefícios', await p.isVisible('#modCreditos'));
 check('saldo mostra os 12 créditos', (await p.textContent('#creditosSaldo')).trim() === '12');
-const link = await p.textContent('#creditosIndicacao code');
-check('link de indicação próprio da conta', /cadastro\.html\?ref=PT-/.test(link), link);
+// Estação da conta (26/09/2026): indicação é só pra ponto — anunciante com
+// crédito concedido vê os créditos, mas não o link.
+check('anunciante (não ponto) não recebe link de indicação', await p.isHidden('#modIndicacao'));
+check('nada de link de indicação dentro dos créditos', !/ref=PT-/.test(await p.textContent('#modCreditos')));
 check('tabela com 3 planos × 4 períodos', (await p.$$('.creditos-tabela tbody td')).length === 12);
 check(
   'botões só onde o saldo alcança (3, 7, 9, 10)',
@@ -98,7 +100,9 @@ await p.waitForTimeout(1500);
 
 check('saldo cai para 3 sem recarregar', (await p.textContent('#creditosSaldo')).trim() === '3');
 check('benefício aparece em vigor', /Em vigor[\s\S]*Essencial/.test(await p.textContent('#creditosSituacao')));
-check('com benefício aberto, nenhum botão de resgate', (await p.$$('[data-acao="resgatar"]')).length === 0);
+// Estação da conta (26/09/2026): benefício por créditos em vigor pode ser
+// TROCADO (com aviso antes) — com saldo 3, só o Essencial Mensal cabe.
+check('com benefício aberto, os botões oferecem a troca que o saldo alcança', (await p.$$('[data-acao="resgatar"]')).length === 1);
 check('dashboard destravou sem F5', !(await p.$('#bloqueioPlano')));
 await shot(p, '3-apos-resgate');
 

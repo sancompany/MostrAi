@@ -262,7 +262,9 @@ test('/assinar com benefício em vigor pede confirmação ANTES de pagar, com o 
     const maior = await app.assinar(c.id, PLANO.prime);
     assert.equal(maior.status, 409);
     assert.match(maior.corpo.confirmacao.texto, /será encerrado e os créditos utilizados não serão devolvidos/);
-    assert.match(maior.corpo.confirmacao.texto, /começa imediatamente/);
+    assert.match(maior.corpo.confirmacao.texto, /começa na hora/);
+    assert.equal(maior.corpo.confirmacao.botaoManter, 'Manter plano atual');
+    assert.equal(maior.corpo.confirmacao.atual.origem, 'Benefício por créditos');
     const igual = await app.assinar(c.id, PLANO.essencial);
     assert.equal(igual.status, 409);
     assert.match(igual.corpo.confirmacao.texto, /começa logo depois/);

@@ -152,7 +152,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
 | Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
-| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura — trava com "escolha um plano" sem plano) e **Meus criativos**; na coluna lateral **Plano comercial**, **Meus pontos** e **Financeiro**; embaixo **Créditos e benefícios**. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
+| Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura) e **Meus criativos**; na coluna lateral **Seu plano**, **Meus pontos**, **Indicações** (só ponto) e **Financeiro**; embaixo **Créditos e benefícios** (só com relação com créditos). **Estação da conta (26/09/2026, RN-61):** conta sem plano vê UM bloco — "Comece sua primeira campanha" (ou "Volte a anunciar na rede"), [Escolher meu plano] e os 4 primeiros passos — no lugar da campanha, e o card de plano some; com plano, uma faixa de primeiros passos fica no topo até o primeiro criativo e a primeira exibição. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
 | ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |
 | ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
@@ -1050,6 +1050,45 @@ marca a playlist como desatualizada, e o próximo heartbeat pede ao Player que
 busque de novo — sem esperar a virada da hora. Não existe atualização remota
 do app (OTA): instalar versão nova do APK é trabalho de campo. *Violada:* —
 *Quem vê:* o administrador.
+
+**RN-61 — O painel mostra o que a conta tem, não tudo o que existe.**
+*(Estação da conta, 26/09/2026, pedido do dono.)* A conta nova tem que
+parecer pronta pra começar, não um painel vazio. Regras (servidor decide,
+tela só desenha):
+- **Sem plano:** um bloco só, com o próximo passo e um botão "Escolher meu
+  plano". O motivo pra contratar é anunciar, não "ver os números". O chip
+  "Plano: Sem plano" do topo é o único outro sinal; o card de plano some.
+- **Primeiros passos** (`GET /anunciantes/me/primeiros-passos`): plano →
+  criativo → pontos (opcional; no benefício a Mostraí distribui) →
+  exibições. Cada etapa sai do estado real; a ordem é a que o servidor
+  aplica (criativo e pontos exigem plano).
+- **Créditos são relacionais:** a área aparece pra quem é ponto, tem saldo
+  ou tem histórico de créditos. Conta nova sem nada disso não vê "0
+  créditos". Quem não é ponto e está com saldo zero vê a versão compacta
+  (situação e histórico, sem a tabela). Origem de crédito: participação
+  como ponto (mês elegível, indicação paga) ou concessão/ajuste da
+  Mostraí — cada linha do histórico diz qual. Crédito nunca é dinheiro,
+  carteira ou saldo sacável.
+- **Indicação é do ponto:** card próprio, só pra conta com ponto aprovado
+  não arquivado (qualquer status: a instalar, aguardando sinal, em
+  operação, em reparo, inativo). Candidatura em análise não conta, e
+  crédito (compensação) não libera indicação.
+- **Benefício por créditos é temporário:** "Benefício por créditos ·
+  Válido até DD/MM/AAAA", nada é cobrado no fim. Ao terminar: "Seu
+  benefício terminou. Nenhuma cobrança foi realizada."
+- **Troca com benefício por créditos em vigor** não é bloqueada, mas só
+  acontece depois de um aviso que diz plano atual, origem, validade,
+  créditos gastos e a consequência, com "Manter plano atual" /
+  "Continuar com a troca". **Os créditos já usados não voltam** (regra
+  aprovada pelo dono). Crédito → crédito: o atual encerra na hora
+  (`substituido`) e o novo debita o custo dele, uma vez. Crédito → pago:
+  a regra de sempre (ADR-016) — pago de nível MAIOR encerra o benefício
+  quando o pagamento é confirmado; IGUAL ou MENOR começa depois dele, sem
+  perder dia pago. Pago → pago: `trocar-plano` como sempre (RN-52). Pago →
+  crédito: benefício de nível igual ou maior fica programado pro fim do
+  ciclo pago; menor é recusado sem consumir crédito.
+*Violada:* conta nova vê funções vazias, ou alguém perde créditos sem ter
+visto o aviso. *Quem vê:* o cliente.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

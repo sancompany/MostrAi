@@ -161,7 +161,9 @@ s = await abrir(dono, 'dono');
 check('dono: Meus pontos com o ponto', (await s.p.textContent('#pontosLista')).includes('Mercearia Grade'));
 check('dono: ser ponto não dá plano — sem Meus criativos', !(await visivel(s.p, '#modCriativos')));
 check('dono: sem Financeiro (nada pago, nada a receber)', !(await visivel(s.p, '#modFinanceiro')));
-check('dono: Plano comercial diz que não tem', /Nenhum plano comercial/.test(await s.p.textContent('#modPlano')));
+// Sem plano, o card some — a ação principal mora nos primeiros passos, uma
+// vez só (estação da conta, 26/09/2026); o chip do topo diz "Sem plano".
+check('dono: sem card de plano, chip "Sem plano"', !(await visivel(s.p, '#modPlano')) && /Sem plano/.test(await s.p.textContent('#resumoConta')));
 check('dono: benefício do ponto, +1 crédito por mês', (await s.p.textContent('#pontosLista')).includes('+1 crédito por mês'));
 check('dono: hero com saudação (não mais "modo não ativado")', (await s.p.textContent('#statusBanner')).includes('Olá'));
 await comum('dono', s);
@@ -172,7 +174,8 @@ const nada = await novaConta('unico-nada');
 s = await abrir(nada, 'nada-celular', 390);
 check('nada: cartão de escolher plano', await visivel(s.p, '#bloqueioPlano'));
 check('nada: sem Financeiro e sem Criativos', !(await visivel(s.p, '#modFinanceiro')) && !(await visivel(s.p, '#modCriativos')));
-check('nada: créditos e convite de ponto aparecem', (await visivel(s.p, '#modCreditos')) && (await visivel(s.p, '#modPontos')));
+// Conta sem ponto, saldo ou histórico não vê créditos (estação da conta).
+check('nada: convite de ponto aparece, créditos não', !(await visivel(s.p, '#modCreditos')) && (await visivel(s.p, '#modPontos')));
 check('nada: celular sem rolagem horizontal', (await s.p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
 await comum('nada', s);
 await s.ctx.close();

@@ -50,6 +50,7 @@ async function carregar() {
       return;
     }
     removerBloqueioPlano();
+    carregarPrimeirosPassos();
     carregarExibicoes();
     carregarBancoHoras();
   });
@@ -94,19 +95,114 @@ function montarBloqueioPlano() {
   const caixa = document.createElement('div');
   caixa.id = 'bloqueioPlanoCaixa';
   caixa.className = 'wrap';
-  caixa.innerHTML = ANUNCIANTE.suspenso
-    ? `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
+  if (ANUNCIANTE.suspenso) {
+    caixa.innerHTML = `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
         <p class="eyebrow">Seu painel</p>
         <h3>Conta suspensa</h3>
         <p class="form-hint u-m-0">Veja a explicação ali em cima. Seus números voltam a aparecer aqui assim que a conta for reativada.</p>
-      </div>`
-    : `<div class="card wide modo-card u-ta-c" id="bloqueioPlano">
-        <p class="eyebrow">Seu painel</p>
-        <h3>Escolha um plano pra ver seus números</h3>
-        <p class="form-hint u-m-0 u-mb-8">Ative um plano e comece a anunciar agora mesmo.</p>
-        <a class="btn primary" href="/planos.html">Escolher plano</a>
       </div>`;
+  } else {
+    // Conta sem plano (estação da conta, 26/09/2026): UM bloco com a ação
+    // principal — nada de "Sem plano" repetido no card de plano, no bloco e
+    // no CTA. O motivo pra contratar é começar a anunciar, não desbloquear
+    // números. Desenha já com o padrão de conta nova e se refaz quando os
+    // primeiros passos chegam do servidor (idempotente: mesmo lugar).
+    caixa.innerHTML = htmlOnboardingSemPlano(null);
+    carregarPrimeirosPassos();
+  }
   container.parentNode.insertBefore(caixa, container);
+}
+
+// ---------------------------------------------------------------------------
+// Primeiros passos (estação da conta, 26/09/2026)
+// ---------------------------------------------------------------------------
+// As quatro etapas vêm do servidor (GET /anunciantes/me/primeiros-passos),
+// lidas do estado real da conta — nunca marcadas aqui. Sem plano, viram o
+// bloco principal do painel; com plano e etapas faltando, uma faixa compacta
+// no topo da campanha; tudo feito, somem e o painel fica só com os dados.
+const ETAPAS_PADRAO = [
+  { id: 'plano', titulo: 'Escolha seu plano', feito: false, disponivel: true },
+  { id: 'criativo', titulo: 'Envie seu criativo', feito: false, disponivel: false },
+  { id: 'pontos', titulo: 'Escolha os pontos', feito: false, disponivel: false, opcional: true },
+  { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: false, disponivel: false },
+];
+
+function htmlEtapas(etapas, proxima) {
+  return `<ol class="onboarding-etapas">${etapas
+    .map((e, i) => {
+      const estado = e.feito ? 'feito' : e.id === proxima ? 'proximo' : e.opcional ? 'opcional' : 'pendente';
+      // O estado vai por escrito, não só pela cor (acessibilidade).
+      const rotulo = { feito: 'Concluído', proximo: 'Próximo passo', opcional: 'Opcional', pendente: 'Depois' }[estado];
+      return `<li class="etapa-${estado}"${estado === 'proximo' ? ' aria-current="step"' : ''}>
+        <span class="etapa-num" aria-hidden="true">${e.feito ? '✓' : i + 1}</span>
+        <span class="etapa-texto"><b>${esc(e.titulo)}</b><span>${rotulo}${e.detalhe ? ` · ${esc(e.detalhe)}` : ''}</span></span>
+      </li>`;
+    })
+    .join('')}</ol>`;
+}
+
+function htmlOnboardingSemPlano(passos) {
+  const etapas = passos?.etapas || ETAPAS_PADRAO;
+  const voltando = !!passos?.jaTevePlano;
+  return `<section class="card wide onboarding" id="bloqueioPlano" aria-labelledby="tituloOnboarding">
+      <p class="section-eyebrow">1 de ${etapas.length} — Escolha seu plano</p>
+      <h2 id="tituloOnboarding">${voltando ? 'Volte a anunciar na rede' : 'Comece sua primeira campanha'}</h2>
+      <p class="onboarding-texto">${
+        voltando
+          ? 'Escolha um plano para colocar sua marca de novo nas telas da rede.'
+          : 'Escolha um plano para definir sua cobertura, duração do anúncio e colocar sua marca na rede.'
+      }</p>
+      <a class="btn primary onboarding-cta" href="/planos.html">Escolher meu plano</a>
+      ${htmlEtapas(etapas, 'plano')}
+    </section>`;
+}
+
+// Próximo passo com plano: onde clicar pra fazer.
+const ACAO_DA_ETAPA = {
+  criativo: '<a class="btn primary mini" href="#modCriativos">Enviar criativo</a>',
+  pontos: '<a class="btn ghost mini" href="#painelPontos">Escolher pontos</a>',
+  exibicoes: '<span class="form-hint u-m-0">Quando o criativo for aprovado, as exibições aparecem aqui.</span>',
+};
+
+let carregandoPassos = null;
+async function carregarPrimeirosPassos() {
+  if (carregandoPassos) return carregandoPassos;
+  carregandoPassos = (async () => {
+    let passos;
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/primeiros-passos`, { credentials: 'include' });
+      if (!r.ok) return;
+      passos = await r.json();
+    } catch {
+      return;
+    }
+    const caixa = document.getElementById('bloqueioPlanoCaixa');
+    if (caixa && !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso) {
+      caixa.innerHTML = htmlOnboardingSemPlano(passos);
+      return;
+    }
+    const faixa = document.getElementById('primeirosPassos');
+    if (!faixa) return;
+    if (!ANUNCIANTE.plano_id || passos.concluido) {
+      faixa.hidden = true;
+      faixa.innerHTML = '';
+      return;
+    }
+    const proxima = passos.etapas.find((e) => e.id === passos.proxima);
+    faixa.innerHTML = `
+      <div class="onboarding-faixa-topo">
+        <div>
+          <p class="section-eyebrow">Primeiros passos · ${passos.numeroDaProxima} de ${passos.total}</p>
+          <h2>${esc(proxima.titulo)}</h2>
+        </div>
+        <div class="onboarding-acao">${ACAO_DA_ETAPA[proxima.id] || ''}</div>
+      </div>
+      ${htmlEtapas(passos.etapas, passos.proxima)}`;
+    faixa.hidden = false;
+  })().finally(() => {
+    carregandoPassos = null;
+  });
+  return carregandoPassos;
 }
 
 // Hero da conta (Fatia 5): saudação e, pra conta suspensa, a explicação.
@@ -127,7 +223,7 @@ function preencherStatusBanner() {
       <div class="hero-copy">
         <p class="hero-kicker">Sua conta na Mostraí</p>
         <h1>Olá, ${esc(ANUNCIANTE.nome_empresa)}</h1>
-        <p>Anúncios, pontos, criativos e o dinheiro da conta, num lugar só.</p>
+        <p>Anúncios, pontos, criativos e benefícios da sua conta, num só lugar.</p>
         ${explicacao ? `<span class="dash-explica">${explicacao}</span>` : ''}
       </div>
     </div>
@@ -157,28 +253,40 @@ function desenharPlano() {
   const secao = document.getElementById('modPlano');
   if (!secao || !ANUNCIANTE) return;
   const [situacao, classe, rotulo] = situacaoDoPlano();
+  // Sem plano, o card some: a ação principal ("Escolher meu plano") mora no
+  // bloco de primeiros passos, uma vez só — e o chip do topo diz "Sem plano"
+  // em tamanho pequeno (estação da conta, 26/09/2026).
+  if (situacao === 'sem_plano') {
+    secao.hidden = true;
+    window.publicarResumo?.('plano', {
+      chips: [{ rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' }],
+      alertas: [],
+    });
+    return;
+  }
+  // Benefício por créditos é temporário, nunca assinatura: diz até quando
+  // vale e que nada é cobrado no fim (RN-58).
+  const porCreditos = ANUNCIANTE.plano_origem === 'beneficio_creditos';
   // Plano · Ciclo — "Prime · Semestral", a mesma linguagem do plano pago e
   // do benefício por créditos (ADR-018).
   const ciclo = window.ROTULOS.ciclo[ANUNCIANTE.plano?.compromisso_meses];
-  const nome = ANUNCIANTE.plano_id
-    ? `${ANUNCIANTE.plano?.nome || 'Seu plano'}${ciclo ? ` · ${ciclo}` : ''}`
-    : 'Nenhum plano comercial';
+  const nome = `${ANUNCIANTE.plano?.nome || 'Seu plano'}${ciclo ? ` · ${ciclo}` : ''}`;
   const validade =
     ANUNCIANTE.plano_id && ANUNCIANTE.data_expiracao
-      ? `<p class="plano-validade">${situacao === 'vencida' ? 'Venceu em' : 'Até'} ${window.dataBR(ANUNCIANTE.data_expiracao)}${ANUNCIANTE.plano_cortesia ? ' · sem cobrança, não renova sozinho' : ''}</p>`
+      ? situacao === 'vencida'
+        ? `<p class="plano-validade">Venceu em ${window.dataBR(ANUNCIANTE.data_expiracao)}</p>`
+        : ANUNCIANTE.plano_cortesia
+          ? `<p class="plano-validade">Válido até ${window.dataBR(ANUNCIANTE.data_expiracao)}</p>
+             <p class="plano-nota">${porCreditos ? 'Benefício temporário: termina nessa data e nada é cobrado automaticamente.' : 'Sem cobrança e não renova sozinho.'}</p>`
+          : `<p class="plano-validade">Até ${window.dataBR(ANUNCIANTE.data_expiracao)}</p>`
       : '';
-  const acoes = [];
-  if (ANUNCIANTE.plano_id) {
-    acoes.push('<button type="button" class="btn ghost mini" data-acao="gerenciar-plano">Gerenciar plano</button>');
-  } else if (!ANUNCIANTE.suspenso) {
-    acoes.push('<a class="btn primary mini" href="/planos.html">Escolher plano</a>');
-  }
+  const acoes = ['<button type="button" class="btn ghost mini" data-acao="gerenciar-plano">Gerenciar plano</button>'];
   document.getElementById('planoResumo').innerHTML = `
     <p class="plano-nome"><b>${esc(nome)}</b> <span class="badge ${classe}">${rotulo}</span></p>
     ${validade}
     ${acoes.length ? `<div class="plano-acoes">${acoes.join('')}</div>` : ''}`;
   secao.hidden = false;
-  if (ANUNCIANTE.plano_id) preencherAssinatura();
+  preencherAssinatura();
 
   const alertas = [];
   if (situacao === 'vencida')
@@ -190,14 +298,18 @@ function desenharPlano() {
   if (situacao === 'suspensa')
     alertas.push({ nivel: 'atencao', texto: 'Sua conta está suspensa: o anúncio não está no ar.', alvo: 'modPlano' });
   const diasRestantes = ANUNCIANTE.dias_ate_vencer ?? null;
-  if (situacao === 'cortesia' && diasRestantes !== null && diasRestantes <= 7)
+  if (situacao === 'cortesia' && diasRestantes !== null && diasRestantes <= 7) {
+    const quando = diasRestantes === 0 ? 'hoje' : `em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'}`;
     alertas.push({
       nivel: 'info',
-      texto: `Sua cortesia termina ${diasRestantes === 0 ? 'hoje' : `em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'}`} e não renova sozinha.`,
+      texto: porCreditos
+        ? `Seu benefício por créditos termina ${quando}. Nenhuma cobrança será feita.`
+        : `Sua cortesia termina ${quando} e não renova sozinha.`,
       alvo: 'modPlano',
     });
+  }
   window.publicarResumo?.('plano', {
-    chips: [{ rotulo: 'Plano', valor: ANUNCIANTE.plano_id ? `${nome} · ${rotulo}` : 'Sem plano', alvo: 'modPlano' }],
+    chips: [{ rotulo: 'Plano', valor: `${nome} · ${rotulo}`, alvo: 'modPlano' }],
     alertas,
   });
 }
@@ -406,9 +518,12 @@ function preencherAssinatura() {
       <button class="btn ghost" id="btnCancelarAssinatura">Cancelar assinatura</button>
     </div>
     <p class="form-msg" id="msgCancelarAssinatura"></p>`
-        : ANUNCIANTE.plano_cortesia
-          ? '<p class="form-hint u-m-0">Benefício sem cobrança. Quer assinar um plano pago? <a href="/planos.html">Ver planos</a> — antes de pagar você vê como ele fica junto com o benefício.</p>'
-          : '<p class="form-hint u-m-0">Cobertura vencida. <a href="/planos.html">Escolha um plano</a> para voltar ao ar.</p>'
+        : ANUNCIANTE.plano_origem === 'beneficio_creditos'
+          ? `<p class="form-hint u-m-0 u-mb-8">Benefício por créditos: temporário, sem cobrança automática. Quando terminar, nada é cobrado.</p>
+             <p class="form-hint u-m-0">Pode trocar quando quiser — antes de confirmar você vê o que acontece com o benefício atual (os créditos usados não voltam): <a href="/planos.html">por um plano pago</a> ou <a href="#modCreditos" data-fechar-plano>por outro benefício</a>.</p>`
+          : ANUNCIANTE.plano_cortesia
+            ? '<p class="form-hint u-m-0">Benefício sem cobrança. Quer assinar um plano pago? <a href="/planos.html">Ver planos</a> — antes de pagar você vê como ele fica junto com o benefício.</p>'
+            : '<p class="form-hint u-m-0">Cobertura vencida. <a href="/planos.html">Escolha um plano</a> para voltar ao ar.</p>'
     }
   `;
   if (ativo) document.getElementById('btnCancelarAssinatura').addEventListener('click', cancelarAssinatura);
@@ -450,7 +565,7 @@ async function cancelarAssinatura() {
   });
   document.getElementById('btnFecharPlano').addEventListener('click', () => dlg.close());
   dlg.addEventListener('click', (e) => {
-    if (e.target === dlg) dlg.close();
+    if (e.target === dlg || e.target.closest('[data-fechar-plano]')) dlg.close();
   });
 })();
 

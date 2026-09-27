@@ -74,13 +74,21 @@ const somar = (iso, dias) => {
   return d.toISOString().slice(0, 10);
 };
 
-test('GET: toda conta ganha cupom de indicação, estável entre chamadas', async () => {
+test('GET: cupom de indicação só pra conta que é ponto, estável entre chamadas', async () => {
   const c = await conta();
   const app = await subirApp();
   try {
+    const semPonto = await app.chamar('GET', '/anunciantes/me/creditos', c.id);
+    assert.equal(semPonto.status, 200);
+    assert.equal(semPonto.corpo.indicacao, null, 'anunciante comum não recebe link de indicação');
+    assert.equal(semPonto.corpo.ehPonto, false);
+    await pool.query(
+      `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id)
+       VALUES ('Ponto do resgate', 'Rua X, 1', 'Matão', 'SP', '15990-000', 'outro', 'R', '16 9', $1)`,
+      [c.id],
+    );
     const a = await app.chamar('GET', '/anunciantes/me/creditos', c.id);
-    assert.equal(a.status, 200);
-    assert.match(a.corpo.indicacao.codigo, /^PT-/, 'conta sem ponto também indica');
+    assert.match(a.corpo.indicacao.codigo, /^PT-/);
     assert.equal(a.corpo.indicacao.cadastradas, 0);
     const [b, d] = await Promise.all([
       app.chamar('GET', '/anunciantes/me/creditos', c.id),
@@ -92,6 +100,7 @@ test('GET: toda conta ganha cupom de indicação, estável entre chamadas', asyn
     assert.equal(a.corpo.opcoes.length, 12);
   } finally {
     await app.fechar();
+    await pool.query('DELETE FROM pontos WHERE anunciante_id = $1', [c.id]);
     await apagar(c.id);
   }
 });
@@ -160,7 +169,7 @@ test('ativação atrasada (assinatura renovou) preserva a duração comprada', a
   }
 });
 
-test('benefício aberto bloqueia novo resgate, sem debitar nada', async () => {
+test('benefício por créditos em vigor: trocar exige confirmar AQUELE benefício; sem isso nada é debitado', async () => {
   const c = await conta();
   const app = await subirApp();
   try {
@@ -172,10 +181,18 @@ test('benefício aberto bloqueia novo resgate, sem debitar nada', async () => {
     const saldoAntes = await repo.saldo(c.id);
     const r = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, { tier: 'destaque', meses: 1 });
     assert.equal(r.status, 409);
-    assert.match(r.corpo.erro, /já tem um benefício em vigor/);
+    assert.match(r.corpo.erro, /confirme a troca/);
+    assert.equal(r.corpo.substituicao.creditosGastos, 3);
     assert.equal(await repo.saldo(c.id), saldoAntes, 'nenhum crédito sumiu');
+    const errado = await app.chamar('POST', '/anunciantes/me/creditos/resgatar', c.id, {
+      tier: 'destaque',
+      meses: 1,
+      substituirBeneficioId: r.corpo.substituicao.id + 999,
+    });
+    assert.equal(errado.status, 409, 'confirmação de outro benefício não vale');
     const g = await app.chamar('GET', '/anunciantes/me/creditos', c.id);
-    assert.equal(g.corpo.resgate.permitido, false, 'a tela explica antes de o cliente tentar');
+    assert.equal(g.corpo.resgate.permitido, true, 'a tela oferece a troca');
+    assert.equal(g.corpo.resgate.substituicao.id, r.corpo.substituicao.id);
   } finally {
     await app.fechar();
     await apagar(c.id);

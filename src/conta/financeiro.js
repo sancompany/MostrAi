@@ -26,12 +26,20 @@ function situacaoDoPlano(conta) {
 router.get('/anunciantes/me/financeiro', exigirAnuncianteLogado, async (req, res) => {
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
-  const [cobrancas, plano] = await Promise.all([
+  const [cobrancas, plano, beneficio] = await Promise.all([
     pool.query(
       'SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC LIMIT 36',
       [conta.id],
     ),
     conta.plano_id ? pool.query('SELECT nome, compromisso_meses FROM planos WHERE id = $1', [conta.plano_id]) : null,
+    // Benefício por créditos ≠ cortesia: o rótulo diz qual é (estação da
+    // conta, 26/09/2026) — a mesma leitura de origemDoDireito.
+    conta.plano_cortesia
+      ? pool.query(
+          `SELECT origem FROM planos_administrativos WHERE anunciante_id = $1 AND status = 'ativo' ORDER BY id DESC LIMIT 1`,
+          [conta.id],
+        )
+      : null,
   ]);
   res.json({
     pagamentos: {
@@ -40,6 +48,7 @@ router.get('/anunciantes/me/financeiro', exigirAnuncianteLogado, async (req, res
         // Plano · Ciclo ("Pro · Trimestral"), ADR-018.
         nome: plano?.rows[0] ? `${plano.rows[0].nome} · ${nomeDoCiclo(plano.rows[0].compromisso_meses)}` : null,
         situacao: situacaoDoPlano(conta),
+        porCreditos: beneficio?.rows[0]?.origem === 'indicacao',
         validoAte: conta.data_expiracao,
       },
       cobrancas: cobrancas.rows.map((c) => ({ id: c.id, data: c.criado_em, valor: Number(c.valor) })),

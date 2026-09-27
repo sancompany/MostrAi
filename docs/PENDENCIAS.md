@@ -4636,6 +4636,25 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
   benefício acabar — nenhum dia pago se perde. Se você quiser pausa de
   verdade na cobrança, é mudança de contrato com o San Checkout.
 
+## Estação da conta — painel por estado, créditos, indicação e troca de benefício (26/09/2026)
+
+**[x] Construído e testado** (RN-61, ADR-020). Mergeado com aprovação do dono (#77).
+- **Conta nova:** um bloco só, "Comece sua primeira campanha", com [Escolher meu plano] e os 4 primeiros passos (1 de 4). Sem card de plano repetindo "sem plano", sem créditos, sem indicação.
+- **Primeiros passos** saem do estado real (`GET /anunciantes/me/primeiros-passos`); com plano, viram uma faixa no topo até o primeiro criativo e a primeira exibição.
+- **Hero:** "Anúncios, pontos, criativos e benefícios da sua conta, num só lugar.", menor. "Dinheiro" saiu do painel (o Financeiro virou "Pagamentos do plano").
+- **Meus pontos:** o convite ficou em pé (título, descrição e botão embaixo), sem palavra por linha. Quem já é ponto vê o ponto (nome, status, telas e benefício), nunca o convite.
+- **Créditos:** aparecem só pra ponto, saldo > 0 ou histórico. Anunciante com saldo zero que já usou créditos vê a versão compacta. Texto neutro, "saldo de créditos".
+- **Indicações:** card próprio, só pra conta com ponto aprovado não arquivado. Crédito não libera indicação.
+- **Benefício por créditos:** "Válido até", sem cobrança automática; ao terminar, "Nenhuma cobrança foi realizada".
+- **Troca:** crédito → crédito agora é permitida, com aviso (plano, validade, créditos gastos, "não serão devolvidos") e Manter/Continuar. Crédito → pago usa o mesmo aviso. Pago → pago e pago → crédito continuam como estavam.
+- **Testes:** `tests/conta-experiencia.test.js` (contas A–D, troca, aviso do pago, onboarding) e e2e `tests/e2e/22-conta-experiencia.mjs` (320/375/390/768/1366 px, 66 checagens). e2e 11, 15 e 17 foram atualizados às regras novas.
+
+**[x] Crédito → pago de nível igual ou menor — mantido o ADR-016.** O pedido dizia que a troca encerra o benefício. O dono respondeu em 26/09/2026, ao decidir o caso do beco sem saída (PR #78): o benefício por créditos continua intacto até a data final, e o ADR-016 decide quando o pago entra. Pago de nível igual ou menor começa depois do benefício, sem perder dia pago; pago de nível MAIOR encerra o benefício quando é pago, com o aviso antes.
+
+**[x] Achados fora do escopo — resolvidos em PRs separados:**
+- beco sem saída (benefício e assinatura paga com o MESMO plano) e benefício programado menor sobrevivendo a uma troca pra cima: PR #78;
+- e2e 05, 07 e 17: não eram falha do produto. O 05 e o 07 foram rodados sem `reset-db.sh`, e o servidor do 17 subiu com `NODE_ENV=test`, sem o LISTEN do SSE. O diagnóstico "falham igual no main" estava errado; as causas estão no PR #79.
+
 ## Plano pago × benefício por créditos — dois casos de borda (26/09/2026)
 
 **[x] Corrigido e testado** (`tests/prioridade-planos.test.js`, RN-43.2).

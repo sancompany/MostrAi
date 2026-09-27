@@ -1,7 +1,12 @@
-// Créditos e benefícios — módulo do painel único. Crédito vem de três
-// lugares (24/09/2026, ADR-016): pagamento confirmado de quem a conta indicou,
-// cada mês de ponto elegível na rede, e concessão da Mostraí. Créditos viram
-// um plano por tempo limitado.
+// Créditos e benefícios — módulo do painel único. Crédito vem da
+// participação como ponto (mês elegível na rede e indicação paga) e de
+// concessão da Mostraí (ADR-016). Créditos viram um benefício temporário —
+// nunca dinheiro, carteira ou saldo sacável.
+//
+// Estação da conta (26/09/2026): a área é RELACIONAL — aparece pra ponto,
+// pra quem tem saldo e pra quem tem histórico (`exibicao`, decidido no
+// servidor). Indicação saiu daqui: tem card próprio (#modIndicacao), só pra
+// ponto.
 //
 // Uso: montarCreditos({ aoResgatar }) — `aoResgatar` recarrega o que depende
 // do plano da conta. Requer /config.js, /layout.js e /eventos.js antes.
@@ -37,6 +42,12 @@
 
   function htmlSituacao(d) {
     const partes = [];
+    if (d.beneficioEncerrado) {
+      const b = d.beneficioEncerrado;
+      partes.push(
+        `<p><span class="badge badge-neutro">Terminou</span> Seu benefício <b>${esc(b.nome || b.nomeTier)}</b> terminou em <b>${data(b.validoAte)}</b>. Nenhuma cobrança foi realizada.</p>`,
+      );
+    }
     if (d.beneficioAtivo) {
       const b = d.beneficioAtivo;
       partes.push(
@@ -49,13 +60,18 @@
         `<p><span class="badge badge-pendente">Programado</span> <b>${esc(b.nome || b.nomeTier)}</b> · Benefício por créditos · <b>${data(b.comecaEm)}</b> → <b>${data(b.validoAte)}</b>, quando o plano pago atual terminar.</p>`,
       );
     }
+    if (d.resgate.substituicao)
+      partes.push(
+        '<p class="creditos-motivo">Você pode trocar por outro benefício: o atual é encerrado e os créditos usados nele não voltam. Antes de confirmar, você vê exatamente o que muda.</p>',
+      );
     if (!d.resgate.permitido && d.resgate.motivo)
       partes.push(`<p class="creditos-motivo">${esc(d.resgate.motivo)}</p>`);
     return partes.length ? `<div class="creditos-situacao">${partes.join('')}</div>` : '';
   }
 
+  // Card "Indicações" (#modIndicacao) — só existe pra conta que é ponto
+  // (o servidor manda `indicacao` só nesse caso).
   function htmlIndicacao(ind) {
-    if (!ind) return '';
     const link = linkIndicacao(ind.codigo);
     const texto = `Anuncie nas telas da Mostraí. Cadastre-se pelo meu link: ${link}`;
     const atividade =
@@ -63,15 +79,26 @@
         ? 'Ninguém se cadastrou pelo seu link ainda.'
         : `${ind.cadastradas} ${ind.cadastradas === 1 ? 'conta se cadastrou' : 'contas se cadastraram'} pelo seu link · ${ind.pagantes} ${ind.pagantes === 1 ? 'já pagou' : 'já pagaram'}.`;
     return `
-      <h3 class="creditos-titulo">Seu link de indicação</h3>
-      <p class="creditos-nota">Quem se cadastrar por este link vale 1 crédito pra você a cada pagamento confirmado — o primeiro e cada renovação.</p>
+      <p class="creditos-nota">Cada pagamento confirmado de quem se cadastrar pelo seu link vale 1 crédito — o primeiro e cada renovação.</p>
       <div class="creditos-link">
         <code>${esc(link)}</code>
         <button type="button" class="btn ghost mini" data-acao="copiar" data-texto="${esc(link)}">Copiar link</button>
       </div>
       <p class="creditos-codigo">Ou informe o código <b>${esc(ind.codigo)}</b> no cadastro.</p>
-      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">Enviar pelo WhatsApp</a>
+      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">Compartilhar pelo WhatsApp</a>
       <p class="creditos-atividade">${esc(atividade)}</p>`;
+  }
+
+  function desenharIndicacao(ind) {
+    const secao = $('modIndicacao');
+    if (!secao) return;
+    if (!ind) {
+      secao.hidden = true;
+      $('indicacaoCorpo').innerHTML = '';
+      return;
+    }
+    $('indicacaoCorpo').innerHTML = htmlIndicacao(ind);
+    secao.hidden = false;
   }
 
   function htmlOpcoes(d) {
@@ -123,11 +150,20 @@
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/creditos`, { credentials: 'include' });
       if (!r.ok) throw new Error();
       dados = await r.json();
+      desenharIndicacao(dados.indicacao);
+      // Conta que ainda não tem relação com créditos não vê a área (nem o
+      // "0 créditos"): o servidor decide pela mesma regra que a documenta.
+      if (!dados.exibicao?.mostrar) {
+        secao.hidden = true;
+        window.publicarResumo?.('creditos', { chips: [] });
+        return;
+      }
       $('creditosSaldo').textContent = String(dados.saldo);
       $('creditosSituacao').innerHTML = htmlSituacao(dados);
-      $('creditosIndicacao').innerHTML = htmlIndicacao(dados.indicacao);
-      $('creditosIndicacao').hidden = !dados.indicacao;
-      $('creditosOpcoes').innerHTML = htmlOpcoes(dados);
+      // Compacto: saldo zerado de quem não é ponto — fica a situação e o
+      // histórico, sem a tabela de resgate.
+      $('creditosColunas').hidden = !!dados.exibicao.compacto;
+      $('creditosOpcoes').innerHTML = dados.exibicao.compacto ? '' : htmlOpcoes(dados);
       $('creditosHistorico').innerHTML = htmlHistorico(dados.movimentacoes);
       window.publicarResumo?.('creditos', {
         chips: [{ rotulo: 'Créditos', valor: String(dados.saldo), alvo: 'modCreditos' }],
@@ -153,12 +189,12 @@
     const inicio = s.pagandoEmDia ? s.validoAte : hoje();
     const fim = somarDias(inicio, dias);
     const agora = s.planoNome
-      ? `${esc(s.planoNome)} (${s.cortesia ? 'cortesia' : 'pago'})${s.validoAte ? ` até ${data(s.validoAte)}` : ''}`
+      ? `${esc(s.planoNome)} (${s.cortesia ? 'benefício' : 'pago'})${s.validoAte ? ` até ${data(s.validoAte)}` : ''}`
       : 'Sem plano ativo';
     const detalheInicio = s.pagandoEmDia
       ? 'Começa quando o seu plano pago terminar — ele não é interrompido.'
       : s.planoNome
-        ? 'Começa hoje e substitui o plano atual.'
+        ? 'Começa hoje e substitui o benefício atual.'
         : 'Começa hoje.';
     const renovacao = s.pagandoEmDia
       ? '<li>Se a sua assinatura renovar enquanto o benefício vale, o período pago fica guardado e volta depois dele.</li>'
@@ -180,12 +216,37 @@
       </ul>`;
   }
 
+  // Troca de benefício por créditos (crédito → crédito): o aviso vem ANTES
+  // do botão de confirmar — plano atual, origem, validade, créditos gastos e
+  // a consequência. Sem ele, o clique no card de outro plano nunca encerra
+  // nada (confirmação em duas etapas; o servidor exige o id do benefício).
+  function htmlAvisoTroca(sub) {
+    const gastos =
+      sub.creditosGastos != null ? `<li>Créditos utilizados nele: <b>${creditos(sub.creditosGastos)}</b></li>` : '';
+    return `<div class="aviso-troca" role="alert">
+      <p class="aviso-troca-titulo"><b>Você já possui um benefício ativo.</b></p>
+      <ul>
+        <li>Plano atual: <b>${esc(sub.nome)}</b> · Benefício por créditos</li>
+        <li>Válido até <b>${data(sub.validoAte)}</b></li>
+        ${gastos}
+      </ul>
+      <p>Se você fizer a troca agora, o benefício atual será encerrado e os créditos utilizados <b>não serão devolvidos</b>. O novo benefício consome os créditos dele, uma vez.</p>
+    </div>`;
+  }
+
   function abrirResgate(tier, meses) {
     if (!dados) return;
-    escolha = { tier, meses };
+    const sub = dados.resgate.substituicao || null;
+    escolha = { tier, meses, ...(sub ? { substituirBeneficioId: sub.id } : {}) };
     const o = dados.opcoes.find((x) => x.tier === tier && x.meses === meses);
-    $('tituloResgate').textContent = `Resgatar ${nomeTier(tier)} · ${nomeCiclo(meses)}`;
-    $('btnConfirmarResgate').textContent = o ? `Usar ${creditos(o.custo)}` : 'Confirmar resgate';
+    $('tituloResgate').textContent = `${sub ? 'Trocar por' : 'Resgatar'} ${nomeTier(tier)} · ${nomeCiclo(meses)}`;
+    $('avisoTrocaBeneficio').innerHTML = sub ? htmlAvisoTroca(sub) : '';
+    $('btnConfirmarResgate').textContent = sub
+      ? 'Continuar com a troca'
+      : o
+        ? `Usar ${creditos(o.custo)}`
+        : 'Confirmar resgate';
+    $('btnCancelarResgate').textContent = sub ? 'Manter plano atual' : 'Cancelar';
     $('previewResgate').innerHTML = htmlPreview(tier, meses);
     $('msgResgate').textContent = '';
     $('msgResgate').className = 'form-msg';
@@ -198,7 +259,7 @@
     const botao = $('btnConfirmarResgate');
     const msg = $('msgResgate');
     botao.disabled = true;
-    msg.textContent = 'Resgatando...';
+    msg.textContent = escolha.substituirBeneficioId ? 'Trocando...' : 'Resgatando...';
     msg.className = 'form-msg';
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/creditos/resgatar`, {
@@ -208,6 +269,16 @@
         body: JSON.stringify(escolha),
       });
       const corpo = await r.json().catch(() => ({}));
+      if (r.status === 409 && corpo.substituicao) {
+        // O benefício mudou (outra aba, ou ele passou a existir): mostra o
+        // aviso do benefício que está valendo agora e pede de novo.
+        dados.resgate.substituicao = corpo.substituicao;
+        escolha.substituirBeneficioId = corpo.substituicao.id;
+        $('avisoTrocaBeneficio').innerHTML = htmlAvisoTroca(corpo.substituicao);
+        $('btnConfirmarResgate').textContent = 'Continuar com a troca';
+        $('btnCancelarResgate').textContent = 'Manter plano atual';
+        throw new Error('Confira o aviso acima antes de continuar.');
+      }
       if (!r.ok) throw new Error(corpo.erro || 'Não foi possível resgatar agora.');
       $('dlgResgate').close();
       escolha = null;
@@ -239,10 +310,12 @@
     if (montado) return;
     montado = true;
     $('modCreditos')?.addEventListener('click', (e) => {
-      const alvo = e.target.closest('[data-acao]');
-      if (!alvo) return;
-      if (alvo.dataset.acao === 'resgatar') abrirResgate(alvo.dataset.tier, Number(alvo.dataset.meses));
-      if (alvo.dataset.acao === 'copiar') copiar(alvo);
+      const alvo = e.target.closest('[data-acao="resgatar"]');
+      if (alvo) abrirResgate(alvo.dataset.tier, Number(alvo.dataset.meses));
+    });
+    $('modIndicacao')?.addEventListener('click', (e) => {
+      const alvo = e.target.closest('[data-acao="copiar"]');
+      if (alvo) copiar(alvo);
     });
     $('btnConfirmarResgate')?.addEventListener('click', confirmarResgate);
     $('btnCancelarResgate')?.addEventListener('click', () => $('dlgResgate').close());

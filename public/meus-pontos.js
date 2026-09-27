@@ -158,12 +158,14 @@
   }
 
   function htmlOportunidade() {
+    // Vertical sempre (estação da conta, 26/09/2026): texto em cima,
+    // descrição, botão embaixo. Lado a lado, na coluna lateral de ~340 px,
+    // o título quebrava uma palavra por linha e o botão espremia.
     return `<div class="ponto-opportunity">
       <div class="ponto-opportunity-summary">
-        <div class="ponto-opportunity-copy">
-          <span class="ponto-opportunity-icon" aria-hidden="true">⌂</span>
-          <div><p class="section-eyebrow">Faça parte da rede</p><h3>Você também possui um comércio?</h3><p class="form-hint">Transforme-o em um ponto Mostraí e ganhe uma tela.</p></div>
-        </div>
+        <p class="section-eyebrow">Faça parte da rede</p>
+        <h3>Você também possui um comércio?</h3>
+        <p class="form-hint">Transforme-o em um ponto Mostraí e participe da rede.</p>
         <button class="btn primary" type="button" data-acao="abrir-oportunidade" aria-expanded="false">Quero ser um ponto</button>
       </div>
     </div>`;

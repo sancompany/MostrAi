@@ -1,6 +1,11 @@
 # Current Handoff
 
 ## Updated
+2026-09-26 (noite) — **Estação da conta** (PR aberto, NÃO mergeado, aguardando o
+dono): painel por estado (conta nova com um CTA e primeiros passos), créditos
+relacionais, indicação só pra ponto, troca crédito → crédito com aviso e sem
+estorno. Regras em RN-61 (`docs/funcional.md`) e ADR-020. Antes, no mesmo dia:
+#75 (Planos) e #76 (inbox do webhook) mergeados e no ar (`9d7f4e4`).
 2026-09-26 — **Player MVP**: reestruturação do backend + admin para o
 Player MVP (seção abaixo). Antes, 2026-09-25 — **fechamento pré-gates** (relatório completo em
 `docs/FECHAMENTO_PRE_GATES_2026-09-25.md`): PR #60 (main verde, dois bugs

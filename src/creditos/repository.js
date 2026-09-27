@@ -102,7 +102,16 @@ async function movimentacoes(contaId, limite = 50, db = pool) {
   return rows;
 }
 
+// Quantos créditos um resgate consumiu (a linha de débito ligada ao
+// benefício por `ledger_id`) — o aviso de troca mostra o que se perde.
+async function creditosDoResgate(ledgerId, db = pool) {
+  if (!ledgerId) return null;
+  const { rows } = await db.query('SELECT -quantidade AS n FROM creditos_ledger WHERE id = $1', [ledgerId]);
+  return rows[0] ? Number(rows[0].n) : null;
+}
+
 module.exports = {
+  creditosDoResgate,
   registrarCreditoIndicacao,
   concederAdmin,
   estornarAdmin,

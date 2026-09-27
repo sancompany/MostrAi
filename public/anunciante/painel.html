@@ -46,6 +46,9 @@
     <section class="dashboard-content">
       <div class="wrap painel-wrap painel-grid">
         <div class="area-campanha" id="dashboardAnuncios">
+        <!-- Primeiros passos com plano (estação da conta, 26/09/2026): some
+             quando a conta já tem criativo e exibição confirmada. -->
+        <section class="dashboard-section onboarding onboarding-faixa" id="primeirosPassos" aria-label="Primeiros passos" hidden></section>
         <section class="dashboard-section" aria-labelledby="tituloResumo">
           <div class="section-heading compact-heading">
             <div>
@@ -141,7 +144,7 @@
         <section class="dashboard-section" id="modPlano" aria-labelledby="tituloPlano" hidden>
           <article class="panel painel-plano">
             <p class="section-eyebrow">Anúncio na rede</p>
-            <h2 id="tituloPlano">Plano comercial</h2>
+            <h2 id="tituloPlano">Seu plano</h2>
             <div id="planoResumo"></div>
           </article>
         </section>
@@ -162,9 +165,20 @@
           </article>
         </section>
 
+        <!-- Indicações (estação da conta, 26/09/2026): só pra conta que é
+             ponto — separado dos créditos. Crédito não libera indicação. -->
+        <section class="dashboard-section" id="modIndicacao" aria-labelledby="tituloIndicacao" hidden>
+          <article class="panel painel-indicacao">
+            <p class="section-eyebrow">Indicações</p>
+            <h2 id="tituloIndicacao">Indique e ganhe créditos</h2>
+            <p class="panel-subtitle">Como ponto da rede, você pode indicar novos anunciantes e receber créditos quando uma indicação cumprir as condições do programa.</p>
+            <div id="indicacaoCorpo"></div>
+          </article>
+        </section>
+
         <section class="dashboard-section" id="modFinanceiro" aria-labelledby="tituloFinanceiro" hidden>
           <article class="panel painel-financeiro">
-            <div class="panel-head"><div><p class="section-eyebrow">Dinheiro da conta</p><h2 id="tituloFinanceiro">Financeiro</h2></div></div>
+            <div class="panel-head"><div><p class="section-eyebrow">Pagamentos do plano</p><h2 id="tituloFinanceiro">Financeiro</h2></div></div>
             <p class="form-msg err" id="finErro" role="status" hidden>Não foi possível carregar seu financeiro agora. Tente atualizar a página.</p>
             <div class="fin-colunas">
               <div class="fin-bloco" id="finPagamentos" hidden></div>
@@ -180,13 +194,12 @@
               <div>
                 <p class="section-eyebrow">Créditos</p>
                 <h2 id="tituloCreditos">Créditos e benefícios</h2>
-                <span class="panel-subtitle">Você ganha créditos quando quem você indicou paga ou renova, a cada mês em que seu ponto participa da rede, e quando a Mostraí concede. Use os créditos pra ativar um benefício temporário Essencial, Pro ou Prime.</span>
+                <span class="panel-subtitle">Seus créditos podem vir da participação na rede como ponto ou de compensações concedidas pela Mostraí. Use-os para ativar benefícios temporários disponíveis.</span>
               </div>
-              <div class="creditos-saldo"><b id="creditosSaldo">-</b><span>créditos</span></div>
+              <div class="creditos-saldo"><b id="creditosSaldo">-</b><span>saldo de créditos</span></div>
             </div>
             <div id="creditosSituacao"></div>
-            <div class="creditos-colunas">
-              <div class="creditos-bloco" id="creditosIndicacao"></div>
+            <div class="creditos-colunas" id="creditosColunas">
               <div class="creditos-bloco creditos-opcoes-bloco">
                 <h3 class="creditos-titulo">Trocar créditos por um plano</h3>
                 <p class="creditos-nota">Benefício temporário: vale pelo período escolhido e depois termina. Nada é cobrado quando ele acaba.</p>
@@ -205,8 +218,9 @@
 
     <!-- Confirmação do resgate: mostra antes o que muda (agora → ativado →
          depois). Nada é debitado até o clique em Confirmar. -->
-    <dialog id="dlgResgate" class="dlg-resgate">
+    <dialog id="dlgResgate" class="dlg-resgate" aria-labelledby="tituloResgate" aria-describedby="avisoTrocaBeneficio previewResgate">
       <div class="dlg-head"><h3 id="tituloResgate">Confirmar resgate</h3><button type="button" class="dlg-close" id="btnFecharResgate" aria-label="Fechar">&times;</button></div>
+      <div id="avisoTrocaBeneficio"></div>
       <div id="previewResgate"></div>
       <p class="form-msg" id="msgResgate" role="status"></p>
       <div class="dlg-acoes">

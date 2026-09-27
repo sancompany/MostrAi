@@ -374,11 +374,12 @@ async function beneficioEmVigor(db, conta) {
   );
   const {
     rows: [plano],
-  } = await db.query('SELECT tier, nome FROM planos WHERE id = $1', [conta.plano_id]);
+  } = await db.query('SELECT tier, nome, compromisso_meses FROM planos WHERE id = $1', [conta.plano_id]);
   return {
     linha: linha || null,
     planoId: conta.plano_id,
     planoNome: plano?.nome || null,
+    compromissoMeses: plano?.compromisso_meses || null,
     nivel: nivelDoTier(plano?.tier),
     validoAte: conta.data_expiracao,
     porCreditos: linha?.origem === 'indicacao',
@@ -681,7 +682,7 @@ async function encerrarBeneficiosVencidos({ apenasContas = null } = {}) {
       titulo: 'Seu benefício terminou',
       descricao: voltouPago
         ? 'Seu plano pago voltou com os dias que ainda tinha.'
-        : 'Pra continuar no ar, resgate créditos ou escolha um plano.',
+        : 'Nenhuma cobrança foi realizada. Pra continuar no ar, escolha um plano ou resgate créditos.',
     });
   }
   return { verificados: vencidos.length, encerrados };

@@ -649,3 +649,43 @@ Decisão (pedido do dono):
 Consequências: não existe seletor de modalidade de duração. Se um dia o
 Checkout passar a permitir mudar o valor de uma assinatura paga, uma
 modalidade "N meses" volta como decisão nova, não reativando a coluna antiga.
+
+## ADR-020 — Painel por estado; crédito é relacional; indicação é do ponto; troca de benefício sem estorno (26/09/2026)
+
+Contexto: estação da conta pedida pelo dono. A conta recém-criada parecia um
+painel antigo sem dados: "sem plano" repetido em quatro lugares, créditos
+("0 créditos" + tabela) e link de indicação pra quem não tinha nenhuma
+relação com eles, convite de ponto espremido na coluna lateral, e nenhum
+caminho claro pro primeiro passo.
+
+Decisão:
+1. **O painel mostra o estado real.** Sem plano: um bloco só com o próximo
+   passo e um botão ("Escolher meu plano"); o card de plano some. Primeiros
+   passos saem do servidor (`GET /anunciantes/me/primeiros-passos`).
+2. **Crédito é relacional**, não produto de todo anunciante: a área aparece
+   pra ponto, saldo > 0 ou histórico (`exibicao`, em `GET
+   /anunciantes/me/creditos`). Crédito nunca é dinheiro/carteira/saque.
+3. **Indicação é do ponto** (ponto aprovado não arquivado, qualquer status):
+   card próprio, fora dos créditos. Crédito ≠ ponto: compensação não libera
+   indicação. Cupom já emitido pra conta que não é ponto continua valendo
+   no cadastro — só não é mais oferecido.
+4. **Troca com benefício por créditos em vigor é permitida, com aviso
+   explícito, e os créditos já usados NÃO voltam** (regra aprovada pelo
+   dono). Crédito → crédito: o resgate exige `substituirBeneficioId` (o id
+   do benefício em vigor); o atual fecha como `substituido` e o novo debita
+   uma vez. Crédito → pago, pago → crédito e pago → pago: a regra do ADR-016
+   e da RN-52 NÃO mudou; só o aviso ficou completo (plano, origem, validade,
+   créditos gastos, consequência; "Manter plano atual" / "Continuar com a
+   troca").
+5. Benefício PROGRAMADO e cortesia da Mostraí em vigor continuam
+   bloqueando um resgate novo (não são do cliente pra trocar).
+
+Consequências: regra de visibilidade mora no servidor (`creditos/routes.js#
+exibicaoDosCreditos`, `pontos/repository.js#contaEhPonto`) e é coberta por
+`tests/conta-experiencia.test.js` (contas A–D) e pelo e2e 22. Divergência
+registrada: o pedido do dono dizia que crédito → pago "encerra o
+benefício"; o comportamento real (ADR-016) só encerra quando o pago é de
+nível MAIOR — igual ou menor começa depois do benefício, sem perder dia
+pago. A tela descreve o real. O dono confirmou em 26/09/2026 (PR #78):
+o benefício por créditos continua intacto até a data final e o ADR-016
+decide quando o pago entra.
