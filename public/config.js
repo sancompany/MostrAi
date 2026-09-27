@@ -94,6 +94,41 @@ window.prazoBR = function prazoBR(valor, { inicio = false } = {}) {
   return hora === (inicio ? '00:00' : '23:59') ? dia : `${dia} às ${hora}`;
 };
 
+// Janela de exibição (uma hora cheia) no relógio de Matão: "hoje, 15:00–16:00",
+// "amanhã, 09:00–10:00" ou "03/10, 09:00–10:00". A janela vem pronta do
+// servidor (src/anunciantes/entrada-no-ar.js) — aqui só se escreve.
+window.janelaBR = function janelaBR(iso) {
+  if (!iso) return '';
+  const inicio = new Date(iso);
+  if (Number.isNaN(inicio.getTime())) return '';
+  const fim = new Date(inicio.getTime() + 3_600_000);
+  const fuso = { timeZone: 'America/Sao_Paulo' };
+  const hora = (d) => d.toLocaleTimeString('pt-BR', { ...fuso, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const dia = (d) => d.toLocaleDateString('pt-BR', { ...fuso, day: '2-digit', month: '2-digit' });
+  const hoje = dia(new Date());
+  const amanha = dia(new Date(Date.now() + 86_400_000));
+  const nome = dia(inicio) === hoje ? 'hoje' : dia(inicio) === amanha ? 'amanhã' : dia(inicio);
+  return `${nome}, ${hora(inicio)}–${hora(fim)}`;
+};
+
+// Entrada no ar de uma peça aprovada (estados do servidor, entrada-no-ar.js):
+// o MESMO rótulo no painel do cliente e no admin.
+window.ENTRADA_NO_AR = {
+  APROVADO: { rotulo: 'Aprovado', classe: 'badge-neutro' },
+  PROGRAMADO: { rotulo: 'Programado', classe: 'badge-info' },
+  AGUARDANDO_PRIMEIRA_EXIBICAO: { rotulo: 'Aguardando primeira exibição', classe: 'badge-pendente' },
+  NO_AR: { rotulo: 'No ar', classe: 'badge-ok' },
+  ATRASADO: { rotulo: 'Entrada atrasada', classe: 'badge-err' },
+  motivo: {
+    sem_plano_vigente: 'a conta está sem plano vigente',
+    conta_suspensa: 'a conta está suspensa',
+    fora_do_limite_de_pecas: 'o plano já roda o máximo de peças ao mesmo tempo',
+    processando: 'o arquivo ainda está sendo processado',
+    sem_ponto_no_ar_na_cobertura: 'nenhum ponto da cobertura está no ar agora',
+    cobertura_sem_horario_aberto: 'nenhum ponto da cobertura abre nos próximos dias',
+  },
+};
+
 // Linha de condição dos banners de promoção (Home e Planos): em que ciclos
 // ela vale de verdade e até quando. `ciclosComVantagem` vem do servidor (GET
 // /promocoes/vigentes): só os ciclos em que o preço promocional fica abaixo

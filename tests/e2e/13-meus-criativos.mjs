@@ -1,7 +1,7 @@
 // Meus criativos na rota real (/anunciante/painel.html), Fatia 3.
 // Anúncio na rede e na tela do próprio comércio numa biblioteca só, com a
 // situação que o cliente
-// entende (Em análise / Aprovado / No ar / Fora do ar / Recusado), e a troca
+// entende (Em análise / Aprovado / Programado / No ar / Fora do ar / Recusado), e a troca
 // sem sair do ar: a substituta aprovada tira a atual, sem F5. A página antiga
 // do ponto não tem mais "Meu anúncio na minha tela". Assume servidor na 3999.
 // Os arquivos são semeados no banco (o upload real precisa do Storage).
@@ -94,6 +94,9 @@ PG(
 const reserva = criativo(conta.id, 'aprovado');
 PG(`UPDATE criativos SET created_at = now() - interval '2 days' WHERE id = ${reserva}`);
 const noAr = criativo(conta.id, 'aprovado');
+// "No ar" é exibição confirmada pela TV (27/09/2026), não aprovação: o
+// comprovante é o que confirmarExecucao grava.
+PG(`UPDATE criativos SET primeira_exibicao_em = now(), ultima_exibicao_em = now() WHERE id = ${noAr}`);
 const substituta = criativo(conta.id, 'pendente', `substitui_criativo_id=${noAr}`);
 const recusada = criativo(conta.id, 'reprovado', `motivo_reprovacao='texto ilegível'`);
 criativo(conta.id, 'retirado');
@@ -175,11 +178,12 @@ await admin.request.post(`${B}/admin/login`, {
 const aprov = await admin.request.patch(`${B}/admin/criativos/${substituta}`, { data: { status: 'aprovado' } });
 check('admin aprovou a substituta', aprov.ok(), aprov.status());
 await p.waitForFunction(
-  (id) => document.querySelector(`.criativo-card[data-id="${id}"]`)?.textContent.includes('No ar'),
+  (id) => document.querySelector(`.criativo-card[data-id="${id}"]`)?.textContent.includes('Programado'),
   substituta,
   { timeout: 8000 },
 ).catch(() => {});
-check('substituta agora No ar (via SSE)', (await card(substituta)).includes('No ar'));
+// Aprovada entra na programação; "No ar" só quando a TV confirmar.
+check('substituta agora Programada (via SSE), não "No ar" antes da TV', (await card(substituta)).includes('Programado'), await card(substituta));
 check('a antiga saiu do ar', (await card(noAr)).includes('Fora do ar'));
 check('sem reload', await p.evaluate(() => window.__semReload === true));
 

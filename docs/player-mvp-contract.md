@@ -279,7 +279,7 @@ A playlist é **da hora cheia** do servidor e fica congelada durante a hora
 | `itemProgramacaoId` | identidade estável do item entre buscas da mesma hora; devolvido no proof-of-play |
 | `url` / `contentHash` | baixar, conferir o SHA-256 e guardar por conteúdo; sem `contentHash`, guardar por `criativoId` |
 | `duracaoSegundos` | tempo do item |
-| `contabiliza` | `true` = gera proof-of-play ao terminar; `false` (institucional, autoanúncio, mídia própria) não gera |
+| `contabiliza` | `true` = gera proof-of-play ao terminar; `false` (institucional, autoanúncio) não gera. Mídia Mostraí (`…\|midia:N`, `anuncianteId: null`) vem com `true` desde 27/09/2026 — o comprovante dela alimenta as métricas da mídia, nunca a entrega de anunciante |
 | `institucional` | preenchimento da rede (vídeo institucional configurado em Mídia Mostraí). Sem `url`, o Player mostra o cartão local pelo tempo do item |
 
 - A lista quase nunca vem vazia: tempo não vendido vira vídeo institucional.
@@ -331,12 +331,25 @@ resultado. Os 6 status são **finais** — o evento sai da fila:
 
 | Status | Significado |
 |---|---|
-| `contabilizado` | creditado ao anunciante |
+| `contabilizado` | creditado ao anunciante (ou, pra `midia:N`, ao contador da Mídia Mostraí) |
 | `duplicado` | este `execucaoId` já foi processado (retentativa) |
 | `teto_atingido` | a hora já tem todas as exibições programadas confirmadas |
 | `janela_desconhecida` | a janela/item não pertence a esta tela, ou o item não estava na playlist congelada daquela hora |
 | `janela_expirada` | chegou mais de **7 dias** depois do fim da janela (ou a janela está no futuro) |
-| `item_invalido` | evento malformado (campo ausente, vazio ou de tipo errado; `execucaoId` fora do formato; ids que não são exatamente os da playlist; item que não conta, como institucional) |
+| `item_invalido` | evento malformado (campo ausente, vazio ou de tipo errado; `execucaoId` fora do formato; ids que não são exatamente os da playlist; item que não conta, como institucional ou autoanúncio) |
+
+### O que o comprovante move no servidor (27/09/2026)
+
+- Anunciante: `exibicoes_contador.vezes_confirmadas` (com teto), e a peça
+  (`criativoId` da própria conta) ganha `primeira_exibicao_em` /
+  `ultima_exibicao_em` — é isso que muda o painel de "Aguardando primeira
+  exibição" para **No ar** (aprovação nunca põe no ar). A primeira exibição
+  do contexto avisa o painel e o admin por SSE (`creative.updated`).
+- Mídia Mostraí (`midia:N`): `midias_exibicoes_contador` (programadas ×
+  confirmadas por mídia, tela e hora, mesmo teto). Nada vai para
+  `exibicoes_contador` nem para o banco de horas.
+- `iniciadoEm` só marca o instante da exibição quando cabe dentro da hora
+  da janela; fora disso vale a chegada, presa na janela.
 
 ### Offline e atraso
 

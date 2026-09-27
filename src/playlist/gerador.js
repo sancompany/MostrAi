@@ -16,6 +16,7 @@ const bancoHorasRepo = require('../bancohoras/repository');
 const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
+const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
 // agora) não disputa vaga com quem já estava programado — só pede a fatia
@@ -84,7 +85,17 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // `anunciantes.frequencia_hora_propria`/`conta_propria` continuam existindo
 // no banco (legado, sem uso novo) — só não alimentam mais a playlist por
 // aqui.
-async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
+// `donoDoPonto`/`pontoId`: a trava de ramo ("não dividir a tela com um
+// concorrente direto do comércio") protege o DONO do ponto — não pode
+// barrá-lo na própria tela quando ele ESCOLHEU veicular ali. Até 27/09/2026
+// a conta do mesmo ramo do ponto era barrada inclusive quando era a dona
+// dele (o ponto herda o ramo do dono), e o anúncio de quem marcava "veicular
+// no próprio ponto" nunca entrava: foi o que produção mostrou (conta e único
+// ponto da rede no mesmo ramo, zero exibição programada). A isenção vale só
+// com a escolha explícita (`anunciantes_pontos`): o próprio ponto é opcional
+// e nunca entra por ser do dono — no modo automático a trava continua como
+// era. A cota de autoanúncio continua saindo por `excluirContaId`.
+async function anunciantesElegiveis(categoriaDoPonto, excluirContaId, donoDoPonto = null, pontoId = null) {
   const { rows } = await pool.query(
     `
     SELECT a.id, a.conta_propria,
@@ -116,11 +127,14 @@ async function anunciantesElegiveis(categoriaDoPonto, excluirContaId) {
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND NOT a.conta_propria
-      AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1)
+      AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1
+           OR (a.id = $3::int AND EXISTS (
+                 SELECT 1 FROM anunciantes_pontos proprio
+                  WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = $4::int)))
       AND ($2::int IS NULL OR a.id <> $2)
     GROUP BY a.id, a.conta_propria, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos, p.limite_criativos
   `,
-    [categoriaDoPonto || null, excluirContaId || null],
+    [categoriaDoPonto || null, excluirContaId || null, donoDoPonto || null, pontoId || null],
   );
 
   return rows.map((r) => {
@@ -239,6 +253,43 @@ async function gravarProgramados(dispositivo, horaAtual, contagem, pedidos = {},
   );
 }
 
+// Mídia Mostraí: quantas vezes cada mídia foi PROGRAMADA nesta tela nesta
+// hora (27/09/2026) — o outro lado do "confirmadas" que o proof-of-play
+// credita. Conta o que foi de fato pra playlist servida (depois do corte da
+// hora cheia e com quem entrou no fim), não a frequência configurada.
+//
+// Só grava se o ponto opera em algum momento da hora: o Player continua
+// buscando a playlist com a loja fechada (só não toca — conferido no app,
+// PlayerActivity#aplicarHorarioOperacional), e contar isso como programado
+// transformaria toda madrugada em "entrega atrasada".
+//
+// Sobrescreve (como `gravarProgramados`): a base da hora é congelada, então a
+// contagem só muda quando alguém entra no fim. Mídia que saiu no meio da
+// hora (pausada) não é regravada — o que foi programado enquanto ela estava
+// no ar continua valendo como teto das confirmações daquela hora.
+async function gravarProgramadasDaMidia(dispositivo, horaAtual, itens) {
+  const porMidia = {};
+  for (const item of itens) {
+    const tipo = item.itemProgramacaoId.split('|')[3];
+    const m = /^midia:(\d+)$/.exec(tipo);
+    if (m) porMidia[m[1]] = (porMidia[m[1]] || 0) + 1;
+  }
+  const midias = Object.keys(porMidia);
+  if (!midias.length) return;
+  const fimDaHora = new Date(horaAtual.getTime() + 3_600_000);
+  if (minutosOperando(operacaoDoPonto(dispositivo.ponto_horario_semanal), horaAtual, fimDaHora) <= 0) return;
+  await Promise.all(
+    midias.map((midiaId) =>
+      pool.query(
+        `INSERT INTO midias_exibicoes_contador (midia_id, dispositivo_id, ponto_id, janela_hora, vezes_programadas)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (midia_id, dispositivo_id, janela_hora) DO UPDATE SET vezes_programadas = $5`,
+        [Number(midiaId), dispositivo.id, dispositivo.ponto_id, horaAtual, porMidia[midiaId]],
+      ),
+    ),
+  );
+}
+
 // Vídeo institucional (25/09/2026): configuração ÚNICA pra rede inteira,
 // gravada por `POST /admin/video-institucional` na MESMA `configuracoes_site`
 // que já guarda a foto de exemplo do ponto (migration 055; `src/pontos/
@@ -291,7 +342,12 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias, videoInstitucional] =
     await Promise.all([
-      anunciantesElegiveis(dispositivo.categoria_id, excluirDaRotacaoPaga),
+      anunciantesElegiveis(
+        dispositivo.categoria_id,
+        excluirDaRotacaoPaga,
+        dispositivo.dono_conta_id,
+        dispositivo.ponto_id,
+      ),
       deficitHoraAnterior(dispositivo.id, horaAnterior),
       criativosDoDono(dispositivo.dono_conta_id),
       pontosEmOperacao(),
@@ -451,9 +507,9 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
 
   // `programados` já vem sem o institucional. O dono do ponto sai aqui: a cota
   // é permuta, não venda, e não entra no relatório de entrega de ninguém.
-  // Mídia própria também sai — mesmo motivo (não é anunciante, não tem
-  // `exibicoes_contador` pra creditar; `anunciante_id` daquela tabela é
-  // int e não aceitaria a string `midia:N`). O filtro em `idsExtras`
+  // Mídia própria também sai — não é anunciante nem venda: o contador dela é
+  // `midias_exibicoes_contador` (gravado por `gravarProgramadasDaMidia`, logo
+  // abaixo), e `anunciante_id` desta tabela é int e não aceitaria `midia:N`. O filtro em `idsExtras`
   // (`id !== 'dono' && !String(id).startsWith('midia:')`) existe porque,
   // sem ele, um dos dois chegando no meio da hora (`extras`, quando a base
   // já congelou sem ele) voltava pro objeto pela soma logo abaixo.
@@ -461,10 +517,13 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
   delete contagem.dono;
   const pedidos = { ...daHora.pedidosPorAnunciante };
   delete pedidos.dono;
-  for (const m of midiasProprias) {
-    delete contagem[m.id];
-    delete pedidos[m.id];
-  }
+  // TODA mídia sai da conta comercial — não só as elegíveis agora. Mídia
+  // pausada/encerrada no meio da hora continua na `base` congelada (e em
+  // `programados`), e só apagar as de `midiasProprias` deixava `midia:N` ir
+  // pro INSERT de `exibicoes_contador` (anunciante_id int): a playlist
+  // daquela tela dava erro até a hora virar (achado de 27/09/2026).
+  for (const id of Object.keys(contagem)) if (id.startsWith('midia:')) delete contagem[id];
+  for (const id of Object.keys(pedidos)) if (id.startsWith('midia:')) delete pedidos[id];
   for (const id of idsExtras) {
     if (id === 'dono' || String(id).startsWith('midia:')) continue;
     contagem[id] = (contagem[id] || 0) + 1;
@@ -541,8 +600,7 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       // campo já tem um significado fixo no player (mostra o cartão
       // genérico "este espaço pode ser seu", nunca troca por vídeo real) e
       // reaproveitá-lo pra mídia própria trocaria o vídeo pelo cartão gená.
-      // `anuncianteId: null` (mesmo mecanismo do autoanúncio) é o que faz o
-      // player não mandar `/played` pra uma mídia que não é venda.
+      // `anuncianteId: null`: mídia própria não é de anunciante nenhum.
       const midiaPropria = typeof id === 'string' && id.startsWith('midia:');
       return {
         itemProgramacaoId: `${janelaId}|${indice}|${autoanuncio ? 'dono' : id}`,
@@ -550,11 +608,14 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
         anuncianteId: autoanuncio || midiaPropria ? null : id,
         autoanuncio,
         institucional: false,
-        // Autoanúncio (permuta do comodato), institucional (preenchimento) e
-        // mídia própria nunca contam — mesma regra que `parseLegado` do app
-        // já infere hoje pro contrato antigo, só que explícita aqui em vez
-        // de deduzida do outro lado.
-        contabiliza: !autoanuncio && !midiaPropria,
+        // `contabiliza` é o que faz o Player gerar proof-of-play (contrato §7;
+        // conferido no app, FilaProofOfPlay.registrarInicio: só olha este
+        // campo no contrato novo). Autoanúncio (permuta) e institucional
+        // (preenchimento) continuam fora. Mídia Mostraí PASSOU a contar
+        // (27/09/2026): a métrica dela ("quantas vezes tocou de verdade") só
+        // existe com comprovante — ela não é venda, então o crédito vai pra
+        // `midias_exibicoes_contador`, nunca pra `exibicoes_contador`.
+        contabiliza: !autoanuncio,
         url: criativo.url,
         duracaoSegundos: criativo.duracaoSegundos,
         // SHA-256 do arquivo servido (docs/player-mvp-contract.md §7): o
@@ -565,6 +626,8 @@ async function gerarPlaylistDaHora(dispositivo, hora) {
       };
     })
     .filter(Boolean);
+
+  await gravarProgramadasDaMidia(dispositivo, horaAtual, itens);
 
   return {
     versaoContrato: 2,
@@ -626,11 +689,82 @@ async function estavaNaHoraCongelada(dispositivoId, janela, anuncianteId, db = p
   return rows.length > 0;
 }
 
+// Quando a exibição aconteceu, pra "primeira/última exibição": o servidor não
+// confia no relógio da TV (contrato §8), então o `iniciadoEm` do Player só
+// vale PRESO dentro da hora da janela (com 5 min pro fim de uma peça que
+// começou no último minuto) e nunca no futuro. Sem ele (ou ilegível), a
+// chegada — também presa na janela, pro lote offline de dias depois não
+// virar "tocou hoje".
+function instanteDaExibicao(iniciadoEm, horaJanela, agora) {
+  const inicio = horaJanela.getTime();
+  const teto = Math.min(new Date(agora).getTime(), inicio + 65 * 60_000);
+  const informado = typeof iniciadoEm === 'string' ? new Date(iniciadoEm).getTime() : Number.NaN;
+  const base = Number.isFinite(informado) ? informado : new Date(agora).getTime();
+  return new Date(Math.min(Math.max(base, inicio), Math.max(teto, inicio)));
+}
+
+// Criativo que tocou de verdade: é isto que separa "aprovado" de "no ar"
+// (src/anunciantes/entrada-no-ar.js). LEAST/GREATEST: lote offline chega fora
+// de ordem e não pode "atrasar" a primeira nem "adiantar" a última.
+// `anuncianteId` amarra: o `criativoId` do evento é informativo (contrato
+// §8), então só vale se a peça é mesmo daquela conta.
+//
+// Devolve true quando ESTA exibição é a que põe a peça no ar no contexto
+// atual (antes, nenhuma exibição depois da aprovação) — quem chama avisa o
+// painel e o admin por SSE, depois do COMMIT. O subselect `antes` lê a linha
+// como estava antes deste UPDATE.
+async function marcarExibicaoDoCriativo(criativoId, anuncianteId, instante, db) {
+  if (criativoId == null || !/^\d{1,10}$/.test(String(criativoId))) return false;
+  const { rows } = await db.query(
+    `UPDATE criativos c
+        SET primeira_exibicao_em = LEAST(COALESCE(c.primeira_exibicao_em, $3), $3),
+            ultima_exibicao_em = GREATEST(COALESCE(c.ultima_exibicao_em, $3), $3)
+       FROM (SELECT id, ultima_exibicao_em FROM criativos WHERE id = $1) antes
+      WHERE c.id = antes.id AND c.anunciante_id = $2
+      RETURNING (antes.ultima_exibicao_em IS NULL
+                 OR antes.ultima_exibicao_em < COALESCE(c.aprovado_em, c.created_at))
+                AND $3 >= COALESCE(c.aprovado_em, c.created_at) AS entrou_no_ar`,
+    [Number(criativoId), anuncianteId, instante],
+  );
+  return rows[0]?.entrou_no_ar === true;
+}
+
+// Mídia Mostraí: credita com o MESMO teto do contador comercial (confirmada
+// nunca passa de programada) e marca a primeira/última confirmação — é daí
+// que saem "última exibição" e "primeira exibição" da mídia.
+async function creditarMidia(midiaId, dispositivoId, janela, instante, db) {
+  const { rows } = await db.query(
+    `UPDATE midias_exibicoes_contador
+        SET vezes_confirmadas = vezes_confirmadas + 1,
+            primeira_confirmacao_em = LEAST(COALESCE(primeira_confirmacao_em, $4), $4),
+            ultima_confirmacao_em = GREATEST(COALESCE(ultima_confirmacao_em, $4), $4)
+      WHERE midia_id = $1 AND dispositivo_id = $2 AND janela_hora = $3
+        AND vezes_confirmadas < vezes_programadas
+      RETURNING (SELECT criativo_id FROM midias_proprias WHERE id = $1) AS criativo_id,
+                (SELECT anunciante_id FROM criativos c JOIN midias_proprias mp ON mp.criativo_id = c.id
+                  WHERE mp.id = $1) AS anunciante_id`,
+    [midiaId, dispositivoId, janela, instante],
+  );
+  if (rows[0]) {
+    await marcarExibicaoDoCriativo(rows[0].criativo_id, rows[0].anunciante_id, instante, db);
+    return 'contabilizado';
+  }
+  const existe = await db.query(
+    'SELECT 1 FROM midias_exibicoes_contador WHERE midia_id = $1 AND dispositivo_id = $2 AND janela_hora = $3',
+    [midiaId, dispositivoId, janela],
+  );
+  return existe.rows.length ? 'teto_atingido' : 'janela_desconhecida';
+}
+
 // Decodifica o `itemProgramacaoId` (formato montado em `gerarPlaylistDaHora`:
 // `dispositivoId|horaISO|indice|tipo`) e credita. Devolve SEMPRE um dos 6
 // status finais do contrato (§8) — nunca lança por conteúdo do evento: um
 // evento ruim responde `item_invalido` e o resto do lote segue.
-async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janelaId, agora, db = pool) {
+//
+// `extra` (27/09/2026): `criativoId` e `iniciadoEm` do evento — informativos,
+// usados só pra marcar a primeira/última exibição da peça (nunca pra decidir
+// se credita).
+async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janelaId, agora, db = pool, extra = {}) {
   if (typeof itemProgramacaoId !== 'string' || typeof janelaId !== 'string') return 'item_invalido';
   const partes = itemProgramacaoId.split('|');
   if (partes.length !== 4) return 'item_invalido';
@@ -643,19 +777,34 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
   if (horaJanela.getTime() % 3_600_000 !== 0) return 'item_invalido';
   if (Number(dispositivoIdStr) !== Number(dispositivoIdEsperado)) return 'janela_desconhecida';
 
-  // `dono` (autoanúncio), `inst` (institucional) e `midia:N` nunca contam —
-  // o Player não cria execução para item com `contabiliza: false`.
-  if (!/^\d{1,10}$/.test(tipo)) return 'item_invalido';
-  const anuncianteId = Number(tipo);
-  if (anuncianteId <= 0 || anuncianteId > 2147483647) return 'item_invalido';
+  // `dono` (autoanúncio) e `inst` (institucional) nunca contam — o Player não
+  // cria execução para item com `contabiliza: false`. `midia:N` (Mídia
+  // Mostraí) conta desde 27/09/2026, no contador dela.
+  const midia = /^midia:(\d{1,10})$/.exec(tipo);
+  if (!midia && !/^\d{1,10}$/.test(tipo)) return 'item_invalido';
+  const idNumerico = Number(midia ? midia[1] : tipo);
+  if (idNumerico <= 0 || idNumerico > 2147483647) return 'item_invalido';
 
   const diffMin = (new Date(agora).getTime() - horaJanela.getTime()) / 60_000;
   if (diffMin < -TOLERANCIA_FUTURO_MIN || diffMin > PRAZO_PROOF_OF_PLAY_MIN) return 'janela_expirada';
 
-  if (!(await estavaNaHoraCongelada(dispositivoIdEsperado, horaJanela, anuncianteId, db))) {
+  // Fato do servidor: estava na playlist congelada daquela tela e hora (a
+  // mídia entra na base como `midia:N`, o anunciante pelo id).
+  if (!(await estavaNaHoraCongelada(dispositivoIdEsperado, horaJanela, midia ? tipo : idNumerico, db))) {
     return 'janela_desconhecida';
   }
-  if (await creditarConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'contabilizado';
+  const instante = instanteDaExibicao(extra.iniciadoEm, horaJanela, agora);
+  if (midia) return creditarMidia(idNumerico, dispositivoIdEsperado, horaJanela, instante, db);
+
+  const anuncianteId = idNumerico;
+  if (await creditarConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) {
+    if (await marcarExibicaoDoCriativo(extra.criativoId, anuncianteId, instante, db)) {
+      // Primeira exibição do contexto: `extra.entradas` é lido por quem
+      // chama (execucoes-repository.js) pra avisar depois do COMMIT.
+      extra.entradas?.push({ anuncianteId, criativoId: Number(extra.criativoId) });
+    }
+    return 'contabilizado';
+  }
   if (await existeConfirmacao(anuncianteId, dispositivoIdEsperado, horaJanela, db)) return 'teto_atingido';
   return 'janela_desconhecida';
 }

@@ -394,9 +394,16 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     ).length,
     limiteConta: CRIATIVOS_POR_CONTA,
     limiteNoAr: limiteNoAr,
+    // No ar = comprovante confirmado (entrada-no-ar.js). Entre a aprovação
+    // e ele: aguardando entrada (programado ou esperando o comprovante) ou
+    // atrasado — nenhum aprovado fica sem estado.
     noAr: criativos.filter((c) => c.no_ar).length,
+    aguardandoEntrada: criativos.filter((c) =>
+      ['PROGRAMADO', 'AGUARDANDO_PRIMEIRA_EXIBICAO'].includes(c.entrada?.estado),
+    ).length,
+    atrasados: criativos.filter((c) => c.entrada?.estado === 'ATRASADO').length,
     emAnalise: criativos.filter((c) => c.status === 'pendente' && !c.substitui_criativo_id).length,
-    aprovadosForaDoAr: criativos.filter((c) => c.status === 'aprovado' && !c.no_ar).length,
+    aprovadosForaDoAr: criativos.filter((c) => c.status === 'aprovado' && !c.em_rodizio).length,
     retirados: criativos.filter((c) => c.status === 'retirado').length,
     recusados: criativos.filter((c) => c.status === 'reprovado').length,
     substituicoesPendentes: substituicoes,

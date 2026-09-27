@@ -191,7 +191,10 @@ test('D — ponto + anunciante com benefício: plano no onboarding feito, crédi
     assert.equal(pp.corpo.numeroDaProxima, 2);
     assert.equal(pp.corpo.jaTevePlano, true);
     const pontos = pp.corpo.etapas.find((e) => e.id === 'pontos');
-    assert.equal(pontos.disponivel, false, 'no benefício a Mostraí distribui');
+    // Desde 27/09/2026 o benefício também escolhe pontos (inclusive o
+    // próprio): o servidor sempre aceitou, só o painel escondia a lista.
+    assert.equal(pontos.disponivel, true, 'no benefício a escolha de pontos existe');
+    assert.equal(pontos.opcional, true, 'e continua opcional');
   } finally {
     await app.fechar();
   }
@@ -295,7 +298,7 @@ test('crédito → pago: /assinar mostra plano, origem, validade e créditos gas
 });
 
 test('onboarding: exibição confirmada fecha o fluxo; pontos opcionais nunca seguram o próximo passo', () => {
-  const base = { temPlano: true, beneficio: false, criativosAprovados: 1, pontosEscolhidos: 0 };
+  const base = { temPlano: true, criativosAprovados: 1, pontosEscolhidos: 0 };
   const semExib = etapasDosPrimeirosPassos({ ...base, criativosEnviados: 1, exibicoes: 0 });
   assert.equal(semExib.proxima, 'exibicoes');
   assert.equal(semExib.numeroDaProxima, 4);

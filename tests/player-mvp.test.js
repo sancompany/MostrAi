@@ -957,7 +957,11 @@ test('POP: payload adulterado vira item_invalido, um a um, sem derrubar o lote',
   const adulterados = [
     evento(h.janelaId, `${h.janelaId}|0|inst`),
     evento(h.janelaId, `${h.janelaId}|0|dono`),
-    evento(h.janelaId, `${h.janelaId}|0|midia:3`),
+    // `midia:N` é item válido desde 27/09/2026 (Mídia Mostraí conta); forma
+    // torta dele continua inválida.
+    evento(h.janelaId, `${h.janelaId}|0|midia:0`),
+    evento(h.janelaId, `${h.janelaId}|0|midia:x`),
+    evento(h.janelaId, `${h.janelaId}|0|midia:`),
     evento(h.janelaId, `${h.janelaId}|-1|${conta}`),
     evento(h.janelaId, `${h.janelaId}|x|${conta}`),
     evento(h.janelaId, `${h.janelaId}|0|${conta}|extra`),

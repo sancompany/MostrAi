@@ -77,10 +77,21 @@ test('situação de cada peça: no ar, aprovada fora do rodízio, em análise su
     const substituta = await criativo(conta.id, 'pendente', { substitui: noAr });
     const recusada = await criativo(conta.id, 'reprovado');
     const retirada = await criativo(conta.id, 'retirado');
+    // Aprovada e no rodízio ainda NÃO é "no ar" (27/09/2026): sem
+    // comprovante, a situação é a da entrada (programado/aprovado).
+    const antes = await app.chamar('GET', '/anunciantes/me/criativos', conta.id);
+    const semComprovante = antes.corpo.criativos.find((c) => c.id === noAr);
+    assert.notEqual(semComprovante.situacao, 'no_ar', 'aprovar não põe no ar');
+    assert.ok(semComprovante.entrada, 'a peça aprovada vem com a entrada no ar calculada');
+    // Exibição confirmada pela TV (o que confirmarExecucao grava).
+    await pool.query('UPDATE criativos SET primeira_exibicao_em = now(), ultima_exibicao_em = now() WHERE id = $1', [
+      noAr,
+    ]);
     const r = await app.chamar('GET', '/anunciantes/me/criativos', conta.id);
     assert.equal(r.status, 200, JSON.stringify(r.corpo));
     const por = Object.fromEntries(r.corpo.criativos.map((c) => [c.id, c]));
-    assert.equal(por[noAr].situacao, 'no_ar', 'essencial roda 1 peça: a mais recente');
+    assert.equal(por[noAr].situacao, 'no_ar', 'essencial roda 1 peça: a mais recente, e ela já tocou');
+    assert.ok(por[noAr].entrada.ultimaExibicaoEm);
     assert.equal(por[antiga].situacao, 'aprovado');
     assert.equal(por[substituta].situacao, 'em_analise');
     assert.equal(por[substituta].substitui, noAr);

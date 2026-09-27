@@ -4,6 +4,7 @@ const os = require('node:os');
 const fs = require('node:fs');
 const router = express.Router();
 const midiasRepo = require('./repository');
+const { metricasDasMidias } = require('./metricas');
 const anunciantesRepo = require('../anunciantes/repository');
 const planosRepo = require('../financeiro/planos-repository');
 const criativosRepo = require('../anunciantes/criativos-repository');
@@ -85,14 +86,20 @@ function lerPontosIds(body) {
   return lista.map(Number).filter(Number.isInteger);
 }
 
+// Cada mídia vem com as métricas de exibição (src/midias/metricas.js): só
+// proof-of-play confirmado conta. A lista leva o resumo do card; a ficha,
+// o detalhe por ponto e por tela.
 router.get('/admin/midias-proprias', async (_req, res) => {
-  res.json(await midiasRepo.listar());
+  const midias = await midiasRepo.listar();
+  const metricas = await metricasDasMidias(midias);
+  res.json(midias.map((m) => ({ ...m, metricas: metricas.get(m.id) })));
 });
 
 router.get('/admin/midias-proprias/:id', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
-  res.json(midia);
+  const metricas = await metricasDasMidias([midia], { detalhe: true });
+  res.json({ ...midia, metricas: metricas.get(midia.id) });
 });
 
 // Nunca permite publicar/ativar uma configuração cuja ocupação passe de

@@ -732,3 +732,38 @@ alterada, e-mail alterado, ponto aprovado, ponto recusado). A tabela 061
 fica pra uma migration de limpeza. Sem confirmação automática ao remetente
 do formulário de contato (formulário público = vetor de e-mail pra terceiros).
 
+
+## ADR-022 — "No ar" é comprovante; Mídia Mostraí conta no contador dela; dono isento da trava de ramo só por escolha (27/09/2026)
+
+Contexto: em produção a conta dona do único ponto tinha plano, peça
+aprovada e o próprio ponto escolhido — zero exibição programada — e o
+painel dizia "No ar". A trava de ramo barrava o dono na própria tela; o
+painel escondia a escolha de pontos do benefício; "no ar" era "está no
+rodízio"; a Mídia Mostraí não gerava comprovante nenhum.
+
+Decisão:
+1. **No ar = proof-of-play confirmado depois de `aprovado_em`** (migration
+   099: `aprovado_em` por trigger, `primeira/ultima_exibicao_em` só pelo
+   `/played`). Estados derivados no servidor
+   (`src/anunciantes/entrada-no-ar.js`): Aprovado (motivo) → Programado
+   (primeira janela = primeira hora cheia aberta da cobertura depois da
+   aprovação) → Aguardando primeira exibição (a TV pediu a hora e a conta
+   estava nela) → No ar | Entrada atrasada. Tolerância = ⌈peças/inserções
+   por hora⌉ horas abertas + 10 min (Player: lote de POP a cada 60 s, recuo
+   até 5 min). O front não calcula nada disso.
+2. **Mídia Mostraí com `contabiliza: true`**; crédito em
+   `midias_exibicoes_contador` (programadas × confirmadas por
+   mídia/tela/hora, mesmo teto), nunca em `exibicoes_contador` nem no banco
+   de horas; histórico da situação em `midias_proprias_situacoes` pra o
+   esperado respeitar pausa. Esperado = frequência × horas abertas de cada
+   tela da cobertura (até 10 min atrás) — nunca frequência × 24.
+3. **Trava de ramo isenta o dono só quando ele escolheu o próprio ponto.**
+   No modo automático nada muda; o próprio ponto nunca é marcado por ser do
+   dono e conta no limite do plano.
+4. **Pedir atualização às telas** = só `playlist_desatualizada_em`; nunca
+   reiniciar o Player como correção.
+
+Consequências: o e-mail "Seu anúncio está no ar" (fora do escopo) ainda
+sai na aprovação — pendência. Programadas comerciais em hora fechada
+distorcem o déficit do banco de horas — pendência da estação do banco de
+horas, sem mudança de fórmula aqui.
