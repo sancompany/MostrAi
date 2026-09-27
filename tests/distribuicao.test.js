@@ -870,7 +870,6 @@ test('28. POP duplicado: mesmo execucaoId conta uma vez; teto e janela desconhec
       )
     ).rows[0].n;
   const comercialAntes = await comercial();
-  const anunciantes = (await pool.query('SELECT COUNT(*)::int AS n FROM anunciantes')).rows[0].n;
   assert.equal((await enviarPop(ponto.player, [ev])).json.resultados[0].status, 'contabilizado');
   assert.equal((await enviarPop(ponto.player, [ev])).json.resultados[0].status, 'duplicado');
   assert.equal((await enviarPop(ponto.player, [ev, ev])).json.resultados[0].status, 'duplicado');
@@ -886,11 +885,17 @@ test('28. POP duplicado: mesmo execucaoId conta uma vez; teto e janela desconhec
     ['janela_desconhecida', 'item_invalido'],
   );
   assert.equal(await comercial(), comercialAntes, 'exibicoes_contador intocado');
-  assert.equal(
-    (await pool.query('SELECT COUNT(*)::int AS n FROM anunciantes')).rows[0].n,
-    anunciantes,
-    'sem anunciante falso',
+  // Sem anunciante falso: nenhuma linha de entrega comercial desta tela em
+  // nome de conta nenhuma que não seja anunciante de verdade (a conta
+  // própria da Mostraí nunca aparece). Contar a tabela `anunciantes` inteira
+  // não serve: outros arquivos de teste criam contas em paralelo.
+  const propria = await anunciantesRepo.ensureContaMostrai();
+  const { rows: falsos } = await pool.query(
+    `SELECT e.anunciante_id FROM exibicoes_contador e JOIN anunciantes a ON a.id = e.anunciante_id
+      WHERE e.dispositivo_id = $1 AND (a.conta_propria OR a.id = $2)`,
+    [ponto.telaId, propria.id],
   );
+  assert.equal(falsos.length, 0, 'sem anunciante falso');
 });
 
 test('29. percentual esperado × confirmado (e programadas × confirmadas por período)', async () => {
