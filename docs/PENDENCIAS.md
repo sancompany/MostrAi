@@ -4638,7 +4638,7 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 
 ## Estação de e-mail — entrega confiável e verificação de e-mail (27/09/2026)
 
-**[x] Construído e testado — PR aberto, NÃO mergeado, aguardando o dono** (RN-62, ADR-021, migration 097).
+**[x] Construído, testado e mergeado (#80, 27/09/2026)** (RN-62, ADR-021, migration 097). Falta o teste de cadastro real do dono.
 - **Fila durável (`email_outbox`):** nenhuma rota manda e-mail direto. Grava na fila e segue; o processador envia com `SKIP LOCKED` (seguro com as 2 instâncias), tenta de novo em 30 s → 2 min → 10 min → 30 min → 2 h e marca **abandonado** depois de 6. A contagem e os que falharam aparecem no admin (Financeiro › Eventos do Checkout, card "E-mail (SMTP)"), com o destinatário mascarado.
 - **Por que o primeiro código às vezes não chegava:** o cadastro abria DUAS conexões SMTP ao mesmo tempo (boas-vindas + código), "fire-and-forget" — erro virava só log, sem nova tentativa, e um restart no meio perdia o envio. Agora sai um e-mail só (o código), pela fila, com nova tentativa. As boas-vindas saem depois da confirmação.
 - **Código:** 10 minutos (era 2); prazo decidido no servidor (`expiraEm`); recarregar não reinicia; guardado só como HMAC; cifrado na fila e apagado quando sai; reenviar = código novo com 60 s de intervalo e no máximo 5 por hora; 5 erros matam o código.
@@ -4681,9 +4681,28 @@ dona** — não é elegível a crédito até ter dono); planos `inicial-1m` e
 - **Renovação atrasada da assinatura antiga** (revisão Codex): se uma renovação da assinatura que o cliente trocou chega depois do plano novo pago, os dias contam mas o plano escolhido depois continua (com ou sem benefício); o benefício não é encerrado por ela.
 - **Nota:** se o plano pago novo for de nível MAIOR que o benefício em vigor, o pagamento dele encerra o benefício (ADR-016, com o aviso que já existe antes de pagar). O caso "benefício continua" é o do pago igual ou menor.
 
+## Anunciante — sessão estável e upload de criativo confiável (27/09/2026)
+
+**[x] Construído e testado — PR aberto, NÃO mergeado, aguardando o dono.**
+- **Sessão — causa provada:** admin e conta do cliente dividiam UM cookie de sessão, e todo login faz `regenerate`. Entrar no admin (no mesmo navegador) derrubava a conta do anunciante; entrar como anunciante derrubava o admin; sair de um saía dos dois. O dono sobe criativo, confere no admin, volta pra aba do painel — o resync do SSE recebia 401 e ia pro login. Reproduzido em curl (`me 200 → /admin/login → me 401`). Registro: `docs/erros/2026-09-27-sessao-do-admin-derrubava-o-anunciante.md`.
+- **Sessão — correção:** cookie próprio do admin (`mostrai.admin`, `Path=/admin`, `src/lib/sessao.js`); no painel, só um 401 vira "Sua sessão expirou" (login com aviso, sem loop); 500/rede/prazo de 20 s nunca deslogam (erro com [Tentar novamente] na abertura; em segundo plano a tela fica como está); `carregarConta` não guarda mais falha pela vida da página; resposta velha de `/anunciantes/me` não sobrescreve a nova.
+- **Efeito do deploy:** a sessão de admin antiga morava no cookie do cliente — depois do merge o admin entra uma vez de novo. Contas de cliente não são afetadas.
+- **Upload — causa provada (produção, só leitura):** o processamento (FFmpeg a 0,5 vCPU + Storage) dos criativos reais levou 59,9 s (#6, 14 s de vídeo), **105,7 s** (#7, 16 s) e **131,8 s** (#8, 24 s). Acima de 100 s o proxy da Cloudflare devolve 524 ao navegador; o servidor termina e cria o criativo mesmo assim, e a tela dizia "Não foi possível enviar". Registro: `docs/erros/2026-09-27-upload-dizia-falha-com-criativo-criado.md`.
+- **Upload — correção:**
+  - idempotência (migration 098): chave por arquivo escolhido (`Idempotency-Key`), única por conta — repetir nunca cria dois;
+  - resultado incerto (524, rede, 500 sem corpo) é conferido no servidor pela chave (`GET /anunciantes/me/criativos/envios/:chave`) antes de dizer qualquer coisa; "falhou" só quando o servidor disse por quê;
+  - upload concluído + lista que não atualizou = "Criativo enviado. Não conseguimos atualizar a lista agora.";
+  - card "processando" aparece e se atualiza sozinho (SSE);
+  - linha temporária órfã (restart no meio) sai depois de 30 min;
+  - FFmpeg mais rápido com a MESMA saída (H.264 Main 1080x1920 yuv420p 4 Mbps): `-preset veryfast`, `-fpsmax 30`, fundo do horizontal desfocado em baixa resolução — medido na própria produção 6,3 s → 3,4 s por 3 s de vídeo; horizontal 60 fps de 30 s, 153 s → 36 s por núcleo;
+  - tempos por etapa no log (`upload de criativo {…}`, só números).
+- **Testes:** `tests/sessao-anunciante.test.js`, `tests/upload-criativo.test.js`, `tests/ffmpeg-normalizar.test.js` e e2e `tests/e2e/25-sessao-e-upload.mjs` (57 verificações, sem `page.reload()`).
+
+**[ ] DECISÃO DO DONO — fila de processamento de mídia.** Com 0,5 vCPU, vídeo pesado (4K, 60 fps, horizontal, 30 s) ainda pode passar dos 100 s do proxy mesmo com o FFmpeg mais rápido. A tela não mente mais nesse caso e não duplica — mas a garantia de "sempre abaixo do timeout" pede tirar o FFmpeg da requisição. Menor desenho correto: o POST grava o arquivo (Storage, pasta `entrada/`) e a linha `processando`, responde **202** na hora; um processador por instância (mesmo padrão da `email_outbox`/`webhooks_recebidos`: `SKIP LOCKED`, nova tentativa, estado `falhou`) normaliza e emite `creative.updated`; o painel já trata 202 + SSE. Alternativa sem código: subir o plano do serviço (1 vCPU corta o tempo pela metade). **Não construído** — espera a decisão.
+
 ## Admin — recuperação de loading e erro sem F5 (27/09/2026)
 
-**[x] Construído e testado — PR aberto, NÃO mergeado, aguardando o dono** (`public/admin/carga.js`).
+**[x] Construído, testado e mergeado (#81, 27/09/2026)** (`public/admin/carga.js`).
 - **Causa raiz do "Atualizar não resolve, F5 resolve":** todo `/admin/*` passa pelo Cloudflare Access. Com a sessão do Access vencida, a API responde **302** pro login em `cloudflareaccess.com` (conferido com um GET anônimo em produção). O `fetch` seguia o redirect, esbarrava no CORS e virava "sem conexão"; o Atualizar repetia a mesma falha pra sempre, e só o F5 (uma navegação) passava pelo login. Agora a leitura não segue redirect: o 302 vira "Sua sessão de acesso ao admin expirou" com [Entrar de novo].
 - **Outras causas achadas:**
   - nenhuma leitura tinha prazo (loading infinito);

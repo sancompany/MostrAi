@@ -119,12 +119,19 @@ await shot(p, '1-situacoes');
 
 console.log('== substituir envia a peça apontando pra atual ==');
 // O Chromium não entrega o corpo multipart com arquivo ao Playwright:
-// captura o FormData no próprio fetch da página.
+// captura o FormData na própria página. O envio é por XHR desde 27/09/2026
+// (é o que separa "enviando" de "processando" na tela); o fetch fica coberto
+// também.
 await p.evaluate(() => {
   const original = window.fetch;
   window.fetch = (url, opcoes) => {
     if (opcoes?.body instanceof FormData) window.__substitui = opcoes.body.get('substitui');
     return original(url, opcoes);
+  };
+  const enviarXhr = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (corpo) {
+    if (corpo instanceof FormData) window.__substitui = corpo.get('substitui');
+    return enviarXhr.call(this, corpo);
   };
 });
 const [escolha] = await Promise.all([
@@ -132,7 +139,7 @@ const [escolha] = await Promise.all([
   p.click(`.criativo-card[data-id="${reserva}"] [data-acao="substituir"]`),
 ]);
 await escolha.setFiles({ name: 'nova.png', mimeType: 'image/png', buffer: Buffer.from('nao e imagem') });
-await p.waitForFunction(() => /./.test(document.getElementById('uploadMsg').textContent) && !/Enviando/.test(document.getElementById('uploadMsg').textContent));
+await p.waitForFunction(() => /./.test(document.getElementById('uploadMsg').textContent) && !/Enviando|Processando/.test(document.getElementById('uploadMsg').textContent));
 check('o envio carregou o campo "substitui" da peça certa', (await p.evaluate(() => window.__substitui)) === String(reserva));
 check('erro de arquivo aparece sem quebrar a tela', (await p.textContent('#uploadMsg')).length > 0);
 

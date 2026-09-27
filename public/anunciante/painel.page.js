@@ -3,25 +3,32 @@ const fmt = fmtBRL; // config.js
 let ANUNCIANTE = null;
 let ANUNCIANTE_ID = null;
 
+// Cada chamada de carregar() ganha um número; só a mais recente pode
+// desenhar ou decidir alguma coisa. O SSE, a volta pra aba e o resgate
+// chamam carregar() sem coordenação — uma resposta velha que chegasse por
+// último desfazia o estado bom da mais nova.
+let geracaoConta = 0;
+
 async function carregar() {
+  const minha = ++geracaoConta;
   // Primeira carga: reaproveita o /anunciantes/me que o layout.js já pediu
   // (carregarConta) — eram duas chamadas iguais a cada abertura do painel.
   // As recargas (SSE, resgate) pedem de novo: o plano pode ter mudado.
-  const jaCarregada = !ANUNCIANTE && window.carregarConta ? await window.carregarConta() : null;
-  if (jaCarregada) {
-    ANUNCIANTE = jaCarregada;
-  } else {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' });
-    if (r.status === 401) {
-      window.location.href = '/anunciante/login.html';
-      return;
-    }
-    // Sem isso, um 500 caía no .json(), ANUNCIANTE_ID virava undefined e o
-    // painel montava vazio e funcional — o cliente via "0 exibições" em vez
-    // de "não deu pra carregar".
-    if (!r.ok) throw new Error();
-    ANUNCIANTE = await r.json();
+  let conta;
+  try {
+    conta = await window.carregarConta({ recarregar: !!ANUNCIANTE });
+  } catch (err) {
+    if (minha !== geracaoConta) return;
+    // Só o 401 é sessão acabada. 500, rede, prazo: a pessoa continua
+    // logada — na abertura vira erro com [Tentar novamente] (quem chamou
+    // mostra); numa recarga em segundo plano a tela fica como está e a
+    // próxima recarga tenta de novo. Nunca "0 exibições" no lugar do erro.
+    if (err.sessaoExpirada) return window.sessaoExpirada();
+    if (ANUNCIANTE) return;
+    throw err;
   }
+  if (minha !== geracaoConta) return;
+  ANUNCIANTE = conta;
   ANUNCIANTE_ID = ANUNCIANTE.id;
   // Popup de perfil, avatar e sair vêm de /perfil.js — a mesma tela que o
   // painel do ponto usa, em vez de duas cópias que divergem.
@@ -67,12 +74,15 @@ async function carregar() {
 // zero, incluindo o bloqueio de plano, sem reload. `credits.updated` e
 // `notification.created` são assinados pelos próprios módulos (creditos.js,
 // notificacoes.js).
+// Recarga em segundo plano: se falhar (500, rede), a tela fica como está e a
+// próxima recarga tenta de novo — sem rejeição solta no console e sem login.
+const recarregarConta = () => carregar().catch(() => {});
 if (window.ligarEventosDaConta) {
   window.ligarEventosDaConta({
-    'payment.updated': carregar,
-    'plan.updated': carregar,
-    'account.updated': carregar,
-    'application.updated': carregar,
+    'payment.updated': recarregarConta,
+    'plan.updated': recarregarConta,
+    'account.updated': recarregarConta,
+    'application.updated': recarregarConta,
   });
 }
 
@@ -1061,9 +1071,21 @@ function statusOnline(situacao) {
   return '<span class="badge badge-err">🔴 Fora do ar</span>';
 }
 
-carregar().catch(() => {
-  document.getElementById('statusBanner').textContent = 'Não foi possível carregar sua conta agora.';
-});
+// Abertura que falhou (500, rede, prazo): erro recuperável no lugar do hero,
+// com [Tentar novamente] que refaz só a leitura da conta — sem F5 e sem
+// login (a sessão continua; quem decide "sessão acabou" é só o 401).
+function abrirPainel() {
+  carregar().catch(() => {
+    const el = document.getElementById('statusBanner');
+    el.innerHTML = `<p class="form-msg err u-m-0" id="erroConta">Não foi possível carregar sua conta agora.</p>
+      <button type="button" class="btn ghost mini" id="btnTentarConta">Tentar novamente</button>`;
+    document.getElementById('btnTentarConta').addEventListener('click', () => {
+      el.textContent = 'Carregando...';
+      abrirPainel();
+    });
+  });
+}
+abrirPainel();
 // Uma vez só (fora de carregar(), que pode rodar de novo por SSE — Fase 5)
 // — chamar de novo duplicaria os ouvintes de clique do sino.
 if (window.montarCentralNotificacoes) window.montarCentralNotificacoes();

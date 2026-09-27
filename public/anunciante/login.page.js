@@ -8,6 +8,12 @@ const msg = document.getElementById('msg');
   const criar = document.querySelector('header.site nav a[href="/anunciante/cadastro.html"]');
   if (plano && criar) criar.href = `/anunciante/cadastro.html?plano=${encodeURIComponent(plano)}`;
 })();
+// Veio do painel porque a sessão acabou de verdade (401 — layout.js,
+// `sessaoExpirada`): diz isso, em vez de a pessoa cair no login sem saber
+// por quê. Esta página não pergunta pela conta, então não volta sozinha.
+if (new URLSearchParams(window.location.search).get('expirou') === '1') {
+  msg.textContent = 'Sua sessão expirou. Entre de novo pra continuar.';
+}
 // Trava o botão enquanto o login responde (o hash de senha leva um tempo
 // de propósito); destrava em qualquer desfecho que não seja entrar.
 const botaoEntrar = form.querySelector('[type="submit"]');

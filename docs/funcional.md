@@ -197,7 +197,25 @@ Escrito por grupo, porque o padrão se repete.
   horas (saldo em exibições/horas, quando há saldo) e horas entregues no mês
   vs. contratadas vs. ainda por rodar; o gráfico por ponto mostra os 8 que
   mais exibiram, com contagem e percentual do total.
-- *Sem permissão:* sessão expirada → volta para o login.
+- *Sem permissão:* sessão expirada (só um 401 de verdade) → login com o
+  aviso "Sua sessão expirou. Entre de novo pra continuar." (27/09/2026). A
+  conta NÃO sai por 500, 503, rede caída ou leitura que passou de 20 s: na
+  abertura aparece "Não foi possível carregar sua conta agora." com
+  [Tentar novamente]; numa recarga em segundo plano (SSE, volta pra aba) a
+  tela fica como está e a próxima recarga tenta de novo. Entrar ou sair do
+  admin no mesmo navegador não mexe na conta (cookies separados).
+- *Enviar criativo* (27/09/2026): a mensagem passa por "Enviando o arquivo…
+  (%)" → "Arquivo recebido. Processando o vídeo…" → "Criativo enviado! Ele
+  entra em análise antes de ir pro ar." O card aparece como "processando"
+  assim que o arquivo chega e se atualiza sozinho (SSE). "Não foi possível"
+  só aparece quando o servidor recusou e disse por quê (arquivo ilegível,
+  duração acima do plano, limite, armazenamento fora) — e aí nada foi
+  criado. Quando a resposta se perde (proxy devolveu 524, conexão caiu), o
+  painel pergunta ao servidor pela chave do envio e diz a verdade: enviado;
+  ainda processando ("não precisa enviar de novo"); ou "O envio não foi
+  concluído" com [Tentar de novo], que reenvia o mesmo arquivo com a mesma
+  chave — nunca dois criativos. Se só a lista não atualizou: "Criativo
+  enviado. Não conseguimos atualizar a lista agora." com [Atualizar lista].
 - *Lista longa:* criativos e exibições paginam a partir de 50 linhas.
 
 **Player (app Android — `docs/player-mvp-contract.md` §10)**
@@ -1337,8 +1355,10 @@ nunca envia e-mail por nós: todo SMTP é do Mostraí.
 | SMTP fora do ar / recusando | a mensagem fica na fila e é tentada de novo (30 s → 2 h, 6 vezes); depois, "abandonado" no admin. A operação que gerou o e-mail já valeu (RN-62) | o e-mail chega atrasado; código vencido não é enviado (a pessoa pede outro) |
 | Pessoa digitou o e-mail errado no cadastro | "Corrigir e-mail" no próprio aviso, com a senha; código novo pro endereço certo (RN-62) | o aviso volta com o endereço novo e o prazo do código novo |
 | Webhook sem `chargeId` consultável | vira pendência, **não credita no escuro** | administrador vê na fila |
-| Rede cai no meio do upload | o criativo não é criado; nada meio-gravado | "o envio falhou, tente de novo" |
-| ffmpeg falha ao normalizar | o criativo fica pendente, sem entrar na playlist | "estamos processando seu vídeo" |
+| Rede cai no meio do upload | o criativo não é criado; nada meio-gravado; o painel confere pela chave do envio antes de dizer qualquer coisa | "O envio não foi concluído" + [Tentar de novo] (mesma chave — não duplica) |
+| Resposta do upload se perde depois de o servidor concluir (524 do proxy, conexão caiu — 27/09/2026) | o criativo existe; o painel pergunta `GET /anunciantes/me/criativos/envios/:chave` | "Criativo enviado!" (ou "ainda processando", e o card atualiza sozinho) — nunca "falhou" |
+| ffmpeg falha ao normalizar | a linha temporária sai (não ocupa cota), o card "processando" some pelo SSE | "não foi possível processar esse arquivo…" |
+| Servidor reinicia no meio do FFmpeg (deploy) | a linha temporária sem arquivo há mais de 30 min é descartada no próximo upload/listagem | o card "processando" some; reenviar |
 | Duplo clique em assinar | a segunda chamada encontra assinatura aberta e devolve o mesmo link | mesma tela de pagamento |
 | Volta no navegador depois de pagar | a página de status consulta o Checkout | o estado real |
 | TV sem internet | toca o cache e tenta a cada ciclo | o vídeo continua rodando |
