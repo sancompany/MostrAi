@@ -401,21 +401,43 @@ async function preverPagamento(conta, plano, db = pool) {
 // ciclo daria sem benefício nenhum no caminho (a conta de sempre: soma a
 // partir do fim da cobertura paga, se ainda vale). Devolve o que aconteceu,
 // pra quem chama notificar DEPOIS do COMMIT.
-async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio) {
+//
+// `substituida` (revisão Codex do PR #78): o ciclo é de uma assinatura que o
+// cliente já trocou por outra (cancelada ao assinar outro plano) — uma
+// renovação que estava em trânsito e chegou atrasada. O dinheiro entrou, então
+// os dias contam; mas ela nunca desfaz a escolha mais nova (o plano guardado
+// ou o plano pago em vigor continuam os mesmos) nem encerra o benefício.
+async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio, { substituida = false } = {}) {
   const meses = Number(plano.compromisso_meses) || 1;
   const beneficio = await beneficioEmVigor(db, conta);
   const eventos = [];
 
-  if (beneficio && nivelDoTier(plano.tier) <= beneficio.nivel) {
+  if (beneficio && (substituida || nivelDoTier(plano.tier) <= beneficio.nivel)) {
     // Benefício igual ou maior segue; o pago espera, com o tempo guardado.
+    // Ciclo atrasado de assinatura substituída: soma os dias no plano que
+    // já está guardado (o escolhido depois), sem trocá-lo.
     await db.query(
       `UPDATE anunciantes
-          SET plano_pago_guardado_id = $2,
+          SET plano_pago_guardado_id = CASE WHEN $4 THEN COALESCE(plano_pago_guardado_id, $2) ELSE $2 END,
               plano_pago_guardado_dias = COALESCE(plano_pago_guardado_dias, 0) + $3
         WHERE id = $1`,
-      [conta.id, plano.id, diasDeMeses(meses)],
+      [conta.id, plano.id, diasDeMeses(meses), substituida],
     );
     eventos.push({ tipo: 'pago_depois_do_beneficio', beneficio });
+  } else if (
+    substituida &&
+    conta.plano_id &&
+    !conta.plano_cortesia &&
+    conta.data_expiracao &&
+    vigencia.coberturaVigente(conta.data_expiracao)
+  ) {
+    // Sem benefício, com outro plano pago em vigor: a cobertura estende pelos
+    // meses pagos, e o plano continua o escolhido depois.
+    await db.query('UPDATE anunciantes SET data_expiracao = $2::timestamptz WHERE id = $1', [
+      conta.id,
+      expiracaoSemBeneficio,
+    ]);
+    return eventos;
   } else {
     if (beneficio) {
       // Pago de nível maior: entra na hora e o benefício acaba. Créditos não

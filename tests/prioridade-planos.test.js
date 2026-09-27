@@ -78,6 +78,7 @@ async function apagar(id) {
     'notificacoes',
     'planos_administrativos',
     'creditos_ledger',
+    'ciclos_contratados',
     'cobrancas_confirmadas',
     'comissoes',
     'eventos',
@@ -436,7 +437,20 @@ async function beneficioSobrePago(tierBeneficio, tierPago) {
     `INSERT INTO cobrancas_confirmadas (anunciante_id, plano_id, valor, nota_fiscal_status) VALUES ($1, $2, 199.99, 'pendente')`,
     [c.id, PLANO[tierPago]],
   );
+  await cicloPagoDe(c.id, PLANO[tierPago], paga.id);
   return { c, paga };
+}
+
+// O snapshot que um ciclo pago de verdade deixa (migration 087): é por ele
+// que uma assinatura cancelada "já teve ciclo pago" e sua renovação atrasada
+// ainda credita.
+async function cicloPagoDe(contaId, planoId, assinaturaId) {
+  await pool.query(
+    `INSERT INTO ciclos_contratados (anunciante_id, plano_id, assinatura_id, origem, ciclo_meses, valor_ciclo,
+                                     exibicoes_previstas_mes, exibicoes_previstas_ciclo)
+     VALUES ($1, $2, $3, 'compra', 1, 199.99, 1, 1)`,
+    [contaId, planoId, assinaturaId],
+  );
 }
 
 async function retrato(contaId) {
@@ -581,6 +595,95 @@ test('benefício + pago A (mesmo plano) → contratar B: troca no plano guardado
     await app.fechar();
     await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [c.id]);
     await pool.query("DELETE FROM webhooks_processados WHERE id LIKE '%beco%'");
+    await apagar(c.id);
+  }
+});
+
+// Revisão Codex do PR #78: renovação ATRASADA da assinatura antiga A (já
+// cancelada, mas com ciclo pago antes — o dinheiro entrou de verdade)
+// processada DEPOIS de B pago. O ciclo soma os dias pagos, mas nunca desfaz
+// a escolha mais nova do cliente nem encerra o benefício.
+async function pagarPorWebhook(assinaturaId) {
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    throw new Error(`o pagamento v2 não consulta o Checkout: ${url}`);
+  };
+  try {
+    await sc.processarWebhookAssinatura({
+      versao: 2,
+      tipo: 'assinatura',
+      eventoId: `evt-atraso-${randomUUID()}`,
+      ocorridoEm: new Date().toISOString(),
+      planoId: assinaturaId,
+      documento: '11144477735',
+      assinaturaId: `sub-atraso-${randomUUID()}`,
+      chargeId: `pay-atraso-${randomUUID()}`,
+      statusFinanceiro: 'confirmado',
+      ciclo: 'MONTHLY',
+      cicloCanonico: 'mensal',
+      metodoPagamento: 'assinatura',
+      evento: 'cobranca_confirmada',
+      valor: 99.99,
+    });
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+}
+
+test('benefício: renovação atrasada da assinatura antiga A, depois de B pago, soma os dias e mantém B', async () => {
+  const { c, paga } = await beneficioSobrePago('pro', 'pro');
+  const cancel = contandoCancelamentos();
+  const app = await subirApp();
+  try {
+    const r = await app.assinar(c.id, PLANO.essencial, { confirmarBeneficio: true });
+    assert.equal(r.status, 200, JSON.stringify(r.corpo));
+    const { rows: novas } = await pool.query(`SELECT id FROM assinaturas WHERE anunciante_id = $1 AND plano_id = $2`, [
+      c.id,
+      PLANO.essencial,
+    ]);
+    await pagarPorWebhook(novas[0].id); // B pago
+    await pagarPorWebhook(paga.id); // renovação atrasada de A (cancelada)
+    const [conta] = (await retrato(c.id)).conta;
+    assert.equal(conta.plano_id, PLANO.pro, 'o benefício continua na frente');
+    assert.equal(conta.plano_cortesia, true);
+    assert.equal(conta.plano_pago_guardado_id, PLANO.essencial, 'B continua sendo o plano guardado');
+    assert.equal(conta.plano_pago_guardado_dias, 30 + 2 * diasDeUmMes(), 'os dias pagos de A e B somam');
+    const { rows: beneficios } = await pool.query(
+      `SELECT status FROM planos_administrativos WHERE anunciante_id = $1`,
+      [c.id],
+    );
+    assert.deepEqual(
+      beneficios.map((b) => b.status),
+      ['ativo'],
+    );
+  } finally {
+    cancel.restaurar();
+    await app.fechar();
+    await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [c.id]);
+    await pool.query("DELETE FROM webhooks_processados WHERE id LIKE '%atraso%'");
+    await apagar(c.id);
+  }
+});
+
+test('sem benefício: renovação atrasada de uma assinatura já substituída estende a cobertura e mantém o plano atual', async () => {
+  const c = await contaComBeneficio('essencial', { plano_cortesia: false, cortesia_motivo: null });
+  await pool.query('DELETE FROM planos_administrativos WHERE anunciante_id = $1', [c.id]);
+  // A (Pro) paga e depois cancelada; B (Essencial) é o plano pago em vigor.
+  const antiga = await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO.pro, status: 'cancelada' });
+  await cicloPagoDe(c.id, PLANO.pro, antiga.id);
+  await assinaturasRepo.criar({ anuncianteId: c.id, planoId: PLANO.essencial, status: 'ativa' });
+  const antes = (await retrato(c.id)).conta[0];
+  try {
+    await pagarPorWebhook(antiga.id);
+    const [conta] = (await retrato(c.id)).conta;
+    assert.equal(conta.plano_id, PLANO.essencial, 'o plano escolhido depois não volta pro antigo');
+    assert.ok(
+      String(conta.data_expiracao).slice(0, 10) > String(antes.data_expiracao).slice(0, 10),
+      'o ciclo pago estende a cobertura',
+    );
+  } finally {
+    await pool.query('DELETE FROM ciclos_contratados WHERE anunciante_id = $1', [c.id]);
+    await pool.query("DELETE FROM webhooks_processados WHERE id LIKE '%atraso%'");
     await apagar(c.id);
   }
 });

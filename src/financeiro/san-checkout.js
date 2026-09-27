@@ -814,7 +814,11 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
       await cliente.query('ROLLBACK');
       return registrarPendencia(contexto, MOTIVO_INTENCAO_CANCELADA);
     }
-    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao);
+    // Renovação atrasada de uma assinatura que o cliente já trocou por outra
+    // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
+    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao, {
+      substituida: ['cancelada', 'trocada'].includes(assinaturaTravada?.status),
+    });
     // Primeiro ciclo pago: a assinatura deixa de ser só um link gerado
     // (migration 089). Na mesma transação da cobrança.
     if (assinaturaTravada?.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
