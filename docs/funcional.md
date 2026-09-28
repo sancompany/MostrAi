@@ -476,7 +476,11 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
   4 pontos e 41 h (14 h do Básico + 27 h do Essencial); Básico + Pro = 8
   pontos e 98 h. O ponto do Básico é sempre o próprio; os do plano seguem a
   escolha normal (RN-49). Peça e criativos no ar valem o MAIOR das duas
-  origens (é o mesmo conjunto de peças da conta).
+  origens (é o mesmo conjunto de peças da conta). A vaga do Básico roda as
+  peças mais novas que cabem nesse teto HOJE (15 s só com o Básico): peça
+  mais longa — sobra de um plano vencido, ou subida pelo operador — não toca
+  pelo Básico nem toma a vez de uma que cabe, e o painel diz por quê
+  ("acima da duração máxima").
 · **Tempo é a fonte de verdade:** 14 h = 140 s por hora aberta (régua da
   vitrine, 12 h × 30 dias). Como 140 não divide por 15, cada hora recebe a
   sua fatia de uma sequência estável (9, 9, 10 peças de 15 s…) cuja média é
@@ -493,7 +497,9 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
   somam nessa linha. A hora sem sinal (rede de segurança) cobra o Básico que
   valia naquela hora (início/fim da linha), com a peça que a geração teria
   usado nela. O saldo da conta (banco de horas) se divide por todos os
-  pontos que o puxam na mesma hora — os da fatia comercial e os do Básico.
+  pontos que o puxam na mesma hora — os da fatia comercial e os do Básico em
+  operação (ponto com a tela em reparo continua com o Básico, mas não puxa
+  saldo, então não entra na divisão).
 · **Sucede a cota de autoanúncio** (legado zerado desde a 049): com o Básico
   ativo a cota não entra, senão a dona apareceria em dobro.
 *Quem vê:* o dono (card "Benefício de ponto · Plano Básico" separado de "Seu

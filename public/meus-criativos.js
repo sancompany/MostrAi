@@ -49,6 +49,8 @@
         const motivo = window.ENTRADA_NO_AR.motivo[c.entrada?.motivo];
         if (c.entrada?.motivo === 'fora_do_limite_de_pecas')
           return `Aprovada. Seu plano roda ${plural(dados.limiteNoAr, 'peça', 'peças')} ao mesmo tempo — esta entra quando outra sair.`;
+        if (c.entrada?.motivo === 'acima_da_duracao_maxima')
+          return `Aprovada, mas passa de ${dados.duracaoMaxima} s — o máximo que sua conta roda hoje. Envie uma versão mais curta.`;
         if (!dados.contaVeicula) return 'Aprovada. Entra no ar quando o seu plano estiver ativo.';
         return motivo ? `Aprovada, mas ainda sem horário: ${motivo}.` : 'Aprovada.';
       }

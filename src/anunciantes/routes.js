@@ -1328,9 +1328,22 @@ async function criativosComSituacao(conta) {
   // isto se chamava `no_ar` — e era o que o painel mostrava como "No ar"
   // sem nenhuma exibição ter acontecido. "No ar" agora é comprovante
   // confirmado (src/anunciantes/entrada-no-ar.js).
-  const rodizio = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
+  // Duas vagas, a mesma escolha do gerador: a do plano (as N mais novas, N =
+  // limite do plano) e a do Básico (as mais novas que cabem no teto de peça
+  // da conta hoje — `basicoRepo.cabeNoTeto`, a regra de `pecasDoBasico`).
+  const teto = basicoRepo.direitosCombinados(vigente, basicos).duracaoMaxima;
+  const doPlano = vigente ? prontos.slice(0, limiteDeCriativos(false, vigente.limite_criativos, prontos.length)) : [];
+  const doBasico = prontos.filter((c) => basicoRepo.cabeNoTeto(c.duracao_segundos, teto)).slice(0, limiteBasico);
+  const rodizio = new Set(contaVeicula ? [...doPlano, ...doBasico].map((c) => c.id) : []);
   const comRodizio = criativos.map((c) => ({ ...c, em_rodizio: rodizio.has(c.id) }));
-  const entradas = await entradaNoArDasPecas({ conta, plano: vigente, basicos, contaVeicula, criativos: comRodizio });
+  const entradas = await entradaNoArDasPecas({
+    conta,
+    plano: vigente,
+    basicos,
+    teto,
+    contaVeicula,
+    criativos: comRodizio,
+  });
   return {
     criativos: comRodizio.map((c) => {
       const entrada = entradas.get(c.id) || null;

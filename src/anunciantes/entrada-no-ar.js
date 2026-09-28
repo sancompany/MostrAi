@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const pontosRepo = require('../pontos/repository');
 const { pontosDoAnunciante } = require('../lib/pacing');
+const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 
 // Primeira entrada no ar (estação de distribuição, 27/09/2026): entre
@@ -169,11 +170,14 @@ async function primeiraHoraProgramada(contaId, desde, db = pool) {
 
 // Decide o estado de cada peça aprovada. `criativos`: linhas de `criativos`
 // com `em_rodizio` (dentro do limite de peças simultâneas do plano, conta
-// veiculando). Devolve Map(id → entrada).
+// veiculando). `teto`: o teto de peça da conta hoje — só com o Básico, a
+// peça mais longa que ele não roda nunca, e o motivo diz isso em vez de
+// "espere outra sair". Devolve Map(id → entrada).
 async function entradaNoArDasPecas({
   conta,
   plano,
   basicos = [],
+  teto = null,
   contaVeicula,
   criativos,
   agora = new Date(),
@@ -209,9 +213,11 @@ async function entradaNoArDasPecas({
           ? conta.suspenso
             ? 'conta_suspensa'
             : 'sem_plano_vigente'
-          : c.arquivo_normalizado_url
-            ? 'fora_do_limite_de_pecas'
-            : 'processando',
+          : !c.arquivo_normalizado_url
+            ? 'processando'
+            : !plano && !cabeNoTeto(c.duracao_segundos, teto)
+              ? 'acima_da_duracao_maxima'
+              : 'fora_do_limite_de_pecas',
       });
       continue;
     }

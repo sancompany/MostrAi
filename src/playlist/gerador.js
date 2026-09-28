@@ -630,15 +630,16 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       // Mesma divisão da entrada comercial. A fatia comercial da dona vem de
       // `cobertura` quando ela está em `todos`; fora dele (a trava de ramo a
       // barra no próprio ponto), é refeita — só quando há saldo pra dividir.
+      // Este ponto conta sempre: está puxando o saldo agora, mesmo antes de
+      // o status dele chegar a "em operação".
       const comercialDaDona =
         cobertura.get(basico.conta_id) ??
         (aberta && saldo ? await coberturaComercialDaConta(basico.conta_id, pontosNoAr, pontosBloqueados) : []);
+      const pontosDoBasico = [...(basicosPorConta.get(basico.conta_id) || []), dispositivo.ponto_id];
       const banco = aberta
         ? Math.min(
             Math.ceil(
-              (saldo?.segundos || 0) /
-                pontosQuePuxamOSaldo(comercialDaDona, basicosPorConta.get(basico.conta_id)) /
-                duracaoValida(duracao),
+              (saldo?.segundos || 0) / pontosQuePuxamOSaldo(comercialDaDona, pontosDoBasico) / duracaoValida(duracao),
             ),
             Math.floor(insercoes * (saldo ? multiplicadorPorIdade(saldo.idadeMeses) : 1)),
           )
@@ -925,19 +926,16 @@ async function obrigacoesDaTela(dispositivo, { desde = new Date(Date.now() - 62 
   //
   // `duracaoBasico`: a peça que a geração ao vivo usa quando só o Básico vale
   // na hora (o comercial vencido naquela hora, ou fora deste ponto) — as
-  // peças do Básico, não a média do plano. Com o comercial valendo, as duas
-  // origens rodam a peça da conta (`duracaoSegundos`), como ao vivo.
+  // peças da vaga do Básico (`pecasDoBasico`, a mesma escolha do ao vivo),
+  // não a média do plano. Com o comercial valendo, as duas origens rodam a
+  // peça da conta (`duracaoSegundos`), como ao vivo.
   const basicos = await basicoRepo.doPontoDesde(dispositivo.ponto_id, desde);
   for (const b of basicos) {
-    const { rows } = await pool.query(
-      `SELECT a.suspenso, ARRAY(SELECT duracao_segundos FROM criativos
-                                 WHERE anunciante_id = a.id AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
-                                 ORDER BY created_at DESC LIMIT $2) AS duracoes
-         FROM anunciantes a WHERE a.id = $1`,
-      [b.conta_id, b.limite_criativos],
-    );
-    if (!rows[0] || rows[0].suspenso || !rows[0].duracoes.length) continue;
-    const duracaoBasico = duracaoMedia(rows[0].duracoes.map((d) => ({ duracaoSegundos: d })));
+    const { rows } = await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [b.conta_id]);
+    if (!rows[0] || rows[0].suspenso) continue;
+    const pecas = await basicoRepo.pecasDoBasico(b);
+    if (!pecas.length) continue;
+    const duracaoBasico = duracaoMedia(pecas);
     let conta = contas.find((c) => c.anuncianteId === b.conta_id);
     if (!conta) {
       conta = {

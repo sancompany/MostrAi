@@ -869,8 +869,10 @@ Decisão:
    Básico é sempre o próprio (sem seletor, sem trava de ramo); os pontos do
    plano seguem a RN-49. Pontos e horas somam; duração e criativos no ar
    valem o maior das origens (mesmo conjunto de peças) — plano sem teto de
-   peça continua sem teto. O saldo da conta se divide pelos pontos da fatia
-   comercial + os do Básico (todos puxam o mesmo saldo na mesma hora).
+   peça continua sem teto; a vaga do Básico só roda peça dentro desse teto
+   de hoje (`pecasDoBasico`, 15 s só com o Básico). O saldo da conta se
+   divide pelos pontos da fatia comercial + os do Básico em operação (todos
+   puxam o mesmo saldo na mesma hora; ponto em reparo não puxa).
 4. **Tempo como fonte**: 140 s/h não dividem por 15 s; em vez de arredondar
    pra baixo (13,5 h), cada hora recebe floor((k+1)·s/d) − floor(k·s/d)
    inserções (k = índice da hora + índice do dia: a fatia de cada hora do

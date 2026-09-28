@@ -1,6 +1,9 @@
+require('express-async-errors');
 const test = require('node:test');
 const assert = require('node:assert');
 const { randomUUID } = require('node:crypto');
+const express = require('express');
+const session = require('express-session');
 const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const { confirmarComDedup } = require('../src/playlist/execucoes-repository');
@@ -66,21 +69,51 @@ async function novaConta({ plano = null, duracao = 15 } = {}) {
     senha: 'x',
   });
   criados.contas.push(conta.id);
-  if (plano) {
-    await pool.query(
-      `UPDATE anunciantes SET plano_id = $2, data_inicio_cobertura = '2026-07-01', data_expiracao = '2099-12-31' WHERE id = $1`,
-      [conta.id, plano],
-    );
-  }
+  if (plano) await comPlano(conta.id, plano);
+  await criativoAprovado(conta.id, duracao);
+  return conta;
+}
+
+const comPlano = (contaId, plano) =>
+  pool.query(
+    `UPDATE anunciantes SET plano_id = $2, data_inicio_cobertura = '2026-07-01', data_expiracao = '2099-12-31' WHERE id = $1`,
+    [contaId, plano],
+  );
+
+async function criativoAprovado(contaId, duracao) {
   const criativo = await criativosRepo.criar({
-    anunciante_id: conta.id,
+    anunciante_id: contaId,
     arquivo_original_url: 'original.mp4',
     arquivo_normalizado_url: `https://exemplo.test/basico-${randomUUID()}.mp4`,
     thumbnail_url: null,
     duracao_segundos: duracao,
   });
   await criativosRepo.atualizar(criativo.id, { status: 'aprovado' });
-  return conta;
+  return criativo;
+}
+
+// Rotas do anunciante com a sessão da conta no cabeçalho (o mesmo apoio de
+// tests/meus-criativos.test.js).
+async function subirApp() {
+  const app = express();
+  app.use(express.json());
+  app.use(session({ secret: 'teste-basico', resave: false, saveUninitialized: false }));
+  app.use((req, _res, proximo) => {
+    if (req.headers['x-conta']) req.session.anuncianteId = Number(req.headers['x-conta']);
+    proximo();
+  });
+  app.use(require('../src/anunciantes/routes').router);
+  app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
+  const server = app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return {
+    get: async (caminho, conta) => {
+      const r = await fetch(`${base}${caminho}`, { headers: { 'x-conta': String(conta) } });
+      return { status: r.status, corpo: await r.json().catch(() => null) };
+    },
+    fechar: () => new Promise((r) => server.close(r)),
+  };
 }
 
 // Ponto da conta, fora do sorteio automático, com uma tela. `instalar`:
@@ -395,15 +428,21 @@ test('a parte Básico congela junto com o total: extra com total fixado não que
 });
 
 test('Saldo de Veiculação: dividido pelos pontos do Básico também, sem puxar o saldo inteiro em cada ponto', async () => {
-  // Dona de dois estabelecimentos, só com o Básico: cada ponto puxa metade.
+  // Dona de três estabelecimentos, só com o Básico. Dois puxam o saldo (este,
+  // gerando agora, e outro em operação); o terceiro está com a tela em
+  // reparo — o Básico continua, mas o ponto não gera playlist, não puxa saldo
+  // e não entra na divisão (revisão Codex do #93).
   const dona = await novaConta();
   const p1 = await pontoDaConta(dona.id);
   await pontoDaConta(dona.id);
+  const emReparo = await pontoDaConta(dona.id);
+  await dispositivosRepo.atualizar(emReparo.telaId, { status: 'reparo' });
+  assert.strictEqual((await basicoRepo.ativosDaConta(dona.id)).length, 3, 'reparo não encerra o Básico');
   await recuarInicio(p1.pontoId);
   await saldoNoBanco(dona.id, 150);
   const hora = emMatao(6, 10);
   await gerador.gerarPlaylistDaHora(await tela(p1.telaId), hora);
-  assert.strictEqual(await bancoProgramado(dona.id, p1.telaId, hora), 5, '150 s ÷ 2 pontos ÷ 15 s');
+  assert.strictEqual(await bancoProgramado(dona.id, p1.telaId, hora), 5, '150 s ÷ 2 pontos que puxam ÷ 15 s');
 
   // Essencial num ponto de outro + Básico no próprio (barrada nele pela trava
   // de ramo, sem escolher o próprio): os dois pontos dividem o mesmo saldo.
@@ -434,14 +473,7 @@ test('Saldo de Veiculação: dividido pelos pontos do Básico também, sem puxar
 test('rede de segurança: com o comercial vencido na hora, o Básico usa a peça do Básico, como ao vivo', async () => {
   // Destaque: 2 peças no ar (5 s e 15 s, média 10 s); o Básico roda 1 — a mais nova, 15 s.
   const conta = await novaConta({ plano: 'destaque-1m', duracao: 5 });
-  const nova = await criativosRepo.criar({
-    anunciante_id: conta.id,
-    arquivo_original_url: 'original.mp4',
-    arquivo_normalizado_url: `https://exemplo.test/basico-${randomUUID()}.mp4`,
-    thumbnail_url: null,
-    duracao_segundos: 15,
-  });
-  await criativosRepo.atualizar(nova.id, { status: 'aprovado' });
+  await criativoAprovado(conta.id, 15);
   const ponto = await pontoDaConta(conta.id);
   await emOperacao(ponto);
   await recuarInicio(ponto.pontoId);
@@ -475,5 +507,47 @@ test('rede de segurança: com o comercial vencido na hora, o Básico usa a peça
     linha,
     { segundos_obrigacao: basico, segundos_obrigacao_basico: basico, duracao_segundos: 15 },
     'só o Básico valia: peça de 15 s, não a média de 10 s do plano',
+  );
+});
+
+test('vaga do Básico: peça acima do teto da conta não toca pelo Básico nem toma a vez da que cabe', async () => {
+  // Só com o Básico (teto 15 s): a peça que cabe é a mais antiga; a mais nova
+  // tem 30 s (sobra de um plano vencido, ou subida pelo operador).
+  const conta = await novaConta();
+  const curta = (await pool.query('SELECT id FROM criativos WHERE anunciante_id = $1', [conta.id])).rows[0].id;
+  const ponto = await pontoDaConta(conta.id);
+  await recuarInicio(ponto.pontoId);
+  const longa = await criativoAprovado(conta.id, 30);
+  const [b] = await basicoRepo.ativosDaConta(conta.id);
+  assert.deepStrictEqual(
+    (await basicoRepo.pecasDoBasico(b)).map((p) => p.criativoId),
+    [curta],
+    'a de 15 s, não a de 30 s mais nova',
+  );
+  const playlist = await gerador.gerarPlaylistDaHora(await tela(ponto.telaId), emMatao(7, 10));
+  const itens = playlist.itens.filter((i) => i.anuncianteId === conta.id);
+  assert.ok(itens.length > 0, 'o Básico toca, com a peça que cabe');
+  assert.ok(
+    itens.every((i) => i.criativoId === String(curta)),
+    'a de 30 s não entra na vaga do Básico',
+  );
+  // O painel diz o mesmo — e o motivo é a duração, não "espere outra sair".
+  const app = await subirApp();
+  try {
+    const r = await app.get('/anunciantes/me/criativos', conta.id);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    const por = Object.fromEntries(r.corpo.criativos.map((c) => [c.id, c]));
+    assert.strictEqual(por[longa.id].entrada.motivo, 'acima_da_duracao_maxima');
+    assert.ok(!['acima_da_duracao_maxima', 'fora_do_limite_de_pecas'].includes(por[curta].entrada.motivo));
+  } finally {
+    await app.fechar();
+  }
+  // Com o plano comercial valendo (Destaque, peça até 20 s), o teto é o da
+  // conta — o maior das origens: a peça de 20 s cabe na vaga do Básico.
+  await comPlano(conta.id, 'destaque-1m');
+  const media = await criativoAprovado(conta.id, 20);
+  assert.deepStrictEqual(
+    (await basicoRepo.pecasDoBasico(b)).map((p) => p.criativoId),
+    [media.id],
   );
 });

@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
 const { SQL_PONTOS_ELEGIVEIS } = require('../creditos/ponto');
 const { horasDeTelaPorMes, segundosDeObrigacao, duracaoValida } = require('../lib/pacing');
 
@@ -113,19 +114,60 @@ async function ativoNoPonto(pontoId, db = pool) {
   return rows[0] || null;
 }
 
-// Os pontos do Básico ativo de cada conta (Map conta → [ponto]). O gerador
-// divide o Saldo de Veiculação da conta por TODOS os pontos que puxam o saldo
-// na mesma hora — a fatia comercial e os do Básico —, não só pela comercial.
+// Os pontos EM OPERAÇÃO do Básico ativo de cada conta (Map conta → [ponto]).
+// O gerador divide o Saldo de Veiculação da conta pelos pontos que puxam o
+// saldo na mesma hora — a fatia comercial e os do Básico. Ponto do Básico
+// com a tela em reparo, revogada ou inativa continua com o benefício, mas não
+// gera playlist nem puxa saldo: fica fora, como fica fora da fatia comercial
+// (`pontosEmOperacao`) — senão os outros pontos repunham menos à toa
+// (revisão Codex do #93).
 async function pontosPorConta(db = pool) {
   const { rows } = await db.query(
-    `SELECT x.conta_id, array_agg(x.ponto_id) AS pontos FROM (${SQL_ATIVOS}) x GROUP BY x.conta_id`,
+    `SELECT x.conta_id, array_agg(x.ponto_id) AS pontos FROM (${SQL_ATIVOS}) x
+      WHERE x.ponto_status = 'em_operacao' GROUP BY x.conta_id`,
   );
   return new Map(rows.map((r) => [r.conta_id, r.pontos]));
 }
 
+// A peça cabe no teto (`null` = sem teto). Mesma régua de duração do gerador
+// (`duracaoValida`: peça sem duração conta como a padrão).
+const cabeNoTeto = (duracaoSegundos, teto) => teto == null || duracaoValida(duracaoSegundos) <= teto;
+
+// O teto de peça da conta HOJE — a mesma conta do upload (`direitosCombinados`):
+// o maior entre o Básico e o plano comercial dentro da validade; plano sem
+// teto próprio, sem teto.
+async function tetoDePeca(beneficio, db = pool) {
+  const { rows } = await db.query(
+    `SELECT p.duracao_maxima_segundos FROM anunciantes a
+       JOIN planos p ON p.id = a.plano_id AND ${vigencia.vigenteSql('a.data_expiracao')}
+      WHERE a.id = $1`,
+    [beneficio.conta_id],
+  );
+  return direitosCombinados(rows[0] || null, [beneficio]).duracaoMaxima;
+}
+
+// As peças da vaga do Básico: as aprovadas mais novas que cabem no teto de
+// peça da conta hoje, até o limite de criativos do Básico. Peça mais longa
+// (sobra de um plano vencido, ou subida pelo operador) não toca pelo Básico
+// nem toma a vez de uma que cabe (revisão Codex do #93). Uma regra só pro
+// gerador e pra rede de segurança; o painel usa o mesmo `cabeNoTeto`.
+async function pecasDoBasico(beneficio, db = pool) {
+  const [teto, { rows }] = await Promise.all([
+    tetoDePeca(beneficio, db),
+    db.query(
+      `SELECT id AS "criativoId", arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos",
+              conteudo_sha256 AS "contentHash"
+         FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
+        ORDER BY created_at DESC`,
+      [beneficio.conta_id],
+    ),
+  ]);
+  return rows.filter((c) => cabeNoTeto(c.duracaoSegundos, teto)).slice(0, beneficio.limite_criativos);
+}
+
 // O que o gerador precisa: o Básico ativo do ponto, só se a conta pode
 // veicular agora (conta suspensa não toca nada — nem o comercial, nem o
-// Básico), com as peças aprovadas dela no limite do Básico.
+// Básico), com as peças da vaga do Básico (`pecasDoBasico`).
 // `hora`: a hora sendo gerada — o Básico só entra se já tinha começado
 // antes do fim dela (backfill e testes geram horas passadas).
 async function paraVeicularNoPonto(pontoId, hora = new Date(), db = pool) {
@@ -136,13 +178,7 @@ async function paraVeicularNoPonto(pontoId, hora = new Date(), db = pool) {
   ]);
   const b = rows[0];
   if (!b) return null;
-  const { rows: criativos } = await db.query(
-    `SELECT id AS "criativoId", arquivo_normalizado_url AS url, duracao_segundos AS "duracaoSegundos",
-            conteudo_sha256 AS "contentHash"
-       FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
-      ORDER BY created_at DESC LIMIT $2`,
-    [b.conta_id, b.limite_criativos],
-  );
+  const criativos = await pecasDoBasico(b, db);
   return criativos.length ? { ...b, criativos } : null;
 }
 
@@ -276,6 +312,8 @@ module.exports = {
   ativosDaConta,
   ativoNoPonto,
   pontosPorConta,
+  cabeNoTeto,
+  pecasDoBasico,
   paraVeicularNoPonto,
   segundosDoBasicoNaHora,
   historicoDaConta,

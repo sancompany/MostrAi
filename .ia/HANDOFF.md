@@ -15,7 +15,10 @@ que falha no código anterior): a parte Básico congela junto com o total da
 hora (o CHECK derrubava a playlist na hora do deploy), plano sem teto de peça
 continua sem teto, saldo dividido também pelos pontos do Básico, fim com o
 instante registrado, sequência por hora girando dia a dia, rede de segurança
-com a peça certa. Fica pro dono: Básico de ponto cujas telas foram todas
+com a peça certa. Revisão do Codex no #93 (2 P2, também com teste): a vaga
+do Básico só roda peça dentro do teto de peça da conta hoje
+(`pecasDoBasico`; o painel mostra "acima da duração máxima"), e o saldo só
+se divide pelos pontos do Básico em operação. Fica pro dono: Básico de ponto cujas telas foram todas
 removidas/revogadas continua ativo (ADR-025 como escrito). A estação de
 categorias está PARADA por ordem do dono até este PR estar aberto e
 documentado — não retomar sem ele.
