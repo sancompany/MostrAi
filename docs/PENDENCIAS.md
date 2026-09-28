@@ -5336,10 +5336,55 @@ a promoção exibida em Planos e a aplicada no preço; R1 fim em 31/12 às
 visualmente; R4 ordem/destino do CTA não configuráveis — e agora também a
 promoção sem CTA não existe (o CTA "Ver planos" é fixo).
 
-## T. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
+## T. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
+
+**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), mergeado com autorização do dono em 28/09/2026):** "Onde seu anúncio
+aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
+card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
+mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,
+nome com o estado ao lado, endereço com bairro e cidade, segmento, horário,
+ocupação, "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o
+estado escrito ("Selecionar ponto", "Selecionado", "Limite do plano
+atingido", "Indisponível para escolha"). Selecionado: borda da marca com
+anel e fundo levemente alaranjado. Próprio ponto: selo "Seu ponto" sobre a
+foto, borda quente e o texto da escolha num quadro claro — nunca marcado
+sozinho. Grade: 3 por fileira no desktop e no tablet, 1 no celular (foto
+2:1, a página rola); no tablet/desktop a lista rola por dentro (720 px).
+Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-029) —
+**sem mudança de backend nem de banco**. Seleção, limite, trava, salvamento,
+contador, busca e distribuição automática: o mesmo código de antes. E2E:
+`tests/e2e/35-cards-pontos-cliente.mjs` (novo) e o 26 passando sem mudança
+de comportamento.
+
+**Com o dono:**
+
+- **T1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
+  os pontos mandaram, nomes longos, o próprio ponto.
+- **T2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
+  redesenha este card (foto pela rota `pontos-disponiveis`, com `uf`), troca
+  "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
+  escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
+  mexem em `htmlPontoEscolha`, no bloco `.ponto-escolha` de `style.css` e em
+  `.pontos-selecao` de `painel.css`. Com o #100 na `main`, quem retomar o #90
+  resolve o conflito tirando a parte visual do card dele (fica a deste); a
+  fila de salvamento é mudança de lógica e continua decisão à parte.
+- **T3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
+  informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
+  não tem horário). Mantido como estava — trocar o texto do cliente é
+  decisão de conteúdo, não desta estação.
+- **T4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
+  card de gestão (andamento, telas, benefício), que já usa a mesma foto, o
+  mesmo placeholder e o mesmo selo de estado. Trocar para o card com foto
+  grande em cima alonga a coluna lateral — só se o dono quiser.
+- **T5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
+  (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
+  card não mostra. Mostrar é decisão de produto (no modo automático diria
+  quais pontos saíram no sorteio).
+
+## U. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
 
 Estação isolada, branch e worktree próprias, PR próprio, **sem merge até o
-dono autorizar**. Decisão: ADR-029 (`.ia/DECISIONS.md`).
+dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
 
 **Feito:**
 
@@ -5389,14 +5434,14 @@ dono autorizar**. Decisão: ADR-029 (`.ia/DECISIONS.md`).
 
 **Achados fora desta estação (não alterados):**
 
-- T1 [ ] `public/style.css` tem um trecho inteiro repetido (≈ linhas
+- U1 [ ] `public/style.css` tem um trecho inteiro repetido (≈ linhas
       690–800 e 1290–1415: horário, foto, blocos, candidatura). A segunda
       cópia é a que vale — mexer só na primeira não surte efeito. Os estilos
       desta estação ficaram num bloco próprio no fim do arquivo, escopados
       em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
       arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
       já na `main`): o navegador descarta a regra que vem logo depois dela.
-- T2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
+- U2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
       número por JS quando a LARGURA do card muda, mas a fonte segue a
       largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
       1280 px, alargar a janela aumenta a fonte sem mudar o card, e o número

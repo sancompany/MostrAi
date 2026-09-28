@@ -44,7 +44,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.2 Dono de ponto — do painel à tela no ar
 
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
-2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir. Os dois pedidos ("Tornar-se ponto", com o comércio da conta, e "Novo estabelecimento") abrem no topo do Painel, na largura da página — formulário à esquerda e a prévia do card ("Assim vai aparecer", com o que acontece depois do envio) fixa à direita; uma coluna no celular, com a prévia depois dos botões —, e o erro de preenchimento aparece embaixo do próprio campo (estação dos formulários de ponto, 28/09/2026, ADR-029).
+2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir. Os dois pedidos ("Tornar-se ponto", com o comércio da conta, e "Novo estabelecimento") abrem no topo do Painel, na largura da página — formulário à esquerda e a prévia do card ("Assim vai aparecer", com o que acontece depois do envio) fixa à direita; uma coluna no celular, com a prévia depois dos botões —, e o erro de preenchimento aparece embaixo do próprio campo (estação dos formulários de ponto, 28/09/2026, ADR-030).
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
 4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação).
 5. O administrador cadastra as telas (Rede → o ponto → **+ Adicionar tela**; o nome é o ID da tela, `M-0235`, que nunca muda) e, na ficha de cada uma, clica **Gerar código**: o código de instalação (`XXXX-XXXX`) vale 30 minutos, uma vez só, só para aquela tela — RN-59.
@@ -1284,10 +1284,21 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
 cada ponto da rede com localização, estado operacional, horário, ocupação e
 se está selecionado, e o contador "X de N pontos selecionados" (N =
-`pontos_incluidos` do plano, do servidor). Vale pra plano pago **e** pra
-benefício (créditos/cortesia) — até 27/09/2026 o painel escondia a lista pro
-benefício. O ponto da própria conta aparece na mesma lista com destaque
-laranja, selo **Seu ponto**, rótulo "Veicular no próprio ponto" e o texto
+`pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
+cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
+Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o
+estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
+"Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado
+escrito — "Selecionar ponto", "Selecionado" (borda da marca), "Limite do
+plano atingido" ou "Indisponível para escolha" (sem espaço ou fechado pra
+escolha nova, card apagado). Clicar em qualquer parte do card marca; no
+mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
+se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
+segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
+são os de antes. Vale pra plano pago **e** pra benefício (créditos/cortesia)
+— até 27/09/2026 o painel escondia a lista pro benefício. O ponto da própria
+conta aparece na mesma lista com destaque (borda quente e o selo **Seu
+ponto** sobre a foto), rótulo "Veicular no próprio ponto" e o texto
 "Este estabelecimento pertence à sua conta. Você pode incluí-lo na
 cobertura da campanha ou anunciar somente em outros pontos da rede." Ele
 **nunca** vem marcado por ser da conta; marcado, conta no limite como

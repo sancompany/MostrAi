@@ -421,11 +421,56 @@ const TEXTO_MODO_AUTOMATICO =
 const TEXTO_SEU_PONTO =
   'Este estabelecimento pertence à sua conta. Você pode incluí-lo na cobertura da campanha ou anunciar somente em outros pontos da rede.';
 
-// Uma linha por ponto: nome, localização, estado operacional, horário,
-// ocupação e se está selecionado. O próprio ponto (a conta é dona do
-// comércio) vem na MESMA lista, com destaque — nunca marcado por isso: se
-// marcado, conta no limite do plano como qualquer outro.
-function htmlPontoEscolha(p) {
+// Ícones das linhas do card (traço herda a cor do texto — `.ponto-icone` no
+// CSS). Decorativos: o texto ao lado diz a mesma coisa.
+const ICONES_PONTO = {
+  endereco:
+    '<path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z"/><circle cx="12" cy="9.25" r="2.75"/>',
+  segmento:
+    '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+  horario: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
+  ocupacao: '<path d="M4 20h16M7 16v-4M12 16V7M17 16v-6"/>',
+  casa: '<path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5"/>',
+};
+const iconePonto = (nome) =>
+  `<svg class="ponto-icone" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICONES_PONTO[nome]}</svg>`;
+
+// Foto da fachada, segmento e bairro de cada ponto: a vitrine pública de
+// "Onde estamos" (GET /pontos — mesmos status que a lista da escolha,
+// STATUS_NA_REDE; confirmar-plano já lê a mesma rota). É enfeite, não regra:
+// se ela falhar — ou demorar mais que o prazo, que a lista espera por ela —,
+// o card cai no placeholder oficial, sem segmento, e a escolha continua
+// funcionando igual. Por isso nunca rejeita.
+const PRAZO_VITRINE_MS = 3000;
+async function buscarVitrineDosPontos() {
+  const abortar = new AbortController();
+  const prazo = setTimeout(() => abortar.abort(), PRAZO_VITRINE_MS);
+  try {
+    const r = await fetch(`${API_BASE_URL}/pontos`, { signal: abortar.signal });
+    const lista = r.ok ? await r.json() : [];
+    return new Map((Array.isArray(lista) ? lista : []).map((v) => [v.id, v]));
+  } catch {
+    return new Map();
+  } finally {
+    clearTimeout(prazo);
+  }
+}
+
+// Um card por ponto (estação dos cards do cliente, 28/09/2026): o MESMO
+// molde de Rede > Pontos do admin e da prévia da candidatura
+// (`.ponto-card.com-corpo`, style.css) — foto da fachada ou o placeholder
+// oficial, nome com o estado ao lado, endereço, segmento, horário e ocupação
+// — e a seleção no pé do card, dita em texto e não só na cor. O próprio
+// ponto (a conta é dona do comércio) vem na MESMA lista, com o selo "Seu
+// ponto" na foto e o texto que explica a escolha — nunca marcado por isso:
+// se marcado, conta no limite do plano como qualquer outro.
+//
+// Só a apresentação é deste card. O input, o `.cheio`, o `data-ponto-id` e o
+// `data-busca` são os de antes: travar no limite, salvar e contar continuam
+// em desenharPontos. As frases do pé ("Selecionado", "Limite do plano
+// atingido") são escolhidas pelo CSS a partir do estado do input — nenhum
+// caminho de código precisa lembrar de repintá-las.
+function htmlPontoEscolha(p, vitrine = {}) {
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
   // ainda. Bloquear ele por ocupação seria bloquear por um zero que
@@ -444,23 +489,48 @@ function htmlPontoEscolha(p) {
         : `${p.ocupacao}% vendido`;
   const estado = window.ROTULOS.ponto[p.status] || p.status;
   const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  // Endereço com a regra do resto do sistema (window.linhaEndereco — D5):
+  // "Rua, número - bairro, cidade". O bairro vem da vitrine, quando há.
+  const local = window.linhaEndereco(
+    { endereco: p.endereco, bairro: vitrine.bairro, cidade: p.cidade },
+    { comCidade: true },
+  );
+  const foto = vitrine.foto_instalacao_url
+    ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>`
+    : `<span class="ponto-foto-placeholder" aria-hidden="true">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</span>`;
+  const linha = (classe, icone, texto, id = '') =>
+    `<span class="ponto-linha ${classe}"${id ? ` id="${id}"` : ''}>${iconePonto(icone)}<span>${esc(texto)}</span></span>`;
+  // O nome acessível do checkbox é o nome do ponto (e o selo), não o card
+  // inteiro; estado, ocupação e a frase do pé entram como descrição.
+  const id = `ponto-escolha-${p.id}`;
   // <a> fica FORA do <label> de propósito: um link dentro de um label ainda
   // ativa o checkbox quando o clique borbulha até ele. O <label> é
-  // `display:contents` no CSS — os filhos viram itens do grid da linha.
-  return `<div class="ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
+  // `display:contents` no CSS — os filhos viram itens da grade do card, e o
+  // link do mapa fica por cima da foto, no canto.
+  return `<div class="ponto-card com-corpo ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''}>
-        <span class="ponto-info">
-          <span class="ponto-nome">${esc(p.nome)}</span>${p.seuPonto ? ' <span class="selo-seu-ponto">Seu ponto</span>' : ''}
-          <span class="ponto-horario">${p.horario ? esc(p.horario) : 'Horário não informado'}</span>
-          ${p.seuPonto ? '<span class="ponto-proprio-rotulo">Veicular no próprio ponto</span>' : ''}
+        <span class="ponto-card-media">${foto}${p.seuPonto ? `<span class="selo-seu-ponto" id="${id}-selo">${iconePonto('casa')}Seu ponto</span>` : ''}</span>
+        <span class="ponto-card-corpo">
+          <span class="ponto-card-topo">
+            <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+            <span class="ponto-estado badge ${classeEstado}" id="${id}-estado">${esc(estado)}</span>
+          </span>
+          ${local ? linha('ponto-end', 'endereco', local) : ''}
+          ${vitrine.categoria_nome ? linha('ponto-segmento', 'segmento', vitrine.categoria_nome) : ''}
+          ${linha('ponto-horario', 'horario', p.horario || 'Horário não informado')}
+          ${linha('ponto-ocupacao', 'ocupacao', ocupacao, `${id}-ocupacao`)}
+          ${
+            p.seuPonto
+              ? `<span class="ponto-proprio"><span class="ponto-proprio-rotulo">Veicular no próprio ponto</span><span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span></span>`
+              : ''
+          }
         </span>
-        <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
-        <span class="ponto-estado badge ${classeEstado}">${esc(estado)}</span>
-        <span class="ponto-ocupacao">${esc(ocupacao)}</span>
-        ${p.seuPonto ? `<span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span>` : ''}
+        <span class="ponto-escolha-acao">
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome${p.seuPonto ? ` ${id}-selo` : ''}" aria-describedby="${id}-estado ${id}-ocupacao ${id}-acao">
+          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
+        </span>
       </label>
-      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
+      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">${iconePonto('endereco')}Ver no mapa</a>
     </div>`;
 }
 
@@ -510,6 +580,8 @@ async function desenharPontos() {
   const msg = document.getElementById('msgPontos');
   painel.hidden = false;
   document.getElementById('explicaAutomatico').textContent = TEXTO_MODO_AUTOMATICO;
+  // Em paralelo com a lista; nunca rejeita (ver buscarVitrineDosPontos).
+  const vitrine = buscarVitrineDosPontos();
   let dados;
   try {
     dados = await buscarPontosDisponiveis();
@@ -534,7 +606,10 @@ async function desenharPontos() {
     pintarResumoPontos(dados, []);
     return;
   }
-  lista.innerHTML = dados.pontos.map(htmlPontoEscolha).join('');
+  const fotos = await vitrine;
+  lista.innerHTML = dados.pontos.map((p) => htmlPontoEscolha(p, fotos.get(p.id))).join('');
+  // Logo quadrado ou foto em pé entra inteira, como no admin e em Meus pontos.
+  lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
 
   // Busca só aparece quando faz diferença — poucos pontos não precisam de
   // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.
