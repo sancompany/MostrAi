@@ -5962,9 +5962,12 @@ function abrirCategoria(c, categorias, aoSalvar) {
 
   // Concorrentes diretos: o par é um só no banco, então o que muda aqui
   // aparece do outro lado assim que a lista recarrega (sem F5). Só vai pro
-  // servidor no Salvar, junto com o resto — Cancelar descarta.
+  // servidor no Salvar, junto com o resto — Cancelar descarta. Vai só o que
+  // MUDOU (pôr/tirar), nunca a lista inteira: um modal aberto antes de outra
+  // aba gravar um par não apaga esse par ao salvar.
   const porId = new Map(categorias.map((x) => [x.id, x]));
-  const concorrentes = new Set(c?.concorrentes || []);
+  const inicial = new Set(c?.concorrentes || []);
+  const concorrentes = new Set(inicial);
   const listaConc = form.querySelector('[data-concorrentes]');
   const desenharConcorrentes = () => {
     const itens = [...concorrentes]
@@ -6011,7 +6014,8 @@ function abrirCategoria(c, categorias, aoSalvar) {
         .filter(Boolean),
       legado,
       ativo: !legado && chkAtivo.checked,
-      concorrentes: [...concorrentes],
+      concorrentes_adicionar: [...concorrentes].filter((id) => !inicial.has(id)),
+      concorrentes_remover: [...inicial].filter((id) => !concorrentes.has(id)),
     };
     if (!corpo.nome) return erroNoModal(dlg, 'Dê um nome à categoria.');
     const r = await api(c ? `/admin/categorias/${c.id}` : '/admin/categorias', {

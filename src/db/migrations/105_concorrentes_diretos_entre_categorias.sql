@@ -39,10 +39,14 @@ ALTER TABLE categorias_concorrentes ENABLE ROW LEVEL SECURITY;
 -- capilar/tricologia; Salão de beleza é cabeleireiro, outro negócio). Nasce
 -- ativa, no grupo Beleza e estética, e SEM par cruzado — concorre só consigo
 -- mesma (barbearia, salão, clínica de estética e spa continuam exibindo).
+-- Se alguém já tiver criado pela tela (com qualquer caixa — o UNIQUE de
+-- `nome` diferencia "Capilar" de "capilar"), a que existe fica como está:
+-- não duplica e não reativa legado.
 INSERT INTO categorias (nome, grupo, aliases, ativo, legado)
-VALUES ('Terapia capilar', 'Beleza e estética',
-        ARRAY['terapeuta capilar', 'terapia capilar', 'tratamento capilar', 'tricologia', 'tricologista'],
-        true, false)
+SELECT 'Terapia capilar', 'Beleza e estética',
+       ARRAY['terapeuta capilar', 'terapia capilar', 'tratamento capilar', 'tricologia', 'tricologista'],
+       true, false
+ WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE lower(nome) = 'terapia capilar')
 ON CONFLICT (nome) DO NOTHING;
 
 -- Matriz aprovada pelo dono (48 pares). Por NOME, como a 074: se o admin

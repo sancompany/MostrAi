@@ -79,14 +79,14 @@ test('sem sessão de admin: leitura e escrita recusadas (401)', async () => {
   const anon = navegador();
   const a = await nova();
   assert.strictEqual((await anon('GET', '/admin/categorias')).status, 401);
-  assert.strictEqual((await anon('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [] })).status, 401);
-  assert.strictEqual((await anon('POST', '/admin/categorias', { nome: 'x', concorrentes: [] })).status, 401);
+  assert.strictEqual((await anon('PATCH', `/admin/categorias/${a.id}`, { concorrentes_remover: [] })).status, 401);
+  assert.strictEqual((await anon('POST', '/admin/categorias', { nome: 'x', concorrentes_adicionar: [] })).status, 401);
 });
 
-test('pôr B em A aparece dos dois lados; tirar de B some dos dois lados', async () => {
+test('pôr B em A aparece dos dois lados; tirar A de B some dos dois lados', async () => {
   const a = await nova();
   const b = await nova();
-  const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
   assert.deepStrictEqual(r.json.concorrentes, [b.id]);
   assert.deepStrictEqual(await concorrentesNaLista(a.id), [b.id]);
@@ -99,14 +99,17 @@ test('pôr B em A aparece dos dois lados; tirar de B some dos dois lados', async
   assert.strictEqual(rows[0].n, 1, 'um par = uma linha');
 
   // Salvar B com A de novo (os dois lados "pedindo" o mesmo par) não duplica.
-  assert.strictEqual((await admin('PATCH', `/admin/categorias/${b.id}`, { concorrentes: [a.id, a.id] })).status, 200);
+  assert.strictEqual(
+    (await admin('PATCH', `/admin/categorias/${b.id}`, { concorrentes_adicionar: [a.id, a.id] })).status,
+    200,
+  );
   const { rows: depois } = await pool.query(
     'SELECT count(*)::int AS n FROM categorias_concorrentes WHERE categoria_a = ANY($1::int[]) OR categoria_b = ANY($1::int[])',
     [[a.id, b.id]],
   );
   assert.strictEqual(depois[0].n, 1);
 
-  assert.strictEqual((await admin('PATCH', `/admin/categorias/${b.id}`, { concorrentes: [] })).status, 200);
+  assert.strictEqual((await admin('PATCH', `/admin/categorias/${b.id}`, { concorrentes_remover: [a.id] })).status, 200);
   assert.deepStrictEqual(await concorrentesNaLista(a.id), []);
   assert.deepStrictEqual(await concorrentesNaLista(b.id), []);
 });
@@ -114,7 +117,7 @@ test('pôr B em A aparece dos dois lados; tirar de B some dos dois lados', async
 test('salvar só os campos de sempre não mexe nos concorrentes', async () => {
   const a = await nova();
   const b = await nova();
-  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
   const r = await admin('PATCH', `/admin/categorias/${a.id}`, { grupo: 'Outro grupo', aliases: ['x'] });
   assert.strictEqual(r.status, 200);
   assert.deepStrictEqual(r.json.concorrentes, [b.id]);
@@ -123,7 +126,7 @@ test('salvar só os campos de sempre não mexe nos concorrentes', async () => {
 
 test('criar categoria já com concorrentes grava o par', async () => {
   const b = await nova();
-  const a = await nova({ concorrentes: [b.id] });
+  const a = await nova({ concorrentes_adicionar: [b.id] });
   assert.deepStrictEqual(a.concorrentes, [b.id]);
   assert.deepStrictEqual(await concorrentesNaLista(b.id), [a.id]);
 });
@@ -132,14 +135,14 @@ test('validação: consigo mesma, id inválido, inexistente e legado recusam —
   const a = await nova();
   const b = await nova();
   const legada = await nova({ legado: true });
-  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
 
   for (const [corpo, motivo] of [
-    [{ concorrentes: [a.id] }, 'consigo mesma'],
-    [{ concorrentes: ['abc'] }, 'id inválido'],
-    [{ concorrentes: 'x' }, 'não é lista'],
-    [{ concorrentes: [2147480000] }, 'inexistente'],
-    [{ concorrentes: [legada.id] }, 'legado'],
+    [{ concorrentes_adicionar: [a.id] }, 'consigo mesma'],
+    [{ concorrentes_adicionar: ['abc'] }, 'id inválido'],
+    [{ concorrentes_adicionar: 'x' }, 'não é lista'],
+    [{ concorrentes_adicionar: [2147480000] }, 'inexistente'],
+    [{ concorrentes_adicionar: [legada.id] }, 'legado'],
   ]) {
     const r = await admin('PATCH', `/admin/categorias/${a.id}`, { nome: `Renomeada ${randomUUID()}`, ...corpo });
     assert.strictEqual(r.status, 400, motivo);
@@ -152,11 +155,11 @@ test('validação: consigo mesma, id inválido, inexistente e legado recusam —
 test('par antigo com categoria que virou legado continua até o admin tirar', async () => {
   const a = await nova();
   const b = await nova();
-  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
   await admin('PATCH', `/admin/categorias/${b.id}`, { legado: true });
-  const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
   assert.strictEqual(r.status, 200, 'manter um par existente não é "escolher" o legado de novo');
-  assert.strictEqual((await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [] })).status, 200);
+  assert.strictEqual((await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_remover: [b.id] })).status, 200);
   assert.deepStrictEqual(await concorrentesNaLista(a.id), []);
 });
 
@@ -165,8 +168,8 @@ test('mesclar: os concorrentes da absorvida passam pra que fica, sem par consigo
   const destino = await nova();
   const c = await nova();
   const d = await nova();
-  await admin('PATCH', `/admin/categorias/${origem.id}`, { concorrentes: [destino.id, c.id, d.id] });
-  await admin('PATCH', `/admin/categorias/${destino.id}`, { concorrentes: [origem.id, c.id] });
+  await admin('PATCH', `/admin/categorias/${origem.id}`, { concorrentes_adicionar: [destino.id, c.id, d.id] });
+  await admin('PATCH', `/admin/categorias/${destino.id}`, { concorrentes_adicionar: [origem.id, c.id] });
 
   const r = await admin('POST', `/admin/categorias/${origem.id}/mesclar`, { destino_id: destino.id });
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
@@ -181,7 +184,7 @@ test('mesclar: os concorrentes da absorvida passam pra que fica, sem par consigo
 test('excluir categoria sem uso leva os pares junto', async () => {
   const a = await nova();
   const b = await nova();
-  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes: [b.id] });
+  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
   assert.strictEqual((await admin('DELETE', `/admin/categorias/${a.id}`)).status, 200);
   assert.deepStrictEqual(await concorrentesNaLista(b.id), []);
 });
@@ -194,4 +197,84 @@ test('rota pública /categorias não expõe concorrentes', async () => {
     r.json.some((c) => c.nome === 'Terapia capilar'),
     'Terapia capilar está no cadastro',
   );
+});
+
+// ---------- achados da revisão independente (28/09/2026) ----------
+
+test('revisão #2: id fora do int do Postgres é 400/404, não 500', async () => {
+  const a = await nova();
+  const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [3000000000] });
+  assert.strictEqual(r.status, 400, JSON.stringify(r.json));
+  assert.strictEqual((await admin('PATCH', '/admin/categorias/99999999999', { nome: 'x' })).status, 404);
+});
+
+test('revisão #6: só número inteiro vale como id ([[b]] e true recusam)', async () => {
+  const a = await nova();
+  const b = await nova();
+  for (const lixo of [[[b.id]], [true], [`${b.id}.0`], [null]]) {
+    const r = await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: lixo });
+    assert.strictEqual(r.status, 400, JSON.stringify(lixo));
+  }
+  assert.deepStrictEqual(await concorrentesNaLista(a.id), []);
+});
+
+test('revisão #4: categoria legado não ganha par novo (nem criada já como legado)', async () => {
+  const b = await nova();
+  const legada = await nova({ legado: true });
+  const r = await admin('PATCH', `/admin/categorias/${legada.id}`, { concorrentes_adicionar: [b.id] });
+  assert.strictEqual(r.status, 400, JSON.stringify(r.json));
+  const nome = `Conc Admin ${randomUUID()}`;
+  const c = await admin('POST', '/admin/categorias', { nome, legado: true, concorrentes_adicionar: [b.id] });
+  assert.strictEqual(c.status, 400, JSON.stringify(c.json));
+  const { rows } = await pool.query('SELECT 1 FROM categorias WHERE nome = $1', [nome]);
+  assert.strictEqual(rows.length, 0, 'transação: a categoria não foi criada');
+  assert.deepStrictEqual(await concorrentesNaLista(b.id), []);
+});
+
+test('revisão #5: modal velho salvando só o nome não apaga par criado por outra aba', async () => {
+  const a = await nova();
+  const b = await nova();
+  // aba 2 cria o par A ↔ B; aba 1 (aberta antes, sem concorrentes) só renomeia B
+  await admin('PATCH', `/admin/categorias/${a.id}`, { concorrentes_adicionar: [b.id] });
+  const r = await admin('PATCH', `/admin/categorias/${b.id}`, {
+    nome: `Renomeada ${randomUUID()}`,
+    concorrentes_adicionar: [],
+    concorrentes_remover: [],
+  });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(await concorrentesNaLista(b.id), [a.id]);
+});
+
+test('revisão #3: par novo com a categoria que está sendo mesclada não fica preso na legada', async () => {
+  const concorrencia = require('../src/categorias/concorrencia');
+  const origem = await nova();
+  const destino = await nova();
+  const x = await nova();
+  // Mesclagem em andamento (mesmos passos da rota, transação aberta)...
+  const fusao = await pool.connect();
+  const edicao = await pool.connect();
+  try {
+    await fusao.query('BEGIN');
+    await fusao.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) FOR UPDATE', [[origem.id, destino.id]]);
+    await fusao.query('UPDATE categorias SET canonica_id = $2, legado = true, ativo = false WHERE id = $1', [
+      origem.id,
+      destino.id,
+    ]);
+    await concorrencia.moverNaFusao(fusao, origem.id, destino.id);
+    // ...e, ao mesmo tempo, o admin põe a origem como concorrente de X.
+    await edicao.query('BEGIN');
+    const pendente = concorrencia.alterarConcorrentes(edicao, x.id, { adicionar: [origem.id] }).then(
+      () => 'gravou',
+      (err) => err,
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    await fusao.query('COMMIT');
+    const resultado = await pendente;
+    await edicao.query(resultado === 'gravou' ? 'COMMIT' : 'ROLLBACK');
+    assert.ok(resultado instanceof concorrencia.ErroConcorrentes, `esperava recusa, veio ${resultado}`);
+  } finally {
+    fusao.release();
+    edicao.release();
+  }
+  assert.deepStrictEqual(await concorrentesNaLista(origem.id), [], 'a legada não ganhou par');
 });

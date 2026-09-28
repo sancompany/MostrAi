@@ -834,3 +834,54 @@ Consequências: o domínio `SITE_URL` vira parte do material impresso — se um
 dia o site mudar de endereço, o antigo precisa continuar respondendo (ou
 redirecionando) `/q/anuncie`. QR por ponto, de indicação ou com contagem de
 acessos é outra estação (não reaproveita esta chave).
+
+
+## ADR-026 — Concorrentes diretos entre categorias: par explícito e simétrico, nunca grupo (28/09/2026)
+
+Status: Ativa. Migration 105. Regra: RN-57 (emenda de 28/09/2026). Código:
+`src/categorias/concorrencia.js` (regra e gravação), `src/playlist/gerador.js`
+(`anunciantesElegiveis`), `src/anunciantes/entrada-no-ar.js`
+(`coberturaDaConta`), `src/categorias/routes.js` (admin).
+
+Contexto: a proteção do dono da tela comparava só `categoria_id` igual. Com
+~200 categorias específicas, concorrente de verdade com outro nome passava
+(academia × CrossFit, cafeteria × padaria, hotel × locação por temporada).
+Usar o grupo bloquearia quem não concorre (academia × pilates, barbearia ×
+salão, pet shop × veterinário).
+
+Decisão:
+1. **Par explícito, cadastrado pelo admin**: `categorias_concorrentes
+   (categoria_a, categoria_b)` com `CHECK (categoria_a < categoria_b)` e PK no
+   par. Simetria e ausência de duplicata vêm do armazenamento, não de quem
+   grava; categoria nunca é par de si mesma (isso já é a regra 1).
+2. **Regra**: mesma categoria → bloqueia; par cadastrado → bloqueia; resto →
+   exibe. Sempre categoria do PONTO × categoria do ANUNCIANTE. Grupo e
+   aliases nunca entram; não há exclusividade anunciante × anunciante;
+   nada de multicategoria, principal/secundária, regra por produto ou
+   exceção por estabelecimento.
+3. **No gerador, `NOT EXISTS` pela PK** (`least/greatest`) dentro da mesma
+   trava de ramo — uma sonda de índice por candidato, sem N+1, sem cache em
+   memória do processo. A isenção da dona que escolheu o próprio ponto
+   (ADR-022) cobre as duas partes. Mídia Mostraí não passa por aqui.
+4. **Admin**: o que mudou nos concorrentes (pôr/tirar — nunca a lista
+   inteira, pra um modal antigo não apagar o par de outra aba) vai no mesmo
+   PATCH/POST do modal da categoria, numa transação (Salvar grava tudo,
+   Cancelar descarta). Par NOVO exige as duas pontas fora do legado, com as
+   linhas travadas (`FOR SHARE`) contra mesclagem simultânea; par antigo não
+   trava o salvar.
+5. **Mesclar leva os pares** da absorvida pra canônica (é o mesmo negócio;
+   senão a conta reapontada perderia a proteção que tinha).
+6. **Seed por nome** (48 pares aprovados pelo dono), no-op se o nome não
+   existir — mesma defensiva da 074. "Terapia capilar" criada sem par.
+
+Consequências: bloquear é bloquear — conta que ESCOLHEU (ou recebeu no
+sorteio) um ponto concorrente não exibe ali, e a vaga de cobertura não volta
+nem é compensada (mesmo comportamento que a mesma categoria já tinha). Em
+produção, em 28/09/2026, nenhuma conta cai nisso (1 ponto, 1 conta com plano,
+a dona dele); risco em `.ia/RISKS.md`. Vale para a programação seguinte (a vaga já congelada da hora
+some na próxima leitura, como qualquer saída de elegibilidade); histórico de
+proof-of-play e contadores não muda. Uma categoria nova nasce sem par — o
+admin decide. Com o Plano Básico (migration 103, branch própria) o ponto do
+Básico continua fora da trava (é o estabelecimento da própria conta); no
+merge, `coberturaDaConta` junta as duas condições
+(`proprios.has(p.id) || (naFatia && (!bloqueia || dona))`).

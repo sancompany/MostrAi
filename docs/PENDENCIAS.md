@@ -5199,3 +5199,29 @@ Depois do merge (e só então a estação fecha): ver `.ia/TODO.md`, seção "QR
 CODE INSTITUCIONAL". Fora do escopo, para outra estação: QR por ponto, de
 indicação, com contagem de acessos.
 
+## Q. Categorias e concorrentes diretos (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Regra:
+emenda da RN-57 em `docs/funcional.md`; decisão: ADR-026; rotas em
+`docs/api.md`.
+
+Feito:
+
+- [x] `categorias_concorrentes` (migration 105): par simétrico por
+      construção (a < b, PK), sem duplicata, sem par consigo mesma, CASCADE,
+      RLS. Seed dos 48 pares aprovados, por nome (todos existiam em
+      produção em 28/09/2026).
+- [x] "Terapia capilar" criada (Beleza e estética; aliases terapeuta
+      capilar, terapia capilar, tratamento capilar, tricologia,
+      tricologista), concorrente só de si mesma.
+- [x] Gerador e cobertura da conta aplicam: mesma categoria → bloqueia;
+      par → bloqueia; resto → exibe. Grupo/alias nunca; dona do ponto
+      isenta; Mídia Mostraí fora.
+- [x] Admin → Categorias → Editar → "Concorrentes diretos" (busca,
+      etiquetas, texto explicativo), grava no Salvar, reflete dos dois
+      lados sem F5. Mesclar leva os pares.
+- [x] Testes: `tests/categorias-concorrentes-diretos.test.js`,
+      `tests/categorias-concorrentes-admin.test.js`, e2e 28.
+
+Antes/depois do merge: `.ia/TODO.md`, seção "CATEGORIAS E CONCORRENTES
+DIRETOS".

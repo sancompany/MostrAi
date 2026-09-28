@@ -66,32 +66,69 @@ async function mapaDeConcorrentes(db = pool) {
 
 class ErroConcorrentes extends Error {}
 
-// Substitui o conjunto de concorrentes diretos de uma categoria pelo que o
-// admin salvou no modal (Categorias → editar). Roda dentro da transação de
-// quem chama (`db` = cliente com BEGIN). Como o par é uma linha só, tirar B
-// de A tira A de B, e pôr B em A põe A em B — os dois lados sempre batem.
-//
-// Só a ADIÇÃO é validada contra legado: um par antigo com uma categoria que
-// depois virou legado continua salvo se o admin não mexer nele (tirar é
-// sempre permitido).
-async function definirConcorrentes(db, categoriaId, ids) {
-  const id = Number(categoriaId);
-  if (!Array.isArray(ids)) throw new ErroConcorrentes('concorrentes diretos: lista inválida');
-  const desejados = new Set();
-  for (const bruto of ids) {
-    const outro = Number(bruto);
-    if (!Number.isInteger(outro) || outro <= 0) throw new ErroConcorrentes('concorrentes diretos: categoria inválida');
+// Maior id que cabe no `int` do Postgres — acima disso a consulta estoura
+// (500) em vez de dizer "categoria inválida" (revisão de 28/09/2026).
+const MAIOR_ID = 2147483647;
+
+// Só número inteiro positivo (ou o mesmo em texto de dígitos) vale como id:
+// `Number([7])` e `Number(true)` virariam 7 e 1 sem ninguém perceber.
+function idValido(bruto) {
+  if (typeof bruto === 'number' || (typeof bruto === 'string' && /^\d+$/.test(bruto))) {
+    const n = Number(bruto);
+    if (Number.isInteger(n) && n > 0 && n <= MAIOR_ID) return n;
+  }
+  return null;
+}
+
+function listaDeIds(lista, id) {
+  if (lista === undefined) return [];
+  if (!Array.isArray(lista)) throw new ErroConcorrentes('concorrentes diretos: lista inválida');
+  const ids = new Set();
+  for (const bruto of lista) {
+    const outro = idValido(bruto);
+    if (!outro) throw new ErroConcorrentes('concorrentes diretos: categoria inválida');
     if (outro === id)
       throw new ErroConcorrentes('uma categoria não é concorrente direta de si mesma — isso já bloqueia');
-    desejados.add(outro);
+    ids.add(outro);
+  }
+  return [...ids];
+}
+
+// O que o admin mudou no modal (Categorias → editar): pares a PÔR e a TIRAR,
+// nunca "o conjunto inteiro" — um modal aberto antes de outra aba gravar um
+// par não pode apagá-lo só por salvar o nome (revisão de 28/09/2026). Roda
+// dentro da transação de quem chama (`db` = cliente com BEGIN). Como o par é
+// uma linha só, tirar B de A tira A de B, e pôr B em A põe A em B.
+//
+// Par NOVO só entre categorias fora do legado (as duas pontas). As linhas
+// das duas pontas ficam travadas (FOR SHARE) até o fim da transação: uma
+// mesclagem em andamento termina antes e a checagem enxerga a categoria já
+// legada — senão o par ficava preso na absorvida e as contas movidas perdiam
+// a proteção. Par antigo com uma ponta que virou legado continua até o admin
+// tirar (tirar é sempre permitido).
+async function alterarConcorrentes(db, categoriaId, { adicionar, remover } = {}) {
+  const id = idValido(categoriaId);
+  if (!id) throw new ErroConcorrentes('categoria inválida');
+  const poe = listaDeIds(adicionar, id);
+  const tira = listaDeIds(remover, id);
+  if (poe.some((x) => tira.includes(x))) {
+    throw new ErroConcorrentes('concorrentes diretos: a mesma categoria não pode entrar e sair ao mesmo tempo');
   }
   const atuais = await concorrentesDe(id, db);
-  const novos = [...desejados].filter((x) => !atuais.has(x));
-  const saem = [...atuais].filter((x) => !desejados.has(x));
+  const novos = poe.filter((x) => !atuais.has(x));
 
   if (novos.length) {
-    const { rows } = await db.query('SELECT id FROM categorias WHERE id = ANY($1::int[]) AND NOT legado', [novos]);
-    if (rows.length !== novos.length) {
+    const { rows } = await db.query(
+      'SELECT id, legado FROM categorias WHERE id = ANY($1::int[]) ORDER BY id FOR SHARE',
+      [[id, ...novos]],
+    );
+    const vivas = new Set(rows.filter((r) => !r.legado).map((r) => r.id));
+    if (!vivas.has(id)) {
+      throw new ErroConcorrentes(
+        'categoria legado não ganha concorrente novo — mescle ou volte ela pro cadastro antes',
+      );
+    }
+    if (novos.some((x) => !vivas.has(x))) {
       throw new ErroConcorrentes('concorrentes diretos: só dá pra escolher categoria existente e fora do legado');
     }
     const pares = novos.map((outro) => parNormalizado(id, outro));
@@ -102,15 +139,15 @@ async function definirConcorrentes(db, categoriaId, ids) {
       [pares.map((p) => p[0]), pares.map((p) => p[1])],
     );
   }
-  if (saem.length) {
+  if (tira.length) {
     await db.query(
       `DELETE FROM categorias_concorrentes
         WHERE (categoria_a = $1 AND categoria_b = ANY($2::int[]))
            OR (categoria_b = $1 AND categoria_a = ANY($2::int[]))`,
-      [id, saem],
+      [id, tira],
     );
   }
-  return [...desejados].sort((x, y) => x - y);
+  return [...(await concorrentesDe(id, db))].sort((x, y) => x - y);
 }
 
 // Mesclar origem → destino (POST /admin/categorias/:id/mesclar): é o mesmo
@@ -138,6 +175,7 @@ module.exports = {
   bloqueia,
   concorrentesDe,
   mapaDeConcorrentes,
-  definirConcorrentes,
+  idValido,
+  alterarConcorrentes,
   moverNaFusao,
 };

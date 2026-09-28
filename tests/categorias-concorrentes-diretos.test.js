@@ -219,7 +219,7 @@ test('par registrado depois bloqueia; tirar o par devolve o anúncio na geraçã
 
     const cliente = await pool.connect();
     try {
-      await concorrencia.definirConcorrentes(cliente, cAnunciante, [cPonto]);
+      await concorrencia.alterarConcorrentes(cliente, cAnunciante, { adicionar: [cPonto] });
     } finally {
       cliente.release();
     }
@@ -229,7 +229,7 @@ test('par registrado depois bloqueia; tirar o par devolve o anúncio na geraçã
 
     const c2 = await pool.connect();
     try {
-      await concorrencia.definirConcorrentes(c2, cPonto, []);
+      await concorrencia.alterarConcorrentes(c2, cPonto, { remover: [cAnunciante] });
     } finally {
       c2.release();
     }
@@ -293,6 +293,17 @@ test('seed: 48 pares da matriz aprovada, Terapia capilar criada sem par', async 
        JOIN categorias a ON a.id = cc.categoria_a JOIN categorias b ON b.id = cc.categoria_b`,
   );
   const tem = (x, y) => rows.some((r) => (r.a === x && r.b === y) || (r.a === y && r.b === x));
+  // A matriz INTEIRA, lida da própria migration: nenhum par pode ter virado
+  // no-op por nome errado (o seed é por nome e ignora nome que não existe).
+  const sql = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '../src/db/migrations/105_concorrentes_diretos_entre_categorias.sql'),
+    'utf8',
+  );
+  const matriz = [
+    ...sql.slice(sql.indexOf('FROM (VALUES'), sql.indexOf(') AS par')).matchAll(/\('([^']+)', '([^']+)'\)/g),
+  ];
+  assert.strictEqual(matriz.length, 48, 'a matriz aprovada tem 48 pares');
+  for (const [, x, y] of matriz) assert.ok(tem(x, y), `seed: ${x} ↔ ${y}`);
   for (const [x, y] of [
     ['Academia', 'Personal trainer'],
     ['Açaí', 'Sorveteria'],

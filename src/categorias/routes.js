@@ -51,8 +51,9 @@ router.get('/admin/categorias', async (_req, res) => {
   res.json(rows.map((c) => ({ ...c, concorrentes: mapa.get(c.id) || [] })));
 });
 
-// Grava a categoria e, se veio `concorrentes`, o conjunto de concorrentes
-// diretos dela — na mesma transação: o modal salva tudo ou nada.
+// Grava a categoria e, se vieram `concorrentes_adicionar`/`concorrentes_remover`,
+// os pares de concorrentes diretos dela — na mesma transação: o modal salva
+// tudo ou nada.
 async function comTransacao(trabalho) {
   const cliente = await pool.connect();
   try {
@@ -66,6 +67,10 @@ async function comTransacao(trabalho) {
   } finally {
     cliente.release();
   }
+}
+
+function paresDoCorpo(corpo) {
+  return { adicionar: corpo.concorrentes_adicionar, remover: corpo.concorrentes_remover };
 }
 
 function respostaDeErro(res, err) {
@@ -92,10 +97,7 @@ router.post('/admin/categorias', async (req, res) => {
         'INSERT INTO categorias (nome, grupo, aliases, ativo, legado) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [nome, grupo, limparAliases(req.body.aliases), ativo, legado],
       );
-      const concorrentes =
-        req.body.concorrentes === undefined
-          ? []
-          : await concorrencia.definirConcorrentes(db, rows[0].id, req.body.concorrentes);
+      const concorrentes = await concorrencia.alterarConcorrentes(db, rows[0].id, paresDoCorpo(req.body));
       return { ...rows[0], concorrentes };
     });
     res.status(201).json(criada);
@@ -114,10 +116,10 @@ router.patch('/admin/categorias/:id', async (req, res) => {
   if (corpo.aliases !== undefined) corpo.aliases = limparAliases(corpo.aliases);
   if (corpo.legado === true) corpo.ativo = false;
   const campos = ['nome', 'ativo', 'grupo', 'aliases', 'legado'].filter((c) => corpo[c] !== undefined);
-  const mexeConcorrentes = corpo.concorrentes !== undefined;
+  const mexeConcorrentes = corpo.concorrentes_adicionar !== undefined || corpo.concorrentes_remover !== undefined;
   if (!campos.length && !mexeConcorrentes) return res.status(400).json({ erro: 'nada pra atualizar' });
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(404).json({ erro: 'categoria não encontrada' });
+  const id = concorrencia.idValido(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'categoria não encontrada' });
   try {
     const salva = await comTransacao(async (db) => {
       // FOR UPDATE: duas edições da mesma categoria ao mesmo tempo não
@@ -129,9 +131,7 @@ router.patch('/admin/categorias/:id', async (req, res) => {
           )
         : await db.query('SELECT * FROM categorias WHERE id = $1 FOR UPDATE', [id]);
       if (!rows[0]) return null;
-      const concorrentes = mexeConcorrentes
-        ? await concorrencia.definirConcorrentes(db, id, corpo.concorrentes)
-        : [...(await concorrencia.concorrentesDe(id, db))].sort((x, y) => x - y);
+      const concorrentes = await concorrencia.alterarConcorrentes(db, id, paresDoCorpo(corpo));
       return { ...rows[0], concorrentes };
     });
     if (!salva) return res.status(404).json({ erro: 'categoria não encontrada' });
@@ -146,9 +146,9 @@ router.patch('/admin/categorias/:id', async (req, res) => {
 // o mapeamento, tira a absorvida do cadastro e guarda o nome dela como alias.
 // Tudo numa transação: ou a fusão inteira acontece, ou nada muda.
 router.post('/admin/categorias/:id/mesclar', async (req, res) => {
-  const origemId = Number(req.params.id);
-  const destinoId = Number(req.body.destino_id);
-  if (!Number.isInteger(origemId) || !Number.isInteger(destinoId)) {
+  const origemId = concorrencia.idValido(req.params.id);
+  const destinoId = concorrencia.idValido(req.body.destino_id);
+  if (!origemId || !destinoId) {
     return res.status(400).json({ erro: 'escolha a categoria que fica' });
   }
   if (origemId === destinoId)
@@ -204,8 +204,10 @@ router.post('/admin/categorias/:id/mesclar', async (req, res) => {
 // Excluir só vale pra categoria que ninguém usa (criada por engano). Em uso,
 // a FK recusa — o certo é tirar do cadastro, marcar legado ou mesclar.
 router.delete('/admin/categorias/:id', async (req, res) => {
+  const id = concorrencia.idValido(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'categoria não encontrada' });
   try {
-    await pool.query('DELETE FROM categorias WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM categorias WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (err) {
     if (err.code === '23503') {

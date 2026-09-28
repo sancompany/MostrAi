@@ -1,6 +1,19 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação CATEGORIAS E CONCORRENTES DIRETOS** (branch
+`claude/categorias-concorrencia`, PR próprio, **NÃO mergeado — merge só com
+autorização do dono**). Proteção do dono da tela = categoria do ponto ×
+categoria do anunciante: mesma categoria bloqueia; par cadastrado em
+`categorias_concorrentes` (migration 105, um par por linha, a < b) bloqueia;
+resto exibe. Grupo e aliases nunca bloqueiam; sem exclusividade entre
+anunciantes. Seed com os 48 pares aprovados + "Terapia capilar" (sem par).
+Admin → Categorias → Editar ganhou "Concorrentes diretos" (busca +
+etiquetas, grava no Salvar). ADR-026, emenda da RN-57. **Antes do merge:**
+atualizar com a `main` — se o Plano Básico (`busy-noether-hheir2-basico`,
+migration 103) já tiver entrado, o conflito é só em
+`entrada-no-ar.js#coberturaDaConta` (resolução no ADR-026) e rerodar a
+suíte. **Não iniciar outra estação.**
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só
