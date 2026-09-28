@@ -532,6 +532,16 @@ pro Essencial pago. *Violada:* não há caminho — o UPDATE que aplica o
 upgrade tem a mesma condição "não pagando em dia" no próprio WHERE, como
 trava atômica. *Quem vê:* o dono do ponto, num card no próprio painel
 (`GET /anunciantes/me/indicacoes`), com o progresso até o próximo degrau.
+*(Finalização, 28/09/2026.)* Quem chega ao cadastro por `?ref=` de um cupom
+válido vê **"Você foi indicado por: <nome do negócio>"** antes de preencher
+(`GET /indicacoes/:codigo`, anônima, só o nome); a relação continua gravada
+em `anunciantes.indicado_por_cupom` no cadastro, como sempre. E o card
+**Indicações** do ponto ganha o histórico **"Quem se cadastrou pelo seu
+link"**: por conta indicada, o nome do negócio e a cidade, a data do
+cadastro, se concluiu (e-mail confirmado), o plano contratado e os créditos
+que ela já rendeu (com a data do último) — ou "aguardando o primeiro
+pagamento confirmado" / "sem crédito ainda". Nunca e-mail, telefone,
+documento, endereço nem valor pago; conta excluída some da lista.
 
 **RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
 17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto

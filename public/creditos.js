@@ -86,7 +86,36 @@
       </div>
       <p class="creditos-codigo">Ou informe o código <b>${esc(ind.codigo)}</b> no cadastro.</p>
       <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">Compartilhar pelo WhatsApp</a>
-      <p class="creditos-atividade">${esc(atividade)}</p>`;
+      <p class="creditos-atividade">${esc(atividade)}</p>
+      ${htmlIndicados(ind.indicados)}`;
+  }
+
+  // Histórico de quem se cadastrou pelo link (finalização, 28/09/2026): nome
+  // do negócio, quando, e o que aconteceu depois — nada de contato, documento
+  // ou valor (o servidor já não manda). O texto de cada linha nasce aqui dos
+  // fatos que vêm do servidor: cadastro concluído (e-mail confirmado), plano
+  // contratado e créditos que a indicação já rendeu.
+  function linhaIndicado(i) {
+    const etapas = [`cadastro em ${data(i.cadastroEm)}`];
+    etapas.push(i.cadastroConcluido ? 'cadastro concluído' : 'cadastro não concluído (e-mail sem confirmar)');
+    if (i.planoNome) etapas.push(`plano ${i.planoNome}`);
+    else if (i.cadastroConcluido) etapas.push('ainda sem plano');
+    const credito =
+      i.creditos > 0
+        ? `<span class="badge badge-ok">${esc(creditos(i.creditos))} · último em ${data(i.ultimoCreditoEm)}</span>`
+        : i.planoNome
+          ? '<span class="badge badge-pendente">aguardando o primeiro pagamento confirmado</span>'
+          : '<span class="badge badge-neutro">sem crédito ainda</span>';
+    const local = i.cidade ? `<span class="indicado-local">${esc(i.cidade)}${i.uf ? `/${esc(i.uf)}` : ''}</span>` : '';
+    return `<li><b>${esc(i.nome)}</b>${local}${credito}<span class="indicado-etapas">${esc(etapas.join(' · '))}</span></li>`;
+  }
+
+  function htmlIndicados(lista) {
+    if (!lista?.length) return '';
+    return `<div class="indicados">
+      <p class="indicados-titulo">Quem se cadastrou pelo seu link</p>
+      <ul class="indicados-lista">${lista.map(linhaIndicado).join('')}</ul>
+    </div>`;
   }
 
   function desenharIndicacao(ind) {

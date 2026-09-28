@@ -1826,6 +1826,9 @@ body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
 .chave-box { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
 .aviso-fundador { background: linear-gradient(135deg, rgba(255,122,26,.12), rgba(255,122,26,.03)); border: 1px solid rgba(255,122,26,.35); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: .92rem; }
 .aviso-fundador b { color: var(--brand-text); }
+/* "Você foi indicado por: …" no cadastro (finalização, 28/09/2026). */
+.aviso-indicado { margin: 0; padding: 12px 14px; border: 1px solid rgba(255,122,26,.35); border-radius: 10px; background: rgba(255,122,26,.08); font-size: .92rem; }
+.aviso-indicado b { color: var(--brand-text); overflow-wrap: anywhere; }
 .plan-card .vagas { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
 
 /* Painel da tela (player: PIN abre, mostra o que rodou e a saúde da tela) */

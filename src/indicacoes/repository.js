@@ -73,9 +73,9 @@ async function buscarPontoPorCupom(codigo) {
   return rows[0] || null;
 }
 
-// Atividade das indicações em número, nunca em pessoa: quantas contas se
-// cadastraram com o código e quantas já pagaram. Nome, e-mail ou documento
-// de quem foi indicado não saem daqui.
+// Atividade das indicações em número: quantas contas se cadastraram com o
+// código e quantas já pagaram. Quem são elas está em `listarIndicados`,
+// abaixo, com o que o dono do ponto pode ver — e só isso.
 async function resumoIndicacoes(codigo) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS cadastradas,
@@ -88,10 +88,49 @@ async function resumoIndicacoes(codigo) {
   return rows[0];
 }
 
+// Histórico de quem se cadastrou pelo link (finalização, 28/09/2026, pedido
+// do dono): o nome do negócio, a cidade, quando, se concluiu o cadastro
+// (e-mail confirmado), o plano contratado e os créditos que aquela conta já
+// rendeu ao ponto. Só isso — e-mail, telefone, documento, endereço e valor
+// pago ficam de fora, e o id da conta indicada também. Conta excluída sai
+// da lista (e do resumo acima). Os créditos são contados no ledger do PONTO
+// ($2), pelo `origem_conta_id` do indicado — a mesma linha que
+// `registrarCreditoIndicacao` grava a cada pagamento confirmado.
+async function listarIndicados(codigo, pontoContaId) {
+  const { rows } = await pool.query(
+    `SELECT a.nome_empresa AS nome, a.cidade, a.uf, a.created_at AS cadastro_em,
+            a.email_confirmado AS cadastro_concluido, p.nome AS plano_nome,
+            COALESCE(l.creditos, 0)::int AS creditos, l.ultimo_credito_em
+       FROM anunciantes a
+       LEFT JOIN planos p ON p.id = a.plano_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS creditos, MAX(cl.criado_em) AS ultimo_credito_em
+           FROM creditos_ledger cl
+          WHERE cl.anunciante_id = $2 AND cl.origem_conta_id = a.id
+            AND cl.tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')
+       ) l ON true
+      WHERE a.indicado_por_cupom = $1 AND a.excluido_em IS NULL
+      ORDER BY a.created_at DESC
+      LIMIT 100`,
+    [codigo, pontoContaId],
+  );
+  return rows.map((r) => ({
+    nome: r.nome,
+    cidade: r.cidade,
+    uf: r.uf,
+    cadastroEm: r.cadastro_em,
+    cadastroConcluido: r.cadastro_concluido,
+    planoNome: r.plano_nome,
+    creditos: r.creditos,
+    ultimoCreditoEm: r.ultimo_credito_em,
+  }));
+}
+
 module.exports = {
   criarCupom,
   garantirCupom,
   buscarCupomPorConta,
   buscarPontoPorCupom,
   resumoIndicacoes,
+  listarIndicados,
 };

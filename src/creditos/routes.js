@@ -130,7 +130,14 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
   let indicacao = null;
   if (ehPonto && !conta.conta_propria) {
     const cupom = await indicacoesRepo.garantirCupom(contaId, conta.nome_empresa);
-    indicacao = { codigo: cupom.codigo, ...(await indicacoesRepo.resumoIndicacoes(cupom.codigo)) };
+    // `indicados` (finalização, 28/09/2026): o histórico de quem se
+    // cadastrou pelo link — só o que o dono do ponto pode ver, decidido em
+    // indicacoes/repository.js#listarIndicados.
+    const [resumo, indicados] = await Promise.all([
+      indicacoesRepo.resumoIndicacoes(cupom.codigo),
+      indicacoesRepo.listarIndicados(cupom.codigo, contaId),
+    ]);
+    indicacao = { codigo: cupom.codigo, ...resumo, indicados };
   }
   res.json({
     saldo: saldoAtual,

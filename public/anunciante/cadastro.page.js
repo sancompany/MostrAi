@@ -9,6 +9,26 @@ const msg = document.getElementById('msg');
   const entrar = document.querySelector('header.site nav a[href="/anunciante/login.html"]');
   if (plano && entrar) entrar.href = `/anunciante/login.html?plano=${encodeURIComponent(plano)}`;
 })();
+// Quem chega por link de indicação vê de quem veio o convite antes de
+// preencher (finalização, 28/09/2026): o servidor devolve só o nome do
+// negócio que indica. Cupom inválido não avisa aqui — o envio já trata
+// (abaixo) e recomeça sem o cupom.
+(async function mostrarQuemIndicou() {
+  const ref = new URLSearchParams(window.location.search).get('ref');
+  const aviso = document.getElementById('avisoIndicacao');
+  if (!ref || !aviso) return;
+  try {
+    const r = await fetch(`${API_BASE_URL}/indicacoes/${encodeURIComponent(ref)}`);
+    if (!r.ok) return;
+    const { nome } = await r.json();
+    const forte = document.createElement('b');
+    forte.textContent = nome;
+    aviso.replaceChildren('Você foi indicado por: ', forte);
+    aviso.hidden = false;
+  } catch {
+    // Sem aviso; o cadastro segue normalmente.
+  }
+})();
 // Trava o botão enquanto a conta é criada: dois toques seguidos no celular
 // mandavam dois cadastros, e o segundo voltava "e-mail já cadastrado" pra
 // quem acabou de criar a conta.
