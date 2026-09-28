@@ -9,7 +9,7 @@ const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 const concorrencia = require('../src/categorias/concorrencia');
 const { coberturaDaConta } = require('../src/anunciantes/entrada-no-ar');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 // Concorrentes diretos entre categorias (migration 105). A proteção do dono
 // da tela é CATEGORIA DO PONTO × CATEGORIA DO ANUNCIANTE:
@@ -51,6 +51,7 @@ async function telaNoPonto(categoriaId) {
     responsavel_contato: '16999990000',
     categoria_id: categoriaId || null,
   });
+  await tirarDoSorteio(ponto.id); // só as contas deste teste (escolha explícita)
   const criado = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(criado.id, { status: 'ativo' });
   await instalarPlayer(criado.id);
@@ -59,7 +60,9 @@ async function telaNoPonto(categoriaId) {
 
 // Escolha explícita do ponto: com outros arquivos em paralelo a rede tem
 // vários pontos, e a cobertura automática poderia cair noutro. A trava de
-// categoria vale igual com escolha (só a DONA do ponto é isenta).
+// categoria vale igual com escolha (só a DONA do ponto é isenta). A escolha
+// vem antes do plano: sem ela, a conta com plano cairia no sorteio e na
+// playlist de outro arquivo.
 async function anunciante(categoriaId, pontoId, extra = {}) {
   const conta = await anunciantesRepo.criar({
     nome_empresa: `Anunciante Conc ${randomUUID()}`,
@@ -73,6 +76,7 @@ async function anunciante(categoriaId, pontoId, extra = {}) {
     senha: 'x',
     categoria_id: categoriaId || null,
   });
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m', ...extra });
   const criativo = await criativosRepo.criar({
     anunciante_id: conta.id,
@@ -82,7 +86,6 @@ async function anunciante(categoriaId, pontoId, extra = {}) {
     duracao_segundos: 15,
   });
   await criativosRepo.atualizar(criativo.id, { status: 'aprovado' });
-  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
   return (await pool.query('SELECT * FROM anunciantes WHERE id = $1', [conta.id])).rows[0];
 }
 

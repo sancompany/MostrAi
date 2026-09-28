@@ -15,7 +15,7 @@ const { pontosDoAnunciante } = require('../src/lib/pacing');
 const { entradaNoArDasPecas, ESTADOS } = require('../src/anunciantes/entrada-no-ar');
 const filaEntrada = require('../src/anunciantes/fila-entrada');
 const { metricasDasMidias } = require('../src/midias/metricas');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 // Estação de distribuição real (27/09/2026):
 //   1–9   escolha de pontos (targeting) e o próprio ponto;
@@ -149,12 +149,16 @@ async function criativoAprovado(contaId, { url = 'https://exemplo.test/peca.mp4'
   return criativosRepo.atualizar(c.id, { status: 'aprovado' });
 }
 
+// Escolha direta: o ponto passa a ser da conta do teste e sai do sorteio
+// (contas de outros arquivos não caem na playlist dele). Os testes que
+// dependem do sorteio ou escolhem pela rota (5, 7) não passam por aqui.
 async function escolher(contaId, pontos) {
   for (const pontoId of pontos) {
     await pool.query(
       'INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1, $2, clock_timestamp())',
       [contaId, pontoId],
     );
+    await tirarDoSorteio(pontoId);
   }
 }
 
