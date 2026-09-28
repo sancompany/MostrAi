@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação: formulários de ponto ("Tornar-se ponto" e "Novo
+estabelecimento")** (branch `claude/nifty-galileo-rwryqd`, worktree própria,
+PR próprio, **NÃO mergeado — merge só com o dono**). Os dois pedidos abrem no
+topo do painel, na largura da página (`#pontosNovo`): formulário ~65% +
+prévia fixa ~35% no desktop, uma coluna no celular. Erro embaixo do campo
+(`candidaturaValidar`), segmento obrigatório no campo visível (antes travava
+o envio em silêncio — conserta também cadastro e modo anúncios), CEP com
+estados e sem apagar o digitado, foto recusada/avisada, clique duplo
+protegido. Payload/rotas/regras iguais. ADR-029; `docs/PENDENCIAS.md` §T;
+e2e `tests/e2e/30-formularios-ponto.mjs`. **Não iniciar outra estação.**
 2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
 ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
 autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).

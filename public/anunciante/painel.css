@@ -330,10 +330,15 @@
 .area-creditos { grid-area: creditos; min-width: 0; }
 /* Formulário de ponto aberto (estação dos formulários de ponto, 28/09/2026):
    a área só entra no grid enquanto ele existe — vazia, ela somaria um
-   espaçamento a mais entre as áreas. No celular vem logo depois de Meus
-   pontos, de onde ele foi aberto; no desktop, na largura toda, no topo. */
+   espaçamento a mais entre as áreas. Fica no topo, na largura toda (no
+   celular também: depois da coluna lateral inteira ele caía embaixo de
+   Indicações e Financeiro); Meus pontos mostra um atalho pra ele. */
 .area-form-ponto { grid-area: formponto; min-width: 0; scroll-margin-top: 80px; }
-.painel-grid.com-form-ponto { grid-template-areas: "campanha" "lateral" "formponto" "criativos" "creditos"; }
+.painel-grid.com-form-ponto { grid-template-areas: "formponto" "campanha" "lateral" "criativos" "creditos"; }
+.anunciante-dashboard .panel.form-ponto { padding: 28px 32px 32px; }
+@media (max-width: 560px) {
+  .anunciante-dashboard .panel.form-ponto { padding: 20px 16px 24px; }
+}
 .painel-grid .dashboard-section { margin-bottom: 0; }
 .area-campanha[hidden] { display: none; }
 /* Cartões de bloqueio (sem plano / modo não ativado) nascem antes de

@@ -14,22 +14,30 @@ function ligarCep(escopo) {
     const form = input.closest('form') || document;
     const achar = (nome) => form.querySelector(`[name="${nome}"]`);
     const aviso = form.querySelector('[data-cep-msg]');
-    const textoInicial = aviso?.textContent || '';
+    // Como o aviso nasceu (texto, classe, escondido ou não — no perfil ele
+    // nasce vazio e escondido): é pra lá que ele volta quando o CEP muda.
+    const inicial = aviso && { texto: aviso.textContent, classe: aviso.className, escondido: aviso.hidden };
     if (aviso && !aviso.hasAttribute('aria-live')) aviso.setAttribute('aria-live', 'polite');
     const avisar = (estado, texto) => {
       if (!aviso) return;
       aviso.hidden = false;
       aviso.textContent = texto;
       aviso.className = 'form-hint';
-      if (estado) aviso.dataset.estado = estado;
-      else delete aviso.dataset.estado;
+      aviso.dataset.estado = estado;
+    };
+    const restaurar = () => {
+      if (!aviso) return;
+      aviso.textContent = inicial.texto;
+      aviso.className = inicial.classe;
+      aviso.hidden = inicial.escondido;
+      delete aviso.dataset.estado;
     };
 
     input.addEventListener('input', () => {
       const so = input.value.replace(/\D/g, '').slice(0, 8);
       input.value = so.length > 5 ? `${so.slice(0, 5)}-${so.slice(5)}` : so;
       // CEP mudou depois de uma consulta: o aviso dela já não vale.
-      if (aviso?.dataset.estado && so.length < 8) avisar('', textoInicial);
+      if (aviso?.dataset.estado && so.length < 8) restaurar();
     });
 
     input.addEventListener('blur', async () => {
@@ -55,7 +63,10 @@ function ligarCep(escopo) {
       try {
         dados = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
       } catch {
-        avisar('erro', 'Não deu para consultar o CEP agora. Preencha o endereço à mão.');
+        // Consulta velha (a pessoa já trocou o CEP) não fala mais nada.
+        if (input.value.replace(/\D/g, '') === cep) {
+          avisar('erro', 'Não deu para consultar o CEP agora. Preencha o endereço à mão.');
+        }
         return;
       }
       // Outra consulta começou depois desta (a pessoa trocou o CEP): esta
@@ -191,6 +202,14 @@ function montarBusca(sel, categorias, semCatalogo) {
   input.setAttribute('aria-controls', lista.id);
   wrap.append(input, lista);
   sel.insertAdjacentElement('afterend', wrap);
+  // Formulário enviado antes de o catálogo chegar: o erro ficou no <select>,
+  // que agora sumiu — quem responde pelo campo daqui em diante é a busca.
+  const erroDoSelect = sel.id && document.getElementById(`${sel.id}_erro`);
+  if (erroDoSelect) {
+    erroDoSelect.remove();
+    sel.removeAttribute('aria-invalid');
+    sel.removeAttribute('aria-describedby');
+  }
   if (semCatalogo) return;
 
   // Edição de algo que já tem categoria escolhida (admin, ou volta na

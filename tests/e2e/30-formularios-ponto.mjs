@@ -214,6 +214,13 @@ const contaA = await novaConta('a', { comPedido: false });
   check('movimento vazio: campo marcado e ligado ao erro', (await p.getAttribute('#cp_fluxo', 'aria-describedby'))?.includes('cp_fluxo_erro'));
   check('movimento vazio: foco no campo', (await p.evaluate(() => document.activeElement?.id)) === 'cp_fluxo');
   check('movimento vazio: nada enviado', pedidos.length === 0, pedidos);
+  check(
+    'Meus pontos mostra atalho pro pedido aberto (não fica vazio)',
+    (await p.textContent('#pontosLista')).includes('Ir para o pedido'),
+  );
+  // Colar número formatado: o teto de dígitos conta depois de tirar os pontos.
+  await p.fill('#cp_fluxo', '10.000.000');
+  check('movimento colado com pontos não perde dígito', (await p.inputValue('#cp_fluxo')) === '10000000', await p.inputValue('#cp_fluxo'));
   // Só dígitos entram; o erro some ao digitar.
   await p.fill('#cp_fluxo', '2.5a00');
   check('movimento: só dígitos', (await p.inputValue('#cp_fluxo')) === '2500', await p.inputValue('#cp_fluxo'));
@@ -399,6 +406,13 @@ for (const [largura, altura] of [
   await p.waitForSelector('#formCardPonto');
   const m = await medirLayout(p);
   check('A no celular: uma coluna, prévia depois das ações, sem estouro', !m.ladoALado && m.previaDepoisDasAcoes && m.rolagemX <= 0, m);
+  const topo = await p.evaluate(() => ({
+    form: document.getElementById('pontosNovo').getBoundingClientRect().top,
+    campanha: document.getElementById('dashboardAnuncios').getBoundingClientRect().top,
+    respiro: getComputedStyle(document.querySelector('.form-ponto')).paddingLeft,
+  }));
+  check('celular: o pedido abre no topo do painel', topo.form < topo.campanha, topo);
+  check('celular: respiro lateral de 16px', topo.respiro === '16px', topo.respiro);
   const linha = await p.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     return { dia: r('[data-horario-dia="seg"] .horario-dia-nome').top, fechado: r('[data-horario-dia="seg"] .horario-dia-fechado').top, abre: r('#cp_h_seg_abre').top };

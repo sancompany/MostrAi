@@ -110,17 +110,20 @@ function candidaturaSegmentoDoForm(form) {
 // Texto com teclado numérico, não `type="number"`: o campo de número aceita
 // "e", "+" e "2.500" (vira 2,5). Só dígitos entram (`candidaturaLigarNumeros`);
 // a regra é a de sempre — obrigatório e maior que zero, a mesma do servidor
-// (`criarCandidaturaPonto`, src/conta/modos.js).
+// (`criarCandidaturaPonto`, src/conta/modos.js). O teto de dígitos é contado
+// DEPOIS de tirar os pontos: com `maxlength`, colar "10.000.000" virava
+// 1.000.000 (o navegador cortava antes).
 window.candidaturaCampoMovimento = function candidaturaCampoMovimento(prefixo) {
   return `
     <div class="campo campo-movimento"><label for="${prefixo}fluxo">Média de pessoas que passam por mês</label>
-      <input id="${prefixo}fluxo" name="fluxo_estimado_mensal" type="text" inputmode="numeric" autocomplete="off" maxlength="9" data-so-numeros data-maior-que-zero required></div>`;
+      <input id="${prefixo}fluxo" name="fluxo_estimado_mensal" type="text" inputmode="numeric" autocomplete="off" data-so-numeros data-max-digitos="9" data-maior-que-zero required></div>`;
 };
 
 window.candidaturaLigarNumeros = function candidaturaLigarNumeros(form) {
   form.querySelectorAll('[data-so-numeros]').forEach((campo) => {
+    const teto = Number(campo.dataset.maxDigitos) || undefined;
     campo.addEventListener('input', () => {
-      const limpo = campo.value.replace(/\D/g, '');
+      const limpo = campo.value.replace(/\D/g, '').slice(0, teto);
       if (limpo !== campo.value) campo.value = limpo;
     });
   });
@@ -225,9 +228,10 @@ function candidaturaLigarFoto(form, prefixo, aoMudar) {
     leitor.onerror = () => {
       if (input.files[0] !== arquivo) return;
       input.value = '';
-      mostrarPlaceholder();
+      // O `change` volta tudo pro placeholder — inclusive o card da prévia,
+      // que senão seguiria mostrando uma foto que não vai junto.
+      input.dispatchEvent(new Event('change', { bubbles: true }));
       mostrarErro('Não deu para abrir essa imagem. Escolha outra.');
-      if (aoMudar) aoMudar();
     };
     leitor.readAsDataURL(arquivo);
     btnEscolher.hidden = true;
@@ -509,6 +513,7 @@ function candidaturaCampoPreview(contexto = '') {
 function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
   const dados = fixos || {};
   const pedeSegmento = !!form.querySelector(`#${prefixo}categoria_id`);
+  let fotoMostrada;
   function definir(seletor, valor, marcador) {
     const el = previewRaiz.querySelector(seletor);
     el.textContent = valor || marcador;
@@ -546,7 +551,14 @@ function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
       fluxoEl.hidden = true;
     }
 
+    // A foto só é lida quando MUDA: esta função roda a cada tecla, e uma foto
+    // de celular de 15 MB relida a cada letra travava a digitação.
+    if (foto === fotoMostrada) return;
+    fotoMostrada = foto;
     const mediaFoto = previewRaiz.querySelector('[data-preview-foto]');
+    const placeholder = () => {
+      mediaFoto.innerHTML = `<div class="ponto-foto-placeholder">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
+    };
     if (foto) {
       // FileReader (data:), não URL.createObjectURL — mesmo motivo do
       // preview inline em candidaturaLigarFoto: a CSP não libera `blob:`
@@ -557,9 +569,10 @@ function candidaturaLigarPreviewCard(form, previewRaiz, prefixo, fixos) {
         mediaFoto.innerHTML = `<img src="${leitor.result}" alt="">`;
         candidaturaAjustarFoto(mediaFoto.querySelector('img'));
       };
+      leitor.onerror = placeholder;
       leitor.readAsDataURL(foto);
     } else {
-      mediaFoto.innerHTML = `<div class="ponto-foto-placeholder">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
+      placeholder();
     }
   }
   form.addEventListener('input', atualizar);

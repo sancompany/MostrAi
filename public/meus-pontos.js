@@ -175,6 +175,17 @@
     </div>`;
   }
 
+  // Enquanto o pedido está aberto (lá no topo do painel), o lugar do convite
+  // em Meus pontos vira um atalho pra ele — antes o card ficava vazio.
+  function htmlPedidoAberto() {
+    return `<div class="ponto-opportunity">
+      <div class="ponto-opportunity-summary">
+        <p class="form-hint u-m-0">Seu pedido para ser ponto está aberto.</p>
+        <button class="btn ghost" type="button" data-acao="ir-para-form">Ir para o pedido</button>
+      </div>
+    </div>`;
+  }
+
   // ---------- Os dois formulários de ponto ----------
   // Estação dos formulários de ponto (28/09/2026): abrem em #pontosNovo, uma
   // área do grid do painel na largura da página — não mais dentro da coluna
@@ -219,16 +230,19 @@
   // O segmento que o servidor vai gravar na candidatura da conta
   // (`criarCandidaturaPonto`, src/conta/modos.js): o texto livre, ou o nome
   // da categoria ativa. Só pra prévia; sem ele, a prévia não mostra segmento.
+  // O catálogo vem uma vez por página, não a cada abertura do formulário.
+  let categorias = null;
   async function segmentoDaConta(c) {
     if (c?.categoria_livre) return c.categoria_livre;
     if (!c?.categoria_id) return '';
-    try {
-      const r = await fetch(`${API_BASE_URL}/categorias`);
-      const lista = await r.json();
-      return (Array.isArray(lista) && lista.find((x) => x.id === c.categoria_id)?.nome) || '';
-    } catch {
-      return '';
-    }
+    categorias ||= fetch(`${API_BASE_URL}/categorias`)
+      .then((r) => r.json())
+      .then((lista) => (Array.isArray(lista) ? lista : []))
+      .catch(() => {
+        categorias = null;
+        return [];
+      });
+    return (await categorias).find((x) => x.id === c.categoria_id)?.nome || '';
   }
 
   function montarFormCompacto(raiz) {
@@ -555,7 +569,11 @@
       // que a pessoa já digitou: o botão só volta quando o form fecha.
       const formAberto = !$('pontosNovo').hidden;
       $('btnNovoPonto').hidden = !estabs.length || formAberto;
-      lista.innerHTML = estabs.length ? estabs.map(htmlEstabelecimento).join('') : formAberto ? '' : htmlOportunidade();
+      lista.innerHTML = estabs.length
+        ? estabs.map(htmlEstabelecimento).join('')
+        : formAberto
+          ? htmlPedidoAberto()
+          : htmlOportunidade();
       lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
       publicar(estabs);
     } catch {
@@ -583,8 +601,12 @@
       const acao = alvo.dataset.acao;
       if (acao === 'ver-tela') abrirTela(Number(alvo.dataset.id));
       if (acao === 'abrir-oportunidade') {
-        $('pontosLista').innerHTML = '';
+        $('pontosLista').innerHTML = htmlPedidoAberto();
         abrirForm(!contaTemEndereco());
+      }
+      if (acao === 'ir-para-form') {
+        rolarAte($('pontosNovo'));
+        $('tituloFormPonto')?.focus({ preventScroll: true });
       }
     });
     // O formulário mora fora de #modPontos (área própria do grid): Cancelar
