@@ -1,15 +1,30 @@
 # Current Handoff
 
 ## Updated
-2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo** (PR
-próprio, NÃO mergeado; sessão isolada em worktree própria, em paralelo com
-Plano Básico e Categorias). A promoção virou um componente
+2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
+([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
+autorização do dono em 28/09/2026, depois da `main` com Categorias #94).
+A promoção virou um componente
 (`public/promocao.js` + "Componente de promoção" em `style.css`) usado pela
 Home, por Planos e pela prévia do admin: arte e texto lado a lado (≥ 840px
 de componente, container query) ou empilhados, arte inteira com a proporção
 real, carrossel só com 2+ (sem autoplay). Nenhuma regra comercial mudou.
-ADR-025; pendências do dono em `docs/PENDENCIAS.md` §Q; e2e
-`tests/e2e/28-promocoes-visual.mjs`. **Não iniciar outra estação sem o dono.**
+ADR-027 (o 025 é do Plano Básico); pendências do dono em
+`docs/PENDENCIAS.md` §R; e2e `tests/e2e/29-promocoes-visual.mjs`.
+**Não iniciar outra estação sem o dono.**
+2026-09-28 — **Estação CATEGORIAS E CONCORRENTES DIRETOS** (branch
+`claude/categorias-concorrencia`, PR próprio, **NÃO mergeado — merge só com
+autorização do dono**). Proteção do dono da tela = categoria do ponto ×
+categoria do anunciante: mesma categoria bloqueia; par cadastrado em
+`categorias_concorrentes` (migration 105, um par por linha, a < b) bloqueia;
+resto exibe. Grupo e aliases nunca bloqueiam; sem exclusividade entre
+anunciantes. Seed com os 48 pares aprovados + "Terapia capilar" (sem par).
+Admin → Categorias → Editar ganhou "Concorrentes diretos" (busca +
+etiquetas, grava no Salvar). ADR-026, emenda da RN-57. **Antes do merge:**
+atualizar com a `main` — se o Plano Básico (`busy-noether-hheir2-basico`,
+migration 103) já tiver entrado, o conflito é só em
+`entrada-no-ar.js#coberturaDaConta` (resolução no ADR-026) e rerodar a
+suíte. **Não iniciar outra estação.**
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só

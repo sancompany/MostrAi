@@ -3813,3 +3813,31 @@ button.pend-bloco:focus-visible {
    pra linha de baixo do nome, em vez de espremer o título letra a letra. */
 .mm-item .item-topo { flex-wrap: wrap; gap: 4px 10px; }
 .mm-item .item-topo h4 { flex: 1 1 100%; }
+
+/* Concorrentes diretos (modal de categoria, migration 105): etiquetas com
+   "×" pra tirar + a busca de sempre pra pôr. */
+.cat-concorrentes-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.cat-concorrentes-lista .etiqueta {
+  gap: 4px;
+  white-space: normal;
+}
+.cat-concorrente-tirar {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cat-concorrente-tirar:hover,
+.cat-concorrente-tirar:focus-visible {
+  color: var(--text);
+}

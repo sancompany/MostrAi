@@ -13,7 +13,7 @@
 // próprias promoções (nome interno `e2e-promo-visual-*`); as artes são
 // geradas aqui e servidas pela própria página (mesma origem, cabe na CSP).
 //
-//   PW_CHROME=... node tests/e2e/28-promocoes-visual.mjs
+//   PW_CHROME=... node tests/e2e/29-promocoes-visual.mjs
 import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { acompanharRede, irQuieto } from './espera.mjs';

@@ -5855,10 +5855,11 @@ async function renderPromocoes(el) {
 }
 
 // ---------- categorias ----------
-// Categoria = o que impede concorrente direto na mesma tela (pontos e
-// anunciantes com o mesmo categoria_id, ver src/playlist/gerador.js). Grupo
-// é só organização desta tela e nunca entra no bloqueio nem aparece pro
-// cliente; aliases só ajudam a achar a categoria na busca.
+// Categoria = o que impede concorrente direto na mesma tela (ponto e
+// anunciante com o mesmo categoria_id, ou com categorias registradas como
+// "concorrentes diretos" — migration 105, src/categorias/concorrencia.js).
+// Grupo é só organização desta tela e nunca entra no bloqueio nem aparece
+// pro cliente; aliases só ajudam a achar a categoria na busca.
 //
 // Reconstrução de 23/09/2026 (Parte 38-44): a tela era ~250 linhas com 3
 // campos abertos cada, salvando no blur. Agora é lista de leitura + modal de
@@ -5964,6 +5965,12 @@ function abrirCategoria(c, categorias, aoSalvar) {
           <div><span class="campo-rotulo">Estado</span>${segmentado('estado', { ativa: 'Normal', legado: 'Legado' }, estado.chave === 'legado' ? 'legado' : 'ativa')}</div>
           <div><span class="campo-rotulo">Cadastro</span>${alternar({ nome: 'ativo', marcado: !c || (c.ativo && !c.legado), texto: 'Aparece no cadastro' })}</div>
         </div>
+        <div class="cat-concorrentes">
+          <label for="catConcBusca">Concorrentes diretos</label>
+          <p class="u-dim u-fs-85 u-mt-0">Categorias configuradas como concorrentes diretos não terão anúncios exibidos em pontos pertencentes à categoria correspondente.</p>
+          <ul class="cat-concorrentes-lista" data-concorrentes></ul>
+          ${categoriaBuscaHtml('catConc', null, { placeholder: 'Buscar categorias...' })}
+        </div>
         ${c ? `<p class="u-dim u-fs-85 u-m-0">${uso ? `Em uso por ${esc(uso)}.` : 'Nenhuma conta ou ponto usa esta categoria.'}</p>` : ''}
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
@@ -5986,6 +5993,48 @@ function abrirCategoria(c, categorias, aoSalvar) {
   form.querySelectorAll('[name="estado"]').forEach((r) => r.addEventListener('change', sincronizarEstado));
   sincronizarEstado();
 
+  // Concorrentes diretos: o par é um só no banco, então o que muda aqui
+  // aparece do outro lado assim que a lista recarrega (sem F5). Só vai pro
+  // servidor no Salvar, junto com o resto — Cancelar descarta. Vai só o que
+  // MUDOU (pôr/tirar), nunca a lista inteira: um modal aberto antes de outra
+  // aba gravar um par não apaga esse par ao salvar.
+  const porId = new Map(categorias.map((x) => [x.id, x]));
+  const inicial = new Set(c?.concorrentes || []);
+  const concorrentes = new Set(inicial);
+  const listaConc = form.querySelector('[data-concorrentes]');
+  const desenharConcorrentes = () => {
+    const itens = [...concorrentes]
+      .map((id) => porId.get(id) || { id, nome: `#${id}` })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    listaConc.innerHTML = itens.length
+      ? itens
+          .map(
+            (x) => `<li class="etiqueta">${esc(x.nome)}${x.legado ? ' <span class="u-dim">(legado)</span>' : ''}
+              <button type="button" class="cat-concorrente-tirar" data-tirar-conc="${x.id}" aria-label="Tirar ${esc(x.nome)} dos concorrentes diretos">×</button></li>`,
+          )
+          .join('')
+      : '<li class="u-dim u-fs-85">Nenhum — só a própria categoria é bloqueada.</li>';
+  };
+  listaConc.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tirar-conc]');
+    if (!b) return;
+    concorrentes.delete(Number(b.dataset.tirarConc));
+    desenharConcorrentes();
+  });
+  ligarCategoriaBusca(
+    'catConc',
+    categorias,
+    (escolhida) => {
+      concorrentes.add(escolhida.id);
+      desenharConcorrentes();
+      const busca = form.querySelector('#catConcBusca');
+      busca.value = '';
+      form.querySelector('#catConcId').value = '';
+    },
+    { excluirId: c?.id ?? null },
+  );
+  desenharConcorrentes();
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const legado = form.querySelector('[name="estado"]:checked').value === 'legado';
@@ -5998,6 +6047,8 @@ function abrirCategoria(c, categorias, aoSalvar) {
         .filter(Boolean),
       legado,
       ativo: !legado && chkAtivo.checked,
+      concorrentes_adicionar: [...concorrentes].filter((id) => !inicial.has(id)),
+      concorrentes_remover: [...inicial].filter((id) => !concorrentes.has(id)),
     };
     if (!corpo.nome) return erroNoModal(dlg, 'Dê um nome à categoria.');
     const r = await api(c ? `/admin/categorias/${c.id}` : '/admin/categorias', {
@@ -6046,6 +6097,7 @@ function abrirMesclarCategoria(c, categorias, aoSalvar) {
         <li>${uso ? `Quem usa hoje (${esc(uso)}) passa a usar a categoria escolhida.` : 'Ninguém usa esta categoria hoje — nada a mover.'}</li>
         <li>“${esc(c.nome)}” vira legado e sai do cadastro (nada é apagado).</li>
         <li>O nome “${esc(c.nome)}” vira termo de busca da que fica.</li>
+        ${c.concorrentes?.length ? `<li>Os concorrentes diretos de “${esc(c.nome)}” passam pra categoria que fica.</li>` : ''}
       </ul>
       <p class="form-msg" data-msg role="status"></p>`,
     rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button>

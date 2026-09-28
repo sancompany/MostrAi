@@ -5199,13 +5199,39 @@ Depois do merge (e só então a estação fecha): ver `.ia/TODO.md`, seção "QR
 CODE INSTITUCIONAL". Fora do escopo, para outra estação: QR por ponto, de
 indicação, com contagem de acessos.
 
+## Q. Categorias e concorrentes diretos (28/09/2026)
 
-## Q. Promoções — mídia separada do conteúdo (Estação isolada 3, 28/09/2026)
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Regra:
+emenda da RN-57 em `docs/funcional.md`; decisão: ADR-026; rotas em
+`docs/api.md`.
+
+Feito:
+
+- [x] `categorias_concorrentes` (migration 105): par simétrico por
+      construção (a < b, PK), sem duplicata, sem par consigo mesma, CASCADE,
+      RLS. Seed dos 48 pares aprovados, por nome (todos existiam em
+      produção em 28/09/2026).
+- [x] "Terapia capilar" criada (Beleza e estética; aliases terapeuta
+      capilar, terapia capilar, tratamento capilar, tricologia,
+      tricologista), concorrente só de si mesma.
+- [x] Gerador e cobertura da conta aplicam: mesma categoria → bloqueia;
+      par → bloqueia; resto → exibe. Grupo/alias nunca; dona do ponto
+      isenta; Mídia Mostraí fora.
+- [x] Admin → Categorias → Editar → "Concorrentes diretos" (busca,
+      etiquetas, texto explicativo), grava no Salvar, reflete dos dois
+      lados sem F5. Mesclar leva os pares.
+- [x] Testes: `tests/categorias-concorrentes-diretos.test.js`,
+      `tests/categorias-concorrentes-admin.test.js`, e2e 28.
+
+Antes/depois do merge: `.ia/TODO.md`, seção "CATEGORIAS E CONCORRENTES
+DIRETOS".
+
+## R. Promoções — mídia separada do conteúdo (Estação isolada 3, 28/09/2026)
 
 ("Estação isolada 3" é a numeração do dono para as frentes paralelas desta
 semana — não é a Estação 3 da esteira da San & Co., que está fechada.)
 
-**Feito (PR próprio, NÃO mergeado):** a promoção deixou de ser um banner com
+**Feito ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com autorização do dono em 28/09/2026):** a promoção deixou de ser um banner com
 a arte de fundo e todo o texto por cima (véu escuro). Agora é um componente
 só (`public/promocao.js` + bloco "Componente de promoção" em `style.css`),
 usado pela Home, por Planos e pela prévia do admin: arte e texto lado a lado
@@ -5218,7 +5244,7 @@ descrição da promoção, recolhida). Duas ou mais promoções = carrossel sem
 autoplay (setas, pontos, teclado, swipe; slide fora da vista inerte; altura
 estável); com uma só não há seta, ponto nem "1/1". Nenhuma regra comercial
 mudou: percentuais, prazo, teto, público, cálculo e Checkout intactos.
-E2E: `tests/e2e/28-promocoes-visual.mjs`.
+E2E: `tests/e2e/29-promocoes-visual.mjs`.
 
 Com mais de uma promoção vigente, cada produto × ciclo só é anunciado pela
 promoção que de fato dá o preço — a primeira na ordem do servidor, a mesma
@@ -5230,7 +5256,7 @@ proporção declarada e ela entra inteira, com `contain`).
 
 **Achado funcional, NÃO alterado (regra de preço, fora desta estação):**
 
-- **Q0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em
+- **R0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em
   Planos"; a cobrança enxerga toda promoção vigente.** `planos.page.js`
   calcula o preço dos cards com `PROMOCOES_VIGENTES` filtrado por
   `mostrar_planos`, enquanto o `POST /assinar` e a cotação usam
@@ -5243,23 +5269,23 @@ proporção declarada e ela entra inteira, com `contain`).
 
 **Com o dono:**
 
-- **Q1 [ ] A pré-venda termina 31/12/2026 às 00:00**, não 23:59 — é o que
+- **R1 [ ] A pré-venda termina 31/12/2026 às 00:00**, não 23:59 — é o que
   está gravado (a mesma situação da C4 da pré-venda anterior). O site mostra
   "Adesões até 31/12/2026 às 00:00". Se a intenção é o dia 31 inteiro,
   trocar para 23:59 no admin.
-- **Q2 [ ] Arte específica pro celular não existe.** O admin guarda UMA
+- **R2 [ ] Arte específica pro celular não existe.** O admin guarda UMA
   imagem por promoção, com um formato (horizontal 21:9, quadrado, vertical).
   O componente usa a proporção real da imagem e nunca corta, então a arte
   horizontal aparece inteira também no celular — com a arte atual (3:1), ela
   fica com ~120px de altura a 390px. Uma segunda imagem (celular) exigiria
   campo e upload novos no admin: não construído nesta estação (pedido: não
   criar sistema paralelo).
-- **Q3 [ ] Título repete o selo.** O componente tira do título o prefixo
+- **R3 [ ] Título repete o selo.** O componente tira do título o prefixo
   igual ao selo ("Pré-venda Mostraí: até 30% de desconto" com selo
   "Pré-venda" aparece como "Até 30% de desconto"). O texto gravado não foi
   alterado; se o dono preferir, pode reescrever o título no admin e a regra
   deixa de agir.
-- **Q4 [ ] Ordem e destino do CTA não são configuráveis.** O carrossel segue
+- **R4 [ ] Ordem e destino do CTA não são configuráveis.** O carrossel segue
   a ordem do servidor (a mais nova primeiro) e o CTA da Home vai sempre para
   Planos — não há campo de prioridade nem de destino no admin (não foi
   criado um CMS por causa do carrossel).
