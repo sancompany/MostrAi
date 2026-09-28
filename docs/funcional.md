@@ -468,7 +468,10 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
   ponto arquivado, dono trocado, conta excluída. Tela em reparo ou sem sinal
   não encerra (o Básico fica ativo e não gera obrigação sem tela tocando).
   Encerrar o Básico nunca mexe no plano comercial, e cancelar o plano nunca
-  mexe no Básico.
+  mexe no Básico. O fim registrado é o instante do arquivamento ou da
+  exclusão, não o da sincronização que viu; a troca de dono (só manual, sem
+  data guardada) encerra na sincronização — o RUNBOOK (6.1) manda rodar
+  logo depois.
 · **Soma com o plano comercial, origens preservadas:** Básico + Essencial =
   4 pontos e 41 h (14 h do Básico + 27 h do Essencial); Básico + Pro = 8
   pontos e 98 h. O ponto do Básico é sempre o próprio; os do plano seguem a
@@ -478,14 +481,19 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
   vitrine, 12 h × 30 dias). Como 140 não divide por 15, cada hora recebe a
   sua fatia de uma sequência estável (9, 9, 10 peças de 15 s…) cuja média é
   exatamente 140 s — 3.360 exibições equivalentes de 15 s por mês, sem
-  perder meia hora por arredondamento. Início no meio do mês: a obrigação
-  nasce hora a hora a partir do início (nada retroativo), como no plano.
+  perder meia hora por arredondamento. A fatia de cada hora do relógio gira
+  de um dia pro outro, então a média fecha em qualquer horário de
+  funcionamento (aberto 10 h/dia: 2.800 no mês, não 2.790 nem 2.820).
+  Início no meio do mês: a obrigação nasce hora a hora a partir do início
+  (nada retroativo), como no plano.
 · **Saldo e comprovante:** a parcela do Básico entra na MESMA linha da conta
   na tela e hora (`exibicoes_contador`) — um comprovante, um saldo —, com a
   parte do Básico guardada à parte em `segundos_obrigacao_basico`. Se a dona
   também escolheu o próprio ponto no plano comercial, as duas obrigações se
   somam nessa linha. A hora sem sinal (rede de segurança) cobra o Básico que
-  valia naquela hora (início/fim da linha).
+  valia naquela hora (início/fim da linha), com a peça que a geração teria
+  usado nela. O saldo da conta (banco de horas) se divide por todos os
+  pontos que o puxam na mesma hora — os da fatia comercial e os do Básico.
 · **Sucede a cota de autoanúncio** (legado zerado desde a 049): com o Básico
   ativo a cota não entra, senão a dona apareceria em dobro.
 *Quem vê:* o dono (card "Benefício de ponto · Plano Básico" separado de "Seu

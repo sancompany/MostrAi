@@ -10,6 +10,15 @@ ADR-025, RN-43.5. Soma com o plano comercial com a origem preservada; nunca
 em `plano_id`, nunca no Checkout/vitrine. Testes `tests/basico-ponto.test.js`
 (10 casos + hora sem sinal) e e2e 34. A estação de finalização (#87–#92)
 continua PAUSADA — ver `docs/auditoria-finalizacao-checkpoint.md` no #87.
+Revisão independente aplicada no mesmo PR (1 P2 + 5 P3, cada um com teste
+que falha no código anterior): a parte Básico congela junto com o total da
+hora (o CHECK derrubava a playlist na hora do deploy), plano sem teto de peça
+continua sem teto, saldo dividido também pelos pontos do Básico, fim com o
+instante registrado, sequência por hora girando dia a dia, rede de segurança
+com a peça certa. Fica pro dono: Básico de ponto cujas telas foram todas
+removidas/revogadas continua ativo (ADR-025 como escrito). A estação de
+categorias está PARADA por ordem do dono até este PR estar aberto e
+documentado — não retomar sem ele.
 **Depois do merge:** CI, SHA no ar, conferir em produção (só leitura) quantos
 pontos o backfill da 103 ativou e o card no painel de um dono de ponto real.
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO

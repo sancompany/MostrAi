@@ -859,18 +859,25 @@ Decisão:
    sincronizada em `sincronizarStatusPonto` (toda mudança de tela) + job
    diário. **Encerramento** só quando deixa de ser ponto daquela conta
    (arquivado, dono trocado, conta excluída/interna); reparo/sem sinal não
-   encerra. A leitura confere a coerência de novo (o job pode atrasar).
+   encerra. A leitura confere a coerência de novo (o job pode atrasar). O
+   `fim` é o instante registrado (`arquivado_em`, `excluido_em`); troca de
+   dono não tem data nem rota (só manual) e encerra na sincronização — o
+   RUNBOOK 6.1 manda sincronizar logo depois.
 3. **Soma com origem preservada**: a parcela do Básico entra na MESMA
    entrada da conta na hora da tela (uma linha em `exibicoes_contador`, um
    POP, um saldo) e fica guardada em `segundos_obrigacao_basico`. O ponto do
    Básico é sempre o próprio (sem seletor, sem trava de ramo); os pontos do
    plano seguem a RN-49. Pontos e horas somam; duração e criativos no ar
-   valem o maior das origens (mesmo conjunto de peças).
+   valem o maior das origens (mesmo conjunto de peças) — plano sem teto de
+   peça continua sem teto. O saldo da conta se divide pelos pontos da fatia
+   comercial + os do Básico (todos puxam o mesmo saldo na mesma hora).
 4. **Tempo como fonte**: 140 s/h não dividem por 15 s; em vez de arredondar
    pra baixo (13,5 h), cada hora recebe floor((k+1)·s/d) − floor(k·s/d)
-   inserções (k = índice absoluto da hora) — média exata, determinística,
-   3.360 exibições de 15 s por mês. Não muda o algoritmo do Saldo: a
-   obrigação da hora é gravada como sempre, só maior.
+   inserções (k = índice da hora + índice do dia: a fatia de cada hora do
+   relógio gira dia a dia, e a média fecha em qualquer horário de
+   funcionamento) — determinística, 3.360 exibições de 15 s por mês. Não
+   muda o algoritmo do Saldo: a obrigação da hora é gravada como sempre, só
+   maior; a parte do Básico congela junto com o total da hora.
 5. **Sem retroativo**: ativação no meio do mês gera obrigação hora a hora a
    partir do início (a mesma semântica do plano). Backfill da migration
    ativa os pontos já elegíveis a partir de `now()`.

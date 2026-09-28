@@ -99,11 +99,34 @@ async function pontoDaConta(contaId, { instalar = true } = {}) {
   return { pontoId, telaId: tela.id };
 }
 
-const recuarInicio = (pontoId) =>
-  pool.query('UPDATE beneficios_basico_ponto SET inicio = $2 WHERE ponto_id = $1 AND fim IS NULL', [
-    pontoId,
+const recuarInicio = (pontoId, inicio = INICIO_TESTE) =>
+  pool.query('UPDATE beneficios_basico_ponto SET inicio = $2 WHERE ponto_id = $1 AND fim IS NULL', [pontoId, inicio]);
+
+// Ponto em operação (primeiro sinal): é o que põe o ponto na régua da
+// cobertura (`pontosEmOperacao`) e na rede de segurança do Saldo.
+async function emOperacao({ pontoId, telaId }) {
+  await pool.query('UPDATE dispositivos SET primeiro_sinal_em = $2, provisionado_em = $2 WHERE id = $1', [
+    telaId,
     INICIO_TESTE,
   ]);
+  await require('../src/pontos/repository').sincronizarStatusPonto(pontoId);
+}
+
+// Saldo de Veiculação pronto (segundos), do mês anterior, como a apuração deixaria.
+const saldoNoBanco = (contaId, segundos) =>
+  pool.query(
+    `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco,
+                              segundos_obrigacao, segundos_entregues, segundos_banco, apurado_em)
+     VALUES ($1, (date_trunc('month', now()) - interval '1 month')::date, 1, 0, 1, $2, 0, $2, now())`,
+    [contaId, segundos],
+  );
+const bancoProgramado = async (contaId, telaId, hora) =>
+  (
+    await pool.query(
+      'SELECT vezes_banco FROM exibicoes_contador WHERE anunciante_id = $1 AND dispositivo_id = $2 AND janela_hora = $3',
+      [contaId, telaId, hora],
+    )
+  ).rows[0]?.vezes_banco;
 const linhasDoBasico = async (pontoId) =>
   (await pool.query('SELECT * FROM beneficios_basico_ponto WHERE ponto_id = $1 ORDER BY id', [pontoId])).rows;
 const tela = (telaId) => dispositivosRepo.buscarComPonto(telaId);
@@ -172,6 +195,10 @@ test('casos 4 e 5: Básico + Essencial = 4 pontos e 41 h; Básico + Pro = 8 pont
     assert.strictEqual(d.horasPlano, horasPlano, `${planoId}: horas do plano comercial`);
     assert.strictEqual(d.horasBasico, 14, 'horas do Básico');
     assert.strictEqual(d.horasPorMes, horasPlano + 14);
+    // Plano sem teto de peça (NULL — migration 045) continua sem teto com o
+    // Básico junto: o maior dos dois não vira os 15 s do Básico.
+    const semTeto = basicoRepo.direitosCombinados({ ...plano, duracao_maxima_segundos: null }, basicos);
+    assert.strictEqual(semTeto.duracaoMaxima, null, `${planoId}: sem teto continua sem teto`);
     // O plano comercial continua sendo o plano_id; o Básico nunca vira plano_id.
     assert.strictEqual((await anunciantesRepo.buscarPorId(conta.id)).plano_id, planoId);
   }
@@ -190,9 +217,12 @@ test('caso 6: plano comercial cancelado → o Básico continua', async () => {
 test('caso 7: deixa de ser ponto → Básico termina; o Pro continua', async () => {
   const conta = await novaConta({ plano: 'destaque-1m' });
   const { pontoId } = await pontoDaConta(conta.id);
+  await recuarInicio(pontoId);
+  // Arquivado há 5 h, e só agora a sincronização vê.
+  const arquivadoEm = new Date(Date.now() - 5 * 3_600_000);
   await pool.query(
-    `UPDATE pontos SET status = 'arquivado', arquivado_em = now(), motivo_arquivamento = 'teste' WHERE id = $1`,
-    [pontoId],
+    `UPDATE pontos SET status = 'arquivado', arquivado_em = $2, motivo_arquivamento = 'teste' WHERE id = $1`,
+    [pontoId, arquivadoEm],
   );
   // Antes do job: a leitura já não o considera ativo.
   assert.deepStrictEqual(await basicoRepo.ativosDaConta(conta.id), []);
@@ -201,6 +231,11 @@ test('caso 7: deixa de ser ponto → Básico termina; o Pro continua', async () 
   const [linha] = await linhasDoBasico(pontoId);
   assert.ok(linha.fim, 'o Básico tem fim registrado');
   assert.strictEqual(linha.motivo_fim, 'ponto_arquivado');
+  // O fim é o instante do arquivamento, não o da sincronização: a rede de
+  // segurança do Saldo não cobra as horas entre os dois.
+  assert.strictEqual(new Date(linha.fim).getTime(), arquivadoEm.getTime(), 'fim = quando foi arquivado');
+  assert.strictEqual(basicoRepo.valiaNaHora(linha, new Date(arquivadoEm.getTime() + 3_600_000)), false);
+  assert.strictEqual(basicoRepo.valiaNaHora(linha, new Date(arquivadoEm.getTime() - 3_600_000)), true);
   assert.strictEqual((await anunciantesRepo.buscarPorId(conta.id)).plano_id, 'destaque-1m', 'o Pro não é tocado');
   // Tela em reparo NÃO encerra (não é "deixar de ser ponto").
   const outra = await novaConta();
@@ -243,13 +278,22 @@ test('caso 8: o próprio ponto também escolhido no Essencial — uma linha, obr
 });
 
 test('caso 9: Saldo — 14 h são a fonte de verdade; 3.360 exibições equivalentes de 15 s, sem arredondar hora a hora', async () => {
-  // 360 horas abertas (12 h × 30 dias) a partir de qualquer hora: a sequência
-  // soma exatamente 140 s × 360 = 50.400 s = 14 h.
-  for (const inicio of [0, 7, 123457]) {
-    let insercoes = 0;
-    for (let k = inicio; k < inicio + 360; k++) insercoes += basicoRepo.insercoesDoBasicoNaHora(140, 15, k * 3_600_000);
+  // 14 h/mês na régua da vitrine = 12 h abertas × 30 dias. A sequência fecha
+  // exata em QUALQUER horário de funcionamento, não só em múltiplo de 3 h
+  // (revisão independente, 28/09/2026: aberto 10 h/dia dava 2.790 ou 2.820).
+  const noMes = (duracao, abre, fecha, dia0) => {
+    let n = 0;
+    for (let dia = dia0; dia < dia0 + 30; dia++)
+      for (let h = abre; h < fecha; h++) n += basicoRepo.insercoesDoBasicoNaHora(140, duracao, emMatao(dia, h));
+    return n;
+  };
+  for (const dia0 of [1, 2, 3]) {
+    const insercoes = noMes(15, 8, 20, dia0);
     assert.strictEqual(insercoes, 3360, 'exibições equivalentes de 15 s');
     assert.strictEqual(insercoes * 15, 50_400, '14 h em segundos');
+    assert.strictEqual(noMes(15, 8, 18, dia0), 2800, '10 h/dia: 140 s × 300 h ÷ 15 s');
+    assert.strictEqual(noMes(15, 12, 22, dia0), 2800, '10 h/dia em outro horário');
+    assert.strictEqual(noMes(12, 7, 21, dia0), 4900, '14 h/dia, peça de 12 s: 140 s × 420 h ÷ 12 s');
   }
   // Peça de 20 s: 140 ÷ 20 = 7 por hora exatas.
   assert.strictEqual(basicoRepo.insercoesDoBasicoNaHora(140, 20, emMatao(3, 9)), 7);
@@ -313,4 +357,123 @@ test('caso 10: conta com Básico recebe o +1 crédito/mês, sem duplicar', async
   const situacao = (await situacaoDosPontos([pontoId], agora)).get(pontoId);
   assert.strictEqual(situacao.creditoDoMesConcedido, true, 'crédito do mês');
   assert.strictEqual(situacao.basico?.horasPorMes, 14, 'e o Básico, separado, no mesmo ponto');
+});
+
+// --- Achados da revisão independente (28/09/2026) ---------------------------
+
+test('a parte Básico congela junto com o total: extra com total fixado não quebra a playlist', async () => {
+  // A hora do deploy: a conta entrou no meio da hora (extra) e a linha dela
+  // ficou com o total sem parte Básico; num poll seguinte, o Básico já vale.
+  const conta = await novaConta();
+  const ponto = await pontoDaConta(conta.id);
+  const hora = emMatao(5, 10);
+  await recuarInicio(ponto.pontoId, new Date(hora.getTime() + 2 * 3_600_000));
+  await gerador.gerarPlaylistDaHora(await tela(ponto.telaId), hora, new Date(hora.getTime() + 5 * 60_000));
+  await pool.query(
+    `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
+                                     vezes_banco, segundos_obrigacao, duracao_segundos, minutos_abertos)
+     VALUES ($1, $2, $3, 2, 2, 0, 30, 15, 60)`,
+    [conta.id, ponto.telaId, hora],
+  );
+  await recuarInicio(ponto.pontoId);
+  const playlist = await gerador.gerarPlaylistDaHora(
+    await tela(ponto.telaId),
+    hora,
+    new Date(hora.getTime() + 20 * 60_000),
+  );
+  assert.ok(
+    playlist.itens.some((i) => i.anuncianteId === conta.id),
+    'a conta entra no fim da hora congelada',
+  );
+  const [linha] = (
+    await pool.query(
+      'SELECT segundos_obrigacao, segundos_obrigacao_basico FROM exibicoes_contador WHERE anunciante_id = $1 AND janela_hora = $2',
+      [conta.id, hora],
+    )
+  ).rows;
+  assert.deepStrictEqual(linha, { segundos_obrigacao: 30, segundos_obrigacao_basico: null }, 'o par fica o congelado');
+});
+
+test('Saldo de Veiculação: dividido pelos pontos do Básico também, sem puxar o saldo inteiro em cada ponto', async () => {
+  // Dona de dois estabelecimentos, só com o Básico: cada ponto puxa metade.
+  const dona = await novaConta();
+  const p1 = await pontoDaConta(dona.id);
+  await pontoDaConta(dona.id);
+  await recuarInicio(p1.pontoId);
+  await saldoNoBanco(dona.id, 150);
+  const hora = emMatao(6, 10);
+  await gerador.gerarPlaylistDaHora(await tela(p1.telaId), hora);
+  assert.strictEqual(await bancoProgramado(dona.id, p1.telaId, hora), 5, '150 s ÷ 2 pontos ÷ 15 s');
+
+  // Essencial num ponto de outro + Básico no próprio (barrada nele pela trava
+  // de ramo, sem escolher o próprio): os dois pontos dividem o mesmo saldo.
+  const { rows: cat } = await pool.query('SELECT id FROM categorias WHERE ativo ORDER BY id LIMIT 1');
+  const conta = await novaConta({ plano: 'essencial-1m' });
+  const proprio = await pontoDaConta(conta.id);
+  await pool.query('UPDATE anunciantes SET categoria_id = $2 WHERE id = $1', [conta.id, cat[0].id]);
+  await pool.query('UPDATE pontos SET categoria_id = $2 WHERE id = $1', [proprio.pontoId, cat[0].id]);
+  await recuarInicio(proprio.pontoId);
+  const outro = await pontoDaConta((await novaConta()).id);
+  await emOperacao(outro);
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1, $2, now())', [
+    conta.id,
+    outro.pontoId,
+  ]);
+  await saldoNoBanco(conta.id, 180);
+  await gerador.gerarPlaylistDaHora(await tela(proprio.telaId), hora);
+  assert.strictEqual(await bancoProgramado(conta.id, proprio.telaId, hora), 6, 'no próprio (Básico): 180 s ÷ 2 ÷ 15 s');
+  // Na outra tela, o saldo que sobrou (180 − 90 já programados) também ÷ 2.
+  await gerador.gerarPlaylistDaHora(await tela(outro.telaId), hora);
+  assert.strictEqual(
+    await bancoProgramado(conta.id, outro.telaId, hora),
+    3,
+    'no escolhido (comercial): 90 s ÷ 2 ÷ 15 s',
+  );
+});
+
+test('rede de segurança: com o comercial vencido na hora, o Básico usa a peça do Básico, como ao vivo', async () => {
+  // Destaque: 2 peças no ar (5 s e 15 s, média 10 s); o Básico roda 1 — a mais nova, 15 s.
+  const conta = await novaConta({ plano: 'destaque-1m', duracao: 5 });
+  const nova = await criativosRepo.criar({
+    anunciante_id: conta.id,
+    arquivo_original_url: 'original.mp4',
+    arquivo_normalizado_url: `https://exemplo.test/basico-${randomUUID()}.mp4`,
+    thumbnail_url: null,
+    duracao_segundos: 15,
+  });
+  await criativosRepo.atualizar(nova.id, { status: 'aprovado' });
+  const ponto = await pontoDaConta(conta.id);
+  await emOperacao(ponto);
+  await recuarInicio(ponto.pontoId);
+  await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1, $2, now())', [
+    conta.id,
+    ponto.pontoId,
+  ]);
+  // Uma hora servida com o plano valendo (a rede de segurança só cobra depois dela).
+  const servida = emMatao(3, 10);
+  await gerador.gerarPlaylistDaHora(await tela(ponto.telaId), servida);
+  await pool.query('UPDATE anunciantes SET data_expiracao = $2 WHERE id = $1', [
+    conta.id,
+    new Date(servida.getTime() + 2 * 3_600_000),
+  ]);
+  const semSinal = emMatao(4, 10);
+  await registrarHorasSemPedido({
+    de: semSinal,
+    ate: new Date(semSinal.getTime() + 3_600_000),
+    apenasContas: [conta.id],
+    apenasTelas: [ponto.telaId],
+  });
+  const [linha] = (
+    await pool.query(
+      `SELECT segundos_obrigacao, segundos_obrigacao_basico, duracao_segundos FROM exibicoes_contador
+        WHERE anunciante_id = $1 AND janela_hora = $2 AND obrigacao_sem_pedido`,
+      [conta.id, semSinal],
+    )
+  ).rows;
+  const basico = basicoRepo.insercoesDoBasicoNaHora(140, 15, semSinal) * 15;
+  assert.deepStrictEqual(
+    linha,
+    { segundos_obrigacao: basico, segundos_obrigacao_basico: basico, duracao_segundos: 15 },
+    'só o Básico valia: peça de 15 s, não a média de 10 s do plano',
+  );
 });

@@ -221,6 +221,35 @@ async function pontosEmOperacao() {
   return rows.map((r) => r.id);
 }
 
+// Por quantos pontos o Saldo de Veiculação de uma conta sai na mesma hora: a
+// fatia comercial e os pontos do Básico, sem contar duas vezes o próprio
+// ponto que está nas duas (revisão independente, 28/09/2026). Nunca 0.
+function pontosQuePuxamOSaldo(fatiaComercial, pontosDoBasico) {
+  return new Set([...(fatiaComercial || []), ...(pontosDoBasico || [])]).size || 1;
+}
+
+// A fatia comercial de uma conta que ficou fora de `anunciantesElegiveis`
+// nesta tela (a dona, que a trava de ramo barra no próprio ponto) — a MESMA
+// conta de `pontosDoAnunciante` que as outras telas fazem pra ela, com o
+// plano dentro da validade. Sem plano válido, nenhuma.
+async function coberturaComercialDaConta(contaId, pontosNoAr, pontosBloqueados) {
+  const { rows } = await pool.query(
+    `SELECT p.pontos_incluidos,
+            COALESCE((SELECT array_agg(ap.ponto_id ORDER BY ap.escolhido_em)
+                        FROM anunciantes_pontos ap WHERE ap.anunciante_id = a.id), ARRAY[]::int[]) AS pontos_escolhidos
+       FROM anunciantes a
+       JOIN planos p ON p.id = a.plano_id AND ${vigencia.vigenteSql('a.data_expiracao')}
+      WHERE a.id = $1`,
+    [contaId],
+  );
+  if (!rows[0]) return [];
+  return pontosDoAnunciante(
+    { id: contaId, pontosIncluidos: rows[0].pontos_incluidos, escolhidos: rows[0].pontos_escolhidos },
+    pontosNoAr,
+    pontosBloqueados,
+  );
+}
+
 // Quem reveza entre peças de durações diferentes ocupa, ao longo da hora, a
 // média delas. Média e não a primeira: a rotação passa por todas.
 function duracaoMedia(criativos) {
@@ -275,6 +304,14 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior, horaAtual) {
 // nesta tela nesta hora e a duração usada. Gravados UMA vez — a primeira
 // geração da hora fixa o número, e os polls seguintes não reescrevem
 // (COALESCE), como a base congelada da hora.
+//
+// A parte do Básico (`basico`, migration 103) congela JUNTO com o total, na
+// mesma escrita — nunca sozinha. Com COALESCE independente, a linha de quem
+// chegou no meio da hora sem Básico (total fixado, Básico nulo) recebia num
+// poll seguinte uma parte Básico maior que o total congelado, o CHECK da 103
+// barrava, e a playlist daquela tela dava erro até a hora virar (revisão
+// independente, 28/09/2026: a hora do deploy, ou um Básico que nasce no meio
+// da hora pra uma conta que já estava nos `extras`).
 async function gravarProgramados(
   dispositivo,
   horaAtual,
@@ -298,8 +335,9 @@ async function gravarProgramados(
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
      DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6,
                    segundos_obrigacao = COALESCE(exibicoes_contador.segundos_obrigacao, EXCLUDED.segundos_obrigacao),
-                   segundos_obrigacao_basico = COALESCE(exibicoes_contador.segundos_obrigacao_basico,
-                                                        EXCLUDED.segundos_obrigacao_basico),
+                   segundos_obrigacao_basico = CASE WHEN exibicoes_contador.segundos_obrigacao IS NULL
+                                                    THEN EXCLUDED.segundos_obrigacao_basico
+                                                    ELSE exibicoes_contador.segundos_obrigacao_basico END,
                    duracao_segundos = COALESCE(exibicoes_contador.duracao_segundos, EXCLUDED.duracao_segundos),
                    minutos_abertos = COALESCE(exibicoes_contador.minutos_abertos, EXCLUDED.minutos_abertos)`,
         [
@@ -455,22 +493,32 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const cotaDaTela = basico ? 0 : dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias, videoInstitucional] =
-    await Promise.all([
-      anunciantesElegiveis(
-        dispositivo.categoria_id,
-        excluirDaRotacaoPaga,
-        dispositivo.dono_conta_id,
-        dispositivo.ponto_id,
-      ),
-      aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
-      criativosDoDono(dispositivo.dono_conta_id),
-      pontosEmOperacao(),
-      bancoHorasRepo.saldosAtivos(),
-      pontosRepo.idsBloqueadosParaEscolha(),
-      midiasElegiveis(dispositivo.ponto_id),
-      obterVideoInstitucional(),
-    ]);
+  const [
+    todos,
+    deficits,
+    doDono,
+    pontosNoAr,
+    saldosBanco,
+    pontosBloqueados,
+    midiasProprias,
+    videoInstitucional,
+    basicosPorConta,
+  ] = await Promise.all([
+    anunciantesElegiveis(
+      dispositivo.categoria_id,
+      excluirDaRotacaoPaga,
+      dispositivo.dono_conta_id,
+      dispositivo.ponto_id,
+    ),
+    aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
+    criativosDoDono(dispositivo.dono_conta_id),
+    pontosEmOperacao(),
+    bancoHorasRepo.saldosAtivos(),
+    pontosRepo.idsBloqueadosParaEscolha(),
+    midiasElegiveis(dispositivo.ponto_id),
+    obterVideoInstitucional(),
+    basicoRepo.pontosPorConta(),
+  ]);
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele.
   //
@@ -521,7 +569,9 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     // por vez, e quem cobre vários pontos tem esta função rodando em
     // paralelo pra cada um, todas lendo o MESMO saldo ainda intacto. Sem
     // dividir, uma conta em 3 pontos puxaria o saldo inteiro 3 vezes na
-    // mesma hora. Divide pelos pontos cobertos (a mesma fatia da RN-49).
+    // mesma hora. Divide pelos pontos cobertos (a mesma fatia da RN-49) e
+    // pelos pontos do Básico da conta (migration 103), que puxam o mesmo
+    // saldo — `pontosQuePuxamOSaldo`.
     // Arredonda pra cima: saldo menor que o número de pontos nunca podia
     // virar 0 pra sempre; a sobra é de no máximo uma exibição por ponto, e a
     // liquidação nunca abate mais que o saldo.
@@ -532,7 +582,11 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
     const prioridadeBanco = aberta
       ? Math.min(
-          Math.ceil((bancoDaConta?.segundos || 0) / cobertos / duracaoValida(n.duracaoSegundos)),
+          Math.ceil(
+            (bancoDaConta?.segundos || 0) /
+              pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) /
+              duracaoValida(n.duracaoSegundos),
+          ),
           Math.floor(n.total * multiplicadorBanco),
         )
       : 0;
@@ -573,9 +627,19 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     } else {
       porId[basico.conta_id] = { criativos };
       const saldo = saldosBanco[basico.conta_id];
+      // Mesma divisão da entrada comercial. A fatia comercial da dona vem de
+      // `cobertura` quando ela está em `todos`; fora dele (a trava de ramo a
+      // barra no próprio ponto), é refeita — só quando há saldo pra dividir.
+      const comercialDaDona =
+        cobertura.get(basico.conta_id) ??
+        (aberta && saldo ? await coberturaComercialDaConta(basico.conta_id, pontosNoAr, pontosBloqueados) : []);
       const banco = aberta
         ? Math.min(
-            Math.ceil((saldo?.segundos || 0) / duracaoValida(duracao)),
+            Math.ceil(
+              (saldo?.segundos || 0) /
+                pontosQuePuxamOSaldo(comercialDaDona, basicosPorConta.get(basico.conta_id)) /
+                duracaoValida(duracao),
+            ),
             Math.floor(insercoes * (saldo ? multiplicadorPorIdade(saldo.idadeMeses) : 1)),
           )
         : 0;
@@ -822,8 +886,9 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
 // hora aberta em que a tela não pediu playlist (sem sinal): a obrigação
 // existia, a entrega não (src/bancohoras/obrigacao.js). Mesma elegibilidade,
 // cobertura e conta da geração (`numerosDaConta`); a validade do plano é
-// conferida hora a hora por quem chama (`dataExpiracao`).
-async function obrigacoesDaTela(dispositivo) {
+// conferida hora a hora por quem chama (`dataExpiracao`). `desde`: o começo
+// da janela olhada — o Básico que terminou antes dela não interessa.
+async function obrigacoesDaTela(dispositivo, { desde = new Date(Date.now() - 62 * 86_400_000) } = {}) {
   const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const [todos, pontosNoAr, pontosBloqueados] = await Promise.all([
     anunciantesElegiveis(
@@ -857,7 +922,12 @@ async function obrigacoesDaTela(dispositivo) {
   // quem chama confere hora a hora (`basicoRepo.valiaNaHora`) — a hora sem
   // sinal paga o Básico que valia NAQUELA hora, não o de hoje. Soma na mesma
   // entrada da conta quando ela também tem o comercial neste ponto.
-  const basicos = await basicoRepo.doPontoDesde(dispositivo.ponto_id, new Date(Date.now() - 62 * 86_400_000));
+  //
+  // `duracaoBasico`: a peça que a geração ao vivo usa quando só o Básico vale
+  // na hora (o comercial vencido naquela hora, ou fora deste ponto) — as
+  // peças do Básico, não a média do plano. Com o comercial valendo, as duas
+  // origens rodam a peça da conta (`duracaoSegundos`), como ao vivo.
+  const basicos = await basicoRepo.doPontoDesde(dispositivo.ponto_id, desde);
   for (const b of basicos) {
     const { rows } = await pool.query(
       `SELECT a.suspenso, ARRAY(SELECT duracao_segundos FROM criativos
@@ -867,17 +937,19 @@ async function obrigacoesDaTela(dispositivo) {
       [b.conta_id, b.limite_criativos],
     );
     if (!rows[0] || rows[0].suspenso || !rows[0].duracoes.length) continue;
+    const duracaoBasico = duracaoMedia(rows[0].duracoes.map((d) => ({ duracaoSegundos: d })));
     let conta = contas.find((c) => c.anuncianteId === b.conta_id);
     if (!conta) {
       conta = {
         anuncianteId: b.conta_id,
         dataExpiracao: null,
-        duracaoSegundos: duracaoMedia(rows[0].duracoes.map((d) => ({ duracaoSegundos: d }))),
+        duracaoSegundos: duracaoBasico,
         obrigacaoHoraCheia: null,
         basicos: [],
       };
       contas.push(conta);
     }
+    conta.duracaoBasico = duracaoBasico;
     conta.basicos.push(b);
   }
   return contas;

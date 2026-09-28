@@ -66,7 +66,9 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
     }
     if (!semSinal.length) continue;
 
-    const contas = (await obrigacoesDaTela(tela)).filter((c) => !apenasContas || apenasContas.includes(c.anuncianteId));
+    const contas = (await obrigacoesDaTela(tela, { desde: new Date(inicio) })).filter(
+      (c) => !apenasContas || apenasContas.includes(c.anuncianteId),
+    );
     if (!contas.length) continue;
     const { rows: comeco } = await pool.query(
       `SELECT anunciante_id, MIN(janela_hora) AS primeira FROM exibicoes_contador
@@ -82,22 +84,22 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
         if (!primeira.has(c.anuncianteId) || primeira.get(c.anuncianteId) > hora.getTime()) continue;
         // Duas origens, uma linha (migration 103): o plano comercial vale
         // pela validade dele; o Básico do ponto, pelo início/fim da linha.
-        const comercial =
-          c.obrigacaoHoraCheia && vigencia.coberturaVigente(c.dataExpiracao, hora)
-            ? segundosDeObrigacao({ ...c.obrigacaoHoraCheia, minutosAbertos: minutos })
-            : 0;
+        const comercialValido = Boolean(c.obrigacaoHoraCheia) && vigencia.coberturaVigente(c.dataExpiracao, hora);
+        const comercial = comercialValido
+          ? segundosDeObrigacao({ ...c.obrigacaoHoraCheia, minutosAbertos: minutos })
+          : 0;
+        // A peça que a geração ao vivo teria usado nesta hora: com o
+        // comercial valendo, a da conta; só com o Básico, a do Básico.
+        const duracao = comercialValido ? c.duracaoSegundos : (c.duracaoBasico ?? c.duracaoSegundos);
         const basico = (c.basicos || [])
           .filter((b) => basicoRepo.valiaNaHora(b, hora))
-          .reduce(
-            (t, b) => t + basicoRepo.segundosDoBasicoNaHora(b, c.duracaoSegundos, hora, minutos, tela.telas_do_ponto),
-            0,
-          );
+          .reduce((t, b) => t + basicoRepo.segundosDoBasicoNaHora(b, duracao, hora, minutos, tela.telas_do_ponto), 0);
         const segundos = comercial + basico;
         if (segundos <= 0) continue;
         linhas.conta.push(c.anuncianteId);
         linhas.hora.push(hora);
         linhas.segundos.push(segundos);
-        linhas.duracao.push(c.duracaoSegundos);
+        linhas.duracao.push(duracao);
         linhas.minutos.push(minutos);
         linhas.basico.push(basico || null);
       }

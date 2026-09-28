@@ -38,16 +38,32 @@ const BASICO = Object.freeze({
 // que rodar de novo, em duas instâncias ou em paralelo nunca duplica.
 // `apenasPontos`: escopo (a sincronização por ponto depois de mexer numa
 // tela, e os testes rodando em paralelo no mesmo banco).
+//
+// O FIM é o instante em que deixou de ser ponto da conta quando o banco
+// sabe (`pontos.arquivado_em`, `anunciantes.excluido_em`), não o da
+// sincronização que viu: a rede de segurança do Saldo cobra hora a hora pelo
+// início/fim da linha, e um fim atrasado cobraria horas que já não eram dela
+// (revisão independente, 28/09/2026).
+//
+// limite: troca de dono não tem data — nenhuma rota muda `pontos.anunciante_id`
+// (só operação manual no banco) — e o fim fica o da sincronização que viu. A
+// leitura já corta na hora (`SQL_ATIVOS`), mas a rede de segurança pode cobrar
+// do dono antigo as horas sem sinal entre a troca e a sincronização. Quem
+// trocar o dono à mão sincroniza logo depois (RUNBOOK). Quando a troca virar
+// rota, ela chama `sincronizar({ apenasPontos })` na mesma transação.
 async function sincronizar({ apenasPontos = null, db = pool } = {}) {
   const filtro = apenasPontos ? 'AND b.ponto_id = ANY($1::int[])' : '';
   const params = apenasPontos ? [apenasPontos] : [];
   const { rows: encerrados } = await db.query(
     `WITH alvo AS (
-       SELECT b.id,
+       SELECT b.id, b.inicio,
               CASE WHEN p.status = 'arquivado' THEN 'ponto_arquivado'
                    WHEN p.anunciante_id IS DISTINCT FROM b.conta_id THEN 'dono_mudou'
                    WHEN a.conta_propria THEN 'conta_interna'
-                   ELSE 'conta_excluida' END AS motivo
+                   ELSE 'conta_excluida' END AS motivo,
+              CASE WHEN p.status = 'arquivado' THEN p.arquivado_em
+                   WHEN p.anunciante_id IS DISTINCT FROM b.conta_id OR a.conta_propria THEN NULL
+                   ELSE a.excluido_em END AS quando
          FROM beneficios_basico_ponto b
          JOIN pontos p ON p.id = b.ponto_id
          JOIN anunciantes a ON a.id = b.conta_id
@@ -55,7 +71,8 @@ async function sincronizar({ apenasPontos = null, db = pool } = {}) {
           AND (p.status = 'arquivado' OR p.anunciante_id IS DISTINCT FROM b.conta_id
                OR a.excluido_em IS NOT NULL OR a.conta_propria)
      )
-     UPDATE beneficios_basico_ponto t SET fim = now(), motivo_fim = alvo.motivo
+     UPDATE beneficios_basico_ponto t
+        SET fim = GREATEST(alvo.inicio, LEAST(now(), COALESCE(alvo.quando, now()))), motivo_fim = alvo.motivo
        FROM alvo WHERE t.id = alvo.id
      RETURNING t.id, t.ponto_id, t.conta_id, t.motivo_fim`,
     params,
@@ -94,6 +111,16 @@ async function ativosDaConta(contaId, db = pool) {
 async function ativoNoPonto(pontoId, db = pool) {
   const { rows } = await db.query(`${SQL_ATIVOS} AND b.ponto_id = $1`, [pontoId]);
   return rows[0] || null;
+}
+
+// Os pontos do Básico ativo de cada conta (Map conta → [ponto]). O gerador
+// divide o Saldo de Veiculação da conta por TODOS os pontos que puxam o saldo
+// na mesma hora — a fatia comercial e os do Básico —, não só pela comercial.
+async function pontosPorConta(db = pool) {
+  const { rows } = await db.query(
+    `SELECT x.conta_id, array_agg(x.ponto_id) AS pontos FROM (${SQL_ATIVOS}) x GROUP BY x.conta_id`,
+  );
+  return new Map(rows.map((r) => [r.conta_id, r.pontos]));
 }
 
 // O que o gerador precisa: o Básico ativo do ponto, só se a conta pode
@@ -174,13 +201,22 @@ async function doPontoDesde(pontoId, desde, db = pool) {
 // Inserções da parcela Básico numa hora: 140 s por hora aberta NÃO divide
 // pela peça (15 s → 9,33). Em vez de arredondar sempre pra baixo (e entregar
 // 13,5 h de 14), cada hora recebe a sua fatia de uma sequência estável —
-// floor((k+1)·s/d) − floor(k·s/d), com k = índice absoluto da hora —, cuja
-// média é exatamente s/d. Determinística: a mesma hora dá sempre o mesmo
-// número (a hora congela, e a rede de segurança recalcula igual).
+// floor((k+1)·s/d) − floor(k·s/d) —, cuja média é exatamente s/d.
+// Determinística: a mesma hora dá sempre o mesmo número (a hora congela, e a
+// rede de segurança recalcula igual).
+//
+// k anda uma casa por hora e UMA A MAIS por dia. Só com a hora, 24 ≡ 0 (mod 3)
+// prendia cada hora do relógio na mesma fatia todo dia (9, 9 ou 10), e a
+// média só fechava em horário de funcionamento múltiplo de 3 h: ponto aberto
+// 10 h/dia ficava sempre em 2.790 ou 2.820 exibições de 15 s no mês, nunca
+// 2.800 (revisão independente, 28/09/2026). Com a casa a mais, a fatia de cada
+// hora gira dia a dia e a média fecha em qualquer horário (30 dias com peça de
+// 15 s: exato; pior caso simulado, 0,06%).
 function insercoesDoBasicoNaHora(segundosPorHora, duracaoSegundos, hora) {
   const s = Math.max(0, Number(segundosPorHora) || 0);
   const d = duracaoValida(duracaoSegundos);
-  const k = Math.floor(new Date(hora).getTime() / 3_600_000);
+  const t = new Date(hora).getTime();
+  const k = Math.floor(t / 3_600_000) + Math.floor(t / 86_400_000);
   return Math.floor(((k + 1) * s) / d) - Math.floor((k * s) / d);
 }
 
@@ -199,11 +235,16 @@ function direitosCombinados(plano, basicos = []) {
     horasPorMes: horasPlano + horasBasico,
     horasPlano,
     horasBasico,
+    // Plano sem teto de peça (NULL — migration 045: vale só o limite global)
+    // continua sem teto com o Básico junto; o maior dos dois não pode virar
+    // os 15 s do Básico.
     duracaoMaxima:
-      Math.max(
-        plano ? Number(plano.duracao_maxima_segundos) || 0 : 0,
-        ...basicos.map((b) => Number(b.duracao_maxima_segundos) || 0),
-      ) || null,
+      plano && plano.duracao_maxima_segundos == null
+        ? null
+        : Math.max(
+            plano ? Number(plano.duracao_maxima_segundos) || 0 : 0,
+            ...basicos.map((b) => Number(b.duracao_maxima_segundos) || 0),
+          ) || null,
     limiteCriativos: Math.max(
       plano ? Number(plano.limite_criativos) || 0 : 0,
       ...basicos.map((b) => Number(b.limite_criativos) || 0),
@@ -234,6 +275,7 @@ module.exports = {
   sincronizar,
   ativosDaConta,
   ativoNoPonto,
+  pontosPorConta,
   paraVeicularNoPonto,
   segundosDoBasicoNaHora,
   historicoDaConta,
