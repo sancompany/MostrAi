@@ -3,6 +3,16 @@
 Mapa de todas as **387 funções** do produto e de como se ligam. Lido do código
 em 15/09/2026 por doze leituras independentes, uma por superfície.
 
+> **27/09/2026 — QR Code institucional (RN-66, ADR-024):**
+> `src/midias/qr-institucional.js` — `linkPermanente` (`SITE_URL/q/anuncie`,
+> o que vai no QR), `validarDestino` (gravação e leitura), `lerEstado` /
+> `definirDestino` (← `pontosRepo.obterConfiguracao`/`definirConfiguracao`,
+> chave `qr_institucional` de `configuracoes_site`), `gerarSvg`/`gerarPng`
+> (biblioteca `qrcode`, uma vez por processo) → `src/midias/routes.js`:
+> `GET /q/anuncie` (302 no-store, pública), `GET/PUT /admin/qr-institucional`,
+> `GET /admin/qr-institucional/svg|png` → admin, `montarQrInstitucional` /
+> `desenharQrInstitucional` dentro de `renderMidiaMostrai`.
+
 > **27/09/2026 — Distribuição real:** funções novas e onde se ligam —
 > `src/anunciantes/entrada-no-ar.js` (`entradaNoArDasPecas`: Aprovado →
 > Programado → Aguardando → No ar/Atrasado, a partir de `criativos.aprovado_em`

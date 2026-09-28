@@ -55,6 +55,25 @@ async function naFila(contaId, tipo) {
   return rows;
 }
 
+// POST /anunciantes/esqueci-senha responde ANTES de gravar o token e a fila,
+// de propósito: a resposta não pode revelar se a conta existe
+// (src/conta/routes.js#pedirRedefinicao). A espera fixa de 200 ms que estava
+// aqui falhou com a suíte inteira rodando em paralelo (1 em 3 rodadas,
+// 27/09/2026). Espera o que importa aparecer, até 5 s; se não aparecer, as
+// asserções do próprio teste dizem o que faltou.
+async function esperarPedidosDeSenha(contaId, quantos = 1) {
+  const limite = Date.now() + 5000;
+  while (Date.now() < limite) {
+    const { rows } = await pool.query(
+      `SELECT (SELECT count(*) FROM tokens_senha WHERE usuario_id = $1)::int AS tokens,
+              (SELECT count(*) FROM email_outbox WHERE anunciante_id = $1 AND tipo = 'redefinir_senha')::int AS fila`,
+      [contaId],
+    );
+    if (rows[0].tokens >= quantos && rows[0].fila >= quantos) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 let base;
 let servidor;
 test.before(async () => {
@@ -387,7 +406,7 @@ test('11. redefinir senha: link pela fila, e-mail da conta pro gerenciador de se
     (await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } })).status,
     200,
   );
-  await new Promise((r) => setTimeout(r, 200));
+  await esperarPedidosDeSenha(c.id);
   const [pedido] = await naFila(c.id, 'redefinir_senha');
   assert.ok(pedido, 'link na fila');
   const { rows } = await pool.query('SELECT segredo, dados FROM email_outbox WHERE chave = $1', [pedido.chave]);
@@ -461,7 +480,7 @@ test('13. notificação que falha não vira 500 de crédito já concedido', asyn
 test('14. trocar o e-mail mata o link de senha que foi pro endereço antigo (e o e-mail dele na fila)', async () => {
   const c = await contaPronta('link-antigo', { email_confirmado: true });
   await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
-  await new Promise((r) => setTimeout(r, 200));
+  await esperarPedidosDeSenha(c.id);
   const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1', [c.id]);
   assert.strictEqual(tokens.length, 1);
   assert.strictEqual((await naFila(c.id, 'redefinir_senha'))[0].status, 'na_fila');
@@ -487,7 +506,7 @@ test('14. trocar o e-mail mata o link de senha que foi pro endereço antigo (e o
 test('15. admin troca o e-mail: link de senha pendente também morre', async () => {
   const c = await contaPronta('admin-link', { email_confirmado: true });
   await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
-  await new Promise((r) => setTimeout(r, 200));
+  await esperarPedidosDeSenha(c.id);
   const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1', [c.id]);
   await chamar('PATCH', `/admin/anunciantes/${c.id}`, {
     admin: true,
@@ -501,7 +520,7 @@ test('16. senha trocada: os outros e-mails de link na fila são descartados', as
   const c = await contaPronta('dois-links', { email_confirmado: true });
   await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
   await chamar('POST', '/anunciantes/esqueci-senha', { corpo: { email: c.contato_email } });
-  await new Promise((r) => setTimeout(r, 300));
+  await esperarPedidosDeSenha(c.id, 2);
   const { rows: tokens } = await pool.query('SELECT token FROM tokens_senha WHERE usuario_id = $1 ORDER BY criado_em', [
     c.id,
   ]);

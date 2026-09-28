@@ -222,3 +222,16 @@ Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
 camada da base (T1) com o comercial numa hora cheia — comportamento atual
 preservado; ver `.ia/RISKS.md`.
 
+## QR CODE INSTITUCIONAL — depois do PR (27/09/2026)
+
+- [ ] Depois do merge: CI verde no commit mergeado, deploy com o SHA novo,
+  `curl -sI https://mostrai.sancocore.com.br/q/anuncie` → 302 para a página
+  de planos com `Cache-Control: no-store`.
+- [ ] Validação física: baixar PNG e SVG no admin de produção, imprimir e
+  escanear com dois celulares (Android e iPhone); conferir o QR dentro do
+  vídeo institucional numa TV a 2–3 m.
+- [ ] Se o endereço do site mudar um dia, o antigo continua respondendo
+  `/q/anuncie` — o QR impresso aponta pra ele (ADR-024).
+- Estação futura, não iniciar sem o dono: QR por ponto, de indicação ou com
+  contagem de acessos (`docs/proximas-versoes.md`, "QR rastreável").
+

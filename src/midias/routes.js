@@ -9,6 +9,7 @@ const anunciantesRepo = require('../anunciantes/repository');
 const planosRepo = require('../financeiro/planos-repository');
 const criativosRepo = require('../anunciantes/criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
+const qrInstitucional = require('./qr-institucional');
 
 // Mesmo limite/destino de src/anunciantes/routes.js — sem duplicar o
 // multer inteiro por module, mas sem depender do outro arquivo também
@@ -314,6 +315,79 @@ router.get('/admin/capacidade-rede', async (req, res) => {
 
 router.get('/admin/capacidade-rede/:pontoId/midias', async (req, res) => {
   res.json(await midiasRepo.midiasNoPonto(req.params.pontoId));
+});
+
+// ---------- QR Code institucional (27/09/2026) ----------
+// Regra em ./qr-institucional.js; aqui só HTTP.
+
+// PÚBLICA — é o endereço que vai dentro do QR impresso. 302 + no-store, nunca
+// 301: redirecionamento permanente fica guardado no navegador e na
+// Cloudflare, e trocar o destino deixaria de valer pra quem já escaneou uma
+// vez. Se a leitura falhar, leva à página de planos: o QR impresso nunca
+// mostra tela de erro (e a falha fica no log).
+router.get(qrInstitucional.CAMINHO_PERMANENTE, async (_req, res) => {
+  let destino;
+  try {
+    destino = (await qrInstitucional.lerEstado()).destino;
+  } catch (err) {
+    console.error('qr institucional: falha ao ler o destino, levando à página de planos', err);
+    destino = qrInstitucional.destinoPadrao();
+  }
+  res.set('Cache-Control', 'no-store');
+  res.redirect(302, destino);
+});
+
+// Sem SITE_URL não há QR: o link dentro dele precisa do endereço público.
+function linkOu503(res) {
+  const link = qrInstitucional.linkPermanente();
+  if (!link) res.status(503).json({ erro: 'SITE_URL não configurada — o QR precisa do endereço público do site' });
+  return link;
+}
+
+router.get('/admin/qr-institucional', async (_req, res) => {
+  if (!linkOu503(res)) return;
+  res.json(await qrInstitucional.lerEstado());
+});
+
+router.put('/admin/qr-institucional', async (req, res) => {
+  if (!linkOu503(res)) return;
+  const { destino, erro } = qrInstitucional.validarDestino(req.body?.destino);
+  if (erro) return res.status(400).json({ erro });
+  await qrInstitucional.definirDestino(destino, req.session.adminUsuario);
+  res.json(await qrInstitucional.lerEstado());
+});
+
+// Preview (inline) e download (`?baixar=1`, anexo com nome de arquivo) pela
+// mesma rota. `no-store`: .png/.svg a Cloudflare guardaria por extensão.
+function entregarImagem(req, res, { tipo, arquivo, conteudo }) {
+  res.set('Content-Type', tipo);
+  res.set('Cache-Control', 'private, no-store');
+  if (req.query.baixar === '1') res.set('Content-Disposition', `attachment; filename="${arquivo}"`);
+  res.send(conteudo);
+}
+
+router.get('/admin/qr-institucional/svg', async (req, res) => {
+  const link = linkOu503(res);
+  if (!link) return;
+  entregarImagem(req, res, {
+    tipo: 'image/svg+xml; charset=utf-8',
+    arquivo: 'mostrai-qr-anuncie.svg',
+    conteudo: await qrInstitucional.gerarSvg(link),
+  });
+});
+
+router.get('/admin/qr-institucional/png', async (req, res) => {
+  const link = linkOu503(res);
+  if (!link) return;
+  const lado = req.query.tamanho ? Number(req.query.tamanho) : qrInstitucional.TAMANHOS_PNG[0];
+  if (!qrInstitucional.TAMANHOS_PNG.includes(lado)) {
+    return res.status(400).json({ erro: `tamanho aceito: ${qrInstitucional.TAMANHOS_PNG.join(' ou ')} px` });
+  }
+  entregarImagem(req, res, {
+    tipo: 'image/png',
+    arquivo: `mostrai-qr-anuncie-${lado}px.png`,
+    conteudo: await qrInstitucional.gerarPng(link, lado),
+  });
 });
 
 module.exports = router;

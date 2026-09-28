@@ -2604,6 +2604,106 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
   });
 }
 
+// QR Code institucional (27/09/2026). O QR codifica o link permanente
+// (/q/anuncie) e nunca muda; aqui o admin escolhe só para onde esse link
+// leva. Regra e validação no servidor (src/midias/qr-institucional.js).
+// Carga própria: se falhar, só este bloco mostra [Tentar novamente] — o
+// resto da Mídia Mostraí continua de pé.
+const QR_INSTITUCIONAL = '/admin/qr-institucional';
+
+async function montarQrInstitucional(wrap) {
+  wrap.innerHTML = '<p class="campo-ajuda">Carregando o QR…</p>';
+  let estado;
+  try {
+    estado = await pegar(QR_INSTITUCIONAL);
+  } catch (err) {
+    return mostrarErroDeCarga(wrap, err, () => montarQrInstitucional(wrap));
+  }
+  desenharQrInstitucional(wrap, estado);
+}
+
+function desenharQrInstitucional(wrap, estado) {
+  const quando = estado.padrao
+    ? 'Padrão: a página de planos.'
+    : `Alterado${estado.atualizadoEm ? ` em ${esc(dataHora(estado.atualizadoEm))}` : ''}${estado.atualizadoPor ? ` por ${esc(estado.atualizadoPor)}` : ''}.`;
+  const imagem = `${API_BASE_URL}${QR_INSTITUCIONAL}`;
+  // A marca fica na moldura (faixa laranja e logo); o QR em si é o arquivo
+  // que se baixa, sem nada por cima.
+  wrap.innerHTML = `
+    <div class="panel qr-inst">
+      <figure class="qr-inst-cartao">
+        <img class="qr-inst-logo" src="/img/logo-mostrai-wordmark.png" alt="Mostraí">
+        <img class="qr-inst-codigo" id="qrInstPreview" src="${imagem}/svg" width="200" height="200" alt="QR code que abre ${esc(estado.linkPermanente)}">
+        <figcaption>${esc(estado.linkPermanente.replace(/^https?:\/\//, ''))}</figcaption>
+      </figure>
+      <form class="painel-form qr-inst-dados" id="formQrDestino">
+        <div class="campo-grupo">
+          <label for="qrLink">Link permanente do QR</label>
+          <div class="qr-inst-linha">
+            <input id="qrLink" readonly value="${esc(estado.linkPermanente)}">
+            <button type="button" class="btn ghost" id="btnCopiarQr">Copiar link</button>
+            <a class="btn ghost" href="${esc(estado.linkPermanente)}" target="_blank" rel="noopener">Testar</a>
+          </div>
+          <span class="campo-ajuda">É o endereço dentro do QR. Não muda nunca: o que já foi impresso continua valendo.</span>
+        </div>
+        <div class="campo-grupo">
+          <label for="qrDestino">Destino atual</label>
+          <input id="qrDestino" name="destino" type="url" inputmode="url" required maxlength="2048" spellcheck="false" autocomplete="off" value="${esc(estado.destino)}">
+          <span class="campo-ajuda" id="qrQuando">Para onde o link permanente leva hoje. ${quando}</span>
+          <div class="qr-inst-linha">
+            <button type="submit" class="btn primary">Salvar destino</button>
+            <p class="form-msg" id="qrMsg" role="status"></p>
+          </div>
+        </div>
+        <div class="campo-grupo">
+          <span class="campo-rotulo">Baixar o QR</span>
+          <div class="qr-inst-linha">
+            <a class="btn ghost" href="${imagem}/png?baixar=1" download>Baixar PNG</a>
+            <a class="btn ghost" href="${imagem}/png?tamanho=2048&amp;baixar=1" download>Baixar PNG de impressão</a>
+            <a class="btn ghost" href="${imagem}/svg?baixar=1" download>Baixar SVG</a>
+          </div>
+          <span class="campo-ajuda">PNG 1024 px: Canva, WhatsApp, redes e vídeo. PNG 2048 px: impressão. SVG: vetor, qualquer tamanho — flyer e grandes formatos.</span>
+        </div>
+      </form>
+    </div>`;
+
+  wrap.querySelector('#btnCopiarQr').addEventListener('click', () => {
+    copiarTexto(estado.linkPermanente).then(
+      () => toast('Link copiado.'),
+      () => {
+        wrap.querySelector('#qrLink').select();
+        toast('Não deu pra copiar sozinho — o link está selecionado, copie com Ctrl+C.', 'err');
+      },
+    );
+  });
+
+  const form = wrap.querySelector('#formQrDestino');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = wrap.querySelector('#qrMsg');
+    const botao = form.querySelector('button[type="submit"]');
+    msg.className = 'form-msg';
+    msg.textContent = '';
+    botao.disabled = true;
+    try {
+      const r = await api(QR_INSTITUCIONAL, { method: 'PUT', body: JSON.stringify({ destino: form.destino.value }) });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.className = 'form-msg err';
+        msg.textContent = corpo.erro || 'Não foi possível salvar o destino.';
+        return;
+      }
+      desenharQrInstitucional(wrap, corpo);
+      toast('Destino salvo. O QR continua o mesmo.');
+    } catch {
+      msg.className = 'form-msg err';
+      msg.textContent = 'Sem conexão com o servidor — o destino não foi salvo.';
+    } finally {
+      botao.disabled = false;
+    }
+  });
+}
+
 // Hierarquia da página (revisão visual de 23/09/2026, pedido do dono):
 // Resumo → Capacidade da rede → Mídias próprias. Capacidade morava depois
 // da grade de mídias; como ela é o "quanto ainda cabe" antes de decidir
@@ -2658,6 +2758,14 @@ async function renderMidiaMostrai(el) {
     </section>
 
     <section class="secao-pagina">
+      <div class="secao-topo">
+        <h3>QR Code institucional</h3>
+        <span class="secao-nota">use em vídeos, flyers e materiais da Mostraí — o destino muda aqui, sem trocar o QR impresso</span>
+      </div>
+      <div id="qrInstWrap"></div>
+    </section>
+
+    <section class="secao-pagina">
       <div class="secao-topo"><h3>Capacidade da rede</h3><span class="secao-nota">quanto ainda cabe em cada ponto em operação</span></div>
       <div id="mmCapacidadeWrap"></div>
     </section>
@@ -2678,6 +2786,7 @@ async function renderMidiaMostrai(el) {
     </section>`;
 
   montarTabelaCapacidade(document.getElementById('mmCapacidadeWrap'), capacidade);
+  montarQrInstitucional(document.getElementById('qrInstWrap'));
 
   // Envio direto, sem editor (é UM vídeo só pra rede inteira — nada a
   // escolher além do arquivo). `fetch` cru, não `api()`: FormData precisa do

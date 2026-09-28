@@ -134,3 +134,21 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 - **Apuração de 01/10 é provisória** até 08/10 (comprovante offline); o
   cliente pode ver um saldo que diminui nesses dias.
 
+## QR Code institucional — riscos que ficaram (27/09/2026)
+
+- **O domínio vira parte do material impresso.** O QR contém
+  `SITE_URL/q/anuncie`; trocar o endereço do site sem manter o antigo
+  respondendo quebra todo QR já impresso.
+- **Destino externo é permitido** (só `https://`, sem usuário/senha, nunca o
+  próprio link), porque campanha pode apontar pra fora (WhatsApp, rede
+  social). Quem entra no admin (Access + senha) consegue mandar o QR impresso
+  para qualquer site: a tela mostra só a ÚLTIMA troca (quem/quando), não o
+  histórico.
+- **PNG até 2048 px** (impressão até ~17 cm a 300 dpi); maior que isso é o
+  SVG. O SVG desenha os módulos com traço (`stroke`), como a biblioteca
+  gera — lido pelo Chromium e pelo leitor dos testes; ferramenta de design
+  muito antiga pode preferir o PNG.
+- **Sem contagem de acessos** de propósito (fora do escopo desta estação).
+- `public/img/qr-site.svg` (QR estático do Player V1) está órfão desde o #71;
+  não foi mexido.
+

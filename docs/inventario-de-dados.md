@@ -41,9 +41,11 @@ notas fiscais no Google Drive da San & Co. (pasta do Mostraí).
 
 **Terceiros que recebem dado:** San Checkout e Asaas (pagador: nome,
 documento, e-mail, telefone); Supabase (tudo, como hospedagem); Google Drive
-(notas fiscais); provedor de e-mail transacional (e-mail e nome). O QR do
-link de indicação do vendedor é gerado por serviço externo (api.qrserver.com)
-recebendo só a URL pública do cupom — sem dado pessoal.
+(notas fiscais); provedor de e-mail transacional (e-mail e nome). QR code
+não passa por terceiro: o QR institucional (27/09/2026, RN-66) é gerado no
+próprio servidor (biblioteca `qrcode`) e só contém a URL pública
+`/q/anuncie` — sem dado pessoal. (A linha antiga falava de um QR de vendedor
+gerado em api.qrserver.com; não existe código que faça isso hoje.)
 
 **Dado de menor:** não é coletado. Cadastro exige CPF/CNPJ de empresa ou
 responsável adulto.
