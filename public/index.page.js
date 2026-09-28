@@ -19,38 +19,23 @@ function pintarPrecoDaDobra(planos) {
   el.hidden = false;
 }
 
-// Banner promocional da Home (reconstrução de Ofertas/Promoções,
-// 23/09/2026) — abaixo do header, acima do hero (ver index.html): precisa
-// ler como campanha publicitária de verdade, não um card solto. Consome a
-// campanha vigente E elegível pra quem está vendo (GET /promocoes/vigentes
-// já filtra por elegibilidade comercial no servidor) marcada "mostrar na
-// Home". Sem nenhuma, a seção some inteira (fica `hidden` desde o HTML).
+// Promoções da Home (Estação 3, 28/09/2026 — componente em promocao.js):
+// arte e texto lado a lado no computador, arte em cima e texto embaixo no
+// celular, nunca texto sobre a imagem. Toda promoção vigente e elegível pra
+// quem vê (GET /promocoes/vigentes já filtra no servidor) marcada "mostrar na
+// Home", na ordem do servidor; duas ou mais viram carrossel. Só entra o que
+// a promoção de fato entrega (`promocoesParaExibir`: sem célula que outra
+// promoção já ocupa, sem ciclo sem vantagem — D1). Sem nenhuma, a seção
+// continua `hidden`.
 fetch(`${API_BASE_URL}/promocoes/vigentes`)
   .then((r) => r.json())
-  .then((promocoes) => {
-    const promo = (Array.isArray(promocoes) ? promocoes : []).find((p) => p.mostrar_home);
-    if (!promo) return;
-    const secao = document.getElementById('promocaoHomeSecao');
-    const el = document.getElementById('promocaoHome');
-    const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
-    // Em que ciclos vale e até quando (D1/D3, 24/09/2026 — config.js).
-    // Sem vantagem em ciclo nenhum, não há banner: seria anunciar desconto
-    // que não existe.
-    const condicao = window.condicaoDaPromocao(promo);
-    if (condicao === null) return;
-    const prazo = condicao ? `<p class="promo-home-prazo">${esc(condicao)}</p>` : '';
-    el.innerHTML = `
-      <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
-        ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}
-        <div class="promo-home-conteudo">
-          ${promo.selo ? `<span class="badge">${esc(promo.selo)}</span>` : ''}
-          <h2>${esc(promo.titulo_publico)}</h2>
-          ${promo.subtitulo ? `<p class="lead">${esc(promo.subtitulo)}</p>` : ''}
-          ${prazo}
-          <a class="btn primary" href="/planos.html">Ver condição na página de planos</a>
-        </div>
-      </div>`;
-    secao.hidden = false;
+  .then(async (promocoes) => {
+    const daHome = window.promocoesParaExibir(promocoes, 'mostrar_home');
+    const montou = await window.montarPromocoes(document.getElementById('promocaoHome'), daHome, {
+      variante: 'home',
+      id: 'promoHome',
+    });
+    if (montou) document.getElementById('promocaoHomeSecao').hidden = false;
   })
   .catch(() => {});
 

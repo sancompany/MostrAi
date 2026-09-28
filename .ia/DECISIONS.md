@@ -940,3 +940,31 @@ admin decide. Com o Plano Básico (migration 103, branch própria) o ponto do
 Básico continua fora da trava (é o estabelecimento da própria conta); no
 merge, `coberturaDaConta` junta as duas condições
 (`proprios.has(p.id) || (naFatia && (!bloqueia || dona))`).
+
+## ADR-027 — Promoção: mídia separada do conteúdo, um componente, carrossel só com 2+ (28/09/2026)
+
+Contexto: Estação 3 (reformulação visual das promoções). O banner da Home e
+o de Planos eram duas cópias do mesmo HTML com a arte de FUNDO e selo,
+título, condição e botão por cima de um véu escuro; no celular o recorte do
+fundo dependia da altura do texto.
+
+Decisão:
+1. **Texto nunca sobre a arte.** MÍDIA e CONTEÚDO são irmãos no grid:
+   lado a lado com ≥ 840px de componente, arte em cima e texto embaixo
+   abaixo disso. O limite é do COMPONENTE (container query), não da janela,
+   então a prévia do admin sai empilhada como no celular.
+2. **Arte inteira.** A imagem é medida antes de montar e entra com
+   `width`/`height` reais — sem recorte e sem pulo de layout. Imagem lenta
+   (> 0,8 s) reserva a proporção declarada no admin e entra com `contain`;
+   imagem que falha tira a mídia e fica o texto.
+3. **Um renderizador.** `public/promocao.js` (`montarPromocoes`,
+   `htmlPromocao`) serve Home (variante `home`), Planos (variante `planos`)
+   e a prévia do admin. Não existe segunda cópia.
+4. **Carrossel só com duas ou mais**, sem autoplay, no padrão WAI-ARIA de
+   carousel; a ordem é a do servidor.
+5. Apresentação não muda regra: percentuais, janela, teto, público,
+   `temVantagem`/D1 e Checkout seguem as fontes de sempre.
+
+Consequências: nova superfície de promoção usa `montarPromocoes` (ou
+`htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
+destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §R).

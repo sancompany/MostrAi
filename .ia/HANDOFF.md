@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
+([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
+autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).
+A promoção virou um componente
+(`public/promocao.js` + "Componente de promoção" em `style.css`) usado pela
+Home, por Planos e pela prévia do admin: arte e texto lado a lado (≥ 840px
+de componente, container query) ou empilhados, arte inteira com a proporção
+real, carrossel só com 2+ (sem autoplay). Nenhuma regra comercial mudou.
+ADR-027 (o 025 é do Plano Básico); pendências do dono em
+`docs/PENDENCIAS.md` §R; e2e `tests/e2e/29-promocoes-visual.mjs`.
+**Não iniciar outra estação sem o dono.**
 2026-09-28 (fim) — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO:
 mergeada (#93) com autorização do dono**, depois de atualizada com a `main`
 (que já tinha o #94 de categorias). Ponto ativo = Plano Básico (14 h/mês,
