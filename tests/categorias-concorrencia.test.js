@@ -4,7 +4,7 @@ const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -26,7 +26,7 @@ async function idDaCategoria(nome) {
 }
 
 async function criarPontoTeste(categoriaId) {
-  return pontosRepo.criar({
+  const ponto = await pontosRepo.criar({
     nome: `Ponto Teste ${randomUUID()}`,
     endereco: 'Rua Y, 1',
     cidade: 'Matão',
@@ -40,6 +40,9 @@ async function criarPontoTeste(categoriaId) {
     // 'ativo' depois de criada.
     categoria_id: categoriaId || null,
   });
+  // Só as contas deste teste (escolha explícita) entram na playlist dele.
+  await tirarDoSorteio(ponto.id);
+  return ponto;
 }
 
 async function dispositivoDoPonto(pontoId) {
@@ -56,7 +59,10 @@ async function dispositivoDoPonto(pontoId) {
 
 // `pontoId`: escolha explícita do ponto — com outros arquivos rodando em
 // paralelo a rede tem vários pontos em operação, e a cobertura automática do
-// plano poderia cair noutro. A regra de categoria vale igual com escolha.
+// plano poderia cair noutro. A regra de categoria vale igual com escolha. A
+// escolha vem ANTES do plano: conta com plano e peça aprovada sem escolha
+// cai no sorteio e aparece na playlist de outro arquivo (FK violada quando
+// `limpar` a apaga no meio da geração dele).
 async function contaComPlanoEAnuncioAprovado(campos, pontoId) {
   const conta = await anunciantesRepo.criar({
     nome_empresa: `Teste Bloqueio ${randomUUID()}`,
@@ -70,6 +76,9 @@ async function contaComPlanoEAnuncioAprovado(campos, pontoId) {
     senha: 'x',
     ...campos,
   });
+  if (pontoId) {
+    await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
+  }
   await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
   const criativo = await criativosRepo.criar({
     anunciante_id: conta.id,
@@ -79,9 +88,6 @@ async function contaComPlanoEAnuncioAprovado(campos, pontoId) {
     duracao_segundos: 15,
   });
   await criativosRepo.atualizar(criativo.id, { status: 'aprovado' });
-  if (pontoId) {
-    await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, pontoId]);
-  }
   return conta;
 }
 

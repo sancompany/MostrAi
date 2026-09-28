@@ -12,7 +12,7 @@ const assinaturasRepo = require('../src/financeiro/assinaturas-repository');
 const { montarRespostaPlano } = require('../src/financeiro/san-checkout');
 const { calcularValorMensal } = require('../src/financeiro/planos-repository');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../src/lib/pacing');
-const { instalarPlayer, novoPonto } = require('./apoio-player');
+const { instalarPlayer, novoPonto, tirarDoSorteio } = require('./apoio-player');
 
 // Fechamento da página de Planos (26/09/2026). Duas regras provadas contra o
 // código real, com a grade publicada em produção (os mesmos números abaixo):
@@ -87,6 +87,7 @@ async function redeDeTeste() {
   if (rede) return rede;
   const pontos = [];
   for (let i = 0; i < GRADE.maximo.pontos; i++) pontos.push(await novoPonto({ status: 'em_operacao' }));
+  await tirarDoSorteio(pontos[0]); // a tela gerada: só as contas deste teste
   const tela = await dispositivosRepo.criar(pontos[0], { apelido: `Grade ${randomUUID().slice(0, 6)}` });
   await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
   await instalarPlayer(tela.id);
