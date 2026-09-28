@@ -3873,3 +3873,14 @@ button.pend-bloco:focus-visible {
    pra linha de baixo do nome, em vez de espremer o título letra a letra. */
 .mm-item .item-topo { flex-wrap: wrap; gap: 4px 10px; }
 .mm-item .item-topo h4 { flex: 1 1 100%; }
+/* Grupos da lista (finalização, 28/09/2026): no ar / pausadas / histórico /
+   excluídas. Título pequeno com a contagem ao lado; os dois últimos nascem
+   dobrados. Card excluído fica apagado: é consulta, não trabalho. */
+.mm-grupo + .mm-grupo { margin-top: 18px; }
+.mm-grupo-topo, .mm-grupo-dobrado > summary { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.mm-grupo-titulo { font-size: 0.82rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-dim); }
+.mm-grupo-dobrado > summary { cursor: pointer; list-style: none; padding: 8px 0; }
+.mm-grupo-dobrado > summary::-webkit-details-marker { display: none; }
+.mm-grupo-dobrado > summary::before { content: '›'; display: inline-block; width: 12px; color: var(--text-dim); transition: transform 0.15s; }
+.mm-grupo-dobrado[open] > summary::before { transform: rotate(90deg); }
+.mm-item.mm-excluida { opacity: 0.6; }

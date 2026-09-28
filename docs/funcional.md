@@ -1259,6 +1259,19 @@ atrasada** (a última hora aberta já fechada não teve comprovante),
 **Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
 frequência entram como estão hoje (não há histórico deles).
 
+**RN-65.1 — Histórico e exclusão de mídia própria.** *(Finalização,
+28/09/2026, migration 101.)* Em **Admin → Mídia Mostraí → Mídias próprias**
+a lista vem em grupos: **No ar e agendadas**, **Pausadas**, **Histórico —
+retiradas do ar** (dobrado) e **Excluídas** (dobrado). Transições: pausar
+só de ativa/agendada; retomar só de pausada; **retirada do ar não volta**
+(pra rodar de novo, cria-se outra mídia — a retirada fica no histórico com
+as exibições confirmadas). **Excluir** é exclusão lógica, com modal que
+diz a consequência (sai das telas na próxima hora, some das listas, o
+comprovante fica em "Excluídas", não desfaz): a linha, o contador de
+exibições confirmadas e o histórico de estados ficam; a mídia excluída não
+aceita mais nenhuma ação, nem edição. Nunca apagar a linha: o contador e o
+histórico cascateariam junto, e o comprovante do que tocou sumiria.
+
 **RN-66 — O QR institucional nunca muda; o que muda é o destino.**
 *(Estação do QR institucional, 27/09/2026.)* O QR que vai em vídeo, flyer e
 material da Mostraí codifica sempre o link permanente `SITE_URL/q/anuncie`,

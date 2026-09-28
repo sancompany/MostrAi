@@ -1940,8 +1940,20 @@ const ESTADO_MIDIA = {
   ATIVA_ENTREGA_ATRASADA: ['Ativa — entrega atrasada', 'badge-err'],
   PAUSADA: ['Pausada', 'badge-pendente'],
   AGENDADA: ['Agendada', 'badge-info'],
-  ENCERRADA: ['Encerrada', 'badge-err'],
+  ENCERRADA: ['Retirada do ar', 'badge-err'],
+  EXCLUIDA: ['Excluída', 'badge-neutro'],
 };
+
+// Grupos da lista (finalização, 28/09/2026): o que está trabalhando, o que
+// está parado por mão do admin, e o histórico — retiradas do ar (manual ou
+// por fim do período) e excluídas, cada qual dobrado. Um card por mídia,
+// sempre o mesmo (montarCardMidia); só a seção muda.
+const GRUPOS_MIDIA = [
+  { chave: 'ar', titulo: 'No ar e agendadas', situacoes: ['ativa', 'agendada'], vazio: 'Nenhuma mídia no ar.' },
+  { chave: 'pausadas', titulo: 'Pausadas', situacoes: ['pausada'], vazio: null },
+  { chave: 'historico', titulo: 'Histórico — retiradas do ar', situacoes: ['encerrada'], vazio: null, dobrado: true },
+  { chave: 'excluidas', titulo: 'Excluídas', situacoes: ['excluida'], vazio: null, dobrado: true },
+];
 
 // "hoje 10:42", "ontem 18:05" ou "25/09 09:12" — relógio de Matão.
 function quandoBR(iso) {
@@ -1977,15 +1989,12 @@ function montarCardMidia(m) {
     m.periodo_inicio || m.periodo_fim
       ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} até ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
       : 'Sempre no ar';
-  return `<article class="criativo-item mm-item">
-    <div class="criativo-item-midia">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
-    <div class="criativo-item-corpo">
-      <div class="item-topo"><h4>${esc(m.nome_interno)}</h4><span class="badge ${classeEstado}" data-mm-estado>${rotuloEstado}</span></div>
-      <p class="item-meta">${m.duracao_segundos ? `${m.duracao_segundos}s` : '—'} · ${m.frequencia_hora}×/hora · ${cobertura}</p>
-      <p class="item-meta">${periodo}</p>
-      ${resumoExibicoesMidia(m.metricas)}
-      ${m.aprovacao_status !== 'aprovado' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
-      <div class="acoes item-acoes">
+  // Excluída: só consulta — sem ação nenhuma (a régua de transição do
+  // backend também recusa). Retirada do ar: edita e exclui; não volta.
+  const acoes =
+    sit === 'excluida'
+      ? ''
+      : `<div class="acoes item-acoes">
         <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
         ${
           sit === 'pausada'
@@ -1995,9 +2004,38 @@ function montarCardMidia(m) {
               : ''
         }
         ${sit !== 'encerrada' ? `<button class="btn perigo-sutil mini" data-encerrar-midia="${m.id}">Retirar do ar</button>` : ''}
-      </div>
+        <button class="btn perigo-sutil mini" data-excluir-midia="${m.id}">Excluir</button>
+      </div>`;
+  return `<article class="criativo-item mm-item${sit === 'excluida' ? ' mm-excluida' : ''}" data-mm-id="${m.id}" data-mm-situacao="${sit}">
+    <div class="criativo-item-midia">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
+    <div class="criativo-item-corpo">
+      <div class="item-topo"><h4>${esc(m.nome_interno)}</h4><span class="badge ${classeEstado}" data-mm-estado>${rotuloEstado}</span></div>
+      <p class="item-meta">${m.duracao_segundos ? `${m.duracao_segundos}s` : '—'} · ${m.frequencia_hora}×/hora · ${cobertura}</p>
+      <p class="item-meta">${periodo}</p>
+      ${resumoExibicoesMidia(m.metricas)}
+      ${m.aprovacao_status !== 'aprovado' && sit !== 'excluida' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
+      ${acoes}
     </div>
   </article>`;
+}
+
+// Seção de um grupo de mídias: título com contagem e a grade; os grupos de
+// histórico nascem dobrados (<details>) e o "No ar" tem estado vazio próprio.
+function montarGrupoMidias(grupo, lista) {
+  if (!lista.length && !grupo.vazio) return '';
+  const corpo = lista.length
+    ? `<div class="criativos-grade">${lista.map(montarCardMidia).join('')}</div>`
+    : vazio(grupo.vazio, 'Crie uma mídia em "+ Nova mídia" — ela usa a reserva institucional de 20% de cada ponto.');
+  if (grupo.dobrado) {
+    return `<details class="mm-grupo mm-grupo-dobrado" data-mm-grupo="${grupo.chave}">
+      <summary><span class="mm-grupo-titulo">${grupo.titulo}</span><span class="contagem">${lista.length}</span></summary>
+      ${corpo}
+    </details>`;
+  }
+  return `<div class="mm-grupo" data-mm-grupo="${grupo.chave}">
+    <div class="mm-grupo-topo"><span class="mm-grupo-titulo">${grupo.titulo}</span><span class="contagem">${lista.length}</span></div>
+    ${corpo}
+  </div>`;
 }
 
 // Tabela de capacidade da rede (Parte 16/17) — mesmo padrão de
@@ -2720,8 +2758,11 @@ async function renderMidiaMostrai(el) {
     [porSituacao('ativa'), 'ativa', 'ativas'],
     [porSituacao('agendada'), 'agendada', 'agendadas'],
     [porSituacao('pausada'), 'pausada', 'pausadas'],
+    [porSituacao('encerrada') + porSituacao('excluida'), 'no histórico', 'no histórico'],
     [capacidade.length, 'ponto em operação', 'pontos em operação'],
   ];
+  const doGrupo = (g) => midias.filter((m) => g.situacoes.includes(m.situacaoDerivada));
+  const emTrabalho = midias.filter((m) => m.situacaoDerivada !== 'excluida').length;
   // Hierarquia em três níveis (polimento final, 23/09/2026): resumo em 4
   // números pequenos (não uma faixa larga quase vazia), depois as duas
   // seções com o mesmo cabeçalho — título, contagem junto dele e a ação da
@@ -2772,12 +2813,12 @@ async function renderMidiaMostrai(el) {
 
     <section class="secao-pagina">
       <div class="secao-topo">
-        <h3>Mídias próprias</h3>${midias.length ? `<span class="contagem">${midias.length}</span>` : ''}
+        <h3>Mídias próprias</h3>${emTrabalho ? `<span class="contagem">${emTrabalho}</span>` : ''}
         <div class="secao-acoes"><button class="btn primary" id="btnNovaMidia">+ Nova mídia</button></div>
       </div>
       ${
         midias.length
-          ? `<div class="criativos-grade">${midias.map(montarCardMidia).join('')}</div>`
+          ? GRUPOS_MIDIA.map((g) => montarGrupoMidias(g, doGrupo(g))).join('')
           : vazio(
               'Nenhuma mídia própria cadastrada.',
               'Uma mídia própria usa a reserva institucional de 20% de cada ponto.',
@@ -2842,7 +2883,8 @@ async function renderMidiaMostrai(el) {
     btn.addEventListener('click', async () => {
       const ok = await confirmarModal({
         titulo: 'Retirar esta mídia do ar?',
-        texto: '<p>Ela para de entrar na programação das telas. Nada é excluído — o cadastro fica guardado.</p>',
+        texto:
+          '<p>Ela para de entrar na programação das telas e vai pro histórico, com as exibições confirmadas. Retirada não volta ao ar — pra rodar de novo, crie outra mídia.</p>',
         botao: 'Retirar do ar',
         perigo: true,
       });
@@ -2850,6 +2892,27 @@ async function renderMidiaMostrai(el) {
       const r = await api(`/admin/midias-proprias/${btn.dataset.encerrarMidia}/encerrar`, { method: 'POST' });
       if (!r.ok) return toast('Não foi possível retirar do ar.', 'err');
       toast('Mídia retirada do ar.');
+      renderMidiaMostrai(el);
+    }),
+  );
+  // Exclusão LÓGICA (migration 101): a consequência vai no modal — sai da
+  // programação e das listas, o comprovante de exibição fica no histórico,
+  // e não tem volta. Mídia no ar sai das telas na próxima hora.
+  el.querySelectorAll('[data-excluir-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const card = btn.closest('.mm-item');
+      const nome = card?.querySelector('h4')?.textContent || 'esta mídia';
+      const noAr = ['ativa', 'agendada'].includes(card?.dataset.mmSituacao);
+      const ok = await confirmarModal({
+        titulo: `Excluir "${nome}"?`,
+        texto: `<p>${noAr ? 'Ela sai da programação das telas na próxima hora e ' : 'Ela '}some das listas de trabalho. As exibições já confirmadas ficam guardadas em "Excluídas", como comprovante. Não dá pra desfazer.</p>`,
+        botao: 'Excluir mídia',
+        perigo: true,
+      });
+      if (!ok) return;
+      const r = await api(`/admin/midias-proprias/${btn.dataset.excluirMidia}`, { method: 'DELETE' });
+      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+      toast('Mídia excluída.');
       renderMidiaMostrai(el);
     }),
   );

@@ -166,6 +166,7 @@ router.post('/admin/midias-proprias', upload.single('arquivo'), async (req, res)
 router.patch('/admin/midias-proprias/:id', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
+  if (midia.situacao === 'excluida') return res.status(409).json({ erro: 'mídia excluída não pode ser editada' });
   const dados = {
     nome_interno: req.body.nome_interno,
     frequencia_hora: req.body.frequencia_hora != null ? Number(req.body.frequencia_hora) : undefined,
@@ -215,15 +216,23 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
   }
 });
 
+// Transições de estado (finalização, 28/09/2026): a régua mora em
+// midiasRepo.transicionar — retirada do ar não volta, excluída não muda.
+// Antes /retomar aceitava mídia encerrada, e nada era 409.
+const responderTransicao = (res, r) => (r.ok ? res.json({ ok: true }) : res.status(r.status).json({ erro: r.erro }));
+
 router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {
-  const ok = await midiasRepo.definirSituacao(req.params.id, 'pausada');
-  if (!ok) return res.status(404).json({ erro: 'mídia não encontrada' });
-  res.json({ ok: true });
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'pausada'));
 });
 
 router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
+  if (midia.situacao !== 'pausada') {
+    return res
+      .status(409)
+      .json({ erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra' });
+  }
   // A rede pode ter mudado enquanto estava pausada — revalida antes de
   // voltar a consumir capacidade (mesma regra de nunca passar de 100%).
   const excedentes = await pontosQueExcedem({
@@ -239,14 +248,18 @@ router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
       pontosExcedentes: excedentes,
     });
   }
-  await midiasRepo.definirSituacao(req.params.id, 'ativa');
-  res.json({ ok: true });
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'ativa'));
 });
 
 router.post('/admin/midias-proprias/:id/encerrar', async (req, res) => {
-  const ok = await midiasRepo.definirSituacao(req.params.id, 'encerrada');
-  if (!ok) return res.status(404).json({ erro: 'mídia não encontrada' });
-  res.json({ ok: true });
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'encerrada'));
+});
+
+// Exclusão LÓGICA (migration 101): a mídia sai da programação e das listas
+// de trabalho; a linha, o contador de exibições confirmadas e o histórico
+// de estados ficam como comprovante. Sem volta.
+router.delete('/admin/midias-proprias/:id', async (req, res) => {
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'excluida'));
 });
 
 // Ajustar mídia > Substituir arquivo (Parte 25-29) — genérico, serve

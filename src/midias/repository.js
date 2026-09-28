@@ -12,7 +12,11 @@ const { instanteComercial } = require('../lib/fuso-comercial');
 // estados excessivamente complexa"). `situacao` guarda só o controle manual
 // (ativa/pausada/encerrada); esta função decide o rótulo final combinando
 // os dois.
+// 'excluida' (migration 101, finalização 28/09/2026): exclusão lógica —
+// some das listas de trabalho, nunca toca, e as exibições confirmadas ficam
+// como comprovante. Vence qualquer outro estado.
 function situacaoDerivada(m, agora = new Date()) {
+  if (m.situacao === 'excluida') return 'excluida';
   if (m.situacao === 'encerrada') return 'encerrada';
   if (m.situacao === 'pausada') return 'pausada';
   if (m.periodo_inicio && new Date(m.periodo_inicio) > agora) return 'agendada';
@@ -37,7 +41,7 @@ async function listar() {
        (SELECT COUNT(*)::int FROM midias_proprias_pontos mpp WHERE mpp.midia_id = mp.id) AS qtd_pontos
      FROM midias_proprias mp
      JOIN criativos c ON c.id = mp.criativo_id
-     ORDER BY mp.created_at DESC`,
+     ORDER BY (mp.situacao = 'excluida'), mp.created_at DESC`,
   );
   return rows.map(montarLinha);
 }
@@ -117,12 +121,38 @@ async function atualizar(id, entrada) {
   return buscarPorId(id);
 }
 
+// Mídia excluída não muda mais de estado — nem por rota, nem por script:
+// a guarda mora aqui, não só no controle de transição das rotas.
 async function definirSituacao(id, situacao) {
-  const { rows } = await pool.query('UPDATE midias_proprias SET situacao = $2 WHERE id = $1 RETURNING id', [
-    id,
-    situacao,
-  ]);
+  const { rows } = await pool.query(
+    `UPDATE midias_proprias SET situacao = $2 WHERE id = $1 AND situacao <> 'excluida' RETURNING id`,
+    [id, situacao],
+  );
   return rows.length > 0;
+}
+
+// Transições permitidas pelo admin (finalização, 28/09/2026). Encerrada não
+// volta ao ar (é "retirada"; quem quer de novo cria outra mídia, com o
+// histórico da primeira intacto); excluída não sai de excluída.
+const TRANSICOES = {
+  pausada: { de: ['ativa'], erro: 'só uma mídia ativa (ou agendada) pode ser pausada' },
+  ativa: {
+    de: ['pausada'],
+    erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra',
+  },
+  encerrada: { de: ['ativa', 'pausada', 'encerrada'], erro: 'mídia excluída não pode ser retirada do ar' },
+  excluida: { de: ['ativa', 'pausada', 'encerrada'], erro: 'essa mídia já está excluída' },
+};
+
+// Devolve `{ ok: true }`, `{ ok: false, status: 404 }` ou
+// `{ ok: false, status: 409, erro }` — a rota só traduz.
+async function transicionar(id, para) {
+  const midia = await buscarPorId(id);
+  if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  const regra = TRANSICOES[para];
+  if (!regra.de.includes(midia.situacao)) return { ok: false, status: 409, erro: regra.erro, midia };
+  await definirSituacao(id, para);
+  return { ok: true, midia };
 }
 
 // ---------- Ocupação (Parte 10/11/16) ----------
@@ -303,6 +333,7 @@ module.exports = {
   criar,
   atualizar,
   definirSituacao,
+  transicionar,
   ocupacaoPorPonto,
   previewOcupacao,
   elegiveisNoPonto,
