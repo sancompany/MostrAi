@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
+do admin** (PR próprio, draft, NÃO mergeado — aguarda o dono; branch
+`claude/serene-lovelace-1zx4a0`, base `c521b25`). "Onde seu anúncio aparece"
+virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
+fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
+ocupação, "Ver no mapa" na foto, "Seu ponto" na foto e a seleção escrita no
+pé ("Selecionado", "Limite do plano atingido"…). Foto/segmento/bairro pela
+vitrine pública `GET /pontos` (ADR-028) — **sem backend, sem banco**.
+Seleção, limite, salvamento e contador intocados (e2e 26 passa sem mudar
+comportamento; e2e novo `35-cards-pontos-cliente.mjs`, 81 checagens).
+**Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — conflito
+certo em `htmlPontoEscolha`/`style.css`/`painel.css`; decisão do dono em
+`docs/PENDENCIAS.md` §S (S2). "Meus pontos" ficou como estava (S4).
+**Não iniciar outra estação sem o dono.**
 2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
 ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
 autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).

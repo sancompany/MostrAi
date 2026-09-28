@@ -51,7 +51,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
   `tests/playlist-congelamento.test.js`.
 - Painel do anunciante: bloqueio total sem plano, KPIs (horas/exibições
   contratadas vs. entregues, custo por exibição fixo, banco de horas),
-  gráficos por dia/ponto, escolha de pontos compacta com busca. Redesenhado
+  gráficos por dia/ponto, escolha de pontos com busca — em cards no molde
+  do admin desde 28/09/2026 (foto da fachada, segmento, estado, "Seu
+  ponto", seleção escrita no pé; ADR-028, PR aberto). Redesenhado
   visualmente em 21/09/2026 como dashboard SaaS/AdTech responsivo, sem mudar
   contratos nem cálculos; estados vazios e listas extensas foram mantidos
   utilizáveis.

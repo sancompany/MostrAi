@@ -968,3 +968,37 @@ Decisão:
 Consequências: nova superfície de promoção usa `montarPromocoes` (ou
 `htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
 destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §R).
+
+## ADR-028 — Card de ponto do cliente no molde do admin, com foto e segmento pela vitrine pública (28/09/2026)
+
+Contexto: estação isolada dos cards do cliente. "Onde seu anúncio aparece"
+mostrava cada ponto numa linha densa (19/09/2026), sem foto nem segmento,
+enquanto Rede > Pontos do admin já tinha o card com a fachada. O dono pediu
+o mesmo idioma visual no cliente, sem mexer em regra, backend ou banco. A
+rota da escolha (`GET /anunciantes/me/pontos-disponiveis`) não devolve foto,
+segmento nem bairro.
+
+Decisão:
+1. **Um molde de card de ponto.** O card da escolha usa
+   `.ponto-card.com-corpo` (style.css), o mesmo do admin e da prévia da
+   candidatura, com o placeholder oficial e o ajuste de foto em pé
+   (`candidaturaAjustarFoto`). O que é só da escolha (pé com a caixa, selo
+   "Seu ponto" na foto, estados) mora no bloco "Escolha de pontos do
+   anunciante" de style.css.
+2. **Foto, segmento e bairro vêm da vitrine pública `GET /pontos`**, cruzada
+   por `id` no front (mesmos status, `STATUS_NA_REDE`; `confirmar-plano` já
+   lia essa rota). É enfeite: falhou, o card fica com o placeholder e a
+   escolha segue. A rota da escolha continua como estava.
+3. **O estado da seleção é dito em texto e escolhido pelo CSS** a partir do
+   input (`:checked`, `:disabled`, `.cheio`): "Selecionar ponto",
+   "Selecionado", "Limite do plano atingido", "Indisponível para escolha".
+   Nenhum caminho do JS repinta frase.
+4. **Nada de comportamento muda:** o `input`, o `.cheio`, o `data-ponto-id`,
+   o `data-busca`, `travarNoLimite`, o PUT e o contador são os de antes. O
+   `<a>` do mapa continua fora do `<label>` (agora sobre a foto).
+
+Consequências: outro card de ponto no cliente usa o mesmo molde, não um
+novo. Se um dia a rota da escolha passar a trazer a foto (o PR #90 faz
+isso), o card lê de lá e a vitrine sai — sem mudar o desenho. A lista espera
+a vitrine pra se desenhar, no máximo 3 s (as duas rotas saem em paralelo);
+passou disso, desenha com o placeholder.

@@ -222,6 +222,18 @@ Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
 camada da base (T1) com o comercial numa hora cheia — comportamento atual
 preservado; ver `.ia/RISKS.md`.
 
+## CARDS DE PONTOS DO CLIENTE — antes e depois do merge (28/09/2026)
+
+- [ ] Antes do merge: decidir o conflito com o PR #90 (mesmo card —
+  `docs/PENDENCIAS.md` §S2); atualizar a branch com a `main` e rerodar
+  `npm run check` e os e2e 26 e 35.
+- [ ] Depois do merge (só com autorização): CI verde no SHA mergeado,
+  deploy com o SHA novo, conferir "Onde seu anúncio aparece" no ar em
+  desktop e celular com as fotos reais dos pontos (§S1).
+- Decisões do dono, fora desta estação: texto de ponto sem horário (§S3),
+  "Meus pontos" com o card de foto grande (§S4), mostrar "na cobertura
+  hoje" (§S5).
+
 ## CATEGORIAS E CONCORRENTES DIRETOS — antes e depois do merge (28/09/2026)
 
 - [ ] Antes do merge: atualizar a branch com a `main`; se o Plano Básico

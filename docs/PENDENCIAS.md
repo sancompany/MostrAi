@@ -5295,3 +5295,48 @@ interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
   a ordem do servidor (a mais nova primeiro) e o CTA da Home vai sempre para
   Planos — não há campo de prioridade nem de destino no admin (não foi
   criado um CMS por causa do carrossel).
+
+## S. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
+
+**Feito (PR próprio, NÃO mergeado — aguarda o dono):** "Onde seu anúncio
+aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
+card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
+mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,
+nome com o estado ao lado, endereço com bairro e cidade, segmento, horário,
+ocupação, "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o
+estado escrito ("Selecionar ponto", "Selecionado", "Limite do plano
+atingido", "Indisponível para escolha"). Selecionado: borda da marca com
+anel e fundo levemente alaranjado. Próprio ponto: selo "Seu ponto" sobre a
+foto, borda quente e o texto da escolha num quadro claro — nunca marcado
+sozinho. Grade: 3 por fileira no desktop e no tablet, 1 no celular (foto
+2:1, a página rola); no tablet/desktop a lista rola por dentro (720 px).
+Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-028) —
+**sem mudança de backend nem de banco**. Seleção, limite, trava, salvamento,
+contador, busca e distribuição automática: o mesmo código de antes. E2E:
+`tests/e2e/35-cards-pontos-cliente.mjs` (novo) e o 26 passando sem mudança
+de comportamento.
+
+**Com o dono:**
+
+- **S1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
+  os pontos mandaram, nomes longos, o próprio ponto.
+- **S2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
+  redesenha este card (foto pela rota `pontos-disponiveis`, com `uf`), troca
+  "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
+  escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
+  mexem em `htmlPontoEscolha`, no bloco `.ponto-escolha` de `style.css` e em
+  `.pontos-selecao` de `painel.css` — quem entrar por último resolve o
+  conflito. Se esta estação for aceita, a parte visual do card no #90 sai; a
+  fila de salvamento é mudança de lógica e é decisão à parte.
+- **S3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
+  informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
+  não tem horário). Mantido como estava — trocar o texto do cliente é
+  decisão de conteúdo, não desta estação.
+- **S4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
+  card de gestão (andamento, telas, benefício), que já usa a mesma foto, o
+  mesmo placeholder e o mesmo selo de estado. Trocar para o card com foto
+  grande em cima alonga a coluna lateral — só se o dono quiser.
+- **S5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
+  (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
+  card não mostra. Mostrar é decisão de produto (no modo automático diria
+  quais pontos saíram no sorteio).
