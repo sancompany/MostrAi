@@ -9,6 +9,7 @@ const anunciantesRepo = require('../anunciantes/repository');
 const planosRepo = require('../financeiro/planos-repository');
 const criativosRepo = require('../anunciantes/criativos-repository');
 const ffmpeg = require('../lib/ffmpeg');
+const sse = require('../lib/sse');
 const qrInstitucional = require('./qr-institucional');
 
 // Mesmo limite/destino de src/anunciantes/routes.js — sem duplicar o
@@ -189,9 +190,19 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
       return res.status(400).json({ erro: 'escolha pelo menos um ponto, ou marque "toda a rede"' });
     }
   }
-  // Só revalida se a mídia está ativa AGORA (pausada/agendada/encerrada não
-  // consome capacidade neste momento) e algo que afeta ocupação mudou.
-  if (midia.situacaoDerivada === 'ativa' && (dados.frequencia_hora != null || req.body.cobertura_tipo)) {
+  const mexeNoQueVeicula =
+    dados.frequencia_hora != null || !!req.body.cobertura_tipo || 'periodo_inicio' in dados || 'periodo_fim' in dados;
+  // Retirada do ar não volta — nem por Editar (revisão do PR #89,
+  // 28/09/2026): com o período vencido, estender o fim trazia a mídia de
+  // volta ao ar (ou a "Pausadas", com Retomar) sem revalidar capacidade,
+  // porque a derivada no momento do PATCH era 'encerrada'. Só o nome muda.
+  if (midia.situacaoDerivada === 'encerrada' && mexeNoQueVeicula) {
+    return res.status(409).json({ erro: 'mídia retirada do ar não volta — pra rodar de novo, crie outra' });
+  }
+  // Revalida capacidade quando a mídia consome ou vai consumir sozinha:
+  // persistida 'ativa' cobre a derivada 'ativa' e a 'agendada' (entra no ar
+  // sem ninguém clicar); pausada revalida no Retomar.
+  if (midia.situacao === 'ativa' && mexeNoQueVeicula) {
     const excedentes = await pontosQueExcedem({
       coberturaTipo,
       pontosIds: dados.pontosIds || midia.pontosIds,
@@ -228,7 +239,9 @@ router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {
 router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
-  if (midia.situacao !== 'pausada') {
+  // Derivada, a mesma régua de `transicionar`: pausada com período vencido é
+  // 'encerrada' e não volta (revisão Codex do PR #89, 28/09/2026).
+  if (midia.situacaoDerivada !== 'pausada') {
     return res
       .status(409)
       .json({ erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra' });
@@ -258,8 +271,14 @@ router.post('/admin/midias-proprias/:id/encerrar', async (req, res) => {
 // Exclusão LÓGICA (migration 101): a mídia sai da programação e das listas
 // de trabalho; a linha, o contador de exibições confirmadas e o histórico
 // de estados ficam como comprovante. Sem volta.
+// Arquivo ainda em análise (operador substituiu e excluiu antes de aprovar)
+// saía da mídia mas ficava na fila com Aprovar/Ajustar/Reprovar (revisão
+// Codex do PR #89, 28/09/2026): `excluir` o reprova no mesmo commit, e a
+// fila em outra aba recebe o evento e tira o card na hora.
 router.delete('/admin/midias-proprias/:id', async (req, res) => {
-  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'excluida'));
+  const r = await midiasRepo.excluir(req.params.id);
+  if (r.ok && r.criativoReprovado) sse.emitirParaAdmin('creative.updated', { id: r.midia.criativo_id });
+  responderTransicao(res, r);
 });
 
 // Ajustar mídia > Substituir arquivo (Parte 25-29) — genérico, serve
@@ -273,6 +292,13 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
   if (!criativoAtual) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(404).json({ erro: 'criativo não encontrado' });
+  }
+  // Mídia excluída não volta por caminho nenhum — nem trocando o arquivo
+  // (revisão Codex do PR #89, 28/09/2026). Mesma guarda do PATCH em
+  // src/admin/routes.js.
+  if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
   }
   try {
     // `processarArquivo` cria uma linha TEMPORÁRIA pra rodar o ffmpeg (mesmo

@@ -1990,12 +1990,13 @@ function montarCardMidia(m) {
       ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} até ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
       : 'Sempre no ar';
   // Excluída: só consulta — sem ação nenhuma (a régua de transição do
-  // backend também recusa). Retirada do ar: edita e exclui; não volta.
+  // backend também recusa). Retirada do ar: só exclui — sem Editar, porque
+  // estender o fim a traria de volta ao ar (o PATCH também recusa, 409).
   const acoes =
     sit === 'excluida'
       ? ''
       : `<div class="acoes item-acoes">
-        <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
+        ${sit !== 'encerrada' ? `<button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>` : ''}
         ${
           sit === 'pausada'
             ? `<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`
@@ -2866,7 +2867,13 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-pausar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.pausarMidia}/pausar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível pausar.', 'err');
+      // 409 = a mídia mudou entre a tela e o clique (período venceu, outra
+      // aba excluiu): mostra o motivo do servidor e redesenha, senão o card
+      // fica com Pausar num estado que não existe mais.
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível pausar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia pausada.');
       renderMidiaMostrai(el);
     }),
@@ -2874,7 +2881,10 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-retomar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.retomarMidia}/retomar`, { method: 'POST' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retomada.');
       renderMidiaMostrai(el);
     }),
@@ -2890,7 +2900,10 @@ async function renderMidiaMostrai(el) {
       });
       if (!ok) return;
       const r = await api(`/admin/midias-proprias/${btn.dataset.encerrarMidia}/encerrar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível retirar do ar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retirar do ar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retirada do ar.');
       renderMidiaMostrai(el);
     }),
@@ -2911,7 +2924,10 @@ async function renderMidiaMostrai(el) {
       });
       if (!ok) return;
       const r = await api(`/admin/midias-proprias/${btn.dataset.excluirMidia}`, { method: 'DELETE' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia excluída.');
       renderMidiaMostrai(el);
     }),

@@ -15,12 +15,15 @@ const { instanteComercial } = require('../lib/fuso-comercial');
 // 'excluida' (migration 101, finalização 28/09/2026): exclusão lógica —
 // some das listas de trabalho, nunca toca, e as exibições confirmadas ficam
 // como comprovante. Vence qualquer outro estado.
+// Período que acabou vence a pausa (revisão Codex do PR #89, 28/09/2026):
+// pausada com fim no passado não tem pra onde voltar — retomar a deixaria
+// 'ativa' sem tocar em tela nenhuma —, então é 'encerrada', no histórico.
 function situacaoDerivada(m, agora = new Date()) {
   if (m.situacao === 'excluida') return 'excluida';
   if (m.situacao === 'encerrada') return 'encerrada';
+  if (m.periodo_fim && new Date(m.periodo_fim) < agora) return 'encerrada';
   if (m.situacao === 'pausada') return 'pausada';
   if (m.periodo_inicio && new Date(m.periodo_inicio) > agora) return 'agendada';
-  if (m.periodo_fim && new Date(m.periodo_fim) < agora) return 'encerrada';
   return 'ativa';
 }
 
@@ -123,25 +126,39 @@ async function atualizar(id, entrada) {
 
 // Mídia excluída não muda mais de estado — nem por rota, nem por script:
 // a guarda mora aqui, não só no controle de transição das rotas.
-async function definirSituacao(id, situacao) {
-  const { rows } = await pool.query(
-    `UPDATE midias_proprias SET situacao = $2 WHERE id = $1 AND situacao <> 'excluida' RETURNING id`,
-    [id, situacao],
+// `soVigente`: pausar/retomar só valem enquanto o período não acabou, e a
+// conferência vai no MESMO comando do UPDATE — o fim pode passar entre a
+// tela e o clique (revisão Codex do PR #89, 28/09/2026). Devolve false
+// quando não mudou nada.
+async function definirSituacao(id, situacao, { soVigente = false } = {}, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE midias_proprias SET situacao = $2
+      WHERE id = $1 AND situacao <> 'excluida'
+        AND ($3::boolean = false OR periodo_fim IS NULL OR periodo_fim >= now())
+      RETURNING id`,
+    [id, situacao, soVigente],
   );
   return rows.length > 0;
 }
 
 // Transições permitidas pelo admin (finalização, 28/09/2026). Encerrada não
 // volta ao ar (é "retirada"; quem quer de novo cria outra mídia, com o
-// histórico da primeira intacto); excluída não sai de excluída.
+// histórico da primeira intacto); excluída não sai de excluída. `de` é
+// conferido contra a situação DERIVADA (período contado), não a persistida:
+// com o fim já passado, a persistida ainda diz 'ativa' e Pausar tirava a
+// mídia do histórico (revisão Codex do PR #89, 28/09/2026).
 const TRANSICOES = {
-  pausada: { de: ['ativa'], erro: 'só uma mídia ativa (ou agendada) pode ser pausada' },
+  pausada: { de: ['ativa', 'agendada'], soVigente: true, erro: 'só uma mídia ativa (ou agendada) pode ser pausada' },
   ativa: {
     de: ['pausada'],
+    soVigente: true,
     erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra',
   },
-  encerrada: { de: ['ativa', 'pausada', 'encerrada'], erro: 'mídia excluída não pode ser retirada do ar' },
-  excluida: { de: ['ativa', 'pausada', 'encerrada'], erro: 'essa mídia já está excluída' },
+  encerrada: {
+    de: ['ativa', 'agendada', 'pausada', 'encerrada'],
+    erro: 'mídia excluída não pode ser retirada do ar',
+  },
+  excluida: { de: ['ativa', 'agendada', 'pausada', 'encerrada'], erro: 'essa mídia já está excluída' },
 };
 
 // Devolve `{ ok: true }`, `{ ok: false, status: 404 }` ou
@@ -150,9 +167,60 @@ async function transicionar(id, para) {
   const midia = await buscarPorId(id);
   if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
   const regra = TRANSICOES[para];
-  if (!regra.de.includes(midia.situacao)) return { ok: false, status: 409, erro: regra.erro, midia };
-  await definirSituacao(id, para);
+  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro, midia };
+  const mudou = await definirSituacao(id, para, { soVigente: !!regra.soVigente });
+  if (!mudou) {
+    // Entre o SELECT e o UPDATE outra aba excluiu, ou o período venceu: a
+    // resposta diz o que a mídia é AGORA, não um motivo chutado.
+    const agora = await buscarPorId(id);
+    const erro =
+      agora?.situacaoDerivada === 'excluida'
+        ? TRANSICOES.excluida.erro
+        : 'o período dessa mídia já terminou — ela está retirada do ar';
+    return { ok: false, status: 409, erro, midia: agora || midia };
+  }
   return { ok: true, midia };
+}
+
+// Exclusão lógica (migration 101) num commit só: a mídia vira 'excluida' e o
+// arquivo ainda em análise sai da fila como reprovado — não 'retirado', que
+// tem "Colocar no ar" na ficha, e mídia excluída não volta por caminho
+// nenhum. Duas escritas soltas deixavam, na falha da segunda, mídia
+// excluída com criativo pendente preso na fila (revisão do PR #89).
+const MOTIVO_EXCLUSAO = 'Mídia excluída pelo operador — o arquivo saiu da fila junto com ela.';
+async function excluir(id) {
+  const midia = await buscarPorId(id);
+  if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  const regra = TRANSICOES.excluida;
+  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro, midia };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const mudou = await definirSituacao(id, 'excluida', {}, client);
+    if (!mudou) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 409, erro: regra.erro, midia };
+    }
+    const { rowCount } = await client.query(
+      `UPDATE criativos SET status = 'reprovado', motivo_reprovacao = $2 WHERE id = $1 AND status = 'pendente'`,
+      [midia.criativo_id, MOTIVO_EXCLUSAO],
+    );
+    await client.query('COMMIT');
+    return { ok: true, midia, criativoReprovado: rowCount > 0 };
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
+}
+
+// Situação da mídia própria dona deste criativo (1-pra-1), ou null quando o
+// criativo não é de mídia própria. A fila de aprovação usa pra não mexer
+// no arquivo de mídia excluída (revisão Codex do PR #89, 28/09/2026).
+async function situacaoPorCriativo(criativoId) {
+  const { rows } = await pool.query('SELECT situacao FROM midias_proprias WHERE criativo_id = $1', [criativoId]);
+  return rows[0]?.situacao ?? null;
 }
 
 // ---------- Ocupação (Parte 10/11/16) ----------
@@ -334,6 +402,8 @@ module.exports = {
   atualizar,
   definirSituacao,
   transicionar,
+  excluir,
+  situacaoPorCriativo,
   ocupacaoPorPonto,
   previewOcupacao,
   elegiveisNoPonto,

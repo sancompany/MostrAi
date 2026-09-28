@@ -1271,6 +1271,15 @@ comprovante fica em "Excluídas", não desfaz): a linha, o contador de
 exibições confirmadas e o histórico de estados ficam; a mídia excluída não
 aceita mais nenhuma ação, nem edição. Nunca apagar a linha: o contador e o
 histórico cascateariam junto, e o comprovante do que tocou sumiria.
+Período que acabou vence a pausa (revisão Codex do PR #89, 28/09/2026):
+mídia com `periodo_fim` no passado é "Retirada do ar" mesmo que estivesse
+pausada — cai no histórico, sem Pausar nem Retomar (409 no servidor), e
+sem Editar: estender o fim a traria de volta ao ar sem revalidar
+capacidade, então período, frequência e cobertura ficam travados (409) e
+só o nome ainda muda. Se o arquivo ainda estava em análise na hora da
+exclusão, ele sai da fila de aprovação como reprovado, com o motivo, no
+mesmo commit da exclusão, e não volta nem por Aprovar nem por Substituir
+arquivo.
 
 **RN-66 — O QR institucional nunca muda; o que muda é o destino.**
 *(Estação do QR institucional, 27/09/2026.)* O QR que vai em vídeo, flyer e

@@ -59,11 +59,13 @@ const ids = JSON.parse(
     .split('\n')
     .pop(),
 );
-// Comprovante na ativa, pra provar que sobrevive à exclusão.
-const tela = PG('SELECT id FROM dispositivos ORDER BY id LIMIT 1');
+// Comprovante na ativa, pra provar que sobrevive à exclusão. `ponto_id` é
+// NOT NULL no contador — sem ele o INSERT falhava sempre que havia tela
+// (revisão Codex do PR #89, 28/09/2026).
+const [tela, telaPonto] = PG('SELECT id, ponto_id FROM dispositivos ORDER BY id LIMIT 1').split('|');
 if (tela) {
   PG(
-    `INSERT INTO midias_exibicoes_contador (midia_id, dispositivo_id, janela_hora, vezes_programadas, vezes_confirmadas) VALUES (${ids.ativa}, ${tela}, date_trunc('hour', now()), 3, 3) ON CONFLICT DO NOTHING`,
+    `INSERT INTO midias_exibicoes_contador (midia_id, dispositivo_id, ponto_id, janela_hora, vezes_programadas, vezes_confirmadas) VALUES (${ids.ativa}, ${tela}, ${telaPonto}, date_trunc('hour', now()), 3, 3) ON CONFLICT DO NOTHING`,
   );
 }
 
