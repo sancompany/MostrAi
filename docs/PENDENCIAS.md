@@ -5393,7 +5393,9 @@ dono autorizar**. Decisão: ADR-029 (`.ia/DECISIONS.md`).
       690–800 e 1290–1415: horário, foto, blocos, candidatura). A segunda
       cópia é a que vale — mexer só na primeira não surte efeito. Os estilos
       desta estação ficaram num bloco próprio no fim do arquivo, escopados
-      em `.form-ponto`. Limpar a duplicata é outra estação.
+      em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
+      arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
+      já na `main`): o navegador descarta a regra que vem logo depois dela.
 - T2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
       número por JS quando a LARGURA do card muda, mas a fonte segue a
       largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
