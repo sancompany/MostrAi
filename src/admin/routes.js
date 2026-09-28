@@ -41,13 +41,20 @@ router.patch('/admin/criativos/:id', async (req, res) => {
         `WITH nova AS (
            UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status = 'pendente' RETURNING substitui_criativo_id
          )
-         UPDATE criativos SET status = 'retirado'
+         UPDATE criativos SET status = 'retirado', retirado_por = 'substituicao'
           WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
         [antes.id],
       );
       criativo = await criativosRepo.buscarPorId(antes.id);
     } else {
-      criativo = await criativosRepo.atualizar(req.params.id, req.body);
+      // Quem tirou do ar fica registrado (migration 102): o cliente só
+      // retoma pelo painel o que ele mesmo pausou; o que o admin retirou
+      // volta só daqui ("Colocar no ar" limpa a marca).
+      const dados = { ...req.body };
+      delete dados.retirado_por; // quem tirou do ar vem do status, nunca do corpo
+      if (dados.status === 'retirado') dados.retirado_por = 'admin';
+      if (dados.status === 'aprovado') dados.retirado_por = null;
+      criativo = await criativosRepo.atualizar(req.params.id, dados);
     }
     if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
     if (antes.status !== criativo.status) sse.emitirParaAdmin('creative.updated', { id: criativo.id });

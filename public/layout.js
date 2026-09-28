@@ -627,6 +627,9 @@ window.ROTULOS = {
     aguardando_primeira_exibicao: 'Aguardando primeira exibição',
     no_ar: 'No ar',
     atrasado: 'Entrada atrasada',
+    // Pausada pelo próprio cliente (finalização, 28/09/2026) — diferente
+    // de "fora do ar", que é o admin ou a substituição que tirou.
+    pausado: 'Pausado',
     fora_do_ar: 'Fora do ar',
     recusado: 'Recusado',
   },
@@ -637,6 +640,7 @@ window.ROTULOS = {
     aguardando_primeira_exibicao: 'badge-pendente',
     no_ar: 'badge-ok',
     atrasado: 'badge-err',
+    pausado: 'badge-pendente',
     fora_do_ar: 'badge-neutro',
     recusado: 'badge-err',
   },

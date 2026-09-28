@@ -1385,7 +1385,14 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
     criativos: criativos.map((c) => ({
       id: c.id,
       situacao:
-        c.status === 'aprovado' ? SITUACAO_DA_ENTRADA[c.entrada?.estado] || 'aprovado' : SITUACAO_CRIATIVO[c.status],
+        c.status === 'aprovado'
+          ? SITUACAO_DA_ENTRADA[c.entrada?.estado] || 'aprovado'
+          : c.status === 'retirado' && c.retirado_por === 'cliente'
+            ? 'pausado'
+            : SITUACAO_CRIATIVO[c.status],
+      // Quem tirou do ar (migration 102): 'cliente' (pausou, pode retomar),
+      // 'admin' ou 'substituicao' — o painel explica cada um.
+      retiradaPor: c.status === 'retirado' ? c.retirado_por : null,
       // Quando a primeira exibição deve acontecer e quando vira atraso — o
       // servidor calcula (o painel não adivinha horário de ponto nem regra
       // de playlist); e o que o comprovante confirmou.
@@ -1448,6 +1455,66 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
   sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', { id: criativo.id });
   sse.emitirParaAdmin('creative.updated', {});
   await removerArquivosDoStorage(criativo.id);
+  res.json({ ok: true });
+});
+
+// Pausar / retomar a própria peça (finalização, 28/09/2026, pedido do
+// dono). Pausar tira a peça aprovada da programação (status 'retirado',
+// `retirado_por = 'cliente'`, migration 102) sem apagar nada; retomar
+// devolve a aprovação — sem análise nova, o arquivo é o mesmo. Só volta
+// pela mão do cliente o que o cliente pausou: o que o admin retirou, ou a
+// substituição retirou, fica como está. Retomar respeita o limite de peças
+// do plano como o upload respeita: ativa a mais do que o plano permite não
+// entra (criativosRepo.contarAtivos).
+async function pecaDaConta(req, res) {
+  const criativo = await criativosRepo.buscarPorId(req.params.id);
+  if (!criativo || criativo.anunciante_id !== req.session.anuncianteId) {
+    res.status(404).json({ erro: 'criativo não encontrado' });
+    return null;
+  }
+  return criativo;
+}
+
+function avisarMudancaDePeca(contaId, criativoId) {
+  sse.emitirParaConta(contaId, 'creative.updated', { id: criativoId });
+  sse.emitirParaAdmin('creative.updated', {});
+}
+
+router.post('/anunciantes/me/criativos/:id/pausar', exigirAnuncianteLogado, async (req, res) => {
+  const criativo = await pecaDaConta(req, res);
+  if (!criativo) return;
+  if (criativo.status !== 'aprovado') return res.status(409).json({ erro: 'só uma peça aprovada pode ser pausada' });
+  const { rowCount } = await pool.query(
+    `UPDATE criativos SET status = 'retirado', retirado_por = 'cliente' WHERE id = $1 AND status = 'aprovado'`,
+    [criativo.id],
+  );
+  if (!rowCount) return res.status(409).json({ erro: 'a peça mudou de situação — atualize a lista' });
+  avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
+  res.json({ ok: true });
+});
+
+router.post('/anunciantes/me/criativos/:id/retomar', exigirAnuncianteLogado, async (req, res) => {
+  const criativo = await pecaDaConta(req, res);
+  if (!criativo) return;
+  if (criativo.status !== 'retirado' || criativo.retirado_por !== 'cliente') {
+    return res.status(409).json({ erro: 'essa peça não foi pausada por você — fale com a gente pra colocá-la no ar' });
+  }
+  const conta = await repo.buscarPorId(req.session.anuncianteId);
+  const planoId = planoEfetivoId(conta);
+  const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
+  if (!plano) return res.status(409).json({ erro: 'sua conta está sem plano — a peça volta quando você tiver um' });
+  if ((await criativosRepo.contarAtivos(conta.id)) >= plano.limite_criativos) {
+    return res.status(409).json({
+      erro: `seu plano permite até ${plano.limite_criativos} criativo(s) ativo(s) — pause ou exclua outra peça pra retomar esta`,
+    });
+  }
+  const { rowCount } = await pool.query(
+    `UPDATE criativos SET status = 'aprovado', retirado_por = NULL
+      WHERE id = $1 AND status = 'retirado' AND retirado_por = 'cliente'`,
+    [criativo.id],
+  );
+  if (!rowCount) return res.status(409).json({ erro: 'a peça mudou de situação — atualize a lista' });
+  avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
   res.json({ ok: true });
 });
 

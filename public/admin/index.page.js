@@ -4124,9 +4124,18 @@ function desenharFicha(el, s, categorias) {
       <section class="panel conta-secao" id="contaDados"></section>
       <section class="panel conta-secao" id="contaPlano"></section>
     </div>
-    <section class="panel conta-secao" id="contaCreditos"></section>
+    ${
+      // Pontos ao lado de Créditos e benefícios (finalização, 28/09/2026,
+      // pedido do dono): os dois são "o que a conta tem na rede"; antes
+      // Pontos vinha depois dos criativos, longe do crédito que ele gera.
+      s.pontos.length
+        ? `<div class="conta-grade">
+      <section class="panel conta-secao" id="contaCreditos"></section>
+      <section class="panel conta-secao" id="contaPontos"></section>
+    </div>`
+        : '<section class="panel conta-secao" id="contaCreditos"></section>'
+    }
     <section class="panel conta-secao" id="contaCriativos"></section>
-    ${s.pontos.length ? '<section class="panel conta-secao" id="contaPontos"></section>' : ''}
     ${s.solicitacoes.length ? '<section class="panel conta-secao conta-secao-discreta" id="contaSolicitacoes"></section>' : ''}
     <div class="conta-rodape" id="contaRodape"></div>`;
 
@@ -4489,6 +4498,8 @@ function desenharContaCriativos(el, ctx) {
           ? 'Substitui a peça que está no ar — ela segue no ar até esta ser aprovada.'
           : '',
         substitutoDe[c.id] ? 'Tem um substituto em análise.' : '',
+        c.status === 'retirado' && c.retirado_por === 'cliente' ? 'Pausada pelo cliente, no painel dele.' : '',
+        c.status === 'retirado' && c.retirado_por === 'substituicao' ? 'Saiu do ar na substituição.' : '',
         estado.dica || '',
         c.status === 'reprovado' && c.motivo_reprovacao ? `Motivo: ${c.motivo_reprovacao}` : '',
       ].filter(Boolean);

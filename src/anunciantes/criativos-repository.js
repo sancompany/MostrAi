@@ -7,6 +7,8 @@ const STATUS = ['pendente', 'aprovado', 'reprovado', 'retirado'];
 
 const CAMPOS_ATUALIZAVEIS = [
   'status',
+  // Quem tirou do ar (migration 102): cliente, admin ou substituição.
+  'retirado_por',
   'arquivo_normalizado_url',
   'thumbnail_url',
   'editado_pelo_operador',
@@ -90,6 +92,19 @@ async function contarNaoReprovados(anuncianteId) {
   return rows[0].total;
 }
 
+// Peças que ocupam vaga ATIVA no plano (pendente ou aprovada, sem contar o
+// substituto em análise): é o que "retomar" uma peça pausada confere —
+// pausada não conta, e a volta dela só cabe se sobrar vaga.
+async function contarAtivos(anuncianteId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS total FROM criativos
+      WHERE anunciante_id = $1 AND status IN ('pendente', 'aprovado')
+        AND NOT (status = 'pendente' AND substitui_criativo_id IS NOT NULL)`,
+    [anuncianteId],
+  );
+  return rows[0].total;
+}
+
 async function listarPorAnunciante(anuncianteId) {
   const { rows } = await pool.query('SELECT * FROM criativos WHERE anunciante_id = $1 ORDER BY created_at DESC', [
     anuncianteId,
@@ -140,5 +155,6 @@ module.exports = {
   atualizar,
   deletar,
   contarNaoReprovados,
+  contarAtivos,
   STATUS,
 };

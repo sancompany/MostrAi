@@ -1243,6 +1243,19 @@ A Visão geral do admin mostra "Anúncios aguardando primeira exibição: N" e
 — nunca reinicia o Player. Reaprovar uma peça (depois de retirar) recomeça
 o contexto.
 
+**RN-64.1 — O cliente pausa e retoma a própria peça; só volta o que ele pausou.**
+*(Finalização, 28/09/2026, migration 102.)* Em "Meus criativos", peça
+aprovada (em qualquer estágio da entrada no ar, sem substituta em análise)
+tem **Pausar**: confirma no modal Mostraí, vira `retirado` com
+`retirado_por = 'cliente'`, sai da programação na próxima hora e aparece
+como **Pausado**, com **Retomar** — que devolve `aprovado` sem análise
+nova (o arquivo é o mesmo) e respeita o limite de peças ativas do plano
+(409 "pause ou exclua outra peça"). O que o admin retirou (`'admin'`) ou a
+substituição retirou (`'substituicao'`) aparece como "Fora do ar" com o
+motivo escrito e sem Retomar — volta só pela ficha do admin ("Colocar no
+ar", que limpa a marca). Nada disso apaga arquivo. A ficha do admin diz
+"Pausada pelo cliente" / "Saiu do ar na substituição" em cada uma.
+
 **RN-65 — Mídia Mostraí conta pelo comprovante, no contador dela.**
 *(Estação de distribuição, 27/09/2026.)* O item da Mídia Mostraí na
 playlist gera proof-of-play (`contabiliza: true`); o crédito vai pra
