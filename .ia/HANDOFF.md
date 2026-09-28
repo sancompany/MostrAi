@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação: formulários de ponto ("Tornar-se ponto" e "Novo
+estabelecimento")** (branch `claude/nifty-galileo-rwryqd`, worktree própria,
+PR próprio, **NÃO mergeado — merge só com o dono**). Os dois pedidos abrem no
+topo do painel, na largura da página (`#pontosNovo`): formulário ~65% +
+prévia fixa ~35% no desktop, uma coluna no celular. Erro embaixo do campo
+(`candidaturaValidar`), segmento obrigatório no campo visível (antes travava
+o envio em silêncio — conserta também cadastro e modo anúncios), CEP com
+estados e sem apagar o digitado, foto recusada/avisada, clique duplo
+protegido. Payload/rotas/regras iguais. ADR-030; `docs/PENDENCIAS.md` §U;
+e2e `tests/e2e/31-formularios-ponto.mjs`. **Não iniciar outra estação.**
 2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
 do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), **mergeado com autorização do dono** em 28/09/2026; branch
 `claude/serene-lovelace-1zx4a0`, base `c521b25`, atualizada com a `main` `2818f11` — #97 e #98). "Onde seu anúncio aparece"

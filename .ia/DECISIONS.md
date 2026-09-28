@@ -1050,3 +1050,39 @@ novo. Se um dia a rota da escolha passar a trazer a foto (o PR #90 faz
 isso), o card lê de lá e a vitrine sai — sem mudar o desenho. A lista espera
 a vitrine pra se desenhar, no máximo 3 s (as duas rotas saem em paralelo);
 passou disso, desenha com o placeholder.
+
+## ADR-030 — Formulário de ponto na largura da página, erro embaixo do campo (28/09/2026)
+
+Contexto: os dois pedidos de ponto ("Tornar-se ponto", com o comércio da
+conta, e "Novo estabelecimento") abriam dentro do card Meus pontos, que mora
+na coluna lateral do painel (~340 px): campos espremidos, horário vazando do
+card, prévia lá embaixo; e os campos saíam sem estilo (a regra-base só
+existia dentro de `.card`). A validação era o balão do navegador — e no
+segmento ela nem aparecia: o `required` do `<select>` escondido travava o
+envio em silêncio.
+
+Decisão:
+1. **Área própria no grid do painel** (`#pontosNovo`, `.area-form-ponto`),
+   que só entra no grid enquanto o formulário está aberto
+   (`.painel-grid.com-form-ponto`), no topo, na largura toda. Formulário
+   ~65% e prévia ~35% fixa (sticky) a partir de 50em de componente; uma
+   coluna abaixo disso. Container queries em `em`: texto maior e zoom
+   mudam o arranjo em vez de espremer.
+2. **Um componente, duas intenções.** Estrutura, campos, validação e prévia
+   saem de `public/candidatura-ponto.js`; cada forma mantém o próprio título,
+   texto do botão ("Enviar meu interesse" / "Enviar pedido") e payload.
+3. **Validação própria (`candidaturaValidar`), mesmas regras**: o formulário
+   é `novalidate`, a mensagem fica embaixo do campo com `aria-describedby`,
+   o foco vai pro primeiro problema. Nenhuma regra nova — as do HTML e as
+   que o servidor já aplicava (movimento > 0, abertura ≠ fechamento).
+4. **Busca de segmento responde pelo campo** (`formulario.js#montarBusca`):
+   o `required` passa do `<select>` escondido pro campo visível, com rótulo e
+   teclado. Vale pros três formulários que usam a busca.
+5. Estilos escopados em `.form-ponto`, num bloco próprio no fim de
+   `style.css` (o arquivo tem um trecho duplicado, docs/PENDENCIAS.md §U1).
+
+Consequências: novo formulário de ponto usa essas peças
+(`candidaturaCampoMovimento`, `candidaturaAcoes`, `candidaturaValidar`…),
+que são globais de script (`window.*`, registradas em `biome.json`). O
+payload e as rotas não mudaram; quem chama `POST /conta/modos/ponto/pedir`
+ou `/anunciantes/me/pontos` não percebe diferença.

@@ -165,14 +165,13 @@
             <div class="panel-head">
               <div>
                 <p class="section-eyebrow">Seus comércios na rede</p>
-                <h2 id="tituloMeusPontos">Meus pontos</h2>
+                <h2 id="tituloMeusPontos" tabindex="-1">Meus pontos</h2>
                 <span class="panel-subtitle" id="pontosResumo"></span>
               </div>
               <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
             </div>
             <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
             <div class="estab-lista" id="pontosLista"></div>
-            <div class="pontos-novo" id="pontosNovo" hidden></div>
           </article>
         </section>
 
@@ -197,6 +196,14 @@
           </article>
         </section>
         </aside>
+
+        <!-- Formulário de ponto ("Quero ser um ponto" e "+ Cadastrar outro
+             estabelecimento"): abre aqui, na largura da página, e não dentro
+             da coluna lateral de Meus pontos, onde ficava com ~340 px
+             (estação dos formulários de ponto, 28/09/2026). Montado por
+             public/meus-pontos.js; o grid só o mostra enquanto está aberto
+             (.painel-grid.com-form-ponto, painel.css). -->
+        <section class="dashboard-section area-form-ponto" id="pontosNovo" aria-labelledby="tituloFormPonto" hidden></section>
 
         <div class="area-creditos">
         <section class="dashboard-section" id="modCreditos" aria-labelledby="tituloCreditos" hidden>

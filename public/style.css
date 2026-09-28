@@ -2599,3 +2599,201 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 /* Depois de fechar a barra o foco vai pro <main> (tabindex -1): destino de
    foco programático, não controle — sem contorno em volta da página toda. */
 main[tabindex="-1"]:focus { outline: none; }
+
+
+/* =========================================================================
+   Formulário de ponto — "Tornar-se ponto" e "Novo estabelecimento"
+   (estação dos formulários de ponto, 28/09/2026; public/meus-pontos.js e
+   public/candidatura-ponto.js). Tudo aqui vale só dentro de `.form-ponto`:
+   o horário, a foto e os blocos também existem em outras telas, com o
+   desenho de antes.
+   - O formulário saiu da coluna lateral do painel (~340 px) pra largura da
+     página: formulário ~65% e prévia ~35%, fixa na rolagem, quando cabe;
+     uma coluna quando não cabe.
+   - Os limites são container queries em `em` (medem o próprio formulário, e
+     não a janela): com texto a 150% ou zoom, a grade larga dá lugar à
+     coluna única mais cedo, em vez de espremer campo.
+   - Os campos ganham o desenho dos campos do resto do site: antes o estilo
+     só existia dentro de `.card`, e o painel é `.panel` — os campos saíam
+     crus do navegador (textarea de 36 px, rótulo ao lado do campo).
+   ========================================================================= */
+/* O espaçamento interno fica em painel.css (a `.panel` do painel é quem manda nele). */
+.form-ponto { container: formponto / inline-size; }
+.form-ponto-cabeca { margin: 0 0 22px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+.form-ponto-cabeca h2 { margin: 6px 0 8px; font-size: clamp(1.3rem, 1.1rem + .8vw, 1.7rem); line-height: 1.2; letter-spacing: -.015em; }
+.form-ponto-descricao { max-width: 46em; margin: 0; color: var(--text-dim); font-size: .95rem; line-height: 1.55; }
+
+.form-ponto .candidatura-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; justify-content: stretch; }
+.form-ponto-form { container: formcampos / inline-size; min-width: 0; }
+@container formponto (min-width: 50em) {
+  .form-ponto .candidatura-layout { grid-template-columns: minmax(0, 65fr) minmax(0, 35fr); gap: 40px; }
+  /* Fica à vista enquanto o formulário rola, abaixo do cabeçalho fixo do site. */
+  .form-ponto .candidatura-lateral { position: sticky; top: 84px; }
+  .form-ponto .candidatura-preview { max-width: none; }
+}
+
+/* Blocos: um assunto por bloco, separados por uma linha — sem card dentro de card. */
+.form-ponto .form-blocos { gap: 0; }
+.form-ponto .form-bloco { gap: 14px; padding: 22px 0; }
+.form-ponto .form-bloco:first-child { padding-top: 0; }
+.form-ponto .form-bloco + .form-bloco { padding-top: 22px; border-top: 1px solid var(--border); }
+.form-ponto .form-sep-titulo { font-size: .74rem; letter-spacing: .08em; }
+
+/* Campos no desenho do site: altura, borda, raio e foco iguais aos do cadastro.
+   `:where` deixa a regra-base com peso de uma classe só — quem desenha um
+   campo específico (textarea, horário) vence sem precisar de mais peso. */
+.form-ponto .campo { min-width: 0; }
+.form-ponto label { display: block; margin: 0 0 6px; color: var(--text-dim); font-size: .85rem; font-weight: 600; }
+.form-ponto :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  display: block; width: 100%; min-height: 44px; margin: 0; padding: 10px 12px;
+  background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-campo);
+  color: var(--text); font: inherit; font-size: .95rem; line-height: 1.35;
+  transition: border-color .15s, background-color .15s;
+}
+.form-ponto :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea):hover:not(:disabled) { border-color: #c9d1dc; }
+.form-ponto :where(input, select, textarea):focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-color: transparent; background: #fff; }
+.form-ponto textarea { min-height: 116px; resize: vertical; }
+.form-ponto ::placeholder { color: #8a93a0; opacity: 1; }
+.form-ponto [aria-invalid="true"] { border-color: var(--err); background: #fff6f6; }
+@media (max-width: 640px) {
+  /* 16px: abaixo disso o Safari do iPhone amplia a página ao focar o campo.
+     `max(…, 1rem)`: com o texto do sistema aumentado, o campo cresce junto. */
+  .form-ponto :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) { font-size: max(16px, 1rem); }
+}
+/* Erro embaixo do próprio campo (candidaturaValidar): o texto diz o problema,
+   a cor só reforça. */
+.campo-erro { margin: 6px 0 0; color: var(--err); font-size: .82rem; font-weight: 600; line-height: 1.4; }
+.campo-erro[hidden] { display: none; }
+
+/* Estabelecimento: nome na largura toda; foto com miniatura e ações ao lado. */
+.form-ponto .comercio-da-conta { display: flex; flex-direction: column; gap: 2px; }
+.form-ponto .comercio-da-conta p { margin: 0; }
+.form-ponto .comercio-da-conta-nome { font-size: 1.02rem; font-weight: 700; }
+.form-ponto .comercio-da-conta-endereco { color: var(--text-dim); font-size: .9rem; }
+.form-ponto .comercio-da-conta .form-hint { margin-top: 4px; }
+.form-ponto .campo-foto-preview { align-items: flex-start; gap: 16px; }
+.form-ponto .campo-foto-preview-img { width: 136px; }
+.form-ponto .campo-foto-preview-info { flex: 1; gap: 3px; padding-top: 2px; }
+.form-ponto .campo-foto-preview-legenda { white-space: normal; overflow-wrap: anywhere; }
+.form-ponto .campo-foto-preview-acoes .btn { min-height: 38px; }
+.campo-foto-carregando { color: var(--text-dim); font-size: .78rem; font-style: italic; }
+
+/* Endereço: grade racional. Celular: CEP | Número, depois a rua inteira;
+   complemento e bairro um embaixo do outro; cidade | UF. */
+.form-ponto .endereco-linha { display: grid; gap: 14px 16px; margin: 0; }
+.form-ponto .endereco-linha > div { min-width: 0; }
+.form-ponto .endereco-linha-cep { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.form-ponto .endereco-linha-cep .campo-logradouro { grid-column: 1 / -1; grid-row: 2; }
+.form-ponto .endereco-linha-complemento { grid-template-columns: minmax(0, 1fr); }
+.form-ponto .endereco-linha-cidade { grid-template-columns: minmax(0, 1fr) minmax(4.5em, 6em); }
+.form-ponto [data-cep-msg] { margin: -4px 0 0; }
+.form-ponto [data-cep-msg][data-estado="consultando"] { font-style: italic; }
+.form-ponto [data-cep-msg][data-estado="encontrado"] { color: var(--ok); font-weight: 600; }
+.form-ponto [data-cep-msg]:is([data-estado="nao-encontrado"], [data-estado="erro"]) { color: #9a3412; font-weight: 600; }
+@container formcampos (min-width: 32em) {
+  /* CEP ~25%, rua ~55%, número ~20% — nunca menor do que o dado que recebe. */
+  .form-ponto .endereco-linha-cep { grid-template-columns: minmax(8.5em, 25fr) minmax(0, 55fr) minmax(6em, 20fr); }
+  .form-ponto .endereco-linha-cep .campo-logradouro { grid-column: auto; grid-row: auto; }
+  .form-ponto .endereco-linha-complemento { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .form-ponto .endereco-linha-cidade { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .form-ponto .endereco-linha-cidade .campo-uf { max-width: 7em; }
+}
+
+/* Segmento na largura toda (a lista de resultados acompanha); movimento com
+   a largura de um número. */
+.form-ponto .categoria-busca-wrap .categoria-resultados { max-height: min(320px, 50vh); }
+.form-ponto .categoria-resultados li { min-height: 40px; }
+.form-ponto .campo-movimento input { max-width: 18em; }
+
+/* Horário. Celular: o dia e "Fechado" numa linha, os dois horários embaixo.
+   Largo: uma grade só — dia | abre | até | fecha | fechado —, com cabeçalho. */
+.form-ponto .horario-semanal { display: flex; flex-direction: column; }
+.form-ponto .horario-cabeca { display: none; }
+.form-ponto .horario-dia {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.form-ponto .horario-dia:last-child { border-bottom: 0; }
+.form-ponto .horario-dia-nome { font-size: .9rem; font-weight: 700; }
+.form-ponto .horario-dia-campos {
+  grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 10px; color: var(--text-dim);
+}
+.form-ponto .horario-dia-campos input[type="time"] { width: 100%; min-width: 0; padding-top: 9px; padding-bottom: 9px; }
+.form-ponto .horario-ate { font-size: .85rem; text-align: center; }
+.form-ponto .horario-dia .horario-dia-fechado {
+  justify-self: end; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding: 0 2px;
+  color: var(--text); font-size: .88rem; font-weight: 500; cursor: pointer;
+}
+.form-ponto .horario-dia .horario-dia-fechado input[type="checkbox"] {
+  width: 18px; height: 18px; min-width: 18px; margin: 0; accent-color: var(--brand); cursor: pointer;
+}
+.form-ponto .horario-dia .horario-dia-fechado input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* Dia fechado: além da caixinha marcada, os horários ficam tracejados e
+   desabilitados — a informação não depende só da cor. */
+.form-ponto .horario-dia.fechado .horario-dia-nome { color: var(--text-dim); }
+.form-ponto .horario-dia-campos input[type="time"]:disabled {
+  opacity: .55; background: transparent; border-style: dashed; color: var(--text-dim); cursor: not-allowed;
+}
+.form-ponto .horario-dia > .campo-erro { grid-column: 1 / -1; margin-top: 0; }
+@container formcampos (min-width: 30em) {
+  .form-ponto .horario-cabeca,
+  .form-ponto .horario-dia {
+    /* A sobra fica no fim da linha, não entre o dia e os horários. Em `rem`:
+       o cabeçalho tem fonte menor e, em `em`, as colunas dele não batiam
+       com as das linhas. */
+    grid-template-columns: minmax(6rem, 8rem) minmax(7.5rem, 10rem) 2.5rem minmax(7.5rem, 10rem) minmax(7rem, 1fr);
+    column-gap: 12px;
+  }
+  .form-ponto .horario-cabeca {
+    display: grid; padding: 0 0 6px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .form-ponto .horario-dia-campos { display: contents; }
+  .form-ponto .horario-dia .horario-dia-fechado { justify-self: start; }
+}
+
+/* Ações: lado a lado; no celular, uma embaixo da outra na largura toda. */
+.form-ponto .candidatura-acoes { margin-top: 4px; padding-top: 22px; border-top: 1px solid var(--border); gap: 12px; }
+.form-ponto .candidatura-acoes .btn { min-height: 46px; padding-inline: 24px; }
+.form-ponto .candidatura-acoes .btn[aria-busy="true"] { cursor: progress; }
+.form-ponto .candidatura-acoes + .form-msg { margin: 10px 0 0; }
+.form-ponto .candidatura-acoes + .form-msg:empty { display: none; }
+@container formcampos (max-width: 26em) {
+  .form-ponto .candidatura-acoes { flex-direction: column; align-items: stretch; }
+  .form-ponto .candidatura-acoes .btn { width: 100%; }
+}
+
+/* Coluna da prévia: o card como vai aparecer e, embaixo, o que acontece
+   depois do envio. Numa coluna só (tablet), os dois lado a lado quando cabe. */
+.form-ponto .candidatura-lateral { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.form-ponto .candidatura-preview { position: static; width: 100%; max-width: 420px; }
+.form-ponto .candidatura-preview-card .is-placeholder { color: #98a1ad; font-style: italic; font-weight: 500; }
+.form-ponto .candidatura-preview-card h4.is-placeholder { font-weight: 600; }
+.candidatura-contexto { padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.candidatura-contexto-titulo { margin: 0 0 10px; color: var(--text-dim); font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.candidatura-passos { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: passo; }
+.candidatura-passos li {
+  position: relative; padding-left: 30px; color: var(--text-dim); font-size: .86rem; line-height: 1.45; counter-increment: passo;
+}
+.candidatura-passos li::before {
+  content: counter(passo); position: absolute; left: 0; top: 0; display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%; background: rgba(255, 122, 26, .14); color: #8a3d05;
+  font-size: .72rem; font-weight: 800;
+}
+.candidatura-passos b { display: block; color: var(--text); font-size: .88rem; }
+@container formponto (min-width: 36em) and (max-width: 49.99em) {
+  .form-ponto .candidatura-lateral { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; }
+}
+
+/* Aviso de sucesso com ressalva (pedido enviado, foto não foi). */
+.form-msg.aviso { color: #9a3412; }
+
+@media (max-width: 560px) {
+  .form-ponto-cabeca { margin-bottom: 16px; padding-bottom: 16px; }
+  .form-ponto .campo-foto-preview-img { width: 104px; }
+}
+
+/* Busca de segmento pelo teclado (formulario.js#montarBusca): a opção
+   destacada pelas setas aparece como a do mouse. */
+.categoria-resultados li.ativo { background: var(--bg-alt); box-shadow: inset 3px 0 0 var(--brand); }

@@ -5380,3 +5380,71 @@ de comportamento.
   (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
   card não mostra. Mostrar é decisão de produto (no modo automático diria
   quais pontos saíram no sorteio).
+
+## U. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
+
+Estação isolada, branch e worktree próprias, PR próprio, **sem merge até o
+dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
+
+**Feito:**
+
+- [x] Os dois pedidos saíram da coluna lateral de Meus pontos (~340 px) e
+      abrem no topo do painel, na largura da página (`#pontosNovo`, área
+      própria do grid): formulário ~65% e prévia ~35% fixa na rolagem no
+      desktop; uma coluna no celular, com a prévia depois dos botões; tablet
+      em uma coluna, com prévia e "Depois do envio" lado a lado. Limites por
+      container query em `em` (texto a 150% e zoom de 200% caem na coluna
+      única em vez de espremer campo).
+- [x] Campos com o desenho do site (o estilo só existia dentro de `.card`;
+      no painel, que é `.panel`, os campos saíam crus): endereço em grade
+      (CEP | rua | número; complemento | bairro; cidade | UF), horário em
+      grade com cabeçalho (dia | abre | até | fecha | fechado; no celular o
+      dia e "Fechado" em cima, os horários embaixo), observações com 116 px,
+      botões um embaixo do outro no celular. Dia fechado: caixinha marcada +
+      campos tracejados e desabilitados (não só cor).
+- [x] Erro embaixo do próprio campo (`aria-invalid` + `aria-describedby`),
+      foco no primeiro, resumo "Confira os campos marcados." perto do botão.
+      Mesmas regras de antes (obrigatórios do HTML; movimento > 0 e abertura
+      ≠ fechamento, que o servidor já recusava).
+- [x] **Bug real corrigido:** "Enviar pedido" sem segmento não fazia nada —
+      o `required` ficava no `<select>` escondido debaixo da busca e o
+      navegador travava o envio sem dizer por quê ("An invalid form control
+      … is not focusable"). A exigência passou pro campo visível
+      (`formulario.js#montarBusca`) — conserta também o cadastro público e
+      o card de modo anúncios, que usam a mesma busca.
+- [x] Busca de segmento com rótulo ligado, setas/Enter/Esc
+      (`aria-activedescendant`); editar o nome escolhido desfaz a escolha.
+- [x] CEP: estados distintos (consultando, encontrado, não encontrado, erro
+      de consulta); a resposta atrasada não apaga mais a rua digitada
+      enquanto isso; consulta velha não fala por cima da nova.
+- [x] Foto: arquivo que não é imagem ou passa de 20 MB (teto do servidor) é
+      recusado com o motivo; prévia com "Carregando"; foto que não sobe
+      depois do pedido criado vira aviso ("Pedido enviado, mas a foto não
+      foi junto…") — antes ia só pro console, e uma queda de rede nessa hora
+      dizia "não foi possível enviar" sobre um pedido já criado.
+- [x] Clique duplo / Enter repetido: um pedido só. Erro do servidor (409,
+      por exemplo) mantém tudo preenchido.
+- [x] "Tornar-se ponto" mostra qual comércio vai no pedido (nome e endereço
+      da conta) e a prévia usa o segmento da conta; o que falta preencher
+      aparece como marcador (itálico), não como dado.
+- [x] Payload, rotas, aprovação, Plano Básico, créditos e admin intocados.
+      Cancelar segue sem confirmação (não havia; nenhum `confirm()` aqui).
+- [x] E2E `tests/e2e/31-formularios-ponto.mjs` (91 verificações); 03, 05,
+      08, 09, 12, 16, 22, 26 e 28 continuam verdes.
+
+**Achados fora desta estação (não alterados):**
+
+- U1 [ ] `public/style.css` tem um trecho inteiro repetido (≈ linhas
+      690–800 e 1290–1415: horário, foto, blocos, candidatura). A segunda
+      cópia é a que vale — mexer só na primeira não surte efeito. Os estilos
+      desta estação ficaram num bloco próprio no fim do arquivo, escopados
+      em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
+      arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
+      já na `main`): o navegador descarta a regra que vem logo depois dela.
+- U2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
+      número por JS quando a LARGURA do card muda, mas a fonte segue a
+      largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
+      1280 px, alargar a janela aumenta a fonte sem mudar o card, e o número
+      pode passar da borda até a próxima recarga. Achado da revisão de
+      código desta sessão; conserto natural: fonte em unidade do card
+      (container query) em vez de `vw`.
