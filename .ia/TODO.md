@@ -222,6 +222,13 @@ Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
 camada da base (T1) com o comercial numa hora cheia — comportamento atual
 preservado; ver `.ia/RISKS.md`.
 
+## PROMOÇÕES — reforço visual (28/09/2026)
+
+- [ ] Depois do merge (só com autorização): CI no SHA mergeado, deploy,
+  Home/Planos em produção com a pré-venda (id 7) mostrando "ATÉ 30% OFF",
+  painel logado com a faixa e o X.
+- Pendências do dono herdadas (PENDENCIAS §R): R0–R4.
+
 ## CATEGORIAS E CONCORRENTES DIRETOS — antes e depois do merge (28/09/2026)
 
 - [ ] Antes do merge: atualizar a branch com a `main`; se o Plano Básico

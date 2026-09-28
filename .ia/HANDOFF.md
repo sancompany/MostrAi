@@ -1,6 +1,16 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação REFORÇO VISUAL DAS PROMOÇÕES + BARRA NA ÁREA LOGADA**
+(branch `claude/promocoes-reforco-visual`, PR próprio, **NÃO mergeado —
+merge só com autorização do dono**). Área pública: a oferta ("ATÉ 30% OFF",
+calculada dos itens) é a manchete do componente `public/promocao.js`, com
+selo vermelho, blocos de desconto por ciclo, "Melhor desconto", CTA amarelo e
+"Tempo limitado"; paleta de campanha só dentro de `.campanha`. Área logada:
+o card do painel saiu, entrou a faixa fina com X (`public/barra-promocional.js`,
+dispensa em localStorage por id). ADR-028, PENDENCIAS §S, e2e 30 (e 29
+atualizado). Sem backend, sem banco, sem regra comercial. **Não iniciar
+outra estação.**
 2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
 ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
 autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).
