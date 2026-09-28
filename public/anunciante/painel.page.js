@@ -375,10 +375,12 @@ const TEXTO_MODO_AUTOMATICO =
 const TEXTO_SEU_PONTO =
   'Este estabelecimento pertence à sua conta. Você pode incluí-lo na cobertura da campanha ou anunciar somente em outros pontos da rede.';
 
-// Uma linha por ponto: nome, localização, estado operacional, horário,
-// ocupação e se está selecionado. O próprio ponto (a conta é dona do
-// comércio) vem na MESMA lista, com destaque — nunca marcado por isso: se
-// marcado, conta no limite do plano como qualquer outro.
+// Um card por ponto (finalização, 28/09/2026 — mesmo desenho do card da
+// Rede no admin: foto, nome, estado, cidade e endereço, horário): nome
+// quebrando em linhas, nunca cortado; a caixa de seleção no canto da foto e
+// o card inteiro clicável. O próprio ponto (a conta é dona do comércio) vem
+// na MESMA lista, com destaque — nunca marcado por isso: se marcado, conta
+// no limite do plano como qualquer outro.
 function htmlPontoEscolha(p) {
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
@@ -387,8 +389,12 @@ function htmlPontoEscolha(p) {
   const cheio = !instalando && p.ocupacao >= 100;
   // G.7: cruzou 80% e parou de aceitar escolha NOVA (quem já tinha fica).
   const fechado = !p.escolhido && (cheio || p.bloqueado);
-  const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${p.cidade || ''}`;
+  const cidadeUf = `${p.cidade || ''}${p.uf ? `/${p.uf}` : ''}`;
+  const enderecoCompleto = `${p.endereco ? `${p.endereco}, ` : ''}${cidadeUf}`;
   const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
+  const foto = p.foto
+    ? `<img src="${esc(p.foto)}" alt="" loading="lazy" data-foto>`
+    : `<span class="ponto-foto-placeholder" role="img" aria-label="${esc(`${p.nome}, sem foto`)}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</span>`;
   const ocupacao = instalando
     ? 'Ainda sem hora vendida'
     : cheio
@@ -400,21 +406,25 @@ function htmlPontoEscolha(p) {
   const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
   // <a> fica FORA do <label> de propósito: um link dentro de um label ainda
   // ativa o checkbox quando o clique borbulha até ele. O <label> é
-  // `display:contents` no CSS — os filhos viram itens do grid da linha.
-  return `<div class="ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
+  // `display:contents` no CSS — foto e corpo viram filhos diretos do card.
+  // Ponto sem horário cadastrado é aberto 24 h (mesma leitura do admin).
+  return `<div class="ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${cidadeUf}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''}>
+        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-label="Veicular em ${esc(p.nome)}">
+        <span class="ponto-foto">${foto}</span>
         <span class="ponto-info">
-          <span class="ponto-nome">${esc(p.nome)}</span>${p.seuPonto ? ' <span class="selo-seu-ponto">Seu ponto</span>' : ''}
-          <span class="ponto-horario">${p.horario ? esc(p.horario) : 'Horário não informado'}</span>
-          ${p.seuPonto ? '<span class="ponto-proprio-rotulo">Veicular no próprio ponto</span>' : ''}
+          <span class="ponto-topo">
+            <span class="ponto-nome">${esc(p.nome)}</span>
+            <span class="ponto-estado badge ${classeEstado}">${esc(estado)}</span>
+          </span>
+          ${p.seuPonto ? '<span class="selo-seu-ponto">Seu ponto</span>' : ''}
+          <span class="ponto-end">${esc(enderecoCompleto)}</span>
+          <span class="ponto-horario">${p.horario ? esc(p.horario) : 'Aberto 24 horas'}</span>
+          <span class="ponto-ocupacao">${esc(ocupacao)}</span>
+          ${p.seuPonto ? `<span class="ponto-proprio-rotulo">Veicular no próprio ponto</span><span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span>` : ''}
         </span>
-        <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
-        <span class="ponto-estado badge ${classeEstado}">${esc(estado)}</span>
-        <span class="ponto-ocupacao">${esc(ocupacao)}</span>
-        ${p.seuPonto ? `<span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span>` : ''}
       </label>
-      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
+      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" aria-label="Ver ${esc(p.nome)} no mapa">Ver no mapa</a>
     </div>`;
 }
 
@@ -489,6 +499,7 @@ async function desenharPontos() {
     return;
   }
   lista.innerHTML = dados.pontos.map(htmlPontoEscolha).join('');
+  lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
 
   // Busca só aparece quando faz diferença — poucos pontos não precisam de
   // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.
@@ -521,13 +532,25 @@ async function desenharPontos() {
   pintarResumoPontos(dados, marcados());
   travarNoLimite();
 
-  lista.onchange = async (e) => {
-    if (e.target.tagName !== 'INPUT') return;
-    const escolha = marcados();
-    pintarResumoPontos(dados, escolha);
+  // Um salvamento por vez (finalização, 28/09/2026): dois cliques seguidos
+  // disparavam dois PUTs em paralelo, e a ordem em que o servidor os
+  // aplicava decidia o resultado — o clique mais antigo podia vencer. Agora
+  // a escolha mais recente espera a anterior terminar, e só ela vai (as do
+  // meio são descartadas: o PUT manda a lista inteira). Se o servidor
+  // recusar, as caixas voltam ao último estado que ele confirmou — a tela
+  // nunca fica dizendo "marcado" pra uma escolha que não foi salva.
+  let salvo = dados.escolhidos.slice();
+  let salvando = null;
+  let pendente = null;
+  const voltarAoSalvo = () => {
+    for (const i of lista.querySelectorAll('input')) i.checked = salvo.includes(Number(i.value));
+    pintarResumoPontos(dados, marcados());
     travarNoLimite();
+  };
+  async function salvar(escolha) {
     msg.textContent = 'Salvando...';
     msg.className = 'form-msg';
+    let erro;
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
         method: 'PUT',
@@ -536,26 +559,49 @@ async function desenharPontos() {
         body: JSON.stringify({ pontos: escolha }),
       });
       const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        msg.textContent = window.frase(corpo.erro || 'não deu pra salvar');
-        msg.className = 'form-msg err';
-        return;
-      }
-      msg.textContent = escolha.length ? 'Pronto. Salvo.' : 'Pronto. Sem escolha, a Mostraí distribui sua campanha.';
-      msg.className = 'form-msg ok';
-      // Cobertura e compensação dependem da escolha: relê do servidor (só o
-      // resumo — a lista fica, pra não roubar o foco de quem está marcando).
-      try {
-        dados = { ...dados, ...(await buscarPontosDisponiveis()) };
-        pintarCompensacao(dados.cobertura);
-        pintarResumoPontos(dados, marcados());
-      } catch {
-        // O salvamento já deu certo; o resumo fica com o número da tela.
-      }
-    } catch {
-      msg.textContent = 'Sem conexão. Tente de novo.';
-      msg.className = 'form-msg err';
+      if (!r.ok) erro = window.frase(corpo.erro || 'não deu pra salvar');
+    } catch (e) {
+      erro = window.frase(e.message);
     }
+    if (erro) {
+      pendente = null;
+      voltarAoSalvo();
+      msg.textContent = `${erro} Sua escolha voltou ao que estava salvo.`;
+      msg.className = 'form-msg err';
+      return;
+    }
+    salvo = escolha;
+    msg.textContent = escolha.length ? 'Pronto. Salvo.' : 'Pronto. Sem escolha, a Mostraí distribui sua campanha.';
+    msg.className = 'form-msg ok';
+    // Cobertura e compensação dependem da escolha: relê do servidor (só o
+    // resumo — a lista fica, pra não roubar o foco de quem está marcando).
+    try {
+      dados = { ...dados, ...(await buscarPontosDisponiveis()) };
+      pintarCompensacao(dados.cobertura);
+      pintarResumoPontos(dados, marcados());
+    } catch {
+      // O salvamento já deu certo; o resumo fica com o número da tela.
+    }
+  }
+  function agendarSalvar(escolha) {
+    pendente = escolha;
+    if (salvando) return;
+    salvando = (async () => {
+      while (pendente) {
+        const alvo = pendente;
+        pendente = null;
+        await salvar(alvo);
+      }
+      salvando = null;
+    })();
+  }
+
+  lista.onchange = (e) => {
+    if (e.target.tagName !== 'INPUT') return;
+    const escolha = marcados();
+    pintarResumoPontos(dados, escolha);
+    travarNoLimite();
+    agendarSalvar(escolha);
   };
 }
 

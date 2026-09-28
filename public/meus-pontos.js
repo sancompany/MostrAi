@@ -171,10 +171,43 @@
     </div>`;
   }
 
+  // Os dois formulários abrem no MESMO lugar: uma linha da largura toda do
+  // painel (#pontosNovo, ver painel.html), com o formulário à esquerda e, à
+  // direita, o preview do card e o que acontece depois do envio. Antes
+  // ficavam dentro do card "Meus pontos", na coluna lateral estreita, e os
+  // campos vazavam (finalização, 28/09/2026).
+  function htmlPainelForm(titulo, subtitulo, form) {
+    return `<article class="panel painel-ponto-form">
+      <div class="panel-head">
+        <div>
+          <p class="section-eyebrow">Seus comércios na rede</p>
+          <h2>${titulo}</h2>
+          <span class="panel-subtitle">${subtitulo}</span>
+        </div>
+        <button type="button" class="btn ghost mini" data-acao="fechar-form" aria-label="Fechar o formulário">Fechar</button>
+      </div>
+      <div class="candidatura-layout">
+        ${form}
+        <aside class="ponto-form-lado" aria-label="Como funciona">
+          ${candidaturaCampoPreview()}
+          <div class="ponto-form-depois">
+            <p>O que acontece depois</p>
+            <ol>
+              <li><b>A gente confere o pedido</b> e chama no WhatsApp pra combinar a visita.</li>
+              <li><b>A tela, a instalação e o conteúdo são por nossa conta.</b></li>
+              <li><b>Ponto ativo:</b> +1 crédito por mês enquanto ele participar da rede.</li>
+            </ol>
+          </div>
+        </aside>
+      </div>
+    </article>`;
+  }
+
   function montarFormCompacto(raiz) {
-    raiz.innerHTML = `<div class="candidatura-layout">
-      <form id="formCardPonto" class="form-blocos">
-        <p class="form-hint u-m-0">A tela, a instalação e o conteúdo são por nossa conta. Conte um pouco sobre o movimento do comércio e a gente chama no WhatsApp para combinar.</p>
+    raiz.innerHTML = htmlPainelForm(
+      'Quero ser um ponto',
+      'Conte um pouco sobre o movimento do comércio. O nome e o endereço já vêm da sua conta.',
+      `<form id="formCardPonto" class="form-blocos card">
         ${candidaturaBloco('cp_', 'estabelecimento', 'Estabelecimento', candidaturaCampoFoto('cp_'))}
         ${candidaturaBloco(
           'cp_',
@@ -194,9 +227,8 @@
         <div class="form-acoes"><button class="btn primary" type="submit">Enviar meu interesse</button>
           <button class="btn ghost" type="button" data-acao="fechar-form">Cancelar</button></div>
         <p class="form-msg" id="cardPontoMsg" role="status"></p>
-      </form>
-      ${candidaturaCampoPreview()}
-    </div>`;
+      </form>`,
+    );
     const form = $('formCardPonto');
     const conta = obterConta();
     candidaturaLigarHorario(form);
@@ -231,12 +263,10 @@
   // Outro lugar, então pede tudo de novo — não reaproveita o endereço da
   // conta. Mesmo formulário canônico (public/candidatura-ponto.js).
   function montarFormCompleto(raiz) {
-    raiz.innerHTML = `<div class="candidatura-layout">
-      <form id="formNovoPonto" class="form-blocos">
-        <div>
-          <h3 class="u-m-0">Novo estabelecimento</h3>
-          <p class="form-hint u-m-0 u-mt-6">Entra como pedido: a gente confere, combina a visita e libera a tela.</p>
-        </div>
+    raiz.innerHTML = htmlPainelForm(
+      'Cadastrar outro estabelecimento',
+      'Outro lugar, outro endereço. Entra como pedido: a gente confere, combina a visita e libera a tela.',
+      `<form id="formNovoPonto" class="form-blocos card">
         ${candidaturaBloco(
           'np_',
           'estabelecimento',
@@ -264,9 +294,8 @@
           <button class="btn ghost" type="button" data-acao="fechar-form">Cancelar</button>
         </div>
         <p class="form-msg" id="msgNovoPonto" role="status"></p>
-      </form>
-      ${candidaturaCampoPreview()}
-    </div>`;
+      </form>`,
+    );
     const form = $('formNovoPonto');
     // Montado depois do DOMContentLoaded (a lista chega por fetch), então o
     // ouvinte global de public/formulario.js não alcança este form: liga CEP
@@ -327,6 +356,9 @@
       aviso.textContent = 'Pedido enviado. A gente chama no WhatsApp pra combinar.';
       aviso.className = 'form-msg ok';
       aviso.hidden = false;
+      // O formulário ficava no topo do painel e a confirmação mora em "Meus
+      // pontos": leva a pessoa até ela em vez de deixar um buraco na tela.
+      $('modPontos').scrollIntoView({ behavior: 'smooth', block: 'start' });
       await carregar();
     } catch (err) {
       msg.textContent = window.frase ? window.frase(err.message) : err.message;
@@ -488,7 +520,9 @@
     carregar();
     if (montado) return;
     montado = true;
-    $('modPontos')?.addEventListener('click', (ev) => {
+    // Delegação nos dois containers do módulo: o card "Meus pontos" e o
+    // formulário, que abre fora dele (linha própria da grade do painel).
+    const aoClicar = (ev) => {
       const alvo = ev.target.closest('[data-acao]');
       if (!alvo) return;
       const acao = alvo.dataset.acao;
@@ -501,7 +535,9 @@
         fecharForm();
         carregar();
       }
-    });
+    };
+    $('modPontos')?.addEventListener('click', aoClicar);
+    $('pontosNovo')?.addEventListener('click', aoClicar);
     $('btnNovoPonto')?.addEventListener('click', () => {
       $('msgMeusPontos').hidden = true;
       abrirForm(true);

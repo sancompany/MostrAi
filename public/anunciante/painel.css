@@ -106,8 +106,11 @@
 .network-growth { position: relative; margin: 4px 0 18px; padding: 20px 22px 20px 58px; border: 1px solid #f2ddc3; border-radius: 14px; background: linear-gradient(135deg, #fff6ec, #fffcf8); color: var(--text-dim); font-size: .88rem; line-height: 1.6; }
 .network-growth::before { content: "↗"; position: absolute; left: 20px; top: 20px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #ffe7d2; color: var(--brand-text); font-weight: 800; }
 .network-growth b:first-child { display: block; margin-bottom: 2px; color: var(--text); font-size: .98rem; }
-.pontos-selecao { max-height: 440px; overflow: auto; padding-right: 3px; }
-.anunciante-dashboard .ponto-escolha { padding: 11px 13px; margin-bottom: 7px; background: #fff; }
+/* Cards de ponto (finalização, 28/09/2026): grade que enche a largura do
+   painel, rolagem interna a partir de duas fileiras — com dezenas de
+   pontos a busca acima filtra. Uma coluna abaixo de 560 px, com a foto
+   pequena ao lado do texto (style.css). */
+.pontos-selecao { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 14px; max-height: 620px; overflow: auto; padding: 2px 3px 2px 2px; }
 .anunciante-dashboard .ponto-escolha:has(input:checked) { border-color: #ffc391; background: #fffaf6; }
 .criativos-head { gap: 24px; }
 .criativos-actions { display: flex; align-items: center; gap: 10px; }
@@ -277,9 +280,41 @@
 .tela-num b { color: var(--text); }
 .estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
 .estab-pe { margin: 0; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .82rem; }
-.pontos-novo { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
-.pontos-novo form { max-width: 560px; }
 #msgMeusPontos { margin: 0 0 12px; }
+
+/* Formulário de ponto na largura toda (finalização, 28/09/2026). Antes
+   morava dentro do card "Meus pontos", na coluna lateral de 340 px: o
+   formulário completo vazava 77 px, o "Fechado" do horário 38 px, e a
+   página rolava de lado. Agora é uma linha própria da grade do painel,
+   com o formulário em ~65% e o preview + o que acontece depois em ~35%;
+   no celular, uma coluna. A grade só ganha a linha enquanto o formulário
+   está aberto — fechado, ele nem é item da grade (hidden). */
+.area-ponto-form { grid-area: pontoform; min-width: 0; }
+.painel-grid:has(> .area-ponto-form:not([hidden])) { grid-template-areas: "pontoform" "campanha" "lateral" "criativos" "creditos"; }
+.painel-ponto-form .panel-head { align-items: flex-start; margin-bottom: 20px; }
+.painel-ponto-form h2 { margin: 2px 0 0; font-size: clamp(1.2rem, 2vw, 1.48rem); line-height: 1.2; letter-spacing: -.015em; }
+.painel-ponto-form .panel-subtitle { display: block; margin-top: 6px; max-width: 640px; }
+.painel-ponto-form .candidatura-layout { grid-template-columns: minmax(0, 13fr) minmax(min(100%, 260px), 7fr); gap: 28px; justify-content: stretch; }
+/* Os campos usam o desenho canônico de formulário (`.card input` e cia,
+   style.css) — antes o form vinha sem classe e os campos saíam nus, no
+   estilo do navegador. Só a caixa do `.card` (borda, teto de largura,
+   padding) é desligada: a moldura aqui é o painel. */
+.painel-ponto-form form.card { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; gap: 18px; }
+.painel-ponto-form .candidatura-preview { max-width: none; position: static; }
+.ponto-form-lado { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ponto-form-lado .candidatura-preview-card { max-width: 360px; }
+.ponto-form-depois { margin: 0; padding: 16px 18px; border: 1px solid #f2ddc3; border-radius: 12px; background: linear-gradient(135deg, #fff6ec, #fffcf8); }
+.ponto-form-depois p { margin: 0 0 8px; font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+.ponto-form-depois ol { margin: 0; padding-left: 20px; color: var(--text-dim); font-size: .86rem; line-height: 1.5; }
+.ponto-form-depois li + li { margin-top: 4px; }
+.ponto-form-depois b { color: var(--text); }
+@media (min-width: 901px) {
+  .ponto-form-lado { position: sticky; top: 88px; }
+}
+@media (max-width: 900px) {
+  .painel-ponto-form .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
+  .ponto-form-lado { position: static; }
+}
 @media (max-width: 640px) {
   .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
   .estab-foto { width: 52px; height: 52px; }
@@ -340,11 +375,13 @@
     grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
     grid-template-areas: "campanha lateral" "criativos lateral" "creditos creditos";
   }
+  .painel-grid:has(> .area-ponto-form:not([hidden])) {
+    grid-template-areas: "pontoform pontoform" "campanha lateral" "criativos lateral" "creditos creditos";
+  }
   /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só. */
   .area-lateral .estab-lista { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
   .area-lateral .tela-linha .tela-num, .area-lateral .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
-  .area-lateral .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .panel-head { flex-wrap: wrap; }
   .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
   /* Coluna estreita: o selo de status desce pra baixo do nome, em vez de

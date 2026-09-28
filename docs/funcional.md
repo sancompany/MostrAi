@@ -44,7 +44,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.2 Dono de ponto — do painel à tela no ar
 
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
-2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
+2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo; desde a finalização de 28/09/2026 os dois formulários abrem numa linha da largura toda do painel — formulário à esquerda, preview do card e "o que acontece depois" à direita, uma coluna no celular — e não mais dentro da coluna lateral, onde os campos vazavam), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
 4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação).
 5. O administrador cadastra as telas (Rede → o ponto → **+ Adicionar tela**; o nome é o ID da tela, `M-0235`, que nunca muda) e, na ficha de cada uma, clica **Gerar código**: o código de instalação (`XXXX-XXXX`) vale 30 minutos, uma vez só, só para aquela tela — RN-59.
@@ -1215,6 +1215,17 @@ entre os pontos disponíveis dentro da cobertura do seu plano." Salvar de
 novo mantém a ordem de quem já estava escolhido (ela decide quem fica se o
 plano encolher). Falha ao carregar a lista mostra o erro com [Tentar de
 novo] — nunca some em silêncio.
+*(Finalização, 28/09/2026.)* Cada ponto é um **card** com o mesmo desenho
+do card da Rede no admin — foto (ou o placeholder oficial), nome quebrando
+em linhas (nunca cortado), estado, cidade/UF e endereço, horário ("Aberto 24
+horas" quando o ponto não informou, como no admin), ocupação e "Ver no
+mapa"; a caixa de seleção fica no canto da foto e o card inteiro é
+clicável. Grade no desktop; no celular, uma coluna com a foto pequena ao
+lado do texto. A escolha salva **um pedido por vez**: dois cliques seguidos
+nunca viram dois `PUT` em paralelo (a escolha mais recente espera a
+anterior e só ela vai), e se o servidor recusar, as caixas voltam ao último
+estado que ele confirmou, com o motivo escrito — a tela nunca fica
+"marcada" numa escolha que não foi salva.
 
 **RN-64 — Aprovado não é "no ar": no ar é exibição confirmada.**
 *(Estação de distribuição, 27/09/2026.)* O estado da peça aprovada é

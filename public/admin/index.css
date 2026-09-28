@@ -1006,11 +1006,15 @@ textarea.mini {
 .conta-dados .conta-dados-largo {
   grid-column: 1 / -1;
 }
+/* Linha secundária de um dado (contato do responsável, "nenhum crédito
+   ainda · fora do programa…"). Quebra como texto: com nowrap ela vazava do
+   card da ficha do ponto e a página rolava de lado no celular
+   (finalização, 28/09/2026). */
 .dado-sub {
   display: block;
   font-size: 0.82rem;
   color: var(--text-dim);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 a.dado-sub {
   color: var(--blue);

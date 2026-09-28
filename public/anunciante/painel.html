@@ -45,6 +45,13 @@
          ocupam a mesma área (ver painel.css). -->
     <section class="dashboard-content">
       <div class="wrap painel-wrap painel-grid">
+        <!-- Formulário de ponto (finalização, 28/09/2026): "Quero ser um
+             ponto" e "Cadastrar outro estabelecimento" abrem AQUI, numa
+             linha da largura toda (≈65% formulário / 35% preview e contexto),
+             não dentro da coluna lateral de 340 px onde os campos vazavam.
+             Preenchido e ligado por public/meus-pontos.js; a grade muda de
+             desenho quando ele deixa de estar hidden (painel.css). -->
+        <section class="area-ponto-form" id="pontosNovo" aria-label="Cadastro de ponto" hidden></section>
         <div class="area-campanha" id="dashboardAnuncios">
         <!-- Primeiros passos com plano (estação da conta, 26/09/2026): some
              quando a conta já tem criativo e exibição confirmada. -->
@@ -164,7 +171,6 @@
             </div>
             <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
             <div class="estab-lista" id="pontosLista"></div>
-            <div class="pontos-novo" id="pontosNovo" hidden></div>
           </article>
         </section>
 

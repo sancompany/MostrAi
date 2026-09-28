@@ -679,7 +679,8 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // `noAr` abaixo já trata os dois como "fora do ar" hoje, só `inativo`
   // (tela cadastrada, nenhuma funcionando) fica fora da lista.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
+    `SELECT p.id, p.nome, p.cidade, p.uf, p.endereco, p.foto_instalacao_url, p.status, p.horario_semanal,
+            (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
             (ap.ponto_id IS NOT NULL) AS escolhido, ap.escolhido_em,
             (p.anunciante_id IS NOT DISTINCT FROM $1) AS seu_ponto
@@ -689,8 +690,8 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status = ANY($2::text[])
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id,
-               ap.escolhido_em, p.anunciante_id
+      GROUP BY p.id, p.nome, p.cidade, p.uf, p.endereco, p.foto_instalacao_url, p.status, p.horario_semanal,
+               p.escolha_bloqueada_em, ap.ponto_id, ap.escolhido_em, p.anunciante_id
       ORDER BY (p.anunciante_id IS NOT DISTINCT FROM $1) DESC, p.status DESC, p.nome`,
     [conta.id, pontosRepo.STATUS_NA_REDE],
   );
@@ -743,7 +744,11 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       id: r.id,
       nome: r.nome,
       cidade: r.cidade,
+      uf: r.uf,
       endereco: r.endereco,
+      // Cards de ponto no painel (finalização, 28/09/2026): mesma foto do
+      // card da Rede no admin; sem foto, o painel mostra o placeholder.
+      foto: r.foto_instalacao_url,
       escolhido: r.escolhido,
       status: r.status,
       // Pedido do dono, 22/09/2026: quem escolhe o ponto vê o horário de
