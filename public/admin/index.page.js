@@ -3306,7 +3306,11 @@ function textoBeneficioPonto(b) {
     : b.elegivel
       ? `${esc(b.competenciaAtual)} sai no próximo job diário`
       : 'fora do programa até ter tela instalada e ativa';
-  return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>`;
+  // Plano Básico do ponto (migration 103): o outro benefício de ser ponto.
+  const basico = b.basico
+    ? `<span class="dado-sub">Plano Básico ativo · ${b.basico.horasPorMes} h/mês · até ${b.basico.duracaoMaximaSegundos} s</span>`
+    : '';
+  return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>${basico}`;
 }
 
 // Ficha do estabelecimento — dados vêm da candidatura; só o horário se
@@ -4113,6 +4117,7 @@ function desenharFicha(el, s, categorias) {
       <section class="panel conta-secao" id="contaDados"></section>
       <section class="panel conta-secao" id="contaPlano"></section>
     </div>
+    ${s.basico && (s.basico.ativos.length || s.basico.historico.length) ? '<section class="panel conta-secao" id="contaBasico"></section>' : ''}
     <section class="panel conta-secao" id="contaCreditos"></section>
     <section class="panel conta-secao" id="contaCriativos"></section>
     ${s.pontos.length ? '<section class="panel conta-secao" id="contaPontos"></section>' : ''}
@@ -4121,6 +4126,7 @@ function desenharFicha(el, s, categorias) {
 
   desenharContaDados(el.querySelector('#contaDados'), ctx);
   desenharContaPlano(el.querySelector('#contaPlano'), ctx);
+  if (el.querySelector('#contaBasico')) desenharContaBasico(el.querySelector('#contaBasico'), s.basico);
   desenharContaCreditos(el.querySelector('#contaCreditos'), ctx);
   desenharContaCriativos(el.querySelector('#contaCriativos'), {
     ...ctx,
@@ -4239,6 +4245,33 @@ function direitosTexto(dir) {
 // Depois. Sem botão de conceder/alterar/cancelar plano (saíram da ficha:
 // cortesia agora é crédito). Só a assinatura PAGA ativa tem uma ação aqui,
 // discreta: cancelar a recorrência no San Checkout.
+// Benefício de ponto · Plano Básico (migration 103): separado do plano
+// comercial — de qual ponto veio, situação, e o total somado com o plano.
+const MOTIVO_FIM_BASICO = {
+  ponto_arquivado: 'ponto arquivado',
+  dono_mudou: 'o ponto mudou de dono',
+  conta_excluida: 'conta excluída',
+  conta_interna: 'conta interna',
+};
+function desenharContaBasico(el, basico) {
+  const linha = (b, ativo) => `<li class="plano-etapa">
+      <span class="plano-etapa-rotulo">${ativo ? 'Ativo' : 'Encerrado'}</span>
+      <div class="plano-etapa-corpo">
+        <div class="plano-linha"><b>Básico · ${b.horasPorMes} h/mês</b><span class="badge ${ativo ? 'badge-ok' : 'badge-neutro'}">${ativo ? 'Benefício de ponto' : b.aguardandoEncerramento ? 'Encerrando' : 'Encerrado'}</span></div>
+        <p class="plano-meta">Ponto: <a href="#rede/pontos/${b.pontoId}">${esc(b.pontoNome || `#${b.pontoId}`)}</a> · desde ${data(b.inicio)}${b.fim ? ` · até ${data(b.fim)}${b.motivoFim ? ` (${esc(MOTIVO_FIM_BASICO[b.motivoFim] || b.motivoFim)})` : ''}` : ''}</p>
+        <p class="plano-direitos">1 ponto (o próprio) · peça até ${b.duracaoMaximaSegundos} s · ${b.limiteCriativos} criativo no ar · sem cobrança</p>
+      </div>
+    </li>`;
+  const d = basico.direitos || {};
+  const total =
+    d.pontosPlano && basico.ativos.length
+      ? `<p class="plano-meta">Somado ao plano comercial: ${d.pontos} pontos e ${d.horasPorMes} h/mês (${d.horasBasico} h do Básico + ${d.horasPlano} h do plano).</p>`
+      : '';
+  el.innerHTML = `<div class="secao-topo"><h3>Benefício de ponto</h3></div>
+    <ul class="plano-etapas">${basico.ativos.map((b) => linha(b, true)).join('')}${basico.historico.map((b) => linha(b, false)).join('')}</ul>
+    ${total}`;
+}
+
 function desenharContaPlano(el, ctx) {
   const { s, bloqueada } = ctx;
   const p = s.plano;
@@ -4259,8 +4292,8 @@ function desenharContaPlano(el, ctx) {
       <p class="plano-meta">${prazo}${a.desde ? ` · desde ${data(a.desde)}` : ''}</p>
       ${a.direitos ? `<p class="plano-direitos">${esc(direitosTexto(a.direitos))}</p>` : ''}`;
   } else {
-    agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano</b></div>
-      <p class="plano-meta">A conta não veicula na rede. Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
+    agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano comercial</b></div>
+      <p class="plano-meta">${s.basico?.ativos.length ? 'Veicula só pelo Plano Básico do ponto (benefício de ponto, acima).' : 'A conta não veicula na rede.'} Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
   }
 
   const etapas = [etapa('Agora', agora)];

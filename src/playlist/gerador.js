@@ -18,6 +18,7 @@ const bancoHorasRepo = require('../bancohoras/repository');
 const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
+const basicoRepo = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
@@ -292,11 +293,13 @@ async function gravarProgramados(
       const devida = obrigacao[anuncianteId] || {};
       return pool.query(
         `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
-                                         segundos_obrigacao, duracao_segundos, minutos_abertos)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                                         segundos_obrigacao, duracao_segundos, minutos_abertos, segundos_obrigacao_basico)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
      DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6,
                    segundos_obrigacao = COALESCE(exibicoes_contador.segundos_obrigacao, EXCLUDED.segundos_obrigacao),
+                   segundos_obrigacao_basico = COALESCE(exibicoes_contador.segundos_obrigacao_basico,
+                                                        EXCLUDED.segundos_obrigacao_basico),
                    duracao_segundos = COALESCE(exibicoes_contador.duracao_segundos, EXCLUDED.duracao_segundos),
                    minutos_abertos = COALESCE(exibicoes_contador.minutos_abertos, EXCLUDED.minutos_abertos)`,
         [
@@ -309,6 +312,7 @@ async function gravarProgramados(
           devida.segundos ?? 0,
           devida.duracao ?? DURACAO_PADRAO,
           minutosAbertos,
+          devida.basico || null,
         ],
       );
     }),
@@ -443,7 +447,12 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // E é justamente a tela DELE que vende o comodato: os clientes dele passam
   // ali. A exclusão só continua valendo enquanto a cota existir naquela tela,
   // que é o único caso em que a dobra é real.
-  const cotaDaTela = dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
+  // Plano Básico do ponto (migration 103): a conta dona veicula na própria
+  // tela por benefício de ponto. É o sucessor da cota de autoanúncio — com
+  // ele ativo a cota legada (zerada desde a 049) não entra, senão a dona
+  // apareceria em dobro.
+  const basico = await basicoRepo.paraVeicularNoPonto(dispositivo.ponto_id, horaAtual);
+  const cotaDaTela = basico ? 0 : dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
   const [todos, deficits, doDono, pontosNoAr, saldosBanco, pontosBloqueados, midiasProprias, videoInstitucional] =
@@ -539,6 +548,49 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       obrigacaoSegundos: segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos }),
     };
   });
+
+  // PARCELA BÁSICO (migration 103): soma na MESMA entrada da conta — uma
+  // conta, uma linha por tela e hora (sem POP nem saldo em dobro), com a
+  // parte do Básico guardada à parte (`obrigacaoBasicoSegundos` →
+  // `segundos_obrigacao_basico`). Se o plano comercial também cobre este
+  // ponto (a dona escolheu o próprio ponto), as duas origens se somam aqui.
+  if (basico) {
+    const existente = entrada.find((e) => e.id === basico.conta_id);
+    const criativos = existente ? porId[basico.conta_id].criativos : basico.criativos;
+    const duracao = existente ? existente.duracaoSegundos : duracaoMedia(criativos);
+    const insercoes = aberta ? basicoRepo.insercoesDoBasicoNaHora(basico.segundos_por_hora, duracao, horaAtual) : 0;
+    const obrigacaoBasico = basicoRepo.segundosDoBasicoNaHora(
+      basico,
+      duracao,
+      horaAtual,
+      minutosAbertos,
+      dispositivo.telas_do_ponto,
+    );
+    if (existente) {
+      existente.frequenciaBase += insercoes;
+      existente.obrigacaoSegundos += obrigacaoBasico;
+      existente.obrigacaoBasicoSegundos = obrigacaoBasico;
+    } else {
+      porId[basico.conta_id] = { criativos };
+      const saldo = saldosBanco[basico.conta_id];
+      const banco = aberta
+        ? Math.min(
+            Math.ceil((saldo?.segundos || 0) / duracaoValida(duracao)),
+            Math.floor(insercoes * (saldo ? multiplicadorPorIdade(saldo.idadeMeses) : 1)),
+          )
+        : 0;
+      entrada.push({
+        id: basico.conta_id,
+        frequenciaBase: insercoes,
+        compensacao: 0,
+        deficit: deficits[basico.conta_id] || 0,
+        banco,
+        duracaoSegundos: duracao,
+        obrigacaoSegundos: obrigacaoBasico,
+        obrigacaoBasicoSegundos: obrigacaoBasico,
+      });
+    }
+  }
 
   // Mídia própria: cada uma já entra pronta (frequência e cobertura são
   // dela mesma, sem RN-49 nem banco de horas — ver `midiasElegiveis`).
@@ -645,7 +697,9 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     for (const e of congelada.base) {
       if (e.id === 'dono' || String(e.id).startsWith('midia:')) continue;
       const segundos = e.obrigacaoSegundos ?? atualPorId.get(String(e.id))?.obrigacaoSegundos ?? 0;
-      obrigacao[e.id] = { segundos, duracao: e.duracaoSegundos };
+      const basicoDaHora =
+        e.obrigacaoSegundos != null ? e.obrigacaoBasicoSegundos : atualPorId.get(String(e.id))?.obrigacaoBasicoSegundos;
+      obrigacao[e.id] = { segundos, duracao: e.duracaoSegundos, basico: basicoDaHora || 0 };
     }
     const desde = new Date(Math.min(Math.max(new Date(agora).getTime(), horaAtual.getTime()), fimDaHora.getTime()));
     const restantes = minutosAbertosNaHora(dispositivo, desde, fimDaHora);
@@ -656,6 +710,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       obrigacao[id] = {
         segundos: Math.round((atual.obrigacaoSegundos * restantes) / minutosAbertos),
         duracao: atual.duracaoSegundos,
+        basico: Math.round(((atual.obrigacaoBasicoSegundos || 0) * restantes) / minutosAbertos),
       };
     }
     await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco, obrigacao, minutosAbertos);
@@ -795,7 +850,35 @@ async function obrigacoesDaTela(dispositivo) {
       dataExpiracao: a.data_expiracao,
       duracaoSegundos: n.duracaoSegundos,
       obrigacaoHoraCheia: n.obrigacaoHoraCheia,
+      basicos: [],
     });
+  }
+  // Plano Básico do ponto (migration 103): cada linha guarda início e fim, e
+  // quem chama confere hora a hora (`basicoRepo.valiaNaHora`) — a hora sem
+  // sinal paga o Básico que valia NAQUELA hora, não o de hoje. Soma na mesma
+  // entrada da conta quando ela também tem o comercial neste ponto.
+  const basicos = await basicoRepo.doPontoDesde(dispositivo.ponto_id, new Date(Date.now() - 62 * 86_400_000));
+  for (const b of basicos) {
+    const { rows } = await pool.query(
+      `SELECT a.suspenso, ARRAY(SELECT duracao_segundos FROM criativos
+                                 WHERE anunciante_id = a.id AND status = 'aprovado' AND arquivo_normalizado_url IS NOT NULL
+                                 ORDER BY created_at DESC LIMIT $2) AS duracoes
+         FROM anunciantes a WHERE a.id = $1`,
+      [b.conta_id, b.limite_criativos],
+    );
+    if (!rows[0] || rows[0].suspenso || !rows[0].duracoes.length) continue;
+    let conta = contas.find((c) => c.anuncianteId === b.conta_id);
+    if (!conta) {
+      conta = {
+        anuncianteId: b.conta_id,
+        dataExpiracao: null,
+        duracaoSegundos: duracaoMedia(rows[0].duracoes.map((d) => ({ duracaoSegundos: d }))),
+        obrigacaoHoraCheia: null,
+        basicos: [],
+      };
+      contas.push(conta);
+    }
+    conta.basicos.push(b);
   }
   return contas;
 }

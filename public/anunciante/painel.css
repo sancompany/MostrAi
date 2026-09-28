@@ -373,7 +373,12 @@
 .alertas-conta a { color: inherit; font-weight: 700; white-space: nowrap; }
 
 /* Plano comercial (coluna lateral). */
-.painel-plano h2 { margin: 2px 0 10px; font-size: 1.15rem; }
+.painel-plano h2,
+.painel-basico h2 { margin: 2px 0 10px; font-size: 1.15rem; }
+/* Plano Básico do ponto (migration 103): benefício, separado do plano contratado. */
+.basico-item + .basico-item { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.basico-direitos { margin: 6px 0 0; padding-left: 18px; font-size: .9rem; }
+.basico-direitos li { margin: 2px 0; overflow-wrap: anywhere; }
 .plano-nome { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 .plano-validade { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
 .plano-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

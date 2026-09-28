@@ -144,9 +144,19 @@
         </div>
 
         <aside class="area-lateral" aria-label="Sua conta">
+        <!-- Plano Básico do ponto (migration 103): benefício de quem hospeda
+             um ponto — separado do plano contratado, com a origem dita. -->
+        <section class="dashboard-section" id="modBasico" aria-labelledby="tituloBasico" hidden>
+          <article class="panel painel-basico">
+            <p class="section-eyebrow">Benefício de ponto</p>
+            <h2 id="tituloBasico">Plano Básico</h2>
+            <div id="basicoResumo"></div>
+          </article>
+        </section>
+
         <section class="dashboard-section" id="modPlano" aria-labelledby="tituloPlano" hidden>
           <article class="panel painel-plano">
-            <p class="section-eyebrow">Anúncio na rede</p>
+            <p class="section-eyebrow">Plano contratado</p>
             <h2 id="tituloPlano">Seu plano</h2>
             <div id="planoResumo"></div>
           </article>

@@ -113,7 +113,10 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 // o próprio ponto — gerador.js#anunciantesElegiveis).
 // limite: a cota de autoanúncio (`excluirContaId` do gerador) não entra —
 // zerada em todas as telas desde a migration 049.
-async function coberturaDaConta(conta, plano, db = pool) {
+// Plano Básico do ponto (migration 103): o próprio ponto de cada Básico
+// ativo entra na cobertura, sem trava de ramo (é o estabelecimento da conta)
+// e sem ocupar vaga da escolha comercial.
+async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
   const [{ rows: escolhas }, { rows: noAr }, bloqueados] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
@@ -123,19 +126,23 @@ async function coberturaDaConta(conta, plano, db = pool) {
     pontosRepo.idsBloqueadosParaEscolha(),
   ]);
   const escolhidos = escolhas.map((r) => r.ponto_id);
-  const ids = pontosDoAnunciante(
-    { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
-    noAr.map((p) => p.id),
-    bloqueados,
-  );
+  const ids = plano
+    ? pontosDoAnunciante(
+        { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
+        noAr.map((p) => p.id),
+        bloqueados,
+      )
+    : [];
   const naFatia = new Set(ids);
+  const proprios = new Set(basicos.map((b) => b.ponto_id));
   return noAr.filter(
     (p) =>
-      naFatia.has(p.id) &&
-      (!p.categoria_id ||
-        !conta.categoria_id ||
-        p.categoria_id !== conta.categoria_id ||
-        (p.dono_id === conta.id && escolhidos.includes(p.id))),
+      proprios.has(p.id) ||
+      (naFatia.has(p.id) &&
+        (!p.categoria_id ||
+          !conta.categoria_id ||
+          p.categoria_id !== conta.categoria_id ||
+          (p.dono_id === conta.id && escolhidos.includes(p.id)))),
   );
 }
 
@@ -163,12 +170,23 @@ async function primeiraHoraProgramada(contaId, desde, db = pool) {
 // Decide o estado de cada peça aprovada. `criativos`: linhas de `criativos`
 // com `em_rodizio` (dentro do limite de peças simultâneas do plano, conta
 // veiculando). Devolve Map(id → entrada).
-async function entradaNoArDasPecas({ conta, plano, contaVeicula, criativos, agora = new Date(), db = pool }) {
+async function entradaNoArDasPecas({
+  conta,
+  plano,
+  basicos = [],
+  contaVeicula,
+  criativos,
+  agora = new Date(),
+  db = pool,
+}) {
   const resultado = new Map();
   const aprovadas = criativos.filter((c) => c.status === 'aprovado');
   if (!aprovadas.length) return resultado;
   const emRodizio = aprovadas.filter((c) => c.em_rodizio);
-  const cobertura = contaVeicula && plano && emRodizio.length ? await coberturaDaConta(conta, plano, db) : [];
+  const cobertura =
+    contaVeicula && (plano || basicos.length) && emRodizio.length
+      ? await coberturaDaConta(conta, plano, db, basicos)
+      : [];
   const relogio = criarRelogioDaCobertura(cobertura);
 
   for (const c of aprovadas) {

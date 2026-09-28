@@ -21,6 +21,7 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
+const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
@@ -423,9 +424,17 @@ async function contaParaOPainel(anunciante) {
       )
     : { rows: [] };
   const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
+  // Plano Básico do ponto (migration 103): benefício SEPARADO do plano
+  // comercial — o painel mostra os dois, cada um com a sua origem, e os
+  // direitos somados (`direitos`: pontos e horas somam; peça e criativos no
+  // ar valem o maior).
+  const basicos = await basicoRepo.ativosDaConta(anunciante.id);
+  const vigente = repo.planoVigenteId(anunciante) ? plano : null;
   return {
     ...anunciante,
     plano,
+    beneficios_basico: basicos.map(basicoRepo.resumo),
+    direitos: basicoRepo.direitosCombinados(vigente, basicos),
     plano_origem: origem,
     plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,
     // Vigência decidida AQUI (RN-32-B, último dia inclusivo em Matão), não
@@ -1160,12 +1169,17 @@ async function subirCriativoDoCliente(req, res) {
   // plano nem deveria ser alcançável por ali; isso é a segunda trava, direto
   // no servidor, pra quem tentar pela API sem passar pela tela. Ser ponto
   // não libera plano (ADR-016, 24/09/2026).
+  // Plano Básico do ponto (migration 103, substitui a parte "ser ponto não
+  // libera plano" do ADR-016): a conta que hospeda um ponto ativo sobe peça
+  // mesmo sem plano comercial. Limites = os direitos somados (o maior de
+  // peças no ar e de duração entre as duas origens).
   const planoId = planoEfetivoId(anunciante);
-  if (!planoId) {
+  const basicos = await basicoRepo.ativosDaConta(anunciante.id);
+  if (!planoId && !basicos.length) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
   }
-  const plano = await planosRepo.buscarPorId(planoId);
+  const direitos = basicoRepo.direitosCombinados(planoId ? await planosRepo.buscarPorId(planoId) : null, basicos);
   // Substituir sem tirar do ar (Fatia 3): o cliente troca a peça aprovada
   // pela nova, e a atual continua rodando até a nova ser aprovada — antes o
   // único jeito era excluir primeiro e ficar sem nada no ar durante a
@@ -1188,8 +1202,8 @@ async function subirCriativoDoCliente(req, res) {
   }
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
-    limite: plano.limite_criativos,
-    duracaoMaxima: plano.duracao_maxima_segundos,
+    limite: direitos.limiteCriativos,
+    duracaoMaxima: direitos.duracaoMaxima,
     substitui,
     envioChave,
     // Quando a linha nasce (card "processando") e quando o trabalho termina
@@ -1298,9 +1312,17 @@ async function criativosComSituacao(conta) {
   const plano = efetivoId ? await planosRepo.buscarPorId(efetivoId) : null;
   const vigenteId = repo.planoVigenteId(conta);
   const vigente = vigenteId === efetivoId ? plano : vigenteId ? await planosRepo.buscarPorId(vigenteId) : null;
-  const contaVeicula = !!vigente && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
+  // O Básico do ponto (migration 103) também veicula: sem plano comercial,
+  // a conta com ponto ativo toca no próprio ponto; com os dois, o limite de
+  // peças no ar é o maior (o gerador usa o mesmo conjunto nas duas origens).
+  const basicos = conta.conta_propria ? [] : await basicoRepo.ativosDaConta(conta.id);
+  const contaVeicula =
+    (!!vigente || basicos.length > 0) && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
-  const limite = vigente ? limiteDeCriativos(false, vigente.limite_criativos, prontos.length) : 0;
+  const limiteBasico = Math.max(0, ...basicos.map((b) => b.limite_criativos));
+  const limite = vigente
+    ? Math.max(limiteDeCriativos(false, vigente.limite_criativos, prontos.length), limiteBasico)
+    : limiteBasico;
   // `em_rodizio`: a peça ENTRA na playlist (conta veiculando, dentro do
   // limite de peças simultâneas, mesma ordem do gerador). Até 27/09/2026
   // isto se chamava `no_ar` — e era o que o painel mostrava como "No ar"
@@ -1308,13 +1330,14 @@ async function criativosComSituacao(conta) {
   // confirmado (src/anunciantes/entrada-no-ar.js).
   const rodizio = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
   const comRodizio = criativos.map((c) => ({ ...c, em_rodizio: rodizio.has(c.id) }));
-  const entradas = await entradaNoArDasPecas({ conta, plano: vigente, contaVeicula, criativos: comRodizio });
+  const entradas = await entradaNoArDasPecas({ conta, plano: vigente, basicos, contaVeicula, criativos: comRodizio });
   return {
     criativos: comRodizio.map((c) => {
       const entrada = entradas.get(c.id) || null;
       return { ...c, entrada, no_ar: entrada?.estado === ESTADOS_ENTRADA.NO_AR };
     }),
     plano,
+    basicos,
     limite,
     contaVeicula,
   };
@@ -1370,7 +1393,8 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
   const conta = await repo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   await criativosRepo.descartarProcessamentosOrfaos(conta.id);
-  const { criativos, plano, limite, contaVeicula } = await criativosComSituacao(conta);
+  const { criativos, plano, basicos, limite, contaVeicula } = await criativosComSituacao(conta);
+  const direitos = basicoRepo.direitosCombinados(plano, basicos);
   const substitutaDe = new Map(
     criativos
       .filter((c) => c.status === 'pendente' && c.substitui_criativo_id)
@@ -1407,16 +1431,19 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
       substitutaEmAnalise: substitutaDe.get(c.id) || null,
       enviadoEm: c.created_at,
     })),
-    temPlano: !!plano,
+    // `temPlano`: tem algum direito de veicular — plano comercial OU o
+    // Básico do ponto (migration 103).
+    temPlano: !!plano || basicos.length > 0,
+    temBasico: basicos.length > 0,
     // Plano (anúncio na rede) e/ou ponto no ar (a tela do próprio
     // comércio) — o painel explica onde a peça aprovada roda.
     rodaNaRede: !!conta.plano_id,
     rodaNoProprioPonto: pontos[0].n > 0,
     contaVeicula,
     limiteNoAr: limite,
-    limiteCadastro: plano ? plano.limite_criativos : 0,
+    limiteCadastro: direitos.limiteCriativos,
     emUso,
-    duracaoMaxima: plano?.duracao_maxima_segundos || null,
+    duracaoMaxima: direitos.duracaoMaxima,
   });
 });
 
@@ -1642,9 +1669,14 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   let exibicoesContratadasMes = null;
   let exibicoesRestantesMes = null;
   let mediaDiariaMes = null;
-  if (plano) {
+  // Duas origens (migration 103): as horas do plano comercial e as do Básico
+  // de cada ponto ativo somam no total, e vão separadas pro painel mostrar de
+  // onde vem cada parte. Tempo é a fonte: as exibições são derivadas.
+  const basicosDaConta = await basicoRepo.ativosDaConta(anunciante.id);
+  const origens = basicoRepo.direitosCombinados(plano, basicosDaConta);
+  if (plano || basicosDaConta.length) {
     const duracaoMedia = await bancohorasRepo.duracaoMediaDoAnunciante(anuncianteId);
-    horasContratadasMes = horasDeTelaPorMes(Number(plano.segundos_por_hora) || 0, plano.pontos_incluidos);
+    horasContratadasMes = origens.horasPorMes;
     horasEntreguesMes = Math.round(((confirmadasMes * duracaoMedia) / 3600) * 10) / 10;
     exibicoesContratadasMes = Math.round((horasContratadasMes * 3600) / duracaoMedia);
     exibicoesRestantesMes = Math.max(0, exibicoesContratadasMes - confirmadasMes);
@@ -1679,6 +1711,8 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     porDiaPonto: porDiaPonto.rows,
     cobrancas: cobrancas.rows,
     horasContratadasMes,
+    horasPlanoMes: plano ? origens.horasPlano : null,
+    horasBasicoMes: basicosDaConta.length ? origens.horasBasico : null,
     horasEntreguesMes,
     exibicoesContratadasMes,
     exibicoesRestantesMes,

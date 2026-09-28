@@ -1,6 +1,17 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO** (PR próprio a
+partir do `main`, NÃO mergeado, aguardando o dono). Ponto ativo = Plano
+Básico (14 h/mês, peça até 15 s, 1 criativo, só no próprio ponto, sem custo)
++ 1 crédito/mês. Migration 103 (`beneficios_basico_ponto` + coluna
+`exibicoes_contador.segundos_obrigacao_basico`), `src/pontos/basico.js`,
+ADR-025, RN-43.5. Soma com o plano comercial com a origem preservada; nunca
+em `plano_id`, nunca no Checkout/vitrine. Testes `tests/basico-ponto.test.js`
+(10 casos + hora sem sinal) e e2e 34. A estação de finalização (#87–#92)
+continua PAUSADA — ver `docs/auditoria-finalizacao-checkpoint.md` no #87.
+**Depois do merge:** CI, SHA no ar, conferir em produção (só leitura) quantos
+pontos o backfill da 103 ativou e o card no painel de um dono de ponto real.
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só

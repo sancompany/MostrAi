@@ -438,10 +438,31 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     contaPropria: !!conta.conta_propria,
   };
 
+  // Plano Básico do ponto (migration 103) — benefício de ponto, separado do
+  // plano comercial: cada linha diz o ponto de origem e a situação (ativo ou
+  // encerrado, com o motivo). `direitos` soma as duas origens.
+  const basicoRepo = require('../pontos/basico');
+  const basicosHistorico = await basicoRepo.historicoDaConta(conta.id);
+  const basicosAtivos = conta.conta_propria ? [] : await basicoRepo.ativosDaConta(conta.id);
+  const ativosIds = new Set(basicosAtivos.map((b) => b.id));
+  const basico = {
+    ativos: basicosAtivos.map(basicoRepo.resumo),
+    // Linha com `fim` nulo que a leitura não confirma (ponto arquivado ou dono
+    // trocado antes do job diário) aparece como "encerrando", não como ativa.
+    historico: basicosHistorico
+      .filter((b) => !ativosIds.has(b.id))
+      .map((b) => ({ ...basicoRepo.resumo(b), aguardandoEncerramento: !b.fim })),
+    direitos: basicoRepo.direitosCombinados(
+      plano.agora && planos[conta.plano_id] ? planos[conta.plano_id] : null,
+      basicosAtivos,
+    ),
+  };
+
   const situacao = {
     dados,
     donoDePonto: pontos.length > 0,
     plano,
+    basico,
     creditos,
     beneficios,
     criativos: { resumo: resumoCriativos, lista: criativos },
@@ -512,7 +533,7 @@ async function verificarInvariantes({ conta, situacao, beneficioAtivo, beneficio
       texto: `${plano.vencido.nome} venceu em ${dataBR(plano.vencido.venceuEm)} — a conciliação diária encerra.`,
     });
   }
-  if (criativos.resumo.noAr > 0 && !plano.agora) {
+  if (criativos.resumo.noAr > 0 && !plano.agora && !situacao.basico.ativos.length) {
     alertas.push({ codigo: 'criativo_no_ar_sem_plano', texto: 'Há criativo no ar sem plano vigente.' });
   }
   return alertas;

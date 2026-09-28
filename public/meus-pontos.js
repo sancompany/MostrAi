@@ -106,7 +106,11 @@
       situacao = `Crédito de ${esc(b.competenciaAtual.split('/')[0])} já concedido · próximo em ${esc(b.proximaCompetencia)}`;
     else if (b.elegivel) situacao = `Próximo crédito: ${esc(b.proximaCompetencia)}`;
     else situacao = 'Começa quando a tela estiver instalada e ativa';
-    return `<p class="estab-pe">Benefício do ponto: <b>+1 crédito por mês</b> · ${situacao}</p>`;
+    // Plano Básico do ponto (migration 103): o outro benefício, separado.
+    const basico = b.basico
+      ? `<p class="estab-pe estab-basico">Plano Básico: <b>${b.basico.horasPorMes} h/mês neste ponto</b> · anúncio de até ${b.basico.duracaoMaximaSegundos} s · incluído enquanto o ponto estiver ativo</p>`
+      : '';
+    return `${basico}<p class="estab-pe">Benefício do ponto: <b>+1 crédito por mês</b> · ${situacao}</p>`;
   }
 
   function htmlEstabelecimento(e) {

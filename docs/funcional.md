@@ -54,8 +54,10 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    Aguardando instalação), sem chave, versão nem PIN. Toda tela segue o horário
    do estabelecimento.
 8. A partir do mês em que a tela fica ativa, a conta ganha **+1 crédito por
-   mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
-   Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
+   mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime — e
+   o **Plano Básico do ponto** (RN-43.5): 14 h/mês de veiculação no próprio
+   estabelecimento, peça de até 15 s, sem custo, enquanto o ponto estiver
+   ativo. O Básico soma-se a qualquer plano contratado; não é vendido.
 
 ### 2.3 Vendedor — programa aposentado
 
@@ -415,7 +417,7 @@ rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
 > seria vender o que não existe; "cobre até 10" é verdade no primeiro dia e
 > continua verdade no centésimo.
 
-**RN-43 — Ser ponto não é plano: o ponto gera créditos.** *(Reestruturação
+**RN-43 — O ponto gera créditos (e, desde 28/09/2026, o Plano Básico — RN-43.5).** *(Reestruturação
 de 24/09/2026, ADR-016 — substitui a escolha "Recebe os R$ 50" (Inicial) ×
 "Troca os R$ 50 por tela" (Básico), o repasse mensal, o crédito de R$ 50 na
 mensalidade e o bônus de anúncio por tempo de ponto.)*
@@ -445,6 +447,52 @@ instalada → tela ativa. Nenhuma etapa antes da tela ativa gera crédito.
 benefícios; Meus pontos: "Benefício do ponto: +1 crédito por mês · Próximo
 crédito / Crédito de setembro já concedido") e o admin (ficha da conta, card
 Pontos e ficha do ponto: "+1 crédito/mês · último · próximo").
+**RN-43.5 — Plano Básico como benefício do ponto.** *(28/09/2026, ADR-025,
+migration 103 — substitui a parte "ser ponto não é plano / não dá plano" do
+ADR-016; o +1 crédito/mês continua igual.)*
+Todo estabelecimento que vira ponto ativo recebe, sem custo e enquanto
+continuar ponto: **14 h/mês** de veiculação, anúncio de **até 15 s**, **1
+criativo** no ar, e **1 ponto — o próprio estabelecimento** (não escolhe
+outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
+· **Não é plano comercial:** não mora em `anunciantes.plano_id`, não passa
+  pelo Checkout, não aparece na vitrine (nem em Ofertas), não tem CTA de
+  compra e não é consumido por crédito. Uma linha por ponto em
+  `beneficios_basico_ponto`, com os números copiados (mudar a regra não
+  reescreve o que já foi concedido) e início/fim.
+· **Ativa** na mesma régua do crédito (`SQL_PONTOS_ELEGIVEIS`: tela
+  provisionada e ativa, conta dona válida) — assim que o Player é instalado
+  (`sincronizarStatusPonto`), com o job diário de rede de segurança.
+  Formulário, candidatura aprovada ou ponto sem tela instalada não dão
+  Básico. Um ativo por ponto, garantido por índice único.
+· **Encerra** só quando o estabelecimento deixa de ser ponto daquela conta:
+  ponto arquivado, dono trocado, conta excluída. Tela em reparo ou sem sinal
+  não encerra (o Básico fica ativo e não gera obrigação sem tela tocando).
+  Encerrar o Básico nunca mexe no plano comercial, e cancelar o plano nunca
+  mexe no Básico.
+· **Soma com o plano comercial, origens preservadas:** Básico + Essencial =
+  4 pontos e 41 h (14 h do Básico + 27 h do Essencial); Básico + Pro = 8
+  pontos e 98 h. O ponto do Básico é sempre o próprio; os do plano seguem a
+  escolha normal (RN-49). Peça e criativos no ar valem o MAIOR das duas
+  origens (é o mesmo conjunto de peças da conta).
+· **Tempo é a fonte de verdade:** 14 h = 140 s por hora aberta (régua da
+  vitrine, 12 h × 30 dias). Como 140 não divide por 15, cada hora recebe a
+  sua fatia de uma sequência estável (9, 9, 10 peças de 15 s…) cuja média é
+  exatamente 140 s — 3.360 exibições equivalentes de 15 s por mês, sem
+  perder meia hora por arredondamento. Início no meio do mês: a obrigação
+  nasce hora a hora a partir do início (nada retroativo), como no plano.
+· **Saldo e comprovante:** a parcela do Básico entra na MESMA linha da conta
+  na tela e hora (`exibicoes_contador`) — um comprovante, um saldo —, com a
+  parte do Básico guardada à parte em `segundos_obrigacao_basico`. Se a dona
+  também escolheu o próprio ponto no plano comercial, as duas obrigações se
+  somam nessa linha. A hora sem sinal (rede de segurança) cobra o Básico que
+  valia naquela hora (início/fim da linha).
+· **Sucede a cota de autoanúncio** (legado zerado desde a 049): com o Básico
+  ativo a cota não entra, senão a dona apareceria em dobro.
+*Quem vê:* o dono (card "Benefício de ponto · Plano Básico" separado de "Seu
+plano"; Meus pontos: "Plano Básico: 14 h/mês neste ponto"; horas do mês por
+origem) e o admin (ficha da conta, seção "Benefício de ponto" com o ponto de
+origem, situação e motivo do fim; ficha do ponto).
+
 > **Legado preservado, sem operação nova:** `planos_ponto` (todas
 > `ativo=false`), `pontos.plano_ponto_id/valor_pago_mensal`,
 > `anunciantes.comodato_plano_id/credito_comodato_mensal`, `pagamentos_ponto`
