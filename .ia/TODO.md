@@ -222,6 +222,19 @@ Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
 camada da base (T1) com o comercial numa hora cheia — comportamento atual
 preservado; ver `.ia/RISKS.md`.
 
+## CATEGORIAS E CONCORRENTES DIRETOS — antes e depois do merge (28/09/2026)
+
+- [ ] Antes do merge: atualizar a branch com a `main`; se o Plano Básico
+  entrou, resolver `coberturaDaConta` (ADR-026), conferir que o Básico
+  segue só no ponto da própria conta, rerodar `npm run check` e os e2e
+  26/28 (e o 34 do Básico).
+- [ ] Depois do merge (só com autorização): CI verde no SHA mergeado,
+  deploy com o SHA novo, migration 105 aplicada em produção (48 pares,
+  "Terapia capilar" ativa), Admin → Categorias → Cafeteria mostra
+  Padaria e Confeitaria / Doceria nos dois lados.
+- Decisão do dono, fora desta estação: pares novos além da matriz de
+  28/09/2026 (o admin cadastra pela tela).
+
 ## QR CODE INSTITUCIONAL — depois do PR (27/09/2026)
 
 - [ ] Depois do merge: CI verde no commit mergeado, deploy com o SHA novo,

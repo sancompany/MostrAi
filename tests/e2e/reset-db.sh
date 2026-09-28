@@ -6,3 +6,7 @@ PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -qc "UPDATE planos SE
 # testes de unidade (tests/indicacoes.test.js) rodados depois do e2e.
 PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -qc "DELETE FROM planos WHERE id = 'plano-teste-e2e-rede';"
 rm -f "$(cd "$(dirname "$0")" && pwd)/saida/emails.jsonl"
+# Categorias de fixture do 28-concorrentes-diretos.mjs (grupo "E2E"): as contas
+# e pontos que as usavam já saíram no TRUNCATE acima; os pares vão junto
+# (categorias_concorrentes, ON DELETE CASCADE).
+PGPASSWORD=mostrai psql -h localhost -U mostrai -d mostrai -qc "DELETE FROM categorias WHERE grupo = 'E2E';"

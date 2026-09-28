@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
+const concorrencia = require('./concorrencia');
 
 // CRUD trivial — sem camada de repositório própria, o SQL cabe aqui.
 // Categoria é o segmento do negócio: o anunciante diz o que vende, o ponto
@@ -10,7 +11,8 @@ const pool = require('../db/pool');
 // Reconstrução de Contas + Categorias (23/09/2026): categoria passa a ter uma
 // CANÔNICA (`canonica_id`, migration 074). Categoria absorvida por outra vira
 // legado, some do cadastro e aponta pra que ficou — quem a usava foi
-// reapontado junto. A regra de bloqueio continua comparando só categoria_id.
+// reapontado junto. A regra de bloqueio compara categoria_id — igual, ou par
+// registrado como concorrente direto (migration 105, ./concorrencia.js).
 
 // Pública — alimenta o seletor pesquisável dos cadastros. Só a canônica
 // ativa sai daqui. `aliases` vai junto porque a busca acontece no navegador
@@ -26,9 +28,12 @@ router.get('/categorias', async (_req, res) => {
 // Admin — com o uso de cada uma (contas e pontos que apontam pra ela), pra
 // tela decidir o que dá pra excluir e o que só dá pra tirar do cadastro. Duas
 // contagens agrupadas por cima de ~250 linhas: barato o bastante pra ir junto.
+// `concorrentes`: ids dos concorrentes diretos, dos dois lados do par — uma
+// consulta a mais pra lista inteira, não uma por categoria.
 router.get('/admin/categorias', async (_req, res) => {
-  const { rows } = await pool.query(
-    `SELECT c.*, canon.nome AS canonica_nome,
+  const [{ rows }, mapa] = await Promise.all([
+    pool.query(
+      `SELECT c.*, canon.nome AS canonica_nome,
             COALESCE(ua.total, 0)::int AS uso_contas,
             COALESCE(up.total, 0)::int AS uso_pontos
        FROM categorias c
@@ -40,9 +45,39 @@ router.get('/admin/categorias', async (_req, res) => {
                    WHERE categoria_id IS NOT NULL AND status <> 'arquivado' GROUP BY categoria_id) up
               ON up.categoria_id = c.id
       ORDER BY c.nome`,
-  );
-  res.json(rows);
+    ),
+    concorrencia.mapaDeConcorrentes(),
+  ]);
+  res.json(rows.map((c) => ({ ...c, concorrentes: mapa.get(c.id) || [] })));
 });
+
+// Grava a categoria e, se vieram `concorrentes_adicionar`/`concorrentes_remover`,
+// os pares de concorrentes diretos dela — na mesma transação: o modal salva
+// tudo ou nada.
+async function comTransacao(trabalho) {
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const resultado = await trabalho(cliente);
+    await cliente.query('COMMIT');
+    return resultado;
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
+function paresDoCorpo(corpo) {
+  return { adicionar: corpo.concorrentes_adicionar, remover: corpo.concorrentes_remover };
+}
+
+function respostaDeErro(res, err) {
+  if (err instanceof concorrencia.ErroConcorrentes) return res.status(400).json({ erro: err.message });
+  if (err.code === '23505') return res.status(409).json({ erro: 'já existe uma categoria com esse nome' });
+  throw err;
+}
 
 function limparAliases(lista) {
   if (!Array.isArray(lista)) return [];
@@ -57,14 +92,17 @@ router.post('/admin/categorias', async (req, res) => {
   // Legado nunca aparece no cadastro — mesma regra da rota pública.
   const ativo = legado ? false : req.body.ativo !== false;
   try {
-    const { rows } = await pool.query(
-      'INSERT INTO categorias (nome, grupo, aliases, ativo, legado) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [nome, grupo, limparAliases(req.body.aliases), ativo, legado],
-    );
-    res.status(201).json(rows[0]);
+    const criada = await comTransacao(async (db) => {
+      const { rows } = await db.query(
+        'INSERT INTO categorias (nome, grupo, aliases, ativo, legado) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [nome, grupo, limparAliases(req.body.aliases), ativo, legado],
+      );
+      const concorrentes = await concorrencia.alterarConcorrentes(db, rows[0].id, paresDoCorpo(req.body));
+      return { ...rows[0], concorrentes };
+    });
+    res.status(201).json(criada);
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ erro: 'já existe uma categoria com esse nome' });
-    throw err;
+    return respostaDeErro(res, err);
   }
 });
 
@@ -78,18 +116,28 @@ router.patch('/admin/categorias/:id', async (req, res) => {
   if (corpo.aliases !== undefined) corpo.aliases = limparAliases(corpo.aliases);
   if (corpo.legado === true) corpo.ativo = false;
   const campos = ['nome', 'ativo', 'grupo', 'aliases', 'legado'].filter((c) => corpo[c] !== undefined);
-  if (!campos.length) return res.status(400).json({ erro: 'nada pra atualizar' });
-  const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
+  const mexeConcorrentes = corpo.concorrentes_adicionar !== undefined || corpo.concorrentes_remover !== undefined;
+  if (!campos.length && !mexeConcorrentes) return res.status(400).json({ erro: 'nada pra atualizar' });
+  const id = concorrencia.idValido(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'categoria não encontrada' });
   try {
-    const { rows } = await pool.query(`UPDATE categorias SET ${sets} WHERE id = $1 RETURNING *`, [
-      req.params.id,
-      ...campos.map((c) => corpo[c]),
-    ]);
-    if (!rows[0]) return res.status(404).json({ erro: 'categoria não encontrada' });
-    res.json(rows[0]);
+    const salva = await comTransacao(async (db) => {
+      // FOR UPDATE: duas edições da mesma categoria ao mesmo tempo não
+      // intercalam o conjunto de concorrentes (a última grava inteira).
+      const { rows } = campos.length
+        ? await db.query(
+            `UPDATE categorias SET ${campos.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1 RETURNING *`,
+            [id, ...campos.map((c) => corpo[c])],
+          )
+        : await db.query('SELECT * FROM categorias WHERE id = $1 FOR UPDATE', [id]);
+      if (!rows[0]) return null;
+      const concorrentes = await concorrencia.alterarConcorrentes(db, id, paresDoCorpo(corpo));
+      return { ...rows[0], concorrentes };
+    });
+    if (!salva) return res.status(404).json({ erro: 'categoria não encontrada' });
+    res.json(salva);
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ erro: 'já existe uma categoria com esse nome' });
-    throw err;
+    return respostaDeErro(res, err);
   }
 });
 
@@ -98,9 +146,9 @@ router.patch('/admin/categorias/:id', async (req, res) => {
 // o mapeamento, tira a absorvida do cadastro e guarda o nome dela como alias.
 // Tudo numa transação: ou a fusão inteira acontece, ou nada muda.
 router.post('/admin/categorias/:id/mesclar', async (req, res) => {
-  const origemId = Number(req.params.id);
-  const destinoId = Number(req.body.destino_id);
-  if (!Number.isInteger(origemId) || !Number.isInteger(destinoId)) {
+  const origemId = concorrencia.idValido(req.params.id);
+  const destinoId = concorrencia.idValido(req.body.destino_id);
+  if (!origemId || !destinoId) {
     return res.status(400).json({ erro: 'escolha a categoria que fica' });
   }
   if (origemId === destinoId)
@@ -137,6 +185,7 @@ router.post('/admin/categorias/:id/mesclar', async (req, res) => {
       origemId,
       destinoId,
     ]);
+    await concorrencia.moverNaFusao(cliente, origemId, destinoId);
     const aliases = limparAliases([...(destino.aliases || []), origem.nome.toLowerCase(), ...(origem.aliases || [])]);
     const { rows: atualizada } = await cliente.query('UPDATE categorias SET aliases = $2 WHERE id = $1 RETURNING *', [
       destinoId,
@@ -155,8 +204,10 @@ router.post('/admin/categorias/:id/mesclar', async (req, res) => {
 // Excluir só vale pra categoria que ninguém usa (criada por engano). Em uso,
 // a FK recusa — o certo é tirar do cadastro, marcar legado ou mesclar.
 router.delete('/admin/categorias/:id', async (req, res) => {
+  const id = concorrencia.idValido(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'categoria não encontrada' });
   try {
-    await pool.query('DELETE FROM categorias WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM categorias WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (err) {
     if (err.code === '23503') {
