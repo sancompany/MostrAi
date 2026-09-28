@@ -424,6 +424,7 @@ log.
 | Fila de comprovantes alta (≥ 2.000 ou > 48 h) | a TV está tocando sem conseguir enviar `played`: rede instável ou erro no servidor; ver logs de `/player/:id/played`. O servidor aceita comprovante até 7 dias depois da hora |
 | Horário do ponto | Ficha do ponto → **Editar horário** (por dia: Horário, 24 horas ou Fechado; "Aberto 24 horas todos os dias"). Vale para todas as telas do ponto; as TVs recebem em até 15 s |
 | Excluir tela | Ficha ou linha da tela → **Excluir** → confirmar. Tela que já exibiu anúncio não é excluída (o comprovante é do anunciante): deixe **Inativa** |
+| Trocar o dono de um ponto (não existe tela pra isso — só no banco) | Logo depois de mudar `pontos.anunciante_id`, sincronizar o Plano Básico daquele ponto no serviço: `node -e "require('./src/pontos/basico').sincronizar({ apenasPontos: [<id do ponto>] }).then(() => require('./src/db/pool').end())"`. Encerra o Básico do dono antigo na hora e ativa o do novo; sem isso o encerramento espera o job diário, e a rede de segurança do Saldo pode cobrar do dono antigo as horas sem sinal até lá (RN-43.5) |
 | Versão nova do app | instalação manual na TV (não há atualização remota). A ficha mostra a versão que a TV informa |
 
 ## 7. Incidente com dado pessoal

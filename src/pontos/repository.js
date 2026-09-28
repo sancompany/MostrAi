@@ -258,6 +258,12 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
     pontoId,
     status,
   ]);
+  // Plano Básico do ponto (migration 103): nasce quando o ponto passa a ter
+  // tela provisionada e ativa — a mesma régua do +1 crédito/mês. Toda mudança
+  // de tela passa por aqui (criar, provisionar, trocar status, revogar,
+  // primeiro sinal), então o benefício não espera o job diário. Require
+  // tardio: basico.js lê a régua de src/creditos/ponto.js.
+  await require('./basico').sincronizar({ apenasPontos: [Number(pontoId)], db });
   return rowCount ? status : 'arquivado';
 }
 

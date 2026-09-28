@@ -123,6 +123,7 @@ window.ENTRADA_NO_AR = {
     sem_plano_vigente: 'a conta está sem plano vigente',
     conta_suspensa: 'a conta está suspensa',
     fora_do_limite_de_pecas: 'o plano já roda o máximo de peças ao mesmo tempo',
+    acima_da_duracao_maxima: 'a peça passa da duração máxima que a conta roda hoje',
     processando: 'o arquivo ainda está sendo processado',
     sem_ponto_no_ar_na_cobertura: 'nenhum ponto da cobertura está no ar agora',
     cobertura_sem_horario_aberto: 'nenhum ponto da cobertura abre nos próximos dias',

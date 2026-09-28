@@ -50,9 +50,10 @@ async function carregar() {
     // escolher plano (o back também passou a recusar isso, defesa em
     // profundidade — ver POST /anunciantes/:id/criativos).
     //
-    // Ser ponto não libera plano (ADR-016, 24/09/2026): só plano pago ou
-    // benefício por créditos liberam o anúncio.
-    if (!ANUNCIANTE.plano_id) {
+    // O Plano Básico do ponto (migration 103, ADR-025) também libera: quem
+    // hospeda um ponto ativo anuncia no próprio estabelecimento sem plano
+    // contratado. Sem nenhum dos dois, o painel pede o plano.
+    if (!temDireitoDeAnunciar()) {
       montarBloqueioPlano();
       return;
     }
@@ -93,6 +94,11 @@ if (window.ligarEventosDaConta) {
 // resgate de créditos. Sem remover o anterior, cada rodada empilhava outro
 // card de bloqueio; sem desfazer, a conta que ganhava plano continuava
 // bloqueada até dar F5.
+// Direito de veicular: plano comercial OU o Básico de um ponto ativo.
+function temDireitoDeAnunciar() {
+  return !!ANUNCIANTE.plano_id || !!ANUNCIANTE.beneficios_basico?.length;
+}
+
 function removerBloqueioPlano() {
   document.getElementById('bloqueioPlanoCaixa')?.remove();
   document.getElementById('dashboardAnuncios').hidden = false;
@@ -191,13 +197,13 @@ async function carregarPrimeirosPassos() {
       return;
     }
     const caixa = document.getElementById('bloqueioPlanoCaixa');
-    if (caixa && !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso) {
+    if (caixa && !temDireitoDeAnunciar() && !ANUNCIANTE.suspenso) {
       caixa.innerHTML = htmlOnboardingSemPlano(passos);
       return;
     }
     const faixa = document.getElementById('primeirosPassos');
     if (!faixa) return;
-    if (!ANUNCIANTE.plano_id || passos.concluido) {
+    if (!temDireitoDeAnunciar() || passos.concluido) {
       faixa.hidden = true;
       faixa.innerHTML = '';
       return;
@@ -243,8 +249,42 @@ function preencherStatusBanner() {
     </div>
     <div class="hero-status" id="heroStatus" hidden></div>
   `;
+  desenharBasico();
   desenharPlano();
   carregarPontos();
+}
+
+// "Benefício de ponto · Plano Básico" (migration 103): um card por conta,
+// uma linha por ponto que dá o benefício. Nunca junta com o plano
+// contratado — "Básico + Pro" não é um plano, são duas origens.
+function desenharBasico() {
+  const secao = document.getElementById('modBasico');
+  if (!secao || !ANUNCIANTE) return;
+  const basicos = ANUNCIANTE.beneficios_basico || [];
+  if (!basicos.length) {
+    secao.hidden = true;
+    return;
+  }
+  const d = ANUNCIANTE.direitos || {};
+  const soma =
+    ANUNCIANTE.plano_id && d.pontosPlano
+      ? `<p class="plano-nota">Somado ao plano contratado: <b>${d.pontos} pontos</b> e <b>${d.horasPorMes} h/mês</b> no total (${d.horasBasico} h do Básico + ${d.horasPlano} h do plano).</p>`
+      : '';
+  document.getElementById('basicoResumo').innerHTML = `
+    ${basicos
+      .map(
+        (b) => `<div class="basico-item" data-basico-ponto="${b.pontoId}">
+        <p class="plano-nome"><b>${b.horasPorMes} h/mês</b> <span class="badge badge-ok">Ativo</span></p>
+        <ul class="basico-direitos">
+          <li>1 ponto — ${esc(b.pontoNome || 'seu estabelecimento')}</li>
+          <li>Anúncio de até ${b.duracaoMaximaSegundos} s</li>
+        </ul>
+      </div>`,
+      )
+      .join('')}
+    <p class="plano-nota">Incluído sem custo enquanto seu ponto estiver ativo. Além dele, cada ponto ativo gera +1 crédito por mês.</p>
+    ${soma}`;
+  secao.hidden = false;
 }
 
 // "Plano comercial" (Fatia 5): o que a conta tem pra anunciar na rede —
@@ -272,8 +312,14 @@ function desenharPlano() {
   // em tamanho pequeno (estação da conta, 26/09/2026).
   if (situacao === 'sem_plano') {
     secao.hidden = true;
+    // Só o Básico do ponto: o chip diz a origem (benefício), não "Sem plano".
+    const soBasico = ANUNCIANTE.beneficios_basico?.length;
     window.publicarResumo?.('plano', {
-      chips: [{ rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' }],
+      chips: [
+        soBasico
+          ? { rotulo: 'Plano', valor: 'Básico · benefício de ponto', alvo: 'modBasico' }
+          : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
+      ],
       alertas: [],
     });
     return;
@@ -833,7 +879,9 @@ if (document.fonts?.ready) document.fonts.ready.then(encaixarKpis);
 // do gráfico por ponto (.track/.fill), sem componente novo. Só aparece com
 // plano (os dois vêm null sem plano, e nem deveria chegar até aqui: o
 // bloqueio de plano já barra essa chamada).
-function desenharHorasMes(contratadas, entregues) {
+// `origens` (migration 103): { plano, basico } — as horas de cada origem,
+// ditas separadas na legenda quando a conta tem as duas.
+function desenharHorasMes(contratadas, entregues, origens = {}) {
   const card = document.querySelector('#kpiGrid [data-kpi="horas"]');
   if (contratadas == null || !card) return;
   const restantes = Math.max(0, contratadas - entregues);
@@ -841,8 +889,13 @@ function desenharHorasMes(contratadas, entregues) {
   // Formato brasileiro e sem resto de ponto flutuante: 180 − 178,9 saía
   // "1.0999999999999943h ainda por rodar".
   card.querySelector('b').textContent = `${numeroBR(entregues)}h`;
-  card.querySelector('[data-kpi-horas-legenda]').textContent =
-    `de ${numeroBR(contratadas)}h contratadas · ${numeroBR(restantes)}h ainda por rodar`;
+  card.querySelector('[data-kpi-horas-legenda]').textContent = `de ${numeroBR(contratadas)}h ${
+    origens.plano && origens.basico
+      ? `no mês (${numeroBR(origens.plano)}h do plano + ${numeroBR(origens.basico)}h do Básico)`
+      : origens.basico
+        ? 'do Plano Básico'
+        : 'contratadas'
+  } · ${numeroBR(restantes)}h ainda por rodar`;
   const fill = card.querySelector('.fill');
   fill.dataset.pct = pct;
   // A barra já existe no HTML (data-pct="0") desde o carregamento — o
@@ -908,7 +961,10 @@ async function carregarExibicoes() {
 
     desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
     desenharPorPonto(dados.porPonto || []);
-    desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
+    desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes, {
+      plano: dados.horasPlanoMes,
+      basico: dados.horasBasicoMes,
+    });
     pintarStatusOperacional(dados.porPonto || []);
     explicarZero(dados);
     const erro = document.getElementById('exibicoesErro');

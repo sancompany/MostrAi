@@ -3,6 +3,7 @@ const vigencia = require('../lib/vigencia');
 const { segundosDeObrigacao } = require('../lib/pacing');
 const dispositivosRepo = require('../dispositivos/repository');
 const { obrigacoesDaTela, minutosAbertosNaHora } = require('../playlist/gerador');
+const basicoRepo = require('../pontos/basico');
 
 // HORA ABERTA SEM SINAL (Saldo de Veiculação, 27/09/2026 — invariante 10 de
 // docs/specs/2026-09-27-saldo-de-veiculacao.md).
@@ -65,7 +66,9 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
     }
     if (!semSinal.length) continue;
 
-    const contas = (await obrigacoesDaTela(tela)).filter((c) => !apenasContas || apenasContas.includes(c.anuncianteId));
+    const contas = (await obrigacoesDaTela(tela, { desde: new Date(inicio) })).filter(
+      (c) => !apenasContas || apenasContas.includes(c.anuncianteId),
+    );
     if (!contas.length) continue;
     const { rows: comeco } = await pool.query(
       `SELECT anunciante_id, MIN(janela_hora) AS primeira FROM exibicoes_contador
@@ -75,30 +78,42 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
     );
     const primeira = new Map(comeco.map((r) => [r.anunciante_id, new Date(r.primeira).getTime()]));
 
-    const linhas = { conta: [], hora: [], segundos: [], duracao: [], minutos: [] };
+    const linhas = { conta: [], hora: [], segundos: [], duracao: [], minutos: [], basico: [] };
     for (const { hora, minutos } of semSinal) {
       for (const c of contas) {
         if (!primeira.has(c.anuncianteId) || primeira.get(c.anuncianteId) > hora.getTime()) continue;
-        if (!vigencia.coberturaVigente(c.dataExpiracao, hora)) continue;
-        const segundos = segundosDeObrigacao({ ...c.obrigacaoHoraCheia, minutosAbertos: minutos });
+        // Duas origens, uma linha (migration 103): o plano comercial vale
+        // pela validade dele; o Básico do ponto, pelo início/fim da linha.
+        const comercialValido = Boolean(c.obrigacaoHoraCheia) && vigencia.coberturaVigente(c.dataExpiracao, hora);
+        const comercial = comercialValido
+          ? segundosDeObrigacao({ ...c.obrigacaoHoraCheia, minutosAbertos: minutos })
+          : 0;
+        // A peça que a geração ao vivo teria usado nesta hora: com o
+        // comercial valendo, a da conta; só com o Básico, a do Básico.
+        const duracao = comercialValido ? c.duracaoSegundos : (c.duracaoBasico ?? c.duracaoSegundos);
+        const basico = (c.basicos || [])
+          .filter((b) => basicoRepo.valiaNaHora(b, hora))
+          .reduce((t, b) => t + basicoRepo.segundosDoBasicoNaHora(b, duracao, hora, minutos, tela.telas_do_ponto), 0);
+        const segundos = comercial + basico;
         if (segundos <= 0) continue;
         linhas.conta.push(c.anuncianteId);
         linhas.hora.push(hora);
         linhas.segundos.push(segundos);
-        linhas.duracao.push(c.duracaoSegundos);
+        linhas.duracao.push(duracao);
         linhas.minutos.push(minutos);
+        linhas.basico.push(basico || null);
       }
     }
     if (!linhas.conta.length) continue;
     const { rowCount } = await pool.query(
       `INSERT INTO exibicoes_contador
          (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
-          segundos_obrigacao, duracao_segundos, minutos_abertos, obrigacao_sem_pedido)
-       SELECT conta, $1, hora, 0, 0, 0, segundos, duracao, minutos, true
-         FROM unnest($2::int[], $3::timestamptz[], $4::int[], $5::int[], $6::smallint[])
-              AS t(conta, hora, segundos, duracao, minutos)
+          segundos_obrigacao, duracao_segundos, minutos_abertos, obrigacao_sem_pedido, segundos_obrigacao_basico)
+       SELECT conta, $1, hora, 0, 0, 0, segundos, duracao, minutos, true, basico
+         FROM unnest($2::int[], $3::timestamptz[], $4::int[], $5::int[], $6::smallint[], $7::int[])
+              AS t(conta, hora, segundos, duracao, minutos, basico)
        ON CONFLICT (anunciante_id, dispositivo_id, janela_hora) DO NOTHING`,
-      [tela.id, linhas.conta, linhas.hora, linhas.segundos, linhas.duracao, linhas.minutos],
+      [tela.id, linhas.conta, linhas.hora, linhas.segundos, linhas.duracao, linhas.minutos, linhas.basico],
     );
     horas += rowCount;
   }
