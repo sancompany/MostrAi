@@ -224,10 +224,12 @@ preservado; ver `.ia/RISKS.md`.
 
 ## CARDS DE PONTOS DO CLIENTE — antes e depois do merge (28/09/2026)
 
-- [ ] Antes do merge: decidir o conflito com o PR #90 (mesmo card —
-  `docs/PENDENCIAS.md` §T2); atualizar a branch com a `main` e rerodar
-  `npm run check` e os e2e 26 e 35.
-- [ ] Depois do merge (só com autorização): CI verde no SHA mergeado,
+- [x] Antes do merge: branch atualizada com a `main` (#97, #98);
+  `npm run check` e os e2e 35, 26, 30 e 29 verdes. Merge autorizado pelo
+  dono em 28/09/2026.
+- [ ] Ao retomar o PR #90: tirar a parte visual do card dele (fica a do
+  #100); a fila de salvamento é decisão à parte (`docs/PENDENCIAS.md` §T2).
+- [ ] Depois do merge: CI verde no SHA mergeado,
   deploy com o SHA novo, conferir "Onde seu anúncio aparece" no ar em
   desktop e celular com as fotos reais dos pontos (§T1).
 - Decisões do dono, fora desta estação: texto de ponto sem horário (§T3),

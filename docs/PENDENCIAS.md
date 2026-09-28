@@ -5338,7 +5338,7 @@ promoção sem CTA não existe (o CTA "Ver planos" é fixo).
 
 ## T. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
 
-**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), NÃO mergeado — aguarda o dono):** "Onde seu anúncio
+**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), mergeado com autorização do dono em 28/09/2026):** "Onde seu anúncio
 aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
 card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
 mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,
@@ -5365,9 +5365,9 @@ de comportamento.
   "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
   escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
   mexem em `htmlPontoEscolha`, no bloco `.ponto-escolha` de `style.css` e em
-  `.pontos-selecao` de `painel.css` — quem entrar por último resolve o
-  conflito. Se esta estação for aceita, a parte visual do card no #90 sai; a
-  fila de salvamento é mudança de lógica e é decisão à parte.
+  `.pontos-selecao` de `painel.css`. Com o #100 na `main`, quem retomar o #90
+  resolve o conflito tirando a parte visual do card dele (fica a deste); a
+  fila de salvamento é mudança de lógica e continua decisão à parte.
 - **T3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
   informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
   não tem horário). Mantido como estava — trocar o texto do cliente é

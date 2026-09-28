@@ -2,7 +2,7 @@
 
 ## Updated
 2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
-do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), draft, NÃO mergeado — aguarda o dono; branch
+do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), **mergeado com autorização do dono** em 28/09/2026; branch
 `claude/serene-lovelace-1zx4a0`, base `c521b25`, atualizada com a `main` `2818f11` — #97 e #98). "Onde seu anúncio aparece"
 virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
 fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
@@ -11,10 +11,12 @@ pé ("Selecionado", "Limite do plano atingido"…). Foto/segmento/bairro pela
 vitrine pública `GET /pontos` (ADR-029) — **sem backend, sem banco**.
 Seleção, limite, salvamento e contador intocados (e2e 26 passa sem mudar
 comportamento; e2e novo `35-cards-pontos-cliente.mjs`, 81 checagens).
-**Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — conflito
-certo em `htmlPontoEscolha`/`style.css`/`painel.css`; decisão do dono em
-`docs/PENDENCIAS.md` §T (T2). "Meus pontos" ficou como estava (T4).
-**Não iniciar outra estação sem o dono.**
+**Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — ao ser
+retomado, conflita em `htmlPontoEscolha`/`style.css`/`painel.css`: a parte
+visual dele sai, fica a deste (`docs/PENDENCIAS.md` §T, T2). "Meus pontos"
+ficou como estava (T4). **Pós-merge:** CI da `main`, SHA no ar e o card
+conferido em produção com as fotos reais (T1). **Não iniciar outra estação
+sem o dono.**
 2026-09-28 — **Estação REFORÇO VISUAL DAS PROMOÇÕES + BARRA NA ÁREA LOGADA**
 ([PR #98](https://github.com/sancompany/MostrAi/pull/98), branch
 `claude/promocoes-reforco-visual` — **mergeado na `main`** em 28/09/2026,
