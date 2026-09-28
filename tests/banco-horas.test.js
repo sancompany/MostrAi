@@ -10,7 +10,7 @@ const pontosRepo = require('../src/pontos/repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 // Banco de horas (G.3 de docs/PENDENCIAS.md) — Saldo de Veiculação para o
 // cliente. Unidade é o SEGUNDO desde a migration 100 (27/09/2026); cenários
@@ -378,6 +378,7 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
     responsavel_nome: 'Fulano',
     responsavel_contato: '16999990000',
   });
+  await tirarDoSorteio(ponto.id); // só a conta deste teste (escolha explícita)
   const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Banco ${randomUUID()}` });
   await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
   await instalarPlayer(tela.id);

@@ -1285,7 +1285,7 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
 cada ponto da rede com localização, estado operacional, horário, ocupação e
 se está selecionado, e o contador "X de N pontos selecionados" (N =
 `pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
-cards do cliente, ADR-028) cada ponto é um **card no molde do card de Rede >
+cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
 Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o
 estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
 "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado

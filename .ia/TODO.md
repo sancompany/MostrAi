@@ -225,14 +225,21 @@ preservado; ver `.ia/RISKS.md`.
 ## CARDS DE PONTOS DO CLIENTE — antes e depois do merge (28/09/2026)
 
 - [ ] Antes do merge: decidir o conflito com o PR #90 (mesmo card —
-  `docs/PENDENCIAS.md` §S2); atualizar a branch com a `main` e rerodar
+  `docs/PENDENCIAS.md` §T2); atualizar a branch com a `main` e rerodar
   `npm run check` e os e2e 26 e 35.
 - [ ] Depois do merge (só com autorização): CI verde no SHA mergeado,
   deploy com o SHA novo, conferir "Onde seu anúncio aparece" no ar em
-  desktop e celular com as fotos reais dos pontos (§S1).
-- Decisões do dono, fora desta estação: texto de ponto sem horário (§S3),
-  "Meus pontos" com o card de foto grande (§S4), mostrar "na cobertura
-  hoje" (§S5).
+  desktop e celular com as fotos reais dos pontos (§T1).
+- Decisões do dono, fora desta estação: texto de ponto sem horário (§T3),
+  "Meus pontos" com o card de foto grande (§T4), mostrar "na cobertura
+  hoje" (§T5).
+
+## PROMOÇÕES — reforço visual (28/09/2026)
+
+- [ ] Depois do merge (só com autorização): CI no SHA mergeado, deploy,
+  Home/Planos em produção com a pré-venda (id 7) mostrando "ATÉ 30% OFF",
+  painel logado com a faixa e o X.
+- Pendências do dono herdadas (PENDENCIAS §R): R0–R4.
 
 ## CATEGORIAS E CONCORRENTES DIRETOS — antes e depois do merge (28/09/2026)
 

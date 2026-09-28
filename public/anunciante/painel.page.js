@@ -1292,34 +1292,5 @@ if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => A
 // Financeiro: pagamentos do plano.
 if (window.montarFinanceiro) window.montarFinanceiro();
 
-// Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
-// 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já
-// filtrada no servidor por elegibilidade COMERCIAL (plano ativo agora, ou
-// já assinou antes), não por ter sessão aberta. Sem checkbox próprio pra
-// esta superfície: qualquer promoção vigente e elegível pra esta conta
-// aparece aqui. Independente do resto do carregamento do painel: se essa
-// chamada falhar, o painel inteiro continua funcionando igual, só sem o
-// banner.
-fetch(`${API_BASE_URL}/promocoes/vigentes`)
-  .then((r) => r.json())
-  .then((promocoes) => {
-    const promo = (Array.isArray(promocoes) ? promocoes : [])[0];
-    if (!promo) return;
-    // Mesma linha de condição da Home e de Planos: em que ciclos a promoção
-    // baixa o preço de verdade (D1, 24/09/2026 — config.js).
-    const condicao = window.condicaoDaPromocao(promo);
-    if (condicao === null) return;
-    const el = document.getElementById('promocaoLogado');
-    el.innerHTML = `
-      <div class="promo-logado">
-        <div>
-          ${promo.selo ? `<span class="badge badge-pendente">${esc(promo.selo)}</span>` : ''}
-          <b>${esc(promo.titulo_publico)}</b>
-          ${promo.subtitulo ? `<p class="u-m-0 u-dim">${esc(promo.subtitulo)}</p>` : ''}
-          ${condicao ? `<p class="u-m-0 u-dim">${esc(condicao)}</p>` : ''}
-        </div>
-        <a class="btn primary mini" href="/planos.html">Ver condição</a>
-      </div>`;
-    el.hidden = false;
-  })
-  .catch(() => {});
+// Promoção pra quem está logado: saiu daqui (reforço visual, 28/09/2026).
+// Virou a faixa fina abaixo do cabeçalho, com X — public/barra-promocional.js.

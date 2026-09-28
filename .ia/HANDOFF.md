@@ -3,18 +3,29 @@
 ## Updated
 2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
 do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), draft, NÃO mergeado — aguarda o dono; branch
-`claude/serene-lovelace-1zx4a0`, base `c521b25`). "Onde seu anúncio aparece"
+`claude/serene-lovelace-1zx4a0`, base `c521b25`, atualizada com a `main` `2818f11` — #97 e #98). "Onde seu anúncio aparece"
 virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
 fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
 ocupação, "Ver no mapa" na foto, "Seu ponto" na foto e a seleção escrita no
 pé ("Selecionado", "Limite do plano atingido"…). Foto/segmento/bairro pela
-vitrine pública `GET /pontos` (ADR-028) — **sem backend, sem banco**.
+vitrine pública `GET /pontos` (ADR-029) — **sem backend, sem banco**.
 Seleção, limite, salvamento e contador intocados (e2e 26 passa sem mudar
 comportamento; e2e novo `35-cards-pontos-cliente.mjs`, 81 checagens).
 **Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — conflito
 certo em `htmlPontoEscolha`/`style.css`/`painel.css`; decisão do dono em
-`docs/PENDENCIAS.md` §S (S2). "Meus pontos" ficou como estava (S4).
+`docs/PENDENCIAS.md` §T (T2). "Meus pontos" ficou como estava (T4).
 **Não iniciar outra estação sem o dono.**
+2026-09-28 — **Estação REFORÇO VISUAL DAS PROMOÇÕES + BARRA NA ÁREA LOGADA**
+([PR #98](https://github.com/sancompany/MostrAi/pull/98), branch
+`claude/promocoes-reforco-visual` — **mergeado na `main`** em 28/09/2026,
+`b5c8a27`). Área pública: a oferta ("ATÉ 30% OFF",
+calculada dos itens) é a manchete do componente `public/promocao.js`, com
+selo vermelho, blocos de desconto por ciclo, "Melhor desconto", CTA amarelo e
+"Tempo limitado"; paleta de campanha só dentro de `.campanha`. Área logada:
+o card do painel saiu, entrou a faixa fina com X (`public/barra-promocional.js`,
+dispensa em localStorage por id). ADR-028, PENDENCIAS §S, e2e 30 (e 29
+atualizado). Sem backend, sem banco, sem regra comercial. **Não iniciar
+outra estação.**
 2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
 ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
 autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).

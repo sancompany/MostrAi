@@ -5296,7 +5296,47 @@ interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
   Planos — não há campo de prioridade nem de destino no admin (não foi
   criado um CMS por causa do carrossel).
 
-## S. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
+## S. Promoções — reforço visual + barra na área logada (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Decisão:
+ADR-028. Nenhuma regra comercial mudou (percentuais, prazo, teto, Checkout,
+cálculo, elegibilidade, API e banco intactos).
+
+Feito:
+
+- [x] Área pública (Home, Planos, prévia do admin): a oferta vira a manchete
+      ("ATÉ 30% OFF", calculada dos itens da promoção), selo em faixa
+      vermelha, descontos por ciclo como blocos (Planos: levam ao ciclo na
+      grade; Home: faixa compacta só de leitura), "Melhor desconto" no
+      ciclo de maior desconto, "Ver planos" em amarelo, "Tempo limitado" com
+      prazo e teto. Paleta de campanha só dentro do componente.
+- [x] Arte continua fora do texto e inteira; empilhada, a arte horizontal
+      ganhou teto de 260px de altura (em 768px o bloco passava de 660px).
+- [x] Carrossel, teclado, swipe, `inert`, `aria` e reduced-motion
+      preservados (e2e 29 atualizado para o contrato novo).
+- [x] Área logada: o card grande do painel saiu; faixa fina abaixo do
+      cabeçalho com X (`public/barra-promocional.js`), dispensa em
+      localStorage por id da promoção.
+- [x] E2E novo `tests/e2e/30-promocoes-reforco.mjs` (Home em 8 larguras,
+      Planos, estados sem arte/quadrada/vertical/textos longos/expirada,
+      barra: aberta, fechada, navegação, aba nova, outro navegador,
+      promoção nova).
+
+Revisão independente (achados reproduzidos, corrigidos e com teste no e2e
+30): a barra anunciava o desconto de uma promoção mais antiga numa célula já
+dada à mais nova (agora usa a mesma disputa de células do bloco público);
+o "até" da barra divergia do bloco; blocos de ciclo da Home eram itens de
+lista rotulados por `aria-label` (NVDA ignora — agora texto lido); título
+com contexto sumia quando citava o percentual, e "30,5%" era confundido com
+"5%"; "Tempo limitado" aparecia sem prazo (só com teto de adesões).
+
+Continuam abertas (§R, não resolvidas aqui): R0 divergência potencial entre
+a promoção exibida em Planos e a aplicada no preço; R1 fim em 31/12 às
+00:00; R2 sem arte específica de celular; R3 prefixo do título removido
+visualmente; R4 ordem/destino do CTA não configuráveis — e agora também a
+promoção sem CTA não existe (o CTA "Ver planos" é fixo).
+
+## T. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
 
 **Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), NÃO mergeado — aguarda o dono):** "Onde seu anúncio
 aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
@@ -5310,7 +5350,7 @@ anel e fundo levemente alaranjado. Próprio ponto: selo "Seu ponto" sobre a
 foto, borda quente e o texto da escolha num quadro claro — nunca marcado
 sozinho. Grade: 3 por fileira no desktop e no tablet, 1 no celular (foto
 2:1, a página rola); no tablet/desktop a lista rola por dentro (720 px).
-Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-028) —
+Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-029) —
 **sem mudança de backend nem de banco**. Seleção, limite, trava, salvamento,
 contador, busca e distribuição automática: o mesmo código de antes. E2E:
 `tests/e2e/35-cards-pontos-cliente.mjs` (novo) e o 26 passando sem mudança
@@ -5318,9 +5358,9 @@ de comportamento.
 
 **Com o dono:**
 
-- **S1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
+- **T1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
   os pontos mandaram, nomes longos, o próprio ponto.
-- **S2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
+- **T2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
   redesenha este card (foto pela rota `pontos-disponiveis`, com `uf`), troca
   "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
   escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
@@ -5328,15 +5368,15 @@ de comportamento.
   `.pontos-selecao` de `painel.css` — quem entrar por último resolve o
   conflito. Se esta estação for aceita, a parte visual do card no #90 sai; a
   fila de salvamento é mudança de lógica e é decisão à parte.
-- **S3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
+- **T3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
   informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
   não tem horário). Mantido como estava — trocar o texto do cliente é
   decisão de conteúdo, não desta estação.
-- **S4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
+- **T4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
   card de gestão (andamento, telas, benefício), que já usa a mesma foto, o
   mesmo placeholder e o mesmo selo de estado. Trocar para o card com foto
   grande em cima alonga a coluna lateral — só se o dono quiser.
-- **S5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
+- **T5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
   (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
   card não mostra. Mostrar é decisão de produto (no modo automático diria
   quais pontos saíram no sorteio).
