@@ -1284,10 +1284,21 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
 cada ponto da rede com localização, estado operacional, horário, ocupação e
 se está selecionado, e o contador "X de N pontos selecionados" (N =
-`pontos_incluidos` do plano, do servidor). Vale pra plano pago **e** pra
-benefício (créditos/cortesia) — até 27/09/2026 o painel escondia a lista pro
-benefício. O ponto da própria conta aparece na mesma lista com destaque
-laranja, selo **Seu ponto**, rótulo "Veicular no próprio ponto" e o texto
+`pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
+cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
+Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o
+estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
+"Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado
+escrito — "Selecionar ponto", "Selecionado" (borda da marca), "Limite do
+plano atingido" ou "Indisponível para escolha" (sem espaço ou fechado pra
+escolha nova, card apagado). Clicar em qualquer parte do card marca; no
+mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
+se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
+segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
+são os de antes. Vale pra plano pago **e** pra benefício (créditos/cortesia)
+— até 27/09/2026 o painel escondia a lista pro benefício. O ponto da própria
+conta aparece na mesma lista com destaque (borda quente e o selo **Seu
+ponto** sobre a foto), rótulo "Veicular no próprio ponto" e o texto
 "Este estabelecimento pertence à sua conta. Você pode incluí-lo na
 cobertura da campanha ou anunciar somente em outros pontos da rede." Ele
 **nunca** vem marcado por ser da conta; marcado, conta no limite como

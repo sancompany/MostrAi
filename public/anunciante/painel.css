@@ -106,9 +106,12 @@
 .network-growth { position: relative; margin: 4px 0 18px; padding: 20px 22px 20px 58px; border: 1px solid #f2ddc3; border-radius: 14px; background: linear-gradient(135deg, #fff6ec, #fffcf8); color: var(--text-dim); font-size: .88rem; line-height: 1.6; }
 .network-growth::before { content: "↗"; position: absolute; left: 20px; top: 20px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #ffe7d2; color: var(--brand-text); font-weight: 800; }
 .network-growth b:first-child { display: block; margin-bottom: 2px; color: var(--text); font-size: .98rem; }
-.pontos-selecao { max-height: 440px; overflow: auto; padding-right: 3px; }
-.anunciante-dashboard .ponto-escolha { padding: 11px 13px; margin-bottom: 7px; background: #fff; }
-.anunciante-dashboard .ponto-escolha:has(input:checked) { border-color: #ffc391; background: #fffaf6; }
+/* Cards de ponto (style.css, "Escolha de pontos do anunciante"): a lista
+   rola por dentro a partir do tablet — as duas primeiras fileiras à vista e
+   a seguinte espiando, que é o que avisa que tem mais. O respiro de 3px deixa
+   o anel do card marcado aparecer inteiro na borda da rolagem. */
+.painel-cobertura .busca-pontos { margin-bottom: 12px; }
+.pontos-selecao { max-height: 720px; overflow: auto; padding: 3px; }
 .criativos-head { gap: 24px; }
 .criativos-actions { display: flex; align-items: center; gap: 10px; }
 .badge-neutro { background: #eef2f6; color: #526071; }
@@ -158,6 +161,9 @@
   .anunciante-dashboard .bar-chart-h .row { grid-template-columns: minmax(90px, 1fr) 2fr auto; }
   .criativos-head { flex-direction: column; }
   .criativos-actions { width: 100%; justify-content: space-between; }
+  /* Celular: a página rola, não a lista — rolagem dentro de rolagem prende
+     o dedo (a mesma lição do mapa em "Onde estamos"). */
+  .pontos-selecao { max-height: none; overflow: visible; }
 }
 @media (max-width: 520px) {
   .anunciante-dashboard .painel-wrap { padding: 0 14px; }
