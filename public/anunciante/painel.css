@@ -277,8 +277,6 @@
 .tela-num b { color: var(--text); }
 .estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
 .estab-pe { margin: 0; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .82rem; }
-.pontos-novo { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
-.pontos-novo form { max-width: 560px; }
 #msgMeusPontos { margin: 0 0 12px; }
 @media (max-width: 640px) {
   .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
@@ -330,6 +328,12 @@
 .area-criativos { grid-area: criativos; min-width: 0; }
 .area-lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .area-creditos { grid-area: creditos; min-width: 0; }
+/* Formulário de ponto aberto (estação dos formulários de ponto, 28/09/2026):
+   a área só entra no grid enquanto ele existe — vazia, ela somaria um
+   espaçamento a mais entre as áreas. No celular vem logo depois de Meus
+   pontos, de onde ele foi aberto; no desktop, na largura toda, no topo. */
+.area-form-ponto { grid-area: formponto; min-width: 0; scroll-margin-top: 80px; }
+.painel-grid.com-form-ponto { grid-template-areas: "campanha" "lateral" "formponto" "criativos" "creditos"; }
 .painel-grid .dashboard-section { margin-bottom: 0; }
 .area-campanha[hidden] { display: none; }
 /* Cartões de bloqueio (sem plano / modo não ativado) nascem antes de
@@ -340,11 +344,13 @@
     grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
     grid-template-areas: "campanha lateral" "criativos lateral" "creditos creditos";
   }
+  .painel-grid.com-form-ponto {
+    grid-template-areas: "formponto formponto" "campanha lateral" "criativos lateral" "creditos creditos";
+  }
   /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só. */
   .area-lateral .estab-lista { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
   .area-lateral .tela-linha .tela-num, .area-lateral .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
-  .area-lateral .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .panel-head { flex-wrap: wrap; }
   .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
   /* Coluna estreita: o selo de status desce pra baixo do nome, em vez de
