@@ -5298,7 +5298,7 @@ interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
 
 ## S. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
 
-**Feito (PR próprio, NÃO mergeado — aguarda o dono):** "Onde seu anúncio
+**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), NÃO mergeado — aguarda o dono):** "Onde seu anúncio
 aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
 card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
 mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,

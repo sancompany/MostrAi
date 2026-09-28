@@ -2,7 +2,7 @@
 
 ## Updated
 2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
-do admin** (PR próprio, draft, NÃO mergeado — aguarda o dono; branch
+do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), draft, NÃO mergeado — aguarda o dono; branch
 `claude/serene-lovelace-1zx4a0`, base `c521b25`). "Onde seu anúncio aparece"
 virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
 fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
