@@ -249,7 +249,7 @@ test('benefício por créditos e cortesia legada NUNCA mostram valor monetário'
   }
 });
 
-test('plano sem exibição prevista não divide por zero; conta paga sem snapshot mostra "-"', async () => {
+test('plano sem exibição prevista não divide por zero; conta paga sem snapshot mostra o custo calculado (estimado)', async () => {
   assert.equal(ciclo.custoPorExibicaoPrevista({ valor_ciclo: 100, exibicoes_previstas_ciclo: 0 }), null);
   assert.equal(ciclo.custoPorExibicaoPrevista({ valor_ciclo: 0, exibicoes_previstas_ciclo: 100 }), null);
   assert.equal(ciclo.custoPorExibicaoPrevista(null), null);
@@ -261,7 +261,14 @@ test('plano sem exibição prevista não divide por zero; conta paga sem snapsho
     const s = await situacao(semExibicao.id);
     assert.equal(s.exibicoesPrevistasCiclo, 0);
     assert.equal(s.custoPorExibicaoPrevista, null);
-    assert.deepEqual(await situacao(semSnapshot.id), { tipo: 'sem_snapshot' });
+    // Finalização (28/09/2026): plano pago em vigor sem snapshot do próprio
+    // plano não mostra mais "-" — calcula pela mesma régua e diz que é
+    // estimado. `sem_snapshot` só sobra pra plano que nem existe mais.
+    const estimado = await situacao(semSnapshot.id);
+    assert.equal(estimado.tipo, 'pago');
+    assert.equal(estimado.aproximado, true);
+    assert.ok(estimado.custoPorExibicaoPrevista > 0);
+    assert.match(estimado.plano, /Essencial · Mensal/);
   } finally {
     await apagar(semExibicao.id);
     await apagar(semSnapshot.id);

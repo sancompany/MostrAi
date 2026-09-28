@@ -79,11 +79,15 @@ async function descartarProcessamentosOrfaos(anuncianteId) {
 // Conta pra aplicar o limite de criativos do plano (não conta reprovado —
 // reprovado não ocupa a cota, ver src/anunciantes/routes.js). Substituto em
 // análise também não conta: ele só entra tirando o que substitui, então o
-// total depois da troca é o mesmo de antes (Parte 22).
+// total depois da troca é o mesmo de antes (Parte 22). Retirado também não
+// conta (finalização, 28/09/2026): depois da troca o original vira
+// 'retirado' e, contando, o Essencial (1) ficava "2 de 1" e travava o
+// próximo envio — a peça fora do ar não ocupa vaga; se o admin a colocar
+// no ar de novo, o limite do rodízio (limiteDeCriativos) é que segura.
 async function contarNaoReprovados(anuncianteId) {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS total FROM criativos
-      WHERE anunciante_id = $1 AND status != 'reprovado'
+      WHERE anunciante_id = $1 AND status NOT IN ('reprovado', 'retirado')
         AND NOT (status = 'pendente' AND substitui_criativo_id IS NOT NULL)`,
     [anuncianteId],
   );

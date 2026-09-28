@@ -99,6 +99,7 @@ async function apurarMes({ mes = null, simular = false, apenasContas = null, ago
         de: janela.inicio,
         ate: new Date(Math.min(janela.fim.getTime(), new Date(agora).getTime())),
         apenasContas,
+        soServidorForaDoAr: true,
       });
 
   // Duração de reserva só pra linha gravada antes da migration 100 (sem a

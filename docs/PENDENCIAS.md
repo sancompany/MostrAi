@@ -4922,6 +4922,12 @@ deploy: 2 snapshots preenchidos a partir das cobranças de ciclo inteiro.
   R$ 0,01375/exibição) ficou registrado; a troca pra Pro (acerto de R$ 405)
   não tem valor de ciclo registrado e não virou snapshot — a conta está em
   benefício por créditos hoje, então o card mostra "Benefício por créditos".
+- **K.3 [x] — 28/09/2026 (finalização).** Plano pago em vigor sem snapshot
+  do próprio plano deixou de mostrar "-": `situacaoDoCusto` calcula o
+  snapshot que a contratação teria gravado (valor do ciclo pela régua da
+  conta ÷ exibições previstas do plano) e marca `aproximado`; o painel
+  escreve "estimado" na legenda. Vale pra conta 5 quando o benefício
+  acabar e pra qualquer troca de versão de plano.
 
 ## L. Estação final de consolidação — o que ficou pro dono (24/09/2026)
 

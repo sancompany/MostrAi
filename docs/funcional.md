@@ -509,6 +509,10 @@ o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00".
 Benefício por créditos: "Benefício por créditos · Sem valor monetário neste
 ciclo"; cortesia legada: "Cortesia · Sem cobrança neste ciclo". Não é CPM
 (o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
+Plano pago em vigor **sem snapshot dele** (troca feita antes da migration
+087, versão nova do plano): o card mostra o custo **calculado** pela mesma
+régua (valor do ciclo da conta ÷ exibições previstas do plano), marcado
+"estimado" — nunca mais "-" pra quem paga *(finalização, 28/09/2026)*.
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
 *(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom
@@ -698,6 +702,18 @@ passou a chamar a rota nova do Checkout, com dois desfechos possíveis:
   aprovar, o link expira sozinho (15 minutos, do lado do Checkout) e a
   linha `pendente_troca` daqui fica órfã, sem nada cobrando ela de volta
   (registrado, não corrigido — ver `docs/PENDENCIAS.md`).
+
+**Cobertura paga de outro plano ainda valendo, sem assinatura ativa**
+(cancelou e quer assinar outro): `POST /anunciantes/:id/assinar` responde
+`409` dizendo até quando o plano atual vale e mandando pro WhatsApp — o
+ciclo novo somaria no fim da cobertura antiga (Essencial anual cancelado +
+Prime mensal dava 13 meses de Prime pelo preço de um). O mesmo plano
+continua liberado (renova). E, no crédito do ciclo, a data-base só é o fim
+da cobertura vigente pro **mesmo** plano (ou renovação atrasada de
+assinatura substituída); ciclo de outro plano começa hoje. **Ciclo pago em
+conta suspensa** nunca reativa a conta: a cobertura conta, a suspensão
+fica (só o admin desfaz) e a fila "Eventos do Checkout" ganha uma
+pendência *(finalização, 28/09/2026)*.
 
 Cada linha de `assinaturas` é o `planoId` que o Checkout usa pra nos
 perguntar preço (`GET /plano/:id`) — trocar de plano não é UPDATE na linha,

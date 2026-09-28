@@ -378,10 +378,15 @@ function exigirAnuncianteLogado(req, res, next) {
 // chave primária por request autenticada; o ponto físico do dono suspenso
 // continua tocando (a TV autentica pelo aparelho, não por esta sessão).
 // Montado em server.js antes de todas as rotas.
+// Conta excluída idem (finalização, 28/09/2026): excluir no computador
+// derrubava só aquela sessão; o celular seguia logado por até 7 dias,
+// subindo criativo e resgatando crédito numa conta que pediu pra sair.
 async function derrubarSessaoSuspensa(req, _res, next) {
   if (!req.session?.anuncianteId) return next();
-  const { rows } = await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [req.session.anuncianteId]);
-  if (rows[0]?.suspenso) delete req.session.anuncianteId;
+  const { rows } = await pool.query('SELECT suspenso, excluido_em FROM anunciantes WHERE id = $1', [
+    req.session.anuncianteId,
+  ]);
+  if (!rows[0] || rows[0].suspenso || rows[0].excluido_em) delete req.session.anuncianteId;
   next();
 }
 
