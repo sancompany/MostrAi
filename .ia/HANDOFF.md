@@ -1,6 +1,12 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **ESTAÇÃO MESTRE DE FINALIZAÇÃO = PAUSADA (não concluída).**
+Seis PRs abertos, nenhum mergeado: #87 UX global, #88 Lógica, #89 Mídia,
+#90 Pontos/Rede, #91 Indicações, #92 Conta+Criativos (empilhado em #87).
+Inventário completo, pendências e **RETOMAR DAQUI** em
+`docs/auditoria-finalizacao-checkpoint.md`. Não iniciar Passada 2 nem
+outra estação sem o dono; nenhum merge sem autorização.
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só
