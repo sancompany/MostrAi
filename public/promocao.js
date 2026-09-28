@@ -79,23 +79,34 @@
   }
 
   // Maior desconto de cada ciclo, só nas células que baixam o preço de
-  // verdade (`temVantagem`, marcado pelo servidor). Produtos com descontos
-  // diferentes no mesmo ciclo viram "até X%".
-  function descontosPorCiclo(promo) {
+  // verdade (`temVantagem`, marcado pelo servidor). Vira "até X%" quando os
+  // produtos do ciclo têm descontos diferentes OU quando algum produto
+  // exibido no ciclo fica sem ele — "30% Mensal" levaria a planos Mensal sem
+  // os 30%. `tiersDoCiclo(meses)` (Planos): os produtos que a grade mostra
+  // naquele ciclo; sem ele, valem os produtos configurados na promoção.
+  function descontosPorCiclo(promo, tiersDoCiclo = null) {
     const porCiclo = new Map();
+    const configurados = new Map();
     for (const item of promo.itens || []) {
-      if (item.temVantagem === false) continue;
       const meses = Number(item.compromissoMeses);
+      if (!configurados.has(meses)) configurados.set(meses, new Set());
+      configurados.get(meses).add(item.tier);
+      if (item.temVantagem === false) continue;
       const desconto = Number(item.descontoPercentual);
-      const atual = porCiclo.get(meses);
-      porCiclo.set(meses, {
-        min: atual ? Math.min(atual.min, desconto) : desconto,
-        max: atual ? Math.max(atual.max, desconto) : desconto,
-      });
+      const atual = porCiclo.get(meses) || { min: desconto, max: desconto, tiers: new Set() };
+      atual.min = Math.min(atual.min, desconto);
+      atual.max = Math.max(atual.max, desconto);
+      atual.tiers.add(item.tier);
+      porCiclo.set(meses, atual);
     }
     return [...porCiclo.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([meses, d]) => ({ meses, nome: window.nomeDoCiclo(meses), desconto: d.max, variavel: d.min !== d.max }));
+      .map(([meses, d]) => {
+        const exibidos = tiersDoCiclo?.(meses);
+        const produtos = exibidos?.length ? exibidos : [...configurados.get(meses)];
+        const parcial = produtos.some((t) => !d.tiers.has(t));
+        return { meses, nome: window.nomeDoCiclo(meses), desconto: d.max, variavel: d.min !== d.max || parcial };
+      });
   }
 
   // Prazo e teto de adesões — as duas regras que encerram a promoção.
@@ -168,8 +179,8 @@
     </div>`;
   }
 
-  function htmlCiclos(promo) {
-    const ciclos = descontosPorCiclo(promo);
+  function htmlCiclos(promo, tiersDoCiclo) {
+    const ciclos = descontosPorCiclo(promo, tiersDoCiclo);
     if (!ciclos.length) return '';
     return `<ul class="campanha-ciclos" aria-label="Desconto por ciclo">${ciclos
       .map(
@@ -184,14 +195,14 @@
   // Uma promoção, em HTML. `variante`: 'home' (curta, com "Ver planos") ou
   // 'planos' (o cliente já está no destino: descontos por ciclo, que levam
   // ao ciclo escolhido, prazo completo e as regras).
-  function htmlPromocao(promo, { variante = 'home', midia = null, id = 'campanha' } = {}) {
+  function htmlPromocao(promo, { variante = 'home', midia = null, id = 'campanha', tiersDoCiclo = null } = {}) {
     const forma = orientacao(midia, promo.formato_midia);
     const titulo = tituloSemSelo(promo.titulo_publico, promo.selo);
     const idTitulo = `${id}-titulo`;
     let detalhe = '';
     if (variante === 'planos') {
       const validade = linhaValidade(promo);
-      detalhe = `${htmlCiclos(promo)}
+      detalhe = `${htmlCiclos(promo, tiersDoCiclo)}
         ${validade ? `<p class="campanha-validade">${esc(validade)}</p>` : ''}
         ${promo.descricao ? `<details class="campanha-regras"><summary>Como funciona</summary><p>${esc(promo.descricao)}</p></details>` : ''}`;
     } else {
@@ -292,6 +303,19 @@
       anterior.setAttribute('aria-disabled', String(indice === 0));
       proxima.setAttribute('aria-disabled', String(indice === slides.length - 1));
     };
+    const indiceNaPosicao = () => {
+      const passo = slides[0].getBoundingClientRect().width + parseFloat(getComputedStyle(trilho).columnGap || 0);
+      return Math.max(0, Math.min(slides.length - 1, Math.round(trilho.scrollLeft / (passo || 1))));
+    };
+    // Trilho parado: vale onde ele está, tenha a rolagem pedida chegado ou
+    // sido interrompida por um swipe no meio (senão o slide à vista ficava
+    // inerte e os pontos marcavam o destino que não chegou).
+    let parada = 0;
+    const assentar = () => {
+      destino = null;
+      const indice = indiceNaPosicao();
+      if (indice !== atual) marcar(indice);
+    };
     const ir = (indice) => {
       const alvo = Math.max(0, Math.min(slides.length - 1, indice));
       if (alvo === atual) return;
@@ -301,6 +325,9 @@
       // `.campanha-trilho` é `position: relative`: o offsetLeft do slide é a
       // posição dele dentro do trilho.
       trilho.scrollTo({ left: slides[alvo].offsetLeft, behavior: suave() });
+      // Rede de segurança pra uma rolagem que não dispara evento nenhum.
+      clearTimeout(parada);
+      parada = setTimeout(assentar, 1300);
     };
     // Fora de uma rolagem pedida, o índice sai da posição real do trilho —
     // vale pro swipe e pra roda do mouse.
@@ -308,10 +335,11 @@
     trilho.addEventListener(
       'scroll',
       () => {
+        clearTimeout(parada);
+        parada = setTimeout(assentar, 150);
         cancelAnimationFrame(quadro);
         quadro = requestAnimationFrame(() => {
-          const passo = slides[0].getBoundingClientRect().width + parseFloat(getComputedStyle(trilho).columnGap || 0);
-          const indice = Math.max(0, Math.min(slides.length - 1, Math.round(trilho.scrollLeft / (passo || 1))));
+          const indice = indiceNaPosicao();
           if (destino !== null) {
             // Chegou, ou a rolagem pedida foi interrompida por um swipe.
             if (indice === destino || Date.now() - largada > 1200) destino = null;
@@ -348,7 +376,11 @@
   // `aoEscolherCiclo(meses)` (Planos): o que fazer quando o cliente toca num
   // desconto por ciclo.
   const ultimaMontagem = new WeakMap();
-  async function montarPromocoes(alvo, promocoes, { variante = 'home', aoEscolherCiclo = null, id = 'campanha' } = {}) {
+  async function montarPromocoes(
+    alvo,
+    promocoes,
+    { variante = 'home', aoEscolherCiclo = null, tiersDoCiclo = null, id = 'campanha' } = {},
+  ) {
     const lista = (Array.isArray(promocoes) ? promocoes : []).filter(Boolean);
     if (!alvo) return false;
     const vez = (ultimaMontagem.get(alvo) || 0) + 1;
@@ -356,7 +388,7 @@
     if (!lista.length) return false;
     const midias = await Promise.all(lista.map(prepararMidia));
     if (ultimaMontagem.get(alvo) !== vez) return false;
-    const blocos = lista.map((p, i) => htmlPromocao(p, { variante, midia: midias[i], id: `${id}-${i}` }));
+    const blocos = lista.map((p, i) => htmlPromocao(p, { variante, midia: midias[i], id: `${id}-${i}`, tiersDoCiclo }));
     alvo.classList.add('campanha-lista');
     alvo.innerHTML =
       lista.length === 1

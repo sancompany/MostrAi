@@ -5254,6 +5254,12 @@ anunciar um desconto que a cobrança não aplica. A arte espera no máximo 0,8 s
 antes de a seção aparecer (depois disso o espaço fica reservado pela
 proporção declarada e ela entra inteira, com `contain`).
 
+Revisão do Codex no PR (2 P2, corrigidos com teste no e2e 29): o desconto
+por ciclo em Planos vira "até X%" também quando algum plano exibido naquele
+ciclo fica sem ele (antes, "30% Mensal" podia levar a planos Mensal sem os
+30%); e o carrossel passa a assentar onde o trilho parou quando um swipe
+interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
+
 **Achado funcional, NÃO alterado (regra de preço, fora desta estação):**
 
 - **R0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em

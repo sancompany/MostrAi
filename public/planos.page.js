@@ -289,6 +289,8 @@ async function pintarPromocoesPlanos(vigentes) {
       variante: 'planos',
       id: 'promoPlanos',
       aoEscolherCiclo: escolherCicloDaPromocao,
+      // "30% Mensal" só quando todo plano Mensal da grade tem os 30%.
+      tiersDoCiclo: (meses) => PLANOS.filter((p) => p.compromisso_meses === meses).map((p) => p.tier),
     },
   );
   if (montou) document.getElementById('promocaoPlanosBanner').hidden = false;

@@ -226,6 +226,21 @@ try {
     await p.click('[data-campanha-ir="0"]');
     await p.waitForTimeout(700);
     check(`carrossel ${w}: ponto leva direto ao slide`, (await estado()).atual === 0);
+    // Swipe que interrompe a rolagem de uma seta: vale onde o trilho parou,
+    // não o destino que não chegou (o slide à vista não pode ficar inerte).
+    await p.click('[data-campanha-proxima]');
+    await p.waitForFunction(() => document.querySelector('[data-campanha-trilho]').scrollLeft > 0);
+    await p.evaluate(() => {
+      const t = document.querySelector('[data-campanha-trilho]');
+      t.scrollTo({ left: 0, behavior: 'instant' });
+    });
+    await p.waitForTimeout(600);
+    const interrompida = await estado();
+    check(
+      `carrossel ${w}: rolagem da seta interrompida fica no slide à vista`,
+      interrompida.atual === 0 && JSON.stringify(interrompida.inertes) === '[false,true]',
+      interrompida,
+    );
     await p.waitForTimeout(5000);
     check(`carrossel ${w}: sem autoplay`, (await estado()).atual === 0);
     const m = await medir(p);
@@ -249,6 +264,55 @@ try {
       'planos: a pré-venda (mais antiga) não anuncia o Trimestral, que a mais nova ocupa',
       JSON.stringify(ciclos) === JSON.stringify([['22% Trimestral'], ['10% Mensal', '25% Semestral', '30% Anual']]),
       ciclos,
+    );
+    // A mais nova passa a valer só no Essencial Trimestral: nas duas, o
+    // Trimestral deixa de cobrir a grade inteira e vira "até".
+    PG(`DELETE FROM promocoes_itens WHERE tier <> 'essencial'
+          AND promocao_id = (SELECT id FROM promocoes WHERE nome_interno = '${PREFIXO}-comercio-local')`);
+    await p.reload();
+    await p.waitForSelector('[data-campanha-carrossel]');
+    const soEssencial = await p.evaluate(() =>
+      [...document.querySelectorAll('[data-campanha-slide]')].map((s) =>
+        [...s.querySelectorAll('.campanha-ciclo')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()),
+      ),
+    );
+    check(
+      'planos: célula parcial no ciclo aparece como "até" nas duas promoções',
+      JSON.stringify(soEssencial) ===
+        JSON.stringify([['até 22% Trimestral'], ['10% Mensal', 'até 20% Trimestral', '25% Semestral', '30% Anual']]),
+      soEssencial,
+    );
+    for (const t of ['destaque', 'maximo']) {
+      PG(`INSERT INTO promocoes_itens (promocao_id, tier, compromisso_meses, desconto_percentual)
+            SELECT id, '${t}', 3, 22 FROM promocoes WHERE nome_interno = '${PREFIXO}-comercio-local'`);
+    }
+    // "30% Mensal" só quando TODO plano Mensal exibido tem os 30%; se algum
+    // fica de fora, é "até" — senão o clique leva a planos sem o desconto.
+    const parciais = await p.evaluate(() => {
+      const promo = {
+        itens: [
+          { tier: 'essencial', compromissoMeses: 1, descontoPercentual: 30, temVantagem: true },
+          { tier: 'destaque', compromissoMeses: 3, descontoPercentual: 20, temVantagem: true },
+          { tier: 'maximo', compromissoMeses: 3, descontoPercentual: 20, temVantagem: false },
+          { tier: 'essencial', compromissoMeses: 6, descontoPercentual: 25, temVantagem: true },
+          { tier: 'destaque', compromissoMeses: 6, descontoPercentual: 25, temVantagem: true },
+        ],
+      };
+      const rotulo = (c) => `${c.variavel ? 'até ' : ''}${c.desconto}% ${c.nome}`;
+      const grade = () => ['essencial', 'destaque', 'maximo'];
+      return {
+        semGrade: window.promocaoUtil.descontosPorCiclo(promo).map(rotulo),
+        comGrade: window.promocaoUtil.descontosPorCiclo(promo, grade).map(rotulo),
+      };
+    });
+    check(
+      'planos: desconto que não cobre todo plano do ciclo vira "até"',
+      JSON.stringify(parciais) ===
+        JSON.stringify({
+          semGrade: ['30% Mensal', 'até 20% Trimestral', '25% Semestral'],
+          comGrade: ['até 30% Mensal', 'até 20% Trimestral', 'até 25% Semestral'],
+        }),
+      parciais,
     );
     const titulos = await p.evaluate(() => [
       window.promocaoUtil.tituloSemSelo('Black Friday: 2026', 'Black Friday'),
