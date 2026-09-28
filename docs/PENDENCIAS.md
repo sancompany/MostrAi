@@ -5296,6 +5296,46 @@ interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
   Planos — não há campo de prioridade nem de destino no admin (não foi
   criado um CMS por causa do carrossel).
 
+## S. Promoções — reforço visual + barra na área logada (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Decisão:
+ADR-028. Nenhuma regra comercial mudou (percentuais, prazo, teto, Checkout,
+cálculo, elegibilidade, API e banco intactos).
+
+Feito:
+
+- [x] Área pública (Home, Planos, prévia do admin): a oferta vira a manchete
+      ("ATÉ 30% OFF", calculada dos itens da promoção), selo em faixa
+      vermelha, descontos por ciclo como blocos (Planos: levam ao ciclo na
+      grade; Home: faixa compacta só de leitura), "Melhor desconto" no
+      ciclo de maior desconto, "Ver planos" em amarelo, "Tempo limitado" com
+      prazo e teto. Paleta de campanha só dentro do componente.
+- [x] Arte continua fora do texto e inteira; empilhada, a arte horizontal
+      ganhou teto de 260px de altura (em 768px o bloco passava de 660px).
+- [x] Carrossel, teclado, swipe, `inert`, `aria` e reduced-motion
+      preservados (e2e 29 atualizado para o contrato novo).
+- [x] Área logada: o card grande do painel saiu; faixa fina abaixo do
+      cabeçalho com X (`public/barra-promocional.js`), dispensa em
+      localStorage por id da promoção.
+- [x] E2E novo `tests/e2e/30-promocoes-reforco.mjs` (Home em 8 larguras,
+      Planos, estados sem arte/quadrada/vertical/textos longos/expirada,
+      barra: aberta, fechada, navegação, aba nova, outro navegador,
+      promoção nova).
+
+Revisão independente (achados reproduzidos, corrigidos e com teste no e2e
+30): a barra anunciava o desconto de uma promoção mais antiga numa célula já
+dada à mais nova (agora usa a mesma disputa de células do bloco público);
+o "até" da barra divergia do bloco; blocos de ciclo da Home eram itens de
+lista rotulados por `aria-label` (NVDA ignora — agora texto lido); título
+com contexto sumia quando citava o percentual, e "30,5%" era confundido com
+"5%"; "Tempo limitado" aparecia sem prazo (só com teto de adesões).
+
+Continuam abertas (§R, não resolvidas aqui): R0 divergência potencial entre
+a promoção exibida em Planos e a aplicada no preço; R1 fim em 31/12 às
+00:00; R2 sem arte específica de celular; R3 prefixo do título removido
+visualmente; R4 ordem/destino do CTA não configuráveis — e agora também a
+promoção sem CTA não existe (o CTA "Ver planos" é fixo).
+
 ## T. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
 
 Estação isolada, branch e worktree próprias, PR próprio, **sem merge até o
@@ -5344,7 +5384,7 @@ dono autorizar**. Decisão: ADR-029 (`.ia/DECISIONS.md`).
       aparece como marcador (itálico), não como dado.
 - [x] Payload, rotas, aprovação, Plano Básico, créditos e admin intocados.
       Cancelar segue sem confirmação (não havia; nenhum `confirm()` aqui).
-- [x] E2E `tests/e2e/30-formularios-ponto.mjs` (91 verificações); 03, 05,
+- [x] E2E `tests/e2e/31-formularios-ponto.mjs` (91 verificações); 03, 05,
       08, 09, 12, 16, 22, 26 e 28 continuam verdes.
 
 **Achados fora desta estação (não alterados):**

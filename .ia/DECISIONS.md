@@ -969,6 +969,55 @@ Consequências: nova superfície de promoção usa `montarPromocoes` (ou
 `htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
 destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §R).
 
+
+## ADR-028 — Promoção: a oferta é a manchete na área pública; na área logada, uma faixa fina com X (28/09/2026)
+
+Status: Ativa. Sem migration, sem backend. Código: `public/promocao.js`
+(componente público), bloco "Componente de promoção" em `public/style.css`,
+`public/barra-promocional.js` (área logada). Complementa o ADR-027 (mídia
+separada do conteúdo), que continua valendo inteiro.
+
+Contexto: depois do ADR-027 a promoção ficou correta e limpa, mas lia como
+card institucional — o "30%" tinha o mesmo peso do resto do título. E no
+painel um card largo ocupava o topo da área operacional.
+
+Decisão:
+1. **Área pública vende.** A manchete é a OFERTA calculada dos próprios
+   itens da promoção (`ofertaDaPromocao`: maior desconto entre as células
+   com vantagem — as mesmas de `descontosPorCiclo`, com "até" quando os
+   ciclos não têm o mesmo desconto). Hierarquia: selo (faixa vermelha) →
+   título só se disser algo além da oferta (`tituloRedundante`) → "ATÉ 30%
+   OFF" → benefício → descontos por ciclo (blocos; "Melhor desconto" quando
+   um ciclo sozinho tem o maior) → "Ver planos" → "Tempo limitado" + prazo e
+   teto. Leitor de tela ouve "Até 30% de desconto".
+2. **Paleta de campanha escopada.** Só dentro de `.campanha` (tokens
+   `--campanha-*`): fundo quase preto quente, vermelho do selo, amarelo da
+   oferta e do botão. O resto do site segue a identidade Mostraí. Contrastes
+   conferidos (branco/fundo > 15:1, amarelo/fundo > 11:1, branco/vermelho
+   5,1:1, escuro/amarelo > 11:1). Sem animação.
+3. **Área logada opera.** O card do painel saiu; no lugar, uma faixa fina
+   logo abaixo do cabeçalho (selo · "Até 30% OFF" · benefício · "Ver
+   planos" · X), montada por `barra-promocional.js` em página
+   `data-layout="conta"`. Fechar remove a faixa do fluxo (o conteúdo sobe) e
+   guarda `mostrai:promoDispensada:<id>` em `localStorage`: não volta ao
+   navegar nem numa sessão nova do mesmo navegador; promoção nova (outro id)
+   aparece. Sem backend — é preferência do navegador; armazenamento
+   bloqueado = fecha só na página. A barra usa as MESMAS funções do bloco
+   público (`promocoesParaExibir` sem filtro de exposição, `ofertaDaPromocao`,
+   `tituloSemSelo`): a mesma disputa de células — uma promoção dispensada
+   continua na disputa (continua sendo cobrada), só não aparece. Sem isso,
+   dispensar a mais nova fazia a barra anunciar o desconto de uma mais antiga
+   numa célula que a cobrança dá à outra (achado da revisão independente).
+4. **Nenhuma regra comercial muda**: percentuais, prazo, teto, público,
+   cálculo, Checkout, API e banco intactos. A oferta é leitura dos mesmos
+   itens que a vitrine e a cobrança usam.
+
+Consequências: a manchete depende dos itens terem desconto — promoção sem
+célula com vantagem continua fora do site (D1), e a prévia do admin sem
+produto marcado cai no título como manchete. O título gravado não muda; um
+título que repete o percentual da oferta deixa de aparecer na tela (R3
+continua valendo para o prefixo do selo).
+
 ## ADR-029 — Formulário de ponto na largura da página, erro embaixo do campo (28/09/2026)
 
 Contexto: os dois pedidos de ponto ("Tornar-se ponto", com o comércio da
