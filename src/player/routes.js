@@ -102,12 +102,7 @@ const TETO_LOTE = 500;
 // arbitrário chegariam no Postgres e virariam 500 eterno.
 const EXECUCAO_ID = /^[A-Za-z0-9._:-]{1,100}$/;
 
-// `operacao: false` (finalização, 28/09/2026): comprovante de tela que o
-// admin tirou do ar DEPOIS de ela tocar (offline, fila guardada) ainda
-// conta — o que toca de verdade o próprio confirmarExecucao valida contra a
-// hora congelada; com 403 aqui, a fila expirava e a obrigação virava saldo
-// de uma exibição que aconteceu.
-router.post('/player/:dispositivoId/played', exigirAparelho({ operacao: false }), corpoObjeto, async (req, res) => {
+router.post('/player/:dispositivoId/played', exigirAparelho(), corpoObjeto, async (req, res) => {
   const lista = req.body.eventos;
   if (!Array.isArray(lista) || lista.length > TETO_LOTE) {
     return res.status(400).json({ erro: `eventos precisa ser uma lista de até ${TETO_LOTE} itens` });

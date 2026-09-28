@@ -1314,6 +1314,14 @@ fica marcado em `editado_pelo_operador`, para ninguém cobrar do anunciante um
 vídeo que o Mostraí montou. *Violada:* conta inexistente responde 404; o teto de
 criativos do plano continua valendo nas contas de cliente. *Quem vê:* o
 administrador.
+Criativo **retirado não ocupa vaga do plano** (finalização, 28/09/2026): depois
+da substituição o original vira `retirado` e o Essencial (1) segue "1 de 1",
+não "2 de 1". Mas **vaga do plano ≠ teto de cadastro** (revisão Codex do PR
+#88): o teto (3, `CRIATIVOS_POR_CONTA`) conta os retirados e é o que limita o
+que fica guardado na conta — vale pra todo upload, substituição inclusive
+(só a conta própria do Mostraí pula). Com 3 cadastrados o POST responde 400
+"você já tem 3 criativos cadastrados (contando os que estão fora do ar) —
+exclua um pra subir outro"; excluir um retirado libera.
 
 **RN-23 — O admin pode liberar um plano de graça (cortesia).** Põe a conta no
 ar sem criar assinatura nem cobrança: o San Checkout não fica sabendo, nada é
@@ -1422,6 +1430,10 @@ cache e escreve o motivo na própria TV. Sem isso o anunciante pagava por
 exibição numa tela que a operação já sabia que não estava no ar. *Violada:*
 não há caminho — a guarda é o próprio `exigirAparelho`. *Quem vê:* o operador,
 na TV; o anunciante, no painel, porque a exibição simplesmente não é contada.
+POP-07 — mantido o 403 do contrato §4: o Player guarda os comprovantes na
+fila e reenvia quando a tela voltar a Ativa; tela que ficar mais de 7 dias
+fora do ar perde esses comprovantes e a obrigação dessas horas vira saldo —
+decisão de desenho, registrada (revisão Codex do PR #88).
 
 **RN-29 — Reprovar criativo exige motivo, e o motivo chega ao anunciante.**
 O admin não reprova sem escrever por quê; o motivo aparece no card da peça no

@@ -15,6 +15,8 @@ const vigencia = require('../src/lib/vigencia');
 //     snapshot calculado do plano, não em "-";
 //   · CRI-01 criativo retirado não ocupa vaga;
 //   · CRI-03 substituto recusado e depois aprovado retira o original;
+//   · CRI-05 teto de cadastro conta os retirados — 3º substituto recusado;
+//     excluir um retirado libera (revisão Codex do PR #88);
 //   · CTA-01 conta excluída perde as outras sessões;
 //   · POP-02 criativoId fora do int4 não derruba o lote de comprovantes.
 
@@ -268,6 +270,59 @@ test('CRI-03: substituto recusado e depois aprovado retira o original no mesmo g
     );
   } finally {
     await pool.query('DELETE FROM email_outbox WHERE anunciante_id = $1', [conta.id]);
+    await app.fechar();
+    await apagarConta(conta.id);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CRI-05
+// ---------------------------------------------------------------------------
+// Vaga do plano ≠ teto de cadastro (revisão Codex do PR #88, 28/09/2026):
+// o retirado não ocupa vaga (CRI-01), mas continua guardado — e a
+// substituição pula o limite do plano, então cada troca deixava mais um
+// retirado sem teto nenhum. O teto de cadastro (CRIATIVOS_POR_CONTA) conta
+// os retirados e vale pra substituição também.
+test('CRI-05: teto de cadastro conta os retirados — 3º substituto recusado; excluir um retirado libera', async () => {
+  const { CRIATIVOS_POR_CONTA } = require('../src/lib/limites');
+  const anunciantes = require('../src/anunciantes/routes');
+  const app = await subirApp((a) => a.use(anunciantes.router));
+  const conta = await criarConta({ plano_id: 'essencial-1m', data_expiracao: daqui(30) });
+  try {
+    // Duas trocas já feitas: A e B retirados, C no ar. 3 cadastrados, 1 de 1.
+    const a = await criativo(conta.id, { status: 'retirado' });
+    await criativo(conta.id, { status: 'retirado' });
+    const c = await criativo(conta.id, { status: 'aprovado' });
+    assert.strictEqual(await criativosRepo.contarCadastrados(conta.id), 3, 'retirado conta como cadastrado');
+    assert.strictEqual(await criativosRepo.contarNaoReprovados(conta.id), 1, 'mas não ocupa vaga do plano');
+
+    // A recusa acontece antes do ffmpeg: qualquer arquivo serve.
+    const substituir = async () => {
+      const form = new FormData();
+      form.append('substitui', String(c.id));
+      form.append('arquivo', new Blob([Buffer.from('peca-de-teste')], { type: 'video/mp4' }), 'peca.mp4');
+      const r = await fetch(`${app.base}/anunciantes/${conta.id}/criativos`, {
+        method: 'POST',
+        headers: { 'x-conta': String(conta.id) },
+        body: form,
+      });
+      return { status: r.status, corpo: await r.json().catch(() => null) };
+    };
+    const recusado = await substituir();
+    assert.strictEqual(recusado.status, 400, JSON.stringify(recusado.corpo));
+    assert.match(recusado.corpo.erro, /cadastrados/, `terceiro substituto esbarra no teto de ${CRIATIVOS_POR_CONTA}`);
+    assert.strictEqual(await criativosRepo.contarCadastrados(conta.id), 3, 'nada criado');
+
+    // Excluir um retirado libera o teto: o mesmo POST passa da trava (pode
+    // falhar adiante por arquivo inválido — só não é mais o 400 do teto).
+    await criativosRepo.deletar(a.id);
+    assert.strictEqual(await criativosRepo.contarCadastrados(conta.id), 2);
+    const liberado = await substituir();
+    assert.ok(
+      !(liberado.status === 400 && /cadastrados/.test(liberado.corpo?.erro || '')),
+      `com 2 cadastrados o teto não barra: ${liberado.status} ${JSON.stringify(liberado.corpo)}`,
+    );
+  } finally {
     await app.fechar();
     await apagarConta(conta.id);
   }
