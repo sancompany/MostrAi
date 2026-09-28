@@ -834,3 +834,31 @@ Consequências: o domínio `SITE_URL` vira parte do material impresso — se um
 dia o site mudar de endereço, o antigo precisa continuar respondendo (ou
 redirecionando) `/q/anuncie`. QR por ponto, de indicação ou com contagem de
 acessos é outra estação (não reaproveita esta chave).
+
+## ADR-025 — Promoção: mídia separada do conteúdo, um componente, carrossel só com 2+ (28/09/2026)
+
+Contexto: Estação 3 (reformulação visual das promoções). O banner da Home e
+o de Planos eram duas cópias do mesmo HTML com a arte de FUNDO e selo,
+título, condição e botão por cima de um véu escuro; no celular o recorte do
+fundo dependia da altura do texto.
+
+Decisão:
+1. **Texto nunca sobre a arte.** MÍDIA e CONTEÚDO são irmãos no grid:
+   lado a lado com ≥ 840px de componente, arte em cima e texto embaixo
+   abaixo disso. O limite é do COMPONENTE (container query), não da janela,
+   então a prévia do admin sai empilhada como no celular.
+2. **Arte inteira.** A imagem é medida antes de montar e entra com
+   `width`/`height` reais — sem recorte e sem pulo de layout. Imagem lenta
+   (> 2,5 s) reserva a proporção declarada no admin e entra com `contain`;
+   imagem que falha tira a mídia e fica o texto.
+3. **Um renderizador.** `public/promocao.js` (`montarPromocoes`,
+   `htmlPromocao`) serve Home (variante `home`), Planos (variante `planos`)
+   e a prévia do admin. Não existe segunda cópia.
+4. **Carrossel só com duas ou mais**, sem autoplay, no padrão WAI-ARIA de
+   carousel; a ordem é a do servidor.
+5. Apresentação não muda regra: percentuais, janela, teto, público,
+   `temVantagem`/D1 e Checkout seguem as fontes de sempre.
+
+Consequências: nova superfície de promoção usa `montarPromocoes` (ou
+`htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
+destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §Q).

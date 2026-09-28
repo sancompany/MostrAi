@@ -1,6 +1,15 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo** (PR
+próprio, NÃO mergeado; sessão isolada em worktree própria, em paralelo com
+Plano Básico e Categorias). A promoção virou um componente
+(`public/promocao.js` + "Componente de promoção" em `style.css`) usado pela
+Home, por Planos e pela prévia do admin: arte e texto lado a lado (≥ 840px
+de componente, container query) ou empilhados, arte inteira com a proporção
+real, carrossel só com 2+ (sem autoplay). Nenhuma regra comercial mudou.
+ADR-025; pendências do dono em `docs/PENDENCIAS.md` §Q; e2e
+`tests/e2e/28-promocoes-visual.mjs`. **Não iniciar outra estação sem o dono.**
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só

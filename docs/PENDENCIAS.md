@@ -5199,3 +5199,67 @@ Depois do merge (e só então a estação fecha): ver `.ia/TODO.md`, seção "QR
 CODE INSTITUCIONAL". Fora do escopo, para outra estação: QR por ponto, de
 indicação, com contagem de acessos.
 
+
+## Q. Promoções — mídia separada do conteúdo (Estação isolada 3, 28/09/2026)
+
+("Estação isolada 3" é a numeração do dono para as frentes paralelas desta
+semana — não é a Estação 3 da esteira da San & Co., que está fechada.)
+
+**Feito (PR próprio, NÃO mergeado):** a promoção deixou de ser um banner com
+a arte de fundo e todo o texto por cima (véu escuro). Agora é um componente
+só (`public/promocao.js` + bloco "Componente de promoção" em `style.css`),
+usado pela Home, por Planos e pela prévia do admin: arte e texto lado a lado
+a partir de 840px de COMPONENTE (container query), arte em cima e texto
+embaixo abaixo disso; a arte é medida antes de aparecer e entra inteira, com
+a proporção real (sem recorte, sem pulo de layout). Home: selo, título,
+subtítulo, prazo curto e "Ver planos". Planos: descontos por ciclo (cada um
+leva ao ciclo na grade), prazo com o teto de adesões e "Como funciona" (a
+descrição da promoção, recolhida). Duas ou mais promoções = carrossel sem
+autoplay (setas, pontos, teclado, swipe; slide fora da vista inerte; altura
+estável); com uma só não há seta, ponto nem "1/1". Nenhuma regra comercial
+mudou: percentuais, prazo, teto, público, cálculo e Checkout intactos.
+E2E: `tests/e2e/28-promocoes-visual.mjs`.
+
+Com mais de uma promoção vigente, cada produto × ciclo só é anunciado pela
+promoção que de fato dá o preço — a primeira na ordem do servidor, a mesma
+escolha de `promocoesRepo.condicaoVigente` (`promocoesParaExibir` em
+`public/promocao.js`). Sem isso o carrossel deixaria uma promoção mais antiga
+anunciar um desconto que a cobrança não aplica. A arte espera no máximo 0,8 s
+antes de a seção aparecer (depois disso o espaço fica reservado pela
+proporção declarada e ela entra inteira, com `contain`).
+
+**Achado funcional, NÃO alterado (regra de preço, fora desta estação):**
+
+- **Q0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em
+  Planos"; a cobrança enxerga toda promoção vigente.** `planos.page.js`
+  calcula o preço dos cards com `PROMOCOES_VIGENTES` filtrado por
+  `mostrar_planos`, enquanto o `POST /assinar` e a cotação usam
+  `condicaoVigente` sobre todas as vigentes. Se uma promoção vigente e mais
+  nova estiver com "mostrar em Planos" desligado e ocupar a mesma célula de
+  outra, o card mostra o desconto da outra e a cobrança aplica o da mais nova.
+  Hoje não acontece (uma promoção só em produção). Decidir: o card passa a
+  usar todas as vigentes, ou o servidor passa a ignorar as que não aparecem
+  em Planos.
+
+**Com o dono:**
+
+- **Q1 [ ] A pré-venda termina 31/12/2026 às 00:00**, não 23:59 — é o que
+  está gravado (a mesma situação da C4 da pré-venda anterior). O site mostra
+  "Adesões até 31/12/2026 às 00:00". Se a intenção é o dia 31 inteiro,
+  trocar para 23:59 no admin.
+- **Q2 [ ] Arte específica pro celular não existe.** O admin guarda UMA
+  imagem por promoção, com um formato (horizontal 21:9, quadrado, vertical).
+  O componente usa a proporção real da imagem e nunca corta, então a arte
+  horizontal aparece inteira também no celular — com a arte atual (3:1), ela
+  fica com ~120px de altura a 390px. Uma segunda imagem (celular) exigiria
+  campo e upload novos no admin: não construído nesta estação (pedido: não
+  criar sistema paralelo).
+- **Q3 [ ] Título repete o selo.** O componente tira do título o prefixo
+  igual ao selo ("Pré-venda Mostraí: até 30% de desconto" com selo
+  "Pré-venda" aparece como "Até 30% de desconto"). O texto gravado não foi
+  alterado; se o dono preferir, pode reescrever o título no admin e a regra
+  deixa de agir.
+- **Q4 [ ] Ordem e destino do CTA não são configuráveis.** O carrossel segue
+  a ordem do servidor (a mais nova primeiro) e o CTA da Home vai sempre para
+  Planos — não há campo de prioridade nem de destino no admin (não foi
+  criado um CMS por causa do carrossel).

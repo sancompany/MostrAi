@@ -274,64 +274,143 @@ p.lead { color: var(--text-dim); font-size: 1.15rem; max-width: 640px; }
 .hero-fluxo { margin: 18px 0 0; font-size: .95rem; color: var(--text-dim); }
 .hero-fluxo b { color: var(--brand-text); }
 
-/* Banner promocional da Home (reconstrução de Ofertas/Promoções,
-   23/09/2026) — abaixo do header, acima do hero: precisa ler como campanha
-   publicitária de verdade ("largura ampla, presença visual"), não um card
-   quadrado com imagem ao lado (era a queixa: "cara de foto de perfil").
-   Largura cheia, degradê de marca por padrão; com imagem no formato
-   horizontal, a imagem VIRA o fundo (`background-image`, setado inline por
-   index.page.js) com um véu escuro por cima pro texto continuar legível —
-   outros formatos (quadrado/vertical) não tentam virar banner largo, ficam
-   no degradê de texto mesmo (a imagem deles serve os outros lugares:
-   card/mobile, não a Home). */
-/* O degradê começava no laranja de marca puro (#ff7a1a), onde o texto
-   branco fica em 2,6:1 — abaixo até do mínimo de texto grande (3:1), e o
-   subtítulo e o prazo são texto pequeno (4,5:1). Agora começa no
-   --brand-dim e passa pelo --brand-text, os dois laranjas da própria paleta:
-   o banner continua laranja de campanha e o texto branco fica legível. */
-.promo-home-banner {
-  position: relative; background: linear-gradient(135deg, var(--brand-dim), var(--brand-text) 40%, #9c3d07);
-  border-radius: var(--radius); padding: 44px 32px; text-align: center; overflow: hidden;
+/* Componente de promoção (Estação 3, 28/09/2026 — marcação em
+   public/promocao.js, o mesmo na Home, em Planos e na prévia do admin).
+   MÍDIA e CONTEÚDO lado a lado, nunca um por cima do outro: antes a arte
+   era o fundo, com selo, título, condição e botão sobre um véu escuro — o
+   texto cobria a parte interessante da imagem e, no celular, o recorte do
+   fundo dependia da altura do texto. Agora a arte aparece inteira, com a
+   proporção real dela (o <img> sai com width/height medidos), e o texto
+   tem fundo próprio.
+   Quem decide o arranjo é a largura do COMPONENTE (container query): numa
+   caixa estreita (celular, tablet em pé, prévia do admin) a arte fica em
+   cima, encostada nas bordas do card, e o texto embaixo; a partir de 840px
+   de componente, lado a lado. Navegador sem container query fica no
+   empilhado, que funciona em qualquer largura. */
+.campanha-lista { container-type: inline-size; }
+.campanha {
+  display: grid; grid-template-columns: minmax(0, 1fr); align-content: start;
+  background: linear-gradient(135deg, #fff 55%, #fff6ee 100%);
+  border: 1px solid #f1dfcf; border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(25, 39, 64, .06);
 }
-/* Imagem de fundo como <img> de verdade, não `background-image` inline —
-   a CSP (`style-src 'self'`, sem `unsafe-inline`) bloqueia silenciosamente
-   qualquer atributo `style=""` injetado por JS (achado testando: o atributo
-   aparecia no DOM, mas o navegador nunca aplicava a regra). `img-src` já
-   libera o storage das mídias, então a imagem entra como elemento normal,
-   absoluto atrás do texto — véu escuro por cima pra continuar legível. */
-.promo-home-banner.com-imagem { min-height: 260px; display: flex; align-items: center; justify-content: center; }
-.promo-home-img-fundo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
-.promo-home-banner.com-imagem::before {
-  content: ''; position: absolute; inset: 0; z-index: 1;
-  background: linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55));
+.campanha-midia {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; overflow: hidden; background: var(--bg-alt);
 }
-.promo-home-conteudo { position: relative; z-index: 2; max-width: 620px; margin: 0 auto; color: #fff; }
-.promo-home-conteudo .badge { background: #fff; color: var(--brand-text); font-weight: 800; }
-.promo-home-conteudo h2 { margin: 10px 0 6px; color: #fff; font-size: 1.9rem; }
-.promo-home-conteudo .lead { color: #fff; margin: 0 0 6px; }
-.promo-home-prazo { color: #fff; font-size: .84rem; margin: 0 0 16px; }
-.promo-home-conteudo .btn.primary { background: #fff; color: var(--brand-text); border-color: #fff; margin-top: 6px; }
-.promo-home-conteudo .btn.primary:hover { background: rgba(255,255,255,.9); }
-/* CELULAR: o banner ocupava a primeira tela inteira (420px a 360px de
-   largura: título em 3 linhas de 24px, botão quebrando em 2 linhas) e a
-   proposta da Mostraí só aparecia depois de rolar. Compacto, ele continua
-   dizendo a campanha, e a dobra ainda mostra o que é e quanto custa. */
+.campanha-midia img { display: block; width: 100%; height: auto; }
+/* Arte que ainda não chegou no tempo de espera: o espaço fica reservado
+   pela proporção declarada no admin e ela entra INTEIRA dentro dele
+   (`contain`, faixa neutra se a proporção real for outra) — a página não
+   pula quando ela chega e nada da arte é cortado. */
+.campanha-midia-estimada.campanha-midia-horizontal { aspect-ratio: 21 / 9; }
+.campanha-midia-estimada.campanha-midia-quadrado { aspect-ratio: 1; max-height: min(40vh, 240px); }
+.campanha-midia-estimada.campanha-midia-vertical { aspect-ratio: 9 / 16; max-height: min(40vh, 240px); }
+.campanha-midia-estimada img { width: 100%; height: 100%; object-fit: contain; }
+/* Quadrada e vertical aparecem INTEIRAS, com altura contida — no celular
+   uma arte 9:16 na largura toda empurraria o texto pra fora da tela. */
+.campanha-forma-quadrado .campanha-midia img, .campanha-forma-vertical .campanha-midia img {
+  width: auto; max-width: 100%; max-height: min(40vh, 240px);
+}
+.campanha-conteudo { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; padding: 16px 16px 20px; }
+.campanha-selo {
+  display: inline-block; padding: 4px 11px; border-radius: 999px;
+  background: rgba(255, 122, 26, .14); color: #8a3d05;
+  font-size: .78rem; font-weight: 800; letter-spacing: .02em;
+}
+.campanha-titulo {
+  margin: 0; max-width: 22ch; color: var(--text); overflow-wrap: anywhere;
+  font-size: clamp(1.35rem, 1rem + 2.2cqi, 2.05rem); line-height: 1.15; letter-spacing: -.02em;
+}
+.campanha-texto { margin: 0; max-width: 46ch; color: var(--text-dim); font-size: 1rem; line-height: 1.5; }
+.campanha-validade { margin: 0; color: var(--text-dim); font-size: .86rem; line-height: 1.45; }
+.campanha-cta { margin-top: 4px; }
+/* Planos: o desconto de cada ciclo é o botão — leva ao ciclo na grade.
+   Duas colunas: com os quatro ciclos fica 2×2, nunca "3 + 1". */
+.campanha-ciclos {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+  width: 100%; max-width: 420px; margin: 4px 0 0; padding: 0; list-style: none;
+}
+.campanha-ciclos li { display: flex; }
+.campanha-ciclo {
+  display: inline-flex; flex: 1; align-items: baseline; gap: 6px; min-height: 44px; padding: 8px 14px;
+  border: 1px solid #f0cfb2; border-radius: var(--radius-btn); background: #fff;
+  color: var(--text); font: inherit; font-size: .92rem; cursor: pointer;
+}
+.campanha-ciclo b { color: var(--brand-text); font-size: 1.12rem; font-weight: 800; letter-spacing: -.01em; }
+.campanha-ciclo:hover { border-color: var(--brand); background: #fff8f2; }
+.campanha-ciclo:focus-visible, .campanha-seta:focus-visible, .campanha-ponto:focus-visible, .campanha-regras summary:focus-visible {
+  outline: 3px solid var(--blue); outline-offset: 2px;
+}
+.campanha-regras { max-width: 60ch; color: var(--text-dim); font-size: .86rem; }
+.campanha-regras summary { cursor: pointer; color: var(--text); font-weight: 700; width: fit-content; }
+.campanha-regras p { margin: 6px 0 0; line-height: 1.5; }
+@container (min-width: 840px) {
+  .campanha { gap: 36px; align-items: center; padding: 18px; }
+  .campanha-midia { border-radius: calc(var(--radius) - 4px); }
+  .campanha-com-midia.campanha-forma-horizontal { grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); }
+  .campanha-com-midia.campanha-forma-quadrado, .campanha-com-midia.campanha-forma-vertical { grid-template-columns: auto minmax(0, 1fr); }
+  .campanha-forma-quadrado .campanha-midia img, .campanha-forma-vertical .campanha-midia img,
+  .campanha-midia-estimada.campanha-midia-quadrado, .campanha-midia-estimada.campanha-midia-vertical { max-height: 300px; }
+  .campanha-conteudo { padding: 8px 18px 8px 0; gap: 12px; }
+  /* Sem arte: o botão vai pra direita do texto, em vez de um card largo e
+     vazio. */
+  .campanha-home.campanha-sem-midia .campanha-conteudo {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 32px; align-items: center; padding: 12px 18px;
+  }
+  .campanha-home.campanha-sem-midia .campanha-conteudo > * { grid-column: 1; }
+  .campanha-home.campanha-sem-midia .campanha-cta { grid-column: 2; grid-row: 1 / span 4; }
+  /* Planos: o cliente já está no destino — título um pouco menor. */
+  .campanha-planos .campanha-titulo { font-size: clamp(1.35rem, 1rem + 1.6cqi, 1.8rem); }
+}
+
+/* Carrossel — só existe com duas ou mais promoções (public/promocao.js). O trilho
+   rola de verdade (swipe do próprio navegador); os slides têm a altura do
+   maior, então trocar de promoção não mexe no resto da página. */
+.campanha-carrossel { position: relative; }
+.campanha-trilho {
+  position: relative; display: flex; gap: 16px; overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory; scrollbar-width: none;
+}
+.campanha-trilho::-webkit-scrollbar { display: none; }
+.campanha-slide { display: flex; flex: 0 0 100%; min-width: 0; scroll-snap-align: start; }
+.campanha-slide > .campanha { flex: 1; }
+/* Slides com a altura do maior: a sobra fica entre o texto e o botão, que
+   fica sempre na mesma altura em todos os slides (e a caixa da arte nunca
+   estica). */
+.campanha-slide > .campanha-com-midia { grid-template-rows: auto minmax(0, 1fr); }
+.campanha-slide > .campanha-sem-midia { grid-template-rows: minmax(0, 1fr); }
+.campanha-slide .campanha-conteudo { height: 100%; }
+.campanha-slide .campanha-cta { margin-top: auto; }
+@container (min-width: 840px) {
+  /* Lado a lado a sobra se divide em cima e embaixo (centralizado). */
+  .campanha-slide > .campanha-com-midia, .campanha-slide > .campanha-sem-midia { grid-template-rows: minmax(0, 1fr); }
+  .campanha-slide .campanha-conteudo { height: auto; }
+  .campanha-slide .campanha-cta { margin-top: 4px; }
+}
+.campanha-navegacao { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.campanha-seta {
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 1px solid var(--border); border-radius: 50%; background: var(--card);
+  color: var(--text); font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.campanha-seta[aria-disabled="true"] { opacity: .4; cursor: default; }
+.campanha-pontos { display: flex; gap: 2px; }
+/* Botão de 24px (alvo de toque mínimo do WCAG 2.2), ponto de 10px dentro. */
+.campanha-ponto { position: relative; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.campanha-ponto::before {
+  content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #c9d0d9;
+}
+.campanha-ponto[aria-current="true"]::before { background: var(--brand-text); }
+@media (prefers-reduced-motion: no-preference) {
+  .campanha-trilho { scroll-behavior: smooth; }
+}
 @media (max-width: 767px) {
-  section.tight.secao-promo { padding: 12px 0 0; }
+  section.tight.secao-promo { padding: 12px 0 16px; }
 }
-@media (max-width: 599px) {
-  .promo-home-banner { padding: 20px 16px 18px; }
-  .promo-home-banner.com-imagem { min-height: 200px; }
-  .promo-home-conteudo .badge { font-size: .72rem; padding: 2px 9px; }
-  .promo-home-conteudo h2 { font-size: clamp(1.1rem, .9rem + 1.2vw, 1.3rem); line-height: 1.25; margin: 8px 0 4px; }
-  .promo-home-conteudo .lead { font-size: .92rem; line-height: 1.45; margin-bottom: 4px; }
-  .promo-home-prazo { font-size: .8rem; margin-bottom: 12px; }
-  .promo-home-conteudo .btn.primary { width: 100%; margin-top: 0; padding: 11px 14px; font-size: .9rem; }
-}
-/* 320px: "Ver condição na página de planos" quebrava em duas linhas. */
-@media (max-width: 359px) {
-  .promo-home-conteudo .btn.primary { padding: 11px 8px; font-size: .86rem; }
-}
+/* Em Planos a promoção vem logo depois do cabeçalho da página — sem o
+   respiro de seção em cima, que dobrava o espaço. */
+section.tight.secao-promo-planos { padding-top: 0; }
 
 .razoes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
 .razao {
