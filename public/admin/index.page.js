@@ -4252,6 +4252,7 @@ const MOTIVO_FIM_BASICO = {
   dono_mudou: 'o ponto mudou de dono',
   conta_excluida: 'conta excluída',
   conta_interna: 'conta interna',
+  sem_tela_instalada: 'o ponto ficou sem tela instalada',
 };
 function desenharContaBasico(el, basico) {
   const linha = (b, ativo) => `<li class="plano-etapa">

@@ -277,6 +277,68 @@ test('caso 7: deixa de ser ponto → Básico termina; o Pro continua', async () 
   assert.strictEqual((await basicoRepo.ativosDaConta(outra.id)).length, 1, 'reparo não encerra o Básico');
 });
 
+// Fechamento da estação (28/09/2026, migration 106): a régua é a tela
+// INSTALADA, nunca o sinal. Problema temporário mantém; ficar sem nenhuma
+// tela instalada encerra; tela nova reabre, sem duplicar, com histórico.
+test('regra estrutural: sem sinal e reparo mantêm; sem tela instalada encerra; tela nova volta sem duplicar', async () => {
+  const conta = await novaConta({ plano: 'destaque-1m' });
+  const ponto = await pontoDaConta(conta.id);
+  await emOperacao(ponto);
+  const { revogar } = require('../src/player/credencial');
+  const ativos = async () => (await basicoRepo.ativosDaConta(conta.id)).length;
+  const sincronizar = () => basicoRepo.sincronizar({ apenasPontos: [ponto.pontoId] });
+
+  // Offline temporário: TV sem heartbeat há 30 dias continua sendo ponto.
+  await pool.query(`UPDATE dispositivos SET ultima_vez_online = now() - interval '30 days' WHERE id = $1`, [
+    ponto.telaId,
+  ]);
+  assert.strictEqual((await sincronizar()).encerrados.length, 0, 'sem sinal não encerra');
+  assert.strictEqual(await ativos(), 1);
+
+  // Reparo: temporário por definição — mantém, e voltar a ativa não abre outro.
+  await dispositivosRepo.atualizar(ponto.telaId, { status: 'reparo' });
+  assert.strictEqual(await ativos(), 1, 'reparo não encerra');
+  await dispositivosRepo.atualizar(ponto.telaId, { status: 'ativo' });
+  assert.strictEqual((await linhasDoBasico(ponto.pontoId)).length, 1, 'mesma linha, sem reabrir');
+
+  // Duas telas: revogar uma não encerra; revogar a última encerra.
+  const segunda = await dispositivosRepo.criar(ponto.pontoId, {});
+  await instalarPlayer(segunda.id);
+  await revogar(ponto.telaId);
+  assert.strictEqual(await ativos(), 1, 'ainda há uma tela instalada');
+  await revogar(segunda.id);
+  assert.strictEqual(await ativos(), 0, 'todas revogadas → encerra');
+  let linhas = await linhasDoBasico(ponto.pontoId);
+  assert.strictEqual(linhas.length, 1);
+  assert.strictEqual(linhas[0].motivo_fim, 'sem_tela_instalada');
+  assert.ok(linhas[0].fim);
+
+  // Tela nova instalada: volta — uma linha nova, a antiga fica no histórico.
+  await instalarPlayer(ponto.telaId);
+  await sincronizar();
+  await sincronizar();
+  linhas = await linhasDoBasico(ponto.pontoId);
+  assert.strictEqual(linhas.length, 2, 'histórico preservado');
+  assert.strictEqual(linhas.filter((l) => !l.fim).length, 1, '1 ponto → no máximo 1 Básico ativo');
+  assert.strictEqual(await ativos(), 1);
+
+  // Removida em definitivo (inativo) a última instalada → encerra.
+  await dispositivosRepo.deletar(segunda.id);
+  assert.strictEqual(await ativos(), 1, 'excluir tela revogada não muda nada');
+  await dispositivosRepo.atualizar(ponto.telaId, { status: 'inativo' });
+  assert.strictEqual(await ativos(), 0, 'última tela inativa → encerra');
+  assert.strictEqual((await linhasDoBasico(ponto.pontoId)).at(-1).motivo_fim, 'sem_tela_instalada');
+
+  // Última tela excluída → encerra.
+  const outro = await pontoDaConta(conta.id);
+  assert.strictEqual(await ativos(), 1);
+  await dispositivosRepo.deletar(outro.telaId);
+  assert.strictEqual(await ativos(), 0, 'última tela excluída → encerra');
+
+  // O plano comercial não é tocado em nenhum passo.
+  assert.strictEqual((await anunciantesRepo.buscarPorId(conta.id)).plano_id, 'destaque-1m');
+});
+
 test('caso 8: o próprio ponto também escolhido no Essencial — uma linha, obrigação das duas origens, POP único', async () => {
   const conta = await novaConta({ plano: 'essencial-1m' });
   const ponto = await pontoDaConta(conta.id);

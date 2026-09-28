@@ -858,8 +858,11 @@ Decisão:
 2. **Ativação** pela régua única do crédito (`SQL_PONTOS_ELEGIVEIS`),
    sincronizada em `sincronizarStatusPonto` (toda mudança de tela) + job
    diário. **Encerramento** só quando deixa de ser ponto daquela conta
-   (arquivado, dono trocado, conta excluída/interna); reparo/sem sinal não
-   encerra. A leitura confere a coerência de novo (o job pode atrasar). O
+   (arquivado, dono trocado, conta excluída/interna) ou quando o ponto fica
+   sem NENHUMA tela instalada (removidas, revogadas ou inativas — emenda de
+   28/09/2026, migration 106, motivo `sem_tela_instalada`); reparo/sem
+   sinal não encerra — a régua é estrutural, nunca o heartbeat. Tela
+   instalada de novo abre um Básico novo (histórico preservado). A leitura confere a coerência de novo (o job pode atrasar). O
    `fim` é o instante registrado (`arquivado_em`, `excluido_em`); troca de
    dono não tem data nem rota (só manual) e encerra na sincronização — o
    RUNBOOK 6.1 manda sincronizar logo depois.
