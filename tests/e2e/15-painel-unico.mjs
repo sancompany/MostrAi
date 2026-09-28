@@ -24,9 +24,11 @@ const falha = (t, d) => {
 const check = (t, cond, d) => (cond ? ok(t) : falha(t, d));
 
 // Modelo antigo do ponto (ADR-016, 24/09/2026) entra na mesma lista: nada
-// de Inicial/Básico, R$ 50, repasse, ajuda de custo ou comodato comercial.
+// de Inicial, R$ 50, repasse, ajuda de custo ou comodato comercial. O
+// "Básico" SAIU da lista em 28/09/2026 (ADR-025): voltou como benefício do
+// ponto ativo — e só aparece (card #modBasico) pra quem tem o benefício.
 const ANTIGOS =
-  /Meu cupom de indicação|indicados pagantes|3 indicados|Meu anúncio na minha tela|Meus endereços|Minhas telas|Meus recebimentos|Meus pagamentos|painel do meu ponto|Recebimentos|\bInicial\b|Básico|R\$ ?50|50 reais|repasse|ajuda de custo|comodato|crédito monetário/i;
+  /Meu cupom de indicação|indicados pagantes|3 indicados|Meu anúncio na minha tela|Meus endereços|Minhas telas|Meus recebimentos|Meus pagamentos|painel do meu ponto|Recebimentos|\bInicial\b|R\$ ?50|50 reais|repasse|ajuda de custo|comodato|crédito monetário/i;
 
 async function novaConta(prefixo, papeis = "ARRAY['anunciante']") {
   const email = `${prefixo}-${Date.now()}@teste.com`;
@@ -103,6 +105,12 @@ const box = (p, sel) => p.$eval(sel, (el) => el.getBoundingClientRect().toJSON()
 async function comum(nome, s) {
   const texto = await s.p.textContent('main');
   check(`${nome}: nenhum conceito antigo`, !ANTIGOS.test(texto), texto.match(ANTIGOS)?.[0]);
+  // Card do Básico só com o benefício de fato (ponto com tela provisionada e ativa).
+  const temBasico = await s.p.evaluate(async () => {
+    const r = await fetch('/anunciantes/me', { credentials: 'include' });
+    return !!(await r.json()).beneficios_basico?.length;
+  });
+  check(`${nome}: card do Plano Básico só com o benefício`, (await visivel(s.p, '#modBasico')) === temBasico);
   check(`${nome}: sem link pro painel separado do ponto`, !(await s.p.$('main a[href*="ponto.html"]')));
   const repetidas = Object.entries(s.naCarga).filter(([u, n]) => n > 1 && !u.includes('/eventos'));
   check(`${nome}: cada endpoint uma vez na carga`, repetidas.length === 0, JSON.stringify(repetidas));

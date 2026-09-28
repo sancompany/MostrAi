@@ -31,7 +31,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - Cadastro/login de conta única, três papéis possíveis.
 - Catálogo de planos no banco: Essencial/Pro/Prime × 4 ciclos, sem regra em
   variável de ambiente (Inicial/Básico ficaram `ativo=false`, só histórico —
-  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082).
+  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082) e,
+  desde 28/09/2026, o Plano Básico do ponto (14 h/mês no próprio ponto,
+  migration 103, ADR-025) — benefício, não plano comercial.
 - Assinatura, troca de plano e cancelamento via San Checkout (webhook
   fail-closed/idempotente/transacional).
 - Upload de criativo com validação síncrona (ffmpeg), normalização de

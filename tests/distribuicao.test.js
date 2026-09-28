@@ -331,7 +331,11 @@ test('7. próprio ponto pode ser escolhido — e veicula nele mesmo no mesmo ram
   assert.ok(idsDeAnunciante(await playlistAgora(proprio.telaId)).has(dono.id), 'a trava de ramo não barra o dono');
 });
 
-test('8. próprio ponto pode ficar de fora (e o concorrente do mesmo ramo continua barrado)', async () => {
+// Desde a migration 103 (Plano Básico do ponto, ADR-025) o dono SEMPRE toca
+// no próprio ponto ativo — pelo Básico, não pelo plano comercial. Não
+// escolher o próprio ponto continua deixando o COMERCIAL de fora dele: a
+// linha da hora só tem a parcela do Básico.
+test('8. próprio ponto fora da escolha: entra só pelo Básico (o comercial fica de fora); concorrente continua barrado', async () => {
   const cat = await categoria();
   const dono = await novaConta({ categoriaId: cat });
   const concorrente = await novaConta({ categoriaId: cat });
@@ -342,7 +346,16 @@ test('8. próprio ponto pode ficar de fora (e o concorrente do mesmo ramo contin
   await criativoAprovado(dono.id);
   await criativoAprovado(concorrente.id);
   const ids = idsDeAnunciante(await playlistAgora(proprio.telaId));
-  assert.ok(!ids.has(dono.id), 'dono que não escolheu o próprio ponto não entra nele');
+  assert.ok(ids.has(dono.id), 'o dono entra no próprio ponto pelo Plano Básico');
+  const { rows } = await pool.query(
+    `SELECT segundos_obrigacao, segundos_obrigacao_basico FROM exibicoes_contador
+      WHERE anunciante_id = $1 AND dispositivo_id = $2 AND segundos_obrigacao > 0`,
+    [dono.id, proprio.telaId],
+  );
+  assert.ok(
+    rows.length && rows.every((r) => r.segundos_obrigacao === r.segundos_obrigacao_basico),
+    'só a parcela do Básico — o comercial não escolheu este ponto',
+  );
   assert.ok(!ids.has(concorrente.id), 'concorrente do mesmo ramo não entra');
   assert.ok(idsDeAnunciante(await playlistAgora(outro.telaId)).has(dono.id), 'roda onde escolheu');
 });

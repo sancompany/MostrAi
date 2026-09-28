@@ -98,7 +98,7 @@ async function pontosElegiveis(apenasPontos = null, db = pool) {
 async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
   if (!pontoIds.length) return new Map();
   const competencia = competenciaDe(agora);
-  const [{ rows: elegiveis }, { rows: ultimos }] = await Promise.all([
+  const [{ rows: elegiveis }, { rows: ultimos }, { rows: basicos }] = await Promise.all([
     db.query(`SELECT id FROM (${SQL_PONTOS_ELEGIVEIS}) e WHERE e.id = ANY($1::int[])`, [pontoIds]),
     db.query(
       `SELECT DISTINCT ON (ponto_id) ponto_id, competencia, criado_em
@@ -107,7 +107,19 @@ async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
         ORDER BY ponto_id, competencia DESC`,
       [pontoIds],
     ),
+    // Plano Básico do ponto (migration 103) — o outro benefício de ser ponto,
+    // separado do crédito. Mesma coerência de src/pontos/basico.js#SQL_ATIVOS
+    // (lida aqui direto: basico.js depende deste arquivo).
+    db.query(
+      `SELECT b.ponto_id, b.horas_por_mes, b.duracao_maxima_segundos, b.limite_criativos, b.inicio
+         FROM beneficios_basico_ponto b
+         JOIN pontos p ON p.id = b.ponto_id AND p.status <> 'arquivado' AND p.anunciante_id = b.conta_id
+         JOIN anunciantes a ON a.id = b.conta_id AND a.excluido_em IS NULL AND NOT a.conta_propria
+        WHERE b.fim IS NULL AND b.ponto_id = ANY($1::int[])`,
+      [pontoIds],
+    ),
   ]);
+  const basicoPorPonto = new Map(basicos.map((b) => [b.ponto_id, b]));
   const elegivel = new Set(elegiveis.map((r) => r.id));
   const ultimo = new Map(ultimos.map((r) => [r.ponto_id, r]));
   return new Map(
@@ -126,6 +138,15 @@ async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
           proximaCompetencia: nomeDaCompetencia(doMesJaSaiu ? proximaCompetencia(competencia) : competencia),
           ultimoCreditoEm: u ? u.criado_em : null,
           ultimaCompetencia: competenciaUltima ? nomeDaCompetencia(competenciaUltima) : null,
+          basico: basicoPorPonto.has(id)
+            ? {
+                ativo: true,
+                horasPorMes: basicoPorPonto.get(id).horas_por_mes,
+                duracaoMaximaSegundos: basicoPorPonto.get(id).duracao_maxima_segundos,
+                limiteCriativos: basicoPorPonto.get(id).limite_criativos,
+                desde: basicoPorPonto.get(id).inicio,
+              }
+            : null,
         },
       ];
     }),

@@ -494,7 +494,9 @@ explicitamente que o fluxo normal seja crédito.
 
 ## ADR-016 — Ser ponto não é plano: o ponto gera créditos; plano pago × benefício por prioridade de tier (24/09/2026)
 
-Status: Ativa. Supera, no que conflita, a separação comodato/plano comercial
+Status: Ativa, EXCETO a parte "ser ponto não é plano / o Básico não existe
+mais", substituída pelo ADR-025 (28/09/2026): ponto ativo passa a ter o
+Plano Básico como benefício, além do +1 crédito/mês. Supera, no que conflita, a separação comodato/plano comercial
 (migration 077) e o item 2 do ADR-015 sobre "comodato por ponto + modalidade".
 
 Contexto: pedido do dono ("REESTRUTURAÇÃO COMPLETA DO MODELO DE BENEFÍCIOS
@@ -834,6 +836,59 @@ Consequências: o domínio `SITE_URL` vira parte do material impresso — se um
 dia o site mudar de endereço, o antigo precisa continuar respondendo (ou
 redirecionando) `/q/anuncie`. QR por ponto, de indicação ou com contagem de
 acessos é outra estação (não reaproveita esta chave).
+
+
+## ADR-025 — Plano Básico como benefício do ponto, somado ao plano comercial com a origem preservada (28/09/2026)
+
+Status: Ativa. Substitui, no ADR-016, "ser ponto não é plano" e "o Básico não
+existe mais". O +1 crédito/mês do ponto continua como estava.
+
+Contexto: pedido do dono (estação "REINTRODUÇÃO ESTRUTURAL DO PLANO BÁSICO
+COMO BENEFÍCIO DE PONTO"), alinhado ao Termo de Parceria do ponto: ponto
+ativo = Plano Básico sem custo + 1 crédito mensal.
+
+Decisão:
+1. **Tabela própria, não `plano_id`**: `beneficios_basico_ponto` (migration
+   103), uma linha por ponto, com os números COPIADOS (14 h/mês = 140 s por
+   hora aberta, peça até 15 s, 1 criativo no ar) e início/fim. Índice único
+   parcial: um ativo por ponto. O plano comercial continua sendo o
+   `anunciantes.plano_id`; o Básico nunca vira `plano_id`, não passa pelo
+   Checkout, não aparece na vitrine nem em Ofertas, não gasta crédito.
+   O `comodato-basico` legado (45 s/h em 3 pontos) NÃO é reaproveitado.
+2. **Ativação** pela régua única do crédito (`SQL_PONTOS_ELEGIVEIS`),
+   sincronizada em `sincronizarStatusPonto` (toda mudança de tela) + job
+   diário. **Encerramento** só quando deixa de ser ponto daquela conta
+   (arquivado, dono trocado, conta excluída/interna); reparo/sem sinal não
+   encerra. A leitura confere a coerência de novo (o job pode atrasar). O
+   `fim` é o instante registrado (`arquivado_em`, `excluido_em`); troca de
+   dono não tem data nem rota (só manual) e encerra na sincronização — o
+   RUNBOOK 6.1 manda sincronizar logo depois.
+3. **Soma com origem preservada**: a parcela do Básico entra na MESMA
+   entrada da conta na hora da tela (uma linha em `exibicoes_contador`, um
+   POP, um saldo) e fica guardada em `segundos_obrigacao_basico`. O ponto do
+   Básico é sempre o próprio (sem seletor, sem trava de ramo); os pontos do
+   plano seguem a RN-49. Pontos e horas somam; duração e criativos no ar
+   valem o maior das origens (mesmo conjunto de peças) — plano sem teto de
+   peça continua sem teto; a vaga do Básico só roda peça dentro desse teto
+   de hoje (`pecasDoBasico`, 15 s só com o Básico). O saldo da conta se
+   divide pelos pontos da fatia comercial + os do Básico em operação (todos
+   puxam o mesmo saldo na mesma hora; ponto em reparo não puxa).
+4. **Tempo como fonte**: 140 s/h não dividem por 15 s; em vez de arredondar
+   pra baixo (13,5 h), cada hora recebe floor((k+1)·s/d) − floor(k·s/d)
+   inserções (k = índice da hora + índice do dia: a fatia de cada hora do
+   relógio gira dia a dia, e a média fecha em qualquer horário de
+   funcionamento) — determinística, 3.360 exibições de 15 s por mês. Não
+   muda o algoritmo do Saldo: a obrigação da hora é gravada como sempre, só
+   maior; a parte do Básico congela junto com o total da hora.
+5. **Sem retroativo**: ativação no meio do mês gera obrigação hora a hora a
+   partir do início (a mesma semântica do plano). Backfill da migration
+   ativa os pontos já elegíveis a partir de `now()`.
+6. **Cota de autoanúncio** (legado zerado desde a 049) não entra quando há
+   Básico ativo — a dona não aparece em dobro.
+
+Consequências: painel libera o dashboard pra conta com só o Básico; card
+"Benefício de ponto · Plano Básico" separado de "Seu plano"; horas do mês por
+origem; admin mostra a seção "Benefício de ponto" na ficha e no ponto.
 
 
 ## ADR-026 — Concorrentes diretos entre categorias: par explícito e simétrico, nunca grupo (28/09/2026)
