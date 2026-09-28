@@ -32,6 +32,16 @@ const sse = require('../lib/sse');
 // → ganha o mês); o índice único (ponto_id, competencia) garante no banco
 // que rodar de novo, rodar em duas instâncias ou trocar o dono no meio do mês
 // nunca gera o mesmo mês duas vezes.
+// Tela que ainda faz do lugar um ponto da rede, pro Plano Básico do ponto
+// continuar (migration 106): com credencial, ativa ou em reparo (reparo é
+// temporário por definição, migration 012). Sem credencial — revogada,
+// aguardando instalação — ou `inativo` (remoção definitiva) não conta:
+// revogar vence o reparo (revisão Codex do #96). Mora aqui, e não em
+// basico.js, pra `situacaoDosPontos` usar a mesma régua sem import circular.
+// Espera o ponto como `p`.
+const SQL_TEM_TELA_INSTALADA = `EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id
+    AND d.status IN ('ativo', 'reparo') AND d.chave_hash IS NOT NULL)`;
+
 const SQL_PONTOS_ELEGIVEIS = `
   SELECT p.id, p.nome, p.anunciante_id
     FROM pontos p
@@ -115,7 +125,7 @@ async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
          FROM beneficios_basico_ponto b
          JOIN pontos p ON p.id = b.ponto_id AND p.status <> 'arquivado' AND p.anunciante_id = b.conta_id
          JOIN anunciantes a ON a.id = b.conta_id AND a.excluido_em IS NULL AND NOT a.conta_propria
-        WHERE b.fim IS NULL AND b.ponto_id = ANY($1::int[])`,
+        WHERE b.fim IS NULL AND b.ponto_id = ANY($1::int[]) AND ${SQL_TEM_TELA_INSTALADA}`,
       [pontoIds],
     ),
   ]);
@@ -196,6 +206,7 @@ async function concederCreditosMensais({ agora = new Date(), apenasPontos = null
 
 module.exports = {
   SQL_PONTOS_ELEGIVEIS,
+  SQL_TEM_TELA_INSTALADA,
   competenciaDe,
   nomeDaCompetencia,
   pontosElegiveis,

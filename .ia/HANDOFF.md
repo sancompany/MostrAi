@@ -5,7 +5,9 @@
 (PR separado, NÃO mergeado, aguardando o dono). Ponto sem nenhuma tela
 instalada (todas removidas, revogadas ou inativas) encerra o Básico com
 motivo `sem_tela_instalada` (migration 106 só amplia a lista fechada do
-CHECK; sem dado mexido). Reparo, sem sinal, TV/internet fora continuam.
+CHECK; sem dado mexido). Reparo (com credencial), sem sinal, TV/internet fora continuam; revogar
+vence o reparo. Régua única em `creditos/ponto.js#SQL_TEM_TELA_INSTALADA`
+(encerramento, leitura dos direitos e `situacaoDosPontos`).
 Tela instalada de novo reabre (linha nova, um ativo por ponto). Crédito
 +1/mês e plano comercial intocados. Depois do deploy, o job diário
 (`scripts/conciliar.js`) encerra os Básicos antigos que já estão sem tela

@@ -329,6 +329,23 @@ test('regra estrutural: sem sinal e reparo mantêm; sem tela instalada encerra; 
   assert.strictEqual(await ativos(), 0, 'última tela inativa → encerra');
   assert.strictEqual((await linhasDoBasico(ponto.pontoId)).at(-1).motivo_fim, 'sem_tela_instalada');
 
+  // Reparo com a credencial revogada: revogar vence o reparo → encerra
+  // (revisão Codex do #96).
+  const reparada = await pontoDaConta(conta.id);
+  await dispositivosRepo.atualizar(reparada.telaId, { status: 'reparo' });
+  assert.ok(await basicoRepo.ativoNoPonto(reparada.pontoId), 'reparo com credencial mantém');
+  await revogar(reparada.telaId);
+  assert.strictEqual(await basicoRepo.ativoNoPonto(reparada.pontoId), null, 'reparo revogado → encerra');
+  assert.strictEqual((await linhasDoBasico(reparada.pontoId))[0].motivo_fim, 'sem_tela_instalada');
+
+  // Antes do job ver (tela tirada por fora da sincronização): a leitura do
+  // painel/admin já não mostra o Básico, igual à leitura dos direitos.
+  const semJob = await pontoDaConta(conta.id);
+  assert.ok((await situacaoDosPontos([semJob.pontoId])).get(semJob.pontoId).basico, 'com tela: aparece');
+  await pool.query('UPDATE dispositivos SET chave_hash = NULL WHERE id = $1', [semJob.telaId]);
+  assert.strictEqual((await situacaoDosPontos([semJob.pontoId])).get(semJob.pontoId).basico, null);
+  assert.strictEqual(await basicoRepo.ativoNoPonto(semJob.pontoId), null);
+
   // Última tela excluída → encerra.
   const outro = await pontoDaConta(conta.id);
   assert.strictEqual(await ativos(), 1);

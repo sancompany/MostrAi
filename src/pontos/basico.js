@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
-const { SQL_PONTOS_ELEGIVEIS } = require('../creditos/ponto');
+const { SQL_PONTOS_ELEGIVEIS, SQL_TEM_TELA_INSTALADA } = require('../creditos/ponto');
 const { horasDeTelaPorMes, segundosDeObrigacao, duracaoValida } = require('../lib/pacing');
 
 // PLANO BÁSICO DO PONTO (migration 103, ADR-025, 28/09/2026). Benefício de
@@ -51,15 +51,9 @@ const BASICO = Object.freeze({
 // (revisão independente, 28/09/2026). Sem tela instalada, o fim é o da
 // sincronização: toda mudança de tela sincroniza na mesma hora
 // (`sincronizarStatusPonto`), e ponto sem tela instalada não está em operação
-// — a rede de segurança não cobra hora dele.
+// — a rede de segurança não cobra hora dele. "Tela instalada":
+// `SQL_TEM_TELA_INSTALADA` (src/creditos/ponto.js).
 //
-// Tela que ainda faz do lugar um ponto da rede: instalada (ativa com
-// credencial) ou em reparo (temporário por definição, migration 012). Tela
-// ativa sem credencial (revogada, aguardando instalação) e `inativo`
-// (remoção definitiva) não contam.
-const SQL_TEM_TELA_INSTALADA = `EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id
-    AND ((d.status = 'ativo' AND d.chave_hash IS NOT NULL) OR d.status = 'reparo'))`;
-
 // limite: troca de dono não tem data — nenhuma rota muda `pontos.anunciante_id`
 // (só operação manual no banco) — e o fim fica o da sincronização que viu. A
 // leitura já corta na hora (`SQL_ATIVOS`), mas a rede de segurança pode cobrar

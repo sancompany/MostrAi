@@ -468,8 +468,10 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
   ponto arquivado, dono trocado, conta excluída, ou o ponto ficou sem
   nenhuma tela instalada — todas removidas, revogadas ou inativas
   (migration 106, fechamento da estação). A régua é estrutural, nunca o
-  sinal: TV desligada, internet caída, sem heartbeat ou tela em reparo não
-  encerram (o Básico fica ativo e não gera obrigação sem tela tocando).
+  sinal: TV desligada, internet caída, sem heartbeat ou tela em reparo (com
+  a credencial) não encerram (o Básico fica ativo e não gera obrigação sem
+  tela tocando); tela em reparo com a credencial revogada não conta —
+  revogar vence o reparo. O painel e a ficha do admin leem a mesma régua.
   Instalar tela de novo abre um Básico novo — um ativo por ponto, o
   encerrado fica no histórico. Revogar a única tela pra reinstalar (TV
   trocada, chave suspeita) encerra e reabre: dois períodos, sem hora

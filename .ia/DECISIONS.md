@@ -860,8 +860,8 @@ Decisão:
    diário. **Encerramento** só quando deixa de ser ponto daquela conta
    (arquivado, dono trocado, conta excluída/interna) ou quando o ponto fica
    sem NENHUMA tela instalada (removidas, revogadas ou inativas — emenda de
-   28/09/2026, migration 106, motivo `sem_tela_instalada`); reparo/sem
-   sinal não encerra — a régua é estrutural, nunca o heartbeat. Tela
+   28/09/2026, migration 106, motivo `sem_tela_instalada`); reparo com
+   credencial e sem sinal não encerram (reparo revogado conta como sem tela) — a régua é estrutural, nunca o heartbeat. Tela
    instalada de novo abre um Básico novo (histórico preservado). A leitura confere a coerência de novo (o job pode atrasar). O
    `fim` é o instante registrado (`arquivado_em`, `excluido_em`); troca de
    dono não tem data nem rota (só manual) e encerra na sincronização — o
