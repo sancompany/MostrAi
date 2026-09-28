@@ -76,6 +76,13 @@ async function abrir(caminho, [w, h], opcoes = {}) {
   await ctx.route('**/e2e-promo-arte/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: ARTES[new URL(route.request().url()).pathname] }),
   );
+  // "10% Mensal" de cada bloco de ciclo, sem o marcador "Melhor desconto".
+  await ctx.addInitScript(() => {
+    window.__cicloTexto = (c) =>
+      `${c.querySelector('b')?.textContent || ''} ${c.querySelector(':scope > span:not(.campanha-ciclo-melhor):not(.campanha-sr)')?.textContent || ''}`
+        .replace(/\s+/g, ' ')
+        .trim();
+  });
   const p = await ctx.newPage();
   const erros = [];
   p.on('pageerror', (e) => erros.push(e.message));
@@ -103,8 +110,12 @@ const medir = (p) =>
       ladoALado: !!midia && conteudo.left >= midia.right - 1,
       empilhado: !!midia && conteudo.top >= midia.bottom - 1,
       recorte: img?.naturalWidth ? Math.abs(ri.width / ri.height - img.naturalWidth / img.naturalHeight) : null,
-      titulo: promo.querySelector('.campanha-titulo')?.innerText,
-      selo: promo.querySelector('.campanha-selo')?.innerText,
+      // textContent: o CSS põe selo e "até" em caixa alta (innerText viria
+      // "PRÉ-VENDA"); o texto gravado é o que conta.
+      titulo: promo.querySelector('.campanha-titulo')?.textContent.replace(/\s+/g, ' ').trim(),
+      oferta: promo.querySelector('.campanha-oferta-num')?.textContent,
+      contexto: promo.querySelector('.campanha-contexto')?.textContent ?? null,
+      selo: promo.querySelector('.campanha-selo')?.textContent,
       // Nunca por cima da arte: embaixo dela (empilhado) ou ao lado.
       cta: cta
         ? (() => {
@@ -113,7 +124,7 @@ const medir = (p) =>
             return { texto: cta.innerText.trim(), href: cta.getAttribute('href'), foraDaMidia: fora };
           })()
         : null,
-      ciclos: [...promo.querySelectorAll('.campanha-ciclo')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()),
+      ciclos: [...promo.querySelectorAll('.campanha-ciclo')].map((c) => window.__cicloTexto(c)),
       validade: promo.querySelector('.campanha-validade')?.innerText || '',
       heroAbaixo: hero ? r(hero).top >= r(promo).bottom : null,
       navegacao: !!document.querySelector('.campanha-navegacao'),
@@ -145,7 +156,8 @@ try {
     check(`home ${w}: arte e texto ${arranjo === 'ladoALado' ? 'lado a lado' : 'empilhados (arte em cima)'}`, m[arranjo], m);
     check(`home ${w}: nenhum texto sobre a imagem`, !m.sobrepoe, m);
     check(`home ${w}: arte inteira, sem recorte`, m.recorte !== null && m.recorte < 0.02, m.recorte);
-    check(`home ${w}: selo e título sem repetir o selo`, m.selo === 'Pré-venda' && m.titulo === 'Até 30% de desconto', m);
+    check(`home ${w}: selo + oferta "Até 30% OFF" como manchete`, m.selo === 'Pré-venda' && m.oferta === '30%' && m.titulo === 'Até 30% OFF de desconto', m);
+    check(`home ${w}: título "Até 30% de desconto" não se repete ao lado da oferta`, m.contexto === null, m.contexto);
     check(`home ${w}: CTA "Ver planos" → /planos.html, fora da arte`, m.cta?.texto === 'Ver planos' && m.cta.href === '/planos.html' && m.cta.foraDaMidia, m.cta);
     check(`home ${w}: uma promoção = sem seta, ponto ou 1/1`, !m.navegacao && !m.contador, m);
     check(`home ${w}: hero continua bloco à parte, abaixo`, m.heroAbaixo === true, m);
@@ -199,7 +211,7 @@ try {
       }));
     const inicio = await estado();
     check(`carrossel ${w}: 2 pontos, começa no 1º, o 2º inerte`, inicio.atual === 0 && JSON.stringify(inicio.inertes) === '[false,true]', inicio);
-    check(`carrossel ${w}: ordem do servidor (a mais nova primeiro)`, (await p.textContent('[data-campanha-slide]:first-child .campanha-titulo')) === 'Semana do comércio local');
+    check(`carrossel ${w}: ordem do servidor (a mais nova primeiro)`, (await p.textContent('[data-campanha-slide]:first-child .campanha-contexto')) === 'Semana do comércio local');
     check(`carrossel ${w}: seta "anterior" desligada no começo`, (await p.getAttribute('[data-campanha-anterior]', 'aria-disabled')) === 'true');
     await p.focus('[data-campanha-proxima]');
     await p.keyboard.press('Enter');
@@ -257,7 +269,7 @@ try {
     await p.waitForSelector('[data-campanha-carrossel]');
     const ciclos = await p.evaluate(() =>
       [...document.querySelectorAll('[data-campanha-slide]')].map((s) =>
-        [...s.querySelectorAll('.campanha-ciclo')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()),
+        [...s.querySelectorAll('.campanha-ciclo')].map((c) => window.__cicloTexto(c)),
       ),
     );
     check(
@@ -273,7 +285,7 @@ try {
     await p.waitForSelector('[data-campanha-carrossel]');
     const soEssencial = await p.evaluate(() =>
       [...document.querySelectorAll('[data-campanha-slide]')].map((s) =>
-        [...s.querySelectorAll('.campanha-ciclo')].map((c) => c.innerText.replace(/\s+/g, ' ').trim()),
+        [...s.querySelectorAll('.campanha-ciclo')].map((c) => window.__cicloTexto(c)),
       ),
     );
     check(

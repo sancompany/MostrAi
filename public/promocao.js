@@ -44,8 +44,9 @@
   // que a cobrança não dá. Sobra só o que a promoção realmente entrega; sem
   // vantagem em ciclo nenhum, ela não aparece (D1, 24/09/2026). `campo`:
   // 'mostrar_home' ou 'mostrar_planos', aplicado DEPOIS da disputa, porque a
-  // cobrança não olha onde a promoção é exibida.
-  function promocoesParaExibir(vigentes, campo) {
+  // cobrança não olha onde a promoção é exibida. `campo` null (barra da área
+  // logada): sem filtro de exposição, só a disputa de células.
+  function promocoesParaExibir(vigentes, campo = null) {
     const ocupadas = new Set();
     return (Array.isArray(vigentes) ? vigentes : [])
       .map((p) => {
@@ -56,7 +57,7 @@
         });
         return { ...p, itens };
       })
-      .filter((p) => p[campo] && p.itens.some((i) => i.temVantagem !== false));
+      .filter((p) => (!campo || p[campo]) && p.itens.some((i) => i.temVantagem !== false));
   }
 
   // "Pré-venda Mostraí: até 30% de desconto" com o selo "Pré-venda" vira
@@ -109,6 +110,40 @@
       });
   }
 
+  // A OFERTA — o que a promoção grita (reforço visual, 28/09/2026): o maior
+  // desconto que ela realmente dá (só células com vantagem, as mesmas de
+  // `descontosPorCiclo`), com "até" quando os ciclos/produtos não têm todos
+  // o mesmo desconto. Sem desconto com vantagem, null (o bloco volta a usar
+  // o título como manchete). Nada aqui é regra comercial: é leitura dos
+  // mesmos itens que a vitrine e a cobrança usam.
+  function ofertaDaPromocao(promo, tiersDoCiclo = null) {
+    const ciclos = descontosPorCiclo(promo, tiersDoCiclo);
+    if (!ciclos.length) return null;
+    const maior = Math.max(...ciclos.map((c) => c.desconto));
+    const ate = ciclos.some((c) => c.variavel) || new Set(ciclos.map((c) => c.desconto)).size > 1;
+    // "Melhor desconto" só quando UM ciclo tem o maior desconto, e há outros
+    // pra comparar — senão o marcador não diferencia nada.
+    const doMaior = ciclos.filter((c) => c.desconto === maior);
+    const melhorCiclo = ciclos.length > 1 && doMaior.length === 1 ? doMaior[0].meses : null;
+    return { desconto: maior, ate, melhorCiclo };
+  }
+
+  // O título ainda diz algo que a oferta não diz? "Até 30% de desconto" ao
+  // lado de "ATÉ 30% OFF" é a mesma frase duas vezes e sai; "Semana do
+  // comércio: 30% no Anual" tem contexto e fica. Tira do título a frase da
+  // oferta (o percentual exato, com "até", "de desconto"/"off" em volta) e vê
+  // se sobra palavra de verdade. O número precisa bater inteiro: "30,5%" não
+  // é "5%" (revisão independente, 28/09/2026).
+  function tituloRedundante(titulo, oferta) {
+    if (!oferta) return false;
+    const numero = pct(oferta.desconto).replace('%', '').replace(/[.,]/g, '[.,]');
+    const frase = new RegExp(`(^|[^\\d.,])(at[eé]\\s+)?${numero}\\s*%(\\s*(de\\s+desconto|off))?`, 'iu');
+    const t = String(titulo || '');
+    if (!frase.test(t)) return false;
+    const resto = t.replace(frase, '$1');
+    return !resto.split(/\s+/).some((w) => /\p{L}{2,}/u.test(w));
+  }
+
   // Prazo e teto de adesões — as duas regras que encerram a promoção.
   function linhaValidade(promo, { comLimite = true } = {}) {
     const fim = promo.compra_fim ? window.prazoBR(promo.compra_fim) : '';
@@ -117,19 +152,6 @@
     if (fim) return `Adesões até ${fim}.`;
     if (limite) return `Até o limite de ${limite} adesões.`;
     return '';
-  }
-
-  // Na Home a condição é curta: o prazo, e os ciclos só quando a promoção
-  // NÃO vale em todos os ciclos em que foi configurada (D1: não anunciar
-  // desconto a mais onde ele não existe).
-  function condicaoCurta(promo) {
-    const configurados = new Set((promo.itens || []).map((i) => Number(i.compromissoMeses)));
-    const comVantagem = descontosPorCiclo(promo).map((c) => c.meses);
-    const onde = comVantagem.length < configurados.size ? window.listaDeCiclos(comVantagem) : '';
-    const prazo = linhaValidade(promo, { comLimite: false });
-    const ondeFrase = onde ? onde.charAt(0).toUpperCase() + onde.slice(1) : '';
-    if (ondeFrase && prazo) return `${ondeFrase} · ${prazo.charAt(0).toLowerCase()}${prazo.slice(1)}`;
-    return ondeFrase ? `${ondeFrase}.` : prazo;
   }
 
   // Orientação pela proporção REAL da arte quando se sabe (o formato
@@ -179,42 +201,82 @@
     </div>`;
   }
 
-  function htmlCiclos(promo, tiersDoCiclo) {
+  // Planos: cada ciclo é um bloco de desconto clicável (leva ao ciclo na
+  // grade). Home: os mesmos blocos, só leitura (o CTA é "Ver planos").
+  function htmlCiclos(promo, tiersDoCiclo, { clicavel = true, melhorCiclo = null } = {}) {
     const ciclos = descontosPorCiclo(promo, tiersDoCiclo);
     if (!ciclos.length) return '';
-    return `<ul class="campanha-ciclos" aria-label="Desconto por ciclo">${ciclos
-      .map(
-        (
-          c,
-        ) => `<li><button type="button" class="campanha-ciclo" data-campanha-ciclo="${c.meses}" aria-controls="plansGrid"
-          aria-label="Ver os planos ${esc(c.nome)}, com ${c.variavel ? 'até ' : ''}${pct(c.desconto)} de desconto"><b>${c.variavel ? 'até ' : ''}${pct(c.desconto)}</b><span>${esc(c.nome)}</span></button></li>`,
-      )
-      .join('')}</ul>`;
+    const bloco = (c) => {
+      const valor = `${c.variavel ? '<small>até</small> ' : ''}${pct(c.desconto)}`;
+      const melhor = c.meses === melhorCiclo;
+      // Na faixa compacta da Home o marcador encurta pra caber em 4 blocos
+      // numa linha (o leitor de tela ouve "o melhor desconto" nos dois).
+      const selo = melhor
+        ? `<span class="campanha-ciclo-melhor" aria-hidden="true">${clicavel ? 'Melhor desconto' : 'Melhor'}</span>`
+        : '';
+      const falado = `${esc(c.nome)}: ${c.variavel ? 'até ' : ''}${pct(c.desconto)} de desconto${melhor ? ', o melhor desconto' : ''}`;
+      return clicavel
+        ? `<li><button type="button" class="campanha-ciclo${melhor ? ' campanha-ciclo-destaque' : ''}" data-campanha-ciclo="${c.meses}" aria-controls="plansGrid"
+          aria-label="Ver os planos ${falado}">${selo}<b>${valor}</b><span>${esc(c.nome)}</span></button></li>`
+        : // Item de lista não tem nome por aria-label (NVDA ignora): o leitor
+          // de tela lê o próprio texto, com o que falta em .campanha-sr —
+          // "até 10% de desconto no Mensal, o melhor desconto".
+          `<li class="campanha-ciclo${melhor ? ' campanha-ciclo-destaque' : ''}">${selo}<b>${valor}</b><span class="campanha-sr"> de desconto no </span><span>${esc(c.nome)}</span>${melhor ? '<span class="campanha-sr">, o melhor desconto</span>' : ''}</li>`;
+    };
+    return `<ul class="campanha-ciclos${clicavel ? '' : ' campanha-ciclos-leitura'}" aria-label="Desconto por ciclo">${ciclos.map(bloco).join('')}</ul>`;
+  }
+
+  // A mesma oferta em uma linha (barra da área logada): "Até 30% OFF" na
+  // tela, "Até 30% de desconto" no leitor de tela.
+  function htmlOfertaCurta(oferta) {
+    return `${oferta.ate ? 'Até ' : ''}${pct(oferta.desconto)} <span aria-hidden="true">OFF</span><span class="campanha-sr"> de desconto</span>`;
+  }
+
+  // Manchete da oferta: "ATÉ 30% OFF" na tela, "Até 30% de desconto" no
+  // leitor de tela ("OFF" é visual; a frase falada é a completa).
+  function htmlOferta(oferta) {
+    return `<span class="campanha-oferta">${oferta.ate ? '<span class="campanha-oferta-ate">Até</span> ' : ''}<span class="campanha-oferta-num">${pct(oferta.desconto)}</span> <span class="campanha-oferta-off" aria-hidden="true">OFF</span><span class="campanha-sr"> de desconto</span></span>`;
   }
 
   // Uma promoção, em HTML. `variante`: 'home' (curta, com "Ver planos") ou
   // 'planos' (o cliente já está no destino: descontos por ciclo, que levam
   // ao ciclo escolhido, prazo completo e as regras).
+  //
+  // Hierarquia (reforço visual, 28/09/2026): selo (contexto) → título só se
+  // disser algo além da oferta → OFERTA ("ATÉ 30% OFF", a manchete) →
+  // benefício (subtítulo) → descontos por ciclo → ação → prazo. A arte
+  // continua fora do texto.
   function htmlPromocao(promo, { variante = 'home', midia = null, id = 'campanha', tiersDoCiclo = null } = {}) {
     const forma = orientacao(midia, promo.formato_midia);
     const titulo = tituloSemSelo(promo.titulo_publico, promo.selo);
+    const oferta = ofertaDaPromocao(promo, tiersDoCiclo);
     const idTitulo = `${id}-titulo`;
+    const validade = linhaValidade(promo);
+    // "Tempo limitado" só quando há prazo — só o teto de adesões não é tempo.
+    const urgencia = promo.compra_fim ? '<span class="campanha-urgencia">Tempo limitado</span> ' : '';
+    const manchete = oferta
+      ? `${tituloRedundante(titulo, oferta) ? '' : `<p class="campanha-contexto">${esc(titulo)}</p>`}
+        <h2 class="campanha-titulo campanha-titulo-oferta" id="${idTitulo}">${htmlOferta(oferta)}</h2>`
+      : `<h2 class="campanha-titulo" id="${idTitulo}">${esc(titulo)}</h2>`;
     let detalhe = '';
     if (variante === 'planos') {
-      const validade = linhaValidade(promo);
-      detalhe = `${htmlCiclos(promo, tiersDoCiclo)}
-        ${validade ? `<p class="campanha-validade">${esc(validade)}</p>` : ''}
+      detalhe = `${htmlCiclos(promo, tiersDoCiclo, { melhorCiclo: oferta?.melhorCiclo })}
+        ${validade ? `<p class="campanha-validade">${urgencia}${esc(validade)}</p>` : ''}
         ${promo.descricao ? `<details class="campanha-regras"><summary>Como funciona</summary><p>${esc(promo.descricao)}</p></details>` : ''}`;
     } else {
-      const condicao = condicaoCurta(promo);
-      detalhe = `${condicao ? `<p class="campanha-validade">${esc(condicao)}</p>` : ''}
-        <a class="btn primary campanha-cta" href="/planos.html">Ver planos</a>`;
+      // Home: os descontos por ciclo só pra leitura rápida (clicar leva a
+      // Planos pelo CTA); na Home a ação é uma só.
+      detalhe = `${htmlCiclos(promo, null, { clicavel: false, melhorCiclo: oferta?.melhorCiclo })}
+        <div class="campanha-acao">
+          <a class="btn campanha-cta" href="/planos.html">Ver planos</a>
+          ${validade ? `<p class="campanha-validade">${urgencia}${esc(validade)}</p>` : ''}
+        </div>`;
     }
     return `<article class="campanha campanha-${variante} ${midia ? `campanha-com-midia campanha-forma-${forma}` : 'campanha-sem-midia'}" aria-labelledby="${idTitulo}">
       ${htmlMidia(midia, forma)}
       <div class="campanha-conteudo">
         ${promo.selo ? `<span class="campanha-selo">${esc(promo.selo)}</span>` : ''}
-        <h2 class="campanha-titulo" id="${idTitulo}">${esc(titulo)}</h2>
+        ${manchete}
         ${promo.subtitulo ? `<p class="campanha-texto">${esc(promo.subtitulo)}</p>` : ''}
         ${detalhe}
       </div>
@@ -411,5 +473,13 @@
   window.montarPromocoes = montarPromocoes;
   window.htmlPromocao = htmlPromocao;
   window.promocoesParaExibir = promocoesParaExibir;
-  window.promocaoUtil = { tituloSemSelo, descontosPorCiclo, linhaValidade, condicaoCurta, orientacao };
+  window.promocaoUtil = {
+    tituloSemSelo,
+    htmlOfertaCurta,
+    descontosPorCiclo,
+    ofertaDaPromocao,
+    tituloRedundante,
+    linhaValidade,
+    orientacao,
+  };
 })();
