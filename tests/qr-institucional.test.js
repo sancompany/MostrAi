@@ -449,7 +449,9 @@ test('banco fora do ar: /q/anuncie não dá erro, leva à página de planos — 
 test('sem SITE_URL o admin avisa (503) em vez de gerar um QR sem endereço', async () => {
   const salvo = { SITE_URL: process.env.SITE_URL, CORS_ORIGIN: process.env.CORS_ORIGIN };
   delete process.env.SITE_URL;
-  delete process.env.CORS_ORIGIN;
+  // Codex #86: com CORS_ORIGIN de outro host, o QR não pode cair nele — o
+  // link impresso tem que ser o do site, e só SITE_URL diz qual é.
+  process.env.CORS_ORIGIN = 'https://api.outro-host.test';
   try {
     for (const caminho of ['/admin/qr-institucional', '/admin/qr-institucional/svg', '/admin/qr-institucional/png']) {
       const r = await admin('GET', caminho);

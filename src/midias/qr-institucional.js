@@ -35,9 +35,11 @@ const OPCOES_QR = {
 // pixel no processo: 4096 px travava o servidor ~2 s por pedido.
 const TAMANHOS_PNG = [1024, 2048];
 
-// Mesma fonte do endereço público que os e-mails e convites usam.
+// Só SITE_URL (revisão Codex do #86): sem o fallback pra CORS_ORIGIN que
+// e-mails e convites usam — link de e-mail com host errado se reenvia, QR
+// impresso com host errado não tem conserto trocando o destino.
 function baseDoSite() {
-  return String(process.env.SITE_URL || process.env.CORS_ORIGIN || '')
+  return String(process.env.SITE_URL || '')
     .trim()
     .replace(/\/+$/, '');
 }
