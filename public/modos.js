@@ -63,7 +63,7 @@
       // montarModo trocar o card pela campanha de verdade, no lugar.
       await montarModo(modo, container, aoLiberado);
     } catch (err) {
-      msg.textContent = err.message;
+      msg.textContent = window.frase(err.message);
       msg.className = 'form-msg err';
     }
   }

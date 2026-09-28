@@ -73,7 +73,7 @@ async function carregar() {
           ? '/anunciante/painel.html#modPontos'
           : '/anunciante/painel.html';
       } catch (err) {
-        msg.textContent = err.message;
+        msg.textContent = window.frase(err.message);
         msg.className = 'form-msg err';
       }
     });
@@ -165,7 +165,8 @@ form.addEventListener('submit', async (e) => {
     // Painel único (Fatia 6): toda conta nova cai no mesmo painel.
     window.location.href = PAPEIS.includes('ponto') ? '/anunciante/painel.html#modPontos' : '/anunciante/painel.html';
   } catch (err) {
-    msg.textContent = err.message === 'falha' ? 'Não foi possível criar a conta agora. Tente novamente.' : err.message;
+    msg.textContent =
+      err.message === 'falha' ? 'Não foi possível criar a conta agora. Tente novamente.' : window.frase(err.message);
     msg.className = 'form-msg err';
   }
 });

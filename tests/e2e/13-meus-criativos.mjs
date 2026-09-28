@@ -188,8 +188,16 @@ check('a antiga saiu do ar', (await card(noAr)).includes('Fora do ar'));
 check('sem reload', await p.evaluate(() => window.__semReload === true));
 
 console.log('== excluir recusada ==');
-p.once('dialog', (d) => d.accept());
+// Modal Mostraí (confirmar.js), não confirm() nativo: um diálogo nativo
+// aqui é regressão.
+p.once('dialog', (d) => {
+  falha('excluir abriu diálogo nativo do navegador', d.message());
+  d.dismiss();
+});
 await p.click(`.criativo-card[data-id="${recusada}"] [data-acao="excluir"]`);
+await p.waitForSelector('dialog.dlg-confirmar[open]', { timeout: 5000 });
+check('confirmação em modal Mostraí, com título e consequência', (await p.textContent('dialog.dlg-confirmar')).includes('Excluir'));
+await p.click('dialog.dlg-confirmar [data-confirmar]');
 await p.waitForFunction((id) => !document.querySelector(`.criativo-card[data-id="${id}"]`), recusada, { timeout: 8000 });
 check('recusada some da lista', !(await p.$(`.criativo-card[data-id="${recusada}"]`)));
 

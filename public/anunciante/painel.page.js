@@ -599,26 +599,28 @@ function preencherAssinatura() {
   if (ativo) document.getElementById('btnCancelarAssinatura').addEventListener('click', cancelarAssinatura);
 }
 
+// Confirmação em modal Mostraí (confirmar.js): o pedido roda dentro do
+// modal, com loading, e o erro fica escrito ali; a página só muda depois
+// que o servidor respondeu.
 async function cancelarAssinatura() {
-  if (
-    !window.confirm(
-      'Cancelar sua assinatura? O período que você já pagou continua no ar até o fim. Depois disso, não há nova cobrança nem novo anúncio no ar.',
-    )
-  )
-    return;
   const btn = document.getElementById('btnCancelarAssinatura');
   const msg = document.getElementById('msgCancelarAssinatura');
-  btn.disabled = true;
-  const r = await fetch(`${API_BASE_URL}/anunciantes/me/cancelar-assinatura`, {
-    method: 'POST',
-    credentials: 'include',
+  const sim = await window.confirmarMostrai({
+    titulo: 'Cancelar sua assinatura?',
+    texto:
+      'O período que você já pagou continua no ar até o fim. Depois disso não há nova cobrança nem anúncio no ar. Cancelar não devolve o que já foi pago.',
+    botao: 'Cancelar assinatura',
+    cancelar: 'Manter assinatura',
+    perigo: true,
+    aoConfirmar: async () => {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/cancelar-assinatura`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar agora.');
+    },
   });
-  if (!r.ok) {
-    msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível cancelar agora.';
-    msg.className = 'form-msg err';
-    btn.disabled = false;
-    return;
-  }
+  if (!sim) return;
   msg.textContent = 'Assinatura cancelada. A cobertura continua até o fim do período já pago.';
   msg.className = 'form-msg ok';
   btn.remove();

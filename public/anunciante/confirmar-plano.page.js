@@ -199,12 +199,22 @@ async function montarConfirmacaoTroca(planoNovoId) {
     e.target.disabled = true;
     e.target.textContent = 'Trocando...';
     const msg = document.getElementById('msgConfirmacaoPedido');
-    const r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ planoNovoId }),
-    });
+    let r;
+    try {
+      r = await fetch(`${API_BASE_URL}/anunciantes/me/trocar-plano`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planoNovoId }),
+      });
+    } catch (err) {
+      // Sem rede o botão voltava? Não: ficava em "Trocando..." pra sempre.
+      msg.textContent = window.frase(err.message);
+      msg.className = 'form-msg err';
+      e.target.disabled = false;
+      e.target.textContent = 'Trocar agora';
+      return;
+    }
     const corpo = await r.json().catch(() => ({}));
     if (r.status === 202) {
       // approvalUrl ausente não deveria acontecer (contrato do Checkout
@@ -256,12 +266,21 @@ async function assinar(anuncianteId, planoId, confirmarBeneficio = false) {
   const msg = document.getElementById('msgConfirmacaoPedido');
   msg.textContent = 'Gerando cobrança...';
   msg.className = 'form-msg';
-  const r = await fetch(`${API_BASE_URL}/anunciantes/${anuncianteId}/assinar`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ planoId, confirmarBeneficio }),
-  });
+  let r;
+  try {
+    r = await fetch(`${API_BASE_URL}/anunciantes/${anuncianteId}/assinar`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planoId, confirmarBeneficio }),
+    });
+  } catch (err) {
+    // Sem rede ficava em "Gerando cobrança..." com o botão travado pra sempre.
+    msg.textContent = window.frase(err.message);
+    msg.className = 'form-msg err';
+    document.getElementById('btnConfirmarPlano').disabled = false;
+    return;
+  }
   if (r.status === 409) {
     const corpo = await r.json().catch(() => ({}));
     if (corpo.confirmacao) {
@@ -289,8 +308,10 @@ async function assinar(anuncianteId, planoId, confirmarBeneficio = false) {
   // avisar nada — melhor mostrar o erro do que redirecionar pra lugar
   // nenhum.
   if (!/^https?:\/\//.test(checkoutUrl)) {
-    msg.textContent =
-      'Checkout não configurado neste ambiente (SAN_CHECKOUT_BASE_URL vazio no .env). Fale com o suporte técnico.';
+    // Frase de cliente, não de operador: o nome da variável fica no log do
+    // servidor, não na tela de quem está tentando pagar.
+    console.error('confirmar-plano: checkoutUrl não é absoluta — SAN_CHECKOUT_BASE_URL/CONTRATANTE_ID no .env?');
+    msg.textContent = 'O pagamento está indisponível neste momento. Fale com a gente pelo WhatsApp e a gente resolve.';
     msg.className = 'form-msg err';
     document.getElementById('btnConfirmarPlano').disabled = false;
     return;

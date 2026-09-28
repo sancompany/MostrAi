@@ -350,7 +350,7 @@
         preencher();
         if (aoAtualizar) aoAtualizar(conta);
       } catch (err) {
-        msg.textContent = err.message || 'Não foi possível salvar agora. Tente de novo.';
+        msg.textContent = window.frase(err.message) || 'Não foi possível salvar agora. Tente de novo.';
         msg.className = 'form-msg err';
       }
     });
@@ -384,22 +384,32 @@
       }
     });
 
+    // Confirmações em modal Mostraí (confirmar.js), nunca confirm()/alert()
+    // nativo: o pedido roda dentro do modal, com loading, e erro fica escrito
+    // ali — a página só muda quando o servidor respondeu.
     $('btnLogout').addEventListener('click', async () => {
-      if (!confirm('Sair da sua conta?')) return;
-      await fetch(`${API_BASE_URL}/anunciantes/logout`, { method: 'POST', credentials: 'include' });
-      window.location.href = '/';
+      const sim = await window.confirmarMostrai({
+        titulo: 'Sair da sua conta?',
+        texto: 'Você volta pra página inicial. Pra entrar de novo é só usar seu e-mail e senha.',
+        botao: 'Sair',
+        aoConfirmar: () => fetch(`${API_BASE_URL}/anunciantes/logout`, { method: 'POST', credentials: 'include' }),
+      });
+      if (sim) window.location.href = '/';
     });
 
     $('btnExcluirConta').addEventListener('click', async () => {
-      if (
-        !confirm(
-          'Tem certeza que quer excluir sua conta? Ela fica recuperável por 60 dias. Depois disso é apagada de vez. Pra recuperar dentro desse prazo, fale com o suporte pelo WhatsApp.',
-        )
-      )
-        return;
-      const r = await fetch(`${API_BASE_URL}/anunciantes/me/excluir`, { method: 'POST', credentials: 'include' });
-      if (!r.ok) return alert('Não foi possível excluir a conta agora. Fale com o suporte.');
-      window.location.href = '/';
+      const sim = await window.confirmarMostrai({
+        titulo: 'Excluir sua conta?',
+        texto:
+          'Seu anúncio sai do ar e você perde o acesso agora. A conta fica recuperável por 60 dias — pra recuperar nesse prazo, fale com o suporte pelo WhatsApp. Depois disso é apagada de vez.',
+        botao: 'Excluir minha conta',
+        perigo: true,
+        aoConfirmar: async () => {
+          const r = await fetch(`${API_BASE_URL}/anunciantes/me/excluir`, { method: 'POST', credentials: 'include' });
+          if (!r.ok) throw new Error('Não foi possível excluir a conta agora. Fale com o suporte.');
+        },
+      });
+      if (sim) window.location.href = '/';
     });
 
     // --- Direitos do titular -------------------------------------------------
@@ -433,14 +443,22 @@
     });
 
     $('btnApagarOpcionais').addEventListener('click', async () => {
-      if (!confirm('Apagar o contato do responsável e a foto da conta? Não dá pra desfazer.')) return;
-      const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ escopo: 'opcionais' }),
+      const sim = await window.confirmarMostrai({
+        titulo: 'Apagar os dados opcionais?',
+        texto: 'O contato do responsável e a foto da conta são apagados. Não dá pra desfazer.',
+        botao: 'Apagar',
+        perigo: true,
+        aoConfirmar: async () => {
+          const r = await fetch(`${API_BASE_URL}/titular/consentimento`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ escopo: 'opcionais' }),
+          });
+          if (!r.ok) throw new Error('Não deu pra apagar agora.');
+        },
       });
-      if (!r.ok) return dizer('Não deu pra apagar agora.', 'err');
+      if (!sim) return;
       dizer('Dados opcionais apagados.', 'ok');
       const novo = await (await fetch(`${API_BASE_URL}/anunciantes/me`, { credentials: 'include' })).json();
       Object.assign(conta, novo);
@@ -477,18 +495,21 @@
         `e receber ${fmtBRL(d.valor_a_estornar)} de volta (7 dias, art. 49 do Código de Defesa ` +
         `do Consumidor). O anúncio sai do ar na hora.`;
       $('btnArrependimento').addEventListener('click', async () => {
-        if (
-          !confirm(
-            `Desistir da contratação e pedir ${fmtBRL(d.valor_a_estornar)} de volta? Seu anúncio sai do ar agora.`,
-          )
-        )
-          return;
-        const r = await fetch(`${API_BASE_URL}/titular/arrependimento`, {
-          method: 'POST',
-          credentials: 'include',
+        const sim = await window.confirmarMostrai({
+          titulo: 'Desistir da contratação?',
+          texto: `Seu anúncio sai do ar agora e ${fmtBRL(d.valor_a_estornar)} voltam pra você pelo mesmo meio de pagamento. Você recebe a confirmação por e-mail.`,
+          botao: 'Desistir e pedir o valor de volta',
+          perigo: true,
+          aoConfirmar: async () => {
+            const r = await fetch(`${API_BASE_URL}/titular/arrependimento`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+            const corpo = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(corpo.erro || 'Não deu pra registrar agora.');
+          },
         });
-        const corpo = await r.json().catch(() => ({}));
-        if (!r.ok) return dizer(corpo.erro || 'Não deu pra registrar agora.', 'err');
+        if (!sim) return;
         dizer('Desistência registrada. Você recebe a confirmação por e-mail.', 'ok');
         $('btnArrependimento').hidden = true;
       });
