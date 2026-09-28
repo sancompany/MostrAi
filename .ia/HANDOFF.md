@@ -1,29 +1,30 @@
 # Current Handoff
 
 ## Updated
-2026-09-28 — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO** (PR próprio a
-partir do `main`, NÃO mergeado, aguardando o dono). Ponto ativo = Plano
-Básico (14 h/mês, peça até 15 s, 1 criativo, só no próprio ponto, sem custo)
-+ 1 crédito/mês. Migration 103 (`beneficios_basico_ponto` + coluna
+2026-09-28 (fim) — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO:
+mergeada (#93) com autorização do dono**, depois de atualizada com a `main`
+(que já tinha o #94 de categorias). Ponto ativo = Plano Básico (14 h/mês,
+peça até 15 s, 1 criativo, só no próprio ponto, sem custo) + 1 crédito/mês.
+Migration 103 (`beneficios_basico_ponto` + coluna
 `exibicoes_contador.segundos_obrigacao_basico`), `src/pontos/basico.js`,
 ADR-025, RN-43.5. Soma com o plano comercial com a origem preservada; nunca
-em `plano_id`, nunca no Checkout/vitrine. Testes `tests/basico-ponto.test.js`
-(10 casos + hora sem sinal) e e2e 34. A estação de finalização (#87–#92)
-continua PAUSADA — ver `docs/auditoria-finalizacao-checkpoint.md` no #87.
-Revisão independente aplicada no mesmo PR (1 P2 + 5 P3, cada um com teste
-que falha no código anterior): a parte Básico congela junto com o total da
-hora (o CHECK derrubava a playlist na hora do deploy), plano sem teto de peça
-continua sem teto, saldo dividido também pelos pontos do Básico, fim com o
-instante registrado, sequência por hora girando dia a dia, rede de segurança
-com a peça certa. Revisão do Codex no #93 (2 P2, também com teste): a vaga
-do Básico só roda peça dentro do teto de peça da conta hoje
-(`pecasDoBasico`; o painel mostra "acima da duração máxima"), e o saldo só
-se divide pelos pontos do Básico em operação. Fica pro dono: Básico de ponto cujas telas foram todas
-removidas/revogadas continua ativo (ADR-025 como escrito). A estação de
-categorias está PARADA por ordem do dono até este PR estar aberto e
-documentado — não retomar sem ele.
-**Depois do merge:** CI, SHA no ar, conferir em produção (só leitura) quantos
-pontos o backfill da 103 ativou e o card no painel de um dono de ponto real.
+em `plano_id`, nunca no Checkout/vitrine. Revisão independente (1 P2 + 5 P3)
+e Codex (2 P2) aplicadas com teste. Conflito com o #94 só em
+`entrada-no-ar.js#coberturaDaConta`: o próprio ponto do Básico entra sem
+trava; o resto segue a regra de concorrentes diretos. Fica pro dono: Básico
+de ponto cujas telas foram todas removidas/revogadas continua ativo (ADR-025
+como escrito). A estação de finalização (#87–#92) continua PAUSADA — ver
+`docs/auditoria-finalizacao-checkpoint.md` no #87.
+**Pós-merge:** CI da `main`, SHA no ar, conferir em produção (só leitura)
+quantos pontos o backfill da 103 ativou.
+2026-09-28 — **Estação CATEGORIAS E CONCORRENTES DIRETOS** (#94, mergeado
+antes do #93). Proteção do dono da tela = categoria do ponto × categoria do
+anunciante: mesma categoria bloqueia; par cadastrado em
+`categorias_concorrentes` (migration 105, um par por linha, a < b) bloqueia;
+resto exibe. Grupo e aliases nunca bloqueiam; sem exclusividade entre
+anunciantes. Seed com os 48 pares aprovados + "Terapia capilar" (sem par).
+Admin → Categorias → Editar ganhou "Concorrentes diretos". ADR-026, emenda
+da RN-57. **Não iniciar outra estação sem o dono.**
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só

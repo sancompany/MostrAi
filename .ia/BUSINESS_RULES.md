@@ -179,6 +179,14 @@ cortesia, quando marcado):
 - `anunciantesElegiveis` (`src/playlist/gerador.js`) exclui da tela um
   anunciante cujo `categoria_id` bate com o `categoria_id` **do ponto**
   onde a tela está — "não competir com o ramo do próprio comércio".
+- Desde 28/09/2026 (migration 105, ADR-026) também exclui quando o par
+  (categoria do ponto, categoria do anunciante) está em
+  `categorias_concorrentes` — uma linha por par, `categoria_a <
+  categoria_b`, simétrica por construção. Grupo e aliases nunca entram;
+  não há exclusividade anunciante × anunciante; a dona que escolheu o
+  próprio ponto é isenta das duas partes. Regra em JS espelhada em
+  `src/categorias/concorrencia.js#bloqueia` (usada por
+  `entrada-no-ar.js#coberturaDaConta`).
 - **Risco conhecido, não fórmula**: nenhum caminho de criação de ponto hoje
   grava `categoria_id` no ponto (`docs/furos.md`, furo já catalogado) — na
   prática esse filtro nunca exclui ninguém hoje. Ver `.ia/RISKS.md`.

@@ -634,6 +634,28 @@ algum até a migration 067, que adicionou cobertura em
 `tests/categorias-concorrencia.test.js`. *Quem vê:* o anunciante nunca
 vê a mecânica — só o efeito (o próprio anúncio aparecendo ou não numa
 tela); o admin vê e edita a categoria de cada ponto/anunciante.
+> **Concorrentes diretos (28/09/2026, migration 105, ADR-026).** A regra
+> passou a ter duas partes, sempre CATEGORIA DO PONTO × CATEGORIA DO
+> ANUNCIANTE: (1) mesma `categoria_id` bloqueia, como acima; (2) par
+> cadastrado em `categorias_concorrentes` bloqueia (Academia ↔ CrossFit,
+> Cafeteria ↔ Padaria, Hotel / Pousada ↔ Locação por temporada, Design ↔
+> Marketing / Publicidade…); (3) todo o resto exibe. O par é UMA linha
+> guardada com o menor id primeiro, então vale nos dois sentidos por
+> construção — não existe conflito de um lado só. Grupo continua sem
+> bloquear (Academia × Estúdio de Pilates, Barbearia × Salão de beleza, Pet
+> shop × Clínica veterinária exibem), alias continua sem bloquear, e não
+> existe exclusividade entre anunciantes: numa cafeteria, Academia e
+> CrossFit entram os dois. A dona que escolheu o próprio ponto continua
+> isenta das duas partes. Mídia Mostraí não passa por aqui. Seed: os 48
+> pares aprovados pelo dono, por nome; nasceu junto a categoria "Terapia
+> capilar" (Beleza e estética), sem par cruzado. Quem edita: Admin →
+> Contas → Categorias → Editar → "Concorrentes diretos" (busca + etiquetas;
+> grava no Salvar, some dos dois lados ao tirar). Vale para a programação
+> seguinte — a vaga já congelada da hora some na próxima leitura da TV e o
+> histórico (proof-of-play, contadores) nunca é reescrito. Mesclar uma
+> categoria leva os pares dela pra que fica. Testes:
+> `tests/categorias-concorrentes-diretos.test.js`,
+> `tests/categorias-concorrentes-admin.test.js`, e2e 28.
 > Furo achado junto (não é a regra em si, é quem alimentava ela):
 > `criarPontoDaCandidatura` (`src/anunciantes/routes.js`) e
 > `liberarPapelNaConta` (`src/conta/modos.js`) — os dois caminhos que

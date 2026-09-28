@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const pontosRepo = require('../pontos/repository');
+const concorrencia = require('../categorias/concorrencia');
 const { pontosDoAnunciante } = require('../lib/pacing');
 const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
@@ -110,21 +111,23 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 
 // Os pontos em que a conta pode tocar AGORA — a mesma conta do gerador:
 // fatia de `pontosDoAnunciante` (escolha ou sorteio estável) e a trava de
-// ramo (a conta do mesmo ramo do ponto não entra, salvo a dona que escolheu
-// o próprio ponto — gerador.js#anunciantesElegiveis).
+// ramo (a conta do mesmo ramo do ponto, ou de um ramo concorrente direto
+// dele, não entra, salvo a dona que escolheu o próprio ponto —
+// gerador.js#anunciantesElegiveis, categorias/concorrencia.js).
 // limite: a cota de autoanúncio (`excluirContaId` do gerador) não entra —
 // zerada em todas as telas desde a migration 049.
 // Plano Básico do ponto (migration 103): o próprio ponto de cada Básico
 // ativo entra na cobertura, sem trava de ramo (é o estabelecimento da conta)
 // e sem ocupar vaga da escolha comercial.
 async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
-  const [{ rows: escolhas }, { rows: noAr }, bloqueados] = await Promise.all([
+  const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
       `SELECT p.id, p.horario_semanal, p.categoria_id, p.anunciante_id AS dono_id
          FROM pontos p WHERE p.status = 'em_operacao' ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
+    concorrencia.concorrentesDe(conta.categoria_id, db),
   ]);
   const escolhidos = escolhas.map((r) => r.ponto_id);
   const ids = plano
@@ -140,9 +143,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
     (p) =>
       proprios.has(p.id) ||
       (naFatia.has(p.id) &&
-        (!p.categoria_id ||
-          !conta.categoria_id ||
-          p.categoria_id !== conta.categoria_id ||
+        (!concorrencia.bloqueia(p.categoria_id, conta.categoria_id, concorrentes) ||
           (p.dono_id === conta.id && escolhidos.includes(p.id)))),
   );
 }

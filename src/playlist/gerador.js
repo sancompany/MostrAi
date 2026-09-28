@@ -79,7 +79,8 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 }
 
 // "Elegível pra esta tela" é: conta ativa + criativo aprovado + dentro da
-// validade + não ser do mesmo ramo do comércio onde a tela está + O PLANO
+// validade + não ser do mesmo ramo do comércio onde a tela está nem de um
+// ramo registrado como CONCORRENTE DIRETO dele (migration 105) + O PLANO
 // COBRIR ESTE PONTO.
 //
 // A última condição é nova (17/09/2026). Até aqui todo plano cobria 100% da
@@ -104,7 +105,9 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // ponto da rede no mesmo ramo, zero exibição programada). A isenção vale só
 // com a escolha explícita (`anunciantes_pontos`): o próprio ponto é opcional
 // e nunca entra por ser do dono — no modo automático a trava continua como
-// era. A cota de autoanúncio continua saindo por `excluirContaId`.
+// era. A isenção cobre as duas regras da trava (mesma categoria e par de
+// concorrentes diretos): é a tela DELE. A cota de autoanúncio continua
+// saindo por `excluirContaId`.
 //
 // `qualquerValidade`: a obrigação de hora sem sinal (src/bancohoras/obrigacao.js)
 // olha horas que já passaram — a validade é conferida hora a hora lá, com a
@@ -147,7 +150,15 @@ async function anunciantesElegiveis(
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND NOT a.conta_propria
-      AND ($1::int IS NULL OR a.categoria_id IS NULL OR a.categoria_id <> $1
+      -- Proteção do dono da tela (categorias/concorrencia.js): mesma
+      -- categoria do ponto, ou par registrado em categorias_concorrentes
+      -- (guardado com a < b — uma busca pela PK, sem N+1). Grupo e aliases
+      -- não entram.
+      AND ($1::int IS NULL OR a.categoria_id IS NULL
+           OR (a.categoria_id <> $1 AND NOT EXISTS (
+                 SELECT 1 FROM categorias_concorrentes cc
+                  WHERE cc.categoria_a = least(a.categoria_id, $1::int)
+                    AND cc.categoria_b = greatest(a.categoria_id, $1::int)))
            OR (a.id = $3::int AND EXISTS (
                  SELECT 1 FROM anunciantes_pontos proprio
                   WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = $4::int)))
