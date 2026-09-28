@@ -2484,6 +2484,49 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
   :where([data-layout="publico"], [data-layout="minimo"]) .card .field-row.linha-curta > .campo-uf { flex: 0 0 76px; }
 }
 
+/* Barra promocional da área logada (public/barra-promocional.js,
+   28/09/2026): faixa fina logo abaixo do cabeçalho, nunca card. Âmbar suave
+   com o selo vermelho da campanha — chama sem roubar o painel. Fechar tira a
+   faixa do fluxo (o conteúdo sobe, sem espaço vazio). */
+.barra-promo {
+  background: linear-gradient(90deg, #fff1c2, #ffe7b0);
+  border-bottom: 1px solid #f1d58a;
+  color: #3b2a05;
+}
+.barra-promo-wrap { display: flex; align-items: center; gap: 12px; min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
+.barra-promo-texto { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 2px; flex: 1; min-width: 0; margin: 0; font-size: .92rem; line-height: 1.35; }
+.barra-promo-selo {
+  padding: 2px 8px; border-radius: 4px; background: #d4202a; color: #fff;
+  font-size: .7rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+}
+.barra-promo-oferta { color: #a3151d; font-weight: 900; letter-spacing: -.01em; white-space: nowrap; }
+.barra-promo-sub { color: #5a4516; min-width: 0; }
+.barra-promo-cta {
+  flex: none; padding: 5px 12px; border-radius: 999px; background: #1a1208; color: #fff;
+  font-size: .82rem; font-weight: 800; text-decoration: none; white-space: nowrap;
+}
+.barra-promo-cta:hover { background: #3b2a05; }
+.barra-promo-fechar {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; margin-right: -8px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: #3b2a05; font-size: 1.5rem; line-height: 1; cursor: pointer;
+}
+.barra-promo-fechar:hover { background: rgba(59, 42, 5, .1); }
+.barra-promo-cta:focus-visible, .barra-promo-fechar:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+/* Celular: o texto pode quebrar em duas linhas; o subtítulo sai (a barra
+   continua barra), o botão fica pequeno e o X sempre visível. */
+@media (max-width: 600px) {
+  .barra-promo-wrap { gap: 8px; padding-left: 16px; padding-right: 12px; }
+  .barra-promo-texto { font-size: .86rem; }
+  .barra-promo-sub { display: none; }
+  .barra-promo-cta { padding: 5px 10px; font-size: .78rem; }
+}
+/* Depois de fechar a barra o foco vai pro <main> (tabindex -1): destino de
+   foco programático, não controle — sem contorno em volta da página toda. */
+main[tabindex="-1"]:focus { outline: none; }
+
+
+/* =========================================================================
    Formulário de ponto — "Tornar-se ponto" e "Novo estabelecimento"
    (estação dos formulários de ponto, 28/09/2026; public/meus-pontos.js e
    public/candidatura-ponto.js). Tudo aqui vale só dentro de `.form-ponto`:
@@ -2679,46 +2722,3 @@ header.site nav.main a.modo-aba.bloqueado::before { content: "🔒 "; font-size:
 /* Busca de segmento pelo teclado (formulario.js#montarBusca): a opção
    destacada pelas setas aparece como a do mouse. */
 .categoria-resultados li.ativo { background: var(--bg-alt); box-shadow: inset 3px 0 0 var(--brand); }
-=======
-/* Barra promocional da área logada (public/barra-promocional.js,
-   28/09/2026): faixa fina logo abaixo do cabeçalho, nunca card. Âmbar suave
-   com o selo vermelho da campanha — chama sem roubar o painel. Fechar tira a
-   faixa do fluxo (o conteúdo sobe, sem espaço vazio). */
-.barra-promo {
-  background: linear-gradient(90deg, #fff1c2, #ffe7b0);
-  border-bottom: 1px solid #f1d58a;
-  color: #3b2a05;
-}
-.barra-promo-wrap { display: flex; align-items: center; gap: 12px; min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
-.barra-promo-texto { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 2px; flex: 1; min-width: 0; margin: 0; font-size: .92rem; line-height: 1.35; }
-.barra-promo-selo {
-  padding: 2px 8px; border-radius: 4px; background: #d4202a; color: #fff;
-  font-size: .7rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
-}
-.barra-promo-oferta { color: #a3151d; font-weight: 900; letter-spacing: -.01em; white-space: nowrap; }
-.barra-promo-sub { color: #5a4516; min-width: 0; }
-.barra-promo-cta {
-  flex: none; padding: 5px 12px; border-radius: 999px; background: #1a1208; color: #fff;
-  font-size: .82rem; font-weight: 800; text-decoration: none; white-space: nowrap;
-}
-.barra-promo-cta:hover { background: #3b2a05; }
-.barra-promo-fechar {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; margin-right: -8px; padding: 0; border: 0; border-radius: 50%;
-  background: transparent; color: #3b2a05; font-size: 1.5rem; line-height: 1; cursor: pointer;
-}
-.barra-promo-fechar:hover { background: rgba(59, 42, 5, .1); }
-.barra-promo-cta:focus-visible, .barra-promo-fechar:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
-/* Celular: o texto pode quebrar em duas linhas; o subtítulo sai (a barra
-   continua barra), o botão fica pequeno e o X sempre visível. */
-@media (max-width: 600px) {
-  .barra-promo-wrap { gap: 8px; padding-left: 16px; padding-right: 12px; }
-  .barra-promo-texto { font-size: .86rem; }
-  .barra-promo-sub { display: none; }
-  .barra-promo-cta { padding: 5px 10px; font-size: .78rem; }
-}
-/* Depois de fechar a barra o foco vai pro <main> (tabindex -1): destino de
-   foco programático, não controle — sem contorno em volta da página toda. */
-main[tabindex="-1"]:focus { outline: none; }
-
-/* ==================================================================
