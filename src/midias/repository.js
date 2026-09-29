@@ -180,6 +180,35 @@ async function excluir(id) {
   }
 }
 
+// Grava no criativo só se a mídia própria dona dele não estiver excluída,
+// com a linha da mídia travada (FOR UPDATE). `excluir` trava a mesma linha no
+// UPDATE, então as duas se esperam: sem isso, uma troca de arquivo que
+// começou antes da exclusão terminava depois e devolvia o arquivo à fila
+// como 'pendente', com Aprovar/Reprovar respondendo 409 (revisão Codex do
+// #104). Criativo que não é de mídia própria grava normalmente. Devolve o que
+// `gravar(client)` devolveu, ou null quando a mídia está excluída.
+async function gravarSeMidiaNaoExcluida(criativoId, gravar) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT situacao FROM midias_proprias WHERE criativo_id = $1 FOR UPDATE', [
+      criativoId,
+    ]);
+    if (rows[0]?.situacao === 'excluida') {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const resultado = await gravar(client);
+    await client.query('COMMIT');
+    return resultado;
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
+}
+
 // Situação da mídia própria dona deste criativo (1-pra-1), ou null quando o
 // criativo não é de mídia própria.
 async function situacaoPorCriativo(criativoId) {
@@ -366,6 +395,7 @@ module.exports = {
   atualizar,
   definirSituacao,
   excluir,
+  gravarSeMidiaNaoExcluida,
   situacaoPorCriativo,
   ocupacaoPorPonto,
   previewOcupacao,

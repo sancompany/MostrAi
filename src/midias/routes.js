@@ -279,10 +279,12 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
     return res.status(404).json({ erro: 'criativo não encontrado' });
   }
   // Mesma guarda do PATCH de criativo em src/admin/routes.js: trocar o
-  // arquivo o mandaria de volta pra fila.
+  // arquivo o mandaria de volta pra fila. Conferida de novo, com a mídia
+  // travada, na hora de gravar (a exclusão pode chegar durante o FFmpeg).
+  const ERRO_EXCLUIDA = 'esse arquivo é de uma mídia excluída — não muda mais';
   if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
+    return res.status(409).json({ erro: ERRO_EXCLUIDA });
   }
   try {
     // `processarArquivo` cria uma linha TEMPORÁRIA pra rodar o ffmpeg (mesmo
@@ -292,17 +294,24 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
     const planoId = conta && !conta.conta_propria ? anunciantesRepo.planoVigenteId(conta) : null;
     const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
     const temp = await processarArquivo(req, criativoAtual.anunciante_id, plano?.duracao_maxima_segundos || null);
-    const atualizado = await criativosRepo.atualizar(req.params.id, {
-      arquivo_original_url: temp.arquivo_original_url,
-      arquivo_normalizado_url: temp.arquivo_normalizado_url,
-      thumbnail_url: temp.thumbnail_url,
-      duracao_segundos: temp.duracao_segundos,
-      conteudo_sha256: temp.conteudo_sha256,
-      conteudo_bytes: temp.conteudo_bytes,
-      status: 'pendente',
-      motivo_reprovacao: null,
-    });
+    const atualizado = await midiasRepo.gravarSeMidiaNaoExcluida(req.params.id, (db) =>
+      criativosRepo.atualizar(
+        req.params.id,
+        {
+          arquivo_original_url: temp.arquivo_original_url,
+          arquivo_normalizado_url: temp.arquivo_normalizado_url,
+          thumbnail_url: temp.thumbnail_url,
+          duracao_segundos: temp.duracao_segundos,
+          conteudo_sha256: temp.conteudo_sha256,
+          conteudo_bytes: temp.conteudo_bytes,
+          status: 'pendente',
+          motivo_reprovacao: null,
+        },
+        db,
+      ),
+    );
     await criativosRepo.deletar(temp.id);
+    if (!atualizado) return res.status(409).json({ erro: ERRO_EXCLUIDA });
     res.json(atualizado);
   } catch (err) {
     erroDeUpload(res, err);

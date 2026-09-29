@@ -241,3 +241,33 @@ test('arquivo ainda em análise sai da fila junto com a mídia; arquivo aprovado
     await app.fechar();
   }
 });
+
+test('troca de arquivo × exclusão: a troca espera a exclusão e não devolve o arquivo à fila (Codex #104)', async () => {
+  const m = await midiaDeTeste({ situacao: 'pausada' });
+  // A exclusão de outra aba segura a linha da mídia (UPDATE em aberto)…
+  const outraAba = await pool.connect();
+  try {
+    await outraAba.query('BEGIN');
+    await outraAba.query(`UPDATE midias_proprias SET situacao = 'excluida' WHERE id = $1`, [m.id]);
+    // …enquanto a troca de arquivo chega na hora de gravar.
+    const troca = midiasRepo.gravarSeMidiaNaoExcluida(m.criativo_id, (db) =>
+      criativosRepo.atualizar(m.criativo_id, { status: 'pendente', motivo_reprovacao: null }, db),
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    await outraAba.query('COMMIT');
+    assert.strictEqual(await troca, null, 'viu a exclusão e não gravou');
+  } finally {
+    outraAba.release();
+  }
+  assert.strictEqual(
+    (await criativosRepo.buscarPorId(m.criativo_id)).status,
+    'aprovado',
+    'o arquivo não voltou pra fila',
+  );
+  // Mídia que não foi excluída grava normalmente.
+  const viva = await midiaDeTeste({ situacao: 'pausada' });
+  const gravado = await midiasRepo.gravarSeMidiaNaoExcluida(viva.criativo_id, (db) =>
+    criativosRepo.atualizar(viva.criativo_id, { status: 'pendente' }, db),
+  );
+  assert.strictEqual(gravado.status, 'pendente');
+});
