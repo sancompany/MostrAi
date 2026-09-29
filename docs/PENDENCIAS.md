@@ -5541,11 +5541,12 @@ Estação com merge e deploy autorizados pelo dono.
 
 ## W. Comunicados por e-mail no admin (estação final pré-lançamento, 29/09/2026)
 
-Branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`. Decisões: ADR-032;
-regra: RN-68 (`docs/funcional.md`); rotas: `docs/api.md` → "Comunicados por
-e-mail". **Não mergear antes da reconciliação com a Visão geral final**
-(pedido do dono): o PR #104 (QR institucional na Visão geral) mexe no mesmo
-trecho de `renderResumo`.
+Branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`, reconciliada com a
+`main` final (`c1ba708`, #104) em 29/09/2026. Decisões: ADR-032; regra: RN-68
+(`docs/funcional.md`); rotas: `docs/api.md` → "Comunicados por e-mail".
+Merge autorizado pelo dono depois da reconciliação com a Visão geral final
+(pedido dele: o PR #104 pôs o QR institucional no mesmo trecho de
+`renderResumo` — ficaram os dois).
 
 **Feito:**
 
@@ -5604,10 +5605,12 @@ trecho de `renderResumo`.
       usam a mesma conta. Conferir o tipo da conta (Workspace x Gmail comum)
       no admin.google.com e ajustar o teto se for o caso; se o provedor
       reclamar de ritmo, baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
-- W4 [ ] **Reconciliar com o #104** quando ele entrar na `main`: os dois
-      acrescentam um bloco no fim da coluna de negócio (`renderResumo`) e
-      uma chamada `blocoIndependente` — ficam os DOIS (QR institucional e
-      depois Comunicados), nunca um no lugar do outro.
+- W4 [x] **Reconciliado com o #104** (29/09/2026, merge da `main` `c1ba708`
+      no branch): os dois acrescentavam um bloco no fim da coluna de negócio
+      (`renderResumo`) e uma chamada `blocoIndependente` — ficaram os DOIS
+      (QR institucional e depois Comunicados), cada um falhando sozinho.
+      Depois do merge: `npm run check` (695, 0 falha) e e2e 39, 27, 24 e 26
+      verdes.
 
 **Encontrado de passagem (não mexido):**
 

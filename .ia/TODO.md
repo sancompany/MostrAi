@@ -238,13 +238,13 @@ preservado; ver `.ia/RISKS.md`.
 
 ## COMUNICADOS POR E-MAIL — antes e depois do merge (29/09/2026)
 
-- [ ] Antes do merge: esperar o PR #104 (QR na Visão geral) entrar na
-  `main`, trazer a `main` pro branch (merge, sem escolher lado às cegas: os
-  dois blocos ficam), `npm run check` e e2e 39/24/26 de novo, CI verde. Só
-  então avisar o dono que está pronto pra merge (pedido dele).
-- [ ] Depois do merge (só com autorização): migration 108 aplicada no
-  deploy, CI no SHA mergeado, e o dono manda um TESTE pra caixa da equipe
-  antes do primeiro comunicado real (`docs/PENDENCIAS.md` §W1).
+- [x] Antes do merge: o PR #104 (QR na Visão geral) entrou na `main`
+  (`c1ba708`) e a `main` veio pro branch por merge em 29/09 — os dois blocos
+  ficaram (QR, depois Comunicados); `npm run check` (695, 0 falha) e e2e 39,
+  27, 24 e 26 verdes depois do merge. Merge autorizado pelo dono.
+- [ ] Depois do merge: CI no SHA mergeado, deploy no ar com a migration 108
+  (roda no arranque do contêiner), e o dono manda um TESTE pra caixa da
+  equipe antes do primeiro comunicado real (`docs/PENDENCIAS.md` §W1).
 - Decisões do dono, fora desta estação: divulgação/opt-in (§W2), limite
   diário do SMTP (§W3).
 
