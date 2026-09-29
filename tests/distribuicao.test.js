@@ -172,8 +172,16 @@ async function outraTela(pontoId) {
   return { telaId: t.id, player };
 }
 
-async function playlistAgora(telaId) {
-  return gerador.gerarPlaylistDaHora(await tela(telaId), new Date());
+// Toda playlist deste arquivo sai daqui, com o ponto fora do sorteio: ponto
+// aberto recebe contas com plano de outros arquivos rodando em paralelo, que
+// o `after` deles apaga no meio da geração (FK de `exibicoes_contador`) ou
+// que aparecem na tela e quebram a asserção. Bloquear agora não muda o
+// cenário: as contas daqui chegam por escolha explícita (direta ou pela rota,
+// já feita antes), que vale em ponto bloqueado, e a mídia não olha o bloqueio.
+async function playlistAgora(telaId, hora = new Date()) {
+  const t = await tela(telaId);
+  await tirarDoSorteio(t.ponto_id);
+  return gerador.gerarPlaylistDaHora(t, hora);
 }
 
 const idsDeAnunciante = (pl) => new Set(pl.itens.map((i) => i.anuncianteId).filter(Boolean));
@@ -506,7 +514,7 @@ test('13. janela chegou sem POP = aguardando (a conta está na playlist servida)
   const aprovadoEm = new Date(janela.getTime() - 10 * 60_000);
   let e = (await entradaDe(conta, [peca(c, { aprovado_em: aprovadoEm })], agora)).get(c.id);
   assert.equal(e.estado, ESTADOS.PROGRAMADO, 'hora começou, a TV ainda não pediu');
-  await gerador.gerarPlaylistDaHora(await tela(ponto.telaId), agora);
+  await playlistAgora(ponto.telaId, agora);
   e = (await entradaDe(conta, [peca(c, { aprovado_em: aprovadoEm })], agora)).get(c.id);
   assert.equal(e.estado, ESTADOS.AGUARDANDO);
   assert.equal(e.primeiraJanelaPrevista, janela.toISOString());
