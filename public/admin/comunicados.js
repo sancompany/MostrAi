@@ -85,7 +85,7 @@
       <p class="comunicados-descricao">Envie avisos da Mostraí para as contas da plataforma.</p>
       ${
         ultimo
-          ? `<p class="comunicados-ultimo" data-ultimo-comunicado><span>Último envio: ${esc(quando(ultimo.criadoEm))} · ${esc(plural(ultimo.previstos, 'destinatário'))}</span> ${selo(ultimo)}</p>`
+          ? `<p class="comunicados-ultimo" data-ultimo-comunicado><span>Último envio: <span class="u-nowrap">${esc(quando(ultimo.criadoEm))}</span> · <span class="u-nowrap">${esc(plural(ultimo.previstos, 'destinatário'))}</span></span> ${selo(ultimo)}</p>`
           : '<p class="comunicados-ultimo u-dim" data-ultimo-comunicado>Nenhum comunicado enviado ainda.</p>'
       }
       <div class="comunicados-acoes">
