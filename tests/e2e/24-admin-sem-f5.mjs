@@ -131,7 +131,7 @@ console.log('== navegação rápida com a Rede lenta: resposta velha não pinta 
   check('avançar (forward) volta pra Mídia Mostraí', true);
   check(
     'descrição nova da Mídia Mostraí',
-    (await p.textContent('#subSecao')) === 'Conteúdo próprio e capacidade de veiculação da rede.',
+    (await p.textContent('#subSecao')) === 'Vídeo institucional e mídias próprias da rede.',
     await p.textContent('#subSecao'),
   );
   await ir('rota-que-nao-existe');

@@ -818,12 +818,23 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   // que o motor não cumpre, e saiu na migration 021. Benefício se dá no
   // PREÇO (o valor que o nosso GET /plano/{id} devolve), nunca no tempo.
   const mesesDoCiclo = plano.compromisso_meses;
-  const baseExpiracao =
-    anunciante.data_expiracao && vigencia.coberturaVigente(anunciante.data_expiracao)
-      ? new Date(anunciante.data_expiracao)
-      : new Date();
-  const novaExpiracao = new Date(baseExpiracao);
-  novaExpiracao.setMonth(novaExpiracao.getMonth() + mesesDoCiclo);
+  // A data-base sai da conta RELIDA E TRAVADA (mais abaixo), nunca da leitura
+  // solta de cima: dois ciclos processados ao mesmo tempo liam a mesma
+  // expiração e um deles se perdia (finalização, 28/09/2026).
+  //
+  // Só soma no fim da cobertura vigente quando o ciclo é do MESMO plano
+  // (renovação) ou é a renovação atrasada de uma assinatura já substituída
+  // (os dias contam, revisão Codex do PR #78). Ciclo de OUTRO plano com
+  // cobertura paga ainda valendo começa hoje: antes, cancelar o Essencial
+  // anual e pagar um Prime mensal dava 13 meses de Prime pelo preço de um.
+  const calcularExpiracao = (contaTravada, substituida) => {
+    const vigente = contaTravada.data_expiracao && vigencia.coberturaVigente(contaTravada.data_expiracao);
+    const mesmoPlano = contaTravada.plano_id === plano.id;
+    const base = vigente && (mesmoPlano || substituida) ? new Date(contaTravada.data_expiracao) : new Date();
+    const nova = new Date(base);
+    nova.setMonth(nova.getMonth() + mesesDoCiclo);
+    return nova;
+  };
 
   // Ativar a conta, registrar a cobrança e a comissão têm que ser tudo ou
   // nada: antes eram três queries soltas, e se a segunda falhasse a conta
@@ -832,6 +843,7 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
   let cobrancaRows;
   let creditoIndicacao;
   let eventosDaFila = [];
+  let contaSuspensa = false;
   try {
     await cliente.query('BEGIN');
     // A expiração é estendida a cada ciclo pago; quem paga dois ciclos
@@ -869,9 +881,15 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     }
     // Renovação atrasada de uma assinatura que o cliente já trocou por outra
     // (cancelada com ciclo pago): os dias contam, a escolha nova fica.
-    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(cliente, contaTravada, plano, novaExpiracao, {
-      substituida: ['cancelada', 'trocada'].includes(assinaturaTravada?.status),
-    });
+    const substituida = ['cancelada', 'trocada'].includes(assinaturaTravada?.status);
+    eventosDaFila = await planoAdministrativo.aplicarPagamentoNaFila(
+      cliente,
+      contaTravada,
+      plano,
+      calcularExpiracao(contaTravada, substituida),
+      { substituida },
+    );
+    contaSuspensa = !!contaTravada.suspenso;
     // Primeiro ciclo pago: a assinatura deixa de ser só um link gerado
     // (migration 089). Na mesma transação da cobrança.
     if (assinaturaTravada?.status === 'pendente_pagamento') await assinaturasRepo.marcarAtiva(assinatura.id, cliente);
@@ -911,6 +929,17 @@ async function aplicarCicloPago(assinatura, chave, payload = null, { valorCobrad
     throw err;
   } finally {
     cliente.release();
+  }
+
+  // Ciclo pago numa conta SUSPENSA: o dinheiro entrou e a cobertura contou,
+  // mas a conta continua fora do ar (suspensão só se desfaz à mão). Alguém
+  // precisa decidir — reativar ou devolver — e é na fila de pendências do
+  // admin que se decide. Nunca lança: o ciclo já está gravado.
+  if (contaSuspensa) {
+    await registrarPendencia(
+      contexto,
+      'ciclo pago em conta suspensa — a cobertura foi contada, mas a conta continua suspensa até o admin reativar (ou devolver o valor)',
+    ).catch((err) => console.error('falha ao registrar a pendência de conta suspensa:', err.message));
   }
 
   // Só depois do COMMIT: evento de receita que existisse sem a cobrança no

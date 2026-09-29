@@ -152,22 +152,23 @@ const capExibicoes = await p.textContent('[data-kpi="exibicoes"] .kpi-caption');
 check('caption usa "previstas"', capExibicoes.includes('previstas'), capExibicoes);
 check('caption não usa mais "contratado"', !capExibicoes.includes('contratado'), capExibicoes);
 
-console.log('== card de custo: "Custo por exibição prevista" (ADR-018) ==');
+console.log('== card de custo: "Custo por exibição" (ADR-018; rótulo do painel do usuário, 29/09/2026) ==');
 const labelCusto = await p.textContent('[data-kpi="custo"] .kpi-label');
-check('label é "Custo por exibição prevista"', /Custo por exibição prevista/i.test(labelCusto) && !labelCusto.includes('1.000'), labelCusto);
+check('label é "Custo por exibição"', /Custo por exibição/i.test(labelCusto) && !labelCusto.includes('1.000'), labelCusto);
 // Plano liberado pelo admin (cortesia legada): sem dinheiro, sem "R$ 0,00".
 const valorCusto = await p.textContent('[data-kpi="custo"] b');
 const legendaCusto = await p.textContent('[data-kpi="custo"] .kpi-caption');
 check('cortesia não finge custo: "Cortesia · Sem cobrança neste ciclo"', valorCusto.trim() === 'Cortesia' && /Sem cobrança neste ciclo/.test(legendaCusto), `${valorCusto} | ${legendaCusto}`);
 
 console.log('== média diária: não usa mais "dia do mês" como divisor ==');
-const valorMedia = await p.textContent('[data-kpi="media"] b');
-check('média diária é 1 (1 confirmada / 1 dia decorrido), não 0.x', valorMedia.trim() === '1', valorMedia);
+// Dentro do card Exibições desde o painel do usuário (29/09/2026).
+const valorMedia = await p.textContent('[data-kpi="exibicoes"] [data-kpi-media]');
+check('média diária é 1 (1 confirmada / 1 dia decorrido), não 0.x', valorMedia.trim() === 'Média diária: 1', valorMedia);
 
-console.log('== distribuição por ponto: barra escondida com 1 ponto só ==');
-const graficoPonto = await p.textContent('#graficoPonto');
-check('gráfico de barra vazio com 1 ponto', graficoPonto.trim() === '', graficoPonto);
-check('tabela detalhada continua mostrando o ponto', (await p.textContent('#exibicoesDetalhe')).includes('Bruno Henrique Sanches'));
+console.log('== performance: um card só, tabela sem Programadas/Entrega ==');
+check('o ponto está na tabela do período', (await p.textContent('#exibicoesDetalhe')).includes('Bruno Henrique Sanches'));
+const cabecalho = await p.textContent('#exibicoesDetalhe thead');
+check('tabela: Ponto, Cidade, Status, Exibições — sem Programadas e Entrega', /Ponto[\s\S]*Cidade[\s\S]*Status[\s\S]*Exibições/.test(cabecalho) && !/Programadas|Entrega/.test(cabecalho), cabecalho);
 
 await shot(p, 'hero-1-ponto-offline');
 
@@ -214,7 +215,8 @@ await p.waitForTimeout(1000);
 const statusTxt3 = await p.textContent('#heroStatus');
 check('agora mostra "1 de 3" (só o online conta)', /1 de 3/.test(statusTxt3), statusTxt3);
 check('acusa sinal antigo em horas, não "nunca"', /sinal mais antigo há \d+ h/.test(statusTxt3), statusTxt3);
-check('gráfico de barra reaparece com 3 pontos', (await p.textContent('#graficoPonto')).trim() !== '');
+check('3 pontos na legenda do gráfico', (await p.$$('#legendaPerformance .chip')).length === 3);
+check('3 pontos na tabela do período', (await p.$$('#exibicoesDetalhe tbody tr')).length === 3);
 await shot(p, 'hero-3-pontos-mistos');
 
 console.log('\nerros de página:', erros.length ? erros : 'nenhum');

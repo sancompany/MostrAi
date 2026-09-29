@@ -7,7 +7,7 @@ const session = require('express-session');
 const pool = require('../src/db/pool');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 
-// Pausar / retomar a própria peça (finalização, 28/09/2026, migration 102):
+// Pausar / retomar a própria peça (finalização, 28/09/2026, migration 109):
 // o cliente pausa e retoma o que ele pausou; o que o admin retirou (ou a
 // substituição retirou) não volta pela mão dele; retomar respeita o limite
 // de peças ativas do plano.

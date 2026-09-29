@@ -152,3 +152,20 @@ projeto. Criticidade indicada quando ajuda a priorizar.
 - `public/img/qr-site.svg` (QR estático do Player V1) está órfão desde o #71;
   não foi mexido.
 
+## Concorrentes diretos entre categorias — riscos que ficaram (28/09/2026)
+
+- **Cobertura escolhida num concorrente não volta.** `pontosDoAnunciante`
+  escolhe os pontos (escolha ou sorteio) antes da trava de categoria; ponto
+  bloqueado ocupa a vaga e não entra na compensação RN-49. Já era assim com
+  a mesma categoria; com 48 pares fica mais provável (Restaurante concorre
+  com 5 categorias). Produção em 28/09/2026: zero contas afetadas. Se
+  crescer: tirar o ponto concorrente da lista de escolha/sorteio da conta
+  (decisão de produto, outra estação).
+- **Hora sem sinal recalculada depois.** A obrigação de hora sem sinal
+  (`src/bancohoras/obrigacao.js`) usa a elegibilidade de HOJE; um par
+  cadastrado agora vale para as horas passadas ainda dentro da janela da
+  recomposição (48 h). Mesmo limite já registrado para troca de plano.
+- **Busca do modal oferece só categoria ativa**; o servidor aceita também
+  categoria fora do cadastro (não legado). Coerente com o uso (ponto antigo
+  ainda pode usar uma categoria tirada do cadastro), mas a tela não mostra.
+

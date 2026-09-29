@@ -116,7 +116,9 @@ check('Recusado mostra o motivo', (await card(recusada)).includes('texto ilegív
 check('Fora do ar aparece como tal', (await p.textContent('#listaCriativos')).includes('Fora do ar'));
 check('onde roda: rede e tela do comércio', /pontos do seu plano e na tela do seu comércio/.test(await p.textContent('#criativosSubtitulo')));
 check('duração do plano no subtítulo', (await p.textContent('#criativosSubtitulo')).includes('15 segundos'));
-check('contador de cadastro', (await p.textContent('#contadorCriativos')).trim() === `${PG(`SELECT count(*) FROM criativos WHERE anunciante_id=${conta.id} AND status <> 'reprovado' AND NOT (status='pendente' AND substitui_criativo_id IS NOT NULL)`)} de 1`);
+// Mesma conta de criativosRepo.contarNaoReprovados: retirado (fora do ar)
+// não ocupa vaga desde o #88 (finalização, 28/09/2026).
+check('contador de cadastro', (await p.textContent('#contadorCriativos')).trim() === `${PG(`SELECT count(*) FROM criativos WHERE anunciante_id=${conta.id} AND status NOT IN ('reprovado', 'retirado') AND NOT (status='pendente' AND substitui_criativo_id IS NOT NULL)`)} de 1`);
 check('uma biblioteca só (sem "Meu anúncio na minha tela")', !/Meu anúncio na minha tela/.test(await p.textContent('body')));
 await shot(p, '1-situacoes');
 

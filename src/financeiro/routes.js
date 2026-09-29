@@ -388,6 +388,25 @@ router.post('/anunciantes/:id/assinar', exigirAnuncianteLogado, async (req, res)
     await assinaturasRepo.marcarCancelada(assinatura.id);
     assinatura = null;
   }
+  // Cobertura PAGA de outro plano ainda valendo, sem assinatura ativa
+  // (cancelou e quer assinar outro): recusa (finalização, 28/09/2026). O
+  // ciclo novo somaria no fim da cobertura antiga — Essencial anual
+  // cancelado + Prime mensal dava 13 meses de Prime pelo preço de um. Mesmo
+  // plano continua liberado (renova). Troca com assinatura ativa é "Trocar
+  // de plano"; sem ela, é o suporte quem acerta as contas.
+  if (
+    !assinatura &&
+    !emBeneficio &&
+    conta.plano_id &&
+    conta.plano_id !== plano.id &&
+    conta.data_expiracao &&
+    vigencia.coberturaVigente(conta.data_expiracao)
+  ) {
+    const atual = await planosRepo.buscarPorId(conta.plano_id);
+    return res.status(409).json({
+      erro: `Seu plano atual (${atual?.nome || conta.plano_id}) vale até ${dataBR(conta.data_expiracao)}. Pra mudar de plano antes disso, fale com a gente pelo WhatsApp — a gente acerta os dias que faltam.`,
+    });
+  }
   // Link gerado há pouco e ainda não pago: o mesmo link (o Checkout lê a
   // mesma linha). Sem isso cada clique em "Assinar" abria outra intenção.
   if (!assinatura) assinatura = await assinaturasRepo.buscarPendenteDePagamento(conta.id, plano.id);

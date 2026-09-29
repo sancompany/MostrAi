@@ -188,7 +188,7 @@ console.log('== A. cadastro pelo convite: conta só de ponto, sem modalidade =='
   // pago nem benefício por créditos, o painel abre com o bloqueio de plano.
   await p.waitForSelector('#bloqueioPlano', { timeout: 10000 }).catch(() => {});
   check('card de ativação some depois de ativar', !(await p.$('#formModo')));
-  check('ser ponto não libera plano: painel pede pra escolher um', !!(await p.$('#bloqueioPlano')));
+  check('ponto sem tela instalada ainda não dá o Básico: painel pede plano (ADR-025)', !!(await p.$('#bloqueioPlano')));
   check('conta ganha o papel anunciante', PG(`SELECT 'anunciante' = ANY(papeis) FROM anunciantes WHERE contato_email='nina@x.com'`) === 't');
   await shot(p, 'anuncios-ativado');
   await p.close();

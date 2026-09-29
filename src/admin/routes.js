@@ -14,6 +14,8 @@ const metrica = require('./metrica');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const filaEntrada = require('../anunciantes/fila-entrada');
+// Sem ciclo: o repositório de mídias só requer pool, capacidade e fuso-comercial.
+const midiasRepo = require('../midias/repository');
 
 // "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
 // 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
@@ -30,16 +32,24 @@ router.patch('/admin/criativos/:id', async (req, res) => {
   try {
     const antes = await criativosRepo.buscarPorId(req.params.id);
     if (!antes) return res.status(404).json({ erro: 'criativo não encontrado' });
+    // Arquivo de mídia própria excluída não muda mais: a exclusão o tirou da
+    // fila, e ele não volta por aprovação (migration 107).
+    if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
+      return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
+    }
     let criativo;
     // Substituição (reconstrução de Contas, 23/09/2026, Parte 22): aprovar B
     // tira A do ar no mesmo gesto — A vira 'retirado' (continua cadastrado,
     // sai da playlist). SWAP ATÔMICO (consolidação, 24/09/2026): um comando
     // só — nunca existe um instante com A e B aprovados, nem A retirado sem
     // B aprovado.
-    if (req.body.status === 'aprovado' && antes.status === 'pendente' && antes.substitui_criativo_id) {
+    // Vale pra qualquer estado anterior que não seja 'aprovado' (finalização,
+    // 28/09/2026): substituto recusado e aprovado depois também retira o
+    // original — antes caía no caminho comum e A e B ficavam os dois no ar.
+    if (req.body.status === 'aprovado' && antes.status !== 'aprovado' && antes.substitui_criativo_id) {
       await pool.query(
         `WITH nova AS (
-           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status = 'pendente' RETURNING substitui_criativo_id
+           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status <> 'aprovado' RETURNING substitui_criativo_id
          )
          UPDATE criativos SET status = 'retirado', retirado_por = 'substituicao'
           WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
@@ -47,7 +57,7 @@ router.patch('/admin/criativos/:id', async (req, res) => {
       );
       criativo = await criativosRepo.buscarPorId(antes.id);
     } else {
-      // Quem tirou do ar fica registrado (migration 102): o cliente só
+      // Quem tirou do ar fica registrado (migration 109): o cliente só
       // retoma pelo painel o que ele mesmo pausou; o que o admin retirou
       // volta só daqui ("Colocar no ar" limpa a marca).
       const dados = { ...req.body };

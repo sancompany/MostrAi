@@ -81,7 +81,8 @@ async function primeirosPassosDaConta(conta) {
   ]);
   return {
     ...etapasDosPrimeirosPassos({
-      temPlano: !!planoVigenteId(conta),
+      // O Básico do ponto (migration 103) também é direito de veicular.
+      temPlano: !!planoVigenteId(conta) || (await require('../pontos/basico').ativosDaConta(conta.id)).length > 0,
       criativosEnviados: criativos.rows[0].enviados,
       criativosAprovados: criativos.rows[0].aprovados,
       criativosRecusados: criativos.rows[0].recusados,

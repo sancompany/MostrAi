@@ -174,7 +174,8 @@ const contas = [];
   const p = await entrar(dono);
   const texto = await p.locator('main').innerText();
   check('painel: sem Inicial/Básico/R$ 50/Recebimentos', !ANTIGO.test(texto) && !/Recebimentos/.test(texto), (texto.match(ANTIGO) || texto.match(/Recebimentos/) || [])[0]);
-  check('painel: Meus pontos mostra o benefício do ponto', /Benefício do ponto: \+1 crédito por mês/.test(texto));
+  // Bloco próprio no card do ponto desde o painel do usuário (29/09/2026).
+  check('painel: Meus pontos mostra o benefício do ponto', /Benefício do ponto\s*\+1 crédito por mês/i.test(texto));
   check('painel: ser ponto não dá plano', (await p.locator('#modPlano').isHidden()) && (await p.isVisible('#bloqueioPlano')));
   // Job do mês: o crédito aparece no painel sozinho (SSE), com o ponto.
   await p.evaluate(() => {
@@ -245,9 +246,9 @@ console.log('== custo por exibição prevista: plano pago lê o snapshot do cicl
   const p = await entrar(conta);
   await p.waitForFunction(() => /R\$/.test(document.querySelector('[data-kpi="custo"] b')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
   const card = await p.locator('[data-kpi="custo"]').innerText();
-  check('card "Custo por exibição prevista"', /Custo por exibição prevista/i.test(card) && !/1\.000/.test(card), card);
+  check('card "Custo por exibição"', /Custo por exibição/i.test(card) && !/1\.000/.test(card), card);
   check('microvalor com 4 casas: R$ 0,0148', /R\$\s?0,0148/.test(card), card);
-  check('legenda: valor contratado ÷ exibições previstas no ciclo', /Valor contratado ÷ exibições previstas no ciclo/.test(card), card);
+  check('legenda: valor do plano ÷ exibições previstas no ciclo', /Valor do plano ÷ exibições previstas no ciclo/.test(card), card);
   check(
     'tooltip com a conta do ciclo',
     /Pro · Trimestral: R\$\s?672,30 ÷ 45\.360 exibições previstas no ciclo/.test((await p.locator('[data-kpi="custo"]').getAttribute('title')) || ''),
@@ -262,7 +263,7 @@ console.log('== custo por exibição prevista: plano pago lê o snapshot do cicl
   await p.close();
 }
 
-console.log('== benefício por créditos: sem R$, e ciclos com nome ==');
+console.log('== benefício por créditos: custo de referência do plano equivalente, e ciclos com nome ==');
 {
   const conta = await contaPainel(
     'ciclo',
@@ -276,9 +277,12 @@ console.log('== benefício por créditos: sem R$, e ciclos com nome ==');
   await p.waitForTimeout(800);
   const card = await p.locator('[data-kpi="custo"]').innerText();
   const valorCusto = await p.locator('[data-kpi="custo"] b').innerText();
+  // Painel do usuário (29/09/2026, pedido do dono): Prime · Semestral de
+  // tabela = R$ 381,65 × 6 = R$ 2.289,90 ÷ (21.600 × 6 = 129.600) = R$ 0,0177
+  // — a mesma divisão do plano pago, dita como referência, sem cobrança.
   check(
-    'custo: "Benefício por créditos · Sem valor monetário neste ciclo", nunca R$ 0,00',
-    valorCusto.trim() === 'Benefício por créditos' && /Sem valor monetário neste ciclo/.test(card) && !/R\$\s?\d/.test(card),
+    'custo: referência do Prime · Semestral, R$ 0,0177, sem "sem valor monetário"',
+    /R\$\s?0,0177/.test(valorCusto) && /Referência do Prime · Semestral · sem cobrança/.test(card) && !/Sem valor monetário/i.test(card),
     card,
   );
   const plano = await p.locator('#modPlano').innerText();
@@ -312,7 +316,7 @@ console.log('== confirmação de resgate: "Resgatar Prime · Semestral" · "Usar
   const historico = (await p.locator('#creditosHistorico').textContent()) || '';
   check('histórico: "Resgate · Prime · Semestral -60"', /Resgate · Prime · Semestral\s*-60/.test(historico), historico.slice(0, 300));
   check('card Plano sem F5: "Prime · Semestral"', /Prime · Semestral/.test(await p.locator('#modPlano').innerText()));
-  check('custo sem F5: benefício, sem R$', /Benefício por créditos/.test(await p.locator('[data-kpi="custo"]').innerText()));
+  check('custo sem F5: referência do benefício', /R\$\s?0,0177[\s\S]*Referência do Prime · Semestral/.test(await p.locator('[data-kpi="custo"]').innerText()));
   await p.waitForTimeout(1500);
   await p.close();
 }

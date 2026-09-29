@@ -835,3 +835,54 @@ test('Codex #85: a hora sem sinal é gravada logo depois de fechar, com o plano 
     'a obrigação das 11h é a do plano que valia às 11h',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Finalização (28/09/2026), POP-01: a rede de segurança (diário e apuração
+// mensal) usa o estado de HOJE pra horas antigas. Tela em reparo reativada,
+// plano vencido renovado: o passe do mês inteiro dava a elas obrigação
+// retroativa das horas em que não deviam nada. Regra: a rede de segurança
+// só entra nas horas em que NENHUMA tela pediu playlist (servidor fora do
+// ar) — hora em que a rede funcionava já foi tratada pelo job de 10 min,
+// com o estado daquela hora.
+// ---------------------------------------------------------------------------
+test('POP-01: rede de segurança não inventa obrigação retroativa pra tela que estava em reparo (outras telas pediram naquela hora)', async () => {
+  const conta = await novaConta({ plano: await novoPlano({ segundos: 600, pontos: 2 }) });
+  const emReparo = await novoPonto({ horario: HORARIO_COMERCIAL });
+  const funcionando = await novoPonto({ horario: HORARIO_COMERCIAL });
+  await pool.query(`UPDATE dispositivos SET provisionado_em = '2026-08-01' WHERE id IN ($1, $2)`, [
+    emReparo.telaId,
+    funcionando.telaId,
+  ]);
+  await escolher(conta.id, emReparo.pontoId, funcionando.pontoId);
+  await gerar(emReparo.telaId, emMatao(3, 10)); // servida antes do reparo
+  // 11h–17h: a tela em reparo (403 na playlist) não pediu; a outra pediu.
+  for (const h of [11, 12, 13, 14, 15, 16, 17]) await gerar(funcionando.telaId, emMatao(3, h));
+  const filtros = { apenasContas: [conta.id], apenasTelas: [emReparo.telaId] };
+  const seguranca = await registrarHorasSemPedido({
+    de: emMatao(3, 0),
+    ate: emMatao(4, 0),
+    ...filtros,
+    soServidorForaDoAr: true,
+  });
+  assert.strictEqual(seguranca.horas, 0, 'a rede estava no ar nessas horas: o passe de segurança não grava nada');
+  // O job de 10 min (estado da hora) continua gravando normalmente.
+  const dezMinutos = await registrarHorasSemPedido({ de: emMatao(3, 0), ate: emMatao(4, 0), ...filtros });
+  assert.strictEqual(dezMinutos.horas, 7);
+});
+
+test('POP-01: servidor fora do ar (nenhuma tela pediu) — a rede de segurança grava a hora sem sinal', async () => {
+  const conta = await novaConta({ plano: await novoPlano({ segundos: 600 }) });
+  const ponto = await novoPonto({ horario: HORARIO_COMERCIAL });
+  await pool.query(`UPDATE dispositivos SET provisionado_em = '2026-08-01' WHERE id = $1`, [ponto.telaId]);
+  await escolher(conta.id, ponto.pontoId);
+  // Dia 10 (segunda): pediu às 10h; ninguém na rede pediu das 11h em diante.
+  await gerar(ponto.telaId, emMatao(10, 10));
+  const r = await registrarHorasSemPedido({
+    de: emMatao(10, 0),
+    ate: emMatao(11, 0),
+    apenasContas: [conta.id],
+    apenasTelas: [ponto.telaId],
+    soServidorForaDoAr: true,
+  });
+  assert.strictEqual(r.horas, 7, '11h–17h sem pedido de tela nenhuma: obrigação gravada');
+});

@@ -222,6 +222,25 @@ bytes, sha256 terminando em `d09a`, conferido: gzip íntegro, dump completo,
 Produção tinha 0 telas no deploy (#71 com 092/093 às 03:12 UTC, #72 com a
 094 às 03:22 UTC).
 
+**Reverter para antes dos comunicados por e-mail (migration 108, RN-68):** a
+108 só cria tabelas, então o código antigo sobe contra o banco novo. O que
+precisa de cuidado é a FILA: o código antigo não conhece o tipo `comunicado`
+e cada linha dele que ainda espera a vez viraria erro de envio, tentativa
+atrás de tentativa. Antes do revert (ou logo depois), com o admin sem
+nenhum comunicado em andamento:
+
+```sql
+UPDATE email_outbox SET status = 'descartado', ultimo_erro = 'revert do código de comunicados',
+       atualizado_em = now()
+ WHERE tipo = 'comunicado' AND status IN ('na_fila', 'tentando_de_novo');
+```
+
+Quem ficou sem receber aparece no histórico quando o código novo voltar e
+pode receber pelo "Reenviar falhas". No deploy em rolagem normal (duas
+instâncias, uma antiga por alguns minutos) não precisa de nada: a linha que a
+antiga pegar volta pra fila e a nova manda na tentativa seguinte — só não
+dispare um comunicado no meio do deploy.
+
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma
 funcionar: a coluna nova fica lá, sem uso. Se a migration foi destrutiva — o
@@ -424,6 +443,7 @@ log.
 | Fila de comprovantes alta (≥ 2.000 ou > 48 h) | a TV está tocando sem conseguir enviar `played`: rede instável ou erro no servidor; ver logs de `/player/:id/played`. O servidor aceita comprovante até 7 dias depois da hora |
 | Horário do ponto | Ficha do ponto → **Editar horário** (por dia: Horário, 24 horas ou Fechado; "Aberto 24 horas todos os dias"). Vale para todas as telas do ponto; as TVs recebem em até 15 s |
 | Excluir tela | Ficha ou linha da tela → **Excluir** → confirmar. Tela que já exibiu anúncio não é excluída (o comprovante é do anunciante): deixe **Inativa** |
+| Trocar o dono de um ponto (não existe tela pra isso — só no banco) | Logo depois de mudar `pontos.anunciante_id`, sincronizar o Plano Básico daquele ponto no serviço: `node -e "require('./src/pontos/basico').sincronizar({ apenasPontos: [<id do ponto>] }).then(() => require('./src/db/pool').end())"`. Encerra o Básico do dono antigo na hora e ativa o do novo; sem isso o encerramento espera o job diário, e a rede de segurança do Saldo pode cobrar do dono antigo as horas sem sinal até lá (RN-43.5) |
 | Versão nova do app | instalação manual na TV (não há atualização remota). A ficha mostra a versão que a TV informa |
 
 ## 7. Incidente com dado pessoal
