@@ -8,7 +8,7 @@
 // larguras sem rolagem lateral e sem erro de console.
 // Banco zerado (o roteiro sobe o servidor com STORAGE_CAPTURA):
 //   tests/e2e/reset-db.sh
-//   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/37-midia-mostrai-refino.mjs
+//   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/38-midia-mostrai-refino.mjs
 import { execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -38,7 +38,7 @@ const falha = (t, d) => {
   falhas.push(t);
 };
 const check = (t, cond, d) => (cond ? ok(t) : falha(t, d));
-const shot = (alvo, n, opts = {}) => alvo.screenshot({ path: `${SAIDA}37-${n}.png`, ...opts });
+const shot = (alvo, n, opts = {}) => alvo.screenshot({ path: `${SAIDA}38-${n}.png`, ...opts });
 
 // ---------------------------------------------------------------------------
 etapa('peças de teste (FFmpeg) e servidor');
@@ -84,7 +84,7 @@ const PADARIA = ponto('Padaria Central');
 const ANUNCIANTE = Number(
   PG(
     `INSERT INTO anunciantes (aceitou_termos_em, nome_empresa, cpf_cnpj, contato_email, contato_telefone, senha_hash, email_confirmado, plano_id, data_inicio_cobertura, data_expiracao)
-     VALUES (now(), 'Loja Comercial', '52998224725', 'loja-37-${Date.now()}@teste.com', '16999990000', 'x', true, 'essencial-1m', now(), now() + interval '20 days') RETURNING id`,
+     VALUES (now(), 'Loja Comercial', '52998224725', 'loja-38-${Date.now()}@teste.com', '16999990000', 'x', true, 'essencial-1m', now(), now() + interval '20 days') RETURNING id`,
   ).split('\n')[0],
 );
 PG(`INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES (${ANUNCIANTE}, ${SAN.id})`);

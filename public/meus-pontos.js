@@ -46,6 +46,17 @@
     return `há ${Math.round(min / 1440)} dias`;
   }
 
+  // Ícones das linhas do card — o mesmo desenho de "Onde seu anúncio
+  // aparece" (painel.page.js). Decorativos: o texto ao lado diz a mesma coisa.
+  const ICONES = {
+    endereco:
+      '<path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z"/><circle cx="12" cy="9.25" r="2.75"/>',
+    segmento:
+      '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+  };
+  const icone = (nome) =>
+    `<svg class="estab-icone" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICONES[nome]}</svg>`;
+
   function htmlFoto(url, nome) {
     if (url) return `<img src="${esc(url)}" alt="" loading="lazy" data-foto>`;
     return `<div class="ponto-foto-placeholder" role="img" aria-label="${esc(nome ? `${nome}, sem foto` : 'Sem foto')}">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</div>`;
@@ -89,16 +100,19 @@
         ? ''
         : '<p class="estab-vazio">Nenhuma tela cadastrada neste ponto.</p>';
     }
-    return `<div class="estab-telas">
-      <p class="estab-subtitulo">${e.telas.length === 1 ? 'Tela' : `Telas (${e.telas.length})`}</p>
+    const funcionando = e.telas.filter((t) => t.situacao === 'operando').length;
+    return `<div class="estab-bloco estab-telas">
+      <p class="estab-subtitulo">${e.telas.length === 1 ? 'Tela' : `Telas (${e.telas.length})`}<span>${funcionando} de ${e.telas.length} funcionando</span></p>
       <ul>${e.telas.map(htmlTela).join('')}</ul>
     </div>`;
   }
 
-  // Benefício do ponto (ADR-016): +1 crédito por mês enquanto o ponto
-  // participa da rede. Não é plano nem dinheiro — é crédito, o mesmo de
-  // "Créditos e benefícios".
-  function htmlRodape(e) {
+  // Os dois benefícios do ponto, cada um no seu bloco (painel do usuário,
+  // 29/09/2026 — antes eram duas linhas de rodapé): o Plano Básico (migration
+  // 103, horas de tela no próprio ponto) e o crédito mensal (ADR-016: +1
+  // crédito por mês enquanto o ponto participa da rede — não é plano nem
+  // dinheiro, é o crédito de "Créditos e benefícios").
+  function htmlBeneficios(e) {
     if (e.tipo !== 'ponto' || !e.beneficio) return '';
     const b = e.beneficio;
     let situacao;
@@ -106,31 +120,48 @@
       situacao = `Crédito de ${esc(b.competenciaAtual.split('/')[0])} já concedido · próximo em ${esc(b.proximaCompetencia)}`;
     else if (b.elegivel) situacao = `Próximo crédito: ${esc(b.proximaCompetencia)}`;
     else situacao = 'Começa quando a tela estiver instalada e ativa';
-    // Plano Básico do ponto (migration 103): o outro benefício, separado.
     const basico = b.basico
-      ? `<p class="estab-pe estab-basico">Plano Básico: <b>${b.basico.horasPorMes} h/mês neste ponto</b> · anúncio de até ${b.basico.duracaoMaximaSegundos} s · incluído enquanto o ponto estiver ativo</p>`
+      ? `<div class="estab-bloco estab-beneficio estab-basico">
+          <p class="estab-bloco-titulo">Plano Básico</p>
+          <p class="estab-bloco-valor"><b>${b.basico.horasPorMes} h/mês</b> neste ponto</p>
+          <p class="estab-bloco-nota">Anúncio de até ${b.basico.duracaoMaximaSegundos} s · incluído enquanto o ponto estiver ativo</p>
+        </div>`
       : '';
-    return `${basico}<p class="estab-pe">Benefício do ponto: <b>+1 crédito por mês</b> · ${situacao}</p>`;
+    return `<div class="estab-beneficios">
+      ${basico}
+      <div class="estab-bloco estab-beneficio estab-credito">
+        <p class="estab-bloco-titulo">Benefício do ponto</p>
+        <p class="estab-bloco-valor"><b>+1 crédito</b> por mês</p>
+        <p class="estab-bloco-nota">${situacao}</p>
+      </div>
+    </div>`;
   }
 
+  // Um estabelecimento da rede (refinado no painel do usuário, 29/09/2026,
+  // pedido do dono): a fachada em cima, com o estado sobre a foto; o nome em
+  // destaque; endereço e segmento em segundo plano; o andamento; e as telas,
+  // o Plano Básico e o crédito em blocos próprios. Só a apresentação mudou —
+  // os dados, as ações e os avisos são os de antes.
   function htmlEstabelecimento(e) {
-    const local = esc(window.linhaEndereco(e));
-    const cidade = `${esc(e.cidade || '')}${e.uf ? `/${esc(e.uf)}` : ''}`;
+    const cidade = `${e.cidade || ''}${e.uf ? `/${e.uf}` : ''}`;
+    const local = [window.linhaEndereco(e), cidade].filter(Boolean).join(' · ');
     const explica = EXPLICACAO[e.estado]?.(e) || '';
     return `<article class="estab-card estado-${e.estado}" data-estab="${e.tipo}-${e.id}">
-      <div class="estab-topo">
-        <div class="estab-foto">${htmlFoto(e.fotoUrl, e.nome)}</div>
+      <div class="estab-capa">
+        ${htmlFoto(e.fotoUrl, e.nome)}
+        <span class="badge estab-estado ${window.ROTULOS.estabelecimentoClasse[e.estado] || 'badge-pendente'}">${esc(window.ROTULOS.estabelecimento[e.estado] || e.estado)}</span>
+      </div>
+      <div class="estab-corpo">
         <div class="estab-id">
           <h3>${esc(e.nome || '')}</h3>
-          <p class="estab-end">${[local, cidade].filter(Boolean).join(' · ')}</p>
-          ${e.categoria ? `<p class="estab-meta">${esc(e.categoria)}</p>` : ''}
+          ${local ? `<p class="estab-end">${icone('endereco')}<span>${esc(local)}</span></p>` : ''}
+          ${e.categoria ? `<p class="estab-meta">${icone('segmento')}<span>${esc(e.categoria)}</span></p>` : ''}
         </div>
-        <span class="badge ${window.ROTULOS.estabelecimentoClasse[e.estado] || 'badge-pendente'}">${esc(window.ROTULOS.estabelecimento[e.estado] || e.estado)}</span>
+        ${htmlEtapas(e.estado)}
+        ${explica ? `<p class="estab-explica">${esc(explica)}</p>` : ''}
+        ${htmlTelas(e)}
+        ${htmlBeneficios(e)}
       </div>
-      ${htmlEtapas(e.estado)}
-      ${explica ? `<p class="estab-explica">${esc(explica)}</p>` : ''}
-      ${htmlTelas(e)}
-      ${htmlRodape(e)}
     </article>`;
   }
 

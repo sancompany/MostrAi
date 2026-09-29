@@ -201,10 +201,20 @@ Escrito por grupo, porque o padrão se repete.
   mostrado no banner.
 - *Carregando:* abas visíveis, conteúdo em esqueleto.
 - *Erro:* faixa no topo com "não conseguimos carregar seus dados".
-- *Sucesso:* conteúdo da aba — com plano ativo, os KPIs incluem banco de
-  horas (saldo em exibições/horas, quando há saldo) e horas entregues no mês
-  vs. contratadas vs. ainda por rodar; o gráfico por ponto mostra os 8 que
-  mais exibiram, com contagem e percentual do total.
+- *Sucesso:* conteúdo da aba — com plano ativo (ou o Básico do ponto),
+  **quatro indicadores** (painel do usuário, 29/09/2026, ADR-031): horas de
+  tela no mês (de N contratadas, com a origem plano/Básico); exibições
+  confirmadas no mês, "de N previstas no mês" e "Média diária: X" pequena no
+  mesmo card; custo por exibição (RN-43.3); e o **saldo de veiculação**
+  (RN-53) — "Em dia" ou "4h 32min a entregar". Abaixo, **um card só** de
+  performance: filtros 7 dias / 30 dias / 3 meses / 1 ano / Máx. (dia, dia,
+  semana, mês, mês), barras empilhadas por ponto com uma cor fixa por ponto
+  (a mesma em qualquer período e depois de recarregar), dica com a data,
+  cada ponto e o total (mouse, teclado ou toque), a tabela Ponto / Cidade /
+  Status / Exibições do período e o comprovante (CSV) do mesmo recorte. Sem
+  exibição no período: "Ainda não há exibições confirmadas neste período.
+  Assim que sua campanha começar a rodar, os dados aparecerão aqui.", sem
+  gráfico. Trocar o período não recarrega a página nem busca de novo.
 - *Sem permissão:* sessão expirada (só um 401 de verdade) → login com o
   aviso "Sua sessão expirou. Entre de novo pra continuar." (27/09/2026). A
   conta NÃO sai por 500, 503, rede caída ou leitura que passou de 20 s: na
@@ -582,33 +592,46 @@ renovação, troca). Exibições previstas = a régua da vitrine (horas de tela 
 plano ÷ duração máxima da peça) × meses do ciclo — ex.: Pro Trimestral,
 R$ 672,30 ÷ 45.360 = R$ 0,0148. Não muda conforme o anúncio roda, nem quando
 o admin muda o preço, nem quando a conta troca a peça; o próximo ciclo grava
-o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00".
-Benefício por créditos: "Benefício por créditos · Sem valor monetário neste
-ciclo"; cortesia legada: "Cortesia · Sem cobrança neste ciclo". Não é CPM
-(o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
+o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00" nem
+arredondado pra "R$ 0,01". **Benefício por créditos** (painel do usuário,
+29/09/2026, pedido do dono): o custo de REFERÊNCIA do plano e ciclo
+equivalentes — valor cheio de tabela do ciclo (mensalidade do ciclo × meses,
+sem promoção nem desconto de parceiro) ÷ exibições previstas no ciclo, a
+MESMA divisão do plano pago (`cicloDeReferencia` + `custoPorExibicaoPrevista`)
+— ex.: Prime Semestral, R$ 2.289,90 ÷ 129.600 = R$ 0,0177, com a legenda
+"Referência do Prime · Semestral · sem cobrança". Só informação: nada é
+cobrado, lançado, devido ou gravado por causa disso. Cortesia legada:
+"Cortesia · Sem cobrança neste ciclo". Só o Plano Básico (sem plano
+comercial): "-" com "Plano Básico: incluído no benefício do ponto". Não é
+CPM (o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
-*(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom
-próprio (prefixo `PT-`, tabela `cupons_ponto` — namespace separado do
-`codigo_cupom` de vendedor, que nunca tem hífen). Um comerciante que se
-cadastra com esse cupom **e paga** pelo menos uma vez vira um crédito
-permanente pro dono do ponto (`indicacoes_pagas`, uma linha por indicado,
-nunca por renovação — cancelamento depois não tira o crédito). **Nunca
-comissão em dinheiro** — isso já existe pra vendedor, por outro mecanismo.
-Em vez disso, créditos acumulados liberam de graça o próprio plano de
-anúncio do dono do ponto, um degrau de cada vez: **3 créditos → Essencial,
-7 → Pro (`destaque`), 10 → Prime (`maximo`)**. Nunca sobrescreve cobertura
-PAGA em dia — se a conta está pagando o próprio plano quando o crédito
-completa o limiar, o upgrade fica pendente e entra sozinho assim que essa
-cobertura vencer (reavaliação diária, `scripts/conciliar.js`) ou quando o
-próximo crédito chegar. Nunca rebaixa quem já está num tier igual ou acima.
-Planos de comodato (Inicial/Básico) não contam como "já no Essencial" pra
-essa comparação, mesmo tendo `tier='essencial'` no banco como o Essencial de
-verdade — sem essa distinção o crédito nunca tiraria uma conta do comodato
-pro Essencial pago. *Violada:* não há caminho — o UPDATE que aplica o
-upgrade tem a mesma condição "não pagando em dia" no próprio WHERE, como
-trava atômica. *Quem vê:* o dono do ponto, num card no próprio painel
-(`GET /anunciantes/me/indicacoes`), com o progresso até o próximo degrau.
+*(Migration 062, 19/09/2026; ledger desde a 079 e ADR-016/ADR-020;
+histórico e QR Code no painel desde 29/09/2026, ADR-031.)* A conta dona de
+um ponto da rede tem UM cupom (`PT-…`, tabela `cupons_ponto`, um por conta —
+não por ponto). O link é o cadastro com o cupom
+(`/anunciante/cadastro.html?ref=PT-…`); quem se cadastra por ele fica
+indicado por aquela conta (`anunciantes.indicado_por_cupom`, gravado no
+cadastro e imutável — a mesma régua do "Indicado por" da página,
+`indicadorDoCupom`). **Cadastro não gera crédito.** Cada ciclo PAGO da conta
+indicada — o primeiro e cada renovação — gera **+1 crédito** no ledger do
+indicador (`creditos_ledger`, tipos `indicacao_primeiro_pagamento` e
+`indicacao_renovacao`), na mesma transação do ciclo pago; acerto de troca de
+plano não conta. Idempotente pela cobrança (índice único): webhook duplicado
+ou conciliação reprocessando nunca soma duas vezes. **Nunca dinheiro** —
+crédito vira benefício temporário por resgate (RN-43.2). *Violada:* não há
+caminho — a trava é o índice único do ledger. *Quem vê:* o dono do ponto,
+no card "Indicações" do painel: o link, "Copiar link", WhatsApp, o **QR Code
+do mesmo link** (gerado no servidor com o `SITE_URL`; só o endereço de
+cadastro e o cupom — nenhum id, sessão ou dado), o resumo (contas
+indicadas, quantas já contrataram, créditos gerados) e o **histórico**
+(`GET /anunciantes/me/indicacoes`): por indicado, nome comercial, dia do
+cadastro, plano em vigor, pagamentos que contam, créditos e as datas deles —
+"Cadastrou pelo seu link" ou "Gerou crédito"; conta indicada encerrada
+aparece como "Conta encerrada", sem nome, com os créditos que rendeu. Nunca
+e-mail, telefone, documento, endereço, valor pago ou id da conta indicada. O texto antigo
+desta regra (degraus de 3/7/10 créditos liberando plano, `indicacoes_pagas`)
+saiu com a migration 079.
 
 **RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
 17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto

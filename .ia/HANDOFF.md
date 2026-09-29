@@ -12,10 +12,29 @@ CHECK de `situacao` com `'excluida'`): DELETE físico cascatearia o
 proof-of-play. O QR saiu pra Visão geral (compacto, [Gerenciar] abre os
 controles de sempre num modal) e a capacidade pra Rede → Ponto (mesma
 `/admin/capacidade-rede`). Formulário ganhou Resumo e capacidade projetada
-por ponto ("Cabe normalmente" / "Não há capacidade…"). RN-67; e2e 37 (27,
+por ponto ("Cabe normalmente" / "Não há capacidade…"). RN-67; e2e 38 (27,
 26, 24 e 19 acompanham). **Atenção:** o PR #91 (pausado) tem a mesma ideia
 na migration 101 dele — ao retomar, fica a 107 desta estação. **Não iniciar
 outra estação.**
+2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
+([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
+`claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados
+pelo dono no próprio pedido). Quatro indicadores (horas; exibições com
+"de N previstas" e a média diária dentro; custo por exibição — plano por
+créditos mostra o custo de REFERÊNCIA do plano equivalente, mesma divisão do
+pago, sem gravar nada; saldo de veiculação "Em dia"/"Xh Ymin a entregar" do
+banco existente). Performance num card só: filtros 7d/30d/3m/1a/Máx
+reagrupando `porDiaPonto` no navegador, cor fixa por ponto (ordem de entrada
+na campanha), dica por foco/toque, tabela Ponto/Cidade/Status/Exibições,
+comprovante do mesmo período. U2 (número do KPI vazando ao alargar a janela)
+reproduzido e corrigido (`cqi`). Meus pontos refinado (só visual).
+Indicações: QR do mesmo link (`GET /anunciantes/me/indicacoes/qr.svg`) e
+histórico derivado do cadastro + ciclos pagos + ledger
+(`GET /anunciantes/me/indicacoes`), sem dado privado. "Indicado por" em
+laranja. Sem migration. ADR-031; `docs/PENDENCIAS.md` §V; e2e 37.
+**Atenção:** o PR #91 (pausado) tem outro histórico de indicados — ao
+retomar, a parte de histórico dele sai (§V, V3). **Não iniciar outra
+estação.**
 2026-09-29 — **Estação SITE PÚBLICO: indicação no cadastro + regra da senha
 na redefinição** (branch `claude/busy-noether-hheir2-site-referral`, PR
 próprio, merge autorizado pelo dono). Cadastro com `?ref=PT-…` válido mostra
