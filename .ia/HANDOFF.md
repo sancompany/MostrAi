@@ -2,7 +2,8 @@
 
 ## Updated
 2026-09-28 (fechamento) — **Plano Básico: regra final de elegibilidade**
-(PR separado, NÃO mergeado, aguardando o dono). Ponto sem nenhuma tela
+([PR #96](https://github.com/sancompany/MostrAi/pull/96), mergeado com
+autorização do dono em 29/09/2026). Ponto sem nenhuma tela
 instalada (todas removidas, revogadas ou inativas) encerra o Básico com
 motivo `sem_tela_instalada` (migration 106 só amplia a lista fechada do
 CHECK; sem dado mexido). Reparo (com credencial), sem sinal, TV/internet fora continuam; revogar
