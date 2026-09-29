@@ -2317,6 +2317,21 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
   document.getElementById('btnFecharEditorMidia').addEventListener('click', fechar);
   document.getElementById('btnCancelarMidia').addEventListener('click', fechar);
 
+  // Retirada do ar não volta (PR #89): o servidor recusa mudar período,
+  // frequência ou cobertura de mídia encerrada — aqui só o nome fica editável,
+  // e o formulário diz por quê em vez de devolver 409 no salvar.
+  const retirada = midia?.situacaoDerivada === 'encerrada';
+  if (retirada) {
+    for (const campo of form.elements) {
+      if (campo.name !== 'nome_interno' && !['submit', 'button'].includes(campo.type)) campo.disabled = true;
+    }
+    const aviso = document.getElementById('mmMsg');
+    if (aviso) {
+      aviso.textContent = 'Mídia retirada do ar: só o nome pode mudar. Pra rodar de novo, crie outra mídia.';
+      aviso.className = 'form-msg';
+    }
+  }
+
   document.getElementById('mmAgendada').addEventListener('change', (e) => {
     document.getElementById('mmPeriodoCampos').hidden = !e.target.checked;
     if (!e.target.checked) {
@@ -2612,14 +2627,16 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       return;
     }
 
-    const corpo = {
-      nome_interno: form.nome_interno.value,
-      frequencia_hora: Number(form.frequencia_hora.value),
-      cobertura_tipo: form.cobertura_tipo.value,
-      periodo_inicio: (document.getElementById('mmAgendada').checked && form.periodo_inicio.value) || null,
-      periodo_fim: (document.getElementById('mmAgendada').checked && form.periodo_fim.value) || null,
-    };
-    if (form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
+    const corpo = retirada
+      ? { nome_interno: form.nome_interno.value }
+      : {
+          nome_interno: form.nome_interno.value,
+          frequencia_hora: Number(form.frequencia_hora.value),
+          cobertura_tipo: form.cobertura_tipo.value,
+          periodo_inicio: (document.getElementById('mmAgendada').checked && form.periodo_inicio.value) || null,
+          periodo_fim: (document.getElementById('mmAgendada').checked && form.periodo_fim.value) || null,
+        };
+    if (!retirada && form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
     const r = await api(`/admin/midias-proprias/${midia.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
     if (!r.ok) {
       msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.';
@@ -2834,7 +2851,12 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-pausar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.pausarMidia}/pausar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível pausar.', 'err');
+      // 409 = a mídia mudou entre a tela e o clique (período venceu, outra aba
+      // excluiu): o motivo do servidor e a tela redesenhada (PR #89).
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível pausar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia pausada.');
       renderMidiaMostrai(el);
     }),
@@ -2842,7 +2864,10 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-retomar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.retomarMidia}/retomar`, { method: 'POST' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retomada.');
       renderMidiaMostrai(el);
     }),
@@ -2851,13 +2876,17 @@ async function renderMidiaMostrai(el) {
     btn.addEventListener('click', async () => {
       const ok = await confirmarModal({
         titulo: 'Retirar esta mídia do ar?',
-        texto: '<p>Ela para de entrar na programação das telas. Nada é excluído — o cadastro fica guardado.</p>',
+        texto:
+          '<p>Ela para de entrar na programação das telas e fica com as exibições confirmadas. Retirada não volta ao ar — pra rodar de novo, crie outra mídia.</p>',
         botao: 'Retirar do ar',
         perigo: true,
       });
       if (!ok) return;
       const r = await api(`/admin/midias-proprias/${btn.dataset.encerrarMidia}/encerrar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível retirar do ar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retirar do ar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retirada do ar.');
       renderMidiaMostrai(el);
     }),

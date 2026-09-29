@@ -193,9 +193,19 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
       return res.status(400).json({ erro: 'escolha pelo menos um ponto, ou marque "toda a rede"' });
     }
   }
-  // Só revalida se a mídia está ativa AGORA (pausada/agendada/encerrada não
-  // consome capacidade neste momento) e algo que afeta ocupação mudou.
-  if (midia.situacaoDerivada === 'ativa' && (dados.frequencia_hora != null || req.body.cobertura_tipo)) {
+  const mexeNoQueVeicula =
+    dados.frequencia_hora != null || !!req.body.cobertura_tipo || 'periodo_inicio' in dados || 'periodo_fim' in dados;
+  // Retirada do ar não volta — nem por Editar (PR #89, 28/09/2026): com o
+  // período vencido, estender o fim trazia a mídia de volta ao ar sem
+  // revalidar capacidade, porque a derivada no momento do PATCH era
+  // 'encerrada'. Só o nome muda.
+  if (midia.situacaoDerivada === 'encerrada' && mexeNoQueVeicula) {
+    return res.status(409).json({ erro: 'mídia retirada do ar não volta — pra rodar de novo, crie outra' });
+  }
+  // Revalida capacidade quando a mídia consome ou vai consumir sozinha:
+  // persistida 'ativa' cobre a derivada 'ativa' e a 'agendada' (entra no ar
+  // sem ninguém clicar); pausada revalida no Retomar.
+  if (midia.situacao === 'ativa' && mexeNoQueVeicula) {
     const excedentes = await pontosQueExcedem({
       coberturaTipo,
       pontosIds: dados.pontosIds || midia.pontosIds,
@@ -220,20 +230,26 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
   }
 });
 
-// `definirSituacao` não mexe em excluída; aqui só diz qual dos dois foi.
-async function mudarSituacao(res, id, situacao) {
-  if (await midiasRepo.definirSituacao(id, situacao)) return res.json({ ok: true });
-  const midia = await midiasRepo.buscarPorId(id);
-  if (midia?.situacao === 'excluida') return res.status(409).json({ erro: MIDIA_EXCLUIDA });
-  res.status(404).json({ erro: 'mídia não encontrada' });
-}
+// Transições de estado: a régua mora em midiasRepo.transicionar (PR #89) —
+// conferida contra a situação derivada; retirada do ar não volta, excluída
+// não muda.
+const responderTransicao = (res, r) => (r.ok ? res.json({ ok: true }) : res.status(r.status).json({ erro: r.erro }));
 
-router.post('/admin/midias-proprias/:id/pausar', (req, res) => mudarSituacao(res, req.params.id, 'pausada'));
+router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'pausada'));
+});
 
 router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
   if (midia.situacao === 'excluida') return res.status(409).json({ erro: MIDIA_EXCLUIDA });
+  // Derivada, a mesma régua de `transicionar`: pausada com período vencido é
+  // 'encerrada' e não volta (PR #89). Antes da conta de capacidade.
+  if (midia.situacaoDerivada !== 'pausada') {
+    return res
+      .status(409)
+      .json({ erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra' });
+  }
   // A rede pode ter mudado enquanto estava pausada — revalida antes de
   // voltar a consumir capacidade (mesma regra de nunca passar de 100%).
   const excedentes = await pontosQueExcedem({
@@ -249,10 +265,12 @@ router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
       pontosExcedentes: excedentes,
     });
   }
-  await mudarSituacao(res, req.params.id, 'ativa');
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'ativa'));
 });
 
-router.post('/admin/midias-proprias/:id/encerrar', (req, res) => mudarSituacao(res, req.params.id, 'encerrada'));
+router.post('/admin/midias-proprias/:id/encerrar', async (req, res) => {
+  responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'encerrada'));
+});
 
 // Exclusão LÓGICA (migration 107): só de mídia pausada ou encerrada. A mídia
 // sai das listas e da programação; a linha, as exibições confirmadas e o

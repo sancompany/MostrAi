@@ -14,12 +14,15 @@ const { instanteComercial } = require('../lib/fuso-comercial');
 // os dois.
 // 'excluida' (migration 107, 29/09/2026): exclusão lógica — vence qualquer
 // outro estado; nunca toca, e as exibições confirmadas ficam como comprovante.
+// Período que acabou vence a pausa (PR #89, revisão Codex, 28/09/2026):
+// pausada com fim no passado não tem pra onde voltar — retomar a deixaria
+// 'ativa' sem tocar em tela nenhuma —, então é 'encerrada'.
 function situacaoDerivada(m, agora = new Date()) {
   if (m.situacao === 'excluida') return 'excluida';
   if (m.situacao === 'encerrada') return 'encerrada';
+  if (m.periodo_fim && new Date(m.periodo_fim) < agora) return 'encerrada';
   if (m.situacao === 'pausada') return 'pausada';
   if (m.periodo_inicio && new Date(m.periodo_inicio) > agora) return 'agendada';
-  if (m.periodo_fim && new Date(m.periodo_fim) < agora) return 'encerrada';
   return 'ativa';
 }
 
@@ -124,13 +127,50 @@ async function atualizar(id, entrada) {
 }
 
 // Mídia excluída não muda mais de estado — a guarda mora no UPDATE, não só
-// nas rotas. Devolve false quando nada mudou (inexistente ou excluída).
-async function definirSituacao(id, situacao, db = pool) {
+// nas rotas. `soVigente` (PR #89): pausar/retomar só valem enquanto o período
+// não acabou, e a conferência vai no MESMO comando — o fim pode passar entre a
+// tela e o clique. Devolve false quando nada mudou.
+async function definirSituacao(id, situacao, { soVigente = false } = {}, db = pool) {
   const { rows } = await db.query(
-    `UPDATE midias_proprias SET situacao = $2 WHERE id = $1 AND situacao <> 'excluida' RETURNING id`,
-    [id, situacao],
+    `UPDATE midias_proprias SET situacao = $2
+      WHERE id = $1 AND situacao <> 'excluida'
+        AND ($3::boolean = false OR periodo_fim IS NULL OR periodo_fim >= now())
+      RETURNING id`,
+    [id, situacao, soVigente],
   );
   return rows.length > 0;
+}
+
+// Transições pelo admin (PR #89, finalização 28/09/2026), conferidas contra a
+// situação DERIVADA (período contado): encerrada é "retirada do ar" e não
+// volta — quem quer de novo cria outra mídia, com o histórico da primeira
+// intacto. Excluir tem régua própria (`excluir`, só pausada ou encerrada).
+const TRANSICOES = {
+  pausada: { de: ['ativa', 'agendada'], soVigente: true, erro: 'só uma mídia ativa (ou agendada) pode ser pausada' },
+  ativa: {
+    de: ['pausada'],
+    soVigente: true,
+    erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra',
+  },
+  encerrada: { de: ['ativa', 'agendada', 'pausada', 'encerrada'], erro: 'mídia excluída não muda mais' },
+};
+
+// `{ ok: true, midia }` ou `{ ok: false, status, erro }` — a rota só traduz.
+async function transicionar(id, para) {
+  const midia = await buscarPorId(id);
+  if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  if (midia.situacao === 'excluida') return { ok: false, status: 409, erro: 'mídia excluída não muda mais' };
+  const regra = TRANSICOES[para];
+  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro };
+  if (await definirSituacao(id, para, { soVigente: !!regra.soVigente })) return { ok: true, midia };
+  // Entre a leitura e o UPDATE outra aba excluiu, ou o período venceu: a
+  // resposta diz o que a mídia é AGORA.
+  const agora = await buscarPorId(id);
+  const erro =
+    agora?.situacao === 'excluida'
+      ? 'mídia excluída não muda mais'
+      : 'o período dessa mídia já terminou — ela está retirada do ar';
+  return { ok: false, status: 409, erro };
 }
 
 // Exclusão lógica (migration 107). Só de mídia fora do ar — pausada ou
@@ -394,6 +434,7 @@ module.exports = {
   criar,
   atualizar,
   definirSituacao,
+  transicionar,
   excluir,
   gravarSeMidiaNaoExcluida,
   situacaoPorCriativo,

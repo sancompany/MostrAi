@@ -1491,6 +1491,15 @@ comprovante (migration 107). Arquivo ainda em análise sai da fila de
 Aprovação junto. *Violada:* excluir ativa → 409 e nada muda. *Quem vê:* o
 administrador.
 
+**RN-68 — Mídia retirada do ar não volta; o fim do período vence a pausa.**
+*(PR #89, finalização 28/09/2026; integrado em 29/09/2026.)* As transições
+são conferidas contra a situação DERIVADA: Pausar só de ativa ou agendada;
+Retomar só de pausada; encerrada (retirada à mão ou por período vencido) não
+volta por Retomar nem por Editar — no editor só o nome muda. Pausada com o
+fim já no passado é encerrada. Pausar/Retomar conferem o período no próprio
+UPDATE (o fim pode passar entre a tela e o clique). *Violada:* 409 com o
+motivo, e a tela redesenha. *Quem vê:* o administrador.
+
 **RN-66 — O QR institucional nunca muda; o que muda é o destino.**
 *(Estação do QR institucional, 27/09/2026.)* O QR que vai em vídeo, flyer e
 material da Mostraí codifica sempre o link permanente `SITE_URL/q/anuncie`,
