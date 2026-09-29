@@ -241,7 +241,7 @@ preservado; ver `.ia/RISKS.md`.
 - [x] Antes do merge: o PR #104 (QR na Visão geral) entrou na `main`
   (`c1ba708`) e a `main` veio pro branch por merge em 29/09 — os dois blocos
   ficaram (QR, depois Comunicados); `npm run check` (695, 0 falha) e e2e 39,
-  27, 24 e 26 verdes depois do merge. Merge autorizado pelo dono.
+  27, 24, 26 e 38 verdes depois do merge. Merge autorizado pelo dono.
 - [ ] Depois do merge: CI no SHA mergeado, deploy no ar com a migration 108
   (roda no arranque do contêiner), e o dono manda um TESTE pra caixa da
   equipe antes do primeiro comunicado real (`docs/PENDENCIAS.md` §W1).

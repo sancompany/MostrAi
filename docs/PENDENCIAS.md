@@ -5609,8 +5609,8 @@ Merge autorizado pelo dono depois da reconciliação com a Visão geral final
       no branch): os dois acrescentavam um bloco no fim da coluna de negócio
       (`renderResumo`) e uma chamada `blocoIndependente` — ficaram os DOIS
       (QR institucional e depois Comunicados), cada um falhando sozinho.
-      Depois do merge: `npm run check` (695, 0 falha) e e2e 39, 27, 24 e 26
-      verdes.
+      Depois do merge: `npm run check` (695, 0 falha) e e2e 39, 27, 24, 26 e
+      38 (Mídia Mostraí, com FFmpeg) verdes.
 
 **Encontrado de passagem (não mexido):**
 
