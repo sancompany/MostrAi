@@ -990,6 +990,32 @@ test('POP: payload adulterado vira item_invalido, um a um, sem derrubar o lote',
   assert.equal(await confirmadas(tela.id, hora, conta), 1);
 });
 
+// POP-07 (revisão Codex do PR #88, 28/09/2026): o contrato §4 diz que
+// /played responde 403 pra tela em reparo/inativa e que o Player guarda os
+// comprovantes na fila e reenvia quando a tela voltar a Ativa. O PR tinha
+// aberto a rota (`operacao: false`) pra creditar a fila de uma tela tirada
+// do ar depois de tocar — mas isso o contrato já cobre pela reentrega, e
+// abrir a rota creditava exibição em tela que a operação sabia estar fora.
+test('POP-07: tela em reparo → POST /played responde 403 e não credita nada', async () => {
+  const pid = await novoPonto();
+  const tela = await novaTela(pid);
+  const p = await instalarPlayer(tela.id);
+  const conta = await novaConta();
+  const hora = horaCheia(Date.now());
+  const { janelaId, item } = await horaServida(tela.id, conta, hora);
+  await app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo: { status: 'reparo' } });
+
+  const r = await enviar(p, [evento(janelaId, item(0))]);
+  assert.equal(r.status, 403, `tela em reparo não recebe comprovante: ${r.texto}`);
+  assert.equal(await confirmadas(tela.id, hora, conta), 0, 'nada creditado');
+
+  // Volta a Ativa: o mesmo comprovante, reenviado pela fila do Player, conta.
+  await app.chamar('PATCH', `/admin/dispositivos/${tela.id}`, { corpo: { status: 'ativo' } });
+  const depois = await enviar(p, [evento(janelaId, item(0))]);
+  assert.equal(depois.status, 200, depois.texto);
+  assert.equal(await confirmadas(tela.id, hora, conta), 1, 'reenvio depois de reativar credita');
+});
+
 test('POP: /played inválido nunca é 500 — lote malformado é 400, grande demais 413, sem execucaoId fica sem resposta', async () => {
   const pid = await novoPonto();
   const tela = await novaTela(pid);

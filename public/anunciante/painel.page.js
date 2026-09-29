@@ -990,12 +990,18 @@ function desenharCustoPrevisto(c) {
     `${fmt(x.valorCiclo)} ÷ ${Number(x.exibicoesPrevistasCiclo).toLocaleString('pt-BR')} exibições previstas no ciclo`;
   if (c?.tipo === 'pago' && c.custoPorExibicaoPrevista) {
     valor.textContent = window.fmtMicroBRL(c.custoPorExibicaoPrevista);
-    legenda.textContent = LEGENDA_CUSTO;
+    // `aproximado`: plano pago sem snapshot do próprio ciclo (troca antiga,
+    // versão nova do plano) — calculado pela mesma régua, dito como tal.
+    legenda.textContent = c.aproximado ? `${LEGENDA_CUSTO} (estimado)` : LEGENDA_CUSTO;
     card.title = `${c.plano}: ${conta(c)}`;
   } else if (c?.tipo === 'beneficio' && c.custoPorExibicaoPrevista) {
     valor.textContent = window.fmtMicroBRL(c.custoPorExibicaoPrevista);
     legenda.textContent = `Referência do ${c.plano} · sem cobrança`;
     card.title = `${c.plano} (valor de referência, nada é cobrado): ${conta(c)}`;
+  } else if (c?.tipo === 'beneficio') {
+    valor.textContent = 'Benefício por créditos';
+    valor.classList.add('kpi-texto');
+    legenda.textContent = 'Sem valor monetário neste ciclo.';
   } else if (c?.tipo === 'cortesia') {
     valor.textContent = 'Cortesia';
     valor.classList.add('kpi-texto');

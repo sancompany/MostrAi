@@ -1045,7 +1045,10 @@ function instanteDaExibicao(iniciadoEm, horaJanela, agora) {
 // painel e o admin por SSE, depois do COMMIT. O subselect `antes` lê a linha
 // como estava antes deste UPDATE.
 async function marcarExibicaoDoCriativo(criativoId, anuncianteId, instante, db) {
-  if (criativoId == null || !/^\d{1,10}$/.test(String(criativoId))) return false;
+  // Dentro do int4 da coluna: "3000000000" passava na regex, estourava no
+  // Postgres e derrubava o lote inteiro de comprovantes do aparelho — que
+  // então repetia o mesmo lote até expirar (finalização, 28/09/2026).
+  if (criativoId == null || !/^\d{1,10}$/.test(String(criativoId)) || Number(criativoId) > 2147483647) return false;
   // `primeira_exibicao_em` é do CONTEXTO atual (desde `aprovado_em`):
   // reaprovar recomeça — a primeira de antes é substituída pela primeira
   // exibição depois da nova aprovação, e comprovante atrasado do contexto
@@ -1155,6 +1158,7 @@ module.exports = {
   obrigacoesDaTela,
   minutosAbertosNaHora,
   confirmarExecucao,
+  marcarExibicaoDoCriativo,
   limiteDeCriativos,
   PRAZO_PROOF_OF_PLAY_DIAS,
   PRAZO_PROOF_OF_PLAY_MIN,

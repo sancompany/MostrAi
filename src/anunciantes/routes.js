@@ -377,10 +377,15 @@ function exigirAnuncianteLogado(req, res, next) {
 // chave primária por request autenticada; o ponto físico do dono suspenso
 // continua tocando (a TV autentica pelo aparelho, não por esta sessão).
 // Montado em server.js antes de todas as rotas.
+// Conta excluída idem (finalização, 28/09/2026): excluir no computador
+// derrubava só aquela sessão; o celular seguia logado por até 7 dias,
+// subindo criativo e resgatando crédito numa conta que pediu pra sair.
 async function derrubarSessaoSuspensa(req, _res, next) {
   if (!req.session?.anuncianteId) return next();
-  const { rows } = await pool.query('SELECT suspenso FROM anunciantes WHERE id = $1', [req.session.anuncianteId]);
-  if (rows[0]?.suspenso) delete req.session.anuncianteId;
+  const { rows } = await pool.query('SELECT suspenso, excluido_em FROM anunciantes WHERE id = $1', [
+    req.session.anuncianteId,
+  ]);
+  if (!rows[0] || rows[0].suspenso || rows[0].excluido_em) delete req.session.anuncianteId;
   next();
 }
 
@@ -940,8 +945,16 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 // `substitui` (reconstrução de Contas, 23/09/2026, Parte 22): criativo A que
 // este upload vai substituir. O novo (B) nasce EM ANÁLISE mesmo vindo do
 // operador, apontando pra A — A segue no ar até B ser aprovado (ver PATCH
-// /admin/criativos/:id em src/admin/routes.js). Não passa pelo limite: B só
-// entra tirando A, então o total cadastrado depois da troca é o mesmo.
+// /admin/criativos/:id em src/admin/routes.js). Não passa pelo limite do
+// PLANO: B só entra tirando A, então as vagas ativas depois da troca são as
+// mesmas. Passa pelo teto de CADASTRO, sim (revisão Codex do PR #88,
+// 28/09/2026): A vira 'retirado' e continua guardado, e cada troca deixava
+// mais um retirado sem nada segurando.
+//
+// Dois tetos, duas contagens: o de CADASTRO (`CRIATIVOS_POR_CONTA`, conta
+// retirado — `contarCadastrados`) vale pra todo upload e só a conta própria
+// pula (`semTeto`); o do PLANO (`limite`, vagas ativas —
+// `contarNaoReprovados`) vale pra upload que não é substituição.
 //
 // `envioChave` (migration 098): idempotência do upload do cliente — ver
 // `responderEnvioExistente` e a rota do anunciante. `avisar`: chamado quando
@@ -953,7 +966,16 @@ router.post('/anunciantes/me/foto', exigirAnuncianteLogado, upload.single('arqui
 async function subirCriativo(
   req,
   res,
-  { contaId, limite, duracaoMaxima = null, peloOperador = false, substitui = null, envioChave = null, avisar = null },
+  {
+    contaId,
+    limite,
+    semTeto = false,
+    duracaoMaxima = null,
+    peloOperador = false,
+    substitui = null,
+    envioChave = null,
+    avisar = null,
+  },
 ) {
   if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
   const inicio = Date.now();
@@ -975,6 +997,13 @@ async function subirCriativo(
   // chegar aqui, e os `return` de erro que ficavam fora do finally deixavam
   // até 95 MB de lixo em /tmp por request recusada.
   try {
+    // Teto de cadastro antes do limite do plano, substituição inclusive: o
+    // cliente com 3 guardados (retirados contam) exclui um antes de subir.
+    if (!semTeto && (await criativosRepo.contarCadastrados(contaId)) >= CRIATIVOS_POR_CONTA) {
+      return res.status(400).json({
+        erro: `você já tem ${CRIATIVOS_POR_CONTA} criativos cadastrados (contando os que estão fora do ar) — exclua um pra subir outro`,
+      });
+    }
     if (Number.isFinite(limite) && !substitui) {
       const emUso = await criativosRepo.contarNaoReprovados(contaId);
       if (emUso >= limite) {
@@ -1201,6 +1230,7 @@ async function subirCriativoDoCliente(req, res) {
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
     limite: direitos.limiteCriativos,
+    semTeto: false,
     duracaoMaxima: direitos.duracaoMaxima,
     substitui,
     envioChave,
@@ -1235,6 +1265,8 @@ async function subirCriativoDoCliente(req, res) {
 // RODAM ao mesmo tempo continua sendo o `limite_criativos` do plano, decidido
 // na playlist (limiteDeCriativos em src/playlist/gerador.js) — "até 3
 // cadastrados" e "N no ar" são coisas diferentes, e a ficha mostra as duas.
+// O teto de cadastro mora dentro de `subirCriativo` desde a revisão Codex do
+// PR #88 (28/09/2026) — aqui só se diz quem pula (`semTeto`, conta própria).
 // Conta suspensa não recebe criativo novo (Parte 27).
 router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async (req, res) => {
   const conta = await repo.buscarPorId(req.params.id);
@@ -1247,8 +1279,9 @@ router.post('/admin/anunciantes/:id/criativos', upload.single('arquivo'), async 
   const plano = planoEfetivoId(conta) ? await planosRepo.buscarPorId(planoEfetivoId(conta)) : null;
   return subirCriativo(req, res, {
     contaId: conta.id,
+    limite: Infinity,
+    semTeto: conta.conta_propria,
     // A conta própria não tem teto de duração: o inventário é da casa.
-    limite: conta.conta_propria ? Infinity : CRIATIVOS_POR_CONTA,
     duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
   });
@@ -1287,6 +1320,11 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
   return subirCriativo(req, res, {
     contaId: conta.id,
     limite: Infinity,
+    // Troca pelo operador não esbarra no teto de cadastro: o admin não tem
+    // como excluir criativo (só retirar, e retirado conta), então com 3
+    // cadastrados ficava sem saída. O teto segue valendo pro cliente
+    // (revisão do PR #88, 28/09/2026).
+    semTeto: true,
     duracaoMaxima: conta.conta_propria ? null : plano ? plano.duracao_maxima_segundos : null,
     peloOperador: true,
     substitui: atual,

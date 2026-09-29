@@ -606,6 +606,12 @@ cobrado, lançado, devido ou gravado por causa disso. Cortesia legada:
 "Cortesia · Sem cobrança neste ciclo". Só o Plano Básico (sem plano
 comercial): "-" com "Plano Básico: incluído no benefício do ponto". Não é
 CPM (o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
+Plano pago em vigor **sem snapshot dele** (troca feita antes da migration
+087, versão nova do plano): o card mostra o custo **calculado** pela mesma
+régua (valor do ciclo da conta ÷ exibições previstas do plano), marcado
+"estimado" — nunca mais "-" pra quem paga *(finalização, 28/09/2026)*.
+Benefício por créditos sem plano de referência encontrado: "Benefício por
+créditos · Sem valor monetário neste ciclo".
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
 *(Migration 062, 19/09/2026; ledger desde a 079 e ADR-016/ADR-020;
@@ -822,6 +828,18 @@ passou a chamar a rota nova do Checkout, com dois desfechos possíveis:
   aprovar, o link expira sozinho (15 minutos, do lado do Checkout) e a
   linha `pendente_troca` daqui fica órfã, sem nada cobrando ela de volta
   (registrado, não corrigido — ver `docs/PENDENCIAS.md`).
+
+**Cobertura paga de outro plano ainda valendo, sem assinatura ativa**
+(cancelou e quer assinar outro): `POST /anunciantes/:id/assinar` responde
+`409` dizendo até quando o plano atual vale e mandando pro WhatsApp — o
+ciclo novo somaria no fim da cobertura antiga (Essencial anual cancelado +
+Prime mensal dava 13 meses de Prime pelo preço de um). O mesmo plano
+continua liberado (renova). E, no crédito do ciclo, a data-base só é o fim
+da cobertura vigente pro **mesmo** plano (ou renovação atrasada de
+assinatura substituída); ciclo de outro plano começa hoje. **Ciclo pago em
+conta suspensa** nunca reativa a conta: a cobertura conta, a suspensão
+fica (só o admin desfaz) e a fila "Eventos do Checkout" ganha uma
+pendência *(finalização, 28/09/2026)*.
 
 Cada linha de `assinaturas` é o `planoId` que o Checkout usa pra nos
 perguntar preço (`GET /plano/:id`) — trocar de plano não é UPDATE na linha,
@@ -1512,6 +1530,14 @@ fica marcado em `editado_pelo_operador`, para ninguém cobrar do anunciante um
 vídeo que o Mostraí montou. *Violada:* conta inexistente responde 404; o teto de
 criativos do plano continua valendo nas contas de cliente. *Quem vê:* o
 administrador.
+Criativo **retirado não ocupa vaga do plano** (finalização, 28/09/2026): depois
+da substituição o original vira `retirado` e o Essencial (1) segue "1 de 1",
+não "2 de 1". Mas **vaga do plano ≠ teto de cadastro** (revisão Codex do PR
+#88): o teto (3, `CRIATIVOS_POR_CONTA`) conta os retirados e é o que limita o
+que fica guardado na conta — vale pra todo upload, substituição inclusive
+(só a conta própria do Mostraí pula). Com 3 cadastrados o POST responde 400
+"você já tem 3 criativos cadastrados (contando os que estão fora do ar) —
+exclua um pra subir outro"; excluir um retirado libera.
 
 **RN-23 — O admin pode liberar um plano de graça (cortesia).** Põe a conta no
 ar sem criar assinatura nem cobrança: o San Checkout não fica sabendo, nada é
@@ -1620,6 +1646,10 @@ cache e escreve o motivo na própria TV. Sem isso o anunciante pagava por
 exibição numa tela que a operação já sabia que não estava no ar. *Violada:*
 não há caminho — a guarda é o próprio `exigirAparelho`. *Quem vê:* o operador,
 na TV; o anunciante, no painel, porque a exibição simplesmente não é contada.
+POP-07 — mantido o 403 do contrato §4: o Player guarda os comprovantes na
+fila e reenvia quando a tela voltar a Ativa; tela que ficar mais de 7 dias
+fora do ar perde esses comprovantes e a obrigação dessas horas vira saldo —
+decisão de desenho, registrada (revisão Codex do PR #88).
 
 **RN-29 — Reprovar criativo exige motivo, e o motivo chega ao anunciante.**
 O admin não reprova sem escrever por quê; o motivo aparece no card da peça no

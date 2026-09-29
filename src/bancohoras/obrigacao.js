@@ -41,10 +41,32 @@ const basicoRepo = require('../pontos/basico');
 const HORA = 3_600_000;
 const inicioDaHora = (d) => new Date(Math.floor(new Date(d).getTime() / HORA) * HORA);
 
-async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTelas = null }) {
+// `soServidorForaDoAr` (finalização, 28/09/2026): é o modo da rede de
+// segurança (conciliação diária, apuração mensal). Ela usa o estado de HOJE
+// pra horas de dias atrás — tela que estava em reparo e voltou, plano que
+// venceu e foi renovado ganhavam obrigação retroativa de horas em que não
+// deviam nada, e isso virava saldo. Nesse modo só entram as horas em que
+// NENHUMA tela da rede pediu playlist (servidor fora do ar): hora em que a
+// rede funcionava já foi tratada pelo job de 10 min, com o estado daquela
+// hora. limite: rede de uma tela só continua sem essa distinção.
+async function registrarHorasSemPedido({
+  de,
+  ate,
+  apenasContas = null,
+  apenasTelas = null,
+  soServidorForaDoAr = false,
+}) {
   const limiteFim = inicioDaHora(ate).getTime();
   const telas = await dispositivosRepo.listarAtivasComPonto({ apenasTelas });
   let horas = 0;
+  let redeNoAr = null;
+  if (soServidorForaDoAr) {
+    const { rows } = await pool.query(
+      'SELECT DISTINCT janela_hora FROM playlist_hora_congelada WHERE janela_hora >= $1 AND janela_hora < $2',
+      [new Date(Math.ceil(new Date(de).getTime() / HORA) * HORA), new Date(limiteFim)],
+    );
+    redeNoAr = new Set(rows.map((r) => new Date(r.janela_hora).getTime()));
+  }
   for (const tela of telas) {
     if (!tela.provisionado_em) continue;
     const instalada = new Date(tela.provisionado_em).getTime();
@@ -59,6 +81,7 @@ async function registrarHorasSemPedido({ de, ate, apenasContas = null, apenasTel
     const semSinal = [];
     for (let h = inicio; h < limiteFim; h += HORA) {
       if (servidas.has(h)) continue;
+      if (redeNoAr?.has(h)) continue;
       // Na hora da instalação, só a partir do instante instalada (revisão
       // Codex do PR #85): antes disso a tela não existia pra dever nada.
       const minutos = minutosAbertosNaHora(tela, new Date(Math.max(h, instalada)), new Date(h + HORA));

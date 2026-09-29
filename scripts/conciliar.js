@@ -50,7 +50,11 @@ conciliarAssinaturas()
     //    o prazo vence, sem esperar o job mensal.
     try {
       const agora = new Date();
-      const semSinal = await registrarHorasSemPedido({ de: new Date(agora.getTime() - 48 * 3_600_000), ate: agora });
+      const semSinal = await registrarHorasSemPedido({
+        de: new Date(agora.getTime() - 48 * 3_600_000),
+        ate: agora,
+        soServidorForaDoAr: true,
+      });
       console.log(`saldo de veiculação: ${semSinal.horas} hora(s) aberta(s) sem sinal registrada(s)`);
       const recomposta = await recomporMesAnteriorEmPrazo({ agora });
       if (recomposta) {

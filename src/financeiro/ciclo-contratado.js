@@ -60,6 +60,32 @@ function custoPorExibicaoPrevista(ciclo) {
   return valor / exibicoes;
 }
 
+// Snapshot que a contratação do plano atual teria gravado, sem gravar nada.
+// `require` tardio: san-checkout.js já depende deste módulo.
+async function snapshotCalculado(conta, db) {
+  const {
+    rows: [plano],
+  } = await db.query('SELECT * FROM planos WHERE id = $1', [conta.plano_id]);
+  if (!plano) return null;
+  const { valorMensalDaConta } = require('./san-checkout');
+  const {
+    rows: [assinatura],
+  } = await db.query(
+    `SELECT * FROM assinaturas WHERE anunciante_id = $1 AND plano_id = $2 AND status = 'ativa' ORDER BY created_at DESC LIMIT 1`,
+    [conta.id, conta.plano_id],
+  );
+  const meses = Number(plano.compromisso_meses) || 1;
+  const mes = exibicoesPrevistasMes(plano);
+  return {
+    plano_id: plano.id,
+    plano_nome: plano.nome,
+    ciclo_meses: meses,
+    valor_ciclo: Number(valorMensalDaConta(conta, plano, assinatura || null)) * meses,
+    exibicoes_previstas_mes: mes,
+    exibicoes_previstas_ciclo: mes * meses,
+  };
+}
+
 // Ciclo de REFERÊNCIA de um plano do catálogo (painel do usuário,
 // 29/09/2026, pedido do dono): o que esse plano, nesse ciclo, custa na
 // tabela — mensalidade do ciclo × meses, sem promoção e sem desconto de
@@ -124,10 +150,21 @@ async function situacaoDoCusto(conta, db = pool) {
       ORDER BY c.id DESC LIMIT 1`,
     [conta.id, conta.plano_id],
   );
-  const ciclo = rows[0];
-  if (!ciclo) return { tipo: 'sem_snapshot' };
+  let ciclo = rows[0];
+  let aproximado = false;
+  if (!ciclo) {
+    // Plano pago em vigor sem snapshot dele (troca feita antes da migration
+    // 087, ou versão nova do plano): o painel mostrava "-" pra uma conta que
+    // paga. Calcula o que o snapshot teria gravado na contratação — o valor
+    // do ciclo pela régua da conta e as exibições previstas do plano — e
+    // marca como aproximado (finalização, 28/09/2026).
+    ciclo = await snapshotCalculado(conta, db);
+    if (!ciclo) return { tipo: 'sem_snapshot' };
+    aproximado = true;
+  }
   return {
     tipo: 'pago',
+    aproximado,
     custoPorExibicaoPrevista: custoPorExibicaoPrevista(ciclo),
     valorCiclo: Number(ciclo.valor_ciclo),
     exibicoesPrevistasCiclo: ciclo.exibicoes_previstas_ciclo,

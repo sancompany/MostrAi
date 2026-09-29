@@ -43,10 +43,13 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     // sai da playlist). SWAP ATÔMICO (consolidação, 24/09/2026): um comando
     // só — nunca existe um instante com A e B aprovados, nem A retirado sem
     // B aprovado.
-    if (req.body.status === 'aprovado' && antes.status === 'pendente' && antes.substitui_criativo_id) {
+    // Vale pra qualquer estado anterior que não seja 'aprovado' (finalização,
+    // 28/09/2026): substituto recusado e aprovado depois também retira o
+    // original — antes caía no caminho comum e A e B ficavam os dois no ar.
+    if (req.body.status === 'aprovado' && antes.status !== 'aprovado' && antes.substitui_criativo_id) {
       await pool.query(
         `WITH nova AS (
-           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status = 'pendente' RETURNING substitui_criativo_id
+           UPDATE criativos SET status = 'aprovado' WHERE id = $1 AND status <> 'aprovado' RETURNING substitui_criativo_id
          )
          UPDATE criativos SET status = 'retirado'
           WHERE id = (SELECT substitui_criativo_id FROM nova) AND status = 'aprovado'`,
