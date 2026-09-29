@@ -12,7 +12,10 @@ const { instanteComercial } = require('../lib/fuso-comercial');
 // estados excessivamente complexa"). `situacao` guarda só o controle manual
 // (ativa/pausada/encerrada); esta função decide o rótulo final combinando
 // os dois.
+// 'excluida' (migration 107, 29/09/2026): exclusão lógica — vence qualquer
+// outro estado; nunca toca, e as exibições confirmadas ficam como comprovante.
 function situacaoDerivada(m, agora = new Date()) {
+  if (m.situacao === 'excluida') return 'excluida';
   if (m.situacao === 'encerrada') return 'encerrada';
   if (m.situacao === 'pausada') return 'pausada';
   if (m.periodo_inicio && new Date(m.periodo_inicio) > agora) return 'agendada';
@@ -31,12 +34,15 @@ function montarLinha(row) {
   return { ...row, situacaoDerivada: situacaoDerivada(row) };
 }
 
+// Excluída não aparece em lista de trabalho nenhuma; a linha fica só pelo
+// comprovante (buscarPorId ainda a encontra, pras guardas das rotas).
 async function listar() {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS_MIDIA},
        (SELECT COUNT(*)::int FROM midias_proprias_pontos mpp WHERE mpp.midia_id = mp.id) AS qtd_pontos
      FROM midias_proprias mp
      JOIN criativos c ON c.id = mp.criativo_id
+     WHERE mp.situacao <> 'excluida'
      ORDER BY mp.created_at DESC`,
   );
   return rows.map(montarLinha);
@@ -117,12 +123,68 @@ async function atualizar(id, entrada) {
   return buscarPorId(id);
 }
 
-async function definirSituacao(id, situacao) {
-  const { rows } = await pool.query('UPDATE midias_proprias SET situacao = $2 WHERE id = $1 RETURNING id', [
-    id,
-    situacao,
-  ]);
+// Mídia excluída não muda mais de estado — a guarda mora no UPDATE, não só
+// nas rotas. Devolve false quando nada mudou (inexistente ou excluída).
+async function definirSituacao(id, situacao, db = pool) {
+  const { rows } = await db.query(
+    `UPDATE midias_proprias SET situacao = $2 WHERE id = $1 AND situacao <> 'excluida' RETURNING id`,
+    [id, situacao],
+  );
   return rows.length > 0;
+}
+
+// Exclusão lógica (migration 107). Só de mídia fora do ar — pausada ou
+// encerrada, pela situação DERIVADA (período vencido conta como encerrada):
+// ativa e agendada passam antes por Pausar ou Retirar do ar. Num commit só, a
+// mídia vira 'excluida' e o arquivo ainda em análise sai da fila como
+// reprovado — senão ficaria na Aprovação, com Aprovar, apontando pra uma
+// mídia que não existe mais. Mesmo desenho do PR #91 (pausado).
+const PODE_EXCLUIR = ['pausada', 'encerrada'];
+const MOTIVO_EXCLUSAO = 'Mídia excluída pelo operador — o arquivo saiu da fila junto com ela.';
+
+// `{ ok: true, midia, criativoReprovado }` ou `{ ok: false, status, erro }`.
+async function excluir(id) {
+  const midia = await buscarPorId(id);
+  if (!midia || midia.situacao === 'excluida') return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  if (!PODE_EXCLUIR.includes(midia.situacaoDerivada)) {
+    return { ok: false, status: 409, erro: 'pause ou retire a mídia do ar antes de excluir' };
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // A situação é conferida de novo no UPDATE: entre a leitura e aqui, outra
+    // aba pode ter retomado a mídia.
+    const { rowCount } = await client.query(
+      `UPDATE midias_proprias SET situacao = 'excluida'
+        WHERE id = $1
+          AND (situacao IN ('pausada', 'encerrada')
+               OR (situacao = 'ativa' AND periodo_fim < now()
+                   AND (periodo_inicio IS NULL OR periodo_inicio <= now())))`,
+      [id],
+    );
+    if (!rowCount) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 409, erro: 'pause ou retire a mídia do ar antes de excluir' };
+    }
+    const reprovado = await client.query(
+      `UPDATE criativos SET status = 'reprovado', motivo_reprovacao = $2 WHERE id = $1 AND status = 'pendente'`,
+      [midia.criativo_id, MOTIVO_EXCLUSAO],
+    );
+    await client.query('COMMIT');
+    return { ok: true, midia, criativoReprovado: reprovado.rowCount > 0 };
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
+}
+
+// Situação da mídia própria dona deste criativo (1-pra-1), ou null quando o
+// criativo não é de mídia própria.
+async function situacaoPorCriativo(criativoId) {
+  const { rows } = await pool.query('SELECT situacao FROM midias_proprias WHERE criativo_id = $1', [criativoId]);
+  return rows[0]?.situacao ?? null;
 }
 
 // ---------- Ocupação (Parte 10/11/16) ----------
@@ -303,6 +365,8 @@ module.exports = {
   criar,
   atualizar,
   definirSituacao,
+  excluir,
+  situacaoPorCriativo,
   ocupacaoPorPonto,
   previewOcupacao,
   elegiveisNoPonto,

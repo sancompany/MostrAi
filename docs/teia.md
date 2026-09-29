@@ -10,8 +10,17 @@ em 15/09/2026 por doze leituras independentes, uma por superfície.
 > chave `qr_institucional` de `configuracoes_site`), `gerarSvg`/`gerarPng`
 > (biblioteca `qrcode`, uma vez por processo) → `src/midias/routes.js`:
 > `GET /q/anuncie` (302 no-store, pública), `GET/PUT /admin/qr-institucional`,
-> `GET /admin/qr-institucional/svg|png` → admin, `montarQrInstitucional` /
-> `desenharQrInstitucional` dentro de `renderMidiaMostrai`.
+> `GET /admin/qr-institucional/svg|png` → admin, `renderQrResumo` (Visão
+> geral, desde 29/09/2026) → `desenharQrInstitucional` num modal.
+
+> **29/09/2026 — Refino da Mídia Mostraí:** `midiasRepo.excluir` (exclusão
+> lógica, só pausada/encerrada; reprova o arquivo em análise no mesmo commit)
+> ← `DELETE /admin/midias-proprias/:id` ← `renderMidiaMostrai` (modal
+> `confirmarModal`); `midiasRepo.situacaoPorCriativo` ← `PATCH
+> /admin/criativos/:id` e `/substituir` (409 na excluída); `listar` sem as
+> excluídas. `renderPontoCapacidade` (ficha do ponto) ← `GET
+> /admin/capacidade-rede?escopo=rede` e `/:pontoId/midias`; saíram
+> `montarTabelaCapacidade` e `montarQrInstitucional` da Mídia Mostraí.
 
 > **27/09/2026 — Distribuição real:** funções novas e onde se ligam —
 > `src/anunciantes/entrada-no-ar.js` (`entradaNoArDasPecas`: Aprovado →

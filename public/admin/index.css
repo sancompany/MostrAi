@@ -1324,11 +1324,6 @@ th[data-ord].desc::after {
   letter-spacing: 0;
   text-transform: none;
 }
-/* Capacidade na Mídia Mostraí: sete colunas de número curto não precisam da
-   largura toda do monitor — esticadas, os números ficavam longe do ponto. */
-#mmCapacidadeWrap .tabela-caixa {
-  max-width: 940px;
-}
 .tabela-capacidade thead tr:first-child th[rowspan] {
   vertical-align: bottom;
 }
@@ -3673,17 +3668,6 @@ button.pend-bloco:focus-visible {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-/* Capacidade projetada: "agora → depois", com o depois em destaque. */
-.tabela-projecao .valor-antes {
-  color: var(--text-dim);
-}
-.tabela-projecao .seta {
-  margin: 0 2px;
-  color: var(--text-dim);
-}
-.tabela-projecao .valor-depois {
-  color: var(--text);
-}
 
 /* ---------- Mídia Mostraí: QR Code institucional (27/09/2026) ----------
    Preview à esquerda, link/destino/downloads à direita; uma coluna só no
@@ -3804,15 +3788,9 @@ button.pend-bloco:focus-visible {
   margin-bottom: 12px;
 }
 
-/* Mídia Mostraí: exibições confirmadas no card e na edição (27/09/2026). */
-.mm-metricas { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 0; font-size: 0.8rem; color: var(--text-dim); }
-.mm-metricas b { color: var(--text); }
+/* Mídia Mostraí: exibições confirmadas na edição (27/09/2026). */
 .mm-exibicoes .mini-table { width: 100%; margin: 8px 0; }
 .mm-exibicoes-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 4px; font-size: 0.82rem; color: var(--text-dim); }
-/* O estado de exibição ("Ativa — reproduzindo normalmente") é longo: vai
-   pra linha de baixo do nome, em vez de espremer o título letra a letra. */
-.mm-item .item-topo { flex-wrap: wrap; gap: 4px 10px; }
-.mm-item .item-topo h4 { flex: 1 1 100%; }
 
 /* Concorrentes diretos (modal de categoria, migration 105): etiquetas com
    "×" pra tirar + a busca de sempre pra pôr. */
@@ -3840,4 +3818,245 @@ button.pend-bloco:focus-visible {
 .cat-concorrente-tirar:hover,
 .cat-concorrente-tirar:focus-visible {
   color: var(--text);
+}
+
+/* ---------- Mídia Mostraí: refino operacional (29/09/2026) ----------
+   Página só de conteúdo próprio: indicadores das mídias, vídeo institucional
+   compacto e a grade de cards em pé (preview em cima, dados embaixo, ações no
+   rodapé). */
+.mini-indicador-alerta {
+  border-color: color-mix(in srgb, var(--err) 45%, var(--border));
+}
+.mini-indicador-alerta b {
+  color: var(--err);
+}
+
+/* Vídeo institucional: preview pequeno ao lado dos dados, também no celular. */
+.mm-vi {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.mm-vi .tela-moldura {
+  width: 100%;
+  padding: 5px;
+  border-radius: 10px;
+}
+.mm-vi-sem {
+  font-size: 0.72rem;
+  color: var(--escuro-texto-dim);
+}
+.mm-vi-dados {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.mm-vi-dados h3 {
+  margin: 0;
+}
+.mm-vi-meta,
+.mm-vi-nota {
+  margin: 0;
+}
+.mm-vi-meta {
+  font-size: 0.88rem;
+}
+.mm-vi-nota {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+.mm-vi-dados .acoes {
+  margin-top: 6px;
+}
+
+/* Grade das mídias: 3 por linha com largura, depois 2, depois 1. */
+.mm-grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+@media (min-width: 640px) {
+  .mm-grade {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1200px) {
+  .mm-grade {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.mm-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.mm-card-atrasada {
+  border-color: color-mix(in srgb, var(--err) 40%, var(--border));
+}
+/* Mesma área em todo card; a peça 9:16 cabe inteira, centrada, sem corte. */
+.mm-card-preview {
+  height: 220px;
+  background: var(--escuro-fundo);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mm-card-preview .mm-card-asset {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: var(--escuro-fundo);
+}
+.mm-card-corpo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+.mm-card-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mm-card-topo h4 {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mm-card-topo .badge {
+  flex-shrink: 0;
+}
+.mm-card-fatos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+.mm-card-linha {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.mm-card-entrega {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.mm-card-entrega b {
+  font-variant-numeric: tabular-nums;
+}
+.mm-card-acoes {
+  margin-top: auto;
+  padding-top: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mm-vazio {
+  max-width: 520px;
+}
+
+/* Formulário: início e fim lado a lado; resumo e capacidade projetada. */
+.mm-periodo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 14px;
+}
+.mm-periodo .campo-ajuda {
+  grid-column: 1 / -1;
+}
+.mm-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.mm-resumo dt {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+.mm-resumo dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mm-projecao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mm-projecao-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--radius-campo);
+  background: var(--card);
+  font-size: 0.84rem;
+}
+.mm-projecao-acima {
+  border-left-color: var(--brand);
+}
+.mm-projecao-nao-cabe {
+  border-left-color: var(--err);
+}
+.mm-projecao-nome {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.mm-projecao-soma {
+  font-variant-numeric: tabular-nums;
+}
+.mm-projecao-veredito {
+  color: var(--ok);
+}
+.mm-projecao-acima .mm-projecao-veredito {
+  color: var(--brand-text);
+}
+.mm-projecao-nao-cabe .mm-projecao-veredito {
+  color: var(--err);
+  font-weight: 600;
+}
+.mm-preview-aviso {
+  display: block;
+  margin-top: 4px;
+  color: var(--brand-text);
+}
+
+/* QR institucional na Visão geral: só o destino e o [Gerenciar]. */
+.qr-resumo-destino {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: 0.84rem;
+}
+.qr-resumo-destino span {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+.qr-resumo-destino a {
+  overflow-wrap: anywhere;
 }

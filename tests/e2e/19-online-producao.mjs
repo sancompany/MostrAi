@@ -205,7 +205,7 @@ if (TOKEN_ID && ADMIN_USER) {
     ['#financeiro/eventos', 'Financeiro', /evento/i],
     // "Mídias próprias" é o cabeçalho da seção, com ou sem mídia cadastrada —
     // "nenhum" só batia enquanto a produção não tinha nenhuma (24/09/2026).
-    ['#midiamostrai', 'Mídia Mostraí', /Capacidade da rede[\s\S]*Mídias próprias/i],
+    ['#midiamostrai', 'Mídia Mostraí', /Vídeo institucional[\s\S]*Mídias próprias/i],
   ]) {
     await irQuieto(p, `${BASE}/admin/${hash}`, { timeout: 45000 }).catch(() => {});
     await p.waitForTimeout(1200);
