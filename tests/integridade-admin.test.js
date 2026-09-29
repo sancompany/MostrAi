@@ -296,24 +296,38 @@ test('resumo: novas contas em 30 dias não conta a conta própria', async () => 
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   try {
+    // A conta própria existe e é "nova" (nasce com a migration): sem ela na
+    // janela de 30 dias, o teste não provaria nada. Outro arquivo pode estar
+    // criando a mesma conta agora — quem perde a corrida só lê a do outro.
+    const anunciantesRepo = require('../src/anunciantes/repository');
+    await anunciantesRepo.ensureContaMostrai().catch((erro) => {
+      if (erro.code !== '23505') throw erro;
+    });
     const contar = async () =>
       (
         await pool.query(
-          `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria
+          `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria,
+                  COUNT(*) FILTER (WHERE conta_propria)::int AS propria
              FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL`,
         )
-      ).rows[0].sem_propria;
-    // Outros arquivos de teste criam e apagam contas em paralelo: o número do
-    // resumo tem que bater com a contagem de antes OU de depois da chamada.
+      ).rows[0];
+    // Outros arquivos de teste criam e apagam contas em paralelo, e a contagem
+    // pode passar por um valor do meio durante a chamada (3 → 2 → 1): o
+    // resumo vale se cair entre a contagem de antes e a de depois, inclusive.
+    // Antes o teste exigia uma das duas pontas e falhava com o valor do meio
+    // (CI do #104: `2 ∉ {3, 1}`), com o código certo.
     const antes = await contar();
     const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/resumo`);
     assert.strictEqual(r.status, 200);
     const resumo = await r.json();
     const depois = await contar();
-    assert.ok(
-      [antes, depois].includes(resumo.rede.novosAnunciantes30d),
-      `${resumo.rede.novosAnunciantes30d} ∉ {${antes}, ${depois}}`,
-    );
+    assert.ok(antes.propria >= 1 && depois.propria >= 1, 'a conta própria está na janela de 30 dias');
+    const min = Math.min(antes.sem_propria, depois.sem_propria);
+    const max = Math.max(antes.sem_propria, depois.sem_propria);
+    const novas = resumo.rede.novosAnunciantes30d;
+    assert.ok(novas >= min && novas <= max, `${novas} fora de [${min}, ${max}]`);
+    // Contar a própria daria sem_propria + 1: sem movimento em paralelo
+    // (min = max, o caso comum), isso cai fora do intervalo e o teste pega.
   } finally {
     await new Promise((r) => server.close(r));
   }
