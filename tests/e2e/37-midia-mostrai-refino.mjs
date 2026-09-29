@@ -210,6 +210,7 @@ await p.waitForFunction(() => /Mídia criada/.test(document.getElementById('toas
 });
 await p.waitForSelector('.mm-card:has-text("Promoção Café da Manhã")');
 check('card da mídia nova', true);
+await shot(await p.$('.mm-grade'), 'grade-1-midia');
 
 etapa('== formulário: peça deitada e peça que não cabe ==');
 await abrirNova();
@@ -231,6 +232,7 @@ etapa('== criar os outros estados ==');
 const amanha = new Date(Date.now() + 24 * 3600_000).toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 16).replace(' ', 'T');
 await criar({ nome: 'Seja um ponto', arquivo: 'seja-um-ponto.webm', freq: 2, pontos: ['San & Co'], inicio: amanha });
 await criar({ nome: 'Aviso de horário', arquivo: 'aviso-horario.png', pausada: true });
+await shot(await p.$('.mm-grade'), 'grade-3-midias');
 await criar({ nome: 'Campanha antiga', arquivo: 'campanha-antiga.png' });
 await card('Campanha antiga').locator('[data-encerrar-midia]').click();
 await p.click('dialog [data-confirmar]');
