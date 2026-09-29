@@ -49,7 +49,14 @@
       "candidaturaCampoPreview",
       "candidaturaLigarPreviewCard",
       "candidaturaBloco",
-      "candidaturaAjustarFoto"
+      "candidaturaAjustarFoto",
+      "candidaturaCampoMovimento",
+      "candidaturaLigarNumeros",
+      "candidaturaCampoObservacoes",
+      "candidaturaAcoes",
+      "candidaturaValidar",
+      "candidaturaLigarValidacao",
+      "candidaturaFocarProblema"
     ]
   },
   "linter": {

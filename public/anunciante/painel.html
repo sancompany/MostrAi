@@ -29,11 +29,9 @@
              conta tem, e o que precisa de atenção agora. -->
         <div class="resumo-conta" id="resumoConta" aria-label="Resumo da conta"></div>
         <ul class="alertas-conta" id="alertasConta" aria-label="Precisa de atenção" hidden></ul>
-        <!-- Promoção pra usuários logados (rodada de Ofertas/Promoções,
-             22/09/2026, Parte R) — só existe quando alguma promoção vigente
-             está marcada "mostrar pra usuários logados"; nunca redesenha o
-             resto do painel nem mexe no fluxo de troca de plano. -->
-        <div id="promocaoLogado" hidden></div>
+        <!-- A promoção NÃO mora mais aqui (reforço visual, 28/09/2026): na
+             área logada ela é a faixa fina abaixo do cabeçalho, com X
+             (public/barra-promocional.js) — o topo do painel é da operação. -->
       </div>
     </section>
 
@@ -57,6 +55,11 @@
             </div>
             <p>Dados do mês atual, atualizados pelas telas da rede.</p>
           </div>
+          <!-- Quatro indicadores, e só quatro (painel do usuário, 29/09/2026,
+               pedido do dono): horas, exibições (com a média diária dentro),
+               custo por exibição e saldo de veiculação. Cada card tem lugar
+               FIXO e é reescrito no mesmo lugar a cada carga (SSE, resgate) —
+               nada é anexado, então nada empilha. -->
           <div class="kpi-grid" id="kpiGrid">
             <article class="kpi-card kpi-destaque" data-kpi="horas" hidden>
               <span class="kpi-icon kpi-icon-orange" aria-hidden="true">◷</span>
@@ -64,19 +67,21 @@
               <span class="kpi-caption" data-kpi-horas-legenda></span>
               <span class="track" aria-hidden="true"><span class="fill" data-pct="0"></span></span>
             </article>
-            <article class="kpi-card" data-kpi="exibicoes"><span class="kpi-icon" aria-hidden="true">▶</span><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">confirmadas / previstas no mês</span></article>
-            <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por exibição prevista</span><b>-</b><span class="kpi-caption" data-kpi-custo-legenda>Valor contratado ÷ exibições previstas no ciclo</span></article>
-            <article class="kpi-card" data-kpi="media"><span class="kpi-icon" aria-hidden="true">↗</span><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia, desde o início da campanha no mês</span></article>
-            <!-- Banco de horas: lugar FIXO no grid, preenchido por
-                 carregarBancoHoras(). Antes o card era criado por
-                 insertAdjacentHTML('beforeend') a cada chamada — e como o SSE
-                 (Fase 3) passou a reexecutar carregar(), cada volta à aba
-                 empilhava uma cópia nova. Card fixo + hidden é idempotente por
-                 construção: reexecutar só reescreve o mesmo lugar. -->
-            <article class="kpi-card kpi-secondary" data-kpi="banco" hidden>
-              <span class="kpi-icon" aria-hidden="true">＋</span>
+            <article class="kpi-card" data-kpi="exibicoes">
+              <span class="kpi-icon" aria-hidden="true">▶</span>
+              <span class="kpi-label">Exibições</span><b>-</b>
+              <span class="kpi-caption" data-kpi-exibicoes-legenda>confirmadas no mês</span>
+              <span class="kpi-media" data-kpi-media>Média diária: -</span>
+            </article>
+            <article class="kpi-card" data-kpi="custo">
+              <span class="kpi-icon" aria-hidden="true">R$</span>
+              <span class="kpi-label">Custo por exibição</span><b>-</b>
+              <span class="kpi-caption" data-kpi-custo-legenda>Valor do plano ÷ exibições previstas no ciclo</span>
+            </article>
+            <article class="kpi-card" data-kpi="banco">
+              <span class="kpi-icon" aria-hidden="true">⇄</span>
               <span class="kpi-label">Saldo de veiculação</span><b>-</b>
-              <span class="badge badge-pendente" data-kpi-banco-legenda></span>
+              <span class="kpi-caption" data-kpi-banco-legenda></span>
             </article>
           </div>
           <div class="dashboard-notice" id="exibicoesVazio" hidden></div>
@@ -91,26 +96,27 @@
             <div><p class="section-eyebrow">Performance</p><h2 id="tituloPerformance">Acompanhe sua veiculação</h2></div>
             <p>Exibições confirmadas pelas telas onde sua campanha está ativa.</p>
           </div>
-          <div class="performance-grid">
-            <article class="panel painel-grafico" id="painelDia" hidden>
-              <div class="panel-head"><div><h3>Exibições por dia</h3><span class="panel-subtitle">Evolução recente da campanha</span></div><span class="kpi-caption" id="legendaDia"></span></div>
-              <div class="bar-chart" id="graficoDia"></div>
-              <div class="legenda-serie" id="legendaPontosDia" hidden></div>
-            </article>
-
-            <article class="panel painel-pontos-performance" id="painelDetalhe" hidden>
-              <div class="panel-head performance-head">
-                <div><h3>Exibições por ponto</h3><span class="panel-subtitle">Compare entrega e situação das telas</span></div>
-                <div class="performance-actions">
-                  <label for="periodoComprovante">Período</label>
-                  <select id="periodoComprovante"><option value="30">últimos 30 dias</option><option value="90">últimos 90 dias</option><option value="365">últimos 12 meses</option></select>
-                  <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
-                </div>
-              </div>
-              <div class="bar-chart-h" id="graficoPonto"></div>
-              <div class="performance-table" id="exibicoesDetalhe"></div>
-            </article>
-          </div>
+          <!-- Um card só (painel do usuário, 29/09/2026): "por dia" e "por
+               ponto" eram dois cards contando a mesma entrega. Agora o
+               período escolhido vale pro gráfico empilhado por ponto, pra
+               tabela e pro comprovante. Montado por painel.page.js
+               (desenharPerformance). -->
+          <article class="panel painel-performance" id="painelPerformance" hidden>
+            <div class="panel-head performance-head">
+              <div><h3 id="tituloGrafico">Exibições confirmadas por ponto</h3><span class="panel-subtitle" id="performanceTotal"></span></div>
+              <a class="btn ghost mini" id="btnComprovante" href="#" download>Baixar comprovante</a>
+            </div>
+            <div class="periodos" id="periodosPerformance" role="group" aria-label="Período do gráfico e do comprovante">
+              <button type="button" data-periodo="7d" aria-pressed="false">7 dias</button>
+              <button type="button" data-periodo="30d" aria-pressed="true">30 dias</button>
+              <button type="button" data-periodo="3m" aria-pressed="false">3 meses</button>
+              <button type="button" data-periodo="1a" aria-pressed="false">1 ano</button>
+              <button type="button" data-periodo="max" aria-pressed="false">Máx.</button>
+            </div>
+            <div class="grafico-periodo" id="graficoPerformance"></div>
+            <div class="legenda-serie legenda-pontos" id="legendaPerformance" hidden></div>
+            <div class="performance-table" id="exibicoesDetalhe"></div>
+          </article>
         </section>
 
         <section class="dashboard-section" aria-labelledby="tituloCobertura">
@@ -144,9 +150,19 @@
         </div>
 
         <aside class="area-lateral" aria-label="Sua conta">
+        <!-- Plano Básico do ponto (migration 103): benefício de quem hospeda
+             um ponto — separado do plano contratado, com a origem dita. -->
+        <section class="dashboard-section" id="modBasico" aria-labelledby="tituloBasico" hidden>
+          <article class="panel painel-basico">
+            <p class="section-eyebrow">Benefício de ponto</p>
+            <h2 id="tituloBasico">Plano Básico</h2>
+            <div id="basicoResumo"></div>
+          </article>
+        </section>
+
         <section class="dashboard-section" id="modPlano" aria-labelledby="tituloPlano" hidden>
           <article class="panel painel-plano">
-            <p class="section-eyebrow">Anúncio na rede</p>
+            <p class="section-eyebrow">Plano contratado</p>
             <h2 id="tituloPlano">Seu plano</h2>
             <div id="planoResumo"></div>
           </article>
@@ -157,14 +173,13 @@
             <div class="panel-head">
               <div>
                 <p class="section-eyebrow">Seus comércios na rede</p>
-                <h2 id="tituloMeusPontos">Meus pontos</h2>
+                <h2 id="tituloMeusPontos" tabindex="-1">Meus pontos</h2>
                 <span class="panel-subtitle" id="pontosResumo"></span>
               </div>
               <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
             </div>
             <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
             <div class="estab-lista" id="pontosLista"></div>
-            <div class="pontos-novo" id="pontosNovo" hidden></div>
           </article>
         </section>
 
@@ -189,6 +204,14 @@
           </article>
         </section>
         </aside>
+
+        <!-- Formulário de ponto ("Quero ser um ponto" e "+ Cadastrar outro
+             estabelecimento"): abre aqui, na largura da página, e não dentro
+             da coluna lateral de Meus pontos, onde ficava com ~340 px
+             (estação dos formulários de ponto, 28/09/2026). Montado por
+             public/meus-pontos.js; o grid só o mostra enquanto está aberto
+             (.painel-grid.com-form-ponto, painel.css). -->
+        <section class="dashboard-section area-form-ponto" id="pontosNovo" aria-labelledby="tituloFormPonto" hidden></section>
 
         <div class="area-creditos">
         <section class="dashboard-section" id="modCreditos" aria-labelledby="tituloCreditos" hidden>
@@ -250,6 +273,8 @@
   <script src="/config.js"></script>
   <script src="/eventos.js"></script>
   <script src="/layout.js"></script>
+  <script src="/promocao.js"></script>
+  <script src="/barra-promocional.js"></script>
   <script src="/perfil.js"></script>
   <script src="/notificacoes.js"></script>
   <script src="/painel-resumo.js"></script>

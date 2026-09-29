@@ -50,9 +50,10 @@ async function carregar() {
     // escolher plano (o back também passou a recusar isso, defesa em
     // profundidade — ver POST /anunciantes/:id/criativos).
     //
-    // Ser ponto não libera plano (ADR-016, 24/09/2026): só plano pago ou
-    // benefício por créditos liberam o anúncio.
-    if (!ANUNCIANTE.plano_id) {
+    // O Plano Básico do ponto (migration 103, ADR-025) também libera: quem
+    // hospeda um ponto ativo anuncia no próprio estabelecimento sem plano
+    // contratado. Sem nenhum dos dois, o painel pede o plano.
+    if (!temDireitoDeAnunciar()) {
       montarBloqueioPlano();
       return;
     }
@@ -93,6 +94,11 @@ if (window.ligarEventosDaConta) {
 // resgate de créditos. Sem remover o anterior, cada rodada empilhava outro
 // card de bloqueio; sem desfazer, a conta que ganhava plano continuava
 // bloqueada até dar F5.
+// Direito de veicular: plano comercial OU o Básico de um ponto ativo.
+function temDireitoDeAnunciar() {
+  return !!ANUNCIANTE.plano_id || !!ANUNCIANTE.beneficios_basico?.length;
+}
+
 function removerBloqueioPlano() {
   document.getElementById('bloqueioPlanoCaixa')?.remove();
   document.getElementById('dashboardAnuncios').hidden = false;
@@ -191,13 +197,13 @@ async function carregarPrimeirosPassos() {
       return;
     }
     const caixa = document.getElementById('bloqueioPlanoCaixa');
-    if (caixa && !ANUNCIANTE.plano_id && !ANUNCIANTE.suspenso) {
+    if (caixa && !temDireitoDeAnunciar() && !ANUNCIANTE.suspenso) {
       caixa.innerHTML = htmlOnboardingSemPlano(passos);
       return;
     }
     const faixa = document.getElementById('primeirosPassos');
     if (!faixa) return;
-    if (!ANUNCIANTE.plano_id || passos.concluido) {
+    if (!temDireitoDeAnunciar() || passos.concluido) {
       faixa.hidden = true;
       faixa.innerHTML = '';
       return;
@@ -243,8 +249,42 @@ function preencherStatusBanner() {
     </div>
     <div class="hero-status" id="heroStatus" hidden></div>
   `;
+  desenharBasico();
   desenharPlano();
   carregarPontos();
+}
+
+// "Benefício de ponto · Plano Básico" (migration 103): um card por conta,
+// uma linha por ponto que dá o benefício. Nunca junta com o plano
+// contratado — "Básico + Pro" não é um plano, são duas origens.
+function desenharBasico() {
+  const secao = document.getElementById('modBasico');
+  if (!secao || !ANUNCIANTE) return;
+  const basicos = ANUNCIANTE.beneficios_basico || [];
+  if (!basicos.length) {
+    secao.hidden = true;
+    return;
+  }
+  const d = ANUNCIANTE.direitos || {};
+  const soma =
+    ANUNCIANTE.plano_id && d.pontosPlano
+      ? `<p class="plano-nota">Somado ao plano contratado: <b>${d.pontos} pontos</b> e <b>${d.horasPorMes} h/mês</b> no total (${d.horasBasico} h do Básico + ${d.horasPlano} h do plano).</p>`
+      : '';
+  document.getElementById('basicoResumo').innerHTML = `
+    ${basicos
+      .map(
+        (b) => `<div class="basico-item" data-basico-ponto="${b.pontoId}">
+        <p class="plano-nome"><b>${b.horasPorMes} h/mês</b> <span class="badge badge-ok">Ativo</span></p>
+        <ul class="basico-direitos">
+          <li>1 ponto — ${esc(b.pontoNome || 'seu estabelecimento')}</li>
+          <li>Anúncio de até ${b.duracaoMaximaSegundos} s</li>
+        </ul>
+      </div>`,
+      )
+      .join('')}
+    <p class="plano-nota">Incluído sem custo enquanto seu ponto estiver ativo. Além dele, cada ponto ativo gera +1 crédito por mês.</p>
+    ${soma}`;
+  secao.hidden = false;
 }
 
 // "Plano comercial" (Fatia 5): o que a conta tem pra anunciar na rede —
@@ -272,8 +312,14 @@ function desenharPlano() {
   // em tamanho pequeno (estação da conta, 26/09/2026).
   if (situacao === 'sem_plano') {
     secao.hidden = true;
+    // Só o Básico do ponto: o chip diz a origem (benefício), não "Sem plano".
+    const soBasico = ANUNCIANTE.beneficios_basico?.length;
     window.publicarResumo?.('plano', {
-      chips: [{ rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' }],
+      chips: [
+        soBasico
+          ? { rotulo: 'Plano', valor: 'Básico · benefício de ponto', alvo: 'modBasico' }
+          : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
+      ],
       alertas: [],
     });
     return;
@@ -375,11 +421,56 @@ const TEXTO_MODO_AUTOMATICO =
 const TEXTO_SEU_PONTO =
   'Este estabelecimento pertence à sua conta. Você pode incluí-lo na cobertura da campanha ou anunciar somente em outros pontos da rede.';
 
-// Uma linha por ponto: nome, localização, estado operacional, horário,
-// ocupação e se está selecionado. O próprio ponto (a conta é dona do
-// comércio) vem na MESMA lista, com destaque — nunca marcado por isso: se
-// marcado, conta no limite do plano como qualquer outro.
-function htmlPontoEscolha(p) {
+// Ícones das linhas do card (traço herda a cor do texto — `.ponto-icone` no
+// CSS). Decorativos: o texto ao lado diz a mesma coisa.
+const ICONES_PONTO = {
+  endereco:
+    '<path d="M12 21.5s7.25-7.35 7.25-12.25a7.25 7.25 0 1 0-14.5 0c0 4.9 7.25 12.25 7.25 12.25Z"/><circle cx="12" cy="9.25" r="2.75"/>',
+  segmento:
+    '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+  horario: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
+  ocupacao: '<path d="M4 20h16M7 16v-4M12 16V7M17 16v-6"/>',
+  casa: '<path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5"/>',
+};
+const iconePonto = (nome) =>
+  `<svg class="ponto-icone" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICONES_PONTO[nome]}</svg>`;
+
+// Foto da fachada, segmento e bairro de cada ponto: a vitrine pública de
+// "Onde estamos" (GET /pontos — mesmos status que a lista da escolha,
+// STATUS_NA_REDE; confirmar-plano já lê a mesma rota). É enfeite, não regra:
+// se ela falhar — ou demorar mais que o prazo, que a lista espera por ela —,
+// o card cai no placeholder oficial, sem segmento, e a escolha continua
+// funcionando igual. Por isso nunca rejeita.
+const PRAZO_VITRINE_MS = 3000;
+async function buscarVitrineDosPontos() {
+  const abortar = new AbortController();
+  const prazo = setTimeout(() => abortar.abort(), PRAZO_VITRINE_MS);
+  try {
+    const r = await fetch(`${API_BASE_URL}/pontos`, { signal: abortar.signal });
+    const lista = r.ok ? await r.json() : [];
+    return new Map((Array.isArray(lista) ? lista : []).map((v) => [v.id, v]));
+  } catch {
+    return new Map();
+  } finally {
+    clearTimeout(prazo);
+  }
+}
+
+// Um card por ponto (estação dos cards do cliente, 28/09/2026): o MESMO
+// molde de Rede > Pontos do admin e da prévia da candidatura
+// (`.ponto-card.com-corpo`, style.css) — foto da fachada ou o placeholder
+// oficial, nome com o estado ao lado, endereço, segmento, horário e ocupação
+// — e a seleção no pé do card, dita em texto e não só na cor. O próprio
+// ponto (a conta é dona do comércio) vem na MESMA lista, com o selo "Seu
+// ponto" na foto e o texto que explica a escolha — nunca marcado por isso:
+// se marcado, conta no limite do plano como qualquer outro.
+//
+// Só a apresentação é deste card. O input, o `.cheio`, o `data-ponto-id` e o
+// `data-busca` são os de antes: travar no limite, salvar e contar continuam
+// em desenharPontos. As frases do pé ("Selecionado", "Limite do plano
+// atingido") são escolhidas pelo CSS a partir do estado do input — nenhum
+// caminho de código precisa lembrar de repintá-las.
+function htmlPontoEscolha(p, vitrine = {}) {
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
   // ainda. Bloquear ele por ocupação seria bloquear por um zero que
@@ -398,23 +489,48 @@ function htmlPontoEscolha(p) {
         : `${p.ocupacao}% vendido`;
   const estado = window.ROTULOS.ponto[p.status] || p.status;
   const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  // Endereço com a regra do resto do sistema (window.linhaEndereco — D5):
+  // "Rua, número - bairro, cidade". O bairro vem da vitrine, quando há.
+  const local = window.linhaEndereco(
+    { endereco: p.endereco, bairro: vitrine.bairro, cidade: p.cidade },
+    { comCidade: true },
+  );
+  const foto = vitrine.foto_instalacao_url
+    ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>`
+    : `<span class="ponto-foto-placeholder" aria-hidden="true">${CANDIDATURA_FOTO_PLACEHOLDER_SVG}</span>`;
+  const linha = (classe, icone, texto, id = '') =>
+    `<span class="ponto-linha ${classe}"${id ? ` id="${id}"` : ''}>${iconePonto(icone)}<span>${esc(texto)}</span></span>`;
+  // O nome acessível do checkbox é o nome do ponto (e o selo), não o card
+  // inteiro; estado, ocupação e a frase do pé entram como descrição.
+  const id = `ponto-escolha-${p.id}`;
   // <a> fica FORA do <label> de propósito: um link dentro de um label ainda
   // ativa o checkbox quando o clique borbulha até ele. O <label> é
-  // `display:contents` no CSS — os filhos viram itens do grid da linha.
-  return `<div class="ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
+  // `display:contents` no CSS — os filhos viram itens da grade do card, e o
+  // link do mapa fica por cima da foto, no canto.
+  return `<div class="ponto-card com-corpo ponto-escolha${fechado ? ' cheio' : ''}${p.seuPonto ? ' seu-ponto' : ''}" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${p.cidade || ''}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''}>
-        <span class="ponto-info">
-          <span class="ponto-nome">${esc(p.nome)}</span>${p.seuPonto ? ' <span class="selo-seu-ponto">Seu ponto</span>' : ''}
-          <span class="ponto-horario">${p.horario ? esc(p.horario) : 'Horário não informado'}</span>
-          ${p.seuPonto ? '<span class="ponto-proprio-rotulo">Veicular no próprio ponto</span>' : ''}
+        <span class="ponto-card-media">${foto}${p.seuPonto ? `<span class="selo-seu-ponto" id="${id}-selo">${iconePonto('casa')}Seu ponto</span>` : ''}</span>
+        <span class="ponto-card-corpo">
+          <span class="ponto-card-topo">
+            <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
+            <span class="ponto-estado badge ${classeEstado}" id="${id}-estado">${esc(estado)}</span>
+          </span>
+          ${local ? linha('ponto-end', 'endereco', local) : ''}
+          ${vitrine.categoria_nome ? linha('ponto-segmento', 'segmento', vitrine.categoria_nome) : ''}
+          ${linha('ponto-horario', 'horario', p.horario || 'Horário não informado')}
+          ${linha('ponto-ocupacao', 'ocupacao', ocupacao, `${id}-ocupacao`)}
+          ${
+            p.seuPonto
+              ? `<span class="ponto-proprio"><span class="ponto-proprio-rotulo">Veicular no próprio ponto</span><span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span></span>`
+              : ''
+          }
         </span>
-        <span class="ponto-end" title="${esc(enderecoCompleto)}">${esc(p.cidade || '')}</span>
-        <span class="ponto-estado badge ${classeEstado}">${esc(estado)}</span>
-        <span class="ponto-ocupacao">${esc(ocupacao)}</span>
-        ${p.seuPonto ? `<span class="ponto-proprio-texto">${TEXTO_SEU_PONTO}</span>` : ''}
+        <span class="ponto-escolha-acao">
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome${p.seuPonto ? ` ${id}-selo` : ''}" aria-describedby="${id}-estado ${id}-ocupacao ${id}-acao">
+          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
+        </span>
       </label>
-      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">📍</a>
+      <a class="ponto-mapa" href="${mapaUrl}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver ${esc(p.nome)} no mapa">${iconePonto('endereco')}Ver no mapa</a>
     </div>`;
 }
 
@@ -464,6 +580,8 @@ async function desenharPontos() {
   const msg = document.getElementById('msgPontos');
   painel.hidden = false;
   document.getElementById('explicaAutomatico').textContent = TEXTO_MODO_AUTOMATICO;
+  // Em paralelo com a lista; nunca rejeita (ver buscarVitrineDosPontos).
+  const vitrine = buscarVitrineDosPontos();
   let dados;
   try {
     dados = await buscarPontosDisponiveis();
@@ -488,7 +606,10 @@ async function desenharPontos() {
     pintarResumoPontos(dados, []);
     return;
   }
-  lista.innerHTML = dados.pontos.map(htmlPontoEscolha).join('');
+  const fotos = await vitrine;
+  lista.innerHTML = dados.pontos.map((p) => htmlPontoEscolha(p, fotos.get(p.id))).join('');
+  // Logo quadrado ou foto em pé entra inteira, como no admin e em Meus pontos.
+  lista.querySelectorAll('img[data-foto]').forEach(candidaturaAjustarFoto);
 
   // Busca só aparece quando faz diferença — poucos pontos não precisam de
   // filtro, e um campo vazio de propósito é uma pergunta sem necessidade.
@@ -639,48 +760,46 @@ async function cancelarAssinatura() {
   });
 })();
 
-// O link do comprovante carrega o período escolhido, como a referência de
-// mercado faz: exportação respeita o mesmo recorte que está na tela.
+// O link do comprovante carrega o período do gráfico (painel do usuário,
+// 29/09/2026 — antes era um seletor à parte, 30/90/365 dias): `desde` é o
+// primeiro dia que a tela está somando, e o CSV vai de 00:00 desse dia (em
+// Matão) até agora — o mesmo recorte, o mesmo total. Antes do primeiro
+// desenho (sem período ainda), os 30 dias de sempre.
 //
 // O href se monta no CLIQUE, nao no carregamento: este bloco roda antes de
 // `carregarConta()` resolver, entao `ANUNCIANTE_ID` ainda e null e o link
-// nascia apontando pra /anunciantes/null/exibicoes.csv. Quem clicasse sem
-// antes mexer no seletor de periodo baixava um erro.
+// nascia apontando pra /anunciantes/null/exibicoes.csv.
+function linkDoComprovante() {
+  const recorte = inicioDoPeriodo ? `desde=${inicioDoPeriodo}` : 'dias=30';
+  return `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?${recorte}`;
+}
 (function comprovante() {
-  const sel = document.getElementById('periodoComprovante');
   const link = document.getElementById('btnComprovante');
-  if (!sel || !link) return;
-  const montar = () => `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${sel.value}`;
-  const atualizar = () => {
-    if (ANUNCIANTE_ID) link.href = montar();
-  };
-  sel.addEventListener('change', atualizar);
+  if (!link) return;
   link.addEventListener('click', (e) => {
     if (!ANUNCIANTE_ID) {
       e.preventDefault();
       return;
     }
-    link.href = montar();
+    link.href = linkDoComprovante();
   });
-  atualizar();
 })();
 
-// Segundos em tempo legível, na maior unidade que ainda cabe: só segundos
-// enquanto < 60, minutos enquanto < 60min, senão horas. Pedido do dono
-// (18/09/2026) — "N exibições" sozinho não diz o tamanho da prioridade;
-// tempo diz. Sempre com 1 casa nas unidades maiores, pra não sumir com o
-// resto (ex.: 90s → "1,5min", não "2min" arredondado feito outra coisa).
-function duracaoLegivel(segundos) {
-  if (segundos < 60) return `${Math.round(segundos)}s`;
-  const minutos = segundos / 60;
-  if (minutos < 60) return `${(Math.round(minutos * 10) / 10).toLocaleString('pt-BR')}min`;
-  return `${(Math.round((minutos / 60) * 10) / 10).toLocaleString('pt-BR')}h`;
+// Saldo de veiculação em horas e minutos ("4h 32min"), que é como o plano é
+// vendido. Menos de um minuto vai em segundos, pra não virar "0min".
+function tempoAEntregar(segundos) {
+  const s = Math.max(0, Math.round(Number(segundos) || 0));
+  if (s < 60) return `${s}s`;
+  const minutos = Math.round(s / 60);
+  const h = Math.floor(minutos / 60);
+  const min = minutos % 60;
+  if (!h) return `${min}min`;
+  return min ? `${h}h ${min}min` : `${h}h`;
 }
 
 // Tempo decorrido em prosa curta, pro aviso de ponto fora do ar — não reusa
-// duracaoLegivel porque ali "3h" faz sentido pra uma duração de exibição, e
-// aqui um silêncio de dois dias em horas ("48h") é mais difícil de ler que
-// "2 dias".
+// tempoAEntregar porque ali "4h 32min" é tempo de tela devido, e aqui um
+// silêncio de dois dias em horas ("48h") é mais difícil de ler que "2 dias".
 function tempoDesde(dataISO) {
   const horas = (Date.now() - new Date(dataISO).getTime()) / 3_600_000;
   if (horas < 1) return `${Math.max(1, Math.round(horas * 60))} min`;
@@ -720,73 +839,65 @@ function pintarStatusOperacional(porPonto) {
   el.hidden = false;
 }
 
-// Dashboard de exibições — leitura agregada de GET /anunciantes/:id/exibicoes
-// (transparência de entrega: programado vs. confirmado, custo por exibição).
-// Banco de horas (G.3): card sempre visível (19/09/2026, pedido do dono —
-// antes só aparecia com saldo > 0; agora a conta consegue conferir "quanto
-// tem no banco" mesmo quando é zero, sem precisar adivinhar que o
-// mecanismo existe). `catch` silencioso de propósito: é um aviso extra, não
-// um número que o cliente precisa pra decidir algo, e um painel que já
-// carregou tudo (exibições, criativos) não deveria mostrar erro por causa
-// deste card.
-//
-// Saldo de Veiculação (27/09/2026): o TEMPO (`dados.segundos`) é a conta de
-// verdade — o que se vende é tempo de tela, e cada hora apurada guarda a
-// duração que usou. As exibições são o equivalente com a peça de hoje
-// (`exibicoesEquivalentes`, `duracaoReferencia`): mudam se a peça mudar, o
-// tempo não.
+// Saldo de Veiculação (ADR-023) como o quarto indicador (painel do usuário,
+// 29/09/2026, pedido do dono): sempre à vista, "Em dia" ou "4h 32min a
+// entregar". É a tradução do banco que já existe (GET
+// /anunciantes/me/banco-horas, `segundos` pendentes dos meses já apurados) —
+// nenhum saldo, contador ou compensação novos aqui, e nada do mecanismo
+// (hora apurada, recomposição, reposição) aparece pro cliente. Falha de
+// leitura nunca vira "Em dia": fica "-" com o motivo.
 async function carregarBancoHoras() {
   const card = document.querySelector('#kpiGrid [data-kpi="banco"]');
   if (!card) return;
+  const valor = card.querySelector('b');
+  const legenda = card.querySelector('[data-kpi-banco-legenda]');
   try {
-    const dados = await (await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' })).json();
-    // Só aparece quando tem significado (23/09/2026, pedido do dono, revendo
-    // o "card sempre visível" de 19/09): sem déficit, um card dizendo "0s ·
-    // sem déficit acumulado" ocupa espaço do resumo sem informar nada. Com
-    // déficit, é a informação de que a entrega atrasada será compensada.
-    if (!dados.segundos) {
-      card.hidden = true;
-      return;
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/banco-horas`, { credentials: 'include' });
+    if (!r.ok) throw new Error();
+    const dados = await r.json();
+    const segundos = Number(dados.segundos) || 0;
+    card.classList.toggle('kpi-a-entregar', segundos > 0);
+    if (segundos > 0) {
+      valor.textContent = tempoAEntregar(segundos);
+      legenda.innerHTML = '<b>a entregar</b> · entra no tempo livre das telas';
+    } else {
+      valor.textContent = 'Em dia';
+      legenda.textContent = 'Nada pendente dos meses anteriores';
     }
-    card.querySelector('b').textContent = `${duracaoLegivel(dados.segundos)} pendentes`;
-    card.querySelector('[data-kpi-banco-legenda]').textContent =
-      `${numeroBR(dados.exibicoesEquivalentes)} exibições equivalentes (peça de ${dados.duracaoReferencia}s) · entram no tempo livre das telas`;
-    card.hidden = false;
-    encaixarNumero(card.querySelector('b'));
   } catch {
-    /* aviso extra — sem ele, o painel continua completo */
-    card.hidden = true;
+    card.classList.remove('kpi-a-entregar');
+    valor.textContent = '-';
+    legenda.textContent = 'Não foi possível carregar o saldo agora.';
   }
+  encaixarNumero(valor);
 }
 
 // Números dos cards do resumo (24/09/2026, bug reportado pelo dono: "11 /
-// 32.400" cortado no card Exibições). Causa, medida: com o painel em duas
-// colunas (≥1100px) cada card tem 177px, o número tinha 32px, não podia
-// quebrar (`white-space: nowrap`) e o card cortava o excesso (`overflow:
-// hidden` — que ainda deixava a coluna do grid encolher abaixo do número).
-// Agora nada é cortado nem escondido: o número encolhe no máximo 15% pra
-// caber numa linha; a fração que ainda não cabe vira "11" em cima e "de
-// 32.400" embaixo; valor longo encolhe até 60%; e só um valor absurdo quebra
-// no meio (último recurso, visível). Mede de novo quando a largura muda.
+// 32.400" cortado no card Exibições). Nada é cortado nem escondido: o número
+// encolhe no máximo 15% pra caber numa linha; valor longo encolhe até 60%; e
+// só um valor absurdo quebra no meio (último recurso, visível). A fração
+// saiu (painel do usuário, 29/09/2026): as previstas descem pra legenda
+// ("de 38.800 previstas no mês") e o número grande é só o das confirmadas.
+//
+// A fonte do número segue a largura do CARD, não a da janela (painel.css,
+// `cqi`): com `vw`, alargar a janela com o painel já travado em 1280 px
+// crescia a fonte sem o card mudar, e o observador abaixo — que só acorda
+// quando o card muda de largura — deixava o número passar da borda até a
+// próxima recarga (PENDENCIAS U2, reproduzido: "8 / 38.888" a 1280 px,
+// 3 px pra fora a 1400 px). Card da mesma largura agora é fonte do mesmo
+// tamanho, e o observador cobre todo o resto.
 const numeroBR = (v) => Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
-function montarFracao(el, feitas, total) {
-  el.classList.add('kpi-fracao');
-  el.innerHTML =
-    `<span class="kpi-fracao-feitas">${esc(feitas)}</span>` +
-    `<span class="kpi-fracao-total"><span class="kpi-fracao-sep">/ </span><span class="kpi-fracao-de">de </span>${esc(total)}</span>`;
-}
-
 function encaixarNumero(el) {
-  // Texto no lugar do número (custo sem dinheiro envolvido) quebra linha
-  // normalmente — encolher fonte é só pra número.
+  // Texto no lugar do número (cortesia) quebra linha normalmente — encolher
+  // fonte é só pra número.
   if (el.classList.contains('kpi-texto')) {
     el.style.fontSize = '';
-    el.classList.remove('kpi-quebrado', 'kpi-extremo');
+    el.classList.remove('kpi-extremo');
     return;
   }
   const cabe = () => el.scrollWidth <= el.clientWidth + 0.5;
-  el.classList.remove('kpi-quebrado', 'kpi-extremo');
+  el.classList.remove('kpi-extremo');
   el.style.fontSize = '';
   const base = parseFloat(getComputedStyle(el).fontSize);
   const reduzir = (piso) => {
@@ -794,11 +905,6 @@ function encaixarNumero(el) {
   };
   reduzir(base * 0.85);
   if (cabe()) return;
-  if (el.classList.contains('kpi-fracao')) {
-    el.style.fontSize = '';
-    el.classList.add('kpi-quebrado');
-    if (cabe()) return;
-  }
   reduzir(base * 0.6);
   if (!cabe()) el.classList.add('kpi-extremo');
 }
@@ -833,7 +939,9 @@ if (document.fonts?.ready) document.fonts.ready.then(encaixarKpis);
 // do gráfico por ponto (.track/.fill), sem componente novo. Só aparece com
 // plano (os dois vêm null sem plano, e nem deveria chegar até aqui: o
 // bloqueio de plano já barra essa chamada).
-function desenharHorasMes(contratadas, entregues) {
+// `origens` (migration 103): { plano, basico } — as horas de cada origem,
+// ditas separadas na legenda quando a conta tem as duas.
+function desenharHorasMes(contratadas, entregues, origens = {}) {
   const card = document.querySelector('#kpiGrid [data-kpi="horas"]');
   if (contratadas == null || !card) return;
   const restantes = Math.max(0, contratadas - entregues);
@@ -841,8 +949,13 @@ function desenharHorasMes(contratadas, entregues) {
   // Formato brasileiro e sem resto de ponto flutuante: 180 − 178,9 saía
   // "1.0999999999999943h ainda por rodar".
   card.querySelector('b').textContent = `${numeroBR(entregues)}h`;
-  card.querySelector('[data-kpi-horas-legenda]').textContent =
-    `de ${numeroBR(contratadas)}h contratadas · ${numeroBR(restantes)}h ainda por rodar`;
+  card.querySelector('[data-kpi-horas-legenda]').textContent = `de ${numeroBR(contratadas)}h ${
+    origens.plano && origens.basico
+      ? `no mês (${numeroBR(origens.plano)}h do plano + ${numeroBR(origens.basico)}h do Básico)`
+      : origens.basico
+        ? 'do Plano Básico'
+        : 'contratadas'
+  } · ${numeroBR(restantes)}h ainda por rodar`;
   const fill = card.querySelector('.fill');
   fill.dataset.pct = pct;
   // A barra já existe no HTML (data-pct="0") desde o carregamento — o
@@ -854,13 +967,18 @@ function desenharHorasMes(contratadas, entregues) {
   encaixarNumero(card.querySelector('b'));
 }
 
-// "Custo por exibição prevista" (24/09/2026, ADR-018): valor contratado no
-// ciclo ÷ exibições previstas no ciclo, do snapshot da contratação — não
-// muda conforme o anúncio roda. Microvalor com 4 casas (fmtMicroBRL), nunca
-// "R$ 0,00". Benefício por créditos e cortesia legada não têm dinheiro
-// envolvido: o card diz isso em vez de inventar um custo. Não é CPM (custo
+// "Custo por exibição" (24/09/2026, ADR-018): valor do plano no ciclo ÷
+// exibições previstas no ciclo, do snapshot da contratação — não muda
+// conforme o anúncio roda. Microvalor com 4 casas (fmtMicroBRL, "R$
+// 0,0125"), nunca arredondado pra "R$ 0,01" nem "R$ 0,00". Não é CPM (custo
 // por mil pessoas impactadas) — o Mostraí não mede audiência.
-const LEGENDA_CUSTO = 'Valor contratado ÷ exibições previstas no ciclo';
+//
+// Plano obtido por créditos (painel do usuário, 29/09/2026, pedido do dono):
+// em vez de "Sem valor monetário", o custo de REFERÊNCIA — valor cheio de
+// tabela do plano e ciclo equivalentes ÷ exibições previstas, a mesma divisão
+// do plano pago (financeiro/ciclo-contratado.js#cicloDeReferencia). É só
+// informação: nada é cobrado, lançado ou devido, e o card diz isso.
+const LEGENDA_CUSTO = 'Valor do plano ÷ exibições previstas no ciclo';
 function desenharCustoPrevisto(c) {
   const card = document.querySelector('#kpiGrid [data-kpi="custo"]');
   if (!card) return;
@@ -868,10 +986,18 @@ function desenharCustoPrevisto(c) {
   const legenda = card.querySelector('[data-kpi-custo-legenda]');
   valor.classList.remove('kpi-texto');
   card.removeAttribute('title');
+  const conta = (x) =>
+    `${fmt(x.valorCiclo)} ÷ ${Number(x.exibicoesPrevistasCiclo).toLocaleString('pt-BR')} exibições previstas no ciclo`;
   if (c?.tipo === 'pago' && c.custoPorExibicaoPrevista) {
     valor.textContent = window.fmtMicroBRL(c.custoPorExibicaoPrevista);
-    legenda.textContent = LEGENDA_CUSTO;
-    card.title = `${c.plano}: ${fmt(c.valorCiclo)} ÷ ${Number(c.exibicoesPrevistasCiclo).toLocaleString('pt-BR')} exibições previstas no ciclo`;
+    // `aproximado`: plano pago sem snapshot do próprio ciclo (troca antiga,
+    // versão nova do plano) — calculado pela mesma régua, dito como tal.
+    legenda.textContent = c.aproximado ? `${LEGENDA_CUSTO} (estimado)` : LEGENDA_CUSTO;
+    card.title = `${c.plano}: ${conta(c)}`;
+  } else if (c?.tipo === 'beneficio' && c.custoPorExibicaoPrevista) {
+    valor.textContent = window.fmtMicroBRL(c.custoPorExibicaoPrevista);
+    legenda.textContent = `Referência do ${c.plano} · sem cobrança`;
+    card.title = `${c.plano} (valor de referência, nada é cobrado): ${conta(c)}`;
   } else if (c?.tipo === 'beneficio') {
     valor.textContent = 'Benefício por créditos';
     valor.classList.add('kpi-texto');
@@ -882,33 +1008,33 @@ function desenharCustoPrevisto(c) {
     legenda.textContent = 'Sem cobrança neste ciclo.';
   } else {
     valor.textContent = '-';
-    legenda.textContent = LEGENDA_CUSTO;
+    // Sem plano comercial em vigor (nunca teve, ou venceu — a régua é a do
+    // servidor, `sem_plano`) e com o Básico do ponto: não há plano com preço
+    // pra dividir — o card diz de onde vem a veiculação em vez de um "-" mudo.
+    legenda.textContent =
+      c?.tipo === 'sem_plano' && ANUNCIANTE?.beneficios_basico?.length
+        ? 'Plano Básico: incluído no benefício do ponto'
+        : LEGENDA_CUSTO;
   }
 }
 
 async function carregarExibicoes() {
   try {
-    const dados = await (
-      await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' })
-    ).json();
-    const kpi = (nome) => document.querySelector(`#kpiGrid [data-kpi="${nome}"] b`);
-    // Fração "concluídas/total" num número só (19/09/2026, pedido do dono)
-    // — antes eram duas legendas de prosa; agora é a mesma resposta num
-    // formato que se lê num olhar só.
-    const concluidas = (dados.confirmadasMes ?? 0).toLocaleString('pt-BR');
-    if (dados.exibicoesContratadasMes != null) {
-      montarFracao(kpi('exibicoes'), concluidas, dados.exibicoesContratadasMes.toLocaleString('pt-BR'));
-    } else {
-      kpi('exibicoes').classList.remove('kpi-fracao');
-      kpi('exibicoes').textContent = concluidas;
-    }
+    const r = await fetch(`${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes`, { credentials: 'include' });
+    // 500 não vira "0 exibições": cai no erro de baixo, que diz que não
+    // carregou (antes o corpo de erro era lido como se fosse o painel).
+    if (!r.ok) throw new Error();
+    const dados = await r.json();
+    desenharExibicoesMes(dados);
     desenharCustoPrevisto(dados.custoPrevisto);
-    kpi('media').textContent = dados.mediaDiariaMes != null ? numeroBR(dados.mediaDiariaMes) : '-';
+    desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes, {
+      plano: dados.horasPlanoMes,
+      basico: dados.horasBasicoMes,
+    });
     encaixarKpis();
-
-    desenharPorDia(dados.porDia || [], dados.porDiaPonto || [], dados.porPonto || []);
-    desenharPorPonto(dados.porPonto || []);
-    desenharHorasMes(dados.horasContratadasMes, dados.horasEntreguesMes);
+    DADOS_PERFORMANCE = { porDiaPonto: dados.porDiaPonto || [], porPonto: dados.porPonto || [] };
+    CORES_DOS_PONTOS = coresDosPontos(DADOS_PERFORMANCE.porDiaPonto);
+    desenharPerformance();
     pintarStatusOperacional(dados.porPonto || []);
     explicarZero(dados);
     const erro = document.getElementById('exibicoesErro');
@@ -926,6 +1052,26 @@ async function carregarExibicoes() {
       erro.hidden = false;
     }
   }
+}
+
+// "Exibições" (painel do usuário, 29/09/2026, pedido do dono): o número
+// grande é o das confirmadas no mês; as previstas descem pra legenda ("de
+// 38.800 previstas no mês") e a média diária mora no mesmo card, pequena — o
+// card "Média diária" saiu. Nunca NaN nem Infinity: o servidor divide por
+// pelo menos 1 dia, e campo ausente aqui vira 0.
+function desenharExibicoesMes(dados) {
+  const card = document.querySelector('#kpiGrid [data-kpi="exibicoes"]');
+  if (!card) return;
+  const inteiro = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  card.querySelector('b').textContent = inteiro(dados.confirmadasMes).toLocaleString('pt-BR');
+  card.querySelector('[data-kpi-exibicoes-legenda]').textContent =
+    dados.exibicoesContratadasMes != null
+      ? `de ${inteiro(dados.exibicoesContratadasMes).toLocaleString('pt-BR')} previstas no mês`
+      : 'confirmadas no mês';
+  card.querySelector('[data-kpi-media]').textContent = `Média diária: ${numeroBR(inteiro(dados.mediaDiariaMes))}`;
 }
 
 // Conta nova enxerga a mesma tela de uma conta que parou de rodar: tudo zero,
@@ -952,184 +1098,442 @@ function explicarZero(dados) {
   el.hidden = false;
 }
 
-// Quantos pontos entram com cor própria na barra empilhada — o resto vira
-// "Outros pontos" (--serie-outros, cinza). 5 é o tanto de slot categórico
-// que a paleta da skill dataviz valida pro par ADJACENTE (o que importa numa
-// barra empilhada, onde um segmento só encosta no de cima e no de baixo).
-const TOP_SERIES_DIA_PONTO = 5;
+// ---------------------------------------------------------------------------
+// Acompanhe sua veiculação (painel do usuário, 29/09/2026, pedido do dono)
+// ---------------------------------------------------------------------------
+// Um card só: barras empilhadas por ponto no período escolhido, a legenda, a
+// tabela por ponto e o comprovante do mesmo recorte. Tudo sai de
+// `porDiaPonto` (GET /anunciantes/:id/exibicoes: dia × ponto, exibições
+// confirmadas, histórico inteiro): trocar o período reagrupa o que já chegou,
+// sem outra requisição e sem recarregar a página. Dia é dia de calendário em
+// Matão (o servidor já corta assim) e vira número de dias em UTC — nenhum
+// fuso entra na conta.
+const PERIODOS_GRAFICO = {
+  '7d': { rotulo: 'últimos 7 dias', grao: 'dia', quantos: 7 },
+  '30d': { rotulo: 'últimos 30 dias', grao: 'dia', quantos: 30 },
+  '3m': { rotulo: 'últimos 3 meses', grao: 'semana', quantos: 13 },
+  '1a': { rotulo: 'últimos 12 meses', grao: 'mes', quantos: 12 },
+  max: { rotulo: 'desde o início da campanha', grao: 'mes', quantos: null },
+};
+let periodoGrafico = '30d';
+let inicioDoPeriodo = null;
+let DADOS_PERFORMANCE = null;
+let CORES_DOS_PONTOS = new Map();
+let GRAFICO_ATUAL = null;
 
-// Barras verticais dos últimos 14 dias, empilhadas por ponto (19/09/2026,
-// pedido do dono: "no card exibições por dia, coloque também um exibições
-// por ponto"). O endpoint devolve DESC (mais novo primeiro) e só os dias com
-// registro — inverte e mostra como vem, sem preencher buraco de dia sem
-// exibição. `porPonto` já chega ORDER BY confirmadas DESC (mesma rota) —
-// reaproveita esse ranking pra decidir quem ganha cor própria, em vez de
-// recalcular: os 5 primeiros pontos do período inteiro têm sempre a mesma
-// cor em toda barra; o resto soma em "Outros pontos".
-function desenharPorDia(porDia, porDiaPonto, porPonto) {
-  document.getElementById('painelDia').hidden = false;
-  if (!porDia.length) {
-    document.getElementById('graficoDia').innerHTML =
-      '<div class="empty-state dashboard-empty">As exibições confirmadas aparecerão aqui assim que a campanha começar a rodar.</div>';
-    document.getElementById('legendaDia').textContent = 'Sem exibições confirmadas no período';
-    return;
-  }
-  const dias = porDia.slice(0, 14).reverse();
-  const max = Math.max(...dias.map((d) => Number(d.confirmadas))) || 1;
-
-  const principais = (porPonto || []).slice(0, TOP_SERIES_DIA_PONTO);
-  const serieDoPonto = new Map(principais.map((p, i) => [p.id, `serie-${i + 1}`]));
-
-  const porDiaChave = new Map();
-  for (const linha of porDiaPonto || []) {
-    const chave = String(linha.dia).slice(0, 10);
-    if (!porDiaChave.has(chave)) porDiaChave.set(chave, []);
-    porDiaChave.get(chave).push(linha);
-  }
-
-  document.getElementById('graficoDia').innerHTML = dias
-    .map((d) => {
-      const v = Number(d.confirmadas);
-      // `dia` vem do servidor como dia de calendário puro ('2026-09-16'), sem
-      // hora e sem fuso. `new Date('2026-09-16')` lê isso como meia-noite UTC
-      // e `getDate()` devolve 15 pra quem está no Brasil — a barra ficava com
-      // o rótulo do dia anterior. Fatiar a string não passa por fuso nenhum,
-      // que é o certo pra uma data que não tem fuso.
-      const [ano, mes, diaDoMes] = String(d.dia).slice(0, 10).split('-');
-      const segmentos = segmentosDoDia(porDiaChave.get(String(d.dia).slice(0, 10)) || [], serieDoPonto);
-      const pilha = segmentos.length
-        ? segmentos
-            .map(
-              (s) =>
-                `<div class="bar-seg ${s.classe}" data-pct="${v ? (s.valor / v) * 100 : 0}" title="${esc(s.nome)}: ${s.valor} exibições"></div>`,
-            )
-            .join('')
-        : `<div class="bar-seg serie-1" data-pct="100" title="${v} exibições"></div>`;
-      return `<div class="bar-col" title="${diaDoMes}/${mes}/${ano}: ${v} exibições">
-      <div class="bar-pilha" data-pct="${Math.max(2, (v / max) * 100)}">${pilha}</div>
-      <span class="bar-label">${diaDoMes}/${mes}</span>
-    </div>`;
-    })
-    .join('');
-
-  desenharLegendaPontosDia(principais, serieDoPonto, (porPonto || []).length > TOP_SERIES_DIA_PONTO);
-
-  // Total de exibições e delta 7 dias x 7 anteriores — antes eram um card
-  // próprio no kpi-grid ("Exibições confirmadas"); saíram de lá (19/09/2026,
-  // pedido do dono) porque a conta vende por HORAS, não por vez rodada, e um
-  // plano pequeno (peça curta, poucas inserções por hora) sempre ia mostrar
-  // um número baixo ali, sem culpa nenhuma da entrega. A contagem continua
-  // visível, só que como legenda do próprio gráfico que ela descreve.
-  const soma = (arr) => arr.reduce((t, d) => t + Number(d.confirmadas), 0);
-  const atual = soma(porDia.slice(0, 7));
-  const anterior = soma(porDia.slice(7, 14));
-  const delta = anterior
-    ? `, ${atual >= anterior ? '▲' : '▼'} ${Math.abs(Math.round(((atual - anterior) / anterior) * 100))}% vs. 7 dias antes`
-    : '';
-  document.getElementById('legendaDia').textContent =
-    `últimos ${dias.length} dias com exibição · ${atual} confirmadas nos últimos 7 dias${delta}`;
+const MS_DIA = 86_400_000;
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_LONGOS = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+function diaNumero(iso) {
+  const [ano, mes, dia] = String(iso).slice(0, 10).split('-').map(Number);
+  return Date.UTC(ano, mes - 1, dia) / MS_DIA;
+}
+const diaTexto = (n) => new Date(n * MS_DIA).toISOString().slice(0, 10);
+const diaMes = (n) => `${diaTexto(n).slice(8, 10)}/${diaTexto(n).slice(5, 7)}`;
+const diaMesAno = (n) => `${diaMes(n)}/${diaTexto(n).slice(0, 4)}`;
+// Hoje em Matão, como dia de calendário — o mesmo corte do servidor.
+function hojeEmMatao() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
-// Agrupa as linhas de um dia (já filtradas por dia em desenharPorDia) na
-// mesma ordem/cor fixa dos 5 principais + "Outros pontos" — um ponto fora do
-// top 5 do período inteiro sempre cai em "Outros", mesmo que tenha sido o
-// que mais exibiu NESSE dia específico, porque a cor tem que significar o
-// mesmo ponto em toda barra do gráfico, não só naquele dia.
-function segmentosDoDia(linhasDoDia, serieDoPonto) {
-  const porSerie = new Map();
-  let outros = 0;
-  for (const linha of linhasDoDia) {
-    const classe = serieDoPonto.get(linha.ponto_id);
-    const valor = Number(linha.confirmadas);
-    if (!classe) {
-      outros += valor;
-      continue;
-    }
-    const atual = porSerie.get(classe) || { nome: linha.ponto_nome, valor: 0 };
-    atual.valor += valor;
-    porSerie.set(classe, atual);
+// Os períodos do gráfico, do mais antigo ao de hoje: dia (7 e 30 dias),
+// semana de segunda a domingo (3 meses) ou mês (1 ano e Máx.). Campanha que
+// começou depois do início do período começa no primeiro dia com registro —
+// três dias de campanha são três barras equilibradas, não 27 vazias e três
+// espremidas no canto. Dia sem exibição DEPOIS disso continua no eixo (é
+// informação: a tela ficou fora do ar).
+function periodosDoGrafico(chave, hoje, primeiroDia) {
+  const p = PERIODOS_GRAFICO[chave];
+  const hojeN = diaNumero(hoje);
+  const lista = [];
+  if (p.grao === 'dia') {
+    let inicio = hojeN - (p.quantos - 1);
+    if (primeiroDia != null && primeiroDia > inicio) inicio = Math.min(primeiroDia, hojeN);
+    for (let d = inicio; d <= hojeN; d += 1) lista.push({ de: d, ate: d });
+    return lista;
   }
-  const segmentos = [...serieDoPonto.values()]
-    .map((classe) => (porSerie.has(classe) ? { classe, ...porSerie.get(classe) } : null))
-    .filter(Boolean);
-  if (outros > 0) segmentos.push({ classe: 'serie-outros', nome: 'Outros pontos', valor: outros });
+  if (p.grao === 'semana') {
+    const segunda = (n) => n - ((new Date(n * MS_DIA).getUTCDay() + 6) % 7);
+    let inicio = segunda(hojeN) - (p.quantos - 1) * 7;
+    if (primeiroDia != null && segunda(primeiroDia) > inicio) inicio = Math.min(segunda(primeiroDia), segunda(hojeN));
+    for (let s = inicio; s <= hojeN; s += 7) lista.push({ de: s, ate: Math.min(s + 6, hojeN) });
+    return lista;
+  }
+  const [anoHoje, mesHoje] = hoje.split('-').map(Number);
+  const agora = anoHoje * 12 + (mesHoje - 1);
+  let inicio = p.quantos ? agora - (p.quantos - 1) : agora;
+  if (primeiroDia != null) {
+    const [ano, mes] = diaTexto(primeiroDia).split('-').map(Number);
+    const primeiroMes = ano * 12 + (mes - 1);
+    if (!p.quantos || primeiroMes > inicio) inicio = Math.min(primeiroMes, agora);
+  }
+  for (let m = inicio; m <= agora; m += 1) {
+    const ano = Math.floor(m / 12);
+    const de = Date.UTC(ano, m % 12, 1) / MS_DIA;
+    const ate = Math.min(Date.UTC(ano, (m % 12) + 1, 1) / MS_DIA - 1, hojeN);
+    lista.push({ de, ate, mes: m });
+  }
+  return lista;
+}
+
+function rotuloCurto(periodo, grao) {
+  if (grao !== 'mes') return diaMes(periodo.de);
+  return `${MESES_CURTOS[periodo.mes % 12]}/${String(Math.floor(periodo.mes / 12)).slice(2)}`;
+}
+function rotuloLongo(periodo, grao) {
+  if (grao === 'dia') return diaMesAno(periodo.de);
+  if (grao === 'semana')
+    return periodo.de === periodo.ate
+      ? `Semana de ${diaMesAno(periodo.de)}`
+      : `Semana de ${diaMes(periodo.de)} a ${diaMesAno(periodo.ate)}`;
+  const nome = MESES_LONGOS[periodo.mes % 12];
+  return `${nome[0].toUpperCase()}${nome.slice(1)} de ${Math.floor(periodo.mes / 12)}`;
+}
+
+// Cor de cada ponto: a ordem em que ele entrou na campanha (o primeiro dia
+// com registro, desempate pelo id) — o histórico inteiro, não o período.
+// Trocar o filtro ou recarregar não muda a cor de ninguém, e ponto que entra
+// depois pega a próxima cor sem empurrar as outras. Oito cores, e quem
+// rodou no último ano escolhe primeiro: ponto que saiu da campanha há mais de
+// um ano não segura uma cor que um ponto de agora precisa. Do nono em diante,
+// "Outros pontos" (cinza).
+const SERIES_COM_COR = 8;
+function coresDosPontos(porDiaPonto) {
+  const entrada = new Map();
+  const saida = new Map();
+  for (const linha of porDiaPonto) {
+    const dia = diaNumero(linha.dia);
+    const id = Number(linha.ponto_id);
+    if (!entrada.has(id) || dia < entrada.get(id)) entrada.set(id, dia);
+    if (!saida.has(id) || dia > saida.get(id)) saida.set(id, dia);
+  }
+  const umAnoAtras = diaNumero(hojeEmMatao()) - 364;
+  const antigo = (id) => (saida.get(id) < umAnoAtras ? 1 : 0);
+  const ordem = [...entrada.entries()].sort((a, b) => antigo(a[0]) - antigo(b[0]) || a[1] - b[1] || a[0] - b[0]);
+  return new Map(ordem.map(([id], i) => [id, i < SERIES_COM_COR ? i + 1 : 0]));
+}
+const classeDaSerie = (n) => (n ? `serie-${n}` : 'serie-outros');
+
+// Topo do eixo "bonito" (2, 4, 6, 8 ou 10 × potência de 10): a linha do
+// meio cai sempre num número inteiro.
+function topoDoEixo(maximo) {
+  if (!(maximo > 0)) return 2;
+  const potencia = 10 ** Math.floor(Math.log10(maximo));
+  for (const m of [1, 2, 4, 6, 8, 10]) if (m * potencia >= maximo && (m * potencia) % 2 === 0) return m * potencia;
+  return 10 * potencia;
+}
+
+// Soma por período e por ponto. `noPeriodo`: todo ponto com registro no
+// recorte — inclusive hora programada que não virou exibição (tela fora do
+// ar): ele aparece na tabela com 0, que é exatamente o que o cliente precisa
+// ver.
+function agruparPorPeriodo(porDiaPonto, lista) {
+  const indice = new Map();
+  lista.forEach((p, i) => {
+    for (let d = p.de; d <= p.ate; d += 1) indice.set(d, i);
+  });
+  const valores = lista.map(() => new Map());
+  const noPeriodo = new Map();
+  for (const linha of porDiaPonto) {
+    const i = indice.get(diaNumero(linha.dia));
+    if (i === undefined) continue;
+    const id = Number(linha.ponto_id);
+    const v = Number(linha.confirmadas) || 0;
+    const ponto = noPeriodo.get(id) || { id, nome: linha.ponto_nome, total: 0 };
+    ponto.total += v;
+    noPeriodo.set(id, ponto);
+    if (v > 0) valores[i].set(id, (valores[i].get(id) || 0) + v);
+  }
+  return { valores, noPeriodo };
+}
+
+function desenharPerformance() {
+  const painel = document.getElementById('painelPerformance');
+  if (!painel || !DADOS_PERFORMANCE) return;
+  painel.hidden = false;
+  const periodo = PERIODOS_GRAFICO[periodoGrafico];
+  for (const botao of painel.querySelectorAll('[data-periodo]'))
+    botao.setAttribute('aria-pressed', String(botao.dataset.periodo === periodoGrafico));
+  const { porDiaPonto, porPonto } = DADOS_PERFORMANCE;
+  const primeiroDia = porDiaPonto.reduce((min, l) => Math.min(min, diaNumero(l.dia)), Number.POSITIVE_INFINITY);
+  const lista = periodosDoGrafico(periodoGrafico, hojeEmMatao(), Number.isFinite(primeiroDia) ? primeiroDia : null);
+  inicioDoPeriodo = diaTexto(lista[0].de);
+  const link = document.getElementById('btnComprovante');
+  if (link) {
+    if (ANUNCIANTE_ID) link.href = linkDoComprovante();
+    link.title = `Comprovante de ${diaMesAno(lista[0].de)} até hoje — o mesmo período do gráfico`;
+  }
+  const { valores, noPeriodo } = agruparPorPeriodo(porDiaPonto, lista);
+  const totais = valores.map((m) => [...m.values()].reduce((s, v) => s + v, 0));
+  const total = totais.reduce((s, v) => s + v, 0);
+
+  document.getElementById('performanceTotal').textContent = total
+    ? `${total.toLocaleString('pt-BR')} ${total === 1 ? 'exibição confirmada' : 'exibições confirmadas'} · ${periodo.rotulo}`
+    : `Nenhuma exibição confirmada · ${periodo.rotulo}`;
+
+  const grafico = document.getElementById('graficoPerformance');
+  const legenda = document.getElementById('legendaPerformance');
+  esconderDica();
+  if (!total) {
+    GRAFICO_ATUAL = null;
+    // Sem gráfico de mentira: sem exibição confirmada no período, a frase.
+    grafico.innerHTML =
+      '<p class="performance-vazio">Ainda não há exibições confirmadas neste período. Assim que sua campanha começar a rodar, os dados aparecerão aqui.</p>';
+    legenda.hidden = true;
+    legenda.innerHTML = '';
+  } else {
+    GRAFICO_ATUAL = { lista, valores, totais, noPeriodo, grao: periodo.grao };
+    grafico.innerHTML = htmlGraficoPeriodo(GRAFICO_ATUAL, periodo);
+    window.aplicarBarras(grafico);
+    ajustarRotulos();
+    const presentes = [...noPeriodo.values()]
+      .filter((p) => p.total > 0)
+      .sort((a, b) => (CORES_DOS_PONTOS.get(a.id) || 99) - (CORES_DOS_PONTOS.get(b.id) || 99));
+    const comCor = presentes.filter((p) => CORES_DOS_PONTOS.get(p.id));
+    const chips = comCor.map(
+      (p) =>
+        `<span class="chip"><span class="swatch ${classeDaSerie(CORES_DOS_PONTOS.get(p.id))}" aria-hidden="true"></span>${esc(p.nome)}</span>`,
+    );
+    if (comCor.length < presentes.length)
+      chips.push('<span class="chip"><span class="swatch serie-outros" aria-hidden="true"></span>Outros pontos</span>');
+    legenda.innerHTML = chips.join('');
+    legenda.hidden = false;
+  }
+  desenharTabelaPontos(noPeriodo, porPonto);
+}
+
+// Pilha de baixo pra cima na ordem das cores (o mesmo ponto sempre no mesmo
+// andar); "Outros pontos" num segmento só, no topo.
+function segmentosDoPeriodo(valoresDoPeriodo) {
+  const segmentos = [];
+  let outros = 0;
+  const ordenados = [...valoresDoPeriodo.entries()].sort(
+    (a, b) => (CORES_DOS_PONTOS.get(a[0]) || 99) - (CORES_DOS_PONTOS.get(b[0]) || 99),
+  );
+  for (const [id, valor] of ordenados) {
+    const serie = CORES_DOS_PONTOS.get(id);
+    if (serie) segmentos.push({ classe: classeDaSerie(serie), valor });
+    else outros += valor;
+  }
+  if (outros) segmentos.push({ classe: 'serie-outros', valor: outros });
   return segmentos;
 }
 
-// Legenda de cores do gráfico empilhado — cor sozinha não é canal acessível
-// (skill dataviz), por isso a identidade de cada ponto também vem por nome
-// aqui, não só pela cor do segmento. Um ponto só (sem "Outros") não precisa
-// de legenda: só existe uma cor, e o título do card já diz o que é.
-function desenharLegendaPontosDia(principais, serieDoPonto, temOutros) {
-  const el = document.getElementById('legendaPontosDia');
-  if (!el) return;
-  const chips = principais.map((p) => ({ classe: serieDoPonto.get(p.id), nome: p.nome }));
-  if (temOutros) chips.push({ classe: 'serie-outros', nome: 'Outros pontos' });
-  el.hidden = chips.length < 2;
-  el.innerHTML = chips
-    .map((c) => `<span class="chip"><span class="swatch ${c.classe}"></span>${esc(c.nome)}</span>`)
-    .join('');
+function textoDoPeriodo(g, i) {
+  const nomes = [...g.valores[i].entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, v]) => `${g.noPeriodo.get(id)?.nome || 'Ponto'}: ${v.toLocaleString('pt-BR')}`);
+  const total = g.totais[i];
+  return `${rotuloLongo(g.lista[i], g.grao)}: ${
+    total
+      ? `${total.toLocaleString('pt-BR')} ${total === 1 ? 'exibição' : 'exibições'}. ${nomes.join('; ')}.`
+      : 'nenhuma exibição.'
+  }`;
 }
 
-// Top 8: já vem ORDER BY confirmadas DESC do servidor — uma rede com muitos
-// pontos virava uma lista de barra alta e ilegível. O resto continua na
-// tabela detalhada logo abaixo, completa, sem corte nenhum.
-const TOP_PONTOS_GRAFICO = 8;
-function desenharPorPonto(porPonto) {
-  document.getElementById('painelDetalhe').hidden = false;
-  if (!porPonto.length) {
-    document.getElementById('graficoPonto').innerHTML =
-      '<div class="empty-state dashboard-empty">Nenhum ponto com exibições neste período.</div>';
-    document.getElementById('exibicoesDetalhe').innerHTML = '';
+function htmlGraficoPeriodo(g, periodo) {
+  const topo = topoDoEixo(Math.max(...g.totais));
+  const colunas = g.lista.map((p, i) => {
+    const total = g.totais[i];
+    const pilha = segmentosDoPeriodo(g.valores[i])
+      .map((s) => `<span class="barra-seg ${s.classe}" data-pct="${(s.valor / total) * 100}"></span>`)
+      .join('');
+    // Tabindex itinerante: um Tab entra no gráfico (no período mais recente)
+    // e as setas andam entre os períodos.
+    return `<button type="button" class="barra-col" data-i="${i}" tabindex="${i === g.lista.length - 1 ? 0 : -1}" aria-label="${esc(textoDoPeriodo(g, i))}">
+      <span class="barra-trilho"><span class="barra-pilha${total ? '' : ' vazia'}" data-pct="${total ? Math.max(1.5, (total / topo) * 100) : 0}">${pilha}</span></span>
+      <span class="barra-rotulo" aria-hidden="true">${rotuloCurto(p, g.grao)}</span>
+    </button>`;
+  });
+  const grao = { dia: 'por dia', semana: 'por semana', mes: 'por mês' }[g.grao];
+  return `<div class="grafico-area">
+      <div class="grafico-grade" aria-hidden="true">
+        <span data-valor="${topo.toLocaleString('pt-BR')}"></span>
+        <span data-valor="${(topo / 2).toLocaleString('pt-BR')}"></span>
+        <span data-valor="0"></span>
+      </div>
+      <div class="grafico-barras${g.lista.length <= 3 ? ' poucas' : ''}" role="group" aria-label="Exibições confirmadas ${grao}, ${esc(periodo.rotulo)}. Use as setas para navegar.">${colunas.join('')}</div>
+      <div class="grafico-dica" id="dicaPerformance" aria-hidden="true" hidden></div>
+    </div>`;
+}
+
+// Rótulo do eixo X só onde cabe (ancorado no período mais recente): 30
+// dias numa tela de 360 px não viram 30 datas encavaladas.
+function ajustarRotulos() {
+  const barras = document.querySelector('#graficoPerformance .grafico-barras');
+  if (!barras) return;
+  const colunas = [...barras.children];
+  const cabem = Math.max(1, Math.floor(barras.clientWidth / 46));
+  const passo = Math.max(1, Math.ceil(colunas.length / cabem));
+  colunas.forEach((c, i) => {
+    c.classList.toggle('rotulo-oculto', (colunas.length - 1 - i) % passo !== 0);
+  });
+}
+
+// Dica do período: data, exibições de cada ponto e o total. Abre no
+// passar do mouse, no foco (teclado) e no toque — nunca só no hover — e fica
+// sempre dentro do card (posição limitada às bordas da área do gráfico).
+function mostrarDica(coluna) {
+  const g = GRAFICO_ATUAL;
+  const dica = document.getElementById('dicaPerformance');
+  if (!g || !dica || !coluna) return;
+  const i = Number(coluna.dataset.i);
+  const linhas = [...g.valores[i].entries()]
+    .sort((a, b) => (CORES_DOS_PONTOS.get(a[0]) || 99) - (CORES_DOS_PONTOS.get(b[0]) || 99))
+    .map(
+      ([id, v]) =>
+        `<li><span class="swatch ${classeDaSerie(CORES_DOS_PONTOS.get(id))}"></span><span class="dica-nome">${esc(g.noPeriodo.get(id)?.nome || 'Ponto')}</span><b>${v.toLocaleString('pt-BR')}</b></li>`,
+    )
+    .join('');
+  const total = g.totais[i];
+  dica.innerHTML = `<p class="dica-titulo">${esc(rotuloLongo(g.lista[i], g.grao))}</p>${
+    total
+      ? `<ul>${linhas}</ul><p class="dica-total">Total <b>${total.toLocaleString('pt-BR')}</b></p>`
+      : '<p class="dica-vazia">Nenhuma exibição confirmada</p>'
+  }`;
+  dica.hidden = false;
+  const area = dica.parentElement.getBoundingClientRect();
+  const col = coluna.getBoundingClientRect();
+  const pilha = coluna.querySelector('.barra-pilha').getBoundingClientRect();
+  const largura = dica.offsetWidth;
+  const altura = dica.offsetHeight;
+  const esquerda = Math.min(Math.max(0, col.left - area.left + col.width / 2 - largura / 2), area.width - largura);
+  const topo = Math.max(0, pilha.top - area.top - altura - 8);
+  dica.style.left = `${Math.max(0, esquerda)}px`;
+  dica.style.top = `${topo}px`;
+  for (const c of coluna.parentElement.children) c.classList.toggle('ativa', c === coluna);
+}
+function esconderDica() {
+  const dica = document.getElementById('dicaPerformance');
+  if (dica) dica.hidden = true;
+  for (const c of document.querySelectorAll('#graficoPerformance .barra-col.ativa')) c.classList.remove('ativa');
+}
+
+// Filtros, dica e teclado: ouvintes registrados UMA vez, no card (delegação)
+// — o gráfico é reescrito a cada período e a cada recarga, o card não.
+(function performanceInterativa() {
+  const painel = document.getElementById('painelPerformance');
+  if (!painel) return;
+  painel.addEventListener('click', (e) => {
+    const filtro = e.target.closest('[data-periodo]');
+    if (filtro) {
+      if (filtro.dataset.periodo === periodoGrafico) return;
+      periodoGrafico = filtro.dataset.periodo;
+      desenharPerformance();
+      return;
+    }
+    // Toque no celular: o Safari não dá foco a botão tocado — foca aqui, e
+    // o foco abre a dica.
+    const coluna = e.target.closest('.barra-col');
+    if (coluna) {
+      coluna.focus();
+      mostrarDica(coluna);
+    }
+  });
+  const barraEmFoco = () => document.activeElement?.classList?.contains('barra-col');
+  painel.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const coluna = e.target.closest('.barra-col');
+    if (coluna) mostrarDica(coluna);
+    else if (!e.target.closest('.grafico-dica') && !barraEmFoco()) esconderDica();
+  });
+  painel.addEventListener('pointerleave', () => {
+    if (!barraEmFoco()) esconderDica();
+  });
+  painel.addEventListener('focusin', (e) => {
+    if (e.target.classList.contains('barra-col')) mostrarDica(e.target);
+  });
+  painel.addEventListener('focusout', (e) => {
+    if (!e.relatedTarget?.classList?.contains('barra-col')) esconderDica();
+  });
+  // Toque fora do gráfico fecha a dica: no Safari, tocar em algo que não
+  // recebe foco não tira o foco do botão, e o `focusout` nunca vinha.
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest?.('#graficoPerformance')) esconderDica();
+  });
+  painel.addEventListener('keydown', (e) => {
+    const coluna = e.target.closest('.barra-col');
+    if (!coluna) return;
+    if (e.key === 'Escape') {
+      esconderDica();
+      return;
+    }
+    const colunas = [...coluna.parentElement.children];
+    const atual = colunas.indexOf(coluna);
+    const destino = { ArrowLeft: atual - 1, ArrowRight: atual + 1, Home: 0, End: colunas.length - 1 }[e.key];
+    if (destino === undefined || !colunas[destino]) return;
+    e.preventDefault();
+    coluna.tabIndex = -1;
+    colunas[destino].tabIndex = 0;
+    colunas[destino].focus();
+  });
+  if (window.ResizeObserver) {
+    let largura = 0;
+    new ResizeObserver(([entrada]) => {
+      const nova = Math.round(entrada.contentRect.width);
+      if (nova === largura) return;
+      largura = nova;
+      esconderDica();
+      ajustarRotulos();
+    }).observe(document.getElementById('graficoPerformance'));
+  }
+})();
+
+// Tabela por ponto do período (painel do usuário, 29/09/2026): PONTO,
+// CIDADE, STATUS e EXIBIÇÕES — "Programadas" e "Entrega %" saíram da tela do
+// cliente (o dado continua no servidor, no admin e no comprovante). No
+// celular, cada linha vira um cartão compacto (painel.css).
+function desenharTabelaPontos(noPeriodo, porPonto) {
+  const el = document.getElementById('exibicoesDetalhe');
+  const linhas = [...noPeriodo.values()].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (!linhas.length) {
+    el.innerHTML = '';
     return;
   }
-  // Com um ponto só, a distribuição é sempre 100% por definição — a barra
-  // não informa nada além do que o título da seção já diz (21/09/2026,
-  // revisão de design). A tabela abaixo, com entrega e status por ponto,
-  // continua sempre visível: ela conta uma história diferente da barra.
-  if (porPonto.length < 2) {
-    document.getElementById('graficoPonto').innerHTML = '';
-  } else {
-    const max = Math.max(...porPonto.map((p) => Number(p.confirmadas))) || 1;
-    const total = porPonto.reduce((soma, p) => soma + Number(p.confirmadas), 0) || 1;
-    const principais = porPonto.slice(0, TOP_PONTOS_GRAFICO);
-    const resto = porPonto.length - principais.length;
-    document.getElementById('graficoPonto').innerHTML =
-      principais
-        .map((p) => {
-          const v = Number(p.confirmadas);
-          const pct = Math.round((v / total) * 100);
-          return `
-    <div class="row">
-      <span class="nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
-      <span class="track"><span class="fill" data-pct="${(v / max) * 100}"></span></span>
-      <span class="valor">${v} <span class="u-dim">(${pct}%)</span></span>
-    </div>`;
-        })
-        .join('') +
-      (resto > 0
-        ? `<p class="form-hint u-m-0 u-mt-8">+${resto} outro${resto === 1 ? '' : 's'} ponto${resto === 1 ? '' : 's'} na tabela abaixo.</p>`
-        : '');
-  }
-  document.getElementById('exibicoesDetalhe').innerHTML =
-    `<div class="u-ox-auto"><table class="mini-table"><thead><tr><th>Ponto</th><th>Cidade</th><th>Programadas</th><th>Confirmadas</th><th>Entrega</th><th>Status</th></tr></thead><tbody>
-    ${porPonto
-      .map((p) => {
-        const prog = Number(p.programadas) || 0;
-        const conf = Number(p.confirmadas) || 0;
-        return `<tr><td>${esc(p.nome)}</td><td>${esc(p.cidade)}</td><td>${prog}</td><td>${conf}</td><td>${prog ? Math.round((conf / prog) * 100) + '%' : '-'}</td><td>${statusOnline(p.situacao)}</td></tr>`;
+  const doPonto = new Map((porPonto || []).map((p) => [Number(p.id), p]));
+  // Papéis explícitos: no celular a tabela vira cartões (display trocado no
+  // CSS), e sem eles o navegador deixa de anunciar linha e coluna.
+  el.innerHTML = `<table class="mini-table tabela-periodo" role="table" aria-label="Exibições por ponto no período">
+    <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Ponto</th><th scope="col" role="columnheader">Cidade</th><th scope="col" role="columnheader">Status</th><th scope="col" role="columnheader" class="num">Exibições</th></tr></thead>
+    <tbody role="rowgroup">${linhas
+      .map((l) => {
+        const p = doPonto.get(l.id) || {};
+        return `<tr role="row">
+          <th scope="row" role="rowheader" class="tabela-ponto"><span class="ponto-com-cor"><span class="swatch ${classeDaSerie(CORES_DOS_PONTOS.get(l.id))}" aria-hidden="true"></span><span>${esc(l.nome)}</span></span></th>
+          <td role="cell" class="tabela-cidade">${esc(p.cidade || '-')}</td>
+          <td role="cell" class="tabela-status">${statusOnline(p.situacao)}</td>
+          <td role="cell" class="num tabela-exibicoes">${l.total.toLocaleString('pt-BR')}</td>
+        </tr>`;
       })
-      .join('')}
-  </tbody></table></div>`;
+      .join('')}</tbody>
+  </table>`;
 }
 
 // "A propaganda tá passando mesmo, ou a TV tá desligada?" (19/09/2026,
 // pedido do dono) — `situacao` vem do servidor, pela régua única de saúde da
 // tela (Player V2): no ar, fora do horário do ponto, ou fora do ar.
 function statusOnline(situacao) {
-  if (situacao === 'no_ar') return '<span class="badge badge-ok">🟢 No ar</span>';
-  if (situacao === 'fora_do_horario') return '<span class="badge badge-neutro">Fora do horário</span>';
-  return '<span class="badge badge-err">🔴 Fora do ar</span>';
+  if (situacao === 'no_ar') return '<span class="badge badge-ok status-ponto">No ar</span>';
+  if (situacao === 'fora_do_horario') return '<span class="badge badge-neutro status-ponto">Fora do horário</span>';
+  return '<span class="badge badge-err status-ponto">Fora do ar</span>';
 }
 
 // Abertura que falhou (500, rede, prazo): erro recuperável no lugar do hero,
@@ -1161,34 +1565,5 @@ if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => A
 // Financeiro: pagamentos do plano.
 if (window.montarFinanceiro) window.montarFinanceiro();
 
-// Promoção pra quem está logado (reconstrução de Ofertas/Promoções,
-// 23/09/2026) — mesma fonte de sempre (GET /promocoes/vigentes), já
-// filtrada no servidor por elegibilidade COMERCIAL (plano ativo agora, ou
-// já assinou antes), não por ter sessão aberta. Sem checkbox próprio pra
-// esta superfície: qualquer promoção vigente e elegível pra esta conta
-// aparece aqui. Independente do resto do carregamento do painel: se essa
-// chamada falhar, o painel inteiro continua funcionando igual, só sem o
-// banner.
-fetch(`${API_BASE_URL}/promocoes/vigentes`)
-  .then((r) => r.json())
-  .then((promocoes) => {
-    const promo = (Array.isArray(promocoes) ? promocoes : [])[0];
-    if (!promo) return;
-    // Mesma linha de condição da Home e de Planos: em que ciclos a promoção
-    // baixa o preço de verdade (D1, 24/09/2026 — config.js).
-    const condicao = window.condicaoDaPromocao(promo);
-    if (condicao === null) return;
-    const el = document.getElementById('promocaoLogado');
-    el.innerHTML = `
-      <div class="promo-logado">
-        <div>
-          ${promo.selo ? `<span class="badge badge-pendente">${esc(promo.selo)}</span>` : ''}
-          <b>${esc(promo.titulo_publico)}</b>
-          ${promo.subtitulo ? `<p class="u-m-0 u-dim">${esc(promo.subtitulo)}</p>` : ''}
-          ${condicao ? `<p class="u-m-0 u-dim">${esc(condicao)}</p>` : ''}
-        </div>
-        <a class="btn primary mini" href="/planos.html">Ver condição</a>
-      </div>`;
-    el.hidden = false;
-  })
-  .catch(() => {});
+// Promoção pra quem está logado: saiu daqui (reforço visual, 28/09/2026).
+// Virou a faixa fina abaixo do cabeçalho, com X — public/barra-promocional.js.

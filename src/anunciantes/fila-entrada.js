@@ -64,8 +64,10 @@ async function pedirAtualizacaoDasTelas(criativoId) {
   const conta = await repo.buscarPorId(rows[0].anunciante_id);
   const planoId = conta ? repo.planoVigenteId(conta) : null;
   const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
-  if (!plano || rows[0].status !== 'aprovado') return { telas: 0 };
-  const pontos = (await coberturaDaConta(conta, plano)).map((p) => p.id);
+  // Plano Básico do ponto (migration 103): o próprio ponto também é cobertura.
+  const basicos = conta ? await require('../pontos/basico').ativosDaConta(conta.id) : [];
+  if ((!plano && !basicos.length) || rows[0].status !== 'aprovado') return { telas: 0 };
+  const pontos = (await coberturaDaConta(conta, plano, undefined, basicos)).map((p) => p.id);
   if (!pontos.length) return { telas: 0 };
   const { rowCount } = await pool.query(
     `UPDATE dispositivos SET playlist_desatualizada_em = clock_timestamp()

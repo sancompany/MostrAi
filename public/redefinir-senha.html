@@ -52,6 +52,10 @@
             <label for="senha_confirma">Confirmar nova senha</label>
             <input id="senha_confirma" type="password" autocomplete="new-password" data-senha-confirma required>
           </div>
+          <!-- A regra vale pro par: fica depois dos DOIS campos, antes do
+               botão (29/09/2026). Estar aqui na marcação faz formulario.js
+               não criar a dele colada no primeiro campo. -->
+          <p class="form-hint dica-senha-par" data-dica-senha>Sua senha deve ter 8+ caracteres, maiúscula, minúscula, número e símbolo.</p>
           <button class="btn primary block" type="submit">Salvar senha</button>
           <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
         </form>

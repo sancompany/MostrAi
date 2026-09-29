@@ -55,11 +55,12 @@
       </div>
     </section>
 
-    <!-- Banner promocional no topo (reconstrução de Ofertas/Promoções,
-         23/09/2026, Parte 4: "só o preço mudar não transmite sensação de
-         promoção" — camada 1 aqui, camada 2 é a aplicação nos cards/ciclos
-         logo abaixo, que já existia). Mesmo visual do banner da Home. -->
-    <section class="tight secao-promo" id="promocaoPlanosBanner" hidden>
+    <!-- Promoção no topo (Parte 4 do pedido de 22/09/2026: "só o preço
+         mudar não transmite sensação de promoção" — camada 1 aqui, camada 2
+         é a aplicação nos cards/ciclos logo abaixo). Mesmo componente da
+         Home (public/promocao.js), variante de Planos: descontos por ciclo
+         que levam ao ciclo na grade, prazo e regras (Estação 3). -->
+    <section class="tight secao-promo secao-promo-planos" id="promocaoPlanosBanner" hidden>
       <div class="wrap"><div id="promocaoPlanosTopo"></div></div>
     </section>
 
@@ -148,6 +149,7 @@
 
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
+  <script src="/promocao.js"></script>
   <script src="/formulario.js"></script>
   <script src="/planos.page.js"></script>
 </body>

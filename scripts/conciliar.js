@@ -50,7 +50,11 @@ conciliarAssinaturas()
     //    o prazo vence, sem esperar o job mensal.
     try {
       const agora = new Date();
-      const semSinal = await registrarHorasSemPedido({ de: new Date(agora.getTime() - 48 * 3_600_000), ate: agora });
+      const semSinal = await registrarHorasSemPedido({
+        de: new Date(agora.getTime() - 48 * 3_600_000),
+        ate: agora,
+        soServidorForaDoAr: true,
+      });
       console.log(`saldo de veiculação: ${semSinal.horas} hora(s) aberta(s) sem sinal registrada(s)`);
       const recomposta = await recomporMesAnteriorEmPrazo({ agora });
       if (recomposta) {
@@ -66,6 +70,16 @@ conciliarAssinaturas()
       );
     } catch (err) {
       console.error('saldo de veiculação falhou:', err.message);
+    }
+
+    // Plano Básico do ponto (migration 103): rede de segurança da
+    // sincronização por tela — ativa quem ficou elegível e encerra quem
+    // deixou de ser ponto da conta (arquivado, dono trocado, conta excluída).
+    try {
+      const b = await require('../src/pontos/basico').sincronizar();
+      console.log(`básico do ponto: ${b.ativados.length} ativado(s) · ${b.encerrados.length} encerrado(s)`);
+    } catch (err) {
+      console.error('básico do ponto falhou:', err.message);
     }
 
     // Crédito mensal do ponto (migration 082): +1 por ponto elegível por mês.

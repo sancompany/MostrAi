@@ -12,12 +12,11 @@ const { instanteComercial } = require('../lib/fuso-comercial');
 // estados excessivamente complexa"). `situacao` guarda só o controle manual
 // (ativa/pausada/encerrada); esta função decide o rótulo final combinando
 // os dois.
-// 'excluida' (migration 101, finalização 28/09/2026): exclusão lógica —
-// some das listas de trabalho, nunca toca, e as exibições confirmadas ficam
-// como comprovante. Vence qualquer outro estado.
-// Período que acabou vence a pausa (revisão Codex do PR #89, 28/09/2026):
+// 'excluida' (migration 107, 29/09/2026): exclusão lógica — vence qualquer
+// outro estado; nunca toca, e as exibições confirmadas ficam como comprovante.
+// Período que acabou vence a pausa (PR #89, revisão Codex, 28/09/2026):
 // pausada com fim no passado não tem pra onde voltar — retomar a deixaria
-// 'ativa' sem tocar em tela nenhuma —, então é 'encerrada', no histórico.
+// 'ativa' sem tocar em tela nenhuma —, então é 'encerrada'.
 function situacaoDerivada(m, agora = new Date()) {
   if (m.situacao === 'excluida') return 'excluida';
   if (m.situacao === 'encerrada') return 'encerrada';
@@ -38,13 +37,16 @@ function montarLinha(row) {
   return { ...row, situacaoDerivada: situacaoDerivada(row) };
 }
 
+// Excluída não aparece em lista de trabalho nenhuma; a linha fica só pelo
+// comprovante (buscarPorId ainda a encontra, pras guardas das rotas).
 async function listar() {
   const { rows } = await pool.query(
     `SELECT ${CAMPOS_MIDIA},
        (SELECT COUNT(*)::int FROM midias_proprias_pontos mpp WHERE mpp.midia_id = mp.id) AS qtd_pontos
      FROM midias_proprias mp
      JOIN criativos c ON c.id = mp.criativo_id
-     ORDER BY (mp.situacao = 'excluida'), mp.created_at DESC`,
+     WHERE mp.situacao <> 'excluida'
+     ORDER BY mp.created_at DESC`,
   );
   return rows.map(montarLinha);
 }
@@ -124,12 +126,10 @@ async function atualizar(id, entrada) {
   return buscarPorId(id);
 }
 
-// Mídia excluída não muda mais de estado — nem por rota, nem por script:
-// a guarda mora aqui, não só no controle de transição das rotas.
-// `soVigente`: pausar/retomar só valem enquanto o período não acabou, e a
-// conferência vai no MESMO comando do UPDATE — o fim pode passar entre a
-// tela e o clique (revisão Codex do PR #89, 28/09/2026). Devolve false
-// quando não mudou nada.
+// Mídia excluída não muda mais de estado — a guarda mora no UPDATE, não só
+// nas rotas. `soVigente` (PR #89): pausar/retomar só valem enquanto o período
+// não acabou, e a conferência vai no MESMO comando — o fim pode passar entre a
+// tela e o clique. Devolve false quando nada mudou.
 async function definirSituacao(id, situacao, { soVigente = false } = {}, db = pool) {
   const { rows } = await db.query(
     `UPDATE midias_proprias SET situacao = $2
@@ -141,12 +141,10 @@ async function definirSituacao(id, situacao, { soVigente = false } = {}, db = po
   return rows.length > 0;
 }
 
-// Transições permitidas pelo admin (finalização, 28/09/2026). Encerrada não
-// volta ao ar (é "retirada"; quem quer de novo cria outra mídia, com o
-// histórico da primeira intacto); excluída não sai de excluída. `de` é
-// conferido contra a situação DERIVADA (período contado), não a persistida:
-// com o fim já passado, a persistida ainda diz 'ativa' e Pausar tirava a
-// mídia do histórico (revisão Codex do PR #89, 28/09/2026).
+// Transições pelo admin (PR #89, finalização 28/09/2026), conferidas contra a
+// situação DERIVADA (período contado): encerrada é "retirada do ar" e não
+// volta — quem quer de novo cria outra mídia, com o histórico da primeira
+// intacto. Excluir tem régua própria (`excluir`, só pausada ou encerrada).
 const TRANSICOES = {
   pausada: { de: ['ativa', 'agendada'], soVigente: true, erro: 'só uma mídia ativa (ou agendada) pode ser pausada' },
   ativa: {
@@ -154,59 +152,95 @@ const TRANSICOES = {
     soVigente: true,
     erro: 'só uma mídia pausada pode ser retomada — mídia retirada do ar não volta, crie outra',
   },
-  encerrada: {
-    de: ['ativa', 'agendada', 'pausada', 'encerrada'],
-    erro: 'mídia excluída não pode ser retirada do ar',
-  },
-  excluida: { de: ['ativa', 'agendada', 'pausada', 'encerrada'], erro: 'essa mídia já está excluída' },
+  encerrada: { de: ['ativa', 'agendada', 'pausada', 'encerrada'], erro: 'mídia excluída não muda mais' },
 };
 
-// Devolve `{ ok: true }`, `{ ok: false, status: 404 }` ou
-// `{ ok: false, status: 409, erro }` — a rota só traduz.
+// `{ ok: true, midia }` ou `{ ok: false, status, erro }` — a rota só traduz.
 async function transicionar(id, para) {
   const midia = await buscarPorId(id);
   if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  if (midia.situacao === 'excluida') return { ok: false, status: 409, erro: 'mídia excluída não muda mais' };
   const regra = TRANSICOES[para];
-  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro, midia };
-  const mudou = await definirSituacao(id, para, { soVigente: !!regra.soVigente });
-  if (!mudou) {
-    // Entre o SELECT e o UPDATE outra aba excluiu, ou o período venceu: a
-    // resposta diz o que a mídia é AGORA, não um motivo chutado.
-    const agora = await buscarPorId(id);
-    const erro =
-      agora?.situacaoDerivada === 'excluida'
-        ? TRANSICOES.excluida.erro
-        : 'o período dessa mídia já terminou — ela está retirada do ar';
-    return { ok: false, status: 409, erro, midia: agora || midia };
-  }
-  return { ok: true, midia };
+  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro };
+  if (await definirSituacao(id, para, { soVigente: !!regra.soVigente })) return { ok: true, midia };
+  // Entre a leitura e o UPDATE outra aba excluiu, ou o período venceu: a
+  // resposta diz o que a mídia é AGORA.
+  const agora = await buscarPorId(id);
+  const erro =
+    agora?.situacao === 'excluida'
+      ? 'mídia excluída não muda mais'
+      : 'o período dessa mídia já terminou — ela está retirada do ar';
+  return { ok: false, status: 409, erro };
 }
 
-// Exclusão lógica (migration 101) num commit só: a mídia vira 'excluida' e o
-// arquivo ainda em análise sai da fila como reprovado — não 'retirado', que
-// tem "Colocar no ar" na ficha, e mídia excluída não volta por caminho
-// nenhum. Duas escritas soltas deixavam, na falha da segunda, mídia
-// excluída com criativo pendente preso na fila (revisão do PR #89).
+// Exclusão lógica (migration 107). Só de mídia fora do ar — pausada ou
+// encerrada, pela situação DERIVADA (período vencido conta como encerrada):
+// ativa e agendada passam antes por Pausar ou Retirar do ar. Num commit só, a
+// mídia vira 'excluida' e o arquivo ainda em análise sai da fila como
+// reprovado — senão ficaria na Aprovação, com Aprovar, apontando pra uma
+// mídia que não existe mais. Mesmo desenho do PR #91 (pausado).
+const PODE_EXCLUIR = ['pausada', 'encerrada'];
 const MOTIVO_EXCLUSAO = 'Mídia excluída pelo operador — o arquivo saiu da fila junto com ela.';
+
+// `{ ok: true, midia, criativoReprovado }` ou `{ ok: false, status, erro }`.
 async function excluir(id) {
   const midia = await buscarPorId(id);
-  if (!midia) return { ok: false, status: 404, erro: 'mídia não encontrada' };
-  const regra = TRANSICOES.excluida;
-  if (!regra.de.includes(midia.situacaoDerivada)) return { ok: false, status: 409, erro: regra.erro, midia };
+  if (!midia || midia.situacao === 'excluida') return { ok: false, status: 404, erro: 'mídia não encontrada' };
+  if (!PODE_EXCLUIR.includes(midia.situacaoDerivada)) {
+    return { ok: false, status: 409, erro: 'pause ou retire a mídia do ar antes de excluir' };
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const mudou = await definirSituacao(id, 'excluida', {}, client);
-    if (!mudou) {
-      await client.query('ROLLBACK');
-      return { ok: false, status: 409, erro: regra.erro, midia };
-    }
+    // A situação é conferida de novo no UPDATE: entre a leitura e aqui, outra
+    // aba pode ter retomado a mídia.
     const { rowCount } = await client.query(
+      `UPDATE midias_proprias SET situacao = 'excluida'
+        WHERE id = $1
+          AND (situacao IN ('pausada', 'encerrada')
+               OR (situacao = 'ativa' AND periodo_fim < now()
+                   AND (periodo_inicio IS NULL OR periodo_inicio <= now())))`,
+      [id],
+    );
+    if (!rowCount) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 409, erro: 'pause ou retire a mídia do ar antes de excluir' };
+    }
+    const reprovado = await client.query(
       `UPDATE criativos SET status = 'reprovado', motivo_reprovacao = $2 WHERE id = $1 AND status = 'pendente'`,
       [midia.criativo_id, MOTIVO_EXCLUSAO],
     );
     await client.query('COMMIT');
-    return { ok: true, midia, criativoReprovado: rowCount > 0 };
+    return { ok: true, midia, criativoReprovado: reprovado.rowCount > 0 };
+  } catch (erro) {
+    await client.query('ROLLBACK');
+    throw erro;
+  } finally {
+    client.release();
+  }
+}
+
+// Grava no criativo só se a mídia própria dona dele não estiver excluída,
+// com a linha da mídia travada (FOR UPDATE). `excluir` trava a mesma linha no
+// UPDATE, então as duas se esperam: sem isso, uma troca de arquivo que
+// começou antes da exclusão terminava depois e devolvia o arquivo à fila
+// como 'pendente', com Aprovar/Reprovar respondendo 409 (revisão Codex do
+// #104). Criativo que não é de mídia própria grava normalmente. Devolve o que
+// `gravar(client)` devolveu, ou null quando a mídia está excluída.
+async function gravarSeMidiaNaoExcluida(criativoId, gravar) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT situacao FROM midias_proprias WHERE criativo_id = $1 FOR UPDATE', [
+      criativoId,
+    ]);
+    if (rows[0]?.situacao === 'excluida') {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const resultado = await gravar(client);
+    await client.query('COMMIT');
+    return resultado;
   } catch (erro) {
     await client.query('ROLLBACK');
     throw erro;
@@ -216,8 +250,7 @@ async function excluir(id) {
 }
 
 // Situação da mídia própria dona deste criativo (1-pra-1), ou null quando o
-// criativo não é de mídia própria. A fila de aprovação usa pra não mexer
-// no arquivo de mídia excluída (revisão Codex do PR #89, 28/09/2026).
+// criativo não é de mídia própria.
 async function situacaoPorCriativo(criativoId) {
   const { rows } = await pool.query('SELECT situacao FROM midias_proprias WHERE criativo_id = $1', [criativoId]);
   return rows[0]?.situacao ?? null;
@@ -403,6 +436,7 @@ module.exports = {
   definirSituacao,
   transicionar,
   excluir,
+  gravarSeMidiaNaoExcluida,
   situacaoPorCriativo,
   ocupacaoPorPonto,
   previewOcupacao,

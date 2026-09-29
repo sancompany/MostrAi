@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const email = require('../financeiro/email');
+const comunicados = require('../comunicados/envio');
 
 // Fila durável de e-mails (migration 097). Mesmo desenho da inbox do webhook
 // (src/financeiro/webhook-inbox.js), do lado da SAÍDA:
@@ -56,6 +57,12 @@ function mascararEmail(endereco) {
 // `enviar(linha, segredo)` monta e manda; `conta` é { nome_empresa,
 // contato_email } com o destinatário DA LINHA — o endereço gravado na hora
 // do evento é o que recebe, mesmo que a conta troque de e-mail depois.
+// Ganchos opcionais de um modelo: `depois(linha)` roda quando saiu;
+// `aoDesistir(linha, status, motivo)` quando a fila desiste ('abandonado'
+// ou 'descartado'); `enviar` que devolve `{ descartar: motivo }` conferiu na
+// hora que a mensagem não deve mais sair. `emMassa`: o tipo vai pro fim da
+// fila — um comunicado para centenas de contas nunca atrasa um código de
+// verificação ou um link de senha que entrou depois dele.
 const conta = (l) => ({ ...(l.dados.conta || {}), contato_email: l.destinatario });
 
 const MODELOS = {
@@ -156,7 +163,21 @@ const MODELOS = {
     classe: 'operacional',
     enviar: (l) => email.enviarCandidaturaNova(l.dados.candidatura, l.destinatario),
   },
+
+  // Comunicado do admin (Visão geral, migration 108): uma linha por
+  // destinatário; o texto mora em `comunicados` e é relido na hora de sair
+  // (a fila guarda só o id). Aviso da plataforma, não divulgação — e ainda
+  // assim respeita quem desmarcou "receber novidades" (src/comunicados/).
+  comunicado: {
+    classe: 'operacional',
+    emMassa: true,
+    enviar: (l) => comunicados.enviar(l),
+    depois: (l) => comunicados.marcarEnviado(l),
+    aoDesistir: (l, status, motivo) => comunicados.marcarDesistencia(l, status, motivo),
+  },
 };
+
+const TIPOS_EM_MASSA = Object.keys(MODELOS).filter((t) => MODELOS[t].emMassa);
 
 // Erro pra log/banco: primeira linha, curta, sem e-mail nem número longo
 // (resposta de SMTP costuma citar o destinatário).
@@ -171,8 +192,10 @@ function sanitizar(err) {
 // Grava a mensagem. Devolve { id, novo }; `novo: false` = a mesma chave já
 // estava na fila (o evento de negócio já gerou este e-mail — não duplica).
 // Erro de banco SOBE: quem precisa de tudo-ou-nada passa a transação em `db`.
+// `atrasoS`: só sai depois disso (o comunicado espalha as N mensagens no
+// ritmo do provedor). Sem ele, sai já — como sempre foi.
 async function enfileirar(
-  { tipo, chave, para, anuncianteId = null, dados = {}, segredo = null, validoAte = null },
+  { tipo, chave, para, anuncianteId = null, dados = {}, segredo = null, validoAte = null, atrasoS = 0 },
   db = pool,
 ) {
   const modelo = MODELOS[tipo];
@@ -180,8 +203,9 @@ async function enfileirar(
   if (!chave) throw new Error('e-mail sem chave de evento');
   if (!para) throw new Error(`e-mail ${tipo} sem destinatário`);
   const { rows } = await db.query(
-    `INSERT INTO email_outbox (chave, tipo, classe, destinatario, anunciante_id, dados, segredo, valido_ate)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO email_outbox
+       (chave, tipo, classe, destinatario, anunciante_id, dados, segredo, valido_ate, proxima_tentativa_em)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now() + make_interval(secs => $9))
      ON CONFLICT (chave) DO NOTHING RETURNING id`,
     [
       String(chave).slice(0, 300),
@@ -192,6 +216,7 @@ async function enfileirar(
       dados,
       segredo ? cofre.fechar(JSON.stringify(segredo)) : null,
       validoAte,
+      Math.max(0, Number(atrasoS) || 0),
     ],
   );
   if (rows[0] && db === pool) despachar();
@@ -227,6 +252,8 @@ async function enfileirarSemFalhar(msg) {
 // `escopo` (prefixo do destinatário) existe pros testes: os arquivos rodam em
 // paralelo contra o mesmo banco, e cada um só processa o que é seu. Em
 // produção é sempre null (tudo).
+// Ordem: primeiro o que não é em massa (código, link de senha, pagamento),
+// depois a vez de cada um — FIFO dentro de cada grupo, como sempre foi.
 async function pegarProxima(escopo = null) {
   const cliente = await pool.connect();
   try {
@@ -236,10 +263,10 @@ async function pegarProxima(escopo = null) {
         WHERE ((status IN ('na_fila', 'tentando_de_novo') AND proxima_tentativa_em <= now())
            OR (status = 'enviando' AND enviando_desde < now() - make_interval(mins => $1)))
           AND ($2::text IS NULL OR destinatario LIKE $2 || '%')
-        ORDER BY proxima_tentativa_em, id
+        ORDER BY (tipo = ANY($3::text[])), proxima_tentativa_em, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED`,
-      [LEASE_MIN, escopo],
+      [LEASE_MIN, escopo, TIPOS_EM_MASSA],
     );
     if (!rows[0]) {
       await cliente.query('COMMIT');
@@ -265,24 +292,40 @@ async function pegarProxima(escopo = null) {
 // Fecha a linha num estado final. `tentativas` na condição: se o prazo
 // venceu e outra instância retomou, o resultado desta (atrasada) não
 // sobrescreve o dela. O segredo sai junto — terminou, não precisa mais.
+// Devolve se fechou de fato: os ganchos (`depois`, `aoDesistir`) só rodam
+// pra quem fechou — a instância atrasada não registra nada por cima da que
+// retomou (quem retomou registra o resultado dela).
 async function finalizar(l, status, erro = null) {
-  await pool.query(
+  const { rowCount } = await pool.query(
     `UPDATE email_outbox
         SET status = $3, enviando_desde = NULL, segredo = NULL, ultimo_erro = $4,
             enviado_em = CASE WHEN $3 = 'enviado' THEN now() ELSE enviado_em END, atualizado_em = now()
       WHERE id = $1 AND tentativas = $2`,
     [l.id, l.tentativas, status, erro],
   );
+  return rowCount > 0;
 }
 
 const rotulo = (l) => `e-mail ${l.tipo} #${l.id} para ${mascararEmail(l.destinatario)}`;
+
+// A fila desistiu da linha ('abandonado' ou 'descartado'): avisa o modelo,
+// se ele quiser saber (o comunicado registra a falha por destinatário).
+// Falha aqui não muda o estado da linha na fila.
+async function desistir(l, status, motivo) {
+  if (!(await finalizar(l, status, motivo))) return;
+  const gancho = MODELOS[l.tipo]?.aoDesistir;
+  if (!gancho) return;
+  await Promise.resolve()
+    .then(() => gancho(l, status, motivo))
+    .catch((err) => console.error(`${rotulo(l)} ${status}; registro posterior falhou: ${sanitizar(err)}`));
+}
 
 async function enviarUma(escopo = null) {
   const l = await pegarProxima(escopo);
   if (!l) return false;
 
   if (l.valido_ate && new Date(l.valido_ate) <= new Date()) {
-    await finalizar(l, 'descartado', 'venceu antes de sair (código/link já não vale)');
+    await desistir(l, 'descartado', 'venceu antes de sair (código/link já não vale)');
     console.error(`${rotulo(l)} descartado: venceu antes de sair`);
     return true;
   }
@@ -292,17 +335,18 @@ async function enviarUma(escopo = null) {
     if (!segredo) {
       // Chave do cofre trocada (SESSION_SECRET novo): o código não abre mais.
       // Mandar sem ele seria um e-mail inútil; quem precisa pede outro.
-      await finalizar(l, 'descartado', 'segredo ilegível (chave do servidor trocada)');
+      await desistir(l, 'descartado', 'segredo ilegível (chave do servidor trocada)');
       return true;
     }
   }
 
+  let resultado;
   try {
-    await MODELOS[l.tipo].enviar(l, segredo);
+    resultado = await MODELOS[l.tipo].enviar(l, segredo);
   } catch (err) {
     const erro = sanitizar(err);
     if (l.tentativas >= MAX_TENTATIVAS) {
-      await finalizar(l, 'abandonado', erro);
+      await desistir(l, 'abandonado', erro);
       console.error(`${rotulo(l)} ABANDONADO após ${l.tentativas} tentativas: ${erro}`);
     } else {
       const espera = ESPERAS_S[Math.min(l.tentativas, ESPERAS_S.length) - 1];
@@ -320,10 +364,19 @@ async function enviarUma(escopo = null) {
     return true;
   }
 
-  await finalizar(l, 'enviado');
+  // O modelo conferiu na hora que a mensagem não deve mais sair (ex.: a
+  // conta deixou de receber comunicados): descartada, sem nova tentativa.
+  if (resultado?.descartar) {
+    const motivo = sanitizar(resultado.descartar);
+    await desistir(l, 'descartado', motivo);
+    console.log(`${rotulo(l)} descartado: ${motivo}`);
+    return true;
+  }
+
+  const fechou = await finalizar(l, 'enviado');
   // Efeito colateral de registro (ex.: "e-mail do ciclo saiu"). Falha aqui
   // não desfaz o envio nem faz reenviar.
-  if (MODELOS[l.tipo].depois) {
+  if (fechou && MODELOS[l.tipo].depois) {
     await Promise.resolve()
       .then(() => MODELOS[l.tipo].depois(l))
       .catch((err) => console.error(`${rotulo(l)} enviado; registro posterior falhou: ${sanitizar(err)}`));
@@ -359,6 +412,10 @@ function despachar() {
 }
 
 async function expurgar() {
+  // Antes de apagar, o resultado de cada mensagem de comunicado vai pro
+  // registro dela (src/comunicados/envio.js#consolidar). Se isso falhar, o
+  // expurgo não acontece nesta volta — apagar antes perderia o resultado.
+  await comunicados.consolidar();
   const { rowCount } = await pool.query(
     `DELETE FROM email_outbox
       WHERE (tipo IN ('codigo_confirmacao', 'codigo_troca_email', 'redefinir_senha')
@@ -373,14 +430,17 @@ async function expurgar() {
 }
 
 // Visão operacional (admin): contagem por estado e as últimas que falharam.
-// Destinatário mascarado; `dados`/`segredo` nunca saem daqui.
+// Destinatário mascarado; `dados`/`segredo` nunca saem daqui. As falhas de
+// tipo em massa (comunicado) ficam de fora da lista: têm o histórico delas,
+// e 50 falhas de um comunicado esconderiam um código que não saiu.
 async function resumo() {
   const { rows: porStatus } = await pool.query(`SELECT status, COUNT(*)::int AS n FROM email_outbox GROUP BY status`);
   const { rows: problemas } = await pool.query(
     `SELECT id, tipo, classe, destinatario, status, tentativas, ultimo_erro, proxima_tentativa_em, criado_em, atualizado_em
        FROM email_outbox
-      WHERE status IN ('tentando_de_novo', 'abandonado')
+      WHERE status IN ('tentando_de_novo', 'abandonado') AND NOT (tipo = ANY($1::text[]))
       ORDER BY atualizado_em DESC LIMIT 50`,
+    [TIPOS_EM_MASSA],
   );
   const contagem = Object.fromEntries(porStatus.map((r) => [r.status, r.n]));
   return {

@@ -164,10 +164,13 @@ router.post('/admin/midias-proprias', upload.single('arquivo'), async (req, res)
   }
 });
 
+// Excluída (migration 107) não muda mais: nem nome, nem veiculação, nem estado.
+const MIDIA_EXCLUIDA = 'mídia excluída não muda mais';
+
 router.patch('/admin/midias-proprias/:id', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
-  if (midia.situacao === 'excluida') return res.status(409).json({ erro: 'mídia excluída não pode ser editada' });
+  if (midia.situacao === 'excluida') return res.status(409).json({ erro: MIDIA_EXCLUIDA });
   const dados = {
     nome_interno: req.body.nome_interno,
     frequencia_hora: req.body.frequencia_hora != null ? Number(req.body.frequencia_hora) : undefined,
@@ -192,10 +195,10 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
   }
   const mexeNoQueVeicula =
     dados.frequencia_hora != null || !!req.body.cobertura_tipo || 'periodo_inicio' in dados || 'periodo_fim' in dados;
-  // Retirada do ar não volta — nem por Editar (revisão do PR #89,
-  // 28/09/2026): com o período vencido, estender o fim trazia a mídia de
-  // volta ao ar (ou a "Pausadas", com Retomar) sem revalidar capacidade,
-  // porque a derivada no momento do PATCH era 'encerrada'. Só o nome muda.
+  // Retirada do ar não volta — nem por Editar (PR #89, 28/09/2026): com o
+  // período vencido, estender o fim trazia a mídia de volta ao ar sem
+  // revalidar capacidade, porque a derivada no momento do PATCH era
+  // 'encerrada'. Só o nome muda.
   if (midia.situacaoDerivada === 'encerrada' && mexeNoQueVeicula) {
     return res.status(409).json({ erro: 'mídia retirada do ar não volta — pra rodar de novo, crie outra' });
   }
@@ -227,9 +230,9 @@ router.patch('/admin/midias-proprias/:id', async (req, res) => {
   }
 });
 
-// Transições de estado (finalização, 28/09/2026): a régua mora em
-// midiasRepo.transicionar — retirada do ar não volta, excluída não muda.
-// Antes /retomar aceitava mídia encerrada, e nada era 409.
+// Transições de estado: a régua mora em midiasRepo.transicionar (PR #89) —
+// conferida contra a situação derivada; retirada do ar não volta, excluída
+// não muda.
 const responderTransicao = (res, r) => (r.ok ? res.json({ ok: true }) : res.status(r.status).json({ erro: r.erro }));
 
 router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {
@@ -239,8 +242,9 @@ router.post('/admin/midias-proprias/:id/pausar', async (req, res) => {
 router.post('/admin/midias-proprias/:id/retomar', async (req, res) => {
   const midia = await midiasRepo.buscarPorId(req.params.id);
   if (!midia) return res.status(404).json({ erro: 'mídia não encontrada' });
+  if (midia.situacao === 'excluida') return res.status(409).json({ erro: MIDIA_EXCLUIDA });
   // Derivada, a mesma régua de `transicionar`: pausada com período vencido é
-  // 'encerrada' e não volta (revisão Codex do PR #89, 28/09/2026).
+  // 'encerrada' e não volta (PR #89). Antes da conta de capacidade.
   if (midia.situacaoDerivada !== 'pausada') {
     return res
       .status(409)
@@ -268,17 +272,16 @@ router.post('/admin/midias-proprias/:id/encerrar', async (req, res) => {
   responderTransicao(res, await midiasRepo.transicionar(req.params.id, 'encerrada'));
 });
 
-// Exclusão LÓGICA (migration 101): a mídia sai da programação e das listas
-// de trabalho; a linha, o contador de exibições confirmadas e o histórico
-// de estados ficam como comprovante. Sem volta.
-// Arquivo ainda em análise (operador substituiu e excluiu antes de aprovar)
-// saía da mídia mas ficava na fila com Aprovar/Ajustar/Reprovar (revisão
-// Codex do PR #89, 28/09/2026): `excluir` o reprova no mesmo commit, e a
-// fila em outra aba recebe o evento e tira o card na hora.
+// Exclusão LÓGICA (migration 107): só de mídia pausada ou encerrada. A mídia
+// sai das listas e da programação; a linha, as exibições confirmadas e o
+// histórico de estados ficam como comprovante. Sem volta. Se o arquivo ainda
+// estava em análise, sai da fila de Aprovação no mesmo commit, e as outras
+// abas do admin ficam sabendo pelo evento.
 router.delete('/admin/midias-proprias/:id', async (req, res) => {
   const r = await midiasRepo.excluir(req.params.id);
-  if (r.ok && r.criativoReprovado) sse.emitirParaAdmin('creative.updated', { id: r.midia.criativo_id });
-  responderTransicao(res, r);
+  if (!r.ok) return res.status(r.status).json({ erro: r.erro });
+  if (r.criativoReprovado) sse.emitirParaAdmin('creative.updated', { id: r.midia.criativo_id });
+  res.json({ ok: true });
 });
 
 // Ajustar mídia > Substituir arquivo (Parte 25-29) — genérico, serve
@@ -293,12 +296,13 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(404).json({ erro: 'criativo não encontrado' });
   }
-  // Mídia excluída não volta por caminho nenhum — nem trocando o arquivo
-  // (revisão Codex do PR #89, 28/09/2026). Mesma guarda do PATCH em
-  // src/admin/routes.js.
+  // Mesma guarda do PATCH de criativo em src/admin/routes.js: trocar o
+  // arquivo o mandaria de volta pra fila. Conferida de novo, com a mídia
+  // travada, na hora de gravar (a exclusão pode chegar durante o FFmpeg).
+  const ERRO_EXCLUIDA = 'esse arquivo é de uma mídia excluída — não muda mais';
   if ((await midiasRepo.situacaoPorCriativo(req.params.id)) === 'excluida') {
     if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(409).json({ erro: 'esse arquivo é de uma mídia excluída — não muda mais' });
+    return res.status(409).json({ erro: ERRO_EXCLUIDA });
   }
   try {
     // `processarArquivo` cria uma linha TEMPORÁRIA pra rodar o ffmpeg (mesmo
@@ -308,17 +312,24 @@ router.post('/admin/criativos/:id/substituir', upload.single('arquivo'), async (
     const planoId = conta && !conta.conta_propria ? anunciantesRepo.planoVigenteId(conta) : null;
     const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
     const temp = await processarArquivo(req, criativoAtual.anunciante_id, plano?.duracao_maxima_segundos || null);
-    const atualizado = await criativosRepo.atualizar(req.params.id, {
-      arquivo_original_url: temp.arquivo_original_url,
-      arquivo_normalizado_url: temp.arquivo_normalizado_url,
-      thumbnail_url: temp.thumbnail_url,
-      duracao_segundos: temp.duracao_segundos,
-      conteudo_sha256: temp.conteudo_sha256,
-      conteudo_bytes: temp.conteudo_bytes,
-      status: 'pendente',
-      motivo_reprovacao: null,
-    });
+    const atualizado = await midiasRepo.gravarSeMidiaNaoExcluida(req.params.id, (db) =>
+      criativosRepo.atualizar(
+        req.params.id,
+        {
+          arquivo_original_url: temp.arquivo_original_url,
+          arquivo_normalizado_url: temp.arquivo_normalizado_url,
+          thumbnail_url: temp.thumbnail_url,
+          duracao_segundos: temp.duracao_segundos,
+          conteudo_sha256: temp.conteudo_sha256,
+          conteudo_bytes: temp.conteudo_bytes,
+          status: 'pendente',
+          motivo_reprovacao: null,
+        },
+        db,
+      ),
+    );
     await criativosRepo.deletar(temp.id);
+    if (!atualizado) return res.status(409).json({ erro: ERRO_EXCLUIDA });
     res.json(atualizado);
   } catch (err) {
     erroDeUpload(res, err);

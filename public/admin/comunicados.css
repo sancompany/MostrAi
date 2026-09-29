@@ -1,0 +1,341 @@
+/* Comunicados por e-mail — Admin → Visão geral (29/09/2026). Card compacto,
+   modal de escrever/revisar, confirmação e histórico. Arquivo próprio (ver o
+   cabeçalho de comunicados.js); usa só os tokens do admin (index.css e
+   style.css) — nenhuma cor nova. */
+
+/* ---------- card da Visão geral ---------- */
+.comunicados-resumo .secao-topo {
+  margin-bottom: 8px;
+}
+.comunicados-descricao {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.comunicados-ultimo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.comunicados-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+.comunicados-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comunicados-link:hover {
+  text-decoration: underline;
+}
+.comunicados-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- modal: escrever ---------- */
+/* Envio anterior sem resposta: aviso no topo, antes de qualquer campo. */
+.comunicado-pendente {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 var(--r-controle) var(--r-controle) 0;
+  background: var(--bg-alt);
+}
+.comunicado-pendente[hidden] {
+  display: none;
+}
+.comunicado-pendente p {
+  flex: 1 1 240px;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.comunicado-aviso {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--brand);
+  border-radius: 0 var(--r-controle) var(--r-controle) 0;
+  background: var(--brand-tint);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.comunicado-publico {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.comunicado-publico legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+/* 2 × 2 no desktop (quatro públicos), uma coluna no celular. */
+.comunicado-publicos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 8px;
+}
+/* Card selecionável (padrão do admin: borda da marca quando escolhido; o
+   rádio de verdade continua no DOM, focável e navegável por seta). */
+.modal-corpo label.comunicado-opcao {
+  position: relative;
+  display: flex;
+  margin: 0;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+.comunicado-opcao input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.comunicado-opcao span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--card);
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    background-color 0.12s;
+}
+.comunicado-opcao b {
+  font-size: 0.86rem;
+}
+.comunicado-opcao small {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+.comunicado-opcao:hover span {
+  border-color: var(--borda-forte);
+}
+.comunicado-opcao input:checked + span {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+  background: var(--brand-tint);
+}
+.comunicado-opcao input:focus-visible + span {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.comunicado-destinatarios {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+}
+.comunicado-destinatarios.vazio-publico b,
+.comunicado-erro {
+  color: var(--err);
+}
+.comunicado-publico .campo-ajuda {
+  margin-top: 2px;
+}
+.comunicado-ajuda-mensagem {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin-top: 5px;
+}
+.comunicado-form [aria-invalid="true"] {
+  border-color: var(--err);
+}
+.comunicado-botao summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.comunicado-botao .campos {
+  margin-top: 10px;
+}
+
+/* ---------- modal: revisar ---------- */
+.comunicado-ficha {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: var(--r-controle);
+  background: var(--bg-alt);
+}
+.comunicado-ficha dt {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+.comunicado-ficha dd {
+  margin: 0;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.comunicado-ficha-assunto {
+  grid-column: 1 / -1;
+}
+.comunicado-ficha-confirmar {
+  margin-bottom: 0;
+}
+.comunicado-confirmar-consequencia {
+  margin: 12px 0 0;
+}
+.comunicado-previa-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.comunicado-previa-topo .campo-rotulo {
+  margin: 0;
+}
+.comunicado-previa,
+.comunicado-previa-texto {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+}
+.comunicado-previa {
+  background: var(--card);
+}
+.comunicado-previa-texto {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-alt);
+  font:
+    0.82rem/1.5 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comunicado-teste {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.comunicado-teste-linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.comunicado-teste-linha input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.comunicado-teste-linha .btn {
+  flex: none;
+}
+
+/* ---------- histórico e detalhe ---------- */
+.comunicados-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.comunicado-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+}
+.comunicado-item-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+.comunicado-item-assunto {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.comunicado-item-meta {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.comunicado-numeros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 10px;
+  font-size: 0.82rem;
+}
+.comunicado-texto-enviado {
+  margin: 4px 0 14px;
+  padding: 12px;
+  border-radius: var(--r-controle);
+  background: var(--bg-alt);
+}
+.comunicado-texto-enviado p {
+  margin: 0 0 6px;
+}
+.comunicado-texto-titulo {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.comunicado-texto-mensagem {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.comunicado-texto-botao span {
+  overflow-wrap: anywhere;
+}
+.comunicado-problemas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.84rem;
+}
+.comunicado-problemas li {
+  overflow-wrap: anywhere;
+}
+.comunicado-problema-situacao {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.comunicado-reenviar .campo-ajuda {
+  margin-top: 6px;
+}

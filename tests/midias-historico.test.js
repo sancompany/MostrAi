@@ -8,8 +8,8 @@ const midiasRepo = require('../src/midias/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 
-// Mídia Mostraí — histórico e exclusão (finalização, 28/09/2026, migration
-// 101). Transições que o admin pode fazer, exclusão lógica que preserva o
+// Mídia Mostraí — histórico e exclusão (finalização, 28/09/2026; a exclusão
+// lógica é a da migration 107, #104 — só de pausada ou encerrada). Transições que o admin pode fazer, exclusão lógica que preserva o
 // comprovante de exibição, e o que a playlist nunca vê.
 
 async function subirApp() {
@@ -215,7 +215,12 @@ test('excluir: exclusão lógica — some da playlist e das listas de trabalho, 
        ON CONFLICT DO NOTHING`,
       [id, tela.id, tela.ponto_id],
     );
+    // Ativa não se exclui (#104): passa antes por Pausar.
     let r = await app.chamar('DELETE', `/admin/midias-proprias/${id}`);
+    assert.strictEqual(r.status, 409, 'ativa não se exclui');
+    r = await app.chamar('POST', `/admin/midias-proprias/${id}/pausar`);
+    assert.strictEqual(r.status, 200);
+    r = await app.chamar('DELETE', `/admin/midias-proprias/${id}`);
     assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
     const depois = await midiasRepo.buscarPorId(id);
     assert.strictEqual(depois.situacao, 'excluida');
@@ -238,15 +243,14 @@ test('excluir: exclusão lógica — some da playlist e das listas de trabalho, 
       assert.strictEqual(r.status, 409, `${acao} em excluída`);
     }
     r = await app.chamar('DELETE', `/admin/midias-proprias/${id}`);
-    assert.strictEqual(r.status, 409, 'excluir de novo');
+    assert.strictEqual(r.status, 404, 'excluir de novo: a excluída já não existe pra lista');
     r = await app.chamar('PATCH', `/admin/midias-proprias/${id}`, { nome_interno: 'x' });
     assert.strictEqual(r.status, 409, 'editar excluída');
     assert.strictEqual(await midiasRepo.definirSituacao(id, 'ativa'), false, 'nem por script');
 
-    // Lista do admin: por último; playlist: nunca.
+    // Lista do admin: some (#104); playlist: nunca.
     const lista = await midiasRepo.listar();
-    const ultima = lista[lista.length - 1];
-    assert.strictEqual(ultima.situacao, 'excluida');
+    assert.ok(!lista.some((m) => m.id === id), 'excluída some da lista do admin');
     const elegiveis = await midiasRepo.elegiveisNoPonto(tela.ponto_id);
     assert.ok(!elegiveis.some((m) => m.id === id), 'excluída nunca é elegível');
   } finally {
@@ -265,7 +269,9 @@ test('excluir com criativo pendente: sai da fila como reprovado e a fila não o 
   try {
     const { criativoId } = a;
     assert.strictEqual((await criativosRepo.buscarPorId(criativoId)).status, 'pendente');
-    let r = await app.chamar('DELETE', `/admin/midias-proprias/${a.midia.id}`);
+    let r = await app.chamar('POST', `/admin/midias-proprias/${a.midia.id}/pausar`);
+    assert.strictEqual(r.status, 200);
+    r = await app.chamar('DELETE', `/admin/midias-proprias/${a.midia.id}`);
     assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
     const criativo = await criativosRepo.buscarPorId(criativoId);
     assert.strictEqual(criativo.status, 'reprovado');
