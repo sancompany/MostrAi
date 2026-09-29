@@ -195,9 +195,14 @@ window.paredeSP = function paredeSP(valor) {
 // primeira letra e ponto final só se ainda não tiver um. Sem isto saía
 // "CPF inválido — confira os números.." em toda mensagem que já terminava
 // com pontuação.
+// Erro de rede do próprio navegador ("Failed to fetch", "Load failed",
+// "NetworkError…") nunca chega à tela em inglês: vira a frase única de sem
+// conexão, em todo lugar que passa por aqui (finalização, 28/09/2026).
+const SEM_CONEXAO = 'Sem conexão com o servidor. Confira a internet e tente de novo.';
 window.frase = function frase(texto) {
   const t = String(texto || '').trim();
   if (!t) return '';
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(t)) return SEM_CONEXAO;
   const maiuscula = t.charAt(0).toUpperCase() + t.slice(1);
   return /[.!?…]$/.test(maiuscula) ? maiuscula : `${maiuscula}.`;
 };
@@ -225,38 +230,127 @@ window.fmtMicroBRL = function fmtMicroBRL(v) {
   });
 };
 
-// Trava de duplo clique em qualquer formulário do site. Antes, dois cliques
-// no botão de cadastro criavam duas contas / dois pontos / duas mensagens —
-// e no caso do plano, duas cobranças. Libera quando não há mais requisição em
-// voo, com um teto de 15s caso o handler não faça nenhuma.
+// Trava de duplo clique em qualquer formulário e em qualquer botão do site.
+// Antes, dois cliques no botão de cadastro criavam duas contas / dois pontos
+// / duas mensagens — e no caso do plano, duas cobranças; no admin, dois
+// cliques em "Adicionar tela" criavam duas telas (finalização, 28/09/2026).
+//
+// Cada botão espera SÓ pelas requisições que o próprio clique disparou —
+// não por "qualquer requisição em voo" (com a página buscando dados em
+// paralelo, todo botão ficava preso sem motivo). Uma requisição pertence ao
+// clique se começa na tarefa dele, ou na continuação de uma resposta dele
+// (`await fetch` / `await r.json()`, e só então a foto: as duas são do mesmo
+// botão). Sem nenhuma requisição na tarefa do clique (abrir modal,
+// validação que devolve antes de pedir), o botão nem chega a travar.
+//
+// Formulário: o botão de enviar fica `disabled` (como sempre foi). Botão
+// avulso: ganha a classe `em-voo`, e o segundo clique é engolido aqui mesmo,
+// na captura — sem mexer em `disabled`, que é do handler (o "Reenviar
+// código" usa disabled pro tempo de espera; a trava não pode desfazer isso).
+// Teto de 15 s por segurança.
 (function travarDuploEnvio() {
-  let emVoo = 0;
-  const travados = new Set();
   const fetchOriginal = window.fetch;
+  // Botão cuja tarefa está rodando agora: o clique/submit em si, a
+  // continuação de um `await fetch()` dele, ou a de um `await r.json()` da
+  // resposta dele. É a ele que um fetch novo pertence. Fora dessas tarefas
+  // (requisição de fundo, SSE, outro botão), ninguém é dono.
+  let botaoDaTarefa = null;
+  const pendentes = new Map(); // botão → { pedidos, leituras } ainda em voo
 
-  function liberar() {
-    travados.forEach((btn) => {
+  function liberar(btn) {
+    pendentes.delete(btn);
+    btn.classList.remove('em-voo');
+    if (btn.dataset.travadoPeloEnvio) {
       btn.disabled = false;
-    });
-    travados.clear();
+      delete btn.dataset.travadoPeloEnvio;
+    }
+  }
+
+  // Marca a tarefa atual (e suas microtarefas) como do botão; a próxima
+  // macrotarefa já não é dele — e, se nada dele ficou em voo, solta.
+  function continuacaoDe(btn) {
+    botaoDaTarefa = btn;
+    setTimeout(() => {
+      if (botaoDaTarefa === btn) botaoDaTarefa = null;
+      const p = pendentes.get(btn);
+      if (p && p.pedidos === 0 && p.leituras === 0) liberar(btn);
+    }, 0);
+  }
+
+  // `await r.json()` (ou text/blob…) resolve numa tarefa depois: a
+  // continuação dela também é do botão, e enquanto lê, não solta.
+  function envolverLeituras(resposta, btn) {
+    for (const nome of ['json', 'text', 'blob', 'arrayBuffer', 'formData']) {
+      const original = resposta[nome];
+      if (typeof original !== 'function') continue;
+      resposta[nome] = function (...args) {
+        const p = pendentes.get(btn);
+        if (p) p.leituras += 1;
+        return original.apply(this, args).finally(() => {
+          const q = pendentes.get(btn);
+          if (q) q.leituras -= 1;
+          continuacaoDe(btn);
+        });
+      };
+    }
   }
 
   window.fetch = function (...args) {
-    emVoo += 1;
-    return fetchOriginal.apply(this, args).finally(() => {
-      emVoo = Math.max(0, emVoo - 1);
-      if (emVoo === 0) liberar();
-    });
+    const btn = botaoDaTarefa;
+    const promessa = fetchOriginal.apply(this, args);
+    const p = btn && pendentes.get(btn);
+    if (!p) return promessa;
+    p.pedidos += 1;
+    return promessa
+      .then((resposta) => {
+        envolverLeituras(resposta, btn);
+        return resposta;
+      })
+      .finally(() => {
+        const q = pendentes.get(btn);
+        if (q) q.pedidos -= 1;
+        continuacaoDe(btn);
+      });
   };
+
+  function travar(btn, comDisabled) {
+    if (comDisabled) {
+      btn.disabled = true;
+      btn.dataset.travadoPeloEnvio = '1';
+    }
+    btn.classList.add('em-voo');
+    pendentes.set(btn, { pedidos: 0, leituras: 0 });
+    // Clique que não pediu nada (abrir modal, validação que devolve antes)
+    // solta na próxima tarefa.
+    continuacaoDe(btn);
+    setTimeout(() => {
+      if (pendentes.has(btn)) liberar(btn);
+    }, 15000);
+  }
 
   document.addEventListener(
     'submit',
     (e) => {
       const btn = e.target.querySelector('button[type="submit"], button:not([type])');
       if (!btn || btn.disabled) return;
-      btn.disabled = true;
-      travados.add(btn);
-      setTimeout(liberar, 15000);
+      travar(btn, true);
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target.closest?.('button');
+      if (!btn || btn.disabled) return;
+      if (btn.classList.contains('em-voo')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      // Botão de enviar dentro de <form>: o submit acima é quem trava.
+      if (btn.form && (btn.type === 'submit' || !btn.getAttribute('type'))) return;
+      travar(btn, false);
     },
     true,
   );

@@ -1,10 +1,21 @@
 // ---------- base ----------
-function api(caminho, opts = {}) {
-  return fetch(`${API_BASE_URL}${caminho}`, {
-    ...opts,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-  });
+// Escrita (POST/PATCH/DELETE). Sem conexão, devolve uma resposta 503 com
+// `erro` em português em vez de estourar "Failed to fetch": quem chama já
+// trata `!r.ok` e mostra `erro`, então a queda de rede vira mensagem na
+// tela e não botão preso (finalização, 28/09/2026).
+async function api(caminho, opts = {}) {
+  try {
+    return await fetch(`${API_BASE_URL}${caminho}`, {
+      ...opts,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    });
+  } catch {
+    return new Response(JSON.stringify({ erro: 'sem conexão com o servidor — tente de novo' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 // Leitura (GET): passa por public/admin/carga.js — prazo de 20 s, sem seguir
@@ -1810,7 +1821,7 @@ async function renderCriativos(el) {
     }`;
 
   const aposDecidir = async () => {
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     renderCriativos(el);
   };
@@ -1882,7 +1893,7 @@ function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
   });
   document.getElementById('btnAprovarAjuste').addEventListener('click', async () => {
     if (await salvar(`/admin/criativos/${criativo.id}`, { status: 'aprovado' })) {
-      RESUMO = await pegar('/admin/resumo');
+      RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
       pintarContadores();
       wrap.hidden = true;
       wrap.innerHTML = '';
@@ -1910,7 +1921,7 @@ function abrirAjusteMidia(wrap, criativo, nomeConta, aoFechar) {
     const atualizado = await r.json();
     msg.textContent = 'Arquivo substituído — volta pra "em análise" até você aprovar de novo.';
     msg.className = 'form-msg ok';
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     abrirAjusteMidia(wrap, atualizado, nomeConta, aoFechar);
   });
@@ -3081,7 +3092,7 @@ function agendarRecargaAba(evento) {
     // geração, leituras antigas canceladas, dados preservados se falhar.
     if (!bate || ABA_ATUAL.resto || editando) {
       try {
-        RESUMO = await pegar('/admin/resumo');
+        RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
         pintarContadores();
       } catch (err) {
         if (!err?.cancelada) console.error('resumo: falha ao atualizar', err);
@@ -3585,7 +3596,7 @@ async function excluirTela(t, depois) {
   const r = await api(`/admin/dispositivos/${t.id}`, { method: 'DELETE' });
   if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
   toast(`Tela ${t.codigo} excluída.`);
-  RESUMO = await pegar('/admin/resumo');
+  RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
   pintarContadores();
   depois();
 }
@@ -3770,7 +3781,7 @@ function ligarFichaTela(el, t, remontar) {
     return true;
   };
   const posAcao = async () => {
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     await remontar();
   };
@@ -4680,7 +4691,7 @@ function desenharContaCriativos(el, ctx) {
   const achar = (id) => criativos.find((c) => c.id === Number(id));
   const { recarregar } = ctx;
   const pintarFila = async () => {
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
   };
 
@@ -5159,7 +5170,7 @@ async function renderCandidaturaDetalhe(el, id) {
       });
     }
     toast('Candidatura aprovada.');
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     irPara('rede/candidaturas');
   });
@@ -5181,7 +5192,7 @@ async function renderCandidaturaDetalhe(el, id) {
       return;
     }
     toast('Candidatura recusada.');
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     irPara('rede/candidaturas');
   });
@@ -6375,7 +6386,7 @@ async function renderMensagensPendentes(el) {
         btn.disabled = false;
         return toast('Não deu pra salvar.', 'err');
       }
-      RESUMO = await pegar('/admin/resumo');
+      RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
       pintarContadores();
       renderMensagensPendentes(el);
     });
@@ -6560,7 +6571,7 @@ async function renderFilaDevolucoes(el) {
         return toast((await r.json().catch(() => ({}))).erro || 'Não deu pra registrar.', 'err');
       }
       toast('Devolução registrada.');
-      RESUMO = await pegar('/admin/resumo');
+      RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
       pintarContadores();
       renderFilaDevolucoes(el);
     }),
@@ -6659,7 +6670,7 @@ async function renderEventosPendentes(el) {
   });
 
   const depois = async () => {
-    RESUMO = await pegar('/admin/resumo');
+    RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     renderEventosPendentes(el);
   };

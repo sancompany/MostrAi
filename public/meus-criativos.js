@@ -421,19 +421,30 @@
     enviarTentativa({ arquivo, substitui, contaId: conta.id, chave: novaChave() });
   }
 
+  // Confirmação em modal Mostraí (confirmar.js): o DELETE roda dentro do
+  // modal, com loading; erro fica escrito ali e a lista só muda depois que
+  // o servidor respondeu.
   async function excluir(id) {
     const c = dados?.criativos.find((x) => x.id === id);
-    const aviso =
-      c?.situacao === 'no_ar'
-        ? 'Esta peça está no ar e sai das telas agora. Pra trocar sem ficar fora do ar, use "Substituir". Excluir mesmo assim?'
-        : 'Excluir este criativo?';
-    if (!window.confirm(aviso)) return;
-    const r = await fetch(`${API_BASE_URL}/anunciantes/${obterConta().id}/criativos/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
+    const noAr = c?.situacao === 'no_ar';
+    const sim = await window.confirmarMostrai({
+      titulo: noAr ? 'Excluir a peça que está no ar?' : 'Excluir este criativo?',
+      texto: noAr
+        ? 'Ela sai das telas agora e não volta. Pra trocar sem ficar fora do ar, use "Substituir".'
+        : 'O arquivo é apagado da sua biblioteca. Não dá pra desfazer.',
+      botao: noAr ? 'Excluir mesmo assim' : 'Excluir',
+      perigo: true,
+      aoConfirmar: async () => {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/${obterConta().id}/criativos/${id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (!r.ok) throw new Error('Não foi possível excluir agora. Tente de novo.');
+      },
     });
-    mensagem(r.ok ? 'Criativo excluído.' : 'Não foi possível excluir agora. Tente de novo.', r.ok ? 'ok' : 'err');
-    if (r.ok) carregar();
+    if (!sim) return;
+    mensagem('Criativo excluído.', 'ok');
+    carregar();
   }
 
   function tocar(card) {
