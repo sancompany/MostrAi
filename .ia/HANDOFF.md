@@ -1,6 +1,15 @@
 # Current Handoff
 
 ## Updated
+2026-09-29 — **Integração dos PRs paralelos da estação de finalização**
+(pedido do dono: um por vez, cada um reconciliado com a `main` do anterior,
+merge + CI + deploy + smoke antes do próximo). #88 Lógica, #89 Mídia e #90
+Pontos/Rede mergeados; #91 Indicações fechado como substituído (#102/#105 já
+entregavam; PENDENCIAS §V V3); #87 UX global integrado antes do #92, que é
+empilhado nele. O checkpoint da estação pausada
+(`docs/auditoria-finalizacao-checkpoint.md`, 28/09) fica como registro
+histórico — o "RETOMAR DAQUI" dele está cumprido. **Não iniciar outra
+estação.**
 2026-09-29 — **Estação FINAL PRÉ-LANÇAMENTO: comunicados por e-mail no admin**
 ([PR #106](https://github.com/sancompany/MostrAi/pull/106), branch
 `claude/serene-lovelace-1zx4a0`, **merge autorizado pelo dono** em 29/09,
