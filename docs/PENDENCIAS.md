@@ -5441,10 +5441,91 @@ dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
       em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
       arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
       já na `main`): o navegador descarta a regra que vem logo depois dela.
-- U2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
+- U2 [x] *(resolvido no painel do usuário, 29/09/2026 — §V: reproduzido,
+      fonte do número em `cqi`, e2e 37 alarga 1280 → 1400/1920/1334 sem
+      vazar.)* O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
       número por JS quando a LARGURA do card muda, mas a fonte segue a
       largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
       1280 px, alargar a janela aumenta a fonte sem mudar o card, e o número
       pode passar da borda até a próxima recarga. Achado da revisão de
       código desta sessão; conserto natural: fonte em unidade do card
       (container query) em vez de `vw`.
+
+## V. Painel do usuário — estação final (29/09/2026)
+
+Estação com merge e deploy autorizados pelo dono. Branch
+`claude/nifty-galileo-rwryqd`, base `80fe269`. Decisão: ADR-031.
+
+**Feito:**
+
+- [x] **Quatro indicadores**, na mesma região: horas de tela no mês (origem
+      plano/Básico como antes); exibições do mês com "de N previstas no
+      mês" e "Média diária: X" pequena dentro do card (o card "Média diária"
+      saiu; sem exibição, "Média diária: 0", nunca NaN/Infinity); custo por
+      exibição com 4 casas (nunca R$ 0,01); saldo de veiculação sempre à
+      vista — "Em dia" ou "4h 32min a entregar", lido do banco que já existe.
+- [x] **Plano obtido por créditos**: custo de referência do plano e ciclo
+      equivalentes (valor cheio de tabela ÷ exibições previstas, a mesma
+      divisão do pago) — ex.: Prime Semestral R$ 0,0177, "Referência do
+      Prime · Semestral · sem cobrança". Nenhuma cobrança, conta a receber,
+      débito, pagamento ou lançamento — só leitura (teste confere que nada
+      é gravado).
+- [x] **"Acompanhe sua veiculação" num card só**: filtros 7 dias / 30 dias
+      / 3 meses / 1 ano / Máx. (dia, dia, semana, mês, mês) sem recarregar e
+      sem buscar de novo; barras empilhadas com uma cor fixa por ponto (a
+      mesma em qualquer filtro e depois de recarregar); legenda por ponto;
+      dica com data, cada ponto e total, por mouse, teclado (setas, Esc) e
+      toque, sempre dentro do card; 1, 2 ou 3 períodos com barras
+      centralizadas; sem exibição, a frase pedida e nenhum gráfico; tabela
+      Ponto / Cidade / Status / Exibições (Programadas e Entrega % fora da
+      tela do cliente — o dado segue no servidor, no admin e no CSV);
+      "Baixar comprovante" com o período escolhido (1 ano e Máx. = os 12
+      meses que o CSV já cobria). No celular: sem rolagem lateral, tabela
+      vira cartões, rótulos do eixo só onde cabem.
+- [x] **U2 reproduzido e corrigido** (ver §U).
+- [x] **Meus pontos**: capa com a foto maior e o estado sobre ela, nome em
+      destaque, endereço e segmento secundários, andamento, telas num bloco
+      (alerta "Precisa de atenção · último sinal há 29 h…" e "Ver o que
+      rodou" mantidos), Plano Básico e "+1 crédito por mês" em blocos
+      próprios. Só apresentação.
+- [x] **Indicações**: QR Code do MESMO link (servidor, `SITE_URL`; só o
+      endereço de cadastro com o cupom), "Escaneie para criar uma conta
+      indicada por <negócio>.", Copiar link e WhatsApp com a mesma string;
+      resumo (contas indicadas, já contrataram, créditos gerados) e o
+      histórico INDICADO / CADASTRO / PLANO / PAGAMENTOS / CRÉDITOS, com
+      "Cadastrou pelo seu link" × "Gerou crédito" e a expansão com as datas
+      dos créditos — `GET /anunciantes/me/indicacoes`, derivado do cadastro,
+      dos ciclos pagos e do ledger. Regra de crédito intocada. O texto
+      "Ou informe o código no cadastro" (não existe esse campo) virou "Seu
+      código: … — ele já vai dentro do link".
+- [x] **Cadastro**: "Indicado por:" na cor secundária e o nome no laranja
+      de texto da marca, mais pesado. Mesma fonte da atribuição (#102).
+- [x] **Redefinir senha**: já estava na `main` (#102) — conferido.
+- [x] Testes: `tests/indicacoes-painel.test.js` (casos A–H, privacidade, QR
+      decodificado pelo jsqr, cadastro pelo QR, sem `SITE_URL`),
+      `tests/custo-previsto.test.js` (referência = pago, nada gravado),
+      e2e `37-painel-usuario.mjs`; e2e 07, 10 e 17 atualizados pro texto
+      novo.
+
+**Fora desta estação (registrado, não feito):**
+
+- V1 [ ] Cupom por ESTABELECIMENTO (hoje é por conta: `cupons_ponto.conta_id`
+      é a chave). Conta com vários pontos tem um link e um QR só. Separar
+      pediria banco novo e decidir de quem é o crédito — é regra comercial.
+- V2 [ ] Baixar o QR de indicação (PNG/SVG pra imprimir no balcão), como o
+      institucional faz no admin. Não pedido nesta estação.
+- V3 [ ] PR #91 (finalização, pausado) tem outra versão do histórico
+      (`indicados[]` dentro de `GET /anunciantes/me/creditos`, com cidade).
+      Ao retomar, a parte de histórico dele sai — fica esta (rota própria,
+      sem cidade, com pagamentos).
+- V4 [ ] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
+      falhou uma vez na suíte local por corrida com arquivos que criam e
+      apagam contas em paralelo (contagem intermediária entre o antes e o
+      depois). Passa sozinho (9/9); não é desta estação.
+- V5 [ ] e2e `35-cards-pontos-cliente.mjs`, "selecionado: borda da marca com
+      anel": lê o `box-shadow` do card logo depois do clique, com a transição
+      de 0,12 s ainda correndo — sai `rgba(255, 122, 26, 1) … 0.9996px` e o
+      teste procura `rgb(255, 122, 26)`. Falha também na `main` pura
+      (`80fe269`, 4 de 4 rodadas locais); o card não foi tocado aqui. Conserto
+      natural: esperar a transição (`getAnimations()`) antes de ler o estilo.
+

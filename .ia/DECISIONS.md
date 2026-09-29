@@ -1089,3 +1089,64 @@ Consequências: novo formulário de ponto usa essas peças
 que são globais de script (`window.*`, registradas em `biome.json`). O
 payload e as rotas não mudaram; quem chama `POST /conta/modos/ponto/pedir`
 ou `/anunciantes/me/pontos` não percebe diferença.
+
+## ADR-031 — Painel do usuário: quatro indicadores, um gráfico por período, custo de referência e histórico de indicações sem livro próprio (29/09/2026)
+
+Contexto: estação final do painel do usuário, pedido do dono — reforma
+controlada, não reconstrução. O resumo tinha cinco cards (a média diária
+sozinha, o saldo escondido quando zerado), a performance eram dois cards
+contando a mesma entrega (um por dia, com 14 barras e cores que mudavam
+conforme o ranking do período; outro por ponto, com Programadas e Entrega %),
+o plano obtido por créditos dizia "Sem valor monetário", o card de indicação
+não mostrava quem se cadastrou nem tinha QR, e o número do KPI podia passar
+da borda ao alargar a janela (PENDENCIAS U2, reproduzido).
+
+Decisão:
+1. **Quatro indicadores fixos**: horas de tela; exibições com "de N previstas
+   no mês" e a média diária dentro do card; custo por exibição; saldo de
+   veiculação sempre à vista ("Em dia" ou "4h 32min a entregar"). O saldo é
+   a tradução do banco que existe (`GET /anunciantes/me/banco-horas`) —
+   nenhum saldo, contador ou compensação novo, nenhum termo do mecanismo na
+   tela.
+2. **Custo de referência pra plano obtido por créditos**: valor cheio de
+   tabela do plano e ciclo equivalentes (mensalidade do ciclo × meses, sem
+   promoção nem desconto de parceiro) ÷ exibições previstas no ciclo, com
+   a MESMA função de divisão do plano pago (`cicloDeReferencia` +
+   `custoPorExibicaoPrevista`). Só leitura: nada cobra, lança ou grava. A
+   cortesia legada segue sem valor.
+3. **Um card de performance**, com filtros 7 dias / 30 dias / 3 meses /
+   1 ano / Máx. (dia, dia, semana, mês, mês) reagrupando no navegador o
+   `porDiaPonto` que o endpoint já devolvia (sem rota nova, sem nova
+   requisição ao trocar). Cor por ponto pela ORDEM DE ENTRADA na campanha
+   (primeiro dia com registro no histórico inteiro, desempate pelo id), não
+   pelo ranking do período: não muda com filtro, recarga nem ponto novo. Oito
+   cores (as 5 validadas + 3 escuras conferidas na mesma simulação de
+   daltonismo); do 9º em diante, "Outros pontos". Dica por mouse, foco e
+   toque. Tabela Ponto / Cidade / Status / Exibições — Programadas e
+   Entrega % saem só da tela do cliente. O comprovante segue o período, até
+   os 12 meses que o CSV já cobria (rota intocada).
+4. **Fonte do KPI em unidade do card** (`cqi`, o card é container), não da
+   janela: card da mesma largura, número do mesmo tamanho; o observador por
+   card cobre o resto.
+5. **Histórico de indicações derivado, nunca registrado à parte**
+   (`GET /anunciantes/me/indicacoes`): quem é indicado vem do cadastro
+   (`indicado_por_cupom`), os pagamentos dos ciclos pagos
+   (`ciclos_contratados`, compra/renovação — o que gera crédito), os
+   créditos do ledger (idempotente pela cobrança). O resumo soma as mesmas
+   linhas. Projeção fechada: nome comercial, dia do cadastro, plano em vigor,
+   pagamentos, créditos e datas — nunca contato, documento, endereço, valor
+   ou id.
+6. **QR Code do mesmo link**, gerado no servidor (`qrcode`, opções do QR
+   institucional) a partir de UMA string (`linkDeIndicacao`, base só do
+   `SITE_URL`) que também vira o texto à vista, o "Copiar link" e o
+   WhatsApp. O cupom é por conta (a tabela é `cupons_ponto (conta_id PK)`),
+   então é um QR por conta-ponto; cupom por estabelecimento pediria banco
+   novo e mudaria a regra de crédito — fora.
+7. **Meus pontos**: só apresentação (capa com a foto e o estado, nome em
+   destaque, telas/Plano Básico/crédito em blocos), arrumada por container
+   query do próprio card. Dados, ações e avisos os de antes.
+
+Consequências: `situacaoDoCusto` devolve valor no `tipo: 'beneficio'` (o
+teste antigo "benefício nunca mostra valor" virou o teste da referência).
+Quem precisar do custo de um plano do catálogo reusa `cicloDeReferencia` —
+nunca uma segunda conta. Sem migration.

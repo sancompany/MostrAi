@@ -1,4 +1,6 @@
 const pool = require('../db/pool');
+const vigencia = require('../lib/vigencia');
+const { nomeDoCiclo } = require('../lib/ciclos');
 
 // Cupom de indicação da conta (migration 062): até 6 letras do nome (sem
 // acento) + 3 dígitos, prefixado com "PT-". O prefixo veio da época em que
@@ -99,6 +101,63 @@ async function resumoIndicacoes(codigo) {
   return rows[0];
 }
 
+// Histórico de quem se cadastrou pelo link (painel do usuário, 29/09/2026,
+// pedido do dono). Sem livro próprio: cada coluna sai da fonte que já decide
+// aquilo no sistema —
+//   · quem é indicado: `anunciantes.indicado_por_cupom` (gravado no cadastro,
+//     imutável — a mesma régua do "Indicado por", indicadorDoCupom);
+//   · pagamentos: ciclos PAGOS da conta indicada (`ciclos_contratados`,
+//     compra ou renovação) — é exatamente o que passa por aplicarCicloPago,
+//     onde o crédito de indicação nasce; acerto de troca de plano não conta
+//     (não gera crédito);
+//   · créditos: as linhas de indicação do ledger do INDICADOR ($2) com
+//     aquela conta como origem — idempotentes por cobrança (índice único da
+//     migration 079), então reprocessar um pagamento nunca soma duas vezes.
+// Só o que o dono do ponto pode ver: nome comercial, dia do cadastro, plano
+// em vigor, pagamentos e créditos com as datas. Nunca e-mail, telefone,
+// documento, endereço, valor pago nem o id da conta. Conta excluída sai.
+async function historicoDeIndicados(codigo, indicadorContaId) {
+  const { rows } = await pool.query(
+    `SELECT a.nome_empresa AS nome,
+            (a.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS cadastro_em,
+            a.plano_id, a.data_expiracao, p.nome AS plano_nome, p.compromisso_meses AS plano_meses,
+            (SELECT COUNT(*) FROM ciclos_contratados c
+              WHERE c.anunciante_id = a.id AND c.origem IN ('compra', 'renovacao')
+                AND c.cobranca_confirmada_id IS NOT NULL)::int AS pagamentos,
+            COALESCE(l.creditos, 0)::int AS creditos,
+            COALESCE(l.datas, '[]'::json) AS creditos_em
+       FROM anunciantes a
+       LEFT JOIN planos p ON p.id = a.plano_id
+       LEFT JOIN LATERAL (
+         SELECT SUM(cl.quantidade) AS creditos,
+                json_agg(json_build_object(
+                  'data', (cl.criado_em AT TIME ZONE 'America/Sao_Paulo')::date,
+                  'tipo', CASE cl.tipo WHEN 'indicacao_primeiro_pagamento' THEN 'primeiro_pagamento' ELSE 'renovacao' END
+                ) ORDER BY cl.criado_em, cl.id) AS datas
+           FROM creditos_ledger cl
+          WHERE cl.anunciante_id = $2 AND cl.origem_conta_id = a.id
+            AND cl.tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')
+       ) l ON true
+      WHERE a.indicado_por_cupom = $1 AND a.excluido_em IS NULL
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT 200`,
+    [codigo, indicadorContaId],
+  );
+  return rows.map((r) => ({
+    nome: r.nome,
+    cadastroEm: r.cadastro_em,
+    // Plano em vigor, pela régua do gerador (planoVigenteId): vencido é
+    // "sem plano" pra quem olha de fora.
+    plano:
+      r.plano_id && vigencia.coberturaVigente(r.data_expiracao)
+        ? `${r.plano_nome} · ${nomeDoCiclo(r.plano_meses)}`
+        : null,
+    pagamentos: r.pagamentos,
+    creditos: r.creditos,
+    creditosEm: r.creditos_em,
+  }));
+}
+
 module.exports = {
   criarCupom,
   garantirCupom,
@@ -106,4 +165,5 @@ module.exports = {
   buscarPontoPorCupom,
   indicadorDoCupom,
   resumoIndicacoes,
+  historicoDeIndicados,
 };

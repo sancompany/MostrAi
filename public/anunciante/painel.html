@@ -55,6 +55,11 @@
             </div>
             <p>Dados do mês atual, atualizados pelas telas da rede.</p>
           </div>
+          <!-- Quatro indicadores, e só quatro (painel do usuário, 29/09/2026,
+               pedido do dono): horas, exibições (com a média diária dentro),
+               custo por exibição e saldo de veiculação. Cada card tem lugar
+               FIXO e é reescrito no mesmo lugar a cada carga (SSE, resgate) —
+               nada é anexado, então nada empilha. -->
           <div class="kpi-grid" id="kpiGrid">
             <article class="kpi-card kpi-destaque" data-kpi="horas" hidden>
               <span class="kpi-icon kpi-icon-orange" aria-hidden="true">◷</span>
@@ -62,19 +67,21 @@
               <span class="kpi-caption" data-kpi-horas-legenda></span>
               <span class="track" aria-hidden="true"><span class="fill" data-pct="0"></span></span>
             </article>
-            <article class="kpi-card" data-kpi="exibicoes"><span class="kpi-icon" aria-hidden="true">▶</span><span class="kpi-label">Exibições</span><b>-</b><span class="kpi-caption">confirmadas / previstas no mês</span></article>
-            <article class="kpi-card" data-kpi="custo"><span class="kpi-icon" aria-hidden="true">R$</span><span class="kpi-label">Custo por exibição prevista</span><b>-</b><span class="kpi-caption" data-kpi-custo-legenda>Valor contratado ÷ exibições previstas no ciclo</span></article>
-            <article class="kpi-card" data-kpi="media"><span class="kpi-icon" aria-hidden="true">↗</span><span class="kpi-label">Média diária</span><b>-</b><span class="kpi-caption">exibições por dia, desde o início da campanha no mês</span></article>
-            <!-- Banco de horas: lugar FIXO no grid, preenchido por
-                 carregarBancoHoras(). Antes o card era criado por
-                 insertAdjacentHTML('beforeend') a cada chamada — e como o SSE
-                 (Fase 3) passou a reexecutar carregar(), cada volta à aba
-                 empilhava uma cópia nova. Card fixo + hidden é idempotente por
-                 construção: reexecutar só reescreve o mesmo lugar. -->
-            <article class="kpi-card kpi-secondary" data-kpi="banco" hidden>
-              <span class="kpi-icon" aria-hidden="true">＋</span>
+            <article class="kpi-card" data-kpi="exibicoes">
+              <span class="kpi-icon" aria-hidden="true">▶</span>
+              <span class="kpi-label">Exibições</span><b>-</b>
+              <span class="kpi-caption" data-kpi-exibicoes-legenda>confirmadas no mês</span>
+              <span class="kpi-media" data-kpi-media>Média diária: -</span>
+            </article>
+            <article class="kpi-card" data-kpi="custo">
+              <span class="kpi-icon" aria-hidden="true">R$</span>
+              <span class="kpi-label">Custo por exibição</span><b>-</b>
+              <span class="kpi-caption" data-kpi-custo-legenda>Valor do plano ÷ exibições previstas no ciclo</span>
+            </article>
+            <article class="kpi-card" data-kpi="banco">
+              <span class="kpi-icon" aria-hidden="true">⇄</span>
               <span class="kpi-label">Saldo de veiculação</span><b>-</b>
-              <span class="badge badge-pendente" data-kpi-banco-legenda></span>
+              <span class="kpi-caption" data-kpi-banco-legenda></span>
             </article>
           </div>
           <div class="dashboard-notice" id="exibicoesVazio" hidden></div>
@@ -89,26 +96,27 @@
             <div><p class="section-eyebrow">Performance</p><h2 id="tituloPerformance">Acompanhe sua veiculação</h2></div>
             <p>Exibições confirmadas pelas telas onde sua campanha está ativa.</p>
           </div>
-          <div class="performance-grid">
-            <article class="panel painel-grafico" id="painelDia" hidden>
-              <div class="panel-head"><div><h3>Exibições por dia</h3><span class="panel-subtitle">Evolução recente da campanha</span></div><span class="kpi-caption" id="legendaDia"></span></div>
-              <div class="bar-chart" id="graficoDia"></div>
-              <div class="legenda-serie" id="legendaPontosDia" hidden></div>
-            </article>
-
-            <article class="panel painel-pontos-performance" id="painelDetalhe" hidden>
-              <div class="panel-head performance-head">
-                <div><h3>Exibições por ponto</h3><span class="panel-subtitle">Compare entrega e situação das telas</span></div>
-                <div class="performance-actions">
-                  <label for="periodoComprovante">Período</label>
-                  <select id="periodoComprovante"><option value="30">últimos 30 dias</option><option value="90">últimos 90 dias</option><option value="365">últimos 12 meses</option></select>
-                  <a class="btn ghost" id="btnComprovante" href="#" download>Baixar comprovante</a>
-                </div>
-              </div>
-              <div class="bar-chart-h" id="graficoPonto"></div>
-              <div class="performance-table" id="exibicoesDetalhe"></div>
-            </article>
-          </div>
+          <!-- Um card só (painel do usuário, 29/09/2026): "por dia" e "por
+               ponto" eram dois cards contando a mesma entrega. Agora o
+               período escolhido vale pro gráfico empilhado por ponto, pra
+               tabela e pro comprovante. Montado por painel.page.js
+               (desenharPerformance). -->
+          <article class="panel painel-performance" id="painelPerformance" hidden>
+            <div class="panel-head performance-head">
+              <div><h3 id="tituloGrafico">Exibições confirmadas por ponto</h3><span class="panel-subtitle" id="performanceTotal"></span></div>
+              <a class="btn ghost mini" id="btnComprovante" href="#" download>Baixar comprovante</a>
+            </div>
+            <div class="periodos" id="periodosPerformance" role="group" aria-label="Período do gráfico e do comprovante">
+              <button type="button" data-periodo="7d" aria-pressed="false">7 dias</button>
+              <button type="button" data-periodo="30d" aria-pressed="true">30 dias</button>
+              <button type="button" data-periodo="3m" aria-pressed="false">3 meses</button>
+              <button type="button" data-periodo="1a" aria-pressed="false">1 ano</button>
+              <button type="button" data-periodo="max" aria-pressed="false">Máx.</button>
+            </div>
+            <div class="grafico-periodo" id="graficoPerformance"></div>
+            <div class="legenda-serie legenda-pontos" id="legendaPerformance" hidden></div>
+            <div class="performance-table" id="exibicoesDetalhe"></div>
+          </article>
         </section>
 
         <section class="dashboard-section" aria-labelledby="tituloCobertura">
