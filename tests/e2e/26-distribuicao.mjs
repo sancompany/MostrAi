@@ -331,7 +331,7 @@ await admin.evaluate(() => {
 await admin.waitForSelector('.mm-card', { timeout: 10000 });
 const card = () => admin.locator('.mm-card', { hasText: 'Seja um ponto (e2e)' });
 check('card começa aguardando a primeira exibição', /aguardando a primeira exibição/i.test(await card().textContent()), await card().textContent());
-check('0 exibições confirmadas', /0 exibições confirmadas/.test(await card().textContent()));
+check('0 exibições confirmadas', (await card().locator('[data-mm-confirmadas]').textContent()).trim() === '0');
 
 // A TV do bairro pede a hora e toca as duas inserções da mídia.
 const plMidia = await tvBairro.playlist();
@@ -343,12 +343,11 @@ check('entrega comercial intocada', PG(`SELECT COUNT(*) FROM exibicoes_contador 
 
 await admin.locator('#btnRecarregar').click();
 await admin.waitForFunction(() =>
-  [...document.querySelectorAll('.mm-card')].some((el) => /2 exibições confirmadas/.test(el.textContent)),
+  [...document.querySelectorAll('.mm-card [data-mm-confirmadas]')].some((el) => el.textContent.trim() === '2'),
 );
 const textoCard = await card().textContent();
-check('card: "2 exibições confirmadas"', /2 exibições confirmadas/.test(textoCard), textoCard);
-check('card: % da esperada em 30 dias (quando já há esperada)', !/esperada/.test(textoCard) || /\d+% da esperada em 30 dias/.test(textoCard), textoCard);
-check('card: "Última: hoje HH:MM"', /Última: hoje \d\d:\d\d/.test(textoCard), textoCard);
+check('card: 2 exibições confirmadas', (await card().locator('[data-mm-confirmadas]').textContent()).trim() === '2', textoCard);
+check('card: última exibição "hoje HH:MM"', /^hoje \d\d:\d\d$/.test((await card().locator('[data-mm-ultima]').textContent()).trim()), textoCard);
 check('card: reproduzindo normalmente', /reproduzindo normalmente/i.test(textoCard), textoCard);
 await card().locator('[data-editar-midia]').click();
 await admin.waitForSelector('[data-mm-exibicoes]', { timeout: 10000 });

@@ -1958,59 +1958,85 @@ function quandoBR(iso) {
 function entregaDoCard(m) {
   const mt = m.metricas;
   if (!mt) return '';
-  const d30 = mt.entregaPct?.d30;
   let situacao = '';
   if (m.situacaoDerivada === 'ativa') {
     if (entregaAtrasada(m)) {
       const porque = mt.ultimaExibicaoEm
         ? 'a última hora aberta não teve exibição confirmada'
         : 'a primeira exibição passou do prazo';
-      situacao = `<p class="mm-card-linha"><span class="badge badge-err" data-mm-entrega>Entrega atrasada</span> <span class="u-dim">${porque}</span></p>`;
+      situacao = `<p class="mm-card-nota mm-card-nota-atraso" data-mm-entrega><span class="badge badge-err">Entrega atrasada</span><span>${porque}</span></p>`;
     } else if (mt.estado === 'ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO') {
-      situacao = '<p class="mm-card-linha u-dim" data-mm-entrega>Aguardando a primeira exibição</p>';
+      situacao = '<p class="mm-card-nota" data-mm-entrega>Aguardando a primeira exibição</p>';
     } else {
-      situacao = '<p class="mm-card-linha u-dim" data-mm-entrega>Reproduzindo normalmente</p>';
+      situacao = '<p class="mm-card-nota mm-card-nota-ok" data-mm-entrega>Reproduzindo normalmente</p>';
     }
   }
-  return `<div class="mm-card-entrega" data-mm-metricas>
-      <p class="mm-card-linha"><b>${num(mt.confirmadas.total)}</b> ${mt.confirmadas.total === 1 ? 'exibição confirmada' : 'exibições confirmadas'}${d30 == null ? '' : ` <span class="u-dim">· ${d30}% da esperada em 30 dias</span>`}</p>
-      ${situacao}
-      <p class="mm-card-linha u-dim">Última: ${quandoBR(mt.ultimaExibicaoEm)}</p>
+  return `<dl class="mm-card-metricas" data-mm-metricas>
+      <div><dt>Exibições confirmadas</dt><dd data-mm-confirmadas>${num(mt.confirmadas.total)}</dd></div>
+      <div><dt>Última exibição</dt><dd data-mm-ultima>${quandoBR(mt.ultimaExibicaoEm)}</dd></div>
+    </dl>
+    ${situacao}`;
+}
+
+// Prévia do card: miniatura, nunca player — nada de controles de vídeo na
+// listagem (quem quer ver a peça rodando abre Editar). Mostra o quadro que o
+// FFmpeg já gera no upload (`thumbnail_url`, src/lib/ffmpeg.js) — imagem
+// também vira MP4 lá, então o normalizado nunca serve de <img>. A peça fica
+// numa moldura 9:16 de cantos arredondados, inteira (contain), e a faixa
+// atrás é o próprio quadro desfocado, em vez de barras pretas. Sem quadro
+// (linha antiga), o primeiro frame do vídeo, sem controles e mudo.
+function previewDoCard(m) {
+  const ehImagem = ehImagemArquivo(m.arquivo_original_url);
+  const src = m.thumbnail_url;
+  let peca = '<span class="mm-card-thumb mm-card-thumb-vazia" aria-hidden="true"></span>';
+  if (src) peca = `<img class="mm-card-thumb" src="${esc(src)}" alt="" loading="lazy">`;
+  else if (m.arquivo_normalizado_url) {
+    peca = `<video class="mm-card-thumb" src="${esc(m.arquivo_normalizado_url)}#t=0.5" muted playsinline preload="metadata" tabindex="-1" aria-hidden="true"></video>`;
+  }
+  return `<div class="mm-card-preview">
+      ${src ? `<img class="mm-card-fundo" src="${esc(src)}" alt="" aria-hidden="true" loading="lazy">` : ''}
+      <div class="mm-card-moldura">${peca}</div>
+      <span class="mm-card-tipo">${ehImagem ? 'Imagem' : 'Vídeo'}</span>
     </div>`;
 }
 
 // Card da grade de Mídias próprias (refino da Mídia Mostraí, 29/09/2026):
-// em pé — preview em cima, informações embaixo, ações no rodapé. A área do
-// preview é a mesma em todo card e a peça 9:16 cabe inteira nela (contain,
-// fundo escuro como a TV), sem corte nem distorção. O deitado de antes
-// espremia os dados ao lado da miniatura.
+// em pé — prévia em cima, informações embaixo, ações no rodapé. Ordem de
+// leitura: nome e estado; parâmetros numa linha (duração · frequência ·
+// cobertura); período, quando há; as duas métricas lado a lado; a situação
+// da entrega. Ações: as do dia a dia à esquerda, as destrutivas à direita.
 function montarCardMidia(m) {
   const sit = m.situacaoDerivada;
   const cobertura = m.cobertura_tipo === 'rede' ? 'Toda a rede' : plural(m.qtd_pontos, 'ponto');
   const periodo =
     m.periodo_inicio || m.periodo_fim
-      ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} até ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
+      ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} → ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
       : '';
-  const acoes = [`<button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>`];
-  if (sit === 'pausada') acoes.push(`<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`);
+  const principais = [`<button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>`];
+  if (sit === 'pausada')
+    principais.push(`<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`);
   else if (sit !== 'encerrada')
-    acoes.push(`<button class="btn ghost mini" data-pausar-midia="${m.id}">Pausar</button>`);
+    principais.push(`<button class="btn ghost mini" data-pausar-midia="${m.id}">Pausar</button>`);
+  const destrutivas = [];
   if (sit !== 'encerrada')
-    acoes.push(`<button class="btn perigo-sutil mini" data-encerrar-midia="${m.id}">Retirar do ar</button>`);
+    destrutivas.push(`<button class="btn perigo-sutil mini" data-encerrar-midia="${m.id}">Retirar do ar</button>`);
   if (PODE_EXCLUIR_MIDIA.includes(sit))
-    acoes.push(`<button class="btn perigo-sutil mini" data-excluir-midia="${m.id}">Excluir</button>`);
+    destrutivas.push(`<button class="btn perigo-sutil mini" data-excluir-midia="${m.id}">Excluir</button>`);
   return `<article class="mm-card${entregaAtrasada(m) ? ' mm-card-atrasada' : ''}" data-mm-card="${m.id}">
-    <div class="mm-card-preview">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
+    ${previewDoCard(m)}
     <div class="mm-card-corpo">
       <div class="mm-card-topo">
-        <h4>${esc(m.nome_interno)}</h4>
+        <h4 title="${esc(m.nome_interno)}">${esc(m.nome_interno)}</h4>
         <span class="badge ${SITUACAO_MIDIA_BADGE[sit] || ''}" data-mm-estado>${SITUACAO_MIDIA_ROTULO[sit] || sit}</span>
       </div>
       <p class="mm-card-fatos"><span>${m.duracao_segundos ? `${m.duracao_segundos} s` : '—'}</span><span>${m.frequencia_hora}×/hora</span><span>${cobertura}</span></p>
-      ${periodo ? `<p class="mm-card-linha u-dim">${periodo}</p>` : ''}
+      ${periodo ? `<p class="mm-card-periodo" data-mm-periodo>${periodo}</p>` : ''}
       ${entregaDoCard(m)}
       ${m.aprovacao_status !== 'aprovado' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
-      <div class="acoes mm-card-acoes">${acoes.join('')}</div>
+    </div>
+    <div class="mm-card-acoes">
+      <div class="mm-card-acoes-grupo">${principais.join('')}</div>
+      ${destrutivas.length ? `<div class="mm-card-acoes-grupo">${destrutivas.join('')}</div>` : ''}
     </div>
   </article>`;
 }

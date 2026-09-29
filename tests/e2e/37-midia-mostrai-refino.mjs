@@ -256,10 +256,11 @@ check('card atrasado: badge "Entrega atrasada" com o porquê', /Entrega atrasada
 check('card atrasado: marcado', await p.isVisible('.mm-card-atrasada:has-text("Institucional loja")'));
 const cCafe = await card('Promoção Café da Manhã').textContent();
 check('card: nome, estado, duração, frequência, cobertura', /Ativa/.test(cCafe) && /10 s/.test(cCafe) && /6×\/hora/.test(cCafe) && /Toda a rede/.test(cCafe), cCafe);
-check('card: exibições confirmadas e última', /0 exibições confirmadas/.test(cCafe) && /Última: —/.test(cCafe), cCafe);
+const metricaCafe = async (attr) => (await card('Promoção Café da Manhã').locator(`[${attr}]`).textContent()).trim();
+check('card: exibições confirmadas e última', (await metricaCafe('data-mm-confirmadas')) === '0' && (await metricaCafe('data-mm-ultima')) === '—', cCafe);
 check('card: aguardando primeira exibição', /Aguardando a primeira exibição/.test(cCafe), cCafe);
 const cAgendada = await card('Seja um ponto').textContent();
-check('card agendado: "Agendada", 7 s, 1 ponto, período', /Agendada/.test(cAgendada) && /7 s/.test(cAgendada) && /1 ponto/.test(cAgendada) && /até sem fim/.test(cAgendada), cAgendada);
+check('card agendado: "Agendada", 7 s, 1 ponto, período', /Agendada/.test(cAgendada) && /7 s/.test(cAgendada) && /1 ponto/.test(cAgendada) && /→ sem fim/.test(cAgendada), cAgendada);
 check('card encerrado: "Encerrada"', /Encerrada/.test(await card('Campanha antiga').textContent()));
 check('card pausado: "Pausada" e [Retomar]', /Pausada/.test(await card('Aviso de horário').textContent()) && (await card('Aviso de horário').locator('[data-retomar-midia]').count()) === 1);
 check('preview em cima, informações embaixo', await p.evaluate(() => {
@@ -278,8 +279,25 @@ check('mesma área de preview em todo card', await p.evaluate(() => {
   const alturas = [...document.querySelectorAll('.mm-card-preview')].map((e) => Math.round(e.getBoundingClientRect().height));
   return new Set(alturas).size === 1;
 }));
-check('preview inteiro (contain), sem deformar', await p.evaluate(() =>
-  [...document.querySelectorAll('.mm-card-preview .mm-card-asset')].every((a) => getComputedStyle(a).objectFit === 'contain'),
+check('listagem sem player: nenhum <video> com controles na grade', (await p.locator('.mm-grade video[controls]').count()) === 0);
+check('prévia é a miniatura (img), não vídeo, quando há quadro gerado', await p.evaluate(() =>
+  [...document.querySelectorAll('.mm-card-moldura')].every((m) => m.querySelector('img.mm-card-thumb') && !m.querySelector('video')),
+));
+check('moldura 9:16, peça inteira (contain), sem deformar', await p.evaluate(() =>
+  [...document.querySelectorAll('.mm-card-moldura')].every((m) => {
+    const r = m.getBoundingClientRect();
+    const t = m.querySelector('.mm-card-thumb');
+    return Math.abs(r.width / r.height - 9 / 16) < 0.02 && getComputedStyle(t).objectFit === 'contain';
+  }),
+));
+check('ações: dia a dia à esquerda, destrutivas à direita, cada botão numa linha', await p.evaluate(() =>
+  [...document.querySelectorAll('.mm-card-acoes')].every((a) => {
+    const grupos = [...a.querySelectorAll('.mm-card-acoes-grupo')];
+    const botoesInteiros = [...a.querySelectorAll('.btn')].every((b) => b.getBoundingClientRect().height < 40);
+    if (grupos.length < 2) return botoesInteiros;
+    const [g1, g2] = grupos.map((g) => g.getBoundingClientRect());
+    return botoesInteiros && Math.abs(g2.right - a.getBoundingClientRect().right) < 16 && g1.left < g2.left;
+  }),
 ));
 await shot(p, 'pagina-inteira', { fullPage: true });
 await shot(await p.$('.mm-kpis'), 'kpis');

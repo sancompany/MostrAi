@@ -3897,77 +3897,182 @@ button.pend-bloco:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+.mm-card:hover {
+  box-shadow: var(--sombra-hover);
 }
 .mm-card-atrasada {
   border-color: color-mix(in srgb, var(--err) 40%, var(--border));
 }
-/* Mesma área em todo card; a peça 9:16 cabe inteira, centrada, sem corte. */
+/* Prévia: miniatura estática, nunca player. A peça 9:16 fica inteira numa
+   moldura de cantos arredondados; atrás, o próprio quadro desfocado em vez
+   de barras pretas. Mesma altura em todo card. */
 .mm-card-preview {
-  height: 220px;
-  background: var(--escuro-fundo);
+  position: relative;
+  height: 196px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
 }
-.mm-card-preview .mm-card-asset {
+.mm-card-fundo {
+  position: absolute;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(20px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.mm-card-moldura {
+  position: relative;
+  height: 168px;
+  aspect-ratio: 9 / 16;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--escuro-fundo);
+  box-shadow:
+    0 0 0 1px rgba(20, 23, 31, 0.08),
+    0 6px 16px rgba(20, 23, 31, 0.22);
+}
+.mm-card-thumb {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
   object-fit: contain;
-  background: var(--escuro-fundo);
+  pointer-events: none;
+}
+.mm-card-tipo {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(20, 23, 31, 0.62);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
 }
 .mm-card-corpo {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px 14px;
+  gap: 8px;
+  padding: 14px 16px;
   min-width: 0;
 }
 .mm-card-topo {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 .mm-card-topo h4 {
   margin: 0;
-  font-size: 0.96rem;
-  line-height: 1.35;
   min-width: 0;
+  font-size: 0.97rem;
+  line-height: 1.35;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 .mm-card-topo .badge {
   flex-shrink: 0;
 }
+/* Parâmetros numa linha: duração · frequência · cobertura. */
 .mm-card-fatos {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0;
-  font-size: 0.84rem;
+  gap: 2px 0;
+  margin: -2px 0 0;
+  color: var(--text-dim);
+  font-size: 0.83rem;
   font-variant-numeric: tabular-nums;
 }
-.mm-card-linha {
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.45;
+.mm-card-fatos span + span::before {
+  content: '·';
+  padding: 0 7px;
+  color: var(--borda-forte);
 }
-.mm-card-entrega {
+.mm-card-periodo {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.mm-card-metricas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: var(--r-controle);
+}
+.mm-card-metricas dt {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.mm-card-metricas dd {
+  margin: 2px 0 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.mm-card-nota {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-top: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.mm-card-nota-ok {
+  color: var(--ok);
+}
+.mm-card-nota-ok::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.mm-card-nota-atraso {
+  color: var(--err-texto);
+}
+/* Rodapé: dia a dia à esquerda, destrutivas à direita (peso de texto). */
+.mm-card-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border);
 }
-.mm-card-entrega b {
-  font-variant-numeric: tabular-nums;
-}
-.mm-card-acoes {
-  margin-top: auto;
-  padding-top: 8px;
-  flex-wrap: wrap;
+.mm-card-acoes-grupo {
+  display: flex;
   gap: 6px;
+}
+.mm-card-acoes-grupo + .mm-card-acoes-grupo {
+  margin-left: auto;
+  gap: 2px;
+}
+.mm-card-acoes .btn.perigo-sutil {
+  padding: 0 8px;
 }
 .mm-vazio {
   max-width: 520px;
