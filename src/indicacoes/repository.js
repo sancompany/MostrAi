@@ -73,6 +73,17 @@ async function buscarPontoPorCupom(codigo) {
   return rows[0] || null;
 }
 
+// A REGRA ÚNICA de "este link indica alguém" (29/09/2026): o cadastro grava
+// a indicação com ela e a página de cadastro mostra "Indicado por" com ela —
+// o nome que aparece é o da conta que o cadastro vai associar, nunca outro.
+// Cupom de ponto sempre começa com "PT-" (migration 062); o de vendedor não
+// vale mais (programa aposentado, 23/09/2026). Devolve o cupom canônico
+// (`codigo`, em maiúsculas) e o nome do negócio que indica, ou null.
+async function indicadorDoCupom(texto) {
+  const cupom = String(texto ?? '').toUpperCase();
+  return cupom.startsWith('PT-') ? buscarPontoPorCupom(cupom) : null;
+}
+
 // Atividade das indicações em número, nunca em pessoa: quantas contas se
 // cadastraram com o código e quantas já pagaram. Nome, e-mail ou documento
 // de quem foi indicado não saem daqui.
@@ -93,5 +104,6 @@ module.exports = {
   garantirCupom,
   buscarCupomPorConta,
   buscarPontoPorCupom,
+  indicadorDoCupom,
   resumoIndicacoes,
 };

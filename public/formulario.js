@@ -413,17 +413,21 @@ const REGRA_SENHA = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 function ligarForcaSenha(escopo) {
   (escopo || document).querySelectorAll('[data-senha]').forEach((input) => {
     input.removeAttribute('minlength');
-    const dica = document.createElement('p');
-    dica.className = 'form-hint';
-    dica.textContent = 'Mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo (ex.: @, #, -).';
-    // A dica sai DEPOIS da linha de campos, não dentro da coluna da senha:
-    // presa na coluna, ela herdava a largura do campo (140px no celular) e
-    // a frase virava quatro linhas espremidas ao lado do "Confirmar senha".
-    // Ela vale pro par inteiro, então ocupa a largura inteira.
-    dica.dataset.dicaSenha = '';
-    const ancora = input.closest('.field-row') || input.closest('.senha-wrap') || input;
-    if (!ancora.nextElementSibling?.hasAttribute?.('data-dica-senha')) {
-      ancora.insertAdjacentElement('afterend', dica);
+    // Página que já traz a dica na marcação, no lugar dela (redefinir-senha:
+    // campos um embaixo do outro, dica depois dos dois), fica com a sua.
+    if (!input.form?.querySelector('[data-dica-senha]')) {
+      const dica = document.createElement('p');
+      dica.className = 'form-hint';
+      dica.textContent = 'Mínimo 8 caracteres, com maiúscula, minúscula, número e símbolo (ex.: @, #, -).';
+      // A dica sai DEPOIS da linha de campos, não dentro da coluna da senha:
+      // presa na coluna, ela herdava a largura do campo (140px no celular) e
+      // a frase virava quatro linhas espremidas ao lado do "Confirmar senha".
+      // Ela vale pro par inteiro, então ocupa a largura inteira.
+      dica.dataset.dicaSenha = '';
+      const ancora = input.closest('.field-row') || input.closest('.senha-wrap') || input;
+      if (!ancora.nextElementSibling?.hasAttribute?.('data-dica-senha')) {
+        ancora.insertAdjacentElement('afterend', dica);
+      }
     }
     const conferir = () => {
       input.setCustomValidity(

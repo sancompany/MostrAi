@@ -9,6 +9,31 @@ const msg = document.getElementById('msg');
   const entrar = document.querySelector('header.site nav a[href="/anunciante/login.html"]');
   if (plano && entrar) entrar.href = `/anunciante/login.html?plano=${encodeURIComponent(plano)}`;
 })();
+// Link de indicação (?ref=, gerado em public/creditos.js): mostra de quem
+// veio a indicação antes de a pessoa preencher (29/09/2026). O nome vem de
+// GET /indicacoes/:codigo, que usa a MESMA régua do cadastro
+// (indicacoesRepo.indicadorDoCupom) — o que aparece é quem fica associado.
+// A consulta só decide o que MOSTRAR: o cupom vai sempre no envio e quem
+// decide a indicação é o POST (abaixo). Um 404 aqui pode vir de instância
+// antiga no meio de um deploy, sem esta rota — tratá-lo como "inválido"
+// descartaria indicação válida e o crédito do ponto (revisão Codex do #102).
+const ref = new URLSearchParams(window.location.search).get('ref');
+const indicadoPor = document.getElementById('indicadoPor');
+(async function mostrarQuemIndica() {
+  if (!ref || !indicadoPor) return;
+  try {
+    const r = await fetch(`${API_BASE_URL}/indicacoes/${encodeURIComponent(ref)}`);
+    if (!r.ok) return;
+    const { nome } = await r.json();
+    if (!nome) return;
+    const forte = document.createElement('b');
+    forte.textContent = nome;
+    indicadoPor.replaceChildren('Indicado por: ', forte);
+    indicadoPor.hidden = false;
+  } catch {
+    // Sem a linha; o cadastro segue normalmente.
+  }
+})();
 // Trava o botão enquanto a conta é criada: dois toques seguidos no celular
 // mandavam dois cadastros, e o segundo voltava "e-mail já cadastrado" pra
 // quem acabou de criar a conta.
@@ -24,7 +49,6 @@ form.addEventListener('submit', async (e) => {
   // Endereço vai em partes (CEP, logradouro, número, complemento, bairro,
   // cidade, UF — D5, 24/09/2026); quem compõe a linha é o servidor
   // (src/lib/endereco.js), não esta página.
-  const ref = new URLSearchParams(window.location.search).get('ref');
   if (ref) dados.indicado_por_cupom = ref;
   try {
     let r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
@@ -38,13 +62,15 @@ form.addEventListener('submit', async (e) => {
     // cupom pra tentar de novo, porque não existe campo. Então a tela avisa e
     // recomeça sem o cupom: cadastro travado por um link de terceiro seria um
     // beco sem saída pior do que o silêncio de antes.
-    if (!r.ok && ref) {
+    if (!r.ok && dados.indicado_por_cupom) {
       const corpoRef = await r
         .clone()
         .json()
         .catch(() => ({}));
       if (corpoRef.campo === 'indicado_por_cupom') {
         delete dados.indicado_por_cupom;
+        // O servidor não vai associar: a linha "Indicado por" sai junto.
+        if (indicadoPor) indicadoPor.hidden = true;
         msg.textContent = 'O cupom de indicação desse link não está mais ativo, seguimos sem ele.';
         msg.className = 'form-msg';
         r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {

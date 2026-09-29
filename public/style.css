@@ -1989,6 +1989,12 @@ body.menu-aberto .whatsapp-fab { opacity: 0; visibility: hidden; }
 .chave-box { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; word-break: break-all; }
 .aviso-fundador { background: linear-gradient(135deg, rgba(255,122,26,.12), rgba(255,122,26,.03)); border: 1px solid rgba(255,122,26,.35); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; font-size: .92rem; }
 .aviso-fundador b { color: var(--brand-text); }
+/* "Indicado por: …" no cadastro (29/09/2026): discreto, no topo do card. */
+.indicado-por { margin: 0; font-size: .92rem; color: var(--text-dim); overflow-wrap: anywhere; }
+.indicado-por b { color: var(--text); font-weight: 700; }
+/* Regra da senha depois dos DOIS campos, antes do botão (redefinir-senha,
+   29/09/2026): sem a margem negativa do .form-hint, que a colava no campo. */
+.form-hint.dica-senha-par { margin: 0; line-height: 1.45; }
 .plan-card .vagas { font-size: .78rem; font-weight: 700; color: var(--brand-text); }
 
 /* Painel da tela (player: PIN abre, mostra o que rodou e a saúde da tela) */
