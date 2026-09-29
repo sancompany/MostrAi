@@ -13,19 +13,16 @@ const msg = document.getElementById('msg');
 // veio a indicação antes de a pessoa preencher (29/09/2026). O nome vem de
 // GET /indicacoes/:codigo, que usa a MESMA régua do cadastro
 // (indicacoesRepo.indicadorDoCupom) — o que aparece é quem fica associado.
-// Indicação inválida não mostra nada e nem vai no envio; falha de rede não
-// mostra nada, mas o cupom segue no envio e o servidor decide.
+// A consulta só decide o que MOSTRAR: o cupom vai sempre no envio e quem
+// decide a indicação é o POST (abaixo). Um 404 aqui pode vir de instância
+// antiga no meio de um deploy, sem esta rota — tratá-lo como "inválido"
+// descartaria indicação válida e o crédito do ponto (revisão Codex do #102).
 const ref = new URLSearchParams(window.location.search).get('ref');
 const indicadoPor = document.getElementById('indicadoPor');
-let refRecusado = false;
 (async function mostrarQuemIndica() {
   if (!ref || !indicadoPor) return;
   try {
     const r = await fetch(`${API_BASE_URL}/indicacoes/${encodeURIComponent(ref)}`);
-    if (r.status === 404) {
-      refRecusado = true;
-      return;
-    }
     if (!r.ok) return;
     const { nome } = await r.json();
     if (!nome) return;
@@ -52,7 +49,7 @@ form.addEventListener('submit', async (e) => {
   // Endereço vai em partes (CEP, logradouro, número, complemento, bairro,
   // cidade, UF — D5, 24/09/2026); quem compõe a linha é o servidor
   // (src/lib/endereco.js), não esta página.
-  if (ref && !refRecusado) dados.indicado_por_cupom = ref;
+  if (ref) dados.indicado_por_cupom = ref;
   try {
     let r = await fetch(`${API_BASE_URL}/anunciantes/cadastro`, {
       method: 'POST',
@@ -73,7 +70,6 @@ form.addEventListener('submit', async (e) => {
       if (corpoRef.campo === 'indicado_por_cupom') {
         delete dados.indicado_por_cupom;
         // O servidor não vai associar: a linha "Indicado por" sai junto.
-        refRecusado = true;
         if (indicadoPor) indicadoPor.hidden = true;
         msg.textContent = 'O cupom de indicação desse link não está mais ativo, seguimos sem ele.';
         msg.className = 'form-msg';

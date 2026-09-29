@@ -214,6 +214,24 @@ const erros = [];
   await ctx.close();
 }
 
+{
+  // Caso E — a consulta do nome dá 404 (instância antiga no meio de um deploy,
+  // sem a rota) com uma ref VÁLIDA: não mostra a linha, mas a indicação vai no
+  // envio e a conta fica com o indicador (revisão Codex do #102).
+  const { ctx, p } = await pagina(1440, erros);
+  await p.route('**/indicacoes/**', (route) => route.fulfill({ status: 404, body: 'Not Found' }));
+  await p.goto(`${B}/anunciante/cadastro.html?ref=${padaria.codigo}`);
+  await p.waitForLoadState('load');
+  await p.waitForTimeout(300);
+  const l = await linhaIndicacao(p);
+  check('E: consulta 404 → sem a linha', l && !l.visivel, JSON.stringify(l));
+  const email = await preencherCadastro(p);
+  await Promise.all([p.waitForURL(/painel|confirmar-plano/, { timeout: 15000 }), p.click('#formCadastro [type=submit]')]);
+  const gravado = PG(`SELECT coalesce(indicado_por_cupom, 'NULO') FROM anunciantes WHERE contato_email = '${email}'`);
+  check('E: a indicação válida não se perde (vai no envio)', gravado === padaria.codigo, gravado);
+  await ctx.close();
+}
+
 // Responsivo — nome comprido
 for (const largura of LARGURAS) {
   const { ctx, p } = await pagina(largura, erros);
