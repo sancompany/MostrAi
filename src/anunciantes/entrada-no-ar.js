@@ -1,6 +1,8 @@
 const pool = require('../db/pool');
 const pontosRepo = require('../pontos/repository');
+const concorrencia = require('../categorias/concorrencia');
 const { pontosDoAnunciante } = require('../lib/pacing');
+const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 
 // Primeira entrada no ar (estação de distribuição, 27/09/2026): entre
@@ -109,33 +111,40 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 
 // Os pontos em que a conta pode tocar AGORA — a mesma conta do gerador:
 // fatia de `pontosDoAnunciante` (escolha ou sorteio estável) e a trava de
-// ramo (a conta do mesmo ramo do ponto não entra, salvo a dona que escolheu
-// o próprio ponto — gerador.js#anunciantesElegiveis).
+// ramo (a conta do mesmo ramo do ponto, ou de um ramo concorrente direto
+// dele, não entra, salvo a dona que escolheu o próprio ponto —
+// gerador.js#anunciantesElegiveis, categorias/concorrencia.js).
 // limite: a cota de autoanúncio (`excluirContaId` do gerador) não entra —
 // zerada em todas as telas desde a migration 049.
-async function coberturaDaConta(conta, plano, db = pool) {
-  const [{ rows: escolhas }, { rows: noAr }, bloqueados] = await Promise.all([
+// Plano Básico do ponto (migration 103): o próprio ponto de cada Básico
+// ativo entra na cobertura, sem trava de ramo (é o estabelecimento da conta)
+// e sem ocupar vaga da escolha comercial.
+async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
+  const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
       `SELECT p.id, p.horario_semanal, p.categoria_id, p.anunciante_id AS dono_id
          FROM pontos p WHERE p.status = 'em_operacao' ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
+    concorrencia.concorrentesDe(conta.categoria_id, db),
   ]);
   const escolhidos = escolhas.map((r) => r.ponto_id);
-  const ids = pontosDoAnunciante(
-    { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
-    noAr.map((p) => p.id),
-    bloqueados,
-  );
+  const ids = plano
+    ? pontosDoAnunciante(
+        { id: conta.id, pontosIncluidos: plano.pontos_incluidos, escolhidos },
+        noAr.map((p) => p.id),
+        bloqueados,
+      )
+    : [];
   const naFatia = new Set(ids);
+  const proprios = new Set(basicos.map((b) => b.ponto_id));
   return noAr.filter(
     (p) =>
-      naFatia.has(p.id) &&
-      (!p.categoria_id ||
-        !conta.categoria_id ||
-        p.categoria_id !== conta.categoria_id ||
-        (p.dono_id === conta.id && escolhidos.includes(p.id))),
+      proprios.has(p.id) ||
+      (naFatia.has(p.id) &&
+        (!concorrencia.bloqueia(p.categoria_id, conta.categoria_id, concorrentes) ||
+          (p.dono_id === conta.id && escolhidos.includes(p.id)))),
   );
 }
 
@@ -162,13 +171,27 @@ async function primeiraHoraProgramada(contaId, desde, db = pool) {
 
 // Decide o estado de cada peça aprovada. `criativos`: linhas de `criativos`
 // com `em_rodizio` (dentro do limite de peças simultâneas do plano, conta
-// veiculando). Devolve Map(id → entrada).
-async function entradaNoArDasPecas({ conta, plano, contaVeicula, criativos, agora = new Date(), db = pool }) {
+// veiculando). `teto`: o teto de peça da conta hoje — só com o Básico, a
+// peça mais longa que ele não roda nunca, e o motivo diz isso em vez de
+// "espere outra sair". Devolve Map(id → entrada).
+async function entradaNoArDasPecas({
+  conta,
+  plano,
+  basicos = [],
+  teto = null,
+  contaVeicula,
+  criativos,
+  agora = new Date(),
+  db = pool,
+}) {
   const resultado = new Map();
   const aprovadas = criativos.filter((c) => c.status === 'aprovado');
   if (!aprovadas.length) return resultado;
   const emRodizio = aprovadas.filter((c) => c.em_rodizio);
-  const cobertura = contaVeicula && plano && emRodizio.length ? await coberturaDaConta(conta, plano, db) : [];
+  const cobertura =
+    contaVeicula && (plano || basicos.length) && emRodizio.length
+      ? await coberturaDaConta(conta, plano, db, basicos)
+      : [];
   const relogio = criarRelogioDaCobertura(cobertura);
 
   for (const c of aprovadas) {
@@ -191,9 +214,11 @@ async function entradaNoArDasPecas({ conta, plano, contaVeicula, criativos, agor
           ? conta.suspenso
             ? 'conta_suspensa'
             : 'sem_plano_vigente'
-          : c.arquivo_normalizado_url
-            ? 'fora_do_limite_de_pecas'
-            : 'processando',
+          : !c.arquivo_normalizado_url
+            ? 'processando'
+            : !plano && !cabeNoTeto(c.duracao_segundos, teto)
+              ? 'acima_da_duracao_maxima'
+              : 'fora_do_limite_de_pecas',
       });
       continue;
     }

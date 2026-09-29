@@ -1,12 +1,170 @@
 # Current Handoff
 
 ## Updated
-2026-09-28 — **ESTAÇÃO MESTRE DE FINALIZAÇÃO = PAUSADA (não concluída).**
-Seis PRs abertos, nenhum mergeado: #87 UX global, #88 Lógica, #89 Mídia,
-#90 Pontos/Rede, #91 Indicações, #92 Conta+Criativos (empilhado em #87).
-Inventário completo, pendências e **RETOMAR DAQUI** em
-`docs/auditoria-finalizacao-checkpoint.md`. Não iniciar Passada 2 nem
-outra estação sem o dono; nenhum merge sem autorização.
+2026-09-29 — **Integração dos PRs paralelos da estação de finalização**
+(pedido do dono: um por vez, cada um reconciliado com a `main` do anterior,
+merge + CI + deploy + smoke antes do próximo). #88 Lógica, #89 Mídia e #90
+Pontos/Rede mergeados; #91 Indicações fechado como substituído (#102/#105 já
+entregavam; PENDENCIAS §V V3); #87 UX global integrado antes do #92, que é
+empilhado nele. O checkpoint da estação pausada
+(`docs/auditoria-finalizacao-checkpoint.md`, 28/09) fica como registro
+histórico — o "RETOMAR DAQUI" dele está cumprido. **Não iniciar outra
+estação.**
+2026-09-29 — **Estação FINAL PRÉ-LANÇAMENTO: comunicados por e-mail no admin**
+([PR #106](https://github.com/sancompany/MostrAi/pull/106), branch
+`claude/serene-lovelace-1zx4a0`, **merge autorizado pelo dono** em 29/09,
+depois que o #104 entrou na `main`). Reconciliado com a `main` final
+(`c1ba708`, #104) por merge, sem escolher lado: na coluna de negócio da
+Visão geral ficam os dois blocos — QR institucional e, abaixo, Comunicados
+por e-mail (o `<div>` e o `blocoIndependente` de cada um em `renderResumo`);
+em `tests/e2e/README.md`, o 38 (Mídia) e o 39 (comunicados). Card compacto
+"Comunicados por e-mail" → modal (público com "Destinatários: N contas",
+assunto, título, mensagem, botão `https://` opcional → prévia que é o e-mail
+real → teste `[TESTE]` → confirmação Mostraí) → histórico com Reenviar
+falhas. Envio pela `email_outbox` existente (tipo `comunicado`, um e-mail
+por conta, sozinha no "Para", 30/min, fim da fila, teto de 300/24 h); sem
+envio em dobro por Idempotency-Key + mesmo conteúdo em 24 h + chave por
+destinatário + pergunta `por-chave` quando a resposta se perde. Fora:
+excluída, anonimizada, conta própria, suspensa, e-mail não confirmado, quem
+revogou "novidades" e e-mail inválido (régua em
+`src/comunicados/publicos.js`). Migration 108 (só tabelas novas), aplicada
+no arranque do contêiner. UI em `public/admin/comunicados.js`/`.css`.
+ADR-032, RN-68, `docs/PENDENCIAS.md` §W, e2e 39. **Depois do merge:** CI no
+SHA da `main`, deploy no ar com a 108, e o dono manda um TESTE pra caixa da
+equipe antes do primeiro envio real (§W). **Não iniciar outra estação.**
+2026-09-29 — **Estação: refino operacional da Mídia Mostraí** (branch
+`claude/busy-noether-hheir2-midia-refino`, worktree própria, PR próprio,
+**mergeado pelo dono em 29/09 — `c1ba708`**). A página ficou só de conteúdo
+próprio: indicadores ativas/agendadas/pausadas/com atraso (o atraso é o
+`ATIVA_ENTREGA_ATRASADA` da métrica), vídeo institucional compacto, cards em
+pé (preview em cima, ações no rodapé) em 3/2/1 colunas, e **Excluir** só de
+pausada/encerrada, com modal. Exclusão **lógica** (migration 107 só amplia o
+CHECK de `situacao` com `'excluida'`): DELETE físico cascatearia o
+proof-of-play. O QR saiu pra Visão geral (compacto, [Gerenciar] abre os
+controles de sempre num modal) e a capacidade pra Rede → Ponto (mesma
+`/admin/capacidade-rede`). Formulário ganhou Resumo e capacidade projetada
+por ponto ("Cabe normalmente" / "Não há capacidade…"). RN-67; e2e 38 (27,
+26, 24 e 19 acompanham). **Atenção:** o PR #91 (pausado) tem a mesma ideia
+na migration 101 dele — ao retomar, fica a 107 desta estação. **Não iniciar
+outra estação.**
+2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
+([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
+`claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados
+pelo dono no próprio pedido). Quatro indicadores (horas; exibições com
+"de N previstas" e a média diária dentro; custo por exibição — plano por
+créditos mostra o custo de REFERÊNCIA do plano equivalente, mesma divisão do
+pago, sem gravar nada; saldo de veiculação "Em dia"/"Xh Ymin a entregar" do
+banco existente). Performance num card só: filtros 7d/30d/3m/1a/Máx
+reagrupando `porDiaPonto` no navegador, cor fixa por ponto (ordem de entrada
+na campanha), dica por foco/toque, tabela Ponto/Cidade/Status/Exibições,
+comprovante do mesmo período. U2 (número do KPI vazando ao alargar a janela)
+reproduzido e corrigido (`cqi`). Meus pontos refinado (só visual).
+Indicações: QR do mesmo link (`GET /anunciantes/me/indicacoes/qr.svg`) e
+histórico derivado do cadastro + ciclos pagos + ledger
+(`GET /anunciantes/me/indicacoes`), sem dado privado. "Indicado por" em
+laranja. Sem migration. ADR-031; `docs/PENDENCIAS.md` §V; e2e 37.
+**Atenção:** o PR #91 (pausado) tem outro histórico de indicados — ao
+retomar, a parte de histórico dele sai (§V, V3). **Não iniciar outra
+estação.**
+2026-09-29 — **Estação SITE PÚBLICO: indicação no cadastro + regra da senha
+na redefinição** (branch `claude/busy-noether-hheir2-site-referral`, PR
+próprio, merge autorizado pelo dono). Cadastro com `?ref=PT-…` válido mostra
+"Indicado por: <negócio>" no topo do card; o nome vem de `GET
+/indicacoes/:codigo`, que usa a MESMA regra do `POST /anunciantes/cadastro`
+(`indicacoesRepo.indicadorDoCupom`) — o que aparece é quem fica associado.
+Sem ref ou ref inválida: linha não existe. Redefinir senha: a regra saiu de
+baixo do 1º campo para depois dos dois, antes do botão (a página traz o
+`[data-dica-senha]` na marcação; `formulario.js` respeita e não cria outro —
+cadastro e convite intactos). Regra da senha e da indicação intocadas; sem
+banco. e2e 36. **Atenção:** o PR #91 (finalização, pausado) também cria
+`src/indicacoes/routes.js` e um aviso no cadastro — ao retomar, fica a
+versão desta estação. **Não iniciar outra estação.**
+2026-09-28 (fechamento) — **Plano Básico: regra final de elegibilidade**
+([PR #96](https://github.com/sancompany/MostrAi/pull/96), mergeado com
+autorização do dono em 29/09/2026). Ponto sem nenhuma tela
+instalada (todas removidas, revogadas ou inativas) encerra o Básico com
+motivo `sem_tela_instalada` (migration 106 só amplia a lista fechada do
+CHECK; sem dado mexido). Reparo (com credencial), sem sinal, TV/internet fora continuam; revogar
+vence o reparo. Régua única em `creditos/ponto.js#SQL_TEM_TELA_INSTALADA`
+(encerramento, leitura dos direitos e `situacaoDosPontos`).
+Tela instalada de novo reabre (linha nova, um ativo por ponto). Crédito
++1/mês e plano comercial intocados. Depois do deploy, o job diário
+(`scripts/conciliar.js`) encerra os Básicos antigos que já estão sem tela
+— não é correção manual. **Pendente com o dono:** as contagens de produção
+(o SELECT pelo MCP do Supabase pediu aprovação e não rodou) e a validação
+visual com conta real de ponto. **Não iniciar outra estação.**
+2026-09-28 — **Estação: formulários de ponto ("Tornar-se ponto" e "Novo
+estabelecimento")** (branch `claude/nifty-galileo-rwryqd`, worktree própria,
+PR próprio, **NÃO mergeado — merge só com o dono**). Os dois pedidos abrem no
+topo do painel, na largura da página (`#pontosNovo`): formulário ~65% +
+prévia fixa ~35% no desktop, uma coluna no celular. Erro embaixo do campo
+(`candidaturaValidar`), segmento obrigatório no campo visível (antes travava
+o envio em silêncio — conserta também cadastro e modo anúncios), CEP com
+estados e sem apagar o digitado, foto recusada/avisada, clique duplo
+protegido. Payload/rotas/regras iguais. ADR-030; `docs/PENDENCIAS.md` §U;
+e2e `tests/e2e/31-formularios-ponto.mjs`. **Não iniciar outra estação.**
+2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
+do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), **mergeado com autorização do dono** em 28/09/2026; branch
+`claude/serene-lovelace-1zx4a0`, base `c521b25`, atualizada com a `main` `2818f11` — #97 e #98). "Onde seu anúncio aparece"
+virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
+fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
+ocupação, "Ver no mapa" na foto, "Seu ponto" na foto e a seleção escrita no
+pé ("Selecionado", "Limite do plano atingido"…). Foto/segmento/bairro pela
+vitrine pública `GET /pontos` (ADR-029) — **sem backend, sem banco**.
+Seleção, limite, salvamento e contador intocados (e2e 26 passa sem mudar
+comportamento; e2e novo `35-cards-pontos-cliente.mjs`, 81 checagens).
+**Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — ao ser
+retomado, conflita em `htmlPontoEscolha`/`style.css`/`painel.css`: a parte
+visual dele sai, fica a deste (`docs/PENDENCIAS.md` §T, T2). "Meus pontos"
+ficou como estava (T4). **Pós-merge:** CI da `main`, SHA no ar e o card
+conferido em produção com as fotos reais (T1). **Não iniciar outra estação
+sem o dono.**
+2026-09-28 — **Estação REFORÇO VISUAL DAS PROMOÇÕES + BARRA NA ÁREA LOGADA**
+([PR #98](https://github.com/sancompany/MostrAi/pull/98), branch
+`claude/promocoes-reforco-visual` — **mergeado na `main`** em 28/09/2026,
+`b5c8a27`). Área pública: a oferta ("ATÉ 30% OFF",
+calculada dos itens) é a manchete do componente `public/promocao.js`, com
+selo vermelho, blocos de desconto por ciclo, "Melhor desconto", CTA amarelo e
+"Tempo limitado"; paleta de campanha só dentro de `.campanha`. Área logada:
+o card do painel saiu, entrou a faixa fina com X (`public/barra-promocional.js`,
+dispensa em localStorage por id). ADR-028, PENDENCIAS §S, e2e 30 (e 29
+atualizado). Sem backend, sem banco, sem regra comercial. **Não iniciar
+outra estação.**
+2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
+([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
+autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).
+A promoção virou um componente
+(`public/promocao.js` + "Componente de promoção" em `style.css`) usado pela
+Home, por Planos e pela prévia do admin: arte e texto lado a lado (≥ 840px
+de componente, container query) ou empilhados, arte inteira com a proporção
+real, carrossel só com 2+ (sem autoplay). Nenhuma regra comercial mudou.
+ADR-027 (o 025 é do Plano Básico); pendências do dono em
+`docs/PENDENCIAS.md` §R; e2e `tests/e2e/29-promocoes-visual.mjs`.
+**Não iniciar outra estação sem o dono.**
+2026-09-28 (fim) — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO:
+mergeada (#93) com autorização do dono**, depois de atualizada com a `main`
+(que já tinha o #94 de categorias). Ponto ativo = Plano Básico (14 h/mês,
+peça até 15 s, 1 criativo, só no próprio ponto, sem custo) + 1 crédito/mês.
+Migration 103 (`beneficios_basico_ponto` + coluna
+`exibicoes_contador.segundos_obrigacao_basico`), `src/pontos/basico.js`,
+ADR-025, RN-43.5. Soma com o plano comercial com a origem preservada; nunca
+em `plano_id`, nunca no Checkout/vitrine. Revisão independente (1 P2 + 5 P3)
+e Codex (2 P2) aplicadas com teste. Conflito com o #94 só em
+`entrada-no-ar.js#coberturaDaConta`: o próprio ponto do Básico entra sem
+trava; o resto segue a regra de concorrentes diretos. Básico de ponto cujas
+telas foram todas removidas/revogadas continuava ativo — resolvido na
+entrada acima. A estação de finalização (#87–#92) continua PAUSADA — ver
+`docs/auditoria-finalizacao-checkpoint.md` no #87.
+**Pós-merge:** CI da `main`, SHA no ar, conferir em produção (só leitura)
+quantos pontos o backfill da 103 ativou.
+2026-09-28 — **Estação CATEGORIAS E CONCORRENTES DIRETOS** (#94, mergeado
+antes do #93). Proteção do dono da tela = categoria do ponto × categoria do
+anunciante: mesma categoria bloqueia; par cadastrado em
+`categorias_concorrentes` (migration 105, um par por linha, a < b) bloqueia;
+resto exibe. Grupo e aliases nunca bloqueiam; sem exclusividade entre
+anunciantes. Seed com os 48 pares aprovados + "Terapia capilar" (sem par).
+Admin → Categorias → Editar ganhou "Concorrentes diretos". ADR-026, emenda
+da RN-57. **Não iniciar outra estação sem o dono.**
 2026-09-27 (noite) — **Estação QR CODE INSTITUCIONAL** (PR aberto, NÃO
 mergeado, aguardando o dono). Admin → Mídia Mostraí ganhou o bloco "QR Code
 institucional": o QR codifica sempre `SITE_URL/q/anuncie` e o admin troca só

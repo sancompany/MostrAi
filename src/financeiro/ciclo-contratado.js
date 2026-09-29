@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const { nomeDoCiclo } = require('../lib/ciclos');
+const { multiplicar } = require('../lib/dinheiro');
 
 // Snapshot comercial de cada ciclo PAGO (migration 087, ADR-018) e o custo
 // por exibição prevista que sai dele:
@@ -59,12 +60,58 @@ function custoPorExibicaoPrevista(ciclo) {
   return valor / exibicoes;
 }
 
-// O que o card "Custo por exibição prevista" mostra pra conta AGORA:
+// Snapshot que a contratação do plano atual teria gravado, sem gravar nada.
+// `require` tardio: san-checkout.js já depende deste módulo.
+async function snapshotCalculado(conta, db) {
+  const {
+    rows: [plano],
+  } = await db.query('SELECT * FROM planos WHERE id = $1', [conta.plano_id]);
+  if (!plano) return null;
+  const { valorMensalDaConta } = require('./san-checkout');
+  const {
+    rows: [assinatura],
+  } = await db.query(
+    `SELECT * FROM assinaturas WHERE anunciante_id = $1 AND plano_id = $2 AND status = 'ativa' ORDER BY created_at DESC LIMIT 1`,
+    [conta.id, conta.plano_id],
+  );
+  const meses = Number(plano.compromisso_meses) || 1;
+  const mes = exibicoesPrevistasMes(plano);
+  return {
+    plano_id: plano.id,
+    plano_nome: plano.nome,
+    ciclo_meses: meses,
+    valor_ciclo: Number(valorMensalDaConta(conta, plano, assinatura || null)) * meses,
+    exibicoes_previstas_mes: mes,
+    exibicoes_previstas_ciclo: mes * meses,
+  };
+}
+
+// Ciclo de REFERÊNCIA de um plano do catálogo (painel do usuário,
+// 29/09/2026, pedido do dono): o que esse plano, nesse ciclo, custa na
+// tabela — mensalidade do ciclo × meses, sem promoção e sem desconto de
+// parceiro (que são da assinatura e da conta, não do plano) — e as
+// exibições previstas no ciclo pela MESMA régua de `registrar`. Só leitura:
+// nada aqui cobra, lança ou grava.
+function cicloDeReferencia(plano) {
+  const meses = Number(plano.compromisso_meses);
+  const mes = exibicoesPrevistasMes(plano);
+  return {
+    valor_ciclo: multiplicar(plano.valor_mensal, meses),
+    exibicoes_previstas_mes: mes,
+    exibicoes_previstas_ciclo: mes * meses,
+    ciclo_meses: meses,
+  };
+}
+
+// O que o card "Custo por exibição" mostra pra conta AGORA:
 //   · pago     → o snapshot do ciclo do plano pago em vigor;
-//   · beneficio → benefício por créditos em vigor — sem valor monetário;
+//   · beneficio → benefício por créditos em vigor: o custo de REFERÊNCIA do
+//                 plano e ciclo equivalentes (valor cheio de tabela ÷
+//                 exibições previstas no ciclo — a mesma divisão do pago,
+//                 `custoPorExibicaoPrevista`). Informativo: nada é cobrado.
 //   · cortesia → cortesia administrativa legada — sem cobrança;
 //   · sem_plano / sem_snapshot → "-" (nada inventado).
-// Benefício e cortesia NUNCA mostram R$ 0,00: não há dinheiro envolvido.
+// Cortesia NUNCA mostra R$ 0,00: não há dinheiro envolvido.
 async function situacaoDoCusto(conta, db = pool) {
   if (!conta?.plano_id) return { tipo: 'sem_plano' };
   if (vigencia.coberturaVencida(conta.data_expiracao)) {
@@ -77,7 +124,24 @@ async function situacaoDoCusto(conta, db = pool) {
         ORDER BY id DESC LIMIT 1`,
       [conta.id, conta.plano_id],
     );
-    return { tipo: rows[0]?.origem === 'indicacao' ? 'beneficio' : 'cortesia' };
+    if (rows[0]?.origem !== 'indicacao') return { tipo: 'cortesia' };
+    // O plano do benefício É o equivalente: o resgate escolhe a linha do
+    // catálogo pelo nível e pelo ciclo (creditos/routes.js, resgatar).
+    const { rows: planos } = await db.query('SELECT * FROM planos WHERE id = $1', [conta.plano_id]);
+    const plano = planos[0];
+    if (!plano) return { tipo: 'beneficio' };
+    const referencia = cicloDeReferencia(plano);
+    return {
+      tipo: 'beneficio',
+      referencia: true,
+      custoPorExibicaoPrevista: custoPorExibicaoPrevista(referencia),
+      valorCiclo: referencia.valor_ciclo,
+      exibicoesPrevistasCiclo: referencia.exibicoes_previstas_ciclo,
+      exibicoesPrevistasMes: referencia.exibicoes_previstas_mes,
+      cicloMeses: referencia.ciclo_meses,
+      ciclo: nomeDoCiclo(referencia.ciclo_meses),
+      plano: `${plano.nome} · ${nomeDoCiclo(referencia.ciclo_meses)}`,
+    };
   }
   const { rows } = await db.query(
     `SELECT c.*, p.nome AS plano_nome
@@ -86,10 +150,21 @@ async function situacaoDoCusto(conta, db = pool) {
       ORDER BY c.id DESC LIMIT 1`,
     [conta.id, conta.plano_id],
   );
-  const ciclo = rows[0];
-  if (!ciclo) return { tipo: 'sem_snapshot' };
+  let ciclo = rows[0];
+  let aproximado = false;
+  if (!ciclo) {
+    // Plano pago em vigor sem snapshot dele (troca feita antes da migration
+    // 087, ou versão nova do plano): o painel mostrava "-" pra uma conta que
+    // paga. Calcula o que o snapshot teria gravado na contratação — o valor
+    // do ciclo pela régua da conta e as exibições previstas do plano — e
+    // marca como aproximado (finalização, 28/09/2026).
+    ciclo = await snapshotCalculado(conta, db);
+    if (!ciclo) return { tipo: 'sem_snapshot' };
+    aproximado = true;
+  }
   return {
     tipo: 'pago',
+    aproximado,
     custoPorExibicaoPrevista: custoPorExibicaoPrevista(ciclo),
     valorCiclo: Number(ciclo.valor_ciclo),
     exibicoesPrevistasCiclo: ciclo.exibicoes_previstas_ciclo,
@@ -132,6 +207,7 @@ async function jaTeveCicloPago(assinatura, db = pool) {
 
 module.exports = {
   exibicoesPrevistasMes,
+  cicloDeReferencia,
   registrar,
   origemDoCicloPago,
   jaTeveCicloPago,

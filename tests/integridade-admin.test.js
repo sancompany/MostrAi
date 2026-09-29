@@ -296,24 +296,37 @@ test('resumo: novas contas em 30 dias não conta a conta própria', async () => 
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
   try {
-    const contar = async () =>
+    // Foto do conjunto que o resumo conta: quantas, a soma e o maior id. Duas
+    // fotos iguais = ninguém criou, apagou ou excluiu conta no meio.
+    const foto = async () =>
       (
         await pool.query(
-          `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS sem_propria
+          `SELECT COUNT(*) FILTER (WHERE NOT conta_propria)::int AS n,
+                  COALESCE(SUM(id) FILTER (WHERE NOT conta_propria), 0)::text AS soma,
+                  COALESCE(MAX(id), 0)::int AS maior
              FROM anunciantes WHERE created_at > now() - interval '30 days' AND excluido_em IS NULL`,
         )
-      ).rows[0].sem_propria;
-    // Outros arquivos de teste criam e apagam contas em paralelo: o número do
-    // resumo tem que bater com a contagem de antes OU de depois da chamada.
-    const antes = await contar();
-    const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/resumo`);
-    assert.strictEqual(r.status, 200);
-    const resumo = await r.json();
-    const depois = await contar();
-    assert.ok(
-      [antes, depois].includes(resumo.rede.novosAnunciantes30d),
-      `${resumo.rede.novosAnunciantes30d} ∉ {${antes}, ${depois}}`,
-    );
+      ).rows[0];
+    // Outros arquivos de teste criam e apagam contas em paralelo, e o resumo
+    // lê a tabela no meio disso: comparar com a contagem de antes OU de
+    // depois não bastava (uma conta criada e apagada durante a chamada dava
+    // "9 ∉ {6, 6}" — reproduzido com carga paralela, 29/09/2026). Mede até
+    // achar uma janela em que nada mudou e aí o número tem que bater EXATO.
+    // Se a regra quebrar (a conta própria voltar a contar), nenhuma janela
+    // bate e o teste falha do mesmo jeito.
+    const vistos = [];
+    for (let tentativa = 0; tentativa < 25; tentativa++) {
+      const antes = await foto();
+      const r = await fetch(`http://127.0.0.1:${server.address().port}/admin/resumo`);
+      assert.strictEqual(r.status, 200);
+      const resumo = await r.json();
+      const depois = await foto();
+      const estavel = antes.n === depois.n && antes.soma === depois.soma && antes.maior === depois.maior;
+      if (estavel && resumo.rede.novosAnunciantes30d === antes.n) return;
+      vistos.push(`${resumo.rede.novosAnunciantes30d} × ${antes.n}${estavel ? '' : ` → ${depois.n}`}`);
+      await new Promise((ok) => setTimeout(ok, 100));
+    }
+    assert.fail(`nenhuma janela estável bateu com o resumo (resumo × contagem): ${vistos.join('; ')}`);
   } finally {
     await new Promise((r) => server.close(r));
   }

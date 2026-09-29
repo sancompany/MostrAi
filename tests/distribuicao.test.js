@@ -15,7 +15,7 @@ const { pontosDoAnunciante } = require('../src/lib/pacing');
 const { entradaNoArDasPecas, ESTADOS } = require('../src/anunciantes/entrada-no-ar');
 const filaEntrada = require('../src/anunciantes/fila-entrada');
 const { metricasDasMidias } = require('../src/midias/metricas');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 // Estação de distribuição real (27/09/2026):
 //   1–9   escolha de pontos (targeting) e o próprio ponto;
@@ -149,12 +149,16 @@ async function criativoAprovado(contaId, { url = 'https://exemplo.test/peca.mp4'
   return criativosRepo.atualizar(c.id, { status: 'aprovado' });
 }
 
+// Escolha direta: o ponto passa a ser da conta do teste e sai do sorteio
+// (contas de outros arquivos não caem na playlist dele). Os testes que
+// dependem do sorteio ou escolhem pela rota (5, 7) não passam por aqui.
 async function escolher(contaId, pontos) {
   for (const pontoId of pontos) {
     await pool.query(
       'INSERT INTO anunciantes_pontos (anunciante_id, ponto_id, escolhido_em) VALUES ($1, $2, clock_timestamp())',
       [contaId, pontoId],
     );
+    await tirarDoSorteio(pontoId);
   }
 }
 
@@ -168,8 +172,16 @@ async function outraTela(pontoId) {
   return { telaId: t.id, player };
 }
 
-async function playlistAgora(telaId) {
-  return gerador.gerarPlaylistDaHora(await tela(telaId), new Date());
+// Toda playlist deste arquivo sai daqui, com o ponto fora do sorteio: ponto
+// aberto recebe contas com plano de outros arquivos rodando em paralelo, que
+// o `after` deles apaga no meio da geração (FK de `exibicoes_contador`) ou
+// que aparecem na tela e quebram a asserção. Bloquear agora não muda o
+// cenário: as contas daqui chegam por escolha explícita (direta ou pela rota,
+// já feita antes), que vale em ponto bloqueado, e a mídia não olha o bloqueio.
+async function playlistAgora(telaId, hora = new Date()) {
+  const t = await tela(telaId);
+  await tirarDoSorteio(t.ponto_id);
+  return gerador.gerarPlaylistDaHora(t, hora);
 }
 
 const idsDeAnunciante = (pl) => new Set(pl.itens.map((i) => i.anuncianteId).filter(Boolean));
@@ -331,7 +343,11 @@ test('7. próprio ponto pode ser escolhido — e veicula nele mesmo no mesmo ram
   assert.ok(idsDeAnunciante(await playlistAgora(proprio.telaId)).has(dono.id), 'a trava de ramo não barra o dono');
 });
 
-test('8. próprio ponto pode ficar de fora (e o concorrente do mesmo ramo continua barrado)', async () => {
+// Desde a migration 103 (Plano Básico do ponto, ADR-025) o dono SEMPRE toca
+// no próprio ponto ativo — pelo Básico, não pelo plano comercial. Não
+// escolher o próprio ponto continua deixando o COMERCIAL de fora dele: a
+// linha da hora só tem a parcela do Básico.
+test('8. próprio ponto fora da escolha: entra só pelo Básico (o comercial fica de fora); concorrente continua barrado', async () => {
   const cat = await categoria();
   const dono = await novaConta({ categoriaId: cat });
   const concorrente = await novaConta({ categoriaId: cat });
@@ -342,7 +358,16 @@ test('8. próprio ponto pode ficar de fora (e o concorrente do mesmo ramo contin
   await criativoAprovado(dono.id);
   await criativoAprovado(concorrente.id);
   const ids = idsDeAnunciante(await playlistAgora(proprio.telaId));
-  assert.ok(!ids.has(dono.id), 'dono que não escolheu o próprio ponto não entra nele');
+  assert.ok(ids.has(dono.id), 'o dono entra no próprio ponto pelo Plano Básico');
+  const { rows } = await pool.query(
+    `SELECT segundos_obrigacao, segundos_obrigacao_basico FROM exibicoes_contador
+      WHERE anunciante_id = $1 AND dispositivo_id = $2 AND segundos_obrigacao > 0`,
+    [dono.id, proprio.telaId],
+  );
+  assert.ok(
+    rows.length && rows.every((r) => r.segundos_obrigacao === r.segundos_obrigacao_basico),
+    'só a parcela do Básico — o comercial não escolheu este ponto',
+  );
   assert.ok(!ids.has(concorrente.id), 'concorrente do mesmo ramo não entra');
   assert.ok(idsDeAnunciante(await playlistAgora(outro.telaId)).has(dono.id), 'roda onde escolheu');
 });
@@ -489,7 +514,7 @@ test('13. janela chegou sem POP = aguardando (a conta está na playlist servida)
   const aprovadoEm = new Date(janela.getTime() - 10 * 60_000);
   let e = (await entradaDe(conta, [peca(c, { aprovado_em: aprovadoEm })], agora)).get(c.id);
   assert.equal(e.estado, ESTADOS.PROGRAMADO, 'hora começou, a TV ainda não pediu');
-  await gerador.gerarPlaylistDaHora(await tela(ponto.telaId), agora);
+  await playlistAgora(ponto.telaId, agora);
   e = (await entradaDe(conta, [peca(c, { aprovado_em: aprovadoEm })], agora)).get(c.id);
   assert.equal(e.estado, ESTADOS.AGUARDANDO);
   assert.equal(e.primeiraJanelaPrevista, janela.toISOString());

@@ -177,6 +177,10 @@ function gerarPng(link, lado) {
 module.exports = {
   CAMINHO_PERMANENTE,
   TAMANHOS_PNG,
+  // O QR do link de indicação (src/indicacoes/routes.js, 29/09/2026) usa a
+  // mesma base e as mesmas opções — um QR só de regra no sistema.
+  OPCOES_QR,
+  baseDoSite,
   linkPermanente,
   destinoPadrao,
   validarDestino,

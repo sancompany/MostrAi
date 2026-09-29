@@ -44,7 +44,7 @@ Papel sem tela não existe; tela sem papel ninguém abre.
 ### 2.2 Dono de ponto — do painel à tela no ar
 
 1. Cria a conta normalmente (`/anunciante/cadastro.html`) — toda conta nasce **anunciante**.
-2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir.
+2. No módulo **Meus pontos** do próprio Painel (Fatia 2, 23/09/2026 — sem estabelecimento nenhum, o módulo é o convite "Você também possui um comércio?"; com algum, vira a lista: um card por comércio com o andamento Em análise → Aguardando instalação → Ativo e as telas dentro dele, mais "+ Cadastrar outro estabelecimento" com o formulário completo), se candidata a ponto: o movimento médio mensal (obrigatório, 21/09/2026) e o **horário de funcionamento do comércio** (obrigatório, 22/09/2026 — segunda a sexta, sábado e domingo, cada um com "fechado" ou abre/fecha) e uma mensagem livre opcional — nome, endereço, cidade, UF, CEP e ramo já vêm da conta, sem repetir. Os dois pedidos ("Tornar-se ponto", com o comércio da conta, e "Novo estabelecimento") abrem no topo do Painel, na largura da página — formulário à esquerda e a prévia do card ("Assim vai aparecer", com o que acontece depois do envio) fixa à direita; uma coluna no celular, com a prévia depois dos botões —, e o erro de preenchimento aparece embaixo do próprio campo (estação dos formulários de ponto, 28/09/2026, ADR-030).
 3. O pedido vira candidatura ligada à conta (`conta_id`, `origem: painel`); o administrador avalia bairro e ramo, conversa por WhatsApp, e decide.
 4. Aprovado, o administrador libera direto na conta (`POST /admin/candidaturas/:id/liberar`) — sem convite, sem conta nova: a mesma conta ganha o papel **ponto**, e o ponto nasce ali como "aguardando instalação" (a tela é criada pelo admin na instalação).
 5. O administrador cadastra as telas (Rede → o ponto → **+ Adicionar tela**; o nome é o ID da tela, `M-0235`, que nunca muda) e, na ficha de cada uma, clica **Gerar código**: o código de instalação (`XXXX-XXXX`) vale 30 minutos, uma vez só, só para aquela tela — RN-59.
@@ -54,8 +54,10 @@ Papel sem tela não existe; tela sem papel ninguém abre.
    Aguardando instalação), sem chave, versão nem PIN. Toda tela segue o horário
    do estabelecimento.
 8. A partir do mês em que a tela fica ativa, a conta ganha **+1 crédito por
-   mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime.
-   Anunciar exige plano (pago ou benefício); ser ponto não dá plano.
+   mês** por ponto (RN-43) — resgatável em benefício Essencial/Pro/Prime — e
+   o **Plano Básico do ponto** (RN-43.5): 14 h/mês de veiculação no próprio
+   estabelecimento, peça de até 15 s, sem custo, enquanto o ponto estiver
+   ativo. O Básico soma-se a qualquer plano contratado; não é vendido.
 
 ### 2.3 Vendedor — programa aposentado
 
@@ -65,7 +67,13 @@ cupom de vendedor, painel de vendas nem comissão. Produção não tinha nenhum
 vendedor nem comissão quando o código saiu. As tabelas `vendedores` e
 `comissoes` ficam no banco como histórico; todas as rotas antigas respondem
 410. A indicação que vale hoje é a do **dono de ponto** (cupom `PT-…`, vira
-crédito — seção 2.2).
+crédito — seção 2.2). Quem chega ao cadastro pelo link dele
+(`/anunciante/cadastro.html?ref=PT-…`) vê **"Indicado por: <negócio>"** no
+topo do formulário (29/09/2026) — o nome vem da mesma regra que associa a
+conta ao indicador (`indicacoesRepo.indicadorDoCupom`), então o que aparece é
+quem fica associado. Sem `?ref`, ou com indicação inválida (inexistente, fora
+do formato, conta indicadora excluída), a linha não existe. A indicação não
+dá nada a quem se cadastra: o benefício é do ponto que indicou.
 
 ### 2.4 Administrador — o dia a dia
 
@@ -79,7 +87,9 @@ crédito — seção 2.2).
    de parceiro, recebido no mês —
    crédito não é receita (ADR-016) —, conciliação discreta
    quando saudável, pendências financeiras agregadas —, promoção ativa,
-   indicadores de rede). Mobile empilha as duas colunas na ordem natural.
+   indicadores de rede, **QR institucional** — destino atual e [Gerenciar],
+   RN-66 —, **Comunicados por e-mail** — último envio e
+   [+ Novo comunicado], RN-68). Mobile empilha as duas colunas na ordem natural.
    Comissão de vendedor não soma mais nesse agregado — o conceito de
    vendedor saiu do escopo da Visão geral (segue existindo dentro de Contas).
 3. Aprova contas, candidaturas e criativos.
@@ -150,14 +160,14 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Cadastro | `/anunciante/cadastro.html` | público | formulário de conta (aceita `?ref=CUPOM`) | criar conta de anunciante | painel |
 | Login | `/anunciante/login.html` | público | e-mail e senha | entrar | painel |
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
-| Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
+| Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha (a regra da senha vem depois dos dois campos, antes de Salvar) | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
 | Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura) e **Meus criativos**; na coluna lateral **Seu plano**, **Meus pontos**, **Indicações** (só ponto) e **Financeiro**; embaixo **Créditos e benefícios** (só com relação com créditos). **Estação da conta (26/09/2026, RN-61):** conta sem plano vê UM bloco — "Comece sua primeira campanha" (ou "Volte a anunciar na rede"), [Escolher meu plano] e os 4 primeiros passos — no lugar da campanha, e o card de plano some; com plano, uma faixa de primeiros passos fica no topo até o primeiro criativo e a primeira exibição. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
 | ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |
 | ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | app Mostraí Player (Android) | a TV, com credencial | o vídeo da vez | tocar; o PIN de saída (global) libera sair do modo quiosque | — |
-| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (PIN de saída do Player, grade de pontos → ponto → ficha da tela), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Mídia Mostraí** (vídeo institucional, QR Code institucional, capacidade da rede e mídias próprias). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
+| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (PIN de saída do Player, grade de pontos → ponto, com a capacidade de veiculação do ponto → ficha da tela), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Mídia Mostraí** (só o conteúdo próprio: indicadores ativas/agendadas/pausadas/com atraso, vídeo institucional, e mídias próprias em cards — criar, editar, pausar, retomar, retirar do ar e excluir). O QR Code institucional fica na Visão geral (29/09/2026). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
 | Termos de uso | `/termos-de-uso.html` | público | o contrato | ler | — |
 | Política de privacidade | `/politica-de-privacidade.html` | público | uso de dados | ler | — |
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
@@ -193,10 +203,20 @@ Escrito por grupo, porque o padrão se repete.
   mostrado no banner.
 - *Carregando:* abas visíveis, conteúdo em esqueleto.
 - *Erro:* faixa no topo com "não conseguimos carregar seus dados".
-- *Sucesso:* conteúdo da aba — com plano ativo, os KPIs incluem banco de
-  horas (saldo em exibições/horas, quando há saldo) e horas entregues no mês
-  vs. contratadas vs. ainda por rodar; o gráfico por ponto mostra os 8 que
-  mais exibiram, com contagem e percentual do total.
+- *Sucesso:* conteúdo da aba — com plano ativo (ou o Básico do ponto),
+  **quatro indicadores** (painel do usuário, 29/09/2026, ADR-031): horas de
+  tela no mês (de N contratadas, com a origem plano/Básico); exibições
+  confirmadas no mês, "de N previstas no mês" e "Média diária: X" pequena no
+  mesmo card; custo por exibição (RN-43.3); e o **saldo de veiculação**
+  (RN-53) — "Em dia" ou "4h 32min a entregar". Abaixo, **um card só** de
+  performance: filtros 7 dias / 30 dias / 3 meses / 1 ano / Máx. (dia, dia,
+  semana, mês, mês), barras empilhadas por ponto com uma cor fixa por ponto
+  (a mesma em qualquer período e depois de recarregar), dica com a data,
+  cada ponto e o total (mouse, teclado ou toque), a tabela Ponto / Cidade /
+  Status / Exibições do período e o comprovante (CSV) do mesmo recorte. Sem
+  exibição no período: "Ainda não há exibições confirmadas neste período.
+  Assim que sua campanha começar a rodar, os dados aparecerão aqui.", sem
+  gráfico. Trocar o período não recarrega a página nem busca de novo.
 - *Sem permissão:* sessão expirada (só um 401 de verdade) → login com o
   aviso "Sua sessão expirou. Entre de novo pra continuar." (27/09/2026). A
   conta NÃO sai por 500, 503, rede caída ou leitura que passou de 20 s: na
@@ -415,7 +435,7 @@ rede cresce. Só ponto `em_operacao` entra na conta, e a promessa da vitrine é
 > seria vender o que não existe; "cobre até 10" é verdade no primeiro dia e
 > continua verdade no centésimo.
 
-**RN-43 — Ser ponto não é plano: o ponto gera créditos.** *(Reestruturação
+**RN-43 — O ponto gera créditos (e, desde 28/09/2026, o Plano Básico — RN-43.5).** *(Reestruturação
 de 24/09/2026, ADR-016 — substitui a escolha "Recebe os R$ 50" (Inicial) ×
 "Troca os R$ 50 por tela" (Básico), o repasse mensal, o crédito de R$ 50 na
 mensalidade e o bônus de anúncio por tempo de ponto.)*
@@ -445,6 +465,75 @@ instalada → tela ativa. Nenhuma etapa antes da tela ativa gera crédito.
 benefícios; Meus pontos: "Benefício do ponto: +1 crédito por mês · Próximo
 crédito / Crédito de setembro já concedido") e o admin (ficha da conta, card
 Pontos e ficha do ponto: "+1 crédito/mês · último · próximo").
+**RN-43.5 — Plano Básico como benefício do ponto.** *(28/09/2026, ADR-025,
+migration 103 — substitui a parte "ser ponto não é plano / não dá plano" do
+ADR-016; o +1 crédito/mês continua igual.)*
+Todo estabelecimento que vira ponto ativo recebe, sem custo e enquanto
+continuar ponto: **14 h/mês** de veiculação, anúncio de **até 15 s**, **1
+criativo** no ar, e **1 ponto — o próprio estabelecimento** (não escolhe
+outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
+· **Não é plano comercial:** não mora em `anunciantes.plano_id`, não passa
+  pelo Checkout, não aparece na vitrine (nem em Ofertas), não tem CTA de
+  compra e não é consumido por crédito. Uma linha por ponto em
+  `beneficios_basico_ponto`, com os números copiados (mudar a regra não
+  reescreve o que já foi concedido) e início/fim.
+· **Ativa** na mesma régua do crédito (`SQL_PONTOS_ELEGIVEIS`: tela
+  provisionada e ativa, conta dona válida) — assim que o Player é instalado
+  (`sincronizarStatusPonto`), com o job diário de rede de segurança.
+  Formulário, candidatura aprovada ou ponto sem tela instalada não dão
+  Básico. Um ativo por ponto, garantido por índice único.
+· **Encerra** só quando o estabelecimento deixa de ser ponto daquela conta:
+  ponto arquivado, dono trocado, conta excluída, ou o ponto ficou sem
+  nenhuma tela instalada — todas removidas, revogadas ou inativas
+  (migration 106, fechamento da estação). A régua é estrutural, nunca o
+  sinal: TV desligada, internet caída, sem heartbeat ou tela em reparo (com
+  a credencial) não encerram (o Básico fica ativo e não gera obrigação sem
+  tela tocando); tela em reparo com a credencial revogada não conta —
+  revogar vence o reparo. O painel e a ficha do admin leem a mesma régua.
+  Instalar tela de novo abre um Básico novo — um ativo por ponto, o
+  encerrado fica no histórico. Revogar a única tela pra reinstalar (TV
+  trocada, chave suspeita) encerra e reabre: dois períodos, sem hora
+  perdida, porque tela sem credencial não toca nem gera obrigação.
+  Encerrar o Básico nunca mexe no plano comercial, e cancelar o plano nunca
+  mexe no Básico. O fim registrado é o instante do arquivamento ou da
+  exclusão, não o da sincronização que viu; a troca de dono (só manual, sem
+  data guardada) encerra na sincronização — o RUNBOOK (6.1) manda rodar
+  logo depois.
+· **Soma com o plano comercial, origens preservadas:** Básico + Essencial =
+  4 pontos e 41 h (14 h do Básico + 27 h do Essencial); Básico + Pro = 8
+  pontos e 98 h. O ponto do Básico é sempre o próprio; os do plano seguem a
+  escolha normal (RN-49). Peça e criativos no ar valem o MAIOR das duas
+  origens (é o mesmo conjunto de peças da conta). A vaga do Básico roda as
+  peças mais novas que cabem nesse teto HOJE (15 s só com o Básico): peça
+  mais longa — sobra de um plano vencido, ou subida pelo operador — não toca
+  pelo Básico nem toma a vez de uma que cabe, e o painel diz por quê
+  ("acima da duração máxima").
+· **Tempo é a fonte de verdade:** 14 h = 140 s por hora aberta (régua da
+  vitrine, 12 h × 30 dias). Como 140 não divide por 15, cada hora recebe a
+  sua fatia de uma sequência estável (9, 9, 10 peças de 15 s…) cuja média é
+  exatamente 140 s — 3.360 exibições equivalentes de 15 s por mês, sem
+  perder meia hora por arredondamento. A fatia de cada hora do relógio gira
+  de um dia pro outro, então a média fecha em qualquer horário de
+  funcionamento (aberto 10 h/dia: 2.800 no mês, não 2.790 nem 2.820).
+  Início no meio do mês: a obrigação nasce hora a hora a partir do início
+  (nada retroativo), como no plano.
+· **Saldo e comprovante:** a parcela do Básico entra na MESMA linha da conta
+  na tela e hora (`exibicoes_contador`) — um comprovante, um saldo —, com a
+  parte do Básico guardada à parte em `segundos_obrigacao_basico`. Se a dona
+  também escolheu o próprio ponto no plano comercial, as duas obrigações se
+  somam nessa linha. A hora sem sinal (rede de segurança) cobra o Básico que
+  valia naquela hora (início/fim da linha), com a peça que a geração teria
+  usado nela. O saldo da conta (banco de horas) se divide por todos os
+  pontos que o puxam na mesma hora — os da fatia comercial e os do Básico em
+  operação (ponto com a tela em reparo continua com o Básico, mas não puxa
+  saldo, então não entra na divisão).
+· **Sucede a cota de autoanúncio** (legado zerado desde a 049): com o Básico
+  ativo a cota não entra, senão a dona apareceria em dobro.
+*Quem vê:* o dono (card "Benefício de ponto · Plano Básico" separado de "Seu
+plano"; Meus pontos: "Plano Básico: 14 h/mês neste ponto"; horas do mês por
+origem) e o admin (ficha da conta, seção "Benefício de ponto" com o ponto de
+origem, situação e motivo do fim; ficha do ponto).
+
 > **Legado preservado, sem operação nova:** `planos_ponto` (todas
 > `ativo=false`), `pontos.plano_ponto_id/valor_pago_mensal`,
 > `anunciantes.comodato_plano_id/credito_comodato_mensal`, `pagamentos_ponto`
@@ -505,33 +594,52 @@ renovação, troca). Exibições previstas = a régua da vitrine (horas de tela 
 plano ÷ duração máxima da peça) × meses do ciclo — ex.: Pro Trimestral,
 R$ 672,30 ÷ 45.360 = R$ 0,0148. Não muda conforme o anúncio roda, nem quando
 o admin muda o preço, nem quando a conta troca a peça; o próximo ciclo grava
-o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00".
-Benefício por créditos: "Benefício por créditos · Sem valor monetário neste
-ciclo"; cortesia legada: "Cortesia · Sem cobrança neste ciclo". Não é CPM
-(o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
+o próprio snapshot. Microvalor com 4 casas (até 6), nunca "R$ 0,00" nem
+arredondado pra "R$ 0,01". **Benefício por créditos** (painel do usuário,
+29/09/2026, pedido do dono): o custo de REFERÊNCIA do plano e ciclo
+equivalentes — valor cheio de tabela do ciclo (mensalidade do ciclo × meses,
+sem promoção nem desconto de parceiro) ÷ exibições previstas no ciclo, a
+MESMA divisão do plano pago (`cicloDeReferencia` + `custoPorExibicaoPrevista`)
+— ex.: Prime Semestral, R$ 2.289,90 ÷ 129.600 = R$ 0,0177, com a legenda
+"Referência do Prime · Semestral · sem cobrança". Só informação: nada é
+cobrado, lançado, devido ou gravado por causa disso. Cortesia legada:
+"Cortesia · Sem cobrança neste ciclo". Só o Plano Básico (sem plano
+comercial): "-" com "Plano Básico: incluído no benefício do ponto". Não é
+CPM (o Mostraí não mede audiência). *Quem vê:* o anunciante, no painel.
+Plano pago em vigor **sem snapshot dele** (troca feita antes da migration
+087, versão nova do plano): o card mostra o custo **calculado** pela mesma
+régua (valor do ciclo da conta ÷ exibições previstas do plano), marcado
+"estimado" — nunca mais "-" pra quem paga *(finalização, 28/09/2026)*.
+Benefício por créditos sem plano de referência encontrado: "Benefício por
+créditos · Sem valor monetário neste ciclo".
 
 **RN-43.1 — Crédito de indicação: quem cede a parede também "vende".**
-*(Migration 062, 19/09/2026.)* Toda conta com papel `ponto` ganha um cupom
-próprio (prefixo `PT-`, tabela `cupons_ponto` — namespace separado do
-`codigo_cupom` de vendedor, que nunca tem hífen). Um comerciante que se
-cadastra com esse cupom **e paga** pelo menos uma vez vira um crédito
-permanente pro dono do ponto (`indicacoes_pagas`, uma linha por indicado,
-nunca por renovação — cancelamento depois não tira o crédito). **Nunca
-comissão em dinheiro** — isso já existe pra vendedor, por outro mecanismo.
-Em vez disso, créditos acumulados liberam de graça o próprio plano de
-anúncio do dono do ponto, um degrau de cada vez: **3 créditos → Essencial,
-7 → Pro (`destaque`), 10 → Prime (`maximo`)**. Nunca sobrescreve cobertura
-PAGA em dia — se a conta está pagando o próprio plano quando o crédito
-completa o limiar, o upgrade fica pendente e entra sozinho assim que essa
-cobertura vencer (reavaliação diária, `scripts/conciliar.js`) ou quando o
-próximo crédito chegar. Nunca rebaixa quem já está num tier igual ou acima.
-Planos de comodato (Inicial/Básico) não contam como "já no Essencial" pra
-essa comparação, mesmo tendo `tier='essencial'` no banco como o Essencial de
-verdade — sem essa distinção o crédito nunca tiraria uma conta do comodato
-pro Essencial pago. *Violada:* não há caminho — o UPDATE que aplica o
-upgrade tem a mesma condição "não pagando em dia" no próprio WHERE, como
-trava atômica. *Quem vê:* o dono do ponto, num card no próprio painel
-(`GET /anunciantes/me/indicacoes`), com o progresso até o próximo degrau.
+*(Migration 062, 19/09/2026; ledger desde a 079 e ADR-016/ADR-020;
+histórico e QR Code no painel desde 29/09/2026, ADR-031.)* A conta dona de
+um ponto da rede tem UM cupom (`PT-…`, tabela `cupons_ponto`, um por conta —
+não por ponto). O link é o cadastro com o cupom
+(`/anunciante/cadastro.html?ref=PT-…`); quem se cadastra por ele fica
+indicado por aquela conta (`anunciantes.indicado_por_cupom`, gravado no
+cadastro e imutável — a mesma régua do "Indicado por" da página,
+`indicadorDoCupom`). **Cadastro não gera crédito.** Cada ciclo PAGO da conta
+indicada — o primeiro e cada renovação — gera **+1 crédito** no ledger do
+indicador (`creditos_ledger`, tipos `indicacao_primeiro_pagamento` e
+`indicacao_renovacao`), na mesma transação do ciclo pago; acerto de troca de
+plano não conta. Idempotente pela cobrança (índice único): webhook duplicado
+ou conciliação reprocessando nunca soma duas vezes. **Nunca dinheiro** —
+crédito vira benefício temporário por resgate (RN-43.2). *Violada:* não há
+caminho — a trava é o índice único do ledger. *Quem vê:* o dono do ponto,
+no card "Indicações" do painel: o link, "Copiar link", WhatsApp, o **QR Code
+do mesmo link** (gerado no servidor com o `SITE_URL`; só o endereço de
+cadastro e o cupom — nenhum id, sessão ou dado), o resumo (contas
+indicadas, quantas já contrataram, créditos gerados) e o **histórico**
+(`GET /anunciantes/me/indicacoes`): por indicado, nome comercial, dia do
+cadastro, plano em vigor, pagamentos que contam, créditos e as datas deles —
+"Cadastrou pelo seu link" ou "Gerou crédito"; conta indicada encerrada
+aparece como "Conta encerrada", sem nome, com os créditos que rendeu. Nunca
+e-mail, telefone, documento, endereço, valor pago ou id da conta indicada. O texto antigo
+desta regra (degraus de 3/7/10 créditos liberando plano, `indicacoes_pagas`)
+saiu com a migration 079.
 
 **RN-44 — O dono do ponto passa na tela dele.** *(Decisão do dono,
 17/09/2026 — fecha o item 28.)* Ele entra na rotação paga do próprio ponto
@@ -572,6 +680,28 @@ algum até a migration 067, que adicionou cobertura em
 `tests/categorias-concorrencia.test.js`. *Quem vê:* o anunciante nunca
 vê a mecânica — só o efeito (o próprio anúncio aparecendo ou não numa
 tela); o admin vê e edita a categoria de cada ponto/anunciante.
+> **Concorrentes diretos (28/09/2026, migration 105, ADR-026).** A regra
+> passou a ter duas partes, sempre CATEGORIA DO PONTO × CATEGORIA DO
+> ANUNCIANTE: (1) mesma `categoria_id` bloqueia, como acima; (2) par
+> cadastrado em `categorias_concorrentes` bloqueia (Academia ↔ CrossFit,
+> Cafeteria ↔ Padaria, Hotel / Pousada ↔ Locação por temporada, Design ↔
+> Marketing / Publicidade…); (3) todo o resto exibe. O par é UMA linha
+> guardada com o menor id primeiro, então vale nos dois sentidos por
+> construção — não existe conflito de um lado só. Grupo continua sem
+> bloquear (Academia × Estúdio de Pilates, Barbearia × Salão de beleza, Pet
+> shop × Clínica veterinária exibem), alias continua sem bloquear, e não
+> existe exclusividade entre anunciantes: numa cafeteria, Academia e
+> CrossFit entram os dois. A dona que escolheu o próprio ponto continua
+> isenta das duas partes. Mídia Mostraí não passa por aqui. Seed: os 48
+> pares aprovados pelo dono, por nome; nasceu junto a categoria "Terapia
+> capilar" (Beleza e estética), sem par cruzado. Quem edita: Admin →
+> Contas → Categorias → Editar → "Concorrentes diretos" (busca + etiquetas;
+> grava no Salvar, some dos dois lados ao tirar). Vale para a programação
+> seguinte — a vaga já congelada da hora some na próxima leitura da TV e o
+> histórico (proof-of-play, contadores) nunca é reescrito. Mesclar uma
+> categoria leva os pares dela pra que fica. Testes:
+> `tests/categorias-concorrentes-diretos.test.js`,
+> `tests/categorias-concorrentes-admin.test.js`, e2e 28.
 > Furo achado junto (não é a regra em si, é quem alimentava ela):
 > `criarPontoDaCandidatura` (`src/anunciantes/routes.js`) e
 > `liberarPapelNaConta` (`src/conta/modos.js`) — os dois caminhos que
@@ -698,6 +828,18 @@ passou a chamar a rota nova do Checkout, com dois desfechos possíveis:
   aprovar, o link expira sozinho (15 minutos, do lado do Checkout) e a
   linha `pendente_troca` daqui fica órfã, sem nada cobrando ela de volta
   (registrado, não corrigido — ver `docs/PENDENCIAS.md`).
+
+**Cobertura paga de outro plano ainda valendo, sem assinatura ativa**
+(cancelou e quer assinar outro): `POST /anunciantes/:id/assinar` responde
+`409` dizendo até quando o plano atual vale e mandando pro WhatsApp — o
+ciclo novo somaria no fim da cobertura antiga (Essencial anual cancelado +
+Prime mensal dava 13 meses de Prime pelo preço de um). O mesmo plano
+continua liberado (renova). E, no crédito do ciclo, a data-base só é o fim
+da cobertura vigente pro **mesmo** plano (ou renovação atrasada de
+assinatura substituída); ciclo de outro plano começa hoje. **Ciclo pago em
+conta suspensa** nunca reativa a conta: a cobertura conta, a suspensão
+fica (só o admin desfaz) e a fila "Eventos do Checkout" ganha uma
+pendência *(finalização, 28/09/2026)*.
 
 Cada linha de `assinaturas` é o `planoId` que o Checkout usa pra nos
 perguntar preço (`GET /plano/:id`) — trocar de plano não é UPDATE na linha,
@@ -1196,14 +1338,96 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
 - **Retenção da fila:** mensagem com segredo (código, link) some em 2 dias;
   enviada, em 30; abandonada/descartada, em 90.
 
+**RN-68 — Comunicado da plataforma: um e-mail por conta, contado antes, nunca
+em dobro.** *(Estação de comunicados, 29/09/2026, ADR-032.)* Em **Admin →
+Visão geral → Comunicados por e-mail → [+ Novo comunicado]** o admin escreve
+um aviso da plataforma (atualização, mudança de funcionamento, manutenção,
+indisponibilidade, novidade do serviço) e escolhe o público: **todas as contas
+ativas**, **com plano ativo** (plano gravado e dentro da validade — a situação
+"ativo" da Visão geral, pago ou benefício), **sem plano** (nunca teve ou
+venceu) ou **donos de ponto** (ponto aprovado não arquivado; candidatura não
+conta). Regras:
+- **Quem nunca recebe:** conta excluída ou anonimizada, a conta própria da
+  Mostraí, conta **suspensa** (login recusado, nada dela no ar — a volta tem
+  e-mail próprio), e-mail **não confirmado** (endereço nunca provado; mesma
+  régua das boas-vindas), quem desmarcou **"Quero receber novidades e ofertas
+  da Mostraí por e-mail"** no perfil (o texto é livre — o sistema não tem como
+  garantir que é só aviso operacional) e e-mail tecnicamente inválido. A tela
+  mostra quantas ficaram de fora e por quê — só números.
+- **A contagem é a lista do envio.** "Destinatários: N contas" é o tamanho da
+  mesma consulta que o envio usa (`src/comunicados/publicos.js`); o navegador
+  nunca recebe endereço. Na confirmação o admin vê público, N e assunto; se o
+  público mudar entre a confirmação e o clique, nada sai e a tela mostra o
+  número novo. Público com zero destinatário não envia.
+- **Um e-mail por pessoa.** Endereço repetido sai uma vez; cada destinatário
+  vira UMA mensagem da fila (RN-62), com só o endereço dele no "Para" —
+  ninguém vê quem mais recebeu. O texto é do admin, mas vira **texto**: o
+  e-mail sai no template institucional (título, parágrafos, botão opcional
+  `https://`, rodapé com o porquê e como parar), em HTML e texto puro.
+- **Nunca em dobro.** Duplo clique, tempo esgotado e nova tentativa da mesma
+  confirmação levam a mesma chave (Idempotency-Key) e devolvem o comunicado
+  que já existe; o mesmo conteúdo para o mesmo público nas últimas 24 h é
+  barrado (página recarregada, outra aba). Quando a resposta do envio se
+  perde, a tela pergunta ao servidor se aquela chave entrou (a pergunta
+  espera qualquer gravação em andamento) e, até ter a resposta, **não deixa
+  editar nem escrever outro** — a chave fica guardada na aba, e recarregar a
+  página refaz a pergunta.
+- **Prévia e teste.** A prévia é o e-mail montado pelo servidor, o mesmo do
+  envio. O teste sai na hora, marcado **[TESTE]**, para a caixa da equipe
+  (`MOSTRAI_EMAIL_CONTATO`) ou o endereço que o admin digitar — nunca a caixa
+  de um cliente, nem escrita de outro jeito ("+apelido", pontos e
+  googlemail no Gmail, caixa alta) nem um endereço que a conta já usou — e
+  não entra no histórico.
+- **Ritmo, teto e prioridade.** As mensagens saem espaçadas (30 por minuto
+  por padrão, `COMUNICADOS_POR_MINUTO`), num ritmo só para todos os
+  comunicados (um novo espera o anterior); no máximo 300 mensagens de
+  comunicado em 24 h (`COMUNICADOS_MAX_DIA`), senão nada entra; e vão pro fim
+  da fila — código de verificação e link de senha, que usam a mesma conta de
+  envio, nunca esperam por um comunicado nem ficam sem cota por causa dele.
+- **Links no texto:** o programa de e-mail vira link o endereço escrito, então
+  link com usuário/senha antes do domínio (`https://site.com.br@golpe.com`) e
+  `javascript:` são recusados em qualquer campo.
+- **Falha parcial:** o histórico mostra previstos, enviados, falharam e na
+  fila; quem falhou aparece com o endereço mascarado e o motivo.
+  **Reenviar falhas** põe de volta só quem falhou (e ainda recebe) — quem já
+  recebeu não recebe de novo. Conta que sai do público antes da vez dela
+  (excluída, suspensa, desmarcou, trocou de e-mail) não recebe e não conta
+  como falha. Só volta quem tem falha **comprovada**: o resultado de cada
+  mensagem é guardado antes de a fila expurgar a linha, e linha sem
+  resultado não é reenviada (sem prova, reenviar poderia duplicar).
+- **Trilha:** quem criou/enviou e quando (`comunicados.criado_por`, o usuário
+  da sessão do admin) e cada reenvio (`comunicados_reenvios`).
+- **Não é marketing.** Oferta, promoção e campanha não saem por aqui: não
+  existe opt-in de divulgação no cadastro (só a revogação do perfil), e
+  decidir essa base legal é de uma estação jurídica (docs/PENDENCIAS.md §W).
+*Violada:* conteúdo inválido → 400 com o campo; público vazio → 400; público
+mudou → 409 com o número novo; repetido → 409 com o comunicado anterior;
+teto de 24 h → 409 `limite_diario`; teste para caixa de cliente → 400; sem
+sessão de admin → 401. *Quem vê:* o administrador; cada conta vê só o próprio
+e-mail.
+
 **RN-63 — O anunciante escolhe os pontos; o próprio ponto é opcional.**
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista
 cada ponto da rede com localização, estado operacional, horário, ocupação e
 se está selecionado, e o contador "X de N pontos selecionados" (N =
-`pontos_incluidos` do plano, do servidor). Vale pra plano pago **e** pra
-benefício (créditos/cortesia) — até 27/09/2026 o painel escondia a lista pro
-benefício. O ponto da própria conta aparece na mesma lista com destaque
-laranja, selo **Seu ponto**, rótulo "Veicular no próprio ponto" e o texto
+`pontos_incluidos` do plano, do servidor). Desde 28/09/2026 (estação dos
+cards do cliente, ADR-029) cada ponto é um **card no molde do card de Rede >
+Pontos do admin**: foto da fachada (ou o placeholder oficial), nome com o
+estado ao lado, endereço com bairro e cidade, segmento, horário, ocupação,
+"Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o estado
+escrito — "Selecionar ponto", "Selecionado" (borda da marca), "Limite do
+plano atingido" ou "Indisponível para escolha" (sem espaço ou fechado pra
+escolha nova, card apagado). Clicar em qualquer parte do card marca; no
+mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
+se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
+segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
+são os de antes. Salvamento (PR #90, integrado em 29/09/2026): um pedido por
+vez — dois cliques seguidos não viram dois PUTs em paralelo, e vale o último;
+se o servidor recusar, as caixas voltam ao último estado salvo, com o
+motivo. Vale pra plano pago **e** pra benefício (créditos/cortesia)
+— até 27/09/2026 o painel escondia a lista pro benefício. O ponto da própria
+conta aparece na mesma lista com destaque (borda quente e o selo **Seu
+ponto** sobre a foto), rótulo "Veicular no próprio ponto" e o texto
 "Este estabelecimento pertence à sua conta. Você pode incluí-lo na
 cobertura da campanha ou anunciar somente em outros pontos da rede." Ele
 **nunca** vem marcado por ser da conta; marcado, conta no limite como
@@ -1259,11 +1483,31 @@ atrasada** (a última hora aberta já fechada não teve comprovante),
 **Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
 frequência entram como estão hoje (não há histórico deles).
 
+**RN-67 — Mídia própria só se exclui fora do ar, e a exclusão é lógica.**
+*(Refino da Mídia Mostraí, 29/09/2026.)* Ativa ou agendada não tem
+[Excluir]: passa antes por Pausar ou Retirar do ar. Pausada ou encerrada
+(inclusive com o período vencido) se exclui depois de um modal ("Excluir
+mídia? … Esta ação não pode ser desfeita."). A mídia some da página, da
+programação e da capacidade, e não volta por rota nenhuma; a linha, as
+exibições confirmadas e o histórico de estados ficam no banco como
+comprovante (migration 107). Arquivo ainda em análise sai da fila de
+Aprovação junto. *Violada:* excluir ativa → 409 e nada muda. *Quem vê:* o
+administrador.
+
+**RN-68 — Mídia retirada do ar não volta; o fim do período vence a pausa.**
+*(PR #89, finalização 28/09/2026; integrado em 29/09/2026.)* As transições
+são conferidas contra a situação DERIVADA: Pausar só de ativa ou agendada;
+Retomar só de pausada; encerrada (retirada à mão ou por período vencido) não
+volta por Retomar nem por Editar — no editor só o nome muda. Pausada com o
+fim já no passado é encerrada. Pausar/Retomar conferem o período no próprio
+UPDATE (o fim pode passar entre a tela e o clique). *Violada:* 409 com o
+motivo, e a tela redesenha. *Quem vê:* o administrador.
+
 **RN-66 — O QR institucional nunca muda; o que muda é o destino.**
 *(Estação do QR institucional, 27/09/2026.)* O QR que vai em vídeo, flyer e
 material da Mostraí codifica sempre o link permanente `SITE_URL/q/anuncie`,
-nunca o destino. Em **Admin → Mídia Mostraí → QR Code institucional** o
-admin escolhe para onde esse link leva (padrão: a página de planos), e a
+nunca o destino. Em **Admin → Visão geral → QR institucional → Gerenciar**
+(desde 29/09/2026; antes ficava em Mídia Mostraí) o admin escolhe para onde esse link leva (padrão: a página de planos), e a
 troca vale na hora para todo QR já impresso: o redirecionamento é 302 sem
 cache, nunca 301 (que ficaria guardado no navegador e na Cloudflare). O
 destino precisa ser endereço completo `https://` (http só em ambiente local),
@@ -1298,6 +1542,14 @@ fica marcado em `editado_pelo_operador`, para ninguém cobrar do anunciante um
 vídeo que o Mostraí montou. *Violada:* conta inexistente responde 404; o teto de
 criativos do plano continua valendo nas contas de cliente. *Quem vê:* o
 administrador.
+Criativo **retirado não ocupa vaga do plano** (finalização, 28/09/2026): depois
+da substituição o original vira `retirado` e o Essencial (1) segue "1 de 1",
+não "2 de 1". Mas **vaga do plano ≠ teto de cadastro** (revisão Codex do PR
+#88): o teto (3, `CRIATIVOS_POR_CONTA`) conta os retirados e é o que limita o
+que fica guardado na conta — vale pra todo upload, substituição inclusive
+(só a conta própria do Mostraí pula). Com 3 cadastrados o POST responde 400
+"você já tem 3 criativos cadastrados (contando os que estão fora do ar) —
+exclua um pra subir outro"; excluir um retirado libera.
 
 **RN-23 — O admin pode liberar um plano de graça (cortesia).** Põe a conta no
 ar sem criar assinatura nem cobrança: o San Checkout não fica sabendo, nada é
@@ -1406,6 +1658,10 @@ cache e escreve o motivo na própria TV. Sem isso o anunciante pagava por
 exibição numa tela que a operação já sabia que não estava no ar. *Violada:*
 não há caminho — a guarda é o próprio `exigirAparelho`. *Quem vê:* o operador,
 na TV; o anunciante, no painel, porque a exibição simplesmente não é contada.
+POP-07 — mantido o 403 do contrato §4: o Player guarda os comprovantes na
+fila e reenvia quando a tela voltar a Ativa; tela que ficar mais de 7 dias
+fora do ar perde esses comprovantes e a obrigação dessas horas vira saldo —
+decisão de desenho, registrada (revisão Codex do PR #88).
 
 **RN-29 — Reprovar criativo exige motivo, e o motivo chega ao anunciante.**
 O admin não reprova sem escrever por quê; o motivo aparece no card da peça no
