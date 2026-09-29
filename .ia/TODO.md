@@ -222,6 +222,52 @@ Decisão de produto separada (não mexer sem o dono): Mídia Mostraí disputa a
 camada da base (T1) com o comercial numa hora cheia — comportamento atual
 preservado; ver `.ia/RISKS.md`.
 
+## CARDS DE PONTOS DO CLIENTE — antes e depois do merge (28/09/2026)
+
+- [x] Antes do merge: branch atualizada com a `main` (#97, #98);
+  `npm run check` e os e2e 35, 26, 30 e 29 verdes. Merge autorizado pelo
+  dono em 28/09/2026.
+- [ ] Ao retomar o PR #90: tirar a parte visual do card dele (fica a do
+  #100); a fila de salvamento é decisão à parte (`docs/PENDENCIAS.md` §T2).
+- [ ] Depois do merge: CI verde no SHA mergeado,
+  deploy com o SHA novo, conferir "Onde seu anúncio aparece" no ar em
+  desktop e celular com as fotos reais dos pontos (§T1).
+- Decisões do dono, fora desta estação: texto de ponto sem horário (§T3),
+  "Meus pontos" com o card de foto grande (§T4), mostrar "na cobertura
+  hoje" (§T5).
+
+## COMUNICADOS POR E-MAIL — antes e depois do merge (29/09/2026)
+
+- [x] Antes do merge: o PR #104 (QR na Visão geral) entrou na `main`
+  (`c1ba708`) e a `main` veio pro branch por merge em 29/09 — os dois blocos
+  ficaram (QR, depois Comunicados); `npm run check` (695, 0 falha) e e2e 39,
+  27, 24, 26 e 38 verdes depois do merge. Merge autorizado pelo dono.
+- [ ] Depois do merge: CI no SHA mergeado, deploy no ar com a migration 108
+  (roda no arranque do contêiner), e o dono manda um TESTE pra caixa da
+  equipe antes do primeiro comunicado real (`docs/PENDENCIAS.md` §W1).
+- Decisões do dono, fora desta estação: divulgação/opt-in (§W2), limite
+  diário do SMTP (§W3).
+
+## PROMOÇÕES — reforço visual (28/09/2026)
+
+- [ ] Depois do merge (só com autorização): CI no SHA mergeado, deploy,
+  Home/Planos em produção com a pré-venda (id 7) mostrando "ATÉ 30% OFF",
+  painel logado com a faixa e o X.
+- Pendências do dono herdadas (PENDENCIAS §R): R0–R4.
+
+## CATEGORIAS E CONCORRENTES DIRETOS — antes e depois do merge (28/09/2026)
+
+- [ ] Antes do merge: atualizar a branch com a `main`; se o Plano Básico
+  entrou, resolver `coberturaDaConta` (ADR-026), conferir que o Básico
+  segue só no ponto da própria conta, rerodar `npm run check` e os e2e
+  26/28 (e o 34 do Básico).
+- [ ] Depois do merge (só com autorização): CI verde no SHA mergeado,
+  deploy com o SHA novo, migration 105 aplicada em produção (48 pares,
+  "Terapia capilar" ativa), Admin → Categorias → Cafeteria mostra
+  Padaria e Confeitaria / Doceria nos dois lados.
+- Decisão do dono, fora desta estação: pares novos além da matriz de
+  28/09/2026 (o admin cadastra pela tela).
+
 ## QR CODE INSTITUCIONAL — depois do PR (27/09/2026)
 
 - [ ] Depois do merge: CI verde no commit mergeado, deploy com o SHA novo,

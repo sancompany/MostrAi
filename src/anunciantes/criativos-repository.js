@@ -136,7 +136,9 @@ async function listarPorStatus(status) {
   return rows;
 }
 
-async function atualizar(id, dadosRecebidos) {
+// `db`: um client em transação, quando quem chama precisa travar outra linha
+// junto (troca de arquivo de mídia própria × exclusão, src/midias/repository.js).
+async function atualizar(id, dadosRecebidos, db = pool) {
   // URL nova sem o hash do arquivo novo: o hash antigo mentiria sobre o
   // conteúdo (o Player rejeitaria o download e pularia a peça). Sem hash, o
   // Player cai no cache por criativoId — pior, mas não errado.
@@ -148,7 +150,7 @@ async function atualizar(id, dadosRecebidos) {
   if (!campos.length) return buscarPorId(id);
   const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
   const valores = campos.map((c) => dados[c]);
-  const { rows } = await pool.query(`UPDATE criativos SET ${sets} WHERE id = $1 RETURNING *`, [id, ...valores]);
+  const { rows } = await db.query(`UPDATE criativos SET ${sets} WHERE id = $1 RETURNING *`, [id, ...valores]);
   return rows[0] || null;
 }
 

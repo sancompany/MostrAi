@@ -31,7 +31,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - Cadastro/login de conta única, três papéis possíveis.
 - Catálogo de planos no banco: Essencial/Pro/Prime × 4 ciclos, sem regra em
   variável de ambiente (Inicial/Básico ficaram `ativo=false`, só histórico —
-  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082).
+  ADR-016). Ponto com tela ativa gera +1 crédito/mês (migration 082) e,
+  desde 28/09/2026, o Plano Básico do ponto (14 h/mês no próprio ponto,
+  migration 103, ADR-025) — benefício, não plano comercial.
 - Assinatura, troca de plano e cancelamento via San Checkout (webhook
   fail-closed/idempotente/transacional).
 - Upload de criativo com validação síncrona (ffmpeg), normalização de
@@ -49,7 +51,9 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
   `tests/playlist-congelamento.test.js`.
 - Painel do anunciante: bloqueio total sem plano, KPIs (horas/exibições
   contratadas vs. entregues, custo por exibição fixo, banco de horas),
-  gráficos por dia/ponto, escolha de pontos compacta com busca. Redesenhado
+  gráficos por dia/ponto, escolha de pontos com busca — em cards no molde
+  do admin desde 28/09/2026 (foto da fachada, segmento, estado, "Seu
+  ponto", seleção escrita no pé; ADR-029, PR #100 mergeado). Redesenhado
   visualmente em 21/09/2026 como dashboard SaaS/AdTech responsivo, sem mudar
   contratos nem cálculos; estados vazios e listas extensas foram mantidos
   utilizáveis.
@@ -61,6 +65,11 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - Comissão de vendedor (entrada só por convite direto do dono).
 - Painel administrativo: contas, candidaturas, convites, pontos, telas,
   criativos, dinheiro, banco de horas, resumo com margem real.
+- Comunicados por e-mail no admin (29/09/2026, PR #106, reconciliado com a
+  Visão geral final do #104 e mergeado com autorização do dono): público com
+  contagem, prévia real, teste, confirmação, envio pela fila existente sem
+  duplicar, histórico e reenvio só das falhas (ADR-032, RN-68, migration 108;
+  `tests/comunicados.test.js`, e2e 39). Card abaixo do QR institucional.
 - Direitos do titular de dados (LGPD) — `src/titular/`.
 
 ## Funcionalidades parcialmente concluídas / com lacuna conhecida

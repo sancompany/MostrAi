@@ -24,11 +24,14 @@ julgamento (não fórmula), está dito.
   rede o plano cobre), `duracao_maxima_segundos` (teto da peça),
   `limite_criativos`, `preco_travado` (mantém o valor de quando assinou),
   `desconto_comodato_percentual` (aposentado — sem efeito; ADR-016).
-- **Ser ponto não é plano (ADR-016, 24/09/2026)**: ponto com tela ativa
-  gera +1 crédito por mês no ledger único; plano pago × benefício por
-  créditos seguem a prioridade Essencial < Pro < Prime
-  (`plano-administrativo.js`). Inicial/Básico/repasse/ajuda de custo não
-  existem no fluxo ativo.
+- **Ser ponto = Plano Básico + 1 crédito/mês (ADR-025, 28/09/2026; o
+  crédito vem do ADR-016)**: ponto com tela ativa gera +1 crédito por mês no
+  ledger único E o Plano Básico do ponto (14 h/mês, peça até 15 s, só no
+  próprio ponto, sem custo) — benefício em `beneficios_basico_ponto`, nunca
+  em `plano_id`, somado ao plano comercial com a origem preservada. Plano
+  pago × benefício por créditos seguem a prioridade Essencial < Pro < Prime
+  (`plano-administrativo.js`). Inicial/`comodato-basico`/repasse/ajuda de
+  custo continuam fora do fluxo ativo.
 - **Benefício comercial é sempre no preço, nunca no tempo**: não existe
   carência, mês grátis ou pular ciclo na assinatura (`CONSTRAINTS.md`).
 
@@ -176,6 +179,14 @@ cortesia, quando marcado):
 - `anunciantesElegiveis` (`src/playlist/gerador.js`) exclui da tela um
   anunciante cujo `categoria_id` bate com o `categoria_id` **do ponto**
   onde a tela está — "não competir com o ramo do próprio comércio".
+- Desde 28/09/2026 (migration 105, ADR-026) também exclui quando o par
+  (categoria do ponto, categoria do anunciante) está em
+  `categorias_concorrentes` — uma linha por par, `categoria_a <
+  categoria_b`, simétrica por construção. Grupo e aliases nunca entram;
+  não há exclusividade anunciante × anunciante; a dona que escolheu o
+  próprio ponto é isenta das duas partes. Regra em JS espelhada em
+  `src/categorias/concorrencia.js#bloqueia` (usada por
+  `entrada-no-ar.js#coberturaDaConta`).
 - **Risco conhecido, não fórmula**: nenhum caminho de criação de ponto hoje
   grava `categoria_id` no ponto (`docs/furos.md`, furo já catalogado) — na
   prática esse filtro nunca exclui ninguém hoje. Ver `.ia/RISKS.md`.

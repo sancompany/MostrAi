@@ -21,6 +21,7 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
+const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
 const categoriasRepo = require('../categorias/repository');
@@ -139,16 +140,14 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   // achava que tinha indicado alguem, o vendedor achava que tinha indicado, e
   // a comissao simplesmente nunca existia. Conferido aqui, com a mesma
   // consulta que paga a comissao la na frente.
+  // Regra em `indicacoesRepo.indicadorDoCupom` — a mesma que a página de
+  // cadastro usa pra mostrar "Indicado por" (GET /indicacoes/:codigo), então
+  // o nome mostrado é o da conta que fica associada aqui. Cupom de vendedor
+  // não vale mais (programa aposentado, 23/09/2026). O front já reenvia o
+  // cadastro sem o cupom quando o erro vem com `campo`, então o link antigo
+  // só perde a indicação, não o cadastro.
   if (indicado_por_cupom) {
-    // Cupom de ponto sempre começa com "PT-" (migration 062) — namespace
-    // separado do de vendedor, então dá pra rotear sem ambiguidade e sem
-    // gastar duas consultas por cadastro comum.
-    // Cupom de vendedor não vale mais (programa aposentado, 23/09/2026 — sem
-    // indicação nova, sem comissão nova). O front já reenvia o cadastro sem o
-    // cupom quando o erro vem com `campo`, então o link antigo só perde a
-    // indicação, não o cadastro. Cupom de ponto (PT-) segue valendo.
-    const cupom = String(indicado_por_cupom).toUpperCase();
-    const encontrado = cupom.startsWith('PT-') ? await indicacoesRepo.buscarPontoPorCupom(cupom) : null;
+    const encontrado = await indicacoesRepo.indicadorDoCupom(indicado_por_cupom);
     if (!encontrado) {
       return res
         .status(400)
@@ -428,9 +427,17 @@ async function contaParaOPainel(anunciante) {
       )
     : { rows: [] };
   const origem = planoAdministrativo.origemDoDireito(anunciante, beneficioAtivo);
+  // Plano Básico do ponto (migration 103): benefício SEPARADO do plano
+  // comercial — o painel mostra os dois, cada um com a sua origem, e os
+  // direitos somados (`direitos`: pontos e horas somam; peça e criativos no
+  // ar valem o maior).
+  const basicos = await basicoRepo.ativosDaConta(anunciante.id);
+  const vigente = repo.planoVigenteId(anunciante) ? plano : null;
   return {
     ...anunciante,
     plano,
+    beneficios_basico: basicos.map(basicoRepo.resumo),
+    direitos: basicoRepo.direitosCombinados(vigente, basicos),
     plano_origem: origem,
     plano_origem_texto: origem ? planoAdministrativo.ORIGENS_DO_DIREITO[origem] : null,
     // Vigência decidida AQUI (RN-32-B, último dia inclusivo em Matão), não
@@ -1189,12 +1196,17 @@ async function subirCriativoDoCliente(req, res) {
   // plano nem deveria ser alcançável por ali; isso é a segunda trava, direto
   // no servidor, pra quem tentar pela API sem passar pela tela. Ser ponto
   // não libera plano (ADR-016, 24/09/2026).
+  // Plano Básico do ponto (migration 103, substitui a parte "ser ponto não
+  // libera plano" do ADR-016): a conta que hospeda um ponto ativo sobe peça
+  // mesmo sem plano comercial. Limites = os direitos somados (o maior de
+  // peças no ar e de duração entre as duas origens).
   const planoId = planoEfetivoId(anunciante);
-  if (!planoId) {
+  const basicos = await basicoRepo.ativosDaConta(anunciante.id);
+  if (!planoId && !basicos.length) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
   }
-  const plano = await planosRepo.buscarPorId(planoId);
+  const direitos = basicoRepo.direitosCombinados(planoId ? await planosRepo.buscarPorId(planoId) : null, basicos);
   // Substituir sem tirar do ar (Fatia 3): o cliente troca a peça aprovada
   // pela nova, e a atual continua rodando até a nova ser aprovada — antes o
   // único jeito era excluir primeiro e ficar sem nada no ar durante a
@@ -1217,9 +1229,9 @@ async function subirCriativoDoCliente(req, res) {
   }
   return subirCriativo(req, res, {
     contaId: req.session.anuncianteId,
-    limite: plano.limite_criativos,
+    limite: direitos.limiteCriativos,
     semTeto: false,
-    duracaoMaxima: plano.duracao_maxima_segundos,
+    duracaoMaxima: direitos.duracaoMaxima,
     substitui,
     envioChave,
     // Quando a linha nasce (card "processando") e quando o trabalho termina
@@ -1336,23 +1348,45 @@ async function criativosComSituacao(conta) {
   const plano = efetivoId ? await planosRepo.buscarPorId(efetivoId) : null;
   const vigenteId = repo.planoVigenteId(conta);
   const vigente = vigenteId === efetivoId ? plano : vigenteId ? await planosRepo.buscarPorId(vigenteId) : null;
-  const contaVeicula = !!vigente && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
+  // O Básico do ponto (migration 103) também veicula: sem plano comercial,
+  // a conta com ponto ativo toca no próprio ponto; com os dois, o limite de
+  // peças no ar é o maior (o gerador usa o mesmo conjunto nas duas origens).
+  const basicos = conta.conta_propria ? [] : await basicoRepo.ativosDaConta(conta.id);
+  const contaVeicula =
+    (!!vigente || basicos.length > 0) && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
-  const limite = vigente ? limiteDeCriativos(false, vigente.limite_criativos, prontos.length) : 0;
+  const limiteBasico = Math.max(0, ...basicos.map((b) => b.limite_criativos));
+  const limite = vigente
+    ? Math.max(limiteDeCriativos(false, vigente.limite_criativos, prontos.length), limiteBasico)
+    : limiteBasico;
   // `em_rodizio`: a peça ENTRA na playlist (conta veiculando, dentro do
   // limite de peças simultâneas, mesma ordem do gerador). Até 27/09/2026
   // isto se chamava `no_ar` — e era o que o painel mostrava como "No ar"
   // sem nenhuma exibição ter acontecido. "No ar" agora é comprovante
   // confirmado (src/anunciantes/entrada-no-ar.js).
-  const rodizio = new Set(contaVeicula ? prontos.slice(0, limite).map((c) => c.id) : []);
+  // Duas vagas, a mesma escolha do gerador: a do plano (as N mais novas, N =
+  // limite do plano) e a do Básico (as mais novas que cabem no teto de peça
+  // da conta hoje — `basicoRepo.cabeNoTeto`, a regra de `pecasDoBasico`).
+  const teto = basicoRepo.direitosCombinados(vigente, basicos).duracaoMaxima;
+  const doPlano = vigente ? prontos.slice(0, limiteDeCriativos(false, vigente.limite_criativos, prontos.length)) : [];
+  const doBasico = prontos.filter((c) => basicoRepo.cabeNoTeto(c.duracao_segundos, teto)).slice(0, limiteBasico);
+  const rodizio = new Set(contaVeicula ? [...doPlano, ...doBasico].map((c) => c.id) : []);
   const comRodizio = criativos.map((c) => ({ ...c, em_rodizio: rodizio.has(c.id) }));
-  const entradas = await entradaNoArDasPecas({ conta, plano: vigente, contaVeicula, criativos: comRodizio });
+  const entradas = await entradaNoArDasPecas({
+    conta,
+    plano: vigente,
+    basicos,
+    teto,
+    contaVeicula,
+    criativos: comRodizio,
+  });
   return {
     criativos: comRodizio.map((c) => {
       const entrada = entradas.get(c.id) || null;
       return { ...c, entrada, no_ar: entrada?.estado === ESTADOS_ENTRADA.NO_AR };
     }),
     plano,
+    basicos,
     limite,
     contaVeicula,
   };
@@ -1408,7 +1442,8 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
   const conta = await repo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   await criativosRepo.descartarProcessamentosOrfaos(conta.id);
-  const { criativos, plano, limite, contaVeicula } = await criativosComSituacao(conta);
+  const { criativos, plano, basicos, limite, contaVeicula } = await criativosComSituacao(conta);
+  const direitos = basicoRepo.direitosCombinados(plano, basicos);
   const substitutaDe = new Map(
     criativos
       .filter((c) => c.status === 'pendente' && c.substitui_criativo_id)
@@ -1445,16 +1480,19 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
       substitutaEmAnalise: substitutaDe.get(c.id) || null,
       enviadoEm: c.created_at,
     })),
-    temPlano: !!plano,
+    // `temPlano`: tem algum direito de veicular — plano comercial OU o
+    // Básico do ponto (migration 103).
+    temPlano: !!plano || basicos.length > 0,
+    temBasico: basicos.length > 0,
     // Plano (anúncio na rede) e/ou ponto no ar (a tela do próprio
     // comércio) — o painel explica onde a peça aprovada roda.
     rodaNaRede: !!conta.plano_id,
     rodaNoProprioPonto: pontos[0].n > 0,
     contaVeicula,
     limiteNoAr: limite,
-    limiteCadastro: plano ? plano.limite_criativos : 0,
+    limiteCadastro: direitos.limiteCriativos,
     emUso,
-    duracaoMaxima: plano?.duracao_maxima_segundos || null,
+    duracaoMaxima: direitos.duracaoMaxima,
   });
 });
 
@@ -1497,12 +1535,30 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
 // consegue guardar, imprimir ou mandar pro contador dele.
 //
 // `;` e BOM porque o Excel em português com vírgula junta tudo numa coluna só
-// e come os acentos. O `?desde=` respeita o mesmo recorte da tela.
+// e come os acentos.
+//
+// Recorte: `?desde=AAAA-MM-DD` (painel do usuário, 29/09/2026) é o primeiro
+// dia do período do gráfico, em Matão — o arquivo cobre exatamente o que a
+// tela soma, de 00:00 desse dia até agora (com `dias`, a janela era "agora
+// menos N×24 h" e pegava um pedaço do dia anterior ao que a tela mostra).
+// Sem `desde` — ou com data que não existe, no futuro ou antes de 2020 —
+// vale o `?dias=` de sempre (1 a 365, padrão 30).
+function diaDoComprovante(texto) {
+  const t = String(texto || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const dia = new Date(`${t}T00:00:00Z`);
+  if (Number.isNaN(dia.getTime()) || dia.toISOString().slice(0, 10) !== t) return null;
+  return t >= '2020-01-01' && t <= vigencia.hojeComercial() ? t : null;
+}
 router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
     return res.status(403).json({ erro: 'só pode ver exibições da própria conta' });
   }
+  const desde = diaDoComprovante(req.query.desde);
   const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 365);
+  const recorte = desde
+    ? `e.janela_hora >= ($2::date::timestamp AT TIME ZONE 'America/Sao_Paulo')`
+    : `e.janela_hora > now() - ($2 || ' days')::interval`;
   const { rows } = await pool.query(
     // `janela_hora` é timestamptz e a sessão do Postgres roda em UTC, então
     // `date_trunc('day', ...)` cru corta o dia em UTC, não em Matão: tudo o
@@ -1516,11 +1572,11 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
      FROM exibicoes_contador e
      JOIN dispositivos d ON d.id = e.dispositivo_id
      JOIN pontos p ON p.id = d.ponto_id
-     WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
+     WHERE e.anunciante_id = $1 AND ${recorte}
      GROUP BY dia, p.nome, p.cidade, d.numero
      HAVING SUM(e.vezes_confirmadas) > 0
      ORDER BY dia DESC, p.nome`,
-    [req.params.id, dias],
+    [req.params.id, desde || dias],
   );
 
   const campo = (v) => {
@@ -1534,7 +1590,7 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
   const total = rows.reduce((soma, r) => soma + r.exibicoes, 0);
   linhas.push(['', '', '', 'Total', total].join(';'));
 
-  const arquivo = `mostrai-exibicoes-${dias}dias.csv`;
+  const arquivo = desde ? `mostrai-exibicoes-desde-${desde}.csv` : `mostrai-exibicoes-${dias}dias.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`);
   res.send('\uFEFF' + linhas.join('\r\n') + '\r\n');
@@ -1573,18 +1629,17 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   }
   const anuncianteId = req.params.id;
 
-  const [totais, porPonto, porDia, porDiaPonto, cobrancas, anunciante, confirmadasMesRows, janelaMesRows] =
-    await Promise.all([
-      pool.query(
-        `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+  const [totais, porPonto, porDiaPonto, cobrancas, anunciante, confirmadasMesRows, janelaMesRows] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
-        [anuncianteId],
-      ),
-      pool.query(
-        // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-        // status mostrado é o da tela mais recentemente vista (19/09/2026,
-        // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
-        `SELECT p.id, p.nome, p.cidade,
+      [anuncianteId],
+    ),
+    pool.query(
+      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
+      // status mostrado é o da tela mais recentemente vista (19/09/2026,
+      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+      `SELECT p.id, p.nome, p.cidade,
               SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
               MAX(d.ultima_vez_online) AS ultima_vez_online
        FROM exibicoes_contador e
@@ -1593,23 +1648,17 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY p.id, p.nome, p.cidade
        ORDER BY confirmadas DESC`,
-        [anuncianteId],
-      ),
-      pool.query(
-        // Mesmo corte de dia do comprovante em CSV (ver acima): no fuso de
-        // Matão, não no do servidor.
-        `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas) AS confirmadas
-       FROM exibicoes_contador WHERE anunciante_id = $1
-       GROUP BY dia ORDER BY dia DESC LIMIT 30`,
-        [anuncianteId],
-      ),
-      // Mesma coisa, mas por ponto dentro de cada dia (19/09/2026, pedido do
-      // dono: "no card exibições por dia, coloque também um exibições por
-      // ponto") — o front empilha por cor de ponto em vez de mostrar só o
-      // total do dia. Mesmo corte de 30 dias do gráfico por dia; sem LIMIT
-      // aqui porque é dia × ponto, não só dia.
-      pool.query(
-        `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+      [anuncianteId],
+    ),
+    // Dia × ponto, o histórico inteiro (19/09/2026; é a fonte única do
+    // gráfico do período desde o painel do usuário, 29/09/2026): o front
+    // reagrupa em dia, semana ou mês conforme o filtro (7 dias a "Máx.")
+    // sem pedir de novo, e empilha por cor de ponto. Mesmo corte de dia do
+    // comprovante em CSV (acima): no fuso de Matão. Sem LIMIT de propósito —
+    // "Máx." é desde o primeiro dia; o tamanho cresce com dias × pontos da
+    // própria conta. (`porDia`, só o total do dia, saiu: ninguém lia.)
+    pool.query(
+      `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
               p.id AS ponto_id, p.nome AS ponto_nome, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
@@ -1617,45 +1666,45 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY dia, p.id, p.nome
        ORDER BY dia DESC`,
-        [anuncianteId],
-      ),
-      // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
-      // emitida, e quando passar a emitir vai direto por e-mail, não por um
-      // link nesta tabela — os campos continuam existindo na tabela
-      // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
-      pool.query(
-        `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
-        [anuncianteId],
-      ),
-      repo.buscarPorId(anuncianteId),
-      // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
-      // acima: quanto já confirmou no mês corrente, em Matão.
-      pool.query(
-        `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+      [anuncianteId],
+    ),
+    // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
+    // emitida, e quando passar a emitir vai direto por e-mail, não por um
+    // link nesta tabela — os campos continuam existindo na tabela
+    // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
+    pool.query(
+      `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
+      [anuncianteId],
+    ),
+    repo.buscarPorId(anuncianteId),
+    // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
+    // acima: quanto já confirmou no mês corrente, em Matão.
+    pool.query(
+      `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador
        WHERE anunciante_id = $1
          AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
            = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
-        [anuncianteId],
-      ),
-      // Primeiro dia com PROGRAMAÇÃO (não confirmação) no mês corrente, em
-      // Matão — é o início real da campanha dentro do mês, mesmo em dias sem
-      // nenhuma confirmação. Existe uma linha em exibicoes_contador sempre que
-      // a conta foi programada numa hora, então MIN() aqui não depende de ter
-      // rodado de verdade (21/09/2026, correção da média diária: dividir por
-      // "dia do mês" penalizava campanha que começou no meio do mês —
-      // 14 exibições em 2 dias virava "0,7 por dia" em vez de "7 por dia").
-      pool.query(
-        `SELECT
+      [anuncianteId],
+    ),
+    // Primeiro dia com PROGRAMAÇÃO (não confirmação) no mês corrente, em
+    // Matão — é o início real da campanha dentro do mês, mesmo em dias sem
+    // nenhuma confirmação. Existe uma linha em exibicoes_contador sempre que
+    // a conta foi programada numa hora, então MIN() aqui não depende de ter
+    // rodado de verdade (21/09/2026, correção da média diária: dividir por
+    // "dia do mês" penalizava campanha que começou no meio do mês —
+    // 14 exibições em 2 dias virava "0,7 por dia" em vez de "7 por dia").
+    pool.query(
+      `SELECT
          MIN(date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo'))::date AS primeiro_dia,
          date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje
        FROM exibicoes_contador
        WHERE anunciante_id = $1
          AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
            = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
-        [anuncianteId],
-      ),
-    ]);
+      [anuncianteId],
+    ),
+  ]);
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
@@ -1680,9 +1729,14 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   let exibicoesContratadasMes = null;
   let exibicoesRestantesMes = null;
   let mediaDiariaMes = null;
-  if (plano) {
+  // Duas origens (migration 103): as horas do plano comercial e as do Básico
+  // de cada ponto ativo somam no total, e vão separadas pro painel mostrar de
+  // onde vem cada parte. Tempo é a fonte: as exibições são derivadas.
+  const basicosDaConta = await basicoRepo.ativosDaConta(anunciante.id);
+  const origens = basicoRepo.direitosCombinados(plano, basicosDaConta);
+  if (plano || basicosDaConta.length) {
     const duracaoMedia = await bancohorasRepo.duracaoMediaDoAnunciante(anuncianteId);
-    horasContratadasMes = horasDeTelaPorMes(Number(plano.segundos_por_hora) || 0, plano.pontos_incluidos);
+    horasContratadasMes = origens.horasPorMes;
     horasEntreguesMes = Math.round(((confirmadasMes * duracaoMedia) / 3600) * 10) / 10;
     exibicoesContratadasMes = Math.round((horasContratadasMes * 3600) / duracaoMedia);
     exibicoesRestantesMes = Math.max(0, exibicoesContratadasMes - confirmadasMes);
@@ -1713,10 +1767,11 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     confirmadasMes,
     criativosAprovados: aprovados[0].n,
     porPonto: await comSituacaoNoAr(porPonto.rows),
-    porDia: porDia.rows,
     porDiaPonto: porDiaPonto.rows,
     cobrancas: cobrancas.rows,
     horasContratadasMes,
+    horasPlanoMes: plano ? origens.horasPlano : null,
+    horasBasicoMes: basicosDaConta.length ? origens.horasBasico : null,
     horasEntreguesMes,
     exibicoesContratadasMes,
     exibicoesRestantesMes,

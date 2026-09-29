@@ -15,7 +15,9 @@ export function emailsPara(destino) {
     .split('\n')
     .filter(Boolean)
     .map((l) => JSON.parse(l))
-    .filter((m) => String(m.to).toLowerCase() === String(destino).toLowerCase());
+    // `to` é texto na maioria dos e-mails e objeto { name, address } no
+    // comunicado (src/financeiro/email.js#enviarComunicado).
+    .filter((m) => String(m.to?.address ?? m.to).toLowerCase() === String(destino).toLowerCase());
 }
 
 // Último código de 6 dígitos mandado pra `destino`, esperando até `ms` o

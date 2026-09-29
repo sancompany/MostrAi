@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const { nomeDoCiclo } = require('../lib/ciclos');
+const { multiplicar } = require('../lib/dinheiro');
 
 // Snapshot comercial de cada ciclo PAGO (migration 087, ADR-018) e o custo
 // por exibição prevista que sai dele:
@@ -85,12 +86,32 @@ async function snapshotCalculado(conta, db) {
   };
 }
 
-// O que o card "Custo por exibição prevista" mostra pra conta AGORA:
+// Ciclo de REFERÊNCIA de um plano do catálogo (painel do usuário,
+// 29/09/2026, pedido do dono): o que esse plano, nesse ciclo, custa na
+// tabela — mensalidade do ciclo × meses, sem promoção e sem desconto de
+// parceiro (que são da assinatura e da conta, não do plano) — e as
+// exibições previstas no ciclo pela MESMA régua de `registrar`. Só leitura:
+// nada aqui cobra, lança ou grava.
+function cicloDeReferencia(plano) {
+  const meses = Number(plano.compromisso_meses);
+  const mes = exibicoesPrevistasMes(plano);
+  return {
+    valor_ciclo: multiplicar(plano.valor_mensal, meses),
+    exibicoes_previstas_mes: mes,
+    exibicoes_previstas_ciclo: mes * meses,
+    ciclo_meses: meses,
+  };
+}
+
+// O que o card "Custo por exibição" mostra pra conta AGORA:
 //   · pago     → o snapshot do ciclo do plano pago em vigor;
-//   · beneficio → benefício por créditos em vigor — sem valor monetário;
+//   · beneficio → benefício por créditos em vigor: o custo de REFERÊNCIA do
+//                 plano e ciclo equivalentes (valor cheio de tabela ÷
+//                 exibições previstas no ciclo — a mesma divisão do pago,
+//                 `custoPorExibicaoPrevista`). Informativo: nada é cobrado.
 //   · cortesia → cortesia administrativa legada — sem cobrança;
 //   · sem_plano / sem_snapshot → "-" (nada inventado).
-// Benefício e cortesia NUNCA mostram R$ 0,00: não há dinheiro envolvido.
+// Cortesia NUNCA mostra R$ 0,00: não há dinheiro envolvido.
 async function situacaoDoCusto(conta, db = pool) {
   if (!conta?.plano_id) return { tipo: 'sem_plano' };
   if (vigencia.coberturaVencida(conta.data_expiracao)) {
@@ -103,7 +124,24 @@ async function situacaoDoCusto(conta, db = pool) {
         ORDER BY id DESC LIMIT 1`,
       [conta.id, conta.plano_id],
     );
-    return { tipo: rows[0]?.origem === 'indicacao' ? 'beneficio' : 'cortesia' };
+    if (rows[0]?.origem !== 'indicacao') return { tipo: 'cortesia' };
+    // O plano do benefício É o equivalente: o resgate escolhe a linha do
+    // catálogo pelo nível e pelo ciclo (creditos/routes.js, resgatar).
+    const { rows: planos } = await db.query('SELECT * FROM planos WHERE id = $1', [conta.plano_id]);
+    const plano = planos[0];
+    if (!plano) return { tipo: 'beneficio' };
+    const referencia = cicloDeReferencia(plano);
+    return {
+      tipo: 'beneficio',
+      referencia: true,
+      custoPorExibicaoPrevista: custoPorExibicaoPrevista(referencia),
+      valorCiclo: referencia.valor_ciclo,
+      exibicoesPrevistasCiclo: referencia.exibicoes_previstas_ciclo,
+      exibicoesPrevistasMes: referencia.exibicoes_previstas_mes,
+      cicloMeses: referencia.ciclo_meses,
+      ciclo: nomeDoCiclo(referencia.ciclo_meses),
+      plano: `${plano.nome} · ${nomeDoCiclo(referencia.ciclo_meses)}`,
+    };
   }
   const { rows } = await db.query(
     `SELECT c.*, p.nome AS plano_nome
@@ -169,6 +207,7 @@ async function jaTeveCicloPago(assinatura, db = pool) {
 
 module.exports = {
   exibicoesPrevistasMes,
+  cicloDeReferencia,
   registrar,
   origemDoCicloPago,
   jaTeveCicloPago,

@@ -5205,3 +5205,425 @@ Depois do merge (e só então a estação fecha): ver `.ia/TODO.md`, seção "QR
 CODE INSTITUCIONAL". Fora do escopo, para outra estação: QR por ponto, de
 indicação, com contagem de acessos.
 
+## Q. Categorias e concorrentes diretos (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Regra:
+emenda da RN-57 em `docs/funcional.md`; decisão: ADR-026; rotas em
+`docs/api.md`.
+
+Feito:
+
+- [x] `categorias_concorrentes` (migration 105): par simétrico por
+      construção (a < b, PK), sem duplicata, sem par consigo mesma, CASCADE,
+      RLS. Seed dos 48 pares aprovados, por nome (todos existiam em
+      produção em 28/09/2026).
+- [x] "Terapia capilar" criada (Beleza e estética; aliases terapeuta
+      capilar, terapia capilar, tratamento capilar, tricologia,
+      tricologista), concorrente só de si mesma.
+- [x] Gerador e cobertura da conta aplicam: mesma categoria → bloqueia;
+      par → bloqueia; resto → exibe. Grupo/alias nunca; dona do ponto
+      isenta; Mídia Mostraí fora.
+- [x] Admin → Categorias → Editar → "Concorrentes diretos" (busca,
+      etiquetas, texto explicativo), grava no Salvar, reflete dos dois
+      lados sem F5. Mesclar leva os pares.
+- [x] Testes: `tests/categorias-concorrentes-diretos.test.js`,
+      `tests/categorias-concorrentes-admin.test.js`, e2e 28.
+
+Antes/depois do merge: `.ia/TODO.md`, seção "CATEGORIAS E CONCORRENTES
+DIRETOS".
+
+## R. Promoções — mídia separada do conteúdo (Estação isolada 3, 28/09/2026)
+
+("Estação isolada 3" é a numeração do dono para as frentes paralelas desta
+semana — não é a Estação 3 da esteira da San & Co., que está fechada.)
+
+**Feito ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com autorização do dono em 28/09/2026):** a promoção deixou de ser um banner com
+a arte de fundo e todo o texto por cima (véu escuro). Agora é um componente
+só (`public/promocao.js` + bloco "Componente de promoção" em `style.css`),
+usado pela Home, por Planos e pela prévia do admin: arte e texto lado a lado
+a partir de 840px de COMPONENTE (container query), arte em cima e texto
+embaixo abaixo disso; a arte é medida antes de aparecer e entra inteira, com
+a proporção real (sem recorte, sem pulo de layout). Home: selo, título,
+subtítulo, prazo curto e "Ver planos". Planos: descontos por ciclo (cada um
+leva ao ciclo na grade), prazo com o teto de adesões e "Como funciona" (a
+descrição da promoção, recolhida). Duas ou mais promoções = carrossel sem
+autoplay (setas, pontos, teclado, swipe; slide fora da vista inerte; altura
+estável); com uma só não há seta, ponto nem "1/1". Nenhuma regra comercial
+mudou: percentuais, prazo, teto, público, cálculo e Checkout intactos.
+E2E: `tests/e2e/29-promocoes-visual.mjs`.
+
+Com mais de uma promoção vigente, cada produto × ciclo só é anunciado pela
+promoção que de fato dá o preço — a primeira na ordem do servidor, a mesma
+escolha de `promocoesRepo.condicaoVigente` (`promocoesParaExibir` em
+`public/promocao.js`). Sem isso o carrossel deixaria uma promoção mais antiga
+anunciar um desconto que a cobrança não aplica. A arte espera no máximo 0,8 s
+antes de a seção aparecer (depois disso o espaço fica reservado pela
+proporção declarada e ela entra inteira, com `contain`).
+
+Revisão do Codex no PR (2 P2, corrigidos com teste no e2e 29): o desconto
+por ciclo em Planos vira "até X%" também quando algum plano exibido naquele
+ciclo fica sem ele (antes, "30% Mensal" podia levar a planos Mensal sem os
+30%); e o carrossel passa a assentar onde o trilho parou quando um swipe
+interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
+
+**Achado funcional, NÃO alterado (regra de preço, fora desta estação):**
+
+- **R0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em
+  Planos"; a cobrança enxerga toda promoção vigente.** `planos.page.js`
+  calcula o preço dos cards com `PROMOCOES_VIGENTES` filtrado por
+  `mostrar_planos`, enquanto o `POST /assinar` e a cotação usam
+  `condicaoVigente` sobre todas as vigentes. Se uma promoção vigente e mais
+  nova estiver com "mostrar em Planos" desligado e ocupar a mesma célula de
+  outra, o card mostra o desconto da outra e a cobrança aplica o da mais nova.
+  Hoje não acontece (uma promoção só em produção). Decidir: o card passa a
+  usar todas as vigentes, ou o servidor passa a ignorar as que não aparecem
+  em Planos.
+
+**Com o dono:**
+
+- **R1 [ ] A pré-venda termina 31/12/2026 às 00:00**, não 23:59 — é o que
+  está gravado (a mesma situação da C4 da pré-venda anterior). O site mostra
+  "Adesões até 31/12/2026 às 00:00". Se a intenção é o dia 31 inteiro,
+  trocar para 23:59 no admin.
+- **R2 [ ] Arte específica pro celular não existe.** O admin guarda UMA
+  imagem por promoção, com um formato (horizontal 21:9, quadrado, vertical).
+  O componente usa a proporção real da imagem e nunca corta, então a arte
+  horizontal aparece inteira também no celular — com a arte atual (3:1), ela
+  fica com ~120px de altura a 390px. Uma segunda imagem (celular) exigiria
+  campo e upload novos no admin: não construído nesta estação (pedido: não
+  criar sistema paralelo).
+- **R3 [ ] Título repete o selo.** O componente tira do título o prefixo
+  igual ao selo ("Pré-venda Mostraí: até 30% de desconto" com selo
+  "Pré-venda" aparece como "Até 30% de desconto"). O texto gravado não foi
+  alterado; se o dono preferir, pode reescrever o título no admin e a regra
+  deixa de agir.
+- **R4 [ ] Ordem e destino do CTA não são configuráveis.** O carrossel segue
+  a ordem do servidor (a mais nova primeiro) e o CTA da Home vai sempre para
+  Planos — não há campo de prioridade nem de destino no admin (não foi
+  criado um CMS por causa do carrossel).
+
+## S. Promoções — reforço visual + barra na área logada (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Decisão:
+ADR-028. Nenhuma regra comercial mudou (percentuais, prazo, teto, Checkout,
+cálculo, elegibilidade, API e banco intactos).
+
+Feito:
+
+- [x] Área pública (Home, Planos, prévia do admin): a oferta vira a manchete
+      ("ATÉ 30% OFF", calculada dos itens da promoção), selo em faixa
+      vermelha, descontos por ciclo como blocos (Planos: levam ao ciclo na
+      grade; Home: faixa compacta só de leitura), "Melhor desconto" no
+      ciclo de maior desconto, "Ver planos" em amarelo, "Tempo limitado" com
+      prazo e teto. Paleta de campanha só dentro do componente.
+- [x] Arte continua fora do texto e inteira; empilhada, a arte horizontal
+      ganhou teto de 260px de altura (em 768px o bloco passava de 660px).
+- [x] Carrossel, teclado, swipe, `inert`, `aria` e reduced-motion
+      preservados (e2e 29 atualizado para o contrato novo).
+- [x] Área logada: o card grande do painel saiu; faixa fina abaixo do
+      cabeçalho com X (`public/barra-promocional.js`), dispensa em
+      localStorage por id da promoção.
+- [x] E2E novo `tests/e2e/30-promocoes-reforco.mjs` (Home em 8 larguras,
+      Planos, estados sem arte/quadrada/vertical/textos longos/expirada,
+      barra: aberta, fechada, navegação, aba nova, outro navegador,
+      promoção nova).
+
+Revisão independente (achados reproduzidos, corrigidos e com teste no e2e
+30): a barra anunciava o desconto de uma promoção mais antiga numa célula já
+dada à mais nova (agora usa a mesma disputa de células do bloco público);
+o "até" da barra divergia do bloco; blocos de ciclo da Home eram itens de
+lista rotulados por `aria-label` (NVDA ignora — agora texto lido); título
+com contexto sumia quando citava o percentual, e "30,5%" era confundido com
+"5%"; "Tempo limitado" aparecia sem prazo (só com teto de adesões).
+
+Continuam abertas (§R, não resolvidas aqui): R0 divergência potencial entre
+a promoção exibida em Planos e a aplicada no preço; R1 fim em 31/12 às
+00:00; R2 sem arte específica de celular; R3 prefixo do título removido
+visualmente; R4 ordem/destino do CTA não configuráveis — e agora também a
+promoção sem CTA não existe (o CTA "Ver planos" é fixo).
+
+## T. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
+
+**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), mergeado com autorização do dono em 28/09/2026):** "Onde seu anúncio
+aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
+card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
+mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,
+nome com o estado ao lado, endereço com bairro e cidade, segmento, horário,
+ocupação, "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o
+estado escrito ("Selecionar ponto", "Selecionado", "Limite do plano
+atingido", "Indisponível para escolha"). Selecionado: borda da marca com
+anel e fundo levemente alaranjado. Próprio ponto: selo "Seu ponto" sobre a
+foto, borda quente e o texto da escolha num quadro claro — nunca marcado
+sozinho. Grade: 3 por fileira no desktop e no tablet, 1 no celular (foto
+2:1, a página rola); no tablet/desktop a lista rola por dentro (720 px).
+Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-029) —
+**sem mudança de backend nem de banco**. Seleção, limite, trava, salvamento,
+contador, busca e distribuição automática: o mesmo código de antes. E2E:
+`tests/e2e/35-cards-pontos-cliente.mjs` (novo) e o 26 passando sem mudança
+de comportamento.
+
+**Com o dono:**
+
+- **T1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
+  os pontos mandaram, nomes longos, o próprio ponto.
+- **T2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
+  redesenha este card (foto pela rota `pontos-disponiveis`, com `uf`), troca
+  "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
+  escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
+  mexem em `htmlPontoEscolha`, no bloco `.ponto-escolha` de `style.css` e em
+  `.pontos-selecao` de `painel.css`. Com o #100 na `main`, quem retomar o #90
+  resolve o conflito tirando a parte visual do card dele (fica a deste); a
+  fila de salvamento é mudança de lógica e continua decisão à parte.
+- **T3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
+  informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
+  não tem horário). Mantido como estava — trocar o texto do cliente é
+  decisão de conteúdo, não desta estação.
+- **T4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
+  card de gestão (andamento, telas, benefício), que já usa a mesma foto, o
+  mesmo placeholder e o mesmo selo de estado. Trocar para o card com foto
+  grande em cima alonga a coluna lateral — só se o dono quiser.
+- **T5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
+  (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
+  card não mostra. Mostrar é decisão de produto (no modo automático diria
+  quais pontos saíram no sorteio).
+
+## U. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
+
+Estação isolada, branch e worktree próprias, PR próprio, **sem merge até o
+dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
+
+**Feito:**
+
+- [x] Os dois pedidos saíram da coluna lateral de Meus pontos (~340 px) e
+      abrem no topo do painel, na largura da página (`#pontosNovo`, área
+      própria do grid): formulário ~65% e prévia ~35% fixa na rolagem no
+      desktop; uma coluna no celular, com a prévia depois dos botões; tablet
+      em uma coluna, com prévia e "Depois do envio" lado a lado. Limites por
+      container query em `em` (texto a 150% e zoom de 200% caem na coluna
+      única em vez de espremer campo).
+- [x] Campos com o desenho do site (o estilo só existia dentro de `.card`;
+      no painel, que é `.panel`, os campos saíam crus): endereço em grade
+      (CEP | rua | número; complemento | bairro; cidade | UF), horário em
+      grade com cabeçalho (dia | abre | até | fecha | fechado; no celular o
+      dia e "Fechado" em cima, os horários embaixo), observações com 116 px,
+      botões um embaixo do outro no celular. Dia fechado: caixinha marcada +
+      campos tracejados e desabilitados (não só cor).
+- [x] Erro embaixo do próprio campo (`aria-invalid` + `aria-describedby`),
+      foco no primeiro, resumo "Confira os campos marcados." perto do botão.
+      Mesmas regras de antes (obrigatórios do HTML; movimento > 0 e abertura
+      ≠ fechamento, que o servidor já recusava).
+- [x] **Bug real corrigido:** "Enviar pedido" sem segmento não fazia nada —
+      o `required` ficava no `<select>` escondido debaixo da busca e o
+      navegador travava o envio sem dizer por quê ("An invalid form control
+      … is not focusable"). A exigência passou pro campo visível
+      (`formulario.js#montarBusca`) — conserta também o cadastro público e
+      o card de modo anúncios, que usam a mesma busca.
+- [x] Busca de segmento com rótulo ligado, setas/Enter/Esc
+      (`aria-activedescendant`); editar o nome escolhido desfaz a escolha.
+- [x] CEP: estados distintos (consultando, encontrado, não encontrado, erro
+      de consulta); a resposta atrasada não apaga mais a rua digitada
+      enquanto isso; consulta velha não fala por cima da nova.
+- [x] Foto: arquivo que não é imagem ou passa de 20 MB (teto do servidor) é
+      recusado com o motivo; prévia com "Carregando"; foto que não sobe
+      depois do pedido criado vira aviso ("Pedido enviado, mas a foto não
+      foi junto…") — antes ia só pro console, e uma queda de rede nessa hora
+      dizia "não foi possível enviar" sobre um pedido já criado.
+- [x] Clique duplo / Enter repetido: um pedido só. Erro do servidor (409,
+      por exemplo) mantém tudo preenchido.
+- [x] "Tornar-se ponto" mostra qual comércio vai no pedido (nome e endereço
+      da conta) e a prévia usa o segmento da conta; o que falta preencher
+      aparece como marcador (itálico), não como dado.
+- [x] Payload, rotas, aprovação, Plano Básico, créditos e admin intocados.
+      Cancelar segue sem confirmação (não havia; nenhum `confirm()` aqui).
+- [x] E2E `tests/e2e/31-formularios-ponto.mjs` (91 verificações); 03, 05,
+      08, 09, 12, 16, 22, 26 e 28 continuam verdes.
+
+**Achados fora desta estação (não alterados):**
+
+- U1 [ ] `public/style.css` tem um trecho inteiro repetido (≈ linhas
+      690–800 e 1290–1415: horário, foto, blocos, candidatura). A segunda
+      cópia é a que vale — mexer só na primeira não surte efeito. Os estilos
+      desta estação ficaram num bloco próprio no fim do arquivo, escopados
+      em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
+      arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
+      já na `main`): o navegador descarta a regra que vem logo depois dela.
+- U2 [x] *(resolvido no painel do usuário, 29/09/2026 — §V: reproduzido,
+      fonte do número em `cqi`, e2e 37 alarga 1280 → 1400/1920/1334 sem
+      vazar.)* O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
+      número por JS quando a LARGURA do card muda, mas a fonte segue a
+      largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
+      1280 px, alargar a janela aumenta a fonte sem mudar o card, e o número
+      pode passar da borda até a próxima recarga. Achado da revisão de
+      código desta sessão; conserto natural: fonte em unidade do card
+      (container query) em vez de `vw`.
+
+## V. Painel do usuário — estação final (29/09/2026)
+
+Estação com merge e deploy autorizados pelo dono.
+[PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
+`claude/nifty-galileo-rwryqd`, base `93cd724`. Decisão: ADR-031.
+
+**Feito:**
+
+- [x] **Quatro indicadores**, na mesma região: horas de tela no mês (origem
+      plano/Básico como antes); exibições do mês com "de N previstas no
+      mês" e "Média diária: X" pequena dentro do card (o card "Média diária"
+      saiu; sem exibição, "Média diária: 0", nunca NaN/Infinity); custo por
+      exibição com 4 casas (nunca R$ 0,01); saldo de veiculação sempre à
+      vista — "Em dia" ou "4h 32min a entregar", lido do banco que já existe.
+- [x] **Plano obtido por créditos**: custo de referência do plano e ciclo
+      equivalentes (valor cheio de tabela ÷ exibições previstas, a mesma
+      divisão do pago) — ex.: Prime Semestral R$ 0,0177, "Referência do
+      Prime · Semestral · sem cobrança". Nenhuma cobrança, conta a receber,
+      débito, pagamento ou lançamento — só leitura (teste confere que nada
+      é gravado).
+- [x] **"Acompanhe sua veiculação" num card só**: filtros 7 dias / 30 dias
+      / 3 meses / 1 ano / Máx. (dia, dia, semana, mês, mês) sem recarregar e
+      sem buscar de novo; barras empilhadas com uma cor fixa por ponto (a
+      mesma em qualquer filtro e depois de recarregar); legenda por ponto;
+      dica com data, cada ponto e total, por mouse, teclado (setas, Esc) e
+      toque, sempre dentro do card; 1, 2 ou 3 períodos com barras
+      centralizadas; sem exibição, a frase pedida e nenhum gráfico; tabela
+      Ponto / Cidade / Status / Exibições (Programadas e Entrega % fora da
+      tela do cliente — o dado segue no servidor, no admin e no CSV);
+      "Baixar comprovante" com o período escolhido — o CSV ganhou `?desde=`
+      (00:00 do primeiro dia do gráfico, em Matão) e soma o mesmo que a tela
+      (e2e confere nos 5 filtros). No celular: sem rolagem lateral, tabela
+      vira cartões, rótulos do eixo só onde cabem.
+- [x] **U2 reproduzido e corrigido** (ver §U).
+- [x] **Meus pontos**: capa com a foto maior e o estado sobre ela, nome em
+      destaque, endereço e segmento secundários, andamento, telas num bloco
+      (alerta "Precisa de atenção · último sinal há 29 h…" e "Ver o que
+      rodou" mantidos), Plano Básico e "+1 crédito por mês" em blocos
+      próprios. Só apresentação.
+- [x] **Indicações**: QR Code do MESMO link (servidor, `SITE_URL`; só o
+      endereço de cadastro com o cupom), "Escaneie para criar uma conta
+      indicada por <negócio>.", Copiar link e WhatsApp com a mesma string;
+      resumo (contas indicadas, já contrataram, créditos gerados) e o
+      histórico INDICADO / CADASTRO / PLANO / PAGAMENTOS / CRÉDITOS, com
+      "Cadastrou pelo seu link" × "Gerou crédito" e a expansão com as datas
+      dos créditos — `GET /anunciantes/me/indicacoes`, derivado do cadastro,
+      dos ciclos pagos e do ledger; conta indicada encerrada fica como "Conta
+      encerrada" (os créditos dela estão no saldo). Regra de crédito
+      intocada. A contagem antiga do card (`cadastradas`/`pagantes` em
+      `/creditos`) saiu — `/creditos` agora traz o `link` do servidor. O texto
+      "Ou informe o código no cadastro" (não existe esse campo) virou "Seu
+      código: … — ele já vai dentro do link".
+- [x] **Cadastro**: "Indicado por:" na cor secundária e o nome no laranja
+      de texto da marca, mais pesado. Mesma fonte da atribuição (#102).
+- [x] **Redefinir senha**: já estava na `main` (#102) — conferido.
+- [x] Testes: `tests/indicacoes-painel.test.js` (casos A–H, privacidade, QR
+      decodificado pelo jsqr, cadastro pelo QR, sem `SITE_URL`),
+      `tests/custo-previsto.test.js` (referência = pago, nada gravado),
+      e2e `37-painel-usuario.mjs`; e2e 07, 10 e 17 atualizados pro texto
+      novo.
+
+**Fora desta estação (registrado, não feito):**
+
+- V1 [ ] Cupom por ESTABELECIMENTO (hoje é por conta: `cupons_ponto.conta_id`
+      é a chave). Conta com vários pontos tem um link e um QR só. Separar
+      pediria banco novo e decidir de quem é o crédito — é regra comercial.
+- V2 [ ] Baixar o QR de indicação (PNG/SVG pra imprimir no balcão), como o
+      institucional faz no admin. Não pedido nesta estação.
+- V3 [ ] PR #91 (finalização, pausado) tem outra versão do histórico
+      (`indicados[]` dentro de `GET /anunciantes/me/creditos`, com cidade).
+      Ao retomar, a parte de histórico dele sai — fica esta (rota própria,
+      sem cidade, com pagamentos).
+- V4 [x] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
+      falhou uma vez na suíte local por corrida com arquivos que criam e
+      apagam contas em paralelo (contagem intermediária entre o antes e o
+      depois). Passa sozinho (9/9); não é desta estação. **Resolvido no PR
+      #106 (29/09/2026)**, onde falhou no CI (4 ∉ {2, 3}): reproduzido com
+      carga paralela (até "9 ∉ {6, 6}" — conta criada e apagada durante a
+      chamada); agora o teste mede até uma janela em que o conjunto não mudou
+      (contagem, soma e maior id iguais antes e depois) e exige o número
+      EXATO — a regra continua testada, sem depender da sorte.
+- V5 [ ] e2e `35-cards-pontos-cliente.mjs`, "selecionado: borda da marca com
+      anel": lê o `box-shadow` do card logo depois do clique, com a transição
+      de 0,12 s ainda correndo — sai `rgba(255, 122, 26, 1) … 0.9996px` e o
+      teste procura `rgb(255, 122, 26)`. Falha também na `main` pura
+      (`80fe269`, 4 de 4 rodadas locais); o card não foi tocado aqui. Conserto
+      natural: esperar a transição (`getAnimations()`) antes de ler o estilo.
+
+## W. Comunicados por e-mail no admin (estação final pré-lançamento, 29/09/2026)
+
+Branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`, reconciliada com a
+`main` final (`c1ba708`, #104) em 29/09/2026. Decisões: ADR-032; regra: RN-68
+(`docs/funcional.md`); rotas: `docs/api.md` → "Comunicados por e-mail".
+Merge autorizado pelo dono depois da reconciliação com a Visão geral final
+(pedido dele: o PR #104 pôs o QR institucional no mesmo trecho de
+`renderResumo` — ficaram os dois).
+
+**Feito:**
+
+- [x] Card compacto **Comunicados por e-mail** na Visão geral (coluna de
+      negócio): descrição, último envio (data, destinatários, situação) ou
+      "Nenhum comunicado enviado ainda.", [+ Novo comunicado] e Ver
+      histórico. Nenhum formulário fixo na página.
+- [x] Modal em duas etapas: público (Todas as contas ativas / Com plano ativo
+      / Sem plano / Donos de ponto) com "Destinatários: N contas" e quantas
+      ficaram de fora e por quê; assunto, título, mensagem (texto puro) e
+      botão opcional (`https://`). Revisar: a prévia é o e-mail real (mesmo
+      template do envio, HTML e texto puro) e o envio de teste. Confirmação
+      Mostraí (público, N, assunto, "Este envio será disparado para N
+      contas."), nunca `window.confirm`.
+- [x] Envio pela fila que já existe (`email_outbox`, tipo `comunicado`), um
+      e-mail por conta, sozinha no "Para"; ritmo de 30/min e fim da fila
+      (código e link de senha passam na frente).
+- [x] Sem envio em dobro: `Idempotency-Key` + mesmo conteúdo/público em 24 h +
+      chave única por destinatário; resposta perdida no meio do envio
+      testada no navegador (e2e 39).
+- [x] Histórico (previstos, enviados, falharam, na fila, quem enviou,
+      situação) com detalhe e **Reenviar falhas** só para quem falhou.
+- [x] Migration 108 (só tabelas novas: `comunicados`,
+      `comunicados_destinatarios`, `comunicados_reenvios`, com RLS).
+- [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo global,
+      prioridade, teto diário, descarte na hora, consolidação antes do
+      expurgo, segredo do SMTP fora de toda resposta); e2e
+      `39-comunicados.mjs` (fluxo inteiro, três jeitos de perder a resposta
+      do envio + 8 larguras); `npm run check` verde; e2e 23, 24 e 26 verdes.
+- [x] Revisão adversarial independente (29/09/2026): 1 bloqueio (teste pra
+      caixa de cliente escrita de outro jeito) e 3 correções (editar depois
+      de resposta perdida criava um 2º comunicado; expurgo de 30 dias podia
+      fazer "enviado" virar "falhou" e reenviar em dobro; cota do SMTP sem
+      teto) — todos corrigidos e testados, junto com os ajustes menores
+      (ADR-032, item 10).
+
+**Com o dono:**
+
+- W1 [ ] **Conferir no ar:** Visão geral → Comunicados por e-mail → mandar
+      um **teste** pra caixa da equipe (`MOSTRAI_EMAIL_CONTATO` — o
+      `/admin/diagnostico/smtp` mostra o endereço em `destino_contato`) e
+      olhar o e-mail no Gmail e no celular antes do primeiro envio real.
+- W2 [ ] **Decisão jurídica — divulgação:** não existe opt-in de
+      marketing no cadastro, só a revogação "Quero receber novidades e
+      ofertas" do perfil (migration 025). Por isso comunicado é só aviso da
+      plataforma, e quem revogou NÃO recebe (o texto é livre; o sistema não
+      separa aviso de oferta). Se um dia for preciso alcançar TODAS as contas
+      com um aviso obrigatório (mudança de termos, incidente de segurança),
+      ou mandar oferta com base legal, é estação jurídica: opt-in no
+      cadastro, texto de consentimento e o tipo de comunicado — não um
+      checkbox novo aqui.
+- W3 [ ] **Limite diário do SMTP (hipótese, não conferida):** conta Google
+      Workspace costuma aceitar ~2.000 mensagens/dia pelo SMTP (Gmail comum,
+      ~500). O sistema já para sozinho em 300 mensagens de comunicado por
+      24 h (`COMUNICADOS_MAX_DIA`) pra sobrar cota aos códigos e senhas, que
+      usam a mesma conta. Conferir o tipo da conta (Workspace x Gmail comum)
+      no admin.google.com e ajustar o teto se for o caso; se o provedor
+      reclamar de ritmo, baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
+- W4 [x] **Reconciliado com o #104** (29/09/2026, merge da `main` `c1ba708`
+      no branch): os dois acrescentavam um bloco no fim da coluna de negócio
+      (`renderResumo`) e uma chamada `blocoIndependente` — ficaram os DOIS
+      (QR institucional e depois Comunicados), cada um falhando sozinho.
+      Depois do merge: `npm run check` (695, 0 falha) e e2e 39, 27, 24, 26 e
+      38 (Mídia Mostraí, com FFmpeg) verdes.
+
+**Encontrado de passagem (não mexido):**
+
+- W5 [ ] `docs/api.md`, seção Admin, diz "As 76 rotas estão listadas uma a
+      uma" — o código já tem ~111 rotas `/admin` (sem contar as 7 novas). O
+      número ficou velho; conferir a lista inteira é trabalho à parte.
+- W6 [ ] Entrega "pelo menos uma vez" da fila (RN-62): se o processo morrer
+      depois de o SMTP aceitar e antes de marcar "enviado", aquele UM e-mail
+      sai de novo depois do prazo (5 min). Vale pra todo e-mail da fila, não
+      só pro comunicado; o comunicado não piora nem melhora isso.

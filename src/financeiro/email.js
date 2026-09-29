@@ -76,7 +76,20 @@ const esc = (v) =>
   );
 
 // { previa, saudacao, titulo, paragrafos: [texto], destaque, botao: { texto, url }, depois: [texto], nota }
-function mensagem({ previa = '', saudacao, titulo, paragrafos = [], destaque, botao, depois = [], nota }) {
+// `quebrasDeLinha`: a quebra simples DENTRO de um parágrafo vira <br> (o
+// comunicado do admin, src/comunicados/conteudo.js, é texto livre com
+// listas). Desligado, o HTML de todo e-mail que já existia é o mesmo.
+function mensagem({
+  previa = '',
+  saudacao,
+  titulo,
+  paragrafos = [],
+  destaque,
+  botao,
+  depois = [],
+  nota,
+  quebrasDeLinha = false,
+}) {
   const texto = [
     saudacao,
     ...paragrafos,
@@ -89,7 +102,9 @@ function mensagem({ previa = '', saudacao, titulo, paragrafos = [], destaque, bo
     .filter(Boolean)
     .join('\n\n');
 
-  const p = (t) => `<p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#14171f">${esc(t)}</p>`;
+  // O <br> entra DEPOIS do `esc`: só a quebra vira marcação, o texto não.
+  const paragrafo = (t) => (quebrasDeLinha ? esc(t).replace(/\n/g, '<br>') : esc(t));
+  const p = (t) => `<p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#14171f">${paragrafo(t)}</p>`;
   const html = `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light"><title>${esc(titulo)}</title></head>
@@ -120,7 +135,7 @@ ${saudacao ? p(saudacao) : ''}${paragrafos.map(p).join('')}${
   return { text: texto, html };
 }
 
-function enviar({ to, cc, replyTo, subject, conteudo, attachments }) {
+function enviar({ to, cc, replyTo, subject, conteudo, attachments, headers }) {
   return transportador().sendMail({
     from: remetente(),
     to,
@@ -130,6 +145,7 @@ function enviar({ to, cc, replyTo, subject, conteudo, attachments }) {
     text: conteudo.text,
     html: conteudo.html,
     attachments,
+    headers,
   });
 }
 
@@ -523,6 +539,23 @@ async function enviarCriativoAprovado(anunciante, criativo) {
   });
 }
 
+// Comunicado do admin (src/comunicados/): o e-mail já vem montado pelo
+// template acima (`conteudo.montar`). UM destinatário por chamada — quem
+// recebe vê só o próprio endereço, nunca a lista. O endereço vai como
+// OBJETO, não texto: em texto o Nodemailer lê "a@x.com,b@y.com" como dois
+// destinatários (conferido na 10.0.10, 29/09/2026); no objeto ele é um só.
+// `Auto-Submitted: auto-generated` (RFC 3834): resposta automática ("estou
+// de férias") não volta pra caixa da equipe a cada comunicado; resposta de
+// gente continua chegando, como o rodapé convida.
+function enviarComunicado(para, { assunto, text, html }) {
+  return enviar({
+    to: { name: '', address: para },
+    subject: assunto,
+    conteudo: { text, html },
+    headers: { 'Auto-Submitted': 'auto-generated' },
+  });
+}
+
 // Mensagem que NÃO é operacional — novidade, oferta, convite a um recurso
 // novo. Diferente das de cima, esta depende de consentimento, e consentimento
 // se revoga a qualquer tempo (LGPD art. 8 §5): quem revogou não recebe, e a
@@ -690,6 +723,7 @@ module.exports = {
   enviarTrocaDePlano,
   enviarCancelamento,
   enviarMensagemContato,
+  enviarComunicado,
   enviarNovidade,
   enviarArrependimentoRecebido,
   diagnosticarSmtp,
