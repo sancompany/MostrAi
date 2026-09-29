@@ -112,6 +112,10 @@ async function subirApp() {
       const r = await fetch(`${base}${caminho}`, { headers: { 'x-conta': String(conta) } });
       return { status: r.status, corpo: await r.json().catch(() => null) };
     },
+    post: async (caminho, conta) => {
+      const r = await fetch(`${base}${caminho}`, { method: 'POST', headers: { 'x-conta': String(conta) } });
+      return { status: r.status, corpo: await r.json().catch(() => null) };
+    },
     fechar: () => new Promise((r) => server.close(r)),
   };
 }
@@ -629,4 +633,37 @@ test('vaga do Básico: peça acima do teto da conta não toca pelo Básico nem t
     (await basicoRepo.pecasDoBasico(b)).map((p) => p.criativoId),
     [media.id],
   );
+});
+
+// Integração do PR #92 (29/09/2026): pausar/retomar a própria peça usa a MESMA
+// régua do upload — os direitos somados do plano e do Básico. Conta só com o
+// Básico (sem plano comercial) retoma a peça que pausou; antes o #92 conferia
+// só o plano e respondia "sua conta está sem plano".
+test('pausar e retomar a própria peça: conta só com o Básico retoma, dentro da vaga do Básico', async () => {
+  const conta = await novaConta();
+  await pontoDaConta(conta.id);
+  const [b] = await basicoRepo.ativosDaConta(conta.id);
+  assert.ok(b && b.limite_criativos === 1, 'Básico ativo, 1 peça');
+  const { rows } = await pool.query(`SELECT id FROM criativos WHERE anunciante_id = $1 AND status = 'aprovado'`, [
+    conta.id,
+  ]);
+  const pecaId = rows[0].id;
+  const app = await subirApp();
+  try {
+    let r = await app.post(`/anunciantes/me/criativos/${pecaId}/pausar`, conta.id);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    // Outra peça aprovada ocupa a única vaga do Básico: retomar é recusado.
+    const outra = await criativoAprovado(conta.id, 15);
+    r = await app.post(`/anunciantes/me/criativos/${pecaId}/retomar`, conta.id);
+    assert.strictEqual(r.status, 409, 'sem vaga no Básico');
+    assert.match(r.corpo.erro, /até 1 criativo/);
+    // Liberada a vaga, retoma.
+    await criativosRepo.atualizar(outra.id, { status: 'reprovado' });
+    r = await app.post(`/anunciantes/me/criativos/${pecaId}/retomar`, conta.id);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.corpo));
+    const { rows: depois } = await pool.query('SELECT status, retirado_por FROM criativos WHERE id = $1', [pecaId]);
+    assert.deepStrictEqual(depois[0], { status: 'aprovado', retirado_por: null });
+  } finally {
+    await app.fechar();
+  }
 });

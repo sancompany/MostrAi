@@ -5525,10 +5525,12 @@ Estação com merge e deploy autorizados pelo dono.
       pediria banco novo e decidir de quem é o crédito — é regra comercial.
 - V2 [ ] Baixar o QR de indicação (PNG/SVG pra imprimir no balcão), como o
       institucional faz no admin. Não pedido nesta estação.
-- V3 [ ] PR #91 (finalização, pausado) tem outra versão do histórico
+- V3 [x] PR #91 (finalização, pausado) tem outra versão do histórico
       (`indicados[]` dentro de `GET /anunciantes/me/creditos`, com cidade).
       Ao retomar, a parte de histórico dele sai — fica esta (rota própria,
-      sem cidade, com pagamentos).
+      sem cidade, com pagamentos). **Resolvido na integração dos PRs
+      paralelos (29/09/2026):** o #91 foi fechado como substituído — o
+      "Indicado por" já estava na main pelo #102 e o histórico fica este.
 - V4 [x] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
       falhou uma vez na suíte local por corrida com arquivos que criam e
       apagam contas em paralelo (contagem intermediária entre o antes e o

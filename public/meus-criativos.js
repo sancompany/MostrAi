@@ -54,7 +54,11 @@
         if (!dados.contaVeicula) return 'Aprovada. Entra no ar quando o seu plano estiver ativo.';
         return motivo ? `Aprovada, mas ainda sem horário: ${motivo}.` : 'Aprovada.';
       }
+      case 'pausado':
+        return 'Pausada por você. Não roda nas telas até você retomar — nada foi apagado.';
       case 'fora_do_ar':
+        if (c.retiradaPor === 'substituicao') return 'Substituída pela peça nova. Continua na sua conta.';
+        if (c.retiradaPor === 'admin') return 'Retirada do ar pela Mostraí. Fale com a gente pra entender.';
         return 'Fora do ar. Continua na sua conta.';
       case 'recusado':
         return `${c.motivoRecusa || 'Fale com a gente pra entender o que ajustar.'} Exclua esta peça e envie a versão corrigida.`;
@@ -73,9 +77,18 @@
   function htmlCriativo(c) {
     const tipo = c.arquivoUrl && ehVideo(c.arquivoUrl) ? 'Vídeo' : 'Imagem';
     const duracao = c.duracaoSegundos ? `${Number(c.duracaoSegundos)}s` : 'Processando';
-    const podeSubstituir =
-      ['no_ar', 'aprovado', 'programado', 'aguardando_primeira_exibicao', 'atrasado'].includes(c.situacao) &&
-      !c.substitutaEmAnalise;
+    // Peça aprovada em qualquer estágio da entrada no ar: dá pra substituir
+    // e pausar — menos enquanto uma substituta está em análise (a troca é
+    // que decide o destino dela). Pausada por você: só Retomar.
+    const ativa = ['no_ar', 'aprovado', 'programado', 'aguardando_primeira_exibicao', 'atrasado'].includes(c.situacao);
+    const podeMexer = ativa && !c.substitutaEmAnalise;
+    const acoes = [
+      podeMexer ? '<button type="button" class="btn ghost mini" data-acao="substituir">Substituir</button>' : '',
+      podeMexer ? '<button type="button" class="btn ghost mini" data-acao="pausar">Pausar</button>' : '',
+      c.situacao === 'pausado'
+        ? '<button type="button" class="btn primary mini" data-acao="retomar">Retomar</button>'
+        : '',
+    ].filter(Boolean);
     const rotulo = window.ROTULOS.criativoSituacao[c.situacao] || c.situacao;
     return `<div class="criativo-card situacao-${c.situacao}" data-id="${c.id}">
       <div class="criativo-media">
@@ -91,7 +104,7 @@
       </div>
       <div class="criativo-meta"><strong>${tipo}</strong><span>${duracao}${c.feitoPelaMostrai ? ' · feito pela Mostraí' : ''}</span></div>
       <p class="criativo-explica">${esc(explicacao(c))}</p>
-      ${podeSubstituir ? `<button type="button" class="btn ghost mini criativo-substituir" data-acao="substituir">Substituir</button>` : ''}
+      ${acoes.length ? `<div class="criativo-acoes">${acoes.join('')}</div>` : ''}
     </div>`;
   }
 
@@ -447,6 +460,51 @@
     carregar();
   }
 
+  // Pausar tira a peça das telas (a partir da próxima hora) sem apagar
+  // nada — mexe na veiculação, então confirma no modal Mostraí, com o POST
+  // rodando dentro dele. Retomar é só voltar: um clique, e a resposta
+  // escrita na tela (finalização, 28/09/2026).
+  async function pausar(id) {
+    const c = dados?.criativos.find((x) => x.id === id);
+    const noAr = c?.situacao === 'no_ar';
+    const sim = await window.confirmarMostrai({
+      titulo: noAr ? 'Pausar a peça que está no ar?' : 'Pausar esta peça?',
+      texto: noAr
+        ? 'Ela sai das telas a partir da próxima hora e volta quando você retomar. Nada é apagado.'
+        : 'Ela não entra nas telas até você retomar. Nada é apagado.',
+      botao: 'Pausar',
+      aoConfirmar: async () => {
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos/${id}/pausar`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!r.ok) {
+          const corpo = await r.json().catch(() => ({}));
+          throw new Error(window.frase(corpo.erro || 'Não foi possível pausar agora. Tente de novo.'));
+        }
+      },
+    });
+    if (!sim) return;
+    mensagem('Peça pausada. Retome quando quiser.', 'ok');
+    carregar();
+  }
+
+  async function retomar(id) {
+    mensagem('Retomando...');
+    try {
+      const r = await fetch(`${API_BASE_URL}/anunciantes/me/criativos/${id}/retomar`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const corpo = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(corpo.erro || 'Não foi possível retomar agora. Tente de novo.');
+      mensagem('Peça de volta na programação.', 'ok');
+    } catch (err) {
+      mensagem(window.frase(err.message), 'err');
+    }
+    carregar();
+  }
+
   function tocar(card) {
     const video = card.querySelector('video');
     if (!video) return;
@@ -466,6 +524,8 @@
       const acao = ev.target.closest('[data-acao]')?.dataset.acao;
       if (acao === 'tocar') return tocar(card);
       if (acao === 'excluir') return excluir(Number(card.dataset.id));
+      if (acao === 'pausar') return pausar(Number(card.dataset.id));
+      if (acao === 'retomar') return retomar(Number(card.dataset.id));
       if (acao === 'substituir') {
         const input = $('arquivoSubstituto');
         input.dataset.substitui = card.dataset.id;

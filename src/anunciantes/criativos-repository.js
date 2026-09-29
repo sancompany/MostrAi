@@ -7,6 +7,8 @@ const STATUS = ['pendente', 'aprovado', 'reprovado', 'retirado'];
 
 const CAMPOS_ATUALIZAVEIS = [
   'status',
+  // Quem tirou do ar (migration 109): cliente, admin ou substituição.
+  'retirado_por',
   'arquivo_normalizado_url',
   'thumbnail_url',
   'editado_pelo_operador',

@@ -1350,6 +1350,18 @@ th[data-ord].desc::after {
   flex-direction: column;
   gap: 2px;
 }
+/* Nome de ponto comprido quebra em linhas (finalização, 28/09/2026): com
+   o nowrap padrão da célula, "Academia Corpo em Movimento Studio de…" fazia
+   a tabela de ocupação/capacidade passar 500 px da largura do painel e
+   escondia as últimas colunas atrás da rolagem. */
+.tabela-caixa td:has(> .celula-ponto) {
+  white-space: normal;
+  min-width: 180px;
+  max-width: 340px;
+}
+.celula-ponto a {
+  overflow-wrap: anywhere;
+}
 .celula-ponto a,
 a.celula-titulo {
   color: var(--text);
