@@ -1,11 +1,10 @@
 const express = require('express');
-const QRCode = require('qrcode');
 const router = express.Router();
 const indicacoesRepo = require('./repository');
 const anunciantesRepo = require('../anunciantes/repository');
 const pontosRepo = require('../pontos/repository');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
-const { baseDoSite, OPCOES_QR } = require('../midias/qr-institucional');
+const { gerarSvg } = require('../midias/qr-institucional');
 
 // GET /indicacoes/:codigo — quem indica, pra página de cadastro mostrar
 // "Indicado por: <nome>" antes de a pessoa preencher (29/09/2026, pedido do
@@ -22,27 +21,14 @@ router.get('/indicacoes/:codigo', async (req, res) => {
   res.json({ nome: indicador.nome });
 });
 
-// O link de indicação, montado num lugar só (painel do usuário, 29/09/2026):
-// o texto que o card mostra, o "Copiar link", o WhatsApp e o QR Code saem
-// DESTA string — o QR nunca aponta pra outro endereço que o link à vista.
-// Só o endereço público de cadastro com o cupom (que já é público: é ele que
-// o dono compartilha). Base só do SITE_URL, a mesma régua do QR institucional
-// (midias/qr-institucional.js#baseDoSite): sem ele, `null` — um QR com
-// endereço relativo não abre em celular nenhum.
-function linkDeIndicacao(codigo) {
-  const base = baseDoSite();
-  return base ? `${base}/anunciante/cadastro.html?ref=${encodeURIComponent(codigo)}` : null;
-}
-
-// Mesma porta do card "Indicações" em GET /anunciantes/me/creditos: o
-// programa é do PONTO da rede, e a conta própria da Mostraí não indica
-// (ADR-020). Devolve a conta e o cupom, ou null.
+// A mesma porta do card de créditos (indicacoes/repository.js
+// #cupomDoIndicador): ponto da rede, nunca a conta própria. A conta e o
+// cupom, ou null.
 async function indicadorDaSessao(req) {
   const contaId = req.session.anuncianteId;
   const [conta, ehPonto] = await Promise.all([anunciantesRepo.buscarPorId(contaId), pontosRepo.contaEhPonto(contaId)]);
-  if (!conta || !ehPonto || conta.conta_propria) return null;
-  const cupom = await indicacoesRepo.garantirCupom(contaId, conta.nome_empresa);
-  return { conta, codigo: cupom.codigo };
+  const cupom = await indicacoesRepo.cupomDoIndicador(conta, ehPonto);
+  return cupom ? { conta, codigo: cupom.codigo } : null;
 }
 
 // GET /anunciantes/me/indicacoes — o histórico do card "Indicações": quem se
@@ -56,7 +42,7 @@ router.get('/anunciantes/me/indicacoes', exigirAnuncianteLogado, async (req, res
   const indicados = await indicacoesRepo.historicoDeIndicados(indicador.codigo, indicador.conta.id);
   res.json({
     codigo: indicador.codigo,
-    link: linkDeIndicacao(indicador.codigo),
+    link: indicacoesRepo.linkDeIndicacao(indicador.codigo),
     nome: indicador.conta.nome_empresa,
     resumo: {
       contas: indicados.length,
@@ -67,20 +53,22 @@ router.get('/anunciantes/me/indicacoes', exigirAnuncianteLogado, async (req, res
   });
 });
 
-// GET /anunciantes/me/indicacoes/qr.svg — o QR Code do link de indicação,
-// gerado aqui (biblioteca `qrcode`, as mesmas opções do QR institucional:
-// correção Q, zona de silêncio de 4 módulos, módulo escuro sobre branco).
-// Codifica SÓ o link público de cadastro com o cupom — nenhum id, sessão,
-// token ou dado da conta. Nenhum serviço externo recebe o link.
+// GET /anunciantes/me/indicacoes/qr.svg?c=<cupom> — o QR Code do link de
+// indicação, pelo mesmo gerador do QR institucional (`gerarSvg`: biblioteca
+// `qrcode`, correção Q, zona de silêncio de 4 módulos, escuro sobre branco,
+// guardado em memória por link). Codifica SÓ o link público de cadastro com o
+// cupom — nenhum id, sessão, token ou dado da conta; nenhum serviço externo
+// recebe o link. Com `?c=` igual ao cupom da sessão, o navegador guarda a
+// imagem por um dia (o endereço muda se o cupom mudar, e outra conta no
+// mesmo navegador pede outro endereço); sem ele, não guarda.
 router.get('/anunciantes/me/indicacoes/qr.svg', exigirAnuncianteLogado, async (req, res) => {
   const indicador = await indicadorDaSessao(req);
   if (!indicador) return res.status(404).json({ erro: 'indicação é só para pontos da rede' });
-  const link = linkDeIndicacao(indicador.codigo);
+  const link = indicacoesRepo.linkDeIndicacao(indicador.codigo);
   if (!link) return res.status(503).json({ erro: 'endereço do site não configurado' });
-  const svg = await QRCode.toString(link, { ...OPCOES_QR, type: 'svg' });
-  res.set('Cache-Control', 'private, no-store');
+  const svg = await gerarSvg(link);
+  res.set('Cache-Control', req.query.c === indicador.codigo ? 'private, max-age=86400' : 'private, no-store');
   res.type('image/svg+xml').send(svg);
 });
 
 module.exports = router;
-module.exports.linkDeIndicacao = linkDeIndicacao;

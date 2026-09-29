@@ -76,14 +76,19 @@
   // O card nasce com o que /creditos já trouxe; o histórico chega em seguida
   // (`hist`: undefined = carregando, null = falhou).
   //
-  // O link à vista, o "Copiar link", o WhatsApp e o QR saem da MESMA string
-  // quando o servidor a manda (`hist.link`, montada com o endereço público do
-  // site) — o QR nunca aponta pra um endereço diferente do que está escrito.
+  // O link à vista, o "Copiar link", o WhatsApp e o QR saem da MESMA string,
+  // montada no servidor com o endereço público do site (`ind.link` já em
+  // /creditos, `hist.link` no histórico — a mesma função) — o QR nunca aponta
+  // pra um endereço diferente do que está escrito, e o link não muda quando
+  // o histórico chega. Sem ela (servidor sem SITE_URL), o endereço desta
+  // página e nenhum QR.
   function htmlIndicacao(ind, hist) {
-    const link = hist?.link || linkIndicacao(ind.codigo);
+    const link = hist?.link || ind.link || linkIndicacao(ind.codigo);
     const texto = `Anuncie nas telas da Mostraí. Cadastre-se pelo meu link: ${link}`;
+    // `?c=` com o cupom: o navegador guarda a imagem, e outra conta no mesmo
+    // navegador pede outro endereço (src/indicacoes/routes.js).
     const qr = hist?.link
-      ? `<div class="indicacao-qr"><img src="${API_BASE_URL}/anunciantes/me/indicacoes/qr.svg" alt="QR Code do seu link de indicação" width="132" height="132"></div>`
+      ? `<div class="indicacao-qr"><img src="${API_BASE_URL}/anunciantes/me/indicacoes/qr.svg?c=${encodeURIComponent(ind.codigo)}" alt="QR Code do seu link de indicação" width="132" height="132"></div>`
       : '';
     let historico = '<p class="creditos-atividade">Carregando o histórico de indicações...</p>';
     if (hist) historico = htmlHistoricoIndicacoes(hist);
@@ -108,11 +113,18 @@
   // Resumo e histórico — números das MESMAS linhas que o servidor lista
   // (indicacoes/repository.js#historicoDeIndicados). "Cadastrou pelo seu
   // link" e "Gerou crédito" são estados diferentes, e é o crédito que conta.
+  const MAXIMO_NA_TELA = 200;
   function htmlHistoricoIndicacoes(hist) {
     if (!hist.indicados.length) return '<p class="creditos-atividade">Ninguém se cadastrou pelo seu link ainda.</p>';
     const r = hist.resumo;
     const plural = (n, um, varios) => `<b>${n}</b> ${n === 1 ? um : varios}`;
+    // O resumo soma todas; a tabela mostra as mais recentes.
+    const corte =
+      hist.indicados.length > MAXIMO_NA_TELA
+        ? `<p class="creditos-atividade">Mostrando as ${MAXIMO_NA_TELA} contas mais recentes de ${hist.indicados.length}.</p>`
+        : '';
     const linhas = hist.indicados
+      .slice(0, MAXIMO_NA_TELA)
       .map((i) => {
         const situacao =
           i.creditos > 0
@@ -126,7 +138,7 @@
               )
               .join('')}</ul></details>`
           : '';
-        return `<tr role="row">
+        return `<tr role="row" data-indicado="${esc(`${i.nome}|${i.cadastroEm}`)}">
           <th scope="row" role="rowheader"><div class="ind-nome"><span class="ind-nome-texto">${esc(i.nome)}</span>${situacao}${detalhes}</div></th>
           <td role="cell" data-rotulo="Cadastro">${data(i.cadastroEm)}</td>
           <td role="cell" data-rotulo="Plano">${esc(i.plano || 'Sem plano')}</td>
@@ -144,7 +156,7 @@
       <table class="mini-table tabela-indicados" role="table" aria-label="Contas indicadas pelo seu link">
         <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Indicado</th><th scope="col" role="columnheader">Cadastro</th><th scope="col" role="columnheader">Plano</th><th scope="col" role="columnheader" class="num">Pagamentos</th><th scope="col" role="columnheader" class="num">Créditos</th></tr></thead>
         <tbody role="rowgroup">${linhas}</tbody>
-      </table>`;
+      </table>${corte}`;
   }
 
   // Uma carga de histórico por vez, e só a mais recente desenha: o SSE de
@@ -170,15 +182,16 @@
       hist = null;
     }
     if (minha !== geracaoIndicacao) return;
-    // O que estava aberto ("Ver créditos") continua aberto depois da recarga.
+    // O que estava aberto ("Ver créditos") continua aberto depois da recarga
+    // — pela linha (nome + dia do cadastro), sem id de conta na página.
     const abertos = new Set(
       [...$('indicacaoCorpo').querySelectorAll('.indicacao-detalhes[open]')].map(
-        (d) => d.closest('tr')?.querySelector('.ind-nome-texto')?.textContent,
+        (d) => d.closest('tr')?.dataset.indicado,
       ),
     );
     $('indicacaoCorpo').innerHTML = htmlIndicacao(ind, hist);
     for (const d of $('indicacaoCorpo').querySelectorAll('.indicacao-detalhes')) {
-      if (abertos.has(d.closest('tr')?.querySelector('.ind-nome-texto')?.textContent)) d.open = true;
+      if (abertos.has(d.closest('tr')?.dataset.indicado)) d.open = true;
     }
   }
 

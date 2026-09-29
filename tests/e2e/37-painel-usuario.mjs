@@ -291,19 +291,28 @@ console.log('== A. gráfico do período: filtros, cores, dica, tabela, comprovan
   const [ah, mh] = hoje.split('-').map(Number);
   const [ap, mp] = primeiroMes.split('-').map(Number);
   const mesesMax = (ah * 12 + mh) - (ap * 12 + mp) + 1;
-  for (const [periodo, n, dias] of [
-    ['7d', 7, 7],
-    ['3m', 13, 90],
-    ['1a', 12, 365],
-    ['max', mesesMax, 365],
-    ['30d', 30, 30],
+  // Primeiro dia de cada período (o comprovante começa nele, 00:00 em Matão).
+  const dia = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+  const hojeN = Date.UTC(ah, mh - 1, Number(dHoje)) / 86400000;
+  const segunda = hojeN - ((new Date(hojeN * 86400000).getUTCDay() + 6) % 7);
+  for (const [periodo, n, desde] of [
+    ['7d', 7, dia(hojeN - 6)],
+    ['3m', 13, dia(segunda - 84)],
+    ['1a', 12, dia(Date.UTC(ah, mh - 1 - 11, 1) / 86400000)],
+    ['max', mesesMax, `${primeiroMes}-01`],
+    ['30d', 30, dia(hojeN - 29)],
   ]) {
     await p.click(`[data-periodo="${periodo}"]`);
     await p.waitForTimeout(150);
     check(`${periodo}: ${n} barras`, (await barras(p)) === n, await barras(p));
     check(`${periodo}: botão marcado (aria-pressed)`, (await p.getAttribute(`[data-periodo="${periodo}"]`, 'aria-pressed')) === 'true');
     const href = await p.getAttribute('#btnComprovante', 'href');
-    check(`${periodo}: comprovante com ${dias} dias`, href.endsWith(`/anunciantes/${pago.id}/exibicoes.csv?dias=${dias}`), href);
+    check(`${periodo}: comprovante desde ${desde} (o mesmo período do gráfico)`, href.endsWith(`/anunciantes/${pago.id}/exibicoes.csv?desde=${desde}`), href);
+    // O arquivo soma o mesmo que a tela diz.
+    const csv = await p.evaluate(async (u) => (await fetch(u, { credentials: 'include' })).text(), href);
+    const totalCsv = Number(csv.trim().split('\r\n').pop().split(';').pop());
+    const totalTela = Number((await p.textContent('#performanceTotal')).match(/^[\d.]+/)[0].replace(/\./g, ''));
+    check(`${periodo}: total do comprovante = total da tela (${totalTela})`, totalCsv === totalTela, { totalCsv, totalTela });
     const cores = await coresDaLegenda(p);
     check(`${periodo}: mesma cor de cada ponto`, Object.entries(cores).every(([nome, cor]) => coresBase[nome] === cor), cores);
     check(`${periodo}: um gráfico, uma tabela, sem duplicar`, (await p.$$('#graficoPerformance .grafico-area')).length === 1 && (await p.$$('#exibicoesDetalhe table')).length === 1);

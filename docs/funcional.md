@@ -627,8 +627,9 @@ cadastro e o cupom — nenhum id, sessão ou dado), o resumo (contas
 indicadas, quantas já contrataram, créditos gerados) e o **histórico**
 (`GET /anunciantes/me/indicacoes`): por indicado, nome comercial, dia do
 cadastro, plano em vigor, pagamentos que contam, créditos e as datas deles —
-"Cadastrou pelo seu link" ou "Gerou crédito". Nunca e-mail, telefone,
-documento, endereço, valor pago ou id da conta indicada. O texto antigo
+"Cadastrou pelo seu link" ou "Gerou crédito"; conta indicada encerrada
+aparece como "Conta encerrada", sem nome, com os créditos que rendeu. Nunca
+e-mail, telefone, documento, endereço, valor pago ou id da conta indicada. O texto antigo
 desta regra (degraus de 3/7/10 créditos liberando plano, `indicacoes_pagas`)
 saiu com a migration 079.
 

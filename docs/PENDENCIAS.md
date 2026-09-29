@@ -5479,8 +5479,9 @@ Estação com merge e deploy autorizados pelo dono. Branch
       centralizadas; sem exibição, a frase pedida e nenhum gráfico; tabela
       Ponto / Cidade / Status / Exibições (Programadas e Entrega % fora da
       tela do cliente — o dado segue no servidor, no admin e no CSV);
-      "Baixar comprovante" com o período escolhido (1 ano e Máx. = os 12
-      meses que o CSV já cobria). No celular: sem rolagem lateral, tabela
+      "Baixar comprovante" com o período escolhido — o CSV ganhou `?desde=`
+      (00:00 do primeiro dia do gráfico, em Matão) e soma o mesmo que a tela
+      (e2e confere nos 5 filtros). No celular: sem rolagem lateral, tabela
       vira cartões, rótulos do eixo só onde cabem.
 - [x] **U2 reproduzido e corrigido** (ver §U).
 - [x] **Meus pontos**: capa com a foto maior e o estado sobre ela, nome em
@@ -5495,7 +5496,10 @@ Estação com merge e deploy autorizados pelo dono. Branch
       histórico INDICADO / CADASTRO / PLANO / PAGAMENTOS / CRÉDITOS, com
       "Cadastrou pelo seu link" × "Gerou crédito" e a expansão com as datas
       dos créditos — `GET /anunciantes/me/indicacoes`, derivado do cadastro,
-      dos ciclos pagos e do ledger. Regra de crédito intocada. O texto
+      dos ciclos pagos e do ledger; conta indicada encerrada fica como "Conta
+      encerrada" (os créditos dela estão no saldo). Regra de crédito
+      intocada. A contagem antiga do card (`cadastradas`/`pagantes` em
+      `/creditos`) saiu — `/creditos` agora traz o `link` do servidor. O texto
       "Ou informe o código no cadastro" (não existe esse campo) virou "Seu
       código: … — ele já vai dentro do link".
 - [x] **Cadastro**: "Indicado por:" na cor secundária e o nome no laranja

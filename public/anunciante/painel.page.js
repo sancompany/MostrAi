@@ -760,16 +760,18 @@ async function cancelarAssinatura() {
   });
 })();
 
-// O link do comprovante carrega o período escolhido no gráfico (painel do
-// usuário, 29/09/2026 — antes era um seletor à parte, com os mesmos 30/90/365
-// dias): a exportação respeita o recorte que está na tela, até o teto de 12
-// meses que o CSV já tinha (GET /anunciantes/:id/exibicoes.csv, sem mudança).
+// O link do comprovante carrega o período do gráfico (painel do usuário,
+// 29/09/2026 — antes era um seletor à parte, 30/90/365 dias): `desde` é o
+// primeiro dia que a tela está somando, e o CSV vai de 00:00 desse dia (em
+// Matão) até agora — o mesmo recorte, o mesmo total. Antes do primeiro
+// desenho (sem período ainda), os 30 dias de sempre.
 //
 // O href se monta no CLIQUE, nao no carregamento: este bloco roda antes de
 // `carregarConta()` resolver, entao `ANUNCIANTE_ID` ainda e null e o link
 // nascia apontando pra /anunciantes/null/exibicoes.csv.
 function linkDoComprovante() {
-  return `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?dias=${PERIODOS_GRAFICO[periodoGrafico].comprovante}`;
+  const recorte = inicioDoPeriodo ? `desde=${inicioDoPeriodo}` : 'dias=30';
+  return `${API_BASE_URL}/anunciantes/${ANUNCIANTE_ID}/exibicoes.csv?${recorte}`;
 }
 (function comprovante() {
   const link = document.getElementById('btnComprovante');
@@ -1000,10 +1002,11 @@ function desenharCustoPrevisto(c) {
     legenda.textContent = 'Sem cobrança neste ciclo.';
   } else {
     valor.textContent = '-';
-    // Só o Básico do ponto (sem plano comercial): não há plano com preço
+    // Sem plano comercial em vigor (nunca teve, ou venceu — a régua é a do
+    // servidor, `sem_plano`) e com o Básico do ponto: não há plano com preço
     // pra dividir — o card diz de onde vem a veiculação em vez de um "-" mudo.
     legenda.textContent =
-      !ANUNCIANTE?.plano_id && ANUNCIANTE?.beneficios_basico?.length
+      c?.tipo === 'sem_plano' && ANUNCIANTE?.beneficios_basico?.length
         ? 'Plano Básico: incluído no benefício do ponto'
         : LEGENDA_CUSTO;
   }
@@ -1100,13 +1103,14 @@ function explicarZero(dados) {
 // Matão (o servidor já corta assim) e vira número de dias em UTC — nenhum
 // fuso entra na conta.
 const PERIODOS_GRAFICO = {
-  '7d': { rotulo: 'últimos 7 dias', grao: 'dia', quantos: 7, comprovante: 7 },
-  '30d': { rotulo: 'últimos 30 dias', grao: 'dia', quantos: 30, comprovante: 30 },
-  '3m': { rotulo: 'últimos 3 meses', grao: 'semana', quantos: 13, comprovante: 90 },
-  '1a': { rotulo: 'últimos 12 meses', grao: 'mes', quantos: 12, comprovante: 365 },
-  max: { rotulo: 'desde o início da campanha', grao: 'mes', quantos: null, comprovante: 365 },
+  '7d': { rotulo: 'últimos 7 dias', grao: 'dia', quantos: 7 },
+  '30d': { rotulo: 'últimos 30 dias', grao: 'dia', quantos: 30 },
+  '3m': { rotulo: 'últimos 3 meses', grao: 'semana', quantos: 13 },
+  '1a': { rotulo: 'últimos 12 meses', grao: 'mes', quantos: 12 },
+  max: { rotulo: 'desde o início da campanha', grao: 'mes', quantos: null },
 };
 let periodoGrafico = '30d';
+let inicioDoPeriodo = null;
 let DADOS_PERFORMANCE = null;
 let CORES_DOS_PONTOS = new Map();
 let GRAFICO_ATUAL = null;
@@ -1201,17 +1205,23 @@ function rotuloLongo(periodo, grao) {
 // Cor de cada ponto: a ordem em que ele entrou na campanha (o primeiro dia
 // com registro, desempate pelo id) — o histórico inteiro, não o período.
 // Trocar o filtro ou recarregar não muda a cor de ninguém, e ponto que entra
-// depois pega a próxima cor sem empurrar as outras. Oito cores; do nono ponto
-// em diante, "Outros pontos" (cinza) — também pela ordem de entrada.
+// depois pega a próxima cor sem empurrar as outras. Oito cores, e quem
+// rodou no último ano escolhe primeiro: ponto que saiu da campanha há mais de
+// um ano não segura uma cor que um ponto de agora precisa. Do nono em diante,
+// "Outros pontos" (cinza).
 const SERIES_COM_COR = 8;
 function coresDosPontos(porDiaPonto) {
   const entrada = new Map();
+  const saida = new Map();
   for (const linha of porDiaPonto) {
     const dia = diaNumero(linha.dia);
     const id = Number(linha.ponto_id);
     if (!entrada.has(id) || dia < entrada.get(id)) entrada.set(id, dia);
+    if (!saida.has(id) || dia > saida.get(id)) saida.set(id, dia);
   }
-  const ordem = [...entrada.entries()].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  const umAnoAtras = diaNumero(hojeEmMatao()) - 364;
+  const antigo = (id) => (saida.get(id) < umAnoAtras ? 1 : 0);
+  const ordem = [...entrada.entries()].sort((a, b) => antigo(a[0]) - antigo(b[0]) || a[1] - b[1] || a[0] - b[0]);
   return new Map(ordem.map(([id], i) => [id, i < SERIES_COM_COR ? i + 1 : 0]));
 }
 const classeDaSerie = (n) => (n ? `serie-${n}` : 'serie-outros');
@@ -1256,18 +1266,15 @@ function desenharPerformance() {
   const periodo = PERIODOS_GRAFICO[periodoGrafico];
   for (const botao of painel.querySelectorAll('[data-periodo]'))
     botao.setAttribute('aria-pressed', String(botao.dataset.periodo === periodoGrafico));
-  const link = document.getElementById('btnComprovante');
-  if (link) {
-    if (ANUNCIANTE_ID) link.href = linkDoComprovante();
-    link.title =
-      periodoGrafico === 'max' || periodoGrafico === '1a'
-        ? 'Comprovante dos últimos 12 meses (o arquivo cobre até 12 meses)'
-        : `Comprovante dos ${periodo.rotulo}`;
-  }
-
   const { porDiaPonto, porPonto } = DADOS_PERFORMANCE;
   const primeiroDia = porDiaPonto.reduce((min, l) => Math.min(min, diaNumero(l.dia)), Number.POSITIVE_INFINITY);
   const lista = periodosDoGrafico(periodoGrafico, hojeEmMatao(), Number.isFinite(primeiroDia) ? primeiroDia : null);
+  inicioDoPeriodo = diaTexto(lista[0].de);
+  const link = document.getElementById('btnComprovante');
+  if (link) {
+    if (ANUNCIANTE_ID) link.href = linkDoComprovante();
+    link.title = `Comprovante de ${diaMesAno(lista[0].de)} até hoje — o mesmo período do gráfico`;
+  }
   const { valores, noPeriodo } = agruparPorPeriodo(porDiaPonto, lista);
   const totais = valores.map((m) => [...m.values()].reduce((s, v) => s + v, 0));
   const total = totais.reduce((s, v) => s + v, 0);

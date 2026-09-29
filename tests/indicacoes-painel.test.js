@@ -66,6 +66,7 @@ async function subirApp() {
     proximo();
   });
   app.use(require('../src/anunciantes/routes').router);
+  app.use(require('../src/creditos/routes'));
   app.use(require('../src/indicacoes/routes'));
   app.use((err, _req, res, _next) => res.status(500).json({ erro: err.message }));
   const server = app.listen(0);
@@ -372,7 +373,13 @@ test('QR Code: decodifica o MESMO link à vista, com o cupom do ponto, e o cadas
     const qr = await app.chamar('GET', '/anunciantes/me/indicacoes/qr.svg', { conta: p.conta.id });
     assert.strictEqual(qr.status, 200);
     assert.match(qr.tipo, /^image\/svg\+xml/);
-    assert.strictEqual(qr.cache, 'private, no-store');
+    assert.strictEqual(qr.cache, 'private, no-store', 'sem ?c=, o navegador não guarda');
+    const comCupom = await app.chamar('GET', `/anunciantes/me/indicacoes/qr.svg?c=${p.codigo}`, { conta: p.conta.id });
+    assert.strictEqual(comCupom.cache, 'private, max-age=86400', 'com o cupom no endereço, guarda');
+    assert.strictEqual(lerSvg(comCupom.texto), h.corpo.link);
+    // O card de créditos já nasce com a MESMA string.
+    const creditos = await app.chamar('GET', '/anunciantes/me/creditos', { conta: p.conta.id });
+    assert.strictEqual(creditos.corpo.indicacao.link, h.corpo.link);
     const conteudo = lerSvg(qr.texto);
     assert.strictEqual(conteudo, h.corpo.link, 'o QR aponta pro link à vista');
     // Só o endereço público de cadastro e o cupom — nenhum id, sessão ou dado.
@@ -407,6 +414,28 @@ test('sem SITE_URL: link nulo e QR 503 — nunca um endereço relativo dentro do
     );
   } finally {
     process.env.SITE_URL = antes;
+    await app.fechar();
+  }
+});
+
+test('conta indicada encerrada continua no histórico, sem nome, com os créditos que rendeu', async () => {
+  const app = await subirApp();
+  try {
+    const p = await pontoIndicador();
+    const { r, dados } = await cadastrar(app, { indicado_por_cupom: p.codigo });
+    await pagarCiclo(r.corpo.id);
+    await pool.query('UPDATE anunciantes SET excluido_em = now() WHERE id = $1', [r.corpo.id]);
+    const h = await app.chamar('GET', '/anunciantes/me/indicacoes', { conta: p.conta.id });
+    assert.strictEqual(h.corpo.indicados.length, 1);
+    const [encerrada] = h.corpo.indicados;
+    assert.strictEqual(encerrada.nome, 'Conta encerrada');
+    assert.strictEqual(encerrada.plano, null);
+    assert.strictEqual(encerrada.creditos, 1);
+    assert.ok(!h.texto.includes(dados.nome_empresa), 'o nome da conta encerrada não sai');
+    // O resumo bate com o saldo: o crédito dela continua contado.
+    assert.deepStrictEqual(h.corpo.resumo, { contas: 1, contrataram: 1, creditos: 1 });
+    assert.strictEqual(await creditosRepo.saldo(p.conta.id), 1);
+  } finally {
     await app.fechar();
   }
 });

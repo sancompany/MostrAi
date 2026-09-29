@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
 const { nomeDoCiclo } = require('../lib/ciclos');
+const { baseDoSite } = require('../midias/qr-institucional');
 
 // Cupom de indicação da conta (migration 062): até 6 letras do nome (sem
 // acento) + 3 dígitos, prefixado com "PT-". O prefixo veio da época em que
@@ -86,19 +87,26 @@ async function indicadorDoCupom(texto) {
   return cupom.startsWith('PT-') ? buscarPontoPorCupom(cupom) : null;
 }
 
-// Atividade das indicações em número, nunca em pessoa: quantas contas se
-// cadastraram com o código e quantas já pagaram. Nome, e-mail ou documento
-// de quem foi indicado não saem daqui.
-async function resumoIndicacoes(codigo) {
-  const { rows } = await pool.query(
-    `SELECT COUNT(*)::int AS cadastradas,
-            COUNT(*) FILTER (WHERE EXISTS (
-              SELECT 1 FROM cobrancas_confirmadas cc WHERE cc.anunciante_id = a.id))::int AS pagantes
-       FROM anunciantes a
-      WHERE a.indicado_por_cupom = $1 AND a.excluido_em IS NULL`,
-    [codigo],
-  );
-  return rows[0];
+// A porta do programa, num lugar só (ADR-020): indicação é do PONTO da rede,
+// e a conta própria da Mostraí não indica. `ehPonto` vem de quem chama
+// (pontosRepo.contaEhPonto), que muitas vezes já o tem. Devolve o cupom da
+// conta (criado na primeira vez) ou null. Usada pelo card de créditos
+// (GET /anunciantes/me/creditos) e pelas rotas do histórico e do QR.
+async function cupomDoIndicador(conta, ehPonto) {
+  if (!conta || !ehPonto || conta.conta_propria) return null;
+  return garantirCupom(conta.id, conta.nome_empresa);
+}
+
+// O link de indicação, montado num lugar só (painel do usuário, 29/09/2026):
+// o texto que o card mostra, o "Copiar link", o WhatsApp e o QR Code saem
+// DESTA string — o QR nunca aponta pra outro endereço que o link à vista.
+// Só o endereço público de cadastro com o cupom (que já é público: é ele que
+// o dono compartilha). Base só do SITE_URL, a mesma régua do QR institucional
+// (midias/qr-institucional.js#baseDoSite): sem ele, `null` — um QR com
+// endereço relativo não abre em celular nenhum.
+function linkDeIndicacao(codigo) {
+  const base = baseDoSite();
+  return base ? `${base}/anunciante/cadastro.html?ref=${encodeURIComponent(codigo)}` : null;
 }
 
 // Histórico de quem se cadastrou pelo link (painel do usuário, 29/09/2026,
@@ -115,10 +123,13 @@ async function resumoIndicacoes(codigo) {
 //     migration 079), então reprocessar um pagamento nunca soma duas vezes.
 // Só o que o dono do ponto pode ver: nome comercial, dia do cadastro, plano
 // em vigor, pagamentos e créditos com as datas. Nunca e-mail, telefone,
-// documento, endereço, valor pago nem o id da conta. Conta excluída sai.
+// documento, endereço, valor pago nem o id da conta. Conta excluída continua
+// na lista, sem nome ("Conta encerrada"): os créditos que ela rendeu estão no
+// saldo, e sumir com eles desfazia a conta do card. Lista inteira, mais
+// recente primeiro — quem desenha decide quantas mostra; o resumo soma todas.
 async function historicoDeIndicados(codigo, indicadorContaId) {
   const { rows } = await pool.query(
-    `SELECT a.nome_empresa AS nome,
+    `SELECT a.nome_empresa AS nome, a.excluido_em IS NOT NULL AS encerrada,
             (a.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS cadastro_em,
             a.plano_id, a.data_expiracao, p.nome AS plano_nome, p.compromisso_meses AS plano_meses,
             (SELECT COUNT(*) FROM ciclos_contratados c
@@ -138,18 +149,17 @@ async function historicoDeIndicados(codigo, indicadorContaId) {
           WHERE cl.anunciante_id = $2 AND cl.origem_conta_id = a.id
             AND cl.tipo IN ('indicacao_primeiro_pagamento', 'indicacao_renovacao')
        ) l ON true
-      WHERE a.indicado_por_cupom = $1 AND a.excluido_em IS NULL
-      ORDER BY a.created_at DESC, a.id DESC
-      LIMIT 200`,
+      WHERE a.indicado_por_cupom = $1
+      ORDER BY a.created_at DESC, a.id DESC`,
     [codigo, indicadorContaId],
   );
   return rows.map((r) => ({
-    nome: r.nome,
+    nome: r.encerrada ? 'Conta encerrada' : r.nome,
     cadastroEm: r.cadastro_em,
     // Plano em vigor, pela régua do gerador (planoVigenteId): vencido é
     // "sem plano" pra quem olha de fora.
     plano:
-      r.plano_id && vigencia.coberturaVigente(r.data_expiracao)
+      !r.encerrada && r.plano_id && vigencia.coberturaVigente(r.data_expiracao)
         ? `${r.plano_nome} · ${nomeDoCiclo(r.plano_meses)}`
         : null,
     pagamentos: r.pagamentos,
@@ -164,6 +174,7 @@ module.exports = {
   buscarCupomPorConta,
   buscarPontoPorCupom,
   indicadorDoCupom,
-  resumoIndicacoes,
+  cupomDoIndicador,
+  linkDeIndicacao,
   historicoDeIndicados,
 };

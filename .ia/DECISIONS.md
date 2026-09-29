@@ -1123,8 +1123,9 @@ Decisão:
    cores (as 5 validadas + 3 escuras conferidas na mesma simulação de
    daltonismo); do 9º em diante, "Outros pontos". Dica por mouse, foco e
    toque. Tabela Ponto / Cidade / Status / Exibições — Programadas e
-   Entrega % saem só da tela do cliente. O comprovante segue o período, até
-   os 12 meses que o CSV já cobria (rota intocada).
+   Entrega % saem só da tela do cliente. O comprovante segue o período: o
+   CSV ganhou `?desde=AAAA-MM-DD` (00:00 em Matão até agora), pro arquivo
+   somar exatamente o que a tela soma — o `?dias=` continua valendo.
 4. **Fonte do KPI em unidade do card** (`cqi`, o card é container), não da
    janela: card da mesma largura, número do mesmo tamanho; o observador por
    card cobre o resto.
@@ -1135,7 +1136,10 @@ Decisão:
    créditos do ledger (idempotente pela cobrança). O resumo soma as mesmas
    linhas. Projeção fechada: nome comercial, dia do cadastro, plano em vigor,
    pagamentos, créditos e datas — nunca contato, documento, endereço, valor
-   ou id.
+   ou id. Conta indicada excluída fica, sem nome ("Conta encerrada"): os
+   créditos dela estão no saldo. A porta do programa (ponto, nunca a conta
+   própria) e o link moram num lugar só (`cupomDoIndicador`,
+   `linkDeIndicacao`), usados pelo card de créditos e pelas rotas novas.
 6. **QR Code do mesmo link**, gerado no servidor (`qrcode`, opções do QR
    institucional) a partir de UMA string (`linkDeIndicacao`, base só do
    `SITE_URL`) que também vira o texto à vista, o "Copiar link" e o

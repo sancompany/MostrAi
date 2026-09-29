@@ -1497,12 +1497,30 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
 // consegue guardar, imprimir ou mandar pro contador dele.
 //
 // `;` e BOM porque o Excel em português com vírgula junta tudo numa coluna só
-// e come os acentos. O `?desde=` respeita o mesmo recorte da tela.
+// e come os acentos.
+//
+// Recorte: `?desde=AAAA-MM-DD` (painel do usuário, 29/09/2026) é o primeiro
+// dia do período do gráfico, em Matão — o arquivo cobre exatamente o que a
+// tela soma, de 00:00 desse dia até agora (com `dias`, a janela era "agora
+// menos N×24 h" e pegava um pedaço do dia anterior ao que a tela mostra).
+// Sem `desde` — ou com data que não existe, no futuro ou antes de 2020 —
+// vale o `?dias=` de sempre (1 a 365, padrão 30).
+function diaDoComprovante(texto) {
+  const t = String(texto || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const dia = new Date(`${t}T00:00:00Z`);
+  if (Number.isNaN(dia.getTime()) || dia.toISOString().slice(0, 10) !== t) return null;
+  return t >= '2020-01-01' && t <= vigencia.hojeComercial() ? t : null;
+}
 router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req, res) => {
   if (Number(req.params.id) !== req.session.anuncianteId) {
     return res.status(403).json({ erro: 'só pode ver exibições da própria conta' });
   }
+  const desde = diaDoComprovante(req.query.desde);
   const dias = Math.min(Math.max(Number(req.query.dias) || 30, 1), 365);
+  const recorte = desde
+    ? `e.janela_hora >= ($2::date::timestamp AT TIME ZONE 'America/Sao_Paulo')`
+    : `e.janela_hora > now() - ($2 || ' days')::interval`;
   const { rows } = await pool.query(
     // `janela_hora` é timestamptz e a sessão do Postgres roda em UTC, então
     // `date_trunc('day', ...)` cru corta o dia em UTC, não em Matão: tudo o
@@ -1516,11 +1534,11 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
      FROM exibicoes_contador e
      JOIN dispositivos d ON d.id = e.dispositivo_id
      JOIN pontos p ON p.id = d.ponto_id
-     WHERE e.anunciante_id = $1 AND e.janela_hora > now() - ($2 || ' days')::interval
+     WHERE e.anunciante_id = $1 AND ${recorte}
      GROUP BY dia, p.nome, p.cidade, d.numero
      HAVING SUM(e.vezes_confirmadas) > 0
      ORDER BY dia DESC, p.nome`,
-    [req.params.id, dias],
+    [req.params.id, desde || dias],
   );
 
   const campo = (v) => {
@@ -1534,7 +1552,7 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
   const total = rows.reduce((soma, r) => soma + r.exibicoes, 0);
   linhas.push(['', '', '', 'Total', total].join(';'));
 
-  const arquivo = `mostrai-exibicoes-${dias}dias.csv`;
+  const arquivo = desde ? `mostrai-exibicoes-desde-${desde}.csv` : `mostrai-exibicoes-${dias}dias.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`);
   res.send('\uFEFF' + linhas.join('\r\n') + '\r\n');
@@ -1573,18 +1591,17 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
   }
   const anuncianteId = req.params.id;
 
-  const [totais, porPonto, porDia, porDiaPonto, cobrancas, anunciante, confirmadasMesRows, janelaMesRows] =
-    await Promise.all([
-      pool.query(
-        `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+  const [totais, porPonto, porDiaPonto, cobrancas, anunciante, confirmadasMesRows, janelaMesRows] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(SUM(vezes_programadas),0) AS programadas, COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador WHERE anunciante_id = $1`,
-        [anuncianteId],
-      ),
-      pool.query(
-        // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-        // status mostrado é o da tela mais recentemente vista (19/09/2026,
-        // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
-        `SELECT p.id, p.nome, p.cidade,
+      [anuncianteId],
+    ),
+    pool.query(
+      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
+      // status mostrado é o da tela mais recentemente vista (19/09/2026,
+      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+      `SELECT p.id, p.nome, p.cidade,
               SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
               MAX(d.ultima_vez_online) AS ultima_vez_online
        FROM exibicoes_contador e
@@ -1593,23 +1610,17 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY p.id, p.nome, p.cidade
        ORDER BY confirmadas DESC`,
-        [anuncianteId],
-      ),
-      pool.query(
-        // Mesmo corte de dia do comprovante em CSV (ver acima): no fuso de
-        // Matão, não no do servidor.
-        `SELECT date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, SUM(vezes_confirmadas) AS confirmadas
-       FROM exibicoes_contador WHERE anunciante_id = $1
-       GROUP BY dia ORDER BY dia DESC LIMIT 30`,
-        [anuncianteId],
-      ),
-      // Mesma coisa, mas por ponto dentro de cada dia (19/09/2026, pedido do
-      // dono: "no card exibições por dia, coloque também um exibições por
-      // ponto") — o front empilha por cor de ponto em vez de mostrar só o
-      // total do dia. Mesmo corte de 30 dias do gráfico por dia; sem LIMIT
-      // aqui porque é dia × ponto, não só dia.
-      pool.query(
-        `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+      [anuncianteId],
+    ),
+    // Dia × ponto, o histórico inteiro (19/09/2026; é a fonte única do
+    // gráfico do período desde o painel do usuário, 29/09/2026): o front
+    // reagrupa em dia, semana ou mês conforme o filtro (7 dias a "Máx.")
+    // sem pedir de novo, e empilha por cor de ponto. Mesmo corte de dia do
+    // comprovante em CSV (acima): no fuso de Matão. Sem LIMIT de propósito —
+    // "Máx." é desde o primeiro dia; o tamanho cresce com dias × pontos da
+    // própria conta. (`porDia`, só o total do dia, saiu: ninguém lia.)
+    pool.query(
+      `SELECT date_trunc('day', e.janela_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
               p.id AS ponto_id, p.nome AS ponto_nome, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
@@ -1617,45 +1628,45 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
        WHERE e.anunciante_id = $1
        GROUP BY dia, p.id, p.nome
        ORDER BY dia DESC`,
-        [anuncianteId],
-      ),
-      // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
-      // emitida, e quando passar a emitir vai direto por e-mail, não por um
-      // link nesta tabela — os campos continuam existindo na tabela
-      // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
-      pool.query(
-        `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
-        [anuncianteId],
-      ),
-      repo.buscarPorId(anuncianteId),
-      // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
-      // acima: quanto já confirmou no mês corrente, em Matão.
-      pool.query(
-        `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
+      [anuncianteId],
+    ),
+    // Nota fiscal saiu daqui (19/09/2026, pedido do dono): hoje nenhuma é
+    // emitida, e quando passar a emitir vai direto por e-mail, não por um
+    // link nesta tabela — os campos continuam existindo na tabela
+    // `cobrancas_confirmadas` pro admin, só não vêm mais nesta resposta.
+    pool.query(
+      `SELECT id, valor, criado_em FROM cobrancas_confirmadas WHERE anunciante_id = $1 ORDER BY criado_em DESC`,
+      [anuncianteId],
+    ),
+    repo.buscarPorId(anuncianteId),
+    // Mesmo mês/fuso do banco de horas (mes_referencia) e do corte de dia
+    // acima: quanto já confirmou no mês corrente, em Matão.
+    pool.query(
+      `SELECT COALESCE(SUM(vezes_confirmadas),0) AS confirmadas
        FROM exibicoes_contador
        WHERE anunciante_id = $1
          AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
            = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
-        [anuncianteId],
-      ),
-      // Primeiro dia com PROGRAMAÇÃO (não confirmação) no mês corrente, em
-      // Matão — é o início real da campanha dentro do mês, mesmo em dias sem
-      // nenhuma confirmação. Existe uma linha em exibicoes_contador sempre que
-      // a conta foi programada numa hora, então MIN() aqui não depende de ter
-      // rodado de verdade (21/09/2026, correção da média diária: dividir por
-      // "dia do mês" penalizava campanha que começou no meio do mês —
-      // 14 exibições em 2 dias virava "0,7 por dia" em vez de "7 por dia").
-      pool.query(
-        `SELECT
+      [anuncianteId],
+    ),
+    // Primeiro dia com PROGRAMAÇÃO (não confirmação) no mês corrente, em
+    // Matão — é o início real da campanha dentro do mês, mesmo em dias sem
+    // nenhuma confirmação. Existe uma linha em exibicoes_contador sempre que
+    // a conta foi programada numa hora, então MIN() aqui não depende de ter
+    // rodado de verdade (21/09/2026, correção da média diária: dividir por
+    // "dia do mês" penalizava campanha que começou no meio do mês —
+    // 14 exibições em 2 dias virava "0,7 por dia" em vez de "7 por dia").
+    pool.query(
+      `SELECT
          MIN(date_trunc('day', janela_hora AT TIME ZONE 'America/Sao_Paulo'))::date AS primeiro_dia,
          date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje
        FROM exibicoes_contador
        WHERE anunciante_id = $1
          AND date_trunc('month', janela_hora AT TIME ZONE 'America/Sao_Paulo')
            = date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')`,
-        [anuncianteId],
-      ),
-    ]);
+      [anuncianteId],
+    ),
+  ]);
 
   const confirmadas = Number(totais.rows[0].confirmadas);
   const plano = planoEfetivoId(anunciante) ? await planosRepo.buscarPorId(planoEfetivoId(anunciante)) : null;
@@ -1718,7 +1729,6 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
     confirmadasMes,
     criativosAprovados: aprovados[0].n,
     porPonto: await comSituacaoNoAr(porPonto.rows),
-    porDia: porDia.rows,
     porDiaPonto: porDiaPonto.rows,
     cobrancas: cobrancas.rows,
     horasContratadasMes,
