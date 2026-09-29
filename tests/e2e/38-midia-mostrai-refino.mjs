@@ -434,15 +434,20 @@ await p.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, SAN.id);
 await p.waitForSelector('[data-capacidade-ponto]');
-// A ficha do ponto já tinha transbordo a 390 px antes desta estação (a linha
-// "Benefício do ponto" da ficha, +86 px — fica pra revisão da Rede). Aqui se
-// confere o bloco que esta estação pôs lá: ele cabe na tela.
+// O bloco de capacidade cabe na tela; e a ficha inteira também, desde o PR
+// #90 (a linha secundária `.dado-sub` — "Benefício do ponto", contato do
+// responsável — quebra em vez de vazar +86 px).
 check(
   '390px: bloco de capacidade cabe na tela',
   await p.evaluate(() => {
     const el = document.getElementById('pontoCapacidade');
     return el.getBoundingClientRect().right <= innerWidth && el.scrollWidth <= el.clientWidth;
   }),
+);
+check(
+  '390px: ficha do ponto sem rolagem lateral',
+  await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  String(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)),
 );
 await shot(await p.$('#pontoCapacidade'), 'rede-ponto-capacidade-390');
 

@@ -209,6 +209,8 @@ const ids = (...pontos) => pontos.sort((a, b) => a - b).join(',');
 // ---------------------------------------------------------------------------
 // `vitrine`: 'ok' (normal), 'falha' (GET /pontos responde 500) ou 'trava'
 // (GET /pontos nunca responde — a lista não pode esperar pra sempre).
+// PUT recusado de propósito (seção "recusa volta ao salvo"): o 500 no console é esperado.
+let recusaSimulada = false;
 async function entrar(largura, altura, { vitrine = 'ok' } = {}) {
   const semVitrine = vitrine !== 'ok';
   const ctx = await navegador.newContext({ viewport: { width: largura, height: altura } });
@@ -221,6 +223,7 @@ async function entrar(largura, altura, { vitrine = 'ok' } = {}) {
     if (m.type() !== 'error') return;
     if (/net::|ERR_FAILED/.test(m.text())) return;
     if (semVitrine && /status of 500/.test(m.text())) return; // a falha simulada
+    if (recusaSimulada && /status of 500/.test(m.text())) return;
     erros.push(`[${rotulo}] console: ${m.text()}`);
   });
   if (vitrine === 'falha')
@@ -442,6 +445,53 @@ await salvou(p, () => mercado.locator('input').click());
 check('desmarcar solta o limite', !(await card(p, P.pet).locator('input').isDisabled()));
 check('pé volta a "Selecionar ponto"', (await acao(p, P.pet)) === 'Selecionar ponto');
 check('desmarcado saiu do banco', escolhidos() === ids(P.proprio, P.farmacia), escolhidos());
+
+// PR #90 (integrado em 29/09/2026): um PUT por vez; recusa volta ao salvo.
+console.log('== um PUT por vez; recusa volta ao salvo ==');
+let emVoo = 0;
+let maxEmVoo = 0;
+let puts = 0;
+const ehPut = (r) => r.method() === 'PUT' && r.url().endsWith('/anunciantes/me/pontos');
+p.on('request', (r) => {
+  if (!ehPut(r)) return;
+  puts += 1;
+  emVoo += 1;
+  maxEmVoo = Math.max(maxEmVoo, emVoo);
+});
+p.on('requestfinished', (r) => {
+  if (ehPut(r)) emVoo -= 1;
+});
+p.on('requestfailed', (r) => {
+  if (ehPut(r)) emVoo -= 1;
+});
+// Dois cliques seguidos no mesmo card (marca e desmarca), sem esperar o
+// primeiro salvar: a escolha final é a do segundo.
+await mercado.locator('input').click();
+await mercado.locator('input').click();
+for (let i = 0; i < 40 && (emVoo > 0 || !/Pronto/.test(await p.textContent('#msgPontos'))); i++) await p.waitForTimeout(200);
+await p.waitForTimeout(300);
+check('nunca dois PUTs em paralelo', maxEmVoo === 1, `máximo em voo: ${maxEmVoo}`);
+check('no máximo um PUT por clique', puts <= 2, String(puts));
+check('o último clique vence no banco', escolhidos() === ids(P.proprio, P.farmacia), escolhidos());
+recusaSimulada = true;
+await p.route('**/anunciantes/me/pontos', (rota) =>
+  rota.request().method() === 'PUT'
+    ? rota.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ erro: 'falhou de propósito' }) })
+    : rota.continue(),
+);
+await card(p, P.pet).locator('input').click();
+await p.waitForFunction(() => document.getElementById('msgPontos').classList.contains('err'), null, { timeout: 8000 });
+check(
+  'recusa: mensagem com o motivo e a volta',
+  /falhou de propósito/i.test(await p.textContent('#msgPontos')) && /voltou/.test(await p.textContent('#msgPontos')),
+  await p.textContent('#msgPontos'),
+);
+check('recusa: a caixa voltou a desmarcada', !(await card(p, P.pet).locator('input').isChecked()));
+check('recusa: as salvas seguem marcadas', (await proprio.locator('input').isChecked()) && (await farmacia.locator('input').isChecked()));
+check('recusa: contador volta a "2 de 3"', (await p.textContent('#contadorPontos')) === '2 de 3 pontos selecionados');
+check('recusa: nada mudou no banco', escolhidos() === ids(P.proprio, P.farmacia), escolhidos());
+await p.unroute('**/anunciantes/me/pontos');
+recusaSimulada = false;
 
 console.log('== busca ==');
 await p.fill('#buscaPontos', 'farm');

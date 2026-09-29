@@ -1421,7 +1421,10 @@ escolha nova, card apagado). Clicar em qualquer parte do card marca; no
 mapa, não. Foto, segmento e bairro vêm da vitrine pública (`GET /pontos`);
 se ela falhar ou passar de 3 s, o card fica com o placeholder e a escolha
 segue igual. Só a apresentação mudou: limite, trava, salvamento e contador
-são os de antes. Vale pra plano pago **e** pra benefício (créditos/cortesia)
+são os de antes. Salvamento (PR #90, integrado em 29/09/2026): um pedido por
+vez — dois cliques seguidos não viram dois PUTs em paralelo, e vale o último;
+se o servidor recusar, as caixas voltam ao último estado salvo, com o
+motivo. Vale pra plano pago **e** pra benefício (créditos/cortesia)
 — até 27/09/2026 o painel escondia a lista pro benefício. O ponto da própria
 conta aparece na mesma lista com destaque (borda quente e o selo **Seu
 ponto** sobre a foto), rótulo "Veicular no próprio ponto" e o texto

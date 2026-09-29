@@ -642,13 +642,25 @@ async function desenharPontos() {
   pintarResumoPontos(dados, marcados());
   travarNoLimite();
 
-  lista.onchange = async (e) => {
-    if (e.target.tagName !== 'INPUT') return;
-    const escolha = marcados();
-    pintarResumoPontos(dados, escolha);
+  // Um salvamento por vez (PR #90, finalização 28/09/2026): dois cliques
+  // seguidos disparavam dois PUTs em paralelo, e a ordem em que o servidor os
+  // aplicava decidia o resultado — o clique mais antigo podia vencer. Agora a
+  // escolha mais recente espera a anterior terminar, e só ela vai (as do meio
+  // são descartadas: o PUT manda a lista inteira). Se o servidor recusar, as
+  // caixas voltam ao último estado que ele confirmou — a tela nunca fica
+  // dizendo "marcado" pra uma escolha que não foi salva.
+  let salvo = marcados();
+  let salvando = null;
+  let pendente = null;
+  const voltarAoSalvo = () => {
+    for (const i of lista.querySelectorAll('input')) i.checked = salvo.includes(Number(i.value));
+    pintarResumoPontos(dados, marcados());
     travarNoLimite();
+  };
+  async function salvar(escolha) {
     msg.textContent = 'Salvando...';
     msg.className = 'form-msg';
+    let erro;
     try {
       const r = await fetch(`${API_BASE_URL}/anunciantes/me/pontos`, {
         method: 'PUT',
@@ -657,26 +669,49 @@ async function desenharPontos() {
         body: JSON.stringify({ pontos: escolha }),
       });
       const corpo = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        msg.textContent = window.frase(corpo.erro || 'não deu pra salvar');
-        msg.className = 'form-msg err';
-        return;
-      }
-      msg.textContent = escolha.length ? 'Pronto. Salvo.' : 'Pronto. Sem escolha, a Mostraí distribui sua campanha.';
-      msg.className = 'form-msg ok';
-      // Cobertura e compensação dependem da escolha: relê do servidor (só o
-      // resumo — a lista fica, pra não roubar o foco de quem está marcando).
-      try {
-        dados = { ...dados, ...(await buscarPontosDisponiveis()) };
-        pintarCompensacao(dados.cobertura);
-        pintarResumoPontos(dados, marcados());
-      } catch {
-        // O salvamento já deu certo; o resumo fica com o número da tela.
-      }
+      if (!r.ok) erro = window.frase(corpo.erro || 'não deu pra salvar');
     } catch {
-      msg.textContent = 'Sem conexão. Tente de novo.';
-      msg.className = 'form-msg err';
+      erro = 'Sem conexão.';
     }
+    if (erro) {
+      pendente = null;
+      voltarAoSalvo();
+      msg.textContent = `${erro} Sua escolha voltou ao que estava salvo.`;
+      msg.className = 'form-msg err';
+      return;
+    }
+    salvo = escolha;
+    msg.textContent = escolha.length ? 'Pronto. Salvo.' : 'Pronto. Sem escolha, a Mostraí distribui sua campanha.';
+    msg.className = 'form-msg ok';
+    // Cobertura e compensação dependem da escolha: relê do servidor (só o
+    // resumo — a lista fica, pra não roubar o foco de quem está marcando).
+    try {
+      dados = { ...dados, ...(await buscarPontosDisponiveis()) };
+      pintarCompensacao(dados.cobertura);
+      pintarResumoPontos(dados, marcados());
+    } catch {
+      // O salvamento já deu certo; o resumo fica com o número da tela.
+    }
+  }
+  function agendarSalvar(escolha) {
+    pendente = escolha;
+    if (salvando) return;
+    salvando = (async () => {
+      while (pendente) {
+        const alvo = pendente;
+        pendente = null;
+        await salvar(alvo);
+      }
+      salvando = null;
+    })();
+  }
+
+  lista.onchange = (e) => {
+    if (e.target.tagName !== 'INPUT') return;
+    const escolha = marcados();
+    pintarResumoPontos(dados, escolha);
+    travarNoLimite();
+    agendarSalvar(escolha);
   };
 }
 
