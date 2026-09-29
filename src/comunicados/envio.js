@@ -51,4 +51,26 @@ function marcarDesistencia(l, status, motivo) {
   );
 }
 
-module.exports = { enviar, marcarEnviado, marcarDesistencia };
+// Antes de a fila expurgar as linhas dela (30 dias depois de enviada, 90 de
+// abandonada/descartada — src/email/outbox.js#expurgar), o resultado final
+// de cada uma vai pro registro do destinatário que ainda diz "na_fila" —
+// é o caso em que o gancho da fila falhou (queda do banco no meio, processo
+// morto entre marcar a fila e o registro). Sem isso, a linha expurgada
+// deixaria o registro sem resultado e o histórico ficaria errado.
+async function consolidar(db = pool) {
+  const { rowCount } = await db.query(
+    `UPDATE comunicados_destinatarios d
+        SET situacao = CASE o.status WHEN 'enviado' THEN 'enviado' WHEN 'descartado' THEN 'descartado' ELSE 'falhou' END,
+            enviado_em = CASE WHEN o.status = 'enviado' THEN o.enviado_em ELSE d.enviado_em END,
+            ultimo_erro = CASE WHEN o.status = 'enviado' THEN NULL ELSE o.ultimo_erro END,
+            atualizado_em = now()
+       FROM email_outbox o
+      WHERE o.id = d.email_outbox_id
+        AND d.situacao = 'na_fila'
+        AND o.tipo = 'comunicado'
+        AND o.status IN ('enviado', 'abandonado', 'descartado')`,
+  );
+  return rowCount;
+}
+
+module.exports = { enviar, marcarEnviado, marcarDesistencia, consolidar };

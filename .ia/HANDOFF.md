@@ -16,7 +16,11 @@ excluída, anonimizada, conta própria, suspensa, e-mail não confirmado, quem
 revogou "novidades" e e-mail inválido (régua em
 `src/comunicados/publicos.js`). Migration 108 (só tabelas novas). UI em
 `public/admin/comunicados.js`/`.css` (arquivo próprio pra não disputar
-`index.page.js`). ADR-032, RN-68, `docs/PENDENCIAS.md` §W, e2e 38.
+`index.page.js`). Revisão adversarial feita e corrigida (ADR-032 item 10):
+resposta perdida → pergunta `por-chave` e edição travada; consolidação
+antes do expurgo; teto de 300/24 h + ritmo global; teste nunca pra caixa de
+cliente escrita de outro jeito. ADR-032, RN-68, `docs/PENDENCIAS.md` §W,
+e2e 38. PR [#106](https://github.com/sancompany/MostrAi/pull/106) em draft.
 **Não iniciar outra estação.**
 2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
 ([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch

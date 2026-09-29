@@ -1348,27 +1348,42 @@ conta). Regras:
 - **Nunca em dobro.** Duplo clique, tempo esgotado e nova tentativa da mesma
   confirmação levam a mesma chave (Idempotency-Key) e devolvem o comunicado
   que já existe; o mesmo conteúdo para o mesmo público nas últimas 24 h é
-  barrado (página recarregada, outra aba).
+  barrado (página recarregada, outra aba). Quando a resposta do envio se
+  perde, a tela pergunta ao servidor se aquela chave entrou (a pergunta
+  espera qualquer gravação em andamento) e, até ter a resposta, **não deixa
+  editar nem escrever outro** — a chave fica guardada na aba, e recarregar a
+  página refaz a pergunta.
 - **Prévia e teste.** A prévia é o e-mail montado pelo servidor, o mesmo do
-  envio. O teste sai na hora, marcado **[TESTE]**, só para a caixa da equipe
-  (`MOSTRAI_EMAIL_CONTATO`) ou um endereço digitado que não seja de conta de
-  cliente, e não entra no histórico.
-- **Ritmo e prioridade.** As mensagens saem espaçadas (30 por minuto por
-  padrão, `COMUNICADOS_POR_MINUTO`) e vão pro fim da fila: código de
-  verificação e link de senha nunca esperam por um comunicado.
+  envio. O teste sai na hora, marcado **[TESTE]**, para a caixa da equipe
+  (`MOSTRAI_EMAIL_CONTATO`) ou o endereço que o admin digitar — nunca a caixa
+  de um cliente, nem escrita de outro jeito ("+apelido", pontos e
+  googlemail no Gmail, caixa alta) nem um endereço que a conta já usou — e
+  não entra no histórico.
+- **Ritmo, teto e prioridade.** As mensagens saem espaçadas (30 por minuto
+  por padrão, `COMUNICADOS_POR_MINUTO`), num ritmo só para todos os
+  comunicados (um novo espera o anterior); no máximo 300 mensagens de
+  comunicado em 24 h (`COMUNICADOS_MAX_DIA`), senão nada entra; e vão pro fim
+  da fila — código de verificação e link de senha, que usam a mesma conta de
+  envio, nunca esperam por um comunicado nem ficam sem cota por causa dele.
+- **Links no texto:** o programa de e-mail vira link o endereço escrito, então
+  link com usuário/senha antes do domínio (`https://site.com.br@golpe.com`) e
+  `javascript:` são recusados em qualquer campo.
 - **Falha parcial:** o histórico mostra previstos, enviados, falharam e na
   fila; quem falhou aparece com o endereço mascarado e o motivo.
   **Reenviar falhas** põe de volta só quem falhou (e ainda recebe) — quem já
   recebeu não recebe de novo. Conta que sai do público antes da vez dela
   (excluída, suspensa, desmarcou, trocou de e-mail) não recebe e não conta
-  como falha.
+  como falha. Só volta quem tem falha **comprovada**: o resultado de cada
+  mensagem é guardado antes de a fila expurgar a linha, e linha sem
+  resultado não é reenviada (sem prova, reenviar poderia duplicar).
 - **Trilha:** quem criou/enviou e quando (`comunicados.criado_por`, o usuário
   da sessão do admin) e cada reenvio (`comunicados_reenvios`).
 - **Não é marketing.** Oferta, promoção e campanha não saem por aqui: não
   existe opt-in de divulgação no cadastro (só a revogação do perfil), e
   decidir essa base legal é de uma estação jurídica (docs/PENDENCIAS.md §W).
 *Violada:* conteúdo inválido → 400 com o campo; público vazio → 400; público
-mudou → 409 com o número novo; repetido → 409 com o comunicado anterior; sem
+mudou → 409 com o número novo; repetido → 409 com o comunicado anterior;
+teto de 24 h → 409 `limite_diario`; teste para caixa de cliente → 400; sem
 sessão de admin → 401. *Quem vê:* o administrador; cada conta vê só o próprio
 e-mail.
 

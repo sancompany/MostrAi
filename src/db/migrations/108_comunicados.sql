@@ -67,6 +67,13 @@ CREATE TABLE comunicados_destinatarios (
   PRIMARY KEY (comunicado_id, anunciante_id)
 );
 CREATE INDEX comunicados_destinatarios_situacao ON comunicados_destinatarios (comunicado_id, situacao);
+-- Apagar uma conta leva os registros dela (ON DELETE CASCADE): sem índice na
+-- conta, o apagamento varreria a tabela inteira.
+CREATE INDEX comunicados_destinatarios_conta ON comunicados_destinatarios (anunciante_id);
+-- O que o expurgo da fila consolida antes de apagar (src/comunicados/envio.js
+-- #consolidar): só os que ainda dizem "na_fila".
+CREATE INDEX comunicados_destinatarios_pendentes ON comunicados_destinatarios (email_outbox_id)
+  WHERE situacao = 'na_fila';
 
 -- Trilha de cada "Reenviar falhas": quem, quando e para quantos.
 CREATE TABLE comunicados_reenvios (

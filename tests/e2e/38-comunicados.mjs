@@ -253,33 +253,44 @@ await p.screenshot({ path: `${SAIDA}38-confirmacao-1280.png` });
 await confirmar.getByRole('button', { name: 'Cancelar' }).click();
 check('cancelar não envia nada', Number(PG('SELECT COUNT(*) FROM comunicados')) === 0);
 
-etapa('== resposta perdida no meio do envio ==');
-// O servidor recebe e grava, mas a resposta nunca chega ao navegador (queda
-// de rede): a tela avisa e, na nova tentativa, a MESMA chave de
-// confirmação volta — o servidor devolve o comunicado que já existe.
+etapa('== resposta perdida no meio do envio, e a conexão não volta ==');
+// O servidor recebe e grava, mas a resposta nunca chega ao navegador — e a
+// pergunta "entrou?" também não (queda de rede que dura). A tela não sabe:
+// trava a edição e o teste (editar e mandar de novo viraria um SEGUNDO
+// comunicado) e guarda a chave na aba. Quando a conexão volta, "Enviar
+// comunicado…" manda a MESMA chave e o servidor devolve o que já existe.
 ignorar.push(/ERR_FAILED/, /Failed to load resource/);
+const soPost = (url) => url.pathname === '/admin/comunicados';
+const pergunta = (url) => url.pathname.startsWith('/admin/comunicados/por-chave/');
 let perdidas = 0;
-await p.route(
-  (url) => url.pathname === '/admin/comunicados',
-  async (route) => {
-    if (route.request().method() !== 'POST' || perdidas) return route.continue();
-    await route.fetch();
-    perdidas++;
-    await route.abort('failed');
-  },
-);
+await p.route(soPost, async (route) => {
+  if (route.request().method() !== 'POST' || perdidas) return route.continue();
+  await route.fetch();
+  perdidas++;
+  await route.abort('failed');
+});
+await p.route(pergunta, (route) => route.abort('failed'));
 await modal.locator('[data-enviar]').click();
 await confirmar.waitFor();
 await confirmar.getByRole('button', { name: 'Enviar comunicado' }).click();
-await p.waitForFunction(() => document.querySelector('[data-msg-envio]')?.textContent.includes('Não deu pra confirmar'));
-check('a tela avisa que não confirmou', true);
+await p.waitForFunction(() => document.querySelector('[data-msg-envio]')?.textContent.includes('Sem resposta do servidor'));
+check('a tela diz que não sabe se entrou', true);
 check('mas o servidor gravou (1 comunicado)', Number(PG('SELECT COUNT(*) FROM comunicados')) === 1);
+check('"Voltar e editar" some enquanto não se sabe', await modal.locator('[data-voltar]').isHidden());
+check('envio de teste travado enquanto não se sabe', await modal.locator('[data-enviar-teste]').isDisabled());
+const pendenteNaAba = await p.evaluate(() => sessionStorage.getItem('mostrai:comunicado-sem-resposta'));
+check('a chave fica guardada na aba (sobrevive a recarregar)', !!pendenteNaAba && pendenteNaAba.includes('chave'));
+await p.unroute(pergunta);
+await p.unroute(soPost);
 await modal.locator('[data-enviar]').click();
 await confirmar.waitFor();
 await confirmar.getByRole('button', { name: 'Enviar comunicado' }).click();
 await p.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('nada foi mandado de novo'));
-check('nova tentativa: "já tinha sido enviado"', true);
-await p.unroute((url) => url.pathname === '/admin/comunicados');
+check('conexão de volta, mesma chave: "já tinha entrado", nada de novo', true);
+check(
+  'a aba esqueceu a pendência',
+  (await p.evaluate(() => sessionStorage.getItem('mostrai:comunicado-sem-resposta'))) === null,
+);
 check('continua 1 comunicado', Number(PG('SELECT COUNT(*) FROM comunicados')) === 1);
 const COM = Number(PG('SELECT id FROM comunicados'));
 check(
@@ -449,6 +460,72 @@ for (const largura of [1920, 1440, 1280, 1024, 768, 430, 390, 360]) {
   await pg.close();
 }
 check('nenhum envio saiu das larguras (só cancelados)', Number(PG('SELECT COUNT(*) FROM comunicados')) === 1);
+
+// ---------------------------------------------------------------------------
+// Mais dois jeitos de perder a resposta do envio, agora com a pergunta "entrou?"
+// funcionando: na mesma tela, e com a página recarregada no meio.
+async function escreverAosDonos(assunto) {
+  await irQuieto(p, `${B}/admin/index.html`);
+  const c = p.locator('[data-comunicados-resumo]');
+  await c.waitFor();
+  await c.locator('[data-novo-comunicado]').click();
+  const m = p.locator('dialog[open]').first();
+  await destinatarios(p);
+  await m.locator('input[name=publico][value=donos_de_ponto]').check({ force: true });
+  await p.waitForFunction(() => document.querySelector('[data-destinatarios]')?.textContent.includes('1 conta'));
+  await p.fill('#comAssunto', assunto);
+  await p.fill('#comTitulo', 'Recado para quem tem ponto');
+  await p.fill('#comMensagem', 'A tela do seu ponto recebe uma atualização nesta semana.');
+  await m.locator('[data-revisar]').click();
+  await p.waitForSelector('[data-revisao]:not([hidden])');
+  return m;
+}
+async function perderResposta({ perguntaFalha }) {
+  let perdida = 0;
+  await p.route(soPost, async (route) => {
+    if (route.request().method() !== 'POST' || perdida) return route.continue();
+    await route.fetch();
+    perdida++;
+    await route.abort('failed');
+  });
+  if (perguntaFalha) await p.route(pergunta, (route) => route.abort('failed'));
+}
+
+etapa('== resposta perdida, e a pergunta "entrou?" responde ==');
+const RECADO = `Recado aos donos ${RODADA}`;
+const m3 = await escreverAosDonos(RECADO);
+await perderResposta({ perguntaFalha: false });
+await m3.locator('[data-enviar]').click();
+await p.locator('dialog[open]').nth(1).waitFor();
+await p.locator('dialog[open]').nth(1).getByRole('button', { name: 'Enviar comunicado' }).click();
+await p.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('Comunicado na fila para 1 conta'));
+await p.unroute(soPost);
+check('a tela perguntou, soube que entrou e fechou o modal', (await p.locator('dialog[open]').count()) === 0);
+check('um comunicado só com esse assunto', Number(PG(`SELECT COUNT(*) FROM comunicados WHERE assunto = '${RECADO}'`)) === 1);
+check(
+  'o dono recebeu UMA vez',
+  await esperar(() => emailsPara(email('dono')).filter((m) => m.subject === RECADO).length === 1, 75000, 500),
+);
+
+etapa('== página recarregada no meio do envio ==');
+const LEMBRETE = `Lembrete aos donos ${RODADA}`;
+const m4 = await escreverAosDonos(LEMBRETE);
+await perderResposta({ perguntaFalha: true });
+await m4.locator('[data-enviar]').click();
+await p.locator('dialog[open]').nth(1).waitFor();
+await p.locator('dialog[open]').nth(1).getByRole('button', { name: 'Enviar comunicado' }).click();
+await p.waitForFunction(() => document.querySelector('[data-msg-envio]')?.textContent.includes('Sem resposta do servidor'));
+await p.unroute(pergunta);
+await p.unroute(soPost);
+await p.reload();
+await p.waitForSelector('[data-comunicados-resumo]');
+await p.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('entrou na fila'));
+check('recarregada, a Visão geral pergunta pela chave e avisa que entrou', true);
+check(
+  'e esquece a pendência',
+  (await p.evaluate(() => sessionStorage.getItem('mostrai:comunicado-sem-resposta'))) === null,
+);
+check('um comunicado só com esse assunto', Number(PG(`SELECT COUNT(*) FROM comunicados WHERE assunto = '${LEMBRETE}'`)) === 1);
 
 await navegador.close();
 if (erros.length) for (const e of erros) falha('erro de página/console', e);

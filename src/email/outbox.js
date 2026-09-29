@@ -292,14 +292,18 @@ async function pegarProxima(escopo = null) {
 // Fecha a linha num estado final. `tentativas` na condição: se o prazo
 // venceu e outra instância retomou, o resultado desta (atrasada) não
 // sobrescreve o dela. O segredo sai junto — terminou, não precisa mais.
+// Devolve se fechou de fato: os ganchos (`depois`, `aoDesistir`) só rodam
+// pra quem fechou — a instância atrasada não registra nada por cima da que
+// retomou (quem retomou registra o resultado dela).
 async function finalizar(l, status, erro = null) {
-  await pool.query(
+  const { rowCount } = await pool.query(
     `UPDATE email_outbox
         SET status = $3, enviando_desde = NULL, segredo = NULL, ultimo_erro = $4,
             enviado_em = CASE WHEN $3 = 'enviado' THEN now() ELSE enviado_em END, atualizado_em = now()
       WHERE id = $1 AND tentativas = $2`,
     [l.id, l.tentativas, status, erro],
   );
+  return rowCount > 0;
 }
 
 const rotulo = (l) => `e-mail ${l.tipo} #${l.id} para ${mascararEmail(l.destinatario)}`;
@@ -308,7 +312,7 @@ const rotulo = (l) => `e-mail ${l.tipo} #${l.id} para ${mascararEmail(l.destinat
 // se ele quiser saber (o comunicado registra a falha por destinatário).
 // Falha aqui não muda o estado da linha na fila.
 async function desistir(l, status, motivo) {
-  await finalizar(l, status, motivo);
+  if (!(await finalizar(l, status, motivo))) return;
   const gancho = MODELOS[l.tipo]?.aoDesistir;
   if (!gancho) return;
   await Promise.resolve()
@@ -369,10 +373,10 @@ async function enviarUma(escopo = null) {
     return true;
   }
 
-  await finalizar(l, 'enviado');
+  const fechou = await finalizar(l, 'enviado');
   // Efeito colateral de registro (ex.: "e-mail do ciclo saiu"). Falha aqui
   // não desfaz o envio nem faz reenviar.
-  if (MODELOS[l.tipo].depois) {
+  if (fechou && MODELOS[l.tipo].depois) {
     await Promise.resolve()
       .then(() => MODELOS[l.tipo].depois(l))
       .catch((err) => console.error(`${rotulo(l)} enviado; registro posterior falhou: ${sanitizar(err)}`));
@@ -408,6 +412,10 @@ function despachar() {
 }
 
 async function expurgar() {
+  // Antes de apagar, o resultado de cada mensagem de comunicado vai pro
+  // registro dela (src/comunicados/envio.js#consolidar). Se isso falhar, o
+  // expurgo não acontece nesta volta — apagar antes perderia o resultado.
+  await comunicados.consolidar();
   const { rowCount } = await pool.query(
     `DELETE FROM email_outbox
       WHERE (tipo IN ('codigo_confirmacao', 'codigo_troca_email', 'redefinir_senha')
@@ -422,14 +430,17 @@ async function expurgar() {
 }
 
 // Visão operacional (admin): contagem por estado e as últimas que falharam.
-// Destinatário mascarado; `dados`/`segredo` nunca saem daqui.
+// Destinatário mascarado; `dados`/`segredo` nunca saem daqui. As falhas de
+// tipo em massa (comunicado) ficam de fora da lista: têm o histórico delas,
+// e 50 falhas de um comunicado esconderiam um código que não saiu.
 async function resumo() {
   const { rows: porStatus } = await pool.query(`SELECT status, COUNT(*)::int AS n FROM email_outbox GROUP BY status`);
   const { rows: problemas } = await pool.query(
     `SELECT id, tipo, classe, destinatario, status, tentativas, ultimo_erro, proxima_tentativa_em, criado_em, atualizado_em
        FROM email_outbox
-      WHERE status IN ('tentando_de_novo', 'abandonado')
+      WHERE status IN ('tentando_de_novo', 'abandonado') AND NOT (tipo = ANY($1::text[]))
       ORDER BY atualizado_em DESC LIMIT 50`,
+    [TIPOS_EM_MASSA],
   );
   const contagem = Object.fromEntries(porStatus.map((r) => [r.status, r.n]));
   return {

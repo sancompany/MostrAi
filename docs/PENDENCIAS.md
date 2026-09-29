@@ -5565,10 +5565,17 @@ trecho de `renderResumo`.
       situação) com detalhe e **Reenviar falhas** só para quem falhou.
 - [x] Migration 108 (só tabelas novas: `comunicados`,
       `comunicados_destinatarios`, `comunicados_reenvios`, com RLS).
-- [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo, prioridade,
-      descarte na hora, segredo do SMTP fora de toda resposta); e2e
-      `38-comunicados.mjs` (fluxo inteiro + 8 larguras); `npm run check`
-      verde; e2e 23, 24 e 26 verdes.
+- [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo global,
+      prioridade, teto diário, descarte na hora, consolidação antes do
+      expurgo, segredo do SMTP fora de toda resposta); e2e
+      `38-comunicados.mjs` (fluxo inteiro, três jeitos de perder a resposta
+      do envio + 8 larguras); `npm run check` verde; e2e 23, 24 e 26 verdes.
+- [x] Revisão adversarial independente (29/09/2026): 1 bloqueio (teste pra
+      caixa de cliente escrita de outro jeito) e 3 correções (editar depois
+      de resposta perdida criava um 2º comunicado; expurgo de 30 dias podia
+      fazer "enviado" virar "falhou" e reenviar em dobro; cota do SMTP sem
+      teto) — todos corrigidos e testados, junto com os ajustes menores
+      (ADR-032, item 10).
 
 **Com o dono:**
 
@@ -5587,10 +5594,11 @@ trecho de `renderResumo`.
       checkbox novo aqui.
 - W3 [ ] **Limite diário do SMTP (hipótese, não conferida):** conta Google
       Workspace costuma aceitar ~2.000 mensagens/dia pelo SMTP (Gmail comum,
-      ~500). Na escala declarada (~60 contas) está longe, mas um público
-      grande além do limite vira "falhou" depois das 6 tentativas (~2h45) —
-      aí "Reenviar falhas" no dia seguinte. Se o provedor reclamar de ritmo,
-      baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
+      ~500). O sistema já para sozinho em 300 mensagens de comunicado por
+      24 h (`COMUNICADOS_MAX_DIA`) pra sobrar cota aos códigos e senhas, que
+      usam a mesma conta. Conferir o tipo da conta (Workspace x Gmail comum)
+      no admin.google.com e ajustar o teto se for o caso; se o provedor
+      reclamar de ritmo, baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
 - W4 [ ] **Reconciliar com o #104** quando ele entrar na `main`: os dois
       acrescentam um bloco no fim da coluna de negócio (`renderResumo`) e
       uma chamada `blocoIndependente` — ficam os DOIS (QR institucional e

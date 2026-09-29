@@ -1211,8 +1211,35 @@ Decisão:
    geral só ganha o contêiner e a chamada — outras estações mexiam no mesmo
    arquivo ao mesmo tempo (QR institucional, PR #104).
 
+10. **Revisão adversarial (29/09/2026), o que ela mudou:**
+    - resposta do envio perdida → a tela pergunta
+      `GET /admin/comunicados/por-chave/:chave` (espera a trava das
+      criações, então o 404 é definitivo) e, até saber, não deixa editar
+      nem escrever outro; a chave fica na `sessionStorage` da aba e a Visão
+      geral refaz a pergunta depois de recarregar. Sem isso, "editar e
+      mandar de novo" criava um segundo comunicado com chave nova;
+    - o expurgo da fila consolida o resultado de cada mensagem no registro
+      antes de apagar a linha, e só falha COMPROVADA volta pelo reenvio —
+      linha sem resultado não (sem prova, reenviar duplicaria);
+    - teto de 24 h (`COMUNICADOS_MAX_DIA`, 300) e ritmo global (um
+      comunicado novo espera o anterior): código e senha usam a mesma cota
+      do provedor;
+    - teste: "nunca pra cliente" compara a CAIXA (sem "+apelido"; Gmail sem
+      pontos e googlemail = gmail) e inclui os endereços antigos da conta.
+      Endereço digitado pelo admin continua valendo — o pedido do dono diz
+      "o e-mail informado pelo admin ou o administrativo configurado";
+    - ganchos da fila (`depois`, `aoDesistir`) só rodam pra instância que
+      de fato fechou a linha; `Auto-Submitted: auto-generated` no
+      comunicado; link com usuário/senha e `javascript:` recusados também
+      no texto; a lista de problemas da visão operacional ignora os tipos em
+      massa.
+
 Consequências: aviso promocional continua sem canal — criar opt-in e base
 legal de divulgação é decisão jurídica (docs/PENDENCIAS.md §W). A régua de
 quem recebe muda num lugar só. Escala: uma linha de fila por destinatário
 numa transação é folgado pro porte declarado (~60 contas, CONSTRAINTS.md);
-milhares pediriam inserção em lote.
+milhares pediriam inserção em lote. Criação e reenvio esperam uma trava
+global com uma conexão do pool presa — com um admin, cabe; com vários
+admins disparando ao mesmo tempo, trocar por `pg_try_advisory_xact_lock` e
+409. Mesmo texto para públicos que se sobrepõem (todas + com plano) chega
+duas vezes a quem está nos dois: é escolha do admin, sem aviso na tela.

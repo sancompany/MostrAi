@@ -49,6 +49,27 @@
 }
 
 /* ---------- modal: escrever ---------- */
+/* Envio anterior sem resposta: aviso no topo, antes de qualquer campo. */
+.comunicado-pendente {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 var(--r-controle) var(--r-controle) 0;
+  background: var(--bg-alt);
+}
+.comunicado-pendente[hidden] {
+  display: none;
+}
+.comunicado-pendente p {
+  flex: 1 1 240px;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
 .comunicado-aviso {
   margin: 0;
   padding: 10px 12px;

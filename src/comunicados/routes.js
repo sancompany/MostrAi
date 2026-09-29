@@ -21,9 +21,30 @@ const adminDe = (req) => String(req.session?.adminUsuario || 'admin');
 // separador de lista (",", ";", "<", ">", '"') — o teste é pra UM endereço.
 const emailDeTesteValido = (e) => /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/.test(e) && e.length <= 254;
 
-// Para onde vai o teste: o endereço que o admin digitou ou, vazio, a caixa
-// da equipe (MOSTRAI_EMAIL_CONTATO). Nunca uma conta de cliente — o teste
-// não pode virar um envio real para um usuário.
+// A CAIXA de um endereço, não a grafia: sem o "+apelido" (fulano+x@ cai na
+// caixa de fulano@ em quase todo provedor) e, no Gmail, sem os pontos e com
+// googlemail.com = gmail.com (f.ulano@googlemail.com é fulano@gmail.com).
+// A mesma conta no SQL e no JS — é assim que o teste reconhece um cliente
+// escrito de outro jeito.
+function caixaDoEmail(email) {
+  const [local = '', dominio = ''] = String(email || '')
+    .trim()
+    .toLowerCase()
+    .split('@');
+  const semApelido = local.split('+')[0];
+  if (dominio === 'gmail.com' || dominio === 'googlemail.com') return `${semApelido.replace(/\./g, '')}@gmail.com`;
+  return `${semApelido}@${dominio}`;
+}
+const caixaSql = (col) => `(CASE WHEN split_part(${col}, '@', 2) IN ('gmail.com', 'googlemail.com')
+    THEN replace(split_part(split_part(${col}, '@', 1), '+', 1), '.', '') || '@gmail.com'
+    ELSE split_part(split_part(${col}, '@', 1), '+', 1) || '@' || split_part(${col}, '@', 2) END)`;
+
+// Para onde vai o teste: o endereço que o admin digitou (pedido do dono: "o
+// e-mail informado pelo admin") ou, vazio, a caixa da equipe
+// (MOSTRAI_EMAIL_CONTATO). NUNCA a caixa de um cliente — nem escrita de
+// outro jeito (apelido, pontos, googlemail), nem um endereço que a conta já
+// usou (trilha de troca de e-mail): o teste não pode virar um envio real
+// para um usuário.
 async function destinoDoTeste(bruto) {
   const informado = String(bruto ?? '')
     .trim()
@@ -34,11 +55,18 @@ async function destinoDoTeste(bruto) {
   }
   if (!emailDeTesteValido(destino)) return { erro: 'e-mail de teste inválido', campo: 'testePara' };
   const { rows } = await pool.query(
-    `SELECT 1 FROM anunciantes
-      WHERE NOT conta_propria
-        AND (lower(trim(contato_email)) = $1 OR lower(trim(COALESCE(responsavel_email, ''))) = $1)
-      LIMIT 1`,
-    [destino],
+    `WITH enderecos AS (
+       SELECT lower(trim(contato_email)) AS e FROM anunciantes WHERE NOT conta_propria
+       UNION ALL
+       SELECT lower(trim(responsavel_email)) FROM anunciantes
+        WHERE NOT conta_propria AND responsavel_email IS NOT NULL AND responsavel_email <> ''
+       UNION ALL
+       SELECT lower(trim(x.e)) FROM alteracoes_email t
+         JOIN anunciantes a ON a.id = t.anunciante_id AND NOT a.conta_propria
+         CROSS JOIN LATERAL (VALUES (t.email_anterior), (t.email_novo)) AS x(e)
+     )
+     SELECT 1 FROM enderecos WHERE ${caixaSql('e')} = $1 LIMIT 1`,
+    [caixaDoEmail(destino)],
   );
   if (rows[0]) {
     return {
@@ -99,11 +127,13 @@ router.post('/admin/comunicados/teste', limiteTentativas, async (req, res) => {
   res.json({ ok: true, para: outbox.mascararEmail(alvo.destino) });
 });
 
+const chaveValida = (c) => /^[A-Za-z0-9-]{16,100}$/.test(c);
+
 // Envio de verdade. `Idempotency-Key` (o navegador gera uma por
 // confirmação) + o número de destinatários que o admin confirmou.
 router.post('/admin/comunicados', async (req, res) => {
   const chave = String(req.get('Idempotency-Key') || '').trim();
-  if (!/^[A-Za-z0-9-]{16,100}$/.test(chave)) {
+  if (!chaveValida(chave)) {
     return res.status(400).json({ erro: 'envio sem chave de confirmação — recarregue a página e tente de novo' });
   }
   const publico = String(req.body?.publico || '');
@@ -126,6 +156,16 @@ router.post('/admin/comunicados', async (req, res) => {
     if (err.status) return res.status(err.status).json({ erro: err.message, ...err.detalhes });
     throw err;
   }
+});
+
+// "Aquele envio entrou?" — a tela pergunta quando a resposta do envio se
+// perdeu. 200 com o comunicado, ou 404 DEFINITIVO (a consulta espera
+// qualquer criação em andamento terminar — repository.js#porChave).
+router.get('/admin/comunicados/por-chave/:chave', async (req, res) => {
+  if (!chaveValida(req.params.chave)) return res.status(404).json({ erro: 'nenhum comunicado com essa chave' });
+  const comunicado = await repo.porChave(req.params.chave);
+  if (!comunicado) return res.status(404).json({ erro: 'nenhum comunicado com essa chave' });
+  res.json({ comunicado });
 });
 
 const idValido = (v) => /^\d{1,18}$/.test(String(v));

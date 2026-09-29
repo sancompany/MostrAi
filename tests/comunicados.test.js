@@ -75,7 +75,7 @@ const criados = { contas: [], pontos: [], comunicados: [] };
 // Pote de cookies com o `Path` respeitado (o do admin só vai pro /admin).
 // Toda resposta passa pela conferência de segredo: a senha do SMTP não
 // aparece em corpo nenhum, de rota nenhuma.
-function navegador() {
+function navegador(ip = IP) {
   const potes = new Map();
   return async function pedir(metodo, caminho, corpo, cabecalhos = {}) {
     const cookie = [...potes.entries()]
@@ -87,7 +87,7 @@ function navegador() {
       redirect: 'manual',
       headers: {
         'content-type': 'application/json',
-        'x-forwarded-for': IP,
+        'x-forwarded-for': ip,
         ...(cookie ? { cookie } : {}),
         ...cabecalhos,
       },
@@ -337,6 +337,21 @@ test('M. o que o admin escreve é texto: sem HTML, sem script, sem link perigoso
   assert.strictEqual(conteudo.validar({ ...texto('m'), mensagem: '   ' }).campo, 'mensagem');
   assert.strictEqual(conteudo.validar({ ...texto('m'), titulo: 'x'.repeat(151) }).campo, 'titulo');
 
+  // No TEXTO também: o programa de e-mail transforma endereço em link.
+  assert.strictEqual(
+    conteudo.validar({ ...texto('m'), mensagem: 'Pague em https://mostrai.com.br@golpe.com/pix' }).campo,
+    'mensagem',
+    'link com usuário antes do domínio disfarça o destino',
+  );
+  assert.strictEqual(conteudo.validar({ ...texto('m'), titulo: 'Clique: javascript:alert(1)' }).campo, 'titulo');
+  assert.ok(
+    !conteudo.validar({
+      ...texto('m'),
+      mensagem: 'Fale com contato@mostrai.com.br ou veja https://mostrai.test/contato.\nData: 12/10, das 2h às 4h.',
+    }).erro,
+    'e-mail escrito, link comum e "Data:" continuam valendo',
+  );
+
   // A prévia da rota é o e-mail montado pelo mesmo `montar` do envio.
   const previa = await admin('POST', '/admin/comunicados/previa', perigoso);
   assert.strictEqual(previa.status, 200, previa.texto);
@@ -369,6 +384,7 @@ test('K. sem sessão de admin nada funciona — nem com a conta de cliente logad
       ['POST', '/admin/comunicados/teste', { ...texto('k'), para: EQUIPE }],
       ['POST', '/admin/comunicados', { ...texto('k'), publico: 'todas', destinatariosConfirmados: 6 }],
       ['GET', '/admin/comunicados/1'],
+      ['GET', `/admin/comunicados/por-chave/${chave()}`],
       ['POST', '/admin/comunicados/1/reenviar-falhas', { paraReenviarConfirmados: 1 }],
     ];
     for (const [metodo, caminho, corpo] of tentativas) {
@@ -428,6 +444,34 @@ test('G. envio de teste: só pra caixa da equipe, marcado, fora do histórico', 
     400,
   );
 
+  // Nem a caixa de um cliente escrita de outro jeito: "+apelido", pontos e
+  // googlemail.com no Gmail, caixa alta, e um endereço que a conta já usou
+  // (trilha de troca de e-mail). Outra sessão de admin, noutro IP: o teste
+  // tem teto de 10 por 15 min por IP, e aqui são muitos pedidos.
+  const outro = navegador(`10.251.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`);
+  const login = await outro('POST', '/admin/login', {
+    usuario: process.env.ADMIN_USER,
+    senha: process.env.ADMIN_PASSWORD,
+  });
+  assert.strictEqual(login.status, 200);
+  await conta('gm', { email: `${PREFIXO}gm@gmail.com`, suspenso: true });
+  await pool.query(
+    `INSERT INTO alteracoes_email (anunciante_id, email_anterior, email_novo, origem)
+     VALUES ($1, $2, $3, 'troca_confirmada')`,
+    [C.semPlano.id, `${PREFIXO}antigo@example.com`, C.semPlano.email],
+  );
+  for (const disfarce of [
+    `${PREFIXO}gm+teste@gmail.com`,
+    `${PREFIXO.split('').join('.')}gm@googlemail.com`,
+    `${PREFIXO}GM@GMAIL.COM`,
+    C.plano.email.replace('@', '+qualquer@'),
+    `${PREFIXO}antigo@example.com`,
+  ]) {
+    const r = await outro('POST', '/admin/comunicados/teste', { ...texto('g'), para: disfarce });
+    assert.strictEqual(r.status, 400, `recusado: ${disfarce}`);
+    assert.strictEqual(r.json.campo, 'testePara');
+  }
+
   // SMTP recusou: o erro volta sem a senha e sem o endereço inteiro.
   falharPara.add(destino);
   try {
@@ -438,11 +482,12 @@ test('G. envio de teste: só pra caixa da equipe, marcado, fora do histórico', 
     falharPara.delete(destino);
   }
 
-  // Não virou comunicado nem histórico.
+  // Não virou comunicado nem histórico — e só os dois testes da equipe saíram.
   const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM comunicados WHERE assunto = $1', [
     texto('g').assunto,
   ]);
   assert.strictEqual(rows[0].n, 0);
+  assert.strictEqual(saidas.filter((m) => m.subject.startsWith('[TESTE]')).length, 2);
 });
 
 test('H. envio real: um e-mail por destinatário, só o endereço dele no "Para"', async () => {
@@ -481,6 +526,7 @@ test('H. envio real: um e-mail por destinatário, só o endereço dele no "Para"
   for (const m of deste) {
     assert.strictEqual(typeof m.to, 'object', 'um endereço, como objeto — nunca uma lista em texto');
     assert.ok(!m.cc && !m.bcc, 'ninguém em cópia');
+    assert.strictEqual(m.headers?.['Auto-Submitted'], 'auto-generated', 'resposta automática não volta pra equipe');
     assert.ok(m.html.includes(conteudoH.titulo) && m.html.includes('https://mostrai.test/anunciante/painel.html'));
     assert.ok(m.text.includes('Mensagem h da Mostraí.') && m.text.includes('Abrir o painel: https://mostrai.test'));
     assert.ok(m.text.includes('desmarque "Quero receber novidades e ofertas'), 'rodapé diz como parar');
@@ -536,6 +582,14 @@ test('I. duplo clique, nova tentativa e página recarregada não mandam duas vez
     `comunicado:${id}:%`,
   ]);
   assert.strictEqual(fila[0].n, 2, 'uma mensagem por destinatário na fila');
+
+  // "Aquele envio entrou?" — a tela pergunta pela chave quando a resposta
+  // se perdeu: existe → o comunicado; não existe → 404 (definitivo).
+  const porChave = await admin('GET', `/admin/comunicados/por-chave/${k}`);
+  assert.strictEqual(porChave.status, 200, porChave.texto);
+  assert.strictEqual(porChave.json.comunicado.id, id);
+  assert.strictEqual((await admin('GET', `/admin/comunicados/por-chave/${chave()}`)).status, 404);
+  assert.strictEqual((await admin('GET', '/admin/comunicados/por-chave/curta')).status, 404);
   await processarTudo();
   for (const c of [C.dono, C.dono2]) assert.strictEqual(recebidos(c.email, corpo.assunto).length, 1, c.email);
 });
@@ -630,6 +684,11 @@ test('J. falha parcial aparece como tal, e "Reenviar falhas" pega só quem falho
   const segundo = await admin('POST', `/admin/comunicados/${id}/reenviar-falhas`, { paraReenviarConfirmados: 1 });
   assert.strictEqual(segundo.status, 409);
   assert.strictEqual(segundo.json.paraReenviar, 0);
+
+  // A falha do comunicado não entra na lista de problemas da fila (a visão
+  // operacional é pra código, senha e pagamento que não saíram).
+  const operacao = await outbox.resumo();
+  assert.ok(operacao.problemas.every((p) => p.tipo !== 'comunicado'));
 });
 
 test('conta que sai do público antes da vez dela não recebe (descartado, não é falha)', async () => {
@@ -660,30 +719,105 @@ test('conta que sai do público antes da vez dela não recebe (descartado, não 
   assert.strictEqual(detalhe.json.paraReenviar, 0, 'descartado não volta pela porta do reenvio');
 });
 
-test('ritmo: cada destinatário ganha a vez dele, e comunicado não atrasa código de verificação', async () => {
+test('teto diário: o envio que passaria do limite de 24 h não entra (código e senha usam a mesma conta)', async () => {
+  const { rows } = await pool.query(
+    "SELECT COUNT(*)::int AS n FROM email_outbox WHERE tipo = 'comunicado' AND criado_em > now() - interval '24 hours'",
+  );
+  const antes = repo.config.maxDia;
+  repo.config.maxDia = rows[0].n + 1; // cabe 1; o público tem 2
+  try {
+    const r = await enviar({ ...texto('teto'), publico: 'com_plano', destinatariosConfirmados: 2 });
+    assert.strictEqual(r.status, 409, r.texto);
+    assert.strictEqual(r.json.motivo, 'limite_diario');
+    assert.strictEqual(r.json.limite, rows[0].n + 1);
+  } finally {
+    repo.config.maxDia = antes;
+  }
+  const { rows: gravados } = await pool.query('SELECT COUNT(*)::int AS n FROM comunicados WHERE assunto = $1', [
+    texto('teto').assunto,
+  ]);
+  assert.strictEqual(gravados[0].n, 0, 'nada gravado');
+});
+
+test('o expurgo da fila guarda o resultado antes de apagar; sem prova de falha, nada volta pelo reenvio', async () => {
+  const r = await enviar({ ...texto('consolida'), publico: 'donos_de_ponto', destinatariosConfirmados: 2 });
+  assert.strictEqual(r.status, 201, r.texto);
+  const id = r.json.comunicado.id;
+  await processarTudo();
+
+  // O gancho da fila falhou pra um deles (queda do banco no meio): o
+  // registro ficou "na_fila", mas a fila diz "enviado".
+  await pool.query(
+    "UPDATE comunicados_destinatarios SET situacao = 'na_fila', enviado_em = NULL WHERE comunicado_id = $1 AND anunciante_id = $2",
+    [id, C.dono.id],
+  );
+  assert.strictEqual((await repo.buscarResumo(id)).enviados, 2, 'a tela lê a fila');
+  await outbox.expurgar();
+  const { rows } = await pool.query(
+    'SELECT situacao, enviado_em FROM comunicados_destinatarios WHERE comunicado_id = $1 AND anunciante_id = $2',
+    [id, C.dono.id],
+  );
+  assert.strictEqual(rows[0].situacao, 'enviado', 'o expurgo consolidou o resultado no registro');
+  assert.ok(rows[0].enviado_em);
+  // Mesmo que a linha da fila suma depois (30 dias), continua "enviado".
+  await pool.query('DELETE FROM email_outbox WHERE chave = $1', [`comunicado:${id}:${C.dono.id}`]);
+  assert.strictEqual((await repo.buscarResumo(id)).enviados, 2);
+
+  // Linha que sumiu da fila SEM resultado nenhum: a tela conta como falha,
+  // mas o "Reenviar falhas" não pega — sem prova de falha, reenviar
+  // poderia mandar duas vezes.
+  await pool.query(
+    "UPDATE comunicados_destinatarios SET situacao = 'na_fila' WHERE comunicado_id = $1 AND anunciante_id = $2",
+    [id, C.dono2.id],
+  );
+  await pool.query('DELETE FROM email_outbox WHERE chave = $1', [`comunicado:${id}:${C.dono2.id}`]);
+  assert.strictEqual((await repo.buscarResumo(id)).falharam, 1);
+  assert.deepStrictEqual(await repo.falhasReenviaveis(id), []);
+  const detalhe = await admin('GET', `/admin/comunicados/${id}`);
+  assert.strictEqual(detalhe.json.paraReenviar, 0);
+});
+
+test('ritmo: cada destinatário ganha a vez dele — um ritmo só pra todos os comunicados — e comunicado não atrasa código de verificação', async () => {
   repo.config.intervaloS = 2;
   let id;
+  let id2;
   try {
     const r = await enviar({ ...texto('ritmo'), publico: 'sem_plano', destinatariosConfirmados: 4 });
     assert.strictEqual(r.status, 201, r.texto);
     id = r.json.comunicado.id;
+    // Outro comunicado logo em seguida: entra DEPOIS do último do primeiro,
+    // não em paralelo (o provedor vê um ritmo só).
+    const r2 = await enviar({ ...texto('ritmo2'), publico: 'com_plano', destinatariosConfirmados: 2 });
+    assert.strictEqual(r2.status, 201, r2.texto);
+    id2 = r2.json.comunicado.id;
   } finally {
     repo.config.intervaloS = 0;
   }
-  const { rows } = await pool.query(
-    `SELECT EXTRACT(EPOCH FROM proxima_tentativa_em - MIN(proxima_tentativa_em) OVER ())::float AS s
-       FROM email_outbox WHERE chave LIKE $1 ORDER BY proxima_tentativa_em`,
-    [`comunicado:${id}:%`],
+  const vezes = async (cid) =>
+    (
+      await pool.query(
+        `SELECT EXTRACT(EPOCH FROM proxima_tentativa_em)::float AS t
+           FROM email_outbox WHERE chave LIKE $1 ORDER BY proxima_tentativa_em`,
+        [`comunicado:${cid}:%`],
+      )
+    ).rows.map((x) => x.t);
+  const a = await vezes(id);
+  const b = await vezes(id2);
+  assert.deepStrictEqual(
+    a.map((t) => Math.round(t - a[0])),
+    [0, 2, 4, 6],
   );
   assert.deepStrictEqual(
-    rows.map((x) => Math.round(x.s)),
-    [0, 2, 4, 6],
+    b.map((t) => Math.round(t - a[0])),
+    [8, 10],
+    'o segundo comunicado espera a vez depois do primeiro',
   );
 
   // Tudo pronto pra sair, e um código de verificação entra DEPOIS: sai antes.
-  await pool.query("UPDATE email_outbox SET proxima_tentativa_em = now() - interval '1 minute' WHERE chave LIKE $1", [
-    `comunicado:${id}:%`,
-  ]);
+  await pool.query(
+    "UPDATE email_outbox SET proxima_tentativa_em = now() - interval '1 minute' WHERE chave LIKE $1 OR chave LIKE $2",
+    [`comunicado:${id}:%`, `comunicado:${id2}:%`],
+  );
   await outbox.enfileirar({
     tipo: 'codigo_confirmacao',
     chave: `codigo_confirmacao:comunicados:${rodada}`,
@@ -698,6 +832,7 @@ test('ritmo: cada destinatário ganha a vez dele, e comunicado não atrasa códi
   ]);
   await processarTudo();
   assert.strictEqual((await repo.buscarResumo(id)).enviados, 4);
+  assert.strictEqual((await repo.buscarResumo(id2)).enviados, 2);
 });
 
 test('L. histórico: contagens, quem enviou, e nenhum endereço', async () => {

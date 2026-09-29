@@ -222,6 +222,25 @@ bytes, sha256 terminando em `d09a`, conferido: gzip íntegro, dump completo,
 Produção tinha 0 telas no deploy (#71 com 092/093 às 03:12 UTC, #72 com a
 094 às 03:22 UTC).
 
+**Reverter para antes dos comunicados por e-mail (migration 108, RN-68):** a
+108 só cria tabelas, então o código antigo sobe contra o banco novo. O que
+precisa de cuidado é a FILA: o código antigo não conhece o tipo `comunicado`
+e cada linha dele que ainda espera a vez viraria erro de envio, tentativa
+atrás de tentativa. Antes do revert (ou logo depois), com o admin sem
+nenhum comunicado em andamento:
+
+```sql
+UPDATE email_outbox SET status = 'descartado', ultimo_erro = 'revert do código de comunicados',
+       atualizado_em = now()
+ WHERE tipo = 'comunicado' AND status IN ('na_fila', 'tentando_de_novo');
+```
+
+Quem ficou sem receber aparece no histórico quando o código novo voltar e
+pode receber pelo "Reenviar falhas". No deploy em rolagem normal (duas
+instâncias, uma antiga por alguns minutos) não precisa de nada: a linha que a
+antiga pegar volta pra fila e a nova manda na tentativa seguinte — só não
+dispare um comunicado no meio do deploy.
+
 **Migration não se reverte por redeploy.** As migrations são aditivas
 (`CONSTRAINTS.md`), então voltar o código sem voltar o banco costuma
 funcionar: a coluna nova fica lá, sem uso. Se a migration foi destrutiva — o

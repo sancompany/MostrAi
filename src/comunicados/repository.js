@@ -26,22 +26,68 @@ const conteudo = require('./conteudo');
 const TRAVA_CRIACAO = 2909108;
 const JANELA_REPETICAO_H = 24;
 
-// Ritmo de saída: o provedor (SMTP da conta Google) limita volume por
-// minuto e por dia. Cada destinatário ganha a vez `intervaloS` depois do
-// anterior — 30 por minuto por padrão, ajustável por COMUNICADOS_POR_MINUTO.
-// A fila continua mandando código e link de senha na hora: comunicado é
-// "em massa" e vai pro fim dela (src/email/outbox.js).
-const config = { intervaloS: 60 / (Number(process.env.COMUNICADOS_POR_MINUTO) || 30) };
+// O provedor (SMTP da conta Google) é o MESMO dos códigos de verificação,
+// links de senha e avisos de pagamento, e limita volume por minuto e por dia.
+// Por isso:
+//   · ritmo: cada destinatário ganha a vez `intervaloS` depois do anterior —
+//     30 por minuto por padrão (COMUNICADOS_POR_MINUTO, entre 1 e 120) — e o
+//     ritmo é GLOBAL: um comunicado novo (ou um reenvio) entra depois do
+//     último que ainda espera a vez, não em paralelo com ele;
+//   · teto diário: no máximo `maxDia` mensagens de comunicado em 24 h
+//     (COMUNICADOS_MAX_DIA, 300 por padrão — bem abaixo do limite diário do
+//     provedor, pra sobrar folga aos e-mails críticos). Passou, nada entra;
+//   · prioridade: comunicado é "em massa" e vai pro fim da fila — código e
+//     link de senha saem na hora (src/email/outbox.js).
+const entre = (valor, min, max, padrao) => {
+  const n = Number(valor);
+  return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, n)) : padrao;
+};
+const config = {
+  intervaloS: 60 / entre(process.env.COMUNICADOS_POR_MINUTO, 1, 120, 30),
+  maxDia: Math.round(entre(process.env.COMUNICADOS_MAX_DIA, 1, 5000, 300)),
+};
 
 const erro = (status, mensagem, detalhes = {}) => Object.assign(new Error(mensagem), { status, detalhes });
 
 const chaveDaFila = (comunicadoId, anuncianteId, rodada) =>
   rodada > 1 ? `comunicado:${comunicadoId}:${anuncianteId}:${rodada}` : `comunicado:${comunicadoId}:${anuncianteId}`;
 
+// Teto de 24 h: conta as mensagens de comunicado que entraram na fila (os
+// reenvios também), e recusa o que passaria dele.
+async function conferirTetoDoDia(db, novas) {
+  const { rows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM email_outbox
+      WHERE tipo = 'comunicado' AND criado_em > now() - interval '24 hours'`,
+  );
+  const usados = rows[0].n;
+  if (usados + novas > config.maxDia) {
+    throw erro(
+      409,
+      `limite diário de comunicados: ${usados} de ${config.maxDia} mensagens nas últimas 24 horas — este envio (${novas}) passaria do limite. Tente mais tarde; o limite protege os e-mails de código e senha, que usam a mesma conta de envio`,
+      { motivo: 'limite_diario', usados, limite: config.maxDia },
+    );
+  }
+}
+
+// De onde começa a vez do próximo lote: depois do último comunicado que ainda
+// espera a primeira tentativa (o ritmo é um só pra todos os comunicados).
+async function inicioDoRitmo(db) {
+  const { rows } = await db.query(
+    `SELECT EXTRACT(EPOCH FROM MAX(proxima_tentativa_em) - now())::float AS s
+       FROM email_outbox WHERE tipo = 'comunicado' AND status = 'na_fila'`,
+  );
+  const s = rows[0].s;
+  return s === null ? 0 : Math.max(0, s + config.intervaloS);
+}
+
 // O estado REAL de cada destinatário, lendo as duas pontas: o registro do
 // comunicado e a linha da fila da rodada atual. Se um gancho da fila falhou
-// (o e-mail saiu mas o registro não foi atualizado), vale o que a fila diz;
-// linha que sumiu da fila sem terminar conta como falha (pode reenviar).
+// (o e-mail saiu mas o registro não foi atualizado), vale o que a fila diz —
+// e o expurgo da fila consolida o resultado no registro antes de apagar a
+// linha (envio.js#consolidar). Linha que sumiu da fila sem resultado conta
+// como falha na tela, mas NÃO volta pelo "Reenviar falhas"
+// (`falhasReenviaveis`): sem prova de falha, reenviar arriscaria mandar duas
+// vezes.
 const SITUACAO_SQL = `CASE
     WHEN d.situacao = 'enviado' OR o.status = 'enviado' THEN 'enviado'
     WHEN d.situacao = 'descartado' OR o.status = 'descartado' THEN 'descartado'
@@ -107,9 +153,10 @@ async function buscarResumo(id, db = pool) {
   return rows[0] ? resumo(rows[0]) : null;
 }
 
-// Grava na fila, em ordem, cada destinatário com a vez dele (ritmo), e o
-// registro do destinatário apontando pra linha da fila.
-async function enfileirarDestinatarios(db, comunicadoId, destinatarios, rodada = 1) {
+// Grava na fila, em ordem, cada destinatário com a vez dele (ritmo global a
+// partir de `inicioS`), e o registro do destinatário apontando pra linha da
+// fila.
+async function enfileirarDestinatarios(db, comunicadoId, destinatarios, rodada = 1, inicioS = 0) {
   let i = 0;
   for (const d of destinatarios) {
     const fila = await outbox.enfileirar(
@@ -119,7 +166,7 @@ async function enfileirarDestinatarios(db, comunicadoId, destinatarios, rodada =
         para: d.email,
         anuncianteId: d.anuncianteId,
         dados: { comunicadoId: Number(comunicadoId) },
-        atrasoS: i * config.intervaloS,
+        atrasoS: inicioS + i * config.intervaloS,
       },
       db,
     );
@@ -191,6 +238,7 @@ async function criar({ chave, publico, conteudo: c, confirmados, adminUsuario })
         { motivo: 'publico_mudou', destinatarios: destinatarios.length },
       );
     }
+    await conferirTetoDoDia(cliente, destinatarios.length);
 
     const { rows } = await cliente.query(
       `INSERT INTO comunicados (chave_idempotencia, impressao, publico, assunto, titulo, mensagem,
@@ -211,7 +259,7 @@ async function criar({ chave, publico, conteudo: c, confirmados, adminUsuario })
       ],
     );
     criado = rows[0].id;
-    await enfileirarDestinatarios(cliente, criado, destinatarios);
+    await enfileirarDestinatarios(cliente, criado, destinatarios, 1, await inicioDoRitmo(cliente));
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
@@ -222,6 +270,28 @@ async function criar({ chave, publico, conteudo: c, confirmados, adminUsuario })
   // Depois do COMMIT: a fila só enxerga as linhas agora.
   outbox.despachar();
   return { comunicado: await buscarResumo(criado), repetido: false };
+}
+
+// "Esse envio entrou?" — a resposta que a tela pede quando a do envio se
+// perdeu (queda de rede, tempo esgotado, página recarregada). Espera a
+// MESMA trava das criações: se o envio ainda está gravando, a pergunta só é
+// respondida depois dele — então "não existe" é definitivo, e só aí a tela
+// deixa editar o texto (senão, editar e mandar de novo viraria um segundo
+// comunicado com chave nova).
+async function porChave(chave) {
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    await cliente.query('SELECT pg_advisory_xact_lock($1)', [TRAVA_CRIACAO]);
+    const { rows } = await cliente.query('SELECT id FROM comunicados WHERE chave_idempotencia = $1', [chave]);
+    await cliente.query('COMMIT');
+    return rows[0] ? buscarResumo(rows[0].id) : null;
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    cliente.release();
+  }
 }
 
 // Histórico (mais recente primeiro): contagens por situação, nunca endereço.
@@ -272,17 +342,23 @@ async function detalhe(id) {
   };
 }
 
-// Quem "Reenviar falhas" pega agora: falhou (pela situação real, fila +
-// registro) E a conta ainda recebe comunicado pela régua de sempre — quem
-// foi excluída, suspensa ou desmarcou "receber novidades" depois da falha
-// fica de fora. Vai pro endereço de login ATUAL da conta.
+// Quem "Reenviar falhas" pega agora: falha COMPROVADA (a fila desistiu —
+// `abandonado` — ou o registro diz `falhou`), nada pendente nem entregue, E
+// a conta ainda recebe comunicado pela régua de sempre — quem foi excluída,
+// suspensa ou desmarcou "receber novidades" depois da falha fica de fora.
+// Linha sem resultado na fila (sumiu antes de ser consolidada) não entra:
+// reenviar sem prova de falha poderia mandar duas vezes. Vai pro endereço de
+// login ATUAL da conta.
 async function falhasReenviaveis(id, db = pool) {
   const { rows } = await db.query(
     `SELECT d.anunciante_id, d.rodada, trim(a.contato_email) AS email
        FROM comunicados_destinatarios d
        JOIN anunciantes a ON a.id = d.anunciante_id
        LEFT JOIN email_outbox o ON o.id = d.email_outbox_id
-      WHERE d.comunicado_id = $1 AND (${SITUACAO_SQL}) = 'falhou' AND ${publicos.CONTA_RECEBE_SQL}
+      WHERE d.comunicado_id = $1
+        AND (${SITUACAO_SQL}) = 'falhou'
+        AND (d.situacao = 'falhou' OR o.status = 'abandonado')
+        AND ${publicos.CONTA_RECEBE_SQL}
       ORDER BY d.anunciante_id`,
     [id],
   );
@@ -294,13 +370,15 @@ async function falhasReenviaveis(id, db = pool) {
 // "Reenviar falhas": volta pra fila SÓ quem falhou — nunca quem recebeu,
 // nunca quem saiu do público. Cada um ganha uma rodada nova (chave nova na
 // fila) e vai pro endereço de login ATUAL da conta, se ela ainda recebe.
-// Linha travada (FOR UPDATE) no comunicado: dois cliques em "Reenviar"
+// A mesma trava das criações (ritmo e teto são de todos os comunicados) e a
+// linha do comunicado travada (FOR UPDATE): dois cliques em "Reenviar"
 // passam um de cada vez, e o segundo não acha mais falha nenhuma.
 async function reenviarFalhas(id, { adminUsuario, confirmados }) {
   const cliente = await pool.connect();
   let quantidade = 0;
   try {
     await cliente.query('BEGIN');
+    await cliente.query('SELECT pg_advisory_xact_lock($1)', [TRAVA_CRIACAO]);
     const { rows: existe } = await cliente.query('SELECT id FROM comunicados WHERE id = $1 FOR UPDATE', [id]);
     if (!existe[0]) throw erro(404, 'comunicado não encontrado');
     const destinatarios = await falhasReenviaveis(id, cliente);
@@ -315,7 +393,9 @@ async function reenviarFalhas(id, { adminUsuario, confirmados }) {
       await cliente.query('COMMIT');
       return { reenfileirados: 0, comunicado: await buscarResumo(id) };
     }
-    // Cada um na rodada dele (a chave da fila muda por rodada).
+    await conferirTetoDoDia(cliente, destinatarios.length);
+    // Cada um na rodada dele (a chave da fila muda por rodada), no ritmo global.
+    const inicio = await inicioDoRitmo(cliente);
     let i = 0;
     for (const d of destinatarios) {
       const fila = await outbox.enfileirar(
@@ -325,7 +405,7 @@ async function reenviarFalhas(id, { adminUsuario, confirmados }) {
           para: d.email,
           anuncianteId: d.anuncianteId,
           dados: { comunicadoId: Number(id) },
-          atrasoS: i * config.intervaloS,
+          atrasoS: inicio + i * config.intervaloS,
         },
         cliente,
       );
@@ -362,6 +442,7 @@ module.exports = {
   config,
   chaveDaFila,
   criar,
+  porChave,
   historico,
   detalhe,
   buscarResumo,

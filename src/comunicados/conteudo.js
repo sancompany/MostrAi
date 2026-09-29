@@ -73,6 +73,20 @@ function validarLink(bruto) {
   return { url: url.href };
 }
 
+// O programa de e-mail transforma endereço escrito no texto em link. Dois
+// formatos só servem pra enganar e são recusados em qualquer campo: link com
+// usuário/senha antes do domínio (https://mostrai.com.br@golpe.com — o
+// destino de verdade é o que vem depois do @) e o esquema javascript:.
+// E-mail escrito no texto (contato@mostrai.com.br) continua valendo: não
+// tem "://" antes do @.
+function textoComLinkPerigoso(texto) {
+  if (/[a-z][a-z0-9+.-]*:\/\/[^\s/?#@]*@/i.test(texto)) {
+    return 'o texto tem um link com usuário ou senha antes do domínio (ex.: https://site.com.br@outro.com) — isso disfarça o destino';
+  }
+  if (/javascript\s*:/i.test(texto)) return 'o texto não pode ter "javascript:"';
+  return null;
+}
+
 // Devolve `{ conteudo }` normalizado ou `{ erro, campo }` (o primeiro
 // problema, com o campo pra tela marcar).
 function validar(corpo = {}) {
@@ -93,6 +107,15 @@ function validar(corpo = {}) {
   if (!mensagem) return { erro: 'escreva a mensagem', campo: 'mensagem' };
   if (mensagem.length > LIMITES.mensagem) {
     return { erro: `mensagem longa demais — o máximo é ${LIMITES.mensagem} caracteres`, campo: 'mensagem' };
+  }
+  for (const [campo, valor] of [
+    ['assunto', assunto],
+    ['titulo', titulo],
+    ['mensagem', mensagem],
+    ['botaoTexto', botaoTexto],
+  ]) {
+    const perigo = textoComLinkPerigoso(valor);
+    if (perigo) return { erro: perigo, campo };
   }
 
   let botao = null;

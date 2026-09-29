@@ -135,7 +135,7 @@ ${saudacao ? p(saudacao) : ''}${paragrafos.map(p).join('')}${
   return { text: texto, html };
 }
 
-function enviar({ to, cc, replyTo, subject, conteudo, attachments }) {
+function enviar({ to, cc, replyTo, subject, conteudo, attachments, headers }) {
   return transportador().sendMail({
     from: remetente(),
     to,
@@ -145,6 +145,7 @@ function enviar({ to, cc, replyTo, subject, conteudo, attachments }) {
     text: conteudo.text,
     html: conteudo.html,
     attachments,
+    headers,
   });
 }
 
@@ -543,8 +544,16 @@ async function enviarCriativoAprovado(anunciante, criativo) {
 // recebe vê só o próprio endereço, nunca a lista. O endereço vai como
 // OBJETO, não texto: em texto o Nodemailer lê "a@x.com,b@y.com" como dois
 // destinatários (conferido na 10.0.10, 29/09/2026); no objeto ele é um só.
+// `Auto-Submitted: auto-generated` (RFC 3834): resposta automática ("estou
+// de férias") não volta pra caixa da equipe a cada comunicado; resposta de
+// gente continua chegando, como o rodapé convida.
 function enviarComunicado(para, { assunto, text, html }) {
-  return enviar({ to: { name: '', address: para }, subject: assunto, conteudo: { text, html } });
+  return enviar({
+    to: { name: '', address: para },
+    subject: assunto,
+    conteudo: { text, html },
+    headers: { 'Auto-Submitted': 'auto-generated' },
+  });
 }
 
 // Mensagem que NÃO é operacional — novidade, oferta, convite a um recurso
