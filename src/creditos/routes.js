@@ -127,11 +127,13 @@ router.get('/anunciantes/me/creditos', exigirAnuncianteLogado, async (req, res) 
   // (anunciante com compensação da Mostraí não vira indicador). Cupom já
   // emitido antes pra conta que não é ponto continua valendo no cadastro;
   // só não é mais oferecido aqui.
-  let indicacao = null;
-  if (ehPonto && !conta.conta_propria) {
-    const cupom = await indicacoesRepo.garantirCupom(contaId, conta.nome_empresa);
-    indicacao = { codigo: cupom.codigo, ...(await indicacoesRepo.resumoIndicacoes(cupom.codigo)) };
-  }
+  // O link vem montado daqui (painel do usuário, 29/09/2026): o card nasce
+  // com a MESMA string do QR e do histórico (indicacoes/repository.js
+  // #linkDeIndicacao). Quem se cadastrou, o que pagou e os créditos que
+  // rendeu estão em GET /anunciantes/me/indicacoes — a contagem antiga
+  // (cadastradas/pagantes) saiu daqui.
+  const cupom = await indicacoesRepo.cupomDoIndicador(conta, ehPonto);
+  const indicacao = cupom ? { codigo: cupom.codigo, link: indicacoesRepo.linkDeIndicacao(cupom.codigo) } : null;
   res.json({
     saldo: saldoAtual,
     opcoes: opcoesDisponiveis(saldoAtual).map((o) =>

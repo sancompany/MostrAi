@@ -46,7 +46,7 @@
    sombra interna: segue o raio da borda sozinha. `min-width: 0` deixa as
    colunas com a proporção do grid; quem se adapta é o número
    (painel.page.js#encaixarNumero). */
-.anunciante-dashboard .kpi-card { position: relative; min-width: 0; min-height: 172px; padding: 22px; box-shadow: inset 0 -3px 0 #f0ddc9, var(--dash-shadow); }
+.anunciante-dashboard .kpi-card { position: relative; min-width: 0; min-height: 172px; padding: 22px; box-shadow: inset 0 -3px 0 #f0ddc9, var(--dash-shadow); container-type: inline-size; }
 .anunciante-dashboard .kpi-card:first-child { box-shadow: inset 0 -3px 0 var(--brand), var(--dash-shadow); }
 /* Ícone neutro por padrão, laranja só no card de destaque (.kpi-icon-orange)
    — era azul nos dois, gastando cor de identidade em todo card e não
@@ -54,51 +54,35 @@
 .anunciante-dashboard .kpi-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin: 0 0 18px; border-radius: 9px; background: var(--bg-alt); color: var(--text-dim); font-size: .78rem; font-weight: 800; }
 .anunciante-dashboard .kpi-icon-orange { background: #fff0e5; color: var(--brand-text); }
 .anunciante-dashboard .kpi-card .kpi-label { margin-bottom: 5px; font-size: .76rem; font-weight: 650; letter-spacing: .025em; text-transform: uppercase; }
-.anunciante-dashboard .kpi-card b { font-size: clamp(1.45rem, 2.4vw, 2rem); letter-spacing: -.025em; }
-/* Fração "confirmadas / previstas": numa linha ("11 / 32.400") quando cabe;
-   quando não cabe, o total desce como "de 32.400", menor e em cinza — o
-   número principal continua sendo o das confirmadas. Cada parte nunca se
-   parte no meio. */
-.anunciante-dashboard .kpi-card .kpi-fracao { display: flex; flex-wrap: nowrap; align-items: baseline; column-gap: .25em; }
-.anunciante-dashboard .kpi-card .kpi-fracao > span { display: inline; margin: 0; color: inherit; font-size: inherit; white-space: nowrap; }
-.anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-sep, .anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-de { display: inline; margin: 0; color: inherit; font-size: inherit; }
-.anunciante-dashboard .kpi-card .kpi-fracao .kpi-fracao-de { display: none; }
-.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado { flex-wrap: wrap; }
-.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-total { flex-basis: 100%; margin-top: 3px; color: var(--text-dim); font-size: .56em; font-weight: 700; letter-spacing: 0; }
-.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-sep { display: none; }
-.anunciante-dashboard .kpi-card .kpi-fracao.kpi-quebrado .kpi-fracao-de { display: inline; }
+/* A fonte do número segue a largura do CARD (`cqi`, o card é o container),
+   não a da janela (PENDENCIAS U2, painel do usuário, 29/09/2026): com
+   `2.4vw`, alargar a janela com o painel travado em 1280 px crescia a fonte
+   sem o card mudar, e o número passava da borda até a próxima recarga
+   (reproduzido: 3 px pra fora a 1400 px). A primeira linha é o piso pra
+   navegador sem `cqi`. */
+.anunciante-dashboard .kpi-card b { font-size: 1.9rem; font-size: clamp(1.45rem, 22cqi, 2rem); letter-spacing: -.025em; }
 /* Último recurso pra um valor absurdo que nem a 60% cabe: quebra visível no
    meio do número, nunca recorte. */
 .anunciante-dashboard .kpi-card b.kpi-extremo { white-space: normal; overflow-wrap: anywhere; }
-.anunciante-dashboard .kpi-card b.kpi-extremo.kpi-fracao > span { white-space: normal; overflow-wrap: anywhere; }
 .anunciante-dashboard .kpi-card .kpi-caption { margin-top: 5px; line-height: 1.4; }
+/* Média diária dentro do card Exibições: pequena e secundária. */
+.anunciante-dashboard .kpi-card .kpi-media { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .78rem; font-variant-numeric: tabular-nums; }
+/* Destaque dentro da legenda ("a entregar"): texto, não número — sem herdar
+   o tamanho do número grande do card (style.css: `.kpi-card b`). */
+.anunciante-dashboard .kpi-card .kpi-caption b { display: inline; font-size: inherit; letter-spacing: 0; white-space: normal; }
+.anunciante-dashboard .kpi-a-entregar .kpi-caption b { color: var(--brand-text); }
 /* Card de custo sem dinheiro envolvido (benefício por créditos, cortesia):
    texto no lugar do número, no tamanho de um título curto. */
 .anunciante-dashboard .kpi-card b.kpi-texto { font-size: 1.05rem; letter-spacing: 0; line-height: 1.3; white-space: normal; }
 .anunciante-dashboard .kpi-card .track { margin-top: 14px; height: 6px; background: var(--bg-alt); }
-.anunciante-dashboard .kpi-secondary { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; min-height: auto; padding: 15px 20px; }
-.anunciante-dashboard .kpi-secondary { box-shadow: var(--dash-shadow); }
-.anunciante-dashboard .kpi-secondary .kpi-icon { grid-row: 1 / 3; margin: 0; }
-.anunciante-dashboard .kpi-secondary .kpi-label { align-self: end; margin: 0; }
-.anunciante-dashboard .kpi-secondary b { grid-row: 1 / 3; grid-column: 3; font-size: 1.3rem; }
-.anunciante-dashboard .kpi-secondary .kpi-caption, .anunciante-dashboard .kpi-secondary .badge { grid-column: 2; margin: 0; }
 .dashboard-notice { margin-top: 14px; padding: 14px 16px; border: 1px solid #f0e0cf; border-radius: 12px; background: #fff8f2; color: var(--text-dim); font-size: .88rem; }
-.performance-grid { display: grid; gap: 16px; min-width: 0; }
-.performance-grid > * { min-width: 0; }
 .anunciante-dashboard .panel { padding: 25px 27px; }
 .panel-subtitle { display: block; margin-top: 4px; color: var(--text-dim); font-size: .8rem; }
-.painel-grafico .panel-head { align-items: flex-start; }
-.painel-grafico #legendaDia { max-width: 470px; padding: 7px 10px; border-radius: 8px; background: var(--bg-alt); text-align: right; }
-.anunciante-dashboard .bar-chart { height: 190px; gap: clamp(5px, 1.3vw, 16px); margin-top: 26px; padding: 0 6px 3px; border-bottom: 1px solid var(--border); }
-.anunciante-dashboard .bar-chart .bar-pilha { max-width: 34px; border-radius: 6px 6px 2px 2px; }
-.performance-head { align-items: flex-start; margin-bottom: 18px; }
-.performance-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
-.performance-actions label { color: var(--text-dim); font-size: .78rem; }
-.performance-actions select { min-height: 38px; margin: 0; padding: 7px 30px 7px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; }
+.performance-head { align-items: flex-start; margin-bottom: 16px; }
 .anunciante-dashboard .bar-chart-h { padding: 4px 0 20px; border-bottom: 1px solid var(--border); }
 .anunciante-dashboard .bar-chart-h .row { grid-template-columns: minmax(140px, 1fr) minmax(180px, 3fr) auto; }
 .anunciante-dashboard .bar-chart-h .track { height: 8px; }
-.performance-table { max-height: 410px; margin-top: 17px; overflow: auto; }
+.performance-table { max-height: 410px; margin-top: 18px; overflow: auto; }
 .anunciante-dashboard .mini-table th { padding: 10px 12px; background: #fafbfc; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
 .anunciante-dashboard .mini-table td { padding: 12px; }
 .anunciante-dashboard .mini-table tbody tr:hover { background: #fafbfd; }
@@ -156,8 +140,6 @@
   .painel-hero .btn-engrenagem { align-self: flex-start; }
   .section-heading > p { text-align: left; }
   .anunciante-dashboard .panel { padding: 20px; }
-  .performance-actions { justify-content: flex-start; }
-  .performance-actions .btn { width: 100%; text-align: center; }
   .anunciante-dashboard .bar-chart-h .row { grid-template-columns: minmax(90px, 1fr) 2fr auto; }
   .criativos-head { flex-direction: column; }
   .criativos-actions { width: 100%; justify-content: space-between; }
@@ -167,14 +149,8 @@
 }
 @media (max-width: 520px) {
   .anunciante-dashboard .painel-wrap { padding: 0 14px; }
-  .anunciante-dashboard .kpi-grid { grid-template-columns: 1fr; }
-  .anunciante-dashboard .kpi-secondary { grid-template-columns: auto 1fr; }
-  .anunciante-dashboard .kpi-secondary b { grid-row: auto; grid-column: 2; }
-  .anunciante-dashboard .kpi-card { min-height: 145px; }
-  .anunciante-dashboard .bar-chart { height: 155px; overflow-x: auto; }
-  .painel-grafico #legendaDia { width: 100%; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
-  .anunciante-dashboard .bar-chart .bar-col { min-width: 30px; }
-  .performance-actions select { flex: 1; }
+  .anunciante-dashboard .kpi-card { min-height: 0; padding: 16px; }
+  .anunciante-dashboard .kpi-icon { width: 28px; height: 28px; margin-bottom: 12px; }
   .anunciante-dashboard .bar-chart-h .row { grid-template-columns: 1fr auto; }
   .anunciante-dashboard .bar-chart-h .track { grid-column: 1 / -1; grid-row: 2; }
   .network-growth { padding: 50px 16px 16px; }
@@ -237,49 +213,78 @@
   .creditos-movimentos time { grid-column: 1 / -1; }
 }
 
-/* Meus pontos (Fatia 2): um card por estabelecimento, com o andamento
-   (Em análise → Aguardando instalação → Ativo) e as telas dentro dele. */
+/* Meus pontos (Fatia 2; refinado no painel do usuário, 29/09/2026): um card
+   por estabelecimento, com cara de estabelecimento da rede — a fachada em
+   cima, o estado sobre a foto, o nome em destaque, endereço e segmento em
+   segundo plano, o andamento, e telas, Plano Básico e crédito em blocos
+   próprios. O card é container: o que muda muda pela largura DELE (coluna
+   lateral estreita no desktop, página inteira no tablet e no celular). */
 .pontos-content { padding-top: 0; }
 .painel-meus-pontos h2 { margin: 2px 0 0; font-size: clamp(1.2rem, 2vw, 1.48rem); line-height: 1.2; letter-spacing: -.015em; }
 .estab-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 16px; }
 .estab-lista > * { min-width: 0; }
 .estab-lista > .form-msg, .estab-lista > .ponto-opportunity { grid-column: 1 / -1; }
-.estab-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
-.estab-topo { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
-.estab-foto { width: 64px; height: 64px; overflow: hidden; border-radius: 12px; background: var(--bg-alt); }
-.estab-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.estab-foto .ponto-foto-placeholder { height: 100%; }
-.estab-id h3 { margin: 0; font-size: 1.02rem; line-height: 1.25; overflow-wrap: anywhere; }
-.estab-end, .estab-meta { margin: 3px 0 0; color: var(--text-dim); font-size: .82rem; overflow-wrap: anywhere; }
+.estab-card { container: estab / inline-size; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #fff; box-shadow: 0 4px 16px rgba(25, 39, 64, .05); }
+/* A foto preenche a capa por posição, não por altura: com `height: 100%`,
+   uma foto em pé esticava a capa (o aspect-ratio cede ao conteúdo). */
+/* Card largo (tablet, um por linha): a capa para em 220 px — a fachada
+   aparece, sem virar um cartaz. */
+.estab-capa { position: relative; aspect-ratio: 16 / 7; min-height: 0; max-height: 220px; overflow: hidden; background: var(--bg-alt); }
+.estab-capa img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Logo quadrado ou foto em pé (candidaturaAjustarFoto): entra inteira. */
+.estab-capa img.foto-contida { padding: 6% 10%; background: #fff; object-fit: contain; }
+.estab-capa .ponto-foto-placeholder { height: 100%; }
+/* Sem foto, a capa é só uma faixa: um bloco cinza do tamanho de uma fachada
+   não diz nada. */
+.estab-capa:has(> .ponto-foto-placeholder) { aspect-ratio: auto; height: 76px; }
+/* Estado sobre a foto, em fundo branco (legível em qualquer fachada), com o
+   ponto de cor e o texto — nunca só a cor. */
+.estab-card .estab-estado { position: absolute; left: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #fff; box-shadow: 0 1px 5px rgba(20, 23, 31, .2); }
+.estab-card .estab-estado::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.estab-corpo { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px; }
+.estab-id h3 { margin: 0; font-size: 1.14rem; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.estab-end, .estab-meta { display: flex; align-items: flex-start; gap: 6px; margin: 5px 0 0; color: var(--text-dim); font-size: .84rem; line-height: 1.35; overflow-wrap: anywhere; }
+.estab-meta { margin-top: 3px; }
+.estab-icone { flex: none; width: 15px; height: 15px; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .estab-etapas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: etapa; }
-.estab-etapas li { position: relative; padding-top: 10px; color: var(--text-dim); font-size: .74rem; line-height: 1.25; }
+.estab-etapas li { position: relative; padding-top: 10px; color: var(--text-dim); font-size: .72rem; line-height: 1.25; }
 .estab-etapas li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 4px; background: #e8ebf0; }
 .estab-etapas li.feita::before { background: #9bd6b0; }
 .estab-etapas li.atual { color: var(--text); font-weight: 700; }
 .estab-etapas li.atual::before { background: var(--brand); }
 .estado-ativo .estab-etapas li.atual::before { background: #16a34a; }
 .estab-explica { margin: 0; color: var(--text-dim); font-size: .86rem; }
-.estab-subtitulo { margin: 0 0 6px; font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+/* Blocos do card: telas (neutro) e os dois benefícios (tom da marca). */
+.estab-bloco { padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: #fafbfc; }
+.estab-subtitulo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; margin: 0 0 2px; color: var(--text-dim); font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.estab-subtitulo span { font-size: .78rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .estab-telas ul { margin: 0; padding: 0; list-style: none; }
-.tela-linha { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
-.tela-dot { width: 10px; height: 10px; border-radius: 50%; background: #aab3c0; }
+/* Tela: nome e situação em cima; exibições e "Ver o que rodou" embaixo.
+   Card largo: tudo numa linha só. */
+.tela-linha { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; grid-template-areas: "dot id id" ". num acao"; align-items: center; gap: 6px 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+.tela-linha:first-child { padding-top: 6px; border-top: 0; }
+.tela-linha:last-child { padding-bottom: 0; }
+.tela-dot { grid-area: dot; align-self: start; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: #aab3c0; }
 .nivel-ok .tela-dot { background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.12); }
 .nivel-atencao .tela-dot { background: #dc2626; box-shadow: 0 0 0 4px rgba(220,38,38,.12); }
-.tela-id { display: flex; flex-direction: column; min-width: 0; font-size: .86rem; }
+.tela-id { grid-area: id; display: flex; flex-direction: column; min-width: 0; font-size: .88rem; }
 .tela-id > span { color: var(--text-dim); font-size: .8rem; }
-.tela-id .tela-alerta { margin-top: 4px; color: #a51b1b; }
-.tela-num { color: var(--text-dim); font-size: .8rem; text-align: right; }
+.tela-id .tela-alerta { margin-top: 5px; padding: 6px 9px; border-radius: 8px; background: #fff1f1; color: #a51b1b; }
+.tela-num { grid-area: num; color: var(--text-dim); font-size: .8rem; }
 .tela-num b { color: var(--text); }
-.estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
-.estab-pe { margin: 0; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .82rem; }
-#msgMeusPontos { margin: 0 0 12px; }
-@media (max-width: 640px) {
-  .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
-  .estab-foto { width: 52px; height: 52px; }
-  .estab-topo .badge { grid-column: 2; justify-self: start; }
-  .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
-  .tela-linha .tela-num, .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
+.tela-linha .btn { grid-area: acao; justify-self: end; }
+@container estab (min-width: 600px) {
+  .tela-linha { grid-template-columns: 12px minmax(0, 1fr) auto auto; grid-template-areas: "dot id num acao"; }
+  .tela-num { text-align: right; }
 }
+.estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
+.estab-beneficios { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.estab-beneficio { border-color: #f3dfcb; background: #fff8f2; }
+.estab-bloco-titulo { margin: 0; color: var(--brand-text); font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.estab-bloco-valor { margin: 4px 0 0; font-size: .9rem; }
+.estab-bloco-valor b { font-size: 1.05rem; }
+.estab-bloco-nota { margin: 3px 0 0; color: var(--text-dim); font-size: .8rem; line-height: 1.4; }
+#msgMeusPontos { margin: 0 0 12px; }
 
 /* Meus criativos (Fatia 3): explicação da situação e "Substituir" no card. */
 .criativos-content { padding-top: 0; }
@@ -347,17 +352,11 @@
   .painel-grid.com-form-ponto {
     grid-template-areas: "formponto formponto" "campanha lateral" "criativos lateral" "creditos creditos";
   }
-  /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só. */
+  /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só (o
+     card de Meus pontos se arruma sozinho pela própria largura). */
   .area-lateral .estab-lista { grid-template-columns: minmax(0, 1fr); }
-  .area-lateral .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
-  .area-lateral .tela-linha .tela-num, .area-lateral .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
   .area-lateral .panel-head { flex-wrap: wrap; }
   .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
-  /* Coluna estreita: o selo de status desce pra baixo do nome, em vez de
-     roubar a largura dele (nome e endereço quebravam palavra por palavra). */
-  .area-lateral .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
-  .area-lateral .estab-foto { width: 52px; height: 52px; }
-  .area-lateral .estab-topo .badge { grid-column: 2; justify-self: start; }
 }
 
 /* Resumo da conta e alertas, no hero. */
@@ -424,15 +423,168 @@
 /* Card do plano: benefício temporário explicado em uma linha. */
 .plano-nota { margin: 4px 0 0; color: var(--text-dim); font-size: .84rem; }
 
-/* Indicações: card próprio, só pra ponto. Link longo quebra dentro do card
-   em vez de alargar a coluna lateral. */
+/* Indicações: card próprio, só pra ponto (painel do usuário, 29/09/2026:
+   QR Code do mesmo link, resumo e histórico). Link longo quebra dentro do
+   card em vez de alargar a coluna lateral. O card é container: histórico em
+   tabela quando cabe, um cartão por indicado quando é estreito. */
+.painel-indicacao { container: indicacao / inline-size; }
 .painel-indicacao h2 { margin: 2px 0 6px; font-size: 1.2rem; }
-.painel-indicacao .panel-subtitle { display: block; margin-bottom: 12px; }
-.painel-indicacao .creditos-link { flex-wrap: wrap; }
-.painel-indicacao .creditos-link code { min-width: 0; overflow-wrap: anywhere; }
+.painel-indicacao .panel-subtitle { display: block; margin-bottom: 14px; }
+.indicacao-compartilhar { display: grid; gap: 12px; padding: 14px; border: 1px solid #f3dfcb; border-radius: 14px; background: #fff8f2; }
+.indicacao-compartilhar.com-qr { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+/* Módulos escuros sobre branco, com a zona de silêncio do próprio SVG: o
+   laranja fica na moldura, nunca no código (o leitor erra com pouco
+   contraste — mesma regra do QR institucional). */
+.indicacao-qr { padding: 4px; border-radius: 10px; background: #fff; box-shadow: 0 1px 4px rgba(20, 23, 31, .12); line-height: 0; }
+.indicacao-qr img { display: block; width: 120px; height: 120px; }
+.indicacao-qr-legenda { margin: 0 0 10px; font-size: .88rem; line-height: 1.4; }
+.indicacao-qr-legenda b { color: var(--brand-text); }
+.indicacao-botoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.indicacao-link { display: block; margin: 12px 0 6px; padding: 8px 10px; border-radius: 8px; background: #f3f5f8; font-size: .76rem; overflow-wrap: anywhere; }
+.painel-indicacao .creditos-codigo { margin-bottom: 8px; }
+.indicacao-resumo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.indicacao-resumo li { padding: 10px 6px; border: 1px solid var(--border); border-radius: 12px; background: #fff; color: var(--text-dim); font-size: .74rem; line-height: 1.3; text-align: center; }
+.indicacao-resumo b { display: block; color: var(--text); font-size: 1.3rem; line-height: 1.2; }
+.indicacao-historico-titulo { margin: 16px 0 2px; }
+.anunciante-dashboard .tabela-indicados tbody th { position: static; background: none; color: var(--text); font-size: .85rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.tabela-indicados td { color: var(--text-dim); }
+.tabela-indicados td.num { color: var(--text); font-weight: 700; }
+.ind-nome { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.ind-nome .badge { font-weight: 700; }
+.indicacao-detalhes summary { color: var(--blue); font-size: .78rem; font-weight: 700; cursor: pointer; }
+.indicacao-detalhes ul { margin: 6px 0 0; padding-left: 16px; color: var(--text-dim); font-size: .78rem; font-weight: 400; }
+@container indicacao (max-width: 330px) {
+  .indicacao-compartilhar.com-qr { grid-template-columns: minmax(0, 1fr); justify-items: start; }
+}
+@container indicacao (max-width: 560px) {
+  .tabela-indicados thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tabela-indicados, .tabela-indicados tbody { display: block; }
+  .tabela-indicados tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .tabela-indicados tr:last-child { border-bottom: 0; }
+  .anunciante-dashboard .tabela-indicados :is(th, td) { display: block; padding: 0; border: 0; }
+  .tabela-indicados tbody th { grid-column: 1 / -1; }
+  .tabela-indicados td.num { text-align: left; }
+  .tabela-indicados td::before { content: attr(data-rotulo); display: block; margin-bottom: 1px; color: var(--text-dim); font-size: .68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+}
 
 /* Aviso de troca de benefício, dentro do diálogo de resgate. */
 .aviso-troca { margin: 0 0 14px; padding: 12px 14px; border: 1px solid #f3c49b; border-radius: 12px; background: #fff7ef; }
 .aviso-troca p { margin: 6px 0 0; }
 .aviso-troca .aviso-troca-titulo { margin: 0; }
 .aviso-troca ul { margin: 8px 0 0; padding-left: 18px; }
+
+/* ---------------------------------------------------------------------------
+   Acompanhe sua veiculação (painel do usuário, 29/09/2026): um card só, com
+   o período escolhido valendo pro gráfico empilhado por ponto, a tabela e o
+   comprovante. O card é container: o que muda no celular muda pela largura
+   DELE (a coluna do painel), não da janela.
+   ------------------------------------------------------------------------- */
+.anunciante-dashboard {
+  /* Paleta por ponto: as 5 primeiras são as de style.css (validadas pela
+     skill dataviz); 6 a 8 conferidas na mesma régua (simulação de daltonismo
+     protan/deutan/tritan, ΔE entre cada cor nova e todas as outras ≥ 23 —
+     nenhum par novo fica abaixo do pior par que já existia). Mais escuras de
+     propósito: o que as separa das 5 primeiras, pra quem não distingue
+     matiz, é a luminosidade. */
+  --serie-6: #6b2159;
+  --serie-7: #1f3a8a;
+  --serie-8: #8f2a1c;
+}
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-1 { background: var(--serie-1); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-2 { background: var(--serie-2); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-3 { background: var(--serie-3); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-4 { background: var(--serie-4); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-5 { background: var(--serie-5); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-6 { background: var(--serie-6); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-7 { background: var(--serie-7); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-8 { background: var(--serie-8); }
+.anunciante-dashboard :is(.swatch, .barra-seg).serie-outros { background: var(--serie-outros); }
+.anunciante-dashboard .swatch { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; }
+
+.painel-performance { container: performance / inline-size; }
+.painel-performance .performance-head .btn { flex: none; }
+/* Filtros de período: controle segmentado, o escolhido dito também em
+   `aria-pressed` (não só na cor). */
+.periodos { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: #f6f7f9; }
+.periodos button { min-height: 36px; margin: 0; padding: 6px 14px; border: 0; border-radius: 9px; background: transparent; color: var(--text-dim); font: inherit; font-size: .84rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.periodos button:hover { color: var(--text); }
+.periodos button[aria-pressed="true"] { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(20, 23, 31, .14); }
+.periodos button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+.grafico-periodo { margin-top: 18px; }
+.performance-vazio { margin: 0; padding: 18px 16px; border: 1px dashed var(--border); border-radius: 12px; background: #fafbfc; color: var(--text-dim); font-size: .88rem; line-height: 1.5; text-align: center; }
+/* Área do gráfico: 200 px de barras + 24 px de rótulo; a grade (topo, meio e
+   base) fica atrás, com o valor à esquerda. */
+.grafico-area { position: relative; padding-left: 46px; }
+.grafico-grade { position: absolute; inset: 0 0 24px 46px; pointer-events: none; }
+.grafico-grade span { position: absolute; left: 0; right: 0; border-top: 1px dashed #e3e7ec; }
+.grafico-grade span:nth-child(1) { top: 0; }
+.grafico-grade span:nth-child(2) { top: 50%; }
+.grafico-grade span:nth-child(3) { top: 100%; border-top: 1px solid var(--border); }
+.grafico-grade span::before { content: attr(data-valor); position: absolute; right: calc(100% + 8px); top: -.62em; color: var(--text-dim); font-size: .68rem; line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grafico-barras { position: relative; display: flex; gap: 6px; height: 224px; }
+/* Um, dois ou três períodos (campanha que acabou de começar, ou Máx. de
+   quem tem poucos meses): colunas de largura fixa, no centro — nem uma barra
+   gigante ocupando o card inteiro, nem três palitos no canto. */
+.grafico-barras.poucas { justify-content: center; gap: 28px; }
+.grafico-barras.poucas .barra-col { flex: 0 1 96px; }
+.barra-col { display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.barra-trilho { display: flex; flex: 0 0 200px; align-items: flex-end; justify-content: center; }
+.barra-pilha { display: flex; flex-direction: column-reverse; width: 100%; max-width: 44px; overflow: hidden; border-radius: 5px 5px 2px 2px; }
+.barra-pilha.vazia { display: none; }
+.barra-seg { display: block; flex: none; width: 100%; }
+/* Linha branca entre um ponto e o de baixo: separa cores vizinhas parecidas
+   sem mexer na altura de ninguém. */
+.barra-seg + .barra-seg { box-shadow: inset 0 -2px 0 rgba(255, 255, 255, .92); }
+/* O rótulo passa da largura da coluna (30 colunas estreitas): centralizado
+   por flex, transborda igual pros dois lados, sem cortar a data. Os que não
+   cabem somem inteiros (painel.page.js#ajustarRotulos). */
+.barra-rotulo { display: flex; flex: 0 0 24px; justify-content: center; color: var(--text-dim); font-size: .7rem; line-height: 24px; white-space: nowrap; }
+.barra-col.rotulo-oculto .barra-rotulo { visibility: hidden; }
+/* As pontas não transbordam pra fora do card: a primeira data encosta à
+   esquerda, a última à direita. */
+.grafico-barras:not(.poucas) .barra-col:first-child .barra-rotulo { justify-content: flex-start; }
+.grafico-barras:not(.poucas) .barra-col:last-child .barra-rotulo { justify-content: flex-end; }
+.barra-col:hover, .barra-col.ativa { background: rgba(20, 23, 31, .045); }
+.barra-col:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+/* Dica do período: posição calculada no JS (painel.page.js#mostrarDica),
+   sempre dentro da área do gráfico. */
+.grafico-dica { position: absolute; z-index: 5; top: 0; left: 0; width: max-content; min-width: 150px; max-width: min(260px, 100%); padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 10px 28px rgba(20, 23, 31, .14); color: var(--text); font-size: .8rem; line-height: 1.35; pointer-events: none; }
+.grafico-dica[hidden] { display: none; }
+.grafico-dica .dica-titulo { margin: 0 0 6px; font-weight: 800; }
+.grafico-dica ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.grafico-dica li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.grafico-dica .dica-nome { overflow: hidden; color: var(--text-dim); text-overflow: ellipsis; white-space: nowrap; }
+.grafico-dica b { font-variant-numeric: tabular-nums; }
+.grafico-dica .dica-total { display: flex; justify-content: space-between; gap: 12px; margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--border); }
+.grafico-dica .dica-vazia { margin: 0; color: var(--text-dim); }
+.legenda-pontos { margin-top: 12px; }
+.legenda-pontos .chip { color: var(--text); }
+
+/* Tabela do período: PONTO, CIDADE, STATUS, EXIBIÇÕES. */
+.anunciante-dashboard .tabela-periodo tbody th { position: static; background: none; color: var(--text); font-size: .85rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.tabela-periodo .ponto-com-cor { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.tabela-periodo .status-ponto { white-space: nowrap; }
+.tabela-periodo td.num { font-weight: 700; }
+@container performance (max-width: 560px) {
+  .periodos { display: grid; width: 100%; }
+  .periodos button { padding: 6px 2px; font-size: .8rem; }
+  .painel-performance .performance-head { flex-wrap: wrap; }
+  .grafico-area { padding-left: 38px; }
+  .grafico-grade { left: 38px; }
+  .grafico-barras { gap: 3px; height: 194px; }
+  .barra-trilho { flex-basis: 170px; }
+  .grafico-barras.poucas { gap: 16px; }
+  /* Tabela vira um cartão por ponto: nome e número em cima, cidade e status
+     embaixo. As funções de tabela vão nos papéis (role) do HTML, que o
+     leitor de tela continua lendo com o display trocado. */
+  .tabela-periodo thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .tabela-periodo, .tabela-periodo tbody { display: block; }
+  .tabela-periodo tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; padding: 11px 2px; border-bottom: 1px solid var(--border); }
+  .tabela-periodo tr:last-child { border-bottom: 0; }
+  .anunciante-dashboard .tabela-periodo :is(th, td) { display: block; padding: 0; border: 0; }
+  .tabela-periodo .tabela-cidade { grid-column: 1; color: var(--text-dim); font-size: .8rem; }
+  .tabela-periodo .tabela-exibicoes { grid-row: 1; grid-column: 2; text-align: right; }
+  .tabela-periodo .tabela-exibicoes::after { content: " exibições"; color: var(--text-dim); font-size: .76rem; font-weight: 400; }
+  .tabela-periodo .tabela-status { grid-row: 2; grid-column: 2; justify-self: end; }
+}

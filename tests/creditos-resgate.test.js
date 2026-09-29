@@ -89,7 +89,11 @@ test('GET: cupom de indicação só pra conta que é ponto, estável entre chama
     );
     const a = await app.chamar('GET', '/anunciantes/me/creditos', c.id);
     assert.match(a.corpo.indicacao.codigo, /^PT-/);
-    assert.equal(a.corpo.indicacao.cadastradas, 0);
+    // Quem se cadastrou e o que rendeu estão em GET /anunciantes/me/indicacoes
+    // (painel do usuário, 29/09/2026); aqui vem o link montado no servidor
+    // (null sem SITE_URL), a mesma string do QR.
+    assert.ok('link' in a.corpo.indicacao);
+    assert.ok(!('cadastradas' in a.corpo.indicacao));
     const [b, d] = await Promise.all([
       app.chamar('GET', '/anunciantes/me/creditos', c.id),
       app.chamar('GET', '/anunciantes/me/creditos', c.id),
