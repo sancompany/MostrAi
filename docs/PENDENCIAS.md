@@ -5523,10 +5523,15 @@ Estação com merge e deploy autorizados pelo dono.
       (`indicados[]` dentro de `GET /anunciantes/me/creditos`, com cidade).
       Ao retomar, a parte de histórico dele sai — fica esta (rota própria,
       sem cidade, com pagamentos).
-- V4 [ ] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
+- V4 [x] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
       falhou uma vez na suíte local por corrida com arquivos que criam e
       apagam contas em paralelo (contagem intermediária entre o antes e o
-      depois). Passa sozinho (9/9); não é desta estação.
+      depois). Passa sozinho (9/9); não é desta estação. **Resolvido no PR
+      #106 (29/09/2026)**, onde falhou no CI (4 ∉ {2, 3}): reproduzido com
+      carga paralela (até "9 ∉ {6, 6}" — conta criada e apagada durante a
+      chamada); agora o teste mede até uma janela em que o conjunto não mudou
+      (contagem, soma e maior id iguais antes e depois) e exige o número
+      EXATO — a regra continua testada, sem depender da sorte.
 - V5 [ ] e2e `35-cards-pontos-cliente.mjs`, "selecionado: borda da marca com
       anel": lê o `box-shadow` do card logo depois do clique, com a transição
       de 0,12 s ainda correndo — sai `rgba(255, 122, 26, 1) … 0.9996px` e o
