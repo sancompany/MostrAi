@@ -5453,8 +5453,9 @@ dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
 
 ## V. Painel do usuário — estação final (29/09/2026)
 
-Estação com merge e deploy autorizados pelo dono. Branch
-`claude/nifty-galileo-rwryqd`, base `80fe269`. Decisão: ADR-031.
+Estação com merge e deploy autorizados pelo dono.
+[PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
+`claude/nifty-galileo-rwryqd`, base `93cd724`. Decisão: ADR-031.
 
 **Feito:**
 

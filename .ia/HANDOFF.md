@@ -1,8 +1,9 @@
 # Current Handoff
 
 ## Updated
-2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO** (branch
-`claude/nifty-galileo-rwryqd`, base `80fe269`, merge e deploy autorizados
+2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
+([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
+`claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados
 pelo dono no próprio pedido). Quatro indicadores (horas; exibições com
 "de N previstas" e a média diária dentro; custo por exibição — plano por
 créditos mostra o custo de REFERÊNCIA do plano equivalente, mesma divisão do
