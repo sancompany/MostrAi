@@ -1,8 +1,10 @@
-// QR Code institucional (Admin → Mídia Mostraí, 27/09/2026): preview, link
-// permanente copiado, destino trocado pela tela, o MESMO /q/anuncie seguido
-// por um navegador de verdade até o destino novo, os três downloads lidos por
-// um decodificador independente (jsqr) e a Mídia Mostraí de pé mesmo com o
-// bloco do QR falhando. Banco zerado, servidor na 3999:
+// QR Code institucional (27/09/2026; desde o refino da Mídia Mostraí,
+// 29/09/2026, mora na Visão geral — compacto, com [Gerenciar] abrindo os
+// controles de sempre num modal): preview, link permanente copiado, destino
+// trocado pela tela, o MESMO /q/anuncie seguido por um navegador de verdade
+// até o destino novo, os três downloads lidos por um decodificador
+// independente (jsqr), a Visão geral de pé mesmo com o bloco do QR falhando,
+// e a Mídia Mostraí sem QR. Banco zerado, servidor na 3999:
 //   tests/e2e/reset-db.sh && tests/e2e/restart.sh
 //   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/27-qr-institucional.mjs
 import { execSync } from 'node:child_process';
@@ -54,7 +56,8 @@ p.on('pageerror', (e) => erros.push(`[${fase}] pageerror: ${e.message}`));
 p.on('console', (m) => {
   if (m.type() !== 'error') return;
   if (fase === 'login' && /status of 401/.test(m.text())) return;
-  if (esperado500 && /status of 500/.test(m.text())) return;
+  // A falha simulada: o 500 e o registro do bloco que caiu sozinho.
+  if (esperado500 && /status of 500|falha simulada/.test(m.text())) return;
   // A recusa do destino inválido é um 400 de propósito.
   if (fase === '== destino inválido ==' && /status of 400/.test(m.text())) return;
   erros.push(`[${fase}] console: ${m.text()}`);
@@ -69,10 +72,15 @@ await p.waitForSelector('#conteudo .visao-geral-colunas');
 
 // ---------------------------------------------------------------------------
 etapa('== preview e link permanente ==');
-await p.evaluate(() => {
-  location.hash = 'midiamostrai';
-});
-await p.waitForSelector('#qrInstWrap .qr-inst');
+await p.waitForSelector('#qrResumo [data-qr-resumo]');
+check(
+  'Visão geral: resumo mostra o destino atual',
+  (await p.textContent('#qrResumo [data-qr-destino]')) === `${process.env.SITE_URL}/planos.html`,
+  await p.textContent('#qrResumo [data-qr-destino]'),
+);
+await (await p.$('#qrResumo')).screenshot({ path: `${SAIDA}27-qr-visao-geral-resumo.png` });
+await p.click('#qrResumo [data-gerenciar-qr]');
+await p.waitForSelector('dialog [data-qr-controles] .qr-inst');
 await p.waitForFunction(() => {
   const img = document.getElementById('qrInstPreview');
   return img?.complete && img.naturalWidth > 0;
@@ -112,6 +120,7 @@ await p.click('#formQrDestino button[type=submit]');
 await p.waitForFunction(() => /Destino salvo/.test(document.getElementById('toast')?.textContent || ''));
 check('destino novo na tela', (await p.inputValue('#qrDestino')) === novo);
 check('mostra quando e quem trocou', /Alterado em .+ por /.test(await p.textContent('#qrQuando')));
+check('o resumo da Visão geral acompanha', (await p.textContent('#qrResumo [data-qr-destino]')) === novo);
 check('o link permanente é o mesmo', (await p.inputValue('#qrLink')) === LINK);
 
 const redir = await fetch(`${B}/q/anuncie`, { redirect: 'manual' });
@@ -136,7 +145,7 @@ check('o destino salvo continua o mesmo', depois.headers.get('location') === nov
 // ---------------------------------------------------------------------------
 etapa('== downloads ==');
 async function baixar(texto) {
-  const [download] = await Promise.all([p.waitForEvent('download'), p.click(`#qrInstWrap a:text-is("${texto}")`)]);
+  const [download] = await Promise.all([p.waitForEvent('download'), p.click(`dialog [data-qr-controles] a:text-is("${texto}")`)]);
   const caminho = `${SAIDA}${download.suggestedFilename()}`;
   await download.saveAs(caminho);
   return { nome: download.suggestedFilename(), bytes: readFileSync(caminho) };
@@ -162,44 +171,42 @@ check('SVG: é um SVG', textoSvg.startsWith('<svg xmlns="http://www.w3.org/2000/
 const doPreviewSvg = await p.evaluate(async () => (await fetch('/admin/qr-institucional/svg')).text());
 check('SVG baixado = o do preview (que foi lido acima)', textoSvg === doPreviewSvg);
 
-// ---------------------------------------------------------------------------
-etapa('== a Mídia Mostraí continua de pé ==');
-check('seção Vídeo institucional', await p.isVisible('text=Vídeo institucional'));
-check('seção Capacidade da rede', await p.isVisible('#mmCapacidadeWrap'));
-await p.click('#btnNovaMidia');
-check(
-  '+ Nova mídia abre o editor',
-  await p
-    .waitForSelector('#formMidia', { timeout: 10000 })
-    .then(() => true)
-    .catch(() => false),
-);
-await p.click('#btnFecharEditorMidia');
+etapa('== telas ==');
+await (await p.$('dialog .modal-caixa')).screenshot({ path: `${SAIDA}27-qr-institucional-desktop.png` });
+await p.setViewportSize({ width: 390, height: 844 });
+await p.waitForTimeout(300);
+const larguraSobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+check('celular: sem rolagem horizontal', larguraSobra <= 0, `sobra ${larguraSobra}px`);
+await (await p.$('dialog .modal-caixa')).screenshot({ path: `${SAIDA}27-qr-institucional-celular.png` });
+await p.click('dialog [data-fechar]');
+await p.setViewportSize({ width: 1280, height: 900 });
 
-// O bloco do QR falha sozinho: o resto da página não pode cair junto.
+// ---------------------------------------------------------------------------
+etapa('== a Visão geral continua de pé ==');
+// O bloco do QR falha sozinho: o resto da Visão geral não pode cair junto.
 esperado500 = true;
 await p.route('**/admin/qr-institucional', (rota) =>
   rota.fulfill({ status: 500, contentType: 'application/json', body: '{"erro":"falha simulada"}' }),
 );
 await p.click('#btnRecarregar');
-await p.waitForSelector('#qrInstWrap [data-tentar-de-novo]', { timeout: 15000 });
+await p.waitForSelector('#qrResumo [data-tentar-de-novo]', { timeout: 15000 });
 check('QR com erro mostra [Tentar novamente]', true);
-check('Mídias próprias continua na tela', await p.isVisible('#btnNovaMidia'));
-check('Capacidade continua na tela', await p.isVisible('#mmCapacidadeWrap table, #mmCapacidadeWrap .vazio'));
+check('Pendências operacionais continua na tela', await p.isVisible('.pend-grade'));
+check('Ocupação da rede continua na tela', await p.isVisible('#ocupacaoRede'));
 await p.unroute('**/admin/qr-institucional');
-await p.click('#qrInstWrap [data-tentar-de-novo]');
-await p.waitForSelector('#qrInstWrap .qr-inst');
-check('tentar de novo carrega o QR sem recarregar a página', (await p.inputValue('#qrLink')) === LINK);
+await p.click('#qrResumo [data-tentar-de-novo]');
+await p.waitForSelector('#qrResumo [data-qr-resumo]');
+check('tentar de novo traz o QR sem recarregar a página', (await p.textContent('#qrResumo [data-qr-destino]')) === novo);
 esperado500 = false;
 
-etapa('== telas ==');
-await p.evaluate(() => document.querySelector('#qrInstWrap').scrollIntoView());
-await (await p.$('#qrInstWrap')).screenshot({ path: `${SAIDA}27-qr-institucional-desktop.png` });
-await p.setViewportSize({ width: 390, height: 844 });
-await p.waitForTimeout(300);
-const larguraSobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-check('celular: sem rolagem horizontal', larguraSobra <= 0, `sobra ${larguraSobra}px`);
-await (await p.$('#qrInstWrap')).screenshot({ path: `${SAIDA}27-qr-institucional-celular.png` });
+etapa('== a Mídia Mostraí não tem mais QR nem capacidade ==');
+await p.evaluate(() => {
+  location.hash = 'midiamostrai';
+});
+await p.waitForSelector('[data-mm-vi]');
+check('sem QR na Mídia Mostraí', !(await p.isVisible('text=QR Code institucional')) && !(await p.$('#qrLink')));
+check('sem tabela de capacidade da rede', !(await p.isVisible('text=Capacidade da rede')));
+check('Mídias próprias na tela', await p.isVisible('#btnNovaMidia'));
 
 PG(`DELETE FROM configuracoes_site WHERE chave = 'qr_institucional'`);
 check('sem erro de console ou de página', erros.length === 0, erros.join(' | '));

@@ -1,6 +1,21 @@
 # Current Handoff
 
 ## Updated
+2026-09-29 — **Estação: refino operacional da Mídia Mostraí** (branch
+`claude/busy-noether-hheir2-midia-refino`, worktree própria, PR próprio,
+**NÃO mergeado — merge só com o dono**). A página ficou só de conteúdo
+próprio: indicadores ativas/agendadas/pausadas/com atraso (o atraso é o
+`ATIVA_ENTREGA_ATRASADA` da métrica), vídeo institucional compacto, cards em
+pé (preview em cima, ações no rodapé) em 3/2/1 colunas, e **Excluir** só de
+pausada/encerrada, com modal. Exclusão **lógica** (migration 107 só amplia o
+CHECK de `situacao` com `'excluida'`): DELETE físico cascatearia o
+proof-of-play. O QR saiu pra Visão geral (compacto, [Gerenciar] abre os
+controles de sempre num modal) e a capacidade pra Rede → Ponto (mesma
+`/admin/capacidade-rede`). Formulário ganhou Resumo e capacidade projetada
+por ponto ("Cabe normalmente" / "Não há capacidade…"). RN-67; e2e 38 (27,
+26, 24 e 19 acompanham). **Atenção:** o PR #91 (pausado) tem a mesma ideia
+na migration 101 dele — ao retomar, fica a 107 desta estação. **Não iniciar
+outra estação.**
 2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
 ([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
 `claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados

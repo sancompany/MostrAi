@@ -165,7 +165,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | ~~Vendas~~ | `/anunciante/vendedor.html` | — | **aposentada** (programa de vendedores, 23/09/2026; arquivos removidos em 24/09/2026): 301 pro Painel | — | — |
 | Perfil | `/anunciante/perfil.html` | conta logada | dados da conta | editar, trocar foto, excluir conta | — |
 | Player | app Mostraí Player (Android) | a TV, com credencial | o vídeo da vez | tocar; o PIN de saída (global) libera sair do modo quiosque | — |
-| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (PIN de saída do Player, grade de pontos → ponto → ficha da tela), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Mídia Mostraí** (vídeo institucional, QR Code institucional, capacidade da rede e mídias próprias). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
+| Admin | `/admin/` | administrador | tudo: resumo (com as pendências financeiras), contas, candidaturas, convites, **Rede** (PIN de saída do Player, grade de pontos → ponto, com a capacidade de veiculação do ponto → ficha da tela), planos, benefícios, trocas de plano, vendedores, eventos pendentes, e **Mídia Mostraí** (só o conteúdo próprio: indicadores ativas/agendadas/pausadas/com atraso, vídeo institucional, e mídias próprias em cards — criar, editar, pausar, retomar, retirar do ar e excluir). O QR Code institucional fica na Visão geral (29/09/2026). Repasses/comissões/devoluções/cobranças (22/09/2026: não é mais página fixa) só abrem pelo clique na pendência da Visão geral. Receitas e Custos como página não existem mais — sem mini-ERP dentro do admin, dinheiro é do San Checkout | operar a rede inteira | — |
 | Termos de uso | `/termos-de-uso.html` | público | o contrato | ler | — |
 | Política de privacidade | `/politica-de-privacidade.html` | público | uso de dados | ler | — |
 | Contrato do anunciante | `/contrato-anunciante.html` | público | condições do plano | ler | — |
@@ -1392,11 +1392,22 @@ atrasada** (a última hora aberta já fechada não teve comprovante),
 **Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
 frequência entram como estão hoje (não há histórico deles).
 
+**RN-67 — Mídia própria só se exclui fora do ar, e a exclusão é lógica.**
+*(Refino da Mídia Mostraí, 29/09/2026.)* Ativa ou agendada não tem
+[Excluir]: passa antes por Pausar ou Retirar do ar. Pausada ou encerrada
+(inclusive com o período vencido) se exclui depois de um modal ("Excluir
+mídia? … Esta ação não pode ser desfeita."). A mídia some da página, da
+programação e da capacidade, e não volta por rota nenhuma; a linha, as
+exibições confirmadas e o histórico de estados ficam no banco como
+comprovante (migration 107). Arquivo ainda em análise sai da fila de
+Aprovação junto. *Violada:* excluir ativa → 409 e nada muda. *Quem vê:* o
+administrador.
+
 **RN-66 — O QR institucional nunca muda; o que muda é o destino.**
 *(Estação do QR institucional, 27/09/2026.)* O QR que vai em vídeo, flyer e
 material da Mostraí codifica sempre o link permanente `SITE_URL/q/anuncie`,
-nunca o destino. Em **Admin → Mídia Mostraí → QR Code institucional** o
-admin escolhe para onde esse link leva (padrão: a página de planos), e a
+nunca o destino. Em **Admin → Visão geral → QR institucional → Gerenciar**
+(desde 29/09/2026; antes ficava em Mídia Mostraí) o admin escolhe para onde esse link leva (padrão: a página de planos), e a
 troca vale na hora para todo QR já impresso: o redirecionamento é 302 sem
 cache, nunca 301 (que ficaria guardado no navegador e na Cloudflare). O
 destino precisa ser endereço completo `https://` (http só em ambiente local),
