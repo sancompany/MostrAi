@@ -5523,10 +5523,15 @@ Estação com merge e deploy autorizados pelo dono.
       (`indicados[]` dentro de `GET /anunciantes/me/creditos`, com cidade).
       Ao retomar, a parte de histórico dele sai — fica esta (rota própria,
       sem cidade, com pagamentos).
-- V4 [ ] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
+- V4 [x] `tests/integridade-admin.test.js` ("novas contas em 30 dias")
       falhou uma vez na suíte local por corrida com arquivos que criam e
       apagam contas em paralelo (contagem intermediária entre o antes e o
-      depois). Passa sozinho (9/9); não é desta estação.
+      depois). Passa sozinho (9/9); não é desta estação. **Resolvido no PR
+      #106 (29/09/2026)**, onde falhou no CI (4 ∉ {2, 3}): reproduzido com
+      carga paralela (até "9 ∉ {6, 6}" — conta criada e apagada durante a
+      chamada); agora o teste mede até uma janela em que o conjunto não mudou
+      (contagem, soma e maior id iguais antes e depois) e exige o número
+      EXATO — a regra continua testada, sem depender da sorte.
 - V5 [ ] e2e `35-cards-pontos-cliente.mjs`, "selecionado: borda da marca com
       anel": lê o `box-shadow` do card logo depois do clique, com a transição
       de 0,12 s ainda correndo — sai `rgba(255, 122, 26, 1) … 0.9996px` e o
@@ -5534,3 +5539,85 @@ Estação com merge e deploy autorizados pelo dono.
       (`80fe269`, 4 de 4 rodadas locais); o card não foi tocado aqui. Conserto
       natural: esperar a transição (`getAnimations()`) antes de ler o estilo.
 
+## W. Comunicados por e-mail no admin (estação final pré-lançamento, 29/09/2026)
+
+Branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`, reconciliada com a
+`main` final (`c1ba708`, #104) em 29/09/2026. Decisões: ADR-032; regra: RN-68
+(`docs/funcional.md`); rotas: `docs/api.md` → "Comunicados por e-mail".
+Merge autorizado pelo dono depois da reconciliação com a Visão geral final
+(pedido dele: o PR #104 pôs o QR institucional no mesmo trecho de
+`renderResumo` — ficaram os dois).
+
+**Feito:**
+
+- [x] Card compacto **Comunicados por e-mail** na Visão geral (coluna de
+      negócio): descrição, último envio (data, destinatários, situação) ou
+      "Nenhum comunicado enviado ainda.", [+ Novo comunicado] e Ver
+      histórico. Nenhum formulário fixo na página.
+- [x] Modal em duas etapas: público (Todas as contas ativas / Com plano ativo
+      / Sem plano / Donos de ponto) com "Destinatários: N contas" e quantas
+      ficaram de fora e por quê; assunto, título, mensagem (texto puro) e
+      botão opcional (`https://`). Revisar: a prévia é o e-mail real (mesmo
+      template do envio, HTML e texto puro) e o envio de teste. Confirmação
+      Mostraí (público, N, assunto, "Este envio será disparado para N
+      contas."), nunca `window.confirm`.
+- [x] Envio pela fila que já existe (`email_outbox`, tipo `comunicado`), um
+      e-mail por conta, sozinha no "Para"; ritmo de 30/min e fim da fila
+      (código e link de senha passam na frente).
+- [x] Sem envio em dobro: `Idempotency-Key` + mesmo conteúdo/público em 24 h +
+      chave única por destinatário; resposta perdida no meio do envio
+      testada no navegador (e2e 39).
+- [x] Histórico (previstos, enviados, falharam, na fila, quem enviou,
+      situação) com detalhe e **Reenviar falhas** só para quem falhou.
+- [x] Migration 108 (só tabelas novas: `comunicados`,
+      `comunicados_destinatarios`, `comunicados_reenvios`, com RLS).
+- [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo global,
+      prioridade, teto diário, descarte na hora, consolidação antes do
+      expurgo, segredo do SMTP fora de toda resposta); e2e
+      `39-comunicados.mjs` (fluxo inteiro, três jeitos de perder a resposta
+      do envio + 8 larguras); `npm run check` verde; e2e 23, 24 e 26 verdes.
+- [x] Revisão adversarial independente (29/09/2026): 1 bloqueio (teste pra
+      caixa de cliente escrita de outro jeito) e 3 correções (editar depois
+      de resposta perdida criava um 2º comunicado; expurgo de 30 dias podia
+      fazer "enviado" virar "falhou" e reenviar em dobro; cota do SMTP sem
+      teto) — todos corrigidos e testados, junto com os ajustes menores
+      (ADR-032, item 10).
+
+**Com o dono:**
+
+- W1 [ ] **Conferir no ar:** Visão geral → Comunicados por e-mail → mandar
+      um **teste** pra caixa da equipe (`MOSTRAI_EMAIL_CONTATO` — o
+      `/admin/diagnostico/smtp` mostra o endereço em `destino_contato`) e
+      olhar o e-mail no Gmail e no celular antes do primeiro envio real.
+- W2 [ ] **Decisão jurídica — divulgação:** não existe opt-in de
+      marketing no cadastro, só a revogação "Quero receber novidades e
+      ofertas" do perfil (migration 025). Por isso comunicado é só aviso da
+      plataforma, e quem revogou NÃO recebe (o texto é livre; o sistema não
+      separa aviso de oferta). Se um dia for preciso alcançar TODAS as contas
+      com um aviso obrigatório (mudança de termos, incidente de segurança),
+      ou mandar oferta com base legal, é estação jurídica: opt-in no
+      cadastro, texto de consentimento e o tipo de comunicado — não um
+      checkbox novo aqui.
+- W3 [ ] **Limite diário do SMTP (hipótese, não conferida):** conta Google
+      Workspace costuma aceitar ~2.000 mensagens/dia pelo SMTP (Gmail comum,
+      ~500). O sistema já para sozinho em 300 mensagens de comunicado por
+      24 h (`COMUNICADOS_MAX_DIA`) pra sobrar cota aos códigos e senhas, que
+      usam a mesma conta. Conferir o tipo da conta (Workspace x Gmail comum)
+      no admin.google.com e ajustar o teto se for o caso; se o provedor
+      reclamar de ritmo, baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
+- W4 [x] **Reconciliado com o #104** (29/09/2026, merge da `main` `c1ba708`
+      no branch): os dois acrescentavam um bloco no fim da coluna de negócio
+      (`renderResumo`) e uma chamada `blocoIndependente` — ficaram os DOIS
+      (QR institucional e depois Comunicados), cada um falhando sozinho.
+      Depois do merge: `npm run check` (695, 0 falha) e e2e 39, 27, 24, 26 e
+      38 (Mídia Mostraí, com FFmpeg) verdes.
+
+**Encontrado de passagem (não mexido):**
+
+- W5 [ ] `docs/api.md`, seção Admin, diz "As 76 rotas estão listadas uma a
+      uma" — o código já tem ~111 rotas `/admin` (sem contar as 7 novas). O
+      número ficou velho; conferir a lista inteira é trabalho à parte.
+- W6 [ ] Entrega "pelo menos uma vez" da fila (RN-62): se o processo morrer
+      depois de o SMTP aceitar e antes de marcar "enviado", aquele UM e-mail
+      sai de novo depois do prazo (5 min). Vale pra todo e-mail da fila, não
+      só pro comunicado; o comunicado não piora nem melhora isso.

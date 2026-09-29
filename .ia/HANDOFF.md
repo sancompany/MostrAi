@@ -1,9 +1,31 @@
 # Current Handoff
 
 ## Updated
+2026-09-29 — **Estação FINAL PRÉ-LANÇAMENTO: comunicados por e-mail no admin**
+([PR #106](https://github.com/sancompany/MostrAi/pull/106), branch
+`claude/serene-lovelace-1zx4a0`, **merge autorizado pelo dono** em 29/09,
+depois que o #104 entrou na `main`). Reconciliado com a `main` final
+(`c1ba708`, #104) por merge, sem escolher lado: na coluna de negócio da
+Visão geral ficam os dois blocos — QR institucional e, abaixo, Comunicados
+por e-mail (o `<div>` e o `blocoIndependente` de cada um em `renderResumo`);
+em `tests/e2e/README.md`, o 38 (Mídia) e o 39 (comunicados). Card compacto
+"Comunicados por e-mail" → modal (público com "Destinatários: N contas",
+assunto, título, mensagem, botão `https://` opcional → prévia que é o e-mail
+real → teste `[TESTE]` → confirmação Mostraí) → histórico com Reenviar
+falhas. Envio pela `email_outbox` existente (tipo `comunicado`, um e-mail
+por conta, sozinha no "Para", 30/min, fim da fila, teto de 300/24 h); sem
+envio em dobro por Idempotency-Key + mesmo conteúdo em 24 h + chave por
+destinatário + pergunta `por-chave` quando a resposta se perde. Fora:
+excluída, anonimizada, conta própria, suspensa, e-mail não confirmado, quem
+revogou "novidades" e e-mail inválido (régua em
+`src/comunicados/publicos.js`). Migration 108 (só tabelas novas), aplicada
+no arranque do contêiner. UI em `public/admin/comunicados.js`/`.css`.
+ADR-032, RN-68, `docs/PENDENCIAS.md` §W, e2e 39. **Depois do merge:** CI no
+SHA da `main`, deploy no ar com a 108, e o dono manda um TESTE pra caixa da
+equipe antes do primeiro envio real (§W). **Não iniciar outra estação.**
 2026-09-29 — **Estação: refino operacional da Mídia Mostraí** (branch
 `claude/busy-noether-hheir2-midia-refino`, worktree própria, PR próprio,
-**NÃO mergeado — merge só com o dono**). A página ficou só de conteúdo
+**mergeado pelo dono em 29/09 — `c1ba708`**). A página ficou só de conteúdo
 próprio: indicadores ativas/agendadas/pausadas/com atraso (o atraso é o
 `ATIVA_ENTREGA_ATRASADA` da métrica), vídeo institucional compacto, cards em
 pé (preview em cima, ações no rodapé) em 3/2/1 colunas, e **Excluir** só de

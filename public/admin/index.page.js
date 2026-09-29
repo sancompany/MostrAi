@@ -1493,6 +1493,7 @@ async function renderResumo(el) {
         <div id="promocaoAtivaResumo" hidden></div>
         ${painelIndicadoresRede(rede, financeiro)}
         <div id="qrResumo"></div>
+        <div id="comunicadosResumo"></div>
       </aside>
     </div>`;
 
@@ -1516,6 +1517,13 @@ async function renderResumo(el) {
   blocoIndependente(document.getElementById('ocupacaoRede'), renderOcupacaoRede, 'ocupação da rede');
   blocoIndependente(document.getElementById('promocaoAtivaResumo'), renderPromocaoAtivaResumo, 'promoção ativa');
   blocoIndependente(document.getElementById('qrResumo'), renderQrResumo, 'QR institucional');
+  // Comunicados por e-mail: public/admin/comunicados.js (carrega antes deste).
+  // `async`: se aquele arquivo não carregou, o erro fica só neste bloco.
+  blocoIndependente(
+    document.getElementById('comunicadosResumo'),
+    async (el) => window.renderComunicadosResumo(el),
+    'comunicados',
+  );
 }
 
 // Carrega um bloco da tela por conta própria; se falhar, o erro e o

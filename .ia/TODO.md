@@ -236,6 +236,18 @@ preservado; ver `.ia/RISKS.md`.
   "Meus pontos" com o card de foto grande (§T4), mostrar "na cobertura
   hoje" (§T5).
 
+## COMUNICADOS POR E-MAIL — antes e depois do merge (29/09/2026)
+
+- [x] Antes do merge: o PR #104 (QR na Visão geral) entrou na `main`
+  (`c1ba708`) e a `main` veio pro branch por merge em 29/09 — os dois blocos
+  ficaram (QR, depois Comunicados); `npm run check` (695, 0 falha) e e2e 39,
+  27, 24, 26 e 38 verdes depois do merge. Merge autorizado pelo dono.
+- [ ] Depois do merge: CI no SHA mergeado, deploy no ar com a migration 108
+  (roda no arranque do contêiner), e o dono manda um TESTE pra caixa da
+  equipe antes do primeiro comunicado real (`docs/PENDENCIAS.md` §W1).
+- Decisões do dono, fora desta estação: divulgação/opt-in (§W2), limite
+  diário do SMTP (§W3).
+
 ## PROMOÇÕES — reforço visual (28/09/2026)
 
 - [ ] Depois do merge (só com autorização): CI no SHA mergeado, deploy,

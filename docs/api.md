@@ -210,6 +210,24 @@ pede.
 | PATCH | `/admin/anunciantes/:id` (e-mail) | Trocar `contato_email` pelo admin (RN-62): grava em `alteracoes_email` com o usuário do admin, marca `email_confirmado=false`, manda código pro endereço novo e avisa o antigo (se estava confirmado). 409 se o endereço é de outra conta. |
 | GET | `/admin/diagnostico/smtp` | Não manda e-mail nenhum — só diz se `SMTP_PASS` existe, quantos caracteres tem e se sobrou espaço no meio (senha de app do Gmail tem 16; os espaços que o Google mostra são só separação visual). Não devolve a senha nem parte dela. Também devolve `remetente` (`MOSTRAI_EMAIL_FROM`) e `destino_contato` (`MOSTRAI_EMAIL_CONTATO`, o "para" do formulário de contato) — endereços, não segredo, pra confirmar os dois lados sem ler variável no Northflank (P42, `docs/PENDENCIAS.md`). Existe porque um SMTP mal configurado só aparece tarde e por acaso (item 9, `docs/PENDENCIAS.md`). |
 
+### Comunicados por e-mail (RN-68, migration 108)
+Card da Visão geral → modal. Nenhuma rota devolve endereço de destinatário
+(só números; no diagnóstico de falha, mascarado) nem credencial de SMTP —
+erro do provedor volta sanitizado (`outbox.sanitizar`). `publico` ∈
+`todas` · `com_plano` · `sem_plano` · `donos_de_ponto`; conteúdo =
+`{assunto, titulo, mensagem, botaoTexto?, botaoUrl?}` (texto puro; assunto e
+título até 150, mensagem até 5000, botão até 40 + link `https://` até 500).
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/admin/comunicados` | `{publicos: [{id, rotulo, descricao}], limites, testePadrao (caixa da equipe, mascarada), comunicados: [...]}` — histórico, mais recente primeiro (30): `{id, assunto, publico, publicoRotulo, previstos, enviados, falharam, descartados, naFila, tentandoDeNovo, criadoPor, criadoEm, reenvios, ultimoReenvioEm, situacao}`; `situacao` ∈ `em_andamento` · `concluido` · `concluido_com_falhas` · `falhou`, calculada da fila + registro por destinatário |
+| GET | `/admin/comunicados/destinatarios?publico=` | `{publico, destinatarios, foraDoEnvio: {suspensas, emailNaoConfirmado, naoQueremReceber, emailInvalido}}` — `destinatarios` é o tamanho da MESMA lista que o envio usa (`src/comunicados/publicos.js`). 400 com público inválido |
+| POST | `/admin/comunicados/previa` | Conteúdo → `{assunto, html, texto}`: o e-mail montado pelo mesmo `montar` do envio (template institucional). 400 `{erro, campo}` com conteúdo inválido (link que não é `https://`, com usuário/senha, sem domínio...) |
+| POST | `/admin/comunicados/teste` | Conteúdo + `para?` → manda NA HORA, marcado `[TESTE]` no assunto e no corpo, para `para` ou, vazio, `MOSTRAI_EMAIL_CONTATO`. Não grava comunicado nem histórico. 400 se `para` é inválido ou é a CAIXA de uma conta de cliente — comparada sem "+apelido" e, no Gmail, sem pontos e com googlemail = gmail — ou um endereço que a conta já usou (`alteracoes_email`); 502 com o erro sanitizado se o SMTP recusar. Limitado a 10 por 15 min (`limiteTentativas`) |
+| POST | `/admin/comunicados` | Cabeçalho `Idempotency-Key` (16–100 `[A-Za-z0-9-]`, um por confirmação) + `{publico, ...conteúdo, destinatariosConfirmados}` → 201 `{comunicado, repetido: false}`: grava o texto, um registro e uma mensagem na fila por destinatário (tipo `comunicado`), tudo numa transação, e despacha. Mesma chave → 200 `{comunicado, repetido: true}` (nada sai de novo); mesma chave com outro conteúdo → 409. 409 `{motivo: 'repetido', comunicadoId}` se o mesmo conteúdo foi pro mesmo público nas últimas 24 h; 409 `{motivo: 'publico_mudou', destinatarios}` se o número confirmado não bate; 409 `{motivo: 'limite_diario', usados, limite}` se passaria do teto de mensagens de comunicado em 24 h (`COMUNICADOS_MAX_DIA`, 300); 400 `{motivo: 'sem_destinatarios'}` com público vazio. Link com usuário/senha antes do domínio ou `javascript:` em qualquer campo → 400 com o campo |
+| GET | `/admin/comunicados/por-chave/:chave` | "Aquele envio entrou?" — a tela pergunta quando a resposta do `POST` se perdeu. `{comunicado}` ou 404. Espera a mesma trava das criações, então o 404 é definitivo (nenhuma gravação daquela chave em andamento) |
+| GET | `/admin/comunicados/:id` | Resumo + `{titulo, mensagem, botao, paraReenviar, problemas: [{nomeEmpresa, email (mascarado), situacao ∈ falhou·tentando·descartado, erro (sanitizado), rodada, atualizadoEm}]}`. Quem recebeu não é listado, só contado. 404 |
+| POST | `/admin/comunicados/:id/reenviar-falhas` | `{paraReenviarConfirmados}` → põe de volta na fila SÓ quem tem falha comprovada (a fila desistiu) e ainda recebe — rodada nova, chave nova, endereço de login atual, no ritmo e no teto de sempre; grava a trilha em `comunicados_reenvios` (quem, quantos). → `{reenfileirados, comunicado}`. 409 `{motivo: 'falhas_mudaram', paraReenviar}` se o número confirmado não bate (inclusive o segundo clique: 0); 409 `limite_diario` |
+
 ### Entrada de gente (candidatura → convite → conta)
 | Método | Rota | O que faz |
 |---|---|---|
