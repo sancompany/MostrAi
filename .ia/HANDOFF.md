@@ -2,26 +2,42 @@
 
 ## Updated
 2026-09-29 — **Estação FINAL PRÉ-LANÇAMENTO: comunicados por e-mail no admin**
-(branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`, PR draft próprio,
-**sem merge** até a Visão geral final estar na `main` — o PR #104 põe o QR
-institucional no mesmo trecho de `renderResumo`; ao reconciliar ficam os
-dois blocos). Card compacto "Comunicados por e-mail" na coluna de negócio
-da Visão geral → modal (público com "Destinatários: N contas", assunto,
-título, mensagem, botão `https://` opcional → prévia que é o e-mail real →
-teste `[TESTE]` → confirmação Mostraí) → histórico com Reenviar falhas. Envio
-pela `email_outbox` existente (tipo `comunicado`, um e-mail por conta,
-sozinha no "Para", 30/min, fim da fila); sem envio em dobro por
-Idempotency-Key + mesmo conteúdo em 24 h + chave por destinatário. Fora:
+([PR #106](https://github.com/sancompany/MostrAi/pull/106), branch
+`claude/serene-lovelace-1zx4a0`, **merge autorizado pelo dono** em 29/09,
+depois que o #104 entrou na `main`). Reconciliado com a `main` final
+(`c1ba708`, #104) por merge, sem escolher lado: na coluna de negócio da
+Visão geral ficam os dois blocos — QR institucional e, abaixo, Comunicados
+por e-mail (o `<div>` e o `blocoIndependente` de cada um em `renderResumo`);
+em `tests/e2e/README.md`, o 38 (Mídia) e o 39 (comunicados). Card compacto
+"Comunicados por e-mail" → modal (público com "Destinatários: N contas",
+assunto, título, mensagem, botão `https://` opcional → prévia que é o e-mail
+real → teste `[TESTE]` → confirmação Mostraí) → histórico com Reenviar
+falhas. Envio pela `email_outbox` existente (tipo `comunicado`, um e-mail
+por conta, sozinha no "Para", 30/min, fim da fila, teto de 300/24 h); sem
+envio em dobro por Idempotency-Key + mesmo conteúdo em 24 h + chave por
+destinatário + pergunta `por-chave` quando a resposta se perde. Fora:
 excluída, anonimizada, conta própria, suspensa, e-mail não confirmado, quem
 revogou "novidades" e e-mail inválido (régua em
-`src/comunicados/publicos.js`). Migration 108 (só tabelas novas). UI em
-`public/admin/comunicados.js`/`.css` (arquivo próprio pra não disputar
-`index.page.js`). Revisão adversarial feita e corrigida (ADR-032 item 10):
-resposta perdida → pergunta `por-chave` e edição travada; consolidação
-antes do expurgo; teto de 300/24 h + ritmo global; teste nunca pra caixa de
-cliente escrita de outro jeito. ADR-032, RN-68, `docs/PENDENCIAS.md` §W,
-e2e 39. PR [#106](https://github.com/sancompany/MostrAi/pull/106) em draft.
-**Não iniciar outra estação.**
+`src/comunicados/publicos.js`). Migration 108 (só tabelas novas), aplicada
+no arranque do contêiner. UI em `public/admin/comunicados.js`/`.css`.
+ADR-032, RN-68, `docs/PENDENCIAS.md` §W, e2e 39. **Depois do merge:** CI no
+SHA da `main`, deploy no ar com a 108, e o dono manda um TESTE pra caixa da
+equipe antes do primeiro envio real (§W). **Não iniciar outra estação.**
+2026-09-29 — **Estação: refino operacional da Mídia Mostraí** (branch
+`claude/busy-noether-hheir2-midia-refino`, worktree própria, PR próprio,
+**mergeado pelo dono em 29/09 — `c1ba708`**). A página ficou só de conteúdo
+próprio: indicadores ativas/agendadas/pausadas/com atraso (o atraso é o
+`ATIVA_ENTREGA_ATRASADA` da métrica), vídeo institucional compacto, cards em
+pé (preview em cima, ações no rodapé) em 3/2/1 colunas, e **Excluir** só de
+pausada/encerrada, com modal. Exclusão **lógica** (migration 107 só amplia o
+CHECK de `situacao` com `'excluida'`): DELETE físico cascatearia o
+proof-of-play. O QR saiu pra Visão geral (compacto, [Gerenciar] abre os
+controles de sempre num modal) e a capacidade pra Rede → Ponto (mesma
+`/admin/capacidade-rede`). Formulário ganhou Resumo e capacidade projetada
+por ponto ("Cabe normalmente" / "Não há capacidade…"). RN-67; e2e 38 (27,
+26, 24 e 19 acompanham). **Atenção:** o PR #91 (pausado) tem a mesma ideia
+na migration 101 dele — ao retomar, fica a 107 desta estação. **Não iniciar
+outra estação.**
 2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
 ([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
 `claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados
