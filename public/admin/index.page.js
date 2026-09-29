@@ -794,7 +794,7 @@ const SUBTITULOS = {
     'Eventos do San Checkout que não deram pra aplicar sozinhos: confira no Checkout e aplique o ciclo, ou marque resolvido.',
   arrependimentos:
     'Quem desistiu da contratação dentro dos 7 dias da lei e ainda espera a devolução. A devolução em si é feita no painel do Checkout; aqui só se registra o comprovante.',
-  meusanuncios: 'Conteúdo próprio e capacidade de veiculação da rede.',
+  meusanuncios: 'Vídeo institucional e mídias próprias da rede.',
   pendencias:
     'As mesmas filas da Visão geral, juntas numa lista só — sem os números do mês, só o que precisa de você agora.',
 };
@@ -1492,6 +1492,8 @@ async function renderResumo(el) {
         ${painelFinanceiroResumo(financeiro, conciliacao.resumo)}
         <div id="promocaoAtivaResumo" hidden></div>
         ${painelIndicadoresRede(rede, financeiro)}
+        <div id="qrResumo"></div>
+        <div id="comunicadosResumo"></div>
       </aside>
     </div>`;
 
@@ -1514,6 +1516,14 @@ async function renderResumo(el) {
   // "Carregando..." pra sempre (o erro só ia pro console).
   blocoIndependente(document.getElementById('ocupacaoRede'), renderOcupacaoRede, 'ocupação da rede');
   blocoIndependente(document.getElementById('promocaoAtivaResumo'), renderPromocaoAtivaResumo, 'promoção ativa');
+  blocoIndependente(document.getElementById('qrResumo'), renderQrResumo, 'QR institucional');
+  // Comunicados por e-mail: public/admin/comunicados.js (carrega antes deste).
+  // `async`: se aquele arquivo não carregou, o erro fica só neste bloco.
+  blocoIndependente(
+    document.getElementById('comunicadosResumo'),
+    async (el) => window.renderComunicadosResumo(el),
+    'comunicados',
+  );
 }
 
 // Carrega um bloco da tela por conta própria; se falhar, o erro e o
@@ -1918,30 +1928,25 @@ const SITUACAO_MIDIA_BADGE = {
   ativa: 'badge-ok',
   agendada: 'badge-info',
   pausada: 'badge-pendente',
-  encerrada: 'badge-err',
+  encerrada: 'badge-neutro',
 };
 
-// Card da grade de Mídias próprias — classes `.mm-*` próprias (não
-// `.criativo-fila`/`.item`/`.midia` da fila de Aprovação): aqui o preview
-// precisa de `object-fit: contain` num fundo neutro (o asset é uma peça pra
-// conferir por inteiro, não uma miniatura recortada), e misturar a mesma
-// classe mudaria a Aprovação junto, fora do pedido desta rodada.
-// Card deitado (polimento final, 23/09/2026): a miniatura vertical dominava
-// um card estreito e as ações quebravam linha ("Retirar do ar" caía
-// sozinho). Agora: miniatura 9:16 fixa à esquerda, nome como título com o
-// estado no mesmo cabeçalho, frequência/período como metadado e as ações
-// numa linha — Retirar do ar com a cor de ação destrutiva.
-// Estado de exibição (src/midias/metricas.js): o controle manual (pausada,
-// agendada, encerrada) e, quando ativa, se já tocou, se está tocando ou se a
-// entrega atrasou — tudo pelo comprovante de exibição, nunca pela playlist.
+// Estado de exibição (src/midias/metricas.js): quando ativa, se já tocou,
+// se está tocando ou se a entrega atrasou — tudo pelo comprovante de
+// exibição, nunca pela playlist.
 const ESTADO_MIDIA = {
   ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO: ['Ativa — aguardando primeira exibição', 'badge-pendente'],
   ATIVA_REPRODUZINDO: ['Ativa — reproduzindo normalmente', 'badge-ok'],
   ATIVA_ENTREGA_ATRASADA: ['Ativa — entrega atrasada', 'badge-err'],
   PAUSADA: ['Pausada', 'badge-pendente'],
   AGENDADA: ['Agendada', 'badge-info'],
-  ENCERRADA: ['Encerrada', 'badge-err'],
+  ENCERRADA: ['Encerrada', 'badge-neutro'],
 };
+// "Com atraso" (KPI e card) é exatamente este estado — nenhuma régua nova.
+const entregaAtrasada = (m) => m.metricas?.estado === 'ATIVA_ENTREGA_ATRASADA';
+// Excluir só fora do ar — a mesma régua de midiasRepo.excluir: ativa e
+// agendada passam antes por Pausar ou Retirar do ar.
+const PODE_EXCLUIR_MIDIA = ['pausada', 'encerrada'];
 
 // "hoje 10:42", "ontem 18:05" ou "25/09 09:12" — relógio de Matão.
 function quandoBR(iso) {
@@ -1955,126 +1960,93 @@ function quandoBR(iso) {
   return `${nome} ${hora}`;
 }
 
-// Resumo do card: confirmadas, entrega esperada e última exibição.
-function resumoExibicoesMidia(mt) {
+// Entrega no card: confirmadas, o quanto da esperada, a situação e a última
+// exibição. A atrasada ganha badge e o porquê numa linha — perceptível sem
+// virar alarme; o diagnóstico da tela continua em Rede.
+function entregaDoCard(m) {
+  const mt = m.metricas;
   if (!mt) return '';
-  const entrega = mt.entregaPct?.d30;
-  return `<p class="mm-metricas" data-mm-metricas>
-      <span><b>${num(mt.confirmadas.total)}</b> ${mt.confirmadas.total === 1 ? 'exibição confirmada' : 'exibições confirmadas'}</span>
-      <span>${entrega == null ? 'sem entrega esperada ainda' : `<b>${entrega}%</b> da entrega esperada (30 dias)`}</span>
-      <span>Última: ${quandoBR(mt.ultimaExibicaoEm)}</span>
-    </p>`;
+  let situacao = '';
+  if (m.situacaoDerivada === 'ativa') {
+    if (entregaAtrasada(m)) {
+      const porque = mt.ultimaExibicaoEm
+        ? 'a última hora aberta não teve exibição confirmada'
+        : 'a primeira exibição passou do prazo';
+      situacao = `<p class="mm-card-nota mm-card-nota-atraso" data-mm-entrega><span class="badge badge-err">Entrega atrasada</span><span>${porque}</span></p>`;
+    } else if (mt.estado === 'ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO') {
+      situacao = '<p class="mm-card-nota" data-mm-entrega>Aguardando a primeira exibição</p>';
+    } else {
+      situacao = '<p class="mm-card-nota mm-card-nota-ok" data-mm-entrega>Reproduzindo normalmente</p>';
+    }
+  }
+  return `<dl class="mm-card-metricas" data-mm-metricas>
+      <div><dt>Exibições confirmadas</dt><dd data-mm-confirmadas>${num(mt.confirmadas.total)}</dd></div>
+      <div><dt>Última exibição</dt><dd data-mm-ultima>${quandoBR(mt.ultimaExibicaoEm)}</dd></div>
+    </dl>
+    ${situacao}`;
 }
 
+// Prévia do card: miniatura, nunca player — nada de controles de vídeo na
+// listagem (quem quer ver a peça rodando abre Editar). Mostra o quadro que o
+// FFmpeg já gera no upload (`thumbnail_url`, src/lib/ffmpeg.js) — imagem
+// também vira MP4 lá, então o normalizado nunca serve de <img>. A peça fica
+// numa moldura 9:16 de cantos arredondados, inteira (contain), e a faixa
+// atrás é o próprio quadro desfocado, em vez de barras pretas. Sem quadro
+// (linha antiga), o primeiro frame do vídeo, sem controles e mudo.
+function previewDoCard(m) {
+  const ehImagem = ehImagemArquivo(m.arquivo_original_url);
+  const src = m.thumbnail_url;
+  let peca = '<span class="mm-card-thumb mm-card-thumb-vazia" aria-hidden="true"></span>';
+  if (src) peca = `<img class="mm-card-thumb" src="${esc(src)}" alt="" loading="lazy">`;
+  else if (m.arquivo_normalizado_url) {
+    peca = `<video class="mm-card-thumb" src="${esc(m.arquivo_normalizado_url)}#t=0.5" muted playsinline preload="metadata" tabindex="-1" aria-hidden="true"></video>`;
+  }
+  return `<div class="mm-card-preview">
+      ${src ? `<img class="mm-card-fundo" src="${esc(src)}" alt="" aria-hidden="true" loading="lazy">` : ''}
+      <div class="mm-card-moldura">${peca}</div>
+      <span class="mm-card-tipo">${ehImagem ? 'Imagem' : 'Vídeo'}</span>
+    </div>`;
+}
+
+// Card da grade de Mídias próprias (refino da Mídia Mostraí, 29/09/2026):
+// em pé — prévia em cima, informações embaixo, ações no rodapé. Ordem de
+// leitura: nome e estado; parâmetros numa linha (duração · frequência ·
+// cobertura); período, quando há; as duas métricas lado a lado; a situação
+// da entrega. Ações: as do dia a dia à esquerda, as destrutivas à direita.
 function montarCardMidia(m) {
   const sit = m.situacaoDerivada;
-  const [rotuloEstado, classeEstado] = ESTADO_MIDIA[m.metricas?.estado] || [
-    SITUACAO_MIDIA_ROTULO[sit] || sit,
-    SITUACAO_MIDIA_BADGE[sit] || '',
-  ];
   const cobertura = m.cobertura_tipo === 'rede' ? 'Toda a rede' : plural(m.qtd_pontos, 'ponto');
   const periodo =
     m.periodo_inicio || m.periodo_fim
-      ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} até ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
-      : 'Sempre no ar';
-  return `<article class="criativo-item mm-item">
-    <div class="criativo-item-midia">${montarPreviewAsset({ original: m.arquivo_original_url, normalizado: m.arquivo_normalizado_url, thumb: m.thumbnail_url, classe: 'mm-card-asset' })}</div>
-    <div class="criativo-item-corpo">
-      <div class="item-topo"><h4>${esc(m.nome_interno)}</h4><span class="badge ${classeEstado}" data-mm-estado>${rotuloEstado}</span></div>
-      <p class="item-meta">${m.duracao_segundos ? `${m.duracao_segundos}s` : '—'} · ${m.frequencia_hora}×/hora · ${cobertura}</p>
-      <p class="item-meta">${periodo}</p>
-      ${resumoExibicoesMidia(m.metricas)}
-      ${m.aprovacao_status !== 'aprovado' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
-      <div class="acoes item-acoes">
-        <button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>
-        ${
-          sit === 'pausada'
-            ? `<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`
-            : sit !== 'encerrada'
-              ? `<button class="btn ghost mini" data-pausar-midia="${m.id}">Pausar</button>`
-              : ''
-        }
-        ${sit !== 'encerrada' ? `<button class="btn perigo-sutil mini" data-encerrar-midia="${m.id}">Retirar do ar</button>` : ''}
+      ? `${m.periodo_inicio ? window.prazoBR(m.periodo_inicio, { inicio: true }) : 'Desde já'} → ${m.periodo_fim ? window.prazoBR(m.periodo_fim) : 'sem fim'}`
+      : '';
+  const principais = [`<button class="btn ghost mini" data-editar-midia="${m.id}">Editar</button>`];
+  if (sit === 'pausada')
+    principais.push(`<button class="btn ghost mini" data-retomar-midia="${m.id}">Retomar</button>`);
+  else if (sit !== 'encerrada')
+    principais.push(`<button class="btn ghost mini" data-pausar-midia="${m.id}">Pausar</button>`);
+  const destrutivas = [];
+  if (sit !== 'encerrada')
+    destrutivas.push(`<button class="btn perigo-sutil mini" data-encerrar-midia="${m.id}">Retirar do ar</button>`);
+  if (PODE_EXCLUIR_MIDIA.includes(sit))
+    destrutivas.push(`<button class="btn perigo-sutil mini" data-excluir-midia="${m.id}">Excluir</button>`);
+  return `<article class="mm-card${entregaAtrasada(m) ? ' mm-card-atrasada' : ''}" data-mm-card="${m.id}">
+    ${previewDoCard(m)}
+    <div class="mm-card-corpo">
+      <div class="mm-card-topo">
+        <h4 title="${esc(m.nome_interno)}">${esc(m.nome_interno)}</h4>
+        <span class="badge ${SITUACAO_MIDIA_BADGE[sit] || ''}" data-mm-estado>${SITUACAO_MIDIA_ROTULO[sit] || sit}</span>
       </div>
+      <p class="mm-card-fatos"><span>${m.duracao_segundos ? `${m.duracao_segundos} s` : '—'}</span><span>${m.frequencia_hora}×/hora</span><span>${cobertura}</span></p>
+      ${periodo ? `<p class="mm-card-periodo" data-mm-periodo>${periodo}</p>` : ''}
+      ${entregaDoCard(m)}
+      ${m.aprovacao_status !== 'aprovado' ? '<p class="item-nota">Arquivo em análise — entra no ar depois de aprovado.</p>' : ''}
+    </div>
+    <div class="mm-card-acoes">
+      <div class="mm-card-acoes-grupo">${principais.join('')}</div>
+      ${destrutivas.length ? `<div class="mm-card-acoes-grupo">${destrutivas.join('')}</div>` : ''}
     </div>
   </article>`;
-}
-
-// Tabela de capacidade da rede (Parte 16/17) — mesmo padrão de
-// renderOcupacaoRede (expandir por clique mostra quem consome ali), só que
-// separando comercial de institucional em vez de uma coluna só (Parte 9:
-// "não quero só uma porcentagem abstrata").
-function montarTabelaCapacidade(el, capacidade) {
-  if (!capacidade.length) {
-    el.innerHTML = vazio(
-      'Nenhum ponto em operação ainda.',
-      'A capacidade aparece quando o primeiro ponto tiver tela ativa.',
-    );
-    return;
-  }
-  // Régua 80/20 (rodada de integridade, 23/09/2026): sem coluna "Livre" —
-  // ela somava a reserva Mostraí com o comercial ainda não vendido e dava a
-  // entender que a mídia própria podia ocupar ~97% da hora. Mesmos números
-  // e o mesmo desenho da tabela "Ocupação da rede" da Visão geral
-  // (src/lib/capacidade.js): dois grupos, números à direita.
-  el.innerHTML = `<div class="tabela-caixa"><div class="rolagem"><table class="tabela-capacidade"><thead>
-      <tr>
-        <th rowspan="2">Ponto</th>
-        <th colspan="2" class="grupo">Comercial <span>teto 80%</span></th>
-        <th colspan="2" class="grupo">Mostraí <span>reserva 20%</span></th>
-        <th rowspan="2" class="num">Total</th>
-        <th rowspan="2" class="num">Mídias</th>
-      </tr>
-      <tr>
-        <th class="num" title="Vendido a anunciantes">Usado</th>
-        <th class="num" title="Do teto comercial de 80%">Restante</th>
-        <th class="num" title="Mídia própria e universal">Usado</th>
-        <th class="num" title="Da reserva de 20%">Livre</th>
-      </tr>
-    </thead><tbody>
-    ${capacidade
-      .map(
-        (p) => `<tr>
-      <td><div class="celula-ponto">
-        <a href="#rede/pontos/${p.pontoId}">${esc(p.pontoNome)}</a>
-        <span class="celula-sub"><i class="ponto-status ${PONTO_STATUS_CLASSE[p.status] || ''}" aria-hidden="true"></i>${PONTO_STATUS[p.status] || p.status}</span>
-      </div></td>
-      <td class="num grupo-inicio">${pct(p.comercialPct)}</td>
-      <td class="num">${pct(p.comercialRestantePct)}</td>
-      <td class="num grupo-inicio">${pct(p.mostraiPct)}${p.mostraiAcimaDaReservaPct > 0 ? `<span class="celula-alerta" title="${pct(p.mostraiAcimaDaReservaPct)} ocupando capacidade comercial ainda não vendida">acima da reserva</span>` : ''}</td>
-      <td class="num">${pct(p.reservaRestantePct)}</td>
-      <td class="num"><b>${pct(p.totalPct)}</b></td>
-      <td class="num"><button type="button" class="link-contagem" data-expandir-capacidade="${p.pontoId}" aria-expanded="false" title="Ver as mídias próprias neste ponto">${p.qtdMidiasProprias}</button></td>
-    </tr>`,
-      )
-      .join('')}
-    </tbody></table></div></div>`;
-
-  el.querySelectorAll('[data-expandir-capacidade]').forEach((btn) =>
-    btn.addEventListener('click', async () => {
-      const linha = btn.closest('tr');
-      const existente = linha.nextElementSibling;
-      if (existente && existente.dataset.capacidadeDe === btn.dataset.expandirCapacidade) {
-        existente.remove();
-        btn.setAttribute('aria-expanded', 'false');
-        return;
-      }
-      const midiasNoPonto = await pegar(`/admin/capacidade-rede/${btn.dataset.expandirCapacidade}/midias`);
-      btn.setAttribute('aria-expanded', 'true');
-      linha.insertAdjacentHTML(
-        'afterend',
-        `<tr data-detalhe data-capacidade-de="${btn.dataset.expandirCapacidade}"><td class="celula-detalhe" colspan="7">
-      ${
-        midiasNoPonto.length
-          ? `<table class="mini-table"><thead><tr><th>Mídia</th><th class="num">% do ponto</th></tr></thead><tbody>
-        ${midiasNoPonto.map((m) => `<tr><td>${esc(m.nomeInterno)}</td><td class="num">${pct(m.pct)}</td></tr>`).join('')}
-      </tbody></table>`
-          : '<p class="u-dim u-fs-85 u-m-0">Nenhuma mídia própria nesse ponto.</p>'
-      }
-    </td></tr>`,
-      );
-    }),
-  );
 }
 
 // Card do seletor de pontos (rodada Mídia Mostraí, 23/09/2026) — mesma
@@ -2161,6 +2133,32 @@ function blocoExibicoesMidia(mt) {
 // final, só evita mostrar "Ajuste..." até o arquivo terminar de subir.
 const DURACAO_PADRAO_IMAGEM_JS = 10;
 
+// Frase da peça no preview do formulário — tipo, duração, tamanho,
+// orientação e formato —, lida do próprio <img>/<video> quando ele carrega.
+// A mesma na criação (arquivo local) e na edição (arquivo salvo). A tela é em
+// pé (9:16): peça deitada ganha um aviso, não um bloqueio.
+function descreverPreview(box, info, { nome = '', duracao = null, emAnalise = false } = {}) {
+  const el = box.querySelector('img, video');
+  if (!el) {
+    info.textContent = '';
+    return;
+  }
+  const ehImagem = el.tagName === 'IMG';
+  const escrever = () => {
+    const [w, h] = ehImagem ? [el.naturalWidth, el.naturalHeight] : [el.videoWidth, el.videoHeight];
+    const segundos = !ehImagem && Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration) : duracao;
+    const partes = [ehImagem ? 'Imagem' : 'Vídeo'];
+    if (segundos) partes.push(ehImagem ? `${segundos} s na tela` : `${segundos} s`);
+    if (w && h) partes.push(`${w}×${h} px`, w < h ? 'vertical' : w > h ? 'horizontal' : 'quadrada');
+    const formato = /\.([a-z0-9]{2,5})$/i.exec(nome)?.[1];
+    if (formato) partes.push(formato.toUpperCase());
+    if (emAnalise) partes.push('em análise');
+    info.innerHTML = `${esc(partes.join(' · '))}${w > h ? '<span class="mm-preview-aviso">A tela é em pé (9:16): peça deitada aparece com faixas.</span>' : ''}${nome ? `<span class="mm-arquivo-nome">${esc(nome)}</span>` : ''}`;
+  };
+  escrever();
+  el.addEventListener(ehImagem ? 'load' : 'loadedmetadata', escrever, { once: true });
+}
+
 // Formulário de criação/edição de uma mídia própria (Parte 6: Conteúdo,
 // Veiculação, Cobertura, Capacidade) — revisão visual de 23/09/2026: duas
 // colunas no desktop (configuração / preview), preview real assim que o
@@ -2212,9 +2210,6 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
         classe: 'mm-card-asset',
       })
     : PREVIEW_VAZIO;
-  const infoInicial = midia
-    ? `${ehImagemArquivo(midia.arquivo_original_url) ? 'Imagem' : 'Vídeo'}${midia.duracao_segundos ? ` · ${midia.duracao_segundos}s` : ''}${midia.aprovacao_status !== 'aprovado' ? ' · em análise' : ''}`
-    : '';
   const capacidadeVazia = midia
     ? 'Ajuste frequência e cobertura pra ver o impacto em cada ponto.'
     : 'Escolha o arquivo pra ver o impacto em cada ponto.';
@@ -2246,9 +2241,10 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
               <div class="campo-grupo campo-curto"><label for="mmFreq">Vezes por hora</label><input id="mmFreq" type="number" min="1" max="60" name="frequencia_hora" required value="${midia?.frequencia_hora || 1}"></div>
               <div class="alternar-lista">
                 ${alternar({ id: 'mmAgendada', marcado: temPeriodo, texto: 'Período definido <span class="alternar-ajuda">fora dele, a mídia não entra no ar</span>' })}
-                <div class="campos" id="mmPeriodoCampos" ${temPeriodo ? '' : 'hidden'}>
+                <div class="campos mm-periodo" id="mmPeriodoCampos" ${temPeriodo ? '' : 'hidden'}>
                   <div class="campo-grupo"><label for="mmInicio">Começa em</label><input id="mmInicio" type="datetime-local" name="periodo_inicio" value="${isoLocal(midia?.periodo_inicio)}"></div>
                   <div class="campo-grupo"><label for="mmFim">Termina em</label><input id="mmFim" type="datetime-local" name="periodo_fim" value="${isoLocal(midia?.periodo_fim)}"></div>
+                  <span class="campo-ajuda">Horário de Matão. Sem início, começa já; sem fim, fica no ar até alguém pausar ou retirar.</span>
                 </div>
                 ${!midia ? alternar({ nome: 'situacao_pausada', texto: 'Começar pausada' }) : ''}
               </div>
@@ -2272,6 +2268,11 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
             </fieldset>
 
             <fieldset class="form-bloco">
+              <legend>Resumo</legend>
+              <div id="mmResumo"></div>
+            </fieldset>
+
+            <fieldset class="form-bloco">
               <legend>Capacidade projetada</legend>
               <div id="mmCapacidadePreview"><p class="campo-ajuda">${capacidadeVazia}</p></div>
             </fieldset>
@@ -2280,7 +2281,7 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
           <aside class="mm-editor-lateral">
             <p class="form-bloco-titulo">Preview</p>
             <div class="tela-moldura"><div class="mm-editor-preview-box" id="mmPreviewBox">${previewInicial}</div></div>
-            <p class="mm-preview-info" id="mmPreviewInfo">${infoInicial}</p>
+            <p class="mm-preview-info" id="mmPreviewInfo"></p>
             <div class="acoes">
               ${
                 midia
@@ -2315,6 +2316,21 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
   };
   document.getElementById('btnFecharEditorMidia').addEventListener('click', fechar);
   document.getElementById('btnCancelarMidia').addEventListener('click', fechar);
+
+  // Retirada do ar não volta (PR #89): o servidor recusa mudar período,
+  // frequência ou cobertura de mídia encerrada — aqui só o nome fica editável,
+  // e o formulário diz por quê em vez de devolver 409 no salvar.
+  const retirada = midia?.situacaoDerivada === 'encerrada';
+  if (retirada) {
+    for (const campo of form.elements) {
+      if (campo.name !== 'nome_interno' && !['submit', 'button'].includes(campo.type)) campo.disabled = true;
+    }
+    const aviso = document.getElementById('mmMsg');
+    if (aviso) {
+      aviso.textContent = 'Mídia retirada do ar: só o nome pode mudar. Pra rodar de novo, crie outra mídia.';
+      aviso.className = 'form-msg';
+    }
+  }
 
   document.getElementById('mmAgendada').addEventListener('change', (e) => {
     document.getElementById('mmPeriodoCampos').hidden = !e.target.checked;
@@ -2371,11 +2387,7 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       const leitor = new FileReader();
       leitor.onload = () => {
         box.innerHTML = `<img class="mm-card-asset" src="${esc(leitor.result)}" alt="">`;
-        const sonda = new Image();
-        sonda.onload = () => {
-          info.innerHTML = `Imagem${sonda.naturalWidth ? ` · ${sonda.naturalWidth}×${sonda.naturalHeight} px` : ''}<span class="mm-arquivo-nome">${esc(arquivo.name)}</span>`;
-        };
-        sonda.src = leitor.result;
+        descreverPreview(box, info, { nome: arquivo.name, duracao: DURACAO_PADRAO_IMAGEM_JS });
       };
       leitor.readAsDataURL(arquivo);
       return;
@@ -2383,10 +2395,15 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     // Vídeo: blob: já é liberado em `media-src` (o player offline também usa).
     const url = URL.createObjectURL(arquivo);
     box.innerHTML = `<video class="mm-card-asset" src="${esc(url)}" muted loop playsinline controls></video>`;
-    const videoEl = box.querySelector('video');
-    videoEl.onloadedmetadata = () => {
-      info.innerHTML = `Vídeo${videoEl.duration ? ` · ${Math.round(videoEl.duration)}s` : ''}${videoEl.videoWidth ? ` · ${videoEl.videoWidth}×${videoEl.videoHeight} px` : ''}<span class="mm-arquivo-nome">${esc(arquivo.name)}</span>`;
-    };
+    descreverPreview(box, info, { nome: arquivo.name });
+  }
+  // Edição: a peça salva já está no preview.
+  if (midia) {
+    descreverPreview(document.getElementById('mmPreviewBox'), document.getElementById('mmPreviewInfo'), {
+      nome: midia.arquivo_original_url,
+      duracao: midia.duracao_segundos,
+      emAnalise: midia.aprovacao_status !== 'aprovado',
+    });
   }
 
   const arquivoInput = document.getElementById('mmArquivo');
@@ -2465,17 +2482,47 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
         thumb: midia.thumbnail_url,
         classe: 'mm-card-asset',
       });
-      document.getElementById('mmPreviewInfo').textContent =
-        `${ehImagemArquivo(midia.arquivo_original_url) ? 'Imagem' : 'Vídeo'}${midia.duracao_segundos ? ` · ${midia.duracao_segundos}s` : ''} · em análise`;
+      descreverPreview(document.getElementById('mmPreviewBox'), document.getElementById('mmPreviewInfo'), {
+        nome: midia.arquivo_original_url,
+        duracao: midia.duracao_segundos,
+        emAnalise: true,
+      });
       msg.textContent = 'Arquivo substituído — volta pra "em análise" até aprovar de novo, na fila de Aprovação.';
       msg.className = 'form-msg ok';
       atualizarPreview();
     });
   }
 
+  // Resumo da configuração: só o que o formulário já sabe (a duração de vídeo
+  // local sai do próprio arquivo; a de imagem é a padrão da tela). "Pontos
+  // compatíveis" = quantos comportam a mídia, pela mesma régua que trava o
+  // salvar no servidor.
+  function pintarResumo(linhas) {
+    const alvo = document.getElementById('mmResumo');
+    if (!alvo) return;
+    const freq = Number(form.frequencia_hora.value) || 0;
+    const marcados = document.querySelectorAll('.mm-picker-card input:checked').length;
+    const cobertura = form.cobertura_tipo.value === 'pontos' ? plural(marcados, 'ponto') : 'Toda a rede';
+    const compativeis = linhas ? `${linhas.filter((l) => l.comporta).length} de ${linhas.length}` : '—';
+    alvo.innerHTML = `<dl class="mm-resumo" data-mm-resumo>
+        <div><dt>Duração da peça</dt><dd>${duracaoEstimada ? `${duracaoEstimada} s` : '—'}</dd></div>
+        <div><dt>Frequência</dt><dd>${freq ? `${freq} ${freq === 1 ? 'vez' : 'vezes'}/hora` : '—'}</dd></div>
+        <div><dt>Cobertura</dt><dd>${cobertura}</dd></div>
+        <div><dt>Pontos compatíveis</dt><dd data-mm-compativeis>${compativeis}</dd></div>
+      </dl>`;
+  }
+
+  // Capacidade projetada: "essa mídia cabe onde eu quero colocar?" — por
+  // ponto, quanto ela soma à parte Mostraí da hora e o veredito, antes de
+  // salvar. A régua é a do servidor (previewOcupacao, a mesma que recusa o
+  // salvar): total acima de 100% não cabe; passar da reserva de 20% cabe, mas
+  // ocupa capacidade comercial ainda não vendida.
+  let consultaPreview = 0;
   async function atualizarPreview() {
     const alvo = document.getElementById('mmCapacidadePreview');
     if (!alvo) return;
+    const minha = ++consultaPreview;
+    pintarResumo(null);
     if (!duracaoEstimada) {
       alvo.innerHTML = `<p class="campo-ajuda">${capacidadeVazia}</p>`;
       return;
@@ -2497,39 +2544,35 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
     if (idsMarcados.length) params.set('pontos_ids', idsMarcados.join(','));
     if (midia) params.set('excluir_midia_id', midia.id);
     const linhas = await pegar(`/admin/midias-proprias-preview-ocupacao?${params}`);
+    // Digitação rápida: só a última consulta desenha.
+    if (minha !== consultaPreview) return;
+    pintarResumo(linhas);
     if (!linhas.length) {
       alvo.innerHTML = '<p class="campo-ajuda">Nenhum ponto em operação nessa cobertura.</p>';
       return;
     }
     const excedentes = linhas.filter((l) => !l.comporta);
-    // Passar da reserva de 20% não bloqueia (a trava é o total > 100%), mas
-    // tem que ficar claro que o excedente come capacidade comercial ainda
-    // não vendida — rodada de integridade, 23/09/2026.
-    const acimaDaReserva = linhas.filter((l) => l.comporta && l.acimaDaReserva);
-    // "agora → depois" numa célula só, com o depois em destaque (polimento
-    // final, 23/09/2026): a comparação que importa é a mudança, e duas
-    // colunas de mesmo peso escondiam isso.
+    const veredito = (l) =>
+      !l.comporta
+        ? ['nao-cabe', 'Não há capacidade disponível para esta configuração.']
+        : l.acimaDaReserva
+          ? ['acima', 'Cabe, mas passa da reserva de 20% — ocupa capacidade comercial ainda não vendida.']
+          : ['cabe', 'Cabe normalmente.'];
     alvo.innerHTML = `
-      ${excedentes.length ? `<p class="aviso-linha erro">Excede 100% em ${plural(excedentes.length, 'ponto')} — reduza a frequência ou a cobertura antes de salvar.</p>` : ''}
-      ${acimaDaReserva.length ? `<p class="aviso-linha">Passa da reserva de 20% em ${plural(acimaDaReserva.length, 'ponto')}: o excedente ocupa capacidade comercial ainda não vendida.</p>` : ''}
-      <table class="mini-table tabela-projecao"><thead><tr><th>Ponto</th><th class="num">Mostraí <span class="u-dim">agora → depois</span></th><th class="num">Total depois</th><th>Situação</th></tr></thead><tbody>
+      ${excedentes.length ? `<p class="aviso-linha erro">Não cabe em ${plural(excedentes.length, 'ponto')} — reduza a frequência ou a cobertura antes de salvar.</p>` : ''}
+      <ul class="mm-projecao" data-mm-projecao>
       ${linhas
-        .map(
-          (l) => `<tr>
-        <td>${esc(l.pontoNome)}</td>
-        <td class="num"><span class="valor-antes">${pct(l.mostraiPct)}</span> <span class="seta" aria-hidden="true">→</span> <b class="valor-depois">${pct(l.mostraiDepoisPct)}</b></td>
-        <td class="num">${pct(l.depoisPct)}</td>
-        <td>${
-          !l.comporta
-            ? '<span class="badge badge-err">excede 100%</span>'
-            : l.acimaDaReserva
-              ? '<span class="badge badge-pendente">acima da reserva</span>'
-              : '<span class="badge badge-ok">cabe</span>'
-        }</td>
-      </tr>`,
-        )
+        .map((l) => {
+          const [classe, texto] = veredito(l);
+          const soma = Math.max(0, Math.round((l.mostraiDepoisPct - l.mostraiPct) * 10) / 10);
+          return `<li class="mm-projecao-item mm-projecao-${classe}" data-mm-projecao-ponto="${l.pontoId}">
+          <span class="mm-projecao-nome">${esc(l.pontoNome)}</span>
+          <span class="mm-projecao-soma">+${pct(soma)} da hora na parte Mostraí <span class="u-dim">(${pct(l.mostraiPct)} → ${pct(l.mostraiDepoisPct)} · total ${pct(l.depoisPct)})</span></span>
+          <span class="mm-projecao-veredito">${texto}</span>
+        </li>`;
+        })
         .join('')}
-      </tbody></table>`;
+      </ul>`;
   }
   atualizarPreview();
 
@@ -2584,14 +2627,16 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
       return;
     }
 
-    const corpo = {
-      nome_interno: form.nome_interno.value,
-      frequencia_hora: Number(form.frequencia_hora.value),
-      cobertura_tipo: form.cobertura_tipo.value,
-      periodo_inicio: (document.getElementById('mmAgendada').checked && form.periodo_inicio.value) || null,
-      periodo_fim: (document.getElementById('mmAgendada').checked && form.periodo_fim.value) || null,
-    };
-    if (form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
+    const corpo = retirada
+      ? { nome_interno: form.nome_interno.value }
+      : {
+          nome_interno: form.nome_interno.value,
+          frequencia_hora: Number(form.frequencia_hora.value),
+          cobertura_tipo: form.cobertura_tipo.value,
+          periodo_inicio: (document.getElementById('mmAgendada').checked && form.periodo_inicio.value) || null,
+          periodo_fim: (document.getElementById('mmAgendada').checked && form.periodo_fim.value) || null,
+        };
+    if (!retirada && form.cobertura_tipo.value === 'pontos') corpo.pontos_ids = idsMarcados.join(',');
     const r = await api(`/admin/midias-proprias/${midia.id}`, { method: 'PATCH', body: JSON.stringify(corpo) });
     if (!r.ok) {
       msg.textContent = (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.';
@@ -2607,22 +2652,26 @@ async function abrirEditorMidia(wrap, midia, aoFechar) {
 // QR Code institucional (27/09/2026). O QR codifica o link permanente
 // (/q/anuncie) e nunca muda; aqui o admin escolhe só para onde esse link
 // leva. Regra e validação no servidor (src/midias/qr-institucional.js).
-// Carga própria: se falhar, só este bloco mostra [Tentar novamente] — o
-// resto da Mídia Mostraí continua de pé.
+// Mora na Visão geral desde o refino da Mídia Mostraí (29/09/2026): é
+// material da marca, não gestão de mídia própria. Lá fica compacto — o
+// destino atual e um [Gerenciar] que abre os controles de sempre num modal.
 const QR_INSTITUCIONAL = '/admin/qr-institucional';
 
-async function montarQrInstitucional(wrap) {
-  wrap.innerHTML = '<p class="campo-ajuda">Carregando o QR…</p>';
-  let estado;
-  try {
-    estado = await pegar(QR_INSTITUCIONAL);
-  } catch (err) {
-    return mostrarErroDeCarga(wrap, err, () => montarQrInstitucional(wrap));
-  }
-  desenharQrInstitucional(wrap, estado);
+async function renderQrResumo(el) {
+  const pintar = (estado) => {
+    el.innerHTML = `<section class="panel qr-resumo" data-qr-resumo>
+      <div class="secao-topo"><h3>QR institucional</h3><div class="secao-acoes"><button type="button" class="btn ghost mini" data-gerenciar-qr>Gerenciar</button></div></div>
+      <p class="qr-resumo-destino"><span>Destino atual</span><a href="${esc(estado.destino)}" target="_blank" rel="noopener" data-qr-destino>${esc(estado.destino)}</a></p>
+    </section>`;
+    el.querySelector('[data-gerenciar-qr]').addEventListener('click', () => {
+      const { dlg } = abrirModal({ titulo: 'QR institucional', corpo: '<div data-qr-controles></div>', largo: true });
+      desenharQrInstitucional(dlg.querySelector('[data-qr-controles]'), estado, pintar);
+    });
+  };
+  pintar(await pegar(QR_INSTITUCIONAL));
 }
 
-function desenharQrInstitucional(wrap, estado) {
+function desenharQrInstitucional(wrap, estado, aoSalvar) {
   const quando = estado.padrao
     ? 'Padrão: a página de planos.'
     : `Alterado${estado.atualizadoEm ? ` em ${esc(dataHora(estado.atualizadoEm))}` : ''}${estado.atualizadoPor ? ` por ${esc(estado.atualizadoPor)}` : ''}.`;
@@ -2693,7 +2742,8 @@ function desenharQrInstitucional(wrap, estado) {
         msg.textContent = corpo.erro || 'Não foi possível salvar o destino.';
         return;
       }
-      desenharQrInstitucional(wrap, corpo);
+      desenharQrInstitucional(wrap, corpo, aoSalvar);
+      aoSalvar?.(corpo);
       toast('Destino salvo. O QR continua o mesmo.');
     } catch {
       msg.className = 'form-msg err';
@@ -2704,89 +2754,65 @@ function desenharQrInstitucional(wrap, estado) {
   });
 }
 
-// Hierarquia da página (revisão visual de 23/09/2026, pedido do dono):
-// Resumo → Capacidade da rede → Mídias próprias. Capacidade morava depois
-// da grade de mídias; como ela é o "quanto ainda cabe" antes de decidir
-// criar uma peça nova, faz mais sentido vir primeiro.
+// Mídia Mostraí (refino operacional, 29/09/2026, pedido do dono): a página
+// cuida só do conteúdo próprio — vídeo institucional e mídias próprias. O QR
+// foi pra Visão geral e a capacidade de cada ponto pra Rede → Ponto (a
+// capacidade PROJETADA, durante a criação/edição, continua no formulário).
+// Os indicadores do topo são só das mídias: ativas, agendadas, pausadas e
+// com entrega atrasada.
 async function renderMidiaMostrai(el) {
-  const [midias, capacidade, videoInstitucional] = await Promise.all([
+  const [midias, videoInstitucional] = await Promise.all([
     pegar('/admin/midias-proprias'),
-    pegar('/admin/capacidade-rede'),
     pegar('/admin/video-institucional'),
   ]);
   const porSituacao = (s) => midias.filter((m) => m.situacaoDerivada === s).length;
-
-  const resumo = [
-    [porSituacao('ativa'), 'ativa', 'ativas'],
-    [porSituacao('agendada'), 'agendada', 'agendadas'],
-    [porSituacao('pausada'), 'pausada', 'pausadas'],
-    [capacidade.length, 'ponto em operação', 'pontos em operação'],
+  const kpis = [
+    ['ativas', 'Ativas', porSituacao('ativa')],
+    ['agendadas', 'Agendadas', porSituacao('agendada')],
+    ['pausadas', 'Pausadas', porSituacao('pausada')],
+    ['atraso', 'Com atraso', midias.filter(entregaAtrasada).length],
   ];
-  // Hierarquia em três níveis (polimento final, 23/09/2026): resumo em 4
-  // números pequenos (não uma faixa larga quase vazia), depois as duas
-  // seções com o mesmo cabeçalho — título, contagem junto dele e a ação da
-  // seção logo em seguida, na mesma linha. "+ Nova mídia" mora na seção onde
-  // a mídia nova vai aparecer, não solta numa linha própria acima de tudo.
+  const botaoNova = '<button class="btn primary" id="btnNovaMidia">+ Nova mídia</button>';
+
   el.innerHTML = `
-    <div class="mini-indicadores">
-      ${resumo.map(([n, um, varios]) => `<div class="mini-indicador"><b>${n}</b><span>${n === 1 ? um : varios}</span></div>`).join('')}
+    <div class="mini-indicadores mm-kpis">
+      ${kpis.map(([chave, rotulo, n]) => `<div class="mini-indicador${chave === 'atraso' && n > 0 ? ' mini-indicador-alerta' : ''}" data-kpi="${chave}"><b>${n}</b><span>${rotulo}</span></div>`).join('')}
     </div>
     <div id="editorMidiaWrap" hidden></div>
 
-    <section class="secao-pagina">
-      <div class="secao-topo">
+    <section class="panel mm-vi" data-mm-vi>
+      <div class="mm-vi-preview">
+        <div class="tela-moldura"><div class="mm-editor-preview-box">${
+          videoInstitucional
+            ? `<video class="mm-card-asset" src="${esc(videoInstitucional.url)}" muted loop playsinline controls poster="${esc(videoInstitucional.thumbnailUrl || '')}"></video>`
+            : '<span class="mm-vi-sem">sem vídeo</span>'
+        }</div></div>
+      </div>
+      <div class="mm-vi-dados">
         <h3>Vídeo institucional</h3>
-        <span class="secao-nota">roda nas TVs no tempo que não foi vendido; sem vídeo, a TV mostra o cartão "este espaço pode ser do seu negócio"</span>
-        <div class="secao-acoes">
+        ${
+          videoInstitucional
+            ? `<p class="mm-vi-meta"><b>${videoInstitucional.duracaoSegundos} s</b> · atualizado em ${window.dataBR(videoInstitucional.atualizadoEm, { hour: '2-digit', minute: '2-digit' })}</p>`
+            : '<p class="mm-vi-meta"><b>Nenhum vídeo configurado.</b></p>'
+        }
+        <p class="mm-vi-nota">Roda nas TVs no tempo que não foi vendido. Sem vídeo, a TV mostra o cartão “este espaço pode ser do seu negócio”.</p>
+        <div class="acoes">
           <button type="button" class="btn ghost mini" data-escolher-arquivo="viArquivo">${videoInstitucional ? 'Trocar vídeo' : 'Enviar vídeo'}</button>
           <input type="file" id="viArquivo" accept="video/*" hidden>
         </div>
       </div>
-      ${
-        videoInstitucional
-          ? `<div class="tela-moldura">
-               <div class="mm-editor-preview-box">
-                 <video class="mm-card-asset" src="${esc(videoInstitucional.url)}" muted loop playsinline controls poster="${esc(videoInstitucional.thumbnailUrl || '')}"></video>
-               </div>
-             </div>
-             <p class="mm-preview-info">${videoInstitucional.duracaoSegundos}s · atualizado em ${window.dataBR(videoInstitucional.atualizadoEm, { hour: '2-digit', minute: '2-digit' })}</p>`
-          : vazio(
-              'Nenhum vídeo institucional configurado.',
-              'Enquanto não tiver, o cartão "este espaço pode ser do seu negócio" continua rodando no tempo vago da rede.',
-            )
-      }
     </section>
 
     <section class="secao-pagina">
       <div class="secao-topo">
-        <h3>QR Code institucional</h3>
-        <span class="secao-nota">use em vídeos, flyers e materiais da Mostraí — o destino muda aqui, sem trocar o QR impresso</span>
-      </div>
-      <div id="qrInstWrap"></div>
-    </section>
-
-    <section class="secao-pagina">
-      <div class="secao-topo"><h3>Capacidade da rede</h3><span class="secao-nota">quanto ainda cabe em cada ponto em operação</span></div>
-      <div id="mmCapacidadeWrap"></div>
-    </section>
-
-    <section class="secao-pagina">
-      <div class="secao-topo">
-        <h3>Mídias próprias</h3>${midias.length ? `<span class="contagem">${midias.length}</span>` : ''}
-        <div class="secao-acoes"><button class="btn primary" id="btnNovaMidia">+ Nova mídia</button></div>
+        <h3>Mídias próprias</h3>${midias.length ? `<span class="contagem">${midias.length}</span><div class="secao-acoes">${botaoNova}</div>` : ''}
       </div>
       ${
         midias.length
-          ? `<div class="criativos-grade">${midias.map(montarCardMidia).join('')}</div>`
-          : vazio(
-              'Nenhuma mídia própria cadastrada.',
-              'Uma mídia própria usa a reserva institucional de 20% de cada ponto.',
-            )
+          ? `<div class="mm-grade">${midias.map(montarCardMidia).join('')}</div>`
+          : `<div class="vazio mm-vazio"><b>Nenhuma mídia própria criada.</b><span>Use mídias próprias para ocupar os espaços reservados à Mostraí na rede.</span><div class="u-mt-8">${botaoNova}</div></div>`
       }
     </section>`;
-
-  montarTabelaCapacidade(document.getElementById('mmCapacidadeWrap'), capacidade);
-  montarQrInstitucional(document.getElementById('qrInstWrap'));
 
   // Envio direto, sem editor (é UM vídeo só pra rede inteira — nada a
   // escolher além do arquivo). `fetch` cru, não `api()`: FormData precisa do
@@ -2825,7 +2851,12 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-pausar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.pausarMidia}/pausar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível pausar.', 'err');
+      // 409 = a mídia mudou entre a tela e o clique (período venceu, outra aba
+      // excluiu): o motivo do servidor e a tela redesenhada (PR #89).
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível pausar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia pausada.');
       renderMidiaMostrai(el);
     }),
@@ -2833,7 +2864,10 @@ async function renderMidiaMostrai(el) {
   el.querySelectorAll('[data-retomar-midia]').forEach((btn) =>
     btn.addEventListener('click', async () => {
       const r = await api(`/admin/midias-proprias/${btn.dataset.retomarMidia}/retomar`, { method: 'POST' });
-      if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retomar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retomada.');
       renderMidiaMostrai(el);
     }),
@@ -2842,14 +2876,42 @@ async function renderMidiaMostrai(el) {
     btn.addEventListener('click', async () => {
       const ok = await confirmarModal({
         titulo: 'Retirar esta mídia do ar?',
-        texto: '<p>Ela para de entrar na programação das telas. Nada é excluído — o cadastro fica guardado.</p>',
+        texto:
+          '<p>Ela para de entrar na programação das telas e fica com as exibições confirmadas. Retirada não volta ao ar — pra rodar de novo, crie outra mídia.</p>',
         botao: 'Retirar do ar',
         perigo: true,
       });
       if (!ok) return;
       const r = await api(`/admin/midias-proprias/${btn.dataset.encerrarMidia}/encerrar`, { method: 'POST' });
-      if (!r.ok) return toast('Não foi possível retirar do ar.', 'err');
+      if (!r.ok) {
+        toast((await r.json().catch(() => ({}))).erro || 'Não foi possível retirar do ar.', 'err');
+        return renderMidiaMostrai(el);
+      }
       toast('Mídia retirada do ar.');
+      renderMidiaMostrai(el);
+    }),
+  );
+  // Excluir (exclusão lógica no servidor, migration 107): some da página, e
+  // as exibições já confirmadas continuam guardadas como comprovante.
+  el.querySelectorAll('[data-excluir-midia]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const midia = midias.find((m) => m.id === Number(btn.dataset.excluirMidia));
+      const ok = await confirmarModal({
+        titulo: 'Excluir mídia?',
+        texto: `<p>“${esc(midia.nome_interno)}” será removida.</p>
+          <p class="u-dim">As exibições que ela já teve continuam no histórico.</p>
+          <p><b>Esta ação não pode ser desfeita.</b></p>`,
+        botao: 'Excluir mídia',
+        perigo: true,
+      });
+      if (!ok) return;
+      btn.disabled = true;
+      const r = await api(`/admin/midias-proprias/${midia.id}`, { method: 'DELETE' });
+      if (!r.ok) {
+        btn.disabled = false;
+        return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+      }
+      toast('Mídia excluída.');
       renderMidiaMostrai(el);
     }),
   );
@@ -3286,14 +3348,60 @@ async function renderPontoDetalhe(el, pontoId) {
     el.innerHTML = `
       ${migalha([{ rotulo: 'Pontos', href: '#rede/pontos' }, { rotulo: ponto.nome }])}
       <div class="ponto-detalhe-grid">
-        <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+        <div class="pilha">
+          <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+          <section class="panel" id="pontoCapacidade" hidden></section>
+        </div>
         <section class="panel" id="pontoTelas"></section>
       </div>`;
     renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
     renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
+    blocoIndependente(
+      el.querySelector('#pontoCapacidade'),
+      (alvo) => renderPontoCapacidade(alvo, pontoId),
+      'capacidade do ponto',
+    );
   }
   await montar();
   definirVistaRede(montar);
+}
+
+// Capacidade de veiculação do ponto (refino da Mídia Mostraí, 29/09/2026):
+// saiu da tabela "Capacidade da rede" de Mídia Mostraí — capacidade é
+// atributo operacional do ponto, não da tela nem da mídia. Mesma fonte e
+// mesma régua 80/20 de sempre (GET /admin/capacidade-rede, src/lib/capacidade.js);
+// `escopo=rede` pra ponto ainda sem tela também ter o bloco. Ponto arquivado
+// não entra na régua, e o bloco não aparece.
+async function renderPontoCapacidade(el, pontoId) {
+  const c = (await pegar('/admin/capacidade-rede?escopo=rede')).find((l) => l.pontoId === pontoId);
+  el.hidden = !c;
+  if (!c) return;
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · reserva Mostraí 20%</span></div>
+    <dl class="dados dados-2 capacidade-ponto" data-capacidade-ponto>
+      <div><dt>Comercial</dt><dd><b data-cap="comercial">${pct(c.comercialPct)}</b> usado<span class="dado-sub" data-cap="comercial-livre">${pct(c.comercialRestantePct)} livre</span></dd></div>
+      <div><dt>Reserva Mostraí</dt><dd><b data-cap="mostrai">${pct(c.mostraiPct)}</b> usado<span class="dado-sub" data-cap="mostrai-livre">${pct(c.reservaRestantePct)} livre${c.mostraiAcimaDaReservaPct > 0 ? ` · ${pct(c.mostraiAcimaDaReservaPct)} acima da reserva` : ''}</span></dd></div>
+      <div><dt>Total ocupado</dt><dd><b data-cap="total">${pct(c.totalPct)}</b></dd></div>
+      <div><dt>Mídias próprias</dt><dd><button type="button" class="link-contagem" data-cap="midias" aria-expanded="false" title="Ver as mídias próprias neste ponto">${c.qtdMidiasProprias}</button></dd></div>
+    </dl>
+    <div data-cap-midias hidden></div>`;
+  const botao = el.querySelector('[data-cap="midias"]');
+  const lista = el.querySelector('[data-cap-midias]');
+  botao.addEventListener('click', async () => {
+    if (!lista.hidden) {
+      lista.hidden = true;
+      botao.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    const midias = await pegar(`/admin/capacidade-rede/${pontoId}/midias`);
+    lista.innerHTML = midias.length
+      ? `<table class="mini-table"><thead><tr><th>Mídia</th><th class="num">% do ponto</th></tr></thead><tbody>
+          ${midias.map((m) => `<tr><td>${esc(m.nomeInterno)}</td><td class="num">${pct(m.pct)}</td></tr>`).join('')}
+        </tbody></table>`
+      : '<p class="u-dim u-fs-85 u-m-0">Nenhuma mídia própria neste ponto agora.</p>';
+    lista.hidden = false;
+    botao.setAttribute('aria-expanded', 'true');
+  });
 }
 
 // Benefício do ponto (ADR-016, 24/09/2026): +1 crédito por mês enquanto o
@@ -3306,7 +3414,11 @@ function textoBeneficioPonto(b) {
     : b.elegivel
       ? `${esc(b.competenciaAtual)} sai no próximo job diário`
       : 'fora do programa até ter tela instalada e ativa';
-  return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>`;
+  // Plano Básico do ponto (migration 103): o outro benefício de ser ponto.
+  const basico = b.basico
+    ? `<span class="dado-sub">Plano Básico ativo · ${b.basico.horasPorMes} h/mês · até ${b.basico.duracaoMaximaSegundos} s</span>`
+    : '';
+  return `+1 crédito/mês<span class="dado-sub">${ultimo} · ${proximo}</span>${basico}`;
 }
 
 // Ficha do estabelecimento — dados vêm da candidatura; só o horário se
@@ -4113,6 +4225,7 @@ function desenharFicha(el, s, categorias) {
       <section class="panel conta-secao" id="contaDados"></section>
       <section class="panel conta-secao" id="contaPlano"></section>
     </div>
+    ${s.basico && (s.basico.ativos.length || s.basico.historico.length) ? '<section class="panel conta-secao" id="contaBasico"></section>' : ''}
     <section class="panel conta-secao" id="contaCreditos"></section>
     <section class="panel conta-secao" id="contaCriativos"></section>
     ${s.pontos.length ? '<section class="panel conta-secao" id="contaPontos"></section>' : ''}
@@ -4121,6 +4234,7 @@ function desenharFicha(el, s, categorias) {
 
   desenharContaDados(el.querySelector('#contaDados'), ctx);
   desenharContaPlano(el.querySelector('#contaPlano'), ctx);
+  if (el.querySelector('#contaBasico')) desenharContaBasico(el.querySelector('#contaBasico'), s.basico);
   desenharContaCreditos(el.querySelector('#contaCreditos'), ctx);
   desenharContaCriativos(el.querySelector('#contaCriativos'), {
     ...ctx,
@@ -4239,6 +4353,34 @@ function direitosTexto(dir) {
 // Depois. Sem botão de conceder/alterar/cancelar plano (saíram da ficha:
 // cortesia agora é crédito). Só a assinatura PAGA ativa tem uma ação aqui,
 // discreta: cancelar a recorrência no San Checkout.
+// Benefício de ponto · Plano Básico (migration 103): separado do plano
+// comercial — de qual ponto veio, situação, e o total somado com o plano.
+const MOTIVO_FIM_BASICO = {
+  ponto_arquivado: 'ponto arquivado',
+  dono_mudou: 'o ponto mudou de dono',
+  conta_excluida: 'conta excluída',
+  conta_interna: 'conta interna',
+  sem_tela_instalada: 'o ponto ficou sem tela instalada',
+};
+function desenharContaBasico(el, basico) {
+  const linha = (b, ativo) => `<li class="plano-etapa">
+      <span class="plano-etapa-rotulo">${ativo ? 'Ativo' : 'Encerrado'}</span>
+      <div class="plano-etapa-corpo">
+        <div class="plano-linha"><b>Básico · ${b.horasPorMes} h/mês</b><span class="badge ${ativo ? 'badge-ok' : 'badge-neutro'}">${ativo ? 'Benefício de ponto' : b.aguardandoEncerramento ? 'Encerrando' : 'Encerrado'}</span></div>
+        <p class="plano-meta">Ponto: <a href="#rede/pontos/${b.pontoId}">${esc(b.pontoNome || `#${b.pontoId}`)}</a> · desde ${data(b.inicio)}${b.fim ? ` · até ${data(b.fim)}${b.motivoFim ? ` (${esc(MOTIVO_FIM_BASICO[b.motivoFim] || b.motivoFim)})` : ''}` : ''}</p>
+        <p class="plano-direitos">1 ponto (o próprio) · peça até ${b.duracaoMaximaSegundos} s · ${b.limiteCriativos} criativo no ar · sem cobrança</p>
+      </div>
+    </li>`;
+  const d = basico.direitos || {};
+  const total =
+    d.pontosPlano && basico.ativos.length
+      ? `<p class="plano-meta">Somado ao plano comercial: ${d.pontos} pontos e ${d.horasPorMes} h/mês (${d.horasBasico} h do Básico + ${d.horasPlano} h do plano).</p>`
+      : '';
+  el.innerHTML = `<div class="secao-topo"><h3>Benefício de ponto</h3></div>
+    <ul class="plano-etapas">${basico.ativos.map((b) => linha(b, true)).join('')}${basico.historico.map((b) => linha(b, false)).join('')}</ul>
+    ${total}`;
+}
+
 function desenharContaPlano(el, ctx) {
   const { s, bloqueada } = ctx;
   const p = s.plano;
@@ -4259,8 +4401,8 @@ function desenharContaPlano(el, ctx) {
       <p class="plano-meta">${prazo}${a.desde ? ` · desde ${data(a.desde)}` : ''}</p>
       ${a.direitos ? `<p class="plano-direitos">${esc(direitosTexto(a.direitos))}</p>` : ''}`;
   } else {
-    agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano</b></div>
-      <p class="plano-meta">A conta não veicula na rede. Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
+    agora = `<div class="plano-linha"><b class="conta-plano-nome">Sem plano comercial</b></div>
+      <p class="plano-meta">${s.basico?.ativos.length ? 'Veicula só pelo Plano Básico do ponto (benefício de ponto, acima).' : 'A conta não veicula na rede.'} Cortesia se dá por créditos, em “Créditos e benefícios”.</p>`;
   }
 
   const etapas = [etapa('Agora', agora)];
@@ -5400,7 +5542,7 @@ function montarFormularioPromocao(promo) {
                   <button type="button" class="btn ghost mini" data-escolher-arquivo="promoArquivo" id="promoEscolherRotulo">Escolher imagem</button>
                   <button type="button" class="btn perigo-sutil mini" id="promoRemoverImagem" hidden>Remover</button>
                 </div>
-                <span class="campo-ajuda">Banner horizontal vira o fundo do destaque da Home; os outros formatos ficam pro card e pro celular.</span>
+                <span class="campo-ajuda">A imagem aparece inteira, sem corte: ao lado do texto no computador e acima dele no celular — nenhum texto vai por cima dela.</span>
               </div>
               <input type="file" id="promoArquivo" accept="image/*" hidden>
             </div>
@@ -5493,6 +5635,21 @@ async function renderPromocoes(el) {
     pegar('/admin/ofertas/produtos'),
   ]);
   const precoBasePorTier = Object.fromEntries(produtos.map((p) => [p.tier, Number(p.precoBase)]));
+  // Preço normal de cada produto × ciclo — a prévia marca `temVantagem` com a
+  // mesma conta do servidor (promocoes-repository.js#temVantagem): a célula
+  // só vale como promoção se o preço promocional fica ABAIXO do normal.
+  const valorNormal = Object.fromEntries(
+    produtos.map((p) => [
+      p.tier,
+      Object.fromEntries(Object.entries(p.ciclos || {}).map(([m, c]) => [m, Number(c?.valorMensal)])),
+    ]),
+  );
+  const temVantagemNaPrevia = (i) => {
+    const base = precoBasePorTier[i.tier] || 0;
+    const promocional = Math.round((base - (base * i.descontoPercentual) / 100) * 100) / 100;
+    const normal = valorNormal[i.tier]?.[i.compromissoMeses];
+    return Number.isFinite(normal) && promocional < normal;
+  };
   const grupos = GRUPOS_PROMOCAO.map(([chave, titulo]) => ({
     chave,
     titulo,
@@ -5639,22 +5796,40 @@ async function renderPromocoes(el) {
       const titulo = form.titulo_publico.value.trim() || 'Título da promoção';
       const subtitulo = form.subtitulo.value.trim();
       const selo = form.selo.value.trim();
-      const fim = window.prazoBR(form.compra_fim.value);
       const src = imagemAtual();
-      const comFundo = src && formatoAtual() === 'horizontal';
       const naHome = form.mostrar_home.checked;
-      document.getElementById('previaHome').innerHTML = naHome
-        ? `<div class="previa-banner ${comFundo ? 'com-imagem' : ''}">
-            ${comFundo ? `<img class="previa-banner-fundo" src="${esc(src)}" alt="">` : ''}
-            <div class="previa-banner-conteudo">
-              ${selo ? `<span class="previa-selo">${esc(selo)}</span>` : ''}
-              <b>${esc(titulo)}</b>
-              ${subtitulo ? `<span>${esc(subtitulo)}</span>` : ''}
-              ${fim ? `<small>Adesões até ${fim}.</small>` : ''}
-              <span class="previa-banner-botao">Ver condição na página de planos</span>
-            </div>
-          </div>`
-        : '<p class="promo-previa-fora">Não aparece na Home.</p>';
+      // A prévia é o MESMO componente do site (public/promocao.js), montado
+      // pelo mesmo caminho (arte medida, vantagem por ciclo, imagem que falha
+      // sai): numa caixa estreita ele sai empilhado, como no celular (Estação
+      // 3, 28/09/2026). Só pra ver, nunca pra clicar.
+      const previaHome = document.getElementById('previaHome');
+      previaHome.inert = true;
+      const itensPrevia = itensMarcados()
+        .filter((i) => i.descontoPercentual > 0)
+        .map((i) => ({ ...i, temVantagem: temVantagemNaPrevia(i) }));
+      const semVantagem = itensPrevia.length > 0 && !itensPrevia.some((i) => i.temVantagem);
+      if (!naHome || semVantagem) {
+        window.montarPromocoes(previaHome, []); // descarta uma montagem em voo
+        previaHome.innerHTML = `<p class="promo-previa-fora">${
+          naHome ? 'Nenhum ciclo fica abaixo do preço normal: a promoção não aparece na Home.' : 'Não aparece na Home.'
+        }</p>`;
+      } else {
+        window.montarPromocoes(
+          previaHome,
+          [
+            {
+              titulo_publico: titulo,
+              subtitulo,
+              selo,
+              compra_fim: form.compra_fim.value || null,
+              formato_midia: formatoAtual(),
+              imagem_url: src || null,
+              itens: itensPrevia,
+            },
+          ],
+          { variante: 'home', id: 'previaPromoHome' },
+        );
+      }
 
       const itens = itensMarcados().filter((i) => i.descontoPercentual > 0);
       const naPlanos = chkMostrarPlanos.checked;
@@ -5822,10 +5997,11 @@ async function renderPromocoes(el) {
 }
 
 // ---------- categorias ----------
-// Categoria = o que impede concorrente direto na mesma tela (pontos e
-// anunciantes com o mesmo categoria_id, ver src/playlist/gerador.js). Grupo
-// é só organização desta tela e nunca entra no bloqueio nem aparece pro
-// cliente; aliases só ajudam a achar a categoria na busca.
+// Categoria = o que impede concorrente direto na mesma tela (ponto e
+// anunciante com o mesmo categoria_id, ou com categorias registradas como
+// "concorrentes diretos" — migration 105, src/categorias/concorrencia.js).
+// Grupo é só organização desta tela e nunca entra no bloqueio nem aparece
+// pro cliente; aliases só ajudam a achar a categoria na busca.
 //
 // Reconstrução de 23/09/2026 (Parte 38-44): a tela era ~250 linhas com 3
 // campos abertos cada, salvando no blur. Agora é lista de leitura + modal de
@@ -5931,6 +6107,12 @@ function abrirCategoria(c, categorias, aoSalvar) {
           <div><span class="campo-rotulo">Estado</span>${segmentado('estado', { ativa: 'Normal', legado: 'Legado' }, estado.chave === 'legado' ? 'legado' : 'ativa')}</div>
           <div><span class="campo-rotulo">Cadastro</span>${alternar({ nome: 'ativo', marcado: !c || (c.ativo && !c.legado), texto: 'Aparece no cadastro' })}</div>
         </div>
+        <div class="cat-concorrentes">
+          <label for="catConcBusca">Concorrentes diretos</label>
+          <p class="u-dim u-fs-85 u-mt-0">Categorias configuradas como concorrentes diretos não terão anúncios exibidos em pontos pertencentes à categoria correspondente.</p>
+          <ul class="cat-concorrentes-lista" data-concorrentes></ul>
+          ${categoriaBuscaHtml('catConc', null, { placeholder: 'Buscar categorias...' })}
+        </div>
         ${c ? `<p class="u-dim u-fs-85 u-m-0">${uso ? `Em uso por ${esc(uso)}.` : 'Nenhuma conta ou ponto usa esta categoria.'}</p>` : ''}
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
@@ -5953,6 +6135,48 @@ function abrirCategoria(c, categorias, aoSalvar) {
   form.querySelectorAll('[name="estado"]').forEach((r) => r.addEventListener('change', sincronizarEstado));
   sincronizarEstado();
 
+  // Concorrentes diretos: o par é um só no banco, então o que muda aqui
+  // aparece do outro lado assim que a lista recarrega (sem F5). Só vai pro
+  // servidor no Salvar, junto com o resto — Cancelar descarta. Vai só o que
+  // MUDOU (pôr/tirar), nunca a lista inteira: um modal aberto antes de outra
+  // aba gravar um par não apaga esse par ao salvar.
+  const porId = new Map(categorias.map((x) => [x.id, x]));
+  const inicial = new Set(c?.concorrentes || []);
+  const concorrentes = new Set(inicial);
+  const listaConc = form.querySelector('[data-concorrentes]');
+  const desenharConcorrentes = () => {
+    const itens = [...concorrentes]
+      .map((id) => porId.get(id) || { id, nome: `#${id}` })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    listaConc.innerHTML = itens.length
+      ? itens
+          .map(
+            (x) => `<li class="etiqueta">${esc(x.nome)}${x.legado ? ' <span class="u-dim">(legado)</span>' : ''}
+              <button type="button" class="cat-concorrente-tirar" data-tirar-conc="${x.id}" aria-label="Tirar ${esc(x.nome)} dos concorrentes diretos">×</button></li>`,
+          )
+          .join('')
+      : '<li class="u-dim u-fs-85">Nenhum — só a própria categoria é bloqueada.</li>';
+  };
+  listaConc.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tirar-conc]');
+    if (!b) return;
+    concorrentes.delete(Number(b.dataset.tirarConc));
+    desenharConcorrentes();
+  });
+  ligarCategoriaBusca(
+    'catConc',
+    categorias,
+    (escolhida) => {
+      concorrentes.add(escolhida.id);
+      desenharConcorrentes();
+      const busca = form.querySelector('#catConcBusca');
+      busca.value = '';
+      form.querySelector('#catConcId').value = '';
+    },
+    { excluirId: c?.id ?? null },
+  );
+  desenharConcorrentes();
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const legado = form.querySelector('[name="estado"]:checked').value === 'legado';
@@ -5965,6 +6189,8 @@ function abrirCategoria(c, categorias, aoSalvar) {
         .filter(Boolean),
       legado,
       ativo: !legado && chkAtivo.checked,
+      concorrentes_adicionar: [...concorrentes].filter((id) => !inicial.has(id)),
+      concorrentes_remover: [...inicial].filter((id) => !concorrentes.has(id)),
     };
     if (!corpo.nome) return erroNoModal(dlg, 'Dê um nome à categoria.');
     const r = await api(c ? `/admin/categorias/${c.id}` : '/admin/categorias', {
@@ -6013,6 +6239,7 @@ function abrirMesclarCategoria(c, categorias, aoSalvar) {
         <li>${uso ? `Quem usa hoje (${esc(uso)}) passa a usar a categoria escolhida.` : 'Ninguém usa esta categoria hoje — nada a mover.'}</li>
         <li>“${esc(c.nome)}” vira legado e sai do cadastro (nada é apagado).</li>
         <li>O nome “${esc(c.nome)}” vira termo de busca da que fica.</li>
+        ${c.concorrentes?.length ? `<li>Os concorrentes diretos de “${esc(c.nome)}” passam pra categoria que fica.</li>` : ''}
       </ul>
       <p class="form-msg" data-msg role="status"></p>`,
     rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button>

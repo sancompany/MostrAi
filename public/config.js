@@ -123,6 +123,7 @@ window.ENTRADA_NO_AR = {
     sem_plano_vigente: 'a conta está sem plano vigente',
     conta_suspensa: 'a conta está suspensa',
     fora_do_limite_de_pecas: 'o plano já roda o máximo de peças ao mesmo tempo',
+    acima_da_duracao_maxima: 'a peça passa da duração máxima que a conta roda hoje',
     processando: 'o arquivo ainda está sendo processado',
     sem_ponto_no_ar_na_cobertura: 'nenhum ponto da cobertura está no ar agora',
     cobertura_sem_horario_aberto: 'nenhum ponto da cobertura abre nos próximos dias',
@@ -137,14 +138,21 @@ window.ENTRADA_NO_AR = {
 // 24/09/2026). Devolve null quando a promoção não tem vantagem em ciclo
 // nenhum: aí o banner não aparece, porque anunciaria um desconto que não
 // existe.
-const NOME_CICLO_PROMO = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+// Nome dos ciclos e a lista "no ciclo X" / "nos ciclos X, Y e Z", num lugar
+// só — o banner do painel (aqui) e o componente de promoção (promocao.js)
+// escrevem a mesma frase.
+window.NOME_CICLO = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
+window.nomeDoCiclo = (meses) => window.NOME_CICLO[meses] || `${meses} meses`;
+window.listaDeCiclos = function listaDeCiclos(meses) {
+  const nomes = meses.map(window.nomeDoCiclo);
+  if (!nomes.length) return '';
+  const lista = nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`;
+  return `${nomes.length === 1 ? 'no ciclo' : 'nos ciclos'} ${lista}`;
+};
 window.condicaoDaPromocao = function condicaoDaPromocao(promo) {
   const ciclos = Array.isArray(promo?.ciclosComVantagem) ? promo.ciclosComVantagem : null;
   if (ciclos && !ciclos.length) return null;
-  const nomes = (ciclos || []).map((m) => NOME_CICLO_PROMO[m] || `${m} meses`);
-  const ondeVale = nomes.length
-    ? ` ${nomes.length === 1 ? 'no ciclo' : 'nos ciclos'} ${nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)}`}`
-    : '';
+  const ondeVale = ciclos?.length ? ` ${window.listaDeCiclos(ciclos)}` : '';
   const ate = promo.compra_fim ? `${ondeVale ? ',' : ''} até ${window.prazoBR(promo.compra_fim)}` : '';
   return ondeVale || ate ? `Condição válida${ondeVale}${ate}.` : '';
 };

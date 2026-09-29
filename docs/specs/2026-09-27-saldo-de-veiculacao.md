@@ -103,7 +103,13 @@ com 1 tela.
     playlist ganha a obrigação minutos depois de fechar, com o plano e a
     cobertura daquela hora (gravada uma vez; mudar o plano depois não a
     reescreve), só para conta já servida naquela tela e, na hora da
-    instalação, só a partir do instante instalada.
+    instalação, só a partir do instante instalada. A rede de segurança
+    (conciliação diária e apuração mensal), que usa o estado de HOJE, só
+    entra nas horas em que **nenhuma** tela da rede pediu playlist
+    (servidor fora do ar) — hora em que a rede funcionava já foi tratada
+    pelo job de 10 min com o estado daquela hora; sem isso, tela em reparo
+    reativada e plano vencido renovado ganhavam obrigação retroativa
+    *(finalização, 28/09/2026)*.
 11. **Sem plano, sem obrigação.** Conta própria, suspensa, excluída, sem
     plano, plano vencido, ponto fora da cobertura ou não `em_operacao`: nada.
 12. **Mídia Mostraí isolada.** Nunca entra em `exibicoes_contador` nem em

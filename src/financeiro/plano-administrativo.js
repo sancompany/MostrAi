@@ -458,9 +458,13 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio, {
     const expiracao = beneficio
       ? somarDias(hojeISO(), diasDeMeses(meses) + Number(conta.plano_pago_guardado_dias || 0))
       : expiracaoSemBeneficio;
+    // Nunca mexe em `suspenso` (finalização, 28/09/2026): suspensão é só
+    // manual (migration 078) — chargeback, admin e arrependimento suspendem,
+    // e a renovação seguinte da Asaas não pode reativar sozinha. Quem chama
+    // (aplicarCicloPago) abre pendência quando o ciclo cai em conta suspensa.
     await db.query(
       `UPDATE anunciantes
-          SET plano_id = $2, suspenso = false,
+          SET plano_id = $2,
               plano_cortesia = false, cortesia_motivo = NULL,
               data_inicio_cobertura = CASE WHEN $4 THEN ${vigencia.HOJE_SQL} ELSE COALESCE(data_inicio_cobertura, now()) END,
               data_expiracao = $3::timestamptz,

@@ -494,7 +494,9 @@ explicitamente que o fluxo normal seja crédito.
 
 ## ADR-016 — Ser ponto não é plano: o ponto gera créditos; plano pago × benefício por prioridade de tier (24/09/2026)
 
-Status: Ativa. Supera, no que conflita, a separação comodato/plano comercial
+Status: Ativa, EXCETO a parte "ser ponto não é plano / o Básico não existe
+mais", substituída pelo ADR-025 (28/09/2026): ponto ativo passa a ter o
+Plano Básico como benefício, além do +1 crédito/mês. Supera, no que conflita, a separação comodato/plano comercial
 (migration 077) e o item 2 do ADR-015 sobre "comodato por ponto + modalidade".
 
 Contexto: pedido do dono ("REESTRUTURAÇÃO COMPLETA DO MODELO DE BENEFÍCIOS
@@ -834,3 +836,410 @@ Consequências: o domínio `SITE_URL` vira parte do material impresso — se um
 dia o site mudar de endereço, o antigo precisa continuar respondendo (ou
 redirecionando) `/q/anuncie`. QR por ponto, de indicação ou com contagem de
 acessos é outra estação (não reaproveita esta chave).
+
+
+## ADR-025 — Plano Básico como benefício do ponto, somado ao plano comercial com a origem preservada (28/09/2026)
+
+Status: Ativa. Substitui, no ADR-016, "ser ponto não é plano" e "o Básico não
+existe mais". O +1 crédito/mês do ponto continua como estava.
+
+Contexto: pedido do dono (estação "REINTRODUÇÃO ESTRUTURAL DO PLANO BÁSICO
+COMO BENEFÍCIO DE PONTO"), alinhado ao Termo de Parceria do ponto: ponto
+ativo = Plano Básico sem custo + 1 crédito mensal.
+
+Decisão:
+1. **Tabela própria, não `plano_id`**: `beneficios_basico_ponto` (migration
+   103), uma linha por ponto, com os números COPIADOS (14 h/mês = 140 s por
+   hora aberta, peça até 15 s, 1 criativo no ar) e início/fim. Índice único
+   parcial: um ativo por ponto. O plano comercial continua sendo o
+   `anunciantes.plano_id`; o Básico nunca vira `plano_id`, não passa pelo
+   Checkout, não aparece na vitrine nem em Ofertas, não gasta crédito.
+   O `comodato-basico` legado (45 s/h em 3 pontos) NÃO é reaproveitado.
+2. **Ativação** pela régua única do crédito (`SQL_PONTOS_ELEGIVEIS`),
+   sincronizada em `sincronizarStatusPonto` (toda mudança de tela) + job
+   diário. **Encerramento** só quando deixa de ser ponto daquela conta
+   (arquivado, dono trocado, conta excluída/interna) ou quando o ponto fica
+   sem NENHUMA tela instalada (removidas, revogadas ou inativas — emenda de
+   28/09/2026, migration 106, motivo `sem_tela_instalada`); reparo com
+   credencial e sem sinal não encerram (reparo revogado conta como sem tela) — a régua é estrutural, nunca o heartbeat. Tela
+   instalada de novo abre um Básico novo (histórico preservado). A leitura confere a coerência de novo (o job pode atrasar). O
+   `fim` é o instante registrado (`arquivado_em`, `excluido_em`); troca de
+   dono não tem data nem rota (só manual) e encerra na sincronização — o
+   RUNBOOK 6.1 manda sincronizar logo depois.
+3. **Soma com origem preservada**: a parcela do Básico entra na MESMA
+   entrada da conta na hora da tela (uma linha em `exibicoes_contador`, um
+   POP, um saldo) e fica guardada em `segundos_obrigacao_basico`. O ponto do
+   Básico é sempre o próprio (sem seletor, sem trava de ramo); os pontos do
+   plano seguem a RN-49. Pontos e horas somam; duração e criativos no ar
+   valem o maior das origens (mesmo conjunto de peças) — plano sem teto de
+   peça continua sem teto; a vaga do Básico só roda peça dentro desse teto
+   de hoje (`pecasDoBasico`, 15 s só com o Básico). O saldo da conta se
+   divide pelos pontos da fatia comercial + os do Básico em operação (todos
+   puxam o mesmo saldo na mesma hora; ponto em reparo não puxa).
+4. **Tempo como fonte**: 140 s/h não dividem por 15 s; em vez de arredondar
+   pra baixo (13,5 h), cada hora recebe floor((k+1)·s/d) − floor(k·s/d)
+   inserções (k = índice da hora + índice do dia: a fatia de cada hora do
+   relógio gira dia a dia, e a média fecha em qualquer horário de
+   funcionamento) — determinística, 3.360 exibições de 15 s por mês. Não
+   muda o algoritmo do Saldo: a obrigação da hora é gravada como sempre, só
+   maior; a parte do Básico congela junto com o total da hora.
+5. **Sem retroativo**: ativação no meio do mês gera obrigação hora a hora a
+   partir do início (a mesma semântica do plano). Backfill da migration
+   ativa os pontos já elegíveis a partir de `now()`.
+6. **Cota de autoanúncio** (legado zerado desde a 049) não entra quando há
+   Básico ativo — a dona não aparece em dobro.
+
+Consequências: painel libera o dashboard pra conta com só o Básico; card
+"Benefício de ponto · Plano Básico" separado de "Seu plano"; horas do mês por
+origem; admin mostra a seção "Benefício de ponto" na ficha e no ponto.
+
+
+## ADR-026 — Concorrentes diretos entre categorias: par explícito e simétrico, nunca grupo (28/09/2026)
+
+Status: Ativa. Migration 105. Regra: RN-57 (emenda de 28/09/2026). Código:
+`src/categorias/concorrencia.js` (regra e gravação), `src/playlist/gerador.js`
+(`anunciantesElegiveis`), `src/anunciantes/entrada-no-ar.js`
+(`coberturaDaConta`), `src/categorias/routes.js` (admin).
+
+Contexto: a proteção do dono da tela comparava só `categoria_id` igual. Com
+~200 categorias específicas, concorrente de verdade com outro nome passava
+(academia × CrossFit, cafeteria × padaria, hotel × locação por temporada).
+Usar o grupo bloquearia quem não concorre (academia × pilates, barbearia ×
+salão, pet shop × veterinário).
+
+Decisão:
+1. **Par explícito, cadastrado pelo admin**: `categorias_concorrentes
+   (categoria_a, categoria_b)` com `CHECK (categoria_a < categoria_b)` e PK no
+   par. Simetria e ausência de duplicata vêm do armazenamento, não de quem
+   grava; categoria nunca é par de si mesma (isso já é a regra 1).
+2. **Regra**: mesma categoria → bloqueia; par cadastrado → bloqueia; resto →
+   exibe. Sempre categoria do PONTO × categoria do ANUNCIANTE. Grupo e
+   aliases nunca entram; não há exclusividade anunciante × anunciante;
+   nada de multicategoria, principal/secundária, regra por produto ou
+   exceção por estabelecimento.
+3. **No gerador, `NOT EXISTS` pela PK** (`least/greatest`) dentro da mesma
+   trava de ramo — uma sonda de índice por candidato, sem N+1, sem cache em
+   memória do processo. A isenção da dona que escolheu o próprio ponto
+   (ADR-022) cobre as duas partes. Mídia Mostraí não passa por aqui.
+4. **Admin**: o que mudou nos concorrentes (pôr/tirar — nunca a lista
+   inteira, pra um modal antigo não apagar o par de outra aba) vai no mesmo
+   PATCH/POST do modal da categoria, numa transação (Salvar grava tudo,
+   Cancelar descarta). Par NOVO exige as duas pontas fora do legado, com as
+   linhas travadas (`FOR SHARE`) contra mesclagem simultânea; par antigo não
+   trava o salvar.
+5. **Mesclar leva os pares** da absorvida pra canônica (é o mesmo negócio;
+   senão a conta reapontada perderia a proteção que tinha).
+6. **Seed por nome** (48 pares aprovados pelo dono), no-op se o nome não
+   existir — mesma defensiva da 074. "Terapia capilar" criada sem par.
+
+Consequências: bloquear é bloquear — conta que ESCOLHEU (ou recebeu no
+sorteio) um ponto concorrente não exibe ali, e a vaga de cobertura não volta
+nem é compensada (mesmo comportamento que a mesma categoria já tinha). Em
+produção, em 28/09/2026, nenhuma conta cai nisso (1 ponto, 1 conta com plano,
+a dona dele); risco em `.ia/RISKS.md`. Vale para a programação seguinte (a vaga já congelada da hora
+some na próxima leitura, como qualquer saída de elegibilidade); histórico de
+proof-of-play e contadores não muda. Uma categoria nova nasce sem par — o
+admin decide. Com o Plano Básico (migration 103, branch própria) o ponto do
+Básico continua fora da trava (é o estabelecimento da própria conta); no
+merge, `coberturaDaConta` junta as duas condições
+(`proprios.has(p.id) || (naFatia && (!bloqueia || dona))`).
+
+## ADR-027 — Promoção: mídia separada do conteúdo, um componente, carrossel só com 2+ (28/09/2026)
+
+Contexto: Estação 3 (reformulação visual das promoções). O banner da Home e
+o de Planos eram duas cópias do mesmo HTML com a arte de FUNDO e selo,
+título, condição e botão por cima de um véu escuro; no celular o recorte do
+fundo dependia da altura do texto.
+
+Decisão:
+1. **Texto nunca sobre a arte.** MÍDIA e CONTEÚDO são irmãos no grid:
+   lado a lado com ≥ 840px de componente, arte em cima e texto embaixo
+   abaixo disso. O limite é do COMPONENTE (container query), não da janela,
+   então a prévia do admin sai empilhada como no celular.
+2. **Arte inteira.** A imagem é medida antes de montar e entra com
+   `width`/`height` reais — sem recorte e sem pulo de layout. Imagem lenta
+   (> 0,8 s) reserva a proporção declarada no admin e entra com `contain`;
+   imagem que falha tira a mídia e fica o texto.
+3. **Um renderizador.** `public/promocao.js` (`montarPromocoes`,
+   `htmlPromocao`) serve Home (variante `home`), Planos (variante `planos`)
+   e a prévia do admin. Não existe segunda cópia.
+4. **Carrossel só com duas ou mais**, sem autoplay, no padrão WAI-ARIA de
+   carousel; a ordem é a do servidor.
+5. Apresentação não muda regra: percentuais, janela, teto, público,
+   `temVantagem`/D1 e Checkout seguem as fontes de sempre.
+
+Consequências: nova superfície de promoção usa `montarPromocoes` (ou
+`htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
+destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §R).
+
+## ADR-028 — Promoção: a oferta é a manchete na área pública; na área logada, uma faixa fina com X (28/09/2026)
+
+Status: Ativa. Sem migration, sem backend. Código: `public/promocao.js`
+(componente público), bloco "Componente de promoção" em `public/style.css`,
+`public/barra-promocional.js` (área logada). Complementa o ADR-027 (mídia
+separada do conteúdo), que continua valendo inteiro.
+
+Contexto: depois do ADR-027 a promoção ficou correta e limpa, mas lia como
+card institucional — o "30%" tinha o mesmo peso do resto do título. E no
+painel um card largo ocupava o topo da área operacional.
+
+Decisão:
+1. **Área pública vende.** A manchete é a OFERTA calculada dos próprios
+   itens da promoção (`ofertaDaPromocao`: maior desconto entre as células
+   com vantagem — as mesmas de `descontosPorCiclo`, com "até" quando os
+   ciclos não têm o mesmo desconto). Hierarquia: selo (faixa vermelha) →
+   título só se disser algo além da oferta (`tituloRedundante`) → "ATÉ 30%
+   OFF" → benefício → descontos por ciclo (blocos; "Melhor desconto" quando
+   um ciclo sozinho tem o maior) → "Ver planos" → "Tempo limitado" + prazo e
+   teto. Leitor de tela ouve "Até 30% de desconto".
+2. **Paleta de campanha escopada.** Só dentro de `.campanha` (tokens
+   `--campanha-*`): fundo quase preto quente, vermelho do selo, amarelo da
+   oferta e do botão. O resto do site segue a identidade Mostraí. Contrastes
+   conferidos (branco/fundo > 15:1, amarelo/fundo > 11:1, branco/vermelho
+   5,1:1, escuro/amarelo > 11:1). Sem animação.
+3. **Área logada opera.** O card do painel saiu; no lugar, uma faixa fina
+   logo abaixo do cabeçalho (selo · "Até 30% OFF" · benefício · "Ver
+   planos" · X), montada por `barra-promocional.js` em página
+   `data-layout="conta"`. Fechar remove a faixa do fluxo (o conteúdo sobe) e
+   guarda `mostrai:promoDispensada:<id>` em `localStorage`: não volta ao
+   navegar nem numa sessão nova do mesmo navegador; promoção nova (outro id)
+   aparece. Sem backend — é preferência do navegador; armazenamento
+   bloqueado = fecha só na página. A barra usa as MESMAS funções do bloco
+   público (`promocoesParaExibir` sem filtro de exposição, `ofertaDaPromocao`,
+   `tituloSemSelo`): a mesma disputa de células — uma promoção dispensada
+   continua na disputa (continua sendo cobrada), só não aparece. Sem isso,
+   dispensar a mais nova fazia a barra anunciar o desconto de uma mais antiga
+   numa célula que a cobrança dá à outra (achado da revisão independente).
+4. **Nenhuma regra comercial muda**: percentuais, prazo, teto, público,
+   cálculo, Checkout, API e banco intactos. A oferta é leitura dos mesmos
+   itens que a vitrine e a cobrança usam.
+
+Consequências: a manchete depende dos itens terem desconto — promoção sem
+célula com vantagem continua fora do site (D1), e a prévia do admin sem
+produto marcado cai no título como manchete. O título gravado não muda; um
+título que repete o percentual da oferta deixa de aparecer na tela (R3
+continua valendo para o prefixo do selo).
+
+## ADR-029 — Card de ponto do cliente no molde do admin, com foto e segmento pela vitrine pública (28/09/2026)
+
+Contexto: estação isolada dos cards do cliente. "Onde seu anúncio aparece"
+mostrava cada ponto numa linha densa (19/09/2026), sem foto nem segmento,
+enquanto Rede > Pontos do admin já tinha o card com a fachada. O dono pediu
+o mesmo idioma visual no cliente, sem mexer em regra, backend ou banco. A
+rota da escolha (`GET /anunciantes/me/pontos-disponiveis`) não devolve foto,
+segmento nem bairro.
+
+Decisão:
+1. **Um molde de card de ponto.** O card da escolha usa
+   `.ponto-card.com-corpo` (style.css), o mesmo do admin e da prévia da
+   candidatura, com o placeholder oficial e o ajuste de foto em pé
+   (`candidaturaAjustarFoto`). O que é só da escolha (pé com a caixa, selo
+   "Seu ponto" na foto, estados) mora no bloco "Escolha de pontos do
+   anunciante" de style.css.
+2. **Foto, segmento e bairro vêm da vitrine pública `GET /pontos`**, cruzada
+   por `id` no front (mesmos status, `STATUS_NA_REDE`; `confirmar-plano` já
+   lia essa rota). É enfeite: falhou, o card fica com o placeholder e a
+   escolha segue. A rota da escolha continua como estava.
+3. **O estado da seleção é dito em texto e escolhido pelo CSS** a partir do
+   input (`:checked`, `:disabled`, `.cheio`): "Selecionar ponto",
+   "Selecionado", "Limite do plano atingido", "Indisponível para escolha".
+   Nenhum caminho do JS repinta frase.
+4. **Nada de comportamento muda:** o `input`, o `.cheio`, o `data-ponto-id`,
+   o `data-busca`, `travarNoLimite`, o PUT e o contador são os de antes. O
+   `<a>` do mapa continua fora do `<label>` (agora sobre a foto).
+
+Consequências: outro card de ponto no cliente usa o mesmo molde, não um
+novo. Se um dia a rota da escolha passar a trazer a foto (o PR #90 faz
+isso), o card lê de lá e a vitrine sai — sem mudar o desenho. A lista espera
+a vitrine pra se desenhar, no máximo 3 s (as duas rotas saem em paralelo);
+passou disso, desenha com o placeholder.
+
+## ADR-030 — Formulário de ponto na largura da página, erro embaixo do campo (28/09/2026)
+
+Contexto: os dois pedidos de ponto ("Tornar-se ponto", com o comércio da
+conta, e "Novo estabelecimento") abriam dentro do card Meus pontos, que mora
+na coluna lateral do painel (~340 px): campos espremidos, horário vazando do
+card, prévia lá embaixo; e os campos saíam sem estilo (a regra-base só
+existia dentro de `.card`). A validação era o balão do navegador — e no
+segmento ela nem aparecia: o `required` do `<select>` escondido travava o
+envio em silêncio.
+
+Decisão:
+1. **Área própria no grid do painel** (`#pontosNovo`, `.area-form-ponto`),
+   que só entra no grid enquanto o formulário está aberto
+   (`.painel-grid.com-form-ponto`), no topo, na largura toda. Formulário
+   ~65% e prévia ~35% fixa (sticky) a partir de 50em de componente; uma
+   coluna abaixo disso. Container queries em `em`: texto maior e zoom
+   mudam o arranjo em vez de espremer.
+2. **Um componente, duas intenções.** Estrutura, campos, validação e prévia
+   saem de `public/candidatura-ponto.js`; cada forma mantém o próprio título,
+   texto do botão ("Enviar meu interesse" / "Enviar pedido") e payload.
+3. **Validação própria (`candidaturaValidar`), mesmas regras**: o formulário
+   é `novalidate`, a mensagem fica embaixo do campo com `aria-describedby`,
+   o foco vai pro primeiro problema. Nenhuma regra nova — as do HTML e as
+   que o servidor já aplicava (movimento > 0, abertura ≠ fechamento).
+4. **Busca de segmento responde pelo campo** (`formulario.js#montarBusca`):
+   o `required` passa do `<select>` escondido pro campo visível, com rótulo e
+   teclado. Vale pros três formulários que usam a busca.
+5. Estilos escopados em `.form-ponto`, num bloco próprio no fim de
+   `style.css` (o arquivo tem um trecho duplicado, docs/PENDENCIAS.md §U1).
+
+Consequências: novo formulário de ponto usa essas peças
+(`candidaturaCampoMovimento`, `candidaturaAcoes`, `candidaturaValidar`…),
+que são globais de script (`window.*`, registradas em `biome.json`). O
+payload e as rotas não mudaram; quem chama `POST /conta/modos/ponto/pedir`
+ou `/anunciantes/me/pontos` não percebe diferença.
+
+## ADR-031 — Painel do usuário: quatro indicadores, um gráfico por período, custo de referência e histórico de indicações sem livro próprio (29/09/2026)
+
+Contexto: estação final do painel do usuário, pedido do dono — reforma
+controlada, não reconstrução. O resumo tinha cinco cards (a média diária
+sozinha, o saldo escondido quando zerado), a performance eram dois cards
+contando a mesma entrega (um por dia, com 14 barras e cores que mudavam
+conforme o ranking do período; outro por ponto, com Programadas e Entrega %),
+o plano obtido por créditos dizia "Sem valor monetário", o card de indicação
+não mostrava quem se cadastrou nem tinha QR, e o número do KPI podia passar
+da borda ao alargar a janela (PENDENCIAS U2, reproduzido).
+
+Decisão:
+1. **Quatro indicadores fixos**: horas de tela; exibições com "de N previstas
+   no mês" e a média diária dentro do card; custo por exibição; saldo de
+   veiculação sempre à vista ("Em dia" ou "4h 32min a entregar"). O saldo é
+   a tradução do banco que existe (`GET /anunciantes/me/banco-horas`) —
+   nenhum saldo, contador ou compensação novo, nenhum termo do mecanismo na
+   tela.
+2. **Custo de referência pra plano obtido por créditos**: valor cheio de
+   tabela do plano e ciclo equivalentes (mensalidade do ciclo × meses, sem
+   promoção nem desconto de parceiro) ÷ exibições previstas no ciclo, com
+   a MESMA função de divisão do plano pago (`cicloDeReferencia` +
+   `custoPorExibicaoPrevista`). Só leitura: nada cobra, lança ou grava. A
+   cortesia legada segue sem valor.
+3. **Um card de performance**, com filtros 7 dias / 30 dias / 3 meses /
+   1 ano / Máx. (dia, dia, semana, mês, mês) reagrupando no navegador o
+   `porDiaPonto` que o endpoint já devolvia (sem rota nova, sem nova
+   requisição ao trocar). Cor por ponto pela ORDEM DE ENTRADA na campanha
+   (primeiro dia com registro no histórico inteiro, desempate pelo id), não
+   pelo ranking do período: não muda com filtro, recarga nem ponto novo. Oito
+   cores (as 5 validadas + 3 escuras conferidas na mesma simulação de
+   daltonismo); do 9º em diante, "Outros pontos". Dica por mouse, foco e
+   toque. Tabela Ponto / Cidade / Status / Exibições — Programadas e
+   Entrega % saem só da tela do cliente. O comprovante segue o período: o
+   CSV ganhou `?desde=AAAA-MM-DD` (00:00 em Matão até agora), pro arquivo
+   somar exatamente o que a tela soma — o `?dias=` continua valendo.
+4. **Fonte do KPI em unidade do card** (`cqi`, o card é container), não da
+   janela: card da mesma largura, número do mesmo tamanho; o observador por
+   card cobre o resto.
+5. **Histórico de indicações derivado, nunca registrado à parte**
+   (`GET /anunciantes/me/indicacoes`): quem é indicado vem do cadastro
+   (`indicado_por_cupom`), os pagamentos dos ciclos pagos
+   (`ciclos_contratados`, compra/renovação — o que gera crédito), os
+   créditos do ledger (idempotente pela cobrança). O resumo soma as mesmas
+   linhas. Projeção fechada: nome comercial, dia do cadastro, plano em vigor,
+   pagamentos, créditos e datas — nunca contato, documento, endereço, valor
+   ou id. Conta indicada excluída fica, sem nome ("Conta encerrada"): os
+   créditos dela estão no saldo. A porta do programa (ponto, nunca a conta
+   própria) e o link moram num lugar só (`cupomDoIndicador`,
+   `linkDeIndicacao`), usados pelo card de créditos e pelas rotas novas.
+6. **QR Code do mesmo link**, gerado no servidor (`qrcode`, opções do QR
+   institucional) a partir de UMA string (`linkDeIndicacao`, base só do
+   `SITE_URL`) que também vira o texto à vista, o "Copiar link" e o
+   WhatsApp. O cupom é por conta (a tabela é `cupons_ponto (conta_id PK)`),
+   então é um QR por conta-ponto; cupom por estabelecimento pediria banco
+   novo e mudaria a regra de crédito — fora.
+7. **Meus pontos**: só apresentação (capa com a foto e o estado, nome em
+   destaque, telas/Plano Básico/crédito em blocos), arrumada por container
+   query do próprio card. Dados, ações e avisos os de antes.
+
+Consequências: `situacaoDoCusto` devolve valor no `tipo: 'beneficio'` (o
+teste antigo "benefício nunca mostra valor" virou o teste da referência).
+Quem precisar do custo de um plano do catálogo reusa `cicloDeReferencia` —
+nunca uma segunda conta. Sem migration.
+
+## ADR-032 — Comunicados por e-mail pela fila que já existe, um e-mail por conta, nunca em dobro (29/09/2026)
+
+Contexto: estação final pré-lançamento, pedido do dono — o admin precisa
+avisar as contas da plataforma (manutenção, mudança de funcionamento,
+novidade do serviço) sem ferramenta de fora, com usuários reais a partir do
+dia seguinte. O sistema já tinha uma fila durável de e-mails (migration 097,
+RN-62), o template institucional (`mensagem` em `src/financeiro/email.js`),
+a identidade do admin na sessão (`req.session.adminUsuario`) e uma
+revogação de "novidades e ofertas" no perfil (migration 025) — mas nenhum
+opt-in de divulgação no cadastro.
+
+Decisão:
+1. **Nenhum sistema de e-mail paralelo.** Cada destinatário vira UMA linha
+   da `email_outbox` (tipo novo `comunicado`, classe `operacional`): mesmo
+   processador, SMTP, tentativas, retenção e visão operacional. O texto mora
+   UMA vez em `comunicados` (a fila guarda só o id) e é relido na hora de
+   sair. Resultado por destinatário em `comunicados_destinatarios` (a fila
+   expurga; o histórico não pode encolher), reenvios em
+   `comunicados_reenvios`. Migration 108, só tabelas novas.
+2. **Um e-mail por pessoa, sozinha no "Para".** Endereço vai como objeto ao
+   Nodemailer (em texto, "a@x,b@y" vira dois destinatários — conferido na
+   10.0.10); o SQL já recusa `,;<>"` no endereço; dedupe por
+   `lower(trim(email))` no SQL e de novo no JS.
+3. **A contagem é a lista do envio.** Uma função (`listarDestinatarios`)
+   serve a tela ("Destinatários: N contas") e o envio; a confirmação manda o
+   N visto e o servidor recusa (409) se o público mudou.
+4. **Quem fica de fora (régua única, `CONTA_RECEBE_SQL`):** excluída,
+   anonimizada, conta própria, suspensa (login recusado e nada no ar — aviso
+   de funcionamento não tem o que pedir a ela), e-mail não confirmado (nunca
+   provado; mesma régua das boas-vindas) e quem revogou "novidades e
+   ofertas" (o texto é livre: o sistema não garante que é só operacional).
+   A mesma régua é conferida de novo na vez de cada e-mail — quem saiu
+   entre o clique e o envio vira `descartado`, não falha.
+5. **Nunca em dobro, em três camadas:** `Idempotency-Key` única (duplo
+   clique, tempo esgotado, nova tentativa), impressão digital
+   público+conteúdo em 24 h (página recarregada, outra aba) e chave única
+   por destinatário na fila. Criações em série por trava transacional do
+   Postgres (vale entre instâncias). Tudo numa transação: entra inteiro ou
+   não entra.
+6. **Ritmo e prioridade:** cada destinatário ganha a vez
+   `60 / COMUNICADOS_POR_MINUTO` s depois do anterior (30 por minuto por
+   padrão = 2 s — o SMTP da conta Google limita volume), e tipo `emMassa`
+   vai pro fim da fila: código e link de senha passam na frente.
+7. **Falha parcial e reenvio:** situação real = registro + linha da fila
+   (gancho que falhou não mente); "Reenviar falhas" põe de volta só quem
+   falhou e ainda recebe, com chave nova por rodada.
+8. **Prévia é o e-mail.** O servidor monta (o mesmo `montar` do envio); o
+   admin pinta o HTML num shadow root com os estilos por CSSOM — a CSP do
+   admin (sem `'unsafe-inline'`, `frame-src` só Google) não deixa iframe
+   nem atributo `style`, e mexer na CSP global estava fora de escopo. O
+   teste sai na hora pelo mesmo transporte, marcado `[TESTE]`, nunca pra
+   conta de cliente.
+9. **UI isolada:** `public/admin/comunicados.js`/`.css` próprios; a Visão
+   geral só ganha o contêiner e a chamada — outras estações mexiam no mesmo
+   arquivo ao mesmo tempo (QR institucional, PR #104).
+
+10. **Revisão adversarial (29/09/2026), o que ela mudou:**
+    - resposta do envio perdida → a tela pergunta
+      `GET /admin/comunicados/por-chave/:chave` (espera a trava das
+      criações, então o 404 é definitivo) e, até saber, não deixa editar
+      nem escrever outro; a chave fica na `sessionStorage` da aba e a Visão
+      geral refaz a pergunta depois de recarregar. Sem isso, "editar e
+      mandar de novo" criava um segundo comunicado com chave nova;
+    - o expurgo da fila consolida o resultado de cada mensagem no registro
+      antes de apagar a linha, e só falha COMPROVADA volta pelo reenvio —
+      linha sem resultado não (sem prova, reenviar duplicaria);
+    - teto de 24 h (`COMUNICADOS_MAX_DIA`, 300) e ritmo global (um
+      comunicado novo espera o anterior): código e senha usam a mesma cota
+      do provedor;
+    - teste: "nunca pra cliente" compara a CAIXA (sem "+apelido"; Gmail sem
+      pontos e googlemail = gmail) e inclui os endereços antigos da conta.
+      Endereço digitado pelo admin continua valendo — o pedido do dono diz
+      "o e-mail informado pelo admin ou o administrativo configurado";
+    - ganchos da fila (`depois`, `aoDesistir`) só rodam pra instância que
+      de fato fechou a linha; `Auto-Submitted: auto-generated` no
+      comunicado; link com usuário/senha e `javascript:` recusados também
+      no texto; a lista de problemas da visão operacional ignora os tipos em
+      massa.
+
+Consequências: aviso promocional continua sem canal — criar opt-in e base
+legal de divulgação é decisão jurídica (docs/PENDENCIAS.md §W). A régua de
+quem recebe muda num lugar só. Escala: uma linha de fila por destinatário
+numa transação é folgado pro porte declarado (~60 contas, CONSTRAINTS.md);
+milhares pediriam inserção em lote. Criação e reenvio esperam uma trava
+global com uma conexão do pool presa — com um admin, cabe; com vários
+admins disparando ao mesmo tempo, trocar por `pg_try_advisory_xact_lock` e
+409. Mesmo texto para públicos que se sobrepõem (todas + com plano) chega
+duas vezes a quem está nos dois: é escolha do admin, sem aviso na tela.

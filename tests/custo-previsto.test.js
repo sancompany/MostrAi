@@ -222,15 +222,22 @@ test('troca de plano grava o ciclo do plano novo; nunca reaproveita o anterior',
   }
 });
 
-test('benefício por créditos e cortesia legada NUNCA mostram valor monetário', async () => {
+// Painel do usuário (29/09/2026, pedido do dono): plano obtido por créditos
+// não diz mais "sem valor monetário" — mostra o custo de REFERÊNCIA do plano
+// e ciclo equivalentes (valor cheio de tabela ÷ exibições previstas), com a
+// MESMA divisão do plano pago. Só leitura: nenhuma cobrança, ciclo contratado
+// ou lançamento nasce disso. A cortesia administrativa legada segue sem valor.
+test('benefício por créditos: custo de referência pela mesma divisão do pago, sem gravar nada; cortesia segue sem valor', async () => {
+  const plano = await planoDeTeste('maximo-3m');
+  const pago = await conta();
   const beneficio = await conta({
-    plano_id: 'maximo-3m',
+    plano_id: plano.id,
     plano_cortesia: true,
     cortesia_motivo: 'Benefício por créditos',
     data_expiracao: '2099-01-01',
   });
   const cortesia = await conta({
-    plano_id: 'maximo-3m',
+    plano_id: plano.id,
     plano_cortesia: true,
     cortesia_motivo: 'Cortesia administrativa',
     data_expiracao: '2099-01-01',
@@ -238,18 +245,33 @@ test('benefício por créditos e cortesia legada NUNCA mostram valor monetário'
   try {
     await pool.query(
       `INSERT INTO planos_administrativos (anunciante_id, plano_id, valido_ate, status, origem, ativado_em)
-       VALUES ($1, 'maximo-3m', '2099-01-01', 'ativo', 'indicacao', now()), ($2, 'maximo-3m', '2099-01-01', 'ativo', 'admin', now())`,
-      [beneficio.id, cortesia.id],
+       VALUES ($1, $3, '2099-01-01', 'ativo', 'indicacao', now()), ($2, $3, '2099-01-01', 'ativo', 'admin', now())`,
+      [beneficio.id, cortesia.id, plano.id],
     );
-    assert.deepEqual(await situacao(beneficio.id), { tipo: 'beneficio' });
+    await pagar(pago, plano);
+    const s = await situacao(beneficio.id);
+    const valorCiclo = Math.round(Number(plano.valor_mensal) * 3 * 100) / 100;
+    assert.equal(s.tipo, 'beneficio');
+    assert.equal(s.referencia, true);
+    assert.equal(s.plano, 'Prime · Trimestral');
+    assert.equal(s.valorCiclo, valorCiclo, 'valor cheio de tabela do ciclo, não R$ 0');
+    assert.equal(s.exibicoesPrevistasCiclo, PRIME_MES * 3, 'o ciclo inteiro');
+    assert.ok(Math.abs(s.custoPorExibicaoPrevista - valorCiclo / (PRIME_MES * 3)) < 1e-12);
+    // Mesmo plano e ciclo, pago sem promoção: o mesmo número — uma fórmula só.
+    assert.equal(s.custoPorExibicaoPrevista, (await situacao(pago.id)).custoPorExibicaoPrevista);
+    for (const t of ['cobrancas_confirmadas', 'ciclos_contratados', 'creditos_ledger']) {
+      const { rows } = await pool.query(`SELECT count(*)::int AS n FROM ${t} WHERE anunciante_id = $1`, [beneficio.id]);
+      assert.equal(rows[0].n, 0, `mostrar o custo de referência não grava nada em ${t}`);
+    }
     assert.deepEqual(await situacao(cortesia.id), { tipo: 'cortesia' });
   } finally {
     await apagar(beneficio.id);
     await apagar(cortesia.id);
+    await apagar(pago.id);
   }
 });
 
-test('plano sem exibição prevista não divide por zero; conta paga sem snapshot mostra "-"', async () => {
+test('plano sem exibição prevista não divide por zero; conta paga sem snapshot mostra o custo calculado (estimado)', async () => {
   assert.equal(ciclo.custoPorExibicaoPrevista({ valor_ciclo: 100, exibicoes_previstas_ciclo: 0 }), null);
   assert.equal(ciclo.custoPorExibicaoPrevista({ valor_ciclo: 0, exibicoes_previstas_ciclo: 100 }), null);
   assert.equal(ciclo.custoPorExibicaoPrevista(null), null);
@@ -261,7 +283,14 @@ test('plano sem exibição prevista não divide por zero; conta paga sem snapsho
     const s = await situacao(semExibicao.id);
     assert.equal(s.exibicoesPrevistasCiclo, 0);
     assert.equal(s.custoPorExibicaoPrevista, null);
-    assert.deepEqual(await situacao(semSnapshot.id), { tipo: 'sem_snapshot' });
+    // Finalização (28/09/2026): plano pago em vigor sem snapshot do próprio
+    // plano não mostra mais "-" — calcula pela mesma régua e diz que é
+    // estimado. `sem_snapshot` só sobra pra plano que nem existe mais.
+    const estimado = await situacao(semSnapshot.id);
+    assert.equal(estimado.tipo, 'pago');
+    assert.equal(estimado.aproximado, true);
+    assert.ok(estimado.custoPorExibicaoPrevista > 0);
+    assert.match(estimado.plano, /Essencial · Mensal/);
   } finally {
     await apagar(semExibicao.id);
     await apagar(semSnapshot.id);

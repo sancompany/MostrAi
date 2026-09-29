@@ -212,13 +212,34 @@ test('status automático não ressuscita um ponto arquivado', async () => {
 test('migration 080: mescla só a duplicata órfã, e é idempotente', async () => {
   const conta = await criarConta();
   const nome = `Estab ${randomUUID().slice(0, 6)}`;
-  // Tudo numa transação que termina em ROLLBACK: a 080 recria o CHECK de
-  // status do ponto SEM os valores das migrations seguintes (088), e os
-  // outros arquivos de teste rodam em paralelo no mesmo banco — reaplicá-la
-  // pra valer derrubava qualquer teste que gravasse um status novo no meio.
+  // A 080 roda de verdade, mas sobre CÓPIAS temporárias das tabelas que ela
+  // lê e altera, numa transação que termina em ROLLBACK. Os outros arquivos
+  // de teste rodam em paralelo no mesmo banco, e reaplicá-la nas tabelas
+  // reais cruzava com eles:
+  //  · o ALTER TABLE pede AccessExclusiveLock em `pontos`, e o INSERT em
+  //    `dispositivos` já tinha disparado o trigger da playlist (083), que
+  //    trava a linha de TODA tela ativa até o fim da transação. Um UPDATE em
+  //    `pontos` de outro arquivo (tirarDoSorteio) segurava `pontos` e
+  //    esperava essas linhas → deadlock 40P01 (CI do #102);
+  //  · a 080 recria o CHECK de status sem os valores da 088 (recusaria os
+  //    pontos dos outros arquivos), e o passo 4 varre a tabela inteira.
+  // Tabela temporária vem antes de `public` no nome sem schema, então o SQL
+  // da migration é o mesmo, sem trocar nada. LIKE ... INCLUDING ALL copia
+  // colunas, defaults, CHECKs e índices; não copia trigger nem FK, e é isso
+  // que tira esta transação do caminho das outras.
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
+    for (const t of [
+      'pontos',
+      'dispositivos',
+      'candidaturas',
+      'anunciantes_pontos',
+      'midias_proprias_pontos',
+      'pagamentos_ponto',
+    ]) {
+      await cliente.query(`CREATE TEMP TABLE ${t} (LIKE public.${t} INCLUDING ALL) ON COMMIT DROP`);
+    }
     const inserir = (n, endereco) =>
       cliente.query(
         `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, anunciante_id)
@@ -226,22 +247,21 @@ test('migration 080: mescla só a duplicata órfã, e é idempotente', async () 
         [n, endereco, conta.id],
       );
     const canonico = (await inserir(nome, 'Av. Teste, 1')).rows[0].id;
-    // O canônico tem vínculo real (uma tela); a cópia não tem nada.
-    await cliente.query(`INSERT INTO dispositivos (ponto_id, apelido, status) VALUES ($1, 'Tela 1', 'ativo')`, [
-      canonico,
-    ]);
+    // O canônico tem vínculo real (uma tela); a cópia não tem nada. `numero`
+    // explícito: quem o preenche é um trigger (083), e a cópia não tem trigger.
+    await cliente.query(
+      `INSERT INTO dispositivos (ponto_id, apelido, status, numero) VALUES ($1, 'Tela 1', 'ativo', 1)`,
+      [canonico],
+    );
     const duplicata = (await inserir(nome, 'Av. Teste, 1')).rows[0].id;
     const vizinho = (await inserir(`${nome} Vizinho`, 'Av. Teste, 1')).rows[0].id;
 
-    // Sem o CHECK de status da 080: ele lista só os valores da época, e um
-    // banco com pontos em `aguardando_primeiro_sinal` (088) recusaria
-    // recriá-lo. O que este teste prova é a mesclagem, não o CHECK.
-    const sql = fs
-      .readFileSync(
-        path.join(__dirname, '../src/db/migrations/080_vinculo_candidatura_ponto_e_arquivamento.sql'),
-        'utf8',
-      )
-      .replace(/ALTER TABLE pontos ADD CONSTRAINT pontos_status_check[^;]*;/, '');
+    // A migration inteira, sem cortar nada: nas cópias só existem as linhas
+    // deste teste, e o CHECK de status da época aceita todas elas.
+    const sql = fs.readFileSync(
+      path.join(__dirname, '../src/db/migrations/080_vinculo_candidatura_ponto_e_arquivamento.sql'),
+      'utf8',
+    );
     await cliente.query(sql);
     await cliente.query(sql); // segunda vez: nada muda, nada estoura
 

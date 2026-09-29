@@ -8,7 +8,7 @@ const pool = require('../src/db/pool');
 const repo = require('../src/pontos/repository');
 const gerador = require('../src/playlist/gerador');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 
 // Vídeo institucional (25/09/2026, pedido do dono): o que preenche o tempo
 // vago da rede pro Player V2 baixar e tocar, no lugar do cartão HTML "este
@@ -115,6 +115,9 @@ async function criarPontoTeste() {
 
 async function dispositivoDeTeste() {
   const ponto = await criarPontoTeste();
+  // Fora do sorteio: senão uma conta de outro arquivo cai aqui e a hora
+  // deixa de ser toda institucional.
+  await tirarDoSorteio(ponto.id);
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   await instalarPlayer(dispositivo.id);

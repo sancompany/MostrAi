@@ -32,6 +32,16 @@ const sse = require('../lib/sse');
 // → ganha o mês); o índice único (ponto_id, competencia) garante no banco
 // que rodar de novo, rodar em duas instâncias ou trocar o dono no meio do mês
 // nunca gera o mesmo mês duas vezes.
+// Tela que ainda faz do lugar um ponto da rede, pro Plano Básico do ponto
+// continuar (migration 106): com credencial, ativa ou em reparo (reparo é
+// temporário por definição, migration 012). Sem credencial — revogada,
+// aguardando instalação — ou `inativo` (remoção definitiva) não conta:
+// revogar vence o reparo (revisão Codex do #96). Mora aqui, e não em
+// basico.js, pra `situacaoDosPontos` usar a mesma régua sem import circular.
+// Espera o ponto como `p`.
+const SQL_TEM_TELA_INSTALADA = `EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id
+    AND d.status IN ('ativo', 'reparo') AND d.chave_hash IS NOT NULL)`;
+
 const SQL_PONTOS_ELEGIVEIS = `
   SELECT p.id, p.nome, p.anunciante_id
     FROM pontos p
@@ -98,7 +108,7 @@ async function pontosElegiveis(apenasPontos = null, db = pool) {
 async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
   if (!pontoIds.length) return new Map();
   const competencia = competenciaDe(agora);
-  const [{ rows: elegiveis }, { rows: ultimos }] = await Promise.all([
+  const [{ rows: elegiveis }, { rows: ultimos }, { rows: basicos }] = await Promise.all([
     db.query(`SELECT id FROM (${SQL_PONTOS_ELEGIVEIS}) e WHERE e.id = ANY($1::int[])`, [pontoIds]),
     db.query(
       `SELECT DISTINCT ON (ponto_id) ponto_id, competencia, criado_em
@@ -107,7 +117,19 @@ async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
         ORDER BY ponto_id, competencia DESC`,
       [pontoIds],
     ),
+    // Plano Básico do ponto (migration 103) — o outro benefício de ser ponto,
+    // separado do crédito. Mesma coerência de src/pontos/basico.js#SQL_ATIVOS
+    // (lida aqui direto: basico.js depende deste arquivo).
+    db.query(
+      `SELECT b.ponto_id, b.horas_por_mes, b.duracao_maxima_segundos, b.limite_criativos, b.inicio
+         FROM beneficios_basico_ponto b
+         JOIN pontos p ON p.id = b.ponto_id AND p.status <> 'arquivado' AND p.anunciante_id = b.conta_id
+         JOIN anunciantes a ON a.id = b.conta_id AND a.excluido_em IS NULL AND NOT a.conta_propria
+        WHERE b.fim IS NULL AND b.ponto_id = ANY($1::int[]) AND ${SQL_TEM_TELA_INSTALADA}`,
+      [pontoIds],
+    ),
   ]);
+  const basicoPorPonto = new Map(basicos.map((b) => [b.ponto_id, b]));
   const elegivel = new Set(elegiveis.map((r) => r.id));
   const ultimo = new Map(ultimos.map((r) => [r.ponto_id, r]));
   return new Map(
@@ -126,6 +148,15 @@ async function situacaoDosPontos(pontoIds, agora = new Date(), db = pool) {
           proximaCompetencia: nomeDaCompetencia(doMesJaSaiu ? proximaCompetencia(competencia) : competencia),
           ultimoCreditoEm: u ? u.criado_em : null,
           ultimaCompetencia: competenciaUltima ? nomeDaCompetencia(competenciaUltima) : null,
+          basico: basicoPorPonto.has(id)
+            ? {
+                ativo: true,
+                horasPorMes: basicoPorPonto.get(id).horas_por_mes,
+                duracaoMaximaSegundos: basicoPorPonto.get(id).duracao_maxima_segundos,
+                limiteCriativos: basicoPorPonto.get(id).limite_criativos,
+                desde: basicoPorPonto.get(id).inicio,
+              }
+            : null,
         },
       ];
     }),
@@ -175,6 +206,7 @@ async function concederCreditosMensais({ agora = new Date(), apenasPontos = null
 
 module.exports = {
   SQL_PONTOS_ELEGIVEIS,
+  SQL_TEM_TELA_INSTALADA,
   competenciaDe,
   nomeDaCompetencia,
   pontosElegiveis,

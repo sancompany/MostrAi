@@ -65,6 +65,11 @@ function navegador() {
         const path = atributos.find((a) => /^path=/i.test(a))?.split('=')[1] || '/';
         potes.set(nome, { valor: resto.join('='), path, atributos });
       }
+      // Corpo inteiro antes de seguir, como o navegador: o express-session
+      // (1.19) segura o último byte até gravar a sessão no banco. Sem isto, o
+      // "processo novo" do teste de restart lia a tabela antes da gravação do
+      // login e dava 401 — intermitente, pego na CI do #93.
+      await r.arrayBuffer().catch(() => {});
       return r.status;
     },
   };
