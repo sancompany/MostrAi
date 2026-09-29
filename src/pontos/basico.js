@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const vigencia = require('../lib/vigencia');
-const { SQL_PONTOS_ELEGIVEIS } = require('../creditos/ponto');
+const { SQL_PONTOS_ELEGIVEIS, SQL_TEM_TELA_INSTALADA } = require('../creditos/ponto');
 const { horasDeTelaPorMes, segundosDeObrigacao, duracaoValida } = require('../lib/pacing');
 
 // PLANO BÁSICO DO PONTO (migration 103, ADR-025, 28/09/2026). Benefício de
@@ -31,9 +31,13 @@ const BASICO = Object.freeze({
 //
 // ENCERRAMENTO: só quando o estabelecimento deixa DEFINITIVAMENTE de ser
 // ponto daquela conta — ponto arquivado, dono trocado, conta excluída (ou
-// virou a conta interna). Tela em reparo ou sem sinal NÃO encerra: o
-// benefício continua ativo e simplesmente não gera obrigação enquanto não
-// houver tela ativa pra tocar (a obrigação nasce por tela, por hora).
+// virou a conta interna), ou o ponto ficou sem NENHUMA tela instalada
+// (todas removidas, revogadas ou inativas — migration 106, decisão do dono
+// no fechamento da estação). A régua é estrutural, nunca o sinal: TV
+// desligada, internet caída, sem heartbeat ou tela em reparo NÃO encerram —
+// o benefício continua e simplesmente não gera obrigação enquanto não houver
+// tela tocando (a obrigação nasce por tela, por hora). Voltar a ter tela
+// instalada abre um Básico novo pela ativação; o encerrado fica no histórico.
 //
 // Idempotente: o índice único parcial (um ativo por ponto) garante no banco
 // que rodar de novo, em duas instâncias ou em paralelo nunca duplica.
@@ -44,7 +48,11 @@ const BASICO = Object.freeze({
 // sabe (`pontos.arquivado_em`, `anunciantes.excluido_em`), não o da
 // sincronização que viu: a rede de segurança do Saldo cobra hora a hora pelo
 // início/fim da linha, e um fim atrasado cobraria horas que já não eram dela
-// (revisão independente, 28/09/2026).
+// (revisão independente, 28/09/2026). Sem tela instalada, o fim é o da
+// sincronização: toda mudança de tela sincroniza na mesma hora
+// (`sincronizarStatusPonto`), e ponto sem tela instalada não está em operação
+// — a rede de segurança não cobra hora dele. "Tela instalada":
+// `SQL_TEM_TELA_INSTALADA` (src/creditos/ponto.js).
 //
 // limite: troca de dono não tem data — nenhuma rota muda `pontos.anunciante_id`
 // (só operação manual no banco) — e o fim fica o da sincronização que viu. A
@@ -61,7 +69,8 @@ async function sincronizar({ apenasPontos = null, db = pool } = {}) {
               CASE WHEN p.status = 'arquivado' THEN 'ponto_arquivado'
                    WHEN p.anunciante_id IS DISTINCT FROM b.conta_id THEN 'dono_mudou'
                    WHEN a.conta_propria THEN 'conta_interna'
-                   ELSE 'conta_excluida' END AS motivo,
+                   WHEN a.excluido_em IS NOT NULL THEN 'conta_excluida'
+                   ELSE 'sem_tela_instalada' END AS motivo,
               CASE WHEN p.status = 'arquivado' THEN p.arquivado_em
                    WHEN p.anunciante_id IS DISTINCT FROM b.conta_id OR a.conta_propria THEN NULL
                    ELSE a.excluido_em END AS quando
@@ -70,7 +79,7 @@ async function sincronizar({ apenasPontos = null, db = pool } = {}) {
          JOIN anunciantes a ON a.id = b.conta_id
         WHERE b.fim IS NULL ${filtro}
           AND (p.status = 'arquivado' OR p.anunciante_id IS DISTINCT FROM b.conta_id
-               OR a.excluido_em IS NOT NULL OR a.conta_propria)
+               OR a.excluido_em IS NOT NULL OR a.conta_propria OR NOT ${SQL_TEM_TELA_INSTALADA})
      )
      UPDATE beneficios_basico_ponto t
         SET fim = GREATEST(alvo.inicio, LEAST(now(), COALESCE(alvo.quando, now()))), motivo_fim = alvo.motivo
@@ -93,8 +102,9 @@ async function sincronizar({ apenasPontos = null, db = pool } = {}) {
 }
 
 // O Básico que vale AGORA — confere de novo, na leitura, o que o encerramento
-// confere: entre uma sincronização e outra (ponto arquivado, dono trocado),
-// ele não pode continuar veiculando nem aparecendo como ativo.
+// confere: entre uma sincronização e outra (ponto arquivado, dono trocado,
+// última tela fora), ele não pode continuar veiculando nem aparecendo como
+// ativo.
 const SQL_ATIVOS = `
   SELECT b.id, b.ponto_id, b.conta_id, b.segundos_por_hora, b.horas_por_mes,
          b.duracao_maxima_segundos, b.limite_criativos, b.inicio,
@@ -102,7 +112,7 @@ const SQL_ATIVOS = `
     FROM beneficios_basico_ponto b
     JOIN pontos p ON p.id = b.ponto_id AND p.status <> 'arquivado' AND p.anunciante_id = b.conta_id
     JOIN anunciantes a ON a.id = b.conta_id AND a.excluido_em IS NULL AND NOT a.conta_propria
-   WHERE b.fim IS NULL`;
+   WHERE b.fim IS NULL AND ${SQL_TEM_TELA_INSTALADA}`;
 
 async function ativosDaConta(contaId, db = pool) {
   const { rows } = await db.query(`${SQL_ATIVOS} AND b.conta_id = $1 ORDER BY b.inicio, b.id`, [contaId]);

@@ -1,6 +1,20 @@
 # Current Handoff
 
 ## Updated
+2026-09-28 (fechamento) — **Plano Básico: regra final de elegibilidade**
+([PR #96](https://github.com/sancompany/MostrAi/pull/96), mergeado com
+autorização do dono em 29/09/2026). Ponto sem nenhuma tela
+instalada (todas removidas, revogadas ou inativas) encerra o Básico com
+motivo `sem_tela_instalada` (migration 106 só amplia a lista fechada do
+CHECK; sem dado mexido). Reparo (com credencial), sem sinal, TV/internet fora continuam; revogar
+vence o reparo. Régua única em `creditos/ponto.js#SQL_TEM_TELA_INSTALADA`
+(encerramento, leitura dos direitos e `situacaoDosPontos`).
+Tela instalada de novo reabre (linha nova, um ativo por ponto). Crédito
++1/mês e plano comercial intocados. Depois do deploy, o job diário
+(`scripts/conciliar.js`) encerra os Básicos antigos que já estão sem tela
+— não é correção manual. **Pendente com o dono:** as contagens de produção
+(o SELECT pelo MCP do Supabase pediu aprovação e não rodou) e a validação
+visual com conta real de ponto. **Não iniciar outra estação.**
 2026-09-28 — **Estação: formulários de ponto ("Tornar-se ponto" e "Novo
 estabelecimento")** (branch `claude/nifty-galileo-rwryqd`, worktree própria,
 PR próprio, **NÃO mergeado — merge só com o dono**). Os dois pedidos abrem no
@@ -59,9 +73,9 @@ ADR-025, RN-43.5. Soma com o plano comercial com a origem preservada; nunca
 em `plano_id`, nunca no Checkout/vitrine. Revisão independente (1 P2 + 5 P3)
 e Codex (2 P2) aplicadas com teste. Conflito com o #94 só em
 `entrada-no-ar.js#coberturaDaConta`: o próprio ponto do Básico entra sem
-trava; o resto segue a regra de concorrentes diretos. Fica pro dono: Básico
-de ponto cujas telas foram todas removidas/revogadas continua ativo (ADR-025
-como escrito). A estação de finalização (#87–#92) continua PAUSADA — ver
+trava; o resto segue a regra de concorrentes diretos. Básico de ponto cujas
+telas foram todas removidas/revogadas continuava ativo — resolvido na
+entrada acima. A estação de finalização (#87–#92) continua PAUSADA — ver
 `docs/auditoria-finalizacao-checkpoint.md` no #87.
 **Pós-merge:** CI da `main`, SHA no ar, conferir em produção (só leitura)
 quantos pontos o backfill da 103 ativou.
