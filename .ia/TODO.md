@@ -240,7 +240,7 @@ preservado; ver `.ia/RISKS.md`.
 
 - [ ] Antes do merge: esperar o PR #104 (QR na Visão geral) entrar na
   `main`, trazer a `main` pro branch (merge, sem escolher lado às cegas: os
-  dois blocos ficam), `npm run check` e e2e 38/24/26 de novo, CI verde. Só
+  dois blocos ficam), `npm run check` e e2e 39/24/26 de novo, CI verde. Só
   então avisar o dono que está pronto pra merge (pedido dele).
 - [ ] Depois do merge (só com autorização): migration 108 aplicada no
   deploy, CI no SHA mergeado, e o dono manda um TESTE pra caixa da equipe

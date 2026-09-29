@@ -5565,7 +5565,7 @@ trecho de `renderResumo`.
       (código e link de senha passam na frente).
 - [x] Sem envio em dobro: `Idempotency-Key` + mesmo conteúdo/público em 24 h +
       chave única por destinatário; resposta perdida no meio do envio
-      testada no navegador (e2e 38).
+      testada no navegador (e2e 39).
 - [x] Histórico (previstos, enviados, falharam, na fila, quem enviou,
       situação) com detalhe e **Reenviar falhas** só para quem falhou.
 - [x] Migration 108 (só tabelas novas: `comunicados`,
@@ -5573,7 +5573,7 @@ trecho de `renderResumo`.
 - [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo global,
       prioridade, teto diário, descarte na hora, consolidação antes do
       expurgo, segredo do SMTP fora de toda resposta); e2e
-      `38-comunicados.mjs` (fluxo inteiro, três jeitos de perder a resposta
+      `39-comunicados.mjs` (fluxo inteiro, três jeitos de perder a resposta
       do envio + 8 larguras); `npm run check` verde; e2e 23, 24 e 26 verdes.
 - [x] Revisão adversarial independente (29/09/2026): 1 bloqueio (teste pra
       caixa de cliente escrita de outro jeito) e 3 correções (editar depois

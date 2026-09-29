@@ -7,7 +7,7 @@
 // bloqueado, rota sem admin recusada, e as 8 larguras sem rolagem lateral.
 // Banco zerado, servidor na 3999:
 //   tests/e2e/reset-db.sh && tests/e2e/restart.sh
-//   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/38-comunicados.mjs
+//   set -a; . ./.env; set +a; PW_CHROME=... node tests/e2e/39-comunicados.mjs
 import { execSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { chromium } from 'playwright';
@@ -136,7 +136,7 @@ check(
 check('estado vazio', (await card.innerText()).includes('Nenhum comunicado enviado ainda.'));
 check('[+ Novo comunicado]', await card.locator('[data-novo-comunicado]').isVisible());
 check('sem formulário grande na Visão geral', (await card.locator('textarea, input').count()) === 0);
-await card.screenshot({ path: `${SAIDA}38-card-vazio.png` });
+await card.screenshot({ path: `${SAIDA}39-card-vazio.png` });
 
 // ---------------------------------------------------------------------------
 etapa('== modal: público e contagem ==');
@@ -162,7 +162,7 @@ for (const [publico, esperado] of [
   const t = await destinatarios(p);
   check(`${publico}: ${esperado}`, (await t.jsonValue()).includes(`Destinatários: ${esperado}`), await t.jsonValue());
 }
-await p.screenshot({ path: `${SAIDA}38-modal-escrever-1280.png` });
+await p.screenshot({ path: `${SAIDA}39-modal-escrever-1280.png` });
 
 etapa('== validação ==');
 ignorar.push(/status of 400/);
@@ -212,7 +212,7 @@ check('botão na cor da marca (#c2570a)', previa.fundoBotao === 'rgb(194, 87, 10
 check('link da prévia abre em outra aba', previa.alvoBotao === '_blank');
 check('prévia sem rolagem lateral', previa.largura);
 check('ficha: público, destinatários e assunto', (await modal.innerText()).includes('4 contas'));
-await p.screenshot({ path: `${SAIDA}38-modal-revisar-1280.png` });
+await p.screenshot({ path: `${SAIDA}39-modal-revisar-1280.png` });
 await modal.locator('input[name=formatoPrevia][value=texto]').check({ force: true });
 const texto = await textoDe(p, '[data-previa-texto]');
 check(
@@ -249,7 +249,7 @@ check('confirmação: público', textoConfirmar.includes('Todas as contas ativas
 check('confirmação: destinatários', textoConfirmar.includes('4 contas'));
 check('confirmação: assunto', textoConfirmar.includes(`Manutenção programada ${RODADA}`));
 check('confirmação: consequência', textoConfirmar.includes('Este envio será disparado para 4 contas.'));
-await p.screenshot({ path: `${SAIDA}38-confirmacao-1280.png` });
+await p.screenshot({ path: `${SAIDA}39-confirmacao-1280.png` });
 await confirmar.getByRole('button', { name: 'Cancelar' }).click();
 check('cancelar não envia nada', Number(PG('SELECT COUNT(*) FROM comunicados')) === 0);
 
@@ -321,7 +321,7 @@ check(
 etapa('== card e histórico ==');
 await p.waitForFunction(() => document.querySelector('[data-ultimo-comunicado]')?.textContent.includes('Último envio'));
 check('card: último envio com 4 destinatários', (await textoDe(p, '[data-ultimo-comunicado]')).includes('4 destinatários'));
-await card.screenshot({ path: `${SAIDA}38-card-com-envio.png` });
+await card.screenshot({ path: `${SAIDA}39-card-com-envio.png` });
 await card.locator('[data-historico-comunicados]').click();
 const historico = p.locator('dialog[open]').first();
 await p.waitForFunction(
@@ -333,7 +333,7 @@ const item = await textoDe(p, '.comunicado-item');
 check('histórico: assunto, público e quem enviou', item.includes(ASSUNTO) && item.includes('Todas as contas ativas') && item.includes('por admin'));
 check('histórico: 4 previstos, 4 enviados, 0 falharam', item.includes('4 previstos') && item.includes('4 enviados') && item.includes('0 falharam'));
 check('histórico sem endereço', !(await historico.innerText()).includes('@example.com'));
-await p.screenshot({ path: `${SAIDA}38-historico-1280.png` });
+await p.screenshot({ path: `${SAIDA}39-historico-1280.png` });
 await historico.locator('.modal-rodape [data-fechar]').click();
 
 etapa('== falha parcial e "Reenviar falhas" ==');
@@ -356,7 +356,7 @@ const textoDetalhe = await detalhe.innerText();
 check('detalhe: quem falhou, com endereço mascarado', textoDetalhe.includes('Comércio vencido') && textoDetalhe.includes('e2***@example.com'));
 check('detalhe: o endereço inteiro não aparece', !textoDetalhe.includes(email('vencido')));
 check('detalhe: o que foi enviado', textoDetalhe.includes('Sistema em manutenção no domingo'));
-await p.screenshot({ path: `${SAIDA}38-detalhe-falha-1280.png` });
+await p.screenshot({ path: `${SAIDA}39-detalhe-falha-1280.png` });
 await detalhe.locator('[data-reenviar]').click();
 const confirmarReenvio = p.locator('dialog[open]').nth(2);
 await confirmarReenvio.waitFor();
@@ -431,32 +431,32 @@ for (const largura of [1920, 1440, 1280, 1024, 768, 430, 390, 360]) {
   await c.waitFor();
   await c.scrollIntoViewIfNeeded();
   check(`${largura}: página sem rolagem lateral`, await semRolagemLateral(pg));
-  await c.screenshot({ path: `${SAIDA}38-${largura}-card.png` });
+  await c.screenshot({ path: `${SAIDA}39-${largura}-card.png` });
 
   await c.locator('[data-novo-comunicado]').click();
   const m = pg.locator('dialog[open]').first();
   await destinatarios(pg);
   check(`${largura}: modal (escrever) sem rolagem lateral`, await modalSemRolagemLateral(pg));
-  await pg.screenshot({ path: `${SAIDA}38-${largura}-escrever.png` });
+  await pg.screenshot({ path: `${SAIDA}39-${largura}-escrever.png` });
   await pg.fill('#comAssunto', `Aviso ${largura} ${RODADA}`);
   await pg.fill('#comTitulo', 'Um título que é comprido o bastante pra quebrar em telas estreitas sem vazar');
   await pg.fill('#comMensagem', `Mensagem de teste na largura ${largura}.\nSegunda linha.`);
   await m.locator('[data-revisar]').click();
   await pg.waitForSelector('[data-revisao]:not([hidden])');
   check(`${largura}: prévia sem rolagem lateral`, await modalSemRolagemLateral(pg));
-  await pg.screenshot({ path: `${SAIDA}38-${largura}-revisar.png` });
+  await pg.screenshot({ path: `${SAIDA}39-${largura}-revisar.png` });
   await m.locator('[data-enviar]').click();
   const conf = pg.locator('dialog[open]').nth(1);
   await conf.waitFor();
   check(`${largura}: confirmação sem rolagem lateral`, await modalSemRolagemLateral(pg));
-  await pg.screenshot({ path: `${SAIDA}38-${largura}-confirmar.png` });
+  await pg.screenshot({ path: `${SAIDA}39-${largura}-confirmar.png` });
   await conf.getByRole('button', { name: 'Cancelar' }).click();
   await pg.keyboard.press('Escape');
 
   await c.locator('[data-historico-comunicados]').click();
   await pg.waitForSelector('.comunicado-item');
   check(`${largura}: histórico sem rolagem lateral`, await modalSemRolagemLateral(pg));
-  await pg.screenshot({ path: `${SAIDA}38-${largura}-historico.png` });
+  await pg.screenshot({ path: `${SAIDA}39-${largura}-historico.png` });
   await pg.close();
 }
 check('nenhum envio saiu das larguras (só cancelados)', Number(PG('SELECT COUNT(*) FROM comunicados')) === 1);
