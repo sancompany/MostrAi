@@ -5,7 +5,7 @@ const pool = require('../src/db/pool');
 const gerador = require('../src/playlist/gerador');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const dispositivosRepo = require('../src/dispositivos/repository');
-const { instalarPlayer } = require('./apoio-player');
+const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
 const pontosRepo = require('../src/pontos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
@@ -72,6 +72,7 @@ async function contaComPlanoEAnuncioAprovado(pontoId) {
 
 async function dispositivoContratoNovo() {
   const ponto = await criarPontoTeste();
+  await tirarDoSorteio(ponto.id); // só as contas deste teste (escolha explícita)
   const dispositivo = await dispositivosRepo.criar(ponto.id, { apelido: `Teste ${randomUUID()}` });
   await dispositivosRepo.atualizar(dispositivo.id, { status: 'ativo' });
   // Player instalado (conta como primeiro sinal): ponto só entra na

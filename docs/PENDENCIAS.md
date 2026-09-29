@@ -5225,3 +5225,226 @@ Feito:
 
 Antes/depois do merge: `.ia/TODO.md`, seção "CATEGORIAS E CONCORRENTES
 DIRETOS".
+
+## R. Promoções — mídia separada do conteúdo (Estação isolada 3, 28/09/2026)
+
+("Estação isolada 3" é a numeração do dono para as frentes paralelas desta
+semana — não é a Estação 3 da esteira da San & Co., que está fechada.)
+
+**Feito ([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com autorização do dono em 28/09/2026):** a promoção deixou de ser um banner com
+a arte de fundo e todo o texto por cima (véu escuro). Agora é um componente
+só (`public/promocao.js` + bloco "Componente de promoção" em `style.css`),
+usado pela Home, por Planos e pela prévia do admin: arte e texto lado a lado
+a partir de 840px de COMPONENTE (container query), arte em cima e texto
+embaixo abaixo disso; a arte é medida antes de aparecer e entra inteira, com
+a proporção real (sem recorte, sem pulo de layout). Home: selo, título,
+subtítulo, prazo curto e "Ver planos". Planos: descontos por ciclo (cada um
+leva ao ciclo na grade), prazo com o teto de adesões e "Como funciona" (a
+descrição da promoção, recolhida). Duas ou mais promoções = carrossel sem
+autoplay (setas, pontos, teclado, swipe; slide fora da vista inerte; altura
+estável); com uma só não há seta, ponto nem "1/1". Nenhuma regra comercial
+mudou: percentuais, prazo, teto, público, cálculo e Checkout intactos.
+E2E: `tests/e2e/29-promocoes-visual.mjs`.
+
+Com mais de uma promoção vigente, cada produto × ciclo só é anunciado pela
+promoção que de fato dá o preço — a primeira na ordem do servidor, a mesma
+escolha de `promocoesRepo.condicaoVigente` (`promocoesParaExibir` em
+`public/promocao.js`). Sem isso o carrossel deixaria uma promoção mais antiga
+anunciar um desconto que a cobrança não aplica. A arte espera no máximo 0,8 s
+antes de a seção aparecer (depois disso o espaço fica reservado pela
+proporção declarada e ela entra inteira, com `contain`).
+
+Revisão do Codex no PR (2 P2, corrigidos com teste no e2e 29): o desconto
+por ciclo em Planos vira "até X%" também quando algum plano exibido naquele
+ciclo fica sem ele (antes, "30% Mensal" podia levar a planos Mensal sem os
+30%); e o carrossel passa a assentar onde o trilho parou quando um swipe
+interrompe a rolagem de uma seta (antes, o slide à vista ficava inerte).
+
+**Achado funcional, NÃO alterado (regra de preço, fora desta estação):**
+
+- **R0 [ ] O card de plano em Planos só enxerga promoção com "mostrar em
+  Planos"; a cobrança enxerga toda promoção vigente.** `planos.page.js`
+  calcula o preço dos cards com `PROMOCOES_VIGENTES` filtrado por
+  `mostrar_planos`, enquanto o `POST /assinar` e a cotação usam
+  `condicaoVigente` sobre todas as vigentes. Se uma promoção vigente e mais
+  nova estiver com "mostrar em Planos" desligado e ocupar a mesma célula de
+  outra, o card mostra o desconto da outra e a cobrança aplica o da mais nova.
+  Hoje não acontece (uma promoção só em produção). Decidir: o card passa a
+  usar todas as vigentes, ou o servidor passa a ignorar as que não aparecem
+  em Planos.
+
+**Com o dono:**
+
+- **R1 [ ] A pré-venda termina 31/12/2026 às 00:00**, não 23:59 — é o que
+  está gravado (a mesma situação da C4 da pré-venda anterior). O site mostra
+  "Adesões até 31/12/2026 às 00:00". Se a intenção é o dia 31 inteiro,
+  trocar para 23:59 no admin.
+- **R2 [ ] Arte específica pro celular não existe.** O admin guarda UMA
+  imagem por promoção, com um formato (horizontal 21:9, quadrado, vertical).
+  O componente usa a proporção real da imagem e nunca corta, então a arte
+  horizontal aparece inteira também no celular — com a arte atual (3:1), ela
+  fica com ~120px de altura a 390px. Uma segunda imagem (celular) exigiria
+  campo e upload novos no admin: não construído nesta estação (pedido: não
+  criar sistema paralelo).
+- **R3 [ ] Título repete o selo.** O componente tira do título o prefixo
+  igual ao selo ("Pré-venda Mostraí: até 30% de desconto" com selo
+  "Pré-venda" aparece como "Até 30% de desconto"). O texto gravado não foi
+  alterado; se o dono preferir, pode reescrever o título no admin e a regra
+  deixa de agir.
+- **R4 [ ] Ordem e destino do CTA não são configuráveis.** O carrossel segue
+  a ordem do servidor (a mais nova primeiro) e o CTA da Home vai sempre para
+  Planos — não há campo de prioridade nem de destino no admin (não foi
+  criado um CMS por causa do carrossel).
+
+## S. Promoções — reforço visual + barra na área logada (28/09/2026)
+
+Estação isolada, PR próprio, **sem merge até o dono autorizar**. Decisão:
+ADR-028. Nenhuma regra comercial mudou (percentuais, prazo, teto, Checkout,
+cálculo, elegibilidade, API e banco intactos).
+
+Feito:
+
+- [x] Área pública (Home, Planos, prévia do admin): a oferta vira a manchete
+      ("ATÉ 30% OFF", calculada dos itens da promoção), selo em faixa
+      vermelha, descontos por ciclo como blocos (Planos: levam ao ciclo na
+      grade; Home: faixa compacta só de leitura), "Melhor desconto" no
+      ciclo de maior desconto, "Ver planos" em amarelo, "Tempo limitado" com
+      prazo e teto. Paleta de campanha só dentro do componente.
+- [x] Arte continua fora do texto e inteira; empilhada, a arte horizontal
+      ganhou teto de 260px de altura (em 768px o bloco passava de 660px).
+- [x] Carrossel, teclado, swipe, `inert`, `aria` e reduced-motion
+      preservados (e2e 29 atualizado para o contrato novo).
+- [x] Área logada: o card grande do painel saiu; faixa fina abaixo do
+      cabeçalho com X (`public/barra-promocional.js`), dispensa em
+      localStorage por id da promoção.
+- [x] E2E novo `tests/e2e/30-promocoes-reforco.mjs` (Home em 8 larguras,
+      Planos, estados sem arte/quadrada/vertical/textos longos/expirada,
+      barra: aberta, fechada, navegação, aba nova, outro navegador,
+      promoção nova).
+
+Revisão independente (achados reproduzidos, corrigidos e com teste no e2e
+30): a barra anunciava o desconto de uma promoção mais antiga numa célula já
+dada à mais nova (agora usa a mesma disputa de células do bloco público);
+o "até" da barra divergia do bloco; blocos de ciclo da Home eram itens de
+lista rotulados por `aria-label` (NVDA ignora — agora texto lido); título
+com contexto sumia quando citava o percentual, e "30,5%" era confundido com
+"5%"; "Tempo limitado" aparecia sem prazo (só com teto de adesões).
+
+Continuam abertas (§R, não resolvidas aqui): R0 divergência potencial entre
+a promoção exibida em Planos e a aplicada no preço; R1 fim em 31/12 às
+00:00; R2 sem arte específica de celular; R3 prefixo do título removido
+visualmente; R4 ordem/destino do CTA não configuráveis — e agora também a
+promoção sem CTA não existe (o CTA "Ver planos" é fixo).
+
+## T. Cards de pontos do cliente no padrão do admin (estação isolada, 28/09/2026)
+
+**Feito ([PR #100](https://github.com/sancompany/MostrAi/pull/100), mergeado com autorização do dono em 28/09/2026):** "Onde seu anúncio
+aparece" deixou de ser uma linha densa por ponto e virou um card no molde do
+card de Rede > Pontos do admin (`.ponto-card.com-corpo` de `style.css`, o
+mesmo da prévia da candidatura): foto da fachada ou o placeholder oficial,
+nome com o estado ao lado, endereço com bairro e cidade, segmento, horário,
+ocupação, "Ver no mapa" sobre a foto e, no pé, a caixa de seleção com o
+estado escrito ("Selecionar ponto", "Selecionado", "Limite do plano
+atingido", "Indisponível para escolha"). Selecionado: borda da marca com
+anel e fundo levemente alaranjado. Próprio ponto: selo "Seu ponto" sobre a
+foto, borda quente e o texto da escolha num quadro claro — nunca marcado
+sozinho. Grade: 3 por fileira no desktop e no tablet, 1 no celular (foto
+2:1, a página rola); no tablet/desktop a lista rola por dentro (720 px).
+Foto, segmento e bairro vêm da vitrine pública `GET /pontos` (ADR-029) —
+**sem mudança de backend nem de banco**. Seleção, limite, trava, salvamento,
+contador, busca e distribuição automática: o mesmo código de antes. E2E:
+`tests/e2e/35-cards-pontos-cliente.mjs` (novo) e o 26 passando sem mudança
+de comportamento.
+
+**Com o dono:**
+
+- **T1 [ ] Conferir no ar** (desktop e celular), com a rede real: fotos que
+  os pontos mandaram, nomes longos, o próprio ponto.
+- **T2 [ ] Conflito com o PR #90 (finalização, pausado).** O #90 também
+  redesenha este card (foto pela rota `pontos-disponiveis`, com `uf`), troca
+  "Horário não informado" por "Aberto 24 horas" e muda o salvamento da
+  escolha (fila de PUT + volta ao salvo se o servidor recusar). Os dois
+  mexem em `htmlPontoEscolha`, no bloco `.ponto-escolha` de `style.css` e em
+  `.pontos-selecao` de `painel.css`. Com o #100 na `main`, quem retomar o #90
+  resolve o conflito tirando a parte visual do card dele (fica a deste); a
+  fila de salvamento é mudança de lógica e continua decisão à parte.
+- **T3 [ ] Ponto sem horário cadastrado.** O cliente lê "Horário não
+  informado"; o admin lê "Aberto 24 horas" (e a TV segue 24 h quando o ponto
+  não tem horário). Mantido como estava — trocar o texto do cliente é
+  decisão de conteúdo, não desta estação.
+- **T4 [ ] "Meus pontos" (os estabelecimentos da própria conta)** manteve o
+  card de gestão (andamento, telas, benefício), que já usa a mesma foto, o
+  mesmo placeholder e o mesmo selo de estado. Trocar para o card com foto
+  grande em cima alonga a coluna lateral — só se o dono quiser.
+- **T5 [ ] "Na cobertura hoje".** A rota da escolha já devolve `naCobertura`
+  (o ponto entra na distribuição de hoje, mesma conta do gerador), mas o
+  card não mostra. Mostrar é decisão de produto (no modo automático diria
+  quais pontos saíram no sorteio).
+
+## U. Formulários de ponto — "Tornar-se ponto" e "Novo estabelecimento" (28/09/2026)
+
+Estação isolada, branch e worktree próprias, PR próprio, **sem merge até o
+dono autorizar**. Decisão: ADR-030 (`.ia/DECISIONS.md`).
+
+**Feito:**
+
+- [x] Os dois pedidos saíram da coluna lateral de Meus pontos (~340 px) e
+      abrem no topo do painel, na largura da página (`#pontosNovo`, área
+      própria do grid): formulário ~65% e prévia ~35% fixa na rolagem no
+      desktop; uma coluna no celular, com a prévia depois dos botões; tablet
+      em uma coluna, com prévia e "Depois do envio" lado a lado. Limites por
+      container query em `em` (texto a 150% e zoom de 200% caem na coluna
+      única em vez de espremer campo).
+- [x] Campos com o desenho do site (o estilo só existia dentro de `.card`;
+      no painel, que é `.panel`, os campos saíam crus): endereço em grade
+      (CEP | rua | número; complemento | bairro; cidade | UF), horário em
+      grade com cabeçalho (dia | abre | até | fecha | fechado; no celular o
+      dia e "Fechado" em cima, os horários embaixo), observações com 116 px,
+      botões um embaixo do outro no celular. Dia fechado: caixinha marcada +
+      campos tracejados e desabilitados (não só cor).
+- [x] Erro embaixo do próprio campo (`aria-invalid` + `aria-describedby`),
+      foco no primeiro, resumo "Confira os campos marcados." perto do botão.
+      Mesmas regras de antes (obrigatórios do HTML; movimento > 0 e abertura
+      ≠ fechamento, que o servidor já recusava).
+- [x] **Bug real corrigido:** "Enviar pedido" sem segmento não fazia nada —
+      o `required` ficava no `<select>` escondido debaixo da busca e o
+      navegador travava o envio sem dizer por quê ("An invalid form control
+      … is not focusable"). A exigência passou pro campo visível
+      (`formulario.js#montarBusca`) — conserta também o cadastro público e
+      o card de modo anúncios, que usam a mesma busca.
+- [x] Busca de segmento com rótulo ligado, setas/Enter/Esc
+      (`aria-activedescendant`); editar o nome escolhido desfaz a escolha.
+- [x] CEP: estados distintos (consultando, encontrado, não encontrado, erro
+      de consulta); a resposta atrasada não apaga mais a rua digitada
+      enquanto isso; consulta velha não fala por cima da nova.
+- [x] Foto: arquivo que não é imagem ou passa de 20 MB (teto do servidor) é
+      recusado com o motivo; prévia com "Carregando"; foto que não sobe
+      depois do pedido criado vira aviso ("Pedido enviado, mas a foto não
+      foi junto…") — antes ia só pro console, e uma queda de rede nessa hora
+      dizia "não foi possível enviar" sobre um pedido já criado.
+- [x] Clique duplo / Enter repetido: um pedido só. Erro do servidor (409,
+      por exemplo) mantém tudo preenchido.
+- [x] "Tornar-se ponto" mostra qual comércio vai no pedido (nome e endereço
+      da conta) e a prévia usa o segmento da conta; o que falta preencher
+      aparece como marcador (itálico), não como dado.
+- [x] Payload, rotas, aprovação, Plano Básico, créditos e admin intocados.
+      Cancelar segue sem confirmação (não havia; nenhum `confirm()` aqui).
+- [x] E2E `tests/e2e/31-formularios-ponto.mjs` (91 verificações); 03, 05,
+      08, 09, 12, 16, 22, 26 e 28 continuam verdes.
+
+**Achados fora desta estação (não alterados):**
+
+- U1 [ ] `public/style.css` tem um trecho inteiro repetido (≈ linhas
+      690–800 e 1290–1415: horário, foto, blocos, candidatura). A segunda
+      cópia é a que vale — mexer só na primeira não surte efeito. Os estilos
+      desta estação ficaram num bloco próprio no fim do arquivo, escopados
+      em `.form-ponto`. Limpar a duplicata é outra estação. No mesmo
+      arquivo há uma `}` sobrando (≈ linha 1368, depois de `.chave-box`,
+      já na `main`): o navegador descarta a regra que vem logo depois dela.
+- U2 [ ] O card de KPI do painel (conserto do EXIBIÇÕES, PR #46) encaixa o
+      número por JS quando a LARGURA do card muda, mas a fonte segue a
+      largura da JANELA (`clamp(…, 2.4vw, …)`): com o painel travado em
+      1280 px, alargar a janela aumenta a fonte sem mudar o card, e o número
+      pode passar da borda até a próxima recarga. Achado da revisão de
+      código desta sessão; conserto natural: fonte em unidade do card
+      (container query) em vez de `vw`.

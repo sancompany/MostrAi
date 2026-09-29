@@ -14,6 +14,54 @@ Tela instalada de novo reabre (linha nova, um ativo por ponto). Crédito
 — não é correção manual. **Pendente com o dono:** as contagens de produção
 (o SELECT pelo MCP do Supabase pediu aprovação e não rodou) e a validação
 visual com conta real de ponto. **Não iniciar outra estação.**
+2026-09-28 — **Estação: formulários de ponto ("Tornar-se ponto" e "Novo
+estabelecimento")** (branch `claude/nifty-galileo-rwryqd`, worktree própria,
+PR próprio, **NÃO mergeado — merge só com o dono**). Os dois pedidos abrem no
+topo do painel, na largura da página (`#pontosNovo`): formulário ~65% +
+prévia fixa ~35% no desktop, uma coluna no celular. Erro embaixo do campo
+(`candidaturaValidar`), segmento obrigatório no campo visível (antes travava
+o envio em silêncio — conserta também cadastro e modo anúncios), CEP com
+estados e sem apagar o digitado, foto recusada/avisada, clique duplo
+protegido. Payload/rotas/regras iguais. ADR-030; `docs/PENDENCIAS.md` §U;
+e2e `tests/e2e/31-formularios-ponto.mjs`. **Não iniciar outra estação.**
+2026-09-28 (noite) — **Estação isolada: CARDS DE PONTOS DO CLIENTE no padrão
+do admin** ([PR #100](https://github.com/sancompany/MostrAi/pull/100), **mergeado com autorização do dono** em 28/09/2026; branch
+`claude/serene-lovelace-1zx4a0`, base `c521b25`, atualizada com a `main` `2818f11` — #97 e #98). "Onde seu anúncio aparece"
+virou card no molde de Rede > Pontos (`.ponto-card.com-corpo`): foto da
+fachada/placeholder, nome + estado, endereço com bairro, segmento, horário,
+ocupação, "Ver no mapa" na foto, "Seu ponto" na foto e a seleção escrita no
+pé ("Selecionado", "Limite do plano atingido"…). Foto/segmento/bairro pela
+vitrine pública `GET /pontos` (ADR-029) — **sem backend, sem banco**.
+Seleção, limite, salvamento e contador intocados (e2e 26 passa sem mudar
+comportamento; e2e novo `35-cards-pontos-cliente.mjs`, 81 checagens).
+**Atenção:** o PR #90 (finalização, pausado) mexe no MESMO card — ao ser
+retomado, conflita em `htmlPontoEscolha`/`style.css`/`painel.css`: a parte
+visual dele sai, fica a deste (`docs/PENDENCIAS.md` §T, T2). "Meus pontos"
+ficou como estava (T4). **Pós-merge:** CI da `main`, SHA no ar e o card
+conferido em produção com as fotos reais (T1). **Não iniciar outra estação
+sem o dono.**
+2026-09-28 — **Estação REFORÇO VISUAL DAS PROMOÇÕES + BARRA NA ÁREA LOGADA**
+([PR #98](https://github.com/sancompany/MostrAi/pull/98), branch
+`claude/promocoes-reforco-visual` — **mergeado na `main`** em 28/09/2026,
+`b5c8a27`). Área pública: a oferta ("ATÉ 30% OFF",
+calculada dos itens) é a manchete do componente `public/promocao.js`, com
+selo vermelho, blocos de desconto por ciclo, "Melhor desconto", CTA amarelo e
+"Tempo limitado"; paleta de campanha só dentro de `.campanha`. Área logada:
+o card do painel saiu, entrou a faixa fina com X (`public/barra-promocional.js`,
+dispensa em localStorage por id). ADR-028, PENDENCIAS §S, e2e 30 (e 29
+atualizado). Sem backend, sem banco, sem regra comercial. **Não iniciar
+outra estação.**
+2026-09-28 — **Estação 3: promoções — mídia separada do conteúdo**
+([PR #95](https://github.com/sancompany/MostrAi/pull/95), mergeado com
+autorização do dono em 28/09/2026, depois da `main` com Categorias #94 e Plano Básico #93).
+A promoção virou um componente
+(`public/promocao.js` + "Componente de promoção" em `style.css`) usado pela
+Home, por Planos e pela prévia do admin: arte e texto lado a lado (≥ 840px
+de componente, container query) ou empilhados, arte inteira com a proporção
+real, carrossel só com 2+ (sem autoplay). Nenhuma regra comercial mudou.
+ADR-027 (o 025 é do Plano Básico); pendências do dono em
+`docs/PENDENCIAS.md` §R; e2e `tests/e2e/29-promocoes-visual.mjs`.
+**Não iniciar outra estação sem o dono.**
 2026-09-28 (fim) — **Estação PLANO BÁSICO COMO BENEFÍCIO DE PONTO:
 mergeada (#93) com autorização do dono**, depois de atualizada com a `main`
 (que já tinha o #94 de categorias). Ponto ativo = Plano Básico (14 h/mês,

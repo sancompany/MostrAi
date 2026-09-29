@@ -106,9 +106,12 @@
 .network-growth { position: relative; margin: 4px 0 18px; padding: 20px 22px 20px 58px; border: 1px solid #f2ddc3; border-radius: 14px; background: linear-gradient(135deg, #fff6ec, #fffcf8); color: var(--text-dim); font-size: .88rem; line-height: 1.6; }
 .network-growth::before { content: "↗"; position: absolute; left: 20px; top: 20px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: #ffe7d2; color: var(--brand-text); font-weight: 800; }
 .network-growth b:first-child { display: block; margin-bottom: 2px; color: var(--text); font-size: .98rem; }
-.pontos-selecao { max-height: 440px; overflow: auto; padding-right: 3px; }
-.anunciante-dashboard .ponto-escolha { padding: 11px 13px; margin-bottom: 7px; background: #fff; }
-.anunciante-dashboard .ponto-escolha:has(input:checked) { border-color: #ffc391; background: #fffaf6; }
+/* Cards de ponto (style.css, "Escolha de pontos do anunciante"): a lista
+   rola por dentro a partir do tablet — as duas primeiras fileiras à vista e
+   a seguinte espiando, que é o que avisa que tem mais. O respiro de 3px deixa
+   o anel do card marcado aparecer inteiro na borda da rolagem. */
+.painel-cobertura .busca-pontos { margin-bottom: 12px; }
+.pontos-selecao { max-height: 720px; overflow: auto; padding: 3px; }
 .criativos-head { gap: 24px; }
 .criativos-actions { display: flex; align-items: center; gap: 10px; }
 .badge-neutro { background: #eef2f6; color: #526071; }
@@ -158,6 +161,9 @@
   .anunciante-dashboard .bar-chart-h .row { grid-template-columns: minmax(90px, 1fr) 2fr auto; }
   .criativos-head { flex-direction: column; }
   .criativos-actions { width: 100%; justify-content: space-between; }
+  /* Celular: a página rola, não a lista — rolagem dentro de rolagem prende
+     o dedo (a mesma lição do mapa em "Onde estamos"). */
+  .pontos-selecao { max-height: none; overflow: visible; }
 }
 @media (max-width: 520px) {
   .anunciante-dashboard .painel-wrap { padding: 0 14px; }
@@ -179,17 +185,6 @@
   .ponto-opportunity-summary { padding: 22px 20px; }
   .ponto-opportunity-form { padding: 0 20px 22px; }
 }
-
-/* Promoção pra usuários logados (Parte R do pedido de Ofertas/Promoções,
-   22/09/2026) — linha discreta abaixo do status da conta, com CTA pra
-   página de Planos. Não é um card cheio como a Home: o painel já tem muita
-   coisa em cima, isso é um aviso, não uma nova seção. */
-.promo-logado {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 14px 18px; margin-top: 12px;
-}
-.promo-logado .badge { margin-right: 8px; }
 
 /* Créditos e benefícios (Fatia 1, 23/09/2026). Fica fora do dashboard
    bloqueável: conta sem plano também vê e resgata. Sem barra de progresso nem
@@ -277,8 +272,6 @@
 .tela-num b { color: var(--text); }
 .estab-vazio { margin: 0; color: var(--text-dim); font-size: .84rem; }
 .estab-pe { margin: 0; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-dim); font-size: .82rem; }
-.pontos-novo { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
-.pontos-novo form { max-width: 560px; }
 #msgMeusPontos { margin: 0 0 12px; }
 @media (max-width: 640px) {
   .estab-topo { grid-template-columns: 52px minmax(0, 1fr); }
@@ -330,6 +323,17 @@
 .area-criativos { grid-area: criativos; min-width: 0; }
 .area-lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .area-creditos { grid-area: creditos; min-width: 0; }
+/* Formulário de ponto aberto (estação dos formulários de ponto, 28/09/2026):
+   a área só entra no grid enquanto ele existe — vazia, ela somaria um
+   espaçamento a mais entre as áreas. Fica no topo, na largura toda (no
+   celular também: depois da coluna lateral inteira ele caía embaixo de
+   Indicações e Financeiro); Meus pontos mostra um atalho pra ele. */
+.area-form-ponto { grid-area: formponto; min-width: 0; scroll-margin-top: 80px; }
+.painel-grid.com-form-ponto { grid-template-areas: "formponto" "campanha" "lateral" "criativos" "creditos"; }
+.anunciante-dashboard .panel.form-ponto { padding: 28px 32px 32px; }
+@media (max-width: 560px) {
+  .anunciante-dashboard .panel.form-ponto { padding: 20px 16px 24px; }
+}
 .painel-grid .dashboard-section { margin-bottom: 0; }
 .area-campanha[hidden] { display: none; }
 /* Cartões de bloqueio (sem plano / modo não ativado) nascem antes de
@@ -340,11 +344,13 @@
     grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
     grid-template-areas: "campanha lateral" "criativos lateral" "creditos creditos";
   }
+  .painel-grid.com-form-ponto {
+    grid-template-areas: "formponto formponto" "campanha lateral" "criativos lateral" "creditos creditos";
+  }
   /* A coluna lateral é estreita: tudo dentro dela vira uma coluna só. */
   .area-lateral .estab-lista { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .tela-linha { grid-template-columns: 12px minmax(0, 1fr); }
   .area-lateral .tela-linha .tela-num, .area-lateral .tela-linha .btn { grid-column: 2; justify-self: start; text-align: left; }
-  .area-lateral .candidatura-layout { grid-template-columns: minmax(0, 1fr); }
   .area-lateral .panel-head { flex-wrap: wrap; }
   .area-lateral .fin-colunas { grid-template-columns: minmax(0, 1fr); }
   /* Coluna estreita: o selo de status desce pra baixo do nome, em vez de

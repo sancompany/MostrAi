@@ -29,11 +29,9 @@
              conta tem, e o que precisa de atenção agora. -->
         <div class="resumo-conta" id="resumoConta" aria-label="Resumo da conta"></div>
         <ul class="alertas-conta" id="alertasConta" aria-label="Precisa de atenção" hidden></ul>
-        <!-- Promoção pra usuários logados (rodada de Ofertas/Promoções,
-             22/09/2026, Parte R) — só existe quando alguma promoção vigente
-             está marcada "mostrar pra usuários logados"; nunca redesenha o
-             resto do painel nem mexe no fluxo de troca de plano. -->
-        <div id="promocaoLogado" hidden></div>
+        <!-- A promoção NÃO mora mais aqui (reforço visual, 28/09/2026): na
+             área logada ela é a faixa fina abaixo do cabeçalho, com X
+             (public/barra-promocional.js) — o topo do painel é da operação. -->
       </div>
     </section>
 
@@ -167,14 +165,13 @@
             <div class="panel-head">
               <div>
                 <p class="section-eyebrow">Seus comércios na rede</p>
-                <h2 id="tituloMeusPontos">Meus pontos</h2>
+                <h2 id="tituloMeusPontos" tabindex="-1">Meus pontos</h2>
                 <span class="panel-subtitle" id="pontosResumo"></span>
               </div>
               <button type="button" class="btn ghost" id="btnNovoPonto" hidden>+ Cadastrar outro estabelecimento</button>
             </div>
             <p class="form-msg" id="msgMeusPontos" role="status" hidden></p>
             <div class="estab-lista" id="pontosLista"></div>
-            <div class="pontos-novo" id="pontosNovo" hidden></div>
           </article>
         </section>
 
@@ -199,6 +196,14 @@
           </article>
         </section>
         </aside>
+
+        <!-- Formulário de ponto ("Quero ser um ponto" e "+ Cadastrar outro
+             estabelecimento"): abre aqui, na largura da página, e não dentro
+             da coluna lateral de Meus pontos, onde ficava com ~340 px
+             (estação dos formulários de ponto, 28/09/2026). Montado por
+             public/meus-pontos.js; o grid só o mostra enquanto está aberto
+             (.painel-grid.com-form-ponto, painel.css). -->
+        <section class="dashboard-section area-form-ponto" id="pontosNovo" aria-labelledby="tituloFormPonto" hidden></section>
 
         <div class="area-creditos">
         <section class="dashboard-section" id="modCreditos" aria-labelledby="tituloCreditos" hidden>
@@ -260,6 +265,8 @@
   <script src="/config.js"></script>
   <script src="/eventos.js"></script>
   <script src="/layout.js"></script>
+  <script src="/promocao.js"></script>
+  <script src="/barra-promocional.js"></script>
   <script src="/perfil.js"></script>
   <script src="/notificacoes.js"></script>
   <script src="/painel-resumo.js"></script>

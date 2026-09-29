@@ -5434,7 +5434,7 @@ function montarFormularioPromocao(promo) {
                   <button type="button" class="btn ghost mini" data-escolher-arquivo="promoArquivo" id="promoEscolherRotulo">Escolher imagem</button>
                   <button type="button" class="btn perigo-sutil mini" id="promoRemoverImagem" hidden>Remover</button>
                 </div>
-                <span class="campo-ajuda">Banner horizontal vira o fundo do destaque da Home; os outros formatos ficam pro card e pro celular.</span>
+                <span class="campo-ajuda">A imagem aparece inteira, sem corte: ao lado do texto no computador e acima dele no celular — nenhum texto vai por cima dela.</span>
               </div>
               <input type="file" id="promoArquivo" accept="image/*" hidden>
             </div>
@@ -5527,6 +5527,21 @@ async function renderPromocoes(el) {
     pegar('/admin/ofertas/produtos'),
   ]);
   const precoBasePorTier = Object.fromEntries(produtos.map((p) => [p.tier, Number(p.precoBase)]));
+  // Preço normal de cada produto × ciclo — a prévia marca `temVantagem` com a
+  // mesma conta do servidor (promocoes-repository.js#temVantagem): a célula
+  // só vale como promoção se o preço promocional fica ABAIXO do normal.
+  const valorNormal = Object.fromEntries(
+    produtos.map((p) => [
+      p.tier,
+      Object.fromEntries(Object.entries(p.ciclos || {}).map(([m, c]) => [m, Number(c?.valorMensal)])),
+    ]),
+  );
+  const temVantagemNaPrevia = (i) => {
+    const base = precoBasePorTier[i.tier] || 0;
+    const promocional = Math.round((base - (base * i.descontoPercentual) / 100) * 100) / 100;
+    const normal = valorNormal[i.tier]?.[i.compromissoMeses];
+    return Number.isFinite(normal) && promocional < normal;
+  };
   const grupos = GRUPOS_PROMOCAO.map(([chave, titulo]) => ({
     chave,
     titulo,
@@ -5673,22 +5688,40 @@ async function renderPromocoes(el) {
       const titulo = form.titulo_publico.value.trim() || 'Título da promoção';
       const subtitulo = form.subtitulo.value.trim();
       const selo = form.selo.value.trim();
-      const fim = window.prazoBR(form.compra_fim.value);
       const src = imagemAtual();
-      const comFundo = src && formatoAtual() === 'horizontal';
       const naHome = form.mostrar_home.checked;
-      document.getElementById('previaHome').innerHTML = naHome
-        ? `<div class="previa-banner ${comFundo ? 'com-imagem' : ''}">
-            ${comFundo ? `<img class="previa-banner-fundo" src="${esc(src)}" alt="">` : ''}
-            <div class="previa-banner-conteudo">
-              ${selo ? `<span class="previa-selo">${esc(selo)}</span>` : ''}
-              <b>${esc(titulo)}</b>
-              ${subtitulo ? `<span>${esc(subtitulo)}</span>` : ''}
-              ${fim ? `<small>Adesões até ${fim}.</small>` : ''}
-              <span class="previa-banner-botao">Ver condição na página de planos</span>
-            </div>
-          </div>`
-        : '<p class="promo-previa-fora">Não aparece na Home.</p>';
+      // A prévia é o MESMO componente do site (public/promocao.js), montado
+      // pelo mesmo caminho (arte medida, vantagem por ciclo, imagem que falha
+      // sai): numa caixa estreita ele sai empilhado, como no celular (Estação
+      // 3, 28/09/2026). Só pra ver, nunca pra clicar.
+      const previaHome = document.getElementById('previaHome');
+      previaHome.inert = true;
+      const itensPrevia = itensMarcados()
+        .filter((i) => i.descontoPercentual > 0)
+        .map((i) => ({ ...i, temVantagem: temVantagemNaPrevia(i) }));
+      const semVantagem = itensPrevia.length > 0 && !itensPrevia.some((i) => i.temVantagem);
+      if (!naHome || semVantagem) {
+        window.montarPromocoes(previaHome, []); // descarta uma montagem em voo
+        previaHome.innerHTML = `<p class="promo-previa-fora">${
+          naHome ? 'Nenhum ciclo fica abaixo do preço normal: a promoção não aparece na Home.' : 'Não aparece na Home.'
+        }</p>`;
+      } else {
+        window.montarPromocoes(
+          previaHome,
+          [
+            {
+              titulo_publico: titulo,
+              subtitulo,
+              selo,
+              compra_fim: form.compra_fim.value || null,
+              formato_midia: formatoAtual(),
+              imagem_url: src || null,
+              itens: itensPrevia,
+            },
+          ],
+          { variante: 'home', id: 'previaPromoHome' },
+        );
+      }
 
       const itens = itensMarcados().filter((i) => i.descontoPercentual > 0);
       const naPlanos = chkMostrarPlanos.checked;

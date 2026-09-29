@@ -87,6 +87,18 @@ async function instalarPlayer(telaId) {
   return { dispositivoId: r.dispositivoId, chaveAparelho: r.chaveAparelho };
 }
 
+// Tira o ponto do sorteio automático da cobertura (`escolha_bloqueada_em`,
+// src/lib/pacing.js#pontosDoAnunciante). Os arquivos de teste rodam em
+// paralelo no mesmo banco: ponto aberto ao sorteio recebe contas com plano de
+// OUTROS arquivos, que o `after` deles apaga no meio da geração da playlist
+// deste — FK violada em `exibicoes_contador` — ou que quebram a asserção de
+// quem aparece na tela. A escolha explícita (`anunciantes_pontos`) continua
+// valendo no ponto bloqueado, então as contas do próprio teste entram; a
+// escolha pela rota (`PUT /anunciantes/me/pontos`) recusa ponto bloqueado.
+async function tirarDoSorteio(pontoId) {
+  await pool.query('UPDATE pontos SET escolha_bloqueada_em = now() WHERE id = $1', [pontoId]);
+}
+
 async function novaTela(pontoId, dados = {}) {
   return dispositivosRepo.criar(pontoId, dados);
 }
@@ -117,6 +129,7 @@ module.exports = {
   novoPonto,
   novaTela,
   instalarPlayer,
+  tirarDoSorteio,
   garantirPinSaida,
   limparPontos,
   eventosDe,

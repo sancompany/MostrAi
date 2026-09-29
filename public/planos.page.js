@@ -263,33 +263,37 @@ function condicaoPromocionalVigente(tier, compromissoMeses) {
   return null;
 }
 
-// Banner no topo da página (Parte 4 do pedido, camada 1: "o usuário entende
-// claramente que existe uma campanha ativa e quais condições ela oferece" —
-// antes só o preço mudava, sem nenhum aviso de que havia promoção).
-// Mesmo visual do banner da Home (`.promo-home-banner`), sem botão — a
-// página inteira já É a oferta, não precisa de CTA pra rolar até ela mesma.
-function pintarBannerPlanos(promo) {
-  if (!promo) return;
-  const secao = document.getElementById('promocaoPlanosBanner');
-  const el = document.getElementById('promocaoPlanosTopo');
-  const comImagemHorizontal = promo.imagem_url && promo.formato_midia === 'horizontal';
-  // Em que ciclos vale e até quando (D1/D3, 24/09/2026 — config.js).
-  // Sem vantagem em ciclo nenhum, não há banner: seria anunciar desconto
-  // que não existe.
-  const condicao = window.condicaoDaPromocao(promo);
-  if (condicao === null) return;
-  const prazo = condicao ? `<p class="promo-home-prazo">${esc(condicao)}</p>` : '';
-  el.innerHTML = `
-    <div class="promo-home-banner ${comImagemHorizontal ? 'com-imagem' : ''}">
-      ${comImagemHorizontal ? `<img class="promo-home-img-fundo" src="${esc(promo.imagem_url)}" alt="">` : ''}
-      <div class="promo-home-conteudo">
-        ${promo.selo ? `<span class="badge">${esc(promo.selo)}</span>` : ''}
-        <h2>${esc(promo.titulo_publico)}</h2>
-        ${promo.subtitulo ? `<p class="lead">${esc(promo.subtitulo)}</p>` : ''}
-        ${prazo}
-      </div>
-    </div>`;
-  secao.hidden = false;
+// Promoções no topo da página (Parte 4 do pedido de 22/09/2026: "o usuário
+// entende claramente que existe uma campanha ativa e quais condições ela
+// oferece"). Mesmo componente da Home (promocao.js), na variante de Planos:
+// o cliente já está no destino, então no lugar de "Ver planos" vão os
+// descontos de cada ciclo — tocar num deles escolhe aquele ciclo na grade
+// logo abaixo —, o prazo com o teto de adesões e as regras (Estação 3,
+// 28/09/2026). Só entra o que a promoção de fato entrega
+// (`promocoesParaExibir`: sem célula que outra promoção já ocupa, sem ciclo
+// sem vantagem — D1).
+function escolherCicloDaPromocao(meses) {
+  const botao = document.querySelector(`#cycleToggle button[data-meses="${meses}"]`);
+  if (!botao) return;
+  botao.click();
+  botao.focus({ preventScroll: true });
+  const suave = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('cycleToggle').scrollIntoView({ behavior: suave ? 'smooth' : 'auto', block: 'start' });
+}
+
+async function pintarPromocoesPlanos(vigentes) {
+  const montou = await window.montarPromocoes(
+    document.getElementById('promocaoPlanosTopo'),
+    window.promocoesParaExibir(vigentes, 'mostrar_planos'),
+    {
+      variante: 'planos',
+      id: 'promoPlanos',
+      aoEscolherCiclo: escolherCicloDaPromocao,
+      // "30% Mensal" só quando todo plano Mensal da grade tem os 30%.
+      tiersDoCiclo: (meses) => PLANOS.filter((p) => p.compromisso_meses === meses).map((p) => p.tier),
+    },
+  );
+  if (montou) document.getElementById('promocaoPlanosBanner').hidden = false;
 }
 
 const planosCarregados = Promise.all([
@@ -302,7 +306,10 @@ const planosCarregados = Promise.all([
   .then(([planos, promocoes]) => {
     PLANOS = planos;
     PROMOCOES_VIGENTES = (Array.isArray(promocoes) ? promocoes : []).filter((p) => p.mostrar_planos);
-    pintarBannerPlanos(PROMOCOES_VIGENTES[0]);
+    // Todas as vigentes (a disputa pela célula é entre todas, como na
+    // cobrança); quem aparece aqui sai de `mostrar_planos`. Falha na
+    // promoção não derruba a grade de planos.
+    pintarPromocoesPlanos(Array.isArray(promocoes) ? promocoes : []).catch(() => {});
     atualizarDescontos();
     render(3);
   })

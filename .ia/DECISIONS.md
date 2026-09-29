@@ -943,3 +943,149 @@ admin decide. Com o Plano Básico (migration 103, branch própria) o ponto do
 Básico continua fora da trava (é o estabelecimento da própria conta); no
 merge, `coberturaDaConta` junta as duas condições
 (`proprios.has(p.id) || (naFatia && (!bloqueia || dona))`).
+
+## ADR-027 — Promoção: mídia separada do conteúdo, um componente, carrossel só com 2+ (28/09/2026)
+
+Contexto: Estação 3 (reformulação visual das promoções). O banner da Home e
+o de Planos eram duas cópias do mesmo HTML com a arte de FUNDO e selo,
+título, condição e botão por cima de um véu escuro; no celular o recorte do
+fundo dependia da altura do texto.
+
+Decisão:
+1. **Texto nunca sobre a arte.** MÍDIA e CONTEÚDO são irmãos no grid:
+   lado a lado com ≥ 840px de componente, arte em cima e texto embaixo
+   abaixo disso. O limite é do COMPONENTE (container query), não da janela,
+   então a prévia do admin sai empilhada como no celular.
+2. **Arte inteira.** A imagem é medida antes de montar e entra com
+   `width`/`height` reais — sem recorte e sem pulo de layout. Imagem lenta
+   (> 0,8 s) reserva a proporção declarada no admin e entra com `contain`;
+   imagem que falha tira a mídia e fica o texto.
+3. **Um renderizador.** `public/promocao.js` (`montarPromocoes`,
+   `htmlPromocao`) serve Home (variante `home`), Planos (variante `planos`)
+   e a prévia do admin. Não existe segunda cópia.
+4. **Carrossel só com duas ou mais**, sem autoplay, no padrão WAI-ARIA de
+   carousel; a ordem é a do servidor.
+5. Apresentação não muda regra: percentuais, janela, teto, público,
+   `temVantagem`/D1 e Checkout seguem as fontes de sempre.
+
+Consequências: nova superfície de promoção usa `montarPromocoes` (ou
+`htmlPromocao`), nunca HTML próprio. Arte mobile separada, prioridade e
+destino do CTA dependem de campo novo no admin (docs/PENDENCIAS.md §R).
+
+## ADR-028 — Promoção: a oferta é a manchete na área pública; na área logada, uma faixa fina com X (28/09/2026)
+
+Status: Ativa. Sem migration, sem backend. Código: `public/promocao.js`
+(componente público), bloco "Componente de promoção" em `public/style.css`,
+`public/barra-promocional.js` (área logada). Complementa o ADR-027 (mídia
+separada do conteúdo), que continua valendo inteiro.
+
+Contexto: depois do ADR-027 a promoção ficou correta e limpa, mas lia como
+card institucional — o "30%" tinha o mesmo peso do resto do título. E no
+painel um card largo ocupava o topo da área operacional.
+
+Decisão:
+1. **Área pública vende.** A manchete é a OFERTA calculada dos próprios
+   itens da promoção (`ofertaDaPromocao`: maior desconto entre as células
+   com vantagem — as mesmas de `descontosPorCiclo`, com "até" quando os
+   ciclos não têm o mesmo desconto). Hierarquia: selo (faixa vermelha) →
+   título só se disser algo além da oferta (`tituloRedundante`) → "ATÉ 30%
+   OFF" → benefício → descontos por ciclo (blocos; "Melhor desconto" quando
+   um ciclo sozinho tem o maior) → "Ver planos" → "Tempo limitado" + prazo e
+   teto. Leitor de tela ouve "Até 30% de desconto".
+2. **Paleta de campanha escopada.** Só dentro de `.campanha` (tokens
+   `--campanha-*`): fundo quase preto quente, vermelho do selo, amarelo da
+   oferta e do botão. O resto do site segue a identidade Mostraí. Contrastes
+   conferidos (branco/fundo > 15:1, amarelo/fundo > 11:1, branco/vermelho
+   5,1:1, escuro/amarelo > 11:1). Sem animação.
+3. **Área logada opera.** O card do painel saiu; no lugar, uma faixa fina
+   logo abaixo do cabeçalho (selo · "Até 30% OFF" · benefício · "Ver
+   planos" · X), montada por `barra-promocional.js` em página
+   `data-layout="conta"`. Fechar remove a faixa do fluxo (o conteúdo sobe) e
+   guarda `mostrai:promoDispensada:<id>` em `localStorage`: não volta ao
+   navegar nem numa sessão nova do mesmo navegador; promoção nova (outro id)
+   aparece. Sem backend — é preferência do navegador; armazenamento
+   bloqueado = fecha só na página. A barra usa as MESMAS funções do bloco
+   público (`promocoesParaExibir` sem filtro de exposição, `ofertaDaPromocao`,
+   `tituloSemSelo`): a mesma disputa de células — uma promoção dispensada
+   continua na disputa (continua sendo cobrada), só não aparece. Sem isso,
+   dispensar a mais nova fazia a barra anunciar o desconto de uma mais antiga
+   numa célula que a cobrança dá à outra (achado da revisão independente).
+4. **Nenhuma regra comercial muda**: percentuais, prazo, teto, público,
+   cálculo, Checkout, API e banco intactos. A oferta é leitura dos mesmos
+   itens que a vitrine e a cobrança usam.
+
+Consequências: a manchete depende dos itens terem desconto — promoção sem
+célula com vantagem continua fora do site (D1), e a prévia do admin sem
+produto marcado cai no título como manchete. O título gravado não muda; um
+título que repete o percentual da oferta deixa de aparecer na tela (R3
+continua valendo para o prefixo do selo).
+
+## ADR-029 — Card de ponto do cliente no molde do admin, com foto e segmento pela vitrine pública (28/09/2026)
+
+Contexto: estação isolada dos cards do cliente. "Onde seu anúncio aparece"
+mostrava cada ponto numa linha densa (19/09/2026), sem foto nem segmento,
+enquanto Rede > Pontos do admin já tinha o card com a fachada. O dono pediu
+o mesmo idioma visual no cliente, sem mexer em regra, backend ou banco. A
+rota da escolha (`GET /anunciantes/me/pontos-disponiveis`) não devolve foto,
+segmento nem bairro.
+
+Decisão:
+1. **Um molde de card de ponto.** O card da escolha usa
+   `.ponto-card.com-corpo` (style.css), o mesmo do admin e da prévia da
+   candidatura, com o placeholder oficial e o ajuste de foto em pé
+   (`candidaturaAjustarFoto`). O que é só da escolha (pé com a caixa, selo
+   "Seu ponto" na foto, estados) mora no bloco "Escolha de pontos do
+   anunciante" de style.css.
+2. **Foto, segmento e bairro vêm da vitrine pública `GET /pontos`**, cruzada
+   por `id` no front (mesmos status, `STATUS_NA_REDE`; `confirmar-plano` já
+   lia essa rota). É enfeite: falhou, o card fica com o placeholder e a
+   escolha segue. A rota da escolha continua como estava.
+3. **O estado da seleção é dito em texto e escolhido pelo CSS** a partir do
+   input (`:checked`, `:disabled`, `.cheio`): "Selecionar ponto",
+   "Selecionado", "Limite do plano atingido", "Indisponível para escolha".
+   Nenhum caminho do JS repinta frase.
+4. **Nada de comportamento muda:** o `input`, o `.cheio`, o `data-ponto-id`,
+   o `data-busca`, `travarNoLimite`, o PUT e o contador são os de antes. O
+   `<a>` do mapa continua fora do `<label>` (agora sobre a foto).
+
+Consequências: outro card de ponto no cliente usa o mesmo molde, não um
+novo. Se um dia a rota da escolha passar a trazer a foto (o PR #90 faz
+isso), o card lê de lá e a vitrine sai — sem mudar o desenho. A lista espera
+a vitrine pra se desenhar, no máximo 3 s (as duas rotas saem em paralelo);
+passou disso, desenha com o placeholder.
+
+## ADR-030 — Formulário de ponto na largura da página, erro embaixo do campo (28/09/2026)
+
+Contexto: os dois pedidos de ponto ("Tornar-se ponto", com o comércio da
+conta, e "Novo estabelecimento") abriam dentro do card Meus pontos, que mora
+na coluna lateral do painel (~340 px): campos espremidos, horário vazando do
+card, prévia lá embaixo; e os campos saíam sem estilo (a regra-base só
+existia dentro de `.card`). A validação era o balão do navegador — e no
+segmento ela nem aparecia: o `required` do `<select>` escondido travava o
+envio em silêncio.
+
+Decisão:
+1. **Área própria no grid do painel** (`#pontosNovo`, `.area-form-ponto`),
+   que só entra no grid enquanto o formulário está aberto
+   (`.painel-grid.com-form-ponto`), no topo, na largura toda. Formulário
+   ~65% e prévia ~35% fixa (sticky) a partir de 50em de componente; uma
+   coluna abaixo disso. Container queries em `em`: texto maior e zoom
+   mudam o arranjo em vez de espremer.
+2. **Um componente, duas intenções.** Estrutura, campos, validação e prévia
+   saem de `public/candidatura-ponto.js`; cada forma mantém o próprio título,
+   texto do botão ("Enviar meu interesse" / "Enviar pedido") e payload.
+3. **Validação própria (`candidaturaValidar`), mesmas regras**: o formulário
+   é `novalidate`, a mensagem fica embaixo do campo com `aria-describedby`,
+   o foco vai pro primeiro problema. Nenhuma regra nova — as do HTML e as
+   que o servidor já aplicava (movimento > 0, abertura ≠ fechamento).
+4. **Busca de segmento responde pelo campo** (`formulario.js#montarBusca`):
+   o `required` passa do `<select>` escondido pro campo visível, com rótulo e
+   teclado. Vale pros três formulários que usam a busca.
+5. Estilos escopados em `.form-ponto`, num bloco próprio no fim de
+   `style.css` (o arquivo tem um trecho duplicado, docs/PENDENCIAS.md §U1).
+
+Consequências: novo formulário de ponto usa essas peças
+(`candidaturaCampoMovimento`, `candidaturaAcoes`, `candidaturaValidar`…),
+que são globais de script (`window.*`, registradas em `biome.json`). O
+payload e as rotas não mudaram; quem chama `POST /conta/modos/ponto/pedir`
+ou `/anunciantes/me/pontos` não percebe diferença.

@@ -69,13 +69,12 @@
 <body data-layout="publico">
 
   <main>
-    <!-- Bloco promocional (reconstrução de Ofertas/Promoções, 23/09/2026) —
-         abaixo do header, ACIMA do hero (pedido do dono: "não quero aquele
-         bloco quadrado com cara de foto de perfil abaixo do hero" — precisa
-         parecer campanha publicitária de verdade, com presença). Só existe
-         quando alguma promoção vigente está marcada "mostrar na Home"
-         (index.page.js consome GET /promocoes/vigentes, já filtrado por
-         elegibilidade comercial — nunca uma promoção fixa escrita aqui). -->
+    <!-- Bloco promocional — abaixo do header, ACIMA do hero, bloco à parte
+         dele. Só existe quando alguma promoção vigente está marcada "mostrar
+         na Home" (index.page.js consome GET /promocoes/vigentes, já filtrado
+         por elegibilidade comercial — nunca uma promoção fixa escrita aqui).
+         Desde 28/09/2026 (Estação 3) é o componente de public/promocao.js:
+         arte e texto separados, nunca texto sobre a imagem. -->
     <section class="tight secao-promo" id="promocaoHomeSecao" hidden>
       <div class="wrap"><div id="promocaoHome"></div></div>
     </section>
@@ -236,6 +235,7 @@
   </main>
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
+  <script src="/promocao.js"></script>
   <script src="/index.page.js"></script>
   <script src="/contato.page.js"></script>
 </body>
