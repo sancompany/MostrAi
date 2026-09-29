@@ -1,6 +1,23 @@
 # Current Handoff
 
 ## Updated
+2026-09-29 — **Estação FINAL PRÉ-LANÇAMENTO: comunicados por e-mail no admin**
+(branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`, PR draft próprio,
+**sem merge** até a Visão geral final estar na `main` — o PR #104 põe o QR
+institucional no mesmo trecho de `renderResumo`; ao reconciliar ficam os
+dois blocos). Card compacto "Comunicados por e-mail" na coluna de negócio
+da Visão geral → modal (público com "Destinatários: N contas", assunto,
+título, mensagem, botão `https://` opcional → prévia que é o e-mail real →
+teste `[TESTE]` → confirmação Mostraí) → histórico com Reenviar falhas. Envio
+pela `email_outbox` existente (tipo `comunicado`, um e-mail por conta,
+sozinha no "Para", 30/min, fim da fila); sem envio em dobro por
+Idempotency-Key + mesmo conteúdo em 24 h + chave por destinatário. Fora:
+excluída, anonimizada, conta própria, suspensa, e-mail não confirmado, quem
+revogou "novidades" e e-mail inválido (régua em
+`src/comunicados/publicos.js`). Migration 108 (só tabelas novas). UI em
+`public/admin/comunicados.js`/`.css` (arquivo próprio pra não disputar
+`index.page.js`). ADR-032, RN-68, `docs/PENDENCIAS.md` §W, e2e 38.
+**Não iniciar outra estação.**
 2026-09-29 — **Estação FINAL DO PAINEL DO USUÁRIO**
 ([PR #105](https://github.com/sancompany/MostrAi/pull/105), branch
 `claude/nifty-galileo-rwryqd`, base `93cd724`, merge e deploy autorizados

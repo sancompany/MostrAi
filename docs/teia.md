@@ -28,6 +28,23 @@ em 15/09/2026 por doze leituras independentes, uma por superfície.
 > primeira exibição", "No ar" (só com comprovante) e "Seu ponto" na escolha
 > de pontos (RN-63/64/65 em `docs/funcional.md`).
 >
+> **29/09/2026 — Comunicados por e-mail (RN-68, ADR-032):**
+> `src/comunicados/publicos.js` — a régua única de quem recebe
+> (`CONTA_RECEBE_SQL`), `listarDestinatarios` (contagem da tela = lista do
+> envio), `contarForaDoEnvio`, `contaAindaRecebe` (conferência na vez de cada
+> e-mail e no reenvio), `semRepetidos`; `conteudo.js` — `validar`,
+> `validarLink`, `montar` (← `email.mensagem`, o template institucional, com
+> `quebrasDeLinha`), `impressaoDe`; `repository.js` — `criar` (trava
+> transacional, Idempotency-Key, impressão em 24 h, → `outbox.enfileirar` com
+> `atrasoS` por destinatário), `historico`, `detalhe`, `falhasReenviaveis`,
+> `reenviarFalhas`; `envio.js` — o modelo `comunicado` da outbox (`enviar` →
+> `email.enviarComunicado`, `marcarEnviado` via `depois`, `marcarDesistencia`
+> via o gancho novo `aoDesistir`); `routes.js` → `/admin/comunicados*`. Na
+> outbox: tipo `emMassa` vai pro fim da fila (`pegarProxima`) e `enviar` pode
+> devolver `{ descartar }`. Admin: `public/admin/comunicados.js`
+> (`renderComunicadosResumo` ← `renderResumo` da Visão geral, `abrirNovo`,
+> `pintarPrevia`, `abrirHistorico`, `abrirDetalhe`).
+>
 > **26/09/2026 — Player MVP:** o player web (`public/player.html`,
 > `player.page.js`, `player.css`), o painel por PIN da TV, `/hello`, OTA,
 > rotação de tela e de credencial, PIN e horário por tela SAÍRAM do código.

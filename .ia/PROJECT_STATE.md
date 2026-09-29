@@ -65,6 +65,10 @@ ajuste; a estação fecha com o nível que ele aceitar. Ver `CLAUDE.md`.
 - Comissão de vendedor (entrada só por convite direto do dono).
 - Painel administrativo: contas, candidaturas, convites, pontos, telas,
   criativos, dinheiro, banco de horas, resumo com margem real.
+- Comunicados por e-mail no admin (29/09/2026, PR em draft, sem merge até a
+  Visão geral final): público com contagem, prévia real, teste, confirmação,
+  envio pela fila existente sem duplicar, histórico e reenvio só das falhas
+  (ADR-032, RN-68, migration 108; `tests/comunicados.test.js`, e2e 38).
 - Direitos do titular de dados (LGPD) — `src/titular/`.
 
 ## Funcionalidades parcialmente concluídas / com lacuna conhecida

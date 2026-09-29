@@ -87,7 +87,8 @@ dá nada a quem se cadastra: o benefício é do ponto que indicou.
    de parceiro, recebido no mês —
    crédito não é receita (ADR-016) —, conciliação discreta
    quando saudável, pendências financeiras agregadas —, promoção ativa,
-   indicadores de rede). Mobile empilha as duas colunas na ordem natural.
+   indicadores de rede, **Comunicados por e-mail** — último envio e
+   [+ Novo comunicado], RN-68). Mobile empilha as duas colunas na ordem natural.
    Comissão de vendedor não soma mais nesse agregado — o conceito de
    vendedor saiu do escopo da Visão geral (segue existindo dentro de Contas).
 3. Aprova contas, candidaturas e criativos.
@@ -1317,6 +1318,59 @@ em 30 s, 2 min, 10 min, 30 min e 2 h, e depois de 6 tentativas marca
   faria do site um jeito de mandar e-mail da Mostraí pra terceiros.
 - **Retenção da fila:** mensagem com segredo (código, link) some em 2 dias;
   enviada, em 30; abandonada/descartada, em 90.
+
+**RN-68 — Comunicado da plataforma: um e-mail por conta, contado antes, nunca
+em dobro.** *(Estação de comunicados, 29/09/2026, ADR-032.)* Em **Admin →
+Visão geral → Comunicados por e-mail → [+ Novo comunicado]** o admin escreve
+um aviso da plataforma (atualização, mudança de funcionamento, manutenção,
+indisponibilidade, novidade do serviço) e escolhe o público: **todas as contas
+ativas**, **com plano ativo** (plano gravado e dentro da validade — a situação
+"ativo" da Visão geral, pago ou benefício), **sem plano** (nunca teve ou
+venceu) ou **donos de ponto** (ponto aprovado não arquivado; candidatura não
+conta). Regras:
+- **Quem nunca recebe:** conta excluída ou anonimizada, a conta própria da
+  Mostraí, conta **suspensa** (login recusado, nada dela no ar — a volta tem
+  e-mail próprio), e-mail **não confirmado** (endereço nunca provado; mesma
+  régua das boas-vindas), quem desmarcou **"Quero receber novidades e ofertas
+  da Mostraí por e-mail"** no perfil (o texto é livre — o sistema não tem como
+  garantir que é só aviso operacional) e e-mail tecnicamente inválido. A tela
+  mostra quantas ficaram de fora e por quê — só números.
+- **A contagem é a lista do envio.** "Destinatários: N contas" é o tamanho da
+  mesma consulta que o envio usa (`src/comunicados/publicos.js`); o navegador
+  nunca recebe endereço. Na confirmação o admin vê público, N e assunto; se o
+  público mudar entre a confirmação e o clique, nada sai e a tela mostra o
+  número novo. Público com zero destinatário não envia.
+- **Um e-mail por pessoa.** Endereço repetido sai uma vez; cada destinatário
+  vira UMA mensagem da fila (RN-62), com só o endereço dele no "Para" —
+  ninguém vê quem mais recebeu. O texto é do admin, mas vira **texto**: o
+  e-mail sai no template institucional (título, parágrafos, botão opcional
+  `https://`, rodapé com o porquê e como parar), em HTML e texto puro.
+- **Nunca em dobro.** Duplo clique, tempo esgotado e nova tentativa da mesma
+  confirmação levam a mesma chave (Idempotency-Key) e devolvem o comunicado
+  que já existe; o mesmo conteúdo para o mesmo público nas últimas 24 h é
+  barrado (página recarregada, outra aba).
+- **Prévia e teste.** A prévia é o e-mail montado pelo servidor, o mesmo do
+  envio. O teste sai na hora, marcado **[TESTE]**, só para a caixa da equipe
+  (`MOSTRAI_EMAIL_CONTATO`) ou um endereço digitado que não seja de conta de
+  cliente, e não entra no histórico.
+- **Ritmo e prioridade.** As mensagens saem espaçadas (30 por minuto por
+  padrão, `COMUNICADOS_POR_MINUTO`) e vão pro fim da fila: código de
+  verificação e link de senha nunca esperam por um comunicado.
+- **Falha parcial:** o histórico mostra previstos, enviados, falharam e na
+  fila; quem falhou aparece com o endereço mascarado e o motivo.
+  **Reenviar falhas** põe de volta só quem falhou (e ainda recebe) — quem já
+  recebeu não recebe de novo. Conta que sai do público antes da vez dela
+  (excluída, suspensa, desmarcou, trocou de e-mail) não recebe e não conta
+  como falha.
+- **Trilha:** quem criou/enviou e quando (`comunicados.criado_por`, o usuário
+  da sessão do admin) e cada reenvio (`comunicados_reenvios`).
+- **Não é marketing.** Oferta, promoção e campanha não saem por aqui: não
+  existe opt-in de divulgação no cadastro (só a revogação do perfil), e
+  decidir essa base legal é de uma estação jurídica (docs/PENDENCIAS.md §W).
+*Violada:* conteúdo inválido → 400 com o campo; público vazio → 400; público
+mudou → 409 com o número novo; repetido → 409 com o comunicado anterior; sem
+sessão de admin → 401. *Quem vê:* o administrador; cada conta vê só o próprio
+e-mail.
 
 **RN-63 — O anunciante escolhe os pontos; o próprio ponto é opcional.**
 *(Estação de distribuição, 27/09/2026.)* "Onde seu anúncio aparece" lista

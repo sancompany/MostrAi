@@ -1154,3 +1154,65 @@ Consequências: `situacaoDoCusto` devolve valor no `tipo: 'beneficio'` (o
 teste antigo "benefício nunca mostra valor" virou o teste da referência).
 Quem precisar do custo de um plano do catálogo reusa `cicloDeReferencia` —
 nunca uma segunda conta. Sem migration.
+
+## ADR-032 — Comunicados por e-mail pela fila que já existe, um e-mail por conta, nunca em dobro (29/09/2026)
+
+Contexto: estação final pré-lançamento, pedido do dono — o admin precisa
+avisar as contas da plataforma (manutenção, mudança de funcionamento,
+novidade do serviço) sem ferramenta de fora, com usuários reais a partir do
+dia seguinte. O sistema já tinha uma fila durável de e-mails (migration 097,
+RN-62), o template institucional (`mensagem` em `src/financeiro/email.js`),
+a identidade do admin na sessão (`req.session.adminUsuario`) e uma
+revogação de "novidades e ofertas" no perfil (migration 025) — mas nenhum
+opt-in de divulgação no cadastro.
+
+Decisão:
+1. **Nenhum sistema de e-mail paralelo.** Cada destinatário vira UMA linha
+   da `email_outbox` (tipo novo `comunicado`, classe `operacional`): mesmo
+   processador, SMTP, tentativas, retenção e visão operacional. O texto mora
+   UMA vez em `comunicados` (a fila guarda só o id) e é relido na hora de
+   sair. Resultado por destinatário em `comunicados_destinatarios` (a fila
+   expurga; o histórico não pode encolher), reenvios em
+   `comunicados_reenvios`. Migration 108, só tabelas novas.
+2. **Um e-mail por pessoa, sozinha no "Para".** Endereço vai como objeto ao
+   Nodemailer (em texto, "a@x,b@y" vira dois destinatários — conferido na
+   10.0.10); o SQL já recusa `,;<>"` no endereço; dedupe por
+   `lower(trim(email))` no SQL e de novo no JS.
+3. **A contagem é a lista do envio.** Uma função (`listarDestinatarios`)
+   serve a tela ("Destinatários: N contas") e o envio; a confirmação manda o
+   N visto e o servidor recusa (409) se o público mudou.
+4. **Quem fica de fora (régua única, `CONTA_RECEBE_SQL`):** excluída,
+   anonimizada, conta própria, suspensa (login recusado e nada no ar — aviso
+   de funcionamento não tem o que pedir a ela), e-mail não confirmado (nunca
+   provado; mesma régua das boas-vindas) e quem revogou "novidades e
+   ofertas" (o texto é livre: o sistema não garante que é só operacional).
+   A mesma régua é conferida de novo na vez de cada e-mail — quem saiu
+   entre o clique e o envio vira `descartado`, não falha.
+5. **Nunca em dobro, em três camadas:** `Idempotency-Key` única (duplo
+   clique, tempo esgotado, nova tentativa), impressão digital
+   público+conteúdo em 24 h (página recarregada, outra aba) e chave única
+   por destinatário na fila. Criações em série por trava transacional do
+   Postgres (vale entre instâncias). Tudo numa transação: entra inteiro ou
+   não entra.
+6. **Ritmo e prioridade:** cada destinatário ganha a vez
+   `60 / COMUNICADOS_POR_MINUTO` s depois do anterior (30 por minuto por
+   padrão = 2 s — o SMTP da conta Google limita volume), e tipo `emMassa`
+   vai pro fim da fila: código e link de senha passam na frente.
+7. **Falha parcial e reenvio:** situação real = registro + linha da fila
+   (gancho que falhou não mente); "Reenviar falhas" põe de volta só quem
+   falhou e ainda recebe, com chave nova por rodada.
+8. **Prévia é o e-mail.** O servidor monta (o mesmo `montar` do envio); o
+   admin pinta o HTML num shadow root com os estilos por CSSOM — a CSP do
+   admin (sem `'unsafe-inline'`, `frame-src` só Google) não deixa iframe
+   nem atributo `style`, e mexer na CSP global estava fora de escopo. O
+   teste sai na hora pelo mesmo transporte, marcado `[TESTE]`, nunca pra
+   conta de cliente.
+9. **UI isolada:** `public/admin/comunicados.js`/`.css` próprios; a Visão
+   geral só ganha o contêiner e a chamada — outras estações mexiam no mesmo
+   arquivo ao mesmo tempo (QR institucional, PR #104).
+
+Consequências: aviso promocional continua sem canal — criar opt-in e base
+legal de divulgação é decisão jurídica (docs/PENDENCIAS.md §W). A régua de
+quem recebe muda num lugar só. Escala: uma linha de fila por destinatário
+numa transação é folgado pro porte declarado (~60 contas, CONSTRAINTS.md);
+milhares pediriam inserção em lote.

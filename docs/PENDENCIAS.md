@@ -5534,3 +5534,74 @@ Estação com merge e deploy autorizados pelo dono.
       (`80fe269`, 4 de 4 rodadas locais); o card não foi tocado aqui. Conserto
       natural: esperar a transição (`getAnimations()`) antes de ler o estilo.
 
+## W. Comunicados por e-mail no admin (estação final pré-lançamento, 29/09/2026)
+
+Branch `claude/serene-lovelace-1zx4a0`, base `bf14b0d`. Decisões: ADR-032;
+regra: RN-68 (`docs/funcional.md`); rotas: `docs/api.md` → "Comunicados por
+e-mail". **Não mergear antes da reconciliação com a Visão geral final**
+(pedido do dono): o PR #104 (QR institucional na Visão geral) mexe no mesmo
+trecho de `renderResumo`.
+
+**Feito:**
+
+- [x] Card compacto **Comunicados por e-mail** na Visão geral (coluna de
+      negócio): descrição, último envio (data, destinatários, situação) ou
+      "Nenhum comunicado enviado ainda.", [+ Novo comunicado] e Ver
+      histórico. Nenhum formulário fixo na página.
+- [x] Modal em duas etapas: público (Todas as contas ativas / Com plano ativo
+      / Sem plano / Donos de ponto) com "Destinatários: N contas" e quantas
+      ficaram de fora e por quê; assunto, título, mensagem (texto puro) e
+      botão opcional (`https://`). Revisar: a prévia é o e-mail real (mesmo
+      template do envio, HTML e texto puro) e o envio de teste. Confirmação
+      Mostraí (público, N, assunto, "Este envio será disparado para N
+      contas."), nunca `window.confirm`.
+- [x] Envio pela fila que já existe (`email_outbox`, tipo `comunicado`), um
+      e-mail por conta, sozinha no "Para"; ritmo de 30/min e fim da fila
+      (código e link de senha passam na frente).
+- [x] Sem envio em dobro: `Idempotency-Key` + mesmo conteúdo/público em 24 h +
+      chave única por destinatário; resposta perdida no meio do envio
+      testada no navegador (e2e 38).
+- [x] Histórico (previstos, enviados, falharam, na fila, quem enviou,
+      situação) com detalhe e **Reenviar falhas** só para quem falhou.
+- [x] Migration 108 (só tabelas novas: `comunicados`,
+      `comunicados_destinatarios`, `comunicados_reenvios`, com RLS).
+- [x] Testes: `tests/comunicados.test.js` (A–N do pedido + ritmo, prioridade,
+      descarte na hora, segredo do SMTP fora de toda resposta); e2e
+      `38-comunicados.mjs` (fluxo inteiro + 8 larguras); `npm run check`
+      verde; e2e 23, 24 e 26 verdes.
+
+**Com o dono:**
+
+- W1 [ ] **Conferir no ar:** Visão geral → Comunicados por e-mail → mandar
+      um **teste** pra caixa da equipe (`MOSTRAI_EMAIL_CONTATO` — o
+      `/admin/diagnostico/smtp` mostra o endereço em `destino_contato`) e
+      olhar o e-mail no Gmail e no celular antes do primeiro envio real.
+- W2 [ ] **Decisão jurídica — divulgação:** não existe opt-in de
+      marketing no cadastro, só a revogação "Quero receber novidades e
+      ofertas" do perfil (migration 025). Por isso comunicado é só aviso da
+      plataforma, e quem revogou NÃO recebe (o texto é livre; o sistema não
+      separa aviso de oferta). Se um dia for preciso alcançar TODAS as contas
+      com um aviso obrigatório (mudança de termos, incidente de segurança),
+      ou mandar oferta com base legal, é estação jurídica: opt-in no
+      cadastro, texto de consentimento e o tipo de comunicado — não um
+      checkbox novo aqui.
+- W3 [ ] **Limite diário do SMTP (hipótese, não conferida):** conta Google
+      Workspace costuma aceitar ~2.000 mensagens/dia pelo SMTP (Gmail comum,
+      ~500). Na escala declarada (~60 contas) está longe, mas um público
+      grande além do limite vira "falhou" depois das 6 tentativas (~2h45) —
+      aí "Reenviar falhas" no dia seguinte. Se o provedor reclamar de ritmo,
+      baixar `COMUNICADOS_POR_MINUTO` (padrão 30).
+- W4 [ ] **Reconciliar com o #104** quando ele entrar na `main`: os dois
+      acrescentam um bloco no fim da coluna de negócio (`renderResumo`) e
+      uma chamada `blocoIndependente` — ficam os DOIS (QR institucional e
+      depois Comunicados), nunca um no lugar do outro.
+
+**Encontrado de passagem (não mexido):**
+
+- W5 [ ] `docs/api.md`, seção Admin, diz "As 76 rotas estão listadas uma a
+      uma" — o código já tem ~111 rotas `/admin` (sem contar as 7 novas). O
+      número ficou velho; conferir a lista inteira é trabalho à parte.
+- W6 [ ] Entrega "pelo menos uma vez" da fila (RN-62): se o processo morrer
+      depois de o SMTP aceitar e antes de marcar "enviado", aquele UM e-mail
+      sai de novo depois do prazo (5 min). Vale pra todo e-mail da fila, não
+      só pro comunicado; o comunicado não piora nem melhora isso.
