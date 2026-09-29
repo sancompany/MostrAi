@@ -222,6 +222,7 @@ app.use(titularRoutes);
 app.use(bancoHorasRoutes);
 app.use(midiasRoutes);
 app.use(creditosRoutes);
+app.use(require('./indicacoes/routes'));
 app.use(eventosRoutes);
 app.use(require('./conta/modos').router);
 app.use(require('./conta/financeiro'));

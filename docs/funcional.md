@@ -67,7 +67,13 @@ cupom de vendedor, painel de vendas nem comissão. Produção não tinha nenhum
 vendedor nem comissão quando o código saiu. As tabelas `vendedores` e
 `comissoes` ficam no banco como histórico; todas as rotas antigas respondem
 410. A indicação que vale hoje é a do **dono de ponto** (cupom `PT-…`, vira
-crédito — seção 2.2).
+crédito — seção 2.2). Quem chega ao cadastro pelo link dele
+(`/anunciante/cadastro.html?ref=PT-…`) vê **"Indicado por: <negócio>"** no
+topo do formulário (29/09/2026) — o nome vem da mesma regra que associa a
+conta ao indicador (`indicacoesRepo.indicadorDoCupom`), então o que aparece é
+quem fica associado. Sem `?ref`, ou com indicação inválida (inexistente, fora
+do formato, conta indicadora excluída), a linha não existe. A indicação não
+dá nada a quem se cadastra: o benefício é do ponto que indicou.
 
 ### 2.4 Administrador — o dia a dia
 
@@ -152,7 +158,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 | Cadastro | `/anunciante/cadastro.html` | público | formulário de conta (aceita `?ref=CUPOM`) | criar conta de anunciante | painel |
 | Login | `/anunciante/login.html` | público | e-mail e senha | entrar | painel |
 | Esqueci a senha | `/esqueci-senha.html` | público | e-mail | pedir link | — |
-| Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha | trocar a senha | login |
+| Redefinir senha | `/redefinir-senha.html?token=` | quem tem o token | nova senha (a regra da senha vem depois dos dois campos, antes de Salvar) | trocar a senha | login |
 | Convite | `/convite.html?t=TOKEN` | quem tem o convite | papéis que o convite concede | criar conta ou aceitar logado | painel |
 | Painel | `/anunciante/painel.html` | conta logada | **painel único** (Fatias 1–5, 23/09/2026): no topo a saudação, o **resumo da conta** (plano, pontos, criativos, créditos — cada chip leva ao módulo) e os **alertas** (tela sem comunicação, criativo recusado ou faltando, plano vencido/suspenso, cortesia acabando, pedido em análise), publicados pelos próprios módulos (`public/painel-resumo.js`). Abaixo, uma grade: à esquerda a **campanha** (resumo, performance, cobertura) e **Meus criativos**; na coluna lateral **Seu plano**, **Meus pontos**, **Indicações** (só ponto) e **Financeiro**; embaixo **Créditos e benefícios** (só com relação com créditos). **Estação da conta (26/09/2026, RN-61):** conta sem plano vê UM bloco — "Comece sua primeira campanha" (ou "Volte a anunciar na rede"), [Escolher meu plano] e os 4 primeiros passos — no lugar da campanha, e o card de plano some; com plano, uma faixa de primeiros passos fica no topo até o primeiro criativo e a primeira exibição. No celular, uma coluna na mesma ordem. Nada recarrega a página: cada módulo se refaz pelo SSE | assinar/gerenciar plano, enviar/substituir/excluir criativo, pedir ponto novo, ver o que rodou numa tela, resgatar créditos, baixar o comprovante (CSV), pedir a arte pelo WhatsApp | perfil |
 | ~~Meu ponto~~ | `/anunciante/ponto.html` | — | **aposentada** (Fatia 6, 23/09/2026): 301 pro Painel, em Meus pontos. Telas estão em **Meus pontos**, o autoanúncio em **Meus criativos**, o extrato em **Financeiro** | — | — |

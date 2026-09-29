@@ -1,6 +1,19 @@
 # Current Handoff
 
 ## Updated
+2026-09-29 — **Estação SITE PÚBLICO: indicação no cadastro + regra da senha
+na redefinição** (branch `claude/busy-noether-hheir2-site-referral`, PR
+próprio, merge autorizado pelo dono). Cadastro com `?ref=PT-…` válido mostra
+"Indicado por: <negócio>" no topo do card; o nome vem de `GET
+/indicacoes/:codigo`, que usa a MESMA regra do `POST /anunciantes/cadastro`
+(`indicacoesRepo.indicadorDoCupom`) — o que aparece é quem fica associado.
+Sem ref ou ref inválida: linha não existe. Redefinir senha: a regra saiu de
+baixo do 1º campo para depois dos dois, antes do botão (a página traz o
+`[data-dica-senha]` na marcação; `formulario.js` respeita e não cria outro —
+cadastro e convite intactos). Regra da senha e da indicação intocadas; sem
+banco. e2e 36. **Atenção:** o PR #91 (finalização, pausado) também cria
+`src/indicacoes/routes.js` e um aviso no cadastro — ao retomar, fica a
+versão desta estação. **Não iniciar outra estação.**
 2026-09-28 (fechamento) — **Plano Básico: regra final de elegibilidade**
 ([PR #96](https://github.com/sancompany/MostrAi/pull/96), mergeado com
 autorização do dono em 29/09/2026). Ponto sem nenhuma tela

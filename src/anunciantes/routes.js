@@ -140,16 +140,14 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   // achava que tinha indicado alguem, o vendedor achava que tinha indicado, e
   // a comissao simplesmente nunca existia. Conferido aqui, com a mesma
   // consulta que paga a comissao la na frente.
+  // Regra em `indicacoesRepo.indicadorDoCupom` — a mesma que a página de
+  // cadastro usa pra mostrar "Indicado por" (GET /indicacoes/:codigo), então
+  // o nome mostrado é o da conta que fica associada aqui. Cupom de vendedor
+  // não vale mais (programa aposentado, 23/09/2026). O front já reenvia o
+  // cadastro sem o cupom quando o erro vem com `campo`, então o link antigo
+  // só perde a indicação, não o cadastro.
   if (indicado_por_cupom) {
-    // Cupom de ponto sempre começa com "PT-" (migration 062) — namespace
-    // separado do de vendedor, então dá pra rotear sem ambiguidade e sem
-    // gastar duas consultas por cadastro comum.
-    // Cupom de vendedor não vale mais (programa aposentado, 23/09/2026 — sem
-    // indicação nova, sem comissão nova). O front já reenvia o cadastro sem o
-    // cupom quando o erro vem com `campo`, então o link antigo só perde a
-    // indicação, não o cadastro. Cupom de ponto (PT-) segue valendo.
-    const cupom = String(indicado_por_cupom).toUpperCase();
-    const encontrado = cupom.startsWith('PT-') ? await indicacoesRepo.buscarPontoPorCupom(cupom) : null;
+    const encontrado = await indicacoesRepo.indicadorDoCupom(indicado_por_cupom);
     if (!encontrado) {
       return res
         .status(400)
