@@ -410,7 +410,8 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
     } else if (segundos > 0) {
       const inicio = new Date(l.inicio).getTime();
       const fim = new Date(l.fim).getTime();
-      const cliente = Math.round(segundos * fracaoIndisponivel(inicio, fim));
+      const fracaoFora = fracaoIndisponivel(inicio, fim);
+      const cliente = Math.round(segundos * fracaoFora);
       eventos.push({
         em,
         ordem: 1,
@@ -423,6 +424,7 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
           fim,
           contratado: segundos,
           cliente,
+          fracaoFora,
           lancamento: l,
         },
       });
@@ -445,6 +447,7 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
           fim: dia,
           contratado: Number(d.basico),
           cliente: 0,
+          fracaoFora: 0,
         },
       });
     }
@@ -488,9 +491,25 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
       if (!alvo || alvo.cancelado) continue;
       // O contratado cai só o que de fato saiu: o que já tinha sido entregue
       // continua contado como contratado e entregue.
-      const tira = Math.min(ev.segundos, alvo.restante);
-      alvo.restante -= tira;
-      alvo.reduzido += tira;
+      const tirar = (l, quanto) => {
+        const tira = Math.min(quanto, l.restante);
+        l.restante -= tira;
+        l.reduzido += tira;
+        return quanto - tira;
+      };
+      let falta = tirar(alvo, ev.segundos);
+      // Rebaixamento maior que o lote de referência (duas trocas no mesmo
+      // ciclo: Pro → Prime → Essencial): o resto sai dos outros lotes que
+      // valem naquele momento, do mais novo pro mais antigo — senão as horas
+      // do plano antigo continuariam devidas depois do rebaixamento.
+      if (falta > 0 && ev.lancamento?.tipo === 'troca') {
+        const desde = new Date(ev.lancamento.inicio).getTime();
+        for (const l of [...lotes].reverse()) {
+          if (falta <= 0) break;
+          if (l === alvo || l.cancelado || !['ciclo', 'troca'].includes(l.tipo)) continue;
+          if (l.inicio <= desde && l.fim > desde) falta = tirar(l, falta);
+        }
+      }
     } else if (ev.tipo === 'reembolso') {
       const alvo = porId.get(ev.alvo);
       if (!alvo || alvo.cancelado) continue;
@@ -530,8 +549,12 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
   let idadeMeses = 0;
   for (const l of ativos) {
     if (l.restante <= 0) continue;
+    // A parte "por vir" é medida no tempo em que a campanha PODIA rodar: o
+    // tempo fora por responsabilidade do cliente já saiu do valor do lote e
+    // não pode contar de novo como tempo que passou sem entrega.
+    const disponivel = (l.fim - l.inicio) * (1 - l.fracaoFora);
     const futuro =
-      l.fim > agoraMs && l.fim > l.inicio ? Math.min(1, (l.fim - Math.max(agoraMs, l.inicio)) / (l.fim - l.inicio)) : 0;
+      l.fim > agoraMs && disponivel > 0 ? Math.min(1, (l.fim - Math.max(agoraMs, l.inicio)) / disponivel) : 0;
     const devidoAteAgora = Math.max(0, l.restante - Math.max(0, l.valor - l.reduzido) * futuro);
     if (devidoAteAgora > 0) {
       if (atraso === 0) {
@@ -542,13 +565,20 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
       atraso += devidoAteAgora;
     }
   }
-  // Lote vigente (o que o painel chama de "ciclo atual"): o comercial mais
-  // recente já começado.
+  // Lote vigente (o que o painel chama de "ciclo atual"): o ciclo (ou
+  // benefício) mais recente já começado, junto com as trocas feitas dentro
+  // do período dele — a troca é ajuste do ciclo, não um ciclo novo.
   const comerciais = ativos.filter((l) => l.tipo !== 'basico');
+  const bases = comerciais.filter((l) => l.tipo !== 'troca');
   const atual =
-    [...comerciais].reverse().find((l) => l.inicio <= agoraMs && agoraMs < l.fim) ||
+    [...bases].reverse().find((l) => l.inicio <= agoraMs && agoraMs < l.fim) ||
+    bases[bases.length - 1] ||
     comerciais[comerciais.length - 1] ||
     null;
+  const grupoAtual = atual
+    ? comerciais.filter((l) => l === atual || (l.tipo === 'troca' && l.inicio >= atual.inicio && l.inicio < atual.fim))
+    : [];
+  const trocaMaisRecente = grupoAtual.filter((l) => l.tipo === 'troca').pop();
   const anomalias = lotes
     .filter((l) => l.excedente > EXCEDENTE_TOLERADO_SEGUNDOS && typeof l.id === 'number')
     .map((l) => ({ loteId: l.id, excedenteSegundos: Math.round(l.excedente) }));
@@ -565,18 +595,18 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
     cicloAtual: atual
       ? {
           tipo: atual.tipo,
-          planoId: atual.planoId,
+          planoId: (trocaMaisRecente || atual).planoId,
           inicio: new Date(atual.inicio),
           fim: new Date(atual.fim),
-          contratadoSegundos: Math.round(Math.max(0, atual.valor - atual.reduzido)),
-          pendenteSegundos: Math.round(Math.max(0, atual.restante)),
+          contratadoSegundos: Math.round(grupoAtual.reduce((s, l) => s + Math.max(0, l.valor - l.reduzido), 0)),
+          pendenteSegundos: Math.round(grupoAtual.reduce((s, l) => s + Math.max(0, l.restante), 0)),
         }
       : null,
     // Só o que começou ANTES do ciclo atual — a renovação paga adiantada
     // (lote que ainda vai começar) é obrigação nova, não saldo anterior.
     saldoAnteriorSegundos: Math.round(
       ativos
-        .filter((l) => atual && l !== atual && l.inicio <= atual.inicio)
+        .filter((l) => atual && !grupoAtual.includes(l) && l.inicio <= atual.inicio)
         .reduce((s, l) => s + Math.max(0, l.restante), 0),
     ),
     anomalias,

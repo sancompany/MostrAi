@@ -175,6 +175,42 @@ test('§24 troca: subida soma a diferença; rebaixamento reduz o lote em curso e
   assert.strictEqual(quaseTudo.entregueSegundos, 170 * H);
 });
 
+test('§24 duas trocas no mesmo ciclo (Pro → Prime → Essencial): o rebaixamento alcança o lote do Pro', () => {
+  const pro = lote(84 * H);
+  // Dia 10: Pro → Prime (+96 h/mês × 20 dias ÷ 30 = 64 h).
+  const sobe = lote(64 * H, { inicio: 10, dias: 20, tipo: 'troca' });
+  // Dia 20: Prime → Essencial (−153 h/mês × 10 dias ÷ 30 = −51 h), referenciando o lote mais novo.
+  const desce = {
+    ...lote(0, { inicio: 20, dias: 10, tipo: 'troca' }),
+    segundos: -51 * H,
+    referencia_id: sobe.id,
+  };
+  const s = saldo([pro, sobe, desce], [], em(21));
+  assert.strictEqual(s.saldoSegundos, (84 + 64 - 51) * H, 'os 51 h saem inteiros, não só os 64 h da subida');
+  assert.strictEqual(s.devidoSegundos, 97 * H);
+});
+
+test('troca é ajuste do ciclo: o "ciclo atual" soma ciclo + troca; nada vira "ciclos anteriores"', () => {
+  const pro = lote(84 * H);
+  const sobe = lote(48 * H, { inicio: 15, dias: 15, tipo: 'troca' });
+  sobe.plano_id = 'maximo-1m';
+  const s = saldo([pro, sobe], [], em(16));
+  assert.strictEqual(s.cicloAtual.tipo, 'ciclo');
+  assert.strictEqual(s.cicloAtual.contratadoSegundos, 132 * H);
+  assert.strictEqual(s.cicloAtual.planoId, 'maximo-1m', 'o plano do ciclo é o da troca mais recente');
+  assert.strictEqual(s.saldoAnteriorSegundos, 0);
+});
+
+test('ritmo: tempo fora por culpa do cliente não vira atraso (metade do ciclo sem peça)', () => {
+  const um = lote(84 * H);
+  const janela = [{ inicio: em(0), fim: em(15) }];
+  const s = saldo([um], [], em(15), janela);
+  assert.strictEqual(s.saldoSegundos, 42 * H, 'deve metade');
+  assert.strictEqual(s.atrasoSegundos, 0, 'nada atrasado: o tempo que passou foi do cliente');
+  const depois = saldo([um], [], em(22.5), janela);
+  assert.strictEqual(depois.atrasoSegundos, 21 * H, 'metade do tempo disponível passou sem entrega');
+});
+
 test('ritmo: no começo do ciclo nada está atrasado; na metade sem entrega, metade está', () => {
   const um = lote(84 * H);
   assert.strictEqual(saldo([um], [], em(0)).atrasoSegundos, 0);
