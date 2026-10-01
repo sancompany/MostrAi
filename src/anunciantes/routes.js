@@ -37,6 +37,7 @@ const eventos = require('../lib/eventos');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const { primeirosPassosDaConta } = require('./primeiros-passos');
+const { acessoDoPainel } = require('./acesso-painel');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
@@ -461,6 +462,9 @@ async function contaParaOPainel(anunciante) {
     // pelo relógio do navegador: o painel só rotula o que o servidor decidiu.
     plano_vigente: !!repo.planoVigenteId(anunciante),
     dias_ate_vencer: vigencia.diasAteVencer(anunciante.data_expiracao),
+    // Acesso ao painel ≠ direito de veicular (src/anunciantes/acesso-painel.js):
+    // dono de ponto já aprovado vê o painel inteiro mesmo antes do Básico.
+    acesso_painel: await acessoDoPainel(anunciante, { basicos }),
   };
 }
 
@@ -1518,6 +1522,12 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
     // Básico do ponto (migration 103).
     temPlano: !!plano || basicos.length > 0,
     temBasico: basicos.length > 0,
+    // Dono de ponto da rede ainda sem direito de veicular (tela aguardando
+    // instalação, Básico ainda não ativo): o painel mostra o módulo com o
+    // envio fechado e o motivo, em vez de sumir com ele atrás de "compre um
+    // plano" (01/10/2026).
+    aguardandoBeneficio:
+      !plano && basicos.length === 0 ? (await acessoDoPainel(conta, { basicos })).basico.aguardando : null,
     // Plano (anúncio na rede) e/ou ponto no ar (a tela do próprio
     // comércio) — o painel explica onde a peça aprovada roda.
     rodaNaRede: !!conta.plano_id,

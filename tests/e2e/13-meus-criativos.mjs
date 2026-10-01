@@ -219,7 +219,7 @@ await p.waitForTimeout(400);
 check('celular: sem rolagem horizontal', (await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1);
 await shot(p, '3-celular');
 
-console.log('== ser ponto não dá plano: comodato legado sem plano não vê o módulo (ADR-016) ==');
+console.log('== ser ponto não dá plano: comodato legado sem plano não envia criativo (ADR-016) ==');
 const dono = await novaConta('comodato');
 PG(`UPDATE anunciantes SET comodato_plano_id = 'comodato-basico', papeis = ARRAY['anunciante','ponto'] WHERE id = ${dono.id}`);
 PG(
@@ -228,7 +228,14 @@ PG(
 );
 p = await entrar(dono);
 await p.waitForSelector('#modCriativos:not([hidden])', { timeout: 8000 }).catch(() => {});
-check('dono sem plano (só o comodato legado) não vê Meus criativos', !(await p.isVisible('#modCriativos')));
+// Desde 01/10/2026 o dono de ponto da rede vê o painel inteiro — o módulo
+// aparece, mas o envio só abre com o Básico ativo (aqui a tela nem existe).
+check(
+  'dono sem plano (só o comodato legado) não envia criativo: módulo diz aguardando instalação',
+  (await p.isVisible('[data-criativos-aguardando]')) &&
+    !(await p.isVisible('#rotuloEnviarCriativo')) &&
+    /tela do seu ponto estiver instalada/.test(await p.textContent('#modCriativos')),
+);
 await irQuieto(p, `${B}/anunciante/ponto.html`);
 check('página antiga do ponto redireciona pro painel', /painel\.html#modPontos$/.test(p.url()) && !(await p.$('#arquivoAutoanuncio')), p.url());
 

@@ -50,10 +50,12 @@ async function carregar() {
     // escolher plano (o back também passou a recusar isso, defesa em
     // profundidade — ver POST /anunciantes/:id/criativos).
     //
-    // O Plano Básico do ponto (migration 103, ADR-025) também libera: quem
-    // hospeda um ponto ativo anuncia no próprio estabelecimento sem plano
-    // contratado. Sem nenhum dos dois, o painel pede o plano.
-    if (!temDireitoDeAnunciar()) {
+    // O Plano Básico do ponto (migration 103, ADR-025) também libera — e,
+    // desde 01/10/2026, ser dono de um ponto já aprovado na rede também: o
+    // ACESSO ao painel é decidido no servidor (`acesso_painel`,
+    // src/anunciantes/acesso-painel.js), separado do direito de veicular.
+    // Sem nenhum dos três, o painel pede o plano.
+    if (!temAcessoCompleto()) {
       montarBloqueioPlano();
       return;
     }
@@ -84,6 +86,9 @@ if (window.ligarEventosDaConta) {
     'plan.updated': recarregarConta,
     'account.updated': recarregarConta,
     'application.updated': recarregarConta,
+    // Ponto aprovado, tela instalada, Básico ativado: muda o acesso e o
+    // estado do Básico (ADR-034).
+    'point.updated': recarregarConta,
   });
 }
 
@@ -94,10 +99,17 @@ if (window.ligarEventosDaConta) {
 // resgate de créditos. Sem remover o anterior, cada rodada empilhava outro
 // card de bloqueio; sem desfazer, a conta que ganhava plano continuava
 // bloqueada até dar F5.
-// Direito de veicular: plano comercial OU o Básico de um ponto ativo.
-function temDireitoDeAnunciar() {
+// Acesso ao painel completo — decidido no servidor: plano, Básico ativo ou
+// dono de ponto da rede. NÃO é direito de veicular (criativo e escolha de
+// pontos continuam pedindo plano ou Básico, no servidor). Resposta antiga
+// sem o campo (aba aberta durante o deploy): a régua de antes.
+function temAcessoCompleto() {
+  if (ANUNCIANTE.acesso_painel) return !!ANUNCIANTE.acesso_painel.completo;
   return !!ANUNCIANTE.plano_id || !!ANUNCIANTE.beneficios_basico?.length;
 }
+// Dono de ponto da rede que ainda não tem plano nem Básico ativo.
+const donoAguardandoBasico = () =>
+  !ANUNCIANTE.plano_id && !ANUNCIANTE.beneficios_basico?.length && !!ANUNCIANTE.acesso_painel?.basico?.aguardando;
 
 function removerBloqueioPlano() {
   document.getElementById('bloqueioPlanoCaixa')?.remove();
@@ -184,6 +196,22 @@ const ACAO_DA_ETAPA = {
   exibicoes: '<span class="form-hint u-m-0">Quando o criativo for aprovado, as exibições aparecem aqui.</span>',
 };
 
+// Etapas do dono de ponto que não dependem dele: o que acontece e quando.
+const AVISO_DA_ETAPA = {
+  instalacao: 'A equipe Mostraí combina a instalação da tela com você.',
+  sinal: 'Assim que a tela se conectar, o ponto fica ativo.',
+  basico: 'Ativa sozinho quando a tela estiver instalada.',
+};
+function acaoDaEtapa(etapa) {
+  if (AVISO_DA_ETAPA[etapa.id]) return `<span class="form-hint u-m-0">${AVISO_DA_ETAPA[etapa.id]}</span>`;
+  // Criativo antes do Básico ativo: o servidor ainda não aceita — não
+  // oferece o botão.
+  if (etapa.id === 'criativo' && etapa.disponivel === false) {
+    return '<span class="form-hint u-m-0">Disponível quando o Plano Básico do seu ponto ativar.</span>';
+  }
+  return ACAO_DA_ETAPA[etapa.id] || '';
+}
+
 let carregandoPassos = null;
 async function carregarPrimeirosPassos() {
   if (carregandoPassos) return carregandoPassos;
@@ -197,25 +225,28 @@ async function carregarPrimeirosPassos() {
       return;
     }
     const caixa = document.getElementById('bloqueioPlanoCaixa');
-    if (caixa && !temDireitoDeAnunciar() && !ANUNCIANTE.suspenso) {
+    if (caixa && !temAcessoCompleto() && !ANUNCIANTE.suspenso) {
       caixa.innerHTML = htmlOnboardingSemPlano(passos);
       return;
     }
     const faixa = document.getElementById('primeirosPassos');
     if (!faixa) return;
-    if (!temDireitoDeAnunciar() || passos.concluido) {
+    if (!temAcessoCompleto() || passos.concluido) {
       faixa.hidden = true;
       faixa.innerHTML = '';
       return;
     }
     const proxima = passos.etapas.find((e) => e.id === passos.proxima);
+    // Dono de ponto (fluxo `ponto`, 01/10/2026): o caminho é o do ponto
+    // entrando na rede, não o da compra de plano.
+    const titulo = passos.fluxo === 'ponto' ? 'Seu ponto está entrando na rede' : 'Primeiros passos';
     faixa.innerHTML = `
       <div class="onboarding-faixa-topo">
         <div>
-          <p class="section-eyebrow">Primeiros passos · ${passos.numeroDaProxima} de ${passos.total}</p>
+          <p class="section-eyebrow">${titulo} · ${passos.numeroDaProxima} de ${passos.total}</p>
           <h2>${esc(proxima.titulo)}</h2>
         </div>
-        <div class="onboarding-acao">${ACAO_DA_ETAPA[proxima.id] || ''}</div>
+        <div class="onboarding-acao">${acaoDaEtapa(proxima)}</div>
       </div>
       ${htmlEtapas(passos.etapas, passos.proxima)}`;
     faixa.hidden = false;
@@ -261,8 +292,30 @@ function desenharBasico() {
   const secao = document.getElementById('modBasico');
   if (!secao || !ANUNCIANTE) return;
   const basicos = ANUNCIANTE.beneficios_basico || [];
-  if (!basicos.length) {
+  // Dono de ponto da rede (01/10/2026): cada ponto ainda sem o Básico
+  // aparece com o próprio estado — "aguardando", nunca "Ativo" antes da hora.
+  // Só onde o card já aparece (Básico ativo, ou dono sem plano nenhum): com
+  // plano comercial e nenhum Básico ativo, o card segue escondido.
+  const pendentes = basicos.length || donoAguardandoBasico() ? ANUNCIANTE.acesso_painel?.basico?.pendentes || [] : [];
+  if (!basicos.length && !pendentes.length) {
     secao.hidden = true;
+    return;
+  }
+  const regra = ANUNCIANTE.acesso_painel?.basico || {};
+  const itemPendente = (b) => `<div class="basico-item" data-basico-aguardando="${b.pontoId}">
+        <p class="plano-nome"><b>${regra.horasPorMes} h/mês</b> <span class="badge badge-pendente">${
+          b.aguardando === 'instalacao' ? 'Aguardando instalação da tela' : 'Aguardando ativação'
+        }</span></p>
+        <ul class="basico-direitos">
+          <li>1 ponto — ${esc(b.pontoNome || 'seu estabelecimento')}</li>
+          <li>Anúncio de até ${regra.duracaoMaximaSegundos} s</li>
+        </ul>
+      </div>`;
+  if (!basicos.length) {
+    document.getElementById('basicoResumo').innerHTML = `
+      ${pendentes.map(itemPendente).join('')}
+      <p class="plano-nota">Benefício de quem é ponto, sem custo: começa quando a tela do seu ponto estiver instalada. Plano comercial é opcional, pra anunciar em mais pontos da rede.</p>`;
+    secao.hidden = false;
     return;
   }
   const d = ANUNCIANTE.direitos || {};
@@ -282,6 +335,7 @@ function desenharBasico() {
       </div>`,
       )
       .join('')}
+    ${pendentes.map(itemPendente).join('')}
     <p class="plano-nota">Incluído sem custo enquanto seu ponto estiver ativo. Além dele, cada ponto ativo gera +1 crédito por mês.</p>
     ${soma}`;
   secao.hidden = false;
@@ -314,11 +368,18 @@ function desenharPlano() {
     secao.hidden = true;
     // Só o Básico do ponto: o chip diz a origem (benefício), não "Sem plano".
     const soBasico = ANUNCIANTE.beneficios_basico?.length;
+    const aguardando = donoAguardandoBasico() && ANUNCIANTE.acesso_painel.basico.aguardando;
     window.publicarResumo?.('plano', {
       chips: [
         soBasico
           ? { rotulo: 'Plano', valor: 'Básico · benefício de ponto', alvo: 'modBasico' }
-          : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
+          : aguardando
+            ? {
+                rotulo: 'Plano',
+                valor: aguardando === 'instalacao' ? 'Básico aguardando instalação' : 'Básico aguardando ativação',
+                alvo: 'modBasico',
+              }
+            : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
       ],
       alertas: [],
     });
@@ -1049,7 +1110,7 @@ function desenharCustoPrevisto(c) {
     // servidor, `sem_plano`) e com o Básico do ponto: não há plano com preço
     // pra dividir — o card diz de onde vem a veiculação em vez de um "-" mudo.
     legenda.textContent =
-      c?.tipo === 'sem_plano' && ANUNCIANTE?.beneficios_basico?.length
+      c?.tipo === 'sem_plano' && (ANUNCIANTE?.beneficios_basico?.length || donoAguardandoBasico())
         ? 'Plano Básico: incluído no benefício do ponto'
         : LEGENDA_CUSTO;
   }

@@ -1,5 +1,7 @@
 const pool = require('../db/pool');
 const { planoVigenteId } = require('./repository');
+const { acessoDoPainel } = require('./acesso-painel');
+const basicoRepo = require('../pontos/basico');
 
 // Primeiros passos do painel (estação da conta, 26/09/2026): o onboarding é o
 // estado REAL da conta, lido do banco, nunca uma caixa marcada à mão.
@@ -57,6 +59,74 @@ function etapasDosPrimeirosPassos({
   };
 }
 
+// Dono de ponto da rede sem plano comercial (01/10/2026): o caminho dele não
+// começa por "Escolha seu plano" — o direito de veicular vem do Plano Básico
+// do ponto, que nasce com a tela instalada (src/pontos/basico.js). Nenhuma
+// etapa é marcada sem o estado real: "Plano Básico ativo" só com o Básico
+// ativo de verdade, e o criativo só fica disponível a partir daí (é o que o
+// servidor aceita — POST /anunciantes/:id/criativos). Plano comercial segue
+// opcional, pela página Planos.
+function etapasDoDonoDePonto({
+  telaInstalada,
+  primeiroSinal,
+  basicoAtivo,
+  horasBasico,
+  criativosEnviados,
+  criativosAprovados,
+  criativosRecusados = 0,
+  exibicoes,
+}) {
+  const etapas = [
+    { id: 'ponto', titulo: 'Ponto aprovado', feito: true },
+    {
+      id: 'instalacao',
+      titulo: 'Instalação da tela',
+      feito: telaInstalada,
+      detalhe: telaInstalada ? null : 'A equipe Mostraí combina a visita com você',
+    },
+    {
+      id: 'sinal',
+      titulo: 'Primeiro sinal da tela',
+      feito: primeiroSinal,
+      detalhe: primeiroSinal ? null : 'A tela se conecta sozinha depois de instalada',
+    },
+    {
+      id: 'basico',
+      titulo: 'Plano Básico ativo',
+      feito: basicoAtivo,
+      detalhe: basicoAtivo ? null : `${horasBasico} h/mês no seu ponto, sem custo — começa com a tela instalada`,
+    },
+    {
+      id: 'criativo',
+      titulo: 'Envie seu criativo',
+      feito: criativosEnviados > 0,
+      detalhe:
+        criativosEnviados > 0 && criativosAprovados === 0
+          ? 'Em análise pela Mostraí'
+          : criativosEnviados === 0 && criativosRecusados > 0
+            ? 'Seu criativo foi recusado: envie uma nova peça'
+            : !basicoAtivo
+              ? 'Disponível quando o Plano Básico ativar'
+              : null,
+    },
+    { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0 },
+  ];
+  for (const e of etapas) {
+    e.opcional = false;
+    // O que a própria pessoa faz só abre com o direito de veicular.
+    e.disponivel = e.id === 'criativo' || e.id === 'exibicoes' ? basicoAtivo : true;
+  }
+  const proxima = etapas.find((e) => !e.feito) || null;
+  return {
+    fluxo: 'ponto',
+    etapas,
+    proxima: proxima?.id || null,
+    numeroDaProxima: proxima ? etapas.indexOf(proxima) + 1 : null,
+    total: etapas.length,
+    concluido: !proxima,
+  };
+}
+
 async function primeirosPassosDaConta(conta) {
   const [criativos, escolhidos, exibicoes, passado] = await Promise.all([
     pool.query(
@@ -79,18 +149,39 @@ async function primeirosPassosDaConta(conta) {
       [conta.id],
     ),
   ]);
+  const basicos = await basicoRepo.ativosDaConta(conta.id);
+  const acesso = await acessoDoPainel(conta, { basicos });
+  const comuns = {
+    criativosEnviados: criativos.rows[0].enviados,
+    criativosAprovados: criativos.rows[0].aprovados,
+    criativosRecusados: criativos.rows[0].recusados,
+    exibicoes: exibicoes.rows[0].n,
+  };
+  // Sem plano comercial em vigor e dono de ponto da rede: o fluxo do ponto
+  // (com ou sem o Básico já ativo). Com plano, o fluxo de anunciante de
+  // sempre — o Básico soma, não muda o caminho.
+  if (!planoVigenteId(conta) && acesso.donoDePonto) {
+    return {
+      ...etapasDoDonoDePonto({
+        ...comuns,
+        telaInstalada: acesso.pontos.telaInstalada,
+        primeiroSinal: acesso.pontos.primeiroSinal,
+        basicoAtivo: basicos.length > 0,
+        horasBasico: acesso.basico.horasPorMes,
+      }),
+      jaTevePlano: passado.rows[0].ja,
+    };
+  }
   return {
+    fluxo: 'anunciante',
     ...etapasDosPrimeirosPassos({
       // O Básico do ponto (migration 103) também é direito de veicular.
-      temPlano: !!planoVigenteId(conta) || (await require('../pontos/basico').ativosDaConta(conta.id)).length > 0,
-      criativosEnviados: criativos.rows[0].enviados,
-      criativosAprovados: criativos.rows[0].aprovados,
-      criativosRecusados: criativos.rows[0].recusados,
+      temPlano: !!planoVigenteId(conta) || basicos.length > 0,
+      ...comuns,
       pontosEscolhidos: escolhidos.rows[0].n,
-      exibicoes: exibicoes.rows[0].n,
     }),
     jaTevePlano: passado.rows[0].ja,
   };
 }
 
-module.exports = { etapasDosPrimeirosPassos, primeirosPassosDaConta };
+module.exports = { etapasDosPrimeirosPassos, etapasDoDonoDePonto, primeirosPassosDaConta };

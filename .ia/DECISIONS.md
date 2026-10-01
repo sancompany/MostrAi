@@ -1276,3 +1276,31 @@ travaria aprovação de cadastro legado); bloquear o salvamento de Número
 suspeito (a leitura é heurística); geocodificar no servidor e gravar
 coordenada (sem pedido, e abre a porta pra coordenada vinda do navegador).
 
+
+## ADR-034 — Acesso ao painel ≠ direito de veicular; dono de ponto aprovado entra sem plano (01/10/2026)
+
+**Contexto.** Conta real sem plano comercial, dona de um ponto aprovado
+"Aguardando instalação", presa em "Comece sua primeira campanha / Escolha seu
+plano". O painel decidia o bloqueio por `plano_id || beneficios_basico.length`
+e o onboarding tratava "tem plano" do mesmo jeito — o Básico só nasce com a
+tela instalada, então o dono ficava trancado até a instalação.
+
+**Decisão.**
+- Uma função de domínio no servidor, `acessoDoPainel`
+  (`src/anunciantes/acesso-painel.js`), devolve duas respostas separadas:
+  `completo` (abre o painel: plano, Básico ativo ou ponto aprovado não
+  arquivado) e `podeVeicular` (plano vigente ou Básico ativo). O painel lê
+  `acesso_painel` de `GET /anunciantes/me`; o onboarding e Meus criativos
+  usam a mesma função.
+- Pedido de ponto em análise e ponto arquivado não contam.
+- O Básico não é forçado nem antecipado: até a tela existir o painel diz
+  "aguardando instalação"/"aguardando ativação", nunca "ativo".
+- O direito de veicular não mudou: criativo, escolha de pontos e playlist
+  seguem exigindo plano ou Básico no servidor.
+- Onboarding próprio do dono (`fluxo: 'ponto'`), sem etapa de plano — nem
+  como obrigação nem marcada como feita.
+
+**Alternativas recusadas.** `temPlano = true` quando existe ponto (falsifica
+o onboarding e abriria o upload); ativar o Básico na aprovação do ponto
+(muda a régua do benefício e a obrigação de entrega antes de existir tela);
+decidir só no front (a aba e a API discordariam).
