@@ -3549,9 +3549,32 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
           <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
-    </dl>`;
+    </dl>
+    ${ponto.status === 'arquivado' ? '' : '<div class="acoes secao-pe"><button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir ponto</button></div>'}`;
   ajustarFotos(el);
   el.querySelector('[data-editar-horario]').addEventListener('click', () => editarHorarioPonto(ponto, remontar));
+  el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
+}
+
+// Mesma regra da tela (excluirTela): sem histórico sai de verdade, junto com
+// as telas; com histórico o servidor recusa (409) e a saída é deixar as
+// telas Inativas — o comprovante dos anunciantes não pode sumir.
+async function excluirPonto(ponto, telas) {
+  const n = telas.length;
+  const ok = await confirmarModal({
+    titulo: `Excluir o ponto ${ponto.nome}?`,
+    texto: `<p>O ponto <b>${esc(ponto.nome)}</b> sai da rede${n ? ` junto com ${n === 1 ? 'a tela dele, e o Player instalado nela' : `as ${n} telas dele, e o Player instalado nelas`} (se houver) deixa de funcionar` : ''}. Não dá pra desfazer.</p>
+      <p class="u-dim">Ponto que já exibiu anúncios, gerou créditos, tem repasse registrado ou deu o Plano Básico ao dono não pode ser excluído: nesse caso, deixe as telas dele Inativas.</p>`,
+    botao: 'Excluir ponto',
+    perigo: true,
+  });
+  if (!ok) return;
+  const r = await api(`/admin/pontos/${ponto.id}`, { method: 'DELETE' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível excluir.', 'err');
+  toast(`Ponto ${ponto.nome} excluído.`);
+  RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
+  pintarContadores();
+  irPara('rede/pontos');
 }
 
 // Editor do horário do ponto: por dia, "Horário" (abre/fecha), "24 horas" ou

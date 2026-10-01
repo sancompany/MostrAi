@@ -269,7 +269,9 @@ Escrito por grupo, porque o padrão se repete.
   pontos com resumo da rede e chip "Com problema"; card do ponto com endereço,
   estado, horário e a saúde das telas; ficha do ponto com o horário
   (**Editar horário**: por dia Horário/24 horas/Fechado, e "Aberto 24 horas
-  todos os dias") e as telas em linhas (`M-0235` · situação · Abrir ·
+  todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
+  ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
+  pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
   Excluir); ficha da tela em blocos — **Resumo** (último sinal, versão do
   Player, mídia atual), **Instalação** (ID da tela, código com contagem
   regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
