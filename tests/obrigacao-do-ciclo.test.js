@@ -188,6 +188,13 @@ test('§24 duas trocas no mesmo ciclo (Pro → Prime → Essencial): o rebaixame
   const s = saldo([pro, sobe, desce], [], em(21));
   assert.strictEqual(s.saldoSegundos, (84 + 64 - 51) * H, 'os 51 h saem inteiros, não só os 64 h da subida');
   assert.strictEqual(s.devidoSegundos, 97 * H);
+  sobe.plano_id = 'maximo-1m';
+  desce.plano_id = 'essencial-1m';
+  assert.strictEqual(
+    saldo([pro, sobe, desce], [], em(21)).cicloAtual.planoId,
+    'essencial-1m',
+    'o rebaixamento é o plano em vigor',
+  );
 });
 
 test('troca é ajuste do ciclo: o "ciclo atual" soma ciclo + troca; nada vira "ciclos anteriores"', () => {

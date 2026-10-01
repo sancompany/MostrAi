@@ -578,7 +578,17 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
   const grupoAtual = atual
     ? comerciais.filter((l) => l === atual || (l.tipo === 'troca' && l.inicio >= atual.inicio && l.inicio < atual.fim))
     : [];
-  const trocaMaisRecente = grupoAtual.filter((l) => l.tipo === 'troca').pop();
+  // O plano em vigor é o da troca mais recente do ciclo — inclusive um
+  // rebaixamento, que não vira lote (só reduz) e por isso sai do livro.
+  const trocaMaisRecente = atual
+    ? lancamentos
+        .filter((l) => {
+          const t = new Date(l.inicio).getTime();
+          return l.tipo === 'troca' && t >= atual.inicio && t < atual.fim;
+        })
+        .sort((a, b) => new Date(a.criado_em || a.inicio) - new Date(b.criado_em || b.inicio))
+        .pop()
+    : null;
   const anomalias = lotes
     .filter((l) => l.excedente > EXCEDENTE_TOLERADO_SEGUNDOS && typeof l.id === 'number')
     .map((l) => ({ loteId: l.id, excedenteSegundos: Math.round(l.excedente) }));
@@ -595,7 +605,7 @@ function calcularSaldo({ lancamentos = [], indisponibilidades = [], dias = [], a
     cicloAtual: atual
       ? {
           tipo: atual.tipo,
-          planoId: (trocaMaisRecente || atual).planoId,
+          planoId: trocaMaisRecente?.plano_id || atual.planoId,
           inicio: new Date(atual.inicio),
           fim: new Date(atual.fim),
           contratadoSegundos: Math.round(grupoAtual.reduce((s, l) => s + Math.max(0, l.valor - l.reduzido), 0)),
