@@ -938,12 +938,13 @@ function pintarStatusOperacional(porPonto) {
 }
 
 // Saldo de Veiculação (ADR-023) como o quarto indicador (painel do usuário,
-// 29/09/2026, pedido do dono): sempre à vista, "Em dia" ou "4h 32min a
-// entregar". É a tradução do banco que já existe (GET
-// /anunciantes/me/banco-horas, `segundos` pendentes dos meses já apurados) —
-// nenhum saldo, contador ou compensação novos aqui, e nada do mecanismo
-// (hora apurada, recomposição, reposição) aparece pro cliente. Falha de
-// leitura nunca vira "Em dia": fica "-" com o motivo.
+// 29/09/2026, pedido do dono): sempre à vista. Desde 01/10/2026 (migration
+// 111) o saldo nasce do CICLO CONTRATADO: comprou um Pro, são 84 h a entregar
+// desde o primeiro minuto — com ou sem tela no ar —, e o número cai com cada
+// exibição confirmada. "Em dia" só quando não falta nada do que foi
+// contratado. O card mostra contratado, entregue e o que falta (com o que
+// sobrou de ciclos anteriores), nunca o mecanismo. Falha de leitura nunca
+// vira "Em dia": fica "-" com o motivo.
 async function carregarBancoHoras() {
   const card = document.querySelector('#kpiGrid [data-kpi="banco"]');
   if (!card) return;
@@ -954,13 +955,18 @@ async function carregarBancoHoras() {
     if (!r.ok) throw new Error();
     const dados = await r.json();
     const segundos = Number(dados.segundos) || 0;
+    const contratado = Number(dados.contratadoSegundos) || 0;
+    const entregue = Number(dados.entregueSegundos) || 0;
+    const anterior = Number(dados.saldoAnteriorSegundos) || 0;
     card.classList.toggle('kpi-a-entregar', segundos > 0);
     if (segundos > 0) {
       valor.textContent = tempoAEntregar(segundos);
-      legenda.innerHTML = '<b>a entregar</b> · entra no tempo livre das telas';
+      legenda.innerHTML =
+        `<b>a entregar</b> · ${tempoAEntregar(contratado)} contratadas, ${tempoAEntregar(entregue)} entregues` +
+        (anterior > 0 ? ` · inclui ${tempoAEntregar(anterior)} de ciclos anteriores` : '');
     } else {
       valor.textContent = 'Em dia';
-      legenda.textContent = 'Nada pendente dos meses anteriores';
+      legenda.textContent = contratado > 0 ? 'Tudo o que foi contratado já foi entregue' : 'Nada pendente de entrega';
     }
   } catch {
     card.classList.remove('kpi-a-entregar');

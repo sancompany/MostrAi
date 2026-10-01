@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const vigencia = require('../lib/vigencia');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
@@ -97,13 +98,25 @@ async function fecharAbertos(db, contaId, motivo, adminUsuario, { manterAgendado
   // decide as travas de "no máximo 1 ativo/1 agendado por conta"
   // (`idx_planos_admin_um_ativo`/`_um_agendado`), esquecer de atualizar um
   // dos dois deixa a linha velha colidindo com a nova no mesmo estado.
-  await db.query(
-    `UPDATE planos_administrativos
+  const { rows } = await db.query(
+    `WITH alvo AS (
+       SELECT id, status FROM planos_administrativos
+        WHERE anunciante_id = $1 AND encerrado_em IS NULL
+          AND NOT ($4::boolean AND status = 'agendado')
+        FOR UPDATE
+     )
+     UPDATE planos_administrativos h
         SET encerrado_em = now(), encerrado_por = $3, encerrado_motivo = $2, status = 'encerrado'
-      WHERE anunciante_id = $1 AND encerrado_em IS NULL
-        AND NOT ($4::boolean AND status = 'agendado')`,
+       FROM alvo WHERE h.id = alvo.id
+     RETURNING h.id, alvo.status AS status_anterior`,
     [contaId, motivo, adminUsuario || null, manterAgendado],
   );
+  // Benefício que estava valendo e saiu antes do fim: o tempo que faltava
+  // dele sai da obrigação de veiculação (migration 111). O agendado nunca
+  // valeu — não tinha obrigação nenhuma.
+  for (const r of rows) {
+    if (r.status_anterior === 'ativo') await obrigacaoDoCiclo.encerrarBeneficio(db, { planoAdministrativoId: r.id });
+  }
 }
 
 async function comTransacao(fn) {
@@ -155,6 +168,13 @@ async function conceder({ conta, plano, validoAte, observacao, adminUsuario }) {
         validoAte,
       ],
     );
+    // Benefício valendo agora: nasce a obrigação dele (migration 111).
+    await obrigacaoDoCiclo.registrarBeneficio(db, {
+      anuncianteId: conta.id,
+      planoAdministrativoId: historico[0].id,
+      planoId: plano.id,
+      validoAte,
+    });
     return { conta: rows[0], historico: historico[0] };
   });
 }
@@ -319,6 +339,12 @@ async function resgatarOuConcederBeneficio(
         [conta.id, plano.id, observacao ? `Benefício: ${observacao}` : 'Benefício por créditos', validoAte],
       );
       atualizada = rows[0];
+      await obrigacaoDoCiclo.registrarBeneficio(db, {
+        anuncianteId: conta.id,
+        planoAdministrativoId: historico[0].id,
+        planoId: plano.id,
+        validoAte,
+      });
     }
     // 'agendado' não muda `anunciantes` agora — a conta continua no plano
     // pago (ou sem plano, se nunca teve) até a reavaliação diária ativar.
@@ -450,6 +476,9 @@ async function aplicarPagamentoNaFila(db, conta, plano, expiracaoSemBeneficio, {
             WHERE id = $1`,
           [beneficio.linha.id],
         );
+        // O tempo que faltava do benefício sai da obrigação (os créditos não
+        // voltam); o ciclo pago que entra cria a dele.
+        await obrigacaoDoCiclo.encerrarBeneficio(db, { planoAdministrativoId: beneficio.linha.id });
       }
       eventos.push({ tipo: 'beneficio_superado', beneficio });
     }
@@ -610,6 +639,13 @@ async function ativarBeneficiosAgendados({ apenasContas = null } = {}) {
           pagoEmDia ? diasAte(conta.data_expiracao) : 0,
         ],
       );
+      // O benefício começou a valer agora: nasce a obrigação dele.
+      await obrigacaoDoCiclo.registrarBeneficio(cliente, {
+        anuncianteId: linha.anunciante_id,
+        planoAdministrativoId: linha.historico_id,
+        planoId: linha.beneficio_plano_id,
+        validoAte,
+      });
       await cliente.query('COMMIT');
       ativados += 1;
       // O cliente fica sabendo que o benefício começou (sino + painel sem

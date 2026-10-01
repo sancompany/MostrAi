@@ -635,6 +635,7 @@ router.post('/anunciantes/me/trocar-plano', exigirAnuncianteLogado, async (req, 
         sanCheckout.valorMensalDaConta(conta, planoNovo, assinaturaNova),
         planoNovo.compromisso_meses,
       ),
+      planoAnteriorId: assinaturaAtiva.plano_id,
     });
     if (corpo.acerto?.cobrado) {
       // `plano_anterior_id` é o que permite a aba "Trocas de plano" do

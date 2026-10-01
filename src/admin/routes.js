@@ -1,4 +1,5 @@
 const express = require('express');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const router = express.Router();
 const criativosRepo = require('../anunciantes/criativos-repository');
 const pool = require('../db/pool');
@@ -68,6 +69,10 @@ router.patch('/admin/criativos/:id', async (req, res) => {
     }
     if (!criativo) return res.status(404).json({ erro: 'criativo não encontrado' });
     if (antes.status !== criativo.status) sse.emitirParaAdmin('creative.updated', { id: criativo.id });
+    // Aprovou (a campanha fica disponível) ou retirou (retirada da Mostraí
+    // não é culpa do cliente): reavalia a janela de indisponibilidade.
+    if (antes.status !== criativo.status)
+      await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(criativo.anunciante_id);
 
     // Só na TRANSIÇÃO para aprovado. Sem comparar com o estado anterior, todo
     // salvamento do admin reenviaria o aviso e o anunciante receberia

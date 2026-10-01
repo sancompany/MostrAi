@@ -110,8 +110,10 @@ const contaId = PG(`SELECT id FROM anunciantes WHERE contato_email = '${email}'`
 PG(
   `INSERT INTO criativos (anunciante_id, status, arquivo_normalizado_url, arquivo_original_url, duracao_segundos) VALUES (${contaId}, 'aprovado', '/e2e-saldo-inexistente.mp4', '/e2e-saldo-inexistente-orig.mp4', 15)`,
 );
+// A obrigação nasce do ciclo contratado (migration 111): um ciclo de 30 h já
+// vencido, sem nenhuma entrega confirmada.
 PG(
-  `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco, segundos_obrigacao, segundos_entregues, segundos_banco, apurado_em) VALUES (${contaId}, '2026-08-01', 7200, 0, 7200, 108000, 0, 108000, now())`,
+  `INSERT INTO obrigacoes_veiculacao (anunciante_id, tipo, chave, segundos, plano_id, inicio, fim, motivo, criado_em) VALUES (${contaId}, 'ciclo', 'e2e:' || gen_random_uuid(), 108000, '${plano}', '2026-08-01T03:00:00Z', '2026-09-01T03:00:00Z', 'e2e', '2026-08-01T03:00:00Z')`,
 );
 await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 await p.waitForTimeout(1500);

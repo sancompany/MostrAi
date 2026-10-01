@@ -38,6 +38,7 @@ const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const { primeirosPassosDaConta } = require('./primeiros-passos');
 const { acessoDoPainel } = require('./acesso-painel');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
 const sanCheckout = require('../financeiro/san-checkout');
@@ -1127,6 +1128,9 @@ async function subirCriativo(
         return res.status(409).json({ erro: 'esse criativo foi excluído enquanto era processado — envie de novo' });
       }
       registrar(criativoTemp.id, 'ok');
+      // Peça enviada: a campanha deixa de estar parada por falta de peça do
+      // cliente (a análise é da Mostraí) — fecha a janela do cliente.
+      await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
       res.status(201).json(criativo);
       avisar?.();
     } catch (err) {
@@ -1140,6 +1144,7 @@ async function subirCriativo(
       Object.assign(tempos, err?.tempos);
       registrar(criativoTemp.id, err?.origem === 'storage' ? 'falha_storage' : 'falha_midia');
       await criativosRepo.deletar(criativoTemp.id);
+      await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
       // O card "processando" some sem F5.
       avisar?.();
       if (err && err.origem === 'storage') {
@@ -1565,8 +1570,7 @@ router.delete('/anunciantes/:id/criativos/:criativoId', exigirAnuncianteLogado, 
     return res.status(409).json({ erro: 'esse criativo ainda está sendo processado — espere terminar pra excluir' });
   }
   await criativosRepo.deletar(req.params.criativoId);
-  sse.emitirParaConta(req.session.anuncianteId, 'creative.updated', { id: criativo.id });
-  sse.emitirParaAdmin('creative.updated', {});
+  await avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
   await removerArquivosDoStorage(criativo.id);
   res.json({ ok: true });
 });
@@ -1588,9 +1592,12 @@ async function pecaDaConta(req, res) {
   return criativo;
 }
 
-function avisarMudancaDePeca(contaId, criativoId) {
+async function avisarMudancaDePeca(contaId, criativoId) {
   sse.emitirParaConta(contaId, 'creative.updated', { id: criativoId });
   sse.emitirParaAdmin('creative.updated', {});
+  // Pausou a última peça (ou retomou): a campanha fica indisponível por
+  // decisão do cliente — esse tempo não vira dívida (migration 111).
+  await obrigacaoDoCiclo.avaliarDisponibilidadeSemFalhar(contaId);
 }
 
 router.post('/anunciantes/me/criativos/:id/pausar', exigirAnuncianteLogado, async (req, res) => {
@@ -1602,7 +1609,7 @@ router.post('/anunciantes/me/criativos/:id/pausar', exigirAnuncianteLogado, asyn
     [criativo.id],
   );
   if (!rowCount) return res.status(409).json({ erro: 'a peça mudou de situação — atualize a lista' });
-  avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
+  await avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
   res.json({ ok: true });
 });
 
@@ -1636,7 +1643,7 @@ router.post('/anunciantes/me/criativos/:id/retomar', exigirAnuncianteLogado, asy
     [criativo.id],
   );
   if (!rowCount) return res.status(409).json({ erro: 'a peça mudou de situação — atualize a lista' });
-  avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
+  await avisarMudancaDePeca(req.session.anuncianteId, criativo.id);
   res.json({ ok: true });
 });
 

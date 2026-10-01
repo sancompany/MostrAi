@@ -603,6 +603,7 @@ async function aplicarEventoAssinatura(payload, chave, ultima) {
         assinaturaId: assinatura.id,
         origem: 'troca',
         valorCiclo: multiplicar(valorMensalDaConta(anunciante, planoNovo, assinatura), planoNovo.compromisso_meses),
+        planoAnteriorId: assinaturaAntiga.plano_id,
       });
       if (payload.acertoCobrado > 0) {
         await cliente.query(

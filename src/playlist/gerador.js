@@ -14,7 +14,7 @@ const {
 } = require('../lib/pacing');
 const eventos = require('../lib/eventos');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
-const bancoHorasRepo = require('../bancohoras/repository');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
@@ -112,16 +112,24 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 // `qualquerValidade`: a obrigação de hora sem sinal (src/bancohoras/obrigacao.js)
 // olha horas que já passaram — a validade é conferida hora a hora lá, com a
 // `data_expiracao` devolvida aqui, não pela data de hoje.
+//
+// `comSaldo` (01/10/2026, migration 111): contas com saldo de veiculação
+// ATRASADO entram mesmo com o plano vencido ou cancelado — a Mostraí continua
+// entregando até zerar (spec de consolidação, R2 §1 e R3 §40), só na
+// capacidade ociosa (camada T3). Sem plano vigente, a cobertura e a peça vêm
+// do plano do último ciclo contratado; `plano_vigente` diz ao gerador que essa
+// conta não tem base nem compensação, só a devolução do saldo.
 async function anunciantesElegiveis(
   categoriaDoPonto,
   excluirContaId,
   donoDoPonto = null,
   pontoId = null,
-  { qualquerValidade = false } = {},
+  { qualquerValidade = false, comSaldo = [] } = {},
 ) {
   const { rows } = await pool.query(
     `
     SELECT a.id, a.conta_propria, a.data_expiracao,
+           (a.plano_id IS NOT NULL AND ($5::boolean OR ${vigencia.vigenteSql('a.data_expiracao')})) AS plano_vigente,
            p.frequencia_hora,
            p.segundos_por_hora, p.pontos_incluidos,
            p.limite_criativos,
@@ -139,8 +147,14 @@ async function anunciantesElegiveis(
     -- benefício por créditos ou cortesia legada). Inicial/Básico deixaram de
     -- dar direito de veicular em 24/09/2026 (ADR-016): ser ponto gera
     -- créditos, não plano. comodato_plano_id fica no banco como legado.
-    JOIN planos p ON p.id = a.plano_id
-      AND ($5::boolean OR ${vigencia.vigenteSql('a.data_expiracao')})
+    LEFT JOIN LATERAL (
+      SELECT o.plano_id FROM obrigacoes_veiculacao o
+       WHERE o.anunciante_id = a.id AND o.plano_id IS NOT NULL AND o.segundos > 0
+       ORDER BY o.criado_em DESC, o.id DESC LIMIT 1
+    ) ultimo ON a.id = ANY($6::int[])
+    JOIN planos p ON p.id = CASE
+      WHEN a.plano_id IS NOT NULL AND ($5::boolean OR ${vigencia.vigenteSql('a.data_expiracao')}) THEN a.plano_id
+      ELSE ultimo.plano_id END
     -- arquivo_normalizado_url IS NOT NULL: peca aprovada com o arquivo ainda
     -- em processamento (ou cujo processamento morreu no meio) entrava na
     -- playlist como url nula e a TV ficava tocando vazio no lugar dela — e a
@@ -166,7 +180,14 @@ async function anunciantesElegiveis(
     GROUP BY a.id, a.conta_propria, a.data_expiracao, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
              p.limite_criativos
   `,
-    [categoriaDoPonto || null, excluirContaId || null, donoDoPonto || null, pontoId || null, qualquerValidade],
+    [
+      categoriaDoPonto || null,
+      excluirContaId || null,
+      donoDoPonto || null,
+      pontoId || null,
+      qualquerValidade,
+      comSaldo.map(Number),
+    ],
   );
 
   return rows.map((r) => {
@@ -504,32 +525,28 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const cotaDaTela = basico ? 0 : dividirCota(dispositivo.cota_autoanuncio_slots_hora, dispositivo.telas_do_ponto);
   const excluirDaRotacaoPaga = cotaDaTela > 0 ? dispositivo.dono_conta_id : null;
 
-  const [
-    todos,
-    deficits,
-    doDono,
-    pontosNoAr,
-    saldosBanco,
-    pontosBloqueados,
-    midiasProprias,
-    videoInstitucional,
-    basicosPorConta,
-  ] = await Promise.all([
-    anunciantesElegiveis(
-      dispositivo.categoria_id,
-      excluirDaRotacaoPaga,
-      dispositivo.dono_conta_id,
-      dispositivo.ponto_id,
-    ),
-    aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
-    criativosDoDono(dispositivo.dono_conta_id),
-    pontosEmOperacao(),
-    bancoHorasRepo.saldosAtivos(),
-    pontosRepo.idsBloqueadosParaEscolha(),
-    midiasElegiveis(dispositivo.ponto_id),
-    obterVideoInstitucional(),
-    basicoRepo.pontosPorConta(),
-  ]);
+  // Saldo de Veiculação (migration 111): o ATRASO de cada conta — a
+  // obrigação nascida dos ciclos contratados que o ritmo normal já devia ter
+  // entregado e o Proof-of-Play ainda não confirmou. É ele que a camada T3
+  // devolve na capacidade ociosa.
+  const saldosBanco = await obrigacaoDoCiclo.saldosParaRecuperar({ agora });
+  const [todos, deficits, doDono, pontosNoAr, pontosBloqueados, midiasProprias, videoInstitucional, basicosPorConta] =
+    await Promise.all([
+      anunciantesElegiveis(
+        dispositivo.categoria_id,
+        excluirDaRotacaoPaga,
+        dispositivo.dono_conta_id,
+        dispositivo.ponto_id,
+        { comSaldo: Object.keys(saldosBanco) },
+      ),
+      aberta ? deficitHoraAnterior(dispositivo.id, horaAnterior, horaAtual) : {},
+      criativosDoDono(dispositivo.dono_conta_id),
+      pontosEmOperacao(),
+      pontosRepo.idsBloqueadosParaEscolha(),
+      midiasElegiveis(dispositivo.ponto_id),
+      obterVideoInstitucional(),
+      basicoRepo.pontosPorConta(),
+    ]);
 
   // Cobertura: fica quem tem ESTE ponto na fatia dele.
   //
@@ -591,26 +608,33 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     // tamanho da dívida. Hora fechada não programa banco (nada toca).
     const bancoDaConta = saldosBanco[a.id];
     const multiplicadorBanco = bancoDaConta ? multiplicadorPorIdade(bancoDaConta.idadeMeses) : 1;
+    // O atraso já inclui a falta da hora anterior, que a reposição (T2,
+    // `deficits`) devolve nesta mesma hora: a parte dela sai do pedido do
+    // banco, senão a mesma falta seria programada duas vezes.
+    const vigenteNaHora = a.plano_vigente !== false;
+    const atrasoNestePonto = Math.max(
+      0,
+      (bancoDaConta?.segundos || 0) / pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) -
+        (vigenteNaHora ? deficits[a.id] || 0 : 0) * duracaoValida(n.duracaoSegundos),
+    );
     const prioridadeBanco = aberta
       ? Math.min(
-          Math.ceil(
-            (bancoDaConta?.segundos || 0) /
-              pontosQuePuxamOSaldo(cobertura.get(a.id), basicosPorConta.get(a.id)) /
-              duracaoValida(n.duracaoSegundos),
-          ),
+          Math.ceil(atrasoNestePonto / duracaoValida(n.duracaoSegundos)),
           Math.floor(n.total * multiplicadorBanco),
         )
       : 0;
+    // Plano vencido/cancelado com saldo atrasado: só a devolução (T3).
     return {
       id: a.id,
-      frequenciaBase: n.base,
-      compensacao: n.compensacao,
-      deficit: deficits[a.id] || 0,
+      frequenciaBase: vigenteNaHora ? n.base : 0,
+      compensacao: vigenteNaHora ? n.compensacao : 0,
+      deficit: vigenteNaHora ? deficits[a.id] || 0 : 0,
       banco: prioridadeBanco,
       duracaoSegundos: n.duracaoSegundos,
-      // Congelada junto com a hora: a obrigação desta tela nesta hora não
-      // muda entre os polls (nem se a rede mudar no meio da hora).
-      obrigacaoSegundos: segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos }),
+      // Congelada junto com a hora: a capacidade desta tela nesta hora não
+      // muda entre os polls (nem se a rede mudar no meio da hora). É
+      // diagnóstico da capacidade — a dívida nasce do ciclo, não daqui.
+      obrigacaoSegundos: vigenteNaHora ? segundosDeObrigacao({ ...n.obrigacaoHoraCheia, minutosAbertos }) : 0,
     };
   });
 

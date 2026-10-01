@@ -121,26 +121,33 @@ migration `064_playlist_hora_congelada.sql`.
 ## Banco de horas
 
 `src/bancohoras/` — **Saldo de Veiculação** para o cliente (nomes internos
-mantidos). Obrigação de veiculação (decisão do dono, 25/09/2026: MANTER),
-contada em TEMPO desde 27/09/2026 (RN-53 em `docs/funcional.md`; mapa e
-invariantes em `docs/specs/2026-09-27-saldo-de-veiculacao.md`):
+mantidos). Obrigação de veiculação (decisão do dono, 25/09/2026: MANTER), em
+TEMPO, e **desde 01/10/2026 nascida do CICLO CONTRATADO** (ADR-035, migration
+111, `obrigacao-do-ciclo.js`; RN-53 em `docs/funcional.md`):
 
-- **Obrigação** por hora ABERTA do ponto, por tela: inserções inteiras de
-  `base × pontos do plano ÷ pontos cobertos` (RN-49 sem teto) × minutos
-  abertos ÷ 60 ÷ telas ativas do ponto (`segundosDeObrigacao`). Ponto fechado
-  não grava linha nenhuma. Hora aberta sem sinal ganha a obrigação pela
-  apuração (`obrigacao.js`).
-- **Entrega** só por comprovante: `LEAST(confirmadas, programadas − banco) ×
-  duração da hora` (a hora guarda a duração que usou).
-- **Saldo do mês** = obrigação − entrega (segundos), apurado por
-  `ApuracaoBancoHoras` (dia 1) e recomposto todo dia no `Conciliacao` enquanto
-  chegam comprovantes (7 dias + 1 h); depois congela. Idempotente.
-- **Devolução** só na camada T3 (tempo ocioso), ritmo 1×–3× pela idade;
-  **abatimento** só do banco confirmado, uma vez por hora, em segundos.
-- Exibições equivalentes = segundos ÷ duração da peça de HOJE (derivado).
-- Sem expiração, sem zerar no mês, nunca crédito em dinheiro. Em aberto
-  (decisão do operador): ordem FIFO/LIFO, conta encerrada com saldo, teto
-  diário, mudança de plano.
+- **A obrigação comercial nasce do ciclo contratado. A capacidade da rede
+  somente determina a capacidade de entrega dessa obrigação.** Compra ou
+  renovação paga → lançamento `ciclo` no livro `obrigacoes_veiculacao` com
+  100% do ciclo (27/84/180 h por mês, do plano), com ou sem tela. Troca,
+  benefício e reembolso também são lançamentos; chave única = idempotente.
+- **Proof-of-Play confirmado é o mecanismo que reduz a obrigação.** Saldo
+  derivado (nunca coluna): livro − POP, FIFO. Sobre-entrega = bônus (> 45 min
+  por ciclo → pendência `SOBREENTREGA_ANOMALA`). Reembolso → negativo técnico
+  interno, descontado da próxima contratação.
+- **Renovações acrescentam obrigação nova ao saldo anterior; não substituem
+  saldo pendente.** Vencimento e cancelamento não zeram: a conta continua na
+  T3 até entregar.
+- Tempo fora por responsabilidade do CLIENTE (`indisponibilidade_cliente`:
+  sem peça válida, ou todas pausadas por ele) sai da dívida; o resto (ponto
+  fechado, tela offline, capacidade, peça retirada pelo admin, peça em
+  análise) é dívida da Mostraí.
+- **Devolução** só na T3 (tempo ocioso): o ATRASO (devido até agora) − banco
+  programado e não confirmado − déficit que a T2 já repõe; ritmo 1×–3× pela
+  idade. Plano Básico continua nascendo da tela, no mesmo FIFO.
+- `banco_horas` (apuração mensal e liquidação) virou diagnóstico da
+  capacidade; não decide o saldo do cliente.
+- Em aberto (dono): o ritmo da base T1 em ponto 24 h entrega mais que as
+  horas do plano (12 h/dia × 30 dias).
 
 ## Exibições, métricas do painel (`GET /anunciantes/:id/exibicoes`)
 

@@ -68,6 +68,19 @@ conciliarAssinaturas()
         `saldo de veiculação: ${liq.linhas} hora(s) liquidada(s) em ${liq.contas} conta(s) · ` +
           `${liq.segundosAbatidos} s (${liq.exibicoesAbatidas} exibição(ões)) abatido(s)`,
       );
+      // Obrigação do ciclo (migration 111): reembolso de arrependimento que
+      // não chegou a ser lançado entra agora; a janela de indisponibilidade do
+      // cliente fica em dia mesmo sem nenhum servidor no ar a cada 10 min; e a
+      // entrega acima de 45 min além da obrigação vira alerta interno.
+      const obrigacaoDoCiclo = require('../src/bancohoras/obrigacao-do-ciclo');
+      const reembolsos = await obrigacaoDoCiclo.conferirReembolsos();
+      const avaliadas = await obrigacaoDoCiclo.avaliarTodas({ agora });
+      const anomalias = await obrigacaoDoCiclo.registrarAnomaliasDeSobreentrega({ agora });
+      console.log(
+        `saldo de veiculação: ${reembolsos} reembolso(s) lançado(s) pela rede de segurança · ` +
+          `${avaliadas} conta(s) com disponibilidade conferida · ` +
+          `${anomalias.abertas} alerta(s) novo(s) de entrega além do contratado`,
+      );
     } catch (err) {
       console.error('saldo de veiculação falhou:', err.message);
     }

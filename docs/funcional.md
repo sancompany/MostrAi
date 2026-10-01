@@ -209,7 +209,10 @@ Escrito por grupo, porque o padrão se repete.
   tela no mês (de N contratadas, com a origem plano/Básico); exibições
   confirmadas no mês, "de N previstas no mês" e "Média diária: X" pequena no
   mesmo card; custo por exibição (RN-43.3); e o **saldo de veiculação**
-  (RN-53) — "Em dia" ou "4h 32min a entregar". Abaixo, **um card só** de
+  (RN-53) — "4h 32min a entregar · X contratadas, Y entregues" (e quanto
+  vem de ciclos anteriores), ou "Em dia" só quando nada está pendente; com
+  a rede vazia, quem comprou vê o ciclo inteiro a entregar desde o
+  pagamento (01/10/2026, ADR-035). Abaixo, **um card só** de
   performance: filtros 7 dias / 30 dias / 3 meses / 1 ano / Máx. (dia, dia,
   semana, mês, mês), barras empilhadas por ponto com uma cor fixa por ponto
   (a mesma em qualquer período e depois de recarregar), dica com a data,
@@ -903,73 +906,100 @@ plano".
 
 **RN-53 — Saldo de Veiculação (banco de horas): o tempo contratado que não foi
 entregue.** *(Decisão do dono de 25/09/2026 — MANTER, obrigação de veiculação;
-modelo em TEMPO desde 27/09/2026, estação do Saldo de Veiculação —
-`docs/specs/2026-09-27-saldo-de-veiculacao.md`.)* A Mostraí vende tempo de
-presença nas telas. O saldo é o que ela ainda deve em tempo:
+modelo em TEMPO desde 27/09/2026; **obrigação nascida do ciclo contratado
+desde 01/10/2026** — correção estrutural HIGH achada na auditoria
+Review-Master, ADR-035, migration 111, `src/bancohoras/obrigacao-do-ciclo.js`.)*
+A Mostraí vende tempo de presença nas telas. O saldo é o que ela ainda deve
+em tempo.
 
-    tempo contratado − tempo confirmado − compensação confirmada = saldo pendente
+**A obrigação comercial nasce do ciclo contratado. A capacidade da rede somente determina a capacidade de entrega dessa obrigação.**
+**Proof-of-Play confirmado é o mecanismo que reduz a obrigação.**
+**Renovações acrescentam obrigação nova ao saldo anterior; não substituem saldo pendente.**
 
-Sem expiração automática, sem zerar na virada do mês, e nunca crédito em
-dinheiro. Nome para o cliente: **Saldo de veiculação**; nomes internos
-(`banco_horas`, `src/bancohoras/`, job `ApuracaoBancoHoras`) mantidos.
+    saldo = saldo anterior + obrigação do novo ciclo − Proof-of-Play confirmado ± ajustes legítimos
 
-- **Obrigação (por hora, por tela).** Nasce quando o ponto está ABERTO: as
-  inserções inteiras de `base × pontos do plano ÷ pontos cobertos` (RN-49
-  **sem** o teto de 1/6 — o teto limita o que a tela programa, não o que se
-  deve), × minutos abertos ÷ 60, ÷ telas ativas do ponto
-  (`segundosDeObrigacao`, `exibicoes_contador.segundos_obrigacao`). **Ponto
-  fechado não deve nada**: a hora sem minuto aberto não grava programada,
-  obrigação, reposição nem banco (a TV continua pedindo playlist a noite
-  toda). Hora parcial deve só os minutos abertos. Hora ABERTA em que a tela
-  não pediu playlist (sem sinal) ganha a obrigação minutos depois de fechar
-  (`src/bancohoras/obrigacao.js`, no processo do servidor, a cada 10 min),
-  com o plano e a cobertura daquela hora — só para conta que já tinha sido
-  servida naquela tela; na hora da instalação, só a partir do instante
-  instalada. O diário e o mensal só preenchem a hora que o servidor passou
-  fora do ar.
-- **Entrega.** Só o comprovante (proof-of-play aceito, uma vez por
-  `execucaoId`): `LEAST(confirmadas, programadas − banco) × duração daquela
-  hora`. Playlist gerada, servida, baixada ou `PLAYING` no heartbeat não
-  entrega nada.
-- **Apuração (competência = mês de Matão; job `ApuracaoBancoHoras` no dia 1 e
-  recomposição diária no `Conciliacao` enquanto chegam comprovantes).** Saldo
-  do mês = obrigação − entrega, em segundos, se positivo. Toda conta com
-  obrigação ganha a linha do mês — inclusive quem entregou tudo (saldo 0,
-  trilha de auditoria). Dentro do prazo do comprovante offline (7 dias + 1 h
-  depois do fim do mês) a apuração se RECOMPÕE com o que chegou; depois de
-  uma apuração nesse prazo ou além, a linha congela. Rodar de novo nunca soma
-  (uma linha por conta × mês), e o saldo nunca fica abaixo do que já voltou.
-  Conta própria (Mídia Mostraí) e conta excluída nunca acumulam.
+Sem expiração automática, sem zerar na virada do ciclo ou do mês, na
+renovação, no vencimento ou no cancelamento, e nunca crédito em dinheiro.
+Nome para o cliente: **Saldo de veiculação**; nomes internos (`banco_horas`,
+`src/bancohoras/`, job `ApuracaoBancoHoras`) mantidos.
+
+*Antes (até 01/10/2026):* a obrigação nascia por TELA e por hora aberta
+(`exibicoes_contador.segundos_obrigacao`, quando a TV pedia a playlist). Com
+a rede vazia — venda de pré-lançamento, decisão do dono — quem comprava um
+Pro pagava, recebia 0 h, devia-se 0 h e o painel mostrava "Em dia".
+
+- **Livro (`obrigacoes_veiculacao`, migration 111).** Cada lançamento é uma
+  linha imutável com chave única (idempotência: webhook repetido, retry,
+  job e concorrência gravam uma vez só):
+  - `ciclo` (`ciclo:<ciclos_contratados.id>`) — compra ou renovação PAGA
+    (webhook do San Checkout, mesma transação que grava `ciclos_contratados`):
+    nasce 100% do contratado — Essencial 27 h, Pro 84 h, Prime 180 h por mês
+    × meses do ciclo, lido do plano (`horasDeTelaPorMes`), com zero ponto,
+    ponto sem tela ou tela offline. Período = os meses que esse pagamento
+    cobre (até a `data_expiracao` que ele deu).
+  - `troca` — troca no meio do ciclo (`plano_trocado`): soma (ou tira) só a
+    diferença de horas/mês pelos dias que faltavam até o vencimento — a
+    mesma conta do acerto do Checkout. O rebaixamento tira do lote em curso
+    e nunca deixa saldo negativo; o saldo anterior nunca se perde.
+  - `beneficio` / `beneficio_encerrado` — benefício por créditos ou cortesia:
+    obrigação do plano pelos dias do benefício; encerrado antes (por plano
+    pago maior ou pelo admin), sai só o que faltava do período.
+  - `reembolso` — reembolso integral (arrependimento): o ciclo some. O que já
+    tinha sido entregue dele vira **saldo técnico negativo** (interno — o
+    cliente vê 0, nunca "você deve"), descontado da próxima contratação:
+    recebeu 2 h, reembolsou, contrata Essencial → deve 25 h.
+- **Entrega = só Proof-of-Play.** O comprovante aceito (uma vez por
+  `execucaoId`) × duração daquela hora — de toda camada (base, compensação,
+  reposição e devolução). Programar, gerar playlist, baixar, `play()` ou
+  `PLAYING` no heartbeat não entrega nada.
+- **Ordem (FIFO).** Cada entrega paga o lote mais antigo que ainda deve. Por
+  isso entregar além do ciclo atual quando há saldo anterior não é
+  sobre-entrega — é a dívida antiga sendo paga.
+- **Sobre-entrega.** Entrega além de tudo o que se deve é bônus: não vira
+  crédito pro ciclo seguinte nem desconto. Até 45 min por ciclo é tolerância
+  operacional; acima disso o ciclo abre a pendência `SOBREENTREGA_ANOMALA`
+  pro admin (uma por ciclo, sem desconto nem compensação), na conciliação
+  diária.
+- **Responsabilidade.** Ponto fechado, tela offline, capacidade insuficiente
+  ou mídia retirada pelo admin: a dívida continua da Mostraí. Tempo em que a
+  campanha está indisponível **por responsabilidade do cliente** sai da
+  obrigação, proporcional ao período do ciclo
+  (`indisponibilidade_cliente`, janela aberta/fechada): nenhuma peça válida
+  (nunca enviou, ou só recusadas) ou todas pausadas por ele. Peça enviada
+  esperando a análise da Mostraí é tempo da Mostraí. A janela é reavaliada
+  na contratação, a cada mudança de peça (envio, pausa, retomada, exclusão,
+  aprovação, recusa, retirada) e a cada 10 min no servidor.
+- **Plano Básico (benefício da tela).** Continua nascendo da tela (ele mesmo
+  é um benefício do ponto): obrigação do dia pelas horas já fechadas, paga
+  no mesmo FIFO.
+- **Cancelamento e vencimento.** O saldo sobrevive: com o plano vencido ou
+  cancelado, a conta continua no gerador só pela devolução do saldo (T3),
+  com a cobertura e a peça do plano do último ciclo, sem base nem
+  compensação.
 - **Redistribuição antes do saldo.** A compensação da RN-49 e a reposição da
   hora anterior (RN-10) entram na hora na camada T2 — só no tempo que a base
-  de todo mundo deixou livre. Se tocaram, já são entrega; só o que não coube e
-  não tocou vira saldo.
-- **Devolução (a cada hora, camada T3).** O saldo disponível entra na hora só
-  no tempo que T1 (base de todos) e T2 (compensação e reposição correntes)
-  deixaram livre: nunca tira a entrega corrente de ninguém — nem o mês
-  corrente do próprio dono da dívida. Toma o lugar do institucional. Hora
-  fechada não programa banco.
+  de todo mundo deixou livre.
+- **Devolução (a cada hora, camada T3).** O que está ATRASADO (o devido até
+  agora — a parte do ciclo que ainda tem tempo pela frente é da base) menos
+  o banco já programado e não confirmado, e menos o déficit que a T2 já está
+  repondo, entra na hora só no tempo que T1 e T2 deixaram livre: nunca tira a
+  entrega corrente de ninguém. Hora fechada não programa banco.
 - **Ritmo.** Por hora, no máximo o pedido normal da conta × um multiplicador
-  que cresce com a idade da dívida (1× pra dívida do mês, até 3× com 3 meses
-  ou mais — números do código, não do dono). O saldo (segundos) é dividido
-  pelos pontos cobertos e convertido em inserções da peça de hoje,
-  arredondando pra cima; nunca se programa mais do que a dívida.
-- **Abatimento (liquidação).** A geração só PROGRAMA. Depois que o prazo do
-  comprovante da hora fecha, a liquidação abate do saldo, em segundos da
-  duração daquela hora, o banco que a TV confirmou — a confirmada conta
-  primeiro pra entrega normal, e só o que passar dela é do banco (na dúvida,
-  a dívida fica). Cada hora é abatida uma vez (`banco_liquidado_em`). Roda
-  todo dia no `Conciliacao` e todo mês no `ApuracaoBancoHoras`. Enquanto não
-  liquida, o banco programado fica reservado.
-- **Ordem.** O abatimento é FIFO (mês mais antigo primeiro).
+  que cresce com a idade da dívida mais antiga (1× pra dívida do mês, até 3×
+  com 3 meses ou mais). Nunca se programa mais do que a dívida.
 - **Exibições equivalentes.** Derivadas na leitura: segundos pendentes ÷
-  duração da peça que roda HOJE. Trocar a peça muda as exibições equivalentes,
-  nunca o tempo devido — cada hora guarda a duração que usou
-  (`exibicoes_contador.duracao_segundos`).
+  duração da peça que roda HOJE.
+- **Diagnóstico da capacidade.** A apuração mensal (`banco_horas`, job
+  `ApuracaoBancoHoras`, liquidação no `Conciliacao`) continua — mede o que
+  as telas deixaram de entregar e libera a reserva do banco programado — mas
+  não decide mais o saldo do cliente.
 
-*Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no card "Saldo
-de veiculação" do painel (tempo pendente + exibições equivalentes); o admin,
-em `GET /admin/banco-horas`.
+*Violada:* não há caminho de usuário. *Quem vê:* o anunciante, no card
+"Saldo de veiculação" do painel — tempo a entregar, horas contratadas,
+entregues e quanto vem de ciclos anteriores; "Em dia" só quando nada está
+pendente. O admin, em `GET /admin/saldo-veiculacao` (uma linha por conta) e
+`GET /admin/contas/:id/saldo-veiculacao` (extrato completo, com o negativo
+técnico de reembolso).
 
 **Uma peça nunca roda duas vezes seguidas** (pedido do dono, 18/09/2026),
 banco ou não — `espalhar` (`src/lib/pacing.js`) procura vaga livre SEM
@@ -981,11 +1011,12 @@ A fila `aguardando_credito` (válvula de 3 meses) saiu com a decisão de
 25/09/2026: nenhum código põe linha nova lá; a rota do admin continua só
 pra resolver alguma linha antiga (em produção: nenhuma).
 
-*Em aberto — DECISAO_DO_OPERADOR:* ordem de abatimento (FIFO hoje), saldo de
-conta encerrada ou cancelada, teto diário de devolução, e o que acontece com
-o saldo numa mudança de plano. *Violada:* não há caminho de usuário. *Quem
-vê:* o anunciante, no painel, quando tem saldo ativo; e o admin, em
-`GET /admin/banco-horas`.
+*Decidido em 01/10/2026 (dono):* FIFO; saldo sobrevive a cancelamento e
+vencimento; troca não perde saldo; sobre-entrega até 45 min é bônus.
+*Em aberto — DECISÃO DO DONO:* o ritmo da base (T1) roda em toda hora aberta
+(ponto sem horário = 24 h), e as horas do plano assumem 12 h/dia × 30 dias —
+com ponto 24 h a base entrega mais que o contratado e a anomalia de
+sobre-entrega vai aparecer; o ritmo da T1 não foi mexido nesta correção.
 
 **RN-55 — Ponto que cruza 80% da hora vendida para de aceitar escolha
 nova.** *(G.7, `docs/PENDENCIAS.md` — pedido do dono, 18/09/2026; os dois

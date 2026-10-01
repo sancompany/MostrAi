@@ -156,8 +156,14 @@ function registrarHorasRecemFechadas(agora = new Date(), filtros = {}) {
 
 let timer = null;
 function iniciar() {
-  const rodar = () =>
+  const rodar = () => {
     registrarHorasRecemFechadas().catch((err) => console.error('saldo de veiculação (hora sem sinal):', err.message));
+    // Campanha indisponível por responsabilidade do cliente (migration 111):
+    // rede de segurança das avaliações feitas a cada mudança de criativo.
+    require('./obrigacao-do-ciclo')
+      .avaliarTodas()
+      .catch((err) => console.error('saldo de veiculação (disponibilidade):', err.message));
+  };
   rodar();
   timer = setInterval(rodar, INTERVALO_MS);
   timer.unref();
