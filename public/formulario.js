@@ -1,100 +1,7 @@
-// Peças compartilhadas pelos 3 cadastros (anunciante, vendedor e ponto):
-// CEP que preenche o endereço sozinho e o select de categoria vindo do banco.
-// Sem dependência externa — ViaCEP é público e o resto é DOM puro.
-
-// data-cep no input do CEP; os campos preenchidos são procurados pelo name
-// dentro do mesmo formulário (logradouro/bairro/cidade/uf — D5, 24/09/2026:
-// endereço em campos separados em todo o sistema, src/lib/endereco.js).
-// O aviso embaixo do CEP diz em que pé está a consulta (`data-estado`:
-// consultando, encontrado, nao-encontrado, erro) — "esse CEP não existe" e
-// "não deu pra consultar agora" pedem coisas diferentes da pessoa, e antes
-// eram a mesma frase. Consulta só no blur com 8 dígitos, como sempre.
-function ligarCep(escopo) {
-  (escopo || document).querySelectorAll('[data-cep]').forEach((input) => {
-    const form = input.closest('form') || document;
-    const achar = (nome) => form.querySelector(`[name="${nome}"]`);
-    const aviso = form.querySelector('[data-cep-msg]');
-    // Como o aviso nasceu (texto, classe, escondido ou não — no perfil ele
-    // nasce vazio e escondido): é pra lá que ele volta quando o CEP muda.
-    const inicial = aviso && { texto: aviso.textContent, classe: aviso.className, escondido: aviso.hidden };
-    if (aviso && !aviso.hasAttribute('aria-live')) aviso.setAttribute('aria-live', 'polite');
-    const avisar = (estado, texto) => {
-      if (!aviso) return;
-      aviso.hidden = false;
-      aviso.textContent = texto;
-      aviso.className = 'form-hint';
-      aviso.dataset.estado = estado;
-    };
-    const restaurar = () => {
-      if (!aviso) return;
-      aviso.textContent = inicial.texto;
-      aviso.className = inicial.classe;
-      aviso.hidden = inicial.escondido;
-      delete aviso.dataset.estado;
-    };
-
-    input.addEventListener('input', () => {
-      const so = input.value.replace(/\D/g, '').slice(0, 8);
-      input.value = so.length > 5 ? `${so.slice(0, 5)}-${so.slice(5)}` : so;
-      // CEP mudou depois de uma consulta: o aviso dela já não vale.
-      if (aviso?.dataset.estado && so.length < 8) restaurar();
-    });
-
-    input.addEventListener('blur', async () => {
-      const cep = input.value.replace(/\D/g, '');
-      if (cep.length !== 8) return;
-      avisar('consultando', 'Buscando endereço...');
-      // O que cada campo tinha quando a consulta saiu: quem a pessoa editou
-      // enquanto a resposta não chegava fica como ela deixou (antes a
-      // resposta atrasada apagava a rua recém-digitada).
-      const campos = ['logradouro', 'endereco', 'bairro', 'cidade', 'uf'];
-      const antes = Object.fromEntries(campos.map((nome) => [nome, achar(nome)?.value]));
-      const preenchidos = new Set();
-      const preencher = (nome, valor) => {
-        const campo = achar(nome);
-        if (!campo || campo.value !== antes[nome]) return;
-        campo.value = valor;
-        preenchidos.add(campo);
-        // Quem depende do campo fica sabendo (a prévia do card do ponto
-        // mostra a cidade; o erro de "informe o bairro" some).
-        campo.dispatchEvent(new Event('input', { bubbles: true }));
-      };
-      let dados;
-      try {
-        dados = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
-      } catch {
-        // Consulta velha (a pessoa já trocou o CEP) não fala mais nada.
-        if (input.value.replace(/\D/g, '') === cep) {
-          avisar('erro', 'Não deu para consultar o CEP agora. Preencha o endereço à mão.');
-        }
-        return;
-      }
-      // Outra consulta começou depois desta (a pessoa trocou o CEP): esta
-      // resposta já não é do CEP que está no campo.
-      if (input.value.replace(/\D/g, '') !== cep) return;
-      try {
-        if (dados.erro) throw new Error();
-        // Rua e bairro são campos separados (Parte W, migration 070) — nunca
-        // mais concatenados. Quando a ViaCEP não devolve um dos dois (CEP de
-        // faixa, sem logradouro/bairro fixo), o campo fica vazio, pro cliente
-        // preencher — nunca inventado nem colado no outro campo.
-        preencher(achar('logradouro') ? 'logradouro' : 'endereco', dados.logradouro || '');
-        preencher('bairro', dados.bairro || '');
-        // Deixa o número pro cliente digitar — é o único pedaço que o CEP não sabe.
-        preencher('cidade', dados.localidade);
-        preencher('uf', dados.uf);
-        avisar('encontrado', 'Confira e complete com o número.');
-        // Leva pro número (como sempre), a não ser que a pessoa já esteja
-        // digitando num campo que a consulta não preencheu.
-        const numero = achar('numero');
-        const foco = document.activeElement;
-        if (numero && (!foco || foco === document.body || foco === input || preenchidos.has(foco))) numero.focus();
-      } catch {
-        avisar('nao-encontrado', 'CEP não encontrado, pode preencher o endereço na mão.');
-      }
-    });
-  });
-}
+// Peças compartilhadas pelos cadastros: o select de categoria vindo do
+// banco e os campos de senha. O endereço (CEP pela ViaCEP, regra do Número,
+// mapa) mora em public/endereco.js desde a estação de endereços (01/10/2026).
+// Sem dependência externa — DOM puro.
 
 // Busca ignorando maiúsculas/acentos ("estetica" acha "Estética"). Guardado
 // junto do valor original — nunca altera o que fica gravado, só o que é
@@ -441,7 +348,6 @@ function ligarForcaSenha(escopo) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  ligarCep();
   ligarCategorias();
   ligarMostrarSenha();
   ligarForcaSenha();

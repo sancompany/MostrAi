@@ -11,7 +11,7 @@ const { horasDeTelaPorMes } = require('../lib/pacing');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
 const { criativosComSituacao } = require('./routes');
-const { linhaEndereco } = require('../lib/endereco');
+const { linhaEndereco, numeroSuspeito } = require('../lib/endereco');
 
 // SITUAÇÃO DA CONTA — a leitura de domínio da ficha de Conta do admin
 // (revisão de 23/09/2026, pedido do dono: "a interface precisa representar o
@@ -423,6 +423,19 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     // 24/09/2026).
     endereco: linhaEndereco(conta, { comCidade: true }) || null,
     cep: conta.cep || null,
+    // As partes, pra editar pelo Admin, e se o Número parece endereço (a
+    // mesma leitura que abre a pendência do cliente — estação de endereços).
+    enderecoPartes: {
+      cep: conta.cep,
+      logradouro: conta.logradouro,
+      numero: conta.numero,
+      complemento: conta.complemento,
+      bairro: conta.bairro,
+      cidade: conta.cidade,
+      uf: conta.uf,
+      endereco: conta.endereco,
+    },
+    numeroSuspeito: numeroSuspeito(conta.numero),
     entrouEm: conta.created_at,
     categoria: cat
       ? {

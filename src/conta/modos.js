@@ -20,7 +20,14 @@ const eventos = require('../lib/eventos');
 const outbox = require('../email/outbox');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
-const { colunasDoEndereco, parteQueFalta, temEndereco } = require('../lib/endereco');
+const {
+  colunasDoEndereco,
+  parteQueFalta,
+  problemaNoEndereco,
+  numeroConfirmado,
+  temEndereco,
+} = require('../lib/endereco');
+const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
 const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 
@@ -109,6 +116,8 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
   const conta = await anunciantesRepo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   const { categoria_id, categoria_livre } = req.body;
+  const problemaEndereco = problemaNoEndereco(req.body);
+  if (problemaEndereco) return res.status(400).json(problemaEndereco);
   // Endereço em partes (D5, 24/09/2026 — src/lib/endereco.js). Quem já tem
   // endereço na conta não precisa mandar de novo; quem manda, manda completo.
   const enviado = colunasDoEndereco(req.body, conta);
@@ -165,6 +174,10 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
       dados.bairro ?? null,
     ],
   );
+  await sincronizarContaSemFalhar(conta.id, {
+    confirmado: numeroConfirmado(req.body) ? { alvo: 'conta', id: conta.id } : null,
+    por: `conta:${conta.id}`,
+  });
   res.json(await anunciantesRepo.buscarPorId(conta.id));
 });
 
@@ -185,6 +198,10 @@ router.post('/conta/modos/anunciante', exigirAnuncianteLogado, async (req, res) 
 async function criarCandidaturaPonto(conta, entrada) {
   // Endereço em partes (D5, 24/09/2026): a linha `endereco` é composta aqui,
   // e o endereço vem completo — CEP, logradouro, número, bairro, cidade, UF.
+  const problemaEndereco = problemaNoEndereco(entrada);
+  if (problemaEndereco) {
+    throw Object.assign(new Error(problemaEndereco.erro), { status: 400, campo: problemaEndereco.campo });
+  }
   const dados = { ...entrada, ...colunasDoEndereco(entrada) };
   if (!dados.nome_comercio || !dados.endereco) {
     throw Object.assign(new Error('nome do comércio e endereço são obrigatórios'), { status: 400 });
@@ -265,6 +282,11 @@ async function criarCandidaturaPonto(conta, entrada) {
   }
   // Rede/Candidaturas e o contador do admin, sem F5.
   sse.emitirParaAdmin('application.updated', { id: cand.id, status: cand.status });
+  // Número que parece endereço vira pendência do pedido (não trava o envio).
+  await sincronizarContaSemFalhar(conta.id, {
+    confirmado: numeroConfirmado(entrada) ? { alvo: 'candidatura', id: cand.id } : null,
+    por: `conta:${conta.id}`,
+  });
   return cand;
 }
 
@@ -381,6 +403,9 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
       dados: { conta: { nome_empresa: conta.nome_empresa } },
     });
     sse.emitirParaConta(conta.id, 'point.updated', {});
+    // O pedido virou ponto: a pendência de endereço passa do pedido pro
+    // ponto (src/pendencias/endereco.js).
+    await sincronizarContaSemFalhar(conta.id, { por: `admin:${req.session?.adminUsuario || 'admin'}` });
   }
   sse.emitirParaConta(conta.id, 'application.updated', { id: cand.id, status: 'aprovada' });
   res.json({ ok: true, conta: await anunciantesRepo.buscarPorId(conta.id) });

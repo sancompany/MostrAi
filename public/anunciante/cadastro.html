@@ -62,36 +62,36 @@
           <div class="field-row">
             <div class="u-col">
               <label for="cep">CEP</label>
-              <input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" required>
+              <input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" required>
             </div>
             <div class="u-col-2">
               <label for="logradouro">Logradouro</label>
-              <input id="logradouro" name="logradouro" autocomplete="address-line1" maxlength="200" placeholder="Rua, avenida..." required>
+              <input id="logradouro" name="logradouro" autocomplete="address-line1" placeholder="Rua, avenida..." required>
             </div>
             <div class="u-col">
               <label for="numero">Número</label>
-              <input id="numero" name="numero" maxlength="20" required>
+              <input id="numero" name="numero" required>
             </div>
           </div>
           <p class="form-hint" data-cep-msg>Digite o CEP e o resto vem preenchido, só o número é com você.</p>
           <div class="field-row">
             <div class="u-col-2">
               <label for="complemento">Complemento</label>
-              <input id="complemento" name="complemento" autocomplete="address-line2" maxlength="120" placeholder="Opcional">
+              <input id="complemento" name="complemento" autocomplete="address-line2" placeholder="Opcional">
             </div>
             <div class="u-col-2">
               <label for="bairro">Bairro</label>
-              <input id="bairro" name="bairro" autocomplete="address-level3" maxlength="120" required>
+              <input id="bairro" name="bairro" autocomplete="address-level3" required>
             </div>
           </div>
           <div class="field-row linha-curta">
             <div class="u-col-2">
               <label for="cidade">Cidade</label>
-              <input id="cidade" name="cidade" autocomplete="address-level2" maxlength="120" required>
+              <input id="cidade" name="cidade" autocomplete="address-level2" required>
             </div>
             <div class="u-col campo-uf">
               <label for="uf">UF</label>
-              <input id="uf" name="uf" autocomplete="address-level1" autocapitalize="characters" maxlength="2" required>
+              <input id="uf" name="uf" autocomplete="address-level1" autocapitalize="characters" required>
             </div>
           </div>
 
@@ -162,6 +162,8 @@
   <script src="/config.js"></script>
   <script src="/layout.js"></script>
   <script src="/formulario.js"></script>
+  <script src="/endereco-regras.js"></script>
+  <script src="/endereco.js"></script>
   <script src="/anunciante/cadastro.page.js"></script>
 </body>
 </html>

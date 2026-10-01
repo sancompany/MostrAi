@@ -165,7 +165,9 @@ r=$(curl -s -b ana.txt $B/anunciantes/me); esperar "conta marcada confirmada" '"
 echo "== painel sem plano: upload de criativo travado, horas do mês vazias =="
 r=$(curl -s -o /dev/null -w "%{http_code}" -b ana.txt -X POST $B/anunciantes/$ANA/criativos -F "arquivo=@/dev/null;filename=x.mp4;type=video/mp4")
 esperar "upload de criativo sem plano é 400" '^400$' "$r"
-r=$(curl -s -b ana.txt $B/anunciantes/$ANA/exibicoes); esperar "sem plano, horas do mês vêm null" '"horasContratadasMes":null,"horasEntreguesMes":null' "$r"
+# As duas chaves separadas: o Básico do ponto (migration 103) pôs
+# horasPlanoMes/horasBasicoMes entre elas na resposta.
+r=$(curl -s -b ana.txt $B/anunciantes/$ANA/exibicoes); esperar "sem plano, horas do mês vêm null" '"horasContratadasMes":null.*"horasEntreguesMes":null' "$r"
 
 echo; echo "falhas: $falhas"
 [ "$falhas" -eq 0 ]

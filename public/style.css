@@ -2210,6 +2210,26 @@ main[tabindex="-1"]:focus { outline: none; }
   .form-ponto .endereco-linha-cidade .campo-uf { max-width: 7em; }
 }
 
+/* Estação de endereços (01/10/2026, public/endereco.js): a dica embaixo do
+   Número (o aviso de "parece endereço" troca o texto e a cor — o texto diz
+   o problema, a cor só reforça), o mapa pequeno do ponto e o diálogo de
+   edição do endereço. Nada aqui muda o desenho dos campos. */
+.campo-numero-dica { margin: 6px 0 0; color: var(--text-dim); font-size: .8rem; line-height: 1.4; }
+.campo-numero-dica.aviso-numero { color: #9a3412; font-weight: 600; }
+#dlgPerfil .campo-numero-dica { margin: -6px 0 10px; }
+.mapa-endereco-cabeca p { margin: 0; }
+.mapa-endereco-titulo { margin: 0 0 2px; font-size: .9rem; font-weight: 700; }
+.mapa-endereco-quadro { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.mapa-endereco-quadro iframe { display: block; width: 100%; height: 220px; border: 0; }
+.mapa-endereco-abrir { display: inline-block; margin-top: 6px; font-size: .82rem; color: var(--blue); }
+dialog.dlg-endereco {
+  border: none; border-radius: var(--radius); padding: 24px; max-width: 640px; width: 94vw;
+  background: var(--card); color: var(--text);
+}
+dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
+.dlg-endereco .form-ponto-form, .dlg-endereco-form { display: flex; flex-direction: column; gap: 14px; }
+.dlg-endereco-nota { margin: 0; padding: 10px 12px; border-radius: 10px; background: #fff7ed; color: #7c2d12; font-size: .86rem; line-height: 1.45; }
+
 /* Segmento na largura toda (a lista de resultados acompanha); movimento com
    a largura de um número. */
 .form-ponto .categoria-busca-wrap .categoria-resultados { max-height: min(320px, 50vh); }

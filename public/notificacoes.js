@@ -33,6 +33,7 @@
     beneficio_programado: '✨',
     conta_suspensa: '⚠️',
     conta_reativada: '✅',
+    pendencia: '📝',
   };
 
   function tempoRelativo(iso) {

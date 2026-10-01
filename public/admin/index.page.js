@@ -1255,6 +1255,15 @@ const ALERTAS = [
     semLink: 'O banco de horas não tem mais tela no admin — resolver por suporte técnico.',
   },
   {
+    fila: 'enderecosaconferir',
+    aba: 'pontos',
+    acao: 'Ver pontos',
+    texto: (n) =>
+      n === 1
+        ? '<b>1 ponto</b> mudou de endereço depois da instalação e precisa ser conferido'
+        : `<b>${n} pontos</b> mudaram de endereço depois da instalação e precisam ser conferidos`,
+  },
+  {
     fila: 'pontosocupados',
     rolar: 'ocupacaoRede',
     acao: 'Ver ocupação',
@@ -3074,6 +3083,8 @@ const ABAS_REATIVAS = {
   'payment.updated': ['financeiro', 'visaogeral', 'contas/contas'],
   'plan.updated': ['contas/contas', 'visaogeral'],
   'credits.updated': ['contas/contas'],
+  // Pendência aberta/conferida (estação de endereços): o alerta da Visão geral.
+  'pendencia.updated': ['visaogeral'],
 };
 let recargaAbaAgendada = null;
 function agendarRecargaAba(evento) {
@@ -3106,7 +3117,7 @@ function agendarRecargaAba(evento) {
 function ligarEventosAdmin() {
   if (eventosAdmin) return;
   eventosAdmin = new EventSource(`${API_BASE_URL}/admin/eventos`, { withCredentials: true });
-  for (const evento of ['screen.updated', 'point.updated']) {
+  for (const evento of ['screen.updated', 'point.updated', 'pendencia.updated']) {
     eventosAdmin.addEventListener(evento, () => agendarRecargaRede());
   }
   for (const evento of Object.keys(ABAS_REATIVAS)) {
@@ -3179,7 +3190,9 @@ function montarPontoCard(p, telas) {
     nome: esc(p.nome),
     badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`,
     meta: `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
-    rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>`,
+    rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>${
+      p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''
+    }`,
   });
 }
 
@@ -3350,7 +3363,12 @@ function enderecoFicha(x) {
 
 async function renderPontoDetalhe(el, pontoId) {
   async function montar() {
-    const [pontos, telas] = await Promise.all([pegar('/admin/pontos'), pegar(`/admin/pontos/${pontoId}/dispositivos`)]);
+    const [pontos, telas, pendencias] = await Promise.all([
+      pegar('/admin/pontos'),
+      pegar(`/admin/pontos/${pontoId}/dispositivos`),
+      // Pendência é aviso: se a lista falhar, a ficha abre sem ele.
+      pegar(`/admin/pendencias?pontoId=${pontoId}`).catch(() => []),
+    ]);
     const ponto = pontos.find((p) => p.id === pontoId);
     if (!ponto) {
       el.innerHTML = '<p class="form-msg err">Ponto não encontrado. <a href="#rede/pontos">Voltar pra Rede</a></p>';
@@ -3361,11 +3379,13 @@ async function renderPontoDetalhe(el, pontoId) {
       <div class="ponto-detalhe-grid">
         <div class="pilha">
           <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+          <section class="panel" id="pontoEndereco"></section>
           <section class="panel" id="pontoCapacidade" hidden></section>
         </div>
         <section class="panel" id="pontoTelas"></section>
       </div>`;
     renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
+    renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, montar);
     renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
     blocoIndependente(
       el.querySelector('#pontoCapacidade'),
@@ -3375,6 +3395,74 @@ async function renderPontoDetalhe(el, pontoId) {
   }
   await montar();
   definirVistaRede(montar);
+}
+
+// Endereço físico do ponto (estação de endereços, 01/10/2026): o endereço
+// completo, o mapa (busca do Google pelo texto — nenhuma coordenada é
+// gravada), "Editar endereço" com histórico, e o aviso quando o dono mudou
+// o endereço de um ponto já instalado (pendência ENDERECO_PONTO_ALTERADO,
+// que só sai com "Marcar como conferido").
+function renderPontoEndereco(el, ponto, pendencias, remontar) {
+  const alterado = pendencias.find((p) => p.tipo === 'ENDERECO_PONTO_ALTERADO');
+  const suspeito = pendencias.find((p) => p.tipo === 'ENDERECO_SUSPEITO');
+  const linha = window.linhaEndereco(ponto, { comCidade: true });
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Endereço e localização</h3>
+      <div class="secao-acoes"><button type="button" class="btn ghost mini" data-editar-endereco-ponto ${ponto.status === 'arquivado' ? 'disabled' : ''}>Editar endereço</button></div></div>
+    ${
+      alterado
+        ? `<div class="aviso-bloco u-mb-16" data-aviso-endereco><b>${esc(alterado.mensagem)}</b>
+            Confira se a tela continua no lugar certo.
+            <div class="u-mt-8"><button type="button" class="btn primary mini" data-conferir="${alterado.id}">Marcar como conferido</button></div></div>`
+        : ''
+    }
+    <p class="u-m-0">${linha ? esc(linha) : naoInformado()}${ponto.cep ? ` · CEP ${esc(ponto.cep)}` : ''}</p>
+    ${suspeito ? '<p class="aviso-linha u-mt-4">O Número parece conter um endereço, não o número do imóvel. O dono vê a pendência no painel.</p>' : ''}
+    ${window.htmlMapaDoEndereco(ponto, { titulo: 'Localização atual' }) || '<p class="u-dim u-fs-85 u-mt-8">Sem logradouro e número separados ainda — o mapa aparece quando o endereço estiver completo.</p>'}
+    <details class="u-mt-8" data-historico><summary>Histórico do endereço</summary><div data-historico-lista><p class="carregando">Carregando...</p></div></details>`;
+  el.querySelector('[data-editar-endereco-ponto]').addEventListener('click', () =>
+    editarEnderecoAdmin({
+      titulo: `Endereço do ponto — ${ponto.nome}`,
+      valores: ponto,
+      rota: `/admin/pontos/${ponto.id}/endereco`,
+      comMapa: true,
+      nota: 'Endereço físico do ponto. A troca fica no histórico; o endereço da conta não muda por aqui.',
+      aoSalvar: remontar,
+    }),
+  );
+  el.querySelector('[data-conferir]')?.addEventListener('click', async (ev) => {
+    ev.currentTarget.disabled = true;
+    const r = await api(`/admin/pendencias/${ev.currentTarget.dataset.conferir}/conferir`, { method: 'POST' });
+    if (!r.ok) {
+      ev.currentTarget.disabled = false;
+      return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível marcar agora.', 'err');
+    }
+    toast('Endereço conferido.');
+    remontar();
+  });
+  el.querySelector('[data-historico]').addEventListener('toggle', async (ev) => {
+    if (!ev.currentTarget.open || ev.currentTarget.dataset.carregado) return;
+    const caixa = ev.currentTarget;
+    const lista = caixa.querySelector('[data-historico-lista]');
+    try {
+      const itens = await pegar(`/admin/pontos/${ponto.id}/enderecos`);
+      caixa.dataset.carregado = '1';
+      lista.innerHTML = itens.length
+        ? `<table class="mini-table"><thead><tr><th>Quando</th><th>Quem</th><th>Antes</th><th>Depois</th></tr></thead><tbody>
+            ${itens
+              .map(
+                (h) => `<tr><td class="u-nowrap">${esc(dataHora(h.criado_em))}</td>
+                  <td>${h.origem === 'admin' ? `Admin (${esc(h.alterado_por_admin || '—')})` : `Dono${h.conta_nome ? ` (${esc(h.conta_nome)})` : ''}`}</td>
+                  <td>${esc(window.linhaEndereco(h.anterior, { comCidade: true }) || '—')}</td>
+                  <td>${esc(window.linhaEndereco(h.novo, { comCidade: true }) || '—')}</td></tr>`,
+              )
+              .join('')}
+          </tbody></table>`
+        : '<p class="u-dim u-fs-85 u-m-0">Nenhuma troca de endereço registrada.</p>';
+    } catch {
+      lista.innerHTML = '<p class="form-msg err">Não foi possível carregar o histórico agora.</p>';
+    }
+  });
 }
 
 // Capacidade de veiculação do ponto (refino da Mídia Mostraí, 29/09/2026):
@@ -4270,6 +4358,55 @@ function desenharFicha(el, s, categorias) {
   desenharContaRodape(el.querySelector('#contaRodape'), ctx);
 }
 
+// Endereço pelo Admin (estação de endereços, 01/10/2026): o mesmo
+// componente do painel e do cadastro (public/endereco.js) — limites, ViaCEP,
+// aviso de Número — dentro do modal do Admin. Conta e ponto têm rotas
+// próprias: mudar um nunca mexe no outro.
+function editarEnderecoAdmin({ titulo, valores, rota, comMapa = false, nota = '', aoSalvar }) {
+  // Registro de antes das partes (só a linha): a linha vai pro logradouro e
+  // o número fica em branco — nada é adivinhado.
+  const v = valores?.logradouro ? valores : { ...valores, logradouro: valores?.endereco || '', numero: '' };
+  const { dlg, fechar } = abrirModal({
+    titulo,
+    largo: true,
+    corpo: `<div class="form-ponto"><form id="formEnderecoAdmin" class="form-ponto-form dlg-endereco-form" novalidate>
+        ${nota ? `<p class="dlg-endereco-nota">${esc(nota)}</p>` : ''}
+        ${window.camposEndereco('adm_', { valores: v })}
+        ${comMapa ? '<div data-mapa hidden></div>' : ''}
+        <p class="form-msg" data-msg role="status"></p>
+      </form></div>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formEnderecoAdmin" class="btn primary">Salvar endereço</button>',
+  });
+  const form = dlg.querySelector('form');
+  window.ligarCep(form);
+  if (comMapa) window.ligarMapaDoEndereco(form, dlg.querySelector('[data-mapa]'));
+  let enviando = false;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (enviando) return;
+    const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
+    if (vazio) {
+      vazio.focus();
+      return erroNoModal(dlg, 'Preencha os campos do endereço (só o complemento é opcional).');
+    }
+    enviando = true;
+    try {
+      const r = await api(rota, { method: 'PATCH', body: JSON.stringify(window.enderecoDoForm(form)) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
+        return erroNoModal(dlg, d.erro || 'Não foi possível salvar o endereço.');
+      }
+      fechar();
+      toast('Endereço salvo.');
+      aoSalvar?.();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
 // Dados: só leitura, menos a categoria (o admin corrige a categoria aqui; o
 // resto é do cliente, pelo painel dele). Categoria antiga (fora do cadastro
 // atual) não fica escrita dentro da busca como se valesse: aparece como
@@ -4298,7 +4435,9 @@ function desenharContaDados(el, { s, categorias, bloqueada, recarregar }) {
       <div><dt>Entrou em</dt><dd>${data(d.entrouEm)}</dd></div>
       <div><dt>E-mail</dt><dd>${esc(d.email)}</dd></div>
       <div><dt>WhatsApp</dt><dd class="u-nowrap">${esc(d.telefone)}</dd></div>
-      <div class="dados-largo"><dt>Endereço</dt><dd>${d.endereco ? `${esc(d.endereco)}${d.cep ? ` · CEP ${esc(d.cep)}` : ''}` : '<span class="u-dim">não informado</span>'}</dd></div>
+      <div class="dados-largo"><dt>Endereço</dt><dd>${d.endereco ? `${esc(d.endereco)}${d.cep ? ` · CEP ${esc(d.cep)}` : ''}` : '<span class="u-dim">não informado</span>'}
+        ${d.numeroSuspeito ? '<p class="aviso-linha u-mt-4">O Número parece conter um endereço, não o número do imóvel. O cliente vê a pendência "Confira o endereço da sua empresa" no painel.</p>' : ''}
+        <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-endereco-conta ${d.excluidaEm ? 'disabled' : ''}>Editar endereço</button></div></dd></div>
       <div class="dados-largo"><dt><label for="fichaCategoriaBusca">Categoria</label></dt><dd>
         ${categoriaBuscaHtml('fichaCategoria', atual, { placeholder: antiga ? 'Escolha a categoria atual...' : 'Pesquise a categoria...' })}
         ${aviso}
@@ -4313,6 +4452,15 @@ function desenharContaDados(el, { s, categorias, bloqueada, recarregar }) {
         }
       </dd></div>
     </dl>`;
+  el.querySelector('[data-editar-endereco-conta]')?.addEventListener('click', () =>
+    editarEnderecoAdmin({
+      titulo: `Endereço da conta — ${d.nome}`,
+      valores: d.enderecoPartes,
+      rota: `/admin/anunciantes/${d.id}`,
+      nota: 'Endereço cadastral da conta (vai na nota). Os endereços dos pontos não mudam por aqui.',
+      aoSalvar: recarregar,
+    }),
+  );
   const salvarCategoria = (categoria) =>
     salvar(
       `/admin/anunciantes/${d.id}`,

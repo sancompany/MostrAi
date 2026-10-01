@@ -1537,6 +1537,48 @@ QR por ponto, de indicação ou com contagem de acessos (estação futura).
 503 em vez de um QR sem endereço. *Quem vê:* o administrador; quem escaneia
 só é levado ao destino.
 
+**RN-69 — Endereço tem uma regra só, e o Número é identificador, não rua.**
+(Estação de endereços, 01/10/2026.) Todo formulário que recebe endereço —
+cadastro, convite, perfil ("Dados da empresa"), modo anúncios, candidatura de
+ponto, "Editar endereço" de Meus pontos e o Admin — usa os mesmos campos
+(`public/endereco.js`) e os mesmos limites (`public/endereco-regras.js`, lido
+também pelo servidor): CEP 00000-000; logradouro até 255; Número até 30, com
+letras, números, espaço, hífen e barra (123, 12A, T7, T10, 45-B, S/N);
+complemento até 255 (opcional); bairro e cidade até 150; UF 2 letras. O
+servidor recusa o que passa disso com a mensagem do campo. A consulta do CEP
+(ViaCEP) preenche logradouro, bairro, cidade e UF; o foco só vai pro Número se
+a pessoa ainda estiver no CEP — nunca pula de um campo em que ela já está
+digitando (era isso que jogava a rua no Número, cortada em 20 caracteres:
+`docs/erros/2026-10-numero-do-endereco-cortado.md`). CEP não encontrado ou
+ViaCEP fora do ar nunca impede de salvar: a pessoa preenche à mão. Número que
+parece endereço ("Av Francisco Mastrop": palavra de rua no começo, três ou
+mais palavras, ou bem mais longo que um identificador) ganha o aviso "Confira
+este campo…" — o primeiro envio para no aviso, o segundo com o mesmo valor
+segue como confirmado. Nada é corrigido sozinho. Endereço da CONTA (nota
+fiscal) e endereço do PONTO (onde a tela está) são separados: mudar um nunca
+muda o outro. O mapa pequeno do formulário de ponto e da ficha do ponto no
+Admin é a busca do Google pelo texto do endereço; nenhuma coordenada é
+recebida do navegador nem gravada.
+
+**RN-70 — Pendência é o servidor que decide, e uma ativa por caso.**
+(Migration 110.) Pendência é algo que alguém precisa conferir ou corrigir —
+diferente da notificação, que é o histórico do que já aconteceu. Tem tipo,
+severidade (informativa, atenção, bloqueante), título, mensagem, botão de
+correção e estado (ativa/resolvida, com quando, por quê e por quem — nunca
+apagada). Hoje existem duas: **ENDERECO_SUSPEITO** (atenção, do cliente) —
+Número da conta, de um ponto ou de um pedido em análise que parece endereço;
+aparece no topo do painel ("1 pendência precisa da sua atenção.", "Confira o
+endereço da sua empresa", botão "Corrigir endereço" que abre a edição no
+Número) e uma vez no sino; some quando o Número muda ou quando o cliente
+confirma que está certo (aquele valor não reabre); nunca bloqueia a conta.
+**ENDERECO_PONTO_ALTERADO** (atenção, do Admin) — o dono mudou o endereço de
+um ponto já instalado (qualquer status além de "aguardando instalação"): a
+troca vale, a tela continua ligada, e a Visão geral e a ficha do ponto pedem
+conferência até o Admin clicar "Marcar como conferido". Toda troca de endereço
+de ponto (dono ou Admin) fica em `pontos_enderecos_historico`. A varredura
+diária (`scripts/conciliar.js`) e a primeira visita ao painel apontam o
+cadastro antigo, gravado antes da regra — sem mudar dado nenhum.
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.

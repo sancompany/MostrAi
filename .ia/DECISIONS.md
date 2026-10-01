@@ -1243,3 +1243,36 @@ global com uma conexão do pool presa — com um admin, cabe; com vários
 admins disparando ao mesmo tempo, trocar por `pg_try_advisory_xact_lock` e
 409. Mesmo texto para públicos que se sobrepõem (todas + com plano) chega
 duas vezes a quem está nos dois: é escolha do admin, sem aviso na tela.
+
+## ADR-033 — Endereço: uma regra só, conta ≠ ponto, pendência decidida no servidor (01/10/2026)
+
+**Contexto.** Cliente real com o Número "Av Francisco Mastrop": o foco do
+autopreenchimento do CEP pulava pro Número no meio da digitação da rua e o
+`maxlength=20` cortava em silêncio; o servidor não conferia nada.
+
+**Decisão.**
+- Limites e leitura do Número num arquivo só, `public/endereco-regras.js`,
+  carregado pelo navegador e lido pelo servidor com `require` — o servidor é
+  a fonte da verdade, o navegador só avisa antes.
+- Número é identificador alfanumérico (até 30): nunca "só dígitos".
+- Número que parece endereço não é bloqueado nem corrigido: aviso no
+  formulário (confirmável) e pendência ENDERECO_SUSPEITO no servidor.
+- Endereço da conta e endereço do ponto são entidades separadas; editar um
+  nunca mexe no outro. Troca de endereço do ponto sempre com histórico
+  (`pontos_enderecos_historico`), pelo dono ou pelo Admin; o PATCH genérico do
+  ponto deixou de aceitar endereço.
+- Ponto já instalado aceita a troca do dono e abre ENDERECO_PONTO_ALTERADO pro
+  Admin conferir; a tela não é desligada.
+- Pendências (migration 110): tabela genérica com catálogo de tipos no código,
+  uma ativa por chave (índice único parcial), aviso no sino só quando nasce,
+  resolvida nunca apagada. Reavaliação lazy (leitura do painel), na gravação e
+  na varredura diária — nunca backfill que mude dado.
+- Mapa = embed do Google pelo texto do endereço. Nenhuma latitude/longitude é
+  aceita do navegador nem gravada.
+
+**Alternativas recusadas.** Validar dentro de `colunasDoEndereco` (pegaria
+também o dado copiado de registro antigo — candidatura virando ponto — e
+travaria aprovação de cadastro legado); bloquear o salvamento de Número
+suspeito (a leitura é heurística); geocodificar no servidor e gravar
+coordenada (sem pedido, e abre a porta pra coordenada vinda do navegador).
+

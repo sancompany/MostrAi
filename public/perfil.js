@@ -47,18 +47,18 @@
       <div><label for="emailFixo">E-mail de acesso</label><input id="emailFixo" disabled></div>
       <div><label for="nome_empresa">Nome da empresa</label><input id="nome_empresa" name="nome_empresa" disabled required></div>
       <div class="field-row">
-        <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" disabled data-endereco-obrigatorio></div>
-        <div class="u-col-2"><label for="logradouro">Logradouro</label><input id="logradouro" name="logradouro" autocomplete="address-line1" maxlength="200" disabled data-endereco-obrigatorio></div>
+        <div class="u-col"><label for="cep">CEP</label><input id="cep" name="cep" data-cep inputmode="numeric" autocomplete="postal-code" placeholder="00000-000" disabled data-endereco-obrigatorio></div>
+        <div class="u-col-2"><label for="logradouro">Logradouro</label><input id="logradouro" name="logradouro" autocomplete="address-line1" disabled data-endereco-obrigatorio></div>
       </div>
       <p class="form-hint" data-cep-msg hidden></p>
       <div class="field-row">
-        <div class="u-col"><label for="numero">Número</label><input id="numero" name="numero" maxlength="20" disabled data-endereco-obrigatorio></div>
-        <div class="u-col-2"><label for="complemento">Complemento</label><input id="complemento" name="complemento" autocomplete="address-line2" maxlength="120" placeholder="Opcional" disabled></div>
+        <div class="u-col"><label for="numero">Número</label><input id="numero" name="numero" disabled data-endereco-obrigatorio></div>
+        <div class="u-col-2"><label for="complemento">Complemento</label><input id="complemento" name="complemento" autocomplete="address-line2" placeholder="Opcional" disabled></div>
       </div>
-      <div><label for="bairro">Bairro</label><input id="bairro" name="bairro" autocomplete="address-level3" maxlength="120" disabled data-endereco-obrigatorio></div>
+      <div><label for="bairro">Bairro</label><input id="bairro" name="bairro" autocomplete="address-level3" disabled data-endereco-obrigatorio></div>
       <div class="field-row">
         <div class="u-col-2"><label for="cidade">Cidade</label><input id="cidade" name="cidade" autocomplete="address-level2" disabled data-endereco-obrigatorio></div>
-        <div class="u-col"><label for="uf">UF</label><input id="uf" name="uf" autocomplete="address-level1" maxlength="2" disabled data-endereco-obrigatorio></div>
+        <div class="u-col"><label for="uf">UF</label><input id="uf" name="uf" autocomplete="address-level1" disabled data-endereco-obrigatorio></div>
       </div>
       <div><label for="contato_telefone">WhatsApp</label><input id="contato_telefone" name="contato_telefone" autocomplete="tel" disabled required></div>
       <p class="eyebrow u-mt-8">Responsável (opcional)</p>
@@ -323,6 +323,16 @@
     }
 
     const abrir = () => dlg.showModal();
+    // "Corrigir endereço" da pendência do painel (estação de endereços,
+    // 01/10/2026): abre o perfil já em edição, no Número, com o aviso.
+    window.abrirPerfilNoEndereco = () => {
+      if (!dlg.open) dlg.showModal();
+      travarCampos(false);
+      const numero = $('numero');
+      numero.focus();
+      numero.scrollIntoView({ block: 'center' });
+      numero.dispatchEvent(new Event('blur'));
+    };
     if ($('btnPerfil')) $('btnPerfil').addEventListener('click', abrir);
     $('btnFecharPerfil').addEventListener('click', () => dlg.close());
     dlg.addEventListener('click', (e) => {
@@ -349,6 +359,9 @@
         travarCampos(true);
         preencher();
         if (aoAtualizar) aoAtualizar(conta);
+        // Endereço corrigido some da lista de pendências na hora (o SSE
+        // também avisa, mas não depende dele).
+        window.recarregarPendencias?.();
       } catch (err) {
         msg.textContent = window.frase(err.message) || 'Não foi possível salvar agora. Tente de novo.';
         msg.className = 'form-msg err';

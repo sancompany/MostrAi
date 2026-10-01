@@ -94,6 +94,16 @@ conciliarAssinaturas()
       console.error('crédito mensal dos pontos falhou:', err.message);
     }
 
+    // Pendências de endereço (estação de endereços, 01/10/2026): o cadastro
+    // gravado antes da regra também ganha a pendência de Número suspeito,
+    // mesmo de quem não abriu o painel. Só aponta — não muda endereço nenhum.
+    try {
+      const v = await require('../src/pendencias/endereco').varrerContas();
+      console.log(`pendências de endereço: ${v.contas} conta(s) avaliada(s) · ${v.falhas} falha(s)`);
+    } catch (err) {
+      console.error('varredura de endereços falhou:', err.message);
+    }
+
     // Conta excluída há mais de 60 dias perde o dado pessoal (LGPD) — ver
     // src/titular/repository.js#anonimizarExcluidas.
     try {

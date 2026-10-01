@@ -10,7 +10,10 @@ const { criarCandidaturaPonto } = require('../conta/modos');
 const { meusPontosDaConta } = require('./meus-pontos');
 const { situacaoDosPontos } = require('../creditos/ponto');
 const sse = require('../lib/sse');
-const { colunasDoEndereco } = require('../lib/endereco');
+const { colunasDoEndereco, problemaNoEndereco, numeroConfirmado, PARTES } = require('../lib/endereco');
+const { alterarEnderecoDoPonto, historicoDoPonto } = require('./endereco');
+const candidaturasRepo = require('../candidaturas/repository');
+const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 // Vídeo, não foto — mesmo teto de src/midias/routes.js (upload de vídeo pra
@@ -86,6 +89,61 @@ router.post('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =
   }
 });
 
+// ---------- Endereço do ponto (estação de endereços, 01/10/2026) ----------
+// O dono edita o endereço FÍSICO de cada ponto em Meus pontos, com o mesmo
+// componente do resto do site. Não é o endereço da conta (perfil): mudar um
+// nunca mexe no outro. Ponto já instalado aceita a troca e abre a pendência
+// ENDERECO_PONTO_ALTERADO pra operação conferir (src/pontos/endereco.js).
+const idDaRota = (v) => (/^\d{1,9}$/.test(String(v)) ? Number(v) : null);
+const soPartes = (corpo) =>
+  Object.fromEntries(PARTES.filter((p) => corpo?.[p] !== undefined).map((p) => [p, corpo[p]]));
+
+router.patch('/anunciantes/me/pontos/:id/endereco', exigirAnuncianteLogado, async (req, res) => {
+  const id = idDaRota(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
+  const problema = problemaNoEndereco(req.body);
+  if (problema) return res.status(400).json(problema);
+  const contaId = req.session.anuncianteId;
+  try {
+    const { mudou } = await alterarEnderecoDoPonto(id, soPartes(req.body), { origem: 'usuario', contaId });
+    await sincronizarContaSemFalhar(contaId, {
+      confirmado: numeroConfirmado(req.body) ? { alvo: 'ponto', id } : null,
+      por: `conta:${contaId}`,
+    });
+    if (mudou) {
+      sse.emitirParaConta(contaId, 'point.updated', { id });
+      sse.emitirParaAdmin('point.updated', { id });
+    }
+    res.json({ ok: true, mudou });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+});
+
+// O mesmo, para o pedido ainda em análise (antes de virar ponto não há
+// tela, histórico nem conferência: é o dado do pedido).
+router.patch('/anunciantes/me/candidaturas/:id/endereco', exigirAnuncianteLogado, async (req, res) => {
+  const id = idDaRota(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'pedido não encontrado' });
+  const problema = problemaNoEndereco(req.body);
+  if (problema) return res.status(400).json(problema);
+  const contaId = req.session.anuncianteId;
+  try {
+    await candidaturasRepo.atualizarEnderecoDoPedido(id, contaId, soPartes(req.body));
+    await sincronizarContaSemFalhar(contaId, {
+      confirmado: numeroConfirmado(req.body) ? { alvo: 'candidatura', id } : null,
+      por: `conta:${contaId}`,
+    });
+    sse.emitirParaConta(contaId, 'application.updated', { id });
+    sse.emitirParaAdmin('application.updated', { id });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+});
+
 // `GET /planos-ponto` (as duas modalidades de comodato pra escolher no
 // cadastro) foi aposentada em 24/09/2026 (ADR-016): não há escolha nenhuma,
 // o ponto só pede pra entrar na rede. Nenhuma tela viva chama.
@@ -149,11 +207,53 @@ router.post('/admin/pontos/:id/liberar-escolha', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Endereço físico do ponto pelo Admin (Rede → Ponto). Mesmo caminho do
+// dono, com histórico; origem 'admin' não abre pendência de conferência
+// (é o próprio Admin mudando).
+router.patch('/admin/pontos/:id/endereco', async (req, res) => {
+  const id = idDaRota(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
+  const problema = problemaNoEndereco(req.body);
+  if (problema) return res.status(400).json(problema);
+  try {
+    const { ponto, mudou } = await alterarEnderecoDoPonto(id, soPartes(req.body), {
+      origem: 'admin',
+      admin: req.session?.adminUsuario || 'admin',
+    });
+    if (ponto.anunciante_id) {
+      await sincronizarContaSemFalhar(ponto.anunciante_id, {
+        confirmado: numeroConfirmado(req.body) ? { alvo: 'ponto', id } : null,
+        por: `admin:${req.session?.adminUsuario || 'admin'}`,
+      });
+      if (mudou) sse.emitirParaConta(ponto.anunciante_id, 'point.updated', { id });
+    }
+    if (mudou) sse.emitirParaAdmin('point.updated', { id });
+    res.json(ponto);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+});
+
+// Histórico do endereço do ponto, mais recente primeiro.
+router.get('/admin/pontos/:id/enderecos', async (req, res) => {
+  const id = idDaRota(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
+  res.json(await historicoDoPonto(id));
+});
+
 router.patch('/admin/pontos/:id', async (req, res) => {
   try {
     // Modalidade de comodato aposentada (24/09/2026, ADR-016): não se troca
     // mais — o campo é ignorado se ainda vier.
     const { plano_ponto_id: _modalidade, ...resto } = req.body;
+    // Endereço não passa por aqui (estação de endereços, 01/10/2026): sem
+    // o histórico, a troca não ficaria auditável. O caminho é
+    // PATCH /admin/pontos/:id/endereco.
+    const comEndereco = [...PARTES, 'endereco'].filter((c) => resto[c] !== undefined);
+    if (comEndereco.length) {
+      return res.status(400).json({ erro: 'endereço do ponto muda por PATCH /admin/pontos/:id/endereco' });
+    }
     const antes = await repo.buscarPorId(req.params.id);
     const ponto = Object.keys(resto).length
       ? await repo.atualizar(req.params.id, resto)

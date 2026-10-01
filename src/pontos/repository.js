@@ -167,7 +167,11 @@ async function listar() {
     `SELECT p.*, c.nome AS categoria_nome,
             a.nome_empresa AS dono_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
-            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas
+            (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas,
+            -- Mudou de endereço depois da instalação e a operação ainda não
+            -- conferiu (src/pendencias/, estação de endereços).
+            EXISTS (SELECT 1 FROM pendencias pe WHERE pe.ponto_id = p.id AND pe.tipo = 'ENDERECO_PONTO_ALTERADO'
+                      AND pe.resolvido_em IS NULL) AS endereco_a_conferir
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
