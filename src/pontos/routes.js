@@ -273,6 +273,28 @@ router.patch('/admin/pontos/:id', async (req, res) => {
   }
 });
 
+// Exclusão do ponto pelo Admin — a mesma regra da tela: sem histórico sai de
+// vez (com as telas); com histórico, 409 dizendo qual e que a saída é deixar
+// as telas Inativas (pontos/repository.js#deletar).
+router.delete('/admin/pontos/:id', async (req, res) => {
+  const id = idDaRota(req.params.id);
+  if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
+  let r;
+  try {
+    r = await repo.deletar(id);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ erro: err.message });
+    throw err;
+  }
+  if (!r) return res.status(404).json({ erro: 'ponto não encontrado' });
+  // O dono e quem tinha escolhido o ponto atualizam o painel sem F5.
+  for (const conta of new Set([r.dono, ...r.contasQueEscolheram].filter(Boolean))) {
+    sse.emitirParaConta(conta, 'point.updated', { id });
+  }
+  sse.emitirParaAdmin('point.updated', { id });
+  res.json({ ok: true });
+});
+
 // "Trocar os R$ 50 por tela" deixou de existir junto com as modalidades
 // (24/09/2026, ADR-016).
 router.post('/anunciantes/me/comodato/trocar-por-tela', exigirAnuncianteLogado, (_req, res) => {

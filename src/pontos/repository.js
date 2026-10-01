@@ -424,7 +424,96 @@ async function contaEhPonto(contaId, db = pool) {
   return rows[0].eh;
 }
 
+// Exclusão de ponto — a mesma regra da exclusão de tela
+// (dispositivos/repository.js#deletar): só sai de verdade o ponto SEM
+// histórico. Com histórico o servidor recusa (409) dizendo qual, e a saída é
+// deixar as telas Inativas (o ponto vira Inativo sozinho). Histórico é tudo o
+// que comprova algo a alguém: exibição confirmada em qualquer tela dele
+// (anúncio ou Mídia Mostraí), crédito, repasse, Plano Básico já concedido,
+// ou ponto mesclado nele. Ponto arquivado também é histórico (mesclagem).
+// Sem histórico, o ponto e as telas saem numa transação só: o que as telas
+// tinham é programação que nunca virou exibição, e a escolha de quem marcou
+// o ponto sai junto (a cobertura dessas contas se redistribui sozinha).
+// Devolve null se o ponto não existe; senão { contasQueEscolheram, dono }.
+async function deletar(id) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const {
+      rows: [ponto],
+    } = await client.query('SELECT id, status, anunciante_id FROM pontos WHERE id = $1 FOR UPDATE', [id]);
+    if (!ponto) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    // Trava as telas antes de olhar o histórico: um comprovante que chegue
+    // agora espera esta transação (e falha, sem a tela) ou entra antes e
+    // é visto aqui.
+    const { rows: telas } = await client.query('SELECT id FROM dispositivos WHERE ponto_id = $1 FOR UPDATE', [id]);
+    const telaIds = telas.map((t) => t.id);
+    const {
+      rows: [h],
+    } = await client.query(
+      `SELECT
+         EXISTS (SELECT 1 FROM execucoes_confirmadas WHERE dispositivo_id = ANY($2::int[]) AND status = 'contabilizado')
+           OR EXISTS (SELECT 1 FROM exibicoes_contador WHERE dispositivo_id = ANY($2::int[]) AND vezes_confirmadas > 0)
+           OR EXISTS (SELECT 1 FROM midias_exibicoes_contador
+                       WHERE (dispositivo_id = ANY($2::int[]) OR ponto_id = $1) AND vezes_confirmadas > 0) AS exibicao,
+         EXISTS (SELECT 1 FROM creditos_ledger WHERE ponto_id = $1) AS credito,
+         EXISTS (SELECT 1 FROM pagamentos_ponto WHERE ponto_id = $1) AS repasse,
+         EXISTS (SELECT 1 FROM beneficios_basico_ponto WHERE ponto_id = $1) AS basico,
+         EXISTS (SELECT 1 FROM pontos WHERE mesclado_em_ponto_id = $1) AS mesclado`,
+      [id, telaIds],
+    );
+    const motivo =
+      ponto.status === 'arquivado'
+        ? 'Este ponto está arquivado (faz parte do histórico de uma mesclagem) e não pode ser excluído.'
+        : h.exibicao
+          ? 'Este ponto possui histórico de exibições e não pode ser excluído permanentemente. Deixe as telas dele Inativas.'
+          : h.credito
+            ? 'Este ponto já gerou créditos e não pode ser excluído permanentemente. Deixe as telas dele Inativas.'
+            : h.repasse
+              ? 'Este ponto possui repasses registrados e não pode ser excluído permanentemente. Deixe as telas dele Inativas.'
+              : h.basico
+                ? 'Este ponto já deu o Plano Básico ao dono e não pode ser excluído permanentemente. Deixe as telas dele Inativas.'
+                : h.mesclado
+                  ? 'Outro ponto foi mesclado neste e o histórico depende dele: não pode ser excluído.'
+                  : null;
+    if (motivo) throw Object.assign(new Error(motivo), { status: 409 });
+
+    if (telaIds.length) {
+      await client.query('DELETE FROM exibicoes_contador WHERE dispositivo_id = ANY($1::int[])', [telaIds]);
+      await client.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = ANY($1::int[])', [telaIds]);
+      await client.query('DELETE FROM execucoes_confirmadas WHERE dispositivo_id = ANY($1::int[])', [telaIds]);
+    }
+    await client.query('DELETE FROM midias_exibicoes_contador WHERE ponto_id = $1 OR dispositivo_id = ANY($2::int[])', [
+      id,
+      telaIds,
+    ]);
+    // tokens_provisionamento e tela_eventos saem com a tela (ON DELETE CASCADE).
+    await client.query('DELETE FROM dispositivos WHERE ponto_id = $1', [id]);
+    const { rows: escolhas } = await client.query(
+      'DELETE FROM anunciantes_pontos WHERE ponto_id = $1 RETURNING anunciante_id',
+      [id],
+    );
+    await client.query('DELETE FROM pontos_enderecos_historico WHERE ponto_id = $1', [id]);
+    // pendencias e midias_proprias_pontos saem por ON DELETE CASCADE.
+    await client.query('DELETE FROM pontos WHERE id = $1', [id]);
+    await client.query('COMMIT');
+    return {
+      contasQueEscolheram: [...new Set(escolhas.map((e) => e.anunciante_id))],
+      dono: ponto.anunciante_id,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
+  deletar,
   contaEhPonto,
   criar,
   estabelecimentoJaCadastrado,
