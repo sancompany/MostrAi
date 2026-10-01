@@ -11,6 +11,8 @@ const dispositivosRepo = require('../src/dispositivos/repository');
 const anunciantesRepo = require('../src/anunciantes/repository');
 const criativosRepo = require('../src/anunciantes/criativos-repository');
 const { instalarPlayer, tirarDoSorteio } = require('./apoio-player');
+const { obrigacaoVencida } = require('./apoio-obrigacao');
+const obrigacaoDoCiclo = require('../src/bancohoras/obrigacao-do-ciclo');
 
 // Banco de horas (G.3 de docs/PENDENCIAS.md) — Saldo de Veiculação para o
 // cliente. Unidade é o SEGUNDO desde a migration 100 (27/09/2026); cenários
@@ -399,9 +401,9 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
   try {
     await pool.query('INSERT INTO anunciantes_pontos (anunciante_id, ponto_id) VALUES ($1, $2)', [conta.id, ponto.id]);
     await anunciantesRepo.atualizar(conta.id, { plano_id: 'essencial-1m' });
-    const mesPassado = new Date();
-    mesPassado.setMonth(mesPassado.getMonth() - 1, 1);
-    await saldoDeTeste(conta.id, mesPassado.toISOString().slice(0, 10), 150); // 10 peças de 15 s
+    // Dívida de um ciclo antigo não entregue (migration 111: a obrigação
+    // nasce do ciclo): 150 s = 10 peças de 15 s, todo ele em atraso.
+    await obrigacaoVencida(conta.id, 150);
     const criativo = await criativosRepo.criar({
       anunciante_id: conta.id,
       arquivo_original_url: 'original.mp4',
@@ -423,9 +425,13 @@ test('gerador: banco é programado no tempo livre e NÃO abate o saldo na geraç
     assert.ok(rows[0].vezes_banco > 0, 'a hora tinha espaço livre: o banco entrou');
     assert.ok(rows[0].vezes_banco <= 10, `nunca programa mais que a dívida (programou ${rows[0].vezes_banco})`);
     assert.strictEqual(rows[0].vezes_programadas - rows[0].vezes_banco, rows[0].vezes_pedidas, 'normal + banco');
-    assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(conta.id), 150, 'geração não abate saldo');
     assert.strictEqual(
-      (await bancoHorasRepo.saldosAtivos())[conta.id]?.segundos ?? 0,
+      (await obrigacaoDoCiclo.saldoDaConta(conta.id)).saldoSegundos,
+      150,
+      'geração não abate saldo — só o Proof-of-Play',
+    );
+    assert.strictEqual(
+      (await obrigacaoDoCiclo.saldosParaRecuperar())[conta.id]?.segundos ?? 0,
       150 - rows[0].vezes_banco * 15,
       'o programado fica reservado até a liquidação',
     );

@@ -23,6 +23,10 @@ const TIPOS = {
   // Ponto que já tinha tela instalada mudou de endereço pela mão do dono: a
   // operação confere se a tela continua no lugar. A tela não é desligada.
   ENDERECO_PONTO_ALTERADO: { severidade: 'atencao', escopo: 'admin' },
+  // Entrega além de TODA a obrigação válida de um ciclo, acima de 45 min
+  // (migration 111; spec de consolidação, R3 §42/§6): anomalia operacional
+  // da Mostraí. Só alerta interno — nunca desconto nem compensação futura.
+  SOBREENTREGA_ANOMALA: { severidade: 'atencao', escopo: 'admin' },
 };
 
 const ORDEM_DA_SEVERIDADE = `CASE severidade WHEN 'bloqueante' THEN 0 WHEN 'atencao' THEN 1 ELSE 2 END`;

@@ -1,6 +1,18 @@
 # Current Handoff
 
 ## Updated
+2026-10-01 — **Correção estrutural HIGH: a obrigação de veiculação nasce do
+ciclo contratado** (achado da auditoria Review-Master; branch
+`claude/busy-noether-hheir2`). Livro `obrigacoes_veiculacao` + janelas
+`indisponibilidade_cliente` (migration 111, aditiva); saldo por FIFO do livro
++ Proof-of-Play (`src/bancohoras/obrigacao-do-ciclo.js`); gerador T3 lê o
+atraso do livro; painel contratado × entregue × a entregar; admin
+`/admin/saldo-veiculacao`. SAN Checkout intocado. Produção sem nenhum caso
+histórico (0 planos comerciais, 0 ciclos, 0 banco de horas) — sem backfill.
+ADR-035; PENDENCIAS §R (R8 é decisão do dono: ritmo da T1 em ponto 24 h).
+Testes: `tests/obrigacao-do-ciclo.test.js`, `tests/e2e/44-obrigacao-do-ciclo.mjs`.
+**Depois disso: voltar à auditoria Review-Master no ponto do CHECKPOINT** —
+não iniciar outra estação.
 2026-09-29 — **Integração dos PRs paralelos da estação de finalização**
 (pedido do dono: um por vez, cada um reconciliado com a `main` do anterior,
 merge + CI + deploy + smoke antes do próximo). #88 Lógica, #89 Mídia e #90

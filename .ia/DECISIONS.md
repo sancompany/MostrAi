@@ -1304,3 +1304,50 @@ tela instalada, então o dono ficava trancado até a instalação.
 o onboarding e abriria o upload); ativar o Básico na aprovação do ponto
 (muda a régua do benefício e a obrigação de entrega antes de existir tela);
 decidir só no front (a aba e a API discordariam).
+
+## ADR-035 — A obrigação de veiculação nasce do ciclo contratado, não da capacidade da rede (01/10/2026)
+
+**Contexto.** Achado HIGH da auditoria Review-Master. A obrigação nascia por
+TELA e por hora aberta (`gerador.js#gravarProgramados` →
+`exibicoes_contador.segundos_obrigacao`, e `bancohoras/obrigacao.js` na hora
+sem sinal), e o saldo mensal (`banco_horas`) era obrigação − entrega. A
+Mostraí vende sem tela no ar (pré-venda, decisão do dono): com a rede vazia,
+quem pagava um Pro recebia 0 h, devia-se 0 h e o painel dizia "Em dia". O dono
+recusou bloquear a venda — o modelo é que estava errado.
+
+**Decisão.**
+- **A obrigação comercial nasce do ciclo contratado. A capacidade da rede somente determina a capacidade de entrega dessa obrigação.**
+- **Proof-of-Play confirmado é o mecanismo que reduz a obrigação.**
+- **Renovações acrescentam obrigação nova ao saldo anterior; não substituem saldo pendente.**
+- Livro auditável `obrigacoes_veiculacao` (migration 111, aditiva): uma linha
+  imutável por fato — `ciclo` (compra/renovação paga, na mesma transação de
+  `ciclos_contratados`), `troca` (só a diferença pelos dias que faltavam),
+  `beneficio`/`beneficio_encerrado`, `reembolso` — com `chave` única
+  (webhook repetido, retry, job e concorrência gravam uma vez).
+- Saldo DERIVADO, nunca guardado: `calcularSaldo` (função pura) aplica as
+  entregas confirmadas por FIFO aos lotes. Sobre-entrega é bônus (anomalia
+  interna acima de 45 min por ciclo, pendência `SOBREENTREGA_ANOMALA`, sem
+  desconto); reembolso integral cancela o lote e o que já tinha sido entregue
+  vira saldo técnico negativo interno, descontado da próxima contratação.
+- Responsabilidade do cliente explícita: `indisponibilidade_cliente` (sem
+  peça válida, ou todas pausadas por ele) tira do lote a fração do período em
+  que a campanha esteve fora por ele. Peça retirada pelo admin, peça em
+  análise, ponto fechado, tela offline e falta de capacidade: a dívida fica.
+- O gerador devolve na T3 o ATRASO (devido até agora) menos o banco já
+  programado e não confirmado e menos o déficit que a T2 já repõe; conta com
+  plano vencido e saldo continua elegível só pela T3, com o plano do último
+  lote.
+- O Plano Básico continua nascendo da tela (é benefício do ponto), no mesmo
+  FIFO. A apuração mensal `banco_horas` vira diagnóstico da capacidade.
+- SAN Checkout não mudou: o webhook que já chegava é quem dispara o lote.
+
+**Alternativas recusadas.** Bloquear a venda sem rede (recusada pelo dono);
+semear a obrigação em `banco_horas` na compra (o saldo mensal é "obrigação −
+entrega do mês" e zeraria/reapuraria a dívida na virada); guardar o saldo
+numa coluna (recalcular silenciosamente valor crítico — o livro + POP é a
+fonte, o saldo é leitura).
+
+**Em aberto (dono).** O ritmo da base T1 roda em toda hora aberta (ponto sem
+horário = 24 h) e as horas do plano assumem 12 h/dia × 30 dias: com ponto
+24 h, a base entrega mais que o contratado e a anomalia de sobre-entrega vai
+aparecer. O ritmo da T1 não foi mexido aqui.

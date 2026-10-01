@@ -9,7 +9,7 @@
 // do dia 30 (21:00 de Matão do dia 29 ainda vale, 21:00–24:00 não), e o
 // admin/conciliação comparavam por dia. Quem decide vigência usa daqui:
 // `coberturaVigente` no JS e `vigenteSql` no SQL — nunca `new Date(date)`.
-const { FUSO } = require('./fuso-comercial');
+const { FUSO, instanteComercial } = require('./fuso-comercial');
 
 // 'en-CA' formata como AAAA-MM-DD.
 const diaEmMatao = new Intl.DateTimeFormat('en-CA', {
@@ -74,6 +74,15 @@ function inicioDepoisDoPago(ultimoDiaPago) {
   return diaTexto(ultimoDiaPago) ? somarDias(ultimoDiaPago, 1) : null;
 }
 
+// O INSTANTE em que a cobertura de um dia gravado acaba: meia-noite de Matão
+// do dia seguinte (o último dia é inclusivo). Pra quem precisa do período em
+// instantes — o livro da obrigação de veiculação (migration 111) — sem cair
+// no `new Date(date)` (meia-noite UTC = 21 h de Matão do dia anterior).
+function fimDaCobertura(dataExpiracao) {
+  const dia = diaTexto(dataExpiracao);
+  return dia ? instanteComercial(somarDias(dia, 1)) : null;
+}
+
 // A mesma régua no SQL: "hoje" é o dia de Matão, e a comparação é por dia.
 const HOJE_SQL = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
 const vigenteSql = (coluna) => `(${coluna} IS NULL OR ${coluna} >= ${HOJE_SQL})`;
@@ -87,6 +96,7 @@ module.exports = {
   diasAteVencer,
   somarDias,
   inicioDepoisDoPago,
+  fimDaCobertura,
   HOJE_SQL,
   vigenteSql,
   vencidaSql,

@@ -14,6 +14,8 @@ const midiasRepo = require('../src/midias/repository');
 const sinal = require('../src/player/sinal');
 const { montarHoraDeTv, segundosDeObrigacao, segundosCompensados } = require('../src/lib/pacing');
 const { instalarPlayer } = require('./apoio-player');
+const { obrigacaoVencida } = require('./apoio-obrigacao');
+const obrigacaoDoCiclo = require('../src/bancohoras/obrigacao-do-ciclo');
 
 // Saldo de Veiculação (banco de horas) — estação de 27/09/2026. Mapa e
 // invariantes: docs/specs/2026-09-27-saldo-de-veiculacao.md.
@@ -469,23 +471,23 @@ test('saldo antigo volta na capacidade ociosa, só abate confirmado, e não prej
   const conta = await novaConta({ plano: await novoPlano({ segundos: 600 }) });
   const ponto = await novoPonto();
   await escolher(conta.id, ponto.pontoId);
-  await pool.query(
-    `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco,
-                              segundos_obrigacao, segundos_entregues, segundos_banco, apurado_em)
-     VALUES ($1, '2026-07-01', 10, 0, 10, 150, 0, 150, now())`,
-    [conta.id],
-  );
+  // Dívida de um ciclo antigo não entregue (migration 111): 150 s em atraso.
+  await obrigacaoVencida(conta.id, 150);
   const playlist = await gerar(ponto.telaId, emMatao(5, 10));
   const l = await linhaDa(conta.id, emMatao(5, 10));
   assert.strictEqual(l.vezes_banco, 10, 'dívida de 150 s = 10 peças de 15 s no tempo livre');
   assert.strictEqual(l.vezes_programadas - l.vezes_banco, 40, 'o mês corrente inteiro continua lá');
-  assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(conta.id), 150, 'programar não abate');
+  assert.strictEqual((await obrigacaoDoCiclo.saldoDaConta(conta.id)).saldoSegundos, 150, 'programar não abate');
 
   await tocar(ponto.telaId, playlist, conta.id); // tudo tocou: 40 normais + 10 do saldo
+  assert.strictEqual(
+    (await obrigacaoDoCiclo.saldoDaConta(conta.id)).saldoSegundos,
+    0,
+    'saldo antigo compensado pelo Proof-of-Play confirmado',
+  );
   const depoisDoPrazo = new Date(emMatao(5, 10).getTime() + 8 * 24 * 3_600_000);
   const liq = await liquidarBancoConfirmado({ apenasContas: [conta.id], agora: depoisDoPrazo });
-  assert.strictEqual(liq.segundosAbatidos, 150);
-  assert.strictEqual(await bancoHorasRepo.saldoAtivoDoAnunciante(conta.id), 0, 'saldo antigo compensado');
+  assert.strictEqual(liq.linhas, 1, 'a liquidação fecha a hora (a reserva do banco programado sai)');
   await apurarMes({ mes: '2026-08', apenasContas: [conta.id] });
   assert.strictEqual(Number((await saldoDoMes(conta.id)).segundos_banco), 0, 'e agosto não ganhou dívida nova');
 });

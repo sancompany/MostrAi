@@ -15,6 +15,7 @@ const { concederCreditosMensais, situacaoDosPontos } = require('../src/creditos/
 const { registrarHorasSemPedido } = require('../src/bancohoras/obrigacao');
 const { horasDeTelaPorMes } = require('../src/lib/pacing');
 const { instalarPlayer } = require('./apoio-player');
+const { obrigacaoVencida } = require('./apoio-obrigacao');
 
 // PLANO BÁSICO COMO BENEFÍCIO DO PONTO (migration 103, ADR-025). Os 10 casos
 // da estação de 28/09/2026 + a hora sem sinal. Relógio controlado: as horas
@@ -150,13 +151,9 @@ async function emOperacao({ pontoId, telaId }) {
 }
 
 // Saldo de Veiculação pronto (segundos), do mês anterior, como a apuração deixaria.
-const saldoNoBanco = (contaId, segundos) =>
-  pool.query(
-    `INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco,
-                              segundos_obrigacao, segundos_entregues, segundos_banco, apurado_em)
-     VALUES ($1, (date_trunc('month', now()) - interval '1 month')::date, 1, 0, 1, $2, 0, $2, now())`,
-    [contaId, segundos],
-  );
+// Saldo atrasado de um ciclo antigo (migration 111: a obrigação nasce do
+// ciclo contratado, e o gerador devolve o atraso na capacidade ociosa).
+const saldoNoBanco = (contaId, segundos) => obrigacaoVencida(contaId, segundos);
 const bancoProgramado = async (contaId, telaId, hora) =>
   (
     await pool.query(
@@ -542,10 +539,12 @@ test('Saldo de Veiculação: dividido pelos pontos do Básico também, sem puxar
     outro.pontoId,
   ]);
   await saldoNoBanco(conta.id, 180);
-  await gerador.gerarPlaylistDaHora(await tela(proprio.telaId), hora);
+  // `agora` = a própria hora: a obrigação do Básico desta hora ainda não é
+  // atraso (a hora está sendo entregue) — só os 180 s antigos são.
+  await gerador.gerarPlaylistDaHora(await tela(proprio.telaId), hora, hora);
   assert.strictEqual(await bancoProgramado(conta.id, proprio.telaId, hora), 6, 'no próprio (Básico): 180 s ÷ 2 ÷ 15 s');
   // Na outra tela, o saldo que sobrou (180 − 90 já programados) também ÷ 2.
-  await gerador.gerarPlaylistDaHora(await tela(outro.telaId), hora);
+  await gerador.gerarPlaylistDaHora(await tela(outro.telaId), hora, hora);
   assert.strictEqual(
     await bancoProgramado(conta.id, outro.telaId, hora),
     3,

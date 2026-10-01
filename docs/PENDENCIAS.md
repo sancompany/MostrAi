@@ -5678,3 +5678,31 @@ ponto aprovado "Aguardando instalação", caía em "Comece sua primeira campanha
       `tests/e2e/43-dono-ponto-painel.mjs` (caso real no navegador).
 - Q4 [ ] **Só o dono:** conferir no ar com a conta do caso real que o painel
       abre completo e diz "Básico aguardando instalação".
+
+## R. A obrigação de veiculação nasce do ciclo contratado (01/10/2026)
+
+Correção estrutural HIGH achada na auditoria Review-Master: com a rede vazia
+(pré-venda), quem comprava um plano pagava, recebia 0 h, devia-se 0 h e via
+"Em dia". O dono recusou bloquear vendas. Regra RN-53 em `docs/funcional.md`;
+ADR-035 em `.ia/DECISIONS.md`; migration 111.
+
+- R1 [x] Livro `obrigacoes_veiculacao` (ciclo, troca, benefício, reembolso)
+      idempotente por chave; a compra/renovação paga cria 100% do ciclo
+      (27/84/180 h lidos do plano), com zero ponto ou tela.
+- R2 [x] Saldo derivado por FIFO do livro + Proof-of-Play; renovação
+      acumula; sobrevive a vencimento e cancelamento; reembolso → negativo
+      técnico interno; sobre-entrega > 45 min → pendência do admin.
+- R3 [x] Responsabilidade do cliente explícita (`indisponibilidade_cliente`);
+      admin retirando peça, ponto fechado e tela offline mantêm a dívida.
+- R4 [x] Gerador (T3) devolve o atraso do livro; conta vencida com saldo
+      continua sendo entregue.
+- R5 [x] Painel: horas contratadas × entregues × a entregar; nunca "Em dia"
+      com dívida. Admin: `/admin/saldo-veiculacao` e extrato por conta.
+- R6 [x] Testes: `tests/obrigacao-do-ciclo.test.js` (§37 do pedido) e
+      `tests/e2e/44-obrigacao-do-ciclo.mjs` (§38, ponta a ponta).
+- R7 [x] Produção conferida antes (só leitura): nenhuma conta com plano
+      comercial, ciclo ou banco de horas — sem backfill.
+- R8 [ ] **Só o dono — decisão:** o ritmo da base (T1) roda em toda hora
+      aberta e as horas do plano assumem 12 h/dia × 30 dias; com ponto 24 h
+      a base entrega mais que o contratado (aparece como
+      `SOBREENTREGA_ANOMALA`). Manter, ou limitar a base ao contratado?

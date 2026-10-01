@@ -110,10 +110,18 @@ function exibicoes(c, dispositivo, de, ate, valor = (d) => 100 + ((d * 37) % 50)
     );
   PG(`INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_confirmadas, vezes_pedidas) VALUES ${linhas.join(',')}`);
 }
-function saldoAEntregar(c, segundos) {
-  PG(`INSERT INTO banco_horas (anunciante_id, mes_referencia, exibicoes_pedidas, exibicoes_entregues, exibicoes_banco, status,
-      segundos_obrigacao, segundos_entregues, segundos_banco, segundos_drenados, apurado_em)
-      VALUES (${c.id}, (date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') - interval '1 month')::date, 0, 0, 0, 'ativo', ${segundos * 20}, ${segundos * 19}, ${segundos}, 0, now())`);
+// A obrigação nasce do ciclo contratado (migration 111): um ciclo lançado no
+// começo de hoje, já vencido. As entregas de hoje entram depois dele no FIFO
+// (as de antes, sem ciclo nenhum, não pagam nada) — o ciclo leva o saldo
+// pedido mais o que hoje já confirmou (duração nula = 20 s, src/lib/pacing.js).
+function saldoAEntregar(c, planoId, segundos) {
+  PG(`WITH h AS (SELECT (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo') AS hoje)
+      INSERT INTO obrigacoes_veiculacao (anunciante_id, tipo, chave, segundos, plano_id, inicio, fim, motivo, criado_em)
+      SELECT ${c.id}, 'ciclo', 'e2e37:' || gen_random_uuid(),
+             ${segundos} + COALESCE((SELECT SUM(vezes_confirmadas * COALESCE(duracao_segundos, 20)) FROM exibicoes_contador
+                                     WHERE anunciante_id = ${c.id} AND janela_hora >= h.hoje), 0),
+             '${planoId}', h.hoje - interval '3 months', h.hoje, 'e2e', h.hoje
+        FROM h`);
 }
 function sincronizarPonto(id) {
   execSync(`node -e "require('dotenv').config(); require('./src/pontos/repository').sincronizarStatusPonto(${id}).then(() => process.exit(0))"`, {
@@ -185,7 +193,7 @@ const telasPago = [tela(pontosPago[0], 'no_ar'), tela(pontosPago[1], 'sem_sinal'
 exibicoes(pago, telasPago[0], 420, 0);
 exibicoes(pago, telasPago[1], 200, 2);
 exibicoes(pago, telasPago[2], 20, 0, (d) => 40 + ((d * 13) % 25));
-saldoAEntregar(pago, 16320);
+saldoAEntregar(pago, 'destaque-3m', 16320);
 
 // Plano obtido por créditos (Prime · Semestral), conta que também é ponto,
 // com indicados (só cadastro; 1 pagamento).

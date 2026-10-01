@@ -5,6 +5,7 @@ const anunciantesRepo = require('../anunciantes/repository');
 const checkout = require('../financeiro/san-checkout');
 const pool = require('../db/pool');
 const outbox = require('../email/outbox');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const { exigirAnuncianteLogado } = require('../anunciantes/routes');
 
 // Prazo de arrependimento: 7 dias corridos da contratação (CDC art. 49). Conta
@@ -139,6 +140,18 @@ router.post('/titular/arrependimento', exigirAnuncianteLogado, async (req, res) 
     plano_id: null,
     data_expiracao: null,
   });
+  // Reembolso integral: a obrigação de veiculação dos ciclos pagos some; o que
+  // já tinha sido entregue vira saldo técnico negativo (interno — a próxima
+  // contratação desconta), nunca dívida mostrada ao cliente (migration 111).
+  // O pedido já vale: se o lançamento falhar aqui, a conciliação diária lança
+  // (`conferirReembolsos`) — o erro não desfaz o direito exercido.
+  await obrigacaoDoCiclo
+    .registrarReembolsoDaConta(pool, {
+      anuncianteId: id,
+      motivo: `arrependimento (reembolso integral, pedido ${pedido.id})`,
+      ate: pedido.pedido_em,
+    })
+    .catch((err) => console.error(`reembolso do pedido ${pedido.id} não lançado agora: ${err.message}`));
 
   // E-mail que falha não pode desfazer um direito já exercido — o registro
   // no banco é o que vale. Pela fila: antes o erro era engolido em silêncio

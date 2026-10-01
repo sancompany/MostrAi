@@ -3,6 +3,7 @@ const vigencia = require('../lib/vigencia');
 const { horasDeTelaPorMes, exibicoesPorMes } = require('../lib/pacing');
 const { nomeDoCiclo } = require('../lib/ciclos');
 const { multiplicar } = require('../lib/dinheiro');
+const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 
 // Snapshot comercial de cada ciclo PAGO (migration 087, ADR-018) e o custo
 // por exibição prevista que sai dele:
@@ -28,7 +29,17 @@ function exibicoesPrevistasMes(plano) {
 // inteiro — quem chama passa o mesmo número que foi pra cobrança
 // (`valorMensalDaConta × meses`: preço-base → desconto do ciclo ou promoção
 // travada na assinatura → desconto de parceiro). Nunca recalculado aqui.
-async function registrar(db, { anuncianteId, plano, assinaturaId = null, cobrancaId = null, origem, valorCiclo }) {
+//
+// É também aqui — na mesma transação — que nasce a OBRIGAÇÃO de veiculação
+// do ciclo (migration 111, src/bancohoras/obrigacao-do-ciclo.js): comprou ou
+// renovou, nasce o tempo inteiro do ciclo, com ou sem tela na rede. Troca de
+// plano no meio do ciclo (`planoAnteriorId`) muda só a diferença pelos dias
+// que faltavam; o pedido avulso legado (troca que pagou o ciclo inteiro, sem
+// `planoAnteriorId`) é ciclo inteiro.
+async function registrar(
+  db,
+  { anuncianteId, plano, assinaturaId = null, cobrancaId = null, origem, valorCiclo, planoAnteriorId = null },
+) {
   const meses = Number(plano.compromisso_meses);
   const mes = exibicoesPrevistasMes(plano);
   const { rows } = await db.query(
@@ -38,7 +49,13 @@ async function registrar(db, { anuncianteId, plano, assinaturaId = null, cobranc
      RETURNING *`,
     [anuncianteId, plano.id, assinaturaId, cobrancaId, origem, meses, valorCiclo, mes, mes * meses],
   );
-  return rows[0];
+  const ciclo = rows[0];
+  if (origem === 'troca' && planoAnteriorId) {
+    await obrigacaoDoCiclo.registrarTroca(db, { anuncianteId, planoNovo: plano, planoAnteriorId, ciclo });
+  } else {
+    await obrigacaoDoCiclo.registrarCiclo(db, { anuncianteId, plano, ciclo });
+  }
+  return ciclo;
 }
 
 // Compra ou renovação: é compra se esta assinatura ainda não tem ciclo
