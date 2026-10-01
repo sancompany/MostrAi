@@ -584,6 +584,10 @@
         'plan.updated': aoMudar,
         'payment.updated': aoMudar,
         'credits.updated': aoMudar,
+        // Ponto aprovado ou Básico ativado (ADR-034): o módulo passa de
+        // escondido a "aguardando", e de "aguardando" ao envio aberto.
+        'point.updated': aoMudar,
+        'application.updated': aoMudar,
       });
     }
   };

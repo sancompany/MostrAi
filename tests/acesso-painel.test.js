@@ -215,6 +215,27 @@ test('caso 10: vários pontos em estados diferentes — decisão consistente', a
   assert.strictEqual(a.pontos.total, 3, 'arquivado fora da conta');
   assert.deepStrictEqual(a.pontos.porStatus, { em_reparo: 1, inativo: 1, a_instalar: 1 });
   assert.strictEqual(a.pontos.emOperacao, 0);
+  assert.strictEqual(a.basico.pendentes.length, 3, 'um Básico por ponto da rede, arquivado fora');
+});
+
+// Revisão Codex do #108: com vários pontos, um Básico já ativo não esconde o
+// ponto que ainda espera, e dois pontos esperando não viram uma linha só.
+test('caso 10b: Básico por ponto — ativo num ponto, aguardando no outro', async () => {
+  const c = await novaConta();
+  const ativo = await pontoDaConta(c.id, { status: 'em_operacao', tela: 'sinal' });
+  const semTela = await pontoDaConta(c.id, { status: 'a_instalar' });
+  const outroSemTela = await pontoDaConta(c.id, { status: 'a_instalar' });
+  const a = await acessoDoPainel(c);
+  assert.strictEqual(a.basico.ativo, true);
+  assert.strictEqual(a.basico.aguardando, null, 'a conta já tem Básico');
+  assert.deepStrictEqual(
+    a.basico.pendentes.map((p) => [p.pontoId, p.aguardando]),
+    [
+      [Number(semTela), 'instalacao'],
+      [Number(outroSemTela), 'instalacao'],
+    ],
+  );
+  assert.ok(!a.basico.pendentes.some((p) => p.pontoId === Number(ativo)), 'o ponto com Básico ativo não fica pendente');
 });
 
 test('plano vencido continua com acesso pela régua de antes (plano_id); suspensa idem — o painel trata', async () => {

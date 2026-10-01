@@ -26,13 +26,14 @@ const STATUS_DE_PONTO_DA_REDE = ['a_instalar', 'aguardando_primeiro_sinal', 'em_
 
 async function situacaoDosPontos(contaId, db = pool) {
   const { rows } = await db.query(
-    `SELECT p.status,
+    `SELECT p.id, p.nome, p.status,
             EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id
                       AND d.status IN ('ativo', 'reparo') AND d.chave_hash IS NOT NULL) AS tela_instalada,
             EXISTS (SELECT 1 FROM dispositivos d WHERE d.ponto_id = p.id
                       AND d.primeiro_sinal_em IS NOT NULL) AS primeiro_sinal
        FROM pontos p
-      WHERE p.anunciante_id = $1 AND p.status = ANY($2::text[])`,
+      WHERE p.anunciante_id = $1 AND p.status = ANY($2::text[])
+      ORDER BY p.id`,
     [contaId, STATUS_DE_PONTO_DA_REDE],
   );
   const porStatus = {};
@@ -43,6 +44,7 @@ async function situacaoDosPontos(contaId, db = pool) {
     emOperacao: porStatus.em_operacao || 0,
     telaInstalada: rows.some((r) => r.tela_instalada),
     primeiroSinal: rows.some((r) => r.primeiro_sinal),
+    lista: rows.map((r) => ({ id: Number(r.id), nome: r.nome, telaInstalada: r.tela_instalada })),
   };
 }
 
@@ -56,15 +58,23 @@ async function acessoDoPainel(conta, { basicos = null, db = pool } = {}) {
   // Dono de ponto sem Básico ainda: em que pé está a ativação (a régua de
   // ativação é a tela instalada — src/pontos/basico.js).
   const basicoAguardando = !ativos.length && pontos.total ? (pontos.telaInstalada ? 'ativacao' : 'instalacao') : null;
+  // Um Básico por ponto: cada ponto da rede sem o seu ativo aparece com o
+  // próprio estado — com vários pontos, um já ativo não esconde os outros.
+  const comBasico = new Set(ativos.map((b) => Number(b.ponto_id)));
+  const pendentes = pontos.lista
+    .filter((p) => !comBasico.has(p.id))
+    .map((p) => ({ pontoId: p.id, pontoNome: p.nome, aguardando: p.telaInstalada ? 'ativacao' : 'instalacao' }));
+  const { lista, ...resumoDosPontos } = pontos;
   return {
     completo: !!motivo,
     motivo,
     podeVeicular: !!planoVigenteId(conta) || ativos.length > 0,
     donoDePonto: pontos.total > 0,
-    pontos,
+    pontos: resumoDosPontos,
     basico: {
       ativo: ativos.length > 0,
       aguardando: basicoAguardando,
+      pendentes,
       horasPorMes: basicoRepo.BASICO.horasPorMes,
       duracaoMaximaSegundos: basicoRepo.BASICO.duracaoMaximaSegundos,
     },

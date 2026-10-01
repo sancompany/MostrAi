@@ -86,6 +86,9 @@ if (window.ligarEventosDaConta) {
     'plan.updated': recarregarConta,
     'account.updated': recarregarConta,
     'application.updated': recarregarConta,
+    // Ponto aprovado, tela instalada, Básico ativado: muda o acesso e o
+    // estado do Básico (ADR-034).
+    'point.updated': recarregarConta,
   });
 }
 
@@ -289,25 +292,30 @@ function desenharBasico() {
   const secao = document.getElementById('modBasico');
   if (!secao || !ANUNCIANTE) return;
   const basicos = ANUNCIANTE.beneficios_basico || [];
-  // Dono de ponto da rede com o Básico ainda por nascer (01/10/2026): o card
-  // diz o que vem e quando — nunca "Ativo" antes da hora.
-  if (!basicos.length && donoAguardandoBasico()) {
-    const b = ANUNCIANTE.acesso_painel.basico;
-    const quando = b.aguardando === 'instalacao' ? 'Aguardando instalação da tela' : 'Aguardando ativação';
-    document.getElementById('basicoResumo').innerHTML = `
-      <div class="basico-item" data-basico-aguardando>
-        <p class="plano-nome"><b>${b.horasPorMes} h/mês</b> <span class="badge badge-pendente">${quando}</span></p>
-        <ul class="basico-direitos">
-          <li>1 ponto — o seu estabelecimento</li>
-          <li>Anúncio de até ${b.duracaoMaximaSegundos} s</li>
-        </ul>
-      </div>
-      <p class="plano-nota">Benefício de quem é ponto, sem custo: começa quando a tela do seu ponto estiver instalada. Plano comercial é opcional, pra anunciar em mais pontos da rede.</p>`;
-    secao.hidden = false;
+  // Dono de ponto da rede (01/10/2026): cada ponto ainda sem o Básico
+  // aparece com o próprio estado — "aguardando", nunca "Ativo" antes da hora.
+  // Só onde o card já aparece (Básico ativo, ou dono sem plano nenhum): com
+  // plano comercial e nenhum Básico ativo, o card segue escondido.
+  const pendentes = basicos.length || donoAguardandoBasico() ? ANUNCIANTE.acesso_painel?.basico?.pendentes || [] : [];
+  if (!basicos.length && !pendentes.length) {
+    secao.hidden = true;
     return;
   }
+  const regra = ANUNCIANTE.acesso_painel?.basico || {};
+  const itemPendente = (b) => `<div class="basico-item" data-basico-aguardando="${b.pontoId}">
+        <p class="plano-nome"><b>${regra.horasPorMes} h/mês</b> <span class="badge badge-pendente">${
+          b.aguardando === 'instalacao' ? 'Aguardando instalação da tela' : 'Aguardando ativação'
+        }</span></p>
+        <ul class="basico-direitos">
+          <li>1 ponto — ${esc(b.pontoNome || 'seu estabelecimento')}</li>
+          <li>Anúncio de até ${regra.duracaoMaximaSegundos} s</li>
+        </ul>
+      </div>`;
   if (!basicos.length) {
-    secao.hidden = true;
+    document.getElementById('basicoResumo').innerHTML = `
+      ${pendentes.map(itemPendente).join('')}
+      <p class="plano-nota">Benefício de quem é ponto, sem custo: começa quando a tela do seu ponto estiver instalada. Plano comercial é opcional, pra anunciar em mais pontos da rede.</p>`;
+    secao.hidden = false;
     return;
   }
   const d = ANUNCIANTE.direitos || {};
@@ -327,6 +335,7 @@ function desenharBasico() {
       </div>`,
       )
       .join('')}
+    ${pendentes.map(itemPendente).join('')}
     <p class="plano-nota">Incluído sem custo enquanto seu ponto estiver ativo. Além dele, cada ponto ativo gera +1 crédito por mês.</p>
     ${soma}`;
   secao.hidden = false;

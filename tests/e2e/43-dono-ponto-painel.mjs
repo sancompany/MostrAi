@@ -94,7 +94,11 @@ await p.waitForTimeout(400);
 check('pedido em análise não libera o painel', await p.isVisible('#bloqueioPlano'));
 check('servidor: pedido não faz dono de ponto', (await acesso(p))?.donoDePonto === false);
 
-console.log('== 3. admin aprova: ponto aguardando instalação ==');
+console.log('== 3. admin aprova com o painel do dono aberto: ponto aguardando instalação ==');
+// Sem F5 (revisão Codex do #108): o painel fica aberto e muda pelo SSE.
+await p.evaluate(() => {
+  window.__semReload = true;
+});
 const adminCtx = await b.newContext();
 const adm = await adminCtx.newPage();
 await irQuieto(adm, `${B}/admin/`);
@@ -112,9 +116,13 @@ const pontoId = PG(`SELECT id FROM pontos WHERE candidatura_id = ${candId}`);
 check('ponto materializado aguardando instalação', PG(`SELECT status FROM pontos WHERE id = ${pontoId}`) === 'a_instalar');
 check('nenhum plano foi dado à conta', PG(`SELECT plano_id IS NULL FROM anunciantes WHERE id = ${contaId}`) === 't');
 
-await recarregarQuieto(p);
-await p.waitForSelector('#dashboardAnuncios:not([hidden])', { timeout: 8000 }).catch(() => {});
+const semF5 = await p
+  .waitForSelector('[data-criativos-aguardando]', { timeout: 10000 })
+  .then(() => true)
+  .catch(() => false);
+await redeQuieta(p);
 await p.waitForTimeout(600);
+check('sem F5: o painel aberto abre o dashboard e o "aguardando" dos criativos', semF5 && (await p.evaluate(() => window.__semReload === true)));
 const a = await acesso(p);
 check('servidor: acesso completo pelo ponto, sem direito de veicular', a?.completo && a.motivo === 'ponto' && !a.podeVeicular, JSON.stringify(a));
 check('dashboard completo aparece', await p.isVisible('#dashboardAnuncios'));
