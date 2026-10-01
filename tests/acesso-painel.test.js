@@ -19,15 +19,35 @@ const { primeirosPassosDaConta } = require('../src/anunciantes/primeiros-passos'
 
 const criados = { contas: [], pontos: [] };
 test.after(async () => {
+  await require('../src/lib/eventos').aguardarGravacoes();
+  // Tela com Básico ativo entra no gerador e no crédito do ponto que outros
+  // arquivos de teste rodam em paralelo (o CI pegou exibicoes_contador
+  // apontando pra uma tela daqui): limpa o que eles podem ter gravado.
   for (const pontoId of criados.pontos) {
+    const telas = 'SELECT id FROM dispositivos WHERE ponto_id = $1';
+    await pool.query(`DELETE FROM execucoes_confirmadas WHERE dispositivo_id IN (${telas})`, [pontoId]);
+    await pool.query(`DELETE FROM exibicoes_contador WHERE dispositivo_id IN (${telas})`, [pontoId]);
+    await pool.query(`DELETE FROM playlist_hora_congelada WHERE dispositivo_id IN (${telas})`, [pontoId]);
+    await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [pontoId]);
+    await pool.query('DELETE FROM creditos_ledger WHERE ponto_id = $1', [pontoId]);
     await pool.query('DELETE FROM beneficios_basico_ponto WHERE ponto_id = $1', [pontoId]);
     await pool.query('DELETE FROM dispositivos WHERE ponto_id = $1', [pontoId]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [pontoId]);
   }
   for (const id of criados.contas) {
     await pool.query('DELETE FROM candidaturas WHERE conta_id = $1', [id]);
+    for (const t of [
+      'banco_horas',
+      'exibicoes_contador',
+      'anunciantes_pontos',
+      'eventos',
+      'notificacoes',
+      'creditos_ledger',
+      'criativos',
+    ]) {
+      await pool.query(`DELETE FROM ${t} WHERE anunciante_id = $1`, [id]);
+    }
     await pool.query('DELETE FROM beneficios_basico_ponto WHERE conta_id = $1', [id]);
-    await pool.query('DELETE FROM notificacoes WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM anunciantes WHERE id = $1', [id]);
   }
   await pool.end();
