@@ -106,11 +106,14 @@ async function comum(nome, s) {
   const texto = await s.p.textContent('main');
   check(`${nome}: nenhum conceito antigo`, !ANTIGOS.test(texto), texto.match(ANTIGOS)?.[0]);
   // Card do Básico só com o benefício de fato (ponto com tela provisionada e ativa).
+  // Desde 01/10/2026 o card também aparece pro dono de ponto da rede sem
+  // plano, com o Básico ainda por nascer ("aguardando") — nunca "ativo".
   const temBasico = await s.p.evaluate(async () => {
     const r = await fetch('/anunciantes/me', { credentials: 'include' });
-    return !!(await r.json()).beneficios_basico?.length;
+    const c = await r.json();
+    return !!c.beneficios_basico?.length || (!c.plano_id && !!c.acesso_painel?.basico?.aguardando);
   });
-  check(`${nome}: card do Plano Básico só com o benefício`, (await visivel(s.p, '#modBasico')) === temBasico);
+  check(`${nome}: card do Plano Básico só com o benefício (ativo ou aguardando)`, (await visivel(s.p, '#modBasico')) === temBasico);
   check(`${nome}: sem link pro painel separado do ponto`, !(await s.p.$('main a[href*="ponto.html"]')));
   const repetidas = Object.entries(s.naCarga).filter(([u, n]) => n > 1 && !u.includes('/eventos'));
   check(`${nome}: cada endpoint uma vez na carga`, repetidas.length === 0, JSON.stringify(repetidas));
@@ -167,11 +170,23 @@ const dono = await novaConta('unico-dono', "ARRAY['ponto']");
 comPonto(dono.id, 'Mercearia Grade', false);
 s = await abrir(dono, 'dono');
 check('dono: Meus pontos com o ponto', (await s.p.textContent('#pontosLista')).includes('Mercearia Grade'));
-check('dono: ser ponto não dá plano — sem Meus criativos', !(await visivel(s.p, '#modCriativos')));
+// Ser ponto não dá direito de veicular antes do Básico ativar: o módulo
+// aparece com o envio fechado e o motivo (01/10/2026), não some.
+check(
+  'dono: Meus criativos com o envio fechado até o Básico ativar',
+  (await visivel(s.p, '#modCriativos')) &&
+    (await visivel(s.p, '[data-criativos-aguardando]')) &&
+    !(await visivel(s.p, '#rotuloEnviarCriativo')),
+);
 check('dono: sem Financeiro (nada pago, nada a receber)', !(await visivel(s.p, '#modFinanceiro')));
 // Sem plano, o card some — a ação principal mora nos primeiros passos, uma
 // vez só (estação da conta, 26/09/2026); o chip do topo diz "Sem plano".
-check('dono: sem card de plano, chip "Sem plano"', !(await visivel(s.p, '#modPlano')) && /Sem plano/.test(await s.p.textContent('#resumoConta')));
+check(
+  'dono: sem card de plano, chip "Básico aguardando ativação" (não "Sem plano")',
+  !(await visivel(s.p, '#modPlano')) && /Básico aguardando ativação/.test(await s.p.textContent('#resumoConta')),
+  await s.p.textContent('#resumoConta'),
+);
+check('dono: card do Básico diz aguardando, nunca ativo', /Aguardando ativação/.test(await s.p.textContent('#modBasico')));
 check('dono: benefício do ponto, +1 crédito por mês', (await s.p.textContent('#pontosLista')).includes('+1 crédito por mês'));
 check('dono: hero com saudação (não mais "modo não ativado")', (await s.p.textContent('#statusBanner')).includes('Olá'));
 await comum('dono', s);

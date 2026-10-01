@@ -172,11 +172,21 @@ const contas = [];
       VALUES (${ponto}, 'ativo', now(), now(), md5(random()::text) || md5(random()::text))`);
   PG(`INSERT INTO pagamentos_ponto (ponto_id, competencia, valor, pago_em, forma) VALUES (${ponto}, date_trunc('month', now() - interval '1 month'), 50, now(), 'pix')`);
   const p = await entrar(dono);
-  const texto = await p.locator('main').innerText();
+  // O "Plano Básico" de hoje (benefício do ponto, ADR-025) não é o Básico
+  // antigo: desde 01/10/2026 (ADR-034) o dono de ponto entra no painel e vê o
+  // card dele, aguardando ativação. Só ele sai do texto antes da busca.
+  const texto = (await p.locator('main').innerText()).replace(/Plano Básico|Básico (aguardando|·)/g, '');
   check('painel: sem Inicial/Básico/R$ 50/Recebimentos', !ANTIGO.test(texto) && !/Recebimentos/.test(texto), (texto.match(ANTIGO) || texto.match(/Recebimentos/) || [])[0]);
   // Bloco próprio no card do ponto desde o painel do usuário (29/09/2026).
   check('painel: Meus pontos mostra o benefício do ponto', /Benefício do ponto\s*\+1 crédito por mês/i.test(texto));
-  check('painel: ser ponto não dá plano', (await p.locator('#modPlano').isHidden()) && (await p.isVisible('#bloqueioPlano')));
+  // Ser ponto não dá plano comercial nem antecipa o Básico — mas abre o
+  // painel (ADR-034): sem card de plano, sem bloqueio, Básico aguardando.
+  check(
+    'painel: ser ponto não dá plano (nem bloqueia o painel)',
+    (await p.locator('#modPlano').isHidden()) &&
+      !(await p.isVisible('#bloqueioPlano')) &&
+      /Básico aguardando ativação/.test(await p.textContent('#resumoConta')),
+  );
   // Job do mês: o crédito aparece no painel sozinho (SSE), com o ponto.
   await p.evaluate(() => {
     window.__semReload = true;

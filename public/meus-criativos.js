@@ -195,11 +195,30 @@
       dados = await r.json();
       // Sem plano (pago ou benefício) não há o que enviar: o
       // cartão "Escolha um plano" do painel já diz isso.
+      if (!dados.temPlano && dados.aguardandoBeneficio) {
+        // Dono de ponto da rede com o Básico ainda por nascer (01/10/2026):
+        // o módulo aparece com o envio fechado e o motivo — o servidor só
+        // aceita criativo com plano ou Básico ativo.
+        window.publicarResumo?.('criativos', {});
+        $('rotuloEnviarCriativo').hidden = true;
+        $('contadorCriativos').hidden = true;
+        $('ajudaArte').hidden = true;
+        $('criativosSubtitulo').textContent = 'Vídeo ou imagem vertical · até 95 MB · sem áudio';
+        lista.innerHTML = `<p class="empty-state" data-criativos-aguardando>${
+          dados.aguardandoBeneficio === 'instalacao'
+            ? 'Aguardando ativação do benefício: o envio de criativos abre quando a tela do seu ponto estiver instalada e o Plano Básico ativar.'
+            : 'Aguardando ativação do benefício: o envio de criativos abre assim que o Plano Básico do seu ponto ativar.'
+        }</p>`;
+        secao.hidden = false;
+        return true;
+      }
       if (!dados.temPlano) {
         secao.hidden = true;
         window.publicarResumo?.('criativos', {});
         return true;
       }
+      $('rotuloEnviarCriativo').hidden = false;
+      $('contadorCriativos').hidden = false;
       publicar();
       desenharCabecalho();
       lista.innerHTML = dados.criativos.length

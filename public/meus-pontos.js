@@ -562,7 +562,9 @@
         ? [
             {
               rotulo: 'Pontos',
-              valor: `${ativos} de ${pontos.length} ${pontos.length === 1 ? 'ativo' : 'ativos'}`,
+              // Em operação = tela instalada e funcionando; aguardando
+              // instalação não conta (01/10/2026: "ativo" confundia).
+              valor: `${ativos} de ${pontos.length} em operação`,
               alvo: 'modPontos',
             },
           ]

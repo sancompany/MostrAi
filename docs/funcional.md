@@ -200,7 +200,8 @@ Escrito por grupo, porque o padrão se repete.
   upload de auto-serviço também recusa no backend (400) nesse estado; é
   caminho diferente do admin/conta própria, que continua sem essa exigência.
   Conta suspensa cai no mesmo bloqueio, mas sem CTA — só remete pro aviso já
-  mostrado no banner.
+  mostrado no banner. Dono de ponto aprovado (não arquivado) **não** cai no
+  bloqueio, mesmo sem plano e antes do Básico ativar (RN-43.6, 01/10/2026).
 - *Carregando:* abas visíveis, conteúdo em esqueleto.
 - *Erro:* faixa no topo com "não conseguimos carregar seus dados".
 - *Sucesso:* conteúdo da aba — com plano ativo (ou o Básico do ponto),
@@ -533,6 +534,39 @@ outro). Ser ponto = Plano Básico + 1 crédito/mês: dois benefícios separados.
 plano"; Meus pontos: "Plano Básico: 14 h/mês neste ponto"; horas do mês por
 origem) e o admin (ficha da conta, seção "Benefício de ponto" com o ponto de
 origem, situação e motivo do fim; ficha do ponto).
+
+**RN-43.6 — Acesso ao painel ≠ direito de veicular.** *(01/10/2026, correção
+pedida pelo dono — o caso real: conta sem plano, dona de um ponto aprovado
+"Aguardando instalação", presa no "Comece sua primeira campanha / Escolha seu
+plano".)* São duas regras, decididas no servidor por uma função só
+(`acessoDoPainel`, `src/anunciantes/acesso-painel.js`):
+· **ACESSO AO DASHBOARD** (`acesso_painel.completo`) — o painel inteiro abre
+  com plano comercial (pago ou benefício por créditos/cortesia), OU Plano
+  Básico ativo, OU **ser dono de ponto aprovado e não arquivado** (status
+  `a_instalar`, `aguardando_primeiro_sinal`, `em_operacao`, `em_reparo` ou
+  `inativo`). **Ser dono de ponto aprovado libera a experiência completa da
+  conta, mesmo antes da ativação operacional do Plano Básico.** Pedido de
+  ponto em análise não conta (ainda não é ponto); ponto arquivado sozinho
+  não conta. Sem nenhum dos três, o painel continua pedindo o plano.
+· **DIREITO DE VEICULAR** (`acesso_painel.podeVeicular`) — plano vigente ou
+  Básico ativo. Não mudou: enviar criativo, escolher pontos e entrar na
+  playlist continuam pedindo isso no servidor.
+· **O Básico não é forçado.** Ele continua nascendo só com a tela instalada
+  (RN-43.5). Até lá o painel diz "aguardando" (`acesso_painel.basico.aguardando`
+  = `instalacao` sem tela, `ativacao` com tela e Básico ainda não sincronizado)
+  — nunca "ativo".
+*Quem vê:* o dono de ponto sem plano entra no painel completo. A faixa de
+onboarding vira "Seu ponto está entrando na rede" (ponto aprovado ✓ →
+instalação da tela → primeiro sinal → Plano Básico ativo → envie seu criativo
+→ acompanhe as exibições; `fluxo: 'ponto'` em `GET
+/anunciantes/me/primeiros-passos`) — sem "Escolha seu plano" como obrigação e
+sem marcar etapa de plano como feita. O chip de plano diz "Básico aguardando
+instalação" / "Básico aguardando ativação" (e "Básico · benefício de ponto"
+quando ativo), nunca "Sem plano"; o card do Plano Básico mostra 14 h/mês com
+o selo "Aguardando instalação da tela"; Meus criativos aparece com o envio
+fechado e "Aguardando ativação do benefício"; o chip de pontos diz "N de M em
+operação" (aguardando instalação não conta como em operação). Planos continua
+no menu — plano comercial é opcional, pra anunciar em mais pontos.
 
 > **Legado preservado, sem operação nova:** `planos_ponto` (todas
 > `ativo=false`), `pontos.plano_ponto_id/valor_pago_mensal`,

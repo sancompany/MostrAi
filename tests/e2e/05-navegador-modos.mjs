@@ -184,11 +184,15 @@ console.log('== A. cadastro pelo convite: conta só de ponto, sem modalidade =='
   await preencherEndereco(p, 'm_', 'Rua Doce', '1');
   await escolherRamo(p, '#formModo', 'Confeitaria');
   await p.click('#formModo button[type=submit]');
-  // Ativar recarrega a página. Ser ponto não dá plano (ADR-016): sem plano
-  // pago nem benefício por créditos, o painel abre com o bloqueio de plano.
-  await p.waitForSelector('#bloqueioPlano', { timeout: 10000 }).catch(() => {});
+  // Ativar recarrega a página. Ser ponto não dá plano (ADR-016) e, sem tela
+  // instalada, ainda não dá o Básico (ADR-025) — mas dono de ponto aprovado
+  // entra no painel completo, sem o bloqueio de plano (ADR-034, 01/10/2026).
+  await p.waitForSelector('#dashboardAnuncios:not([hidden])', { timeout: 10000 }).catch(() => {});
   check('card de ativação some depois de ativar', !(await p.$('#formModo')));
-  check('ponto sem tela instalada ainda não dá o Básico: painel pede plano (ADR-025)', !!(await p.$('#bloqueioPlano')));
+  check(
+    'dono de ponto sem tela: painel completo sem pedir plano, Básico aguardando instalação (ADR-034)',
+    !(await p.$('#bloqueioPlano')) && /Básico aguardando instalação/.test(await p.textContent('#resumoConta')),
+  );
   check('conta ganha o papel anunciante', PG(`SELECT 'anunciante' = ANY(papeis) FROM anunciantes WHERE contato_email='nina@x.com'`) === 't');
   await shot(p, 'anuncios-ativado');
   await p.close();

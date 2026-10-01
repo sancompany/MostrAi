@@ -5659,3 +5659,22 @@ Mastrop" (causa raiz e correção em
       construído): endereço incompleto, CEP inválido, telefone incompleto,
       e-mail não confirmado, ponto com endereço pendente, tela sem
       comunicação, criativo rejeitado, pagamento pendente, documento faltante.
+
+## Q. Dono de ponto não fica bloqueado pelo onboarding de plano (01/10/2026)
+
+Correção pedida pelo dono (severidade MÉDIA): conta sem plano, dona de um
+ponto aprovado "Aguardando instalação", caía em "Comece sua primeira campanha
+/ Escolha seu plano". Regra RN-43.6 em `docs/funcional.md`; ADR-034 em
+`.ia/DECISIONS.md`.
+
+- Q1 [x] Acesso ao painel separado do direito de veicular, decidido no
+      servidor (`acesso_painel` em `GET /anunciantes/me`). Ser dono de ponto
+      aprovado libera a experiência completa da conta, mesmo antes da
+      ativação operacional do Plano Básico.
+- Q2 [x] Onboarding do dono ("Seu ponto está entrando na rede"), chip
+      "Básico aguardando instalação", card do Básico aguardando, Meus
+      criativos com o envio fechado e o motivo, "N de M em operação".
+- Q3 [x] Testes: `tests/acesso-painel.test.js` (casos 1–11 do pedido) e
+      `tests/e2e/43-dono-ponto-painel.mjs` (caso real no navegador).
+- Q4 [ ] **Só o dono:** conferir no ar com a conta do caso real que o painel
+      abre completo e diz "Básico aguardando instalação".
