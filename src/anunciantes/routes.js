@@ -16,7 +16,14 @@ const { pontosDoAnunciante, segundosCompensados, horasDeTelaPorMes } = require('
 const { entradaNoArDasPecas, ESTADOS: ESTADOS_ENTRADA } = require('./entrada-no-ar');
 const { resumo: resumoHorarioSemanal } = require('../lib/horario-semanal');
 const { cepValido, telefoneE164, data } = require('../br/formato');
-const { PARTES: PARTES_DO_ENDERECO, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
+const {
+  PARTES: PARTES_DO_ENDERECO,
+  colunasDoEndereco,
+  parteQueFalta,
+  problemaNoEndereco,
+  numeroConfirmado,
+} = require('../lib/endereco');
+const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
 const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas');
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
@@ -134,6 +141,10 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   if (faltaNoEndereco) {
     return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${faltaNoEndereco}` });
   }
+  // Tamanho e formato de cada parte (estação de endereços, 01/10/2026): os
+  // mesmos limites do formulário (public/endereco-regras.js).
+  const problemaEndereco = problemaNoEndereco(req.body);
+  if (problemaEndereco) return res.status(400).json(problemaEndereco);
   // Cupom era gravado como texto livre e so conferido na hora de pagar a
   // comissao. Cupom errado (digitado errado, de vendedor que saiu, ou o
   // proprio cupom de quem esta se cadastrando) passava batido: o anunciante
@@ -265,6 +276,12 @@ router.post('/anunciantes/cadastro', limiteTentativas, async (req, res) => {
   // saíam juntas, em duas conexões SMTP simultâneas, e o código às vezes
   // não chegava. Um e-mail que falha nunca desfaz o cadastro.
   await emitirPrimeiroCodigo(anunciante);
+  // Número que parece endereço vira pendência no painel (nunca trava o
+  // cadastro; se a pessoa confirmou no aviso, não vira).
+  await sincronizarContaSemFalhar(anunciante.id, {
+    confirmado: numeroConfirmado(req.body) ? { alvo: 'conta', id: anunciante.id } : null,
+    por: `conta:${anunciante.id}`,
+  });
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ erro: 'erro interno' });
@@ -895,6 +912,8 @@ router.patch('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   // preencher, preenche tudo (complemento é o único opcional) e o CEP tem que
   // ser um CEP. Quem anuncia não pode ficar sem endereço (vai na nota); conta
   // só de ponto pode salvar o perfil com o endereço em branco.
+  const problemaEndereco = problemaNoEndereco(dados);
+  if (problemaEndereco) return res.status(400).json(problemaEndereco);
   const partes = PARTES_DO_ENDERECO.filter((p) => dados[p] !== undefined);
   if (partes.length) {
     const algumPreenchido = partes.some((p) => String(dados[p] ?? '').trim());
@@ -909,6 +928,14 @@ router.patch('/anunciantes/me', exigirAnuncianteLogado, async (req, res) => {
   }
   const conta = await repo.atualizar(req.session.anuncianteId, dados);
   if (!conta) return res.status(401).json({ erro: 'não autenticado' });
+  // Endereço da CONTA mudou: reavalia só a pendência dela — nenhum ponto
+  // muda de endereço por causa disso (o do ponto é outro, em Meus pontos).
+  if (PARTES_DO_ENDERECO.some((p) => dados[p] !== undefined)) {
+    await sincronizarContaSemFalhar(conta.id, {
+      confirmado: numeroConfirmado(req.body) ? { alvo: 'conta', id: conta.id } : null,
+      por: `conta:${conta.id}`,
+    });
+  }
   res.json(await contaParaOPainel(conta));
 });
 
@@ -1906,6 +1933,8 @@ router.post('/admin/anunciantes', async (req, res) => {
   if (faltaNoEndereco) {
     return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${faltaNoEndereco}` });
   }
+  const problemaEndereco = problemaNoEndereco(req.body);
+  if (problemaEndereco) return res.status(400).json(problemaEndereco);
   const docInvalido = validarCpfOuCnpj(cpf_cnpj);
   if (docInvalido) return res.status(400).json({ erro: docInvalido, campo: 'cpf_cnpj' });
   // Senha informada precisa seguir a regra; sem senha, gera uma forte.
@@ -1964,6 +1993,7 @@ router.post('/admin/anunciantes', async (req, res) => {
     anunciante,
   );
 
+  await sincronizarContaSemFalhar(anunciante.id, { por: `admin:${req.session?.adminUsuario || 'admin'}` });
   res.status(201).json({ ...anunciante, senhaGerada });
 });
 
@@ -2000,12 +2030,27 @@ const CAMPOS_ADMIN_EDITA = [
 ];
 router.patch('/admin/anunciantes/:id', async (req, res) => {
   try {
-    const recusados = Object.keys(req.body || {}).filter((c) => !CAMPOS_ADMIN_EDITA.includes(c));
+    // `numero_confirmado` não é coluna: é o "está certo assim" do aviso de
+    // Número suspeito (estação de endereços), lido à parte.
+    const confirmouNumero = numeroConfirmado(req.body);
+    const { numero_confirmado: _confirmado, ...corpo } = req.body || {};
+    req.body = corpo;
+    const recusados = Object.keys(req.body).filter((c) => !CAMPOS_ADMIN_EDITA.includes(c));
     if (recusados.length) {
       return res.status(400).json({ erro: `campo não editável por aqui: ${recusados.join(', ')}` });
     }
+    const problemaEndereco = problemaNoEndereco(req.body);
+    if (problemaEndereco) return res.status(400).json(problemaEndereco);
     const antes = await repo.buscarPorId(req.params.id);
     if (!antes) return res.status(404).json({ erro: 'anunciante não encontrado' });
+    // Endereço mexido pelo Admin sai completo, como o do cliente (só o
+    // complemento é opcional) — nunca meio endereço gravado.
+    const partesEnviadas = PARTES_DO_ENDERECO.filter((p) => req.body[p] !== undefined);
+    if (partesEnviadas.some((p) => String(req.body[p] ?? '').trim())) {
+      const atual = Object.fromEntries([...PARTES_DO_ENDERECO, 'endereco'].map((p) => [p, antes[p] ?? null]));
+      const falta = parteQueFalta({ ...atual, ...colunasDoEndereco(req.body, antes) });
+      if (falta) return res.status(400).json({ erro: `endereço incompleto — preencha o campo ${falta}` });
+    }
 
     // E-mail de login trocado pelo suporte (estação de e-mail, 27/09/2026).
     // Continua possível — é o caminho de quem perdeu o acesso ao endereço
@@ -2101,6 +2146,15 @@ router.patch('/admin/anunciantes/:id', async (req, res) => {
         })
         .catch((err) => console.error('falha ao notificar suspensão/reativação', err.message));
       sse.emitirParaConta(anunciante.id, 'account.updated', { suspenso: anunciante.suspenso });
+    }
+    // Endereço da conta corrigido pelo Admin: a pendência do cliente se
+    // reavalia (e some, se o Número ficou certo) e o painel aberto se refaz.
+    if (PARTES_DO_ENDERECO.some((p) => req.body[p] !== undefined)) {
+      await sincronizarContaSemFalhar(anunciante.id, {
+        confirmado: confirmouNumero ? { alvo: 'conta', id: anunciante.id } : null,
+        por: `admin:${req.session?.adminUsuario || 'admin'}`,
+      });
+      sse.emitirParaConta(anunciante.id, 'account.updated', {});
     }
     res.json(anunciante);
   } catch (err) {

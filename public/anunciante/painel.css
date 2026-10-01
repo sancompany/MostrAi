@@ -243,6 +243,8 @@
 .estab-card .estab-estado::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .estab-corpo { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px; }
 .estab-id h3 { margin: 0; font-size: 1.14rem; font-weight: 800; line-height: 1.25; letter-spacing: -.01em; overflow-wrap: anywhere; }
+/* "Editar endereço" logo abaixo do endereço (estação de endereços, 01/10/2026). */
+.estab-editar-endereco { align-self: flex-start; margin-top: 8px; }
 .estab-end, .estab-meta { display: flex; align-items: flex-start; gap: 6px; margin: 5px 0 0; color: var(--text-dim); font-size: .84rem; line-height: 1.35; overflow-wrap: anywhere; }
 .estab-meta { margin-top: 3px; }
 .estab-icone { flex: none; width: 15px; height: 15px; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -377,6 +379,9 @@
 .alertas-conta .alerta-info .alerta-icone { background: #526071; color: #fff; }
 .alertas-conta li > span:nth-child(2) { flex: 1; }
 .alertas-conta a { color: inherit; font-weight: 700; white-space: nowrap; }
+/* Pendências da conta (01/10/2026): a contagem em cima e o botão que leva à correção. */
+.alertas-conta .alertas-conta-cabeca { padding: 0 2px; font-weight: 700; color: var(--text); }
+.alertas-conta .alerta-cta { flex-shrink: 0; align-self: center; }
 
 /* Plano comercial (coluna lateral). */
 .painel-plano h2,

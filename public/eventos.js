@@ -33,6 +33,8 @@
     'finance.updated',
     'account.updated',
     'notification.created',
+    // Pendência da conta aberta ou resolvida (src/pendencias/, 01/10/2026).
+    'pendencia.updated',
   ];
 
   const handlers = {}; // evento -> Set<fn>

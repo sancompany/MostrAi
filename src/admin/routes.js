@@ -324,7 +324,10 @@ router.get('/admin/resumo', async (_req, res) => {
         (SELECT COUNT(*) FROM banco_horas WHERE status = 'aguardando_credito' AND resolvido_em IS NULL) AS bancohoras,
         -- Pontos travados pra escolha nova por ocupação (G.7) — só sai daqui
         -- quando o admin libera (src/pontos/repository.js).
-        (SELECT COUNT(*) FROM pontos WHERE escolha_bloqueada_em IS NOT NULL) AS pontosocupados`,
+        (SELECT COUNT(*) FROM pontos WHERE escolha_bloqueada_em IS NOT NULL) AS pontosocupados,
+        -- Ponto instalado que mudou de endereço pela mão do dono (estação de
+        -- endereços, 01/10/2026): a operação confere se a tela continua lá.
+        (SELECT COUNT(*) FROM pendencias WHERE tipo = 'ENDERECO_PONTO_ALTERADO' AND resolvido_em IS NULL) AS enderecosaconferir`,
     ),
     pool.query(`SELECT status, COUNT(*)::int AS qtd FROM pontos WHERE status <> 'arquivado' GROUP BY status`),
     // Separa quem paga de quem está em cortesia. Sem isso o resumo dizia
@@ -434,6 +437,7 @@ router.get('/admin/resumo', async (_req, res) => {
       offline: telasComProblemaDeSinal.length,
       bancohoras: Number(filas.rows[0].bancohoras),
       pontosocupados: Number(filas.rows[0].pontosocupados),
+      enderecosaconferir: Number(filas.rows[0].enderecosaconferir),
       entradaAguardando: entradaNoAr.aguardando,
       entradaAtrasada: entradaNoAr.atrasados,
     },

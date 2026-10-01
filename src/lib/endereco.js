@@ -7,6 +7,12 @@
 // pública de pontos e o link do mapa já leem. Nenhuma rota compõe essa linha
 // por conta própria — e nenhum formulário também (antes cada um colava
 // `${rua}, ${numero}` do seu jeito no navegador).
+//
+// Limites e leitura do Número (estação de endereços, 01/10/2026) moram em
+// public/endereco-regras.js, o mesmo arquivo que o navegador carrega — um
+// limite só pros dois lados.
+
+const { LIMITES, NUMERO_VALIDO, numeroSuspeito } = require('../../public/endereco-regras');
 
 const PARTES = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
 // O que um endereço completo precisa ter. Complemento é o único opcional.
@@ -19,6 +25,20 @@ const ROTULO = {
   cidade: 'cidade',
   uf: 'UF',
 };
+
+// Nome do campo na mensagem de erro de formato/tamanho.
+const NOME = {
+  cep: 'CEP',
+  logradouro: 'Logradouro',
+  numero: 'Número',
+  complemento: 'Complemento',
+  bairro: 'Bairro',
+  cidade: 'Cidade',
+  uf: 'UF',
+  endereco: 'Endereço',
+};
+// A linha composta, quando um cliente antigo manda só ela: rua + ", " + número.
+const LIMITE_DA_LINHA = LIMITES.logradouro + 2 + LIMITES.numero;
 
 function limpo(valor) {
   if (valor === undefined) return undefined;
@@ -45,6 +65,11 @@ function colunasDoEndereco(corpo, atual = null) {
     if (valor !== undefined) colunas[parte] = valor;
   }
   if (colunas.uf) colunas.uf = colunas.uf.toUpperCase();
+  // CEP sempre gravado como 00000-000 (o formulário já manda assim; a API
+  // podia receber só os dígitos). Só quando são exatamente 8 dígitos — o
+  // resto fica como veio e quem valida recusa.
+  const digitosDoCep = colunas.cep?.replace(/\D/g, '');
+  if (digitosDoCep?.length === 8) colunas.cep = `${digitosDoCep.slice(0, 5)}-${digitosDoCep.slice(5)}`;
   if (colunas.logradouro !== undefined || colunas.numero !== undefined) {
     const logradouro = colunas.logradouro !== undefined ? colunas.logradouro : (atual?.logradouro ?? null);
     const numero = colunas.numero !== undefined ? colunas.numero : (atual?.numero ?? null);
@@ -73,6 +98,49 @@ function parteQueFalta(colunas) {
   return falta === 'endereco' ? 'endereço' : ROTULO[falta];
 }
 
+// Formato e tamanho de cada parte que VEIO no corpo (a que não veio não é
+// conferida — registro antigo continua salvando o que não foi tocado).
+// Devolve { campo, erro } da primeira parte errada, ou null. Vale para toda
+// porta de entrada (cadastro, convite, perfil, candidatura de ponto, edição
+// do ponto, Admin); dado copiado de um registro já gravado (candidatura
+// virando ponto) não passa por aqui, pra nunca travar registro antigo.
+function problemaNoEndereco(corpo) {
+  for (const parte of [...PARTES, 'endereco']) {
+    const valor = corpo?.[parte];
+    if (valor === undefined || valor === null) continue;
+    // Objeto ou lista no lugar de texto: nunca vira String() gravada.
+    if (typeof valor !== 'string' && typeof valor !== 'number')
+      return { campo: parte, erro: `${NOME[parte]} inválido.` };
+    const texto = String(valor).trim();
+    if (!texto) continue;
+    const limite = parte === 'endereco' ? LIMITE_DA_LINHA : LIMITES[parte];
+    if (parte !== 'cep' && texto.length > limite) {
+      return { campo: parte, erro: `${NOME[parte]} pode ter no máximo ${limite} caracteres.` };
+    }
+  }
+  const cep = limpo(corpo?.cep);
+  if (cep && !(/^[\d.\s-]+$/.test(cep) && cep.replace(/\D/g, '').length === 8)) {
+    return { campo: 'cep', erro: 'CEP inválido — use 8 dígitos.' };
+  }
+  const uf = limpo(corpo?.uf);
+  if (uf && !/^[A-Za-z]{2}$/.test(uf)) return { campo: 'uf', erro: 'UF são 2 letras, como SP.' };
+  const numero = limpo(corpo?.numero);
+  if (numero && !NUMERO_VALIDO.test(numero)) {
+    return {
+      campo: 'numero',
+      erro: 'Número aceita só letras, números, espaço, hífen e barra — por exemplo 123, 12A, T10 ou S/N.',
+    };
+  }
+  return null;
+}
+
+// O cliente viu o aviso de Número suspeito e confirmou que está certo
+// (src/pendencias/endereco.js não reabre a pendência pra esse valor). Chega
+// como booleano (JSON) ou "1" (formulário enviado com FormData).
+function numeroConfirmado(corpo) {
+  return corpo?.numero_confirmado === true || corpo?.numero_confirmado === '1';
+}
+
 // A conta tem endereço completo? O que já está gravado conta — inclusive a
 // linha antiga sem as partes, que não obriga ninguém a recadastrar.
 function temEndereco(linha) {
@@ -92,4 +160,14 @@ function linhaEndereco(linha, { comCidade = false } = {}) {
   return [partes, cidade].filter(Boolean).join(', ');
 }
 
-module.exports = { PARTES, colunasDoEndereco, parteQueFalta, temEndereco, linhaEndereco };
+module.exports = {
+  PARTES,
+  LIMITES,
+  colunasDoEndereco,
+  parteQueFalta,
+  problemaNoEndereco,
+  numeroSuspeito,
+  numeroConfirmado,
+  temEndereco,
+  linhaEndereco,
+};

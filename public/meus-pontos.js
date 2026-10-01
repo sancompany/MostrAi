@@ -155,6 +155,7 @@
         <div class="estab-id">
           <h3>${esc(e.nome || '')}</h3>
           ${local ? `<p class="estab-end">${icone('endereco')}<span>${esc(local)}</span></p>` : ''}
+          <button type="button" class="btn ghost mini estab-editar-endereco" data-acao="editar-endereco" data-tipo="${e.tipo}" data-id="${e.id}">Editar endereço</button>
           ${e.categoria ? `<p class="estab-meta">${icone('segmento')}<span>${esc(e.categoria)}</span></p>` : ''}
         </div>
         ${htmlEtapas(e.estado)}
@@ -189,6 +190,13 @@
   function contaTemEndereco() {
     const c = obterConta();
     if (!c?.cidade || !c.uf || !c.cep) return false;
+    // Número gravado antes da regra única (estação de endereços) que não
+    // passa nela ("12, fundos"): o formulário compacto não tem onde
+    // corrigir, então cai no completo, com o endereço digitado de novo.
+    const regra = window.enderecoRegras;
+    if (c.numero && regra && (c.numero.length > regra.LIMITES.numero || !regra.NUMERO_VALIDO.test(c.numero))) {
+      return false;
+    }
     return c.logradouro ? !!(c.numero && c.bairro) : !!c.endereco;
   }
 
@@ -563,6 +571,101 @@
     });
   }
 
+  // ---------- Editar endereço (estação de endereços, 01/10/2026) ----------
+  // O endereço FÍSICO do ponto (ou do pedido em análise), com o mesmo
+  // componente do cadastro do ponto (public/endereco.js) e o mapa. Não é o
+  // endereço da conta: aquele muda no perfil, e um nunca mexe no outro.
+  // Ponto com tela instalada aceita a troca; a equipe confere depois — a
+  // tela continua funcionando. Quem decide tudo isso é o servidor.
+  const JA_INSTALADO = ['aguardando_primeiro_sinal', 'ativo', 'em_manutencao', 'inativo'];
+  let editando = false;
+  function editarEndereco(tipo, id) {
+    const e = dados?.estabelecimentos.find((x) => x.tipo === tipo && Number(x.id) === Number(id));
+    if (!e) return;
+    // Registro de antes das partes (só a linha `endereco`): a linha vai pro
+    // logradouro e o número fica em branco — nada é adivinhado.
+    const valores = e.logradouro ? e : { ...e, logradouro: e.endereco || '', numero: '' };
+    const dlg = document.createElement('dialog');
+    dlg.className = 'dlg-endereco';
+    dlg.setAttribute('aria-labelledby', 'tituloEditarEndereco');
+    dlg.innerHTML = `
+      <div class="dlg-head"><h3 id="tituloEditarEndereco">Endereço de ${esc(e.nome || 'seu ponto')}</h3>
+        <button type="button" class="dlg-close" data-fechar aria-label="Fechar">&times;</button></div>
+      <div class="form-ponto">
+        <form class="form-ponto-form" novalidate>
+          ${JA_INSTALADO.includes(e.estado) ? '<p class="dlg-endereco-nota">Este ponto já tem tela instalada. A mudança vai para conferência da equipe Mostraí — a tela continua funcionando.</p>' : ''}
+          ${window.camposEndereco('ee_', { valores })}
+          <div data-mapa hidden></div>
+          <p class="form-msg" data-msg role="status"></p>
+          <div class="dlg-acoes">
+            <button type="button" class="btn ghost" data-fechar>Cancelar</button>
+            <button type="submit" class="btn primary">Salvar endereço</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(dlg);
+    const form = dlg.querySelector('form');
+    const msg = dlg.querySelector('[data-msg]');
+    window.ligarCep(form);
+    window.ligarMapaDoEndereco(form, dlg.querySelector('[data-mapa]'));
+    const fechar = () => dlg.open && dlg.close();
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.querySelectorAll('[data-fechar]').forEach((b) => b.addEventListener('click', fechar));
+    dlg.addEventListener('mousedown', (ev) => {
+      if (ev.target === dlg) fechar();
+    });
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (editando) return;
+      const invalido = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
+      if (invalido) {
+        msg.textContent = 'Preencha os campos do endereço (só o complemento é opcional).';
+        msg.className = 'form-msg err';
+        invalido.focus();
+        return;
+      }
+      editando = true;
+      const botao = form.querySelector('button[type="submit"]');
+      botao.disabled = true;
+      botao.textContent = 'Salvando...';
+      msg.textContent = '';
+      msg.className = 'form-msg';
+      try {
+        const rota = tipo === 'ponto' ? 'pontos' : 'candidaturas';
+        const r = await fetch(`${API_BASE_URL}/anunciantes/me/${rota}/${Number(id)}/endereco`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(window.enderecoDoForm(form)),
+        });
+        const resposta = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          msg.textContent = resposta.erro || 'Não foi possível salvar o endereço agora.';
+          msg.className = 'form-msg err';
+          if (resposta.campo) form.querySelector(`[name="${resposta.campo}"]`)?.focus();
+          return;
+        }
+        fechar();
+        carregar();
+        window.recarregarPendencias?.();
+      } catch {
+        msg.textContent = 'Sem conexão com o servidor. Tente de novo.';
+        msg.className = 'form-msg err';
+      } finally {
+        editando = false;
+        botao.disabled = false;
+        botao.textContent = 'Salvar endereço';
+      }
+    });
+    dlg.showModal();
+    form.querySelector('[name="cep"]').focus();
+  }
+  // "Corrigir endereço" da pendência do painel (public/pendencias.js).
+  window.editarEnderecoDoEstabelecimento = async (tipo, id) => {
+    if (!dados) await carregar();
+    editarEndereco(tipo, id);
+  };
+
   // ---------- Carga ----------
   // Uma carga por vez: SSE de tela e de ponto chegam juntos (a mesma mudança
   // emite os dois), e sem isto viravam duas requisições iguais em paralelo.
@@ -631,6 +734,7 @@
       if (!alvo) return;
       const acao = alvo.dataset.acao;
       if (acao === 'ver-tela') abrirTela(Number(alvo.dataset.id));
+      if (acao === 'editar-endereco') editarEndereco(alvo.dataset.tipo, alvo.dataset.id);
       if (acao === 'abrir-oportunidade') {
         $('pontosLista').innerHTML = htmlPedidoAberto();
         abrirForm(!contaTemEndereco());

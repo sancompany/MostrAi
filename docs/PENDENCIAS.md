@@ -5629,3 +5629,33 @@ Merge autorizado pelo dono depois da reconciliação com a Visão geral final
       depois de o SMTP aceitar e antes de marcar "enviado", aquele UM e-mail
       sai de novo depois do prazo (5 min). Vale pra todo e-mail da fila, não
       só pro comunicado; o comunicado não piora nem melhora isso.
+
+## P. Endereços — regra única, edição e pendências da conta (01/10/2026)
+
+Pedido do dono depois de um cliente real ficar com o Número "Av Francisco
+Mastrop" (causa raiz e correção em
+`docs/erros/2026-10-numero-do-endereco-cortado.md`; regras RN-69 e RN-70 em
+`docs/funcional.md`; ADR-033 em `.ia/DECISIONS.md`).
+
+- P1 [x] Causa raiz reproduzida no navegador (foco pulando pro Número +
+      `maxlength=20`) e corrigida na raiz (`public/endereco.js`).
+- P2 [x] Regra única de endereço no navegador e no servidor
+      (`public/endereco-regras.js`), em toda porta de entrada.
+- P3 [x] Número: placeholder, dica, aviso de "parece endereço" que segura o
+      primeiro envio e nunca corrige sozinho.
+- P4 [x] Editar endereço: conta (perfil/"Dados da empresa"), ponto e pedido em
+      análise (Meus pontos, com mapa), conta e ponto pelo Admin; histórico do
+      endereço do ponto; conta ≠ ponto.
+- P5 [x] Pendências (migration 110): ENDERECO_SUSPEITO (cliente, painel +
+      sino) e ENDERECO_PONTO_ALTERADO (Admin, Visão geral + ficha do ponto,
+      "Marcar como conferido").
+- P6 [ ] **Só o dono:** depois do deploy, o cliente real verá "Confira o
+      endereço da sua empresa" no painel (e a varredura diária das 09:00 UTC
+      abre a pendência mesmo sem ele entrar). Se quiser adiantar, avisar o
+      cliente pelo WhatsApp pra corrigir o Número — o sistema não corrige
+      sozinho, de propósito.
+- P7 [ ] **Próximos tipos de pendência** (só a infraestrutura existe hoje;
+      cada um entra no catálogo de `src/pendencias/repository.js` quando for
+      construído): endereço incompleto, CEP inválido, telefone incompleto,
+      e-mail não confirmado, ponto com endereço pendente, tela sem
+      comunicação, criativo rejeitado, pagamento pendente, documento faltante.

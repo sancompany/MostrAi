@@ -1596,6 +1596,9 @@ if (window.montarCreditos) window.montarCreditos({ aoResgatar: carregar });
 // Meus pontos: independente do modo anúncios e do plano (dono de ponto sem
 // plano comercial também vê o próprio comércio).
 if (window.montarMeusPontos) window.montarMeusPontos({ obterConta: () => ANUNCIANTE });
+// Pendências da conta no topo (endereço com Número suspeito etc.): depois de
+// Meus pontos e do perfil, que são onde os botões "Corrigir" levam.
+if (window.montarPendencias) window.montarPendencias();
 // Meus criativos: fora do bloqueio de plano comercial (o módulo se esconde
 // sozinho quando não há plano nenhum).
 if (window.montarMeusCriativos) window.montarMeusCriativos({ obterConta: () => ANUNCIANTE });

@@ -1,6 +1,6 @@
 const pool = require('../db/pool');
 const { validar: validarHorarioSemanal } = require('../lib/horario-semanal');
-const { colunasDoEndereco } = require('../lib/endereco');
+const { PARTES, colunasDoEndereco, parteQueFalta } = require('../lib/endereco');
 
 // Candidatura = formulário público de "quero ser ponto" / "quero ser
 // vendedor". Não cria conta; o dono fala com a pessoa e gera um convite.
@@ -87,6 +87,44 @@ async function atualizar(id, dados) {
   return rows[0] || null;
 }
 
+// Endereço do pedido em análise, pela conta dona (Meus pontos, estação de
+// endereços, 01/10/2026). Só enquanto está em análise e ainda não virou
+// ponto — depois disso o endereço é do ponto (src/pontos/endereco.js, com
+// histórico). Pedido de outra conta, já decidido ou já materializado
+// responde 404, igual a inexistente. `partes` já validadas na rota.
+async function atualizarEnderecoDoPedido(id, contaId, partes) {
+  const cliente = await pool.connect();
+  try {
+    await cliente.query('BEGIN');
+    const { rows } = await cliente.query(
+      `SELECT * FROM candidaturas c
+        WHERE c.id = $1 AND c.conta_id = $2 AND c.tipo = 'ponto' AND c.status IN ('nova', 'em_contato')
+          AND NOT EXISTS (SELECT 1 FROM pontos p WHERE p.candidatura_id = c.id)
+        FOR UPDATE`,
+      [id, contaId],
+    );
+    const atual = rows[0];
+    if (!atual) throw Object.assign(new Error('pedido não encontrado'), { status: 404 });
+    const enviado = Object.fromEntries(PARTES.filter((p) => partes?.[p] !== undefined).map((p) => [p, partes[p]]));
+    const novo = { ...atual, ...colunasDoEndereco(enviado, atual) };
+    const falta = parteQueFalta(novo);
+    if (falta) throw Object.assign(new Error(`endereço incompleto — preencha o campo ${falta}`), { status: 400 });
+    const r = await cliente.query(
+      `UPDATE candidaturas SET cep = $2, logradouro = $3, numero = $4, complemento = $5, bairro = $6,
+              cidade = $7, uf = $8, endereco = $9
+        WHERE id = $1 RETURNING *`,
+      [id, novo.cep, novo.logradouro, novo.numero, novo.complemento, novo.bairro, novo.cidade, novo.uf, novo.endereco],
+    );
+    await cliente.query('COMMIT');
+    return r.rows[0];
+  } catch (err) {
+    await cliente.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
 async function contarNovas() {
   const { rows } = await pool.query("SELECT COUNT(*)::int AS total FROM candidaturas WHERE status = 'nova'");
   return rows[0].total;
@@ -97,6 +135,7 @@ module.exports = {
   listar,
   buscarPorId,
   atualizar,
+  atualizarEnderecoDoPedido,
   definirFoto,
   contarNovas,
   TIPOS,

@@ -143,6 +143,8 @@ form.addEventListener('submit', async (e) => {
       bairro: form.bairro.value.trim(),
       cidade: form.cidade.value.trim(),
       uf: form.uf.value.trim().toUpperCase(),
+      // "Está certo assim" depois do aviso de Número suspeito (endereco.js).
+      numero_confirmado: form.numero_confirmado?.value === '1',
     });
   }
   try {
