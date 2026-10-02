@@ -321,6 +321,17 @@ async function encerrar(pontoId, hospedagemId, admin) {
   return r;
 }
 
+// A hospedagem que não aconteceu devolve o interesse que a originou para
+// "em contato": o Admin pode agendar de novo com ele.
+async function devolverInteresse(c, h) {
+  if (!h.interesse_id) return;
+  await c.query(
+    `UPDATE hospedagem_interesses SET status = 'em_contato', atualizado_em = now()
+      WHERE id = $1 AND status = 'agendada'`,
+    [h.interesse_id],
+  );
+}
+
 // Só antes de começar. Depois de começar, o caminho é encerrar (conta o
 // tempo real até ali).
 async function cancelar(pontoId, hospedagemId) {
@@ -336,6 +347,7 @@ async function cancelar(pontoId, hospedagemId) {
         WHERE id = $1`,
       [h.id],
     );
+    await devolverInteresse(c, h);
     return { contaId: h.conta_id };
   });
 }
@@ -407,6 +419,7 @@ async function encerrarVencidas() {
                 SET estado = 'cancelada', cancelada_em = now(), encerramento = 'automatico' WHERE id = $1`,
             [h.id],
           );
+          await devolverInteresse(c, h);
           return { cancelada: true, contaId: h.conta_id, h };
         }
         return null;
@@ -479,7 +492,9 @@ async function encerrarVencidas() {
 // repetir grava uma vez, e o total lançado é sempre o benefício do tempo
 // final, nunca a soma de arredondamentos. Nunca diminui. Vale pelo mesmo
 // prazo que o servidor aceita segmento atrasado (src/player/operacao.js).
-const DIAS_DE_APURACAO_TARDIA = 8;
+// Um dia a mais que o prazo do segmento atrasado (8 dias): o aceito no
+// limite ainda passa pelo job.
+const DIAS_DE_APURACAO_TARDIA = 9;
 
 async function apurarTardias() {
   const { rows: candidatas } = await pool.query(
@@ -487,7 +502,7 @@ async function apurarTardias() {
       WHERE h.estado = 'encerrada' AND h.encerrada_em > now() - make_interval(days => $1)
         AND EXISTS (SELECT 1 FROM tela_operacao o
                      WHERE o.ponto_id = h.ponto_id AND o.origem = 'player'
-                       AND o.recebido_em > h.encerrada_em
+                       AND o.recebido_em > h.encerrada_em - interval '1 minute'
                        AND o.fim > h.iniciada_em AND o.inicio < h.encerrada_em)
      ORDER BY h.id`,
     [DIAS_DE_APURACAO_TARDIA],
@@ -814,7 +829,7 @@ async function avisarBeneficio({ contaId, beneficioSegundos }) {
     descricao:
       beneficioSegundos > 0
         ? 'As horas já estão no seu saldo de hospedagem e valem na rede inteira.'
-        : 'A tela não registrou tempo de operação nesse período, então não houve horas a receber.',
+        : 'A tela ainda não comprovou tempo de operação nesse período. Se ela exibiu sem internet, o tempo entra quando ela sincronizar.',
     entidadeTipo: 'hospedagem',
     link: '/anunciante/painel.html#modHospedagem',
   });

@@ -172,8 +172,9 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   offline, pelos segmentos que o Player conta com o relógio monotônico e
   manda quando volta — o que chegar depois do encerramento, dentro da
   janela, soma por apuração tardia (até 8 dias, lançamento complementar).
-  Só tela ATIVA no cadastro mede; o tempo fica com o ponto em que foi
-  medido (tela excluída não apaga). Dois tetos assumidos: (1) um boot que
+  Só tela ATIVA no cadastro mede — no offline, pelo estado de QUANDO
+  exibiu; o tempo fica com o ponto em que foi medido (tela excluída não
+  apaga). Dois tetos assumidos: (1) um boot que
   nunca recebeu o `servidorAgora` não tem como converter o relógio para o
   do servidor, e esse tempo se perde (nunca é inventado); (2) até o Player
   novo chegar às TVs (OTA), só o tempo online conta.

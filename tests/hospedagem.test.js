@@ -273,6 +273,13 @@ async function telaComPlayer(pontoId) {
   let telaId = rows[0]?.id;
   if (!telaId) telaId = (await dispositivosRepo.criar(pontoId, {})).id;
   await dispositivosRepo.atualizar(telaId, { status: 'ativo' });
+  // A tela foi instalada (ativada) antes do período que os testes simulam:
+  // o segmento offline vale pelo estado da tela QUANDO foi exibido.
+  await pool.query(
+    `UPDATE tela_eventos SET ocorrido_em = ocorrido_em - interval '10 days'
+      WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED'`,
+    [telaId],
+  );
   const cred = await instalarPlayer(telaId);
   return { telaId, ...cred };
 }
@@ -999,41 +1006,53 @@ test('37b. apuração tardia: o tempo offline que chega DEPOIS do encerramento s
   assert.match(notif.rows.at(-1).titulo, /^Mais /);
 });
 
-test('37c. tela fora do ar no cadastro não mede tempo; excluir a tela não apaga o tempo que ela comprovou', async () => {
+test('37c. vale o estado da tela QUANDO exibiu: offline de quando estava ativa soma mesmo chegando com ela em reparo; o de reparo não; excluir a tela não apaga', async () => {
   const m = await criarMovel();
   const { telaId, chaveAparelho, dispositivoId } = await telaComPlayer(m.id);
   const anfitria = await novaConta();
   const hid = await hospedagemAtiva(m, anfitria, 300);
-  await operou(telaId, minutosAtras(290), minutosAtras(230)); // 60 min, tela ativa
-  await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE id = $1`, [telaId]);
+  await operou(telaId, minutosAtras(290), minutosAtras(230)); // 60 min online
+  // O Admin achou que quebrou e pôs em reparo há 150 min (a TV seguia offline).
+  await dispositivosRepo.atualizar(telaId, { status: 'reparo' });
+  await pool.query(
+    `UPDATE tela_eventos SET ocorrido_em = now() - interval '150 minutes'
+      WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED' AND detalhe->>'para' = 'reparo'`,
+    [telaId],
+  );
   const hb = await fetch(`${base}/player/${dispositivoId}/heartbeat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-aparelho-key': chaveAparelho },
     body: JSON.stringify({ estado: 'PLAYING' }),
   });
   assert.strictEqual(hb.status, 200);
-  const seg = await fetch(`${base}/player/${dispositivoId}/operacao`, {
+  const seg = (seq, de, ate) => ({
+    bootId: 'rep',
+    seq,
+    inicio: minutosAtras(de).toISOString(),
+    fim: minutosAtras(ate).toISOString(),
+  });
+  const r1 = await fetch(`${base}/player/${dispositivoId}/operacao`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-aparelho-key': chaveAparelho },
-    body: JSON.stringify({
-      segmentos: [
-        { bootId: 'rep', seq: 1, inicio: minutosAtras(200).toISOString(), fim: minutosAtras(100).toISOString() },
-      ],
-    }),
+    body: JSON.stringify({ segmentos: [seg(1, 200, 170), seg(2, 140, 100), seg(3, 160, 140)] }),
   }).then((r) => r.json());
-  assert.strictEqual(seg.resultados[0].status, 'ignorado', 'tela em reparo não mede');
+  assert.deepStrictEqual(
+    r1.resultados.map((x) => x.status),
+    ['ok', 'ignorado', 'ok'],
+    'antes do reparo conta; durante não; o que atravessa é recortado',
+  );
   const { rows } = await pool.query(`SELECT COUNT(*)::int n FROM tela_operacao WHERE dispositivo_id = $1`, [telaId]);
-  assert.strictEqual(rows[0].n, 1, 'só o intervalo de quando estava ativa');
+  assert.strictEqual(rows[0].n, 3, 'heartbeat em reparo não grava');
   // Sem FK em ponto_id: o heartbeat (trava a tela) nunca trava o ponto, que
   // as ações do Admin travam antes das telas — ordem oposta = deadlock.
   const { rows: fks } = await pool.query(
     `SELECT 1 FROM pg_constraint WHERE conrelid = 'tela_operacao'::regclass AND contype = 'f' AND confrelid = 'pontos'::regclass`,
   );
   assert.strictEqual(fks.length, 0);
-  // A tela quebrou e foi excluída: o tempo dela fica com o ponto.
+  // A tela foi excluída: o tempo dela fica com o ponto. 60 + 30 + 10 min.
   await pool.query('DELETE FROM dispositivos WHERE id = $1', [telaId]);
   const r = await acao(m.id, hid, 'encerrar');
-  assert.ok(Math.abs(r.json.tempoSegundos - 3600) <= 2, `tempo ${r.json.tempoSegundos}`);
+  assert.ok(Math.abs(r.json.tempoSegundos - 6000) <= 3, `tempo ${r.json.tempoSegundos}`);
 });
 
 // =====================================================================
@@ -1124,7 +1143,10 @@ test('40b. a vaga de saldo reservada na hora toca a hora inteira, mesmo com o sa
 });
 
 test('40c. a base guarda o móvel e não perde o próprio saldo nele — só o anfitrião da hospedagem ativa fica de fora', async () => {
-  const { conta } = await contaComSaldo(600);
+  // Com ramo: o móvel na base fica com o ramo da base — e a base não é
+  // concorrente de si mesma.
+  const ramo = await novaCategoria('Base');
+  const { conta } = await contaComSaldo(600, { categoriaId: ramo });
   await pecaAprovada(conta, 15);
   const naBase = await criarMovel({ contaBase: conta });
   const { telaId } = await telaComPlayer(naBase.id);
@@ -1447,7 +1469,7 @@ test('64. "Tenho interesse" pelo painel: dados do cadastro, sem escolher equipam
     200,
   );
   const m = await criarMovel();
-  await programarOk(m.id, conta, { interesse_id: rows[0].id });
+  const hidI = await programarOk(m.id, conta, { interesse_id: rows[0].id });
   const { rows: depois } = await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [rows[0].id]);
   assert.strictEqual(depois[0].status, 'agendada');
   assert.strictEqual(
@@ -1457,6 +1479,11 @@ test('64. "Tenho interesse" pelo painel: dados do cadastro, sem escolher equipam
   // O mesmo interesse não agenda duas hospedagens.
   const outro = await criarMovel();
   assert.strictEqual((await programar(outro.id, conta, { interesse_id: rows[0].id })).status, 409);
+  // A hospedagem não aconteceu (cancelada): o interesse volta e agenda de novo.
+  assert.strictEqual((await acao(m.id, hidI, 'cancelar')).status, 200);
+  const { rows: voltou } = await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [rows[0].id]);
+  assert.strictEqual(voltou[0].status, 'em_contato');
+  assert.strictEqual((await programar(outro.id, conta, { interesse_id: rows[0].id })).status, 201);
   // Cadastro incompleto (endereço antigo, sem bairro, telefone com +55) não
   // trava o interesse pelo painel — o painel não tem como corrigir.
   const antiga = await novaConta();

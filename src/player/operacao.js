@@ -79,26 +79,69 @@ function lerSegmento(s, agora) {
   return { bootId, seq: s.seq, inicio, fim };
 }
 
+// Os trechos em que a tela estava ATIVA no cadastro, pela trilha de
+// mudanças de estado do Admin (tela_eventos ADMIN_STATE_CHANGED). O
+// segmento offline chega DEPOIS — às vezes com a tela já Inativa (o Admin
+// achou que quebrou e trocou) —, então vale o estado de QUANDO foi exibido,
+// não o de agora; e o exibido em reparo não conta mesmo que chegue depois
+// de reativada.
+async function trechosAtivos(tela) {
+  const { rows } = await pool.query(
+    `SELECT detalhe->>'de' AS de, detalhe->>'para' AS para, ocorrido_em FROM tela_eventos
+      WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED' ORDER BY ocorrido_em, id`,
+    [tela.id],
+  );
+  const trechos = [];
+  let estado = rows.length ? rows[0].de : tela.status;
+  let desde = Number.NEGATIVE_INFINITY;
+  for (const r of rows) {
+    const t = new Date(r.ocorrido_em).getTime();
+    if (estado === 'ativo') trechos.push([desde, t]);
+    estado = r.para;
+    desde = t;
+  }
+  if (estado === 'ativo') trechos.push([desde, Number.POSITIVE_INFINITY]);
+  return trechos;
+}
+
+// O pedaço do segmento dentro de um trecho ativo (o primeiro que ele toca —
+// mudança de estado no meio de um segmento de até 6 h é rara; o resto não
+// conta). null = nada ativo.
+function recortar(s, trechos) {
+  for (const [de, ate] of trechos) {
+    const inicio = Math.max(s.inicio.getTime(), de);
+    const fim = Math.min(s.fim.getTime(), ate);
+    if (fim > inicio || (fim === inicio && s.fim.getTime() === s.inicio.getTime() && de <= inicio && inicio < ate)) {
+      return { ...s, inicio: new Date(inicio), fim: new Date(fim) };
+    }
+  }
+  return null;
+}
+
 // Resposta item a item (como o Proof-of-Play): `ok` (gravado ou já estava),
 // `item_invalido` (o Player descarta — tentar de novo não muda nada),
-// `ignorado` (tela de ponto fixo, ou fora do ar no cadastro: nada a medir).
+// `ignorado` (tela de ponto fixo, ou o segmento caiu inteiro num período em
+// que a tela estava fora do ar no cadastro: nada a medir).
 // Segmento que chega depois do encerramento da hospedagem ainda soma — o
 // job de apuração tardia (src/pontos/hospedagem.js#apurarTardias) apura de
-// novo.
+// novo. limite: o ponto é o da tela AGORA (tela trocada de ponto antes de
+// sincronizar leva o offline junto); trocar de ponto exige deixá-la Inativa.
 async function registrarSegmentos(tela, lista, agora = new Date()) {
-  const movel = tela.ponto_tipo === 'movel' && tela.status === 'ativo' && Boolean(tela.ponto_id);
+  const movel = tela.ponto_tipo === 'movel' && Boolean(tela.ponto_id);
+  const trechos = movel ? await trechosAtivos(tela) : [];
   const resultados = [];
   for (const bruto of lista) {
     const chave = {
       bootId: typeof bruto?.bootId === 'string' ? bruto.bootId.slice(0, 64) : null,
       seq: Number.isInteger(bruto?.seq) ? bruto.seq : null,
     };
-    const s = lerSegmento(bruto, agora);
-    if (!s) {
+    const lido = lerSegmento(bruto, agora);
+    if (!lido) {
       resultados.push({ ...chave, status: 'item_invalido' });
       continue;
     }
-    if (!movel) {
+    const s = movel ? recortar(lido, trechos) : null;
+    if (!s) {
       resultados.push({ ...chave, status: 'ignorado' });
       continue;
     }

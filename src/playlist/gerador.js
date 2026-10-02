@@ -147,12 +147,15 @@ const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL O
 // Saldo de hospedagem (migration 113): das contas com saldo para programar,
 // as que podem aparecer NESTA tela — conta ativa, não a própria Mostraí, e
 // a mesma trava de ramo da rotação paga. Sem plano: o saldo não depende
-// dele.
+// dele. A casa (a base que guarda o móvel, a dona do fixo) não é
+// concorrente de si mesma — e sem plano não tem como "escolher" o ponto,
+// que é a exceção da rotação paga. O anfitrião da hospedagem ATIVA fica de
+// fora pelo chamador (`anfitria_conta_id`).
 async function contasDaHospedagemNaTela(categoriaDoPonto, excluirContaId, casa, pontoId, contaIds) {
   const { rows } = await pool.query(
     `SELECT a.id FROM anunciantes a
       WHERE a.id = ANY($5::int[]) AND NOT a.suspenso AND a.excluido_em IS NULL AND NOT a.conta_propria
-        AND ${travaDeRamoSql('$1', '$3', '$4')}
+        AND (a.id = $3::int OR ${travaDeRamoSql('$1', '$3', '$4')})
         AND ($2::int IS NULL OR a.id <> $2)`,
     [categoriaDoPonto || null, excluirContaId || null, casa || null, pontoId || null, contaIds],
   );
@@ -933,7 +936,9 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // extra pago nunca é reclassificado como gratuito.
   const daHospedagem = { ...daHora.hospedagemProgramados };
   // Vaga só de saldo que não toca mais (trava de ramo mudou, virou anfitrião
-  // no meio da hora): não fica programada nem reservada.
+  // no meio da hora): não é reprogramada nesta geração. limite: o que a
+  // primeira geração já gravou fica reservado até o prazo do POP (o saldo
+  // não se perde, só espera) — caso raro.
   for (const e of congelada.base) {
     if (!soDeSaldo(e) || porId[e.id] || !daHospedagem[e.id]) continue;
     contagem[e.id] = (contagem[e.id] || 0) - daHospedagem[e.id];

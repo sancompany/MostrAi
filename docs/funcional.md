@@ -1723,8 +1723,9 @@ válido** é a UNIÃO dos intervalos em que a tela esteve ligada e exibindo
 (PLAYING/IDLE), no relógio do servidor: os do heartbeat (online; um buraco
 maior que 6 min 30 s — o APK bate a cada 5 min — fecha o intervalo) e os segmentos que o Player contou offline
 com o relógio monotônico e enviou quando voltou (idempotentes por tela, boot
-e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não), e o
-tempo fica com o ponto em que foi medido (excluir a tela não o apaga). Nunca
+e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não) — o
+segmento offline vale pelo estado de QUANDO foi exibido —, e o tempo fica
+com o ponto em que foi medido (excluir a tela não o apaga). Nunca
 a duração do calendário, nunca um número digitado; o encerramento não passa
 do fim previsto. O **benefício** nasce no encerramento:
 `floor(tempo × percentual / 100)` segundos num lançamento com a chave
@@ -1746,7 +1747,8 @@ da compensação/reposição e da devolução de atraso, antes da Mídia Mostra�
 de tela, sem nunca tirar entrega paga; a vaga reservada na primeira geração
 da hora toca a hora inteira. O anfitrião da hospedagem ATIVA não ganha
 veiculação gratuita no próprio móvel (a base que guarda o móvel não perde
-nada).
+nada — a casa não é concorrente de si mesma na trava de ramo). Hospedagem
+cancelada devolve o interesse que a originou para "em contato".
 O saldo cai pelo que o Proof-of-Play confirma (atribuição por posição: a
 confirmação conta primeiro para o pago, por último para a hospedagem); o
 programado e não confirmado fica reservado até o prazo do POP offline e
