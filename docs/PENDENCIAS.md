@@ -5798,8 +5798,13 @@ conversão fixo ⇄ móvel da seção S.
       build e OTA para as TVs; até lá, só o tempo online (heartbeat) conta.
 - T11 [x] Tempo contado offline e enviado DEPOIS do encerramento SOMA
       (revisão, ciclos 1 e 3 — achado ALTO): a janela da hospedagem não
-      muda, o job de apuração tardia (`apurarTardias`, a cada 5 min, por
-      8 dias) apura de novo e a diferença entra como lançamento
+      muda, o job de apuração tardia (`apurarTardias`, a cada 5 min; segmento com
+      até 8 dias de atraso, o job olha 9) apura de novo e a diferença entra como lançamento
       complementar idempotente (`hospedagem:<id>:ate:<total>`). O banco só
       aceita o tempo crescer com o benefício exato do tempo novo.
+- T12 [ ] **Só o dono — confirmar leitura:** a Mídia Mostraí ficou abaixo da
+      recuperação de atraso e do saldo de hospedagem (§31). As métricas dela
+      (RN-65) seguem medindo contra a frequência: numa hora com recuperação
+      ou saldo, aparece "entrega menor/atrasada" sem a TV ter falhado. Se
+      incomodar, medir contra o programado (próxima versão).
 

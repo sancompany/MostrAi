@@ -33,10 +33,14 @@
 //       benefício gratuito nunca tira entrega paga nem a devolução de atraso
 //       pago, e também não espera para sempre (a hora vaga é dele antes da
 //       mídia própria e do institucional);
-//   T3c. a Mídia Mostraí (mídia própria) — até 02/10/2026 disputava a T1;
-//       na prática a régua 80/20 da publicação (src/lib/capacidade.js) já a
-//       mantinha fora do tempo pago, e agora ela também fica abaixo do saldo
-//       de hospedagem (ordem do dono, estação do ponto móvel V2 §31);
+//   T3c. a Mídia Mostraí (mídia própria) — até 02/10/2026 disputava a T1.
+//       Agora fica abaixo de TUDO que é obrigação: base paga, compensação e
+//       reposição (T2), devolução de atraso (T3) e saldo de hospedagem
+//       (T3b) — a ordem do dono na estação do ponto móvel V2 §31 (pago >
+//       Básico > recuperação > hospedagem > mídia própria/institucional).
+//       Os 20% da régua de publicação (src/lib/capacidade.js) são o TETO
+//       dela, não uma garantia: numa hora com recuperação ou saldo, ela
+//       recebe menos;
 //   T4. o que sobrar vira a peça institucional (vídeo institucional da rede,
 //       ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
 //       — inventário vago que anuncia a si mesmo.

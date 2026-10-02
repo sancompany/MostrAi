@@ -123,9 +123,9 @@ ALTER TABLE hospedagem_interesses ENABLE ROW LEVEL SECURITY;
 --     (pelo Admin, antes ou no fim; ou pelo sistema no fim da data prevista);
 --   programada → cancelada (não aconteceu: benefício 0).
 -- `percentual`: o global no momento em que o Admin confirmou — nunca muda
--- depois. `tempo_operacional_segundos`/`beneficio_segundos`: apurados UMA vez,
--- no encerramento (o benefício vai para saldo_hospedagem_lancamentos com a
--- chave da hospedagem). `categoria_id`: o ramo do anfitrião, congelado — é o
+-- depois. `tempo_operacional_segundos`/`beneficio_segundos`: apurados no
+-- encerramento (o benefício vai para saldo_hospedagem_lancamentos com a
+-- chave da hospedagem) e só crescem depois pela apuração tardia (abaixo). `categoria_id`: o ramo do anfitrião, congelado — é o
 -- que a trava de concorrente usa enquanto a hospedagem está ativa.
 CREATE TABLE pontos_moveis_hospedagens (
   id bigserial PRIMARY KEY,
@@ -290,7 +290,9 @@ ALTER TABLE tela_operacao ENABLE ROW LEVEL SECURITY;
 -- ---------------------------------------------------------------------------
 -- O que ENTRA no saldo, uma linha imutável por fato:
 --   'beneficio' — o encerramento da hospedagem (chave `hospedagem:<id>`: o
---      mesmo encerramento repetido, retry ou job concorrente gravam uma vez);
+--      mesmo encerramento repetido, retry ou job concorrente gravam uma vez)
+--      e a apuração tardia (chave `hospedagem:<id>:ate:<total>` — só a
+--      diferença até o benefício do tempo final, uma vez);
 --   'ajuste'    — correção do Admin, + ou −, com motivo (nunca se edita a
 --      linha do benefício).
 -- O que SAI é entrega: exibições confirmadas (Proof-of-Play) que o gerador

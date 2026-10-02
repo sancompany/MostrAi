@@ -13,6 +13,8 @@
 //     é bloqueado (a trava de publicação continua sendo o total > 100%,
 //     src/midias/routes.js), mas aparece como "acima da reserva".
 // Comercial + Mostraí nunca passa de 100% na hora de publicar mídia própria.
+// Desde 02/10/2026 (camada T3c, src/lib/pacing.js) a parte Mostraí é TETO, não
+// reserva garantida: recuperação de atraso e saldo de hospedagem vêm antes dela.
 
 const SEGUNDOS_DA_HORA = 3600;
 // Mesmo 80% do bloqueio de escolha nova (G.7) — src/pontos/repository.js lê

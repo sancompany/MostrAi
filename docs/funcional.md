@@ -1580,7 +1580,11 @@ exibição; por ponto e por tela. Estados: **Ativa — aguardando primeira
 exibição**, **Ativa — reproduzindo normalmente**, **Ativa — entrega
 atrasada** (a última hora aberta já fechada não teve comprovante),
 **Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
-frequência entram como estão hoje (não há histórico deles).
+frequência entram como estão hoje (não há histórico deles). Desde 02/10/2026
+(RN-72, camada T3c) a Mídia Mostraí fica abaixo da recuperação de atraso e
+do saldo de hospedagem: a frequência é o TETO, não garantia — numa hora com
+recuperação ou saldo ela recebe menos, e as "esperadas" (pela frequência)
+mostram isso como entrega menor ou atrasada.
 
 **RN-67 — Mídia própria só se exclui fora do ar, e a exclusão é lógica.**
 *(Refino da Mídia Mostraí, 29/09/2026.)* Ativa ou agendada não tem
@@ -1731,7 +1735,7 @@ do fim previsto. O **benefício** nasce no encerramento:
 `floor(tempo × percentual / 100)` segundos num lançamento com a chave
 `hospedagem:<id>` (UNIQUE). *Apuração tardia:* segmento offline que chega
 depois do encerramento, dentro da janela, é apurado de novo pelo job (a cada
-5 min, por 8 dias) e só a diferença entra, num lançamento complementar com a
+5 min; segmento com até 8 dias de atraso) e só a diferença entra, num lançamento complementar com a
 chave pelo total (`hospedagem:<id>:ate:<total>`) — o total lançado é sempre
 o benefício do tempo final, uma vez. Tudo vai para o **saldo de hospedagem** — livro próprio,
 em segundos, mostrado em h/min; não é crédito, não é dinheiro, não expira,

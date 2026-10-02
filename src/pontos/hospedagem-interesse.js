@@ -13,13 +13,18 @@ const ABERTOS = ['nova', 'em_contato'];
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
 
-function texto(valor, campo, rotulo, maximo, obrigatorio = true) {
+// `cortar`: o dado vem do cadastro da conta (sem esses limites) e o painel
+// não tem como editá-lo — corta em vez de recusar.
+function texto(valor, campo, rotulo, maximo, obrigatorio = true, cortar = false) {
   const t = typeof valor === 'string' ? valor.trim().replace(/\s+/g, ' ') : '';
   if (!t) {
     if (obrigatorio) throw erro(400, `${rotulo}: preencha`, campo);
     return null;
   }
-  if (t.length > maximo) throw erro(400, `${rotulo}: no máximo ${maximo} caracteres`, campo);
+  if (t.length > maximo) {
+    if (cortar) return t.slice(0, maximo);
+    throw erro(400, `${rotulo}: no máximo ${maximo} caracteres`, campo);
+  }
   return t;
 }
 
@@ -35,11 +40,11 @@ function lerTelefone(valor) {
 // telefone antigo) não trava o interesse: o painel não tem como corrigir, e o
 // Admin abre a conta para falar com ela.
 function validar(corpo, { doCadastro = false } = {}) {
-  const empresa = texto(corpo?.empresa, 'empresa', 'Empresa', LIMITES.empresa);
-  const responsavel = texto(corpo?.responsavel, 'responsavel', 'Responsável', LIMITES.responsavel);
+  const empresa = texto(corpo?.empresa, 'empresa', 'Empresa', LIMITES.empresa, true, doCadastro);
+  const responsavel = texto(corpo?.responsavel, 'responsavel', 'Responsável', LIMITES.responsavel, true, doCadastro);
   const telefone = lerTelefone(corpo?.contato_telefone);
   if (!telefone && !doCadastro) throw erro(400, 'WhatsApp: informe DDD + número', 'contato_telefone');
-  const email = texto(corpo?.contato_email, 'contato_email', 'E-mail', LIMITES.email, false);
+  const email = texto(corpo?.contato_email, 'contato_email', 'E-mail', LIMITES.email, false, doCadastro);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !doCadastro) {
     throw erro(400, 'E-mail inválido', 'contato_email');
   }
@@ -63,7 +68,9 @@ function validar(corpo, { doCadastro = false } = {}) {
     end,
     endereco: linhaEndereco(end, { comCidade: true }),
     categoriaId,
-    categoriaLivre: categoriaId ? null : texto(corpo?.segmento, 'segmento', 'Segmento', LIMITES.segmento, false),
+    categoriaLivre: categoriaId
+      ? null
+      : texto(corpo?.segmento, 'segmento', 'Segmento', LIMITES.segmento, false, doCadastro),
     disponibilidade: texto(
       corpo?.disponibilidade,
       'disponibilidade',

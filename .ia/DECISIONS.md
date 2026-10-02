@@ -1451,7 +1451,7 @@ data (só o Admin sabe se a tela chegou).
 
 **Revisão em 3 ciclos (02/10/2026) — o que mudou no desenho.**
 - Apuração tardia: segmento offline que chega depois do encerramento, dentro
-  da janela, soma (job a cada 5 min, por 8 dias); a diferença do benefício
+  da janela, soma (job a cada 5 min; segmento com até 8 dias de atraso); a diferença do benefício
   entra com a chave `hospedagem:<id>:ate:<total>`. O gatilho de imutabilidade
   passa a aceitar, na encerrada, SÓ o tempo crescer com o benefício exato do
   tempo novo. Recusada: carência antes de apurar (atrasaria todo benefício
@@ -1459,9 +1459,12 @@ data (só o Admin sabe se a tela chegou).
 - `tela_operacao.ponto_id` (o ponto em que o tempo foi medido) e
   `dispositivo_id ON DELETE SET NULL`: tela trocada de ponto não leva o
   tempo; tela excluída não o apaga. Só tela ATIVA no cadastro mede.
-- Mídia Mostraí sai da T1 para a T3c (abaixo do saldo de hospedagem, acima
-  do institucional) — ordem do dono (§31). A régua 80/20 da publicação já a
-  mantinha fora do tempo pago.
+- Mídia Mostraí sai da T1 para a T3c — abaixo de recuperação (T2/T3) e do
+  saldo de hospedagem (T3b), acima do institucional — ordem do dono (§31:
+  pago > Básico > recuperação > hospedagem > própria). Os 20% da régua de
+  publicação viram teto, não garantia; as métricas da RN-65 seguem medindo
+  contra a frequência (a diferença aparece como entrega menor —
+  `docs/PENDENCIAS.md` T12).
 - A vaga de saldo reservada na primeira geração da hora toca a hora inteira
   (sem isso sumia nas gerações seguintes e a reserva ficava presa 7 dias).
 - Só o anfitrião da hospedagem ATIVA fica fora do próprio móvel; a base não.
