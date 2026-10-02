@@ -39,7 +39,19 @@ const router = express.Router();
 
 const idDaRota = (v) => (/^\d{1,9}$/.test(String(v)) ? Number(v) : null);
 const adminDe = (req) => req.session?.adminUsuario || 'admin';
-const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
+// Só imagem: o bucket é público (um .html "foto" seria servido como página).
+// Arquivo de outro tipo é ignorado e a rota responde "envie uma imagem".
+const upload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp)$/.test(file.mimetype || '')),
+});
+// O temporário do multer some quando a resposta sai — inclusive quando a
+// rota recusa antes de olhar o arquivo (id inválido).
+const apagarTemporario = (req, res, next) => {
+  res.on('finish', () => req.file && fs.unlink(req.file.path, () => {}));
+  next();
+};
 
 // Cada escrita avisa sem F5: o Admin (Rede), a conta da base e o anfitrião
 // ("Meus pontos", painel) e quem escolheu o ponto (lista de pontos).
@@ -103,28 +115,25 @@ router.post(
 // fotos; o nome do objeto vem do id numérico, nunca do texto da rota.
 router.post(
   '/admin/pontos/:id/foto-movel',
+  apagarTemporario,
   upload.single('arquivo'),
   rota(async (req, res, id) => {
-    if (!req.file) return res.status(400).json({ erro: 'arquivo obrigatório' });
-    try {
-      const { rows } = await require('../db/pool').query('SELECT tipo FROM pontos WHERE id = $1', [id]);
-      if (!rows[0]) return res.status(404).json({ erro: 'ponto não encontrado' });
-      if (rows[0].tipo !== 'movel') return res.status(409).json({ erro: 'foto de equipamento é só do ponto móvel' });
-      const supabase = require('../lib/supabase');
-      const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-      const nomeArquivo = `pontos/movel-${id}.jpg`;
-      const { error } = await supabase.storage
-        .from(bucket)
-        .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: 'image/jpeg', upsert: true });
-      if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
-      const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-      const url = `${data.publicUrl}?v=${Date.now()}`;
-      await require('../db/pool').query('UPDATE pontos SET foto_instalacao_url = $2 WHERE id = $1', [id, url]);
-      await avisar(id);
-      res.json({ url });
-    } finally {
-      fs.unlink(req.file.path, () => {});
-    }
+    if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
+    const { rows } = await require('../db/pool').query('SELECT tipo FROM pontos WHERE id = $1', [id]);
+    if (!rows[0]) return res.status(404).json({ erro: 'ponto não encontrado' });
+    if (rows[0].tipo !== 'movel') return res.status(409).json({ erro: 'foto de equipamento é só do ponto móvel' });
+    const supabase = require('../lib/supabase');
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    const nomeArquivo = `pontos/movel-${id}.jpg`;
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: req.file.mimetype, upsert: true });
+    if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
+    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
+    const url = `${data.publicUrl}?v=${Date.now()}`;
+    await require('../db/pool').query('UPDATE pontos SET foto_instalacao_url = $2 WHERE id = $1', [id, url]);
+    await avisar(id);
+    res.json({ url });
   }),
 );
 
@@ -260,7 +269,7 @@ router.get(
   rota(async (_req, res, id) => {
     const [saldo, extrato, hospedagens] = await Promise.all([
       hospedagem.saldoDaConta(id),
-      hospedagem.extratoDaConta(id, { comAdmin: true }),
+      hospedagem.extratoDaConta(id),
       hospedagem.hospedagensDaConta(id),
     ]);
     res.json({ saldo, extrato, hospedagens });
@@ -315,17 +324,16 @@ router.get(
   exigirConta,
   simples(async (req, res) => {
     const contaId = req.session.anuncianteId;
-    const [saldo, hospedagens, extrato, interesseAberto, percentual] = await Promise.all([
+    // Sem extrato: o painel não o mostra, e a nota do ajuste é do Admin.
+    const [saldo, hospedagens, interesseAberto, percentual] = await Promise.all([
       hospedagem.saldoDaConta(contaId),
       hospedagem.hospedagensDaConta(contaId),
-      hospedagem.extratoDaConta(contaId),
       interesses.abertoDaConta(contaId),
       hospedagem.percentualAtual(),
     ]);
     res.json({
       saldo: { disponivelSegundos: saldo.disponivelSegundos, recebidoSegundos: saldo.recebidoSegundos },
       hospedagens,
-      extrato,
       interesseAberto,
       percentual,
     });
@@ -345,21 +353,24 @@ router.post(
     ]);
     const conta = rows[0];
     if (!conta || conta.excluido_em) return res.status(404).json({ erro: 'conta não encontrada' });
+    // Parte vazia no cadastro vai como ausente (não null): o endereço no
+    // formato antigo (só a linha) continua reconhecido.
+    const ou = (v) => v ?? undefined;
     const corpo = {
       empresa: conta.nome_empresa,
       responsavel: conta.responsavel_nome || conta.nome_empresa,
-      contato_email: conta.contato_email,
+      contato_email: ou(conta.contato_email),
       contato_telefone: conta.contato_telefone || conta.responsavel_telefone || '',
-      cep: conta.cep,
-      logradouro: conta.logradouro,
-      numero: conta.numero,
-      complemento: conta.complemento,
-      bairro: conta.bairro,
-      cidade: conta.cidade,
-      uf: conta.uf,
-      endereco: conta.logradouro ? undefined : conta.endereco,
+      cep: ou(conta.cep),
+      logradouro: ou(conta.logradouro),
+      numero: ou(conta.numero),
+      complemento: ou(conta.complemento),
+      bairro: ou(conta.bairro),
+      cidade: ou(conta.cidade),
+      uf: ou(conta.uf),
+      endereco: conta.logradouro ? undefined : ou(conta.endereco),
       categoria_id: conta.categoria_id,
-      segmento: conta.categoria_livre,
+      segmento: ou(conta.categoria_livre),
       disponibilidade: req.body?.disponibilidade,
       observacao: req.body?.observacao,
     };

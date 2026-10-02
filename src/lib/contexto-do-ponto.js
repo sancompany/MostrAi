@@ -41,4 +41,8 @@ const casaEmVigorSql = (p) => `CASE
     WHEN ${temEvento(p)} THEN NULL
     ELSE ${p}.base_conta_id END`;
 
-module.exports = { foraDaBaseSql, horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql };
+// O anfitrião da hospedagem ativa (NULL fora dela) — o único que não roda de
+// graça na tela que hospeda; a base não perde nada por guardar o móvel.
+const anfitriaEmVigorSql = (p) => `CASE WHEN ${p}.tipo = 'movel' THEN ${hospedagem(p, 'conta_id')} END`;
+
+module.exports = { foraDaBaseSql, horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql, anfitriaEmVigorSql };

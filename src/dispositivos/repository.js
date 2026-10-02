@@ -2,7 +2,12 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
-const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql } = require('../lib/contexto-do-ponto');
+const {
+  horarioEmVigorSql,
+  categoriaEmVigorSql,
+  casaEmVigorSql,
+  anfitriaEmVigorSql,
+} = require('../lib/contexto-do-ponto');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
@@ -53,6 +58,7 @@ const SELECT_TELA = `
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
          ${horarioEmVigorSql('p')} AS ponto_horario_semanal,
          p.anunciante_id AS dono_conta_id, ${casaEmVigorSql('p')} AS casa_conta_id, p.tipo AS ponto_tipo,
+         ${anfitriaEmVigorSql('p')} AS anfitria_conta_id,
          ${categoriaEmVigorSql('p')} AS categoria_id, p.cota_autoanuncio_slots_hora,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d

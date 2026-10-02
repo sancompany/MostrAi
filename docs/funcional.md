@@ -1711,8 +1711,9 @@ Um comércio recebe o ponto móvel por alguns dias. Não é aluguel: não paga
 nada, não vira dono, ponto fixo, Básico, crédito nem cupom. Estados:
 programada → ativa (o Admin marca que a tela chegou, a partir do dia de
 início) → encerrada (o Admin, ou o sistema no fim previsto); programada →
-cancelada (só antes de começar; benefício zero). Encerrada não muda nem
-acumula mais (gatilho). Prorrogar é permitido sem conflito, com o mesmo
+cancelada (só antes de começar; benefício zero). Encerrada não muda mais
+(gatilho) — só o tempo comprovado DENTRO da janela pode crescer, quando a
+tela manda depois o que exibiu sem internet (apuração tardia, abaixo). Prorrogar é permitido sem conflito, com o mesmo
 percentual. O **percentual** é global (Admin → Rede → Pontos móveis →
 "Benefício por hospedagem", padrão 20%, 0 a 100 com até 2 casas, cada
 alteração auditada com anterior, novo, admin e data) e é **congelado** na
@@ -1722,20 +1723,30 @@ válido** é a UNIÃO dos intervalos em que a tela esteve ligada e exibindo
 (PLAYING/IDLE), no relógio do servidor: os do heartbeat (online; um buraco
 maior que 6 min 30 s — o APK bate a cada 5 min — fecha o intervalo) e os segmentos que o Player contou offline
 com o relógio monotônico e enviou quando voltou (idempotentes por tela, boot
-e sequência). Nunca a duração do calendário, nunca um número digitado; o
-encerramento não passa do fim previsto. O **benefício** nasce UMA vez, no
-encerramento: `floor(tempo × percentual / 100)` segundos num lançamento com a
-chave `hospedagem:<id>` (UNIQUE) no **saldo de hospedagem** — livro próprio,
+e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não), e o
+tempo fica com o ponto em que foi medido (excluir a tela não o apaga). Nunca
+a duração do calendário, nunca um número digitado; o encerramento não passa
+do fim previsto. O **benefício** nasce no encerramento:
+`floor(tempo × percentual / 100)` segundos num lançamento com a chave
+`hospedagem:<id>` (UNIQUE). *Apuração tardia:* segmento offline que chega
+depois do encerramento, dentro da janela, é apurado de novo pelo job (a cada
+5 min, por 8 dias) e só a diferença entra, num lançamento complementar com a
+chave pelo total (`hospedagem:<id>:ate:<total>`) — o total lançado é sempre
+o benefício do tempo final, uma vez. Tudo vai para o **saldo de hospedagem** — livro próprio,
 em segundos, mostrado em h/min; não é crédito, não é dinheiro, não expira,
 não é sacável nem reembolsável. Correção só por ajuste do Admin (+/−, com
-motivo e autor; nunca deixa negativo; nunca edita o benefício). O saldo dá
+motivo e autor; retira no máximo o que não está programado na grade; chave
+de idempotência por modal; nunca edita o benefício). O saldo dá
 **direito de veiculação** (≠ plano): conta sem plano com saldo vê o painel
 inteiro, sobe e acompanha a peça (regra provisória: a do Plano Básico — 1
 peça de até 15 s; um lugar só, `REGRA_DO_SALDO`). Veicula na **rede
 inteira** (sem limite de pontos), na camada T3b do gerador — depois do pago,
-da compensação/reposição e da devolução de atraso, antes do institucional —
-no ritmo de até 140 s por hora de tela, sem nunca tirar entrega paga; o
-anfitrião não ganha veiculação gratuita no próprio móvel enquanto o hospeda.
+da compensação/reposição e da devolução de atraso, antes da Mídia Mostraí
+(T3c, desde 02/10/2026) e do institucional — no ritmo de até 140 s por hora
+de tela, sem nunca tirar entrega paga; a vaga reservada na primeira geração
+da hora toca a hora inteira. O anfitrião da hospedagem ATIVA não ganha
+veiculação gratuita no próprio móvel (a base que guarda o móvel não perde
+nada).
 O saldo cai pelo que o Proof-of-Play confirma (atribuição por posição: a
 confirmação conta primeiro para o pago, por último para a hospedagem); o
 programado e não confirmado fica reservado até o prazo do POP offline e

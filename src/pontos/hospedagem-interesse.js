@@ -23,20 +23,33 @@ function texto(valor, campo, rotulo, maximo, obrigatorio = true) {
   return t;
 }
 
-function validar(corpo) {
+// DDD + número; aceita o +55 na frente (12–13 dígitos).
+function lerTelefone(valor) {
+  let t = typeof valor === 'string' ? valor.replace(/\D/g, '') : '';
+  if ((t.length === 12 || t.length === 13) && t.startsWith('55')) t = t.slice(2);
+  return t.length >= 10 && t.length <= 11 ? t : null;
+}
+
+// `doCadastro`: os dados vêm da conta logada (painel), não de um formulário —
+// o que o cadastro não tem completo (endereço sem bairro, conta só de ponto,
+// telefone antigo) não trava o interesse: o painel não tem como corrigir, e o
+// Admin abre a conta para falar com ela.
+function validar(corpo, { doCadastro = false } = {}) {
   const empresa = texto(corpo?.empresa, 'empresa', 'Empresa', LIMITES.empresa);
   const responsavel = texto(corpo?.responsavel, 'responsavel', 'Responsável', LIMITES.responsavel);
-  const telefone = typeof corpo?.contato_telefone === 'string' ? corpo.contato_telefone.replace(/\D/g, '') : '';
-  if (telefone.length < 10 || telefone.length > 11) {
-    throw erro(400, 'WhatsApp: informe DDD + número', 'contato_telefone');
-  }
+  const telefone = lerTelefone(corpo?.contato_telefone);
+  if (!telefone && !doCadastro) throw erro(400, 'WhatsApp: informe DDD + número', 'contato_telefone');
   const email = texto(corpo?.contato_email, 'contato_email', 'E-mail', LIMITES.email, false);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw erro(400, 'E-mail inválido', 'contato_email');
-  const problema = problemaNoEndereco(corpo || {});
-  if (problema) throw erro(400, problema.erro, problema.campo);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !doCadastro) {
+    throw erro(400, 'E-mail inválido', 'contato_email');
+  }
+  if (!doCadastro) {
+    const problema = problemaNoEndereco(corpo || {});
+    if (problema) throw erro(400, problema.erro, problema.campo);
+  }
   const end = colunasDoEndereco(corpo || {});
   const falta = parteQueFalta(end);
-  if (falta) throw erro(400, `Endereço: preencha o campo ${falta}`, 'cep');
+  if (falta && !doCadastro) throw erro(400, `Endereço: preencha o campo ${falta}`, 'cep');
   let categoriaId = null;
   if (corpo?.categoria_id !== undefined && corpo?.categoria_id !== null && String(corpo.categoria_id).trim() !== '') {
     categoriaId = Number(corpo.categoria_id);
@@ -45,7 +58,7 @@ function validar(corpo) {
   return {
     empresa,
     responsavel,
-    telefone,
+    telefone: telefone || '',
     email: email ? email.toLowerCase() : null,
     end,
     endereco: linhaEndereco(end, { comCidade: true }),
@@ -63,16 +76,20 @@ function validar(corpo) {
 }
 
 // `contaId`: a conta logada (nunca do corpo). Um interesse em aberto por
-// conta — e, sem conta, por telefone: repetir o envio não duplica (e a
-// resposta é a mesma, para não dizer a ninguém se aquele número já pediu).
+// conta — e, sem conta, por telefone + empresa (só o telefone deixaria um
+// envio com o número de outra pessoa engolir o pedido verdadeiro dela):
+// repetir o envio não duplica, e a resposta é a mesma, para não dizer a
+// ninguém se aquele número já pediu.
 async function registrar(corpo, { contaId = null, origem = 'publico' } = {}) {
-  const d = validar(corpo);
+  const d = validar(corpo, { doCadastro: origem === 'painel' && Boolean(contaId) });
   const cliente = await pool.connect();
   try {
     await cliente.query('BEGIN');
     // Serializa por conta/telefone: dois envios simultâneos não criam dois.
     await cliente.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      contaId ? `hospedagem-interesse:conta:${contaId}` : `hospedagem-interesse:tel:${d.telefone}`,
+      contaId
+        ? `hospedagem-interesse:conta:${contaId}`
+        : `hospedagem-interesse:tel:${d.telefone}:${d.empresa.toLowerCase()}`,
     ]);
     if (d.categoriaId) {
       const { rows } = await cliente.query('SELECT 1 FROM categorias WHERE id = $1 AND ativo', [d.categoriaId]);
@@ -84,9 +101,10 @@ async function registrar(corpo, { contaId = null, origem = 'publico' } = {}) {
     const { rows: abertos } = await cliente.query(
       `SELECT id FROM hospedagem_interesses
         WHERE status = ANY($3::text[])
-          AND (($1::int IS NOT NULL AND conta_id = $1) OR ($1::int IS NULL AND conta_id IS NULL AND contato_telefone = $2))
+          AND (($1::int IS NOT NULL AND conta_id = $1)
+               OR ($1::int IS NULL AND conta_id IS NULL AND contato_telefone = $2 AND lower(empresa) = lower($4)))
         LIMIT 1`,
-      [contaId, d.telefone, ABERTOS],
+      [contaId, d.telefone, ABERTOS, d.empresa],
     );
     if (abertos[0]) {
       await cliente.query('COMMIT');
@@ -109,10 +127,10 @@ async function registrar(corpo, { contaId = null, origem = 'publico' } = {}) {
         d.end.numero ?? null,
         d.end.complemento ?? null,
         d.end.bairro ?? null,
-        d.end.cidade,
-        d.end.uf,
+        d.end.cidade ?? '',
+        d.end.uf ?? '',
         d.end.cep ?? null,
-        d.endereco,
+        d.endereco || '',
         d.categoriaId,
         d.categoriaLivre,
         d.disponibilidade,

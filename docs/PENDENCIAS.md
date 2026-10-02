@@ -5796,8 +5796,10 @@ conversão fixo ⇄ móvel da seção S.
       `sancompany/playlist.mostrai` (segmentos com relógio monotônico, âncora
       no `servidorAgora`, envio para `/player/:id/operacao`). Precisa de PR,
       build e OTA para as TVs; até lá, só o tempo online (heartbeat) conta.
-- T11 [ ] Limite conhecido: tempo contado offline e enviado DEPOIS do
-      encerramento não entra (a hospedagem encerrada não acumula mais). Na
-      prática a tela sincroniza a cada 5 min online; o modal de encerrar
-      mostra o tempo já comprovado.
+- T11 [x] Tempo contado offline e enviado DEPOIS do encerramento SOMA
+      (revisão, ciclos 1 e 3 — achado ALTO): a janela da hospedagem não
+      muda, o job de apuração tardia (`apurarTardias`, a cada 5 min, por
+      8 dias) apura de novo e a diferença entra como lançamento
+      complementar idempotente (`hospedagem:<id>:ate:<total>`). O banco só
+      aceita o tempo crescer com o benefício exato do tempo novo.
 

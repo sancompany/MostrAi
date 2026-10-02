@@ -5436,6 +5436,8 @@ async function desenharContaHospedagem(el, ctx) {
       <div><dt>Recebido</dt><dd>${horasDeMidia(d.saldo.recebidoSegundos)}</dd></div>
       <div><dt>Entregue</dt><dd>${horasDeMidia(d.saldo.entregueSegundos)}<span class="dado-sub">exibições confirmadas</span></dd></div>
     </dl>
+    ${d.saldo.reservadoSegundos > 0 ? `<p class="u-dim u-fs-85 u-m-0">${horasDeMidia(d.saldo.reservadoSegundos)} já programados na grade, aguardando a confirmação da TV.</p>` : ''}
+    ${d.saldo.diferencaSegundos < 0 ? `<p class="u-fs-85 u-m-0"><b>A rede entregou ${horasDeMidia(-d.saldo.diferencaSegundos)} além do saldo.</b></p>` : ''}
     <p class="u-dim u-fs-85 u-m-0">Horas de mídia gratuitas na rede inteira. Não expira, não é dinheiro e não é crédito.</p>
     ${
       d.extrato.length
@@ -5463,12 +5465,14 @@ async function desenharContaHospedagem(el, ctx) {
         '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formAjusteHosp" class="btn primary">Lançar ajuste</button>',
     });
     let enviando = false;
+    // Uma chave por modal aberto: retry ou duplo envio lança uma vez só.
+    const chave = crypto.randomUUID();
     dlg.querySelector('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       if (enviando) return;
       enviando = true;
       try {
-        const corpo = { minutos: ev.target.minutos.value, motivo: ev.target.motivo.value };
+        const corpo = { minutos: ev.target.minutos.value, motivo: ev.target.motivo.value, chave };
         const r = await api(`/admin/anunciantes/${id}/saldo-hospedagem/ajustes`, {
           method: 'POST',
           body: JSON.stringify(corpo),

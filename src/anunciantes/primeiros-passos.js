@@ -52,6 +52,13 @@ function etapasDosPrimeirosPassos({
     },
     { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0, opcional: false },
   ];
+  // Só com saldo de hospedagem não há pontos a escolher: as horas valem na
+  // rede inteira (e o servidor recusa a escolha sem plano).
+  if (soSaldoHospedagem)
+    etapas.splice(
+      etapas.findIndex((e) => e.id === 'pontos'),
+      1,
+    );
   // Disponível = o sistema já deixa fazer agora. Sem plano, só o plano.
   for (const e of etapas) e.disponivel = e.id === 'plano' || temPlano;
   const proxima = etapas.find((e) => !e.feito && !e.opcional) || null;

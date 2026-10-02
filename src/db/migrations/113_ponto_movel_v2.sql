@@ -169,10 +169,30 @@ CREATE INDEX ix_pontos_moveis_hospedagens_ponto ON pontos_moveis_hospedagens (po
 CREATE INDEX ix_pontos_moveis_hospedagens_conta ON pontos_moveis_hospedagens (conta_id, criado_em DESC);
 ALTER TABLE pontos_moveis_hospedagens ENABLE ROW LEVEL SECURITY;
 
--- Encerrada não volta a acumular: estado final não muda mais (nem o tempo
--- nem o benefício apurados).
+-- Encerrada não volta a acumular: estado final não muda mais. Única
+-- exceção, a APURAÇÃO TARDIA: o Player que exibiu sem internet manda os
+-- segmentos quando volta — às vezes depois do encerramento. A janela
+-- (iniciada_em → encerrada_em) não muda; só o tempo comprovado DENTRO dela
+-- pode crescer, e o benefício junto (src/pontos/hospedagem.js#apurarDeNovo).
+-- Nunca diminui, e nada mais na linha muda.
 CREATE OR REPLACE FUNCTION hospedagem_final_imutavel() RETURNS trigger AS $$
+DECLARE
+  resto pontos_moveis_hospedagens;
 BEGIN
+  IF OLD.estado = 'encerrada' THEN
+    resto := NEW;
+    resto.tempo_operacional_segundos := OLD.tempo_operacional_segundos;
+    resto.beneficio_segundos := OLD.beneficio_segundos;
+    -- O benefício novo é exatamente o do tempo novo (a mesma conta de
+    -- src/pontos/hospedagem.js#beneficioDe): ninguém escolhe o número.
+    IF resto IS NOT DISTINCT FROM OLD
+       AND NEW.tempo_operacional_segundos > OLD.tempo_operacional_segundos
+       AND NEW.beneficio_segundos >= OLD.beneficio_segundos
+       AND NEW.beneficio_segundos = (NEW.tempo_operacional_segundos::bigint
+                                     * round(NEW.percentual * 100)::bigint) / 10000 THEN
+      RETURN NEW;
+    END IF;
+  END IF;
   IF OLD.estado IN ('encerrada', 'cancelada') THEN
     RAISE EXCEPTION 'hospedagem % já terminou e não muda mais', OLD.id USING ERRCODE = 'check_violation';
   END IF;
@@ -239,9 +259,14 @@ CREATE TRIGGER movel_agenda_eventos BEFORE INSERT OR UPDATE OF estado, data_inic
 --      quando volta; idempotente por (tela, boot, seq).
 -- O tempo válido de um período é a UNIÃO desses intervalos — o mesmo minuto
 -- visto pelos dois lados conta uma vez. Nunca `fim − início` do calendário.
+-- `ponto_id`: o ponto em que a tela estava quando o intervalo foi gravado — é
+-- por ele que a hospedagem soma (tela trocada de ponto não leva o tempo
+-- junto). Excluir a tela não apaga o tempo que ela já comprovou (SET NULL);
+-- excluir o ponto apaga (só é possível sem hospedagem — pontos/repository.js).
 CREATE TABLE tela_operacao (
   id bigserial PRIMARY KEY,
-  dispositivo_id integer NOT NULL REFERENCES dispositivos(id) ON DELETE CASCADE,
+  dispositivo_id integer REFERENCES dispositivos(id) ON DELETE SET NULL,
+  ponto_id integer NOT NULL REFERENCES pontos(id) ON DELETE CASCADE,
   origem text NOT NULL CHECK (origem IN ('heartbeat', 'player')),
   inicio timestamptz NOT NULL,
   fim timestamptz NOT NULL,
@@ -254,6 +279,7 @@ CREATE TABLE tela_operacao (
 CREATE UNIQUE INDEX ux_tela_operacao_segmento ON tela_operacao (dispositivo_id, boot_id, seq)
   WHERE origem = 'player';
 CREATE INDEX ix_tela_operacao_tela_fim ON tela_operacao (dispositivo_id, fim);
+CREATE INDEX ix_tela_operacao_ponto_fim ON tela_operacao (ponto_id, fim);
 ALTER TABLE tela_operacao ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------

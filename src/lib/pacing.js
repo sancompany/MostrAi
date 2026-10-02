@@ -17,8 +17,8 @@
 // do Saldo de Veiculação, 27/09/2026 — docs/specs/2026-09-27-saldo-de-veiculacao.md).
 // Cada camada só usa o que a de cima deixou; dentro dela, se não cabe, o
 // corte é proporcional (RN-30):
-//   T1. base contratada de cada conta (segundos do plano no ponto), a cota
-//       de autoanúncio do dono do ponto e a Mídia Mostraí (como já era);
+//   T1. base contratada de cada conta (segundos do plano no ponto) e a cota
+//       de autoanúncio do dono do ponto;
 //   T2. o que é da conta mas vai além da base: a compensação da RN-49
 //       (tempo dos pontos que a rede ainda não tem) e a reposição do que a
 //       TV não confirmou na hora anterior (RN-10). Até 27/09/2026 isto
@@ -31,8 +31,12 @@
 //   T3b. saldo de hospedagem (migration 113, ponto móvel) — horas gratuitas
 //       de quem hospedou um ponto móvel, só no que T1, T2 e T3 deixaram:
 //       benefício gratuito nunca tira entrega paga nem a devolução de atraso
-//       pago, e também não espera para sempre (a hora vaga é dele antes de
-//       virar institucional);
+//       pago, e também não espera para sempre (a hora vaga é dele antes da
+//       mídia própria e do institucional);
+//   T3c. a Mídia Mostraí (mídia própria) — até 02/10/2026 disputava a T1;
+//       na prática a régua 80/20 da publicação (src/lib/capacidade.js) já a
+//       mantinha fora do tempo pago, e agora ela também fica abaixo do saldo
+//       de hospedagem (ordem do dono, estação do ponto móvel V2 §31);
 //   T4. o que sobrar vira a peça institucional (vídeo institucional da rede,
 //       ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
 //       — inventário vago que anuncia a si mesmo.
@@ -173,7 +177,8 @@ function caberEm(pedidos, capacidade) {
 //   frequenciaBase — T1 (inserções da base contratada);
 //   compensacao, deficit — T2 (RN-49 além da base; reposição da hora anterior);
 //   banco — T3 (saldo antigo);
-//   hospedagem — T3b (saldo de hospedagem do ponto móvel).
+//   hospedagem — T3b (saldo de hospedagem do ponto móvel);
+//   propria — T3c (Mídia Mostraí).
 //
 // Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
 // `programados` conta só quem ocupa inventário de verdade — o institucional
@@ -199,6 +204,7 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
       alem: Math.max(0, a.compensacao || 0) + Math.max(0, a.deficit || 0),
       banco: Math.max(0, a.banco || 0),
       hospedagem: Math.max(0, a.hospedagem || 0),
+      propria: Math.max(0, a.propria || 0),
     })),
     semente,
   );
@@ -232,15 +238,23 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
   for (const p of pedidosHospedagem) if (p.cabe > 0) hospedagemProgramados[p.id] = p.cabe;
   const segundosHospedagem = somaCabe(pedidosHospedagem);
 
+  // T3c: Mídia Mostraí, no que sobrou depois do saldo de hospedagem.
+  const pedidosProprios = camada('propria');
+  caberEm(pedidosProprios, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco - segundosHospedagem);
+  const segundosProprios = somaCabe(pedidosProprios);
+
   // Map e não objeto: guarda o id com o tipo original (número de anunciante,
   // 'dono', 'midia:N'), que é o que vai nos itens da playlist.
   const vezesPorId = new Map();
-  for (const p of [...pedidos, ...pedidosAlem, ...pedidosBanco, ...pedidosHospedagem]) {
+  for (const p of [...pedidos, ...pedidosAlem, ...pedidosBanco, ...pedidosHospedagem, ...pedidosProprios]) {
     if (p.cabe > 0) vezesPorId.set(p.id, (vezesPorId.get(p.id) || 0) + p.cabe);
   }
   const programados = Object.fromEntries(vezesPorId);
 
-  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco - segundosHospedagem);
+  const segundosLivres = Math.max(
+    0,
+    SEGUNDOS_DA_HORA - segundosContratados - segundosBanco - segundosHospedagem - segundosProprios,
+  );
   const qtdInstitucional = Math.floor(segundosLivres / duracaoInstitucional);
 
   const grupos = [...vezesPorId].map(([id, quantidade]) => ({ id, quantidade }));
@@ -267,6 +281,7 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
     segundosContratados,
     segundosBanco,
     segundosHospedagem,
+    segundosProprios,
     segundosInstitucionais: qtdInstitucional * duracaoInstitucional,
     qtdInstitucional,
     pedidoSegundos,

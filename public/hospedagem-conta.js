@@ -47,7 +47,12 @@
           <p class="hosp-nota">Valor estimado enquanto a hospedagem estiver em andamento.</p>
         </div>`;
     }
-    // "Usar minhas horas" fica uma vez só, na área do saldo (acima).
+    // Spec §36: a concluída também leva a "Usar minhas horas" — enquanto
+    // ainda há saldo para usar.
+    const usar =
+      h.beneficioSegundos > 0 && dados.saldo.disponivelSegundos > 0
+        ? '<button type="button" class="btn ghost mini" data-hosp-usar>Usar minhas horas</button>'
+        : '';
     return `<div class="hosp-item">
         <p class="hosp-titulo"><span class="badge badge-neutro">Concluída</span> <b>${esc(h.local)}</b></p>
         <p class="hosp-meta">${esc(periodo(h))}</p>
@@ -56,6 +61,7 @@
           <div><dt>Percentual</dt><dd>${pct(h.percentual)}</dd></div>
           <div><dt>Horas recebidas</dt><dd>${horas(h.beneficioSegundos)}</dd></div>
         </dl>
+        ${usar}
       </div>`;
   }
 

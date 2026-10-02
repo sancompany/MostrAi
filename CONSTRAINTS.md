@@ -170,13 +170,13 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   RN-72). Online, pelos heartbeats (o APK bate a cada 5 min; um buraco > 6 min 30 s
   fecha o intervalo — entre duas batidas exibindo, conta o trecho todo);
   offline, pelos segmentos que o Player conta com o relógio monotônico e
-  manda quando volta. Três tetos assumidos: (1) o que a tela contou offline
-  e só enviou DEPOIS do encerramento não entra — encerrada não acumula; (2)
-  um boot que nunca recebeu o `servidorAgora` não tem como converter o
-  relógio para o do servidor, e esse tempo se perde (nunca é inventado); (3)
-  até o Player novo chegar às TVs (OTA), só o tempo online conta. limite:
-  um "período de carência" antes de apurar resolveria (1) — só se a
-  operação mostrar que faz falta.
+  manda quando volta — o que chegar depois do encerramento, dentro da
+  janela, soma por apuração tardia (até 8 dias, lançamento complementar).
+  Só tela ATIVA no cadastro mede; o tempo fica com o ponto em que foi
+  medido (tela excluída não apaga). Dois tetos assumidos: (1) um boot que
+  nunca recebeu o `servidorAgora` não tem como converter o relógio para o
+  do servidor, e esse tempo se perde (nunca é inventado); (2) até o Player
+  novo chegar às TVs (OTA), só o tempo online conta.
 - **Regra de peça do saldo de hospedagem é provisória** (02/10/2026, RN-72):
   quem veicula só com o saldo usa a regra do Plano Básico (1 peça de até
   15 s, 140 s por hora de tela) — decisão do dono pendente

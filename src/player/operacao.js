@@ -21,7 +21,10 @@ const pool = require('../db/pool');
 //     mesmo boot, e manda quando volta. Idempotente por (tela, boot, seq):
 //     reenvio, retry e duplicata gravam uma vez; um segmento que cresceu
 //     (o Player reenvia o aberto) só estende.
-// Só tela de ponto MÓVEL grava aqui — ponto fixo não tem hospedagem.
+// Só tela ATIVA de ponto MÓVEL grava aqui — ponto fixo não tem hospedagem, e
+// tela em reparo ou inativa no cadastro não está operando para a Mostraí
+// (mesmo que o aparelho siga ligado). Cada intervalo leva o ponto em que a
+// tela estava: é por ele que a hospedagem soma.
 
 const ESTADOS_EXIBINDO = new Set(['PLAYING', 'IDLE']);
 // O APK bate a cada 5 min (playlist.mostrai, PlayerActivity
@@ -42,21 +45,21 @@ const BOOT_ID = /^[A-Za-z0-9._:-]{1,64}$/;
 // anterior. Só estende se ela também era exibindo: uma batida fora do ar no
 // meio (fora do horário, erro) quebra o intervalo.
 async function registrarPeloHeartbeat(client, tela, estado) {
-  if (!ESTADOS_EXIBINDO.has(estado)) return false;
+  if (!ESTADOS_EXIBINDO.has(estado) || tela.status !== 'ativo' || !tela.ponto_id) return false;
   const { rowCount } = !ESTADOS_EXIBINDO.has(tela.player_estado)
     ? { rowCount: 0 }
     : await client.query(
         `UPDATE tela_operacao SET fim = now()
       WHERE id = (SELECT id FROM tela_operacao
-                   WHERE dispositivo_id = $1 AND origem = 'heartbeat'
+                   WHERE dispositivo_id = $1 AND ponto_id = $3 AND origem = 'heartbeat'
                      AND fim >= now() - make_interval(secs => $2) AND fim <= now()
                    ORDER BY fim DESC LIMIT 1)`,
-        [tela.id, TOLERANCIA_SEGUNDOS],
+        [tela.id, TOLERANCIA_SEGUNDOS, tela.ponto_id],
       );
   if (rowCount) return true;
   const { rowCount: novo } = await client.query(
-    `INSERT INTO tela_operacao (dispositivo_id, origem, inicio, fim)
-     SELECT $1, 'heartbeat', now(), now()
+    `INSERT INTO tela_operacao (dispositivo_id, ponto_id, origem, inicio, fim)
+     SELECT $1, $2, 'heartbeat', now(), now()
       WHERE EXISTS (SELECT 1 FROM pontos WHERE id = $2 AND tipo = 'movel')`,
     [tela.id, tela.ponto_id],
   );
@@ -78,9 +81,12 @@ function lerSegmento(s, agora) {
 
 // Resposta item a item (como o Proof-of-Play): `ok` (gravado ou já estava),
 // `item_invalido` (o Player descarta — tentar de novo não muda nada),
-// `ignorado` (tela de ponto fixo: nada a medir).
+// `ignorado` (tela de ponto fixo, ou fora do ar no cadastro: nada a medir).
+// Segmento que chega depois do encerramento da hospedagem ainda soma — o
+// job de apuração tardia (src/pontos/hospedagem.js#apurarTardias) apura de
+// novo.
 async function registrarSegmentos(tela, lista, agora = new Date()) {
-  const movel = tela.ponto_tipo === 'movel';
+  const movel = tela.ponto_tipo === 'movel' && tela.status === 'ativo' && Boolean(tela.ponto_id);
   const resultados = [];
   for (const bruto of lista) {
     const chave = {
@@ -99,15 +105,15 @@ async function registrarSegmentos(tela, lista, agora = new Date()) {
     // O segmento aberto chega mais de uma vez, cada vez maior: estende,
     // nunca encolhe, e o total nunca passa do teto de um segmento.
     await pool.query(
-      `INSERT INTO tela_operacao (dispositivo_id, origem, inicio, fim, boot_id, seq)
-       VALUES ($1, 'player', $2, $3, $4, $5)
+      `INSERT INTO tela_operacao (dispositivo_id, ponto_id, origem, inicio, fim, boot_id, seq)
+       VALUES ($1, $7, 'player', $2, $3, $4, $5)
        ON CONFLICT (dispositivo_id, boot_id, seq) WHERE origem = 'player' DO UPDATE
          SET inicio = LEAST(tela_operacao.inicio, EXCLUDED.inicio),
              fim = GREATEST(tela_operacao.fim, EXCLUDED.fim),
              recebido_em = now()
          WHERE GREATEST(tela_operacao.fim, EXCLUDED.fim) - LEAST(tela_operacao.inicio, EXCLUDED.inicio)
                <= make_interval(secs => $6)`,
-      [tela.id, s.inicio, s.fim, s.bootId, s.seq, SEGMENTO_MAXIMO_MS / 1000],
+      [tela.id, s.inicio, s.fim, s.bootId, s.seq, SEGMENTO_MAXIMO_MS / 1000, tela.ponto_id],
     );
     resultados.push({ ...chave, status: 'ok' });
   }

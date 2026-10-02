@@ -188,6 +188,7 @@ function htmlOnboardingSemPlano(passos) {
       }</p>
       <a class="btn primary onboarding-cta" href="/planos.html">Escolher meu plano</a>
       ${htmlEtapas(etapas, 'plano')}
+      <p class="form-hint u-m-0">Tem um comércio? <a href="/hospedar.html">Hospede um Ponto Móvel</a> e ganhe horas de mídia gratuitas.</p>
     </section>`;
 }
 
@@ -381,7 +382,9 @@ function desenharPlano() {
                 valor: aguardando === 'instalacao' ? 'Básico aguardando instalação' : 'Básico aguardando ativação',
                 alvo: 'modBasico',
               }
-            : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
+            : ANUNCIANTE.acesso_painel?.hospedagem?.saldoSegundos > 0
+              ? { rotulo: 'Plano', valor: 'Horas de hospedagem', alvo: 'modHospedagem' }
+              : { rotulo: 'Plano', valor: 'Sem plano', alvo: 'bloqueioPlano' },
       ],
       alertas: [],
     });

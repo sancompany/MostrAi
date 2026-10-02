@@ -37,7 +37,7 @@ function sequenciaAdicional(novosEntrada) {
   const pedidos = novosEntrada
     .map((n) => ({
       id: n.id,
-      quantidade: Math.max(0, (n.frequenciaBase || 0) + (n.compensacao || 0) + (n.deficit || 0)),
+      quantidade: Math.max(0, (n.frequenciaBase || 0) + (n.compensacao || 0) + (n.deficit || 0) + (n.propria || 0)),
     }))
     .filter((p) => p.quantidade > 0);
   if (!pedidos.length) return [];
@@ -762,7 +762,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       ]);
       for (const contaId of comSaldo) {
         if (!podem.has(contaId)) continue;
-        if (dispositivo.ponto_tipo === 'movel' && casaDaTela(dispositivo) === contaId) continue;
+        if (dispositivo.anfitria_conta_id === contaId) continue;
         const existente = entrada.find((e) => e.id === contaId);
         // A peça: a da conta nesta tela (plano/Básico); com plano mas fora
         // da cobertura daqui, a do plano; sem plano, a da regra do saldo.
@@ -795,10 +795,17 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   }
 
   // Mídia própria: cada uma já entra pronta (frequência e cobertura são
-  // dela mesma, sem RN-49 nem banco de horas — ver `midiasElegiveis`).
+  // dela mesma, sem RN-49 nem banco de horas — ver `midiasElegiveis`), na
+  // camada dela (T3c): abaixo do saldo de hospedagem, acima do institucional.
   for (const m of midiasProprias) {
     porId[m.id] = { criativos: m.criativos };
-    entrada.push({ id: m.id, frequenciaBase: m.frequenciaBase, deficit: 0, duracaoSegundos: m.duracaoSegundos });
+    entrada.push({
+      id: m.id,
+      frequenciaBase: 0,
+      propria: m.frequenciaBase,
+      deficit: 0,
+      duracaoSegundos: m.duracaoSegundos,
+    });
   }
 
   // Dono do ponto entra com a fatia da cota que cabe a esta tela. Não conta
@@ -833,6 +840,31 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   });
   const daHora = montarHoraDeTv(congelada.base, semente, videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL);
   const idsExtras = congelada.extras;
+
+  // A vaga do saldo de hospedagem que a primeira geração da hora reservou
+  // toca a hora INTEIRA: nas gerações seguintes a conta que só tem saldo já
+  // não aparece em `saldosParaProgramar` (a própria reserva desta hora
+  // ocupou o que havia), e sem a peça aqui a vaga sumia da playlist com a
+  // reserva presa até o prazo do Proof-of-Play (revisão, ciclo 2).
+  if (aberta) {
+    const semPeca = [
+      ...new Set(congelada.base.filter((e) => e.hospedagem > 0 && !porId[e.id]).map((e) => Number(e.id))),
+    ];
+    if (semPeca.length) {
+      const podem = await contasDaHospedagemNaTela(
+        dispositivo.categoria_id,
+        excluirDaRotacaoPaga,
+        casaDaTela(dispositivo),
+        dispositivo.ponto_id,
+        semPeca,
+      );
+      for (const contaId of semPeca) {
+        if (!podem.has(contaId) || dispositivo.anfitria_conta_id === contaId) continue;
+        const criativos = await hospedagem.pecasDoSaldo(contaId);
+        if (criativos?.length) porId[contaId] = { criativos };
+      }
+    }
+  }
 
   // A hora não coube em todo mundo: todos entregam menos do que contrataram.
   // O corte é proporcional, mas continua sendo entrega menor, e sem isto não
@@ -891,14 +923,11 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // consumia a dívida sem entregar nada.
   const banco = { ...daHora.bancoProgramados };
   // Saldo de hospedagem: idem — a hora só PROGRAMA (`vezes_hospedagem`); o
-  // saldo cai com o que a TV confirmou (src/pontos/hospedagem.js). Quem só
-  // tem saldo e chegou no meio da hora (`extras`) entra como hospedagem.
+  // saldo cai com o que a TV confirmou (src/pontos/hospedagem.js). Só pela
+  // base congelada: quem tem só saldo e aparece no meio da hora entra na
+  // hora seguinte (`sequenciaAdicional` não abre vaga de saldo), e um
+  // extra pago nunca é reclassificado como gratuito.
   const daHospedagem = { ...daHora.hospedagemProgramados };
-  for (const id of idsExtras) {
-    const e = entrada.find((x) => String(x.id) === String(id));
-    const soHospedagem = e && e.hospedagem > 0 && !e.frequenciaBase && !e.compensacao && !e.deficit && !e.banco;
-    if (soHospedagem) daHospedagem[id] = (daHospedagem[id] || 0) + 1;
-  }
   if (aberta) {
     // Obrigação de cada conta nesta tela nesta hora: a da base congelada (a
     // primeira geração da hora fixa o número); quem chegou depois (`extras`)

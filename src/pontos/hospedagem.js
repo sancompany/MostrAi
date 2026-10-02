@@ -122,17 +122,17 @@ function beneficioDe(tempoSegundos, percentual) {
 // ---------------------------------------------------------------------------
 // Tempo operacional
 // ---------------------------------------------------------------------------
-// União dos intervalos de operação de QUALQUER tela do ponto (a de hoje e
-// uma trocada no meio, se houver) dentro de [de, ate). O mesmo minuto visto
-// pelo heartbeat e pelo Player conta uma vez; minutos em que nada
-// comprovou operação não contam.
+// União dos intervalos de operação gravados NESTE ponto (pela tela de hoje
+// e por uma trocada no meio, se houver — mesmo já excluída) dentro de
+// [de, ate). O mesmo minuto visto pelo heartbeat e pelo Player conta uma
+// vez; minutos em que nada comprovou operação não contam.
 async function tempoOperacional(db, pontoId, de, ate) {
   const { rows } = await db.query(
     `SELECT COALESCE(FLOOR(SUM(EXTRACT(EPOCH FROM upper(r) - lower(r)))), 0)::bigint AS segundos
        FROM unnest((
          SELECT range_agg(tstzrange(GREATEST(o.inicio, $2::timestamptz), LEAST(o.fim, $3::timestamptz), '[)'))
-           FROM tela_operacao o JOIN dispositivos d ON d.id = o.dispositivo_id
-          WHERE d.ponto_id = $1 AND o.fim > $2::timestamptz AND o.inicio < $3::timestamptz
+           FROM tela_operacao o
+          WHERE o.ponto_id = $1 AND o.fim > $2::timestamptz AND o.inicio < $3::timestamptz
        )) AS r`,
     [pontoId, de, ate],
   );
@@ -206,10 +206,14 @@ async function criar(pontoId, corpo, admin) {
         LIMITES.endereco,
       );
       if (interesseId) {
-        const { rows } = await c.query(`SELECT id, conta_id FROM hospedagem_interesses WHERE id = $1 FOR UPDATE`, [
-          interesseId,
-        ]);
+        const { rows } = await c.query(
+          `SELECT id, conta_id, status FROM hospedagem_interesses WHERE id = $1 FOR UPDATE`,
+          [interesseId],
+        );
         if (!rows[0]) throw erro(400, 'Interesse não encontrado', 'interesse_id');
+        if (rows[0].status === 'agendada' || rows[0].status === 'recusada') {
+          throw erro(409, `Esse interesse já foi ${rows[0].status} — programe sem ele`, 'interesse_id');
+        }
         if (rows[0].conta_id && Number(rows[0].conta_id) !== contaId) {
           throw erro(400, 'Esse interesse é de outra conta', 'conta_id');
         }
@@ -463,10 +467,91 @@ async function encerrarVencidas() {
   return resultado;
 }
 
+// ---------------------------------------------------------------------------
+// Apuração tardia (job)
+// ---------------------------------------------------------------------------
+// A tela que exibiu sem internet só manda os segmentos quando volta — e o
+// fim da hospedagem é justamente quando ela é desligada e levada embora.
+// O que chegar DEPOIS do encerramento, mas comprovando operação DENTRO da
+// janela da hospedagem (iniciada_em → encerrada_em, que não muda), soma: o
+// tempo é apurado de novo e a diferença do benefício entra como lançamento
+// complementar, com chave pelo total (`hospedagem:<id>:ate:<total>`) —
+// repetir grava uma vez, e o total lançado é sempre o benefício do tempo
+// final, nunca a soma de arredondamentos. Nunca diminui. Vale pelo mesmo
+// prazo que o servidor aceita segmento atrasado (src/player/operacao.js).
+const DIAS_DE_APURACAO_TARDIA = 8;
+
+async function apurarTardias() {
+  const { rows: candidatas } = await pool.query(
+    `SELECT h.id, h.ponto_id FROM pontos_moveis_hospedagens h
+      WHERE h.estado = 'encerrada' AND h.encerrada_em > now() - make_interval(days => $1)
+        AND EXISTS (SELECT 1 FROM tela_operacao o
+                     WHERE o.ponto_id = h.ponto_id AND o.origem = 'player'
+                       AND o.recebido_em > h.encerrada_em
+                       AND o.fim > h.iniciada_em AND o.inicio < h.encerrada_em)
+     ORDER BY h.id`,
+    [DIAS_DE_APURACAO_TARDIA],
+  );
+  let apuradas = 0;
+  for (const v of candidatas) {
+    try {
+      const r = await movel.emTransacao(async (c) => {
+        await c.query('SELECT 1 FROM pontos WHERE id = $1 FOR UPDATE', [v.ponto_id]);
+        const {
+          rows: [h],
+        } = await c.query(`SELECT * FROM pontos_moveis_hospedagens WHERE id = $1 FOR UPDATE`, [v.id]);
+        if (h?.estado !== 'encerrada') return null;
+        const tempo = await tempoOperacional(c, h.ponto_id, h.iniciada_em, h.encerrada_em);
+        if (tempo <= h.tempo_operacional_segundos) return null;
+        const beneficio = Math.max(h.beneficio_segundos, beneficioDe(tempo, h.percentual));
+        await c.query(
+          `UPDATE pontos_moveis_hospedagens SET tempo_operacional_segundos = $2, beneficio_segundos = $3 WHERE id = $1`,
+          [h.id, tempo, beneficio],
+        );
+        const {
+          rows: [lancado],
+        } = await c.query(
+          `SELECT COALESCE(SUM(segundos), 0)::bigint AS segundos FROM saldo_hospedagem_lancamentos
+            WHERE hospedagem_id = $1 AND tipo = 'beneficio'`,
+          [h.id],
+        );
+        const falta = beneficio - Number(lancado.segundos);
+        if (falta > 0) {
+          await c.query(
+            `INSERT INTO saldo_hospedagem_lancamentos (conta_id, tipo, segundos, chave, hospedagem_id)
+             VALUES ($1, 'beneficio', $2, $3, $4)
+             ON CONFLICT (chave) DO NOTHING`,
+            [h.conta_id, falta, `hospedagem:${h.id}:ate:${beneficio}`, h.id],
+          );
+        }
+        return { contaId: h.conta_id, acrescimo: falta };
+      });
+      if (!r) continue;
+      apuradas += 1;
+      require('../lib/sse').emitirParaConta(r.contaId, 'hosting.updated', {});
+      if (r.acrescimo > 0) {
+        await require('../creditos/notificacoes').registrarSemFalhar(r.contaId, {
+          tipo: 'hospedagem_encerrada',
+          titulo: `Mais ${duracaoLegivel(r.acrescimo)} de mídia pela hospedagem do Ponto Móvel`,
+          descricao:
+            'A tela mandou o tempo que operou sem internet e ele entrou na conta da hospedagem. As horas já estão no seu saldo.',
+          entidadeTipo: 'hospedagem',
+          link: '/anunciante/painel.html#modHospedagem',
+        });
+      }
+    } catch (err) {
+      console.error(`apuração tardia da hospedagem ${v.id} falhou (tenta de novo no próximo ciclo)`, err.message);
+    }
+  }
+  return { apuradas };
+}
+
 const INTERVALO_MS = 5 * 60 * 1000;
 function iniciarJob() {
   const rodar = () =>
-    encerrarVencidas().catch((err) => console.error('job de encerramento do ponto móvel falhou', err.message));
+    encerrarVencidas()
+      .then(() => apurarTardias())
+      .catch((err) => console.error('job de encerramento do ponto móvel falhou', err.message));
   setTimeout(rodar, 30_000).unref();
   setInterval(rodar, INTERVALO_MS).unref();
 }
@@ -515,6 +600,9 @@ async function saldosDasContas(contaIds = null, db = pool) {
       reservadoSegundos: Number(r.reservado),
       disponivelSegundos: disponivel,
       paraProgramarSegundos: Math.max(0, disponivel - Number(r.reservado)),
+      // Recebido − entregue SEM piso: negativo só se a rede entregou além do
+      // saldo (arredondamento por tela) — o Admin vê; a conta vê 0.
+      diferencaSegundos: recebido - entregue,
     });
   }
   return mapa;
@@ -526,6 +614,7 @@ const SALDO_VAZIO = {
   reservadoSegundos: 0,
   disponivelSegundos: 0,
   paraProgramarSegundos: 0,
+  diferencaSegundos: 0,
 };
 
 async function saldoDaConta(contaId, db = pool) {
@@ -549,6 +638,10 @@ async function pecasDoSaldo(contaId, db = pool) {
 }
 
 // O que o gerador pode programar AGORA: { contaId: segundos }.
+// limite: soma toda a entrega de hospedagem de toda conta que já recebeu
+// horas, a cada geração de playlist — barato com a rede de hoje; se crescer,
+// guardar o total entregue liquidado (como o banco de horas faz) e só somar
+// o que veio depois.
 async function saldosParaProgramar(db = pool) {
   const mapa = {};
   for (const [id, s] of await saldosDasContas(null, db))
@@ -576,22 +669,32 @@ async function ajustar(contaId, corpo, admin) {
   return movel.emTransacao(async (c) => {
     const { rows } = await c.query('SELECT id, excluido_em FROM anunciantes WHERE id = $1 FOR UPDATE', [id]);
     if (!rows[0] || rows[0].excluido_em) throw erro(404, 'conta não encontrada');
+    // Retirar só o que ainda não está programado: o que já está na grade
+    // (reservado) pode ser confirmado pela TV depois, e o saldo ficaria
+    // negativo escondido.
     if (segundos < 0) {
       const s = await saldoDaConta(id, c);
-      if (s.disponivelSegundos + segundos < 0) {
-        throw erro(400, 'O ajuste deixaria o saldo negativo — retire no máximo o que está disponível', 'minutos');
+      if (s.paraProgramarSegundos + segundos < 0) {
+        throw erro(
+          400,
+          `O ajuste deixaria o saldo negativo — retire no máximo ${Math.floor(s.paraProgramarSegundos / 60)} min (o que não está programado)`,
+          'minutos',
+        );
       }
     }
-    await c.query(
+    // Duplo clique ou retry da rede: a mesma chave grava uma vez.
+    const chave = /^[A-Za-z0-9-]{8,64}$/.test(String(corpo?.chave ?? '')) ? corpo.chave : crypto.randomUUID();
+    const { rowCount } = await c.query(
       `INSERT INTO saldo_hospedagem_lancamentos (conta_id, tipo, segundos, chave, motivo, admin)
-       VALUES ($1, 'ajuste', $2, $3, $4, $5)`,
-      [id, segundos, `ajuste:${crypto.randomUUID()}`, motivo, admin || 'admin'],
+       VALUES ($1, 'ajuste', $2, $3, $4, $5)
+       ON CONFLICT (chave) DO NOTHING`,
+      [id, segundos, `ajuste:${id}:${chave}`, motivo, admin || 'admin'],
     );
-    return { contaId: id, segundos };
+    return { contaId: id, segundos, repetido: rowCount === 0 };
   });
 }
 
-async function extratoDaConta(contaId, { comAdmin = false } = {}) {
+async function extratoDaConta(contaId) {
   const { rows } = await pool.query(
     `SELECT l.tipo, l.segundos, l.motivo, l.admin, l.criado_em, l.hospedagem_id, h.local
        FROM saldo_hospedagem_lancamentos l LEFT JOIN pontos_moveis_hospedagens h ON h.id = l.hospedagem_id
@@ -605,7 +708,7 @@ async function extratoDaConta(contaId, { comAdmin = false } = {}) {
     hospedagemId: r.hospedagem_id ? Number(r.hospedagem_id) : null,
     local: r.local,
     motivo: r.motivo,
-    ...(comAdmin ? { admin: r.admin } : {}),
+    admin: r.admin,
   }));
 }
 
@@ -706,7 +809,7 @@ async function avisarBeneficio({ contaId, beneficioSegundos }) {
         ? 'As horas já estão no seu saldo de hospedagem e valem na rede inteira.'
         : 'A tela não registrou tempo de operação nesse período, então não houve horas a receber.',
     entidadeTipo: 'hospedagem',
-    link: '/anunciante/painel.html#hospedagem',
+    link: '/anunciante/painel.html#modHospedagem',
   });
   sse.emitirParaConta(contaId, 'hosting.updated', {});
 }
@@ -723,6 +826,7 @@ const formatarPercentual = (n) => `${String(Number(n)).replace('.', ',')}%`;
 
 module.exports = {
   PERCENTUAL_PADRAO,
+  apurarTardias,
   REGRA_DO_SALDO,
   pecasDoSaldo,
   lerPercentual,

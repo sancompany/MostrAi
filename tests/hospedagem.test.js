@@ -223,7 +223,8 @@ const linha = async (hid) => (await pool.query('SELECT * FROM pontos_moveis_hosp
 // Tempo operacional de teste: intervalos de heartbeat gravados direto.
 async function operou(telaId, inicio, fim, origem = 'heartbeat', extra = {}) {
   await pool.query(
-    `INSERT INTO tela_operacao (dispositivo_id, origem, inicio, fim, boot_id, seq) VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO tela_operacao (dispositivo_id, ponto_id, origem, inicio, fim, boot_id, seq)
+     SELECT $1, ponto_id, $2, $3, $4, $5, $6 FROM dispositivos WHERE id = $1`,
     [telaId, origem, inicio, fim, extra.bootId ?? null, extra.seq ?? null],
   );
 }
@@ -409,6 +410,14 @@ test('8. foto do equipamento: só no móvel, só pelo Admin, e a ficha a expõe'
     headers: { cookie, 'x-forwarded-for': IP },
   });
   assert.strictEqual(r.status, 409, 'ponto fixo não tem foto de equipamento');
+  const html = new FormData();
+  html.append('arquivo', new Blob([Buffer.from('<script>')], { type: 'text/html' }), 'f.html');
+  const naoImagem = await fetch(`${base}/admin/pontos/${m.id}/foto-movel`, {
+    method: 'POST',
+    body: html,
+    headers: { cookie, 'x-forwarded-for': IP },
+  });
+  assert.strictEqual(naoImagem.status, 400, 'só imagem vai para o bucket público');
   const anon = await fetch(`${base}/admin/pontos/${m.id}/foto-movel`, { method: 'POST', body: fd });
   assert.strictEqual(anon.status, 401);
   await pool.query(`UPDATE pontos SET foto_instalacao_url = 'https://exemplo.test/movel.jpg' WHERE id = $1`, [m.id]);
@@ -774,10 +783,8 @@ test('29. ajuste do Admin: + ou −, com motivo e autor; nunca deixa o saldo neg
     401,
   );
   const minha = (await nav('GET', '/anunciantes/me/hospedagem')).json;
-  assert.ok(
-    minha.extrato.every((l) => l.admin === undefined),
-    'a conta não vê quem ajustou',
-  );
+  assert.strictEqual(minha.extrato, undefined, 'a conta não recebe o extrato (nem a nota e o autor dos ajustes)');
+  assert.deepStrictEqual(Object.keys(minha.saldo).sort(), ['disponivelSegundos', 'recebidoSegundos']);
 });
 
 test('30. saldo de hospedagem não é crédito, plano nem Básico — e não expira', async () => {
@@ -934,6 +941,91 @@ test('37. sem nenhum sinal, o tempo é zero — o servidor nunca inventa horas',
   assert.match(notif.rows[0].titulo, /terminou/);
 });
 
+test('37b. apuração tardia: o tempo offline que chega DEPOIS do encerramento soma, uma vez, só dentro da janela', async () => {
+  const m = await criarMovel();
+  const { chaveAparelho, dispositivoId } = await telaComPlayer(m.id);
+  const anfitria = await novaConta();
+  const hid = await hospedagemAtiva(m, anfitria, 300);
+  await operou(m.telaId, minutosAtras(290), minutosAtras(190)); // 100 min online
+  const r = await acao(m.id, hid, 'encerrar');
+  assert.strictEqual(r.status, 200);
+  assert.ok(Math.abs(r.json.tempoSegundos - 6000) <= 2);
+  // A tela volta à internet depois do encerramento e manda o que exibiu
+  // offline: 90 min dentro da janela + 30 min depois do encerramento.
+  const enviar = () =>
+    fetch(`${base}/player/${dispositivoId}/operacao`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-aparelho-key': chaveAparelho },
+      body: JSON.stringify({
+        segmentos: [
+          { bootId: 'tarde', seq: 1, inicio: minutosAtras(180).toISOString(), fim: minutosAtras(90).toISOString() },
+          { bootId: 'tarde', seq: 2, inicio: new Date().toISOString(), fim: new Date().toISOString() },
+        ],
+      }),
+    });
+  assert.strictEqual((await enviar()).status, 200);
+  assert.strictEqual((await hospedagem.apurarTardias()).apuradas, 1);
+  const h = await linha(hid);
+  assert.ok(Math.abs(h.tempo_operacional_segundos - 11400) <= 3, `tempo ${h.tempo_operacional_segundos}`);
+  assert.strictEqual(h.beneficio_segundos, Math.floor((h.tempo_operacional_segundos * 20) / 100));
+  const soma = async () =>
+    Number(
+      (
+        await pool.query(
+          `SELECT COALESCE(SUM(segundos), 0) s, COUNT(*)::int n FROM saldo_hospedagem_lancamentos WHERE hospedagem_id = $1`,
+          [hid],
+        )
+      ).rows[0].s,
+    );
+  assert.strictEqual(await soma(), h.beneficio_segundos, 'o total lançado é o benefício do tempo final');
+  // Reenvio e job de novo: nada muda.
+  await enviar();
+  assert.strictEqual((await hospedagem.apurarTardias()).apuradas, 0);
+  assert.strictEqual(await soma(), h.beneficio_segundos);
+  assert.strictEqual((await linha(hid)).encerrada_em.getTime(), h.encerrada_em.getTime(), 'a janela não muda');
+  // O banco recusa qualquer outra mudança, e recusa diminuir.
+  await assert.rejects(pool.query(`UPDATE pontos_moveis_hospedagens SET local = 'x' WHERE id = $1`, [hid]));
+  await assert.rejects(
+    pool.query(`UPDATE pontos_moveis_hospedagens SET tempo_operacional_segundos = 1 WHERE id = $1`, [hid]),
+  );
+  const notif = await pool.query(
+    `SELECT titulo FROM notificacoes WHERE anunciante_id = $1 AND tipo = 'hospedagem_encerrada' ORDER BY id`,
+    [anfitria.id],
+  );
+  assert.match(notif.rows.at(-1).titulo, /^Mais /);
+});
+
+test('37c. tela fora do ar no cadastro não mede tempo; excluir a tela não apaga o tempo que ela comprovou', async () => {
+  const m = await criarMovel();
+  const { telaId, chaveAparelho, dispositivoId } = await telaComPlayer(m.id);
+  const anfitria = await novaConta();
+  const hid = await hospedagemAtiva(m, anfitria, 300);
+  await operou(telaId, minutosAtras(290), minutosAtras(230)); // 60 min, tela ativa
+  await pool.query(`UPDATE dispositivos SET status = 'reparo' WHERE id = $1`, [telaId]);
+  const hb = await fetch(`${base}/player/${dispositivoId}/heartbeat`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-aparelho-key': chaveAparelho },
+    body: JSON.stringify({ estado: 'PLAYING' }),
+  });
+  assert.strictEqual(hb.status, 200);
+  const seg = await fetch(`${base}/player/${dispositivoId}/operacao`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-aparelho-key': chaveAparelho },
+    body: JSON.stringify({
+      segmentos: [
+        { bootId: 'rep', seq: 1, inicio: minutosAtras(200).toISOString(), fim: minutosAtras(100).toISOString() },
+      ],
+    }),
+  }).then((r) => r.json());
+  assert.strictEqual(seg.resultados[0].status, 'ignorado', 'tela em reparo não mede');
+  const { rows } = await pool.query(`SELECT COUNT(*)::int n FROM tela_operacao WHERE dispositivo_id = $1`, [telaId]);
+  assert.strictEqual(rows[0].n, 1, 'só o intervalo de quando estava ativa');
+  // A tela quebrou e foi excluída: o tempo dela fica com o ponto.
+  await pool.query('DELETE FROM dispositivos WHERE id = $1', [telaId]);
+  const r = await acao(m.id, hid, 'encerrar');
+  assert.ok(Math.abs(r.json.tempoSegundos - 3600) <= 2, `tempo ${r.json.tempoSegundos}`);
+});
+
 // =====================================================================
 // Utilização 38–46
 // =====================================================================
@@ -996,6 +1088,43 @@ test('40, 44 e 45. gerador: o saldo entra na rede inteira (camada T3b), com veze
   assert.ok(!env2.itens.some((i) => i.anuncianteId === conta.id), 'anfitrião fora do próprio móvel');
 });
 
+test('40b. a vaga de saldo reservada na hora toca a hora inteira, mesmo com o saldo todo reservado', async () => {
+  const { conta } = await contaComSaldo(600);
+  await pecaAprovada(conta, 15);
+  const fixo = await pontoFixo();
+  const { telaId } = await telaComPlayer(fixo.id);
+  const disp = await dispositivosRepo.buscarComPonto(telaId);
+  const hora = new Date();
+  const primeira = (await gerador.gerarPlaylistDaHora(disp, hora)).itens.filter((i) => i.anuncianteId === conta.id);
+  assert.ok(primeira.length >= 1);
+  // Todo o resto do saldo some (o que sobrou ficou reservado na grade):
+  // a conta já não está em `saldosParaProgramar`.
+  const s = await hospedagem.saldoDaConta(conta.id);
+  await pool.query(
+    `INSERT INTO saldo_hospedagem_lancamentos (conta_id, tipo, segundos, chave, motivo, admin)
+     VALUES ($1, 'ajuste', $2, $3, 'teste', 'teste')`,
+    [conta.id, -s.paraProgramarSegundos, `ajuste:teste:${randomUUID()}`],
+  );
+  assert.strictEqual((await hospedagem.saldosParaProgramar())[conta.id], undefined);
+  // O Player busca de novo 15 min depois: a vaga continua lá.
+  const segunda = (await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(telaId), hora)).itens.filter(
+    (i) => i.anuncianteId === conta.id,
+  );
+  assert.strictEqual(segunda.length, primeira.length, 'a reserva da hora não vira vaga vazia');
+});
+
+test('40c. a base guarda o móvel e não perde o próprio saldo nele — só o anfitrião da hospedagem ativa fica de fora', async () => {
+  const { conta } = await contaComSaldo(600);
+  await pecaAprovada(conta, 15);
+  const naBase = await criarMovel({ contaBase: conta });
+  const { telaId } = await telaComPlayer(naBase.id);
+  const env = await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(telaId), new Date());
+  assert.ok(
+    env.itens.some((i) => i.anuncianteId === conta.id),
+    'na base, o saldo da própria base roda',
+  );
+});
+
 test('41. prioridade: pago > Básico > recuperação > saldo de hospedagem > institucional (o gratuito nunca tira o pago)', () => {
   const cheia = montarHoraDeTv(
     [
@@ -1019,6 +1148,19 @@ test('41. prioridade: pago > Básico > recuperação > saldo de hospedagem > ins
   assert.strictEqual(vazia.hospedagemProgramados[2], 9);
   assert.ok(vazia.qtdInstitucional > 0, 'o que sobra ainda é institucional');
   assert.strictEqual(vazia.segundosHospedagem, 135);
+  // Mídia própria (Mostraí) vem DEPOIS do saldo de hospedagem (§31, item 5).
+  const comPropria = montarHoraDeTv(
+    [
+      { id: 1, frequenciaBase: 200, duracaoSegundos: 15 }, // 3000 s pagos
+      { id: 'midia:7', propria: 40, duracaoSegundos: 15 }, // quer 600 s
+      { id: 2, hospedagem: 9, duracaoSegundos: 15 }, // 135 s
+    ],
+    'semente',
+  );
+  assert.strictEqual(comPropria.programados[1], 200, 'a mídia própria nunca tira o pago');
+  assert.strictEqual(comPropria.hospedagemProgramados[2], 9, 'o saldo vem antes da mídia própria');
+  assert.strictEqual(comPropria.programados['midia:7'], 31, 'a mídia própria fica com o resto (465 s)');
+  assert.strictEqual(comPropria.qtdInstitucional, 0);
 });
 
 test('42 e 43. Proof-of-Play derruba o saldo; a confirmação conta primeiro para o pago, por último para a hospedagem', async () => {
@@ -1302,6 +1444,23 @@ test('64. "Tenho interesse" pelo painel: dados do cadastro, sem escolher equipam
     (await admin('PATCH', `/admin/hospedagem/interesses/${rows[0].id}`, { status: 'recusada' })).status,
     409,
   );
+  // O mesmo interesse não agenda duas hospedagens.
+  const outro = await criarMovel();
+  assert.strictEqual((await programar(outro.id, conta, { interesse_id: rows[0].id })).status, 409);
+  // Cadastro incompleto (endereço antigo, sem bairro, telefone com +55) não
+  // trava o interesse pelo painel — o painel não tem como corrigir.
+  const antiga = await novaConta();
+  await pool.query(
+    `UPDATE anunciantes SET logradouro = NULL, numero = NULL, bairro = NULL, endereco = 'Rua Velha, 10',
+            contato_telefone = '+55 (16) 99999-0000' WHERE id = $1`,
+    [antiga.id],
+  );
+  const r2 = await (await entrar(antiga))('POST', '/anunciantes/me/hospedagem/interesse', {});
+  assert.strictEqual(r2.status, 201, JSON.stringify(r2.json));
+  const { rows: dela } = await pool.query('SELECT * FROM hospedagem_interesses WHERE conta_id = $1', [antiga.id]);
+  criadas.interesses.push(dela[0].id);
+  assert.strictEqual(dela[0].contato_telefone, '16999990000');
+  assert.match(dela[0].endereco, /Rua Velha, 10/);
 });
 
 test('65 e 66. card do anunciante: "agora em" o anfitrião, sem conta, percentual, saldo ou histórico', async () => {
@@ -1313,7 +1472,12 @@ test('65 e 66. card do anunciante: "agora em" o anfitrião, sem conta, percentua
   assert.strictEqual(situacao.localAtual.nome, anfitria.nome_empresa);
   const texto = JSON.stringify(situacao);
   assert.doesNotMatch(texto, /percentual|conta_?id|saldo|beneficio|"conta"/i);
-  assert.ok(!texto.includes(String(anfitria.id)));
+  const chaves = [];
+  JSON.parse(texto, (k, v) => {
+    chaves.push(k);
+    return v;
+  });
+  assert.ok(!chaves.some((k) => /conta|anfitri/i.test(k)), `chaves: ${chaves.join(',')}`);
   const publico = await navegador()('GET', '/pontos');
   const daLista = publico.json.find((p) => p.id === m.id);
   if (daLista) assert.doesNotMatch(JSON.stringify(daLista), /percentual|hospedagem|saldo/i);
