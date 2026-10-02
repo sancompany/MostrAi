@@ -17,6 +17,16 @@ ADR-037, PENDENCIAS §T (**T9 bloqueia o merge: decisão do dono sobre a regra
 de criativos do saldo**; T10: Player em `sancompany/playlist.mostrai` precisa
 de PR e OTA). Testes: `tests/hospedagem.test.js`, `tests/ponto-movel.test.js`,
 e2e 46 e 47. **A Review-Master continua PAUSADA.**
+Revisão §85 em 3 rodadas dos 3 ciclos (regras; segurança/concorrência;
+UX/regressões): todos os ALTOS/MÉDIOS corrigidos (apuração tardia do
+offline, vaga de saldo da hora congelada, Mídia Mostraí na T3c, sem FK em
+`tela_operacao.ponto_id` por deadlock, estado da tela na hora do segmento
+com trilha transacional, ajuste idempotente, interesse devolvido no
+cancelamento). Ciclo 1 limpo na 3ª rodada; ciclos 2 e 3 ainda acharam
+MÉDIOS na 3ª (corrigidos em d09f325) — teto de escalada do `revisar`
+atingido, situação reportada ao dono. `npm run check` 856/856 em banco
+limpo. Pendências do dono: T9 (bloqueia merge), T12 (métricas da Mídia
+Mostraí). Sem PR aberto ainda; nada em produção.
 2026-10-02 — **Ponto fixo e ponto móvel** (pedido do dono; branch
 `claude/busy-noether-hheir2`). O Admin escolhe Fixo (padrão) ou Móvel ao
 aprovar a candidatura; o móvel é da Mostraí (sem `anunciante_id`), com a conta
