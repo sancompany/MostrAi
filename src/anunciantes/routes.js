@@ -28,6 +28,8 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
+const { situacaoDosMoveis } = require('../pontos/movel');
+const { horarioEmVigorSql } = require('../lib/horario-em-vigor');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -713,7 +715,8 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // `noAr` abaixo já trata os dois como "fora do ar" hoje, só `inativo`
   // (tela cadastrada, nenhuma funcionando) fica fora da lista.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.tipo,
+            (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
             (ap.ponto_id IS NOT NULL) AS escolhido, ap.escolhido_em,
             (p.anunciante_id IS NOT DISTINCT FROM $1) AS seu_ponto
@@ -723,7 +726,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
       WHERE p.status = ANY($2::text[])
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.escolha_bloqueada_em, ap.ponto_id,
+      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.tipo, p.escolha_bloqueada_em, ap.ponto_id,
                ap.escolhido_em, p.anunciante_id
       ORDER BY (p.anunciante_id IS NOT DISTINCT FROM $1) DESC, p.status DESC, p.nome`,
     [conta.id, pontosRepo.STATUS_NA_REDE],
@@ -747,6 +750,9 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     bloqueados,
   );
   const naCobertura = new Set(cobertos);
+  // Ponto móvel (migration 112): local atual, base e próximo evento —
+  // decididos no servidor (src/pontos/movel.js), o card só mostra.
+  const moveis = await situacaoDosMoveis(rows.filter((r) => r.tipo === 'movel').map((r) => r.id));
   const base = Number(plano.segundos_por_hora) || 0;
   const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
 
@@ -799,6 +805,10 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Entra na distribuição da campanha hoje (escolhido e no ar, ou
       // sorteado no modo automático). É a mesma conta do gerador.
       naCobertura: naCobertura.has(r.id),
+      // 'fixo' | 'movel'. Quem escolhe o móvel escolhe o PONTO (nunca a base
+      // ou um evento): a campanha acompanha o ponto onde ele estiver.
+      tipo: r.tipo,
+      movel: moveis.get(r.id) || null,
     })),
   });
 });
@@ -1721,12 +1731,15 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
 // sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
 // mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
 // se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
+// O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel em evento
+// exibe 24 h — src/lib/horario-em-vigor.js).
 // Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
 async function comSituacaoNoAr(pontos) {
   if (!pontos.length) return pontos;
   const { rows: telas } = await pool.query(
     `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
-            d.ultima_vez_online, d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro, p.horario_semanal AS ponto_horario_semanal
+            d.ultima_vez_online, d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro,
+            ${horarioEmVigorSql('p')} AS ponto_horario_semanal
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
       WHERE d.ponto_id = ANY($1::int[])`,
     [pontos.map((p) => p.id)],

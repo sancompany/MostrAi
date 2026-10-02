@@ -37,12 +37,26 @@ async function confirmarComDedup(dispositivoId, evento, agora) {
     }
 
     const entradas = [];
-    const status = await confirmarExecucao(dispositivoId, itemProgramacaoId, janelaId, agora, client, {
-      criativoId: evento.criativoId,
-      iniciadoEm: evento.iniciadoEm,
-      entradas,
-    });
-    await client.query('UPDATE execucoes_confirmadas SET status = $2 WHERE execucao_id = $1', [execucaoId, status]);
+    const extra = { criativoId: evento.criativoId, iniciadoEm: evento.iniciadoEm, entradas };
+    const status = await confirmarExecucao(dispositivoId, itemProgramacaoId, janelaId, agora, client, extra);
+    // Ponto móvel (migration 112): a exibição contabilizada guarda em qual
+    // evento aconteceu — o que estava em andamento no instante dela (pelos
+    // horários em que o Admin marcou início e fim). Só contexto de
+    // auditoria: sem evento (ponto fixo, móvel na base) fica NULL, e a regra
+    // de contabilização não muda.
+    await client.query(
+      `UPDATE execucoes_confirmadas
+          SET status = $2,
+              evento_id = CASE WHEN $2 = 'contabilizado' AND $3::timestamptz IS NOT NULL THEN (
+                SELECT ev.id FROM pontos_moveis_eventos ev
+                  JOIN dispositivos d ON d.ponto_id = ev.ponto_id
+                 WHERE d.id = execucoes_confirmadas.dispositivo_id
+                   AND ev.iniciado_em <= $3::timestamptz
+                   AND (ev.encerrado_em IS NULL OR ev.encerrado_em > $3::timestamptz)
+                 ORDER BY ev.iniciado_em DESC LIMIT 1) END
+        WHERE execucao_id = $1`,
+      [execucaoId, status, extra.instante ?? null],
+    );
     await client.query('COMMIT');
     // Peça que acabou de entrar no ar (primeiro comprovante do contexto):
     // o painel do cliente e o admin trocam "Aguardando" por "No ar" sem

@@ -2,6 +2,7 @@ const pool = require('../db/pool');
 const { saudeDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
 const { situacaoDosPontos } = require('../creditos/ponto');
 const { formatarCodigoTela } = require('../lib/codigo-tela');
+const { situacaoDosMoveis } = require('./movel');
 
 // "Meus pontos" (Fatia 2 do painel único, 23/09/2026): UMA entidade visual
 // por estabelecimento. Antes eram três lugares para a mesma coisa — "Meu
@@ -63,7 +64,7 @@ function telaPublica(t, horarioDoPonto, agora) {
 }
 
 async function meusPontosDaConta(contaId, agora = new Date()) {
-  const [pontos, telas, candidaturas] = await Promise.all([
+  const [pontos, telas, candidaturas, bases] = await Promise.all([
     pool.query(
       `SELECT p.id, p.candidatura_id, p.nome, p.endereco, p.logradouro, p.numero, p.complemento, p.bairro,
               p.cidade, p.uf, p.cep, p.status,
@@ -94,6 +95,16 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
         WHERE c.conta_id = $1 AND c.tipo = 'ponto' AND c.status IN ('nova', 'em_contato')
           AND NOT EXISTS (SELECT 1 FROM pontos p WHERE p.candidatura_id = c.id)
         ORDER BY c.criado_em`,
+      [contaId],
+    ),
+    // Ponto MÓVEL de que esta conta é a base (migration 112). Não é dela —
+    // é da Mostraí —, então vem à parte, só leitura: sem tela, sem
+    // benefício, sem editar endereço (a base quem define é o Admin).
+    pool.query(
+      `SELECT p.id, p.nome, p.status, p.base_nome, p.base_desde
+         FROM pontos p
+        WHERE p.base_conta_id = $1 AND p.tipo = 'movel' AND p.status <> 'arquivado'
+        ORDER BY p.base_desde`,
       [contaId],
     ),
   ]);
@@ -154,7 +165,23 @@ async function meusPontosDaConta(contaId, agora = new Date()) {
     telas: [],
   }));
 
-  return [...emAnalise, ...materializados];
+  const moveis = await situacaoDosMoveis(bases.rows.map((p) => p.id));
+  const comoBase = bases.rows.map((p) => {
+    const situacao = moveis.get(p.id);
+    return {
+      tipo: 'base_movel',
+      id: p.id,
+      nome: p.nome,
+      baseNome: p.base_nome,
+      estado: ESTADO_DO_PONTO[p.status] || 'inativo',
+      desde: p.base_desde,
+      localAtual: situacao?.localAtual || null,
+      proximoEvento: situacao?.proximoEvento || null,
+      telas: [],
+    };
+  });
+
+  return [...emAnalise, ...materializados, ...comoBase];
 }
 
 module.exports = { meusPontosDaConta, SITUACAO_DA_TELA, ESTADO_DO_PONTO };

@@ -123,7 +123,9 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
   const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
-      `SELECT p.id, p.horario_semanal, p.categoria_id, p.anunciante_id AS dono_id
+      // `casa_id`: a dona do ponto fixo ou a base do móvel — a mesma conta que
+      // a trava de ramo do gerador protege (gerador.js#casaDaTela).
+      `SELECT p.id, p.horario_semanal, p.categoria_id, COALESCE(p.anunciante_id, p.base_conta_id) AS casa_id
          FROM pontos p WHERE p.status = 'em_operacao' ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
@@ -144,7 +146,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
       proprios.has(p.id) ||
       (naFatia.has(p.id) &&
         (!concorrencia.bloqueia(p.categoria_id, conta.categoria_id, concorrentes) ||
-          (p.dono_id === conta.id && escolhidos.includes(p.id)))),
+          (p.casa_id === conta.id && escolhidos.includes(p.id)))),
   );
 }
 

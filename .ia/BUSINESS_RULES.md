@@ -198,6 +198,27 @@ cortesia, quando marcado):
   grava `categoria_id` no ponto (`docs/furos.md`, furo já catalogado) — na
   prática esse filtro nunca exclui ninguém hoje. Ver `.ia/RISKS.md`.
 
+## Ponto fixo × ponto móvel (RN-71, ADR-036, 02/10/2026)
+
+- `pontos.tipo`: `fixo` (padrão, todo ponto anterior à migration 112) ou
+  `movel`. O Admin escolhe na aprovação da candidatura
+  (`POST /admin/candidaturas/:id/liberar`, `tipo`) ou depois, na ficha.
+- Móvel é da Mostraí: `anunciante_id` NULL (CHECK no banco), base em
+  `base_conta_id`/`base_nome`/`base_desde` + o endereço do ponto. Sem dono,
+  fica fora de Básico, crédito mensal, cota de autoanúncio, cupom e papel
+  `ponto` — as consultas desses benefícios fazem JOIN por `anunciante_id`.
+- Local atual = evento em andamento, senão a base; próximo evento = o
+  programado de menor `data_inicio` que ainda não terminou
+  (`src/pontos/movel.js#situacaoDosMoveis`). Cancelado nunca é nenhum dos
+  dois. Início e fim são marcados pelo Admin, não pela data.
+- Trava de ramo: a casa da tela é a dona do fixo ou a base do móvel
+  (`gerador.js#casaDaTela`); a base que escolhe o móvel é isenta, como a
+  dona no fixo. Em evento, o horário em vigor é 24 h — uma expressão só
+  (`src/lib/horario-em-vigor.js`) para a config da TV, o gerador e o "no ar"
+  do anunciante.
+- POP: regra igual; a confirmação durante um evento grava
+  `execucoes_confirmadas.evento_id` (auditoria). Público estimado é só texto.
+
 ## Vendedor / comissão
 
 Comissão calculada sobre o **valor confirmado** de quem o vendedor indicou,
