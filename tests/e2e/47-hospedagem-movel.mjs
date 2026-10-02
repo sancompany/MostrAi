@@ -211,7 +211,7 @@ await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).screenshot({ path: `$
 // A tela operou 3 h desde que chegou.
 PG(`UPDATE pontos_moveis_hospedagens SET iniciada_em = now() - interval '4 hours' WHERE id = ${HOSP}`);
 const TELA = PG(`SELECT id FROM dispositivos WHERE ponto_id = ${PONTO} LIMIT 1`);
-PG(`INSERT INTO tela_operacao (dispositivo_id, origem, inicio, fim) VALUES (${TELA}, 'heartbeat', now() - interval '3 hours 30 minutes', now() - interval '30 minutes')`);
+PG(`INSERT INTO tela_operacao (dispositivo_id, ponto_id, origem, inicio, fim) SELECT id, ponto_id, 'heartbeat', now() - interval '3 hours 30 minutes', now() - interval '30 minutes' FROM dispositivos WHERE id = ${TELA}`);
 await recarregarQuieto(pTab);
 await pTab.waitForSelector('#modHospedagem:not([hidden])');
 let painel = await pTab.locator('#modHospedagem').innerText();
