@@ -416,8 +416,9 @@ somadas por UNIÃO no servidor (o mesmo minuto conta uma vez):
 - Segmento que chega DEPOIS de a hospedagem ser encerrada, comprovando
   operação DENTRO da janela dela, ainda soma: o servidor apura de novo em
   até 5 min (segmento com até 8 dias de atraso) e lança só a diferença do benefício, uma vez.
-  `ignorado` também para segmento exibido com a tela fora do ar no cadastro
-  (reparo/inativa) — vale o estado de quando foi exibido, não o de agora.
+  Segmento exibido inteiro com a tela fora do ar no cadastro (reparo/
+  inativa) responde `ok` sem contar (o aberto pode voltar maior e entrar
+  num trecho ativo); vale o estado de quando foi exibido, não o de agora.
 
 ---
 

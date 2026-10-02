@@ -866,7 +866,14 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       );
       for (const contaId of semPeca) {
         if (!podem.has(contaId) || dispositivo.anfitria_conta_id === contaId) continue;
-        let criativos = todos.find((a) => a.id === contaId)?.criativos;
+        // A peça da primeira geração: a do plano só se cabe na duração
+        // congelada (o saldo debita por ela); senão, a da regra do saldo.
+        const congeladaDur = Math.max(
+          ...congelada.base.filter((e) => Number(e.id) === contaId).map((e) => e.duracaoSegundos || 0),
+        );
+        let criativos = todos
+          .find((a) => a.id === contaId)
+          ?.criativos?.filter((c) => duracaoValida(c.duracaoSegundos) <= Math.ceil(congeladaDur));
         if (!criativos?.length) criativos = await hospedagem.pecasDoSaldo(contaId);
         if (criativos?.length) porId[contaId] = { criativos };
       }

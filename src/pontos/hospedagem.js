@@ -238,10 +238,9 @@ async function criar(pontoId, corpo, admin) {
       if (interesseId) {
         await c.query(
           `UPDATE hospedagem_interesses
-              SET status = 'agendada', conta_id = COALESCE(conta_id, $2), atualizado_em = now(),
-                  atualizado_por_admin = $3
+              SET status = 'agendada', atualizado_em = now(), atualizado_por_admin = $2
             WHERE id = $1`,
-          [interesseId, contaId, admin],
+          [interesseId, admin],
         );
       }
       return { id: Number(rows[0].id), contaId, percentual };
@@ -325,10 +324,38 @@ async function encerrar(pontoId, hospedagemId, admin) {
 // "em contato": o Admin pode agendar de novo com ele.
 async function devolverInteresse(c, h) {
   if (!h.interesse_id) return;
-  await c.query(
-    `UPDATE hospedagem_interesses SET status = 'em_contato', atualizado_em = now()
-      WHERE id = $1 AND status = 'agendada'`,
+  // Um interesse em aberto por conta (hospedagem-interesse.js#registrar):
+  // se a conta já mandou outro enquanto este estava agendado, este fecha.
+  const { rows } = await c.query(
+    `UPDATE hospedagem_interesses i
+        SET status = CASE WHEN i.conta_id IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM hospedagem_interesses o
+                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato'))
+                     THEN 'recusada' ELSE 'em_contato' END,
+            nota_interna = CASE WHEN i.conta_id IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM hospedagem_interesses o
+                        WHERE o.conta_id = i.conta_id AND o.id <> i.id AND o.status IN ('nova', 'em_contato'))
+                     THEN concat_ws(' · ', i.nota_interna, 'hospedagem cancelada; a conta já tem outro interesse aberto')
+                     ELSE i.nota_interna END,
+            atualizado_em = now()
+      WHERE i.id = $1 AND i.status = 'agendada'
+      RETURNING i.id, i.conta_id, i.empresa, i.status`,
     [h.interesse_id],
+  );
+  if (rows[0]?.status !== 'em_contato') return;
+  // A pendência do interesse volta a ficar aberta para o Admin.
+  await require('../pendencias/repository').abrir(
+    {
+      tipo: 'HOSPEDAGEM_INTERESSE',
+      chave: `HOSPEDAGEM_INTERESSE:${rows[0].id}`,
+      anuncianteId: rows[0].conta_id,
+      titulo: `${rows[0].empresa} quer hospedar um Ponto Móvel`,
+      mensagem: 'A hospedagem agendada foi cancelada — o interesse voltou para "em contato".',
+      ctaRotulo: 'Ver interesses',
+      ctaDestino: '#rede/moveis',
+      dados: { interesseId: Number(rows[0].id) },
+    },
+    c,
   );
 }
 
@@ -502,7 +529,7 @@ async function apurarTardias() {
       WHERE h.estado = 'encerrada' AND h.encerrada_em > now() - make_interval(days => $1)
         AND EXISTS (SELECT 1 FROM tela_operacao o
                      WHERE o.ponto_id = h.ponto_id AND o.origem = 'player'
-                       AND o.recebido_em > h.encerrada_em - interval '1 minute'
+                       AND o.recebido_em > h.encerrada_em - interval '7 minutes'
                        AND o.fim > h.iniciada_em AND o.inicio < h.encerrada_em)
      ORDER BY h.id`,
     [DIAS_DE_APURACAO_TARDIA],
@@ -817,7 +844,7 @@ async function hospedagensDoPonto(pontoId, db = pool) {
 
 // Aviso à conta anfitriã: as horas chegaram (ou a hospedagem acabou sem
 // tempo comprovado). Aviso nunca derruba o encerramento que já aconteceu.
-async function avisarBeneficio({ contaId, beneficioSegundos }) {
+async function avisarBeneficio({ contaId, beneficioSegundos, tempoSegundos = 0 }) {
   const notificacoes = require('../creditos/notificacoes');
   const sse = require('../lib/sse');
   await notificacoes.registrarSemFalhar(contaId, {
@@ -829,7 +856,9 @@ async function avisarBeneficio({ contaId, beneficioSegundos }) {
     descricao:
       beneficioSegundos > 0
         ? 'As horas já estão no seu saldo de hospedagem e valem na rede inteira.'
-        : 'A tela ainda não comprovou tempo de operação nesse período. Se ela exibiu sem internet, o tempo entra quando ela sincronizar.',
+        : tempoSegundos > 0
+          ? 'O tempo que a tela operou não chegou a gerar horas nesse percentual.'
+          : 'A tela ainda não comprovou tempo de operação nesse período. Se ela exibiu sem internet, o tempo entra quando ela sincronizar.',
     entidadeTipo: 'hospedagem',
     link: '/anunciante/painel.html#modHospedagem',
   });

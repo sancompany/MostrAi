@@ -1751,8 +1751,10 @@ da compensação/reposição e da devolução de atraso, antes da Mídia Mostra�
 de tela, sem nunca tirar entrega paga; a vaga reservada na primeira geração
 da hora toca a hora inteira. O anfitrião da hospedagem ATIVA não ganha
 veiculação gratuita no próprio móvel (a base que guarda o móvel não perde
-nada — a casa não é concorrente de si mesma na trava de ramo). Hospedagem
-cancelada devolve o interesse que a originou para "em contato".
+nada — a casa, base do móvel ou dona do fixo, não é concorrente de si
+mesma na trava de ramo). Hospedagem cancelada devolve o interesse que a
+originou para "em contato" (fecha como recusado se a conta já tem outro
+aberto).
 O saldo cai pelo que o Proof-of-Play confirma (atribuição por posição: a
 confirmação conta primeiro para o pago, por último para a hospedagem); o
 programado e não confirmado fica reservado até o prazo do POP offline e

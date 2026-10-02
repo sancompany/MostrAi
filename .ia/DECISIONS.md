@@ -1458,7 +1458,11 @@ data (só o Admin sabe se a tela chegou).
   por um caso de borda e ainda perderia o que chegasse depois dela).
 - `tela_operacao.ponto_id` (o ponto em que o tempo foi medido) e
   `dispositivo_id ON DELETE SET NULL`: tela trocada de ponto não leva o
-  tempo; tela excluída não o apaga. Só tela ATIVA no cadastro mede.
+  tempo; tela excluída não o apaga. Só tela ATIVA no cadastro mede — o
+  segmento offline pelo estado de QUANDO foi exibido (trilha
+  ADMIN_STATE_CHANGED, gravada na mesma transação da mudança), recortado no
+  primeiro trecho ativo (idempotência do reenvio); exibido inteiro em
+  reparo responde `ok` sem gravar.
 - Mídia Mostraí sai da T1 para a T3c — abaixo de recuperação (T2/T3) e do
   saldo de hospedagem (T3b), acima do institucional — ordem do dono (§31:
   pago > Básico > recuperação > hospedagem > própria). Os 20% da régua de
@@ -1467,4 +1471,7 @@ data (só o Admin sabe se a tela chegou).
   `docs/PENDENCIAS.md` T12).
 - A vaga de saldo reservada na primeira geração da hora toca a hora inteira
   (sem isso sumia nas gerações seguintes e a reserva ficava presa 7 dias).
-- Só o anfitrião da hospedagem ATIVA fica fora do próprio móvel; a base não.
+- Só o anfitrião da hospedagem ATIVA fica fora do próprio móvel; a casa
+  (base do móvel, dona do fixo) não é concorrente de si mesma no saldo.
+- Hospedagem cancelada devolve o interesse para "em contato" e reabre a
+  pendência (ou recusa, se a conta já tem outro aberto).

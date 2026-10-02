@@ -86,10 +86,18 @@ function lerSegmento(s, agora) {
 // não o de agora; e o exibido em reparo não conta mesmo que chegue depois
 // de reativada.
 async function trechosAtivos(tela) {
+  // Só o que importa para segmentos aceitos (até PASSADO_ACEITO): as
+  // mudanças da janela e a última antes dela (o estado em que a janela abre).
   const { rows } = await pool.query(
-    `SELECT detalhe->>'de' AS de, detalhe->>'para' AS para, ocorrido_em FROM tela_eventos
-      WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED' ORDER BY ocorrido_em, id`,
-    [tela.id],
+    `SELECT de, para, ocorrido_em FROM (
+       (SELECT id, detalhe->>'de' AS de, detalhe->>'para' AS para, ocorrido_em FROM tela_eventos
+         WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED' AND ocorrido_em < $2
+         ORDER BY ocorrido_em DESC, id DESC LIMIT 1)
+       UNION ALL
+       (SELECT id, detalhe->>'de', detalhe->>'para', ocorrido_em FROM tela_eventos
+         WHERE dispositivo_id = $1 AND tipo = 'ADMIN_STATE_CHANGED' AND ocorrido_em >= $2)
+     ) e ORDER BY ocorrido_em, id`,
+    [tela.id, new Date(Date.now() - PASSADO_ACEITO_MS - 60_000)],
   );
   const trechos = [];
   let estado = rows.length ? rows[0].de : tela.status;
@@ -104,9 +112,13 @@ async function trechosAtivos(tela) {
   return trechos;
 }
 
-// O pedaço do segmento dentro de um trecho ativo (o primeiro que ele toca —
-// mudança de estado no meio de um segmento de até 6 h é rara; o resto não
-// conta). null = nada ativo.
+// O pedaço do segmento dentro do PRIMEIRO trecho ativo que ele toca. Tem
+// que ser o primeiro: o segmento aberto chega de novo cada vez maior, e o
+// primeiro trecho que ele toca não muda (trechos novos só nascem depois de
+// agora) — com "o maior", a mesclagem LEAST/GREATEST do reenvio uniria dois
+// trechos por cima do período inativo (revisão, ciclo 2). limite: o que vem
+// depois de um reparo no meio de um mesmo segmento (até 6 h) não conta.
+// null = nada ativo.
 function recortar(s, trechos) {
   for (const [de, ate] of trechos) {
     const inicio = Math.max(s.inicio.getTime(), de);
@@ -120,12 +132,12 @@ function recortar(s, trechos) {
 
 // Resposta item a item (como o Proof-of-Play): `ok` (gravado ou já estava),
 // `item_invalido` (o Player descarta — tentar de novo não muda nada),
-// `ignorado` (tela de ponto fixo, ou o segmento caiu inteiro num período em
-// que a tela estava fora do ar no cadastro: nada a medir).
+// `ignorado` (tela de ponto fixo: nada a medir). Segmento exibido inteiro
+// com a tela fora do ar no cadastro responde `ok` sem gravar nada.
 // Segmento que chega depois do encerramento da hospedagem ainda soma — o
 // job de apuração tardia (src/pontos/hospedagem.js#apurarTardias) apura de
-// novo. limite: o ponto é o da tela AGORA (tela trocada de ponto antes de
-// sincronizar leva o offline junto); trocar de ponto exige deixá-la Inativa.
+// novo. O ponto é o da tela (a tela não muda de ponto: `ponto_id` não é
+// editável).
 async function registrarSegmentos(tela, lista, agora = new Date()) {
   const movel = tela.ponto_tipo === 'movel' && Boolean(tela.ponto_id);
   const trechos = movel ? await trechosAtivos(tela) : [];
@@ -140,9 +152,16 @@ async function registrarSegmentos(tela, lista, agora = new Date()) {
       resultados.push({ ...chave, status: 'item_invalido' });
       continue;
     }
-    const s = movel ? recortar(lido, trechos) : null;
-    if (!s) {
+    if (!movel) {
       resultados.push({ ...chave, status: 'ignorado' });
+      continue;
+    }
+    // Exibido inteiro com a tela fora do ar no cadastro: nada a gravar, mas
+    // `ok` (não `ignorado`): o segmento ainda aberto volta maior e pode
+    // entrar num trecho ativo se a tela for reativada (revisão, ciclo 2).
+    const s = recortar(lido, trechos);
+    if (!s) {
+      resultados.push({ ...chave, status: 'ok' });
       continue;
     }
     // O segmento aberto chega mais de uma vez, cada vez maior: estende,

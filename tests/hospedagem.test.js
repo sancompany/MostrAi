@@ -1038,8 +1038,8 @@ test('37c. vale o estado da tela QUANDO exibiu: offline de quando estava ativa s
   }).then((r) => r.json());
   assert.deepStrictEqual(
     r1.resultados.map((x) => x.status),
-    ['ok', 'ignorado', 'ok'],
-    'antes do reparo conta; durante não; o que atravessa é recortado',
+    ['ok', 'ok', 'ok'],
+    'durante o reparo responde ok (o aberto pode voltar maior), mas não grava',
   );
   const { rows } = await pool.query(`SELECT COUNT(*)::int n FROM tela_operacao WHERE dispositivo_id = $1`, [telaId]);
   assert.strictEqual(rows[0].n, 3, 'heartbeat em reparo não grava');

@@ -1507,7 +1507,7 @@ async function renderResumo(el) {
         ${painelPendenciasOperacionais(RESUMO, alertasHtml)}
         ${resumoPontosCompacto(rede)}
         <section class="panel" id="ocupacaoRedeSecao">
-          <div class="secao-topo"><h3>Ocupação da rede</h3><span class="secao-nota">teto comercial 80% · reserva Mostraí 20%</span></div>
+          <div class="secao-topo"><h3>Ocupação da rede</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>
           <div id="ocupacaoRede"><p class="carregando">Carregando...</p></div>
         </section>
       </div>
@@ -3619,12 +3619,13 @@ async function acaoNaHospedagem(ponto, h, acao, remontar) {
     encerrar: {
       titulo: `Encerrar a hospedagem em “${h.local}”?`,
       texto: `<p>Conta só o tempo real em que a tela operou até agora. O benefício (${percentualBR(h.percentual)} desse tempo) vai para o saldo de hospedagem de <b>${esc(h.conta.nome)}</b> uma única vez, e o ponto volta para a base.</p>
-        <p class="u-dim">Tempo comprovado até agora: <b>${horasDeMidia(h.tempoSegundos)}</b>. O que a tela contou sem internet só entra se tiver sido enviado antes do encerramento.</p>`,
+        <p class="u-dim">Tempo comprovado até agora: <b>${horasDeMidia(h.tempoSegundos)}</b>. O que a tela contou sem internet e mandar depois (segmento com até 8 dias de atraso) ainda soma — entra só a diferença.</p>`,
       botao: 'Encerrar hospedagem',
     },
     cancelar: {
       titulo: `Cancelar a hospedagem em “${h.local}”?`,
-      texto: '<p>Ela não aconteceu: nenhum benefício é gerado. Continua no histórico.</p>',
+      texto:
+        '<p>Ela não aconteceu: nenhum benefício é gerado. Continua no histórico. Se veio de um interesse, ele volta para “em contato”.</p>',
       botao: 'Cancelar hospedagem',
       perigo: true,
     },
@@ -4303,7 +4304,7 @@ async function renderPontoCapacidade(el, pontoId) {
   el.hidden = !c;
   if (!c) return;
   el.innerHTML = `
-    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · reserva Mostraí 20%</span></div>
+    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>
     <dl class="dados dados-2 capacidade-ponto" data-capacidade-ponto>
       <div><dt>Comercial</dt><dd><b data-cap="comercial">${pct(c.comercialPct)}</b> usado<span class="dado-sub" data-cap="comercial-livre">${pct(c.comercialRestantePct)} livre</span></dd></div>
       <div><dt>Reserva Mostraí</dt><dd><b data-cap="mostrai">${pct(c.mostraiPct)}</b> usado<span class="dado-sub" data-cap="mostrai-livre">${pct(c.reservaRestantePct)} livre${c.mostraiAcimaDaReservaPct > 0 ? ` · ${pct(c.mostraiAcimaDaReservaPct)} acima da reserva` : ''}</span></dd></div>
