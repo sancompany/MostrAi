@@ -47,7 +47,7 @@ const sanCheckout = require('../financeiro/san-checkout');
 const cicloContratado = require('../financeiro/ciclo-contratado');
 const bancohorasRepo = require('../bancohoras/repository');
 const { CRIATIVOS_POR_CONTA } = require('../lib/limites');
-const { saudeDaTela } = require('../lib/status-tela');
+const { situacaoComercialDoPonto } = require('../lib/status-tela');
 const { limiteDeCriativos } = require('../playlist/gerador');
 const outbox = require('../email/outbox');
 const codigosEmail = require('../email/codigos');
@@ -1727,10 +1727,10 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
 });
 
 // "A propaganda está passando ou a TV está desligada?" pela MESMA régua do
-// admin e do dono do ponto (src/lib/status-tela.js) — antes o painel tinha a
-// sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
-// mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
-// se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
+// admin e do dono do ponto (src/lib/status-tela.js, `situacaoComercialDoPonto`).
+// Por ponto: no ar se alguma tela opera (ou está sem comunicação — a TV segue
+// exibindo offline; conectividade não é operação, 02/10/2026); fora do
+// horário se nenhuma opera mas alguma está na folga; senão, fora do ar.
 // O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel em evento
 // exibe 24 h — src/lib/horario-em-vigor.js).
 // Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
@@ -1745,15 +1745,13 @@ async function comSituacaoNoAr(pontos) {
     [pontos.map((p) => p.id)],
   );
   const agora = new Date();
-  return pontos.map((p) => {
-    const saudes = telas.filter((t) => t.ponto_id === p.id).map((t) => saudeDaTela(t, t.ponto_horario_semanal, agora));
-    const situacao = saudes.includes('operando')
-      ? 'no_ar'
-      : saudes.includes('fora_do_horario')
-        ? 'fora_do_horario'
-        : 'fora_do_ar';
-    return { ...p, situacao };
-  });
+  return pontos.map((p) => ({
+    ...p,
+    situacao: situacaoComercialDoPonto(
+      telas.filter((t) => t.ponto_id === p.id),
+      agora,
+    ),
+  }));
 }
 
 router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res) => {
@@ -1769,12 +1767,11 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
       [anuncianteId],
     ),
     pool.query(
-      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-      // status mostrado é o da tela mais recentemente vista (19/09/2026,
-      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+      // Sem `ultima_vez_online` (02/10/2026): último heartbeat é estado
+      // técnico, não do anunciante — a situação comercial (`comSituacaoNoAr`)
+      // é tudo o que ele lê sobre a tela.
       `SELECT p.id, p.nome, p.cidade,
-              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
-              MAX(d.ultima_vez_online) AS ultima_vez_online
+              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
        JOIN pontos p ON p.id = d.ponto_id

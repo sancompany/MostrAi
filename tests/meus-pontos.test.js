@@ -112,11 +112,14 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
       estab.telas.map((t) => [t.nome, t.situacao, t.nivel]),
       [
         [codigo(0), 'operando', 'ok'],
-        [codigo(1), 'sem_sinal', 'atencao'],
+        [codigo(1), 'sem_comunicacao', 'neutro'],
       ],
     );
-    assert.equal(estab.alertas, 1);
-    assert.match(estab.telas[1].situacaoTexto, /sem comunicação/);
+    // Conectividade não é operação: sem comunicação não é alerta para o
+    // dono nem "fora do ar" — a tela pode estar exibindo offline.
+    assert.equal(estab.alertas, 0);
+    assert.match(estab.telas[1].situacaoTexto, /Sem comunicação com a Mostraí/);
+    assert.doesNotMatch(estab.telas[1].situacaoTexto, /fora do ar|desligad|parad|problema/i);
     const json = JSON.stringify(estab);
     // Toda tela segue o horário do ponto; PIN é global (fica no admin).
     assert.equal('operacao' in estab.telas[0], false);

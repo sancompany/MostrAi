@@ -18,9 +18,9 @@ const filaEntrada = require('../anunciantes/fila-entrada');
 // Sem ciclo: o repositório de mídias só requer pool, capacidade e fuso-comercial.
 const midiasRepo = require('../midias/repository');
 
-// "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
-// 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
-// horário do ponto, não só o relógio.
+// "Sem comunicação" tem régua única em src/lib/status-tela.js
+// (TOLERANCIA_SEM_SINAL_MS, 2 min com heartbeat de 15 s —
+// docs/player-mvp-contract.md §9), e é conectividade, não operação.
 // Amortização e custos fixos saem do banco (migration 019) — antes era uma
 // constante igual pra todo ponto, ver docs/erros/2026-09-amortizacao-constante-no-codigo.md
 
@@ -236,7 +236,7 @@ router.get('/admin/resumo', async (_req, res) => {
     filas,
     pontosPorStatus,
     anunciantesPorSituacao,
-    telasComProblemaDeSinal,
+    telasQuePedemAtencao,
     faturamento,
     exibicoes,
     novos,
@@ -349,9 +349,9 @@ router.get('/admin/resumo', async (_req, res) => {
                   plano_cortesia, COUNT(*)::int AS qtd
                 FROM anunciantes WHERE excluido_em IS NULL
                 GROUP BY situacao, plano_cortesia`),
-    // Só telas em sem_sinal/erro_do_player (src/lib/status-tela.js) — nunca
-    // fora_do_horario nem aguardando_instalacao, que não são falha.
-    dispositivosRepo.listarComProblemaDeSinal(),
+    // Só telas em erro_do_player/sem_comunicacao (src/lib/status-tela.js) —
+    // nunca fora_do_horario nem aguardando_instalacao, que não são falha.
+    dispositivosRepo.listarQuePedemAtencao(),
     pool.query(
       `SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM') AS mes, SUM(valor)::numeric AS total
        FROM cobrancas_confirmadas
@@ -439,7 +439,11 @@ router.get('/admin/resumo', async (_req, res) => {
       // prazo legal correndo — o alerta de urgência olha só pra ela.
       arrependimentos: Number(filas.rows[0].arrependimentos),
       contato: Number(filas.rows[0].contato),
-      offline: telasComProblemaDeSinal.length,
+      // Conectividade não é operação (02/10/2026): erro relatado pelo Player
+      // é urgente; sem comunicação é acompanhamento — a TV pode estar
+      // exibindo offline.
+      telasComErro: telasQuePedemAtencao.filter((t) => t.saude === 'erro_do_player').length,
+      telasSemComunicacao: telasQuePedemAtencao.filter((t) => t.saude === 'sem_comunicacao').length,
       bancohoras: Number(filas.rows[0].bancohoras),
       pontosocupados: Number(filas.rows[0].pontosocupados),
       enderecosaconferir: Number(filas.rows[0].enderecosaconferir),

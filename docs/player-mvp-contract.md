@@ -14,7 +14,7 @@ PROVISIONAR → RECEBER PLAYLIST → REPRODUZIR → CACHEAR → FUNCIONAR OFFLIN
             → CONFIRMAR PROOF-OF-PLAY → ENVIAR HEARTBEAT → RECEBER CONFIG MÍNIMA
 ```
 
-Rotas (5):
+Rotas (6 — a sexta, de sessões operacionais, entrou em 02/10/2026):
 
 | Método | Caminho | Auth |
 |---|---|---|
@@ -23,6 +23,7 @@ Rotas (5):
 | POST | `/player/:dispositivoId/played` | chave do aparelho |
 | POST | `/player/:dispositivoId/heartbeat` | chave do aparelho |
 | GET | `/player/:dispositivoId/config` | chave do aparelho |
+| POST | `/player/:dispositivoId/operacao` | chave do aparelho (§8.1) |
 
 Tudo é JSON UTF-8 (`Content-Type: application/json`). Corpo maior que 100 KB
 responde 413.
@@ -244,7 +245,8 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
 - PIN correto → saída autorizada: o watchdog local **não** reabre o app. Ao
   abrir o app de novo (manual ou boot), a operação normal e o watchdog
   voltam. O backend não é avisado da saída: 2 minutos depois a tela aparece
-  como "Sem sinal" no admin, que é o fato.
+  como "Sem comunicação" no admin, que é o fato (§9) — e a sessão
+  operacional dela chega fechada com `motivo: "saida_pin"` (§8.1).
 
 ---
 
@@ -290,7 +292,17 @@ A playlist é **da hora cheia** do servidor e fica congelada durante a hora
 
 - A lista quase nunca vem vazia: tempo não vendido vira vídeo institucional.
 - Falha de rede ou 5xx → o Player continua a **última playlist válida** e o
-  cache. Na virada da hora sem rede, continua a última que tinha.
+  cache **enquanto a janela dela vale** (`janelaFim`; sem ele,
+  `janelaInicio` + 1 h), medida por relógio confiável (âncora do servidor;
+  sem âncora, o relógio da TV só se não estiver atrás do último instante
+  que o servidor já mostrou).
+- ~~Na virada da hora sem rede, continua a última que tinha.~~ **SUPERADA
+  (02/10/2026, Ponto Móvel):** offline não autoriza o Player a inventar
+  veiculação. Passada a janela, o comercial **para** — o Player nunca repete
+  a última playlist para sempre nem gera comprovante fora da janela — e
+  exibe só o institucional da Mostraí que já tinha guardado (`contabiliza:
+  false`, nunca reduz obrigação de anunciante); sem institucional
+  guardado, o cartão local.
 - 401 → reinstalação; 403 → ver §4.
 
 ---
@@ -380,20 +392,88 @@ resto é processado.
 
 ---
 
+## 8.1 Sessões operacionais — `POST /player/:dispositivoId/operacao`
+
+(02/10/2026, Ponto Móvel — "conectividade não é operação".) Heartbeat diz
+se o servidor fala com a tela **agora**; não diz se ela operou. Uma tela
+móvel fica dias sem internet exibindo a programação guardada. Cada sessão é
+um **fato** medido pela TV: de quando o ciclo de exibição começou até quando
+parou (ou o último checkpoint, se continua aberta), com duração pelo relógio
+**monotônico** (uptime). O Player manda a sessão aberta a cada 15 min e a
+fechada assim que houver rede; guarda tudo até a confirmação.
+
+```json
+{
+  "sessoes": [
+    {
+      "sessaoId": "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+      "bootCount": 8,
+      "inicioUptimeMs": 30000,
+      "fimUptimeMs": 18030000,
+      "duracaoMs": 18000000,
+      "inicioEm": "2026-10-02T08:00:00.000Z",
+      "fimEm": "2026-10-02T13:00:00.000Z",
+      "inicioServidorEm": "2026-10-02T08:00:01.200Z",
+      "fimServidorEm": "2026-10-02T13:00:01.200Z",
+      "encerrada": true,
+      "motivo": "parou"
+    }
+  ]
+}
+```
+
+| Campo | Significado |
+|---|---|
+| `sessaoId` | id único da sessão (`[A-Za-z0-9._:-]{1,100}`), chave de idempotência por tela |
+| `bootCount` | contador de boots do Android; outro boot nunca estende a sessão |
+| `inicioUptimeMs` / `fimUptimeMs` / `duracaoMs` | relógio monotônico; `duracaoMs = fim − início` (folga de 1 s) |
+| `inicioEm` / `fimEm` | relógio de parede da TV (informativo — sem RTC volta errado do reboot) |
+| `inicioServidorEm` / `fimServidorEm` | relógio do servidor projetado pela TV (âncora + monotônico); `null` sem contato naquele boot |
+| `encerrada` / `motivo` | `parou`, `saida_pin`, `sem_credencial`, `interrompida` (reboot ou queda sem fechar) |
+
+Resposta 200: `{"resultados": [{"sessaoId": "…", "status": "registrada" | "invalida"}]}`.
+`registrada` = gravada, estendida ou já conhecida (reenvio idempotente);
+`invalida` = nunca vai ser aceita (formato, duração incoerente). As duas
+encerram o reenvio. 400 só para o lote malformado (`sessoes` ausente, não
+lista, mais de 100); 401/403 como §4 (não exige tela Ativa — é fato do que a
+tela fez). O servidor **só estende**: duração nunca diminui, sessão
+encerrada não reabre, outro boot não sobrescreve (migration 113).
+
+Nada daqui vira cobrança, saldo, obrigação ou benefício: é evidência
+técnica para o Admin ("última operação conhecida", "operou X h sem
+comunicação, recebido depois"). Um Player antigo que receba 404 aqui guarda
+as sessões e segue funcionando.
+
+---
+
 ## 9. Estados da tela no admin
 
-Derivados no servidor (o Player reporta fatos, o servidor classifica):
+Derivados no servidor (o Player reporta fatos, o servidor classifica —
+`src/lib/status-tela.js`). Desde 02/10/2026 em **eixos separados**:
 
-| Estado | Regra |
+| Eixo | Valores | Quem decide |
+|---|---|---|
+| Administrativo | Ativa / Em reparo / Inativa | o operador; **nunca** muda por heartbeat |
+| Instalação | instalada / aguardando instalação | credencial do Player |
+| Conectividade | `conectada` / `sem_comunicacao` | heartbeat nos últimos 2 min |
+| Operação | `operando` / `fora_do_horario` / `erro` / `desconhecida` | horário do ponto + o que o Player reportou |
+
+**Heartbeat vencido é `sem_comunicacao` + operação `desconhecida`** — nunca
+desligada, fora do ar, erro nem inativa: a TV pode estar exibindo offline, e
+as sessões operacionais (§8.1) contam depois o que ela fez. Também nunca
+muda `pontos.status` (`sincronizarStatusPonto` só olha `primeiro_sinal_em`).
+
+Resumo de uma palavra (`saude`), na ordem: em reparo / inativa →
+aguardando instalação → fora do horário → erro do Player (sinal recente com
+`erro` ou estado de erro) → sem comunicação → operando.
+
+O que cada perfil vê:
+
+| Perfil | Vê |
 |---|---|
-| Aguardando instalação | tela sem Player provisionado (nunca instalada, ou revogada) |
-| Operando | sinal nos últimos 2 min, sem erro |
-| Fora do horário | o horário do ponto diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
-| Sem sinal | deveria operar e o último sinal passou de 2 min |
-| Erro do Player | sinal recente com `erro` ou estado de erro |
-
-Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,
-**Inativa**.
+| Anunciante | só a situação comercial do ponto: `no_ar` (alguma tela ativa e instalada operando **ou sem comunicação**), `fora_do_horario`, `fora_do_ar` (reparo, inativa, sem instalação ou erro relatado). Nenhum dado técnico — nem último sinal |
+| Dono do ponto | "Sem comunicação com a Mostraí. A tela pode continuar exibindo a programação normalmente." — neutro, sem alerta; erro relatado pelo Player continua alerta |
+| Admin | conectividade e operação separadas, último sinal, última operação conhecida, operação sincronizada depois, erros reais, alertas (`SEM_COMUNICACAO` é atenção; `ERRO_PLAYER` é alerta) |
 
 ---
 
@@ -403,4 +483,9 @@ Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,
 - última playlist válida + âncora de relógio;
 - mídias em cache (por `contentHash`);
 - última config (margens, operação, `pinSaida`) e a `configVersion` aplicada;
-- fila durável de proof-of-play (até 7 dias).
+- fila durável de proof-of-play — **até a confirmação** do servidor, nunca
+  apagada só por idade (o servidor recusa o que passou de 7 dias da janela
+  com status final, e aí sai);
+- sessões operacionais (§8.1), até a confirmação;
+- o institucional da Mostraí da última playlist (fallback quando a janela
+  comercial vence offline).

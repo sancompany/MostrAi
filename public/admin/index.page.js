@@ -1234,19 +1234,27 @@ verificarSessao();
 //   desta mesma Visão geral — `rolar` desce até ela em vez de navegar pra
 //   Rede/Pontos, onde o botão Liberar não existe.
 const ALERTAS = [
-  // "offline" só conta sem_sinal/erro_do_player (src/lib/status-tela.js) —
-  // tela fora do horário de funcionamento ou nunca instalada não é falha e
-  // não entra aqui (revisão final da Visão geral, 23/09/2026).
+  // Conectividade não é operação (02/10/2026, src/lib/status-tela.js): erro
+  // relatado pelo Player é urgente; sem comunicação é acompanhamento — a TV
+  // pode estar exibindo offline, e a operação de agora é desconhecida, não
+  // parada. Fora do horário ou nunca instalada não é falha e não entra.
   {
-    fila: 'offline',
+    fila: 'telasSemComunicacao',
+    aba: 'pontos',
+    filtroPontos: 'semcomunicacao',
+    acao: 'Ver pontos',
+    texto: (n) =>
+      n === 1
+        ? '<b>1 tela</b> sem comunicação com a Mostraí — pode estar exibindo offline'
+        : `<b>${n} telas</b> sem comunicação com a Mostraí — podem estar exibindo offline`,
+  },
+  {
+    fila: 'telasComErro',
     aba: 'pontos',
     // Abre a grade já filtrada em "Com problema" (o mesmo chip da lista).
     filtroPontos: 'problema',
     acao: 'Ver pontos',
-    texto: (n) =>
-      n === 1
-        ? '<b>1 tela</b> deveria estar operando e não está'
-        : `<b>${n} telas</b> deveriam estar operando e não estão`,
+    texto: (n) => (n === 1 ? '<b>1 tela</b> relatou um erro do Player' : `<b>${n} telas</b> relataram erro do Player`),
     urgente: true,
   },
   {
@@ -2955,7 +2963,7 @@ const SAUDE_TELA = {
   operando: { rotulo: 'Operando', classe: 'badge-ok' },
   fora_do_horario: { rotulo: 'Fora do horário', classe: 'badge-neutro' },
   aguardando_instalacao: { rotulo: 'Aguardando instalação', classe: 'badge-pendente' },
-  sem_sinal: { rotulo: 'Sem sinal', classe: 'badge-err' },
+  sem_comunicacao: { rotulo: 'Sem comunicação', classe: 'badge-pendente' },
   erro_do_player: { rotulo: 'Erro do Player', classe: 'badge-err' },
   em_reparo: { rotulo: 'Em reparo', classe: 'badge-info' },
   inativa: { rotulo: 'Inativa', classe: 'badge-neutro' },
@@ -2963,7 +2971,7 @@ const SAUDE_TELA = {
 // Ordem em que a saúde aparece no resumo do card do ponto.
 const ORDEM_SAUDE = [
   'operando',
-  'sem_sinal',
+  'sem_comunicacao',
   'erro_do_player',
   'fora_do_horario',
   'aguardando_instalacao',
@@ -2972,7 +2980,7 @@ const ORDEM_SAUDE = [
 ];
 const SAUDE_NO_RESUMO = {
   operando: 'operando',
-  sem_sinal: 'sem sinal',
+  sem_comunicacao: 'sem comunicação',
   erro_do_player: 'com erro',
   fora_do_horario: 'fora do horário',
   aguardando_instalacao: 'aguardando instalação',
@@ -2980,7 +2988,7 @@ const SAUDE_NO_RESUMO = {
   inativa: 'inativa',
 };
 const TEXTO_ALERTA = {
-  SEM_SINAL: 'Deveria operar e está sem sinal',
+  SEM_COMUNICACAO: 'Sem comunicação — operação desconhecida',
   ERRO_PLAYER: 'O Player relatou um erro',
   INSTALACAO_ATRASADA: 'Aguardando instalação há mais de 7 dias',
   FILA_CRITICA: 'Comprovantes acumulados na TV',
@@ -3025,12 +3033,13 @@ function sinalDesde(v) {
   return tempoDesde(v);
 }
 
-// Selo + uma frase: "Operando · último sinal agora", "Sem sinal · há 18 min",
-// "Aguardando instalação". Estado administrativo (reparo/inativa) vence a saúde.
+// Selo + uma frase: "Operando · último sinal agora", "Sem comunicação · há
+// 18 min", "Aguardando instalação". Estado administrativo (reparo/inativa)
+// vence a saúde.
 function situacaoDaTela(t) {
   const selo = SAUDE_TELA[t.saude] || SAUDE_TELA.operando;
   if (!t.ultimoSinalEm || t.saude === 'aguardando_instalacao') return { selo, texto: '' };
-  if (t.saude === 'sem_sinal') return { selo, texto: sinalDesde(t.ultimoSinalEm) };
+  if (t.saude === 'sem_comunicacao') return { selo, texto: sinalDesde(t.ultimoSinalEm) };
   return { selo, texto: `último sinal ${sinalDesde(t.ultimoSinalEm)}` };
 }
 
@@ -3038,7 +3047,7 @@ function situacaoDaTela(t) {
 // Canal do admin (GET /admin/eventos): hello, heartbeat, erro, config
 // aplicada e qualquer mudança feita por outra aba/admin chegam como
 // "screen.updated"/"point.updated" — a vista aberta refaz o GET dela. Um
-// timer de 60 s cobre o que muda só com o relógio ("Sem sinal" depois de
+// timer de 60 s cobre o que muda só com o relógio ("Sem comunicação" depois de
 // 15 min de silêncio). Nunca location.reload().
 let VISTA_REDE = null; // { hash, recarregar }
 let eventosAdmin = null;
@@ -3170,7 +3179,7 @@ function cardEntidade({ href, filtro = '', foto, nome, badge: selo, meta, rodape
   </a>`;
 }
 
-// "2 telas · 1 operando · 1 sem sinal" — a contagem por saúde vem da saúde
+// "2 telas · 1 operando · 1 sem comunicação" — a contagem por saúde vem da saúde
 // que o backend já calculou em cada tela.
 function resumoDasTelas(telas) {
   if (!telas.length) return 'Nenhuma tela ainda';
@@ -3183,13 +3192,14 @@ function resumoDasTelas(telas) {
 function montarPontoCard(p, telas) {
   const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
   const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
+  const semComunicacao = telas.some((t) => t.saude === 'sem_comunicacao');
   // Ponto móvel (migration 112): no lugar do endereço, base e onde está agora.
   const local = p.movel
     ? `Base: ${esc(p.movel.base.nome)}${p.movel.localAtual.origem === 'evento' ? `<br>Agora em: ${esc(p.movel.localAtual.nome)}` : ''}`
     : `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}`;
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
-    filtro: `${p.status}${problema ? ' problema' : ''}${p.movel ? ' movel' : ''}`,
+    filtro: `${p.status}${problema ? ' problema' : ''}${semComunicacao ? ' semcomunicacao' : ''}${p.movel ? ' movel' : ''}`,
     foto: fotoOuPlaceholder(p.foto_instalacao_url, p.nome),
     nome: esc(p.nome),
     badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>${p.movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
@@ -3302,6 +3312,7 @@ async function renderPontosGrade(el) {
             chips: [
               { valor: '', nome: 'Todos' },
               { valor: 'problema', nome: 'Com problema' },
+              { valor: 'semcomunicacao', nome: 'Sem comunicação' },
               ...Object.entries(PONTO_STATUS).map(([v, n]) => ({ valor: v, nome: n })),
             ],
             html: pontos.map((p) => montarPontoCard(p, telasPorPonto.get(p.id) || [])).join(''),
@@ -4060,7 +4071,7 @@ async function renderTelaFicha(el, pontoId, telaId) {
             <p class="tela-card-selos">
               ${t.status === 'ativo' ? badge(selo) : `<span class="badge ${TELA_STATUS_CLASSE[t.status]}">${TELA_STATUS[t.status]}</span>`}
               ${t.alertas
-                .filter((a) => a.codigo !== 'SEM_SINAL' && a.codigo !== 'ERRO_PLAYER')
+                .filter((a) => a.codigo !== 'SEM_COMUNICACAO' && a.codigo !== 'ERRO_PLAYER')
                 .map(
                   (a) =>
                     `<span class="badge ${a.nivel === 'alerta' ? 'badge-err' : 'badge-pendente'}">${esc(TEXTO_ALERTA[a.codigo] || a.codigo)}</span>`,
@@ -4088,6 +4099,32 @@ async function renderTelaFicha(el, pontoId, telaId) {
   definirVistaRede(montar);
 }
 
+// Conectividade e operação em linhas separadas: "sem comunicação" nunca vira
+// "desligada" (src/lib/status-tela.js).
+const ROTULO_CONECTIVIDADE = { conectada: 'Conectada', sem_comunicacao: 'Sem comunicação' };
+const ROTULO_OPERACAO = {
+  operando: 'Operando',
+  fora_do_horario: 'Fora do horário',
+  erro: 'Erro relatado pelo Player',
+  desconhecida: 'Desconhecida (sem comunicação)',
+};
+
+function operacaoConhecida(o) {
+  if (!o?.ultimaEm) return naoInformado('Nenhuma sessão recebida ainda');
+  const agora = o.emAndamento ? ' · em andamento' : '';
+  const depois = o.sincronizadaDepoisMs7d
+    ? `<span class="dado-sub">${esc(duracaoCurta(o.sincronizadaDepoisMs7d))} operadas sem comunicação nos últimos 7 dias, recebidas depois</span>`
+    : '';
+  return `${esc(sinalDesde(o.ultimaEm))}${agora}<span class="dado-sub">${esc(dataHora(o.ultimaEm))}</span>${depois}`;
+}
+
+function duracaoCurta(ms) {
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
+}
+
 function blocoResumo(t, texto) {
   const conectado = t.instalacao.estado === 'conectado';
   return `<section class="panel ficha-bloco">
@@ -4096,8 +4133,15 @@ function blocoResumo(t, texto) {
       ${linhaDado('Último sinal', conectado && t.ultimoSinalEm ? `${esc(sinalDesde(t.ultimoSinalEm))}<span class="dado-sub">${esc(dataHora(t.ultimoSinalEm))}</span>` : naoInformado(conectado ? 'Nenhum ainda' : 'Sem Player instalado'))}
       ${linhaDado('Player', t.player?.versao ? esc(t.player.versao) : naoInformado(conectado ? 'Versão não informada' : '—'))}
       ${linhaDado('Mídia atual', t.midiaAtual ? esc(t.midiaAtual) : naoInformado(conectado ? 'Nenhum anúncio no ar' : '—'))}
+      ${conectado ? linhaDado('Comunicação', esc(ROTULO_CONECTIVIDADE[t.conectividade] || '—')) : ''}
+      ${conectado ? linhaDado('Operação', esc(ROTULO_OPERACAO[t.operacao] || '—'), 'o que a tela está fazendo agora') : ''}
+      ${conectado ? linhaDado('Última operação conhecida', operacaoConhecida(t.operacaoConhecida)) : ''}
     </dl>
-    ${texto && t.saude === 'sem_sinal' ? `<p class="u-dim u-fs-85 u-mb-0">Sem sinal ${esc(texto)}.</p>` : ''}
+    ${
+      texto && t.saude === 'sem_comunicacao'
+        ? `<p class="u-dim u-fs-85 u-mb-0">Sem comunicação ${esc(texto)}. Isso não quer dizer que a tela parou: ela pode estar exibindo a programação guardada, e o que operou chega quando reconectar.</p>`
+        : ''
+    }
   </section>`;
 }
 

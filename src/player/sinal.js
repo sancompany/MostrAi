@@ -74,6 +74,8 @@ function lerHeartbeat(corpo) {
 // ---------------------------------------------------------------------------
 // Transições de vida: primeiro sinal e volta depois de sumir. Devolve os
 // eventos a gravar.
+// OFFLINE/ONLINE são transições de COMUNICAÇÃO (só o Admin vê), não de
+// operação: a TV pode ter exibido a programação o tempo todo.
 function transicoesDeVida(antes, agora) {
   const eventos = [];
   if (!antes.primeiro_sinal_em) eventos.push(['FIRST_SEEN', null]);
