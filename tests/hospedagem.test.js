@@ -109,6 +109,7 @@ test.after(async () => {
     await pool.query('DELETE FROM anunciantes_pontos WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM pontos_enderecos_historico WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM pendencias WHERE ponto_id = $1', [id]);
+    await pool.query('DELETE FROM tela_operacao WHERE ponto_id = $1', [id]);
     await pool.query('DELETE FROM pontos WHERE id = $1', [id]);
   }
   for (const id of criadas.contas) {
@@ -771,7 +772,10 @@ test('29. ajuste do Admin: + ou −, com motivo e autor; nunca deixa o saldo neg
   assert.strictEqual((await aj({ minutos: 1.5, motivo: 'x' })).status, 400);
   assert.strictEqual((await aj({ minutos: -10, motivo: 'tirar' })).status, 400, 'saldo zero não fica negativo');
   assert.strictEqual((await aj({ minutos: 60, motivo: 'compensação de falha da tela' })).status, 201);
-  assert.strictEqual((await aj({ minutos: -15, motivo: 'correção' })).status, 201);
+  assert.strictEqual((await aj({ minutos: -15, motivo: 'correção', chave: 'modal-0001' })).status, 201);
+  // Retry com a mesma chave: grava uma vez; outro valor na mesma chave: 409.
+  assert.strictEqual((await aj({ minutos: -15, motivo: 'correção', chave: 'modal-0001' })).status, 201);
+  assert.strictEqual((await aj({ minutos: -20, motivo: 'correção', chave: 'modal-0001' })).status, 409);
   const d = (await admin('GET', `/admin/anunciantes/${conta.id}/saldo-hospedagem`)).json;
   assert.strictEqual(d.saldo.disponivelSegundos, 45 * 60);
   assert.strictEqual(d.extrato.length, 2);
@@ -1020,6 +1024,12 @@ test('37c. tela fora do ar no cadastro não mede tempo; excluir a tela não apag
   assert.strictEqual(seg.resultados[0].status, 'ignorado', 'tela em reparo não mede');
   const { rows } = await pool.query(`SELECT COUNT(*)::int n FROM tela_operacao WHERE dispositivo_id = $1`, [telaId]);
   assert.strictEqual(rows[0].n, 1, 'só o intervalo de quando estava ativa');
+  // Sem FK em ponto_id: o heartbeat (trava a tela) nunca trava o ponto, que
+  // as ações do Admin travam antes das telas — ordem oposta = deadlock.
+  const { rows: fks } = await pool.query(
+    `SELECT 1 FROM pg_constraint WHERE conrelid = 'tela_operacao'::regclass AND contype = 'f' AND confrelid = 'pontos'::regclass`,
+  );
+  assert.strictEqual(fks.length, 0);
   // A tela quebrou e foi excluída: o tempo dela fica com o ponto.
   await pool.query('DELETE FROM dispositivos WHERE id = $1', [telaId]);
   const r = await acao(m.id, hid, 'encerrar');

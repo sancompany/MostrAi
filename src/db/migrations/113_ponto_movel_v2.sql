@@ -173,7 +173,7 @@ ALTER TABLE pontos_moveis_hospedagens ENABLE ROW LEVEL SECURITY;
 -- exceção, a APURAÇÃO TARDIA: o Player que exibiu sem internet manda os
 -- segmentos quando volta — às vezes depois do encerramento. A janela
 -- (iniciada_em → encerrada_em) não muda; só o tempo comprovado DENTRO dela
--- pode crescer, e o benefício junto (src/pontos/hospedagem.js#apurarDeNovo).
+-- pode crescer, e o benefício junto (src/pontos/hospedagem.js#apurarTardias).
 -- Nunca diminui, e nada mais na linha muda.
 CREATE OR REPLACE FUNCTION hospedagem_final_imutavel() RETURNS trigger AS $$
 DECLARE
@@ -262,11 +262,14 @@ CREATE TRIGGER movel_agenda_eventos BEFORE INSERT OR UPDATE OF estado, data_inic
 -- `ponto_id`: o ponto em que a tela estava quando o intervalo foi gravado — é
 -- por ele que a hospedagem soma (tela trocada de ponto não leva o tempo
 -- junto). Excluir a tela não apaga o tempo que ela já comprovou (SET NULL);
--- excluir o ponto apaga (só é possível sem hospedagem — pontos/repository.js).
+-- excluir o ponto apaga (só é possível sem hospedagem — pontos/repository.js
+-- apaga as linhas). SEM chave estrangeira de propósito: o heartbeat trava a
+-- tela e grava aqui, e a FK travaria o ponto (FOR KEY SHARE) na ordem
+-- contrária à das ações do Admin (ponto → telas) — deadlock (revisão, ciclo 2).
 CREATE TABLE tela_operacao (
   id bigserial PRIMARY KEY,
   dispositivo_id integer REFERENCES dispositivos(id) ON DELETE SET NULL,
-  ponto_id integer NOT NULL REFERENCES pontos(id) ON DELETE CASCADE,
+  ponto_id integer NOT NULL,
   origem text NOT NULL CHECK (origem IN ('heartbeat', 'player')),
   inicio timestamptz NOT NULL,
   fim timestamptz NOT NULL,
@@ -307,6 +310,7 @@ CREATE TABLE saldo_hospedagem_lancamentos (
       OR (tipo = 'ajuste' AND segundos <> 0 AND motivo IS NOT NULL AND admin IS NOT NULL))
 );
 CREATE INDEX ix_saldo_hospedagem_conta ON saldo_hospedagem_lancamentos (conta_id, criado_em);
+CREATE INDEX ix_saldo_hospedagem_hospedagem ON saldo_hospedagem_lancamentos (hospedagem_id) WHERE hospedagem_id IS NOT NULL;
 ALTER TABLE saldo_hospedagem_lancamentos ENABLE ROW LEVEL SECURITY;
 
 -- A parte da hora programada pela camada de hospedagem (como vezes_banco

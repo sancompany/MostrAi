@@ -49,7 +49,7 @@ const upload = multer({
 // O temporário do multer some quando a resposta sai — inclusive quando a
 // rota recusa antes de olhar o arquivo (id inválido).
 const apagarTemporario = (req, res, next) => {
-  res.on('finish', () => req.file && fs.unlink(req.file.path, () => {}));
+  res.on('close', () => req.file && fs.unlink(req.file.path, () => {}));
   next();
 };
 

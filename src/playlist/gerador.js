@@ -846,10 +846,13 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // não aparece em `saldosParaProgramar` (a própria reserva desta hora
   // ocupou o que havia), e sem a peça aqui a vaga sumia da playlist com a
   // reserva presa até o prazo do Proof-of-Play (revisão, ciclo 2).
+  // Só a entrada que é SÓ de saldo: uma vaga paga cujo plano caiu no meio da
+  // hora não volta a tocar com a peça do saldo. A peça é a mesma da primeira
+  // geração (a do plano, se a conta tem plano fora da cobertura daqui; senão
+  // a da regra do saldo) — a duração congelada é a que o saldo debita.
+  const soDeSaldo = (e) => e.hospedagem > 0 && !e.frequenciaBase && !e.compensacao && !e.deficit && !e.banco;
   if (aberta) {
-    const semPeca = [
-      ...new Set(congelada.base.filter((e) => e.hospedagem > 0 && !porId[e.id]).map((e) => Number(e.id))),
-    ];
+    const semPeca = [...new Set(congelada.base.filter((e) => soDeSaldo(e) && !porId[e.id]).map((e) => Number(e.id)))];
     if (semPeca.length) {
       const podem = await contasDaHospedagemNaTela(
         dispositivo.categoria_id,
@@ -860,7 +863,8 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       );
       for (const contaId of semPeca) {
         if (!podem.has(contaId) || dispositivo.anfitria_conta_id === contaId) continue;
-        const criativos = await hospedagem.pecasDoSaldo(contaId);
+        let criativos = todos.find((a) => a.id === contaId)?.criativos;
+        if (!criativos?.length) criativos = await hospedagem.pecasDoSaldo(contaId);
         if (criativos?.length) porId[contaId] = { criativos };
       }
     }
@@ -928,6 +932,14 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // hora seguinte (`sequenciaAdicional` não abre vaga de saldo), e um
   // extra pago nunca é reclassificado como gratuito.
   const daHospedagem = { ...daHora.hospedagemProgramados };
+  // Vaga só de saldo que não toca mais (trava de ramo mudou, virou anfitrião
+  // no meio da hora): não fica programada nem reservada.
+  for (const e of congelada.base) {
+    if (!soDeSaldo(e) || porId[e.id] || !daHospedagem[e.id]) continue;
+    contagem[e.id] = (contagem[e.id] || 0) - daHospedagem[e.id];
+    if (contagem[e.id] <= 0) delete contagem[e.id];
+    delete daHospedagem[e.id];
+  }
   if (aberta) {
     // Obrigação de cada conta nesta tela nesta hora: a da base congelada (a
     // primeira geração da hora fixa o número); quem chegou depois (`extras`)

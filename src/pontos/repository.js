@@ -512,6 +512,9 @@ async function deletar(id) {
     ]);
     // tokens_provisionamento e tela_eventos saem com a tela (ON DELETE CASCADE).
     await client.query('DELETE FROM dispositivos WHERE ponto_id = $1', [id]);
+    // Tempo operacional do móvel (sem FK de propósito — migration 113): sem
+    // hospedagem (conferido acima), não vale para mais nada.
+    await client.query('DELETE FROM tela_operacao WHERE ponto_id = $1', [id]);
     const { rows: escolhas } = await client.query(
       'DELETE FROM anunciantes_pontos WHERE ponto_id = $1 RETURNING anunciante_id',
       [id],

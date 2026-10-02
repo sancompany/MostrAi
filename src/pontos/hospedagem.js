@@ -669,6 +669,16 @@ async function ajustar(contaId, corpo, admin) {
   return movel.emTransacao(async (c) => {
     const { rows } = await c.query('SELECT id, excluido_em FROM anunciantes WHERE id = $1 FOR UPDATE', [id]);
     if (!rows[0] || rows[0].excluido_em) throw erro(404, 'conta não encontrada');
+    // Duplo clique ou retry da rede: a mesma chave grava uma vez — e o
+    // repetido responde o que JÁ foi lançado (nunca "ok" para outro valor).
+    const chave = `ajuste:${id}:${/^[A-Za-z0-9-]{8,64}$/.test(String(corpo?.chave ?? '')) ? corpo.chave : crypto.randomUUID()}`;
+    const { rows: ja } = await c.query('SELECT segundos FROM saldo_hospedagem_lancamentos WHERE chave = $1', [chave]);
+    if (ja[0]) {
+      if (Number(ja[0].segundos) !== segundos) {
+        throw erro(409, 'Esse ajuste já foi lançado com outro valor — feche e abra o ajuste de novo', 'minutos');
+      }
+      return { contaId: id, segundos, repetido: true };
+    }
     // Retirar só o que ainda não está programado: o que já está na grade
     // (reservado) pode ser confirmado pela TV depois, e o saldo ficaria
     // negativo escondido.
@@ -682,15 +692,12 @@ async function ajustar(contaId, corpo, admin) {
         );
       }
     }
-    // Duplo clique ou retry da rede: a mesma chave grava uma vez.
-    const chave = /^[A-Za-z0-9-]{8,64}$/.test(String(corpo?.chave ?? '')) ? corpo.chave : crypto.randomUUID();
-    const { rowCount } = await c.query(
+    await c.query(
       `INSERT INTO saldo_hospedagem_lancamentos (conta_id, tipo, segundos, chave, motivo, admin)
-       VALUES ($1, 'ajuste', $2, $3, $4, $5)
-       ON CONFLICT (chave) DO NOTHING`,
-      [id, segundos, `ajuste:${id}:${chave}`, motivo, admin || 'admin'],
+       VALUES ($1, 'ajuste', $2, $3, $4, $5)`,
+      [id, segundos, chave, motivo, admin || 'admin'],
     );
-    return { contaId: id, segundos, repetido: rowCount === 0 };
+    return { contaId: id, segundos, repetido: false };
   });
 }
 
