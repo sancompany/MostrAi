@@ -87,12 +87,16 @@ fetch(`${API_BASE_URL}/pontos`)
         const enderecoCompleto = `${linha ? linha + ', ' : ''}${p.cidade}`;
         const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
         const st = STATUS_LABEL[p.status] || STATUS_LABEL.a_instalar;
+        // Ponto móvel (migration 112): da Mostraí, com base num comércio e
+        // saídas para eventos — o selo e a base dizem isso.
+        const movel = p.tipo === 'movel' && window.PONTO_MOVEL;
         return `
       <div class="ponto-card">
         <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
-        <span class="badge ${st.classe}">${st.texto}</span>
+        <span class="badge ${st.classe}">${st.texto}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}
         <h4>${esc(p.nome)}</h4>
-        <p>${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}</p>
+        <p>${movel ? `Base: ${esc(p.base_nome)} · ` : ''}${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}</p>
+        ${movel ? `<p class="u-dim">${esc(window.PONTO_MOVEL.explica)}</p>` : ''}
         <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
       </div>
     `;

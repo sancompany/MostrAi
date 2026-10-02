@@ -14,6 +14,7 @@ const { colunasDoEndereco, problemaNoEndereco, numeroConfirmado, PARTES } = requ
 const { alterarEnderecoDoPonto, historicoDoPonto } = require('./endereco');
 const candidaturasRepo = require('../candidaturas/repository');
 const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
+const { situacaoDosMoveis } = require('./movel');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 // Vídeo, não foto — mesmo teto de src/midias/routes.js (upload de vídeo pra
@@ -179,10 +180,15 @@ router.post('/seja-um-ponto', (_req, res) => {
 
 // Cada ponto leva o benefício dele (ADR-016): +1 crédito por mês quando
 // elegível — mesma regra do job (creditos/ponto.js), nunca recalculada aqui.
+// Ponto móvel (migration 112): base, local atual e próximo evento vêm
+// decididos daqui (src/pontos/movel.js), nunca do navegador.
 router.get('/admin/pontos', async (_req, res) => {
   const pontos = await repo.listar();
-  const beneficios = await situacaoDosPontos(pontos.map((p) => p.id));
-  res.json(pontos.map((p) => ({ ...p, beneficio: beneficios.get(p.id) || null })));
+  const [beneficios, moveis] = await Promise.all([
+    situacaoDosPontos(pontos.map((p) => p.id)),
+    situacaoDosMoveis(pontos.filter((p) => p.tipo === 'movel').map((p) => p.id)),
+  ]);
+  res.json(pontos.map((p) => ({ ...p, beneficio: beneficios.get(p.id) || null, movel: moveis.get(p.id) || null })));
 });
 
 // G.7 (docs/PENDENCIAS.md, pedido do dono 18/09/2026): quem ocupa cada ponto,
@@ -255,6 +261,14 @@ router.patch('/admin/pontos/:id', async (req, res) => {
       return res.status(400).json({ erro: 'endereço do ponto muda por PATCH /admin/pontos/:id/endereco' });
     }
     const antes = await repo.buscarPorId(req.params.id);
+    // Ponto móvel é da Mostraí (migration 112): não tem dona, e a conta da
+    // base muda por "Alterar base" (PUT /admin/pontos/:id/base). O CHECK do
+    // banco já recusaria; aqui a recusa sai com o motivo certo.
+    if (antes?.tipo === 'movel' && resto.anunciante_id !== undefined) {
+      return res
+        .status(400)
+        .json({ erro: 'ponto móvel é da Mostraí e não tem dono — a conta da base muda em "Alterar base"' });
+    }
     const ponto = Object.keys(resto).length
       ? await repo.atualizar(req.params.id, resto)
       : await repo.buscarPorId(req.params.id);

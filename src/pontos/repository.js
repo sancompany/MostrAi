@@ -80,16 +80,24 @@ async function criar(dados, db = pool) {
     foto_instalacao_url,
     observacoes,
     candidatura_id,
+    // Ponto móvel (migration 112): sem dona, com base. Fixo é o padrão.
+    tipo,
+    base_conta_id,
+    base_nome,
+    movel_numero,
   } = dados;
   const horarioValidado = validarHorarioSemanal(horario_semanal);
+  const movel = tipo === 'movel';
 
   const { rows } = await db.query(
     `INSERT INTO pontos
        (nome, endereco, bairro, complemento, cidade, uf, cep, segmento, categoria_id, categoria_livre,
         responsavel_nome, responsavel_contato, status, aceitou_termos_em,
         cota_autoanuncio_slots_hora, anunciante_id, fluxo_estimado_mensal,
-        horario_semanal, foto_instalacao_url, observacoes, candidatura_id, logradouro, numero)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+        horario_semanal, foto_instalacao_url, observacoes, candidatura_id, logradouro, numero,
+        tipo, base_conta_id, base_nome, movel_numero, base_desde)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+             $24,$25,$26,$27, CASE WHEN $24 = 'movel' THEN now() END)
      RETURNING *`,
     [
       nome,
@@ -107,7 +115,7 @@ async function criar(dados, db = pool) {
       status || 'a_instalar',
       aceitou_termos_em || null,
       cota_autoanuncio_slots_hora || 0,
-      anunciante_id || null,
+      movel ? null : anunciante_id || null,
       fluxo_estimado_mensal || null,
       horarioValidado ? JSON.stringify(horarioValidado) : null,
       foto_instalacao_url || null,
@@ -115,6 +123,10 @@ async function criar(dados, db = pool) {
       candidatura_id || null,
       end.logradouro ?? null,
       end.numero ?? null,
+      movel ? 'movel' : 'fixo',
+      movel ? base_conta_id : null,
+      movel ? base_nome : null,
+      movel ? movel_numero : null,
     ],
   );
   return rows[0];
@@ -148,15 +160,22 @@ async function estabelecimentoJaCadastrado(
     if (pedidos.length) return 'Já existe uma solicitação em análise para este endereço';
   }
   if (!nome) return null;
+  // O mesmo estabelecimento como BASE de um ponto móvel da Mostraí também é
+  // "já cadastrado" (migration 112): o móvel não é da conta, mas o lugar já
+  // está na rede — um segundo pedido ali é duplicidade, não ponto novo.
   const { rows: pontos } = await db.query(
-    `SELECT id FROM pontos
-       WHERE anunciante_id = $1 AND status <> 'arquivado'
-         AND lower(trim(nome)) = lower(trim($2)) AND lower(trim(endereco)) = lower(trim($3))
+    `SELECT tipo FROM pontos
+       WHERE status <> 'arquivado' AND lower(trim(endereco)) = lower(trim($3))
+         AND ((anunciante_id = $1 AND lower(trim(nome)) = lower(trim($2)))
+           OR (base_conta_id = $1 AND lower(trim(base_nome)) = lower(trim($2))))
+       ORDER BY (tipo = 'fixo') DESC
        LIMIT 1`,
     [contaId, nome, endereco || ''],
   );
-  if (pontos.length) return 'Este estabelecimento já é um ponto da sua conta';
-  return null;
+  if (!pontos.length) return null;
+  return pontos[0].tipo === 'movel'
+    ? 'Este estabelecimento já é base de um ponto móvel da Mostraí'
+    : 'Este estabelecimento já é um ponto da sua conta';
 }
 
 // Ponto arquivado (migration 080) fica fora de toda listagem da experiência
@@ -165,7 +184,7 @@ async function estabelecimentoJaCadastrado(
 async function listar() {
   const { rows } = await pool.query(
     `SELECT p.*, c.nome AS categoria_nome,
-            a.nome_empresa AS dono_nome,
+            a.nome_empresa AS dono_nome, b.nome_empresa AS base_conta_nome,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id) AS telas,
             (SELECT COUNT(*)::int FROM dispositivos d WHERE d.ponto_id = p.id AND d.status = 'ativo') AS telas_ativas,
             -- Mudou de endereço depois da instalação e a operação ainda não
@@ -175,6 +194,7 @@ async function listar() {
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      LEFT JOIN anunciantes a ON a.id = p.anunciante_id
+     LEFT JOIN anunciantes b ON b.id = p.base_conta_id
      WHERE p.status <> 'arquivado'
      ORDER BY p.created_at DESC`,
   );
@@ -285,7 +305,8 @@ async function sincronizarStatusPonto(pontoId, db = pool) {
 // nenhuma funcionando) é o caso realmente novo que faz sentido esconder.
 async function listarPublicos() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome
+    `SELECT p.id, p.nome, p.cidade, p.endereco, p.bairro, p.status, p.foto_instalacao_url, c.nome AS categoria_nome,
+            p.tipo, p.base_nome
      FROM pontos p
      LEFT JOIN categorias c ON c.id = p.categoria_id
      WHERE p.status = ANY($1::text[])

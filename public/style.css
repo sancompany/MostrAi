@@ -2328,3 +2328,35 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
 /* Busca de segmento pelo teclado (formulario.js#montarBusca): a opção
    destacada pelas setas aparece como a do mouse. */
 .categoria-resultados li.ativo { background: var(--bg-alt); box-shadow: inset 3px 0 0 var(--brand); }
+
+/* Ponto MÓVEL na escolha de pontos (migration 112): o mesmo molde do card,
+   com uma faixa no lugar da foto — o selo diz o que ele é antes de qualquer
+   texto — e o próximo evento num quadro próprio. Compacto de propósito:
+   selo, nome, onde está agora, próximo evento, base (só em evento) e uma
+   frase. */
+.ponto-card.ponto-escolha .ponto-movel-media {
+  aspect-ratio: auto; min-height: 76px; display: flex; align-items: flex-start; padding: 12px 14px;
+  background: linear-gradient(135deg, #1e3a8a 0%, var(--blue) 60%, #3b82f6 100%);
+}
+.selo-movel {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 9px;
+  border-radius: 999px; background: rgba(255, 255, 255, .96); color: #1e3a8a; font-size: .76rem; font-weight: 800;
+}
+.selo-movel .ponto-icone { width: 15px; height: 15px; margin: 0; color: var(--blue); }
+.ponto-local-atual b { color: var(--text); font-weight: 700; }
+.ponto-movel-evento {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 4px; padding: 9px 11px;
+  border: 1px solid #dbeafe; border-radius: 10px; background: #eff6ff; min-width: 0;
+}
+.ponto-movel-evento-rotulo {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: #1e3a8a;
+}
+.ponto-movel-evento-rotulo .ponto-icone { width: 13px; height: 13px; margin: 0; color: var(--blue); }
+.ponto-movel-evento-nome { font-size: .88rem; font-weight: 700; line-height: 1.35; color: var(--text); overflow-wrap: anywhere; }
+.ponto-movel-evento-meta { font-size: .78rem; line-height: 1.4; color: var(--text-dim); overflow-wrap: anywhere; }
+.ponto-movel-evento.ponto-movel-sem-evento { border-color: var(--border); background: var(--bg-alt); font-size: .8rem; color: var(--text-dim); }
+.ponto-movel-explica { display: block; margin-top: 6px; font-size: .76rem; line-height: 1.45; color: var(--text-dim); }
+@media (max-width: 520px) {
+  .ponto-card.ponto-escolha .ponto-movel-media { aspect-ratio: auto; min-height: 60px; }
+}

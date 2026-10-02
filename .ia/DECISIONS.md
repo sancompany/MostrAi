@@ -1351,3 +1351,53 @@ fonte, o saldo é leitura).
 horário = 24 h) e as horas do plano assumem 12 h/dia × 30 dias: com ponto
 24 h, a base entrega mais que o contratado e a anomalia de sobre-entrega vai
 aparecer. O ritmo da T1 não foi mexido aqui.
+
+## ADR-036 — Ponto móvel: ativo da Mostraí sem dono, com base e eventos; local atual derivado (02/10/2026)
+
+**Contexto.** Pedido do dono: uma segunda modalidade de ponto, o MÓVEL — uma
+tela da própria Mostraí que fica numa base (uma academia, por exemplo) e sai
+para eventos (campeonato, feira, festa da igreja) e volta. A candidatura
+continua genérica; o Admin decide o tipo na aprovação. Todo benefício de dono
+(Plano Básico, crédito mensal, cota de autoanúncio, cupom, papel `ponto`)
+deriva de `pontos.anunciante_id`.
+
+**Decisão.**
+- `pontos.tipo` (`fixo` padrão | `movel`), migration 112 aditiva: todo ponto
+  existente fica fixo e nada nele muda. Um CHECK amarra o móvel: sem dono
+  (`anunciante_id` NULL) e com base completa (`base_conta_id`, `base_nome`,
+  `base_desde`, `movel_numero`); o fixo não tem campo de base. Ninguém dá um
+  dono ao móvel por engano — nem o PATCH do Admin, nem o banco.
+- Sem dono, o móvel sai sozinho de tudo que é benefício de dono — as
+  consultas existentes já fazem JOIN pelo `anunciante_id`. Nenhuma regra de
+  Básico ou crédito foi tocada; a passagem fixo → móvel encerra o Básico do
+  ponto pelo caminho que já existia (`dono_mudou`).
+- A base é a conta + nome + o endereço do próprio ponto (sem tabela de
+  endereço nova). Trocar de base fecha um período em `pontos_moveis_bases`
+  (só períodos fechados; o atual está no ponto).
+- Eventos em `pontos_moveis_eventos`: programado → em_andamento → encerrado,
+  ou programado → cancelado; no máximo um em andamento por ponto (índice
+  único parcial). Início e fim são marcados pelo Admin (as datas não mexem
+  em nada sozinhas). Local atual e próximo evento são DERIVADOS no servidor
+  (`situacaoDosMoveis`), nunca guardados nem decididos no navegador.
+- Proof-of-Play não muda de regra: a exibição contabilizada durante um
+  evento ganha `execucoes_confirmadas.evento_id` (pelo instante da
+  exibição), só para auditoria.
+- A trava de ramo protege a casa da tela: a dona do fixo ou a BASE do móvel
+  (`casaDaTela` no gerador). O horário da base vale na base; com evento em
+  andamento o horário em vigor é 24 h e a versão da config sobe ao iniciar
+  e ao encerrar. Uma expressão SQL só (`src/lib/horario-em-vigor.js`) serve
+  a config da TV, o gerador e o "no ar" do anunciante — senão o Admin diria
+  "operando" e o anunciante "fora do horário" para a mesma tela.
+- Público estimado é texto ("~N pessoas") e nunca entra em POP, saldo ou
+  promessa.
+
+**Alternativas recusadas.** Dar a posse à conta-base (contrariava o pedido e
+a tornaria dona de Básico e crédito); um módulo separado de "ativos móveis"
+(o detalhe do ponto já comporta a base e os eventos); guardar "local atual"
+numa coluna (dois lugares para a mesma verdade); evento iniciando e
+encerrando pelo relógio (a tela pode não ter saído da base — o Admin é quem
+sabe onde ela está).
+
+**Em aberto (dono).** `docs/PENDENCIAS.md` §S, S7: trava de ramo durante o
+evento, início e fim manuais, horário 24 h em evento, móvel → fixo dando o
+ponto à base.

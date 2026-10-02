@@ -143,6 +143,7 @@
   // o Plano Básico e o crédito em blocos próprios. Só a apresentação mudou —
   // os dados, as ações e os avisos são os de antes.
   function htmlEstabelecimento(e) {
+    if (e.tipo === 'base_movel') return htmlBaseMovel(e);
     const cidade = `${e.cidade || ''}${e.uf ? `/${e.uf}` : ''}`;
     const local = [window.linhaEndereco(e), cidade].filter(Boolean).join(' · ');
     const explica = EXPLICACAO[e.estado]?.(e) || '';
@@ -166,16 +167,45 @@
     </article>`;
   }
 
+  // Ponto MÓVEL de que esta conta é a base (migration 112): só leitura. Ele
+  // é da Mostraí — a conta é a casa dele, não a dona: sem telas, sem
+  // benefício e sem editar endereço (a base quem define é a Mostraí). Diz
+  // onde ele está e quando sai para o próximo evento.
+  function htmlBaseMovel(e) {
+    const agora =
+      e.localAtual?.origem === 'evento'
+        ? `Agora em evento: <b>${esc(e.localAtual.nome)}</b> — depois volta para cá.`
+        : 'Agora está aqui, na sua base.';
+    const prox = e.proximoEvento;
+    return `<article class="estab-card estab-base-movel" data-estab="${e.tipo}-${e.id}">
+      <div class="estab-corpo">
+        <div class="estab-id">
+          <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>
+          <h3>${esc(e.nome || '')}</h3>
+          <p class="estab-meta">${icone('endereco')}<span>Base: ${esc(e.baseNome || '')}</span></p>
+        </div>
+        <p class="estab-explica">Este ponto é da Mostraí e tem a sua empresa como base: fica aqui quando não está em evento. ${agora}</p>
+        ${
+          prox
+            ? `<p class="estab-explica"><b>Próximo evento:</b> ${esc(prox.nome)} · ${esc(window.periodoDoEvento(prox.dataInicio, prox.dataFim))} · ${esc(prox.local)}</p>`
+            : ''
+        }
+      </div>
+    </article>`;
+  }
+
   // Resumo do cabeçalho: o que o dono quer saber num olhar só.
   function htmlResumo(lista) {
     const pontos = lista.filter((e) => e.tipo === 'ponto');
     const telas = pontos.flatMap((e) => e.telas);
     const funcionando = telas.filter((t) => t.situacao === 'operando').length;
-    const analise = lista.length - pontos.length;
+    const analise = lista.filter((e) => e.tipo === 'candidatura').length;
+    const bases = lista.filter((e) => e.tipo === 'base_movel').length;
     const partes = [`${pontos.length} ${pontos.length === 1 ? 'ponto' : 'pontos'}`];
     if (telas.length)
       partes.push(`${funcionando} de ${telas.length} ${telas.length === 1 ? 'tela funcionando' : 'telas funcionando'}`);
     if (analise) partes.push(`${analise} em análise`);
+    if (bases) partes.push(`base de ${bases} ${bases === 1 ? 'ponto móvel' : 'pontos móveis'}`);
     return partes.join(' · ');
   }
 

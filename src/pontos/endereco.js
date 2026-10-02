@@ -25,13 +25,8 @@ const erro = (status, mensagem) => Object.assign(new Error(mensagem), { status }
 // `origem`: 'usuario' (com `contaId`, conferida contra o dono DENTRO da
 // trava da linha) ou 'admin' (com `admin`, o usuário do painel).
 async function alterarEnderecoDoPonto(pontoId, corpo, { origem, contaId = null, admin = null }) {
-  const partes = Object.fromEntries(PARTES.filter((p) => corpo?.[p] !== undefined).map((p) => [p, corpo[p]]));
-  if (!Object.keys(partes).length) throw erro(400, 'nenhuma parte do endereço enviada');
-
   const cliente = await pool.connect();
-  let ponto;
-  let mudou = false;
-  let pendencia = null;
+  let resultado;
   try {
     await cliente.query('BEGIN');
     const { rows } = await cliente.query('SELECT * FROM pontos WHERE id = $1 FOR UPDATE', [pontoId]);
@@ -41,55 +36,7 @@ async function alterarEnderecoDoPonto(pontoId, corpo, { origem, contaId = null, 
     if (!atual || (origem === 'usuario' && Number(atual.anunciante_id) !== Number(contaId))) {
       throw erro(404, 'ponto não encontrado');
     }
-    if (atual.status === 'arquivado') throw erro(409, 'ponto arquivado não muda de endereço');
-
-    const novo = retrato({ ...atual, ...colunasDoEndereco(partes, atual) });
-    // Endereço do ponto é sempre completo (cidade, UF e CEP são NOT NULL na
-    // tabela; o resto é o que a operação usa pra chegar lá).
-    const falta = parteQueFalta(novo);
-    if (falta) throw erro(400, `endereço incompleto — preencha o campo ${falta}`);
-
-    const anterior = retrato(atual);
-    mudou = CAMPOS.some((c) => anterior[c] !== novo[c]);
-    ponto = atual;
-    if (mudou) {
-      const r = await cliente.query(
-        `UPDATE pontos SET cep = $2, logradouro = $3, numero = $4, complemento = $5, bairro = $6,
-                cidade = $7, uf = $8, endereco = $9
-          WHERE id = $1 RETURNING *`,
-        [
-          pontoId,
-          novo.cep,
-          novo.logradouro,
-          novo.numero,
-          novo.complemento,
-          novo.bairro,
-          novo.cidade,
-          novo.uf,
-          novo.endereco,
-        ],
-      );
-      ponto = r.rows[0];
-      await cliente.query(
-        `INSERT INTO pontos_enderecos_historico
-           (ponto_id, anterior, novo, origem, alterado_por_conta, alterado_por_admin, status_do_ponto)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          pontoId,
-          JSON.stringify(anterior),
-          JSON.stringify(novo),
-          origem,
-          origem === 'usuario' ? contaId : null,
-          origem === 'admin' ? admin : null,
-          atual.status,
-        ],
-      );
-      // Só a troca feita pelo dono pede conferência: quando é o Admin quem
-      // muda, ele mesmo já está conferindo.
-      if (origem === 'usuario' && pontoJaInstalado(atual)) {
-        pendencia = await abrirPontoAlterado(atual, anterior, novo, cliente);
-      }
-    }
+    resultado = await gravarEnderecoNaTransacao(cliente, atual, corpo, { origem, contaId, admin });
     await cliente.query('COMMIT');
   } catch (err) {
     await cliente.query('ROLLBACK').catch(() => {});
@@ -97,8 +44,63 @@ async function alterarEnderecoDoPonto(pontoId, corpo, { origem, contaId = null, 
   } finally {
     cliente.release();
   }
-  if (pendencia) await pendenciasRepo.avisarNova(pendencia);
-  return { ponto, mudou };
+  if (resultado.pendencia) await pendenciasRepo.avisarNova(resultado.pendencia);
+  return { ponto: resultado.ponto, mudou: resultado.mudou };
+}
+
+// O miolo da troca, para quem já abriu a transação e travou a linha do
+// ponto (`atual`, lida com FOR UPDATE) — a troca de base do ponto móvel
+// (src/pontos/movel.js) muda o endereço junto com a base, numa transação só.
+// Devolve a pendência aberta (se houver) para o aviso sair DEPOIS do COMMIT.
+async function gravarEnderecoNaTransacao(cliente, atual, corpo, { origem, contaId = null, admin = null }) {
+  const partes = Object.fromEntries(PARTES.filter((p) => corpo?.[p] !== undefined).map((p) => [p, corpo[p]]));
+  if (!Object.keys(partes).length) throw erro(400, 'nenhuma parte do endereço enviada');
+  if (atual.status === 'arquivado') throw erro(409, 'ponto arquivado não muda de endereço');
+
+  const novo = retrato({ ...atual, ...colunasDoEndereco(partes, atual) });
+  // Endereço do ponto é sempre completo (cidade, UF e CEP são NOT NULL na
+  // tabela; o resto é o que a operação usa pra chegar lá).
+  const falta = parteQueFalta(novo);
+  if (falta) throw erro(400, `endereço incompleto — preencha o campo ${falta}`);
+
+  const anterior = retrato(atual);
+  const mudou = CAMPOS.some((c) => anterior[c] !== novo[c]);
+  if (!mudou) return { ponto: atual, mudou, pendencia: null };
+  const r = await cliente.query(
+    `UPDATE pontos SET cep = $2, logradouro = $3, numero = $4, complemento = $5, bairro = $6,
+            cidade = $7, uf = $8, endereco = $9
+      WHERE id = $1 RETURNING *`,
+    [
+      atual.id,
+      novo.cep,
+      novo.logradouro,
+      novo.numero,
+      novo.complemento,
+      novo.bairro,
+      novo.cidade,
+      novo.uf,
+      novo.endereco,
+    ],
+  );
+  await cliente.query(
+    `INSERT INTO pontos_enderecos_historico
+       (ponto_id, anterior, novo, origem, alterado_por_conta, alterado_por_admin, status_do_ponto)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      atual.id,
+      JSON.stringify(anterior),
+      JSON.stringify(novo),
+      origem,
+      origem === 'usuario' ? contaId : null,
+      origem === 'admin' ? admin : null,
+      atual.status,
+    ],
+  );
+  // Só a troca feita pelo dono pede conferência: quando é o Admin quem
+  // muda, ele mesmo já está conferindo.
+  const pendencia =
+    origem === 'usuario' && pontoJaInstalado(atual) ? await abrirPontoAlterado(atual, anterior, novo, cliente) : null;
+  return { ponto: r.rows[0], mudou, pendencia };
 }
 
 // Histórico de um ponto, mais recente primeiro (Admin → Rede → Ponto).
@@ -115,4 +117,4 @@ async function historicoDoPonto(pontoId) {
   return rows;
 }
 
-module.exports = { alterarEnderecoDoPonto, historicoDoPonto };
+module.exports = { alterarEnderecoDoPonto, gravarEnderecoNaTransacao, historicoDoPonto };

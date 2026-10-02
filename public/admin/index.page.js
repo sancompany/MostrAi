@@ -3183,13 +3183,17 @@ function resumoDasTelas(telas) {
 function montarPontoCard(p, telas) {
   const segmento = p.categoria_nome || p.categoria_livre || p.segmento;
   const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
+  // Ponto móvel (migration 112): no lugar do endereço, base e onde está agora.
+  const local = p.movel
+    ? `Base: ${esc(p.movel.base.nome)}${p.movel.localAtual.origem === 'evento' ? `<br>Agora em: ${esc(p.movel.localAtual.nome)}` : ''}`
+    : `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}`;
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
-    filtro: `${p.status}${problema ? ' problema' : ''}`,
+    filtro: `${p.status}${problema ? ' problema' : ''}${p.movel ? ' movel' : ''}`,
     foto: fotoOuPlaceholder(p.foto_instalacao_url, p.nome),
     nome: esc(p.nome),
-    badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>`,
-    meta: `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
+    badge: `<span class="badge ${PONTO_STATUS_CLASSE[p.status]}">${PONTO_STATUS[p.status] || p.status}</span>${p.movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
+    meta: `${local}${segmento ? `<br>${esc(segmento)}` : ''}<br><span class="u-dim">${esc(resumoHorarioSemanal(p.horario_semanal) || 'Aberto 24 horas')}</span>`,
     rodape: `<span class="${problema ? 'txt-alerta' : ''}">${esc(resumoDasTelas(telas))}</span>${
       p.endereco_a_conferir ? '<br><span class="txt-alerta">Endereço alterado — conferir</span>' : ''
     }`,
@@ -3379,6 +3383,7 @@ async function renderPontoDetalhe(el, pontoId) {
       <div class="ponto-detalhe-grid">
         <div class="pilha">
           <section class="panel ponto-ficha" id="pontoInformacoes"></section>
+          ${ponto.tipo === 'movel' ? '<section class="panel" id="pontoMovel"><p class="carregando">Carregando...</p></section>' : ''}
           <section class="panel" id="pontoEndereco"></section>
           <section class="panel" id="pontoCapacidade" hidden></section>
         </div>
@@ -3387,6 +3392,13 @@ async function renderPontoDetalhe(el, pontoId) {
     renderPontoInformacoes(el.querySelector('#pontoInformacoes'), ponto, telas, montar);
     renderPontoEndereco(el.querySelector('#pontoEndereco'), ponto, pendencias, montar);
     renderPontoTelas(el.querySelector('#pontoTelas'), ponto, telas);
+    if (ponto.tipo === 'movel') {
+      blocoIndependente(
+        el.querySelector('#pontoMovel'),
+        (alvo) => renderPontoMovel(alvo, ponto, montar),
+        'ponto móvel',
+      );
+    }
     blocoIndependente(
       el.querySelector('#pontoCapacidade'),
       (alvo) => renderPontoCapacidade(alvo, pontoId),
@@ -3395,6 +3407,267 @@ async function renderPontoDetalhe(el, pontoId) {
   }
   await montar();
   definirVistaRede(montar);
+}
+
+// ---------- Ponto móvel: base e eventos (migration 112) ----------
+// Local atual e próximo evento vêm decididos do servidor
+// (GET /admin/pontos/:id/movel). Ações: alterar base, cadastrar evento,
+// iniciar (o ponto chegou ao evento), encerrar (volta para a base) e
+// cancelar. Encerrados, cancelados e bases anteriores ficam no histórico.
+const ESTADO_EVENTO = {
+  programado: ['Programado', 'badge-neutro'],
+  em_andamento: ['Em andamento', 'badge-ok'],
+  encerrado: ['Encerrado', 'badge-neutro'],
+  cancelado: ['Cancelado', 'badge-err'],
+};
+
+function linhaDoEvento(e, comAcoes) {
+  const [rotulo, classe] = ESTADO_EVENTO[e.estado] || [e.estado, 'badge-neutro'];
+  const detalhes = [
+    window.periodoDoEvento(e.dataInicio, e.dataFim),
+    esc(e.local),
+    `organização: ${esc(e.organizacao)}`,
+    window.publicoEstimadoTexto(e.publicoEstimado),
+  ].filter(Boolean);
+  const auditoria = [];
+  if (e.iniciadoEm) auditoria.push(`chegou ${dataHora(e.iniciadoEm)}`);
+  if (e.encerradoEm) auditoria.push(`voltou ${dataHora(e.encerradoEm)}`);
+  if (e.canceladoEm) auditoria.push(`cancelado ${dataHora(e.canceladoEm)}`);
+  if (e.iniciadoEm) auditoria.push(`${num(e.exibicoesConfirmadas)} exibições confirmadas no evento`);
+  const acoes = !comAcoes
+    ? ''
+    : e.estado === 'em_andamento'
+      ? `<button type="button" class="btn primary mini" data-evento-acao="encerrar" data-evento="${e.id}">Encerrar e voltar para a base</button>`
+      : e.estado === 'programado'
+        ? `<button type="button" class="btn ghost mini" data-evento-acao="iniciar" data-evento="${e.id}">Iniciar (chegou ao evento)</button>
+           <button type="button" class="btn perigo-sutil mini" data-evento-acao="cancelar" data-evento="${e.id}">Cancelar</button>`
+        : '';
+  return `<li class="evento-movel" data-evento-id="${e.id}">
+      <div class="evento-movel-topo"><b>${esc(e.nome)}</b> <span class="badge ${classe}">${rotulo}</span></div>
+      <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
+      ${e.estado === 'em_andamento' && e.terminou ? '<p class="aviso-linha u-mt-4">A data de fim já passou — encerre para o ponto voltar para a base.</p>' : ''}
+      ${e.observacao ? `<p class="u-dim u-fs-85 u-m-0">${esc(e.observacao)}</p>` : ''}
+      ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
+      ${acoes ? `<div class="acoes u-mt-8">${acoes}</div>` : ''}
+    </li>`;
+}
+
+async function renderPontoMovel(el, ponto, remontar) {
+  const f = await pegar(`/admin/pontos/${ponto.id}/movel`);
+  const abertos = f.eventos.filter((e) => e.estado === 'em_andamento' || e.estado === 'programado');
+  const passados = f.eventos.filter((e) => e.estado === 'encerrado' || e.estado === 'cancelado');
+  const local =
+    f.localAtual.origem === 'evento'
+      ? `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Em evento: ${esc(f.localAtual.evento.nome)}</span>`
+      : `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Na base</span>`;
+  const proximo = f.proximoEvento
+    ? `${esc(f.proximoEvento.nome)}<span class="dado-sub">${[window.periodoDoEvento(f.proximoEvento.dataInicio, f.proximoEvento.dataFim), esc(f.proximoEvento.local)].join(' · ')}</span>`
+    : naoInformado(f.localAtual.origem === 'evento' ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento);
+  const conta = f.base.conta?.id
+    ? `<a href="#contas/contas/${f.base.conta.id}">${esc(f.base.conta.nome || `Conta #${f.base.conta.id}`)}</a>`
+    : naoInformado('Sem conta');
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Ponto móvel</h3>
+      <div class="secao-acoes">
+        <button type="button" class="btn ghost mini" data-alterar-base>Alterar base</button>
+        <button type="button" class="btn primary mini" data-novo-evento>Cadastrar evento</button>
+      </div></div>
+    <dl class="dados dados-2">
+      <div><dt>Local atual</dt><dd data-local-atual>${local}</dd></div>
+      <div><dt>Próximo evento</dt><dd data-proximo-evento>${proximo}</dd></div>
+      <div><dt>Base</dt><dd>${esc(f.base.nome)}<span class="dado-sub">desde ${data(f.base.desde)}</span></dd></div>
+      <div><dt>Conta da base</dt><dd>${conta}<span class="dado-sub">Custodiante — não é dona do ponto</span></dd></div>
+    </dl>
+    <h4 class="u-mt-16">Eventos</h4>
+    ${abertos.length ? `<ul class="lista-eventos-movel">${abertos.map((e) => linhaDoEvento(e, true)).join('')}</ul>` : `<p class="u-dim u-fs-85">${esc(window.PONTO_MOVEL.semEvento)}</p>`}
+    ${
+      passados.length || f.basesAnteriores.length
+        ? `<details class="u-mt-8"><summary>Histórico (${passados.length} ${passados.length === 1 ? 'evento' : 'eventos'}, ${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base anterior' : 'bases anteriores'})</summary>
+            ${passados.length ? `<ul class="lista-eventos-movel">${passados.map((e) => linhaDoEvento(e, false)).join('')}</ul>` : ''}
+            ${f.basesAnteriores
+              .map(
+                (b) =>
+                  `<p class="u-fs-85 u-m-0">Base <b>${esc(b.nome)}</b>${b.conta?.nome ? ` (${esc(b.conta.nome)})` : ''} · ${data(b.desde)} a ${data(b.ate)}${b.endereco ? `<span class="dado-sub">${esc(b.endereco)}</span>` : ''}</p>`,
+              )
+              .join('')}
+          </details>`
+        : ''
+    }`;
+  el.querySelector('[data-novo-evento]').addEventListener('click', () => cadastrarEventoMovel(ponto, remontar));
+  el.querySelector('[data-alterar-base]').addEventListener('click', () => alterarBaseMovel(ponto, f, remontar));
+  el.querySelectorAll('[data-evento-acao]').forEach((b) =>
+    b.addEventListener('click', () =>
+      acaoNoEventoMovel(
+        ponto,
+        f.eventos.find((e) => e.id === Number(b.dataset.evento)),
+        b.dataset.eventoAcao,
+        remontar,
+      ),
+    ),
+  );
+}
+
+async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
+  if (!evento) return;
+  const textos = {
+    iniciar: {
+      titulo: `O ponto chegou a “${evento.nome}”?`,
+      texto: `<p>O local atual passa a ser <b>${esc(evento.local)}</b> — é o que o anunciante vê. A base continua a mesma, e enquanto estiver no evento a tela exibe sempre que estiver ligada.</p>`,
+      botao: 'Iniciar evento',
+    },
+    encerrar: {
+      titulo: `Encerrar “${evento.nome}”?`,
+      texto: '<p>O ponto volta para a base: o local atual passa a ser a base de novo.</p>',
+      botao: 'Encerrar e voltar para a base',
+    },
+    cancelar: {
+      titulo: `Cancelar “${evento.nome}”?`,
+      texto: '<p>O evento deixa de ser o próximo e não vira local atual. Ele continua no histórico.</p>',
+      botao: 'Cancelar evento',
+      perigo: true,
+    },
+  }[acao];
+  if (!(await confirmarModal(textos))) return;
+  const r = await api(`/admin/pontos/${ponto.id}/eventos/${evento.id}/${acao}`, { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
+  toast(
+    {
+      iniciar: 'Evento iniciado.',
+      encerrar: 'Evento encerrado: o ponto voltou para a base.',
+      cancelar: 'Evento cancelado.',
+    }[acao],
+  );
+  remontar();
+}
+
+// Cadastro leve (pedido do dono): nome, organização, local e datas; o fim
+// pode ficar em branco (um dia só); público estimado e observação opcionais.
+function cadastrarEventoMovel(ponto, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: `Novo evento — ${ponto.nome}`,
+    corpo: `<form id="formEventoMovel" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="evNome">Nome do evento</label><input id="evNome" name="nome" maxlength="120" required></div>
+        <div class="campos">
+          <div class="campo-grupo"><label for="evOrg">Organização</label><input id="evOrg" name="organizacao" maxlength="120" required placeholder="Prefeitura, federação, igreja…"></div>
+          <div class="campo-grupo"><label for="evLocal">Local</label><input id="evLocal" name="local" maxlength="160" required placeholder="Ginásio Municipal"></div>
+        </div>
+        <div class="campos">
+          <div class="campo-grupo"><label for="evInicio">Início</label><input id="evInicio" type="date" name="data_inicio" required></div>
+          <div class="campo-grupo"><label for="evFim">Fim (opcional)</label><input id="evFim" type="date" name="data_fim"></div>
+          <div class="campo-grupo"><label for="evPublico">Público estimado (opcional)</label><input id="evPublico" type="number" name="publico_estimado" min="1" step="1" inputmode="numeric"></div>
+        </div>
+        <div class="campo-grupo"><label for="evObs">Observação (opcional)</label><textarea id="evObs" name="observacao" maxlength="500" rows="2"></textarea></div>
+        <p class="campo-ajuda">O público é a estimativa do evento: aparece como “~N pessoas” e nunca vira exibição nem alcance.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formEventoMovel" class="btn primary">Cadastrar evento</button>',
+  });
+  const form = dlg.querySelector('form');
+  const inicio = form.querySelector('[name="data_inicio"]');
+  inicio.addEventListener('change', () => {
+    const fim = form.querySelector('[name="data_fim"]');
+    if (!fim.value || fim.value < inicio.value) fim.value = inicio.value;
+  });
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const vazio = [...form.querySelectorAll('[required]')].find((c) => !c.value.trim());
+    if (vazio) {
+      vazio.focus();
+      return erroNoModal(dlg, 'Preencha nome, organização, local e início.');
+    }
+    enviando = true;
+    try {
+      const corpo = Object.fromEntries(new FormData(form));
+      const r = await api(`/admin/pontos/${ponto.id}/eventos`, { method: 'POST', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
+        return erroNoModal(dlg, d.erro || 'Não foi possível cadastrar o evento.');
+      }
+      fechar();
+      toast('Evento cadastrado.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+// Definir/alterar a base: a conta custodiante (nunca dona), o nome do lugar
+// e o endereço. Escolher a conta preenche nome e endereço com os dela, para
+// ajustar. Mesma conta e mesmo nome = só correção de endereço.
+async function alterarBaseMovel(ponto, ficha, remontar) {
+  const contas = (await pegar('/admin/anunciantes')).filter((a) => !a.excluido_em);
+  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
+  const atual = contas.find((a) => a.id === ficha.base.conta?.id);
+  const { dlg, fechar } = abrirModal({
+    titulo: `Base de ${ponto.nome}`,
+    largo: true,
+    corpo: `<div class="form-ponto"><form id="formBaseMovel" class="form-ponto-form dlg-endereco-form" novalidate>
+        <p class="dlg-endereco-nota">A base é onde o ponto fica quando não está em evento. A conta da base é custodiante: não vira dona, não ganha crédito nem Plano Básico.</p>
+        <div class="campos">
+          <div class="campo-grupo"><label for="baseConta">Conta da base</label><input id="baseConta" name="conta" list="contasDaBase" required autocomplete="off" value="${atual ? esc(rotulo(atual)) : ''}" placeholder="Busque pelo nome"></div>
+          <div class="campo-grupo"><label for="baseNome">Nome da base</label><input id="baseNome" name="base_nome" maxlength="120" required value="${esc(ficha.base.nome)}"></div>
+        </div>
+        <datalist id="contasDaBase">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
+        <div data-endereco-base>${window.camposEndereco('base_', { valores: ponto })}</div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form></div>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formBaseMovel" class="btn primary">Salvar base</button>',
+  });
+  const form = dlg.querySelector('form');
+  window.ligarCep(form);
+  const contaEscolhida = () => {
+    const m = /\(#(\d+)\)$/.exec(form.querySelector('[name="conta"]').value.trim());
+    return m ? contas.find((a) => a.id === Number(m[1])) : null;
+  };
+  form.querySelector('[name="conta"]').addEventListener('change', () => {
+    const c = contaEscolhida();
+    if (!c || c.id === ficha.base.conta?.id) return;
+    form.querySelector('[name="base_nome"]').value = c.nome_empresa;
+    const valores = c.logradouro ? c : { ...c, logradouro: c.endereco || '', numero: '' };
+    form.querySelector('[data-endereco-base]').innerHTML = window.camposEndereco('base_', { valores });
+    window.ligarCep(form);
+  });
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const conta = contaEscolhida();
+    if (!conta) {
+      form.querySelector('[name="conta"]').focus();
+      return erroNoModal(dlg, 'Escolha a conta da base na lista.');
+    }
+    const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
+    if (vazio) {
+      vazio.focus();
+      return erroNoModal(dlg, 'Preencha o nome e o endereço da base (só o complemento é opcional).');
+    }
+    enviando = true;
+    try {
+      const corpo = {
+        base_conta_id: conta.id,
+        base_nome: form.querySelector('[name="base_nome"]').value,
+        ...window.enderecoDoForm(form),
+      };
+      const r = await api(`/admin/pontos/${ponto.id}/base`, { method: 'PUT', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
+        return erroNoModal(dlg, d.erro || 'Não foi possível salvar a base.');
+      }
+      const d = await r.json();
+      fechar();
+      toast(d.baseNova ? 'Base alterada.' : 'Endereço da base salvo.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
 }
 
 // Endereço físico do ponto (estação de endereços, 01/10/2026): o endereço
@@ -3406,8 +3679,9 @@ function renderPontoEndereco(el, ponto, pendencias, remontar) {
   const alterado = pendencias.find((p) => p.tipo === 'ENDERECO_PONTO_ALTERADO');
   const suspeito = pendencias.find((p) => p.tipo === 'ENDERECO_SUSPEITO');
   const linha = window.linhaEndereco(ponto, { comCidade: true });
+  const movel = ponto.tipo === 'movel';
   el.innerHTML = `
-    <div class="secao-topo"><h3>Endereço e localização</h3>
+    <div class="secao-topo"><h3>${movel ? 'Endereço da base' : 'Endereço e localização'}</h3>
       <div class="secao-acoes"><button type="button" class="btn ghost mini" data-editar-endereco-ponto ${ponto.status === 'arquivado' ? 'disabled' : ''}>Editar endereço</button></div></div>
     ${
       alterado
@@ -3418,15 +3692,17 @@ function renderPontoEndereco(el, ponto, pendencias, remontar) {
     }
     <p class="u-m-0">${linha ? esc(linha) : naoInformado()}${ponto.cep ? ` · CEP ${esc(ponto.cep)}` : ''}</p>
     ${suspeito ? '<p class="aviso-linha u-mt-4">O Número parece conter um endereço, não o número do imóvel. O dono vê a pendência no painel.</p>' : ''}
-    ${window.htmlMapaDoEndereco(ponto, { titulo: 'Localização atual' }) || '<p class="u-dim u-fs-85 u-mt-8">Sem logradouro e número separados ainda — o mapa aparece quando o endereço estiver completo.</p>'}
+    ${window.htmlMapaDoEndereco(ponto, { titulo: movel ? 'Localização da base' : 'Localização atual' }) || '<p class="u-dim u-fs-85 u-mt-8">Sem logradouro e número separados ainda — o mapa aparece quando o endereço estiver completo.</p>'}
     <details class="u-mt-8" data-historico><summary>Histórico do endereço</summary><div data-historico-lista><p class="carregando">Carregando...</p></div></details>`;
   el.querySelector('[data-editar-endereco-ponto]').addEventListener('click', () =>
     editarEnderecoAdmin({
-      titulo: `Endereço do ponto — ${ponto.nome}`,
+      titulo: movel ? `Endereço da base — ${ponto.base_nome}` : `Endereço do ponto — ${ponto.nome}`,
       valores: ponto,
       rota: `/admin/pontos/${ponto.id}/endereco`,
       comMapa: true,
-      nota: 'Endereço físico do ponto. A troca fica no histórico; o endereço da conta não muda por aqui.',
+      nota: movel
+        ? 'Correção do endereço da base atual. Para mudar de base, use "Alterar base".'
+        : 'Endereço físico do ponto. A troca fica no histórico; o endereço da conta não muda por aqui.',
       aoSalvar: remontar,
     }),
   );
@@ -3524,36 +3800,74 @@ function textoBeneficioPonto(b) {
 // edita aqui, porque é o horário de todas as telas do ponto.
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
+// Ponto MÓVEL (migration 112): é da Mostraí — sem proprietário de conta e
+// sem benefício; o horário é o da base (em evento, a tela exibe enquanto
+// estiver ligada). Base e eventos ficam no bloco próprio (renderPontoMovel).
 function renderPontoInformacoes(el, ponto, telas, remontar) {
+  const movel = ponto.tipo === 'movel';
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
   const primeiroSinal = telas
     .map((t) => t.primeiroSinalEm)
     .filter(Boolean)
     .sort()[0];
+  const proprietario = movel
+    ? `Mostraí<span class="dado-sub">Ponto móvel: é da rede, não da base</span>`
+    : ponto.dono_nome
+      ? ponto.anunciante_id
+        ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>`
+        : esc(ponto.dono_nome)
+      : naoInformado('Sem conta vinculada');
+  const acoes =
+    ponto.status === 'arquivado'
+      ? ''
+      : `<div class="acoes secao-pe">
+          <button type="button" class="btn ghost mini" data-trocar-tipo>${movel ? 'Transformar em ponto fixo' : 'Transformar em ponto móvel'}</button>
+          <button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir ponto</button>
+        </div>`;
   el.innerHTML = `
     ${fichaCabecalho({
       foto: fotoOuPlaceholder(ponto.foto_instalacao_url, ponto.nome),
       nome: esc(ponto.nome),
-      badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>`,
-      endereco: enderecoFicha(ponto),
+      badge: `<span class="badge ${PONTO_STATUS_CLASSE[ponto.status]}">${PONTO_STATUS[ponto.status] || ponto.status}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}`,
+      endereco: movel ? `Base: ${esc(ponto.base_nome)} · ${enderecoFicha(ponto)}` : enderecoFicha(ponto),
     })}
     <dl class="dados dados-2">
       <div><dt>Segmento</dt><dd>${segmento ? esc(segmento) : naoInformado()}</dd></div>
-      <div><dt>Proprietário (conta)</dt><dd>${ponto.dono_nome ? (ponto.anunciante_id ? `<a href="#contas/contas/${ponto.anunciante_id}">${esc(ponto.dono_nome)}</a>` : esc(ponto.dono_nome)) : naoInformado('Sem conta vinculada')}</dd></div>
+      <div><dt>Proprietário</dt><dd>${proprietario}</dd></div>
       <div><dt>Responsável no local</dt><dd>${esc(ponto.responsavel_nome || '—')}${ponto.responsavel_contato ? `<span class="dado-sub">${esc(ponto.responsavel_contato)}</span>` : ''}</dd></div>
-      <div><dt>Benefício do ponto</dt><dd>${textoBeneficioPonto(ponto.beneficio)}</dd></div>
+      <div><dt>Benefício do ponto</dt><dd>${movel ? 'Nenhum<span class="dado-sub">Ponto da Mostraí: a base não ganha crédito nem Plano Básico por ele</span>' : textoBeneficioPonto(ponto.beneficio)}</dd></div>
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
       <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
-      <div class="dados-largo"><dt>Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span></dt>
+      <div class="dados-largo"><dt>${movel ? 'Horário na base<span class="dado-ajuda">Em evento, a tela exibe enquanto estiver ligada.</span>' : 'Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span>'}</dt>
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
           <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
     </dl>
-    ${ponto.status === 'arquivado' ? '' : '<div class="acoes secao-pe"><button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir ponto</button></div>'}`;
+    ${acoes}`;
   ajustarFotos(el);
   el.querySelector('[data-editar-horario]').addEventListener('click', () => editarHorarioPonto(ponto, remontar));
   el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
+  el.querySelector('[data-trocar-tipo]')?.addEventListener('click', () => trocarTipoDoPonto(ponto, remontar));
+}
+
+// Fixo ⇄ móvel depois da aprovação (migration 112). O servidor decide e
+// recusa com o motivo (móvel com evento aberto, fixo sem conta).
+async function trocarTipoDoPonto(ponto, remontar) {
+  const paraMovel = ponto.tipo !== 'movel';
+  const ok = await confirmarModal({
+    titulo: paraMovel ? `Transformar ${ponto.nome} em ponto móvel?` : `Transformar ${ponto.nome} em ponto fixo?`,
+    texto: paraMovel
+      ? `<p>O ponto passa a ser da <b>Mostraí</b> e ganha um nome de móvel. ${ponto.dono_nome ? `<b>${esc(ponto.dono_nome)}</b> deixa de ser a dona e vira a <b>base</b>` : 'A conta dele vira a base'}: o Plano Básico deste ponto termina e o crédito mensal para de contar a partir de agora (o que já ganhou fica com ela).</p>`
+      : `<p>O ponto fica de vez na base <b>${esc(ponto.base_nome)}</b>, e a conta dela passa a ser a <b>dona</b> — com o que todo dono de ponto fixo tem (crédito mensal e Plano Básico, pelas regras de sempre).</p>
+         <p class="u-dim">Precisa estar sem evento em andamento ou programado.</p>`,
+    botao: paraMovel ? 'Transformar em móvel' : 'Transformar em fixo',
+  });
+  if (!ok) return;
+  const r = await api(`/admin/pontos/${ponto.id}/${paraMovel ? 'tornar-movel' : 'tornar-fixo'}`, { method: 'POST' });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível trocar o tipo.', 'err');
+  toast(paraMovel ? 'Agora é um ponto móvel.' : 'Agora é um ponto fixo.');
+  remontar();
 }
 
 // Mesma regra da tela (excluirTela): sem histórico sai de verdade, junto com
@@ -5246,6 +5560,38 @@ async function renderCandidaturasGrade(el) {
   }
 }
 
+// Tipo do ponto na aprovação (02/10/2026, migration 112): quem pediu nunca
+// escolhe — o Admin decide aqui. Padrão: Fixo. → Promise<'fixo'|'movel'|null>.
+const TIPOS_DE_PONTO = { fixo: 'Fixo', movel: 'Móvel' };
+const EXPLICA_TIPO_DE_PONTO = {
+  fixo: 'Fica neste comércio, e a conta que pediu é a dona do ponto — com o crédito mensal e o Plano Básico de sempre.',
+  movel:
+    'É da Mostraí: este comércio vira a base (não o dono) e o ponto pode sair para eventos. A base não ganha crédito nem Plano Básico por ele.',
+};
+function escolherTipoNaAprovacao(nome) {
+  return new Promise((resolve) => {
+    let escolhido = null;
+    const { dlg, fechar } = abrirModal({
+      titulo: `Aprovar “${nome}”?`,
+      corpo: `<p>O ponto nasce agora com esses dados, como <b>aguardando instalação</b>.</p>
+        <div class="campo-grupo u-mt-8"><span class="campo-rotulo">Tipo do ponto</span>
+          ${segmentado('tipo_ponto', TIPOS_DE_PONTO, 'fixo')}</div>
+        <p class="u-dim u-fs-85 u-mt-8" data-explica-tipo aria-live="polite">${esc(EXPLICA_TIPO_DE_PONTO.fixo)}</p>`,
+      rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button>
+        <button type="button" class="btn primary" data-confirmar>Aprovar ponto</button>`,
+    });
+    const explica = dlg.querySelector('[data-explica-tipo]');
+    dlg.addEventListener('change', (ev) => {
+      if (ev.target.name === 'tipo_ponto') explica.textContent = EXPLICA_TIPO_DE_PONTO[ev.target.value] || '';
+    });
+    dlg.querySelector('[data-confirmar]').addEventListener('click', () => {
+      escolhido = dlg.querySelector('input[name="tipo_ponto"]:checked')?.value || 'fixo';
+      fechar();
+    });
+    dlg.addEventListener('close', () => resolve(escolhido));
+  });
+}
+
 async function renderCandidaturaDetalhe(el, id) {
   const todas = await pegar('/admin/candidaturas');
   const c = todas.find((x) => x.id === id);
@@ -5303,13 +5649,20 @@ async function renderCandidaturaDetalhe(el, id) {
     const btn = e.currentTarget;
     // Sem "e a Tela 1": desde a rodada final da Rede (22/09/2026) o ponto
     // nasce SEM tela, como "aguardando instalação" — a tela é criada na
-    // instalação de verdade (src/conta/modos.js).
-    const ok = await confirmarModal({
-      titulo: `Aprovar “${nome}”?`,
-      texto: '<p>O ponto nasce agora com esses dados, como <b>aguardando instalação</b>.</p>',
-      botao: 'Aprovar ponto',
-    });
-    if (!ok) return;
+    // instalação de verdade (src/conta/modos.js). Candidatura de conta
+    // escolhe aqui o TIPO do ponto (fixo/móvel, migration 112); a antiga, sem
+    // conta, só vira convite (e fixo).
+    const tipo =
+      c.conta_id && c.tipo === 'ponto'
+        ? await escolherTipoNaAprovacao(nome)
+        : (await confirmarModal({
+              titulo: `Aprovar “${nome}”?`,
+              texto: '<p>O ponto nasce agora com esses dados, como <b>aguardando instalação</b>.</p>',
+              botao: 'Aprovar ponto',
+            }))
+          ? 'fixo'
+          : null;
+    if (!tipo) return;
     // Linha antiga de candidatura a VENDEDOR (programa aposentado em
     // 23/09/2026): não há papel pra liberar nem convite que o backend
     // aceite — só resta recusar.
@@ -5325,7 +5678,7 @@ async function renderCandidaturaDetalhe(el, id) {
     // de uma pessoa sem conta ainda virar ponto — POST /admin/convites já
     // marca a candidatura como aprovada sozinho (src/convites/routes.js).
     const r = c.conta_id
-      ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST' })
+      ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST', body: JSON.stringify({ tipo }) })
       : await api('/admin/convites', {
           method: 'POST',
           body: JSON.stringify({
@@ -5351,7 +5704,7 @@ async function renderCandidaturaDetalhe(el, id) {
         link,
       });
     }
-    toast('Candidatura aprovada.');
+    toast(tipo === 'movel' ? 'Candidatura aprovada como ponto móvel.' : 'Candidatura aprovada.');
     RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     irPara('rede/candidaturas');

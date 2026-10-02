@@ -154,7 +154,7 @@ ativação de um papel novo pelo painel, resgatar bônus de módulo cruzado.
 |---|---|---|---|---|---|
 | Início | `/` | público | o que é a rede, pontos, chamada, card de ponto e de vendedor | conhecer | planos, cadastro, contato |
 | Planos | `/planos.html` | público | grade de 3 níveis × 4 ciclos, e o plano fundador se aberto | escolher plano | cadastro |
-| Pontos | `/pontos.html` | público | os comércios da rede | ver onde o anúncio roda | cadastro |
+| Pontos | `/pontos.html` | público | os comércios da rede (ponto móvel com o selo e a base — RN-71) | ver onde o anúncio roda | cadastro |
 | Comodato | `/comodato.html` | público | contrato de comodato do EQUIPAMENTO (documento jurídico; o texto ainda descreve as modalidades antigas — pendência do dono, PENDENCIAS §J) | ler o contrato | — |
 | Contato | `/contato.html` | público | formulário | mandar mensagem | — |
 | Cadastro | `/anunciante/cadastro.html` | público | formulário de conta (aceita `?ref=CUPOM`) | criar conta de anunciante | painel |
@@ -272,7 +272,14 @@ Escrito por grupo, porque o padrão se repete.
   todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
   ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
   pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
-  Excluir); ficha da tela em blocos — **Resumo** (último sinal, versão do
+  Excluir); **ponto móvel** (RN-71): selo "Ponto móvel" no card e na ficha,
+  proprietário "Mostraí", bloco **Ponto móvel** com local atual, próximo
+  evento, base e conta da base, [Alterar base], [Cadastrar evento] e cada
+  evento com [Iniciar (chegou ao evento)] / [Encerrar e voltar para a base] /
+  [Cancelar], e o histórico (eventos encerrados/cancelados com as exibições
+  confirmadas no evento, e bases anteriores); "Transformar em ponto
+  móvel/fixo" no pé da ficha; a aprovação de candidatura pergunta o **Tipo
+  do ponto** (Fixo/Móvel, padrão Fixo); ficha da tela em blocos — **Resumo** (último sinal, versão do
   Player, mídia atual), **Instalação** (ID da tela, código com contagem
   regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
   (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, equipamento),
@@ -1646,6 +1653,40 @@ de ponto (dono ou Admin) fica em `pontos_enderecos_historico`. A varredura
 diária (`scripts/conciliar.js`) e a primeira visita ao painel apontam o
 cadastro antigo, gravado antes da regra — sem mudar dado nenhum.
 
+**RN-71 — Ponto fixo e ponto móvel: o móvel é da Mostraí, e a base nunca vira
+dona.** (Migration 112, 02/10/2026.) Todo ponto tem um TIPO, decidido pelo
+Admin ao aprovar a candidatura ("Tipo do ponto: Fixo | Móvel", padrão Fixo) —
+quem pede nunca escolhe — e mudável depois na ficha ("Transformar em ponto
+móvel/fixo"). **Fixo** é o de sempre: mora no estabelecimento e a conta que
+cedeu a parede é a dona (crédito mensal, Plano Básico, cupom). **Móvel** é um
+ativo da Mostraí (`anunciante_id` vazio, garantido por CHECK no banco): tem
+uma BASE — conta custodiante, nome do lugar, endereço (o do próprio ponto) e
+desde quando — e pode sair para EVENTOS cadastrados pelo Admin (nome,
+organização, local, início, fim opcional; público estimado e observação
+opcionais). **Local atual** não é campo: é o local do evento em andamento ou,
+sem evento, a base. **Próximo evento** é o programado de início mais próximo
+que ainda não terminou (fim ≥ hoje em Matão). Estados do evento: programado →
+em andamento ("o ponto chegou", um por vez) → encerrado (volta para a base);
+programado → cancelado (nunca vira local atual nem próximo; fica no
+histórico). Trocar de base guarda o período anterior; voltar a ser fixo faz da
+base a dona (decisão explícita do Admin). A conta-base não ganha crédito,
+Plano Básico, cupom nem papel de dono — nem o organizador do evento, que é só
+texto. Ela vê o móvel em "Meus pontos" só como base (sem telas, sem
+benefício, sem editar). O anunciante escolhe o PONTO móvel, nunca a base nem
+um evento: o card "Ponto móvel" mostra nome, onde está agora, o próximo
+evento (com "Público estimado: ~N pessoas" quando informado — estimativa do
+evento, nunca exibição, impressão ou alcance) e a base. Proof-of-Play continua
+a única fonte de entrega; a exibição contabilizada durante um evento guarda o
+evento em `execucoes_confirmadas.evento_id` (pelo instante da exibição contra
+o início/fim marcados pelo Admin), só para auditoria. Horário: na base vale o
+horário da base; em evento a tela exibe enquanto estiver ligada (a config da
+TV muda ao iniciar e ao encerrar). A trava de concorrente do ponto móvel
+protege a base (o ramo do ponto é o dela) e, como a dona no fixo, a base não
+é barrada quando escolhe o móvel. *Violada:* evento em ponto fixo, segundo
+evento em andamento, evento que já terminou, dono em ponto móvel → recusa com
+o motivo. *Quem vê:* o Admin (tudo), o anunciante (card), a conta-base (Meus
+pontos).
+
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.
 *Violada:* conta excluída não loga. *Quem vê:* quem excluiu.
@@ -1911,7 +1952,7 @@ Convenção: `categoria:objeto_acao`, verbo no presente; propriedades
 | `criativo:video_aprova` | servidor | `horas_ate_aprovar` | o vídeo entra no ar rápido? (é o mesmo gatilho do e-mail da RN-18) |
 | `exibicao:video_toca` | **não vai para `eventos`** — ver abaixo | — | a entrega prometida aconteceu? |
 | `tela:dispositivo_ativa` | servidor | `ponto_id`, `custo_aparelho` | a rede cresceu quanto? |
-| `ponto:candidatura_aprova` | servidor | `bairro`, `ramo` | de onde vêm os pontos? |
+| `ponto:candidatura_aprova` | servidor | `bairro`, `ramo`, `ponto_tipo` (`fixo`/`movel`) | de onde vêm os pontos? |
 | `comissao:vendedor_gera` | servidor | `vendedor_id`, `comissao_valor` | quanto a indicação custa? |
 | `ponto:pagamento_quita` | servidor | `ponto_id`, `valor`, `competencia` | quanto a rede custou em ajuda de custo? |
 | `conta:exclusao_pede` | servidor | `dias_de_vida`, `tinha_plano_ativo` | quem sai, e quando? |

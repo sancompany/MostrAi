@@ -157,6 +157,15 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
 - **Comissão de vendedor recorrente pode caracterizar representação comercial
   (Lei 4.886/65).** Não é limite de software; é limite de operação. O contrato
   com o vendedor é decisão do dono e está fora deste repositório.
+- **Ponto móvel: o "local atual" é administrativo, não posição real**
+  (02/10/2026, RN-71). Vem do evento que o Admin marcou como em andamento,
+  ou da base — nunca de GPS, e a tela não manda onde está. Se o Admin
+  esquecer de iniciar ou encerrar um evento, o card mostra o local errado
+  até alguém corrigir (a ficha avisa evento vencido sem encerrar). O
+  **público estimado** é o número que a organização do evento informou:
+  aparece como "~N pessoas", nunca entra no POP, no saldo nem em promessa
+  de audiência. limite: GPS e audiência medida estão nas próximas versões
+  (`docs/proximas-versoes.md`) e no veto de medição acima.
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

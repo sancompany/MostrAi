@@ -5706,3 +5706,52 @@ ADR-035 em `.ia/DECISIONS.md`; migration 111.
       aberta e as horas do plano assumem 12 h/dia × 30 dias; com ponto 24 h
       a base entrega mais que o contratado (aparece como
       `SOBREENTREGA_ANOMALA`). Manter, ou limitar a base ao contratado?
+
+## S. Ponto fixo e ponto móvel (02/10/2026)
+
+Pedido do dono "Nova modalidade de ponto — ponto fixo e ponto móvel". Regra
+RN-71 em `docs/funcional.md`; ADR-036 em `.ia/DECISIONS.md`; migration 112;
+limite no `CONSTRAINTS.md`; o que ficou de fora em `docs/proximas-versoes.md`.
+
+- S1 [x] Tipo do ponto decidido pelo Admin na aprovação da candidatura
+      (modal "Fixo / Móvel", padrão Fixo); a candidatura continua genérica.
+      Ponto já existente pode virar móvel (ou voltar a fixo) na ficha.
+- S2 [x] Móvel é da Mostraí: sem dono (`anunciante_id` vazio), com a conta
+      que o recebe guardada como BASE (`base_conta_id`, nome, endereço,
+      desde). Sem papel `ponto`, sem cupom, sem Plano Básico, sem crédito
+      mensal. Trocar de base fecha um período no histórico.
+- S3 [x] Eventos (nome, organização, local, datas, público estimado e
+      observação opcionais): programado → em andamento → encerrado, ou
+      cancelado. Local atual e próximo evento decididos no servidor.
+- S4 [x] Card "Ponto móvel" na escolha de pontos do anunciante (selo, nome,
+      local atual, base, próximo evento, texto curto), também no celular;
+      "Onde estamos" mostra o selo; a conta-base vê o móvel em Meus pontos
+      só como base (sem ações de dono).
+- S5 [x] Proof-of-Play continua a fonte da verdade; a exibição confirmada
+      durante um evento ganha o `evento_id` (só auditoria — nunca decide se
+      conta). A ficha mostra "N exibições confirmadas no evento".
+- S6 [x] Testes: `tests/ponto-movel.test.js` (itens 1–17 do pedido, mais
+      trava de ramo, horário em evento, troca de base, fixo ↔ móvel e
+      dedupe) e `tests/e2e/46-ponto-movel.mjs` (o fluxo completo no
+      navegador e o item 18: o card no celular, sem rolagem lateral).
+- S7 [ ] **Só o dono — decisões tomadas pelo código, confira se concorda:**
+  - **Horário:** na base vale o horário cadastrado do ponto; em evento a
+    tela exibe enquanto estiver ligada (24 h) — o horário da base não diz
+    nada sobre o evento. De volta à base, o horário volta sozinho.
+  - **Concorrente do ramo:** a trava de ramo ("não dividir a tela com
+    concorrente direto") protege o ramo da BASE, inclusive durante o
+    evento; a base pode anunciar no móvel se escolher, pagando com o plano
+    dela, como qualquer conta. Alternativa: soltar a trava durante o
+    evento (mais anunciantes possíveis, mais regra).
+  - **Início e fim do evento são manuais** (o Admin marca "chegou" e
+    "voltou"); a data só avisa — evento vencido sem encerrar aparece na
+    ficha com o aviso, e o card continua mostrando o evento até alguém
+    encerrar. Alternativa: encerrar sozinho no fim da data.
+  - **Móvel → fixo** dá o ponto à conta da base (ação explícita do Admin,
+    com confirmação, bloqueada enquanto houver evento programado ou em
+    andamento). **Fixo → móvel** tira o dono: o Plano Básico daquele ponto
+    termina (`dono_mudou`) e o crédito mensal para.
+  - **Aviso de aprovação** (notificação e e-mail) é o mesmo do fixo: "Seu
+    pedido de ponto foi aprovado — a gente chama no WhatsApp pra combinar a
+    visita e a instalação". Não diz que o ponto é móvel nem promete nada
+    à base.

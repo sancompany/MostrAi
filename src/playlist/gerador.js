@@ -78,6 +78,13 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
   return Math.min(CRIATIVOS_POR_CONTA, Math.max(1, Number(limitePlano) || 1));
 }
 
+// A conta que a trava de ramo protege numa tela: a dona do ponto fixo, ou a
+// BASE do ponto móvel (migration 112) — a tela está dentro do comércio dela.
+// A base não é dona: isto só a livra da própria trava quando ela escolhe o
+// móvel, como a dona no ponto fixo. Cota, Básico e "criativos do dono"
+// continuam só da dona.
+const casaDaTela = (dispositivo) => dispositivo.dono_conta_id ?? dispositivo.base_conta_id ?? null;
+
 // "Elegível pra esta tela" é: conta ativa + criativo aprovado + dentro da
 // validade + não ser do mesmo ramo do comércio onde a tela está nem de um
 // ramo registrado como CONCORRENTE DIRETO dele (migration 105) + O PLANO
@@ -535,7 +542,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       anunciantesElegiveis(
         dispositivo.categoria_id,
         excluirDaRotacaoPaga,
-        dispositivo.dono_conta_id,
+        casaDaTela(dispositivo),
         dispositivo.ponto_id,
         { comSaldo: Object.keys(saldosBanco) },
       ),
@@ -930,7 +937,7 @@ async function obrigacoesDaTela(dispositivo, { desde = new Date(Date.now() - 62 
     anunciantesElegiveis(
       dispositivo.categoria_id,
       cotaDaTela > 0 ? dispositivo.dono_conta_id : null,
-      dispositivo.dono_conta_id,
+      casaDaTela(dispositivo),
       dispositivo.ponto_id,
       { qualquerValidade: true },
     ),
@@ -1162,6 +1169,9 @@ async function confirmarExecucao(dispositivoIdEsperado, itemProgramacaoId, janel
     return 'janela_desconhecida';
   }
   const instante = instanteDaExibicao(extra.iniciadoEm, horaJanela, agora);
+  // Quem chama liga a exibição ao evento do ponto móvel por este instante
+  // (execucoes-repository.js) — só auditoria, nunca decide se conta.
+  extra.instante = instante;
   if (midia) return creditarMidia(idNumerico, dispositivoIdEsperado, horaJanela, instante, db);
 
   const anuncianteId = idNumerico;

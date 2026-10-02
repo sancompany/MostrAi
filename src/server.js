@@ -207,6 +207,7 @@ app.use(anunciantesRoutes.derrubarSessaoSuspensa);
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use(pontosRoutes);
+app.use(require('./pontos/movel-routes'));
 app.use(anunciantesRoutes.router);
 app.use(require('./anunciantes/situacao').router);
 app.use(playlistRoutes);

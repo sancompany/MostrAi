@@ -1,6 +1,19 @@
 # Current Handoff
 
 ## Updated
+2026-10-02 — **Ponto fixo e ponto móvel** (pedido do dono; branch
+`claude/busy-noether-hheir2`). O Admin escolhe Fixo (padrão) ou Móvel ao
+aprovar a candidatura; o móvel é da Mostraí (sem `anunciante_id`), com a conta
+como BASE e eventos (programado/em andamento/encerrado/cancelado). Local
+atual e próximo evento derivados no servidor (`src/pontos/movel.js`); rotas
+em `src/pontos/movel-routes.js`; card "Ponto móvel" na escolha de pontos do
+anunciante; POP ganha `evento_id` só para auditoria. Migration 112 aditiva
+(todo ponto existente fica fixo). RN-71, ADR-036, PENDENCIAS §S (S7 são
+decisões para o dono conferir). Testes: `tests/ponto-movel.test.js`,
+`tests/e2e/46-ponto-movel.mjs`. Antes, no mesmo dia: excluir ponto pelo Admin
+([PR #111](https://github.com/sancompany/MostrAi/pull/111), mergeado e no ar).
+**A auditoria Review-Master continua PAUSADA** — só retomar quando o dono
+mandar a palavra-chave "Review-Master"; não iniciar outra estação.
 2026-10-01 — **Correção estrutural HIGH: a obrigação de veiculação nasce do
 ciclo contratado** (achado da auditoria Review-Master; branch
 `claude/busy-noether-hheir2`). Livro `obrigacoes_veiculacao` + janelas
