@@ -38,7 +38,13 @@ const SITUACAO_DA_TELA = {
   operando: { nivel: 'ok', texto: 'Funcionando' },
   fora_do_horario: { nivel: 'neutro', texto: 'Fora do horário de funcionamento' },
   aguardando_instalacao: { nivel: 'neutro', texto: 'Aguardando instalação pela equipe Mostraí' },
-  sem_sinal: { nivel: 'atencao', texto: 'A tela deveria estar operando e está sem comunicação.' },
+  // Sem comunicação NÃO é "fora do ar" nem problema da tela: pode ser só a
+  // internet do local, com a TV exibindo a programação guardada. Neutro, sem
+  // alerta — o acompanhamento técnico é do Admin (src/lib/status-tela.js).
+  sem_comunicacao: {
+    nivel: 'neutro',
+    texto: 'Sem comunicação com a Mostraí. A tela pode continuar exibindo a programação normalmente.',
+  },
   erro_do_player: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
   em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
   inativa: { nivel: 'neutro', texto: 'Desligada' },

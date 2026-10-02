@@ -229,7 +229,7 @@ const GRUPOS_DE_SAUDE = [
   { chave: 'operando', um: 'funcionando', varios: 'funcionando' },
   { chave: 'fora_do_horario', um: 'fora do horário', varios: 'fora do horário' },
   { chave: 'aguardando_instalacao', um: 'aguardando instalação', varios: 'aguardando instalação' },
-  { chave: 'sem_sinal', um: 'sem sinal', varios: 'sem sinal' },
+  { chave: 'sem_comunicacao', um: 'sem comunicação com a Mostraí', varios: 'sem comunicação com a Mostraí' },
   { chave: 'erro_do_player', um: 'com erro relatado', varios: 'com erro relatado' },
   { chave: 'em_reparo', um: 'em reparo', varios: 'em reparo' },
   { chave: 'inativa', um: 'desligada', varios: 'desligadas' },

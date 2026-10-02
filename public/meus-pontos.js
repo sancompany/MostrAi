@@ -79,7 +79,7 @@
   // Visão simplificada: situação e último sinal (toda tela segue o horário
   // do estabelecimento). Nada técnico — o que é de operador fica no admin.
   function htmlTela(t) {
-    const sinal = t.ultimoSinal ? ` · último sinal ${tempoDesde(t.ultimoSinal)}` : '';
+    const sinal = t.ultimoSinal ? ` · última comunicação ${tempoDesde(t.ultimoSinal)}` : '';
     const curto = t.nivel === 'atencao' ? 'Precisa de atenção' : t.situacaoTexto;
     return `<li class="tela-linha nivel-${t.nivel}">
       <span class="tela-dot" aria-hidden="true"></span>

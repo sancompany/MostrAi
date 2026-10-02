@@ -5755,3 +5755,45 @@ limite no `CONSTRAINTS.md`; o que ficou de fora em `docs/proximas-versoes.md`.
     pedido de ponto foi aprovado — a gente chama no WhatsApp pra combinar a
     visita e a instalação". Não diz que o ponto é móvel nem promete nada
     à base.
+
+## T. Conectividade não é operação (02/10/2026)
+
+Pedido do dono "Correção de modelo — conectividade não é operação", junto da
+atualização do Player para pontos móveis offline por dias. Regra em
+`docs/funcional.md` (saúde da tela) e `docs/player-mvp-contract.md` §8.1/§9;
+migration 113.
+
+- T1 [x] Estado da tela em eixos separados (`estadoDaTela`, `src/lib/status-tela.js`):
+      administrativo, instalação, conectividade (`conectada`/`sem_comunicacao`)
+      e operação (`operando`/`fora_do_horario`/`erro`/`desconhecida`).
+      Heartbeat vencido = sem comunicação + operação desconhecida — nunca
+      desligada, fora do ar, erro nem inativa. `saude` `sem_sinal` virou
+      `sem_comunicacao`. `pontos.status` continua sem olhar sinal.
+- T2 [x] Por perfil: anunciante só `no_ar`/`fora_do_horario`/`fora_do_ar`
+      (`situacaoComercialDoPonto` — sem comunicação segue no ar; o último
+      sinal saiu da resposta e do painel); dono, aviso neutro e sem alerta;
+      Admin, conectividade e operação separadas, última operação conhecida,
+      operação sincronizada depois, `SEM_COMUNICACAO` como atenção e
+      `ERRO_PLAYER` como alerta. Visão geral: `offline` virou `telasComErro`
+      (urgente) + `telasSemComunicacao` (acompanhamento); chip "Sem
+      comunicação" na grade da Rede.
+- T3 [x] `POST /player/:id/operacao` + `sessoes_operacionais` (migration 113):
+      sessões medidas pelo monotônico da TV, idempotentes, upsert que só
+      estende. Evidência técnica — não toca cobrança, saldo, obrigação nem
+      benefício.
+- T4 [x] Testes: `tests/conectividade-operacao.test.js` (os 11 casos do
+      pedido, mais idempotência, "só estende" e validação da rota);
+      `status-tela`, `meus-pontos` e `player-mvp` ajustados ao nome novo.
+- T5 [ ] **Só o dono — decisões tomadas pelo código, confira se concorda:**
+  - **Erro relatado pelo Player tira o ponto do ar para o anunciante**
+    (`fora_do_ar`), como antes; só a falta de comunicação deixou de tirar.
+  - **Sem comunicação não é alerta para o dono** — fica neutro; o Admin
+    acompanha. Alternativa: avisar o dono depois de N horas sem comunicação.
+  - **A obrigação da "hora sem sinal"** (`src/bancohoras/obrigacao.js`) não
+    mudou: é regra de negócio, fora do escopo pedido. Uma TV móvel offline
+    que exibiu o institucional continua sem entregar comercial naquela hora
+    — o comprovante que chega depois conta pela regra de sempre.
+- T6 [ ] **Pacote offline de vários dias** (validade por janela além da hora
+      corrente, contexto base/hospedagem/evento, assinatura do manifesto) —
+      precisa de desenho no backend; hoje o Player só exibe comercial dentro
+      da janela da playlist que tem, e cai no institucional depois.

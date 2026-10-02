@@ -688,7 +688,7 @@ test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois
   ]);
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
   await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '3 minutes' WHERE id = $1", [tela.id]);
-  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_sinal');
+  assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_comunicacao');
   await bater(p, { estado: 'PLAYING' });
   assert.equal(await eventosDe(tela.id, 'OFFLINE'), 1);
   assert.equal(await eventosDe(tela.id, 'ONLINE'), 1);

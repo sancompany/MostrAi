@@ -761,9 +761,12 @@ test('§31 anomalia de sobre-entrega vira pendência do admin, uma vez por ciclo
   await pool.query(
     `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
                                      vezes_confirmadas, duracao_segundos)
-     VALUES ($1, $2, date_trunc('hour', now()) - interval '1 hour', 7000, 7000, 7000, 15)`,
+     VALUES ($1, $2, date_trunc('hour', now()), 7000, 7000, 7000, 15)`,
     [conta.id, ponto.telaId],
-  ); // 29 h 10 min entregues de 27 h
+  ); // 29 h 10 min entregues de 27 h — na hora CORRENTE: a anterior, entre
+  // 00:00 e 01:00 de Matão, cai no dia de ontem, antes do início do ciclo, e
+  // o teste falhava só nessa hora.
+
   const um = await obrigacao.registrarAnomaliasDeSobreentrega({ apenasContas: [conta.id] });
   const dois = await obrigacao.registrarAnomaliasDeSobreentrega({ apenasContas: [conta.id] });
   assert.strictEqual(um.abertas, 1);

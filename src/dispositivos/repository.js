@@ -1,12 +1,20 @@
 const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
-const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
+const {
+  estadoDaTela,
+  saudeDaTela,
+  situacaoConfig,
+  situacaoFila,
+  alertasDaTela,
+  SITUACOES_DE_ATENCAO_ADMIN,
+} = require('../lib/status-tela');
 const { horarioEmVigorSql } = require('../lib/horario-em-vigor');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
 const pinSaida = require('../player/pin-saida');
+const { FIM_SQL } = require('../player/operacao');
 const {
   formatarCodigoTela,
   normalizarCodigoTela,
@@ -68,12 +76,26 @@ const SELECT_TELA_ADMIN = SELECT_TELA.replace(
          tk.criado_em AS prov_criado_em, tk.expira_em AS prov_expira_em, tk.usado_em AS prov_usado_em,
          tk.cancelado_em AS prov_cancelado_em, tk.codigo_cifrado AS prov_codigo_cifrado,
          (SELECT a.nome_empresa FROM criativos c JOIN anunciantes a ON a.id = c.anunciante_id
-           WHERE d.criativo_atual ~ '^[0-9]{1,9}$' AND c.id = d.criativo_atual::int) AS criativo_atual_anunciante
+           WHERE d.criativo_atual ~ '^[0-9]{1,9}$' AND c.id = d.criativo_atual::int) AS criativo_atual_anunciante,
+         op.ultima_operacao_em, op.operacao_aberta, op.sincronizada_depois_ms
     FROM dispositivos d
     LEFT JOIN LATERAL (
       SELECT criado_em, expira_em, usado_em, cancelado_em, codigo_cifrado FROM tokens_provisionamento
        WHERE dispositivo_id = d.id ORDER BY criado_em DESC, id DESC LIMIT 1
-    ) tk ON true`,
+    ) tk ON true
+    LEFT JOIN LATERAL (
+      -- Sessões operacionais (migration 113): o que a TV diz que operou,
+      -- inclusive offline. "Sincronizada depois" = sessão que já tinha
+      -- terminado quando o servidor a viu pela primeira vez (a TV operou sem
+      -- comunicação), nos últimos 7 dias.
+      SELECT MAX(${FIM_SQL('s')}) AS ultima_operacao_em,
+             bool_or(NOT s.encerrada AND s.atualizada_em > now() - interval '20 minutes') AS operacao_aberta,
+             COALESCE(SUM(s.duracao_ms) FILTER (
+               WHERE s.encerrada AND s.recebida_em > ${FIM_SQL('s')} + interval '2 minutes'
+                 AND ${FIM_SQL('s')} > now() - interval '7 days'
+             ), 0)::bigint AS sincronizada_depois_ms
+        FROM sessoes_operacionais s WHERE s.dispositivo_id = d.id
+    ) op ON true`,
 );
 
 // Uso interno do Player (autenticação, playlist, config) — nunca vai para
@@ -129,6 +151,7 @@ function situacaoInstalacao(t, agora) {
 // por ela (sem chave, sem hash, sem PIN) nem jargão de engenharia.
 function paraAdmin(t, agora = new Date()) {
   const saude = saudeDaTela(t, t.ponto_horario_semanal, agora);
+  const estado = estadoDaTela(t, t.ponto_horario_semanal, agora);
   const temErro = t.ultimo_erro_codigo || t.ultimo_erro;
   return {
     id: t.id,
@@ -139,6 +162,19 @@ function paraAdmin(t, agora = new Date()) {
     pontoCidade: t.ponto_cidade,
     status: t.status,
     saude,
+    // Eixos separados (src/lib/status-tela.js): conectividade não é operação.
+    // Sem comunicação, a operação de agora é `desconhecida` — nunca "parada".
+    conectividade: estado.conectividade,
+    operacao: estado.operacao,
+    // O que a TV contou que operou (sessões operacionais, migration 113),
+    // inclusive o que só chegou depois de reconectar.
+    operacaoConhecida: t.chave_hash
+      ? {
+          ultimaEm: t.ultima_operacao_em || null,
+          emAndamento: !!t.operacao_aberta,
+          sincronizadaDepoisMs7d: Number(t.sincronizada_depois_ms || 0),
+        }
+      : null,
     alertas: alertasDaTela(t, saude, agora),
     criadaEm: t.created_at,
     instaladoEm: t.instalado_em,
@@ -185,9 +221,10 @@ async function buscarPorId(id) {
   return rows[0] ? paraAdmin(rows[0], new Date()) : null;
 }
 
-// Visão geral / alertas: só quem deveria operar e não está.
-async function listarComProblemaDeSinal() {
-  return (await listarTodos()).filter((t) => SITUACOES_DE_ALERTA.has(t.saude));
+// Visão geral: telas que o Admin acompanha — erro relatado pelo Player e
+// sem comunicação, cada um contado à parte (sem comunicação não é "parada").
+async function listarQuePedemAtencao() {
+  return (await listarTodos()).filter((t) => SITUACOES_DE_ATENCAO_ADMIN.has(t.saude));
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +538,7 @@ module.exports = {
   paraAdmin,
   listarPorPonto,
   listarTodos,
-  listarComProblemaDeSinal,
+  listarQuePedemAtencao,
   criar,
   atualizar,
   temExibicaoConfirmada,

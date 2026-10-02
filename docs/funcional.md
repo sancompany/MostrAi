@@ -1282,9 +1282,19 @@ derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
 nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
 `aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
 `fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 2 min — heartbeat de
-15 s; `TELA_SEM_SINAL_MIN`) → `erro_do_player` (sinal recente com erro) →
-`operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
+`erro_do_player` (sinal recente com erro) → `sem_comunicacao` (deveria operar
+e o último sinal passou de 2 min — heartbeat de 15 s; `TELA_SEM_SINAL_MIN`)
+→ `operando`. **Conectividade não é operação (02/10/2026):** heartbeat
+vencido é `sem_comunicacao` com operação `desconhecida` (`estadoDaTela`, eixos
+administrativo / instalação / conectividade / operação) — nunca desligada,
+fora do ar, erro nem inativa, e nunca muda `pontos.status`; a TV pode estar
+exibindo offline, e as sessões operacionais que ela manda ao reconectar
+(`POST /player/:id/operacao`, migration 113) mostram ao Admin o que operou.
+Só `erro_do_player` é alerta; `sem_comunicacao` é atenção, só do Admin. O
+anunciante vê só `no_ar`/`fora_do_horario`/`fora_do_ar`
+(`situacaoComercialDoPonto` — sem comunicação continua `no_ar`); o dono, um
+aviso neutro ("Sem comunicação com a Mostraí. A tela pode continuar
+exibindo a programação normalmente."). Config só é
 "pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
 comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.
 *Violada:* o backend nunca afirma sinal que não chegou. *Quem vê:* o

@@ -5,6 +5,7 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const sinal = require('./sinal');
+const operacao = require('./operacao');
 const { montarConfig } = require('./config');
 const pinSaida = require('./pin-saida');
 const eventos = require('../lib/eventos');
@@ -108,6 +109,22 @@ router.post('/player/:dispositivoId/played', exigirAparelho(), corpoObjeto, asyn
     return res.status(400).json({ erro: `eventos precisa ser uma lista de até ${TETO_LOTE} itens` });
   }
   res.json(await confirmarLote(req.dispositivo, lista));
+});
+
+// ---------------------------------------------------------------------------
+// POST /player/:dispositivoId/operacao — sessões operacionais (§8.1)
+// ---------------------------------------------------------------------------
+// Mesma credencial do heartbeat, e sem exigir tela Ativa: é fato do que a TV
+// fez (inclusive antes de ir para reparo), não pedido de programação. 400 só
+// para o lote malformado; sessão ruim responde `invalida` e o resto segue.
+router.post('/player/:dispositivoId/operacao', exigirAparelho({ operacao: false }), corpoObjeto, async (req, res) => {
+  const lista = req.body.sessoes;
+  if (!Array.isArray(lista) || lista.length > operacao.TETO_LOTE) {
+    return res.status(400).json({ erro: `sessoes precisa ser uma lista de até ${operacao.TETO_LOTE} itens` });
+  }
+  const r = await operacao.registrarLote(req.dispositivo.id, lista);
+  if (r.resultados.some((x) => x.status === 'registrada')) avisarMudanca(req.dispositivo, { transicao: true });
+  res.json(r);
 });
 
 const textoNaoVazio = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;

@@ -953,16 +953,6 @@ function tempoAEntregar(segundos) {
   return min ? `${h}h ${min}min` : `${h}h`;
 }
 
-// Tempo decorrido em prosa curta, pro aviso de ponto fora do ar — não reusa
-// tempoAEntregar porque ali "4h 32min" é tempo de tela devido, e aqui um
-// silêncio de dois dias em horas ("48h") é mais difícil de ler que "2 dias".
-function tempoDesde(dataISO) {
-  const horas = (Date.now() - new Date(dataISO).getTime()) / 3_600_000;
-  if (horas < 1) return `${Math.max(1, Math.round(horas * 60))} min`;
-  if (horas < 48) return `${Math.round(horas)} h`;
-  return `${Math.round(horas / 24)} dias`;
-}
-
 // Estado operacional no hero (21/09/2026, revisão de design): "campanha
 // ativa" não pode significar só "tem plano" — a tela pode estar apagada há
 // horas com o plano em dia, e é exatamente esse caso que o anunciante mais
@@ -982,14 +972,13 @@ function pintarStatusOperacional(porPonto) {
   const itens = [
     `<span class="hero-status-item"><span class="dot" aria-hidden="true"></span>${noAr.length} de ${n} ${n === 1 ? 'ponto no ar' : 'pontos no ar'}</span>`,
   ];
-  const foraDoAr = porPonto.filter((p) => p.situacao === 'fora_do_ar');
-  if (foraDoAr.length) {
-    const maisAntigo = foraDoAr
-      .map((p) => p.ultima_vez_online)
-      .filter(Boolean)
-      .sort()[0];
-    const desde = maisAntigo ? `sinal mais antigo há ${tempoDesde(maisAntigo)}` : 'nunca recebeu playlist';
-    itens.push(`<span class="hero-status-item hero-status-alerta">⚠ ${desde}</span>`);
+  // Só a situação comercial — nada de sinal/heartbeat (estado técnico é do
+  // Admin; conectividade não é operação).
+  const foraDoAr = porPonto.filter((p) => p.situacao === 'fora_do_ar').length;
+  if (foraDoAr) {
+    itens.push(
+      `<span class="hero-status-item hero-status-alerta">${foraDoAr} ${foraDoAr === 1 ? 'ponto fora do ar' : 'pontos fora do ar'}</span>`,
+    );
   }
   el.innerHTML = itens.join('');
   el.hidden = false;
