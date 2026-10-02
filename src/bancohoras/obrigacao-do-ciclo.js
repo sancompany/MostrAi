@@ -1,6 +1,7 @@
 const pool = require('../db/pool');
 const { horasDeTelaPorMes, DURACAO_PADRAO } = require('../lib/pacing');
 const { fimDaCobertura } = require('../lib/vigencia');
+const { confirmadasPagasSql, confirmadasBancoSql } = require('../lib/partes-da-hora');
 
 // A OBRIGAÇÃO DE VEICULAÇÃO NASCE DO CICLO CONTRATADO (01/10/2026, correção
 // estrutural achada na auditoria Review-Master — decisão do dono; migration
@@ -652,7 +653,7 @@ async function dadosDasContas(ids, db = pool, agora = new Date()) {
     db.query(
       `SELECT e.anunciante_id,
               (date_trunc('day', e.janela_hora AT TIME ZONE '${FUSO}') AT TIME ZONE '${FUSO}') AS dia,
-              SUM(e.vezes_confirmadas * COALESCE(e.duracao_segundos, $2))::bigint AS entregue,
+              SUM(${confirmadasPagasSql('e.')} * COALESCE(e.duracao_segundos, $2))::bigint AS entregue,
               SUM(CASE WHEN e.janela_hora + interval '1 hour' <= $3::timestamptz
                        THEN COALESCE(e.segundos_obrigacao_basico, 0) ELSE 0 END)::bigint AS basico
          FROM exibicoes_contador e
@@ -715,7 +716,7 @@ async function saldosParaRecuperar({ agora = new Date(), db = pool } = {}) {
     saldosDasContas({ agora, db }),
     db.query(
       `SELECT anunciante_id,
-              SUM(GREATEST(vezes_banco - LEAST(GREATEST(vezes_confirmadas - (vezes_programadas - vezes_banco), 0), vezes_banco), 0)
+              SUM(GREATEST(vezes_banco - ${confirmadasBancoSql('')}, 0)
                   * COALESCE(duracao_segundos, $1))::bigint AS segundos
          FROM exibicoes_contador
         WHERE vezes_banco > 0 AND banco_liquidado_em IS NULL

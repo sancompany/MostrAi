@@ -19,6 +19,7 @@ const pontosRepo = require('../pontos/repository');
 const congelamentoRepo = require('./congelamento-repository');
 const midiasRepo = require('../midias/repository');
 const basicoRepo = require('../pontos/basico');
+const hospedagem = require('../pontos/hospedagem');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
@@ -78,12 +79,13 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
   return Math.min(CRIATIVOS_POR_CONTA, Math.max(1, Number(limitePlano) || 1));
 }
 
-// A conta que a trava de ramo protege numa tela: a dona do ponto fixo, ou a
-// BASE do ponto móvel (migration 112) — a tela está dentro do comércio dela.
-// A base não é dona: isto só a livra da própria trava quando ela escolhe o
-// móvel, como a dona no ponto fixo. Cota, Básico e "criativos do dono"
-// continuam só da dona.
-const casaDaTela = (dispositivo) => dispositivo.dono_conta_id ?? dispositivo.base_conta_id ?? null;
+// A conta que a trava de ramo protege numa tela: a dona do ponto fixo; no
+// ponto móvel, o comércio onde ele está AGORA — o anfitrião da hospedagem
+// ativa, a base, ou ninguém durante um evento (src/lib/contexto-do-ponto.js,
+// já resolvido em SELECT_TELA). Não é dona: isto só a livra da própria trava
+// quando ela escolhe o ponto, como a dona no fixo. Cota, Básico e "criativos
+// do dono" continuam só da dona.
+const casaDaTela = (dispositivo) => dispositivo.casa_conta_id ?? null;
 
 // "Elegível pra esta tela" é: conta ativa + criativo aprovado + dentro da
 // validade + não ser do mesmo ramo do comércio onde a tela está nem de um
@@ -126,6 +128,47 @@ const casaDaTela = (dispositivo) => dispositivo.dono_conta_id ?? dispositivo.bas
 // capacidade ociosa (camada T3). Sem plano vigente, a cobertura e a peça vêm
 // do plano do último ciclo contratado; `plano_vigente` diz ao gerador que essa
 // conta não tem base nem compensação, só a devolução do saldo.
+// Proteção do comércio onde a tela está (categorias/concorrencia.js): mesma
+// categoria do ponto, ou par registrado em categorias_concorrentes (guardado
+// com a < b — uma busca pela PK, sem N+1). Grupo e aliases não entram. A
+// casa da tela passa no próprio ponto se o escolheu. Os parâmetros são os
+// placeholders da consulta de quem usa: a categoria em vigor no ponto, a
+// conta da casa e o ponto. Um lugar só: a rotação paga e o saldo de
+// hospedagem barram exatamente o mesmo ramo.
+const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL OR a.categoria_id IS NULL
+           OR (a.categoria_id <> ${categoria} AND NOT EXISTS (
+                 SELECT 1 FROM categorias_concorrentes cc
+                  WHERE cc.categoria_a = least(a.categoria_id, ${categoria}::int)
+                    AND cc.categoria_b = greatest(a.categoria_id, ${categoria}::int)))
+           OR (a.id = ${casa}::int AND EXISTS (
+                 SELECT 1 FROM anunciantes_pontos proprio
+                  WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = ${ponto}::int)))`;
+
+// Saldo de hospedagem (migration 113): das contas com saldo para programar,
+// as que podem aparecer NESTA tela — conta ativa, não a própria Mostraí, e
+// a mesma trava de ramo da rotação paga. Sem plano: o saldo não depende
+// dele.
+async function contasDaHospedagemNaTela(categoriaDoPonto, excluirContaId, casa, pontoId, contaIds) {
+  const { rows } = await pool.query(
+    `SELECT a.id FROM anunciantes a
+      WHERE a.id = ANY($5::int[]) AND NOT a.suspenso AND a.excluido_em IS NULL AND NOT a.conta_propria
+        AND ${travaDeRamoSql('$1', '$3', '$4')}
+        AND ($2::int IS NULL OR a.id <> $2)`,
+    [categoriaDoPonto || null, excluirContaId || null, casa || null, pontoId || null, contaIds],
+  );
+  return new Set(rows.map((r) => r.id));
+}
+
+// Quantas telas puxam o saldo de hospedagem na mesma hora: a rede inteira
+// (o saldo não é de ponto nenhum). Nunca 0.
+async function telasNaRede() {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+      WHERE d.status = 'ativo' AND p.status = 'em_operacao'`,
+  );
+  return Math.max(1, rows[0].n);
+}
+
 async function anunciantesElegiveis(
   categoriaDoPonto,
   excluirContaId,
@@ -171,18 +214,7 @@ async function anunciantesElegiveis(
     WHERE NOT a.suspenso
       AND a.excluido_em IS NULL
       AND NOT a.conta_propria
-      -- Proteção do dono da tela (categorias/concorrencia.js): mesma
-      -- categoria do ponto, ou par registrado em categorias_concorrentes
-      -- (guardado com a < b — uma busca pela PK, sem N+1). Grupo e aliases
-      -- não entram.
-      AND ($1::int IS NULL OR a.categoria_id IS NULL
-           OR (a.categoria_id <> $1 AND NOT EXISTS (
-                 SELECT 1 FROM categorias_concorrentes cc
-                  WHERE cc.categoria_a = least(a.categoria_id, $1::int)
-                    AND cc.categoria_b = greatest(a.categoria_id, $1::int)))
-           OR (a.id = $3::int AND EXISTS (
-                 SELECT 1 FROM anunciantes_pontos proprio
-                  WHERE proprio.anunciante_id = a.id AND proprio.ponto_id = $4::int)))
+      AND ${travaDeRamoSql('$1', '$3', '$4')}
       AND ($2::int IS NULL OR a.id <> $2)
     GROUP BY a.id, a.conta_propria, a.data_expiracao, p.frequencia_hora, p.segundos_por_hora, p.pontos_incluidos,
              p.limite_criativos
@@ -300,7 +332,8 @@ function duracaoMedia(criativos) {
 // Só a entrega NORMAL da hora anterior que a TV não confirmou volta como
 // déficit. A exibição do banco (`vezes_banco`, migration 090) que não rodou
 // continua no saldo do banco — carregar ela aqui também a devolveria duas
-// vezes. A confirmada conta primeiro pra entrega normal (mesma regra da
+// vezes; a da hospedagem (`vezes_hospedagem`, migration 113) continua no
+// saldo de hospedagem, pelo mesmo motivo. A confirmada conta primeiro pra entrega normal (mesma regra da
 // liquidação, src/bancohoras/apuracao.js).
 //
 // Saldo de Veiculação (27/09/2026):
@@ -316,7 +349,7 @@ async function deficitHoraAnterior(dispositivoId, horaAnterior, horaAtual) {
   if (vigencia.hojeComercial(horaAnterior).slice(0, 7) !== vigencia.hojeComercial(horaAtual).slice(0, 7)) return {};
   const { rows } = await pool.query(
     `SELECT anunciante_id,
-            GREATEST(FLOOR((vezes_programadas - vezes_banco) * COALESCE(minutos_abertos, 60) / 60.0)
+            GREATEST(FLOOR((vezes_programadas - vezes_banco - vezes_hospedagem) * COALESCE(minutos_abertos, 60) / 60.0)
                      - vezes_confirmadas, 0)::int AS deficit
      FROM exibicoes_contador WHERE dispositivo_id = $1 AND janela_hora = $2`,
     [dispositivoId, horaAnterior],
@@ -359,20 +392,23 @@ async function gravarProgramados(
   banco = {},
   obrigacao = {},
   minutosAbertos = 60,
+  hospedagemPorConta = {},
 ) {
   const anunciantes = new Set([...Object.keys(contagem), ...Object.keys(pedidos)]);
   await Promise.all(
     [...anunciantes].map((anuncianteId) => {
       const vezes = contagem[anuncianteId] || 0;
       const doBanco = banco[anuncianteId] || 0;
-      const pedidas = pedidos[anuncianteId] ?? vezes - doBanco;
+      const daHospedagem = hospedagemPorConta[anuncianteId] || 0;
+      const pedidas = pedidos[anuncianteId] ?? vezes - doBanco - daHospedagem;
       const devida = obrigacao[anuncianteId] || {};
       return pool.query(
         `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas, vezes_banco,
-                                         segundos_obrigacao, duracao_segundos, minutos_abertos, segundos_obrigacao_basico)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                                         segundos_obrigacao, duracao_segundos, minutos_abertos, segundos_obrigacao_basico,
+                                         vezes_hospedagem)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (anunciante_id, dispositivo_id, janela_hora)
-     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6,
+     DO UPDATE SET vezes_programadas = $4, vezes_pedidas = $5, vezes_banco = $6, vezes_hospedagem = $11,
                    segundos_obrigacao = COALESCE(exibicoes_contador.segundos_obrigacao, EXCLUDED.segundos_obrigacao),
                    segundos_obrigacao_basico = CASE WHEN exibicoes_contador.segundos_obrigacao IS NULL
                                                     THEN EXCLUDED.segundos_obrigacao_basico
@@ -390,6 +426,7 @@ async function gravarProgramados(
           devida.duracao ?? DURACAO_PADRAO,
           minutosAbertos,
           devida.basico || null,
+          daHospedagem,
         ],
       );
     }),
@@ -699,6 +736,64 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
     }
   }
 
+  // SALDO DE HOSPEDAGEM (T3b, migration 113): quem hospedou um ponto móvel
+  // tem horas gratuitas na REDE INTEIRA — não depende de plano nem de
+  // cobertura escolhida, só da trava de ramo desta tela. Entra só no que
+  // pago, compensação, reposição e devolução de atraso deixaram (camada
+  // T3b de `montarHoraDeTv`), antes do institucional. O saldo é da conta e
+  // todas as telas da rede o puxam na mesma hora: cada uma pede a sua
+  // fração (arredondada pra cima), no ritmo da regra do saldo
+  // (`REGRA_DO_SALDO`, src/pontos/hospedagem.js). Hora fechada não programa.
+  // O anfitrião não ganha veiculação gratuita no próprio móvel enquanto o
+  // hospeda.
+  if (aberta) {
+    const saldosHospedagem = await hospedagem.saldosParaProgramar();
+    const comSaldo = Object.keys(saldosHospedagem).map(Number);
+    if (comSaldo.length) {
+      const [podem, telas] = await Promise.all([
+        contasDaHospedagemNaTela(
+          dispositivo.categoria_id,
+          excluirDaRotacaoPaga,
+          casaDaTela(dispositivo),
+          dispositivo.ponto_id,
+          comSaldo,
+        ),
+        telasNaRede(),
+      ]);
+      for (const contaId of comSaldo) {
+        if (!podem.has(contaId)) continue;
+        if (dispositivo.ponto_tipo === 'movel' && casaDaTela(dispositivo) === contaId) continue;
+        const existente = entrada.find((e) => e.id === contaId);
+        // A peça: a da conta nesta tela (plano/Básico); com plano mas fora
+        // da cobertura daqui, a do plano; sem plano, a da regra do saldo.
+        let criativos = existente ? porId[contaId]?.criativos : todos.find((a) => a.id === contaId)?.criativos;
+        if (!criativos?.length) criativos = await hospedagem.pecasDoSaldo(contaId);
+        if (!criativos?.length) continue;
+        const duracao = duracaoValida(existente ? existente.duracaoSegundos : duracaoMedia(criativos));
+        const insercoes = Math.min(
+          Math.ceil(saldosHospedagem[contaId] / telas / duracao),
+          Math.max(1, Math.floor(hospedagem.REGRA_DO_SALDO.segundosPorHora / duracao)),
+        );
+        if (insercoes <= 0) continue;
+        if (existente) {
+          existente.hospedagem = insercoes;
+        } else {
+          porId[contaId] = { criativos };
+          entrada.push({
+            id: contaId,
+            frequenciaBase: 0,
+            compensacao: 0,
+            deficit: 0,
+            banco: 0,
+            hospedagem: insercoes,
+            duracaoSegundos: duracaoMedia(criativos),
+            obrigacaoSegundos: 0,
+          });
+        }
+      }
+    }
+  }
+
   // Mídia própria: cada uma já entra pronta (frequência e cobertura são
   // dela mesma, sem RN-49 nem banco de horas — ver `midiasElegiveis`).
   for (const m of midiasProprias) {
@@ -795,6 +890,15 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // mensal). Até 25/09/2026 drenava aqui, no programado: TV desligada
   // consumia a dívida sem entregar nada.
   const banco = { ...daHora.bancoProgramados };
+  // Saldo de hospedagem: idem — a hora só PROGRAMA (`vezes_hospedagem`); o
+  // saldo cai com o que a TV confirmou (src/pontos/hospedagem.js). Quem só
+  // tem saldo e chegou no meio da hora (`extras`) entra como hospedagem.
+  const daHospedagem = { ...daHora.hospedagemProgramados };
+  for (const id of idsExtras) {
+    const e = entrada.find((x) => String(x.id) === String(id));
+    const soHospedagem = e && e.hospedagem > 0 && !e.frequenciaBase && !e.compensacao && !e.deficit && !e.banco;
+    if (soHospedagem) daHospedagem[id] = (daHospedagem[id] || 0) + 1;
+  }
   if (aberta) {
     // Obrigação de cada conta nesta tela nesta hora: a da base congelada (a
     // primeira geração da hora fixa o número); quem chegou depois (`extras`)
@@ -820,7 +924,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
         basico: Math.round(((atual.obrigacaoBasicoSegundos || 0) * restantes) / minutosAbertos),
       };
     }
-    await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco, obrigacao, minutosAbertos);
+    await gravarProgramados(dispositivo, horaAtual, contagem, pedidos, banco, obrigacao, minutosAbertos, daHospedagem);
   }
 
   // Ponto de partida do revezamento gira por hora (19/09/2026, furo real

@@ -1,5 +1,6 @@
 const pool = require('../db/pool');
 const telaEventos = require('./tela-eventos');
+const operacao = require('./operacao');
 const { TOLERANCIA_SEM_SINAL_MS } = require('../lib/status-tela');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 
@@ -164,6 +165,9 @@ async function registrarHeartbeat(telaId, corpo, player) {
 
     await client.query(`UPDATE dispositivos SET ${sets.join(', ')} WHERE id = $1`, valores);
     await gravarEventos(client, telaId, eventos);
+    // Ponto móvel: a batida com a tela exibindo estende o tempo operacional
+    // (src/player/operacao.js).
+    await operacao.registrarPeloHeartbeat(client, antes, hb.estado);
     return { primeiroSinal: !antes.primeiro_sinal_em, pontoId: antes.ponto_id, eventos: eventos.map((e) => e[0]) };
   }).then(depoisDoCommit);
 }

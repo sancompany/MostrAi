@@ -394,6 +394,28 @@
 .plano-validade { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
 .plano-acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
+/* Hospedagem de Ponto Móvel (migration 113): hospedagens e o saldo de
+   hospedagem — horas, nunca créditos. */
+.painel-hospedagem h2 { margin: 2px 0 10px; font-size: 1.15rem; }
+.hosp-item + .hosp-item,
+.hosp-saldo + .hosp-item,
+.hosp-item + .hosp-convite,
+.hosp-saldo + .hosp-convite { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.hosp-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.hosp-meta,
+.hosp-nota { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
+.hosp-numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.hosp-numeros div { min-width: 0; }
+.hosp-numeros dt { color: var(--text-dim); font-size: .78rem; }
+.hosp-numeros dd { margin: 2px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.hosp-saldo-valor { margin: 2px 0 0; font-size: 1rem; }
+.hosp-saldo-valor b { font-size: 1.4rem; }
+.hosp-item .btn,
+.hosp-saldo .btn { margin-top: 10px; }
+.hosp-convite p { margin: 0 0 8px; }
+.hosp-form { display: grid; gap: 6px; }
+.hosp-form .btn { justify-self: start; margin-top: 6px; }
+
 /* Primeiros passos (estação da conta, 26/09/2026). Sem plano: o bloco
    principal do painel, com UM botão. Com plano: faixa compacta no topo da
    campanha até o primeiro criativo e a primeira exibição. O estado de cada

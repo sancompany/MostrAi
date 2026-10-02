@@ -21,9 +21,14 @@ function etapasDosPrimeirosPassos({
   criativosRecusados = 0,
   pontosEscolhidos,
   exibicoes,
+  soSaldoHospedagem = false,
 }) {
   const etapas = [
-    { id: 'plano', titulo: 'Escolha seu plano', feito: temPlano, opcional: false },
+    // Só com saldo de hospedagem (migration 113): o direito de veicular já
+    // existe — são as horas gratuitas, não um plano a escolher.
+    soSaldoHospedagem
+      ? { id: 'plano', titulo: 'Suas horas de hospedagem estão disponíveis', feito: true, opcional: false }
+      : { id: 'plano', titulo: 'Escolha seu plano', feito: temPlano, opcional: false },
     {
       id: 'criativo',
       titulo: 'Envie seu criativo',
@@ -175,8 +180,10 @@ async function primeirosPassosDaConta(conta) {
   return {
     fluxo: 'anunciante',
     ...etapasDosPrimeirosPassos({
-      // O Básico do ponto (migration 103) também é direito de veicular.
-      temPlano: !!planoVigenteId(conta) || basicos.length > 0,
+      // O Básico do ponto (migration 103) e o saldo de hospedagem (113)
+      // também são direito de veicular.
+      temPlano: !!planoVigenteId(conta) || basicos.length > 0 || acesso.hospedagem.saldoSegundos > 0,
+      soSaldoHospedagem: !planoVigenteId(conta) && !basicos.length && acesso.hospedagem.saldoSegundos > 0,
       ...comuns,
       pontosEscolhidos: escolhidos.rows[0].n,
     }),

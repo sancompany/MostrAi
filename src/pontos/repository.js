@@ -160,22 +160,18 @@ async function estabelecimentoJaCadastrado(
     if (pedidos.length) return 'Já existe uma solicitação em análise para este endereço';
   }
   if (!nome) return null;
-  // O mesmo estabelecimento como BASE de um ponto móvel da Mostraí também é
-  // "já cadastrado" (migration 112): o móvel não é da conta, mas o lugar já
-  // está na rede — um segundo pedido ali é duplicidade, não ponto novo.
+  // Só o ponto FIXO da própria conta conta como "já cadastrado". Ser base ou
+  // anfitrião de um ponto móvel da Mostraí (migration 113) não impede o
+  // comércio de pedir o PRÓPRIO ponto fixo: o móvel é um equipamento que vai
+  // embora, não o ponto dele.
   const { rows: pontos } = await db.query(
-    `SELECT tipo FROM pontos
-       WHERE status <> 'arquivado' AND lower(trim(endereco)) = lower(trim($3))
-         AND ((anunciante_id = $1 AND lower(trim(nome)) = lower(trim($2)))
-           OR (base_conta_id = $1 AND lower(trim(base_nome)) = lower(trim($2))))
-       ORDER BY (tipo = 'fixo') DESC
+    `SELECT 1 FROM pontos
+       WHERE status <> 'arquivado' AND anunciante_id = $1
+         AND lower(trim(nome)) = lower(trim($2)) AND lower(trim(endereco)) = lower(trim($3))
        LIMIT 1`,
     [contaId, nome, endereco || ''],
   );
-  if (!pontos.length) return null;
-  return pontos[0].tipo === 'movel'
-    ? 'Este estabelecimento já é base de um ponto móvel da Mostraí'
-    : 'Este estabelecimento já é um ponto da sua conta';
+  return pontos.length ? 'Este estabelecimento já é um ponto da sua conta' : null;
 }
 
 // Ponto arquivado (migration 080) fica fora de toda listagem da experiência
@@ -483,7 +479,8 @@ async function deletar(id) {
          EXISTS (SELECT 1 FROM creditos_ledger WHERE ponto_id = $1) AS credito,
          EXISTS (SELECT 1 FROM pagamentos_ponto WHERE ponto_id = $1) AS repasse,
          EXISTS (SELECT 1 FROM beneficios_basico_ponto WHERE ponto_id = $1) AS basico,
-         EXISTS (SELECT 1 FROM pontos WHERE mesclado_em_ponto_id = $1) AS mesclado`,
+         EXISTS (SELECT 1 FROM pontos WHERE mesclado_em_ponto_id = $1) AS mesclado,
+         EXISTS (SELECT 1 FROM pontos_moveis_hospedagens WHERE ponto_id = $1) AS hospedagem`,
       [id, telaIds],
     );
     const motivo =
@@ -499,7 +496,9 @@ async function deletar(id) {
                 ? 'Este ponto já deu o Plano Básico ao dono e não pode ser excluído permanentemente. Deixe as telas dele Inativas.'
                 : h.mesclado
                   ? 'Outro ponto foi mesclado neste e o histórico depende dele: não pode ser excluído.'
-                  : null;
+                  : h.hospedagem
+                    ? 'Este ponto móvel tem hospedagens registradas (o benefício de um anfitrião depende delas) e não pode ser excluído permanentemente. Deixe a tela Inativa.'
+                    : null;
     if (motivo) throw Object.assign(new Error(motivo), { status: 409 });
 
     if (telaIds.length) {

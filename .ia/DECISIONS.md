@@ -1385,7 +1385,7 @@ deriva de `pontos.anunciante_id`.
 - A trava de ramo protege a casa da tela: a dona do fixo ou a BASE do móvel
   (`casaDaTela` no gerador). O horário da base vale na base; com evento em
   andamento o horário em vigor é 24 h e a versão da config sobe ao iniciar
-  e ao encerrar. Uma expressão SQL só (`src/lib/horario-em-vigor.js`) serve
+  e ao encerrar. Uma expressão SQL só (`src/lib/horario-em-vigor.js`, hoje `src/lib/contexto-do-ponto.js`) serve
   a config da TV, o gerador e o "no ar" do anunciante — senão o Admin diria
   "operando" e o anunciante "fora do horário" para a mesma tela.
 - Público estimado é texto ("~N pessoas") e nunca entra em POP, saldo ou
@@ -1401,3 +1401,50 @@ sabe onde ela está).
 **Em aberto (dono).** `docs/PENDENCIAS.md` §S, S7: trava de ramo durante o
 evento, início e fim manuais, horário 24 h em evento, móvel → fixo dando o
 ponto à base.
+
+## ADR-037 — Ponto Móvel V2: hospedagem temporária, saldo em horas e o tempo operacional real (02/10/2026)
+
+**Contexto.** Pedido do dono (Estação Ponto Móvel V2): o móvel é um ATIVO
+físico da Mostraí (1 móvel = 1 tela), não um tipo escolhido na aprovação.
+Um comércio pode HOSPEDÁ-LO por alguns dias e recebe, no fim, horas de mídia
+gratuitas proporcionais ao tempo em que a tela realmente operou.
+
+**Decisão.**
+- Origem: candidatura gera sempre fixo; o móvel nasce só em
+  `POST /admin/pontos-moveis` (Tela 1 junto). O tipo é imutável (gatilho
+  `pontos_tipo_imutavel`); a conversão fixo ⇄ móvel da ADR-036 saiu (410).
+  CHECK: móvel sem dono e sem candidatura; conta da base opcional. Gatilho
+  `dispositivos_uma_tela_por_movel`.
+- Agenda única (`movel_agenda_verificar`, gatilho nas duas tabelas, trava a
+  linha do ponto): hospedagem e evento nunca se sobrepõem e nunca há dois em
+  curso. O domínio faz a mesma pergunta antes (`src/pontos/agenda.js`) só
+  para responder com o motivo.
+- Contexto do ponto (`src/lib/contexto-do-ponto.js`, sucessor de
+  `horario-em-vigor.js`): horário, ramo e casa EM VIGOR — hospedagem ativa →
+  sem horário fixo, ramo e casa do anfitrião; evento → sem horário fixo,
+  ramo do contexto do evento (ou nenhum), sem casa; base → os da base. Uma
+  expressão para a TV, o gerador e o "no ar".
+- Tempo operacional: `tela_operacao` (heartbeat estendido no servidor;
+  segmentos offline do Player idempotentes por tela/boot/seq). Válido = união
+  dos intervalos dentro de [iniciada, encerrada], nunca o calendário.
+- Benefício: `floor(tempo × percentual / 100)` no encerramento (manual ou job
+  de 5 min no fim previsto), UMA linha em `saldo_hospedagem_lancamentos` com
+  `chave` UNIQUE `hospedagem:<id>`; hospedagem encerrada é imutável
+  (gatilho). Percentual global em `configuracoes_site`, auditado, congelado
+  na hospedagem; a confirmação leva o `percentual_esperado`.
+- Saldo de hospedagem: livro PRÓPRIO, nunca `obrigacoes_veiculacao` (o FIFO
+  por conta misturaria pago e gratuito). Sai por entrega confirmada: coluna
+  `exibicoes_contador.vezes_hospedagem` e atribuição POSICIONAL das
+  confirmações (normal → banco → hospedagem, `src/lib/partes-da-hora.js`),
+  então o gratuito nunca come a entrega paga e as contas do saldo pago
+  excluem a parte da hospedagem.
+- Gerador: camada T3b (depois de T1/T2/T3, antes do institucional), rede
+  inteira, mesma trava de ramo (`travaDeRamoSql`), fração do saldo por tela
+  da rede, ritmo e peça da `REGRA_DO_SALDO` (provisória = Básico).
+- O móvel não gera obrigação de "hora sem sinal" (viaja desligado).
+
+**Alternativas recusadas.** Benefício como crédito ou obrigação paga (o dono
+pediu horas, separado de créditos e sem misturar com dívida paga); tempo pela
+duração do calendário (premiaria tela desligada); tempo só pelo POP (é por
+janela, tem teto e não cobre o institucional); auto-início da hospedagem pela
+data (só o Admin sabe se a tela chegou).

@@ -5,6 +5,7 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const execucoesRepo = require('../playlist/execucoes-repository');
 const dispositivosRepo = require('../dispositivos/repository');
 const sinal = require('./sinal');
+const operacao = require('./operacao');
 const { montarConfig } = require('./config');
 const pinSaida = require('./pin-saida');
 const eventos = require('../lib/eventos');
@@ -108,6 +109,21 @@ router.post('/player/:dispositivoId/played', exigirAparelho(), corpoObjeto, asyn
     return res.status(400).json({ erro: `eventos precisa ser uma lista de até ${TETO_LOTE} itens` });
   }
   res.json(await confirmarLote(req.dispositivo, lista));
+});
+
+// ---------------------------------------------------------------------------
+// POST /player/:dispositivoId/operacao — tempo operacional offline (§8.5)
+// ---------------------------------------------------------------------------
+// Ponto móvel: o que a tela exibiu sem internet, em segmentos do relógio
+// monotônico já convertidos para o relógio do servidor. Mesmo padrão do
+// proof-of-play: 400 só para o lote malformado; item ruim responde
+// `item_invalido` e o resto segue.
+router.post('/player/:dispositivoId/operacao', exigirAparelho({ operacao: false }), corpoObjeto, async (req, res) => {
+  const lista = req.body.segmentos;
+  if (!Array.isArray(lista) || lista.length > operacao.TETO_LOTE) {
+    return res.status(400).json({ erro: `segmentos precisa ser uma lista de até ${operacao.TETO_LOTE} itens` });
+  }
+  res.json(await operacao.registrarSegmentos(req.dispositivo, lista));
 });
 
 const textoNaoVazio = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;

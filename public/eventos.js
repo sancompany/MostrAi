@@ -35,6 +35,8 @@
     'notification.created',
     // Pendência da conta aberta ou resolvida (src/pendencias/, 01/10/2026).
     'pendencia.updated',
+    // Hospedagem de Ponto Móvel e saldo de hospedagem (migration 113).
+    'hosting.updated',
   ];
 
   const handlers = {}; // evento -> Set<fn>

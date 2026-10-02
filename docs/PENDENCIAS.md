@@ -5755,3 +5755,49 @@ limite no `CONSTRAINTS.md`; o que ficou de fora em `docs/proximas-versoes.md`.
     pedido de ponto foi aprovado — a gente chama no WhatsApp pra combinar a
     visita e a instalação". Não diz que o ponto é móvel nem promete nada
     à base.
+
+## T. Ponto Móvel V2 — hospedagem temporária e saldo em horas (02/10/2026)
+
+Pedido do dono "Estação — Ponto Móvel V2: hospedagem temporária, benefício
+em horas e ciclo de vida real do ativo". Regras RN-71 (reescrita) e RN-72 em
+`docs/funcional.md`; ADR-037 em `.ia/DECISIONS.md`; migration 113; limites no
+`CONSTRAINTS.md`. Supera S1 (o tipo não é mais escolhido na aprovação) e a
+conversão fixo ⇄ móvel da seção S.
+
+- T1 [x] Origem: candidatura sempre gera fixo; o móvel nasce só pelo Admin
+      (Rede › Pontos móveis), nunca tem dono nem candidatura; tipo imutável
+      (gatilho); 1 móvel = 1 tela (gatilho); foto do equipamento.
+- T2 [x] Hospedagem temporária: programada → ativa → encerrada (manual ou
+      automática no fim previsto) | cancelada; agenda única com evento
+      (sem sobreposição, recusada também no banco, mesmo em corrida).
+- T3 [x] Percentual global (padrão 20%), auditado, congelado na confirmação.
+- T4 [x] Tempo operacional válido = união dos intervalos de heartbeat e dos
+      segmentos offline do Player, dentro da hospedagem; benefício = tempo ×
+      percentual, um lançamento idempotente no saldo de hospedagem.
+- T5 [x] Saldo de hospedagem: livro próprio, não expira, não é crédito;
+      direito de veiculação sem plano; camada T3b do gerador na rede inteira;
+      cai pelo Proof-of-Play; ajuste auditado do Admin.
+- T6 [x] Trava de concorrente pelo contexto comercial (anfitrião, base, ou o
+      contexto do evento); "evento = 24 h" virou "autorização fora do
+      horário da base", sem dívida de hora sem sinal para o móvel.
+- T7 [x] Site (`/hospedar.html` e bloco na home, percentual lido do
+      servidor), interesse público e pelo painel, card de hospedagem e de
+      saldo no painel, Admin completo.
+- T8 [x] Testes: `tests/hospedagem.test.js` (itens 1–67 e os E2E §78/§80;
+      §79 no item 22), `tests/ponto-movel.test.js` reescrito para a V2,
+      `tests/e2e/46-ponto-movel.mjs` (criação pelo Admin) e
+      `tests/e2e/47-hospedagem-movel.mjs` (fluxo completo no navegador).
+- T9 [ ] **Só o dono — decisão pendente (bloqueia o merge):** quantidade e
+      duração de criativos de quem usa SÓ o saldo de hospedagem. Implementado
+      com a regra do Plano Básico (1 peça de até 15 s, ritmo de 140 s por hora
+      de tela) num lugar só (`REGRA_DO_SALDO`, `src/pontos/hospedagem.js`).
+      Confirmar, ou dizer a regra certa.
+- T10 [ ] **Player:** a contagem offline está no repositório
+      `sancompany/playlist.mostrai` (segmentos com relógio monotônico, âncora
+      no `servidorAgora`, envio para `/player/:id/operacao`). Precisa de PR,
+      build e OTA para as TVs; até lá, só o tempo online (heartbeat) conta.
+- T11 [ ] Limite conhecido: tempo contado offline e enviado DEPOIS do
+      encerramento não entra (a hospedagem encerrada não acumula mais). Na
+      prática a tela sincroniza a cada 5 min online; o modal de encerrar
+      mostra o tempo já comprovado.
+

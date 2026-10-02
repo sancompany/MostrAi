@@ -1,6 +1,22 @@
 # Current Handoff
 
 ## Updated
+2026-10-02 — **Ponto Móvel V2: hospedagem temporária, saldo em horas e tempo
+operacional real** (pedido do dono; branch `claude/busy-noether-hheir2`,
+evolui a 112 com a migration 113). Móvel nasce só pelo Admin
+(`POST /admin/pontos-moveis`, Tela 1 junto), tipo imutável, 1 tela;
+candidatura sempre fixa; conversão fixo ⇄ móvel removida (410). Hospedagem
+(`src/pontos/hospedagem.js`, agenda única em `src/pontos/agenda.js` + gatilho),
+percentual global auditado e congelado, tempo operacional
+(`src/player/operacao.js`: heartbeat + `POST /player/:id/operacao`),
+benefício idempotente no livro `saldo_hospedagem_lancamentos`, camada T3b no
+gerador, atribuição posicional das confirmações (`src/lib/partes-da-hora.js`),
+contexto do ponto em `src/lib/contexto-do-ponto.js`. Site `/hospedar.html`,
+painel `public/hospedagem-conta.js`, Admin Rede › Pontos móveis. RN-71/RN-72,
+ADR-037, PENDENCIAS §T (**T9 bloqueia o merge: decisão do dono sobre a regra
+de criativos do saldo**; T10: Player em `sancompany/playlist.mostrai` precisa
+de PR e OTA). Testes: `tests/hospedagem.test.js`, `tests/ponto-movel.test.js`,
+e2e 46 e 47. **A Review-Master continua PAUSADA.**
 2026-10-02 — **Ponto fixo e ponto móvel** (pedido do dono; branch
 `claude/busy-noether-hheir2`). O Admin escolhe Fixo (padrão) ou Móvel ao
 aprovar a candidatura; o móvel é da Mostraí (sem `anunciante_id`), com a conta

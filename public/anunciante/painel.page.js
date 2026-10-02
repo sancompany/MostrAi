@@ -60,6 +60,8 @@ async function carregar() {
       return;
     }
     removerBloqueioPlano();
+    // Hospedagem de Ponto Móvel e saldo de hospedagem (public/hospedagem-conta.js).
+    window.montarHospedagem?.();
     carregarPrimeirosPassos();
     carregarExibicoes();
     carregarBancoHoras();
@@ -534,7 +536,7 @@ async function buscarVitrineDosPontos() {
 // atingido") são escolhidas pelo CSS a partir do estado do input — nenhum
 // caminho de código precisa lembrar de repintá-las.
 function htmlPontoEscolha(p, vitrine = {}) {
-  if (p.tipo === 'movel' && p.movel) return htmlPontoMovelEscolha(p);
+  if (p.tipo === 'movel' && p.movel) return htmlPontoMovelEscolha(p, vitrine);
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   // Ponto em instalação nunca está "cheio": ele não vendeu hora nenhuma
   // ainda. Bloquear ele por ocupação seria bloquear por um zero que
@@ -605,8 +607,11 @@ function htmlPontoEscolha(p, vitrine = {}) {
 // decididos do servidor (src/pontos/movel.js). Quem marca escolhe o PONTO:
 // a campanha acompanha ele na base e nos eventos. Ocupação e horário não
 // entram (pedido do dono: nada que não ajude a escolher).
-function htmlPontoMovelEscolha(p) {
+// Hospedado num comércio (migration 113): o card diz só o NOME do lugar —
+// nunca a conta, o período ou o benefício do anfitrião.
+function htmlPontoMovelEscolha(p, vitrine = {}) {
   const { localAtual, base, proximoEvento } = p.movel;
+  const foraDaBase = localAtual.origem !== 'base';
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
   const fechado = !p.escolhido && ((!instalando && p.ocupacao >= 100) || p.bloqueado);
   const estado = window.ROTULOS.ponto[p.status] || p.status;
@@ -627,7 +632,7 @@ function htmlPontoMovelEscolha(p) {
   const busca = `${p.nome} ${base.nome} ${localAtual.nome} ${p.cidade || ''}`.toLowerCase();
   return `<div class="ponto-card com-corpo ponto-escolha ponto-movel${fechado ? ' cheio' : ''}" data-ponto-id="${p.id}" data-busca="${esc(busca)}">
       <label class="ponto-marcar">
-        <span class="ponto-card-media ponto-movel-media"><span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
+        <span class="ponto-card-media ponto-movel-media">${vitrine.foto_instalacao_url ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
         <span class="ponto-card-corpo">
           <span class="ponto-card-topo">
             <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
@@ -638,10 +643,12 @@ function htmlPontoMovelEscolha(p) {
             'endereco',
             emEvento
               ? `Agora em: <b>${esc(localAtual.nome)}</b> · ${esc(localAtual.evento.nome)}`
-              : `Agora na base: <b>${esc(localAtual.nome)}</b>`,
+              : localAtual.origem === 'hospedagem'
+                ? `Agora em: <b>${esc(localAtual.nome)}</b>`
+                : `Agora na base: <b>${esc(localAtual.nome)}</b>`,
           )}
           ${evento}
-          ${emEvento ? linha('ponto-base', 'casa', `Base: ${esc(base.nome)}`) : ''}
+          ${foraDaBase ? linha('ponto-base', 'casa', `Base: ${esc(base.nome)}`) : ''}
           <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica)}</span>
         </span>
         <span class="ponto-escolha-acao">

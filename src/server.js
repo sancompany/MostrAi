@@ -304,6 +304,10 @@ if (require.main === module) {
     // a obrigação minutos depois de fechar, com o plano daquela hora
     // (src/bancohoras/obrigacao.js), a cada 10 min.
     require('./bancohoras/obrigacao').iniciar();
+    // Ponto móvel (migration 113): hospedagem e evento que passaram do fim
+    // previsto sem ninguém encerrar são encerrados pelo sistema (com o
+    // benefício da hospedagem), a cada 5 min.
+    require('./pontos/hospedagem').iniciarJob();
   });
 }
 

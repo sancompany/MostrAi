@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
-const { horarioEmVigorSql } = require('../lib/horario-em-vigor');
+const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql } = require('../lib/contexto-do-ponto');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
@@ -42,17 +42,18 @@ const INSTALACAO_REPETICAO_MIN = 5;
 // Tem hash de chave — só sai deste módulo pelas projeções abaixo, que
 // escolhem campo a campo o que pode sair. É o caminho quente do Player (toda
 // requisição autenticada, heartbeat a cada 15 s): nada além do necessário.
-// O horário é o EM VIGOR (src/lib/horario-em-vigor.js): ponto móvel em
-// evento exibe enquanto estiver ligado (24 h) e, de volta à base, o horário
-// dela volta (migration 112). `base_conta_id` é a conta da base do móvel:
-// nunca dona, só a casa que a trava de ramo protege
-// (gerador.js#anunciantesElegiveis).
+// Horário, ramo e "casa" são os EM VIGOR (src/lib/contexto-do-ponto.js): no
+// ponto móvel mudam com a hospedagem ou o evento em curso (migrations 112 e
+// 113). `casa_conta_id` é a conta cujo comércio recebe a tela agora (a dona
+// do fixo; a base ou o anfitrião do móvel) — nunca dona do móvel, só quem a
+// trava de ramo protege (gerador.js#anunciantesElegiveis). `categoria_id` é o
+// ramo em vigor, não necessariamente o gravado no ponto.
 const SELECT_TELA = `
   SELECT d.*,
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
          ${horarioEmVigorSql('p')} AS ponto_horario_semanal,
-         p.anunciante_id AS dono_conta_id, p.base_conta_id,
-         p.categoria_id, p.cota_autoanuncio_slots_hora,
+         p.anunciante_id AS dono_conta_id, ${casaEmVigorSql('p')} AS casa_conta_id, p.tipo AS ponto_tipo,
+         ${categoriaEmVigorSql('p')} AS categoria_id, p.cota_autoanuncio_slots_hora,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d
     JOIN pontos p ON p.id = d.ponto_id`;

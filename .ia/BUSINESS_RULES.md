@@ -213,9 +213,14 @@ cortesia, quando marcado):
   dois. Início e fim são marcados pelo Admin, não pela data.
 - Trava de ramo: a casa da tela é a dona do fixo ou a base do móvel
   (`gerador.js#casaDaTela`); a base que escolhe o móvel é isenta, como a
-  dona no fixo. Em evento, o horário em vigor é 24 h — uma expressão só
-  (`src/lib/horario-em-vigor.js`) para a config da TV, o gerador e o "no ar"
-  do anunciante.
+  dona no fixo. Fora da base (hospedagem ou evento) não há horário fixo —
+  uma expressão só (`src/lib/contexto-do-ponto.js`, ex-`horario-em-vigor.js`)
+  para a config da TV, o gerador e o "no ar" do anunciante.
+- V2 (migration 113, ADR-037): móvel nasce só pelo Admin, tipo imutável, 1
+  tela; hospedagem temporária com percentual congelado; benefício =
+  tempo operacional válido × percentual, no encerramento, uma vez; saldo de
+  hospedagem em segundos (não é crédito, não expira) veicula na rede inteira
+  na camada T3b; trava de ramo pelo contexto (anfitrião, base, evento).
 - POP: regra igual; a confirmação durante um evento grava
   `execucoes_confirmadas.evento_id` (auditoria). Público estimado é só texto.
 

@@ -53,3 +53,15 @@ fetch(`${API_BASE_URL}/pontos/fluxo`)
     el.hidden = false;
   })
   .catch(() => {});
+
+// Ponto Móvel (migration 113): o percentual do benefício vem do servidor —
+// o Admin muda e a home acompanha, sem número escrito na página.
+fetch(`${API_BASE_URL}/hospedagem/condicao`)
+  .then((r) => (r.ok ? r.json() : null))
+  .then((c) => {
+    if (!c) return;
+    const pct = `${String(c.percentual).replace('.', ',')}%`;
+    document.getElementById('hospedarHomeTexto').textContent =
+      `A tela fica alguns dias no seu comércio, sem custo. No fim, ${pct} do tempo em que ela funcionou vira horas de mídia gratuitas para você na rede.`;
+  })
+  .catch(() => {});

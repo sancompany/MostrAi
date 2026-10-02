@@ -175,7 +175,9 @@
     const agora =
       e.localAtual?.origem === 'evento'
         ? `Agora em evento: <b>${esc(e.localAtual.nome)}</b> — depois volta para cá.`
-        : 'Agora está aqui, na sua base.';
+        : e.localAtual?.origem === 'hospedagem'
+          ? `Agora hospedado em <b>${esc(e.localAtual.nome)}</b> — depois volta para cá.`
+          : 'Agora está aqui, na sua base.';
     const prox = e.proximoEvento;
     return `<article class="estab-card estab-base-movel" data-estab="${e.tipo}-${e.id}">
       <div class="estab-corpo">

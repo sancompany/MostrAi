@@ -166,6 +166,22 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   aparece como "~N pessoas", nunca entra no POP, no saldo nem em promessa
   de audiência. limite: GPS e audiência medida estão nas próximas versões
   (`docs/proximas-versoes.md`) e no veto de medição acima.
+- **Ponto Móvel V2: o tempo operacional é o que a tela COMPROVA** (02/10/2026,
+  RN-72). Online, pelos heartbeats (o APK bate a cada 5 min; um buraco > 6 min 30 s
+  fecha o intervalo — entre duas batidas exibindo, conta o trecho todo);
+  offline, pelos segmentos que o Player conta com o relógio monotônico e
+  manda quando volta. Três tetos assumidos: (1) o que a tela contou offline
+  e só enviou DEPOIS do encerramento não entra — encerrada não acumula; (2)
+  um boot que nunca recebeu o `servidorAgora` não tem como converter o
+  relógio para o do servidor, e esse tempo se perde (nunca é inventado); (3)
+  até o Player novo chegar às TVs (OTA), só o tempo online conta. limite:
+  um "período de carência" antes de apurar resolveria (1) — só se a
+  operação mostrar que faz falta.
+- **Regra de peça do saldo de hospedagem é provisória** (02/10/2026, RN-72):
+  quem veicula só com o saldo usa a regra do Plano Básico (1 peça de até
+  15 s, 140 s por hora de tela) — decisão do dono pendente
+  (`docs/PENDENCIAS.md`, T9). limite: trocar em `REGRA_DO_SALDO`
+  (`src/pontos/hospedagem.js`), um lugar só.
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

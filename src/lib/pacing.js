@@ -28,6 +28,11 @@
 //       (decisão do dono, 25/09/2026: a dívida volta em capacidade ociosa,
 //       nunca tirando a entrega corrente de ninguém, nem o mês corrente do
 //       próprio dono da dívida);
+//   T3b. saldo de hospedagem (migration 113, ponto móvel) — horas gratuitas
+//       de quem hospedou um ponto móvel, só no que T1, T2 e T3 deixaram:
+//       benefício gratuito nunca tira entrega paga nem a devolução de atraso
+//       pago, e também não espera para sempre (a hora vaga é dele antes de
+//       virar institucional);
 //   T4. o que sobrar vira a peça institucional (vídeo institucional da rede,
 //       ou o cartão "este espaço pode ser do seu negócio" do próprio Player)
 //       — inventário vago que anuncia a si mesmo.
@@ -167,7 +172,8 @@ function caberEm(pedidos, capacidade) {
 // anunciantes: [{ id, frequenciaBase, compensacao, deficit, banco, duracaoSegundos }]
 //   frequenciaBase — T1 (inserções da base contratada);
 //   compensacao, deficit — T2 (RN-49 além da base; reposição da hora anterior);
-//   banco — T3 (saldo antigo).
+//   banco — T3 (saldo antigo);
+//   hospedagem — T3b (saldo de hospedagem do ponto móvel).
 //
 // Devolve a hora inteira já ordenada, mais o relatório de como ela foi gasta.
 // `programados` conta só quem ocupa inventário de verdade — o institucional
@@ -192,6 +198,7 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
       quer: Math.max(0, a.frequenciaBase || 0),
       alem: Math.max(0, a.compensacao || 0) + Math.max(0, a.deficit || 0),
       banco: Math.max(0, a.banco || 0),
+      hospedagem: Math.max(0, a.hospedagem || 0),
     })),
     semente,
   );
@@ -218,15 +225,22 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
   for (const p of pedidosBanco) if (p.cabe > 0) bancoProgramados[p.id] = p.cabe;
   const segundosBanco = somaCabe(pedidosBanco);
 
+  // T3b: saldo de hospedagem, no que sobrou depois do banco.
+  const pedidosHospedagem = camada('hospedagem');
+  caberEm(pedidosHospedagem, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco);
+  const hospedagemProgramados = {};
+  for (const p of pedidosHospedagem) if (p.cabe > 0) hospedagemProgramados[p.id] = p.cabe;
+  const segundosHospedagem = somaCabe(pedidosHospedagem);
+
   // Map e não objeto: guarda o id com o tipo original (número de anunciante,
   // 'dono', 'midia:N'), que é o que vai nos itens da playlist.
   const vezesPorId = new Map();
-  for (const p of [...pedidos, ...pedidosAlem, ...pedidosBanco]) {
+  for (const p of [...pedidos, ...pedidosAlem, ...pedidosBanco, ...pedidosHospedagem]) {
     if (p.cabe > 0) vezesPorId.set(p.id, (vezesPorId.get(p.id) || 0) + p.cabe);
   }
   const programados = Object.fromEntries(vezesPorId);
 
-  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco);
+  const segundosLivres = Math.max(0, SEGUNDOS_DA_HORA - segundosContratados - segundosBanco - segundosHospedagem);
   const qtdInstitucional = Math.floor(segundosLivres / duracaoInstitucional);
 
   const grupos = [...vezesPorId].map(([id, quantidade]) => ({ id, quantidade }));
@@ -238,7 +252,7 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
   // pediu, mesmo quem não coube em nada. Registro de auditoria da hora
   // (`vezes_pedidas`); desde 27/09/2026 a apuração do saldo não usa mais
   // este número (usa obrigação × confirmado). O banco NÃO entra aqui:
-  // devolver dívida não é pedido novo.
+  // devolver dívida não é pedido novo — nem a hospedagem, que é benefício.
   const pedidosPorAnunciante = {};
   for (const p of [...pedidos, ...pedidosAlem]) {
     pedidosPorAnunciante[p.id] = (pedidosPorAnunciante[p.id] || 0) + p.quer;
@@ -248,9 +262,11 @@ function montarHoraDeTv(anunciantes, semente, duracaoInstitucional = DURACAO_INS
     itens: vagas.map((id) => id ?? ID_INSTITUCIONAL),
     programados,
     bancoProgramados,
+    hospedagemProgramados,
     pedidosPorAnunciante,
     segundosContratados,
     segundosBanco,
+    segundosHospedagem,
     segundosInstitucionais: qtdInstitucional * duracaoInstitucional,
     qtdInstitucional,
     pedidoSegundos,

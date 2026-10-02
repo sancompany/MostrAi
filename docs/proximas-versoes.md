@@ -186,3 +186,10 @@ e a de custos de 12/09
 - **De onde veio:** pedido do dono "Nova modalidade de ponto — ponto fixo e ponto móvel", 02/10/2026.
 - **O que toca:** preço/plano mexe em `planos` e no San Checkout (outro repositório — `classificar` antes); revenue share e benefício por evento mexem em `src/creditos/` e `src/pontos/basico.js` (hoje o móvel fica fora dos dois porque não tem `anunciante_id`); audiência garantida mexe no POP (`execucoes_confirmadas`) e no contrato; GPS exige o app da TV mandar posição (`sancompany/playlist.mostrai`); agenda pública vira página nova em `public/`.
 - **Quando vale a pena:** quando houver mais de um móvel rodando e o dono tiver números reais de evento (exibições confirmadas por evento já aparecem no Admin, coluna `evento_id` do POP) — antes disso, preço diferente seria chute.
+
+## Ponto Móvel V2: o que ficou fora da hospedagem temporária
+- **O que:** a V2 (02/10/2026, migration 113, RN-72) entrega hospedagem temporária com benefício em horas. Ficaram de fora, de propósito (§81 do pedido): cobrança do anfitrião, marketplace de hospedagem, pagamento em dinheiro, saque ou revenda do saldo, revenue share, mensalidade, transferência de propriedade do móvel, Básico temporário, crédito mensal pela hospedagem, GPS, várias telas por móvel, preço premium e audiência garantida. Também: um "período de carência" para o tempo offline que chega depois do encerramento.
+- **Por que:** cada um muda dinheiro, propriedade ou promessa — o pedido foi explícito em não construir.
+- **De onde veio:** "Estação — Ponto Móvel V2", 02/10/2026.
+- **O que toca:** dinheiro → San Checkout (outro repositório, `classificar` antes); várias telas → o gatilho `dispositivos_uma_tela_por_movel`; carência → `src/pontos/hospedagem.js#encerrarNaTransacao` (apurar depois de N horas).
+- **Quando vale a pena:** com mais de um móvel rodando e números reais de hospedagem (tempo operacional e saldo entregue já aparecem no Admin).

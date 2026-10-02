@@ -471,11 +471,22 @@ async function situacaoDaConta(contaId, agora = new Date()) {
     ),
   };
 
+  // Saldo de hospedagem (migration 113): horas gratuitas por ter hospedado
+  // um ponto móvel. Não é crédito nem plano — linha própria na ficha.
+  const hospedagemRepo = require('../pontos/hospedagem');
+  const saldoHosp = await hospedagemRepo.saldoDaConta(conta.id);
+  const hospedagem = {
+    disponivelSegundos: saldoHosp.disponivelSegundos,
+    recebidoSegundos: saldoHosp.recebidoSegundos,
+    entregueSegundos: saldoHosp.entregueSegundos,
+  };
+
   const situacao = {
     dados,
     donoDePonto: pontos.length > 0,
     plano,
     basico,
+    hospedagem,
     creditos,
     beneficios,
     criativos: { resumo: resumoCriativos, lista: criativos },
@@ -546,7 +557,12 @@ async function verificarInvariantes({ conta, situacao, beneficioAtivo, beneficio
       texto: `${plano.vencido.nome} venceu em ${dataBR(plano.vencido.venceuEm)} — a conciliação diária encerra.`,
     });
   }
-  if (criativos.resumo.noAr > 0 && !plano.agora && !situacao.basico.ativos.length) {
+  if (
+    criativos.resumo.noAr > 0 &&
+    !plano.agora &&
+    !situacao.basico.ativos.length &&
+    !(situacao.hospedagem?.disponivelSegundos > 0)
+  ) {
     alertas.push({ codigo: 'criativo_no_ar_sem_plano', texto: 'Há criativo no ar sem plano vigente.' });
   }
   return alertas;
