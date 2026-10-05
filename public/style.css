@@ -2360,3 +2360,24 @@ dialog.dlg-endereco::backdrop { background: rgba(20,23,31,.5); }
 @media (max-width: 520px) {
   .ponto-card.ponto-escolha .ponto-movel-media { aspect-ratio: auto; min-height: 60px; }
 }
+
+/* Hospedagem de Ponto Móvel (public/hospedagem-conta.js) — compartilhado
+   pelo painel e por /hospedar.html (V1.1: o formulário de interesse mora no
+   site e o andamento no painel). */
+.hosp-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.hosp-meta,
+.hosp-nota { margin: 6px 0 0; color: var(--text-dim); font-size: .84rem; }
+.hosp-numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.hosp-numeros div { min-width: 0; }
+.hosp-numeros dt { color: var(--text-dim); font-size: .78rem; }
+.hosp-numeros dd { margin: 2px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+.hosp-form { display: grid; gap: 6px; text-align: left; }
+.hosp-form .btn { justify-self: start; margin-top: 6px; }
+.hosp-form .btn.block { justify-self: stretch; }
+.hosp-form .section-eyebrow { margin: 8px 0 0; color: var(--blue); font-size: .7rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.hosp-check { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; font-size: 0.9rem; text-align: left; }
+.hosp-check input { width: auto; margin: 3px 0 0; flex: none; }
+.hosp-local { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
+.hosp-local [data-local] { display: grid; gap: 6px; margin: 0 0 8px 24px; }
+.hosp-local [data-local][hidden] { display: none; }
+

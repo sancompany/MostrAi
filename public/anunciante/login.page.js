@@ -44,8 +44,15 @@ form.addEventListener('submit', async (e) => {
       botaoEntrar.disabled = false;
       return;
     }
-    const plano = new URLSearchParams(window.location.search).get('plano');
-    window.location.href = plano ? `/anunciante/confirmar-plano.html?plano=${plano}` : '/anunciante/painel.html';
+    const params = new URLSearchParams(window.location.search);
+    const plano = params.get('plano');
+    // `voltar`: só uma página deste site (caminho relativo .html, nunca
+    // outro domínio nem "//"): sem redirecionamento aberto.
+    const voltar = params.get('voltar');
+    const destinoSeguro = voltar && /^\/(?!\/)[a-z0-9/_.-]*\.html$/i.test(voltar) ? voltar : null;
+    window.location.href = plano
+      ? `/anunciante/confirmar-plano.html?plano=${plano}`
+      : destinoSeguro || '/anunciante/painel.html';
   } catch {
     msg.textContent = 'Não foi possível entrar agora. Tente novamente.';
     msg.className = 'form-msg err';

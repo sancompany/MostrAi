@@ -219,12 +219,17 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   `fim: "24:00"` = até o fim do dia; `fim` menor que `inicio` cruza a
   meia-noite, e a madrugada pertence à faixa do dia em que começou.
 - ponto sem horário cadastrado = aberto 24 h (todos os dias `00:00`–`24:00`).
-- **ponto móvel em evento** (02/10/2026, migration 112): enquanto o Admin
-  marca um evento como "em andamento", a config vem como ponto sem horário
-  (24 h) — o horário cadastrado é o da base, que não vale no evento. Iniciar
-  e encerrar o evento sobem a `configVersion` das telas do ponto; de volta à
-  base, o horário da base volta pela mesma troca de versão. Nada muda no
-  formato: o Player não sabe que o ponto é móvel.
+- **ponto móvel** (migrations 112 a 114 — contrato do backend; o Player não
+  muda): o móvel não tem base. Enquanto está ALOCADO (hospedagem ativa ou
+  evento em andamento), `operacao` traz o **horário de funcionamento da
+  alocação**, definido pelo Admin naquele agendamento (formato de sempre;
+  "24 h" só quando escolhido). Sem alocação, a config vem como ponto sem
+  horário (24 h) e a **playlist é só institucional** (itens
+  `institucional: true`, `contabiliza: false`, sem anunciante) — o
+  equipamento não é inventário. Iniciar e encerrar uma hospedagem ou um
+  evento sobem a `configVersion` das telas do ponto. Nada muda no formato
+  nem nos campos: o Player não sabe que o ponto é móvel. Nenhum campo novo
+  foi adicionado à resposta.
 - `feriados`: data (`AAAA-MM-DD`) → faixas daquele dia. **Substitui** o dia
   da semana, inclusive a madrugada que viria da véspera. Feriados nacionais
   do ano corrente e dos dois seguintes; `{}` = sem regra especial.

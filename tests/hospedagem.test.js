@@ -20,6 +20,7 @@ process.env.SESSION_SECRET ||= 'teste-hospedagem';
 const app = require('../src/server');
 const hospedagem = require('../src/pontos/hospedagem');
 const movel = require('../src/pontos/movel');
+const alocacao = require('../src/pontos/alocacao');
 const termoMod = require('../src/pontos/hospedagem-termo');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
@@ -181,8 +182,12 @@ async function novaConta({ categoriaId = null, nome = null, propria = false } = 
   return rows[0];
 }
 
+// Cada login com o seu IP: o limite de tentativas das rotas de interesse é
+// por IP, e a suíte manda muitos.
 async function entrar(conta) {
-  const nav = navegador();
+  const nav = navegador(
+    `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${1 + Math.floor(Math.random() * 250)}`,
+  );
   const r = await nav('POST', '/anunciantes/login', { email: conta.contato_email, senha: SENHA });
   assert.strictEqual(r.status, 200, `login da conta ${conta.id}`);
   return nav;
@@ -196,23 +201,11 @@ async function novaCategoria(prefixo = 'Ramo') {
   return rows[0].id;
 }
 
-// Base sem horário (a tela exibe enquanto ligada): a suíte não depende da
-// hora em que roda.
-const HORARIO_DA_BASE = null;
-
-async function criarMovel({ contaBase = null, extra = {} } = {}) {
-  const r = await admin('POST', '/admin/pontos-moveis', {
-    base_conta_id: contaBase ? contaBase.id : null,
-    base_nome: `Depósito ${randomUUID().slice(0, 8)}`,
-    cep: '15990000',
-    logradouro: 'Avenida Brasil',
-    numero: String(100 + Math.floor(Math.random() * 800)),
-    bairro: 'Centro',
-    cidade: 'Matão',
-    uf: 'SP',
-    horario_semanal: HORARIO_DA_BASE,
-    ...extra,
-  });
+// O móvel nasce só como equipamento (migration 114): sem base, sem
+// endereço, sem horário. A hospedagem dos testes é 24 h (escolhida
+// explicitamente): a suíte não depende da hora em que roda.
+async function criarMovel({ extra = {} } = {}) {
+  const r = await admin('POST', '/admin/pontos-moveis', { ...extra });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
   criadas.pontos.push(r.json.id);
   await tirarDoSorteio(r.json.id);
@@ -220,17 +213,32 @@ async function criarMovel({ contaBase = null, extra = {} } = {}) {
   return { ...rows[0], telaId: r.json.telaId };
 }
 
+// "2026-10-05T14:30" de Matão, deslocado em horas a partir de agora.
+const paredeMais = (horas) => alocacao.parede(new Date(Date.now() + horas * 3_600_000));
+
+// Dia de Matão deslocado em dias ("2026-10-07") — para os testes que falam
+// em dias inteiros (o formato antigo `data_inicio`/`data_fim` continua
+// aceito: do 00:00 do primeiro dia ao 00:00 do dia seguinte ao último).
 const hojeMais = (dias) => {
-  const d = new Date(`${movel.hojeEmMatao()}T12:00:00Z`);
+  const d = new Date(`${alocacao.dataEmMatao(new Date())}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + dias);
   return d.toISOString().slice(0, 10);
 };
 
+// [inicio, fim) de dias inteiros de Matão (para INSERT direto nos testes).
+const dias = (de, ate) => {
+  const p = alocacao.lerPeriodo({ data_inicio: de, data_fim: ate }, { exigirFuturo: false });
+  return [p.inicio, p.fim];
+};
+
+// Sem período no `extra`: começou há 1 h e termina em 48 h. Com
+// `data_inicio` (dias) ou `inicio`/`fim` (data e hora), vale o do `extra`.
 async function programar(pontoId, conta, extra = {}) {
+  const periodo = extra.data_inicio || extra.inicio ? {} : { inicio: paredeMais(-1), fim: paredeMais(48) };
   const r = await admin('POST', `/admin/pontos/${pontoId}/hospedagens`, {
     conta_id: conta.id,
-    data_inicio: hojeMais(0),
-    data_fim: hojeMais(2),
+    ...periodo,
+    horario_operacao: '24h',
     percentual_esperado: await hospedagem.percentualAtual(),
     ...extra,
   });
@@ -284,7 +292,11 @@ const minutosAtras = (m) => new Date(Date.now() - m * 60_000);
 async function hospedagemAtiva(ponto, conta, minutos = 180) {
   const hid = await programarOk(ponto.id, conta);
   assert.strictEqual((await acao(ponto.id, hid, 'iniciar')).status, 200);
-  await pool.query('UPDATE pontos_moveis_hospedagens SET iniciada_em = $2 WHERE id = $1', [hid, minutosAtras(minutos)]);
+  // O período previsto também recua: o tempo só vale dentro dele.
+  await pool.query(`UPDATE pontos_moveis_hospedagens SET iniciada_em = $2, inicio = LEAST(inicio, $2) WHERE id = $1`, [
+    hid,
+    minutosAtras(minutos),
+  ]);
   return hid;
 }
 
@@ -334,11 +346,12 @@ async function telaComPlayer(pontoId) {
 
 // Ponto fixo aberto 24 h (sem horário): a playlist da hora de teste está
 // sempre aberta, a qualquer hora em que a suíte rode.
-async function pontoFixo({ categoriaId = null } = {}) {
+async function pontoFixo({ categoriaId = null, dona = null } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, categoria_id)
-     VALUES ($1, 'Rua X, 1', 'Matão', 'SP', '15990000', 'outro', 'R', '16 9', $2) RETURNING *`,
-    [`Fixo ${randomUUID().slice(0, 8)}`, categoriaId],
+    `INSERT INTO pontos (nome, endereco, cidade, uf, cep, segmento, responsavel_nome, responsavel_contato, categoria_id,
+                         anunciante_id)
+     VALUES ($1, 'Rua X, 1', 'Matão', 'SP', '15990000', 'outro', 'R', '16 9', $2, $3) RETURNING *`,
+    [`Fixo ${randomUUID().slice(0, 8)}`, categoriaId, dona ? dona.id : null],
   );
   criadas.pontos.push(rows[0].id);
   await tirarDoSorteio(rows[0].id);
@@ -392,19 +405,25 @@ test('3 e 4. só o Admin cria o móvel; nasce da Mostraí, sem dono, sem candida
   assert.strictEqual(m.tipo, 'movel');
   assert.strictEqual(m.anunciante_id, null);
   assert.strictEqual(m.candidatura_id, null);
-  assert.strictEqual(m.base_conta_id, null, 'a conta da base é opcional');
+  // Sem base, sem endereço, sem horário e sem ramo (migration 114): só equipamento.
+  for (const campo of ['base_conta_id', 'base_nome', 'endereco', 'cidade', 'horario_semanal', 'categoria_id']) {
+    assert.strictEqual(m[campo], null, campo);
+  }
   assert.match(m.nome, /^Mostraí Móvel #\d{2,}$/);
   const { rows: telas } = await pool.query('SELECT status FROM dispositivos WHERE ponto_id = $1', [m.id]);
   assert.strictEqual(telas.length, 1, 'a Tela 1 nasce com o móvel');
   const conta = await novaConta();
   const nav = await entrar(conta);
   for (const quem of [nav, navegador()]) {
-    assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { base_nome: 'X' })).status, 401);
+    assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { nome: 'X' })).status, 401);
   }
   const nomeado = await criarMovel({ extra: { nome: 'Totem da Feira', observacoes: 'nota só do Admin' } });
   assert.strictEqual(nomeado.nome, 'Totem da Feira');
-  const semBase = await admin('POST', '/admin/pontos-moveis', { cep: '15990000' });
-  assert.strictEqual(semBase.status, 400);
+  // Endereço, base e horário no corpo são ignorados: o local é da alocação.
+  const comEndereco = await criarMovel({ extra: { cep: '15990000', base_nome: 'X', horario_semanal: '24h' } });
+  assert.strictEqual(comEndereco.cep, null);
+  assert.strictEqual(comEndereco.base_nome, null);
+  assert.strictEqual(comEndereco.horario_semanal, null);
 });
 
 test('5 e 6. tipo imutável e móvel nunca recebe dono', async () => {
@@ -521,6 +540,7 @@ test('12 e 13. agenda única: hospedagem × hospedagem, hospedagem × evento, ev
   assert.strictEqual(choque.status, 409, 'datas inclusivas: o último dia conta');
   assert.match(choque.json.erro, /hospedado/);
   const evento = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Feira',
     organizacao: 'Prefeitura',
     local: 'Praça',
@@ -528,6 +548,7 @@ test('12 e 13. agenda única: hospedagem × hospedagem, hospedagem × evento, ev
   });
   assert.strictEqual(evento.status, 409);
   const eventoOk = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Feira',
     organizacao: 'Prefeitura',
     local: 'Praça',
@@ -537,6 +558,7 @@ test('12 e 13. agenda única: hospedagem × hospedagem, hospedagem × evento, ev
   assert.strictEqual(eventoOk.status, 201);
   assert.strictEqual((await programar(m.id, b, { data_inicio: hojeMais(9), data_fim: hojeMais(10) })).status, 409);
   const outroEvento = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Show',
     organizacao: 'X',
     local: 'Y',
@@ -548,9 +570,16 @@ test('12 e 13. agenda única: hospedagem × hospedagem, hospedagem × evento, ev
   // O banco é a última linha de defesa: INSERT direto também é recusado.
   await assert.rejects(
     pool.query(
-      `INSERT INTO pontos_moveis_hospedagens (ponto_id, conta_id, local, endereco, data_inicio, data_fim, percentual)
-       VALUES ($1, $2, 'x', 'y', $3, $4, 20)`,
-      [m.id, b.id, hojeMais(3), hojeMais(3)],
+      `INSERT INTO pontos_moveis_hospedagens
+         (ponto_id, conta_id, local, endereco, data_inicio, data_fim, percentual, inicio, fim)
+       VALUES ($1, $2, 'x', 'y', $3, $3, 20, $4, $5)`,
+      [
+        m.id,
+        b.id,
+        hojeMais(3),
+        alocacao.lerPeriodo({ data_inicio: hojeMais(3) }).inicio,
+        alocacao.lerPeriodo({ data_inicio: hojeMais(3) }).fim,
+      ],
     ),
     (e) => e.code === '23P01',
   );
@@ -586,7 +615,8 @@ test('15. iniciar: só a partir do dia; local atual vira o anfitrião; a TV é a
   const f = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json;
   assert.strictEqual(f.localAtual.origem, 'hospedagem');
   const tela = await dispositivosRepo.buscarComPonto(m.telaId);
-  assert.strictEqual(tela.ponto_horario_semanal, null, 'fora da base, a tela exibe enquanto estiver ligada');
+  assert.deepStrictEqual(tela.ponto_horario_semanal, alocacao.HORARIO_24H, 'a TV recebe o horário DA HOSPEDAGEM');
+  assert.strictEqual(tela.movel_alocado, true);
   assert.ok(tela.config_versao_desejada > versaoAntes, 'a config da TV muda');
   assert.strictEqual((await acao(m.id, hoje, 'iniciar')).status, 409, 'já em andamento');
 });
@@ -827,6 +857,8 @@ test('31c. métricas da Mídia Mostraí: o móvel hospedado conta pelo horário 
 test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comunicação", nunca "desligada"; o anunciante não recebe sinal', async () => {
   const m = await criarMovel();
   const { telaId } = await telaComPlayer(m.id);
+  // Só alocado o móvel tem "no ar" / "sem comunicação" (fora disso, "sem alocação").
+  const hid = await hospedagemAtiva(m, await novaConta(), 10);
   // A Mostraí não fala com a tela há 1 dia (pode estar exibindo offline).
   await pool.query(
     `UPDATE dispositivos SET ultima_vez_online = now() - interval '1 day', primeiro_sinal_em = now() - interval '2 days',
@@ -865,6 +897,11 @@ test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comuni
   await dispositivosRepo.atualizar(telaId, { status: 'reparo' });
   const ex3 = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
   assert.strictEqual(ex3.json.porPonto.find((p) => p.id === m.id).situacao, 'fora_do_ar');
+  // Fim da hospedagem: sem alocação — nunca "no ar", mesmo ligada e falando.
+  await dispositivosRepo.atualizar(telaId, { status: 'ativo' });
+  assert.strictEqual((await acao(m.id, hid, 'encerrar')).status, 200);
+  const ex4 = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
+  assert.strictEqual(ex4.json.porPonto.find((p) => p.id === m.id).situacao, 'sem_alocacao');
   await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [anunciante.id]);
 });
 
@@ -873,6 +910,7 @@ test('17. prorrogar: sem conflito, mantendo o percentual; nunca encurta; com con
   const anfitria = await novaConta();
   const hid = await hospedagemAtiva(m, anfitria, 10);
   await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Rodeio',
     organizacao: 'X',
     local: 'Parque',
@@ -921,9 +959,9 @@ test('19. encerramento automático no fim previsto: ativa encerra com benefício
   // Hospedagem que terminou ontem (gravada direto: a rota não aceita passado).
   const { rows } = await pool.query(
     `INSERT INTO pontos_moveis_hospedagens (ponto_id, conta_id, local, endereco, data_inicio, data_fim, percentual,
-                                            estado, iniciada_em)
-     VALUES ($1, $2, 'Tabacaria', 'Rua', $3, $4, 20, 'ativa', now() - interval '3 days') RETURNING id`,
-    [m.id, anfitria.id, hojeMais(-3), hojeMais(-1)],
+                                            estado, iniciada_em, inicio, fim)
+     VALUES ($1, $2, 'Tabacaria', 'Rua', $3, $4, 20, 'ativa', now() - interval '3 days', $5, $6) RETURNING id`,
+    [m.id, anfitria.id, hojeMais(-3), hojeMais(-1), ...dias(hojeMais(-3), hojeMais(-1))],
   );
   const hid = rows[0].id;
   // Operou 2 h dentro do período e 1 h DEPOIS do fim previsto (não conta).
@@ -931,15 +969,17 @@ test('19. encerramento automático no fim previsto: ativa encerra com benefício
   await operou(m.telaId, new Date(fimPrevisto.getTime() - 2 * 3600e3), fimPrevisto);
   await operou(m.telaId, fimPrevisto, new Date(fimPrevisto.getTime() + 3600e3));
   const programada = await pool.query(
-    `INSERT INTO pontos_moveis_hospedagens (ponto_id, conta_id, local, endereco, data_inicio, data_fim, percentual)
-     VALUES ($1, $2, 'Outra', 'Rua', $3, $3, 20) RETURNING id`,
-    [(await criarMovel()).id, anfitria.id, hojeMais(-2)],
+    `INSERT INTO pontos_moveis_hospedagens (ponto_id, conta_id, local, endereco, data_inicio, data_fim, percentual,
+                                            inicio, fim)
+     VALUES ($1, $2, 'Outra', 'Rua', $3, $3, 20, $4, $5) RETURNING id`,
+    [(await criarMovel()).id, anfitria.id, hojeMais(-2), ...dias(hojeMais(-2), hojeMais(-2))],
   );
   const m2 = await criarMovel();
   const ev = await pool.query(
-    `INSERT INTO pontos_moveis_eventos (ponto_id, nome, organizacao, local, data_inicio, data_fim, estado, iniciado_em)
-     VALUES ($1, 'Feira', 'X', 'Praça', $2, $3, 'em_andamento', now() - interval '2 days') RETURNING id`,
-    [m2.id, hojeMais(-2), hojeMais(-1)],
+    `INSERT INTO pontos_moveis_eventos (ponto_id, nome, organizacao, local, data_inicio, data_fim, estado, iniciado_em,
+                                        inicio, fim)
+     VALUES ($1, 'Feira', 'X', 'Praça', $2, $3, 'em_andamento', now() - interval '2 days', $4, $5) RETURNING id`,
+    [m2.id, hojeMais(-2), hojeMais(-1), ...dias(hojeMais(-2), hojeMais(-1))],
   );
   const r1 = await hospedagem.encerrarVencidas();
   assert.ok(r1.hospedagensEncerradas >= 1 && r1.hospedagensCanceladas >= 1 && r1.eventosEncerrados >= 1);
@@ -1460,19 +1500,39 @@ test('40b. a vaga de saldo reservada na hora toca a hora inteira, mesmo com o sa
   assert.strictEqual(segunda.length, primeira.length, 'a reserva da hora não vira vaga vazia');
 });
 
-test('40c. a base guarda o móvel e não perde o próprio saldo nele — só o anfitrião da hospedagem ativa fica de fora', async () => {
-  // Com ramo: o móvel na base fica com o ramo da base — e a base não é
-  // concorrente de si mesma.
-  const ramo = await novaCategoria('Base');
-  const { conta } = await contaComSaldo(600, { categoriaId: ramo });
+test('40c. móvel SEM ALOCAÇÃO não é inventário: toca só o institucional — nem saldo, nem plano, nem obrigação', async () => {
+  const { conta } = await contaComSaldo(600);
   await pecaAprovada(conta, 15);
-  const naBase = await criarMovel({ contaBase: conta });
-  const { telaId } = await telaComPlayer(naBase.id);
-  const env = await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(telaId), new Date());
+  const parado = await criarMovel();
+  const { telaId } = await telaComPlayer(parado.id);
+  const tela = await dispositivosRepo.buscarComPonto(telaId);
+  assert.strictEqual(tela.movel_alocado, false);
+  assert.strictEqual(tela.ponto_horario_semanal, null, 'sem horário comercial');
+  assert.strictEqual(tela.categoria_id, null, 'sem ramo');
+  assert.strictEqual(tela.casa_conta_id, null, 'sem casa');
+  const env = await gerador.gerarPlaylistDaHora(tela, new Date());
+  assert.ok(env.itens.length > 0);
   assert.ok(
-    env.itens.some((i) => i.anuncianteId === conta.id),
-    'na base, o saldo da própria base roda',
+    env.itens.every((i) => i.institucional && !i.contabiliza && !i.anuncianteId),
+    'só institucional',
   );
+  const { rows } = await pool.query('SELECT COUNT(*)::int n FROM exibicoes_contador WHERE dispositivo_id = $1', [
+    telaId,
+  ]);
+  assert.strictEqual(rows[0].n, 0, 'nenhuma programada nem obrigação');
+  const { rows: congelada } = await pool.query(
+    'SELECT COUNT(*)::int n FROM playlist_hora_congelada WHERE dispositivo_id = $1',
+    [telaId],
+  );
+  assert.strictEqual(congelada[0].n, 0, 'a hora não congela: a alocação que começar no meio da hora nasce limpa');
+  // Alocado (hospedagem de outra conta), o saldo da conta passa a rodar nele.
+  const hid = await hospedagemAtiva(parado, await novaConta(), 5);
+  const alocado = await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(telaId), new Date());
+  assert.ok(
+    alocado.itens.some((i) => i.anuncianteId === conta.id),
+    'alocado, o saldo da rede entra',
+  );
+  await acao(parado.id, hid, 'encerrar');
 });
 
 test('41. prioridade: pago > Básico > recuperação > saldo de hospedagem > institucional (o gratuito nunca tira o pago)', () => {
@@ -1576,19 +1636,18 @@ test('46. hospedar não dá Plano Básico, crédito nem cupom ao anfitrião', as
 // =====================================================================
 // Concorrência 47–52
 // =====================================================================
-test('47 a 52. trava de concorrente pelo contexto comercial: anfitrião, base ou o contexto do evento', async () => {
-  const ramoBase = await novaCategoria('Academia');
+test('47 a 52. trava de concorrente pelo contexto da ALOCAÇÃO: anfitrião, o ramo do evento, ou nenhum', async () => {
   const ramoAnfitriao = await novaCategoria('Tabacaria');
   const ramoEvento = await novaCategoria('Bebidas');
-  const base = await novaConta({ categoriaId: ramoBase });
-  const m = await criarMovel({ contaBase: base });
+  const ramoEscolhido = await novaCategoria('Padaria');
+  const m = await criarMovel();
   const { telaId } = await telaComPlayer(m.id);
   const ctx = async () => {
     const d = await dispositivosRepo.buscarComPonto(telaId);
     return { categoria: d.categoria_id, casa: d.casa_conta_id };
   };
-  assert.deepStrictEqual(await ctx(), { categoria: ramoBase, casa: base.id }, '48. na base: ramo e casa da base');
-  // Concorrente do anfitrião, com saldo de hospedagem e com plano.
+  assert.deepStrictEqual(await ctx(), { categoria: null, casa: null }, '48. sem alocação: sem ramo e sem casa');
+  // Concorrente do anfitrião, com saldo de hospedagem.
   const anfitria = await novaConta({ categoriaId: ramoAnfitriao });
   const { conta: concorrenteSaldo } = await contaComSaldo(1200, { categoriaId: ramoAnfitriao });
   await pecaAprovada(concorrenteSaldo);
@@ -1598,9 +1657,15 @@ test('47 a 52. trava de concorrente pelo contexto comercial: anfitrião, base ou
   const env = await gerador.gerarPlaylistDaHora(await dispositivosRepo.buscarComPonto(telaId), new Date());
   assert.ok(!env.itens.some((i) => i.anuncianteId === concorrenteSaldo.id), '51. a trava vale para o saldo também');
   await acao(m.id, hid, 'encerrar');
-  assert.deepStrictEqual(await ctx(), { categoria: ramoBase, casa: base.id }, '52. de volta: o da base');
-  // Evento com contexto próprio; e evento sem contexto não herda a base.
+  assert.deepStrictEqual(await ctx(), { categoria: null, casa: null }, '52. encerrada: sem alocação de novo');
+  // O Admin pode definir o ramo da hospedagem (padrão: o da conta).
+  const outra = await programarOk(m.id, anfitria, { categoria_id: ramoEscolhido });
+  assert.strictEqual((await linha(outra)).categoria_id, ramoEscolhido);
+  assert.strictEqual((await programar(m.id, anfitria, { categoria_id: 'abc' })).status, 400);
+  await acao(m.id, outra, 'cancelar');
+  // Evento com contexto próprio; e evento sem contexto não tem trava.
   const ev = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Festival',
     organizacao: 'X',
     local: 'Parque',
@@ -1612,19 +1677,17 @@ test('47 a 52. trava de concorrente pelo contexto comercial: anfitrião, base ou
   assert.deepStrictEqual(await ctx(), { categoria: ramoEvento, casa: null }, '49. evento: o contexto dele');
   await admin('POST', `/admin/pontos/${m.id}/eventos/${ev.json.id}/encerrar`);
   const semCtx = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'Corrida',
     organizacao: 'X',
     local: 'Rua',
     data_inicio: hojeMais(0),
   });
   await admin('POST', `/admin/pontos/${m.id}/eventos/${semCtx.json.id}/iniciar`);
-  assert.deepStrictEqual(
-    await ctx(),
-    { categoria: null, casa: null },
-    '49. sem contexto: sem trava, sem herdar a base',
-  );
+  assert.deepStrictEqual(await ctx(), { categoria: null, casa: null }, '49. sem contexto: sem trava');
   await admin('POST', `/admin/pontos/${m.id}/eventos/${semCtx.json.id}/encerrar`);
   const invalida = await admin('POST', `/admin/pontos/${m.id}/eventos`, {
+    horario_operacao: '24h',
     nome: 'X',
     organizacao: 'X',
     local: 'X',
@@ -1637,72 +1700,126 @@ test('47 a 52. trava de concorrente pelo contexto comercial: anfitrião, base ou
 // =====================================================================
 // Site 53–59
 // =====================================================================
-const INTERESSE = () => ({
-  empresa: `Tabacaria ${randomUUID().slice(0, 6)}`,
-  responsavel: 'Joana',
-  contato_telefone: `(16) 9${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`,
-  contato_email: 'joana@example.com',
-  cep: '15990-000',
-  logradouro: 'Rua Sete',
-  numero: '70',
-  bairro: 'Centro',
-  cidade: 'Matão',
-  uf: 'SP',
-  segmento: 'tabacaria',
-  observacao: 'tenho espaço na vitrine',
-});
+// Conta com DIREITO ATIVO DE VEICULAÇÃO: plano vigente (como o webhook
+// grava). `vencido: true` — o mesmo plano, já expirado.
+async function contaComPlano({ vencido = false, ...opcoes } = {}) {
+  const conta = await novaConta(opcoes);
+  await pool.query(
+    `UPDATE anunciantes SET plano_id = 'essencial-1m', data_expiracao = now() + $2::interval WHERE id = $1`,
+    [conta.id, vencido ? '-2 days' : '20 days'],
+  );
+  return { ...conta, plano_id: 'essencial-1m' };
+}
 
-async function interessePorTelefone(telefone) {
-  const { rows } = await pool.query('SELECT * FROM hospedagem_interesses WHERE contato_telefone = $1', [
-    telefone.replace(/\D/g, ''),
-  ]);
+async function interessesDaConta(contaId) {
+  const { rows } = await pool.query('SELECT * FROM hospedagem_interesses WHERE conta_id = $1 ORDER BY id', [contaId]);
   for (const r of rows) criadas.interesses.push(r.id);
   return rows;
 }
 
-test('53 a 57. interesse público: só manifestação, validado, sem duplicar, robô descartado, Admin avisado', async () => {
+test('53 a 57. interesse: só conta logada com direito ativo de veiculação; nunca reserva equipamento', async () => {
+  const { possuiDireitoAtivoDeVeiculacao } = require('../src/anunciantes/acesso-painel');
+  // Anônimo: 401 (o site mostra o login, nunca o formulário).
   const anon = navegador(`10.9.${Math.floor(Math.random() * 250)}.1`);
-  const dados = INTERESSE();
-  const r = await anon('POST', '/hospedagem/interesse', dados);
+  const semLogin = await anon('POST', '/hospedagem/interesse', { observacao: 'x' });
+  assert.strictEqual(semLogin.status, 401);
+  // Só cadastro (sem plano, Básico ou saldo): 403 com o motivo.
+  const soCadastro = await novaConta();
+  const r403 = await (await entrar(soCadastro))('POST', '/hospedagem/interesse', {});
+  assert.strictEqual(r403.status, 403);
+  assert.strictEqual(r403.json.motivo, 'sem_direito');
+  // Plano vencido: 403.
+  const vencida = await contaComPlano({ vencido: true });
+  const rVenc = await (await entrar(vencida))('POST', '/hospedagem/interesse', {});
+  assert.strictEqual(rVenc.status, 403);
+  assert.strictEqual(rVenc.json.motivo, 'plano_vencido');
+  // Suspensa (mesmo com plano): 403 — e o login de conta suspensa nem passa.
+  const suspensa = await contaComPlano();
+  await pool.query('UPDATE anunciantes SET suspenso = true WHERE id = $1', [suspensa.id]);
+  const dirSusp = await possuiDireitoAtivoDeVeiculacao({ ...suspensa, suspenso: true });
+  assert.deepStrictEqual(dirSusp, { possui: false, motivo: 'suspensa' });
+  // Com plano vigente: aceita, com os dados DA CONTA.
+  const conta = await contaComPlano();
+  const nav = await entrar(conta);
+  const r = await nav('POST', '/hospedagem/interesse', { observacao: 'tenho espaço na vitrine', empresa: 'Forjada' });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
-  const [i] = await interessePorTelefone(dados.contato_telefone);
+  const [i] = await interessesDaConta(conta.id);
   assert.strictEqual(i.status, 'nova');
-  assert.strictEqual(i.conta_id, null, 'visitante não ganha conta');
-  assert.strictEqual(i.origem, 'publico');
-  assert.match(i.endereco, /Rua Sete, 70/);
+  assert.strictEqual(i.empresa, conta.nome_empresa, 'a empresa vem do cadastro, nunca do corpo');
+  assert.strictEqual(i.local_tipo, 'conta');
+  assert.match(i.endereco, /Rua das Flores, 10/);
   const pend = await pool.query(`SELECT 1 FROM pendencias WHERE chave = $1 AND resolvido_em IS NULL`, [
     `HOSPEDAGEM_INTERESSE:${i.id}`,
   ]);
   assert.strictEqual(pend.rowCount, 1, 'o Admin vê na Visão geral');
-  assert.strictEqual((await anon('POST', '/hospedagem/interesse', dados)).status, 201);
-  assert.strictEqual((await interessePorTelefone(dados.contato_telefone)).length, 1, 'não duplica');
-  for (const [campo, valor] of [
-    ['contato_telefone', '123'],
-    ['empresa', ''],
-    ['cep', ''],
-    ['contato_email', 'nao-e-email'],
-  ]) {
-    const ruim = await anon('POST', '/hospedagem/interesse', { ...INTERESSE(), [campo]: valor });
-    assert.strictEqual(ruim.status, 400, `${campo} inválido`);
-  }
-  const robo = INTERESSE();
-  assert.strictEqual((await anon('POST', '/hospedagem/interesse', { ...robo, site: 'http://spam' })).status, 201);
-  assert.strictEqual((await interessePorTelefone(robo.contato_telefone)).length, 0, 'campo-armadilha: não grava');
+  // Duplo clique / reenvio: não duplica, responde "já recebido".
+  const de2 = await nav('POST', '/hospedagem/interesse', {});
+  assert.strictEqual(de2.status, 200);
+  assert.strictEqual(de2.json.jaRecebido, true);
+  assert.strictEqual((await interessesDaConta(conta.id)).length, 1, 'um interesse aberto por conta');
+  // Robô (campo-armadilha): responde igual e não grava.
+  const outra = await contaComPlano();
+  assert.strictEqual(
+    (await (await entrar(outra))('POST', '/hospedagem/interesse', { site: 'http://spam' })).status,
+    201,
+  );
+  assert.strictEqual((await interessesDaConta(outra.id)).length, 0, 'campo-armadilha: não grava');
   const { rows: hosp } = await pool.query(
     'SELECT COUNT(*)::int n FROM pontos_moveis_hospedagens WHERE interesse_id = $1',
     [i.id],
   );
   assert.strictEqual(hosp[0].n, 0, 'interesse não reserva equipamento');
+  // Outras origens do direito: Básico ativo e saldo de hospedagem.
+  const { conta: comSaldo } = await contaComSaldo(300);
+  assert.strictEqual((await possuiDireitoAtivoDeVeiculacao(comSaldo)).origem, 'saldo_hospedagem');
+  assert.strictEqual((await possuiDireitoAtivoDeVeiculacao(conta)).origem, 'plano');
+  assert.strictEqual((await possuiDireitoAtivoDeVeiculacao(soCadastro)).possui, false);
 });
 
-test('58. interesse com sessão: vai com a conta da SESSÃO (nunca a do corpo)', async () => {
-  const conta = await novaConta();
-  const outra = await novaConta();
+test('58. interesse: local pretendido — o da conta, um ponto DELA (nunca de outra) ou outro endereço validado', async () => {
+  const conta = await contaComPlano();
   const nav = await entrar(conta);
-  const dados = { ...INTERESSE(), conta_id: outra.id };
-  assert.strictEqual((await nav('POST', '/hospedagem/interesse', dados)).status, 201);
-  const [i] = await interessePorTelefone(dados.contato_telefone);
-  assert.strictEqual(i.conta_id, conta.id);
+  // Ponto de OUTRA conta: recusado (IDOR).
+  const alheio = await pontoFixo();
+  const idor = await nav('POST', '/hospedagem/interesse', { local_tipo: 'ponto', ponto_id: alheio.id });
+  assert.strictEqual(idor.status, 400);
+  assert.strictEqual((await interessesDaConta(conta.id)).length, 0);
+  // Tipo inválido.
+  assert.strictEqual((await nav('POST', '/hospedagem/interesse', { local_tipo: 'base' })).status, 400);
+  // Outro endereço incompleto: 400; completo: grava o endereço digitado.
+  assert.strictEqual(
+    (await nav('POST', '/hospedagem/interesse', { local_tipo: 'outro', cep: '15990-000' })).status,
+    400,
+  );
+  const ok = await nav('POST', '/hospedagem/interesse', {
+    local_tipo: 'outro',
+    local_nome: 'Quiosque da Praça',
+    cep: '15990-000',
+    logradouro: 'Rua Sete',
+    numero: '70',
+    bairro: 'Centro',
+    cidade: 'Matão',
+    uf: 'SP',
+    conta_id: 999999,
+  });
+  assert.strictEqual(ok.status, 201, JSON.stringify(ok.json));
+  const [i] = await interessesDaConta(conta.id);
+  assert.strictEqual(i.conta_id, conta.id, 'a conta é a da SESSÃO');
+  assert.strictEqual(i.local_tipo, 'outro');
+  assert.strictEqual(i.local_nome, 'Quiosque da Praça');
+  assert.match(i.endereco, /Rua Sete, 70/);
+  // Um ponto DELA.
+  const dona = await contaComPlano();
+  const meu = await pontoFixo({ dona });
+  const r = await (await entrar(dona))('POST', '/hospedagem/interesse', { local_tipo: 'ponto', ponto_id: meu.id });
+  assert.strictEqual(r.status, 201, JSON.stringify(r.json));
+  const [doPonto] = await interessesDaConta(dona.id);
+  assert.strictEqual(doPonto.ponto_id, meu.id);
+  // O painel lista os pontos dela para escolher.
+  const painel = (await (await entrar(dona))('GET', '/anunciantes/me/hospedagem')).json;
+  assert.ok(painel.pontos.some((p) => p.id === meu.id));
+  assert.strictEqual(painel.elegivel.possui, true);
+  assert.strictEqual(painel.conta.empresa, dona.nome_empresa);
 });
 
 test('59. site: página própria, separada de "Tornar-se ponto", percentual lido do servidor, sem "aluguel"', () => {
@@ -1718,7 +1835,16 @@ test('59. site: página própria, separada de "Tornar-se ponto", percentual lido
     assert.doesNotMatch(texto, /alug/i, 'não é aluguel');
     assert.doesNotMatch(texto, /\b20 ?%/, 'nenhum percentual escrito à mão');
   }
-  assert.match(script, /\/hospedagem\/interesse/);
+  // V1.1: o formulário (com o POST do interesse) mora no módulo da conta e a
+  // página decide o estado pela conta da sessão.
+  const modulo = pub('hospedagem-conta.js');
+  assert.match(modulo, /\/hospedagem\/interesse/);
+  assert.match(script, /\/anunciantes\/me\/hospedagem/);
+  assert.match(script, /status === 401/, 'anônimo: explicação e login, sem formulário');
+  assert.match(script, /Ver planos/, 'sem direito: o requisito e os planos');
+  assert.match(modulo, /Enviar interesse não reserva um equipamento/);
+  assert.match(modulo, /Dados da conta/i);
+  assert.doesNotMatch(`${pagina}${script}${modulo}`, /ganhe \d|ganhe 20/i, 'nunca "ganhe 20%" solto');
   assert.doesNotMatch(script, /candidatura|conta\/modos|anunciantes\/me\/pontos/i, 'não é o fluxo de ser ponto');
   assert.doesNotMatch(pagina, /audiência garantida|garantimos/i);
 });
@@ -1761,61 +1887,59 @@ test('60 a 63. painel do anfitrião: programada, em andamento (estimado) e concl
   assert.strictEqual((await nav('GET', `/admin/anunciantes/${anfitria.id}/saldo-hospedagem`)).status, 401);
 });
 
-test('64. "Tenho interesse" pelo painel: dados do cadastro, sem escolher equipamento, período ou percentual', async () => {
-  const conta = await novaConta();
+test('64. andamento do interesse: recebido → em contato → aprovado → agendado; cancelada volta; recusado fecha', async () => {
+  const conta = await contaComPlano();
   const nav = await entrar(conta);
   const r = await nav('POST', '/anunciantes/me/hospedagem/interesse', {
     observacao: 'pode ser em novembro',
     percentual: 90,
-    ponto_id: 1,
+    inicio: '2030-01-01T08:00',
   });
   assert.strictEqual(r.status, 201, JSON.stringify(r.json));
-  assert.strictEqual(r.json.jaRecebido, false);
-  const { rows } = await pool.query('SELECT * FROM hospedagem_interesses WHERE conta_id = $1', [conta.id]);
-  criadas.interesses.push(rows[0].id);
-  assert.strictEqual(rows[0].empresa, conta.nome_empresa);
-  assert.strictEqual(rows[0].origem, 'painel');
-  assert.strictEqual(rows[0].contato_telefone, '16999990000');
-  assert.strictEqual(rows[0].observacao, 'pode ser em novembro');
-  const de2 = await nav('POST', '/anunciantes/me/hospedagem/interesse', {});
-  assert.strictEqual(de2.json.jaRecebido, true);
-  const d = (await nav('GET', '/anunciantes/me/hospedagem')).json;
+  const [i] = await interessesDaConta(conta.id);
+  assert.strictEqual(i.contato_telefone, '16999990000');
+  assert.strictEqual(i.observacao, 'pode ser em novembro');
+  let d = (await nav('GET', '/anunciantes/me/hospedagem')).json;
   assert.strictEqual(d.interesseAberto.status, 'nova');
-  // Admin: em contato → agenda com a hospedagem → "agendada".
+  const patch = (corpo) => admin('PATCH', `/admin/hospedagem/interesses/${i.id}`, corpo);
+  assert.strictEqual((await patch({ status: 'em_contato' })).status, 200);
+  assert.strictEqual((await patch({ status: 'aprovada' })).status, 200);
+  assert.strictEqual((await patch({ status: 'agendada' })).status, 400, 'agendada só nasce da hospedagem');
+  d = (await nav('GET', '/anunciantes/me/hospedagem')).json;
+  assert.strictEqual(d.interesseAberto.status, 'aprovada');
+  // A lista do Admin mostra o direito atual da conta e o histórico.
+  const lista = (await admin('GET', '/admin/hospedagem/interesses')).json.find((x) => x.id === Number(i.id));
+  assert.strictEqual(lista.direito.possui, true);
+  assert.strictEqual(lista.direito.origem, 'plano');
+  assert.deepStrictEqual(lista.historico, { interessesAnteriores: 0, hospedagens: [] });
+  // Agendar a partir do interesse.
+  const m = await criarMovel();
+  const hidI = await programarOk(m.id, conta, { interesse_id: i.id });
   assert.strictEqual(
-    (await admin('PATCH', `/admin/hospedagem/interesses/${rows[0].id}`, { status: 'em_contato' })).status,
+    (await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [i.id])).rows[0].status,
+    'agendada',
+  );
+  assert.strictEqual((await patch({ status: 'recusada' })).status, 409);
+  const outro = await criarMovel();
+  assert.strictEqual((await programar(outro.id, conta, { interesse_id: i.id })).status, 409, 'não agenda duas vezes');
+  // Cancelada: o interesse volta para "em contato" e agenda de novo.
+  assert.strictEqual((await acao(m.id, hidI, 'cancelar')).status, 200);
+  assert.strictEqual(
+    (await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [i.id])).rows[0].status,
+    'em_contato',
+  );
+  assert.strictEqual((await programar(outro.id, conta, { interesse_id: i.id })).status, 201);
+  // Recusado fecha: a conta pode mandar outro depois.
+  const outra = await contaComPlano();
+  const navOutra = await entrar(outra);
+  await navOutra('POST', '/hospedagem/interesse', {});
+  const [j] = await interessesDaConta(outra.id);
+  assert.strictEqual(
+    (await admin('PATCH', `/admin/hospedagem/interesses/${j.id}`, { status: 'recusada' })).status,
     200,
   );
-  const m = await criarMovel();
-  const hidI = await programarOk(m.id, conta, { interesse_id: rows[0].id });
-  const { rows: depois } = await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [rows[0].id]);
-  assert.strictEqual(depois[0].status, 'agendada');
-  assert.strictEqual(
-    (await admin('PATCH', `/admin/hospedagem/interesses/${rows[0].id}`, { status: 'recusada' })).status,
-    409,
-  );
-  // O mesmo interesse não agenda duas hospedagens.
-  const outro = await criarMovel();
-  assert.strictEqual((await programar(outro.id, conta, { interesse_id: rows[0].id })).status, 409);
-  // A hospedagem não aconteceu (cancelada): o interesse volta e agenda de novo.
-  assert.strictEqual((await acao(m.id, hidI, 'cancelar')).status, 200);
-  const { rows: voltou } = await pool.query('SELECT status FROM hospedagem_interesses WHERE id = $1', [rows[0].id]);
-  assert.strictEqual(voltou[0].status, 'em_contato');
-  assert.strictEqual((await programar(outro.id, conta, { interesse_id: rows[0].id })).status, 201);
-  // Cadastro incompleto (endereço antigo, sem bairro, telefone com +55) não
-  // trava o interesse pelo painel — o painel não tem como corrigir.
-  const antiga = await novaConta();
-  await pool.query(
-    `UPDATE anunciantes SET logradouro = NULL, numero = NULL, bairro = NULL, endereco = 'Rua Velha, 10',
-            contato_telefone = '+55 (16) 99999-0000' WHERE id = $1`,
-    [antiga.id],
-  );
-  const r2 = await (await entrar(antiga))('POST', '/anunciantes/me/hospedagem/interesse', {});
-  assert.strictEqual(r2.status, 201, JSON.stringify(r2.json));
-  const { rows: dela } = await pool.query('SELECT * FROM hospedagem_interesses WHERE conta_id = $1', [antiga.id]);
-  criadas.interesses.push(dela[0].id);
-  assert.strictEqual(dela[0].contato_telefone, '16999990000');
-  assert.match(dela[0].endereco, /Rua Velha, 10/);
+  assert.strictEqual((await navOutra('POST', '/hospedagem/interesse', {})).status, 201);
+  assert.strictEqual((await interessesDaConta(outra.id)).length, 2);
 });
 
 test('65 e 66. card do anunciante: "agora em" o anfitrião, sem conta, percentual, saldo ou histórico', async () => {
@@ -1839,7 +1963,8 @@ test('65 e 66. card do anunciante: "agora em" o anfitrião, sem conta, percentua
   // Hospedagem futura não aparece no card.
   await acao(m.id, hid, 'encerrar');
   await programarOk(m.id, await novaConta(), { data_inicio: hojeMais(4), data_fim: hojeMais(5) });
-  assert.strictEqual((await movel.situacaoDosMoveis([m.id])).get(m.id).localAtual.origem, 'base');
+  assert.strictEqual((await movel.situacaoDosMoveis([m.id])).get(m.id).localAtual, null, 'sem alocação: nenhum local');
+  assert.ok(!(await navegador()('GET', '/pontos')).json.some((p) => p.id === m.id), 'fora do "Onde estamos"');
 });
 
 test('67. conta não forja nada: rotas do móvel e da hospedagem exigem o Admin', async () => {
@@ -1867,15 +1992,14 @@ test('67. conta não forja nada: rotas do móvel e da hospedagem exigem o Admin'
 // E2E §78 e §80
 // =====================================================================
 test('E2E §78: Móvel #01 → interesse → hospedagem 20% → operação → encerramento → horas → mídia sem plano → POP → saldo cai', async () => {
-  // Admin cria o móvel (tela, base).
+  // Admin cria o móvel (só o equipamento, com a Tela 1).
   const m = await criarMovel();
   const { telaId, chaveAparelho, dispositivoId } = await telaComPlayer(m.id);
-  // Uma tabacaria demonstra interesse pelo site e cria conta.
-  const tabacaria = await novaConta({ nome: `Tabacaria E2E ${randomUUID().slice(0, 4)}` });
+  // Uma tabacaria que já anuncia (plano vigente) demonstra interesse.
+  const tabacaria = await contaComPlano({ nome: `Tabacaria E2E ${randomUUID().slice(0, 4)}` });
   const nav = await entrar(tabacaria);
-  const dados = INTERESSE();
-  assert.strictEqual((await nav('POST', '/hospedagem/interesse', dados)).status, 201);
-  const [interesse] = await interessePorTelefone(dados.contato_telefone);
+  assert.strictEqual((await nav('POST', '/hospedagem/interesse', { observacao: 'tenho vitrine' })).status, 201);
+  const [interesse] = await interessesDaConta(tabacaria.id);
   // Admin agenda 3 dias; percentual congelado em 20%.
   const hid = await programarOk(m.id, tabacaria, {
     data_inicio: hojeMais(0),
@@ -1884,7 +2008,10 @@ test('E2E §78: Móvel #01 → interesse → hospedagem 20% → operação → e
   });
   assert.strictEqual(Number((await linha(hid)).percentual), 20);
   assert.strictEqual((await acao(m.id, hid, 'iniciar')).status, 200);
-  await pool.query('UPDATE pontos_moveis_hospedagens SET iniciada_em = $2 WHERE id = $1', [hid, minutosAtras(400)]);
+  await pool.query('UPDATE pontos_moveis_hospedagens SET iniciada_em = $2, inicio = LEAST(inicio, $2) WHERE id = $1', [
+    hid,
+    minutosAtras(400),
+  ]);
   // O Player opera: 5 h online (heartbeat) + 1 h offline contada pelo Player.
   await operou(telaId, minutosAtras(390), minutosAtras(90));
   const off = await fetch(`${base}/player/${dispositivoId}/operacao`, {
@@ -1902,10 +2029,13 @@ test('E2E §78: Móvel #01 → interesse → hospedagem 20% → operação → e
   assert.strictEqual(fim.status, 200);
   assert.ok(Math.abs(fim.json.tempoSegundos - 6 * 3600) <= 2, `6 h (${fim.json.tempoSegundos}s)`);
   assert.strictEqual(fim.json.beneficioSegundos, Math.floor((fim.json.tempoSegundos * 20) / 100));
-  assert.strictEqual((await movel.situacaoDosMoveis([m.id])).get(m.id).localAtual.origem, 'base');
+  assert.strictEqual((await movel.situacaoDosMoveis([m.id])).get(m.id).localAtual, null, 'sem alocação: nenhum local');
+  assert.ok(!(await navegador()('GET', '/pontos')).json.some((p) => p.id === m.id), 'fora do "Onde estamos"');
   const saldo = (await nav('GET', '/anunciantes/me/hospedagem')).json.saldo.disponivelSegundos;
   assert.strictEqual(saldo, fim.json.beneficioSegundos);
-  // Sem plano, a conta usa as horas: peça aprovada → gerador distribui → POP.
+  // O plano dela vence; sem plano, a conta usa as horas: peça aprovada →
+  // gerador distribui → POP.
+  await pool.query(`UPDATE anunciantes SET data_expiracao = now() - interval '2 days' WHERE id = $1`, [tabacaria.id]);
   assert.strictEqual((await nav('GET', '/anunciantes/me')).json.acesso_painel.podeVeicular, true);
   await pecaAprovada(tabacaria, 15);
   const fixo = await pontoFixo();

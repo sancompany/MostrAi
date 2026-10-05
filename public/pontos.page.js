@@ -83,19 +83,24 @@ fetch(`${API_BASE_URL}/pontos`)
       .map((p) => {
         // Linha do endereço com a mesma regra do resto do sistema
         // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
-        const linha = window.linhaEndereco(p);
-        const enderecoCompleto = `${linha ? linha + ', ' : ''}${p.cidade}`;
+        // Ponto móvel (migration 114): só aparece alocado, e o endereço é o
+        // da alocação (o local da hospedagem ou do evento) — nunca uma base.
+        const movel = p.tipo === 'movel' && window.PONTO_MOVEL;
+        const linha = movel ? '' : window.linhaEndereco(p);
+        const enderecoCompleto = movel
+          ? [p.local_atual, p.local_endereco !== p.local_atual ? p.local_endereco : ''].filter(Boolean).join(', ')
+          : `${linha ? linha + ', ' : ''}${p.cidade}`;
         const mapaUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto)}`;
         const st = STATUS_LABEL[p.status] || STATUS_LABEL.a_instalar;
-        // Ponto móvel (migration 112): da Mostraí, com base num comércio e
-        // saídas para eventos — o selo e a base dizem isso.
-        const movel = p.tipo === 'movel' && window.PONTO_MOVEL;
+        const onde = movel
+          ? `Agora em: ${esc(p.local_atual || '')}${p.evento_nome ? ` · ${esc(p.evento_nome)}` : ''}`
+          : `${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}`;
         return `
       <div class="ponto-card">
         <div class="ponto-card-media">${fotoOuPlaceholder(p.foto_instalacao_url, p.nome)}</div>
         <span class="badge ${st.classe}">${st.texto}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}
         <h4>${esc(p.nome)}</h4>
-        <p>${movel ? `Base: ${esc(p.base_nome)} · ` : ''}${esc(p.cidade)}${linha ? ', ' + esc(linha) : ''}</p>
+        <p>${onde}</p>
         ${movel ? `<p class="u-dim">${esc(window.PONTO_MOVEL.explica)}</p>` : ''}
         <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
       </div>

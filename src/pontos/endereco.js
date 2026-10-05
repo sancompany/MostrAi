@@ -49,8 +49,7 @@ async function alterarEnderecoDoPonto(pontoId, corpo, { origem, contaId = null, 
 }
 
 // O miolo da troca, para quem já abriu a transação e travou a linha do
-// ponto (`atual`, lida com FOR UPDATE) — a troca de base do ponto móvel
-// (src/pontos/movel.js) muda o endereço junto com a base, numa transação só.
+// ponto (`atual`, lida com FOR UPDATE).
 // Devolve a pendência aberta (se houver) para o aviso sair DEPOIS do COMMIT.
 async function gravarEnderecoNaTransacao(cliente, atual, corpo, { origem, contaId = null, admin = null }) {
   const partes = Object.fromEntries(PARTES.filter((p) => corpo?.[p] !== undefined).map((p) => [p, corpo[p]]));

@@ -9,16 +9,16 @@ const termo = require('./hospedagem-termo');
 const sse = require('../lib/sse');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 
-// Ponto móvel e hospedagem temporária (migrations 112 e 113).
+// Ponto móvel e hospedagem temporária (migrations 112, 113 e 114).
 //
 // Admin — tudo em /admin, então a guarda de sessão do admin (src/server.js)
-// vale para todas: a conta da base, o anfitrião, o anunciante e o
-// organizador do evento não mexem em nada daqui.
+// vale para todas: o anfitrião, o anunciante e o organizador do evento não
+// mexem em nada daqui.
 //   GET  /admin/pontos-moveis                                lista (Rede → Pontos móveis)
 //   POST /admin/pontos-moveis                                criar móvel (+ Tela 1)
 //   POST /admin/pontos/:id/foto-movel                        foto do equipamento
-//   GET  /admin/pontos/:id/movel                             ficha (base, local atual, agenda, histórico)
-//   PUT  /admin/pontos/:id/base                              definir/alterar a base
+//   GET  /admin/pontos/:id/movel                             ficha (agora, próximo, agenda, histórico)
+//   PUT  /admin/pontos/:id/base                              410 — o móvel não tem base (114)
 //   POST /admin/pontos/:id/eventos                           cadastrar evento
 //   POST /admin/pontos/:id/eventos/:eventoId/:acao           iniciar | encerrar | cancelar
 //   POST /admin/pontos/:id/hospedagens                       confirmar hospedagem (percentual congelado)
@@ -26,19 +26,20 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 //                                                            (retirada opcional) | cancelar | retirada
 //   POST /admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto  foto da entrega/retirada
 //   GET  /admin/hospedagem/termos | POST                     versões do termo / publicar nova
-//   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar período / prorrogar
+//   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar período/horário/local (programada)
+//                                                            ou prorrogar o fim (ativa)
 //   GET  /admin/hospedagem/percentual                        percentual + histórico
 //   PUT  /admin/hospedagem/percentual                        alterar (auditado)
 //   GET  /admin/hospedagem/interesses                        interesses recebidos
-//   PATCH /admin/hospedagem/interesses/:id                   andamento e nota interna
+//   PATCH /admin/hospedagem/interesses/:id                   andamento (em contato, aprovado, recusado) e nota
 //   GET  /admin/anunciantes/:id/saldo-hospedagem             saldo, extrato e hospedagens da conta
 //   POST /admin/anunciantes/:id/saldo-hospedagem/ajustes     ajuste +/− com motivo
 //
 // Público e painel:
 //   GET  /hospedagem/condicao                                o percentual em vigor (o site lê daqui)
-//   POST /hospedagem/interesse                               interesse (visitante ou logado)
-//   GET  /anunciantes/me/hospedagem                          as hospedagens e o saldo da conta logada
-//   POST /anunciantes/me/hospedagem/interesse                interesse pelo painel (dados da conta)
+//   POST /hospedagem/interesse                               interesse (só conta com direito ativo)
+//   GET  /anunciantes/me/hospedagem                          hospedagens, saldo, elegibilidade, dados da conta
+//   POST /anunciantes/me/hospedagem/interesse                o mesmo interesse, pelo painel
 //   GET  /anunciantes/me/hospedagens/:hid/termo              termo + dados desta hospedagem
 //   POST /anunciantes/me/hospedagens/:hid/aceite             aceite do anfitrião (versão + hash)
 const router = express.Router();
@@ -59,8 +60,8 @@ const apagarTemporario = (req, res, next) => {
   next();
 };
 
-// Cada escrita avisa sem F5: o Admin (Rede), a conta da base e o anfitrião
-// ("Meus pontos", painel) e quem escolheu o ponto (lista de pontos).
+// Cada escrita avisa sem F5: o Admin (Rede), o anfitrião (painel) e quem
+// escolheu o ponto (lista de pontos).
 async function avisar(pontoId, extras = []) {
   sse.emitirParaAdmin('point.updated', { id: pontoId });
   for (const conta of await movel.contasInteressadas(pontoId, extras)) {
@@ -207,13 +208,12 @@ for (const caminho of ['/admin/pontos/:id/tornar-movel', '/admin/pontos/:id/torn
   );
 }
 
-router.put(
-  '/admin/pontos/:id/base',
-  rota(async (req, res, id) => {
-    const r = await movel.alterarBase(id, req.body, adminDe(req));
-    await avisar(id, [r.contaBaseAnterior]);
-    res.json({ ok: true, baseNova: r.baseNova, enderecoMudou: r.enderecoMudou });
-  }),
+// O ponto móvel não tem base (migration 114): só alocação. Resposta
+// explícita para cliente antigo.
+router.put('/admin/pontos/:id/base', (_req, res) =>
+  res
+    .status(410)
+    .json({ erro: 'o ponto móvel não tem base — ele só tem local enquanto está alocado (hospedagem ou evento)' }),
 );
 
 router.post(
@@ -280,7 +280,7 @@ router.put(
   rota(async (req, res, id) => {
     const r = await hospedagem.alterarPeriodo(id, req.params.hid, req.body);
     await avisar(id, [r.contaId]);
-    res.json({ ok: true, dataInicio: r.dataInicio, dataFim: r.dataFim });
+    res.json({ ok: true, inicio: r.inicio, fim: r.fim });
   }),
 );
 
@@ -356,40 +356,77 @@ router.get(
   }),
 );
 
-// Visitante ou logado (a conta vem da SESSÃO, nunca do corpo). Campo
-// escondido `site` preenchido = robô: responde igual e não grava.
-router.post(
-  '/hospedagem/interesse',
-  limiteTentativas,
-  simples(async (req, res) => {
-    if (typeof req.body?.site === 'string' && req.body.site.trim()) return res.status(201).json({ ok: true });
-    await interesses.registrar(req.body, { contaId: req.session?.anuncianteId || null, origem: 'publico' });
-    res.status(201).json({ ok: true });
-  }),
-);
-
 function exigirConta(req, res, next) {
-  if (!req.session?.anuncianteId) return res.status(401).json({ erro: 'não autenticado' });
+  if (!req.session?.anuncianteId) return res.status(401).json({ erro: 'Entre na sua conta para enviar o interesse' });
   next();
 }
+
+async function contaDaSessao(req) {
+  const { rows } = await require('../db/pool').query('SELECT * FROM anunciantes WHERE id = $1', [
+    req.session.anuncianteId,
+  ]);
+  return rows[0] && !rows[0].excluido_em ? rows[0] : null;
+}
+
+// Interesse (V1.1): só conta logada COM direito ativo de veiculação — a
+// regra é do servidor (src/pontos/hospedagem-interesse.js). Empresa,
+// responsável e contato vêm do cadastro; do corpo, só o local escolhido
+// (conta | ponto | outro) e a observação. Campo escondido `site`
+// preenchido = robô: responde igual e não grava.
+async function enviarInteresse(req, res) {
+  if (typeof req.body?.site === 'string' && req.body.site.trim()) return res.status(201).json({ ok: true });
+  const conta = await contaDaSessao(req);
+  if (!conta) return res.status(401).json({ erro: 'Entre na sua conta para enviar o interesse' });
+  try {
+    const r = await interesses.registrar(conta, req.body);
+    res.status(r.novo ? 201 : 200).json({ ok: true, jaRecebido: !r.novo });
+  } catch (err) {
+    if (err.status === 403) return res.status(403).json({ erro: err.message, motivo: err.motivo });
+    throw err;
+  }
+}
+
+router.post('/hospedagem/interesse', exigirConta, limiteTentativas, simples(enviarInteresse));
 
 router.get(
   '/anunciantes/me/hospedagem',
   exigirConta,
   simples(async (req, res) => {
-    const contaId = req.session.anuncianteId;
+    const conta = await contaDaSessao(req);
+    if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
+    const contaId = conta.id;
+    const { possuiDireitoAtivoDeVeiculacao } = require('../anunciantes/acesso-painel');
+    const { linhaEndereco } = require('../lib/endereco');
     // Sem extrato: o painel não o mostra, e a nota do ajuste é do Admin.
-    const [saldo, hospedagens, interesseAberto, percentual] = await Promise.all([
+    const [saldo, hospedagens, interesseAberto, percentual, direito, pontos] = await Promise.all([
       hospedagem.saldoDaConta(contaId),
       hospedagem.hospedagensDaConta(contaId),
       interesses.abertoDaConta(contaId),
       hospedagem.percentualAtual(),
+      possuiDireitoAtivoDeVeiculacao(conta),
+      interesses.pontosDaConta(contaId),
     ]);
     res.json({
       saldo: { disponivelSegundos: saldo.disponivelSegundos, recebidoSegundos: saldo.recebidoSegundos },
       hospedagens,
       interesseAberto,
       percentual,
+      // Pode mandar interesse? (a mesma régua do POST). Só o sim/não e a
+      // origem — nada do plano em si.
+      elegivel: { possui: direito.possui, origem: direito.origem ?? null, motivo: direito.motivo ?? null },
+      // "DADOS DA CONTA" do formulário: o que vai junto, sem pedir de novo.
+      conta: {
+        empresa: conta.nome_empresa,
+        responsavel: conta.responsavel_nome || conta.nome_empresa,
+        email: conta.contato_email,
+        telefone: conta.contato_telefone || conta.responsavel_telefone || null,
+        endereco: linhaEndereco(conta, { comCidade: true }) || conta.endereco || null,
+      },
+      pontos: pontos.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        endereco: linhaEndereco(p, { comCidade: true }) || p.endereco,
+      })),
     });
   }),
 );
@@ -422,43 +459,7 @@ router.post(
   }),
 );
 
-router.post(
-  '/anunciantes/me/hospedagem/interesse',
-  exigirConta,
-  limiteTentativas,
-  simples(async (req, res) => {
-    // O painel não pede de novo o que a conta já tem: empresa, responsável,
-    // contato, endereço e ramo vêm do cadastro; do corpo, só disponibilidade
-    // e observação. Quem escolhe equipamento, período e percentual é o Admin.
-    const { rows } = await require('../db/pool').query('SELECT * FROM anunciantes WHERE id = $1', [
-      req.session.anuncianteId,
-    ]);
-    const conta = rows[0];
-    if (!conta || conta.excluido_em) return res.status(404).json({ erro: 'conta não encontrada' });
-    // Parte vazia no cadastro vai como ausente (não null): o endereço no
-    // formato antigo (só a linha) continua reconhecido.
-    const ou = (v) => v ?? undefined;
-    const corpo = {
-      empresa: conta.nome_empresa,
-      responsavel: conta.responsavel_nome || conta.nome_empresa,
-      contato_email: ou(conta.contato_email),
-      contato_telefone: conta.contato_telefone || conta.responsavel_telefone || '',
-      cep: ou(conta.cep),
-      logradouro: ou(conta.logradouro),
-      numero: ou(conta.numero),
-      complemento: ou(conta.complemento),
-      bairro: ou(conta.bairro),
-      cidade: ou(conta.cidade),
-      uf: ou(conta.uf),
-      endereco: conta.logradouro ? undefined : ou(conta.endereco),
-      categoria_id: conta.categoria_id,
-      segmento: ou(conta.categoria_livre),
-      disponibilidade: req.body?.disponibilidade,
-      observacao: req.body?.observacao,
-    };
-    const r = await interesses.registrar(corpo, { contaId: conta.id, origem: 'painel' });
-    res.status(201).json({ ok: true, jaRecebido: !r.novo });
-  }),
-);
+// O mesmo interesse pelo painel (rota de sempre do painel).
+router.post('/anunciantes/me/hospedagem/interesse', exigirConta, limiteTentativas, simples(enviarInteresse));
 
 module.exports = router;

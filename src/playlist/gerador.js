@@ -21,6 +21,7 @@ const midiasRepo = require('../midias/repository');
 const basicoRepo = require('../pontos/basico');
 const hospedagem = require('../pontos/hospedagem');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
+const { inventarioSql } = require('../lib/contexto-do-ponto');
 
 // Quem chega no meio da hora (ponto escolhido agora, criativo aprovado
 // agora) não disputa vaga com quem já estava programado — só pede a fatia
@@ -81,7 +82,7 @@ function limiteDeCriativos(contaPropria, limitePlano, disponiveis) {
 
 // A conta que a trava de ramo protege numa tela: a dona do ponto fixo; no
 // ponto móvel, o comércio onde ele está AGORA — o anfitrião da hospedagem
-// ativa, a base, ou ninguém durante um evento (src/lib/contexto-do-ponto.js,
+// ativa, ou ninguém durante um evento (src/lib/contexto-do-ponto.js,
 // já resolvido em SELECT_TELA). Não é dona: isto só a livra da própria trava
 // quando ela escolhe o ponto, como a dona no fixo. Cota, Básico e "criativos
 // do dono" continuam só da dona.
@@ -147,7 +148,7 @@ const travaDeRamoSql = (categoria, casa, ponto) => `(${categoria}::int IS NULL O
 // Saldo de hospedagem (migration 113): das contas com saldo para programar,
 // as que podem aparecer NESTA tela — conta ativa, não a própria Mostraí, e
 // a mesma trava de ramo da rotação paga. Sem plano: o saldo não depende
-// dele. A casa (a base que guarda o móvel, a dona do fixo) não é
+// dele. A casa (o anfitrião do móvel hospedado, a dona do fixo) não é
 // concorrente de si mesma — e sem plano não tem como "escolher" o ponto,
 // que é a exceção da rotação paga. O anfitrião da hospedagem ATIVA fica de
 // fora pelo chamador (`anfitria_conta_id`).
@@ -167,7 +168,7 @@ async function contasDaHospedagemNaTela(categoriaDoPonto, excluirContaId, casa, 
 async function telasNaRede() {
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-      WHERE d.status = 'ativo' AND p.status = 'em_operacao'`,
+      WHERE d.status = 'ativo' AND p.status = 'em_operacao' AND ${inventarioSql('p')}`,
   );
   return Math.max(1, rows[0].n);
 }
@@ -291,7 +292,9 @@ function quantasInsercoes(conta, segundos, duracaoSegundos) {
 }
 
 async function pontosEmOperacao() {
-  const { rows } = await pool.query(`SELECT id FROM pontos WHERE status = 'em_operacao' ORDER BY id`);
+  const { rows } = await pool.query(
+    `SELECT p.id FROM pontos p WHERE p.status = 'em_operacao' AND ${inventarioSql('p')} ORDER BY p.id`,
+  );
   return rows.map((r) => r.id);
 }
 
@@ -533,6 +536,39 @@ async function obterVideoInstitucional() {
 //
 // `agora` (relógio injetável dos testes; padrão, o de verdade): só decide
 // quanto da hora sobra pra quem chega no meio dela (obrigação de `extras`).
+function itemInstitucional(janelaId, indice, videoInstitucional) {
+  return {
+    itemProgramacaoId: `${janelaId}|${indice}|inst`,
+    criativoId: null,
+    anuncianteId: null,
+    autoanuncio: false,
+    institucional: true,
+    contabiliza: false,
+    url: videoInstitucional?.url ?? null,
+    duracaoSegundos: videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL,
+    ...(videoInstitucional?.contentHash ? { contentHash: videoInstitucional.contentHash } : {}),
+  };
+}
+
+// A hora inteira de institucional — o mesmo formato da playlist comum.
+async function playlistSoInstitucional(dispositivo, horaAtual) {
+  const videoInstitucional = await obterVideoInstitucional();
+  const janelaId = `${dispositivo.id}|${horaAtual.toISOString()}`;
+  const daHora = montarHoraDeTv(
+    [],
+    `${dispositivo.id}-${horaAtual.toISOString()}`,
+    videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL,
+  );
+  return {
+    versaoContrato: 2,
+    janelaId,
+    janelaInicio: horaAtual.toISOString(),
+    janelaFim: new Date(horaAtual.getTime() + 3_600_000).toISOString(),
+    servidorAgora: new Date().toISOString(),
+    itens: daHora.itens.map((_, indice) => itemInstitucional(janelaId, indice, videoInstitucional)),
+  };
+}
+
 async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   const horaAtual = new Date(hora);
   horaAtual.setMinutes(0, 0, 0);
@@ -548,6 +584,14 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
   // minutos abertos.
   const minutosAbertos = minutosAbertosNaHora(dispositivo, horaAtual, fimDaHora);
   const aberta = minutosAbertos > 0;
+
+  // PONTO MÓVEL SEM ALOCAÇÃO (migration 114): é equipamento guardado ou em
+  // trânsito, não inventário — sem campanha, saldo, Básico, mídia própria ou
+  // obrigação. Ligado, toca só o institucional (nada é gravado nem congelado:
+  // se a alocação começar no meio da hora, a geração seguinte nasce limpa).
+  if (dispositivo.ponto_tipo === 'movel' && !dispositivo.movel_alocado) {
+    return playlistSoInstitucional(dispositivo, horaAtual);
+  }
 
   // O DONO DO PONTO PASSA NA PRÓPRIA TELA (decisão do dono, 17/09/2026 —
   // fecha o item 28 de docs/PENDENCIAS.md).
@@ -1012,19 +1056,7 @@ async function gerarPlaylistDaHora(dispositivo, hora, agora = new Date()) {
       // é de ninguém e não conta exibição. Com o vídeo configurado
       // (25/09/2026, `POST /admin/video-institucional`), o Player baixa e
       // toca ele como qualquer mídia (`url`/`contentHash`).
-      if (id === ID_INSTITUCIONAL) {
-        return {
-          itemProgramacaoId: `${janelaId}|${indice}|inst`,
-          criativoId: null,
-          anuncianteId: null,
-          autoanuncio: false,
-          institucional: true,
-          contabiliza: false,
-          url: videoInstitucional?.url ?? null,
-          duracaoSegundos: videoInstitucional?.duracaoSegundos ?? DURACAO_INSTITUCIONAL,
-          ...(videoInstitucional?.contentHash ? { contentHash: videoInstitucional.contentHash } : {}),
-        };
-      }
+      if (id === ID_INSTITUCIONAL) return itemInstitucional(janelaId, indice, videoInstitucional);
       // Congelou numa hora e saiu da elegibilidade depois (ponto desmarcado
       // de novo, criativo reprovado): a vaga dele só desaparece, não é
       // reaproveitada por ninguém — não é erro, é o fim natural de uma

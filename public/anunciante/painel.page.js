@@ -188,7 +188,6 @@ function htmlOnboardingSemPlano(passos) {
       }</p>
       <a class="btn primary onboarding-cta" href="/planos.html">Escolher meu plano</a>
       ${htmlEtapas(etapas, 'plano')}
-      <p class="form-hint u-m-0">Tem um comércio? <a href="/hospedar.html">Hospede um Ponto Móvel</a> e ganhe horas de mídia gratuitas.</p>
     </section>`;
 }
 
@@ -603,23 +602,23 @@ function htmlPontoEscolha(p, vitrine = {}) {
     </div>`;
 }
 
-// Ponto MÓVEL (migration 112): card próprio, compacto — o mesmo molde e a
-// mesma seleção no pé (input, `.cheio`, `data-ponto-id`, `data-busca`), mas
-// o que importa é outro: o selo, o nome, onde ele está agora, o próximo
-// evento e a base em segundo plano. Local atual e próximo evento vêm
-// decididos do servidor (src/pontos/movel.js). Quem marca escolhe o PONTO:
-// a campanha acompanha ele na base e nos eventos. Ocupação e horário não
-// entram (pedido do dono: nada que não ajude a escolher).
-// Hospedado num comércio (migration 113): o card diz só o NOME do lugar —
-// nunca a conta, o período ou o benefício do anfitrião.
+// Ponto MÓVEL (migrations 112 e 114): card próprio, compacto — o mesmo
+// molde e a mesma seleção no pé (input, `.cheio`, `data-ponto-id`,
+// `data-busca`), mas o que importa é outro: o selo, o nome, onde ele está
+// agora (a alocação em curso) e o próximo evento. Local atual e próximo
+// evento vêm decididos do servidor (src/pontos/movel.js). Quem marca escolhe
+// o PONTO: a campanha acompanha ele enquanto estiver alocado. Sem alocação
+// ele nem aparece na lista — só para quem já o tinha escolhido, avisando que
+// não veicula agora (e pode ser desmarcado). Hospedado num comércio: o card
+// diz só o NOME do lugar — nunca a conta, o período ou o benefício.
 function htmlPontoMovelEscolha(p, vitrine = {}) {
-  const { localAtual, base, proximoEvento } = p.movel;
-  const foraDaBase = localAtual.origem !== 'base';
+  const { localAtual, proximoEvento } = p.movel || {};
   const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
-  const fechado = !p.escolhido && ((!instalando && p.ocupacao >= 100) || p.bloqueado);
-  const estado = window.ROTULOS.ponto[p.status] || p.status;
-  const classeEstado = window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
-  const emEvento = localAtual.origem === 'evento';
+  const semAlocacao = !localAtual;
+  const fechado = !p.escolhido && (semAlocacao || (!instalando && p.ocupacao >= 100) || p.bloqueado);
+  const estado = semAlocacao ? window.PONTO_MOVEL.semAlocacao : window.ROTULOS.ponto[p.status] || p.status;
+  const classeEstado = semAlocacao ? 'badge-neutro' : window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
+  const emEvento = localAtual?.origem === 'evento';
   const id = `ponto-escolha-${p.id}`;
   const linha = (classe, icone, texto) =>
     `<span class="ponto-linha ${classe}">${iconePonto(icone)}<span>${texto}</span></span>`;
@@ -631,8 +630,11 @@ function htmlPontoMovelEscolha(p, vitrine = {}) {
         ${proximoEvento.publicoEstimado ? `<span class="ponto-movel-evento-meta">${esc(window.publicoEstimadoTexto(proximoEvento.publicoEstimado))}</span>` : ''}
       </span>`
     : `<span class="ponto-movel-evento ponto-movel-sem-evento" id="${id}-evento">${esc(emEvento ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento)}</span>`;
-  const mapa = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${localAtual.nome}, ${p.cidade || ''}`)}`;
-  const busca = `${p.nome} ${base.nome} ${localAtual.nome} ${p.cidade || ''}`.toLowerCase();
+  const onde = localAtual
+    ? `${localAtual.nome}${localAtual.endereco && localAtual.endereco !== localAtual.nome ? `, ${localAtual.endereco}` : ''}`
+    : '';
+  const mapa = onde ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(onde)}` : null;
+  const busca = `${p.nome} ${localAtual?.nome || ''}`.toLowerCase();
   return `<div class="ponto-card com-corpo ponto-escolha ponto-movel${fechado ? ' cheio' : ''}" data-ponto-id="${p.id}" data-busca="${esc(busca)}">
       <label class="ponto-marcar">
         <span class="ponto-card-media ponto-movel-media">${vitrine.foto_instalacao_url ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
@@ -641,17 +643,18 @@ function htmlPontoMovelEscolha(p, vitrine = {}) {
             <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
             <span class="ponto-estado badge ${classeEstado}" id="${id}-estado">${esc(estado)}</span>
           </span>
-          ${linha(
-            'ponto-local-atual',
-            'endereco',
-            emEvento
-              ? `Agora em: <b>${esc(localAtual.nome)}</b> · ${esc(localAtual.evento.nome)}`
-              : localAtual.origem === 'hospedagem'
-                ? `Agora em: <b>${esc(localAtual.nome)}</b>`
-                : `Agora na base: <b>${esc(localAtual.nome)}</b>`,
-          )}
+          ${
+            semAlocacao
+              ? linha('ponto-local-atual', 'endereco', esc(window.PONTO_MOVEL.semAlocacaoEscolhido))
+              : linha(
+                  'ponto-local-atual',
+                  'endereco',
+                  emEvento
+                    ? `Agora em: <b>${esc(localAtual.nome)}</b> · ${esc(localAtual.evento.nome)}`
+                    : `Agora em: <b>${esc(localAtual.nome)}</b>`,
+                )
+          }
           ${evento}
-          ${foraDaBase ? linha('ponto-base', 'casa', `Base: ${esc(base.nome)}`) : ''}
           <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica)}</span>
         </span>
         <span class="ponto-escolha-acao">
@@ -659,7 +662,7 @@ function htmlPontoMovelEscolha(p, vitrine = {}) {
           <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
         </span>
       </label>
-      <a class="ponto-mapa" href="${mapa}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver onde ${esc(p.nome)} está agora no mapa">${iconePonto('endereco')}Ver no mapa</a>
+      ${mapa ? `<a class="ponto-mapa" href="${mapa}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver onde ${esc(p.nome)} está agora no mapa">${iconePonto('endereco')}Ver no mapa</a>` : ''}
     </div>`;
 }
 
@@ -1703,6 +1706,10 @@ function statusOnline(situacao) {
   if (situacao === 'fora_do_horario') return '<span class="badge badge-neutro status-ponto">Fora do horário</span>';
   if (situacao === 'sem_comunicacao') {
     return '<span class="badge badge-neutro status-ponto" title="A tela pode estar exibindo normalmente sem internet; os números chegam quando ela se comunicar">Sem comunicação</span>';
+  }
+  // Ponto móvel entre uma alocação e outra (migration 114): não veicula.
+  if (situacao === 'sem_alocacao') {
+    return '<span class="badge badge-neutro status-ponto" title="O ponto móvel está entre uma alocação e outra e volta a veicular quando for alocado">Sem alocação</span>';
   }
   return '<span class="badge badge-err status-ponto">Fora do ar</span>';
 }

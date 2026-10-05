@@ -42,7 +42,7 @@ async function confirmarComDedup(dispositivoId, evento, agora) {
     // Ponto móvel (migration 112): a exibição contabilizada guarda em qual
     // evento aconteceu — o que estava em andamento no instante dela (pelos
     // horários em que o Admin marcou início e fim). Só contexto de
-    // auditoria: sem evento (ponto fixo, móvel na base) fica NULL, e a regra
+    // auditoria: sem evento (ponto fixo, móvel fora de evento) fica NULL, e a regra
     // de contabilização não muda.
     await client.query(
       `UPDATE execucoes_confirmadas

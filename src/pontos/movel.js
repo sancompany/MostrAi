@@ -1,26 +1,29 @@
 const pool = require('../db/pool');
-const { FUSO } = require('../lib/fuso-comercial');
-const { PARTES, linhaEndereco, problemaNoEndereco } = require('../lib/endereco');
-const { gravarEnderecoNaTransacao } = require('./endereco');
+const alocacao = require('./alocacao');
+const { resumo: resumoDoHorario } = require('../lib/horario-semanal');
 
-// PONTO MÓVEL (02/10/2026, pedido do dono; migrations 112 e 113). Um ATIVO
-// FÍSICO da própria Mostraí: 1 ponto móvel = 1 tela. Nasce só pelo Admin
-// (nunca de candidatura), nunca tem dono e nunca vira fixo (tipo imutável,
-// gatilho na 113). Fica numa BASE (um lugar; a conta dela, quando há, é
-// custodiante — nunca dona), pode ser HOSPEDADO por um comércio por alguns
-// dias (src/pontos/hospedagem.js) ou ir a um EVENTO, e volta. `anunciante_id`
-// fica NULL (CHECK no banco), e por isso nada do que nasce do dono (crédito
-// mensal, Plano Básico, cupom, "Meus pontos" como dono) chega em ninguém.
+// PONTO MÓVEL (02/10/2026, pedido do dono; migrations 112, 113 e 114). Um
+// ATIVO ITINERANTE da própria Mostraí: 1 ponto móvel = 1 tela. Nasce só pelo
+// Admin (nunca de candidatura), nunca tem dono e nunca vira fixo (tipo
+// imutável, gatilho na 113). NÃO TEM BASE (migration 114): é equipamento, e
+// só tem local, contexto comercial, horário e lugar no inventário enquanto
+// está ALOCADO — numa HOSPEDAGEM (um comércio recebe por um período,
+// src/pontos/hospedagem.js) ou num EVENTO. Sem alocação, "Sem alocação":
+// `localAtual` null, fora do inventário, a tela (se ligada) só toca o
+// institucional. `anunciante_id` fica NULL (CHECK no banco), e por isso nada
+// do que nasce do dono (crédito mensal, Plano Básico, cupom, "Meus pontos"
+// como dono) chega em ninguém.
 //
 // Regras que moram SÓ aqui (o navegador nunca decide):
-//   · LOCAL ATUAL: o anfitrião da hospedagem ativa, ou o local do evento em
-//     andamento; sem nenhum dos dois, a base (os dois nunca coexistem: agenda
-//     única, src/pontos/agenda.js);
-//   · PRÓXIMO EVENTO: o programado de data de início mais próxima que ainda
-//     não terminou (data de fim >= hoje em Matão). Cancelado nunca é
-//     próximo nem local atual — e fica no histórico;
-//   · evento é AUTORIZAÇÃO para operar fora do horário da base — não é
-//     capacidade, obrigação nem benefício;
+//   · LOCAL ATUAL: a hospedagem ativa, ou o evento em andamento; sem nenhum
+//     dos dois, nenhum (os dois nunca coexistem: agenda única,
+//     src/pontos/agenda.js);
+//   · PRÓXIMO EVENTO: o programado de início mais próximo que ainda não
+//     terminou. Cancelado nunca é próximo nem local atual — e fica no
+//     histórico;
+//   · alocação (hospedagem ou evento) tem período com data E hora e o seu
+//     horário de funcionamento (src/pontos/alocacao.js) — é ele que vai para
+//     a TV;
 //   · só o Admin mexe (todas as rotas estão em /admin — src/server.js).
 //
 // O público estimado é ESTIMATIVA do evento: aparece como "~600 pessoas"
@@ -28,21 +31,11 @@ const { gravarEnderecoNaTransacao } = require('./endereco');
 
 const LIMITES = { nome: 120, organizacao: 120, local: 160, observacao: 500, publicoMaximo: 1_000_000 };
 const agenda = require('./agenda');
-const SQL_HOJE = `(now() AT TIME ZONE '${FUSO}')::date`;
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
 
 // "Mostraí Móvel #01": o número é do móvel (migration 112), nunca reaproveitado.
 const nomeDoMovel = (numero) => `Mostraí Móvel #${String(numero).padStart(2, '0')}`;
-
-// Dia de hoje em Matão ('AAAA-MM-DD') — o mesmo dia que o SQL_HOJE usa.
-const diaEmMatao = new Intl.DateTimeFormat('en-CA', {
-  timeZone: FUSO,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-const hojeEmMatao = (agora = new Date()) => diaEmMatao.format(agora);
 
 async function proximoNumeroMovel(db) {
   const { rows } = await db.query(`SELECT nextval('pontos_movel_numero_seq')::int AS numero`);
@@ -50,30 +43,31 @@ async function proximoNumeroMovel(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Leitura: base, local atual e próximo evento de cada móvel
+// Leitura: local atual e próximo evento de cada móvel
 // ---------------------------------------------------------------------------
-// Uma consulta para N pontos (lista do anunciante, grade do admin, "Meus
-// pontos" da base). Ponto fixo não entra no mapa. É leitura PÚBLICA (card
-// do anunciante): da hospedagem sai só o nome do local — nunca a conta, o
-// percentual, o saldo ou o histórico. Hospedagem futura não aparece.
+// Uma consulta para N pontos (lista do anunciante, grade do admin). Ponto
+// fixo não entra no mapa. É leitura PÚBLICA (card do anunciante): da
+// hospedagem saem só o nome e o endereço do local — nunca a conta, o
+// período, o percentual, o saldo ou o histórico. Hospedagem futura não
+// aparece. Sem alocação: `localAtual` null.
 async function situacaoDosMoveis(pontoIds, db = pool) {
   const ids = [...new Set(pontoIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
   if (!ids.length) return new Map();
   const { rows } = await db.query(
-    `SELECT p.id, p.base_nome, p.base_desde,
+    `SELECT p.id,
             atual.id AS atual_id, atual.nome AS atual_nome, atual.local AS atual_local,
-            atual.data_inicio AS atual_inicio, atual.data_fim AS atual_fim,
-            hosp.id AS hosp_id, hosp.local AS hosp_local, hosp.data_inicio AS hosp_inicio, hosp.data_fim AS hosp_fim,
+            atual.inicio AS atual_inicio, atual.fim AS atual_fim,
+            hosp.id AS hosp_id, hosp.local AS hosp_local, hosp.endereco AS hosp_endereco,
             prox.id AS prox_id, prox.nome AS prox_nome, prox.local AS prox_local,
-            prox.data_inicio AS prox_inicio, prox.data_fim AS prox_fim, prox.publico_estimado AS prox_publico
+            prox.inicio AS prox_inicio, prox.fim AS prox_fim, prox.publico_estimado AS prox_publico
        FROM pontos p
        LEFT JOIN pontos_moveis_eventos atual ON atual.ponto_id = p.id AND atual.estado = 'em_andamento'
        LEFT JOIN pontos_moveis_hospedagens hosp ON hosp.ponto_id = p.id AND hosp.estado = 'ativa'
        LEFT JOIN LATERAL (
-         SELECT e.id, e.nome, e.local, e.data_inicio, e.data_fim, e.publico_estimado
+         SELECT e.id, e.nome, e.local, e.inicio, e.fim, e.publico_estimado
            FROM pontos_moveis_eventos e
-          WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.data_fim >= ${SQL_HOJE}
-          ORDER BY e.data_inicio, e.id
+          WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.fim > now()
+          ORDER BY e.inicio, e.id
           LIMIT 1
        ) prox ON true
       WHERE p.id = ANY($1::int[]) AND p.tipo = 'movel'`,
@@ -84,100 +78,112 @@ async function situacaoDosMoveis(pontoIds, db = pool) {
 
 function montarSituacao(r) {
   return {
-    base: { nome: r.base_nome, desde: r.base_desde },
     localAtual: r.hosp_id
-      ? {
-          origem: 'hospedagem',
-          nome: r.hosp_local,
-          hospedagem: { dataInicio: r.hosp_inicio, dataFim: r.hosp_fim },
-        }
+      ? { origem: 'hospedagem', nome: r.hosp_local, endereco: r.hosp_endereco }
       : r.atual_id
         ? {
             origem: 'evento',
             nome: r.atual_local,
-            evento: { id: Number(r.atual_id), nome: r.atual_nome, dataInicio: r.atual_inicio, dataFim: r.atual_fim },
+            endereco: r.atual_local,
+            evento: {
+              id: Number(r.atual_id),
+              nome: r.atual_nome,
+              inicio: r.atual_inicio,
+              fim: r.atual_fim,
+              dataInicio: alocacao.dataEmMatao(r.atual_inicio),
+              dataFim: alocacao.datasDoPeriodo(r.atual_inicio, r.atual_fim).dataFim,
+            },
           }
-        : { origem: 'base', nome: r.base_nome },
+        : null,
     proximoEvento: r.prox_id
       ? {
           id: Number(r.prox_id),
           nome: r.prox_nome,
           local: r.prox_local,
-          dataInicio: r.prox_inicio,
-          dataFim: r.prox_fim,
+          inicio: r.prox_inicio,
+          fim: r.prox_fim,
+          dataInicio: alocacao.dataEmMatao(r.prox_inicio),
+          dataFim: alocacao.datasDoPeriodo(r.prox_inicio, r.prox_fim).dataFim,
           publicoEstimado: r.prox_publico,
         }
       : null,
   };
 }
 
-// Admin → Rede → Pontos móveis: cada equipamento com a foto, a tela, a base,
-// onde está agora, a hospedagem atual (com a conta), o próximo compromisso
-// da agenda (hospedagem ou evento) e o próximo evento.
+// AGORA e PRÓXIMO de cada móvel, para o Admin: o compromisso em curso
+// (hospedagem ativa — com a conta — ou evento em andamento) e o próximo da
+// agenda (hospedagem programada ou evento programado), com início e fim.
+const AGORA_SQL = `(SELECT json_build_object('tipo', x.tipo, 'id', x.id, 'nome', x.nome, 'conta', x.conta,
+                                            'inicio', x.inicio, 'fim', x.fim)
+     FROM (SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, ca.nome_empresa AS conta, h.inicio, h.fim
+             FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
+            WHERE h.ponto_id = p.id AND h.estado = 'ativa'
+           UNION ALL
+           SELECT 'evento', e.id, e.nome, NULL, e.inicio, e.fim
+             FROM pontos_moveis_eventos e
+            WHERE e.ponto_id = p.id AND e.estado = 'em_andamento'
+           LIMIT 1) x)`;
+const PROXIMO_SQL = `(SELECT json_build_object('tipo', x.tipo, 'id', x.id, 'nome', x.nome, 'conta', x.conta,
+                                              'inicio', x.inicio, 'fim', x.fim)
+     FROM (SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, ca.nome_empresa AS conta, h.inicio, h.fim
+             FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
+            WHERE h.ponto_id = p.id AND h.estado = 'programada' AND h.fim > now()
+           UNION ALL
+           SELECT 'evento', e.id, e.nome, NULL, e.inicio, e.fim
+             FROM pontos_moveis_eventos e
+            WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.fim > now()
+           ORDER BY 5, 2 LIMIT 1) x)`;
+
+// Admin → Rede → Pontos móveis: cada equipamento com a foto, a tela, o que
+// está fazendo AGORA (sem alocação, hospedado, em evento) e o PRÓXIMO
+// compromisso.
 async function listarMoveis() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.status, p.movel_numero, p.foto_instalacao_url, p.base_nome, p.base_conta_id,
-            a.nome_empresa AS base_conta_nome,
+    `SELECT p.id, p.nome, p.status, p.movel_numero, p.foto_instalacao_url,
             (SELECT row_to_json(t) FROM (
                SELECT d.id, d.apelido, d.status, d.ultima_vez_online, (d.chave_hash IS NOT NULL) AS chave_hash,
                       d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro
                  FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) t) AS tela,
             ${require('../lib/contexto-do-ponto').horarioEmVigorSql('p')} AS horario_em_vigor,
-            (SELECT json_build_object('id', h.id, 'local', h.local, 'conta', ca.nome_empresa,
-                                      'dataInicio', h.data_inicio, 'dataFim', h.data_fim)
-               FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
-              WHERE h.ponto_id = p.id AND h.estado = 'ativa') AS hospedagem_atual,
-            (SELECT json_build_object('tipo', x.tipo, 'nome', x.nome, 'dataInicio', x.data_inicio, 'dataFim', x.data_fim)
-               FROM (SELECT 'hospedagem' AS tipo, h.local AS nome, h.data_inicio, h.data_fim
-                       FROM pontos_moveis_hospedagens h
-                      WHERE h.ponto_id = p.id AND h.estado = 'programada' AND h.data_fim >= ${SQL_HOJE}
-                     UNION ALL
-                     SELECT 'evento', e.nome, e.data_inicio, e.data_fim
-                       FROM pontos_moveis_eventos e
-                      WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.data_fim >= ${SQL_HOJE}
-                      ORDER BY 3 LIMIT 1) x) AS proximo_compromisso
-       FROM pontos p LEFT JOIN anunciantes a ON a.id = p.base_conta_id
+            ${AGORA_SQL} AS agora, ${PROXIMO_SQL} AS proximo
+       FROM pontos p
       WHERE p.tipo = 'movel' AND p.status <> 'arquivado'
       ORDER BY p.movel_numero, p.id`,
   );
-  const situacoes = await situacaoDosMoveis(rows.map((r) => r.id));
-  return rows.map((r) => {
-    const s = situacoes.get(r.id);
-    return {
-      id: r.id,
-      nome: r.nome,
-      numero: r.movel_numero,
-      status: r.status,
-      foto: r.foto_instalacao_url,
-      // Admin: cadastro, conectividade e operação separados (§8).
-      tela: r.tela && {
-        id: r.tela.id,
-        nome: r.tela.apelido,
-        status: r.tela.status,
-        ...require('../lib/status-tela').estadosDaTela(r.tela, r.horario_em_vigor),
-      },
-      base: { nome: r.base_nome, conta: r.base_conta_id ? { id: r.base_conta_id, nome: r.base_conta_nome } : null },
-      localAtual: s?.localAtual || null,
-      hospedagemAtual: r.hospedagem_atual,
-      proximoCompromisso: r.proximo_compromisso,
-      proximoEvento: s?.proximoEvento || null,
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    nome: r.nome,
+    numero: r.movel_numero,
+    status: r.status,
+    foto: r.foto_instalacao_url,
+    // Admin: cadastro, conectividade e operação separados (§8). Sem
+    // alocação a tela pode estar ligada — conectividade não é inventário.
+    tela: r.tela && {
+      id: r.tela.id,
+      nome: r.tela.apelido,
+      status: r.tela.status,
+      ...require('../lib/status-tela').estadosDaTela(r.tela, r.horario_em_vigor),
+    },
+    alocado: Boolean(r.agora),
+    agora: r.agora,
+    proximo: r.proximo,
+  }));
 }
 
-// Ficha do Admin: a situação + a conta da base, a tela, a foto, as
-// hospedagens (agenda e histórico, com tempo e benefício), todos os eventos
-// (com as exibições confirmadas durante cada um — auditoria) e as bases
-// anteriores.
+// Ficha do Admin, por seções: Equipamento (número, nome, foto, nota),
+// Tela, Situação atual (agora/próximo), Agenda (os compromissos que ainda
+// vão acontecer, hospedagens e eventos juntos, por início), Hospedagens e
+// Eventos (com histórico) e o histórico de bases do modelo antigo (só
+// leitura — anterior à migration 114).
 async function fichaDoMovel(pontoId) {
   const {
     rows: [p],
   } = await pool.query(
-    `SELECT p.id, p.tipo, p.base_conta_id, a.nome_empresa AS base_conta_nome, p.foto_instalacao_url, p.movel_numero,
-            p.observacoes,
+    `SELECT p.id, p.tipo, p.nome, p.foto_instalacao_url, p.movel_numero, p.observacoes, p.status,
             (SELECT json_build_object('id', d.id, 'nome', d.apelido, 'status', d.status)
-               FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) AS tela
-       FROM pontos p LEFT JOIN anunciantes a ON a.id = p.base_conta_id
+               FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) AS tela,
+            ${AGORA_SQL} AS agora, ${PROXIMO_SQL} AS proximo
+       FROM pontos p
       WHERE p.id = $1`,
     [pontoId],
   );
@@ -186,17 +192,17 @@ async function fichaDoMovel(pontoId) {
   const [situacoes, { rows: eventos }, { rows: bases }, hospedagens] = await Promise.all([
     situacaoDosMoveis([p.id]),
     pool.query(
-      `SELECT e.id, e.nome, e.organizacao, e.local, e.data_inicio, e.data_fim, e.publico_estimado, e.observacao,
-              e.estado, e.iniciado_em, e.encerrado_em, e.cancelado_em, e.criado_em, e.criado_por_admin,
+      `SELECT e.id, e.nome, e.organizacao, e.local, e.inicio, e.fim, e.horario_operacao, e.publico_estimado,
+              e.observacao, e.estado, e.iniciado_em, e.encerrado_em, e.cancelado_em, e.criado_em, e.criado_por_admin,
               e.categoria_id, cat.nome AS categoria_nome, e.encerramento,
-              (e.data_fim < ${SQL_HOJE}) AS terminou,
+              (e.fim <= now()) AS terminou,
               (SELECT COUNT(*)::int FROM execucoes_confirmadas x
                 WHERE x.evento_id = e.id AND x.status = 'contabilizado') AS exibicoes_confirmadas
          FROM pontos_moveis_eventos e LEFT JOIN categorias cat ON cat.id = e.categoria_id
         WHERE e.ponto_id = $1
         ORDER BY CASE e.estado WHEN 'em_andamento' THEN 0 WHEN 'programado' THEN 1 ELSE 2 END,
-                 CASE WHEN e.estado = 'programado' THEN e.data_inicio END,
-                 e.data_inicio DESC, e.id DESC`,
+                 CASE WHEN e.estado = 'programado' THEN e.inicio END,
+                 e.inicio DESC, e.id DESC`,
       [p.id],
     ),
     pool.query(
@@ -209,36 +215,73 @@ async function fichaDoMovel(pontoId) {
     require('./hospedagem').hospedagensDoPonto(p.id),
   ]);
   const situacao = situacoes.get(p.id);
+  const listaDeEventos = eventos.map((e) => ({
+    id: Number(e.id),
+    nome: e.nome,
+    organizacao: e.organizacao,
+    local: e.local,
+    inicio: e.inicio,
+    fim: e.fim,
+    inicioLocal: alocacao.parede(e.inicio),
+    fimLocal: alocacao.parede(e.fim),
+    horarioOperacao: e.horario_operacao,
+    horario: e.horario_operacao ? resumoDoHorario(e.horario_operacao) : null,
+    ...alocacao.datasDoPeriodo(e.inicio, e.fim),
+    publicoEstimado: e.publico_estimado,
+    observacao: e.observacao,
+    categoria: e.categoria_id ? { id: e.categoria_id, nome: e.categoria_nome } : null,
+    encerramento: e.encerramento,
+    estado: e.estado,
+    iniciadoEm: e.iniciado_em,
+    encerradoEm: e.encerrado_em,
+    canceladoEm: e.cancelado_em,
+    criadoEm: e.criado_em,
+    criadoPor: e.criado_por_admin,
+    terminou: e.terminou,
+    exibicoesConfirmadas: e.exibicoes_confirmadas,
+  }));
+  // A agenda: o que ainda vai acontecer (ou está acontecendo), por início.
+  const agendaDoMovel = [
+    ...hospedagens
+      .filter((h) => h.estado === 'programada' || h.estado === 'ativa')
+      .map((h) => ({
+        tipo: 'hospedagem',
+        id: h.id,
+        nome: h.local,
+        conta: h.conta?.nome,
+        inicio: h.inicio,
+        fim: h.fim,
+        estado: h.estado,
+      })),
+    ...listaDeEventos
+      .filter((e) => e.estado === 'programado' || e.estado === 'em_andamento')
+      .map((e) => ({
+        tipo: 'evento',
+        id: e.id,
+        nome: e.nome,
+        conta: null,
+        inicio: e.inicio,
+        fim: e.fim,
+        estado: e.estado,
+      })),
+  ].sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
   return {
     tipo: 'movel',
     numero: p.movel_numero,
+    nome: p.nome,
+    status: p.status,
     foto: p.foto_instalacao_url,
     notaInterna: p.observacoes,
     tela: p.tela,
-    base: { ...situacao.base, conta: p.base_conta_id ? { id: p.base_conta_id, nome: p.base_conta_nome } : null },
+    alocado: Boolean(p.agora),
+    agora: p.agora,
+    proximo: p.proximo,
     localAtual: situacao.localAtual,
     proximoEvento: situacao.proximoEvento,
+    agenda: agendaDoMovel,
     hospedagens,
-    eventos: eventos.map((e) => ({
-      id: Number(e.id),
-      nome: e.nome,
-      organizacao: e.organizacao,
-      local: e.local,
-      dataInicio: e.data_inicio,
-      dataFim: e.data_fim,
-      publicoEstimado: e.publico_estimado,
-      observacao: e.observacao,
-      categoria: e.categoria_id ? { id: e.categoria_id, nome: e.categoria_nome } : null,
-      encerramento: e.encerramento,
-      estado: e.estado,
-      iniciadoEm: e.iniciado_em,
-      encerradoEm: e.encerrado_em,
-      canceladoEm: e.cancelado_em,
-      criadoEm: e.criado_em,
-      criadoPor: e.criado_por_admin,
-      terminou: e.terminou,
-      exibicoesConfirmadas: e.exibicoes_confirmadas,
-    })),
+    eventos: listaDeEventos,
+    // Histórico do modelo antigo (anterior à 114): só leitura.
     basesAnteriores: bases.map((b) => ({
       conta: { id: b.conta_id, nome: b.conta_nome },
       nome: b.nome,
@@ -268,9 +311,9 @@ async function emTransacao(fn) {
   }
 }
 
-// Trava a linha do ponto: toda escrita de base e de evento de um mesmo ponto
-// passa uma de cada vez (iniciar dois eventos, trocar a base no meio, virar
-// fixo com evento aberto — nada disso cruza).
+// Trava a linha do ponto: toda escrita de alocação de um mesmo ponto passa
+// uma de cada vez (iniciar dois compromissos, agendar dois no mesmo
+// período — nada disso cruza).
 async function travarPonto(cliente, pontoId) {
   const { rows } = await cliente.query('SELECT * FROM pontos WHERE id = $1 FOR UPDATE', [pontoId]);
   if (!rows[0]) throw erro(404, 'ponto não encontrado');
@@ -280,7 +323,7 @@ async function travarPonto(cliente, pontoId) {
 
 async function travarMovel(cliente, pontoId) {
   const ponto = await travarPonto(cliente, pontoId);
-  if (ponto.tipo !== 'movel') throw erro(409, 'esse ponto é fixo — base e eventos são só do ponto móvel');
+  if (ponto.tipo !== 'movel') throw erro(409, 'esse ponto é fixo — hospedagem e eventos são só do ponto móvel');
   return ponto;
 }
 
@@ -294,28 +337,18 @@ function texto(valor, campo, rotulo, maximo, { obrigatorio = true } = {}) {
   return t;
 }
 
-function dia(valor, campo, rotulo) {
-  const v = typeof valor === 'string' ? valor.trim() : '';
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`) : null;
-  if (!d || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) {
-    throw erro(400, `${rotulo}: data inválida`, campo);
-  }
-  return v;
-}
-
-// Cadastro leve (pedido do dono): nome, organização, local e datas; o fim
-// pode ficar vazio (evento de um dia só). Público e observação, opcionais.
-// `categoria_id` (migration 113): o CONTEXTO DE CONCORRÊNCIA do evento — o
-// ramo que a trava de concorrente protege enquanto ele está em andamento.
-// Vazio = sem restrição; nunca herda o ramo da base.
-function validarEvento(corpo, hoje = hojeEmMatao()) {
+// Cadastro leve (pedido do dono): nome, organização, local, período com data
+// e hora (`inicio`/`fim`, no relógio de Matão) e o HORÁRIO DE FUNCIONAMENTO
+// do evento (obrigatório — nunca 24 h automático; '24h' é escolha
+// explícita). Público e observação, opcionais. `categoria_id`: o CONTEXTO DE
+// CONCORRÊNCIA do evento — o ramo que a trava de concorrente protege enquanto
+// ele está em andamento. Vazio = sem restrição.
+function validarEvento(corpo, { agora = new Date() } = {}) {
   const nome = texto(corpo?.nome, 'nome', 'Nome do evento', LIMITES.nome);
   const organizacao = texto(corpo?.organizacao, 'organizacao', 'Organização', LIMITES.organizacao);
   const local = texto(corpo?.local, 'local', 'Local', LIMITES.local);
-  const dataInicio = dia(corpo?.data_inicio, 'data_inicio', 'Início');
-  const dataFim = corpo?.data_fim ? dia(corpo.data_fim, 'data_fim', 'Fim') : dataInicio;
-  if (dataFim < dataInicio) throw erro(400, 'O fim vem antes do início', 'data_fim');
-  if (dataFim < hoje) throw erro(400, 'Esse evento já terminou — cadastre só o que ainda vai acontecer', 'data_fim');
+  const periodo = alocacao.lerPeriodo(corpo, { agora });
+  const horario = alocacao.lerHorario(corpo?.horario_operacao);
   let publicoEstimado = null;
   const publico = corpo?.publico_estimado;
   if (publico !== undefined && publico !== null && String(publico).trim() !== '') {
@@ -334,7 +367,7 @@ function validarEvento(corpo, hoje = hojeEmMatao()) {
       throw erro(400, 'Contexto de concorrência: escolha um ramo da lista (ou nenhum)', 'categoria_id');
     }
   }
-  return { nome, organizacao, local, dataInicio, dataFim, publicoEstimado, observacao, categoriaId };
+  return { nome, organizacao, local, ...periodo, horario, publicoEstimado, observacao, categoriaId };
 }
 
 async function criarEvento(pontoId, corpo, admin) {
@@ -345,12 +378,12 @@ async function criarEvento(pontoId, corpo, admin) {
       const { rows } = await c.query('SELECT 1 FROM categorias WHERE id = $1', [ev.categoriaId]);
       if (!rows[0]) throw erro(400, 'Contexto de concorrência: ramo não encontrado', 'categoria_id');
     }
-    await agenda.exigirLivre(c, pontoId, ev.dataInicio, ev.dataFim);
+    await agenda.exigirLivre(c, pontoId, ev.inicio, ev.fim);
     const { rows } = await c.query(
       `INSERT INTO pontos_moveis_eventos
          (ponto_id, nome, organizacao, local, data_inicio, data_fim, publico_estimado, observacao, criado_por_admin,
-          categoria_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          categoria_id, inicio, fim, horario_operacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id`,
       [
         pontoId,
@@ -363,6 +396,9 @@ async function criarEvento(pontoId, corpo, admin) {
         ev.observacao,
         admin || null,
         ev.categoriaId,
+        ev.inicio,
+        ev.fim,
+        JSON.stringify(ev.horario),
       ],
     );
     return Number(rows[0].id);
@@ -375,7 +411,7 @@ async function eventoDoPonto(c, pontoId, eventoId) {
   const id = /^\d{1,15}$/.test(String(eventoId)) ? String(eventoId) : null;
   const { rows } = id
     ? await c.query(
-        `SELECT *, (data_fim < ${SQL_HOJE}) AS terminou FROM pontos_moveis_eventos
+        `SELECT *, (fim <= now()) AS terminou FROM pontos_moveis_eventos
           WHERE id = $1 AND ponto_id = $2 FOR UPDATE`,
         [id, pontoId],
       )
@@ -391,14 +427,15 @@ const JA_ESTA = {
 };
 
 // "O ponto chegou ao evento": o local atual passa a ser o do evento. Pode
-// começar antes da data (montagem na véspera); não depois que acabou.
+// começar antes do início (montagem); não depois que acabou. Nunca começa
+// sozinho.
 async function iniciarEvento(pontoId, eventoId) {
   return emTransacao(async (c) => {
     await travarMovel(c, pontoId);
     const ev = await eventoDoPonto(c, pontoId, eventoId);
     if (ev.estado !== 'programado') throw erro(409, JA_ESTA[ev.estado]);
-    if (ev.terminou) throw erro(409, 'Esse evento já terminou pela data — cancele ou cadastre de novo');
-    await agenda.exigirLivre(c, pontoId, ev.data_inicio, ev.data_fim, {
+    if (ev.terminou) throw erro(409, 'Esse evento já terminou pelo horário — cancele ou cadastre de novo');
+    await agenda.exigirLivre(c, pontoId, ev.inicio, ev.fim, {
       ignorar: { tipo: 'evento', id: ev.id },
       emCurso: true,
     });
@@ -411,9 +448,8 @@ async function iniciarEvento(pontoId, eventoId) {
   });
 }
 
-// Fora da base (evento ou hospedagem), o horário da base não vale — a tela
-// exibe enquanto estiver ligada (src/lib/contexto-do-ponto.js): entrar e
-// sair muda a config das telas, então a versão sobe como numa troca de
+// Entrar numa alocação ou sair dela muda o horário que vai para a TV
+// (src/lib/contexto-do-ponto.js): a versão da config sobe como numa troca de
 // horário (migration 093) e a TV busca a config nova no próximo heartbeat.
 async function avisarTelas(c, pontoId) {
   await c.query(
@@ -423,7 +459,7 @@ async function avisarTelas(c, pontoId) {
   );
 }
 
-// "Encerrar evento / voltar para a base": o local atual volta a ser a base.
+// "Encerrar evento": o móvel fica sem alocação (até a próxima).
 async function encerrarEvento(pontoId, eventoId) {
   return emTransacao(async (c) => {
     await travarMovel(c, pontoId);
@@ -445,7 +481,7 @@ async function cancelarEvento(pontoId, eventoId) {
     await travarMovel(c, pontoId);
     const ev = await eventoDoPonto(c, pontoId, eventoId);
     if (ev.estado === 'em_andamento') {
-      throw erro(409, 'O ponto já está nesse evento — use Encerrar (ele volta para a base)');
+      throw erro(409, 'O ponto já está nesse evento — use Encerrar');
     }
     if (ev.estado !== 'programado') throw erro(409, JA_ESTA[ev.estado]);
     await c.query(
@@ -456,137 +492,29 @@ async function cancelarEvento(pontoId, eventoId) {
   });
 }
 
-// Fecha o período da base atual no histórico (troca de base).
-async function fecharPeriodoDaBase(c, ponto, admin) {
-  await c.query(
-    `INSERT INTO pontos_moveis_bases (ponto_id, conta_id, nome, endereco, desde, ate, alterado_por_admin)
-     VALUES ($1, $2, $3, $4, $5, GREATEST(now(), $5), $6)`,
-    [
-      ponto.id,
-      ponto.base_conta_id,
-      ponto.base_nome,
-      linhaEndereco(ponto, { comCidade: true }) || null,
-      ponto.base_desde,
-      admin || null,
-    ],
-  );
-}
-
-// A conta da base é OPCIONAL (migration 113): a base pode ser um depósito da
-// Mostraí. Sem conta, nenhuma.
-function contaDaBase(corpo) {
-  const bruto = corpo?.base_conta_id;
-  if (bruto === undefined || bruto === null || String(bruto).trim() === '') return null;
-  const id = Number(bruto);
-  if (!Number.isInteger(id) || id <= 0) throw erro(400, 'Conta da base inválida', 'base_conta_id');
-  return id;
-}
-
-async function buscarContaDaBase(c, contaId) {
-  if (!contaId) return null;
-  const {
-    rows: [conta],
-  } = await c.query(
-    `SELECT a.id, a.excluido_em, a.categoria_id, a.categoria_livre, cat.nome AS categoria_nome
-       FROM anunciantes a LEFT JOIN categorias cat ON cat.id = a.categoria_id
-      WHERE a.id = $1`,
-    [contaId],
-  );
-  if (!conta || conta.excluido_em) throw erro(400, 'Conta da base não encontrada', 'base_conta_id');
-  return conta;
-}
-
-// Definir/alterar a base: o nome do lugar, o endereço (que é o endereço do
-// próprio ponto — a troca entra no histórico de endereço, pontos/endereco.js)
-// e, se houver, a conta custodiante. Conta ou nome diferentes = base nova: o
-// período anterior vai para o histórico e o ramo do ponto passa a ser o da
-// conta nova (é ele que a trava de ramo da playlist protege na base). Mesma
-// conta e mesmo nome = só correção do endereço da base.
-// A base nunca vira dona: `anunciante_id` continua NULL.
-async function alterarBase(pontoId, corpo, admin) {
-  const contaId = contaDaBase(corpo);
-  const nome = texto(corpo?.base_nome, 'base_nome', 'Nome da base', LIMITES.nome);
-  const problema = problemaNoEndereco(corpo);
-  if (problema) throw erro(400, problema.erro, problema.campo);
-  const partes = Object.fromEntries(PARTES.filter((p) => corpo?.[p] !== undefined).map((p) => [p, corpo[p]]));
-
-  return emTransacao(async (c) => {
-    const ponto = await travarMovel(c, pontoId);
-    const conta = await buscarContaDaBase(c, contaId);
-    const contaAnterior = ponto.base_conta_id ? Number(ponto.base_conta_id) : null;
-
-    const baseNova = contaAnterior !== contaId || ponto.base_nome !== nome;
-    // Base nova sem endereço deixaria o ponto "morando" no endereço da base
-    // antiga.
-    if (baseNova && !Object.keys(partes).length) throw erro(400, 'Endereço da base: preencha', 'cep');
-    let atual = ponto;
-    if (baseNova) {
-      await fecharPeriodoDaBase(c, ponto, admin);
-      const contaMudou = contaAnterior !== contaId;
-      const { rows } = await c.query(
-        `UPDATE pontos
-            SET base_conta_id = $2, base_nome = $3, base_desde = now(),
-                categoria_id = CASE WHEN $4 THEN $5::int ELSE categoria_id END,
-                categoria_livre = CASE WHEN $4 THEN $6::text ELSE categoria_livre END,
-                segmento = CASE WHEN $4 THEN COALESCE($7::text, $6::text, segmento) ELSE segmento END
-          WHERE id = $1 RETURNING *`,
-        [
-          ponto.id,
-          contaId,
-          nome,
-          contaMudou,
-          conta?.categoria_id ?? null,
-          conta?.categoria_livre ?? null,
-          conta?.categoria_nome ?? null,
-        ],
-      );
-      atual = rows[0];
-    }
-    const endereco = Object.keys(partes).length
-      ? await gravarEnderecoNaTransacao(c, atual, partes, { origem: 'admin', admin })
-      : { mudou: false };
-    return { baseNova, enderecoMudou: endereco.mudou, contaBase: contaId, contaBaseAnterior: ponto.base_conta_id };
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Criação (só Admin)
 // ---------------------------------------------------------------------------
 // O móvel nasce AQUI e só aqui — nunca de candidatura (que sempre gera fixo).
-// Nome (opcional: "Mostraí Móvel #NN"), a base (nome do lugar + endereço;
-// conta custodiante opcional), horário da base (opcional: sem horário, a
-// tela exibe enquanto estiver ligada), nota interna. O tipo é automático e
-// nunca há dona. A Tela 1 nasce junto (1 móvel = 1 tela); a foto do
-// equipamento vem depois, pela rota de foto.
+// Só o EQUIPAMENTO: nome (opcional: "Mostraí Móvel #NN") e nota interna; a
+// foto vem depois, pela rota de foto. Nada de local, endereço, ramo ou
+// horário — isso é da alocação (migration 114). O tipo é automático e nunca
+// há dona. A Tela 1 nasce junto (1 móvel = 1 tela). Nasce SEM ALOCAÇÃO.
 async function criarPontoMovel(corpo, admin) {
-  const contaId = contaDaBase(corpo);
-  const baseNome = texto(corpo?.base_nome, 'base_nome', 'Nome da base', LIMITES.nome);
   const nomeInformado = texto(corpo?.nome, 'nome', 'Nome do equipamento', LIMITES.nome, { obrigatorio: false });
   const nota = texto(corpo?.observacoes, 'observacoes', 'Nota interna', LIMITES.observacao, { obrigatorio: false });
-  const problema = problemaNoEndereco(corpo || {});
-  if (problema) throw erro(400, problema.erro, problema.campo);
-  const { parteQueFalta, colunasDoEndereco } = require('../lib/endereco');
-  const falta = parteQueFalta(colunasDoEndereco(corpo || {}));
-  if (falta) throw erro(400, `Endereço da base: preencha o campo ${falta}`, falta);
   const pontosRepo = require('./repository');
   const ponto = await emTransacao(async (c) => {
-    const conta = await buscarContaDaBase(c, contaId);
     const numero = await proximoNumeroMovel(c);
     return pontosRepo.criar(
       {
-        ...Object.fromEntries(PARTES.map((p) => [p, corpo[p]])),
         nome: nomeInformado || nomeDoMovel(numero),
-        segmento: conta?.categoria_nome || conta?.categoria_livre || 'outro',
-        categoria_id: conta?.categoria_id || null,
-        categoria_livre: conta?.categoria_id ? null : conta?.categoria_livre || null,
+        segmento: 'outro',
         responsavel_nome: 'Mostraí',
         responsavel_contato: '',
-        horario_semanal: corpo?.horario_semanal || null,
         observacoes: nota,
         status: 'a_instalar',
         tipo: 'movel',
-        base_conta_id: contaId,
-        base_nome: baseNome,
         movel_numero: numero,
       },
       c,
@@ -604,12 +532,11 @@ async function criarPontoMovel(corpo, admin) {
   return { id: ponto.id, nome: ponto.nome, telaId: tela?.id ?? null };
 }
 
-// Quem precisa ver a mudança sem F5: a conta da base, o anfitrião de uma
-// hospedagem programada ou ativa, e quem escolheu o ponto.
+// Quem precisa ver a mudança sem F5: o anfitrião de uma hospedagem
+// programada ou ativa, e quem escolheu o ponto.
 async function contasInteressadas(pontoId, extras = []) {
   const { rows } = await pool.query(
     `SELECT anunciante_id AS id FROM anunciantes_pontos WHERE ponto_id = $1
-     UNION SELECT base_conta_id FROM pontos WHERE id = $1 AND base_conta_id IS NOT NULL
      UNION SELECT conta_id FROM pontos_moveis_hospedagens WHERE ponto_id = $1 AND estado IN ('programada', 'ativa')`,
     [pontoId],
   );
@@ -619,7 +546,6 @@ async function contasInteressadas(pontoId, extras = []) {
 module.exports = {
   LIMITES,
   nomeDoMovel,
-  hojeEmMatao,
   proximoNumeroMovel,
   situacaoDosMoveis,
   listarMoveis,
@@ -629,13 +555,11 @@ module.exports = {
   iniciarEvento,
   encerrarEvento,
   cancelarEvento,
-  alterarBase,
   criarPontoMovel,
   contasInteressadas,
   // Para src/pontos/hospedagem.js — a mesma trava e as mesmas validações.
   emTransacao,
   travarMovel,
   texto,
-  dia,
   avisarTelas,
 };

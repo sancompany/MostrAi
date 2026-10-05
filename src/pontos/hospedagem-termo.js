@@ -9,9 +9,12 @@ const pool = require('../db/pool');
 // versão vigente PARA AQUELA hospedagem: o aceite guarda versão, hash do
 // texto, os dados da hospedagem como foram aceitos e o hash do documento
 // inteiro, mais a evidência técnica (IP, navegador, conta da sessão). Sem
-// aceite que bata com o período e o percentual atuais, a hospedagem não
-// inicia (src/pontos/hospedagem.js#iniciar). A versão inicial é MINUTA — o
-// texto definitivo depende de revisão jurídica (docs/PENDENCIAS.md §T).
+// aceite que bata com o que a hospedagem é AGORA — local, endereço, período
+// com data e hora, horário de funcionamento, percentual e equipamento
+// (migration 114) — a hospedagem não inicia (src/pontos/hospedagem.js#iniciar):
+// mudança material pede aceite novo, e os anteriores ficam. As versões
+// publicadas são MINUTA — o texto definitivo depende de revisão jurídica
+// (docs/PENDENCIAS.md §T).
 //
 // Entrega e retirada: um registro de cada por hospedagem — itens, condição,
 // observação, foto opcional, quando e qual Admin. A entrega é condição para
@@ -20,6 +23,17 @@ const pool = require('../db/pool');
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
 const sha256 = (texto) => crypto.createHash('sha256').update(texto, 'utf8').digest('hex');
 const dia = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+const instante = (d) => (d ? new Date(d).toISOString() : null);
+const { DIAS, resumo: resumoDoHorario } = require('../lib/horario-semanal');
+// O horário numa forma canônica (ordem fixa dos dias): o jsonb do banco não
+// garante a ordem das chaves, e o hash precisa ser o mesmo nas duas pontas.
+const horarioCanonico = (h) =>
+  h ? DIAS.map((d) => (h[d] ? `${d}:${h[d].abre}-${h[d].fecha}` : `${d}:-`)).join(',') : null;
+// O equipamento da hospedagem: o número do móvel nunca muda nem é
+// reaproveitado (migration 112).
+const equipamentoDe = (h) => (h.movel_numero ? `Mostraí Móvel #${String(h.movel_numero).padStart(2, '0')}` : null);
+// Quem carrega a hospedagem para o termo traz o número do móvel junto.
+const COM_EQUIPAMENTO = `(SELECT p.movel_numero FROM pontos p WHERE p.id = h.ponto_id) AS movel_numero`;
 
 const LIMITES = { versao: 40, titulo: 200, texto: 20000, responsavel: 120, observacao: 1000, userAgent: 300 };
 
@@ -93,49 +107,72 @@ async function publicarTermo(corpo, admin) {
 // ---------------------------------------------------------------------------
 // Aceite
 // ---------------------------------------------------------------------------
-// Os dados desta hospedagem que entram no documento aceito.
+// Os dados desta hospedagem que entram no documento aceito. `dataInicio` e
+// `dataFim` (dias) continuam para a leitura antiga; o que vincula é o
+// período com hora, o horário e o equipamento.
 function dadosDaHospedagem(h) {
   return {
     local: h.local,
     endereco: h.endereco,
+    inicio: instante(h.inicio),
+    fim: instante(h.fim),
+    horario: h.horario_operacao || null,
+    horarioResumo: h.horario_operacao ? resumoDoHorario(h.horario_operacao) : null,
+    percentual: Number(h.percentual),
+    equipamento: equipamentoDe(h),
     dataInicio: dia(h.data_inicio),
     dataFim: dia(h.data_fim),
-    percentual: Number(h.percentual),
   };
 }
 
+const camposQueVinculam = (d) => [
+  d.local,
+  d.endereco,
+  d.inicio,
+  d.fim,
+  horarioCanonico(d.horario),
+  d.percentual,
+  d.equipamento,
+];
+
 // Impressão dos dados que o anfitrião LEU: o painel devolve no aceite e, se
-// o Admin mudou período/local no meio da leitura, o aceite é recusado.
-const hashDosDados = (dados) =>
-  sha256(JSON.stringify([dados.local, dados.endereco, dados.dataInicio, dados.dataFim, dados.percentual]));
+// o Admin mudou alguma coisa no meio da leitura, o aceite é recusado.
+const hashDosDados = (dados) => sha256(JSON.stringify(camposQueVinculam(dados)));
 
 // Hash do documento inteiro: versão + hash do texto + dados + quem aceitou,
 // numa serialização de ordem fixa.
 function hashDoDocumento(termo, dados, responsavel) {
-  return sha256(
-    JSON.stringify([
-      termo.versao,
-      termo.hash,
-      dados.local,
-      dados.endereco,
-      dados.dataInicio,
-      dados.dataFim,
-      dados.percentual,
-      responsavel,
-    ]),
+  return sha256(JSON.stringify([termo.versao, termo.hash, ...camposQueVinculam(dados), responsavel]));
+}
+
+// O aceite bate com a hospedagem como ela é agora? Mesma conta e os mesmos
+// dados que vinculam (aceite anterior à 114, sem período com hora, nunca
+// bate: a hospedagem nova pede aceite novo).
+function aceiteBate(a, h) {
+  return (
+    Number(a.conta_id) === Number(h.conta_id) &&
+    a.inicio != null &&
+    JSON.stringify(camposQueVinculam(dadosDoAceite(a))) === JSON.stringify(camposQueVinculam(dadosDaHospedagem(h)))
   );
 }
 
-// O aceite que vale para a hospedagem COMO ESTÁ: mesma conta, mesmo período,
-// mesmo percentual (alterar o período de uma programada pede aceite novo).
+const dadosDoAceite = (a) => ({
+  local: a.local,
+  endereco: a.endereco,
+  inicio: instante(a.inicio),
+  fim: instante(a.fim),
+  horario: a.horario_operacao || null,
+  percentual: Number(a.percentual),
+  equipamento: a.equipamento,
+});
+
+// O aceite que vale para a hospedagem COMO ESTÁ (`h` traz `movel_numero`).
 async function aceiteValido(db, h) {
   const { rows } = await db.query(
-    `SELECT * FROM hospedagem_aceites
-      WHERE hospedagem_id = $1 AND conta_id = $2 AND data_inicio = $3 AND data_fim = $4 AND percentual = $5
-      ORDER BY aceito_em DESC, id DESC LIMIT 1`,
-    [h.id, h.conta_id, dia(h.data_inicio), dia(h.data_fim), h.percentual],
+    `SELECT * FROM hospedagem_aceites WHERE hospedagem_id = $1 AND conta_id = $2 ORDER BY aceito_em DESC, id DESC`,
+    [h.id, h.conta_id],
   );
-  return rows[0] || null;
+  return rows.find((a) => aceiteBate(a, h)) || null;
 }
 
 const linhaDoAceite = (a) =>
@@ -166,7 +203,9 @@ async function aceitar(contaId, hospedagemId, corpo, { ip = null, userAgent = nu
     await movel.travarMovel(c, alvo[0].ponto_id);
     const {
       rows: [h],
-    } = await c.query('SELECT * FROM pontos_moveis_hospedagens WHERE id = $1 FOR UPDATE', [hid]);
+    } = await c.query(`SELECT h.*, ${COM_EQUIPAMENTO} FROM pontos_moveis_hospedagens h WHERE h.id = $1 FOR UPDATE`, [
+      hid,
+    ]);
     // Programada: o aceite libera o início. Ativa: registra o acordo da
     // prorrogação (o período mudou depois do aceite do início).
     if (h.estado !== 'programada' && h.estado !== 'ativa') {
@@ -189,8 +228,9 @@ async function aceitar(contaId, hospedagemId, corpo, { ip = null, userAgent = nu
     } = await c.query(
       `INSERT INTO hospedagem_aceites
          (hospedagem_id, ponto_id, conta_id, termo_versao, termo_hash, documento_hash, responsavel,
-          local, endereco, data_inicio, data_fim, percentual, ip, user_agent)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+          local, endereco, data_inicio, data_fim, percentual, ip, user_agent, inicio, fim, horario_operacao,
+          equipamento)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [
         h.id,
         h.ponto_id,
@@ -206,6 +246,10 @@ async function aceitar(contaId, hospedagemId, corpo, { ip = null, userAgent = nu
         dados.percentual,
         ip ? String(ip).slice(0, 64) : null,
         userAgent ? String(userAgent).slice(0, LIMITES.userAgent) : null,
+        h.inicio,
+        h.fim,
+        h.horario_operacao ? JSON.stringify(h.horario_operacao) : null,
+        dados.equipamento,
       ],
     );
     return { contaId, pontoId: h.ponto_id, aceite: linhaDoAceite(a), repetido: false };
@@ -217,10 +261,10 @@ async function aceitar(contaId, hospedagemId, corpo, { ip = null, userAgent = nu
 async function termoDaHospedagem(contaId, hospedagemId) {
   const hid = /^\d{1,15}$/.test(String(hospedagemId)) ? String(hospedagemId) : null;
   if (!hid) throw erro(404, 'hospedagem não encontrada');
-  const { rows } = await pool.query('SELECT * FROM pontos_moveis_hospedagens WHERE id = $1 AND conta_id = $2', [
-    hid,
-    contaId,
-  ]);
+  const { rows } = await pool.query(
+    `SELECT h.*, ${COM_EQUIPAMENTO} FROM pontos_moveis_hospedagens h WHERE h.id = $1 AND h.conta_id = $2`,
+    [hid, contaId],
+  );
   if (!rows[0]) throw erro(404, 'hospedagem não encontrada');
   const h = rows[0];
   const [termo, aceite] = await Promise.all([termoVigente(), aceiteValido(pool, h)]);
@@ -294,7 +338,7 @@ async function movimentacaoDe(db, hospedagemId, tipo) {
 
 // Retirada avulsa: só de hospedagem já encerrada (o encerramento automático
 // não recolhe nada). Em andamento, a retirada vai no próprio encerramento —
-// recolher sem encerrar deixaria o tempo da base contando para o anfitrião.
+// recolher sem encerrar deixaria o tempo seguinte contando para o anfitrião.
 async function registrarRetirada(pontoId, hospedagemId, corpo, admin) {
   const movel = require('./movel');
   return movel.emTransacao(async (c) => {
@@ -343,7 +387,7 @@ async function definirFotoDaMovimentacao(pontoId, hospedagemId, tipo, url) {
 }
 
 // Para a ficha do Admin: aceite válido, todos os aceites e as movimentações
-// de cada hospedagem.
+// de cada hospedagem (`hospedagens` trazem `movel_numero`).
 async function documentosDasHospedagens(hospedagens) {
   if (!hospedagens.length) return new Map();
   const ids = hospedagens.map((h) => h.id);
@@ -357,19 +401,14 @@ async function documentosDasHospedagens(hospedagens) {
   const mapa = new Map();
   for (const h of hospedagens) {
     const dela = aceites.filter((a) => String(a.hospedagem_id) === String(h.id));
-    const valido = dela.find(
-      (a) =>
-        dia(a.data_inicio) === dia(h.data_inicio) &&
-        dia(a.data_fim) === dia(h.data_fim) &&
-        Number(a.percentual) === Number(h.percentual) &&
-        Number(a.conta_id) === Number(h.conta_id),
-    );
+    const valido = dela.find((a) => aceiteBate(a, h));
     // Prorrogada depois do aceite: o que valeu no início continua sendo o
     // aceite dela; a prorrogação aparece como pendente (ou sem acordo).
     const doInicio =
       !valido && h.iniciada_em
         ? dela.find(
-            (a) => new Date(a.aceito_em) <= new Date(h.iniciada_em) && dia(a.data_inicio) === dia(h.data_inicio),
+            (a) =>
+              new Date(a.aceito_em) <= new Date(h.iniciada_em) && a.inicio && instante(a.inicio) === instante(h.inicio),
           )
         : null;
     mapa.set(String(h.id), {
