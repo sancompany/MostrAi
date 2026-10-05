@@ -4441,7 +4441,17 @@ async function criarPontoMovel(aoSalvar) {
     corpo: `<form id="formCriarMovel" class="modal-form" novalidate>
         <p class="campo-ajuda">Equipamento da Mostraí: 1 ponto móvel = 1 tela (a Tela 1 nasce junto). Não tem dono, não tem base e nunca vira ponto fixo. Local, horário e contexto vêm de cada hospedagem ou evento.</p>
         <div class="campo-grupo"><label for="cmNome">Nome (opcional)</label><input id="cmNome" name="nome" maxlength="120" placeholder="Vazio = Mostraí Móvel #NN"></div>
-        <div class="campo-grupo"><label for="cmFoto">Foto do equipamento (opcional)</label><input id="cmFoto" name="foto" type="file" accept="image/jpeg,image/png,image/webp"></div>
+        <div class="campo-grupo"><label for="cmFoto">Foto do equipamento (opcional)</label>
+          <div class="upload-foto">
+            <input id="cmFoto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" class="u-sr">
+            <label for="cmFoto" class="btn ghost upload-foto-botao">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-foto-acao>Selecionar foto</span>
+            </label>
+            <img class="upload-foto-miniatura" alt="" hidden data-foto-miniatura>
+            <span class="upload-foto-nome" data-foto-nome>Nenhuma foto selecionada</span>
+            <button type="button" class="btn perigo-sutil mini" hidden data-foto-remover>Remover</button>
+          </div></div>
         <div class="campo-grupo"><label for="cmNota">Nota interna (opcional)</label><textarea id="cmNota" name="observacoes" maxlength="500" rows="2"></textarea></div>
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
@@ -4449,6 +4459,39 @@ async function criarPontoMovel(aoSalvar) {
       '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formCriarMovel" class="btn primary">Criar ponto móvel</button>',
   });
   const form = dlg.querySelector('form');
+  // Upload estilizado: o <input type="file"> real fica visualmente oculto
+  // (.u-sr, ainda focável e ligado ao rótulo); o <label> faz as vezes de
+  // botão e aqui só se espelha o nome, a miniatura e o "Remover".
+  const foto = form.foto;
+  const fotoNome = dlg.querySelector('[data-foto-nome]');
+  const fotoMini = dlg.querySelector('[data-foto-miniatura]');
+  const fotoRemover = dlg.querySelector('[data-foto-remover]');
+  const mostrarFoto = () => {
+    const arquivo = foto.files[0];
+    fotoMini.removeAttribute('src');
+    fotoMini.hidden = true;
+    // data: e não blob: — a CSP do site só libera img-src 'self' data:.
+    if (arquivo) {
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        if (foto.files[0] !== arquivo) return;
+        fotoMini.src = leitor.result;
+        fotoMini.hidden = false;
+      };
+      leitor.readAsDataURL(arquivo);
+    }
+    fotoNome.textContent = arquivo ? arquivo.name : 'Nenhuma foto selecionada';
+    fotoNome.title = arquivo ? arquivo.name : '';
+    fotoNome.classList.toggle('escolhida', Boolean(arquivo));
+    dlg.querySelector('[data-foto-acao]').textContent = arquivo ? 'Trocar foto' : 'Selecionar foto';
+    fotoRemover.hidden = !arquivo;
+  };
+  foto.addEventListener('change', mostrarFoto);
+  fotoRemover.addEventListener('click', () => {
+    foto.value = '';
+    mostrarFoto();
+    foto.focus();
+  });
   let enviando = false;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
