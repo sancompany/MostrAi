@@ -474,7 +474,26 @@ function dividirCota(cotaDoPonto, telasAtivas) {
   return cota === 0 ? 0 : Math.ceil(cota / telas);
 }
 
+// A COTA DA REDE MÓVEL numa hora (migration 115). A rede móvel de uma cidade
+// é UM ponto da cobertura, tenha 1 ou 10 telas: a conta que cobre a rede
+// tem UMA parcela dela por hora (a mesma conta do ponto fixo: base, RN-49 e
+// obrigação), e essa parcela é DIVIDIDA entre as telas do POOL DA HORA — as
+// telas da rede que estavam alocadas no início da hora
+// (`rede_movel_pool(rede, hora)`, no banco; por id). Divisão inteira e
+// exata: a tela de índice i no pool de k recebe ⌊n/k⌋, mais 1 se i < n mod k
+// — a soma das k parcelas é sempre n, nunca mais. Tela que entra no meio da
+// hora não está no pool (entra na próxima); a que sai leva a sua parcela
+// sem entregar — nunca vira 1,5 ou 2 posições. Fixo: a tela recebe a
+// parcela inteira (como sempre).
+function parcelaNoPool(n, k, i) {
+  const total = Math.max(0, Math.floor(Number(n) || 0));
+  const telas = Math.max(1, Math.floor(Number(k) || 1));
+  if (!Number.isInteger(i) || i < 0 || i >= telas) return 0;
+  return Math.floor(total / telas) + (i < total % telas ? 1 : 0);
+}
+
 module.exports = {
+  parcelaNoPool,
   montarHoraDeTv,
   pontosDoAnunciante,
   contarPorAnunciante,

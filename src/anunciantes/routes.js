@@ -28,8 +28,8 @@ const { limiteTentativas, zerarTentativas } = require('../lib/limite-tentativas'
 const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
-const { situacaoDosMoveis } = require('../pontos/movel');
-const { horarioEmVigorSql, inventarioSql } = require('../lib/contexto-do-ponto');
+const { situacaoDasRedes } = require('../pontos/movel');
+const { horarioDaTelaSql, horarioDoPontoSql, telaNoInventarioSql, inventarioSql } = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -716,7 +716,7 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
   // `noAr` abaixo já trata os dois como "fora do ar" hoje, só `inativo`
   // (tela cadastrada, nenhuma funcionando) fica fora da lista.
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.cidade, p.endereco, p.status, ${horarioEmVigorSql('p')} AS horario_semanal, p.tipo,
+    `SELECT p.id, p.nome, p.cidade, p.uf, p.endereco, p.status, ${horarioDoPontoSql('p')} AS horario_semanal, p.tipo,
             ${inventarioSql('p')} AS inventario,
             (p.escolha_bloqueada_em IS NOT NULL) AS bloqueado,
             COALESCE(SUM(pl.segundos_por_hora), 0)::int AS segundos_vendidos,
@@ -727,17 +727,19 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
        LEFT JOIN anunciantes ao ON ao.id = outros.anunciante_id AND NOT ao.suspenso AND ao.excluido_em IS NULL
        LEFT JOIN planos pl ON pl.id = ao.plano_id
        LEFT JOIN anunciantes_pontos ap ON ap.ponto_id = p.id AND ap.anunciante_id = $1
-      WHERE p.status = ANY($2::text[])
-      GROUP BY p.id, p.nome, p.cidade, p.endereco, p.status, p.horario_semanal, p.tipo, p.escolha_bloqueada_em, ap.ponto_id,
-               ap.escolhido_em, p.anunciante_id
+      WHERE p.status = ANY($2::text[]) OR (p.tipo = 'movel' AND p.status <> 'arquivado')
+      GROUP BY p.id, p.nome, p.cidade, p.uf, p.endereco, p.status, p.horario_semanal, p.tipo, p.escolha_bloqueada_em,
+               ap.ponto_id, ap.escolhido_em, p.anunciante_id
       ORDER BY (p.anunciante_id IS NOT DISTINCT FROM $1) DESC, p.status DESC, p.nome`,
     [conta.id, pontosRepo.STATUS_NA_REDE],
   );
 
-  // Ponto móvel SEM ALOCAÇÃO (migration 114) não é inventário: fica fora da
-  // lista — só aparece para quem já o tinha escolhido (para poder tirar), e
-  // nunca conta como ponto no ar.
-  const lista = rows.filter((r) => r.inventario || r.escolhido);
+  // A REDE MÓVEL de uma cidade (migration 115) aparece SEMPRE — com 0 tela
+  // em operação ela continua escolhível (é 1 posição do plano), só não
+  // conta como ponto no ar enquanto nenhuma tela dela estiver alocada: o
+  // tempo dela volta para os pontos que veiculam (RN-49), e volta para ela
+  // sozinho quando houver inventário.
+  const lista = rows;
   // A conta do bônus é a MESMA do gerador da playlist, com as mesmas funções:
   // quantos pontos EM OPERAÇÃO entram na fatia dele hoje, e quantos segundos
   // por hora isso vira depois da RN-49. Refazer a conta aqui à mão daria um
@@ -756,9 +758,9 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
     bloqueados,
   );
   const naCobertura = new Set(cobertos);
-  // Ponto móvel: local atual (a alocação em curso) e próximo evento —
-  // decididos no servidor (src/pontos/movel.js), o card só mostra.
-  const moveis = await situacaoDosMoveis(lista.filter((r) => r.tipo === 'movel').map((r) => r.id));
+  // Rede móvel: quantas telas e quantas em operação agora — decididos no
+  // servidor (src/pontos/movel.js), o card só mostra.
+  const moveis = await situacaoDasRedes(lista.filter((r) => r.tipo === 'movel').map((r) => r.id));
   const base = Number(plano.segundos_por_hora) || 0;
   const efetivos = segundosCompensados(base, plano.pontos_incluidos, cobertos.length);
 
@@ -811,11 +813,12 @@ router.get('/anunciantes/me/pontos-disponiveis', exigirAnuncianteLogado, async (
       // Entra na distribuição da campanha hoje (escolhido e no ar, ou
       // sorteado no modo automático). É a mesma conta do gerador.
       naCobertura: naCobertura.has(r.id),
-      // 'fixo' | 'movel'. Quem escolhe o móvel escolhe o PONTO (nunca uma
-      // hospedagem ou um evento): a campanha acompanha o ponto enquanto ele
-      // estiver alocado. Sem alocação, `inventario: false` (só para quem já o
-      // tinha): não veicula até a próxima alocação.
+      // 'fixo' | 'movel'. Quem escolhe o móvel escolhe a REDE da cidade
+      // (nunca uma tela, uma hospedagem ou um evento): 1 posição do plano,
+      // dividida entre as telas dela em operação. `inventario: false` = 0
+      // tela em operação agora (a escolha vale e volta sozinha).
       tipo: r.tipo,
+      uf: r.uf,
       inventario: r.inventario,
       movel: moveis.get(r.id) || null,
     })),
@@ -841,8 +844,9 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
   // recusado é ponto que não existe (ou `inativo`).
   if (pedidos.length) {
     const { rows } = await pool.query(
-      `SELECT p.id, ${inventarioSql('p')} AS inventario FROM pontos p
-        WHERE p.id = ANY($1::int[]) AND p.status = ANY($2::text[])`,
+      `SELECT p.id FROM pontos p
+        WHERE p.id = ANY($1::int[])
+          AND (p.status = ANY($2::text[]) OR (p.tipo = 'movel' AND p.status <> 'arquivado'))`,
       [pedidos, pontosRepo.STATUS_NA_REDE],
     );
     if (rows.length !== pedidos.length) {
@@ -859,12 +863,7 @@ router.put('/anunciantes/me/pontos', exigirAnuncianteLogado, async (req, res) =>
     ]);
     const idsJaTinha = new Set(jaTinha.map((r) => r.ponto_id));
     const novos = pedidos.filter((id) => !idsJaTinha.has(id));
-    // Ponto móvel sem alocação (migration 114) não aceita escolha NOVA — não
-    // está em lugar nenhum; quem já tinha pode mantê-lo.
-    const foraDoInventario = new Set(rows.filter((r) => !r.inventario).map((r) => r.id));
-    if (novos.some((id) => foraDoInventario.has(id))) {
-      return res.status(409).json({ erro: 'esse ponto móvel está sem alocação e não pode ser escolhido agora' });
-    }
+    // A rede móvel é escolhível com ou sem tela em operação (migration 115).
     if (novos.length) {
       const bloqueados = await pontosRepo.idsBloqueadosParaEscolha();
       const bloqueadosNovos = novos.filter((id) => bloqueados.includes(id));
@@ -1804,34 +1803,35 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
 // operação: a TV pode estar exibindo o pacote offline — Ponto Móvel V1 §8;
 // nunca dizer "fora do ar" sem prova); senão (reparo, inativa, não
 // instalada, erro relatado pelo Player), fora do ar.
-// O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel: o da
-// alocação em curso — src/lib/contexto-do-ponto.js).
+// O horário é o EM VIGOR NA TELA, o mesmo da config da TV (tela da rede
+// móvel: o da alocação dela em curso — src/lib/contexto-do-ponto.js).
 // Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
 async function comSituacaoNoAr(pontos) {
   if (!pontos.length) return pontos;
   const { rows: telas } = await pool.query(
     `SELECT d.ponto_id, d.status, d.revogado_em, (d.chave_hash IS NOT NULL) AS chave_hash, d.primeiro_sinal_em,
             d.ultima_vez_online, d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro,
-            ${horarioEmVigorSql('p')} AS ponto_horario_semanal, ${inventarioSql('p')} AS inventario
+            ${horarioDaTelaSql('p', 'd')} AS ponto_horario_semanal, ${telaNoInventarioSql('p', 'd')} AS inventario
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
       WHERE d.ponto_id = ANY($1::int[])`,
     [pontos.map((p) => p.id)],
   );
   const agora = new Date();
   return pontos.map((p) => {
-    const doPonto = telas.filter((t) => t.ponto_id === p.id);
+    // Rede móvel: só as telas alocadas agora contam (as outras estão
+    // guardadas ou em trânsito); nenhuma alocada = "sem tela em operação".
+    const doPonto = telas.filter((t) => t.ponto_id === p.id && t.inventario);
     const saudes = doPonto.map((t) => saudeDaTela(t, t.ponto_horario_semanal, agora));
-    // Ponto móvel sem alocação (migration 114) nunca é "no ar": não está em
-    // lugar nenhum e não veicula campanha.
-    const situacao = doPonto.some((t) => !t.inventario)
-      ? 'sem_alocacao'
-      : saudes.includes('operando')
-        ? 'no_ar'
-        : saudes.includes('fora_do_horario')
-          ? 'fora_do_horario'
-          : saudes.includes('sem_sinal')
-            ? 'sem_comunicacao'
-            : 'fora_do_ar';
+    const situacao =
+      !doPonto.length && telas.some((t) => t.ponto_id === p.id)
+        ? 'sem_alocacao'
+        : saudes.includes('operando')
+          ? 'no_ar'
+          : saudes.includes('fora_do_horario')
+            ? 'fora_do_horario'
+            : saudes.includes('sem_sinal')
+              ? 'sem_comunicacao'
+              : 'fora_do_ar';
     // Nada da tela vai ao anunciante — nem o horário do último sinal.
     const { ultima_vez_online: _ultimoSinal, ...semSinal } = p;
     return { ...semSinal, situacao };

@@ -21,8 +21,8 @@ const midiasRepo = require('../midias/repository');
 // "Sem sinal" tem régua única em src/lib/status-tela.js (TOLERANCIA_SEM_SINAL_MS,
 // 2 min com heartbeat de 15 s — docs/player-mvp-contract.md §9), que soma o
 // horário do ponto, não só o relógio.
-// Amortização e custos fixos saem do banco (migration 019) — antes era uma
-// constante igual pra todo ponto, ver docs/erros/2026-09-amortizacao-constante-no-codigo.md
+// Custos fixos saem do banco (migration 019). A amortização de equipamento
+// por tela saiu do produto em 05/10/2026 (migration 115).
 
 // Fila de aprovação de criativos
 router.get('/admin/criativos', async (req, res) => {
@@ -231,7 +231,7 @@ router.get('/admin/resumo', async (_req, res) => {
   const [
     receita,
     pontosAtivos,
-    amortizacao,
+    telasAtivas,
     custosFixos,
     filas,
     pontosPorStatus,
@@ -290,11 +290,8 @@ router.get('/admin/resumo', async (_req, res) => {
       `SELECT COUNT(*) AS qtd, COALESCE(SUM(fluxo_estimado_mensal), 0) AS fluxo
        FROM pontos WHERE status = 'em_operacao'`,
     ),
-    // Amortização real: custo de cada tela dividido pelo prazo dela, só das
-    // telas ativas; mais os custos fixos lançados pelo dono.
     pool.query(
-      `SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0) AS amortizacao,
-              COUNT(*)::int AS telas
+      `SELECT COUNT(*)::int AS telas
        FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
        WHERE d.status = 'ativo' AND p.status = 'em_operacao'`,
     ),
@@ -407,7 +404,6 @@ router.get('/admin/resumo', async (_req, res) => {
   const ultima = await ultimaConciliacao();
   const receitaPorCiclo = agregarReceitaPorCiclo(receita.rows);
   const receitaMensal = Object.values(receitaPorCiclo).reduce((soma, v) => soma + v, 0);
-  const amortizacaoMensal = Number(amortizacao.rows[0].amortizacao);
   const custosFixosMensal = Number(custosFixos.rows[0].total);
   const totalContas = Number(conversao.rows[0].total);
   const contasPagantes = Number(conversao.rows[0].pagantes);
@@ -449,9 +445,8 @@ router.get('/admin/resumo', async (_req, res) => {
     financeiro: {
       receitaMensal,
       receitaPorCiclo,
-      amortizacaoMensal,
       custosFixosMensal,
-      margemMensal: receitaMensal - amortizacaoMensal - custosFixosMensal,
+      margemMensal: receitaMensal - custosFixosMensal,
       faturamentoPorMes: faturamento.rows,
       // Confirmado no mês corrente = a própria linha de `faturamentoPorMes`
       // (cobrancas_confirmadas agrupado por mês) — sem consulta nova, só
@@ -476,7 +471,7 @@ router.get('/admin/resumo', async (_req, res) => {
     },
     rede: {
       pontosAtivos: Number(pontosAtivos.rows[0].qtd),
-      telasAtivas: amortizacao.rows[0].telas,
+      telasAtivas: telasAtivas.rows[0].telas,
       fluxoMensal: Number(pontosAtivos.rows[0].fluxo),
       pontosPorStatus: pontosPorStatus.rows,
       // Mantém a forma antiga (situacao + qtd, somando os dois tipos) pra não

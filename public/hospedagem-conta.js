@@ -1,9 +1,11 @@
-// Hospedagem temporária de Ponto Móvel — módulo do painel (migrations 113
-// e 114) e o formulário de interesse (painel e /hospedar.html).
+// Hospedagem temporária de uma tela do Mostraí Móvel — módulo do painel
+// (migrations 113 a 115) e o formulário de interesse (painel e
+// /hospedar.html).
 //
 // O que aparece, sempre decidido no servidor (GET /anunciantes/me/hospedagem):
-//   · hospedagem programada — "Ponto Móvel programado" (Agendado) e o aceite
-//     do termo de hospedagem (sem aceite a Mostraí não entrega nem inicia);
+//   · hospedagem programada — "Tela do Mostraí Móvel programada" (Agendado)
+//     e a situação do termo de hospedagem, que é assinado EM PAPEL com a
+//     Mostraí (migration 115 — não há aceite pelo painel);
 //   · hospedagem em andamento — tempo operacional válido até agora, o
 //     percentual dela e o benefício ESTIMADO;
 //   · hospedagem concluída — tempo, percentual e horas recebidas;
@@ -45,14 +47,13 @@
 
   function htmlHospedagem(h) {
     if (h.estado === 'programada') {
-      // O equipamento só é entregue depois do aceite do termo (a Mostraí
-      // não inicia sem ele).
-      const termo = h.termoAceito
-        ? '<p class="hosp-meta">Termo de hospedagem aceito. A Mostraí combina a entrega com você.</p>'
-        : `<p class="hosp-nota">Para a Mostraí entregar o equipamento, leia e aceite o termo de hospedagem.</p>
-           <button type="button" class="btn primary mini" data-hosp-termo="${h.id}">Ler e aceitar o termo</button>`;
+      // A hospedagem só começa com o termo físico assinado (a Mostraí leva
+      // o termo na entrega) — aqui só a situação.
+      const termo = h.termoAssinado
+        ? '<p class="hosp-meta">Termo de hospedagem assinado. A Mostraí combina a entrega com você.</p>'
+        : '<p class="hosp-nota">O termo de hospedagem é assinado em papel com a equipe Mostraí, na entrega da tela.</p>';
       return `<div class="hosp-item">
-          <p class="hosp-titulo"><span class="badge badge-pendente">Agendado</span> <b>Ponto Móvel programado</b></p>
+          <p class="hosp-titulo"><span class="badge badge-pendente">Agendado</span> <b>Tela do Mostraí Móvel programada</b></p>
           <p class="hosp-meta">${esc(h.local)} · ${esc(periodo(h))}</p>
           ${horario(h)}
           ${termo}
@@ -60,19 +61,13 @@
     }
     if (h.estado === 'ativa') {
       return `<div class="hosp-item">
-          <p class="hosp-titulo"><span class="badge badge-ok">Em andamento</span> <b>${esc(h.ponto)}</b> está no seu comércio</p>
+          <p class="hosp-titulo"><span class="badge badge-ok">Em andamento</span> uma tela do <b>${esc(h.ponto)}</b> está no seu comércio</p>
           <dl class="hosp-numeros">
             <div><dt>Tempo operacional válido</dt><dd>${horas(h.tempoSegundos)}</dd></div>
             <div><dt>Percentual</dt><dd>${pct(h.percentual)}</dd></div>
             <div><dt>Benefício estimado</dt><dd>${horas(h.beneficioEstimadoSegundos)}</dd></div>
           </dl>
           <p class="hosp-nota">Valor estimado enquanto a hospedagem estiver em andamento.</p>
-          ${
-            h.prorrogacaoSemAceite
-              ? `<p class="hosp-nota">A hospedagem foi prorrogada até ${esc(instante(h.fim))}. Leia e aceite o termo para o novo período.</p>
-                 <button type="button" class="btn primary mini" data-hosp-termo="${h.id}">Ler e aceitar o termo</button>`
-              : ''
-          }
         </div>`;
     }
     // Spec §36: a concluída também leva a "Usar minhas horas" — enquanto
@@ -97,7 +92,7 @@
     return `<div class="hosp-saldo">
         <p class="section-eyebrow">Saldo de hospedagem</p>
         <p class="hosp-saldo-valor"><b>${horas(saldo.disponivelSegundos)}</b> disponíveis</p>
-        <p class="hosp-nota">Ganhos por hospedar um Ponto Móvel Mostraí. Valem na rede inteira e não expiram.</p>
+        <p class="hosp-nota">Ganhos por hospedar uma tela do Mostraí Móvel. Valem na rede inteira e não expiram.</p>
         ${saldo.disponivelSegundos > 0 ? '<button type="button" class="btn primary" data-hosp-usar>Usar minhas horas</button>' : ''}
       </div>`;
   }
@@ -115,7 +110,7 @@
   function htmlInteresse(i) {
     const [classe, rotulo, nota] = ANDAMENTO[i.status] || ANDAMENTO.nova;
     return `<div class="hosp-convite" data-hosp-interesse>
-        <p class="hosp-titulo"><span class="badge ${classe}">${esc(rotulo)}</span> <b>Hospedar um Ponto Móvel</b></p>
+        <p class="hosp-titulo"><span class="badge ${classe}">${esc(rotulo)}</span> <b>Hospedar uma tela do Mostraí Móvel</b></p>
         <p class="hosp-nota">${esc(nota)}</p>
       </div>`;
   }
@@ -138,90 +133,6 @@
     secao.hidden = partes.length === 0;
   }
 
-  // Termo de hospedagem: <dialog> com o texto da versão vigente, os dados
-  // desta hospedagem e o aceite (nome de quem aceita + "li e concordo"). O
-  // servidor confere versão e hash — se o texto mudou enquanto lia, avisa.
-  async function abrirTermo(hid) {
-    const r = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagens/${encodeURIComponent(hid)}/termo`, {
-      credentials: 'include',
-    });
-    const t = await r.json().catch(() => ({}));
-    if (!r.ok || !t.termo) throw new Error(t.erro || 'termo indisponível');
-    const dlg = document.createElement('dialog');
-    dlg.className = 'dlg-termo';
-    dlg.setAttribute('aria-labelledby', 'dlgTermoTitulo');
-    const d = t.dados;
-    dlg.innerHTML = `
-      <div class="dlg-head"><h3 id="dlgTermoTitulo">${esc(t.termo.titulo)}</h3>
-        <button type="button" class="dlg-close" data-fechar aria-label="Fechar">&times;</button></div>
-      <p class="form-hint">Versão ${esc(t.termo.versao)}${t.termo.minuta ? ' · minuta, ainda sem revisão jurídica' : ''}</p>
-      <div class="hosp-termo-texto" tabindex="0">${esc(t.termo.texto)}</div>
-      <dl class="hosp-numeros">
-        <div><dt>Local</dt><dd>${esc(d.local)}</dd></div>
-        <div><dt>Endereço</dt><dd>${esc(d.endereco)}</dd></div>
-        <div><dt>Período</dt><dd>${esc(periodo(d))}</dd></div>
-        ${d.horarioResumo ? `<div><dt>Horário de funcionamento</dt><dd>${esc(d.horarioResumo)}</dd></div>` : ''}
-        ${d.equipamento ? `<div><dt>Equipamento</dt><dd>${esc(d.equipamento)}</dd></div>` : ''}
-        <div><dt>Percentual</dt><dd>${pct(d.percentual)} do tempo operacional válido</dd></div>
-      </dl>
-      ${
-        t.aceite
-          ? `<p class="hosp-meta">Aceito por ${esc(t.aceite.responsavel)} em ${esc(window.dataBR?.(t.aceite.aceitoEm) || '')}.</p>`
-          : `<form class="hosp-form" novalidate>
-              <label class="form-label" for="termoResponsavel">Seu nome (quem aceita)</label>
-              <input class="form-input" id="termoResponsavel" name="responsavel" maxlength="120" autocomplete="name" required>
-              <label class="hosp-check"><input type="checkbox" name="concordo"> Li e concordo com o termo e com os dados desta hospedagem</label>
-              <p class="form-msg" data-msg role="alert" hidden></p>
-              <div class="dlg-acoes">
-                <button type="button" class="btn ghost" data-fechar>Fechar</button>
-                <button type="submit" class="btn primary">Aceitar o termo</button>
-              </div>
-            </form>`
-      }`;
-    document.body.appendChild(dlg);
-    let enviando = false;
-    const fechar = () => dlg.open && dlg.close();
-    dlg.addEventListener('cancel', (e) => enviando && e.preventDefault());
-    for (const b of dlg.querySelectorAll('[data-fechar]')) b.addEventListener('click', () => !enviando && fechar());
-    dlg.addEventListener('close', () => dlg.remove());
-    dlg.querySelector('form')?.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      if (enviando) return;
-      const form = ev.target;
-      const msg = form.querySelector('[data-msg]');
-      const botao = form.querySelector('[type=submit]');
-      enviando = true;
-      botao.disabled = true;
-      msg.hidden = true;
-      try {
-        const resp = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagens/${encodeURIComponent(hid)}/aceite`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            responsavel: form.responsavel.value,
-            concordo: form.concordo.checked,
-            versao: t.termo.versao,
-            hash: t.termo.hash,
-            dadosHash: t.dadosHash,
-          }),
-        });
-        const corpo = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(corpo.erro || 'Não foi possível registrar o aceite. Tente de novo.');
-        enviando = false;
-        fechar();
-        await carregar();
-      } catch (err) {
-        msg.textContent = err.message;
-        msg.className = 'form-msg err';
-        msg.hidden = false;
-        botao.disabled = false;
-        enviando = false;
-      }
-    });
-    dlg.showModal();
-  }
-
   // "Usar minhas horas": as horas rodam com o criativo da conta — leva até
   // "Meus criativos" (subir ou acompanhar a peça).
   function usarHoras() {
@@ -236,23 +147,6 @@
     const corpo = $('hospedagemCorpo');
     corpo?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-hosp-usar]')) usarHoras();
-      const termo = ev.target.closest('[data-hosp-termo]');
-      if (termo && !termo.disabled) {
-        // Trava enquanto carrega (duplo clique abria dois diálogos) e diz
-        // quando não deu para abrir, em vez de não fazer nada.
-        termo.disabled = true;
-        termo.parentElement.querySelector('[data-termo-erro]')?.remove();
-        abrirTermo(termo.dataset.hospTermo)
-          .catch(() =>
-            termo.insertAdjacentHTML(
-              'afterend',
-              '<p class="form-msg err" data-termo-erro role="alert">Não foi possível abrir o termo agora. Tente de novo.</p>',
-            ),
-          )
-          .finally(() => {
-            termo.disabled = false;
-          });
-      }
     });
     window.ligarEventosDaConta?.({ 'hosting.updated': () => carregar().catch(() => {}) });
   }

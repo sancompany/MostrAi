@@ -5,28 +5,32 @@ const multer = require('multer');
 const movel = require('./movel');
 const hospedagem = require('./hospedagem');
 const interesses = require('./hospedagem-interesse');
-const termo = require('./hospedagem-termo');
+const equipamento = require('./hospedagem-equipamento');
 const sse = require('../lib/sse');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 
-// Ponto móvel e hospedagem temporária (migrations 112, 113 e 114).
+// Rede móvel (Mostraí Móvel de uma cidade), as telas dela e a hospedagem
+// temporária de uma tela (migrations 112 a 115). `:id` nas rotas é a REDE
+// (o `pontos` tipo 'movel'); as telas são escolhidas no corpo.
 //
 // Admin — tudo em /admin, então a guarda de sessão do admin (src/server.js)
 // vale para todas: o anfitrião, o anunciante e o organizador do evento não
 // mexem em nada daqui.
-//   GET  /admin/pontos-moveis                                lista (Rede → Pontos móveis)
-//   POST /admin/pontos-moveis                                criar móvel (+ Tela 1)
-//   POST /admin/pontos/:id/foto-movel                        foto do equipamento
-//   GET  /admin/pontos/:id/movel                             ficha (agora, próximo, agenda, histórico)
-//   PUT  /admin/pontos/:id/base                              410 — o móvel não tem base (114)
-//   POST /admin/pontos/:id/eventos                           cadastrar evento
+//   GET  /admin/pontos-moveis                                central: redes, próximos compromissos, percentual
+//   POST /admin/pontos-moveis                                criar rede (cidade + UF; sem tela)
+//   PATCH /admin/pontos/:id/movel                            editar a rede (nome, cidade, UF, nota)
+//   POST /admin/pontos/:id/foto-movel                        foto/capa da rede
+//   GET  /admin/pontos/:id/movel                             ficha (telas, operação agora, agenda, histórico)
+//   GET  /admin/pontos/:id/telas-livres?inicio=&fim=         cada tela da rede, livre ou não no período
+//   PUT  /admin/pontos/:id/base                              410 — a rede não tem base (114)
+//   POST /admin/pontos/:id/eventos                           cadastrar evento (com as telas participantes)
 //   POST /admin/pontos/:id/eventos/:eventoId/:acao           iniciar | encerrar | cancelar
-//   POST /admin/pontos/:id/hospedagens                       confirmar hospedagem (percentual congelado)
-//   POST /admin/pontos/:id/hospedagens/:hid/:acao            iniciar (exige aceite + entrega) | encerrar
+//   POST /admin/pontos/:id/hospedagens                       confirmar hospedagem de UMA tela (percentual congelado)
+//   POST /admin/pontos/:id/hospedagens/:hid/:acao            iniciar (exige termo físico + entrega) | encerrar
 //                                                            (retirada opcional) | cancelar | retirada
+//   PUT  /admin/pontos/:id/hospedagens/:hid/termo-fisico     termo físico Pendente/Assinado (data e observação)
 //   POST /admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto  foto da entrega/retirada
-//   GET  /admin/hospedagem/termos | POST                     versões do termo / publicar nova
-//   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar período/horário/local (programada)
+//   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar tela/período/horário/local (programada)
 //                                                            ou prorrogar o fim (ativa)
 //   GET  /admin/hospedagem/percentual                        percentual + histórico
 //   PUT  /admin/hospedagem/percentual                        alterar (auditado)
@@ -40,8 +44,9 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 //   POST /hospedagem/interesse                               interesse (só conta com direito ativo)
 //   GET  /anunciantes/me/hospedagem                          hospedagens, saldo, elegibilidade, dados da conta
 //   POST /anunciantes/me/hospedagem/interesse                o mesmo interesse, pelo painel
-//   GET  /anunciantes/me/hospedagens/:hid/termo              termo + dados desta hospedagem
-//   POST /anunciantes/me/hospedagens/:hid/aceite             aceite do anfitrião (versão + hash)
+//
+// O termo eletrônico saiu (115): `/admin/hospedagem/termos` e
+// `/anunciantes/me/hospedagens/:hid/termo|aceite` respondem 410.
 const router = express.Router();
 
 const idDaRota = (v) => (/^\d{1,9}$/.test(String(v)) ? Number(v) : null);
@@ -61,7 +66,7 @@ const apagarTemporario = (req, res, next) => {
 };
 
 // Cada escrita avisa sem F5: o Admin (Rede), o anfitrião (painel) e quem
-// escolheu o ponto (lista de pontos).
+// escolheu a rede (lista de pontos).
 async function avisar(pontoId, extras = []) {
   sse.emitirParaAdmin('point.updated', { id: pontoId });
   for (const conta of await movel.contasInteressadas(pontoId, extras)) {
@@ -78,7 +83,7 @@ const responderErro = (res, err) => {
 function rota(fn) {
   return async (req, res) => {
     const id = idDaRota(req.params.id);
-    if (!id) return res.status(404).json({ erro: 'ponto não encontrado' });
+    if (!id) return res.status(404).json({ erro: 'rede não encontrada' });
     try {
       await fn(req, res, id);
     } catch (err) {
@@ -98,26 +103,46 @@ function simples(fn) {
 }
 
 // ---------------------------------------------------------------------------
-// Ponto móvel
+// Rede móvel
 // ---------------------------------------------------------------------------
 router.get(
   '/admin/pontos-moveis',
   simples(async (_req, res) => {
-    const [moveis, percentual] = await Promise.all([movel.listarMoveis(), hospedagem.percentualAtual()]);
-    res.json({ moveis, percentual });
+    const [redes, proximos, percentual] = await Promise.all([
+      movel.listarRedes(),
+      movel.proximosCompromissos(),
+      hospedagem.percentualAtual(),
+    ]);
+    res.json({ redes, proximos, percentual });
   }),
 );
 
 router.post(
   '/admin/pontos-moveis',
   simples(async (req, res) => {
-    const r = await movel.criarPontoMovel(req.body, adminDe(req));
+    const r = await movel.criarRedeMovel(req.body, adminDe(req));
     sse.emitirParaAdmin('point.updated', { id: r.id });
     res.status(201).json(r);
   }),
 );
 
-// A foto do EQUIPAMENTO (não de um comércio): aparece no card do anunciante,
+router.patch(
+  '/admin/pontos/:id/movel',
+  rota(async (req, res, id) => {
+    const r = await movel.editarRede(id, req.body);
+    await avisar(id);
+    res.json(r);
+  }),
+);
+
+router.get(
+  '/admin/pontos/:id/telas-livres',
+  rota(async (req, res, id) => {
+    res.json({ telas: await movel.disponibilidadeDasTelas(id, req.query) });
+  }),
+);
+
+// A foto/capa da REDE (não de um comércio): aparece no card do anunciante,
 // no Admin e no site. Mesmo bucket e padrão de upsert + `?v=` das outras
 // fotos; o nome do objeto vem do id numérico, nunca do texto da rota.
 router.post(
@@ -127,8 +152,8 @@ router.post(
   rota(async (req, res, id) => {
     if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
     const { rows } = await require('../db/pool').query('SELECT tipo FROM pontos WHERE id = $1', [id]);
-    if (!rows[0]) return res.status(404).json({ erro: 'ponto não encontrado' });
-    if (rows[0].tipo !== 'movel') return res.status(409).json({ erro: 'foto de equipamento é só do ponto móvel' });
+    if (!rows[0]) return res.status(404).json({ erro: 'rede não encontrada' });
+    if (rows[0].tipo !== 'movel') return res.status(409).json({ erro: 'foto/capa é só da rede móvel' });
     const supabase = require('../lib/supabase');
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
     const nomeArquivo = `pontos/movel-${id}.jpg`;
@@ -145,7 +170,7 @@ router.post(
 );
 
 // Foto da entrega ou da retirada (opcional, recomendada): mesmo bucket e
-// mesmo filtro de imagem da foto do móvel.
+// mesmo filtro de imagem da foto da rede.
 router.post(
   '/admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto',
   apagarTemporario,
@@ -156,7 +181,7 @@ router.post(
     if (!tipo || !hid) return res.status(404).json({ erro: 'registro não encontrado' });
     if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
     // O registro existe antes de subir (sem órfão no bucket).
-    if (!(await termo.movimentacaoDoPonto(id, hid, tipo))) {
+    if (!(await equipamento.movimentacaoDoPonto(id, hid, tipo))) {
       return res.status(404).json({ erro: `${tipo === 'entrega' ? 'Entrega' : 'Retirada'} ainda não registrada` });
     }
     const supabase = require('../lib/supabase');
@@ -170,32 +195,24 @@ router.post(
     if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
     const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
     const url = data.publicUrl;
-    await termo.definirFotoDaMovimentacao(id, hid, tipo, url);
+    await equipamento.definirFotoDaMovimentacao(id, hid, tipo, url);
     await avisar(id);
     res.json({ url });
   }),
 );
 
-// Termo de hospedagem: versões (a vigente e as anteriores) e publicar nova.
-router.get(
-  '/admin/hospedagem/termos',
-  simples(async (_req, res) => {
-    res.json({ termos: await termo.listarTermos() });
-  }),
-);
-
-router.post(
-  '/admin/hospedagem/termos',
-  simples(async (req, res) => {
-    res.status(201).json(await termo.publicarTermo(req.body, adminDe(req)));
-  }),
-);
+// O termo eletrônico (versões, publicação, aceite pelo painel) saiu na 115:
+// o termo é FÍSICO, e o Admin só marca Pendente/Assinado na hospedagem.
+const TERMO_ELETRONICO_SAIU = {
+  erro: 'o termo de hospedagem é assinado em papel — o Admin marca "termo físico assinado" na hospedagem',
+};
+router.all('/admin/hospedagem/termos', (_req, res) => res.status(410).json(TERMO_ELETRONICO_SAIU));
 
 router.get(
   '/admin/pontos/:id/movel',
   rota(async (_req, res, id) => {
-    const ficha = await movel.fichaDoMovel(id);
-    if (!ficha) return res.status(404).json({ erro: 'ponto não encontrado' });
+    const ficha = await movel.fichaDaRede(id);
+    if (!ficha) return res.status(404).json({ erro: 'rede não encontrada' });
     res.json(ficha);
   }),
 );
@@ -204,16 +221,18 @@ router.get(
 // (gatilho na migration 113). Resposta explícita para cliente antigo.
 for (const caminho of ['/admin/pontos/:id/tornar-movel', '/admin/pontos/:id/tornar-fixo']) {
   router.post(caminho, (_req, res) =>
-    res.status(410).json({ erro: 'o tipo do ponto não muda depois de criado — o móvel nasce em Rede → Pontos móveis' }),
+    res
+      .status(410)
+      .json({ erro: 'o tipo do ponto não muda depois de criado — a rede móvel nasce em Rede → Pontos móveis' }),
   );
 }
 
-// O ponto móvel não tem base (migration 114): só alocação. Resposta
-// explícita para cliente antigo.
+// A rede móvel não tem base (migration 114): cada tela só tem local
+// enquanto está alocada. Resposta explícita para cliente antigo.
 router.put('/admin/pontos/:id/base', (_req, res) =>
   res
     .status(410)
-    .json({ erro: 'o ponto móvel não tem base — ele só tem local enquanto está alocado (hospedagem ou evento)' }),
+    .json({ erro: 'a rede móvel não tem base — cada tela só tem local enquanto está alocada (hospedagem ou evento)' }),
 );
 
 router.post(
@@ -261,7 +280,7 @@ const ACOES_DA_HOSPEDAGEM = {
   iniciar: (id, hid, admin, corpo) => hospedagem.iniciar(id, hid, corpo, admin),
   encerrar: (id, hid, admin, corpo) => hospedagem.encerrar(id, hid, admin, corpo),
   cancelar: (id, hid) => hospedagem.cancelar(id, hid),
-  retirada: (id, hid, admin, corpo) => termo.registrarRetirada(id, hid, corpo, admin),
+  retirada: (id, hid, admin, corpo) => equipamento.registrarRetirada(id, hid, corpo, admin),
 };
 router.post(
   '/admin/pontos/:id/hospedagens/:hid/:acao',
@@ -272,6 +291,15 @@ router.post(
     const r = await ACOES_DA_HOSPEDAGEM[req.params.acao](id, req.params.hid, adminDe(req), req.body || {});
     await avisar(id, [r?.contaId]);
     res.json({ ok: true, ...(r?.tempoSegundos !== undefined ? r : {}) });
+  }),
+);
+
+router.put(
+  '/admin/pontos/:id/hospedagens/:hid/termo-fisico',
+  rota(async (req, res, id) => {
+    const r = await equipamento.marcarTermoFisico(id, req.params.hid, req.body, adminDe(req));
+    await avisar(id, [r.contaId]);
+    res.json({ ok: true, termo: r.termo });
   }),
 );
 
@@ -431,33 +459,9 @@ router.get(
   }),
 );
 
-// O termo de UMA hospedagem da conta logada (texto vigente + os dados dela
-// + se já aceitou) e o aceite. A conta vem sempre da sessão.
-router.get(
-  '/anunciantes/me/hospedagens/:hid/termo',
-  exigirConta,
-  simples(async (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    res.json(await termo.termoDaHospedagem(req.session.anuncianteId, req.params.hid));
-  }),
-);
-
-router.post(
-  '/anunciantes/me/hospedagens/:hid/aceite',
-  exigirConta,
-  limiteTentativas,
-  simples(async (req, res) => {
-    const r = await termo.aceitar(req.session.anuncianteId, req.params.hid, req.body, {
-      ip: req.ip,
-      userAgent: req.get('user-agent'),
-    });
-    if (!r.repetido) {
-      sse.emitirParaAdmin('point.updated', { id: r.pontoId });
-      sse.emitirParaConta(r.contaId, 'hosting.updated', {});
-    }
-    res.status(r.repetido ? 200 : 201).json({ aceite: r.aceite });
-  }),
-);
+// O aceite eletrônico pelo painel saiu (115) — o termo é assinado em papel.
+router.get('/anunciantes/me/hospedagens/:hid/termo', (_req, res) => res.status(410).json(TERMO_ELETRONICO_SAIU));
+router.post('/anunciantes/me/hospedagens/:hid/aceite', (_req, res) => res.status(410).json(TERMO_ELETRONICO_SAIU));
 
 // O mesmo interesse pelo painel (rota de sempre do painel).
 router.post('/anunciantes/me/hospedagem/interesse', exigirConta, limiteTentativas, simples(enviarInteresse));

@@ -602,67 +602,40 @@ function htmlPontoEscolha(p, vitrine = {}) {
     </div>`;
 }
 
-// Ponto MÓVEL (migrations 112 e 114): card próprio, compacto — o mesmo
-// molde e a mesma seleção no pé (input, `.cheio`, `data-ponto-id`,
-// `data-busca`), mas o que importa é outro: o selo, o nome, onde ele está
-// agora (a alocação em curso) e o próximo evento. Local atual e próximo
-// evento vêm decididos do servidor (src/pontos/movel.js). Quem marca escolhe
-// o PONTO: a campanha acompanha ele enquanto estiver alocado. Sem alocação
-// ele nem aparece na lista — só para quem já o tinha escolhido, avisando que
-// não veicula agora (e pode ser desmarcado). Hospedado num comércio: o card
-// diz só o NOME do lugar — nunca a conta, o período ou o benefício.
+// MOSTRAÍ MÓVEL — a REDE MÓVEL da cidade (migrations 112 a 115): card
+// próprio, compacto — o mesmo molde e a mesma seleção no pé (input,
+// `data-ponto-id`, `data-busca`), mas o que importa é outro: o selo
+// ITINERANTE, o nome da rede, a frase da cidade e "N telas na rede · X em
+// operação agora" (o servidor conta — src/pontos/movel.js). Quem marca
+// escolhe a REDE, nunca uma tela: conta como 1 posição do plano, tenha 1 ou
+// 10 telas. A rede aparece SEMPRE e a seleção nunca é bloqueada por falta
+// de tela em operação: com 0, o card avisa que a campanha volta sozinha
+// quando houver inventário (só o limite do plano trava, como em todo card).
 function htmlPontoMovelEscolha(p, vitrine = {}) {
-  const { localAtual, proximoEvento } = p.movel || {};
-  const instalando = p.status === 'a_instalar' || p.status === 'aguardando_primeiro_sinal';
-  const semAlocacao = !localAtual;
-  const fechado = !p.escolhido && (semAlocacao || (!instalando && p.ocupacao >= 100) || p.bloqueado);
-  const estado = semAlocacao ? window.PONTO_MOVEL.semAlocacao : window.ROTULOS.ponto[p.status] || p.status;
-  const classeEstado = semAlocacao ? 'badge-neutro' : window.ROTULOS.pontoClasse[p.status] || 'badge-neutro';
-  const emEvento = localAtual?.origem === 'evento';
+  const m = p.movel || {};
+  const cidade = m.cidade || p.cidade || '';
+  const emOperacao = Number(m.emOperacao) || 0;
   const id = `ponto-escolha-${p.id}`;
-  const linha = (classe, icone, texto) =>
-    `<span class="ponto-linha ${classe}">${iconePonto(icone)}<span>${texto}</span></span>`;
-  const evento = proximoEvento
-    ? `<span class="ponto-movel-evento" id="${id}-evento">
-        <span class="ponto-movel-evento-rotulo">${iconePonto('evento')}Próximo evento</span>
-        <span class="ponto-movel-evento-nome">${esc(proximoEvento.nome)}</span>
-        <span class="ponto-movel-evento-meta">${esc(window.periodoDoEvento(proximoEvento.dataInicio, proximoEvento.dataFim))} · ${esc(proximoEvento.local)}</span>
-        ${proximoEvento.publicoEstimado ? `<span class="ponto-movel-evento-meta">${esc(window.publicoEstimadoTexto(proximoEvento.publicoEstimado))}</span>` : ''}
-      </span>`
-    : `<span class="ponto-movel-evento ponto-movel-sem-evento" id="${id}-evento">${esc(emEvento ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento)}</span>`;
-  const onde = localAtual
-    ? `${localAtual.nome}${localAtual.endereco && localAtual.endereco !== localAtual.nome ? `, ${localAtual.endereco}` : ''}`
-    : '';
-  const mapa = onde ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(onde)}` : null;
-  const busca = `${p.nome} ${localAtual?.nome || ''}`.toLowerCase();
-  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel${fechado ? ' cheio' : ''}" data-ponto-id="${p.id}" data-busca="${esc(busca)}">
+  const foto = m.foto || vitrine.foto_instalacao_url;
+  const situacao =
+    emOperacao > 0
+      ? `<span class="ponto-movel-situacao" id="${id}-situacao">${esc(window.PONTO_MOVEL.telas(Number(m.telas) || 0, emOperacao))}</span>`
+      : `<span class="ponto-movel-situacao ponto-movel-sem-operacao" id="${id}-situacao"><span>${esc(window.PONTO_MOVEL.telas(Number(m.telas) || 0, 0))}</span><span>${esc(window.PONTO_MOVEL.semOperacao(cidade))}</span></span>`;
+  return `<div class="ponto-card com-corpo ponto-escolha ponto-movel" data-ponto-id="${p.id}" data-busca="${esc(`${p.nome} ${cidade}`.toLowerCase())}">
       <label class="ponto-marcar">
-        <span class="ponto-card-media ponto-movel-media">${vitrine.foto_instalacao_url ? `<img src="${esc(vitrine.foto_instalacao_url)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
+        <span class="ponto-card-media ponto-movel-media">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" data-foto>` : ''}<span class="selo-movel" id="${id}-selo">${iconePonto('movel')}${esc(window.PONTO_MOVEL.selo)}</span></span>
         <span class="ponto-card-corpo">
           <span class="ponto-card-topo">
             <span class="ponto-nome" id="${id}-nome" title="${esc(p.nome)}">${esc(p.nome)}</span>
-            <span class="ponto-estado badge ${classeEstado}" id="${id}-estado">${esc(estado)}</span>
           </span>
-          ${
-            semAlocacao
-              ? linha('ponto-local-atual', 'endereco', esc(window.PONTO_MOVEL.semAlocacaoEscolhido))
-              : linha(
-                  'ponto-local-atual',
-                  'endereco',
-                  emEvento
-                    ? `Agora em: <b>${esc(localAtual.nome)}</b> · ${esc(localAtual.evento.nome)}`
-                    : `Agora em: <b>${esc(localAtual.nome)}</b>`,
-                )
-          }
-          ${evento}
-          <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica)}</span>
+          <span class="ponto-movel-explica">${esc(window.PONTO_MOVEL.explica(cidade))}</span>
+          ${situacao}
         </span>
         <span class="ponto-escolha-acao">
-          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} ${fechado ? 'disabled' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-estado ${id}-evento ${id}-acao">
-          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar ponto</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
+          <input type="checkbox" value="${p.id}" ${p.escolhido ? 'checked' : ''} aria-labelledby="${id}-nome ${id}-selo" aria-describedby="${id}-situacao ${id}-acao">
+          <span class="ponto-acao-texto" id="${id}-acao"><span class="acao-livre">Selecionar</span><span class="acao-marcado">Selecionado</span><span class="acao-limite">Limite do plano atingido</span><span class="acao-fechado">Indisponível para escolha</span></span>
         </span>
       </label>
-      ${mapa ? `<a class="ponto-mapa" href="${mapa}" target="_blank" rel="noopener" title="Ver no mapa" aria-label="Ver onde ${esc(p.nome)} está agora no mapa">${iconePonto('endereco')}Ver no mapa</a>` : ''}
     </div>`;
 }
 

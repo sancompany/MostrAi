@@ -83,8 +83,9 @@ fetch(`${API_BASE_URL}/pontos`)
       .map((p) => {
         // Linha do endereço com a mesma regra do resto do sistema
         // (window.linhaEndereco — D5, 24/09/2026): rua, número e bairro.
-        // Ponto móvel (migration 114): só aparece alocado, e o endereço é o
-        // da alocação (o local da hospedagem ou do evento) — nunca uma base.
+        // Rede móvel (migration 115): cada linha é uma ALOCAÇÃO real de
+        // agora (uma tela hospedada ou um evento em andamento) — o endereço é
+        // o do local; nunca um pino da rede.
         const movel = p.tipo === 'movel' && window.PONTO_MOVEL;
         const linha = movel ? '' : window.linhaEndereco(p);
         const enderecoCompleto = movel
@@ -101,7 +102,7 @@ fetch(`${API_BASE_URL}/pontos`)
         <span class="badge ${st.classe}">${st.texto}</span>${movel ? ` <span class="badge badge-info">${esc(window.PONTO_MOVEL.selo)}</span>` : ''}
         <h4>${esc(p.nome)}</h4>
         <p>${onde}</p>
-        ${movel ? `<p class="u-dim">${esc(window.PONTO_MOVEL.explica)}</p>` : ''}
+        ${movel ? `<p class="u-dim">${esc(window.PONTO_MOVEL.explica(p.cidade))}</p>` : ''}
         <a class="mapa-link" href="${mapaUrl}" target="_blank" rel="noopener">📍 Ver no mapa</a>
       </div>
     `;

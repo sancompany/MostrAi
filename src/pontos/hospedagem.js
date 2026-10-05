@@ -5,25 +5,28 @@ const movel = require('./movel');
 const agenda = require('./agenda');
 const alocacao = require('./alocacao');
 
-// HOSPEDAGEM TEMPORÁRIA DO PONTO MÓVEL (02/10/2026, pedido do dono;
-// migrations 113 e 114). Um comércio recebe por um período o ponto móvel da
-// Mostraí. Não é aluguel: não paga nada, não vira dono, ponto fixo, Básico,
-// crédito nem cupom. No ENCERRAMENTO, uma parte do TEMPO OPERACIONAL VÁLIDO
-// da tela (percentual global, congelado quando o Admin confirmou) volta para
-// ele em HORAS DE MÍDIA GRATUITAS na rede — o SALDO DE HOSPEDAGEM, em
-// segundos, num livro próprio (saldo_hospedagem_lancamentos).
+// HOSPEDAGEM TEMPORÁRIA DE UMA TELA DA REDE MÓVEL (02/10/2026, pedido do
+// dono; migrations 113 a 115). Um comércio recebe por um período UMA TELA
+// da rede móvel da cidade (V1: uma tela por hospedagem — `dispositivo_id`;
+// `ponto_id` é a rede). Não é aluguel: não paga nada, não vira dono, ponto
+// fixo, Básico, crédito nem cupom. No ENCERRAMENTO, uma parte do TEMPO
+// OPERACIONAL VÁLIDO DAQUELA TELA (percentual global, congelado quando o
+// Admin confirmou) volta para ele em HORAS DE MÍDIA GRATUITAS na rede — o
+// SALDO DE HOSPEDAGEM, em segundos, num livro próprio
+// (saldo_hospedagem_lancamentos), sem validade.
 //
-//   programada → ativa (o Admin marca que a tela chegou — nunca sozinha) →
+//   programada → ativa (o Admin marca que a tela chegou, com o termo físico
+//     assinado e a entrega registrada — nunca sozinha) →
 //     encerrada (o Admin, ou o sistema no fim previsto: `encerrarVencidas`);
 //   programada → cancelada (não aconteceu: benefício 0).
 // O período é [inicio, fim) com data E hora, e a hospedagem tem o seu
-// HORÁRIO DE FUNCIONAMENTO (migration 114, src/pontos/alocacao.js) — é ele
-// que vai para a TV e é só dentro dele que o tempo vale.
+// HORÁRIO (migration 114, src/pontos/alocacao.js; padrão: o período
+// inteiro) — é ele que vai para a TV e é só dentro dele que o tempo vale.
 //
 // Regras que moram SÓ aqui (o navegador nunca decide):
 //   · o percentual é lido do banco na transação que confirma e gravado na
 //     linha — mudar o global depois não mexe nela;
-//   · o tempo válido é a UNIÃO dos intervalos de operação da tela
+//   · o tempo válido é a UNIÃO dos intervalos de operação DA TELA hospedada
 //     (tela_operacao: heartbeat + o que o Player contou offline) ∩ o
 //     período ∩ o horário de funcionamento, a partir de quando ela chegou —
 //     nunca a duração do calendário (27 h válidas × 20% = 5 h 24 min);
@@ -122,26 +125,26 @@ function beneficioDe(tempoSegundos, percentual) {
 // ---------------------------------------------------------------------------
 // Tempo operacional
 // ---------------------------------------------------------------------------
-// União dos intervalos de operação gravados NESTE ponto (pela tela de hoje
-// e por uma trocada no meio, se houver — mesmo já excluída) dentro de
-// [de, ate). O mesmo minuto visto pelo heartbeat e pelo Player conta uma
-// vez; minutos em que nada comprovou operação não contam.
-async function intervalosDeOperacao(db, pontoId, de, ate) {
+// União dos intervalos de operação gravados pela TELA dentro de [de, ate).
+// O mesmo minuto visto pelo heartbeat e pelo Player conta uma vez; minutos
+// em que nada comprovou operação não contam. Outras telas da mesma rede
+// (em outros lugares) não entram.
+async function intervalosDeOperacao(db, telaId, de, ate) {
   const { rows } = await db.query(
     `SELECT (EXTRACT(EPOCH FROM lower(r)) * 1000)::bigint AS a, (EXTRACT(EPOCH FROM upper(r)) * 1000)::bigint AS b
        FROM unnest((
          SELECT range_agg(tstzrange(GREATEST(o.inicio, $2::timestamptz), LEAST(o.fim, $3::timestamptz), '[)'))
            FROM tela_operacao o
-          WHERE o.ponto_id = $1 AND o.fim > $2::timestamptz AND o.inicio < $3::timestamptz
+          WHERE o.dispositivo_id = $1 AND o.fim > $2::timestamptz AND o.inicio < $3::timestamptz
        )) AS r
       ORDER BY 1`,
-    [pontoId, de, ate],
+    [telaId, de, ate],
   );
   return rows.map((r) => [Number(r.a), Number(r.b)]);
 }
 
-async function tempoOperacional(db, pontoId, de, ate) {
-  return alocacao.somaSegundos(await intervalosDeOperacao(db, pontoId, de, ate));
+async function tempoOperacional(db, telaId, de, ate) {
+  return alocacao.somaSegundos(await intervalosDeOperacao(db, telaId, de, ate));
 }
 
 // O TEMPO VÁLIDO de uma hospedagem até `ate`: o que a tela comprovou ∩ o
@@ -151,7 +154,7 @@ async function tempoValido(db, h, ate) {
   const de = Math.max(new Date(h.iniciada_em).getTime(), new Date(h.inicio).getTime());
   const limite = Math.min(new Date(ate).getTime(), new Date(h.fim).getTime());
   if (!(limite > de)) return 0;
-  const operou = await intervalosDeOperacao(db, h.ponto_id, new Date(de), new Date(limite));
+  const operou = await intervalosDeOperacao(db, h.dispositivo_id, new Date(de), new Date(limite));
   if (!operou.length) return 0;
   return alocacao.somaSegundos(
     alocacao.intersectar(operou, alocacao.intervalosAbertos(h.horario_operacao, de, limite)),
@@ -165,8 +168,7 @@ async function hospedagemDoPonto(c, pontoId, hospedagemId) {
   const id = /^\d{1,15}$/.test(String(hospedagemId)) ? String(hospedagemId) : null;
   const { rows } = id
     ? await c.query(
-        `SELECT h.*, (h.fim <= now()) AS terminou, (h.inicio > now()) AS ainda_nao_comecou,
-                (SELECT p.movel_numero FROM pontos p WHERE p.id = h.ponto_id) AS movel_numero
+        `SELECT h.*, (h.fim <= now()) AS terminou, (h.inicio > now()) AS ainda_nao_comecou
            FROM pontos_moveis_hospedagens h WHERE h.id = $1 AND h.ponto_id = $2 FOR UPDATE`,
         [id, pontoId],
       )
@@ -198,18 +200,19 @@ async function exigirCategoria(c, categoriaId) {
   if (!rows[0]) throw erro(400, 'Contexto de concorrência: ramo não encontrado', 'categoria_id');
 }
 
-// Agendar a hospedagem (o Admin orquestra tudo): móvel → conta anfitriã →
-// local e endereço → período com data e hora → horário de funcionamento →
-// ramo (padrão: o da conta) → observação → percentual. `percentual_esperado`
-// é o que o Admin VIU na revisão ("Esta hospedagem ficará vinculada a 20%");
-// se o global mudou nesse meio-tempo, a confirmação volta (409) em vez de
-// vincular um número que ninguém viu. Nasce PROGRAMADA: nunca começa
-// sozinha — o Admin inicia quando a tela chega (com termo aceito e entrega).
+// Agendar a hospedagem (o Admin orquestra tudo): TELA da rede → conta
+// anfitriã → local e endereço → período com data e hora → horário (padrão:
+// o período inteiro) → categoria protegida (padrão: a da conta) →
+// observação → percentual. `percentual_esperado` é o que o Admin VIU na
+// revisão ("Esta hospedagem ficará vinculada a 20%"); se o global mudou
+// nesse meio-tempo, a confirmação volta (409) em vez de vincular um número
+// que ninguém viu. Nasce PROGRAMADA, com o termo físico Pendente: nunca
+// começa sozinha — o Admin inicia quando a tela chega.
 async function criar(pontoId, corpo, admin) {
   const contaId = Number(corpo?.conta_id);
   if (!Number.isInteger(contaId) || contaId <= 0) throw erro(400, 'Escolha a conta anfitriã', 'conta_id');
   const periodo = alocacao.lerPeriodo(corpo);
-  const horario = alocacao.lerHorario(corpo?.horario_operacao);
+  const horario = movel.lerHorarioDaAlocacao(corpo);
   const categoriaInformada = lerCategoria(corpo?.categoria_id);
   const observacao = movel.texto(corpo?.observacao, 'observacao', 'Observação', LIMITES.observacao, {
     obrigatorio: false,
@@ -224,6 +227,7 @@ async function criar(pontoId, corpo, admin) {
   try {
     return await movel.emTransacao(async (c) => {
       await movel.travarMovel(c, pontoId);
+      const [telaId] = await movel.telasValidas(c, pontoId, corpo?.dispositivo_id, { maximo: 1 });
       const {
         rows: [conta],
       } = await c.query(
@@ -233,7 +237,7 @@ async function criar(pontoId, corpo, admin) {
         [contaId],
       );
       if (!conta || conta.excluido_em) throw erro(400, 'Conta anfitriã não encontrada', 'conta_id');
-      if (conta.conta_propria) throw erro(400, 'A conta própria da Mostraí não hospeda o próprio ponto', 'conta_id');
+      if (conta.conta_propria) throw erro(400, 'A conta própria da Mostraí não hospeda a própria tela', 'conta_id');
       let interesse = null;
       if (interesseId) {
         const { rows } = await c.query(
@@ -278,12 +282,12 @@ async function criar(pontoId, corpo, admin) {
           'percentual_esperado',
         );
       }
-      await agenda.exigirLivre(c, pontoId, periodo.inicio, periodo.fim);
+      await agenda.exigirLivres(c, [telaId], periodo.inicio, periodo.fim);
       const { rows } = await c.query(
         `INSERT INTO pontos_moveis_hospedagens
            (ponto_id, conta_id, interesse_id, local, endereco, categoria_id, data_inicio, data_fim, percentual,
-            criado_por_admin, inicio, fim, horario_operacao, observacao)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            criado_por_admin, inicio, fim, horario_operacao, observacao, dispositivo_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING id`,
         [
           pontoId,
@@ -298,8 +302,9 @@ async function criar(pontoId, corpo, admin) {
           admin,
           periodo.inicio,
           periodo.fim,
-          JSON.stringify(horario),
+          horario ? JSON.stringify(horario) : null,
           observacao,
+          telaId,
         ],
       );
       if (interesseId) {
@@ -310,22 +315,22 @@ async function criar(pontoId, corpo, admin) {
           [interesseId, admin],
         );
       }
-      return { id: Number(rows[0].id), contaId, percentual };
+      return { id: Number(rows[0].id), contaId, percentual, telaId };
     });
   } catch (err) {
     throw agenda.traduzirErroDoBanco(err);
   }
 }
 
-// "A tela chegou ao comércio": o local atual passa a ser o do anfitrião (o
-// ramo da hospedagem vale na trava de concorrente e o horário dela vai para
-// a TV). Só dentro do período — para antecipar, o Admin muda o período antes
-// (programada).
-// "A tela chegou": exige o aceite do termo pelo anfitrião (para o período e
-// o percentual de agora) e a ENTREGA do equipamento registrada — já
-// registrada antes ou vinda no corpo, gravada na mesma transação.
+// "A tela chegou ao comércio": a TELA passa a operar no contexto do
+// anfitrião (a categoria da hospedagem vale na trava de concorrente e o
+// horário dela vai para a TV); as outras telas da rede não mudam. Só dentro
+// do período — para antecipar, o Admin muda o período antes (programada).
+// Exige o TERMO FÍSICO marcado como assinado e a ENTREGA do equipamento
+// registrada — já registrada antes ou vinda no corpo, gravada na mesma
+// transação.
 async function iniciar(pontoId, hospedagemId, corpo = {}, admin = null) {
-  const termo = require('./hospedagem-termo');
+  const equipamento = require('./hospedagem-equipamento');
   try {
     return await movel.emTransacao(async (c) => {
       await movel.travarMovel(c, pontoId);
@@ -335,22 +340,19 @@ async function iniciar(pontoId, hospedagemId, corpo = {}, admin = null) {
       if (h.ainda_nao_comecou) {
         throw erro(409, 'Essa hospedagem começa só no horário marcado — para antecipar, altere o período antes');
       }
-      if (!(await termo.aceiteValido(c, h))) {
-        throw erro(
-          409,
-          'O anfitrião ainda não aceitou o termo desta hospedagem (com o local, o período, o horário e o percentual de agora) — ele aceita pelo painel',
-        );
+      if (!h.termo_assinado) {
+        throw erro(409, 'Marque o termo físico como assinado para iniciar a hospedagem', 'termo');
       }
-      if (!(await termo.movimentacaoDe(c, h.id, 'entrega'))) {
+      if (!(await equipamento.movimentacaoDe(c, h.id, 'entrega'))) {
         if (!corpo?.entrega) throw erro(400, 'Registre a entrega do equipamento para iniciar', 'entrega');
-        await termo.registrarMovimentacao(c, h, 'entrega', corpo.entrega, admin);
+        await equipamento.registrarMovimentacao(c, h, 'entrega', corpo.entrega, admin);
       }
-      await agenda.exigirLivre(c, pontoId, h.inicio, h.fim, {
+      await agenda.exigirLivres(c, [h.dispositivo_id], h.inicio, h.fim, {
         ignorar: { tipo: 'hospedagem', id: h.id },
         emCurso: true,
       });
       await c.query(`UPDATE pontos_moveis_hospedagens SET estado = 'ativa', iniciada_em = now() WHERE id = $1`, [h.id]);
-      await movel.avisarTelas(c, pontoId);
+      await movel.avisarTelas(c, [h.dispositivo_id]);
       return { contaId: h.conta_id };
     });
   } catch (err) {
@@ -387,7 +389,7 @@ async function encerrarNaTransacao(c, h, { encerramento, admin = null }) {
       [h.conta_id, beneficio, `hospedagem:${h.id}`, h.id],
     );
   }
-  await movel.avisarTelas(c, h.ponto_id);
+  await movel.avisarTelas(c, [h.dispositivo_id]);
   return { contaId: h.conta_id, tempoSegundos: tempo, beneficioSegundos: beneficio };
 }
 
@@ -399,7 +401,7 @@ async function encerrar(pontoId, hospedagemId, admin, corpo = {}) {
     if (h.estado === 'programada') throw erro(409, 'Essa hospedagem ainda não começou — para desistir dela, cancele');
     if (h.estado !== 'ativa') throw erro(409, JA_ESTA[h.estado]);
     if (corpo?.retirada) {
-      await require('./hospedagem-termo').registrarMovimentacao(c, h, 'retirada', corpo.retirada, admin);
+      await require('./hospedagem-equipamento').registrarMovimentacao(c, h, 'retirada', corpo.retirada, admin);
     }
     return encerrarNaTransacao(c, h, { encerramento: 'manual', admin });
   });
@@ -436,7 +438,7 @@ async function devolverInteresse(c, h) {
       tipo: 'HOSPEDAGEM_INTERESSE',
       chave: `HOSPEDAGEM_INTERESSE:${rows[0].id}`,
       anuncianteId: rows[0].conta_id,
-      titulo: `${rows[0].empresa} quer hospedar um Ponto Móvel`,
+      titulo: `${rows[0].empresa} quer hospedar uma tela do Mostraí Móvel`,
       mensagem: 'A hospedagem agendada foi cancelada — o interesse voltou para "em contato".',
       ctaRotulo: 'Ver interesses',
       ctaDestino: '#rede/moveis',
@@ -466,11 +468,10 @@ async function cancelar(pontoId, hospedagemId) {
   });
 }
 
-// Alterar a hospedagem. PROGRAMADA: período, horário, local e endereço
-// (o que mudar pede aceite novo do anfitrião — o termo vincula tudo isso).
-// ATIVA: só prorrogar o fim (o início e o horário já estão valendo; para
-// terminar antes, Encerrar). Sem conflito na agenda; o percentual continua
-// o congelado.
+// Alterar a hospedagem. PROGRAMADA: tela, período, horário, local e
+// endereço. ATIVA: só prorrogar o fim (o início e o horário já estão
+// valendo; para terminar antes, Encerrar). Sem conflito na agenda da tela;
+// o percentual continua o congelado.
 async function alterarPeriodo(pontoId, hospedagemId, corpo) {
   try {
     return await movel.emTransacao(async (c) => {
@@ -478,6 +479,7 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
       const h = await hospedagemDoPonto(c, pontoId, hospedagemId);
       if (h.estado !== 'programada' && h.estado !== 'ativa') throw erro(409, JA_ESTA[h.estado]);
       let periodo;
+      let telaId = h.dispositivo_id;
       let horario = h.horario_operacao;
       let local = h.local;
       let endereco = h.endereco;
@@ -487,7 +489,13 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
         if (inicioPedido && inicioPedido.getTime() !== new Date(h.inicio).getTime()) {
           throw erro(400, 'A hospedagem já começou — só o fim pode mudar', 'inicio');
         }
-        if (corpo?.horario_operacao !== undefined || corpo?.local !== undefined || corpo?.endereco !== undefined) {
+        if (
+          corpo?.horario_operacao !== undefined ||
+          corpo?.operar_todo_periodo !== undefined ||
+          corpo?.local !== undefined ||
+          corpo?.endereco !== undefined ||
+          (corpo?.dispositivo_id !== undefined && Number(corpo.dispositivo_id) !== h.dispositivo_id)
+        ) {
           throw erro(400, 'A hospedagem já começou — só o fim pode mudar (prorrogar)', 'fim');
         }
         // O fim novo com hora (`fim`) ou só o último dia (`data_fim`, o dia inteiro).
@@ -501,16 +509,24 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
         }
       } else {
         periodo = alocacao.lerPeriodo(corpo);
-        if (corpo?.horario_operacao !== undefined) horario = alocacao.lerHorario(corpo.horario_operacao);
+        if (corpo?.horario_operacao !== undefined || corpo?.operar_todo_periodo !== undefined) {
+          horario = movel.lerHorarioDaAlocacao(corpo);
+        }
+        if (corpo?.dispositivo_id !== undefined) {
+          [telaId] = await movel.telasValidas(c, pontoId, corpo.dispositivo_id, { maximo: 1 });
+        }
         if (corpo?.local !== undefined) local = movel.texto(corpo.local, 'local', 'Local', LIMITES.local);
         if (corpo?.endereco !== undefined) {
           endereco = movel.texto(corpo.endereco, 'endereco', 'Endereço', LIMITES.endereco);
         }
       }
-      await agenda.exigirLivre(c, pontoId, periodo.inicio, periodo.fim, { ignorar: { tipo: 'hospedagem', id: h.id } });
+      await agenda.exigirLivres(c, [telaId], periodo.inicio, periodo.fim, {
+        ignorar: { tipo: 'hospedagem', id: h.id },
+      });
       await c.query(
         `UPDATE pontos_moveis_hospedagens
-            SET inicio = $2, fim = $3, data_inicio = $4, data_fim = $5, horario_operacao = $6, local = $7, endereco = $8
+            SET inicio = $2, fim = $3, data_inicio = $4, data_fim = $5, horario_operacao = $6, local = $7, endereco = $8,
+                dispositivo_id = $9
           WHERE id = $1`,
         [
           h.id,
@@ -521,6 +537,7 @@ async function alterarPeriodo(pontoId, hospedagemId, corpo) {
           horario ? JSON.stringify(horario) : null,
           local,
           endereco,
+          telaId,
         ],
       );
       return { contaId: h.conta_id, inicio: periodo.inicio, fim: periodo.fim };
@@ -597,7 +614,16 @@ async function encerrarVencidas() {
             RETURNING estado`,
           [e.id],
         );
-        if (rows[0]?.estado === 'encerrado') await movel.avisarTelas(c, e.ponto_id);
+        if (rows[0]?.estado === 'encerrado') {
+          const { rows: telas } = await c.query(
+            'SELECT dispositivo_id FROM pontos_moveis_evento_telas WHERE evento_id = $1',
+            [e.id],
+          );
+          await movel.avisarTelas(
+            c,
+            telas.map((t) => t.dispositivo_id),
+          );
+        }
         return rows[0]?.estado || null;
       });
       if (!estado) continue;
@@ -641,7 +667,7 @@ async function apurarTardias() {
     `SELECT h.id, h.ponto_id FROM pontos_moveis_hospedagens h
       WHERE h.estado = 'encerrada' AND h.encerrada_em > now() - make_interval(days => $1)
         AND EXISTS (SELECT 1 FROM tela_operacao o
-                     WHERE o.ponto_id = h.ponto_id AND o.origem = 'player'
+                     WHERE o.dispositivo_id = h.dispositivo_id AND o.origem = 'player'
                        AND o.recebido_em > h.encerrada_em - interval '7 minutes'
                        AND o.fim > h.iniciada_em AND o.inicio < h.encerrada_em)
      ORDER BY h.id`,
@@ -687,7 +713,7 @@ async function apurarTardias() {
       if (r.acrescimo > 0) {
         await require('../creditos/notificacoes').registrarSemFalhar(r.contaId, {
           tipo: 'hospedagem_encerrada',
-          titulo: `Mais ${duracaoLegivel(r.acrescimo)} de mídia pela hospedagem do Ponto Móvel`,
+          titulo: `Mais ${duracaoLegivel(r.acrescimo)} de mídia pela hospedagem da tela do Mostraí Móvel`,
           descricao:
             'A tela mandou o tempo que operou sem internet e ele entrou na conta da hospedagem. As horas já estão no seu saldo.',
           entidadeTipo: 'hospedagem',
@@ -884,7 +910,7 @@ async function hospedagensDaConta(contaId) {
   const { rows } = await pool.query(
     `SELECT h.id, h.ponto_id, h.conta_id, h.local, h.endereco, h.data_inicio, h.data_fim, h.inicio, h.fim,
             h.horario_operacao, h.percentual, h.estado, h.iniciada_em, h.encerrada_em, h.tempo_operacional_segundos,
-            h.beneficio_segundos, p.nome AS ponto_nome, p.movel_numero
+            h.beneficio_segundos, h.dispositivo_id, h.termo_assinado, p.nome AS ponto_nome
        FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id
       WHERE h.conta_id = $1 AND h.estado IN ('programada', 'ativa', 'encerrada')
       ORDER BY CASE h.estado WHEN 'ativa' THEN 0 WHEN 'programada' THEN 1 ELSE 2 END,
@@ -892,17 +918,14 @@ async function hospedagensDaConta(contaId) {
       LIMIT 20`,
     [contaId],
   );
-  const documentos = await require('./hospedagem-termo').documentosDasHospedagens(rows);
   const lista = [];
   for (const h of rows) {
-    const doc = documentos.get(String(h.id));
     const item = {
       id: Number(h.id),
       ponto: h.ponto_nome,
-      // Só o que é dela: se já aceitou o termo (a programada espera o aceite).
-      termoAceito: Boolean(doc?.aceite) && !doc.prorrogacaoSemAceite,
-      // Ativa prorrogada depois do aceite: o novo período pede o acordo dela.
-      prorrogacaoSemAceite: h.estado === 'ativa' && Boolean(doc?.prorrogacaoSemAceite),
+      tela: formatarCodigoTela(h.dispositivo_id),
+      // O termo é assinado em papel com a Mostraí; aqui só o status.
+      termoAssinado: Boolean(h.termo_assinado),
       local: h.local,
       endereco: h.endereco,
       inicio: h.inicio,
@@ -926,11 +949,10 @@ async function hospedagensDaConta(contaId) {
   return lista;
 }
 
-// Admin: todas as hospedagens de um móvel (agenda + histórico).
+// Admin: todas as hospedagens das telas de uma rede (agenda + histórico).
 async function hospedagensDoPonto(pontoId, db = pool) {
   const { rows } = await db.query(
-    `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome,
-            (SELECT p.movel_numero FROM pontos p WHERE p.id = h.ponto_id) AS movel_numero
+    `SELECT h.*, a.nome_empresa AS conta_nome, (h.fim <= now()) AS terminou, cat.nome AS categoria_nome
        FROM pontos_moveis_hospedagens h JOIN anunciantes a ON a.id = h.conta_id
        LEFT JOIN categorias cat ON cat.id = h.categoria_id
       WHERE h.ponto_id = $1
@@ -938,7 +960,7 @@ async function hospedagensDoPonto(pontoId, db = pool) {
                CASE WHEN h.estado = 'programada' THEN h.inicio END, h.inicio DESC, h.id DESC`,
     [pontoId],
   );
-  const documentos = await require('./hospedagem-termo').documentosDasHospedagens(rows);
+  const documentos = await require('./hospedagem-equipamento').documentosDasHospedagens(rows);
   const lista = [];
   for (const h of rows) {
     const ativa = h.estado === 'ativa';
@@ -947,6 +969,7 @@ async function hospedagensDoPonto(pontoId, db = pool) {
     lista.push({
       id: Number(h.id),
       conta: { id: h.conta_id, nome: h.conta_nome },
+      tela: { id: h.dispositivo_id, codigo: formatarCodigoTela(h.dispositivo_id) },
       interesseId: h.interesse_id ? Number(h.interesse_id) : null,
       local: h.local,
       endereco: h.endereco,
@@ -975,12 +998,8 @@ async function hospedagensDoPonto(pontoId, db = pool) {
       criadoEm: h.criado_em,
       criadoPor: h.criado_por_admin,
       encerradoPor: h.encerrado_por_admin,
-      // Termo e equipamento: aceite que vale para o período/percentual de
-      // agora, quantos aceites anteriores ficaram de histórico, entrega e
-      // retirada.
-      aceite: doc?.aceite || null,
-      aceitesAnteriores: doc?.aceitesAnteriores || 0,
-      prorrogacaoSemAceite: Boolean(doc?.prorrogacaoSemAceite),
+      // Termo físico (Pendente/Assinado) e equipamento (entrega e retirada).
+      termo: doc?.termo || null,
       entrega: doc?.entrega || null,
       retirada: doc?.retirada || null,
     });
@@ -997,8 +1016,8 @@ async function avisarBeneficio({ contaId, beneficioSegundos, tempoSegundos = 0 }
     tipo: 'hospedagem_encerrada',
     titulo:
       beneficioSegundos > 0
-        ? `Você ganhou ${duracaoLegivel(beneficioSegundos)} de mídia por hospedar um Ponto Móvel`
-        : 'A hospedagem do Ponto Móvel terminou',
+        ? `Você ganhou ${duracaoLegivel(beneficioSegundos)} de mídia por hospedar uma tela do Mostraí Móvel`
+        : 'A hospedagem da tela do Mostraí Móvel terminou',
     descricao:
       beneficioSegundos > 0
         ? 'As horas já estão no seu saldo de hospedagem e valem na rede inteira.'
@@ -1021,6 +1040,7 @@ function duracaoLegivel(segundos) {
 
 const formatarPercentual = (n) => `${String(Number(n)).replace('.', ',')}%`;
 const { resumo: resumoDoHorario } = require('../lib/horario-semanal');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
 module.exports = {
   PERCENTUAL_PADRAO,

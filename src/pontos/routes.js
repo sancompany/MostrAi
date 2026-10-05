@@ -14,7 +14,7 @@ const { colunasDoEndereco, problemaNoEndereco, numeroConfirmado, PARTES } = requ
 const { alterarEnderecoDoPonto, historicoDoPonto } = require('./endereco');
 const candidaturasRepo = require('../candidaturas/repository');
 const { sincronizarContaSemFalhar } = require('../pendencias/endereco');
-const { situacaoDosMoveis } = require('./movel');
+const { situacaoDasRedes } = require('./movel');
 
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 20 * 1024 * 1024 } });
 // Vídeo, não foto — mesmo teto de src/midias/routes.js (upload de vídeo pra
@@ -193,7 +193,7 @@ router.get('/admin/pontos', async (_req, res) => {
   const pontos = await repo.listar();
   const [beneficios, moveis] = await Promise.all([
     situacaoDosPontos(pontos.map((p) => p.id)),
-    situacaoDosMoveis(pontos.filter((p) => p.tipo === 'movel').map((p) => p.id)),
+    situacaoDasRedes(pontos.filter((p) => p.tipo === 'movel').map((p) => p.id)),
   ]);
   res.json(pontos.map((p) => ({ ...p, beneficio: beneficios.get(p.id) || null, movel: moveis.get(p.id) || null })));
 });

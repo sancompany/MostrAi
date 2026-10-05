@@ -1,41 +1,50 @@
 const pool = require('../db/pool');
 const alocacao = require('./alocacao');
+const agenda = require('./agenda');
 const { resumo: resumoDoHorario } = require('../lib/horario-semanal');
+const { formatarCodigoTela } = require('../lib/codigo-tela');
 
-// PONTO MÓVEL (02/10/2026, pedido do dono; migrations 112, 113 e 114). Um
-// ATIVO ITINERANTE da própria Mostraí: 1 ponto móvel = 1 tela. Nasce só pelo
-// Admin (nunca de candidatura), nunca tem dono e nunca vira fixo (tipo
-// imutável, gatilho na 113). NÃO TEM BASE (migration 114): é equipamento, e
-// só tem local, contexto comercial, horário e lugar no inventário enquanto
-// está ALOCADO — numa HOSPEDAGEM (um comércio recebe por um período,
-// src/pontos/hospedagem.js) ou num EVENTO. Sem alocação, "Sem alocação":
-// `localAtual` null, fora do inventário, a tela (se ligada) só toca o
-// institucional. `anunciante_id` fica NULL (CHECK no banco), e por isso nada
-// do que nasce do dono (crédito mensal, Plano Básico, cupom, "Meus pontos"
-// como dono) chega em ninguém.
+// MOSTRAÍ MÓVEL = REDE MÓVEL COMERCIAL DE UMA CIDADE (migration 115, pedido
+// do dono em 05/10/2026). No banco é um `pontos` com `tipo = 'movel'` (o
+// nome técnico continua "ponto móvel"); no produto é a REDE — "Mostraí
+// Móvel — Matão/SP", selo ITINERANTE — com N TELAS físicas (`dispositivos`
+// comuns: Player, credencial, heartbeat, POP e provisionamento por tela).
 //
-// Regras que moram SÓ aqui (o navegador nunca decide):
-//   · LOCAL ATUAL: a hospedagem ativa, ou o evento em andamento; sem nenhum
-//     dos dois, nenhum (os dois nunca coexistem: agenda única,
-//     src/pontos/agenda.js);
-//   · PRÓXIMO EVENTO: o programado de início mais próximo que ainda não
-//     terminou. Cancelado nunca é próximo nem local atual — e fica no
-//     histórico;
-//   · alocação (hospedagem ou evento) tem período com data E hora e o seu
-//     horário de funcionamento (src/pontos/alocacao.js) — é ele que vai para
-//     a TV;
-//   · só o Admin mexe (todas as rotas estão em /admin — src/server.js).
+// Não confundir:
+//   · REDE        — a cidade + UF; é o que o anunciante escolhe, e conta
+//                   como UMA posição do plano, tenha 1 ou 10 telas;
+//   · TELA        — o equipamento físico; tem a sua agenda, o seu contexto
+//                   e a sua operação;
+//   · ALOCAÇÃO    — onde a tela está num período: HOSPEDAGEM (uma tela num
+//                   comércio, src/pontos/hospedagem.js) ou EVENTO (uma ou
+//                   várias telas da rede num evento, aqui);
+//   · a agenda é POR TELA (src/pontos/agenda.js): duas telas da mesma rede
+//     podem estar em lugares diferentes ao mesmo tempo; a mesma tela nunca.
+//
+// A rede nasce só pelo Admin (nunca de candidatura), sem dona e sem tela —
+// "+ Adicionar tela" na ficha. Uma rede por cidade + UF (índice único da
+// 115). Tela sem alocação não é inventário: ligada, toca só o institucional
+// (src/lib/contexto-do-ponto.js). A rede aparece SEMPRE para o anunciante;
+// sem tela em operação ela só não veicula (src/lib/pacing.js#poolDaRede).
 //
 // O público estimado é ESTIMATIVA do evento: aparece como "~600 pessoas"
 // e nunca entra em Proof-of-Play, impressão ou alcance.
 
-const LIMITES = { nome: 120, organizacao: 120, local: 160, observacao: 500, publicoMaximo: 1_000_000 };
-const agenda = require('./agenda');
+const LIMITES = {
+  nome: 120,
+  organizacao: 120,
+  local: 160,
+  endereco: 300,
+  observacao: 500,
+  cidade: 80,
+  publicoMaximo: 1_000_000,
+};
+const UFS = new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
 
 const erro = (status, mensagem, campo) => Object.assign(new Error(mensagem), { status, ...(campo ? { campo } : {}) });
 
-// "Mostraí Móvel #01": o número é do móvel (migration 112), nunca reaproveitado.
-const nomeDoMovel = (numero) => `Mostraí Móvel #${String(numero).padStart(2, '0')}`;
+// O nome público padrão da rede. Sem cidade fixa no código.
+const nomePadraoDaRede = (cidade) => `Mostraí Móvel — ${cidade}`;
 
 async function proximoNumeroMovel(db) {
   const { rows } = await db.query(`SELECT nextval('pontos_movel_numero_seq')::int AS numero`);
@@ -43,193 +52,254 @@ async function proximoNumeroMovel(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Leitura: local atual e próximo evento de cada móvel
+// Leitura: telas e compromissos das redes
 // ---------------------------------------------------------------------------
-// Uma consulta para N pontos (lista do anunciante, grade do admin). Ponto
-// fixo não entra no mapa. É leitura PÚBLICA (card do anunciante): da
-// hospedagem saem só o nome e o endereço do local — nunca a conta, o
-// período, o percentual, o saldo ou o histórico. Hospedagem futura não
-// aparece. Sem alocação: `localAtual` null.
-async function situacaoDosMoveis(pontoIds, db = pool) {
-  const ids = [...new Set(pontoIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
-  if (!ids.length) return new Map();
-  const { rows } = await db.query(
-    `SELECT p.id,
-            atual.id AS atual_id, atual.nome AS atual_nome, atual.local AS atual_local,
-            atual.inicio AS atual_inicio, atual.fim AS atual_fim,
-            hosp.id AS hosp_id, hosp.local AS hosp_local, hosp.endereco AS hosp_endereco,
-            prox.id AS prox_id, prox.nome AS prox_nome, prox.local AS prox_local,
-            prox.inicio AS prox_inicio, prox.fim AS prox_fim, prox.publico_estimado AS prox_publico
-       FROM pontos p
-       LEFT JOIN pontos_moveis_eventos atual ON atual.ponto_id = p.id AND atual.estado = 'em_andamento'
-       LEFT JOIN pontos_moveis_hospedagens hosp ON hosp.ponto_id = p.id AND hosp.estado = 'ativa'
-       LEFT JOIN LATERAL (
-         SELECT e.id, e.nome, e.local, e.inicio, e.fim, e.publico_estimado
-           FROM pontos_moveis_eventos e
-          WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.fim > now()
-          ORDER BY e.inicio, e.id
-          LIMIT 1
-       ) prox ON true
-      WHERE p.id = ANY($1::int[]) AND p.tipo = 'movel'`,
-    [ids],
-  );
-  return new Map(rows.map((r) => [r.id, montarSituacao(r)]));
+// As telas de N redes (inativa fora: não é mais da operação) e os
+// compromissos de cada uma que ainda contam — em curso, ou programados que
+// não terminaram. Evento com 3 telas vira 3 linhas (uma por tela).
+async function telasECompromissos(redeIds, db = pool) {
+  const ids = [...new Set(redeIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return { telas: [], compromissos: [] };
+  const [{ rows: telas }, { rows: compromissos }] = await Promise.all([
+    db.query(
+      `SELECT d.id, d.ponto_id, d.status, d.ultima_vez_online, (d.chave_hash IS NOT NULL) AS chave_hash,
+              d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro, d.primeiro_sinal_em, d.instalado_em
+         FROM dispositivos d
+        WHERE d.ponto_id = ANY($1::int[]) AND d.status <> 'inativo'
+        ORDER BY d.id`,
+      [ids],
+    ),
+    db.query(
+      `SELECT 'hospedagem' AS tipo, h.id, h.ponto_id, h.dispositivo_id, h.local AS nome, h.local, h.endereco,
+              ca.nome_empresa AS conta, h.inicio, h.fim, h.estado, h.horario_operacao
+         FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
+        WHERE h.ponto_id = ANY($1::int[])
+          AND (h.estado = 'ativa' OR (h.estado = 'programada' AND h.fim > now()))
+       UNION ALL
+       SELECT 'evento', e.id, e.ponto_id, et.dispositivo_id, e.nome, e.local, e.endereco,
+              NULL, e.inicio, e.fim, e.estado, e.horario_operacao
+         FROM pontos_moveis_eventos e JOIN pontos_moveis_evento_telas et ON et.evento_id = e.id
+        WHERE e.ponto_id = ANY($1::int[])
+          AND (e.estado = 'em_andamento' OR (e.estado = 'programado' AND e.fim > now()))
+        ORDER BY 9, 2`,
+      [ids],
+    ),
+  ]);
+  return { telas, compromissos };
 }
 
-function montarSituacao(r) {
-  return {
-    localAtual: r.hosp_id
-      ? { origem: 'hospedagem', nome: r.hosp_local, endereco: r.hosp_endereco }
-      : r.atual_id
-        ? {
-            origem: 'evento',
-            nome: r.atual_local,
-            endereco: r.atual_local,
-            evento: {
-              id: Number(r.atual_id),
-              nome: r.atual_nome,
-              inicio: r.atual_inicio,
-              fim: r.atual_fim,
-              dataInicio: alocacao.dataEmMatao(r.atual_inicio),
-              dataFim: alocacao.datasDoPeriodo(r.atual_inicio, r.atual_fim).dataFim,
-            },
-          }
-        : null,
-    proximoEvento: r.prox_id
-      ? {
-          id: Number(r.prox_id),
-          nome: r.prox_nome,
-          local: r.prox_local,
-          inicio: r.prox_inicio,
-          fim: r.prox_fim,
-          dataInicio: alocacao.dataEmMatao(r.prox_inicio),
-          dataFim: alocacao.datasDoPeriodo(r.prox_inicio, r.prox_fim).dataFim,
-          publicoEstimado: r.prox_publico,
-        }
-      : null,
+const emCurso = (c) => c.estado === 'ativa' || c.estado === 'em_andamento';
+
+const compromissoCurto = (c) =>
+  c && {
+    tipo: c.tipo,
+    id: Number(c.id),
+    nome: c.nome,
+    local: c.local,
+    endereco: c.endereco,
+    conta: c.conta,
+    inicio: c.inicio,
+    fim: c.fim,
+    estado: c.estado,
+    tela: { id: c.dispositivo_id, codigo: formatarCodigoTela(c.dispositivo_id) },
   };
+
+// Cada tela da rede com o que está fazendo AGORA e o PRÓXIMO compromisso.
+// `operando`: ativa no cadastro E alocada — é a tela comercial ativa.
+function telasDaRede(redeId, telas, compromissos) {
+  const { estadosDaTela } = require('../lib/status-tela');
+  return telas
+    .filter((t) => t.ponto_id === redeId)
+    .map((t) => {
+      const dela = compromissos.filter((c) => c.dispositivo_id === t.id);
+      const atual = dela.find(emCurso) || null;
+      const proximo = dela.find((c) => !emCurso(c)) || null;
+      return {
+        id: t.id,
+        codigo: formatarCodigoTela(t.id),
+        status: t.status,
+        instaladaEm: t.instalado_em,
+        primeiroSinalEm: t.primeiro_sinal_em,
+        ...estadosDaTela(t, atual ? atual.horario_operacao : null),
+        alocacao: compromissoCurto(atual),
+        proximo: compromissoCurto(proximo),
+        operando: t.status === 'ativo' && Boolean(atual),
+      };
+    });
 }
 
-// AGORA e PRÓXIMO de cada móvel, para o Admin: o compromisso em curso
-// (hospedagem ativa — com a conta — ou evento em andamento) e o próximo da
-// agenda (hospedagem programada ou evento programado), com início e fim.
-const AGORA_SQL = `(SELECT json_build_object('tipo', x.tipo, 'id', x.id, 'nome', x.nome, 'conta', x.conta,
-                                            'inicio', x.inicio, 'fim', x.fim)
-     FROM (SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, ca.nome_empresa AS conta, h.inicio, h.fim
-             FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
-            WHERE h.ponto_id = p.id AND h.estado = 'ativa'
-           UNION ALL
-           SELECT 'evento', e.id, e.nome, NULL, e.inicio, e.fim
-             FROM pontos_moveis_eventos e
-            WHERE e.ponto_id = p.id AND e.estado = 'em_andamento'
-           LIMIT 1) x)`;
-const PROXIMO_SQL = `(SELECT json_build_object('tipo', x.tipo, 'id', x.id, 'nome', x.nome, 'conta', x.conta,
-                                              'inicio', x.inicio, 'fim', x.fim)
-     FROM (SELECT 'hospedagem' AS tipo, h.id, h.local AS nome, ca.nome_empresa AS conta, h.inicio, h.fim
-             FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
-            WHERE h.ponto_id = p.id AND h.estado = 'programada' AND h.fim > now()
-           UNION ALL
-           SELECT 'evento', e.id, e.nome, NULL, e.inicio, e.fim
-             FROM pontos_moveis_eventos e
-            WHERE e.ponto_id = p.id AND e.estado = 'programado' AND e.fim > now()
-           ORDER BY 5, 2 LIMIT 1) x)`;
+// "4 telas · 2 em operação agora · 1 com compromisso futuro · 1 disponível".
+// Partição das telas da rede (inativa fora): em operação (alocada agora),
+// agendada (sem alocação agora, com compromisso futuro), disponível (ativa,
+// sem nada) e o resto (em reparo sem compromisso).
+function resumoDasTelas(telas) {
+  const emOperacao = telas.filter((t) => t.operando).length;
+  const agendadas = telas.filter((t) => !t.alocacao && t.proximo).length;
+  const disponiveis = telas.filter((t) => t.status === 'ativo' && !t.alocacao && !t.proximo).length;
+  return { telas: telas.length, emOperacao, comCompromissoFuturo: agendadas, disponiveis };
+}
 
-// Admin → Rede → Pontos móveis: cada equipamento com a foto, a tela, o que
-// está fazendo AGORA (sem alocação, hospedado, em evento) e o PRÓXIMO
-// compromisso.
-async function listarMoveis() {
+// Para o anunciante, "Onde estamos" e a grade do Admin: a rede com cidade,
+// UF, quantas telas e quantas operando agora, e ONDE as telas em operação
+// estão (só nome e endereço do local — nunca conta, período, percentual ou
+// agenda). Sem tela em operação: `locaisAgora` vazio.
+async function situacaoDasRedes(redeIds, db = pool) {
+  const ids = [...new Set(redeIds.map(Number))].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return new Map();
+  const [{ rows: redes }, { telas, compromissos }] = await Promise.all([
+    db.query(
+      `SELECT id, nome, cidade, uf, foto_instalacao_url FROM pontos WHERE id = ANY($1::int[]) AND tipo = 'movel'`,
+      [ids],
+    ),
+    telasECompromissos(ids, db),
+  ]);
+  const mapa = new Map();
+  for (const r of redes) {
+    const dela = telasDaRede(r.id, telas, compromissos);
+    const resumo = resumoDasTelas(dela);
+    mapa.set(r.id, {
+      nome: r.nome,
+      cidade: r.cidade,
+      uf: r.uf,
+      foto: r.foto_instalacao_url,
+      telas: resumo.telas,
+      emOperacao: resumo.emOperacao,
+      locaisAgora: dela
+        .filter((t) => t.operando)
+        .map((t) => ({ origem: t.alocacao.tipo, nome: t.alocacao.local, endereco: t.alocacao.endereco })),
+    });
+  }
+  return mapa;
+}
+
+// Admin → Rede → Pontos móveis (a central das redes): cada rede com a foto,
+// o resumo das telas, o que está acontecendo AGORA (por tela) e o PRÓXIMO
+// compromisso da rede.
+async function listarRedes() {
   const { rows } = await pool.query(
-    `SELECT p.id, p.nome, p.status, p.movel_numero, p.foto_instalacao_url,
-            (SELECT row_to_json(t) FROM (
-               SELECT d.id, d.apelido, d.status, d.ultima_vez_online, (d.chave_hash IS NOT NULL) AS chave_hash,
-                      d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro
-                 FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) t) AS tela,
-            ${require('../lib/contexto-do-ponto').horarioEmVigorSql('p')} AS horario_em_vigor,
-            ${AGORA_SQL} AS agora, ${PROXIMO_SQL} AS proximo
+    `SELECT p.id, p.nome, p.cidade, p.uf, p.status, p.movel_numero, p.foto_instalacao_url
        FROM pontos p
       WHERE p.tipo = 'movel' AND p.status <> 'arquivado'
-      ORDER BY p.movel_numero, p.id`,
+      ORDER BY p.cidade, p.id`,
+  );
+  const { telas, compromissos } = await telasECompromissos(rows.map((r) => r.id));
+  return rows.map((r) => {
+    const dela = telasDaRede(r.id, telas, compromissos);
+    const futuros = compromissos.filter((c) => c.ponto_id === r.id && !emCurso(c));
+    return {
+      id: r.id,
+      nome: r.nome,
+      cidade: r.cidade,
+      uf: r.uf,
+      status: r.status,
+      foto: r.foto_instalacao_url,
+      resumo: resumoDasTelas(dela),
+      agora: dela.filter((t) => t.alocacao).map((t) => t.alocacao),
+      proximo: compromissoCurto(futuros[0]) || null,
+    };
+  });
+}
+
+// PRÓXIMOS COMPROMISSOS de todas as redes (a central): os programados que
+// ainda vão acontecer, por início — evento com várias telas é UMA linha com
+// as telas juntas.
+async function proximosCompromissos(limite = 12) {
+  const { rows } = await pool.query(
+    `SELECT x.* FROM (
+       SELECT 'hospedagem' AS tipo, h.id, h.ponto_id, p.nome AS rede, h.local AS nome, ca.nome_empresa AS conta,
+              h.inicio, h.fim, ARRAY[h.dispositivo_id] AS telas
+         FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id JOIN anunciantes ca ON ca.id = h.conta_id
+        WHERE h.estado = 'programada' AND h.fim > now()
+       UNION ALL
+       SELECT 'evento', e.id, e.ponto_id, p.nome, e.nome, NULL, e.inicio, e.fim,
+              (SELECT array_agg(et.dispositivo_id ORDER BY et.dispositivo_id) FROM pontos_moveis_evento_telas et
+                WHERE et.evento_id = e.id)
+         FROM pontos_moveis_eventos e JOIN pontos p ON p.id = e.ponto_id
+        WHERE e.estado = 'programado' AND e.fim > now()
+     ) x ORDER BY x.inicio, x.id LIMIT $1`,
+    [limite],
   );
   return rows.map((r) => ({
-    id: r.id,
+    tipo: r.tipo,
+    id: Number(r.id),
+    redeId: r.ponto_id,
+    rede: r.rede,
     nome: r.nome,
-    numero: r.movel_numero,
-    status: r.status,
-    foto: r.foto_instalacao_url,
-    // Admin: cadastro, conectividade e operação separados (§8). Sem
-    // alocação a tela pode estar ligada — conectividade não é inventário.
-    tela: r.tela && {
-      id: r.tela.id,
-      nome: r.tela.apelido,
-      status: r.tela.status,
-      ...require('../lib/status-tela').estadosDaTela(r.tela, r.horario_em_vigor),
-    },
-    alocado: Boolean(r.agora),
-    agora: r.agora,
-    proximo: r.proximo,
+    conta: r.conta,
+    inicio: r.inicio,
+    fim: r.fim,
+    telas: (r.telas || []).map((id) => ({ id, codigo: formatarCodigoTela(id) })),
   }));
 }
 
-// Ficha do Admin, por seções: Equipamento (número, nome, foto, nota),
-// Tela, Situação atual (agora/próximo), Agenda (os compromissos que ainda
-// vão acontecer, hospedagens e eventos juntos, por início), Hospedagens e
-// Eventos (com histórico) e o histórico de bases do modelo antigo (só
-// leitura — anterior à migration 114).
-async function fichaDoMovel(pontoId) {
+// Ficha da rede no Admin: cabeçalho (nome, cidade/UF, selo), o resumo das
+// telas, cada tela com a operação de agora, a AGENDA consolidada (cada
+// compromisso com a tela), hospedagens e eventos com histórico, e o
+// histórico de bases do modelo antigo (só leitura — anterior à 114).
+async function fichaDaRede(redeId) {
   const {
     rows: [p],
   } = await pool.query(
-    `SELECT p.id, p.tipo, p.nome, p.foto_instalacao_url, p.movel_numero, p.observacoes, p.status,
-            (SELECT json_build_object('id', d.id, 'nome', d.apelido, 'status', d.status)
-               FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) AS tela,
-            ${AGORA_SQL} AS agora, ${PROXIMO_SQL} AS proximo
-       FROM pontos p
-      WHERE p.id = $1`,
-    [pontoId],
+    `SELECT p.id, p.tipo, p.nome, p.cidade, p.uf, p.foto_instalacao_url, p.movel_numero, p.observacoes, p.status
+       FROM pontos p WHERE p.id = $1`,
+    [redeId],
   );
   if (!p) return null;
   if (p.tipo !== 'movel') return { tipo: p.tipo };
-  const [situacoes, { rows: eventos }, { rows: bases }, hospedagens] = await Promise.all([
-    situacaoDosMoveis([p.id]),
-    pool.query(
-      `SELECT e.id, e.nome, e.organizacao, e.local, e.inicio, e.fim, e.horario_operacao, e.publico_estimado,
-              e.observacao, e.estado, e.iniciado_em, e.encerrado_em, e.cancelado_em, e.criado_em, e.criado_por_admin,
-              e.categoria_id, cat.nome AS categoria_nome, e.encerramento,
-              (e.fim <= now()) AS terminou,
-              (SELECT COUNT(*)::int FROM execucoes_confirmadas x
-                WHERE x.evento_id = e.id AND x.status = 'contabilizado') AS exibicoes_confirmadas
-         FROM pontos_moveis_eventos e LEFT JOIN categorias cat ON cat.id = e.categoria_id
-        WHERE e.ponto_id = $1
-        ORDER BY CASE e.estado WHEN 'em_andamento' THEN 0 WHEN 'programado' THEN 1 ELSE 2 END,
-                 CASE WHEN e.estado = 'programado' THEN e.inicio END,
-                 e.inicio DESC, e.id DESC`,
-      [p.id],
-    ),
-    pool.query(
-      `SELECT b.conta_id, a.nome_empresa AS conta_nome, b.nome, b.endereco, b.desde, b.ate, b.alterado_por_admin
-         FROM pontos_moveis_bases b LEFT JOIN anunciantes a ON a.id = b.conta_id
-        WHERE b.ponto_id = $1
-        ORDER BY b.ate DESC, b.id DESC`,
-      [p.id],
-    ),
-    require('./hospedagem').hospedagensDoPonto(p.id),
-  ]);
-  const situacao = situacoes.get(p.id);
+  const [{ telas, compromissos }, { rows: eventos }, { rows: telasDosEventos }, { rows: bases }, hospedagens] =
+    await Promise.all([
+      telasECompromissos([p.id]),
+      pool.query(
+        `SELECT e.id, e.nome, e.organizacao, e.local, e.endereco, e.inicio, e.fim, e.horario_operacao,
+                e.publico_estimado, e.observacao, e.estado, e.iniciado_em, e.encerrado_em, e.cancelado_em, e.criado_em,
+                e.criado_por_admin, e.categoria_id, cat.nome AS categoria_nome, e.encerramento,
+                (e.fim <= now()) AS terminou,
+                (SELECT COUNT(*)::int FROM execucoes_confirmadas x
+                  WHERE x.evento_id = e.id AND x.status = 'contabilizado') AS exibicoes_confirmadas
+           FROM pontos_moveis_eventos e LEFT JOIN categorias cat ON cat.id = e.categoria_id
+          WHERE e.ponto_id = $1
+          ORDER BY CASE e.estado WHEN 'em_andamento' THEN 0 WHEN 'programado' THEN 1 ELSE 2 END,
+                   CASE WHEN e.estado = 'programado' THEN e.inicio END,
+                   e.inicio DESC, e.id DESC`,
+        [p.id],
+      ),
+      pool.query(
+        `SELECT et.evento_id, et.dispositivo_id FROM pontos_moveis_evento_telas et
+           JOIN pontos_moveis_eventos e ON e.id = et.evento_id
+          WHERE e.ponto_id = $1 ORDER BY et.dispositivo_id`,
+        [p.id],
+      ),
+      pool.query(
+        `SELECT b.conta_id, a.nome_empresa AS conta_nome, b.nome, b.endereco, b.desde, b.ate, b.alterado_por_admin
+           FROM pontos_moveis_bases b LEFT JOIN anunciantes a ON a.id = b.conta_id
+          WHERE b.ponto_id = $1
+          ORDER BY b.ate DESC, b.id DESC`,
+        [p.id],
+      ),
+      require('./hospedagem').hospedagensDoPonto(p.id),
+    ]);
+  const telasDoEvento = (id) =>
+    telasDosEventos
+      .filter((t) => String(t.evento_id) === String(id))
+      .map((t) => ({ id: t.dispositivo_id, codigo: formatarCodigoTela(t.dispositivo_id) }));
   const listaDeEventos = eventos.map((e) => ({
     id: Number(e.id),
     nome: e.nome,
     organizacao: e.organizacao,
     local: e.local,
+    endereco: e.endereco,
     inicio: e.inicio,
     fim: e.fim,
     inicioLocal: alocacao.parede(e.inicio),
     fimLocal: alocacao.parede(e.fim),
     horarioOperacao: e.horario_operacao,
+    // null = "operar durante todo o período".
     horario: e.horario_operacao ? resumoDoHorario(e.horario_operacao) : null,
     ...alocacao.datasDoPeriodo(e.inicio, e.fim),
     publicoEstimado: e.publico_estimado,
     observacao: e.observacao,
     categoria: e.categoria_id ? { id: e.categoria_id, nome: e.categoria_nome } : null,
+    telas: telasDoEvento(e.id),
     encerramento: e.encerramento,
     estado: e.estado,
     iniciadoEm: e.iniciado_em,
@@ -240,18 +310,22 @@ async function fichaDoMovel(pontoId) {
     terminou: e.terminou,
     exibicoesConfirmadas: e.exibicoes_confirmadas,
   }));
-  // A agenda: o que ainda vai acontecer (ou está acontecendo), por início.
-  const agendaDoMovel = [
+  const dela = telasDaRede(p.id, telas, compromissos);
+  // A agenda consolidada: o que está acontecendo ou vai acontecer, por
+  // início, cada compromisso com a(s) tela(s) dele.
+  const agendaDaRede = [
     ...hospedagens
       .filter((h) => h.estado === 'programada' || h.estado === 'ativa')
       .map((h) => ({
         tipo: 'hospedagem',
         id: h.id,
         nome: h.local,
+        local: h.local,
         conta: h.conta?.nome,
         inicio: h.inicio,
         fim: h.fim,
         estado: h.estado,
+        telas: [h.tela],
       })),
     ...listaDeEventos
       .filter((e) => e.estado === 'programado' || e.estado === 'em_andamento')
@@ -259,26 +333,30 @@ async function fichaDoMovel(pontoId) {
         tipo: 'evento',
         id: e.id,
         nome: e.nome,
+        local: e.local,
         conta: null,
         inicio: e.inicio,
         fim: e.fim,
         estado: e.estado,
+        telas: e.telas,
       })),
   ].sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
+  const resumo = resumoDasTelas(dela);
   return {
     tipo: 'movel',
-    numero: p.movel_numero,
+    id: p.id,
     nome: p.nome,
+    cidade: p.cidade,
+    uf: p.uf,
     status: p.status,
     foto: p.foto_instalacao_url,
     notaInterna: p.observacoes,
-    tela: p.tela,
-    alocado: Boolean(p.agora),
-    agora: p.agora,
-    proximo: p.proximo,
-    localAtual: situacao.localAtual,
-    proximoEvento: situacao.proximoEvento,
-    agenda: agendaDoMovel,
+    // A rede é sempre escolhível pelo anunciante (sem tela em operação ela
+    // só não veicula). Arquivada sai da rede.
+    disponivelParaAnunciantes: p.status !== 'arquivado',
+    resumo,
+    telas: dela,
+    agenda: agendaDaRede,
     hospedagens,
     eventos: listaDeEventos,
     // Histórico do modelo antigo (anterior à 114): só leitura.
@@ -291,6 +369,38 @@ async function fichaDoMovel(pontoId) {
       alteradoPor: b.alterado_por_admin,
     })),
   };
+}
+
+// Para os formulários de evento e hospedagem: cada tela da rede, livre ou
+// não no período pedido (com o motivo). É só a resposta adiantada — o
+// servidor confere de novo ao gravar, e o banco por último.
+async function disponibilidadeDasTelas(redeId, consulta) {
+  const periodo = alocacao.lerPeriodo(consulta, { exigirFuturo: false });
+  const ignorar =
+    consulta?.ignorar_tipo === 'evento' || consulta?.ignorar_tipo === 'hospedagem'
+      ? { tipo: consulta.ignorar_tipo, id: Number(consulta.ignorar_id) || 0 }
+      : null;
+  const { rows: telas } = await pool.query(
+    `SELECT id, status FROM dispositivos WHERE ponto_id = $1 AND status <> 'inativo' ORDER BY id`,
+    [redeId],
+  );
+  const ocupadas = await agenda.conflitos(
+    pool,
+    telas.map((t) => t.id),
+    periodo.inicio,
+    periodo.fim,
+    { ignorar },
+  );
+  return telas.map((t) => {
+    const conflito = ocupadas.find((o) => o.dispositivo_id === t.id);
+    return {
+      id: t.id,
+      codigo: formatarCodigoTela(t.id),
+      status: t.status,
+      livre: !conflito,
+      motivo: conflito ? agenda.descrever(conflito) : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -311,20 +421,33 @@ async function emTransacao(fn) {
   }
 }
 
-// Trava a linha do ponto: toda escrita de alocação de um mesmo ponto passa
-// uma de cada vez (iniciar dois compromissos, agendar dois no mesmo
-// período — nada disso cruza).
-async function travarPonto(cliente, pontoId) {
+// Trava a linha da rede: toda escrita de alocação de uma mesma rede passa
+// uma de cada vez. (A agenda de cada tela também trava no banco — 115.)
+async function travarMovel(cliente, pontoId) {
   const { rows } = await cliente.query('SELECT * FROM pontos WHERE id = $1 FOR UPDATE', [pontoId]);
-  if (!rows[0]) throw erro(404, 'ponto não encontrado');
-  if (rows[0].status === 'arquivado') throw erro(409, 'ponto arquivado não muda');
+  if (!rows[0]) throw erro(404, 'rede não encontrada');
+  if (rows[0].status === 'arquivado') throw erro(409, 'rede arquivada não muda');
+  if (rows[0].tipo !== 'movel') throw erro(409, 'esse ponto é fixo — hospedagem e eventos são só da rede móvel');
   return rows[0];
 }
 
-async function travarMovel(cliente, pontoId) {
-  const ponto = await travarPonto(cliente, pontoId);
-  if (ponto.tipo !== 'movel') throw erro(409, 'esse ponto é fixo — hospedagem e eventos são só do ponto móvel');
-  return ponto;
+// As telas pedidas, conferidas contra a rede: existem, são desta rede e não
+// estão inativas. Devolve os ids, sem repetição, em ordem.
+async function telasValidas(c, redeId, pedidas, { minimo = 1, maximo = Number.POSITIVE_INFINITY } = {}) {
+  const ids = [...new Set((Array.isArray(pedidas) ? pedidas : [pedidas]).map(Number))].filter(
+    (id) => Number.isInteger(id) && id > 0,
+  );
+  if (ids.length < minimo) {
+    throw erro(400, minimo === 1 && maximo === 1 ? 'Escolha a tela' : 'Escolha pelo menos uma tela', 'telas');
+  }
+  if (ids.length > maximo) throw erro(400, 'Escolha uma tela só', 'telas');
+  const { rows } = await c.query(
+    `SELECT id FROM dispositivos WHERE id = ANY($1::int[]) AND ponto_id = $2 AND status <> 'inativo'`,
+    [ids, redeId],
+  );
+  if (rows.length !== ids.length)
+    throw erro(400, 'Uma das telas escolhidas não é desta rede (ou está inativa)', 'telas');
+  return ids.sort((a, b) => a - b);
 }
 
 function texto(valor, campo, rotulo, maximo, { obrigatorio = true } = {}) {
@@ -337,18 +460,51 @@ function texto(valor, campo, rotulo, maximo, { obrigatorio = true } = {}) {
   return t;
 }
 
-// Cadastro leve (pedido do dono): nome, organização, local, período com data
-// e hora (`inicio`/`fim`, no relógio de Matão) e o HORÁRIO DE FUNCIONAMENTO
-// do evento (obrigatório — nunca 24 h automático; '24h' é escolha
-// explícita). Público e observação, opcionais. `categoria_id`: o CONTEXTO DE
-// CONCORRÊNCIA do evento — o ramo que a trava de concorrente protege enquanto
-// ele está em andamento. Vazio = sem restrição.
+function lerUf(valor) {
+  const uf = typeof valor === 'string' ? valor.trim().toUpperCase() : '';
+  if (!UFS.has(uf)) throw erro(400, 'UF: escolha o estado', 'uf');
+  return uf;
+}
+
+// Horário de uma alocação (evento ou hospedagem). Padrão: "Operar durante
+// todo o período" — sem grade (NULL: a TV opera o período inteiro). Com
+// `horario_operacao`, a grade semanal com feriados.
+function lerHorarioDaAlocacao(corpo) {
+  if (corpo?.operar_todo_periodo === true || corpo?.horario_operacao == null || corpo?.horario_operacao === '') {
+    return null;
+  }
+  return alocacao.lerHorario(corpo.horario_operacao);
+}
+
+// Contexto de concorrência (categoria protegida): vazio = nenhuma restrição.
+function lerCategoria(valor) {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+  const id = Number(String(valor).trim());
+  if (!Number.isInteger(id) || id <= 0) {
+    throw erro(400, 'Categoria protegida: escolha uma categoria da lista (ou nenhuma restrição)', 'categoria_id');
+  }
+  return id;
+}
+
+async function exigirCategoria(c, categoriaId) {
+  if (!categoriaId) return;
+  const { rows } = await c.query('SELECT 1 FROM categorias WHERE id = $1', [categoriaId]);
+  if (!rows[0]) throw erro(400, 'Categoria protegida: categoria não encontrada', 'categoria_id');
+}
+
+// Evento: nome, organização (opcional), local e endereço (a cidade é a da
+// rede), público estimado e observação (opcionais), período com data e hora,
+// horário (padrão: o período inteiro), a categoria protegida e as TELAS
+// PARTICIPANTES (uma ou várias da rede).
 function validarEvento(corpo, { agora = new Date() } = {}) {
   const nome = texto(corpo?.nome, 'nome', 'Nome do evento', LIMITES.nome);
-  const organizacao = texto(corpo?.organizacao, 'organizacao', 'Organização', LIMITES.organizacao);
+  const organizacao = texto(corpo?.organizacao, 'organizacao', 'Organização', LIMITES.organizacao, {
+    obrigatorio: false,
+  });
   const local = texto(corpo?.local, 'local', 'Local', LIMITES.local);
+  const endereco = texto(corpo?.endereco, 'endereco', 'Endereço', LIMITES.endereco);
   const periodo = alocacao.lerPeriodo(corpo, { agora });
-  const horario = alocacao.lerHorario(corpo?.horario_operacao);
+  const horario = lerHorarioDaAlocacao(corpo);
   let publicoEstimado = null;
   const publico = corpo?.publico_estimado;
   if (publico !== undefined && publico !== null && String(publico).trim() !== '') {
@@ -359,37 +515,29 @@ function validarEvento(corpo, { agora = new Date() } = {}) {
     publicoEstimado = n;
   }
   const observacao = texto(corpo?.observacao, 'observacao', 'Observação', LIMITES.observacao, { obrigatorio: false });
-  let categoriaId = null;
-  const cat = corpo?.categoria_id;
-  if (cat !== undefined && cat !== null && String(cat).trim() !== '') {
-    categoriaId = Number(String(cat).trim());
-    if (!Number.isInteger(categoriaId) || categoriaId <= 0) {
-      throw erro(400, 'Contexto de concorrência: escolha um ramo da lista (ou nenhum)', 'categoria_id');
-    }
-  }
-  return { nome, organizacao, local, ...periodo, horario, publicoEstimado, observacao, categoriaId };
+  const categoriaId = lerCategoria(corpo?.categoria_id);
+  return { nome, organizacao, local, endereco, ...periodo, horario, publicoEstimado, observacao, categoriaId };
 }
 
-async function criarEvento(pontoId, corpo, admin) {
+async function criarEvento(redeId, corpo, admin) {
   const ev = validarEvento(corpo);
   return emTransacao(async (c) => {
-    await travarMovel(c, pontoId);
-    if (ev.categoriaId) {
-      const { rows } = await c.query('SELECT 1 FROM categorias WHERE id = $1', [ev.categoriaId]);
-      if (!rows[0]) throw erro(400, 'Contexto de concorrência: ramo não encontrado', 'categoria_id');
-    }
-    await agenda.exigirLivre(c, pontoId, ev.inicio, ev.fim);
+    await travarMovel(c, redeId);
+    await exigirCategoria(c, ev.categoriaId);
+    const telas = await telasValidas(c, redeId, corpo?.telas);
+    await agenda.exigirLivres(c, telas, ev.inicio, ev.fim);
     const { rows } = await c.query(
       `INSERT INTO pontos_moveis_eventos
-         (ponto_id, nome, organizacao, local, data_inicio, data_fim, publico_estimado, observacao, criado_por_admin,
-          categoria_id, inicio, fim, horario_operacao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         (ponto_id, nome, organizacao, local, endereco, data_inicio, data_fim, publico_estimado, observacao,
+          criado_por_admin, categoria_id, inicio, fim, horario_operacao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
       [
-        pontoId,
+        redeId,
         ev.nome,
         ev.organizacao,
         ev.local,
+        ev.endereco,
         ev.dataInicio,
         ev.dataFim,
         ev.publicoEstimado,
@@ -398,22 +546,29 @@ async function criarEvento(pontoId, corpo, admin) {
         ev.categoriaId,
         ev.inicio,
         ev.fim,
-        JSON.stringify(ev.horario),
+        ev.horario ? JSON.stringify(ev.horario) : null,
       ],
     );
-    return Number(rows[0].id);
+    const id = rows[0].id;
+    await c.query(`INSERT INTO pontos_moveis_evento_telas (evento_id, dispositivo_id) SELECT $1, unnest($2::int[])`, [
+      id,
+      telas,
+    ]);
+    return Number(id);
   }).catch((err) => {
     throw agenda.traduzirErroDoBanco(err);
   });
 }
 
-async function eventoDoPonto(c, pontoId, eventoId) {
+async function eventoDaRede(c, redeId, eventoId) {
   const id = /^\d{1,15}$/.test(String(eventoId)) ? String(eventoId) : null;
   const { rows } = id
     ? await c.query(
-        `SELECT *, (fim <= now()) AS terminou FROM pontos_moveis_eventos
-          WHERE id = $1 AND ponto_id = $2 FOR UPDATE`,
-        [id, pontoId],
+        `SELECT e.*, (e.fim <= now()) AS terminou,
+                COALESCE((SELECT array_agg(et.dispositivo_id ORDER BY et.dispositivo_id)
+                            FROM pontos_moveis_evento_telas et WHERE et.evento_id = e.id), ARRAY[]::int[]) AS telas
+           FROM pontos_moveis_eventos e WHERE e.id = $1 AND e.ponto_id = $2 FOR UPDATE OF e`,
+        [id, redeId],
       )
     : { rows: [] };
   if (!rows[0]) throw erro(404, 'evento não encontrado');
@@ -426,44 +581,47 @@ const JA_ESTA = {
   cancelado: 'Esse evento foi cancelado',
 };
 
-// "O ponto chegou ao evento": o local atual passa a ser o do evento. Pode
-// começar antes do início (montagem); não depois que acabou. Nunca começa
-// sozinho.
-async function iniciarEvento(pontoId, eventoId) {
+// "As telas chegaram ao evento": cada tela participante passa a operar no
+// contexto do evento. Pode começar antes do início (montagem); não depois
+// que acabou. Nunca começa sozinho.
+async function iniciarEvento(redeId, eventoId) {
   return emTransacao(async (c) => {
-    await travarMovel(c, pontoId);
-    const ev = await eventoDoPonto(c, pontoId, eventoId);
+    await travarMovel(c, redeId);
+    const ev = await eventoDaRede(c, redeId, eventoId);
     if (ev.estado !== 'programado') throw erro(409, JA_ESTA[ev.estado]);
     if (ev.terminou) throw erro(409, 'Esse evento já terminou pelo horário — cancele ou cadastre de novo');
-    await agenda.exigirLivre(c, pontoId, ev.inicio, ev.fim, {
+    await agenda.exigirLivres(c, ev.telas, ev.inicio, ev.fim, {
       ignorar: { tipo: 'evento', id: ev.id },
       emCurso: true,
     });
     await c.query(`UPDATE pontos_moveis_eventos SET estado = 'em_andamento', iniciado_em = now() WHERE id = $1`, [
       ev.id,
     ]);
-    await avisarTelas(c, pontoId);
+    await avisarTelas(c, ev.telas);
   }).catch((err) => {
     throw agenda.traduzirErroDoBanco(err);
   });
 }
 
 // Entrar numa alocação ou sair dela muda o horário que vai para a TV
-// (src/lib/contexto-do-ponto.js): a versão da config sobe como numa troca de
-// horário (migration 093) e a TV busca a config nova no próximo heartbeat.
-async function avisarTelas(c, pontoId) {
+// (src/lib/contexto-do-ponto.js): a versão da config DAS TELAS ENVOLVIDAS
+// sobe como numa troca de horário (migration 093) e cada TV busca a config
+// nova no próximo heartbeat. As outras telas da rede não mudam.
+async function avisarTelas(c, telaIds) {
+  const ids = [...new Set((telaIds || []).map(Number))].filter((id) => Number.isInteger(id) && id > 0);
+  if (!ids.length) return;
   await c.query(
     `UPDATE dispositivos SET config_versao_desejada = config_versao_desejada + 1, config_alterada_em = now()
-      WHERE ponto_id = $1`,
-    [pontoId],
+      WHERE id = ANY($1::int[])`,
+    [ids],
   );
 }
 
-// "Encerrar evento": o móvel fica sem alocação (até a próxima).
-async function encerrarEvento(pontoId, eventoId) {
+// "Encerrar evento": as telas dele ficam sem alocação (até a próxima).
+async function encerrarEvento(redeId, eventoId) {
   return emTransacao(async (c) => {
-    await travarMovel(c, pontoId);
-    const ev = await eventoDoPonto(c, pontoId, eventoId);
+    await travarMovel(c, redeId);
+    const ev = await eventoDaRede(c, redeId, eventoId);
     if (ev.estado === 'programado') throw erro(409, 'Esse evento ainda não começou — para desistir dele, cancele');
     if (ev.estado !== 'em_andamento') throw erro(409, JA_ESTA[ev.estado]);
     await c.query(
@@ -471,18 +629,16 @@ async function encerrarEvento(pontoId, eventoId) {
         WHERE id = $1`,
       [ev.id],
     );
-    await avisarTelas(c, pontoId);
+    await avisarTelas(c, ev.telas);
   });
 }
 
-// Cancelado não vira local atual nem próximo evento, e continua auditável.
-async function cancelarEvento(pontoId, eventoId) {
+// Cancelado não vira alocação nem próximo compromisso, e continua auditável.
+async function cancelarEvento(redeId, eventoId) {
   return emTransacao(async (c) => {
-    await travarMovel(c, pontoId);
-    const ev = await eventoDoPonto(c, pontoId, eventoId);
-    if (ev.estado === 'em_andamento') {
-      throw erro(409, 'O ponto já está nesse evento — use Encerrar');
-    }
+    await travarMovel(c, redeId);
+    const ev = await eventoDaRede(c, redeId, eventoId);
+    if (ev.estado === 'em_andamento') throw erro(409, 'O evento já está em andamento — use Encerrar');
     if (ev.estado !== 'programado') throw erro(409, JA_ESTA[ev.estado]);
     await c.query(
       `UPDATE pontos_moveis_eventos SET estado = 'cancelado', cancelado_em = now(), encerramento = 'manual'
@@ -493,47 +649,96 @@ async function cancelarEvento(pontoId, eventoId) {
 }
 
 // ---------------------------------------------------------------------------
-// Criação (só Admin)
+// A rede (só Admin)
 // ---------------------------------------------------------------------------
-// O móvel nasce AQUI e só aqui — nunca de candidatura (que sempre gera fixo).
-// Só o EQUIPAMENTO: nome (opcional: "Mostraí Móvel #NN") e nota interna; a
-// foto vem depois, pela rota de foto. Nada de local, endereço, ramo ou
-// horário — isso é da alocação (migration 114). O tipo é automático e nunca
-// há dona. A Tela 1 nasce junto (1 móvel = 1 tela). Nasce SEM ALOCAÇÃO.
-async function criarPontoMovel(corpo, admin) {
-  const nomeInformado = texto(corpo?.nome, 'nome', 'Nome do equipamento', LIMITES.nome, { obrigatorio: false });
+// A rede nasce AQUI e só aqui — nunca de candidatura. Cidade e UF
+// obrigatórias; nome opcional ("Mostraí Móvel — {Cidade}"); nota interna
+// opcional; a foto/capa vem depois, pela rota de foto. NENHUMA tela nasce
+// junto: "+ Adicionar tela" na ficha. Uma rede por cidade + UF.
+async function criarRedeMovel(corpo, admin) {
+  const cidade = texto(corpo?.cidade, 'cidade', 'Cidade', LIMITES.cidade);
+  const uf = lerUf(corpo?.uf);
+  const nomeInformado = texto(corpo?.nome, 'nome', 'Nome da rede', LIMITES.nome, { obrigatorio: false });
   const nota = texto(corpo?.observacoes, 'observacoes', 'Nota interna', LIMITES.observacao, { obrigatorio: false });
   const pontosRepo = require('./repository');
-  const ponto = await emTransacao(async (c) => {
-    const numero = await proximoNumeroMovel(c);
-    return pontosRepo.criar(
-      {
-        nome: nomeInformado || nomeDoMovel(numero),
-        segmento: 'outro',
-        responsavel_nome: 'Mostraí',
-        responsavel_contato: '',
-        observacoes: nota,
-        status: 'a_instalar',
-        tipo: 'movel',
-        movel_numero: numero,
-      },
-      c,
-    );
-  });
-  // Fora da transação do ponto (o repositório da tela abre a sua). Se falhar,
-  // o móvel fica "aguardando tela" e o Admin cria a tela pela ficha.
-  let tela = null;
+  let rede;
   try {
-    tela = await require('../dispositivos/repository').criar(ponto.id);
+    rede = await emTransacao(async (c) => {
+      await existeRedeNaCidade(c, cidade, uf);
+      const numero = await proximoNumeroMovel(c);
+      return pontosRepo.criar(
+        {
+          nome: nomeInformado || nomePadraoDaRede(cidade),
+          cidade,
+          uf,
+          segmento: 'outro',
+          responsavel_nome: 'Mostraí',
+          responsavel_contato: '',
+          observacoes: nota,
+          status: 'a_instalar',
+          tipo: 'movel',
+          movel_numero: numero,
+        },
+        c,
+      );
+    });
   } catch (err) {
-    console.error(`ponto móvel ${ponto.id} criado sem tela (crie pela ficha)`, err.message);
+    throw redeDuplicada(err, cidade, uf);
   }
-  require('../lib/eventos').registrar('ponto:movel_criado', { ponto_id: ponto.id, admin: admin || null });
-  return { id: ponto.id, nome: ponto.nome, telaId: tela?.id ?? null };
+  require('../lib/eventos').registrar('ponto:movel_criado', { ponto_id: rede.id, admin: admin || null });
+  return { id: rede.id, nome: rede.nome, cidade, uf };
+}
+
+async function existeRedeNaCidade(c, cidade, uf, exceto = null) {
+  const { rows } = await c.query(
+    `SELECT 1 FROM pontos WHERE tipo = 'movel' AND status <> 'arquivado'
+        AND lower(btrim(cidade)) = lower(btrim($1)) AND uf = $2 AND id IS DISTINCT FROM $3`,
+    [cidade, uf, exceto],
+  );
+  if (rows[0]) throw erro(409, `Já existe uma rede móvel em ${cidade}/${uf}`, 'cidade');
+}
+
+// Corrida que escapou da pergunta acima: o índice único da 115 responde.
+function redeDuplicada(err, cidade, uf) {
+  if (err?.code === '23505' && /ux_pontos_rede_movel_cidade/.test(err.constraint || err.message || '')) {
+    return erro(409, `Já existe uma rede móvel em ${cidade}/${uf}`, 'cidade');
+  }
+  return err;
+}
+
+// Editar a rede: nome, cidade, UF e nota interna. Nome vazio volta ao
+// padrão da cidade.
+async function editarRede(redeId, corpo) {
+  return emTransacao(async (c) => {
+    const atual = await travarMovel(c, redeId);
+    const cidade = corpo?.cidade !== undefined ? texto(corpo.cidade, 'cidade', 'Cidade', LIMITES.cidade) : atual.cidade;
+    const uf = corpo?.uf !== undefined ? lerUf(corpo.uf) : atual.uf;
+    const nome =
+      corpo?.nome !== undefined
+        ? texto(corpo.nome, 'nome', 'Nome da rede', LIMITES.nome, { obrigatorio: false }) || nomePadraoDaRede(cidade)
+        : atual.nome;
+    const nota =
+      corpo?.observacoes !== undefined
+        ? texto(corpo.observacoes, 'observacoes', 'Nota interna', LIMITES.observacao, { obrigatorio: false })
+        : atual.observacoes;
+    await existeRedeNaCidade(c, cidade, uf, atual.id);
+    await c
+      .query('UPDATE pontos SET nome = $2, cidade = $3, uf = $4, observacoes = $5 WHERE id = $1', [
+        atual.id,
+        nome,
+        cidade,
+        uf,
+        nota,
+      ])
+      .catch((err) => {
+        throw redeDuplicada(err, cidade, uf);
+      });
+    return { id: atual.id, nome, cidade, uf };
+  });
 }
 
 // Quem precisa ver a mudança sem F5: o anfitrião de uma hospedagem
-// programada ou ativa, e quem escolheu o ponto.
+// programada ou ativa, e quem escolheu a rede.
 async function contasInteressadas(pontoId, extras = []) {
   const { rows } = await pool.query(
     `SELECT anunciante_id AS id FROM anunciantes_pontos WHERE ponto_id = $1
@@ -545,21 +750,27 @@ async function contasInteressadas(pontoId, extras = []) {
 
 module.exports = {
   LIMITES,
-  nomeDoMovel,
-  proximoNumeroMovel,
-  situacaoDosMoveis,
-  listarMoveis,
-  fichaDoMovel,
+  nomePadraoDaRede,
+  situacaoDasRedes,
+  listarRedes,
+  proximosCompromissos,
+  fichaDaRede,
+  disponibilidadeDasTelas,
   validarEvento,
   criarEvento,
   iniciarEvento,
   encerrarEvento,
   cancelarEvento,
-  criarPontoMovel,
+  criarRedeMovel,
+  editarRede,
   contasInteressadas,
   // Para src/pontos/hospedagem.js — a mesma trava e as mesmas validações.
   emTransacao,
   travarMovel,
+  telasValidas,
   texto,
+  lerHorarioDaAlocacao,
+  lerCategoria,
+  exigirCategoria,
   avisarTelas,
 };

@@ -121,9 +121,10 @@ tela) — fonte de verdade, não duplicada aqui.
 
 ## Banco / migrations
 
-Arquivos SQL em `src/db/migrations/`, numerados até `113`. Mais recente:
-`113_ponto_movel_v2.sql` (hospedagem temporária, agenda única, tempo
-operacional da tela, saldo de hospedagem, percentual auditado — ADR-037). Aplicadas por `src/db/migrate.js`, idempotente, com
+Arquivos SQL em `src/db/migrations/`, numerados até `115`. Mais recente:
+`115_rede_movel.sql` (Mostraí Móvel = rede móvel da cidade com N telas,
+alocação e agenda por tela, pool da hora, termo físico, sem custo/amortização
+— ADR-038). Aplicadas por `src/db/migrate.js`, idempotente, com
 `pg_advisory_lock`.
 
 ## Integrações — estado observado

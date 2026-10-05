@@ -9,9 +9,10 @@ const pool = require('../db/pool');
 // Toda consulta ignora `interno` — o dono testando não é métrica.
 const MESES = 6;
 
-// 1. A MÉTRICA PRINCIPAL, mês a mês. Receita confirmada menos amortização
-// das telas, menos custos fixos (a ajuda de custo aos pontos saiu em
-// 24/09/2026, ADR-016 — crédito não é despesa). Os custos são do estado
+// 1. A MÉTRICA PRINCIPAL, mês a mês. Receita confirmada menos custos fixos
+// (a ajuda de custo aos pontos saiu em 24/09/2026, ADR-016 — crédito não é
+// despesa; o custo/amortização de equipamento por tela saiu do produto em
+// 05/10/2026, migration 115). Os custos são do estado
 // ATUAL da rede, não históricos: o sistema não guarda quanto
 // custava a rede em março, e fingir que guarda seria pior que dizer isso.
 const SQL_MARGEM = `
@@ -28,20 +29,12 @@ const SQL_MARGEM = `
       -- Repasse aos pontos acabou em 24/09/2026 (ADR-016): ponto gera créditos,
       -- não custa dinheiro por mês. Coluna mantida em 0 pra série não mudar de forma.
       0::numeric AS pontos,
-      (SELECT COALESCE(SUM(d.custo_equipamento / GREATEST(d.meses_amortizacao, 1)), 0)
-         FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
-        -- p.status nunca foi 'ativo' desde a migration 045 (só a_instalar/em_operacao,
-        -- ver PONTO_STATUS em index.page.js) — esta amortização ficava sempre zero,
-        -- divergindo da Visão geral (src/admin/routes.js:134), que já usava o status
-        -- certo. Achado ao unificar as duas telas em abas no redesenho de 21/09/2026:
-        -- o número errado ficou visível ao lado do certo, a um clique de distância.
-        WHERE d.status = 'ativo' AND p.status = 'em_operacao') AS amortizacao,
       (SELECT COALESCE(SUM(valor_mensal), 0) FROM custos_fixos) AS fixos
   )
   SELECT to_char(m.mes, 'YYYY-MM') AS mes,
          COALESCE(r.total, 0) AS receita,
-         c.pontos AS custo_pontos, c.amortizacao, c.fixos AS custos_fixos,
-         COALESCE(r.total, 0) - c.pontos - c.amortizacao - c.fixos AS margem
+         c.pontos AS custo_pontos, c.fixos AS custos_fixos,
+         COALESCE(r.total, 0) - c.pontos - c.fixos AS margem
     FROM meses m CROSS JOIN custo_atual c LEFT JOIN receita r ON r.mes = m.mes
    ORDER BY m.mes`;
 

@@ -64,10 +64,11 @@ r=$(curl -s -b adm.txt -X PATCH $B/admin/pontos/$PONTO -H "$J" -d '{"cota_autoan
 # numa tela dele — cadastrada não é operando.
 r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "tela ativa sem Player: ponto aguardando instalação" '"estado":"aguardando_instalacao"' "$r"
 esperar "dono vê a tela aguardando instalação" '"situacao":"aguardando_instalacao"' "$r"
-r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{"custo_equipamento":2400}')
+r=$(curl -s -b adm.txt -X POST $B/admin/pontos/$PONTO/dispositivos -H "$J" -d '{}')
 DISP2=$(echo $r | sed 's/^{"id":\([0-9]*\).*/\1/'); DID2=$(printf 'M-%04d' "$DISP2")
 if [ "$DISP2" -gt "$DISP" ] 2>/dev/null && echo "$r" | grep -q "\"codigo\":\"$DID2\""; then ok "segunda tela criada com o código seguinte ($DID2)"; else falha "segunda tela criada com o código seguinte" "$r"; fi
-r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"custo_equipamento":2400,"meses_amortizacao":36}'); esperar "custo por tela salvo" '"custoEquipamento":2400' "$r"
+r=$(curl -s -b adm.txt -X PATCH $B/admin/dispositivos/$DISP -H "$J" -d '{"instalado_em":"2026-10-01","custo_equipamento":2400}'); esperar "data de instalação salva (custo de equipamento saiu do produto, migration 115)" '"instaladoEm":"2026-10-01' "$r"
+if echo "$r" | grep -q custoEquipamento; then falha "tela sem custo de equipamento" "$r"; else ok "tela sem custo de equipamento"; fi
 
 echo "== PIN de saída global: sem ele nenhuma TV se instala =="
 # Começa limpo: o PIN mora em configuracoes_site, que o reset-db não zera.
@@ -123,7 +124,8 @@ r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/player/$DID/heartbeat -H "
 r=$(curl -s -H "X-Aparelho-Key: $CHAVE" $B/player/$DID/config); esperar "config traz o PIN de saída global" '"pinSaida":"48213"' "$r"
 esperar "config traz margens e o horário do ponto" '"margens":\{"superior".*"operacao":\{.*"porDiaDaSemana":\{"seg"' "$r"
 r=$(curl -s -b joao.txt $B/anunciantes/me/meus-pontos); esperar "ponto segue em operação" '"estado":"ativo"' "$r"
-r=$(curl -s -b adm.txt $B/admin/resumo); esperar "amortização real no resumo (2 telas x 66,67)" '"amortizacaoMensal":133' "$r"
+r=$(curl -s -b adm.txt $B/admin/resumo); esperar "Visão geral: 2 telas ativas" '"telasAtivas":2' "$r"
+if echo "$r" | grep -q amortizacaoMensal; then falha "Visão geral sem amortização" "$r"; else ok "Visão geral sem amortização"; fi
 r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/player/$DID/played -H "X-Aparelho-Key: $CHAVE" -H "$J" -d '{"anuncianteId":999}'); esperar "played no formato V1 ({anuncianteId}) é 400" '^400$' "$r"
 r=$(curl -s -o /dev/null -w "%{http_code}" -X POST $B/player/$DID/played -H "X-Aparelho-Key: $CHAVE" -H "$J" -d '{"eventos":{}}'); esperar "played com eventos que não é lista é 400" '^400$' "$r"
 EXEC="e2e-01-$(date +%s%N)"
