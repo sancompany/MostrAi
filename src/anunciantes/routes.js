@@ -29,7 +29,7 @@ const convitesRepo = require('../convites/repository');
 const candidaturasRepo = require('../candidaturas/repository');
 const pontosRepo = require('../pontos/repository');
 const { situacaoDosMoveis } = require('../pontos/movel');
-const { horarioEmVigorSql } = require('../lib/horario-em-vigor');
+const { horarioEmVigorSql } = require('../lib/contexto-do-ponto');
 const basicoRepo = require('../pontos/basico');
 const { materializarPontoDaCandidatura } = require('../pontos/materializar');
 const indicacoesRepo = require('../indicacoes/repository');
@@ -40,6 +40,7 @@ const notificacoesRepo = require('../creditos/notificacoes');
 const sse = require('../lib/sse');
 const { primeirosPassosDaConta } = require('./primeiros-passos');
 const { acessoDoPainel } = require('./acesso-painel');
+const hospedagemSaldo = require('../pontos/hospedagem');
 const obrigacaoDoCiclo = require('../bancohoras/obrigacao-do-ciclo');
 const assinaturasRepo = require('../financeiro/assinaturas-repository');
 const planoAdministrativo = require('../financeiro/plano-administrativo');
@@ -1246,13 +1247,13 @@ async function subirCriativoDoCliente(req, res) {
   // libera plano" do ADR-016): a conta que hospeda um ponto ativo sobe peça
   // mesmo sem plano comercial. Limites = os direitos somados (o maior de
   // peças no ar e de duração entre as duas origens).
-  const planoId = planoEfetivoId(anunciante);
-  const basicos = await basicoRepo.ativosDaConta(anunciante.id);
-  if (!planoId && !basicos.length) {
+  // Saldo de hospedagem (migration 113): quem hospedou um ponto móvel sobe
+  // peça com as horas gratuitas mesmo sem plano — `direitosDePeca`.
+  const { direitos } = await direitosDePeca(anunciante);
+  if (!direitos) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(400).json({ erro: 'sua conta ainda não tem plano' });
   }
-  const direitos = basicoRepo.direitosCombinados(planoId ? await planosRepo.buscarPorId(planoId) : null, basicos);
   // Substituir sem tirar do ar (Fatia 3): o cliente troca a peça aprovada
   // pela nova, e a atual continua rodando até a nova ser aprovada — antes o
   // único jeito era excluir primeiro e ficar sem nada no ar durante a
@@ -1377,6 +1378,29 @@ router.post('/admin/criativos/:id/substituto', upload.single('arquivo'), async (
   });
 });
 
+// Os limites de PEÇA da conta (quantas no ar, até quantos segundos): plano
+// comercial e Básico do ponto somados; sem nenhum dos dois, o SALDO DE
+// HOSPEDAGEM disponível dá a regra do saldo (src/pontos/hospedagem.js#
+// REGRA_DO_SALDO). Sem nada disso, `direitos` é null (sem direito de subir).
+// Um lugar só para upload, retomar e "Meus criativos".
+async function direitosDePeca(conta) {
+  const planoId = planoEfetivoId(conta);
+  const plano = planoId ? await planosRepo.buscarPorId(planoId) : null;
+  const basicos = conta.conta_propria ? [] : await basicoRepo.ativosDaConta(conta.id);
+  if (plano || basicos.length) {
+    return { plano, basicos, saldoHospedagem: 0, direitos: basicoRepo.direitosCombinados(plano, basicos) };
+  }
+  const saldo = conta.conta_propria ? 0 : (await hospedagemSaldo.saldoDaConta(conta.id)).disponivelSegundos;
+  if (saldo <= 0) return { plano, basicos, saldoHospedagem: 0, direitos: null };
+  const regra = hospedagemSaldo.REGRA_DO_SALDO;
+  return {
+    plano,
+    basicos,
+    saldoHospedagem: saldo,
+    direitos: { limiteCriativos: regra.limiteCriativos, duracaoMaxima: regra.duracaoMaximaSegundos },
+  };
+}
+
 // O que a playlist faria com os criativos de uma conta agora: `no_ar` segue
 // exatamente a regra do gerador (conta elegível + aprovado com arquivo pronto
 // + os N mais recentes, N = limite do plano). Uma função só pra ficha do
@@ -1398,13 +1422,25 @@ async function criativosComSituacao(conta) {
   // a conta com ponto ativo toca no próprio ponto; com os dois, o limite de
   // peças no ar é o maior (o gerador usa o mesmo conjunto nas duas origens).
   const basicos = conta.conta_propria ? [] : await basicoRepo.ativosDaConta(conta.id);
+  // Sem plano vigente nem Básico, o saldo de hospedagem (migration 113)
+  // ainda veicula — na rede inteira, com a regra do saldo.
+  const saldoHospedagem =
+    vigente || basicos.length || conta.conta_propria
+      ? 0
+      : (await hospedagemSaldo.saldoDaConta(conta.id)).disponivelSegundos;
+  const regraSaldo = hospedagemSaldo.REGRA_DO_SALDO;
   const contaVeicula =
-    (!!vigente || basicos.length > 0) && !conta.suspenso && !conta.excluido_em && !conta.conta_propria;
+    (!!vigente || basicos.length > 0 || saldoHospedagem > 0) &&
+    !conta.suspenso &&
+    !conta.excluido_em &&
+    !conta.conta_propria;
   const prontos = criativos.filter((c) => c.status === 'aprovado' && c.arquivo_normalizado_url);
   const limiteBasico = Math.max(0, ...basicos.map((b) => b.limite_criativos));
   const limite = vigente
     ? Math.max(limiteDeCriativos(false, vigente.limite_criativos, prontos.length), limiteBasico)
-    : limiteBasico;
+    : saldoHospedagem > 0
+      ? regraSaldo.limiteCriativos
+      : limiteBasico;
   // `em_rodizio`: a peça ENTRA na playlist (conta veiculando, dentro do
   // limite de peças simultâneas, mesma ordem do gerador). Até 27/09/2026
   // isto se chamava `no_ar` — e era o que o painel mostrava como "No ar"
@@ -1416,14 +1452,22 @@ async function criativosComSituacao(conta) {
   const teto = basicoRepo.direitosCombinados(vigente, basicos).duracaoMaxima;
   const doPlano = vigente ? prontos.slice(0, limiteDeCriativos(false, vigente.limite_criativos, prontos.length)) : [];
   const doBasico = prontos.filter((c) => basicoRepo.cabeNoTeto(c.duracao_segundos, teto)).slice(0, limiteBasico);
-  const rodizio = new Set(contaVeicula ? [...doPlano, ...doBasico].map((c) => c.id) : []);
+  // Só o saldo: a escolha de `pecasDoSaldo` (as mais novas dentro da regra).
+  const doSaldo =
+    saldoHospedagem > 0
+      ? prontos
+          .filter((c) => Number(c.duracao_segundos) <= regraSaldo.duracaoMaximaSegundos)
+          .slice(0, regraSaldo.limiteCriativos)
+      : [];
+  const rodizio = new Set(contaVeicula ? [...doPlano, ...doBasico, ...doSaldo].map((c) => c.id) : []);
   const comRodizio = criativos.map((c) => ({ ...c, em_rodizio: rodizio.has(c.id) }));
   const entradas = await entradaNoArDasPecas({
     conta,
     plano: vigente,
     basicos,
-    teto,
+    teto: saldoHospedagem > 0 ? regraSaldo.duracaoMaximaSegundos : teto,
     contaVeicula,
+    saldoHospedagem,
     criativos: comRodizio,
   });
   return {
@@ -1433,6 +1477,7 @@ async function criativosComSituacao(conta) {
     }),
     plano,
     basicos,
+    saldoHospedagem,
     limite,
     contaVeicula,
   };
@@ -1488,8 +1533,14 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
   const conta = await repo.buscarPorId(req.session.anuncianteId);
   if (!conta) return res.status(404).json({ erro: 'conta não encontrada' });
   await criativosRepo.descartarProcessamentosOrfaos(conta.id);
-  const { criativos, plano, basicos, limite, contaVeicula } = await criativosComSituacao(conta);
-  const direitos = basicoRepo.direitosCombinados(plano, basicos);
+  const { criativos, plano, basicos, saldoHospedagem, limite, contaVeicula } = await criativosComSituacao(conta);
+  const direitos =
+    !plano && !basicos.length && saldoHospedagem > 0
+      ? {
+          limiteCriativos: hospedagemSaldo.REGRA_DO_SALDO.limiteCriativos,
+          duracaoMaxima: hospedagemSaldo.REGRA_DO_SALDO.duracaoMaximaSegundos,
+        }
+      : basicoRepo.direitosCombinados(plano, basicos);
   const substitutaDe = new Map(
     criativos
       .filter((c) => c.status === 'pendente' && c.substitui_criativo_id)
@@ -1535,17 +1586,22 @@ router.get('/anunciantes/me/criativos', exigirAnuncianteLogado, async (req, res)
     })),
     // `temPlano`: tem algum direito de veicular — plano comercial OU o
     // Básico do ponto (migration 103).
-    temPlano: !!plano || basicos.length > 0,
+    temPlano: !!plano || basicos.length > 0 || saldoHospedagem > 0,
     temBasico: basicos.length > 0,
+    // Só o saldo de hospedagem (sem plano nem Básico): a peça roda na rede
+    // inteira com as horas gratuitas (migration 113).
+    soSaldoHospedagem: !plano && basicos.length === 0 && saldoHospedagem > 0,
     // Dono de ponto da rede ainda sem direito de veicular (tela aguardando
     // instalação, Básico ainda não ativo): o painel mostra o módulo com o
     // envio fechado e o motivo, em vez de sumir com ele atrás de "compre um
     // plano" (01/10/2026).
     aguardandoBeneficio:
-      !plano && basicos.length === 0 ? (await acessoDoPainel(conta, { basicos })).basico.aguardando : null,
+      !plano && basicos.length === 0 && !saldoHospedagem
+        ? (await acessoDoPainel(conta, { basicos })).basico.aguardando
+        : null,
     // Plano (anúncio na rede) e/ou ponto no ar (a tela do próprio
     // comércio) — o painel explica onde a peça aprovada roda.
-    rodaNaRede: !!conta.plano_id,
+    rodaNaRede: !!conta.plano_id || saldoHospedagem > 0,
     rodaNoProprioPonto: pontos[0].n > 0,
     contaVeicula,
     limiteNoAr: limite,
@@ -1633,12 +1689,10 @@ router.post('/anunciantes/me/criativos/:id/retomar', exigirAnuncianteLogado, asy
   // Básico do ponto (migration 103, #93) — conta só com o Básico também
   // retoma. Vagas ativas = contarNaoReprovados (pausada/retirada não conta).
   const conta = await repo.buscarPorId(req.session.anuncianteId);
-  const planoId = planoEfetivoId(conta);
-  const basicos = await basicoRepo.ativosDaConta(conta.id);
-  if (!planoId && !basicos.length) {
+  const { direitos } = await direitosDePeca(conta);
+  if (!direitos) {
     return res.status(409).json({ erro: 'sua conta está sem plano — a peça volta quando você tiver um' });
   }
-  const direitos = basicoRepo.direitosCombinados(planoId ? await planosRepo.buscarPorId(planoId) : null, basicos);
   if (
     Number.isFinite(direitos.limiteCriativos) &&
     (await criativosRepo.contarNaoReprovados(conta.id)) >= direitos.limiteCriativos
@@ -1730,9 +1784,13 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
 // admin e do dono do ponto (src/lib/status-tela.js) — antes o painel tinha a
 // sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
 // mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
-// se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
-// O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel em evento
-// exibe 24 h — src/lib/horario-em-vigor.js).
+// se nenhuma opera mas alguma está no horário de folga; SEM COMUNICAÇÃO se
+// a tela deveria operar e só o heartbeat sumiu (conectividade não é
+// operação: a TV pode estar exibindo o pacote offline — Ponto Móvel V1 §8;
+// nunca dizer "fora do ar" sem prova); senão (reparo, inativa, não
+// instalada, erro relatado pelo Player), fora do ar.
+// O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel fora da base
+// não tem horário de base — src/lib/contexto-do-ponto.js).
 // Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
 async function comSituacaoNoAr(pontos) {
   if (!pontos.length) return pontos;
@@ -1751,8 +1809,12 @@ async function comSituacaoNoAr(pontos) {
       ? 'no_ar'
       : saudes.includes('fora_do_horario')
         ? 'fora_do_horario'
-        : 'fora_do_ar';
-    return { ...p, situacao };
+        : saudes.includes('sem_sinal')
+          ? 'sem_comunicacao'
+          : 'fora_do_ar';
+    // Nada da tela vai ao anunciante — nem o horário do último sinal.
+    const { ultima_vez_online: _ultimoSinal, ...semSinal } = p;
+    return { ...semSinal, situacao };
   });
 }
 
@@ -1769,12 +1831,10 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
       [anuncianteId],
     ),
     pool.query(
-      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-      // status mostrado é o da tela mais recentemente vista (19/09/2026,
-      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+      // A situação do ponto vem de `comSituacaoNoAr` (régua única); o último
+      // sinal da tela é diagnóstico do Admin e não vai para o anunciante.
       `SELECT p.id, p.nome, p.cidade,
-              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
-              MAX(d.ultima_vez_online) AS ultima_vez_online
+              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
        JOIN pontos p ON p.id = d.ponto_id

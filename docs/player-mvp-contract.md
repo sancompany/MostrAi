@@ -243,7 +243,7 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   um PIN padrão).
 - PIN correto → saída autorizada: o watchdog local **não** reabre o app. Ao
   abrir o app de novo (manual ou boot), a operação normal e o watchdog
-  voltam. O backend não é avisado da saída: 2 minutos depois a tela aparece
+  voltam. O backend não é avisado da saída: 6 min 30 s depois a tela aparece
   como "Sem sinal" no admin, que é o fato.
 
 ---
@@ -380,6 +380,48 @@ resto é processado.
 
 ---
 
+## 8.5 Tempo operacional (ponto móvel) — `POST /player/:dispositivoId/operacao`
+
+Migration 113 (02/10/2026). Só a tela de **ponto móvel** mede tempo
+operacional — é a régua do benefício da hospedagem temporária. Duas fontes,
+somadas por UNIÃO no servidor (o mesmo minuto conta uma vez):
+
+- **Online:** o heartbeat (§5) com `estado` `PLAYING` ou `IDLE` estende o
+  intervalo aberto da tela até agora, se a batida anterior também foi
+  exibindo e veio em até 6 min 30 s; um buraco maior fecha o intervalo e a
+  próxima batida abre outro. É o piso para o APK atual. Nota (02/10/2026):
+  o APK em produção manda o heartbeat a cada **5 min**
+  (`INTERVALO_HEARTBEAT_MS`), não a cada 15 s como diz o §5.
+- **Offline:** o Player conta o que exibiu sem internet e manda quando volta.
+
+```json
+{ "segmentos": [ { "bootId": "b12.k3j9x2aa", "seq": 4,
+                   "inicio": "2026-10-02T13:00:00.000Z", "fim": "2026-10-02T14:30:00.000Z" } ] }
+```
+
+- `inicio`/`fim` no **relógio do servidor**: o Player mede com o relógio
+  monotônico (`elapsedRealtime`) e converte pela âncora `servidorAgora` da
+  playlist recebida **no mesmo boot** — nunca pelo relógio de parede da TV.
+  Boot sem âncora: o segmento espera; se o boot nunca recebe âncora, o tempo
+  é descartado (nunca inventado).
+- Segmento aberto só com a tela exibindo (`PLAYING`/`IDLE`, Activity em
+  primeiro plano); fecha ao sair desses estados; no máximo 6 h (rola para o
+  próximo `seq`).
+- Até 200 por lote → 200 `{"resultados":[{"bootId","seq","status"}]}`:
+  `ok` (gravado ou já estava — idempotente por tela + `bootId` + `seq`; o
+  aberto reenviado maior só estende), `item_invalido` (descartar: fim antes
+  do início, mais de 6 h, no futuro, mais de 8 dias), `ignorado` (tela de
+  ponto fixo). 400 só para lote malformado; 401/403/5xx: manter e tentar de
+  novo com espera crescente.
+- Segmento que chega DEPOIS de a hospedagem ser encerrada, comprovando
+  operação DENTRO da janela dela, ainda soma: o servidor apura de novo em
+  até 5 min (segmento com até 8 dias de atraso) e lança só a diferença do benefício, uma vez.
+  Segmento exibido inteiro com a tela fora do ar no cadastro (reparo/
+  inativa) responde `ok` sem contar (o aberto pode voltar maior e entrar
+  num trecho ativo); vale o estado de quando foi exibido, não o de agora.
+
+---
+
 ## 9. Estados da tela no admin
 
 Derivados no servidor (o Player reporta fatos, o servidor classifica):
@@ -387,9 +429,9 @@ Derivados no servidor (o Player reporta fatos, o servidor classifica):
 | Estado | Regra |
 |---|---|
 | Aguardando instalação | tela sem Player provisionado (nunca instalada, ou revogada) |
-| Operando | sinal nos últimos 2 min, sem erro |
+| Operando | sinal nos últimos 6 min 30 s (APK bate a cada 5 min; era 2 min), sem erro |
 | Fora do horário | o horário do ponto diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
-| Sem sinal | deveria operar e o último sinal passou de 2 min |
+| Sem sinal | deveria operar e o último sinal passou de 6 min 30 s (`TELA_SEM_SINAL_MIN`) |
 | Erro do Player | sinal recente com `erro` ou estado de erro |
 
 Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,

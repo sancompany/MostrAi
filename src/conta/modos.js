@@ -348,20 +348,20 @@ router.post('/convites/:token/aceitar', exigirAnuncianteLogado, async (req, res)
 });
 
 // Admin: libera o papel direto na conta que pediu (candidatura com conta_id).
-// `tipo` (02/10/2026, migration 112): o Admin decide AQUI se o ponto nasce
-// FIXO (o de sempre — padrão) ou MÓVEL (da Mostraí, com a conta como base).
-// A candidatura continua genérica: quem pede nunca escolhe.
-const TIPOS_DE_PONTO = ['fixo', 'movel'];
+// Candidatura gera SEMPRE ponto fixo (V2 do ponto móvel, 02/10/2026): o
+// móvel é equipamento da Mostraí e nasce só em Rede → Pontos móveis. Cliente
+// antigo que ainda mande `tipo: 'movel'` recebe a recusa com o caminho certo.
 router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
-  const tipo = req.body?.tipo ?? 'fixo';
-  if (!TIPOS_DE_PONTO.includes(tipo)) return res.status(400).json({ erro: 'tipo do ponto inválido: fixo ou movel' });
+  if (req.body?.tipo !== undefined && req.body.tipo !== 'fixo') {
+    return res
+      .status(400)
+      .json({ erro: 'candidatura sempre gera ponto fixo — o ponto móvel nasce em Rede → Pontos móveis' });
+  }
   const cand = await candidaturasRepo.buscarPorId(req.params.id);
   if (!cand) return res.status(404).json({ erro: 'candidatura não encontrada' });
   if (!cand.conta_id)
     return res.status(400).json({ erro: 'essa candidatura não é de uma conta existente — gere um convite' });
   if (cand.status === 'aprovada') return res.status(409).json({ erro: 'já liberada' });
-  if (tipo === 'movel' && cand.tipo !== 'ponto')
-    return res.status(400).json({ erro: 'só candidatura de ponto vira ponto móvel' });
   const conta = await anunciantesRepo.buscarPorId(cand.conta_id);
   if (!conta || conta.excluido_em) return res.status(400).json({ erro: 'conta não encontrada ou excluída' });
   try {
@@ -373,10 +373,7 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
         rows: [atual],
       } = await cliente.query('SELECT status FROM candidaturas WHERE id = $1 FOR UPDATE', [cand.id]);
       if (atual.status === 'aprovada') throw Object.assign(new Error('já liberada'), { status: 409 });
-      // Móvel: o ponto é da Mostraí — a conta vira BASE, não dona, então
-      // nem o papel 'ponto' (espelho legado de dono) nem cupom.
-      if (tipo === 'movel') await materializarPontoDaCandidatura(cand, conta, cliente, { tipo: 'movel' });
-      else await liberarPapelNaConta(conta, cand.tipo, cand, cliente);
+      await liberarPapelNaConta(conta, cand.tipo, cand, cliente);
       await cliente.query(`UPDATE candidaturas SET status = 'aprovada' WHERE id = $1`, [cand.id]);
     });
   } catch (err) {
@@ -388,7 +385,7 @@ router.post('/admin/candidaturas/:id/liberar', async (req, res) => {
   // SSE pra conta (Meus pontos) e pro admin (Rede/Candidaturas, sem F5).
   eventos.registrar('ponto:candidatura_aprova', {
     tipo: cand.tipo,
-    ponto_tipo: cand.tipo === 'ponto' ? tipo : null,
+    ponto_tipo: cand.tipo === 'ponto' ? 'fixo' : null,
     cidade: cand.cidade,
     uf: cand.uf,
     ramo: cand.segmento,

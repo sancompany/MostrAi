@@ -13,9 +13,14 @@ const basicoRepo = require('../pontos/basico');
 //     Básico ativo, OU já é dona de um ponto materializado na rede (qualquer
 //     status menos `arquivado`; candidatura em análise não conta — ainda não
 //     é ponto).
-//   · podeVeicular — a conta tem direito de veicular AGORA: plano vigente ou
-//     Básico ativo. Nada aqui muda essa régua (criativo, playlist e escolha
-//     de pontos continuam pedindo isso no servidor).
+//   · podeVeicular — a conta tem direito de veicular AGORA: plano vigente,
+//     Básico ativo ou SALDO DE HOSPEDAGEM disponível (migration 113: horas
+//     gratuitas de quem hospedou um ponto móvel — direito de veiculação não
+//     é plano). Nada aqui muda essa régua (criativo, playlist e escolha de
+//     pontos continuam pedindo isso no servidor).
+//
+// Anfitrião de ponto móvel (hospedagem programada, ativa ou já encerrada)
+// também vê o painel inteiro: é lá que acompanha a hospedagem e o saldo.
 //
 // O Básico do ponto só nasce com tela instalada (src/pontos/basico.js); até
 // lá o painel diz "aguardando", nunca "ativo".
@@ -50,11 +55,33 @@ async function situacaoDosPontos(contaId, db = pool) {
 
 // `basicos` opcional: quem já leu os Básicos ativos da conta passa (evita a
 // mesma consulta duas vezes no GET /anunciantes/me).
+async function hospedagemDaConta(contaId, db = pool) {
+  const hospedagem = require('../pontos/hospedagem');
+  const [saldo, { rows }] = await Promise.all([
+    hospedagem.saldoDaConta(contaId, db),
+    db.query(
+      `SELECT EXISTS (SELECT 1 FROM pontos_moveis_hospedagens
+                       WHERE conta_id = $1 AND estado IN ('programada', 'ativa', 'encerrada')) AS anfitria`,
+      [contaId],
+    ),
+  ]);
+  return { saldoSegundos: saldo.disponivelSegundos, anfitria: rows[0].anfitria };
+}
+
 async function acessoDoPainel(conta, { basicos = null, db = pool } = {}) {
   const ativos = basicos ?? (await basicoRepo.ativosDaConta(conta.id));
-  const pontos = await situacaoDosPontos(conta.id, db);
+  const [pontos, hosp] = await Promise.all([situacaoDosPontos(conta.id, db), hospedagemDaConta(conta.id, db)]);
   const temPlano = !!conta.plano_id;
-  const motivo = temPlano ? 'plano' : ativos.length ? 'basico' : pontos.total ? 'ponto' : null;
+  const comSaldo = hosp.saldoSegundos > 0;
+  const motivo = temPlano
+    ? 'plano'
+    : ativos.length
+      ? 'basico'
+      : pontos.total
+        ? 'ponto'
+        : comSaldo || hosp.anfitria
+          ? 'hospedagem'
+          : null;
   // Dono de ponto sem Básico ainda: em que pé está a ativação (a régua de
   // ativação é a tela instalada — src/pontos/basico.js).
   const basicoAguardando = !ativos.length && pontos.total ? (pontos.telaInstalada ? 'ativacao' : 'instalacao') : null;
@@ -68,8 +95,9 @@ async function acessoDoPainel(conta, { basicos = null, db = pool } = {}) {
   return {
     completo: !!motivo,
     motivo,
-    podeVeicular: !!planoVigenteId(conta) || ativos.length > 0,
+    podeVeicular: !!planoVigenteId(conta) || ativos.length > 0 || comSaldo,
     donoDePonto: pontos.total > 0,
+    hospedagem: { saldoSegundos: hosp.saldoSegundos, anfitria: hosp.anfitria },
     pontos: resumoDosPontos,
     basico: {
       ativo: ativos.length > 0,

@@ -1,6 +1,49 @@
 # Current Handoff
 
 ## Updated
+2026-10-05 — **Finalização definitiva do Ponto Móvel V1** (pedido do dono;
+branch `claude/busy-noether-hheir2`). Sobre a V2: termo de hospedagem
+versionado e imutável com aceite eletrônico (`src/pontos/hospedagem-termo.js`;
+`iniciar` exige aceite dos dados atuais e a entrega do equipamento; o aceite
+amarra os dados que o anfitrião leu — `dadosHash`; prorrogação pede aceite
+novo sem travar), entrega/retirada (`hospedagem_movimentacoes`; retirada
+avulsa só depois de encerrar), conectividade ≠ operação (§8: Admin vê
+cadastro/conexão/operação; anunciante e dono só "Sem comunicação com a
+Mostraí", sem horário de sinal), T12 (métrica da Mídia Mostraí desconta o
+que a agenda decidiu, `src/midias/metricas.js`). T9 reavaliada: **não bloqueia
+o merge** (fica a confirmação do dono). T13 nova: o texto do termo é minuta
+sem revisão jurídica. Revisão focal §29 (3 lentes) + re-revisão das
+correções: sem HIGH/MEDIUM abertos. LOW aceitos (docs/PENDENCIAS.md T14).
+**Atenção para bancos de dev:** as seções 10–11 foram acrescentadas à
+migration 113 antes dela ir para produção — banco local que já rodou a 113
+antiga precisa ser recriado (`migrate.js` rastreia só pelo nome do arquivo).
+Produção estava em 112 (0 pontos/móveis/telas). Review-Master segue PAUSADA.
+2026-10-02 — **Ponto Móvel V2: hospedagem temporária, saldo em horas e tempo
+operacional real** (pedido do dono; branch `claude/busy-noether-hheir2`,
+evolui a 112 com a migration 113). Móvel nasce só pelo Admin
+(`POST /admin/pontos-moveis`, Tela 1 junto), tipo imutável, 1 tela;
+candidatura sempre fixa; conversão fixo ⇄ móvel removida (410). Hospedagem
+(`src/pontos/hospedagem.js`, agenda única em `src/pontos/agenda.js` + gatilho),
+percentual global auditado e congelado, tempo operacional
+(`src/player/operacao.js`: heartbeat + `POST /player/:id/operacao`),
+benefício idempotente no livro `saldo_hospedagem_lancamentos`, camada T3b no
+gerador, atribuição posicional das confirmações (`src/lib/partes-da-hora.js`),
+contexto do ponto em `src/lib/contexto-do-ponto.js`. Site `/hospedar.html`,
+painel `public/hospedagem-conta.js`, Admin Rede › Pontos móveis. RN-71/RN-72,
+ADR-037, PENDENCIAS §T (T9 — regra de criativos do saldo, decisão do dono;
+05/10: não bloqueia mais o merge; T10: Player em `sancompany/playlist.mostrai` precisa
+de PR e OTA). Testes: `tests/hospedagem.test.js`, `tests/ponto-movel.test.js`,
+e2e 46 e 47. **A Review-Master continua PAUSADA.**
+Revisão §85 em 3 rodadas dos 3 ciclos (regras; segurança/concorrência;
+UX/regressões): todos os ALTOS/MÉDIOS corrigidos (apuração tardia do
+offline, vaga de saldo da hora congelada, Mídia Mostraí na T3c, sem FK em
+`tela_operacao.ponto_id` por deadlock, estado da tela na hora do segmento
+com trilha transacional, ajuste idempotente, interesse devolvido no
+cancelamento). Ciclo 1 limpo na 3ª rodada; ciclos 2 e 3 ainda acharam
+MÉDIOS na 3ª (corrigidos em d09f325) — teto de escalada do `revisar`
+atingido, situação reportada ao dono. `npm run check` 856/856 em banco
+limpo. Pendências do dono: T9 (bloqueia merge), T12 (métricas da Mídia
+Mostraí). Sem PR aberto ainda; nada em produção.
 2026-10-02 — **Ponto fixo e ponto móvel** (pedido do dono; branch
 `claude/busy-noether-hheir2`). O Admin escolhe Fixo (padrão) ou Móvel ao
 aprovar a candidatura; o móvel é da Mostraí (sem `anunciante_id`), com a conta

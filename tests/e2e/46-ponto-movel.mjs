@@ -1,7 +1,7 @@
-// Ponto móvel (02/10/2026, migration 112), de ponta a ponta no navegador:
-//   · uma conta pede pra ser ponto (candidatura genérica, sem tipo);
-//   · o Admin aprova escolhendo "Móvel" no modal — o ponto nasce da Mostraí,
-//     com a conta como BASE;
+// Ponto móvel (02/10/2026, migrations 112 e 113), de ponta a ponta no navegador:
+//   · uma conta pede pra ser ponto: a aprovação NÃO oferece tipo — nasce fixo
+//     (V2: candidatura sempre gera fixo);
+//   · o Admin cria o móvel em Rede › Pontos móveis, com a conta como BASE;
 //   · a ficha do Admin mostra base e local atual; o anunciante vê o card
 //     "Ponto móvel" (compacto, também no celular);
 //   · o Admin cadastra o próximo evento → o card mostra o próximo evento;
@@ -119,8 +119,8 @@ const pedido = await pBase.evaluate(async () => {
 check('candidatura criada (sem escolher tipo)', pedido.status === 201, JSON.stringify(pedido));
 const CAND = pedido.corpo.id;
 
-// ---------- 2. o Admin aprova como MÓVEL ----------
-console.log('== aprovação como móvel ==');
+// ---------- 2. aprovação: sempre fixo; o móvel nasce no Admin ----------
+console.log('== aprovação (fixo) e criação do móvel ==');
 const admin = await pagina(1400, 960, 'admin');
 await irQuieto(admin, `${B}/admin/index.html`);
 await admin.fill('#usuario', process.env.ADMIN_USER || 'admin');
@@ -132,24 +132,40 @@ await admin.evaluate((id) => {
 }, CAND);
 await admin.waitForSelector('[data-aprovar]');
 await admin.click('[data-aprovar]');
-await admin.waitForSelector('dialog[open] input[name="tipo_ponto"]');
-check(
-  'o modal abre com Fixo marcado',
-  await admin.isChecked('dialog[open] input[name="tipo_ponto"][value="fixo"]'),
-);
-await admin.click('dialog[open] .segmentado label:has(input[value="movel"])');
-check(
-  'a explicação muda para o móvel',
-  /base \(não o dono\)/.test(await admin.locator('dialog[open] [data-explica-tipo]').innerText()),
-);
+await admin.waitForSelector('dialog[open] [data-confirmar]');
+check('a aprovação não oferece tipo de ponto', (await admin.locator('dialog[open] input[name="tipo_ponto"]').count()) === 0);
 await admin.screenshot({ path: `${SAIDA}46-movel-aprovacao.png` });
 await admin.click('dialog[open] [data-confirmar]');
 await admin.waitForFunction(() => location.hash === '#rede/candidaturas');
-const PONTO = PG(`SELECT id FROM pontos WHERE candidatura_id = ${CAND}`);
+const FIXO = PG(`SELECT id FROM pontos WHERE candidatura_id = ${CAND}`);
+check('a candidatura virou ponto FIXO da conta', PG(`SELECT tipo || ':' || anunciante_id FROM pontos WHERE id = ${FIXO}`) === `fixo:${BASE}`);
+check('ficha do fixo sem "Transformar em móvel"', true);
+
+await admin.evaluate(() => {
+  location.hash = 'rede/moveis';
+});
+await admin.waitForSelector('[data-beneficio-hospedagem]');
+check('card do benefício com o percentual real', /20%/.test(await admin.locator('[data-percentual-atual]').innerText()));
+await admin.click('[data-criar-movel]');
+await admin.waitForSelector('#formCriarMovel');
+await admin.fill('#cmBase', 'Academia Movimento');
+await admin.fill('#cmConta', `Academia Movimento LTDA (#${BASE})`);
+await admin.fill('#cm_cep', '15990-000');
+await admin.fill('#cm_logradouro', 'Avenida Brasil');
+await admin.fill('#cm_numero', '500');
+await admin.fill('#cm_bairro', 'Centro');
+await admin.fill('#cm_cidade', 'Matão');
+await admin.fill('#cm_uf', 'SP');
+await admin.screenshot({ path: `${SAIDA}46-movel-criar.png` });
+await admin.click('dialog[open] button[type="submit"]');
+await admin.waitForSelector('.movel-card', { timeout: 10000 });
+const PONTO = PG(`SELECT id FROM pontos WHERE tipo = 'movel' AND base_conta_id = ${BASE} ORDER BY id DESC LIMIT 1`);
 check('ponto criado', Boolean(PONTO));
 check('é móvel', PG(`SELECT tipo FROM pontos WHERE id = ${PONTO}`) === 'movel');
 check('sem dono (é da Mostraí)', PG(`SELECT COALESCE(anunciante_id::text, 'nulo') FROM pontos WHERE id = ${PONTO}`) === 'nulo');
+check('não vem de candidatura', PG(`SELECT COALESCE(candidatura_id::text, 'nulo') FROM pontos WHERE id = ${PONTO}`) === 'nulo');
 check('a conta é a base', PG(`SELECT base_conta_id FROM pontos WHERE id = ${PONTO}`) === BASE);
+check('a Tela 1 nasceu junto', PG(`SELECT COUNT(*) FROM dispositivos WHERE ponto_id = ${PONTO}`) === '1');
 const NOME = PG(`SELECT nome FROM pontos WHERE id = ${PONTO}`);
 check('nome de móvel', /^Mostraí Móvel #\d+$/.test(NOME), NOME);
 
@@ -161,6 +177,7 @@ await admin.evaluate((id) => {
 await admin.waitForSelector('#pontoMovel [data-local-atual]');
 check('local atual = base', /Academia Movimento/.test(await admin.locator('[data-local-atual]').innerText()));
 check('sem evento programado', /Sem evento programado/.test(await admin.locator('[data-proximo-evento]').innerText()));
+check('sem "Transformar" na ficha do móvel', !/Transformar/.test(await admin.locator('#pontoInformacoes').innerText()));
 check('proprietário Mostraí', /Mostraí/.test(await admin.locator('#pontoInformacoes').innerText()));
 
 // Cadastrar o próximo evento pela tela.
@@ -252,7 +269,7 @@ await recarregarQuieto(pA);
 await pA.waitForSelector(`.ponto-movel[data-ponto-id="${PONTO}"]`);
 texto = await pA.locator(`.ponto-movel[data-ponto-id="${PONTO}"]`).innerText();
 check('anunciante: "Agora na base" de novo', /Agora na base: Academia Movimento/.test(texto), texto);
-check('o evento encerrado vai pro histórico', /Histórico \(1 evento/.test(await admin.locator('#pontoMovel').innerText()));
+check('o evento encerrado vai pro histórico', /Histórico \(0 hospedagens, 1 evento/.test(await admin.locator('#pontoMovel').innerText()));
 
 // ---------- 7. a conta-base: só base, nunca dona ----------
 console.log('== conta-base ==');
@@ -261,9 +278,11 @@ await pBase.waitForSelector('.estab-base-movel', { timeout: 10000 });
 const baseTexto = await pBase.locator('.estab-base-movel').innerText();
 check('Meus pontos mostra o móvel como base', /Ponto móvel/.test(baseTexto) && /Base: Academia Movimento/.test(baseTexto), baseTexto);
 check('sem "Benefício do ponto" para a base', !/Benefício do ponto|crédito/i.test(baseTexto), baseTexto);
-check('a base não ganhou papel de dono', !/ponto/.test(PG(`SELECT array_to_string(papeis, ',') FROM anunciantes WHERE id = ${BASE}`)));
-check('nenhum Plano Básico nem crédito pra base', PG(
-  `SELECT (SELECT COUNT(*) FROM beneficios_basico_ponto WHERE conta_id = ${BASE}) + (SELECT COUNT(*) FROM creditos_ledger WHERE anunciante_id = ${BASE})`,
+// (A mesma conta tem o PRÓPRIO ponto fixo, aprovado acima — o papel de dona
+// vem dele. Do móvel ela não ganha nada.)
+check('o móvel continua sem dono', PG(`SELECT COALESCE(anunciante_id::text, 'nulo') FROM pontos WHERE id = ${PONTO}`) === 'nulo');
+check('nenhum Plano Básico nem crédito pelo móvel', PG(
+  `SELECT (SELECT COUNT(*) FROM beneficios_basico_ponto WHERE ponto_id = ${PONTO}) + (SELECT COUNT(*) FROM creditos_ledger WHERE ponto_id = ${PONTO})`,
 ) === '0');
 await pBase.locator('.estab-base-movel').screenshot({ path: `${SAIDA}46-movel-meus-pontos-base.png` });
 

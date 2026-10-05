@@ -272,14 +272,26 @@ Escrito por grupo, porque o padrão se repete.
   todos os dias"; **Excluir ponto** no pé da ficha: sai com as telas, e
   ponto com histórico — exibição, crédito, repasse, Plano Básico — recusa e
   pede pra deixar as telas Inativas) e as telas em linhas (`M-0235` · situação · Abrir ·
-  Excluir); **ponto móvel** (RN-71): selo "Ponto móvel" no card e na ficha,
-  proprietário "Mostraí", bloco **Ponto móvel** com local atual, próximo
-  evento, base e conta da base, [Alterar base], [Cadastrar evento] e cada
-  evento com [Iniciar (chegou ao evento)] / [Encerrar e voltar para a base] /
-  [Cancelar], e o histórico (eventos encerrados/cancelados com as exibições
-  confirmadas no evento, e bases anteriores); "Transformar em ponto
-  móvel/fixo" no pé da ficha; a aprovação de candidatura pergunta o **Tipo
-  do ponto** (Fixo/Móvel, padrão Fixo); ficha da tela em blocos — **Resumo** (último sinal, versão do
+  Excluir); **ponto móvel** (RN-71/RN-72): aba **Rede › Pontos móveis** com
+  o card **BENEFÍCIO POR HOSPEDAGEM** (percentual, exemplo "Com 20%: 30 h de
+  operação geram 6 h de mídia", [Alterar percentual] com o aviso de que vale
+  só para novas hospedagens, histórico de alterações), a lista dos móveis
+  (foto, tela, base, local atual, anfitrião, próximo compromisso e próximo
+  evento), [Criar ponto móvel] (nome, foto, base, conta opcional, nota — a
+  Tela 1 nasce junto) e os **Interesses em hospedar** ([Em contato],
+  [Agendar] → programa a hospedagem, [Recusar], [Nota]); na ficha do ponto:
+  selo "Ponto móvel", proprietário "Mostraí", [Trocar foto do equipamento],
+  bloco **Ponto móvel** com local atual, próximo evento, base, conta da base,
+  tela, [Alterar base], [Cadastrar evento] (com o contexto de concorrência),
+  [Programar hospedagem] (móvel → conta anfitriã → local → início/fim →
+  "Esta hospedagem ficará vinculada a 20%" → confirmar) e a **Agenda** única
+  — hospedagem com [Iniciar (a tela chegou)] / [Alterar período] /
+  [Cancelar] ou [Encerrar hospedagem] / [Prorrogar], tempo e benefício
+  (estimado enquanto ativa); evento com [Iniciar] / [Encerrar] / [Cancelar];
+  histórico de hospedagens, eventos (encerramento automático marcado) e
+  bases anteriores; a aprovação de candidatura não pergunta tipo (sempre
+  fixo); a ficha da conta mostra o **Saldo de hospedagem** (disponível,
+  recebido, entregue, extrato) com [Ajustar]; ficha da tela em blocos — **Resumo** (último sinal, versão do
   Player, mídia atual), **Instalação** (ID da tela, código com contagem
   regressiva, Copiar, Gerar novo código → "Player conectado"), **Área segura**
   (4 lados em vmin), **Estado** (Ativa/Em reparo/Inativa, equipamento),
@@ -1282,8 +1294,9 @@ derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
 nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
 `aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
 `fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 2 min — heartbeat de
-15 s; `TELA_SEM_SINAL_MIN`) → `erro_do_player` (sinal recente com erro) →
+`sem_sinal` (deveria operar e o último sinal passou de 6 min 30 s — o APK
+bate a cada 5 min; `TELA_SEM_SINAL_MIN`; era 2 min até 05/10/2026, quando
+o contrato ainda dizia heartbeat de 15 s) → `erro_do_player` (sinal recente com erro) →
 `operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
 "pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
 comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.
@@ -1568,7 +1581,16 @@ exibição; por ponto e por tela. Estados: **Ativa — aguardando primeira
 exibição**, **Ativa — reproduzindo normalmente**, **Ativa — entrega
 atrasada** (a última hora aberta já fechada não teve comprovante),
 **Pausada**, **Agendada**, **Encerrada**. Limite: telas, pontos, cobertura e
-frequência entram como estão hoje (não há histórico deles).
+frequência entram como estão hoje (não há histórico deles). Desde 02/10/2026
+(RN-72, camada T3c) a Mídia Mostraí fica abaixo da recuperação de atraso e
+do saldo de hospedagem: a frequência é o TETO, não garantia — numa hora com
+recuperação ou saldo ela recebe menos. *Desde 05/10/2026 (Ponto Móvel V1
+§18, T12):* as "esperadas" descontam o que a AGENDA decidiu não programar —
+nas horas já fechadas e congeladas (`playlist_hora_congelada`), a diferença
+entre a frequência e o que a playlist programou sai do esperado, e uma hora
+congelada com zero programado não marca "entrega atrasada". Corrige a
+métrica, nunca a entrega: hora sem playlist congelada (o gerador não rodou)
+continua contando como devida.
 
 **RN-67 — Mídia própria só se exclui fora do ar, e a exclusão é lógica.**
 *(Refino da Mídia Mostraí, 29/09/2026.)* Ativa ou agendada não tem
@@ -1653,39 +1675,125 @@ de ponto (dono ou Admin) fica em `pontos_enderecos_historico`. A varredura
 diária (`scripts/conciliar.js`) e a primeira visita ao painel apontam o
 cadastro antigo, gravado antes da regra — sem mudar dado nenhum.
 
-**RN-71 — Ponto fixo e ponto móvel: o móvel é da Mostraí, e a base nunca vira
-dona.** (Migration 112, 02/10/2026.) Todo ponto tem um TIPO, decidido pelo
-Admin ao aprovar a candidatura ("Tipo do ponto: Fixo | Móvel", padrão Fixo) —
-quem pede nunca escolhe — e mudável depois na ficha ("Transformar em ponto
-móvel/fixo"). **Fixo** é o de sempre: mora no estabelecimento e a conta que
-cedeu a parede é a dona (crédito mensal, Plano Básico, cupom). **Móvel** é um
-ativo da Mostraí (`anunciante_id` vazio, garantido por CHECK no banco): tem
-uma BASE — conta custodiante, nome do lugar, endereço (o do próprio ponto) e
-desde quando — e pode sair para EVENTOS cadastrados pelo Admin (nome,
-organização, local, início, fim opcional; público estimado e observação
-opcionais). **Local atual** não é campo: é o local do evento em andamento ou,
-sem evento, a base. **Próximo evento** é o programado de início mais próximo
-que ainda não terminou (fim ≥ hoje em Matão). Estados do evento: programado →
-em andamento ("o ponto chegou", um por vez) → encerrado (volta para a base);
-programado → cancelado (nunca vira local atual nem próximo; fica no
-histórico). Trocar de base guarda o período anterior; voltar a ser fixo faz da
-base a dona (decisão explícita do Admin). A conta-base não ganha crédito,
-Plano Básico, cupom nem papel de dono — nem o organizador do evento, que é só
-texto. Ela vê o móvel em "Meus pontos" só como base (sem telas, sem
-benefício, sem editar). O anunciante escolhe o PONTO móvel, nunca a base nem
-um evento: o card "Ponto móvel" mostra nome, onde está agora, o próximo
-evento (com "Público estimado: ~N pessoas" quando informado — estimativa do
-evento, nunca exibição, impressão ou alcance) e a base. Proof-of-Play continua
-a única fonte de entrega; a exibição contabilizada durante um evento guarda o
-evento em `execucoes_confirmadas.evento_id` (pelo instante da exibição contra
-o início/fim marcados pelo Admin), só para auditoria. Horário: na base vale o
-horário da base; em evento a tela exibe enquanto estiver ligada (a config da
-TV muda ao iniciar e ao encerrar). A trava de concorrente do ponto móvel
-protege a base (o ramo do ponto é o dela) e, como a dona no fixo, a base não
-é barrada quando escolhe o móvel. *Violada:* evento em ponto fixo, segundo
-evento em andamento, evento que já terminou, dono em ponto móvel → recusa com
-o motivo. *Quem vê:* o Admin (tudo), o anunciante (card), a conta-base (Meus
-pontos).
+**RN-71 — Ponto fixo e ponto móvel: o móvel é um ativo da Mostraí, nasce
+pelo Admin e nunca tem dono.** (Migrations 112 e 113, 02/10/2026.) Todo ponto
+tem um TIPO, decidido no NASCIMENTO e imutável (gatilho no banco). **Fixo** é
+o de sempre: nasce da candidatura aprovada — candidatura gera **sempre** fixo
+— e a conta que cedeu a parede é a dona (crédito mensal, Plano Básico,
+cupom). **Móvel** nasce só em Admin → Rede → Pontos móveis (nome, foto do
+equipamento, base, nota interna; a Tela 1 nasce junto): é um equipamento da
+Mostraí (`anunciante_id` e `candidatura_id` vazios, CHECK no banco), com
+**uma tela só** (a segunda é recusada; trocar o equipamento passa por deixar a
+atual Inativa). Tem uma BASE — nome do lugar, endereço (o do próprio ponto),
+desde quando e, opcional, a conta custodiante — e uma AGENDA ÚNICA: pode ser
+HOSPEDADO por um comércio (RN-72) ou ir a EVENTOS (nome, organização, local,
+início, fim opcional; público estimado, observação e o **contexto de
+concorrência** opcionais). Hospedagem e evento ocupam o mesmo calendário
+(datas inclusivas): nunca se sobrepõem — hospedagem × hospedagem, hospedagem
+× evento, evento × evento — e nunca há dois em curso; o banco recusa mesmo
+em corrida. **Local atual** não é campo: o anfitrião da hospedagem ativa, o
+local do evento em andamento ou, sem nenhum dos dois, a base. **Próximo
+evento** é o programado de início mais próximo que ainda não terminou.
+Estados do evento: programado → em andamento (o Admin marca) → encerrado
+(o Admin, ou o sistema no fim da data prevista — `encerramento`
+`automatico`); programado que passou da data sem começar é cancelado pelo
+sistema. Evento é autorização para operar fora do horário da base — não
+cria capacidade, obrigação nem benefício. Fora da base (hospedagem ou
+evento) a tela exibe enquanto estiver ligada; o móvel não gera "hora sem
+sinal" como dívida (ele viaja desligado). A conversão fixo ⇄ móvel saiu
+(rotas 410). A conta-base não ganha crédito, Plano Básico, cupom nem papel de
+dono — nem o organizador do evento, que é só texto; ser base de um móvel não
+impede a conta de pedir o próprio ponto fixo. O anunciante escolhe o PONTO
+móvel, nunca a base, a hospedagem ou um evento: o card "Ponto móvel" mostra
+nome, foto, onde está agora ("Agora em: <anfitrião>", "Agora em: <evento>" ou
+"Agora na base"), o próximo evento e a base — nunca a conta do anfitrião, o
+percentual, o saldo ou o histórico; hospedagem futura não aparece. Trava de
+concorrente pelo CONTEXTO COMERCIAL do momento: hospedagem ativa → o ramo do
+anfitrião (e ele é a "casa" da tela); base → o ramo da base; evento → o
+contexto do evento (um ramo ou nenhum — nunca herda a base). *Violada:*
+candidatura como móvel, segunda tela, conflito de agenda, dono em móvel,
+troca de tipo → recusa com o motivo. *Quem vê:* o Admin (tudo), o anunciante
+(card), a conta-base (Meus pontos).
+
+**RN-72 — Hospedagem temporária: tempo operacional válido × percentual
+congelado = horas de mídia gratuitas na rede.** (Migration 113, 02/10/2026.)
+Um comércio recebe o ponto móvel por alguns dias. Não é aluguel: não paga
+nada, não vira dono, ponto fixo, Básico, crédito nem cupom. Estados:
+programada → ativa (o Admin marca que a tela chegou, a partir do dia de
+início) → encerrada (o Admin, ou o sistema no fim previsto); programada →
+cancelada (só antes de começar; benefício zero). Encerrada não muda mais
+(gatilho) — só o tempo comprovado DENTRO da janela pode crescer, quando a
+tela manda depois o que exibiu sem internet (apuração tardia, abaixo). Prorrogar é permitido sem conflito, com o mesmo
+percentual. O **percentual** é global (Admin → Rede → Pontos móveis →
+"Benefício por hospedagem", padrão 20%, 0 a 100 com até 2 casas, cada
+alteração auditada com anterior, novo, admin e data) e é **congelado** na
+hospedagem quando o Admin confirma — a confirmação leva o percentual que o
+Admin revisou e é recusada se o global mudou no meio. O **tempo operacional
+válido** é a UNIÃO dos intervalos em que a tela esteve ligada e exibindo
+(PLAYING/IDLE), no relógio do servidor: os do heartbeat (online; um buraco
+maior que 6 min 30 s — o APK bate a cada 5 min — fecha o intervalo) e os segmentos que o Player contou offline
+com o relógio monotônico e enviou quando voltou (idempotentes por tela, boot
+e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não) — o
+segmento offline vale pelo estado de QUANDO foi exibido —, e o tempo fica
+com o ponto em que foi medido (excluir a tela não o apaga). Nunca
+a duração do calendário, nunca um número digitado; o encerramento não passa
+do fim previsto. O **benefício** nasce no encerramento:
+`floor(tempo × percentual / 100)` segundos num lançamento com a chave
+`hospedagem:<id>` (UNIQUE). *Apuração tardia:* segmento offline que chega
+depois do encerramento, dentro da janela, é apurado de novo pelo job (a cada
+5 min; segmento com até 8 dias de atraso) e só a diferença entra, num lançamento complementar com a
+chave pelo total (`hospedagem:<id>:ate:<total>`) — o total lançado é sempre
+o benefício do tempo final, uma vez. Tudo vai para o **saldo de hospedagem** — livro próprio,
+em segundos, mostrado em h/min; não é crédito, não é dinheiro, não expira,
+não é sacável nem reembolsável. Correção só por ajuste do Admin (+/−, com
+motivo e autor; retira no máximo o que não está programado na grade; chave
+de idempotência por modal; nunca edita o benefício). O saldo dá
+**direito de veiculação** (≠ plano): conta sem plano com saldo vê o painel
+inteiro, sobe e acompanha a peça (regra provisória: a do Plano Básico — 1
+peça de até 15 s; um lugar só, `REGRA_DO_SALDO`). Veicula na **rede
+inteira** (sem limite de pontos), na camada T3b do gerador — depois do pago,
+da compensação/reposição e da devolução de atraso, antes da Mídia Mostraí
+(T3c, desde 02/10/2026) e do institucional — no ritmo de até 140 s por hora
+de tela, sem nunca tirar entrega paga; a vaga reservada na primeira geração
+da hora toca a hora inteira. O anfitrião da hospedagem ATIVA não ganha
+veiculação gratuita no próprio móvel (a base que guarda o móvel não perde
+nada — a casa, base do móvel ou dona do fixo, não é concorrente de si
+mesma na trava de ramo). Hospedagem cancelada devolve o interesse que a
+originou para "em contato" (fecha como recusado se a conta já tem outro
+aberto).
+O saldo cai pelo que o Proof-of-Play confirma (atribuição por posição: a
+confirmação conta primeiro para o pago, por último para a hospedagem); o
+programado e não confirmado fica reservado até o prazo do POP offline e
+depois volta. *Interesse:* o site (`/hospedar.html`, o percentual lido do
+servidor) e o painel ("Tenho interesse em receber um Ponto Móvel", com os
+dados do cadastro) só registram o interesse — sem conta nova, sem reserva; o
+Admin entra em contato, recusa ou agenda. *Quem vê:* o anfitrião (as
+hospedagens dele, o estimado durante, as horas e o saldo), o Admin (tudo,
+inclusive o extrato com autores).
+*Termo e equipamento (Ponto Móvel V1 §23–24, 05/10/2026):* a hospedagem só
+começa com o **aceite** eletrônico do "Termo de Hospedagem Temporária, Guarda
+de Equipamento e Contrapartida em Mídia" pela conta anfitriã — no painel, o
+card da hospedagem programada abre o termo com local, endereço, período e
+percentual; a pessoa digita o nome e marca "Li e concordo". Fica gravado,
+imutável: versão, hash do texto, hash do documento (termo + dados da
+hospedagem + nome), IP, navegador e data. O painel devolve os dados que
+mostrou: se o Admin mudou o período enquanto a pessoa lia, o aceite é
+recusado e ela relê. Mudou o período ou o percentual → aceite novo; na
+prorrogação de uma hospedagem em andamento o aceite do início continua
+registrado e o painel pede o aceite do novo período (o Admin vê "prorrogação
+aguardando o aceite"). O Admin publica versão nova do termo (nunca edita a antiga —
+quem aceitou a anterior continua com ela). O texto da migration 113
+(`minuta-1`) é **minuta operacional sem revisão jurídica** (PENDENCIAS T13).
+O Admin só marca "a tela chegou" registrando a **entrega** (itens — tela
+obrigatória, suporte, player, cabos, controle —, condição ok/com avarias,
+observação obrigatória na avaria, foto opcional, também enviada depois); a
+**retirada** se registra no encerramento (marcando que o equipamento foi
+recolhido) ou depois dele, uma vez — nunca com a hospedagem em andamento. *Conectividade ≠ operação (§8):* heartbeat
+sumido nunca torna o ponto inativo nem "desligado". O Admin vê três estados
+separados por tela — cadastro (ativa/reparo/inativa), conexão (comunicando,
+sem comunicação, nunca comunicou, sem Player) e operação (exibindo, fora do
+horário, erro relatado; **desconhecida** sem comunicação). O anunciante vê só
+"Sem comunicação com a Mostraí no momento", sem horário nem detalhe técnico.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

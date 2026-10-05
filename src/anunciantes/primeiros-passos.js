@@ -21,9 +21,14 @@ function etapasDosPrimeirosPassos({
   criativosRecusados = 0,
   pontosEscolhidos,
   exibicoes,
+  soSaldoHospedagem = false,
 }) {
   const etapas = [
-    { id: 'plano', titulo: 'Escolha seu plano', feito: temPlano, opcional: false },
+    // Só com saldo de hospedagem (migration 113): o direito de veicular já
+    // existe — são as horas gratuitas, não um plano a escolher.
+    soSaldoHospedagem
+      ? { id: 'plano', titulo: 'Suas horas de hospedagem estão disponíveis', feito: true, opcional: false }
+      : { id: 'plano', titulo: 'Escolha seu plano', feito: temPlano, opcional: false },
     {
       id: 'criativo',
       titulo: 'Envie seu criativo',
@@ -47,6 +52,13 @@ function etapasDosPrimeirosPassos({
     },
     { id: 'exibicoes', titulo: 'Acompanhe suas exibições', feito: exibicoes > 0, opcional: false },
   ];
+  // Só com saldo de hospedagem não há pontos a escolher: as horas valem na
+  // rede inteira (e o servidor recusa a escolha sem plano).
+  if (soSaldoHospedagem)
+    etapas.splice(
+      etapas.findIndex((e) => e.id === 'pontos'),
+      1,
+    );
   // Disponível = o sistema já deixa fazer agora. Sem plano, só o plano.
   for (const e of etapas) e.disponivel = e.id === 'plano' || temPlano;
   const proxima = etapas.find((e) => !e.feito && !e.opcional) || null;
@@ -175,8 +187,10 @@ async function primeirosPassosDaConta(conta) {
   return {
     fluxo: 'anunciante',
     ...etapasDosPrimeirosPassos({
-      // O Básico do ponto (migration 103) também é direito de veicular.
-      temPlano: !!planoVigenteId(conta) || basicos.length > 0,
+      // O Básico do ponto (migration 103) e o saldo de hospedagem (113)
+      // também são direito de veicular.
+      temPlano: !!planoVigenteId(conta) || basicos.length > 0 || acesso.hospedagem.saldoSegundos > 0,
+      soSaldoHospedagem: !planoVigenteId(conta) && !basicos.length && acesso.hospedagem.saldoSegundos > 0,
       ...comuns,
       pontosEscolhidos: escolhidos.rows[0].n,
     }),

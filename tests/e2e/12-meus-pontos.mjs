@@ -184,7 +184,7 @@ check('um card depois dos resyncs', (await p.$$('.estab-card')).length === 1);
 check('uma linha de tela depois dos resyncs', (await p.$$('.tela-linha')).length === 1);
 const linha = await p.textContent('.tela-linha');
 check('sem sinal vira "Precisa de atenção"', linha.includes('Precisa de atenção'), linha);
-check('explica a situação em texto humano', linha.includes('sem comunicação'), linha);
+check('explica a situação em texto humano, sem horário de sinal (§8)', /sem comunicação com a Mostraí/i.test(linha) && !/último sinal/.test(linha), linha);
 const resposta = await p.evaluate(async () => (await fetch('/anunciantes/me/meus-pontos', { credentials: 'include' })).text());
 check(
   'resposta não vaza chave, PIN, contato ou erro cru',
@@ -199,7 +199,7 @@ await p.click('[data-acao="ver-tela"]');
 await p.waitForSelector('#modalTela[open]');
 await p.waitForFunction(() => !/Carregando/.test(document.getElementById('modalTelaCorpo').textContent), null, { timeout: 8000 });
 const dialogo = await p.textContent('#modalTela');
-check('diálogo explica a situação', dialogo.includes('sem comunicação'), dialogo);
+check('diálogo explica a situação', /sem comunicação/i.test(dialogo), dialogo);
 check('diálogo mostra o que rodou (30 dias)', dialogo.includes('Últimos 30 dias'), dialogo);
 check('diálogo sem formulário de PIN', !(await p.$('#modalTela form, #modalTela input, #formPin, #pinTela, #msgPin')));
 check('diálogo não fala de PIN', !/\bPIN\b/i.test(dialogo), dialogo);

@@ -4,7 +4,9 @@ const { randomUUID } = require('node:crypto');
 const pool = require('../src/db/pool');
 const { gerarHash } = require('../src/lib/senha');
 
-// PONTO FIXO E PONTO MÓVEL (migration 112, src/pontos/movel.js). Roda o `app`
+// PONTO FIXO E PONTO MÓVEL (migrations 112 e 113, src/pontos/movel.js). V2
+// (02/10/2026): o móvel nasce só pelo Admin (POST /admin/pontos-moveis), com
+// a Tela 1; candidatura gera sempre fixo; o tipo não muda. Roda o `app`
 // REAL (src/server.js): a guarda do /admin, o login do admin e o do
 // anunciante de verdade. Cada teste cria as próprias contas e pontos — os
 // arquivos de teste rodam em paralelo no mesmo banco.
@@ -72,6 +74,23 @@ test.after(async () => {
   await require('../src/lib/eventos').aguardarGravacoes();
   for (const id of criadas.pontos) {
     const telas = 'SELECT id FROM dispositivos WHERE ponto_id = $1';
+    await pool.query(
+      'DELETE FROM saldo_hospedagem_lancamentos WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)',
+      [id],
+    );
+    // Termo/equipamento da hospedagem de teste (o aceite é imutável: o
+    // gatilho sai só durante a limpeza).
+    await pool.query('ALTER TABLE hospedagem_aceites DISABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_aceites WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
+      [id],
+    );
+    await pool.query('ALTER TABLE hospedagem_aceites ENABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
+      [id],
+    );
+    await pool.query('DELETE FROM pontos_moveis_hospedagens WHERE ponto_id = $1', [id]);
     await pool.query(`DELETE FROM execucoes_confirmadas WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM midias_exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
@@ -170,9 +189,39 @@ async function aprovar(conta, corpo) {
   return pontoDaCandidatura(cand.id);
 }
 
-const aprovarMovel = (conta) => aprovar(conta, { tipo: 'movel' });
+// O móvel nasce pelo Admin (V2): base com nome, endereço, conta (opcional) e
+// horário; a Tela 1 nasce junto.
+async function criarMovel(contaBase, extra = {}) {
+  const r = await admin('POST', '/admin/pontos-moveis', {
+    base_conta_id: contaBase ? contaBase.id : null,
+    base_nome: `Academia ${randomUUID().slice(0, 8)}`,
+    cep: '15990000',
+    logradouro: 'Avenida Brasil',
+    numero: String(100 + Math.floor(Math.random() * 800)),
+    bairro: 'Centro',
+    cidade: 'Matão',
+    uf: 'SP',
+    horario_semanal: HORARIO_DA_BASE,
+    ...extra,
+  });
+  assert.strictEqual(r.status, 201, JSON.stringify(r.json));
+  criadas.pontos.push(r.json.id);
+  const { rows } = await pool.query('SELECT * FROM pontos WHERE id = $1', [r.json.id]);
+  return { ...rows[0], telaId: r.json.telaId };
+}
+const aprovarMovel = (conta) => criarMovel(conta);
 
+// Tela instalada: no móvel, a Tela 1 que nasceu com ele (1 móvel = 1 tela);
+// no fixo, uma tela nova.
 async function telaInstalada(pontoId) {
+  const { rows: existente } = await pool.query(
+    `UPDATE dispositivos SET status = 'ativo', chave_hash = md5(random()::text) || md5(random()::text)
+      WHERE id = (SELECT d.id FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
+                   WHERE d.ponto_id = $1 AND p.tipo = 'movel' AND d.status <> 'inativo' ORDER BY d.id LIMIT 1)
+      RETURNING id`,
+    [pontoId],
+  );
+  if (existente[0]) return existente[0].id;
   const { rows } = await pool.query(
     `INSERT INTO dispositivos (ponto_id, apelido, status, chave_hash)
      VALUES ($1, 'Tela', 'ativo', md5(random()::text) || md5(random()::text)) RETURNING id`,
@@ -239,25 +288,26 @@ test('2b. tipo explícito "fixo" e tipo inválido', async () => {
   assert.strictEqual(await pontoDaCandidatura(cand.id), null, 'nada nasce com tipo inválido');
 });
 
-test('3. Admin aprova como MÓVEL: o ponto é da Mostraí, a conta é só a base', async () => {
+test('3. candidatura nunca vira móvel; o Admin cria o móvel direto — da Mostraí, a conta é só a base', async () => {
   const conta = await novaConta();
   const cand = await novaCandidatura(conta);
   const r = await admin('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' });
-  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-  const ponto = await pontoDaCandidatura(cand.id);
+  assert.strictEqual(r.status, 400, 'candidatura sempre gera ponto fixo');
+  assert.match(r.json.erro, /sempre gera ponto fixo/);
+  assert.strictEqual(await pontoDaCandidatura(cand.id), null);
+
+  const ponto = await criarMovel(conta);
   assert.strictEqual(ponto.tipo, 'movel');
   assert.strictEqual(ponto.anunciante_id, null, 'sem dona');
+  assert.strictEqual(ponto.candidatura_id, null, 'não vem de candidatura');
   assert.strictEqual(ponto.base_conta_id, conta.id);
-  assert.strictEqual(ponto.base_nome, cand.nome_comercio, 'a base leva o nome do comércio');
   assert.match(ponto.nome, /^Mostraí Móvel #\d{2,}$/);
   assert.ok(ponto.base_desde, 'base com data');
-  assert.deepStrictEqual(ponto.horario_semanal, cand.horario_semanal, 'o horário da base vem da candidatura');
+  assert.ok(ponto.telaId, 'a Tela 1 nasce junto');
   const { rows } = await pool.query('SELECT papeis FROM anunciantes WHERE id = $1', [conta.id]);
   assert.ok(!rows[0].papeis.includes('ponto'), 'a base não ganha o papel de dono');
   const cupom = await pool.query('SELECT 1 FROM cupons_ponto WHERE conta_id = $1', [conta.id]);
-  assert.strictEqual(cupom.rowCount, 0, 'aprovar como móvel não cria cupom para a base');
-  const { rows: candAgora } = await pool.query('SELECT status FROM candidaturas WHERE id = $1', [cand.id]);
-  assert.strictEqual(candAgora[0].status, 'aprovada');
+  assert.strictEqual(cupom.rowCount, 0, 'criar móvel não cria cupom para a base');
 });
 
 // ---------- 4 e 17. segurança ----------
@@ -270,6 +320,7 @@ test('4. conta comum (e anônimo) não cria móvel nem mexe em base ou evento', 
   const fixo = await aprovar(await novaConta());
   for (const quem of [nav, anon]) {
     assert.strictEqual((await quem('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' })).status, 401);
+    assert.strictEqual((await quem('POST', '/admin/pontos-moveis', { base_nome: 'X' })).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${fixo.id}/tornar-movel`)).status, 401);
     assert.strictEqual((await quem('POST', `/admin/pontos/${movelPronto.id}/tornar-fixo`)).status, 401);
     assert.strictEqual(
@@ -301,9 +352,14 @@ test('17. propriedade: móvel nunca ganha dono — nem pelo PATCH do admin, nem 
     'o CHECK do banco recusa dono em ponto móvel',
   );
   await assert.rejects(
-    pool.query('UPDATE pontos SET base_conta_id = NULL WHERE id = $1', [ponto.id]),
+    pool.query('UPDATE pontos SET base_nome = NULL WHERE id = $1', [ponto.id]),
     (e) => e.code === '23514',
     'móvel sem base também não existe',
+  );
+  await assert.rejects(
+    pool.query('UPDATE pontos SET candidatura_id = (SELECT id FROM candidaturas LIMIT 1) WHERE id = $1', [ponto.id]),
+    (e) => e.code === '23514',
+    'móvel nunca vem de candidatura',
   );
   // A base não edita o endereço (só o dono edita o do próprio ponto).
   const nav = await entrar(contaBase);
@@ -396,8 +452,17 @@ test('8 e 9. evento em andamento vira o local atual; encerrado, volta para a bas
   assert.strictEqual(f.proximoEvento, null, 'em andamento não é "próximo"');
   assert.strictEqual(f.base.nome, ponto.base_nome, 'a base não muda');
 
-  // Um lugar por vez.
-  const outro = await cadastrarEvento(ponto.id, { nome: 'Outro', data_inicio: hojeMais(0) });
+  // Um lugar por vez (agenda única, migration 113): datas sobrepostas nem
+  // entram; um evento de outra data não começa com este em andamento.
+  const sobreposto = await admin('POST', `/admin/pontos/${ponto.id}/eventos`, {
+    nome: 'Outro',
+    organizacao: 'X',
+    local: 'Y',
+    data_inicio: hojeMais(0),
+  });
+  assert.strictEqual(sobreposto.status, 409);
+  assert.match(sobreposto.json.erro, /já está no evento/);
+  const outro = await cadastrarEvento(ponto.id, { nome: 'Outro', data_inicio: hojeMais(3), data_fim: hojeMais(3) });
   const dois = await acaoNoEvento(ponto.id, outro, 'iniciar');
   assert.strictEqual(dois.status, 409);
   assert.match(dois.json.erro, /já está no evento/);
@@ -620,7 +685,7 @@ test('trava de ramo: o concorrente da base fica fora do móvel; a base, quando e
   const ponto = await aprovarMovel(contaBase);
   await pool.query('UPDATE pontos SET categoria_id = $2 WHERE id = $1', [ponto.id, cat[0].id]);
   await tirarDoSorteio(ponto.id);
-  const tela = await dispositivosRepo.criar(ponto.id, { apelido: `Tela ${randomUUID().slice(0, 6)}` });
+  const tela = { id: ponto.telaId };
   await dispositivosRepo.atualizar(tela.id, { status: 'ativo' });
   await instalarPlayer(tela.id);
 
@@ -642,7 +707,7 @@ test('trava de ramo: o concorrente da base fica fora do móvel; a base, quando e
   const concorrente = await contaComPlanoEPeca(ponto.id, cat[0].id);
 
   const dispositivo = await dispositivosRepo.buscarComPonto(tela.id);
-  assert.strictEqual(dispositivo.base_conta_id, contaBase.id);
+  assert.strictEqual(dispositivo.casa_conta_id, contaBase.id);
   assert.strictEqual(dispositivo.dono_conta_id, null);
   const envelope = await gerador.gerarPlaylistDaHora(dispositivo, new Date());
   const contas = new Set(envelope.itens.map((i) => i.anuncianteId));
@@ -674,7 +739,7 @@ test('em evento a tela exibe sem o horário da base; de volta, o horário volta 
 });
 
 // A régua "no ar" do anunciante lê o MESMO horário em vigor da TV
-// (src/lib/horario-em-vigor.js): no evento fora do horário da base, a tela
+// (src/lib/contexto-do-ponto.js): no evento fora do horário da base, a tela
 // que exibe está "no ar" para o anunciante e "operando" para o Admin.
 test('no evento fora do horário da base, anunciante e Admin veem a tela no ar', async () => {
   const ponto = await aprovarMovel(await novaConta());
@@ -737,8 +802,8 @@ test('alterar a base: período anterior no histórico, endereço e ramo da base 
     base_nome: 'Barbearia Y',
   });
   assert.strictEqual(semEndereco.status, 400, 'base nova pede o endereço dela');
-  const semConta = await admin('PUT', `/admin/pontos/${ponto.id}/base`, { ...corpo, base_conta_id: '' });
-  assert.strictEqual(semConta.status, 400);
+  const contaInvalida = await admin('PUT', `/admin/pontos/${ponto.id}/base`, { ...corpo, base_conta_id: 'abc' });
+  assert.strictEqual(contaInvalida.status, 400);
 
   const r = await admin('PUT', `/admin/pontos/${ponto.id}/base`, corpo);
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
@@ -764,70 +829,50 @@ test('alterar a base: período anterior no histórico, endereço e ramo da base 
   assert.strictEqual((await ficha(ponto.id)).basesAnteriores.length, 1);
 });
 
-// ---------- fixo ⇄ móvel depois da aprovação ----------
-test('fixo → móvel: a dona vira a base, o Plano Básico do ponto termina, o ponto é da Mostraí', async () => {
+// ---------- tipo imutável (V2) ----------
+test('tipo imutável: fixo não vira móvel nem móvel vira fixo — rota 410 e o banco recusa', async () => {
   const dona = await novaConta();
   const fixo = await aprovar(dona);
-  await telaInstalada(fixo.id);
-  await basico.sincronizar({ apenasPontos: [fixo.id] });
-  assert.strictEqual(
-    (await pool.query('SELECT 1 FROM beneficios_basico_ponto WHERE ponto_id = $1 AND fim IS NULL', [fixo.id])).rowCount,
-    1,
+  const movelPronto = await criarMovel(await novaConta());
+  const a = await admin('POST', `/admin/pontos/${fixo.id}/tornar-movel`);
+  const b = await admin('POST', `/admin/pontos/${movelPronto.id}/tornar-fixo`);
+  assert.strictEqual(a.status, 410);
+  assert.strictEqual(b.status, 410);
+  await assert.rejects(
+    pool.query(`UPDATE pontos SET tipo = 'movel' WHERE id = $1`, [fixo.id]),
+    (e) => e.code === '23514',
   );
-  const r = await admin('POST', `/admin/pontos/${fixo.id}/tornar-movel`);
-  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-  const { rows } = await pool.query('SELECT * FROM pontos WHERE id = $1', [fixo.id]);
-  assert.strictEqual(rows[0].tipo, 'movel');
-  assert.strictEqual(rows[0].anunciante_id, null);
-  assert.strictEqual(rows[0].base_conta_id, dona.id);
-  assert.strictEqual(rows[0].base_nome, fixo.nome);
-  assert.match(rows[0].nome, /^Mostraí Móvel #/);
-  const { rows: b } = await pool.query('SELECT fim FROM beneficios_basico_ponto WHERE ponto_id = $1', [fixo.id]);
-  assert.ok(b[0].fim, 'o Plano Básico daquele ponto acabou (dono mudou)');
-  assert.strictEqual((await admin('POST', `/admin/pontos/${fixo.id}/tornar-movel`)).status, 409, 'já é móvel');
-  await pool.query('DELETE FROM beneficios_basico_ponto WHERE ponto_id = $1', [fixo.id]);
-});
-
-test('móvel → fixo: só sem evento aberto; a base vira a dona e o período de base fecha', async () => {
-  const contaBase = await novaConta();
-  const ponto = await aprovarMovel(contaBase);
-  const eventoId = await cadastrarEvento(ponto.id);
-  const bloqueado = await admin('POST', `/admin/pontos/${ponto.id}/tornar-fixo`);
-  assert.strictEqual(bloqueado.status, 409);
-  assert.match(bloqueado.json.erro, /cancele/);
-  await acaoNoEvento(ponto.id, eventoId, 'cancelar');
-  const r = await admin('POST', `/admin/pontos/${ponto.id}/tornar-fixo`);
-  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-  const { rows } = await pool.query('SELECT * FROM pontos WHERE id = $1', [ponto.id]);
-  assert.strictEqual(rows[0].tipo, 'fixo');
-  assert.strictEqual(rows[0].anunciante_id, contaBase.id);
-  assert.strictEqual(rows[0].nome, ponto.base_nome);
-  assert.strictEqual(rows[0].base_conta_id, null);
-  const { rows: hist } = await pool.query('SELECT conta_id FROM pontos_moveis_bases WHERE ponto_id = $1', [ponto.id]);
+  await assert.rejects(
+    pool.query(
+      `UPDATE pontos SET tipo = 'fixo', anunciante_id = base_conta_id, base_conta_id = NULL, base_nome = NULL,
+                         base_desde = NULL WHERE id = $1`,
+      [movelPronto.id],
+    ),
+    (e) => e.code === '23514',
+  );
+  const { rows } = await pool.query('SELECT id, tipo FROM pontos WHERE id = ANY($1::int[]) ORDER BY id', [
+    [fixo.id, movelPronto.id],
+  ]);
   assert.deepStrictEqual(
-    hist.map((h) => h.conta_id),
-    [contaBase.id],
+    rows.map((r) => r.tipo),
+    [fixo.id, movelPronto.id].sort((x, y) => x - y).map((id) => (id === fixo.id ? 'fixo' : 'movel')),
   );
-  // Voltando a ser móvel, o número é o mesmo de antes.
-  await admin('POST', `/admin/pontos/${ponto.id}/tornar-movel`);
-  const { rows: de2 } = await pool.query('SELECT nome FROM pontos WHERE id = $1', [ponto.id]);
-  assert.strictEqual(de2[0].nome, ponto.nome);
 });
 
 // ---------- duplicidade ----------
-test('o mesmo estabelecimento já base de um móvel não vira outro ponto', async () => {
+test('ser base de um móvel não impede o comércio de pedir o PRÓPRIO ponto fixo', async () => {
   const conta = await novaConta();
-  const cand = await novaCandidatura(conta);
-  assert.strictEqual((await admin('POST', `/admin/candidaturas/${cand.id}/liberar`, { tipo: 'movel' })).status, 200);
-  await pontoDaCandidatura(cand.id);
-  const repetida = await novaCandidatura(conta, {
-    nome_comercio: cand.nome_comercio,
-    logradouro: cand.logradouro,
-    numero: cand.numero,
+  const m = await criarMovel(conta);
+  const cand = await novaCandidatura(conta, {
+    nome_comercio: m.base_nome,
+    logradouro: m.logradouro,
+    numero: m.numero,
   });
-  const r = await admin('POST', `/admin/candidaturas/${repetida.id}/liberar`);
-  assert.strictEqual(r.status, 409);
-  assert.match(r.json.erro, /base de um ponto móvel/);
+  const r = await admin('POST', `/admin/candidaturas/${cand.id}/liberar`);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  const fixo = await pontoDaCandidatura(cand.id);
+  assert.strictEqual(fixo.tipo, 'fixo');
+  assert.strictEqual(fixo.anunciante_id, conta.id);
 });
 
 test('situacaoDosMoveis ignora ponto fixo e id inválido', async () => {

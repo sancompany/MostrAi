@@ -112,7 +112,8 @@
   // da rede) e/ou ponto no ar (a tela do próprio comércio).
   function ondeRoda() {
     const lugares = [];
-    if (dados.rodaNaRede) lugares.push('nos pontos do seu plano');
+    if (dados.soSaldoHospedagem) lugares.push('na rede, com suas horas de hospedagem');
+    else if (dados.rodaNaRede) lugares.push('nos pontos do seu plano');
     if (dados.rodaNoProprioPonto) lugares.push('na tela do seu comércio');
     return lugares.length ? `Peças aprovadas rodam ${lugares.join(' e ')}.` : '';
   }

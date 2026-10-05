@@ -27,6 +27,9 @@ const TIPOS = {
   // (migration 111; spec de consolidação, R3 §42/§6): anomalia operacional
   // da Mostraí. Só alerta interno — nunca desconto nem compensação futura.
   SOBREENTREGA_ANOMALA: { severidade: 'atencao', escopo: 'admin' },
+  // Um comércio quer hospedar um ponto móvel (migration 113): o Admin entra
+  // em contato e decide. Resolve quando o interesse sai de "nova".
+  HOSPEDAGEM_INTERESSE: { severidade: 'informativa', escopo: 'admin' },
 };
 
 const ORDEM_DA_SEVERIDADE = `CASE severidade WHEN 'bloqueante' THEN 0 WHEN 'atencao' THEN 1 ELSE 2 END`;

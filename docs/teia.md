@@ -1821,7 +1821,7 @@ API do Mostraí — 112 declarações `router.<método>` em 12 `src/**/routes.js
   · `src/conta/modos.js:154`, `public/convite.page.js:53` · rotas: `/convites/:token/aceitar` · papéis: conta logada
   · ← public/convite.page.js:53
 
-**POST /admin/candidaturas/:id/liberar** — Liga o papel direto na conta que pediu (candidatura com conta_id) e marca aprovada, em transação. 400 sem conta_id, 409 se já liberada. Desde 02/10/2026 aceita `tipo` (`fixo` padrão | `movel`, RN-71): móvel chama `materializarPontoDaCandidatura(…, { tipo: 'movel' })` em vez de `liberarPapelNaConta` — o ponto nasce da Mostraí, sem dono, papel ou cupom, com a conta como base; as rotas da base e dos eventos ficam em `src/pontos/movel-routes.js` sobre `src/pontos/movel.js`.
+**POST /admin/candidaturas/:id/liberar** — Liga o papel direto na conta que pediu (candidatura com conta_id) e marca aprovada, em transação. 400 sem conta_id, 409 se já liberada. Desde a V2 (migration 113, RN-71) gera sempre ponto fixo: `tipo` ≠ `fixo` → 400. O móvel nasce só em `POST /admin/pontos-moveis` (`movel.criarPontoMovel`); base, eventos e hospedagens ficam em `src/pontos/movel-routes.js` sobre `src/pontos/movel.js`, `src/pontos/hospedagem.js` e `src/pontos/agenda.js`.
   · `src/conta/modos.js:183`, `public/admin/index.page.js:958` · rotas: `/admin/candidaturas/:id/liberar` · papéis: sessao de admin
   · ← public/admin/index.page.js:958
 

@@ -166,6 +166,30 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   aparece como "~N pessoas", nunca entra no POP, no saldo nem em promessa
   de audiência. limite: GPS e audiência medida estão nas próximas versões
   (`docs/proximas-versoes.md`) e no veto de medição acima.
+- **Ponto Móvel V2: o tempo operacional é o que a tela COMPROVA** (02/10/2026,
+  RN-72). Online, pelos heartbeats (o APK bate a cada 5 min; um buraco > 6 min 30 s
+  fecha o intervalo — entre duas batidas exibindo, conta o trecho todo);
+  offline, pelos segmentos que o Player conta com o relógio monotônico e
+  manda quando volta — o que chegar depois do encerramento, dentro da
+  janela, soma por apuração tardia (até 8 dias, lançamento complementar).
+  Só tela ATIVA no cadastro mede — no offline, pelo estado de QUANDO
+  exibiu; o tempo fica com o ponto em que foi medido (tela excluída não
+  apaga). Dois tetos assumidos: (1) um boot que
+  nunca recebeu o `servidorAgora` não tem como converter o relógio para o
+  do servidor, e esse tempo se perde (nunca é inventado); (2) até o Player
+  novo chegar às TVs (OTA), só o tempo online conta.
+- **Regra de peça do saldo de hospedagem é provisória** (02/10/2026, RN-72):
+  quem veicula só com o saldo usa a regra do Plano Básico (1 peça de até
+  15 s, 140 s por hora de tela) — decisão do dono pendente
+  (`docs/PENDENCIAS.md`, T9). limite: trocar em `REGRA_DO_SALDO`
+  (`src/pontos/hospedagem.js`), um lugar só.
+- **Termo de hospedagem: o sistema existe, o texto é minuta** (05/10/2026,
+  RN-72). A `minuta-1` da migration 113 não passou por revisão jurídica e
+  diz isso no próprio texto; versão, aceite, hashes e imutabilidade estão
+  prontos. limite: antes da primeira hospedagem real o Admin publica a
+  versão revisada (`docs/PENDENCIAS.md`, T13). O sistema não emite PDF nem
+  colhe assinatura digital ICP — o aceite é eletrônico simples, com
+  evidência (IP, navegador, data, hash do documento).
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

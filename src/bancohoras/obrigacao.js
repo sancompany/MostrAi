@@ -69,6 +69,11 @@ async function registrarHorasSemPedido({
   }
   for (const tela of telas) {
     if (!tela.provisionado_em) continue;
+    // Ponto móvel (migration 113): não tem horário fixo de loja — muda de
+    // lugar, viaja desligado entre um comércio e outro. Hora em que a tela
+    // não pediu nada não vira dívida dele: o que aconteceu de fato é o que a
+    // tela pediu e o Proof-of-Play confirmou.
+    if (tela.ponto_tipo === 'movel') continue;
     const instalada = new Date(tela.provisionado_em).getTime();
     const inicio = Math.max(Math.ceil(new Date(de).getTime() / HORA) * HORA, inicioDaHora(instalada).getTime());
     if (inicio >= limiteFim) continue;

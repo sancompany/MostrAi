@@ -27,7 +27,7 @@
       'A tela foi preparada e ainda não se conectou. Assim que ligar, o ponto fica ativo.',
     ativo: () => '',
     em_manutencao: () => 'A tela deste ponto está em reparo. A equipe Mostraí está cuidando disso.',
-    inativo: () => 'As telas deste ponto estão desligadas. Se isso não era esperado, fale com a gente.',
+    inativo: () => 'As telas deste ponto estão inativas no cadastro. Se isso não era esperado, fale com a gente.',
   };
 
   let obterConta = () => null;
@@ -37,14 +37,6 @@
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => window.esc(s);
-
-  function tempoDesde(iso) {
-    const min = Math.round((Date.now() - new Date(iso)) / 60000);
-    if (min < 3) return 'agora';
-    if (min < 60) return `há ${min} min`;
-    if (min < 48 * 60) return `há ${Math.round(min / 60)} h`;
-    return `há ${Math.round(min / 1440)} dias`;
-  }
 
   // Ícones das linhas do card — o mesmo desenho de "Onde seu anúncio
   // aparece" (painel.page.js). Decorativos: o texto ao lado diz a mesma coisa.
@@ -76,16 +68,15 @@
     }).join('')}</ol>`;
   }
 
-  // Visão simplificada: situação e último sinal (toda tela segue o horário
-  // do estabelecimento). Nada técnico — o que é de operador fica no admin.
+  // Visão simplificada: só a situação (toda tela segue o horário do
+  // estabelecimento). Nada técnico — o que é de operador fica no admin.
   function htmlTela(t) {
-    const sinal = t.ultimoSinal ? ` · último sinal ${tempoDesde(t.ultimoSinal)}` : '';
     const curto = t.nivel === 'atencao' ? 'Precisa de atenção' : t.situacaoTexto;
     return `<li class="tela-linha nivel-${t.nivel}">
       <span class="tela-dot" aria-hidden="true"></span>
       <div class="tela-id">
         <b>${esc(t.nome)}</b>
-        <span>${esc(curto)}${sinal}</span>
+        <span>${esc(curto)}</span>
         ${t.nivel === 'atencao' ? `<span class="tela-alerta">${esc(t.situacaoTexto)}</span>` : ''}
       </div>
       <span class="tela-num"><b>${t.exibicoes30d.toLocaleString('pt-BR')}</b> exibições em 30 dias</span>
@@ -175,7 +166,9 @@
     const agora =
       e.localAtual?.origem === 'evento'
         ? `Agora em evento: <b>${esc(e.localAtual.nome)}</b> — depois volta para cá.`
-        : 'Agora está aqui, na sua base.';
+        : e.localAtual?.origem === 'hospedagem'
+          ? `Agora hospedado em <b>${esc(e.localAtual.nome)}</b> — depois volta para cá.`
+          : 'Agora está aqui, na sua base.';
     const prox = e.proximoEvento;
     return `<article class="estab-card estab-base-movel" data-estab="${e.tipo}-${e.id}">
       <div class="estab-corpo">

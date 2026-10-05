@@ -1183,12 +1183,12 @@ dialog#dlgPerfil::backdrop { background: rgba(20,23,31,.5); }
 }
 .btn-sair:hover { text-decoration: underline; }
 
-dialog#dlgPlano, dialog.dlg-resgate, dialog.dlg-confirmar {
+dialog#dlgPlano, dialog.dlg-resgate, dialog.dlg-confirmar, dialog.dlg-termo {
   border: none; border-radius: var(--radius); padding: 24px; max-width: 420px; width: 92vw;
   background: var(--card); color: var(--text);
 }
 dialog.dlg-resgate { max-width: 480px; }
-dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop, dialog.dlg-confirmar::backdrop { background: rgba(20,23,31,.5); }
+dialog#dlgPlano::backdrop, dialog.dlg-resgate::backdrop, dialog.dlg-confirmar::backdrop, dialog.dlg-termo::backdrop { background: rgba(20,23,31,.5); }
 .dlg-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 /* Confirmação Mostraí (confirmar.js): título, consequência, Cancelar /
    Confirmar. O texto é a consequência, não a pergunta — quem lê decide. */

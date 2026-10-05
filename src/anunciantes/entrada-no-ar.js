@@ -4,6 +4,7 @@ const concorrencia = require('../categorias/concorrencia');
 const { pontosDoAnunciante } = require('../lib/pacing');
 const { cabeNoTeto } = require('../pontos/basico');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
+const { horarioEmVigorSql, categoriaEmVigorSql, casaEmVigorSql } = require('../lib/contexto-do-ponto');
 
 // Primeira entrada no ar (estação de distribuição, 27/09/2026): entre
 // "Aprovado" e "rodando" não pode haver limbo. O estado de cada peça é
@@ -119,13 +120,17 @@ function prazoDaJanela(relogio, janela, horasDeRodizio) {
 // Plano Básico do ponto (migration 103): o próprio ponto de cada Básico
 // ativo entra na cobertura, sem trava de ramo (é o estabelecimento da conta)
 // e sem ocupar vaga da escolha comercial.
-async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
+// `redeInteira` (saldo de hospedagem, migration 113): as horas gratuitas
+// valem em qualquer ponto no ar — só a trava de ramo filtra.
+async function coberturaDaConta(conta, plano, db = pool, basicos = [], { redeInteira = false } = {}) {
   const [{ rows: escolhas }, { rows: noAr }, bloqueados, concorrentes] = await Promise.all([
     db.query('SELECT ponto_id FROM anunciantes_pontos WHERE anunciante_id = $1 ORDER BY escolhido_em', [conta.id]),
     db.query(
-      // `casa_id`: a dona do ponto fixo ou a base do móvel — a mesma conta que
-      // a trava de ramo do gerador protege (gerador.js#casaDaTela).
-      `SELECT p.id, p.horario_semanal, p.categoria_id, COALESCE(p.anunciante_id, p.base_conta_id) AS casa_id
+      // Ramo, casa e horário EM VIGOR — os mesmos que o gerador usa na tela
+      // (src/lib/contexto-do-ponto.js): no ponto móvel mudam com a
+      // hospedagem ou o evento em curso.
+      `SELECT p.id, ${horarioEmVigorSql('p')} AS horario_semanal, ${categoriaEmVigorSql('p')} AS categoria_id,
+              ${casaEmVigorSql('p')} AS casa_id
          FROM pontos p WHERE p.status = 'em_operacao' ORDER BY p.id`,
     ),
     pontosRepo.idsBloqueadosParaEscolha(),
@@ -139,7 +144,7 @@ async function coberturaDaConta(conta, plano, db = pool, basicos = []) {
         bloqueados,
       )
     : [];
-  const naFatia = new Set(ids);
+  const naFatia = new Set(redeInteira ? noAr.map((p) => p.id) : ids);
   const proprios = new Set(basicos.map((b) => b.ponto_id));
   return noAr.filter(
     (p) =>
@@ -182,6 +187,7 @@ async function entradaNoArDasPecas({
   basicos = [],
   teto = null,
   contaVeicula,
+  saldoHospedagem = 0,
   criativos,
   agora = new Date(),
   db = pool,
@@ -191,8 +197,8 @@ async function entradaNoArDasPecas({
   if (!aprovadas.length) return resultado;
   const emRodizio = aprovadas.filter((c) => c.em_rodizio);
   const cobertura =
-    contaVeicula && (plano || basicos.length) && emRodizio.length
-      ? await coberturaDaConta(conta, plano, db, basicos)
+    contaVeicula && (plano || basicos.length || saldoHospedagem > 0) && emRodizio.length
+      ? await coberturaDaConta(conta, plano, db, basicos, { redeInteira: !plano && !basicos.length })
       : [];
   const relogio = criarRelogioDaCobertura(cobertura);
 

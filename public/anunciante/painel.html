@@ -160,6 +160,18 @@
           </article>
         </section>
 
+        <!-- Hospedagem temporária de Ponto Móvel (migration 113): as
+             hospedagens desta conta, o SALDO DE HOSPEDAGEM (horas de mídia
+             gratuitas — não são créditos) e o interesse em receber um.
+             Montado por public/hospedagem-conta.js. -->
+        <section class="dashboard-section" id="modHospedagem" aria-labelledby="tituloHospedagem" hidden>
+          <article class="panel painel-hospedagem">
+            <p class="section-eyebrow">Ponto Móvel Mostraí</p>
+            <h2 id="tituloHospedagem">Hospedagem</h2>
+            <div id="hospedagemCorpo"></div>
+          </article>
+        </section>
+
         <section class="dashboard-section" id="modPlano" aria-labelledby="tituloPlano" hidden>
           <article class="panel painel-plano">
             <p class="section-eyebrow">Plano contratado</p>
@@ -285,6 +297,7 @@
   <script src="/endereco.js"></script>
   <script src="/candidatura-ponto.js"></script>
   <script src="/ponto-movel.js"></script>
+  <script src="/hospedagem-conta.js"></script>
   <script src="/meus-pontos.js"></script>
   <script src="/pendencias.js"></script>
   <script src="/meus-criativos.js"></script>

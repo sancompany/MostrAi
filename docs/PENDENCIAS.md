@@ -5755,3 +5755,94 @@ limite no `CONSTRAINTS.md`; o que ficou de fora em `docs/proximas-versoes.md`.
     pedido de ponto foi aprovado — a gente chama no WhatsApp pra combinar a
     visita e a instalação". Não diz que o ponto é móvel nem promete nada
     à base.
+
+## T. Ponto Móvel V2 — hospedagem temporária e saldo em horas (02/10/2026)
+
+Pedido do dono "Estação — Ponto Móvel V2: hospedagem temporária, benefício
+em horas e ciclo de vida real do ativo". Regras RN-71 (reescrita) e RN-72 em
+`docs/funcional.md`; ADR-037 em `.ia/DECISIONS.md`; migration 113; limites no
+`CONSTRAINTS.md`. Supera S1 (o tipo não é mais escolhido na aprovação) e a
+conversão fixo ⇄ móvel da seção S.
+
+- T1 [x] Origem: candidatura sempre gera fixo; o móvel nasce só pelo Admin
+      (Rede › Pontos móveis), nunca tem dono nem candidatura; tipo imutável
+      (gatilho); 1 móvel = 1 tela (gatilho); foto do equipamento.
+- T2 [x] Hospedagem temporária: programada → ativa → encerrada (manual ou
+      automática no fim previsto) | cancelada; agenda única com evento
+      (sem sobreposição, recusada também no banco, mesmo em corrida).
+- T3 [x] Percentual global (padrão 20%), auditado, congelado na confirmação.
+- T4 [x] Tempo operacional válido = união dos intervalos de heartbeat e dos
+      segmentos offline do Player, dentro da hospedagem; benefício = tempo ×
+      percentual, um lançamento idempotente no saldo de hospedagem.
+- T5 [x] Saldo de hospedagem: livro próprio, não expira, não é crédito;
+      direito de veiculação sem plano; camada T3b do gerador na rede inteira;
+      cai pelo Proof-of-Play; ajuste auditado do Admin.
+- T6 [x] Trava de concorrente pelo contexto comercial (anfitrião, base, ou o
+      contexto do evento); "evento = 24 h" virou "autorização fora do
+      horário da base", sem dívida de hora sem sinal para o móvel.
+- T7 [x] Site (`/hospedar.html` e bloco na home, percentual lido do
+      servidor), interesse público e pelo painel, card de hospedagem e de
+      saldo no painel, Admin completo.
+- T8 [x] Testes: `tests/hospedagem.test.js` (itens 1–67 e os E2E §78/§80;
+      §79 no item 22), `tests/ponto-movel.test.js` reescrito para a V2,
+      `tests/e2e/46-ponto-movel.mjs` (criação pelo Admin) e
+      `tests/e2e/47-hospedagem-movel.mjs` (fluxo completo no navegador).
+- T9 [ ] **Só o dono — confirmar (NÃO bloqueia o merge; reavaliado na
+      finalização V1, 05/10/2026):** quantidade e duração de criativos de
+      quem usa SÓ o saldo de hospedagem. Implementado com a regra do Plano
+      Básico (1 peça de até 15 s, ritmo de até 140 s por hora de tela) num
+      lugar só (`REGRA_DO_SALDO`, `src/pontos/hospedagem.js`, lida do
+      `BASICO`). Por que 140 s/h: é o teto do Básico (14 h/mês), o menor
+      ritmo que a rede já vende — o saldo nunca anda mais rápido que um
+      plano pago. Efeito no pacing: por hora de tela, `min(saldo restante /
+      telas / duração, 140 / duração)` inserções (9 × 15 s = 135 s), só no
+      tempo ocioso depois do pago e da recuperação (T3b) — nunca tira
+      entrega paga. Multi-ponto: o saldo é da rede inteira, então anda mais
+      rápido quanto mais telas abertas: 6 h de saldo levam ~13 dias numa
+      tela aberta 12 h/dia e ~16 h abertas com 10 telas. Quando o saldo é
+      menor que uma rodada da rede pode passar alguns segundos do saldo
+      (o Admin vê em `diferencaSegundos`). Mudar = trocar `REGRA_DO_SALDO`
+      e os testes 38–40 de `tests/hospedagem.test.js`; nenhuma migration.
+- T10 [ ] **Player:** a contagem offline está no repositório
+      `sancompany/playlist.mostrai` (segmentos com relógio monotônico, âncora
+      no `servidorAgora`, envio para `/player/:id/operacao`). Precisa de PR,
+      build e OTA para as TVs; até lá, só o tempo online (heartbeat) conta.
+- T11 [x] Tempo contado offline e enviado DEPOIS do encerramento SOMA
+      (revisão, ciclos 1 e 3 — achado ALTO): a janela da hospedagem não
+      muda, o job de apuração tardia (`apurarTardias`, a cada 5 min; segmento com
+      até 8 dias de atraso, o job olha 9) apura de novo e a diferença entra como lançamento
+      complementar idempotente (`hospedagem:<id>:ate:<total>`). O banco só
+      aceita o tempo crescer com o benefício exato do tempo novo.
+- T12 [x] Métrica da Mídia Mostraí × agenda (Ponto Móvel V1 §18,
+      05/10/2026): o esperado desconta o que a agenda decidiu não programar
+      nas horas congeladas, e hora congelada com zero programado não marca
+      atraso (`src/midias/metricas.js`, teste 30b de
+      `tests/distribuicao.test.js`). A entrega não mudou.
+- T13 [ ] **Só o dono — texto jurídico do termo de hospedagem:** o "Termo
+      de Hospedagem Temporária, Guarda de Equipamento e Contrapartida em
+      Mídia" da migration 113 é a `minuta-1` — rascunho OPERACIONAL, sem
+      revisão jurídica (o próprio texto diz isso). Antes da primeira
+      hospedagem real, o jurídico revisa e o Admin publica a versão final em
+      Rede → Pontos móveis → Termo de hospedagem (versão nova; a minuta fica
+      no histórico, nunca é editada). O sistema (versão, aceite, hashes,
+      IP/navegador, data, imutabilidade) está pronto.
+- T14 [ ] LOW aceitos na revisão focal da finalização V1 (05/10/2026), sem
+      efeito em regra nem em dinheiro:
+      (a) o Admin mostra como "aceite do início" o último aceite feito antes
+      do início com a mesma data de início — num vai-e-volta de período
+      antes de iniciar pode mostrar um aceite que não era o vigente naquela
+      hora (o gate usa o aceite exato; só a exibição aproxima). Corrigir
+      gravando o id do aceite no `iniciar` se aparecer caso real;
+      (b) o IP do aceite é o que chega ao servidor com `trust proxy 1` —
+      atrás da Cloudflare pode ser o da borda dela (vale também para o
+      limitador de tentativas); confirmar a cadeia de proxies em produção;
+      (c) foto de entrega/retirada fica no bucket público (nome aleatório,
+      não adivinhável); bucket privado com URL assinada é a evolução.
+      (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
+      instante em que o gerador reserva a hora da conta pode deixar a rede
+      entregar alguns segundos além do saldo (no máximo a reserva de uma
+      hora daquela conta: ≤ 140 s por tela). Mídia gratuita, não
+      financeira; aparece em `diferencaSegundos` no Admin. Fechar de vez
+      pede o gerador e o ajuste sob a mesma trava por conta — evolução se
+      aparecer caso real.
+

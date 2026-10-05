@@ -65,13 +65,24 @@ router.get('/admin/dispositivos/:id', async (req, res) => {
   res.json(tela);
 });
 
+// 1 ponto móvel = 1 tela (gatilho da migration 113). Uma segunda tela só
+// entra deixando a anterior Inativa (troca de equipamento).
+const UMA_TELA_POR_MOVEL = 'Ponto móvel tem uma tela só — deixe a tela atual Inativa para trocar de equipamento';
+const ehUmaTelaPorMovel = (err) => err?.code === '23505' && /uma tela só/.test(err.message || '');
+
 router.post('/admin/pontos/:pontoId/dispositivos', async (req, res) => {
   const ponto = await pontosRepo.buscarPorId(req.params.pontoId);
   if (!ponto) return res.status(404).json({ erro: 'ponto não encontrado' });
   if (ponto.status === 'arquivado') return erro400(res, 'ponto arquivado não recebe tela nova');
   const { erro, dados } = validarCampos(req.body || {});
   if (erro) return erro400(res, erro);
-  const tela = await repo.criar(ponto.id, dados);
+  let tela;
+  try {
+    tela = await repo.criar(ponto.id, dados);
+  } catch (err) {
+    if (ehUmaTelaPorMovel(err)) return res.status(409).json({ erro: UMA_TELA_POR_MOVEL });
+    throw err;
+  }
   await avisarMudanca(ponto.id, tela.id);
   res.status(201).json(tela);
 });
@@ -81,7 +92,13 @@ router.patch('/admin/dispositivos/:id', async (req, res) => {
   if (!antes) return;
   const { erro, dados } = validarCampos(req.body || {});
   if (erro) return erro400(res, erro);
-  const tela = await repo.atualizar(antes.id, dados);
+  let tela;
+  try {
+    tela = await repo.atualizar(antes.id, dados);
+  } catch (err) {
+    if (ehUmaTelaPorMovel(err)) return res.status(409).json({ erro: UMA_TELA_POR_MOVEL });
+    throw err;
+  }
   // Só na transição pra ativo: uma tela que volta do reparo conta como rede
   // crescendo, uma que é salva de novo já ativa não.
   if (tela.status === 'ativo' && antes.status !== 'ativo') {

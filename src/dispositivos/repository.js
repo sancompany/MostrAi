@@ -2,7 +2,12 @@ const crypto = require('node:crypto');
 const pool = require('../db/pool');
 const cofre = require('../lib/cofre');
 const { saudeDaTela, situacaoConfig, situacaoFila, alertasDaTela, SITUACOES_DE_ALERTA } = require('../lib/status-tela');
-const { horarioEmVigorSql } = require('../lib/horario-em-vigor');
+const {
+  horarioEmVigorSql,
+  categoriaEmVigorSql,
+  casaEmVigorSql,
+  anfitriaEmVigorSql,
+} = require('../lib/contexto-do-ponto');
 const { sincronizarStatusPonto } = require('../pontos/repository');
 const telaEventos = require('../player/tela-eventos');
 const credencial = require('../player/credencial');
@@ -42,17 +47,19 @@ const INSTALACAO_REPETICAO_MIN = 5;
 // Tem hash de chave — só sai deste módulo pelas projeções abaixo, que
 // escolhem campo a campo o que pode sair. É o caminho quente do Player (toda
 // requisição autenticada, heartbeat a cada 15 s): nada além do necessário.
-// O horário é o EM VIGOR (src/lib/horario-em-vigor.js): ponto móvel em
-// evento exibe enquanto estiver ligado (24 h) e, de volta à base, o horário
-// dela volta (migration 112). `base_conta_id` é a conta da base do móvel:
-// nunca dona, só a casa que a trava de ramo protege
-// (gerador.js#anunciantesElegiveis).
+// Horário, ramo e "casa" são os EM VIGOR (src/lib/contexto-do-ponto.js): no
+// ponto móvel mudam com a hospedagem ou o evento em curso (migrations 112 e
+// 113). `casa_conta_id` é a conta cujo comércio recebe a tela agora (a dona
+// do fixo; a base ou o anfitrião do móvel) — nunca dona do móvel, só quem a
+// trava de ramo protege (gerador.js#anunciantesElegiveis). `categoria_id` é o
+// ramo em vigor, não necessariamente o gravado no ponto.
 const SELECT_TELA = `
   SELECT d.*,
          p.nome AS ponto_nome, p.cidade AS ponto_cidade, p.status AS ponto_status,
          ${horarioEmVigorSql('p')} AS ponto_horario_semanal,
-         p.anunciante_id AS dono_conta_id, p.base_conta_id,
-         p.categoria_id, p.cota_autoanuncio_slots_hora,
+         p.anunciante_id AS dono_conta_id, ${casaEmVigorSql('p')} AS casa_conta_id, p.tipo AS ponto_tipo,
+         ${anfitriaEmVigorSql('p')} AS anfitria_conta_id,
+         ${categoriaEmVigorSql('p')} AS categoria_id, p.cota_autoanuncio_slots_hora,
          (SELECT COUNT(*)::int FROM dispositivos x WHERE x.ponto_id = d.ponto_id AND x.status = 'ativo') AS telas_do_ponto
     FROM dispositivos d
     JOIN pontos p ON p.id = d.ponto_id`;
@@ -228,11 +235,28 @@ async function atualizar(id, dados) {
   if (!antes) return null;
   if (campos.length) {
     const sets = campos.map((c, i) => `${c} = $${i + 2}`).join(', ');
-    await pool.query(`UPDATE dispositivos SET ${sets} WHERE id = $1`, [id, ...campos.map((c) => dados[c])]);
-    if (campos.includes('status') && dados.status !== antes.status) {
-      await telaEventos.registrar(id, 'ADMIN_STATE_CHANGED', { de: antes.status, para: dados.status });
-      await sincronizarStatusPonto(antes.ponto_id);
+    // Mudança de estado e a linha da trilha juntas, com a tela travada: a
+    // trilha (ADMIN_STATE_CHANGED) decide se o tempo offline do ponto móvel
+    // conta (src/player/operacao.js#trechosAtivos) — não pode divergir do
+    // estado real nem perder a ordem entre duas mudanças simultâneas.
+    const client = await pool.connect();
+    let mudouEstado = false;
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query('SELECT status FROM dispositivos WHERE id = $1 FOR UPDATE', [id]);
+      await client.query(`UPDATE dispositivos SET ${sets} WHERE id = $1`, [id, ...campos.map((c) => dados[c])]);
+      if (rows[0] && campos.includes('status') && dados.status !== rows[0].status) {
+        await telaEventos.registrar(id, 'ADMIN_STATE_CHANGED', { de: rows[0].status, para: dados.status }, client);
+        mudouEstado = true;
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
+    if (mudouEstado) await sincronizarStatusPonto(antes.ponto_id);
   }
   return buscarPorId(id);
 }

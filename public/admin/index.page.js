@@ -682,6 +682,9 @@ const MODULOS = [
       // Rede como se fosse candidatura. O badge de Rede agora é só a fila
       // de candidaturas — a mesma que a aba Candidaturas lista.
       { id: 'pontos', nome: 'Pontos', render: renderPontos },
+      // Ponto móvel (migration 113): os equipamentos, o percentual do
+      // benefício por hospedagem e os interesses em hospedar.
+      { id: 'moveis', nome: 'Pontos móveis', render: renderPontosMoveis },
       // Candidatura é sempre pra ser PONTO (vendedor não passa mais por
       // aqui, 18/09/2026) — por isso mora em Rede, não numa área própria
       // de "entrada" (encerrada 22/09/2026, pedido do dono).
@@ -1504,7 +1507,7 @@ async function renderResumo(el) {
         ${painelPendenciasOperacionais(RESUMO, alertasHtml)}
         ${resumoPontosCompacto(rede)}
         <section class="panel" id="ocupacaoRedeSecao">
-          <div class="secao-topo"><h3>Ocupação da rede</h3><span class="secao-nota">teto comercial 80% · reserva Mostraí 20%</span></div>
+          <div class="secao-topo"><h3>Ocupação da rede</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>
           <div id="ocupacaoRede"><p class="carregando">Carregando...</p></div>
         </section>
       </div>
@@ -3185,7 +3188,7 @@ function montarPontoCard(p, telas) {
   const problema = telas.some((t) => t.alertas.some((a) => a.nivel === 'alerta'));
   // Ponto móvel (migration 112): no lugar do endereço, base e onde está agora.
   const local = p.movel
-    ? `Base: ${esc(p.movel.base.nome)}${p.movel.localAtual.origem === 'evento' ? `<br>Agora em: ${esc(p.movel.localAtual.nome)}` : ''}`
+    ? `Base: ${esc(p.movel.base.nome)}${p.movel.localAtual.origem !== 'base' ? `<br>Agora em: ${esc(p.movel.localAtual.nome)}` : ''}`
     : `${esc(p.cidade)}${p.uf ? `/${esc(p.uf)}` : ''}${p.endereco ? ` · ${esc(p.endereco)}` : ''}`;
   return cardEntidade({
     href: `#rede/pontos/${p.id}`,
@@ -3428,10 +3431,14 @@ function linhaDoEvento(e, comAcoes) {
     esc(e.local),
     `organização: ${esc(e.organizacao)}`,
     window.publicoEstimadoTexto(e.publicoEstimado),
+    e.categoria ? `concorrência: ${esc(e.categoria.nome)}` : 'sem restrição de ramo',
   ].filter(Boolean);
   const auditoria = [];
   if (e.iniciadoEm) auditoria.push(`chegou ${dataHora(e.iniciadoEm)}`);
-  if (e.encerradoEm) auditoria.push(`voltou ${dataHora(e.encerradoEm)}`);
+  if (e.encerradoEm)
+    auditoria.push(
+      `voltou ${dataHora(e.encerradoEm)}${e.encerramento === 'automatico' ? ' (encerramento automático)' : ''}`,
+    );
   if (e.canceladoEm) auditoria.push(`cancelado ${dataHora(e.canceladoEm)}`);
   if (e.iniciadoEm) auditoria.push(`${num(e.exibicoesConfirmadas)} exibições confirmadas no evento`);
   const acoes = !comAcoes
@@ -3452,37 +3459,308 @@ function linhaDoEvento(e, comAcoes) {
     </li>`;
 }
 
+// "6 h 00 min" — o formato do saldo de hospedagem (src/pontos/hospedagem.js).
+function horasDeMidia(segundos) {
+  const minutos = Math.floor(Math.max(0, Number(segundos) || 0) / 60);
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return h ? `${h} h ${String(m).padStart(2, '0')} min` : `${m} min`;
+}
+const percentualBR = (n) => `${String(Number(n)).replace('.', ',')}%`;
+
+const ESTADO_HOSPEDAGEM = {
+  programada: ['Programada', 'badge-pendente'],
+  ativa: ['Hospedado agora', 'badge-ok'],
+  encerrada: ['Encerrada', 'badge-neutro'],
+  cancelada: ['Cancelada', 'badge-err'],
+};
+
+function linhaDaHospedagem(h, comAcoes) {
+  const [rotulo, classe] = ESTADO_HOSPEDAGEM[h.estado] || [h.estado, 'badge-neutro'];
+  const detalhes = [
+    window.periodoDoEvento(h.dataInicio, h.dataFim),
+    `<a href="#contas/contas/${h.conta.id}">${esc(h.conta.nome)}</a>`,
+    `percentual congelado: ${percentualBR(h.percentual)}`,
+  ];
+  const numeros =
+    h.estado === 'ativa' || h.estado === 'encerrada'
+      ? `<p class="u-m-0 u-fs-85">Tempo operacional válido: <b>${horasDeMidia(h.tempoSegundos)}</b> · ${h.estimado ? 'benefício estimado' : 'benefício'}: <b>${horasDeMidia(h.beneficioSegundos)}</b></p>`
+      : '';
+  const auditoria = [];
+  if (h.criadoPor) auditoria.push(`confirmada por ${esc(h.criadoPor)} em ${dataHora(h.criadoEm)}`);
+  if (h.iniciadaEm) auditoria.push(`começou ${dataHora(h.iniciadaEm)}`);
+  if (h.encerradaEm)
+    auditoria.push(
+      `encerrada ${dataHora(h.encerradaEm)}${h.encerramento === 'automatico' ? ' (encerramento automático)' : h.encerradoPor ? ` por ${esc(h.encerradoPor)}` : ''}`,
+    );
+  if (h.canceladaEm)
+    auditoria.push(`cancelada ${dataHora(h.canceladaEm)}${h.encerramento === 'automatico' ? ' (automático)' : ''}`);
+  // Termo e equipamento (migration 113): o aceite que vale para o período e
+  // o percentual de agora, a entrega e a retirada.
+  const documentos = [];
+  if (h.estado !== 'cancelada') {
+    documentos.push(
+      h.aceite
+        ? `Termo aceito por <b>${esc(h.aceite.responsavel)}</b> em ${dataHora(h.aceite.aceitoEm)} (versão ${esc(h.aceite.termoVersao)})${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período` : ''}${
+            h.prorrogacaoSemAceite
+              ? h.estado === 'ativa'
+                ? ' <span class="badge badge-pendente">Prorrogação aguardando o aceite do anfitrião</span>'
+                : ' · prorrogação sem aceite do anfitrião'
+              : ''
+          }`
+        : h.estado === 'programada'
+          ? `<span class="badge badge-pendente">Aguardando o anfitrião aceitar o termo</span>${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período (o período mudou)` : ''}`
+          : 'Sem aceite registrado',
+    );
+  }
+  const movimento = (m, nome) =>
+    m
+      ? `${nome} ${dataHora(m.realizadaEm)} por ${esc(m.admin)} · ${m.condicao === 'ok' ? 'sem avarias' : `<b>com avarias</b>: ${esc(m.observacao)}`}${m.condicao === 'ok' && m.observacao ? ` · ${esc(m.observacao)}` : ''}${m.foto ? ` · <a href="${esc(m.foto)}" target="_blank" rel="noopener">foto</a>` : ''}`
+      : '';
+  if (h.entrega) documentos.push(movimento(h.entrega, 'Entrega'));
+  if (h.retirada) documentos.push(movimento(h.retirada, 'Retirada'));
+  const acoes = !comAcoes
+    ? ''
+    : h.estado === 'ativa'
+      ? `<button type="button" class="btn primary mini" data-hosp-acao="encerrar" data-hosp="${h.id}">Encerrar hospedagem</button>
+         <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Prorrogar</button>`
+      : h.estado === 'programada'
+        ? `<button type="button" class="btn ghost mini" data-hosp-acao="iniciar" data-hosp="${h.id}" ${h.aceite ? '' : 'disabled title="O anfitrião ainda não aceitou o termo"'}>Iniciar (a tela chegou)</button>
+           <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Alterar período</button>
+           <button type="button" class="btn perigo-sutil mini" data-hosp-acao="cancelar" data-hosp="${h.id}">Cancelar</button>`
+        : h.estado === 'encerrada' && !h.retirada
+          ? `<button type="button" class="btn ghost mini" data-hosp-acao="retirada" data-hosp="${h.id}">Registrar retirada</button>`
+          : '';
+  // Foto que não subiu junto (ou ficou para depois): envia avulsa.
+  const fotos = !comAcoes
+    ? ''
+    : [
+        ['entrega', h.entrega],
+        ['retirada', h.retirada],
+      ]
+        .filter(([, m]) => m && !m.foto)
+        .map(
+          ([tipo]) =>
+            `<button type="button" class="btn ghost mini" data-hosp-acao="foto-${tipo}" data-hosp="${h.id}">Adicionar foto da ${tipo}</button>`,
+        )
+        .join('');
+  const todasAcoes = acoes + fotos;
+  return `<li class="evento-movel" data-hospedagem-id="${h.id}">
+      <div class="evento-movel-topo"><b>Hospedagem · ${esc(h.local)}</b> <span class="badge ${classe}">${rotulo}</span></div>
+      <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
+      ${numeros}
+      ${h.estado === 'ativa' && h.terminou ? '<p class="aviso-linha u-mt-4">A data de fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
+      ${documentos.map((d) => `<p class="u-fs-85 u-m-0">${d}</p>`).join('')}
+      ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
+      ${todasAcoes ? `<div class="acoes u-mt-8">${todasAcoes}</div>` : ''}
+    </li>`;
+}
+
+// Entrega/retirada: o que foi (itens), em que condição (avaria pede
+// observação) e a foto opcional. `prefixo` separa os campos quando o
+// formulário divide o modal com outra coisa.
+const ITENS_DO_MOVEL = [
+  ['tela', 'Tela (TV)'],
+  ['suporte', 'Suporte'],
+  ['player', 'Player / aparelho'],
+  ['cabos', 'Cabos e fonte'],
+  ['controle', 'Controle remoto'],
+];
+function camposDeMovimentacao(prefixo) {
+  return `<fieldset class="campo-grupo"><legend>Itens</legend>
+      ${ITENS_DO_MOVEL.map(([k, rotulo]) => `<label class="check-linha"><input type="checkbox" name="${prefixo}_${k}" ${k === 'controle' ? '' : 'checked'}> ${rotulo}</label>`).join('')}
+    </fieldset>
+    <div class="campo-grupo"><label for="${prefixo}Cond">Condição</label>
+      <select id="${prefixo}Cond" name="${prefixo}_condicao"><option value="ok">Sem avarias</option><option value="com_avarias">Com avarias</option></select></div>
+    <div class="campo-grupo"><label for="${prefixo}Obs">Observação <span class="campo-ajuda">(obrigatória se houver avaria)</span></label>
+      <textarea id="${prefixo}Obs" name="${prefixo}_observacao" maxlength="1000" rows="2"></textarea></div>
+    <div class="campo-grupo"><label for="${prefixo}Foto">Foto <span class="campo-ajuda">(opcional, recomendada)</span></label>
+      <input id="${prefixo}Foto" type="file" name="${prefixo}_foto" accept="image/jpeg,image/png,image/webp"></div>`;
+}
+function lerMovimentacao(form, prefixo) {
+  const itens = {};
+  for (const [k] of ITENS_DO_MOVEL) itens[k] = form[`${prefixo}_${k}`].checked;
+  return {
+    itens,
+    condicao: form[`${prefixo}_condicao`].value,
+    observacao: form[`${prefixo}_observacao`].value,
+  };
+}
+async function enviarFotoDaMovimentacao(ponto, h, tipo, arquivo) {
+  if (!arquivo) return true;
+  const fd = new FormData();
+  fd.append('arquivo', arquivo);
+  // fetch direto: o `api` fixa JSON e quebraria o multipart.
+  const r = await fetch(`${API_BASE_URL}/admin/pontos/${ponto.id}/hospedagens/${h.id}/movimentacoes/${tipo}/foto`, {
+    method: 'POST',
+    body: fd,
+    credentials: 'include',
+  }).catch(() => null);
+  return Boolean(r?.ok);
+}
+
+function fotoDaMovimentacao(ponto, h, tipo, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: `Foto da ${tipo} — ${h.local}`,
+    corpo: `<form id="formFotoMov" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="fmFoto">Foto</label>
+          <input id="fmFoto" type="file" name="foto" accept="image/jpeg,image/png,image/webp" required></div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formFotoMov" class="btn primary">Enviar foto</button>',
+  });
+  const form = dlg.querySelector('form');
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const arquivo = form.foto.files[0];
+    if (!arquivo) return erroNoModal(dlg, 'Escolha uma imagem.');
+    enviando = true;
+    try {
+      if (!(await enviarFotoDaMovimentacao(ponto, h, tipo, arquivo))) {
+        return erroNoModal(dlg, 'A foto não foi salva. Tente de novo.');
+      }
+      fechar();
+      toast('Foto salva.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+// Iniciar (com a entrega), encerrar (com a retirada opcional) e a retirada
+// avulsa: um modal com o formulário do equipamento.
+function acaoComEquipamento(ponto, h, acao, remontar) {
+  const cfg = {
+    iniciar: {
+      titulo: `A tela chegou a “${h.local}”?`,
+      intro: `<p>O local atual passa a ser <b>${esc(h.local)}</b> e a trava de concorrente passa a proteger o ramo do anfitrião. O tempo operacional começa a contar agora. Registre a entrega do equipamento.</p>`,
+      tipo: 'entrega',
+      opcional: false,
+      botao: 'Iniciar hospedagem',
+    },
+    encerrar: {
+      titulo: `Encerrar a hospedagem em “${h.local}”?`,
+      intro: `<p>Conta só o tempo real em que a tela operou até agora. O benefício (${percentualBR(h.percentual)} desse tempo) vai para o saldo de hospedagem de <b>${esc(h.conta.nome)}</b> uma única vez, e o ponto volta para a base.</p>
+        <p class="u-dim">Tempo comprovado até agora: <b>${horasDeMidia(h.tempoSegundos)}</b>. O que a tela contou sem internet e mandar depois (segmento com até 8 dias de atraso) ainda soma — entra só a diferença.</p>`,
+      tipo: 'retirada',
+      opcional: !h.retirada,
+      semFormulario: Boolean(h.retirada),
+      botao: 'Encerrar hospedagem',
+    },
+    retirada: {
+      titulo: `Retirada do equipamento — ${h.local}`,
+      intro: '<p>Registre o que foi recolhido e em que condição.</p>',
+      tipo: 'retirada',
+      opcional: false,
+      botao: 'Registrar retirada',
+    },
+  }[acao];
+  const formulario = cfg.semFormulario
+    ? ''
+    : cfg.opcional
+      ? `<label class="check-linha"><input type="checkbox" name="registrar"> O equipamento foi recolhido agora — registrar a retirada</label>
+         <div data-movimentacao hidden>${camposDeMovimentacao('mv')}</div>`
+      : camposDeMovimentacao('mv');
+  const { dlg, fechar } = abrirModal({
+    titulo: cfg.titulo,
+    corpo: `<form id="formAcaoHosp" class="modal-form" novalidate>${cfg.intro}${formulario}<p class="form-msg" data-msg role="status"></p></form>`,
+    rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formAcaoHosp" class="btn primary">${cfg.botao}</button>`,
+  });
+  const form = dlg.querySelector('form');
+  form.registrar?.addEventListener('change', () => {
+    form.querySelector('[data-movimentacao]').hidden = !form.registrar.checked;
+  });
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    enviando = true;
+    try {
+      const comMovimentacao = !cfg.semFormulario && (!cfg.opcional || form.registrar.checked);
+      const mov = comMovimentacao ? lerMovimentacao(form, 'mv') : null;
+      const corpo = acao === 'iniciar' ? { entrega: mov } : acao === 'encerrar' ? (mov ? { retirada: mov } : {}) : mov;
+      const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/${acao}`, {
+        method: 'POST',
+        body: JSON.stringify(corpo),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return erroNoModal(dlg, d.erro || 'Não foi possível agora.');
+      const fotoOk = comMovimentacao ? await enviarFotoDaMovimentacao(ponto, h, cfg.tipo, form.mv_foto.files[0]) : true;
+      fechar();
+      toast(
+        acao === 'encerrar'
+          ? `Hospedagem encerrada: ${horasDeMidia(d.beneficioSegundos)} para o anfitrião.`
+          : acao === 'iniciar'
+            ? 'Hospedagem iniciada.'
+            : 'Retirada registrada.',
+      );
+      if (!fotoOk) toast('A foto não foi salva — o registro ficou sem ela.', 'err');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
 async function renderPontoMovel(el, ponto, remontar) {
   const f = await pegar(`/admin/pontos/${ponto.id}/movel`);
-  const abertos = f.eventos.filter((e) => e.estado === 'em_andamento' || e.estado === 'programado');
+  // Agenda única (migration 113): hospedagem e evento ocupam o mesmo
+  // calendário — em curso primeiro, depois os programados pela data.
+  const agenda = [
+    ...f.hospedagens.filter((h) => h.estado === 'ativa' || h.estado === 'programada').map((h) => ({ tipo: 'h', h })),
+    ...f.eventos.filter((e) => e.estado === 'em_andamento' || e.estado === 'programado').map((e) => ({ tipo: 'e', e })),
+  ].sort((a, b) => {
+    const emCurso = (x) => (x.tipo === 'h' ? x.h.estado === 'ativa' : x.e.estado === 'em_andamento');
+    if (emCurso(a) !== emCurso(b)) return emCurso(a) ? -1 : 1;
+    const ini = (x) => (x.tipo === 'h' ? x.h.dataInicio : x.e.dataInicio);
+    return String(ini(a)).localeCompare(String(ini(b)));
+  });
+  const passadas = f.hospedagens.filter((h) => h.estado === 'encerrada' || h.estado === 'cancelada');
   const passados = f.eventos.filter((e) => e.estado === 'encerrado' || e.estado === 'cancelado');
   const local =
     f.localAtual.origem === 'evento'
       ? `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Em evento: ${esc(f.localAtual.evento.nome)}</span>`
-      : `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Na base</span>`;
+      : f.localAtual.origem === 'hospedagem'
+        ? `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Hospedado</span>`
+        : `<b>${esc(f.localAtual.nome)}</b><span class="dado-sub">Na base</span>`;
   const proximo = f.proximoEvento
     ? `${esc(f.proximoEvento.nome)}<span class="dado-sub">${[window.periodoDoEvento(f.proximoEvento.dataInicio, f.proximoEvento.dataFim), esc(f.proximoEvento.local)].join(' · ')}</span>`
     : naoInformado(f.localAtual.origem === 'evento' ? window.PONTO_MOVEL.semOutroEvento : window.PONTO_MOVEL.semEvento);
   const conta = f.base.conta?.id
     ? `<a href="#contas/contas/${f.base.conta.id}">${esc(f.base.conta.nome || `Conta #${f.base.conta.id}`)}</a>`
-    : naoInformado('Sem conta');
+    : naoInformado('Sem conta (base da Mostraí)');
+  const tela = f.tela
+    ? `<a href="#rede/pontos/${ponto.id}/telas/${f.tela.id}">${esc(f.tela.nome)}</a>`
+    : naoInformado('Aguardando tela');
   el.innerHTML = `
     <div class="secao-topo"><h3>Ponto móvel</h3>
       <div class="secao-acoes">
         <button type="button" class="btn ghost mini" data-alterar-base>Alterar base</button>
-        <button type="button" class="btn primary mini" data-novo-evento>Cadastrar evento</button>
+        <button type="button" class="btn ghost mini" data-novo-evento>Cadastrar evento</button>
+        <button type="button" class="btn primary mini" data-nova-hospedagem>Programar hospedagem</button>
       </div></div>
     <dl class="dados dados-2">
       <div><dt>Local atual</dt><dd data-local-atual>${local}</dd></div>
       <div><dt>Próximo evento</dt><dd data-proximo-evento>${proximo}</dd></div>
       <div><dt>Base</dt><dd>${esc(f.base.nome)}<span class="dado-sub">desde ${data(f.base.desde)}</span></dd></div>
       <div><dt>Conta da base</dt><dd>${conta}<span class="dado-sub">Custodiante — não é dona do ponto</span></dd></div>
+      <div><dt>Tela</dt><dd>${tela}<span class="dado-sub">1 ponto móvel = 1 tela</span></dd></div>
+      ${f.notaInterna ? `<div><dt>Nota interna</dt><dd>${esc(f.notaInterna)}</dd></div>` : ''}
     </dl>
-    <h4 class="u-mt-16">Eventos</h4>
-    ${abertos.length ? `<ul class="lista-eventos-movel">${abertos.map((e) => linhaDoEvento(e, true)).join('')}</ul>` : `<p class="u-dim u-fs-85">${esc(window.PONTO_MOVEL.semEvento)}</p>`}
+    <h4 class="u-mt-16">Agenda</h4>
     ${
-      passados.length || f.basesAnteriores.length
-        ? `<details class="u-mt-8"><summary>Histórico (${passados.length} ${passados.length === 1 ? 'evento' : 'eventos'}, ${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base anterior' : 'bases anteriores'})</summary>
+      agenda.length
+        ? `<ul class="lista-eventos-movel" data-agenda>${agenda.map((x) => (x.tipo === 'h' ? linhaDaHospedagem(x.h, true) : linhaDoEvento(x.e, true))).join('')}</ul>`
+        : '<p class="u-dim u-fs-85">Nada na agenda: o ponto está na base.</p>'
+    }
+    ${
+      passadas.length || passados.length || f.basesAnteriores.length
+        ? `<details class="u-mt-8"><summary>Histórico (${passadas.length} ${passadas.length === 1 ? 'hospedagem' : 'hospedagens'}, ${passados.length} ${passados.length === 1 ? 'evento' : 'eventos'}, ${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base anterior' : 'bases anteriores'})</summary>
+            ${passadas.length ? `<ul class="lista-eventos-movel">${passadas.map((h) => linhaDaHospedagem(h, true)).join('')}</ul>` : ''}
             ${passados.length ? `<ul class="lista-eventos-movel">${passados.map((e) => linhaDoEvento(e, false)).join('')}</ul>` : ''}
             ${f.basesAnteriores
               .map(
@@ -3495,6 +3773,9 @@ async function renderPontoMovel(el, ponto, remontar) {
     }`;
   el.querySelector('[data-novo-evento]').addEventListener('click', () => cadastrarEventoMovel(ponto, remontar));
   el.querySelector('[data-alterar-base]').addEventListener('click', () => alterarBaseMovel(ponto, f, remontar));
+  el.querySelector('[data-nova-hospedagem]').addEventListener('click', () =>
+    programarHospedagem({ pontoId: ponto.id, aoSalvar: remontar }),
+  );
   el.querySelectorAll('[data-evento-acao]').forEach((b) =>
     b.addEventListener('click', () =>
       acaoNoEventoMovel(
@@ -3505,6 +3786,171 @@ async function renderPontoMovel(el, ponto, remontar) {
       ),
     ),
   );
+  el.querySelectorAll('[data-hosp-acao]').forEach((b) =>
+    b.addEventListener('click', () =>
+      acaoNaHospedagem(
+        ponto,
+        f.hospedagens.find((h) => h.id === Number(b.dataset.hosp)),
+        b.dataset.hospAcao,
+        remontar,
+      ),
+    ),
+  );
+}
+
+async function acaoNaHospedagem(ponto, h, acao, remontar) {
+  if (!h) return;
+  if (acao === 'periodo') return alterarPeriodoDaHospedagem(ponto, h, remontar);
+  if (acao === 'foto-entrega' || acao === 'foto-retirada') return fotoDaMovimentacao(ponto, h, acao.slice(5), remontar);
+  if (acao !== 'cancelar') return acaoComEquipamento(ponto, h, acao, remontar);
+  const ok = await confirmarModal({
+    titulo: `Cancelar a hospedagem em “${h.local}”?`,
+    texto:
+      '<p>Ela não aconteceu: nenhum benefício é gerado. Continua no histórico. Se veio de um interesse, ele volta para “em contato”.</p>',
+    botao: 'Cancelar hospedagem',
+    perigo: true,
+  });
+  if (!ok) return;
+  const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/cancelar`, { method: 'POST' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(d.erro || 'Não foi possível agora.', 'err');
+  toast('Hospedagem cancelada.');
+  remontar();
+}
+
+function alterarPeriodoDaHospedagem(ponto, h, remontar) {
+  const ativa = h.estado === 'ativa';
+  const { dlg, fechar } = abrirModal({
+    titulo: ativa ? `Prorrogar — ${h.local}` : `Período — ${h.local}`,
+    corpo: `<form id="formPeriodoHosp" class="modal-form" novalidate>
+        <div class="campos">
+          <div class="campo-grupo"><label for="hpInicio">Início</label><input id="hpInicio" type="date" name="data_inicio" value="${esc(String(h.dataInicio).slice(0, 10))}" ${ativa ? 'disabled' : 'required'}></div>
+          <div class="campo-grupo"><label for="hpFim">Fim</label><input id="hpFim" type="date" name="data_fim" value="${esc(String(h.dataFim).slice(0, 10))}" required></div>
+        </div>
+        <p class="campo-ajuda">O percentual continua o congelado na confirmação (${percentualBR(h.percentual)}). A agenda não pode conflitar com outra hospedagem ou evento.</p>
+        ${h.aceite ? `<p class="aviso-linha">${ativa ? 'O anfitrião precisa aceitar o termo para o novo período (o painel dele pede).' : 'O aceite atual vale só para o período atual — mudar o período pede um aceite novo antes de iniciar.'}</p>` : ''}
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPeriodoHosp" class="btn primary">Salvar</button>',
+  });
+  const form = dlg.querySelector('form');
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    enviando = true;
+    try {
+      const corpo = { data_fim: form.data_fim.value, ...(ativa ? {} : { data_inicio: form.data_inicio.value }) };
+      const r = await api(`/admin/pontos/${ponto.id}/hospedagens/${h.id}/periodo`, {
+        method: 'PUT',
+        body: JSON.stringify(corpo),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
+      fechar();
+      toast('Período salvo.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+// Programar hospedagem: móvel → conta anfitriã → local → início/fim →
+// revisão do percentual → confirmar. O percentual que o Admin VÊ vai junto
+// (`percentual_esperado`): se o global mudar no meio, o servidor recusa em
+// vez de vincular um número que ninguém revisou. De um interesse, chega com
+// a conta e o endereço já preenchidos.
+async function programarHospedagem({ pontoId = null, interesse = null, aoSalvar }) {
+  const [contas, { moveis, percentual }] = await Promise.all([
+    pegar('/admin/anunciantes').then((l) => l.filter((a) => !a.excluido_em && !a.conta_propria)),
+    pegar('/admin/pontos-moveis'),
+  ]);
+  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
+  const contaInicial = interesse?.conta ? contas.find((a) => a.id === interesse.conta.id) : null;
+  const opcoesMovel = moveis
+    .map((m) => `<option value="${m.id}" ${m.id === pontoId ? 'selected' : ''}>${esc(m.nome)}</option>`)
+    .join('');
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Programar hospedagem',
+    largo: true,
+    corpo: `<form id="formHospedagem" class="modal-form" novalidate>
+        <p class="campo-ajuda">Hospedagem temporária: o comércio recebe o ponto móvel por alguns dias, sem pagar nada e sem virar dono. No fim, ganha horas de mídia gratuitas.</p>
+        <div class="campos">
+          <div class="campo-grupo"><label for="hoMovel">Ponto móvel</label><select id="hoMovel" name="ponto" required>${opcoesMovel}</select></div>
+          <div class="campo-grupo"><label for="hoConta">Conta anfitriã</label><input id="hoConta" name="conta" list="contasAnfitrias" required autocomplete="off" value="${contaInicial ? esc(rotulo(contaInicial)) : ''}" placeholder="Busque pelo nome"></div>
+        </div>
+        <datalist id="contasAnfitrias">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
+        ${interesse && !interesse.conta ? '<p class="aviso-linha">Este interesse não tem conta. Crie a conta do comércio em Contas (com os dados do interesse) e escolha-a aqui.</p>' : ''}
+        <div class="campos">
+          <div class="campo-grupo"><label for="hoLocal">Local (como aparece para o anunciante)</label><input id="hoLocal" name="local" maxlength="160" value="${esc(interesse?.empresa || contaInicial?.nome_empresa || '')}" required></div>
+          <div class="campo-grupo"><label for="hoEndereco">Endereço</label><input id="hoEndereco" name="endereco" maxlength="300" value="${esc(interesse?.endereco || '')}" placeholder="Vazio = o endereço da conta"></div>
+        </div>
+        <div class="campos">
+          <div class="campo-grupo"><label for="hoInicio">Início</label><input id="hoInicio" type="date" name="data_inicio" required></div>
+          <div class="campo-grupo"><label for="hoFim">Fim</label><input id="hoFim" type="date" name="data_fim" required></div>
+        </div>
+        <p class="aviso-bloco u-mt-8" data-revisao-percentual><b>Esta hospedagem ficará vinculada a ${percentualBR(percentual)}.</b> O percentual fica congelado: mudar o global depois não altera esta hospedagem.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formHospedagem" class="btn primary">Confirmar hospedagem</button>',
+  });
+  if (!moveis.length) erroNoModal(dlg, 'Nenhum ponto móvel cadastrado ainda — crie um em Rede › Pontos móveis.');
+  const form = dlg.querySelector('form');
+  const inicio = form.querySelector('[name="data_inicio"]');
+  inicio.addEventListener('change', () => {
+    const fim = form.querySelector('[name="data_fim"]');
+    if (!fim.value || fim.value < inicio.value) fim.value = inicio.value;
+  });
+  const contaEscolhida = () => {
+    const m = /\(#(\d+)\)$/.exec(form.querySelector('[name="conta"]').value.trim());
+    return m ? contas.find((a) => a.id === Number(m[1])) : null;
+  };
+  form.querySelector('[name="conta"]').addEventListener('change', () => {
+    const c = contaEscolhida();
+    const localInput = form.querySelector('[name="local"]');
+    if (c && !localInput.value) localInput.value = c.nome_empresa;
+  });
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const conta = contaEscolhida();
+    if (!conta) {
+      form.querySelector('[name="conta"]').focus();
+      return erroNoModal(dlg, 'Escolha a conta anfitriã na lista.');
+    }
+    const vazio = [...form.querySelectorAll('[required]')].find((c) => !c.value.trim());
+    if (vazio) {
+      vazio.focus();
+      return erroNoModal(dlg, 'Preencha local, início e fim.');
+    }
+    enviando = true;
+    try {
+      const destino = Number(form.ponto.value);
+      const corpo = {
+        conta_id: conta.id,
+        local: form.local.value,
+        endereco: form.endereco.value,
+        data_inicio: form.data_inicio.value,
+        data_fim: form.data_fim.value,
+        percentual_esperado: percentual,
+        ...(interesse ? { interesse_id: interesse.id } : {}),
+      };
+      const r = await api(`/admin/pontos/${destino}/hospedagens`, { method: 'POST', body: JSON.stringify(corpo) });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d.campo) form.querySelector(`[name="${d.campo}"]`)?.focus();
+        return erroNoModal(dlg, d.erro || 'Não foi possível confirmar a hospedagem.');
+      }
+      fechar();
+      toast(`Hospedagem programada (${percentualBR(percentual)}).`);
+      aoSalvar?.();
+    } finally {
+      enviando = false;
+    }
+  });
 }
 
 async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
@@ -3512,7 +3958,7 @@ async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
   const textos = {
     iniciar: {
       titulo: `O ponto chegou a “${evento.nome}”?`,
-      texto: `<p>O local atual passa a ser <b>${esc(evento.local)}</b> — é o que o anunciante vê. A base continua a mesma, e enquanto estiver no evento a tela exibe sempre que estiver ligada.</p>`,
+      texto: `<p>O local atual passa a ser <b>${esc(evento.local)}</b> — é o que o anunciante vê. A base continua a mesma. Evento é autorização para operar fora do horário da base: a tela exibe sempre que estiver ligada.</p>`,
       botao: 'Iniciar evento',
     },
     encerrar: {
@@ -3542,7 +3988,11 @@ async function acaoNoEventoMovel(ponto, evento, acao, remontar) {
 
 // Cadastro leve (pedido do dono): nome, organização, local e datas; o fim
 // pode ficar em branco (um dia só); público estimado e observação opcionais.
-function cadastrarEventoMovel(ponto, remontar) {
+// Contexto de concorrência (migration 113): o ramo que a trava de
+// concorrente protege DURANTE o evento — nenhum por padrão; nunca herda o
+// da base.
+async function cadastrarEventoMovel(ponto, remontar) {
+  const categorias = await pegar('/categorias').catch(() => []);
   const { dlg, fechar } = abrirModal({
     titulo: `Novo evento — ${ponto.nome}`,
     corpo: `<form id="formEventoMovel" class="modal-form" novalidate>
@@ -3556,6 +4006,10 @@ function cadastrarEventoMovel(ponto, remontar) {
           <div class="campo-grupo"><label for="evFim">Fim (opcional)</label><input id="evFim" type="date" name="data_fim"></div>
           <div class="campo-grupo"><label for="evPublico">Público estimado (opcional)</label><input id="evPublico" type="number" name="publico_estimado" min="1" step="1" inputmode="numeric"></div>
         </div>
+        <div class="campo-grupo"><label for="evCategoria">Contexto de concorrência</label><select id="evCategoria" name="categoria_id">
+          <option value="">Nenhum — sem restrição de ramo</option>
+          ${categorias.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
+        </select><span class="campo-ajuda">Durante o evento, anúncio deste ramo (e dos concorrentes dele) não entra na tela. O ramo da base não vale no evento.</span></div>
         <div class="campo-grupo"><label for="evObs">Observação (opcional)</label><textarea id="evObs" name="observacao" maxlength="500" rows="2"></textarea></div>
         <p class="campo-ajuda">O público é a estimativa do evento: aparece como “~N pessoas” e nunca vira exibição nem alcance.</p>
         <p class="form-msg" data-msg role="status"></p>
@@ -3607,9 +4061,9 @@ async function alterarBaseMovel(ponto, ficha, remontar) {
     titulo: `Base de ${ponto.nome}`,
     largo: true,
     corpo: `<div class="form-ponto"><form id="formBaseMovel" class="form-ponto-form dlg-endereco-form" novalidate>
-        <p class="dlg-endereco-nota">A base é onde o ponto fica quando não está em evento. A conta da base é custodiante: não vira dona, não ganha crédito nem Plano Básico.</p>
+        <p class="dlg-endereco-nota">A base é onde o ponto fica quando não está hospedado nem em evento. A conta da base (opcional) é custodiante: não vira dona, não ganha crédito nem Plano Básico.</p>
         <div class="campos">
-          <div class="campo-grupo"><label for="baseConta">Conta da base</label><input id="baseConta" name="conta" list="contasDaBase" required autocomplete="off" value="${atual ? esc(rotulo(atual)) : ''}" placeholder="Busque pelo nome"></div>
+          <div class="campo-grupo"><label for="baseConta">Conta da base (opcional)</label><input id="baseConta" name="conta" list="contasDaBase" autocomplete="off" value="${atual ? esc(rotulo(atual)) : ''}" placeholder="Vazio = base da própria Mostraí"></div>
           <div class="campo-grupo"><label for="baseNome">Nome da base</label><input id="baseNome" name="base_nome" maxlength="120" required value="${esc(ficha.base.nome)}"></div>
         </div>
         <datalist id="contasDaBase">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
@@ -3638,9 +4092,9 @@ async function alterarBaseMovel(ponto, ficha, remontar) {
     ev.preventDefault();
     if (enviando) return;
     const conta = contaEscolhida();
-    if (!conta) {
+    if (!conta && form.querySelector('[name="conta"]').value.trim()) {
       form.querySelector('[name="conta"]').focus();
-      return erroNoModal(dlg, 'Escolha a conta da base na lista.');
+      return erroNoModal(dlg, 'Escolha a conta da base na lista (ou deixe vazio).');
     }
     const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
     if (vazio) {
@@ -3650,7 +4104,7 @@ async function alterarBaseMovel(ponto, ficha, remontar) {
     enviando = true;
     try {
       const corpo = {
-        base_conta_id: conta.id,
+        base_conta_id: conta ? conta.id : null,
         base_nome: form.querySelector('[name="base_nome"]').value,
         ...window.enderecoDoForm(form),
       };
@@ -3668,6 +4122,359 @@ async function alterarBaseMovel(ponto, ficha, remontar) {
       enviando = false;
     }
   });
+}
+
+// ---------- Rede → Pontos móveis (migration 113) ----------
+// Os equipamentos da Mostraí, o percentual do benefício por hospedagem e os
+// interesses que chegam do site e do painel. Tudo vem decidido do servidor
+// (GET /admin/pontos-moveis, /admin/hospedagem/percentual,
+// /admin/hospedagem/interesses).
+const STATUS_INTERESSE = {
+  nova: ['Nova', 'badge-pendente'],
+  em_contato: ['Em contato', 'badge-info'],
+  agendada: ['Agendada', 'badge-ok'],
+  recusada: ['Recusada', 'badge-neutro'],
+};
+
+// "Com 20%: 30 h de operação geram 6 h de mídia."
+const exemploDoPercentual = (p) =>
+  `Com ${percentualBR(p)}: 30 h de operação geram ${horasDeMidia(Math.floor((30 * 3600 * Math.round(p * 100)) / 10000))} de mídia.`;
+
+function cardDoMovel(m) {
+  const local = m.localAtual
+    ? m.localAtual.origem === 'base'
+      ? `Na base: ${esc(m.localAtual.nome)}`
+      : `${m.localAtual.origem === 'hospedagem' ? 'Hospedado em' : 'Em evento em'}: <b>${esc(m.localAtual.nome)}</b>`
+    : '';
+  const tela = m.tela
+    ? `${esc(m.tela.nome)}${m.tela.status !== 'ativo' ? ` (${esc(m.tela.status)})` : ''}`
+    : 'Aguardando tela';
+  // Cadastro, conectividade e operação separados: sem comunicação a
+  // operação é desconhecida (pode estar exibindo offline), nunca "desligada".
+  const CONECTIVIDADE = {
+    comunicando: 'comunicando',
+    sem_comunicacao: 'sem comunicação',
+    nunca_comunicou: 'ainda não comunicou',
+    sem_player: 'Player não instalado',
+  };
+  const OPERACAO = {
+    exibindo: 'exibindo',
+    fora_do_horario: 'fora do horário',
+    erro_relatado: 'erro relatado pelo Player',
+    desconhecida: 'desconhecida',
+  };
+  const estadoTela = m.tela
+    ? `Conexão: ${CONECTIVIDADE[m.tela.conectividade] || esc(m.tela.conectividade)}${m.tela.ultimoSinal ? ` (último sinal ${dataHora(m.tela.ultimoSinal)})` : ''} · Operação: ${OPERACAO[m.tela.operacao] || esc(m.tela.operacao)}`
+    : '';
+  const compromisso = m.proximoCompromisso
+    ? `${m.proximoCompromisso.tipo === 'hospedagem' ? 'Hospedagem' : 'Evento'}: ${esc(m.proximoCompromisso.nome)} · ${esc(window.periodoDoEvento(m.proximoCompromisso.dataInicio, m.proximoCompromisso.dataFim))}`
+    : 'Nenhum compromisso na agenda';
+  return `<a class="item-linha movel-card" href="#rede/pontos/${m.id}" data-movel-id="${m.id}">
+      ${fotoOuPlaceholder(m.foto, m.nome)}
+      <span class="movel-card-corpo">
+        <b>${esc(m.nome)}</b> <span class="badge ${PONTO_STATUS_CLASSE[m.status] || 'badge-neutro'}">${PONTO_STATUS[m.status] || esc(m.status)}</span>
+        <span class="item-meta">${local}</span>
+        <span class="item-meta">Base: ${esc(m.base.nome)}${m.base.conta ? ` (${esc(m.base.conta.nome)})` : ''} · Tela: ${tela}</span>
+        ${estadoTela ? `<span class="item-meta">${estadoTela}</span>` : ''}
+        ${m.hospedagemAtual ? `<span class="item-meta">Anfitrião: ${esc(m.hospedagemAtual.conta)} até ${data(m.hospedagemAtual.dataFim)}</span>` : ''}
+        <span class="item-meta">Próximo: ${compromisso}</span>
+        ${m.proximoEvento ? `<span class="item-meta">Próximo evento: ${esc(m.proximoEvento.nome)}</span>` : ''}
+      </span>
+    </a>`;
+}
+
+function linhaDoInteresse(i) {
+  const [rotulo, classe] = STATUS_INTERESSE[i.status] || [i.status, 'badge-neutro'];
+  const wpp = String(i.telefone || '').replace(/\D/g, '');
+  const aberto = i.status === 'nova' || i.status === 'em_contato';
+  return `<tr data-interesse-id="${i.id}">
+      <td><b>${esc(i.empresa)}</b><span class="dado-sub">${esc(i.responsavel)}${i.conta ? ` · <a href="#contas/contas/${i.conta.id}">conta #${i.conta.id}</a>` : ' · sem conta'}</span></td>
+      <td>${wpp ? `<a href="https://wa.me/55${wpp}" target="_blank" rel="noopener">${esc(i.telefone)}</a>` : ''}${i.email ? `<span class="dado-sub">${esc(i.email)}</span>` : ''}</td>
+      <td>${esc(i.endereco)}${i.segmento ? `<span class="dado-sub">${esc(i.segmento)}</span>` : ''}</td>
+      <td>${[i.disponibilidade, i.observacao].filter(Boolean).map(esc).join('<br>') || '<span class="u-dim">—</span>'}${i.notaInterna ? `<span class="dado-sub">Nota: ${esc(i.notaInterna)}</span>` : ''}</td>
+      <td class="u-nowrap"><span class="badge ${classe}">${rotulo}</span><span class="dado-sub">${data(i.criadoEm)} · ${i.origem === 'painel' ? 'painel' : 'site'}</span></td>
+      <td class="u-nowrap">${
+        aberto
+          ? `${i.status === 'nova' ? `<button type="button" class="btn ghost mini" data-interesse-acao="em_contato" data-interesse="${i.id}">Em contato</button>` : ''}
+             <button type="button" class="btn primary mini" data-interesse-acao="agendar" data-interesse="${i.id}">Agendar</button>
+             <button type="button" class="btn perigo-sutil mini" data-interesse-acao="recusada" data-interesse="${i.id}">Recusar</button>`
+          : ''
+      }<button type="button" class="btn ghost mini" data-interesse-acao="nota" data-interesse="${i.id}">Nota</button></td>
+    </tr>`;
+}
+
+async function renderPontosMoveis(el) {
+  const [{ moveis }, { percentual, historico }, interesses, { termos }] = await Promise.all([
+    pegar('/admin/pontos-moveis'),
+    pegar('/admin/hospedagem/percentual'),
+    pegar('/admin/hospedagem/interesses'),
+    pegar('/admin/hospedagem/termos'),
+  ]);
+  const abertos = interesses.filter((i) => i.status === 'nova' || i.status === 'em_contato');
+  const vigente = termos.find((t) => t.vigente);
+  el.innerHTML = `
+    <section class="panel" data-beneficio-hospedagem>
+      <div class="secao-topo"><h3>BENEFÍCIO POR HOSPEDAGEM</h3>
+        <div class="secao-acoes"><button type="button" class="btn ghost mini" data-alterar-percentual>Alterar percentual</button></div></div>
+      <p class="u-m-0"><b class="u-fs-130" data-percentual-atual>${percentualBR(percentual)}</b></p>
+      <p class="u-m-0">Percentual do tempo operacional válido do Ponto Móvel que retorna ao comércio anfitrião como horas gratuitas de veiculação na rede.</p>
+      <p class="u-dim u-fs-85 u-mt-4" data-exemplo-percentual>${esc(exemploDoPercentual(percentual))}</p>
+      ${
+        historico.length
+          ? `<details class="u-mt-8"><summary>Histórico de alterações (${historico.length})</summary>
+              <table class="mini-table"><thead><tr><th>Quando</th><th>Quem</th><th>Antes</th><th>Depois</th></tr></thead><tbody>
+              ${historico.map((h) => `<tr><td class="u-nowrap">${esc(dataHora(h.alteradoEm))}</td><td>${esc(h.admin)}</td><td>${h.anterior === null ? '—' : percentualBR(h.anterior)}</td><td>${percentualBR(h.novo)}</td></tr>`).join('')}
+              </tbody></table></details>`
+          : ''
+      }
+    </section>
+    <section class="panel u-mt-16" data-termo-hospedagem>
+      <div class="secao-topo"><h3>Termo de hospedagem</h3>
+        <div class="secao-acoes"><button type="button" class="btn ghost mini" data-publicar-termo>Publicar nova versão</button></div></div>
+      ${
+        vigente
+          ? `<p class="u-m-0">Versão vigente: <b>${esc(vigente.versao)}</b> · publicada ${esc(dataHora(vigente.publicadoEm))} por ${esc(vigente.publicadoPor)}</p>
+             ${vigente.minuta ? '<p class="aviso-linha u-mt-4">Minuta operacional, sem revisão jurídica — publique a versão revisada antes de usar com anfitriões.</p>' : ''}
+             <p class="u-dim u-fs-85 u-mt-4">O anfitrião aceita esta versão pelo painel; sem aceite (para o período e o percentual da hospedagem) ela não inicia. Versões antigas e os aceites delas ficam no histórico.</p>
+             <details class="u-mt-8"><summary>Ler o texto vigente</summary><div class="termo-texto">${esc(vigente.texto)}</div></details>
+             ${
+               termos.length > 1
+                 ? `<p class="u-dim u-fs-85 u-mt-4">Versões anteriores: ${termos
+                     .filter((t) => !t.vigente)
+                     .map((t) => esc(t.versao))
+                     .join(', ')}</p>`
+                 : ''
+}`
+          : vazio('Nenhum termo publicado — nenhuma hospedagem consegue iniciar.')
+      }
+    </section>
+    <section class="panel u-mt-16">
+      <div class="secao-topo"><h3>Pontos móveis</h3>
+        <div class="secao-acoes"><button type="button" class="btn primary mini" data-criar-movel>Criar ponto móvel</button></div></div>
+      ${moveis.length ? `<div class="lista-moveis">${moveis.map(cardDoMovel).join('')}</div>` : vazio('Nenhum ponto móvel ainda. Ele nasce aqui — nunca de candidatura.')}
+    </section>
+    <section class="panel u-mt-16">
+      <div class="secao-topo"><h3>Interesses em hospedar</h3><span class="secao-nota">${abertos.length} em aberto</span></div>
+      ${
+        interesses.length
+          ? `<div class="tabela-rolagem"><table class="mini-table"><thead><tr><th>Empresa</th><th>Contato</th><th>Endereço</th><th>Quando / observação</th><th>Situação</th><th></th></tr></thead>
+              <tbody>${interesses.map(linhaDoInteresse).join('')}</tbody></table></div>`
+          : vazio('Nenhum interesse recebido ainda.')
+      }
+    </section>`;
+  ajustarFotos(el);
+  const recarregar = () => renderPontosMoveis(el).catch(() => recarregarTela());
+  el.querySelector('[data-alterar-percentual]').addEventListener('click', () =>
+    alterarPercentual(percentual, recarregar),
+  );
+  el.querySelector('[data-criar-movel]').addEventListener('click', () => criarPontoMovel(recarregar));
+  el.querySelector('[data-publicar-termo]').addEventListener('click', () => publicarTermo(vigente, recarregar));
+  el.querySelectorAll('[data-interesse-acao]').forEach((b) =>
+    b.addEventListener('click', () =>
+      acaoNoInteresse(
+        interesses.find((i) => i.id === Number(b.dataset.interesse)),
+        b.dataset.interesseAcao,
+        recarregar,
+      ),
+    ),
+  );
+}
+
+// Versão nova do termo: texto inteiro (o vigente vem preenchido para editar).
+// A publicada não muda depois — corrigir é publicar outra versão.
+function publicarTermo(vigente, aoSalvar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Publicar nova versão do termo',
+    corpo: `<form id="formTermo" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="termoVersao">Versão</label>
+          <input id="termoVersao" name="versao" maxlength="40" placeholder="ex.: 2026-10-v1" required></div>
+        <div class="campo-grupo"><label for="termoTitulo">Título</label>
+          <input id="termoTitulo" name="titulo" maxlength="200" value="${esc(vigente?.titulo || '')}" required></div>
+        <div class="campo-grupo"><label for="termoTexto">Texto</label>
+          <textarea id="termoTexto" name="texto" rows="14" maxlength="20000" required>${esc(vigente?.texto || '')}</textarea></div>
+        <p class="aviso-bloco">Vale para os próximos aceites. Quem já aceitou fica com a versão que aceitou; hospedagem programada ainda sem aceite passa a pedir esta.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formTermo" class="btn primary">Publicar</button>',
+  });
+  const form = dlg.querySelector('form');
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    enviando = true;
+    try {
+      const r = await api('/admin/hospedagem/termos', {
+        method: 'POST',
+        body: JSON.stringify({ versao: form.versao.value, titulo: form.titulo.value, texto: form.texto.value }),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível publicar.');
+      fechar();
+      toast('Versão do termo publicada.');
+      aoSalvar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+function alterarPercentual(atual, aoSalvar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Alterar percentual do benefício',
+    corpo: `<form id="formPercentual" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="novoPercentual">Percentual (0 a 100)</label>
+          <input id="novoPercentual" name="percentual" inputmode="decimal" maxlength="6" value="${esc(String(atual).replace('.', ','))}" required></div>
+        <p class="u-dim u-fs-85" data-exemplo>${esc(exemploDoPercentual(atual))}</p>
+        <p class="aviso-bloco">Essa mudança valerá apenas para novas hospedagens confirmadas. Hospedagens já registradas manterão o percentual original.</p>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formPercentual" class="btn primary">Salvar percentual</button>',
+  });
+  const form = dlg.querySelector('form');
+  const campo = form.querySelector('[name="percentual"]');
+  campo.addEventListener('input', () => {
+    const v = Number(campo.value.replace(',', '.'));
+    if (Number.isFinite(v) && v >= 0 && v <= 100)
+      dlg.querySelector('[data-exemplo]').textContent = exemploDoPercentual(v);
+  });
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    enviando = true;
+    try {
+      const r = await api('/admin/hospedagem/percentual', {
+        method: 'PUT',
+        body: JSON.stringify({ percentual: campo.value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return erroNoModal(dlg, d.erro || 'Não foi possível salvar.');
+      fechar();
+      toast(d.mudou ? `Percentual alterado para ${percentualBR(d.percentual)}.` : 'O percentual já era esse.');
+      aoSalvar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+// O móvel nasce aqui e só aqui: nome (opcional), foto, base (nome +
+// endereço; conta opcional) e nota interna. Tipo automático, nunca dono; a
+// Tela 1 nasce junto.
+async function criarPontoMovel(aoSalvar) {
+  const contas = (await pegar('/admin/anunciantes')).filter((a) => !a.excluido_em);
+  const rotulo = (a) => `${a.nome_empresa} (#${a.id})`;
+  const { dlg, fechar } = abrirModal({
+    titulo: 'Criar ponto móvel',
+    largo: true,
+    corpo: `<div class="form-ponto"><form id="formCriarMovel" class="form-ponto-form dlg-endereco-form" novalidate>
+        <p class="dlg-endereco-nota">Equipamento da Mostraí: 1 ponto móvel = 1 tela (a Tela 1 nasce junto). Não tem dono e nunca vira ponto fixo.</p>
+        <div class="campos">
+          <div class="campo-grupo"><label for="cmNome">Nome (opcional)</label><input id="cmNome" name="nome" maxlength="120" placeholder="Vazio = Mostraí Móvel #NN"></div>
+          <div class="campo-grupo"><label for="cmFoto">Foto do equipamento (opcional)</label><input id="cmFoto" name="foto" type="file" accept="image/*"></div>
+        </div>
+        <div class="campos">
+          <div class="campo-grupo"><label for="cmBase">Nome da base</label><input id="cmBase" name="base_nome" maxlength="120" required placeholder="Depósito Mostraí, Academia X…"></div>
+          <div class="campo-grupo"><label for="cmConta">Conta da base (opcional)</label><input id="cmConta" name="conta" list="contasCriarMovel" autocomplete="off" placeholder="Vazio = base da própria Mostraí"></div>
+        </div>
+        <datalist id="contasCriarMovel">${contas.map((a) => `<option value="${esc(rotulo(a))}"></option>`).join('')}</datalist>
+        <div>${window.camposEndereco('cm_', { cidadePadrao: 'Matão', ufPadrao: 'SP' })}</div>
+        <div class="campo-grupo"><label for="cmNota">Nota interna (opcional)</label><textarea id="cmNota" name="observacoes" maxlength="500" rows="2"></textarea></div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form></div>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formCriarMovel" class="btn primary">Criar ponto móvel</button>',
+  });
+  const form = dlg.querySelector('form');
+  window.ligarCep(form);
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const textoConta = form.conta.value.trim();
+    const m = /\(#(\d+)\)$/.exec(textoConta);
+    if (textoConta && !m) {
+      form.conta.focus();
+      return erroNoModal(dlg, 'Escolha a conta da base na lista (ou deixe vazio).');
+    }
+    const vazio = [...form.querySelectorAll('input[required]')].find((c) => !c.value.trim());
+    if (vazio) {
+      vazio.focus();
+      return erroNoModal(dlg, 'Preencha o nome e o endereço da base (só o complemento é opcional).');
+    }
+    enviando = true;
+    try {
+      const corpo = {
+        nome: form.nome.value,
+        base_nome: form.base_nome.value,
+        base_conta_id: m ? Number(m[1]) : null,
+        observacoes: form.observacoes.value,
+        ...window.enderecoDoForm(form),
+      };
+      const r = await api('/admin/pontos-moveis', { method: 'POST', body: JSON.stringify(corpo) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return erroNoModal(dlg, d.erro || 'Não foi possível criar o ponto móvel.');
+      const arquivo = form.foto.files[0];
+      if (arquivo) {
+        const dados = new FormData();
+        dados.append('arquivo', arquivo);
+        const f = await fetch(`${API_BASE_URL}/admin/pontos/${d.id}/foto-movel`, {
+          method: 'POST',
+          body: dados,
+          credentials: 'include',
+        }).catch(() => null);
+        if (!f?.ok) toast('Ponto criado, mas a foto não subiu — troque pela ficha.', 'err');
+      }
+      fechar();
+      toast(`${d.nome} criado${d.telaId ? ' com a Tela 1' : ' (aguardando tela)'}.`);
+      aoSalvar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
+async function acaoNoInteresse(i, acao, aoSalvar) {
+  if (!i) return;
+  if (acao === 'agendar') return programarHospedagem({ interesse: i, aoSalvar });
+  if (acao === 'nota') {
+    const { dlg, fechar } = abrirModal({
+      titulo: `Nota interna — ${i.empresa}`,
+      corpo: `<form id="formNotaInteresse" class="modal-form" novalidate>
+          <textarea name="nota" maxlength="500" rows="3">${esc(i.notaInterna || '')}</textarea>
+          <p class="form-msg" data-msg role="status"></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formNotaInteresse" class="btn primary">Salvar</button>',
+    });
+    dlg.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const r = await api(`/admin/hospedagem/interesses/${i.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ nota_interna: ev.target.nota.value }),
+      });
+      if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível salvar.');
+      fechar();
+      aoSalvar();
+    });
+    return;
+  }
+  if (acao === 'recusada') {
+    const ok = await confirmarModal({
+      titulo: `Recusar o interesse de ${i.empresa}?`,
+      texto: '<p>Fica no histórico como recusado. Nada é enviado ao comércio automaticamente.</p>',
+      botao: 'Recusar',
+      perigo: true,
+    });
+    if (!ok) return;
+  }
+  const r = await api(`/admin/hospedagem/interesses/${i.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: acao }),
+  });
+  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível agora.', 'err');
+  aoSalvar();
 }
 
 // Endereço físico do ponto (estação de endereços, 01/10/2026): o endereço
@@ -3752,7 +4559,7 @@ async function renderPontoCapacidade(el, pontoId) {
   el.hidden = !c;
   if (!c) return;
   el.innerHTML = `
-    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · reserva Mostraí 20%</span></div>
+    <div class="secao-topo"><h3>Capacidade de veiculação</h3><span class="secao-nota">teto comercial 80% · teto Mostraí 20%</span></div>
     <dl class="dados dados-2 capacidade-ponto" data-capacidade-ponto>
       <div><dt>Comercial</dt><dd><b data-cap="comercial">${pct(c.comercialPct)}</b> usado<span class="dado-sub" data-cap="comercial-livre">${pct(c.comercialRestantePct)} livre</span></dd></div>
       <div><dt>Reserva Mostraí</dt><dd><b data-cap="mostrai">${pct(c.mostraiPct)}</b> usado<span class="dado-sub" data-cap="mostrai-livre">${pct(c.reservaRestantePct)} livre${c.mostraiAcimaDaReservaPct > 0 ? ` · ${pct(c.mostraiAcimaDaReservaPct)} acima da reserva` : ''}</span></dd></div>
@@ -3800,9 +4607,11 @@ function textoBeneficioPonto(b) {
 // edita aqui, porque é o horário de todas as telas do ponto.
 // Estado do ponto é automático (src/pontos/repository.js
 // sincronizarStatusPonto): "Ativo" só com tela ativa que já deu sinal.
-// Ponto MÓVEL (migration 112): é da Mostraí — sem proprietário de conta e
-// sem benefício; o horário é o da base (em evento, a tela exibe enquanto
-// estiver ligada). Base e eventos ficam no bloco próprio (renderPontoMovel).
+// Ponto MÓVEL (migrations 112 e 113): é da Mostraí — sem proprietário de
+// conta e sem benefício; o horário é o da base (fora dela, em hospedagem ou
+// evento, a tela exibe enquanto estiver ligada). O tipo não muda depois de
+// criado. Base, hospedagens e eventos ficam no bloco próprio
+// (renderPontoMovel).
 function renderPontoInformacoes(el, ponto, telas, remontar) {
   const movel = ponto.tipo === 'movel';
   const segmento = ponto.categoria_nome || ponto.categoria_livre || ponto.segmento;
@@ -3821,7 +4630,7 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
     ponto.status === 'arquivado'
       ? ''
       : `<div class="acoes secao-pe">
-          <button type="button" class="btn ghost mini" data-trocar-tipo>${movel ? 'Transformar em ponto fixo' : 'Transformar em ponto móvel'}</button>
+          ${movel ? '<button type="button" class="btn ghost mini" data-escolher-arquivo="fotoMovel">Trocar foto do equipamento</button><input type="file" id="fotoMovel" accept="image/*" hidden>' : ''}
           <button type="button" class="btn perigo-sutil mini" data-excluir-ponto>Excluir ponto</button>
         </div>`;
   el.innerHTML = `
@@ -3839,7 +4648,7 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
       <div><dt>Aprovado em</dt><dd>${data(ponto.created_at)}</dd></div>
       <div><dt>Primeiro sinal de tela</dt><dd>${primeiroSinal ? data(primeiroSinal) : naoInformado('Nenhuma tela deu sinal ainda')}</dd></div>
       ${ponto.fluxo_estimado_mensal ? `<div><dt>Movimento estimado</dt><dd>${num(ponto.fluxo_estimado_mensal)} pessoas/mês</dd></div>` : ''}
-      <div class="dados-largo"><dt>${movel ? 'Horário na base<span class="dado-ajuda">Em evento, a tela exibe enquanto estiver ligada.</span>' : 'Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span>'}</dt>
+      <div class="dados-largo"><dt>${movel ? 'Horário na base<span class="dado-ajuda">Hospedado ou em evento, a tela exibe enquanto estiver ligada.</span>' : 'Horário de funcionamento<span class="dado-ajuda">As telas do ponto seguem este horário.</span>'}</dt>
         <dd>${ponto.horario_semanal ? horarioEmLinhas(ponto.horario_semanal) : 'Aberto 24 horas'}
           <div class="u-mt-8"><button type="button" class="btn ghost mini" data-editar-horario>Editar horário</button></div></dd></div>
       ${ponto.observacoes ? `<div class="dados-largo"><dt>Observações</dt><dd>${esc(ponto.observacoes)}</dd></div>` : ''}
@@ -3848,25 +4657,24 @@ function renderPontoInformacoes(el, ponto, telas, remontar) {
   ajustarFotos(el);
   el.querySelector('[data-editar-horario]').addEventListener('click', () => editarHorarioPonto(ponto, remontar));
   el.querySelector('[data-excluir-ponto]')?.addEventListener('click', () => excluirPonto(ponto, telas));
-  el.querySelector('[data-trocar-tipo]')?.addEventListener('click', () => trocarTipoDoPonto(ponto, remontar));
+  el.querySelector('#fotoMovel')?.addEventListener('change', (ev) => enviarFotoDoMovel(ponto, ev.target, remontar));
 }
 
-// Fixo ⇄ móvel depois da aprovação (migration 112). O servidor decide e
-// recusa com o motivo (móvel com evento aberto, fixo sem conta).
-async function trocarTipoDoPonto(ponto, remontar) {
-  const paraMovel = ponto.tipo !== 'movel';
-  const ok = await confirmarModal({
-    titulo: paraMovel ? `Transformar ${ponto.nome} em ponto móvel?` : `Transformar ${ponto.nome} em ponto fixo?`,
-    texto: paraMovel
-      ? `<p>O ponto passa a ser da <b>Mostraí</b> e ganha um nome de móvel. ${ponto.dono_nome ? `<b>${esc(ponto.dono_nome)}</b> deixa de ser a dona e vira a <b>base</b>` : 'A conta dele vira a base'}: o Plano Básico deste ponto termina e o crédito mensal para de contar a partir de agora (o que já ganhou fica com ela).</p>`
-      : `<p>O ponto fica de vez na base <b>${esc(ponto.base_nome)}</b>, e a conta dela passa a ser a <b>dona</b> — com o que todo dono de ponto fixo tem (crédito mensal e Plano Básico, pelas regras de sempre).</p>
-         <p class="u-dim">Precisa estar sem evento em andamento ou programado.</p>`,
-    botao: paraMovel ? 'Transformar em móvel' : 'Transformar em fixo',
-  });
-  if (!ok) return;
-  const r = await api(`/admin/pontos/${ponto.id}/${paraMovel ? 'tornar-movel' : 'tornar-fixo'}`, { method: 'POST' });
-  if (!r.ok) return toast((await r.json().catch(() => ({}))).erro || 'Não foi possível trocar o tipo.', 'err');
-  toast(paraMovel ? 'Agora é um ponto móvel.' : 'Agora é um ponto fixo.');
+// Foto do EQUIPAMENTO do ponto móvel (não de um comércio): aparece no card
+// do anunciante, no Admin e no site.
+async function enviarFotoDoMovel(ponto, input, remontar) {
+  const arquivo = input.files[0];
+  if (!arquivo) return;
+  const dados = new FormData();
+  dados.append('arquivo', arquivo);
+  const r = await fetch(`${API_BASE_URL}/admin/pontos/${ponto.id}/foto-movel`, {
+    method: 'POST',
+    body: dados,
+    credentials: 'include',
+  }).catch(() => null);
+  input.value = '';
+  if (!r?.ok) return toast((await r?.json().catch(() => ({})))?.erro || 'Não foi possível enviar a foto.', 'err');
+  toast('Foto do equipamento atualizada.');
   remontar();
 }
 
@@ -4662,6 +5470,7 @@ function desenharFicha(el, s, categorias) {
       <section class="panel conta-secao" id="contaPlano"></section>
     </div>
     ${s.basico && (s.basico.ativos.length || s.basico.historico.length) ? '<section class="panel conta-secao" id="contaBasico"></section>' : ''}
+    ${s.hospedagem && (s.hospedagem.recebidoSegundos || s.hospedagem.disponivelSegundos) ? '<section class="panel conta-secao" id="contaHospedagem"></section>' : ''}
     ${
       // Pontos ao lado de Créditos e benefícios (finalização, 28/09/2026,
       // pedido do dono): os dois são "o que a conta tem na rede"; antes
@@ -4680,6 +5489,7 @@ function desenharFicha(el, s, categorias) {
   desenharContaDados(el.querySelector('#contaDados'), ctx);
   desenharContaPlano(el.querySelector('#contaPlano'), ctx);
   if (el.querySelector('#contaBasico')) desenharContaBasico(el.querySelector('#contaBasico'), s.basico);
+  if (el.querySelector('#contaHospedagem')) desenharContaHospedagem(el.querySelector('#contaHospedagem'), ctx);
   desenharContaCreditos(el.querySelector('#contaCreditos'), ctx);
   desenharContaCriativos(el.querySelector('#contaCriativos'), {
     ...ctx,
@@ -4867,6 +5677,73 @@ const MOTIVO_FIM_BASICO = {
   conta_interna: 'conta interna',
   sem_tela_instalada: 'o ponto ficou sem tela instalada',
 };
+// Saldo de hospedagem (migration 113): horas gratuitas por ter hospedado um
+// ponto móvel — não é crédito nem plano. Ajuste = lançamento novo com
+// motivo (nunca edita o benefício); o extrato mostra quem e quando.
+async function desenharContaHospedagem(el, ctx) {
+  el.innerHTML = '<p class="carregando">Carregando...</p>';
+  const id = ctx.conta.id;
+  const d = await pegar(`/admin/anunciantes/${id}/saldo-hospedagem`);
+  el.innerHTML = `
+    <div class="secao-topo"><h3>Saldo de hospedagem</h3>
+      <div class="secao-acoes"><button type="button" class="btn ghost mini" data-ajustar-hospedagem ${ctx.bloqueada ? 'disabled' : ''}>Ajustar</button></div></div>
+    <dl class="dados dados-3">
+      <div><dt>Disponível</dt><dd><b>${horasDeMidia(d.saldo.disponivelSegundos)}</b></dd></div>
+      <div><dt>Recebido</dt><dd>${horasDeMidia(d.saldo.recebidoSegundos)}</dd></div>
+      <div><dt>Entregue</dt><dd>${horasDeMidia(d.saldo.entregueSegundos)}<span class="dado-sub">exibições confirmadas</span></dd></div>
+    </dl>
+    ${d.saldo.reservadoSegundos > 0 ? `<p class="u-dim u-fs-85 u-m-0">${horasDeMidia(d.saldo.reservadoSegundos)} já programados na grade, aguardando a confirmação da TV.</p>` : ''}
+    ${d.saldo.diferencaSegundos < 0 ? `<p class="u-fs-85 u-m-0"><b>A rede entregou ${horasDeMidia(-d.saldo.diferencaSegundos)} além do saldo.</b></p>` : ''}
+    <p class="u-dim u-fs-85 u-m-0">Horas de mídia gratuitas na rede inteira. Não expira, não é dinheiro e não é crédito.</p>
+    ${
+      d.extrato.length
+        ? `<details class="u-mt-8"><summary>Extrato (${d.extrato.length})</summary>
+            <table class="mini-table"><thead><tr><th>Quando</th><th>O quê</th><th class="num">Tempo</th></tr></thead><tbody>
+            ${d.extrato
+              .map(
+                (l) => `<tr><td class="u-nowrap">${esc(dataHora(l.criadoEm))}</td>
+                  <td>${l.tipo === 'beneficio' ? `Hospedagem${l.local ? ` em ${esc(l.local)}` : ''}` : `Ajuste: ${esc(l.motivo)} (${esc(l.admin)})`}</td>
+                  <td class="num">${l.segundos < 0 ? '−' : '+'}${horasDeMidia(Math.abs(l.segundos))}</td></tr>`,
+              )
+              .join('')}
+            </tbody></table></details>`
+        : ''
+    }`;
+  el.querySelector('[data-ajustar-hospedagem]').addEventListener('click', () => {
+    const { dlg, fechar } = abrirModal({
+      titulo: 'Ajustar saldo de hospedagem',
+      corpo: `<form id="formAjusteHosp" class="modal-form" novalidate>
+          <div class="campo-grupo"><label for="ajMin">Minutos (+ adiciona, − retira)</label><input id="ajMin" name="minutos" inputmode="numeric" required placeholder="-30 ou 60"></div>
+          <div class="campo-grupo"><label for="ajMotivo">Motivo</label><input id="ajMotivo" name="motivo" maxlength="300" required></div>
+          <p class="campo-ajuda">Fica no extrato com o seu nome. O benefício de uma hospedagem nunca é editado.</p>
+          <p class="form-msg" data-msg role="status"></p></form>`,
+      rodape:
+        '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formAjusteHosp" class="btn primary">Lançar ajuste</button>',
+    });
+    let enviando = false;
+    // Uma chave por modal aberto: retry ou duplo envio lança uma vez só.
+    const chave = crypto.randomUUID();
+    dlg.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (enviando) return;
+      enviando = true;
+      try {
+        const corpo = { minutos: ev.target.minutos.value, motivo: ev.target.motivo.value, chave };
+        const r = await api(`/admin/anunciantes/${id}/saldo-hospedagem/ajustes`, {
+          method: 'POST',
+          body: JSON.stringify(corpo),
+        });
+        if (!r.ok) return erroNoModal(dlg, (await r.json().catch(() => ({}))).erro || 'Não foi possível lançar.');
+        fechar();
+        toast('Ajuste lançado.');
+        ctx.recarregar();
+      } finally {
+        enviando = false;
+      }
+    });
+  });
+}
+
 function desenharContaBasico(el, basico) {
   const linha = (b, ativo) => `<li class="plano-etapa">
       <span class="plano-etapa-rotulo">${ativo ? 'Ativo' : 'Encerrado'}</span>
@@ -5560,38 +6437,6 @@ async function renderCandidaturasGrade(el) {
   }
 }
 
-// Tipo do ponto na aprovação (02/10/2026, migration 112): quem pediu nunca
-// escolhe — o Admin decide aqui. Padrão: Fixo. → Promise<'fixo'|'movel'|null>.
-const TIPOS_DE_PONTO = { fixo: 'Fixo', movel: 'Móvel' };
-const EXPLICA_TIPO_DE_PONTO = {
-  fixo: 'Fica neste comércio, e a conta que pediu é a dona do ponto — com o crédito mensal e o Plano Básico de sempre.',
-  movel:
-    'É da Mostraí: este comércio vira a base (não o dono) e o ponto pode sair para eventos. A base não ganha crédito nem Plano Básico por ele.',
-};
-function escolherTipoNaAprovacao(nome) {
-  return new Promise((resolve) => {
-    let escolhido = null;
-    const { dlg, fechar } = abrirModal({
-      titulo: `Aprovar “${nome}”?`,
-      corpo: `<p>O ponto nasce agora com esses dados, como <b>aguardando instalação</b>.</p>
-        <div class="campo-grupo u-mt-8"><span class="campo-rotulo">Tipo do ponto</span>
-          ${segmentado('tipo_ponto', TIPOS_DE_PONTO, 'fixo')}</div>
-        <p class="u-dim u-fs-85 u-mt-8" data-explica-tipo aria-live="polite">${esc(EXPLICA_TIPO_DE_PONTO.fixo)}</p>`,
-      rodape: `<button type="button" class="btn ghost" data-fechar>Cancelar</button>
-        <button type="button" class="btn primary" data-confirmar>Aprovar ponto</button>`,
-    });
-    const explica = dlg.querySelector('[data-explica-tipo]');
-    dlg.addEventListener('change', (ev) => {
-      if (ev.target.name === 'tipo_ponto') explica.textContent = EXPLICA_TIPO_DE_PONTO[ev.target.value] || '';
-    });
-    dlg.querySelector('[data-confirmar]').addEventListener('click', () => {
-      escolhido = dlg.querySelector('input[name="tipo_ponto"]:checked')?.value || 'fixo';
-      fechar();
-    });
-    dlg.addEventListener('close', () => resolve(escolhido));
-  });
-}
-
 async function renderCandidaturaDetalhe(el, id) {
   const todas = await pegar('/admin/candidaturas');
   const c = todas.find((x) => x.id === id);
@@ -5649,20 +6494,15 @@ async function renderCandidaturaDetalhe(el, id) {
     const btn = e.currentTarget;
     // Sem "e a Tela 1": desde a rodada final da Rede (22/09/2026) o ponto
     // nasce SEM tela, como "aguardando instalação" — a tela é criada na
-    // instalação de verdade (src/conta/modos.js). Candidatura de conta
-    // escolhe aqui o TIPO do ponto (fixo/móvel, migration 112); a antiga, sem
-    // conta, só vira convite (e fixo).
-    const tipo =
-      c.conta_id && c.tipo === 'ponto'
-        ? await escolherTipoNaAprovacao(nome)
-        : (await confirmarModal({
-              titulo: `Aprovar “${nome}”?`,
-              texto: '<p>O ponto nasce agora com esses dados, como <b>aguardando instalação</b>.</p>',
-              botao: 'Aprovar ponto',
-            }))
-          ? 'fixo'
-          : null;
-    if (!tipo) return;
+    // instalação de verdade (src/conta/modos.js). Candidatura gera SEMPRE
+    // ponto fixo (V2 do ponto móvel, migration 113): o móvel nasce só em
+    // Rede → Pontos móveis.
+    const ok = await confirmarModal({
+      titulo: `Aprovar “${nome}”?`,
+      texto: '<p>O ponto fixo nasce agora com esses dados, como <b>aguardando instalação</b>.</p>',
+      botao: 'Aprovar ponto',
+    });
+    if (!ok) return;
     // Linha antiga de candidatura a VENDEDOR (programa aposentado em
     // 23/09/2026): não há papel pra liberar nem convite que o backend
     // aceite — só resta recusar.
@@ -5678,7 +6518,7 @@ async function renderCandidaturaDetalhe(el, id) {
     // de uma pessoa sem conta ainda virar ponto — POST /admin/convites já
     // marca a candidatura como aprovada sozinho (src/convites/routes.js).
     const r = c.conta_id
-      ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST', body: JSON.stringify({ tipo }) })
+      ? await api(`/admin/candidaturas/${c.id}/liberar`, { method: 'POST', body: '{}' })
       : await api('/admin/convites', {
           method: 'POST',
           body: JSON.stringify({
@@ -5704,7 +6544,7 @@ async function renderCandidaturaDetalhe(el, id) {
         link,
       });
     }
-    toast(tipo === 'movel' ? 'Candidatura aprovada como ponto móvel.' : 'Candidatura aprovada.');
+    toast('Candidatura aprovada.');
     RESUMO = await pegar('/admin/resumo').catch(() => RESUMO);
     pintarContadores();
     irPara('rede/candidaturas');

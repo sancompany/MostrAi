@@ -44,6 +44,10 @@ async function exportarConta(anuncianteId) {
     bancoHoras,
     ciclosContratados,
     pedidosAvulsos,
+    hospedagens,
+    interessesHospedagem,
+    aceitesHospedagem,
+    saldoHospedagem,
   ] = await Promise.all([
     q('SELECT * FROM pontos WHERE anunciante_id = $1 ORDER BY id'),
     q(`SELECT id, arquivo_original_url, arquivo_normalizado_url, thumbnail_url,
@@ -102,6 +106,18 @@ async function exportarConta(anuncianteId) {
     q('SELECT * FROM banco_horas WHERE anunciante_id = $1 ORDER BY 1'),
     q('SELECT * FROM ciclos_contratados WHERE anunciante_id = $1 ORDER BY 1'),
     q('SELECT * FROM pedidos_avulsos WHERE anunciante_id = $1 ORDER BY 1'),
+    // Ponto Móvel (migration 113): a conta como anfitriã.
+    q(`SELECT id, ponto_id, local, endereco, data_inicio, data_fim, percentual, estado, iniciada_em, encerrada_em,
+              tempo_operacional_segundos, beneficio_segundos
+         FROM pontos_moveis_hospedagens WHERE conta_id = $1 ORDER BY id`),
+    q(`SELECT id, origem, empresa, responsavel, contato_telefone, contato_email, endereco, categoria_livre, disponibilidade,
+              observacao, status, criado_em
+         FROM hospedagem_interesses WHERE conta_id = $1 ORDER BY id`),
+    q(`SELECT hospedagem_id, termo_versao, termo_hash, documento_hash, responsavel, local, endereco, data_inicio,
+              data_fim, percentual, ip, user_agent, aceito_em
+         FROM hospedagem_aceites WHERE conta_id = $1 ORDER BY aceito_em`),
+    q(`SELECT tipo, segundos, hospedagem_id, criado_em
+         FROM saldo_hospedagem_lancamentos WHERE conta_id = $1 ORDER BY criado_em`),
   ]);
 
   return {
@@ -130,6 +146,10 @@ async function exportarConta(anuncianteId) {
     banco_de_horas: bancoHoras,
     ciclos_contratados: ciclosContratados,
     pedidos_avulsos: pedidosAvulsos,
+    hospedagens_como_anfitria: hospedagens,
+    interesses_em_hospedar: interessesHospedagem,
+    aceites_do_termo_de_hospedagem: aceitesHospedagem,
+    saldo_de_hospedagem: saldoHospedagem,
   };
 }
 

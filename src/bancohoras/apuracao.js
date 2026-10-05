@@ -3,6 +3,7 @@ const bancoHorasRepo = require('./repository');
 const { registrarHorasSemPedido } = require('./obrigacao');
 const { PRAZO_PROOF_OF_PLAY_MIN } = require('../playlist/gerador');
 const { DURACAO_PADRAO } = require('../lib/pacing');
+const { confirmadasNormaisSql, confirmadasBancoSql } = require('../lib/partes-da-hora');
 
 // SALDO DE VEICULAÇÃO (nome interno: banco de horas). Obrigação de
 // veiculação (decisão do dono, 25/09/2026 — MANTER): o que a conta tinha
@@ -108,8 +109,7 @@ async function apurarMes({ mes = null, simular = false, apenasContas = null, ago
     `SELECT e.anunciante_id,
             SUM(COALESCE(e.segundos_obrigacao,
                          e.vezes_pedidas * COALESCE(e.duracao_segundos, d.media, $4)))::bigint AS obrigacao,
-            SUM(LEAST(e.vezes_confirmadas, e.vezes_programadas - e.vezes_banco)
-                * COALESCE(e.duracao_segundos, d.media, $4))::bigint AS entregue,
+            SUM(${confirmadasNormaisSql('e.')} * COALESCE(e.duracao_segundos, d.media, $4))::bigint AS entregue,
             COALESCE(MAX(d.media), $4)::int AS duracao_atual
        FROM exibicoes_contador e
        JOIN anunciantes a ON a.id = e.anunciante_id
@@ -199,7 +199,7 @@ async function recomporMesAnteriorEmPrazo({ agora = new Date(), apenasContas = n
 // Uma transação por conta: marca as horas como liquidadas e abate o saldo
 // juntas — duas execuções ao mesmo tempo nunca abatem a mesma hora (o UPDATE
 // com `banco_liquidado_em IS NULL` trava e reavalia a linha).
-const ENTREGUE_DO_BANCO = `LEAST(GREATEST(vezes_confirmadas - (vezes_programadas - vezes_banco), 0), vezes_banco)`;
+const ENTREGUE_DO_BANCO = confirmadasBancoSql('');
 
 async function liquidarBancoConfirmado({ apenasContas = null, simular = false, agora = new Date() } = {}) {
   const corte = new Date(new Date(agora).getTime() - MINUTOS_ATE_A_HORA_FECHAR * 60_000);

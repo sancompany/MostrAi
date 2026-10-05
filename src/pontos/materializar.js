@@ -19,19 +19,15 @@
 //   · o ponto nasce sem tela (status automático lê 0 telas como "aguardando
 //     instalação"); a Tela nasce no admin, quando for instalar de verdade;
 //   · o cupom de indicação é por CONTA — criado só se ela ainda não tem;
-//   · PONTO MÓVEL (migration 112, escolha do Admin na aprovação): o ponto
-//     nasce da Mostraí — sem dona, com a conta que pediu como BASE
-//     (custodiante), nome "Mostraí Móvel #NN" e o nome do comércio como nome
-//     da base. Nada de dono: sem cupom aqui, e quem libera não liga o papel
-//     'ponto' (src/conta/modos.js). O resto (endereço, ramo, horário da base,
-//     foto, responsável) vem da candidatura como no fixo.
+//   · candidatura gera SEMPRE ponto FIXO (V2 do ponto móvel, 02/10/2026): o
+//     móvel é um equipamento da Mostraí e nasce só pelo Admin, em Rede →
+//     Pontos móveis (src/pontos/movel.js#criarPontoMovel).
 const pool = require('../db/pool');
 const pontosRepo = require('./repository');
 const categoriasRepo = require('../categorias/repository');
 const indicacoesRepo = require('../indicacoes/repository');
-const { nomeDoMovel, proximoNumeroMovel } = require('./movel');
 
-async function materializarPontoDaCandidatura(cand, conta, db = pool, { tipo = 'fixo' } = {}) {
+async function materializarPontoDaCandidatura(cand, conta, db = pool) {
   const { rows: jaExiste } = await db.query('SELECT id FROM pontos WHERE candidatura_id = $1', [cand.id]);
   if (jaExiste.length) return null;
 
@@ -47,11 +43,9 @@ async function materializarPontoDaCandidatura(cand, conta, db = pool, { tipo = '
   }
 
   const categoria = cand.segmento ? await categoriasRepo.buscarAtivaPorNomeOuApelido(cand.segmento, db) : null;
-  const movel = tipo === 'movel';
-  const numero = movel ? await proximoNumeroMovel(db) : null;
   const ponto = await pontosRepo.criar(
     {
-      nome: movel ? nomeDoMovel(numero) : nome,
+      nome,
       endereco: cand.endereco,
       logradouro: cand.logradouro,
       numero: cand.numero,
@@ -69,17 +63,13 @@ async function materializarPontoDaCandidatura(cand, conta, db = pool, { tipo = '
       horario_semanal: cand.horario_semanal || null,
       foto_instalacao_url: cand.foto_fachada_url || null,
       observacoes: cand.mensagem || null,
-      anunciante_id: movel ? null : conta.id,
+      anunciante_id: conta.id,
       candidatura_id: cand.id,
       aceitou_termos_em: new Date(),
-      tipo: movel ? 'movel' : 'fixo',
-      base_conta_id: movel ? conta.id : null,
-      base_nome: movel ? nome : null,
-      movel_numero: numero,
     },
     db,
   );
-  if (!movel && !(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
+  if (!(await indicacoesRepo.buscarCupomPorConta(conta.id, db))) {
     await indicacoesRepo.criarCupom(conta.id, conta.nome_empresa, db);
   }
   return ponto;

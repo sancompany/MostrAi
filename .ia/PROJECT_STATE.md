@@ -121,10 +121,9 @@ tela) — fonte de verdade, não duplicada aqui.
 
 ## Banco / migrations
 
-Arquivos SQL em `src/db/migrations/`, numerados até `069`. Mais recente:
-`069_status_automatico_e_margens_da_tela.sql` (4 valores de `pontos.status`,
-status automático via `sincronizarStatusPonto`, margens de safe area por
-tela). Aplicadas por `src/db/migrate.js`, idempotente, com
+Arquivos SQL em `src/db/migrations/`, numerados até `113`. Mais recente:
+`113_ponto_movel_v2.sql` (hospedagem temporária, agenda única, tempo
+operacional da tela, saldo de hospedagem, percentual auditado — ADR-037). Aplicadas por `src/db/migrate.js`, idempotente, com
 `pg_advisory_lock`.
 
 ## Integrações — estado observado

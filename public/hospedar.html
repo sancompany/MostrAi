@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/img/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="icon" href="/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/img/favicon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <title>Hospede um Ponto Móvel Mostraí</title>
+  <meta name="description" content="Receba temporariamente um Ponto Móvel Mostraí no seu comércio e ganhe horas de mídia gratuitas na rede.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mostraí">
+  <meta property="og:title" content="Hospede um Ponto Móvel Mostraí">
+  <meta property="og:description" content="Receba temporariamente um Ponto Móvel Mostraí no seu comércio e ganhe horas de mídia gratuitas na rede.">
+  <meta property="og:url" content="https://mostrai.sancocore.com.br/hospedar.html">
+  <meta property="og:image" content="https://mostrai.sancocore.com.br/img/logo-mostrai-full.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="canonical" href="https://mostrai.sancocore.com.br/hospedar.html">
+  <meta name="theme-color" content="#ff7a1a">
+  <link rel="manifest" href="/site.webmanifest">
+</head>
+<body data-layout="publico">
+
+  <main>
+    <!-- Hospedagem temporária (migration 113). Não é "tornar-se ponto": o
+         equipamento é da Mostraí, fica alguns dias e volta. O percentual
+         vem do servidor (GET /hospedagem/condicao), nunca escrito aqui. -->
+    <section class="tight u-ta-c">
+      <div class="wrap">
+        <p class="eyebrow">Ponto Móvel</p>
+        <h1 class="u-fs-220">Hospede temporariamente um Ponto Móvel Mostraí</h1>
+        <p class="lead u-m-0 u-centro">A Mostraí leva uma tela até o seu comércio por alguns dias. Você não paga nada e, no fim, uma parte do tempo em que a tela funcionou volta para você em horas de mídia gratuitas na rede.</p>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <div class="contato-grid">
+          <form class="card u-m-0 u-mw-livre" id="formHospedar" novalidate>
+            <h2 class="u-fs-130">Tenho interesse</h2>
+            <p class="form-hint">A Mostraí entra em contato para ver se e quando faz sentido. Enviar não reserva nada.</p>
+            <div class="field-row">
+              <div class="u-col">
+                <label for="empresa">Empresa</label>
+                <input id="empresa" name="empresa" autocomplete="organization" maxlength="120" required>
+              </div>
+              <div class="u-col">
+                <label for="responsavel">Responsável</label>
+                <input id="responsavel" name="responsavel" autocomplete="name" maxlength="120" required>
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="u-col">
+                <label for="contato_telefone">WhatsApp</label>
+                <input id="contato_telefone" name="contato_telefone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(16) 99999-9999" required>
+              </div>
+              <div class="u-col">
+                <label for="contato_email">E-mail <span class="u-fw-400">*opcional</span></label>
+                <input id="contato_email" name="contato_email" type="email" autocomplete="email" maxlength="160">
+              </div>
+            </div>
+            <div id="hospEndereco"></div>
+            <div>
+              <label for="segmento">Segmento</label>
+              <input id="segmento" name="segmento" maxlength="80" placeholder="Ex.: tabacaria, academia, padaria">
+            </div>
+            <div>
+              <label for="observacao">Observação <span class="u-fw-400">*opcional</span></label>
+              <textarea id="observacao" name="observacao" rows="3" maxlength="500"></textarea>
+            </div>
+            <!-- Campo-armadilha: pessoa não vê nem preenche. -->
+            <div hidden aria-hidden="true"><label for="site">Site</label><input id="site" name="site" tabindex="-1" autocomplete="off"></div>
+            <button class="btn primary block" type="submit">Enviar interesse</button>
+            <p class="form-msg" id="msg" role="status" aria-live="polite"></p>
+          </form>
+
+          <aside class="contato-lado">
+            <div class="split-card">
+              <span class="tag">Como funciona</span>
+              <h3>A tela é da Mostraí</h3>
+              <p>Ela fica no seu comércio por um período combinado e depois volta. Você não paga nada, não compra equipamento e não vira dono de nada.</p>
+            </div>
+            <div class="split-card">
+              <span class="tag">O que você ganha</span>
+              <h3 id="hospPercentual">Horas de mídia gratuitas</h3>
+              <p id="hospExemplo">No fim da hospedagem, uma parte do tempo em que a tela operou vira horas para anunciar o seu negócio na rede inteira.</p>
+            </div>
+            <div class="split-card">
+              <span class="tag">Já tem ponto?</span>
+              <h3>Quer uma tela fixa?</h3>
+              <p>Ser ponto fixo da rede é outro caminho. Veja em <a href="/pontos.html">Pontos</a>.</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/config.js"></script>
+  <script src="/layout.js"></script>
+  <script src="/endereco-regras.js"></script>
+  <script src="/endereco.js"></script>
+  <script src="/hospedar.page.js"></script>
+</body>
+</html>
