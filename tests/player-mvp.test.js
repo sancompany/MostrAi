@@ -674,7 +674,7 @@ test('heartbeat: snapshot do estado, fila, erro e config aplicada; versão só p
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'fora_do_horario');
 });
 
-test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois de 2 min', async () => {
+test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois de 6 min 30 s', async () => {
   const pid = await novoPonto();
   const tela = await novaTela(pid);
   const p = await instalarPlayer(tela.id);
@@ -687,7 +687,7 @@ test('heartbeat: tela em reparo continua batendo (nunca 403); "Sem sinal" depois
     tela.id,
   ]);
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'operando');
-  await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '3 minutes' WHERE id = $1", [tela.id]);
+  await pool.query("UPDATE dispositivos SET ultima_vez_online = now() - interval '7 minutes' WHERE id = $1", [tela.id]);
   assert.equal((await app.chamar('GET', `/admin/dispositivos/${tela.id}`)).json.saude, 'sem_sinal');
   await bater(p, { estado: 'PLAYING' });
   assert.equal(await eventosDe(tela.id, 'OFFLINE'), 1);

@@ -20,10 +20,13 @@ const { operacaoDoPonto, deveriaOperar } = require('./operacao-tela');
 // "Sem sinal" vence um erro antigo: com o último heartbeat vencido, o erro
 // que ele trazia já não descreve o agora.
 
-// docs/player-mvp-contract.md §9: heartbeat a cada 15 s; "Sem sinal" depois
-// de 2 min (8 batidas perdidas) — tolera uma rede que oscila, sem esconder
-// uma TV desligada.
-const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 2) * 60 * 1000;
+// O APK em produção bate a cada 5 min (playlist.mostrai,
+// INTERVALO_HEARTBEAT_MS — docs/player-mvp-contract.md, nota do §5; o
+// contrato antigo dizia 15 s). "Sem sinal" depois de 6 min 30 s: uma batida
+// perdida + 30%, a mesma tolerância do tempo operacional
+// (src/player/operacao.js). Com 2 min, uma tela saudável passava ~3 min de
+// cada 5 como "sem comunicação". `TELA_SEM_SINAL_MIN` sobrescreve (minutos).
+const TOLERANCIA_SEM_SINAL_MS = (Number(process.env.TELA_SEM_SINAL_MIN) || 6.5) * 60 * 1000;
 // Alteração de config chega na próxima batida (15 s) + GET /config. Até 2 min
 // é "sincronizando"; alerta só se passar de 15 min.
 const CONFIG_PENDENTE_APOS_MS = 2 * 60 * 1000;

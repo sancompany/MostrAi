@@ -1294,8 +1294,9 @@ derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
 nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
 `aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
 `fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 2 min — heartbeat de
-15 s; `TELA_SEM_SINAL_MIN`) → `erro_do_player` (sinal recente com erro) →
+`sem_sinal` (deveria operar e o último sinal passou de 6 min 30 s — o APK
+bate a cada 5 min; `TELA_SEM_SINAL_MIN`; era 2 min até 05/10/2026, quando
+o contrato ainda dizia heartbeat de 15 s) → `erro_do_player` (sinal recente com erro) →
 `operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
 "pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
 comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.

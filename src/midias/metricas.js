@@ -1,3 +1,4 @@
+const { horarioEmVigorSql } = require('../lib/contexto-do-ponto');
 const pool = require('../db/pool');
 const { operacaoDoPonto, minutosOperando } = require('../lib/operacao-tela');
 const { situacaoDerivada } = require('./repository');
@@ -216,7 +217,9 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
     ),
     // Só tela ativa, com primeiro sinal, em ponto em operação.
     db.query(
-      `SELECT d.id, d.ponto_id, d.apelido, d.numero, p.nome AS ponto_nome, p.horario_semanal,
+      // Horário em vigor: o móvel fora da base (hospedagem, evento) segue o
+      // do contexto, como o gerador e o Player (src/lib/contexto-do-ponto.js).
+      `SELECT d.id, d.ponto_id, d.apelido, d.numero, p.nome AS ponto_nome, ${horarioEmVigorSql('p')} AS horario_semanal,
                 COALESCE(d.primeiro_sinal_em, d.provisionado_em) AS desde
            FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
           WHERE d.status = 'ativo' AND p.status = 'em_operacao'

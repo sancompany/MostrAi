@@ -243,7 +243,7 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   um PIN padrão).
 - PIN correto → saída autorizada: o watchdog local **não** reabre o app. Ao
   abrir o app de novo (manual ou boot), a operação normal e o watchdog
-  voltam. O backend não é avisado da saída: 2 minutos depois a tela aparece
+  voltam. O backend não é avisado da saída: 6 min 30 s depois a tela aparece
   como "Sem sinal" no admin, que é o fato.
 
 ---
@@ -429,9 +429,9 @@ Derivados no servidor (o Player reporta fatos, o servidor classifica):
 | Estado | Regra |
 |---|---|
 | Aguardando instalação | tela sem Player provisionado (nunca instalada, ou revogada) |
-| Operando | sinal nos últimos 2 min, sem erro |
+| Operando | sinal nos últimos 6 min 30 s (APK bate a cada 5 min; era 2 min), sem erro |
 | Fora do horário | o horário do ponto diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
-| Sem sinal | deveria operar e o último sinal passou de 2 min |
+| Sem sinal | deveria operar e o último sinal passou de 6 min 30 s (`TELA_SEM_SINAL_MIN`) |
 | Erro do Player | sinal recente com `erro` ou estado de erro |
 
 Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,

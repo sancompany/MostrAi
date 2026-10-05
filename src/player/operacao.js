@@ -49,11 +49,16 @@ async function registrarPeloHeartbeat(client, tela, estado) {
   const { rowCount } = !ESTADOS_EXIBINDO.has(tela.player_estado)
     ? { rowCount: 0 }
     : await client.query(
-        `UPDATE tela_operacao SET fim = now()
-      WHERE id = (SELECT id FROM tela_operacao
+        // Mudança do Admin no estado da tela depois da última batida (ex.:
+        // reparo e volta a ativa em menos de 6 min 30 s) fecha o intervalo:
+        // o tempo marcado como não operacional nunca entra na ponte.
+        `UPDATE tela_operacao o SET fim = now()
+      WHERE o.id = (SELECT id FROM tela_operacao
                    WHERE dispositivo_id = $1 AND ponto_id = $3 AND origem = 'heartbeat'
                      AND fim >= now() - make_interval(secs => $2) AND fim <= now()
-                   ORDER BY fim DESC LIMIT 1)`,
+                   ORDER BY fim DESC LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM tela_eventos e
+                         WHERE e.dispositivo_id = $1 AND e.tipo = 'ADMIN_STATE_CHANGED' AND e.ocorrido_em >= o.fim)`,
         [tela.id, TOLERANCIA_SEGUNDOS, tela.ponto_id],
       );
   if (rowCount) return true;

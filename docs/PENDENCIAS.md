@@ -5838,4 +5838,11 @@ conversão fixo ⇄ móvel da seção S.
       limitador de tentativas); confirmar a cadeia de proxies em produção;
       (c) foto de entrega/retirada fica no bucket público (nome aleatório,
       não adivinhável); bucket privado com URL assinada é a evolução.
+      (d) (Codex, PR #114) um ajuste NEGATIVO do Admin feito no mesmo
+      instante em que o gerador reserva a hora da conta pode deixar a rede
+      entregar alguns segundos além do saldo (no máximo a reserva de uma
+      hora daquela conta: ≤ 140 s por tela). Mídia gratuita, não
+      financeira; aparece em `diferencaSegundos` no Admin. Fechar de vez
+      pede o gerador e o ajuste sob a mesma trava por conta — evolução se
+      aparecer caso real.
 

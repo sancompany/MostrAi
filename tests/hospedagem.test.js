@@ -779,6 +779,51 @@ test('43b. termo: nova versão publicada pelo Admin vira a vigente; a aceita ant
   await pool.query('UPDATE hospedagem_termos SET vigente = true WHERE versao = $1', [antes.versao]);
 });
 
+test('31c. métricas da Mídia Mostraí: o móvel hospedado conta pelo horário em vigor, não o da base', async () => {
+  const SO_SEGUNDA = {
+    seg: { abre: '08:00', fecha: '09:00' },
+    ter: null,
+    qua: null,
+    qui: null,
+    sex: null,
+    sab: null,
+    dom: null,
+  };
+  const m = await criarMovel({ extra: { horario_semanal: SO_SEGUNDA } });
+  const { telaId } = await telaComPlayer(m.id);
+  await pool.query(`UPDATE dispositivos SET primeiro_sinal_em = now() - interval '40 days' WHERE id = $1`, [telaId]);
+  await pool.query(`UPDATE pontos SET status = 'em_operacao' WHERE id = $1`, [m.id]);
+  const propria = await anunciantesRepo.ensureContaMostrai();
+  const peca = await pecaAprovada(propria);
+  const midiasRepo = require('../src/midias/repository');
+  const { metricasDasMidias } = require('../src/midias/metricas');
+  const midia = await midiasRepo.criar({
+    criativoId: peca.id,
+    nomeInterno: `Móvel ${randomUUID().slice(0, 6)}`,
+    frequenciaHora: 2,
+    coberturaTipo: 'pontos',
+    pontosIds: [m.id],
+  });
+  try {
+    await pool.query('DELETE FROM midias_proprias_situacoes WHERE midia_id = $1', [midia.id]);
+    await pool.query(
+      `INSERT INTO midias_proprias_situacoes (midia_id, situacao, desde) VALUES ($1, 'ativa', now() - interval '10 days')`,
+      [midia.id],
+    );
+    const esperadas = async () =>
+      (await metricasDasMidias([await midiasRepo.buscarPorId(midia.id)])).get(midia.id).esperadas.d7;
+    const naBase = await esperadas();
+    assert.ok(naBase <= 2, `na base: só a 1 h de segunda (${naBase})`);
+    // Hospedado (sem horário próprio): o gerador e a TV seguem 24 h — o
+    // esperado também.
+    await hospedagemAtiva(m, await novaConta());
+    const hospedado = await esperadas();
+    assert.ok(hospedado > naBase + 100, `hospedado: horário em vigor (${naBase} → ${hospedado})`);
+  } finally {
+    await pool.query('DELETE FROM midias_proprias WHERE id = $1', [midia.id]);
+  }
+});
+
 test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comunicação", nunca "desligada"; o anunciante não recebe sinal', async () => {
   const m = await criarMovel();
   const { telaId } = await telaComPlayer(m.id);
@@ -1123,6 +1168,17 @@ test('31 e 32. heartbeat exibindo estende o intervalo; sinal perdido abre outro;
   await recuar(7);
   await hb('PLAYING');
   assert.strictEqual(await intervalos(), 3, 'batida perdida: intervalo novo');
+  // Reparo e volta a ativa entre duas batidas (dentro da tolerância): a
+  // ponte não atravessa o tempo que o Admin marcou como não operacional.
+  await recuar(2);
+  await pool.query(
+    `INSERT INTO tela_eventos (dispositivo_id, tipo, detalhe, ocorrido_em)
+     VALUES ($1, 'ADMIN_STATE_CHANGED', '{"de":"ativo","para":"reparo"}', now() - interval '90 seconds'),
+            ($1, 'ADMIN_STATE_CHANGED', '{"de":"reparo","para":"ativo"}', now() - interval '30 seconds')`,
+    [telaId],
+  );
+  await hb('PLAYING');
+  assert.strictEqual(await intervalos(), 4, 'mudança do Admin entre as batidas fecha o intervalo');
   const fixo = await pontoFixo();
   const tf = await telaComPlayer(fixo.id);
   await fetch(`${base}/player/${tf.dispositivoId}/heartbeat`, {
