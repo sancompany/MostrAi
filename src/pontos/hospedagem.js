@@ -804,7 +804,9 @@ async function hospedagensDaConta(contaId) {
       id: Number(h.id),
       ponto: h.ponto_nome,
       // Só o que é dela: se já aceitou o termo (a programada espera o aceite).
-      termoAceito: Boolean(doc?.aceite),
+      termoAceito: Boolean(doc?.aceite) && !doc.prorrogacaoSemAceite,
+      // Ativa prorrogada depois do aceite: o novo período pede o acordo dela.
+      prorrogacaoSemAceite: h.estado === 'ativa' && Boolean(doc?.prorrogacaoSemAceite),
       local: h.local,
       dataInicio: h.data_inicio,
       dataFim: h.data_fim,
@@ -866,6 +868,7 @@ async function hospedagensDoPonto(pontoId, db = pool) {
       // retirada.
       aceite: doc?.aceite || null,
       aceitesAnteriores: doc?.aceitesAnteriores || 0,
+      prorrogacaoSemAceite: Boolean(doc?.prorrogacaoSemAceite),
       entrega: doc?.entrega || null,
       retirada: doc?.retirada || null,
     });

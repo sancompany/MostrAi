@@ -1007,6 +1007,48 @@ test('30b. T12: hora em que a agenda rodou e não programou a mídia (obrigaçã
   assert.equal((await metricas(midia.id)).estado, 'ATIVA_ENTREGA_ATRASADA');
 });
 
+test('30c. T12: uma tela sem vaga não esconde outra tela muda na mesma hora', async () => {
+  const { ponto, midia } = await midiaAntiga({ horario: HORARIO_24H, frequencia: 2 });
+  const t = (h) => horaCheia(AGORA.getTime() - h * HORA);
+  const outra = await dispositivosRepo.criar(ponto.pontoId, {});
+  await pool.query(`UPDATE dispositivos SET primeiro_sinal_em = now() - interval '60 days' WHERE id = $1`, [outra.id]);
+  await hora(midia.id, ponto.telaId, ponto.pontoId, t(30), 2, 2);
+  // A tela 1 pediu a playlist toda hora e a agenda não deu vaga; a tela 2
+  // nunca pediu (desligada ou sem rede): continua devendo.
+  for (let h = 1; h <= 29; h++) {
+    await pool.query(
+      `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base) VALUES ($1, $2, '[]')
+       ON CONFLICT DO NOTHING`,
+      [ponto.telaId, t(h)],
+    );
+  }
+  assert.equal((await metricas(midia.id)).estado, 'ATIVA_ENTREGA_ATRASADA');
+  // As duas sem vaga: a agenda decidiu pelas duas.
+  for (let h = 1; h <= 29; h++) {
+    await pool.query(
+      `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base) VALUES ($1, $2, '[]')
+       ON CONFLICT DO NOTHING`,
+      [outra.id, t(h)],
+    );
+  }
+  assert.equal((await metricas(midia.id)).estado, 'ATIVA_REPRODUZINDO');
+});
+
+test('30d. T12: antes da primeira exibição, hora sem vaga na agenda não vira atraso', async () => {
+  const { ponto, midia } = await midiaAntiga({ horario: HORARIO_24H, frequencia: 2, historico: [['ativa', 3]] });
+  const t = (h) => horaCheia(AGORA.getTime() - h * HORA);
+  const antes = await metricas(midia.id);
+  assert.equal(antes.estado, 'ATIVA_ENTREGA_ATRASADA', 'sem agenda: 3 h ativa e nada exibido');
+  for (const h of [1, 2, 3]) {
+    await pool.query(
+      `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base) VALUES ($1, $2, '[]')
+       ON CONFLICT DO NOTHING`,
+      [ponto.telaId, t(h)],
+    );
+  }
+  assert.equal((await metricas(midia.id)).estado, 'ATIVA_AGUARDANDO_PRIMEIRA_EXIBICAO');
+});
+
 test('31. métricas por ponto (e por tela) na ficha do admin; o card traz o resumo', async () => {
   const { ponto, midia } = await midiaAntiga({ horario: HORARIO_24H, frequencia: 1 });
   const agora = Date.now();

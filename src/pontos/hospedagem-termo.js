@@ -104,6 +104,11 @@ function dadosDaHospedagem(h) {
   };
 }
 
+// Impressão dos dados que o anfitrião LEU: o painel devolve no aceite e, se
+// o Admin mudou período/local no meio da leitura, o aceite é recusado.
+const hashDosDados = (dados) =>
+  sha256(JSON.stringify([dados.local, dados.endereco, dados.dataInicio, dados.dataFim, dados.percentual]));
+
 // Hash do documento inteiro: versão + hash do texto + dados + quem aceitou,
 // numa serialização de ordem fixa.
 function hashDoDocumento(termo, dados, responsavel) {
@@ -162,15 +167,23 @@ async function aceitar(contaId, hospedagemId, corpo, { ip = null, userAgent = nu
     const {
       rows: [h],
     } = await c.query('SELECT * FROM pontos_moveis_hospedagens WHERE id = $1 FOR UPDATE', [hid]);
-    if (h.estado !== 'programada') throw erro(409, 'Essa hospedagem não está mais aguardando aceite');
+    // Programada: o aceite libera o início. Ativa: registra o acordo da
+    // prorrogação (o período mudou depois do aceite do início).
+    if (h.estado !== 'programada' && h.estado !== 'ativa') {
+      throw erro(409, 'Essa hospedagem não está mais aguardando aceite');
+    }
     const termo = await termoVigente(c);
     if (!termo) throw erro(409, 'Nenhum termo publicado — fale com a Mostraí');
     if (corpo?.versao !== termo.versao || corpo?.hash !== termo.hash) {
       throw erro(409, 'O termo foi atualizado enquanto você lia — abra de novo para ler a versão atual');
     }
+    const dados = dadosDaHospedagem(h);
+    if (corpo?.dadosHash !== hashDosDados(dados)) {
+      throw erro(409, 'Os dados desta hospedagem mudaram enquanto você lia — abra de novo para conferir');
+    }
     const ja = await aceiteValido(c, h);
     if (ja && ja.termo_versao === termo.versao) return { contaId, aceite: linhaDoAceite(ja), repetido: true };
-    const dados = dadosDaHospedagem(h);
+    if (ja && h.estado === 'ativa') return { contaId, aceite: linhaDoAceite(ja), repetido: true };
     const {
       rows: [a],
     } = await c.query(
@@ -220,8 +233,9 @@ async function termoDaHospedagem(contaId, hospedagemId) {
       minuta: termo.minuta,
     },
     dados: dadosDaHospedagem(h),
+    dadosHash: hashDosDados(dadosDaHospedagem(h)),
     aceite: linhaDoAceite(aceite),
-    podeAceitar: h.estado === 'programada',
+    podeAceitar: h.estado === 'programada' || (h.estado === 'ativa' && !aceite),
   };
 }
 
@@ -278,15 +292,16 @@ async function movimentacaoDe(db, hospedagemId, tipo) {
   return rows[0] || null;
 }
 
-// Retirada avulsa: hospedagem em andamento (o Admin recolhe e em seguida
-// encerra) ou já encerrada (o encerramento automático não recolhe nada).
+// Retirada avulsa: só de hospedagem já encerrada (o encerramento automático
+// não recolhe nada). Em andamento, a retirada vai no próprio encerramento —
+// recolher sem encerrar deixaria o tempo da base contando para o anfitrião.
 async function registrarRetirada(pontoId, hospedagemId, corpo, admin) {
   const movel = require('./movel');
   return movel.emTransacao(async (c) => {
     await movel.travarMovel(c, pontoId);
     const h = await hospedagemTravada(c, pontoId, hospedagemId);
-    if (h.estado !== 'ativa' && h.estado !== 'encerrada') {
-      throw erro(409, 'Retirada só de hospedagem em andamento ou encerrada');
+    if (h.estado !== 'encerrada') {
+      throw erro(409, 'Retirada avulsa só de hospedagem encerrada — em andamento, registre ao encerrar');
     }
     const retirada = await registrarMovimentacao(c, h, 'retirada', corpo, admin);
     return { contaId: h.conta_id, retirada };
@@ -305,8 +320,18 @@ async function hospedagemTravada(c, pontoId, hospedagemId) {
   return rows[0];
 }
 
+async function movimentacaoDoPonto(pontoId, hospedagemId, tipo) {
+  const { rows } = await pool.query(
+    `SELECT m.id FROM hospedagem_movimentacoes m JOIN pontos_moveis_hospedagens h ON h.id = m.hospedagem_id
+      WHERE h.id = $1 AND h.ponto_id = $2 AND m.tipo = $3`,
+    [hospedagemId, pontoId, tipo],
+  );
+  return rows[0] || null;
+}
+
 // Foto da entrega ou da retirada (o upload é da rota; aqui só a URL). Pode
-// ser trocada — é evidência de apoio, o registro em si não muda.
+// ser trocada — é evidência de apoio, o registro em si não muda; cada envio
+// é um arquivo novo, então a foto anterior continua no bucket.
 async function definirFotoDaMovimentacao(pontoId, hospedagemId, tipo, url) {
   const { rowCount } = await pool.query(
     `UPDATE hospedagem_movimentacoes m SET foto_url = $4
@@ -339,9 +364,18 @@ async function documentosDasHospedagens(hospedagens) {
         Number(a.percentual) === Number(h.percentual) &&
         Number(a.conta_id) === Number(h.conta_id),
     );
+    // Prorrogada depois do aceite: o que valeu no início continua sendo o
+    // aceite dela; a prorrogação aparece como pendente (ou sem acordo).
+    const doInicio =
+      !valido && h.iniciada_em
+        ? dela.find(
+            (a) => new Date(a.aceito_em) <= new Date(h.iniciada_em) && dia(a.data_inicio) === dia(h.data_inicio),
+          )
+        : null;
     mapa.set(String(h.id), {
-      aceite: linhaDoAceite(valido) || null,
-      aceitesAnteriores: dela.filter((a) => a !== valido).length,
+      aceite: linhaDoAceite(valido || doInicio) || null,
+      prorrogacaoSemAceite: Boolean(doInicio),
+      aceitesAnteriores: dela.filter((a) => a !== (valido || doInicio)).length,
       entrega: linhaDaMovimentacao(movs.find((m) => String(m.hospedagem_id) === String(h.id) && m.tipo === 'entrega')),
       retirada: linhaDaMovimentacao(
         movs.find((m) => String(m.hospedagem_id) === String(h.id) && m.tipo === 'retirada'),
@@ -362,6 +396,7 @@ module.exports = {
   termoDaHospedagem,
   registrarMovimentacao,
   movimentacaoDe,
+  movimentacaoDoPonto,
   registrarRetirada,
   definirFotoDaMovimentacao,
   documentosDasHospedagens,

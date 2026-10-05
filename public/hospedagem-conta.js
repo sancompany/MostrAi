@@ -53,6 +53,12 @@
             <div><dt>Benefício estimado</dt><dd>${horas(h.beneficioEstimadoSegundos)}</dd></div>
           </dl>
           <p class="hosp-nota">Valor estimado enquanto a hospedagem estiver em andamento.</p>
+          ${
+            h.prorrogacaoSemAceite
+              ? `<p class="hosp-nota">A hospedagem foi prorrogada até ${esc(window.dataBR?.(h.dataFim) || String(h.dataFim).slice(0, 10))}. Leia e aceite o termo para o novo período.</p>
+                 <button type="button" class="btn primary mini" data-hosp-termo="${h.id}">Ler e aceitar o termo</button>`
+              : ''
+          }
         </div>`;
     }
     // Spec §36: a concluída também leva a "Usar minhas horas" — enquanto
@@ -161,7 +167,7 @@
       credentials: 'include',
     });
     const t = await r.json().catch(() => ({}));
-    if (!r.ok || !t.termo) return;
+    if (!r.ok || !t.termo) throw new Error(t.erro || 'termo indisponível');
     const dlg = document.createElement('dialog');
     dlg.className = 'dlg-termo';
     dlg.setAttribute('aria-labelledby', 'dlgTermoTitulo');
@@ -216,6 +222,7 @@
             concordo: form.concordo.checked,
             versao: t.termo.versao,
             hash: t.termo.hash,
+            dadosHash: t.dadosHash,
           }),
         });
         const corpo = await resp.json().catch(() => ({}));
@@ -249,7 +256,22 @@
     corpo?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-hosp-usar]')) usarHoras();
       const termo = ev.target.closest('[data-hosp-termo]');
-      if (termo) abrirTermo(termo.dataset.hospTermo).catch(() => {});
+      if (termo && !termo.disabled) {
+        // Trava enquanto carrega (duplo clique abria dois diálogos) e diz
+        // quando não deu para abrir, em vez de não fazer nada.
+        termo.disabled = true;
+        termo.parentElement.querySelector('[data-termo-erro]')?.remove();
+        abrirTermo(termo.dataset.hospTermo)
+          .catch(() =>
+            termo.insertAdjacentHTML(
+              'afterend',
+              '<p class="form-msg err" data-termo-erro role="alert">Não foi possível abrir o termo agora. Tente de novo.</p>',
+            ),
+          )
+          .finally(() => {
+            termo.disabled = false;
+          });
+      }
       const abrir = ev.target.closest('[data-hosp-abrir]');
       if (abrir) {
         const form = $('hospInteresseForm');

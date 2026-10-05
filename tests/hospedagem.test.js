@@ -248,12 +248,13 @@ const ENTREGA_OK = { itens: { tela: true, suporte: true, player: true, cabos: tr
 // dele) — pré-condição de iniciar.
 async function aceitarTermo(hid) {
   const { rows } = await pool.query('SELECT conta_id FROM pontos_moveis_hospedagens WHERE id = $1', [hid]);
-  const t = await termoMod.termoVigente();
+  const t = await termoMod.termoDaHospedagem(rows[0].conta_id, hid);
   return termoMod.aceitar(rows[0].conta_id, hid, {
     responsavel: 'Fulana',
     concordo: true,
-    versao: t.versao,
-    hash: t.hash,
+    versao: t.termo.versao,
+    hash: t.termo.hash,
+    dadosHash: t.dadosHash,
   });
 }
 // `iniciar` já aceita o termo e entrega o equipamento, salvo { semAceite } /
@@ -626,7 +627,13 @@ test('43 a 45. termo: versão e aceite do anfitrião antes de iniciar; entrega e
   // Outra conta não vê nem aceita.
   const outra = await entrar(await novaConta());
   assert.strictEqual((await outra('GET', `/anunciantes/me/hospedagens/${hid}/termo`)).status, 404);
-  const corpo = { responsavel: 'Fulana de Tal', concordo: true, versao: t.termo.versao, hash: t.termo.hash };
+  const corpo = {
+    responsavel: 'Fulana de Tal',
+    concordo: true,
+    versao: t.termo.versao,
+    hash: t.termo.hash,
+    dadosHash: t.dadosHash,
+  };
   assert.strictEqual((await outra('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo)).status, 404);
   assert.strictEqual(
     (await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, { ...corpo, concordo: false })).status,
@@ -663,7 +670,17 @@ test('43 a 45. termo: versão e aceite do anfitrião antes de iniciar; entrega e
     409,
     'o aceite era do período antigo',
   );
-  assert.strictEqual((await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo)).status, 201);
+  // O que ela leu era o período antigo: aceitar com aqueles dados é
+  // recusado (o Admin mudou o período enquanto ela lia).
+  const velho = await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo);
+  assert.strictEqual(velho.status, 409, 'dados lidos ≠ dados atuais');
+  assert.match(velho.json.erro, /mudaram/);
+  const t2 = (await nav('GET', `/anunciantes/me/hospedagens/${hid}/termo`)).json;
+  assert.notStrictEqual(t2.dadosHash, t.dadosHash);
+  assert.strictEqual(
+    (await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, { ...corpo, dadosHash: t2.dadosHash })).status,
+    201,
+  );
   // Entrega: obrigatória para iniciar, com a tela; avaria pede observação.
   assert.strictEqual((await acao(m.id, hid, 'iniciar', {}, { semAceite: true })).status, 400);
   assert.strictEqual(
@@ -687,6 +704,30 @@ test('43 a 45. termo: versão e aceite do anfitrião antes de iniciar; entrega e
   const painel = (await nav('GET', '/anunciantes/me/hospedagem')).json;
   assert.strictEqual(painel.hospedagens.find((x) => x.id === hid).termoAceito, true);
   assert.ok(!JSON.stringify(painel).includes('entrega'));
+  // Em andamento, a retirada só vai junto do encerramento (recolher sem
+  // encerrar deixaria o tempo da base contando para a anfitriã).
+  assert.strictEqual((await acao(m.id, hid, 'retirada', ENTREGA_OK)).status, 409);
+  // Prorrogada: o aceite do início continua mostrado, a prorrogação pede o
+  // acordo dela — e ela consegue aceitar com a hospedagem em andamento.
+  assert.strictEqual(
+    (await admin('PUT', `/admin/pontos/${m.id}/hospedagens/${hid}/periodo`, { data_fim: hojeMais(5) })).status,
+    200,
+  );
+  let hp = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json.hospedagens.find((x) => x.id === hid);
+  assert.strictEqual(hp.aceite.responsavel, 'Fulana de Tal', 'o aceite do início não some');
+  assert.strictEqual(hp.prorrogacaoSemAceite, true);
+  let painelH = (await nav('GET', '/anunciantes/me/hospedagem')).json.hospedagens.find((x) => x.id === hid);
+  assert.strictEqual(painelH.prorrogacaoSemAceite, true);
+  const t3 = (await nav('GET', `/anunciantes/me/hospedagens/${hid}/termo`)).json;
+  assert.strictEqual(t3.podeAceitar, true);
+  assert.strictEqual(
+    (await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, { ...corpo, dadosHash: t3.dadosHash })).status,
+    201,
+  );
+  hp = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json.hospedagens.find((x) => x.id === hid);
+  assert.strictEqual(hp.prorrogacaoSemAceite, false);
+  painelH = (await nav('GET', '/anunciantes/me/hospedagem')).json.hospedagens.find((x) => x.id === hid);
+  assert.strictEqual(painelH.termoAceito, true);
   // Encerrar com retirada; a retirada não se repete.
   const enc = await acao(m.id, hid, 'encerrar', {
     retirada: { itens: { tela: true, suporte: true }, condicao: 'com_avarias', observacao: 'canto da moldura riscado' },
@@ -733,6 +774,9 @@ test('43b. termo: nova versão publicada pelo Admin vira a vigente; a aceita ant
   );
   const nav = navegador();
   assert.strictEqual((await nav('POST', '/admin/hospedagem/termos', pub.json)).status, 401, 'só o Admin publica');
+  // Devolve a vigente de antes (os outros testes leem o texto completo).
+  await pool.query('UPDATE hospedagem_termos SET vigente = false WHERE vigente');
+  await pool.query('UPDATE hospedagem_termos SET vigente = true WHERE versao = $1', [antes.versao]);
 });
 
 test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comunicação", nunca "desligada"; o anunciante não recebe sinal', async () => {

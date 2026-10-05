@@ -38,13 +38,17 @@ const SITUACAO_DA_TELA = {
   operando: { nivel: 'ok', texto: 'Funcionando' },
   fora_do_horario: { nivel: 'neutro', texto: 'Fora do horário de funcionamento' },
   aguardando_instalacao: { nivel: 'neutro', texto: 'Aguardando instalação pela equipe Mostraí' },
-  sem_sinal: { nivel: 'atencao', texto: 'A tela deveria estar operando e está sem comunicação.' },
+  // Ponto Móvel V1 §8: sem comunicação não é "desligada" — a TV pode estar
+  // exibindo o pacote que já tem. Texto neutro, sem horário de sinal; segue
+  // "atenção" porque o dono pode conferir a internet da tela.
+  sem_sinal: { nivel: 'atencao', texto: 'Sem comunicação com a Mostraí no momento' },
   erro_do_player: { nivel: 'atencao', texto: 'A tela relatou um problema.' },
   em_reparo: { nivel: 'neutro', texto: 'Em reparo' },
-  inativa: { nivel: 'neutro', texto: 'Desligada' },
+  inativa: { nivel: 'neutro', texto: 'Inativa no cadastro' },
 };
 
-// Visão SIMPLIFICADA da tela para o dono: situação e último sinal. Toda tela
+// Visão SIMPLIFICADA da tela para o dono: só a situação (sem horário de
+// sinal — heartbeat é dado técnico, §8). Toda tela
 // segue o horário do estabelecimento. Nada técnico — sem credencial, fila,
 // Android, hash, PIN ou versões de config.
 function telaPublica(t, horarioDoPonto, agora) {
@@ -56,7 +60,6 @@ function telaPublica(t, horarioDoPonto, agora) {
     nivel: SITUACAO_DA_TELA[situacao].nivel,
     situacaoTexto: SITUACAO_DA_TELA[situacao].texto,
     alerta: SITUACOES_DE_ALERTA.has(situacao),
-    ultimoSinal: t.ultima_vez_online,
     instaladaEm: t.instalado_em,
     exibicoes30d: t.exibicoes_30d,
     anunciantes30d: t.anunciantes_30d,

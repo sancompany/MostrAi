@@ -980,7 +980,7 @@ function pintarStatusOperacional(porPonto) {
   const noAr = porPonto.filter((p) => p.situacao === 'no_ar');
   const n = porPonto.length;
   const itens = [
-    `<span class="hero-status-item"><span class="dot" aria-hidden="true"></span>${noAr.length} de ${n} ${n === 1 ? 'ponto no ar' : 'pontos no ar'}</span>`,
+    `<span class="hero-status-item"><span class="dot" aria-hidden="true"></span>${noAr.length} de ${n} ${n === 1 ? 'ponto confirmado no ar' : 'pontos confirmados no ar'}</span>`,
   ];
   // Sem detalhe técnico para o anunciante: só quantos pontos estão fora do
   // ar (estado do cadastro ou erro do Player) e quantos estão sem

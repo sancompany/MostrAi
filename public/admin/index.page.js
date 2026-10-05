@@ -3501,9 +3501,15 @@ function linhaDaHospedagem(h, comAcoes) {
   if (h.estado !== 'cancelada') {
     documentos.push(
       h.aceite
-        ? `Termo aceito por <b>${esc(h.aceite.responsavel)}</b> em ${dataHora(h.aceite.aceitoEm)} (versão ${esc(h.aceite.termoVersao)})${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) anterior(es) de outro período` : ''}`
+        ? `Termo aceito por <b>${esc(h.aceite.responsavel)}</b> em ${dataHora(h.aceite.aceitoEm)} (versão ${esc(h.aceite.termoVersao)})${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período` : ''}${
+            h.prorrogacaoSemAceite
+              ? h.estado === 'ativa'
+                ? ' <span class="badge badge-pendente">Prorrogação aguardando o aceite do anfitrião</span>'
+                : ' · prorrogação sem aceite do anfitrião'
+              : ''
+          }`
         : h.estado === 'programada'
-          ? '<span class="badge badge-pendente">Aguardando o anfitrião aceitar o termo</span>'
+          ? `<span class="badge badge-pendente">Aguardando o anfitrião aceitar o termo</span>${h.aceitesAnteriores ? ` · ${h.aceitesAnteriores} aceite(s) de outro período (o período mudou)` : ''}`
           : 'Sem aceite registrado',
     );
   }
@@ -3517,8 +3523,7 @@ function linhaDaHospedagem(h, comAcoes) {
     ? ''
     : h.estado === 'ativa'
       ? `<button type="button" class="btn primary mini" data-hosp-acao="encerrar" data-hosp="${h.id}">Encerrar hospedagem</button>
-         <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Prorrogar</button>
-         ${h.retirada ? '' : `<button type="button" class="btn ghost mini" data-hosp-acao="retirada" data-hosp="${h.id}">Registrar retirada</button>`}`
+         <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Prorrogar</button>`
       : h.estado === 'programada'
         ? `<button type="button" class="btn ghost mini" data-hosp-acao="iniciar" data-hosp="${h.id}" ${h.aceite ? '' : 'disabled title="O anfitrião ainda não aceitou o termo"'}>Iniciar (a tela chegou)</button>
            <button type="button" class="btn ghost mini" data-hosp-acao="periodo" data-hosp="${h.id}">Alterar período</button>
@@ -3526,6 +3531,20 @@ function linhaDaHospedagem(h, comAcoes) {
         : h.estado === 'encerrada' && !h.retirada
           ? `<button type="button" class="btn ghost mini" data-hosp-acao="retirada" data-hosp="${h.id}">Registrar retirada</button>`
           : '';
+  // Foto que não subiu junto (ou ficou para depois): envia avulsa.
+  const fotos = !comAcoes
+    ? ''
+    : [
+        ['entrega', h.entrega],
+        ['retirada', h.retirada],
+      ]
+        .filter(([, m]) => m && !m.foto)
+        .map(
+          ([tipo]) =>
+            `<button type="button" class="btn ghost mini" data-hosp-acao="foto-${tipo}" data-hosp="${h.id}">Adicionar foto da ${tipo}</button>`,
+        )
+        .join('');
+  const todasAcoes = acoes + fotos;
   return `<li class="evento-movel" data-hospedagem-id="${h.id}">
       <div class="evento-movel-topo"><b>Hospedagem · ${esc(h.local)}</b> <span class="badge ${classe}">${rotulo}</span></div>
       <p class="u-m-0 u-fs-85">${detalhes.join(' · ')}</p>
@@ -3533,7 +3552,7 @@ function linhaDaHospedagem(h, comAcoes) {
       ${h.estado === 'ativa' && h.terminou ? '<p class="aviso-linha u-mt-4">A data de fim já passou — o sistema encerra sozinho em instantes.</p>' : ''}
       ${documentos.map((d) => `<p class="u-fs-85 u-m-0">${d}</p>`).join('')}
       ${auditoria.length ? `<p class="u-dim u-fs-85 u-m-0">${auditoria.join(' · ')}</p>` : ''}
-      ${acoes ? `<div class="acoes u-mt-8">${acoes}</div>` : ''}
+      ${todasAcoes ? `<div class="acoes u-mt-8">${todasAcoes}</div>` : ''}
     </li>`;
 }
 
@@ -3580,6 +3599,38 @@ async function enviarFotoDaMovimentacao(ponto, h, tipo, arquivo) {
   return Boolean(r?.ok);
 }
 
+function fotoDaMovimentacao(ponto, h, tipo, remontar) {
+  const { dlg, fechar } = abrirModal({
+    titulo: `Foto da ${tipo} — ${h.local}`,
+    corpo: `<form id="formFotoMov" class="modal-form" novalidate>
+        <div class="campo-grupo"><label for="fmFoto">Foto</label>
+          <input id="fmFoto" type="file" name="foto" accept="image/jpeg,image/png,image/webp" required></div>
+        <p class="form-msg" data-msg role="status"></p>
+      </form>`,
+    rodape:
+      '<button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="submit" form="formFotoMov" class="btn primary">Enviar foto</button>',
+  });
+  const form = dlg.querySelector('form');
+  let enviando = false;
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (enviando) return;
+    const arquivo = form.foto.files[0];
+    if (!arquivo) return erroNoModal(dlg, 'Escolha uma imagem.');
+    enviando = true;
+    try {
+      if (!(await enviarFotoDaMovimentacao(ponto, h, tipo, arquivo))) {
+        return erroNoModal(dlg, 'A foto não foi salva. Tente de novo.');
+      }
+      fechar();
+      toast('Foto salva.');
+      remontar();
+    } finally {
+      enviando = false;
+    }
+  });
+}
+
 // Iniciar (com a entrega), encerrar (com a retirada opcional) e a retirada
 // avulsa: um modal com o formulário do equipamento.
 function acaoComEquipamento(ponto, h, acao, remontar) {
@@ -3611,8 +3662,8 @@ function acaoComEquipamento(ponto, h, acao, remontar) {
   const formulario = cfg.semFormulario
     ? ''
     : cfg.opcional
-      ? `<label class="check-linha"><input type="checkbox" name="registrar" checked> Registrar a retirada do equipamento agora</label>
-         <div data-movimentacao>${camposDeMovimentacao('mv')}</div>`
+      ? `<label class="check-linha"><input type="checkbox" name="registrar"> O equipamento foi recolhido agora — registrar a retirada</label>
+         <div data-movimentacao hidden>${camposDeMovimentacao('mv')}</div>`
       : camposDeMovimentacao('mv');
   const { dlg, fechar } = abrirModal({
     titulo: cfg.titulo,
@@ -3709,7 +3760,7 @@ async function renderPontoMovel(el, ponto, remontar) {
     ${
       passadas.length || passados.length || f.basesAnteriores.length
         ? `<details class="u-mt-8"><summary>Histórico (${passadas.length} ${passadas.length === 1 ? 'hospedagem' : 'hospedagens'}, ${passados.length} ${passados.length === 1 ? 'evento' : 'eventos'}, ${f.basesAnteriores.length} ${f.basesAnteriores.length === 1 ? 'base anterior' : 'bases anteriores'})</summary>
-            ${passadas.length ? `<ul class="lista-eventos-movel">${passadas.map((h) => linhaDaHospedagem(h, false)).join('')}</ul>` : ''}
+            ${passadas.length ? `<ul class="lista-eventos-movel">${passadas.map((h) => linhaDaHospedagem(h, true)).join('')}</ul>` : ''}
             ${passados.length ? `<ul class="lista-eventos-movel">${passados.map((e) => linhaDoEvento(e, false)).join('')}</ul>` : ''}
             ${f.basesAnteriores
               .map(
@@ -3750,6 +3801,7 @@ async function renderPontoMovel(el, ponto, remontar) {
 async function acaoNaHospedagem(ponto, h, acao, remontar) {
   if (!h) return;
   if (acao === 'periodo') return alterarPeriodoDaHospedagem(ponto, h, remontar);
+  if (acao === 'foto-entrega' || acao === 'foto-retirada') return fotoDaMovimentacao(ponto, h, acao.slice(5), remontar);
   if (acao !== 'cancelar') return acaoComEquipamento(ponto, h, acao, remontar);
   const ok = await confirmarModal({
     titulo: `Cancelar a hospedagem em “${h.local}”?`,
@@ -3776,6 +3828,7 @@ function alterarPeriodoDaHospedagem(ponto, h, remontar) {
           <div class="campo-grupo"><label for="hpFim">Fim</label><input id="hpFim" type="date" name="data_fim" value="${esc(String(h.dataFim).slice(0, 10))}" required></div>
         </div>
         <p class="campo-ajuda">O percentual continua o congelado na confirmação (${percentualBR(h.percentual)}). A agenda não pode conflitar com outra hospedagem ou evento.</p>
+        ${h.aceite ? `<p class="aviso-linha">${ativa ? 'O anfitrião precisa aceitar o termo para o novo período (o painel dele pede).' : 'O aceite atual vale só para o período atual — mudar o período pede um aceite novo antes de iniciar.'}</p>` : ''}
         <p class="form-msg" data-msg role="status"></p>
       </form>`,
     rodape:

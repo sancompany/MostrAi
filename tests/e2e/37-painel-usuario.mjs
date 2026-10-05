@@ -342,7 +342,8 @@ console.log('== A. gráfico do período: filtros, cores, dica, tabela, comprovan
   check('tabela: PONTO | CIDADE | STATUS | EXIBIÇÕES', cabecalho === 'Ponto|Cidade|Status|Exibições', cabecalho);
   check('sem Programadas e sem Entrega % na tela do cliente', !/Programadas|Entrega/i.test(await p.textContent('#painelPerformance')));
   const status = await p.$$eval('#exibicoesDetalhe .tabela-status', (x) => x.map((t) => t.textContent.trim()));
-  check('status reais (No ar / Fora do horário / Fora do ar)', status.length === 3 && status.every((s) => ['No ar', 'Fora do horário', 'Fora do ar'].includes(s)), status);
+  // §8: tela que parou de falar é "Sem comunicação", nunca "Fora do ar".
+  check('status reais (No ar / Fora do horário / Sem comunicação / Fora do ar)', status.length === 3 && status.every((s) => ['No ar', 'Fora do horário', 'Sem comunicação', 'Fora do ar'].includes(s)), status);
   const empilhada = await p.$$eval('#graficoPerformance .barra-pilha', (ps) => Math.max(...ps.map((x) => x.children.length)));
   check('barras empilhadas por ponto (até 3 segmentos)', empilhada === 3, empilhada);
   await p.reload({ waitUntil: 'load' });
@@ -397,7 +398,7 @@ console.log('== B. Meus pontos: estados, telas, alerta e benefícios ==');
   );
   const ativo = cards.find((c) => /estado-ativo/.test(c.classe));
   check('ponto ativo: nome, estado sobre a foto e andamento', ativo && ativo.nome === 'San & Co Loja Centro E2E' && ativo.estado === 'Ativo' && ativo.etapas === 4 && ativo.atual === 'Ativo', ativo);
-  check('ponto ativo: 2 telas, uma precisando de atenção com o último sinal', ativo.telas === 2 && /Precisa de atenção · último sinal há \d+ h/.test(ativo.texto) && /sem comunicação/.test(ativo.texto), ativo.texto);
+  check('ponto ativo: 2 telas, uma sem comunicação — sem horário de sinal (§8)', ativo.telas === 2 && /Precisa de atenção/.test(ativo.texto) && /Sem comunicação com a Mostraí/.test(ativo.texto) && !/último sinal/.test(ativo.texto), ativo.texto);
   check('ponto ativo: Plano Básico e +1 crédito, em blocos', /PLANO BÁSICO\s*14 h\/mês neste ponto/i.test(ativo.texto) && /BENEFÍCIO DO PONTO\s*\+1 crédito por mês/i.test(ativo.texto), ativo.texto);
   check('aguardando instalação', cards.some((c) => /estado-aguardando_instalacao/.test(c.classe) && c.atual === 'Aguardando instalação'));
   check('aguardando primeiro sinal', cards.some((c) => /estado-aguardando_primeiro_sinal/.test(c.classe) && c.atual === 'Aguardando primeiro sinal'));

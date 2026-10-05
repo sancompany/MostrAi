@@ -152,7 +152,8 @@ function estadoDaAtiva({ midia, intervalos, telas, minutosAbertos, porHora, agen
   if (!ultimaMs || ultimaMs < inicioAtivo) {
     // Primeira hora cheia aberta depois de ativar; prazo = fim dela + 10 min.
     let hora = Math.ceil(inicioAtivo / HORA_MS) * HORA_MS;
-    for (let i = 0; i < 8 * 24 && !abertaNaHora(hora); i++) hora += HORA_MS;
+    // Hora em que a agenda não deu vaga (T12) não conta como a primeira.
+    for (let i = 0; i < 8 * 24 && (!abertaNaHora(hora) || agendaSemVaga?.has(hora)); i++) hora += HORA_MS;
     const prazo = hora + HORA_MS + MARGEM_COMPROVANTE_MS;
     return {
       estado: agoraMs > prazo ? ESTADOS.ATRASADA : ESTADOS.AGUARDANDO,
@@ -233,9 +234,15 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
     // Horas em que cada tela pediu a playlist (a agenda rodou) e o que ela
     // programou de cada mídia — para não chamar de falha o que a agenda
     // decidiu (T12).
-    db.query(`SELECT dispositivo_id, janela_hora FROM playlist_hora_congelada WHERE janela_hora >= $1`, [
-      new Date(agoraMs - JANELAS.d30 - HORA_MS),
-    ]),
+    // Pela tela ativa (chave primária dispositivo_id + janela_hora): a
+    // tabela cresce sem expurgo, então nunca a varre inteira.
+    db.query(
+      `SELECT c.dispositivo_id, c.janela_hora
+           FROM dispositivos d
+           JOIN playlist_hora_congelada c ON c.dispositivo_id = d.id AND c.janela_hora >= $1
+          WHERE d.status = 'ativo'`,
+      [new Date(agoraMs - JANELAS.d30 - HORA_MS)],
+    ),
     db.query(
       `SELECT midia_id, dispositivo_id, janela_hora, vezes_programadas
            FROM midias_exibicoes_contador WHERE midia_id = ANY($1::int[]) AND janela_hora >= $2`,
@@ -275,7 +282,7 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
         .filter((p) => p.midia_id === m)
         .map((p) => [`${p.dispositivo_id}|${new Date(p.janela_hora).getTime()}`, p.vezes_programadas]),
     );
-    const horasComAgenda = new Map();
+    const semVagaPorHora = new Map();
     for (const c of congeladas) {
       const tela = telasPorId.get(c.dispositivo_id);
       if (!tela || !elegivel) continue;
@@ -286,13 +293,27 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
       const deslocada = Math.max(0, teorica - programado);
       for (const janela of Object.keys(JANELAS)) if (hora >= desde[janela]) esperadas[janela] -= deslocada;
       if (porTelaD30.has(tela.id) && hora >= desde.d30) porTelaD30.set(tela.id, porTelaD30.get(tela.id) - deslocada);
-      const h = horasComAgenda.get(hora) || { programado: 0 };
-      h.programado += programado;
-      horasComAgenda.set(hora, h);
+      // Só tela que deveria exibir (aberta, mídia ativa) e ficou sem vaga.
+      if (teorica > 0 && programado === 0) {
+        if (!semVagaPorHora.has(hora)) semVagaPorHora.set(hora, new Set());
+        semVagaPorHora.get(hora).add(tela.id);
+      }
     }
     for (const janela of Object.keys(JANELAS)) esperadas[janela] = Math.max(0, esperadas[janela]);
     for (const [id, v] of porTelaD30) porTelaD30.set(id, Math.max(0, v));
-    const agendaSemVaga = new Set([...horasComAgenda].filter(([, h]) => h.programado === 0).map(([hora]) => hora));
+    // A hora só sai do "atraso" quando a agenda decidiu por TODAS as telas
+    // que deveriam exibir: uma tela sem playlist congelada (desligada, sem
+    // pedir) continua devendo — senão uma tela cheia esconderia outra morta.
+    const agendaSemVaga = new Set(
+      [...semVagaPorHora]
+        .filter(([hora, sem]) =>
+          telas.every(
+            (t) =>
+              sem.has(t.id) || teoricaNaHora({ midia, intervalos, tela: t, minutosAbertos, hora, ate: ateMs }) === 0,
+          ),
+        )
+        .map(([hora]) => hora),
+    );
 
     const confirmadas = {
       hoje: soma('confirmadas_hoje'),

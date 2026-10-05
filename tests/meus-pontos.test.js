@@ -116,7 +116,7 @@ test('telas dentro do ponto, com situação humana e sem dado interno', async ()
       ],
     );
     assert.equal(estab.alertas, 1);
-    assert.match(estab.telas[1].situacaoTexto, /sem comunicação/);
+    assert.match(estab.telas[1].situacaoTexto, /sem comunicação com a Mostraí/i);
     const json = JSON.stringify(estab);
     // Toda tela segue o horário do ponto; PIN é global (fica no admin).
     assert.equal('operacao' in estab.telas[0], false);

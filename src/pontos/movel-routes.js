@@ -154,15 +154,21 @@ router.post(
     const hid = /^\d{1,15}$/.test(String(req.params.hid)) ? req.params.hid : null;
     if (!tipo || !hid) return res.status(404).json({ erro: 'registro não encontrado' });
     if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
+    // O registro existe antes de subir (sem órfão no bucket).
+    if (!(await termo.movimentacaoDoPonto(id, hid, tipo))) {
+      return res.status(404).json({ erro: `${tipo === 'entrega' ? 'Entrega' : 'Retirada'} ainda não registrada` });
+    }
     const supabase = require('../lib/supabase');
     const bucket = process.env.SUPABASE_STORAGE_BUCKET;
-    const nomeArquivo = `pontos/movel-${id}-hospedagem-${hid}-${tipo}.jpg`;
+    // Nome aleatório por envio: o bucket é público (o endereço não se
+    // adivinha pelo id) e uma foto nova nunca sobrescreve a anterior.
+    const nomeArquivo = `pontos/movel-${id}-${tipo}-${require('node:crypto').randomUUID()}.jpg`;
     const { error } = await supabase.storage
       .from(bucket)
-      .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: req.file.mimetype, upsert: true });
+      .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: req.file.mimetype, upsert: false });
     if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
     const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
-    const url = `${data.publicUrl}?v=${Date.now()}`;
+    const url = data.publicUrl;
     await termo.definirFotoDaMovimentacao(id, hid, tipo, url);
     await avisar(id);
     res.json({ url });

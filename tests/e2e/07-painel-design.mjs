@@ -141,7 +141,8 @@ check('hero-metrics não existe mais', !(await p.$('.hero-metrics')));
 check('heroStatus visível', await p.isVisible('#heroStatus'));
 const statusTxt = await p.textContent('#heroStatus');
 check('mostra "0 de 1" (tela nunca deu sinal)', /0 de 1/.test(statusTxt), statusTxt);
-check('acusa que nunca recebeu playlist', statusTxt.includes('nunca recebeu playlist'), statusTxt);
+// Ponto Móvel V1 §8: sem detalhe técnico para o anunciante — só o estado.
+check('acusa o ponto fora do ar, sem detalhe técnico', /1 ponto fora do ar/.test(statusTxt) && !/playlist|sinal/i.test(statusTxt), statusTxt);
 
 console.log('== cor: hero não é mais azul-marinho ==');
 const bgHero = await p.$eval('#statusBanner', (el) => getComputedStyle(el).backgroundImage);
@@ -214,7 +215,7 @@ await recarregarQuieto(p);
 await p.waitForTimeout(1000);
 const statusTxt3 = await p.textContent('#heroStatus');
 check('agora mostra "1 de 3" (só o online conta)', /1 de 3/.test(statusTxt3), statusTxt3);
-check('acusa sinal antigo em horas, não "nunca"', /sinal mais antigo há \d+ h/.test(statusTxt3), statusTxt3);
+check('sinal antigo vira "sem comunicação", sem horário de sinal (§8)', /1 ponto sem comunicação com a Mostraí/.test(statusTxt3) && !/sinal|há \d+ h/.test(statusTxt3), statusTxt3);
 check('3 pontos na legenda do gráfico', (await p.$$('#legendaPerformance .chip')).length === 3);
 check('3 pontos na tabela do período', (await p.$$('#exibicoesDetalhe tbody tr')).length === 3);
 await shot(p, 'hero-3-pontos-mistos');

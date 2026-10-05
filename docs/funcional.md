@@ -1775,14 +1775,19 @@ de Equipamento e Contrapartida em Mídia" pela conta anfitriã — no painel, o
 card da hospedagem programada abre o termo com local, endereço, período e
 percentual; a pessoa digita o nome e marca "Li e concordo". Fica gravado,
 imutável: versão, hash do texto, hash do documento (termo + dados da
-hospedagem + nome), IP, navegador e data. Mudou o período ou o percentual →
-aceite novo; o Admin publica versão nova do termo (nunca edita a antiga —
+hospedagem + nome), IP, navegador e data. O painel devolve os dados que
+mostrou: se o Admin mudou o período enquanto a pessoa lia, o aceite é
+recusado e ela relê. Mudou o período ou o percentual → aceite novo; na
+prorrogação de uma hospedagem em andamento o aceite do início continua
+registrado e o painel pede o aceite do novo período (o Admin vê "prorrogação
+aguardando o aceite"). O Admin publica versão nova do termo (nunca edita a antiga —
 quem aceitou a anterior continua com ela). O texto da migration 113
 (`minuta-1`) é **minuta operacional sem revisão jurídica** (PENDENCIAS T13).
 O Admin só marca "a tela chegou" registrando a **entrega** (itens — tela
 obrigatória, suporte, player, cabos, controle —, condição ok/com avarias,
-observação obrigatória na avaria, foto opcional); a **retirada** se registra
-no encerramento ou depois, uma vez. *Conectividade ≠ operação (§8):* heartbeat
+observação obrigatória na avaria, foto opcional, também enviada depois); a
+**retirada** se registra no encerramento (marcando que o equipamento foi
+recolhido) ou depois dele, uma vez — nunca com a hospedagem em andamento. *Conectividade ≠ operação (§8):* heartbeat
 sumido nunca torna o ponto inativo nem "desligado". O Admin vê três estados
 separados por tela — cadastro (ativa/reparo/inativa), conexão (comunicando,
 sem comunicação, nunca comunicou, sem Player) e operação (exibindo, fora do

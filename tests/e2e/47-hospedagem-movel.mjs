@@ -257,6 +257,8 @@ check('entrega registrada com avaria', PG(`SELECT condicao || ':' || (itens->>'t
 // Encerrar, registrando a retirada junto.
 await admin.click('[data-hosp-acao="encerrar"]');
 await admin.waitForSelector('#formAcaoHosp');
+check('encerrar: retirada desmarcada por padrão', !(await admin.isChecked('#formAcaoHosp input[name="registrar"]')));
+await admin.check('#formAcaoHosp input[name="registrar"]');
 await admin.click('dialog[open] button[type="submit"]');
 await admin.waitForFunction(() => /Na base/.test(document.querySelector('[data-local-atual]')?.textContent || ''));
 check('Admin: de volta à base', true);
