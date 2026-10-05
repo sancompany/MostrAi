@@ -20,6 +20,7 @@ process.env.SESSION_SECRET ||= 'teste-hospedagem';
 const app = require('../src/server');
 const hospedagem = require('../src/pontos/hospedagem');
 const movel = require('../src/pontos/movel');
+const termoMod = require('../src/pontos/hospedagem-termo');
 const dispositivosRepo = require('../src/dispositivos/repository');
 const execucoesRepo = require('../src/playlist/execucoes-repository');
 const gerador = require('../src/playlist/gerador');
@@ -99,6 +100,18 @@ test.after(async () => {
       'DELETE FROM saldo_hospedagem_lancamentos WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)',
       [id],
     );
+    // Termo/equipamento da hospedagem de teste (o aceite é imutável: o
+    // gatilho sai só durante a limpeza).
+    await pool.query('ALTER TABLE hospedagem_aceites DISABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_aceites WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
+      [id],
+    );
+    await pool.query('ALTER TABLE hospedagem_aceites ENABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE ponto_id = $1)`,
+      [id],
+    );
     await pool.query('DELETE FROM pontos_moveis_hospedagens WHERE ponto_id = $1', [id]);
     await pool.query(`DELETE FROM execucoes_confirmadas WHERE dispositivo_id IN (${telas})`, [id]);
     await pool.query(`DELETE FROM exibicoes_contador WHERE dispositivo_id IN (${telas})`, [id]);
@@ -114,6 +127,18 @@ test.after(async () => {
   }
   for (const id of criadas.contas) {
     await pool.query('DELETE FROM saldo_hospedagem_lancamentos WHERE conta_id = $1', [id]);
+    // Termo/equipamento da hospedagem de teste (o aceite é imutável: o
+    // gatilho sai só durante a limpeza).
+    await pool.query('ALTER TABLE hospedagem_aceites DISABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_aceites WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE conta_id = $1)`,
+      [id],
+    );
+    await pool.query('ALTER TABLE hospedagem_aceites ENABLE TRIGGER hospedagem_aceite_imutavel');
+    await pool.query(
+      `DELETE FROM hospedagem_movimentacoes WHERE hospedagem_id IN (SELECT id FROM pontos_moveis_hospedagens WHERE conta_id = $1)`,
+      [id],
+    );
     await pool.query('DELETE FROM pontos_moveis_hospedagens WHERE conta_id = $1', [id]);
     await pool.query('DELETE FROM pendencias WHERE anunciante_id = $1', [id]);
     await pool.query('DELETE FROM hospedagem_interesses WHERE conta_id = $1', [id]);
@@ -218,7 +243,29 @@ async function programarOk(pontoId, conta, extra = {}) {
   return r.json.id;
 }
 
-const acao = (pontoId, hid, nome) => admin('POST', `/admin/pontos/${pontoId}/hospedagens/${hid}/${nome}`);
+const ENTREGA_OK = { itens: { tela: true, suporte: true, player: true, cabos: true }, condicao: 'ok' };
+// O anfitrião aceita o termo vigente (pela regra do domínio, como a conta
+// dele) — pré-condição de iniciar.
+async function aceitarTermo(hid) {
+  const { rows } = await pool.query('SELECT conta_id FROM pontos_moveis_hospedagens WHERE id = $1', [hid]);
+  const t = await termoMod.termoVigente();
+  return termoMod.aceitar(rows[0].conta_id, hid, {
+    responsavel: 'Fulana',
+    concordo: true,
+    versao: t.versao,
+    hash: t.hash,
+  });
+}
+// `iniciar` já aceita o termo e entrega o equipamento, salvo { semAceite } /
+// corpo explícito.
+async function acao(pontoId, hid, nome, corpo = undefined, { semAceite = false } = {}) {
+  if (nome === 'iniciar' && !semAceite) {
+    const { rows } = await pool.query('SELECT estado FROM pontos_moveis_hospedagens WHERE id = $1', [hid]);
+    if (rows[0]?.estado === 'programada') await aceitarTermo(hid).catch(() => {});
+  }
+  const body = corpo ?? (nome === 'iniciar' ? { entrega: ENTREGA_OK } : undefined);
+  return admin('POST', `/admin/pontos/${pontoId}/hospedagens/${hid}/${nome}`, body);
+}
 const linha = async (hid) => (await pool.query('SELECT * FROM pontos_moveis_hospedagens WHERE id = $1', [hid])).rows[0];
 
 // Tempo operacional de teste: intervalos de heartbeat gravados direto.
@@ -559,6 +606,177 @@ test('16. cancelar: só antes de começar, sem benefício; depois de começar, o
   const r = await acao(m.id, ativa, 'cancelar');
   assert.strictEqual(r.status, 409);
   assert.match(r.json.erro, /Encerrar/);
+});
+
+test('43 a 45. termo: versão e aceite do anfitrião antes de iniciar; entrega e retirada do equipamento', async () => {
+  const m = await criarMovel();
+  const anfitria = await novaConta();
+  const nav = await entrar(anfitria);
+  const hid = await programarOk(m.id, anfitria, { data_inicio: hojeMais(0), data_fim: hojeMais(2) });
+  // Sem aceite, não inicia.
+  const semAceite = await acao(m.id, hid, 'iniciar', { entrega: ENTREGA_OK }, { semAceite: true });
+  assert.strictEqual(semAceite.status, 409);
+  assert.match(semAceite.json.erro, /aceitou o termo/);
+  // A conta lê o termo vigente desta hospedagem.
+  const t = (await nav('GET', `/anunciantes/me/hospedagens/${hid}/termo`)).json;
+  assert.ok(t.termo.versao && t.termo.hash && t.termo.texto.length > 100);
+  assert.strictEqual(t.dados.percentual, 20);
+  assert.strictEqual(t.aceite, null);
+  assert.strictEqual(t.podeAceitar, true);
+  // Outra conta não vê nem aceita.
+  const outra = await entrar(await novaConta());
+  assert.strictEqual((await outra('GET', `/anunciantes/me/hospedagens/${hid}/termo`)).status, 404);
+  const corpo = { responsavel: 'Fulana de Tal', concordo: true, versao: t.termo.versao, hash: t.termo.hash };
+  assert.strictEqual((await outra('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo)).status, 404);
+  assert.strictEqual(
+    (await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, { ...corpo, concordo: false })).status,
+    400,
+  );
+  assert.strictEqual(
+    (await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, { ...corpo, hash: '0'.repeat(64) })).status,
+    409,
+    'texto mudou enquanto lia',
+  );
+  const a1 = await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo);
+  assert.strictEqual(a1.status, 201);
+  const a2 = await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo);
+  assert.strictEqual(a2.status, 200, 'duplo clique: o mesmo aceite');
+  assert.strictEqual(a2.json.aceite.documentoHash, a1.json.aceite.documentoHash);
+  const { rows: ac } = await pool.query('SELECT * FROM hospedagem_aceites WHERE hospedagem_id = $1', [hid]);
+  assert.strictEqual(ac.length, 1);
+  assert.strictEqual(ac[0].responsavel, 'Fulana de Tal');
+  assert.strictEqual(ac[0].termo_hash, t.termo.hash);
+  assert.ok(ac[0].user_agent !== undefined);
+  await assert.rejects(pool.query(`UPDATE hospedagem_aceites SET responsavel = 'x' WHERE id = $1`, [ac[0].id]));
+  // Mudar o período depois do aceite pede aceite novo.
+  assert.strictEqual(
+    (
+      await admin('PUT', `/admin/pontos/${m.id}/hospedagens/${hid}/periodo`, {
+        data_inicio: hojeMais(0),
+        data_fim: hojeMais(3),
+      })
+    ).status,
+    200,
+  );
+  assert.strictEqual(
+    (await acao(m.id, hid, 'iniciar', { entrega: ENTREGA_OK }, { semAceite: true })).status,
+    409,
+    'o aceite era do período antigo',
+  );
+  assert.strictEqual((await nav('POST', `/anunciantes/me/hospedagens/${hid}/aceite`, corpo)).status, 201);
+  // Entrega: obrigatória para iniciar, com a tela; avaria pede observação.
+  assert.strictEqual((await acao(m.id, hid, 'iniciar', {}, { semAceite: true })).status, 400);
+  assert.strictEqual(
+    (await acao(m.id, hid, 'iniciar', { entrega: { itens: { suporte: true }, condicao: 'ok' } }, { semAceite: true }))
+      .status,
+    400,
+  );
+  assert.strictEqual(
+    (await acao(m.id, hid, 'iniciar', { entrega: { ...ENTREGA_OK, condicao: 'com_avarias' } }, { semAceite: true }))
+      .status,
+    400,
+  );
+  assert.strictEqual((await acao(m.id, hid, 'iniciar', { entrega: ENTREGA_OK }, { semAceite: true })).status, 200);
+  const ficha = (await admin('GET', `/admin/pontos/${m.id}/movel`)).json;
+  const h = ficha.hospedagens.find((x) => x.id === hid);
+  assert.strictEqual(h.aceite.responsavel, 'Fulana de Tal');
+  assert.strictEqual(h.aceitesAnteriores, 1);
+  assert.strictEqual(h.entrega.condicao, 'ok');
+  assert.strictEqual(h.entrega.admin, process.env.ADMIN_USER);
+  // Painel do anfitrião: só "aceito", nada do equipamento.
+  const painel = (await nav('GET', '/anunciantes/me/hospedagem')).json;
+  assert.strictEqual(painel.hospedagens.find((x) => x.id === hid).termoAceito, true);
+  assert.ok(!JSON.stringify(painel).includes('entrega'));
+  // Encerrar com retirada; a retirada não se repete.
+  const enc = await acao(m.id, hid, 'encerrar', {
+    retirada: { itens: { tela: true, suporte: true }, condicao: 'com_avarias', observacao: 'canto da moldura riscado' },
+  });
+  assert.strictEqual(enc.status, 200);
+  assert.strictEqual((await acao(m.id, hid, 'retirada', ENTREGA_OK)).status, 409);
+  const { rows: mov } = await pool.query(
+    'SELECT tipo, condicao, observacao FROM hospedagem_movimentacoes WHERE hospedagem_id = $1 ORDER BY tipo',
+    [hid],
+  );
+  assert.deepStrictEqual(
+    mov.map((x) => [x.tipo, x.condicao]),
+    [
+      ['entrega', 'ok'],
+      ['retirada', 'com_avarias'],
+    ],
+  );
+  // Encerrada sem retirada (encerramento automático): registra depois.
+  const hid2 = await hospedagemAtiva(m, await novaConta(), 30);
+  assert.strictEqual((await acao(m.id, hid2, 'encerrar')).status, 200);
+  assert.strictEqual((await acao(m.id, hid2, 'retirada', ENTREGA_OK)).status, 200);
+});
+
+test('43b. termo: nova versão publicada pelo Admin vira a vigente; a aceita antes continua registrada', async () => {
+  const antes = await termoMod.termoVigente();
+  const pub = await admin('POST', '/admin/hospedagem/termos', {
+    versao: `teste-${randomUUID().slice(0, 8)}`,
+    titulo: 'Termo de Hospedagem (teste)',
+    texto: 'Texto de teste do termo de hospedagem temporária, longo o bastante para passar na validação.',
+  });
+  assert.strictEqual(pub.status, 201, JSON.stringify(pub.json));
+  const repetida = await admin('POST', '/admin/hospedagem/termos', { ...pub.json, texto: pub.json.texto });
+  assert.strictEqual(repetida.status, 409);
+  const lista = (await admin('GET', '/admin/hospedagem/termos')).json.termos;
+  assert.strictEqual(lista.filter((x) => x.vigente).length, 1);
+  assert.strictEqual(lista.find((x) => x.vigente).versao, pub.json.versao);
+  assert.ok(
+    lista.some((x) => x.versao === antes.versao && !x.vigente),
+    'a versão antiga continua',
+  );
+  await assert.rejects(
+    pool.query(`UPDATE hospedagem_termos SET texto = 'outro' WHERE versao = $1`, [antes.versao]),
+    'texto publicado não muda',
+  );
+  const nav = navegador();
+  assert.strictEqual((await nav('POST', '/admin/hospedagem/termos', pub.json)).status, 401, 'só o Admin publica');
+});
+
+test('31b a 34. conectividade não é operação: sem heartbeat vira "sem comunicação", nunca "desligada"; o anunciante não recebe sinal', async () => {
+  const m = await criarMovel();
+  const { telaId } = await telaComPlayer(m.id);
+  // A Mostraí não fala com a tela há 1 dia (pode estar exibindo offline).
+  await pool.query(
+    `UPDATE dispositivos SET ultima_vez_online = now() - interval '1 day', primeiro_sinal_em = now() - interval '2 days',
+            player_estado = 'PLAYING' WHERE id = $1`,
+    [telaId],
+  );
+  const { rows: pt } = await pool.query('SELECT status FROM pontos WHERE id = $1', [m.id]);
+  assert.notStrictEqual(pt[0].status, 'inativo', 'heartbeat sumido não inativa o ponto');
+  // Admin: os três estados separados.
+  const lista = (await admin('GET', '/admin/pontos-moveis')).json.moveis.find((x) => x.id === m.id);
+  assert.strictEqual(lista.tela.administrativo, 'ativo');
+  assert.strictEqual(lista.tela.conectividade, 'sem_comunicacao');
+  assert.strictEqual(lista.tela.operacao, 'desconhecida', 'sem comunicação, a operação é desconhecida');
+  assert.ok(lista.tela.ultimoSinal);
+  // Anunciante que já teve exibição ali: "sem comunicação", sem o horário
+  // do último sinal nem nada da tela.
+  const anunciante = await novaConta();
+  await pool.query(
+    `INSERT INTO exibicoes_contador (anunciante_id, dispositivo_id, janela_hora, vezes_programadas, vezes_pedidas,
+                                     vezes_confirmadas, duracao_segundos)
+     VALUES ($1, $2, date_trunc('hour', now()) - interval '3 hours', 2, 2, 2, 15)`,
+    [anunciante.id, telaId],
+  );
+  const nav = await entrar(anunciante);
+  const ex = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
+  assert.strictEqual(ex.status, 200);
+  const doPonto = ex.json.porPonto.find((p) => p.id === m.id);
+  assert.strictEqual(doPonto.situacao, 'sem_comunicacao');
+  assert.ok(!('ultima_vez_online' in doPonto), 'nenhum dado de heartbeat para o anunciante');
+  assert.doesNotMatch(JSON.stringify(ex.json.porPonto), /ultima_vez|player_estado|heartbeat|fila/);
+  // Com comunicação recente e exibindo: no ar.
+  await pool.query(`UPDATE dispositivos SET ultima_vez_online = now() WHERE id = $1`, [telaId]);
+  const ex2 = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
+  assert.strictEqual(ex2.json.porPonto.find((p) => p.id === m.id).situacao, 'no_ar');
+  // Tela em reparo (estado do cadastro, não conectividade): fora do ar.
+  await dispositivosRepo.atualizar(telaId, { status: 'reparo' });
+  const ex3 = await nav('GET', `/anunciantes/${anunciante.id}/exibicoes`);
+  assert.strictEqual(ex3.json.porPonto.find((p) => p.id === m.id).situacao, 'fora_do_ar');
+  await pool.query('DELETE FROM exibicoes_contador WHERE anunciante_id = $1', [anunciante.id]);
 });
 
 test('17. prorrogar: sem conflito, mantendo o percentual; nunca encurta; com conflito é recusado', async () => {

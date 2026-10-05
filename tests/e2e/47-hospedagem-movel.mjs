@@ -5,7 +5,8 @@
 //   · o Admin vê o interesse em Rede › Pontos móveis, muda o percentual
 //     (aviso de que só vale para novas), volta para 20% e agenda a
 //     hospedagem a partir do interesse — revisão "ficará vinculada a 20%";
-//   · inicia (a tela chegou): o card do anunciante diz "Agora em: <tabacaria>",
+//   · o anfitrião aceita o termo pelo painel (sem aceite o Admin não inicia);
+//   · inicia (a tela chegou) registrando a entrega: o card do anunciante diz "Agora em: <tabacaria>",
 //     sem conta, percentual nem saldo; o painel do anfitrião mostra
 //     "Em andamento" com o benefício estimado;
 //   · a tela opera; o Admin encerra; o painel mostra horas recebidas e o
@@ -64,7 +65,9 @@ async function pagina(largura, altura, rotulo) {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => erros.push(`[${rotulo}] pageerror: ${e.message}`));
   p.on('console', (m) => {
-    if (m.type() !== 'error' || /net::|ERR_FAILED|status of (401|404)/.test(m.text())) return;
+    // 400: as recusas de validação que o roteiro provoca de propósito (aceite
+    // sem nome, entrega com avaria sem observação) — conferidas na tela.
+    if (m.type() !== 'error' || /net::|ERR_FAILED|status of (400|401|404)/.test(m.text())) return;
     erros.push(`[${rotulo}] console: ${m.text()}`);
   });
   return p;
@@ -186,13 +189,43 @@ const pTab = await entrarConta(emailTab);
 await pTab.waitForSelector('#modHospedagem:not([hidden])', { timeout: 10000 });
 check('painel: "Ponto Móvel programado" / Agendado', /Ponto Móvel programado[\s\S]*|Agendado/.test(await pTab.locator('#modHospedagem').innerText()));
 
-// Iniciar pela ficha.
+// Sem o aceite do termo, o Admin não consegue iniciar.
 await admin.evaluate((id) => {
   location.hash = `rede/pontos/${id}`;
 }, PONTO);
 await admin.waitForSelector('[data-hosp-acao="iniciar"]');
+check('Admin: "Iniciar" travado sem aceite', await admin.locator('[data-hosp-acao="iniciar"]').isDisabled());
+check('Admin: aviso de termo pendente', /Aguardando o anfitrião aceitar o termo/.test(await admin.locator('#pontoMovel').innerText()));
+
+// O anfitrião lê e aceita o termo pelo painel.
+await pTab.click('[data-hosp-termo]');
+await pTab.waitForSelector('dialog.dlg-termo[open]');
+const termoTexto = await pTab.locator('dialog.dlg-termo[open]').innerText();
+check('termo: título e dados da hospedagem', /Termo de Hospedagem Temporária[\s\S]*Tabacaria Central[\s\S]*20%/.test(termoTexto), termoTexto.slice(0, 300));
+check('termo: avisa que é minuta', /minuta/i.test(termoTexto));
+await pTab.locator('dialog.dlg-termo[open]').screenshot({ path: `${SAIDA}47-termo.png` });
+await pTab.click('dialog.dlg-termo[open] button[type="submit"]');
+await pTab.waitForFunction(() => /nome|concord/i.test(document.querySelector('dialog.dlg-termo[open] [data-msg]')?.textContent || ''));
+check('termo: sem nome/concordo não aceita', PG(`SELECT COUNT(*) FROM hospedagem_aceites WHERE hospedagem_id = ${HOSP}`) === '0');
+await pTab.fill('#termoResponsavel', 'Joana Souza');
+await pTab.check('dialog.dlg-termo[open] input[name="concordo"]');
+await pTab.click('dialog.dlg-termo[open] button[type="submit"]');
+await pTab.waitForFunction(() => !document.querySelector('dialog.dlg-termo[open]'));
+await pTab.waitForFunction(() => /Termo de hospedagem aceito/.test(document.getElementById('modHospedagem')?.textContent || ''));
+check('aceite gravado com versão, hash e IP', PG(`SELECT termo_versao || ':' || length(termo_hash) || ':' || (ip IS NOT NULL) FROM hospedagem_aceites WHERE hospedagem_id = ${HOSP}`) === 'minuta-1:64:true');
+
+// Iniciar pela ficha, registrando a entrega do equipamento.
+await recarregarQuieto(admin);
+await admin.waitForSelector('[data-hosp-acao="iniciar"]:not([disabled])', { timeout: 10000 });
 await admin.click('[data-hosp-acao="iniciar"]');
-await admin.click('dialog[open] [data-confirmar]');
+await admin.waitForSelector('#formAcaoHosp');
+await admin.selectOption('#mvCond', 'com_avarias');
+await admin.click('dialog[open] button[type="submit"]');
+await admin.waitForFunction(() => /observa/i.test(document.querySelector('dialog[open] [data-msg]')?.textContent || ''));
+check('entrega: avaria sem observação é recusada', PG(`SELECT pontos_moveis_hospedagens.estado FROM pontos_moveis_hospedagens WHERE id = ${HOSP}`) === 'programada');
+await admin.fill('#mvObs', 'Risco leve na moldura');
+await admin.screenshot({ path: `${SAIDA}47-entrega.png` });
+await admin.click('dialog[open] button[type="submit"]');
 await admin.waitForFunction(() => /Hospedado/.test(document.querySelector('[data-local-atual]')?.textContent || ''));
 check('Admin: local atual = hospedado', true);
 await admin.screenshot({ path: `${SAIDA}47-ficha-hospedado.png`, fullPage: true });
@@ -219,12 +252,19 @@ check('painel: em andamento com tempo e estimado', /Em andamento[\s\S]*3 h 00 mi
 check('painel: "Valor estimado enquanto…"', /Valor estimado enquanto a hospedagem estiver em andamento/.test(painel));
 await pTab.locator('#modHospedagem').screenshot({ path: `${SAIDA}47-painel-andamento.png` });
 
-// Encerrar.
+check('entrega registrada com avaria', PG(`SELECT condicao || ':' || (itens->>'tela') FROM hospedagem_movimentacoes WHERE hospedagem_id = ${HOSP} AND tipo = 'entrega'`) === 'com_avarias:true');
+
+// Encerrar, registrando a retirada junto.
 await admin.click('[data-hosp-acao="encerrar"]');
-await admin.click('dialog[open] [data-confirmar]');
+await admin.waitForSelector('#formAcaoHosp');
+await admin.click('dialog[open] button[type="submit"]');
 await admin.waitForFunction(() => /Na base/.test(document.querySelector('[data-local-atual]')?.textContent || ''));
 check('Admin: de volta à base', true);
 check('benefício de 36 min no livro', PG(`SELECT segundos FROM saldo_hospedagem_lancamentos WHERE hospedagem_id = ${HOSP}`) === '2160');
+check('retirada registrada no encerramento', PG(`SELECT condicao FROM hospedagem_movimentacoes WHERE hospedagem_id = ${HOSP} AND tipo = 'retirada'`) === 'ok');
+// A encerrada vai para o histórico (recolhido): lê o texto, aberto ou não.
+const ficha = await admin.locator('#pontoMovel').textContent();
+check('Admin: termo, entrega e retirada na ficha', /Termo aceito por Joana Souza[\s\S]*Entrega[\s\S]*com avarias[\s\S]*Retirada/.test(ficha), ficha);
 await recarregarQuieto(pTab);
 await pTab.waitForSelector('#modHospedagem:not([hidden])');
 painel = await pTab.locator('#modHospedagem').innerText();

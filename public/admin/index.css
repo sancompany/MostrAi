@@ -4207,3 +4207,9 @@ button.pend-bloco:focus-visible {
   gap: var(--e-2);
   flex-wrap: wrap;
 }
+
+/* Entrega/retirada do Ponto Móvel (hospedagem) */
+.modal-form fieldset.campo-grupo { border: 0; padding: 0; margin: 0 0 8px; }
+.modal-form fieldset.campo-grupo legend { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+.check-linha { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; margin: 2px 0; }
+.termo-texto { white-space: pre-wrap; max-height: 40vh; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; margin-top: 6px; }

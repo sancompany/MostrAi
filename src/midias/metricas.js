@@ -23,6 +23,14 @@ const { situacaoDerivada } = require('./repository');
 //
 // ENTREGA = confirmadas ÷ esperadas no mesmo período, até 10 min atrás (o
 // prazo do comprovante chegar — src/anunciantes/entrada-no-ar.js).
+// A AGENDA DECIDIU (Ponto Móvel V1, T12): desde 02/10/2026 a Mídia Mostraí
+// fica abaixo da recuperação e do saldo de hospedagem (camada T3c,
+// src/lib/pacing.js). Hora em que a tela PEDIU a playlist (há hora
+// congelada) e a agenda programou a mídia menos que a frequência não é
+// falha: o esperado daquela tela-hora cai para o programado, e uma hora
+// assim sem programação nenhuma não deixa a mídia "atrasada". Hora sem
+// playlist pedida continua esperada pela frequência — TV muda ou desligada
+// segue aparecendo como entrega menor.
 const HORA_MS = 3_600_000;
 const DIA_MS = 24 * HORA_MS;
 const MARGEM_COMPROVANTE_MS = 10 * 60_000;
@@ -87,6 +95,20 @@ function intervalosAtivos(midia, historico, agoraMs) {
   return intervalos;
 }
 
+// O que a frequência pedia numa tela-hora, só no tempo aberto e ativo.
+function teoricaNaHora({ midia, intervalos, tela, minutosAbertos, hora, ate }) {
+  const freq = Number(midia.frequencia_hora) || 0;
+  const desdeTela = tela.desde ? new Date(tela.desde).getTime() : null;
+  if (!freq || desdeTela == null) return 0;
+  let minutos = 0;
+  for (const [a, b] of intervalos) {
+    const ini = Math.max(a, hora, desdeTela);
+    const fim = Math.min(b, hora + HORA_MS, ate);
+    if (fim > ini) minutos += minutosAbertos(tela.ponto_id, ini, fim);
+  }
+  return (freq * minutos) / 60;
+}
+
 function esperadasNoPeriodo({ midia, intervalos, telas, minutosAbertos, de, ate }) {
   const freq = Number(midia.frequencia_hora) || 0;
   if (!freq) return { total: 0, porTela: new Map() };
@@ -115,7 +137,7 @@ const arred = (n) => Math.round(n * 10) / 10;
 // Estado da mídia ativa: aguardando a primeira exibição (e até quando),
 // reproduzindo normalmente, ou entrega atrasada (a última hora aberta que
 // já deveria ter comprovante não tem nenhum).
-function estadoDaAtiva({ midia, intervalos, telas, minutosAbertos, porHora, ultimaMs, agoraMs }) {
+function estadoDaAtiva({ midia, intervalos, telas, minutosAbertos, porHora, agendaSemVaga, ultimaMs, agoraMs }) {
   const atual = intervalos.at(-1);
   const inicioAtivo = atual ? atual[0] : agoraMs;
   const prazoFechado = agoraMs - MARGEM_COMPROVANTE_MS;
@@ -143,7 +165,10 @@ function estadoDaAtiva({ midia, intervalos, telas, minutosAbertos, porHora, ulti
   let hora = Math.floor((prazoFechado - HORA_MS) / HORA_MS) * HORA_MS;
   for (let i = 0; i < 8 * 24 && hora >= inicioAtivo; i++, hora -= HORA_MS) {
     if (!abertaNaHora(hora)) continue;
-    return { estado: (porHora.get(hora) || 0) > 0 ? ESTADOS.NORMAL : ESTADOS.ATRASADA, motivo: null };
+    if ((porHora.get(hora) || 0) > 0) return { estado: ESTADOS.NORMAL, motivo: null };
+    // A agenda ocupou a hora com obrigação de cima: não é atraso.
+    if (agendaSemVaga?.has(hora)) continue;
+    return { estado: ESTADOS.ATRASADA, motivo: null };
   }
   return { estado: ESTADOS.NORMAL, motivo: null };
 }
@@ -158,10 +183,17 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
   const inicioHoje = inicioDoDiaSP(agora).getTime();
   const desde = { hoje: inicioHoje, d7: agoraMs - JANELAS.d7, d30: agoraMs - JANELAS.d30 };
 
-  const [{ rows: somas }, { rows: historico }, { rows: telasRede }, { rows: coberturas }, { rows: porHoraRows }] =
-    await Promise.all([
-      db.query(
-        `SELECT midia_id, dispositivo_id, ponto_id,
+  const [
+    { rows: somas },
+    { rows: historico },
+    { rows: telasRede },
+    { rows: coberturas },
+    { rows: porHoraRows },
+    { rows: congeladas },
+    { rows: programadasPorHora },
+  ] = await Promise.all([
+    db.query(
+      `SELECT midia_id, dispositivo_id, ponto_id,
                 SUM(vezes_confirmadas)::int AS confirmadas_total,
                 SUM(vezes_programadas)::int AS programadas_total,
                 COALESCE(SUM(vezes_confirmadas) FILTER (WHERE janela_hora >= $2), 0)::int AS confirmadas_hoje,
@@ -174,31 +206,42 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
            FROM midias_exibicoes_contador
           WHERE midia_id = ANY($1::int[])
           GROUP BY midia_id, dispositivo_id, ponto_id`,
-        [ids, new Date(desde.hoje), new Date(desde.d7), new Date(desde.d30)],
-      ),
-      db.query(
-        `SELECT midia_id, situacao, desde FROM midias_proprias_situacoes
+      [ids, new Date(desde.hoje), new Date(desde.d7), new Date(desde.d30)],
+    ),
+    db.query(
+      `SELECT midia_id, situacao, desde FROM midias_proprias_situacoes
           WHERE midia_id = ANY($1::int[]) ORDER BY midia_id, desde, id`,
-        [ids],
-      ),
-      // Só tela ativa, com primeiro sinal, em ponto em operação.
-      db.query(
-        `SELECT d.id, d.ponto_id, d.apelido, d.numero, p.nome AS ponto_nome, p.horario_semanal,
+      [ids],
+    ),
+    // Só tela ativa, com primeiro sinal, em ponto em operação.
+    db.query(
+      `SELECT d.id, d.ponto_id, d.apelido, d.numero, p.nome AS ponto_nome, p.horario_semanal,
                 COALESCE(d.primeiro_sinal_em, d.provisionado_em) AS desde
            FROM dispositivos d JOIN pontos p ON p.id = d.ponto_id
           WHERE d.status = 'ativo' AND p.status = 'em_operacao'
           ORDER BY p.nome, d.numero`,
-      ),
-      db.query('SELECT midia_id, ponto_id FROM midias_proprias_pontos WHERE midia_id = ANY($1::int[])', [ids]),
-      // Confirmadas por hora nas últimas 8 dias (estado "atrasada").
-      db.query(
-        `SELECT midia_id, janela_hora, SUM(vezes_confirmadas)::int AS n
+    ),
+    db.query('SELECT midia_id, ponto_id FROM midias_proprias_pontos WHERE midia_id = ANY($1::int[])', [ids]),
+    // Confirmadas por hora nas últimas 8 dias (estado "atrasada").
+    db.query(
+      `SELECT midia_id, janela_hora, SUM(vezes_confirmadas)::int AS n
            FROM midias_exibicoes_contador
           WHERE midia_id = ANY($1::int[]) AND janela_hora >= $2
           GROUP BY midia_id, janela_hora`,
-        [ids, new Date(agoraMs - 8 * DIA_MS)],
-      ),
-    ]);
+      [ids, new Date(agoraMs - 8 * DIA_MS)],
+    ),
+    // Horas em que cada tela pediu a playlist (a agenda rodou) e o que ela
+    // programou de cada mídia — para não chamar de falha o que a agenda
+    // decidiu (T12).
+    db.query(`SELECT dispositivo_id, janela_hora FROM playlist_hora_congelada WHERE janela_hora >= $1`, [
+      new Date(agoraMs - JANELAS.d30 - HORA_MS),
+    ]),
+    db.query(
+      `SELECT midia_id, dispositivo_id, janela_hora, vezes_programadas
+           FROM midias_exibicoes_contador WHERE midia_id = ANY($1::int[]) AND janela_hora >= $2`,
+      [ids, new Date(agoraMs - JANELAS.d30 - HORA_MS)],
+    ),
+  ]);
 
   const pontos = [
     ...new Map(telasRede.map((t) => [t.ponto_id, { id: t.ponto_id, horario_semanal: t.horario_semanal }])).values(),
@@ -224,6 +267,33 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
       esperadas[janela] = r.total;
       if (janela === 'd30') for (const [id, v] of r.porTela) porTelaD30.set(id, v);
     }
+    // T12: tela-hora em que a agenda rodou e programou menos que a frequência
+    // — o esperado daquela hora cai para o programado.
+    const telasPorId = new Map(telas.map((t) => [t.id, t]));
+    const programadoNaHora = new Map(
+      programadasPorHora
+        .filter((p) => p.midia_id === m)
+        .map((p) => [`${p.dispositivo_id}|${new Date(p.janela_hora).getTime()}`, p.vezes_programadas]),
+    );
+    const horasComAgenda = new Map();
+    for (const c of congeladas) {
+      const tela = telasPorId.get(c.dispositivo_id);
+      if (!tela || !elegivel) continue;
+      const hora = new Date(c.janela_hora).getTime();
+      if (hora >= ateMs) continue;
+      const teorica = teoricaNaHora({ midia, intervalos, tela, minutosAbertos, hora, ate: ateMs });
+      const programado = programadoNaHora.get(`${tela.id}|${hora}`) || 0;
+      const deslocada = Math.max(0, teorica - programado);
+      for (const janela of Object.keys(JANELAS)) if (hora >= desde[janela]) esperadas[janela] -= deslocada;
+      if (porTelaD30.has(tela.id) && hora >= desde.d30) porTelaD30.set(tela.id, porTelaD30.get(tela.id) - deslocada);
+      const h = horasComAgenda.get(hora) || { programado: 0 };
+      h.programado += programado;
+      horasComAgenda.set(hora, h);
+    }
+    for (const janela of Object.keys(JANELAS)) esperadas[janela] = Math.max(0, esperadas[janela]);
+    for (const [id, v] of porTelaD30) porTelaD30.set(id, Math.max(0, v));
+    const agendaSemVaga = new Set([...horasComAgenda].filter(([, h]) => h.programado === 0).map(([hora]) => hora));
+
     const confirmadas = {
       hoje: soma('confirmadas_hoje'),
       d7: soma('confirmadas_d7'),
@@ -252,6 +322,7 @@ async function metricasDasMidias(midias, { agora = new Date(), detalhe = false, 
             porHora: new Map(
               porHoraRows.filter((r) => r.midia_id === m).map((r) => [new Date(r.janela_hora).getTime(), r.n]),
             ),
+            agendaSemVaga,
             ultimaMs: ultima?.getTime() || null,
             agoraMs,
           })

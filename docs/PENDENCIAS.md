@@ -5787,11 +5787,22 @@ conversão fixo ⇄ móvel da seção S.
       §79 no item 22), `tests/ponto-movel.test.js` reescrito para a V2,
       `tests/e2e/46-ponto-movel.mjs` (criação pelo Admin) e
       `tests/e2e/47-hospedagem-movel.mjs` (fluxo completo no navegador).
-- T9 [ ] **Só o dono — decisão pendente (bloqueia o merge):** quantidade e
-      duração de criativos de quem usa SÓ o saldo de hospedagem. Implementado
-      com a regra do Plano Básico (1 peça de até 15 s, ritmo de 140 s por hora
-      de tela) num lugar só (`REGRA_DO_SALDO`, `src/pontos/hospedagem.js`).
-      Confirmar, ou dizer a regra certa.
+- T9 [ ] **Só o dono — confirmar (NÃO bloqueia o merge; reavaliado na
+      finalização V1, 05/10/2026):** quantidade e duração de criativos de
+      quem usa SÓ o saldo de hospedagem. Implementado com a regra do Plano
+      Básico (1 peça de até 15 s, ritmo de até 140 s por hora de tela) num
+      lugar só (`REGRA_DO_SALDO`, `src/pontos/hospedagem.js`, lida do
+      `BASICO`). Por que 140 s/h: é o teto do Básico (14 h/mês), o menor
+      ritmo que a rede já vende — o saldo nunca anda mais rápido que um
+      plano pago. Efeito no pacing: por hora de tela, `min(saldo restante /
+      telas / duração, 140 / duração)` inserções (9 × 15 s = 135 s), só no
+      tempo ocioso depois do pago e da recuperação (T3b) — nunca tira
+      entrega paga. Multi-ponto: o saldo é da rede inteira, então anda mais
+      rápido quanto mais telas abertas: 6 h de saldo levam ~13 dias numa
+      tela aberta 12 h/dia e ~16 h abertas com 10 telas. Quando o saldo é
+      menor que uma rodada da rede pode passar alguns segundos do saldo
+      (o Admin vê em `diferencaSegundos`). Mudar = trocar `REGRA_DO_SALDO`
+      e os testes 38–40 de `tests/hospedagem.test.js`; nenhuma migration.
 - T10 [ ] **Player:** a contagem offline está no repositório
       `sancompany/playlist.mostrai` (segmentos com relógio monotônico, âncora
       no `servidorAgora`, envio para `/player/:id/operacao`). Precisa de PR,
@@ -5802,9 +5813,17 @@ conversão fixo ⇄ móvel da seção S.
       até 8 dias de atraso, o job olha 9) apura de novo e a diferença entra como lançamento
       complementar idempotente (`hospedagem:<id>:ate:<total>`). O banco só
       aceita o tempo crescer com o benefício exato do tempo novo.
-- T12 [ ] **Só o dono — confirmar leitura:** a Mídia Mostraí ficou abaixo da
-      recuperação de atraso e do saldo de hospedagem (§31). As métricas dela
-      (RN-65) seguem medindo contra a frequência: numa hora com recuperação
-      ou saldo, aparece "entrega menor/atrasada" sem a TV ter falhado. Se
-      incomodar, medir contra o programado (próxima versão).
+- T12 [x] Métrica da Mídia Mostraí × agenda (Ponto Móvel V1 §18,
+      05/10/2026): o esperado desconta o que a agenda decidiu não programar
+      nas horas congeladas, e hora congelada com zero programado não marca
+      atraso (`src/midias/metricas.js`, teste 30b de
+      `tests/distribuicao.test.js`). A entrega não mudou.
+- T13 [ ] **Só o dono — texto jurídico do termo de hospedagem:** o "Termo
+      de Hospedagem Temporária, Guarda de Equipamento e Contrapartida em
+      Mídia" da migration 113 é a `minuta-1` — rascunho OPERACIONAL, sem
+      revisão jurídica (o próprio texto diz isso). Antes da primeira
+      hospedagem real, o jurídico revisa e o Admin publica a versão final em
+      Rede → Pontos móveis → Termo de hospedagem (versão nova; a minuta fica
+      no histórico, nunca é editada). O sistema (versão, aceite, hashes,
+      IP/navegador, data, imutabilidade) está pronto.
 

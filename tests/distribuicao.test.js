@@ -975,6 +975,38 @@ test('30. última exibição (e primeira): do comprovante; estado aguardando →
   assert.equal(m.estado, 'ATIVA_ENTREGA_ATRASADA', 'a hora seguinte fechou sem nada');
 });
 
+test('30b. T12: hora em que a agenda rodou e não programou a mídia (obrigação de cima) não é atraso nem entrega menor', async () => {
+  const { ponto, midia } = await midiaAntiga({ horario: HORARIO_24H, frequencia: 2 });
+  const t = (h) => horaCheia(AGORA.getTime() - h * HORA);
+  // Tocou há 30 h; daí até agora a tela PEDIU a playlist toda hora (hora
+  // congelada), mas a agenda deu a vaga para recuperação/saldo.
+  await hora(midia.id, ponto.telaId, ponto.pontoId, t(30), 2, 2);
+  const cheia = (await metricas(midia.id)).esperadas.d7;
+  for (let h = 1; h <= 29; h++) {
+    await pool.query(
+      `INSERT INTO playlist_hora_congelada (dispositivo_id, janela_hora, base) VALUES ($1, $2, '[]')
+       ON CONFLICT DO NOTHING`,
+      [ponto.telaId, t(h)],
+    );
+  }
+  const m = await metricas(midia.id);
+  assert.equal(m.estado, 'ATIVA_REPRODUZINDO', 'a agenda decidiu: não é atraso');
+  // 28 horas cheias fechadas (a de agora ainda não fechou) + 50 min da última.
+  const deslocadas = 28 * 2 + (50 / 60) * 2;
+  assert.ok(
+    Math.abs(cheia - m.esperadas.d7 - deslocadas) <= 0.5,
+    `esperado cai ${deslocadas} (${cheia} → ${m.esperadas.d7})`,
+  );
+  // Hora em que a tela NÃO pediu a playlist continua sendo atraso (TV muda
+  // ou desligada não vira "decisão da agenda").
+  // (a última hora FECHADA, com o prazo do comprovante, é a de 2 h atrás)
+  await pool.query('DELETE FROM playlist_hora_congelada WHERE dispositivo_id = $1 AND janela_hora = $2', [
+    ponto.telaId,
+    t(2),
+  ]);
+  assert.equal((await metricas(midia.id)).estado, 'ATIVA_ENTREGA_ATRASADA');
+});
+
 test('31. métricas por ponto (e por tela) na ficha do admin; o card traz o resumo', async () => {
   const { ponto, midia } = await midiaAntiga({ horario: HORARIO_24H, frequencia: 1 });
   const agora = Date.now();

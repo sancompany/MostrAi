@@ -1583,8 +1583,13 @@ atrasada** (a última hora aberta já fechada não teve comprovante),
 frequência entram como estão hoje (não há histórico deles). Desde 02/10/2026
 (RN-72, camada T3c) a Mídia Mostraí fica abaixo da recuperação de atraso e
 do saldo de hospedagem: a frequência é o TETO, não garantia — numa hora com
-recuperação ou saldo ela recebe menos, e as "esperadas" (pela frequência)
-mostram isso como entrega menor ou atrasada.
+recuperação ou saldo ela recebe menos. *Desde 05/10/2026 (Ponto Móvel V1
+§18, T12):* as "esperadas" descontam o que a AGENDA decidiu não programar —
+nas horas já fechadas e congeladas (`playlist_hora_congelada`), a diferença
+entre a frequência e o que a playlist programou sai do esperado, e uma hora
+congelada com zero programado não marca "entrega atrasada". Corrige a
+métrica, nunca a entrega: hora sem playlist congelada (o gerador não rodou)
+continua contando como devida.
 
 **RN-67 — Mídia própria só se exclui fora do ar, e a exclusão é lógica.**
 *(Refino da Mídia Mostraí, 29/09/2026.)* Ativa ou agendada não tem
@@ -1764,6 +1769,25 @@ dados do cadastro) só registram o interesse — sem conta nova, sem reserva; o
 Admin entra em contato, recusa ou agenda. *Quem vê:* o anfitrião (as
 hospedagens dele, o estimado durante, as horas e o saldo), o Admin (tudo,
 inclusive o extrato com autores).
+*Termo e equipamento (Ponto Móvel V1 §23–24, 05/10/2026):* a hospedagem só
+começa com o **aceite** eletrônico do "Termo de Hospedagem Temporária, Guarda
+de Equipamento e Contrapartida em Mídia" pela conta anfitriã — no painel, o
+card da hospedagem programada abre o termo com local, endereço, período e
+percentual; a pessoa digita o nome e marca "Li e concordo". Fica gravado,
+imutável: versão, hash do texto, hash do documento (termo + dados da
+hospedagem + nome), IP, navegador e data. Mudou o período ou o percentual →
+aceite novo; o Admin publica versão nova do termo (nunca edita a antiga —
+quem aceitou a anterior continua com ela). O texto da migration 113
+(`minuta-1`) é **minuta operacional sem revisão jurídica** (PENDENCIAS T13).
+O Admin só marca "a tela chegou" registrando a **entrega** (itens — tela
+obrigatória, suporte, player, cabos, controle —, condição ok/com avarias,
+observação obrigatória na avaria, foto opcional); a **retirada** se registra
+no encerramento ou depois, uma vez. *Conectividade ≠ operação (§8):* heartbeat
+sumido nunca torna o ponto inativo nem "desligado". O Admin vê três estados
+separados por tela — cadastro (ativa/reparo/inativa), conexão (comunicando,
+sem comunicação, nunca comunicou, sem Player) e operação (exibindo, fora do
+horário, erro relatado; **desconhecida** sem comunicação). O anunciante vê só
+"Sem comunicação com a Mostraí no momento", sem horário nem detalhe técnico.
 
 **RN-15 — Exclusão de conta é soft-delete de 60 dias.** A conta some do sistema
 na hora; o suporte pode reverter dentro de 60 dias. Não há tela de desfazer.

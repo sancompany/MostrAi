@@ -1784,7 +1784,11 @@ router.get('/anunciantes/:id/exibicoes.csv', exigirAnuncianteLogado, async (req,
 // admin e do dono do ponto (src/lib/status-tela.js) — antes o painel tinha a
 // sua (último sinal < 2h) e dizia "Online" para uma tela que o admin já
 // mostrava sem sinal. Por ponto: no ar se alguma tela opera; fora do horário
-// se nenhuma opera mas alguma está no horário de folga; senão, fora do ar.
+// se nenhuma opera mas alguma está no horário de folga; SEM COMUNICAÇÃO se
+// a tela deveria operar e só o heartbeat sumiu (conectividade não é
+// operação: a TV pode estar exibindo o pacote offline — Ponto Móvel V1 §8;
+// nunca dizer "fora do ar" sem prova); senão (reparo, inativa, não
+// instalada, erro relatado pelo Player), fora do ar.
 // O horário é o EM VIGOR, o mesmo da config da TV (ponto móvel fora da base
 // não tem horário de base — src/lib/contexto-do-ponto.js).
 // Só a conclusão sai daqui — nenhum dado da tela vai para o anunciante.
@@ -1805,8 +1809,12 @@ async function comSituacaoNoAr(pontos) {
       ? 'no_ar'
       : saudes.includes('fora_do_horario')
         ? 'fora_do_horario'
-        : 'fora_do_ar';
-    return { ...p, situacao };
+        : saudes.includes('sem_sinal')
+          ? 'sem_comunicacao'
+          : 'fora_do_ar';
+    // Nada da tela vai ao anunciante — nem o horário do último sinal.
+    const { ultima_vez_online: _ultimoSinal, ...semSinal } = p;
+    return { ...semSinal, situacao };
   });
 }
 
@@ -1823,12 +1831,10 @@ router.get('/anunciantes/:id/exibicoes', exigirAnuncianteLogado, async (req, res
       [anuncianteId],
     ),
     pool.query(
-      // `MAX(d.ultima_vez_online)` — quando o ponto tem mais de uma tela, o
-      // status mostrado é o da tela mais recentemente vista (19/09/2026,
-      // pedido do dono: "a TV tá desligada ou tá passando mesmo?").
+      // A situação do ponto vem de `comSituacaoNoAr` (régua única); o último
+      // sinal da tela é diagnóstico do Admin e não vai para o anunciante.
       `SELECT p.id, p.nome, p.cidade,
-              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas,
-              MAX(d.ultima_vez_online) AS ultima_vez_online
+              SUM(e.vezes_programadas) AS programadas, SUM(e.vezes_confirmadas) AS confirmadas
        FROM exibicoes_contador e
        JOIN dispositivos d ON d.id = e.dispositivo_id
        JOIN pontos p ON p.id = d.ponto_id

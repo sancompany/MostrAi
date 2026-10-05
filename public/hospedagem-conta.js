@@ -1,7 +1,8 @@
 // Hospedagem temporária de Ponto Móvel — módulo do painel (migration 113).
 //
 // O que aparece, sempre decidido no servidor (GET /anunciantes/me/hospedagem):
-//   · hospedagem programada — "Ponto Móvel programado" (Agendado);
+//   · hospedagem programada — "Ponto Móvel programado" (Agendado) e o aceite
+//     do termo de hospedagem (sem aceite a Mostraí não entrega nem inicia);
 //   · hospedagem em andamento — tempo operacional válido até agora, o
 //     percentual dela e o benefício ESTIMADO;
 //   · hospedagem concluída — tempo, percentual e horas recebidas;
@@ -31,9 +32,16 @@
 
   function htmlHospedagem(h) {
     if (h.estado === 'programada') {
+      // O equipamento só é entregue depois do aceite do termo (a Mostraí
+      // não inicia sem ele).
+      const termo = h.termoAceito
+        ? '<p class="hosp-meta">Termo de hospedagem aceito. A Mostraí combina a entrega com você.</p>'
+        : `<p class="hosp-nota">Para a Mostraí entregar o equipamento, leia e aceite o termo de hospedagem.</p>
+           <button type="button" class="btn primary mini" data-hosp-termo="${h.id}">Ler e aceitar o termo</button>`;
       return `<div class="hosp-item">
           <p class="hosp-titulo"><span class="badge badge-pendente">Agendado</span> <b>Ponto Móvel programado</b></p>
           <p class="hosp-meta">${esc(h.local)} · ${esc(periodo(h))}</p>
+          ${termo}
         </div>`;
     }
     if (h.estado === 'ativa') {
@@ -145,6 +153,87 @@
     }
   }
 
+  // Termo de hospedagem: <dialog> com o texto da versão vigente, os dados
+  // desta hospedagem e o aceite (nome de quem aceita + "li e concordo"). O
+  // servidor confere versão e hash — se o texto mudou enquanto lia, avisa.
+  async function abrirTermo(hid) {
+    const r = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagens/${encodeURIComponent(hid)}/termo`, {
+      credentials: 'include',
+    });
+    const t = await r.json().catch(() => ({}));
+    if (!r.ok || !t.termo) return;
+    const dlg = document.createElement('dialog');
+    dlg.className = 'dlg-termo';
+    dlg.setAttribute('aria-labelledby', 'dlgTermoTitulo');
+    const d = t.dados;
+    dlg.innerHTML = `
+      <div class="dlg-head"><h3 id="dlgTermoTitulo">${esc(t.termo.titulo)}</h3>
+        <button type="button" class="dlg-close" data-fechar aria-label="Fechar">&times;</button></div>
+      <p class="form-hint">Versão ${esc(t.termo.versao)}${t.termo.minuta ? ' · minuta, ainda sem revisão jurídica' : ''}</p>
+      <div class="hosp-termo-texto" tabindex="0">${esc(t.termo.texto)}</div>
+      <dl class="hosp-numeros">
+        <div><dt>Local</dt><dd>${esc(d.local)}</dd></div>
+        <div><dt>Endereço</dt><dd>${esc(d.endereco)}</dd></div>
+        <div><dt>Período</dt><dd>${esc(window.periodoDoEvento?.(d.dataInicio, d.dataFim) || `${d.dataInicio} a ${d.dataFim}`)}</dd></div>
+        <div><dt>Percentual</dt><dd>${pct(d.percentual)} do tempo operacional válido</dd></div>
+      </dl>
+      ${
+        t.aceite
+          ? `<p class="hosp-meta">Aceito por ${esc(t.aceite.responsavel)} em ${esc(window.dataBR?.(t.aceite.aceitoEm) || '')}.</p>`
+          : `<form class="hosp-form" novalidate>
+              <label class="form-label" for="termoResponsavel">Seu nome (quem aceita)</label>
+              <input class="form-input" id="termoResponsavel" name="responsavel" maxlength="120" autocomplete="name" required>
+              <label class="hosp-check"><input type="checkbox" name="concordo"> Li e concordo com o termo e com os dados desta hospedagem</label>
+              <p class="form-msg" data-msg role="alert" hidden></p>
+              <div class="dlg-acoes">
+                <button type="button" class="btn ghost" data-fechar>Fechar</button>
+                <button type="submit" class="btn primary">Aceitar o termo</button>
+              </div>
+            </form>`
+      }`;
+    document.body.appendChild(dlg);
+    let enviando = false;
+    const fechar = () => dlg.open && dlg.close();
+    dlg.addEventListener('cancel', (e) => enviando && e.preventDefault());
+    for (const b of dlg.querySelectorAll('[data-fechar]')) b.addEventListener('click', () => !enviando && fechar());
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.querySelector('form')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (enviando) return;
+      const form = ev.target;
+      const msg = form.querySelector('[data-msg]');
+      const botao = form.querySelector('[type=submit]');
+      enviando = true;
+      botao.disabled = true;
+      msg.hidden = true;
+      try {
+        const resp = await fetch(`${API_BASE_URL}/anunciantes/me/hospedagens/${encodeURIComponent(hid)}/aceite`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            responsavel: form.responsavel.value,
+            concordo: form.concordo.checked,
+            versao: t.termo.versao,
+            hash: t.termo.hash,
+          }),
+        });
+        const corpo = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(corpo.erro || 'Não foi possível registrar o aceite. Tente de novo.');
+        enviando = false;
+        fechar();
+        await carregar();
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.className = 'form-msg err';
+        msg.hidden = false;
+        botao.disabled = false;
+        enviando = false;
+      }
+    });
+    dlg.showModal();
+  }
+
   // "Usar minhas horas": as horas rodam com o criativo da conta — leva até
   // "Meus criativos" (subir ou acompanhar a peça).
   function usarHoras() {
@@ -159,6 +248,8 @@
     const corpo = $('hospedagemCorpo');
     corpo?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-hosp-usar]')) usarHoras();
+      const termo = ev.target.closest('[data-hosp-termo]');
+      if (termo) abrirTermo(termo.dataset.hospTermo).catch(() => {});
       const abrir = ev.target.closest('[data-hosp-abrir]');
       if (abrir) {
         const form = $('hospInteresseForm');

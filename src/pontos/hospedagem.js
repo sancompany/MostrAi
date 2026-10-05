@@ -253,7 +253,11 @@ async function criar(pontoId, corpo, admin) {
 // "A tela chegou ao comércio": o local atual passa a ser o do anfitrião (e o
 // ramo dele vale na trava de concorrente). Só dentro do período — para
 // antecipar, o Admin muda o período antes (programada).
-async function iniciar(pontoId, hospedagemId) {
+// "A tela chegou": exige o aceite do termo pelo anfitrião (para o período e
+// o percentual de agora) e a ENTREGA do equipamento registrada — já
+// registrada antes ou vinda no corpo, gravada na mesma transação.
+async function iniciar(pontoId, hospedagemId, corpo = {}, admin = null) {
+  const termo = require('./hospedagem-termo');
   try {
     return await movel.emTransacao(async (c) => {
       await movel.travarMovel(c, pontoId);
@@ -262,6 +266,16 @@ async function iniciar(pontoId, hospedagemId) {
       if (h.terminou) throw erro(409, 'O período dessa hospedagem já passou — cancele ou programe de novo');
       if (h.ainda_nao_comecou) {
         throw erro(409, 'Essa hospedagem começa só no dia marcado — para antecipar, altere o período antes');
+      }
+      if (!(await termo.aceiteValido(c, h))) {
+        throw erro(
+          409,
+          'O anfitrião ainda não aceitou o termo desta hospedagem (com o período e o percentual de agora) — ele aceita pelo painel',
+        );
+      }
+      if (!(await termo.movimentacaoDe(c, h.id, 'entrega'))) {
+        if (!corpo?.entrega) throw erro(400, 'Registre a entrega do equipamento para iniciar', 'entrega');
+        await termo.registrarMovimentacao(c, h, 'entrega', corpo.entrega, admin);
       }
       await agenda.exigirLivre(c, pontoId, h.data_inicio, h.data_fim, {
         ignorar: { tipo: 'hospedagem', id: h.id },
@@ -308,12 +322,16 @@ async function encerrarNaTransacao(c, h, { encerramento, admin = null }) {
   return { contaId: h.conta_id, tempoSegundos: tempo, beneficioSegundos: beneficio };
 }
 
-async function encerrar(pontoId, hospedagemId, admin) {
+// A retirada pode vir junto (o Admin está recolhendo agora) ou depois.
+async function encerrar(pontoId, hospedagemId, admin, corpo = {}) {
   const r = await movel.emTransacao(async (c) => {
     await movel.travarMovel(c, pontoId);
     const h = await hospedagemDoPonto(c, pontoId, hospedagemId);
     if (h.estado === 'programada') throw erro(409, 'Essa hospedagem ainda não começou — para desistir dela, cancele');
     if (h.estado !== 'ativa') throw erro(409, JA_ESTA[h.estado]);
+    if (corpo?.retirada) {
+      await require('./hospedagem-termo').registrarMovimentacao(c, h, 'retirada', corpo.retirada, admin);
+    }
     return encerrarNaTransacao(c, h, { encerramento: 'manual', admin });
   });
   await avisarBeneficio(r);
@@ -769,8 +787,8 @@ async function extratoDaConta(contaId) {
 // encerramento).
 async function hospedagensDaConta(contaId) {
   const { rows } = await pool.query(
-    `SELECT h.id, h.ponto_id, h.local, h.data_inicio, h.data_fim, h.percentual, h.estado, h.iniciada_em,
-            h.encerrada_em, h.tempo_operacional_segundos, h.beneficio_segundos, p.nome AS ponto_nome
+    `SELECT h.id, h.ponto_id, h.conta_id, h.local, h.endereco, h.data_inicio, h.data_fim, h.percentual, h.estado,
+            h.iniciada_em, h.encerrada_em, h.tempo_operacional_segundos, h.beneficio_segundos, p.nome AS ponto_nome
        FROM pontos_moveis_hospedagens h JOIN pontos p ON p.id = h.ponto_id
       WHERE h.conta_id = $1 AND h.estado IN ('programada', 'ativa', 'encerrada')
       ORDER BY CASE h.estado WHEN 'ativa' THEN 0 WHEN 'programada' THEN 1 ELSE 2 END,
@@ -778,11 +796,15 @@ async function hospedagensDaConta(contaId) {
       LIMIT 20`,
     [contaId],
   );
+  const documentos = await require('./hospedagem-termo').documentosDasHospedagens(rows);
   const lista = [];
   for (const h of rows) {
+    const doc = documentos.get(String(h.id));
     const item = {
       id: Number(h.id),
       ponto: h.ponto_nome,
+      // Só o que é dela: se já aceitou o termo (a programada espera o aceite).
+      termoAceito: Boolean(doc?.aceite),
       local: h.local,
       dataInicio: h.data_inicio,
       dataFim: h.data_fim,
@@ -812,9 +834,11 @@ async function hospedagensDoPonto(pontoId, db = pool) {
                CASE WHEN h.estado = 'programada' THEN h.data_inicio END, h.data_inicio DESC, h.id DESC`,
     [pontoId],
   );
+  const documentos = await require('./hospedagem-termo').documentosDasHospedagens(rows);
   const lista = [];
   for (const h of rows) {
     const ativa = h.estado === 'ativa';
+    const doc = documentos.get(String(h.id));
     const tempoAteAgora = ativa ? await tempoOperacional(db, h.ponto_id, h.iniciada_em, new Date()) : null;
     lista.push({
       id: Number(h.id),
@@ -837,6 +861,13 @@ async function hospedagensDoPonto(pontoId, db = pool) {
       criadoEm: h.criado_em,
       criadoPor: h.criado_por_admin,
       encerradoPor: h.encerrado_por_admin,
+      // Termo e equipamento: aceite que vale para o período/percentual de
+      // agora, quantos aceites anteriores ficaram de histórico, entrega e
+      // retirada.
+      aceite: doc?.aceite || null,
+      aceitesAnteriores: doc?.aceitesAnteriores || 0,
+      entrega: doc?.entrega || null,
+      retirada: doc?.retirada || null,
     });
   }
   return lista;

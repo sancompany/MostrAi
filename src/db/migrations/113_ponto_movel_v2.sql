@@ -340,3 +340,119 @@ CREATE TABLE hospedagem_percentual_historico (
 ALTER TABLE hospedagem_percentual_historico ENABLE ROW LEVEL SECURITY;
 INSERT INTO configuracoes_site (chave, valor) VALUES ('hospedagem_percentual', '20')
   ON CONFLICT (chave) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- 10. Termo de Hospedagem Temporária (versão e aceite)
+-- ---------------------------------------------------------------------------
+-- O texto vive versionado aqui: versão nova é linha nova (o texto e o hash
+-- de uma versão publicada nunca mudam — só a marca de vigente). A versão
+-- inicial é MINUTA operacional, sem revisão jurídica (decisão registrada em
+-- docs/PENDENCIAS.md §T); o Admin publica a versão revisada pela tela.
+CREATE TABLE hospedagem_termos (
+  versao text PRIMARY KEY CHECK (versao ~ '^[A-Za-z0-9._-]{1,40}$'),
+  titulo text NOT NULL,
+  texto text NOT NULL,
+  hash_sha256 text NOT NULL CHECK (hash_sha256 ~ '^[0-9a-f]{64}$'),
+  vigente boolean NOT NULL DEFAULT false,
+  publicado_em timestamptz NOT NULL DEFAULT now(),
+  publicado_por text NOT NULL
+);
+CREATE UNIQUE INDEX ux_hospedagem_termos_vigente ON hospedagem_termos (vigente) WHERE vigente;
+ALTER TABLE hospedagem_termos ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION hospedagem_termo_imutavel() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'versão % do termo não se apaga', OLD.versao USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.versao <> OLD.versao OR NEW.titulo <> OLD.titulo OR NEW.texto <> OLD.texto
+     OR NEW.hash_sha256 <> OLD.hash_sha256 OR NEW.publicado_em <> OLD.publicado_em
+     OR NEW.publicado_por <> OLD.publicado_por THEN
+    RAISE EXCEPTION 'versão % do termo já publicada não muda — publique outra', OLD.versao
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER hospedagem_termo_imutavel BEFORE UPDATE OR DELETE ON hospedagem_termos
+  FOR EACH ROW EXECUTE FUNCTION hospedagem_termo_imutavel();
+
+-- O aceite do anfitrião: quem (a conta da sessão), qual versão e qual hash,
+-- os dados DESTA hospedagem como foram aceitos (período, percentual, local,
+-- endereço, responsável), o hash do documento inteiro (versão + dados), e a
+-- evidência técnica (IP e navegador). Só se acrescenta: alterar o período de
+-- uma programada exige um aceite novo (o antigo fica de histórico).
+CREATE TABLE hospedagem_aceites (
+  id bigserial PRIMARY KEY,
+  hospedagem_id bigint NOT NULL REFERENCES pontos_moveis_hospedagens(id),
+  ponto_id integer NOT NULL REFERENCES pontos(id),
+  conta_id integer NOT NULL REFERENCES anunciantes(id),
+  termo_versao text NOT NULL REFERENCES hospedagem_termos(versao),
+  termo_hash text NOT NULL,
+  documento_hash text NOT NULL CHECK (documento_hash ~ '^[0-9a-f]{64}$'),
+  responsavel text NOT NULL,
+  local text NOT NULL,
+  endereco text NOT NULL,
+  data_inicio date NOT NULL,
+  data_fim date NOT NULL,
+  percentual numeric(5,2) NOT NULL,
+  ip text,
+  user_agent text,
+  aceito_em timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_hospedagem_aceites_hospedagem ON hospedagem_aceites (hospedagem_id, aceito_em DESC);
+ALTER TABLE hospedagem_aceites ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION hospedagem_aceite_imutavel() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'aceite do termo é histórico e não muda' USING ERRCODE = 'check_violation';
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER hospedagem_aceite_imutavel BEFORE UPDATE OR DELETE ON hospedagem_aceites
+  FOR EACH ROW EXECUTE FUNCTION hospedagem_aceite_imutavel();
+
+INSERT INTO hospedagem_termos (versao, titulo, texto, hash_sha256, vigente, publicado_por)
+SELECT v.versao, v.titulo, v.texto, encode(sha256(convert_to(v.texto, 'UTF8')), 'hex'), true, 'migration 113'
+  FROM (VALUES (
+    'minuta-1',
+    'Termo de Hospedagem Temporária, Guarda de Equipamento e Contrapartida em Mídia',
+    'MINUTA OPERACIONAL — este texto ainda não passou por revisão jurídica.
+
+1. Objeto. O anfitrião recebe, por um período combinado, um Ponto Móvel da Mostraí (tela, suporte, aparelho Player e acessórios) para instalação temporária no endereço indicado nos dados desta hospedagem.
+
+2. Propriedade. O equipamento é e continua sendo exclusivamente da Mostraí. A hospedagem não transfere propriedade, posse definitiva, direito de uso próprio nem qualquer direito administrativo sobre o equipamento ou sobre a programação da tela.
+
+3. Não é aluguel. Nenhuma das partes paga valor em dinheiro à outra por esta hospedagem. O anfitrião não recebe Plano Básico, créditos, cupons, receita nem veiculação gratuita própria naquela tela durante a hospedagem.
+
+4. Responsabilidades do anfitrião. Oferecer o espaço e a energia elétrica, manter o equipamento ligado e exposto ao público no horário de funcionamento combinado, não desligá-lo, mover, abrir, alterar ou ceder a terceiros, e avisar a Mostraí sem demora sobre qualquer dano, furto ou problema.
+
+5. Responsabilidades da Mostraí. Entregar, instalar, operar, manter e retirar o equipamento, e gerir a programação exibida.
+
+6. Contrapartida em mídia. Ao fim da hospedagem, a Mostraí apura o tempo operacional válido da tela (tempo comprovado de operação, nunca a simples duração do período) e credita ao anfitrião, como Saldo de Hospedagem, o percentual indicado nos dados desta hospedagem desse tempo, em horas de veiculação na rede Mostraí. O Saldo de Hospedagem não é dinheiro, crédito financeiro, cashback ou pagamento; não pode ser sacado nem convertido em dinheiro; não expira automaticamente; é usado conforme a capacidade e as regras de programação da rede.
+
+7. Período, prorrogação e encerramento. O período é o indicado nos dados desta hospedagem. Prorrogação depende de acordo e de disponibilidade da agenda do equipamento. Qualquer das partes pode encerrar antes; nesse caso, conta apenas o tempo operacional válido até o encerramento. A Mostraí registra a entrega e a retirada do equipamento, com a condição em que se encontra.
+
+8. Dados. Os dados informados são usados para operar esta hospedagem e a contrapartida, conforme a Política de Privacidade da Mostraí.',
+    'migration 113'
+  )) AS v(versao, titulo, texto, x);
+
+-- ---------------------------------------------------------------------------
+-- 11. Entrega e retirada do equipamento
+-- ---------------------------------------------------------------------------
+-- Registro operacional, um de cada por hospedagem: o que foi entregue ou
+-- recolhido (itens), em que condição, observação, foto opcional, quando e
+-- por qual Admin. Entrega é condição para iniciar; a retirada pode vir com o
+-- encerramento ou depois dele (o encerramento automático não recolhe nada).
+CREATE TABLE hospedagem_movimentacoes (
+  id bigserial PRIMARY KEY,
+  hospedagem_id bigint NOT NULL REFERENCES pontos_moveis_hospedagens(id),
+  tipo text NOT NULL CHECK (tipo IN ('entrega', 'retirada')),
+  itens jsonb NOT NULL,
+  condicao text NOT NULL CHECK (condicao IN ('ok', 'com_avarias')),
+  observacao text,
+  foto_url text,
+  realizada_em timestamptz NOT NULL,
+  admin text NOT NULL,
+  criado_em timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (hospedagem_id, tipo),
+  CHECK (condicao = 'ok' OR observacao IS NOT NULL)
+);
+ALTER TABLE hospedagem_movimentacoes ENABLE ROW LEVEL SECURITY;

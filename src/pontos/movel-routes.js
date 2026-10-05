@@ -5,6 +5,7 @@ const multer = require('multer');
 const movel = require('./movel');
 const hospedagem = require('./hospedagem');
 const interesses = require('./hospedagem-interesse');
+const termo = require('./hospedagem-termo');
 const sse = require('../lib/sse');
 const { limiteTentativas } = require('../lib/limite-tentativas');
 
@@ -21,7 +22,10 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 //   POST /admin/pontos/:id/eventos                           cadastrar evento
 //   POST /admin/pontos/:id/eventos/:eventoId/:acao           iniciar | encerrar | cancelar
 //   POST /admin/pontos/:id/hospedagens                       confirmar hospedagem (percentual congelado)
-//   POST /admin/pontos/:id/hospedagens/:hid/:acao            iniciar | encerrar | cancelar
+//   POST /admin/pontos/:id/hospedagens/:hid/:acao            iniciar (exige aceite + entrega) | encerrar
+//                                                            (retirada opcional) | cancelar | retirada
+//   POST /admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto  foto da entrega/retirada
+//   GET  /admin/hospedagem/termos | POST                     versões do termo / publicar nova
 //   PUT  /admin/pontos/:id/hospedagens/:hid/periodo          alterar período / prorrogar
 //   GET  /admin/hospedagem/percentual                        percentual + histórico
 //   PUT  /admin/hospedagem/percentual                        alterar (auditado)
@@ -35,6 +39,8 @@ const { limiteTentativas } = require('../lib/limite-tentativas');
 //   POST /hospedagem/interesse                               interesse (visitante ou logado)
 //   GET  /anunciantes/me/hospedagem                          as hospedagens e o saldo da conta logada
 //   POST /anunciantes/me/hospedagem/interesse                interesse pelo painel (dados da conta)
+//   GET  /anunciantes/me/hospedagens/:hid/termo              termo + dados desta hospedagem
+//   POST /anunciantes/me/hospedagens/:hid/aceite             aceite do anfitrião (versão + hash)
 const router = express.Router();
 
 const idDaRota = (v) => (/^\d{1,9}$/.test(String(v)) ? Number(v) : null);
@@ -137,6 +143,47 @@ router.post(
   }),
 );
 
+// Foto da entrega ou da retirada (opcional, recomendada): mesmo bucket e
+// mesmo filtro de imagem da foto do móvel.
+router.post(
+  '/admin/pontos/:id/hospedagens/:hid/movimentacoes/:tipo/foto',
+  apagarTemporario,
+  upload.single('arquivo'),
+  rota(async (req, res, id) => {
+    const tipo = req.params.tipo === 'entrega' || req.params.tipo === 'retirada' ? req.params.tipo : null;
+    const hid = /^\d{1,15}$/.test(String(req.params.hid)) ? req.params.hid : null;
+    if (!tipo || !hid) return res.status(404).json({ erro: 'registro não encontrado' });
+    if (!req.file) return res.status(400).json({ erro: 'envie uma imagem (JPG, PNG ou WebP)' });
+    const supabase = require('../lib/supabase');
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET;
+    const nomeArquivo = `pontos/movel-${id}-hospedagem-${hid}-${tipo}.jpg`;
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(nomeArquivo, fs.readFileSync(req.file.path), { contentType: req.file.mimetype, upsert: true });
+    if (error) return res.status(502).json({ erro: 'falha ao salvar a foto' });
+    const { data } = supabase.storage.from(bucket).getPublicUrl(nomeArquivo);
+    const url = `${data.publicUrl}?v=${Date.now()}`;
+    await termo.definirFotoDaMovimentacao(id, hid, tipo, url);
+    await avisar(id);
+    res.json({ url });
+  }),
+);
+
+// Termo de hospedagem: versões (a vigente e as anteriores) e publicar nova.
+router.get(
+  '/admin/hospedagem/termos',
+  simples(async (_req, res) => {
+    res.json({ termos: await termo.listarTermos() });
+  }),
+);
+
+router.post(
+  '/admin/hospedagem/termos',
+  simples(async (req, res) => {
+    res.status(201).json(await termo.publicarTermo(req.body, adminDe(req)));
+  }),
+);
+
 router.get(
   '/admin/pontos/:id/movel',
   rota(async (_req, res, id) => {
@@ -205,9 +252,10 @@ router.post(
 );
 
 const ACOES_DA_HOSPEDAGEM = {
-  iniciar: (id, hid) => hospedagem.iniciar(id, hid),
-  encerrar: (id, hid, admin) => hospedagem.encerrar(id, hid, admin),
+  iniciar: (id, hid, admin, corpo) => hospedagem.iniciar(id, hid, corpo, admin),
+  encerrar: (id, hid, admin, corpo) => hospedagem.encerrar(id, hid, admin, corpo),
   cancelar: (id, hid) => hospedagem.cancelar(id, hid),
+  retirada: (id, hid, admin, corpo) => termo.registrarRetirada(id, hid, corpo, admin),
 };
 router.post(
   '/admin/pontos/:id/hospedagens/:hid/:acao',
@@ -215,7 +263,7 @@ router.post(
     if (!Object.hasOwn(ACOES_DA_HOSPEDAGEM, req.params.acao)) {
       return res.status(404).json({ erro: 'ação desconhecida' });
     }
-    const r = await ACOES_DA_HOSPEDAGEM[req.params.acao](id, req.params.hid, adminDe(req));
+    const r = await ACOES_DA_HOSPEDAGEM[req.params.acao](id, req.params.hid, adminDe(req), req.body || {});
     await avisar(id, [r?.contaId]);
     res.json({ ok: true, ...(r?.tempoSegundos !== undefined ? r : {}) });
   }),
@@ -337,6 +385,34 @@ router.get(
       interesseAberto,
       percentual,
     });
+  }),
+);
+
+// O termo de UMA hospedagem da conta logada (texto vigente + os dados dela
+// + se já aceitou) e o aceite. A conta vem sempre da sessão.
+router.get(
+  '/anunciantes/me/hospedagens/:hid/termo',
+  exigirConta,
+  simples(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await termo.termoDaHospedagem(req.session.anuncianteId, req.params.hid));
+  }),
+);
+
+router.post(
+  '/anunciantes/me/hospedagens/:hid/aceite',
+  exigirConta,
+  limiteTentativas,
+  simples(async (req, res) => {
+    const r = await termo.aceitar(req.session.anuncianteId, req.params.hid, req.body, {
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    if (!r.repetido) {
+      sse.emitirParaAdmin('point.updated', { id: r.pontoId });
+      sse.emitirParaConta(r.contaId, 'hosting.updated', {});
+    }
+    res.status(r.repetido ? 200 : 201).json({ aceite: r.aceite });
   }),
 );
 

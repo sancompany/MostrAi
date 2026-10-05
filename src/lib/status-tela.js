@@ -53,6 +53,35 @@ function saudeDaTela(tela, horarioDoPonto, agora = new Date()) {
   return 'operando';
 }
 
+// Três perguntas que não se misturam (Ponto Móvel V1 §8), para o Admin:
+//   administrativo — o cadastro (ativo, reparo, inativo);
+//   conectividade  — a Mostraí fala com a tela agora? (heartbeat recente);
+//   operacao       — o que a tela diz que está fazendo. SEM comunicação, a
+//                    operação é DESCONHECIDA — a TV pode estar exibindo o
+//                    pacote offline; heartbeat sumido nunca vira "desligada".
+function estadosDaTela(tela, horarioDoPonto, agora = new Date()) {
+  const ultimo = ms(tela.ultima_vez_online);
+  const conectividade = !tela.chave_hash
+    ? 'sem_player'
+    : ultimo == null
+      ? 'nunca_comunicou'
+      : agora.getTime() - ultimo <= TOLERANCIA_SEM_SINAL_MS
+        ? 'comunicando'
+        : 'sem_comunicacao';
+  let operacao = 'desconhecida';
+  if (conectividade === 'comunicando') {
+    if (tela.ultimo_erro_codigo || tela.ultimo_erro || ESTADOS_DE_ERRO.has(tela.player_estado))
+      operacao = 'erro_relatado';
+    else if (
+      tela.player_estado === 'OUT_OF_SCHEDULE' ||
+      !deveriaOperar(operacaoDoPonto(horarioDoPonto, agora), agora)
+    ) {
+      operacao = 'fora_do_horario';
+    } else operacao = 'exibindo';
+  }
+  return { administrativo: tela.status, conectividade, operacao, ultimoSinal: tela.ultima_vez_online || null };
+}
+
 // Sem Player instalado a config não é "pendente", é indisponível.
 function situacaoConfig(tela, agora = new Date()) {
   if (!tela.chave_hash) return 'indisponivel';
@@ -106,6 +135,7 @@ module.exports = {
   ESTADOS_DE_ERRO,
   SITUACOES_DE_ALERTA,
   saudeDaTela,
+  estadosDaTela,
   situacaoConfig,
   situacaoFila,
   alertasDaTela,

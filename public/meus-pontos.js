@@ -27,7 +27,7 @@
       'A tela foi preparada e ainda não se conectou. Assim que ligar, o ponto fica ativo.',
     ativo: () => '',
     em_manutencao: () => 'A tela deste ponto está em reparo. A equipe Mostraí está cuidando disso.',
-    inativo: () => 'As telas deste ponto estão desligadas. Se isso não era esperado, fale com a gente.',
+    inativo: () => 'As telas deste ponto estão inativas no cadastro. Se isso não era esperado, fale com a gente.',
   };
 
   let obterConta = () => null;

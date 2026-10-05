@@ -183,6 +183,13 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   15 s, 140 s por hora de tela) — decisão do dono pendente
   (`docs/PENDENCIAS.md`, T9). limite: trocar em `REGRA_DO_SALDO`
   (`src/pontos/hospedagem.js`), um lugar só.
+- **Termo de hospedagem: o sistema existe, o texto é minuta** (05/10/2026,
+  RN-72). A `minuta-1` da migration 113 não passou por revisão jurídica e
+  diz isso no próprio texto; versão, aceite, hashes e imutabilidade estão
+  prontos. limite: antes da primeira hospedagem real o Admin publica a
+  versão revisada (`docs/PENDENCIAS.md`, T13). O sistema não emite PDF nem
+  colhe assinatura digital ICP — o aceite é eletrônico simples, com
+  evidência (IP, navegador, data, hash do documento).
 - ~~`og:image` com caminho relativo~~ — **limite fechado em 14/09/2026**: o
   domínio existe (`mostrai.sancocore.com.br`), e `og:image`, `og:url` e
   `canonical` passaram a ser absolutos nas 26 páginas.

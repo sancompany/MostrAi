@@ -118,9 +118,11 @@ async function listarMoveis() {
   const { rows } = await pool.query(
     `SELECT p.id, p.nome, p.status, p.movel_numero, p.foto_instalacao_url, p.base_nome, p.base_conta_id,
             a.nome_empresa AS base_conta_nome,
-            (SELECT json_build_object('id', d.id, 'nome', d.apelido, 'status', d.status,
-                                      'ultimaVezOnline', d.ultima_vez_online)
-               FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) AS tela,
+            (SELECT row_to_json(t) FROM (
+               SELECT d.id, d.apelido, d.status, d.ultima_vez_online, (d.chave_hash IS NOT NULL) AS chave_hash,
+                      d.player_estado, d.ultimo_erro_codigo, d.ultimo_erro
+                 FROM dispositivos d WHERE d.ponto_id = p.id AND d.status <> 'inativo' ORDER BY d.id LIMIT 1) t) AS tela,
+            ${require('../lib/contexto-do-ponto').horarioEmVigorSql('p')} AS horario_em_vigor,
             (SELECT json_build_object('id', h.id, 'local', h.local, 'conta', ca.nome_empresa,
                                       'dataInicio', h.data_inicio, 'dataFim', h.data_fim)
                FROM pontos_moveis_hospedagens h JOIN anunciantes ca ON ca.id = h.conta_id
@@ -147,7 +149,13 @@ async function listarMoveis() {
       numero: r.movel_numero,
       status: r.status,
       foto: r.foto_instalacao_url,
-      tela: r.tela,
+      // Admin: cadastro, conectividade e operação separados (§8).
+      tela: r.tela && {
+        id: r.tela.id,
+        nome: r.tela.apelido,
+        status: r.tela.status,
+        ...require('../lib/status-tela').estadosDaTela(r.tela, r.horario_em_vigor),
+      },
       base: { nome: r.base_nome, conta: r.base_conta_id ? { id: r.base_conta_id, nome: r.base_conta_nome } : null },
       localAtual: s?.localAtual || null,
       hospedagemAtual: r.hospedagem_atual,

@@ -1475,3 +1475,22 @@ data (só o Admin sabe se a tela chegou).
   (base do móvel, dona do fixo) não é concorrente de si mesma no saldo.
 - Hospedagem cancelada devolve o interesse para "em contato" e reabre a
   pendência (ou recusa, se a conta já tem outro aberto).
+
+**Finalização V1 (05/10/2026) — o que entrou no desenho.**
+- Termo de hospedagem versionado (`hospedagem_termos`, texto e hash
+  imutáveis; publicar = versão nova vigente) e aceite eletrônico imutável
+  (`hospedagem_aceites`: versão, hash do termo, hash do documento, IP,
+  navegador, data). `iniciar` exige aceite que bata com período e
+  percentual atuais — mudar o período pede aceite novo. A `minuta-1` não
+  passou por jurídico (PENDENCIAS T13). Recusado: aceite por e-mail/PDF
+  assinado fora do sistema (sem trilha) e texto editável no lugar
+  (apagaria o que foi aceito).
+- Entrega e retirada do equipamento (`hospedagem_movimentacoes`, uma de
+  cada por hospedagem): `iniciar` grava a entrega na mesma transação.
+- Conectividade ≠ operação (§8): heartbeat nunca inativa ponto; o Admin vê
+  cadastro, conexão e operação separados (`estadosDaTela`); o anunciante
+  recebe só `sem_comunicacao`, sem horário de sinal.
+- T12: a métrica da Mídia Mostraí desconta o que a agenda decidiu não
+  programar nas horas congeladas — corrige a métrica, não a entrega.
+- T9 mantida (regra do Básico no saldo), não bloqueia: não há regra
+  melhor sem decisão do dono, e trocar é uma constante.
