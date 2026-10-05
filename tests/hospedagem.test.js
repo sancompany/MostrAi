@@ -1160,17 +1160,18 @@ test('31 e 32. heartbeat exibindo estende o intervalo; sinal perdido abre outro;
   // Uma batida fora do ar no meio quebra o intervalo (mesmo sem buraco).
   await hb('PLAYING');
   assert.strictEqual(await intervalos(), 2, 'depois de OUT_OF_SCHEDULE, intervalo novo');
-  // O APK bate a cada 5 min: 2 min depois da anterior (exibindo) estende.
-  await recuar(2);
+  // O Player bate a cada 15 s; tolerância de 2 min (src/lib/heartbeat.js):
+  // 1 min depois da anterior (exibindo) estende.
+  await recuar(1);
   await hb('PLAYING');
-  assert.strictEqual(await intervalos(), 2, 'dentro da tolerância de uma batida, estende');
-  // Buraco maior que a tolerância (6 min 30 s): intervalo novo.
-  await recuar(7);
+  assert.strictEqual(await intervalos(), 2, 'dentro da tolerância, estende');
+  // Buraco maior que a tolerância (2 min): intervalo novo.
+  await recuar(3);
   await hb('PLAYING');
   assert.strictEqual(await intervalos(), 3, 'batida perdida: intervalo novo');
   // Reparo e volta a ativa entre duas batidas (dentro da tolerância): a
   // ponte não atravessa o tempo que o Admin marcou como não operacional.
-  await recuar(2);
+  await recuar(1);
   await pool.query(
     `INSERT INTO tela_eventos (dispositivo_id, tipo, detalhe, ocorrido_em)
      VALUES ($1, 'ADMIN_STATE_CHANGED', '{"de":"ativo","para":"reparo"}', now() - interval '90 seconds'),

@@ -167,7 +167,7 @@ Lei 10 pede. São regras, não limites: violar qualquer uma é defeito.
   de audiência. limite: GPS e audiência medida estão nas próximas versões
   (`docs/proximas-versoes.md`) e no veto de medição acima.
 - **Ponto Móvel V2: o tempo operacional é o que a tela COMPROVA** (02/10/2026,
-  RN-72). Online, pelos heartbeats (o APK bate a cada 5 min; um buraco > 6 min 30 s
+  RN-72). Online, pelos heartbeats (o Player bate a cada 15 s; um buraco > 2 min
   fecha o intervalo — entre duas batidas exibindo, conta o trecho todo);
   offline, pelos segmentos que o Player conta com o relógio monotônico e
   manda quando volta — o que chegar depois do encerramento, dentro da

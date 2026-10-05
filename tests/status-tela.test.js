@@ -7,6 +7,7 @@ const {
   situacaoFila,
   alertasDaTela,
 } = require('../src/lib/status-tela');
+const { INTERVALO_HEARTBEAT_MS } = require('../src/lib/heartbeat');
 const { DIAS } = require('../src/lib/horario-semanal');
 
 // Régua única de status operacional da tela (revisão final da Visão Geral,
@@ -125,14 +126,20 @@ const viva = (extra = {}) => ({
   ...extra,
 });
 
-test('tolerância de "sem sinal" é de 6 min 30 s (APK bate a cada 5 min)', () => {
-  assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 390 * 1000);
+test('heartbeat de 15 s (contrato §5) e "sem sinal" depois de 8 batidas = 2 min', () => {
+  assert.strictEqual(
+    INTERVALO_HEARTBEAT_MS,
+    15 * 1000,
+    'fonte única: igual a Produto.INTERVALO_HEARTBEAT_MS do Player',
+  );
+  assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 8 * INTERVALO_HEARTBEAT_MS);
+  assert.strictEqual(TOLERANCIA_SEM_SINAL_MS, 2 * 60 * 1000);
+  // O tempo operacional pelo heartbeat usa a mesma régua.
+  assert.strictEqual(require('../src/player/operacao').TOLERANCIA_SEGUNDOS * 1000, TOLERANCIA_SEM_SINAL_MS);
   const ha = (s) => new Date(QUARTA_MEIO_DIA.getTime() - s * 1000).toISOString();
   assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(15) }), null, QUARTA_MEIO_DIA), 'operando');
-  // Entre duas batidas de 5 min a tela saudável segue comunicando.
-  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(299) }), null, QUARTA_MEIO_DIA), 'operando');
-  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(389) }), null, QUARTA_MEIO_DIA), 'operando');
-  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(391) }), null, QUARTA_MEIO_DIA), 'sem_sinal');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(119) }), null, QUARTA_MEIO_DIA), 'operando');
+  assert.strictEqual(saudeDaTela(viva({ ultima_vez_online: ha(121) }), null, QUARTA_MEIO_DIA), 'sem_sinal');
 });
 
 test('Player V2 reporta OUT_OF_SCHEDULE -> fora_do_horario, mesmo com 24h no servidor', () => {

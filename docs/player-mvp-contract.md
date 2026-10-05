@@ -130,7 +130,7 @@ mesmo em reparo.
 
 ## 5. Heartbeat — `POST /player/:dispositivoId/heartbeat`
 
-A cada **15 s**. O servidor usa para: último sinal, saúde da tela, erro atual,
+A cada **15 s** — **fonte única da cadência**: `Produto.INTERVALO_HEARTBEAT_MS` no Player e `src/lib/heartbeat.js` aqui, os dois travados por teste; mudar um é mudar os dois e este parágrafo. O servidor usa para: último sinal, saúde da tela, erro atual,
 fila de comprovantes, versão do Player e confirmação da config aplicada.
 
 ### Requisição
@@ -243,7 +243,7 @@ Toda tela segue o **horário do ponto** (não existe horário por tela).
   um PIN padrão).
 - PIN correto → saída autorizada: o watchdog local **não** reabre o app. Ao
   abrir o app de novo (manual ou boot), a operação normal e o watchdog
-  voltam. O backend não é avisado da saída: 6 min 30 s depois a tela aparece
+  voltam. O backend não é avisado da saída: 2 min depois a tela aparece
   como "Sem sinal" no admin, que é o fato.
 
 ---
@@ -388,10 +388,12 @@ somadas por UNIÃO no servidor (o mesmo minuto conta uma vez):
 
 - **Online:** o heartbeat (§5) com `estado` `PLAYING` ou `IDLE` estende o
   intervalo aberto da tela até agora, se a batida anterior também foi
-  exibindo e veio em até 6 min 30 s; um buraco maior fecha o intervalo e a
-  próxima batida abre outro. É o piso para o APK atual. Nota (02/10/2026):
-  o APK em produção manda o heartbeat a cada **5 min**
-  (`INTERVALO_HEARTBEAT_MS`), não a cada 15 s como diz o §5.
+  exibindo e veio dentro da tolerância de "sem sinal" (2 min = 8 batidas de
+  15 s, `src/lib/heartbeat.js`); um buraco maior fecha o intervalo e a
+  próxima batida abre outro. (A nota de 02/10/2026 que dizia "o APK bate a
+  cada 5 min" estava errada: 5 min era o APK 0.1.0/1.0.0, que nunca falou
+  com este contrato; o Player bate a cada 15 s desde a 2.0.0 — conferido em
+  05/10/2026. O §5 é a fonte única da cadência.)
 - **Offline:** o Player conta o que exibiu sem internet e manda quando volta.
 
 ```json
@@ -429,9 +431,9 @@ Derivados no servidor (o Player reporta fatos, o servidor classifica):
 | Estado | Regra |
 |---|---|
 | Aguardando instalação | tela sem Player provisionado (nunca instalada, ou revogada) |
-| Operando | sinal nos últimos 6 min 30 s (APK bate a cada 5 min; era 2 min), sem erro |
+| Operando | sinal nos últimos 2 min (8 batidas de 15 s, §5), sem erro |
 | Fora do horário | o horário do ponto diz fechado, ou o Player diz `OUT_OF_SCHEDULE` |
-| Sem sinal | deveria operar e o último sinal passou de 6 min 30 s (`TELA_SEM_SINAL_MIN`) |
+| Sem sinal | deveria operar e o último sinal passou de 2 min (`src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve) |
 | Erro do Player | sinal recente com `erro` ou estado de erro |
 
 Estados administrativos (decididos pelo operador): **Ativa**, **Em reparo**,
