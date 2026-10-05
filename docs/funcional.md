@@ -1294,9 +1294,10 @@ derivada, nunca gravada, e só `src/lib/status-tela.js#saudeDaTela` calcula,
 nesta ordem: `em_reparo`/`inativa` (estado administrativo, nunca alerta) →
 `aguardando_instalacao` (sem Player: nunca instalado ou revogado) →
 `fora_do_horario` (o Player diz `OUT_OF_SCHEDULE` ou o horário diz fechado) →
-`sem_sinal` (deveria operar e o último sinal passou de 6 min 30 s — o APK
-bate a cada 5 min; `TELA_SEM_SINAL_MIN`; era 2 min até 05/10/2026, quando
-o contrato ainda dizia heartbeat de 15 s) → `erro_do_player` (sinal recente com erro) →
+`sem_sinal` (deveria operar e o último sinal passou de 2 min — 8 batidas de
+15 s, `src/lib/heartbeat.js`; `TELA_SEM_SINAL_MIN` sobrescreve. Entre 02 e
+05/10/2026 esteve em 6 min 30 s por uma premissa errada — "o APK bate a
+cada 5 min", que era o APK 0.1.0/1.0.0) → `erro_do_player` (sinal recente com erro) →
 `operando`. Só `sem_sinal`/`erro_do_player` são alerta. Config só é
 "pendente" depois de 2 min sem aplicar e vira alerta com 15 min; fila de
 comprovantes vira atenção com 2.000, alerta com 10.000 ou 48 h de idade.
@@ -1731,7 +1732,7 @@ hospedagem quando o Admin confirma — a confirmação leva o percentual que o
 Admin revisou e é recusada se o global mudou no meio. O **tempo operacional
 válido** é a UNIÃO dos intervalos em que a tela esteve ligada e exibindo
 (PLAYING/IDLE), no relógio do servidor: os do heartbeat (online; um buraco
-maior que 6 min 30 s — o APK bate a cada 5 min — fecha o intervalo) e os segmentos que o Player contou offline
+maior que 2 min — a tolerância de "sem sinal"; o Player bate a cada 15 s — fecha o intervalo) e os segmentos que o Player contou offline
 com o relógio monotônico e enviou quando voltou (idempotentes por tela, boot
 e sequência). Só tela ATIVA no cadastro mede (reparo/inativa não) — o
 segmento offline vale pelo estado de QUANDO foi exibido —, e o tempo fica

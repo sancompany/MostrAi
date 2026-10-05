@@ -10,10 +10,10 @@ const pool = require('../db/pool');
 //   · heartbeat (online): a cada batida com o Player exibindo (PLAYING ou
 //     IDLE — o institucional também é a tela no ar), o intervalo aberto da
 //     tela se estende até agora — só se a batida anterior TAMBÉM foi
-//     exibindo e veio dentro da tolerância (o APK bate a cada 5 min:
-//     tolerância de 6 min 30 s, uma batida + 30%). Um buraco maior fecha o
-//     intervalo e a próxima batida abre outro — sinal perdido não vira
-//     tempo. É o piso para o APK atual; o Player novo manda também os
+//     exibindo e veio dentro da tolerância (o Player bate a cada 15 s; a
+//     tolerância é a mesma do "sem sinal", 2 min — src/lib/heartbeat.js).
+//     Um buraco maior fecha o intervalo e a próxima batida abre outro —
+//     sinal perdido não vira tempo. É o piso para o APK atual; o Player novo manda também os
 //     segmentos dele (online e offline), e a união não conta duas vezes;
 //   · segmentos do Player (offline): o Player conta o que exibiu sem
 //     internet com o relógio MONOTÔNICO do aparelho (imune a acerto de
@@ -27,10 +27,11 @@ const pool = require('../db/pool');
 // tela estava: é por ele que a hospedagem soma.
 
 const ESTADOS_EXIBINDO = new Set(['PLAYING', 'IDLE']);
-// O APK bate a cada 5 min (playlist.mostrai, PlayerActivity
-// INTERVALO_HEARTBEAT_MS) — conferido em 02/10/2026; o contrato antigo dizia
-// 15 s. Uma batida perdida já fecha o intervalo.
-const TOLERANCIA_SEGUNDOS = 390;
+// Enquanto a tela está "conectada" (src/lib/heartbeat.js: 8 batidas de 15 s),
+// o intervalo segue; com ela "sem comunicação", fecha. Era 390 s quando se
+// achava que o APK batia a cada 5 min — com batidas de 15 s, isso contava
+// até 6,5 min de silêncio como operação.
+const TOLERANCIA_SEGUNDOS = require('../lib/heartbeat').TOLERANCIA_SEM_SINAL_MS / 1000;
 const SEGMENTO_MAXIMO_MS = 6 * 3600 * 1000;
 const FUTURO_TOLERADO_MS = 2 * 60 * 1000;
 // O mesmo prazo do Proof-of-Play offline (7 dias) + 1 dia de folga: o
@@ -50,7 +51,7 @@ async function registrarPeloHeartbeat(client, tela, estado) {
     ? { rowCount: 0 }
     : await client.query(
         // Mudança do Admin no estado da tela depois da última batida (ex.:
-        // reparo e volta a ativa em menos de 6 min 30 s) fecha o intervalo:
+        // reparo e volta a ativa dentro da tolerância) fecha o intervalo:
         // o tempo marcado como não operacional nunca entra na ponte.
         `UPDATE tela_operacao o SET fim = now()
       WHERE o.id = (SELECT id FROM tela_operacao

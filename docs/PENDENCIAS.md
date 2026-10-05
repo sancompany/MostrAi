@@ -5803,10 +5803,19 @@ conversão fixo ⇄ móvel da seção S.
       menor que uma rodada da rede pode passar alguns segundos do saldo
       (o Admin vê em `diferencaSegundos`). Mudar = trocar `REGRA_DO_SALDO`
       e os testes 38–40 de `tests/hospedagem.test.js`; nenhuma migration.
-- T10 [ ] **Player:** a contagem offline está no repositório
-      `sancompany/playlist.mostrai` (segmentos com relógio monotônico, âncora
-      no `servidorAgora`, envio para `/player/:id/operacao`). Precisa de PR,
-      build e OTA para as TVs; até lá, só o tempo online (heartbeat) conta.
+- T10 [ ] **Player:** os segmentos `{bootId, seq, inicio, fim}` (relógio
+      monotônico, âncora no `servidorAgora` do mesmo boot) entram no Player
+      3.0.0 (`sancompany/Playlist.MostrAi`). Correção de 05/10/2026: até lá o
+      Player NÃO mandava segmentos (o PR #7 mandava `sessoes`, formato do
+      #113, fechado), e não existe OTA — saiu na 2.0.0; a instalação é por
+      pendrive, do zero. Até o 3.0.0 estar nas TVs, só o tempo online
+      (heartbeat) conta.
+- T10b [x] **Heartbeat: fonte única de 15 s** (05/10/2026). O "APK bate a
+      cada 5 min" do #114 era o APK 0.1.0/1.0.0 (nunca falou com este
+      contrato; a produção tinha zero telas). `src/lib/heartbeat.js` é a
+      constante; "sem sinal" e a ponte do tempo operacional usam a mesma
+      tolerância de 2 min (8 batidas) — os 390 s contavam até 6,5 min de
+      silêncio como operação. Texto público de `pontos.html` corrigido.
 - T11 [x] Tempo contado offline e enviado DEPOIS do encerramento SOMA
       (revisão, ciclos 1 e 3 — achado ALTO): a janela da hospedagem não
       muda, o job de apuração tardia (`apurarTardias`, a cada 5 min; segmento com
